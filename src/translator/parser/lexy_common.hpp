@@ -76,10 +76,26 @@ constexpr auto ws_rule = dsl::ascii::space | line_comment | block_comment;
 // The same characters as the old lexer.
 constexpr auto id = dsl::identifier(dsl::ascii::alpha_underscore, dsl::ascii::word);
 
+constexpr auto kw_using = LEXY_KEYWORD("using", id);
+// "import" is removed. The parser still knows the word to give a clear error.
 constexpr auto kw_import = LEXY_KEYWORD("import", id);
 constexpr auto kw_class = LEXY_KEYWORD("class", id);
 constexpr auto kw_override = LEXY_KEYWORD("override", id);
 constexpr auto kw_function = LEXY_KEYWORD("function", id);
+constexpr auto kw_virtual = LEXY_KEYWORD("virtual", id);
+constexpr auto kw_new = LEXY_KEYWORD("new", id);
+constexpr auto kw_public = LEXY_KEYWORD("public", id);
+constexpr auto kw_private = LEXY_KEYWORD("private", id);
+constexpr auto kw_protected = LEXY_KEYWORD("protected", id);
+constexpr auto kw_var = LEXY_KEYWORD("var", id);
+constexpr auto kw_foreach = LEXY_KEYWORD("foreach", id);
+constexpr auto kw_in = LEXY_KEYWORD("in", id);
+// "get" and "set" are the accessor words of a property. They are not names.
+// "finally" starts the last block of a try statement.
+constexpr auto kw_get = LEXY_KEYWORD("get", id);
+constexpr auto kw_set = LEXY_KEYWORD("set", id);
+constexpr auto kw_finally = LEXY_KEYWORD("finally", id);
+constexpr auto kw_void = LEXY_KEYWORD("void", id);
 
 // ---------------------------------------------------------------- literals
 // A string or character literal. It has two values: the position after the opening quote
@@ -197,6 +213,28 @@ struct scan_type : lexy::token_production {
     static constexpr auto rule =
         dsl::position +
         dsl::loop(type_ops | dsl::peek(Cfg::term) >> dsl::break_ |
+                  dsl::eof >> dsl::error<e_unexpected_eof> | dsl::else_ >> dsl::p<type_item>) +
+        dsl::position;
+    static constexpr auto value = span_value;
+};
+
+// The name of a "Type name" parameter: an identifier before a "," or a ")".
+constexpr auto param_name_ahead =
+    id + dsl::whitespace(ws_rule) + (dsl::lit_c<','> / dsl::lit_c<')'>);
+// The old form "name: type". A "::" is not the old form.
+constexpr auto old_param_ahead =
+    id + dsl::whitespace(ws_rule) + dsl::lit_c<':'> + dsl::peek_not(dsl::lit_c<':'>);
+
+// Matches the type of a "Type name" parameter. The scan stops before the name.
+// The name is the last identifier before a "," or a ")" at depth zero.
+// An identifier after a "." is part of the type, so "std.string" is a type and not a name.
+// The value is the span of the type. The span is empty when the parameter has no type.
+struct scan_param_type : lexy::token_production {
+    static constexpr auto rule =
+        dsl::position +
+        dsl::loop(dsl::peek(param_name_ahead) >> dsl::break_ |
+                  dsl::peek(dsl::lit_c<','> / dsl::lit_c<')'>) >> dsl::break_ | type_ops |
+                  dsl::lit_c<'.'> >> dsl::if_(dsl::token(id)) | dsl::token(id) |
                   dsl::eof >> dsl::error<e_unexpected_eof> | dsl::else_ >> dsl::p<type_item>) +
         dsl::position;
     static constexpr auto value = span_value;

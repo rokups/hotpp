@@ -5,9 +5,10 @@
 // function parses the span in the same buffer, so each position is an absolute offset.
 //
 // Two rules need a look-ahead and not a recursion, because dsl::peek cannot recurse:
-//  - A "(" starts a lambda when the text after it is ")" "=>" or "name :". A lambda
-//    that has no "=>" gives an error of the lambda path, not an error of the paren path.
-//    The text "(" name ")" "=>" gives the error "a lambda parameter needs the form 'name: type'".
+//  - A "(" starts a lambda when a scan to the matching ")" finds a "=>" after it. The scan
+//    has a fixed nesting depth (lambda_depth). A parameter is "Type name" or "name".
+//    The old form "(" name ":" is also a lambda path, so it gives the error
+//    "parameter syntax changed; write 'Type name'".
 //  - A "<" starts template arguments when a scan of "<...>" ends before a "(", a "{" or
 //    a ".". The scan has a fixed nesting depth (targs_depth). It stops at a newline,
 //    at ";" and at each char that a type cannot have.
@@ -30,12 +31,14 @@ using ast::ExprP;
 // The script has no "::" and no "->". A "." does both jobs. The errors tell the user.
 SPC_ERROR_TAG(e_expected_expr, "expected an expression");
 SPC_ERROR_TAG(e_end_of_expr, "expected end of expression");
-SPC_ERROR_TAG(e_lambda_param, "a lambda parameter needs the form 'name: type'");
+SPC_ERROR_TAG(e_old_param, "parameter syntax changed; write 'Type name'");
 SPC_ERROR_TAG(e_targs, "not a template argument list");
 
 // ---------------------------------------------------------------- limits
 // The nesting of the brackets in the text of template arguments.
 constexpr int targs_depth = 4;
+// The nesting of "(" in the parameters of a lambda, for example "std.function<void(int)> f".
+constexpr int lambda_depth = 4;
 // The limit of dsl::recurse: nested "(", "[", "{", "?" and argument lists. Each level
 // uses some stack, so the limit is low. A script does not nest deeper.
 constexpr std::size_t max_depth = 256;
@@ -61,10 +64,19 @@ constexpr auto kw_try = LEXY_KEYWORD("try", id);
 constexpr auto kw_catch = LEXY_KEYWORD("catch", id);
 constexpr auto kw_throw = LEXY_KEYWORD("throw", id);
 
-// A name. The words of the body syntax are not names.
-constexpr auto id_r = id.reserve(kw_let, kw_const, kw_this, kw_super, kw_null, kw_if, kw_else,
+// The words of the body syntax. A member name after a "." can be any word of this set.
+// The set has no "get", "set" and "in", because a native method can have such a name.
+constexpr auto id_m = id.reserve(kw_let, kw_const, kw_this, kw_super, kw_null, kw_if, kw_else,
                                  kw_while, kw_do, kw_for, kw_return, kw_break, kw_continue,
                                  kw_switch, kw_case, kw_default, kw_try, kw_catch, kw_throw);
+
+// A name. The words of the body syntax and the reserved words are not names.
+constexpr auto id_r = id.reserve(kw_let, kw_const, kw_this, kw_super, kw_null, kw_if, kw_else,
+                                 kw_while, kw_do, kw_for, kw_return, kw_break, kw_continue,
+                                 kw_switch, kw_case, kw_default, kw_try, kw_catch, kw_throw,
+                                 kw_var, kw_foreach, kw_in, kw_using, kw_override, kw_virtual,
+                                 kw_new, kw_public, kw_private, kw_protected, kw_get, kw_set,
+                                 kw_finally, kw_void);
 
 // ---------------------------------------------------------------- plain helpers
 std::string_view span_text(const ParseState& st, Span sp)
@@ -304,9 +316,10 @@ constexpr auto targs_head =
 // The parts are joined by ".". A "::" is an error.
 struct qname_tok : lexy::token_production {
     static constexpr auto rule = [] {
-        auto seg = dsl::token(id_r) + dsl::if_(dsl::peek(targs_head) >> dsl::p<targs_tok>);
-        return dsl::position + seg +
-               dsl::loop(dsl::peek(dsl::lit_c<'.'> + id_r) >> (dsl::lit_c<'.'> + seg) |
+        auto first = dsl::token(id_r) + dsl::if_(dsl::peek(targs_head) >> dsl::p<targs_tok>);
+        auto seg = dsl::token(id_m) + dsl::if_(dsl::peek(targs_head) >> dsl::p<targs_tok>);
+        return dsl::position + first +
+               dsl::loop(dsl::peek(dsl::lit_c<'.'> + id_m) >> (dsl::lit_c<'.'> + seg) |
                          dsl::peek(LEXY_LIT("::")) >> dsl::error<e_use_dot_colons> |
                          dsl::else_ >> dsl::break_) +
                dsl::position;
@@ -353,15 +366,15 @@ struct braced_p {
 };
 
 // ---------------------------------------------------------------- lambda
-struct param_term {
-    static constexpr auto term = dsl::lit_c<','> / dsl::lit_c<')'>;
-};
-
+// "Type name" or "name". A parameter without a type has an empty type ("auto").
+// The old form "name: type" is an error.
 struct param_p {
-    static constexpr auto rule = dsl::p<id_str> + dsl::lit_c<':'> +
-                                 dsl::p<scan_type<param_term>> + dsl::if_(dsl::lit_c<','>);
+    static constexpr auto rule =
+        dsl::peek(old_param_ahead) >> dsl::error<e_old_param> |
+        dsl::else_ >> (dsl::p<scan_param_type> + dsl::p<id_str> + dsl::if_(dsl::lit_c<','>));
     static constexpr auto value = lexy::bind(
-        lexy::callback<ast::Param>([](const ParseState& st, std::string name, Span type) {
+        lexy::callback<ast::Param>([](const ParseState& st, Span type, std::string name) {
+            if (only_blank(span_text(st, type))) return ast::Param{std::move(name), ""};
             return ast::Param{std::move(name), type_of(st, type)};
         }),
         lexy::parse_state, lexy::values);
@@ -387,21 +400,35 @@ struct lambda_rest {
         [](std::vector<ast::Param>&& ps, Span body) { return LambdaRest{std::move(ps), body}; });
 };
 
-// "(" ")" "=>" or "(" name ":" is a lambda. The name is not followed by another ":".
-constexpr auto lambda_empty = dsl::lit_c<')'> + dsl::whitespace(ws_rule) + LEXY_LIT("=>");
-constexpr auto lambda_param =
-    id + dsl::whitespace(ws_rule) + dsl::lit_c<':'> + dsl::peek_not(dsl::lit_c<':'>);
-// "(" name ")" "=>" is a lambda with a parameter that has no type. It is an error.
-constexpr auto lambda_untyped =
-    id + dsl::whitespace(ws_rule) + dsl::lit_c<')'> + dsl::whitespace(ws_rule) + LEXY_LIT("=>");
+// The text after "(" up to the matching ")". It has a fixed nesting depth of "(".
+// Strings, characters and comments are skipped. A deeper nesting fails the scan.
+template <int N>
+struct lambda_body : lexy::token_production {
+    static constexpr auto rule = [] {
+        auto head = dsl::lit_c<')'> >> dsl::break_ | dsl::eof >> dsl::error<e_targs> |
+                    dsl::token(string_lit) | dsl::token(char_lit) | line_comment | block_comment;
+        if constexpr (N > 0)
+            return dsl::loop(head | dsl::lit_c<'('> >> dsl::p<lambda_body<N - 1>> |
+                             dsl::else_ >> any_unit);
+        else
+            return dsl::loop(head | dsl::lit_c<'('> >> dsl::error<e_targs> |
+                             dsl::else_ >> any_unit);
+    }();
+    static constexpr auto value = lexy::noop;
+};
+
+// "(" ... ")" "=>" is a lambda. The "(" is already consumed. The old form "name:" is
+// also a lambda, so the parameter rule reports it.
+constexpr auto lambda_head =
+    dsl::p<lambda_body<lambda_depth>> + dsl::whitespace(ws_rule) + LEXY_LIT("=>");
+constexpr auto lambda_old = old_param_ahead;
 
 // A parenthesized expression or an arrow lambda.
 struct paren_p {
     static constexpr auto rule =
         dsl::position + dsl::lit_c<'('> +
-        (dsl::peek(lambda_empty) >> dsl::p<lambda_rest> |
-         dsl::peek(lambda_param) >> dsl::p<lambda_rest> |
-         dsl::peek(lambda_untyped) >> dsl::error<e_lambda_param> |
+        (dsl::peek(lambda_head) >> dsl::p<lambda_rest> |
+         dsl::peek(lambda_old) >> dsl::p<lambda_rest> |
          dsl::else_ >> (dsl::recurse<expr> + dsl::lit_c<')'>));
     static constexpr auto value = lexy::bind(
         lexy::callback<ExprP>(

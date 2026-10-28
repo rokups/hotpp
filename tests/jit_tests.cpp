@@ -168,21 +168,21 @@ TEST(JitTests, PrecompiledHeaderWorks)
 TEST(JitTests, ExceptionsWorkInJitCode)
 {
     const script::ScriptSource src = {"throws.script", R"(
-import "Actor.h";
-import "Math.h";
+using "Actor.h";
+using "Math.h";
 
 class Player : Actor {
-    speed: float = 5.0;
+    float speed = 5.0;
 
-    function Tick(dt: float) {
-        try { throw 7; } catch (e: int) { this.speed = 9.0; }
+    override void Tick(float dt) {
+        try { throw 7; } catch (int e) { this.speed = 9.0; }
     }
 
-    function TakeDamage(amount: float) {
+    override void TakeDamage(float amount) {
         throw 42;
     }
 
-    function TakeDamage(source: Actor&, amount: float) {}
+    override void TakeDamage(Actor& source, float amount) {}
 }
 )"};
     std::unique_ptr<script::Backend> backend = script::make_default_backend();

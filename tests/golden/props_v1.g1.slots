@@ -1,0 +1,8 @@
+Gauge::total 1
+Gauge::get_Hp 1
+Gauge::set_Hp 1
+Gauge::get_MaxHp 1
+Gauge::get_Level 1
+Gauge::set_Level 1
+Gauge::get_Shield 1
+Gauge::set_Shield 1

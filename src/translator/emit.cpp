@@ -73,6 +73,13 @@ void Emitter::finish()
     if (map_ && line_ != 0) out_ += '\n';
 }
 
+void Emitter::rewind(uint32_t pos)
+{
+    if (!map_ || pos == 0) return;
+    const int line = map_->line(pos);
+    if (line_ > line) line_ = line - 1;
+}
+
 namespace {
 
 void block(const BlockStmt& b, Emitter& e);
@@ -367,9 +374,24 @@ struct StmtPrinter {
         }
         e.put(";");
     }
+    // A finally block prints as an RAII guard before the try:
+    //   { script::Finally __fin_N([&] { body }); try { ... } catch ... }
+    // The guard runs the body when the outer block ends, on each path out of it.
+    // N is unique in the Emitter, so a nested try gets a different name.
     void operator()(const TryStmt& n) const
     {
-        e.put("try", n.pos);
+        if (n.finally_block) {
+            e.put("{", n.pos);
+            e.space();
+            e.put("script::Finally __fin_" + std::to_string(e.next_finally()) + "([&]");
+            block(*n.finally_block, e);
+            e.put(")");
+            e.put(";");
+            e.space();
+            e.rewind(n.pos);
+        }
+        // A try without a catch clause has no use in C++. The body is a plain block.
+        if (!n.catches.empty()) e.put("try", n.pos);
         block(n.block, e);
         for (const CatchClause& c : n.catches) {
             e.space();
@@ -384,6 +406,10 @@ struct StmtPrinter {
             }
             e.put(")");
             block(c.block, e);
+        }
+        if (n.finally_block) {
+            e.space();
+            e.put("}");
         }
     }
     void operator()(const EmptyStmt& n) const { e.put(";", n.pos); }

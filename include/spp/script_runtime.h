@@ -10,6 +10,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <typeinfo>
@@ -232,6 +233,33 @@ private:
     const char* what_ = nullptr;
 };
 
+// The guard of a script "finally" block. The translator writes
+//   { script::Finally __fin_N([&] { body }); try { ... } catch ... }
+// The destructor runs the body on each path out of the outer block: the normal end,
+// a return, a break, a continue and an exception.
+//
+// Rule: the body must not let an exception out of the destructor. During unwinding, such
+// an exception calls std::terminate. So the destructor catches and drops each exception
+// from the body. The exception from the try block (if any) continues.
+template <class F>
+class Finally {
+public:
+    explicit Finally(F f) : f_(std::move(f)) {}
+    Finally(const Finally&) = delete;
+    Finally& operator=(const Finally&) = delete;
+    ~Finally()
+    {
+        try {
+            f_();
+        } catch (...) {
+            // Dropped. See the rule above.
+        }
+    }
+
+private:
+    F f_;
+};
+
 namespace detail {
 template <class M>
 struct SigOf;
@@ -288,6 +316,74 @@ template <class Sig, class... A>
 inline auto call(const ClassRecord* cls, unsigned slot, A&&... a)
 {
     return reinterpret_cast<Sig*>(cls->slots[slot])(std::forward<A>(a)...);
+}
+
+// Property access on an object other than "this" (lower.h). "p.P" becomes
+// "Cls__get_P(script::shell_of<Cls_Shell>(p, "Cls"))". The helper accepts a pointer and
+// a reference. The object must be a live script object of the class "cls". Else the
+// helper throws std::runtime_error. A pointer to the shell itself needs no check.
+template <class Shell, class T>
+Shell* shell_of(T* p, const char* cls)
+{
+    if constexpr (std::is_same_v<T, Shell>) {
+        return p;
+    } else {
+        static_assert(std::is_base_of_v<T, Shell>,
+                      "the object of a property access is not of the native base of the script class");
+        auto* s = dynamic_cast<ShellBase*>(p);
+        if (!s || !s->cls || std::strcmp(s->cls->name, cls) != 0)
+            throw std::runtime_error(std::string("the object is not a script object of class ") + cls);
+        return static_cast<Shell*>(p);
+    }
+}
+template <class Shell, class T>
+Shell* shell_of(T& v, const char* cls)
+{
+    return shell_of<Shell>(&v, cls);
+}
+
+// The operators of a compound property write: "o.P += e" uses op_add.
+#define SCRIPT_PROP_OP(name, op)                         \
+    struct name {                                        \
+        template <class A, class B>                      \
+        auto operator()(A&& a, B&& b) const              \
+        {                                                \
+            return std::forward<A>(a) op std::forward<B>(b); \
+        }                                                \
+    };
+SCRIPT_PROP_OP(op_add, +)
+SCRIPT_PROP_OP(op_sub, -)
+SCRIPT_PROP_OP(op_mul, *)
+SCRIPT_PROP_OP(op_div, /)
+SCRIPT_PROP_OP(op_mod, %)
+SCRIPT_PROP_OP(op_and, &)
+SCRIPT_PROP_OP(op_or, |)
+SCRIPT_PROP_OP(op_xor, ^)
+SCRIPT_PROP_OP(op_shl, <<)
+SCRIPT_PROP_OP(op_shr, >>)
+#undef SCRIPT_PROP_OP
+
+// A property write that gives a value (lower.h). Each helper evaluates the object once.
+// "o.P = v" gives v. "o.P op= e" and "++o.P" give the new value. "o.P++" gives the old value.
+template <class O, class T>
+T prop_set(void (*set)(O*, T), std::type_identity_t<O>* o, std::type_identity_t<T> v)
+{
+    set(o, v);
+    return v;
+}
+template <class Op, class O, class T, class E>
+T prop_update(T (*get)(O*), void (*set)(O*, T), std::type_identity_t<O>* o, E&& e)
+{
+    T v = Op{}(get(o), std::forward<E>(e));
+    set(o, v);
+    return v;
+}
+template <class Op, class O, class T, class E>
+T prop_post(T (*get)(O*), void (*set)(O*, T), std::type_identity_t<O>* o, E&& e)
+{
+    T old = get(o);
+    set(o, Op{}(old, std::forward<E>(e)));
+    return old;
 }
 
 // The runtime keeps a list of the live objects. The reload commit uses it.

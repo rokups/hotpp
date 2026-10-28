@@ -1,33 +1,33 @@
 // Generation 2 of the Player class (design section 7.8, after).
 // The field hp has the new name health. The new field shield is 25.
-import "Actor.h";
-import "Math.h";
+using "Actor.h";
+using "Math.h";
 
 class Player : Actor {
-    [alias("hp")] health: float = 100.0;
-    speed: float = 5.0;
-    target: Actor* = null;
-    shield: float = 25.0;
+    [alias("hp")] float health = 100.0;
+    float speed = 5.0;
+    Actor* target = null;
+    float shield = 25.0;
 
-    function Tick(dt: float) {
+    override void Tick(float dt)  {
         this.Move({2.0 * this.speed * dt, 0, 0});
         std.printf("[v2] %s: Tick dt=%.4f pos.x=%.4f health=%.1f shield=%.1f\n",
                     this.Name.c_str(), dt, this.Position.x, this.health, this.shield);
     }
 
-    function TakeDamage(amount: float) {
+    override void TakeDamage(float amount)  {
         this.health = Math.Max(this.health - amount, 0.0);
         std.printf("[v2] %s: TakeDamage %.1f -> health=%.1f\n", this.Name.c_str(), amount,
                     this.health);
     }
 
-    function TakeDamage(source: Actor&, amount: float) {
+    override void TakeDamage(Actor& source, float amount)  {
         this.target = &source;
         std.printf("[v2] %s: hit by %s\n", this.Name.c_str(), this.target.Name.c_str());
         this.TakeDamage(amount);
     }
 
-    function heal(amount: float) {
+    void heal(float amount)  {
         this.health = Math.Min(this.health + 2.0 * amount, 100.0);
         std.printf("[v2] %s: heal %.1f (x2) -> health=%.1f\n", this.Name.c_str(), amount,
                     this.health);

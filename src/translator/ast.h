@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -202,9 +203,11 @@ struct CatchClause {
     BlockStmt block;
     uint32_t pos = 0;
 };
+// A try statement has one or more catch clauses, a finally block, or both.
 struct TryStmt {
     BlockStmt block;
-    std::vector<CatchClause> catches;  // one or more
+    std::vector<CatchClause> catches;  // zero or more; zero only with a finally block
+    std::optional<BlockStmt> finally_block;
     uint32_t pos = 0;
 };
 struct EmptyStmt {
@@ -247,11 +250,15 @@ inline uint32_t pos_of(const Stmt& s)
 }
 
 // ------------------------------------------------------------------ script
+// The access modifier of a member. The parser stores it. Nothing checks it yet.
+enum class Access { Public, Private, Protected };
+
 struct Field {
     std::string name, alias, type;  // alias: the previous name from [alias("...")]
     ExprP init;      // null when the field has no initializer, or the parse failed
     Span init_span;  // the raw text after "=", up to the ";"
     bool has_init = false;
+    Access access = Access::Public;
     int line = 0;
     uint32_t pos = 0;
 };
@@ -260,6 +267,9 @@ struct Method {
     // True when the function overrides a base virtual method. The translator sets it after
     // the match. The parser leaves it false.
     bool overrides_virtual = false;
+    // The modifiers as written. The parser stores them. Nothing checks them yet.
+    bool is_override = false, is_virtual = false, is_new = false;
+    Access access = Access::Public;
     std::string name;
     std::vector<Param> params;
     std::string ret;  // empty: not written
@@ -269,10 +279,30 @@ struct Method {
     uint32_t pos = 0, end_pos = 0;
 };
 
+// A property: "Type Name { get; set; }" or "Type Name { get { ... } set { ... } }".
+// An accessor without a body is an auto accessor. An auto property can have "= init;".
+// The access on an accessor is parsed and stored. Nothing checks it yet.
+struct Property {
+    std::string name, type;
+    Access access = Access::Public;
+    bool has_get = false, has_set = false;
+    Access get_access = Access::Public, set_access = Access::Public;
+    // A custom accessor has a body. The parser fills the body from the span.
+    std::optional<BlockStmt> get_body, set_body;
+    Span get_span, set_span;  // the raw text between the braces of a custom accessor
+    ExprP init;               // null when the property has no initializer, or the parse failed
+    Span init_span;           // the raw text after "=", up to the ";"
+    bool has_init = false;
+    int line = 0;
+    uint32_t pos = 0, get_pos = 0, set_pos = 0;  // the name, the "get" word, the "set" word
+    bool is_auto() const { return !get_body && !set_body; }
+};
+
 struct ClassDef {
     std::string name, base;
     std::vector<Field> fields;
     std::vector<Method> methods;
+    std::vector<Property> props;  // in source order
     int line = 0;
     uint32_t pos = 0;
 };

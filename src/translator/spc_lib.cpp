@@ -260,6 +260,72 @@ std::string body_what(const std::string& cn, const Method& m)
     return what + ")";
 }
 
+// ------------------------------------------------------------------ properties
+// Changes each property into script members:
+//  - An auto property gets the hidden field "__p_Name". The field keeps the initializer.
+//    The state migration treats it as a normal field.
+//  - Each accessor becomes a script fn: "Type get_Name()" and "void set_Name(Type value)".
+//    The body of an auto accessor reads or writes the hidden field.
+// The property stays in cd.props. The lowering pass uses it to rewrite reads and writes.
+void desugar_props(ClassDef& cd, const spc::LineMap& map)
+{
+    std::set<std::string> prop_names;
+    for (const Property& p : cd.props) {
+        if (!prop_names.insert(p.name).second) fail_at(map, p.pos, "property '" + p.name + "' is declared twice");
+        for (const Field& f : cd.fields)
+            if (f.name == p.name) fail_at(map, p.pos, "'" + p.name + "' is a field and a property");
+        for (const Method& m : cd.methods) {
+            if (m.name == p.name) fail_at(map, p.pos, "'" + p.name + "' is a method and a property");
+            for (const char* word : {"get", "set"})
+                if (m.name == std::string(word) + "_" + p.name)
+                    fail_at(map, m.pos, "method '" + m.name + "' collides with the '" + word +
+                                            "' accessor of property '" + p.name + "'");
+        }
+    }
+    for (Property& p : cd.props) {
+        const std::string hidden = "__p_" + p.name;
+        auto this_hidden = [&] { return make_expr(MemberExpr{make_expr(ThisExpr{p.pos}), hidden, p.pos}); };
+        if (p.is_auto()) {
+            Field f;
+            f.name = hidden;
+            f.type = p.type;
+            f.init = std::move(p.init);
+            f.init_span = p.init_span;
+            f.has_init = p.has_init;
+            f.access = Access::Private;
+            f.line = p.line;
+            f.pos = p.pos;
+            cd.fields.push_back(std::move(f));
+        }
+        auto accessor = [&](bool is_get) {
+            Method m;
+            m.access = is_get ? p.get_access : p.set_access;
+            m.name = (is_get ? "get_" : "set_") + p.name;
+            m.ret = is_get ? p.type : std::string();
+            if (!is_get) m.params.push_back({"value", p.type});
+            m.pos = is_get ? p.get_pos : p.set_pos;
+            m.line = m.end_line = map.line(m.pos);
+            m.end_pos = m.pos;
+            std::optional<BlockStmt>& body = is_get ? p.get_body : p.set_body;
+            if (body) {
+                m.body = std::move(*body);  // the optional keeps a value: the accessor is custom
+            } else if (is_get) {
+                m.body.stmts.push_back(make_stmt(ReturnStmt{this_hidden(), m.pos}));
+            } else {
+                BinaryExpr b;
+                b.op = "=";
+                b.lhs = this_hidden();
+                b.rhs = make_expr(NameExpr{{"value"}, "", {}, false, m.pos});
+                b.pos = m.pos;
+                m.body.stmts.push_back(make_stmt(ExprStmt{make_expr(std::move(b)), m.pos}));
+            }
+            cd.methods.push_back(std::move(m));
+        };
+        if (p.has_get) accessor(true);
+        if (p.has_set) accessor(false);
+    }
+}
+
 // ------------------------------------------------------------------ driver
 struct Slot {
     std::string id;  // "Tick", "TakeDamage_f", "heal"
@@ -585,6 +651,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
             fail_at(map, cd.pos, "base class '" + cd.base + "' has no default constructor and no constructor that takes a name");
 
         // ---- check the script members
+        desugar_props(cd, map);
         std::set<std::string> field_names;
         for (const Field& f : cd.fields)
             if (!field_names.insert(f.name).second) fail_at(map, f.pos, "field '" + f.name + "' is declared twice");
@@ -594,7 +661,8 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
             for (const Param& p : m.params)
                 if (p.name == "self" || p.name == "st" || p.name == "a")
                     fail_at(map, m.pos, "parameter name '" + p.name + "' is reserved");
-            // A function overrides a base virtual method when the name and the parameter types match.
+            // A method overrides a base virtual method when the name and the parameter types match.
+            // The method must have the modifier "override" (C# rules).
             std::string key = m.name + "(";
             for (const Param& p : m.params) key += norm(p.type) + ",";
             const NativeVirtual* hit = nullptr;
@@ -617,11 +685,16 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
                     if (!cands.empty()) msg += ". Candidates: " + cands;
                     fail_at(map, m.pos, msg);
                 }
+                if (m.is_override) fail_at(map, m.pos, "'override' has no virtual method to override");
                 if (!fn_names.insert(m.name).second)
                     fail_at(map, m.pos, "function '" + m.name + "' is declared twice (overloads are not supported)");
                 if (field_names.count(m.name)) fail_at(map, m.pos, "'" + m.name + "' is a field and a function");
                 continue;
             }
+            if (m.is_new) fail_at(map, m.pos, "'new' cannot hide a virtual method; write 'override'");
+            if (!m.is_override)
+                fail_at(map, m.pos, "method '" + m.name + "' overrides a virtual method of " + hit->owner +
+                                  "; write 'override'");
             m.overrides_virtual = true;
             if (hit->final_)
                 fail_at(map, m.pos, "'" + hit->text() + "' of " + hit->owner + " is final and cannot be overridden");

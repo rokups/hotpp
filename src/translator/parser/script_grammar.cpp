@@ -4,7 +4,7 @@
 // span. After the parse, parse_script calls parse_block and parse_expression on each span.
 // So one call gives the errors of the whole file. The function sorts them by position.
 // Error recovery works at two levels. A broken member skips to the next ";" or "}" or to the next member. A broken
-// import or class skips to the next "import" or "class".
+// using declaration or class skips to the next "using" or "class".
 #include "parser.h"
 
 #include <algorithm>
@@ -22,18 +22,22 @@ namespace {
 using namespace parser;  // NOLINT: the grammar uses the names of lexy_common.hpp
 
 // ---------------------------------------------------------------- error texts
-SPC_ERROR_TAG(e_top, "expected 'import' or 'class'");
-SPC_ERROR_TAG(e_member, "expected a field, '[' or 'function'");
+SPC_ERROR_TAG(e_top, "expected 'using' or 'class'");
+SPC_ERROR_TAG(e_member, "expected a member: 'Type name;' or 'Ret name(...)'");
+SPC_ERROR_TAG(e_member_name, "expected a member name");
+SPC_ERROR_TAG(e_old_field, "field syntax changed; write 'Type name;'");
 SPC_ERROR_TAG(e_class_name, "expected a class name");
 SPC_ERROR_TAG(e_base_name, "expected a base class name");
 SPC_ERROR_TAG(e_method_name, "expected a method name");
 SPC_ERROR_TAG(e_field_name, "expected a field name");
 SPC_ERROR_TAG(e_param_name, "expected a parameter name");
+SPC_ERROR_TAG(e_old_param, "parameter syntax changed; write 'Type name'");
 SPC_ERROR_TAG(e_attr_name, "expected an attribute name");
 SPC_ERROR_TAG(e_alias_string, "expected a string in [alias(...)]");
-SPC_ERROR_TAG(e_import_name, "import needs a header name");
-SPC_ERROR_TAG(e_import_arg, "import needs a string or <header>");
-SPC_ERROR_TAG(e_import_close, "import <...> needs a closing '>'");
+SPC_ERROR_TAG(e_import_name, "using needs a header name");
+SPC_ERROR_TAG(e_import_arg, "using needs a string or <header>");
+SPC_ERROR_TAG(e_import_close, "using <...> needs a closing '>'");
+SPC_ERROR_TAG(e_accessor, "expected 'get' or 'set'");
 
 // The text of a span.
 std::string_view span_text(const ParseState& st, Span sp)
@@ -63,14 +67,47 @@ struct MethodRest {
     std::string name;
     std::vector<ast::Param> params;
     std::string ret;
+    const char* arrow = nullptr;  // the removed "->", or null
     Span body;
 };
 
+// The part of a field after the name.
+struct FieldRest {
+    bool has_init = false;
+    Span init;
+};
+
+// One accessor of a property: an optional access word, "get" or "set", and ";" or a body.
+struct AccessorItem {
+    const char* pos = nullptr;  // the "get" or "set" word
+    bool is_get = false;
+    bool has_body = false;
+    Span body;
+    bool has_access = false;
+    ast::Access access = ast::Access::Public;
+};
+
+// The part of a property after the name.
+struct PropRest {
+    const char* open = nullptr;  // the "{"
+    std::vector<AccessorItem> accessors;
+    bool has_init = false;
+    Span init;
+};
+
 struct Member {
-    enum Kind { None, IsMethod, IsField } kind = None;
+    enum Kind { None, IsMethod, IsField, IsProp } kind = None;
     ast::Method method;
     ast::Field field;
+    ast::Property prop;
+    bool get_has_access = false, set_has_access = false;  // an access word on the accessor
 };
+
+// The words "get" and "set" are reserved. They are not names of members or parameters.
+void check_name(const ParseState& st, const char* pos, const std::string& name)
+{
+    if (name == "get" || name == "set") st.error(pos, "'" + name + "' is a reserved word");
+}
 
 struct TopItem {
     enum Kind { None, IsImport, IsClass } kind = None;
@@ -80,6 +117,100 @@ struct TopItem {
 
 const Annot* annot_of(lexy::nullopt) { return nullptr; }
 const Annot* annot_of(const Annot& a) { return &a; }
+
+// ---------------------------------------------------------------- modifiers
+// One modifier word and its position.
+struct ModTok {
+    const char* pos = nullptr;
+    std::string word;
+};
+
+// The modifiers before a member. The parser checks the rules that do not depend on the kind.
+struct Mods {
+    bool is_override = false, is_virtual = false, is_new = false;
+    bool has_access = false;
+    ast::Access access = ast::Access::Public;
+    std::vector<ModTok> kind_toks;  // the first "override", "virtual" or "new" words
+};
+
+bool is_access_word(const std::string& w)
+{
+    return w == "public" || w == "private" || w == "protected";
+}
+
+// Builds the Mods from the word list. It reports duplicates and words that cannot combine.
+Mods collect_mods(const ParseState& st, const std::vector<ModTok>& toks)
+{
+    Mods m;
+    std::vector<const ModTok*> seen;
+    const ModTok* access_tok = nullptr;
+    const ModTok* kind_tok = nullptr;
+    for (const ModTok& t : toks) {
+        bool dup = false;
+        for (const ModTok* o : seen) dup = dup || o->word == t.word;
+        if (dup) {
+            st.error(t.pos, "duplicate modifier '" + t.word + "'");
+            continue;
+        }
+        seen.push_back(&t);
+        if (is_access_word(t.word)) {
+            if (access_tok) {
+                st.error(t.pos, "'" + access_tok->word + "' and '" + t.word + "' cannot combine");
+                continue;
+            }
+            access_tok = &t;
+            m.has_access = true;
+            m.access = t.word == "public"    ? ast::Access::Public
+                       : t.word == "private" ? ast::Access::Private
+                                             : ast::Access::Protected;
+        } else {
+            if (kind_tok) {
+                st.error(t.pos, "'" + kind_tok->word + "' and '" + t.word + "' cannot combine");
+                continue;
+            }
+            kind_tok = &t;
+            m.kind_toks.push_back(t);
+            m.is_override = t.word == "override";
+            m.is_virtual = t.word == "virtual";
+            m.is_new = t.word == "new";
+        }
+    }
+    return m;
+}
+
+Mods mods_of(const ParseState&, lexy::nullopt) { return Mods{}; }
+Mods mods_of(const ParseState& st, const std::vector<ModTok>& v) { return collect_mods(st, v); }
+
+// Applies the attributes and modifiers before a member to the member.
+template <typename Ann, typename ModsT>
+Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in, Member&& m)
+{
+    if (const Annot* a = annot_of(ann)) {
+        if (m.kind == Member::IsField)
+            m.field.alias = a->alias;
+        else if (a->has_alias)
+            st.error(a->pos, "[alias] applies to fields only");
+    }
+    const Mods mods = mods_of(st, mods_in);
+    if (m.kind == Member::IsField || m.kind == Member::IsProp) {
+        if (m.kind == Member::IsField) {
+            m.field.access = mods.access;
+        } else {
+            // An accessor without its own access word has the access of the property.
+            m.prop.access = mods.access;
+            if (!m.get_has_access) m.prop.get_access = mods.access;
+            if (!m.set_has_access) m.prop.set_access = mods.access;
+        }
+        for (const ModTok& t : mods.kind_toks)
+            st.error(t.pos, "'" + t.word + "' is only valid on a method");
+    } else {
+        m.method.access = mods.access;
+        m.method.is_override = mods.is_override;
+        m.method.is_virtual = mods.is_virtual;
+        m.method.is_new = mods.is_new;
+    }
+    return std::move(m);
+}
 
 // ---------------------------------------------------------------- tokens
 // An identifier. The Tag is the error text when there is none.
@@ -114,9 +245,6 @@ struct angle_value : lexy::token_production {
 };
 
 // ---------------------------------------------------------------- types
-struct param_term {
-    static constexpr auto term = dsl::lit_c<','> / dsl::lit_c<')'>;
-};
 struct ret_term {
     static constexpr auto term = dsl::lit_c<'{'>;
 };
@@ -130,9 +258,20 @@ struct init_cfg {
 };
 
 // ---------------------------------------------------------------- imports
-struct import_p {
+// The removed word "import" has the same form as "using". The parser reports it and goes on.
+template <bool Removed>
+constexpr auto import_kw()
+{
+    if constexpr (Removed)
+        return kw_import;
+    else
+        return kw_using;
+}
+
+template <bool Removed>
+struct import_t {
     static constexpr auto rule =
-        dsl::position + kw_import +
+        dsl::position + import_kw<Removed>() +
         (dsl::eof >> dsl::error<e_import_name> |
          dsl::peek(dsl::lit_c<'"'>) >> dsl::p<string_value> |
          dsl::peek(dsl::lit_c<'<'>) >> dsl::p<angle_value> |
@@ -140,10 +279,12 @@ struct import_p {
         dsl::lit_c<';'>;
     static constexpr auto value = lexy::bind(
         lexy::callback<ast::Import>([](const ParseState& st, const char* pos, std::string path) {
+            if (Removed)
+                st.error(pos, "'import' is removed; write 'using'");
             if (path.size() > 2 && path.front() == '<' && path.back() != '>')
-                st.error(pos, "import <...> needs a closing '>'");
+                st.error(pos, "using <...> needs a closing '>'");
             else if (path == "<>" || path.empty())
-                st.error(pos, "import needs a header name");
+                st.error(pos, "using needs a header name");
             ast::Import im;
             im.path = std::move(path);
             im.pos = st.offset(pos);
@@ -152,6 +293,8 @@ struct import_p {
         }),
         lexy::parse_state, lexy::values);
 };
+using import_p = import_t<false>;
+using old_import_p = import_t<true>;
 
 // ---------------------------------------------------------------- members
 // One attribute in the list: name "(" string ")".
@@ -221,13 +364,22 @@ struct annot_p {
     static constexpr auto value = lexy::forward<Annot>;
 };
 
+// "Type name". The old form "name: type" is an error.
 struct param_p {
-    static constexpr auto rule = dsl::p<name_p<e_param_name>> + dsl::lit_c<':'> +
-                                 dsl::p<scan_type<param_term>> + dsl::if_(dsl::lit_c<','>);
+    static constexpr auto rule =
+        dsl::peek(old_param_ahead) >> dsl::error<e_old_param> |
+        dsl::else_ >> (dsl::position + dsl::p<scan_param_type> + dsl::p<name_p<e_param_name>> +
+                       dsl::if_(dsl::lit_c<','>));
     static constexpr auto value = lexy::bind(
-        lexy::callback<ast::Param>([](const ParseState& st, std::string name, Span type) {
-            return ast::Param{std::move(name), type_of(st, type)};
-        }),
+        lexy::callback<ast::Param>(
+            [](const ParseState& st, const char* pos, Span type, std::string name) {
+                check_name(st, pos, name);
+                if (only_blank(span_text(st, type))) {
+                    st.error(pos, "a parameter needs a type; write 'Type name'");
+                    return ast::Param{std::move(name), ""};
+                }
+                return ast::Param{std::move(name), type_of(st, type)};
+            }),
         lexy::parse_state, lexy::values);
 };
 
@@ -237,46 +389,235 @@ struct params_p {
     static constexpr auto value = lexy::as_list<std::vector<ast::Param>>;
 };
 
-// The part of a method after the keyword: name, params, return type and body.
-struct method_rest {
+// The return type after "->". The form is removed. The parse reads it to go on.
+struct ArrowRet {
+    const char* pos = nullptr;  // the "->"
+    Span type;
+};
+
+struct arrow_p : lexy::token_production {
     static constexpr auto rule =
-        dsl::p<name_p<e_method_name>> + dsl::p<params_p> +
-        dsl::opt(LEXY_LIT("->") >> dsl::p<scan_type<ret_term>>) + dsl::p<scan_balanced>;
+        dsl::position + LEXY_LIT("->") + dsl::p<scan_type<ret_term>>;
+    static constexpr auto value = lexy::callback<ArrowRet>(
+        [](const char* pos, Span type) { return ArrowRet{pos, type}; });
+};
+
+// The part of a method after the name: params, an old "->" return type and body.
+struct method_tail {
+    static constexpr auto rule = dsl::p<params_p> +
+                                 dsl::opt(dsl::peek(LEXY_LIT("->")) >> dsl::p<arrow_p>) +
+                                 dsl::p<scan_balanced>;
     static constexpr auto value = lexy::bind(
-        lexy::callback<MethodRest>([](const ParseState& st, std::string name, auto&& params,
-                                      auto&& ret, Span body) {
+        lexy::callback<MethodRest>([](const ParseState& st, auto&& params, auto&& arrow, Span body) {
             MethodRest r;
-            r.name = std::move(name);
             if constexpr (!std::is_same_v<std::decay_t<decltype(params)>, lexy::nullopt>)
                 r.params = std::move(params);
-            if constexpr (!std::is_same_v<std::decay_t<decltype(ret)>, lexy::nullopt>)
-                r.ret = type_of(st, ret);
+            if constexpr (!std::is_same_v<std::decay_t<decltype(arrow)>, lexy::nullopt>) {
+                r.arrow = arrow.pos;
+                r.ret = type_of(st, arrow.type);
+            }
             r.body = body;
             return r;
         }),
         lexy::parse_state, lexy::values);
 };
 
-struct field_rest {
+// The removed form "function name(...) -> Ret { ... }". The parse reads it to go on.
+struct method_rest {
+    static constexpr auto rule = dsl::p<name_p<e_method_name>> + dsl::p<method_tail>;
+    static constexpr auto value =
+        lexy::callback<MethodRest>([](std::string name, MethodRest&& r) {
+            r.name = std::move(name);
+            return r;
+        });
+};
+
+// The part of a field after the name: an optional initializer and the ";".
+struct field_tail {
     static constexpr auto rule =
-        dsl::position + dsl::p<name_p<e_field_name>> + dsl::lit_c<':'> +
-        dsl::p<scan_type<field_term>> +
         dsl::opt(dsl::peek(dsl::lit_c<'='>) >> dsl::p<scan_until<init_cfg>>) + dsl::lit_c<';'>;
+    static constexpr auto value = lexy::callback<FieldRest>([](auto init) {
+        FieldRest f;
+        if constexpr (!std::is_same_v<decltype(init), lexy::nullopt>) {
+            f.has_init = true;
+            f.init = init;
+        }
+        return f;
+    });
+};
+
+// One accessor of a property: [access] ("get" | "set") (";" | "{ body }").
+constexpr auto access_set = dsl::literal_set(kw_public, kw_private, kw_protected);
+
+struct mod_item_access : lexy::token_production {
+    static constexpr auto rule = dsl::capture(access_set);
+    static constexpr auto value = lexy::callback<ModTok>(
+        [](auto lex) { return ModTok{lex.begin(), std::string(lex.begin(), lex.end())}; });
+};
+
+struct accessor_p {
+    static constexpr auto rule =
+        dsl::opt(dsl::peek(access_set) >> dsl::p<mod_item_access>) + dsl::position +
+        dsl::must(dsl::literal_set(kw_get, kw_set)).template error<e_accessor> +
+        (dsl::peek(dsl::lit_c<'{'>) >> dsl::p<scan_balanced> | dsl::else_ >> dsl::lit_c<';'>);
+    static constexpr auto value = lexy::callback<AccessorItem>(
+        [](auto&& acc, const char* pos, auto&&... body) {
+            AccessorItem a;
+            a.pos = pos;
+            a.is_get = *pos == 'g';
+            if constexpr (!std::is_same_v<std::decay_t<decltype(acc)>, lexy::nullopt>) {
+                a.has_access = true;
+                a.access = acc.word == "public"    ? ast::Access::Public
+                           : acc.word == "private" ? ast::Access::Private
+                                                   : ast::Access::Protected;
+            }
+            if constexpr (sizeof...(body) == 1) {
+                a.has_body = true;
+                ((a.body = body), ...);
+            }
+            return a;
+        });
+};
+
+struct accessors_p {
+    static constexpr auto rule =
+        dsl::lit_c<'{'> + dsl::terminator(dsl::lit_c<'}'>).opt_list(dsl::p<accessor_p>);
+    static constexpr auto value = lexy::as_list<std::vector<AccessorItem>>;
+};
+
+// The part of a property after the name: the accessors and an optional "= init;".
+struct prop_tail {
+    static constexpr auto rule =
+        dsl::position + dsl::p<accessors_p> +
+        dsl::opt(dsl::peek(dsl::lit_c<'='>) >> (dsl::p<scan_until<init_cfg>> + dsl::lit_c<';'>));
+    static constexpr auto value =
+        lexy::callback<PropRest>([](const char* open, auto&& items, auto&& init) {
+            PropRest r;
+            r.open = open;
+            if constexpr (!std::is_same_v<std::decay_t<decltype(items)>, lexy::nullopt>)
+                r.accessors = std::move(items);
+            if constexpr (!std::is_same_v<std::decay_t<decltype(init)>, lexy::nullopt>) {
+                r.has_init = true;
+                r.init = init;
+            }
+            return r;
+        });
+};
+
+// The name of a member: an identifier before "(", "=", ";" or "{" (a property).
+constexpr auto member_name_ahead =
+    id + dsl::whitespace(ws_rule) +
+    (dsl::lit_c<'('> / dsl::lit_c<'='> / dsl::lit_c<';'> / dsl::lit_c<'{'>);
+
+// Matches the type of a member. The scan stops before the name.
+// The name is the last identifier before "(", "=", ";" or "{" at depth zero.
+// An identifier after a "." is part of the type, so "std.string" is a type and not a name.
+// The span is empty when the member has no type.
+struct scan_member_type : lexy::token_production {
+    static constexpr auto rule =
+        dsl::position +
+        dsl::loop(dsl::peek(member_name_ahead) >> dsl::break_ |
+                  dsl::peek(dsl::literal_set(dsl::lit_c<'('>, dsl::lit_c<'='>, dsl::lit_c<';'>,
+                                             dsl::lit_c<'{'>, dsl::lit_c<'}'>)) >>
+                      dsl::break_ |
+                  type_ops | dsl::lit_c<'.'> >> dsl::if_(dsl::token(id)) | dsl::token(id) |
+                  dsl::eof >> dsl::error<e_unexpected_eof> | dsl::else_ >> dsl::p<type_item>) +
+        dsl::position;
+    static constexpr auto value = span_value;
+};
+
+// "Type name(params) { body }" or "Type name = init;" or "Type name;".
+struct typed_member {
+    static constexpr auto rule =
+        dsl::position + dsl::p<scan_member_type> + dsl::position + dsl::p<name_p<e_member_name>> +
+        (dsl::peek(dsl::lit_c<'('>) >> dsl::p<method_tail> |
+         dsl::peek(dsl::lit_c<'{'>) >> dsl::p<prop_tail> | dsl::else_ >> dsl::p<field_tail>);
     static constexpr auto value = lexy::bind(
-        lexy::callback<ast::Field>(
-            [](const ParseState& st, const char* pos, std::string name, Span type, auto init) {
-                ast::Field f;
+        lexy::callback<Member>(
+            [](const ParseState& st, const char* start, Span type, const char* name_pos,
+               std::string name, PropRest&& rest) {
+                Member m;
+                m.kind = Member::IsProp;
+                ast::Property& p = m.prop;
+                check_name(st, name_pos, name);
+                if (only_blank(span_text(st, type)))
+                    st.error(start, "a property needs a type; write 'Type Name { get; set; }'");
+                p.name = std::move(name);
+                p.type = type_of(st, type);
+                for (const AccessorItem& a : rest.accessors) {
+                    const char* word = a.is_get ? "get" : "set";
+                    if (a.is_get ? p.has_get : p.has_set) {
+                        st.error(a.pos, std::string("duplicate '") + word + "' accessor");
+                        continue;
+                    }
+                    (a.is_get ? p.has_get : p.has_set) = true;
+                    (a.is_get ? p.get_pos : p.set_pos) = st.offset(a.pos);
+                    (a.is_get ? m.get_has_access : m.set_has_access) = a.has_access;
+                    (a.is_get ? p.get_access : p.set_access) = a.access;
+                    if (a.has_body) {
+                        (a.is_get ? p.get_body : p.set_body).emplace();
+                        (a.is_get ? p.get_span : p.set_span) = a.body;
+                    }
+                }
+                if (!p.has_get && !p.has_set)
+                    st.error(rest.open, "a property needs a 'get' or a 'set' accessor");
+                const bool custom_get = p.get_body.has_value(), custom_set = p.set_body.has_value();
+                if (p.has_get && p.has_set && custom_get != custom_set)
+                    st.error(rest.open, "a property cannot mix auto and custom accessors");
+                if (rest.has_init) {
+                    p.has_init = true;
+                    p.init_span = rest.init;
+                    if (!p.is_auto())
+                        st.error(st.base + rest.init.begin - 1,
+                                 "only an auto property can have an initializer");
+                    else if (only_blank(span_text(st, rest.init)))
+                        st.error(st.base + rest.init.begin, "expected an initializer");
+                }
+                p.pos = st.offset(name_pos);
+                p.line = st.map->line(p.pos);
+                return m;
+            },
+            [](const ParseState& st, const char* start, Span type, const char* name_pos,
+               std::string name, MethodRest&& rest) {
+                Member m;
+                check_name(st, name_pos, name);
+                m.kind = Member::IsMethod;
+                ast::Method& me = m.method;
+                std::string ret = type_of(st, type);
+                if (only_blank(span_text(st, type)))
+                    st.error(start, "a method needs a return type; write 'Ret name(...)'");
+                if (rest.arrow)
+                    st.error(rest.arrow,
+                             "'->' return type is removed; write the type before the name");
+                me.name = std::move(name);
+                me.params = std::move(rest.params);
+                me.ret = ret == "void" ? std::string{} : std::move(ret);
+                me.body_span = rest.body;
+                me.pos = st.offset(start);
+                me.line = st.map->line(me.pos);
+                me.end_pos = rest.body.end;
+                me.end_line = st.map->line(me.end_pos);
+                return m;
+            },
+            [](const ParseState& st, const char* start, Span type, const char* name_pos,
+               std::string name, FieldRest&& rest) {
+                Member m;
+                m.kind = Member::IsField;
+                ast::Field& f = m.field;
+                check_name(st, name_pos, name);
+                if (only_blank(span_text(st, type)))
+                    st.error(start, "a field needs a type; write 'Type name;'");
                 f.name = std::move(name);
                 f.type = type_of(st, type);
-                if constexpr (!std::is_same_v<decltype(init), lexy::nullopt>) {
+                if (rest.has_init) {
                     f.has_init = true;
-                    f.init_span = init;
-                    if (only_blank(span_text(st, init)))
-                        st.error(st.base + init.begin, "expected an initializer");
+                    f.init_span = rest.init;
+                    if (only_blank(span_text(st, rest.init)))
+                        st.error(st.base + rest.init.begin, "expected an initializer");
                 }
-                f.pos = st.offset(pos);
+                f.pos = st.offset(name_pos);
                 f.line = st.map->line(f.pos);
-                return f;
+                return m;
             }),
         lexy::parse_state, lexy::values);
 };
@@ -284,28 +625,42 @@ struct field_rest {
 // The junk token for the error text: a word or one code point.
 constexpr auto junk = dsl::while_one(dsl::ascii::word) | dsl::else_ >> any_unit;
 
+// The removed form "name: Type;". The parse reads the name. The sync skips the rest.
+constexpr auto old_field_ahead =
+    id + dsl::whitespace(ws_rule) + dsl::lit_c<':'> + dsl::peek_not(dsl::lit_c<':'>);
+
+constexpr auto modifier_set =
+    dsl::literal_set(kw_override, kw_virtual, kw_new, kw_public, kw_private, kw_protected);
+
+struct mod_item : lexy::token_production {
+    static constexpr auto rule = dsl::position + dsl::capture(modifier_set);
+    static constexpr auto value = lexy::callback<ModTok>(
+        [](const char* pos, auto lex) { return ModTok{pos, std::string(lex.begin(), lex.end())}; });
+};
+
+// One or more modifiers, in any order.
+struct mods_p {
+    static constexpr auto rule = dsl::list(dsl::peek(modifier_set) >> dsl::p<mod_item>);
+    static constexpr auto value = lexy::as_list<std::vector<ModTok>>;
+};
+
 struct member_p {
     static constexpr auto rule =
         dsl::position +
         dsl::opt(dsl::peek(dsl::lit_c<'@'> / dsl::lit_c<'['>) >> dsl::p<annot_p>) +
+        dsl::opt(dsl::peek(modifier_set) >> dsl::p<mods_p>) +
         (dsl::eof >> dsl::error<e_unexpected_eof> |
          dsl::capture(kw_function) >> dsl::p<method_rest> |
-         // "override" gives one error. A "function" after it is skipped. The parse goes on.
-         dsl::capture(kw_override) >> dsl::if_(kw_function) + dsl::p<method_rest> |
-         dsl::peek(id + dsl::whitespace(ws_rule) + dsl::lit_c<':'> +
-                   dsl::peek_not(dsl::lit_c<':'>)) >>
-             dsl::p<field_rest> |
-         dsl::else_ >> dsl::error<e_member>(junk));
+         dsl::peek(old_field_ahead) >> dsl::error<e_old_field>(id) |
+         dsl::peek(id) >> dsl::p<typed_member> | dsl::else_ >> dsl::error<e_member>(junk));
     static constexpr auto value = lexy::bind(
         lexy::callback<Member>(
-            [](const ParseState& st, const char*, const auto& ann, const auto& kw,
-               MethodRest&& rest) {
+            [](const ParseState& st, const char*, const auto& ann, const auto& mods,
+               const auto& kw, MethodRest&& rest) {
                 Member m;
                 m.kind = Member::IsMethod;
                 ast::Method& me = m.method;
-                if (std::string_view(kw.begin(), kw.size()) == "override")
-                    st.error(kw.begin(),
-                             "'override' is removed; a function overrides a virtual method implicitly");
+                st.error(kw.begin(), "'function' is removed; write 'Ret name(...)'");
                 me.name = std::move(rest.name);
                 me.params = std::move(rest.params);
                 me.ret = std::move(rest.ret);
@@ -314,16 +669,10 @@ struct member_p {
                 me.line = st.map->line(me.pos);
                 me.end_pos = rest.body.end;
                 me.end_line = st.map->line(me.end_pos);
-                if (const Annot* a = annot_of(ann))
-                    if (a->has_alias) st.error(a->pos, "[alias] applies to fields only");
-                return m;
+                return finish_member(st, ann, mods, std::move(m));
             },
-            [](const ParseState&, const char*, const auto& ann, ast::Field&& f) {
-                Member m;
-                m.kind = Member::IsField;
-                m.field = std::move(f);
-                if (const Annot* a = annot_of(ann)) m.field.alias = a->alias;
-                return m;
+            [](const ParseState& st, const char*, const auto& ann, const auto& mods, Member&& m) {
+                return finish_member(st, ann, mods, std::move(m));
             }),
         lexy::parse_state, lexy::values);
 };
@@ -384,6 +733,8 @@ struct class_p {
                     c.methods.push_back(std::move(m.method));
                 else if (m.kind == Member::IsField)
                     c.fields.push_back(std::move(m.field));
+                else if (m.kind == Member::IsProp)
+                    c.props.push_back(std::move(m.prop));
             }
             return c;
         }),
@@ -393,7 +744,8 @@ struct class_p {
 // ---------------------------------------------------------------- file
 struct decl {
     static constexpr auto rule =
-        dsl::peek(kw_import) >> dsl::p<import_p> | dsl::peek(kw_class) >> dsl::p<class_p> |
+        dsl::peek(kw_using) >> dsl::p<import_p> |
+        dsl::peek(kw_import) >> dsl::p<old_import_p> | dsl::peek(kw_class) >> dsl::p<class_p> |
         dsl::else_ >> dsl::error<e_top>(junk);
     static constexpr auto value = lexy::callback<TopItem>(
         [](ast::Import&& im) {
@@ -410,11 +762,11 @@ struct decl {
         });
 };
 
-// Skips a broken declaration. It stops before the next "import" or "class".
+// Skips a broken declaration. It stops before the next "using", "import" or "class".
 struct sync_decl : lexy::token_production {
     static constexpr auto rule = dsl::loop(
         dsl::eof >> dsl::break_ |  // the end of the file is not a new error after a broken decl
-        dsl::peek(dsl::literal_set(kw_import, kw_class)) >> dsl::break_ |
+        dsl::peek(dsl::literal_set(kw_using, kw_import, kw_class)) >> dsl::break_ |
         dsl::else_ >> dsl::p<skip_item>);
     static constexpr auto value = lexy::noop;
 };
@@ -450,6 +802,12 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
         for (ast::Field& f : c.fields)
             if (f.has_init && !only_blank(span_text(st, f.init_span)))
                 f.init = parse_expression(in, f.init_span, diag);
+        for (ast::Property& p : c.props) {
+            if (p.get_body) p.get_body = parse_block(in, p.get_span, diag);
+            if (p.set_body) p.set_body = parse_block(in, p.set_span, diag);
+            if (p.has_init && !only_blank(span_text(st, p.init_span)))
+                p.init = parse_expression(in, p.init_span, diag);
+        }
     }
     // An unterminated comment or literal reads to the end of the file. The "unexpected end of
     // file" errors from this place on are not new faults. Drop them.

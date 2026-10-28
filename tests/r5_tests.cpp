@@ -39,14 +39,14 @@ constexpr int kFrames = 200;
 constexpr float kStartHealth = 10.0f;
 
 const char* const kV1 = R"(
-import "Actor.h";
-import "Math.h";
+using "Actor.h";
+using "Math.h";
 
 class Player : Actor {
-    hp: float = 10.0;
-    speed: float = 5.0;
+    float hp = 10.0;
+    float speed = 5.0;
 
-    function Tick(dt: float) {
+    override void Tick(float dt) {
         this.Move({this.speed * dt, 0, 0});
         this.hp = Math.Min(this.hp + 1.0, 100000.0);
     }
@@ -54,15 +54,15 @@ class Player : Actor {
 )";
 
 const char* const kV2 = R"(
-import "Actor.h";
-import "Math.h";
+using "Actor.h";
+using "Math.h";
 
 class Player : Actor {
-    [alias("hp")] health: float = 10.0;
-    speed: float = 5.0;
-    shield: float = 25.0;
+    [alias("hp")] float health = 10.0;
+    float speed = 5.0;
+    float shield = 25.0;
 
-    function Tick(dt: float) {
+    override void Tick(float dt) {
         this.Move({2.0 * this.speed * dt, 0, 0});
     }
 }

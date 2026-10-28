@@ -1,22 +1,22 @@
 // Generation 1: native functions from Util.cpp and the standard containers.
-// A system import has two forms: import <vector>; and import "<vector>";
-import <vector>;
-import "<algorithm>";
-import <string>;
-import "Actor.h";
-import "Math.h";
-import "Util.h";
+// A system import has two using <vector> forms; and using "<vector>";
+using <vector>;
+using "<algorithm>";
+using <string>;
+using "Actor.h";
+using "Math.h";
+using "Util.h";
 
 class Tracker : Actor {
-    label: std.string = "tracker label that is longer than the small string buffer";
-    history: std.vector<int> = {};
-    dist: float = 0.0;
-    lowest: float = 0.0;
-    sum: float = 0.0;
-    described: std.string = "";
+    std.string label = "tracker label that is longer than the small string buffer";
+    std.vector<int> history = {};
+    float dist = 0.0;
+    float lowest = 0.0;
+    float sum = 0.0;
+    std.string described = "";
 
-    function Tick(dt: float) {
-        let v = std.vector<float>{4.0, 2.5, 3.0, 1.5};
+    override void Tick(float dt)  {
+        var v = std.vector<float>{4.0, 2.5, 3.0, 1.5};
         v.push_back(this.Position.x);
         std.sort(v.begin(), v.end());
         this.lowest = Math.Min(v[0], v[1]);

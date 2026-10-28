@@ -120,7 +120,7 @@ TEST(ExprParse, Names)
     EXPECT_EQ(round_trip("std.vector<int>.size_type"), "std::vector<int>::size_type");
     EXPECT_EQ(round_trip("make<Foo<int>, 3>(x)"), "make<Foo<int>, 3>(x)");
     EXPECT_EQ(round_trip("std.max<float>(a, b)"), "std::max<float>(a, b)");
-    EXPECT_EQ(round_trip("get<Color.Red>(t)"), "get<Color::Red>(t)");
+    EXPECT_EQ(round_trip("pick<Color.Red>(t)"), "pick<Color::Red>(t)");
     EXPECT_EQ(round_trip("std.vector<std.string>{a}"), "std::vector<std::string>{a}");
     // A "<" that does not start template arguments is less-than.
     EXPECT_EQ(round_trip("a < b && c > (d)"), "a < b && c > (d)");
@@ -168,24 +168,47 @@ TEST(ExprParse, Literals)
 
 TEST(ExprParse, Lambda)
 {
-    Parsed p("(x: float, q: int*) => { }");
+    Parsed p("(float x, int* q) => { }");
     ASSERT_TRUE(p.expr);
     EXPECT_EQ(ast::print(*p.expr), "[=](float x, int* q) {}");
     EXPECT_EQ(p.diag.items.size(), 0u);
     const auto* l = std::get_if<ast::LambdaExpr>(&p.expr->v);
     ASSERT_TRUE(l);
-    EXPECT_EQ(l->body.pos, 23u);  // the "{"
-    EXPECT_EQ(l->body.end_pos, 25u);  // the "}"
+    EXPECT_EQ(l->body.pos, 21u);  // the "{"
+    EXPECT_EQ(l->body.end_pos, 23u);  // the "}"
 
     Parsed e("() => { x; }");
     ASSERT_TRUE(e.expr);
     EXPECT_EQ(ast::print(*e.expr), "[=]() { x; }");
 
     // A lambda as an argument; and the paren form still works.
-    Parsed a("f((n: int) => { }, (a + b) * c)");
+    Parsed a("f((int n) => { }, (a + b) * c)");
     ASSERT_TRUE(a.expr);
     EXPECT_EQ(ast::print(*a.expr), "f([=](int n) {}, (a + b) * c)");
     EXPECT_EQ(round_trip("(a.b)"), "(a::b)");
+
+    // An untyped parameter has an empty type. The printer gives "auto".
+    Parsed u("(a, b) => { }");
+    ASSERT_TRUE(u.expr);
+    const auto* ul = std::get_if<ast::LambdaExpr>(&u.expr->v);
+    ASSERT_TRUE(ul);
+    ASSERT_EQ(ul->params.size(), 2u);
+    EXPECT_EQ(ul->params[0].name, "a");
+    EXPECT_EQ(ul->params[0].type, "");
+    EXPECT_EQ(u.diag.items.size(), 0u);
+
+    // Qualified, const reference and template types.
+    EXPECT_EQ(round_trip("(const std.string& s, std.map<int, float> m) => { }"),
+              "[=](const std::string& s, std::map<int, float> m) {}");
+    EXPECT_EQ(round_trip("(std.function<void(int)> f) => { }"),
+              "[=](std::function<void(int)> f) {}");
+    // A paren expression is still a paren expression.
+    EXPECT_EQ(round_trip("(a)"), "(a)");
+}
+
+TEST(ExprParse, OldLambdaParameterIsAnError)
+{
+    EXPECT_EQ(one_error("(x: int) => { }"), "1:2: parameter syntax changed; write 'Type name'");
 }
 
 TEST(ExprParse, Errors)
@@ -227,7 +250,7 @@ TEST(ExprParse, ScopeAndArrowErrors)
 TEST(ExprParse, Offsets)
 {
     // A span in the middle of a larger buffer. Positions are absolute.
-    const std::string text = "xx;\nlet y = a + foo(b);\nzz";
+    const std::string text = "xx;\nvar y = a + foo(b);\nzz";
     const LineMap map(text);
     const uint32_t b = static_cast<uint32_t>(text.find("a + foo"));
     const uint32_t e = static_cast<uint32_t>(text.find(");")) + 1;
@@ -302,7 +325,7 @@ TEST(ExprParse, Truncation)
     // Each prefix of a long expression ends: no crash and no hang.
     const std::string full =
         "x = this.Move({2.0 * this.speed * dt, 0, 0}) + Math.Max(a ? b : c, x[i + 1].y->z) "
-        "<< 2 > Vec3{1, 2, 3} && static_cast<int>(y) < n || (x: float, q: int*) => { f(); } "
+        "<< 2 > Vec3{1, 2, 3} && static_cast<int>(y) < n || (float x, int* q) => { f(); } "
         "|| std::vector<int>::size_type(s) + 'c' + \"str\" + 0x1e+5 + .5e-3f ;";
     size_t ok = 0;
     for (size_t n = 0; n <= full.size(); ++n) {

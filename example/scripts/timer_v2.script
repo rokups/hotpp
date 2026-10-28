@@ -1,15 +1,15 @@
 // Generation 2 of the Beeper class. The lambda body in arm is different.
-import "Actor.h";
+using "Actor.h";
 
 class Beeper : Actor {
-    ticks: int = 0;
-    fired: int = 0;
+    int ticks = 0;
+    int fired = 0;
 
-    function Tick(dt: float) {
+    override void Tick(float dt)  {
         this.ticks = this.ticks + 1;
     }
 
-    function arm(w: World&, delay: float) {
+    void arm(World& w, float delay)  {
         w.AddTimer(delay, () => {
             this.fired = this.fired + 10;
             std.printf("[timer v2] %s: fired=%d\n", this.Name.c_str(), this.fired);

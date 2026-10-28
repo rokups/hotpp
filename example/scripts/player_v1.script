@@ -1,31 +1,31 @@
 // Generation 1 of the Player class (design section 7.8, before).
-import "Actor.h";
-import "Math.h";
+using "Actor.h";
+using "Math.h";
 
 class Player : Actor {
-    hp: float = 100.0;
-    speed: float = 5.0;
-    target: Actor* = null;
+    float hp = 100.0;
+    float speed = 5.0;
+    Actor* target = null;
 
-    function Tick(dt: float) {
+    override void Tick(float dt)  {
         this.Move({this.speed * dt, 0, 0});
         std.printf("[v1] %s: Tick dt=%.4f pos.x=%.4f hp=%.1f\n", this.Name.c_str(), dt,
                     this.Position.x, this.hp);
         this.heal(1.0);
     }
 
-    function TakeDamage(amount: float) {
+    override void TakeDamage(float amount)  {
         this.hp = Math.Max(this.hp - amount, 0.0);
         std.printf("[v1] %s: TakeDamage %.1f -> hp=%.1f\n", this.Name.c_str(), amount, this.hp);
     }
 
-    function TakeDamage(source: Actor&, amount: float) {
+    override void TakeDamage(Actor& source, float amount)  {
         this.target = &source;
         std.printf("[v1] %s: hit by %s\n", this.Name.c_str(), this.target.Name.c_str());
         this.TakeDamage(amount);
     }
 
-    function heal(amount: float) {
+    void heal(float amount)  {
         this.hp = Math.Min(this.hp + amount, 100.0);
         std.printf("[v1] %s: heal %.1f -> hp=%.1f\n", this.Name.c_str(), amount, this.hp);
     }

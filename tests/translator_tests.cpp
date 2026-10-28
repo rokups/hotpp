@@ -83,9 +83,9 @@ const char* kHeaderV1 =
     "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n"
     "class Panel { public: virtual ~Panel() {} virtual void Layout(int w) {} };\n";
 
-std::string widget_script(const std::string& method)
+std::string widget_script(const std::string& method, const std::string& mods = "")
 {
-    return "import \"w.h\";\nclass Foo : Widget {\n    function " + method + " { }\n}\n";
+    return "using \"w.h\";\nclass Foo : Widget {\n    " + mods + "void " + method + " { }\n}\n";
 }
 
 TEST(TranslatorSession, HitGivesTheSameOutputAsMiss)
@@ -121,7 +121,7 @@ TEST(TranslatorSession, ChangedHeaderInvalidatesTheCache)
     write_file(dir.path() / "w.h", kHeaderV1);
     spc::TranslatorSession session;
 
-    EXPECT_TRUE(spc::translate(temp_options(dir, widget_script("Update(dt: float)")), session).ok);
+    EXPECT_TRUE(spc::translate(temp_options(dir, widget_script("Update(float dt)", "override ")), session).ok);
     EXPECT_EQ(session.parse_count(), 1);
     // The new virtual method is not in the header yet. Draw is a plain script function.
     spc::TranslateResult r = spc::translate(temp_options(dir, widget_script("Draw()")), session);
@@ -134,7 +134,7 @@ TEST(TranslatorSession, ChangedHeaderInvalidatesTheCache)
                "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} "
                "virtual void Draw() {} };\n"
                "class Panel { public: virtual ~Panel() {} virtual void Layout(int w) {} };\n");
-    r = spc::translate(temp_options(dir, widget_script("Draw()")), session);
+    r = spc::translate(temp_options(dir, widget_script("Draw()", "override ")), session);
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_EQ(session.parse_count(), 2);
     EXPECT_NE(r.cpp.find("Draw"), std::string::npos);
@@ -150,7 +150,7 @@ TEST(TranslatorSession, ChangedHeaderInvalidatesTheCache)
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.slots_out.find("Foo::Draw"), std::string::npos) << r.slots_out;  // not an override
     EXPECT_EQ(session.parse_count(), 3);
-    r = spc::translate(temp_options(dir, widget_script("Dram()")), session);
+    r = spc::translate(temp_options(dir, widget_script("Dram()", "override ")), session);
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_EQ(r.slots_out.find("Foo::Dram"), std::string::npos) << r.slots_out;  // an override
     EXPECT_EQ(session.parse_count(), 3);
@@ -165,7 +165,7 @@ TEST(TranslatorSession, ChangedNestedHeaderInvalidatesTheCache)
                "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {}\n"
                "#ifdef EXTRA\n virtual void Draw() {}\n#endif\n};\n");
     spc::TranslatorSession session;
-    const spc::TranslateResult first = spc::translate(temp_options(dir, widget_script("Draw()")), session);
+    const spc::TranslateResult first = spc::translate(temp_options(dir, widget_script("Draw()", "override ")), session);
     EXPECT_TRUE(first.ok) << first.diagnostics;
     EXPECT_EQ(first.slots_out.find("Foo::Draw"), std::string::npos) << first.slots_out;  // an override
     write_file(dir.path() / "inner.h", "// no macro now\n");
@@ -181,23 +181,23 @@ TEST(TranslatorSession, OtherBaseClassWorksInTheSameSession)
     write_file(dir.path() / "w.h", kHeaderV1);
     spc::TranslatorSession session;
 
-    const spc::TranslateResult a = spc::translate(temp_options(dir, widget_script("Update(dt: float)")), session);
+    const spc::TranslateResult a = spc::translate(temp_options(dir, widget_script("Update(float dt)", "override ")), session);
     ASSERT_TRUE(a.ok) << a.diagnostics;
     const std::string panel_script =
-        "import \"w.h\";\nclass Bar : Panel {\n    function Layout(w: int) { }\n}\n";
+        "using \"w.h\";\nclass Bar : Panel {\n    override void Layout(int w) { }\n}\n";
     const spc::TranslateResult b = spc::translate(temp_options(dir, panel_script), session);
     ASSERT_TRUE(b.ok) << b.diagnostics;
     EXPECT_NE(b.cpp.find("Layout"), std::string::npos);
     // Both bases are in the cache now. The next calls do not parse.
     const int parses = session.parse_count();
-    const spc::TranslateResult a2 = spc::translate(temp_options(dir, widget_script("Update(dt: float)")), session);
+    const spc::TranslateResult a2 = spc::translate(temp_options(dir, widget_script("Update(float dt)", "override ")), session);
     const spc::TranslateResult b2 = spc::translate(temp_options(dir, panel_script), session);
     EXPECT_EQ(session.parse_count(), parses);
     EXPECT_EQ(a2.cpp, a.cpp);
     EXPECT_EQ(b2.cpp, b.cpp);
     // A method of one base is a plain script function for the other base.
     const spc::TranslateResult c = spc::translate(
-        temp_options(dir, "import \"w.h\";\nclass Baz : Panel {\n    function Update(dt: float) { }\n}\n"), session);
+        temp_options(dir, "using \"w.h\";\nclass Baz : Panel {\n    void Update(float dt) { }\n}\n"), session);
     EXPECT_TRUE(c.ok) << c.diagnostics;
     EXPECT_NE(c.slots_out.find("Baz::Update"), std::string::npos) << c.slots_out;
 }
@@ -208,14 +208,14 @@ TEST(TranslatorSession, UnknownBaseAndBadImportsFail)
     write_file(dir.path() / "w.h", kHeaderV1);
     spc::TranslatorSession session;
     spc::TranslateResult r = spc::translate(
-        temp_options(dir, "import \"w.h\";\nclass Foo : Nothing {\n    function f() { }\n}\n"), session);
+        temp_options(dir, "using \"w.h\";\nclass Foo : Nothing {\n    void f() { }\n}\n"), session);
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("not found"), std::string::npos) << r.diagnostics;
     r = spc::translate(
-        temp_options(dir, "import \"missing.h\";\nclass Foo : Widget {\n    function f() { }\n}\n"), session);
+        temp_options(dir, "using \"missing.h\";\nclass Foo : Widget {\n    void f() { }\n}\n"), session);
     EXPECT_FALSE(r.ok);
     // A good call still works after the failures.
-    EXPECT_TRUE(spc::translate(temp_options(dir, widget_script("Update(dt: float)")), session).ok);
+    EXPECT_TRUE(spc::translate(temp_options(dir, widget_script("Update(float dt)", "override ")), session).ok);
 }
 
 // Both forms of a system import give #include <name> in the output.
@@ -223,12 +223,12 @@ TEST(TranslatorImports, SystemImportForms)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
-    const std::string body = "class Foo : Widget {\n    function f() { }\n}\n";
+    const std::string body = "class Foo : Widget {\n    void f() { }\n}\n";
     spc::TranslatorSession session;
-    for (const char* form : {"import <vector>;\nimport <sys/types.h>;\n",
-                             "import \"<vector>\";\nimport \"<sys/types.h>\";\n"}) {
+    for (const char* form : {"using <vector>;\nusing <sys/types.h>;\n",
+                             "using \"<vector>\";\nusing \"<sys/types.h>\";\n"}) {
         spc::TranslateResult r =
-            spc::translate(temp_options(dir, std::string(form) + "import \"w.h\";\n" + body), session);
+            spc::translate(temp_options(dir, std::string(form) + "using \"w.h\";\n" + body), session);
         ASSERT_TRUE(r.ok) << r.diagnostics;
         EXPECT_NE(r.cpp.find("#include <vector>\n"), std::string::npos) << r.cpp;
         EXPECT_NE(r.cpp.find("#include <sys/types.h>\n"), std::string::npos);
@@ -243,10 +243,10 @@ TEST(TranslatorImports, MissingSystemHeaderNamesScriptAndLine)
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
     spc::TranslatorSession session;
-    for (const char* form : {"import <no_such_header>;", "import \"<no_such_header>\";"}) {
+    for (const char* form : {"using <no_such_header>;", "using \"<no_such_header>\";"}) {
         spc::TranslateOptions o =
-            temp_options(dir, std::string("import \"w.h\";\n") + form +
-                                  "\nclass Foo : Widget {\n    function f() { }\n}\n");
+            temp_options(dir, std::string("using \"w.h\";\n") + form +
+                                  "\nclass Foo : Widget {\n    void f() { }\n}\n");
         spc::TranslateResult r = spc::translate(o, session);
         EXPECT_FALSE(r.ok);
         EXPECT_NE(r.diagnostics.find(o.script_name + ":2:"), std::string::npos) << r.diagnostics;
@@ -275,7 +275,7 @@ TEST(TranslatorSession, SecondTranslateIsFast)
 
 std::string lambda_script(const std::string& body)
 {
-    return "import \"w.h\";\nclass Foo : Widget {\n    n: int = 0;\n    function run(p: int*) {\n" + body +
+    return "using \"w.h\";\nclass Foo : Widget {\n    int n = 0;\n    void run(int* p) {\n" + body +
            "\n    }\n}\n";
 }
 
@@ -298,21 +298,33 @@ TEST(TranslatorLambda, ParametersGetTypesAndPointersUseArrow)
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
     const spc::TranslateResult r = spc::translate(
-        temp_options(dir, lambda_script("        let f = (x: float, q: int*) => { q.foo(); this.n = x; };")));
+        temp_options(dir, lambda_script("        var f = (float x, int* q) => { q.foo(); this.n = x; };")));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("[=](float x, int* q)"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("script::deref(q).foo();"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("st->n = x;"), std::string::npos) << r.cpp;
 }
 
-TEST(TranslatorLambda, ParameterWithoutTypeIsAnError)
+TEST(TranslatorLambda, ParameterWithoutTypeIsAuto)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
     const spc::TranslateResult r =
-        spc::translate(temp_options(dir, lambda_script("        let f = (x) => { };")));
+        spc::translate(temp_options(dir, lambda_script("        var f = (x, int y) => { };")));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("[=](auto x, int y)"), std::string::npos) << r.cpp;
+}
+
+TEST(TranslatorLambda, OldParameterFormIsAnError)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    const spc::TranslateResult r =
+        spc::translate(temp_options(dir, lambda_script("        var f = (x: int) => { };")));
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("name: type"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("parameter syntax changed; write 'Type name'"),
+              std::string::npos)
+        << r.diagnostics;
 }
 
 // Golden-output tests. The files in tests/golden/ hold the generated C++ and the slot
@@ -356,6 +368,20 @@ TEST(Golden, Player) { golden_pair("player"); }
 TEST(Golden, NativeStd) { golden_pair("native_std"); }
 TEST(Golden, Timer) { golden_pair("timer"); }
 
+// Translates one script as generation 1. The script has no second generation.
+void golden_one(const std::string& base)
+{
+    const std::string file = base + ".script";
+    spc::TranslateOptions o = engine_options(file.c_str(), 1);
+    o.script_name = file;
+    const spc::TranslateResult r = spc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    check_golden(base + ".g1.cpp", r.cpp);
+    check_golden(base + ".g1.slots", r.slots_out);
+}
+
+TEST(Golden, Props) { golden_one("props_v1"); }
+
 }  // namespace
 
 // ---------------------------------------------------------------- TranslatorDiag
@@ -381,8 +407,8 @@ TEST(TranslatorDiag, TwoBrokenMembersGiveTwoErrors)
     const spc::TranslateResult r = translate_text(
         "class A : B {\n"
         "    x : ;\n"
-        "    function ok() { }\n"
-        "    [alias(1)] y : int;\n"
+        "    void ok() { }\n"
+        "    [alias(1)] int y;\n"
         "}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_EQ(count_errors(r.diagnostics), 2) << r.diagnostics;
@@ -396,12 +422,12 @@ TEST(TranslatorDiag, BodyErrorsAndAnnotationErrorsComeInSourceOrder)
 {
     const spc::TranslateResult r = translate_text(
         "class A : B {\n"
-        "    function f() { let x = ; }\n"
-        "    function g() { let y = 1 + ; }\n"
+        "    void f() { var x = ; }\n"
+        "    void g() { var y = 1 + ; }\n"
         "}\n"
         "class C : B {\n"
-        "    [foo(\"x\")] n : int;\n"
-        "    function h() { let z = ; }\n"
+        "    [foo(\"x\")] int n;\n"
+        "    void h() { var z = ; }\n"
         "}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(r.cpp.empty());
@@ -412,8 +438,8 @@ TEST(TranslatorDiag, BodyErrorsAndAnnotationErrorsComeInSourceOrder)
         ASSERT_NE(e, std::string::npos) << r.diagnostics;
         prefixes.push_back(line.substr(0, e));
     }
-    EXPECT_EQ(prefixes, (std::vector<std::string>{"t.script:2:28", "t.script:3:32", "t.script:6:6",
-                                                  "t.script:7:28"}))
+    EXPECT_EQ(prefixes, (std::vector<std::string>{"t.script:2:24", "t.script:3:28", "t.script:6:6",
+                                                  "t.script:7:24"}))
         << r.diagnostics;
     EXPECT_NE(r.diagnostics.find("unknown attribute 'foo'"), std::string::npos) << r.diagnostics;
 }
@@ -423,11 +449,11 @@ TEST(TranslatorDiag, BodyErrorsAndAnnotationErrorsComeInSourceOrder)
 TEST(TranslatorDiag, OneFaultGivesOneError)
 {
     const char* const scripts[] = {
-        "class A : B {\n    function f() { let s = \"abc; }\n}\n",
-        "class A : B {\n    function f() { let s = 1; /* open }\n}\n",
+        "class A : B {\n    void f() { var s = \"abc; }\n}\n",
+        "class A : B {\n    void f() { var s = 1; /* open }\n}\n",
         "class A : B { }\n/* open\n",
         "foo bar baz\n",
-        "class A : B {\n    x : string = \"abc;\n}\n",
+        "class A : B {\n    string x = \"abc;\n}\n",
     };
     for (const char* text : scripts) {
         const spc::TranslateResult r = translate_text(text);
@@ -440,13 +466,13 @@ TEST(TranslatorDiag, StrayControlByteHasNoFoundText)
 {
     const spc::TranslateResult r = translate_text(std::string("\0abc\n", 5));
     EXPECT_FALSE(r.ok);
-    EXPECT_EQ(r.diagnostics, "t.script:1:1: error: expected 'import' or 'class'\n") << r.diagnostics;
+    EXPECT_EQ(r.diagnostics, "t.script:1:1: error: expected 'using' or 'class'\n") << r.diagnostics;
 }
 
 TEST(TranslatorDiag, DeepNestingGivesOneError)
 {
     const std::string deep(300, '{');
-    const spc::TranslateResult r = translate_text("class A : B {\n    function f() " + deep +
+    const spc::TranslateResult r = translate_text("class A : B {\n    void f() " + deep +
                                                   std::string(300, '}') + "\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_EQ(count_errors(r.diagnostics), 1) << r.diagnostics;
@@ -456,15 +482,23 @@ TEST(TranslatorDiag, DeepNestingGivesOneError)
 
 TEST(TranslatorDiag, BadImportKeepsItsText)
 {
-    const spc::TranslateResult r = translate_text("import 5;\nclass A : B { }\n");
+    const spc::TranslateResult r = translate_text("using 5;\nclass A : B { }\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("import needs"), std::string::npos) << r.diagnostics;
-    EXPECT_NE(r.diagnostics.find("t.script:1:8: error:"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("using needs"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("t.script:1:7: error:"), std::string::npos) << r.diagnostics;
+}
+
+TEST(TranslatorDiag, ImportIsRemoved)
+{
+    const spc::TranslateResult r = translate_text("import \"x.h\";\nclass A : B { }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("'import' is removed; write 'using'"), std::string::npos)
+        << r.diagnostics;
 }
 
 TEST(TranslatorDiag, UnterminatedBraceEndsWithAnError)
 {
-    const spc::TranslateResult r = translate_text("class A : B {\n    function f() {\n");
+    const spc::TranslateResult r = translate_text("class A : B {\n    void f() {\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("unexpected end of file"), std::string::npos) << r.diagnostics;
 }
@@ -474,7 +508,7 @@ TEST(TranslatorDiag, UnterminatedCommentEndsWithAnError)
     const spc::TranslateResult r = translate_text("class A : B { }\n/* open\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("unterminated comment"), std::string::npos) << r.diagnostics;
-    const spc::TranslateResult r2 = translate_text("class A : B { function f() { /* open }\n");
+    const spc::TranslateResult r2 = translate_text("class A : B { void f() { /* open }\n");
     EXPECT_FALSE(r2.ok);
     EXPECT_FALSE(r2.diagnostics.empty());
 }
@@ -485,8 +519,8 @@ TEST(TranslatorDiag, AnyByteIsAccepted)
     write_file(dir.path() / "w.h", kHeaderV1);
     // The byte 0xE9 is not valid UTF-8 here. It is in a comment, a string and a body comment.
     const std::string script =
-        "import \"w.h\";\n// caf\xE9\nclass Foo : Widget {\n    n : int = 3;  // caf\xE9\n"
-        "    function Update(dt: float) { /* \xE9 */ const t: char* = \"na\xE9\"; t; }\n}\n";
+        "using \"w.h\";\n// caf\xE9\nclass Foo : Widget {\n    int n = 3;  // caf\xE9\n"
+        "    override void Update(float dt) { /* \xE9 */ const char* t = \"na\xE9\"; t; }\n}\n";
     const spc::TranslateResult r = spc::translate(temp_options(dir, script));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("\"na\xE9\""), std::string::npos) << r.cpp;
@@ -496,14 +530,14 @@ TEST(TranslatorDiag, DoubleColonIsNotAField)
 {
     const spc::TranslateResult r = translate_text("class A : B {\n    x::y : int;\n}\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("expected a field, '[' or 'function', found 'x'"),
+    EXPECT_NE(r.diagnostics.find("t.script:2:6: error: use '.' instead of '::'"),
               std::string::npos)
         << r.diagnostics;
 }
 
 TEST(TranslatorDiag, BacktickInATypeIsAnError)
 {
-    const spc::TranslateResult r = translate_text("class A : B {\n    x : Foo`a`;\n}\n");
+    const spc::TranslateResult r = translate_text("class A : B {\n    Foo`a` x;\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("string interpolation is not supported"), std::string::npos)
         << r.diagnostics;
@@ -608,57 +642,76 @@ std::string diag_of(const std::string& script)
     return translate_text(script).diagnostics;
 }
 
-TEST(TranslatorSyntax, OverrideKeywordIsRemoved)
-{
-    EXPECT_EQ(diag_of("class A : B {\n    override f() { }\n}\n"),
-              "t.script:2:5: error: 'override' is removed; a function overrides a virtual "
-              "method implicitly\n");
-}
-
 TEST(TranslatorSyntax, OverrideBeforeFunctionGivesOneError)
 {
-    EXPECT_EQ(diag_of("class A : B {\n    override function f() { }\n    function g() { }\n}\n"),
-              "t.script:2:5: error: 'override' is removed; a function overrides a virtual "
-              "method implicitly\n");
+    EXPECT_EQ(diag_of("class A : B {\n    override function f() { }\n    void g() { }\n}\n"),
+              "t.script:2:14: error: 'function' is removed; write 'Ret name(...)'\n");
 }
 
-TEST(TranslatorSyntax, FnIsAnUnknownToken)
+TEST(TranslatorSyntax, JunkInsteadOfAMemberIsAnError)
 {
-    EXPECT_NE(diag_of("class A : B {\n    fn f() { }\n}\n")
-                  .find("t.script:2:5: error: expected a field, '[' or 'function', found 'fn'"),
+    EXPECT_NE(diag_of("class A : B {\n    123 f() { }\n}\n")
+                  .find("t.script:2:5: error: expected a member: 'Type name;' or 'Ret name(...)', "
+                        "found '123'"),
+              std::string::npos);
+}
+
+TEST(TranslatorSyntax, FunctionKeywordIsRemoved)
+{
+    EXPECT_EQ(diag_of("class A : B {\n    function f() { }\n}\n"),
+              "t.script:2:5: error: 'function' is removed; write 'Ret name(...)'\n");
+}
+
+TEST(TranslatorSyntax, OldFieldFormIsAnError)
+{
+    EXPECT_EQ(diag_of("class A : B {\n    n: int;\n    int m;\n}\n"),
+              "t.script:2:5: error: field syntax changed; write 'Type name;', found 'n'\n");
+}
+
+TEST(TranslatorSyntax, ArrowReturnTypeIsRemoved)
+{
+    EXPECT_EQ(diag_of("class A : B {\n    int f() -> int { return 1; }\n}\n"),
+              "t.script:2:13: error: '->' return type is removed; write the type before the "
+              "name\n");
+}
+
+TEST(TranslatorSyntax, MethodNeedsAReturnType)
+{
+    EXPECT_NE(diag_of("class A : B {\n    f() { }\n}\n")
+                  .find("t.script:2:5: error: a method needs a return type; write 'Ret name(...)'"),
               std::string::npos);
 }
 
 TEST(TranslatorSyntax, UnknownAttribute)
 {
-    EXPECT_EQ(diag_of("class A : B {\n    [foo(\"x\")] n : int;\n}\n"),
+    EXPECT_EQ(diag_of("class A : B {\n    [foo(\"x\")] int n;\n}\n"),
               "t.script:2:6: error: unknown attribute 'foo'\n");
 }
 
 TEST(TranslatorSyntax, AliasNeedsAString)
 {
-    const std::string d = diag_of("class A : B {\n    [alias(x)] n : int;\n}\n");
+    const std::string d = diag_of("class A : B {\n    [alias(x)] int n;\n}\n");
     EXPECT_EQ(d.rfind("t.script:2:12: error: expected a string in [alias(...)]", 0), 0u) << d;
 }
 
 TEST(TranslatorSyntax, AliasOnAMethod)
 {
-    EXPECT_EQ(diag_of("class A : B {\n    [alias(\"x\")] function f() { }\n}\n"),
+    EXPECT_EQ(diag_of("class A : B {\n    [alias(\"x\")] void f() { }\n}\n"),
               "t.script:2:5: error: [alias] applies to fields only\n");
 }
 
 TEST(TranslatorSyntax, OldWasSyntaxHasAHint)
 {
-    EXPECT_EQ(diag_of("class A : B {\n    @was(\"x\") n : int;\n}\n"),
+    EXPECT_EQ(diag_of("class A : B {\n    @was(\"x\") int n;\n}\n"),
               "t.script:2:5: error: use [alias(...)] instead of @was(...)\n");
 }
 
 TEST(TranslatorSyntax, TwoAttributesInAList)
 {
     // The second attribute is checked like the first one.
-    EXPECT_EQ(diag_of("class A : B {\n    [alias(\"a\"), foo(\"b\")] n : int;\n}\n"),
+    EXPECT_EQ(diag_of("class A : B {\n    [alias(\"a\"), foo(\"b\")] int n;\n}\n"),
               "t.script:2:18: error: unknown attribute 'foo'\n");
-    EXPECT_EQ(diag_of("class A : B {\n    [alias(\"a\"), alias(\"b\")] n : int;\n}\n"),
+    EXPECT_EQ(diag_of("class A : B {\n    [alias(\"a\"), alias(\"b\")] int n;\n}\n"),
               "t.script:2:18: error: duplicate attribute 'alias'\n");
 }
 
@@ -667,23 +720,62 @@ TEST(TranslatorSyntax, AliasGoesToTheReflectionRow)
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
     const spc::TranslateResult r = spc::translate(
-        temp_options(dir, "import \"w.h\";\nclass Foo : Widget {\n"
-                          "    [alias(\"old\")] n : int = 0;\n    m : int = 0;\n}\n"));
+        temp_options(dir, "using \"w.h\";\nclass Foo : Widget {\n"
+                          "    [alias(\"old\")] int n = 0;\n    int m = 0;\n}\n"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("{\"n\", \"old\","), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("{\"m\", nullptr,"), std::string::npos) << r.cpp;
 }
 
-TEST(TranslatorOverride, ImplicitOverrideUsesTheVirtualSlot)
+TEST(TranslatorOverride, ExplicitOverrideUsesTheVirtualSlot)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
     const spc::TranslateResult r =
-        spc::translate(temp_options(dir, widget_script("Update(dt: float)")));
+        spc::translate(temp_options(dir, widget_script("Update(float dt)", "override ")));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // An override gets no entry in the slot file. A plain function gets one.
     EXPECT_EQ(r.slots_out.find("Foo::Update"), std::string::npos) << r.slots_out;
     EXPECT_NE(r.cpp.find("Foo__Update(Widget* a"), std::string::npos) << r.cpp;
+}
+
+TEST(TranslatorOverride, MissingOverrideIsAnError)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    const spc::TranslateResult r = spc::translate(temp_options(dir, widget_script("Update(float dt)")));
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("method 'Update' overrides a virtual method of Widget; write 'override'"),
+              std::string::npos)
+        << r.diagnostics;
+}
+
+TEST(TranslatorOverride, OverrideWithoutBaseMethodIsAnError)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    const spc::TranslateResult r = spc::translate(temp_options(dir, widget_script("Nothing()", "override ")));
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("'override' has no virtual method to override"), std::string::npos)
+        << r.diagnostics;
+}
+
+TEST(TranslatorOverride, NewOnAVirtualMethodIsAnError)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    const spc::TranslateResult r = spc::translate(temp_options(dir, widget_script("Update(float dt)", "new ")));
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("'new' cannot hide a virtual method; write 'override'"), std::string::npos)
+        << r.diagnostics;
+}
+
+TEST(TranslatorOverride, ScriptOnlyMethodNeedsNoModifier)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    const spc::TranslateResult r = spc::translate(temp_options(dir, widget_script("Extra()")));
+    EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
 TEST(TranslatorOverride, SameNameWithOtherParametersHidesTheVirtualMethod)
@@ -691,7 +783,7 @@ TEST(TranslatorOverride, SameNameWithOtherParametersHidesTheVirtualMethod)
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
     const spc::TranslateResult r =
-        spc::translate(temp_options(dir, widget_script("Update(n: int)")));
+        spc::translate(temp_options(dir, widget_script("Update(int n)")));
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("function 'Update' hides the virtual method of Widget. "
                                  "Candidates: "),
@@ -704,7 +796,7 @@ TEST(TranslatorOverride, FinalMethodStaysAnError)
     TempDir dir;
     write_file(dir.path() / "w.h",
                "class Widget { public: virtual ~Widget() {} virtual void Lock() final {} };\n");
-    const spc::TranslateResult r = spc::translate(temp_options(dir, widget_script("Lock()")));
+    const spc::TranslateResult r = spc::translate(temp_options(dir, widget_script("Lock()", "override ")));
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("is final and cannot be overridden"), std::string::npos)
         << r.diagnostics;
@@ -714,14 +806,14 @@ TEST(TranslatorOverride, FunctionChecksUseTheWordFunction)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
-    const std::string head = "import \"w.h\";\nclass Foo : Widget {\n";
+    const std::string head = "using \"w.h\";\nclass Foo : Widget {\n";
     spc::TranslateResult r = spc::translate(
-        temp_options(dir, head + "    function f() { }\n    function f() { }\n}\n"));
+        temp_options(dir, head + "    void f() { }\n    void f() { }\n}\n"));
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("function 'f' is declared twice (overloads are not supported)"),
               std::string::npos)
         << r.diagnostics;
-    r = spc::translate(temp_options(dir, head + "    f: int;\n    function f() { }\n}\n"));
+    r = spc::translate(temp_options(dir, head + "    int f;\n    void f() { }\n}\n"));
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("'f' is a field and a function"), std::string::npos)
         << r.diagnostics;
@@ -739,8 +831,8 @@ TEST(TranslatorScope, FieldTypesAndBaseClassUseDoubleColons)
     TempDir dir;
     write_file(dir.path() / "w.h", kScopeHeader);
     const std::string script =
-        "import \"w.h\";\nclass P : Engine.Actor {\n    title: std.string;\n"
-        "    history: std.vector<int>;\n    function Tick(dt: float) { }\n}\n";
+        "using \"w.h\";\nclass P : Engine.Actor {\n    std.string title;\n"
+        "    std.vector<int> history;\n    override void Tick(float dt) { }\n}\n";
     const spc::TranslateResult r = spc::translate(temp_options(dir, script));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("std::string title"), std::string::npos) << r.cpp;
@@ -754,8 +846,8 @@ TEST(TranslatorScope, MemberAccessUsesDeref)
     TempDir dir;
     write_file(dir.path() / "w.h", kScopeHeader);
     const std::string script =
-        "import \"w.h\";\nclass P : Engine.Actor {\n    title: std.string;\n"
-        "    function Tick(dt: float) { let n = this.title.size(); }\n}\n";
+        "using \"w.h\";\nclass P : Engine.Actor {\n    std.string title;\n"
+        "    override void Tick(float dt) { var n = this.title.size(); }\n}\n";
     const spc::TranslateResult r = spc::translate(temp_options(dir, script));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("script::deref(st->title).size()"), std::string::npos) << r.cpp;
@@ -771,7 +863,7 @@ TEST(TranslatorScope, DoubleColonInABaseClassIsAnError)
 
 TEST(TranslatorScope, DoubleColonInAFieldTypeIsAnError)
 {
-    const spc::TranslateResult r = translate_text("class P : B {\n    title: std::string;\n}\n");
+    const spc::TranslateResult r = translate_text("class P : B {\n    std::string title;\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("use '.' instead of '::'"), std::string::npos) << r.diagnostics;
     EXPECT_NE(r.diagnostics.find("t.script:2:"), std::string::npos) << r.diagnostics;
@@ -786,4 +878,149 @@ TEST(TranslatorScope, ArrowInABodyIsAnError)
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("use '.' instead of '->'"), std::string::npos) << r.diagnostics;
     EXPECT_NE(r.diagnostics.find("t.script:5:"), std::string::npos) << r.diagnostics;
+}
+
+// ---------------------------------------------------------------- TranslatorProps
+namespace {
+
+std::string prop_script(const std::string& members)
+{
+    return "using \"w.h\";\nclass Foo : Widget {\n" + members + "\n}\n";
+}
+
+spc::TranslateResult translate_props(const std::string& members)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    return spc::translate(temp_options(dir, prop_script(members)));
+}
+
+void expect_prop_error(const std::string& members, const std::string& msg)
+{
+    const spc::TranslateResult r = translate_props(members);
+    EXPECT_FALSE(r.ok) << members;
+    EXPECT_NE(r.diagnostics.find(msg), std::string::npos) << members << "\n" << r.diagnostics;
+}
+
+}  // namespace
+
+TEST(TranslatorProps, AutoPropertyLowersToAccessorCalls)
+{
+    const spc::TranslateResult r = translate_props(
+        "    int N { get; set; } = 3;\n"
+        "    void run() { N = 1; this.N += 2; N++; int k = this.N + N; }");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("    int __p_N;\n"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("new (f) T(3);"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("static int Foo__get_N(Foo_Shell* self)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("static void Foo__set_N(Foo_Shell* self, int value)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("return st->__p_N;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("st->__p_N = value;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("Foo__set_N(self, 1);"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("Foo__set_N(self, Foo__get_N(self) + (2));"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("Foo__set_N(self, Foo__get_N(self) + 1);"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("int k = Foo__get_N(self) + Foo__get_N(self);"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.slots_out.find("Foo::get_N 1"), std::string::npos) << r.slots_out;
+    EXPECT_NE(r.slots_out.find("Foo::set_N 1"), std::string::npos) << r.slots_out;
+}
+
+TEST(TranslatorProps, CustomAccessorsBecomeFunctions)
+{
+    const spc::TranslateResult r = translate_props(
+        "    int raw = 0;\n"
+        "    int V { get { return this.raw * 2; } set { this.raw = value / 2; } }\n"
+        "    int run(int value) { V = value; return V; }");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(r.cpp.find("__p_V"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("return st->raw * 2;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("st->raw = value / 2;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("Foo__set_V(self, value);"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("return Foo__get_V(self);"), std::string::npos) << r.cpp;
+}
+
+TEST(TranslatorProps, LocalHidesProperty)
+{
+    const spc::TranslateResult r =
+        translate_props("    int N { get; set; }\n    void run() { int N = 2; N = 3; }");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("N = 3;"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("Foo__set_N(self, 3)"), std::string::npos) << r.cpp;
+}
+
+// "w.N" on another object of the class calls the accessors through script::shell_of.
+TEST(TranslatorProps, OtherObjectUsesAccessors)
+{
+    const spc::TranslateResult r = translate_props(
+        "    int N { get; set; }\n"
+        "    int hp = 0;\n"
+        "    int run(Widget& w, Widget* q) {\n"
+        "        w.N = 1;\n"
+        "        q.N += 2;\n"
+        "        w.N++;\n"
+        "        int a = this.N = q.N = 4;\n"
+        "        int b = (w.N = 5);\n"
+        "        return w.N + q.N;\n"
+        "    }");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const std::string w = "script::shell_of<Foo_Shell>(w, \"Foo\")";
+    const std::string q = "script::shell_of<Foo_Shell>(q, \"Foo\")";
+    EXPECT_NE(r.cpp.find("Foo__set_N(" + w + ", 1);"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("script::prop_update<script::op_add>(Foo__get_N, Foo__set_N, " + q + ", 2);"),
+              std::string::npos)
+        << r.cpp;
+    EXPECT_NE(r.cpp.find("script::prop_update<script::op_add>(Foo__get_N, Foo__set_N, " + w + ", 1);"),
+              std::string::npos)
+        << r.cpp;
+    EXPECT_NE(r.cpp.find("int a = script::prop_set(Foo__set_N, self, script::prop_set(Foo__set_N, " + q +
+                         ", 4));"),
+              std::string::npos)
+        << r.cpp;
+    EXPECT_NE(r.cpp.find("int b = (script::prop_set(Foo__set_N, " + w + ", 5));"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("return Foo__get_N(" + w + ") + Foo__get_N(" + q + ");"), std::string::npos) << r.cpp;
+}
+
+// A member that is not a property keeps the native member access.
+TEST(TranslatorProps, OtherObjectPlainMemberIsNotRewritten)
+{
+    const spc::TranslateResult r = translate_props(
+        "    int N { get; set; }\n"
+        "    void run(Foo2& p) { p.hp = 1; p.hp += p.n; }");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("script::deref(p).hp = 1;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("script::deref(p).hp += script::deref(p).n;"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("Foo__set_hp"), std::string::npos) << r.cpp;
+}
+
+TEST(TranslatorProps, Errors)
+{
+    expect_prop_error("    int N { get; }\n    void run(Widget& w) { w.N = 1; }",
+                      "property 'N' has no 'set' accessor");
+    expect_prop_error("    int N { get; }\n    void run(Widget* w) { w.N++; }",
+                      "property 'N' has no 'set' accessor");
+    expect_prop_error("    int N { set; }\n    int run(Widget& w) { return w.N; }",
+                      "property 'N' has no 'get' accessor");
+    expect_prop_error("    int N { get; }\n    void run() { N = 1; }",
+                      "property 'N' has no 'set' accessor");
+    expect_prop_error("    int N { get; }\n    void run() { this.N += 1; }",
+                      "property 'N' has no 'set' accessor");
+    expect_prop_error("    int N { set; }\n    int run() { return N; }",
+                      "property 'N' has no 'get' accessor");
+    expect_prop_error("    int N { }", "a property needs a 'get' or a 'set' accessor");
+    expect_prop_error("    int N { get; get; }", "duplicate 'get' accessor");
+    expect_prop_error("    int N { get; set { } }", "a property cannot mix auto and custom accessors");
+    expect_prop_error("    int N { get { return 1; } } = 2;",
+                      "only an auto property can have an initializer");
+    expect_prop_error("    int N { get; fetch; }", "expected 'get' or 'set'");
+    expect_prop_error("    int N;\n    int N { get; }", "'N' is a field and a property");
+    expect_prop_error("    int N { get; }\n    void N() { }", "'N' is a method and a property");
+    expect_prop_error("    int N { get; }\n    int N { set; }", "property 'N' is declared twice");
+    expect_prop_error("    int N { get; }\n    int get_N() { return 1; }",
+                      "method 'get_N' collides with the 'get' accessor of property 'N'");
+    expect_prop_error("    int N { get; set; }\n    int m = N;",
+                      "property 'N' is not allowed in a field initializer");
+    expect_prop_error("    override int N { get; }", "'override' is only valid on a method");
+    expect_prop_error("    int get;", "'get' is a reserved word");
+    expect_prop_error("    void set() { }", "'set' is a reserved word");
+    expect_prop_error("    void f(int get) { }", "'get' is a reserved word");
+    expect_prop_error("    int get { get; }", "'get' is a reserved word");
 }

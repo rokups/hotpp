@@ -1,16 +1,16 @@
 // Generation 1 of the Beeper class (experiments R3 and R6).
 // The method arm stores an arrow lambda in a World timer.
-import "Actor.h";
+using "Actor.h";
 
 class Beeper : Actor {
-    ticks: int = 0;
-    fired: int = 0;
+    int ticks = 0;
+    int fired = 0;
 
-    function Tick(dt: float) {
+    override void Tick(float dt)  {
         this.ticks = this.ticks + 1;
     }
 
-    function arm(w: World&, delay: float) {
+    void arm(World& w, float delay)  {
         w.AddTimer(delay, () => {
             this.fired = this.fired + 1;
             std.printf("[timer v1] %s: fired=%d\n", this.Name.c_str(), this.fired);

@@ -94,7 +94,7 @@ TEST(Lower, FieldAccess)
 TEST(Lower, CatchNameIsALocal)
 {
     Fixture f;
-    EXPECT_EQ(f.body("try { throw 1; } catch (e: std.exception&) { e.what(); } catch (...) { throw; }"),
+    EXPECT_EQ(f.body("try { throw 1; } catch (std.exception& e) { e.what(); } catch (...) { throw; }"),
               "try { throw 1; } catch (std::exception& e) { script::deref(e).what(); } "
               "catch (...) { throw; }");
     EXPECT_EQ(f.body("throw this.health;"), "throw st->health;");
@@ -153,7 +153,7 @@ TEST(Lower, ScopeChain)
 TEST(Lower, LocalShadowsAScope)
 {
     Fixture f;
-    EXPECT_EQ(f.body("let std = 1; std.x;"), "auto std = 1; script::deref(std).x;");
+    EXPECT_EQ(f.body("var std = 1; std.x;"), "auto std = 1; script::deref(std).x;");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
@@ -205,31 +205,31 @@ TEST(Lower, Numbers)
 TEST(Lower, NullAndDeclarations)
 {
     Fixture f;
-    EXPECT_EQ(f.body("let p = null; const q: Actor* = null; let k: int;"),
+    EXPECT_EQ(f.body("var p = null; const Actor* q = null; int k;"),
               "auto p = nullptr; const Actor* q = nullptr; int k;");
 }
 
 TEST(Lower, ForOf)
 {
     Fixture f;
-    EXPECT_EQ(f.body("for (let x of xs) { this.n = x; }"), "for (auto x : xs) { st->n = x; }");
-    EXPECT_EQ(f.body("for (const y of ys) { }"), "for (const auto y : ys) {}");
+    EXPECT_EQ(f.body("foreach (var x in xs) { this.n = x; }"), "for (auto x : xs) { st->n = x; }");
+    EXPECT_EQ(f.body("foreach (const var y in ys) { }"), "for (const auto y : ys) {}");
 }
 
 TEST(Lower, ForAndControl)
 {
     Fixture f;
-    EXPECT_EQ(f.body("for (let i = 0; i < this.n; i++) { if (i > 2.5) { break; } }"),
+    EXPECT_EQ(f.body("for (var i = 0; i < this.n; i++) { if (i > 2.5) { break; } }"),
               "for (auto i = 0; i < st->n; i++) { if (i > 2.5f) { break; } }");
 }
 
 TEST(Lower, Lambda)
 {
     Fixture f;
-    EXPECT_EQ(f.body("let f = (x: float, q: int*) => { q.foo(); this.n = x; };"),
+    EXPECT_EQ(f.body("var f = (float x, int* q) => { q.foo(); this.n = x; };"),
               "auto f = script::make_closure(GEN, \"Player::run lambda\", [=](float x, int* q) "
               "{ [[maybe_unused]] auto* st = state_of(self); script::deref(q).foo(); st->n = x; });");
-    EXPECT_EQ(f.expr("(a: Actor*) => { a.x = 1; }"),
+    EXPECT_EQ(f.expr("(Actor* a) => { a.x = 1; }"),
               "script::make_closure(GEN, \"Player::run lambda\", [=](Actor* a) "
               "{ [[maybe_unused]] auto* st = state_of(self); script::deref(a).x = 1; })");
     EXPECT_EQ(f.diag.items.size(), 0u);
@@ -249,7 +249,7 @@ TEST(Lower, LocalDoesNotLeakIntoEarlierText)
 {
     Fixture f;
     // The use is before the declaration, so the name is not yet a local.
-    EXPECT_EQ(f.body("Foo.bar(); let Foo = 1;"), "Foo::bar(); auto Foo = 1;");
+    EXPECT_EQ(f.body("Foo.bar(); var Foo = 1;"), "Foo::bar(); auto Foo = 1;");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
@@ -257,19 +257,19 @@ TEST(Lower, LocalLeaksOutOfABlock)
 {
     Fixture f;
     // The old rewriter has no block scope: Foo stays a local after the block.
-    EXPECT_EQ(f.body("{ let Foo = 1; } Foo.bar();"), "{ auto Foo = 1; } script::deref(Foo).bar();");
+    EXPECT_EQ(f.body("{ var Foo = 1; } Foo.bar();"), "{ auto Foo = 1; } script::deref(Foo).bar();");
 }
 
 TEST(Lower, ScriptFnHiddenAfterBlock)
 {
     Fixture f;
-    EXPECT_EQ(f.body("{ let heal = 1; } heal(2);"), "{ auto heal = 1; } heal(2);");
+    EXPECT_EQ(f.body("{ var heal = 1; } heal(2);"), "{ auto heal = 1; } heal(2);");
 }
 
 TEST(Lower, LambdaParameterLeaks)
 {
     Fixture f;
-    EXPECT_EQ(f.body("let g = (q: int*) => { }; q.x;"),
+    EXPECT_EQ(f.body("var g = (int* q) => { }; q.x;"),
               "auto g = script::make_closure(GEN, \"Player::run lambda\", [=](int* q) "
               "{ [[maybe_unused]] auto* st = state_of(self); }); script::deref(q).x;");
 }
@@ -277,14 +277,14 @@ TEST(Lower, LambdaParameterLeaks)
 TEST(Lower, ForOfVariableIsLocal)
 {
     Fixture f;
-    EXPECT_EQ(f.body("for (let Foo of xs) { Foo.a(); }"), "for (auto Foo : xs) { script::deref(Foo).a(); }");
+    EXPECT_EQ(f.body("foreach (var Foo in xs) { Foo.a(); }"), "for (auto Foo : xs) { script::deref(Foo).a(); }");
 }
 
 TEST(Lower, LetPointerUsesDeref)
 {
     Fixture f;
     // The member access has one form for a pointer and for a reference.
-    EXPECT_EQ(f.body("let p: Actor* = null; p.x;"), "Actor* p = nullptr; script::deref(p).x;");
+    EXPECT_EQ(f.body("Actor* p = null; p.x;"), "Actor* p = nullptr; script::deref(p).x;");
 }
 
 // ---- template arguments
@@ -293,10 +293,10 @@ TEST(Lower, TemplateArgumentsAreLowered)
 {
     Fixture f;
     EXPECT_EQ(f.expr("x<this.health>(c)"), "x<st->health>(c)");
-    EXPECT_EQ(f.expr("get<Color.Red>(t)"), "get<Color::Red>(t)");
+    EXPECT_EQ(f.expr("pick<Color.Red>(t)"), "pick<Color::Red>(t)");
     EXPECT_EQ(f.expr("f<1.0>(c)"), "f<1.0f>(c)");
     EXPECT_EQ(f.expr("f<this.n, 2.5>(c)"), "f<st->n, 2.5f>(c)");
-    EXPECT_EQ(f.body("let b2 = x<this.health>(c);"), "auto b2 = x<st->health>(c);");
+    EXPECT_EQ(f.body("var b2 = x<this.health>(c);"), "auto b2 = x<st->health>(c);");
 }
 
 TEST(Lower, TypeTemplateArgumentsKeepTheirText)
@@ -341,9 +341,42 @@ TEST(Lower, ErrorLambdaInFieldInitializer)
 {
     Fixture f;
     f.cx.allow_this = false;
-    f.expr("1 +\n  (x: int) => { }");
+    f.expr("1 +\n  (int x) => { }");
     ASSERT_EQ(f.errors().size(), 1u);
     EXPECT_EQ(f.errors()[0], "2:3: a lambda is not allowed in a field initializer");
+}
+
+TEST(Lower, FinallyBody)
+{
+    Fixture f;
+    EXPECT_EQ(f.body("try { throw 1; } finally { this.n = 1; }"),
+              "{ script::Finally __fin_0([&] { st->n = 1; }); { throw 1; } }");
+    // A loop or a switch fully inside the finally block can use break and continue.
+    // A lambda in the finally block can use return.
+    f.body("while (true) { try { } finally {\n"
+           "  while (true) { break; continue; }\n"
+           "  switch (this.n) { case 1: break; }\n"
+           "  var g = () => { return 1; };\n"
+           "} }");
+    EXPECT_EQ(f.errors(), std::vector<std::string>{});
+    // A "return" in the try body or in a catch clause is correct.
+    f.body("try { return; } catch (...) { return; } finally { }");
+    EXPECT_EQ(f.errors(), std::vector<std::string>{});
+}
+
+TEST(Lower, ErrorJumpOutOfFinally)
+{
+    Fixture f;
+    f.body("try { } finally {\n  return;\n}");
+    f.body("while (true) { try { } catch (...) { } finally {\n  if (true) break;\n} }");
+    f.body("while (true) { try { } finally {\n  switch (this.n) { case 1: continue; }\n} }");
+    f.body("while (true) { try { } finally { try { } finally {\n  return 1;\n} } }");
+    EXPECT_EQ(f.errors(), (std::vector<std::string>{
+                              "2:3: 'return' is not allowed in a 'finally' block",
+                              "2:13: 'break' is not allowed in a 'finally' block",
+                              "2:29: 'continue' is not allowed in a 'finally' block",
+                              "2:3: 'return' is not allowed in a 'finally' block",
+                          }));
 }
 
 TEST(Lower, ErrorThisInFieldInitializer)
@@ -360,24 +393,24 @@ TEST(Lower, ErrorThisInFieldInitializer)
 TEST(Lower, ErrorScriptFnMustBeCalled)
 {
     Fixture f;
-    EXPECT_EQ(f.body("let a = 1;\nlet b = this.heal;"), "auto a = 1; auto b = Player__heal;");
+    EXPECT_EQ(f.body("var a = 1;\nvar b = this.heal;"), "auto a = 1; auto b = Player__heal;");
     ASSERT_EQ(f.errors().size(), 1u);
     EXPECT_EQ(f.errors()[0], "2:9: script function 'heal' must be called");
 }
 
 TEST(Lower, ErrorBadLambdaParameter)
 {
-    // The parser rejects "(x) =>", so the test builds the node by hand.
+    // The parser always gives a name, so the test builds the node by hand.
     Fixture f;
     LineMap map("\n  (x) => { }");
     f.cx.map = &map;
     ast::LambdaExpr l;
     l.pos = 3;
-    l.params.push_back({"x", ""});
+    l.params.push_back({"", "int"});
     ast::ExprP e = ast::make_expr(std::move(l));
     lower_expr(e, f.cx, f.diag);
     ASSERT_EQ(f.errors().size(), 1u);
-    EXPECT_EQ(f.errors()[0], "2:3: a lambda parameter needs the form 'name: type'");
+    EXPECT_EQ(f.errors()[0], "2:3: a lambda parameter needs a name");
 }
 
 TEST(Lower, ErrorWithoutMapHasNoLine)
@@ -399,3 +432,184 @@ TEST(Lower, ErrorsDoNotStopThePass)
 }
 
 }  // namespace
+
+// ---------------------------------------------------------------- properties
+// The fixture class with the properties Hp (get and set), Max (get only) and Sink (set only).
+void add_props(Fixture& f)
+{
+    auto prop = [&](const char* name, bool get, bool set) {
+        ast::Property p;
+        p.name = name;
+        p.type = "float";
+        p.has_get = get;
+        p.has_set = set;
+        f.cd.props.push_back(std::move(p));
+    };
+    prop("Hp", true, true);
+    prop("Max", true, false);
+    prop("Sink", false, true);
+    f.cx = make_class_ctx(f.cd);
+}
+
+TEST(Lower, PropertyReadAndWrite)
+{
+    Fixture f;
+    add_props(f);
+    EXPECT_EQ(f.expr("this.Hp"), "Player__get_Hp(self)");
+    EXPECT_EQ(f.expr("Hp + Max"), "Player__get_Hp(self) + Player__get_Max(self)");
+    EXPECT_EQ(f.body("Hp = 1;"), "Player__set_Hp(self, 1);");
+    EXPECT_EQ(f.body("this.Hp = this.Max;"), "Player__set_Hp(self, Player__get_Max(self));");
+    EXPECT_EQ(f.body("this.Hp *= 2 + 1;"), "Player__set_Hp(self, Player__get_Hp(self) * (2 + 1));");
+    EXPECT_EQ(f.body("Hp <<= 1;"), "Player__set_Hp(self, Player__get_Hp(self) << (1));");
+    EXPECT_EQ(f.body("--Hp;"), "Player__set_Hp(self, Player__get_Hp(self) - 1);");
+    EXPECT_EQ(f.body("this.Hp++;"), "Player__set_Hp(self, Player__get_Hp(self) + 1);");
+    EXPECT_EQ(f.body("Sink = Hp == 1 ? 2 : 3;"),
+              "Player__set_Sink(self, Player__get_Hp(self) == 1 ? 2 : 3);");
+    // A comparison is not a write.
+    EXPECT_EQ(f.expr("Hp <= 2"), "Player__get_Hp(self) <= 2");
+    EXPECT_EQ(f.diag.items.size(), 0u) << f.errors()[0];
+}
+
+// "obj.P" on another object of the class. The object goes through script::shell_of.
+TEST(Lower, PropertyOfOtherObjectRead)
+{
+    Fixture f;
+    add_props(f);
+    f.param("p");
+    const std::string sh = "script::shell_of<Player_Shell>(p, \"Player\")";
+    EXPECT_EQ(f.expr("p.Hp"), "Player__get_Hp(" + sh + ")");
+    EXPECT_EQ(f.expr("p.Hp + p.Max"), "Player__get_Hp(" + sh + ") + Player__get_Max(" + sh + ")");
+    EXPECT_EQ(f.expr("this.target.Hp"),
+              "Player__get_Hp(script::shell_of<Player_Shell>(st->target, \"Player\"))");
+    EXPECT_EQ(f.expr("p.target.Hp"),
+              "Player__get_Hp(script::shell_of<Player_Shell>(script::deref(p).target, \"Player\"))");
+    EXPECT_EQ(f.expr("f(p).Hp"), "Player__get_Hp(script::shell_of<Player_Shell>(f(p), \"Player\"))");
+    EXPECT_EQ(f.diag.items.size(), 0u) << f.errors()[0];
+}
+
+TEST(Lower, PropertyOfOtherObjectWrite)
+{
+    Fixture f;
+    add_props(f);
+    f.param("p");
+    const std::string sh = "script::shell_of<Player_Shell>(p, \"Player\")";
+    EXPECT_EQ(f.body("p.Hp = 1;"), "Player__set_Hp(" + sh + ", 1);");
+    EXPECT_EQ(f.body("p.Sink = p.Hp;"), "Player__set_Sink(" + sh + ", Player__get_Hp(" + sh + "));");
+    EXPECT_EQ(f.body("this.target.Hp = 2;"),
+              "Player__set_Hp(script::shell_of<Player_Shell>(st->target, \"Player\"), 2);");
+    EXPECT_EQ(f.diag.items.size(), 0u) << f.errors()[0];
+}
+
+// A compound write on another object evaluates the object once: script::prop_update.
+TEST(Lower, PropertyOfOtherObjectCompoundWrite)
+{
+    Fixture f;
+    add_props(f);
+    f.param("p");
+    const std::string sh = "script::shell_of<Player_Shell>(p, \"Player\")";
+    EXPECT_EQ(f.body("p.Hp += 2;"),
+              "script::prop_update<script::op_add>(Player__get_Hp, Player__set_Hp, " + sh + ", 2);");
+    EXPECT_EQ(f.body("p.Hp <<= 1 + 1;"),
+              "script::prop_update<script::op_shl>(Player__get_Hp, Player__set_Hp, " + sh + ", 1 + 1);");
+    EXPECT_EQ(f.diag.items.size(), 0u) << f.errors()[0];
+}
+
+TEST(Lower, PropertyOfOtherObjectIncrement)
+{
+    Fixture f;
+    add_props(f);
+    f.param("p");
+    const std::string sh = "script::shell_of<Player_Shell>(p, \"Player\")";
+    const std::string acc = "Player__get_Hp, Player__set_Hp, " + sh + ", 1)";
+    EXPECT_EQ(f.body("p.Hp++;"), "script::prop_update<script::op_add>(" + acc + ";");
+    EXPECT_EQ(f.body("--p.Hp;"), "script::prop_update<script::op_sub>(" + acc + ";");
+    // The value of "P++" is the old value. The value of "++P" is the new value.
+    EXPECT_EQ(f.expr("p.Hp++"), "script::prop_post<script::op_add>(" + acc);
+    EXPECT_EQ(f.expr("++p.Hp"), "script::prop_update<script::op_add>(" + acc);
+    EXPECT_EQ(f.expr("Hp--"), "script::prop_post<script::op_sub>(Player__get_Hp, Player__set_Hp, self, 1)");
+    EXPECT_EQ(f.diag.items.size(), 0u) << f.errors()[0];
+}
+
+// A write in an expression gives the assigned value. A write in a statement stays a call.
+TEST(Lower, PropertyWriteAsExpression)
+{
+    Fixture f;
+    add_props(f);
+    f.param("p");
+    f.param("a");
+    const std::string sh = "script::shell_of<Player_Shell>(p, \"Player\")";
+    EXPECT_EQ(f.body("a = this.Hp = 1;"), "a = script::prop_set(Player__set_Hp, self, 1);");
+    EXPECT_EQ(f.body("a = (p.Hp = 2);"), "a = (script::prop_set(Player__set_Hp, " + sh + ", 2));");
+    EXPECT_EQ(f.body("Hp = Sink = 3;"),
+              "Player__set_Hp(self, script::prop_set(Player__set_Sink, self, 3));");
+    EXPECT_EQ(f.body("a = Hp *= 2;"),
+              "a = script::prop_update<script::op_mul>(Player__get_Hp, Player__set_Hp, self, 2);");
+    EXPECT_EQ(f.diag.items.size(), 0u) << f.errors()[0];
+}
+
+// A member that is not a property keeps the member access. "super.P" is not a property.
+TEST(Lower, PropertyNameOnlyRewritesProperties)
+{
+    Fixture f;
+    add_props(f);
+    f.param("p");
+    EXPECT_EQ(f.expr("p.health"), "script::deref(p).health");
+    EXPECT_EQ(f.body("p.health = 1;"), "script::deref(p).health = 1;");
+    EXPECT_EQ(f.body("p.health += 1;"), "script::deref(p).health += 1;");
+    EXPECT_EQ(f.body("p.health++;"), "script::deref(p).health++;");
+    EXPECT_EQ(f.expr("super.Hp"), "self->Actor::Hp");
+    EXPECT_EQ(f.diag.items.size(), 0u) << f.errors()[0];
+}
+
+TEST(Lower, PropertyOfOtherObjectMissingAccessor)
+{
+    Fixture f;
+    add_props(f);
+    f.param("p");
+    f.body("p.Max = 1;");
+    f.body("p.Max += 1;");
+    f.body("p.Max++;");
+    f.expr("p.Sink");
+    EXPECT_EQ(f.errors(), (std::vector<std::string>{
+                              "1:1: property 'Max' has no 'set' accessor",
+                              "1:1: property 'Max' has no 'set' accessor",
+                              "1:1: property 'Max' has no 'set' accessor",
+                              "1:1: property 'Sink' has no 'get' accessor",
+                          }));
+}
+
+TEST(Lower, PropertyLocalHidesProperty)
+{
+    Fixture f;
+    add_props(f);
+    f.param("Hp");
+    EXPECT_EQ(f.body("Hp = 1;"), "Hp = 1;");
+    EXPECT_EQ(f.body("this.Hp = 1;"), "Player__set_Hp(self, 1);");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+TEST(Lower, PropertyMissingAccessor)
+{
+    Fixture f;
+    add_props(f);
+    f.body("Max = 1;");
+    f.body("this.Max += 1;");
+    f.body("Max++;");
+    f.expr("this.Sink + 1");
+    EXPECT_EQ(f.errors(), (std::vector<std::string>{
+                              "1:1: property 'Max' has no 'set' accessor",
+                              "1:1: property 'Max' has no 'set' accessor",
+                              "1:1: property 'Max' has no 'set' accessor",
+                              "1:1: property 'Sink' has no 'get' accessor",
+                          }));
+}
+
+TEST(Lower, PropertyInFieldInitializerIsAnError)
+{
+    Fixture f;
+    add_props(f);
+    f.cx.allow_this = false;
+    f.expr("Hp + 1");
+    ASSERT_EQ(f.errors().size(), 1u);
+    EXPECT_EQ(f.errors()[0], "1:1: property 'Hp' is not allowed in a field initializer");
+}

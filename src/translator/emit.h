@@ -27,6 +27,12 @@ public:
     void space() { space_ = true; }
     // Line mode: ends the last line. Call it once at the end.
     void finish();
+    // Line mode: the next leaf at "pos" starts a new line, also when its script line is
+    // not greater than the current line. A finally block uses it: the guard prints the
+    // finally body before the try body, so the script lines go back.
+    void rewind(uint32_t pos);
+    // Gives a new number for the name of a finally guard. The numbers start at 0.
+    int next_finally() { return finally_count_++; }
 
     const std::string& text() const { return out_; }
     int source_line() const { return line_; }
@@ -39,6 +45,7 @@ private:
     std::string out_;
     int line_ = 0;  // the script line of the last "#line"; 0: none yet
     bool space_ = false;
+    int finally_count_ = 0;
 };
 
 void emit_expr(const Expr& e, Emitter& out);

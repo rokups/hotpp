@@ -1,0 +1,30 @@
+// Generation 1 of the Gauge class: properties (step S11).
+// Hp is an auto property. MaxHp is read-only. Level has a private set accessor.
+// Shield has a custom getter and setter on a normal field.
+using "Actor.h";
+
+class Gauge : Actor {
+    float Hp { get; set; } = 50.0;
+    float MaxHp { get; } = 100.0;
+    int Level { get; private set; } = 1;
+    float shield_raw = 0.0;
+    float Shield {
+        get { return this.shield_raw; }
+        set { this.shield_raw = value < 0.0 ? 0.0 : value; }
+    }
+
+    override void Tick(float dt) {
+        if (Hp < this.MaxHp) Hp += 1.0;
+        this.Shield = Shield + 2.0;
+        Level++;
+    }
+
+    override void TakeDamage(float amount) {
+        this.Shield -= amount;
+        if (this.Shield <= 0.0) this.Hp = this.Hp - amount;
+    }
+
+    float total() {
+        return Hp + this.Shield;
+    }
+}

@@ -16,6 +16,7 @@
 #include <fstream>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 
 #include "spp/backend.h"
@@ -98,6 +99,97 @@ TEST_P(BackendTests, NativeFunctionsAndStdContainersMigrate)
     nativestd::run_native_std_reload(std::move(*v1.module), std::move(*v2.module));
 }
 
+// A script with properties: an auto property, a read-only property, a property with a private
+// set accessor and a custom getter and setter. The hidden fields are normal state fields.
+TEST_P(BackendTests, PropertiesReadAndWrite)
+{
+    script::LoadResult v1 = backend->load(source("props_v1.script"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Gauge"));
+    ASSERT_NE(s.field("__p_Hp"), nullptr);
+    ASSERT_NE(s.field("__p_MaxHp"), nullptr);
+    ASSERT_NE(s.field("shield_raw"), nullptr);
+    EXPECT_EQ(s.field("__p_Shield"), nullptr);  // a custom property has no hidden field
+    EXPECT_EQ(*s.field("__p_Hp"), 50.0f);
+    EXPECT_EQ(*s.field("__p_MaxHp"), 100.0f);
+
+    s.world.Tick(kDt);  // Hp += 1, Shield = Shield + 2, Level++
+    EXPECT_EQ(*s.field("__p_Hp"), 51.0f);
+    EXPECT_EQ(*s.field("shield_raw"), 2.0f);
+    const int* level = script::field_ptr<int>(s.inst.shell, "__p_Level");
+    ASSERT_NE(level, nullptr);
+    EXPECT_EQ(*level, 2);
+
+    // The custom setter clamps the shield at 0. Then the damage reaches Hp.
+    s.actor->TakeDamage(5.0f);
+    EXPECT_EQ(*s.field("shield_raw"), 0.0f);
+    EXPECT_EQ(*s.field("__p_Hp"), 46.0f);
+}
+
+// One script object reads and writes the properties of another script object of the class.
+// The accessors run for the other object. An object of another class gives an exception.
+TEST_P(BackendTests, PropertiesOfOtherObjectReadAndWrite)
+{
+    const script::ScriptSource src = {"props_other.script", R"(
+using "Actor.h";
+
+class Gauge : Actor {
+    float Hp { get; set; } = 50.0;
+    float MaxHp { get; } = 100.0;
+    int Hits { get; private set; } = 0;
+    float raw = 0.0;
+    float Shield {
+        get { return this.raw; }
+        set { this.raw = value < 0.0 ? 0.0 : value; }
+    }
+    float seen = 0.0;
+    float chained = 0.0;
+    float old_hits = 0.0;
+
+    override void Tick(float dt) {}
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(Actor& source, float amount) {
+        this.seen = source.Hp + source.MaxHp;
+        source.Hp -= amount;
+        source.Hits++;
+        source.Shield = -5.0;
+        var p = &source;
+        p.Shield += 3.0;
+        this.chained = source.Hp = this.Hp = 30.0;
+        this.old_hits = source.Hits++;
+    }
+}
+)"};
+    script::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module), "Gauge"));
+    const script::ClassEntry* entry = s.loader.find("Gauge");
+    ASSERT_NE(entry, nullptr);
+    const script::Instance other = entry->create();
+    Actor* source = static_cast<Actor*>(other.native);
+    s.world.Add(source);
+
+    s.actor->TakeDamage(*source, 5.0f);
+    auto f = [](script::ShellBase* sh, const char* name) { return *script::field_ptr<float>(sh, name); };
+    EXPECT_EQ(f(s.inst.shell, "seen"), 150.0f);  // 50 + 100, read on the other object
+    EXPECT_EQ(f(s.inst.shell, "__p_Hp"), 30.0f);
+    EXPECT_EQ(f(s.inst.shell, "chained"), 30.0f);
+    EXPECT_EQ(f(s.inst.shell, "old_hits"), 1.0f);  // "Hits++" gives the old value
+    EXPECT_EQ(f(other.shell, "__p_Hp"), 30.0f);     // 50 - 5, then 30
+    EXPECT_EQ(f(other.shell, "raw"), 3.0f);         // the setter clamps -5 to 0, then 0 + 3
+    EXPECT_EQ(*script::field_ptr<int>(other.shell, "__p_Hits"), 2);
+    // The accessors did not touch the state of the caller.
+    EXPECT_EQ(*script::field_ptr<int>(s.inst.shell, "__p_Hits"), 0);
+    EXPECT_EQ(f(s.inst.shell, "raw"), 0.0f);
+
+    // A native actor is not a Gauge. The property access throws and changes nothing.
+    Actor native;
+    EXPECT_THROW(s.actor->TakeDamage(native, 1.0f), std::runtime_error);
+    EXPECT_EQ(f(other.shell, "__p_Hp"), 30.0f);
+}
+
 // A bad script gives an error at the script line. The runtime keeps running.
 TEST_P(BackendTests, BadScriptGivesErrorAndRuntimeKeepsRunning)
 {
@@ -136,29 +228,29 @@ TEST_P(BackendTests, BadScriptGivesErrorAndRuntimeKeepsRunning)
 TEST_P(BackendTests, ForOfOverAMemberOfATemporaryRuns)
 {
     const script::ScriptSource src = {"temp.script", R"(
-import "Actor.h";
-import <utility>;
-import <vector>;
+using "Actor.h";
+using <utility>;
+using <vector>;
 
 class Player : Actor {
-    total: float = 0.0;
+    float total = 0.0;
 
-    function mk() -> std.pair<std.vector<int>, int> {
-        let p = std.pair<std.vector<int>, int>();
+    std.pair<std.vector<int>, int> mk() {
+        var p = std.pair<std.vector<int>, int>();
         p.first.push_back(1);
         p.first.push_back(2);
         p.first.push_back(3);
         return p;
     }
 
-    function Tick(dt: float) {
-        for (let a of this.mk().first) {
+    override void Tick(float dt) {
+        foreach (var a in this.mk().first) {
             this.total = this.total + a;
         }
     }
 
-    function TakeDamage(amount: float) {}
-    function TakeDamage(source: Actor&, amount: float) {}
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(Actor& source, float amount) {}
 }
 )"};
     script::LoadResult r = backend->load(src, 1);
@@ -174,17 +266,17 @@ class Player : Actor {
 TEST_P(BackendTests, TryCatchThrowRun)
 {
     const script::ScriptSource src = {"exc.script", R"(
-import "Actor.h";
-import <stdexcept>;
+using "Actor.h";
+using <stdexcept>;
 
 class Player : Actor {
-    total: float = 0.0;
+    float total = 0.0;
 
-    function Tick(dt: float) {
+    override void Tick(float dt) {
         try {
             throw std.runtime_error("boom");
-        } catch (e: const std.exception&) {
-            let w = e.what();
+        } catch (const std.exception& e) {
+            var w = e.what();
             if (w[0] == 'b') {
                 this.total = this.total + 1.0;
             }
@@ -195,15 +287,15 @@ class Player : Actor {
             } catch (...) {
                 throw;
             }
-        } catch (v: double) {
+        } catch (double v) {
             this.total = 100.0;
-        } catch (v: int) {
+        } catch (int v) {
             this.total = this.total + v;
         }
     }
 
-    function TakeDamage(amount: float) {}
-    function TakeDamage(source: Actor&, amount: float) {}
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(Actor& source, float amount) {}
 }
 )"};
     script::LoadResult r = backend->load(src, 1);
@@ -213,6 +305,63 @@ class Player : Actor {
     s.world.Tick(kDt);
     ASSERT_NE(s.field("total"), nullptr);
     EXPECT_EQ(*s.field("total"), 4.0f);
+}
+
+// A finally block runs on the normal path and on the throw path. An exception from
+// a finally body is dropped. Nested finally blocks run from the inside out.
+TEST_P(BackendTests, TryFinallyRun)
+{
+    const script::ScriptSource src = {"fin.script", R"(
+using "Actor.h";
+
+class Player : Actor {
+    float total = 0.0;
+
+    override void Tick(float dt) {
+        try {
+            this.total = this.total + 1.0;
+        } finally {
+            this.total = this.total + 10.0;
+        }
+        try {
+            try {
+                throw 5;
+            } finally {
+                this.total = this.total + 100.0;
+            }
+        } catch (int v) {
+            this.total = this.total + v;
+        }
+        try {
+            this.total = this.total + 1000.0;
+        } catch (...) {
+            this.total = -1.0;
+        } finally {
+            throw 1;
+        }
+        try {
+            try {
+                this.total = this.total + 0.0;
+            } finally {
+                this.total = this.total + 2.0;
+            }
+        } finally {
+            this.total = this.total * 2.0;
+        }
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(Actor& source, float amount) {}
+}
+)"};
+    script::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    s.world.Tick(kDt);
+    ASSERT_NE(s.field("total"), nullptr);
+    // (1 + 10 + 100 + 5 + 1000 + 2) * 2
+    EXPECT_EQ(*s.field("total"), 2236.0f);
 }
 
 INSTANTIATE_TEST_SUITE_P(Selected, BackendTests, ::testing::Values(std::string(SPP_BACKEND_NAME)));

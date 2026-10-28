@@ -168,6 +168,31 @@ TEST(Emit, TryCatchThrow)
               "try { throw 1; } catch (int e) { f; } catch (...) { throw; }");
 }
 
+TEST(Emit, TryFinally)
+{
+    // With a catch clause: the guard is before the try, in a new block.
+    TryStmt t;
+    t.block = BlockStmt{slist(es(id("f"))), 0, 0};
+    CatchClause c;
+    c.is_all = true;
+    c.block = BlockStmt{slist(make_stmt(ThrowStmt{})), 0, 0};
+    t.catches.push_back(std::move(c));
+    t.finally_block = BlockStmt{slist(es(id("g"))), 0, 0};
+    EXPECT_EQ(print(*make_stmt(std::move(t))),
+              "{ script::Finally __fin_0([&] { g; }); try { f; } catch (...) { throw; } }");
+
+    // Without a catch clause: the body is a plain block. A nested try gets the next name.
+    TryStmt inner;
+    inner.block = BlockStmt{slist(es(id("a"))), 0, 0};
+    inner.finally_block = BlockStmt{slist(es(id("b"))), 0, 0};
+    TryStmt outer;
+    outer.block = BlockStmt{slist(make_stmt(std::move(inner))), 0, 0};
+    outer.finally_block = BlockStmt{slist(es(id("c"))), 0, 0};
+    EXPECT_EQ(print(*make_stmt(std::move(outer))),
+              "{ script::Finally __fin_0([&] { c; }); "
+              "{ { script::Finally __fin_1([&] { b; }); { a; } } } }");
+}
+
 TEST(Emit, ElseIfAndWhile)
 {
     IfStmt inner;
@@ -260,6 +285,31 @@ TEST(Emit, LineDirectiveOnLineChange)
               "    std::printf(\"x\", dt,\n"
               "#line 3 \"t.script\"\n"
               "    self->p, hp);\n");
+}
+
+TEST(Emit, FinallyLineDirectives)
+{
+    spc::LineMap map(kText);
+    // line 2: try { f;
+    // line 3: } finally {
+    // line 4: g; }
+    // The finally body prints first. The try body gets its "#line" again.
+    TryStmt t;
+    t.pos = 2;
+    t.block = BlockStmt{slist(es(id("f", 2))), 2, 4};
+    t.finally_block = BlockStmt{slist(es(id("g", 6))), 4, 6};
+    StmtP s = make_stmt(std::move(t));
+    EXPECT_EQ(print_lines(*s, map, "t.script", 1),
+              "#line 2 \"t.script\"\n"
+              "    { script::Finally __fin_0([&]\n"
+              "#line 3 \"t.script\"\n"
+              "        {\n"
+              "#line 4 \"t.script\"\n"
+              "            g; });\n"
+              "#line 2 \"t.script\"\n"
+              "        { f;\n"
+              "#line 3 \"t.script\"\n"
+              "        } }\n");
 }
 
 TEST(Emit, OneLineDirectivePerLine)
