@@ -9,9 +9,9 @@
 #include <vector>
 
 #include "spp/backend.h"
-#include "spp/spc_lib.h"
+#include "spp/sppc_lib.h"
 
-namespace script {
+namespace spp {
 
 struct ClangFilesOptions {
     std::string compiler = "clang++";         // the compiler command
@@ -19,7 +19,7 @@ struct ClangFilesOptions {
     std::string resource_dir;                 // the Clang resource dir (empty: the default)
     // The translator cache. Empty: the backend makes its own. Share one to keep the
     // cache between backends.
-    std::shared_ptr<spc::TranslatorSession> session;
+    std::shared_ptr<sppc::TranslatorSession> session;
     std::vector<std::string> extra_flags;     // added to the compile command
     std::string work_dir = "spp_work";        // the .cpp and .so files go here
     std::string slots_file;                   // empty: <work_dir>/slots.txt
@@ -49,4 +49,4 @@ private:
 // Returns the exit code, or -1 when the command did not run.
 int run_command(const std::vector<std::string>& argv, std::string& output);
 
-}  // namespace script
+}  // namespace spp

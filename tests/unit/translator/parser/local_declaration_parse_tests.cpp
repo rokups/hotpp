@@ -10,7 +10,7 @@
 #include "parser/statement.h"
 #include "support/statement_parse_test_support.h"
 
-using namespace spc;
+using namespace sppc;
 using namespace stmt_test;
 
 // No initializer: the emitter value-initializes. "var" and "const" need an initializer.

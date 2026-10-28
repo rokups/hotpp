@@ -10,7 +10,7 @@
 #include "ast.h"
 #include "diag.h"
 
-namespace spc {
+namespace sppc {
 
 enum class Kind { Raw, Value, Handle };
 
@@ -71,4 +71,4 @@ private:
     BaseFn bases_;
 };
 
-}  // namespace spc
+}  // namespace sppc

@@ -10,11 +10,11 @@
 #include <fstream>
 #include <sstream>
 
-#include "spp/spc_lib.h"
+#include "spp/sppc_lib.h"
 
 extern char** environ;
 
-namespace script {
+namespace spp {
 
 namespace fs = std::filesystem;
 
@@ -79,7 +79,7 @@ bool write_text(const std::string& path, const std::string& text)
 
 ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options) : opt_(std::move(options))
 {
-    if (!opt_.session) opt_.session = std::make_shared<spc::TranslatorSession>();
+    if (!opt_.session) opt_.session = std::make_shared<sppc::TranslatorSession>();
     if (opt_.slots_file.empty()) opt_.slots_file = opt_.work_dir + "/slots.txt";
 }
 
@@ -97,7 +97,7 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation,
                            ec);
     const std::string cpp_path = fs::path(so_path).replace_extension(".cpp").string();
 
-    spc::TranslateOptions to;
+    sppc::TranslateOptions to;
     to.script_text = source.text;
     to.script_name = source.name;
     to.output_name = cpp_path;
@@ -105,7 +105,7 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation,
     to.include_dirs = opt_.include_dirs;
     to.resource_dir = opt_.resource_dir;
     read_text(opt_.slots_file, to.slots_in);  // a missing file means the first generation
-    spc::TranslateResult tr = spc::translate(to, *opt_.session);
+    sppc::TranslateResult tr = sppc::translate(to, *opt_.session);
     if (!tr.ok) {
         error = tr.diagnostics;
         return false;
@@ -148,4 +148,4 @@ LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generati
     return module_from_library(so);
 }
 
-}  // namespace script
+}  // namespace spp

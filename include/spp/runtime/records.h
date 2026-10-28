@@ -2,7 +2,7 @@
 #pragma once
 #include <cstdint>
 
-namespace script {
+namespace spp {
 
 // Tag type. It marks the constructor of a shell that the script runtime makes.
 struct Construct {};
@@ -45,4 +45,4 @@ struct ClassRecord {
     uint64_t shell_hash;    // hash of the shell layout (see shell_layout_hash)
 };
 
-}  // namespace script
+}  // namespace spp

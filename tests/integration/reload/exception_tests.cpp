@@ -21,7 +21,7 @@ using test_support::source;
 // The statements throw, try and catch translate to C++ that compiles and runs.
 TEST_P(BackendTests, TryCatchThrowRun)
 {
-    const script::ScriptSource src = {"exc.script", R"(
+    const spp::ScriptSource src = {"exc.spp", R"(
 using "Actor.h";
 using <stdexcept>;
 
@@ -54,7 +54,7 @@ class Player : Actor {
     override void TakeDamage(Actor& source, float amount) {}
 }
 )"};
-    script::LoadResult r = backend->load(src, 1);
+    spp::LoadResult r = backend->load(src, 1);
     ASSERT_TRUE(r) << r.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
@@ -67,7 +67,7 @@ class Player : Actor {
 // a finally body is dropped. Nested finally blocks run from the inside out.
 TEST_P(BackendTests, TryFinallyRun)
 {
-    const script::ScriptSource src = {"fin.script", R"(
+    const spp::ScriptSource src = {"fin.spp", R"(
 using "Actor.h";
 
 class Player : Actor {
@@ -110,7 +110,7 @@ class Player : Actor {
     override void TakeDamage(Actor& source, float amount) {}
 }
 )"};
-    script::LoadResult r = backend->load(src, 1);
+    spp::LoadResult r = backend->load(src, 1);
     ASSERT_TRUE(r) << r.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));

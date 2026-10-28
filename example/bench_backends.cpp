@@ -32,8 +32,8 @@
 #include <string>
 #include <vector>
 
-#include "spp/script_runtime.h"
-#include "spp/spc_lib.h"
+#include "spp/runtime.h"
+#include "spp/sppc_lib.h"
 
 #if defined(BENCH_JIT)
 #include "spp/jit_backend.h"
@@ -59,7 +59,7 @@ std::vector<std::string> split(const std::string& s)
     return v;
 }
 
-script::ScriptSource source(const char* file)
+spp::ScriptSource source(const char* file)
 {
     const std::string path = std::string(BENCH_SOURCE_DIR) + "/example/scripts/" + file;
     std::ifstream f(path);
@@ -69,10 +69,10 @@ script::ScriptSource source(const char* file)
 }
 
 // One load. Returns the time in ms, or -1 on error (the text goes to stderr).
-double timed_load(script::Backend& b, const script::ScriptSource& s, uint32_t gen)
+double timed_load(spp::Backend& b, const spp::ScriptSource& s, uint32_t gen)
 {
     const Clock::time_point t = Clock::now();
-    script::LoadResult r = b.load(s, gen);
+    spp::LoadResult r = b.load(s, gen);
     const double ms = ms_since(t);
     if (!r) {
         std::fprintf(stderr, "load failed: %s\n", r.error.c_str());
@@ -80,7 +80,7 @@ double timed_load(script::Backend& b, const script::ScriptSource& s, uint32_t ge
     }
     // The Loader registers the class. This also proves that the module works,
     // and it links the runtime into this executable (the JIT code needs it).
-    script::Loader loader;
+    spp::Loader loader;
     std::string error;
     if (!loader.load(std::move(*r.module), error)) {
         std::fprintf(stderr, "register failed: %s\n", error.c_str());
@@ -119,42 +119,42 @@ int main(int argc, char** argv)
     }
     const std::vector<std::string> includes = split(BENCH_INCLUDES);
 
-    auto session = std::make_shared<spc::TranslatorSession>();
-    auto make = [&](bool share) -> std::unique_ptr<script::Backend> {
+    auto session = std::make_shared<sppc::TranslatorSession>();
+    auto make = [&](bool share) -> std::unique_ptr<spp::Backend> {
 #if defined(BENCH_JIT)
-        script::JitOptions o;
+        spp::JitOptions o;
         o.compiler = BENCH_CXX;
         o.include_dirs = includes;
         o.resource_dir = BENCH_RESOURCE_DIR;
         o.extra_flags = flags;
         o.pch_path = pch;
         if (share) o.session = session;
-        return std::make_unique<script::JitBackend>(std::move(o));
+        return std::make_unique<spp::JitBackend>(std::move(o));
 #else
-        script::ClangFilesOptions o;
+        spp::ClangFilesOptions o;
         o.compiler = BENCH_CXX;
         o.include_dirs = includes;
         o.resource_dir = BENCH_RESOURCE_DIR;
         o.extra_flags = flags;
         o.work_dir = std::string(BENCH_WORK_DIR) + "/bench" + std::to_string(getpid());
         if (share) o.session = session;
-        return std::make_unique<script::ClangFilesBackend>(std::move(o));
+        return std::make_unique<spp::ClangFilesBackend>(std::move(o));
 #endif
     };
 
 #if defined(BENCH_JIT)
     if (!make_pch.empty()) {
-        script::JitOptions o;
+        spp::JitOptions o;
         o.compiler = BENCH_CXX;
         o.include_dirs = includes;
         o.resource_dir = BENCH_RESOURCE_DIR;
         o.extra_flags = flags;
-        script::JitBackend b(std::move(o));
+        spp::JitBackend b(std::move(o));
         const std::string header_path = make_pch + ".hpp";
         const char* header =
             "#include <algorithm>\n#include <cstddef>\n#include <cstdint>\n#include <cstdio>\n"
             "#include <new>\n#include <string>\n#include <type_traits>\n#include <typeinfo>\n"
-            "#include <utility>\n#include \"spp/script_runtime.h\"\n#include \"Actor.h\"\n"
+            "#include <utility>\n#include \"spp/runtime.h\"\n#include \"Actor.h\"\n"
             "#include \"Math.h\"\n";
         std::ofstream(header_path) << header;
         std::string error;
@@ -170,9 +170,9 @@ int main(int argc, char** argv)
     }
 #endif
 
-    const script::ScriptSource v1 = source("player_v1.script");
-    const script::ScriptSource v2 = source("player_v2.script");
-    std::unique_ptr<script::Backend> backend = make(false);
+    const spp::ScriptSource v1 = source("player_v1.spp");
+    const spp::ScriptSource v2 = source("player_v2.spp");
+    std::unique_ptr<spp::Backend> backend = make(false);
     const double cold1 = timed_load(*backend, v1, 1);
     const double cold2 = timed_load(*backend, v2, 2);
     if (cold1 < 0 || cold2 < 0) return 1;
@@ -182,32 +182,32 @@ int main(int argc, char** argv)
     std::vector<double> w1, w2;
     double tr = 0, co = 0, ji = 0;
     for (int i = 0; i < warm; ++i) {
-        std::unique_ptr<script::Backend> b = make(!no_cache);
+        std::unique_ptr<spp::Backend> b = make(!no_cache);
         const double a = timed_load(*b, v1, 1);
         const double c = timed_load(*b, v2, 2);
         if (a < 0 || c < 0) return 1;
         w1.push_back(a);
         w2.push_back(c);
 #if defined(BENCH_JIT)
-        const script::JitTimings t = static_cast<script::JitBackend&>(*b).last_timings();
+        const spp::JitTimings t = static_cast<spp::JitBackend&>(*b).last_timings();
         tr = t.translate_ms, co = t.compile_ms, ji = t.jit_ms;
 #endif
     }
     // One translate alone: a new session (miss) and then the same session (hit).
     double miss = 0, hit = 0;
     {
-        spc::TranslateOptions to;
+        sppc::TranslateOptions to;
         to.script_text = v1.text;
         to.script_name = v1.name;
         to.generation = 1;
         to.include_dirs = includes;
         to.resource_dir = BENCH_RESOURCE_DIR;
-        spc::TranslatorSession ts;
+        sppc::TranslatorSession ts;
         Clock::time_point t = Clock::now();
-        const bool ok1 = spc::translate(to, ts).ok;
+        const bool ok1 = sppc::translate(to, ts).ok;
         miss = ms_since(t);
         t = Clock::now();
-        const bool ok2 = spc::translate(to, ts).ok;
+        const bool ok2 = sppc::translate(to, ts).ok;
         hit = ms_since(t);
         if (!ok1 || !ok2) return 1;
     }

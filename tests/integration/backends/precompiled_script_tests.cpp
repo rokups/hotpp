@@ -37,7 +37,7 @@ TEST(PrecompiledTests, HandleFieldSurvivesReloadWithLibraries)
 
 TEST(PrecompiledTests, MissingLibraryGivesErrorString)
 {
-    script::LoadResult r = script::module_from_library(std::string(SPP_BINARY_DIR) + "/none.so");
+    spp::LoadResult r = spp::module_from_library(std::string(SPP_BINARY_DIR) + "/none.so");
     EXPECT_FALSE(r);
     EXPECT_FALSE(r.error.empty());
 }

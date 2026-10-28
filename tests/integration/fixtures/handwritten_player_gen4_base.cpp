@@ -9,7 +9,7 @@
 #include <new>
 
 #include "Actor.h"
-#include "spp/script_runtime.h"
+#include "spp/runtime.h"
 
 constexpr uint32_t GEN = 4;
 
@@ -21,29 +21,29 @@ enum : unsigned {
     SLOT_COUNT = 4,
 };
 
-extern script::ClassRecord Player_record;
+extern spp::ClassRecord Player_record;
 
 // ---------------------------------------------------------------- shell
-struct Player_Shell final : Actor, script::ShellBase {
+struct Player_Shell final : Actor, spp::ShellBase {
     double extra_shell_member = 0;  // changes the shell layout
     template <class... A>
-    explicit Player_Shell(script::Construct, A&&... a) : Actor(std::forward<A>(a)...)
+    explicit Player_Shell(spp::Construct, A&&... a) : Actor(std::forward<A>(a)...)
     {
-        script::init_state(this, &Player_record);
+        spp::init_state(this, &Player_record);
     }
-    ~Player_Shell() override { script::destroy_state(this); }
+    ~Player_Shell() override { spp::destroy_state(this); }
 
     void Tick(float dt) override
     {
-        return script::call<void(Actor*, float)>(cls, SLOT_Tick, this, dt);
+        return spp::call<void(Actor*, float)>(cls, SLOT_Tick, this, dt);
     }
     void TakeDamage(float a) override
     {
-        return script::call<void(Actor*, float)>(cls, SLOT_TakeDamage_f, this, a);
+        return spp::call<void(Actor*, float)>(cls, SLOT_TakeDamage_f, this, a);
     }
     void TakeDamage(Actor& src, float a) override
     {
-        return script::call<void(Actor*, Actor&, float)>(cls, SLOT_TakeDamage_Af, this, src, a);
+        return spp::call<void(Actor*, Actor&, float)>(cls, SLOT_TakeDamage_Af, this, src, a);
     }
 };
 
@@ -62,9 +62,9 @@ static void move_float(void* dst, const void* src)
     new (dst) float(*static_cast<const float*>(src));
 }
 
-constexpr uint8_t kFloatFlags = script::kTriviallyCopyable | script::kNothrowMove;
+constexpr uint8_t kFloatFlags = spp::kTriviallyCopyable | spp::kNothrowMove;
 
-static const script::FieldInfo Player_fields[] = {
+static const spp::FieldInfo Player_fields[] = {
     {"health", "hp", typeid(float).name(), offsetof(PlayerState_g4, health), sizeof(float),
      alignof(float), kFloatFlags, init_health, move_float, nullptr},
     {"speed", nullptr, typeid(float).name(), offsetof(PlayerState_g4, speed), sizeof(float),
@@ -73,7 +73,7 @@ static const script::FieldInfo Player_fields[] = {
      alignof(float), kFloatFlags, init_shield, move_float, nullptr},
 };
 
-static const script::StateLayout Player_layout = {
+static const spp::StateLayout Player_layout = {
     "PlayerState_g4", sizeof(PlayerState_g4), alignof(PlayerState_g4), 3, Player_fields,
 };
 
@@ -85,7 +85,7 @@ static inline PlayerState_g4* state_of(Player_Shell* self)
 
 static void Player__heal(Player_Shell* self, float amount)
 {
-    if (SCRIPT_UNLIKELY(script::active_generation != GEN)) return script::stale_call("Player::heal");
+    if (SPP_UNLIKELY(spp::active_generation != GEN)) return spp::stale_call("Player::heal");
     auto* st = state_of(self);
     st->health = std::min(st->health + 2.0f * amount, 100.0f);
     std::printf("[gen4] %s: heal %.1f (x2) -> health=%.1f\n", self->Name.c_str(), amount,
@@ -100,7 +100,7 @@ static void Player__heal_slot(Actor* a, float amount)
 static void Player__Tick(Actor* a, float dt)
 {
     auto* self = static_cast<Player_Shell*>(a);
-    if (SCRIPT_UNLIKELY(script::active_generation != GEN)) return script::stale_call("Player::Tick");
+    if (SPP_UNLIKELY(spp::active_generation != GEN)) return spp::stale_call("Player::Tick");
     auto* st = state_of(self);
     self->Move({2.0f * st->speed * dt, 0, 0});
     std::printf("[gen4] %s: Tick dt=%.4f pos.x=%.4f health=%.1f shield=%.1f\n", self->Name.c_str(),
@@ -110,8 +110,8 @@ static void Player__Tick(Actor* a, float dt)
 static void Player__TakeDamage_f(Actor* a, float amount)
 {
     auto* self = static_cast<Player_Shell*>(a);
-    if (SCRIPT_UNLIKELY(script::active_generation != GEN))
-        return script::stale_call("Player::TakeDamage(float)");
+    if (SPP_UNLIKELY(spp::active_generation != GEN))
+        return spp::stale_call("Player::TakeDamage(float)");
     auto* st = state_of(self);
     st->health = std::max(st->health - amount, 0.0f);
     std::printf("[gen4] %s: TakeDamage %.1f -> health=%.1f\n", self->Name.c_str(), amount,
@@ -121,8 +121,8 @@ static void Player__TakeDamage_f(Actor* a, float amount)
 static void Player__TakeDamage_Af(Actor* a, Actor& src, float amount)
 {
     auto* self = static_cast<Player_Shell*>(a);
-    if (SCRIPT_UNLIKELY(script::active_generation != GEN))
-        return script::stale_call("Player::TakeDamage(Actor&, float)");
+    if (SPP_UNLIKELY(spp::active_generation != GEN))
+        return spp::stale_call("Player::TakeDamage(Actor&, float)");
     std::printf("[gen4] %s: hit by %s\n", self->Name.c_str(), src.Name.c_str());
     self->TakeDamage(amount);
 }
@@ -135,18 +135,18 @@ static void* Player_slots[SLOT_COUNT] = {
     reinterpret_cast<void*>(&Player__heal_slot),
 };
 
-script::ClassRecord Player_record = {
+spp::ClassRecord Player_record = {
     "Player", GEN, Player_slots, SLOT_COUNT, &Player_layout, nullptr,
-    "Actor", script::shell_layout_hash("Actor", sizeof(Player_Shell), alignof(Player_Shell), 3),
+    "Actor", spp::shell_layout_hash("Actor", sizeof(Player_Shell), alignof(Player_Shell), 3),
 };
 
-static script::Instance Player_create()
+static spp::Instance Player_create()
 {
-    auto* p = new Player_Shell(script::Construct{}, std::string("Player"));
+    auto* p = new Player_Shell(spp::Construct{}, std::string("Player"));
     return {static_cast<Actor*>(p), p};
 }
 
-extern "C" void script_register(script::Registry& reg)
+extern "C" void script_register(spp::Registry& reg)
 {
     reg.add(&Player_record, &Player_create);
 }

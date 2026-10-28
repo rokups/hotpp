@@ -8,9 +8,9 @@
 #include <vector>
 
 #include "spp/backend.h"
-#include "spp/spc_lib.h"
+#include "spp/sppc_lib.h"
 
-namespace script {
+namespace spp {
 
 struct JitOptions {
     std::string compiler = "clang++";       // the driver name; an absolute path finds the toolchain best
@@ -18,7 +18,7 @@ struct JitOptions {
     std::string resource_dir;               // the Clang resource dir (empty: the default)
     // The translator cache. Empty: the backend makes its own. Share one to keep the
     // cache between backends.
-    std::shared_ptr<spc::TranslatorSession> session;
+    std::shared_ptr<sppc::TranslatorSession> session;
     std::vector<std::string> extra_flags;   // added to the compile command
     std::string pch_path;                   // optional: a precompiled header for -include-pch
     // The debug flag. "-g" gives full debug info, but Clang leaks about 270 KB of
@@ -31,7 +31,7 @@ struct JitState;  // the LLJIT of the session
 
 // The time of the phases of the last successful or failed load, in milliseconds.
 struct JitTimings {
-    double translate_ms = 0;  // spc::translate (libclang parses the headers)
+    double translate_ms = 0;  // sppc::translate (libclang parses the headers)
     double compile_ms = 0;    // Clang: parse, Sema, IR generation, IR optimization
     double jit_ms = 0;        // ORC: code generation, link, static initializers, lookup
 };
@@ -63,4 +63,4 @@ private:
     JitTimings timings_;
 };
 
-}  // namespace script
+}  // namespace spp

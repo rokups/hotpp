@@ -3,10 +3,10 @@ project(spp CXX)
 
 enable_testing()
 
-# The script backend, chosen at build time (design section 3.3).
+# The S++ backend, chosen at build time (design section 3.3).
 #   CLANG_FILES: translate in memory, run an external clang++, dlopen the .so.
 #   JIT:         translate and compile in memory with the Clang library, load with LLVM ORC.
-set(SPP_BACKEND CLANG_FILES CACHE STRING "Script backend: CLANG_FILES or JIT")
+set(SPP_BACKEND CLANG_FILES CACHE STRING "S++ backend: CLANG_FILES or JIT")
 set_property(CACHE SPP_BACKEND PROPERTY STRINGS CLANG_FILES JIT)
 if(NOT SPP_BACKEND STREQUAL "JIT" AND NOT SPP_BACKEND STREQUAL "CLANG_FILES")
     message(FATAL_ERROR "SPP_BACKEND must be CLANG_FILES or JIT. It is: ${SPP_BACKEND}")
@@ -61,33 +61,32 @@ target_link_libraries(minengine PRIVATE spp_runtime)
 set_target_properties(minengine PROPERTIES ENABLE_EXPORTS ON)
 
 # ------------------------------------------------------------ Step F1
-# The translator library spc_lib and the tool spc. They need libclang (C API)
-# from the system.
+# The translator library sppc_lib. It needs libclang (C API) from the system.
+# The tool sppc (below) uses it.
 find_library(CLANG_C_LIBRARY NAMES clang REQUIRED)
 find_path(CLANG_C_INCLUDE_DIR clang-c/Index.h REQUIRED)
 execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
                 OUTPUT_VARIABLE CLANG_RESOURCE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
-add_library(spc_lib STATIC src/translator/spc_lib.cpp src/translator/emit.cpp src/translator/lower.cpp src/translator/types.cpp
+add_library(sppc_lib STATIC src/translator/sppc_lib.cpp src/translator/emit.cpp src/translator/lower.cpp src/translator/types.cpp
     src/translator/parser/script_grammar.cpp
     src/translator/parser/expression_grammar.cpp src/translator/parser/statement_grammar.cpp)
-target_include_directories(spc_lib PUBLIC ${CMAKE_SOURCE_DIR}/include)
-target_include_directories(spc_lib PRIVATE ${CLANG_C_INCLUDE_DIR})
-target_link_libraries(spc_lib PUBLIC ${CLANG_C_LIBRARY})
-target_link_libraries(spc_lib PRIVATE foonathan::lexy::core)
-target_compile_definitions(spc_lib PRIVATE SPC_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
-add_executable(spc src/translator/spc.cpp)
-target_link_libraries(spc PRIVATE spc_lib)
+target_include_directories(sppc_lib PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(sppc_lib PRIVATE ${CLANG_C_INCLUDE_DIR})
+target_link_libraries(sppc_lib PUBLIC ${CLANG_C_LIBRARY})
+target_link_libraries(sppc_lib PRIVATE foonathan::lexy::core)
+target_compile_definitions(sppc_lib PRIVATE SPP_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
 
 # ------------------------------------------------------------ Backends
-# ClangFilesBackend: spc_lib in memory, then an external compiler.
+# ClangFilesBackend: sppc_lib in memory, then an external compiler.
 add_library(spp_clang_backend STATIC src/runtime/clang_files_backend.cpp)
-target_link_libraries(spp_clang_backend PUBLIC spp_runtime spc_lib)
+target_link_libraries(spp_clang_backend PUBLIC spp_runtime sppc_lib)
 
-# sppc compiles scripts ahead of time. Its output loads in every build.
+# sppc is the S++ tool. It translates a .spp file (--emit-cpp) or compiles it ahead
+# of time into a .so. The output loads in every build.
 add_executable(sppc src/tools/sppc.cpp)
 target_link_libraries(sppc PRIVATE spp_clang_backend)
 
-# JitBackend: spc_lib in memory, the Clang library compiles in memory, LLVM ORC loads.
+# JitBackend: sppc_lib in memory, the Clang library compiles in memory, LLVM ORC loads.
 # LLVM and Clang come from the system. CPM does not fetch them.
 if(SPP_BACKEND STREQUAL "JIT")
     # LLVMConfig.cmake probes C headers (FindLibEdit), so the C language must be on.
@@ -99,7 +98,7 @@ if(SPP_BACKEND STREQUAL "JIT")
     target_include_directories(spp_jit_backend PUBLIC ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(spp_jit_backend SYSTEM PUBLIC ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
     target_compile_definitions(spp_jit_backend PRIVATE ${LLVM_DEFINITIONS})
-    target_link_libraries(spp_jit_backend PUBLIC spp_runtime spc_lib clang-cpp LLVM)
+    target_link_libraries(spp_jit_backend PUBLIC spp_runtime sppc_lib clang-cpp LLVM)
 endif()
 
 # make_default_backend() returns the backend that SPP_BACKEND selected.
@@ -156,7 +155,7 @@ if(SDL3_FOUND AND NOT CMAKE_VERSION VERSION_LESS 3.24)
         IMGUI_APP_INCLUDES="${CMAKE_SOURCE_DIR}/include|${CMAKE_SOURCE_DIR}/example/engine|${CMAKE_SOURCE_DIR}/example/imgui|${imgui_SOURCE_DIR}"
         IMGUI_APP_RESOURCE_DIR="${CLANG_RESOURCE_DIR}"
         IMGUI_APP_WORK_DIR="${CMAKE_BINARY_DIR}/imgui_work"
-        IMGUI_APP_DEFAULT_SCRIPT="${CMAKE_SOURCE_DIR}/example/imgui/demo.script")
+        IMGUI_APP_DEFAULT_SCRIPT="${CMAKE_SOURCE_DIR}/example/imgui/demo.spp")
 else()
     message(STATUS "SDL3 or CMake 3.24 not found: the target imgui_app is not built")
 endif()
@@ -165,27 +164,27 @@ endif()
 include(cmake/SppScripts.cmake)
 file(GLOB SPP_RUNTIME_HEADERS ${CMAKE_SOURCE_DIR}/include/spp/runtime/*.h)
 set(SPP_HEADERS ${CMAKE_SOURCE_DIR}/example/engine/Actor.h ${CMAKE_SOURCE_DIR}/example/engine/Math.h
-                ${CMAKE_SOURCE_DIR}/include/spp/script_runtime.h ${CMAKE_SOURCE_DIR}/include/spp/module.h
+                ${CMAKE_SOURCE_DIR}/include/spp/runtime.h ${CMAKE_SOURCE_DIR}/include/spp/module.h
                 ${SPP_RUNTIME_HEADERS})
-spp_add_scripts(TARGET pre_gen1 GEN 1 SCRIPTS example/scripts/player_v1.script
+spp_add_scripts(TARGET pre_gen1 GEN 1 SCRIPTS example/scripts/player_v1.spp
                 INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
                 FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS})
-spp_add_scripts(TARGET pre_gen2 GEN 2 SCRIPTS example/scripts/player_v2.script AFTER pre_gen1
+spp_add_scripts(TARGET pre_gen2 GEN 2 SCRIPTS example/scripts/player_v2.spp AFTER pre_gen1
                 INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
                 FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS})
-spp_add_scripts(TARGET pre_native1 GEN 1 SCRIPTS example/scripts/native_std_v1.script AFTER pre_gen2
+spp_add_scripts(TARGET pre_native1 GEN 1 SCRIPTS example/scripts/native_std_v1.spp AFTER pre_gen2
                 INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
                 FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${CMAKE_SOURCE_DIR}/example/engine/Util.h)
-spp_add_scripts(TARGET pre_native2 GEN 2 SCRIPTS example/scripts/native_std_v2.script AFTER pre_native1
+spp_add_scripts(TARGET pre_native2 GEN 2 SCRIPTS example/scripts/native_std_v2.spp AFTER pre_native1
                 INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
                 FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${CMAKE_SOURCE_DIR}/example/engine/Util.h)
-spp_add_scripts(TARGET pre_handle1 GEN 1 SCRIPTS example/scripts/handle_v1.script AFTER pre_native2
+spp_add_scripts(TARGET pre_handle1 GEN 1 SCRIPTS example/scripts/handle_v1.spp AFTER pre_native2
                 INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
                 FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${CMAKE_SOURCE_DIR}/example/engine/Weapon.h)
-spp_add_scripts(TARGET pre_handle2 GEN 2 SCRIPTS example/scripts/handle_v2.script AFTER pre_handle1
+spp_add_scripts(TARGET pre_handle2 GEN 2 SCRIPTS example/scripts/handle_v2.spp AFTER pre_handle1
                 INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
                 FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${CMAKE_SOURCE_DIR}/example/engine/Weapon.h)
-spp_add_scripts(TARGET pre_handle3 GEN 3 SCRIPTS example/scripts/handle_v1.script AFTER pre_handle2
+spp_add_scripts(TARGET pre_handle3 GEN 3 SCRIPTS example/scripts/handle_v1.spp AFTER pre_handle2
                 INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
                 FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${CMAKE_SOURCE_DIR}/example/engine/Weapon.h)
 

@@ -1,13 +1,13 @@
 # spp_add_scripts: compile scripts ahead of time with the tool sppc.
 #
-#   spp_add_scripts(TARGET name SCRIPTS a.script b.script GEN n
+#   spp_add_scripts(TARGET name SCRIPTS a.spp b.spp GEN n
 #                   [INCLUDES dir...] [FLAGS flag...] [DEPENDS file...]
 #                   [OUT_DIR dir] [AFTER target])
 #
 # The function only runs sppc. It makes one custom target "name". The target
 # makes the library OUT_DIR/<script name>.g<n>.so for each script. OUT_DIR
 # defaults to ${CMAKE_BINARY_DIR}/spp_scripts. Load such a library with
-# script::module_from_library. The variable SPP_SCRIPTS_<TARGET>_LIBRARIES gets the paths.
+# spp::module_from_library. The variable SPP_SCRIPTS_<TARGET>_LIBRARIES gets the paths.
 #
 # The generations of one class share a slot file in OUT_DIR. Build generation 2
 # after generation 1: give AFTER the target of generation 1.

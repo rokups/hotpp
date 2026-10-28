@@ -6,7 +6,7 @@
 #include <string>
 
 #include "Actor.h"
-#include "spp/script_runtime.h"
+#include "spp/runtime.h"
 
 int main(int argc, char** argv)
 {
@@ -14,16 +14,16 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "usage: minengine <library.so>\n");
         return 2;
     }
-    script::Loader loader;  // declared first: it is destroyed last
+    spp::Loader loader;  // declared first: it is destroyed last
     World world;            // the world deletes the actors, the library must still be loaded
 
     std::string error;
-    script::LoadResult module = script::module_from_library(argv[1]);
+    spp::LoadResult module = spp::module_from_library(argv[1]);
     if (!module || !loader.load(std::move(*module.module), error)) {
         std::fprintf(stderr, "load failed: %s\n", module ? error.c_str() : module.error.c_str());
         return 1;
     }
-    const script::ClassEntry* entry = loader.find("Player");
+    const spp::ClassEntry* entry = loader.find("Player");
     if (!entry) {
         std::fprintf(stderr, "class Player is not registered\n");
         return 1;

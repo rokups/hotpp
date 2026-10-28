@@ -2,11 +2,11 @@
 
 #include "runtime_internal.h"
 
-namespace script {
+namespace spp {
 
 std::unordered_set<ShellBase*> g_live;
 
 void track_object(ShellBase* self) { g_live.insert(self); }
 void untrack_object(ShellBase* self) { g_live.erase(self); }
 
-}  // namespace script
+}  // namespace spp

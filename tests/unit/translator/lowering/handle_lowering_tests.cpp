@@ -11,7 +11,7 @@
 #include "parser/statement.h"
 #include "support/lowering_test_support.h"
 
-using namespace spc;
+using namespace sppc;
 using namespace lowering_test;
 
 TEST(HandleLowering, HandleLocalUsesStorageType)

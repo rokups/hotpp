@@ -31,7 +31,7 @@
 
 #include <algorithm>
 
-namespace spc::ast {
+namespace sppc::ast {
 
 namespace {
 
@@ -147,10 +147,10 @@ struct ExprPrinter {
             e.space();
         emit_expr(*n.operand, e);
     }
-    // "ref e" and "out e" as an argument or a value: script::ref_arg(e).
+    // "ref e" and "out e" as an argument or a value: spp::ref_arg(e).
     void operator()(const RefExpr& n) const
     {
-        e.put("script::ref_arg", n.pos);
+        e.put("spp::ref_arg", n.pos);
         e.put("(");
         emit_expr(*n.operand, e);
         e.put(")");
@@ -407,7 +407,7 @@ struct StmtPrinter {
         e.put(";");
     }
     // A finally block prints as an RAII guard before the try:
-    //   { script::Finally __fin_N([&] { body }); try { ... } catch ... }
+    //   { spp::Finally __fin_N([&] { body }); try { ... } catch ... }
     // The guard runs the body when the outer block ends, on each path out of it.
     // N is unique in the Emitter, so a nested try gets a different name.
     void operator()(const TryStmt& n) const
@@ -415,7 +415,7 @@ struct StmtPrinter {
         if (n.finally_block) {
             e.put("{", n.pos);
             e.space();
-            e.put("script::Finally __fin_" + std::to_string(e.next_finally()) + "([&]");
+            e.put("spp::Finally __fin_" + std::to_string(e.next_finally()) + "([&]");
             block(*n.finally_block, e);
             e.put(")");
             e.put(";");
@@ -513,4 +513,4 @@ std::string print_lines(const Stmt& s, const LineMap& map, const std::string& fi
     return e.text();
 }
 
-}  // namespace spc::ast
+}  // namespace sppc::ast

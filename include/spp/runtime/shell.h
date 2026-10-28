@@ -8,7 +8,7 @@
 
 #include "spp/runtime/records.h"
 
-namespace script {
+namespace spp {
 
 // Base of each generated shell. The shell also derives from the native class.
 struct ShellBase {
@@ -24,7 +24,7 @@ inline auto call(const ClassRecord* cls, unsigned slot, A&&... a)
 }
 
 // Property access on an object other than "this" (lower.h). "p.P" becomes
-// "Cls__get_P(script::shell_of<Cls_Shell>(p, "Cls"))". The helper accepts a pointer and
+// "Cls__get_P(spp::shell_of<Cls_Shell>(p, "Cls"))". The helper accepts a pointer and
 // a reference. The object must be a live script object of the class "cls". Else the
 // helper throws std::runtime_error. A pointer to the shell itself needs no check.
 template <class Shell, class T>
@@ -47,4 +47,4 @@ Shell* shell_of(T& v, const char* cls)
     return shell_of<Shell>(&v, cls);
 }
 
-}  // namespace script
+}  // namespace spp

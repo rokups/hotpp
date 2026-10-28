@@ -7,7 +7,7 @@
 #include <optional>
 #include <utility>
 
-namespace spc {
+namespace sppc {
 
 std::string rewrite_number(const std::string& n)
 {
@@ -118,7 +118,7 @@ struct Lowerer {
         return cx.cls->name + "__" + word + "_" + prop;
     }
 
-    // The first argument of an accessor: "self", or "script::shell_of<Cls_Shell>(obj, "Cls")"
+    // The first argument of an accessor: "self", or "spp::shell_of<Cls_Shell>(obj, "Cls")"
     // for another object. The helper checks the class of the object at run time.
     ExprP receiver(PropRef& r, uint32_t pos)
     {
@@ -126,7 +126,7 @@ struct Lowerer {
         expr(*r.obj);
         CallExpr c;
         c.pos = pos;
-        c.callee = raw("script::shell_of<" + cx.cls->name + "_Shell>", pos);
+        c.callee = raw("spp::shell_of<" + cx.cls->name + "_Shell>", pos);
         c.args.push_back(std::move(*r.obj));
         c.args.push_back(raw("\"" + cx.cls->name + "\"", 0));
         return make_expr(std::move(c));
@@ -160,8 +160,8 @@ struct Lowerer {
     // another object. Gives false when the target is not a property.
     // In a statement ("discard" is true) the write is a call of the setter. Then a compound
     // write on "this" is "Cls__set_P(self, Cls__get_P(self) op (e))".
-    // Else a helper of script_runtime.h makes the write. The helper gives the C# value and
-    // evaluates the object once: script::prop_set, script::prop_update or script::prop_post.
+    // Else a helper of runtime.h makes the write. The helper gives the C# value and
+    // evaluates the object once: spp::prop_set, spp::prop_update or spp::prop_post.
     bool prop_write(ExprP& e, bool discard)
     {
         static const std::map<std::string, std::string> op_names = {
@@ -210,10 +210,10 @@ struct Lowerer {
             }
             e = call_of(set, args_of(std::move(recv), std::move(value)), pos);
         } else if (op.empty()) {
-            e = call_of("script::prop_set", args_of(raw(set, pos), std::move(recv), std::move(value)), pos);
+            e = call_of("spp::prop_set", args_of(raw(set, pos), std::move(recv), std::move(value)), pos);
         } else {
-            const std::string helper = postfix && !discard ? "script::prop_post" : "script::prop_update";
-            e = call_of(helper + "<script::" + op_names.at(op) + ">",
+            const std::string helper = postfix && !discard ? "spp::prop_post" : "spp::prop_update";
+            e = call_of(helper + "<spp::" + op_names.at(op) + ">",
                         args_of(raw(get, pos), raw(set, pos), std::move(recv), std::move(value)), pos);
         }
         return true;
@@ -278,14 +278,14 @@ struct Lowerer {
         e = make_expr(std::move(c));
     }
 
-    // Wraps an object in "script::deref(...)". The helper gives a reference for a pointer and
+    // Wraps an object in "spp::deref(...)". The helper gives a reference for a pointer and
     // for a reference. So the member access after it is the same for both.
     void deref(ExprP& obj)
     {
         const uint32_t pos = pos_of(*obj);
         CallExpr c;
         c.pos = pos;
-        c.callee = raw("script::deref", pos);
+        c.callee = raw("spp::deref", pos);
         c.args.push_back(std::move(obj));
         obj = make_expr(std::move(c));
     }
@@ -349,7 +349,7 @@ struct Lowerer {
         const uint32_t pos = l.pos;
         CallExpr c;
         c.pos = pos;
-        c.callee = raw("script::make_closure", pos);
+        c.callee = raw("spp::make_closure", pos);
         c.args.push_back(raw("GEN", 0));
         c.args.push_back(raw("\"" + cx.where + " lambda\"", 0));
         c.args.push_back(std::move(e));
@@ -382,7 +382,7 @@ struct Lowerer {
 
     // A name with more than one part. If the first part is a local, the name is a member
     // chain: "a.b.c" becomes the node of "a.b.c" with MemberExpr. The lowering of it is
-    // "script::deref(script::deref(a).b).c". Else it is a scope chain: the printer joins the
+    // "spp::deref(spp::deref(a).b).c". Else it is a scope chain: the printer joins the
     // parts with "::". The change comes before the property rewrite, so "p.P" is "obj.P".
     void member_chain(ExprP& e)
     {
@@ -542,4 +542,4 @@ void lower_block(ast::BlockStmt& b, RCtx& cx, Diagnostics& diag) { Lowerer{cx, d
 
 void lower_expr(ast::ExprP& e, RCtx& cx, Diagnostics& diag) { Lowerer{cx, diag}.expr(e); }
 
-}  // namespace spc
+}  // namespace sppc

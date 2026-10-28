@@ -6,13 +6,13 @@
 #include "emit.h"
 #include "support/emit_test_support.h"
 
-using namespace spc::ast;
+using namespace sppc::ast;
 using namespace emit_test;
 
 TEST(RefOutEmit, RefArgument)
 {
-    EXPECT_EQ(print(*make_expr(RefExpr{id("source"), false})), "script::ref_arg(source)");
-    EXPECT_EQ(print(*make_expr(RefExpr{id("v"), true})), "script::ref_arg(v)");
+    EXPECT_EQ(print(*make_expr(RefExpr{id("source"), false})), "spp::ref_arg(source)");
+    EXPECT_EQ(print(*make_expr(RefExpr{id("v"), true})), "spp::ref_arg(v)");
 }
 
 TEST(RefOutEmit, RefLocal)

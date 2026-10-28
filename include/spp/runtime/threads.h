@@ -2,7 +2,7 @@
 #pragma once
 #include <cstdint>
 
-namespace script {
+namespace spp {
 
 // The generation that is live now. A generation function checks it.
 extern uint32_t active_generation;
@@ -58,4 +58,4 @@ void pin(uint32_t generation);
 void unpin(uint32_t generation);
 uint32_t pin_count(uint32_t generation);
 
-}  // namespace script
+}  // namespace spp

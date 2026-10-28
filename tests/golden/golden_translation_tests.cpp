@@ -10,7 +10,7 @@
 #include <sstream>
 #include <string>
 
-#include "spp/spc_lib.h"
+#include "spp/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 using namespace translator_test;
@@ -39,11 +39,11 @@ void golden_pair(const std::string& base)
 {
     std::string slots;
     for (int gen = 1; gen <= 2; ++gen) {
-        const std::string file = base + "_v" + std::to_string(gen) + ".script";
-        spc::TranslateOptions o = engine_options(file.c_str(), gen);
+        const std::string file = base + "_v" + std::to_string(gen) + ".spp";
+        sppc::TranslateOptions o = engine_options(file.c_str(), gen);
         o.script_name = file;  // the file name only, so the output has no absolute path
         o.slots_in = slots;
-        const spc::TranslateResult r = spc::translate(o);
+        const sppc::TranslateResult r = sppc::translate(o);
         ASSERT_TRUE(r.ok) << r.diagnostics;
         const std::string stem = base + "_v" + std::to_string(gen) + ".g" + std::to_string(gen);
         check_golden(stem + ".cpp", r.cpp);
@@ -55,10 +55,10 @@ void golden_pair(const std::string& base)
 // Translates one script as generation 1. The script has no second generation.
 void golden_one(const std::string& base)
 {
-    const std::string file = base + ".script";
-    spc::TranslateOptions o = engine_options(file.c_str(), 1);
+    const std::string file = base + ".spp";
+    sppc::TranslateOptions o = engine_options(file.c_str(), 1);
     o.script_name = file;
-    const spc::TranslateResult r = spc::translate(o);
+    const sppc::TranslateResult r = sppc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     check_golden(base + ".g1.cpp", r.cpp);
     check_golden(base + ".g1.slots", r.slots_out);

@@ -5,7 +5,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace script {
+namespace spp {
 
 // A handle is a smart pointer. "is_handle<T>" is true for std::shared_ptr. A user can
 // specialize it for a custom smart pointer.
@@ -94,4 +94,4 @@ private:
 template <class T, auto Add, auto Release>
 struct is_handle<Intrusive<T, Add, Release>> : std::true_type {};
 
-}  // namespace script
+}  // namespace spp

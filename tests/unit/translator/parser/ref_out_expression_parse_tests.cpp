@@ -9,15 +9,15 @@
 #include "parser/expression.h"
 #include "support/expression_parse_test_support.h"
 
-using namespace spc;
+using namespace sppc;
 using namespace expr_test;
 
 TEST(RefOutExpressionParse, RefAndOutArguments)
 {
-    EXPECT_EQ(round_trip("f(ref a, out b.c)"), "f(script::ref_arg(a), script::ref_arg(b::c))");
-    EXPECT_EQ(round_trip("ref a[1]"), "script::ref_arg(a[1])");
-    EXPECT_EQ(round_trip("this.target = ref source"), "this.target = script::ref_arg(source)");
-    EXPECT_EQ(round_trip("Fill(out v) + 1"), "Fill(script::ref_arg(v)) + 1");
+    EXPECT_EQ(round_trip("f(ref a, out b.c)"), "f(spp::ref_arg(a), spp::ref_arg(b::c))");
+    EXPECT_EQ(round_trip("ref a[1]"), "spp::ref_arg(a[1])");
+    EXPECT_EQ(round_trip("this.target = ref source"), "this.target = spp::ref_arg(source)");
+    EXPECT_EQ(round_trip("Fill(out v) + 1"), "Fill(spp::ref_arg(v)) + 1");
 }
 
 TEST(RefOutExpressionParse, RefNode)

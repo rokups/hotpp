@@ -1,7 +1,7 @@
 // The argument "ref e" or "out e" of the script.
 #pragma once
 
-namespace script {
+namespace spp {
 
 // The argument "ref e" or "out e" of the script. It holds a reference to the operand.
 // Clang picks the form from the native signature: a "T&" parameter gets the object,
@@ -21,4 +21,4 @@ constexpr RefArg<T> ref_arg(T& v) noexcept
 template <class T>
 void ref_arg(const T&&) = delete;
 
-}  // namespace script
+}  // namespace spp

@@ -18,7 +18,7 @@ add_executable(unit_translator_parser_tests
     statement_limit_parse_tests.cpp
     statement_parse_tests.cpp
     try_catch_finally_parse_tests.cpp)
-target_link_libraries(unit_translator_parser_tests PRIVATE spc_lib GTest::gtest_main)
+target_link_libraries(unit_translator_parser_tests PRIVATE sppc_lib GTest::gtest_main)
 target_include_directories(unit_translator_parser_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator ${CMAKE_SOURCE_DIR}/tests)
 target_compile_definitions(unit_translator_parser_tests PRIVATE SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 gtest_discover_tests(unit_translator_parser_tests)

@@ -1,9 +1,9 @@
-// Tests for spc::translate with the [alias] attribute of a field.
+// Tests for sppc::translate with the [alias] attribute of a field.
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "spp/spc_lib.h"
+#include "spp/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 using namespace translator_test;
@@ -12,7 +12,7 @@ TEST(AliasTranslation, AliasGoesToTheReflectionRow)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
-    const spc::TranslateResult r = spc::translate(
+    const sppc::TranslateResult r = sppc::translate(
         temp_options(dir, "using \"w.h\";\nclass Foo : Widget {\n"
                           "    [alias(\"old\")] int n = 0;\n    int m = 0;\n}\n"));
     ASSERT_TRUE(r.ok) << r.diagnostics;

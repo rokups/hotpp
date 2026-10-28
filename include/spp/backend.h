@@ -13,7 +13,7 @@
 
 #include "spp/module.h"
 
-namespace script {
+namespace spp {
 
 struct ScriptSource {
     std::string name;  // the script name or path; the diagnostics and "#line" use it
@@ -32,4 +32,4 @@ public:
 // The backend that SPP_BACKEND selected at build time.
 std::unique_ptr<Backend> make_default_backend();
 
-}  // namespace script
+}  // namespace spp

@@ -11,7 +11,7 @@
 
 namespace expr_test {
 
-using namespace spc;
+using namespace sppc;
 
 // A parse of the whole text. The map and the text live as long as the object.
 struct Parsed {

@@ -68,9 +68,9 @@ class Player : Actor {
 }
 )";
 
-script::Backend& backend()
+spp::Backend& backend()
 {
-    static std::unique_ptr<script::Backend> b = script::make_default_backend();
+    static std::unique_ptr<spp::Backend> b = spp::make_default_backend();
     return *b;
 }
 
@@ -81,25 +81,25 @@ script::Backend& backend()
 class ModuleSupplier {
 public:
     ModuleSupplier(const char* text, uint32_t generation)
-        : source_{std::string("r5_player_v") + std::to_string(generation) + ".script", text},
+        : source_{std::string("r5_player_v") + std::to_string(generation) + ".spp", text},
           generation_(generation)
     {
     }
 
-    script::Module get()
+    spp::Module get()
     {
         if (!path_.empty()) {
-            script::LoadResult again = script::module_from_library(path_);
+            spp::LoadResult again = spp::module_from_library(path_);
             if (again) return std::move(*again.module);
         }
-        script::LoadResult r = backend().load(source_, generation_);
+        spp::LoadResult r = backend().load(source_, generation_);
         if (!r) throw std::runtime_error(r.error);
         if (std::filesystem::exists(r.module->origin)) path_ = r.module->origin;
         return std::move(*r.module);
     }
 
 private:
-    script::ScriptSource source_;
+    spp::ScriptSource source_;
     uint32_t generation_;
     std::string path_;
 };
@@ -120,22 +120,22 @@ ModuleSupplier& v2_supplier()
 // It runs after each actor tick. It reads only data that does not change during a frame.
 struct Rig {
     Session s;
-    std::vector<script::Instance> actors;
-    std::unordered_map<Actor*, script::ShellBase*> shell_of;  // read only while ticking
+    std::vector<spp::Instance> actors;
+    std::unordered_map<Actor*, spp::ShellBase*> shell_of;  // read only while ticking
     std::atomic<int> violations{0};
     std::atomic<int> ticks_checked{0};
 
-    void start(script::Module v1)
+    void start(spp::Module v1)
     {
         ASSERT_NO_FATAL_FAILURE(s.start(std::move(v1)));
         actors.push_back(s.inst);
-        const script::ClassEntry* entry = s.loader.find("Player");
+        const spp::ClassEntry* entry = s.loader.find("Player");
         for (int i = 1; i < kActors; ++i) {
-            script::Instance inst = entry->create();
+            spp::Instance inst = entry->create();
             actors.push_back(inst);
             s.world.Add(static_cast<Actor*>(inst.native));
         }
-        for (const script::Instance& i : actors)
+        for (const spp::Instance& i : actors)
             shell_of[static_cast<Actor*>(i.native)] = i.shell;
         s.world.SetTickObserver([this](Actor* a) { check(a); });
     }
@@ -145,14 +145,14 @@ struct Rig {
     // generation 2 with a block of generation 1. It gives a missing field or a wrong value.
     void check(Actor* a)
     {
-        script::ShellBase* sh = shell_of.find(a)->second;
+        spp::ShellBase* sh = shell_of.find(a)->second;
         ticks_checked.fetch_add(1, std::memory_order_relaxed);
-        bool ok = script::in_script_tick() >= 1;
+        bool ok = spp::in_script_tick() >= 1;
         const uint32_t gen = sh->cls->generation;
-        ok = ok && gen == script::active_generation;
-        const float* hp = script::field_ptr<float>(sh, "hp");
-        const float* health = script::field_ptr<float>(sh, "health");
-        const float* shield = script::field_ptr<float>(sh, "shield");
+        ok = ok && gen == spp::active_generation;
+        const float* hp = spp::field_ptr<float>(sh, "hp");
+        const float* health = spp::field_ptr<float>(sh, "health");
+        const float* shield = spp::field_ptr<float>(sh, "shield");
         if (gen == 1) {
             ok = ok && hp && !health && !shield && !std::isnan(*hp) && *hp >= kStartHealth;
         } else if (gen == 2) {
@@ -172,16 +172,16 @@ void run_commit_only_at_barrier(unsigned seed)
     Session& s = rig.s;
     std::vector<Actor*> addr = s.world.Actors();
     std::vector<void*> old_state;
-    for (const script::Instance& i : rig.actors) old_state.push_back(i.shell->state);
+    for (const spp::Instance& i : rig.actors) old_state.push_back(i.shell->state);
 
     // The hook is the frame boundary: it runs on the main thread, at the barrier.
     int frame = 0;         // the number of frames that started
     int commit_frame = 0;  // the frame whose boundary committed (0: none yet)
     int busy_at_commit = 0;
-    const uint64_t unsafe0 = script::unsafe_commit_count();
+    const uint64_t unsafe0 = spp::unsafe_commit_count();
     s.world.SetFrameBoundaryHook([&] {
         if (s.loader.reload_pending()) {
-            busy_at_commit += script::in_script_tick();
+            busy_at_commit += spp::in_script_tick();
             std::string err;
             if (!s.loader.commit_pending(err)) {
                 ADD_FAILURE() << "commit failed: " << err;
@@ -195,7 +195,7 @@ void run_commit_only_at_barrier(unsigned seed)
     // The compile thread: it waits for a random time and then requests the reload.
     std::mt19937 rng(seed);
     const auto delay = std::chrono::microseconds(std::uniform_int_distribution<int>(0, 20000)(rng));
-    script::Module v2 = v2_supplier().get();  // built on the main thread, before the threads run
+    spp::Module v2 = v2_supplier().get();  // built on the main thread, before the threads run
     std::atomic<bool> requested{false};
     std::atomic<bool> stop{false};
     std::atomic<int> unexpected{0};
@@ -208,7 +208,7 @@ void run_commit_only_at_barrier(unsigned seed)
         // Then it requests a bad reload again and again.
         // So a validation can run at the same time as the commit. Each one must fail.
         while (!stop.load()) {
-            script::LoadResult other = script::module_from_library(GEN4_BASE_SO);
+            spp::LoadResult other = spp::module_from_library(GEN4_BASE_SO);
             std::string e;
             if (other && s.loader.request_reload(std::move(*other.module), e)) ++unexpected;
             (void)s.loader.reload_pending();
@@ -232,10 +232,10 @@ void run_commit_only_at_barrier(unsigned seed)
     EXPECT_EQ(rig.violations.load(), 0);
     EXPECT_GE(rig.ticks_checked.load(), kActors * kFrames);
     EXPECT_EQ(busy_at_commit, 0);
-    EXPECT_EQ(script::unsafe_commit_count(), unsafe0);
-    EXPECT_EQ(script::in_script_tick(), 0);
+    EXPECT_EQ(spp::unsafe_commit_count(), unsafe0);
+    EXPECT_EQ(spp::in_script_tick(), 0);
     EXPECT_FALSE(s.loader.reload_pending());
-    EXPECT_EQ(script::active_generation, 2u);
+    EXPECT_EQ(spp::active_generation, 2u);
 
     // The last frames: the same behavior for each actor, the same address.
     ASSERT_EQ(s.world.Actors(), addr);
@@ -246,10 +246,10 @@ void run_commit_only_at_barrier(unsigned seed)
     EXPECT_EQ(rig.violations.load(), 0);
     int wrong = 0;
     for (size_t i = 0; i < rig.actors.size(); ++i) {
-        script::ShellBase* sh = rig.actors[i].shell;
-        const float* health = script::field_ptr<float>(sh, "health");
-        const float* shield = script::field_ptr<float>(sh, "shield");
-        const float* hp = script::field_ptr<float>(sh, "hp");
+        spp::ShellBase* sh = rig.actors[i].shell;
+        const float* health = spp::field_ptr<float>(sh, "health");
+        const float* shield = spp::field_ptr<float>(sh, "shield");
+        const float* hp = spp::field_ptr<float>(sh, "hp");
         // The generation 1 Tick ran commit_frame times and added 1 each time.
         const bool good = sh->cls->generation == 2 && sh->state != old_state[i] && !hp &&
                           health && *health == kStartHealth + static_cast<float>(commit_frame) &&
@@ -275,7 +275,7 @@ void run_rejected_reload(unsigned seed)
     Session& s = rig.s;
     s.commit_at_frame_boundary();
     std::vector<void*> old_state;
-    for (const script::Instance& i : rig.actors) old_state.push_back(i.shell->state);
+    for (const spp::Instance& i : rig.actors) old_state.push_back(i.shell->state);
 
     std::mt19937 rng(seed);
     const auto delay = std::chrono::microseconds(std::uniform_int_distribution<int>(0, 20000)(rng));
@@ -285,14 +285,14 @@ void run_rejected_reload(unsigned seed)
     std::thread compile_thread([&] {
         std::this_thread::sleep_for(delay);
         // 1. A library that is not there: there is no Module to give.
-        script::LoadResult missing = script::module_from_library(GEN3_MISSING_SO);
+        spp::LoadResult missing = spp::module_from_library(GEN3_MISSING_SO);
         missing_ok = static_cast<bool>(missing);
         missing_error = missing.error;
         // 2. A library with another shell layout: the validation rejects it.
-        script::LoadResult other = script::module_from_library(GEN4_BASE_SO);
+        spp::LoadResult other = spp::module_from_library(GEN4_BASE_SO);
         if (other) base_ok = s.loader.request_reload(std::move(*other.module), base_error);
         // 3. A module without the register function.
-        null_ok = s.loader.request_reload(script::Module{}, null_error);
+        null_ok = s.loader.request_reload(spp::Module{}, null_error);
         pending_after = s.loader.reload_pending();
         requested.store(true);
     });
@@ -314,13 +314,13 @@ void run_rejected_reload(unsigned seed)
     EXPECT_FALSE(s.loader.reload_pending());
     EXPECT_FALSE(s.commit_failed);
     EXPECT_EQ(rig.violations.load(), 0);
-    EXPECT_EQ(script::active_generation, 1u);
+    EXPECT_EQ(spp::active_generation, 1u);
 
     // Nothing changed: same blocks, same generation, and the actors kept ticking.
     int wrong = 0;
     for (size_t i = 0; i < rig.actors.size(); ++i) {
-        script::ShellBase* sh = rig.actors[i].shell;
-        const float* hp = script::field_ptr<float>(sh, "hp");
+        spp::ShellBase* sh = rig.actors[i].shell;
+        const float* hp = spp::field_ptr<float>(sh, "hp");
         const bool good = sh->cls->generation == 1 && sh->state == old_state[i] && hp &&
                           *hp == kStartHealth + static_cast<float>(frame);
         if (!good) ++wrong;
@@ -332,7 +332,7 @@ void run_rejected_reload(unsigned seed)
     ASSERT_TRUE(s.loader.request_reload(v2_supplier().get(), error)) << error;
     s.world.TickParallel(kDt, kWorkers);
     EXPECT_FALSE(s.commit_failed);
-    EXPECT_EQ(script::active_generation, 2u);
+    EXPECT_EQ(spp::active_generation, 2u);
     EXPECT_EQ(rig.violations.load(), 0);
 }
 

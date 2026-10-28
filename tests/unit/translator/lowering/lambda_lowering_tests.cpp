@@ -11,18 +11,18 @@
 #include "parser/statement.h"
 #include "support/lowering_test_support.h"
 
-using namespace spc;
+using namespace sppc;
 using namespace lowering_test;
 
 TEST(LambdaLowering, Lambda)
 {
     Fixture f;
     EXPECT_EQ(f.body("var f = (float x, int* q) => { q.foo(); this.n = x; };"),
-              "auto f = script::make_closure(GEN, \"Player::run lambda\", [=](float x, int32_t* q) "
-              "{ [[maybe_unused]] auto* st = state_of(self); script::deref(q).foo(); st->n = x; });");
+              "auto f = spp::make_closure(GEN, \"Player::run lambda\", [=](float x, int32_t* q) "
+              "{ [[maybe_unused]] auto* st = state_of(self); spp::deref(q).foo(); st->n = x; });");
     EXPECT_EQ(f.expr("(Actor* a) => { a.x = 1; }"),
-              "script::make_closure(GEN, \"Player::run lambda\", [=](Actor* a) "
-              "{ [[maybe_unused]] auto* st = state_of(self); script::deref(a).x = 1; })");
+              "spp::make_closure(GEN, \"Player::run lambda\", [=](Actor* a) "
+              "{ [[maybe_unused]] auto* st = state_of(self); spp::deref(a).x = 1; })");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
@@ -30,7 +30,7 @@ TEST(LambdaLowering, LambdaNoParameters)
 {
     Fixture f;
     EXPECT_EQ(f.expr("() => { this.fired = this.fired + 1; }"),
-              "script::make_closure(GEN, \"Player::run lambda\", [=]() "
+              "spp::make_closure(GEN, \"Player::run lambda\", [=]() "
               "{ [[maybe_unused]] auto* st = state_of(self); st->fired = st->fired + 1; })");
 }
 

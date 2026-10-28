@@ -6,7 +6,7 @@
 #include "emit.h"
 #include "support/emit_test_support.h"
 
-using namespace spc::ast;
+using namespace sppc::ast;
 using namespace emit_test;
 
 TEST(LambdaEmit, Lambda)

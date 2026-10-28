@@ -11,6 +11,6 @@
 
 class BackendTests : public ::testing::TestWithParam<std::string> {
 protected:
-    void SetUp() override { backend = script::make_default_backend(); }
-    std::unique_ptr<script::Backend> backend;
+    void SetUp() override { backend = spp::make_default_backend(); }
+    std::unique_ptr<spp::Backend> backend;
 };

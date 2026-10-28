@@ -8,55 +8,55 @@
 #include <vector>
 
 #include "Actor.h"
-#include "spp/script_runtime.h"
+#include "spp/runtime.h"
 
 namespace {
 
 class Closure : public ::testing::Test {
 protected:
-    void SetUp() override { script::active_generation = 9001; }
-    void TearDown() override { script::active_generation = 0; }
+    void SetUp() override { spp::active_generation = 9001; }
+    void TearDown() override { spp::active_generation = 0; }
 };
 
 TEST_F(Closure, PinsFollowTheCopiesAndMoves)
 {
-    EXPECT_EQ(script::pin_count(9001), 0u);
+    EXPECT_EQ(spp::pin_count(9001), 0u);
     {
-        script::Closure<void()> a(9001, "a", [] {});
-        EXPECT_EQ(script::pin_count(9001), 1u);
-        script::Closure<void()> b = a;
-        EXPECT_EQ(script::pin_count(9001), 2u);
-        script::Closure<void()> c = std::move(b);
-        EXPECT_EQ(script::pin_count(9001), 2u);
+        spp::Closure<void()> a(9001, "a", [] {});
+        EXPECT_EQ(spp::pin_count(9001), 1u);
+        spp::Closure<void()> b = a;
+        EXPECT_EQ(spp::pin_count(9001), 2u);
+        spp::Closure<void()> c = std::move(b);
+        EXPECT_EQ(spp::pin_count(9001), 2u);
         a = c;
-        EXPECT_EQ(script::pin_count(9001), 2u);
+        EXPECT_EQ(spp::pin_count(9001), 2u);
         std::function<void()> f = c;  // a std::function holds one more pin
-        EXPECT_EQ(script::pin_count(9001), 3u);
+        EXPECT_EQ(spp::pin_count(9001), 3u);
     }
-    EXPECT_EQ(script::pin_count(9001), 0u);
+    EXPECT_EQ(spp::pin_count(9001), 0u);
 }
 
 TEST_F(Closure, GuardRunsTheBodyOnlyInTheLiveGeneration)
 {
     int runs = 0;
-    script::Closure<int(int)> c(9001, "c", [&runs](int x) { ++runs; return x + 1; });
+    spp::Closure<int(int)> c(9001, "c", [&runs](int x) { ++runs; return x + 1; });
     EXPECT_EQ(c(1), 2);
     EXPECT_EQ(runs, 1);
-    const uint64_t stale0 = script::stale_call_count();
-    script::active_generation = 9002;
+    const uint64_t stale0 = spp::stale_call_count();
+    spp::active_generation = 9002;
     EXPECT_EQ(c(1), 0);  // R(): a default value
     EXPECT_EQ(runs, 1);
-    EXPECT_EQ(script::stale_call_count(), stale0 + 1);
-    script::active_generation = 9001;
+    EXPECT_EQ(spp::stale_call_count(), stale0 + 1);
+    spp::active_generation = 9001;
     EXPECT_EQ(c(5), 6);
 }
 
 TEST_F(Closure, ConvertsToStdFunctionAndToADelegate)
 {
-    static_assert(std::is_convertible_v<script::Closure<void(float)>, std::function<void(float)>>);
+    static_assert(std::is_convertible_v<spp::Closure<void(float)>, std::function<void(float)>>);
     float seen = 0;
-    auto c = script::make_closure(9001, "m", [&seen](float x) { seen = x; });
-    static_assert(std::is_same_v<decltype(c), script::Closure<void(float)>>);
+    auto c = spp::make_closure(9001, "m", [&seen](float x) { seen = x; });
+    static_assert(std::is_same_v<decltype(c), spp::Closure<void(float)>>);
     Delegate<void(float)> d = c;
     ASSERT_TRUE(d.IsBound());
     d(2.5f);
@@ -64,7 +64,7 @@ TEST_F(Closure, ConvertsToStdFunctionAndToADelegate)
     std::function<void(float)> f = c;
     f(4.0f);
     EXPECT_EQ(seen, 4.0f);
-    EXPECT_EQ(script::pin_count(9001), 3u);  // c, d, f
+    EXPECT_EQ(spp::pin_count(9001), 3u);  // c, d, f
 }
 
 TEST_F(Closure, PinCountIsAtomic)
@@ -74,12 +74,12 @@ TEST_F(Closure, PinCountIsAtomic)
     for (int t = 0; t < 4; ++t)
         threads.emplace_back([] {
             for (int i = 0; i < 10000; ++i) {
-                script::pin(9100);
-                script::unpin(9100);
+                spp::pin(9100);
+                spp::unpin(9100);
             }
         });
     for (auto& t : threads) t.join();
-    EXPECT_EQ(script::pin_count(9100), 0u);
+    EXPECT_EQ(spp::pin_count(9100), 0u);
 }
 
 }  // namespace

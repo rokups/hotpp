@@ -12,9 +12,9 @@
 
 #include "parser/span.h"
 
-namespace spc::ast {
+namespace sppc::ast {
 
-using spc::Span;
+using sppc::Span;
 
 // How a parameter is passed. "ref" and "out" lower to a C++ reference.
 enum class PassMode { Value, Ref, Out };
@@ -341,4 +341,4 @@ struct Script {
     std::vector<Stub> stubs;  // in source order
 };
 
-}  // namespace spc::ast
+}  // namespace sppc::ast

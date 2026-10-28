@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-namespace spc {
+namespace sppc {
 
 // Maps a byte offset to a 1-based line and a 1-based byte column.
 struct LineMap {
@@ -73,7 +73,7 @@ struct Diagnostics {
                 out += (d.file.empty() ? name : d.file) + ":" + std::to_string(d.line);
                 if (d.col > 0) out += ":" + std::to_string(d.col);
             } else {
-                out += "spc";  // no script line: the text starts with the tool name
+                out += "sppc";  // no script line: the text starts with the tool name
             }
             out += ": " + d.severity + ": " + d.msg + "\n";
         }
@@ -81,4 +81,4 @@ struct Diagnostics {
     }
 };
 
-}  // namespace spc
+}  // namespace sppc

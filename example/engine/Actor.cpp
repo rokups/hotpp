@@ -7,7 +7,7 @@
 #include <mutex>
 #include <thread>
 
-#include "spp/script_runtime.h"
+#include "spp/runtime.h"
 
 Actor::Actor() : Name("Actor") {}
 Actor::Actor(std::string name) : Name(std::move(name)) {}
@@ -122,7 +122,7 @@ void World::AddTimer(float seconds, std::function<void()> fn)
 
 void World::TickActor(Actor* actor, float dt)
 {
-    script::ScriptTickScope scope;  // the debug check of the safe point
+    spp::ScriptTickScope scope;  // the debug check of the safe point
     actor->Tick(dt);
     if (observer_) observer_(actor);
 }

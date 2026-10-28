@@ -1,9 +1,9 @@
-// Tests for spc::translate with fields and locals that have no initializer.
+// Tests for sppc::translate with fields and locals that have no initializer.
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "spp/spc_lib.h"
+#include "spp/sppc_lib.h"
 #include "support/stub_translate_test_support.h"
 #include "support/translator_test_support.h"
 
@@ -13,7 +13,7 @@ using namespace stub_translate_test;
 // No initializer: the value is the zero or default value, never an indeterminate one.
 TEST(DefaultValueTranslation, FieldsAreValueInitialized)
 {
-    const spc::TranslateResult r =
+    const sppc::TranslateResult r =
         weapon_translate("    int a;\n    Weapon w;\n    Vec3 v;\n    float f { get; set; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "using T = int32_t; new (f) T();")) << r.cpp;
@@ -24,7 +24,7 @@ TEST(DefaultValueTranslation, FieldsAreValueInitialized)
 
 TEST(DefaultValueTranslation, LocalsAreValueInitialized)
 {
-    const spc::TranslateResult r = weapon_translate(
+    const sppc::TranslateResult r = weapon_translate(
         "    int K() { int x; Vec3 v; Weapon w; Weapon* p; return x; }\n"
         "    void L() { for (int i; i < 3; i++) { } }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -36,10 +36,10 @@ TEST(DefaultValueTranslation, LocalsAreValueInitialized)
 
 TEST(DefaultValueTranslation, VarAndConstNeedAnInitializer)
 {
-    const spc::TranslateResult a = weapon_translate("    void F() { var x; }\n");
+    const sppc::TranslateResult a = weapon_translate("    void F() { var x; }\n");
     EXPECT_FALSE(a.ok);
     EXPECT_TRUE(has(a.diagnostics, "var needs an initializer")) << a.diagnostics;
-    const spc::TranslateResult b = weapon_translate("    void F() { const int X; }\n");
+    const sppc::TranslateResult b = weapon_translate("    void F() { const int X; }\n");
     EXPECT_FALSE(b.ok);
     EXPECT_TRUE(has(b.diagnostics, "a const needs an initializer")) << b.diagnostics;
 }

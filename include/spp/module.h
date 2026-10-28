@@ -5,7 +5,7 @@
 #include <optional>
 #include <string>
 
-namespace script {
+namespace spp {
 
 class Registry;
 
@@ -28,4 +28,4 @@ struct LoadResult {
 // Builds a Module from an existing shared library (dlopen and dlsym).
 LoadResult module_from_library(const std::string& path);
 
-}  // namespace script
+}  // namespace spp

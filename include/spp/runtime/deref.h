@@ -5,10 +5,10 @@
 
 #include "spp/runtime/handles.h"
 
-namespace script {
+namespace spp {
 
 // The script writes "a.b" for a pointer and for a reference. The translator writes
-// "script::deref(a).b". The helper gives an object for both.
+// "spp::deref(a).b". The helper gives an object for both.
 // A pointer gives the object that it points to. This includes an lvalue pointer ("T*&"):
 // the pointer overload is more specialized than the reference overloads.
 // An lvalue passes through as a reference, without a copy.
@@ -47,4 +47,4 @@ decltype(auto) deref(H&& h)
 template <class T, std::size_t N>
 void deref(T (&)[N]) = delete;
 
-}  // namespace script
+}  // namespace spp

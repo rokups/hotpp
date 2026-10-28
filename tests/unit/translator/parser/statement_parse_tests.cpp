@@ -12,7 +12,7 @@
 #include "parser/statement.h"
 #include "support/statement_parse_test_support.h"
 
-using namespace spc;
+using namespace sppc;
 using namespace stmt_test;
 
 TEST(StatementParse, Simple)

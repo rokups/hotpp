@@ -1,4 +1,4 @@
-// spc_lib: the translator from script text to the text of a generation .cpp file.
+// sppc_lib: the translator from script text to the text of a generation .cpp file.
 //
 // The translator has three parts.
 //   1. A parser (src/translator/parser/). It reads the structure of the script:
@@ -13,14 +13,14 @@
 //      (emit.cpp) writes each body. A "#line" directive before each line makes
 //      the Clang diagnostics point to the script.
 //
-// The function spc::translate takes strings and returns strings. It does not
+// The function sppc::translate takes strings and returns strings. It does not
 // write a file. libclang reads the imported headers from the include dirs.
-// The command line tool spc (src/translator/spc.cpp) is a thin file wrapper.
+// The command line tool sppc (src/translator/sppc.cpp) is a thin file wrapper.
 //
 // The slot file keeps the slot order of the script functions stable between the
 // generations. Native virtuals come first, in the order of the base class.
 // The script functions follow. A function keeps its slot in all later generations.
-#include "spp/spc_lib.h"
+#include "spp/sppc_lib.h"
 
 #include "ast.h"
 #include "builtin_types.h"
@@ -52,11 +52,11 @@
 
 namespace {
 
-using namespace spc::ast;
+using namespace sppc::ast;
 
 // State of the call in progress. Each thread has its own copy.
 thread_local std::string g_script;  // the script name, as given by the caller
-thread_local spc::Diagnostics g_diag;  // the diagnostics of the call
+thread_local sppc::Diagnostics g_diag;  // the diagnostics of the call
 
 struct TranslateAbort {};
 
@@ -67,7 +67,7 @@ struct TranslateAbort {};
 }
 
 // An error at a byte offset of the script. The diagnostic has a line and a column.
-[[noreturn]] void fail_at(const spc::LineMap& map, uint32_t pos, const std::string& msg)
+[[noreturn]] void fail_at(const sppc::LineMap& map, uint32_t pos, const std::string& msg)
 {
     g_diag.add(pos, map, msg);
     throw TranslateAbort{};
@@ -75,9 +75,9 @@ struct TranslateAbort {};
 
 // Parses the script: the structure, the method bodies and the field initializers.
 // The parser reports all syntax errors in source order. Any error stops the translation.
-Script parse_structure(const std::string& text, const spc::LineMap& map)
+Script parse_structure(const std::string& text, const sppc::LineMap& map)
 {
-    Script sc = spc::parse_script(text, map, g_diag);
+    Script sc = sppc::parse_script(text, map, g_diag);
     if (!g_diag.items.empty()) throw TranslateAbort{};
     return sc;
 }
@@ -118,7 +118,7 @@ std::string norm(const std::string& s)
 
 // The key form of a type: the spelling is canonical (see builtin_types.h) and has no space.
 // A native "int" and a script "int" or "int32" give the same key.
-std::string key_norm(const std::string& s) { return norm(spc::canonical_type(s, nullptr, true)); }
+std::string key_norm(const std::string& s) { return norm(sppc::canonical_type(s, nullptr, true)); }
 
 struct NativeVirtual {
     std::string name, ret, owner;
@@ -301,7 +301,7 @@ std::string str_join(const std::vector<std::string>& v, const char* sep)
     return r;
 }
 
-using spc::RCtx;
+using sppc::RCtx;
 
 // The name of a function for the stale call log: "Cls::name" or "Cls::name(types)".
 std::string body_what(const std::string& cn, const Method& m)
@@ -320,7 +320,7 @@ std::string body_what(const std::string& cn, const Method& m)
 //  - Each accessor becomes a script fn: "Type get_Name()" and "void set_Name(Type value)".
 //    The body of an auto accessor reads or writes the hidden field.
 // The property stays in cd.props. The lowering pass uses it to rewrite reads and writes.
-void desugar_props(ClassDef& cd, const spc::LineMap& map)
+void desugar_props(ClassDef& cd, const sppc::LineMap& map)
 {
     std::set<std::string> prop_names;
     for (const Property& p : cd.props) {
@@ -563,9 +563,9 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
     for (const auto& a : args) cargs.push_back(a.c_str());
     ClangHandles ch;
     CXIndex idx = ch.idx = clang_createIndex(0, 0);
-    CXUnsavedFile unsaved{"spc_probe.cpp", probe.c_str(), static_cast<unsigned long>(probe.size())};
+    CXUnsavedFile unsaved{"sppc_probe.cpp", probe.c_str(), static_cast<unsigned long>(probe.size())};
     CXTranslationUnit tu = nullptr;
-    CXErrorCode ec = clang_parseTranslationUnit2(idx, "spc_probe.cpp", cargs.data(),
+    CXErrorCode ec = clang_parseTranslationUnit2(idx, "sppc_probe.cpp", cargs.data(),
                                                  static_cast<int>(cargs.size()), &unsaved, 1,
                                                  CXTranslationUnit_SkipFunctionBodies, &tu);
     ch.tu = tu;
@@ -629,7 +629,7 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
 
 }  // namespace
 
-namespace spc {
+namespace sppc {
 
 // The cache of one key (flags + imports): the base classes and the files that the parse read.
 struct TranslatorSession::Impl {
@@ -658,14 +658,14 @@ void TranslatorSession::clear()
     impl_->entries.clear();
 }
 
-}  // namespace spc
+}  // namespace sppc
 
 namespace {
 
 // Gives the base classes for one key. A cache hit needs all names in the entry and
 // the same stamp for each file. Otherwise it parses again and keeps the new result.
 std::map<std::string, BaseInfo> session_bases(
-    spc::TranslatorSession::Impl& S, const std::string& key, const std::set<std::string>& names,
+    sppc::TranslatorSession::Impl& S, const std::string& key, const std::set<std::string>& names,
     const std::function<void(std::map<std::string, BaseInfo>&, std::vector<FileStamp>&, Hierarchy&)>& parse,
     Hierarchy& hierarchy)
 {
@@ -700,8 +700,8 @@ std::map<std::string, BaseInfo> session_bases(
     return r;
 }
 
-void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Impl& session,
-                    spc::TranslateResult& res)
+void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::Impl& session,
+                    sppc::TranslateResult& res)
 {
     Options opt;
     opt.input = in.script_name;
@@ -709,22 +709,22 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
     opt.gen = in.generation;
     opt.includes = in.include_dirs;
     opt.resource_dir = in.resource_dir;
-#ifdef SPC_RESOURCE_DIR
-    if (opt.resource_dir.empty()) opt.resource_dir = SPC_RESOURCE_DIR;
+#ifdef SPP_RESOURCE_DIR
+    if (opt.resource_dir.empty()) opt.resource_dir = SPP_RESOURCE_DIR;
 #endif
     if (opt.gen < 1) fail(0, "the generation must be 1 or more");
     if (opt.output.empty()) opt.output = opt.input + ".cpp";
     g_script = opt.input;
 
-    const spc::LineMap map(in.script_text);
+    const sppc::LineMap map(in.script_text);
     Script sc = parse_structure(in.script_text, map);
 
     // ---- the type model: the preludes first, then the stubs of the script
-    spc::TypeModel types;
+    sppc::TypeModel types;
     for (const auto& [pname, ptext] : in.preludes) {
-        const spc::LineMap pmap(ptext);
-        spc::Diagnostics pd;
-        Script ps = spc::parse_script(ptext, pmap, pd);
+        const sppc::LineMap pmap(ptext);
+        sppc::Diagnostics pd;
+        Script ps = sppc::parse_script(ptext, pmap, pd);
         if (pd.items.empty() && !ps.classes.empty()) {
             const ClassDef& pc = ps.classes.front();
             pd.add(pc.pos, pmap, "a prelude can hold only stubs: '" + pname + "' has the class '" + pc.name + "'");
@@ -784,11 +784,11 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
 
     const bool multi = sc.classes.size() > 1;
     Out o;
-    o.w("// Generated by spc from " + opt.input + " (generation " + std::to_string(opt.gen) +
+    o.w("// Generated by sppc from " + opt.input + " (generation " + std::to_string(opt.gen) +
         "). Do not edit.\n");
     o.w("#include <cstddef>\n#include <cstdint>\n#include <cstdio>\n"
         "#include <new>\n#include <string>\n#include <type_traits>\n#include <typeinfo>\n"
-        "#include <utility>\n\n#include \"spp/script_runtime.h\"\n\n");
+        "#include <utility>\n\n#include \"spp/runtime.h\"\n\n");
     auto reset = [&] { o.w("#line " + std::to_string(o.lines + 2) + " \"" + esc(opt.output) + "\"\n"); };
     for (const auto& im : sc.imports) {
         o.w("#line " + std::to_string(im.line) + " \"" + esc(opt.input) + "\"\n");
@@ -944,7 +944,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
         }
 
         // ---- lowering context
-        RCtx base_cx = spc::make_class_ctx(cd);
+        RCtx base_cx = sppc::make_class_ctx(cd);
         base_cx.map = &map;
         base_cx.types = &types;
         for (const auto& sc_cls : sc.classes) base_cx.script_classes.insert(sc_cls.name);
@@ -959,14 +959,14 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
         for (size_t i = 0; i < slots.size(); ++i)
             o.w("    " + slot_id(slots[i].id) + " = " + std::to_string(i) + ",\n");
         o.w("    " + slot_id("COUNT") + " = " + std::to_string(slots.size()) + ",\n};\n\n");
-        o.w("extern script::ClassRecord " + cn + "_record;\n\n");
+        o.w("extern spp::ClassRecord " + cn + "_record;\n\n");
 
         // ---- shell
         o.w("// The shell overrides every virtual of " + B + ". Each stub reads one slot.\n");
-        o.w("struct " + shell + " final : " + B + ", script::ShellBase {\n");
-        o.w("    template <class... A>\n    explicit " + shell + "(script::Construct, A&&... a) : " + B +
-            "(std::forward<A>(a)...)\n    {\n        script::init_state(this, &" + cn +
-            "_record);\n    }\n    ~" + shell + "() override { script::destroy_state(this); }\n");
+        o.w("struct " + shell + " final : " + B + ", spp::ShellBase {\n");
+        o.w("    template <class... A>\n    explicit " + shell + "(spp::Construct, A&&... a) : " + B +
+            "(std::forward<A>(a)...)\n    {\n        spp::init_state(this, &" + cn +
+            "_record);\n    }\n    ~" + shell + "() override { spp::destroy_state(this); }\n");
         for (size_t i = 0; i < native_count; ++i) {
             const NativeVirtual& nv = *slots[i].nv;
             std::vector<std::string> ps, sig = {B + "*"}, as = {nv.is_const ? "const_cast<" + shell + "*>(this)" : "this"};
@@ -977,7 +977,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
             }
             o.w("\n    " + nv.ret + " " + nv.name + "(" + str_join(ps, ", ") + ")" +
                 (nv.is_const ? " const" : "") + (nv.no_except ? " noexcept" : "") + " override\n    {\n");
-            o.w("        return script::call<" + nv.ret + "(" + str_join(sig, ", ") + ")>(cls, " +
+            o.w("        return spp::call<" + nv.ret + "(" + str_join(sig, ", ") + ")>(cls, " +
                 slot_id(slots[i].id) + ", " + str_join(as, ", ") + ");\n    }\n");
         }
         o.w("};\n\n");
@@ -993,9 +993,9 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
             fc.allow_this = false;
             std::string init;
             if (f.has_init && f.init) {
-                spc::lower_expr(f.init, fc, g_diag);
+                sppc::lower_expr(f.init, fc, g_diag);
                 if (!g_diag.items.empty()) throw TranslateAbort{};
-                init = spc::ast::print(*f.init);
+                init = sppc::ast::print(*f.init);
             }
             o.w("#line " + std::to_string(f.line) + " \"" + esc(opt.input) + "\"\n");
             o.w("static void " + P + "init_" + f.name + "(void*, void* f) { using T = " + f.type +
@@ -1004,21 +1004,21 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
         }
         o.w("\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n");
         if (cd.fields.empty()) {
-            o.w("static const script::FieldInfo* const " + cn + "_fields = nullptr;\n");
+            o.w("static const spp::FieldInfo* const " + cn + "_fields = nullptr;\n");
         } else {
-            o.w("static const script::FieldInfo " + cn + "_fields[] = {\n");
+            o.w("static const spp::FieldInfo " + cn + "_fields[] = {\n");
             for (const Field& f : cd.fields) {
                 const std::string T = f.type;
                 o.w("    {\"" + f.name + "\", " + (f.alias.empty() ? "nullptr" : "\"" + f.alias + "\"") +
                     ", typeid(" + T + ").name(), offsetof(" + S + ", " + f.name + "), sizeof(" + T +
-                    "),\n     alignof(" + T + "), script::field_flags<" + T + ">(), " + P + "init_" +
-                    f.name + ", script::move_field<" + T + ">, script::field_destroyer<" + T +
+                    "),\n     alignof(" + T + "), spp::field_flags<" + T + ">(), " + P + "init_" +
+                    f.name + ", spp::move_field<" + T + ">, spp::field_destroyer<" + T +
                     ">()},\n");
             }
             o.w("};\n");
         }
         o.w("#pragma clang diagnostic pop\n\n");
-        o.w("static const script::StateLayout " + cn + "_layout = {\n    \"" + S + "\", sizeof(" + S +
+        o.w("static const spp::StateLayout " + cn + "_layout = {\n    \"" + S + "\", sizeof(" + S +
             "), alignof(" + S + "), " + std::to_string(cd.fields.size()) + ", " + cn + "_fields,\n};\n\n");
 
         // ---- generation functions
@@ -1053,20 +1053,20 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
                              const std::string& what) {
             RCtx cx = base_cx;
             cx.where = what;
-            spc::add_params(cx, m.params);
+            sppc::add_params(cx, m.params);
             std::string head = "static " + ret + " " + sym + "(";
             if (is_fn) head += shell + "* self" + param_decl(m);
             else head += B + "* a" + param_decl(m);
             o.w(head + ")\n{\n");
             if (!is_fn) o.w("    [[maybe_unused]] auto* self = static_cast<" + shell + "*>(a);\n");
-            o.w("    if (SCRIPT_UNLIKELY(script::active_generation != GEN)) {\n");
-            o.w("        script::stale_call(\"" + what + "\");\n        return" +
+            o.w("    if (SPP_UNLIKELY(spp::active_generation != GEN)) {\n");
+            o.w("        spp::stale_call(\"" + what + "\");\n        return" +
                 (ret == "void" ? std::string() : " " + ret + "()") + ";\n    }\n");
             o.w("    [[maybe_unused]] auto* st = state_of(self);\n");
-            spc::lower_block(m.body, cx, g_diag);
+            sppc::lower_block(m.body, cx, g_diag);
             if (!g_diag.items.empty()) throw TranslateAbort{};
-            spc::ast::Emitter em(map, opt.input);
-            spc::ast::emit_stmts(m.body.stmts, em, 1);
+            sppc::ast::Emitter em(map, opt.input);
+            sppc::ast::emit_stmts(m.body.stmts, em, 1);
             em.finish();
             o.w(em.text());
             reset();
@@ -1112,7 +1112,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
                 "// generation that adds the function emits it. It reads the slot at call time.\n");
             o.w("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* a" + param_decl(m) + ")\n{\n");
             o.w("    auto* self = static_cast<" + shell + "*>(a);\n");
-            o.w("    return script::call<" + fn_ret(m) + "(" + B + "*" + type_list(m) + ")>(self->cls, " +
+            o.w("    return spp::call<" + fn_ret(m) + "(" + B + "*" + type_list(m) + ")>(self->cls, " +
                 slot_id(m.name) + ", a" + arg_list(m) + ");\n}\n\n");
             thunk_regs.push_back("    reg.add_thunk(\"" + cn + "::" + m.name +
                                  "\", reinterpret_cast<void*>(&" + P + m.name + "__thunk));\n");
@@ -1128,16 +1128,16 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
             o.w("    reinterpret_cast<void*>(&" + fn + "),\n");
         }
         o.w("};\n\n");
-        o.w("script::ClassRecord " + cn + "_record = {\n    \"" + cn + "\", GEN, " + cn + "_slots, " +
-            slot_id("COUNT") + ", &" + cn + "_layout, nullptr,\n    \"" + B + "\", script::shell_layout_hash(\"" +
+        o.w("spp::ClassRecord " + cn + "_record = {\n    \"" + cn + "\", GEN, " + cn + "_slots, " +
+            slot_id("COUNT") + ", &" + cn + "_layout, nullptr,\n    \"" + B + "\", spp::shell_layout_hash(\"" +
             B + "\", sizeof(" + shell + "), alignof(" + shell + "), " + std::to_string(native_count) +
             "),\n};\n\n");
-        o.w("static script::Instance " + cn + "_create()\n{\n    auto* p = new " + shell +
-            "(script::Construct{}" + ctor_args + ");\n    return {static_cast<" + B + "*>(p), p};\n}\n\n");
+        o.w("static spp::Instance " + cn + "_create()\n{\n    auto* p = new " + shell +
+            "(spp::Construct{}" + ctor_args + ");\n    return {static_cast<" + B + "*>(p), p};\n}\n\n");
         registers.push_back({cn, true});
     }
 
-    o.w("extern \"C\" void script_register(script::Registry& reg)\n{\n");
+    o.w("extern \"C\" void script_register(spp::Registry& reg)\n{\n");
     for (const auto& r : registers) o.w("    reg.add(&" + r.first + "_record, &" + r.first + "_create);\n");
     for (const auto& t : thunk_regs) o.w(t);
     o.w("}\n");
@@ -1150,7 +1150,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
 
 }  // namespace
 
-namespace spc {
+namespace sppc {
 
 TranslateResult translate(const TranslateOptions& in)
 {
@@ -1175,4 +1175,4 @@ TranslateResult translate(const TranslateOptions& in, TranslatorSession& session
     return res;
 }
 
-}  // namespace spc
+}  // namespace sppc

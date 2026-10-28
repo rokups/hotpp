@@ -6,9 +6,9 @@
 
 #include "spp/runtime/threads.h"
 
-#define SCRIPT_UNLIKELY(x) __builtin_expect(!!(x), 0)
+#define SPP_UNLIKELY(x) __builtin_expect(!!(x), 0)
 
-namespace script {
+namespace spp {
 
 // A closure that leaves script code (section 4.11). It holds one pin of its
 // generation for its whole life. Each call checks the generation guard: when the
@@ -64,7 +64,7 @@ public:
 
     R operator()(A... a) const
     {
-        if (SCRIPT_UNLIKELY(!fn_ || gen_ != active_generation)) {
+        if (SPP_UNLIKELY(!fn_ || gen_ != active_generation)) {
             stale_call(what_ ? what_ : "closure");
             return R();
         }
@@ -98,7 +98,7 @@ private:
 };
 
 // The guard of a script "finally" block. The translator writes
-//   { script::Finally __fin_N([&] { body }); try { ... } catch ... }
+//   { spp::Finally __fin_N([&] { body }); try { ... } catch ... }
 // The destructor runs the body on each path out of the outer block: the normal end,
 // a return, a break, a continue and an exception.
 //
@@ -146,4 +146,4 @@ auto make_closure(uint32_t generation, const char* what, F fn)
     return Closure<Sig>(generation, what, std::move(fn));
 }
 
-}  // namespace script
+}  // namespace spp

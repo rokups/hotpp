@@ -4,7 +4,7 @@
 
 #include "runtime_internal.h"
 
-namespace script {
+namespace spp {
 
 MigrationPlan build_plan(const StateLayout& o, const StateLayout& n)
 {
@@ -73,4 +73,4 @@ void migrate_block(const StateLayout& o, const StateLayout& n, const MigrationPl
     }
 }
 
-}  // namespace script
+}  // namespace spp

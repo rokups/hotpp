@@ -12,7 +12,7 @@
 #include "spp/runtime/records.h"
 #include "spp/runtime/registry.h"
 
-namespace script {
+namespace spp {
 
 // The state of a generation module in the loader (section 4.9).
 enum class GenState : uint8_t {
@@ -122,4 +122,4 @@ private:
     std::unique_ptr<Pending> pending_;
 };
 
-}  // namespace script
+}  // namespace spp

@@ -1,9 +1,9 @@
-// Tests for spc::translate with handle types: fields, parameters, "ref", "new" and preludes.
+// Tests for sppc::translate with handle types: fields, parameters, "ref", "new" and preludes.
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "spp/spc_lib.h"
+#include "spp/sppc_lib.h"
 #include "support/translator_test_support.h"
 #include "support/stub_translate_test_support.h"
 
@@ -12,7 +12,7 @@ using namespace stub_translate_test;
 
 TEST(HandleTranslation, FieldStorage)
 {
-    const spc::TranslateResult r = weapon_translate("    Weapon w = null;\n");
+    const sppc::TranslateResult r = weapon_translate("    Weapon w = null;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "    std::shared_ptr<Weapon> w;\n")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "using T = std::shared_ptr<Weapon>; new (f) T(nullptr);")) << r.cpp;
@@ -21,7 +21,7 @@ TEST(HandleTranslation, FieldStorage)
 
 TEST(HandleTranslation, ParamIsConstRef)
 {
-    const spc::TranslateResult r =
+    const sppc::TranslateResult r =
         weapon_translate("    Weapon w = null;\n    void Hit(Weapon src) { this.w = src; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const std::string p = "const std::shared_ptr<Weapon>& src";
@@ -34,7 +34,7 @@ TEST(HandleTranslation, ParamIsConstRef)
 
 TEST(HandleTranslation, RefParamIsAHandleReference)
 {
-    const spc::TranslateResult r = weapon_translate(
+    const sppc::TranslateResult r = weapon_translate(
         "    Weapon w = null;\n    void Swap(ref Weapon wp, out Vec3 v) { this.w = wp; var r = ref v; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const std::string p = "std::shared_ptr<Weapon>& wp, Vec3& v";
@@ -46,15 +46,15 @@ TEST(HandleTranslation, RefParamIsAHandleReference)
 
 TEST(HandleTranslation, RefArgumentInACall)
 {
-    const spc::TranslateResult r = weapon_translate(
+    const sppc::TranslateResult r = weapon_translate(
         "    void Fill(out Vec3 v) { }\n    void Run() { Vec3 p; this.Fill(out p); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "Foo__Fill(self, script::ref_arg(p));")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Foo__Fill(self, spp::ref_arg(p));")) << r.cpp;
 }
 
 TEST(HandleTranslation, PrefixAmpersandIsAnError)
 {
-    const spc::TranslateResult r =
+    const sppc::TranslateResult r =
         weapon_translate("    void Run() { Vec3 p; var q = &p; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "use 'ref' instead of '&'")) << r.diagnostics;
@@ -62,7 +62,7 @@ TEST(HandleTranslation, PrefixAmpersandIsAnError)
 
 TEST(HandleTranslation, NewAssignsAField)
 {
-    const spc::TranslateResult r =
+    const sppc::TranslateResult r =
         weapon_translate("    Weapon w = null;\n    void Arm() { this.w = new Weapon(3); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "st->w = std::make_shared<Weapon>(3);")) << r.cpp;
@@ -70,14 +70,14 @@ TEST(HandleTranslation, NewAssignsAField)
 
 TEST(HandleTranslation, LocalAndReturn)
 {
-    const spc::TranslateResult r = weapon_translate(
+    const sppc::TranslateResult r = weapon_translate(
         "    Weapon w = null;\n"
         "    Weapon Get() { Weapon x = this.w; return x; }\n"
         "    int Dmg() { return this.w.dmg; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "static std::shared_ptr<Weapon> Foo__Get(Foo_Shell* self);")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Weapon> x = st->w;")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "script::deref(st->w).dmg")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "spp::deref(st->w).dmg")) << r.cpp;
 }
 
 TEST(HandleTranslation, PreludeStub)
@@ -85,8 +85,8 @@ TEST(HandleTranslation, PreludeStub)
     const std::string members =
         "    Weapon w = null;\n    void Hit(Weapon src) { this.w = src; }\n"
         "    Weapon Get() { Weapon x = this.w; return x; }\n";
-    const spc::TranslateResult a = weapon_translate(members);
-    const spc::TranslateResult b = weapon_translate(members, true);
+    const sppc::TranslateResult a = weapon_translate(members);
+    const sppc::TranslateResult b = weapon_translate(members, true);
     ASSERT_TRUE(a.ok) << a.diagnostics;
     ASSERT_TRUE(b.ok) << b.diagnostics;
     // The stub lines do not change the generated text, except the "#line" numbers.
@@ -99,9 +99,9 @@ TEST(HandleTranslation, PreludeWithClassIsAnError)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kWeaponHeader);
-    spc::TranslateOptions o = temp_options(dir, weapon_script("", "    int n = 0;\n"));
+    sppc::TranslateOptions o = temp_options(dir, weapon_script("", "    int n = 0;\n"));
     o.preludes.push_back({"bad.prelude", "class Foo : Widget {\n}\n"});
-    const spc::TranslateResult r = spc::translate(o);
+    const sppc::TranslateResult r = sppc::translate(o);
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "bad.prelude")) << r.diagnostics;
     EXPECT_TRUE(has(r.diagnostics, "a prelude can hold only stubs")) << r.diagnostics;

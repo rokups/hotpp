@@ -1,4 +1,4 @@
-// Helpers for the tests that call spc::translate. CMake defines SPP_SOURCE_DIR.
+// Helpers for the tests that call sppc::translate. CMake defines SPP_SOURCE_DIR.
 #pragma once
 
 #include <gtest/gtest.h>
@@ -9,7 +9,7 @@
 #include <sstream>
 #include <string>
 
-#include "spp/spc_lib.h"
+#include "spp/sppc_lib.h"
 
 namespace translator_test {
 
@@ -36,7 +36,7 @@ public:
     {
         static int n = 0;
         path_ = fs::temp_directory_path() /
-                ("spc_session_test_" + std::to_string(::getpid()) + "_" + std::to_string(n++));
+                ("sppc_session_test_" + std::to_string(::getpid()) + "_" + std::to_string(n++));
         fs::remove_all(path_);
         fs::create_directories(path_);
     }
@@ -51,10 +51,10 @@ private:
     fs::path path_;
 };
 
-inline spc::TranslateOptions engine_options(const char* script_file, int generation)
+inline sppc::TranslateOptions engine_options(const char* script_file, int generation)
 {
     const std::string root = SPP_SOURCE_DIR;
-    spc::TranslateOptions o;
+    sppc::TranslateOptions o;
     o.script_name = root + "/example/scripts/" + script_file;
     o.script_text = read_file(o.script_name);
     o.generation = generation;
@@ -62,10 +62,10 @@ inline spc::TranslateOptions engine_options(const char* script_file, int generat
     return o;
 }
 
-inline spc::TranslateOptions temp_options(const TempDir& dir, const std::string& script_text)
+inline sppc::TranslateOptions temp_options(const TempDir& dir, const std::string& script_text)
 {
-    spc::TranslateOptions o;
-    o.script_name = "t.script";
+    sppc::TranslateOptions o;
+    o.script_name = "t.spp";
     o.script_text = script_text;
     o.generation = 1;
     o.include_dirs = {dir.path().string()};
@@ -89,13 +89,13 @@ inline int count_errors(const std::string& text)
     return n;
 }
 
-inline spc::TranslateResult translate_text(const std::string& script)
+inline sppc::TranslateResult translate_text(const std::string& script)
 {
-    spc::TranslateOptions o;
-    o.script_name = "t.script";
+    sppc::TranslateOptions o;
+    o.script_name = "t.spp";
     o.script_text = script;
     o.generation = 1;
-    return spc::translate(o);
+    return sppc::translate(o);
 }
 
 // The error text for a script text that needs no header.

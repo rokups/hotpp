@@ -11,15 +11,15 @@
 #include "parser/statement.h"
 #include "support/lowering_test_support.h"
 
-using namespace spc;
+using namespace sppc;
 using namespace lowering_test;
 
 TEST(RefOutLowering, RefArgumentAndRefLocal)
 {
     Fixture f;
     f.param("v");
-    EXPECT_EQ(f.body("Fill(out v);"), "Fill(script::ref_arg(v));");
-    EXPECT_EQ(f.body("this.target = ref v;"), "st->target = script::ref_arg(v);");
+    EXPECT_EQ(f.body("Fill(out v);"), "Fill(spp::ref_arg(v));");
+    EXPECT_EQ(f.body("this.target = ref v;"), "st->target = spp::ref_arg(v);");
     EXPECT_EQ(f.body("var r = ref this.health;"), "auto& r = st->health;");
     EXPECT_EQ(f.body("r = 2.0;"), "r = 2.0f;");
     EXPECT_EQ(f.diag.items.size(), 0u);

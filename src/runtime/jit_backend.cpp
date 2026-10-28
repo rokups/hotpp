@@ -22,9 +22,9 @@
 #include <filesystem>
 #include <mutex>
 
-#include "spp/spc_lib.h"
+#include "spp/sppc_lib.h"
 
-namespace script {
+namespace spp {
 
 namespace {
 
@@ -153,7 +153,7 @@ Compiled compile(const JitOptions& opt, const std::string& path, const std::stri
 
 JitBackend::JitBackend(JitOptions options) : opt_(std::move(options))
 {
-    if (!opt_.session) opt_.session = std::make_shared<spc::TranslatorSession>();
+    if (!opt_.session) opt_.session = std::make_shared<sppc::TranslatorSession>();
 }
 
 JitBackend::~JitBackend() = default;
@@ -171,7 +171,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
 
     timings_ = {};
     Clock::time_point t0 = Clock::now();
-    spc::TranslateOptions to;
+    sppc::TranslateOptions to;
     to.script_text = source.text;
     to.script_name = source.name;
     to.output_name = cpp_path;
@@ -179,7 +179,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
     to.include_dirs = opt_.include_dirs;
     to.resource_dir = opt_.resource_dir;
     to.slots_in = slots_;
-    spc::TranslateResult tr = spc::translate(to, *opt_.session);
+    sppc::TranslateResult tr = sppc::translate(to, *opt_.session);
     timings_.translate_ms = ms_since(t0);
     if (!tr.ok) {
         r.error = tr.diagnostics;
@@ -277,4 +277,4 @@ bool JitBackend::make_pch(const std::string& header_path, const std::string& out
     return ok && !ci.getDiagnostics().hasErrorOccurred();
 }
 
-}  // namespace script
+}  // namespace spp

@@ -10,7 +10,7 @@
 
 namespace type_model_test {
 
-using namespace spc;
+using namespace sppc;
 
 inline ast::Stub stub(const std::string& name, const std::string& handle = "", bool is_value = false)
 {

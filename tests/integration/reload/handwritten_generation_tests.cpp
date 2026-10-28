@@ -34,18 +34,18 @@ TEST(HandwrittenGeneration, PlayerShellTicksTakesDamageAndReflects)
 
 
 // Builds a one-field layout. Only the name, the type key and the init function matter here.
-script::FieldInfo make_field(const char* name, const char* type_key)
+spp::FieldInfo make_field(const char* name, const char* type_key)
 {
-    return script::FieldInfo{name, nullptr, type_key, 0, 4, 4, 0, nullptr, nullptr, nullptr};
+    return spp::FieldInfo{name, nullptr, type_key, 0, 4, 4, 0, nullptr, nullptr, nullptr};
 }
 
 TEST(HandwrittenGeneration, PlanRejectsATypeChange)
 {
-    script::FieldInfo of[] = {make_field("hp", script::type_key<float>())};
-    script::FieldInfo nf[] = {make_field("hp", script::type_key<int>())};
-    script::StateLayout o{"Player", 4, 4, 1, of};
-    script::StateLayout n{"Player", 4, 4, 1, nf};
-    script::MigrationPlan plan = script::build_plan(o, n);
+    spp::FieldInfo of[] = {make_field("hp", spp::type_key<float>())};
+    spp::FieldInfo nf[] = {make_field("hp", spp::type_key<int>())};
+    spp::StateLayout o{"Player", 4, 4, 1, of};
+    spp::StateLayout n{"Player", 4, 4, 1, nf};
+    spp::MigrationPlan plan = spp::build_plan(o, n);
     EXPECT_FALSE(plan.error.empty());
     EXPECT_NE(plan.error.find("Player: field hp changed its type"), std::string::npos)
         << plan.error;
@@ -53,14 +53,14 @@ TEST(HandwrittenGeneration, PlanRejectsATypeChange)
 
 TEST(HandwrittenGeneration, PlanMovesASameTypeField)
 {
-    script::FieldInfo of[] = {make_field("hp", script::type_key<float>())};
-    script::FieldInfo nf[] = {make_field("hp", script::type_key<float>())};
-    script::StateLayout o{"Player", 4, 4, 1, of};
-    script::StateLayout n{"Player", 4, 4, 1, nf};
-    script::MigrationPlan plan = script::build_plan(o, n);
+    spp::FieldInfo of[] = {make_field("hp", spp::type_key<float>())};
+    spp::FieldInfo nf[] = {make_field("hp", spp::type_key<float>())};
+    spp::StateLayout o{"Player", 4, 4, 1, of};
+    spp::StateLayout n{"Player", 4, 4, 1, nf};
+    spp::MigrationPlan plan = spp::build_plan(o, n);
     EXPECT_TRUE(plan.error.empty()) << plan.error;
     ASSERT_EQ(plan.steps.size(), 1u);
-    EXPECT_EQ(plan.steps[0].action, script::FieldAction::Move);
+    EXPECT_EQ(plan.steps[0].action, spp::FieldAction::Move);
     EXPECT_EQ(plan.steps[0].old_index, 0u);
 }
 

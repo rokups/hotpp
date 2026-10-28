@@ -7,7 +7,7 @@
 #include "spp/runtime/records.h"
 #include "spp/runtime/shell.h"
 
-namespace script {
+namespace spp {
 
 // A new object. "native" is the Actor* (the native base) of the shell.
 struct Instance {
@@ -41,4 +41,4 @@ struct MigrationPlan {
 // Compares the old and the new field tables. It has no side effects.
 MigrationPlan build_plan(const StateLayout& old_layout, const StateLayout& new_layout);
 
-}  // namespace script
+}  // namespace spp

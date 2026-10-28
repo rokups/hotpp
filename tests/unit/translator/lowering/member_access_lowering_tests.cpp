@@ -13,7 +13,7 @@
 #include "parser/statement.h"
 #include "support/lowering_test_support.h"
 
-using namespace spc;
+using namespace sppc;
 using namespace lowering_test;
 
 TEST(MemberAccessLowering, FieldAccess)
@@ -30,9 +30,9 @@ TEST(MemberAccessLowering, PointerFieldUsesDeref)
     Fixture f;
     // The field target has the type Actor*.
     EXPECT_EQ(f.expr("this.target.Name.c_str()"),
-              "script::deref(script::deref(st->target).Name).c_str()");
+              "spp::deref(spp::deref(st->target).Name).c_str()");
     EXPECT_EQ(f.expr("this.target"), "st->target");
-    EXPECT_EQ(f.expr("this.target.m"), "script::deref(st->target).m");
+    EXPECT_EQ(f.expr("this.target.m"), "spp::deref(st->target).m");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
@@ -41,12 +41,12 @@ TEST(MemberAccessLowering, MemberChainOfAParameter)
     Fixture f;
     f.param("q");
     f.param("v");
-    EXPECT_EQ(f.body("q.foo();"), "script::deref(q).foo();");
-    EXPECT_EQ(f.body("v.begin();"), "script::deref(v).begin();");
-    EXPECT_EQ(f.body("v.begin().x;"), "script::deref(script::deref(v).begin()).x;");
+    EXPECT_EQ(f.body("q.foo();"), "spp::deref(q).foo();");
+    EXPECT_EQ(f.body("v.begin();"), "spp::deref(v).begin();");
+    EXPECT_EQ(f.body("v.begin().x;"), "spp::deref(spp::deref(v).begin()).x;");
     EXPECT_EQ(f.body("q.a.b.c = 1;"),
-              "script::deref(script::deref(script::deref(q).a).b).c = 1;");
-    EXPECT_EQ(f.body("q.m = 1;"), "script::deref(q).m = 1;");
+              "spp::deref(spp::deref(spp::deref(q).a).b).c = 1;");
+    EXPECT_EQ(f.body("q.m = 1;"), "spp::deref(q).m = 1;");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
@@ -54,10 +54,10 @@ TEST(MemberAccessLowering, MemberOfAValue)
 {
     Fixture f;
     f.param("a");
-    EXPECT_EQ(f.expr("make().x"), "script::deref(make()).x");
-    EXPECT_EQ(f.expr("a[1].x"), "script::deref(a[1]).x");
-    EXPECT_EQ(f.expr("(a).x"), "script::deref((a)).x");
-    EXPECT_EQ(f.expr("Vec3.Zero().x"), "script::deref(Vec3::Zero()).x");
+    EXPECT_EQ(f.expr("make().x"), "spp::deref(make()).x");
+    EXPECT_EQ(f.expr("a[1].x"), "spp::deref(a[1]).x");
+    EXPECT_EQ(f.expr("(a).x"), "spp::deref((a)).x");
+    EXPECT_EQ(f.expr("Vec3.Zero().x"), "spp::deref(Vec3::Zero()).x");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
@@ -77,7 +77,7 @@ TEST(MemberAccessLowering, ScopeChain)
 TEST(MemberAccessLowering, EngineMemberAndThis)
 {
     Fixture f;
-    EXPECT_EQ(f.expr("this.Name.c_str()"), "script::deref(self->Name).c_str()");
+    EXPECT_EQ(f.expr("this.Name.c_str()"), "spp::deref(self->Name).c_str()");
     EXPECT_EQ(f.expr("this.Move(1)"), "self->Move(1)");
     EXPECT_EQ(f.expr("this"), "self");
     EXPECT_EQ(f.expr("f(this)"), "f(self)");
@@ -93,7 +93,7 @@ TEST(MemberAccessLowering, LetPointerUsesDeref)
 {
     Fixture f;
     // The member access has one form for a pointer and for a reference.
-    EXPECT_EQ(f.body("Actor* p = null; p.x;"), "Actor* p = nullptr; script::deref(p).x;");
+    EXPECT_EQ(f.body("Actor* p = null; p.x;"), "Actor* p = nullptr; spp::deref(p).x;");
 }
 
 TEST(MemberAccessLowering, TemplateArgumentsAreLowered)

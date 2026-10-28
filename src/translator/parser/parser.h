@@ -6,7 +6,7 @@
 #include "../ast.h"
 #include "../diag.h"
 
-namespace spc {
+namespace sppc {
 
 // Parses the imports, classes, fields and methods of a script.
 // The bodies of the methods and the initializers of the fields stay raw spans.
@@ -14,4 +14,4 @@ namespace spc {
 // The map must belong to the same text. The offsets in the errors are bytes in the text.
 ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics& diag);
 
-}  // namespace spc
+}  // namespace sppc

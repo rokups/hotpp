@@ -11,7 +11,7 @@
 #include "parser/expression.h"
 #include "support/expression_parse_test_support.h"
 
-using namespace spc;
+using namespace sppc;
 using namespace expr_test;
 
 TEST(ExpressionParse, Precedence)

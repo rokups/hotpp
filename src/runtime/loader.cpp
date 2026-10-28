@@ -5,7 +5,7 @@
 
 #include "runtime_internal.h"
 
-namespace script {
+namespace spp {
 
 struct PendingClass {
     ClassEntry* canon;  // null: the class is new
@@ -275,4 +275,4 @@ bool Loader::commit_pending(std::string& error)
     return true;
 }
 
-}  // namespace script
+}  // namespace spp

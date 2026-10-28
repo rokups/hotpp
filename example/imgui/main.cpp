@@ -1,6 +1,6 @@
 // imgui_app: a Dear ImGui window whose user interface a script draws.
 // Usage: imgui_app [script]
-// The default script is example/imgui/demo.script. The script class Demo
+// The default script is example/imgui/demo.spp. The script class Demo
 // derives from UiApp. The host calls Frame once for each frame.
 // The struct Host loads the script and reloads it when the file changes.
 #include <SDL3/SDL.h>
@@ -20,7 +20,7 @@
 #include "backends/imgui_impl_sdlrenderer3.h"
 #include "imgui.h"
 #include "spp/clang_files_backend.h"
-#include "spp/script_runtime.h"
+#include "spp/runtime.h"
 
 namespace {
 
@@ -33,9 +33,9 @@ std::vector<std::string> split_list(const std::string& s)
     return v;
 }
 
-std::unique_ptr<script::Backend> make_backend()
+std::unique_ptr<spp::Backend> make_backend()
 {
-    script::ClangFilesOptions o;
+    spp::ClangFilesOptions o;
     o.compiler = IMGUI_APP_CXX;
     o.include_dirs = split_list(IMGUI_APP_INCLUDES);
     o.extra_flags = split_list(IMGUI_APP_CXXFLAGS);
@@ -43,7 +43,7 @@ std::unique_ptr<script::Backend> make_backend()
     o.work_dir = std::string(IMGUI_APP_WORK_DIR) + "/p" + std::to_string(getpid());
     std::error_code ec;
     std::filesystem::remove_all(o.work_dir, ec);
-    return std::make_unique<script::ClangFilesBackend>(std::move(o));
+    return std::make_unique<spp::ClangFilesBackend>(std::move(o));
 }
 
 bool read_file(const std::string& path, std::string& text)
@@ -57,15 +57,15 @@ bool read_file(const std::string& path, std::string& text)
 }
 
 // Reads and compiles the script. Returns false and sets "error" on failure.
-bool compile_script(script::Backend& backend, const std::string& path, uint32_t generation,
-                    script::Module& out, std::string& error)
+bool compile_script(spp::Backend& backend, const std::string& path, uint32_t generation,
+                    spp::Module& out, std::string& error)
 {
     std::string text;
     if (!read_file(path, text)) {
         error = "cannot read " + path;
         return false;
     }
-    script::LoadResult r = backend.load({path, text}, generation);
+    spp::LoadResult r = backend.load({path, text}, generation);
     if (!r) {
         error = r.error;
         return false;
@@ -75,9 +75,9 @@ bool compile_script(script::Backend& backend, const std::string& path, uint32_t 
 }
 
 // Makes the object of class Demo. Returns null and sets "error" on failure.
-UiApp* create_app(script::Loader& loader, std::string& error)
+UiApp* create_app(spp::Loader& loader, std::string& error)
 {
-    const script::ClassEntry* entry = loader.find("Demo");
+    const spp::ClassEntry* entry = loader.find("Demo");
     if (!entry) {
         error = "class Demo is not registered";
         return nullptr;
@@ -87,8 +87,8 @@ UiApp* create_app(script::Loader& loader, std::string& error)
 
 // The host state of one run. The loader is the first member: it ends last.
 struct Host {
-    script::Loader loader;
-    std::unique_ptr<script::Backend> backend = make_backend();
+    spp::Loader loader;
+    std::unique_ptr<spp::Backend> backend = make_backend();
     std::string path;
     uint32_t generation = 0;   // the number of the last compile
     bool loaded = false;       // the loader has a first module
@@ -101,7 +101,7 @@ struct Host {
     {
         std::error_code ec;
         last_seen = std::filesystem::last_write_time(path, ec);
-        script::Module m;
+        spp::Module m;
         if (!compile_script(*backend, path, ++generation, m, last_error)) {
             std::fprintf(stderr, "load failed: %s\n", last_error.c_str());
             return;
@@ -124,7 +124,7 @@ struct Host {
         auto t = std::filesystem::last_write_time(path, ec);
         if (ec || t == last_seen) return;
         last_seen = t;
-        script::Module m;
+        spp::Module m;
         std::string err;
         if (!compile_script(*backend, path, ++generation, m, err)) {
             last_error = err;

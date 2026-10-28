@@ -5,7 +5,7 @@
 #include <deque>
 #include <set>
 
-namespace spc {
+namespace sppc {
 
 namespace {
 
@@ -151,7 +151,7 @@ std::string TypeModel::storage(const std::string& type) const
     if (!is_handle(type)) return type;
     const TypeRule rule = lookup(type);
     if (!rule.intrusive_add.empty())
-        return "script::Intrusive<" + type + ", &" + rule.owner + "::" + rule.intrusive_add + ", &" +
+        return "spp::Intrusive<" + type + ", &" + rule.owner + "::" + rule.intrusive_add + ", &" +
                rule.owner + "::" + rule.intrusive_release + ">";
     return replace_all(rule.handle_tpl, "$T", type);
 }
@@ -178,4 +178,4 @@ TypeModel::Callee TypeModel::make_callee(const std::string& type) const
     return {storage(type), true};
 }
 
-}  // namespace spc
+}  // namespace sppc

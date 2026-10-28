@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace spc {
+namespace sppc {
 
 struct LineMap;  // diag.h
 
@@ -21,4 +21,4 @@ struct ParseInput {
     const LineMap* map = nullptr;
 };
 
-}  // namespace spc
+}  // namespace sppc

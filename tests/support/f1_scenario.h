@@ -1,7 +1,7 @@
 // The F1 reload scenario. Every way to get a module runs the same checks.
 //
-// run_f1_reload gets the module of generation 1 (example/scripts/player_v1.script)
-// and the module of generation 2 (example/scripts/player_v2.script). It checks that
+// run_f1_reload gets the module of generation 1 (example/scripts/player_v1.spp)
+// and the module of generation 2 (example/scripts/player_v2.spp). It checks that
 // the address stays, the state migrates (hp -> health, shield 25) and a
 // delegate that was bound before the reload calls the new heal.
 #pragma once
@@ -19,14 +19,14 @@ namespace f1 {
 using test_support::kDt;
 using test_support::Session;
 
-inline void run_f1_reload(script::Module v1, script::Module v2)
+inline void run_f1_reload(spp::Module v1, spp::Module v2)
 {
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(v1)));
     s.commit_at_frame_boundary();
-    script::Loader& loader = s.loader;
+    spp::Loader& loader = s.loader;
     World& world = s.world;
-    script::Instance& inst = s.inst;
+    spp::Instance& inst = s.inst;
     Actor* a = s.actor;
     const float dt = kDt;
     std::string error;
@@ -44,7 +44,7 @@ inline void run_f1_reload(script::Module v1, script::Module v2)
 
     a->TakeDamage(*source, 5.0f);  // hp 68, and target is set
     EXPECT_EQ(*field("hp"), 68.0f);
-    Actor** target = script::field_ptr<Actor*>(inst.shell, "target");
+    Actor** target = spp::field_ptr<Actor*>(inst.shell, "target");
     ASSERT_NE(target, nullptr);
     EXPECT_EQ(*target, source);
 
@@ -58,11 +58,11 @@ inline void run_f1_reload(script::Module v1, script::Module v2)
 
     // Validation phase: no side effect.
     Actor* const addr = a;
-    script::ShellBase* const shell = inst.shell;
+    spp::ShellBase* const shell = inst.shell;
     void* const old_state = shell->state;
     ASSERT_TRUE(loader.request_reload(std::move(v2), error)) << error;
     EXPECT_TRUE(loader.reload_pending());
-    EXPECT_EQ(script::active_generation, 1u);
+    EXPECT_EQ(spp::active_generation, 1u);
     EXPECT_EQ(shell->state, old_state);
     EXPECT_EQ(field("health"), nullptr);
 
@@ -70,7 +70,7 @@ inline void run_f1_reload(script::Module v1, script::Module v2)
     world.Tick(dt);  // generation 1 Tick heals 1: hp 74; then the commit
     ASSERT_FALSE(s.commit_failed);
     EXPECT_FALSE(loader.reload_pending());
-    EXPECT_EQ(script::active_generation, 2u);
+    EXPECT_EQ(spp::active_generation, 2u);
     ASSERT_EQ(world.Actors().size(), 2u);
     EXPECT_EQ(world.Actors()[0], addr);  // the same address
     EXPECT_NE(shell->state, old_state);
@@ -81,7 +81,7 @@ inline void run_f1_reload(script::Module v1, script::Module v2)
     ASSERT_NE(field("shield"), nullptr);
     EXPECT_EQ(*field("shield"), 25.0f);
     EXPECT_EQ(*field("speed"), 5.0f);
-    Actor** target2 = script::field_ptr<Actor*>(inst.shell, "target");
+    Actor** target2 = spp::field_ptr<Actor*>(inst.shell, "target");
     ASSERT_NE(target2, nullptr);
     EXPECT_EQ(*target2, source);
 

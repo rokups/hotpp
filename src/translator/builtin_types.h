@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace spc {
+namespace sppc {
 
 struct BuiltinType {
     const char* script;
@@ -160,4 +160,4 @@ inline std::string canonical_type(std::string_view text, std::string* error = nu
     return out;
 }
 
-}  // namespace spc
+}  // namespace sppc

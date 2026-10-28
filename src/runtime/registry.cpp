@@ -1,6 +1,6 @@
 #include "spp/runtime/registry.h"
 
-namespace script {
+namespace spp {
 
 void Registry::add(ClassRecord* record, Factory create)
 {
@@ -31,4 +31,4 @@ void* Registry::thunk(const std::string& name) const
     return it == thunks_.end() ? nullptr : it->second;
 }
 
-}  // namespace script
+}  // namespace spp

@@ -11,14 +11,14 @@
 #include "parser/statement.h"
 #include "support/lowering_test_support.h"
 
-using namespace spc;
+using namespace sppc;
 using namespace lowering_test;
 
 TEST(NameResolutionLowering, CatchNameIsALocal)
 {
     Fixture f;
     EXPECT_EQ(f.body("try { throw 1; } catch (std.exception& e) { e.what(); } catch (...) { throw; }"),
-              "try { throw 1; } catch (std::exception& e) { script::deref(e).what(); } "
+              "try { throw 1; } catch (std::exception& e) { spp::deref(e).what(); } "
               "catch (...) { throw; }");
     EXPECT_EQ(f.body("throw this.health;"), "throw st->health;");
     EXPECT_EQ(f.diag.items.size(), 0u);
@@ -27,7 +27,7 @@ TEST(NameResolutionLowering, CatchNameIsALocal)
 TEST(NameResolutionLowering, LocalShadowsAScope)
 {
     Fixture f;
-    EXPECT_EQ(f.body("var std = 1; std.x;"), "auto std = 1; script::deref(std).x;");
+    EXPECT_EQ(f.body("var std = 1; std.x;"), "auto std = 1; spp::deref(std).x;");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
@@ -60,7 +60,7 @@ TEST(NameResolutionLowering, LocalLeaksOutOfABlock)
 {
     Fixture f;
     // The old rewriter has no block scope: Foo stays a local after the block.
-    EXPECT_EQ(f.body("{ var Foo = 1; } Foo.bar();"), "{ auto Foo = 1; } script::deref(Foo).bar();");
+    EXPECT_EQ(f.body("{ var Foo = 1; } Foo.bar();"), "{ auto Foo = 1; } spp::deref(Foo).bar();");
 }
 
 TEST(NameResolutionLowering, ScriptFnHiddenAfterBlock)
@@ -73,14 +73,14 @@ TEST(NameResolutionLowering, LambdaParameterLeaks)
 {
     Fixture f;
     EXPECT_EQ(f.body("var g = (int* q) => { }; q.x;"),
-              "auto g = script::make_closure(GEN, \"Player::run lambda\", [=](int32_t* q) "
-              "{ [[maybe_unused]] auto* st = state_of(self); }); script::deref(q).x;");
+              "auto g = spp::make_closure(GEN, \"Player::run lambda\", [=](int32_t* q) "
+              "{ [[maybe_unused]] auto* st = state_of(self); }); spp::deref(q).x;");
 }
 
 TEST(NameResolutionLowering, ForOfVariableIsLocal)
 {
     Fixture f;
-    EXPECT_EQ(f.body("foreach (var Foo in xs) { Foo.a(); }"), "for (auto Foo : xs) { script::deref(Foo).a(); }");
+    EXPECT_EQ(f.body("foreach (var Foo in xs) { Foo.a(); }"), "for (auto Foo : xs) { spp::deref(Foo).a(); }");
 }
 
 TEST(NameResolutionLowering, ErrorScriptFnMustBeCalled)

@@ -1,10 +1,10 @@
-# Task list: full implementation of scriptlang-design.md
+# Task list: full implementation of spp-design.md
 
 Project name: S++. Script extension: `.spp`. Namespace: `spp`. Compiler: `sppc`.
 
 Status: [ ] open, [x] done. One slice is one commit.
 
-- [ ] S0 Rename (run after S1): project name S++; `.script` to `.spp`; namespace `script` to `spp` (`script::` in runtime and emitted code); tool `spc` becomes `sppc` (merge with the precompile tool: `sppc` translates, `--emit-cpp` prints C++, default builds a `.so`); `SPP_` macros, docs, README, design doc, tests, examples, golden files, editor ids. Search all of the repo for `script`, `spc`, `scriptlang` names.
+- [x] S0 Rename (run after S1): project name S++; `.script` to `.spp`; namespace `script` to `spp` (`script::` in runtime and emitted code); tool `spc` becomes `sppc` (merge with the precompile tool: `sppc` translates, `--emit-cpp` prints C++, default builds a `.so`); `SPP_` macros, docs, README, design doc, tests, examples, golden files, editor ids. Search all of the repo for `script`, `spc`, `scriptlang` names. Done: the translator namespace is `sppc` (no clash with `spp`). Generic names such as `script_name`, `ScriptSource` and `SppScripts.cmake` stay.
 - [x] S1 Housekeeping: update HANDOFF.md, fix spurious attribute error, cache miss cases, TSan run, lldb F3 check.
 - [ ] S2 Translator checks: 7.10.7 stub checks, borrowed-pointer and ref rules, ERROR rows, prelude details, `class *;` rules.
 - [ ] S3 `onReload(OldState)`, `OldState`, `convert` hook, live type change, rename warning.

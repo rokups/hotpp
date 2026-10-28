@@ -10,7 +10,7 @@
 #include "parser/statement.h"
 #include "support/statement_parse_test_support.h"
 
-using namespace spc;
+using namespace sppc;
 using namespace stmt_test;
 
 TEST(RefOutStatementParse, RefLocalAndRefArguments)
@@ -19,8 +19,8 @@ TEST(RefOutStatementParse, RefLocalAndRefArguments)
     EXPECT_EQ(round_trip("Vec3 r = ref p;"), "Vec3& r = p;");
     EXPECT_EQ(round_trip("const var r = ref p;"), "const auto& r = p;");
     EXPECT_EQ(round_trip("Fill(out v); Swap(ref a, ref b);"),
-              "Fill(script::ref_arg(v)); Swap(script::ref_arg(a), script::ref_arg(b));");
-    EXPECT_EQ(round_trip("this.target = ref source;"), "this.target = script::ref_arg(source);");
+              "Fill(spp::ref_arg(v)); Swap(spp::ref_arg(a), spp::ref_arg(b));");
+    EXPECT_EQ(round_trip("this.target = ref source;"), "this.target = spp::ref_arg(source);");
 }
 
 TEST(RefOutStatementParse, PrefixAmpersandIsRemoved)

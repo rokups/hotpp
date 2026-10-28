@@ -26,7 +26,7 @@
 #include "../diag.h"
 #include "span.h"
 
-namespace spc::parser {
+namespace sppc::parser {
 
 namespace dsl = lexy::dsl;
 
@@ -49,16 +49,16 @@ constexpr auto any_unit = -dsl::lit_b<0xFF> / dsl::lit_b<0xFF>;
 
 // ---------------------------------------------------------------- error tags
 // The name member is the text of the error.
-#define SPC_ERROR_TAG(NAME, TEXT) \
+#define SPP_ERROR_TAG(NAME, TEXT) \
     struct NAME {                 \
         static constexpr auto name = TEXT; \
     }
 
-SPC_ERROR_TAG(e_unterminated_comment, "unterminated comment");
-SPC_ERROR_TAG(e_unterminated_literal, "unterminated string or character literal");
-SPC_ERROR_TAG(e_unexpected_eof, "unexpected end of file");
-SPC_ERROR_TAG(e_interpolation, "string interpolation is not supported");
-SPC_ERROR_TAG(e_use_dot_colons, "use '.' instead of '::'");
+SPP_ERROR_TAG(e_unterminated_comment, "unterminated comment");
+SPP_ERROR_TAG(e_unterminated_literal, "unterminated string or character literal");
+SPP_ERROR_TAG(e_unexpected_eof, "unexpected end of file");
+SPP_ERROR_TAG(e_interpolation, "string interpolation is not supported");
+SPP_ERROR_TAG(e_use_dot_colons, "use '.' instead of '::'");
 // The parse reads the "->" token before it raises this error. "rewind" is the size of the token:
 // the report of the error (detail::report) moves back to the start of the token.
 struct e_use_dot_arrow {
@@ -463,4 +463,4 @@ auto parse_with_diag(const Input& input, const ParseState& st)
     return lexy::parse<Production>(input, st, sink);
 }
 
-}  // namespace spc::parser
+}  // namespace sppc::parser

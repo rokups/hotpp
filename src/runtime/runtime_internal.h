@@ -3,9 +3,9 @@
 #include <atomic>
 #include <unordered_set>
 
-#include "spp/script_runtime.h"
+#include "spp/runtime.h"
 
-namespace script {
+namespace spp {
 
 // The live objects (state.cpp).
 extern std::unordered_set<ShellBase*> g_live;
@@ -17,4 +17,4 @@ extern std::atomic<uint64_t> g_unsafe_commits;
 void migrate_block(const StateLayout& o, const StateLayout& n, const MigrationPlan& plan,
                    char* from, char* to);
 
-}  // namespace script
+}  // namespace spp

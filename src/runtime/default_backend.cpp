@@ -18,7 +18,7 @@
 #error "Define SPP_BACKEND_CLANG_FILES or SPP_BACKEND_JIT."
 #endif
 
-namespace script {
+namespace spp {
 
 #if defined(SPP_BACKEND_CLANG_FILES) || defined(SPP_BACKEND_JIT)
 namespace {
@@ -56,4 +56,4 @@ std::unique_ptr<Backend> make_default_backend()
 #endif
 }
 
-}  // namespace script
+}  // namespace spp

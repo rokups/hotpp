@@ -23,24 +23,24 @@ using test_support::source;
 // A field or a local without an initializer has the zero value.
 TEST_P(BackendTests, DefaultValues)
 {
-    script::LoadResult v1 = backend->load(source("default_v1.script"), 1);
+    spp::LoadResult v1 = backend->load(source("default_v1.spp"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Knight"));
     s.commit_at_frame_boundary();
     s.world.Tick(kDt);
-    EXPECT_EQ(*script::field_ptr<int>(s.inst.shell, "n"), 0);
-    EXPECT_EQ(*script::field_ptr<float>(s.inst.shell, "f"), 0.0f);
-    EXPECT_FALSE(*script::field_ptr<bool>(s.inst.shell, "b"));
-    EXPECT_EQ(script::field_ptr<std::shared_ptr<Weapon>>(s.inst.shell, "weapon")->get(), nullptr);
-    EXPECT_EQ(*script::field_ptr<int>(s.inst.shell, "seen"), 0);
+    EXPECT_EQ(*spp::field_ptr<int>(s.inst.shell, "n"), 0);
+    EXPECT_EQ(*spp::field_ptr<float>(s.inst.shell, "f"), 0.0f);
+    EXPECT_FALSE(*spp::field_ptr<bool>(s.inst.shell, "b"));
+    EXPECT_EQ(spp::field_ptr<std::shared_ptr<Weapon>>(s.inst.shell, "weapon")->get(), nullptr);
+    EXPECT_EQ(*spp::field_ptr<int>(s.inst.shell, "seen"), 0);
 }
 
 // A member of a temporary in a for-of loop: "this.mk().first". The temporary must live
 // during the whole loop. The generated code compiles and runs with the selected backend.
 TEST_P(BackendTests, ForOfOverAMemberOfATemporaryRuns)
 {
-    const script::ScriptSource src = {"temp.script", R"(
+    const spp::ScriptSource src = {"temp.spp", R"(
 using "Actor.h";
 using <utility>;
 using <vector>;
@@ -66,7 +66,7 @@ class Player : Actor {
     override void TakeDamage(Actor& source, float amount) {}
 }
 )"};
-    script::LoadResult r = backend->load(src, 1);
+    spp::LoadResult r = backend->load(src, 1);
     ASSERT_TRUE(r) << r.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));

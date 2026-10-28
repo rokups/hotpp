@@ -42,7 +42,7 @@
 #include "expression.h"
 #include "lexy_common.hpp"
 
-namespace spc {
+namespace sppc {
 namespace {
 
 using namespace parser;  // NOLINT: the grammar uses the names of lexy_common.hpp
@@ -56,14 +56,14 @@ constexpr std::size_t max_depth = 64;
 constexpr int max_block_nesting = 16;
 
 // ---------------------------------------------------------------- error texts
-SPC_ERROR_TAG(e_stmt, "expected a statement");
-SPC_ERROR_TAG(e_while, "expected 'while'");
-SPC_ERROR_TAG(e_name, "expected a name");
-SPC_ERROR_TAG(e_catch, "expected 'catch' or 'finally'");
-SPC_ERROR_TAG(e_old_catch, "catch syntax changed; write 'catch (Type name)'");
-SPC_ERROR_TAG(e_let, "'let' is removed; write 'var x = ...' or 'Type x = ...'");
-SPC_ERROR_TAG(e_for_of, "'for ... of' is removed; write 'foreach (Type x in c)'");
-SPC_ERROR_TAG(e_const_form, "expected 'var' or a type after 'const'");
+SPP_ERROR_TAG(e_stmt, "expected a statement");
+SPP_ERROR_TAG(e_while, "expected 'while'");
+SPP_ERROR_TAG(e_name, "expected a name");
+SPP_ERROR_TAG(e_catch, "expected 'catch' or 'finally'");
+SPP_ERROR_TAG(e_old_catch, "catch syntax changed; write 'catch (Type name)'");
+SPP_ERROR_TAG(e_let, "'let' is removed; write 'var x = ...' or 'Type x = ...'");
+SPP_ERROR_TAG(e_for_of, "'for ... of' is removed; write 'foreach (Type x in c)'");
+SPP_ERROR_TAG(e_const_form, "expected 'var' or a type after 'const'");
 
 // ---------------------------------------------------------------- words
 constexpr auto kw_let = LEXY_KEYWORD("let", id);
@@ -477,7 +477,7 @@ struct probe_for_of {
     }
 };
 
-SPC_ERROR_TAG(e_decl_type, "expected a declaration");
+SPP_ERROR_TAG(e_decl_type, "expected a declaration");
 
 // A branch rule over a plain C++ look-ahead. Probe::run decides the branch.
 // Consume false: the rule is a peek. It consumes no text and produces no value.
@@ -1178,4 +1178,4 @@ ast::BlockStmt parse_block(ParseInput in, Span body_without_braces, Diagnostics&
     return block;
 }
 
-}  // namespace spc
+}  // namespace sppc

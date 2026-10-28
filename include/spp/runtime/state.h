@@ -11,7 +11,7 @@
 #include "spp/runtime/records.h"
 #include "spp/runtime/shell.h"
 
-namespace script {
+namespace spp {
 
 // The runtime keeps a list of the live objects. The reload commit uses it.
 void track_object(ShellBase* self);
@@ -113,4 +113,4 @@ inline T* field_ptr(ShellBase* s, const char* name)
     return reinterpret_cast<T*>(static_cast<char*>(s->state) + f->offset);
 }
 
-}  // namespace script
+}  // namespace spp

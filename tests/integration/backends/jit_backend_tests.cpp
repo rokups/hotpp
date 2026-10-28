@@ -25,7 +25,7 @@ namespace {
 
 namespace fs = std::filesystem;
 
-script::ScriptSource source(const char* file)
+spp::ScriptSource source(const char* file)
 {
     const std::string path = std::string(SPP_SOURCE_DIR) + "/example/scripts/" + file;
     std::ifstream f(path);
@@ -102,17 +102,17 @@ TEST(JitTests, ChildDetectorSeesAChild)
 
 TEST(JitTests, NoFileAndNoChildProcess)
 {
-    std::unique_ptr<script::Backend> backend = script::make_default_backend();
+    std::unique_ptr<spp::Backend> backend = spp::make_default_backend();
     ASSERT_STREQ(backend->name(), "JIT");
     EmptyWorkDir work;
     const long faults_before = child_faults();
     {
-        script::LoadResult v1 = backend->load(source("player_v1.script"), 1);
+        spp::LoadResult v1 = backend->load(source("player_v1.spp"), 1);
         ASSERT_TRUE(v1) << v1.error;
-        script::LoadResult v2 = backend->load(source("player_v2.script"), 2);
+        spp::LoadResult v2 = backend->load(source("player_v2.spp"), 2);
         ASSERT_TRUE(v2) << v2.error;
         // A bad script also leaves no file and starts no process.
-        script::LoadResult bad = backend->load(source("bad.script"), 1);
+        spp::LoadResult bad = backend->load(source("bad.spp"), 1);
         EXPECT_FALSE(bad);
         f1::run_f1_reload(std::move(*v1.module), std::move(*v2.module));
     }
@@ -124,10 +124,10 @@ TEST(JitTests, NoFileAndNoChildProcess)
 // The error text names the script. The text has no stray line from the compiler.
 TEST(JitTests, ErrorTextNamesTheScript)
 {
-    std::unique_ptr<script::Backend> backend = script::make_default_backend();
-    script::LoadResult bad = backend->load(source("bad.script"), 1);
+    std::unique_ptr<spp::Backend> backend = spp::make_default_backend();
+    spp::LoadResult bad = backend->load(source("bad.spp"), 1);
     ASSERT_FALSE(bad);
-    EXPECT_NE(bad.error.find("bad.script:9:"), std::string::npos) << bad.error;
+    EXPECT_NE(bad.error.find("bad.spp:9:"), std::string::npos) << bad.error;
     EXPECT_NE(bad.error.find(" error: "), std::string::npos) << bad.error;
 }
 
@@ -141,24 +141,24 @@ TEST(JitTests, PrecompiledHeaderWorks)
         std::ofstream f(header);
         f << "#include <algorithm>\n#include <cstddef>\n#include <cstdint>\n#include <cstdio>\n"
              "#include <new>\n#include <string>\n#include <type_traits>\n#include <typeinfo>\n"
-             "#include <utility>\n#include \"spp/script_runtime.h\"\n#include \"Actor.h\"\n"
+             "#include <utility>\n#include \"spp/runtime.h\"\n#include \"Actor.h\"\n"
              "#include \"Math.h\"\n";
     }
-    script::JitOptions o;
+    spp::JitOptions o;
     o.compiler = SPP_CXX;
     o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/example/engine", std::string(SPP_SOURCE_DIR) + "/include"};
     o.resource_dir = SPP_RESOURCE_DIR;
     std::string error;
     {
-        script::JitBackend maker(o);
+        spp::JitBackend maker(o);
         ASSERT_TRUE(maker.make_pch(header, pch, error)) << error;
     }
     ASSERT_TRUE(fs::exists(pch));
     o.pch_path = pch;
-    script::JitBackend backend(o);
-    script::LoadResult v1 = backend.load(source("player_v1.script"), 1);
+    spp::JitBackend backend(o);
+    spp::LoadResult v1 = backend.load(source("player_v1.spp"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    script::LoadResult v2 = backend.load(source("player_v2.script"), 2);
+    spp::LoadResult v2 = backend.load(source("player_v2.spp"), 2);
     ASSERT_TRUE(v2) << v2.error;
     f1::run_f1_reload(std::move(*v1.module), std::move(*v2.module));
 }
@@ -167,7 +167,7 @@ TEST(JitTests, PrecompiledHeaderWorks)
 // host. Both need the unwind tables of the JIT code (EH frames), which JITLink registers.
 TEST(JitTests, ExceptionsWorkInJitCode)
 {
-    const script::ScriptSource src = {"throws.script", R"(
+    const spp::ScriptSource src = {"throws.spp", R"(
 using "Actor.h";
 using "Math.h";
 
@@ -185,8 +185,8 @@ class Player : Actor {
     override void TakeDamage(Actor& source, float amount) {}
 }
 )"};
-    std::unique_ptr<script::Backend> backend = script::make_default_backend();
-    script::LoadResult r = backend->load(src, 1);
+    std::unique_ptr<spp::Backend> backend = spp::make_default_backend();
+    spp::LoadResult r = backend->load(src, 1);
     ASSERT_TRUE(r) << r.error;
     test_support::Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
@@ -206,11 +206,11 @@ class Player : Actor {
 // When the last copy goes, the generation is removed from the JIT.
 TEST(JitTests, ModuleOutlivesBackendAndGenerationsCanBeRemoved)
 {
-    script::Module kept;
+    spp::Module kept;
     {
-        std::unique_ptr<script::Backend> backend = script::make_default_backend();
+        std::unique_ptr<spp::Backend> backend = spp::make_default_backend();
         for (int i = 0; i < 3; ++i) {
-            script::LoadResult r = backend->load(source("player_v1.script"), 1);
+            spp::LoadResult r = backend->load(source("player_v1.spp"), 1);
             ASSERT_TRUE(r) << r.error;
             // The same generation loads again and again: each time a new JITDylib.
             if (i == 2) kept = std::move(*r.module);

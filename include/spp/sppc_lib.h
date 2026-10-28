@@ -1,4 +1,4 @@
-// spc_lib: the translator as a library. The input and the output are strings.
+// sppc_lib: the translator as a library. The input and the output are strings.
 //
 // translate() does not write a file and does not read a script or a slot file.
 // libclang reads the headers that the script imports, from the include dirs.
@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-namespace spc {
+namespace sppc {
 
 struct TranslateOptions {
     std::string script_text;   // the content of the script
@@ -61,4 +61,4 @@ TranslateResult translate(const TranslateOptions& options);
 // Uses the cache of the session.
 TranslateResult translate(const TranslateOptions& options, TranslatorSession& session);
 
-}  // namespace spc
+}  // namespace sppc

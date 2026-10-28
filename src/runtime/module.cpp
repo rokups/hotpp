@@ -2,7 +2,7 @@
 
 #include <dlfcn.h>
 
-namespace script {
+namespace spp {
 
 LoadResult module_from_library(const std::string& path)
 {
@@ -23,4 +23,4 @@ LoadResult module_from_library(const std::string& path)
     return r;
 }
 
-}  // namespace script
+}  // namespace spp

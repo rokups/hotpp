@@ -9,7 +9,7 @@
 
 namespace script_test {
 
-using namespace spc;
+using namespace sppc;
 
 // Parses a script. The value is the parameters of the first method, as "type name" items.
 inline std::vector<std::string> method_params(const std::string& text, Diagnostics& sd)

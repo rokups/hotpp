@@ -7,7 +7,7 @@
 #include "parser/parser.h"
 #include "support/script_parse_test_support.h"
 
-using namespace spc;
+using namespace sppc;
 using namespace script_test;
 
 TEST(MethodParameterParse, TypeFirstParameters)

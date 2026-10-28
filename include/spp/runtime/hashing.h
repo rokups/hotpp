@@ -2,7 +2,7 @@
 #pragma once
 #include <cstdint>
 
-namespace script {
+namespace spp {
 
 // Hash of the shell layout. Two generations can share live objects only when
 // the hash is equal. The hash covers the base class, the shell size and the
@@ -25,4 +25,4 @@ constexpr uint64_t shell_layout_hash(const char* base, uint64_t shell_size, uint
     return hash_mix(hash_mix(hash_mix(fnv1a(base), shell_size), shell_align), native_virtuals);
 }
 
-}  // namespace script
+}  // namespace spp

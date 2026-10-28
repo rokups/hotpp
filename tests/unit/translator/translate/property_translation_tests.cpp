@@ -1,9 +1,9 @@
-// Tests for spc::translate with properties: auto accessors, custom accessors and errors.
+// Tests for sppc::translate with properties: auto accessors, custom accessors and errors.
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "spp/spc_lib.h"
+#include "spp/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 using namespace translator_test;
@@ -15,16 +15,16 @@ std::string prop_script(const std::string& members)
     return "using \"w.h\";\nclass Foo : Widget {\n" + members + "\n}\n";
 }
 
-spc::TranslateResult translate_props(const std::string& members)
+sppc::TranslateResult translate_props(const std::string& members)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
-    return spc::translate(temp_options(dir, prop_script(members)));
+    return sppc::translate(temp_options(dir, prop_script(members)));
 }
 
 void expect_prop_error(const std::string& members, const std::string& msg)
 {
-    const spc::TranslateResult r = translate_props(members);
+    const sppc::TranslateResult r = translate_props(members);
     EXPECT_FALSE(r.ok) << members;
     EXPECT_NE(r.diagnostics.find(msg), std::string::npos) << members << "\n" << r.diagnostics;
 }
@@ -33,7 +33,7 @@ void expect_prop_error(const std::string& members, const std::string& msg)
 
 TEST(PropertyTranslation, AutoPropertyLowersToAccessorCalls)
 {
-    const spc::TranslateResult r = translate_props(
+    const sppc::TranslateResult r = translate_props(
         "    int N { get; set; } = 3;\n"
         "    void run() { N = 1; this.N += 2; N++; int k = this.N + N; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -53,7 +53,7 @@ TEST(PropertyTranslation, AutoPropertyLowersToAccessorCalls)
 
 TEST(PropertyTranslation, CustomAccessorsBecomeFunctions)
 {
-    const spc::TranslateResult r = translate_props(
+    const sppc::TranslateResult r = translate_props(
         "    int raw = 0;\n"
         "    int V { get { return this.raw * 2; } set { this.raw = value / 2; } }\n"
         "    int run(int value) { V = value; return V; }");
@@ -67,17 +67,17 @@ TEST(PropertyTranslation, CustomAccessorsBecomeFunctions)
 
 TEST(PropertyTranslation, LocalHidesProperty)
 {
-    const spc::TranslateResult r =
+    const sppc::TranslateResult r =
         translate_props("    int N { get; set; }\n    void run() { int N = 2; N = 3; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("N = 3;"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("Foo__set_N(self, 3)"), std::string::npos) << r.cpp;
 }
 
-// "w.N" on another object of the class calls the accessors through script::shell_of.
+// "w.N" on another object of the class calls the accessors through spp::shell_of.
 TEST(PropertyTranslation, OtherObjectUsesAccessors)
 {
-    const spc::TranslateResult r = translate_props(
+    const sppc::TranslateResult r = translate_props(
         "    int N { get; set; }\n"
         "    int hp = 0;\n"
         "    int run(Widget& w, Widget* q) {\n"
@@ -89,32 +89,32 @@ TEST(PropertyTranslation, OtherObjectUsesAccessors)
         "        return w.N + q.N;\n"
         "    }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    const std::string w = "script::shell_of<Foo_Shell>(w, \"Foo\")";
-    const std::string q = "script::shell_of<Foo_Shell>(q, \"Foo\")";
+    const std::string w = "spp::shell_of<Foo_Shell>(w, \"Foo\")";
+    const std::string q = "spp::shell_of<Foo_Shell>(q, \"Foo\")";
     EXPECT_NE(r.cpp.find("Foo__set_N(" + w + ", 1);"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("script::prop_update<script::op_add>(Foo__get_N, Foo__set_N, " + q + ", 2);"),
+    EXPECT_NE(r.cpp.find("spp::prop_update<spp::op_add>(Foo__get_N, Foo__set_N, " + q + ", 2);"),
               std::string::npos)
         << r.cpp;
-    EXPECT_NE(r.cpp.find("script::prop_update<script::op_add>(Foo__get_N, Foo__set_N, " + w + ", 1);"),
+    EXPECT_NE(r.cpp.find("spp::prop_update<spp::op_add>(Foo__get_N, Foo__set_N, " + w + ", 1);"),
               std::string::npos)
         << r.cpp;
-    EXPECT_NE(r.cpp.find("int32_t a = script::prop_set(Foo__set_N, self, script::prop_set(Foo__set_N, " + q +
+    EXPECT_NE(r.cpp.find("int32_t a = spp::prop_set(Foo__set_N, self, spp::prop_set(Foo__set_N, " + q +
                          ", 4));"),
               std::string::npos)
         << r.cpp;
-    EXPECT_NE(r.cpp.find("int32_t b = (script::prop_set(Foo__set_N, " + w + ", 5));"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("int32_t b = (spp::prop_set(Foo__set_N, " + w + ", 5));"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("return Foo__get_N(" + w + ") + Foo__get_N(" + q + ");"), std::string::npos) << r.cpp;
 }
 
 // A member that is not a property keeps the native member access.
 TEST(PropertyTranslation, OtherObjectPlainMemberIsNotRewritten)
 {
-    const spc::TranslateResult r = translate_props(
+    const sppc::TranslateResult r = translate_props(
         "    int N { get; set; }\n"
         "    void run(Foo2& p) { p.hp = 1; p.hp += p.n; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.cpp.find("script::deref(p).hp = 1;"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("script::deref(p).hp += script::deref(p).n;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("spp::deref(p).hp = 1;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("spp::deref(p).hp += spp::deref(p).n;"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("Foo__set_hp"), std::string::npos) << r.cpp;
 }
 

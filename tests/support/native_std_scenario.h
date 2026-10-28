@@ -1,6 +1,6 @@
 // The native-and-std reload scenario. Every way to get a module runs the same checks.
 //
-// Generation 1 (example/scripts/native_std_v1.script) calls the non-inline functions of
+// Generation 1 (example/scripts/native_std_v1.spp) calls the non-inline functions of
 // example/engine/Util.cpp and uses std::vector and std::sort. Generation 2 renames the
 // field label to title ([alias]) and adds the field note. The reload must move
 // the std::string and the std::vector (the non-trivial move path).
@@ -20,13 +20,13 @@ namespace nativestd {
 using test_support::kDt;
 using test_support::Session;
 
-inline void run_native_std_reload(script::Module v1, script::Module v2)
+inline void run_native_std_reload(spp::Module v1, spp::Module v2)
 {
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(v1), "Tracker"));
     s.commit_at_frame_boundary();
-    auto str = [&](const char* n) { return script::field_ptr<std::string>(s.inst.shell, n); };
-    auto vec = [&] { return script::field_ptr<std::vector<int>>(s.inst.shell, "history"); };
+    auto str = [&](const char* n) { return spp::field_ptr<std::string>(s.inst.shell, n); };
+    auto vec = [&] { return spp::field_ptr<std::vector<int>>(s.inst.shell, "history"); };
 
     const std::string label = "tracker label that is longer than the small string buffer";
     ASSERT_NE(str("label"), nullptr);
@@ -51,7 +51,7 @@ inline void run_native_std_reload(script::Module v1, script::Module v2)
     ASSERT_TRUE(s.loader.request_reload(std::move(v2), error)) << error;
     s.world.Tick(kDt);
     ASSERT_FALSE(s.commit_failed);
-    EXPECT_EQ(script::active_generation, 2u);
+    EXPECT_EQ(spp::active_generation, 2u);
 
     // The std::string and the std::vector moved to the new block.
     EXPECT_EQ(str("label"), nullptr);

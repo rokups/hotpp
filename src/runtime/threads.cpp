@@ -5,7 +5,7 @@
 
 #include "runtime_internal.h"
 
-namespace script {
+namespace spp {
 
 uint32_t active_generation = 0;
 
@@ -49,4 +49,4 @@ uint32_t pin_count(uint32_t generation)
     return g_pins[generation % kPinSlots].load(std::memory_order_acquire);
 }
 
-}  // namespace script
+}  // namespace spp

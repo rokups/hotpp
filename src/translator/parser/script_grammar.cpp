@@ -16,28 +16,28 @@
 #include "lexy_common.hpp"
 #include "statement.h"
 
-namespace spc {
+namespace sppc {
 namespace {
 
 using namespace parser;  // NOLINT: the grammar uses the names of lexy_common.hpp
 
 // ---------------------------------------------------------------- error texts
-SPC_ERROR_TAG(e_top, "expected 'using' or 'class'");
-SPC_ERROR_TAG(e_member, "expected a member: 'Type name;' or 'Ret name(...)'");
-SPC_ERROR_TAG(e_member_name, "expected a member name");
-SPC_ERROR_TAG(e_old_field, "field syntax changed; write 'Type name;'");
-SPC_ERROR_TAG(e_class_name, "expected a class name");
-SPC_ERROR_TAG(e_base_name, "expected a base class name");
-SPC_ERROR_TAG(e_method_name, "expected a method name");
-SPC_ERROR_TAG(e_field_name, "expected a field name");
-SPC_ERROR_TAG(e_param_name, "expected a parameter name");
-SPC_ERROR_TAG(e_old_param, "parameter syntax changed; write 'Type name'");
-SPC_ERROR_TAG(e_attr_name, "expected an attribute name");
-SPC_ERROR_TAG(e_alias_string, "expected a string in [alias(...)]");
-SPC_ERROR_TAG(e_import_name, "using needs a header name");
-SPC_ERROR_TAG(e_import_arg, "using needs a string or <header>");
-SPC_ERROR_TAG(e_import_close, "using <...> needs a closing '>'");
-SPC_ERROR_TAG(e_accessor, "expected 'get' or 'set'");
+SPP_ERROR_TAG(e_top, "expected 'using' or 'class'");
+SPP_ERROR_TAG(e_member, "expected a member: 'Type name;' or 'Ret name(...)'");
+SPP_ERROR_TAG(e_member_name, "expected a member name");
+SPP_ERROR_TAG(e_old_field, "field syntax changed; write 'Type name;'");
+SPP_ERROR_TAG(e_class_name, "expected a class name");
+SPP_ERROR_TAG(e_base_name, "expected a base class name");
+SPP_ERROR_TAG(e_method_name, "expected a method name");
+SPP_ERROR_TAG(e_field_name, "expected a field name");
+SPP_ERROR_TAG(e_param_name, "expected a parameter name");
+SPP_ERROR_TAG(e_old_param, "parameter syntax changed; write 'Type name'");
+SPP_ERROR_TAG(e_attr_name, "expected an attribute name");
+SPP_ERROR_TAG(e_alias_string, "expected a string in [alias(...)]");
+SPP_ERROR_TAG(e_import_name, "using needs a header name");
+SPP_ERROR_TAG(e_import_arg, "using needs a string or <header>");
+SPP_ERROR_TAG(e_import_close, "using <...> needs a closing '>'");
+SPP_ERROR_TAG(e_accessor, "expected 'get' or 'set'");
 
 // The text of a span.
 std::string_view span_text(const ParseState& st, Span sp)
@@ -995,4 +995,4 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
     return script;
 }
 
-}  // namespace spc
+}  // namespace sppc

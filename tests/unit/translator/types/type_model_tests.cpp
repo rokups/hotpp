@@ -8,7 +8,7 @@
 #include "types.h"
 #include "support/type_model_test_support.h"
 
-using namespace spc;
+using namespace sppc;
 using namespace type_model_test;
 
 TEST(TypeModel, HandleStorageAndParam)

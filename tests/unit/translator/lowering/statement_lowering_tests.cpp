@@ -11,7 +11,7 @@
 #include "parser/statement.h"
 #include "support/lowering_test_support.h"
 
-using namespace spc;
+using namespace sppc;
 using namespace lowering_test;
 
 TEST(StatementLowering, Numbers)
@@ -56,23 +56,23 @@ TEST(StatementLowering, CaseLabelsOnSeparateLinesKeepTheirCase)
     f.cx.map = &map;
     ast::BlockStmt b = parse_block({text, &map}, {0, static_cast<uint32_t>(text.size())}, f.diag);
     lower_block(b, f.cx, f.diag);
-    ast::Emitter e(map, "f.script");
+    ast::Emitter e(map, "f.spp");
     ast::emit_stmts(b.stmts, e, 1);
     e.finish();
     EXPECT_EQ(f.diag.items.size(), 0u);
     EXPECT_EQ(e.text(),
-              "#line 1 \"f.script\"\n    switch (k) {\n"
-              "#line 2 \"f.script\"\n        case 1:\n"
-              "#line 3 \"f.script\"\n        case 2: default:\n"
-              "#line 4 \"f.script\"\n        x = 1;\n"
-              "#line 5 \"f.script\"\n    }\n");
+              "#line 1 \"f.spp\"\n    switch (k) {\n"
+              "#line 2 \"f.spp\"\n        case 1:\n"
+              "#line 3 \"f.spp\"\n        case 2: default:\n"
+              "#line 4 \"f.spp\"\n        x = 1;\n"
+              "#line 5 \"f.spp\"\n    }\n");
 }
 
 TEST(StatementLowering, FinallyBody)
 {
     Fixture f;
     EXPECT_EQ(f.body("try { throw 1; } finally { this.n = 1; }"),
-              "{ script::Finally __fin_0([&] { st->n = 1; }); { throw 1; } }");
+              "{ spp::Finally __fin_0([&] { st->n = 1; }); { throw 1; } }");
     // A loop or a switch fully inside the finally block can use break and continue.
     // A lambda in the finally block can use return.
     f.body("while (true) { try { } finally {\n"

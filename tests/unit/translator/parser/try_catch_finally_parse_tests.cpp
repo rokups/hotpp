@@ -10,7 +10,7 @@
 #include "parser/statement.h"
 #include "support/statement_parse_test_support.h"
 
-using namespace spc;
+using namespace sppc;
 using namespace stmt_test;
 
 TEST(TryCatchFinallyParse, Exceptions)
@@ -78,9 +78,9 @@ TEST(TryCatchFinallyParse, Finally)
         EXPECT_FALSE(t->finally_block.has_value());
     }
     EXPECT_EQ(round_trip("try { f(); } catch (int e) { } finally { g(); }"),
-              "{ script::Finally __fin_0([&] { g(); }); try { f(); } catch (int32_t e) {} }");
+              "{ spp::Finally __fin_0([&] { g(); }); try { f(); } catch (int32_t e) {} }");
     EXPECT_EQ(round_trip("try { f(); } finally { }"),
-              "{ script::Finally __fin_0([&] {}); { f(); } }");
+              "{ spp::Finally __fin_0([&] {}); { f(); } }");
     {
         // "finally" is a reserved word, so a name cannot be "finally".
         Parsed p("try { f(); } finally;");

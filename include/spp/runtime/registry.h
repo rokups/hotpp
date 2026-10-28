@@ -7,7 +7,7 @@
 #include "spp/runtime/migration.h"
 #include "spp/runtime/records.h"
 
-namespace script {
+namespace spp {
 
 // A generation module fills the registry in script_register.
 class Registry {
@@ -28,4 +28,4 @@ private:
     uint32_t max_generation_ = 0;
 };
 
-}  // namespace script
+}  // namespace spp

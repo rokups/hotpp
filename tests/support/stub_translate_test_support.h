@@ -23,15 +23,15 @@ inline std::string weapon_script(const std::string& stub, const std::string& mem
     return "using \"w.h\";\n" + stub + "class Foo : Widget {\n" + members + "}\n";
 }
 
-inline spc::TranslateResult weapon_translate(const std::string& members, bool stub_in_prelude = false)
+inline sppc::TranslateResult weapon_translate(const std::string& members, bool stub_in_prelude = false)
 {
     static TempDir* dir = nullptr;
     if (!dir) dir = new TempDir();
     write_file(dir->path() / "w.h", kWeaponHeader);
-    spc::TranslateOptions o =
+    sppc::TranslateOptions o =
         temp_options(*dir, weapon_script(stub_in_prelude ? "" : kWeaponStub, members));
     if (stub_in_prelude) o.preludes.push_back({"weapon.prelude", kWeaponStub});
-    return spc::translate(o);
+    return sppc::translate(o);
 }
 
 inline bool has(const std::string& text, const std::string& part)
@@ -52,10 +52,10 @@ inline const char* kIntrusiveStub =
 
 inline const char* kSharedStub = "[native, handle(\"std::shared_ptr<$T>\")] class Object;\n";
 
-inline const std::string kIntr = "script::Intrusive<Item, &Object::AddRef, &Object::Release>";
+inline const std::string kIntr = "spp::Intrusive<Item, &Object::AddRef, &Object::Release>";
 
-inline spc::TranslateResult hier_translate(const std::string& stubs, const std::string& members,
-                                    bool stub_in_prelude = false, spc::TranslatorSession* session = nullptr)
+inline sppc::TranslateResult hier_translate(const std::string& stubs, const std::string& members,
+                                    bool stub_in_prelude = false, sppc::TranslatorSession* session = nullptr)
 {
     // Write the header once: a new mtime would make the session parse again.
     static TempDir* dir = nullptr;
@@ -63,10 +63,10 @@ inline spc::TranslateResult hier_translate(const std::string& stubs, const std::
         dir = new TempDir();
         write_file(dir->path() / "w.h", kHierHeader);
     }
-    spc::TranslateOptions o =
+    sppc::TranslateOptions o =
         temp_options(*dir, weapon_script(stub_in_prelude ? "" : stubs, members));
     if (stub_in_prelude) o.preludes.push_back({"hier.prelude", stubs});
-    return session ? spc::translate(o, *session) : spc::translate(o);
+    return session ? sppc::translate(o, *session) : sppc::translate(o);
 }
 
 }  // namespace stub_translate_test

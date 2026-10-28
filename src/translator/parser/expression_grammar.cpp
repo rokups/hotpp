@@ -22,7 +22,7 @@
 #include "lexy_common.hpp"
 #include "statement.h"
 
-namespace spc {
+namespace sppc {
 namespace {
 
 using namespace parser;  // NOLINT: the grammar uses the names of lexy_common.hpp
@@ -30,12 +30,12 @@ using ast::ExprP;
 
 // ---------------------------------------------------------------- error texts
 // The script has no "::" and no "->". A "." does both jobs. The errors tell the user.
-SPC_ERROR_TAG(e_expected_expr, "expected an expression");
-SPC_ERROR_TAG(e_end_of_expr, "expected end of expression");
-SPC_ERROR_TAG(e_old_param, "parameter syntax changed; write 'Type name'");
-SPC_ERROR_TAG(e_brace_init, "brace initialization is not supported; use parentheses");
-SPC_ERROR_TAG(e_new_paren, "expected '(' after the type of 'new'");
-SPC_ERROR_TAG(e_targs, "not a template argument list");
+SPP_ERROR_TAG(e_expected_expr, "expected an expression");
+SPP_ERROR_TAG(e_end_of_expr, "expected end of expression");
+SPP_ERROR_TAG(e_old_param, "parameter syntax changed; write 'Type name'");
+SPP_ERROR_TAG(e_brace_init, "brace initialization is not supported; use parentheses");
+SPP_ERROR_TAG(e_new_paren, "expected '(' after the type of 'new'");
+SPP_ERROR_TAG(e_targs, "not a template argument list");
 
 // ---------------------------------------------------------------- limits
 // The nesting of the brackets in the text of template arguments.
@@ -170,11 +170,11 @@ struct CallTag {};
 struct ArrowTag {};  // "->": always an error
 struct IndexTag {};
 
-#define SPC_BIN(S) dsl::op<Bin<S>>(LEXY_LIT(S))
-#define SPC_BIN_NF(S, CC) dsl::op<Bin<S>>(dsl::not_followed_by(LEXY_LIT(S), CC))
-#define SPC_PRE(S) dsl::op<Pre<S>>(LEXY_LIT(S))
-#define SPC_PRE_NF(S, CC) dsl::op<Pre<S>>(dsl::not_followed_by(LEXY_LIT(S), CC))
-#define SPC_POST(S) dsl::op<Post<S>>(LEXY_LIT(S))
+#define SPP_BIN(S) dsl::op<Bin<S>>(LEXY_LIT(S))
+#define SPP_BIN_NF(S, CC) dsl::op<Bin<S>>(dsl::not_followed_by(LEXY_LIT(S), CC))
+#define SPP_PRE(S) dsl::op<Pre<S>>(LEXY_LIT(S))
+#define SPP_PRE_NF(S, CC) dsl::op<Pre<S>>(dsl::not_followed_by(LEXY_LIT(S), CC))
+#define SPP_POST(S) dsl::op<Post<S>>(LEXY_LIT(S))
 
 // The chars that an operator must not have after it.
 constexpr auto cc_eq = dsl::lit_c<'='>;
@@ -491,7 +491,7 @@ struct expr : lexy::expression_production {
     // "->" and goes on, so a call or an index after it gives no second error.
     struct postfix_lvl : dsl::postfix_op {
         static constexpr auto op =
-            SPC_POST("++") / SPC_POST("--") /
+            SPP_POST("++") / SPP_POST("--") /
             dsl::op<CallTag>(LEXY_LIT("(") >> dsl::p<elems_p<')'>>) /
             dsl::op<IndexTag>(LEXY_LIT("[") >> dsl::p<index_p>) /
             dsl::op<Member<".">>(LEXY_LIT(".") >> dsl::p<id_str>) /
@@ -503,8 +503,8 @@ struct expr : lexy::expression_production {
     // - + ! ~ * ++ -- ref out. A prefix "&" is removed; the parse reports it.
     struct prefix_lvl : dsl::prefix_op {
         static constexpr auto op =
-            SPC_PRE("++") / SPC_PRE("--") / SPC_PRE_NF("-", cc_minus_only) /
-            SPC_PRE_NF("+", cc_plus_only) / SPC_PRE("!") / SPC_PRE("~") / SPC_PRE("*") /
+            SPP_PRE("++") / SPP_PRE("--") / SPP_PRE_NF("-", cc_minus_only) /
+            SPP_PRE_NF("+", cc_plus_only) / SPP_PRE("!") / SPP_PRE("~") / SPP_PRE("*") /
             dsl::op<Pre<"ref">>(kw_ref) / dsl::op<Pre<"out">>(kw_out) /
             dsl::op<Pre<"&">>(dsl::not_followed_by(LEXY_LIT("&"), cc_amp_only) >>
                               dsl::try_(dsl::error<e_amp_prefix>));
@@ -513,44 +513,44 @@ struct expr : lexy::expression_production {
 
     struct mul_lvl : dsl::infix_op_left {
         static constexpr auto op =
-            SPC_BIN_NF("*", cc_eq) / SPC_BIN_NF("/", cc_eq) / SPC_BIN_NF("%", cc_eq);
+            SPP_BIN_NF("*", cc_eq) / SPP_BIN_NF("/", cc_eq) / SPP_BIN_NF("%", cc_eq);
         using operand = prefix_lvl;
     };
     struct add_lvl : dsl::infix_op_left {
-        static constexpr auto op = SPC_BIN_NF("+", cc_plus) / SPC_BIN_NF("-", cc_minus);
+        static constexpr auto op = SPP_BIN_NF("+", cc_plus) / SPP_BIN_NF("-", cc_minus);
         using operand = mul_lvl;
     };
     struct shift_lvl : dsl::infix_op_left {
-        static constexpr auto op = SPC_BIN_NF("<<", cc_eq) / SPC_BIN_NF(">>", cc_eq);
+        static constexpr auto op = SPP_BIN_NF("<<", cc_eq) / SPP_BIN_NF(">>", cc_eq);
         using operand = add_lvl;
     };
     struct rel_lvl : dsl::infix_op_left {
-        static constexpr auto op = SPC_BIN_NF("<", cc_lt) / SPC_BIN("<=") /
-                                   SPC_BIN_NF(">", cc_gt) / SPC_BIN(">=");
+        static constexpr auto op = SPP_BIN_NF("<", cc_lt) / SPP_BIN("<=") /
+                                   SPP_BIN_NF(">", cc_gt) / SPP_BIN(">=");
         using operand = shift_lvl;
     };
     struct eq_lvl : dsl::infix_op_left {
-        static constexpr auto op = SPC_BIN("==") / SPC_BIN("!=");
+        static constexpr auto op = SPP_BIN("==") / SPP_BIN("!=");
         using operand = rel_lvl;
     };
     struct band_lvl : dsl::infix_op_left {
-        static constexpr auto op = SPC_BIN_NF("&", cc_amp);
+        static constexpr auto op = SPP_BIN_NF("&", cc_amp);
         using operand = eq_lvl;
     };
     struct bxor_lvl : dsl::infix_op_left {
-        static constexpr auto op = SPC_BIN_NF("^", cc_eq);
+        static constexpr auto op = SPP_BIN_NF("^", cc_eq);
         using operand = band_lvl;
     };
     struct bor_lvl : dsl::infix_op_left {
-        static constexpr auto op = SPC_BIN_NF("|", cc_bar);
+        static constexpr auto op = SPP_BIN_NF("|", cc_bar);
         using operand = bxor_lvl;
     };
     struct land_lvl : dsl::infix_op_left {
-        static constexpr auto op = SPC_BIN("&&");
+        static constexpr auto op = SPP_BIN("&&");
         using operand = bor_lvl;
     };
     struct lor_lvl : dsl::infix_op_left {
-        static constexpr auto op = SPC_BIN("||");
+        static constexpr auto op = SPP_BIN("||");
         using operand = land_lvl;
     };
     struct cond_lvl : dsl::infix_op_right {
@@ -559,9 +559,9 @@ struct expr : lexy::expression_production {
     };
     struct assign_lvl : dsl::infix_op_right {
         static constexpr auto op =
-            SPC_BIN_NF("=", cc_eq) / SPC_BIN("+=") / SPC_BIN("-=") / SPC_BIN("*=") /
-            SPC_BIN("/=") / SPC_BIN("%=") / SPC_BIN("<<=") / SPC_BIN(">>=") / SPC_BIN("&=") /
-            SPC_BIN("|=") / SPC_BIN("^=");
+            SPP_BIN_NF("=", cc_eq) / SPP_BIN("+=") / SPP_BIN("-=") / SPP_BIN("*=") /
+            SPP_BIN("/=") / SPP_BIN("%=") / SPP_BIN("<<=") / SPP_BIN(">>=") / SPP_BIN("&=") /
+            SPP_BIN("|=") / SPP_BIN("^=");
         using operand = cond_lvl;
     };
 
@@ -650,4 +650,4 @@ std::vector<ast::ExprP> parse_expression_list(ParseInput in, Span span, Diagnost
     return std::move(r.items);
 }
 
-}  // namespace spc
+}  // namespace sppc
