@@ -119,6 +119,8 @@ The syntax is type-first. See `README.md` and `spp-design.md` (section 7) for th
   - Always an error (5.3): a script function used as a value (`var f = G;`, `Use(G)`).
   - Gaps: a `var` local from a native call has no known type, so a returned `T*` is not seen. A `ref x` passed to a native function that keeps it is not detectable. Pattern stubs (`std.vector<*>`) get no 7.10.7 check. A custom `spp::is_handle` is checked for `operator->` only. A pointer stored in a script field and kept across calls is seen only when the field type is written as `T*` or `T&`. `Weapon*` is allowed when `Weapon` is a handle.
 
+- Shipping mode (S12, design M7). See README "Shipping mode". `sppc --ship` writes `<name>.ship.cpp` and `spp_shipped_registry.cpp`. `spp_add_shipped_scripts` builds them into a static library that links `spp_ship` (no loader). Limits: generation 1 only, no slot file. A type error shows in the C++ compile at the generated file (no diagnostic rewrite). Script type names (enums, structs) and class names must be unique over all shipped scripts. The generation guard stays in the code. `onReload` and `convert` never run. The tests now count 660 in `build` and `build-asan`.
+
 ## Parser
 
 The translator parses the whole script. The grammar uses the lexy library. Only the files in `src/translator/parser/` include lexy headers.

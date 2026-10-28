@@ -186,6 +186,37 @@ The CMake function `spp_add_scripts` (`cmake/SppScripts.cmake`) only runs `sppc`
 
 `TARGET` is a custom target that makes the libraries in `OUT_DIR` (default `${CMAKE_BINARY_DIR}/spp_scripts`). `AFTER` orders a generation after the earlier one.
 
+## Shipping mode
+
+A shipping build has no loader, no reload, no JIT and no Clang (design M7). The generated C++ of all scripts is part of the game binary. The objects are plain C++ objects with the same shell classes. The class records, the slot tables and the factories are constant data of the binary.
+
+Command line (S12). The tool translates generation 1 of each script. It does not compile:
+
+    sppc --ship <script>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]
+         [--format=std|fmt] [--resource-dir dir]
+
+- For each script `sppc` writes `DIR/<name>.ship.cpp`. The register function has the name `spp_script_register_<name>`, so many scripts link into one program.
+- `sppc` also writes `DIR/spp_shipped_registry.cpp`. It defines the constant table `spp::shipped_table` (`include/spp/shipped.h`).
+- The script names must be different. The class names must be different over all the scripts of a program. A shipped script has no slot file and no later generation.
+
+The CMake function `spp_add_shipped_scripts` (`cmake/SppScripts.cmake`) runs `sppc --ship` and builds a static library:
+
+    spp_add_shipped_scripts(TARGET game_scripts SCRIPTS player.spp boss.spp
+                            INCLUDES include example/engine [PRELUDES file...] [DEPENDS file...])
+    target_link_libraries(game PRIVATE game_scripts)
+
+The library links `spp_ship`. This target holds the core of the runtime (`threads.cpp`, `registry.cpp`) and the shipped registry (`shipped.cpp`). The loader, the migration and `dlopen` are in the other target `spp_runtime`. Do not link both targets in one program.
+
+At start-up the program makes the registry. The registry calls the register function of each script, makes the blocks of the module variables and sets `spp::active_generation` to 1:
+
+    spp::ShippedRegistry registry(spp::shipped_table);
+    Actor* boss = registry.create_as<Actor>("Boss");   // the factory: the constructor with default arguments
+    world.Add(boss);                                    // the engine ticks it as before
+
+`new` of a script class, script virtuals, properties, `is`/`as` and constructors work as under the loader, because the code is the same. The generation guard stays in the code and costs one compare. A shipped program never runs `onReload`.
+
+The example is `example/ship/main.cpp` (target `ship_demo`) with the script `example/scripts/ship_demo.spp`. The tests are in `tests/integration/ship/`. They run the same steps with the loader and with the shipped program and compare the text. They check with `nm` that `ship_demo` has no loader and no Clang symbol. A compile error in the shipped C++ shows the generated file, not the script line.
+
 ## Test
 
 CMake uses CPM. It takes GoogleTest from the system, and fetches it only when it is missing. libclang must come from the system. The JIT build also needs the LLVM and Clang development packages.

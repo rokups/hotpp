@@ -1,0 +1,77 @@
+// The script of the shipping demo (S12, design M7). The loader and the shipped build run the
+// same code. Fighter has a constructor, a property and a virtual function. Veteran derives
+// from Fighter and overrides the virtual function. Spawner builds a Veteran with "new".
+using "Actor.h";
+using <string>;
+
+class Fighter : Actor {
+    int hp = 100;
+    int ticks = 0;
+    int Level { get; private set; } = 1;
+    float shield_raw = 0.0;
+    float Shield {
+        get { return this.shield_raw; }
+        set { this.shield_raw = value < 0.0 ? 0.0 : value; }
+    }
+
+    Fighter(int start) : super(std.string("fighter")) {
+        this.hp = start + 100;
+    }
+
+    ~Fighter() {
+        std.printf("[ship_demo] Fighter dtor %d\n", this.hp);
+    }
+
+    virtual int Power() { return 1; }
+
+    int Attack() { return Power() * 10; }
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        Level++;
+        this.Shield = this.Shield + 2.0;
+        this.Move(Vec3(dt, 0, 0));
+    }
+
+    override void TakeDamage(float amount) {
+        this.Shield -= amount;
+        if (this.Shield <= 0.0) this.hp = this.hp - 1;
+    }
+}
+
+class Veteran : Fighter {
+    int rage = 3;
+    int parent_power = 0;
+
+    Veteran(int start, int r) : super(start + 1) {
+        this.rage = r;
+    }
+
+    ~Veteran() {
+        std.printf("[ship_demo] Veteran dtor %d\n", this.rage);
+    }
+
+    override int Power() { return this.rage; }
+
+    new int Attack() { return super.Attack() + 1; }
+
+    override void Tick(float dt) {
+        super.Tick(dt);
+        this.rage = this.rage + 1;
+        this.parent_power = super.Power();
+    }
+}
+
+class Spawner : Actor {
+    Fighter kid = null;
+    int power = 0;
+    int attack = 0;
+    bool is_veteran = false;
+
+    override void Tick(float dt) {
+        if (this.kid == null) this.kid = new Veteran(5, 7);
+        this.power = this.kid.Power();
+        this.attack = this.kid.Attack();
+        this.is_veteran = this.kid is Veteran;
+    }
+}

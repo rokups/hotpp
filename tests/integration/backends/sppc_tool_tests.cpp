@@ -6,7 +6,9 @@
 #include <sys/wait.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 #include "spp/backend.h"
@@ -243,5 +245,70 @@ TEST(SppcTool, InterpolationRunsWithStdFormat)
     EXPECT_EQ(s.actor->Name, "hp = 7, name L7, r 0.50 {x} ${y} hi");
 }
 #endif
+
+// --ship writes the C++ of each script and the registration file. It does not compile.
+TEST(SppcTool, ShipModeWritesTheCppAndTheRegistrationFile)
+{
+    const std::string out_dir = std::string(SPP_BINARY_DIR) + "/sppc_ship";
+    std::filesystem::remove_all(out_dir);
+    const std::string scripts = std::string("'") + SPP_SOURCE_DIR + "/example/scripts/ship_demo.spp' '" +
+                                SPP_SOURCE_DIR + "/example/scripts/props_v1.spp'";
+    const std::string cmd = std::string("'") + SPPC_PATH + "' --ship " + scripts + " --out-dir '" + out_dir +
+                            "' -I '" + SPP_SOURCE_DIR + "/example/engine' -I '" + SPP_SOURCE_DIR + "/include' 2>&1";
+    FILE* p = popen(cmd.c_str(), "r");
+    ASSERT_NE(p, nullptr);
+    std::string text;
+    char buf[512];
+    while (size_t n = fread(buf, 1, sizeof buf, p)) text.append(buf, n);
+    const int status = pclose(p);
+    ASSERT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(WEXITSTATUS(status), 0) << text;
+    const std::string demo = read_file(out_dir + "/ship_demo.ship.cpp");
+    EXPECT_NE(demo.find("#define script_register spp_script_register_ship_demo"), std::string::npos);
+    EXPECT_NE(demo.find("extern \"C\" void script_register("), std::string::npos);
+    EXPECT_FALSE(std::filesystem::exists(out_dir + "/ship_demo.g1.so"));
+    const std::string reg = read_file(out_dir + "/spp_shipped_registry.cpp");
+    EXPECT_NE(reg.find("{\"ship_demo\", &spp_script_register_ship_demo}"), std::string::npos) << reg;
+    EXPECT_NE(reg.find("{\"props_v1\", &spp_script_register_props_v1}"), std::string::npos) << reg;
+    EXPECT_NE(reg.find("shipped_table = {kShippedScripts, 2}"), std::string::npos) << reg;
+}
+
+// --ship needs an output directory and does not take the options of the other modes.
+TEST(SppcTool, ShipModeRejectsBadUsage)
+{
+    const std::string script = std::string(SPP_SOURCE_DIR) + "/example/scripts/ship_demo.spp";
+    for (const char* extra : {"", "--out-dir /tmp/x --gen 1", "--out-dir /tmp/x -o /tmp/x.so", "--emit-cpp --out-dir /tmp/x"}) {
+        const std::string cmd = std::string("'") + SPPC_PATH + "' --ship '" + script + "' " + extra + " >/dev/null 2>&1";
+        const int status = std::system(cmd.c_str());
+        ASSERT_TRUE(WIFEXITED(status));
+        EXPECT_EQ(WEXITSTATUS(status), 2) << extra;
+    }
+}
+
+// A script that does not parse gives exit code 1, an error at the script line and no
+// registration file. A type error appears later, in the compile of the library.
+TEST(SppcTool, ShipModeReportsParseErrorAtTheScriptLine)
+{
+    const std::string out_dir = std::string(SPP_BINARY_DIR) + "/sppc_ship_bad";
+    std::filesystem::remove_all(out_dir);
+    std::filesystem::create_directories(out_dir);
+    const std::string script = out_dir + "/broken.spp";
+    {
+        std::ofstream f(script);
+        f << "using \"Actor.h\";\n\nclass Broken : Actor {\n    int x = ;\n}\n";
+    }
+    const std::string cmd = std::string("'") + SPPC_PATH + "' --ship '" + script + "' --out-dir '" + out_dir +
+                            "' -I '" + SPP_SOURCE_DIR + "/example/engine' -I '" + SPP_SOURCE_DIR + "/include' 2>&1";
+    FILE* p = popen(cmd.c_str(), "r");
+    ASSERT_NE(p, nullptr);
+    std::string text;
+    char buf[512];
+    while (size_t n = fread(buf, 1, sizeof buf, p)) text.append(buf, n);
+    const int status = pclose(p);
+    ASSERT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(WEXITSTATUS(status), 1) << text;
+    EXPECT_NE(text.find("broken.spp:4:"), std::string::npos) << text;
+    EXPECT_FALSE(std::filesystem::exists(out_dir + "/spp_shipped_registry.cpp"));
+}
 
 }  // namespace

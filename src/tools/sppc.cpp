@@ -20,7 +20,17 @@
 //        [--slots file] [--resource-dir dir]
 // Without -o, the tool prints the C++ to the standard output.
 //
+// Ship mode (--ship): translate scripts for a shipping build (design M7).
+//   sppc --ship <file.spp>... --out-dir DIR [-I dir]... [--prelude file]...
+//        [--no-strict-borrowed] [--format=std|fmt] [--resource-dir dir]
+// For each file the tool writes DIR/<name>.ship.cpp (generation 1). It also writes
+// DIR/spp_shipped_registry.cpp, which defines the constant table spp::shipped_table
+// (include/spp/shipped.h). The tool does not compile. The CMake function
+// spp_add_shipped_scripts builds a static library from these files. The program links the
+// library and spp_ship. It has no loader.
+//
 // Exit code: 0 success, 1 error, 2 bad usage.
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -44,7 +54,9 @@ namespace {
                  "            [--cxx command] [--cxxflag flag]... [--slots file] [--no-strict-borrowed] [--format=std|fmt]\n"
                  "            [--raw-diagnostics]\n"
                  "       sppc --emit-cpp <file.spp> --gen N [-o out.cpp] [-I dir]... [--prelude file]... [--no-strict-borrowed] [--format=std|fmt]\n"
-                 "            [--slots file] [--resource-dir dir]\n");
+                 "            [--slots file] [--resource-dir dir]\n"
+                 "       sppc --ship <file.spp>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]\n"
+                 "            [--format=std|fmt] [--resource-dir dir]\n");
     std::exit(2);
 }
 
@@ -60,6 +72,8 @@ bool read_file(const std::string& path, std::string& text)
 
 struct Args {
     bool emit_cpp = false;
+    bool ship = false;
+    bool has_compiler_option = false;  // --cxx, --cxxflag, --slots, --gen, -o
     std::vector<std::string> inputs;
     std::string out_dir, output, slots, resource_dir;
     std::vector<std::string> include_dirs, preludes, cxxflags;
@@ -83,13 +97,14 @@ Args parse_args(int argc, char** argv)
             return argv[++i];
         };
         if (a == "--emit-cpp") r.emit_cpp = true;
-        else if (a == "--gen") r.gen = std::atoi(next().c_str());
-        else if (a == "-o") r.output = next();
-        else if (a == "--slots") r.slots = next();
+        else if (a == "--ship") r.ship = true;
+        else if (a == "--gen") { r.gen = std::atoi(next().c_str()); r.has_compiler_option = true; }
+        else if (a == "-o") { r.output = next(); r.has_compiler_option = true; }
+        else if (a == "--slots") { r.slots = next(); r.has_compiler_option = true; }
         else if (a == "--resource-dir") r.resource_dir = next();
         else if (a == "--out-dir") { r.out_dir = next(); r.has_build_only = true; }
-        else if (a == "--cxx") { r.cxx = next(); r.has_build_only = true; }
-        else if (a == "--cxxflag") { r.cxxflags.push_back(next()); r.has_build_only = true; }
+        else if (a == "--cxx") { r.cxx = next(); r.has_build_only = true; r.has_compiler_option = true; }
+        else if (a == "--cxxflag") { r.cxxflags.push_back(next()); r.has_build_only = true; r.has_compiler_option = true; }
         else if (a == "--prelude") { r.preludes.push_back(next()); r.has_emit_only = true; }
         else if (a == "--strict-borrowed") r.strict_borrowed = true;
         else if (a == "--no-strict-borrowed") r.strict_borrowed = false;
@@ -102,6 +117,98 @@ Args parse_args(int argc, char** argv)
         else r.inputs.push_back(a);
     }
     return r;
+}
+
+// The C++ identifier of a script name: letters, digits and "_".
+std::string identifier(const std::string& stem)
+{
+    std::string id;
+    for (char c : stem) id += std::isalnum(static_cast<unsigned char>(c)) ? c : '_';
+    return id;
+}
+
+bool write_file(const std::string& path, const std::string& text)
+{
+    std::ofstream of(path);
+    if (!of) {
+        std::fprintf(stderr, "sppc: error: cannot write %s\n", path.c_str());
+        return false;
+    }
+    of << text;
+    return true;
+}
+
+int run_ship(const Args& args)
+{
+    if (args.has_compiler_option || args.out_dir.empty() || args.inputs.empty()) usage();
+    sppc::TranslateOptions base;
+    base.generation = 1;
+    base.strict_borrowed = args.strict_borrowed;
+    base.format_lib = args.format_lib;
+    base.resource_dir = args.resource_dir;
+    base.include_dirs = args.include_dirs;
+    for (const std::string& file : args.preludes) {
+        std::string text;
+        if (!read_file(file, text)) {
+            std::fprintf(stderr, "sppc: error: cannot read %s\n", file.c_str());
+            return 1;
+        }
+        base.preludes.emplace_back(file, std::move(text));
+    }
+    std::set<std::string> ids;
+    for (const std::string& s : args.inputs) {
+        const std::string stem = fs::path(s).stem().string();
+        if (!ids.insert(identifier(stem)).second) {
+            std::fprintf(stderr, "sppc: error: two scripts have the name %s\n", stem.c_str());
+            return 1;
+        }
+    }
+    std::error_code ec;
+    fs::create_directories(args.out_dir, ec);
+
+    sppc::TranslatorSession session;
+    std::vector<std::string> names;
+    bool failed = false;
+    for (const std::string& path : args.inputs) {
+        const std::string stem = fs::path(path).stem().string();
+        const std::string id = identifier(stem);
+        const std::string out = args.out_dir + "/" + stem + ".ship.cpp";
+        sppc::TranslateOptions opt = base;
+        opt.script_name = path;
+        opt.output_name = out;
+        if (!read_file(path, opt.script_text)) {
+            std::fprintf(stderr, "sppc: error: cannot read %s\n", path.c_str());
+            failed = true;
+            continue;
+        }
+        sppc::TranslateResult r = sppc::translate(opt, session);
+        std::fputs(r.diagnostics.c_str(), stderr);
+        std::fputs(r.warnings.c_str(), stderr);
+        if (!r.ok) {
+            failed = true;
+            continue;
+        }
+        // Each script gets its own register function, so the scripts link into one program.
+        std::string cpp = r.cpp;
+        const size_t eol = cpp.find('\n');
+        cpp.insert(eol == std::string::npos ? cpp.size() : eol + 1,
+                   "#define script_register spp_script_register_" + id + "\n");
+        cpp += "#undef script_register\n";
+        if (!write_file(out, cpp)) failed = true;
+        names.push_back(stem);
+    }
+    if (failed) return 1;
+
+    std::string reg = "// Generated by sppc --ship. Do not edit.\n#include \"spp/shipped.h\"\n\n";
+    for (const std::string& n : names)
+        reg += "extern \"C\" void spp_script_register_" + identifier(n) + "(spp::Registry&);\n";
+    reg += "\nnamespace spp {\nnamespace {\nconst ShippedScript kShippedScripts[] = {\n";
+    for (const std::string& n : names)
+        reg += "    {\"" + n + "\", &spp_script_register_" + identifier(n) + "},\n";
+    reg += "};\n}  // namespace\n\nextern const ShippedTable shipped_table;\n";
+    reg += "const ShippedTable shipped_table = {kShippedScripts, " + std::to_string(names.size()) + "};\n";
+    reg += "}  // namespace spp\n";
+    return write_file(args.out_dir + "/spp_shipped_registry.cpp", reg) ? 0 : 1;
 }
 
 int run_emit(const Args& args)
@@ -216,5 +323,7 @@ int run_build(const Args& args)
 int main(int argc, char** argv)
 {
     const Args args = parse_args(argc, argv);
+    if (args.ship && args.emit_cpp) usage();
+    if (args.ship) return run_ship(args);
     return args.emit_cpp ? run_emit(args) : run_build(args);
 }

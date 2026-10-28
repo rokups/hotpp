@@ -20,7 +20,7 @@ Status: [ ] open, [x] done. One slice is one commit.
 - [x] S9 Runtime polish: removed-class handler, `script_stats`, entry-count debug check, watcher and command channel.
 - [x] S10 M8 Done: core module (`Module::make_core`), generation 1 unloads, `kMayHoldCode` unload block, stress tests in `tests/integration/reload/core_module_tests.cpp`. Open: see HANDOFF.md, Not done item 2.
 - [ ] S11 Diagnostic rewriter, LLDB formatters.
-- [ ] S12 Shipping mode (M7).
+- [x] S12 Done (M7): `sppc --ship`, `spp_add_shipped_scripts`, `spp::ShippedRegistry` (`include/spp/shipped.h`), target `spp_ship` (no loader), example `ship_demo`, tests in `tests/integration/ship/`. Open: see the open items in README "Shipping mode" and HANDOFF.md.
 - [ ] S13 Tolerant parse and `source_map` (M10).
 - [ ] S14 VS Code extension (M11), `sppc --compile-commands`.
 - [ ] S15 CPM fetch test.

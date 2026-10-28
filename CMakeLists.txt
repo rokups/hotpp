@@ -46,13 +46,21 @@ CPMAddPackage(
     OPTIONS "LEXY_BUILD_EXAMPLES OFF" "LEXY_BUILD_TESTS OFF" "LEXY_BUILD_PACKAGE OFF" "LEXY_ENABLE_INSTALL OFF"
 )
 
-# Script runtime: a small static library for the executable.
-add_library(spp_runtime STATIC
-    src/runtime/threads.cpp src/runtime/state.cpp src/runtime/registry.cpp
-    src/runtime/migration.cpp src/runtime/loader.cpp src/runtime/module.cpp)
-target_include_directories(spp_runtime PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine)
+# Script runtime. It has two parts.
+#   spp_runtime_core: the globals and the registry that generated code needs. A shipping
+#     build links only this part (design M7). It has no loader, no migration, no dlopen.
+#   spp_runtime: the core plus the state tracking, the migration and the generation loader.
 find_package(Threads REQUIRED)
-target_link_libraries(spp_runtime PUBLIC ${CMAKE_DL_LIBS} Threads::Threads)
+add_library(spp_runtime_core STATIC src/runtime/threads.cpp src/runtime/registry.cpp)
+target_include_directories(spp_runtime_core PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine)
+add_library(spp_runtime STATIC
+    src/runtime/state.cpp src/runtime/migration.cpp src/runtime/loader.cpp src/runtime/module.cpp)
+target_link_libraries(spp_runtime PUBLIC spp_runtime_core ${CMAKE_DL_LIBS} Threads::Threads)
+
+# Shipping runtime (design M7): the core, the shipped registry and no-op object tracking.
+# Do not link it together with spp_runtime.
+add_library(spp_ship STATIC src/runtime/shipped.cpp)
+target_link_libraries(spp_ship PUBLIC spp_runtime_core Threads::Threads)
 
 # Engine harness. ENABLE_EXPORTS adds -rdynamic, so a generation module
 # resolves the engine symbols and the runtime symbols from the executable.
@@ -191,6 +199,16 @@ spp_add_scripts(TARGET pre_handle2 GEN 2 SCRIPTS example/scripts/handle_v2.spp A
 spp_add_scripts(TARGET pre_handle3 GEN 3 SCRIPTS example/scripts/handle_v1.spp AFTER pre_handle2
                 INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
                 FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${CMAKE_SOURCE_DIR}/example/engine/Weapon.h)
+
+# ------------------------------------------------------------ Shipping mode (M7)
+# ship_demo has the C++ of a script in the binary. It links spp_ship and not spp_runtime, so it has
+# no loader, no migration, no dlopen and no Clang. Actor.cpp and Util.cpp are the engine.
+spp_add_shipped_scripts(TARGET ship_demo_scripts SCRIPTS example/scripts/ship_demo.spp
+                        INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
+                        DEPENDS ${SPP_HEADERS})
+add_executable(ship_demo example/ship/main.cpp example/engine/Actor.cpp example/engine/Util.cpp)
+target_include_directories(ship_demo PRIVATE ${CMAKE_SOURCE_DIR}/example/ship)
+target_link_libraries(ship_demo PRIVATE ship_demo_scripts)
 
 # GoogleTest targets. They need the pre_* targets and sppc from above.
 add_subdirectory(tests)
