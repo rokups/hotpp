@@ -6,7 +6,7 @@
 #include <string>
 
 #include "Actor.h"
-#include "script_runtime.h"
+#include "spp/script_runtime.h"
 
 int main(int argc, char** argv)
 {

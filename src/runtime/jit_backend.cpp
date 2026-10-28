@@ -1,4 +1,4 @@
-#include "jit_backend.h"
+#include "spp/jit_backend.h"
 
 #include <clang/Basic/Diagnostic.h>
 #include <clang/CodeGen/CodeGenAction.h>
@@ -22,7 +22,7 @@
 #include <filesystem>
 #include <mutex>
 
-#include "spc_lib.h"
+#include "spp/spc_lib.h"
 
 namespace script {
 

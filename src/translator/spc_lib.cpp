@@ -13,12 +13,12 @@
 //
 // The function spc::translate takes strings and returns strings. It does not
 // write a file. libclang reads the imported headers from the include dirs.
-// The command line tool spc (translator/spc.cpp) is a thin file wrapper.
+// The command line tool spc (src/translator/spc.cpp) is a thin file wrapper.
 //
 // The slot file keeps the slot order of the script fns stable between the
 // generations. Native virtuals come first, in the order of the base class.
 // The script fns follow. A fn keeps its slot in all later generations.
-#include "spc_lib.h"
+#include "spp/spc_lib.h"
 
 #include <clang-c/Index.h>
 #include <sys/stat.h>
@@ -1083,7 +1083,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
         "). Do not edit.\n");
     o.w("#include <cstddef>\n#include <cstdint>\n#include <cstdio>\n"
         "#include <new>\n#include <string>\n#include <type_traits>\n#include <typeinfo>\n"
-        "#include <utility>\n\n#include \"script_runtime.h\"\n\n");
+        "#include <utility>\n\n#include \"spp/script_runtime.h\"\n\n");
     auto reset = [&] { o.w("#line " + std::to_string(o.lines + 2) + " \"" + esc(opt.output) + "\"\n"); };
     for (const auto& im : sc.imports) {
         o.w("#line " + std::to_string(im.line) + " \"" + esc(opt.input) + "\"\n");

@@ -17,8 +17,8 @@
 #include <sstream>
 #include <string>
 
-#include "backend.h"
-#include "jit_backend.h"
+#include "spp/backend.h"
+#include "spp/jit_backend.h"
 #include "f1_scenario.h"
 
 namespace {
@@ -27,7 +27,7 @@ namespace fs = std::filesystem;
 
 script::ScriptSource source(const char* file)
 {
-    const std::string path = std::string(SPP_SOURCE_DIR) + "/scripts/" + file;
+    const std::string path = std::string(SPP_SOURCE_DIR) + "/example/scripts/" + file;
     std::ifstream f(path);
     std::stringstream ss;
     ss << f.rdbuf();
@@ -141,12 +141,12 @@ TEST(JitTests, PrecompiledHeaderWorks)
         std::ofstream f(header);
         f << "#include <algorithm>\n#include <cstddef>\n#include <cstdint>\n#include <cstdio>\n"
              "#include <new>\n#include <string>\n#include <type_traits>\n#include <typeinfo>\n"
-             "#include <utility>\n#include \"script_runtime.h\"\n#include \"Actor.h\"\n"
+             "#include <utility>\n#include \"spp/script_runtime.h\"\n#include \"Actor.h\"\n"
              "#include \"Math.h\"\n";
     }
     script::JitOptions o;
     o.compiler = SPP_CXX;
-    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/engine", std::string(SPP_SOURCE_DIR) + "/runtime"};
+    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/example/engine", std::string(SPP_SOURCE_DIR) + "/include"};
     o.resource_dir = SPP_RESOURCE_DIR;
     std::string error;
     {

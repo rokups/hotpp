@@ -1,7 +1,7 @@
 // Step R1: generation 3 does not compile on purpose.
 // It is NOT part of the default build. Run poc/r1/make_bad.sh to see the failure.
 #include "Actor.h"
-#include "script_runtime.h"
+#include "spp/script_runtime.h"
 
 struct PlayerState_g3 {
     float health;

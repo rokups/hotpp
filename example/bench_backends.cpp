@@ -32,13 +32,13 @@
 #include <string>
 #include <vector>
 
-#include "script_runtime.h"
-#include "spc_lib.h"
+#include "spp/script_runtime.h"
+#include "spp/spc_lib.h"
 
 #if defined(BENCH_JIT)
-#include "jit_backend.h"
+#include "spp/jit_backend.h"
 #else
-#include "clang_files_backend.h"
+#include "spp/clang_files_backend.h"
 #endif
 
 namespace {
@@ -61,7 +61,7 @@ std::vector<std::string> split(const std::string& s)
 
 script::ScriptSource source(const char* file)
 {
-    const std::string path = std::string(BENCH_SOURCE_DIR) + "/scripts/" + file;
+    const std::string path = std::string(BENCH_SOURCE_DIR) + "/example/scripts/" + file;
     std::ifstream f(path);
     std::stringstream ss;
     ss << f.rdbuf();
@@ -154,7 +154,7 @@ int main(int argc, char** argv)
         const char* header =
             "#include <algorithm>\n#include <cstddef>\n#include <cstdint>\n#include <cstdio>\n"
             "#include <new>\n#include <string>\n#include <type_traits>\n#include <typeinfo>\n"
-            "#include <utility>\n#include \"script_runtime.h\"\n#include \"Actor.h\"\n"
+            "#include <utility>\n#include \"spp/script_runtime.h\"\n#include \"Actor.h\"\n"
             "#include \"Math.h\"\n";
         std::ofstream(header_path) << header;
         std::string error;

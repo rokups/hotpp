@@ -18,7 +18,7 @@
 #include <sstream>
 #include <string>
 
-#include "backend.h"
+#include "spp/backend.h"
 #include "f1_scenario.h"
 #include "native_std_scenario.h"
 
@@ -37,7 +37,7 @@ std::string read_file(const std::string& path)
 
 script::ScriptSource source(const char* file)
 {
-    const std::string path = std::string(SPP_SOURCE_DIR) + "/scripts/" + file;
+    const std::string path = std::string(SPP_SOURCE_DIR) + "/example/scripts/" + file;
     return {path, read_file(path)};
 }
 
@@ -159,10 +159,10 @@ TEST(PrecompiledTests, SppcReportsErrorAtTheScriptLine)
 {
     const std::string out_dir = std::string(SPP_BINARY_DIR) + "/sppc_diag";
     std::filesystem::remove_all(out_dir);
-    const std::string script = std::string(SPP_SOURCE_DIR) + "/scripts/bad.script";
+    const std::string script = std::string(SPP_SOURCE_DIR) + "/example/scripts/bad.script";
     const std::string cmd = std::string("'") + SPPC_PATH + "' '" + script + "' --gen 1 --out-dir '" +
-                            out_dir + "' -I '" + SPP_SOURCE_DIR + "/engine' -I '" + SPP_SOURCE_DIR +
-                            "/runtime' --cxx '" + SPP_CXX + "' 2>&1";
+                            out_dir + "' -I '" + SPP_SOURCE_DIR + "/example/engine' -I '" + SPP_SOURCE_DIR +
+                            "/include' --cxx '" + SPP_CXX + "' 2>&1";
     std::string text;
     FILE* p = popen(cmd.c_str(), "r");
     ASSERT_NE(p, nullptr);

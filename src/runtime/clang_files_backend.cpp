@@ -1,4 +1,4 @@
-#include "clang_files_backend.h"
+#include "spp/clang_files_backend.h"
 
 #include <spawn.h>
 #include <sys/wait.h>
@@ -10,7 +10,7 @@
 #include <fstream>
 #include <sstream>
 
-#include "spc_lib.h"
+#include "spp/spc_lib.h"
 
 extern char** environ;
 

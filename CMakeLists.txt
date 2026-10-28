@@ -22,7 +22,7 @@ add_compile_options(-Wall -Wextra)
 # CMake passes the flags to the compile and to the link of every target.
 # The script backends pass the same flags to the compile of the scripts
 # (SPP_DEFAULT_CXXFLAGS), so the generation modules use the same runtime.
-# Use one build directory for each mode, for example build-asan and build-tsan.
+# Use one build directory for each mode. The presets do this (see CMakePresets.json).
 
 # Dependencies. CPM uses an installed package first and fetches only when the
 # package is missing. libclang is not fetched: it must come from the system.
@@ -38,37 +38,37 @@ CPMAddPackage(
 include(GoogleTest)
 
 # Script runtime: a small static library for the executable.
-add_library(spp_runtime STATIC runtime/script_runtime.cpp runtime/module.cpp)
-target_include_directories(spp_runtime PUBLIC runtime engine)
+add_library(spp_runtime STATIC src/runtime/script_runtime.cpp src/runtime/module.cpp)
+target_include_directories(spp_runtime PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine)
 find_package(Threads REQUIRED)
 target_link_libraries(spp_runtime PUBLIC ${CMAKE_DL_LIBS} Threads::Threads)
 
 # Engine harness. ENABLE_EXPORTS adds -rdynamic, so a generation module
 # resolves the engine symbols and the runtime symbols from the executable.
-add_executable(minengine engine/main.cpp engine/Actor.cpp engine/Util.cpp)
+add_executable(minengine example/engine/main.cpp example/engine/Actor.cpp example/engine/Util.cpp)
 target_link_libraries(minengine PRIVATE spp_runtime)
 set_target_properties(minengine PROPERTIES ENABLE_EXPORTS ON)
 
 # Step R0: generation 1 of the Player class.
-add_library(gen1 SHARED poc/r0/gen1.cpp)
-target_include_directories(gen1 PRIVATE runtime engine)
+add_library(gen1 SHARED example/poc/r0/gen1.cpp)
+target_include_directories(gen1 PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine)
 set_target_properties(gen1 PROPERTIES PREFIX "")
 
 # Step R1: generation 2 (migration) and generation 4 (rejected: other shell).
 # gen3_bad.cpp does not compile on purpose. It is not a target.
-# See poc/r1/make_bad.sh.
-foreach(g gen2:poc/r1/gen2.cpp gen4_base:poc/r1/gen4_base.cpp)
+# See example/poc/r1/make_bad.sh.
+foreach(g gen2:example/poc/r1/gen2.cpp gen4_base:example/poc/r1/gen4_base.cpp)
     string(REPLACE ":" ";" parts ${g})
     list(GET parts 0 gname)
     list(GET parts 1 gsrc)
     add_library(${gname} SHARED ${gsrc})
-    target_include_directories(${gname} PRIVATE runtime engine)
+    target_include_directories(${gname} PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine)
     set_target_properties(${gname} PROPERTIES PREFIX "")
 endforeach()
 
 # GoogleTest cases R0 and R1. The file gen3_missing.so does not exist on purpose.
 foreach(r r0 r1)
-    add_executable(${r}_tests tests/${r}_tests.cpp engine/Actor.cpp engine/Util.cpp)
+    add_executable(${r}_tests tests/${r}_tests.cpp example/engine/Actor.cpp example/engine/Util.cpp)
     target_link_libraries(${r}_tests PRIVATE spp_runtime GTest::gtest_main)
     set_target_properties(${r}_tests PROPERTIES ENABLE_EXPORTS ON)
     target_include_directories(${r}_tests PRIVATE tests)
@@ -88,21 +88,21 @@ find_library(CLANG_C_LIBRARY NAMES clang REQUIRED)
 find_path(CLANG_C_INCLUDE_DIR clang-c/Index.h REQUIRED)
 execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
                 OUTPUT_VARIABLE CLANG_RESOURCE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
-add_library(spc_lib STATIC translator/spc_lib.cpp)
-target_include_directories(spc_lib PUBLIC translator)
+add_library(spc_lib STATIC src/translator/spc_lib.cpp)
+target_include_directories(spc_lib PUBLIC ${CMAKE_SOURCE_DIR}/include)
 target_include_directories(spc_lib PRIVATE ${CLANG_C_INCLUDE_DIR})
 target_link_libraries(spc_lib PUBLIC ${CLANG_C_LIBRARY})
 target_compile_definitions(spc_lib PRIVATE SPC_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
-add_executable(spc translator/spc.cpp)
+add_executable(spc src/translator/spc.cpp)
 target_link_libraries(spc PRIVATE spc_lib)
 
 # ------------------------------------------------------------ Backends
 # ClangFilesBackend: spc_lib in memory, then an external compiler.
-add_library(spp_clang_backend STATIC runtime/clang_files_backend.cpp)
+add_library(spp_clang_backend STATIC src/runtime/clang_files_backend.cpp)
 target_link_libraries(spp_clang_backend PUBLIC spp_runtime spc_lib)
 
 # sppc compiles scripts ahead of time. Its output loads in every build.
-add_executable(sppc tools/sppc.cpp)
+add_executable(sppc src/tools/sppc.cpp)
 target_link_libraries(sppc PRIVATE spp_clang_backend)
 
 # JitBackend: spc_lib in memory, the Clang library compiles in memory, LLVM ORC loads.
@@ -113,8 +113,8 @@ if(SPP_BACKEND STREQUAL "JIT")
     find_package(LLVM REQUIRED CONFIG)
     find_package(Clang REQUIRED CONFIG)
     message(STATUS "JIT backend: LLVM ${LLVM_PACKAGE_VERSION}, Clang ${Clang_VERSION}")
-    add_library(spp_jit_backend STATIC runtime/jit_backend.cpp)
-    target_include_directories(spp_jit_backend PUBLIC runtime)
+    add_library(spp_jit_backend STATIC src/runtime/jit_backend.cpp)
+    target_include_directories(spp_jit_backend PUBLIC ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(spp_jit_backend SYSTEM PUBLIC ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
     target_compile_definitions(spp_jit_backend PRIVATE ${LLVM_DEFINITIONS})
     target_link_libraries(spp_jit_backend PUBLIC spp_runtime spc_lib clang-cpp LLVM)
@@ -124,7 +124,7 @@ endif()
 # A list value uses "|" between the items.
 separate_arguments(SPP_CXXFLAGS_LIST NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
 list(JOIN SPP_CXXFLAGS_LIST "|" SPP_CXXFLAGS_JOINED)
-add_library(spp_backend STATIC runtime/default_backend.cpp)
+add_library(spp_backend STATIC src/runtime/default_backend.cpp)
 target_link_libraries(spp_backend PUBLIC spp_runtime)
 if(SPP_BACKEND STREQUAL "CLANG_FILES")
     target_link_libraries(spp_backend PUBLIC spp_clang_backend)
@@ -132,7 +132,7 @@ if(SPP_BACKEND STREQUAL "CLANG_FILES")
         SPP_BACKEND_CLANG_FILES=1
         SPP_DEFAULT_CXX="${CMAKE_CXX_COMPILER}"
         SPP_DEFAULT_CXXFLAGS="${SPP_CXXFLAGS_JOINED}"
-        SPP_DEFAULT_INCLUDES="${CMAKE_SOURCE_DIR}/engine|${CMAKE_SOURCE_DIR}/runtime"
+        SPP_DEFAULT_INCLUDES="${CMAKE_SOURCE_DIR}/include|${CMAKE_SOURCE_DIR}/example/engine"
         SPP_DEFAULT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}"
         SPP_DEFAULT_WORK_DIR="${CMAKE_BINARY_DIR}/spp_work")
 elseif(SPP_BACKEND STREQUAL "JIT")
@@ -141,29 +141,29 @@ elseif(SPP_BACKEND STREQUAL "JIT")
         SPP_BACKEND_JIT=1
         SPP_DEFAULT_CXX="${CMAKE_CXX_COMPILER}"
         SPP_DEFAULT_CXXFLAGS="${SPP_CXXFLAGS_JOINED}"
-        SPP_DEFAULT_INCLUDES="${CMAKE_SOURCE_DIR}/engine|${CMAKE_SOURCE_DIR}/runtime"
+        SPP_DEFAULT_INCLUDES="${CMAKE_SOURCE_DIR}/include|${CMAKE_SOURCE_DIR}/example/engine"
         SPP_DEFAULT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
 endif()
 
 # ------------------------------------------------------------ Precompiled scripts
 include(cmake/SppScripts.cmake)
-set(SPP_HEADERS ${CMAKE_SOURCE_DIR}/engine/Actor.h ${CMAKE_SOURCE_DIR}/engine/Math.h
-                ${CMAKE_SOURCE_DIR}/runtime/script_runtime.h ${CMAKE_SOURCE_DIR}/runtime/module.h)
-spp_add_scripts(TARGET pre_gen1 GEN 1 SCRIPTS scripts/player_v1.script
-                INCLUDES ${CMAKE_SOURCE_DIR}/engine ${CMAKE_SOURCE_DIR}/runtime
+set(SPP_HEADERS ${CMAKE_SOURCE_DIR}/example/engine/Actor.h ${CMAKE_SOURCE_DIR}/example/engine/Math.h
+                ${CMAKE_SOURCE_DIR}/include/spp/script_runtime.h ${CMAKE_SOURCE_DIR}/include/spp/module.h)
+spp_add_scripts(TARGET pre_gen1 GEN 1 SCRIPTS example/scripts/player_v1.script
+                INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
                 FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS})
-spp_add_scripts(TARGET pre_gen2 GEN 2 SCRIPTS scripts/player_v2.script AFTER pre_gen1
-                INCLUDES ${CMAKE_SOURCE_DIR}/engine ${CMAKE_SOURCE_DIR}/runtime
+spp_add_scripts(TARGET pre_gen2 GEN 2 SCRIPTS example/scripts/player_v2.script AFTER pre_gen1
+                INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
                 FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS})
-spp_add_scripts(TARGET pre_native1 GEN 1 SCRIPTS scripts/native_std_v1.script AFTER pre_gen2
-                INCLUDES ${CMAKE_SOURCE_DIR}/engine ${CMAKE_SOURCE_DIR}/runtime
-                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${CMAKE_SOURCE_DIR}/engine/Util.h)
-spp_add_scripts(TARGET pre_native2 GEN 2 SCRIPTS scripts/native_std_v2.script AFTER pre_native1
-                INCLUDES ${CMAKE_SOURCE_DIR}/engine ${CMAKE_SOURCE_DIR}/runtime
-                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${CMAKE_SOURCE_DIR}/engine/Util.h)
+spp_add_scripts(TARGET pre_native1 GEN 1 SCRIPTS example/scripts/native_std_v1.script AFTER pre_gen2
+                INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
+                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${CMAKE_SOURCE_DIR}/example/engine/Util.h)
+spp_add_scripts(TARGET pre_native2 GEN 2 SCRIPTS example/scripts/native_std_v2.script AFTER pre_native1
+                INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
+                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${CMAKE_SOURCE_DIR}/example/engine/Util.h)
 
 # GoogleTest cases: BackendTests (the selected backend) and PrecompiledTests (sppc).
-add_executable(backend_tests tests/backend_tests.cpp engine/Actor.cpp engine/Util.cpp)
+add_executable(backend_tests tests/backend_tests.cpp example/engine/Actor.cpp example/engine/Util.cpp)
 target_include_directories(backend_tests PRIVATE tests)
 target_link_libraries(backend_tests PRIVATE spp_backend GTest::gtest_main)
 set_target_properties(backend_tests PROPERTIES ENABLE_EXPORTS ON)
@@ -181,7 +181,7 @@ target_compile_definitions(backend_tests PRIVATE
 gtest_discover_tests(backend_tests)
 
 # Experiments R3 and R6: closures that outlive a generation, and the unload.
-add_executable(r3_tests tests/r3_tests.cpp engine/Actor.cpp engine/Util.cpp)
+add_executable(r3_tests tests/r3_tests.cpp example/engine/Actor.cpp example/engine/Util.cpp)
 target_include_directories(r3_tests PRIVATE tests)
 target_link_libraries(r3_tests PRIVATE spp_backend GTest::gtest_main)
 set_target_properties(r3_tests PROPERTIES ENABLE_EXPORTS ON)
@@ -189,7 +189,7 @@ target_compile_definitions(r3_tests PRIVATE SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
 gtest_discover_tests(r3_tests)
 
 # Experiment R5: worker threads, a barrier and a reload from a third thread.
-add_executable(r5_tests tests/r5_tests.cpp engine/Actor.cpp engine/Util.cpp)
+add_executable(r5_tests tests/r5_tests.cpp example/engine/Actor.cpp example/engine/Util.cpp)
 target_include_directories(r5_tests PRIVATE tests)
 target_link_libraries(r5_tests PRIVATE spp_backend GTest::gtest_main)
 set_target_properties(r5_tests PROPERTIES ENABLE_EXPORTS ON)
@@ -207,7 +207,7 @@ gtest_discover_tests(translator_tests)
 
 # JIT only: no file, no child process, the life of a generation.
 if(SPP_BACKEND STREQUAL "JIT")
-    add_executable(jit_tests tests/jit_tests.cpp engine/Actor.cpp engine/Util.cpp)
+    add_executable(jit_tests tests/jit_tests.cpp example/engine/Actor.cpp example/engine/Util.cpp)
     target_include_directories(jit_tests PRIVATE tests)
     target_link_libraries(jit_tests PRIVATE spp_backend GTest::gtest_main)
     set_target_properties(jit_tests PROPERTIES ENABLE_EXPORTS ON)
@@ -217,7 +217,7 @@ if(SPP_BACKEND STREQUAL "JIT")
 endif()
 
 # bench_backends times the compile and the load of the example scripts.
-add_executable(bench_backends tools/bench_backends.cpp engine/Actor.cpp engine/Util.cpp)
+add_executable(bench_backends example/bench_backends.cpp example/engine/Actor.cpp example/engine/Util.cpp)
 set_target_properties(bench_backends PROPERTIES ENABLE_EXPORTS ON)
 target_link_libraries(bench_backends PRIVATE spp_backend)
 if(SPP_BACKEND STREQUAL "JIT")
@@ -230,6 +230,6 @@ endif()
 target_compile_definitions(bench_backends PRIVATE
     BENCH_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     BENCH_CXX="${CMAKE_CXX_COMPILER}"
-    BENCH_INCLUDES="${CMAKE_SOURCE_DIR}/engine|${CMAKE_SOURCE_DIR}/runtime"
+    BENCH_INCLUDES="${CMAKE_SOURCE_DIR}/include|${CMAKE_SOURCE_DIR}/example/engine"
     BENCH_RESOURCE_DIR="${CLANG_RESOURCE_DIR}"
     BENCH_WORK_DIR="${CMAKE_BINARY_DIR}/spp_work")

@@ -1,4 +1,4 @@
-#include "module.h"
+#include "spp/module.h"
 
 #include <dlfcn.h>
 

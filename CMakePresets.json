@@ -1,0 +1,111 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/cmake-build/${presetName}",
+      "installDir": "${sourceDir}/cmake-build/${presetName}/install",
+      "cacheVariables": {
+        "CMAKE_CONFIGURATION_TYPES": "Debug;RelWithDebInfo",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "base-files",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "SPP_BACKEND": "CLANG_FILES"
+      }
+    },
+    {
+      "name": "base-jit",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "SPP_BACKEND": "JIT"
+      }
+    },
+    {
+      "name": "base-clang",
+      "hidden": true,
+      "environment": {
+        "CC": "clang",
+        "CXX": "clang++"
+      },
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "base-asan",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "-fsanitize=address"
+      }
+    },
+    {
+      "name": "base-tsan",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "-fsanitize=thread"
+      }
+    },
+    {
+      "name": "linux-clang-files",
+      "inherits": ["base-clang", "base-files"]
+    },
+    {
+      "name": "linux-clang-files-asan",
+      "inherits": ["base-clang", "base-asan", "base-files"]
+    },
+    {
+      "name": "linux-clang-files-tsan",
+      "inherits": ["base-clang", "base-tsan", "base-files"]
+    },
+    {
+      "name": "linux-clang-jit",
+      "inherits": ["base-clang", "base-jit"]
+    },
+    {
+      "name": "linux-clang-jit-asan",
+      "inherits": ["base-clang", "base-asan", "base-jit"]
+    },
+    {
+      "name": "linux-clang-jit-tsan",
+      "inherits": ["base-clang", "base-tsan", "base-jit"]
+    }
+  ],
+  "buildPresets": [
+    { "name": "linux-clang-files-dbg", "configurePreset": "linux-clang-files", "configuration": "Debug" },
+    { "name": "linux-clang-files-rel", "configurePreset": "linux-clang-files", "configuration": "RelWithDebInfo" },
+    { "name": "linux-clang-files-asan", "configurePreset": "linux-clang-files-asan", "configuration": "Debug" },
+    { "name": "linux-clang-files-tsan", "configurePreset": "linux-clang-files-tsan", "configuration": "Debug" },
+    { "name": "linux-clang-jit-dbg", "configurePreset": "linux-clang-jit", "configuration": "Debug" },
+    { "name": "linux-clang-jit-rel", "configurePreset": "linux-clang-jit", "configuration": "RelWithDebInfo" },
+    { "name": "linux-clang-jit-asan", "configurePreset": "linux-clang-jit-asan", "configuration": "Debug" },
+    { "name": "linux-clang-jit-tsan", "configurePreset": "linux-clang-jit-tsan", "configuration": "Debug" }
+  ],
+  "testPresets": [
+    {
+      "name": "base-test",
+      "hidden": true,
+      "output": { "outputOnFailure": true }
+    },
+    { "name": "linux-clang-files-dbg", "inherits": "base-test", "configurePreset": "linux-clang-files", "configuration": "Debug" },
+    { "name": "linux-clang-files-rel", "inherits": "base-test", "configurePreset": "linux-clang-files", "configuration": "RelWithDebInfo" },
+    { "name": "linux-clang-files-asan", "inherits": "base-test", "configurePreset": "linux-clang-files-asan", "configuration": "Debug" },
+    { "name": "linux-clang-files-tsan", "inherits": "base-test", "configurePreset": "linux-clang-files-tsan", "configuration": "Debug" },
+    { "name": "linux-clang-jit-dbg", "inherits": "base-test", "configurePreset": "linux-clang-jit", "configuration": "Debug" },
+    { "name": "linux-clang-jit-rel", "inherits": "base-test", "configurePreset": "linux-clang-jit", "configuration": "RelWithDebInfo" },
+    { "name": "linux-clang-jit-asan", "inherits": "base-test", "configurePreset": "linux-clang-jit-asan", "configuration": "Debug" },
+    { "name": "linux-clang-jit-tsan", "inherits": "base-test", "configurePreset": "linux-clang-jit-tsan", "configuration": "Debug" }
+  ]
+}

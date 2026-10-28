@@ -8,8 +8,8 @@
 #include <string>
 #include <vector>
 
-#include "backend.h"
-#include "spc_lib.h"
+#include "spp/backend.h"
+#include "spp/spc_lib.h"
 
 namespace script {
 

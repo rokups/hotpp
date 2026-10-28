@@ -1,38 +1,34 @@
-// Step R0: hand-written output of the translator for this script class.
+// Step R1: hand-written generation 2 of the Player class.
 //
-//   class Player : Actor {
-//       float hp = 100;
-//       float speed = 5;
-//       override Tick(float dt);
-//       override TakeDamage(float amount);
-//       override TakeDamage(Actor& source, float amount);
-//       heal(float amount);
-//   }
+// Changes against generation 1:
+//   - The Tick body is different: the actor moves twice as fast and no heal runs.
+//   - The field hp has the new name health: @was("hp").
+//   - The new field shield = 25.
+//   - The heal body is different: it heals twice the amount.
 //
-// The file has three parts: the shell, the state and the generation functions.
+// The shell is the same as in generation 1. The thunk of heal is in
+// generation 1 and is not repeated here.
 #include <algorithm>
 #include <cstdio>
 #include <cstddef>
 #include <new>
 
 #include "Actor.h"
-#include "script_runtime.h"
+#include "spp/script_runtime.h"
 
-constexpr uint32_t GEN = 1;
+constexpr uint32_t GEN = 2;
 
-// Slot numbers. Native virtuals come first, in the order of the Actor class.
 enum : unsigned {
     SLOT_Tick = 0,
     SLOT_TakeDamage_f = 1,
     SLOT_TakeDamage_Af = 2,
-    SLOT_heal = 3,  // a bindable method has a slot, so that a thunk reaches the live body
+    SLOT_heal = 3,
     SLOT_COUNT = 4,
 };
 
 extern script::ClassRecord Player_record;
 
 // ---------------------------------------------------------------- shell
-// The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Player_Shell final : Actor, script::ShellBase {
     template <class... A>
     explicit Player_Shell(script::Construct, A&&... a) : Actor(std::forward<A>(a)...)
@@ -56,44 +52,53 @@ struct Player_Shell final : Actor, script::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct PlayerState_g1 {
-    float hp;
+struct PlayerState_g2 {
+    float health;
     float speed;
+    float shield;
 };
 
-static void init_hp(void*, void* f) { new (f) float(100.0f); }
+static void init_health(void*, void* f) { new (f) float(100.0f); }
 static void init_speed(void*, void* f) { new (f) float(5.0f); }
+static void init_shield(void*, void* f) { new (f) float(25.0f); }
 static void move_float(void* dst, const void* src)
 {
     new (dst) float(*static_cast<const float*>(src));
 }
 
+constexpr uint8_t kFloatFlags = script::kTriviallyCopyable | script::kNothrowMove;
+
 static const script::FieldInfo Player_fields[] = {
-    {"hp", nullptr, typeid(float).name(), offsetof(PlayerState_g1, hp), sizeof(float),
-     alignof(float), script::kTriviallyCopyable | script::kNothrowMove, init_hp, move_float,
-     nullptr},
-    {"speed", nullptr, typeid(float).name(), offsetof(PlayerState_g1, speed), sizeof(float),
-     alignof(float), script::kTriviallyCopyable | script::kNothrowMove, init_speed, move_float,
-     nullptr},
+    {"health", "hp", typeid(float).name(), offsetof(PlayerState_g2, health), sizeof(float),
+     alignof(float), kFloatFlags, init_health, move_float, nullptr},
+    {"speed", nullptr, typeid(float).name(), offsetof(PlayerState_g2, speed), sizeof(float),
+     alignof(float), kFloatFlags, init_speed, move_float, nullptr},
+    {"shield", nullptr, typeid(float).name(), offsetof(PlayerState_g2, shield), sizeof(float),
+     alignof(float), kFloatFlags, init_shield, move_float, nullptr},
 };
 
 static const script::StateLayout Player_layout = {
-    "PlayerState_g1", sizeof(PlayerState_g1), alignof(PlayerState_g1), 2, Player_fields,
+    "PlayerState_g2", sizeof(PlayerState_g2), alignof(PlayerState_g2), 3, Player_fields,
 };
 
 // ------------------------------------------------- generation functions
-// Each function starts with the generation guard (section 4.6).
-static inline PlayerState_g1* state_of(Player_Shell* self)
+static inline PlayerState_g2* state_of(Player_Shell* self)
 {
-    return static_cast<PlayerState_g1*>(self->state);
+    return static_cast<PlayerState_g2*>(self->state);
 }
 
 static void Player__heal(Player_Shell* self, float amount)
 {
     if (SCRIPT_UNLIKELY(script::active_generation != GEN)) return script::stale_call("Player::heal");
     auto* st = state_of(self);
-    st->hp = std::min(st->hp + amount, 100.0f);
-    std::printf("[gen1] %s: heal %.1f -> hp=%.1f\n", self->Name.c_str(), amount, st->hp);
+    st->health = std::min(st->health + 2.0f * amount, 100.0f);
+    std::printf("[gen2] %s: heal %.1f (x2) -> health=%.1f\n", self->Name.c_str(), amount,
+                st->health);
+}
+
+static void Player__heal_slot(Actor* a, float amount)
+{
+    Player__heal(static_cast<Player_Shell*>(a), amount);
 }
 
 static void Player__Tick(Actor* a, float dt)
@@ -101,10 +106,9 @@ static void Player__Tick(Actor* a, float dt)
     auto* self = static_cast<Player_Shell*>(a);
     if (SCRIPT_UNLIKELY(script::active_generation != GEN)) return script::stale_call("Player::Tick");
     auto* st = state_of(self);
-    self->Move({st->speed * dt, 0, 0});  // direct call of a native method
-    std::printf("[gen1] %s: Tick dt=%.4f pos.x=%.4f hp=%.1f\n", self->Name.c_str(), dt,
-                self->Position.x, st->hp);
-    Player__heal(self, 1.0f);  // non-virtual script method: direct call
+    self->Move({2.0f * st->speed * dt, 0, 0});
+    std::printf("[gen2] %s: Tick dt=%.4f pos.x=%.4f health=%.1f shield=%.1f\n", self->Name.c_str(),
+                dt, self->Position.x, st->health, st->shield);
 }
 
 static void Player__TakeDamage_f(Actor* a, float amount)
@@ -113,8 +117,9 @@ static void Player__TakeDamage_f(Actor* a, float amount)
     if (SCRIPT_UNLIKELY(script::active_generation != GEN))
         return script::stale_call("Player::TakeDamage(float)");
     auto* st = state_of(self);
-    st->hp = std::max(st->hp - amount, 0.0f);
-    std::printf("[gen1] %s: TakeDamage %.1f -> hp=%.1f\n", self->Name.c_str(), amount, st->hp);
+    st->health = std::max(st->health - amount, 0.0f);
+    std::printf("[gen2] %s: TakeDamage %.1f -> health=%.1f\n", self->Name.c_str(), amount,
+                st->health);
 }
 
 static void Player__TakeDamage_Af(Actor* a, Actor& src, float amount)
@@ -122,22 +127,8 @@ static void Player__TakeDamage_Af(Actor* a, Actor& src, float amount)
     auto* self = static_cast<Player_Shell*>(a);
     if (SCRIPT_UNLIKELY(script::active_generation != GEN))
         return script::stale_call("Player::TakeDamage(Actor&, float)");
-    std::printf("[gen1] %s: hit by %s\n", self->Name.c_str(), src.Name.c_str());
-    self->TakeDamage(amount);  // script virtual method: goes through the slot
-}
-
-static void Player__heal_slot(Actor* a, float amount)
-{
-    Player__heal(static_cast<Player_Shell*>(a), amount);
-}
-
-// ------------------------------------------------------------- thunk
-// The thunk has the same address in each generation (section 4.11). It lives
-// in this first module, which stays loaded. It reads the slot at call time.
-static void Player__heal__thunk(Actor* a, float amount)
-{
-    auto* self = static_cast<Player_Shell*>(a);
-    return script::call<void(Actor*, float)>(self->cls, SLOT_heal, a, amount);
+    std::printf("[gen2] %s: hit by %s\n", self->Name.c_str(), src.Name.c_str());
+    self->TakeDamage(amount);
 }
 
 // ------------------------------------------------------ record and entry
@@ -162,5 +153,4 @@ static script::Instance Player_create()
 extern "C" void script_register(script::Registry& reg)
 {
     reg.add(&Player_record, &Player_create);
-    reg.add_thunk("Player::heal", reinterpret_cast<void*>(&Player__heal__thunk));
 }

@@ -8,7 +8,7 @@
 #include <utility>
 
 #include "Actor.h"
-#include "script_runtime.h"
+#include "spp/script_runtime.h"
 
 namespace test_support {
 

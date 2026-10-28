@@ -9,11 +9,11 @@
 #include <string>
 #include <vector>
 
-#include "backend.h"
+#include "spp/backend.h"
 #if defined(SPP_BACKEND_CLANG_FILES)
-#include "clang_files_backend.h"
+#include "spp/clang_files_backend.h"
 #elif defined(SPP_BACKEND_JIT)
-#include "jit_backend.h"
+#include "spp/jit_backend.h"
 #else
 #error "Define SPP_BACKEND_CLANG_FILES or SPP_BACKEND_JIT."
 #endif

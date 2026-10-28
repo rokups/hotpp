@@ -11,7 +11,7 @@
 #include <memory>
 #include <string>
 
-#include "module.h"
+#include "spp/module.h"
 
 namespace script {
 

@@ -16,7 +16,7 @@
 #include <utility>
 #include <vector>
 
-#include "module.h"
+#include "spp/module.h"
 
 #define SCRIPT_UNLIKELY(x) __builtin_expect(!!(x), 0)
 

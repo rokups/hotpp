@@ -7,7 +7,7 @@
 #include <mutex>
 #include <thread>
 
-#include "script_runtime.h"
+#include "spp/script_runtime.h"
 
 Actor::Actor() : Name("Actor") {}
 Actor::Actor(std::string name) : Name(std::move(name)) {}

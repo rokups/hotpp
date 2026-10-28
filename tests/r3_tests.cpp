@@ -21,7 +21,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "backend.h"
+#include "spp/backend.h"
 #include "test_support.h"
 
 namespace {
@@ -33,7 +33,7 @@ using test_support::Session;
 
 script::ScriptSource source(const char* file)
 {
-    const std::string path = std::string(SPP_SOURCE_DIR) + "/scripts/" + file;
+    const std::string path = std::string(SPP_SOURCE_DIR) + "/example/scripts/" + file;
     std::ifstream f(path);
     std::stringstream ss;
     ss << f.rdbuf();

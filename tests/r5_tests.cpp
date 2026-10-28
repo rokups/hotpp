@@ -25,7 +25,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "backend.h"
+#include "spp/backend.h"
 #include "test_support.h"
 
 namespace {
