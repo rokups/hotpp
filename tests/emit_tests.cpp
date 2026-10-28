@@ -84,6 +84,14 @@ TEST(Emit, NestedCalls)
     EXPECT_EQ(print(*e), "std::printf(\"%s\", self->Name()." "c_str())");
 }
 
+TEST(Emit, New)
+{
+    NewExpr n;
+    n.type = "std::vector<float>";
+    n.args = list(num("1"), id("a"));
+    EXPECT_EQ(print(*make_expr(std::move(n))), "new std::vector<float>(1, a)");
+}
+
 TEST(Emit, NameParts)
 {
     NameExpr n;
@@ -106,17 +114,6 @@ TEST(Emit, IndexParenNull)
     ExprP e = make_expr(IndexExpr{id("a"), make_expr(ParenExpr{bin("+", id("i"), num("1"))})});
     EXPECT_EQ(print(*e), "a[(i + 1)]");
     EXPECT_EQ(print(*make_expr(NullExpr{})), "nullptr");
-}
-
-TEST(Emit, BracedList)
-{
-    BracedListExpr b;
-    b.elems = list(bin("*", num("2.0f"), id("x")), num("0"), num("0"));
-    EXPECT_EQ(print(*make_expr(std::move(b))), "{2.0f * x, 0, 0}");
-    TypedBracedExpr t;
-    t.type = "Vec3";
-    t.elems = list(num("1"), num("2"));
-    EXPECT_EQ(print(*make_expr(std::move(t))), "Vec3{1, 2}");
 }
 
 TEST(Emit, Lambda)

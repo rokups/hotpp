@@ -27,6 +27,7 @@
 #include "emit.h"
 #include "lower.h"
 #include "parser/parser.h"
+#include "types.h"
 
 #include <clang-c/Index.h>
 #include <sys/stat.h>
@@ -218,6 +219,52 @@ CXCursor find_class(CXCursor root, const std::string& qname)
         return CXChildVisit_Continue;
     });
     return found;
+}
+
+// The direct bases of each native class, by qualified name, in declaration order.
+using Hierarchy = std::map<std::string, std::vector<std::string>>;
+
+// The qualified name of a declaration: the namespaces and the classes, joined with "::".
+// An empty spelling (an anonymous namespace) is skipped.
+std::string qualified_name(CXCursor c)
+{
+    std::vector<std::string> parts;
+    std::string self = cxs(clang_getCursorSpelling(c));
+    if (!self.empty()) parts.push_back(self);
+    for (CXCursor p = clang_getCursorSemanticParent(c);
+         !clang_Cursor_isNull(p) && !clang_isTranslationUnit(clang_getCursorKind(p));
+         p = clang_getCursorSemanticParent(p)) {
+        std::string n = cxs(clang_getCursorSpelling(p));
+        if (!n.empty()) parts.push_back(n);
+    }
+    std::string r;
+    for (auto it = parts.rbegin(); it != parts.rend(); ++it) r += (r.empty() ? "" : "::") + *it;
+    return r;
+}
+
+// Collects the direct bases of the classes that are defined in the user headers.
+void collect_hierarchy(CXCursor root, Hierarchy& out)
+{
+    visit(root, [&](CXCursor c) {
+        CXCursorKind k = clang_getCursorKind(c);
+        if (k == CXCursor_Namespace) return CXChildVisit_Recurse;
+        if ((k == CXCursor_ClassDecl || k == CXCursor_StructDecl) && clang_isCursorDefinition(c) &&
+            !clang_Location_isInSystemHeader(clang_getCursorLocation(c))) {
+            std::vector<std::string> bases;
+            visit(c, [&](CXCursor bs) {
+                if (clang_getCursorKind(bs) == CXCursor_CXXBaseSpecifier) {
+                    CXCursor def = clang_getCursorDefinition(clang_getCursorReferenced(bs));
+                    if (!clang_Cursor_isNull(def) && clang_getCursorKind(def) != CXCursor_NoDeclFound)
+                        bases.push_back(qualified_name(def));
+                    else
+                        bases.push_back(tidy(cxs(clang_getTypeSpelling(clang_getCursorType(bs)))));
+                }
+                return CXChildVisit_Continue;
+            });
+            out[qualified_name(c)] = std::move(bases);
+        }
+        return CXChildVisit_Continue;
+    });
 }
 
 // ----------------------------------------------------------------- emitter
@@ -439,7 +486,7 @@ FileStamp stamp_of(const std::string& path)
 // Gives the stamps of all files that the parse included.
 void parse_bases(const std::string& probe, const std::vector<std::string>& args,
                  const std::set<std::string>& names, std::map<std::string, BaseInfo>& out,
-                 std::vector<FileStamp>& files)
+                 std::vector<FileStamp>& files, Hierarchy& hierarchy)
 {
     std::vector<const char*> cargs;
     for (const auto& a : args) cargs.push_back(a.c_str());
@@ -481,6 +528,8 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
     clang_getInclusions(tu, on_include, &ctx);
 
     CXCursor root = clang_getTranslationUnitCursor(tu);
+    hierarchy.clear();
+    collect_hierarchy(root, hierarchy);
     for (const auto& name : names) {
         CXCursor base_cur = find_class(root, name);
         if (clang_Cursor_isNull(base_cur)) continue;
@@ -501,6 +550,7 @@ struct TranslatorSession::Impl {
     struct Entry {
         std::vector<FileStamp> files;
         std::map<std::string, BaseInfo> bases;
+        Hierarchy hierarchy;
     };
     std::mutex mutex;
     std::map<std::string, Entry> entries;
@@ -530,7 +580,8 @@ namespace {
 // the same stamp for each file. Otherwise it parses again and keeps the new result.
 std::map<std::string, BaseInfo> session_bases(
     spc::TranslatorSession::Impl& S, const std::string& key, const std::set<std::string>& names,
-    const std::function<void(std::map<std::string, BaseInfo>&, std::vector<FileStamp>&)>& parse)
+    const std::function<void(std::map<std::string, BaseInfo>&, std::vector<FileStamp>&, Hierarchy&)>& parse,
+    Hierarchy& hierarchy)
 {
     std::lock_guard<std::mutex> lock(S.mutex);
     auto& e = S.entries[key];
@@ -542,16 +593,19 @@ std::map<std::string, BaseInfo> session_bases(
     if (!complete) {
         std::map<std::string, BaseInfo> out = std::move(e.bases);
         std::vector<FileStamp> files;
+        Hierarchy hier;
         ++S.parses;
         try {
-            parse(out, files);
+            parse(out, files, hier);
         } catch (...) {
             S.entries.erase(key);
             throw;
         }
         e.bases = std::move(out);
         e.files = std::move(files);
+        e.hierarchy = std::move(hier);
     }
+    hierarchy = e.hierarchy;
     std::map<std::string, BaseInfo> r;
     for (const auto& n : names) {
         auto it = e.bases.find(n);
@@ -579,6 +633,30 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
     const spc::LineMap map(in.script_text);
     Script sc = parse_structure(in.script_text, map);
 
+    // ---- the type model: the preludes first, then the stubs of the script
+    spc::TypeModel types;
+    for (const auto& [pname, ptext] : in.preludes) {
+        const spc::LineMap pmap(ptext);
+        spc::Diagnostics pd;
+        Script ps = spc::parse_script(ptext, pmap, pd);
+        if (pd.items.empty() && !ps.classes.empty()) {
+            const ClassDef& pc = ps.classes.front();
+            pd.add(pc.pos, pmap, "a prelude can hold only stubs: '" + pname + "' has the class '" + pc.name + "'");
+        }
+        if (pd.items.empty()) types.add_stubs(ps.stubs, pd, pmap);
+        if (!pd.items.empty()) {
+            for (auto& d : pd.items) {
+                d.file = pname;
+                g_diag.items.push_back(std::move(d));
+            }
+            throw TranslateAbort{};
+        }
+    }
+    types.add_stubs(sc.stubs, g_diag, map);
+    if (!g_diag.items.empty()) throw TranslateAbort{};
+    for (const ClassDef& cd : sc.classes)
+        if (cd.is_value) fail_at(map, cd.pos, "[value] on a script class is not supported yet");
+
     // ---- libclang: parse the imports and read the native base classes.
     std::string probe;
     for (const auto& im : sc.imports)
@@ -596,11 +674,16 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
     std::string key = std::filesystem::current_path().string() + "\n";
     for (const auto& a : args) key += a + "\n";
     for (const auto& p : import_paths) key += "#" + p + "\n";
+    Hierarchy hier;  // must outlive every use of "types"
     const std::map<std::string, BaseInfo> bases =
         session_bases(session, key, base_names,
-                      [&](std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files) {
-                          parse_bases(probe, args, base_names, out, files);
-                      });
+                      [&](std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files,
+                          Hierarchy& h) { parse_bases(probe, args, base_names, out, files, h); },
+                      hier);
+    types.set_bases([&hier](const std::string& name) {
+        auto it = hier.find(name);
+        return it == hier.end() ? std::vector<std::string>{} : it->second;
+    });
 
     std::vector<ManifestEntry> old_manifest;
     {
@@ -708,6 +791,14 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
                 fail_at(map, cd.pos, "class " + cn + " does not override the pure virtual method '" +
                                   nv.text() + "' of " + nv.owner);
 
+        // ---- the C++ storage types. An override keeps the native types.
+        for (Field& f : cd.fields) f.type = types.storage(f.type);
+        for (Method& m : cd.methods) {
+            if (m.overrides_virtual) continue;
+            for (Param& p : m.params) p.type = types.param(p.type);
+            if (!m.ret.empty()) m.ret = types.storage(m.ret);
+        }
+
         // ---- slots: native virtuals first, then the script functions
         std::vector<Slot> slots;
         std::map<std::string, int> name_count;
@@ -762,6 +853,8 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
         // ---- lowering context
         RCtx base_cx = spc::make_class_ctx(cd);
         base_cx.map = &map;
+        base_cx.types = &types;
+        for (const auto& sc_cls : sc.classes) base_cx.script_classes.insert(sc_cls.name);
 
         const std::string S = cn + "State_g" + std::to_string(opt.gen);
         const std::string shell = cn + "_Shell";

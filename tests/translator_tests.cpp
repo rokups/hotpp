@@ -1024,3 +1024,259 @@ TEST(TranslatorProps, Errors)
     expect_prop_error("    void f(int get) { }", "'get' is a reserved word");
     expect_prop_error("    int get { get; }", "'get' is a reserved word");
 }
+
+// ------------------------------------------------------------------ handle types
+namespace {
+
+const char* kWeaponHeader =
+    "#include <memory>\n"
+    "struct Weapon { int dmg = 0; };\n"
+    "struct Vec3 { float x, y, z; };\n"
+    "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n";
+const char* kWeaponStub = "[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n";
+
+std::string weapon_script(const std::string& stub, const std::string& members)
+{
+    return "using \"w.h\";\n" + stub + "class Foo : Widget {\n" + members + "}\n";
+}
+
+spc::TranslateResult weapon_translate(const std::string& members, bool stub_in_prelude = false)
+{
+    static TempDir* dir = nullptr;
+    if (!dir) dir = new TempDir();
+    write_file(dir->path() / "w.h", kWeaponHeader);
+    spc::TranslateOptions o =
+        temp_options(*dir, weapon_script(stub_in_prelude ? "" : kWeaponStub, members));
+    if (stub_in_prelude) o.preludes.push_back({"weapon.prelude", kWeaponStub});
+    return spc::translate(o);
+}
+
+bool has(const std::string& text, const std::string& part)
+{
+    return text.find(part) != std::string::npos;
+}
+
+}  // namespace
+
+TEST(Handle, FieldStorage)
+{
+    const spc::TranslateResult r = weapon_translate("    Weapon w = null;\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "    std::shared_ptr<Weapon> w;\n")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "using T = std::shared_ptr<Weapon>; new (f) T(nullptr);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "typeid(std::shared_ptr<Weapon>).name()")) << r.cpp;
+}
+
+TEST(Handle, ParamIsConstRef)
+{
+    const spc::TranslateResult r =
+        weapon_translate("    Weapon w = null;\n    void Hit(Weapon src) { this.w = src; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const std::string p = "const std::shared_ptr<Weapon>& src";
+    EXPECT_TRUE(has(r.cpp, "static void Foo__Hit(Foo_Shell* self, " + p + ");")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "static void Foo__Hit(Foo_Shell* self, " + p + ")\n{")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "static void Foo__Hit_slot(Widget* a, " + p + ")")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "static void Foo__Hit__thunk(Widget* a, " + p + ")")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "st->w = src;")) << r.cpp;
+}
+
+TEST(Handle, NewAssignsAField)
+{
+    const spc::TranslateResult r =
+        weapon_translate("    Weapon w = null;\n    void Arm() { this.w = new Weapon(3); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "st->w = std::make_shared<Weapon>(3);")) << r.cpp;
+}
+
+TEST(Handle, LocalAndReturn)
+{
+    const spc::TranslateResult r = weapon_translate(
+        "    Weapon w = null;\n"
+        "    Weapon Get() { Weapon x = this.w; return x; }\n"
+        "    int Dmg() { return this.w.dmg; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "static std::shared_ptr<Weapon> Foo__Get(Foo_Shell* self);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Weapon> x = st->w;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "script::deref(st->w).dmg")) << r.cpp;
+}
+
+TEST(Handle, PreludeStub)
+{
+    const std::string members =
+        "    Weapon w = null;\n    void Hit(Weapon src) { this.w = src; }\n"
+        "    Weapon Get() { Weapon x = this.w; return x; }\n";
+    const spc::TranslateResult a = weapon_translate(members);
+    const spc::TranslateResult b = weapon_translate(members, true);
+    ASSERT_TRUE(a.ok) << a.diagnostics;
+    ASSERT_TRUE(b.ok) << b.diagnostics;
+    // The stub lines do not change the generated text, except the "#line" numbers.
+    EXPECT_TRUE(has(b.cpp, "    std::shared_ptr<Weapon> w;\n")) << b.cpp;
+    EXPECT_TRUE(has(b.cpp, "const std::shared_ptr<Weapon>& src")) << b.cpp;
+    EXPECT_TRUE(has(b.cpp, "std::shared_ptr<Weapon> x = st->w;")) << b.cpp;
+}
+
+TEST(Handle, PreludeWithClassIsAnError)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kWeaponHeader);
+    spc::TranslateOptions o = temp_options(dir, weapon_script("", "    int n = 0;\n"));
+    o.preludes.push_back({"bad.prelude", "class Foo : Widget {\n}\n"});
+    const spc::TranslateResult r = spc::translate(o);
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "bad.prelude")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "a prelude can hold only stubs")) << r.diagnostics;
+}
+
+// ------------------------------------------------------------------ inherited handles
+namespace {
+
+const char* kHierHeader =
+    "#include <memory>\n"
+    "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n"
+    "struct Object { void AddRef(); void Release(); virtual ~Object(); };\n"
+    "struct Item : Object { int v = 0; Item(int); };\n"
+    "struct Gadget : Item { using Item::Item; };\n"
+    "namespace eng { struct Base : Object {}; struct Thing : Base {}; }\n";
+const char* kIntrusiveStub =
+    "[native, handle(\"$T*\"), intrusive(\"AddRef\", \"Release\")] class Object;\n";
+const char* kSharedStub = "[native, handle(\"std::shared_ptr<$T>\")] class Object;\n";
+const std::string kIntr = "script::Intrusive<Item, &Object::AddRef, &Object::Release>";
+
+spc::TranslateResult hier_translate(const std::string& stubs, const std::string& members,
+                                    bool stub_in_prelude = false, spc::TranslatorSession* session = nullptr)
+{
+    // Write the header once: a new mtime would make the session parse again.
+    static TempDir* dir = nullptr;
+    if (!dir) {
+        dir = new TempDir();
+        write_file(dir->path() / "w.h", kHierHeader);
+    }
+    spc::TranslateOptions o =
+        temp_options(*dir, weapon_script(stub_in_prelude ? "" : stubs, members));
+    if (stub_in_prelude) o.preludes.push_back({"hier.prelude", stubs});
+    return session ? spc::translate(o, *session) : spc::translate(o);
+}
+
+}  // namespace
+
+TEST(InheritedHandle, IntrusiveField)
+{
+    const spc::TranslateResult r = hier_translate(kIntrusiveStub, "    Item item;\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "    " + kIntr + " item;\n")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "using T = " + kIntr + "; new (f) T();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "typeid(" + kIntr + ").name()")) << r.cpp;
+}
+
+TEST(InheritedHandle, OwnerIsTheStubClass)
+{
+    const spc::TranslateResult r =
+        hier_translate(kIntrusiveStub, "    Gadget g;\n    eng.Thing t;\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "    script::Intrusive<Gadget, &Object::AddRef, &Object::Release> g;\n")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "    script::Intrusive<eng::Thing, &Object::AddRef, &Object::Release> t;\n"))
+        << r.cpp;
+}
+
+TEST(InheritedHandle, ParamReturnLocalAndNew)
+{
+    const spc::TranslateResult r = hier_translate(
+        kIntrusiveStub,
+        "    Item item;\n"
+        "    void Put(Item i) { this.item = i; }\n"
+        "    Item Get() { Item x = this.item; return x; }\n"
+        "    void Make() { this.item = new Item(3); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "const " + kIntr + "& i")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "static " + kIntr + " Foo__Get(Foo_Shell* self);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, kIntr + " x = st->item;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "st->item = " + kIntr + "(new Item(3));")) << r.cpp;
+}
+
+TEST(InheritedHandle, SharedPtrBase)
+{
+    const spc::TranslateResult r = hier_translate(kSharedStub, "    Item item;\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "    std::shared_ptr<Item> item;\n")) << r.cpp;
+}
+
+TEST(InheritedHandle, ExactStubWins)
+{
+    const std::string stubs =
+        std::string(kIntrusiveStub) + "[native, handle(\"std::shared_ptr<$T>\")] class Item;\n";
+    const spc::TranslateResult r = hier_translate(stubs, "    Item item;\n    Gadget g;\n    Object o;\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "    std::shared_ptr<Item> item;\n")) << r.cpp;
+    // Gadget has no stub: the nearest base with a stub is Item.
+    EXPECT_TRUE(has(r.cpp, "    std::shared_ptr<Gadget> g;\n")) << r.cpp;
+}
+
+TEST(InheritedHandle, ValueBaseIsNotInherited)
+{
+    const spc::TranslateResult r =
+        hier_translate("[native, value] class Object;\n", "    Item item;\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "    Item item;\n")) << r.cpp;
+}
+
+TEST(InheritedHandle, PreludeGivesTheSameOutput)
+{
+    const std::string members = "    Item item;\n    eng.Thing t;\n    void Put(Item i) { this.item = i; }\n";
+    const spc::TranslateResult a = hier_translate(kIntrusiveStub, members);
+    const spc::TranslateResult b = hier_translate(kIntrusiveStub, members, true);
+    ASSERT_TRUE(a.ok) << a.diagnostics;
+    ASSERT_TRUE(b.ok) << b.diagnostics;
+    EXPECT_TRUE(has(b.cpp, "    " + kIntr + " item;\n")) << b.cpp;
+    EXPECT_TRUE(has(b.cpp, "script::Intrusive<eng::Thing, &Object::AddRef, &Object::Release> t;")) << b.cpp;
+    EXPECT_TRUE(has(b.cpp, "const " + kIntr + "& i")) << b.cpp;
+}
+
+TEST(InheritedHandle, SessionKeepsTheHierarchy)
+{
+    spc::TranslatorSession session;
+    const spc::TranslateResult a =
+        hier_translate(kIntrusiveStub, "    Item item;\n", false, &session);
+    ASSERT_TRUE(a.ok) << a.diagnostics;
+    EXPECT_EQ(session.parse_count(), 1);
+    const spc::TranslateResult b =
+        hier_translate(kIntrusiveStub, "    Item item;\n", false, &session);
+    ASSERT_TRUE(b.ok) << b.diagnostics;
+    EXPECT_EQ(session.parse_count(), 1);
+    EXPECT_EQ(a.cpp, b.cpp);
+    EXPECT_TRUE(has(b.cpp, "    " + kIntr + " item;\n")) << b.cpp;
+}
+
+// ------------------------------------------------------------------ default values
+// No initializer: the value is the zero or default value, never an indeterminate one.
+TEST(DefaultValue, FieldsAreValueInitialized)
+{
+    const spc::TranslateResult r =
+        weapon_translate("    int a;\n    Weapon w;\n    Vec3 v;\n    float f { get; set; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "using T = int; new (f) T();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "using T = std::shared_ptr<Weapon>; new (f) T();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "using T = Vec3; new (f) T();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "using T = float; new (f) T();")) << r.cpp;
+}
+
+TEST(DefaultValue, LocalsAreValueInitialized)
+{
+    const spc::TranslateResult r = weapon_translate(
+        "    int K() { int x; Vec3 v; Weapon w; Weapon* p; return x; }\n"
+        "    void L() { for (int i; i < 3; i++) { } }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "int x = int();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Vec3 v = Vec3();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Weapon> w = std::shared_ptr<Weapon>();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "for (int i = int(); i < 3; i++)")) << r.cpp;
+}
+
+TEST(DefaultValue, VarAndConstNeedAnInitializer)
+{
+    const spc::TranslateResult a = weapon_translate("    void F() { var x; }\n");
+    EXPECT_FALSE(a.ok);
+    EXPECT_TRUE(has(a.diagnostics, "var needs an initializer")) << a.diagnostics;
+    const spc::TranslateResult b = weapon_translate("    void F() { const int X; }\n");
+    EXPECT_FALSE(b.ok);
+    EXPECT_TRUE(has(b.diagnostics, "a const needs an initializer")) << b.diagnostics;
+}

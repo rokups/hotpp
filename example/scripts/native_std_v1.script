@@ -9,18 +9,22 @@ using "Util.h";
 
 class Tracker : Actor {
     std.string label = "tracker label that is longer than the small string buffer";
-    std.vector<int> history = {};
+    std.vector<int> history = std.vector<int>();
     float dist = 0.0;
     float lowest = 0.0;
     float sum = 0.0;
     std.string described = "";
 
     override void Tick(float dt)  {
-        var v = std.vector<float>{4.0, 2.5, 3.0, 1.5};
+        var v = std.vector<float>();
+        v.push_back(4.0);
+        v.push_back(2.5);
+        v.push_back(3.0);
+        v.push_back(1.5);
         v.push_back(this.Position.x);
         std.sort(v.begin(), v.end());
         this.lowest = Math.Min(v[0], v[1]);
-        this.dist = Distance(this.Position, Vec3{0, 0, 0});
+        this.dist = Distance(this.Position, Vec3(0, 0, 0));
         this.sum = Util.Sum(this.Position);
         this.described = Util.Describe(*this);
         this.Name = FormatVec(this.Position);

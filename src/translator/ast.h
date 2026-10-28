@@ -92,13 +92,9 @@ struct ParenExpr {
     ExprP inner;
     uint32_t pos = 0;
 };
-struct BracedListExpr {  // {a, b, c}
-    std::vector<ExprP> elems;
-    uint32_t pos = 0;
-};
-struct TypedBracedExpr {  // T{a, b}
+struct NewExpr {  // new T(a, b). The type is C++ text, for example "std::vector<float>".
     std::string type;
-    std::vector<ExprP> elems;
+    std::vector<ExprP> args;
     uint32_t pos = 0;
 };
 
@@ -120,8 +116,8 @@ struct RawExpr {  // C++ text that is already lowered
 
 struct Expr {
     std::variant<NameExpr, ThisExpr, SuperExpr, NullExpr, NumberExpr, StringExpr, CharExpr, MemberExpr,
-                 CallExpr, IndexExpr, UnaryExpr, BinaryExpr, TernaryExpr, ParenExpr, BracedListExpr,
-                 TypedBracedExpr, LambdaExpr, RawExpr>
+                 CallExpr, IndexExpr, UnaryExpr, BinaryExpr, TernaryExpr, ParenExpr,
+                 NewExpr, LambdaExpr, RawExpr>
         v;
 };
 
@@ -303,6 +299,18 @@ struct ClassDef {
     std::vector<Field> fields;
     std::vector<Method> methods;
     std::vector<Property> props;  // in source order
+    bool is_value = false;        // the attribute [value]
+    int line = 0;
+    uint32_t pos = 0;
+};
+
+// A class stub: a native class with no body. The attributes give the storage kind.
+// The name may end with "<*>" or "::*", or it may be "*".
+struct Stub {
+    std::string name;
+    bool is_native = false, is_value = false;
+    std::string handle, default_handle;
+    std::string intrusive_add, intrusive_release;
     int line = 0;
     uint32_t pos = 0;
 };
@@ -321,6 +329,7 @@ struct Import {
 struct Script {
     std::vector<Import> imports;
     std::vector<ClassDef> classes;
+    std::vector<Stub> stubs;  // in source order
 };
 
 }  // namespace spc::ast

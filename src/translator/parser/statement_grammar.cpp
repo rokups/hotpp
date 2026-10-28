@@ -171,6 +171,14 @@ StmtP make_decl(const ParseState& st, DeclParts&& d)
     v.name = std::move(d.head.name);
     v.type = std::move(d.head.type);
     v.pos = d.head.pos;
+    // "Type name;" is value-initialized by the emitter. "var" and "const" need an initializer.
+    // A future "out" parameter will be exempt: it is not a local declaration.
+    if (!d.has_init) {
+        if (v.type.empty())
+            st.error(st.base + v.pos, "var needs an initializer");
+        else if (v.is_const)
+            st.error(st.base + v.pos, "a const needs an initializer");
+    }
     if (d.has_init) {
         v.init = expr_of(st, d.init);
         if (!v.init) return nullptr;

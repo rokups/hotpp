@@ -1,0 +1,15 @@
+// Generation 1: a handle field. The script makes the Weapon with new.
+using "Actor.h";
+using "Weapon.h";
+
+[native, handle("std::shared_ptr<$T>")] class Weapon;
+
+class Knight : Actor {
+    Weapon weapon = null;
+    int swings = 0;
+
+    override void Tick(float dt) {
+        if (this.weapon == null) this.weapon = new Weapon(7, "sword");
+        this.swings = this.swings + 1;
+    }
+}

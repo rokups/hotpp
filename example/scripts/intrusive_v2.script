@@ -1,0 +1,18 @@
+// Generation 2: the handle field stays. A second field shares the object.
+using "Actor.h";
+using "Object.h";
+
+[native, handle("$T*"), intrusive("AddRef", "Release")] class Object;
+
+class Smith : Actor {
+    Item item;
+    Item spare;
+    int ticks;
+
+    override void Tick(float dt) {
+        if (this.item == null) this.item = new Item(5);
+        this.ticks = this.ticks + 1;
+        this.item.value = this.item.value + 1;
+        if (this.spare == null) this.spare = this.item;
+    }
+}

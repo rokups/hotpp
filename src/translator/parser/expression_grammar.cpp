@@ -9,8 +9,8 @@
 //    has a fixed nesting depth (lambda_depth). A parameter is "Type name" or "name".
 //    The old form "(" name ":" is also a lambda path, so it gives the error
 //    "parameter syntax changed; write 'Type name'".
-//  - A "<" starts template arguments when a scan of "<...>" ends before a "(", a "{" or
-//    a ".". The scan has a fixed nesting depth (targs_depth). It stops at a newline,
+//  - A "<" starts template arguments when a scan of "<...>" ends before a "(" or a
+//    ".". The scan has a fixed nesting depth (targs_depth). It stops at a newline,
 //    at ";" and at each char that a type cannot have.
 #include "expression.h"
 
@@ -32,6 +32,8 @@ using ast::ExprP;
 SPC_ERROR_TAG(e_expected_expr, "expected an expression");
 SPC_ERROR_TAG(e_end_of_expr, "expected end of expression");
 SPC_ERROR_TAG(e_old_param, "parameter syntax changed; write 'Type name'");
+SPC_ERROR_TAG(e_brace_init, "brace initialization is not supported; use parentheses");
+SPC_ERROR_TAG(e_new_paren, "expected '(' after the type of 'new'");
 SPC_ERROR_TAG(e_targs, "not a template argument list");
 
 // ---------------------------------------------------------------- limits
@@ -305,11 +307,11 @@ struct targs_tok : lexy::token_production {
     static constexpr auto value = lexy::noop;
 };
 
-// "<...>" that is followed by "(", "{" or ".".
+// "<...>" that is followed by "(" or ".".
 constexpr auto targs_head =
     dsl::lit_c<'<'> + dsl::p<targs_body<targs_depth>> +
     dsl::while_(dsl::lit_c<' '> / dsl::lit_c<'\t'>) +
-    dsl::literal_set(dsl::lit_c<'('>, dsl::lit_c<'{'>, dsl::lit_c<'.'>);
+    dsl::literal_set(dsl::lit_c<'('>, dsl::lit_c<'.'>);
 
 // ---------------------------------------------------------------- names
 // The value is the span of the whole name, with the template arguments.
@@ -337,30 +339,29 @@ struct elems_p {
     static constexpr auto value = lexy::as_list<std::vector<ExprP>>;
 };
 
-// A name, with an optional list of braced elements: "Vec3{1, 2, 3}".
+// A name. A "{" after the name is an error: "Vec3{1, 2, 3}" is not supported.
 struct name_p {
     static constexpr auto rule =
-        dsl::p<qname_tok> +
-        dsl::opt(dsl::peek(dsl::lit_c<'{'>) >> (dsl::lit_c<'{'> + dsl::p<elems_p<'}'>>));
+        dsl::p<qname_tok> + dsl::if_(dsl::peek(dsl::lit_c<'{'>) >> dsl::error<e_brace_init>);
     static constexpr auto value = lexy::bind(
-        lexy::callback<ExprP>(
-            [](const ParseState& st, Span name, lexy::nullopt) {
-                return ast::make_expr(split_name(st, span_text(st, name), name.begin));
-            },
-            [](const ParseState& st, Span name, std::vector<ExprP>&& elems) {
-                return ast::make_expr(ast::TypedBracedExpr{
-                    scope_text(st, st.base + name.begin, span_text(st, name)), std::move(elems),
-                    name.begin});
-            }),
+        lexy::callback<ExprP>([](const ParseState& st, Span name) {
+            return ast::make_expr(split_name(st, span_text(st, name), name.begin));
+        }),
         lexy::parse_state, lexy::values);
 };
 
-struct braced_p {
+// new T(args). The type is a qualified name with optional template arguments.
+struct new_p {
     static constexpr auto rule =
-        dsl::position + dsl::lit_c<'{'> + dsl::p<elems_p<'}'>>;
+        dsl::position + dsl::token(kw_new) + dsl::p<qname_tok> +
+        (dsl::peek(dsl::lit_c<'{'>) >> dsl::error<e_new_paren> |
+         dsl::else_ >> (dsl::lit_c<'('> + dsl::p<elems_p<')'>>));
     static constexpr auto value = lexy::bind(
-        lexy::callback<ExprP>([](const ParseState& st, const char* pos, std::vector<ExprP>&& e) {
-            return ast::make_expr(ast::BracedListExpr{std::move(e), st.offset(pos)});
+        lexy::callback<ExprP>([](const ParseState& st, const char* pos, Span name,
+                                 std::vector<ExprP>&& args) {
+            return ast::make_expr(ast::NewExpr{
+                scope_text(st, st.base + name.begin, span_text(st, name)), std::move(args),
+                st.offset(pos)});
         }),
         lexy::parse_state, lexy::values);
 };
@@ -469,10 +470,11 @@ struct expr : lexy::expression_production {
         dsl::peek(dsl::lit_c<'\''>) >> dsl::p<literal_p<ast::CharExpr, '\''>> |
         dsl::peek(dsl::lit_c<'`'>) >> dsl::error<e_interpolation> |
         dsl::peek(dsl::lit_c<'('>) >> dsl::p<paren_p> |
-        dsl::peek(dsl::lit_c<'{'>) >> dsl::p<braced_p> |
+        dsl::peek(dsl::lit_c<'{'>) >> dsl::error<e_brace_init> |
         dsl::peek(kw_this) >> dsl::p<kw_p<ast::ThisExpr, std::remove_cv_t<decltype(kw_this)>>> |
         dsl::peek(kw_super) >> dsl::p<kw_p<ast::SuperExpr, std::remove_cv_t<decltype(kw_super)>>> |
         dsl::peek(kw_null) >> dsl::p<kw_p<ast::NullExpr, std::remove_cv_t<decltype(kw_null)>>> |
+        dsl::peek(kw_new) >> dsl::p<new_p> |
         dsl::peek(LEXY_LIT("::")) >> dsl::error<e_use_dot_colons> |
         dsl::peek(id_r) >> dsl::p<name_p> |
         dsl::else_ >> dsl::error<e_expected_expr>;

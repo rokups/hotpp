@@ -1,0 +1,11 @@
+// Generation 3: the type of the field weapon changes. The reload must fail.
+using "Actor.h";
+
+class Knight : Actor {
+    int weapon = 0;
+    int swings = 0;
+
+    override void Tick(float dt) {
+        this.swings = this.swings + 1;
+    }
+}

@@ -1,0 +1,15 @@
+// The stub names a method that Object does not have. The load must fail.
+using "Actor.h";
+using "Object.h";
+
+[native, handle("$T*"), intrusive("Grab", "Release")] class Object;
+
+class Smith : Actor {
+    Item item;
+    int ticks;
+
+    override void Tick(float dt) {
+        if (this.item == null) this.item = new Item(5);
+        this.ticks = this.ticks + 1;
+    }
+}

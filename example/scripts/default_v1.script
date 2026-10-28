@@ -1,0 +1,18 @@
+// A field or a local without an initializer has the default value: zero, false or null.
+using "Actor.h";
+using "Weapon.h";
+
+[native, handle("std::shared_ptr<$T>")] class Weapon;
+
+class Knight : Actor {
+    int n;
+    float f;
+    bool b;
+    Weapon weapon;
+    int seen = 5;
+
+    override void Tick(float dt) {
+        int k;
+        this.seen = k;
+    }
+}

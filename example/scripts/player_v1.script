@@ -8,7 +8,7 @@ class Player : Actor {
     Actor* target = null;
 
     override void Tick(float dt)  {
-        this.Move({this.speed * dt, 0, 0});
+        this.Move(Vec3(this.speed * dt, 0, 0));
         std.printf("[v1] %s: Tick dt=%.4f pos.x=%.4f hp=%.1f\n", this.Name.c_str(), dt,
                     this.Position.x, this.hp);
         this.heal(1.0);

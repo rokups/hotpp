@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "emit.h"
@@ -96,8 +97,8 @@ TEST(ExprParse, PrefixAndPostfix)
 
 TEST(ExprParse, CallsAndMembers)
 {
-    EXPECT_EQ(round_trip("this.Move({2.0 * this.speed * dt, 0, 0})"),
-              "this.Move({2.0 * this.speed * dt, 0, 0})");
+    EXPECT_EQ(round_trip("this.Move(Vec3(2.0 * this.speed * dt, 0, 0))"),
+              "this.Move(Vec3(2.0 * this.speed * dt, 0, 0))");
     // The printer joins the parts of a name with "::". The lowering pass chooses the form.
     EXPECT_EQ(round_trip("Math.Max(this.health - amount, 0.0)"),
               "Math::Max(this.health - amount, 0.0)");
@@ -121,13 +122,13 @@ TEST(ExprParse, Names)
     EXPECT_EQ(round_trip("make<Foo<int>, 3>(x)"), "make<Foo<int>, 3>(x)");
     EXPECT_EQ(round_trip("std.max<float>(a, b)"), "std::max<float>(a, b)");
     EXPECT_EQ(round_trip("pick<Color.Red>(t)"), "pick<Color::Red>(t)");
-    EXPECT_EQ(round_trip("std.vector<std.string>{a}"), "std::vector<std::string>{a}");
+    EXPECT_EQ(round_trip("std.vector<std.string>(a)"), "std::vector<std::string>(a)");
     // A "<" that does not start template arguments is less-than.
     EXPECT_EQ(round_trip("a < b && c > (d)"), "a < b && c > (d)");
     EXPECT_EQ(round_trip("a < b > c"), "a < b > c");
     // The word "of" is a name. The words "let", "if" and so on are not.
     EXPECT_EQ(round_trip("of + x"), "of + x");
-    // "<int>" is not followed by "(", "{" or ".", so "<" is less-than and the text is bad.
+    // "<int>" is not followed by "(" or ".", so "<" is less-than and the text is bad.
     EXPECT_EQ(one_error("a.b<int>"), "1:9: expected an expression");
 }
 
@@ -145,15 +146,11 @@ TEST(ExprParse, NameNode)
     EXPECT_EQ(n->template_args, "<float>");
 }
 
-TEST(ExprParse, Bracedlists)
+TEST(ExprParse, BraceInitIsAnError)
 {
-    EXPECT_EQ(round_trip("Vec3{1, 2, 3}"), "Vec3{1, 2, 3}");
-    EXPECT_EQ(round_trip("{1, {2, 3}}"), "{1, {2, 3}}");
-    EXPECT_EQ(round_trip("{}"), "{}");
-    EXPECT_EQ(round_trip("std.array<int, 2>{1, 2}"), "std::array<int, 2>{1, 2}");
-    Parsed p("Vec3{1}");
-    ASSERT_TRUE(p.expr);
-    EXPECT_TRUE(std::get_if<ast::TypedBracedExpr>(&p.expr->v));
+    const char* msg = "brace initialization is not supported; use parentheses";
+    EXPECT_NE(one_error("Vec3{1,2,3}").find(msg), std::string::npos);
+    EXPECT_NE(one_error("{1,2}").find(msg), std::string::npos);
 }
 
 TEST(ExprParse, Literals)
@@ -219,7 +216,7 @@ TEST(ExprParse, Errors)
     EXPECT_EQ(one_error("a b"), "1:3: expected end of expression");
     EXPECT_EQ(one_error("f(a b)"), "1:5: expected ')'");
     EXPECT_EQ(one_error("a[1"), "1:4: expected ']'");
-    EXPECT_EQ(one_error("{1, 2"), "1:6: expected '}'");
+    EXPECT_EQ(one_error("{1, 2"), "1:1: brace initialization is not supported; use parentheses");
     EXPECT_EQ(one_error("if"), "1:1: expected an expression");
     EXPECT_EQ(one_error("a +\n  )"), "2:3: expected an expression");
     EXPECT_EQ(one_error(""), "1:1: expected an expression");
@@ -297,11 +294,11 @@ TEST(ExprParse, List)
                                      diag);
     };
     Diagnostics d1;
-    auto v = items("a, f(b, c), {1, 2}, x ? y : z", d1);
+    auto v = items("a, f(b, c), g(1, 2), x ? y : z", d1);
     EXPECT_EQ(d1.items.size(), 0u);
     ASSERT_EQ(v.size(), 4u);
     EXPECT_EQ(ast::print(*v[1]), "f(b, c)");
-    EXPECT_EQ(ast::print(*v[2]), "{1, 2}");
+    EXPECT_EQ(ast::print(*v[2]), "g(1, 2)");
     EXPECT_EQ(ast::print(*v[3]), "x ? y : z");
 
     Diagnostics d2;
@@ -320,12 +317,33 @@ TEST(ExprParse, List)
     EXPECT_EQ(d4.items[0].msg, "expected end of expression");
 }
 
+TEST(ExprParse, NewExpression)
+{
+    EXPECT_EQ(round_trip("new Weapon(1, 2)"), "new Weapon(1, 2)");
+    EXPECT_EQ(round_trip("new Weapon()"), "new Weapon()");
+    EXPECT_EQ(round_trip("new std.vector<float>()"), "new std::vector<float>()");
+    EXPECT_EQ(round_trip("new A(new B(1), x + 1)"), "new A(new B(1), x + 1)");
+    EXPECT_EQ(round_trip("new Weapon(1).dmg"), "new Weapon(1).dmg");
+    Parsed p("new Weapon(1, 2)");
+    ASSERT_TRUE(p.expr != nullptr);
+    const auto* n = std::get_if<ast::NewExpr>(&p.expr->v);
+    ASSERT_TRUE(n != nullptr);
+    EXPECT_EQ(n->type, "Weapon");
+    EXPECT_EQ(n->args.size(), 2u);
+    EXPECT_EQ(n->pos, 0u);
+}
+
+TEST(ExprParse, NewBraceIsAnError)
+{
+    EXPECT_EQ(one_error("new Weapon{1}"), "1:11: expected '(' after the type of 'new'");
+}
+
 TEST(ExprParse, Truncation)
 {
     // Each prefix of a long expression ends: no crash and no hang.
     const std::string full =
-        "x = this.Move({2.0 * this.speed * dt, 0, 0}) + Math.Max(a ? b : c, x[i + 1].y->z) "
-        "<< 2 > Vec3{1, 2, 3} && static_cast<int>(y) < n || (float x, int* q) => { f(); } "
+        "x = this.Move(Vec3(2.0 * this.speed * dt, 0, 0)) + Math.Max(a ? b : c, x[i + 1].y->z) "
+        "<< 2 > Vec3(1, 2, 3) && static_cast<int>(y) < n || (float x, int* q) => { f(); } "
         "|| std::vector<int>::size_type(s) + 'c' + \"str\" + 0x1e+5 + .5e-3f ;";
     size_t ok = 0;
     for (size_t n = 0; n <= full.size(); ++n) {
@@ -358,7 +376,11 @@ TEST(ExprParse, DeepNesting)
         for (size_t i = 0; i < n; ++i) t += "a[";
         fails_with(t, "maximum recursion depth exceeded");
     }
-    fails_with("f(" + std::string(n, '{'), "maximum recursion depth exceeded");
+    {
+        std::string t = "f(";
+        for (size_t i = 0; i < n; ++i) t += "g(";
+        fails_with(t, "maximum recursion depth exceeded");
+    }
     fails_with(std::string(n, '-') + "a", "maximum operator nesting level exceeded");
     fails_with(std::string(n, '!') + "a", "maximum operator nesting level exceeded");
     {

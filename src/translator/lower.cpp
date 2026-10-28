@@ -250,6 +250,33 @@ struct Lowerer {
         exprs(c.args);
     }
 
+    // new T(args). The type model gives the callee: a handle, a value or a raw type.
+    void new_expr(ExprP& e, NewExpr& n)
+    {
+        const uint32_t pos = n.pos;
+        if (cx.script_classes.count(n.type)) {
+            error(pos, "new of a script class is not supported yet");
+            return;
+        }
+        exprs(n.args);
+        TypeModel::Callee callee{n.type, false};
+        if (cx.types) callee = cx.types->make_callee(n.type);
+        CallExpr c;
+        c.pos = pos;
+        if (!callee.wrap_new) {
+            c.callee = raw(callee.text, pos);
+            c.args = std::move(n.args);
+        } else {
+            CallExpr inner;
+            inner.pos = pos;
+            inner.callee = raw("new " + n.type, pos);
+            inner.args = std::move(n.args);
+            c.callee = raw(callee.text, pos);
+            c.args.push_back(make_expr(std::move(inner)));
+        }
+        e = make_expr(std::move(c));
+    }
+
     // Wraps an object in "script::deref(...)". The helper gives a reference for a pointer and
     // for a reference. So the member access after it is the same for both.
     void deref(ExprP& obj)
@@ -304,6 +331,9 @@ struct Lowerer {
                 error(l.pos, "a lambda parameter needs a name");
             cx.locals.insert(p.name);
         }
+        if (cx.types)
+            for (Param& p : l.params)
+                if (!p.type.empty()) p.type = cx.types->param(p.type);
         // A "return" in a lambda leaves only the lambda. So it is correct in a finally block.
         const FinallyState outer = fin;
         fin = {};
@@ -408,10 +438,8 @@ struct Lowerer {
             expr(t->b);
         } else if (auto* p = std::get_if<ParenExpr>(&x.v)) {
             expr(p->inner);
-        } else if (auto* bl = std::get_if<BracedListExpr>(&x.v)) {
-            exprs(bl->elems);
-        } else if (auto* tb = std::get_if<TypedBracedExpr>(&x.v)) {
-            exprs(tb->elems);
+        } else if (auto* nw = std::get_if<NewExpr>(&x.v)) {
+            new_expr(e, *nw);
         } else if (auto* l = std::get_if<LambdaExpr>(&x.v)) {
             lambda(e, *l);
         }
@@ -443,6 +471,7 @@ struct Lowerer {
             expr(es->expr);
         } else if (auto* d = std::get_if<VarDeclStmt>(&x.v)) {
             cx.locals.insert(d->name);
+            if (cx.types && !d->type.empty()) d->type = cx.types->storage(d->type);
             expr(d->init);
         } else if (auto* i = std::get_if<IfStmt>(&x.v)) {
             expr(i->cond);
@@ -464,6 +493,7 @@ struct Lowerer {
             loop_body(f->body);
         } else if (auto* fo = std::get_if<ForOfStmt>(&x.v)) {
             cx.locals.insert(fo->name);
+            if (cx.types && !fo->type.empty()) fo->type = cx.types->storage(fo->type);
             expr(fo->range);
             loop_body(fo->body);
         } else if (auto* r = std::get_if<ReturnStmt>(&x.v)) {

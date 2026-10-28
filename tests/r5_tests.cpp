@@ -47,7 +47,7 @@ class Player : Actor {
     float speed = 5.0;
 
     override void Tick(float dt) {
-        this.Move({this.speed * dt, 0, 0});
+        this.Move(Vec3(this.speed * dt, 0, 0));
         this.hp = Math.Min(this.hp + 1.0, 100000.0);
     }
 }
@@ -63,7 +63,7 @@ class Player : Actor {
     float shield = 25.0;
 
     override void Tick(float dt) {
-        this.Move({2.0 * this.speed * dt, 0, 0});
+        this.Move(Vec3(2.0 * this.speed * dt, 0, 0));
     }
 }
 )";

@@ -70,16 +70,33 @@ TEST(StmtParse, Simple)
     EXPECT_EQ(round_trip("a = \"x;}\"; b = ';';"), "a = \"x;}\"; b = ';';");
 }
 
+// No initializer: the emitter value-initializes. "var" and "const" need an initializer.
+TEST(StmtParse, DeclarationWithoutInitializer)
+{
+    EXPECT_EQ(round_trip("int x;"), "int x = int();");
+    EXPECT_EQ(round_trip("Vec3 v;"), "Vec3 v = Vec3();");
+    EXPECT_EQ(round_trip("Actor* p;"), "Actor* p = std::type_identity_t<Actor*>();");
+    EXPECT_EQ(round_trip("for (int i; i < 3; i++) f(i);"),
+              "for (int i = int(); i < 3; i++) f(i);");
+    EXPECT_EQ(errors_of(Parsed("var x;")),
+              (std::vector<std::string>{"1:1: var needs an initializer"}));
+    EXPECT_EQ(errors_of(Parsed("const int X;")),
+              (std::vector<std::string>{"1:1: a const needs an initializer"}));
+    EXPECT_EQ(errors_of(Parsed("const var X;")),
+              (std::vector<std::string>{"1:1: var needs an initializer"}));
+    EXPECT_EQ(errors_of(Parsed("for (var i; i < 3; i++) f(i);")),
+              (std::vector<std::string>{"1:6: var needs an initializer"}));
+}
+
 TEST(StmtParse, Declarations)
 {
     EXPECT_EQ(round_trip("var x = 1;"), "auto x = 1;");
-    EXPECT_EQ(round_trip("var x;"), "auto x;");
     EXPECT_EQ(round_trip("const var x = f(1);"), "const auto x = f(1);");
     EXPECT_EQ(round_trip("float x = 2.0;"), "float x = 2.0;");
-    EXPECT_EQ(round_trip("std.vector<int> v = {1, 2};"), "std::vector<int> v = {1, 2};");
+    EXPECT_EQ(round_trip("std.vector<int> v = f(1, 2);"), "std::vector<int> v = f(1, 2);");
     EXPECT_EQ(round_trip("const Actor* p = null;"), "const Actor* p = nullptr;");
     EXPECT_EQ(round_trip("std.map<int, std.vector<int>> m;"),
-              "std::map<int, std::vector<int>> m;");
+              "std::map<int, std::vector<int>> m = std::map<int, std::vector<int>>();");
     EXPECT_EQ(round_trip("var f = (int a) => { return a; };"),
               "auto f = [=](int a) { return a; };");
 }
@@ -92,11 +109,11 @@ TEST(StmtParse, TypeFirstDeclarations)
     EXPECT_EQ(round_trip("const int X = 5;"), "const int X = 5;");
     EXPECT_EQ(round_trip("const var y = 1;"), "const auto y = 1;");
     EXPECT_EQ(round_trip("Actor* p = null;"), "Actor* p = nullptr;");
-    EXPECT_EQ(round_trip("std.string s;"), "std::string s;");
+    EXPECT_EQ(round_trip("std.string s;"), "std::string s = std::string();");
     EXPECT_EQ(round_trip("std.string s = \"x\";"), "std::string s = \"x\";");
     EXPECT_EQ(round_trip("unsigned int n = 0;"), "unsigned int n = 0;");
     EXPECT_EQ(round_trip("const std.exception& e = f();"), "const std::exception& e = f();");
-    EXPECT_EQ(round_trip("int[3] a;"), "int[3] a;");
+    EXPECT_EQ(round_trip("int[3] a;"), "int[3] a = std::type_identity_t<int[3]>();");
     EXPECT_EQ(round_trip("/* c */ int // d\n x = 1;"), "int x = 1;");
 
     // The kind of each statement: a declaration or an expression.
@@ -122,7 +139,7 @@ TEST(StmtParse, TypeFirstDeclarations)
     ASSERT_TRUE(d);
     EXPECT_EQ(d->name, "c");
     EXPECT_EQ(d->type, "a<b>");
-    d = decl("std.map<int, std.vector<int>> m = {};");
+    d = decl("std.map<int, std.vector<int>> m = f();");
     ASSERT_TRUE(d);
     EXPECT_EQ(d->type, "std::map<int, std::vector<int>>");
     EXPECT_FALSE(decl("f(x);"));
@@ -517,9 +534,10 @@ TEST(StmtParse, Errors)
 TEST(StmtParse, TypeScope)
 {
     EXPECT_EQ(round_trip("std.string a = x; std.vector<std.string> b;"),
-              "std::string a = x; std::vector<std::string> b;");
+              "std::string a = x; std::vector<std::string> b = std::vector<std::string>();");
     EXPECT_EQ(round_trip("A.B.C* c; std.array<int, 3> d; float e;"),
-              "A::B::C* c; std::array<int, 3> d; float e;");
+              "A::B::C* c = std::type_identity_t<A::B::C*>(); "
+              "std::array<int, 3> d = std::array<int, 3>(); float e = float();");
     Parsed p("int a;\nstd::string b = x;");
     EXPECT_EQ(errors_of(p), (std::vector<std::string>{"2:4: use '.' instead of '::'"}));
     Parsed q("foreach (std::string s in xs) f(s);");
@@ -530,7 +548,7 @@ TEST(StmtParse, Truncation)
 {
     // Each prefix of a long block ends: no crash and no hang.
     const std::string full =
-        "var a = 1;\nconst std.vector<int> b = {1, 2};\nif (a < b) { f(a); } else g(b);\n"
+        "var a = 1;\nconst std.vector<int> b = f(1, 2);\nif (a < b) { f(a); } else g(b);\n"
         "while (a) a--;\ndo { a++; } while (a < 3);\n"
         "for (var i = 0; i < n; i++) { f(i); }\nforeach (Actor* x in xs) f(x);\n"
         "for (i = 0, j = 1; i < n; i++, j--) ;\nswitch (a) { case 1: case A.B: f(); break;\n"
@@ -997,5 +1015,143 @@ TEST(ModifierParse, Errors)
         ModParsed p(member_class("new int x = 1;"));
         EXPECT_EQ(p.errors(),
                   (std::vector<std::string>{"2:5: 'new' is only valid on a method"}));
+    }
+}
+
+// ---------------------------------------------------------------- class stubs and attributes
+namespace {
+
+struct StubParsed {
+    std::string text;
+    LineMap map;
+    Diagnostics diag;
+    ast::Script script;
+
+    explicit StubParsed(std::string t) : text(std::move(t)), map(text)
+    {
+        script = parse_script(text, map, diag);
+    }
+};
+
+}  // namespace
+
+TEST(StubParse, NativeValueString)
+{
+    StubParsed p("[native, value] class std.string;\n");
+    ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    ASSERT_EQ(p.script.stubs.size(), 1u);
+    EXPECT_TRUE(p.script.classes.empty());
+    EXPECT_EQ(p.script.stubs[0].name, "std::string");
+    EXPECT_TRUE(p.script.stubs[0].is_native);
+    EXPECT_TRUE(p.script.stubs[0].is_value);
+}
+
+TEST(StubParse, Handle)
+{
+    StubParsed p("[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n");
+    ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    ASSERT_EQ(p.script.stubs.size(), 1u);
+    EXPECT_EQ(p.script.stubs[0].name, "Weapon");
+    EXPECT_EQ(p.script.stubs[0].handle, "std::shared_ptr<$T>");
+    EXPECT_FALSE(p.script.stubs[0].is_value);
+}
+
+TEST(StubParse, TemplatePattern)
+{
+    StubParsed p("[native, value] class std.vector<*>;\n[native, value] class physics.*;\n");
+    ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    ASSERT_EQ(p.script.stubs.size(), 2u);
+    EXPECT_EQ(p.script.stubs[0].name, "std::vector<*>");
+    EXPECT_EQ(p.script.stubs[1].name, "physics::*");
+}
+
+TEST(StubParse, Intrusive)
+{
+    StubParsed p("[native, handle(\"$T*\"), intrusive(\"AddRef\", \"Release\")] class Object;\n");
+    ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    ASSERT_EQ(p.script.stubs.size(), 1u);
+    EXPECT_EQ(p.script.stubs[0].handle, "$T*");
+    EXPECT_EQ(p.script.stubs[0].intrusive_add, "AddRef");
+    EXPECT_EQ(p.script.stubs[0].intrusive_release, "Release");
+}
+
+TEST(StubParse, DefaultHandle)
+{
+    StubParsed p("[native, default_handle(\"std::shared_ptr<$T>\")] class *;\n");
+    ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    ASSERT_EQ(p.script.stubs.size(), 1u);
+    EXPECT_EQ(p.script.stubs[0].name, "*");
+    EXPECT_EQ(p.script.stubs[0].default_handle, "std::shared_ptr<$T>");
+}
+
+TEST(StubParse, ValueScriptClass)
+{
+    StubParsed p("[value] class Stats : Base { }\nclass Other : Base { }\n");
+    ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    ASSERT_EQ(p.script.classes.size(), 2u);
+    EXPECT_TRUE(p.script.classes[0].is_value);
+    EXPECT_FALSE(p.script.classes[1].is_value);
+    EXPECT_TRUE(p.script.stubs.empty());
+}
+
+TEST(StubParse, NativeOnClassBodyIsError)
+{
+    StubParsed p("[native] class Foo : Base { }\n");
+    ASSERT_EQ(p.diag.items.size(), 1u) << p.diag.format("t");
+    EXPECT_EQ(p.diag.items[0].msg, "attribute 'native' is not allowed on a script class");
+    EXPECT_EQ(p.diag.items[0].pos, 1u);
+}
+
+TEST(StubParse, AttributeErrors)
+{
+    {
+        StubParsed p("[native, handle] class A;\n");
+        ASSERT_EQ(p.diag.items.size(), 1u) << p.diag.format("t");
+        EXPECT_EQ(p.diag.items[0].msg, "attribute 'handle' takes 1 arguments");
+    }
+    {
+        StubParsed p("[native, native] class A;\n");
+        ASSERT_EQ(p.diag.items.size(), 1u) << p.diag.format("t");
+        EXPECT_EQ(p.diag.items[0].msg, "duplicate attribute 'native'");
+    }
+    {
+        StubParsed p("[native, bogus] class A;\n");
+        ASSERT_EQ(p.diag.items.size(), 1u) << p.diag.format("t");
+        EXPECT_EQ(p.diag.items[0].msg, "unknown attribute 'bogus'");
+    }
+    {
+        StubParsed p("class A;\n");
+        ASSERT_EQ(p.diag.items.size(), 1u) << p.diag.format("t");
+        EXPECT_EQ(p.diag.items[0].msg, "a stub needs the attribute 'native'");
+    }
+    {
+        StubParsed p("[native, value, handle(\"x\")] class A;\n");
+        ASSERT_EQ(p.diag.items.size(), 1u) << p.diag.format("t");
+        EXPECT_EQ(p.diag.items[0].msg, "'value' and 'handle' are exclusive");
+    }
+    {
+        StubParsed p("[native, handle(x)] class A;\n");
+        EXPECT_GE(p.diag.items.size(), 1u);
+        EXPECT_EQ(p.diag.items[0].msg, "expected a string in [alias(...)]");
+    }
+}
+
+TEST(StubParse, FieldAlias)
+{
+    {
+        StubParsed p("class A : B { [alias(\"x\")] int y; }\n");
+        ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+        ASSERT_EQ(p.script.classes.size(), 1u);
+        ASSERT_EQ(p.script.classes[0].fields.size(), 1u);
+        EXPECT_EQ(p.script.classes[0].fields[0].alias, "x");
+    }
+    {
+        StubParsed p("class A : B { [alias] int y; }\n");
+        EXPECT_GE(p.diag.items.size(), 1u);
+    }
+    {
+        StubParsed p("class A : B { [native] int y; }\n");
+        ASSERT_EQ(p.diag.items.size(), 1u) << p.diag.format("t");
+        EXPECT_EQ(p.diag.items[0].msg, "unknown attribute 'native'");
     }
 }

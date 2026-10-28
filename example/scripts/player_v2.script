@@ -10,7 +10,7 @@ class Player : Actor {
     float shield = 25.0;
 
     override void Tick(float dt)  {
-        this.Move({2.0 * this.speed * dt, 0, 0});
+        this.Move(Vec3(2.0 * this.speed * dt, 0, 0));
         std.printf("[v2] %s: Tick dt=%.4f pos.x=%.4f health=%.1f shield=%.1f\n",
                     this.Name.c_str(), dt, this.Position.x, this.health, this.shield);
     }

@@ -173,18 +173,14 @@ struct ExprPrinter {
         emit_expr(*n.inner, e);
         e.put(")");
     }
-    void operator()(const BracedListExpr& n) const
+    void operator()(const NewExpr& n) const
     {
-        e.put("{", n.pos);
-        expr_list(n.elems, e);
-        e.put("}");
-    }
-    void operator()(const TypedBracedExpr& n) const
-    {
-        e.put(n.type, n.pos);
-        e.put("{");
-        expr_list(n.elems, e);
-        e.put("}");
+        e.put("new", n.pos);
+        e.space();
+        e.put(n.type);
+        e.put("(");
+        expr_list(n.args, e);
+        e.put(")");
     }
     void operator()(const LambdaExpr& n) const
     {
@@ -208,6 +204,20 @@ struct ExprPrinter {
 // A declaration or an expression statement without the ";" (the header of a for).
 void simple(const Stmt& s, Emitter& e);
 
+// True when "T()" is valid C++ text for the type: no pointer, reference, array or multi-word type.
+bool plain_type(const std::string& t)
+{
+    int depth = 0;
+    for (char c : t) {
+        if (c == '<') ++depth;
+        if (c == '>') --depth;
+        if (depth == 0 && (c == '*' || c == '&' || c == '[' || c == '(' || c == ' ')) return false;
+    }
+    return true;
+}
+
+// A local without an initializer is value-initialized: zero, null or the default constructor.
+// It is never indeterminate. A future "out" parameter will be exempt.
 void decl(const VarDeclStmt& d, Emitter& e)
 {
     e.put(std::string(d.is_const ? "const " : "") + (d.type.empty() ? "auto" : d.type), d.pos);
@@ -218,6 +228,11 @@ void decl(const VarDeclStmt& d, Emitter& e)
         e.put("=");
         e.space();
         emit_expr(*d.init, e);
+    } else if (!d.type.empty() && !d.is_const) {
+        e.space();
+        e.put("=");
+        e.space();
+        e.put(plain_type(d.type) ? d.type + "()" : "std::type_identity_t<" + d.type + ">()");
     }
 }
 

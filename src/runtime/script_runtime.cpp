@@ -99,11 +99,9 @@ MigrationPlan build_plan(const StateLayout& o, const StateLayout& n)
         done[i] = true;
         if (std::strcmp(nf.type_key, of.type_key) == 0) {
             plan.steps[i] = {FieldAction::Move, j};
-        } else {
-            plan.steps[i] = {FieldAction::InitTypeChanged, j};
-            plan.warnings.push_back(std::string(n.name) + ": field " + nf.name +
-                                    " changed its type (" + of.type_key + " -> " + nf.type_key +
-                                    "); the initializer runs");
+        } else if (plan.error.empty()) {
+            plan.error = std::string(n.name) + ": field " + nf.name + " changed its type (" +
+                         of.type_key + " -> " + nf.type_key + ")";
         }
     };
 
@@ -315,8 +313,10 @@ bool Loader::request_reload(Module module, std::string& error)
                 return false;
             }
             pc.plan = build_plan(*cur->layout, *in.record->layout);
-            for (const std::string& w : pc.plan.warnings)
-                std::fprintf(stderr, "[script] warning: %s\n", w.c_str());
+            if (!pc.plan.error.empty()) {
+                error = pc.plan.error;
+                return false;
+            }
         }
         p->classes.push_back(std::move(pc));
     }

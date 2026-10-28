@@ -97,7 +97,7 @@ find_library(CLANG_C_LIBRARY NAMES clang REQUIRED)
 find_path(CLANG_C_INCLUDE_DIR clang-c/Index.h REQUIRED)
 execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
                 OUTPUT_VARIABLE CLANG_RESOURCE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
-add_library(spc_lib STATIC src/translator/spc_lib.cpp src/translator/emit.cpp src/translator/lower.cpp
+add_library(spc_lib STATIC src/translator/spc_lib.cpp src/translator/emit.cpp src/translator/lower.cpp src/translator/types.cpp
     src/translator/parser/script_grammar.cpp
     src/translator/parser/expression_grammar.cpp src/translator/parser/statement_grammar.cpp)
 target_include_directories(spc_lib PUBLIC ${CMAKE_SOURCE_DIR}/include)
@@ -173,13 +173,22 @@ spp_add_scripts(TARGET pre_native1 GEN 1 SCRIPTS example/scripts/native_std_v1.s
 spp_add_scripts(TARGET pre_native2 GEN 2 SCRIPTS example/scripts/native_std_v2.script AFTER pre_native1
                 INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
                 FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${CMAKE_SOURCE_DIR}/example/engine/Util.h)
+spp_add_scripts(TARGET pre_handle1 GEN 1 SCRIPTS example/scripts/handle_v1.script AFTER pre_native2
+                INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
+                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${CMAKE_SOURCE_DIR}/example/engine/Weapon.h)
+spp_add_scripts(TARGET pre_handle2 GEN 2 SCRIPTS example/scripts/handle_v2.script AFTER pre_handle1
+                INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
+                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${CMAKE_SOURCE_DIR}/example/engine/Weapon.h)
+spp_add_scripts(TARGET pre_handle3 GEN 3 SCRIPTS example/scripts/handle_v1.script AFTER pre_handle2
+                INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
+                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${CMAKE_SOURCE_DIR}/example/engine/Weapon.h)
 
 # GoogleTest cases: BackendTests (the selected backend) and PrecompiledTests (sppc).
-add_executable(backend_tests tests/backend_tests.cpp example/engine/Actor.cpp example/engine/Util.cpp)
+add_executable(backend_tests tests/backend_tests.cpp example/engine/Actor.cpp example/engine/Object.cpp example/engine/Util.cpp)
 target_include_directories(backend_tests PRIVATE tests)
 target_link_libraries(backend_tests PRIVATE spp_backend GTest::gtest_main)
 set_target_properties(backend_tests PROPERTIES ENABLE_EXPORTS ON)
-add_dependencies(backend_tests pre_gen1 pre_gen2 pre_native1 pre_native2 sppc)
+add_dependencies(backend_tests pre_gen1 pre_gen2 pre_native1 pre_native2 pre_handle1 pre_handle2 pre_handle3 sppc)
 target_compile_definitions(backend_tests PRIVATE
     SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     SPP_BINARY_DIR="${CMAKE_BINARY_DIR}"
@@ -189,7 +198,10 @@ target_compile_definitions(backend_tests PRIVATE
     PRE_V1_SO="${CMAKE_BINARY_DIR}/spp_scripts/player_v1.g1.so"
     PRE_V2_SO="${CMAKE_BINARY_DIR}/spp_scripts/player_v2.g2.so"
     PRE_NATIVE_V1_SO="${CMAKE_BINARY_DIR}/spp_scripts/native_std_v1.g1.so"
-    PRE_NATIVE_V2_SO="${CMAKE_BINARY_DIR}/spp_scripts/native_std_v2.g2.so")
+    PRE_NATIVE_V2_SO="${CMAKE_BINARY_DIR}/spp_scripts/native_std_v2.g2.so"
+    PRE_HANDLE_V1_SO="${CMAKE_BINARY_DIR}/spp_scripts/handle_v1.g1.so"
+    PRE_HANDLE_V2_SO="${CMAKE_BINARY_DIR}/spp_scripts/handle_v2.g2.so"
+    PRE_HANDLE_V1B_SO="${CMAKE_BINARY_DIR}/spp_scripts/handle_v1.g3.so")
 gtest_discover_tests(backend_tests)
 
 # Experiments R3 and R6: closures that outlive a generation, and the unload.
@@ -224,6 +236,12 @@ target_link_libraries(emit_tests PRIVATE spc_lib GTest::gtest_main)
 target_include_directories(emit_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator)
 gtest_discover_tests(emit_tests)
 
+# The type model: stubs to C++ storage types.
+add_executable(types_tests tests/types_tests.cpp)
+target_link_libraries(types_tests PRIVATE spc_lib GTest::gtest_main)
+target_include_directories(types_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator)
+gtest_discover_tests(types_tests)
+
 # The parser of the expressions: round trip with the printer.
 add_executable(expr_parse_tests tests/expr_parse_tests.cpp)
 target_link_libraries(expr_parse_tests PRIVATE spc_lib GTest::gtest_main)
@@ -250,7 +268,7 @@ gtest_discover_tests(deref_tests)
 
 # JIT only: no file, no child process, the life of a generation.
 if(SPP_BACKEND STREQUAL "JIT")
-    add_executable(jit_tests tests/jit_tests.cpp example/engine/Actor.cpp example/engine/Util.cpp)
+    add_executable(jit_tests tests/jit_tests.cpp example/engine/Actor.cpp example/engine/Object.cpp example/engine/Util.cpp)
     target_include_directories(jit_tests PRIVATE tests)
     target_link_libraries(jit_tests PRIVATE spp_backend GTest::gtest_main)
     set_target_properties(jit_tests PROPERTIES ENABLE_EXPORTS ON)

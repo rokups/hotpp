@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace spc {
@@ -19,6 +20,7 @@ struct TranslateOptions {
     std::string slots_in;      // the content of the slot file (empty: no earlier generation)
     std::vector<std::string> include_dirs;  // for the imports of the script
     std::string resource_dir;  // the Clang resource directory (empty: the built-in default)
+    std::vector<std::pair<std::string, std::string>> preludes;  // name, text
 };
 
 struct TranslateResult {

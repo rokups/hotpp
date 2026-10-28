@@ -105,7 +105,7 @@ static void Player__Tick(Actor* a, float dt)
     }
     [[maybe_unused]] auto* st = state_of(self);
 #line 11 "player_v1.script"
-    self->Move({st->speed * dt, 0, 0});
+    self->Move(Vec3(st->speed * dt, 0, 0));
 #line 12 "player_v1.script"
     std::printf("[v1] %s: Tick dt=%.4f pos.x=%.4f hp=%.1f\n", script::deref(self->Name).c_str(), dt,
 #line 13 "player_v1.script"

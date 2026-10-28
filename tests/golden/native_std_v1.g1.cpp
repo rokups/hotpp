@@ -76,7 +76,7 @@ struct TrackerState_g1 {
 static void Tracker__init_label(void*, void* f) { using T = std::string; new (f) T("tracker label that is longer than the small string buffer"); }
 #line 78 "native_std_v1.script.cpp"
 #line 12 "native_std_v1.script"
-static void Tracker__init_history(void*, void* f) { using T = std::vector<int>; new (f) T({}); }
+static void Tracker__init_history(void*, void* f) { using T = std::vector<int>; new (f) T(std::vector<int>()); }
 #line 81 "native_std_v1.script.cpp"
 #line 13 "native_std_v1.script"
 static void Tracker__init_dist(void*, void* f) { using T = float; new (f) T(0.0f); }
@@ -129,24 +129,32 @@ static void Tracker__Tick(Actor* a, float dt)
     }
     [[maybe_unused]] auto* st = state_of(self);
 #line 19 "native_std_v1.script"
-    auto v = std::vector<float>{4.0f, 2.5f, 3.0f, 1.5f};
+    auto v = std::vector<float>();
 #line 20 "native_std_v1.script"
-    script::deref(v).push_back(script::deref(self->Position).x);
+    script::deref(v).push_back(4.0f);
 #line 21 "native_std_v1.script"
-    std::sort(script::deref(v).begin(), script::deref(v).end());
+    script::deref(v).push_back(2.5f);
 #line 22 "native_std_v1.script"
-    st->lowest = Math::Min(v[0], v[1]);
+    script::deref(v).push_back(3.0f);
 #line 23 "native_std_v1.script"
-    st->dist = Distance(self->Position, Vec3{0, 0, 0});
+    script::deref(v).push_back(1.5f);
 #line 24 "native_std_v1.script"
-    st->sum = Util::Sum(self->Position);
+    script::deref(v).push_back(script::deref(self->Position).x);
 #line 25 "native_std_v1.script"
-    st->described = Util::Describe(*self);
+    std::sort(script::deref(v).begin(), script::deref(v).end());
 #line 26 "native_std_v1.script"
-    self->Name = FormatVec(self->Position);
+    st->lowest = Math::Min(v[0], v[1]);
 #line 27 "native_std_v1.script"
+    st->dist = Distance(self->Position, Vec3(0, 0, 0));
+#line 28 "native_std_v1.script"
+    st->sum = Util::Sum(self->Position);
+#line 29 "native_std_v1.script"
+    st->described = Util::Describe(*self);
+#line 30 "native_std_v1.script"
+    self->Name = FormatVec(self->Position);
+#line 31 "native_std_v1.script"
     script::deref(st->history).push_back(static_cast<int>(script::deref(st->history).size()) * 10);
-#line 150 "native_std_v1.script.cpp"
+#line 158 "native_std_v1.script.cpp"
 }
 
 // Not overridden: call the implementation of Actor.

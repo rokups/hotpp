@@ -56,11 +56,11 @@ struct Annot {
     bool has_alias = false;
 };
 
-// One attribute: a name and a string.
+// One attribute: a name and a list of strings. The list can be empty.
 struct AttrItem {
     const char* pos = nullptr;  // the name
     std::string name;
-    std::string arg;
+    std::vector<std::string> args;
 };
 
 struct MethodRest {
@@ -110,9 +110,10 @@ void check_name(const ParseState& st, const char* pos, const std::string& name)
 }
 
 struct TopItem {
-    enum Kind { None, IsImport, IsClass } kind = None;
+    enum Kind { None, IsImport, IsClass, IsStub } kind = None;
     ast::Import import;
     ast::ClassDef cls;
+    ast::Stub stub;
 };
 
 const Annot* annot_of(lexy::nullopt) { return nullptr; }
@@ -297,15 +298,29 @@ using import_p = import_t<false>;
 using old_import_p = import_t<true>;
 
 // ---------------------------------------------------------------- members
-// One attribute in the list: name "(" string ")".
+// The strings of an attribute: "(" string { "," string } ")".
+struct attr_args {
+    // No terminator here: its recovery would hide the error of a non-string argument.
+    static constexpr auto rule =
+        dsl::lit_c<'('> +
+        dsl::list(dsl::must(dsl::peek(dsl::lit_c<'"'>)).template error<e_alias_string> +
+                      dsl::p<string_value>,
+                  dsl::sep(dsl::lit_c<','>)) +
+        dsl::lit_c<')'>;
+    static constexpr auto value = lexy::as_list<std::vector<std::string>>;
+};
+
+// One attribute in the list: a name and optional strings in parentheses.
 struct attr_p {
     static constexpr auto rule =
-        dsl::position + dsl::p<name_p<e_attr_name>> + dsl::lit_c<'('> +
-        dsl::must(dsl::peek(dsl::lit_c<'"'>)).template error<e_alias_string> +
-        dsl::p<string_value> + dsl::lit_c<')'>;
+        dsl::position + dsl::p<name_p<e_attr_name>> +
+        dsl::opt(dsl::peek(dsl::lit_c<'('>) >> dsl::p<attr_args>);
     static constexpr auto value = lexy::callback<AttrItem>(
-        [](const char* pos, std::string name, std::string arg) {
-            return AttrItem{pos, std::move(name), std::move(arg)};
+        [](const char* pos, std::string name, lexy::nullopt) {
+            return AttrItem{pos, std::move(name), {}};
+        },
+        [](const char* pos, std::string name, std::vector<std::string>&& args) {
+            return AttrItem{pos, std::move(name), std::move(args)};
         });
 };
 
@@ -326,11 +341,13 @@ struct attrs_p {
             for (AttrItem& it : items) {
                 if (it.name != "alias")
                     st.error(it.pos, "unknown attribute '" + it.name + "'");
+                else if (it.args.size() != 1)
+                    st.error(it.pos, "attribute 'alias' takes 1 arguments");
                 else if (a.has_alias)
                     st.error(it.pos, "duplicate attribute 'alias'");
                 else {
                     a.has_alias = true;
-                    a.alias = std::move(it.arg);
+                    a.alias = std::move(it.args[0]);
                 }
             }
             return a;
@@ -707,37 +724,175 @@ struct base_p {
         });
 };
 
-struct class_p {
-    static constexpr auto rule = dsl::position + kw_class + dsl::p<name_p<e_class_name>> +
-                                 dsl::lit_c<':'> + dsl::p<base_p> + dsl::lit_c<'{'> +
-                                 dsl::p<members_p>;
+// The attributes before a class or a stub. The parser checks the names and the argument counts.
+struct ClassAttrs {
+    const char* pos = nullptr;  // the "["
+    bool is_native = false, is_value = false;
+    std::string handle, default_handle, intrusive_add, intrusive_release;
+    const char* handle_pos = nullptr;  // the "handle" name, or null
+    std::vector<std::pair<const char*, std::string>> used;  // the valid attributes
+};
+
+// The expected count of arguments of a class attribute, or -1 for an unknown name.
+int class_attr_arity(const std::string& name)
+{
+    if (name == "native" || name == "value") return 0;
+    if (name == "handle" || name == "default_handle") return 1;
+    if (name == "intrusive") return 2;
+    return -1;
+}
+
+// "[" attribute { "," attribute } "]" before "class".
+struct class_attrs_p {
+    static constexpr auto rule = dsl::position + dsl::lit_c<'['> + dsl::p<attr_list>;
     static constexpr auto value = lexy::bind(
-        lexy::callback<ast::ClassDef>([](const ParseState& st, const char* pos, std::string name,
-                                         std::string base, lexy::nullopt) {
-            ast::ClassDef c;
-            c.name = std::move(name);
-            c.base = std::move(base);
-            c.pos = st.offset(pos);
-            c.line = st.map->line(c.pos);
-            return c;
-        },
-        [](const ParseState& st, const char* pos, std::string name, std::string base,
-           std::vector<Member>&& members) {
-            ast::ClassDef c;
-            c.name = std::move(name);
-            c.base = std::move(base);
-            c.pos = st.offset(pos);
-            c.line = st.map->line(c.pos);
-            for (Member& m : members) {
-                if (m.kind == Member::IsMethod)
-                    c.methods.push_back(std::move(m.method));
-                else if (m.kind == Member::IsField)
-                    c.fields.push_back(std::move(m.field));
-                else if (m.kind == Member::IsProp)
-                    c.props.push_back(std::move(m.prop));
+        lexy::callback<ClassAttrs>([](const ParseState& st, const char* pos,
+                                      std::vector<AttrItem>&& items) {
+            ClassAttrs a;
+            a.pos = pos;
+            for (AttrItem& it : items) {
+                const int arity = class_attr_arity(it.name);
+                bool dup = false;
+                for (const auto& u : a.used) dup = dup || u.second == it.name;
+                if (arity < 0) {
+                    st.error(it.pos, "unknown attribute '" + it.name + "'");
+                    continue;
+                }
+                if (static_cast<size_t>(arity) != it.args.size()) {
+                    st.error(it.pos, "attribute '" + it.name + "' takes " +
+                                         std::to_string(arity) + " arguments");
+                    continue;
+                }
+                if (dup) {
+                    st.error(it.pos, "duplicate attribute '" + it.name + "'");
+                    continue;
+                }
+                a.used.emplace_back(it.pos, it.name);
+                if (it.name == "native") a.is_native = true;
+                else if (it.name == "value") a.is_value = true;
+                else if (it.name == "handle") {
+                    a.handle = std::move(it.args[0]);
+                    a.handle_pos = it.pos;
+                } else if (it.name == "default_handle")
+                    a.default_handle = std::move(it.args[0]);
+                else {
+                    a.intrusive_add = std::move(it.args[0]);
+                    a.intrusive_release = std::move(it.args[1]);
+                }
             }
-            return c;
+            return a;
         }),
+        lexy::parse_state, lexy::values);
+};
+
+// The "*" in a stub name.
+struct star_tok : lexy::token_production {
+    static constexpr auto rule = dsl::capture(dsl::lit_c<'*'>);
+    static constexpr auto value = lexy::as_string<std::string>;
+};
+
+// The suffix "<*>" of a stub name.
+struct star_suffix_tok : lexy::token_production {
+    static constexpr auto rule = dsl::capture(LEXY_LIT("<*>"));
+    static constexpr auto value = lexy::as_string<std::string>;
+};
+
+// One part of a stub name: a name or "*".
+struct stub_part {
+    static constexpr auto rule =
+        dsl::peek(dsl::lit_c<'*'>) >> dsl::p<star_tok> | dsl::else_ >> dsl::p<name_p<e_class_name>>;
+    static constexpr auto value = lexy::forward<std::string>;
+};
+
+// The parts of a stub name. The text joins the parts with "::".
+struct stub_dotted {
+    static constexpr auto rule = dsl::list(dsl::p<stub_part>, dsl::sep(dsl::lit_c<'.'>));
+    static constexpr auto value = lexy::fold_inplace<std::string>(
+        std::string{}, [](std::string& acc, std::string&& part) {
+            if (!acc.empty()) acc += "::";
+            acc += part;
+        });
+};
+
+// "*", or a dotted name with an optional suffix "<*>". A ".*" at the end becomes "::*".
+struct stub_name_p {
+    static constexpr auto rule =
+        dsl::p<stub_dotted> + dsl::opt(dsl::peek(LEXY_LIT("<*>")) >> dsl::p<star_suffix_tok>);
+    static constexpr auto value = lexy::callback<std::string>(
+        [](std::string&& name, lexy::nullopt) { return std::move(name); },
+        [](std::string&& name, std::string&& suffix) { return std::move(name) + suffix; });
+};
+
+void add_members(ast::ClassDef&, lexy::nullopt) {}
+void add_members(ast::ClassDef& c, std::vector<Member>&& members)
+{
+    for (Member& m : members) {
+        if (m.kind == Member::IsMethod)
+            c.methods.push_back(std::move(m.method));
+        else if (m.kind == Member::IsField)
+            c.fields.push_back(std::move(m.field));
+        else if (m.kind == Member::IsProp)
+            c.props.push_back(std::move(m.prop));
+    }
+}
+
+const ClassAttrs* class_attrs_of(lexy::nullopt) { return nullptr; }
+const ClassAttrs* class_attrs_of(const ClassAttrs& a) { return &a; }
+
+// [attributes] class name ";" is a stub. [attributes] class name ":" Base "{" members "}" is a class.
+struct class_p {
+    static constexpr auto rule =
+        dsl::position + dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<class_attrs_p>) + kw_class +
+        dsl::position + dsl::p<stub_name_p> +
+        (dsl::lit_c<';'> >> dsl::nullopt |
+         dsl::else_ >> (dsl::lit_c<':'> + dsl::p<base_p> + dsl::lit_c<'{'> + dsl::p<members_p>));
+    static constexpr auto value = lexy::bind(
+        lexy::callback<TopItem>(
+            [](const ParseState& st, const char* pos, const auto& attrs, const char* name_pos,
+               std::string&& name, lexy::nullopt) {
+                const ClassAttrs* a = class_attrs_of(attrs);
+                TopItem t;
+                t.kind = TopItem::IsStub;
+                ast::Stub& s = t.stub;
+                s.name = std::move(name);
+                s.pos = st.offset(pos);
+                s.line = st.map->line(s.pos);
+                if (a) {
+                    s.is_native = a->is_native;
+                    s.is_value = a->is_value;
+                    s.handle = a->handle;
+                    s.default_handle = a->default_handle;
+                    s.intrusive_add = a->intrusive_add;
+                    s.intrusive_release = a->intrusive_release;
+                    if (a->is_value && a->handle_pos)
+                        st.error(a->handle_pos, "'value' and 'handle' are exclusive");
+                }
+                if (!s.is_native) st.error(pos, "a stub needs the attribute 'native'");
+                (void)name_pos;
+                return t;
+            },
+            [](const ParseState& st, const char* pos, const auto& attrs, const char* name_pos,
+               std::string&& name, std::string&& base, auto&& members) {
+                const ClassAttrs* a = class_attrs_of(attrs);
+                TopItem t;
+                t.kind = TopItem::IsClass;
+                ast::ClassDef& c = t.cls;
+                if (name.find_first_of("*<:") != std::string::npos)
+                    st.error(name_pos, "a script class needs a plain name");
+                c.name = std::move(name);
+                c.base = std::move(base);
+                c.pos = st.offset(pos);
+                c.line = st.map->line(c.pos);
+                if (a) {
+                    c.is_value = a->is_value;
+                    for (const auto& u : a->used)
+                        if (u.second != "value")
+                            st.error(u.first,
+                                     "attribute '" + u.second + "' is not allowed on a script class");
+                }
+                add_members(c, std::move(members));
+                return t;
+            }),
         lexy::parse_state, lexy::values);
 };
 
@@ -745,7 +900,8 @@ struct class_p {
 struct decl {
     static constexpr auto rule =
         dsl::peek(kw_using) >> dsl::p<import_p> |
-        dsl::peek(kw_import) >> dsl::p<old_import_p> | dsl::peek(kw_class) >> dsl::p<class_p> |
+        dsl::peek(kw_import) >> dsl::p<old_import_p> |
+        dsl::peek(dsl::literal_set(dsl::lit_c<'['>, kw_class)) >> dsl::p<class_p> |
         dsl::else_ >> dsl::error<e_top>(junk);
     static constexpr auto value = lexy::callback<TopItem>(
         [](ast::Import&& im) {
@@ -754,12 +910,7 @@ struct decl {
             t.import = std::move(im);
             return t;
         },
-        [](ast::ClassDef&& c) {
-            TopItem t;
-            t.kind = TopItem::IsClass;
-            t.cls = std::move(c);
-            return t;
-        });
+        [](TopItem&& t) { return std::move(t); });
 };
 
 // Skips a broken declaration. It stops before the next "using", "import" or "class".
@@ -793,6 +944,8 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
                 script.imports.push_back(std::move(t.import));
             else if (t.kind == TopItem::IsClass)
                 script.classes.push_back(std::move(t.cls));
+            else if (t.kind == TopItem::IsStub)
+                script.stubs.push_back(std::move(t.stub));
         }
     }
     // The span-then-call step: parse each body and each initializer.

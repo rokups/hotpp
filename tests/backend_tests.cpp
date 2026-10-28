@@ -6,7 +6,7 @@
 // as a Module with module_from_library. They run for every SPP_BACKEND value.
 //
 // CMake defines these macros: SPP_SOURCE_DIR, SPP_BINARY_DIR, SPP_BACKEND_NAME,
-// SPPC_PATH, SPP_CXX, PRE_V1_SO, PRE_V2_SO, PRE_NATIVE_V1_SO and PRE_NATIVE_V2_SO.
+// SPPC_PATH, SPP_CXX, PRE_V1_SO, PRE_V2_SO, PRE_NATIVE_V1_SO and PRE_NATIVE_V2_SO and the PRE_HANDLE_*_SO paths.
 #include <gtest/gtest.h>
 
 #include <sys/wait.h>
@@ -20,6 +20,8 @@
 #include <string>
 
 #include "spp/backend.h"
+#include "Object.h"
+#include "Weapon.h"
 #include "f1_scenario.h"
 #include "native_std_scenario.h"
 
@@ -68,6 +70,50 @@ void expect_errors_at_script(const std::string& text, int bad_line)
     EXPECT_GT(errors, 0) << text;
 }
 
+// A handle field (std::shared_ptr<Weapon>) must keep its object across reloads.
+void run_handle_reload(script::Module v1, script::Module v2, script::Module v1_again)
+{
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(v1), "Knight"));
+    s.commit_at_frame_boundary();
+    auto handle = [&] { return script::field_ptr<std::shared_ptr<Weapon>>(s.inst.shell, "weapon"); };
+
+    s.world.Tick(kDt);
+    ASSERT_NE(handle(), nullptr);
+    ASSERT_NE(handle()->get(), nullptr);
+    const Weapon* raw = handle()->get();
+    EXPECT_EQ(handle()->use_count(), 1);
+    EXPECT_EQ((*handle())->dmg, 7);
+    EXPECT_EQ((*handle())->name, "sword");
+
+    // The reload commits after the next Tick, which is still generation 1.
+    std::string error;
+    ASSERT_TRUE(s.loader.request_reload(std::move(v2), error)) << error;
+    s.world.Tick(kDt);
+    ASSERT_FALSE(s.commit_failed);
+    EXPECT_EQ(script::active_generation, 2u);
+    ASSERT_NE(handle(), nullptr);
+    EXPECT_EQ(handle()->get(), raw);
+    EXPECT_EQ(handle()->use_count(), 1);
+    EXPECT_EQ((*handle())->dmg, 7);
+    ASSERT_NE(s.field("rage"), nullptr);
+    EXPECT_FLOAT_EQ(*s.field("rage"), 1.0f);
+
+    s.world.Tick(kDt);
+    EXPECT_EQ((*handle())->dmg, 8);
+    EXPECT_EQ(handle()->get(), raw);
+
+    // Back to generation 1: the handle is the same object.
+    ASSERT_TRUE(s.loader.request_reload(std::move(v1_again), error)) << error;
+    s.world.Tick(kDt);
+    ASSERT_FALSE(s.commit_failed);
+    ASSERT_NE(handle(), nullptr);
+    EXPECT_EQ(handle()->get(), raw);
+    EXPECT_EQ(handle()->use_count(), 1);
+    // The Tick before the commit still ran generation 2.
+    EXPECT_EQ((*handle())->dmg, 9);
+}
+
 class BackendTests : public ::testing::TestWithParam<std::string> {
 protected:
     void SetUp() override { backend = script::make_default_backend(); }
@@ -97,6 +143,121 @@ TEST_P(BackendTests, NativeFunctionsAndStdContainersMigrate)
     script::LoadResult v2 = backend->load(source("native_std_v2.script"), 2);
     ASSERT_TRUE(v2) << v2.error;
     nativestd::run_native_std_reload(std::move(*v1.module), std::move(*v2.module));
+}
+
+TEST_P(BackendTests, HandleFieldSurvivesReload)
+{
+    script::LoadResult v1 = backend->load(source("handle_v1.script"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    script::LoadResult v2 = backend->load(source("handle_v2.script"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    script::LoadResult v1b = backend->load(source("handle_v1.script"), 3);
+    ASSERT_TRUE(v1b) << v1b.error;
+    run_handle_reload(std::move(*v1.module), std::move(*v2.module), std::move(*v1b.module));
+}
+
+// A field or a local without an initializer has the zero value.
+TEST_P(BackendTests, DefaultValues)
+{
+    script::LoadResult v1 = backend->load(source("default_v1.script"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Knight"));
+    s.commit_at_frame_boundary();
+    s.world.Tick(kDt);
+    EXPECT_EQ(*script::field_ptr<int>(s.inst.shell, "n"), 0);
+    EXPECT_EQ(*script::field_ptr<float>(s.inst.shell, "f"), 0.0f);
+    EXPECT_FALSE(*script::field_ptr<bool>(s.inst.shell, "b"));
+    EXPECT_EQ(script::field_ptr<std::shared_ptr<Weapon>>(s.inst.shell, "weapon")->get(), nullptr);
+    EXPECT_EQ(*script::field_ptr<int>(s.inst.shell, "seen"), 0);
+}
+
+// A change of the field type from a handle to int is rejected. The old generation stays.
+TEST_P(BackendTests, HandleTypeChangeIsRejected)
+{
+    script::LoadResult v1 = backend->load(source("handle_v1.script"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    script::LoadResult v3 = backend->load(source("handle_v3.script"), 2);
+    ASSERT_TRUE(v3) << v3.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Knight"));
+    s.commit_at_frame_boundary();
+    s.world.Tick(kDt);
+    std::string error;
+    EXPECT_FALSE(s.loader.request_reload(std::move(*v3.module), error));
+    EXPECT_FALSE(error.empty());
+    s.world.Tick(kDt);
+    EXPECT_EQ(script::active_generation, 1u);
+    auto handle = script::field_ptr<std::shared_ptr<Weapon>>(s.inst.shell, "weapon");
+    ASSERT_NE(handle, nullptr);
+    EXPECT_NE(handle->get(), nullptr);
+}
+
+// An intrusive handle in a field of a subclass type survives reloads. The count is right:
+// no leak, no early delete and no double release.
+TEST_P(BackendTests, IntrusiveHandleSurvivesReload)
+{
+    using H = script::Intrusive<Item, &Object::AddRef, &Object::Release>;
+    script::LoadResult v1 = backend->load(source("intrusive_v1.script"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    script::LoadResult v2 = backend->load(source("intrusive_v2.script"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    script::LoadResult v1b = backend->load(source("intrusive_v1.script"), 3);
+    ASSERT_TRUE(v1b) << v1b.error;
+    ASSERT_EQ(Object::live, 0);
+    {
+        Session s;
+        ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Smith"));
+        s.commit_at_frame_boundary();
+        auto item = [&] { return script::field_ptr<H>(s.inst.shell, "item"); };
+
+        s.world.Tick(kDt);
+        ASSERT_NE(item(), nullptr);
+        Item* raw = item()->get();
+        ASSERT_NE(raw, nullptr);
+        EXPECT_EQ(raw->refs, 1);
+        EXPECT_EQ(Object::live, 1);
+        EXPECT_EQ(raw->value, 5);
+
+        // The reload commits after the next Tick, which is still generation 1.
+        std::string error;
+        ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+        s.world.Tick(kDt);
+        ASSERT_FALSE(s.commit_failed);
+        EXPECT_EQ(script::active_generation, 2u);
+        ASSERT_NE(item(), nullptr);
+        EXPECT_EQ(item()->get(), raw);
+        EXPECT_EQ(raw->refs, 1);
+        EXPECT_EQ(Object::live, 1);
+
+        // Generation 2: the field "spare" shares the object.
+        s.world.Tick(kDt);
+        EXPECT_EQ(item()->get(), raw);
+        EXPECT_EQ(raw->refs, 2);
+        EXPECT_EQ(raw->value, 6);
+        EXPECT_EQ(Object::live, 1);
+
+        // Back to generation 1: the commit removes the field "spare" and releases it.
+        ASSERT_TRUE(s.loader.request_reload(std::move(*v1b.module), error)) << error;
+        s.world.Tick(kDt);
+        ASSERT_FALSE(s.commit_failed);
+        EXPECT_EQ(script::active_generation, 3u);
+        ASSERT_NE(item(), nullptr);
+        EXPECT_EQ(item()->get(), raw);
+        EXPECT_EQ(raw->refs, 1);
+        EXPECT_EQ(raw->value, 7);
+        EXPECT_EQ(Object::live, 1);
+    }
+    EXPECT_EQ(Object::live, 0);
+}
+
+// The stub names a method that the native class does not have. The load gives an error.
+TEST_P(BackendTests, IntrusiveMissingMethodIsAnError)
+{
+    script::LoadResult r = backend->load(source("intrusive_bad.script"), 1);
+    EXPECT_FALSE(r);
+    EXPECT_NE(r.error.find("Grab"), std::string::npos) << r.error;
+    EXPECT_NE(r.error.find("Object"), std::string::npos) << r.error;
 }
 
 // A script with properties: an auto property, a read-only property, a property with a private
@@ -378,6 +539,12 @@ TEST(PrecompiledTests, NativeFunctionsAndStdContainersWithLibraries)
 {
     nativestd::run_native_std_reload(test_support::library(PRE_NATIVE_V1_SO),
                                      test_support::library(PRE_NATIVE_V2_SO));
+}
+
+TEST(PrecompiledTests, HandleFieldSurvivesReloadWithLibraries)
+{
+    run_handle_reload(test_support::library(PRE_HANDLE_V1_SO), test_support::library(PRE_HANDLE_V2_SO),
+                      test_support::library(PRE_HANDLE_V1B_SO));
 }
 
 TEST(PrecompiledTests, MissingLibraryGivesErrorString)

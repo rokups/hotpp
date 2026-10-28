@@ -1,0 +1,15 @@
+// Generation 1: an intrusive handle field. The handle type is Item, a subclass of Object.
+using "Actor.h";
+using "Object.h";
+
+[native, handle("$T*"), intrusive("AddRef", "Release")] class Object;
+
+class Smith : Actor {
+    Item item;
+    int ticks;
+
+    override void Tick(float dt) {
+        if (this.item == null) this.item = new Item(5);
+        this.ticks = this.ticks + 1;
+    }
+}

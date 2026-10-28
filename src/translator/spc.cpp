@@ -1,6 +1,6 @@
 // spc: command line wrapper of spc_lib. It reads and writes the files.
 //
-// Usage: spc player.script --gen 2 -o out.cpp [-I dir]... [--slots file] [--resource-dir dir]
+// Usage: spc player.script --gen 2 -o out.cpp [-I dir]... [--prelude file]... [--slots file] [--resource-dir dir]
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -14,7 +14,7 @@ namespace {
 [[noreturn]] void usage()
 {
     std::fprintf(stderr,
-                 "usage: spc <file.script> --gen N -o <out.cpp> [-I dir]... [--slots file] [--resource-dir dir]\n");
+                 "usage: spc <file.script> --gen N -o <out.cpp> [-I dir]... [--prelude file]... [--slots file] [--resource-dir dir]\n");
     std::exit(2);
 }
 
@@ -44,6 +44,15 @@ int main(int argc, char** argv)
         else if (a == "-o") output = next();
         else if (a == "--slots") slots = next();
         else if (a == "--resource-dir") opt.resource_dir = next();
+        else if (a == "--prelude") {
+            const std::string file = next();
+            std::string text;
+            if (!read_file(file, text)) {
+                std::fprintf(stderr, "spc: error: cannot read %s\n", file.c_str());
+                return 1;
+            }
+            opt.preludes.emplace_back(file, std::move(text));
+        }
         else if (a == "-I") opt.include_dirs.push_back(next());
         else if (a.rfind("-I", 0) == 0) opt.include_dirs.push_back(a.substr(2));
         else if (!a.empty() && a[0] == '-') usage();

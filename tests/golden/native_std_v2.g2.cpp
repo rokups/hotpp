@@ -77,7 +77,7 @@ struct TrackerState_g2 {
 static void Tracker__init_title(void*, void* f) { using T = std::string; new (f) T("new title"); }
 #line 79 "native_std_v2.script.cpp"
 #line 12 "native_std_v2.script"
-static void Tracker__init_history(void*, void* f) { using T = std::vector<int>; new (f) T({}); }
+static void Tracker__init_history(void*, void* f) { using T = std::vector<int>; new (f) T(std::vector<int>()); }
 #line 82 "native_std_v2.script.cpp"
 #line 13 "native_std_v2.script"
 static void Tracker__init_dist(void*, void* f) { using T = float; new (f) T(0.0f); }
@@ -135,22 +135,28 @@ static void Tracker__Tick(Actor* a, float dt)
     }
     [[maybe_unused]] auto* st = state_of(self);
 #line 20 "native_std_v2.script"
-    auto v = std::vector<float>{9.0f, 8.0f, 7.0f};
+    auto v = std::vector<float>();
 #line 21 "native_std_v2.script"
-    std::sort(script::deref(v).begin(), script::deref(v).end(), std::greater<float>());
+    script::deref(v).push_back(9.0f);
 #line 22 "native_std_v2.script"
-    st->lowest = Math::Min(v[0], v[2]);
+    script::deref(v).push_back(8.0f);
 #line 23 "native_std_v2.script"
-    st->dist = Distance(self->Position, Vec3{1, 1, 1});
+    script::deref(v).push_back(7.0f);
 #line 24 "native_std_v2.script"
-    st->sum = Util::Sum(self->Position) * 2.0f;
+    std::sort(script::deref(v).begin(), script::deref(v).end(), std::greater<float>());
 #line 25 "native_std_v2.script"
-    st->described = Util::Describe(*self);
+    st->lowest = Math::Min(v[0], v[2]);
 #line 26 "native_std_v2.script"
-    self->Name = FormatVec(self->Position);
+    st->dist = Distance(self->Position, Vec3(1, 1, 1));
 #line 27 "native_std_v2.script"
+    st->sum = Util::Sum(self->Position) * 2.0f;
+#line 28 "native_std_v2.script"
+    st->described = Util::Describe(*self);
+#line 29 "native_std_v2.script"
+    self->Name = FormatVec(self->Position);
+#line 30 "native_std_v2.script"
     script::deref(st->history).push_back(static_cast<int>(script::deref(st->history).size()) * 10);
-#line 154 "native_std_v2.script.cpp"
+#line 160 "native_std_v2.script.cpp"
 }
 
 // Not overridden: call the implementation of Actor.

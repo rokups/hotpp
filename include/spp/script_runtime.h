@@ -290,21 +290,119 @@ auto make_closure(uint32_t generation, const char* what, F fn)
 // An rvalue returns BY VALUE (moved). A reference to the argument would dangle at the end
 // of the full expression. A member of the returned prvalue keeps its lifetime in a
 // range-for and in a reference binding: "for (auto x : deref(make()).list)".
+// A handle is a smart pointer. "is_handle<T>" is true for std::shared_ptr. A user can
+// specialize it for a custom smart pointer. A handle gives the object that it points to.
+// A member of a temporary handle lives to the end of the full expression. A range-for
+// over a member of a temporary handle needs a local variable for the handle.
+template <class T>
+struct is_handle : std::false_type {};
+template <class T>
+struct is_handle<std::shared_ptr<T>> : std::true_type {};
+template <class T>
+inline constexpr bool is_handle_v = is_handle<std::remove_cvref_t<T>>::value;
+
+// An intrusive reference-counted handle. The object keeps its own count.
+// "Add" and "Release" are member function pointers of the OWNER class, for example
+// "&Object::AddRef". T can derive from the owner class. Then "(p->*Add)()" still works.
+// A new object starts with zero references (the boost "intrusive_ptr" convention).
+// The constructor from "T*" calls Add. So a new object has the count 1 in the handle.
+// A move leaves the source null. A null handle never calls Add or Release.
+template <class T, auto Add, auto Release>
+class Intrusive {
+public:
+    Intrusive() noexcept = default;
+    Intrusive(std::nullptr_t) noexcept {}
+    Intrusive(T* p) : p_(p)
+    {
+        if (p_)
+            (p_->*Add)();
+    }
+    Intrusive(const Intrusive& o) : p_(o.p_)
+    {
+        if (p_)
+            (p_->*Add)();
+    }
+    Intrusive(Intrusive&& o) noexcept : p_(o.p_) { o.p_ = nullptr; }
+
+    // Conversion from a handle of a derived type. Add and Release stay the same.
+    template <class U>
+        requires(!std::is_same_v<U, T> && std::is_convertible_v<U*, T*>)
+    Intrusive(const Intrusive<U, Add, Release>& o) : p_(o.get())
+    {
+        if (p_)
+            (p_->*Add)();
+    }
+    template <class U>
+        requires(!std::is_same_v<U, T> && std::is_convertible_v<U*, T*>)
+    Intrusive(Intrusive<U, Add, Release>&& o) noexcept : p_(o.get())
+    {
+        o.detach_();
+    }
+
+    Intrusive& operator=(const Intrusive& o)
+    {
+        Intrusive(o).swap(*this);
+        return *this;
+    }
+    Intrusive& operator=(Intrusive&& o) noexcept
+    {
+        Intrusive(std::move(o)).swap(*this);
+        return *this;
+    }
+
+    ~Intrusive()
+    {
+        if (p_)
+            (p_->*Release)();
+    }
+
+    T* get() const noexcept { return p_; }
+    T* operator->() const noexcept { return p_; }
+    T& operator*() const noexcept { return *p_; }
+    explicit operator bool() const noexcept { return p_ != nullptr; }
+    operator T*() const noexcept { return p_; }
+
+    void reset() noexcept { Intrusive().swap(*this); }
+    void swap(Intrusive& o) noexcept { std::swap(p_, o.p_); }
+
+    friend bool operator==(const Intrusive& a, const Intrusive& b) noexcept { return a.p_ == b.p_; }
+    friend bool operator==(const Intrusive& a, std::nullptr_t) noexcept { return a.p_ == nullptr; }
+
+private:
+    template <class, auto, auto>
+    friend class Intrusive;
+    // Gives up the pointer without a Release call. The converting move uses it.
+    void detach_() noexcept { p_ = nullptr; }
+
+    T* p_ = nullptr;
+};
+template <class T, auto Add, auto Release>
+struct is_handle<Intrusive<T, Add, Release>> : std::true_type {};
+
 template <class T>
 T& deref(T* p)
 {
     return *p;
 }
+// The two overloads below exclude a handle. Else they win over the handle overload.
 template <class T>
 T& deref(T& v)
+    requires(!is_handle_v<T>)
 {
     return v;
 }
 template <class T>
 std::remove_cvref_t<T> deref(T&& v)
-    requires(!std::is_lvalue_reference_v<T>)
+    requires(!std::is_lvalue_reference_v<T> && !is_handle_v<T>)
 {
     return static_cast<T&&>(v);
+}
+// The handle overload binds an lvalue and a temporary. It covers std::shared_ptr.
+template <class H>
+decltype(auto) deref(H&& h)
+    requires(is_handle_v<H>)
+{
+    return *h;
 }
 // An array is not an object that has members. The script cannot use "arr.x" on an array.
 // Without this overload, the array would decay to a pointer and "arr.x" would compile.
@@ -500,20 +598,19 @@ struct ClassEntry {
 
 // What the migration does for one field of the new layout (section 4.7).
 enum class FieldAction : uint8_t {
-    Move,             // copy or move the old field "old_index"
-    Init,             // run the initializer
-    InitTypeChanged,  // run the initializer; the type of the old field is different
+    Move,  // copy or move the old field "old_index"
+    Init,  // run the initializer
 };
 
 struct FieldStep {
     FieldAction action;
-    uint32_t old_index;  // valid for Move and InitTypeChanged
+    uint32_t old_index;  // valid for Move
 };
 
 struct MigrationPlan {
     std::vector<FieldStep> steps;        // one step for each new field, in order
     std::vector<uint32_t> removed;       // old fields that nothing receives
-    std::vector<std::string> warnings;   // type changes
+    std::string error;                   // not empty: the reload is rejected (type change)
 };
 
 // Compares the old and the new field tables. It has no side effects.

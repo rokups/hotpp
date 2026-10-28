@@ -1,0 +1,16 @@
+// Generation 2: the handle field stays. The class gets a new field.
+using "Actor.h";
+using "Weapon.h";
+
+[native, handle("std::shared_ptr<$T>")] class Weapon;
+
+class Knight : Actor {
+    Weapon weapon = null;
+    int swings = 0;
+    float rage = 1.0;
+
+    override void Tick(float dt) {
+        this.swings = this.swings + 1;
+        this.weapon.dmg = this.weapon.dmg + 1;
+    }
+}
