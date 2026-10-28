@@ -428,7 +428,7 @@ std::set<std::string> new_targets(const Script& sc)
     return out;
 }
 
-std::set<std::string> used_type_names(const Script& sc)
+std::set<std::string> used_type_names(const ClassDef& cd)
 {
     std::set<std::string> out;
     // Also the type behind a "*" or "&", and the template arguments: the check of a
@@ -452,27 +452,35 @@ std::set<std::string> used_type_names(const Script& sc)
         if (auto* fo = std::get_if<ForOfStmt>(&s.v)) add(fo->type);
     };
     auto w = make_walker(fe, fs);
+    for (const Field& f : cd.fields) {
+        add(f.type);
+        w.expr(f.init);
+    }
+    for (const Method& m : cd.methods) {
+        add(m.ret);
+        for (const Param& p : m.params) add(p.type);
+        w.block(m.body);
+    }
+    for (const Method& d : cd.dtors) w.block(d.body);
+    for (const Ctor& c : cd.ctors) {
+        for (const Param& p : c.params) add(p.type);
+        w.block(c.body);
+    }
+    for (const Property& p : cd.props) {
+        add(p.type);
+        w.expr(p.init);
+        if (p.get_body) w.block(*p.get_body);
+        if (p.set_body) w.block(*p.set_body);
+    }
+    return out;
+}
+
+std::set<std::string> used_type_names(const Script& sc)
+{
+    std::set<std::string> out;
     for (const ClassDef& cd : sc.classes) {
-        for (const Field& f : cd.fields) {
-            add(f.type);
-            w.expr(f.init);
-        }
-        for (const Method& m : cd.methods) {
-            add(m.ret);
-            for (const Param& p : m.params) add(p.type);
-            w.block(m.body);
-        }
-        for (const Method& d : cd.dtors) w.block(d.body);
-        for (const Ctor& c : cd.ctors) {
-            for (const Param& p : c.params) add(p.type);
-            w.block(c.body);
-        }
-        for (const Property& p : cd.props) {
-            add(p.type);
-            w.expr(p.init);
-            if (p.get_body) w.block(*p.get_body);
-            if (p.set_body) w.block(*p.set_body);
-        }
+        std::set<std::string> one = used_type_names(cd);
+        out.insert(one.begin(), one.end());
     }
     return out;
 }

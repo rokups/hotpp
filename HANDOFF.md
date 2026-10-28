@@ -59,7 +59,12 @@ The syntax is type-first. See `README.md` and `spp-design.md` (section 7) for th
 - A field is `[alias("old")] [public|private|protected] Type name = init;`.
 - A method is `[modifiers] Ret name(T a, ...) { }`. `void` means no return value. `override` is required when the method overrides a native virtual method.
 - A constructor is `Name(T a, ...) : super(args) { body }`. The name is the name of the class. The `super(...)` call is optional. Without it, the base default constructor runs. The `super` arguments may use the constructor parameters only. A destructor is `~Name() { body }`. See `example/scripts/ctor_v1.spp`.
-- `new Name(args)` of a script class gives a raw `Name_Shell*`. See the limits below.
+- Kinds of script class (S5a, design 7.10.1). The base is optional: `class Name { }` has no base.
+  - A class with a native base is a handle. `new Name(args)` gives the handle of the base (stub rules), for example `std::shared_ptr<Name>(Name__new(args))`. A field, local or parameter of the class type uses the handle storage type.
+  - A class without a base is a plain script class. It is also a handle (`std::shared_ptr` by default). Its shell derives from `spp::PlainObject` and `spp::ShellBase`. `super(...)` is an error in it.
+  - `[value] class Stats { }` is a struct that lives inline in the state block. It has real copy semantics. `Stats(args)` and `new Stats(args)` both give the value. A reload migrates its fields recursively (`FieldInfo::sub`, `FieldAction::Nested`, design 5.3).
+  - A `[value]` class has no base, no destructor, no `virtual` or `override`, no hook, no lambda and no `super`. It can use native types and other `[value]` classes only. The translator emits `[value]` classes first.
+  - A class that another class uses as a handle type must come before it in the script. See `example/scripts/kinds_v1.spp` and `kinds_v2.spp`.
 - A property is `Type N { get; set; }`, `{ get; }`, `{ get; private set; }` or `{ get { ... } set { ... } }`. The setter body reads the new value as `value`. See `example/scripts/props_v1.spp`.
 - A read or a write of `p.N` on another object of the class calls `get_N` or `set_N` of that object. A write gives the assigned value, so `a = p.N = 1` works.
 - A local is `int x = 5;`, `var x = 5;` or `const int X = 5;`. A loop is `foreach (Type x in c)`. A catch clause is `catch (Type e)` or `catch (...)`.
@@ -85,11 +90,12 @@ The syntax is type-first. See `README.md` and `spp-design.md` (section 7) for th
   - A class needs a constructor or one `new` use in generation 1. Else the canonical record has no `construct` entry and a later `new` throws "has no constructor entry". Restart the process in this case.
   - The types of the `super` arguments must not change after generation 1. A change gives the `construct_key` error at run time.
   - If a constructor body throws, the shell is deleted and the exception goes on. The script destructor still runs on the half-built object.
-  - The result of `new` is a raw pointer, as for a native class. Nothing owns it. Put it in a `std.shared_ptr<Name>` (see `ctor_v1.spp`) or give it to the engine. A raw `Name*` in a field gives the borrowed-storage warning. Script classes as handles and as `[value]` are S5.
+  - The result of `new` of a script class is a handle (S5a). The handle owns the object. An object that the engine makes (a factory) is still owned by the world.
+  - Open (S5a): a member access `obj.field` or `obj.Method()` on a handle of a script class has no type-directed lowering. A `[value]` class member works, because it is a real C++ member. `return this` as a handle is not possible (no `shared_from_this`).
 - `ref e` and `out e` in a call argument give `spp::ref_arg(e)`. The prefix `&e` gives the error "use 'ref' instead of '&'". A `ref` of a handle converts to the raw pointer of its pointee, so a native `Actor*` parameter takes it (`include/spp/runtime/ref_arg.h`). `var r = ref this.pos` gives `auto& r = st->pos;`.
 - Base stubs: a `handle` or `intrusive` stub on a native base class applies to all native subclasses. The nearest base wins. An exact stub on a subclass wins. A base stub beats a pattern stub. `value` is not inherited. The hierarchy comes from libclang. System-header classes, nested classes and templates are not in the map.
 - `intrusive("AddRef","Release")` implies a handle. If `handle` is given, it must be `$T*`. It does not combine with `value`. The storage is `spp::Intrusive<T, &Owner::Add, &Owner::Release>`, with Owner the class with the stub. A new object starts with zero references. The wrapper adds a reference on construction from `T*`. Add and Release must be non-overloaded, non-template members. A missing method gives a clang error that names it. A reload copies the field (add) and destroys the old block (release), so the count stays correct.
-- Deferred to slice 2 of "value and handle semantics" (S5): `[value]` script classes, script classes as handles, the "store takes a copy" parameter analysis and conflict detection for multiple inheritance. A comparison of an `Intrusive` with a raw `T*` is untested.
+- Deferred to slice 2 of "value and handle semantics" (S5b and later): the "store takes a copy" parameter analysis and conflict detection for multiple inheritance. A comparison of an `Intrusive` with a raw `T*` is untested.
 - Translator checks (S2). `src/translator/check.cpp` walks the AST. `TypeModel::add_stubs` checks the stub rules. `translate_impl` asks libclang for the 7.10.7 facts.
   - `class *;` with `default_handle("H<$T>")` makes every native class without a stub a handle. Plain data (libclang: complete, trivially copyable, not polymorphic) stays a value. Order: exact stub, base handle, pattern stub, plain data, `class *`, raw. Two `class *` in one file, `value` on `*`, and two stubs for one type in one file are errors. A later prelude overrides an earlier one. A script stub that overrides a prelude stub gives a warning (`TranslateResult::warnings`, printed by `sppc` on stderr).
   - 7.10.7 checks use libclang constexpr probes (`sppc_facts`). The session caches the answers. A new question needs one more parse. `value` needs a copy constructor and a nothrow move constructor, and is an error on a non-final polymorphic type. `handle` needs `operator->`. `intrusive` needs both methods, not overloaded. A type that libclang does not find is skipped without an error.
@@ -132,7 +138,7 @@ Debug compile time of the grammar files: `script_grammar.cpp` about 3.3 s, `expr
 - Keep every claim in reports tied to a command output. Say what you did not run.
 
 ## Suggested next step
-Continue slice 2 of "value and handle semantics" (see `spp-design.md` 7.10). Pick one slice: script classes as handles, `[value]` script classes (with `new` of a script class), or `default_handle`. Later: `class *;`, the plain-data-as-value rule, the `ref` checks, the 7.10.7 checks and the "store takes a copy" parameter analysis. Run the tests in `build`, `build-asan` and `build-jit`.
+Continue slice 2 of "value and handle semantics" (see `spp-design.md` 7.10). S5a is done (kinds of script class). Pick one slice: member access on a script handle, or the parameter analysis. Later: the plain-data-as-value rule, the `ref` checks, the 7.10.7 checks and the "store takes a copy" parameter analysis. Run the tests in `build`, `build-asan` and `build-jit`.
 
 ## Build time
 - Compiler: clang++ 23.1.3, Debug (-g), lexy v2025.05.0, core target only.

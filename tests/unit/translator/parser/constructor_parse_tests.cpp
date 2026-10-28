@@ -96,3 +96,38 @@ TEST(ConstructorParse, Errors)
         EXPECT_NE(p.errors().find(msg), std::string::npos) << text << ": " << p.errors();
     }
 }
+
+// ---- a class without a base and a [value] class (design 7.10.1)
+TEST(ClassKindParse, ClassWithoutBase)
+{
+    const std::string text = "class Counter {\n    int count = 0;\n}\n";
+    const LineMap map(text);
+    Diagnostics diag;
+    const ast::Script script = parse_script(text, map, diag);
+    ASSERT_TRUE(diag.items.empty()) << diag.format("t");
+    ASSERT_EQ(script.classes.size(), 1u);
+    EXPECT_EQ(script.classes[0].base, "");
+    EXPECT_FALSE(script.classes[0].is_value);
+}
+
+TEST(ClassKindParse, ValueClassWithoutBase)
+{
+    const std::string text = "[value] class Stats {\n    float hp = 1.0;\n}\n";
+    const LineMap map(text);
+    Diagnostics diag;
+    const ast::Script script = parse_script(text, map, diag);
+    ASSERT_TRUE(diag.items.empty()) << diag.format("t");
+    ASSERT_EQ(script.classes.size(), 1u);
+    EXPECT_TRUE(script.classes[0].is_value);
+    EXPECT_EQ(script.classes[0].base, "");
+}
+
+TEST(ClassKindParse, ClassWithBaseStillParses)
+{
+    const std::string text = "class Hero : Actor {\n}\n";
+    const LineMap map(text);
+    Diagnostics diag;
+    const ast::Script script = parse_script(text, map, diag);
+    ASSERT_TRUE(diag.items.empty()) << diag.format("t");
+    EXPECT_EQ(script.classes.at(0).base, "Actor");
+}

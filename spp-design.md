@@ -762,7 +762,7 @@ class Level : Actor {
 }
 ```
 
-`new T(args)` for a script class calls the shell constructor and the script constructor. `new T(args)` for a native class is C++ `new`. The result type follows section 7.10: the handle of the class, or a value. Ownership follows the handle. The examples above that show raw pointers use the engine's intrusive handle. In the prototype (S4), `new T(args)` of a script class gives a raw shell pointer. The limits are in `HANDOFF.md`.
+`new T(args)` for a script class calls the shell constructor and the script constructor. `new T(args)` for a native class is C++ `new`. The result type follows section 7.10: the handle of the class, or a value. Ownership follows the handle. The examples above that show raw pointers use the engine's intrusive handle. In the prototype (S5a), `new T(args)` of a script class gives the handle of the class, or the value for a `[value]` class. The limits are in `HANDOFF.md`.
 
 ### 7.5 Lambdas
 

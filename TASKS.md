@@ -9,7 +9,7 @@ Status: [ ] open, [x] done. One slice is one commit.
 - [x] S2 Translator checks: 7.10.7 stub checks, borrowed-pointer and ref rules, ERROR rows, prelude details, `class *;` rules. Done. Borrowed-storage findings are warnings until the examples migrate (S5); see HANDOFF.md.
 - [x] S3 `onReload(OldState)`, `OldState`, `convert` hook, live type change, rename warning, restart request. Done.
 - [x] S4 Script constructors, `new` of a script class. Done. The limits are in `HANDOFF.md` (Known limits).
-- [ ] S5 Value/handle slice 2: `[value]` script classes, script classes as handles, parameter analysis, `var r = ref`.
+- [ ] S5 Value/handle slice 2: parameter analysis, `var r = ref`, member access on script handles. S5a done: `[value]` script classes, plain script classes, script classes as handles.
 - [ ] S6 Script inheritance, script `virtual`/`override`, `is` and `as`.
 - [ ] S7 String interpolation: lower `${..}` to `std::format` (C++20) or `fmt::format`. The fmt library may be user-supplied: pick it by a translator option and a header check, no hard dependency.
 - [ ] S8 Module variables, enums, structs, native interface bases.

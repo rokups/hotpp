@@ -16,6 +16,15 @@ struct ShellBase {
     void* state = nullptr;
 };
 
+// The base of the shell of a script class that has no native base (design 7.10.1). It gives
+// the shell a virtual destructor, so a handle can destroy it through the base.
+struct PlainObject {
+    PlainObject() = default;
+    PlainObject(const PlainObject&) = delete;
+    PlainObject& operator=(const PlainObject&) = delete;
+    virtual ~PlainObject() = default;
+};
+
 // Calls slot "slot" of the class record. "Sig" is the signature of the slot.
 template <class Sig, class... A>
 inline auto call(const ClassRecord* cls, unsigned slot, A&&... a)
@@ -40,6 +49,18 @@ inline ShellBase* construct_shell(const ClassRecord* rec, const char* key, const
     return canon->construct(args);
 }
 
+// The address of a [value] script object, for a property access on another object.
+template <class T>
+T* value_ptr(T& v)
+{
+    return &v;
+}
+template <class T>
+T* value_ptr(T* p)
+{
+    return p;
+}
+
 // Property access on an object other than "this" (lower.h). "p.P" becomes
 // "Cls__get_P(spp::shell_of<Cls_Shell>(p, "Cls"))". The helper accepts a pointer and
 // a reference. The object must be a live script object of the class "cls". Else the
@@ -59,9 +80,17 @@ Shell* shell_of(T* p, const char* cls)
     }
 }
 template <class Shell, class T>
+    requires(!requires(const T& h) { h.get(); })
 Shell* shell_of(T& v, const char* cls)
 {
     return shell_of<Shell>(&v, cls);
+}
+// A handle of a script object (std::shared_ptr or Intrusive): check the pointee.
+template <class Shell, class H>
+    requires requires(const H& h) { h.get(); }
+Shell* shell_of(const H& h, const char* cls)
+{
+    return shell_of<Shell>(h.get(), cls);
 }
 
 }  // namespace spp

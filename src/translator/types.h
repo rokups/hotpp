@@ -51,6 +51,15 @@ public:
     // is a class name and no stub matches it.
     bool wants_facts(const std::string& type) const;
 
+    // Registers the script classes of the script (design 7.10.1). A script class is a handle,
+    // unless it is a [value] class. A script class with a native base uses the handle of that
+    // base (stub, base stub, pattern or "class *"). Else it uses std::shared_ptr<$T>.
+    // A script class wins over a stub of the same name. Call it before lookup().
+    void add_script_classes(const std::vector<ast::ClassDef>& classes);
+
+    // True when the name is a [value] script class.
+    bool is_script_value(const std::string& type) const;
+
     // The direct bases of a qualified C++ class name, in declaration order.
     // An unknown name gives an empty vector.
     using BaseFn = std::function<std::vector<std::string>(const std::string&)>;
@@ -97,6 +106,11 @@ private:
     BaseFn bases_;
     ClassFn classes_;
     std::string default_handle_;
+    struct ScriptClass {
+        std::string base;
+        bool is_value = false;
+    };
+    std::map<std::string, ScriptClass> script_;
     std::set<std::string> prelude_names_;  // the stubs that a prelude gave
 };
 

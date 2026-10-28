@@ -19,6 +19,14 @@ MigrationPlan build_plan(const StateLayout& o, const StateLayout& n)
         claimed[j] = true;
         done[i] = true;
         if (std::strcmp(nf.type_key, of.type_key) == 0) {
+            if (nf.sub && of.sub) {
+                // A [value] script class: the type name is the same, the layout may differ.
+                auto sub = std::make_shared<MigrationPlan>(build_plan(*of.sub, *nf.sub));
+                for (const std::string& w : sub->warnings)
+                    plan.warnings.push_back(std::string(n.name) + "." + nf.name + ": " + w);
+                plan.steps[i] = {FieldAction::Nested, j, std::move(sub)};
+                return;
+            }
             plan.steps[i] = {FieldAction::Move, j};
             return;
         }
@@ -81,6 +89,10 @@ void migrate_block(const StateLayout& o, const StateLayout& n, const MigrationPl
         const FieldInfo& of = o.fields[s.old_index];
         if (s.action == FieldAction::Convert) {
             nf.convert(to + nf.offset, from + of.offset);
+            continue;
+        }
+        if (s.action == FieldAction::Nested) {
+            migrate_block(*of.sub, *nf.sub, *s.nested, from + of.offset, to + nf.offset);
             continue;
         }
         if ((nf.flags & kTriviallyCopyable) && (of.flags & kTriviallyCopyable))

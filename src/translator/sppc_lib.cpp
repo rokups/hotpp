@@ -877,8 +877,29 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
     types.add_stubs(sc.stubs, g_diag, map, sppc::TypeModel::Source::Script);
     if (!g_diag.items.empty()) throw TranslateAbort{};
     for (const Stub& st : sc.stubs) all_stubs.push_back({&st, &map, std::string()});
+    types.add_script_classes(sc.classes);
+    for (const ClassDef& cd : sc.classes) {
+        if (!cd.is_value) continue;
+        // A [value] class is a plain struct (design 7.10.1): no base, no virtual method, no hook.
+        if (!cd.base.empty())
+            fail_at(map, cd.pos, "a [value] class '" + cd.name + "' has no base class");
+        if (!cd.dtors.empty())
+            fail_at(map, cd.dtors[0].pos, "a [value] class '" + cd.name + "' cannot have a destructor");
+        for (const Method& m : cd.methods) {
+            if (m.is_override || m.is_virtual)
+                fail_at(map, m.pos, "a [value] class '" + cd.name + "' has no virtual methods");
+            if (m.name == "onReload" || m.name.rfind("convert_", 0) == 0)
+                fail_at(map, m.pos, "a [value] class '" + cd.name + "' cannot have the hook '" + m.name + "'");
+        }
+        for (const sppc::ast::Ctor& c : cd.ctors)
+            if (c.has_super)
+                fail_at(map, c.pos, "a [value] class '" + cd.name + "' has no base class: remove 'super(...)'");
+    }
     for (const ClassDef& cd : sc.classes)
-        if (cd.is_value) fail_at(map, cd.pos, "[value] on a script class is not supported yet");
+        if (cd.base.empty() && !cd.is_value)
+            for (const sppc::ast::Ctor& c : cd.ctors)
+                if (c.has_super)
+                    fail_at(map, c.pos, "class '" + cd.name + "' has no base class: remove 'super(...)'");
 
     // ---- the questions for libclang about the types (design 7.10.7 and the stub "class *;")
     std::map<std::string, std::set<std::string>> asked;  // type text, member names
@@ -913,7 +934,8 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
     if (!opt.resource_dir.empty()) args.push_back("-resource-dir=" + opt.resource_dir);
     std::set<std::string> import_paths, base_names;
     for (const auto& im : sc.imports) import_paths.insert(im.path);
-    for (const auto& cd : sc.classes) base_names.insert(cd.base);
+    for (const auto& cd : sc.classes)
+        if (!cd.base.empty()) base_names.insert(cd.base);
     // The key: the flags, the current directory and the imports (the order does not matter).
     std::string key = std::filesystem::current_path().string() + "\n";
     for (const auto& a : args) key += a + "\n";
@@ -1011,18 +1033,207 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
     const std::set<std::string> new_set = sppc::new_targets(sc);
     std::set<std::string> new_ready;  // the classes with a "new" function that are emitted so far
 
-    for (ClassDef& cd : sc.classes) {
+    // ---- [value] script classes (design 7.10.1). A value class is a C++ struct with real
+    // copy semantics. Its member functions are inline in the generation module, so a reload
+    // replaces them with the module. Its field table lets the migration recurse (design 5.3).
+    const std::set<std::string> used_types = sppc::used_type_names(sc);
+    std::set<std::string> script_names;
+    for (const ClassDef& cd : sc.classes) script_names.insert(cd.name);
+    auto param_text = [](const std::vector<sppc::ast::Param>& ps) {
+        std::string r;
+        for (const sppc::ast::Param& p : ps) r += ", " + p.type + " " + p.name;
+        return r;
+    };
+    auto emit_value = [&](ClassDef& cd) {
+        const std::string cn = cd.name, P = cn + "__";
+        desugar_props(cd, map);
+        {
+            const size_t before = g_diag.items.size();
+            sppc::check_ctors(cd, map, g_diag);
+            if (g_diag.items.size() != before) throw TranslateAbort{};
+        }
+        auto reserved = [&](uint32_t pos, const std::vector<sppc::ast::Param>& ps) {
+            for (const Param& p : ps)
+                if (p.name == "self" || p.name == "st" || p.name == "a")
+                    fail_at(map, pos, "parameter name '" + p.name + "' is reserved");
+        };
+        std::set<std::string> field_names, fn_names;
+        for (const Field& f : cd.fields)
+            if (!field_names.insert(f.name).second) fail_at(map, f.pos, "field '" + f.name + "' is declared twice");
+        for (Method& m : cd.methods) {
+            reserved(m.pos, m.params);
+            if (!fn_names.insert(m.name).second)
+                fail_at(map, m.pos, "function '" + m.name + "' is declared twice (overloads are not supported)");
+            if (field_names.count(m.name)) fail_at(map, m.pos, "'" + m.name + "' is a field and a function");
+        }
+        for (const sppc::ast::Ctor& c : cd.ctors) reserved(c.pos, c.params);
+        {
+            const size_t before = g_diag.items.size();
+            sppc::check_class(cd, types, map, g_diag, in.strict_borrowed);
+            if (g_diag.items.size() != before) throw TranslateAbort{};
+        }
+        for (Field& f : cd.fields) f.type = types.storage(f.type);
+        for (Method& m : cd.methods) {
+            for (Param& p : m.params) p.type = p.mode == PassMode::Value ? types.param(p.type) : types.ref_param(p.type);
+            if (!m.ret.empty()) m.ret = types.storage(m.ret);
+        }
+        for (sppc::ast::Ctor& c : cd.ctors)
+            for (Param& p : c.params) p.type = types.param(p.type);
+
+        new_ready.insert(cn);
+        RCtx base_cx = sppc::make_class_ctx(cd);
+        base_cx.map = &map;
+        base_cx.types = &types;
+        base_cx.script_classes = script_names;
+        base_cx.new_classes = new_ready;
+
+        o.w("\n// ---------------------------------------------------------------- [value] class " + cn + "\n");
+        // The field initializers: the text is the same in the constructor and in the field table.
+        std::vector<std::string> inits;
+        for (Field& f : cd.fields) {
+            RCtx fc = base_cx;
+            fc.allow_this = false;
+            std::string init;
+            if (f.has_init && f.init) {
+                sppc::lower_expr(f.init, fc, g_diag);
+                if (!g_diag.items.empty()) throw TranslateAbort{};
+                init = sppc::ast::print(*f.init);
+            }
+            inits.push_back(init);
+        }
+        const bool has_ctor = !cd.ctors.empty();
+        const sppc::ast::Ctor* ctor = has_ctor ? &cd.ctors[0] : nullptr;
+        auto arg_names = [](const std::vector<sppc::ast::Param>& ps) {
+            std::string r;
+            for (size_t i = 0; i < ps.size(); ++i) r += (i ? ", " : "") + arg_expr(ps[i].type, ps[i].name);
+            return r;
+        };
+        auto fn_ret = [](const Method& m) { return m.ret.empty() ? std::string("void") : m.ret; };
+        o.w("struct " + cn + ";\n");
+        for (const Method& m : cd.methods)
+            o.w("static " + fn_ret(m) + " " + P + m.name + "(" + cn + "* self" + param_text(m.params) + ");\n");
+        if (has_ctor) o.w("static void " + P + "ctor(" + cn + "* self" + param_text(ctor->params) + ");\n");
+        o.w("struct " + cn + " {\n");
+        for (const Field& f : cd.fields) o.w("    " + f.type + " " + f.name + ";\n");
+        o.w("    " + cn + "()");
+        for (size_t i = 0; i < cd.fields.size(); ++i) {
+            o.w("\n#line " + std::to_string(cd.fields[i].line) + " \"" + esc(opt.input) + "\"\n");
+            o.w(std::string(i ? "        , " : "        : ") + cd.fields[i].name + "(" + inits[i] + ")");
+        }
+        if (!cd.fields.empty()) {
+            o.w("\n");
+            reset();
+        }
+        if (has_ctor && ctor->params.empty()) o.w(" { " + P + "ctor(this); }\n");
+        else o.w(" {}\n");
+        if (has_ctor && !ctor->params.empty())
+            o.w("    " + cn + "(" + param_text(ctor->params).substr(2) + ") : " + cn + "() { " + P + "ctor(this, " +
+                arg_names(ctor->params) + "); }\n");
+        for (const Method& m : cd.methods) {
+            std::string ps = param_text(m.params);
+            if (!ps.empty()) ps = ps.substr(2);
+            o.w("    " + fn_ret(m) + " " + m.name + "(" + ps + ") { " + (fn_ret(m) == "void" ? "" : "return ") + P +
+                m.name + "(this" + (m.params.empty() ? "" : ", " + arg_names(m.params)) + "); }\n");
+        }
+        o.w("};\n\n");
+
+        // The field table of the struct: the migration recurses into it.
+        for (size_t i = 0; i < cd.fields.size(); ++i) {
+            const Field& f = cd.fields[i];
+            o.w("#line " + std::to_string(f.line) + " \"" + esc(opt.input) + "\"\n");
+            o.w("static void " + P + "init_" + f.name + "(void*, void* f) { using T = " + f.type + "; new (f) T(" + inits[i] +
+                "); }\n");
+            reset();
+        }
+        o.w("#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n");
+        if (cd.fields.empty()) {
+            o.w("static const spp::FieldInfo* const " + cn + "_fields = nullptr;\n");
+        } else {
+            o.w("static const spp::FieldInfo " + cn + "_fields[] = {\n");
+            for (const Field& f : cd.fields) {
+                const std::string T = f.type;
+                const bool sub = types.is_script_value(T);
+                o.w("    {\"" + f.name + "\", " + (f.alias.empty() ? "nullptr" : "\"" + f.alias + "\"") +
+                    ", typeid(" + T + ").name(), offsetof(" + cn + ", " + f.name + "), sizeof(" + T + "),\n     alignof(" +
+                    T + "), spp::" + (sub ? "value_field_flags" : "field_flags") + "<" + T + ">(), " + P + "init_" +
+                    f.name + ", spp::move_field<" + T + ">, spp::field_destroyer<" + T + ">()" +
+                    (sub ? ", nullptr, nullptr, &" + T + "_layout" : std::string()) + "},\n");
+            }
+            o.w("};\n");
+        }
+        o.w("#pragma clang diagnostic pop\n");
+        o.w("static const spp::StateLayout " + cn + "_layout = {\n    \"" + cn + "\", sizeof(" + cn + "), alignof(" + cn +
+            "), " + std::to_string(cd.fields.size()) + ", " + cn + "_fields,\n};\n\n");
+
+        // The function bodies. "self" is the struct itself, so "st" is "self".
+        auto emit_vbody = [&](Method& m, const std::string& sym, const std::string& ret, const std::string& what) {
+            RCtx cx = base_cx;
+            cx.where = what;
+            sppc::add_params(cx, m.params);
+            o.w("static " + ret + " " + sym + "(" + cn + "* self" + param_text(m.params) + ")\n{\n");
+            o.w("    [[maybe_unused]] auto* st = self;\n");
+            sppc::lower_block(m.body, cx, g_diag);
+            if (!g_diag.items.empty()) throw TranslateAbort{};
+            sppc::ast::Emitter em(map, opt.input);
+            sppc::ast::emit_stmts(m.body.stmts, em, 1);
+            em.finish();
+            o.w(em.text());
+            reset();
+            o.w("}\n\n");
+        };
+        if (has_ctor) {
+            Method cm;
+            cm.name = cn;
+            cm.params = cd.ctors[0].params;
+            cm.pos = cd.ctors[0].pos;
+            cm.body = std::move(cd.ctors[0].body);
+            emit_vbody(cm, P + "ctor", "void", cn + "::" + cn);
+        }
+        for (Method& m : cd.methods) emit_vbody(m, P + m.name, fn_ret(m), body_what(cn, m));
+    };
+
+    // A [value] class comes first: other classes hold it as a field. The others keep their order.
+    std::vector<ClassDef*> order;
+    for (ClassDef& cd : sc.classes)
+        if (cd.is_value) order.push_back(&cd);
+    for (ClassDef& cd : sc.classes)
+        if (!cd.is_value) order.push_back(&cd);
+    std::set<std::string> emitted;
+
+    for (ClassDef* cdp : order) {
+        ClassDef& cd = *cdp;
         const std::string cn = cd.name;
+        // A class names another script class in a field, a parameter or a local. The other
+        // class must come before it. A [value] class names only [value] classes.
+        // The "new" targets get their own message from the lowering pass.
+        for (const std::string& u : sppc::used_type_names(cd)) {
+            if (!script_names.count(u) || u == cn || emitted.count(u) || new_set.count(u)) continue;
+            if (cd.is_value && !types.is_script_value(u))
+                fail_at(map, cd.pos, "a [value] class can use only native types and [value] classes: '" + u + "' is not");
+            fail_at(map, cd.pos, "class '" + u + "' must come before the class that uses it");
+        }
+        emitted.insert(cn);
+        if (cd.is_value) {
+            emit_value(cd);
+            continue;
+        }
         const bool has_ctor = !cd.ctors.empty(), has_dtor = !cd.dtors.empty();
         const bool gen_new = has_ctor || new_set.count(cn) > 0;
         const std::string P = cn + "__";
         auto slot_id = [&](const std::string& n) { return (multi ? cn + "_" : std::string()) + "SLOT_" + n; };
 
         // ---- base class information from libclang
-        auto base_it = bases.find(cd.base);
-        if (base_it == bases.end())
-            fail_at(map, cd.pos, "base class '" + cd.base + "' is not found in the imported headers");
-        BaseInfo bi = base_it->second;
+        // A class without a base derives from spp::PlainObject (design 7.10.1).
+        BaseInfo bi;
+        const std::string B = cd.base.empty() ? std::string("spp::PlainObject") : cd.base;
+        if (cd.base.empty()) {
+            bi.virtual_dtor = true;
+        } else {
+            auto base_it = bases.find(cd.base);
+            if (base_it == bases.end())
+                fail_at(map, cd.pos, "base class '" + cd.base + "' is not found in the imported headers");
+            bi = base_it->second;
+        }
         if (!bi.any_ctor) bi.default_ctor = true;  // the compiler declares one
         if (!bi.virtual_dtor)
             fail_at(map, cd.pos, "base class '" + cd.base + "' has no virtual destructor");
@@ -1230,7 +1441,6 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
 
         const std::string S = cn + "State_g" + std::to_string(opt.gen);
         const std::string shell = cn + "_Shell";
-        const std::string B = cd.base;
 
         o.w("\n// ---------------------------------------------------------------- class " + cn + "\n");
         o.w("// Slot numbers. Native virtuals come first, in the order of " + B + ".\n");
@@ -1260,6 +1470,8 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 slot_id(slots[i].id) + ", " + str_join(as, ", ") + ");\n    }\n");
         }
         o.w("};\n\n");
+        // The type name of the class for the script: a handle field names it (design 7.10.1).
+        if (gen_new || used_types.count(cn)) o.w("using " + cn + " = " + shell + ";\n\n");
 
         // ---- state struct and field table
         o.w("// ---------------------------------------------------------------- state\n");
@@ -1297,13 +1509,17 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             o.w("static const spp::FieldInfo " + cn + "_fields[] = {\n");
             for (const Field& f : cd.fields) {
                 const std::string T = f.type;
+                const bool sub = types.is_script_value(T);
                 o.w("    {\"" + f.name + "\", " + (f.alias.empty() ? "nullptr" : "\"" + f.alias + "\"") +
                     ", typeid(" + T + ").name(), offsetof(" + S + ", " + f.name + "), sizeof(" + T +
-                    "),\n     alignof(" + T + "), spp::field_flags<" + T + ">(), " + P + "init_" +
-                    f.name + ", spp::move_field<" + T + ">, spp::field_destroyer<" + T + ">()");
+                    "),\n     alignof(" + T + "), spp::" + (sub ? "value_field_flags" : "field_flags") + "<" + T +
+                    ">(), " + P + "init_" + f.name + ", spp::move_field<" + T + ">, spp::field_destroyer<" + T + ">()");
                 auto cv = converts.find(f.name);
                 if (cv != converts.end())
                     o.w(", typeid(" + cv->second->params[0].type + ").name(), " + P + cv->second->name + "_hook");
+                else if (sub)
+                    o.w(", nullptr, nullptr");
+                if (sub) o.w(", &" + T + "_layout");
                 o.w("},\n");
             }
             o.w("};\n");
@@ -1383,7 +1599,6 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 ");\n}\n");
             reset();
             o.w("using " + cn + "_SuperArgs = decltype(" + P + "super_args(" + declvals + "));\n");
-            o.w("using " + cn + " = " + shell + ";\n\n");
             o.w("// Makes the shell with the base arguments. Only the first generation of the class runs it.\n");
             o.w("static spp::ShellBase* " + P + "construct(const void* args)\n{\n    const auto& t = *static_cast<const " +
                 cn + "_SuperArgs*>(args);\n    return std::apply([](const auto&... x) -> spp::ShellBase* { return new " +

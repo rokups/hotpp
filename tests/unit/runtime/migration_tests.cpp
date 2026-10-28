@@ -196,6 +196,65 @@ TEST(MigrationPlan, RenameWithoutAliasWarnsAndAliasDoesNot)
     EXPECT_TRUE(p.removed.empty());
 }
 
+// ---- a [value] script class stored inline (design 5.3): the migration recurses into it
+struct InnerOld {
+    float hp;
+    float armor;
+};
+struct InnerNew {
+    float mana;
+    float hp;
+    int armor;  // the type changes
+};
+spp::FieldInfo inner_old_fields[] = {
+    mk<float>("hp", nullptr, offsetof(InnerOld, hp), nullptr),
+    mk<float>("armor", nullptr, offsetof(InnerOld, armor), nullptr),
+};
+spp::StateLayout inner_old{"Stats", sizeof(InnerOld), alignof(InnerOld), 2, inner_old_fields};
+spp::FieldInfo inner_new_fields[] = {
+    mk<float>("mana", nullptr, offsetof(InnerNew, mana), [](void*, void* f) { new (f) float(8.0f); }),
+    mk<float>("hp", nullptr, offsetof(InnerNew, hp), nullptr),
+    mk<int>("armor", nullptr, offsetof(InnerNew, armor), nullptr),
+};
+spp::StateLayout inner_new{"Stats", sizeof(InnerNew), alignof(InnerNew), 3, inner_new_fields};
+
+spp::FieldInfo with_sub(spp::FieldInfo f, const spp::StateLayout* sub)
+{
+    f.sub = sub;
+    return f;
+}
+
+TEST(MigrationPlan, ValueFieldsOfTheSameTypeAreMigratedRecursively)
+{
+    spp::FieldInfo of[] = {with_sub(mk<InnerOld>("stats", nullptr, 0, nullptr), &inner_old)};
+    spp::FieldInfo nf[] = {with_sub(mk<InnerNew>("stats", nullptr, 0, nullptr), &inner_new)};
+    // The two layouts use the same type key: the plan nests.
+    of[0].type_key = nf[0].type_key = "Stats";
+    spp::StateLayout o{"Hero", sizeof(InnerOld), alignof(InnerOld), 1, of};
+    spp::StateLayout n{"Hero", sizeof(InnerNew), alignof(InnerNew), 1, nf};
+    const spp::MigrationPlan p = spp::build_plan(o, n);
+    ASSERT_EQ(p.steps.size(), 1u);
+    ASSERT_EQ(p.steps[0].action, spp::FieldAction::Nested);
+    ASSERT_NE(p.steps[0].nested, nullptr);
+    const spp::MigrationPlan& sub = *p.steps[0].nested;
+    ASSERT_EQ(sub.steps.size(), 3u);
+    EXPECT_EQ(sub.steps[0].action, spp::FieldAction::Init);
+    EXPECT_EQ(sub.steps[1].action, spp::FieldAction::Move);
+    EXPECT_EQ(sub.steps[2].action, spp::FieldAction::Init);  // the type changed
+    ASSERT_EQ(p.warnings.size(), 1u);
+    EXPECT_NE(p.warnings[0].find("Hero.stats: "), std::string::npos) << p.warnings[0];
+    EXPECT_NE(p.warnings[0].find("armor"), std::string::npos) << p.warnings[0];
+}
+
+TEST(MigrationPlan, ValueFieldWithoutLayoutIsAPlainMove)
+{
+    spp::FieldInfo of[] = {mk<InnerOld>("stats", nullptr, 0, nullptr)};
+    spp::FieldInfo nf[] = {mk<InnerOld>("stats", nullptr, 0, nullptr)};
+    spp::StateLayout o{"Hero", sizeof(InnerOld), alignof(InnerOld), 1, of};
+    spp::StateLayout n{"Hero", sizeof(InnerOld), alignof(InnerOld), 1, nf};
+    EXPECT_EQ(spp::build_plan(o, n).steps[0].action, spp::FieldAction::Move);
+}
+
 TEST(MigrationPlan, PlainRemoveAndPlainAddGiveNoWarning)
 {
     spp::FieldInfo of[] = {mk<float>("hp", nullptr, 0, nullptr)};

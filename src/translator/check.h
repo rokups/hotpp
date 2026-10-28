@@ -41,5 +41,7 @@ std::set<std::string> new_targets(const ast::Script& sc);
 // The C++ type names that the script writes in declarations, "new" and lambda parameters.
 // The translator asks libclang about them when the stub "class *;" is active.
 std::set<std::string> used_type_names(const ast::Script& sc);
+// The same for one class. The translator uses it to find the script classes that a class names.
+std::set<std::string> used_type_names(const ast::ClassDef& cd);
 
 }  // namespace sppc

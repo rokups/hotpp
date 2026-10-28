@@ -77,6 +77,13 @@ constexpr uint8_t field_flags()
                                 (std::is_nothrow_move_constructible_v<T> ? kNothrowMove : 0));
 }
 
+// The flags of a field that holds a [value] script class (design 5.3).
+template <class T>
+constexpr uint8_t value_field_flags()
+{
+    return static_cast<uint8_t>(field_flags<T>() | kScriptStruct);
+}
+
 template <class T>
 inline void move_field(void* dst, const void* src)
 {

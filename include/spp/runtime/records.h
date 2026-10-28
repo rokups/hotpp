@@ -5,6 +5,7 @@
 namespace spp {
 
 struct ShellBase;
+struct StateLayout;
 class OldState;
 
 // Tag type. It marks the constructor of a shell that the script runtime makes.
@@ -31,6 +32,9 @@ struct FieldInfo {
     // memory. The hook constructs the new field there. Both members are null without a hook.
     const char* convert_from = nullptr;
     void (*convert)(void* dst, const void* src) = nullptr;
+    // The layout of a [value] script class stored inline in this field (design 5.3), else
+    // null. The flag kScriptStruct is set then. The migration recurses into the layout.
+    const StateLayout* sub = nullptr;
 };
 
 // Size, alignment and fields of the state struct of one generation.

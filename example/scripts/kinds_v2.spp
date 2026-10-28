@@ -1,0 +1,53 @@
+// Generation 2 of the kinds of script classes (S5, design 7.10.1).
+// Stats gets the new field "mana" before the old fields. The reload migrates the inline
+// value of each Hero field by name. Counter and Hero get a new field.
+using "Actor.h";
+using <string>;
+
+[value] class Stats {
+    float mana = 7.0;
+    float hp = 100.0;
+    float armor = 2.0;
+
+    Stats(float hp_start, float armor_start) {
+        this.hp = hp_start;
+        this.armor = armor_start;
+    }
+
+    float Effective() { return this.hp * this.armor + this.mana; }
+
+    void Hurt(float damage) { this.hp = this.hp - damage; }
+}
+
+class Counter {
+    int count = 0;
+    int step = 3;
+
+    Counter(int start) {
+        this.count = start;
+        std.printf("[kinds_v2] counter %d made\n", start);
+    }
+
+    ~Counter() {
+        std.printf("[kinds_v2] counter %d gone\n", this.count);
+    }
+}
+
+class Hero : Actor {
+    Stats stats = Stats(50.0, 2.0);
+    Stats saved;
+    Counter counter;
+    float effective = 0.0;
+    int ticks = 0;
+    int bonus = 4;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        if (this.counter == null) {
+            this.counter = new Counter(10);
+        }
+        this.saved = this.stats;
+        this.stats.Hurt(10.0);
+        this.effective = this.stats.Effective();
+    }
+}

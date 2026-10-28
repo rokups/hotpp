@@ -118,6 +118,18 @@ void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diag
     }
 }
 
+void TypeModel::add_script_classes(const std::vector<ast::ClassDef>& classes)
+{
+    script_.clear();
+    for (const ast::ClassDef& cd : classes) script_[cd.name] = {cd.base, cd.is_value};
+}
+
+bool TypeModel::is_script_value(const std::string& type) const
+{
+    auto it = script_.find(type);
+    return it != script_.end() && it->second.is_value;
+}
+
 void TypeModel::set_bases(BaseFn fn)
 {
     bases_ = std::move(fn);
@@ -155,6 +167,26 @@ TypeRule TypeModel::lookup(const std::string& cpp_type) const
 
 TypeRule TypeModel::lookup_stub(const std::string& cpp_type) const
 {
+    auto sc = script_.find(cpp_type);
+    if (sc != script_.end()) {
+        TypeRule r;
+        r.owner = cpp_type;
+        if (sc->second.is_value) {
+            r.kind = Kind::Value;
+            return r;
+        }
+        // The handle of the native base, else the default handle of a script class.
+        if (!sc->second.base.empty()) {
+            const TypeRule b = lookup(sc->second.base);
+            if (b.kind == Kind::Handle) {
+                r = b;
+                return r;
+            }
+        }
+        r.kind = Kind::Handle;
+        r.handle_tpl = "std::shared_ptr<$T>";
+        return r;
+    }
     auto it = exact_.find(cpp_type);
     if (it != exact_.end()) {
         TypeRule r = it->second;

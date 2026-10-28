@@ -954,7 +954,7 @@ struct class_p {
         dsl::position + dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<class_attrs_p>) + kw_class +
         dsl::position + dsl::p<stub_name_p> +
         (dsl::lit_c<';'> >> dsl::nullopt |
-         dsl::else_ >> (dsl::lit_c<':'> + dsl::p<base_p> + dsl::lit_c<'{'> + dsl::p<members_p>));
+         dsl::else_ >> (dsl::opt(dsl::lit_c<':'> >> dsl::p<base_p>) + dsl::lit_c<'{'> + dsl::p<members_p>));
     static constexpr auto value = lexy::bind(
         lexy::callback<TopItem>(
             [](const ParseState& st, const char* pos, const auto& attrs, const char* name_pos,
@@ -981,7 +981,7 @@ struct class_p {
                 return t;
             },
             [](const ParseState& st, const char* pos, const auto& attrs, const char* name_pos,
-               std::string&& name, std::string&& base, auto&& members) {
+               std::string&& name, auto&& base, auto&& members) {
                 const ClassAttrs* a = class_attrs_of(attrs);
                 TopItem t;
                 t.kind = TopItem::IsClass;
@@ -989,7 +989,8 @@ struct class_p {
                 if (name.find_first_of("*<:") != std::string::npos)
                     st.error(name_pos, "a script class needs a plain name");
                 c.name = std::move(name);
-                c.base = std::move(base);
+                if constexpr (!std::is_same_v<std::decay_t<decltype(base)>, lexy::nullopt>)
+                    c.base = std::move(base);
                 c.pos = st.offset(pos);
                 c.line = st.map->line(c.pos);
                 if (a) {

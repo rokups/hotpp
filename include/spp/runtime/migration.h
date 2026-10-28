@@ -1,6 +1,7 @@
 // The factory of a script class and the plan that migrates the state of a live object.
 #pragma once
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -26,11 +27,16 @@ enum class FieldAction : uint8_t {
     Move,     // copy or move the old field "old_index"
     Convert,  // the type changed: run the convert hook of the new field on the old field
     Init,     // run the initializer
+    Nested,   // a [value] script class in both layouts: migrate its fields (design 5.3)
 };
+
+struct MigrationPlan;
 
 struct FieldStep {
     FieldAction action;
-    uint32_t old_index;  // valid for Move and Convert
+    uint32_t old_index;  // valid for Move, Convert and Nested
+    // The plan of the fields of the value class (Nested only).
+    std::shared_ptr<MigrationPlan> nested = nullptr;
 };
 
 struct MigrationPlan {

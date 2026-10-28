@@ -126,6 +126,11 @@ struct Lowerer {
         expr(*r.obj);
         CallExpr c;
         c.pos = pos;
+        if (cx.cls->is_value) {  // a [value] object: the address of the struct
+            c.callee = raw("spp::value_ptr", pos);
+            c.args.push_back(std::move(*r.obj));
+            return make_expr(std::move(c));
+        }
         c.callee = raw("spp::shell_of<" + cx.cls->name + "_Shell>", pos);
         c.args.push_back(std::move(*r.obj));
         c.args.push_back(raw("\"" + cx.cls->name + "\"", 0));
@@ -255,6 +260,7 @@ struct Lowerer {
     void new_expr(ExprP& e, NewExpr& n)
     {
         const uint32_t pos = n.pos;
+        const std::string type = n.type;  // "n" is gone after "e" gets a new node
         if (cx.script_classes.count(n.type)) {
             if (!cx.new_classes.count(n.type)) {
                 error(pos, "class '" + n.type + "' must come before the class that builds it with 'new'");
@@ -263,9 +269,27 @@ struct Lowerer {
             exprs(n.args);
             CallExpr c;
             c.pos = pos;
+            if (cx.types && cx.types->is_script_value(n.type)) {
+                // A [value] class: "new Stats(args)" is the value "Stats(args)" (design 7.10.1).
+                c.callee = raw(n.type, pos);
+                c.args = std::move(n.args);
+                e = make_expr(std::move(c));
+                return;
+            }
             c.callee = raw(n.type + "__new", pos);
             c.args = std::move(n.args);
             e = make_expr(std::move(c));
+            // A script class is a handle (design 7.10.1): "H(Name__new(args))".
+            if (cx.types) {
+                const std::string h = cx.types->storage(type);
+                if (h != type) {
+                    CallExpr w;
+                    w.pos = pos;
+                    w.callee = raw(h, pos);
+                    w.args.push_back(std::move(e));
+                    e = make_expr(std::move(w));
+                }
+            }
             return;
         }
         exprs(n.args);
@@ -318,6 +342,10 @@ struct Lowerer {
             return;
         }
         if (std::holds_alternative<SuperExpr>(m.obj->v)) {
+            if (cx.cls->base.empty()) {
+                error(obj_pos, "'super' needs a base class: '" + cx.cls->name + "' has none");
+                return;
+            }
             e = raw("self->" + cx.cls->base + "::" + m.name, obj_pos);
             return;
         }
@@ -333,6 +361,10 @@ struct Lowerer {
     {
         if (!cx.allow_this) {
             error(l.pos, "a lambda is not allowed in a field initializer");
+            return;
+        }
+        if (cx.cls && cx.cls->is_value) {
+            error(l.pos, "a lambda is not allowed in a [value] class: a value can move");
             return;
         }
         for (const Param& p : l.params) {
