@@ -17,6 +17,7 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/VirtualFileSystem.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Transforms/Utils/Cloning.h>
 
 #include <chrono>
 #include <filesystem>
@@ -151,6 +152,48 @@ Compiled compile(const JitOptions& opt, const std::string& path, const std::stri
 
 }  // namespace
 
+namespace {
+
+// Adds the module to a new JITDylib "id", runs the static initializers and finds
+// script_register. The Module owns the JITDylib.
+LoadResult add_to_jit(const std::shared_ptr<JitState>& impl, const std::string& id, llvm::orc::ThreadSafeModule tsm)
+{
+    LoadResult r;
+    auto holder = std::make_unique<Generation>();
+    holder->impl = impl;
+    llvm::orc::LLJIT& jit = *impl->jit;
+    auto dylib = jit.createJITDylib(id);
+    if (!dylib) {
+        r.error = "cannot make a JITDylib: " + error_text(dylib.takeError()) + "\n";
+        return r;
+    }
+    holder->dylib = &*dylib;
+    holder->tracker = holder->dylib->createResourceTracker();
+    if (llvm::Error e = jit.addIRModule(holder->tracker, std::move(tsm))) {
+        r.error = "cannot add the module: " + error_text(std::move(e)) + "\n";
+        return r;  // "holder" removes the dylib
+    }
+    // Static initializers run here: for example the dynamic initializer of the class record.
+    if (llvm::Error e = jit.initialize(*holder->dylib)) {
+        r.error = "cannot run the static initializers: " + error_text(std::move(e)) + "\n";
+        return r;
+    }
+    holder->initialized = true;
+    auto addr = jit.lookup(*holder->dylib, "script_register");
+    if (!addr) {
+        r.error = "script_register not found or not linkable: " + error_text(addr.takeError()) + "\n";
+        return r;
+    }
+    Module m;
+    m.register_fn = addr->toPtr<Module::RegisterFn>();
+    m.keep_alive = std::shared_ptr<void>(holder.release(), [](void* p) { delete static_cast<Generation*>(p); });
+    m.origin = "jit:" + id;
+    r.module = std::move(m);
+    return r;
+}
+
+}  // namespace
+
 JitBackend::JitBackend(JitOptions options) : opt_(std::move(options))
 {
     if (!opt_.session) opt_.session = std::make_shared<sppc::TranslatorSession>();
@@ -216,42 +259,27 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
         impl_ = std::move(impl);
     }
 
-    auto holder = std::make_unique<Generation>();
-    holder->impl = impl_;
-    llvm::orc::LLJIT& jit = *impl_->jit;
-    auto dylib = jit.createJITDylib(id);
-    if (!dylib) {
-        r.error = "cannot make a JITDylib: " + error_text(dylib.takeError()) + "\n";
-        return r;
-    }
-    holder->dylib = &*dylib;
-    holder->tracker = holder->dylib->createResourceTracker();
-    llvm::orc::ThreadSafeModule tsm(std::move(c.module),
-                                    llvm::orc::ThreadSafeContext(std::move(c.context)));
-    if (llvm::Error e = jit.addIRModule(holder->tracker, std::move(tsm))) {
-        r.error = "cannot add the module: " + error_text(std::move(e)) + "\n";
-        return r;  // "holder" removes the dylib
-    }
-    // Static initializers run here: for example the dynamic initializer of the class record.
-    if (llvm::Error e = jit.initialize(*holder->dylib)) {
-        r.error = "cannot run the static initializers: " + error_text(std::move(e)) + "\n";
-        return r;
-    }
-    holder->initialized = true;
-    auto addr = jit.lookup(*holder->dylib, "script_register");
-    if (!addr) {
-        r.error = "script_register not found or not linkable: " + error_text(addr.takeError()) + "\n";
+    // The core instance (module.h) needs a copy of the IR: the JIT consumes the module.
+    auto tsc = llvm::orc::ThreadSafeContext(std::move(c.context));
+    auto core_ir = std::make_shared<llvm::orc::ThreadSafeModule>(llvm::CloneModule(*c.module), tsc);
+    LoadResult added = add_to_jit(impl_, id, llvm::orc::ThreadSafeModule(std::move(c.module), tsc));
+    if (!added) {
+        r.error = added.error;
         return r;
     }
     timings_.jit_ms = ms_since(t0);
     slots_ = tr.slots_out;  // the slot order changes only when the whole load succeeds
-    Module m;
-    m.register_fn = addr->toPtr<Module::RegisterFn>();
-    m.keep_alive = std::shared_ptr<void>(holder.release(),
-                                         [](void* p) { delete static_cast<Generation*>(p); });
-    m.origin = "jit:" + id;
-    r.module = std::move(m);
-    return r;
+    // The core gets its own JITDylib. The loader calls make_core at most one time.
+    std::shared_ptr<JitState> impl = impl_;
+    added.module->make_core = [impl, id, core_ir]() {
+        if (!*core_ir) {
+            LoadResult e;
+            e.error = "the core instance of jit:" + id + " is made already";
+            return e;
+        }
+        return add_to_jit(impl, id + ".core", std::move(*core_ir));
+    };
+    return added;
 }
 
 bool JitBackend::make_pch(const std::string& header_path, const std::string& out_pch,

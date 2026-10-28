@@ -5,6 +5,8 @@
 #include <cassert>
 #include <cstdio>
 #include <exception>
+#include <functional>
+#include <iterator>
 
 #include "runtime_internal.h"
 
@@ -22,11 +24,75 @@ struct Loader::Pending {
     Registry staged;
     std::vector<PendingClass> classes;
     MigrationPlan mod_plan;  // the plan of the module state block (old layout to new layout)
+    // The core instance (module.h) when the generation adds a class or a thunk, else empty.
+    bool have_core = false;
+    Module core;
+    Registry core_reg;
 };
 
 namespace {
 // The layout of a script without module variables: the plan of a new block is all "Init".
+// A removed class also gets it when the generation of its last layout unloads.
 const StateLayout kEmptyLayout = {"", 1, 1, 0, nullptr};
+
+// Copies the parts of a generation record that change at a reload into the canonical record.
+void adopt(ClassRecord* canon, ClassRecord* in)
+{
+    canon->slots = in->slots;
+    canon->slot_count = in->slot_count;
+    canon->layout = in->layout;
+    canon->generation = in->generation;
+    canon->on_reload = in->on_reload;
+    canon->ctor_default = in->ctor_default;
+    canon->dtor = in->dtor;
+    if (in != canon) in->canonical = canon;
+}
+
+// Makes the core instance of "m" (module.h) and registers it in "reg". The core must register
+// the same classes and thunks as "code", in other memory. On false there is no core and a
+// warning tells why; then "m" keeps the parts. The function clears m.make_core in each case.
+bool open_core(Module& m, const Registry& code, Module& core, Registry& reg)
+{
+    if (!m.make_core) return false;
+    const std::function<LoadResult()> make = std::move(m.make_core);
+    m.make_core = nullptr;
+    std::string why;
+    LoadResult r;
+    try {
+        r = make();
+    } catch (...) {
+        r.error = "make_core threw an exception";
+    }
+    if (!r || !r.module->register_fn) {
+        why = r ? std::string("no script_register") : r.error;
+    } else {
+        try {
+            r.module->register_fn(reg);
+        } catch (...) {
+            why = "script_register of the core threw an exception";
+        }
+    }
+    if (why.empty()) {
+        bool same = reg.entries().size() == code.entries().size() && reg.thunks().size() == code.thunks().size();
+        for (const auto& [name, e] : code.entries()) {
+            const ClassEntry* c = reg.find(name);
+            same = same && c && c->record != e.record && c->record->generation == e.record->generation &&
+                   c->record->shell_hash == e.record->shell_hash;
+        }
+        for (const auto& [name, fn] : code.thunks()) {
+            void* t = reg.thunk(name);
+            same = same && t && t != fn;
+        }
+        if (!same) why = "the core does not register the same classes and thunks in its own memory";
+    }
+    if (!why.empty()) {
+        std::fprintf(stderr, "[script] WARNING: no core module for %s (%s); the generation stays loaded\n",
+                     m.origin.c_str(), why.c_str());
+        return false;
+    }
+    core = std::move(*r.module);
+    return true;
+}
 }  // namespace
 
 namespace {
@@ -89,21 +155,31 @@ bool Loader::load(Module module, std::string& error)
         error = "the module has no script_register function";
         return false;
     }
+    Registry code;
+    module.register_fn(code);
+    // The core instance gives the canonical records, the factories and the thunks (module.h).
+    Module core;
+    Registry core_reg;
+    const bool have_core = open_core(module, code, core, core_reg);
     std::lock_guard<std::mutex> lock(mutex_);
-    registry_.clear_module_state();
-    module.register_fn(registry_);
-    if (const ModuleStateInfo& ms = registry_.module_state(); ms.layout) {
+    if (const ModuleStateInfo& ms = code.module_state(); ms.layout) {
         if (mod_block_) {
             error = "the loader has a module state block already";
             return false;
         }
         if (!make_module_block(ms, error)) return false;
     }
+    const Registry& canon = have_core ? core_reg : code;
+    for (const auto& [name, e] : canon.entries()) registry_.add(e.record, e.create);
+    for (const auto& [name, fn] : canon.thunks()) registry_.add_thunk(name, fn);
+    if (have_core)
+        for (const auto& [name, e] : code.entries()) adopt(registry_.find(name)->record, e.record);
     const uint32_t gen = registry_.max_generation();
-    note_records(registry_, gen);
+    if (!have_core) note_records(code, gen);
     add_generation(std::move(module), gen);
     gens_.back().registry_refs =
-        static_cast<uint32_t>(registry_.entries().size() + registry_.thunks().size());
+        have_core ? 0u : static_cast<uint32_t>(code.entries().size() + code.thunks().size());
+    if (have_core) cores_.push_back(std::move(core));
     active_generation = gen;
     return true;
 }
@@ -122,14 +198,50 @@ void Loader::add_generation(Module module, uint32_t generation)
     gens_.push_back(std::move(g));
 }
 
+// An object uses the code of up to three generations:
+//   - the module that holds its record, when the record is not in a core (record_gen_);
+//   - the generation of the record: the layout, the field functions and the slots. For a
+//     removed class this is the last generation that had the class;
+//   - the generation whose "new" made the object and its handle (g_live).
+// The vtable is in the module that holds the record.
 std::unordered_map<uint32_t, uint32_t> Loader::live_by_module() const
 {
     std::unordered_map<uint32_t, uint32_t> live;
-    for (const ShellBase* s : g_live) {
-        auto it = record_gen_.find(s->cls);
-        if (it != record_gen_.end()) ++live[it->second];
+    for (const auto& [s, creator] : g_live) {
+        uint32_t used[3] = {s->cls->generation, creator, 0};
+        if (auto it = record_gen_.find(s->cls); it != record_gen_.end()) used[2] = it->second;
+        for (int i = 0; i < 3; ++i) {
+            const bool seen = (i > 0 && used[i] == used[0]) || (i > 1 && used[i] == used[1]);
+            if (used[i] != 0 && !seen) ++live[used[i]];
+        }
     }
     return live;
+}
+
+namespace {
+// True when a field of the layout, or of a [value] struct in it, has the flag kMayHoldCode.
+bool layout_holds_code(const StateLayout* l, int depth = 0)
+{
+    if (!l || depth > 32) return false;
+    for (uint32_t i = 0; i < l->field_count; ++i) {
+        const FieldInfo& f = l->fields[i];
+        if (f.flags & kMayHoldCode) return true;
+        if ((f.flags & kScriptStruct) && layout_holds_code(f.sub, depth + 1)) return true;
+    }
+    return false;
+}
+}  // namespace
+
+bool Loader::state_holds_code() const
+{
+    if (mod_block_ && layout_holds_code(mod_layout_)) return true;
+    std::unordered_map<const StateLayout*, bool> seen;
+    for (const auto& [s, creator] : g_live) {
+        auto [it, fresh] = seen.try_emplace(s->cls->layout, false);
+        if (fresh) it->second = layout_holds_code(s->cls->layout);
+        if (it->second) return true;
+    }
+    return false;
 }
 
 uint32_t Loader::code_refs(const Gen& g, const std::unordered_map<uint32_t, uint32_t>& live) const
@@ -146,8 +258,19 @@ unsigned Loader::frame_boundary()
     for (Gen& g : gens_) {
         if (g.state != GenState::Retired || g.retired_frame >= frame_) continue;
         if (pin_count(g.generation) != 0) continue;
-        if (!have_live) live = live_by_module(), have_live = true;
+        if (!have_live) {
+            // A field value can point to the code of any generation that ran (design 4.9).
+            if (state_holds_code()) break;
+            live = live_by_module(), have_live = true;
+        }
         if (code_refs(g, live) != 0) continue;
+        // A removed class without objects can still have its last layout in this generation.
+        // A new object of it (the factory) gets an empty state then.
+        for (const auto& [name, table] : removed_)
+            if (ClassEntry* e = registry_.find(name); e && e->record->generation == g.generation)
+                e->record->layout = &kEmptyLayout;
+        for (auto it = record_gen_.begin(); it != record_gen_.end();)
+            it = it->second == g.generation ? record_gen_.erase(it) : std::next(it);
         g.module = Module{};  // the keep-alive object releases the code
         g.state = GenState::Unloaded;
         std::fprintf(stderr, "[script] generation %u unloaded\n", g.generation);
@@ -162,12 +285,14 @@ LoaderStats Loader::stats() const
     LoaderStats st;
     st.active_generation = active_generation;
     st.live_objects = g_live.size();
+    st.core_modules = cores_.size();
+    st.state_holds_code = state_holds_code();
     const auto live = live_by_module();
     for (const Gen& g : gens_)
         st.generations.push_back({g.generation, g.state, pin_count(g.generation),
                                   code_refs(g, live), g.module.origin});
     std::unordered_map<const ClassRecord*, size_t> by_class;
-    for (const ShellBase* s : g_live) ++by_class[s->cls];
+    for (const auto& [s, creator] : g_live) ++by_class[s->cls];
     for (const auto& [name, e] : registry_.entries()) {
         const auto it = by_class.find(e.record);
         st.classes.push_back({name, e.record->generation, e.record->slot_count,
@@ -194,6 +319,8 @@ std::string format_stats(const LoaderStats& st)
         o += "  class " + c.name + ": generation " + std::to_string(c.generation) + ", " +
              std::to_string(c.slots) + " slots, " + std::to_string(c.live_objects) + " live" +
              (c.removed ? ", REMOVED" : "") + "\n";
+    o += "  core modules: " + std::to_string(st.core_modules) + "\n";
+    if (st.state_holds_code) o += "  unload blocked: a live state field can point to the code of a generation\n";
     o += "  removed class calls ignored: " + std::to_string(st.removed_class_calls) + "\n";
     return o;
 }
@@ -236,6 +363,17 @@ bool Loader::request_reload(Module module, std::string& error)
         error = "script_register threw an exception";
         return false;
     }
+    // A generation that adds a class or a thunk gets a core instance (module.h). Only a commit
+    // changes "registry_", and a commit needs "pending_". The check of "pending_" below
+    // rejects this request when another request was faster.
+    bool adds = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (const auto& [name, e] : p->staged.entries()) adds = adds || !registry_.find(name);
+        for (const auto& [name, fn] : p->staged.thunks()) adds = adds || !registry_.thunk(name);
+    }
+    if (adds) p->have_core = open_core(p->module, p->staged, p->core, p->core_reg);
+    p->module.make_core = nullptr;  // the JIT keeps a copy of the IR for it
 
     // Validation. Nothing here changes a live class or a live object.
     // The lock keeps "registry_" and the class records stable. Only
@@ -344,7 +482,7 @@ bool Loader::commit_pending(std::string& error)
             if (!new_mod) throw std::bad_alloc();
         }
         work.reserve(g_live.size());
-        for (ShellBase* s : g_live) {
+        for (const auto& [s, creator] : g_live) {
             const PendingClass* pc = nullptr;
             for (const PendingClass& c : P.classes)
                 if (c.canon && c.canon->record == s->cls) pc = &c;
@@ -398,15 +536,13 @@ bool Loader::commit_pending(std::string& error)
     for (const PendingClass& pc : P.classes) {
         if (pc.canon) {
             ClassRecord* r = pc.canon->record;
-            r->slots = pc.incoming->slots;
-            r->slot_count = pc.incoming->slot_count;
-            r->layout = pc.incoming->layout;
-            r->generation = pc.incoming->generation;
-            r->on_reload = pc.incoming->on_reload;
-            r->ctor_default = pc.incoming->ctor_default;
-            r->dtor = pc.incoming->dtor;
-            pc.incoming->canonical = r;
+            adopt(r, pc.incoming);
             removed_.erase(r->name);  // the class is back; the table above replaced the handler table
+        } else if (P.have_core) {
+            // The record, the factory and the shell of the core module are canonical.
+            const ClassEntry* ce = P.core_reg.find(pc.incoming->name);
+            registry_.add(ce->record, ce->create);
+            adopt(ce->record, pc.incoming);
         } else {
             registry_.add(pc.incoming, pc.create);
         }
@@ -421,8 +557,9 @@ bool Loader::commit_pending(std::string& error)
         r->slots = table.data();
         r->on_reload = nullptr;
         r->dtor = nullptr;  // the script destructor belongs to a source that does not exist now
+        r->ctor_default = nullptr;  // the same: the factory makes an object without a constructor
         size_t live = 0;
-        for (const ShellBase* s : g_live) live += s->cls == r;
+        for (const auto& [s, creator] : g_live) live += s->cls == r;
         std::fprintf(stderr,
                      "[script] WARNING: class %s is removed from the source; %zu live object(s) keep "
                      "their state, and calls of its methods are ignored\n",
@@ -431,16 +568,20 @@ bool Loader::commit_pending(std::string& error)
     // A new class with a script parent: "super" points to the record of the parent in the
     // registry, so a walk of the records sees the canonical records (design 4.5).
     for (const PendingClass& pc : P.classes) {
-        if (pc.canon || !pc.incoming->super) continue;
-        if (ClassEntry* pe = registry_.find(pc.incoming->super->name)) pc.incoming->super = pe->record;
+        if (pc.canon) continue;
+        ClassRecord* r = registry_.find(pc.incoming->name)->record;
+        if (!r->super) continue;
+        if (ClassEntry* pe = registry_.find(r->super->name)) r->super = pe->record;
     }
+    // With a core, the new thunks come from the core and the generation holds no entry.
     uint32_t new_refs = 0;
     for (const PendingClass& pc : P.classes)
-        if (!pc.canon) ++new_refs;
-    for (const auto& [name, fn] : P.staged.thunks()) {
-        if (!registry_.thunk(name)) ++new_refs;
+        if (!pc.canon && !P.have_core) ++new_refs;
+    for (const auto& [name, fn] : (P.have_core ? P.core_reg : P.staged).thunks()) {
+        if (!registry_.thunk(name) && !P.have_core) ++new_refs;
         registry_.add_thunk(name, fn);
     }
+    if (P.have_core) cores_.push_back(std::move(P.core));
 
     // Step 5: switch the generation.
     active_generation = P.staged.max_generation();
@@ -482,7 +623,7 @@ bool Loader::commit_pending(std::string& error)
             g.state = GenState::Retired;
             g.retired_frame = frame_;
         }
-    note_records(P.staged, active_generation);
+    if (!P.have_core) note_records(P.staged, active_generation);
     add_generation(std::move(P.module), active_generation);
     gens_.back().registry_refs = new_refs;
     pending_.reset();

@@ -4,10 +4,9 @@
 // stores an arrow lambda in a World timer. The tests use the backend that
 // SPP_BACKEND selected (make_default_backend).
 //
-// Finding: the first generation cannot unload while its class lives.
-// The class record, the factory, the thunks and the vtable of the first object
-// are in the module of generation 1. The loader keeps that module (code_refs).
-// The unload tests use generation 2 of a chain 1 -> 2 -> 3.
+// The class record, the factory, the thunks and the vtable of each object are in the core
+// module (design 4.9, M8). So generation 1 unloads like a later generation. The first unload
+// tests use generation 2 of a chain 1 -> 2 -> 3.
 //
 // CMake defines SPP_SOURCE_DIR.
 #include <gtest/gtest.h>
@@ -15,6 +14,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "spp/backend.h"
 #include "support/script_files.h"
@@ -238,9 +238,9 @@ TEST_F(GenerationUnload, ClearTimersReleasesThePin)
     EXPECT_EQ(find_gen(s.loader.stats(), 2)->state, GenState::Unloaded);
 }
 
-// Finding: generation 1 holds the record, the factory, the thunks and the vtable
-// of the first object. It stays retired after the closure is dropped.
-TEST_F(GenerationUnload, FirstGenerationStaysLoadedWhileItsClassLives)
+// The core module holds the record, the factory, the thunks and the vtable of the object.
+// So generation 1 unloads after the closure is dropped, while its object lives.
+TEST_F(GenerationUnload, FirstGenerationUnloadsWhileItsObjectLives)
 {
     Session s;
     spp::Module m2 = build("timer_v2.spp", 2);
@@ -256,13 +256,66 @@ TEST_F(GenerationUnload, FirstGenerationStaysLoadedWhileItsClassLives)
     const spp::LoaderStats st = s.loader.stats();
     const GenerationInfo* g1 = find_gen(st, 1);
     ASSERT_NE(g1, nullptr);
-    EXPECT_EQ(g1->state, GenState::Retired);
+    EXPECT_EQ(g1->state, GenState::Unloaded);
     EXPECT_EQ(g1->pins, 0u);
-    EXPECT_GT(g1->code_refs, 0u);
-    // The object still ticks, and the virtual call goes through the vtable of generation 1.
+    EXPECT_EQ(g1->code_refs, 0u);
+    EXPECT_EQ(st.core_modules, 1u);
+    EXPECT_EQ(st.live_objects, 1u);
+    // The object still ticks: the virtual call goes through the vtable of the core module.
     const int ticks0 = *int_field(s, "ticks");
     s.world.Tick(kDt);
     EXPECT_EQ(*int_field(s, "ticks"), ticks0 + 1);
+    // The thunk is in the core module too. The closure of generation 2 runs.
+    ASSERT_NO_FATAL_FAILURE(arm(s, 0.5f));
+    testing::internal::CaptureStdout();
+    s.world.Tick(1.0f);
+    const std::string out = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(count_lines(out, "[timer v2]"), 1) << out;
+    // The engine factory of the core module makes a new object after the unload.
+    const spp::ClassEntry* e = s.loader.find("Beeper");
+    ASSERT_NE(e, nullptr);
+    spp::Instance second = e->create();
+    s.world.Add(static_cast<Actor*>(second.native));
+    s.world.Tick(kDt);
+    ASSERT_NE(spp::field_ptr<int>(second.shell, "ticks"), nullptr);
+    EXPECT_EQ(*spp::field_ptr<int>(second.shell, "ticks"), 1);
+}
+
+// Many reloads with live objects of several generations: the count of loaded modules stays
+// bounded. Each generation is a new compile, so the test uses a short chain. The fixture test
+// ManyReloads (integration_reload_tests) runs hundreds of reloads.
+TEST_F(GenerationUnload, LoadedModulesStayBoundedOverReloads)
+{
+    constexpr uint32_t kLast = 6;
+    std::vector<spp::Module> mods;
+    for (uint32_t g = 2; g <= kLast; ++g) mods.push_back(build("timer_v2.spp", g));
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(build("timer_v1.spp", 1), "Beeper"));
+    s.commit_at_frame_boundary();
+    std::vector<spp::Instance> objs{s.inst};
+    testing::internal::CaptureStderr();
+    for (uint32_t g = 2; g <= kLast; ++g) {
+        ASSERT_NO_FATAL_FAILURE(reload(s, std::move(mods[g - 2])));
+        ASSERT_NO_FATAL_FAILURE(arm(s, 0.0f));  // a closure of this generation; it fires next frame
+        spp::Instance o = s.loader.find("Beeper")->create();  // an object of this generation
+        s.world.Add(static_cast<Actor*>(o.native));
+        objs.push_back(o);
+        s.world.Tick(kDt);
+        s.world.Tick(kDt);
+        const spp::LoaderStats st = s.loader.stats();
+        size_t loaded = st.core_modules;
+        for (const GenerationInfo& gi : st.generations) loaded += gi.state != GenState::Unloaded;
+        EXPECT_LE(loaded, 2u) << "generation " << g << "\n" << s.loader.stats_text();
+    }
+    testing::internal::GetCapturedStderr();
+    const spp::LoaderStats st = s.loader.stats();
+    for (uint32_t g = 1; g < kLast; ++g) EXPECT_EQ(find_gen(st, g)->state, GenState::Unloaded) << g;
+    EXPECT_EQ(st.live_objects, objs.size());
+    // All objects tick in the last generation.
+    std::vector<int> before;
+    for (const spp::Instance& o : objs) before.push_back(*spp::field_ptr<int>(o.shell, "ticks"));
+    s.world.Tick(kDt);
+    for (size_t i = 0; i < objs.size(); ++i) EXPECT_EQ(*spp::field_ptr<int>(objs[i].shell, "ticks"), before[i] + 1);
 }
 
 // The stats report the active generation, all generations and the live objects.

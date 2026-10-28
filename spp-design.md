@@ -404,6 +404,10 @@ Version 2 unloads a retired generation when three conditions hold.
 
 Raw function pointers to script code do not exist in the language. Only thunks and pinned closures leave script code. See section 5.
 
+The core module (M8). The canonical class record, the factory, the shell constructor (and so the vtables) and the thunks must stay valid for ever. So the loader loads a second instance of a generation that adds a class or a thunk: the core module. The core never unloads. The code module of the generation gives the slots, the layout and the constructor bodies. So every retired generation can unload, generation 1 too. CLANG_FILES loads a private copy of the library. JIT adds an IR clone to a separate JITDylib.
+
+A live object keeps three generations loaded: the generation of its layout, the generation of its record when no core exists, and the generation that ran `new` for it. A state field of a type that can hold code (`kMayHoldCode`, for example `std::shared_ptr` with its control block) blocks each unload while it lives. The runtime does not see a code pointer that native code keeps.
+
 ### 4.10 Compile and load of a generation
 
 The compile runs off the main thread. One generation is one shared library with all script modules. Cross-module script calls are direct calls inside the library. The module exports one symbol `script_register`. The loader calls it. The function returns class descriptors, dispatch tables and the reflection tables.

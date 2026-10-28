@@ -18,7 +18,7 @@ Status: [ ] open, [x] done. One slice is one commit.
 - [x] S8b Done: native interface bases (multiple native bases, slot conflicts, reload check of the base list), README and HANDOFF notes for S8a. Open: interface bases on a child of a script class.
   - S8a done: module variables, enums, structs (see DECISIONS.md 11). Open: native interface bases (S8b), a script convert hook for a module variable.
 - [x] S9 Runtime polish: removed-class handler, `script_stats`, entry-count debug check, watcher and command channel.
-- [ ] S10 M8: module that never unloads for generation 1.
+- [x] S10 M8 Done: core module (`Module::make_core`), generation 1 unloads, `kMayHoldCode` unload block, stress tests in `tests/integration/reload/core_module_tests.cpp`. Open: see HANDOFF.md, Not done item 2.
 - [ ] S11 Diagnostic rewriter, LLDB formatters.
 - [ ] S12 Shipping mode (M7).
 - [ ] S13 Tolerant parse and `source_map` (M10).

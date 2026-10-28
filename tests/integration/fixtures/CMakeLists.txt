@@ -8,3 +8,7 @@ foreach(g gen1 gen2 gen4_base)
     target_include_directories(${g} PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine)
     set_target_properties(${g} PROPERTIES PREFIX "")
 endforeach()
+# stress_generation: the class Pulse with the generation number of the load (reload stress test).
+add_library(stress_generation SHARED stress_generation.cpp)
+target_include_directories(stress_generation PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine)
+set_target_properties(stress_generation PROPERTIES PREFIX "")

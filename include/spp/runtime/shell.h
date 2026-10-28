@@ -42,11 +42,16 @@ inline auto call(const ClassRecord* cls, unsigned slot, A&&... a)
     return reinterpret_cast<Sig*>(cls->slots[slot])(std::forward<A>(a)...);
 }
 
-// Builds the shell of a script object in the module that made the class (design 7.3).
-// "rec" is the record of the running generation. "key" is typeid(std::tuple<...>).name()
-// of the base arguments in "args". The first record of the class holds the constructor of
-// the shell, so every object has the vtable of that module. The caller runs the script
-// constructor on the shell.
+// Records that the code of "generation" made the object "self" (state.cpp). The loader keeps
+// that generation loaded while the object lives, because the handle of the object (for example
+// the control block of a std::shared_ptr) has code of that generation.
+void note_creator(ShellBase* self, uint32_t generation);
+
+// Builds the shell of a script object (design 7.3). "rec" is the record of the running
+// generation. "key" is typeid(std::tuple<...>).name() of the base arguments in "args". The
+// canonical record of the class holds the constructor of the shell. It is in the core module
+// (module.h), or in the first generation when there is no core. So every object has the vtable
+// of that module. The caller runs the script constructor on the shell.
 inline ShellBase* construct_shell(const ClassRecord* rec, const char* key, const void* args)
 {
     const ClassRecord* canon = rec->canonical ? rec->canonical : rec;
@@ -56,7 +61,9 @@ inline ShellBase* construct_shell(const ClassRecord* rec, const char* key, const
     if (std::strcmp(canon->construct_key, key) != 0)
         throw std::runtime_error(std::string("class ") + rec->name +
                                  ": the types of the 'super(...)' arguments changed since the first generation");
-    return canon->construct(args);
+    ShellBase* s = canon->construct(args);
+    note_creator(s, rec->generation);
+    return s;
 }
 
 // A handle of the script object that owns the shell "self": the lowering of a bare "this"

@@ -15,6 +15,7 @@ add_executable(integration_reload_tests
     inheritance_tests.cpp
     interface_tests.cpp
     runtime_polish_tests.cpp
+    core_module_tests.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Harness.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Actor.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Object.cpp
@@ -22,12 +23,13 @@ add_executable(integration_reload_tests
 target_include_directories(integration_reload_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests)
 target_link_libraries(integration_reload_tests PRIVATE spp_backend engine_harness GTest::gtest_main)
 set_target_properties(integration_reload_tests PROPERTIES ENABLE_EXPORTS ON)
-add_dependencies(integration_reload_tests gen1 gen2 gen4_base)
+add_dependencies(integration_reload_tests gen1 gen2 gen4_base stress_generation)
 target_compile_definitions(integration_reload_tests PRIVATE
     SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     SPP_BACKEND_NAME="${SPP_BACKEND}"
     GEN1_SO="$<TARGET_FILE:gen1>"
     GEN2_SO="$<TARGET_FILE:gen2>"
     GEN4_BASE_SO="$<TARGET_FILE:gen4_base>"
+    STRESS_SO="$<TARGET_FILE:stress_generation>"
     GEN3_MISSING_SO="${CMAKE_BINARY_DIR}/gen3_missing.so")
 gtest_discover_tests(integration_reload_tests)

@@ -42,6 +42,8 @@ struct LoaderStats {
     uint32_t active_generation = 0;
     std::vector<GenerationInfo> generations;  // in load order
     size_t live_objects = 0;
+    size_t core_modules = 0;                  // loaded core modules (module.h); they never unload
+    bool state_holds_code = false;            // a live state block blocks each unload (kMayHoldCode)
     std::vector<ClassInfo> classes;           // sorted by name
     size_t slots = 0;                         // the sum of the slots of all classes
     uint64_t removed_class_calls = 0;         // calls that the removed class handler ignored
@@ -89,18 +91,26 @@ void request_restart(const char* reason);
 // and then commit_pending(), which the World loop calls at a safe point.
 // A class that the new generation does not have is removed (design 6.1). Its record stays,
 // the live objects stay valid, and each slot points to removed_class_handler().
-// The first record of a class stays the record of the class for ever. A
+// The canonical record of a class stays the record of the class for ever. A
 // commit copies the slots and the layout of the new record into it.
 // A thunk keeps the address of the first registration (append-only).
+//
+// Core modules (design 4.9, M8). When a generation adds a class or a thunk, the loader asks
+// the Module for a core instance (Module::make_core). The core is a second instance of the
+// same code. It gives the canonical record, the factory, the shell constructor (and so the
+// vtable of each object) and the thunks of the new parts. The loader keeps each core until
+// it is destroyed. A generation with a core holds no entry of the registry.
 //
 // The loader owns every Module. A generation that a reload replaced is
 // retired. frame_boundary() unloads a retired generation when all of these hold:
 //   1. its pin count is zero;
 //   2. at least one frame boundary passed after the commit that retired it;
 //   3. no code of the module is in use (code_refs is zero).
-// The record, the factory and the thunks of a class stay in the module that
-// registered the class first. The vtable of an object stays in the module that
-// made the object. Condition 3 keeps those modules loaded.
+// Condition 3 counts the entries of the registry that the module holds (only without a core),
+// and the live objects that use the module: see live_by_module.
+// No retired generation unloads while a live state block has a field with kMayHoldCode
+// (records.h), for example a std::shared_ptr. Its control block can have the vtable of
+// any generation that ran. A value that native code keeps is not seen (design 4.9).
 class Loader {
 public:
     Loader();
@@ -152,9 +162,12 @@ private:
     // The number of live objects for each module (the module that made the object).
     std::unordered_map<uint32_t, uint32_t> live_by_module() const;
     uint32_t code_refs(const Gen& g, const std::unordered_map<uint32_t, uint32_t>& live) const;
+    // True when a live state block (an object or the module block) has a field with kMayHoldCode.
+    bool state_holds_code() const;
 
     mutable std::mutex mutex_;  // see "Threads" above
     Registry registry_;
+    std::vector<Module> cores_;  // the core modules; the destructor removes them after "gens_"
     std::vector<Gen> gens_;  // the loader owns all modules; a retired one stays until it unloads
     std::unordered_map<const ClassRecord*, uint32_t> record_gen_;  // the module that holds a record
     uint64_t frame_ = 0;

@@ -179,8 +179,10 @@ TEST(TranslateDiagnostics, TruncatedInputsTerminate)
             }
         }
     }
+    // The bound finds a hang, not a slow run. A normal build needs about 1.5 s. A sanitizer build
+    // under a parallel ctest load needs up to 5 times more, so the bound is 15 s.
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
-    EXPECT_LT(ms.count(), 5000);
+    EXPECT_LT(ms.count(), 15000);
 }
 
 // A non-string attribute argument on a native stub gives one error and no second error.

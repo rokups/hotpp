@@ -5,9 +5,16 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <array>
+#include <map>
 #include <new>
+#include <optional>
+#include <string>
 #include <type_traits>
 #include <typeinfo>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "spp/runtime/records.h"
 #include "spp/runtime/shell.h"
@@ -69,19 +76,46 @@ inline void destroy_state(ShellBase* self)
     self->state = nullptr;
 }
 
+// True when a value of T cannot point into the code of the module that made it (no vtable, no
+// function pointer). A trivially copyable type is not polymorphic. The standard containers with
+// the default allocator, hash and order are free of code when their elements are. A function
+// pointer in a trivially copyable type is not detected. An engine can add a specialization.
+template <class T>
+struct holds_no_code : std::bool_constant<std::is_trivially_copyable_v<T>> {};
+template <class C, class Tr>
+struct holds_no_code<std::basic_string<C, Tr, std::allocator<C>>> : std::true_type {};
+template <class T>
+struct holds_no_code<std::vector<T, std::allocator<T>>> : holds_no_code<T> {};
+template <class T, size_t N>
+struct holds_no_code<std::array<T, N>> : holds_no_code<T> {};
+template <class T>
+struct holds_no_code<std::optional<T>> : holds_no_code<T> {};
+template <class A, class B>
+struct holds_no_code<std::pair<A, B>> : std::bool_constant<holds_no_code<A>::value && holds_no_code<B>::value> {};
+template <class K, class V>
+struct holds_no_code<std::map<K, V, std::less<K>, std::allocator<std::pair<const K, V>>>>
+    : std::bool_constant<holds_no_code<K>::value && holds_no_code<V>::value> {};
+template <class K, class V>
+struct holds_no_code<std::unordered_map<K, V, std::hash<K>, std::equal_to<K>, std::allocator<std::pair<const K, V>>>>
+    : std::bool_constant<holds_no_code<K>::value && holds_no_code<V>::value> {};
+template <class T>
+struct holds_no_code<const T> : holds_no_code<T> {};
+
 // Helpers for the reflection table of generated code. T is the field type.
 template <class T>
 constexpr uint8_t field_flags()
 {
     return static_cast<uint8_t>((std::is_trivially_copyable_v<T> ? kTriviallyCopyable : 0) |
-                                (std::is_nothrow_move_constructible_v<T> ? kNothrowMove : 0));
+                                (std::is_nothrow_move_constructible_v<T> ? kNothrowMove : 0) |
+                                (holds_no_code<T>::value ? 0 : kMayHoldCode));
 }
 
-// The flags of a field that holds a [value] script class (design 5.3).
+// The flags of a field that holds a [value] script class (design 5.3). The loader looks at the
+// fields of the sub layout for kMayHoldCode, so the flag of the struct itself is not set.
 template <class T>
 constexpr uint8_t value_field_flags()
 {
-    return static_cast<uint8_t>(field_flags<T>() | kScriptStruct);
+    return static_cast<uint8_t>((field_flags<T>() & ~kMayHoldCode) | kScriptStruct);
 }
 
 template <class T>

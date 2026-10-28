@@ -233,7 +233,7 @@ An arrow lambda becomes `spp::make_closure(GEN, "Class::fn lambda", [=](params) 
 
 The `Loader` owns all modules. A reload retires the old generation. `Loader::frame_boundary()` (call it in the hook, after `commit_pending`) unloads a retired generation when all of these are true: the pin count is zero, a frame boundary passed after the commit, and `code_refs` is zero. The unload is `dlclose` (CLANG_FILES) or the removal of the ORC resource tracker (JIT). `Loader::stats()` gives the active generation, each generation with its state (active, retired, unloaded), its pins and its `code_refs`, and the number of live objects.
 
-Result of R3: the stale call is logged once and the old body does not run. No ASan error. Result of R6: generation 2 of the chain 1, 2, 3 unloads after its closure is dropped, and later ticks are clean. Generation 1 does not unload. Its module holds the class record, the factory, the thunks and the vtable of the first object. `code_refs` counts them. Generation 1 can unload only if these move to a module that never unloads. Destroy the last copy of a closure on the main thread. The destructor code is in the module.
+Result of R3: the stale call is logged once and the old body does not run. No ASan error. Result of R6: generation 2 of the chain 1, 2, 3 unloads after its closure is dropped, and later ticks are clean. Generation 1 unloads too (S10). A core module holds the class record, the factory, the thunks and the vtables. The core is a second instance of the same generation code, and it never unloads. Destroy the last copy of a closure on the main thread. The destructor code is in the module.
 
 ## Reload hooks
 

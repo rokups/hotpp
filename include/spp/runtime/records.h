@@ -18,6 +18,10 @@ enum FieldFlags : uint8_t {
     kTriviallyCopyable = 1,
     kNothrowMove = 2,
     kScriptStruct = 4,
+    // A value of the field type can point into the code of the module that made it: a vtable or
+    // a function pointer. Examples: the control block of a std::shared_ptr, a std::function.
+    // While a live state block has such a field, no retired generation unloads (design 4.9).
+    kMayHoldCode = 8,
 };
 
 // One row of the reflection table of a state struct (section 4.7).
@@ -62,8 +66,9 @@ struct ClassRecord {
     uint64_t shell_hash;    // hash of the shell layout (see shell_layout_hash)
     // The onReload hook of the script class, or null. The commit calls it after the migration.
     void (*on_reload)(ShellBase* self, const OldState& old) = nullptr;
-    // Script constructors (design 7.3). The first record of a class keeps "construct" and
-    // "construct_key". They live in the module that made the shell.
+    // Script constructors (design 7.3). The canonical record of a class keeps "construct" and
+    // "construct_key". They live in the module that made the shell: the core module (module.h),
+    // or the first generation of the class when there is no core.
     //  - construct: makes a shell and gives it the base arguments. "args" points to a
     //    std::tuple of the decayed types of the "super(...)" arguments. Null when no code
     //    of the script builds the class with "new" and the class has no constructor.
@@ -72,8 +77,9 @@ struct ClassRecord {
     //  - ctor_default: runs the constructor with default values on a new shell. The
     //    factory of the engine calls it. A commit copies it from the new record. Null: no
     //    constructor.
-    //  - canonical: set by a commit in a record of a later generation. It points to the
-    //    first record of the class.
+    //  - canonical: set by the loader in each generation record that is not canonical. It
+    //    points to the canonical record of the class: the record of the core module, or the
+    //    first record of the class when there is no core.
     ShellBase* (*construct)(const void* args) = nullptr;
     const char* construct_key = nullptr;
     void (*ctor_default)(ShellBase* self) = nullptr;
