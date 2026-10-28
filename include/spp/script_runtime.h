@@ -409,6 +409,24 @@ decltype(auto) deref(H&& h)
 template <class T, std::size_t N>
 void deref(T (&)[N]) = delete;
 
+// The argument "ref e" or "out e" of the script. It holds a reference to the operand.
+// Clang picks the form from the native signature: a "T&" parameter gets the object,
+// and a "T*" parameter (or a "T*" field) gets its address.
+template <class T>
+struct RefArg {
+    T& ref;
+    constexpr operator T&() const noexcept { return ref; }
+    constexpr operator T*() const noexcept { return &ref; }
+};
+template <class T>
+constexpr RefArg<T> ref_arg(T& v) noexcept
+{
+    return RefArg<T>{v};
+}
+// A temporary has no address that the callee can keep.
+template <class T>
+void ref_arg(const T&&) = delete;
+
 // Calls slot "slot" of the class record. "Sig" is the signature of the slot.
 template <class Sig, class... A>
 inline auto call(const ClassRecord* cls, unsigned slot, A&&... a)

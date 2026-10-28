@@ -88,6 +88,24 @@ TEST(StmtParse, DeclarationWithoutInitializer)
               (std::vector<std::string>{"1:6: var needs an initializer"}));
 }
 
+TEST(StmtParse, RefLocalAndRefArguments)
+{
+    EXPECT_EQ(round_trip("var r = ref this.pos;"), "auto& r = this.pos;");
+    EXPECT_EQ(round_trip("Vec3 r = ref p;"), "Vec3& r = p;");
+    EXPECT_EQ(round_trip("const var r = ref p;"), "const auto& r = p;");
+    EXPECT_EQ(round_trip("Fill(out v); Swap(ref a, ref b);"),
+              "Fill(script::ref_arg(v)); Swap(script::ref_arg(a), script::ref_arg(b));");
+    EXPECT_EQ(round_trip("this.target = ref source;"), "this.target = script::ref_arg(source);");
+}
+
+TEST(StmtParse, PrefixAmpersandIsRemoved)
+{
+    Parsed p("var r = &x;");
+    EXPECT_EQ(errors_of(p), std::vector<std::string>{"1:9: use 'ref' instead of '&'"});
+    Parsed q("f(&x);");
+    EXPECT_EQ(errors_of(q), std::vector<std::string>{"1:3: use 'ref' instead of '&'"});
+}
+
 TEST(StmtParse, Declarations)
 {
     EXPECT_EQ(round_trip("var x = 1;"), "auto x = 1;");
@@ -702,6 +720,38 @@ TEST(ScriptParse, TypeFirstParameters)
               (std::vector<std::string>{"Actor*|a", "std::string|s", "const T&|r",
                                         "std::map<int, std::vector<float>>|m"}));
     EXPECT_EQ(sd.items.size(), 0u) << sd.format("t");
+}
+
+TEST(ScriptParse, RefAndOutParameters)
+{
+    const std::string text =
+        "class W : B {\n"
+        "    void f(ref Vec3 a, out Actor b, int c) { var r = ref a; Fill(out b); }\n"
+        "}\n";
+    Diagnostics sd;
+    const LineMap map(text);
+    const ast::Script script = parse_script(text, map, sd);
+    ASSERT_EQ(sd.items.size(), 0u) << sd.format("t");
+    ASSERT_EQ(script.classes.size(), 1u);
+    ASSERT_EQ(script.classes[0].methods.size(), 1u);
+    const auto& ps = script.classes[0].methods[0].params;
+    ASSERT_EQ(ps.size(), 3u);
+    EXPECT_EQ(ps[0].mode, ast::PassMode::Ref);
+    EXPECT_EQ(ps[0].type, "Vec3");
+    EXPECT_EQ(ps[1].mode, ast::PassMode::Out);
+    EXPECT_EQ(ps[1].type, "Actor");
+    EXPECT_EQ(ps[2].mode, ast::PassMode::Value);
+    EXPECT_EQ(script.classes[0].methods[0].body.stmts.size(), 2u);
+}
+
+TEST(ScriptParse, RefAndOutAreNotNames)
+{
+    Diagnostics sd;
+    method_params("class W : B {\n    void f(int ref) { }\n}\n", sd);
+    EXPECT_FALSE(sd.items.empty());
+    Diagnostics sd2;
+    method_params("class W : B {\n    void f(int out) { }\n}\n", sd2);
+    EXPECT_FALSE(sd2.items.empty());
 }
 
 // Parses a class. The value lists the members: "method ret|name" and "field type|name|init".

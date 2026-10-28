@@ -333,7 +333,9 @@ struct Lowerer {
         }
         if (cx.types)
             for (Param& p : l.params)
-                if (!p.type.empty()) p.type = cx.types->param(p.type);
+                if (!p.type.empty())
+                    p.type = p.mode == PassMode::Value ? cx.types->param(p.type)
+                                                       : cx.types->ref_param(p.type);
         // A "return" in a lambda leaves only the lambda. So it is correct in a finally block.
         const FinallyState outer = fin;
         fin = {};
@@ -429,6 +431,8 @@ struct Lowerer {
             expr(ix->index);
         } else if (auto* u = std::get_if<UnaryExpr>(&x.v)) {
             expr(u->operand);
+        } else if (auto* rf = std::get_if<RefExpr>(&x.v)) {
+            expr(rf->operand);
         } else if (auto* b = std::get_if<BinaryExpr>(&x.v)) {
             expr(b->lhs);
             expr(b->rhs);

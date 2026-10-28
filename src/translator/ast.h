@@ -16,8 +16,12 @@ namespace spc::ast {
 
 using spc::Span;
 
+// How a parameter is passed. "ref" and "out" lower to a C++ reference.
+enum class PassMode { Value, Ref, Out };
+
 struct Param {
     std::string name, type;
+    PassMode mode = PassMode::Value;
 };
 
 // ------------------------------------------------------------------ expressions
@@ -79,6 +83,11 @@ struct UnaryExpr {  // the pos is the pos of the operator, if it is a prefix ope
     bool postfix = false;
     uint32_t pos = 0;
 };
+struct RefExpr {  // "ref e" or "out e". The pos is the pos of the word.
+    ExprP operand;
+    bool is_out = false;
+    uint32_t pos = 0;
+};
 struct BinaryExpr {  // also the assignment operators
     std::string op;
     ExprP lhs, rhs;
@@ -116,7 +125,7 @@ struct RawExpr {  // C++ text that is already lowered
 
 struct Expr {
     std::variant<NameExpr, ThisExpr, SuperExpr, NullExpr, NumberExpr, StringExpr, CharExpr, MemberExpr,
-                 CallExpr, IndexExpr, UnaryExpr, BinaryExpr, TernaryExpr, ParenExpr,
+                 CallExpr, IndexExpr, UnaryExpr, RefExpr, BinaryExpr, TernaryExpr, ParenExpr,
                  NewExpr, LambdaExpr, RawExpr>
         v;
 };

@@ -20,7 +20,7 @@ class Player : Actor {
     }
 
     override void TakeDamage(Actor& source, float amount)  {
-        this.target = &source;
+        this.target = ref source;
         std.printf("[v1] %s: hit by %s\n", this.Name.c_str(), this.target.Name.c_str());
         this.TakeDamage(amount);
     }

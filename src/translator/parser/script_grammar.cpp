@@ -103,10 +103,11 @@ struct Member {
     bool get_has_access = false, set_has_access = false;  // an access word on the accessor
 };
 
-// The words "get" and "set" are reserved. They are not names of members or parameters.
+// The words "get", "set", "ref" and "out" are reserved. They are not names of members or parameters.
 void check_name(const ParseState& st, const char* pos, const std::string& name)
 {
-    if (name == "get" || name == "set") st.error(pos, "'" + name + "' is a reserved word");
+    if (name == "get" || name == "set" || name == "ref" || name == "out")
+        st.error(pos, "'" + name + "' is a reserved word");
 }
 
 struct TopItem {
@@ -385,17 +386,18 @@ struct annot_p {
 struct param_p {
     static constexpr auto rule =
         dsl::peek(old_param_ahead) >> dsl::error<e_old_param> |
-        dsl::else_ >> (dsl::position + dsl::p<scan_param_type> + dsl::p<name_p<e_param_name>> +
-                       dsl::if_(dsl::lit_c<','>));
+        dsl::else_ >> (dsl::p<pass_mode_p> + dsl::position + dsl::p<scan_param_type> +
+                       dsl::p<name_p<e_param_name>> + dsl::if_(dsl::lit_c<','>));
     static constexpr auto value = lexy::bind(
         lexy::callback<ast::Param>(
-            [](const ParseState& st, const char* pos, Span type, std::string name) {
+            [](const ParseState& st, ast::PassMode mode, const char* pos, Span type,
+               std::string name) {
                 check_name(st, pos, name);
                 if (only_blank(span_text(st, type))) {
                     st.error(pos, "a parameter needs a type; write 'Type name'");
-                    return ast::Param{std::move(name), ""};
+                    return ast::Param{std::move(name), "", mode};
                 }
-                return ast::Param{std::move(name), type_of(st, type)};
+                return ast::Param{std::move(name), type_of(st, type), mode};
             }),
         lexy::parse_state, lexy::values);
 };

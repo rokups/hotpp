@@ -106,7 +106,13 @@ TEST(Emit, Unary)
     EXPECT_EQ(print(*un("-", id("x"))), "-x");
     EXPECT_EQ(print(*un("++", id("i"), true)), "i++");
     EXPECT_EQ(print(*un("-", un("-", id("x")))), "- -x");
-    EXPECT_EQ(print(*un("&", id("source"))), "&source");
+    EXPECT_EQ(print(*un("*", id("p"))), "*p");
+}
+
+TEST(Emit, RefArgument)
+{
+    EXPECT_EQ(print(*make_expr(RefExpr{id("source"), false})), "script::ref_arg(source)");
+    EXPECT_EQ(print(*make_expr(RefExpr{id("v"), true})), "script::ref_arg(v)");
 }
 
 TEST(Emit, IndexParenNull)
@@ -137,6 +143,31 @@ TEST(Emit, VarDecl)
     c.type = "float";
     c.init = num("2.0f");
     EXPECT_EQ(print(*make_stmt(std::move(c))), "const float n = 2.0f;");
+}
+
+TEST(Emit, RefLocal)
+{
+    VarDeclStmt d;
+    d.name = "r";
+    d.init = make_expr(RefExpr{dot(id("a"), "b"), false});
+    EXPECT_EQ(print(*make_stmt(std::move(d))), "auto& r = a.b;");
+    VarDeclStmt t;
+    t.name = "r";
+    t.type = "Vec3";
+    t.init = make_expr(RefExpr{id("p"), false});
+    EXPECT_EQ(print(*make_stmt(std::move(t))), "Vec3& r = p;");
+    VarDeclStmt c;
+    c.is_const = true;
+    c.name = "r";
+    c.init = make_expr(RefExpr{id("p"), false});
+    EXPECT_EQ(print(*make_stmt(std::move(c))), "const auto& r = p;");
+}
+
+TEST(Emit, RefLambdaParameters)
+{
+    LambdaExpr l;
+    l.params = {{"x", "Vec3&", PassMode::Ref}, {"y", "", PassMode::Out}, {"z", ""}};
+    EXPECT_EQ(print(*make_expr(std::move(l))), "[=](Vec3& x, auto& y, auto z) {}");
 }
 
 TEST(Emit, IfElse)

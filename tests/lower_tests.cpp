@@ -695,3 +695,33 @@ TEST(Lower, PropertyInFieldInitializerIsAnError)
     ASSERT_EQ(f.errors().size(), 1u);
     EXPECT_EQ(f.errors()[0], "1:1: property 'Hp' is not allowed in a field initializer");
 }
+
+namespace {
+
+TEST(Lower, RefArgumentAndRefLocal)
+{
+    Fixture f;
+    f.param("v");
+    EXPECT_EQ(f.body("Fill(out v);"), "Fill(script::ref_arg(v));");
+    EXPECT_EQ(f.body("this.target = ref v;"), "st->target = script::ref_arg(v);");
+    EXPECT_EQ(f.body("var r = ref this.health;"), "auto& r = st->health;");
+    EXPECT_EQ(f.body("r = 2.0;"), "r = 2.0f;");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+TEST(Lower, RefLambdaParameterGetsAReferenceType)
+{
+    Fixture f;
+    EXPECT_NE(f.expr("(ref Vec3 a, out int b) => { }").find("[=](Vec3& a, int& b)"),
+              std::string::npos);
+}
+
+TEST(Lower, PrefixAmpersandIsAnError)
+{
+    Fixture f;
+    f.body("var p = &this.health;");
+    ASSERT_EQ(f.errors().size(), 1u);
+    EXPECT_EQ(f.errors()[0], "1:9: use 'ref' instead of '&'");
+}
+
+}  // namespace

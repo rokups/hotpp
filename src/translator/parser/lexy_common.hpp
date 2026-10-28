@@ -21,6 +21,7 @@
 #include <string_view>
 #include <type_traits>
 
+#include "../ast.h"
 #include "../diag.h"
 #include "span.h"
 
@@ -63,6 +64,11 @@ struct e_use_dot_arrow {
     static constexpr auto name = "use '.' instead of '->'";
     static constexpr std::size_t rewind = 2;
 };
+// The removed prefix "&". Same as above: the report moves back to the "&".
+struct e_amp_prefix {
+    static constexpr auto name = "use 'ref' instead of '&'";
+    static constexpr std::size_t rewind = 1;
+};
 
 // ---------------------------------------------------------------- white space
 constexpr auto line_comment = LEXY_LIT("//") >> dsl::until(dsl::newline).or_eof();
@@ -96,6 +102,9 @@ constexpr auto kw_get = LEXY_KEYWORD("get", id);
 constexpr auto kw_set = LEXY_KEYWORD("set", id);
 constexpr auto kw_finally = LEXY_KEYWORD("finally", id);
 constexpr auto kw_void = LEXY_KEYWORD("void", id);
+// "ref" and "out" mark a reference parameter, a reference argument or a reference local.
+constexpr auto kw_ref = LEXY_KEYWORD("ref", id);
+constexpr auto kw_out = LEXY_KEYWORD("out", id);
 
 // ---------------------------------------------------------------- literals
 // A string or character literal. It has two values: the position after the opening quote
@@ -238,6 +247,16 @@ struct scan_param_type : lexy::token_production {
                   dsl::eof >> dsl::error<e_unexpected_eof> | dsl::else_ >> dsl::p<type_item>) +
         dsl::position;
     static constexpr auto value = span_value;
+};
+
+// The optional word "ref" or "out" before a parameter. The value is the pass mode.
+struct pass_mode_p {
+    static constexpr auto rule = dsl::opt(dsl::capture(dsl::literal_set(kw_ref, kw_out)));
+    static constexpr auto value = lexy::callback<ast::PassMode>(
+        [](lexy::nullopt) { return ast::PassMode::Value; },
+        [](const auto& word) {
+            return *word.begin() == 'r' ? ast::PassMode::Ref : ast::PassMode::Out;
+        });
 };
 
 // ---------------------------------------------------------------- plain text helpers
@@ -417,6 +436,7 @@ void report(const ParseState& st, const lexy::error<Reader, Tag>& e)
     const char* pos = e.position();
     // The sink gets a generic error, so the code finds the tag by its text.
     if (e.template is<e_use_dot_arrow>()) pos -= e_use_dot_arrow::rewind;
+    if (e.template is<e_amp_prefix>()) pos -= e_amp_prefix::rewind;
     add_unique(st, pos, std::move(msg));
 }
 

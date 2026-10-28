@@ -49,6 +49,9 @@ public:
     // The C++ type of a parameter: "const H&" for a handle, else storage().
     std::string param(const std::string& type) const;
 
+    // The C++ type of a "ref" or "out" parameter: storage() with "&". A handle has no "const".
+    std::string ref_param(const std::string& type) const;
+
     // The text of a new expression.
     std::string make(const std::string& type, const std::string& args) const;
 

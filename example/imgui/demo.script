@@ -15,8 +15,8 @@ class Demo : UiApp {
             if (ImGui.Button("Click me")) {
                 this.clicks = this.clicks + 1;
             }
-            ImGui.Checkbox("Enabled", &this.on);
-            ImGui.SliderFloat("Speed", &this.speed, 0.0, 10.0);
+            ImGui.Checkbox("Enabled", ref this.on);
+            ImGui.SliderFloat("Speed", ref this.speed, 0.0, 10.0);
         }
         ImGui.End();
     }

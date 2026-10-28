@@ -145,7 +145,7 @@ static void Player__TakeDamage_Af(Actor* a, Actor& source, float amount)
     }
     [[maybe_unused]] auto* st = state_of(self);
 #line 25 "player_v2.script"
-    st->target = &source;
+    st->target = script::ref_arg(source);
 #line 26 "player_v2.script"
     std::printf("[v2] %s: hit by %s\n", script::deref(self->Name).c_str(), script::deref(script::deref(st->target).Name).c_str());
 #line 27 "player_v2.script"

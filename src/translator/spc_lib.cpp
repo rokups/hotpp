@@ -747,7 +747,8 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
             // A method overrides a base virtual method when the name and the parameter types match.
             // The method must have the modifier "override" (C# rules).
             std::string key = m.name + "(";
-            for (const Param& p : m.params) key += norm(p.type) + ",";
+            for (const Param& p : m.params)
+                key += norm(p.type) + (p.mode == PassMode::Value ? "" : "&") + ",";
             const NativeVirtual* hit = nullptr;
             for (const auto& nv : bi.virtuals) {
                 std::string k = nv.key();
@@ -794,8 +795,14 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
         // ---- the C++ storage types. An override keeps the native types.
         for (Field& f : cd.fields) f.type = types.storage(f.type);
         for (Method& m : cd.methods) {
-            if (m.overrides_virtual) continue;
-            for (Param& p : m.params) p.type = types.param(p.type);
+            if (m.overrides_virtual) {
+                // An override keeps the native type. A "ref" or "out" parameter is a reference.
+                for (Param& p : m.params)
+                    if (p.mode != PassMode::Value) p.type += "&";
+                continue;
+            }
+            for (Param& p : m.params)
+                p.type = p.mode == PassMode::Value ? types.param(p.type) : types.ref_param(p.type);
             if (!m.ret.empty()) m.ret = types.storage(m.ret);
         }
 

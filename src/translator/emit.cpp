@@ -147,6 +147,14 @@ struct ExprPrinter {
             e.space();
         emit_expr(*n.operand, e);
     }
+    // "ref e" and "out e" as an argument or a value: script::ref_arg(e).
+    void operator()(const RefExpr& n) const
+    {
+        e.put("script::ref_arg", n.pos);
+        e.put("(");
+        emit_expr(*n.operand, e);
+        e.put(")");
+    }
     void operator()(const BinaryExpr& n) const
     {
         emit_expr(*n.lhs, e);
@@ -192,7 +200,12 @@ struct ExprPrinter {
                 e.space();
             }
             const Param& p = n.params[i];
-            e.put(p.type.empty() ? "auto" : p.type);
+            // A "ref" or "out" parameter is a reference. The lowering pass may have added the "&".
+            const bool by_ref = p.mode != PassMode::Value;
+            if (p.type.empty())
+                e.put(by_ref ? "auto&" : "auto");
+            else
+                e.put(by_ref && p.type.back() != '&' ? p.type + "&" : p.type);
             e.space();
             e.put(p.name);
         }
@@ -220,14 +233,18 @@ bool plain_type(const std::string& t)
 // It is never indeterminate. A future "out" parameter will be exempt.
 void decl(const VarDeclStmt& d, Emitter& e)
 {
-    e.put(std::string(d.is_const ? "const " : "") + (d.type.empty() ? "auto" : d.type), d.pos);
+    // "var r = ref e;" is a reference local: "auto& r = e;".
+    const auto* alias = d.init ? std::get_if<RefExpr>(&d.init->v) : nullptr;
+    e.put(std::string(d.is_const ? "const " : "") + (d.type.empty() ? "auto" : d.type) +
+              (alias ? "&" : ""),
+          d.pos);
     e.space();
     e.put(d.name);
     if (d.init) {
         e.space();
         e.put("=");
         e.space();
-        emit_expr(*d.init, e);
+        emit_expr(alias ? *alias->operand : *d.init, e);
     } else if (!d.type.empty() && !d.is_const) {
         e.space();
         e.put("=");

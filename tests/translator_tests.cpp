@@ -1080,6 +1080,34 @@ TEST(Handle, ParamIsConstRef)
     EXPECT_TRUE(has(r.cpp, "st->w = src;")) << r.cpp;
 }
 
+TEST(Handle, RefParamIsAHandleReference)
+{
+    const spc::TranslateResult r = weapon_translate(
+        "    Weapon w = null;\n    void Swap(ref Weapon wp, out Vec3 v) { this.w = wp; var r = ref v; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const std::string p = "std::shared_ptr<Weapon>& wp, Vec3& v";
+    EXPECT_TRUE(has(r.cpp, "static void Foo__Swap(Foo_Shell* self, " + p + ");")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "static void Foo__Swap_slot(Widget* a, " + p + ")")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "const std::shared_ptr<Weapon>& wp")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "auto& r = v;")) << r.cpp;
+}
+
+TEST(Handle, RefArgumentInACall)
+{
+    const spc::TranslateResult r = weapon_translate(
+        "    void Fill(out Vec3 v) { }\n    void Run() { Vec3 p; this.Fill(out p); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "Foo__Fill(self, script::ref_arg(p));")) << r.cpp;
+}
+
+TEST(Handle, PrefixAmpersandIsAnError)
+{
+    const spc::TranslateResult r =
+        weapon_translate("    void Run() { Vec3 p; var q = &p; }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "use 'ref' instead of '&'")) << r.diagnostics;
+}
+
 TEST(Handle, NewAssignsAField)
 {
     const spc::TranslateResult r =

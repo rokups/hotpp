@@ -162,6 +162,8 @@ std::string TypeModel::param(const std::string& type) const
     return "const " + storage(type) + "&";
 }
 
+std::string TypeModel::ref_param(const std::string& type) const { return storage(type) + "&"; }
+
 std::string TypeModel::make(const std::string& type, const std::string& args) const
 {
     if (!is_handle(type)) return type + "(" + args + ")";

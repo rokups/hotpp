@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "lexy_common.hpp"
@@ -78,7 +79,7 @@ constexpr auto id_r = id.reserve(kw_let, kw_const, kw_this, kw_super, kw_null, k
                                  kw_switch, kw_case, kw_default, kw_try, kw_catch, kw_throw,
                                  kw_var, kw_foreach, kw_in, kw_using, kw_override, kw_virtual,
                                  kw_new, kw_public, kw_private, kw_protected, kw_get, kw_set,
-                                 kw_finally, kw_void);
+                                 kw_finally, kw_void, kw_ref, kw_out);
 
 // ---------------------------------------------------------------- plain helpers
 std::string_view span_text(const ParseState& st, Span sp)
@@ -204,7 +205,11 @@ struct Builder {
     template <Str S>
     ExprP operator()(const ParseState& st, Pre<S> t, ExprP e) const
     {
-        return ast::make_expr(ast::UnaryExpr{S.v, std::move(e), false, st.offset(t.pos)});
+        constexpr std::string_view op = S.v;
+        if constexpr (op == "ref" || op == "out")
+            return ast::make_expr(ast::RefExpr{std::move(e), op == "out", st.offset(t.pos)});
+        else
+            return ast::make_expr(ast::UnaryExpr{S.v, std::move(e), false, st.offset(t.pos)});
     }
     template <Str S>
     ExprP operator()(const ParseState&, ExprP e, Post<S>) const
@@ -372,11 +377,13 @@ struct new_p {
 struct param_p {
     static constexpr auto rule =
         dsl::peek(old_param_ahead) >> dsl::error<e_old_param> |
-        dsl::else_ >> (dsl::p<scan_param_type> + dsl::p<id_str> + dsl::if_(dsl::lit_c<','>));
+        dsl::else_ >> (dsl::p<pass_mode_p> + dsl::p<scan_param_type> + dsl::p<id_str> +
+                       dsl::if_(dsl::lit_c<','>));
     static constexpr auto value = lexy::bind(
-        lexy::callback<ast::Param>([](const ParseState& st, Span type, std::string name) {
-            if (only_blank(span_text(st, type))) return ast::Param{std::move(name), ""};
-            return ast::Param{std::move(name), type_of(st, type)};
+        lexy::callback<ast::Param>([](const ParseState& st, ast::PassMode mode, Span type,
+                                      std::string name) {
+            if (only_blank(span_text(st, type))) return ast::Param{std::move(name), "", mode};
+            return ast::Param{std::move(name), type_of(st, type), mode};
         }),
         lexy::parse_state, lexy::values);
 };
@@ -492,12 +499,14 @@ struct expr : lexy::expression_production {
         using operand = dsl::atom;
     };
 
-    // - + ! ~ & * ++ --
+    // - + ! ~ * ++ -- ref out. A prefix "&" is removed; the parse reports it.
     struct prefix_lvl : dsl::prefix_op {
         static constexpr auto op =
             SPC_PRE("++") / SPC_PRE("--") / SPC_PRE_NF("-", cc_minus_only) /
             SPC_PRE_NF("+", cc_plus_only) / SPC_PRE("!") / SPC_PRE("~") / SPC_PRE("*") /
-            SPC_PRE_NF("&", cc_amp_only);
+            dsl::op<Pre<"ref">>(kw_ref) / dsl::op<Pre<"out">>(kw_out) /
+            dsl::op<Pre<"&">>(dsl::not_followed_by(LEXY_LIT("&"), cc_amp_only) >>
+                              dsl::try_(dsl::error<e_amp_prefix>));
         using operand = postfix_lvl;
     };
 
