@@ -44,11 +44,17 @@ struct Diag {
 };
 
 struct Diagnostics {
-    std::vector<Diag> items;
+    std::vector<Diag> items;     // the errors
+    std::vector<Diag> warnings;  // the warnings. They do not stop the translation.
 
     void add(uint32_t pos, const LineMap& map, std::string msg)
     {
         items.push_back(Diag{pos, map.line(pos), map.col(pos), std::move(msg), {}, "error"});
+    }
+
+    void warn(uint32_t pos, const LineMap& map, std::string msg)
+    {
+        warnings.push_back(Diag{pos, map.line(pos), map.col(pos), std::move(msg), {}, "warning"});
     }
 
     void add_line(int line, std::string msg)
@@ -62,13 +68,22 @@ struct Diagnostics {
         items.push_back(Diag{0, line, col, std::move(msg), std::move(file), std::move(severity)});
     }
 
-    void clear() { items.clear(); }
+    void clear()
+    {
+        items.clear();
+        warnings.clear();
+    }
 
-    // One diagnostic in each text line, in the order of insertion.
-    std::string format(const std::string& name) const
+    // One diagnostic in each text line, in the order of insertion. The errors only.
+    std::string format(const std::string& name) const { return format(name, items); }
+
+    // The same for the warnings.
+    std::string format_warnings(const std::string& name) const { return format(name, warnings); }
+
+    static std::string format(const std::string& name, const std::vector<Diag>& list)
     {
         std::string out;
-        for (const Diag& d : items) {
+        for (const Diag& d : list) {
             if (d.line > 0) {
                 out += (d.file.empty() ? name : d.file) + ":" + std::to_string(d.line);
                 if (d.col > 0) out += ":" + std::to_string(d.col);

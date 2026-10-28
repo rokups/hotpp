@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -24,9 +25,31 @@ struct TypeRule {
 class TypeModel {
 public:
     // Adds the stubs of one list (a prelude or a script).
-    // A later list overrides an earlier entry with no message.
+    // A later list overrides an earlier entry. A prelude gives no message.
+    // A script that overrides a stub of a prelude gives a warning (design 7.10.3).
     // The map gives the line and the column for an error at the stub.
-    void add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diags, const LineMap& map);
+    // These are errors: two stubs of one name in one list, "value" together with "handle",
+    // "default_handle" on a class other than "*", and any other attribute on "class *".
+    enum class Source { Prelude, Script };
+    void add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diags, const LineMap& map,
+                   Source source = Source::Prelude);
+
+    // The handle template of the stub "class *;" (empty: there is none).
+    const std::string& default_handle() const { return default_handle_; }
+
+    // What the headers say about a class. "known" is true for a class type that libclang found.
+    // "plain" is true for a trivially copyable, standard-layout type.
+    struct ClassFacts {
+        bool known = false, plain = false;
+    };
+    using ClassFn = std::function<ClassFacts(const std::string&)>;
+
+    // Sets the callback for the facts of a class. The stub "class *;" needs it.
+    void set_classes(ClassFn fn);
+
+    // True when the facts of the type change its rule: the stub "class *;" is active, the type
+    // is a class name and no stub matches it.
+    bool wants_facts(const std::string& type) const;
 
     // The direct bases of a qualified C++ class name, in declaration order.
     // An unknown name gives an empty vector.
@@ -39,7 +62,9 @@ public:
     // 1) an exact stub,
     // 2) the first Handle stub on a base class (breadth first, nearest base wins),
     // 3) the longest pattern,
-    // 4) Raw.
+    // 4) a plain data class is a Value (only when the stub "class *;" is active),
+    // 5) the stub "class *;": a class that is not plain gets its default handle,
+    // 6) Raw.
     // Only the Handle kind is inherited. "owner" is the stub that matched.
     TypeRule lookup(const std::string& cpp_type) const;
 
@@ -65,10 +90,14 @@ public:
 
 private:
     bool is_handle(const std::string& type) const;
+    TypeRule lookup_stub(const std::string& cpp_type) const;
 
     std::map<std::string, TypeRule> exact_;
     std::vector<std::pair<std::string, TypeRule>> patterns_;  // the prefix and the rule
     BaseFn bases_;
+    ClassFn classes_;
+    std::string default_handle_;
+    std::set<std::string> prelude_names_;  // the stubs that a prelude gave
 };
 
 }  // namespace sppc

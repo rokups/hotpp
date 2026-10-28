@@ -90,15 +90,3 @@ TEST(TypeModel, DuplicateStubIsOneError)
     EXPECT_EQ(f.diags.items.size(), 1u);
 }
 
-TEST(TypeModel, UnsupportedAttributes)
-{
-    Fixture f;
-    ast::Stub d = stub("*");
-    d.default_handle = kShared;
-    f.add({d});
-    ASSERT_EQ(f.diags.items.size(), 1u);
-    EXPECT_NE(f.diags.items[0].msg.find("not supported yet"), std::string::npos);
-
-    f.add({stub("*")});
-    EXPECT_EQ(f.diags.items.size(), 2u);
-}

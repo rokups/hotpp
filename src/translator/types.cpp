@@ -38,21 +38,39 @@ std::string replace_all(std::string s, const std::string& from, const std::strin
 
 }  // namespace
 
-void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diags, const LineMap& map)
+void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diags, const LineMap& map,
+                          Source source)
 {
     std::set<std::string> seen;  // the names in this list
     std::set<std::string> reported;
     for (const ast::Stub& s : stubs) {
-        if (!s.default_handle.empty()) {
-            diags.add(s.pos, map, "'default_handle' is not supported yet");
+        if (!seen.insert(s.name).second) {
+            if (reported.insert(s.name).second) {
+                diags.add(s.pos, map,
+                          s.name == "*" ? "only one 'class *' is allowed in a file"
+                                        : "duplicate stub for '" + s.name + "'");
+            }
             continue;
         }
         if (s.name == "*") {
-            diags.add(s.pos, map, "the stub 'class *' is not supported yet");
+            if (s.is_value)
+                diags.add(s.pos, map, "'value' is not allowed on 'class *': it breaks polymorphic types");
+            else if (!s.handle.empty() || !s.intrusive_add.empty() || !s.intrusive_release.empty())
+                diags.add(s.pos, map, "'class *' accepts only 'native' and 'default_handle'");
+            else {
+                // A later list overrides an earlier "class *". A stub without a handle clears it.
+                if (source == Source::Script && !default_handle_.empty())
+                    diags.warn(s.pos, map, "the 'class *' of the script overrides the 'class *' of a prelude");
+                default_handle_ = s.default_handle;
+            }
             continue;
         }
-        if (!seen.insert(s.name).second) {
-            if (reported.insert(s.name).second) diags.add(s.pos, map, "duplicate stub for '" + s.name + "'");
+        if (!s.default_handle.empty()) {
+            diags.add(s.pos, map, "'default_handle' is valid only on 'class *'");
+            continue;
+        }
+        if (s.is_value && !s.handle.empty()) {
+            diags.add(s.pos, map, "'value' and 'handle' are exclusive");
             continue;
         }
 
@@ -81,6 +99,11 @@ void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diag
             rule.kind = Kind::Value;
         }
 
+        // A script stub that replaces a stub of a prelude gives a warning.
+        if (source == Source::Prelude) prelude_names_.insert(s.name);
+        else if (prelude_names_.count(s.name))
+            diags.warn(s.pos, map, "the stub for '" + s.name + "' overrides the stub of a prelude");
+
         const bool pattern = ends_with(s.name, "<*>") || ends_with(s.name, "::*");
         if (!pattern) {
             exact_[s.name] = rule;
@@ -100,7 +123,37 @@ void TypeModel::set_bases(BaseFn fn)
     bases_ = std::move(fn);
 }
 
+void TypeModel::set_classes(ClassFn fn)
+{
+    classes_ = std::move(fn);
+}
+
+bool TypeModel::wants_facts(const std::string& type) const
+{
+    if (default_handle_.empty() || type.empty()) return false;
+    if (type.find('*') != std::string::npos || type.find('&') != std::string::npos) return false;
+    if (starts_with(type, "const ") || is_builtin(type)) return false;
+    return lookup_stub(type).kind == Kind::Raw;
+}
+
 TypeRule TypeModel::lookup(const std::string& cpp_type) const
+{
+    TypeRule r = lookup_stub(cpp_type);
+    if (r.kind != Kind::Raw || !r.owner.empty() || !classes_ || !wants_facts(cpp_type)) return r;
+    const ClassFacts f = classes_(cpp_type);
+    if (!f.known) return r;
+    TypeRule d;
+    d.owner = "*";
+    if (f.plain) {
+        d.kind = Kind::Value;  // step 4 of 7.10.2: plain data is a value
+        return d;
+    }
+    d.kind = Kind::Handle;
+    d.handle_tpl = default_handle_;
+    return d;
+}
+
+TypeRule TypeModel::lookup_stub(const std::string& cpp_type) const
 {
     auto it = exact_.find(cpp_type);
     if (it != exact_.end()) {

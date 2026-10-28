@@ -24,6 +24,7 @@
 
 #include "ast.h"
 #include "builtin_types.h"
+#include "check.h"
 #include "diag.h"
 #include "emit.h"
 #include "lower.h"
@@ -37,6 +38,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <deque>
 #include <ctime>
 #include <filesystem>
 #include <memory>
@@ -226,6 +228,23 @@ CXCursor find_class(CXCursor root, const std::string& qname)
     });
     return found;
 }
+
+// What the headers say about a type. "known" is false when libclang cannot name the type.
+// The facts come from C++ traits that the probe file evaluates (see facts_text).
+struct TypeFacts {
+    bool known = false;
+    bool is_class = false, copy = false, nothrow_move = false, polymorphic = false, final_ = false;
+    bool plain = false;  // trivially copyable and standard layout
+    bool arrow = false;  // a pointer, or a type with operator->
+    std::map<std::string, bool> members;  // for each asked name: "&T::name" is valid
+};
+using FactMap = std::map<std::string, TypeFacts>;
+
+// The question for one type: the type text and the member names to look for.
+struct FactReq {
+    std::string type;
+    std::vector<std::string> members;
+};
 
 // The direct bases of each native class, by qualified name, in declaration order.
 using Hierarchy = std::map<std::string, std::vector<std::string>>;
@@ -552,18 +571,79 @@ void add_shadow_stamps(const std::string& rel, const std::vector<std::string>& d
     }
 }
 
+// The handle type of a stub: the template with "$T" replaced by the class name.
+std::string handle_type(std::string tpl, const std::string& name)
+{
+    for (size_t p = 0; (p = tpl.find("$T", p)) != std::string::npos; p += name.size()) tpl.replace(p, 2, name);
+    return tpl;
+}
+
+// The name of the probe section with the facts. libclang reports an error in it for a type
+// that it does not know. The translator does not treat such an error as an error of the imports.
+const char* const kFactsFile = "sppc_facts";
+
+// The text that asks libclang for the facts of the types. The section follows the imports.
+// Each fact is one constexpr variable on its own line. The variable "sppc_f<N>" is on the
+// line N of the file "sppc_facts". The traits are in functions with "if constexpr", so a
+// type that is not complete gives false and no error inside a standard header.
+std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<size_t, std::string>>& lines)
+{
+    std::string head =
+        "#include <type_traits>\n"
+        "template <class T> constexpr bool sppc_complete() { return requires { sizeof(T); }; }\n"
+        "template <class T> constexpr bool sppc_copy() { if constexpr (sppc_complete<T>()) return std::is_copy_constructible_v<T>; else return false; }\n"
+        "template <class T> constexpr bool sppc_nothrow_move() { if constexpr (sppc_complete<T>()) return std::is_nothrow_move_constructible_v<T>; else return false; }\n"
+        "template <class T> constexpr bool sppc_polymorphic() { if constexpr (sppc_complete<T>()) return std::is_polymorphic_v<T>; else return false; }\n"
+        "template <class T> constexpr bool sppc_final() { if constexpr (sppc_complete<T>()) return std::is_final_v<T>; else return false; }\n"
+        "template <class T> constexpr bool sppc_plain() { if constexpr (sppc_complete<T>()) return std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>; else return false; }\n"
+        "template <class T> constexpr bool sppc_arrow() { if constexpr (std::is_pointer_v<T>) return true; else if constexpr (sppc_complete<T>()) return requires(T& h) { h.operator->(); }; else return false; }\n";
+    std::string body;
+    lines.clear();
+    size_t member_id = 0;
+    for (size_t i = 0; i < reqs.size(); ++i) {
+        const std::string& t = reqs[i].type;
+        const char* kinds[] = {"is_class", "copy", "nothrow_move", "polymorphic", "final", "plain", "arrow"};
+        for (const char* k : kinds) {
+            lines.emplace_back(i, k);
+            const std::string fn = std::string(k) == "is_class" ? "std::is_class_v<" + t + ">"
+                                                                : std::string("sppc_") + k + "<" + t + ">()";
+            body += "constexpr bool sppc_f" + std::to_string(lines.size()) + " = " + fn + ";\n";
+        }
+        for (const std::string& m : reqs[i].members) {
+            const std::string fn = "sppc_member" + std::to_string(member_id++);
+            head += "template <class T> constexpr bool " + fn + "() { return requires { &T::" + m + "; }; }\n";
+            lines.emplace_back(i, "member:" + m);
+            body += "constexpr bool sppc_f" + std::to_string(lines.size()) + " = " + fn + "<" + t + ">();\n";
+        }
+    }
+    return head + "#line 1 \"" + kFactsFile + "\"\n" + body;
+}
+
+// Reads the value of "sppc_f<N>" from the translation unit. Gives -1 when libclang cannot
+// evaluate it (the type is not known).
+int eval_bool(CXCursor var)
+{
+    CXEvalResult r = clang_Cursor_Evaluate(var);
+    int v = -1;
+    if (r && clang_EvalResult_getKind(r) == CXEval_Int) v = clang_EvalResult_getAsInt(r) != 0 ? 1 : 0;
+    if (r) clang_EvalResult_dispose(r);
+    return v;
+}
+
 // Parses the imports with libclang. Reads the base classes in "names" that it finds.
 // Gives the stamps of all files that the parse included.
 void parse_bases(const std::string& probe, const std::vector<std::string>& args,
                  const std::set<std::string>& names, const std::set<std::string>& import_paths,
                  std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files,
-                 Hierarchy& hierarchy)
+                 Hierarchy& hierarchy, const std::vector<FactReq>& reqs, FactMap& facts)
 {
+    std::vector<std::pair<size_t, std::string>> fact_lines;
+    const std::string full_probe = reqs.empty() ? probe : probe + facts_text(reqs, fact_lines);
     std::vector<const char*> cargs;
     for (const auto& a : args) cargs.push_back(a.c_str());
     ClangHandles ch;
     CXIndex idx = ch.idx = clang_createIndex(0, 0);
-    CXUnsavedFile unsaved{"sppc_probe.cpp", probe.c_str(), static_cast<unsigned long>(probe.size())};
+    CXUnsavedFile unsaved{"sppc_probe.cpp", full_probe.c_str(), static_cast<unsigned long>(full_probe.size())};
     CXTranslationUnit tu = nullptr;
     CXErrorCode ec = clang_parseTranslationUnit2(idx, "sppc_probe.cpp", cargs.data(),
                                                  static_cast<int>(cargs.size()), &unsaved, 1,
@@ -578,6 +658,10 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
             CXString file;
             unsigned line = 0, col = 0;
             clang_getPresumedLocation(clang_getDiagnosticLocation(d), &file, &line, &col);
+            if (cxs(file) == kFactsFile) {  // an unknown type of a fact: not an error of the imports
+                clang_disposeDiagnostic(d);
+                continue;
+            }
             const char* sev = clang_getDiagnosticSeverity(d) == CXDiagnostic_Fatal ? "fatal error" : "error";
             g_diag.add_foreign(cxs(file), static_cast<int>(line), static_cast<int>(col), sev,
                                cxs(clang_getDiagnosticSpelling(d)));
@@ -614,6 +698,32 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
             }
 
     CXCursor root = clang_getTranslationUnitCursor(tu);
+    if (!reqs.empty()) {
+        std::map<std::string, CXCursor> vars;
+        visit(root, [&](CXCursor c) {
+            if (clang_getCursorKind(c) == CXCursor_VarDecl) {
+                const std::string n = cxs(clang_getCursorSpelling(c));
+                if (n.compare(0, 6, "sppc_f") == 0) vars[n] = c;
+            }
+            return CXChildVisit_Continue;
+        });
+        for (size_t n = 0; n < fact_lines.size(); ++n) {
+            auto it = vars.find("sppc_f" + std::to_string(n + 1));
+            const int v = it == vars.end() ? -1 : eval_bool(it->second);
+            TypeFacts& f = facts[reqs[fact_lines[n].first].type];
+            const std::string& k = fact_lines[n].second;
+            if (k == "is_class") {
+                f.known = v >= 0;
+                f.is_class = v == 1;
+            } else if (k == "copy") f.copy = v == 1;
+            else if (k == "nothrow_move") f.nothrow_move = v == 1;
+            else if (k == "polymorphic") f.polymorphic = v == 1;
+            else if (k == "final") f.final_ = v == 1;
+            else if (k == "plain") f.plain = v == 1;
+            else if (k == "arrow") f.arrow = v == 1;
+            else f.members[k.substr(7)] = v == 1;
+        }
+    }
     hierarchy.clear();
     collect_hierarchy(root, hierarchy);
     for (const auto& name : names) {
@@ -637,6 +747,7 @@ struct TranslatorSession::Impl {
         std::vector<FileStamp> files;
         std::map<std::string, BaseInfo> bases;
         Hierarchy hierarchy;
+        FactMap facts;
     };
     std::mutex mutex;
     std::map<std::string, Entry> entries;
@@ -666,8 +777,9 @@ namespace {
 // the same stamp for each file. Otherwise it parses again and keeps the new result.
 std::map<std::string, BaseInfo> session_bases(
     sppc::TranslatorSession::Impl& S, const std::string& key, const std::set<std::string>& names,
-    const std::function<void(std::map<std::string, BaseInfo>&, std::vector<FileStamp>&, Hierarchy&)>& parse,
-    Hierarchy& hierarchy)
+    const std::vector<FactReq>& reqs,
+    const std::function<void(std::map<std::string, BaseInfo>&, std::vector<FileStamp>&, Hierarchy&, FactMap&)>& parse,
+    Hierarchy& hierarchy, FactMap& facts_out)
 {
     std::lock_guard<std::mutex> lock(S.mutex);
     auto& e = S.entries[key];
@@ -676,13 +788,19 @@ std::map<std::string, BaseInfo> session_bases(
     if (!fresh) e = {};
     bool complete = fresh;
     for (const auto& n : names) complete = complete && e.bases.count(n);
+    for (const FactReq& r : reqs) {
+        auto it = e.facts.find(r.type);
+        complete = complete && it != e.facts.end();
+        for (const std::string& m : r.members) complete = complete && it != e.facts.end() && it->second.members.count(m);
+    }
     if (!complete) {
         std::map<std::string, BaseInfo> out = std::move(e.bases);
+        FactMap facts = std::move(e.facts);
         std::vector<FileStamp> files;
         Hierarchy hier;
         ++S.parses;
         try {
-            parse(out, files, hier);
+            parse(out, files, hier, facts);
         } catch (...) {
             S.entries.erase(key);
             throw;
@@ -690,8 +808,10 @@ std::map<std::string, BaseInfo> session_bases(
         e.bases = std::move(out);
         e.files = std::move(files);
         e.hierarchy = std::move(hier);
+        e.facts = std::move(facts);
     }
     hierarchy = e.hierarchy;
+    for (const FactReq& r : reqs) facts_out[r.type] = e.facts[r.type];
     std::map<std::string, BaseInfo> r;
     for (const auto& n : names) {
         auto it = e.bases.find(n);
@@ -721,6 +841,19 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
 
     // ---- the type model: the preludes first, then the stubs of the script
     sppc::TypeModel types;
+    // A stub with the place that holds it. The checks of the stubs (7.10.7) report there.
+    struct StubSrc {
+        const Stub* stub;
+        const sppc::LineMap* map;
+        std::string file;  // empty: the script
+    };
+    std::vector<StubSrc> all_stubs;
+    struct PreludeData {
+        std::string name;
+        Script script;
+        sppc::LineMap map;
+    };
+    std::deque<PreludeData> prelude_data;  // the addresses must stay
     for (const auto& [pname, ptext] : in.preludes) {
         const sppc::LineMap pmap(ptext);
         sppc::Diagnostics pd;
@@ -729,7 +862,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             const ClassDef& pc = ps.classes.front();
             pd.add(pc.pos, pmap, "a prelude can hold only stubs: '" + pname + "' has the class '" + pc.name + "'");
         }
-        if (pd.items.empty()) types.add_stubs(ps.stubs, pd, pmap);
+        if (pd.items.empty()) types.add_stubs(ps.stubs, pd, pmap, sppc::TypeModel::Source::Prelude);
         if (!pd.items.empty()) {
             for (auto& d : pd.items) {
                 d.file = pname;
@@ -737,11 +870,36 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             }
             throw TranslateAbort{};
         }
+        prelude_data.push_back({pname, std::move(ps), pmap});
+        for (const Stub& st : prelude_data.back().script.stubs)
+            all_stubs.push_back({&st, &prelude_data.back().map, pname});
     }
-    types.add_stubs(sc.stubs, g_diag, map);
+    types.add_stubs(sc.stubs, g_diag, map, sppc::TypeModel::Source::Script);
     if (!g_diag.items.empty()) throw TranslateAbort{};
+    for (const Stub& st : sc.stubs) all_stubs.push_back({&st, &map, std::string()});
     for (const ClassDef& cd : sc.classes)
         if (cd.is_value) fail_at(map, cd.pos, "[value] on a script class is not supported yet");
+
+    // ---- the questions for libclang about the types (design 7.10.7 and the stub "class *;")
+    std::map<std::string, std::set<std::string>> asked;  // type text, member names
+    auto is_exact = [](const std::string& n) {
+        return n != "*" && n.find('*') == std::string::npos;
+    };
+    for (const StubSrc& ss : all_stubs) {
+        const Stub& st = *ss.stub;
+        if (!is_exact(st.name)) continue;
+        asked[st.name];
+        if (!st.intrusive_add.empty() || !st.intrusive_release.empty()) {
+            asked[st.name].insert(st.intrusive_add);
+            asked[st.name].insert(st.intrusive_release);
+        } else if (!st.handle.empty()) {
+            asked[handle_type(st.handle, st.name)];
+        }
+    }
+    for (const std::string& t : sppc::used_type_names(sc))
+        if (types.wants_facts(t)) asked[t];
+    std::vector<FactReq> reqs;
+    for (auto& [t, ms] : asked) reqs.push_back({t, std::vector<std::string>(ms.begin(), ms.end())});
 
     // ---- libclang: parse the imports and read the native base classes.
     std::string probe;
@@ -761,11 +919,61 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
     for (const auto& a : args) key += a + "\n";
     for (const auto& p : import_paths) key += "#" + p + "\n";
     Hierarchy hier;  // must outlive every use of "types"
+    FactMap facts;
     const std::map<std::string, BaseInfo> bases =
-        session_bases(session, key, base_names,
-                      [&](std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files,
-                          Hierarchy& h) { parse_bases(probe, args, base_names, import_paths, out, files, h); },
-                      hier);
+        session_bases(session, key, base_names, reqs,
+                      [&](std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files, Hierarchy& h,
+                          FactMap& fm) {
+                          parse_bases(probe, args, base_names, import_paths, out, files, h, reqs, fm);
+                      },
+                      hier, facts);
+    types.set_classes([&facts](const std::string& name) {
+        auto it = facts.find(name);
+        sppc::TypeModel::ClassFacts c;
+        if (it != facts.end()) {
+            c.known = it->second.known && it->second.is_class;
+            c.plain = it->second.plain;
+        }
+        return c;
+    });
+
+    // ---- the checks of the stubs (design 7.10.7). A type that libclang does not know is skipped.
+    for (const StubSrc& ss : all_stubs) {
+        const Stub& st = *ss.stub;
+        if (!is_exact(st.name)) continue;
+        auto err = [&](const std::string& msg) {
+            g_diag.add(st.pos, *ss.map, msg);
+            g_diag.items.back().file = ss.file;
+        };
+        auto tf = facts.find(st.name);
+        if (tf == facts.end() || !tf->second.known) continue;
+        const TypeFacts& f = tf->second;
+        if (st.is_value) {
+            if (!f.copy) err("'value' needs a copy constructor: '" + st.name + "' has none");
+            if (!f.nothrow_move)
+                err("'value' needs a nothrow move constructor: '" + st.name +
+                    "' has none. The reload moves the state block with it");
+            if (f.polymorphic && !f.final_)
+                err("'value' on the polymorphic type '" + st.name +
+                    "' is not allowed, because a copy can slice. Mark the type 'final' or use a handle");
+        }
+        if (!st.intrusive_add.empty() || !st.intrusive_release.empty()) {
+            for (const std::string& m : {st.intrusive_add, st.intrusive_release}) {
+                auto mit = f.members.find(m);
+                if (mit != f.members.end() && !mit->second)
+                    err("'intrusive' method '" + m + "' is not a usable member of '" + st.name +
+                        "'. It must exist and must not be overloaded");
+            }
+        } else if (!st.handle.empty()) {
+            const std::string ht = handle_type(st.handle, st.name);
+            auto hit = facts.find(ht);
+            if (hit != facts.end() && hit->second.known && !hit->second.arrow)
+                err("'handle' needs 'operator->': the handle type '" + ht + "' has none");
+        }
+    }
+    if (!g_diag.items.empty()) throw TranslateAbort{};
+
+
     types.set_bases([&hier](const std::string& name) {
         auto it = hier.find(name);
         return it == hier.end() ? std::vector<std::string>{} : it->second;
@@ -877,6 +1085,13 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             if (nv.pure && !overrides.count(nv.key()))
                 fail_at(map, cd.pos, "class " + cn + " does not override the pure virtual method '" +
                                   nv.text() + "' of " + nv.owner);
+
+        // ---- the borrowed-storage rule and the rows of design 5.3 that the script text shows
+        {
+            const size_t before = g_diag.items.size();
+            sppc::check_class(cd, types, map, g_diag, in.strict_borrowed);
+            if (g_diag.items.size() != before) throw TranslateAbort{};
+        }
 
         // ---- the C++ storage types. An override keeps the native types.
         for (Field& f : cd.fields) f.type = types.storage(f.type);
@@ -1172,6 +1387,7 @@ TranslateResult translate(const TranslateOptions& in, TranslatorSession& session
         res.slots_out.clear();
     }
     res.diagnostics = g_diag.format(g_script);
+    res.warnings = g_diag.format_warnings(g_script);
     return res;
 }
 

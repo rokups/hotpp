@@ -65,9 +65,9 @@ TEST(InheritedHandleTranslation, ExactStubWins)
 TEST(InheritedHandleTranslation, ValueBaseIsNotInherited)
 {
     const sppc::TranslateResult r =
-        hier_translate("[native, value] class Object;\n", "    Item item;\n");
+        hier_translate("[native, value] class Flat;\n", "    FlatKid kid;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "    Item item;\n")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "    FlatKid kid;\n")) << r.cpp;
 }
 
 TEST(InheritedHandleTranslation, PreludeGivesTheSameOutput)

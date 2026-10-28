@@ -21,6 +21,11 @@ struct TranslateOptions {
     std::vector<std::string> include_dirs;  // for the imports of the script
     std::string resource_dir;  // the Clang resource directory (empty: the built-in default)
     std::vector<std::pair<std::string, std::string>> preludes;  // name, text
+    // The borrowed-storage rule of design 7.10.4 and 7.10.6: a field, a return value, a
+    // collection element or a lambda capture cannot hold a native "T*", a "T&" or a "ref" of a
+    // type that is not a handle. True: a violation is an error. False: it is a warning, because
+    // the first example scripts (player_v1.spp) still store an "Actor*".
+    bool strict_borrowed = false;
 };
 
 struct TranslateResult {
@@ -28,6 +33,9 @@ struct TranslateResult {
     std::string cpp;          // the generated C++ text (valid when ok)
     std::string slots_out;    // the new slot file content (valid when ok)
     std::string diagnostics;  // the errors, one line each: "name:line:col: error: text"
+    // The warnings, one line each: "name:line:col: warning: text". The translation can be ok
+    // with warnings. The text is empty when there is no warning.
+    std::string warnings;
 };
 
 // The cache of a translator session. A backend holds one for its life.

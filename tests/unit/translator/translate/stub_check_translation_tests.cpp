@@ -1,0 +1,129 @@
+// Tests for the checks of a stub (design 7.10.7). Libclang answers the questions about the type.
+#include <gtest/gtest.h>
+
+#include <string>
+
+#include "spp/sppc_lib.h"
+#include "support/check_translate_test_support.h"
+
+using namespace check_translate_test;
+
+TEST(StubChecks, ValueOfACopyableNothrowMovableTypeIsOk)
+{
+    const sppc::TranslateResult r = check_translate("[native, value] class Plain;\n", "    Plain p;\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "    Plain p;\n")) << r.cpp;
+}
+
+TEST(StubChecks, ValueNeedsACopyConstructor)
+{
+    const sppc::TranslateResult r = check_translate("[native, value] class NoCopy;\n", "");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "t.spp:2:1: error: 'value' needs a copy constructor: 'NoCopy'")) << r.diagnostics;
+}
+
+TEST(StubChecks, ValueNeedsANothrowMoveConstructor)
+{
+    const sppc::TranslateResult r = check_translate("[native, value] class ThrowMove;\n", "");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "nothrow move constructor: 'ThrowMove'")) << r.diagnostics;
+    EXPECT_FALSE(has(r.diagnostics, "copy constructor")) << r.diagnostics;
+}
+
+TEST(StubChecks, ValueOnAPolymorphicTypeIsAnError)
+{
+    const sppc::TranslateResult r = check_translate("[native, value] class Poly;\n", "");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "'value' on the polymorphic type 'Poly'")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "'final'")) << r.diagnostics;
+}
+
+TEST(StubChecks, ValueOnAFinalPolymorphicTypeIsOk)
+{
+    const sppc::TranslateResult r = check_translate("[native, value] class PolyFinal;\n", "");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(StubChecks, ValueOnAStandardTypeWorks)
+{
+    const sppc::TranslateResult r = check_translate("[native, value] class std.string;\n", "    std.string s;\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "    std::string s;\n")) << r.cpp;
+}
+
+TEST(StubChecks, HandleNeedsOperatorArrow)
+{
+    const sppc::TranslateResult r = check_translate("[native, handle(\"NoArrow<$T>\")] class Weapon;\n", "");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "'handle' needs 'operator->'")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "NoArrow<Weapon>")) << r.diagnostics;
+}
+
+TEST(StubChecks, HandleWithArrowSharedPtrAndRawPointerAreOk)
+{
+    for (const char* tpl : {"Arrow<$T>", "std::shared_ptr<$T>", "$T*"}) {
+        const sppc::TranslateResult r = check_translate(
+            std::string("[native, handle(\"") + tpl + "\")] class Weapon;\n", "");
+        EXPECT_TRUE(r.ok) << tpl << ": " << r.diagnostics;
+    }
+}
+
+TEST(StubChecks, IntrusiveNeedsBothMethods)
+{
+    const sppc::TranslateResult r =
+        check_translate("[native, intrusive(\"AddRef\", \"Grab\")] class Counted;\n", "");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "t.spp:2:1: error: 'intrusive' method 'Grab' is not a usable member of 'Counted'"))
+        << r.diagnostics;
+    EXPECT_FALSE(has(r.diagnostics, "'AddRef'")) << r.diagnostics;
+}
+
+TEST(StubChecks, IntrusiveWithBothMethodsIsOk)
+{
+    const sppc::TranslateResult r =
+        check_translate("[native, intrusive(\"AddRef\", \"Release\")] class Counted;\n", "    Counted c;\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "spp::Intrusive<Counted, &Counted::AddRef, &Counted::Release> c;")) << r.cpp;
+}
+
+TEST(StubChecks, IntrusiveMethodMustNotBeOverloaded)
+{
+    const sppc::TranslateResult r =
+        check_translate("[native, intrusive(\"AddRef\", \"Release\")] class Overloaded;\n", "");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "'AddRef'")) << r.diagnostics;
+}
+
+TEST(StubChecks, ATypeThatTheHeadersDoNotHaveIsSkipped)
+{
+    const sppc::TranslateResult r = check_translate("[native, value] class NotInTheHeaders;\n", "");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(StubChecks, AnErrorInAPreludeNamesThePreludeFile)
+{
+    const sppc::TranslateResult r =
+        check_translate("", "", {{"engine.prelude", "\n[native, value] class NoCopy;\n"}});
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "engine.prelude:2:1: error: 'value' needs a copy constructor")) << r.diagnostics;
+}
+
+TEST(StubChecks, PatternStubsAreNotChecked)
+{
+    const sppc::TranslateResult r = check_translate("[native, value] class std.vector<*>;\n", "");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(StubChecks, TheFactsComeFromTheSessionCache)
+{
+    sppc::TranslatorSession session;
+    const char* stubs = "[native, value] class Plain;\n[native, handle(\"Arrow<$T>\")] class Weapon;\n";
+    ASSERT_TRUE(check_translate(stubs, "", {}, true, &session).ok);
+    ASSERT_TRUE(check_translate(stubs, "", {}, true, &session).ok);
+    EXPECT_EQ(session.parse_count(), 1);
+    // A new question (another stub) needs one more parse. The old answers stay.
+    ASSERT_TRUE(check_translate("[native, value] class PolyFinal;\n", "", {}, true, &session).ok);
+    EXPECT_EQ(session.parse_count(), 2);
+    ASSERT_TRUE(check_translate("[native, value] class PolyFinal;\n", "", {}, true, &session).ok);
+    EXPECT_EQ(session.parse_count(), 2);
+}

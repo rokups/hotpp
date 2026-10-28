@@ -40,7 +40,7 @@ namespace {
     std::fprintf(stderr,
                  "usage: sppc <file.spp>... --gen N (--out-dir DIR | -o x.so) [-I dir]... [--resource-dir dir]\n"
                  "            [--cxx command] [--cxxflag flag]... [--slots file]\n"
-                 "       sppc --emit-cpp <file.spp> --gen N [-o out.cpp] [-I dir]... [--prelude file]...\n"
+                 "       sppc --emit-cpp <file.spp> --gen N [-o out.cpp] [-I dir]... [--prelude file]... [--strict-borrowed]\n"
                  "            [--slots file] [--resource-dir dir]\n");
     std::exit(2);
 }
@@ -64,7 +64,8 @@ struct Args {
     int gen = 0;
     // Options that only one mode accepts.
     bool has_build_only = false;  // --out-dir, --cxx, --cxxflag
-    bool has_emit_only = false;   // --prelude
+    bool has_emit_only = false;   // --prelude, --strict-borrowed
+    bool strict_borrowed = false;
 };
 
 Args parse_args(int argc, char** argv)
@@ -85,6 +86,7 @@ Args parse_args(int argc, char** argv)
         else if (a == "--cxx") { r.cxx = next(); r.has_build_only = true; }
         else if (a == "--cxxflag") { r.cxxflags.push_back(next()); r.has_build_only = true; }
         else if (a == "--prelude") { r.preludes.push_back(next()); r.has_emit_only = true; }
+        else if (a == "--strict-borrowed") { r.strict_borrowed = true; r.has_emit_only = true; }
         else if (a == "-I") r.include_dirs.push_back(next());
         else if (a.rfind("-I", 0) == 0) r.include_dirs.push_back(a.substr(2));
         else if (!a.empty() && a[0] == '-') usage();
@@ -98,6 +100,7 @@ int run_emit(const Args& args)
     if (args.has_build_only || args.inputs.size() != 1 || args.gen < 1) usage();
     sppc::TranslateOptions opt;
     opt.generation = args.gen;
+    opt.strict_borrowed = args.strict_borrowed;
     opt.resource_dir = args.resource_dir;
     opt.include_dirs = args.include_dirs;
     for (const std::string& file : args.preludes) {
@@ -119,6 +122,7 @@ int run_emit(const Args& args)
 
     sppc::TranslateResult r = sppc::translate(opt);
     std::fputs(r.diagnostics.c_str(), stderr);
+    std::fputs(r.warnings.c_str(), stderr);
     if (!r.ok) return 1;
 
     if (args.output.empty()) {

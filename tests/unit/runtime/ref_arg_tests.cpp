@@ -79,4 +79,23 @@ TEST(RefArg, ConstexprAndNoTemporary)
     static_assert(!CanRefArg<Item>);
 }
 
+TEST(RefArg, AHandleBindsToTheRawPointerOfItsPointee)
+{
+    auto h = std::make_shared<Item>(Item{11});
+    EXPECT_EQ(read_ptr(spp::ref_arg(h)), 11);
+    write_ptr(spp::ref_arg(h));
+    EXPECT_EQ(h->m, 42);
+    const Item* cp = spp::ref_arg(h);
+    EXPECT_EQ(cp, h.get());
+}
+
+TEST(RefArg, AHandleStillBindsToItsOwnReferenceAndAddress)
+{
+    auto h = std::make_shared<Item>(Item{1});
+    std::shared_ptr<Item>& r = spp::ref_arg(h);
+    EXPECT_EQ(&r, &h);
+    std::shared_ptr<Item>* p = spp::ref_arg(h);
+    EXPECT_EQ(p, &h);
+}
+
 }  // namespace

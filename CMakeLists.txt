@@ -67,7 +67,7 @@ find_library(CLANG_C_LIBRARY NAMES clang REQUIRED)
 find_path(CLANG_C_INCLUDE_DIR clang-c/Index.h REQUIRED)
 execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
                 OUTPUT_VARIABLE CLANG_RESOURCE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
-add_library(sppc_lib STATIC src/translator/sppc_lib.cpp src/translator/emit.cpp src/translator/lower.cpp src/translator/types.cpp
+add_library(sppc_lib STATIC src/translator/sppc_lib.cpp src/translator/emit.cpp src/translator/lower.cpp src/translator/types.cpp src/translator/check.cpp
     src/translator/parser/script_grammar.cpp
     src/translator/parser/expression_grammar.cpp src/translator/parser/statement_grammar.cpp)
 target_include_directories(sppc_lib PUBLIC ${CMAKE_SOURCE_DIR}/include)
