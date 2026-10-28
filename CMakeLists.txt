@@ -26,7 +26,10 @@ add_compile_options(-Wall -Wextra)
 
 # Dependencies. CPM uses an installed package first and fetches only when the
 # package is missing. libclang is not fetched: it must come from the system.
-set(CPM_USE_LOCAL_PACKAGES ON)
+# -DCPM_USE_LOCAL_PACKAGES=OFF or -DCPM_DOWNLOAD_ALL=ON forces the fetch.
+if(NOT DEFINED CPM_USE_LOCAL_PACKAGES)
+    set(CPM_USE_LOCAL_PACKAGES ON)
+endif()
 include(cmake/CPM.cmake)
 CPMAddPackage(
     NAME GTest

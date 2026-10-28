@@ -217,10 +217,23 @@ At start-up the program makes the registry. The registry calls the register func
 
 The example is `example/ship/main.cpp` (target `ship_demo`) with the script `example/scripts/ship_demo.spp`. The tests are in `tests/integration/ship/`. They run the same steps with the loader and with the shipped program and compare the text. They check with `nm` that `ship_demo` has no loader and no Clang symbol. A compile error in the shipped C++ shows the generated file, not the script line.
 
+## Dependencies
+
+CMake uses CPM (`cmake/CPM.cmake`) with `CPM_USE_LOCAL_PACKAGES ON`. CPM uses an installed package first. It fetches the package only when the package is missing.
+
+- From the system only: libclang (C API), a Clang C++ compiler, and Threads. The JIT build also needs the LLVM and Clang development packages. CPM never fetches these.
+- System first, CPM when missing: GoogleTest (v1.17.0), lexy (v2025.05.0), nlohmann_json (3.12.0).
+- Always from CPM: Dear ImGui (v1.92.9b). It is fetched only when `find_package(SDL3)` succeeds. SDL3 comes from the system.
+
+Options to force the fetch:
+
+- `-DCPM_USE_LOCAL_PACKAGES=OFF` or `-DCPM_DOWNLOAD_ALL=ON` fetches every CPM package.
+- `-DCMAKE_DISABLE_FIND_PACKAGE_GTest=ON` fetches one package. Use `lexy` and `nlohmann_json` for the others.
+- `-DCPM_SOURCE_CACHE=<dir>` keeps the sources in one directory, so the next configure does not download again.
+- `-DCPM_LOCAL_PACKAGES_ONLY=ON` never fetches. Configure fails when a package is missing.
+
+
 ## Test
-
-CMake uses CPM. It takes GoogleTest from the system, and fetches it only when it is missing. libclang must come from the system. The JIT build also needs the LLVM and Clang development packages.
-
 
     cmake --build --preset linux-clang-files-dbg && ctest --preset linux-clang-files-dbg
 

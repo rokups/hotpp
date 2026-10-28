@@ -28,3 +28,11 @@ Status: [ ] open, [x] done. One slice is one commit.
 - [ ] S15 CPM fetch test.
 
 Not testable here: Windows, macOS, a real engine, the clangd fork (M12 to M14). See DECISIONS.md.
+
+## Second audit (after S15)
+- [ ] S16 `super(...)` args evaluate once; interface bases on a child of a script class; module variable convert hook and initializer that uses another module variable.
+- [ ] S17 Runtime: signature change detaches native delegates with a warning; script value type in a native container resets on layout change; first handle use of `this` layout check; code pointers in native memory/function pointer fields.
+- [ ] S18 Rename across all `.spp` files in spp-ls; VS Code `spp/toScript` command and `${workspaceFolder}`; TSan DeepNesting stack and watcher flake; cache edge case.
+- [ ] S19 Docs: refresh TASKS, HANDOFF, design 10.1 (proxy instead of fork), 7.3 interpolation text, F1 templated bases result, P1 CLANG_FILES with PCH measure.
+- [ ] S20 Script parent from another script; constructor overloads and ref/out ctor params; `var` from native call type; pattern-stub checks; `p.N` typed property access; deeper parameter analysis.
+- [ ] S21 Entry-counter blocking sync mode (design 6.3 fallback).
