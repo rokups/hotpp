@@ -39,16 +39,17 @@ public:
 
     // What the headers say about a class. "known" is true for a class type that libclang found.
     // "plain" is true for a trivially copyable, standard-layout type.
+    // "small" is true for a trivially copyable type of 16 bytes or less (design 7.10.5).
     struct ClassFacts {
-        bool known = false, plain = false;
+        bool known = false, plain = false, small = false;
     };
     using ClassFn = std::function<ClassFacts(const std::string&)>;
 
     // Sets the callback for the facts of a class. The stub "class *;" needs it.
     void set_classes(ClassFn fn);
 
-    // True when the facts of the type change its rule: the stub "class *;" is active, the type
-    // is a class name and no stub matches it.
+    // True when the facts of the type change its rule: the type is a class name and no stub
+    // matches it. The facts decide rule 4 of 7.10.2 (plain data is a value) and the stub "class *;".
     bool wants_facts(const std::string& type) const;
 
     // Registers the script classes of the script (design 7.10.1). A script class is a handle,
@@ -71,7 +72,7 @@ public:
     // 1) an exact stub,
     // 2) the first Handle stub on a base class (breadth first, nearest base wins),
     // 3) the longest pattern,
-    // 4) a plain data class is a Value (only when the stub "class *;" is active),
+    // 4) a plain data class (trivially copyable, standard layout) is a Value,
     // 5) the stub "class *;": a class that is not plain gets its default handle,
     // 6) Raw.
     // Only the Handle kind is inherited. "owner" is the stub that matched.
@@ -82,6 +83,16 @@ public:
 
     // The C++ type of a parameter: "const H&" for a handle, else storage().
     std::string param(const std::string& type) const;
+
+    // The C++ type of a by-value parameter in the generation function of a script function
+    // (design 7.10.5). "mutated", "rebound" and "stored" come from the analysis of the body (check.h).
+    //  - A handle is "const H&", unless the body stores it or rebinds it: then it is "H".
+    //  - A value is "const T&", unless the body mutates or stores it, or the type is small and
+    //    trivially copyable (16 bytes or less): then it is "T".
+    //  - Other types (builtin and raw) keep the form of param().
+    // The slot adapter and the thunk keep the form of param(), so the call interface does not
+    // change when a reload changes the body.
+    std::string body_param(const std::string& type, bool mutated, bool rebound, bool stored) const;
 
     // The C++ type of a "ref" or "out" parameter: storage() with "&". A handle has no "const".
     std::string ref_param(const std::string& type) const;

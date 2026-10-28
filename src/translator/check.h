@@ -44,4 +44,23 @@ std::set<std::string> used_type_names(const ast::Script& sc);
 // The same for one class. The translator uses it to find the script classes that a class names.
 std::set<std::string> used_type_names(const ast::ClassDef& cd);
 
+// How the body of a script function uses one parameter (design 7.10.5). The pass sees the
+// names only, because the lowering has not run. It is conservative:
+//  - "mutated": the body assigns to the parameter or to a member of it, applies "++" or "--",
+//    passes it with "ref" or "out", or calls a member function on it (the function can be
+//    non-const).
+//  - "rebound": the body assigns to the whole parameter, applies "++" or "--" to it, or passes
+//    it with "ref" or "out". For a handle this is the only change that needs a copy.
+//  - "stored": the body assigns the parameter as a whole (right side of "="), returns it,
+//    passes it to "new", or uses it in a lambda (a capture keeps a copy).
+struct ParamUse {
+    bool mutated = false, rebound = false, stored = false;
+};
+ParamUse analyze_param_use(const ast::Method& m, const std::string& name);
+
+// True when the class uses "this" on its own, not as the object of a member access. Such a
+// class can need a handle for "this" (design 7.10.1). Its shell then derives from
+// std::enable_shared_from_this.
+bool uses_bare_this(const ast::ClassDef& cd);
+
 }  // namespace sppc

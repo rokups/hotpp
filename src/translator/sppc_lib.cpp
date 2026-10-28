@@ -235,6 +235,7 @@ struct TypeFacts {
     bool known = false;
     bool is_class = false, copy = false, nothrow_move = false, polymorphic = false, final_ = false;
     bool plain = false;  // trivially copyable and standard layout
+    bool small = false;  // trivially copyable and 16 bytes or less (design 7.10.5)
     bool arrow = false;  // a pointer, or a type with operator->
     std::map<std::string, bool> members;  // for each asked name: "&T::name" is valid
 };
@@ -332,6 +333,27 @@ std::string body_what(const std::string& cn, const Method& m)
     return what + ")";
 }
 
+// ------------------------------------------------------------------ script types
+// Keeps the types as the script writes them. The translator rewrites "type" to the C++ storage
+// type later. The type-directed lowering (lower.h) reads the script types. A type that is
+// already set stays.
+void snapshot_types(ClassDef& cd)
+{
+    auto keep = [](std::string& dst, const std::string& src) {
+        if (dst.empty()) dst = src;
+    };
+    for (Field& f : cd.fields) keep(f.script_type, f.type);
+    for (Property& p : cd.props) keep(p.script_type, p.type);
+    auto params = [&](std::vector<Param>& ps) {
+        for (Param& p : ps) keep(p.script_type, p.type);
+    };
+    for (Method& m : cd.methods) {
+        keep(m.script_ret, m.ret);
+        params(m.params);
+    }
+    for (sppc::ast::Ctor& c : cd.ctors) params(c.params);
+}
+
 // ------------------------------------------------------------------ properties
 // Changes each property into script members:
 //  - An auto property gets the hidden field "__p_Name". The field keeps the initializer.
@@ -396,6 +418,7 @@ void desugar_props(ClassDef& cd, const sppc::LineMap& map)
         if (p.has_get) accessor(true);
         if (p.has_set) accessor(false);
     }
+    snapshot_types(cd);
 }
 
 // ------------------------------------------------------------------ driver
@@ -596,13 +619,14 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
         "template <class T> constexpr bool sppc_polymorphic() { if constexpr (sppc_complete<T>()) return std::is_polymorphic_v<T>; else return false; }\n"
         "template <class T> constexpr bool sppc_final() { if constexpr (sppc_complete<T>()) return std::is_final_v<T>; else return false; }\n"
         "template <class T> constexpr bool sppc_plain() { if constexpr (sppc_complete<T>()) return std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>; else return false; }\n"
+        "template <class T> constexpr bool sppc_small() { if constexpr (sppc_complete<T>()) return std::is_trivially_copyable_v<T> && sizeof(T) <= 16; else return false; }\n"
         "template <class T> constexpr bool sppc_arrow() { if constexpr (std::is_pointer_v<T>) return true; else if constexpr (sppc_complete<T>()) return requires(T& h) { h.operator->(); }; else return false; }\n";
     std::string body;
     lines.clear();
     size_t member_id = 0;
     for (size_t i = 0; i < reqs.size(); ++i) {
         const std::string& t = reqs[i].type;
-        const char* kinds[] = {"is_class", "copy", "nothrow_move", "polymorphic", "final", "plain", "arrow"};
+        const char* kinds[] = {"is_class", "copy", "nothrow_move", "polymorphic", "final", "plain", "small", "arrow"};
         for (const char* k : kinds) {
             lines.emplace_back(i, k);
             const std::string fn = std::string(k) == "is_class" ? "std::is_class_v<" + t + ">"
@@ -720,6 +744,7 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
             else if (k == "polymorphic") f.polymorphic = v == 1;
             else if (k == "final") f.final_ = v == 1;
             else if (k == "plain") f.plain = v == 1;
+            else if (k == "small") f.small = v == 1;
             else if (k == "arrow") f.arrow = v == 1;
             else f.members[k.substr(7)] = v == 1;
         }
@@ -878,6 +903,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
     if (!g_diag.items.empty()) throw TranslateAbort{};
     for (const Stub& st : sc.stubs) all_stubs.push_back({&st, &map, std::string()});
     types.add_script_classes(sc.classes);
+    for (ClassDef& cd : sc.classes) snapshot_types(cd);
     for (const ClassDef& cd : sc.classes) {
         if (!cd.is_value) continue;
         // A [value] class is a plain struct (design 7.10.1): no base, no virtual method, no hook.
@@ -955,6 +981,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         if (it != facts.end()) {
             c.known = it->second.known && it->second.is_class;
             c.plain = it->second.plain;
+            c.small = it->second.small;
         }
         return c;
     });
@@ -1085,6 +1112,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         base_cx.map = &map;
         base_cx.types = &types;
         base_cx.script_classes = script_names;
+        for (const auto& sc_cls : sc.classes) base_cx.classes[sc_cls.name] = &sc_cls;
         base_cx.new_classes = new_ready;
 
         o.w("\n// ---------------------------------------------------------------- [value] class " + cn + "\n");
@@ -1192,26 +1220,51 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         for (Method& m : cd.methods) emit_vbody(m, P + m.name, fn_ret(m), body_what(cn, m));
     };
 
-    // A [value] class comes first: other classes hold it as a field. The others keep their order.
+    // The emit order (design 7.10.1). A class that names another script class in a field, a
+    // parameter, a local or a "new" comes after that class. So the script can declare the
+    // classes in any order. A [value] class comes first: other classes hold it as a field.
+    // The other classes keep the script order when no use forces a change. A cycle is an error.
     std::vector<ClassDef*> order;
-    for (ClassDef& cd : sc.classes)
-        if (cd.is_value) order.push_back(&cd);
-    for (ClassDef& cd : sc.classes)
-        if (!cd.is_value) order.push_back(&cd);
+    {
+        std::map<std::string, ClassDef*> by_name;
+        for (ClassDef& cd : sc.classes) by_name[cd.name] = &cd;
+        std::map<std::string, std::set<std::string>> deps;
+        for (ClassDef& cd : sc.classes) {
+            for (const std::string& u : sppc::used_type_names(cd)) {
+                if (!by_name.count(u) || u == cd.name) continue;
+                if (cd.is_value && !types.is_script_value(u))
+                    fail_at(map, cd.pos, "a [value] class can use only native types and [value] classes: '" + u + "' is not");
+                deps[cd.name].insert(u);
+            }
+        }
+        std::map<std::string, int> state;  // 1: on the path, 2: done
+        std::vector<std::string> path;
+        std::function<void(ClassDef&)> visit = [&](ClassDef& cd) {
+            int& st = state[cd.name];
+            if (st == 2) return;
+            if (st == 1) {
+                std::string cycle;
+                for (const std::string& n : path) cycle += n + " -> ";
+                fail_at(map, cd.pos, "the classes use each other in a cycle: " + cycle + cd.name +
+                                         ". A handle type must not depend on itself through other classes");
+            }
+            st = 1;
+            path.push_back(cd.name);
+            for (const std::string& u : deps[cd.name]) visit(*by_name[u]);
+            path.pop_back();
+            state[cd.name] = 2;
+            order.push_back(&cd);
+        };
+        for (ClassDef& cd : sc.classes)
+            if (cd.is_value) visit(cd);
+        for (ClassDef& cd : sc.classes)
+            if (!cd.is_value) visit(cd);
+    }
     std::set<std::string> emitted;
 
     for (ClassDef* cdp : order) {
         ClassDef& cd = *cdp;
         const std::string cn = cd.name;
-        // A class names another script class in a field, a parameter or a local. The other
-        // class must come before it. A [value] class names only [value] classes.
-        // The "new" targets get their own message from the lowering pass.
-        for (const std::string& u : sppc::used_type_names(cd)) {
-            if (!script_names.count(u) || u == cn || emitted.count(u) || new_set.count(u)) continue;
-            if (cd.is_value && !types.is_script_value(u))
-                fail_at(map, cd.pos, "a [value] class can use only native types and [value] classes: '" + u + "' is not");
-            fail_at(map, cd.pos, "class '" + u + "' must come before the class that uses it");
-        }
         emitted.insert(cn);
         if (cd.is_value) {
             emit_value(cd);
@@ -1372,8 +1425,18 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                         fail_at(map, m.pos, "'" + m.name + "' must return the type of the field: '" + f.type + "'");
                 continue;
             }
-            for (Param& p : m.params)
-                p.type = p.mode == PassMode::Value ? types.param(p.type) : types.ref_param(p.type);
+            // The parameter analysis (design 7.10.5) picks the form in the generation function.
+            // The slot adapter and the thunk keep the form of param().
+            for (Param& p : m.params) {
+                if (p.mode != PassMode::Value) {
+                    p.type = types.ref_param(p.type);
+                    continue;
+                }
+                const sppc::ParamUse use = sppc::analyze_param_use(m, p.name);
+                const std::string body = types.body_param(p.type, use.mutated, use.rebound, use.stored);
+                p.type = types.param(p.type);
+                if (body != p.type) p.body_type = body;
+            }
             if (!m.ret.empty()) m.ret = types.storage(m.ret);
         }
 
@@ -1435,7 +1498,10 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         RCtx base_cx = sppc::make_class_ctx(cd);
         base_cx.map = &map;
         base_cx.types = &types;
-        for (const auto& sc_cls : sc.classes) base_cx.script_classes.insert(sc_cls.name);
+        for (const auto& sc_cls : sc.classes) {
+            base_cx.script_classes.insert(sc_cls.name);
+            base_cx.classes[sc_cls.name] = &sc_cls;
+        }
         if (gen_new) new_ready.insert(cn);
         base_cx.new_classes = new_ready;
 
@@ -1452,7 +1518,14 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
 
         // ---- shell
         o.w("// The shell overrides every virtual of " + B + ". Each stub reads one slot.\n");
-        o.w("struct " + shell + " final : " + B + ", spp::ShellBase {\n");
+        // A bare "this" used as a handle needs "shared_from_this" (design 7.10.1). A plain class
+        // gets it from spp::PlainObject. A native base needs it in the shell.
+        // The lowering of the bodies sets "handle_this". The base is added to this line then.
+        bool handle_this = false;
+        base_cx.handle_this = &handle_this;
+        const std::string shell_head = "struct " + shell + " final : " + B + ", spp::ShellBase";
+        const size_t shell_head_end = o.s.size() + shell_head.size();
+        o.w(shell_head + " {\n");
         o.w("    template <class... A>\n    explicit " + shell + "(spp::Construct, A&&... a) : " + B +
             "(std::forward<A>(a)...)\n    {\n        spp::init_state(this, &" + cn +
             "_record);\n    }\n    ~" + shell + "() override { spp::destroy_state(this); }\n");
@@ -1538,6 +1611,12 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             for (const Param& p : m.params) r += ", " + p.type + " " + p.name;
             return r;
         };
+        // The parameters of the generation function of a script function (design 7.10.5).
+        auto body_decl = [](const Method& m) {
+            std::string r;
+            for (const Param& p : m.params) r += ", " + (p.body_type.empty() ? p.type : p.body_type) + " " + p.name;
+            return r;
+        };
         auto fn_ret = [](const Method& m) { return m.ret.empty() ? std::string("void") : m.ret; };
         auto type_list = [](const Method& m) {
             std::string r;
@@ -1553,7 +1632,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         // forward declarations of the script functions
         for (const Method& m : cd.methods)
             if (!m.overrides_virtual && hook_of(m) != Hook::Convert)
-                o.w("static " + fn_ret(m) + " " + P + m.name + "(" + shell + "* self" + param_decl(m) + ");\n");
+                o.w("static " + fn_ret(m) + " " + P + m.name + "(" + shell + "* self" + body_decl(m) + ");\n");
         o.w("\n");
 
         // The constructor (design 7.3). The constructor body is not a slot. A "new" function
@@ -1625,9 +1704,10 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                              const std::string& what) {
             RCtx cx = base_cx;
             cx.where = what;
+            cx.ret_type = m.script_ret;
             sppc::add_params(cx, m.params);
             std::string head = "static " + ret + " " + sym + "(";
-            if (is_fn) head += shell + "* self" + param_decl(m);
+            if (is_fn) head += shell + "* self" + body_decl(m);
             else head += B + "* a" + param_decl(m);
             o.w(head + ")\n{\n");
             if (!is_fn) o.w("    [[maybe_unused]] auto* self = static_cast<" + shell + "*>(a);\n");
@@ -1715,6 +1795,11 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             thunk_regs.push_back("    reg.add_thunk(\"" + cn + "::" + m.name +
                                  "\", reinterpret_cast<void*>(&" + P + m.name + "__thunk));\n");
         }
+
+        // A bare "this" used as a handle in a native-base class needs shared_from_this in the
+        // shell. The insert stays in one line, so the line numbers do not change.
+        if (handle_this && !cd.base.empty() && types.storage(cn).rfind("std::shared_ptr<", 0) == 0)
+            o.s.insert(shell_head_end, ", std::enable_shared_from_this<" + shell + ">");
 
         // ---- record and entry
         o.w("// ------------------------------------------------------ record and entry\n");

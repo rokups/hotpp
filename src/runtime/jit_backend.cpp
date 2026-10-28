@@ -178,6 +178,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
     to.generation = static_cast<int>(generation);
     to.include_dirs = opt_.include_dirs;
     to.resource_dir = opt_.resource_dir;
+    to.strict_borrowed = opt_.strict_borrowed;
     to.slots_in = slots_;
     sppc::TranslateResult tr = sppc::translate(to, *opt_.session);
     timings_.translate_ms = ms_since(t0);

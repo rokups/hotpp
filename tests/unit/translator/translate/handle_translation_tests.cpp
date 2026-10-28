@@ -21,12 +21,26 @@ TEST(HandleTranslation, FieldStorage)
 
 TEST(HandleTranslation, ParamIsConstRef)
 {
+    // The handle is only read: the generation function keeps the const reference.
     const sppc::TranslateResult r =
-        weapon_translate("    Weapon w = null;\n    void Hit(Weapon src) { this.w = src; }\n");
+        weapon_translate("    Weapon w = null;\n    void Hit(Weapon src) { src.Use(); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const std::string p = "const std::shared_ptr<Weapon>& src";
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit(Foo_Shell* self, " + p + ");")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit(Foo_Shell* self, " + p + ")\n{")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "static void Foo__Hit_slot(Widget* a, " + p + ")")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "static void Foo__Hit__thunk(Widget* a, " + p + ")")) << r.cpp;
+}
+
+TEST(HandleTranslation, StoredParamTakesACopyInTheBody)
+{
+    // The body stores the handle: the generation function takes a copy (design 7.10.5).
+    // The slot adapter and the thunk keep the canonical form, so a reload keeps the interface.
+    const sppc::TranslateResult r =
+        weapon_translate("    Weapon w = null;\n    void Hit(Weapon src) { this.w = src; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const std::string p = "const std::shared_ptr<Weapon>& src";
+    EXPECT_TRUE(has(r.cpp, "static void Foo__Hit(Foo_Shell* self, std::shared_ptr<Weapon> src);")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit_slot(Widget* a, " + p + ")")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit__thunk(Widget* a, " + p + ")")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "st->w = src;")) << r.cpp;

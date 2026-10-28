@@ -155,4 +155,20 @@ TEST_P(BackendTests, ShellClassHandleOwnsTheObject)
     EXPECT_NE(second.find("[ctor_v1] unit gone"), std::string::npos) << second;
 }
 
+// Type-directed access on a script handle: a field, a script function and a property of the
+// Link through the handle field "first". "Self" returns "this" as a handle (S5b).
+TEST_P(BackendTests, TypedAccessOnScriptHandlesAndReturnThis)
+{
+    spp::LoadResult v1 = backend->load(source("typed_v1.spp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Chain"));
+    s.commit_at_frame_boundary();
+    testing::internal::CaptureStdout();
+    s.world.Tick(kDt);
+    testing::internal::GetCapturedStdout();
+    EXPECT_EQ(*fld<int>(s, "power"), 8);  // Hit(3), then hits = 4: Power is hits * 2
+    EXPECT_EQ(*fld<int>(s, "seen"), 5);   // Self() is the same object: Hit(1) changes it
+}
+
 }  // namespace

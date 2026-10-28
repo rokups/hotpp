@@ -136,13 +136,15 @@ The tool `sppc` has two modes. The default mode builds a `.so`. The mode `--emit
 Command line of the build mode:
 
     sppc <script>... --gen N (--out-dir DIR | -o x.so) [-I dir]... [--resource-dir dir]
-         [--cxx command] [--cxxflag flag]... [--slots file]
+         [--cxx command] [--cxxflag flag]... [--slots file] [--no-strict-borrowed]
 
 Command line of the translate mode. Without `-o`, the tool prints the C++ to the standard output:
 
     sppc --emit-cpp <script> --gen N [-o out.cpp] [-I dir]... [--prelude file]...
-         [--slots file] [--resource-dir dir]
+         [--slots file] [--resource-dir dir] [--no-strict-borrowed]
 
+- `--no-strict-borrowed` makes the borrowed-storage findings (a stored `T*`, `T&` or `ref`) warnings. By default they are errors.
+- The order of the classes in a script does not matter. A cycle of classes is an error.
 - `<script>...` is one or more script files. Each script gives one library.
 - `--gen N` is the generation number (1 or more).
 - `-o x.so` builds one script into the library `x.so`. The C++ file goes to the directory of `x.so`. Use `-o` or `--out-dir`, not both.

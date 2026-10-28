@@ -940,7 +940,7 @@ The keywords `ref` and `out` stay. They are the only syntax for the details of p
 - **Restriction in version 1.** A `ref` is not storable. It cannot be a field, a closure capture, a collection element or a return type. A field such as `ref Weapon last;` is an error.
 - **Reason.** A field lives in the state block. The reload moves this block. A stored reference would dangle. With this rule the translator emits raw C++ references with no runtime check.
 - A later version can relax the rule for references to objects with a stable address.
-- **Implementation.** The prefix `&e` is removed. The parser gives the error "use 'ref' instead of '&'". A call argument `ref e` or `out e` becomes `spp::ref_arg(e)`. This wrapper converts to `T&` and to `T*`, so one form fits both a reference parameter and a pointer parameter. The not-storable rule and the borrowed-storage check are not enforced yet.
+- **Implementation.** The prefix `&e` is removed. The parser gives the error "use 'ref' instead of '&'". A call argument `ref e` or `out e` becomes `spp::ref_arg(e)`. This wrapper converts to `T&` and to `T*`, so one form fits both a reference parameter and a pointer parameter. The not-storable rule and the borrowed-storage check are errors by default (`--no-strict-borrowed` makes them warnings).
 
 #### 7.10.7 Checks on a stub
 

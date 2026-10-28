@@ -403,6 +403,105 @@ void check_ctors(const ClassDef& cd, const LineMap& map, Diagnostics& diag)
     }
 }
 
+namespace {
+
+// The name at the root of an access path: "p", "p.x" (NameExpr with parts), "(p).x[1]".
+const std::string* root_name(const Expr& e)
+{
+    if (auto* n = std::get_if<NameExpr>(&e.v)) return n->parts.empty() ? nullptr : &n->parts[0];
+    if (auto* m = std::get_if<MemberExpr>(&e.v)) return root_name(*m->obj);
+    if (auto* ix = std::get_if<IndexExpr>(&e.v)) return root_name(*ix->obj);
+    if (auto* p = std::get_if<ParenExpr>(&e.v)) return root_name(*p->inner);
+    return nullptr;
+}
+
+// True when the expression is exactly the name (maybe in parentheses).
+bool is_exactly(const Expr& e, const std::string& name)
+{
+    if (auto* n = std::get_if<NameExpr>(&e.v)) return n->parts.size() == 1 && n->parts[0] == name;
+    if (auto* p = std::get_if<ParenExpr>(&e.v)) return is_exactly(*p->inner, name);
+    return false;
+}
+
+bool is_assign_op(const std::string& op)
+{
+    return op == "=" || (op.size() >= 2 && op.back() == '=' && op != "==" && op != "!=" && op != "<=" && op != ">=");
+}
+
+}  // namespace
+
+ParamUse analyze_param_use(const Method& m, const std::string& name)
+{
+    ParamUse use;
+    auto rooted = [&](const ExprP& e) {
+        if (!e) return false;
+        const std::string* r = root_name(*e);
+        return r && *r == name;
+    };
+    auto fe = [&](const Expr& e) {
+        if (auto* b = std::get_if<BinaryExpr>(&e.v)) {
+            if (!is_assign_op(b->op)) return;
+            if (rooted(b->lhs)) use.mutated = true;
+            if (b->lhs && is_exactly(*b->lhs, name)) use.rebound = true;
+            if (b->op == "=" && b->rhs && is_exactly(*b->rhs, name)) use.stored = true;
+        } else if (auto* u = std::get_if<UnaryExpr>(&e.v)) {
+            if ((u->op == "++" || u->op == "--") && rooted(u->operand)) {
+                use.mutated = true;
+                if (is_exactly(*u->operand, name)) use.rebound = true;
+            }
+        } else if (auto* r = std::get_if<RefExpr>(&e.v)) {
+            if (rooted(r->operand)) {
+                use.mutated = true;
+                if (is_exactly(*r->operand, name)) use.rebound = true;
+            }
+        } else if (auto* c = std::get_if<CallExpr>(&e.v)) {
+            // "p.M()": a member function can change the object.
+            if (auto* n = std::get_if<NameExpr>(&c->callee->v)) {
+                if (n->parts.size() >= 2 && n->parts[0] == name) use.mutated = true;
+            } else if (auto* mm = std::get_if<MemberExpr>(&c->callee->v)) {
+                if (rooted(mm->obj)) use.mutated = true;
+            }
+        } else if (auto* nw = std::get_if<NewExpr>(&e.v)) {
+            for (const ExprP& a : nw->args)
+                if (a && is_exactly(*a, name)) use.stored = true;
+        } else if (auto* l = std::get_if<LambdaExpr>(&e.v)) {
+            auto inner_e = [&](const Expr& x) {
+                if (auto* n = std::get_if<NameExpr>(&x.v))
+                    if (!n->parts.empty() && n->parts[0] == name) use.stored = true;
+            };
+            auto inner_s = [](const Stmt&) {};
+            make_walker(inner_e, inner_s).block(l->body);
+        }
+    };
+    auto fs = [&](const Stmt& s) {
+        if (auto* r = std::get_if<ReturnStmt>(&s.v))
+            if (r->expr && is_exactly(*r->expr, name)) use.stored = true;
+    };
+    make_walker(fe, fs).block(m.body);
+    return use;
+}
+
+bool uses_bare_this(const ClassDef& cd)
+{
+    std::set<const Expr*> member_objs;
+    bool found = false;
+    auto fe = [&](const Expr& e) {
+        if (auto* m = std::get_if<MemberExpr>(&e.v)) member_objs.insert(m->obj.get());
+        if (std::holds_alternative<ThisExpr>(e.v) && !member_objs.count(&e)) found = true;
+    };
+    auto fs = [](const Stmt&) {};
+    auto w = make_walker(fe, fs);
+    for (const Field& f : cd.fields) w.expr(f.init);
+    for (const Method& m : cd.methods) w.block(m.body);
+    for (const Method& d : cd.dtors) w.block(d.body);
+    for (const Ctor& c : cd.ctors) w.block(c.body);
+    for (const Property& p : cd.props) {
+        if (p.get_body) w.block(*p.get_body);
+        if (p.set_body) w.block(*p.set_body);
+    }
+    return found;
+}
+
 std::set<std::string> new_targets(const Script& sc)
 {
     std::set<std::string> out;

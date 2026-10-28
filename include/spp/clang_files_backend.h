@@ -23,6 +23,7 @@ struct ClangFilesOptions {
     std::vector<std::string> extra_flags;     // added to the compile command
     std::string work_dir = "spp_work";        // the .cpp and .so files go here
     std::string slots_file;                   // empty: <work_dir>/slots.txt
+    bool strict_borrowed = true;              // false: a borrowed-storage finding is a warning
 };
 
 class ClangFilesBackend : public Backend {

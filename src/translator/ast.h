@@ -22,6 +22,12 @@ enum class PassMode { Value, Ref, Out };
 struct Param {
     std::string name, type;
     PassMode mode = PassMode::Value;
+    // The type as the script writes it. The translator sets it before it rewrites "type" to the
+    // C++ storage type. The lowering pass reads it for the type-directed member access.
+    std::string script_type{};
+    // The type of the parameter in the generation function of a script function, when the
+    // parameter analysis (design 7.10.5) picks another form than "type". Empty: same as "type".
+    std::string body_type{};
 };
 
 // ------------------------------------------------------------------ expressions
@@ -260,6 +266,7 @@ enum class Access { Public, Private, Protected };
 
 struct Field {
     std::string name, alias, type;  // alias: the previous name from [alias("...")]
+    std::string script_type;        // "type" as the script writes it (see Param)
     ExprP init;      // null when the field has no initializer, or the parse failed
     Span init_span;  // the raw text after "=", up to the ";"
     bool has_init = false;
@@ -278,6 +285,7 @@ struct Method {
     std::string name;
     std::vector<Param> params;
     std::string ret;  // empty: not written
+    std::string script_ret;  // "ret" as the script writes it (see Param)
     BlockStmt body;  // the statements; the parser fills them from body_span
     Span body_span;  // the raw text between the braces
     int line = 0, end_line = 0;
@@ -304,6 +312,7 @@ struct Ctor {
 // The access on an accessor is parsed and stored. Nothing checks it yet.
 struct Property {
     std::string name, type;
+    std::string script_type;  // "type" as the script writes it (see Param)
     Access access = Access::Public;
     bool has_get = false, has_set = false;
     Access get_access = Access::Public, set_access = Access::Public;

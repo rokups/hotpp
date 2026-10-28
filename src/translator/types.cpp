@@ -142,7 +142,7 @@ void TypeModel::set_classes(ClassFn fn)
 
 bool TypeModel::wants_facts(const std::string& type) const
 {
-    if (default_handle_.empty() || type.empty()) return false;
+    if (type.empty()) return false;
     if (type.find('*') != std::string::npos || type.find('&') != std::string::npos) return false;
     if (starts_with(type, "const ") || is_builtin(type)) return false;
     return lookup_stub(type).kind == Kind::Raw;
@@ -157,9 +157,10 @@ TypeRule TypeModel::lookup(const std::string& cpp_type) const
     TypeRule d;
     d.owner = "*";
     if (f.plain) {
-        d.kind = Kind::Value;  // step 4 of 7.10.2: plain data is a value
+        d.kind = Kind::Value;  // rule 4 of 7.10.2: plain data is a value (no stub needed)
         return d;
     }
+    if (default_handle_.empty()) return r;  // no "class *;" stub: the type stays raw
     d.kind = Kind::Handle;
     d.handle_tpl = default_handle_;
     return d;
@@ -245,6 +246,19 @@ std::string TypeModel::param(const std::string& type) const
 {
     if (!is_handle(type)) return type;
     return "const " + storage(type) + "&";
+}
+
+std::string TypeModel::body_param(const std::string& type, bool mutated, bool rebound, bool stored) const
+{
+    if (type.empty() || type.find('*') != std::string::npos || type.find('&') != std::string::npos ||
+        starts_with(type, "const ") || is_builtin(type))
+        return param(type);
+    const TypeRule rule = lookup(type);
+    if (rule.kind == Kind::Handle) return rebound || stored ? storage(type) : param(type);
+    if (rule.kind != Kind::Value) return type;
+    if (mutated || stored) return type;
+    if (classes_ && classes_(type).small) return type;
+    return "const " + type + "&";
 }
 
 std::string TypeModel::ref_param(const std::string& type) const { return storage(type) + "&"; }

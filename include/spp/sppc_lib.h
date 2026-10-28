@@ -23,9 +23,9 @@ struct TranslateOptions {
     std::vector<std::pair<std::string, std::string>> preludes;  // name, text
     // The borrowed-storage rule of design 7.10.4 and 7.10.6: a field, a return value, a
     // collection element or a lambda capture cannot hold a native "T*", a "T&" or a "ref" of a
-    // type that is not a handle. True: a violation is an error. False: it is a warning, because
-    // the first example scripts (player_v1.spp) still store an "Actor*".
-    bool strict_borrowed = false;
+    // type that is not a handle. True (the default): a violation is an error. False: it is a
+    // warning (sppc --no-strict-borrowed).
+    bool strict_borrowed = true;
 };
 
 struct TranslateResult {

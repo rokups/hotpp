@@ -36,7 +36,12 @@ RCtx make_class_ctx(const ast::ClassDef& cd)
 
 void add_params(RCtx& cx, const std::vector<ast::Param>& params)
 {
-    for (const ast::Param& p : params) cx.locals.insert(p.name);
+    for (const ast::Param& p : params) {
+        cx.locals.insert(p.name);
+        const std::string& t = p.script_type.empty() ? p.type : p.script_type;
+        if (t.empty()) cx.local_type.erase(p.name);
+        else cx.local_type[p.name] = t;
+    }
 }
 
 namespace {
@@ -86,36 +91,177 @@ struct Lowerer {
     struct PropRef {
         std::string name;
         ExprP* obj = nullptr;
+        const ClassDef* cls = nullptr;  // the class that has the property
     };
+
+    // ---- type information (see RCtx)
+    const ClassDef* class_named(const std::string& t) const
+    {
+        auto it = cx.classes.find(t);
+        return it == cx.classes.end() ? nullptr : it->second;
+    }
+
+    static const Property* find_prop(const ClassDef& c, const std::string& n)
+    {
+        for (const Property& p : c.props)
+            if (p.name == n) return &p;
+        return nullptr;
+    }
+
+    static const Field* find_field(const ClassDef& c, const std::string& n)
+    {
+        for (const Field& f : c.fields)
+            if (f.name == n) return &f;
+        return nullptr;
+    }
+
+    // A script function of the class: not an override and not a hook. The call gets the shell.
+    static const Method* find_fn(const ClassDef& c, const std::string& n)
+    {
+        if (n == "onReload" || n.rfind("convert_", 0) == 0) return nullptr;
+        for (const Method& m : c.methods)
+            if (m.name == n && !m.overrides_virtual) return &m;
+        return nullptr;
+    }
+
+    static const std::string& type_text(const Field& f) { return f.script_type.empty() ? f.type : f.script_type; }
+
+    // The script type of an expression before its lowering. Empty: not known.
+    std::string type_of(const Expr& e) const
+    {
+        if (std::holds_alternative<ThisExpr>(e.v)) return cx.allow_this && cx.cls ? cx.cls->name : std::string();
+        if (const std::string* n = simple_name(e)) {
+            if (!cx.locals.count(*n)) return {};
+            auto it = cx.local_type.find(*n);
+            return it == cx.local_type.end() ? std::string() : it->second;
+        }
+        if (auto* nw = std::get_if<NewExpr>(&e.v)) return class_named(nw->type) ? nw->type : std::string();
+        if (auto* p = std::get_if<ParenExpr>(&e.v)) return type_of(*p->inner);
+        if (auto* nm = std::get_if<NameExpr>(&e.v)) {  // a.b.c with a local head, before member_chain
+            if (nm->parts.size() < 2 || !cx.locals.count(nm->parts[0])) return {};
+            auto it = cx.local_type.find(nm->parts[0]);
+            std::string t = it == cx.local_type.end() ? std::string() : it->second;
+            for (size_t i = 1; i < nm->parts.size() && !t.empty(); ++i) t = member_type(t, nm->parts[i]);
+            return t;
+        }
+        if (auto* m = std::get_if<MemberExpr>(&e.v)) {
+            if (std::holds_alternative<SuperExpr>(m->obj->v)) return {};
+            return member_type(type_of(*m->obj), m->name);
+        }
+        if (auto* c = std::get_if<CallExpr>(&e.v)) {
+            if (const std::string* n = simple_name(*c->callee)) {
+                if (cx.locals.count(*n) || !cx.cls) return {};
+                const Method* fn = find_fn(*cx.cls, *n);
+                return fn ? fn->script_ret : std::string();
+            }
+            if (auto* m = std::get_if<MemberExpr>(&c->callee->v)) {
+                const ClassDef* d = class_named(type_of(*m->obj));
+                const Method* fn = d ? find_fn(*d, m->name) : nullptr;
+                return fn ? fn->script_ret : std::string();
+            }
+            if (auto* nm = std::get_if<NameExpr>(&c->callee->v)) {
+                if (nm->parts.size() < 2) return {};
+                std::string t = type_of(NameExprView(*nm, nm->parts.size() - 1));
+                const ClassDef* d = class_named(t);
+                const Method* fn = d ? find_fn(*d, nm->parts.back()) : nullptr;
+                return fn ? fn->script_ret : std::string();
+            }
+        }
+        return {};
+    }
+
+    // The type of the member "name" of an object of the type "t": a field or a property.
+    std::string member_type(const std::string& t, const std::string& name) const
+    {
+        const ClassDef* d = class_named(t);
+        if (!d) return {};
+        if (const Field* f = find_field(*d, name)) return type_text(*f);
+        if (const Property* p = find_prop(*d, name)) return p->script_type.empty() ? p->type : p->script_type;
+        return {};
+    }
+
+    // The type of the first "n" parts of a name, as a temporary expression.
+    static Expr NameExprView(const NameExpr& nm, size_t n)
+    {
+        NameExpr head;
+        head.parts.assign(nm.parts.begin(), nm.parts.begin() + static_cast<std::ptrdiff_t>(n));
+        Expr e;
+        e.v = std::move(head);
+        return e;
+    }
+
+    // Records the type of a local. An empty type removes an older entry of the same name.
+    void declare(const std::string& name, const std::string& type)
+    {
+        cx.locals.insert(name);
+        if (type.empty()) cx.local_type.erase(name);
+        else cx.local_type[name] = type;
+    }
+
+    // "spp::shell_of<C_Shell>(obj, "C")" for the lowered text of the object.
+    std::string shell_text(const ClassDef& d, const std::string& obj_text) const
+    {
+        return "spp::shell_of<" + d.name + "_Shell>(" + obj_text + ", \"" + d.name + "\")";
+    }
+
+    // Where a handle type is expected, a bare "this" becomes a handle (design 7.10.1).
+    void coerce(ExprP& e, const std::string& type)
+    {
+        if (!e || type.empty() || !cx.types || !cx.allow_this) return;
+        if (!std::holds_alternative<ThisExpr>(e->v)) return;
+        const std::string h = cx.types->storage(type);
+        if (h == type) return;  // not a handle type: "this" stays the pointer
+        const uint32_t pos = std::get<ThisExpr>(e->v).pos;
+        std::vector<ExprP> a;
+        a.push_back(raw("self", 0));
+        if (cx.handle_this) *cx.handle_this = true;
+        e = call_of("spp::handle_from_this<" + h + ">", std::move(a), pos);
+    }
+
+    // The arguments of a call of the script function "fn" (null: no information).
+    void coerce_args(CallExpr& c, const Method* fn, size_t first)
+    {
+        if (!fn) return;
+        for (size_t i = first; i < c.args.size() && i - first < fn->params.size(); ++i) {
+            const Param& p = fn->params[i - first];
+            if (p.mode == PassMode::Value) coerce(c.args[i], p.script_type.empty() ? p.type : p.script_type);
+        }
+    }
 
     // The property that "this.P", a bare "P" or "obj.P" names. A local hides a bare "P".
     // The pass has no types: "obj.P" is a property when P is a property of the class.
+    // "obj.P" uses the declared type of obj when it is known. Else P must be a property of
+    // the current class.
     std::optional<PropRef> prop_ref(Expr& e) const
     {
         const std::string* n = nullptr;
         ExprP* obj = nullptr;
+        const ClassDef* d = cx.cls;
         if (const MemberExpr* m = this_member(e)) {
             n = &m->name;
         } else if (auto* m2 = std::get_if<MemberExpr>(&e.v)) {
             if (std::holds_alternative<SuperExpr>(m2->obj->v)) return std::nullopt;
             n = &m2->name;
             obj = &m2->obj;
+            const std::string t = type_of(*m2->obj);
+            if (const ClassDef* td = class_named(t)) d = td;  // else: the old name rule
         } else if ((n = simple_name(e)) && cx.locals.count(*n)) {
             n = nullptr;
         }
-        if (!n || !cx.props.count(*n)) return std::nullopt;
-        return PropRef{*n, obj};
+        if (!n || !d || !find_prop(*d, *n)) return std::nullopt;
+        return PropRef{*n, obj, d};
     }
 
     // The checks of an accessor use. Gives the name of the accessor fn: "Cls__get_P".
-    std::string accessor(const std::string& prop, bool is_get, uint32_t pos)
+    std::string accessor(const ClassDef& d, const std::string& prop, bool is_get, uint32_t pos)
     {
         const char* word = is_get ? "get" : "set";
+        const Property* p = find_prop(d, prop);
         if (!cx.allow_this)
             error(pos, "property '" + prop + "' is not allowed in a field initializer");
-        else if (!(is_get ? cx.props[prop].has_get : cx.props[prop].has_set))
+        else if (p && !(is_get ? p->has_get : p->has_set))
             error(pos, "property '" + prop + "' has no '" + word + "' accessor");
-        return cx.cls->name + "__" + word + "_" + prop;
+        return d.name + "__" + word + "_" + prop;
     }
 
     // The first argument of an accessor: "self", or "spp::shell_of<Cls_Shell>(obj, "Cls")"
@@ -126,14 +272,14 @@ struct Lowerer {
         expr(*r.obj);
         CallExpr c;
         c.pos = pos;
-        if (cx.cls->is_value) {  // a [value] object: the address of the struct
+        if (r.cls->is_value) {  // a [value] object: the address of the struct
             c.callee = raw("spp::value_ptr", pos);
             c.args.push_back(std::move(*r.obj));
             return make_expr(std::move(c));
         }
-        c.callee = raw("spp::shell_of<" + cx.cls->name + "_Shell>", pos);
+        c.callee = raw("spp::shell_of<" + r.cls->name + "_Shell>", pos);
         c.args.push_back(std::move(*r.obj));
-        c.args.push_back(raw("\"" + cx.cls->name + "\"", 0));
+        c.args.push_back(raw("\"" + r.cls->name + "\"", 0));
         return make_expr(std::move(c));
     }
 
@@ -157,7 +303,7 @@ struct Lowerer {
     // A read of a property: "Cls__get_P(receiver)".
     ExprP prop_read(PropRef r, uint32_t pos)
     {
-        const std::string get = accessor(r.name, true, pos);
+        const std::string get = accessor(*r.cls, r.name, true, pos);
         return call_of(get, args_of(receiver(r, pos)), pos);
     }
 
@@ -185,6 +331,10 @@ struct Lowerer {
             if (!(r = prop_ref(*b->lhs))) return false;
             op = o.substr(0, o.size() - 1);
             pos = pos_of(*b->lhs);
+            if (op.empty()) {
+                const Property* pr = find_prop(*r->cls, r->name);
+                if (pr) coerce(b->rhs, pr->script_type.empty() ? pr->type : pr->script_type);
+            }
             expr(b->rhs);
             value = std::move(b->rhs);
         } else if (auto* u = std::get_if<UnaryExpr>(&e->v)) {
@@ -200,8 +350,8 @@ struct Lowerer {
             return false;
         }
         const bool on_this = !r->obj;
-        const std::string get = op.empty() ? std::string() : accessor(r->name, true, pos);
-        const std::string set = accessor(r->name, false, pos);
+        const std::string get = op.empty() ? std::string() : accessor(*r->cls, r->name, true, pos);
+        const std::string set = accessor(*r->cls, r->name, false, pos);
         ExprP recv = receiver(*r, pos);
         if (discard && (op.empty() || on_this)) {
             if (!op.empty()) {
@@ -240,16 +390,40 @@ struct Lowerer {
     {
         if (const std::string* n = simple_name(*c.callee)) {
             if (cx.fns.count(*n) && !cx.locals.count(*n)) {
+                const Method* fn = find_fn(*cx.cls, *n);
                 script_call(c, *n, std::get<NameExpr>(c.callee->v).pos);
+                coerce_args(c, fn, 1);
                 exprs(c.args);
                 return;
             }
         }
         if (const MemberExpr* m = this_member(*c.callee)) {
             if (cx.allow_this && !cx.field_type.count(m->name) && cx.fns.count(m->name)) {
+                const Method* fn = find_fn(*cx.cls, m->name);
                 script_call(c, m->name, pos_of(*m->obj));
+                coerce_args(c, fn, 1);
                 exprs(c.args);
                 return;
+            }
+        }
+        // "obj.M(args)" where obj has the type of a script class (not a [value] class) and M is
+        // a script function of it: a direct call of the generation function.
+        member_chain(c.callee);
+        if (auto* mm = std::get_if<MemberExpr>(&c.callee->v)) {
+            if (!std::holds_alternative<ThisExpr>(mm->obj->v) && !std::holds_alternative<SuperExpr>(mm->obj->v)) {
+                const ClassDef* d = class_named(type_of(*mm->obj));
+                const Method* fn = d && !d->is_value && !find_prop(*d, mm->name) ? find_fn(*d, mm->name) : nullptr;
+                if (fn) {
+                    const uint32_t pos = pos_of(*mm->obj);
+                    const std::string name = d->name + "__" + mm->name;
+                    expr(mm->obj);
+                    ExprP recv = raw(shell_text(*d, print(*mm->obj)), pos);
+                    c.callee = raw(name, pos);
+                    c.args.insert(c.args.begin(), std::move(recv));
+                    coerce_args(c, fn, 1);
+                    for (size_t i = 1; i < c.args.size(); ++i) expr(c.args[i]);
+                    return;
+                }
             }
         }
         expr(c.callee);
@@ -328,7 +502,7 @@ struct Lowerer {
         const uint32_t obj_pos = pos_of(*m.obj);
         if (std::holds_alternative<ThisExpr>(m.obj->v)) {
             if (cx.props.count(m.name)) {
-                e = prop_read({m.name, nullptr}, obj_pos);  // "m" is gone now
+                e = prop_read({m.name, nullptr, cx.cls}, obj_pos);  // "m" is gone now
             } else if (!cx.allow_this) {
                 error(obj_pos, "'this' is not allowed in a field initializer");
             } else if (cx.field_type.count(m.name)) {
@@ -349,9 +523,25 @@ struct Lowerer {
             e = raw("self->" + cx.cls->base + "::" + m.name, obj_pos);
             return;
         }
-        if (cx.props.count(m.name)) {  // "obj.P": a property of another object of the class
-            e = prop_read({m.name, &m.obj}, obj_pos);  // "m" is gone now
+        // "obj.P", "obj.f": the type of obj decides. Without a type, P is a property of the
+        // current class (the old rule).
+        const std::string t = type_of(*m.obj);
+        const ClassDef* td = class_named(t);
+        const ClassDef* d = td ? td : cx.cls;  // a native type: the old name rule
+        if (d && find_prop(*d, m.name)) {
+            e = prop_read({m.name, &m.obj, d}, obj_pos);  // "m" is gone now
             return;
+        }
+        if (td && !td->is_value) {
+            if (find_field(*d, m.name)) {  // a field of a script object behind a handle
+                expr(m.obj);
+                e = raw("state_of(" + shell_text(*d, print(*m.obj)) + ")->" + m.name, obj_pos);
+                return;
+            }
+            if (find_fn(*d, m.name)) {
+                error(obj_pos, "script function '" + m.name + "' must be called");
+                return;
+            }
         }
         expr(m.obj);
         deref(m.obj);
@@ -371,7 +561,7 @@ struct Lowerer {
             // An empty type is "auto". Only a parameter without a name is an error.
             if (p.name.empty())
                 error(l.pos, "a lambda parameter needs a name");
-            cx.locals.insert(p.name);
+            declare(p.name, p.type);
         }
         if (cx.types)
             for (Param& p : l.params)
@@ -380,9 +570,11 @@ struct Lowerer {
                                                        : cx.types->ref_param(p.type);
         // A "return" in a lambda leaves only the lambda. So it is correct in a finally block.
         const FinallyState outer = fin;
+        const std::string outer_ret = std::exchange(cx.ret_type, std::string());
         fin = {};
         block(l.body);
         fin = outer;
+        cx.ret_type = outer_ret;
         // The lambda captures by value. "self" is a pointer to the shell. The state pointer
         // is read again inside, so a lambda never keeps the pointer to a block.
         l.body.stmts.insert(l.body.stmts.begin(),
@@ -476,6 +668,7 @@ struct Lowerer {
         } else if (auto* rf = std::get_if<RefExpr>(&x.v)) {
             expr(rf->operand);
         } else if (auto* b = std::get_if<BinaryExpr>(&x.v)) {
+            if (b->op == "=" && b->lhs && b->rhs) coerce(b->rhs, type_of(*b->lhs));
             expr(b->lhs);
             expr(b->rhs);
         } else if (auto* t = std::get_if<TernaryExpr>(&x.v)) {
@@ -516,7 +709,10 @@ struct Lowerer {
             discard_next = true;
             expr(es->expr);
         } else if (auto* d = std::get_if<VarDeclStmt>(&x.v)) {
-            cx.locals.insert(d->name);
+            std::string t = d->type;
+            if (t.empty() && d->init) t = type_of(*d->init);  // "var x = new C()"
+            coerce(d->init, d->type);
+            declare(d->name, t);
             if (cx.types && !d->type.empty()) d->type = cx.types->storage(d->type);
             expr(d->init);
         } else if (auto* i = std::get_if<IfStmt>(&x.v)) {
@@ -538,12 +734,13 @@ struct Lowerer {
             }
             loop_body(f->body);
         } else if (auto* fo = std::get_if<ForOfStmt>(&x.v)) {
-            cx.locals.insert(fo->name);
+            declare(fo->name, std::string());
             if (cx.types && !fo->type.empty()) fo->type = cx.types->storage(fo->type);
             expr(fo->range);
             loop_body(fo->body);
         } else if (auto* r = std::get_if<ReturnStmt>(&x.v)) {
             if (fin.inside) error(r->pos, "'return' is not allowed in a 'finally' block");
+            coerce(r->expr, cx.ret_type);
             expr(r->expr);
         } else if (auto* br = std::get_if<BreakStmt>(&x.v)) {
             if (fin.inside && fin.loops == 0 && fin.switches == 0)
@@ -556,7 +753,7 @@ struct Lowerer {
         } else if (auto* tr = std::get_if<TryStmt>(&x.v)) {
             block(tr->block);
             for (CatchClause& c : tr->catches) {
-                if (!c.is_all) cx.locals.insert(c.name);
+                if (!c.is_all) declare(c.name, std::string());
                 block(c.block);
             }
             if (tr->finally_block) {

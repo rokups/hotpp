@@ -21,6 +21,7 @@ struct JitOptions {
     std::shared_ptr<sppc::TranslatorSession> session;
     std::vector<std::string> extra_flags;   // added to the compile command
     std::string pch_path;                   // optional: a precompiled header for -include-pch
+    bool strict_borrowed = true;            // false: a borrowed-storage finding is a warning
     // The debug flag. "-g" gives full debug info, but Clang leaks about 270 KB of
     // debug metadata in each compile that fails. Line tables do not leak.
     // The empty string gives no debug info.

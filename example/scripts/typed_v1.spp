@@ -1,0 +1,39 @@
+// Generation 1 of the Link and Chain classes: type-directed access on script handles (S5b).
+// Chain holds a Link handle. It uses a field, a script function and a property of the Link.
+// Link returns "this" as a handle.
+using "Actor.h";
+using <string>;
+
+class Link : Actor {
+    int hits = 0;
+
+    Link(std.string label) : super(label) { }
+
+    int Power {
+        get { return this.hits * 2; }
+    }
+
+    void Hit(int n) {
+        this.hits = this.hits + n;
+    }
+
+    Link Self() {
+        return this;
+    }
+}
+
+class Chain : Actor {
+    Link first;
+    int power = 0;
+    int seen = 0;
+
+    override void Tick(float dt) {
+        this.first = new Link(std.string("link"));
+        this.first.Hit(3);
+        this.first.hits = this.first.hits + 1;
+        this.power = this.first.Power;
+        var same = this.first.Self();
+        same.Hit(1);
+        this.seen = same.hits;
+    }
+}

@@ -23,6 +23,11 @@
 //    "spp::prop_update" gives the new value. "spp::prop_post" ("P++") gives the old
 //    value. A compound write on another object also uses prop_update in a statement. The
 //    helper evaluates the object once.
+//  - Type-directed access. When the type of "obj" is a script class C (see RCtx), "obj.f" becomes
+//    "state_of(spp::shell_of<C_Shell>(obj, "C"))->f" and "obj.M(a)" becomes
+//    "C__M(spp::shell_of<C_Shell>(obj, "C"), a)". The helper throws std::runtime_error for a
+//    null handle. A bare "this" becomes "spp::handle_from_this<H>(self)" where a handle type is
+//    expected: a "return", an initializer, an assignment and an argument of a script function.
 #pragma once
 
 #include <map>
@@ -59,12 +64,29 @@ struct RCtx {
     // The script classes that "new" can build now: the class itself and the classes that the
     // translator emitted before it. "new C(args)" of such a class becomes "C__new(args)".
     std::set<std::string> new_classes;
+    // Type information for the member access on a script object (design 7.10.1). The pass has
+    // no full type check. It knows only these types, as the script writes them:
+    //  - "classes": all script classes by name (with the script types of their members),
+    //  - "local_type": the declared type of a parameter or a local, and the type of a "var"
+    //    local that starts with "new C(...)" of a script class or with a typed member access,
+    //  - "ret_type": the script return type of the function that the pass lowers.
+    // With the type of "obj" known as a script class C that is not a [value] class, "obj.f"
+    // reads the field of C, "obj.M(args)" calls the script function M of C and "obj.P" uses
+    // the property P of C. If the type is unknown, "obj.P" keeps the old rule (a property of
+    // the current class, by name).
+    std::map<std::string, const ast::ClassDef*> classes;
+    std::map<std::string, std::string> local_type;
+    std::string ret_type;
+    // Set to true when a bare "this" becomes a handle (spp::handle_from_this). The translator
+    // then gives a native-base shell the base std::enable_shared_from_this. May be null.
+    bool* handle_this = nullptr;
 };
 
 // The context of a class: the fields and the script fns. A body or an initializer
 // starts from a copy of it.
 RCtx make_class_ctx(const ast::ClassDef& cd);
 // Adds the parameters of a fn to the locals.
+// It also records the script types of the parameters.
 void add_params(RCtx& cx, const std::vector<ast::Param>& params);
 
 // The number text in C++: "1.5" becomes "1.5f", "3L" becomes "int64_t{3}".

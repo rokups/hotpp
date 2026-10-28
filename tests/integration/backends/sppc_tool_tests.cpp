@@ -99,4 +99,28 @@ TEST(SppcTool, OutputOptionBuildsOneLibrary)
               2);
 }
 
+// A field with a borrowed pointer is an error by default. --no-strict-borrowed makes it a warning.
+TEST(SppcTool, StrictBorrowedIsTheDefault)
+{
+    const std::string script = std::string(SPP_BINARY_DIR) + "/sppc_strict.spp";
+    {
+        std::FILE* f = std::fopen(script.c_str(), "w");
+        ASSERT_NE(f, nullptr);
+        std::fputs("using \"Actor.h\";\nclass P : Actor {\n    Actor* target = null;\n}\n", f);
+        std::fclose(f);
+    }
+    const std::string args = std::string("' --gen 1 -I '") + SPP_SOURCE_DIR + "/example/engine' -I '" +
+                             SPP_SOURCE_DIR + "/include'";
+    std::string strict, relaxed;
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + args + " 2>&1", strict), 1)
+        << strict;
+    EXPECT_NE(strict.find("a field cannot hold a borrowed pointer"), std::string::npos) << strict;
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp --no-strict-borrowed '" + script + args +
+                              " 2>&1",
+                          relaxed),
+              0)
+        << relaxed;
+    EXPECT_NE(relaxed.find("warning"), std::string::npos) << relaxed;
+}
+
 }  // namespace

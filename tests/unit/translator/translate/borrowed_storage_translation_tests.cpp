@@ -29,6 +29,11 @@ TEST(BorrowedStorage, RawPointerFieldIsAWarningByDefault)
     EXPECT_TRUE(has(r.warnings, "t.spp:3:13: warning: a field cannot hold a borrowed pointer")) << r.warnings;
 }
 
+TEST(BorrowedStorage, StrictModeIsTheDefault)
+{
+    EXPECT_TRUE(sppc::TranslateOptions{}.strict_borrowed);
+}
+
 TEST(BorrowedStorage, ReferenceFieldIsAnError)
 {
     const sppc::TranslateResult r = check_translate("", "    Weapon& w;\n");

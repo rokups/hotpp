@@ -6,7 +6,7 @@ using "Math.h";
 class Player : Actor {
     [alias("hp")] float health = 100.0;
     float speed = 5.0;
-    Actor* target = null;
+    std.string target = "";  // the name of the last attacker (a value, not a borrowed pointer)
     float shield = 25.0;
 
     override void Tick(float dt)  {
@@ -22,8 +22,8 @@ class Player : Actor {
     }
 
     override void TakeDamage(Actor& source, float amount)  {
-        this.target = ref source;
-        std.printf("[v2] %s: hit by %s\n", this.Name.c_str(), this.target.Name.c_str());
+        this.target = source.Name;
+        std.printf("[v2] %s: hit by %s\n", this.Name.c_str(), this.target.c_str());
         this.TakeDamage(amount);
     }
 

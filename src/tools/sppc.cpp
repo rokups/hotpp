@@ -39,8 +39,8 @@ namespace {
 {
     std::fprintf(stderr,
                  "usage: sppc <file.spp>... --gen N (--out-dir DIR | -o x.so) [-I dir]... [--resource-dir dir]\n"
-                 "            [--cxx command] [--cxxflag flag]... [--slots file]\n"
-                 "       sppc --emit-cpp <file.spp> --gen N [-o out.cpp] [-I dir]... [--prelude file]... [--strict-borrowed]\n"
+                 "            [--cxx command] [--cxxflag flag]... [--slots file] [--no-strict-borrowed]\n"
+                 "       sppc --emit-cpp <file.spp> --gen N [-o out.cpp] [-I dir]... [--prelude file]... [--no-strict-borrowed]\n"
                  "            [--slots file] [--resource-dir dir]\n");
     std::exit(2);
 }
@@ -64,8 +64,8 @@ struct Args {
     int gen = 0;
     // Options that only one mode accepts.
     bool has_build_only = false;  // --out-dir, --cxx, --cxxflag
-    bool has_emit_only = false;   // --prelude, --strict-borrowed
-    bool strict_borrowed = false;
+    bool has_emit_only = false;   // --prelude
+    bool strict_borrowed = true;  // --no-strict-borrowed turns it off
 };
 
 Args parse_args(int argc, char** argv)
@@ -86,7 +86,8 @@ Args parse_args(int argc, char** argv)
         else if (a == "--cxx") { r.cxx = next(); r.has_build_only = true; }
         else if (a == "--cxxflag") { r.cxxflags.push_back(next()); r.has_build_only = true; }
         else if (a == "--prelude") { r.preludes.push_back(next()); r.has_emit_only = true; }
-        else if (a == "--strict-borrowed") { r.strict_borrowed = true; r.has_emit_only = true; }
+        else if (a == "--strict-borrowed") r.strict_borrowed = true;
+        else if (a == "--no-strict-borrowed") r.strict_borrowed = false;
         else if (a == "-I") r.include_dirs.push_back(next());
         else if (a.rfind("-I", 0) == 0) r.include_dirs.push_back(a.substr(2));
         else if (!a.empty() && a[0] == '-') usage();
@@ -159,6 +160,7 @@ int run_build(const Args& args)
     if (!args.cxx.empty()) opt.compiler = args.cxx;
     opt.extra_flags = args.cxxflags;
     opt.include_dirs = args.include_dirs;
+    opt.strict_borrowed = args.strict_borrowed;
     std::string out_dir = args.out_dir;
     if (single_so) {
         out_dir = fs::path(args.output).parent_path().string();

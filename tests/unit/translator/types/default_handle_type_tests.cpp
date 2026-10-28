@@ -77,7 +77,17 @@ TEST(DefaultHandle, WithoutTheStubAClassHasNoHandle)
     Fixture f;
     with_classes(f);
     EXPECT_EQ(f.model.lookup("Mesh").kind, Kind::Raw);
-    EXPECT_FALSE(f.model.wants_facts("Mesh"));
+    EXPECT_TRUE(f.model.wants_facts("Mesh"));  // the facts can still make it a value
+}
+
+// Design 7.10.2 rule 4: plain data is a value with no stub and no "class *;".
+TEST(DefaultHandle, PlainDataIsAValueWithoutAnyStub)
+{
+    Fixture f;
+    with_classes(f);
+    EXPECT_EQ(f.model.lookup("Vec3").kind, Kind::Value);
+    EXPECT_EQ(f.model.storage("Vec3"), "Vec3");
+    EXPECT_EQ(f.model.param("Vec3"), "Vec3");
 }
 
 TEST(DefaultHandle, WantsFactsOnlyForAClassNameWithoutAStub)

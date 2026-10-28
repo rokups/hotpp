@@ -1,6 +1,7 @@
 // The base of a generated shell, the slot call and the checked access to a shell.
 #pragma once
 #include <cstring>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -18,7 +19,7 @@ struct ShellBase {
 
 // The base of the shell of a script class that has no native base (design 7.10.1). It gives
 // the shell a virtual destructor, so a handle can destroy it through the base.
-struct PlainObject {
+struct PlainObject : std::enable_shared_from_this<PlainObject> {
     PlainObject() = default;
     PlainObject(const PlainObject&) = delete;
     PlainObject& operator=(const PlainObject&) = delete;
@@ -49,6 +50,23 @@ inline ShellBase* construct_shell(const ClassRecord* rec, const char* key, const
     return canon->construct(args);
 }
 
+// A handle of the script object that owns the shell "self": the lowering of a bare "this"
+// where a handle type is expected (design 7.10.1). "H" is the handle type of the class.
+// A std::shared_ptr handle uses shared_from_this. The object must be owned by a handle.
+template <class H, class S>
+H handle_from_this(S* self)
+{
+    if constexpr (requires { typename H::element_type; } && requires { self->shared_from_this(); }) {
+        try {
+            return std::static_pointer_cast<typename H::element_type>(self->shared_from_this());
+        } catch (const std::bad_weak_ptr&) {
+            throw std::runtime_error("'this' is not owned by a handle");
+        }
+    } else {
+        return H(self);
+    }
+}
+
 // The address of a [value] script object, for a property access on another object.
 template <class T>
 T* value_ptr(T& v)
@@ -68,6 +86,7 @@ T* value_ptr(T* p)
 template <class Shell, class T>
 Shell* shell_of(T* p, const char* cls)
 {
+    if (!p) throw std::runtime_error(std::string("the handle is null: expected a script object of class ") + cls);
     if constexpr (std::is_same_v<T, Shell>) {
         return p;
     } else {

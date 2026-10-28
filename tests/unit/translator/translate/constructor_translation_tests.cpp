@@ -149,11 +149,13 @@ TEST(ConstructorTranslation, BaseWithoutDefaultConstructorNeedsSuper)
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
-TEST(ConstructorTranslation, NewBeforeTheDefinitionIsAnError)
+TEST(ConstructorTranslation, NewBeforeTheDefinitionIsAccepted)
 {
-    expect_error("class Boss : Unit {\n"
-                 "    override void Update(float dt) { var s = new Squad(3); }\n"
-                 "}\n"
-                 "class Squad : Unit {\n    Squad(int e) { }\n}\n",
-                 "class 'Squad' must come before the class that builds it with 'new'");
+    const sppc::TranslateResult r = translate_script(
+        "class Boss : Unit {\n"
+        "    override void Update(float dt) { var s = new Squad(3); }\n"
+        "}\n"
+        "class Squad : Unit {\n    Squad(int e) { }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_LT(r.cpp.find("Squad__new"), r.cpp.find("Boss__Update")) << r.cpp;
 }

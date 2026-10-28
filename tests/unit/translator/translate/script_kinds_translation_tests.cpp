@@ -107,6 +107,25 @@ TEST(ScriptKindsTranslation, ClassOrderIsChecked)
     const sppc::TranslateResult r =
         translate_script("class Boss : Unit { Stats s; }\n[value] class Stats { int a = 0; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
-    expect_error("class Boss : Unit { Squad s; }\nclass Squad : Unit { int a = 0; }\n",
-                 "class 'Squad' must come before the class that uses it");
+}
+
+TEST(ScriptKindsTranslation, HandleClassCanBeUsedBeforeItsDeclaration)
+{
+    // The translator sorts the classes by use. Squad is emitted before Boss.
+    const sppc::TranslateResult r =
+        translate_script("class Boss : Unit { Squad s; }\nclass Squad : Unit { int a = 0; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_LT(r.cpp.find("struct Squad_Shell"), r.cpp.find("struct Boss_Shell")) << r.cpp;
+}
+
+TEST(ScriptKindsTranslation, ClassesThatUseEachOtherInACycleAreAnError)
+{
+    expect_error("class A : Unit { B b; }\nclass B : Unit { A a; }\n",
+                 "the classes use each other in a cycle");
+}
+
+TEST(ScriptKindsTranslation, ValueClassCannotUseAHandleClass)
+{
+    expect_error("[value] class V { Squad s; }\nclass Squad : Unit { int a = 0; }\n",
+                 "a [value] class can use only native types and [value] classes");
 }

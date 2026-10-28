@@ -59,7 +59,7 @@ struct Player_Shell final : Actor, spp::ShellBase {
 struct PlayerState_g1 {
     float hp;
     float speed;
-    Actor* target;
+    std::string target;
 };
 
 #line 6 "player_v1.spp"
@@ -69,7 +69,7 @@ static void Player__init_hp(void*, void* f) { using T = float; new (f) T(100.0f)
 static void Player__init_speed(void*, void* f) { using T = float; new (f) T(5.0f); }
 #line 71 "player_v1.spp.cpp"
 #line 8 "player_v1.spp"
-static void Player__init_target(void*, void* f) { using T = Actor*; new (f) T(nullptr); }
+static void Player__init_target(void*, void* f) { using T = std::string; new (f) T(""); }
 #line 74 "player_v1.spp.cpp"
 
 #pragma clang diagnostic push
@@ -79,8 +79,8 @@ static const spp::FieldInfo Player_fields[] = {
      alignof(float), spp::field_flags<float>(), Player__init_hp, spp::move_field<float>, spp::field_destroyer<float>()},
     {"speed", nullptr, typeid(float).name(), offsetof(PlayerState_g1, speed), sizeof(float),
      alignof(float), spp::field_flags<float>(), Player__init_speed, spp::move_field<float>, spp::field_destroyer<float>()},
-    {"target", nullptr, typeid(Actor*).name(), offsetof(PlayerState_g1, target), sizeof(Actor*),
-     alignof(Actor*), spp::field_flags<Actor*>(), Player__init_target, spp::move_field<Actor*>, spp::field_destroyer<Actor*>()},
+    {"target", nullptr, typeid(std::string).name(), offsetof(PlayerState_g1, target), sizeof(std::string),
+     alignof(std::string), spp::field_flags<std::string>(), Player__init_target, spp::move_field<std::string>, spp::field_destroyer<std::string>()},
 };
 #pragma clang diagnostic pop
 
@@ -139,9 +139,9 @@ static void Player__TakeDamage_Af(Actor* a, Actor& source, float amount)
     }
     [[maybe_unused]] auto* st = state_of(self);
 #line 23 "player_v1.spp"
-    st->target = spp::ref_arg(source);
+    st->target = spp::deref(source).Name;
 #line 24 "player_v1.spp"
-    std::printf("[v1] %s: hit by %s\n", spp::deref(self->Name).c_str(), spp::deref(spp::deref(st->target).Name).c_str());
+    std::printf("[v1] %s: hit by %s\n", spp::deref(self->Name).c_str(), spp::deref(st->target).c_str());
 #line 25 "player_v1.spp"
     self->TakeDamage(amount);
 #line 148 "player_v1.spp.cpp"

@@ -44,9 +44,9 @@ inline void run_f1_reload(spp::Module v1, spp::Module v2)
 
     a->TakeDamage(*source, 5.0f);  // hp 68, and target is set
     EXPECT_EQ(*field("hp"), 68.0f);
-    Actor** target = spp::field_ptr<Actor*>(inst.shell, "target");
+    std::string* target = spp::field_ptr<std::string>(inst.shell, "target");
     ASSERT_NE(target, nullptr);
-    EXPECT_EQ(*target, source);
+    EXPECT_EQ(*target, source->Name);
 
     using HealFn = void (*)(Actor*, float);
     void* thunk = loader.thunk("Player::heal");
@@ -81,9 +81,9 @@ inline void run_f1_reload(spp::Module v1, spp::Module v2)
     ASSERT_NE(field("shield"), nullptr);
     EXPECT_EQ(*field("shield"), 25.0f);
     EXPECT_EQ(*field("speed"), 5.0f);
-    Actor** target2 = spp::field_ptr<Actor*>(inst.shell, "target");
+    std::string* target2 = spp::field_ptr<std::string>(inst.shell, "target");
     ASSERT_NE(target2, nullptr);
-    EXPECT_EQ(*target2, source);
+    EXPECT_EQ(*target2, source->Name);
 
     // Generation 2: new Tick body, no heal in Tick.
     const float x0 = a->Position.x;

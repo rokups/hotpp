@@ -104,6 +104,7 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation,
     to.generation = static_cast<int>(generation);
     to.include_dirs = opt_.include_dirs;
     to.resource_dir = opt_.resource_dir;
+    to.strict_borrowed = opt_.strict_borrowed;
     read_text(opt_.slots_file, to.slots_in);  // a missing file means the first generation
     sppc::TranslateResult tr = sppc::translate(to, *opt_.session);
     if (!tr.ok) {
