@@ -163,6 +163,7 @@ Command line of the translate mode. Without `-o`, the tool prints the C++ to the
     sppc --emit-cpp <script> --gen N [-o out.cpp] [-I dir]... [--prelude file]...
          [--slots file] [--resource-dir dir] [--no-strict-borrowed]
 
+- `--raw-diagnostics` prints the compiler text as it is. By default `sppc` rewrites it (see "Diagnostics and debugging").
 - `--no-strict-borrowed` makes the borrowed-storage findings (a stored `T*`, `T&` or `ref`) warnings. By default they are errors.
 - The order of the classes in a script does not matter. A cycle of classes is an error.
 - `<script>...` is one or more script files. Each script gives one library.
@@ -246,6 +247,24 @@ A script class can define two kinds of hook (design 4.7). A hook is not a script
 - The reload still rejects a change of the native base class and a change of the shell layout.
 
 See `example/scripts/hooks_v1.spp` to `hooks_v3.spp`, `tests/unit/runtime/migration_tests.cpp` and `tests/integration/reload/hook_tests.cpp`.
+
+## Diagnostics and debugging
+
+Diagnostics (S11, design 4.2 and 4.12):
+
+- `sppc::rewrite_diagnostic(text, scripts, generated)` is a pure function in the translator library. It changes the Clang text to script names (`Player_Shell` to `Player`, `Player__heal` to `Player.heal`, `int32_t` to `int`). It does not count the hidden `self` argument. It gives a plain message for the common mistakes (the table is in `src/translator/diag_rewrite.cpp`). It shows the script line in place of the generated line.
+- Both backends and `sppc` use it. `raw_diagnostics` in the backend options and `sppc --raw-diagnostics` keep the compiler text.
+- The column of a script location is always 1. `#line` does not map the column.
+- The backends compile with `-Werror=return-type`. A missing `return` is an error.
+- The translator errors do not pass through the rewriter.
+- The golden cases are in `tests/golden/diagnostics/` (21 mistakes). The test is `DiagnosticMistakes`.
+
+Debug information:
+
+- The generated C++ has `#line` directives. The JIT and `sppc` use `-gline-tables-only`, so the DWARF line table names the `.spp` file. The tests `DebugInfo.*` check this with `llvm-dwarfdump`.
+- The JIT backend registers each object with the debugger through the GDB JIT interface (`llvm::orc::enableDebuggerSupport`). `JitOptions::debugger_support` turns it off. `debugger_support()` and `debugger_error()` tell the result. The test `JitTests.DebuggerGetsObjectWithScriptLines` reads `__jit_debug_descriptor`. LLVM 23 has no `createJITLoaderGDBRegistrar`.
+- `tools/lldb/spp_formatters.py` and `tools/lldb/spp.lldbinit` show state blocks, shells and handles by script name. The command `spp-bt` prints the script frames. `tools/natvis/spp.natvis` does the same for Visual Studio.
+- The pure Python helpers have a test (`PythonLldbFormatters`, `python3 -I`). lldb itself, a real debugger session and Visual Studio were NOT run. The F3 check (breakpoint in `heal`, step, inspect `this.health`) stays open.
 
 ## Not done yet
 

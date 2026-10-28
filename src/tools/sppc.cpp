@@ -2,7 +2,7 @@
 //
 // Build mode (default): compile .spp files ahead of time into one shared library for each file.
 //   sppc <file.spp>... --gen N --out-dir DIR [-I dir]... [--resource-dir dir]
-//        [--cxx command] [--cxxflag flag]... [--slots file]
+//        [--cxx command] [--cxxflag flag]... [--slots file] [--raw-diagnostics]
 //   sppc <file.spp> --gen N -o x.so [-I dir]... [--resource-dir dir]
 //        [--cxx command] [--cxxflag flag]... [--slots file]
 // For each file the tool writes DIR/<name>.g<N>.cpp and DIR/<name>.g<N>.so.
@@ -12,6 +12,8 @@
 // The slot file (default DIR/slots.txt) keeps the slot order between generations.
 // Build the generations of one class in order: 1, then 2, and so on.
 // The tool needs no CMake.
+// A compile error speaks script names (design 4.2). --raw-diagnostics prints the text of the
+// compiler as it is. Emit mode has no compiler, so the option has no effect there.
 //
 // Emit mode (--emit-cpp): translate one .spp file to C++. The tool does not compile it.
 //   sppc --emit-cpp <file.spp> --gen N [-o out.cpp] [-I dir]... [--prelude file]...
@@ -40,6 +42,7 @@ namespace {
     std::fprintf(stderr,
                  "usage: sppc <file.spp>... --gen N (--out-dir DIR | -o x.so) [-I dir]... [--resource-dir dir]\n"
                  "            [--cxx command] [--cxxflag flag]... [--slots file] [--no-strict-borrowed] [--format=std|fmt]\n"
+                 "            [--raw-diagnostics]\n"
                  "       sppc --emit-cpp <file.spp> --gen N [-o out.cpp] [-I dir]... [--prelude file]... [--no-strict-borrowed] [--format=std|fmt]\n"
                  "            [--slots file] [--resource-dir dir]\n");
     std::exit(2);
@@ -67,6 +70,7 @@ struct Args {
     bool has_emit_only = false;   // --prelude
     std::string format_lib = "std";  // --format=std|fmt
     bool strict_borrowed = true;  // --no-strict-borrowed turns it off
+    bool raw_diagnostics = false;  // --raw-diagnostics: the compiler text as it is
 };
 
 Args parse_args(int argc, char** argv)
@@ -89,6 +93,7 @@ Args parse_args(int argc, char** argv)
         else if (a == "--prelude") { r.preludes.push_back(next()); r.has_emit_only = true; }
         else if (a == "--strict-borrowed") r.strict_borrowed = true;
         else if (a == "--no-strict-borrowed") r.strict_borrowed = false;
+        else if (a == "--raw-diagnostics") r.raw_diagnostics = true;
         else if (a == "--format=std") r.format_lib = "std";
         else if (a == "--format=fmt") r.format_lib = "fmt";
         else if (a == "-I") r.include_dirs.push_back(next());
@@ -166,6 +171,7 @@ int run_build(const Args& args)
     opt.include_dirs = args.include_dirs;
     opt.strict_borrowed = args.strict_borrowed;
     opt.format_lib = args.format_lib;
+    opt.raw_diagnostics = args.raw_diagnostics;
     std::string out_dir = args.out_dir;
     if (single_so) {
         out_dir = fs::path(args.output).parent_path().string();

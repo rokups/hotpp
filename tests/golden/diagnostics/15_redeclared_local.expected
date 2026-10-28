@@ -1,0 +1,5 @@
+15_redeclared_local.spp:11:1: error: 'x' is already declared in this scope
+   11 |     override void Tick(float dt) { int x = 1; int x = 2; }
+15_redeclared_local.spp:11:1: note: the first declaration is here
+   11 |     override void Tick(float dt) { int x = 1; int x = 2; }
+1 error generated.

@@ -1,0 +1,12 @@
+16_native_argument_type.spp:11:1: error: cannot convert 'int' to 'Vec3'
+   11 |     override void Tick(float dt) { this.Move(5); }
+<src>/example/engine/Actor.h:10:8: note: candidate constructor (the implicit copy constructor) not viable: no known conversion from 'int' to 'const Vec3 &' for 1st argument
+   10 | struct Vec3 {
+      |        ^~~~
+<src>/example/engine/Actor.h:10:8: note: candidate constructor (the implicit move constructor) not viable: no known conversion from 'int' to 'Vec3 &&' for 1st argument
+   10 | struct Vec3 {
+      |        ^~~~
+<src>/example/engine/Actor.h:24:20: note: passing argument to parameter 'delta' here
+   24 |     void Move(Vec3 delta);
+      |                    ^
+1 error generated.

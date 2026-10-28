@@ -1,7 +1,9 @@
 # Backend tests: scripts that sppc compiled ahead of time, the tool sppc, and the JIT backend.
 set(BACKEND_TEST_SOURCES
     precompiled_script_tests.cpp
-    sppc_tool_tests.cpp)
+    sppc_tool_tests.cpp
+    diagnostic_mistake_tests.cpp
+    debug_info_tests.cpp)
 if(SPP_BACKEND STREQUAL "JIT")
     list(APPEND BACKEND_TEST_SOURCES jit_backend_tests.cpp)
 endif()

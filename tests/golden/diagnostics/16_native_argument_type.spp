@@ -1,0 +1,12 @@
+using "Actor.h";
+
+class Player : Actor {
+    float speed = 5.0;
+    float health = 100.0;
+
+    void heal(float amount)  {
+        this.health = this.health + amount;
+    }
+
+    override void Tick(float dt) { this.Move(5); }
+}

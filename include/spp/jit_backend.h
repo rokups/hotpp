@@ -23,10 +23,16 @@ struct JitOptions {
     std::string pch_path;                   // optional: a precompiled header for -include-pch
     bool strict_borrowed = true;            // false: a borrowed-storage finding is a warning
     std::string format_lib = "std";         // string interpolation: "std" or "fmt"
+    // True: the error text is the raw output of the compiler. False (the default): it speaks
+    // script names (sppc::rewrite_diagnostic).
+    bool raw_diagnostics = false;
     // The debug flag. "-g" gives full debug info, but Clang leaks about 270 KB of
     // debug metadata in each compile that fails. Line tables do not leak.
     // The empty string gives no debug info.
     std::string debug_flag = "-gline-tables-only";
+    // True: register the JIT code with the debugger (GDB JIT interface, design 4.10). Needs
+    // a debug flag to be useful: the line table names the .spp files.
+    bool debugger_support = true;
 };
 
 struct JitState;  // the LLJIT of the session
@@ -50,6 +56,11 @@ public:
 
     JitTimings last_timings() const { return timings_; }
 
+    // True after the first load when the debugger plugin is on. When the plugin could not start,
+    // debugger_error() has the reason. Both are empty or false before the first load.
+    bool debugger_support() const { return debugger_support_; }
+    const std::string& debugger_error() const { return debugger_error_; }
+
     // Makes a precompiled header from the header file at "header_path", in the
     // process. The file "out_pch" is the only file that the backend writes, and
     // only here. The header must have the includes that the generated code starts
@@ -63,6 +74,8 @@ private:
     std::string slots_;
     unsigned sequence_ = 0;
     JitTimings timings_;
+    bool debugger_support_ = false;
+    std::string debugger_error_;
 };
 
 }  // namespace spp

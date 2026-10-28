@@ -67,6 +67,27 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
+// The scripts of a build: pairs of the name that "#line" uses and the script text.
+using ScriptTexts = std::vector<std::pair<std::string, std::string>>;
+
+// Rewrites the text that Clang prints for the generated C++ so that it speaks script names
+// (design 4.2, experiment F2). The function is pure: it has no state and no I/O.
+//   - A generated name becomes a script name: "Player_Shell" -> "Player", "Player__heal" ->
+//     "Player.heal", "int32_t" -> "int", "std::string" -> "std.string".
+//   - The argument counts of a script method do not count the hidden "self" argument.
+//   - A common mistake gets a plain message (the table is in diag_rewrite.cpp).
+//   - A source line from the generated code is not shown. If "scripts" has the text of the
+//     script, the line of the script replaces it. The caret line is dropped.
+//   - The column of a script location is 1: the generated column has no meaning in the script.
+//   - A note that points into the generated file gets the location of its error. An error that
+//     points into the generated file gets the last script line before it, if "generated" has the
+//     text of that file (pairs of the "#line" name of the file and its text). A note from a
+//     system header is hidden, and one line says how many.
+// A line that is not part of a Clang diagnostic stays as it is. Pass the raw text on when the
+// user asks for it (--raw-diagnostics).
+std::string rewrite_diagnostic(const std::string& text, const ScriptTexts& scripts = {},
+                               const ScriptTexts& generated = {});
+
 // Uses a temporary session: each call parses the headers.
 TranslateResult translate(const TranslateOptions& options);
 

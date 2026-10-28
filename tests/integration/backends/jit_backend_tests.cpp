@@ -19,7 +19,26 @@
 
 #include "spp/backend.h"
 #include "spp/jit_backend.h"
+#include "support/dwarf_lines.h"
 #include "support/f1_scenario.h"
+#include "support/script_files.h"
+
+// The GDB JIT interface (the layout is fixed by the GDB manual). LLVM defines the descriptor.
+extern "C" {
+struct jit_code_entry {
+    jit_code_entry* next_entry;
+    jit_code_entry* prev_entry;
+    const char* symfile_addr;
+    uint64_t symfile_size;
+};
+struct jit_descriptor {
+    uint32_t version;
+    uint32_t action_flag;
+    jit_code_entry* relevant_entry;
+    jit_code_entry* first_entry;
+};
+extern jit_descriptor __jit_debug_descriptor;
+}
 
 namespace {
 
@@ -220,6 +239,49 @@ TEST(JitTests, ModuleOutlivesBackendAndGenerationsCanBeRemoved)
     test_support::Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(kept)));
     EXPECT_NE(s.field("hp"), nullptr);
+}
+
+// Experiment F3: the JIT registers each object with the debugger. The object is an ELF image
+// in memory. Its line table names the .spp file and the lines of the script.
+TEST(JitTests, DebuggerGetsObjectWithScriptLines)
+{
+    if (!test_support::have_dwarfdump()) GTEST_SKIP() << "llvm-dwarfdump is not installed";
+    spp::JitOptions o;
+    o.compiler = SPP_CXX;
+    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/include", std::string(SPP_SOURCE_DIR) + "/example/engine"};
+    o.resource_dir = SPP_RESOURCE_DIR;
+    spp::JitBackend backend(o);
+    const spp::ScriptSource src = source("player_v2.spp");
+    spp::LoadResult r = backend.load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    ASSERT_TRUE(backend.debugger_support()) << backend.debugger_error();
+
+    // The newest entry is the last in the list.
+    const jit_code_entry* last = __jit_debug_descriptor.first_entry;
+    ASSERT_NE(last, nullptr) << "no object was registered";
+    while (last->next_entry) last = last->next_entry;
+    ASSERT_GT(last->symfile_size, 0u);
+    const std::string image = std::string(SPP_BINARY_DIR) + "/jit_debug_object.o";
+    {
+        std::ofstream f(image, std::ios::binary);
+        f.write(last->symfile_addr, static_cast<std::streamsize>(last->symfile_size));
+    }
+    const std::set<int> lines = test_support::lines_of_file(test_support::dump_line_table(image), "player_v2.spp");
+    EXPECT_TRUE(lines.count(test_support::line_with(src.text, "Math.Min")));
+}
+
+// The option turns the plugin off.
+TEST(JitTests, DebuggerSupportCanBeOff)
+{
+    spp::JitOptions o;
+    o.compiler = SPP_CXX;
+    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/include", std::string(SPP_SOURCE_DIR) + "/example/engine"};
+    o.resource_dir = SPP_RESOURCE_DIR;
+    o.debugger_support = false;
+    spp::JitBackend backend(o);
+    spp::LoadResult r = backend.load(source("player_v1.spp"), 1);
+    ASSERT_TRUE(r) << r.error;
+    EXPECT_FALSE(backend.debugger_support());
 }
 
 }  // namespace

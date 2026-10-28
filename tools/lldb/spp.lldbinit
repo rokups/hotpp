@@ -1,0 +1,7 @@
+# S++ formatters for lldb (design 4.12). Add this to ~/.lldbinit, or run:
+#   command source /path/to/spp/tools/lldb/spp.lldbinit
+# Change the path to the place of your S++ checkout.
+command script import /path/to/spp/tools/lldb/spp_formatters.py
+# The command "spp-bt" prints the script frames with script names.
+# Set a breakpoint with the generated name, or with the script line:
+#   breakpoint set --file player.spp --line 12

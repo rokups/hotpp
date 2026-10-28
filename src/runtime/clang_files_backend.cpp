@@ -117,7 +117,8 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation,
         return false;
     }
 
-    std::vector<std::string> cmd = {opt_.compiler, "-std=c++20", "-fPIC", "-shared", "-g"};
+    std::vector<std::string> cmd = {opt_.compiler, "-std=c++20", "-fPIC", "-shared", "-g",
+                                    "-Werror=return-type"};
     if (!opt_.resource_dir.empty()) cmd.push_back("-resource-dir=" + opt_.resource_dir);
     for (const std::string& f : opt_.extra_flags) cmd.push_back(f);
     for (const std::string& d : opt_.include_dirs) cmd.push_back("-I" + d);
@@ -128,6 +129,7 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation,
     std::string output;
     const int rc = run_command(cmd, output);
     if (rc != 0) {
+        if (!opt_.raw_diagnostics) output = sppc::rewrite_diagnostic(output, {{source.name, source.text}}, {{cpp_path, tr.cpp}});
         error = output + "the compile of " + source.name + " failed (exit code " +
                 std::to_string(rc) + ")\n";
         return false;

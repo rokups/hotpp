@@ -1,0 +1,5 @@
+10_assign_to_const.spp:11:1: error: cannot assign to 'X': it is const (type 'const int')
+   11 |     override void Tick(float dt) { const int X = 1; X = 2; }
+10_assign_to_const.spp:11:1: note: 'X' is declared const here
+   11 |     override void Tick(float dt) { const int X = 1; X = 2; }
+1 error generated.

@@ -7,6 +7,7 @@
 #include <clang/Frontend/CompilerInvocation.h>
 #include <clang/Frontend/FrontendActions.h>
 #include <clang/Frontend/TextDiagnosticPrinter.h>
+#include <llvm/ExecutionEngine/Orc/Debugging/DebuggerSupport.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
@@ -99,7 +100,7 @@ CompileSetup make_invocation(const JitOptions& opt, const std::string& path, con
     s.vfs->pushOverlay(memory);
 
     std::vector<std::string>& args = s.args;
-    args = {opt.compiler, "-std=c++20", "-O1", "-fPIC"};
+    args = {opt.compiler, "-std=c++20", "-O1", "-fPIC", "-Werror=return-type"};
     if (!opt.debug_flag.empty()) args.push_back(opt.debug_flag);
     if (!opt.resource_dir.empty()) args.push_back("-resource-dir=" + opt.resource_dir);
     for (const std::string& f : opt.extra_flags) args.push_back(f);
@@ -235,6 +236,8 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
     Compiled c = compile(opt_, cpp_path, tr.cpp);
     timings_.compile_ms = ms_since(t0);
     if (!c.module) {
+        if (!opt_.raw_diagnostics)
+            c.diagnostics = sppc::rewrite_diagnostic(c.diagnostics, {{source.name, source.text}}, {{cpp_path, tr.cpp}});
         r.error = c.diagnostics + "the compile of " + source.name + " failed\n";
         return r;
     }
@@ -248,6 +251,16 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
             return r;
         }
         impl->jit = std::move(*jit);
+        // The debugger sees the JIT code: the plugin registers each linked object through the
+        // GDB JIT interface (__jit_debug_descriptor). GDB and LLDB read it. The object has the
+        // line table of "-gline-tables-only", so the debugger shows the .spp files and lines.
+        // A failure is not fatal: the code runs, only without debugger support.
+        if (opt_.debugger_support) {
+            if (llvm::Error e = llvm::orc::enableDebuggerSupport(*impl->jit))
+                debugger_error_ = error_text(std::move(e));
+            else
+                debugger_support_ = true;
+        }
         // The executable links with -rdynamic: the engine, the runtime and libstdc++ resolve here.
         auto gen = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
             impl->jit->getDataLayout().getGlobalPrefix());

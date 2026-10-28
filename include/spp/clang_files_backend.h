@@ -25,6 +25,9 @@ struct ClangFilesOptions {
     std::string slots_file;                   // empty: <work_dir>/slots.txt
     bool strict_borrowed = true;              // false: a borrowed-storage finding is a warning
     std::string format_lib = "std";           // string interpolation: "std" or "fmt"
+    // True: the error text is the raw output of the compiler. False (the default): it speaks
+    // script names (sppc::rewrite_diagnostic).
+    bool raw_diagnostics = false;
 };
 
 class ClangFilesBackend : public Backend {

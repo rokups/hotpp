@@ -40,6 +40,31 @@ TEST(SppcTool, SppcReportsErrorAtTheScriptLine)
     EXPECT_FALSE(std::filesystem::exists(out_dir + "/bad.g1.so"));
 }
 
+// The error text speaks script names. --raw-diagnostics gives the text of the compiler.
+TEST(SppcTool, RawDiagnosticsKeepsTheCompilerText)
+{
+    const std::string out_dir = std::string(SPP_BINARY_DIR) + "/sppc_raw_diag";
+    std::filesystem::remove_all(out_dir);
+    const std::string script = std::string(SPP_SOURCE_DIR) + "/example/scripts/bad.spp";
+    const std::string base = std::string("'") + SPPC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir +
+                             "' -I '" + SPP_SOURCE_DIR + "/example/engine' -I '" + SPP_SOURCE_DIR +
+                             "/include' --cxx '" + SPP_CXX + "' ";
+    std::string script_names, raw;
+    FILE* p = popen((base + "2>&1").c_str(), "r");
+    ASSERT_NE(p, nullptr);
+    char buf[512];
+    while (size_t n = fread(buf, 1, sizeof buf, p)) script_names.append(buf, n);
+    pclose(p);
+    p = popen((base + "--raw-diagnostics 2>&1").c_str(), "r");
+    ASSERT_NE(p, nullptr);
+    while (size_t n = fread(buf, 1, sizeof buf, p)) raw.append(buf, n);
+    pclose(p);
+    EXPECT_NE(script_names.find("cannot assign a value of type 'string' to 'float'"), std::string::npos) << script_names;
+    EXPECT_EQ(script_names.find("st->"), std::string::npos) << script_names;
+    EXPECT_NE(raw.find("assigning to 'float' from incompatible type 'const char[5]'"), std::string::npos) << raw;
+    EXPECT_NE(raw.find("st->speed"), std::string::npos) << raw;
+}
+
 }  // namespace
 
 namespace {
