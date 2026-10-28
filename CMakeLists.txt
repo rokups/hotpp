@@ -47,7 +47,9 @@ CPMAddPackage(
 )
 
 # Script runtime: a small static library for the executable.
-add_library(spp_runtime STATIC src/runtime/script_runtime.cpp src/runtime/module.cpp)
+add_library(spp_runtime STATIC
+    src/runtime/threads.cpp src/runtime/state.cpp src/runtime/registry.cpp
+    src/runtime/migration.cpp src/runtime/loader.cpp src/runtime/module.cpp)
 target_include_directories(spp_runtime PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine)
 find_package(Threads REQUIRED)
 target_link_libraries(spp_runtime PUBLIC ${CMAKE_DL_LIBS} Threads::Threads)
@@ -193,8 +195,10 @@ endif()
 
 # ------------------------------------------------------------ Precompiled scripts
 include(cmake/SppScripts.cmake)
+file(GLOB SPP_RUNTIME_HEADERS ${CMAKE_SOURCE_DIR}/include/spp/runtime/*.h)
 set(SPP_HEADERS ${CMAKE_SOURCE_DIR}/example/engine/Actor.h ${CMAKE_SOURCE_DIR}/example/engine/Math.h
-                ${CMAKE_SOURCE_DIR}/include/spp/script_runtime.h ${CMAKE_SOURCE_DIR}/include/spp/module.h)
+                ${CMAKE_SOURCE_DIR}/include/spp/script_runtime.h ${CMAKE_SOURCE_DIR}/include/spp/module.h
+                ${SPP_RUNTIME_HEADERS})
 spp_add_scripts(TARGET pre_gen1 GEN 1 SCRIPTS example/scripts/player_v1.script
                 INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
                 FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS})
