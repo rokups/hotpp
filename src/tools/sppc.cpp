@@ -266,7 +266,7 @@ int run_emit(const Args& args)
             std::fprintf(stderr, "sppc: error: cannot write %s\n", args.slots.c_str());
             return 1;
         }
-        mf << r.slots_out;
+        mf << r.slots_out << r.sigs_out;
     }
     return 0;
 }

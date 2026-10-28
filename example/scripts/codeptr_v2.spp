@@ -1,0 +1,13 @@
+// Generation 2 of Relay (design 4.9, S17). A state field keeps a raw function pointer. The
+// pointer can point into the code of a generation, so no retired generation unloads.
+using "Actor.h";
+using "Util.h";
+
+class Relay : Actor {
+    IntFn op = PickDoubler();
+    int result = 0;
+
+    override void Tick(float dt) {
+        this.result = CallIntFn(this.op, 2);
+    }
+}

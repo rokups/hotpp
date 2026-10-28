@@ -281,7 +281,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
         return r;
     }
     timings_.jit_ms = ms_since(t0);
-    slots_ = tr.slots_out;  // the slot order changes only when the whole load succeeds
+    slots_ = tr.slots_out + tr.sigs_out;  // the slot order changes only when the whole load succeeds
     // The core gets its own JITDylib. The loader calls make_core at most one time.
     std::shared_ptr<JitState> impl = impl_;
     added.module->make_core = [impl, id, core_ir]() {

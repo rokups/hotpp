@@ -1,0 +1,10 @@
+// Generation 1 of Echo (design 5.3, S17). The class does not use "this" as a handle.
+using "Actor.h";
+
+class Echo : Actor {
+    int ticks = 0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+    }
+}

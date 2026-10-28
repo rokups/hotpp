@@ -3,7 +3,9 @@
 // the warnings, the rejections that stay and the restart request.
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstddef>
+#include <functional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -414,6 +416,61 @@ TEST(Migration, AThrowingNativeMoveRequestsARestart)
     EXPECT_FALSE(loader.reload_pending());
     spp::clear_restart_request();
     delete obj;
+}
+
+// ---- a native container of a [value] script class (design 5.3, S17)
+// The type key has the hash of the layout of the value class. The same hash moves the container.
+// Another hash resets it to the default value with a warning.
+TEST(ContainerOfValueType, SameLayoutMovesOtherLayoutResets)
+{
+    using V = std::vector<int>;
+    const char* k1 = spp::layout_keyed(typeid(V).name(), "aaaa");
+    const char* k1b = spp::layout_keyed(typeid(V).name(), "aaaa");
+    const char* k2 = spp::layout_keyed(typeid(V).name(), "bbbb");
+    EXPECT_EQ(k1, k1b);  // one text for each key
+    EXPECT_TRUE(spp::type_key_matches(k1, typeid(V).name()));
+    EXPECT_FALSE(spp::type_key_matches(k1, typeid(int).name()));
+    auto row = [](const char* key) {
+        return spp::FieldInfo{"items", nullptr, key, 0, sizeof(V), alignof(V), spp::field_flags<V>(),
+                              nullptr, spp::move_field<V>, spp::field_destroyer<V>()};
+    };
+    const spp::FieldInfo f1[] = {row(k1)}, f1b[] = {row(k1b)}, f2[] = {row(k2)};
+    const spp::StateLayout l1{"BagState_g1", sizeof(V), alignof(V), 1, f1};
+    const spp::StateLayout l1b{"BagState_g2", sizeof(V), alignof(V), 1, f1b};
+    const spp::StateLayout l2{"BagState_g3", sizeof(V), alignof(V), 1, f2};
+    const spp::MigrationPlan same = spp::build_plan(l1, l1b);
+    EXPECT_EQ(same.steps[0].action, spp::FieldAction::Move);
+    EXPECT_TRUE(same.warnings.empty());
+    const spp::MigrationPlan other = spp::build_plan(l1, l2);
+    EXPECT_EQ(other.steps[0].action, spp::FieldAction::Init);
+    ASSERT_EQ(other.warnings.size(), 1u);
+    EXPECT_NE(other.warnings[0].find("container resets"), std::string::npos) << other.warnings[0];
+    EXPECT_NE(other.warnings[0].find("std::vector<int"), std::string::npos) << other.warnings[0];
+}
+
+// ---- code pointers in a state field (design 4.9, S17)
+struct PlainData {
+    int a;
+    float b;
+};
+struct Obj {
+    int f(int x) { return x; }
+};
+TEST(MayHoldCode, FunctionPointersAndStdFunctionHoldCode)
+{
+    EXPECT_TRUE(spp::field_flags<int (*)(int)>() & spp::kMayHoldCode);
+    EXPECT_TRUE(spp::field_flags<void (*)() noexcept>() & spp::kMayHoldCode);
+    EXPECT_TRUE(spp::field_flags<int (Obj::*)(int)>() & spp::kMayHoldCode);
+    EXPECT_TRUE((spp::field_flags<std::array<void (*)(), 2>>() & spp::kMayHoldCode));
+    EXPECT_TRUE(spp::field_flags<std::vector<int (*)(int)>>() & spp::kMayHoldCode);
+    EXPECT_TRUE(spp::field_flags<std::function<int(int)>>() & spp::kMayHoldCode);
+    EXPECT_TRUE(spp::field_flags<void (*const)()>() & spp::kMayHoldCode);
+    // The trivially copyable function pointer keeps its copy flag.
+    EXPECT_TRUE(spp::field_flags<int (*)(int)>() & spp::kTriviallyCopyable);
+    EXPECT_FALSE(spp::field_flags<int>() & spp::kMayHoldCode);
+    EXPECT_FALSE(spp::field_flags<int*>() & spp::kMayHoldCode);
+    EXPECT_FALSE(spp::field_flags<PlainData>() & spp::kMayHoldCode);
+    EXPECT_FALSE(spp::field_flags<int Obj::*>() & spp::kMayHoldCode);  // a data member pointer
 }
 
 }  // namespace

@@ -1,0 +1,21 @@
+// Generation 1: a std::vector of the [value] class Item in a state field (design 5.3, S17).
+using "Actor.h";
+using <vector>;
+
+[value] class Item {
+    int weight = 0;
+
+    Item(int w) {
+        this.weight = w;
+    }
+}
+
+class Bag : Actor {
+    std.vector<Item> items = std.vector<Item>();
+    int count = 0;
+
+    override void Tick(float dt) {
+        this.items.push_back(Item(5));
+        this.count = static_cast<int>(this.items.size());
+    }
+}

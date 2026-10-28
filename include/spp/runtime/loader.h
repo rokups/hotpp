@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -164,6 +165,8 @@ private:
     uint32_t code_refs(const Gen& g, const std::unordered_map<uint32_t, uint32_t>& live) const;
     // True when a live state block (an object or the module block) has a field with kMayHoldCode.
     bool state_holds_code() const;
+    // Sets the signature key of the slot of a keyed thunk in the canonical record (design 5.3).
+    void set_slot_key(const ThunkEntry& t);
 
     mutable std::mutex mutex_;  // see "Threads" above
     Registry registry_;
@@ -180,6 +183,10 @@ private:
     const StateLayout* mod_layout_ = nullptr;
     void** mod_slot_ = nullptr;
     char* mod_block_ = nullptr;
+    // The signature keys of the slots (ClassRecord::slot_keys), by class name. A class gets a
+    // table when a reload changes the signature of one of its script functions (design 5.3).
+    std::unordered_map<std::string, std::vector<const char*>> slot_keys_;
+    std::set<std::string> key_text_;  // the text of the keys; a module can unload
 };
 
 }  // namespace spp

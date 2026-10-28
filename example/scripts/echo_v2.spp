@@ -1,0 +1,15 @@
+// Generation 2 of Echo (design 5.3, S17). The first use of "this" as a handle adds
+// std::enable_shared_from_this to the shell. The loader rejects the reload.
+using "Actor.h";
+
+class Echo : Actor {
+    int ticks = 0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+    }
+
+    Echo Self() {
+        return this;
+    }
+}

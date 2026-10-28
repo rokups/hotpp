@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <array>
+#include <functional>
 #include <map>
 #include <new>
 #include <optional>
@@ -76,12 +77,23 @@ inline void destroy_state(ShellBase* self)
     self->state = nullptr;
 }
 
-// True when a value of T cannot point into the code of the module that made it (no vtable, no
-// function pointer). A trivially copyable type is not polymorphic. The standard containers with
-// the default allocator, hash and order are free of code when their elements are. A function
-// pointer in a trivially copyable type is not detected. An engine can add a specialization.
+// True when T is a raw code pointer: a function pointer, a member function pointer, or an
+// array of them. A code pointer can point into a generation module (design 4.9).
 template <class T>
-struct holds_no_code : std::bool_constant<std::is_trivially_copyable_v<T>> {};
+inline constexpr bool is_code_pointer_v =
+    (std::is_pointer_v<std::remove_all_extents_t<T>> &&
+     std::is_function_v<std::remove_pointer_t<std::remove_all_extents_t<T>>>) ||
+    std::is_member_function_pointer_v<std::remove_all_extents_t<T>>;
+
+// True when a value of T cannot point into the code of the module that made it (no vtable, no
+// function pointer). A trivially copyable type is not polymorphic. A raw function pointer and a
+// std::function hold code. The standard containers with the default allocator, hash and order
+// are free of code when their elements are. A function pointer inside a trivially copyable
+// native struct is not detected. An engine can add a specialization for such a struct.
+template <class T>
+struct holds_no_code : std::bool_constant<std::is_trivially_copyable_v<T> && !is_code_pointer_v<T>> {};
+template <class Sig>
+struct holds_no_code<std::function<Sig>> : std::false_type {};
 template <class C, class Tr>
 struct holds_no_code<std::basic_string<C, Tr, std::allocator<C>>> : std::true_type {};
 template <class T>
@@ -153,12 +165,24 @@ inline const char* type_key()
     return typeid(T).name();
 }
 
+// The type key of a native container of a [value] script class (design 5.3): "type#hash".
+// "hash" is the hash of the layout of the [value] classes in the type. The text stays valid
+// after the module unloads. A different hash with the same type resets the container.
+const char* layout_keyed(const char* type, const char* hash);
+
+// True when the type key of a field is the typeid name, with or without a layout hash.
+inline bool type_key_matches(const char* key, const char* name)
+{
+    const size_t n = std::strlen(name);
+    return std::strncmp(key, name, n) == 0 && (key[n] == '\0' || key[n] == '#');
+}
+
 // Returns a pointer to a field, or null when the name or the type does not match.
 template <class T>
 inline T* field_ptr(ShellBase* s, const char* name)
 {
     const FieldInfo* f = find_field(s->cls, name);
-    if (!f || std::strcmp(f->type_key, type_key<T>()) != 0) return nullptr;
+    if (!f || !type_key_matches(f->type_key, type_key<T>())) return nullptr;
     return reinterpret_cast<T*>(static_cast<char*>(s->state) + f->offset);
 }
 

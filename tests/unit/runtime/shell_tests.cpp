@@ -82,4 +82,44 @@ TEST(IsAs, NativeTypesUseRtti)
     EXPECT_EQ(spp::as_native<Cell_Shell>(raw), cell.get());
 }
 
+// ---- signature keys of the slots (design 5.3, S17)
+int add_one(Base*, int x) { return x + 1; }
+void touch(Base*, int* hits) { ++*hits; }
+
+// A slot without a key calls the function. A matching key also calls it.
+TEST(SlotKeys, MatchingOrMissingKeyCalls)
+{
+    void* slots[1] = {reinterpret_cast<void*>(&add_one)};
+    spp::ClassRecord rec{"Keyed", 1, slots, 1, nullptr, nullptr, "Base", 0};
+    Base b;
+    EXPECT_EQ(spp::call<int(Base*, int)>(&rec, 0, &b, 4), 5);
+    const char* keys[1] = {typeid(int(Base*, int)).name()};
+    rec.slot_keys = keys;
+    EXPECT_EQ(spp::call<int(Base*, int)>(&rec, 0, &b, 4), 5);
+}
+
+// A call with another signature than the key detaches: the function does not run, the result
+// is the default value and the runtime counts the call.
+TEST(SlotKeys, OtherSignatureDetaches)
+{
+    void* slots[2] = {reinterpret_cast<void*>(&add_one), reinterpret_cast<void*>(&touch)};
+    const char* keys[2] = {typeid(int(Base*, int, int)).name(), typeid(void(Base*, int*, int)).name()};
+    spp::ClassRecord rec{"Detached", 1, slots, 2, nullptr, nullptr, "Base", 0};
+    rec.slot_keys = keys;
+    Base b;
+    int hits = 0;
+    const uint64_t before = spp::detached_call_count();
+    testing::internal::CaptureStderr();
+    EXPECT_EQ(spp::call<int(Base*, int)>(&rec, 0, &b, 4), 0);
+    EXPECT_EQ(spp::call<int(Base*, int)>(&rec, 0, &b, 4), 0);
+    spp::call<void(Base*, int*)>(&rec, 1, &b, &hits);
+    const std::string log = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(hits, 0);
+    EXPECT_EQ(spp::detached_call_count(), before + 3);
+    // One line for each slot: the second call of slot 0 logs nothing.
+    size_t lines = 0;
+    for (size_t p = log.find("old signature"); p != std::string::npos; p = log.find("old signature", p + 1)) ++lines;
+    EXPECT_EQ(lines, 2u) << log;
+}
+
 }  // namespace

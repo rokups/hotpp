@@ -12,11 +12,12 @@ namespace spp {
 std::string readable_type(const char* type_key)
 {
     if (!type_key) return "?";
+    const std::string plain(type_key, std::strcspn(type_key, "#"));  // without a layout hash
     int status = 0;
-    char* d = abi::__cxa_demangle(type_key, nullptr, nullptr, &status);
+    char* d = abi::__cxa_demangle(plain.c_str(), nullptr, nullptr, &status);
     if (status != 0 || !d) {
         std::free(d);
-        return type_key;
+        return plain;
     }
     std::string out = d;
     std::free(d);
@@ -68,6 +69,18 @@ MigrationPlan build_plan(const StateLayout& o, const StateLayout& n)
         }
         // The type changed (design 4.7): the convert hook, else the default value.
         plan.changed.push_back(j);
+        // A native container of a [value] script class with a changed layout (design 5.3). The
+        // runtime cannot migrate the elements of a native container, so the container resets.
+        const char* nh = std::strchr(nf.type_key, '#');
+        const char* oh = std::strchr(of.type_key, '#');
+        if (nh && oh && nh - nf.type_key == oh - of.type_key &&
+            std::strncmp(nf.type_key, of.type_key, static_cast<size_t>(nh - nf.type_key)) == 0) {
+            plan.warnings.push_back(readable_layout(n.name) + ": field " + nf.name + " (" +
+                                    readable_type(nf.type_key) +
+                                    ") holds a script value type whose layout changed; the native "
+                                    "container resets to the default value");
+            return;
+        }
         if (nf.convert && nf.convert_from && std::strcmp(nf.convert_from, of.type_key) == 0) {
             plan.steps[i] = {FieldAction::Convert, j};
         } else {

@@ -80,6 +80,10 @@ struct TranslateResult {
     bool ok = false;
     std::string cpp;          // the generated C++ text (valid when ok)
     std::string slots_out;    // the new slot file content (valid when ok)
+    // The signature lines of the slot file (design 5.3): "sig Cls::fn Sig", one for each script
+    // function. A backend writes them after "slots_out" and gives both back in "slots_in". A
+    // reload that changes a signature then gets a new thunk with a signature key.
+    std::string sigs_out;
     std::string diagnostics;  // the errors, one line each: "name:line:col: error: text"
     // The warnings, one line each: "name:line:col: warning: text". The translation can be ok
     // with warnings. The text is empty when there is no warning.

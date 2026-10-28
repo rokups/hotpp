@@ -181,7 +181,7 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation,
                 std::to_string(rc) + ")\n";
         return false;
     }
-    if (!write_text(opt_.slots_file, tr.slots_out)) {
+    if (!write_text(opt_.slots_file, tr.slots_out + tr.sigs_out)) {
         error = "cannot write " + opt_.slots_file;
         return false;
     }

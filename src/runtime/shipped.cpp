@@ -45,7 +45,7 @@ ShippedRegistry::ShippedRegistry(const ShippedTable& table)
                     throw std::runtime_error("the class " + name + " is in two shipped scripts (" + script.name + ")");
                 registry_.add(e.record, e.create);
             }
-            for (const auto& [name, fn] : reg.thunks()) registry_.add_thunk(name, fn);
+            for (const auto& [key, t] : reg.thunks()) registry_.add_thunk(t);
             const ModuleStateInfo& ms = reg.module_state();
             if (ms.layout && ms.slot) {
                 char* block = alloc_state(ms.layout);

@@ -1,0 +1,21 @@
+// Generation 2: the layout of Item stays. The vector migrates (LIVE).
+using "Actor.h";
+using <vector>;
+
+[value] class Item {
+    int weight = 0;
+
+    Item(int w) {
+        this.weight = w;
+    }
+}
+
+class Bag : Actor {
+    std.vector<Item> items = std.vector<Item>();
+    int count = 0;
+
+    override void Tick(float dt) {
+        this.items.push_back(Item(7));
+        this.count = static_cast<int>(this.items.size());
+    }
+}

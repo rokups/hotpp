@@ -15,6 +15,7 @@ add_executable(unit_translator_translate_tests
     inheritance_translation_tests.cpp
     interface_translation_tests.cpp
     reload_hook_translation_tests.cpp
+    reload_contract_translation_tests.cpp
     property_translation_tests.cpp
     scope_translation_tests.cpp
     script_kinds_translation_tests.cpp

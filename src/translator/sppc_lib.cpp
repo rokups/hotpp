@@ -1217,6 +1217,8 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
     });
 
     std::vector<ManifestEntry> old_manifest;
+    std::map<std::string, std::string> old_sigs;  // "Cls::fn" to the signature of the last generation
+    std::vector<std::string> sig_lines;            // the signature lines of the new slot file
     {
         // Keep the entries of the earlier generations. Keep also the entries of
         // the classes that this script does not define (an other script owns them).
@@ -1224,6 +1226,21 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         for (const auto& cd : sc.classes) mine.insert(cd.name);
         for (auto& e : read_manifest(in.slots_in))
             if (e.gen < opt.gen || !mine.count(e.cls)) old_manifest.push_back(e);
+        // The signature lines "sig Cls::fn Sig" (design 5.3). read_manifest skips them.
+        std::istringstream f(in.slots_in);
+        std::string line;
+        while (std::getline(f, line)) {
+            if (line.rfind("sig ", 0) != 0) continue;
+            const size_t sp = line.find(' ', 4);
+            if (sp == std::string::npos) continue;
+            const std::string name = line.substr(4, sp - 4);
+            const size_t p = name.find("::");
+            if (p == std::string::npos) continue;
+            if (mine.count(name.substr(0, p)))
+                old_sigs[name] = line.substr(sp + 1);
+            else
+                sig_lines.push_back(line + "\n");  // a class of another script
+        }
     }
     std::vector<ManifestEntry> new_manifest = old_manifest;
 
@@ -1276,6 +1293,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
 
     std::vector<std::pair<std::string, bool>> registers;  // class name, for the register function
     std::vector<std::string> thunk_regs;
+    std::vector<std::string> flag_regs;  // the record flags that script_register sets
     // The script classes that a "new" expression names (design 7.3). They get a "new" function.
     const std::set<std::string> new_set = sppc::new_targets(sc);
     std::set<std::string> new_ready;  // the classes with a "new" function that are emitted so far
@@ -1294,6 +1312,53 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
     // The reload type key of a field type. An enum is its underlying integer type (design 5.3).
     auto key_type = [&](const std::string& t) {
         return enum_types.count(t) ? "std::underlying_type_t<" + t + ">" : t;
+    };
+    // The [value] script classes that a type names inside a native template, for example
+    // "Stats" in "std::vector<Stats>" (design 5.3). A name after "::" or "." is native.
+    auto values_in = [&](const std::string& t) {
+        std::vector<std::string> out;
+        for (size_t i = 0; i < t.size();) {
+            if (!(std::isalpha(static_cast<unsigned char>(t[i])) || t[i] == '_')) {
+                ++i;
+                continue;
+            }
+            size_t j = i;
+            while (j < t.size() && (std::isalnum(static_cast<unsigned char>(t[j])) || t[j] == '_')) ++j;
+            const std::string tok = t.substr(i, j - i);
+            const bool qualified = (i >= 1 && t[i - 1] == '.') || (i >= 2 && t.compare(i - 2, 2, "::") == 0);
+            if (!qualified && tok != t && types.is_script_value(tok)) out.push_back(tok);
+            i = j;
+        }
+        return out;
+    };
+    // The layout text of a [value] class: the name and the type of each field, in order, and
+    // the layout text of each nested [value] class.
+    std::function<std::string(const std::string&, int)> value_layout = [&](const std::string& name, int depth) {
+        std::string text = name + "{";
+        for (const ClassDef& c : sc.classes) {
+            if (c.name != name || depth > 32) continue;
+            for (const Field& f : c.fields) {
+                text += f.name + ":" + f.type + ";";
+                if (types.is_script_value(f.type)) text += value_layout(f.type, depth + 1);
+                for (const std::string& v : values_in(f.type)) text += value_layout(v, depth + 1);
+            }
+        }
+        return text + "}";
+    };
+    // The type key of a field. A native container of a [value] class adds the hash of the
+    // layout of the class (design 5.3). The key then changes when the layout changes, and the
+    // migration resets the container. Other types keep the plain typeid name.
+    auto field_key = [&](const std::string& t) {
+        const std::string plain = "typeid(" + key_type(t) + ").name()";
+        const std::vector<std::string> vals = values_in(t);
+        if (vals.empty()) return plain;
+        std::string text;
+        for (const std::string& v : vals) text += value_layout(v, 0);
+        uint64_t h = 14695981039346656037ull;
+        for (unsigned char c : text) h = (h ^ c) * 1099511628211ull;
+        char hex[17];
+        std::snprintf(hex, sizeof hex, "%016llx", static_cast<unsigned long long>(h));
+        return "spp::layout_keyed(" + plain + ", \"" + hex + "\")";
     };
     auto emit_value = [&](ClassDef& cd) {
         const std::string cn = cd.name, P = cn + "__";
@@ -1451,7 +1516,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 const std::string T = f.type;
                 const bool sub = types.is_script_value(T);
                 o.w("    {\"" + f.name + "\", " + (f.alias.empty() ? "nullptr" : "\"" + f.alias + "\"") +
-                    ", typeid(" + key_type(T) + ").name(), offsetof(" + cn + ", " + f.name + "), sizeof(" + T + "),\n     alignof(" +
+                    ", " + field_key(T) + ", offsetof(" + cn + ", " + f.name + "), sizeof(" + T + "),\n     alignof(" +
                     T + "), spp::" + (sub ? "value_field_flags" : "field_flags") + "<" + T + ">(), " + P + "init_" +
                     f.name + ", spp::move_field<" + T + ">, spp::field_destroyer<" + T + ">()");
                 auto hk = hooks.find(f.name);
@@ -2092,7 +2157,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             const std::string T = f.type;
             const bool sub = types.is_script_value(T);
             std::string row = "    {\"" + f.name + "\", " + (f.alias.empty() ? "nullptr" : "\"" + f.alias + "\"") +
-                              ", typeid(" + key_type(T) + ").name(), offsetof($S$, " + f.name + "), sizeof(" + T +
+                              ", " + field_key(T) + ", offsetof($S$, " + f.name + "), sizeof(" + T +
                               "),\n     alignof(" + T + "), spp::" + (sub ? "value_field_flags" : "field_flags") + "<" + T +
                               ">(), " + P + "init_" + f.name + ", spp::move_field<" + T + ">, spp::field_destroyer<" + T +
                               ">()";
@@ -2377,8 +2442,27 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             o.w("    return " + P + m.name + "(static_cast<" + shell + "*>(a)" + arg_list(m) + ");\n}\n\n");
         }
         for (size_t i = native_count; i < slots.size(); ++i) {
-            if (slots[i].intro_gen != opt.gen) continue;
             const Method& m = *slots[i].impl;
+            // A changed signature of an earlier function gets a new thunk with a signature key
+            // (design 5.3). The thunk of the old signature detaches. The same signature emits nothing.
+            const std::string sig = fn_ret(m) + "(" + B + "*" + type_list(m) + ")";
+            sig_lines.push_back("sig " + cn + "::" + m.name + " " + sig + "\n");
+            bool changed = false;
+            if (slots[i].intro_gen != opt.gen) {
+                auto old = old_sigs.find(cn + "::" + m.name);
+                changed = old != old_sigs.end() && old->second != sig;
+                if (!changed) continue;
+            }
+            if (changed) {
+                o.w("// The signature changed (design 5.3). This thunk serves the new signature. A\n"
+                    "// delegate on the thunk of the old signature detaches.\n");
+                o.w("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* a" + param_decl(m) + ")\n{\n");
+                o.w("    auto* self = static_cast<" + shell + "*>(a);\n");
+                o.w("    return spp::call<" + sig + ">(self->cls, " + slot_id(m.name) + ", a" + arg_list(m) + ");\n}\n\n");
+                thunk_regs.push_back("    reg.add_thunk(\"" + cn + "::" + m.name + "\", reinterpret_cast<void*>(&" + P +
+                                     m.name + "__thunk), typeid(" + sig + ").name(), " + slot_id(m.name) + ");\n");
+                continue;
+            }
             o.w("// The thunk has the same address in each generation (section 4.11). The\n"
                 "// generation that adds the function emits it. It reads the slot at call time.\n");
             o.w("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* a" + param_decl(m) + ")\n{\n");
@@ -2393,8 +2477,11 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         // shell. The insert stays in one line, so the line numbers do not change.
         // A shell with script children always gets it: a child cannot add it to the parent.
         if ((handle_this || parent_shell) && !par && !cd.base.empty() &&
-            types.storage(cn).rfind("std::shared_ptr<", 0) == 0)
+            types.storage(cn).rfind("std::shared_ptr<", 0) == 0) {
             o.insert(shell_head_end, ", std::enable_shared_from_this<" + shell + ">");
+            // The loader names this cause when the shell hash changes (design 5.3).
+            flag_regs.push_back("    " + cn + "_record.shares_this = true;\n");
+        }
 
         // ---- record and entry
         o.w("// ------------------------------------------------------ record and entry\n");
@@ -2449,6 +2536,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
     o.w("extern \"C\" void script_register(spp::Registry& reg)\n{\n");
     if (has_module) o.w("    reg.set_module_state(&" + kModuleName + "_layout, &" + kModuleName + "_slot);\n");
     for (const auto& r : registers) o.w("    reg.add(&" + r.first + "_record, &" + r.first + "_create);\n");
+    for (const auto& t : flag_regs) o.w(t);
     for (const auto& t : thunk_regs) o.w(t);
     o.w("}\n");
 
@@ -2459,6 +2547,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
     std::ostringstream mf;
     for (const auto& e : new_manifest) mf << e.cls << "::" << e.fn << " " << e.gen << "\n";
     res.slots_out = mf.str();
+    for (const auto& l : sig_lines) res.sigs_out += l;
 }
 
 }  // namespace
@@ -2557,6 +2646,7 @@ TranslateResult translate(const TranslateOptions& in, TranslatorSession& session
         res.ok = false;
         res.cpp.clear();
         res.slots_out.clear();
+        res.sigs_out.clear();
     }
     res.diagnostics = g_diag.format(g_script);
     res.warnings = g_diag.format_warnings(g_script);

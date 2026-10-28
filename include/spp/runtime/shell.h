@@ -1,10 +1,12 @@
 // The base of a generated shell, the slot call and the checked access to a shell.
 #pragma once
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <typeinfo>
 #include <utility>
 
 #include "spp/runtime/records.h"
@@ -35,10 +37,44 @@ inline bool record_is(const ClassRecord* r, const char* name)
     return false;
 }
 
-// Calls slot "slot" of the class record. "Sig" is the signature of the slot.
+// A call through a slot with an old signature (design 5.3): a native delegate on the thunk of a
+// signature that a reload changed. The runtime logs the first call of each slot and counts the
+// calls (loader.cpp). The call does not run.
+void detached_call(const ClassRecord* cls, unsigned slot);
+uint64_t detached_call_count();
+
+namespace detail {
+template <class Sig>
+struct sig_result;
+template <class R, class... P>
+struct sig_result<R(P...)> {
+    using type = R;
+};
+// The result of a detached call: nothing, a value-initialized value, or an exception when the
+// result type has no default value (for example a reference).
+template <class R>
+R detached_result()
+{
+    if constexpr (std::is_void_v<R>)
+        return;
+    else if constexpr (std::is_default_constructible_v<R>)
+        return R();
+    else
+        throw std::runtime_error("a detached delegate cannot make a result value");
+}
+}  // namespace detail
+
+// Calls slot "slot" of the class record. "Sig" is the signature of the slot. When the slot has
+// a signature key (ClassRecord::slot_keys) and "Sig" is another signature, the call detaches.
 template <class Sig, class... A>
 inline auto call(const ClassRecord* cls, unsigned slot, A&&... a)
 {
+    if (const char* const* keys = cls->slot_keys) [[unlikely]] {
+        if (keys[slot] && std::strcmp(keys[slot], typeid(Sig).name()) != 0) {
+            detached_call(cls, slot);
+            return detail::detached_result<typename detail::sig_result<Sig>::type>();
+        }
+    }
     return reinterpret_cast<Sig*>(cls->slots[slot])(std::forward<A>(a)...);
 }
 

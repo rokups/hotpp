@@ -7,6 +7,8 @@
 #include <exception>
 #include <functional>
 #include <iterator>
+#include <set>
+#include <utility>
 
 #include "runtime_internal.h"
 
@@ -79,9 +81,9 @@ bool open_core(Module& m, const Registry& code, Module& core, Registry& reg)
             same = same && c && c->record != e.record && c->record->generation == e.record->generation &&
                    c->record->shell_hash == e.record->shell_hash;
         }
-        for (const auto& [name, fn] : code.thunks()) {
-            void* t = reg.thunk(name);
-            same = same && t && t != fn;
+        for (const auto& [key, t] : code.thunks()) {
+            auto it = reg.thunks().find(key);
+            same = same && it != reg.thunks().end() && it->second.fn && it->second.fn != t.fn;
         }
         if (!same) why = "the core does not register the same classes and thunks in its own memory";
     }
@@ -171,7 +173,10 @@ bool Loader::load(Module module, std::string& error)
     }
     const Registry& canon = have_core ? core_reg : code;
     for (const auto& [name, e] : canon.entries()) registry_.add(e.record, e.create);
-    for (const auto& [name, fn] : canon.thunks()) registry_.add_thunk(name, fn);
+    for (const auto& [key, t] : canon.thunks()) {
+        registry_.add_thunk(t);
+        if (!t.sig.empty()) set_slot_key(t);
+    }
     if (have_core)
         for (const auto& [name, e] : code.entries()) adopt(registry_.find(name)->record, e.record);
     const uint32_t gen = registry_.max_generation();
@@ -331,6 +336,19 @@ std::atomic<uint64_t> g_removed_calls{0};
 
 // The caller passes the arguments of the slot. The handler ignores them. The caller cleans the
 // argument registers or the stack in the ABIs that this project supports.
+void Loader::set_slot_key(const ThunkEntry& t)
+{
+    const std::string cls = t.name.substr(0, t.name.find("::"));
+    ClassEntry* ce = registry_.find(cls);
+    if (!ce) return;
+    ClassRecord* r = ce->record;
+    std::vector<const char*>& keys = slot_keys_[cls];
+    const size_t n = std::max<size_t>(r->slot_count, t.slot + 1);
+    if (keys.size() < n) keys.resize(n, nullptr);
+    keys[t.slot] = key_text_.insert(t.sig).first->c_str();  // the module of "t" can unload
+    r->slot_keys = keys.data();
+}
+
 void* removed_class_handler()
 {
     if (g_removed_calls.fetch_add(1, std::memory_order_relaxed) == 0)
@@ -370,7 +388,7 @@ bool Loader::request_reload(Module module, std::string& error)
     {
         std::lock_guard<std::mutex> lock(mutex_);
         for (const auto& [name, e] : p->staged.entries()) adds = adds || !registry_.find(name);
-        for (const auto& [name, fn] : p->staged.thunks()) adds = adds || !registry_.thunk(name);
+        for (const auto& [key, t] : p->staged.thunks()) adds = adds || !registry_.has_thunk(key);
     }
     if (adds) p->have_core = open_core(p->module, p->staged, p->core, p->core_reg);
     p->module.make_core = nullptr;  // the JIT keeps a copy of the IR for it
@@ -421,7 +439,18 @@ bool Loader::request_reload(Module module, std::string& error)
                 return false;
             }
             if (cur->shell_hash != in.record->shell_hash) {
-                error = "class " + name + ": shell layout hash differs (RECONSTRUCT change)";
+                if (!cur->shares_this && in.record->shares_this)
+                    error = "class " + name +
+                            ": the new generation uses 'this' as a handle (or adds a script child) for the "
+                            "first time. The shell then derives from std::enable_shared_from_this and its "
+                            "layout changes (RECONSTRUCT change). Restart the program, or use 'this' as a "
+                            "handle in generation 1";
+                else if (cur->shares_this && !in.record->shares_this)
+                    error = "class " + name +
+                            ": the shell of the new generation has no std::enable_shared_from_this, so its "
+                            "layout changes (RECONSTRUCT change). Restart the program";
+                else
+                    error = "class " + name + ": shell layout hash differs (RECONSTRUCT change)";
                 return false;
             }
             if (in.record->slot_count < cur->slot_count) {
@@ -577,10 +606,27 @@ bool Loader::commit_pending(std::string& error)
     uint32_t new_refs = 0;
     for (const PendingClass& pc : P.classes)
         if (!pc.canon && !P.have_core) ++new_refs;
-    for (const auto& [name, fn] : (P.have_core ? P.core_reg : P.staged).thunks()) {
-        if (!registry_.thunk(name) && !P.have_core) ++new_refs;
-        registry_.add_thunk(name, fn);
+    for (const auto& [key, t] : (P.have_core ? P.core_reg : P.staged).thunks()) {
+        if (!registry_.has_thunk(key) && !P.have_core) ++new_refs;
+        // A thunk with a signature key (design 5.3): the signature of the function changed. The
+        // slot gets the key, so a delegate on a thunk of another signature detaches.
+        if (!t.sig.empty()) {
+            const std::string prev = registry_.current_thunk_key(t.name);
+            if (!prev.empty() && prev != key)
+                std::fprintf(stderr,
+                             "[script] WARNING: the signature of %s changed; native delegates bound to the "
+                             "old signature detach (a call logs once and does not run)\n",
+                             t.name.c_str());
+            set_slot_key(t);
+        }
+        registry_.add_thunk(t);
     }
+    // The slot count can grow. The key table of each class follows it.
+    for (auto& [cls, keys] : slot_keys_)
+        if (ClassEntry* ce = registry_.find(cls)) {
+            if (keys.size() < ce->record->slot_count) keys.resize(ce->record->slot_count, nullptr);
+            ce->record->slot_keys = keys.data();
+        }
     if (P.have_core) cores_.push_back(std::move(P.core));
 
     // Step 5: switch the generation.

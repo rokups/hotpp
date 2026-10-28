@@ -16,6 +16,7 @@ add_executable(integration_reload_tests
     interface_tests.cpp
     runtime_polish_tests.cpp
     core_module_tests.cpp
+    reload_contract_tests.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Harness.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Actor.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Object.cpp

@@ -1,0 +1,22 @@
+// Generation 3: Item gets a field. The vector resets with a warning.
+using "Actor.h";
+using <vector>;
+
+[value] class Item {
+    int weight = 0;
+    int color = 0;
+
+    Item(int w) {
+        this.weight = w;
+    }
+}
+
+class Bag : Actor {
+    std.vector<Item> items = std.vector<Item>();
+    int count = 0;
+
+    override void Tick(float dt) {
+        this.items.push_back(Item(9));
+        this.count = static_cast<int>(this.items.size());
+    }
+}

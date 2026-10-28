@@ -1,0 +1,11 @@
+// Generation 1 of the signature change (design 5.3, S17).
+// A native delegate binds to the thunk of heal(int).
+using "Actor.h";
+
+class Medic : Actor {
+    int hp = 10;
+
+    void heal(int amount) {
+        this.hp = this.hp + amount;
+    }
+}

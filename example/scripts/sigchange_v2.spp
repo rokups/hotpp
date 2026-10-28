@@ -1,0 +1,11 @@
+// Generation 2 of the signature change (design 5.3, S17).
+// heal gets a second parameter. The delegate on the old thunk detaches. A new thunk serves heal(int, int).
+using "Actor.h";
+
+class Medic : Actor {
+    int hp = 10;
+
+    void heal(int amount, int bonus) {
+        this.hp = this.hp + amount + bonus;
+    }
+}
