@@ -1,7 +1,5 @@
 #include "script_runtime.h"
 
-#include <dlfcn.h>
-
 #include <cstdio>
 #include <unordered_set>
 
@@ -129,61 +127,40 @@ struct PendingClass {
 };
 
 struct Loader::Pending {
-    void* handle = nullptr;
-    std::string path;
+    Module module;  // keeps the code alive; released with the Pending when the reload fails
     Registry staged;
     std::vector<PendingClass> classes;
-    ~Pending()
-    {
-        if (handle) dlclose(handle);
-    }
 };
 
 Loader::Loader() = default;
 Loader::~Loader() = default;
 
-bool Loader::load(const std::string& path, std::string& error)
+bool Loader::load(Module module, std::string& error)
 {
-    void* h = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
-    if (!h) {
-        error = dlerror();
+    if (!module.register_fn) {
+        error = "the module has no script_register function";
         return false;
     }
-    using RegisterFn = void (*)(Registry&);
-    auto fn = reinterpret_cast<RegisterFn>(dlsym(h, "script_register"));
-    if (!fn) {
-        error = "symbol script_register not found";
-        dlclose(h);
-        return false;
-    }
-    fn(registry_);
-    handles_.push_back(h);
+    module.register_fn(registry_);
+    modules_.push_back(std::move(module));
     active_generation = registry_.max_generation();
     return true;
 }
 
-bool Loader::request_reload(const std::string& path, std::string& error)
+bool Loader::request_reload(Module module, std::string& error)
 {
     if (pending_) {
         error = "a reload is already pending";
         return false;
     }
-    auto p = std::make_unique<Pending>();
-    p->path = path;
-    p->handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
-    if (!p->handle) {
-        const char* e = dlerror();
-        error = e ? e : "dlopen failed";
+    if (!module.register_fn) {
+        error = "the module has no script_register function";
         return false;
     }
-    using RegisterFn = void (*)(Registry&);
-    auto fn = reinterpret_cast<RegisterFn>(dlsym(p->handle, "script_register"));
-    if (!fn) {
-        error = "symbol script_register not found";
-        return false;  // ~Pending closes the library
-    }
+    auto p = std::make_unique<Pending>();
+    p->module = std::move(module);
     try {
-        fn(p->staged);
+        p->module.register_fn(p->staged);
     } catch (...) {
         error = "script_register threw an exception";
         return false;
@@ -304,9 +281,8 @@ bool Loader::commit_pending(std::string& error)
     }
 
     std::fprintf(stderr, "[script] reload committed: %s, generation %u, %zu objects migrated\n",
-                 P.path.c_str(), active_generation, work.size());
-    handles_.push_back(P.handle);  // a retired generation stays loaded
-    P.handle = nullptr;
+                 P.module.origin.c_str(), active_generation, work.size());
+    modules_.push_back(std::move(P.module));  // a retired generation stays loaded
     pending_.reset();
     return true;
 }

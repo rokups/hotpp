@@ -3,7 +3,9 @@
 
 #include <gtest/gtest.h>
 
+#include <stdexcept>
 #include <string>
+#include <utility>
 
 #include "Actor.h"
 #include "script_runtime.h"
@@ -15,6 +17,14 @@ constexpr float kDt = 1.0f / 60.0f;
 // One loader, one world and one Player. The loader is the first member, so it
 // is the last to be destroyed. The libraries stay loaded while the world deletes
 // the actors. Call start() inside ASSERT_NO_FATAL_FAILURE.
+// The module of a library that exists. A failure throws; GoogleTest reports it.
+inline script::Module library(const char* path)
+{
+    script::LoadResult r = script::module_from_library(path);
+    if (!r) throw std::runtime_error(r.error);
+    return std::move(*r.module);
+}
+
 struct Session {
     script::Loader loader;
     World world;
@@ -22,16 +32,24 @@ struct Session {
     Actor* actor = nullptr;
     bool commit_failed = false;
 
-    // Load the library, make the Player and add it to the world.
-    void start(const char* path)
+    // Register the module, make the Player and add it to the world.
+    void start(script::Module module)
     {
         std::string error;
-        ASSERT_TRUE(loader.load(path, error)) << error;
+        ASSERT_TRUE(loader.load(std::move(module), error)) << error;
         const script::ClassEntry* entry = loader.find("Player");
         ASSERT_NE(entry, nullptr) << "class Player is not registered";
         inst = entry->create();
         actor = static_cast<Actor*>(inst.native);
         world.Add(actor);
+    }
+
+    // Load the library at the path as a module, then start.
+    void start(const char* path)
+    {
+        script::LoadResult r = script::module_from_library(path);
+        ASSERT_TRUE(r) << r.error;
+        start(std::move(*r.module));
     }
 
     // Commit a pending reload at the frame boundary.

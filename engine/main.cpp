@@ -18,8 +18,9 @@ int main(int argc, char** argv)
     World world;            // the world deletes the actors, the library must still be loaded
 
     std::string error;
-    if (!loader.load(argv[1], error)) {
-        std::fprintf(stderr, "load failed: %s\n", error.c_str());
+    script::LoadResult module = script::module_from_library(argv[1]);
+    if (!module || !loader.load(std::move(*module.module), error)) {
+        std::fprintf(stderr, "load failed: %s\n", module ? error.c_str() : module.error.c_str());
         return 1;
     }
     const script::ClassEntry* entry = loader.find("Player");

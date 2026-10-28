@@ -14,6 +14,8 @@
 #include <utility>
 #include <vector>
 
+#include "module.h"
+
 #define SCRIPT_UNLIKELY(x) __builtin_expect(!!(x), 0)
 
 namespace script {
@@ -251,7 +253,7 @@ private:
     uint32_t max_generation_ = 0;
 };
 
-// Loads generation modules. A module exports: extern "C" void script_register(Registry&).
+// Registers generation modules. A module has the function: extern "C" void script_register(Registry&).
 //
 // The first module goes through load(). A later module goes through
 // request_reload(), which only validates (no side effect on live objects),
@@ -266,11 +268,12 @@ public:
     Loader(const Loader&) = delete;
     Loader& operator=(const Loader&) = delete;
 
-    bool load(const std::string& path, std::string& error);
+    // Registers the first module.
+    bool load(Module module, std::string& error);
 
     // Validation phase. Returns false and leaves the live generation unchanged
-    // when the library is not acceptable.
-    bool request_reload(const std::string& path, std::string& error);
+    // when the module is not acceptable. A Backend or module_from_library makes the Module.
+    bool request_reload(Module module, std::string& error);
     bool reload_pending() const { return pending_ != nullptr; }
     // Commit phase. Call it only at a frame boundary. Returns true when a
     // reload was committed. On false, "error" tells why (empty: nothing pending).
@@ -282,7 +285,7 @@ public:
 private:
     struct Pending;
     Registry registry_;
-    std::vector<void*> handles_;
+    std::vector<Module> modules_;  // a retired generation stays loaded
     std::unique_ptr<Pending> pending_;
 };
 

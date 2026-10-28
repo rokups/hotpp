@@ -3,6 +3,17 @@ project(spp CXX)
 
 enable_testing()
 
+# The script backend, chosen at build time (design section 3.3).
+#   CLANG_FILES: translate in memory, run an external clang++, dlopen the .so.
+#   JIT:         not implemented yet.
+set(SPP_BACKEND CLANG_FILES CACHE STRING "Script backend: CLANG_FILES or JIT")
+set_property(CACHE SPP_BACKEND PROPERTY STRINGS CLANG_FILES JIT)
+if(SPP_BACKEND STREQUAL "JIT")
+    message(FATAL_ERROR "JIT backend not implemented yet")
+elseif(NOT SPP_BACKEND STREQUAL "CLANG_FILES")
+    message(FATAL_ERROR "SPP_BACKEND must be CLANG_FILES or JIT. It is: ${SPP_BACKEND}")
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -23,7 +34,7 @@ CPMAddPackage(
 include(GoogleTest)
 
 # Script runtime: a small static library for the executable.
-add_library(spp_runtime STATIC runtime/script_runtime.cpp)
+add_library(spp_runtime STATIC runtime/script_runtime.cpp runtime/module.cpp)
 target_include_directories(spp_runtime PUBLIC runtime engine)
 target_link_libraries(spp_runtime PUBLIC ${CMAKE_DL_LIBS})
 
@@ -66,53 +77,69 @@ foreach(r r0 r1)
 endforeach()
 
 # ------------------------------------------------------------ Step F1
-# The translator spc. It needs libclang (C API) from the system.
+# The translator library spc_lib and the tool spc. They need libclang (C API)
+# from the system.
 find_library(CLANG_C_LIBRARY NAMES clang REQUIRED)
 find_path(CLANG_C_INCLUDE_DIR clang-c/Index.h REQUIRED)
 execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
                 OUTPUT_VARIABLE CLANG_RESOURCE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+add_library(spc_lib STATIC translator/spc_lib.cpp)
+target_include_directories(spc_lib PUBLIC translator)
+target_include_directories(spc_lib PRIVATE ${CLANG_C_INCLUDE_DIR})
+target_link_libraries(spc_lib PUBLIC ${CLANG_C_LIBRARY})
+target_compile_definitions(spc_lib PRIVATE SPC_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
 add_executable(spc translator/spc.cpp)
-target_include_directories(spc PRIVATE ${CLANG_C_INCLUDE_DIR})
-target_link_libraries(spc PRIVATE ${CLANG_C_LIBRARY})
-target_compile_definitions(spc PRIVATE SPC_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
+target_link_libraries(spc PRIVATE spc_lib)
 
-# Two generations of scripts/player_*.script. spc makes the .cpp files. The two
-# calls share one slot file, so the second call depends on the first.
-set(GEN_DIR ${CMAKE_BINARY_DIR}/generated)
-set(SPC_ARGS -I ${CMAKE_SOURCE_DIR}/engine -I ${CMAKE_SOURCE_DIR}/runtime)
-set(SPC_DEPS spc ${CMAKE_SOURCE_DIR}/engine/Actor.h ${CMAKE_SOURCE_DIR}/engine/Math.h
-             ${CMAKE_SOURCE_DIR}/runtime/script_runtime.h)
-add_custom_command(
-    OUTPUT ${GEN_DIR}/player_v1.cpp
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${GEN_DIR}
-    COMMAND spc ${CMAKE_SOURCE_DIR}/scripts/player_v1.script --gen 1 -o ${GEN_DIR}/player_v1.cpp
-            --slots ${GEN_DIR}/player.slots ${SPC_ARGS}
-    DEPENDS ${SPC_DEPS} ${CMAKE_SOURCE_DIR}/scripts/player_v1.script
-    VERBATIM)
-add_custom_command(
-    OUTPUT ${GEN_DIR}/player_v2.cpp
-    COMMAND spc ${CMAKE_SOURCE_DIR}/scripts/player_v2.script --gen 2 -o ${GEN_DIR}/player_v2.cpp
-            --slots ${GEN_DIR}/player.slots ${SPC_ARGS}
-    DEPENDS ${SPC_DEPS} ${CMAKE_SOURCE_DIR}/scripts/player_v2.script ${GEN_DIR}/player_v1.cpp
-    VERBATIM)
-foreach(g v1 v2)
-    add_library(f1_${g} SHARED ${GEN_DIR}/player_${g}.cpp)
-    target_include_directories(f1_${g} PRIVATE runtime engine)
-    set_target_properties(f1_${g} PROPERTIES PREFIX "")
-endforeach()
+# ------------------------------------------------------------ Backends
+# ClangFilesBackend: spc_lib in memory, then an external compiler.
+add_library(spp_clang_backend STATIC runtime/clang_files_backend.cpp)
+target_link_libraries(spp_clang_backend PUBLIC spp_runtime spc_lib)
 
-# GoogleTest cases: F1Reload (generated libraries) and F1Diag (error at the script).
-add_executable(f1_tests tests/f1_tests.cpp engine/Actor.cpp)
-target_include_directories(f1_tests PRIVATE tests)
-target_link_libraries(f1_tests PRIVATE spp_runtime GTest::gtest_main)
-set_target_properties(f1_tests PROPERTIES ENABLE_EXPORTS ON)
-add_dependencies(f1_tests f1_v1 f1_v2 spc)
-target_compile_definitions(f1_tests PRIVATE
-    F1_V1_SO="$<TARGET_FILE:f1_v1>"
-    F1_V2_SO="$<TARGET_FILE:f1_v2>"
+# sppc compiles scripts ahead of time. Its output loads in every build.
+add_executable(sppc tools/sppc.cpp)
+target_link_libraries(sppc PRIVATE spp_clang_backend)
+
+# make_default_backend() returns the backend that SPP_BACKEND selected.
+# A list value uses "|" between the items.
+separate_arguments(SPP_CXXFLAGS_LIST NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
+list(JOIN SPP_CXXFLAGS_LIST "|" SPP_CXXFLAGS_JOINED)
+add_library(spp_backend STATIC runtime/default_backend.cpp)
+target_link_libraries(spp_backend PUBLIC spp_runtime)
+if(SPP_BACKEND STREQUAL "CLANG_FILES")
+    target_link_libraries(spp_backend PUBLIC spp_clang_backend)
+    target_compile_definitions(spp_backend PRIVATE
+        SPP_BACKEND_CLANG_FILES=1
+        SPP_DEFAULT_CXX="${CMAKE_CXX_COMPILER}"
+        SPP_DEFAULT_CXXFLAGS="${SPP_CXXFLAGS_JOINED}"
+        SPP_DEFAULT_INCLUDES="${CMAKE_SOURCE_DIR}/engine|${CMAKE_SOURCE_DIR}/runtime"
+        SPP_DEFAULT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}"
+        SPP_DEFAULT_WORK_DIR="${CMAKE_BINARY_DIR}/spp_work")
+endif()
+
+# ------------------------------------------------------------ Precompiled scripts
+include(cmake/SppScripts.cmake)
+set(SPP_HEADERS ${CMAKE_SOURCE_DIR}/engine/Actor.h ${CMAKE_SOURCE_DIR}/engine/Math.h
+                ${CMAKE_SOURCE_DIR}/runtime/script_runtime.h ${CMAKE_SOURCE_DIR}/runtime/module.h)
+spp_add_scripts(TARGET pre_gen1 GEN 1 SCRIPTS scripts/player_v1.script
+                INCLUDES ${CMAKE_SOURCE_DIR}/engine ${CMAKE_SOURCE_DIR}/runtime
+                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS})
+spp_add_scripts(TARGET pre_gen2 GEN 2 SCRIPTS scripts/player_v2.script AFTER pre_gen1
+                INCLUDES ${CMAKE_SOURCE_DIR}/engine ${CMAKE_SOURCE_DIR}/runtime
+                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS})
+
+# GoogleTest cases: BackendTests (the selected backend) and PrecompiledTests (sppc).
+add_executable(backend_tests tests/backend_tests.cpp engine/Actor.cpp)
+target_include_directories(backend_tests PRIVATE tests)
+target_link_libraries(backend_tests PRIVATE spp_backend GTest::gtest_main)
+set_target_properties(backend_tests PROPERTIES ENABLE_EXPORTS ON)
+add_dependencies(backend_tests pre_gen1 pre_gen2 sppc)
+target_compile_definitions(backend_tests PRIVATE
     SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     SPP_BINARY_DIR="${CMAKE_BINARY_DIR}"
-    SPC_PATH="$<TARGET_FILE:spc>"
+    SPP_BACKEND_NAME="${SPP_BACKEND}"
+    SPPC_PATH="$<TARGET_FILE:sppc>"
     SPP_CXX="${CMAKE_CXX_COMPILER}"
-    SPP_CXXFLAGS="${CMAKE_CXX_FLAGS}")
-gtest_discover_tests(f1_tests)
+    PRE_V1_SO="${CMAKE_BINARY_DIR}/spp_scripts/player_v1.g1.so"
+    PRE_V2_SO="${CMAKE_BINARY_DIR}/spp_scripts/player_v2.g2.so")
+gtest_discover_tests(backend_tests)
