@@ -18,6 +18,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_compile_options(-Wall -Wextra)
 
+# Sanitizers. Use -DCMAKE_CXX_FLAGS=-fsanitize=address or -fsanitize=thread.
+# CMake passes the flags to the compile and to the link of every target.
+# The script backends pass the same flags to the compile of the scripts
+# (SPP_DEFAULT_CXXFLAGS), so the generation modules use the same runtime.
+# Use one build directory for each mode, for example build-asan and build-tsan.
+
 # Dependencies. CPM uses an installed package first and fetches only when the
 # package is missing. libclang is not fetched: it must come from the system.
 set(CPM_USE_LOCAL_PACKAGES ON)
@@ -34,7 +40,8 @@ include(GoogleTest)
 # Script runtime: a small static library for the executable.
 add_library(spp_runtime STATIC runtime/script_runtime.cpp runtime/module.cpp)
 target_include_directories(spp_runtime PUBLIC runtime engine)
-target_link_libraries(spp_runtime PUBLIC ${CMAKE_DL_LIBS})
+find_package(Threads REQUIRED)
+target_link_libraries(spp_runtime PUBLIC ${CMAKE_DL_LIBS} Threads::Threads)
 
 # Engine harness. ENABLE_EXPORTS adds -rdynamic, so a generation module
 # resolves the engine symbols and the runtime symbols from the executable.
@@ -172,6 +179,17 @@ target_link_libraries(r3_tests PRIVATE spp_backend GTest::gtest_main)
 set_target_properties(r3_tests PROPERTIES ENABLE_EXPORTS ON)
 target_compile_definitions(r3_tests PRIVATE SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 gtest_discover_tests(r3_tests)
+
+# Experiment R5: worker threads, a barrier and a reload from a third thread.
+add_executable(r5_tests tests/r5_tests.cpp engine/Actor.cpp)
+target_include_directories(r5_tests PRIVATE tests)
+target_link_libraries(r5_tests PRIVATE spp_backend GTest::gtest_main)
+set_target_properties(r5_tests PROPERTIES ENABLE_EXPORTS ON)
+add_dependencies(r5_tests gen4_base)
+target_compile_definitions(r5_tests PRIVATE
+    GEN4_BASE_SO="$<TARGET_FILE:gen4_base>"
+    GEN3_MISSING_SO="${CMAKE_BINARY_DIR}/gen3_missing.so")
+gtest_discover_tests(r5_tests)
 
 # The cache of the translator session needs only spc_lib.
 add_executable(translator_tests tests/translator_tests.cpp)

@@ -10,7 +10,7 @@ The design is in `scriptlang-design/scriptlang-design.md`.
 - `poc/r0/gen1.cpp` is hand-written code. The translator `spc` makes code with the same structure.
 - `translator/spc_lib.cpp` is the translator library `spc_lib` (step F1). `translator/spc.cpp` is the thin file wrapper `spc`. `scripts/` has the example scripts.
 - `runtime/backend.h`, `runtime/clang_files_backend.cpp`, `runtime/jit_backend.cpp` and `runtime/default_backend.cpp` are the script backends. `tools/sppc.cpp` is the tool `sppc`. `cmake/SppScripts.cmake` has `spp_add_scripts`.
-- `tests/` has the GoogleTest cases (`r0_tests.cpp`, `r1_tests.cpp`, `r3_tests.cpp`, `backend_tests.cpp`, `translator_tests.cpp`), the F1 scenario `f1_scenario.h` and the shared header `test_support.h`.
+- `tests/` has the GoogleTest cases (`r0_tests.cpp`, `r1_tests.cpp`, `r3_tests.cpp`, `r5_tests.cpp`, `backend_tests.cpp`, `translator_tests.cpp`), the F1 scenario `f1_scenario.h` and the shared header `test_support.h`.
 - `cmake/CPM.cmake` fetches a dependency when the system has no copy of it.
 - `poc/r1/` has generation 2 (`gen2.cpp`: new `Tick`, `hp` renamed to `health`, new `shield`), the rejected generation 4 (`gen4_base.cpp`: other shell layout) and `gen3_bad.cpp` (does not compile; not in the build).
 
@@ -20,6 +20,9 @@ The design is in `scriptlang-design/scriptlang-design.md`.
     ninja -C build
 
 For an AddressSanitizer build, use `-DCMAKE_CXX_FLAGS=-fsanitize=address` and the directory `build-asan`.
+For a ThreadSanitizer build, use `-DCMAKE_CXX_FLAGS=-fsanitize=thread` and the directory `build-tsan`.
+The JIT backend (`-DSPP_BACKEND=JIT`) also works with ThreadSanitizer. ORC and ThreadSanitizer do not conflict.
+All tests pass in `build-tsan` and in a JIT build with `-fsanitize=thread`.
 
 ## Run
 
@@ -177,3 +180,24 @@ Result of R3: the stale call is logged once and the old body does not run. No AS
 ## Not done yet
 
 The `onReload` hook, the `convert` hook, unload of the first generation of a class, string interpolation, script inheritance and constructors in scripts.
+
+## Threads and the safe point
+
+Experiment R5. The tests are in `tests/r5_tests.cpp`.
+
+`World::TickParallel(dt, threads)` ticks the actors on worker threads. The workers start once. They stop when the world ends. Each worker ticks one chunk of the actor list. The main thread waits at a barrier. After all workers reach the barrier, the main thread runs the frame boundary hook. The workers stay idle until the hook ends.
+
+The reload commit runs only in this hook. At that time no thread is in script code. The barrier also orders the memory, so the workers see the result of the commit.
+
+A compile thread can call `Loader::request_reload` and `Loader::reload_pending` at any time. These functions take the mutex of the loader. They only validate. They change no live class and no live object. `commit_pending` takes the same mutex.
+
+The debug check is the counter `script::in_script_tick()`. The engine wraps each actor tick in a `script::ScriptTickScope`. `commit_pending` asserts that the counter is zero. It also counts a violation in `script::unsafe_commit_count()`.
+
+Rules for threads:
+
+- A worker reads class records and state blocks. It writes the state of its own actors only.
+- A worker does not create or destroy script objects. It does not call the loader.
+- The main thread calls `load`, `commit_pending`, `frame_boundary` and `stats`.
+- Any thread can pin or unpin a generation.
+
+Test results: `R5_CommitOnlyAtBarrier` runs 20 seeds with 1000 actors and 2 workers. `R5_RejectedReloadFromOtherThread` runs 5 seeds. Both tests pass in the normal, ASan and TSan builds. They also pass with `--gtest_repeat=20` in the normal and TSan builds. TSan reports no race. When the lock in `request_reload` is removed, TSan reports a race. So the test can find this kind of error.

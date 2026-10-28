@@ -2,6 +2,7 @@
 // Script code calls these members directly. There is no wrapper code.
 #pragma once
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -65,13 +66,25 @@ private:
 // The world owns the actors that it holds. It deletes them in the destructor.
 class World {
 public:
-    World() = default;
+    World();
     World(const World&) = delete;
     World& operator=(const World&) = delete;
     ~World();
 
     void Add(Actor* actor);
     void Tick(float dt);
+
+    // Like Tick, but the actors tick on "threads" worker threads. The workers
+    // start once and stay until the world ends. Each worker ticks one chunk of
+    // the actor list. The calling thread waits until all workers finished the
+    // chunks. Then it runs the timers and the frame boundary hook. The workers
+    // are idle at that time, so the hook is a safe point for a reload commit.
+    // Do not add or remove an actor while this function runs.
+    void TickParallel(float dt, unsigned threads);
+
+    // The observer runs after each actor tick, on the thread that ticked the
+    // actor. The test code uses it to check the state of the actor.
+    void SetTickObserver(std::function<void(Actor*)> observer) { observer_ = std::move(observer); }
     const std::vector<Actor*>& Actors() const { return actors_; }
 
     // The hook runs at the end of each Tick, when no actor runs. It is the
@@ -85,6 +98,10 @@ public:
     size_t TimerCount() const { return timers_.size(); }
 
 private:
+    struct Pool;  // the worker threads and the barrier
+    void TickActor(Actor* actor, float dt);
+    void EndFrame(float dt);  // timers, then the frame boundary hook
+
     struct Timer {
         float remaining;
         std::function<void()> fn;
@@ -92,4 +109,6 @@ private:
     std::vector<Actor*> actors_;
     std::vector<Timer> timers_;
     std::function<void()> hook_;
+    std::function<void(Actor*)> observer_;
+    std::unique_ptr<Pool> pool_;
 };

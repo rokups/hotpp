@@ -7,6 +7,7 @@
 #include <functional>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <new>
 #include <string>
 #include <type_traits>
@@ -91,6 +92,42 @@ struct ShellBase {
 
 // The generation that is live now. A generation function checks it.
 extern uint32_t active_generation;
+
+// Threads (design sections 6.2 and 6.3, experiment R5).
+//
+// The engine can run script code on worker threads.
+// A reload commit changes the class records, the state blocks and active_generation.
+// So the commit must run when no thread is in script code.
+// The engine gives this guarantee. The commit runs only in the frame boundary hook.
+// The hook runs on the main thread, after all workers reached the barrier.
+// The workers restart after the hook. The barrier also orders the memory:
+// the workers see the writes of the commit after they restart.
+//
+// The counter below is a debug check of that guarantee.
+// The engine wraps each entry into script code in a ScriptTickScope.
+// commit_pending() reads the counter. A value other than zero is an engine bug.
+// The commit counts it (unsafe_commit_count) and then asserts.
+//
+// Which thread may touch which data:
+//   - Worker threads read class records, state blocks and active_generation,
+//     only inside a ScriptTickScope. They write the state block of their own actors.
+//     They do not create or destroy script objects. They do not call the Loader.
+//   - The main thread creates and destroys script objects. It runs the frame
+//     boundary hook (commit_pending, frame_boundary, stats) and calls Loader::load.
+//   - Other threads (for example a compile thread) call only
+//     Loader::request_reload and Loader::reload_pending. These take the Loader mutex.
+//   - Pins and the stale call counter are atomic. Any thread can use them.
+int in_script_tick();
+uint64_t unsafe_commit_count();
+
+// RAII: the thread is inside script code while the object lives.
+class ScriptTickScope {
+public:
+    ScriptTickScope();
+    ~ScriptTickScope();
+    ScriptTickScope(const ScriptTickScope&) = delete;
+    ScriptTickScope& operator=(const ScriptTickScope&) = delete;
+};
 
 // Called by a generation function when its generation is not live.
 void stale_call(const char* what);
@@ -398,6 +435,21 @@ struct LoaderStats {
 
 // Registers generation modules. A module has the function: extern "C" void script_register(Registry&).
 //
+// Threads. The Loader has one mutex.
+// It guards "pending_", "registry_", the class records in "registry_",
+// and the write of active_generation.
+//   - request_reload and reload_pending can run on any thread.
+//     They can run while workers run script code. They take the mutex.
+//     They read only data that changes in commit_pending (under the same mutex)
+//     and the data of the modules, which does not change.
+//     They write only the staged data of the new Pending.
+//   - commit_pending runs only at the frame boundary, on the main thread,
+//     when no worker is in script code. It takes the mutex.
+//     So it waits for a validation that runs at that time.
+//     It also checks in_script_tick() (debug check).
+//   - load, frame_boundary, stats, find and thunk run on the main thread only.
+//     The workers do not call them.
+//
 // The first module goes through load(). A later module goes through
 // request_reload(), which only validates (no side effect on live objects),
 // and then commit_pending(), which the World loop calls at a safe point.
@@ -426,7 +478,11 @@ public:
     // Validation phase. Returns false and leaves the live generation unchanged
     // when the module is not acceptable. A Backend or module_from_library makes the Module.
     bool request_reload(Module module, std::string& error);
-    bool reload_pending() const { return pending_ != nullptr; }
+    bool reload_pending() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return pending_ != nullptr;
+    }
     // Commit phase. Call it only at a frame boundary. Returns true when a
     // reload was committed. On false, "error" tells why (empty: nothing pending).
     bool commit_pending(std::string& error);
@@ -456,6 +512,7 @@ private:
     std::unordered_map<uint32_t, uint32_t> live_by_module() const;
     uint32_t code_refs(const Gen& g, const std::unordered_map<uint32_t, uint32_t>& live) const;
 
+    mutable std::mutex mutex_;  // see "Threads" above
     Registry registry_;
     std::vector<Gen> gens_;  // the loader owns all modules; a retired one stays until it unloads
     std::unordered_map<const ClassRecord*, uint32_t> record_gen_;  // the module that holds a record

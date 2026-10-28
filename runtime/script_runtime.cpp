@@ -1,6 +1,7 @@
 #include "script_runtime.h"
 
 #include <atomic>
+#include <cassert>
 #include <cstdio>
 #include <unordered_set>
 
@@ -12,6 +13,15 @@ static std::unordered_set<ShellBase*> g_live;
 
 void track_object(ShellBase* self) { g_live.insert(self); }
 void untrack_object(ShellBase* self) { g_live.erase(self); }
+
+// The debug check of the safe point (see "Threads" in script_runtime.h).
+static std::atomic<int> g_in_script_tick{0};
+static std::atomic<uint64_t> g_unsafe_commits{0};
+
+int in_script_tick() { return g_in_script_tick.load(); }
+uint64_t unsafe_commit_count() { return g_unsafe_commits.load(); }
+ScriptTickScope::ScriptTickScope() { g_in_script_tick.fetch_add(1); }
+ScriptTickScope::~ScriptTickScope() { g_in_script_tick.fetch_sub(1); }
 
 static std::atomic<uint64_t> g_stale_calls{0};
 
@@ -167,6 +177,7 @@ bool Loader::load(Module module, std::string& error)
         error = "the module has no script_register function";
         return false;
     }
+    std::lock_guard<std::mutex> lock(mutex_);
     module.register_fn(registry_);
     const uint32_t gen = registry_.max_generation();
     note_records(registry_, gen);
@@ -240,9 +251,12 @@ LoaderStats Loader::stats() const
 
 bool Loader::request_reload(Module module, std::string& error)
 {
-    if (pending_) {
-        error = "a reload is already pending";
-        return false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (pending_) {
+            error = "a reload is already pending";
+            return false;
+        }
     }
     if (!module.register_fn) {
         error = "the module has no script_register function";
@@ -258,6 +272,13 @@ bool Loader::request_reload(Module module, std::string& error)
     }
 
     // Validation. Nothing here changes a live class or a live object.
+    // The lock keeps "registry_" and the class records stable. Only
+    // commit_pending changes them, and it takes the same lock.
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (pending_) {  // another thread was faster
+        error = "a reload is already pending";
+        return false;
+    }
     for (const auto& [name, cur] : registry_.entries()) {
         if (!p->staged.find(name)) {
             error = "class " + name + " is missing in the new generation";
@@ -306,6 +327,14 @@ bool Loader::request_reload(Module module, std::string& error)
 bool Loader::commit_pending(std::string& error)
 {
     error.clear();
+    // Debug check: no worker is in script code now. Count first, then assert.
+    const int busy = in_script_tick();
+    if (busy != 0) {
+        g_unsafe_commits.fetch_add(1);
+        std::fprintf(stderr, "[script] BUG: commit with %d thread(s) in script code\n", busy);
+    }
+    assert(busy == 0 && "commit_pending must run at the safe point");
+    std::lock_guard<std::mutex> lock(mutex_);
     if (!pending_) return false;
     Pending& P = *pending_;
 
