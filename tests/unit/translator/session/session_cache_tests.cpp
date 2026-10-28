@@ -176,3 +176,53 @@ TEST(SessionCache, SessionKeepsTheHierarchy)
     EXPECT_EQ(a.cpp, b.cpp);
     EXPECT_TRUE(has(b.cpp, "    " + kIntr + " item;\n")) << b.cpp;
 }
+
+// An edit that keeps the size and the time of the header also invalidates the cache.
+TEST(SessionCache, EditWithEqualSizeAndTimeInvalidatesTheCache)
+{
+    TempDir dir;
+    const fs::path header = dir.path() / "w.h";
+    write_file(header, kHeaderV1);
+    spc::TranslatorSession session;
+    ASSERT_TRUE(spc::translate(temp_options(dir, widget_script("Update(float dt)", "override ")), session).ok);
+    EXPECT_EQ(session.parse_count(), 1);
+
+    const auto old_time = fs::last_write_time(header);
+    std::string edited = read_file(header.string());
+    edited.replace(edited.find("Update"), 6, "Updatf");
+    write_file(header, edited);
+    fs::last_write_time(header, old_time);  // the same time and the same size as before
+
+    // Updatf is a new virtual method. Update is a plain script function now.
+    const spc::TranslateResult r = spc::translate(temp_options(dir, widget_script("Update(float dt)")), session);
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(session.parse_count(), 2);
+    EXPECT_NE(r.slots_out.find("Foo::Update"), std::string::npos) << r.slots_out;  // not an override
+}
+
+// A new header earlier in the include path hides the header that the cache used.
+TEST(SessionCache, NewHeaderEarlierInTheIncludePathInvalidatesTheCache)
+{
+    TempDir first, second;
+    write_file(second.path() / "w.h", kHeaderV1);
+    spc::TranslatorSession session;
+    auto options = [&](const std::string& script) {
+        spc::TranslateOptions o = temp_options(first, script);
+        o.include_dirs = {first.path().string(), second.path().string()};
+        return o;
+    };
+    ASSERT_TRUE(spc::translate(options(widget_script("Update(float dt)", "override ")), session).ok);
+    EXPECT_EQ(session.parse_count(), 1);
+    EXPECT_TRUE(spc::translate(options(widget_script("Update(float dt)", "override ")), session).ok);
+    EXPECT_EQ(session.parse_count(), 1);
+
+    // The new header has no Update. The method Update is not an override any more.
+    write_file(first.path() / "w.h",
+               "class Widget { public: virtual ~Widget() {} virtual void Draw() {} };\n"
+               "class Panel { public: virtual ~Panel() {} virtual void Layout(int w) {} };\n");
+    const spc::TranslateResult r =
+        spc::translate(options(widget_script("Update(float dt)")), session);
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(session.parse_count(), 2);
+    EXPECT_NE(r.slots_out.find("Foo::Update"), std::string::npos) << r.slots_out;
+}

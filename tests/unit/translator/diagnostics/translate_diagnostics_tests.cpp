@@ -182,3 +182,16 @@ TEST(TranslateDiagnostics, TruncatedInputsTerminate)
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
     EXPECT_LT(ms.count(), 5000);
 }
+
+// A non-string attribute argument on a native stub gives one error and no second error.
+TEST(TranslateDiagnostics, NonStringStubAttributeArgumentGivesOneError)
+{
+    for (const char* stub : {"[native, handle(x)] class Weapon;\n", "[native, handle(1)] class Weapon;\n",
+                             "[native, handle(\"std::shared_ptr<$T>\"), intrusive(x, \"R\")] class Weapon;\n",
+                             "[native, intrusive(\"A\", 2)] class Weapon;\n"}) {
+        const spc::TranslateResult r =
+            translate_text(std::string(stub) + "class A : B {\n    void f() { }\n}\n");
+        EXPECT_FALSE(r.ok);
+        EXPECT_EQ(count_errors(r.diagnostics), 1) << stub << r.diagnostics;
+    }
+}

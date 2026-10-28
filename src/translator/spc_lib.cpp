@@ -37,6 +37,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -468,16 +469,42 @@ struct ClangHandles {
 };
 
 // The identity of a header file: the path, the time of the last change and the size.
+// A file that changed lately also has a hash of its content. An edit can keep the time and
+// the size, so the hash covers this case. A missing file has the time -1.
 struct FileStamp {
     std::string path;
     long long mtime_ns = -1;
     long long size = -1;
-    bool operator==(const FileStamp& o) const
-    {
-        return path == o.path && mtime_ns == o.mtime_ns && size == o.size;
-    }
+    bool hashed = false;
+    unsigned long long hash = 0;
 };
 
+// A file is recent when its time is less than this value before the check.
+constexpr long long kRecentNs = 2000000000LL;
+
+long long now_ns()
+{
+    struct timespec ts;
+    ::clock_gettime(CLOCK_REALTIME, &ts);
+    return static_cast<long long>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
+}
+
+// FNV-1a hash of the content of a file.
+unsigned long long hash_file(const std::string& path)
+{
+    unsigned long long h = 14695981039346656037ULL;
+    std::ifstream f(path, std::ios::binary);
+    char buf[8192];
+    while (f.read(buf, sizeof buf) || f.gcount() > 0) {
+        for (std::streamsize i = 0; i < f.gcount(); ++i) {
+            h ^= static_cast<unsigned char>(buf[i]);
+            h *= 1099511628211ULL;
+        }
+    }
+    return h;
+}
+
+// Reads the stamp. A file with a recent time also gets the hash of its content.
 FileStamp stamp_of(const std::string& path)
 {
     FileStamp f;
@@ -486,15 +513,51 @@ FileStamp stamp_of(const std::string& path)
     if (::stat(path.c_str(), &st) == 0) {
         f.mtime_ns = static_cast<long long>(st.st_mtim.tv_sec) * 1000000000LL + st.st_mtim.tv_nsec;
         f.size = static_cast<long long>(st.st_size);
+        if (f.mtime_ns > now_ns() - kRecentNs) {
+            f.hashed = true;
+            f.hash = hash_file(path);
+        }
     }
     return f;
+}
+
+// True when the file is the same as at the time of the record. The check reads the content
+// only when the record has a hash. It drops the hash when the file is no longer recent.
+bool stamp_fresh(FileStamp& rec)
+{
+    struct stat st;
+    long long mtime = -1, size = -1;
+    if (::stat(rec.path.c_str(), &st) == 0) {
+        mtime = static_cast<long long>(st.st_mtim.tv_sec) * 1000000000LL + st.st_mtim.tv_nsec;
+        size = static_cast<long long>(st.st_size);
+    }
+    if (mtime != rec.mtime_ns || size != rec.size) return false;
+    if (rec.hashed) {
+        if (hash_file(rec.path) != rec.hash) return false;
+        if (mtime <= now_ns() - kRecentNs) rec.hashed = false;
+    }
+    return true;
+}
+
+// Adds the stamps of the paths that a search of the include dirs tried before it found
+// "rel". A new file at one of these paths would hide the file that the parse used.
+void add_shadow_stamps(const std::string& rel, const std::vector<std::string>& dirs,
+                       std::set<std::string>& seen, std::vector<FileStamp>& files)
+{
+    for (const auto& d : dirs) {
+        const std::string cand = d + "/" + rel;
+        struct stat st;
+        if (::stat(cand.c_str(), &st) == 0) return;  // the first file that exists
+        if (seen.insert(cand).second) files.push_back(stamp_of(cand));
+    }
 }
 
 // Parses the imports with libclang. Reads the base classes in "names" that it finds.
 // Gives the stamps of all files that the parse included.
 void parse_bases(const std::string& probe, const std::vector<std::string>& args,
-                 const std::set<std::string>& names, std::map<std::string, BaseInfo>& out,
-                 std::vector<FileStamp>& files, Hierarchy& hierarchy)
+                 const std::set<std::string>& names, const std::set<std::string>& import_paths,
+                 std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files,
+                 Hierarchy& hierarchy)
 {
     std::vector<const char*> cargs;
     for (const auto& a : args) cargs.push_back(a.c_str());
@@ -534,6 +597,21 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
     std::pair<std::set<std::string>*, std::vector<FileStamp>*> ctx{&seen, &files};
     files.clear();
     clang_getInclusions(tu, on_include, &ctx);
+
+    // A new header earlier in the include path hides a header that the parse used.
+    std::vector<std::string> dirs;
+    for (const auto& a : args)
+        if (a.size() > 2 && a.compare(0, 2, "-I") == 0) dirs.push_back(a.substr(2));
+    for (const auto& ip : import_paths)
+        if (!ip.empty() && ip.front() != '<') add_shadow_stamps(ip, dirs, seen, files);
+        else if (ip.size() > 2) add_shadow_stamps(ip.substr(1, ip.size() - 2), dirs, seen, files);
+    const std::vector<FileStamp> used = files;
+    for (const FileStamp& f : used)
+        for (const auto& d : dirs)
+            if (f.mtime_ns >= 0 && f.path.size() > d.size() + 1 && f.path.compare(0, d.size() + 1, d + "/") == 0) {
+                add_shadow_stamps(f.path.substr(d.size() + 1), dirs, seen, files);
+                break;
+            }
 
     CXCursor root = clang_getTranslationUnitCursor(tu);
     hierarchy.clear();
@@ -594,7 +672,7 @@ std::map<std::string, BaseInfo> session_bases(
     std::lock_guard<std::mutex> lock(S.mutex);
     auto& e = S.entries[key];
     bool fresh = !e.files.empty();
-    for (size_t i = 0; fresh && i < e.files.size(); ++i) fresh = stamp_of(e.files[i].path) == e.files[i];
+    for (size_t i = 0; fresh && i < e.files.size(); ++i) fresh = stamp_fresh(e.files[i]);
     if (!fresh) e = {};
     bool complete = fresh;
     for (const auto& n : names) complete = complete && e.bases.count(n);
@@ -686,7 +764,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
     const std::map<std::string, BaseInfo> bases =
         session_bases(session, key, base_names,
                       [&](std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files,
-                          Hierarchy& h) { parse_bases(probe, args, base_names, out, files, h); },
+                          Hierarchy& h) { parse_bases(probe, args, base_names, import_paths, out, files, h); },
                       hier);
     types.set_bases([&hier](const std::string& name) {
         auto it = hier.find(name);

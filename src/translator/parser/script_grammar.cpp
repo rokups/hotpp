@@ -299,13 +299,26 @@ using import_p = import_t<false>;
 using old_import_p = import_t<true>;
 
 // ---------------------------------------------------------------- members
+// A bad argument of an attribute. It reports one error and skips to the next "," or ")".
+// The value is an empty string. The argument count stays right, so no second error follows.
+struct bad_attr_arg {
+    static constexpr auto rule =
+        dsl::position + dsl::loop(dsl::peek(dsl::lit_c<','> / dsl::lit_c<')'>) >> dsl::break_ |
+                                  dsl::eof >> dsl::break_ | dsl::else_ >> any_unit);
+    static constexpr auto value = lexy::bind(
+        lexy::callback<std::string>([](const ParseState& st, const char* pos) {
+            st.error(pos, e_alias_string::name);
+            return std::string();
+        }),
+        lexy::parse_state, lexy::values);
+};
+
 // The strings of an attribute: "(" string { "," string } ")".
 struct attr_args {
-    // No terminator here: its recovery would hide the error of a non-string argument.
     static constexpr auto rule =
         dsl::lit_c<'('> +
-        dsl::list(dsl::must(dsl::peek(dsl::lit_c<'"'>)).template error<e_alias_string> +
-                      dsl::p<string_value>,
+        dsl::list(dsl::peek(dsl::lit_c<'"'>) >> dsl::p<string_value> |
+                      dsl::else_ >> dsl::p<bad_attr_arg>,
                   dsl::sep(dsl::lit_c<','>)) +
         dsl::lit_c<')'>;
     static constexpr auto value = lexy::as_list<std::vector<std::string>>;

@@ -110,3 +110,14 @@ TEST(NativeStubParse, AttributeErrors)
         EXPECT_EQ(p.diag.items[0].msg, "expected a string in [alias(...)]");
     }
 }
+
+// A non-string attribute argument on a stub gives exactly one error.
+TEST(NativeStubParse, NonStringAttributeArgumentGivesOneError)
+{
+    for (const char* text : {"[native, handle(x)] class A;\n", "[native, handle(1)] class A;\n",
+                             "[native, intrusive(\"AddRef\", x)] class A;\n"}) {
+        StubParsed p(text);
+        ASSERT_EQ(p.diag.items.size(), 1u) << text << p.diag.format("t");
+        EXPECT_EQ(p.diag.items[0].msg, "expected a string in [alias(...)]");
+    }
+}
