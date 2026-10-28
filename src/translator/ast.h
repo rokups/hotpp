@@ -147,6 +147,10 @@ struct InterpExpr {
 struct RawExpr {  // C++ text that is already lowered
     std::string text;
     uint32_t pos = 0;
+    // The script name in the text (design 10.1): text[name_at..] comes from the script name at
+    // name_pos ("st->" + "hp" for "this.hp"). 0: the text has no separate name.
+    uint32_t name_pos = 0;
+    uint32_t name_at = 0;
 };
 
 struct Expr {

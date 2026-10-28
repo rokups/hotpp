@@ -85,6 +85,11 @@ struct Lowerer {
     }
 
     ExprP raw(std::string text, uint32_t pos) { return make_expr(RawExpr{std::move(text), pos}); }
+    // Raw text "prefix + name" where the name comes from the script name at name_pos.
+    ExprP raw_named(const std::string& prefix, const std::string& name, uint32_t pos, uint32_t name_pos)
+    {
+        return make_expr(RawExpr{prefix + name, pos, name_pos, static_cast<uint32_t>(prefix.size())});
+    }
 
     // A property of the class. "obj" is null for "this.P" and a bare "P". Else it is the
     // object of "obj.P": another object of the class, before the lowering.
@@ -414,11 +419,11 @@ struct Lowerer {
     }
 
     // A script fn that "this.f" or "f" names. The call gets the "self" argument.
-    void script_call(CallExpr& c, const std::string& fn, uint32_t pos)
+    void script_call(CallExpr& c, const std::string& fn, uint32_t pos, uint32_t name_pos = 0)
     {
         const ClassDef* owner = cx.cls;
         const Method* m = find_fn(*cx.cls, fn, &owner);
-        c.callee = raw(m ? fn_symbol(*owner, *m) : cx.cls->name + "__" + fn, pos);
+        c.callee = raw_named("", m ? fn_symbol(*owner, *m) : cx.cls->name + "__" + fn, pos, name_pos);
         c.args.insert(c.args.begin(), raw("self", 0));
     }
 
@@ -436,7 +441,7 @@ struct Lowerer {
         if (const MemberExpr* m = this_member(*c.callee)) {
             if (cx.allow_this && !cx.field_type.count(m->name) && cx.fns.count(m->name)) {
                 const Method* fn = find_fn(*cx.cls, m->name);
-                script_call(c, m->name, pos_of(*m->obj));
+                script_call(c, m->name, pos_of(*m->obj), m->name_pos);
                 coerce_args(c, fn, 1);
                 exprs(c.args);
                 return;
@@ -564,12 +569,12 @@ struct Lowerer {
             } else if (!cx.allow_this) {
                 error(obj_pos, "'this' is not allowed in a field initializer");
             } else if (cx.field_type.count(m.name)) {
-                e = raw("st->" + m.name, obj_pos);
+                e = raw_named("st->", m.name, obj_pos, m.name_pos);
             } else if (cx.fns.count(m.name)) {
                 error(obj_pos, "script function '" + m.name + "' must be called");
-                e = raw(cx.cls->name + "__" + m.name, obj_pos);
+                e = raw_named("", cx.cls->name + "__" + m.name, obj_pos, m.name_pos);
             } else {
-                e = raw("self->" + m.name, obj_pos);
+                e = raw_named("self->", m.name, obj_pos, m.name_pos);
             }
             return;
         }

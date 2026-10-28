@@ -299,6 +299,14 @@ void collect_hierarchy(CXCursor root, Hierarchy& out)
     });
 }
 
+}  // namespace
+
+namespace sppc {
+uint32_t find_word(const std::string& text, uint32_t from, const std::string& name);
+}  // namespace sppc
+
+namespace {
+
 // ----------------------------------------------------------------- emitter
 struct Out {
     std::string s;
@@ -327,10 +335,39 @@ struct Out {
                 size_t e = g.pos;
                 while (e < script.size() && (std::isalnum(static_cast<unsigned char>(script[e])) || script[e] == '_')) ++e;
                 seg.script_len = static_cast<uint32_t>(std::max<size_t>(e - g.pos, 1));
+                // Equal lengths mean the same text. A different text of the same length (for
+                // example "st->" for "this") gets no segment.
+                if (seg.script_len == seg.gen_len) continue;
             }
             segs.push_back(seg);
         }
         w(em.text());
+    }
+    // Records a segment for a declared name in "head", the text that w() writes next. The name
+    // "gen_name" in the head comes from the word "script_name" at or after "script_from" in the
+    // script. Returns the end of the name in the script and in the head, for the next name.
+    // Nothing is recorded when a name is not found. The text of the output does not change.
+    std::pair<size_t, size_t> name_segment(const std::string& head, size_t head_from, const std::string& gen_name,
+                                           const std::string& script, size_t script_from,
+                                           const std::string& script_name)
+    {
+        const size_t g = sppc::find_word(head, static_cast<uint32_t>(head_from), gen_name);
+        const size_t p = sppc::find_word(script, static_cast<uint32_t>(script_from), script_name);
+        if (gen_name.empty() || script_name.empty() || head.compare(g, gen_name.size(), gen_name) != 0 ||
+            script.compare(p, script_name.size(), script_name) != 0)
+            return {script_from, head_from};
+        segs.push_back({static_cast<uint32_t>(p), static_cast<uint32_t>(script_name.size()),
+                        static_cast<uint32_t>(s.size() + g), static_cast<uint32_t>(gen_name.size())});
+        return {p + script_name.size(), g + gen_name.size()};
+    }
+    // Records the segments of a function head: the name and the parameter names (design 10.1).
+    void head_segments(const std::string& head, const std::string& sym, const sppc::ast::Method& m,
+                       const std::string& script)
+    {
+        if (m.pos == 0) return;
+        auto [sp, gp] = name_segment(head, 0, sym, script, m.pos, m.name);
+        if (gp == 0) return;
+        for (const auto& prm : m.params) std::tie(sp, gp) = name_segment(head, gp, prm.name, script, sp, prm.name);
     }
     // Inserts text inside a line. The segments after the place move.
     void insert(size_t at, const std::string& t)
@@ -1944,7 +1981,11 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         o.w("// ---------------------------------------------------------------- state\n");
         info.S = S;
         o.w("struct " + S + (pinfo ? " : " + pinfo->S : std::string()) + " {\n");
-        for (const Field& f : cd.fields) o.w("    " + f.type + " " + f.name + ";\n");
+        for (const Field& f : cd.fields) {
+            const std::string decl = "    " + f.type + " " + f.name + ";\n";
+            if (f.pos != 0) o.name_segment(decl, 4 + f.type.size(), f.name, in.script_text, f.pos, f.name);
+            o.w(decl);
+        }
         if (cd.fields.empty() && !pinfo) o.w("    char unused_;\n");
         o.w("};\n\n");
         for (Field& f : cd.fields) {
@@ -2036,8 +2077,11 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
 
         // forward declarations of the script functions
         for (const Method& m : cd.methods)
-            if (!m.overrides_virtual && hook_of(m) != Hook::Convert)
-                o.w("static " + fn_ret(m) + " " + P + m.name + "(" + shell + "* self" + body_decl(m) + ");\n");
+            if (!m.overrides_virtual && hook_of(m) != Hook::Convert) {
+                const std::string decl = "static " + fn_ret(m) + " " + P + m.name + "(" + shell + "* self" + body_decl(m) + ");\n";
+                o.head_segments(decl, P + m.name, m, in.script_text);
+                o.w(decl);
+            }
         o.w("\n");
         // A script virtual function (design 7.6). A call reads the slot of the class of the object.
         for (const Method& m : cd.methods) {
@@ -2151,6 +2195,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             std::string head = "static " + ret + " " + sym + "(";
             if (is_fn) head += shell + "* self" + body_decl(m);
             else head += B + "* a" + param_decl(m);
+            o.head_segments(head, sym, m, in.script_text);
             o.w(head + ")\n{\n");
             if (!is_fn) o.w("    [[maybe_unused]] auto* self = static_cast<" + shell + "*>(a);\n");
             o.w("    if (SPP_UNLIKELY(spp::active_generation != GEN)) {\n");
@@ -2538,7 +2583,10 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         res.diagnostics = tr.diagnostics;
     }
     // The blank text has the same offsets and the same lines as "text". So the map is valid for it.
-    if (tr.ok) res.source_map = std::move(tr.source_map);
+    if (tr.ok) {
+        res.source_map = std::move(tr.source_map);
+        res.cpp = std::move(tr.cpp);
+    }
     return res;
 }
 

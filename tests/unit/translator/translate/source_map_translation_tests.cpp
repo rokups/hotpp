@@ -115,8 +115,9 @@ TEST(SourceMapTranslation, EverySegmentOfEqualLengthRoundTrips)
     const sppc::TranslateResult r = translate_script(kScript);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     ASSERT_FALSE(r.source_map.empty());
-    // The number of segments in the two statements: int64_t, total, hits, 2, hits, total.
-    EXPECT_EQ(r.source_map.segments().size(), 6u);
+    // The segments of the two statements: int64_t, total, hits, 2, hits, total. The segments
+    // of the names: the field "hits" in the state struct, the function name and "dt" in the head.
+    EXPECT_EQ(r.source_map.segments().size(), 9u);
     const sppc::LineMap gm(r.cpp), sm(kScript);
     for (const sppc::SourceSegment& s : r.source_map.segments()) {
         if (s.script_len != s.gen_len) continue;
@@ -211,4 +212,45 @@ TEST(SourceMapType, EmptyMapGivesNoValue)
     EXPECT_TRUE(m.empty());
     EXPECT_FALSE(m.map_to_script(1, 1));
     EXPECT_FALSE(m.map_to_generated(1, 1));
+}
+
+TEST(SourceMapTranslation, FunctionHeadAndStateFieldNamesMapToTheScript)
+{
+    const sppc::TranslateResult r = translate_script(kScript);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    // The field "hits" (script line 3, col 9) is a field of the state struct.
+    const int f = line_of(r.cpp, "    int32_t hits;");
+    ASSERT_GT(f, 0) << r.cpp;
+    EXPECT_EQ(r.source_map.map_to_script(f, 13), (SourcePos{3, 9}));
+    EXPECT_EQ(r.source_map.map_to_generated(3, 10), (SourcePos{f, 14}));
+    // The head of the generation function of "Update" (script line 4: name col 19, "dt" col 32).
+    const int h = line_of(r.cpp, "static void Foo__Update(");
+    ASSERT_GT(h, 0) << r.cpp;
+    EXPECT_EQ(r.source_map.map_to_script(h, 13), (SourcePos{4, 19}));
+    EXPECT_EQ(r.source_map.map_to_script(h, 20), (SourcePos{4, 19}));
+    const std::string head = r.cpp.substr(r.cpp.find("static void Foo__Update("));
+    const int dt_col = 1 + static_cast<int>(head.find(" dt)") + 1);
+    EXPECT_EQ(r.source_map.map_to_script(h, dt_col), (SourcePos{4, 32}));
+    EXPECT_EQ(r.source_map.map_to_script(h, dt_col + 1), (SourcePos{4, 33}));
+}
+
+// "this.hits" lowers to "st->hits". The member name has its own segment, so a request on "hits"
+// in the script finds "hits" in the generated code (hover, go-to-definition, references).
+TEST(SourceMapTranslation, MemberNameAfterThisMapsToTheScript)
+{
+    const char* const script =
+        "using \"w.h\";\n"
+        "class Foo : Widget {\n"
+        "    int hits = 0;\n"
+        "    override void Update(float dt) {\n"
+        "        this.hits = this.hits + 2;\n"
+        "    }\n"
+        "}\n";
+    const sppc::TranslateResult r = translate_script(script);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const int g = line_of(r.cpp, "    st->hits = st->hits + 2;");
+    ASSERT_GT(g, 0) << r.cpp;
+    EXPECT_EQ(r.source_map.map_to_script(g, 9), (SourcePos{5, 14}));
+    EXPECT_EQ(r.source_map.map_to_script(g, 20), (SourcePos{5, 26}));
+    EXPECT_EQ(r.source_map.map_to_generated(5, 15), (SourcePos{g, 10}));
 }

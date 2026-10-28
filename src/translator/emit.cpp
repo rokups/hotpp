@@ -70,6 +70,15 @@ void Emitter::put(std::string_view t, uint32_t pos)
     if (t == "}") --depth;
 }
 
+void Emitter::put_named(std::string_view t, uint32_t pos, size_t name_at, uint32_t name_pos)
+{
+    if (!map_ || name_pos == 0 || name_at >= t.size()) return put(t, pos);
+    // The prefix gets the line logic and the space. The name follows with no space.
+    put(t.substr(0, name_at), pos);
+    segments_.push_back({name_pos, static_cast<uint32_t>(out_.size()), static_cast<uint32_t>(t.size() - name_at)});
+    out_ += t.substr(name_at);
+}
+
 void Emitter::put_mapped(std::string_view t, uint32_t pos)
 {
     if (!t.empty() && pos != 0) {
@@ -127,7 +136,7 @@ struct ExprPrinter {
     void operator()(const NumberExpr& n) const { e.put(n.text, n.pos); }
     void operator()(const StringExpr& n) const { e.put(n.text, n.pos); }
     void operator()(const CharExpr& n) const { e.put(n.text, n.pos); }
-    void operator()(const RawExpr& n) const { e.put(n.text, n.pos); }
+    void operator()(const RawExpr& n) const { e.put_named(n.text, n.pos, n.name_at, n.name_pos); }
     // The script form. The lowering replaces the node, so only a parse test prints it.
     void operator()(const InterpExpr& n) const
     {

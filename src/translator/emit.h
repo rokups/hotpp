@@ -33,6 +33,8 @@ public:
     // Writes one leaf that stays on the current line, and records "pos" for the source map.
     // The "#line" directives do not change.
     void put_mapped(std::string_view text, uint32_t pos);
+    // Like put(text, pos), but text[name_at..] gets its own segment at the script name name_pos.
+    void put_named(std::string_view text, uint32_t pos, size_t name_at, uint32_t name_pos);
     // Asks for one space before the next leaf. A line break drops it.
     void space() { space_ = true; }
     // Line mode: ends the last line. Call it once at the end.

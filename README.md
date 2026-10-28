@@ -297,6 +297,43 @@ Debug information:
 - `tools/lldb/spp_formatters.py` and `tools/lldb/spp.lldbinit` show state blocks, shells and handles by script name. The command `spp-bt` prints the script frames. `tools/natvis/spp.natvis` does the same for Visual Studio.
 - The pure Python helpers have a test (`PythonLldbFormatters`, `python3 -I`). lldb itself, a real debugger session and Visual Studio were NOT run. The F3 check (breakpoint in `heal`, step, inspect `this.health`) stays open.
 
+## Language server
+
+`spp-ls` (S14b, design 10.1, M12 to M14) is a stdio LSP 3.17 server. The code is in `src/ls/`. The extension in `editors/vscode/` starts it.
+
+How it works:
+
+- The server owns the text of each open `.spp` document. On each change it runs `sppc::analyze()`. It gets the parse errors, the facts (classes, members), the generated C++ and the source map.
+- It starts a stock `clangd` as a child process. It gives the generated C++ to clangd as the virtual file `<script>.spp.cpp`. The compile command comes from `spp::compile_command`, through `workspace/didChangeConfiguration`.
+- It maps each position between the script and the generated C++ with the source map. A line without a segment uses the `#line` directives.
+- `sppc::rewrite_generated_names` and `sppc::rewrite_clang_message` change generated names to script names in hover text, diagnostics and completion labels.
+- JSON comes from nlohmann_json (CPM).
+
+Features:
+
+- Diagnostics: the parse errors of analyze, and the clangd errors at the script position.
+- Completion: `this.` lists the script members and the native members of the base. The server puts the placeholder `__spp_complete` in place of the word at the cursor, translates again and asks clangd at the placeholder.
+- Hover, go-to-definition and references. A script symbol goes to the script. A native symbol goes to the native header.
+- Document symbols come from analyze. Semantic tokens come from a small lexer and the facts.
+- Rename changes the script symbols in the document. Rename of a native symbol gives the error `cannot rename a native symbol: X`.
+- Workspace symbols come from the clangd index. Give `--compile-commands-dir` with the output dir of `sppc --compile-commands`. Then clangd runs its background index on the generated files. A symbol of a generated file maps to its script member. The helpers of the translator (thunks, slot functions) are not shown.
+
+The `#line` check: clangd reports the real line of the generated file, not the `#line` line. So the generated C++ keeps its `#line` directives. No translator option is necessary.
+
+From C++ to the script:
+
+- In a `.cpp` file from `sppc --compile-commands`, the `#line` directives name the `.spp` file. A debugger and the compiler use them. clangd does not use them for navigation.
+- The custom request `spp/toScript` (params: `textDocument`, `position`) gives the script location of a position in a generated file. It uses the source map for an open script, and the `#line` directives for a file on disk.
+- The test `LanguageServer.GeneratedFileOnDiskMapsBackToTheScript` checks it.
+
+Limits:
+
+- Rename changes only the open document. It does not change other `.spp` files.
+- After a translation error, clangd keeps the last good generated C++. Its positions can be old until the next good translation.
+- The column of a `#line` fallback is 0.
+
+The tests are in `tests/integration/ls/` (`LanguageServer.*`). They run the server on a thread with an LSP client over pipes. The clangd tests are skipped when `clangd` is missing. Set `SPP_LS_CLANGD_LOG=file` to get the clangd log of a test.
+
 ## Not done yet
 
 Unload of the first generation of a class, string interpolation, script inheritance and constructors in scripts.

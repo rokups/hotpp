@@ -51,7 +51,9 @@ struct SourceSegment {
 };
 
 // The map between the script text and the generated C++ text (design 10.1, M10). The map covers
-// the bodies of the methods, the constructors, the destructors and the property accessors.
+// the bodies of the methods, the constructors, the destructors and the property accessors. It
+// also covers the names in the head of a script function (the function name and the parameter
+// names) and the field names in the state struct.
 // Text that the translator writes by itself (for example "spp::deref(" or the class shell)
 // has no segment: the functions return no value for it.
 class SourceMap {
@@ -122,6 +124,9 @@ struct AnalyzeResult {
     // The map for the valid parts. A member with a syntax error is left out of the translation.
     // The map is empty when the rest does not translate (for example a type error).
     SourceMap source_map;
+    // The generated C++ of the valid parts. The map belongs to this text. It is empty when the
+    // map is empty. A language server gives this text to clangd.
+    std::string cpp;
 };
 
 // The cache of a translator session. A backend holds one for its life.
@@ -169,6 +174,15 @@ using ScriptTexts = std::vector<std::pair<std::string, std::string>>;
 // user asks for it (--raw-diagnostics).
 std::string rewrite_diagnostic(const std::string& text, const ScriptTexts& scripts = {},
                                const ScriptTexts& generated = {});
+
+// Changes the generated names in one text to script names, as rewrite_diagnostic() does for a
+// message: "Player__heal" -> "Player.heal", "int32_t" -> "int", "std::string" -> "std.string".
+// A language server uses it for hover text and completion labels.
+std::string rewrite_generated_names(const std::string& text);
+
+// Rewrites one Clang message (no location, no source line) as rewrite_diagnostic() does. The
+// common mistakes get a plain message. A language server uses it for the clangd diagnostics.
+std::string rewrite_clang_message(const std::string& message);
 
 // Uses a temporary session: each call parses the headers.
 TranslateResult translate(const TranslateOptions& options);

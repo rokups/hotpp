@@ -1,0 +1,1015 @@
+#include "server.h"
+
+#include <signal.h>
+#include <unistd.h>
+
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <regex>
+#include <set>
+#include <sstream>
+#include <variant>
+
+#include <nlohmann/json.hpp>
+
+#include "clangd_process.h"
+#include "jsonrpc.h"
+#include "semantic.h"
+#include "spp/clang_files_backend.h"
+#include "spp/sppc_lib.h"
+
+namespace fs = std::filesystem;
+
+namespace spp::ls {
+
+using json = nlohmann::json;
+
+namespace {
+
+// The name that the completion puts in place of the word at the cursor (see on_completion).
+const std::string kHole = "__spp_complete";
+
+// LSP error codes.
+constexpr int kMethodNotFound = -32601;
+constexpr int kInvalidParams = -32602;
+constexpr int kRequestFailed = -32803;
+
+int hex(char c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+std::string uri_to_path(const std::string& uri)
+{
+    std::string s = uri.compare(0, 7, "file://") == 0 ? uri.substr(7) : uri;
+    std::string r;
+    for (size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == '%' && i + 2 < s.size() && hex(s[i + 1]) >= 0 && hex(s[i + 2]) >= 0) {
+            r += static_cast<char>(hex(s[i + 1]) * 16 + hex(s[i + 2]));
+            i += 2;
+        } else {
+            r += s[i];
+        }
+    }
+    return r;
+}
+
+std::string path_to_uri(const std::string& path)
+{
+    static const char* digits = "0123456789ABCDEF";
+    std::string r = "file://";
+    for (char ch : path) {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        if (is_id_char(ch) || c == '/' || c == '-' || c == '.' || c == '~') {
+            r += ch;
+        } else {
+            r += '%';
+            r += digits[c >> 4];
+            r += digits[c & 15];
+        }
+    }
+    return r;
+}
+
+std::optional<std::string> read_file(const std::string& path)
+{
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return std::nullopt;
+    std::stringstream ss;
+    ss << in.rdbuf();
+    return ss.str();
+}
+
+// A text with its line table. Positions are 0-based lines and byte columns.
+struct Text {
+    std::string s;
+    std::vector<size_t> starts;
+    Text() : starts{0} {}
+    explicit Text(std::string t) : s(std::move(t)), starts(line_starts(s)) {}
+    std::string_view line(int l) const { return line_text(s, starts, l); }
+    size_t offset(int l, int c) const
+    {
+        if (l < 0) return 0;
+        if (static_cast<size_t>(l) >= starts.size()) return s.size();
+        return std::min(starts[static_cast<size_t>(l)] + static_cast<size_t>(std::max(c, 0)), s.size());
+    }
+    std::pair<int, int> pos(size_t off) const
+    {
+        const auto it = std::upper_bound(starts.begin(), starts.end(), off);
+        const int l = static_cast<int>(it - starts.begin()) - 1;
+        return {l, static_cast<int>(off - starts[static_cast<size_t>(l)])};
+    }
+};
+
+struct Pos {
+    int line = 0, col = 0;  // 0-based line, byte column
+    bool operator<(const Pos& o) const { return std::tie(line, col) < std::tie(o.line, o.col); }
+    bool operator==(const Pos& o) const { return line == o.line && col == o.col; }
+};
+
+// One open .spp document and its state in clangd.
+struct Doc {
+    std::string uri, path;
+    Text text;
+    sppc::AnalyzeResult facts;
+    // The generated C++ that clangd has as the real text, and its map. The map belongs to the
+    // script text "gen_script". After a translation error, the last good state stays.
+    std::string gen_path, gen_uri;
+    Text gen;
+    std::shared_ptr<const sppc::SourceMap> map;
+    int gen_version = 0;   // the clangd version of the real text
+    int sent_version = 0;  // the last clangd version
+    bool in_clangd = false;
+    json clang_diags = json::array();  // the mapped clangd diagnostics of gen_version
+};
+
+class Server {
+public:
+    Server(int in, int out, ServerOptions o) : in_(in), out_(out), opt_(std::move(o)) { read_compile_commands(); }
+    ~Server()
+    {
+        if (clangd_) clangd_->stop();
+    }
+    int run();
+
+private:
+    // ---- the connection to the client
+    void send_client(const json& msg)
+    {
+        std::lock_guard<std::mutex> lock(out_mutex_);
+        write_message(out_, msg.dump(-1, ' ', false, json::error_handler_t::replace));
+    }
+    void reply(const json& id, json result) { send_client({{"jsonrpc", "2.0"}, {"id", id}, {"result", std::move(result)}}); }
+    void reply_error(const json& id, int code, const std::string& message)
+    {
+        send_client({{"jsonrpc", "2.0"}, {"id", id}, {"error", {{"code", code}, {"message", message}}}});
+    }
+    void handle(const json& msg);
+
+    // ---- positions
+    Pos from_lsp(const Text& t, const json& p, bool utf8) const
+    {
+        const int l = p.value("line", 0), c = p.value("character", 0);
+        return {l, utf8 ? c : utf16_to_byte(t.line(l), c)};
+    }
+    json to_lsp(const Text& t, Pos p, bool utf8) const
+    {
+        return {{"line", p.line}, {"character", utf8 ? p.col : byte_to_utf16(t.line(p.line), p.col)}};
+    }
+    json script_range(const Doc& d, Pos b, Pos e) const
+    {
+        return {{"start", to_lsp(d.text, b, utf8_)}, {"end", to_lsp(d.text, e, utf8_)}};
+    }
+    json gen_pos(const Doc& d, Pos p) const { return to_lsp(d.gen, p, clangd_utf8_); }
+    std::optional<Pos> to_gen(const Doc& d, Pos p) const
+    {
+        if (!d.map) return std::nullopt;
+        const auto g = d.map->map_to_generated(p.line + 1, p.col + 1);
+        if (!g) return std::nullopt;
+        return Pos{g->line - 1, g->col - 1};
+    }
+    std::optional<Pos> to_script(const Doc& d, const json& lsp_pos) const
+    {
+        if (!d.map) return std::nullopt;
+        const Pos g = from_lsp(d.gen, lsp_pos, clangd_utf8_);
+        const auto s = d.map->map_to_script(g.line + 1, g.col + 1);
+        if (!s) return std::nullopt;
+        return Pos{s->line - 1, s->col - 1};
+    }
+    // The word at a script position, or the word that ends there. Gives [begin, end) columns.
+    std::pair<int, int> word_at(const Doc& d, Pos p) const
+    {
+        const std::string_view l = d.text.line(p.line);
+        int b = std::min<int>(p.col, static_cast<int>(l.size()));
+        if ((b >= static_cast<int>(l.size()) || !is_id_char(l[static_cast<size_t>(b)])) && b > 0 &&
+            is_id_char(l[static_cast<size_t>(b - 1)]))
+            --b;
+        int e = b;
+        while (b > 0 && is_id_char(l[static_cast<size_t>(b - 1)])) --b;
+        while (e < static_cast<int>(l.size()) && is_id_char(l[static_cast<size_t>(e)])) ++e;
+        return {b, e};
+    }
+    std::string word(const Doc& d, Pos p) const
+    {
+        const auto [b, e] = word_at(d, p);
+        return std::string(d.text.line(p.line).substr(static_cast<size_t>(b), static_cast<size_t>(e - b)));
+    }
+    // A clangd location in the generated text of "d" as a script location, or null.
+    json map_location(const Doc& d, const json& loc) const;
+
+    // ---- documents
+    std::shared_ptr<Doc> doc_of(const json& params)
+    {
+        const std::string uri = params.value("/textDocument/uri"_json_pointer, std::string());
+        const auto it = docs_.find(uri);
+        return it == docs_.end() ? nullptr : it->second;
+    }
+    sppc::TranslateOptions translate_options(const Doc& d) const
+    {
+        sppc::TranslateOptions o;
+        o.script_name = d.path;
+        o.generation = 1;
+        o.include_dirs = opt_.include_dirs;
+        o.resource_dir = opt_.resource_dir;
+        return o;
+    }
+    void update(Doc& d);
+    void send_generated(Doc& d, const std::string& cpp);
+    json publish_message(const Doc& d) const;
+    json analyze_diagnostics(const Doc& d) const;
+
+    // ---- clangd
+    void read_compile_commands();
+    void start_clangd(const json& init);
+    void on_clangd_notification(const json& msg);
+    std::optional<json> clangd_result(const std::string& method, json params, int timeout_ms = 60000)
+    {
+        if (!clangd_ || !clangd_->running()) return std::nullopt;
+        json r = clangd_->request(method, std::move(params), timeout_ms);
+        if (!r.is_object() || !r.contains("result") || r["result"].is_null()) return std::nullopt;
+        return r["result"];
+    }
+
+    // ---- features
+    json on_initialize(const json& p);
+    json on_completion(const Doc& d, const json& p);
+    json on_hover(const Doc& d, const json& p);
+    json on_locations(const Doc& d, const json& p, const std::string& method);
+    json on_document_symbol(const Doc& d);
+    json on_semantic_tokens(const Doc& d);
+    json on_workspace_symbol(const json& p);
+    json script_member_location(const std::string& uri, const std::string& script_name);
+    json on_to_script(const json& p);
+    // Gives the edit, or an error message.
+    std::variant<json, std::string> on_rename(const Doc& d, const json& p);
+
+    int in_, out_;
+    ServerOptions opt_;
+    std::mutex out_mutex_;
+    // docs_mutex_ guards the fields of the documents that the clangd reader thread reads. Only
+    // the main thread changes a document. It never holds the lock during a clangd request.
+    std::mutex docs_mutex_;
+    std::map<std::string, std::shared_ptr<Doc>> docs_;      // by the script uri
+    std::map<std::string, std::shared_ptr<Doc>> gen_docs_;  // by the generated uri
+    std::unique_ptr<ClangdProcess> clangd_;
+    bool utf8_ = false, clangd_utf8_ = false, shutdown_ = false;
+    std::set<std::string> preamble_ready_;
+    // The analyze facts of the scripts on disk that are not open (script_member_location).
+    std::map<std::string, std::pair<std::string, sppc::AnalyzeResult>> disk_facts_;
+    std::string index_seed_;  // the first file of compile_commands.json (start_clangd)  // the generated files with a first completion
+    sppc::TranslatorSession session_;
+};
+
+// ------------------------------------------------------------------ setup
+
+void Server::read_compile_commands()
+{
+    if (opt_.compile_commands_dir.empty()) return;
+    const auto text = read_file(opt_.compile_commands_dir + "/compile_commands.json");
+    if (!text) return;
+    const json db = json::parse(*text, nullptr, false);
+    if (!db.is_array() || db.empty()) return;
+    std::vector<std::string> args;
+    if (db[0].contains("arguments")) {
+        for (const json& a : db[0]["arguments"])
+            if (a.is_string()) args.push_back(a.get<std::string>());
+    } else if (db[0].contains("command")) {
+        std::istringstream ss(db[0].value("command", std::string()));
+        for (std::string a; ss >> a;) args.push_back(a);
+    }
+    const std::string dir = db[0].value("directory", std::string("."));
+    index_seed_ = db[0].value("file", std::string());
+    if (!index_seed_.empty() && fs::path(index_seed_).is_relative())
+        index_seed_ = (fs::path(dir) / index_seed_).lexically_normal().string();
+    auto add_dir = [&](std::string d) {
+        if (fs::path(d).is_relative()) d = (fs::path(dir) / d).lexically_normal().string();
+        for (const std::string& x : opt_.include_dirs)
+            if (x == d) return;
+        opt_.include_dirs.push_back(d);
+    };
+    for (size_t i = 0; i < args.size(); ++i) {
+        const std::string& a = args[i];
+        if (a == "-I" && i + 1 < args.size()) add_dir(args[++i]);
+        else if (a.compare(0, 2, "-I") == 0) add_dir(a.substr(2));
+        else if ((a == "-isystem" || a == "-D") && i + 1 < args.size()) {
+            opt_.extra_flags.push_back(a);
+            opt_.extra_flags.push_back(args[++i]);
+        } else if (a.compare(0, 2, "-D") == 0) opt_.extra_flags.push_back(a);
+    }
+}
+
+void Server::start_clangd(const json& init)
+{
+    if (opt_.clangd.empty()) return;
+    std::vector<std::string> args = {opt_.clangd_log.empty() ? "--log=error" : "--log=info", "--header-insertion=never", "-j=2"};
+    if (!opt_.compile_commands_dir.empty()) {
+        args.push_back("--compile-commands-dir=" + opt_.compile_commands_dir);
+        args.push_back("--background-index");
+    } else {
+        args.push_back("--background-index=false");
+    }
+    auto c = std::make_unique<ClangdProcess>();
+    if (!c->start(opt_.clangd, args, opt_.clangd_log, [this](const json& m) { on_clangd_notification(m); })) return;
+    json params = {
+        {"processId", static_cast<int>(getpid())},
+        {"capabilities",
+         {{"general", {{"positionEncodings", {"utf-8", "utf-16"}}}},
+          {"textDocument",
+           {{"completion", {{"completionItem", {{"snippetSupport", false}}}}},
+            {"hover", {{"contentFormat", {"markdown", "plaintext"}}}},
+            {"publishDiagnostics", {{"versionSupport", true}}}}}}},
+    };
+    for (const char* k : {"rootUri", "rootPath", "workspaceFolders"})
+        if (init.contains(k)) params[k] = init[k];
+    json r = c->request("initialize", params, 30000);
+    if (!r.is_object() || !r.contains("result")) {
+        c->stop();
+        return;
+    }
+    clangd_utf8_ = r.value("/result/capabilities/positionEncoding"_json_pointer, std::string()) == "utf-8";
+    c->notify("initialized", json::object());
+    // clangd loads the compile_commands.json, and starts the background index, at the first
+    // file that it opens. The server opens and closes one entry of the database for this.
+    if (const auto seed = index_seed_.empty() ? std::nullopt : read_file(index_seed_)) {
+        const std::string uri = path_to_uri(index_seed_);
+        c->notify("textDocument/didOpen",
+                  {{"textDocument", {{"uri", uri}, {"languageId", "cpp"}, {"version", 1}, {"text", *seed}}}});
+        c->notify("textDocument/didClose", {{"textDocument", {{"uri", uri}}}});
+    }
+    clangd_ = std::move(c);
+}
+
+json Server::on_initialize(const json& p)
+{
+    const json encodings = p.value("/capabilities/general/positionEncodings"_json_pointer, json::array());
+    for (const json& e : encodings)
+        if (e == "utf-8") utf8_ = true;
+    if (const json o = p.value("initializationOptions", json::object()); o.is_object()) {
+        for (const json& d : o.value("includeDirs", json::array())) opt_.include_dirs.push_back(d.get<std::string>());
+        if (o.contains("clangd")) opt_.clangd = o.value("clangd", opt_.clangd);
+        if (o.contains("compileCommandsDir")) {
+            opt_.compile_commands_dir = o.value("compileCommandsDir", std::string());
+            read_compile_commands();
+        }
+    }
+    start_clangd(p);
+    json tokens = json::array();
+    for (const std::string& t : semantic_token_types()) tokens.push_back(t);
+    return {
+        {"capabilities",
+         {{"positionEncoding", utf8_ ? "utf-8" : "utf-16"},
+          {"textDocumentSync", {{"openClose", true}, {"change", 1}}},
+          {"completionProvider", {{"triggerCharacters", {"."}}}},
+          {"hoverProvider", true},
+          {"definitionProvider", true},
+          {"referencesProvider", true},
+          {"documentSymbolProvider", true},
+          {"renameProvider", true},
+          {"workspaceSymbolProvider", true},
+          {"semanticTokensProvider",
+           {{"legend", {{"tokenTypes", tokens}, {"tokenModifiers", json::array()}}}, {"full", true}}},
+          {"experimental", {{"sppToScript", true}, {"clangd", clangd_ != nullptr}}}}},
+        {"serverInfo", {{"name", "spp-ls"}, {"version", "0.1"}}},
+    };
+}
+
+// ------------------------------------------------------------------ documents and diagnostics
+
+void Server::send_generated(Doc& d, const std::string& cpp)
+{
+    if (!clangd_ || !clangd_->running()) return;
+    const int v = ++d.sent_version;
+    if (!d.in_clangd) {
+        // The compile command of the backend for the virtual file (design 10.1).
+        spp::ClangFilesOptions co;
+        co.include_dirs = opt_.include_dirs;
+        co.resource_dir = opt_.resource_dir;
+        co.extra_flags = opt_.extra_flags;
+        const std::vector<std::string> cmd = spp::compile_command(co, d.gen_path, d.gen_path + ".so");
+        clangd_->notify("workspace/didChangeConfiguration",
+                        {{"settings",
+                          {{"compilationDatabaseChanges",
+                            {{d.gen_path,
+                              {{"workingDirectory", fs::path(d.gen_path).parent_path().string()},
+                               {"compilationCommand", cmd}}}}}}}});
+        clangd_->notify("textDocument/didOpen",
+                        {{"textDocument", {{"uri", d.gen_uri}, {"languageId", "cpp"}, {"version", v}, {"text", cpp}}}});
+        d.in_clangd = true;
+    } else {
+        clangd_->notify("textDocument/didChange", {{"textDocument", {{"uri", d.gen_uri}, {"version", v}}},
+                                                   {"contentChanges", json::array({{{"text", cpp}}})}});
+    }
+}
+
+void Server::update(Doc& d)
+{
+    sppc::AnalyzeResult facts = sppc::analyze(d.text.s, translate_options(d), session_);
+    std::string cpp = facts.cpp;
+    {
+        std::lock_guard<std::mutex> lock(docs_mutex_);
+        d.facts = std::move(facts);
+        if (!cpp.empty()) {
+            d.gen = Text(cpp);
+            d.map = std::make_shared<const sppc::SourceMap>(d.facts.source_map);
+            d.clang_diags = json::array();
+            d.gen_version = d.sent_version + 1;
+            send_generated(d, cpp);
+        }
+        send_client(publish_message(d));
+    }
+}
+
+json Server::analyze_diagnostics(const Doc& d) const
+{
+    json out = json::array();
+    auto add = [&](Pos p, const std::string& message, int severity) {
+        const auto [b, e] = word_at(d, p);
+        const Pos end = b <= p.col && e > p.col ? Pos{p.line, e} : Pos{p.line, p.col + 1};
+        out.push_back({{"range", script_range(d, p, end)}, {"severity", severity}, {"source", "spp"},
+                       {"message", message}});
+    };
+    for (const sppc::AnalyzeError& e : d.facts.errors) add({e.pos.line - 1, e.pos.col - 1}, e.message, 1);
+    // The translation errors: "name:line:col: error: text", one line each.
+    static const std::regex re(R"(^(.*):(\d+):(\d+): (error|warning): (.*)$)");
+    std::istringstream ss(d.facts.diagnostics);
+    for (std::string l; std::getline(ss, l);) {
+        std::smatch m;
+        if (!std::regex_match(l, m, re)) continue;
+        add({std::stoi(m[2]) - 1, std::stoi(m[3]) - 1}, m[5], m[4] == "error" ? 1 : 2);
+    }
+    return out;
+}
+
+json Server::publish_message(const Doc& d) const
+{
+    json diags = analyze_diagnostics(d);
+    for (const json& x : d.clang_diags) diags.push_back(x);
+    return {{"jsonrpc", "2.0"},
+            {"method", "textDocument/publishDiagnostics"},
+            {"params", {{"uri", d.uri}, {"diagnostics", diags}}}};
+}
+
+void Server::on_clangd_notification(const json& msg)
+{
+    if (msg.value("method", std::string()) != "textDocument/publishDiagnostics") return;
+    const json& p = msg["params"];
+    std::lock_guard<std::mutex> lock(docs_mutex_);
+    const auto it = gen_docs_.find(p.value("uri", std::string()));
+    if (it == gen_docs_.end()) return;
+    Doc& d = *it->second;
+    // A diagnostic of a completion text (or of an old text) is not shown.
+    if (p.contains("version") && p["version"].is_number_integer() && p["version"].get<int>() != d.gen_version) return;
+    json out = json::array();
+    for (const json& g : p.value("diagnostics", json::array())) {
+        Pos b, e;
+        const auto s = to_script(d, g["range"]["start"]);
+        if (s) {
+            b = *s;
+            const auto se = to_script(d, g["range"]["end"]);
+            e = se && se->line == b.line && b.col < se->col ? *se : Pos{b.line, word_at(d, b).second};
+            if (e.col <= b.col) e.col = b.col + 1;
+        } else {
+            // No segment: the "#line" directives give the script line (column 0).
+            const auto t = line_directive_target(d.gen.s, from_lsp(d.gen, g["range"]["start"], clangd_utf8_).line);
+            if (!t || t->file != d.path) continue;
+            b = {t->line, 0};
+            e = {t->line, static_cast<int>(d.text.line(t->line).size())};
+        }
+        out.push_back({{"range", script_range(d, b, e)},
+                       {"severity", g.value("severity", 1)},
+                       {"source", "clangd"},
+                       {"message", sppc::rewrite_clang_message(g.value("message", std::string()))}});
+    }
+    d.clang_diags = std::move(out);
+    send_client(publish_message(d));
+}
+
+// ------------------------------------------------------------------ features
+
+json Server::map_location(const Doc& d, const json& loc) const
+{
+    const std::string uri = loc.contains("targetUri") ? loc.value("targetUri", std::string()) : loc.value("uri", std::string());
+    const json range = loc.contains("targetSelectionRange") ? loc["targetSelectionRange"] : loc.value("range", json());
+    if (uri != d.gen_uri) return {{"uri", uri}, {"range", range}};  // a native place: no change
+    const auto s = to_script(d, range["start"]);
+    if (!s) return nullptr;
+    const auto [b, e] = word_at(d, *s);
+    return {{"uri", d.uri}, {"range", script_range(d, {s->line, b}, {s->line, std::max(e, b)})}};
+}
+
+json Server::on_completion(const Doc& d, const json& p)
+{
+    const Pos cur = from_lsp(d.text, p["position"], utf8_);
+    const std::string& t = d.text.s;
+    const size_t off = d.text.offset(cur.line, cur.col);
+    size_t s = off;
+    while (s > 0 && is_id_char(t[s - 1])) --s;
+    const bool after_dot = s > 0 && t[s - 1] == '.';
+    const bool after_this = after_dot && s >= 5 && t.compare(s - 5, 5, "this.") == 0 && (s == 5 || !is_id_char(t[s - 6]));
+
+    json items = json::array();
+    std::set<std::string> names;
+    // The script members of the class at the cursor (clangd does not see them on the shell).
+    if (after_this) {
+        const sppc::AnalyzedClass* cls = nullptr;
+        for (const sppc::AnalyzedClass& c : d.facts.classes)
+            if (Pos{c.begin.line - 1, c.begin.col - 1} < Pos{cur.line, cur.col + 1}) cls = &c;
+        if (cls) {
+            for (const sppc::AnalyzedMember& m : cls->members) {
+                int kind = 0;
+                if (m.kind == "field") kind = 5;
+                else if (m.kind == "method") kind = 2;
+                else if (m.kind == "property") kind = 10;
+                if (!kind || !names.insert(m.name).second) continue;
+                items.push_back({{"label", m.name}, {"kind", kind}, {"detail", "script " + m.kind + " of " + cls->name},
+                                 {"insertText", m.name}, {"sortText", "0" + m.name}});
+            }
+        }
+    }
+
+    // The clangd part. The word at the cursor is replaced by a placeholder name, so the statement
+    // translates and clangd completes at its generated place. The real text comes back after.
+    if (clangd_ && clangd_->running()) {
+        size_t n = off;
+        while (n < t.size() && (t[n] == ' ' || t[n] == '\t' || t[n] == '\r' || t[n] == '\n')) ++n;
+        const bool end = n < t.size() && std::string_view(";),]([+-*/%=<>!&|^?:.").find(t[n]) != std::string_view::npos;
+        const std::string patched = t.substr(0, s) + kHole + (end ? "" : ";") + t.substr(off);
+        sppc::AnalyzeResult facts = sppc::analyze(patched, translate_options(d), session_);
+        const Pos hole = {cur.line, static_cast<int>(s - d.text.starts[static_cast<size_t>(cur.line)])};
+        const auto g = facts.cpp.empty() ? std::nullopt : facts.source_map.map_to_generated(hole.line + 1, hole.col + 1);
+        std::optional<json> r;
+        if (g) {
+            Doc& md = const_cast<Doc&>(d);
+            const Text gen(facts.cpp);
+            send_generated(md, facts.cpp);
+            // Before its first preamble, clangd gives only "fallback" words of the file. A
+            // request that needs the AST waits for the preamble.
+            if (preamble_ready_.insert(d.gen_uri).second)
+                clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}});
+            r = clangd_result("textDocument/completion",
+                              {{"textDocument", {{"uri", d.gen_uri}}},
+                               {"position", to_lsp(gen, {g->line - 1, g->col - 1}, clangd_utf8_)}});
+            std::lock_guard<std::mutex> lock(docs_mutex_);
+            md.gen_version = md.sent_version + 1;  // before the send: the diagnostics can come at once
+            send_generated(md, d.gen.s);
+        }
+        const json list = r ? (r->is_array() ? *r : r->value("items", json::array())) : json::array();
+        for (const json& it : list) {
+            std::string name = it.value("filterText", std::string());
+            if (name.empty()) name = it.value("insertText", it.value("label", std::string()));
+            const int kind = it.value("kind", 1);
+            // The names of the generated code and of the shell are not script names.
+            if (name.empty() || name == kHole || name.find("__") != std::string::npos ||
+                name.find("_Shell") != std::string::npos || name.compare(0, 8, "operator") == 0 || name[0] == '~' ||
+                kind == 4 || name.find("::") != std::string::npos)
+                continue;
+            if (after_dot && (name == "cls" || name == "state")) continue;  // spp::ShellBase (runtime/shell.h)
+            if (!after_dot && (kind != 6 || name == "self" || name == "st" || name == "a")) continue;
+            if (!names.insert(name).second) continue;
+            std::string label = it.value("label", name);
+            while (!label.empty() && (label[0] == ' ')) label.erase(0, 1);
+            if (label.compare(0, 3, "\xE2\x80\xA2") == 0) label.erase(0, 3);  // the include bullet
+            json item = {{"label", sppc::rewrite_generated_names(label)}, {"kind", kind}, {"insertText", name},
+                         {"filterText", name}, {"sortText", "1" + it.value("sortText", name)}};
+            if (it.contains("detail")) item["detail"] = sppc::rewrite_generated_names(it.value("detail", std::string()));
+            items.push_back(std::move(item));
+        }
+    }
+    return {{"isIncomplete", false}, {"items", items}};
+}
+
+json Server::on_hover(const Doc& d, const json& p)
+{
+    const auto g = to_gen(d, from_lsp(d.text, p["position"], utf8_));
+    if (!g) return nullptr;
+    auto r = clangd_result("textDocument/hover", {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}});
+    if (!r || !r->contains("contents")) return nullptr;
+    json c = (*r)["contents"];
+    if (c.is_object() && c.contains("value")) c["value"] = sppc::rewrite_generated_names(c.value("value", std::string()));
+    else if (c.is_string()) c = sppc::rewrite_generated_names(c.get<std::string>());
+    json out = {{"contents", c}};
+    if (r->contains("range")) {
+        const auto b = to_script(d, (*r)["range"]["start"]);
+        if (b) {
+            const auto [wb, we] = word_at(d, *b);
+            out["range"] = script_range(d, {b->line, wb}, {b->line, we});
+        }
+    }
+    return out;
+}
+
+json Server::on_locations(const Doc& d, const json& p, const std::string& method)
+{
+    const auto g = to_gen(d, from_lsp(d.text, p["position"], utf8_));
+    json out = json::array();
+    if (!g) return out;
+    json params = {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}};
+    if (method == "textDocument/references") params["context"] = {{"includeDeclaration", true}};
+    auto r = clangd_result(method, params);
+    if (!r) return out;
+    json list = r->is_array() ? *r : json::array({*r});
+    std::set<std::string> seen;
+    for (const json& loc : list) {
+        json m = map_location(d, loc);
+        if (m.is_null() || !seen.insert(m.dump()).second) continue;
+        out.push_back(std::move(m));
+    }
+    return out;
+}
+
+std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
+{
+    const Pos cur = from_lsp(d.text, p["position"], utf8_);
+    const std::string old_name = word(d, cur);
+    const std::string new_name = p.value("newName", std::string());
+    if (old_name.empty()) return std::string("no symbol at the position");
+    if (new_name.empty() || !std::all_of(new_name.begin(), new_name.end(), is_id_char) ||
+        (new_name[0] >= '0' && new_name[0] <= '9'))
+        return std::string("the new name is not an identifier: " + new_name);
+    const auto g = to_gen(d, {cur.line, word_at(d, cur).first});
+    if (!g || !clangd_) return std::string("no script symbol at the position");
+    const json tdp = {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}};
+    const auto defs = clangd_result("textDocument/definition", tdp);
+    const json def_list = defs ? (defs->is_array() ? *defs : json::array({*defs})) : json::array();
+    if (def_list.empty()) return std::string("no script symbol at the position");
+    for (const json& loc : def_list) {
+        const std::string uri = loc.contains("targetUri") ? loc.value("targetUri", std::string()) : loc.value("uri", std::string());
+        if (uri != d.gen_uri) return std::string("cannot rename a native symbol: " + old_name);
+        if (map_location(d, loc).is_null()) return std::string("cannot rename a generated name: " + old_name);
+    }
+    json params = tdp;
+    params["context"] = {{"includeDeclaration", true}};
+    const auto refs = clangd_result("textDocument/references", params);
+    std::set<Pos> starts;
+    for (const json& loc : refs ? *refs : json::array()) {
+        if (loc.value("uri", std::string()) != d.gen_uri) continue;
+        const auto s = to_script(d, loc["range"]["start"]);
+        if (!s) continue;
+        // The mapped start can be the start of the expression ("this" of "this.heal"). Take the
+        // first whole word "old_name" on the line from there.
+        const std::string_view l = d.text.line(s->line);
+        for (size_t at = l.find(old_name, static_cast<size_t>(s->col)); at != std::string_view::npos;
+             at = l.find(old_name, at + 1)) {
+            const bool left = at == 0 || !is_id_char(l[at - 1]);
+            const bool right = at + old_name.size() >= l.size() || !is_id_char(l[at + old_name.size()]);
+            if (left && right) {
+                starts.insert({s->line, static_cast<int>(at)});
+                break;
+            }
+        }
+    }
+    json edits = json::array();
+    for (const Pos& s : starts)
+        edits.push_back({{"range", script_range(d, s, {s.line, s.col + static_cast<int>(old_name.size())})},
+                         {"newText", new_name}});
+    return json{{"changes", {{d.uri, edits}}}};
+}
+
+json Server::on_document_symbol(const Doc& d)
+{
+    json out = json::array();
+    for (const sppc::AnalyzedClass& c : d.facts.classes) {
+        const Pos b = {c.begin.line - 1, c.begin.col - 1};
+        Pos e = {b.line, b.col + static_cast<int>(c.name.size())};
+        json children = json::array();
+        for (const sppc::AnalyzedMember& m : c.members) {
+            int kind = 6;  // Method
+            if (m.kind == "field") kind = 8;
+            else if (m.kind == "constructor") kind = 9;
+            else if (m.kind == "property") kind = 7;
+            const Pos mb = {m.begin.line - 1, m.begin.col - 1}, me = {m.end.line - 1, m.end.col - 1};
+            if (e < me) e = me;
+            const std::string shown = m.kind == "destructor" && m.name[0] != '~' ? "~" + m.name : m.name;
+            children.push_back({{"name", shown}, {"kind", kind}, {"detail", m.kind},
+                                {"range", script_range(d, mb, me)},
+                                {"selectionRange", script_range(d, mb, {mb.line, mb.col + static_cast<int>(m.name.size())})}});
+        }
+        out.push_back({{"name", c.name}, {"kind", 5}, {"detail", c.base.empty() ? "class" : "class : " + c.base},
+                       {"range", script_range(d, b, e)},
+                       {"selectionRange", script_range(d, b, {b.line, b.col + static_cast<int>(c.name.size())})},
+                       {"children", children}});
+    }
+    return out;
+}
+
+json Server::on_semantic_tokens(const Doc& d)
+{
+    json data = json::array();
+    int pl = 0, pc = 0;
+    for (const SemanticToken& t : script_tokens(d.text.s, d.facts)) {
+        const std::string_view l = d.text.line(t.line);
+        const int c = utf8_ ? t.col : byte_to_utf16(l, t.col);
+        const int len = utf8_ ? t.len : byte_to_utf16(l, t.col + t.len) - c;
+        data.push_back(t.line - pl);
+        data.push_back(t.line == pl ? c - pc : c);
+        data.push_back(len);
+        data.push_back(t.type);
+        data.push_back(0);
+        pl = t.line;
+        pc = c;
+    }
+    return {{"data", data}};
+}
+
+// A place in a generated file on disk (from "sppc --compile-commands") as a script location.
+// The "#line" directives give the script and the line.
+json disk_to_script(const std::string& cpp_path, int line)
+{
+    const auto text = read_file(cpp_path);
+    if (!text) return nullptr;
+    const auto t = line_directive_target(*text, line);
+    if (!t) return nullptr;
+    fs::path f = t->file;
+    if (f.is_relative()) {
+        const fs::path near = fs::path(cpp_path).parent_path() / f;
+        f = fs::exists(near) ? near : fs::absolute(f);
+    }
+    const json p = {{"line", t->line}, {"character", 0}};
+    return {{"uri", path_to_uri(f.lexically_normal().string())}, {"range", {{"start", p}, {"end", p}}}};
+}
+
+json Server::script_member_location(const std::string& uri, const std::string& script_name)
+{
+    // The script name is "Class.member". A helper of the translator (a thunk, a slot function,
+    // a field init) has a name that is not a member of the class: it gets no location.
+    const size_t dot = script_name.find('.');
+    if (uri.empty() || dot == std::string::npos) return nullptr;
+    const std::string cls = script_name.substr(0, dot), member = script_name.substr(dot + 1);
+    const sppc::AnalyzeResult* facts = nullptr;
+    Text text;
+    if (const auto it = docs_.find(uri); it != docs_.end()) {
+        facts = &it->second->facts;
+        text = it->second->text;
+    } else {
+        const std::string path = uri_to_path(uri);
+        const auto t = read_file(path);
+        if (!t) return nullptr;
+        auto& cached = disk_facts_[path];
+        if (cached.first != *t) {
+            Doc tmp;
+            tmp.path = path;
+            cached = {*t, sppc::analyze(*t, translate_options(tmp), session_)};
+        }
+        facts = &cached.second;
+        text = Text(*t);
+    }
+    for (const sppc::AnalyzedClass& c : facts->classes) {
+        if (c.name != cls) continue;
+        for (const sppc::AnalyzedMember& m : c.members) {
+            if (m.name != member) continue;
+            const Pos b = {m.begin.line - 1, m.begin.col - 1};
+            const Pos e = {b.line, b.col + static_cast<int>(member.size())};
+            return {{"uri", uri}, {"range", {{"start", to_lsp(text, b, utf8_)}, {"end", to_lsp(text, e, utf8_)}}}};
+        }
+    }
+    return nullptr;
+}
+
+json Server::on_workspace_symbol(const json& p)
+{
+    json out = json::array();
+    auto r = clangd_result("workspace/symbol", {{"query", p.value("query", std::string())}});
+    if (!r || !r->is_array()) return out;
+    for (const json& s : *r) {
+        json loc = s.value("location", json());
+        const std::string uri = loc.value("uri", std::string());
+        const std::string name = s.value("name", std::string());
+        const std::string container = s.value("containerName", std::string());
+        const std::string script_name = sppc::rewrite_generated_names(name);
+        const std::string script_container = sppc::rewrite_generated_names(container);
+        // A symbol of a generated file is a script symbol when its name, or the name of its
+        // container (a state struct), is a generated name. Else it is a part of the plumbing.
+        const bool script = script_name != name || (script_container != container && name.compare(0, 5, "SLOT_") != 0);
+        json mapped;
+        bool generated = false;
+        if (const auto it = gen_docs_.find(uri); it != gen_docs_.end()) {
+            generated = true;
+            if (script) mapped = map_location(*it->second, loc);
+        } else if (uri.size() > 4 && uri.compare(uri.size() - 4, 4, ".cpp") == 0) {
+            // A generated file of the workspace from the background index.
+            const std::string path = uri_to_path(uri);
+            const auto text = read_file(path);
+            generated = text && text->find("// Generated by sppc") == 0;
+            if (generated && script) mapped = disk_to_script(path, loc.value("/range/start/line"_json_pointer, 0));
+        }
+        if (generated && !mapped.is_null()) {
+            // A field of a state struct: the container gives the class.
+            const bool field = script_name.find('.') == std::string::npos && script_container != container;
+            mapped = script_member_location(mapped.value("uri", std::string()),
+                                            field ? script_container + "." + script_name : script_name);
+        }
+        if (generated && mapped.is_null()) continue;
+        if (mapped.is_null()) mapped = loc;  // a native symbol
+        json item = s;
+        item["name"] = script_name;
+        if (s.contains("containerName")) item["containerName"] = script_container;
+        item["location"] = mapped;
+        out.push_back(std::move(item));
+    }
+    return out;
+}
+
+json Server::on_to_script(const json& p)
+{
+    const std::string uri = p.value("/textDocument/uri"_json_pointer, std::string());
+    const json pos = p.value("position", json::object());
+    if (const auto it = gen_docs_.find(uri); it != gen_docs_.end()) {
+        const Doc& d = *it->second;
+        if (const auto s = to_script(d, pos)) return {{"uri", d.uri}, {"range", script_range(d, *s, *s)}};
+        const auto t = line_directive_target(d.gen.s, pos.value("line", 0));
+        if (!t || t->file != d.path) return nullptr;
+        return {{"uri", d.uri}, {"range", script_range(d, {t->line, 0}, {t->line, 0})}};
+    }
+    return disk_to_script(uri_to_path(uri), pos.value("line", 0));
+}
+
+// ------------------------------------------------------------------ dispatch
+
+void Server::handle(const json& msg)
+{
+    const std::string method = msg.value("method", std::string());
+    const bool is_request = msg.contains("id");
+    const json id = is_request ? msg["id"] : json();
+    const json p = msg.value("params", json::object());
+    if (method.empty()) return;  // a response to a request that the server did not send
+
+    if (method == "initialize") return reply(id, on_initialize(p));
+    if (method == "shutdown") {
+        shutdown_ = true;
+        if (clangd_) clangd_->stop();
+        return reply(id, nullptr);
+    }
+    if (method == "textDocument/didOpen") {
+        const json& td = p["textDocument"];
+        auto d = std::make_shared<Doc>();
+        d->uri = td.value("uri", std::string());
+        d->path = uri_to_path(d->uri);
+        d->gen_path = d->path + ".cpp";
+        d->gen_uri = path_to_uri(d->gen_path);
+        d->text = Text(td.value("text", std::string()));
+        {
+            std::lock_guard<std::mutex> lock(docs_mutex_);
+            docs_[d->uri] = d;
+            gen_docs_[d->gen_uri] = d;
+        }
+        return update(*d);
+    }
+    if (method == "textDocument/didChange") {
+        auto d = doc_of(p);
+        if (!d) return;
+        const json changes = p.value("contentChanges", json::array());
+        if (changes.empty()) return;
+        {
+            std::lock_guard<std::mutex> lock(docs_mutex_);
+            d->text = Text(changes.back().value("text", std::string()));
+        }
+        return update(*d);
+    }
+    if (method == "textDocument/didClose") {
+        auto d = doc_of(p);
+        if (!d) return;
+        if (clangd_ && d->in_clangd) clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", d->gen_uri}}}});
+        {
+            std::lock_guard<std::mutex> lock(docs_mutex_);
+            docs_.erase(d->uri);
+            gen_docs_.erase(d->gen_uri);
+        }
+        send_client({{"jsonrpc", "2.0"},
+                     {"method", "textDocument/publishDiagnostics"},
+                     {"params", {{"uri", d->uri}, {"diagnostics", json::array()}}}});
+        return;
+    }
+    if (!is_request) return;  // initialized, $/cancelRequest and other notifications
+    if (method == "workspace/symbol") return reply(id, on_workspace_symbol(p));
+    if (method == "spp/toScript") return reply(id, on_to_script(p));
+
+    static const std::set<std::string> doc_methods = {
+        "textDocument/completion", "textDocument/hover", "textDocument/definition", "textDocument/references",
+        "textDocument/documentSymbol", "textDocument/semanticTokens/full", "textDocument/rename"};
+    if (!doc_methods.count(method)) return reply_error(id, kMethodNotFound, "unknown method: " + method);
+    auto d = doc_of(p);
+    if (!d) return reply_error(id, kInvalidParams, "the document is not open");
+    if (method == "textDocument/completion") return reply(id, on_completion(*d, p));
+    if (method == "textDocument/hover") return reply(id, on_hover(*d, p));
+    if (method == "textDocument/definition" || method == "textDocument/references")
+        return reply(id, on_locations(*d, p, method));
+    if (method == "textDocument/documentSymbol") return reply(id, on_document_symbol(*d));
+    if (method == "textDocument/semanticTokens/full") return reply(id, on_semantic_tokens(*d));
+    auto r = on_rename(*d, p);
+    if (auto* e = std::get_if<std::string>(&r)) return reply_error(id, kRequestFailed, *e);
+    return reply(id, std::get<json>(r));
+}
+
+int Server::run()
+{
+    MessageReader reader(in_);
+    std::string body;
+    while (reader.read(body)) {
+        const json msg = json::parse(body, nullptr, false);
+        if (msg.is_discarded() || !msg.is_object()) continue;
+        if (msg.value("method", std::string()) == "exit") break;
+        try {
+            handle(msg);
+        } catch (const std::exception& e) {
+            if (msg.contains("id")) reply_error(msg["id"], kRequestFailed, std::string("internal error: ") + e.what());
+        }
+    }
+    if (clangd_) clangd_->stop();
+    return shutdown_ ? 0 : 1;
+}
+
+}  // namespace
+
+std::optional<ScriptLine> line_directive_target(const std::string& cpp, int line)
+{
+    static const std::regex re(R"(^\s*#\s*line\s+(\d+)\s+"((?:[^"\\]|\\.)*)\")");
+    const std::vector<size_t> starts = line_starts(cpp);
+    // Walk back to the nearest directive. A directive that names the .cpp file itself marks
+    // translator text: the last script directive before it gives the line then.
+    bool in_cpp_text = false;
+    for (int l = std::min(line, static_cast<int>(starts.size()) - 1); l >= 0; --l) {
+        const std::string_view t = line_text(cpp, starts, l);
+        if (t.find("#") == std::string_view::npos || t.find("line") == std::string_view::npos) continue;
+        std::cmatch m;
+        if (!std::regex_search(t.data(), t.data() + t.size(), m, re)) continue;
+        std::string file;
+        for (size_t i = 0; i < static_cast<size_t>(m[2].length()); ++i) {
+            const char c = m[2].first[i];
+            if (c == '\\' && i + 1 < static_cast<size_t>(m[2].length())) ++i;
+            file += m[2].first[i];
+        }
+        const bool is_cpp = file.size() > 4 && file.compare(file.size() - 4, 4, ".cpp") == 0;
+        if (is_cpp) {
+            in_cpp_text = true;
+            continue;
+        }
+        const int n = std::stoi(m[1].str());
+        return ScriptLine{file, in_cpp_text ? n - 1 : n - 1 + (line - l - 1)};
+    }
+    return std::nullopt;
+}
+
+int run_server(int in_fd, int out_fd, const ServerOptions& options)
+{
+    signal(SIGPIPE, SIG_IGN);  // a write to a clangd that stopped gives an error, not a signal
+    Server server(in_fd, out_fd, options);
+    return server.run();
+}
+
+const char* usage_text()
+{
+    return "usage: spp-ls [--stdio] [--clangd path] [-I dir]... [--resource-dir dir] [--cxxflag flag]...\n"
+           "              [--compile-commands-dir dir] [--clangd-log file]\n"
+           "  --clangd path      the clangd binary (default: clangd from PATH). \"\" turns clangd off.\n"
+           "  -I dir             an include dir for the script imports and for clangd.\n"
+           "  --compile-commands-dir dir\n"
+           "                     the directory of compile_commands.json from sppc --compile-commands.\n"
+           "                     clangd runs its background index on it.\n";
+}
+
+bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, std::string& error)
+{
+    for (size_t i = 0; i < args.size(); ++i) {
+        const std::string& a = args[i];
+        auto next = [&](std::string& v) {
+            if (i + 1 >= args.size()) {
+                error = "missing value after " + a;
+                return false;
+            }
+            v = args[++i];
+            return true;
+        };
+        std::string v;
+        if (a == "--stdio") continue;
+        if (a == "--clangd") {
+            if (!next(out.clangd)) return false;
+        } else if (a == "-I") {
+            if (!next(v)) return false;
+            out.include_dirs.push_back(v);
+        } else if (a.compare(0, 2, "-I") == 0) {
+            out.include_dirs.push_back(a.substr(2));
+        } else if (a == "--resource-dir") {
+            if (!next(out.resource_dir)) return false;
+        } else if (a == "--cxxflag") {
+            if (!next(v)) return false;
+            out.extra_flags.push_back(v);
+        } else if (a == "--compile-commands-dir") {
+            if (!next(out.compile_commands_dir)) return false;
+        } else if (a == "--clangd-log") {
+            if (!next(out.clangd_log)) return false;
+        } else {
+            error = "unknown argument: " + a;
+            return false;
+        }
+    }
+    return true;
+}
+
+}  // namespace spp::ls

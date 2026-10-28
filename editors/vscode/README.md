@@ -8,7 +8,10 @@ This extension gives support for S++ scripts (`.spp`, language id `spp`).
   the numeric suffixes, the attributes (`[native, handle("...")]`), the comments and the
   string interpolation `${expr}` and `${expr:spec}`.
 - Brackets, comments and auto-close pairs (`language-configuration.json`).
-- A thin client of the S++ language server. It runs `spp-ls --stdio`.
+- A thin client of the S++ language server `spp-ls`. It runs `spp-ls --stdio`.
+  The server gives diagnostics, completion, hover, go-to-definition, references,
+  document symbols, workspace symbols, semantic tokens and rename.
+  See "Language server" in the top `README.md`.
 
 ## Settings
 
@@ -19,7 +22,27 @@ This extension gives support for S++ scripts (`.spp`, language id `spp`).
 | `spp.server.enable` | `true` | Start the server. |
 
 If the binary is missing, the extension shows one warning. Highlighting still works.
-The server is a fork of clangd. It is not built here (see `DECISIONS.md`, item 3).
+
+The build makes `build/spp-ls`. It is a proxy in front of a stock `clangd` (see `DECISIONS.md`, item 13).
+`clangd` must be in `PATH`, or you give its path with `--clangd`.
+Put the server arguments in `spp.server.args`. For example:
+
+```json
+"spp.server.args": ["--stdio", "-I", "/home/me/game/include",
+                    "--compile-commands-dir", "/home/me/game/build/spp_cdb"]
+```
+
+| Argument | Meaning |
+| --- | --- |
+| `--clangd path` | The clangd binary. `""` turns clangd off: only the analyze features stay. |
+| `-I dir` | An include dir for `using "x.h"` and for clangd. |
+| `--resource-dir dir` | The Clang resource dir. |
+| `--cxxflag flag` | A flag for the compile command of the generated C++. |
+| `--compile-commands-dir dir` | The output dir of `sppc --compile-commands`. It starts the clangd background index. The server also reads the `-I`, `-isystem` and `-D` flags of the first entry. |
+| `--clangd-log file` | The stderr of clangd, with `--log=info`. |
+
+The client can also give `includeDirs`, `clangd` and `compileCommandsDir` in `initializationOptions`.
+The extension does not expand `${workspaceFolder}` in `spp.server.args`. Use absolute paths.
 
 ## Install for development
 

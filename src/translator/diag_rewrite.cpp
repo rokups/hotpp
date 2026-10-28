@@ -522,4 +522,11 @@ std::string rewrite_diagnostic(const std::string& text, const ScriptTexts& scrip
     return result;
 }
 
+std::string rewrite_generated_names(const std::string& text) { return rename_generated(text); }
+
+std::string rewrite_clang_message(const std::string& message)
+{
+    return rewrite_message(message, has_script_function(message));
+}
+
 }  // namespace sppc
