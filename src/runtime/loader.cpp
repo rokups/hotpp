@@ -1,5 +1,6 @@
 #include "spp/runtime/loader.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cassert>
 #include <cstdio>
@@ -165,8 +166,54 @@ LoaderStats Loader::stats() const
     for (const Gen& g : gens_)
         st.generations.push_back({g.generation, g.state, pin_count(g.generation),
                                   code_refs(g, live), g.module.origin});
+    std::unordered_map<const ClassRecord*, size_t> by_class;
+    for (const ShellBase* s : g_live) ++by_class[s->cls];
+    for (const auto& [name, e] : registry_.entries()) {
+        const auto it = by_class.find(e.record);
+        st.classes.push_back({name, e.record->generation, e.record->slot_count,
+                              it == by_class.end() ? 0 : it->second, removed_.count(name) != 0});
+        st.slots += e.record->slot_count;
+    }
+    std::sort(st.classes.begin(), st.classes.end(),
+              [](const ClassInfo& a, const ClassInfo& b) { return a.name < b.name; });
+    st.removed_class_calls = removed_class_call_count();
     return st;
 }
+
+std::string format_stats(const LoaderStats& st)
+{
+    static const char* const kState[] = {"active", "retired", "unloaded"};
+    std::string o = "script_stats: active generation " + std::to_string(st.active_generation) + ", " +
+                    std::to_string(st.live_objects) + " live objects, " + std::to_string(st.classes.size()) +
+                    " classes, " + std::to_string(st.slots) + " slots\n";
+    for (const GenerationInfo& g : st.generations)
+        o += "  generation " + std::to_string(g.generation) + ": " + kState[static_cast<int>(g.state)] +
+             ", pins " + std::to_string(g.pins) + ", code refs " + std::to_string(g.code_refs) + ", " +
+             g.origin + "\n";
+    for (const ClassInfo& c : st.classes)
+        o += "  class " + c.name + ": generation " + std::to_string(c.generation) + ", " +
+             std::to_string(c.slots) + " slots, " + std::to_string(c.live_objects) + " live" +
+             (c.removed ? ", REMOVED" : "") + "\n";
+    o += "  removed class calls ignored: " + std::to_string(st.removed_class_calls) + "\n";
+    return o;
+}
+
+namespace {
+std::atomic<uint64_t> g_removed_calls{0};
+}  // namespace
+
+// The caller passes the arguments of the slot. The handler ignores them. The caller cleans the
+// argument registers or the stack in the ABIs that this project supports.
+void* removed_class_handler()
+{
+    if (g_removed_calls.fetch_add(1, std::memory_order_relaxed) == 0)
+        std::fprintf(stderr,
+                     "[script] call of a method of a removed script class ignored (the class is no "
+                     "longer in the source); later calls are counted only\n");
+    return nullptr;
+}
+
+uint64_t removed_class_call_count() { return g_removed_calls.load(std::memory_order_relaxed); }
 
 bool Loader::request_reload(Module module, std::string& error)
 {
@@ -198,12 +245,7 @@ bool Loader::request_reload(Module module, std::string& error)
         error = "a reload is already pending";
         return false;
     }
-    for (const auto& [name, cur] : registry_.entries()) {
-        if (!p->staged.find(name)) {
-            error = "class " + name + " is missing in the new generation";
-            return false;
-        }
-    }
+    // A class that is missing in the new generation is removed (design 6.1): no rejection.
     for (const auto& [name, in] : p->staged.entries()) {
         ClassEntry* canon = registry_.find(name);
         if (!in.record->layout) {
@@ -270,13 +312,16 @@ bool Loader::request_reload(Module module, std::string& error)
 bool Loader::commit_pending(std::string& error)
 {
     error.clear();
-    // Debug check: no worker is in script code now. Count first, then assert.
-    const int busy = in_script_tick();
-    if (busy != 0) {
-        g_unsafe_commits.fetch_add(1);
-        std::fprintf(stderr, "[script] BUG: commit with %d thread(s) in script code\n", busy);
+    // Debug check (design 6.3): all entry depths are zero. Count first, then assert.
+    // In a release build kTickChecks is false and this code is gone.
+    if constexpr (kTickChecks) {
+        const int busy = in_script_tick();
+        if (busy != 0) {
+            g_unsafe_commits.fetch_add(1);
+            std::fprintf(stderr, "[script] BUG: commit with %d thread(s) in script code\n", busy);
+        }
+        assert(busy == 0 && "commit_pending must run at the safe point");
     }
-    assert(busy == 0 && "commit_pending must run at the safe point");
     std::lock_guard<std::mutex> lock(mutex_);
     if (!pending_) return false;
     Pending& P = *pending_;
@@ -361,9 +406,27 @@ bool Loader::commit_pending(std::string& error)
             r->ctor_default = pc.incoming->ctor_default;
             r->dtor = pc.incoming->dtor;
             pc.incoming->canonical = r;
+            removed_.erase(r->name);  // the class is back; the table above replaced the handler table
         } else {
             registry_.add(pc.incoming, pc.create);
         }
+    }
+    // A class that the new generation does not have is removed (design 6.1). The record stays
+    // in the registry. Each slot points to the handler. The objects keep their state block.
+    for (auto& [name, entry] : registry_.entries()) {
+        if (P.staged.find(name) || removed_.count(name)) continue;
+        ClassRecord* r = entry.record;
+        std::vector<void*>& table = removed_[name];
+        table.assign(r->slot_count, reinterpret_cast<void*>(&removed_class_handler));
+        r->slots = table.data();
+        r->on_reload = nullptr;
+        r->dtor = nullptr;  // the script destructor belongs to a source that does not exist now
+        size_t live = 0;
+        for (const ShellBase* s : g_live) live += s->cls == r;
+        std::fprintf(stderr,
+                     "[script] WARNING: class %s is removed from the source; %zu live object(s) keep "
+                     "their state, and calls of its methods are ignored\n",
+                     name.c_str(), live);
     }
     // A new class with a script parent: "super" points to the record of the parent in the
     // registry, so a walk of the records sees the canonical records (design 4.5).

@@ -261,7 +261,13 @@ The reload commit runs only in this hook. At that time no thread is in script co
 
 A compile thread can call `Loader::request_reload` and `Loader::reload_pending` at any time. These functions take the mutex of the loader. They only validate. They change no live class and no live object. `commit_pending` takes the same mutex.
 
-The debug check is the counter `spp::in_script_tick()`. The engine wraps each actor tick in a `spp::ScriptTickScope`. `commit_pending` asserts that the counter is zero. It also counts a violation in `spp::unsafe_commit_count()`.
+The debug check is the counter `spp::in_script_tick()`. The engine wraps each actor tick in a `spp::ScriptTickScope`. `commit_pending` asserts that the counter is zero. It also counts a violation in `spp::unsafe_commit_count()`. The check exists in debug builds only. With `NDEBUG`, `spp::kTickChecks` is false, `ScriptTickScope` does nothing and the commit has no check.
+
+A class that a new generation drops is removed (design 6.1). Its record stays. Its live objects keep their state. Each slot points to `spp::removed_class_handler()`, which logs the first call, counts all calls and returns zero. A floating point result of such a call is not defined. The class can come back in a later generation. `Loader::stats()` and `Loader::stats_text()` (the `script_stats` text) list the generations, the pins, the live objects, the classes with their slots and the removed classes.
+
+`minengine script.spp [Class]` compiles the script, ticks at 60 Hz and reloads when the file changes (`FileWatcher`: inotify on Linux, polling else). Commands on stdin: `reload`, `stats`, `quit`.
+
+The warnings of a reload use readable names: C++ type names (`int`, `std::string`) and class names (`Hero`, not `HeroState_g2`).
 
 Rules for threads:
 

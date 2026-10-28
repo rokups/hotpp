@@ -147,7 +147,7 @@ struct Rig {
     {
         spp::ShellBase* sh = shell_of.find(a)->second;
         ticks_checked.fetch_add(1, std::memory_order_relaxed);
-        bool ok = spp::in_script_tick() >= 1;
+        bool ok = !spp::kTickChecks || spp::in_script_tick() >= 1;  // the counter exists in debug builds
         const uint32_t gen = sh->cls->generation;
         ok = ok && gen == spp::active_generation;
         const float* hp = spp::field_ptr<float>(sh, "hp");

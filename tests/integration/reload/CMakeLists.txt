@@ -14,11 +14,13 @@ add_executable(integration_reload_tests
     exception_tests.cpp
     inheritance_tests.cpp
     interface_tests.cpp
+    runtime_polish_tests.cpp
+    ${CMAKE_SOURCE_DIR}/example/engine/Harness.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Actor.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Object.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Util.cpp)
 target_include_directories(integration_reload_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests)
-target_link_libraries(integration_reload_tests PRIVATE spp_backend GTest::gtest_main)
+target_link_libraries(integration_reload_tests PRIVATE spp_backend engine_harness GTest::gtest_main)
 set_target_properties(integration_reload_tests PROPERTIES ENABLE_EXPORTS ON)
 add_dependencies(integration_reload_tests gen1 gen2 gen4_base)
 target_compile_definitions(integration_reload_tests PRIVATE

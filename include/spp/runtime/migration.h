@@ -46,6 +46,12 @@ struct MigrationPlan {
     std::vector<std::string> warnings;   // data loss that the reload accepts; the commit logs them
 };
 
+// Readable text for the log (design 6.6). "type_key" is a mangled type name from typeid, for
+// example "i". The result is the C++ name, for example "int". Unknown text stays as it is.
+std::string readable_type(const char* type_key);
+// The class name of a state layout name. The generated name "HeroState_g2" gives "Hero".
+std::string readable_layout(const char* layout_name);
+
 // Compares the old and the new field tables. It has no side effects. A type change never
 // rejects the reload: it converts the value (hook) or it uses the default value (warning).
 MigrationPlan build_plan(const StateLayout& old_layout, const StateLayout& new_layout);

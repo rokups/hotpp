@@ -1,0 +1,24 @@
+// Generation 1 of the removed class test (design 6.1). The classes are Hero and Ghost.
+// Generation 2 does not have Ghost.
+using "Actor.h";
+
+class Hero : Actor {
+    int ticks = 0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+    }
+}
+
+class Ghost : Actor {
+    int haunts = 0;
+    float chill = 2.5;
+
+    override void Tick(float dt) {
+        this.haunts = this.haunts + 1;
+    }
+
+    override void TakeDamage(float amount) {
+        this.chill = this.chill + amount;
+    }
+}

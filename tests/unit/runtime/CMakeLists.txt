@@ -5,6 +5,8 @@ add_executable(unit_runtime_tests
     module_state_tests.cpp
     intrusive_handle_tests.cpp
     ref_arg_tests.cpp
-    shell_tests.cpp)
-target_link_libraries(unit_runtime_tests PRIVATE spp_runtime GTest::gtest_main)
+    shell_tests.cpp
+    log_text_tests.cpp
+    file_watcher_tests.cpp)
+target_link_libraries(unit_runtime_tests PRIVATE spp_runtime engine_harness GTest::gtest_main)
 gtest_discover_tests(unit_runtime_tests)

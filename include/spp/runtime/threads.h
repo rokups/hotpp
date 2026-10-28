@@ -31,6 +31,22 @@ extern uint32_t active_generation;
 //   - Other threads (for example a compile thread) call only
 //     Loader::request_reload and Loader::reload_pending. These take the Loader mutex.
 //   - Pins and the stale call counter are atomic. Any thread can use them.
+//
+// The check exists in debug builds only (design 6.3). With NDEBUG, kTickChecks is false,
+// ScriptTickScope does nothing, in_script_tick() is always zero and the commit does not
+// check the depths. So a release build pays nothing.
+#ifdef NDEBUG
+inline constexpr bool kTickChecks = false;
+inline int in_script_tick() { return 0; }
+inline uint64_t unsafe_commit_count() { return 0; }
+class ScriptTickScope {
+public:
+    ScriptTickScope() = default;
+    ScriptTickScope(const ScriptTickScope&) = delete;
+    ScriptTickScope& operator=(const ScriptTickScope&) = delete;
+};
+#else
+inline constexpr bool kTickChecks = true;
 int in_script_tick();
 uint64_t unsafe_commit_count();
 
@@ -42,6 +58,7 @@ public:
     ScriptTickScope(const ScriptTickScope&) = delete;
     ScriptTickScope& operator=(const ScriptTickScope&) = delete;
 };
+#endif
 
 // Called by a generation function when its generation is not live.
 void stale_call(const char* what);

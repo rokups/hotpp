@@ -1,10 +1,46 @@
 #include "spp/runtime/migration.h"
 
+#include <cxxabi.h>
+
+#include <cstdlib>
 #include <cstring>
 
 #include "runtime_internal.h"
 
 namespace spp {
+
+std::string readable_type(const char* type_key)
+{
+    if (!type_key) return "?";
+    int status = 0;
+    char* d = abi::__cxa_demangle(type_key, nullptr, nullptr, &status);
+    if (status != 0 || !d) {
+        std::free(d);
+        return type_key;
+    }
+    std::string out = d;
+    std::free(d);
+    // The long names of the standard string types get their short names.
+    static const std::pair<const char*, const char*> kShort[] = {
+        {"std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >", "std::string"},
+        {"std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>", "std::string"},
+        {"std::basic_string<char, std::char_traits<char>, std::allocator<char> >", "std::string"},
+        {"std::basic_string<char, std::char_traits<char>, std::allocator<char>>", "std::string"},
+    };
+    for (const auto& [from, to] : kShort)
+        for (size_t at; (at = out.find(from)) != std::string::npos;) out.replace(at, std::strlen(from), to);
+    return out;
+}
+
+std::string readable_layout(const char* layout_name)
+{
+    std::string n = layout_name ? layout_name : "?";
+    const size_t at = n.rfind("State_g");
+    if (at == std::string::npos || at == 0 || at + 7 >= n.size()) return n;
+    for (size_t i = at + 7; i < n.size(); ++i)
+        if (n[i] < '0' || n[i] > '9') return n;
+    return n.substr(0, at);
+}
 
 MigrationPlan build_plan(const StateLayout& o, const StateLayout& n)
 {
@@ -23,7 +59,7 @@ MigrationPlan build_plan(const StateLayout& o, const StateLayout& n)
                 // A [value] script class: the type name is the same, the layout may differ.
                 auto sub = std::make_shared<MigrationPlan>(build_plan(*of.sub, *nf.sub));
                 for (const std::string& w : sub->warnings)
-                    plan.warnings.push_back(std::string(n.name) + "." + nf.name + ": " + w);
+                    plan.warnings.push_back(readable_layout(n.name) + "." + nf.name + ": " + w);
                 plan.steps[i] = {FieldAction::Nested, j, std::move(sub)};
                 return;
             }
@@ -35,8 +71,9 @@ MigrationPlan build_plan(const StateLayout& o, const StateLayout& n)
         if (nf.convert && nf.convert_from && std::strcmp(nf.convert_from, of.type_key) == 0) {
             plan.steps[i] = {FieldAction::Convert, j};
         } else {
-            plan.warnings.push_back(std::string(n.name) + ": field " + nf.name +
-                                    " changed its type (" + of.type_key + " -> " + nf.type_key +
+            plan.warnings.push_back(readable_layout(n.name) + ": field " + nf.name +
+                                    " changed its type (" + readable_type(of.type_key) + " -> " +
+                                    readable_type(nf.type_key) +
                                     "); no matching convert hook, the default value is used");
         }
     };
@@ -68,7 +105,7 @@ MigrationPlan build_plan(const StateLayout& o, const StateLayout& n)
             if (done[i] || paired[i] || std::strcmp(n.fields[i].type_key, o.fields[j].type_key) != 0)
                 continue;
             paired[i] = true;
-            plan.warnings.push_back(std::string(n.name) + ": field " + o.fields[j].name +
+            plan.warnings.push_back(readable_layout(n.name) + ": field " + o.fields[j].name +
                                     " is removed and field " + n.fields[i].name +
                                     " is added. This looks like a rename; the value is lost. Add [alias(\"" +
                                     o.fields[j].name + "\")] to keep it");

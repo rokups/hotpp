@@ -13,10 +13,12 @@ uint32_t active_generation = 0;
 static std::atomic<int> g_in_script_tick{0};
 std::atomic<uint64_t> g_unsafe_commits{0};
 
+#ifndef NDEBUG
 int in_script_tick() { return g_in_script_tick.load(); }
 uint64_t unsafe_commit_count() { return g_unsafe_commits.load(); }
 ScriptTickScope::ScriptTickScope() { g_in_script_tick.fetch_add(1); }
 ScriptTickScope::~ScriptTickScope() { g_in_script_tick.fetch_sub(1); }
+#endif
 
 static std::atomic<uint64_t> g_stale_calls{0};
 

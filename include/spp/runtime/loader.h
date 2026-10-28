@@ -29,11 +29,32 @@ struct GenerationInfo {
     std::string origin;
 };
 
+// One script class in the stats (design 8.4).
+struct ClassInfo {
+    std::string name;
+    uint32_t generation;  // the generation of the dispatch table
+    uint32_t slots;       // the number of slots in the dispatch table
+    size_t live_objects;
+    bool removed;         // the source dropped the class; the slots point to the removed class handler
+};
+
 struct LoaderStats {
     uint32_t active_generation = 0;
     std::vector<GenerationInfo> generations;  // in load order
     size_t live_objects = 0;
+    std::vector<ClassInfo> classes;           // sorted by name
+    size_t slots = 0;                         // the sum of the slots of all classes
+    uint64_t removed_class_calls = 0;         // calls that the removed class handler ignored
 };
+
+// The text of the stats for a log or a command channel ("script_stats", design 8.4).
+std::string format_stats(const LoaderStats& stats);
+
+// The handler that the slots of a removed class (design 6.1) point to. It logs the first
+// call, counts the calls and returns zero (a null pointer, 0 or false). The caller may pass any
+// arguments. A floating point result is not defined.
+void* removed_class_handler();
+uint64_t removed_class_call_count();
 
 // Restart request (design 6.6). The runtime calls it when it cannot go on, for example
 // when a native move constructor throws during a migration. The engine sets a handler
@@ -66,6 +87,8 @@ void request_restart(const char* reason);
 // The first module goes through load(). A later module goes through
 // request_reload(), which only validates (no side effect on live objects),
 // and then commit_pending(), which the World loop calls at a safe point.
+// A class that the new generation does not have is removed (design 6.1). Its record stays,
+// the live objects stay valid, and each slot points to removed_class_handler().
 // The first record of a class stays the record of the class for ever. A
 // commit copies the slots and the layout of the new record into it.
 // A thunk keeps the address of the first registration (append-only).
@@ -106,6 +129,7 @@ public:
     unsigned frame_boundary();
 
     LoaderStats stats() const;
+    std::string stats_text() const { return format_stats(stats()); }
 
     const ClassEntry* find(const std::string& name) const { return registry_.find(name); }
     // The module state of the live generation: the layout and the slot. Null layout: none.
@@ -135,6 +159,9 @@ private:
     std::unordered_map<const ClassRecord*, uint32_t> record_gen_;  // the module that holds a record
     uint64_t frame_ = 0;
     std::unique_ptr<Pending> pending_;
+    // The dispatch tables of the removed classes (design 6.1), by class name. The record of a
+    // removed class keeps its place in "registry_" while objects live.
+    std::unordered_map<std::string, std::vector<void*>> removed_;
     // The live module state block (module-level script variables). Null: the script has none.
     // "mod_slot_" is the slot variable of the module that made the layout. It points to the block.
     const StateLayout* mod_layout_ = nullptr;

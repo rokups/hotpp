@@ -56,8 +56,12 @@ target_link_libraries(spp_runtime PUBLIC ${CMAKE_DL_LIBS} Threads::Threads)
 
 # Engine harness. ENABLE_EXPORTS adds -rdynamic, so a generation module
 # resolves the engine symbols and the runtime symbols from the executable.
-add_executable(minengine example/engine/main.cpp example/engine/Actor.cpp example/engine/Util.cpp)
-target_link_libraries(minengine PRIVATE spp_runtime)
+# The file watcher and the command channel are in the library engine_harness. The tests use it.
+add_library(engine_harness STATIC example/engine/FileWatcher.cpp)
+target_include_directories(engine_harness PUBLIC ${CMAKE_SOURCE_DIR}/example/engine)
+add_executable(minengine example/engine/main.cpp example/engine/Harness.cpp
+    example/engine/Actor.cpp example/engine/Util.cpp)
+target_link_libraries(minengine PRIVATE spp_backend engine_harness)
 set_target_properties(minengine PROPERTIES ENABLE_EXPORTS ON)
 
 # ------------------------------------------------------------ Step F1
