@@ -44,4 +44,5 @@ void World::Add(Actor* actor)
 void World::Tick(float dt)
 {
     for (Actor* a : actors_) a->Tick(dt);
+    if (hook_) hook_();  // frame boundary
 }

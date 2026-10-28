@@ -25,7 +25,8 @@ enum : unsigned {
     SLOT_Tick = 0,
     SLOT_TakeDamage_f = 1,
     SLOT_TakeDamage_Af = 2,
-    SLOT_COUNT = 3,
+    SLOT_heal = 3,  // a bindable method has a slot, so that a thunk reaches the live body
+    SLOT_COUNT = 4,
 };
 
 extern script::ClassRecord Player_record;
@@ -125,15 +126,31 @@ static void Player__TakeDamage_Af(Actor* a, Actor& src, float amount)
     self->TakeDamage(amount);  // script virtual method: goes through the slot
 }
 
+static void Player__heal_slot(Actor* a, float amount)
+{
+    Player__heal(static_cast<Player_Shell*>(a), amount);
+}
+
+// ------------------------------------------------------------- thunk
+// The thunk has the same address in each generation (section 4.11). It lives
+// in this first module, which stays loaded. It reads the slot at call time.
+static void Player__heal__thunk(Actor* a, float amount)
+{
+    auto* self = static_cast<Player_Shell*>(a);
+    return script::call<void(Actor*, float)>(self->cls, SLOT_heal, a, amount);
+}
+
 // ------------------------------------------------------ record and entry
 static void* Player_slots[SLOT_COUNT] = {
     reinterpret_cast<void*>(&Player__Tick),
     reinterpret_cast<void*>(&Player__TakeDamage_f),
     reinterpret_cast<void*>(&Player__TakeDamage_Af),
+    reinterpret_cast<void*>(&Player__heal_slot),
 };
 
 script::ClassRecord Player_record = {
     "Player", GEN, Player_slots, SLOT_COUNT, &Player_layout, nullptr,
+    "Actor", script::shell_layout_hash("Actor", sizeof(Player_Shell), alignof(Player_Shell), 3),
 };
 
 static script::Instance Player_create()
@@ -145,4 +162,5 @@ static script::Instance Player_create()
 extern "C" void script_register(script::Registry& reg)
 {
     reg.add(&Player_record, &Player_create);
+    reg.add_thunk("Player::heal", reinterpret_cast<void*>(&Player__heal__thunk));
 }
