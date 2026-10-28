@@ -54,6 +54,8 @@ struct Walker {
             for (const ExprP& a : n->args) expr(a);
         } else if (auto* tt = std::get_if<TypeTestExpr>(&e.v)) {
             expr(tt->obj);
+        } else if (auto* ip = std::get_if<InterpExpr>(&e.v)) {
+            for (const ExprP& a : ip->args) expr(a);
         } else if (auto* l = std::get_if<LambdaExpr>(&e.v)) {
             block(l->body);
         }

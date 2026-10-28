@@ -43,7 +43,7 @@ Build commands:
 Measured on this machine (warm load of v2): JIT 808 ms, JIT with PCH 166 ms, CLANG_FILES 947 ms. Compile time dominates now.
 
 ## Not done (in this order of value)
-1. Language: `void onReload(OldState old)` and the `convert` hook. Script inheritance and script virtual methods (`virtual` has no effect yet). String interpolation. `is` and `as`.
+1. Language: `void onReload(OldState old)` and the `convert` hook. Script inheritance and script virtual methods (`virtual` has no effect yet). `is` and `as`. String interpolation `"${expr}"` lowers to `std::format` or `fmt::format` (S7).
 2. Generation 1 never unloads. Move the canonical `ClassRecord`, the factory, the thunks and the first vtable into a module that never unloads (design milestone M8).
 3. Experiment F3: debugger check. lldb is not installed here (see `DECISIONS.md`); the DWARF line table has the script lines. Set a breakpoint in a script method and step. Check that lldb shows `player.spp` lines. The JIT backend registers no debugger plugin and uses `-gline-tables-only`.
 4. Windows and macOS are not tested. The design lists the risks (RTTI comparison, symbol export, PDB).
@@ -79,7 +79,8 @@ The syntax is type-first. See `README.md` and `spp-design.md` (section 7) for th
 - The parser reads and stores the access words. The translator does not enforce them.
 - The parser reads and stores `virtual` and `new`. They have no effect yet.
 - The rewrite of `p.N` uses the name only, because the lowering has no types. It knows only the properties of the current class. If `p` is not an object of the class, the access throws `std::runtime_error`.
-- Not in the parser: string interpolation, `is`, `as`. `new T(args)` of a native type works (parentheses only).
+- String interpolation: `${expr}` or `${expr:spec}` in a double-quoted string. The spec splits at the first `:` at depth 0 that is not part of `::` or `?:`. Option `--format=fmt` (`TranslateOptions::format_lib`) uses `fmt::format` and `<fmt/format.h>`; the user supplies fmt. A bare field name in `${}` follows the normal rule: write `this.hp`.
+- `new T(args)` of a native type works (parentheses only).
 - Script constructors and `new` of a script class (S4):
   - How it works. The shell and the vtable stay in generation 1. So the canonical `ClassRecord` of generation 1 has a type-erased entry `construct`. It builds the shell from a tuple of the `super` arguments. A later generation calls it through `spp::construct_shell` (`include/spp/runtime/shell.h`) and then runs its own constructor body. The key `construct_key` is the type name of the tuple. A mismatch gives a `std::runtime_error`.
   - A constructor is not in the slot table. A reload does not run it again. A changed body applies to new objects only. The commit copies `ctor_default` and `dtor` to the canonical record. The loader does not touch `construct`.

@@ -26,6 +26,10 @@ struct TranslateOptions {
     // type that is not a handle. True (the default): a violation is an error. False: it is a
     // warning (sppc --no-strict-borrowed).
     bool strict_borrowed = true;
+    // The function for string interpolation "${expr}" (DECISIONS item 10): "std" lowers to
+    // std::format and adds <format>. "fmt" lowers to fmt::format and adds <fmt/format.h>. The
+    // user supplies the fmt header. Any other value is an error.
+    std::string format_lib = "std";
 };
 
 struct TranslateResult {

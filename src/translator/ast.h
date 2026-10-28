@@ -133,6 +133,16 @@ struct LambdaExpr {
     BlockStmt body;
     uint32_t pos = 0;
 };
+// A string with "${expr}" or "${expr:spec}" (design 7.3, DECISIONS item 10). The literal parts
+// keep the script text between the quotes (with escapes). "lits" has one more item than "args".
+// The text is lits[0] args[0] lits[1] ... args[n-1] lits[n]. The lowering replaces the node with
+// a call of std::format or fmt::format.
+struct InterpExpr {
+    std::vector<std::string> lits;
+    std::vector<ExprP> args;
+    std::vector<std::string> specs;  // the format spec of each arg, without the ":" (may be empty)
+    uint32_t pos = 0;
+};
 struct RawExpr {  // C++ text that is already lowered
     std::string text;
     uint32_t pos = 0;
@@ -141,7 +151,7 @@ struct RawExpr {  // C++ text that is already lowered
 struct Expr {
     std::variant<NameExpr, ThisExpr, SuperExpr, NullExpr, NumberExpr, StringExpr, CharExpr, MemberExpr,
                  CallExpr, IndexExpr, UnaryExpr, RefExpr, BinaryExpr, TernaryExpr, ParenExpr,
-                 NewExpr, LambdaExpr, RawExpr, TypeTestExpr>
+                 NewExpr, LambdaExpr, RawExpr, TypeTestExpr, InterpExpr>
         v;
 };
 

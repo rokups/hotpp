@@ -39,8 +39,8 @@ namespace {
 {
     std::fprintf(stderr,
                  "usage: sppc <file.spp>... --gen N (--out-dir DIR | -o x.so) [-I dir]... [--resource-dir dir]\n"
-                 "            [--cxx command] [--cxxflag flag]... [--slots file] [--no-strict-borrowed]\n"
-                 "       sppc --emit-cpp <file.spp> --gen N [-o out.cpp] [-I dir]... [--prelude file]... [--no-strict-borrowed]\n"
+                 "            [--cxx command] [--cxxflag flag]... [--slots file] [--no-strict-borrowed] [--format=std|fmt]\n"
+                 "       sppc --emit-cpp <file.spp> --gen N [-o out.cpp] [-I dir]... [--prelude file]... [--no-strict-borrowed] [--format=std|fmt]\n"
                  "            [--slots file] [--resource-dir dir]\n");
     std::exit(2);
 }
@@ -65,6 +65,7 @@ struct Args {
     // Options that only one mode accepts.
     bool has_build_only = false;  // --out-dir, --cxx, --cxxflag
     bool has_emit_only = false;   // --prelude
+    std::string format_lib = "std";  // --format=std|fmt
     bool strict_borrowed = true;  // --no-strict-borrowed turns it off
 };
 
@@ -88,6 +89,8 @@ Args parse_args(int argc, char** argv)
         else if (a == "--prelude") { r.preludes.push_back(next()); r.has_emit_only = true; }
         else if (a == "--strict-borrowed") r.strict_borrowed = true;
         else if (a == "--no-strict-borrowed") r.strict_borrowed = false;
+        else if (a == "--format=std") r.format_lib = "std";
+        else if (a == "--format=fmt") r.format_lib = "fmt";
         else if (a == "-I") r.include_dirs.push_back(next());
         else if (a.rfind("-I", 0) == 0) r.include_dirs.push_back(a.substr(2));
         else if (!a.empty() && a[0] == '-') usage();
@@ -102,6 +105,7 @@ int run_emit(const Args& args)
     sppc::TranslateOptions opt;
     opt.generation = args.gen;
     opt.strict_borrowed = args.strict_borrowed;
+    opt.format_lib = args.format_lib;
     opt.resource_dir = args.resource_dir;
     opt.include_dirs = args.include_dirs;
     for (const std::string& file : args.preludes) {
@@ -161,6 +165,7 @@ int run_build(const Args& args)
     opt.extra_flags = args.cxxflags;
     opt.include_dirs = args.include_dirs;
     opt.strict_borrowed = args.strict_borrowed;
+    opt.format_lib = args.format_lib;
     std::string out_dir = args.out_dir;
     if (single_so) {
         out_dir = fs::path(args.output).parent_path().string();

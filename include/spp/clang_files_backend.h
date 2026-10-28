@@ -24,6 +24,7 @@ struct ClangFilesOptions {
     std::string work_dir = "spp_work";        // the .cpp and .so files go here
     std::string slots_file;                   // empty: <work_dir>/slots.txt
     bool strict_borrowed = true;              // false: a borrowed-storage finding is a warning
+    std::string format_lib = "std";           // string interpolation: "std" or "fmt"
 };
 
 class ClangFilesBackend : public Backend {

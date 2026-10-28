@@ -110,16 +110,52 @@ constexpr auto kw_out = LEXY_KEYWORD("out", id);
 // ---------------------------------------------------------------- literals
 // A string or character literal. It has two values: the position after the opening quote
 // and the position of the closing quote. A backslash hides the next char. No newline inside.
+// The text of "${ ... }" inside a string, after the "${". It ends at the matching "}". It skips
+// nested strings, characters and braces, so a string can hold "${f("x")}". A newline is allowed.
+struct interp_body : lexy::token_production {
+    static constexpr auto rule = [] {
+        auto str = dsl::lit_c<'"'> >>
+                   dsl::loop(dsl::lit_c<'"'> >> dsl::break_ |
+                             dsl::lit_c<'\\'> >> dsl::if_(any_unit) |
+                             LEXY_LIT("${") >> dsl::recurse<interp_body> |
+                             dsl::eof >> dsl::error<e_unterminated_literal> |
+                             dsl::else_ >> any_unit);
+        auto chr = dsl::lit_c<'\''> >>
+                   dsl::loop(dsl::lit_c<'\''> >> dsl::break_ |
+                             dsl::lit_c<'\\'> >> dsl::if_(any_unit) |
+                             dsl::eof >> dsl::error<e_unterminated_literal> |
+                             dsl::else_ >> any_unit);
+        return dsl::loop(dsl::lit_c<'}'> >> dsl::break_ |
+                         dsl::eof >> dsl::error<e_unterminated_literal> | str | chr |
+                         dsl::lit_c<'{'> >> dsl::recurse<interp_body> | dsl::else_ >> any_unit);
+    }();
+    static constexpr auto value = lexy::noop;
+};
+
+// A string literal also skips "${ ... }" (the interpolation, design 7.3).
 template <char Quote>
-constexpr auto quoted =
-    dsl::lit_c<Quote> >>
-    (dsl::position +
-        dsl::loop(dsl::peek(dsl::lit_c<Quote>) >> dsl::break_ |
-                  dsl::lit_c<'\\'> >> dsl::if_(any_unit) |
-                  dsl::peek(dsl::newline) >> dsl::error<e_unterminated_literal> |
-                  dsl::eof >> dsl::error<e_unterminated_literal> |
-                  dsl::else_ >> any_unit) +
-        dsl::position + dsl::lit_c<Quote>);
+constexpr auto quoted = [] {
+    if constexpr (Quote == '"') {
+        return dsl::lit_c<Quote> >>
+               (dsl::position +
+                dsl::loop(dsl::peek(dsl::lit_c<Quote>) >> dsl::break_ |
+                          dsl::lit_c<'\\'> >> dsl::if_(any_unit) |
+                          LEXY_LIT("${") >> dsl::p<interp_body> |
+                          dsl::peek(dsl::newline) >> dsl::error<e_unterminated_literal> |
+                          dsl::eof >> dsl::error<e_unterminated_literal> |
+                          dsl::else_ >> any_unit) +
+                dsl::position + dsl::lit_c<Quote>);
+    } else {
+        return dsl::lit_c<Quote> >>
+               (dsl::position +
+                dsl::loop(dsl::peek(dsl::lit_c<Quote>) >> dsl::break_ |
+                          dsl::lit_c<'\\'> >> dsl::if_(any_unit) |
+                          dsl::peek(dsl::newline) >> dsl::error<e_unterminated_literal> |
+                          dsl::eof >> dsl::error<e_unterminated_literal> |
+                          dsl::else_ >> any_unit) +
+                dsl::position + dsl::lit_c<Quote>);
+    }
+}();
 
 constexpr auto string_lit = quoted<'"'>;
 constexpr auto char_lit = quoted<'\''>;

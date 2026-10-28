@@ -277,6 +277,113 @@ struct number_p : lexy::token_production {
         lexy::parse_state, lexy::values);
 };
 
+// ---------------------------------------------------------------- string interpolation
+// The scanners below read the text of a string that lexy has already accepted. "p" is after
+// the "${". They return the position of the matching "}".
+const char* scan_interp(const char* p, const char* end);
+
+// "p" is after the opening quote. Returns the position after the closing quote.
+const char* skip_quoted(const char* p, const char* end, char quote)
+{
+    while (p < end) {
+        if (*p == '\\') {
+            p += 2;
+        } else if (*p == quote) {
+            return p + 1;
+        } else if (quote == '"' && *p == '$' && p + 1 < end && p[1] == '{') {
+            const char* c = scan_interp(p + 2, end);
+            if (!c) return end;
+            p = c + 1;
+        } else {
+            ++p;
+        }
+    }
+    return end;
+}
+
+const char* scan_interp(const char* p, const char* end)
+{
+    int depth = 0;
+    while (p < end) {
+        const char c = *p;
+        if (c == '"' || c == '\'') p = skip_quoted(p + 1, end, c);
+        else if (c == '{') { ++depth; ++p; }
+        else if (c == '}') {
+            if (depth == 0) return p;
+            --depth;
+            ++p;
+        } else ++p;
+    }
+    return nullptr;
+}
+
+// The place of the ":" that starts the format spec in the text of "${...}", or null. The colon
+// must be at depth 0, not a part of "::" and not the colon of "a ? b : c".
+const char* find_spec(const char* b, const char* e)
+{
+    int depth = 0, pending = 0;
+    for (const char* p = b; p < e;) {
+        const char c = *p;
+        if (c == '"' || c == '\'') {
+            p = skip_quoted(p + 1, e, c);
+            continue;
+        }
+        if (c == '(' || c == '[' || c == '{') ++depth;
+        else if (c == ')' || c == ']' || c == '}') --depth;
+        else if (depth == 0 && c == '?') ++pending;
+        else if (depth == 0 && c == ':') {
+            if (p + 1 < e && p[1] == ':') { p += 2; continue; }
+            if (pending > 0) --pending;
+            else return p;
+        }
+        ++p;
+    }
+    return nullptr;
+}
+
+// "text" is a string literal with its quotes. Gives a StringExpr, or an InterpExpr when the
+// string has "${". A string with no "${" is the same node as before.
+ExprP make_string(const ParseState& st, const char* b, const char* e)
+{
+    auto plain = [&] { return ast::make_expr(ast::StringExpr{std::string(b, e), st.offset(b)}); };
+    bool found = false;
+    for (const char* p = b + 1; p + 1 < e; ++p) {
+        if (*p == '\\') ++p;
+        else if (*p == '$' && p[1] == '{') { found = true; break; }
+    }
+    if (!found) {
+        // A "\${" escape alone also needs the interpolation node: the escape is not C++.
+        if (std::string_view(b, e - b).find("\\${") == std::string_view::npos) return plain();
+    }
+    ast::InterpExpr n;
+    n.pos = st.offset(b);
+    std::string cur;
+    const char* close_quote = e - 1;
+    const ParseInput in{std::string_view(st.base, st.size), st.map};
+    for (const char* p = b + 1; p < close_quote;) {
+        if (*p == '\\' && p + 1 < close_quote) {
+            cur.append(p, 2);
+            p += 2;
+        } else if (*p == '$' && p + 1 < close_quote && p[1] == '{') {
+            const char* c = scan_interp(p + 2, close_quote);
+            if (!c) return plain();
+            const char* spec = find_spec(p + 2, c);
+            const char* ex_end = spec ? spec : c;
+            ast::ExprP arg = parse_expression(in, Span{st.offset(p + 2), st.offset(ex_end)}, *st.diag);
+            if (!arg) return plain();  // the parser added the error
+            n.lits.push_back(std::move(cur));
+            cur.clear();
+            n.args.push_back(std::move(arg));
+            n.specs.push_back(spec ? std::string(spec + 1, c) : std::string());
+            p = c + 1;
+        } else {
+            cur.push_back(*p++);
+        }
+    }
+    n.lits.push_back(std::move(cur));
+    return ast::make_expr(std::move(n));
+}
+
 // A string or a character literal. The text keeps the quotes.
 template <typename Node, char Quote>
 struct literal_p : lexy::token_production {
@@ -284,7 +391,8 @@ struct literal_p : lexy::token_production {
     static constexpr auto value = lexy::bind(
         lexy::callback<ExprP>([](const ParseState& st, const char* b, const char*, const char*,
                                  const char* e) {
-            return ast::make_expr(Node{std::string(b, e), st.offset(b)});
+            if constexpr (std::is_same_v<Node, ast::StringExpr>) return make_string(st, b, e);
+            else return ast::make_expr(Node{std::string(b, e), st.offset(b)});
         }),
         lexy::parse_state, lexy::values);
 };

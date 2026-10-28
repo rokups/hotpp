@@ -86,6 +86,10 @@ struct RCtx {
     // Set to true when a bare "this" becomes a handle (spp::handle_from_this). The translator
     // then gives a native-base shell the base std::enable_shared_from_this. May be null.
     bool* handle_this = nullptr;
+    // String interpolation (design 7.3): "std" (the default) or "fmt". Set to true when a
+    // string becomes a call of the format function. The translator then adds the include. May be null.
+    std::string format_lib = "std";
+    bool* uses_format = nullptr;
 };
 
 // The context of a class: the fields and the script fns. A body or an initializer

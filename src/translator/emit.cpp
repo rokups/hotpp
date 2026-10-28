@@ -112,6 +112,20 @@ struct ExprPrinter {
     void operator()(const StringExpr& n) const { e.put(n.text, n.pos); }
     void operator()(const CharExpr& n) const { e.put(n.text, n.pos); }
     void operator()(const RawExpr& n) const { e.put(n.text, n.pos); }
+    // The script form. The lowering replaces the node, so only a parse test prints it.
+    void operator()(const InterpExpr& n) const
+    {
+        std::string t = "\"";
+        for (size_t i = 0; i < n.lits.size(); ++i) {
+            t += n.lits[i];
+            if (i < n.args.size()) {
+                t += "${" + print(*n.args[i]);
+                if (!n.specs[i].empty()) t += ":" + n.specs[i];
+                t += "}";
+            }
+        }
+        e.put(t + "\"", n.pos);
+    }
     void operator()(const MemberExpr& n) const
     {
         emit_expr(*n.obj, e);

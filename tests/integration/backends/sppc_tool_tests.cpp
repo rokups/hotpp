@@ -9,7 +9,9 @@
 #include <filesystem>
 #include <string>
 
+#include "spp/backend.h"
 #include "support/script_files.h"
+#include "support/test_support.h"
 
 namespace {
 
@@ -122,5 +124,99 @@ TEST(SppcTool, StrictBorrowedIsTheDefault)
         << relaxed;
     EXPECT_NE(relaxed.find("warning"), std::string::npos) << relaxed;
 }
+
+// String interpolation (design 7.3, DECISIONS item 10).
+const char* kInterpScript =
+    "using <string>;\n"
+    "using \"Actor.h\";\n"
+    "class Hero : Actor {\n"
+    "    int hp = 7;\n"
+    "    float ratio = 0.5;\n"
+    "    std.string Label() { return \"L${this.hp}\"; }\n"
+    "    override void Tick(float dt) {\n"
+    "        this.Name = \"hp = ${this.hp}, name ${this.Label()}, r ${this.ratio:.2f} {x} \\${y} "
+    "${this.hp > 3 ? \"hi\" : \"lo\"}\";\n"
+    "    }\n"
+    "}\n";
+
+std::string write_interp_script(const std::string& name)
+{
+    const std::string script = std::string(SPP_BINARY_DIR) + "/" + name;
+    std::FILE* f = std::fopen(script.c_str(), "w");
+    if (f) {
+        std::fputs(kInterpScript, f);
+        std::fclose(f);
+    }
+    return script;
+}
+
+std::string engine_args()
+{
+    return std::string(" --gen 1 -I '") + SPP_SOURCE_DIR + "/example/engine' -I '" + SPP_SOURCE_DIR +
+           "/include'";
+}
+
+// --format=fmt only changes the text. The default is std::format.
+TEST(SppcTool, FormatOptionSelectsTheFormatFunction)
+{
+    const std::string script = write_interp_script("sppc_interp_text.spp");
+    std::string std_text, fmt_text, bad;
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1",
+                          std_text),
+              0)
+        << std_text;
+    EXPECT_NE(std_text.find("#include <format>"), std::string::npos) << std_text;
+    EXPECT_NE(std_text.find("std::format(\"hp = {}, name {}, r {:.2f} {{x}} ${{y}} {}\""), std::string::npos)
+        << std_text;
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp --format=fmt '" + script + "'" +
+                              engine_args() + " 2>&1",
+                          fmt_text),
+              0)
+        << fmt_text;
+    EXPECT_NE(fmt_text.find("#include <fmt/format.h>"), std::string::npos) << fmt_text;
+    EXPECT_NE(fmt_text.find("fmt::format(\"hp = {}"), std::string::npos) << fmt_text;
+    EXPECT_EQ(fmt_text.find("std::format"), std::string::npos) << fmt_text;
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp --format=printf '" + script + "'" +
+                              engine_args() + " 2>&1",
+                          bad),
+              2);
+#if __has_include(<fmt/format.h>)
+    // fmt is installed: the generated text compiles.
+    const std::string out = std::string(SPP_BINARY_DIR) + "/sppc_interp_fmt.cpp";
+    std::string log;
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp --format=fmt -o '" + out + "' '" + script +
+                              "'" + engine_args() + " 2>&1",
+                          log),
+              0)
+        << log;
+    std::string cc;
+    EXPECT_EQ(run_command(std::string("'") + SPP_CXX + "' -std=c++20 -fsyntax-only -DFMT_HEADER_ONLY -I '" +
+                              SPP_SOURCE_DIR + "/example/engine' -I '" + SPP_SOURCE_DIR + "/include' '" + out +
+                              "' 2>&1",
+                          cc),
+              0)
+        << cc;
+#endif
+}
+
+#if __has_include(<format>)
+// The script is compiled with std::format and run.
+TEST(SppcTool, InterpolationRunsWithStdFormat)
+{
+    const std::string script = write_interp_script("sppc_interp_run.spp");
+    const std::string so = std::string(SPP_BINARY_DIR) + "/sppc_interp_run.so";
+    std::filesystem::remove(so);
+    std::string log;
+    ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so +
+                              "' --cxx '" + SPP_CXX + "' 2>&1",
+                          log),
+              0)
+        << log;
+    test_support::Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(test_support::library(so.c_str()), "Hero"));
+    s.world.Tick(1.0f / 60);
+    EXPECT_EQ(s.actor->Name, "hp = 7, name L7, r 0.50 {x} ${y} hi");
+}
+#endif
 
 }  // namespace

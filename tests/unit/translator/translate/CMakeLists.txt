@@ -17,6 +17,7 @@ add_executable(unit_translator_translate_tests
     scope_translation_tests.cpp
     script_kinds_translation_tests.cpp
     stub_check_translation_tests.cpp
+    string_interpolation_translation_tests.cpp
     typed_access_translation_tests.cpp)
 target_link_libraries(unit_translator_translate_tests PRIVATE sppc_lib GTest::gtest_main)
 target_include_directories(unit_translator_translate_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator ${CMAKE_SOURCE_DIR}/tests)

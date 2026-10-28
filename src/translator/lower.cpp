@@ -752,7 +752,48 @@ struct Lowerer {
             lambda(e, *l);
         } else if (auto* tt = std::get_if<TypeTestExpr>(&x.v)) {
             type_test(e, *tt);
+        } else if (auto* ip = std::get_if<InterpExpr>(&x.v)) {
+            interp(e, *ip);
         }
+    }
+
+    // A string with "${...}" (design 7.3, DECISIONS item 10) becomes a call of std::format or
+    // fmt::format. The literal parts become the format string: "{" and "}" are doubled and the
+    // escape "\$" gives "$". A string with no argument stays a plain literal.
+    void interp(ExprP& e, InterpExpr& n)
+    {
+        const uint32_t pos = n.pos;
+        for (ExprP& a : n.args) expr(a);
+        const bool has_args = !n.args.empty();
+        std::string f = "\"";
+        for (size_t i = 0; i < n.lits.size(); ++i) {
+            const std::string& t = n.lits[i];
+            for (size_t k = 0; k < t.size(); ++k) {
+                if (t[k] == '\\' && k + 1 < t.size()) {
+                    if (t[k + 1] != '$') f += t[k];
+                    f += t[k + 1];
+                    ++k;
+                } else if (has_args && (t[k] == '{' || t[k] == '}')) {
+                    f += t[k];
+                    f += t[k];
+                } else {
+                    f += t[k];
+                }
+            }
+            if (i < n.args.size()) f += n.specs[i].empty() ? "{}" : "{:" + n.specs[i] + "}";
+        }
+        f += "\"";
+        if (!has_args) {
+            e = raw(std::move(f), pos);
+            return;
+        }
+        if (cx.uses_format) *cx.uses_format = true;
+        CallExpr c;
+        c.pos = pos;
+        c.callee = raw(cx.format_lib == "fmt" ? "fmt::format" : "std::format", pos);
+        c.args.push_back(raw(std::move(f), pos));
+        for (ExprP& a : n.args) c.args.push_back(std::move(a));
+        e = make_expr(std::move(c));
     }
 
     // "obj is T" and "obj as T" (design 7.7). A script class T uses the class records:
