@@ -83,6 +83,9 @@ struct RCtx {
     // "P__base_M(self, args)": the implementation that P sees.
     std::string native_base;
     std::set<std::string> native_virtuals;
+    // The virtuals of the native interface bases (design 4.4): the name to the interface base.
+    // "super.F()" of such a virtual calls the implementation of the interface base.
+    std::map<std::string, std::string> interface_virtuals;
     // Set to true when a bare "this" becomes a handle (spp::handle_from_this). The translator
     // then gives a native-base shell the base std::enable_shared_from_this. May be null.
     bool* handle_this = nullptr;

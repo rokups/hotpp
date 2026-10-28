@@ -56,7 +56,9 @@ struct ClassRecord {
     uint32_t slot_count;
     const StateLayout* layout;
     ClassRecord* super;
-    const char* base_name;  // name of the native base class
+    // The names of the native bases: the primary base, then the interface bases, with ", "
+    // between them (design 4.4). For example "Actor, IDamageable".
+    const char* base_name;
     uint64_t shell_hash;    // hash of the shell layout (see shell_layout_hash)
     // The onReload hook of the script class, or null. The commit calls it after the migration.
     void (*on_reload)(ShellBase* self, const OldState& old) = nullptr;

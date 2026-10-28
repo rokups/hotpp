@@ -222,7 +222,14 @@ bool Loader::request_reload(Module module, std::string& error)
             const char* b0 = cur->base_name ? cur->base_name : "";
             const char* b1 = in.record->base_name ? in.record->base_name : "";
             if (std::strcmp(b0, b1) != 0) {
-                error = "class " + name + ": base class changed (" + b0 + " -> " + b1 + ")";
+                // "base_name" lists the native bases: the primary base, then the interface bases
+                // (design 4.4). An added or removed interface base changes the shell (5.3: RECONSTRUCT).
+                const std::string s0 = b0, s1 = b1;
+                if (s0.substr(0, s0.find(',')) == s1.substr(0, s1.find(',')))
+                    error = "class " + name + ": native interface bases changed (" + s0 + " -> " + s1 +
+                            "; RECONSTRUCT change)";
+                else
+                    error = "class " + name + ": base class changed (" + s0 + " -> " + s1 + ")";
                 return false;
             }
             // A change of the script parent changes the shell hierarchy (design 5.3: RECONSTRUCT).

@@ -1,0 +1,26 @@
+// Generation 2 of the Boss class (S8b). The bases do not change, so the reload is LIVE.
+// Absorb has a new body. The new overrides of Armor and Tag fill the slots of the interfaces.
+using "Actor.h";
+using "Damageable.h";
+
+class Boss : Actor, IDamageable, ITagged {
+    int hp = 50;
+    int ticks = 0;
+    int base_armor = 0;
+    int absorbed = 0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        this.base_armor = super.Armor();
+    }
+
+    override int Absorb(int amount) {
+        this.hp = this.hp - amount * 2;
+        this.absorbed = this.absorbed + 1;
+        return this.hp;
+    }
+
+    override int Armor() { return 5; }
+
+    override int Tag() { return 70; }
+}

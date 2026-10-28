@@ -131,3 +131,39 @@ TEST(ClassKindParse, ClassWithBaseStillParses)
     ASSERT_TRUE(diag.items.empty()) << diag.format("t");
     EXPECT_EQ(script.classes.at(0).base, "Actor");
 }
+
+// ---- native interface bases (S8b, design 4.4): "class Boss : Actor, IDamageable"
+TEST(ClassKindParse, InterfaceBasesFollowThePrimaryBase)
+{
+    const std::string text = "class Boss : Actor, IDamageable, game.ITagged {\n    int hp = 1;\n}\n";
+    const LineMap map(text);
+    Diagnostics diag;
+    const ast::Script script = parse_script(text, map, diag);
+    ASSERT_TRUE(diag.items.empty()) << diag.format("t");
+    const ast::ClassDef& c = script.classes.at(0);
+    EXPECT_EQ(c.base, "Actor");
+    EXPECT_EQ(c.interfaces, (std::vector<std::string>{"IDamageable", "game::ITagged"}));
+    EXPECT_EQ(c.fields.size(), 1u);
+}
+
+TEST(ClassKindParse, OneBaseHasNoInterfaces)
+{
+    const std::string text = "class Hero : Actor { }\nclass Plain { }\n";
+    const LineMap map(text);
+    Diagnostics diag;
+    const ast::Script script = parse_script(text, map, diag);
+    ASSERT_TRUE(diag.items.empty()) << diag.format("t");
+    EXPECT_TRUE(script.classes.at(0).interfaces.empty());
+    EXPECT_TRUE(script.classes.at(1).interfaces.empty());
+}
+
+TEST(ClassKindParse, BadBaseListIsAnError)
+{
+    for (const char* text : {"class Boss : Actor, { }\n", "class Boss : Actor IDamageable { }\n",
+                             "class Boss : , Actor { }\n", "class Boss : Actor, game::I { }\n"}) {
+        const LineMap map(text);
+        Diagnostics diag;
+        (void)parse_script(text, map, diag);
+        EXPECT_FALSE(diag.items.empty()) << text;
+    }
+}

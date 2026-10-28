@@ -1,0 +1,25 @@
+// Generation 1 of the Boss class: a native primary base and two native interface bases
+// (S8b, design 4.4). The shell of Boss derives from Actor, IDamageable and ITagged.
+using "Actor.h";
+using "Damageable.h";
+
+class Boss : Actor, IDamageable, ITagged {
+    int hp = 50;
+    int ticks = 0;
+    int base_armor = 0;
+    int absorbed = 0;
+
+    // A virtual of the primary base.
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        // "super.Armor()" calls the implementation of the interface base IDamageable.
+        this.base_armor = super.Armor();
+    }
+
+    // The pure virtual of IDamageable. Armor and Tag have no override: the shell forwards them.
+    override int Absorb(int amount) {
+        this.hp = this.hp - amount;
+        this.absorbed = this.absorbed + 1;
+        return this.hp;
+    }
+}

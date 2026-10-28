@@ -15,7 +15,7 @@ Status: [ ] open, [x] done. One slice is one commit.
 - [x] S6b Done: inherited properties, 3-level family test with a reload, test for loader rejection of a parent change, `var r = ref` tests. Open: the `super(...)` arguments of a child run two times (see HANDOFF.md).
 - [x] S7 Done (`${expr}` and `${expr:spec}`, `--format=std|fmt`, see DECISIONS item 10). String interpolation: lower `${..}` to `std::format` (C++20) or `fmt::format`. The fmt library may be user-supplied: pick it by a translator option and a header check, no hard dependency.
 - [x] S8a Module variables, enums, structs. Done.
-- [ ] S8b Native interface bases (multiple native bases, slot conflicts). Also README and HANDOFF notes for S8a.
+- [x] S8b Done: native interface bases (multiple native bases, slot conflicts, reload check of the base list), README and HANDOFF notes for S8a. Open: interface bases on a child of a script class.
   - S8a done: module variables, enums, structs (see DECISIONS.md 11). Open: native interface bases (S8b), a script convert hook for a module variable.
 - [ ] S9 Runtime polish: removed-class handler, `script_stats`, entry-count debug check, watcher and command channel.
 - [ ] S10 M8: module that never unloads for generation 1.

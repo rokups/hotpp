@@ -13,6 +13,7 @@ add_executable(integration_reload_tests
     property_tests.cpp
     exception_tests.cpp
     inheritance_tests.cpp
+    interface_tests.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Actor.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Object.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Util.cpp)

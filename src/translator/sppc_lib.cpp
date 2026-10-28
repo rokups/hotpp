@@ -127,6 +127,7 @@ std::string key_norm(const std::string& s) { return norm(sppc::canonical_type(s,
 
 struct NativeVirtual {
     std::string name, ret, owner;
+    std::string from;  // the direct native base of the script class that gives the virtual
     std::vector<std::string> ptypes;
     bool is_const = false, pure = false, final_ = false, no_except = false;
     std::string key() const
@@ -150,6 +151,7 @@ struct BaseInfo {
     int ctor_kind = 0;  // the constructor argument: 0 none, 1 std::string, 2 const char*
     bool default_ctor = false;
     bool any_ctor = false;  // the class declares a constructor
+    bool final_cls = false; // the class is "final": no class can derive from it
 };
 
 void collect_virtuals(CXCursor cls, BaseInfo& info)
@@ -762,6 +764,10 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         bi.name = name;
         collect_virtuals(base_cur, bi);
         collect_ctors(base_cur, bi);
+        visit(base_cur, [&](CXCursor a) {
+            if (clang_getCursorKind(a) == CXCursor_CXXFinalAttr) bi.final_cls = true;
+            return CXChildVisit_Continue;
+        });
         out[name] = std::move(bi);
     }
 }
@@ -998,6 +1004,23 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         if (cd.is_value)
             fail_at(map, cd.pos, "the [value] class '" + cd.name + "' cannot derive from the script class '" + par->name + "'");
     }
+    // Native interface bases (design 4.4): "class Boss : Actor, IDamageable". The primary base
+    // comes first. An interface base is a native class. Only the root of a family has them; the
+    // children get them through the shell of the root.
+    for (const ClassDef& cd : sc.classes) {
+        if (cd.interfaces.empty()) continue;
+        if (const ClassDef* par = script_parent(cd))
+            fail_at(map, cd.pos, "class '" + cd.name + "' has the script parent '" + par->name +
+                                     "'. Only a class with a native base can have interface bases");
+        std::set<std::string> seen = {cd.base};
+        for (const std::string& i : cd.interfaces) {
+            if (class_by_name.count(i))
+                fail_at(map, cd.pos, "the interface base '" + i + "' of class '" + cd.name +
+                                         "' is a script class. An interface base must be a native class");
+            if (!seen.insert(i).second)
+                fail_at(map, cd.pos, "class '" + cd.name + "' names the base '" + i + "' two times");
+        }
+    }
     auto script_root = [&](const ClassDef& cd) {
         const ClassDef* r = &cd;
         for (int depth = 0; script_parent(*r) && depth < 64; ++depth) r = script_parent(*r);
@@ -1040,8 +1063,10 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
     if (!opt.resource_dir.empty()) args.push_back("-resource-dir=" + opt.resource_dir);
     std::set<std::string> import_paths, base_names;
     for (const auto& im : sc.imports) import_paths.insert(im.path);
-    for (const auto& cd : sc.classes)
+    for (const auto& cd : sc.classes) {
         if (!cd.base.empty() && !class_by_name.count(cd.base)) base_names.insert(cd.base);
+        for (const std::string& i : cd.interfaces) base_names.insert(i);
+    }
     // The key: the flags, the current directory and the imports (the order does not matter).
     std::string key = std::filesystem::current_path().string() + "\n";
     for (const auto& a : args) key += a + "\n";
@@ -1440,6 +1465,32 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         if (!bi.any_ctor) bi.default_ctor = true;  // the compiler declares one
         if (!bi.virtual_dtor)
             fail_at(map, cd.pos, "base class '" + root.base + "' has no virtual destructor");
+        if (bi.final_cls) fail_at(map, root.pos, "base class '" + root.base + "' is final");
+        for (NativeVirtual& nv : bi.virtuals) nv.from = B;
+        // The virtuals of the interface bases come after the virtuals of the primary base, in the
+        // order of the bases (design 4.4). The shell overrides one function for both bases when a
+        // signature is in two bases. That function has one slot and no clear forwarding target.
+        // So the same signature in two bases is an error.
+        std::string BL = B;  // the list of the native bases: the record and the shell hash use it
+        for (const std::string& iname : root.interfaces) {
+            auto it = bases.find(iname);
+            if (it == bases.end())
+                fail_at(map, root.pos, "interface base '" + iname + "' is not found in the imported headers");
+            const BaseInfo& ib = it->second;
+            if (ib.final_cls) fail_at(map, root.pos, "interface base '" + iname + "' is final");
+            if (ib.any_ctor && !ib.default_ctor)
+                fail_at(map, root.pos, "interface base '" + iname + "' has no default constructor");
+            for (NativeVirtual v : ib.virtuals) {
+                v.from = iname;
+                for (const NativeVirtual& o : bi.virtuals)
+                    if (o.key() == v.key())
+                        fail_at(map, root.pos, "'" + v.text() + "' is a virtual method of " + o.owner + " (base '" +
+                                                   o.from + "') and of " + v.owner + " (base '" + iname +
+                                                   "'). One method cannot override a virtual of two bases");
+                bi.virtuals.push_back(std::move(v));
+            }
+            BL += ", " + iname;
+        }
         const bool root_super = !root.ctors.empty() && root.ctors[0].has_super;
         std::string ctor_args;
         if (bi.ctor_kind == 1) ctor_args = ", std::string(\"" + cn + "\")";
@@ -1501,7 +1552,13 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             for (const auto& nv : bi.virtuals) {
                 std::string k = nv.key();
                 if (nv.is_const) k.resize(k.size() - 5);
-                if (k == key + ")") hit = &nv;
+                if (k != key + ")") continue;
+                // The script has no "const" on a method, so "F()" and "F() const" both match.
+                if (hit)
+                    fail_at(map, m.pos, "the override '" + m.name + "' is ambiguous: it matches '" + hit->text() +
+                                            (hit->is_const ? " const" : "") + "' of " + hit->owner + " and '" +
+                                            nv.text() + (nv.is_const ? " const" : "") + "' of " + nv.owner);
+                hit = &nv;
             }
             if (!hit) {
                 // A virtual method with the same name and other parameters: the function hides it.
@@ -1779,12 +1836,21 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             base_cx.native_base = root.base;
             for (const auto& nv : bi.virtuals) base_cx.native_virtuals.insert(nv.name);
         }
+        // "super.F()" names a base by the name F only. A name of the primary base keeps the
+        // primary base. Else the first interface base with a virtual F gives the implementation.
+        {
+            std::set<std::string> primary_names;
+            for (const auto& nv : bi.virtuals)
+                if (nv.from == B) primary_names.insert(nv.name);
+            for (const auto& nv : bi.virtuals)
+                if (nv.from != B && !primary_names.count(nv.name)) base_cx.interface_virtuals.emplace(nv.name, nv.from);
+        }
 
         const std::string S = cn + "State_g" + std::to_string(opt.gen);
         const std::string shell = cn + "_Shell";
 
         o.w("\n// ---------------------------------------------------------------- class " + cn + "\n");
-        o.w("// Slot numbers. Native virtuals come first, in the order of " + B + ".\n");
+        o.w("// Slot numbers. Native virtuals come first, in the order of " + BL + ".\n");
         o.w("enum : unsigned {\n");
         for (size_t i = 0; i < slots.size(); ++i)
             o.w("    " + slot_id(slots[i].id) + " = " + std::to_string(slots[i].index >= 0 ? size_t(slots[i].index) : i) +
@@ -1793,7 +1859,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         o.w("extern spp::ClassRecord " + cn + "_record;\n\n");
 
         // ---- shell
-        o.w("// The shell overrides every virtual of " + B + ". Each stub reads one slot.\n");
+        o.w("// The shell overrides every virtual of " + BL + ". Each stub reads one slot.\n");
         // A bare "this" used as a handle needs "shared_from_this" (design 7.10.1). A plain class
         // gets it from spp::PlainObject. A native base needs it in the shell.
         // The lowering of the bodies sets "handle_this". The base is added to this line then.
@@ -1807,7 +1873,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         // without the state: the shell of the child makes the state of the child (design 4.5).
         const bool parent_shell = has_children.count(cn) > 0;
         const std::string shell_head = "struct " + shell + (parent_shell ? "" : " final") + " : " +
-                                       (par ? par->name + "_Shell" : B + ", spp::ShellBase");
+                                       (par ? par->name + "_Shell" : BL + ", spp::ShellBase");
         const size_t shell_head_end = o.s.size() + shell_head.size();
         o.w(shell_head + " {\n");
         if (par) {
@@ -2116,9 +2182,9 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 ps += ", " + nv.ptypes[k] + " a" + std::to_string(k);
                 as += (k ? ", " : "") + arg_expr(nv.ptypes[k], "a" + std::to_string(k));
             }
-            o.w("// Not overridden: call the implementation of " + B + ".\n");
+            o.w("// Not overridden: call the implementation of " + nv.from + ".\n");
             o.w("static " + nv.ret + " " + P + "fwd_" + s.id + "(" + B + "* a" + ps + ")\n{\n");
-            o.w("    return static_cast<" + shell + "*>(a)->" + B + "::" + nv.name + "(" + as + ");\n}\n\n");
+            o.w("    return static_cast<" + shell + "*>(a)->" + nv.from + "::" + nv.name + "(" + as + ");\n}\n\n");
         }
 
         // The native implementation that a child sees: "super.M()" in a child calls it.
@@ -2193,8 +2259,8 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                         (dtor_chain ? "&" + P + "dtor_slot" : std::string("nullptr")) + ",\n";
         o.w("spp::ClassRecord " + cn + "_record = {\n    \"" + cn + "\", GEN, " + cn + "_slots, " +
             slot_id("COUNT") + ", &" + cn + "_layout, " + (par ? "&" + par->name + "_record" : std::string("nullptr")) +
-            ",\n    \"" + B + "\", spp::shell_layout_hash(\"" +
-            B + "\", sizeof(" + shell + "), alignof(" + shell + "), " + std::to_string(native_count) +
+            ",\n    \"" + BL + "\", spp::shell_layout_hash(\"" +
+            BL + "\", sizeof(" + shell + "), alignof(" + shell + "), " + std::to_string(native_count) +
             "),\n" + (on_reload_init.empty() ? "" : "   " + on_reload_init) + ctor_init + "};\n\n");
         if (!entry.empty()) {
             // The factory of the engine has no arguments. It builds the base and runs the

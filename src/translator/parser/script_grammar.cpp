@@ -827,6 +827,13 @@ struct base_p {
         });
 };
 
+// The bases of a class: "Base" or "Base, IFace, ...". The first name is the primary base. The
+// other names are native interface bases (design 4.4).
+struct bases_p {
+    static constexpr auto rule = dsl::list(dsl::p<base_p>, dsl::sep(dsl::lit_c<','>));
+    static constexpr auto value = lexy::as_list<std::vector<std::string>>;
+};
+
 // The attributes before a class or a stub. The parser checks the names and the argument counts.
 struct ClassAttrs {
     const char* pos = nullptr;  // the "["
@@ -963,7 +970,7 @@ const ClassAttrs* class_attrs_of(const ClassAttrs& a) { return &a; }
 constexpr auto class_rest =
     dsl::position + dsl::p<stub_name_p> +
     (dsl::lit_c<';'> >> dsl::nullopt |
-     dsl::else_ >> (dsl::opt(dsl::lit_c<':'> >> dsl::p<base_p>) + dsl::lit_c<'{'> + dsl::p<members_p>));
+     dsl::else_ >> (dsl::opt(dsl::lit_c<':'> >> dsl::p<bases_p>) + dsl::lit_c<'{'> + dsl::p<members_p>));
 
 // [attributes] class name ";" is a stub. [attributes] class name ":" Base "{" members "}" is a class.
 // "struct" is the same as "[value] class". Else the declaration is a module variable:
@@ -1013,8 +1020,10 @@ struct class_p {
                 if (name.find_first_of("*<:") != std::string::npos)
                     st.error(name_pos, "a script class needs a plain name");
                 c.name = std::move(name);
-                if constexpr (!std::is_same_v<std::decay_t<decltype(base)>, lexy::nullopt>)
-                    c.base = std::move(base);
+                if constexpr (!std::is_same_v<std::decay_t<decltype(base)>, lexy::nullopt>) {
+                    if (!base.empty()) c.base = std::move(base.front());
+                    for (size_t i = 1; i < base.size(); ++i) c.interfaces.push_back(std::move(base[i]));
+                }
                 c.pos = st.offset(pos);
                 c.line = st.map->line(c.pos);
                 // A struct is a [value] class (design 5.3, 7.10.1).

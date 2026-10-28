@@ -353,6 +353,9 @@ struct Property {
 
 struct ClassDef {
     std::string name, base;
+    // The native interface bases after the primary base: "class Boss : Actor, IDamageable"
+    // (design 4.4). The primary base is "base".
+    std::vector<std::string> interfaces;
     std::vector<Field> fields;
     std::vector<Method> methods;
     std::vector<Ctor> ctors;      // the parser accepts more than one; the translator allows one

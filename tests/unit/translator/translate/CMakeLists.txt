@@ -13,6 +13,7 @@ add_executable(unit_translator_translate_tests
     module_decl_translation_tests.cpp
     override_translation_tests.cpp
     inheritance_translation_tests.cpp
+    interface_translation_tests.cpp
     reload_hook_translation_tests.cpp
     property_translation_tests.cpp
     scope_translation_tests.cpp

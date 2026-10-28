@@ -1,0 +1,23 @@
+// The Boss class without the interface base ITagged (S8b). A reload from boss_v1.spp to this
+// script removes a native base. A reload from this script to boss_v1.spp adds one. The shell
+// changes in both cases (design 5.3: RECONSTRUCT), so the loader rejects the reload.
+using "Actor.h";
+using "Damageable.h";
+
+class Boss : Actor, IDamageable {
+    int hp = 50;
+    int ticks = 0;
+    int base_armor = 0;
+    int absorbed = 0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        this.base_armor = super.Armor();
+    }
+
+    override int Absorb(int amount) {
+        this.hp = this.hp - amount;
+        this.absorbed = this.absorbed + 1;
+        return this.hp;
+    }
+}

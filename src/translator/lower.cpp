@@ -585,10 +585,13 @@ struct Lowerer {
                                        "' have none");
                     return;
                 }
-                e = raw("self->" + cx.native_base + "::" + m.name, obj_pos);
+                auto iv = cx.interface_virtuals.find(m.name);
+                e = raw("self->" + (iv == cx.interface_virtuals.end() ? cx.native_base : iv->second) + "::" + m.name,
+                        obj_pos);
                 return;
             }
-            e = raw("self->" + cx.cls->base + "::" + m.name, obj_pos);
+            auto iv = cx.interface_virtuals.find(m.name);
+            e = raw("self->" + (iv == cx.interface_virtuals.end() ? cx.cls->base : iv->second) + "::" + m.name, obj_pos);
             return;
         }
         // "obj.P", "obj.f": the type of obj decides. Without a type, P is a property of the
