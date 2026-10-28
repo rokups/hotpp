@@ -61,7 +61,9 @@ A script can declare enums, structs and module variables at file level (`DECISIO
 - `enum Name [: type] { A, B = 5, C }` becomes `enum class Name : T`. The default type is `int`. `Name.A` becomes `Name::A`. A reload migrates an enum field as an integer.
 - `struct Name { ... }` is the same as `[value] class Name { ... }`.
 - A module variable is `[alias("old")] Type name [= init];` at file level. Every class of the script reads it by its bare name. The translator puts the variables in a synthetic `[value]` class `SppModule`. The loader owns one module block. A reload migrates it like the fields of a class.
-- Limits: a module variable is a native type, an enum or a `[value]` class. An initializer cannot use another module variable. A convert hook for a module variable exists only in the runtime (`FieldInfo.convert`).
+- An initializer can use a module variable declared before it. The loader runs the initializers in declaration order.
+- A convert hook of a module variable is `T convert_<var>(Old old) { ... }` at file level (`DECISIONS.md` item 14). It cannot read a module variable. See `example/scripts/modconv_v1.spp` and `modconv_v2.spp`.
+- Limits: a module variable is a native type, an enum or a `[value]` class. A script has no other free functions.
 
 ### Native interface bases (S8b)
 
@@ -71,7 +73,7 @@ A script class can have more than one native base: `class Boss : Actor, IDamagea
 - libclang reads the virtuals of each base. Each virtual gets one slot. The slots of the primary base come first, then the slots of each interface base in the order of the list. A name in two bases gets a suffix of its parameter types, for example `SLOT_Size_i`.
 - `override` works for a virtual of any base. A virtual without an override calls the implementation of its base, for example `IDamageable::Armor`. `super.Armor()` calls the interface implementation when the primary base has no virtual with that name.
 - The record keeps the list of the bases in `base_name` (`"Actor, IDamageable, ITagged"`). The shell hash uses the list. A reload that adds or removes a base is rejected (design 5.3: RECONSTRUCT): "native interface bases changed".
-- Errors: the same signature in two bases; an override that matches `F()` of one base and `F() const` of another base; an override of a `final` virtual; a `final` interface class; a missing pure virtual override; a base named two times; a script class as interface base; interface bases on a class with a script parent; an interface base without a default constructor.
+- Errors: the same signature in two bases; an override that matches `F()` of one base and `F() const` of another base; an override of a `final` virtual; a `final` interface class; a missing pure virtual override; a base named two times; a script class as interface base; interface bases on a class with a script parent (design 4.5: the shell of a child adds no overrides; put the base on the root); an interface base without a default constructor.
 - Limits: a child of a script class cannot add interface bases. It inherits the interface bases of the root of its family.
 
 ### Translator session

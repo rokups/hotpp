@@ -137,7 +137,10 @@ TEST(InterfaceTranslation, BaseListErrors)
         {"class Foo : Widget, IName, IName { }\n", "class 'Foo' names the base 'IName' two times"},
         {"class Foo : Widget, Widget { }\n", "class 'Foo' names the base 'Widget' two times"},
         {"class Foo : Widget { }\nclass Bar : Foo, IName { }\n",
-         "class 'Bar' has the script parent 'Foo'. Only a class with a native base can have interface bases"},
+         "class 'Bar' has the script parent 'Foo'. Only a class with a native base can have interface bases: the "
+         "shell of a child adds no overrides (design 4.5). Add 'IName' to the bases of the root class 'Foo'"},
+        {"class Foo : Widget { }\nclass Mid : Foo { }\nclass Bar : Mid, IName { }\n",
+         "Add 'IName' to the bases of the root class 'Foo'"},
         {"class Foo : Widget { }\nclass Bar : Widget, Foo { }\n",
          "the interface base 'Foo' of class 'Bar' is a script class. An interface base must be a native class"},
         {"[value] class V : Widget, IName { }\n", "a [value] class 'V' has no base class"},

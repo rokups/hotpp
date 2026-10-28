@@ -51,8 +51,9 @@ void note_creator(ShellBase* self, uint32_t generation);
 // generation. "key" is typeid(std::tuple<...>).name() of the base arguments in "args". The
 // canonical record of the class holds the constructor of the shell. It is in the core module
 // (module.h), or in the first generation when there is no core. So every object has the vtable
-// of that module. The caller runs the script constructor on the shell.
-inline ShellBase* construct_shell(const ClassRecord* rec, const char* key, const void* args)
+// of that module. The caller runs the script constructor on the shell. "note" false skips
+// note_creator: the engine factory uses it, because the engine owns that object.
+inline ShellBase* construct_shell(const ClassRecord* rec, const char* key, const void* args, bool note = true)
 {
     const ClassRecord* canon = rec->canonical ? rec->canonical : rec;
     if (!canon->construct)
@@ -62,7 +63,7 @@ inline ShellBase* construct_shell(const ClassRecord* rec, const char* key, const
         throw std::runtime_error(std::string("class ") + rec->name +
                                  ": the types of the 'super(...)' arguments changed since the first generation");
     ShellBase* s = canon->construct(args);
-    note_creator(s, rec->generation);
+    if (note) note_creator(s, rec->generation);
     return s;
 }
 

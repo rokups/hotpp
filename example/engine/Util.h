@@ -16,4 +16,8 @@ struct Util {
     static float Sum(const Vec3& v);
     // The text "<name>@<x>" for an actor.
     static std::string Describe(const Actor& actor);
+    // Counts one call and returns "v". A test reads the count with Calls().
+    static int Count(int v);
+    // The number of Count calls since the program start.
+    static int Calls();
 };

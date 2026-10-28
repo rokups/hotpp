@@ -26,3 +26,18 @@ std::string Util::Describe(const Actor& actor)
 {
     return actor.Name + "@" + FormatVec(actor.Position);
 }
+
+namespace {
+int g_count_calls = 0;
+}
+
+int Util::Count(int v)
+{
+    ++g_count_calls;
+    return v;
+}
+
+int Util::Calls()
+{
+    return g_count_calls;
+}

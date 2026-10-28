@@ -19,18 +19,19 @@ Status: [ ] open, [x] done. One slice is one commit.
   - S8a done: module variables, enums, structs (see DECISIONS.md 11). Open: native interface bases (S8b), a script convert hook for a module variable.
 - [x] S9 Runtime polish: removed-class handler, `script_stats`, entry-count debug check, watcher and command channel.
 - [x] S10 M8 Done: core module (`Module::make_core`), generation 1 unloads, `kMayHoldCode` unload block, stress tests in `tests/integration/reload/core_module_tests.cpp`. Open: see HANDOFF.md, Not done item 2.
-- [ ] S11 Diagnostic rewriter, LLDB formatters.
+- [x] S11 Diagnostic rewriter, LLDB formatters.
 - [x] S12 Done (M7): `sppc --ship`, `spp_add_shipped_scripts`, `spp::ShippedRegistry` (`include/spp/shipped.h`), target `spp_ship` (no loader), example `ship_demo`, tests in `tests/integration/ship/`. Open: see the open items in README "Shipping mode" and HANDOFF.md.
-- [ ] S13 Tolerant parse and `source_map` (M10).
-- [ ] S14a VS Code extension (M11): grammar, language config, file association, thin client for spp-ls, snapshot test.
-- [ ] S14b Language server `spp-ls` (M12 to M14) as clangd proxy.
+- [x] S13 Tolerant parse and `source_map` (M10).
+- [x] S14a VS Code extension (M11): grammar, language config, file association, thin client for spp-ls, snapshot test.
+- [x] S14b Language server `spp-ls` (M12 to M14) as clangd proxy.
 - [ ] S14 old: VS Code extension (M11), `sppc --compile-commands`.
-- [ ] S15 CPM fetch test.
+- [x] S15 CPM fetch test. Done.
 
 Not testable here: Windows, macOS, a real engine, the clangd fork (M12 to M14). See DECISIONS.md.
 
 ## Second audit (after S15)
-- [ ] S16 `super(...)` args evaluate once; interface bases on a child of a script class; module variable convert hook and initializer that uses another module variable.
+- [x] S16 `super(...)` args evaluate once; interface bases on a child of a script class; module variable convert hook and initializer that uses another module variable.
+  - Done: one plan per construction (`new`, factory). Interface bases on a child stay an error (design 4.5), with a clearer message. Module variables: ordered initializers and `T convert_<var>(Old old)` at file level (DECISIONS.md 14).
 - [ ] S17 Runtime: signature change detaches native delegates with a warning; script value type in a native container resets on layout change; first handle use of `this` layout check; code pointers in native memory/function pointer fields.
 - [ ] S18 Rename across all `.spp` files in spp-ls; VS Code `spp/toScript` command and `${workspaceFolder}`; TSan DeepNesting stack and watcher flake; cache edge case.
 - [ ] S19 Docs: refresh TASKS, HANDOFF, design 10.1 (proxy instead of fork), 7.3 interpolation text, F1 templated bases result, P1 CLANG_FILES with PCH measure.

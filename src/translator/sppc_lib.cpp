@@ -1029,6 +1029,13 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         sc.vars.clear();
         sc.classes.push_back(std::move(mod));
     }
+    // Convert hooks of module variables (DECISIONS.md item 14). The module class emits them.
+    std::vector<Method> mod_hooks = std::move(sc.var_hooks);
+    sc.var_hooks.clear();
+    for (const Method& m : mod_hooks)
+        if (!module_vars.count(m.name.substr(8)))
+            fail_at(map, m.pos, "'" + m.name + "' is not a convert hook: the script has no module variable '" +
+                                    m.name.substr(8) + "'");
     types.add_script_classes(sc.classes);
     for (ClassDef& cd : sc.classes) snapshot_types(cd);
     for (const ClassDef& cd : sc.classes) {
@@ -1075,12 +1082,19 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
     }
     // Native interface bases (design 4.4): "class Boss : Actor, IDamageable". The primary base
     // comes first. An interface base is a native class. Only the root of a family has them; the
-    // children get them through the shell of the root.
+    // children get them through the shell of the root. Design 4.5 forbids them on a child: the
+    // shell of a child adds no overrides, and the native slots of a family come before its
+    // script slots, so a child has no place for the slots of a new native base.
     for (const ClassDef& cd : sc.classes) {
         if (cd.interfaces.empty()) continue;
-        if (const ClassDef* par = script_parent(cd))
+        if (const ClassDef* par = script_parent(cd)) {
+            const ClassDef* root = par;
+            for (int depth = 0; script_parent(*root) && depth < 64; ++depth) root = script_parent(*root);
             fail_at(map, cd.pos, "class '" + cd.name + "' has the script parent '" + par->name +
-                                     "'. Only a class with a native base can have interface bases");
+                                     "'. Only a class with a native base can have interface bases: the shell of a "
+                                     "child adds no overrides (design 4.5). Add '" + cd.interfaces.front() +
+                                     "' to the bases of the root class '" + root->name + "'");
+        }
         std::set<std::string> seen = {cd.base};
         for (const std::string& i : cd.interfaces) {
             if (class_by_name.count(i))
@@ -1316,6 +1330,25 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         }
         for (sppc::ast::Ctor& c : cd.ctors)
             for (Param& p : c.params) p.type = types.param(p.type);
+        // The convert hooks of the module variables: the same rules as a convert hook of a field.
+        const bool is_module = cn == kModuleName;
+        std::map<std::string, Method*> hooks;  // by variable name
+        if (is_module)
+            for (Method& m : mod_hooks) {
+                if (m.is_override || m.is_virtual || m.is_new)
+                    fail_at(map, m.pos, "'" + m.name + "' is a convert hook. It takes no modifier");
+                if (m.params.size() != 1 || m.params[0].mode != PassMode::Value)
+                    fail_at(map, m.pos, "'" + m.name + "' is a convert hook. It takes one parameter: the old value");
+                if (m.ret.empty() || m.ret == "void")
+                    fail_at(map, m.pos, "'" + m.name + "' is a convert hook. It must return the new variable type");
+                if (!hooks.emplace(m.name.substr(8), &m).second)
+                    fail_at(map, m.pos, "the convert hook '" + m.name + "' is declared twice");
+                m.params[0].type = types.storage(m.params[0].type);
+                m.ret = types.storage(m.ret);
+                for (const Field& f : cd.fields)
+                    if (f.name == m.name.substr(8) && f.type != m.ret)
+                        fail_at(map, m.pos, "'" + m.name + "' must return the type of the module variable: '" + f.type + "'");
+            }
 
         new_ready.insert(cn);
         RCtx base_cx = sppc::make_class_ctx(cd);
@@ -1332,9 +1365,11 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         o.w("\n// ---------------------------------------------------------------- [value] class " + cn + "\n");
         // The field initializers: the text is the same in the constructor and in the field table.
         std::vector<std::string> inits;
+        std::set<std::string> earlier;  // the module variables before this one
         for (Field& f : cd.fields) {
             RCtx fc = base_cx;
             fc.allow_this = false;
+            fc.module_earlier = earlier;
             std::string init;
             if (f.has_init && f.init) {
                 sppc::lower_expr(f.init, fc, g_diag);
@@ -1342,6 +1377,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 init = sppc::ast::print(*f.init);
             }
             inits.push_back(init);
+            earlier.insert(f.name);
         }
         const bool has_ctor = !cd.ctors.empty();
         const sppc::ast::Ctor* ctor = has_ctor ? &cd.ctors[0] : nullptr;
@@ -1352,11 +1388,23 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         };
         auto fn_ret = [](const Method& m) { return m.ret.empty() ? std::string("void") : m.ret; };
         o.w("struct " + cn + ";\n");
+        if (is_module) {
+            // The module state block. The loader sets the slot of each generation (design 4.7).
+            // An initializer and a function of the module read the block through spp_mod().
+            o.w("// The module state block of this generation. The loader sets the slot.\n");
+            o.w("static void* " + cn + "_slot = nullptr;\n");
+            o.w("static inline " + cn + "* spp_mod() { return static_cast<" + cn + "*>(" + cn + "_slot); }\n");
+        }
         for (const Method& m : cd.methods)
             o.w("static " + fn_ret(m) + " " + P + m.name + "(" + cn + "* self" + param_text(m.params) + ");\n");
         if (has_ctor) o.w("static void " + P + "ctor(" + cn + "* self" + param_text(ctor->params) + ");\n");
         o.w("struct " + cn + " {\n");
         for (const Field& f : cd.fields) o.w("    " + f.type + " " + f.name + ";\n");
+        if (is_module) {
+            // The loader builds the module block with the init functions of the field table, in
+            // declaration order. An initializer can read an earlier variable through spp_mod().
+            o.w("};\n\n");
+        } else {
         o.w("    " + cn + "()");
         for (size_t i = 0; i < cd.fields.size(); ++i) {
             o.w("\n#line " + std::to_string(cd.fields[i].line) + " \"" + esc(opt.input) + "\"\n");
@@ -1378,6 +1426,13 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 m.name + "(this" + (m.params.empty() ? "" : ", " + arg_names(m.params)) + "); }\n");
         }
         o.w("};\n\n");
+        }
+        // A convert hook of a module variable (design 4.7). The wrapper builds the new value.
+        for (const auto& [vname, m] : hooks) {
+            o.w("static " + m->ret + " " + P + m->name + "(" + m->params[0].type + " " + m->params[0].name + ");\n");
+            o.w("static void " + P + m->name + "_hook(void* dst, const void* src)\n{\n    new (dst) " + m->ret + "(" + P +
+                m->name + "(*static_cast<const " + m->params[0].type + "*>(src)));\n}\n");
+        }
 
         // The field table of the struct: the migration recurses into it.
         for (size_t i = 0; i < cd.fields.size(); ++i) {
@@ -1398,8 +1453,13 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 o.w("    {\"" + f.name + "\", " + (f.alias.empty() ? "nullptr" : "\"" + f.alias + "\"") +
                     ", typeid(" + key_type(T) + ").name(), offsetof(" + cn + ", " + f.name + "), sizeof(" + T + "),\n     alignof(" +
                     T + "), spp::" + (sub ? "value_field_flags" : "field_flags") + "<" + T + ">(), " + P + "init_" +
-                    f.name + ", spp::move_field<" + T + ">, spp::field_destroyer<" + T + ">()" +
-                    (sub ? ", nullptr, nullptr, &" + T + "_layout" : std::string()) + "},\n");
+                    f.name + ", spp::move_field<" + T + ">, spp::field_destroyer<" + T + ">()");
+                auto hk = hooks.find(f.name);
+                if (hk != hooks.end())
+                    o.w(", typeid(" + hk->second->params[0].type + ").name(), " + P + hk->second->name + "_hook");
+                else if (sub)
+                    o.w(", nullptr, nullptr");
+                o.w((sub ? ", &" + T + "_layout" : std::string()) + "},\n");
             }
             o.w("};\n");
         }
@@ -1432,11 +1492,23 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             emit_vbody(cm, P + "ctor", "void", cn + "::" + cn);
         }
         for (Method& m : cd.methods) emit_vbody(m, P + m.name, fn_ret(m), body_what(cn, m));
-        if (cn == kModuleName) {
-            // The module state block. The loader sets the slot of each generation (design 4.7).
-            o.w("// The module state block of this generation. The loader sets the slot.\n");
-            o.w("static void* " + cn + "_slot = nullptr;\n");
-            o.w("static inline " + cn + "* spp_mod() { return static_cast<" + cn + "*>(" + cn + "_slot); }\n\n");
+        // A convert hook has no self and reads no module variable: the new block is not complete.
+        for (auto& [vname, m] : hooks) {
+            RCtx cx = base_cx;
+            cx.where = m->name;
+            cx.allow_this = false;
+            cx.in_module_init = false;
+            cx.in_module_hook = true;
+            sppc::add_params(cx, m->params);
+            o.w("static " + m->ret + " " + P + m->name + "(" + m->params[0].type + " " + m->params[0].name + ")\n{\n");
+            sppc::lower_block(m->body, cx, g_diag);
+            if (!g_diag.items.empty()) throw TranslateAbort{};
+            sppc::ast::Emitter em(map, opt.input);
+            sppc::ast::emit_stmts(m->body.stmts, em, 1);
+            em.finish();
+            o.w_emitted(em, in.script_text);
+            reset();
+            o.w("}\n\n");
         }
     };
 
@@ -2102,8 +2174,8 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         }
         if (has_dtor) o.w("static void " + P + "dtor(" + shell + "* self);\n");
         // The function that runs the constructors: the constructor of the parent first.
-        std::string entry = has_ctor ? P + "ctor" : std::string();
-        if (pinfo && !pinfo->ctor_entry.empty()) entry = P + "ctor_chain";
+        const bool has_entry = has_ctor || (pinfo && !pinfo->ctor_entry.empty());
+        const std::string entry = has_entry ? P + "ctor_chain" : std::string();
         info.ctor_entry = entry;
         info.ctor_params = ctor_m.params.size();
         if (gen_new) {
@@ -2117,9 +2189,10 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             }
             std::string ctor_fwd = arg_list(ctor_m);
             std::string sup_text;
+            const bool has_super = has_ctor && cd.ctors[0].has_super;
             int sup_line = cd.line;
             if (has_ctor) sup_line = cd.ctors[0].line;
-            if (has_ctor && cd.ctors[0].has_super) {
+            if (has_super) {
                 RCtx fc = base_cx;
                 fc.allow_this = false;
                 fc.where = cn + "::" + cn;
@@ -2134,46 +2207,61 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             } else if (!ctor_args.empty()) {
                 sup_text = ctor_args.substr(2);
             }
+            // The plan of a construction evaluates each "super(...)" argument of the chain one
+            // time. "first" is the tuple of the native base arguments. "second" is the chain: a
+            // pair of the constructor arguments of the parent and the chain of the parent. The
+            // chain of a root is an empty tuple.
             o.w("#line " + std::to_string(sup_line) + " \"" + esc(opt.input) + "\"\n");
             if (!par) {
                 o.w("[[maybe_unused]] static auto " + P + "super_args(" + pd + ")\n{\n    return std::make_tuple(" + sup_text +
                     ");\n}\n");
+                o.w("static auto " + P + "plan(" + pd + ")\n{\n    return std::make_pair(" + P + "super_args(" + names +
+                    "), std::tuple<>());\n}\n");
             } else {
-                // The base arguments come from the chain of the parents.
-                std::string body;
-                if (pinfo->ctor_params > 0)
-                    body = "std::apply([](const auto&... x) { return " + PP + "super_args(x...); }, std::make_tuple(" +
-                           sup_text + "))";
-                else if (root_super)
-                    body = PP + "super_args()";
-                else
-                    body = "std::make_tuple(" + (ctor_args.empty() ? std::string() : ctor_args.substr(2)) + ")";
-                o.w("[[maybe_unused]] static auto " + P + "super_args(" + pd + ")\n{\n    return " + body + ";\n}\n");
-                if (entry == P + "ctor_chain") {
-                    o.w("static void " + P + "ctor_chain(" + shell + "* self" + param_decl(ctor_m) + ")\n{\n    " +
-                        pinfo->ctor_entry + "(self" + (pinfo->ctor_params > 0 ? ", " + sup_text : std::string()) + ");\n");
-                    if (has_ctor) o.w("    " + P + "ctor(self" + ctor_fwd + ");\n");
-                    o.w("}\n");
-                }
+                // The base arguments come from the plan of the parent, or from the name of this
+                // class when no class of the chain calls "super(...)" with arguments.
+                const bool own_base = pinfo->ctor_params == 0 && !root_super;
+                o.w("static auto " + P + "plan(" + pd + ")\n{\n    auto up = std::make_tuple(" +
+                    (has_super ? sup_text : std::string()) + ");\n    auto pp = std::apply([](const auto&... x) { return " +
+                    PP + "plan(x...); }, up);\n    return std::make_pair(" +
+                    (own_base ? "std::make_tuple(" + (ctor_args.empty() ? std::string() : ctor_args.substr(2)) + ")"
+                              : std::string("std::move(pp.first)")) +
+                    ", std::make_pair(std::move(up), std::move(pp.second)));\n}\n");
+            }
+            if (has_entry) {
+                // Runs the constructor of each parent first, with the arguments of the plan.
+                o.w("static void " + P + "ctor_chain(" + shell + "* self, [[maybe_unused]] const auto& chain" +
+                    param_decl(ctor_m) + ")\n{\n");
+                if (pinfo && !pinfo->ctor_entry.empty())
+                    o.w("    std::apply([&](const auto&... x) { " + pinfo->ctor_entry +
+                        "(self, chain.second, x...); }, chain.first);\n");
+                if (has_ctor) o.w("    " + P + "ctor(self" + ctor_fwd + ");\n");
+                o.w("}\n");
             }
             reset();
-            o.w("using " + cn + "_SuperArgs = decltype(" + P + "super_args(" + declvals + "));\n");
+            o.w("using " + cn + "_SuperArgs = decltype(" + P + "plan(" + declvals + ").first);\n");
             o.w("// Makes the shell with the base arguments. Only the first generation of the class runs it.\n");
             o.w("static spp::ShellBase* " + P + "construct(const void* args)\n{\n    const auto& t = *static_cast<const " +
                 cn + "_SuperArgs*>(args);\n    return std::apply([](const auto&... x) -> spp::ShellBase* { return new " +
                 shell + "(spp::Construct{}, x...); }, t);\n}\n\n");
-            o.w("[[maybe_unused]] static " + shell + "* " + P + "new(" + pd + ")\n{\n");
-            o.w("    auto sa = " + P + "super_args(" + names + ");\n");
+            // "new" and the factory both use this function. "note" is false for the factory: the
+            // engine owns that object, so its handle has no code of this generation.
+            o.w("static " + shell + "* " + P + "build([[maybe_unused]] bool note" + param_decl(ctor_m) + ")\n{\n");
+            o.w("    auto plan = " + P + "plan(" + names + ");\n");
             o.w("    auto* self = static_cast<" + shell + "*>(spp::construct_shell(&" + cn + "_record, typeid(" + cn +
-                "_SuperArgs).name(), &sa));\n");
-            if (!entry.empty()) {
-                o.w("    try {\n        " + entry + "(self" + ctor_fwd + ");\n    } catch (...) {\n        delete static_cast<" + B +
-                    "*>(self);\n        throw;\n    }\n");
+                "_SuperArgs).name(), &plan.first, note));\n");
+            if (has_entry) {
+                o.w("    try {\n        " + entry + "(self, plan.second" + ctor_fwd + ");\n    } catch (...) {\n        delete static_cast<" +
+                    B + "*>(self);\n        throw;\n    }\n");
             }
             o.w("    return self;\n}\n\n");
-            if (!entry.empty()) {
-                o.w("static void " + P + "ctor_default(spp::ShellBase* s)\n{\n    " + entry + "(static_cast<" + shell +
-                    "*>(s)" + (defaults.empty() ? "" : ", " + defaults) + ");\n}\n\n");
+            o.w("[[maybe_unused]] static " + shell + "* " + P + "new(" + pd + ")\n{\n    return " + P + "build(true" +
+                ctor_fwd + ");\n}\n\n");
+            if (has_entry) {
+                o.w("// The factory of the engine calls it through the canonical record: the current generation\n"
+                    "// gives the base arguments and the constructors.\n");
+                o.w("static spp::ShellBase* " + P + "new_default()\n{\n    return " + P + "build(false" +
+                    (defaults.empty() ? "" : ", " + defaults) + ");\n}\n\n");
             }
         }
         // The destructor slot runs the destructor of the class, then the one of the parent.
@@ -2327,12 +2415,12 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             on_reload_init = " " + pinfo->on_reload + ",\n";
             info.on_reload = pinfo->on_reload;
         }
-        // After on_reload: construct, construct_key, ctor_default, canonical and dtor.
+        // After on_reload: construct, construct_key, new_default, canonical and dtor.
         std::string ctor_init;
         if (gen_new || dtor_chain)
             ctor_init = std::string(on_reload_init.empty() ? "    nullptr,\n" : "") + "    " +
                         (gen_new ? "&" + P + "construct, typeid(" + cn + "_SuperArgs).name()" : "nullptr, nullptr") +
-                        ", " + (!entry.empty() ? "&" + P + "ctor_default" : std::string("nullptr")) + ", nullptr, " +
+                        ", " + (!entry.empty() ? "&" + P + "new_default" : std::string("nullptr")) + ", nullptr, " +
                         (dtor_chain ? "&" + P + "dtor_slot" : std::string("nullptr")) + ",\n";
         o.w("spp::ClassRecord " + cn + "_record = {\n    \"" + cn + "\", GEN, " + cn + "_slots, " +
             slot_id("COUNT") + ", &" + cn + "_layout, " + (par ? "&" + par->name + "_record" : std::string("nullptr")) +
@@ -2340,16 +2428,16 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             BL + "\", sizeof(" + shell + "), alignof(" + shell + "), " + std::to_string(native_count) +
             "),\n" + (on_reload_init.empty() ? "" : "   " + on_reload_init) + ctor_init + "};\n\n");
         if (!entry.empty()) {
-            // The factory of the engine has no arguments. It builds the base and runs the
-            // current constructor with default values.
+            // The factory of the engine has no arguments. The current generation builds the
+            // object with default values (new_default). A removed class has no new_default: then
+            // the factory builds the base with the plan of this generation and runs no constructor.
             std::string defaults;
             for (size_t i = 0; i < ctor_m.params.size(); ++i)
                 defaults += (i ? ", " : "") + ("std::decay_t<" + ctor_m.params[i].type + ">()");
-            o.w("static spp::Instance " + cn + "_create()\n{\n    auto sa = " + P + "super_args(" + defaults + ");\n" +
-                "    auto* p = static_cast<" + shell + "*>(" + P + "construct(&sa));\n" +
-                "    try {\n        if (" + cn + "_record.ctor_default) " + cn + "_record.ctor_default(p);\n" +
-                "    } catch (...) {\n        delete static_cast<" + B + "*>(p);\n        throw;\n    }\n" +
-                "    return {static_cast<" + B + "*>(p), p};\n}\n\n");
+            o.w("static spp::Instance " + cn + "_create()\n{\n    spp::ShellBase* s = nullptr;\n    if (" + cn +
+                "_record.new_default) {\n        s = " + cn + "_record.new_default();\n    } else {\n        auto plan = " + P +
+                "plan(" + defaults + ");\n        s = " + P + "construct(&plan.first);\n    }\n    auto* p = static_cast<" +
+                shell + "*>(s);\n    return {static_cast<" + B + "*>(p), p};\n}\n\n");
         } else {
             o.w("static spp::Instance " + cn + "_create()\n{\n    auto* p = new " + shell +
                 "(spp::Construct{}" + ctor_args + ");\n    return {static_cast<" + B + "*>(p), p};\n}\n\n");

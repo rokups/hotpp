@@ -1,0 +1,49 @@
+// Generation 2 of the Root, Mid and Leaf classes: the "super(...)" arguments of a chain (S16).
+// The "super(...)" argument of Leaf adds 20 now. Each "super(...)" argument calls Util.Count.
+// One object of Leaf still counts two calls. Maker makes a Leaf with "new" in each Tick.
+using "Actor.h";
+using "Util.h";
+using <string>;
+
+class Root : Actor {
+    int got = 0;
+    int ctor_log = 0;
+
+    Root(int v) : super(std.string("root")) {
+        this.got = v;
+        this.ctor_log = this.ctor_log * 10 + 1;
+    }
+}
+
+class Mid : Root {
+    int mid = 0;
+
+    Mid(int v) : super(Util.Count(v + 1)) {
+        this.mid = v;
+        this.ctor_log = this.ctor_log * 10 + 2;
+    }
+}
+
+class Leaf : Mid {
+    int leaf = 0;
+
+    Leaf(int v) : super(Util.Count(v + 20)) {
+        this.leaf = v;
+        this.ctor_log = this.ctor_log * 10 + 3;
+    }
+}
+
+class Maker : Actor {
+    int made = 0;
+    int kid_got = 0;
+    int kid_mid = 0;
+    int kid_log = 0;
+
+    override void Tick(float dt) {
+        Leaf kid = new Leaf(5);
+        this.made = this.made + 1;
+        this.kid_got = kid.got;
+        this.kid_mid = kid.mid;
+        this.kid_log = kid.ctor_log;
+    }
+}

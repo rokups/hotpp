@@ -8,6 +8,7 @@
 #include "support/backend_fixture.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
+#include "Util.h"
 
 namespace {
 
@@ -180,6 +181,60 @@ TEST_P(BackendTests, ReloadThatChangesTheScriptParentIsRejected)
     EXPECT_FALSE(s.loader.reload_pending());
     s.world.Tick(kDt);
     EXPECT_EQ(spp::active_generation, 1u);
+}
+
+// The "super(...)" arguments of a chain evaluate one time for each object (S16). Each argument
+// calls Util.Count, so one Leaf counts two calls: one for Leaf and one for Mid. This is true for
+// the factory and for "new", also after a reload that changes the argument of Leaf.
+TEST_P(BackendTests, SuperArgumentsOfAChainEvaluateOneTime)
+{
+    spp::LoadResult v1 = backend->load(source("chain_v1.spp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult v2 = backend->load(source("chain_v2.spp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    int calls = Util::Calls();
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Maker"));
+    s.commit_at_frame_boundary();
+    EXPECT_EQ(Util::Calls(), calls);  // Maker has no "super(...)" argument
+
+    // The factory: Leaf(0) gives Mid(10) and Root(11).
+    auto make_leaf = [&](int want_got, int want_mid) {
+        const int before = Util::Calls();
+        const spp::ClassEntry* entry = s.loader.find("Leaf");
+        ASSERT_NE(entry, nullptr);
+        spp::Instance leaf = entry->create();
+        ASSERT_NE(leaf.shell, nullptr);
+        EXPECT_EQ(Util::Calls() - before, 2);
+        EXPECT_EQ(*spp::field_ptr<int>(leaf.shell, "got"), want_got);
+        EXPECT_EQ(*spp::field_ptr<int>(leaf.shell, "mid"), want_mid);
+        EXPECT_EQ(*spp::field_ptr<int>(leaf.shell, "ctor_log"), 123);
+        delete static_cast<Actor*>(leaf.native);
+    };
+    ASSERT_NO_FATAL_FAILURE(make_leaf(11, 10));
+
+    // "new Leaf(5)" in Maker.Tick: Count(15) and Count(16).
+    calls = Util::Calls();
+    s.world.Tick(kDt);
+    EXPECT_EQ(Util::Calls() - calls, 2);
+    EXPECT_EQ(*fld<int>(s, "kid_got"), 16);
+    EXPECT_EQ(*fld<int>(s, "kid_mid"), 15);
+    EXPECT_EQ(*fld<int>(s, "kid_log"), 123);
+
+    std::string error;
+    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    s.world.Tick(kDt);  // the commit happens at the end of this frame
+    ASSERT_FALSE(s.commit_failed);
+    EXPECT_EQ(spp::active_generation, 2u);
+
+    // Generation 2 adds 20 in the "super(...)" argument of Leaf. The factory uses it now.
+    ASSERT_NO_FATAL_FAILURE(make_leaf(21, 20));
+    calls = Util::Calls();
+    s.world.Tick(kDt);
+    EXPECT_EQ(Util::Calls() - calls, 2);
+    EXPECT_EQ(*fld<int>(s, "kid_got"), 26);
+    EXPECT_EQ(*fld<int>(s, "kid_mid"), 25);
+    EXPECT_EQ(*fld<int>(s, "made"), 3);
 }
 
 }  // namespace

@@ -120,7 +120,46 @@ TEST(ModuleDeclTranslation, ErrorModuleVariableOfAScriptHandleClass)
     expect_error("class H { int n; }\nH h;\nclass C : Unit { }\n", "a module variable can use only native types, enums and [value] classes");
 }
 
-TEST(ModuleDeclTranslation, ErrorModuleVariableInAnInitializer)
+// An initializer can read a module variable declared before it (S16). The loader runs the
+// initializers in declaration order, so the earlier variable has its value.
+TEST(ModuleDeclTranslation, InitializerReadsAnEarlierModuleVariable)
 {
-    expect_error("int a = 1;\nint b = a + 1;\nclass C : Unit { }\n", "cannot be used in the initializer of a module variable");
+    const sppc::TranslateResult r = translate_script("int a = 1;\nint b = a + 1;\nclass C : Unit { }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("new (f) T(spp_mod()->a + 1);"), std::string::npos) << r.cpp;
+    // spp_mod() comes before the init functions that use it.
+    EXPECT_LT(r.cpp.find("static inline SppModule* spp_mod()"), r.cpp.find("SppModule__init_b")) << r.cpp;
+}
+
+TEST(ModuleDeclTranslation, ErrorModuleVariableDeclaredLaterInAnInitializer)
+{
+    expect_error("int b = a + 1;\nint a = 1;\nclass C : Unit { }\n",
+                 "the module variable 'a' is not declared before this variable");
+    expect_error("int a = a + 1;\nclass C : Unit { }\n", "the module variable 'a' is not declared before this variable");
+}
+
+// "T convert_<var>(Old old)" at file level is the convert hook of a module variable (S16).
+TEST(ModuleDeclTranslation, ConvertHookOfAModuleVariable)
+{
+    const sppc::TranslateResult r =
+        translate_script("float level = 1.0;\nfloat convert_level(int old) { return old * 1.5; }\nclass C : Unit { }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("static float SppModule__convert_level(int32_t old)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("typeid(int32_t).name(), SppModule__convert_level_hook}"), std::string::npos) << r.cpp;
+}
+
+TEST(ModuleDeclTranslation, ConvertHookErrors)
+{
+    expect_error("int a;\nint convert_b(int old) { return old; }\nclass C : Unit { }\n",
+                 "'convert_b' is not a convert hook: the script has no module variable 'b'");
+    expect_error("int a;\nfloat convert_a(int old) { return 1.0; }\nclass C : Unit { }\n",
+                 "'convert_a' must return the type of the module variable: 'int32_t'");
+    expect_error("int a;\nint convert_a(int old, int x) { return old; }\nclass C : Unit { }\n",
+                 "'convert_a' is a convert hook. It takes one parameter: the old value");
+    expect_error("int a;\nint b;\nint convert_a(float old) { return b; }\nclass C : Unit { }\n",
+                 "the module variable 'b' cannot be used in a convert hook");
+    expect_error("int a;\nint helper() { return 1; }\nclass C : Unit { }\n",
+                 "a function must be a member of a class. At file level, only a convert hook");
+    expect_error("int a;\n[alias(\"x\")] int convert_a(float old) { return 1; }\nclass C : Unit { }\n",
+                 "attribute 'alias' is not allowed on a convert hook");
 }

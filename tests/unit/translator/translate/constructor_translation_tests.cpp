@@ -55,7 +55,7 @@ TEST(ConstructorTranslation, ConstructorEmitsTheEntryPoints)
     EXPECT_TRUE(has(r, "static Squad_Shell* Squad__new(std::string label, int32_t extra)")) << r.cpp;
     EXPECT_TRUE(has(r, "spp::construct_shell(&Squad_record")) << r.cpp;
     EXPECT_TRUE(has(r, "&Squad__construct")) << r.cpp;
-    EXPECT_TRUE(has(r, "&Squad__ctor_default")) << r.cpp;
+    EXPECT_TRUE(has(r, "&Squad__new_default")) << r.cpp;
     // A constructor gets no slot: the table does not call it.
     EXPECT_EQ(r.slots_out.find("Squad"), std::string::npos) << r.slots_out;
 }

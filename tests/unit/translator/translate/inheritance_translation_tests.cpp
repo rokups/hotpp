@@ -68,8 +68,12 @@ TEST(InheritanceTranslation, ParentConstructorRunsFirst)
     const sppc::TranslateResult r = translate_text(family("    B(int x) : super(x + 1) { this.hp = this.hp + x; }",
                                                           "    A(int v) { this.hp = v; }\n"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "A__ctor(self, x + 1);\n    B__ctor(self, x);")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "B__ctor_chain(self, x);")) << r.cpp;
+    // The plan evaluates "x + 1" one time. The chain gives the value to the constructor of A.
+    EXPECT_TRUE(has(r.cpp, "auto up = std::make_tuple(x + 1);")) << r.cpp;
+    EXPECT_EQ(r.cpp.find("x + 1"), r.cpp.rfind("x + 1")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "A__ctor_chain(self, chain.second, x...); }, chain.first);\n    B__ctor(self, x);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "B__ctor_chain(self, plan.second, x);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "&B__new_default")) << r.cpp;
 }
 
 TEST(InheritanceTranslation, Errors)

@@ -109,4 +109,33 @@ TEST_P(BackendTests, ReloadKeepsModuleVariables)
     EXPECT_EQ(*fld<int>(s.inst.shell, "score"), 10);  // Weight(Run) in generation 2
 }
 
+// An initializer of a module variable reads an earlier variable (S16). A convert hook keeps the
+// value of a variable whose type changes. A new variable reads the migrated earlier variable.
+TEST_P(BackendTests, ModuleVariableOrderAndConvertHook)
+{
+    spp::LoadResult v1 = backend->load(source("modconv_v1.spp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult v2 = backend->load(source("modconv_v2.spp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Probe"));
+    s.commit_at_frame_boundary();
+    ASSERT_NE(modvar<int>(s, "doubled"), nullptr);
+    EXPECT_EQ(*modvar<int>(s, "doubled"), 10);  // base * 2
+    s.world.Tick(kDt);
+    EXPECT_EQ(*modvar<int>(s, "doubled"), 11);
+
+    std::string error;
+    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    s.world.Tick(kDt);  // doubled is 12; the commit happens at the end of this frame
+    ASSERT_FALSE(s.commit_failed);
+    EXPECT_EQ(spp::active_generation, 2u);
+    ASSERT_NE(modvar<float>(s, "level"), nullptr);
+    EXPECT_FLOAT_EQ(*modvar<float>(s, "level"), 4.5f);  // convert_level(3)
+    ASSERT_NE(modvar<int>(s, "bonus"), nullptr);
+    EXPECT_EQ(*modvar<int>(s, "bonus"), 112);  // the migrated doubled + 100
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "seen"), 12);
+}
+
 }  // namespace

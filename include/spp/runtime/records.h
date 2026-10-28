@@ -74,15 +74,16 @@ struct ClassRecord {
     //    of the script builds the class with "new" and the class has no constructor.
     //  - construct_key: typeid(tuple).name() of those arguments in the generation that
     //    made "construct". A later generation that changes the types cannot build the class.
-    //  - ctor_default: runs the constructor with default values on a new shell. The
-    //    factory of the engine calls it. A commit copies it from the new record. Null: no
-    //    constructor.
+    //  - new_default: makes a new object with default constructor arguments. It evaluates
+    //    the "super(...)" arguments one time, makes the shell through "construct" and runs
+    //    the constructor chain. The factory of the engine calls it. A commit copies it from
+    //    the new record, so the current generation runs. Null: no constructor.
     //  - canonical: set by the loader in each generation record that is not canonical. It
     //    points to the canonical record of the class: the record of the core module, or the
     //    first record of the class when there is no core.
     ShellBase* (*construct)(const void* args) = nullptr;
     const char* construct_key = nullptr;
-    void (*ctor_default)(ShellBase* self) = nullptr;
+    ShellBase* (*new_default)() = nullptr;
     ClassRecord* canonical = nullptr;
     // The script destructor, or null. destroy_state calls it before it destroys the fields.
     // A commit copies it from the new record, so the current generation runs at destruction.

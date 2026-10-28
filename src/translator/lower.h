@@ -96,9 +96,14 @@ struct RCtx {
     // Module variables (design 5.3, 7.3): "Type name = init;" at file level. A bare name that is
     // not a local becomes "spp_mod()->name", an access to the module state block. The map has the
     // names and the script types. "in_module_init" is true in the initializer of a module
-    // variable: a module variable is an error there, because the block is not complete.
+    // variable. There, only the variables in "module_earlier" are allowed: the loader runs the
+    // initializers in declaration order, so a variable declared earlier has its value.
+    // "in_module_hook" is true in a convert hook of a module variable: no module variable is
+    // allowed there, because the new block is not complete.
     std::map<std::string, std::string> module_vars;
     bool in_module_init = false;
+    std::set<std::string> module_earlier;
+    bool in_module_hook = false;
 };
 
 // The context of a class: the fields and the script fns. A body or an initializer

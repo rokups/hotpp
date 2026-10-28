@@ -124,12 +124,13 @@ void check_name(const ParseState& st, const char* pos, const std::string& name)
 }
 
 struct TopItem {
-    enum Kind { None, IsImport, IsClass, IsStub, IsEnum, IsVar } kind = None;
+    enum Kind { None, IsImport, IsClass, IsStub, IsEnum, IsVar, IsHook } kind = None;
     ast::Import import;
     ast::ClassDef cls;
     ast::Stub stub;
     ast::EnumDef en;
-    ast::Field var;  // a module variable
+    ast::Field var;     // a module variable
+    ast::Method hook;   // a convert hook of a module variable
 };
 
 const Annot* annot_of(lexy::nullopt) { return nullptr; }
@@ -1047,9 +1048,20 @@ struct class_p {
             [](const ParseState& st, const char* pos, const auto& attrs, Member&& m) {
                 const ClassAttrs* a = class_attrs_of(attrs);
                 TopItem t;
+                // "T convert_<var>(Old old) { }" at file level is the convert hook of a module
+                // variable (DECISIONS.md item 14). Other functions must be members of a class.
+                if (m.kind == Member::IsMethod && m.method.name.rfind("convert_", 0) == 0) {
+                    if (a && !a->used.empty())
+                        st.error(a->used.front().first, "attribute '" + a->used.front().second +
+                                                            "' is not allowed on a convert hook");
+                    t.kind = TopItem::IsHook;
+                    t.hook = std::move(m.method);
+                    return t;
+                }
                 if (m.kind != Member::IsField) {
                     st.error(pos, m.kind == Member::IsMethod
-                                      ? "a function must be a member of a class"
+                                      ? "a function must be a member of a class. At file level, only a convert hook "
+                                        "'T convert_<variable>(Old old)' of a module variable is allowed"
                                       : "expected 'class', 'struct', 'enum' or a variable 'Type name = init;'");
                     return t;
                 }
@@ -1197,6 +1209,8 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
                 script.enums.push_back(std::move(t.en));
             else if (t.kind == TopItem::IsVar)
                 script.vars.push_back(std::move(t.var));
+            else if (t.kind == TopItem::IsHook)
+                script.var_hooks.push_back(std::move(t.hook));
         }
     }
     // The span-then-call step: parse each body and each initializer.
@@ -1208,6 +1222,7 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
     for (ast::Field& f : script.vars)
         if (f.has_init && !only_blank(span_text(st, f.init_span)))
             f.init = parse_expression(in, f.init_span, diag);
+    for (ast::Method& m : script.var_hooks) m.body = parse_block(in, m.body_span, diag);
     for (ast::ClassDef& c : script.classes) {
         for (ast::Method& m : c.methods) m.body = parse_block(in, m.body_span, diag);
         for (ast::Method& d : c.dtors) d.body = parse_block(in, d.body_span, diag);

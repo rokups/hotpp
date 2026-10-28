@@ -1,0 +1,21 @@
+// Generation 2 of the module variables with an order and a convert hook (S16).
+// "level" changes from int to float: the convert hook keeps the value.
+// The new variable "bonus" reads the migrated value of "doubled" in its initializer.
+using "Actor.h";
+
+int base = 5;
+int doubled = base * 2;
+float level = 1.0;
+int bonus = doubled + 100;
+
+float convert_level(int old) {
+    return old * 1.5;
+}
+
+class Probe : Actor {
+    int seen = 0;
+
+    override void Tick(float dt) {
+        this.seen = doubled;
+    }
+}

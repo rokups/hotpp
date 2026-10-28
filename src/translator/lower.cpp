@@ -693,8 +693,13 @@ struct Lowerer {
     // The access to a module variable: "spp_mod()->name".
     ExprP module_ref(const std::string& n, uint32_t pos)
     {
-        if (cx.in_module_init)
-            error(pos, "the module variable '" + n + "' cannot be used in the initializer of a module variable");
+        if (cx.in_module_init && !cx.module_earlier.count(n))
+            error(pos, "the module variable '" + n +
+                           "' is not declared before this variable. An initializer of a module variable can use only "
+                           "the module variables declared before it");
+        if (cx.in_module_hook)
+            error(pos, "the module variable '" + n +
+                           "' cannot be used in a convert hook: the new module state is not complete yet");
         return raw("spp_mod()->" + n, pos);
     }
 

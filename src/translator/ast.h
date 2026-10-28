@@ -421,6 +421,8 @@ struct Script {
     // Module variables: "Type name = init;" at file level. The translator collects them in
     // the module state block.
     std::vector<Field> vars;
+    // Convert hooks of module variables: "T convert_<var>(Old old) { }" at file level.
+    std::vector<Method> var_hooks;
 };
 
 }  // namespace sppc::ast

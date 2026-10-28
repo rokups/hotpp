@@ -43,7 +43,7 @@ void adopt(ClassRecord* canon, ClassRecord* in)
     canon->layout = in->layout;
     canon->generation = in->generation;
     canon->on_reload = in->on_reload;
-    canon->ctor_default = in->ctor_default;
+    canon->new_default = in->new_default;
     canon->dtor = in->dtor;
     if (in != canon) in->canonical = canon;
 }
@@ -557,7 +557,7 @@ bool Loader::commit_pending(std::string& error)
         r->slots = table.data();
         r->on_reload = nullptr;
         r->dtor = nullptr;  // the script destructor belongs to a source that does not exist now
-        r->ctor_default = nullptr;  // the same: the factory makes an object without a constructor
+        r->new_default = nullptr;  // the same: the factory makes an object without a constructor
         size_t live = 0;
         for (const auto& [s, creator] : g_live) live += s->cls == r;
         std::fprintf(stderr,
