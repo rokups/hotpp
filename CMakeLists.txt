@@ -9,6 +9,19 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_compile_options(-Wall -Wextra)
 
+# Dependencies. CPM uses an installed package first and fetches only when the
+# package is missing. libclang is not fetched: it must come from the system.
+set(CPM_USE_LOCAL_PACKAGES ON)
+include(cmake/CPM.cmake)
+CPMAddPackage(
+    NAME GTest
+    GITHUB_REPOSITORY google/googletest
+    GIT_TAG v1.17.0
+    VERSION 1.17.0
+    OPTIONS "INSTALL_GTEST OFF" "gtest_force_shared_crt ON"
+)
+include(GoogleTest)
+
 # Script runtime: a small static library for the executable.
 add_library(spp_runtime STATIC runtime/script_runtime.cpp)
 target_include_directories(spp_runtime PUBLIC runtime engine)
@@ -40,3 +53,54 @@ endforeach()
 add_test(NAME r0 COMMAND minengine --r0 $<TARGET_FILE:gen1>)
 add_test(NAME r1 COMMAND minengine --r1 $<TARGET_FILE:gen1> $<TARGET_FILE:gen2>
          $<TARGET_FILE:gen4_base> ${CMAKE_BINARY_DIR}/gen3_missing.so)
+
+# ------------------------------------------------------------ Step F1
+# The translator spc. It needs libclang (C API) from the system.
+find_library(CLANG_C_LIBRARY NAMES clang REQUIRED)
+find_path(CLANG_C_INCLUDE_DIR clang-c/Index.h REQUIRED)
+execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
+                OUTPUT_VARIABLE CLANG_RESOURCE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+add_executable(spc translator/spc.cpp)
+target_include_directories(spc PRIVATE ${CLANG_C_INCLUDE_DIR})
+target_link_libraries(spc PRIVATE ${CLANG_C_LIBRARY})
+target_compile_definitions(spc PRIVATE SPC_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
+
+# Two generations of scripts/player_*.script. spc makes the .cpp files. The two
+# calls share one slot file, so the second call depends on the first.
+set(GEN_DIR ${CMAKE_BINARY_DIR}/generated)
+set(SPC_ARGS -I ${CMAKE_SOURCE_DIR}/engine -I ${CMAKE_SOURCE_DIR}/runtime)
+set(SPC_DEPS spc ${CMAKE_SOURCE_DIR}/engine/Actor.h ${CMAKE_SOURCE_DIR}/engine/Math.h
+             ${CMAKE_SOURCE_DIR}/runtime/script_runtime.h)
+add_custom_command(
+    OUTPUT ${GEN_DIR}/player_v1.cpp
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${GEN_DIR}
+    COMMAND spc ${CMAKE_SOURCE_DIR}/scripts/player_v1.script --gen 1 -o ${GEN_DIR}/player_v1.cpp
+            --slots ${GEN_DIR}/player.slots ${SPC_ARGS}
+    DEPENDS ${SPC_DEPS} ${CMAKE_SOURCE_DIR}/scripts/player_v1.script
+    VERBATIM)
+add_custom_command(
+    OUTPUT ${GEN_DIR}/player_v2.cpp
+    COMMAND spc ${CMAKE_SOURCE_DIR}/scripts/player_v2.script --gen 2 -o ${GEN_DIR}/player_v2.cpp
+            --slots ${GEN_DIR}/player.slots ${SPC_ARGS}
+    DEPENDS ${SPC_DEPS} ${CMAKE_SOURCE_DIR}/scripts/player_v2.script ${GEN_DIR}/player_v1.cpp
+    VERBATIM)
+foreach(g v1 v2)
+    add_library(f1_${g} SHARED ${GEN_DIR}/player_${g}.cpp)
+    target_include_directories(f1_${g} PRIVATE runtime engine)
+    set_target_properties(f1_${g} PROPERTIES PREFIX "")
+endforeach()
+
+# GoogleTest cases: F1Reload (generated libraries) and F1Diag (error at the script).
+add_executable(f1_tests tests/f1_tests.cpp engine/Actor.cpp)
+target_link_libraries(f1_tests PRIVATE spp_runtime GTest::gtest_main)
+set_target_properties(f1_tests PROPERTIES ENABLE_EXPORTS ON)
+add_dependencies(f1_tests f1_v1 f1_v2 spc)
+target_compile_definitions(f1_tests PRIVATE
+    F1_V1_SO="$<TARGET_FILE:f1_v1>"
+    F1_V2_SO="$<TARGET_FILE:f1_v2>"
+    SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    SPP_BINARY_DIR="${CMAKE_BINARY_DIR}"
+    SPC_PATH="$<TARGET_FILE:spc>"
+    SPP_CXX="${CMAKE_CXX_COMPILER}"
+    SPP_CXXFLAGS="${CMAKE_CXX_FLAGS}")
+gtest_discover_tests(f1_tests)

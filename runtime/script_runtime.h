@@ -8,6 +8,7 @@
 #include <memory>
 #include <new>
 #include <string>
+#include <type_traits>
 #include <typeinfo>
 #include <unordered_map>
 #include <utility>
@@ -144,6 +145,35 @@ inline void destroy_state(ShellBase* self)
     destroy_fields(self->cls->layout, mem);
     std::free(mem);
     self->state = nullptr;
+}
+
+// Helpers for the reflection table of generated code. T is the field type.
+template <class T>
+constexpr uint8_t field_flags()
+{
+    return static_cast<uint8_t>((std::is_trivially_copyable_v<T> ? kTriviallyCopyable : 0) |
+                                (std::is_nothrow_move_constructible_v<T> ? kNothrowMove : 0));
+}
+
+template <class T>
+inline void move_field(void* dst, const void* src)
+{
+    new (dst) T(*static_cast<const T*>(src));
+}
+
+template <class T>
+inline void destroy_field(void* field)
+{
+    static_cast<T*>(field)->~T();
+}
+
+template <class T>
+constexpr void (*field_destroyer())(void*)
+{
+    if constexpr (std::is_trivially_destructible_v<T>)
+        return nullptr;
+    else
+        return &destroy_field<T>;
 }
 
 // Reflection helpers.

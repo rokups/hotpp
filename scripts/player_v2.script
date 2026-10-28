@@ -1,0 +1,35 @@
+// Generation 2 of the Player class (design section 7.8, after).
+// The field hp has the new name health. The new field shield is 25.
+import "Actor.h";
+import "Math.h";
+
+class Player : Actor {
+    @was("hp") health: float = 100.0;
+    speed: float = 5.0;
+    target: Actor* = null;
+    shield: float = 25.0;
+
+    override Tick(dt: float) {
+        this.Move({2.0 * this.speed * dt, 0, 0});
+        std::printf("[v2] %s: Tick dt=%.4f pos.x=%.4f health=%.1f shield=%.1f\n",
+                    this.Name.c_str(), dt, this.Position.x, this.health, this.shield);
+    }
+
+    override TakeDamage(amount: float) {
+        this.health = Math.Max(this.health - amount, 0.0);
+        std::printf("[v2] %s: TakeDamage %.1f -> health=%.1f\n", this.Name.c_str(), amount,
+                    this.health);
+    }
+
+    override TakeDamage(source: Actor&, amount: float) {
+        this.target = &source;
+        std::printf("[v2] %s: hit by %s\n", this.Name.c_str(), this.target.Name.c_str());
+        this.TakeDamage(amount);
+    }
+
+    fn heal(amount: float) {
+        this.health = Math.Min(this.health + 2.0 * amount, 100.0);
+        std::printf("[v2] %s: heal %.1f (x2) -> health=%.1f\n", this.Name.c_str(), amount,
+                    this.health);
+    }
+}

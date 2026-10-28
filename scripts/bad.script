@@ -1,0 +1,15 @@
+// A script with a type error. The test f1_diag compiles it.
+import "Actor.h";
+
+class Player : Actor {
+    speed: float = 5.0;
+
+    override Tick(dt: float) {
+        this.Move({this.speed * dt, 0, 0});
+        this.speed = "fast";
+    }
+
+    override TakeDamage(amount: float) {}
+
+    override TakeDamage(source: Actor&, amount: float) {}
+}
