@@ -1,0 +1,261 @@
+// imgui_app: a Dear ImGui window whose user interface a script draws.
+// Usage: imgui_app [script]
+// The default script is example/imgui/demo.script. The script class Demo
+// derives from UiApp. The host calls Frame once for each frame.
+// The struct Host loads the script and reloads it when the file changes.
+#include <SDL3/SDL.h>
+#include <unistd.h>
+
+#include <cstdio>
+#include <exception>
+#include <filesystem>
+#include <fstream>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include "UiApp.h"
+#include "backends/imgui_impl_sdl3.h"
+#include "backends/imgui_impl_sdlrenderer3.h"
+#include "imgui.h"
+#include "spp/clang_files_backend.h"
+#include "spp/script_runtime.h"
+
+namespace {
+
+std::vector<std::string> split_list(const std::string& s)
+{
+    std::vector<std::string> v;
+    std::stringstream ss(s);
+    for (std::string item; std::getline(ss, item, '|');)
+        if (!item.empty()) v.push_back(item);
+    return v;
+}
+
+std::unique_ptr<script::Backend> make_backend()
+{
+    script::ClangFilesOptions o;
+    o.compiler = IMGUI_APP_CXX;
+    o.include_dirs = split_list(IMGUI_APP_INCLUDES);
+    o.extra_flags = split_list(IMGUI_APP_CXXFLAGS);
+    o.resource_dir = IMGUI_APP_RESOURCE_DIR;
+    o.work_dir = std::string(IMGUI_APP_WORK_DIR) + "/p" + std::to_string(getpid());
+    std::error_code ec;
+    std::filesystem::remove_all(o.work_dir, ec);
+    return std::make_unique<script::ClangFilesBackend>(std::move(o));
+}
+
+bool read_file(const std::string& path, std::string& text)
+{
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    text = ss.str();
+    return true;
+}
+
+// Reads and compiles the script. Returns false and sets "error" on failure.
+bool compile_script(script::Backend& backend, const std::string& path, uint32_t generation,
+                    script::Module& out, std::string& error)
+{
+    std::string text;
+    if (!read_file(path, text)) {
+        error = "cannot read " + path;
+        return false;
+    }
+    script::LoadResult r = backend.load({path, text}, generation);
+    if (!r) {
+        error = r.error;
+        return false;
+    }
+    out = std::move(*r.module);
+    return true;
+}
+
+// Makes the object of class Demo. Returns null and sets "error" on failure.
+UiApp* create_app(script::Loader& loader, std::string& error)
+{
+    const script::ClassEntry* entry = loader.find("Demo");
+    if (!entry) {
+        error = "class Demo is not registered";
+        return nullptr;
+    }
+    return static_cast<UiApp*>(entry->create().native);
+}
+
+// The host state of one run. The loader is the first member: it ends last.
+struct Host {
+    script::Loader loader;
+    std::unique_ptr<script::Backend> backend = make_backend();
+    std::string path;
+    uint32_t generation = 0;   // the number of the last compile
+    bool loaded = false;       // the loader has a first module
+    UiApp* app = nullptr;
+    std::string last_error;    // shown in the "Script error" window
+    std::filesystem::file_time_type last_seen{};
+
+    // The first load. It sets last_error on failure.
+    void first_load()
+    {
+        std::error_code ec;
+        last_seen = std::filesystem::last_write_time(path, ec);
+        script::Module m;
+        if (!compile_script(*backend, path, ++generation, m, last_error)) {
+            std::fprintf(stderr, "load failed: %s\n", last_error.c_str());
+            return;
+        }
+        loaded = true;
+        if (!loader.load(std::move(m), last_error)) {
+            loaded = false;
+            std::fprintf(stderr, "load failed: %s\n", last_error.c_str());
+            return;
+        }
+        app = create_app(loader, last_error);
+        if (app) std::fprintf(stderr, "loaded gen %u\n", generation);
+    }
+
+    // Call it once for each frame, before the script runs. It starts a reload when
+    // the file changed. The commit happens later, in frame_end.
+    void poll_reload()
+    {
+        std::error_code ec;
+        auto t = std::filesystem::last_write_time(path, ec);
+        if (ec || t == last_seen) return;
+        last_seen = t;
+        script::Module m;
+        std::string err;
+        if (!compile_script(*backend, path, ++generation, m, err)) {
+            last_error = err;
+            std::fprintf(stderr, "reload failed: %s\n", err.c_str());
+            return;
+        }
+        if (!loaded) {  // the first load failed: this module is the first one
+            if (!loader.load(std::move(m), err)) {
+                last_error = err;
+                std::fprintf(stderr, "reload failed: %s\n", err.c_str());
+                return;
+            }
+            loaded = true;
+            recreate_app();
+            return;
+        }
+        if (!loader.request_reload(std::move(m), err)) {
+            last_error = err;
+            std::fprintf(stderr, "reload failed: %s\n", err.c_str());
+        }
+        // Success: the error text stays until the commit works.
+    }
+
+    // Call it after app->Frame() and before Render. It is the frame boundary.
+    void frame_end()
+    {
+        std::string err;
+        if (loader.reload_pending()) {
+            if (loader.commit_pending(err)) {
+                last_error.clear();
+                std::fprintf(stderr, "reloaded gen %u\n", generation);
+                if (!app) recreate_app();
+            } else {
+                last_error = err;
+                std::fprintf(stderr, "reload failed: %s\n", err.c_str());
+            }
+        }
+        loader.frame_boundary();
+    }
+
+    void recreate_app()
+    {
+        std::string err;
+        app = create_app(loader, err);
+        if (app) {
+            last_error.clear();
+            std::fprintf(stderr, "reloaded gen %u (new object)\n", generation);
+        } else {
+            last_error = err;
+        }
+    }
+
+    // Calls Frame. A throw drops the object until a good reload.
+    void run_frame()
+    {
+        if (!app) return;
+        try {
+            app->Frame();
+        } catch (const std::exception& e) {
+            last_error = e.what();
+            std::fprintf(stderr, "script error: %s\n", e.what());
+            delete app;
+            app = nullptr;
+        }
+    }
+};
+
+}  // namespace
+
+int main(int argc, char** argv)
+{
+    Host host;  // the host ends last: the app is deleted before the loader
+    host.path = argc > 1 ? argv[1] : IMGUI_APP_DEFAULT_SCRIPT;
+    host.first_load();
+
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
+        delete host.app;
+        return 1;
+    }
+    SDL_Window* window = nullptr;
+    SDL_Renderer* renderer = nullptr;
+    if (!SDL_CreateWindowAndRenderer("imgui_app", 800, 600, SDL_WINDOW_RESIZABLE, &window, &renderer)) {
+        std::fprintf(stderr, "SDL window failed: %s\n", SDL_GetError());
+        delete host.app;
+        SDL_Quit();
+        return 1;
+    }
+    SDL_SetRenderVSync(renderer, 1);
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    // A script that throws inside Begin leaves the window stack open. ImGui recovers.
+    ImGui::GetIO().ConfigErrorRecoveryEnableAssert = false;
+    ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
+    ImGui_ImplSDLRenderer3_Init(renderer);
+
+    bool running = true;
+    while (running) {
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            ImGui_ImplSDL3_ProcessEvent(&event);
+            if (event.type == SDL_EVENT_QUIT) running = false;
+        }
+        host.poll_reload();
+        ImGui_ImplSDLRenderer3_NewFrame();
+        ImGui_ImplSDL3_NewFrame();
+        ImGui::NewFrame();
+
+        host.run_frame();
+        host.frame_end();
+        if (!host.last_error.empty()) {
+            ImGui::Begin("Script error");
+            ImGui::TextWrapped("%s", host.last_error.c_str());
+            ImGui::End();
+        }
+
+        ImGui::Render();
+        SDL_SetRenderDrawColor(renderer, 30, 30, 36, 255);
+        SDL_RenderClear(renderer);
+        ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer);
+        SDL_RenderPresent(renderer);
+    }
+
+    delete host.app;  // before the loader ends: the destructor code lives in the module
+    host.app = nullptr;
+    ImGui_ImplSDLRenderer3_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
+    ImGui::DestroyContext();
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return 0;
+}

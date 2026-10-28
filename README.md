@@ -171,6 +171,23 @@ All tests are GoogleTest cases. CMake registers them with `gtest_discover_tests`
 - `TranslatorLambda` (`tests/translator_tests.cpp`) checks the output for an arrow lambda.
 - `PrecompiledTests` load the libraries that `spp_add_scripts` made with `sppc`, through `module_from_library`. They run the same F1 scenario. They run for each `SPP_BACKEND` value. One test runs `sppc` on `bad.script` and checks the exit code and the error line.
 
+## ImGui example
+
+`imgui_app` (`example/imgui/`) draws a Dear ImGui window. A script class draws the user interface. The script includes the real `imgui.h` (`using "imgui.h";`) and calls the ImGui API as it is: `ImGui.Begin("x")`, `ImGui.Text("n: %d", this.n)`, `ImGui.Checkbox("c", &this.on)`. A pointer parameter takes the address of a field. There is no wrapper layer.
+
+Build. The target exists only when CMake finds SDL3 (`find_package(SDL3)`). Without SDL3 the configure step prints a STATUS message and the rest of the build is the same. CPM fetches Dear ImGui (v1.92.9b) and builds the static library `imgui_sdl3` with the SDL3 and SDL_Renderer backends. The executable links it as a whole archive, so a script can call every ImGui function.
+
+    cmake --preset linux-clang-files
+    cmake --build --preset linux-clang-files-dbg --target imgui_app
+
+Run. The default script is `example/imgui/demo.script`.
+
+    cmake-build/linux-clang-files/Debug/imgui_app [script]
+
+Hot reload. The host checks the modification time of the script file at each frame. When it changes, the host compiles the script as a new generation and starts a reload. The commit happens after `Frame()`, at the frame boundary. The object keeps its field values. If the compile or the reload fails, the window "Script error" shows the text and the old generation keeps running. If `Frame()` throws, the host drops the object and shows the message. The next good reload makes a new object. The host writes `reloaded gen N` and `reload failed: ...` to stderr.
+
+The base class is `UiApp` (`example/imgui/UiApp.h`, virtual `Frame()`). Gap: a native array field such as `float rgb[3];` gives "expected a member name", so `ImGui.ColorEdit3("c", this.rgb)` does not work. Use `ImVec4 col` and `&this.col.x`, or three float fields.
+
 ## Reload
 
 `Loader::request_reload` validates a `Module` with no side effect: `script_register`, base class, shell layout hash, slot count. `Loader::commit_pending` runs at the frame boundary (the `World` hook). It allocates all new state blocks, migrates, swaps the table and layout, sets `active_generation` and frees the old blocks.

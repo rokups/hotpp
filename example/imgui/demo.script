@@ -1,0 +1,23 @@
+// A user interface script. The host draws it with Dear ImGui.
+// The script calls the ImGui API directly. A pointer parameter takes the address of a field.
+using "UiApp.h";
+using "imgui.h";
+
+class Demo : UiApp {
+    int clicks = 0;
+    float speed = 1.0;
+    bool on = false;
+
+    override void Frame() {
+        if (ImGui.Begin("Demo")) {
+            ImGui.Text("Hello from a script");
+            ImGui.Text("Clicks: %d", this.clicks);
+            if (ImGui.Button("Click me")) {
+                this.clicks = this.clicks + 1;
+            }
+            ImGui.Checkbox("Enabled", &this.on);
+            ImGui.SliderFloat("Speed", &this.speed, 0.0, 10.0);
+        }
+        ImGui.End();
+    }
+}
