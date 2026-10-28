@@ -23,6 +23,7 @@
 #include "spp/spc_lib.h"
 
 #include "ast.h"
+#include "builtin_types.h"
 #include "diag.h"
 #include "emit.h"
 #include "lower.h"
@@ -114,6 +115,10 @@ std::string norm(const std::string& s)
     return r;
 }
 
+// The key form of a type: the spelling is canonical (see builtin_types.h) and has no space.
+// A native "int" and a script "int" or "int32" give the same key.
+std::string key_norm(const std::string& s) { return norm(spc::canonical_type(s, nullptr, true)); }
+
 struct NativeVirtual {
     std::string name, ret, owner;
     std::vector<std::string> ptypes;
@@ -121,7 +126,7 @@ struct NativeVirtual {
     std::string key() const
     {
         std::string k = name + "(";
-        for (const auto& p : ptypes) k += norm(p) + ",";
+        for (const auto& p : ptypes) k += key_norm(p) + ",";
         return k + ")" + (is_const ? "const" : "");
     }
     std::string text() const
@@ -399,6 +404,9 @@ std::string mangle_type(const std::string& t)
         {"float", "f"},     {"double", "d"},       {"int", "i"},  {"bool", "b"},
         {"unsigned", "u"},  {"unsignedint", "u"},  {"char", "c"}, {"long", "l"},
         {"longlong", "ll"}, {"short", "s"},        {"void", "v"},
+        {"int8_t", "i8"},   {"uint8_t", "u8"},     {"int16_t", "i16"},  {"uint16_t", "u16"},
+        {"int32_t", "i"},   {"uint32_t", "u"},     {"int64_t", "i64"},  {"uint64_t", "u64"},
+        {"intptr_t", "ip"}, {"uintptr_t", "up"},   {"char16_t", "w"},
     };
     std::string r;
     auto it = builtin.find(core);
@@ -748,7 +756,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
             // The method must have the modifier "override" (C# rules).
             std::string key = m.name + "(";
             for (const Param& p : m.params)
-                key += norm(p.type) + (p.mode == PassMode::Value ? "" : "&") + ",";
+                key += key_norm(p.type) + (p.mode == PassMode::Value ? "" : "&") + ",";
             const NativeVirtual* hit = nullptr;
             for (const auto& nv : bi.virtuals) {
                 std::string k = nv.key();
@@ -782,7 +790,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
             m.overrides_virtual = true;
             if (hit->final_)
                 fail_at(map, m.pos, "'" + hit->text() + "' of " + hit->owner + " is final and cannot be overridden");
-            if (!m.ret.empty() && norm(m.ret) != norm(hit->ret))
+            if (!m.ret.empty() && key_norm(m.ret) != key_norm(hit->ret))
                 fail_at(map, m.pos, "return type '" + m.ret + "' differs from '" + hit->ret + "'");
             if (!overrides.emplace(hit->key(), &m).second)
                 fail_at(map, m.pos, "'" + hit->text() + "' is overridden twice");

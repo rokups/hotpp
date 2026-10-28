@@ -73,11 +73,11 @@ TEST(StmtParse, Simple)
 // No initializer: the emitter value-initializes. "var" and "const" need an initializer.
 TEST(StmtParse, DeclarationWithoutInitializer)
 {
-    EXPECT_EQ(round_trip("int x;"), "int x = int();");
+    EXPECT_EQ(round_trip("int x;"), "int32_t x = int32_t();");
     EXPECT_EQ(round_trip("Vec3 v;"), "Vec3 v = Vec3();");
     EXPECT_EQ(round_trip("Actor* p;"), "Actor* p = std::type_identity_t<Actor*>();");
     EXPECT_EQ(round_trip("for (int i; i < 3; i++) f(i);"),
-              "for (int i = int(); i < 3; i++) f(i);");
+              "for (int32_t i = int32_t(); i < 3; i++) f(i);");
     EXPECT_EQ(errors_of(Parsed("var x;")),
               (std::vector<std::string>{"1:1: var needs an initializer"}));
     EXPECT_EQ(errors_of(Parsed("const int X;")),
@@ -111,28 +111,28 @@ TEST(StmtParse, Declarations)
     EXPECT_EQ(round_trip("var x = 1;"), "auto x = 1;");
     EXPECT_EQ(round_trip("const var x = f(1);"), "const auto x = f(1);");
     EXPECT_EQ(round_trip("float x = 2.0;"), "float x = 2.0;");
-    EXPECT_EQ(round_trip("std.vector<int> v = f(1, 2);"), "std::vector<int> v = f(1, 2);");
+    EXPECT_EQ(round_trip("std.vector<int> v = f(1, 2);"), "std::vector<int32_t> v = f(1, 2);");
     EXPECT_EQ(round_trip("const Actor* p = null;"), "const Actor* p = nullptr;");
     EXPECT_EQ(round_trip("std.map<int, std.vector<int>> m;"),
-              "std::map<int, std::vector<int>> m = std::map<int, std::vector<int>>();");
+              "std::map<int32_t, std::vector<int32_t>> m = std::map<int32_t, std::vector<int32_t>>();");
     EXPECT_EQ(round_trip("var f = (int a) => { return a; };"),
-              "auto f = [=](int a) { return a; };");
+              "auto f = [=](int32_t a) { return a; };");
 }
 
 // Type-first declarations, "var" and "const". The look-ahead rule is in statement_grammar.cpp.
 TEST(StmtParse, TypeFirstDeclarations)
 {
-    EXPECT_EQ(round_trip("int x = 5;"), "int x = 5;");
+    EXPECT_EQ(round_trip("int x = 5;"), "int32_t x = 5;");
     EXPECT_EQ(round_trip("var x = 5;"), "auto x = 5;");
-    EXPECT_EQ(round_trip("const int X = 5;"), "const int X = 5;");
+    EXPECT_EQ(round_trip("const int X = 5;"), "const int32_t X = 5;");
     EXPECT_EQ(round_trip("const var y = 1;"), "const auto y = 1;");
     EXPECT_EQ(round_trip("Actor* p = null;"), "Actor* p = nullptr;");
     EXPECT_EQ(round_trip("std.string s;"), "std::string s = std::string();");
     EXPECT_EQ(round_trip("std.string s = \"x\";"), "std::string s = \"x\";");
-    EXPECT_EQ(round_trip("unsigned int n = 0;"), "unsigned int n = 0;");
+    EXPECT_EQ(round_trip("uint n = 0;"), "uint32_t n = 0;");
     EXPECT_EQ(round_trip("const std.exception& e = f();"), "const std::exception& e = f();");
-    EXPECT_EQ(round_trip("int[3] a;"), "int[3] a = std::type_identity_t<int[3]>();");
-    EXPECT_EQ(round_trip("/* c */ int // d\n x = 1;"), "int x = 1;");
+    EXPECT_EQ(round_trip("int[3] a;"), "int32_t[3] a = std::type_identity_t<int32_t[3]>();");
+    EXPECT_EQ(round_trip("/* c */ int // d\n x = 1;"), "int32_t x = 1;");
 
     // The kind of each statement: a declaration or an expression.
     const auto decl = [](const std::string& text) -> const ast::VarDeclStmt* {
@@ -159,7 +159,7 @@ TEST(StmtParse, TypeFirstDeclarations)
     EXPECT_EQ(d->type, "a<b>");
     d = decl("std.map<int, std.vector<int>> m = f();");
     ASSERT_TRUE(d);
-    EXPECT_EQ(d->type, "std::map<int, std::vector<int>>");
+    EXPECT_EQ(d->type, "std::map<int32_t, std::vector<int32_t>>");
     EXPECT_FALSE(decl("f(x);"));
     EXPECT_FALSE(decl("a = b;"));
     EXPECT_FALSE(decl("a.b = c;"));
@@ -199,7 +199,7 @@ TEST(StmtParse, TypeFirstDeclarations)
     EXPECT_EQ(round_trip("for (Actor* p = first; p; p = next(p)) f(p);"),
               "for (Actor* p = first; p; p = next(p)) f(p);");
     EXPECT_EQ(round_trip("for (const int k = 3; i < k; i++) f(i);"),
-              "for (const int k = 3; i < k; i++) f(i);");
+              "for (const int32_t k = 3; i < k; i++) f(i);");
     EXPECT_EQ(round_trip("for (i = 0; i < n; i++) f(i);"), "for (i = 0; i < n; i++) f(i);");
     // foreach with the new declaration forms.
     EXPECT_EQ(round_trip("foreach (const Actor* a in xs) f(a);"), "for (const Actor* a : xs) f(a);");
@@ -223,7 +223,7 @@ TEST(StmtParse, For)
 {
     EXPECT_EQ(round_trip("for (var i = 0; i < n; i++) f(i);"), "for (auto i = 0; i < n; i++) f(i);");
     EXPECT_EQ(round_trip("for (int i = 0; i < n; i++, j--) { }"),
-              "for (int i = 0; i < n; i++, j--) {}");
+              "for (int32_t i = 0; i < n; i++, j--) {}");
     EXPECT_EQ(round_trip("for (;;) break;"), "for (;;) break;");
     EXPECT_EQ(round_trip("for (i = 0, j = 1; i < n;) f();"), "for (i = 0, j = 1; i < n;) f();");
     EXPECT_EQ(round_trip("for (var i = f(1, 2); ; ) x;"), "for (auto i = f(1, 2);;) x;");
@@ -233,13 +233,13 @@ TEST(StmtParse, For)
               "for (const auto x : this.items) { f(x); }");
     EXPECT_EQ(round_trip("foreach (Actor* x in actors) f(x);"), "for (Actor* x : actors) f(x);");
     EXPECT_EQ(round_trip("foreach (std.vector<int> x in g()) f(x);"),
-              "for (std::vector<int> x : g()) f(x);");
+              "for (std::vector<int32_t> x : g()) f(x);");
     // A name that has "in" inside is not the keyword.
     EXPECT_EQ(round_trip("foreach (Din x in xs) f(x);"), "for (Din x : xs) f(x);");
     EXPECT_EQ(round_trip("foreach (const Actor* a in xs) f(a);"), "for (const Actor* a : xs) f(a);");
     EXPECT_EQ(round_trip("foreach (var of in xs) f(of);"), "for (auto of : xs) f(of);");
     EXPECT_EQ(round_trip("foreach (var x in xs) foreach (int y in x) f(y);"),
-              "for (auto x : xs) for (int y : x) f(y);");
+              "for (auto x : xs) for (int32_t y : x) f(y);");
     // The old text "of" as a name in a classic for.
     EXPECT_EQ(round_trip("for (var i = of; i < 3; i++) f();"), "for (auto i = of; i < 3; i++) f();");
 }
@@ -311,13 +311,13 @@ TEST(StmtParse, Exceptions)
     EXPECT_EQ(round_trip("throw;"), "throw;");
     EXPECT_EQ(round_trip("throw std.runtime_error(\"x\");"), "throw std::runtime_error(\"x\");");
     EXPECT_EQ(round_trip("try { f(); } catch (int e) { g(e); }"),
-              "try { f(); } catch (int e) { g(e); }");
+              "try { f(); } catch (int32_t e) { g(e); }");
     EXPECT_EQ(round_trip("try { f(); } catch (std.exception& e) { g(); }\n"
                          "catch (const std.string& m) { throw; } catch (...) { }"),
               "try { f(); } catch (std::exception& e) { g(); } "
               "catch (const std::string& m) { throw; } catch (...) {}");
     EXPECT_EQ(round_trip("try { try { throw 1; } catch (...) { throw; } } catch (int e) { }"),
-              "try { try { throw 1; } catch (...) { throw; } } catch (int e) {}");
+              "try { try { throw 1; } catch (...) { throw; } } catch (int32_t e) {}");
     // The words are keywords only as whole words.
     Parsed p("tryit = 1; thrown = 2; catcher(3);");
     EXPECT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
@@ -329,7 +329,7 @@ TEST(StmtParse, Exceptions)
         const auto* t = std::get_if<ast::TryStmt>(&q.block.stmts[0]->v);
         ASSERT_NE(t, nullptr);
         ASSERT_EQ(t->catches.size(), 1u);
-        EXPECT_EQ(t->catches[0].type, "int");
+        EXPECT_EQ(t->catches[0].type, "int32_t");
         EXPECT_EQ(t->catches[0].name, "e");
         EXPECT_FALSE(t->catches[0].is_all);
         EXPECT_TRUE(std::holds_alternative<ast::ThrowStmt>(q.block.stmts[1]->v));
@@ -370,7 +370,7 @@ TEST(StmtParse, Finally)
         EXPECT_FALSE(t->finally_block.has_value());
     }
     EXPECT_EQ(round_trip("try { f(); } catch (int e) { } finally { g(); }"),
-              "{ script::Finally __fin_0([&] { g(); }); try { f(); } catch (int e) {} }");
+              "{ script::Finally __fin_0([&] { g(); }); try { f(); } catch (int32_t e) {} }");
     EXPECT_EQ(round_trip("try { f(); } finally { }"),
               "{ script::Finally __fin_0([&] {}); { f(); } }");
     {
@@ -434,7 +434,7 @@ TEST(StmtParse, Lambda)
     const std::string src =
         "var f = (int a) => { if (a) { g((int b) => { return b + 1; }); } return a; };";
     EXPECT_EQ(round_trip(src),
-              "auto f = [=](int a) { if (a) { g([=](int b) { return b + 1; }); } return a; };");
+              "auto f = [=](int32_t a) { if (a) { g([=](int32_t b) { return b + 1; }); } return a; };");
     EXPECT_EQ(round_trip("run(() => { x = 1; });"), "run([=]() { x = 1; });");
     // An error inside the lambda has an absolute position.
     Parsed p("a;\nb;\nvar f = (int a) => {\n  x = ;\n};");
@@ -555,7 +555,7 @@ TEST(StmtParse, TypeScope)
               "std::string a = x; std::vector<std::string> b = std::vector<std::string>();");
     EXPECT_EQ(round_trip("A.B.C* c; std.array<int, 3> d; float e;"),
               "A::B::C* c = std::type_identity_t<A::B::C*>(); "
-              "std::array<int, 3> d = std::array<int, 3>(); float e = float();");
+              "std::array<int32_t, 3> d = std::array<int32_t, 3>(); float e = float();");
     Parsed p("int a;\nstd::string b = x;");
     EXPECT_EQ(errors_of(p), (std::vector<std::string>{"2:4: use '.' instead of '::'"}));
     Parsed q("foreach (std::string s in xs) f(s);");
@@ -718,7 +718,7 @@ TEST(ScriptParse, TypeFirstParameters)
                             "}\n",
                             sd),
               (std::vector<std::string>{"Actor*|a", "std::string|s", "const T&|r",
-                                        "std::map<int, std::vector<float>>|m"}));
+                                        "std::map<int32_t, std::vector<float>>|m"}));
     EXPECT_EQ(sd.items.size(), 0u) << sd.format("t");
 }
 
@@ -807,10 +807,10 @@ TEST(ScriptParse, Properties)
                        "}\n",
                        sd),
               (std::vector<std::string>{
-                  "int|A1|u|get:u:auto|set:u:auto|-",
+                  "int32_t|A1|u|get:u:auto|set:u:auto|-",
                   "std::string|A2|u|get:u:auto|-|init",
                   "float|A3|r|get:r:auto|set:o:auto|init",
-                  "int|A4|u|get:u:body|set:r:body|-|g1|s2",
+                  "int32_t|A4|u|get:u:body|set:r:body|-|g1|s2",
               }));
     EXPECT_EQ(sd.items.size(), 0u) << sd.format("t");
 }
@@ -850,8 +850,8 @@ TEST(ScriptParse, TypeFirstMembers)
                          "}\n",
                          sd),
               (std::vector<std::string>{
-                  "field std::string|s|-|", "field float|hp|init|", "field int|n|init|old",
-                  "field std::vector<std::string>|v|-|", "method |tick", "method int*|pick",
+                  "field std::string|s|-|", "field float|hp|init|", "field int32_t|n|init|old",
+                  "field std::vector<std::string>|v|-|", "method |tick", "method int32_t*|pick",
                   "method std::string|name"}));
     EXPECT_EQ(sd.items.size(), 0u) << sd.format("t");
 }
@@ -929,7 +929,7 @@ TEST(ModifierParse, EachModifierOnAMethod)
         EXPECT_TRUE(p.errors().empty());
         EXPECT_TRUE(p.method().is_virtual);
         EXPECT_FALSE(p.method().is_override);
-        EXPECT_EQ(p.method().ret, "int");
+        EXPECT_EQ(p.method().ret, "int32_t");
     }
     {
         ModParsed p(member_class("new void Tick() { }"));
@@ -965,7 +965,7 @@ TEST(ModifierParse, AccessOnAField)
         ModParsed p(member_class("private int hp = 3;"));
         EXPECT_TRUE(p.errors().empty());
         EXPECT_EQ(p.field().access, ast::Access::Private);
-        EXPECT_EQ(p.field().type, "int");
+        EXPECT_EQ(p.field().type, "int32_t");
         EXPECT_EQ(p.field().name, "hp");
         EXPECT_TRUE(p.field().has_init);
     }
@@ -1205,3 +1205,86 @@ TEST(StubParse, FieldAlias)
         EXPECT_EQ(p.diag.items[0].msg, "unknown attribute 'native'");
     }
 }
+
+// ---------------------------------------------------------------- builtin type names
+namespace {
+
+struct BuiltinRow {
+    const char* script;
+    const char* alias;  // nullptr when there is no alias
+    const char* cpp;
+};
+
+const BuiltinRow kBuiltinRows[] = {
+    {"bool", nullptr, "bool"},      {"sbyte", "int8", "int8_t"},      {"byte", "uint8", "uint8_t"},
+    {"short", "int16", "int16_t"},  {"ushort", "uint16", "uint16_t"}, {"int", "int32", "int32_t"},
+    {"uint", "uint32", "uint32_t"}, {"long", "int64", "int64_t"},     {"ulong", "uint64", "uint64_t"},
+    {"nint", "intptr", "intptr_t"}, {"nuint", "uintptr", "uintptr_t"}, {"float", nullptr, "float"},
+    {"double", nullptr, "double"},  {"char", nullptr, "char"},        {"wchar", "char16", "char16_t"},
+};
+
+TEST(BuiltinTypes, NameAndAliasGiveOneCanonicalType)
+{
+    for (const BuiltinRow& r : kBuiltinRows) {
+        const std::string want = std::string(r.cpp) + " x = " + r.cpp + "();";
+        EXPECT_EQ(round_trip(std::string(r.script) + " x;"), want) << r.script;
+        if (r.alias) EXPECT_EQ(round_trip(std::string(r.alias) + " x;"), want) << r.alias;
+    }
+}
+
+TEST(BuiltinTypes, AliasesInsideTypesAndNew)
+{
+    EXPECT_EQ(round_trip("std.vector<ulong> v = f();"), "std::vector<uint64_t> v = f();");
+    EXPECT_EQ(round_trip("std.map<uint8, std.vector<int64>> m = f();"),
+              "std::map<uint8_t, std::vector<int64_t>> m = f();");
+    EXPECT_EQ(round_trip("ulong* p = f();"), "uint64_t* p = f();");
+    EXPECT_EQ(round_trip("var v = new std.vector<ulong>(3);"), "auto v = new std::vector<uint64_t>(3);");
+    EXPECT_EQ(round_trip("var v = std.vector<ulong>();"), "auto v = std::vector<uint64_t>();");
+    EXPECT_EQ(round_trip("var f = (ulong a) => { return a; };"), "auto f = [=](uint64_t a) { return a; };");
+}
+
+TEST(BuiltinTypes, NativeNamesStayNormalNames)
+{
+    EXPECT_EQ(round_trip("int32_t x = 1;"), "int32_t x = 1;");
+    EXPECT_EQ(round_trip("size_t x = 1;"), "size_t x = 1;");
+    EXPECT_EQ(round_trip("char16_t x = 1;"), "char16_t x = 1;");
+    EXPECT_EQ(round_trip("Foo.byte x = 1;"), "Foo::byte x = 1;");  // a member name is not a builtin
+}
+
+TEST(BuiltinTypes, CppSpellingsAreErrorsWithAHint)
+{
+    const struct {
+        const char* type;
+        const char* hint;
+    } cases[] = {
+        {"unsigned", "use 'uint'"},
+        {"unsigned int", "use 'uint'"},
+        {"signed", "use 'int'"},
+        {"long long", "use 'long'"},
+        {"long int", "use 'long'"},
+        {"unsigned long", "use 'ulong'"},
+        {"unsigned long long", "use 'ulong'"},
+        {"unsigned long int", "use 'ulong'"},
+        {"unsigned char", "use 'byte'"},
+        {"signed char", "use 'sbyte'"},
+        {"unsigned short", "use 'ushort'"},
+        {"short int", "use 'short'"},
+        {"long double", "use 'double'"},
+    };
+    for (const auto& c : cases) {
+        const std::string text = std::string(c.type) + " x = 1;";
+        Parsed p(text);
+        ASSERT_GE(p.diag.items.size(), 1u) << c.type;
+        EXPECT_NE(p.diag.items[0].msg.find(c.hint), std::string::npos) << c.type << ": " << p.diag.items[0].msg;
+        EXPECT_NE(p.diag.items[0].msg.find(std::string("'") + c.type + "'"), std::string::npos)
+            << c.type << ": " << p.diag.items[0].msg;
+    }
+    Parsed t("std.vector<unsigned int> v;");
+    ASSERT_GE(t.diag.items.size(), 1u);
+    EXPECT_NE(t.diag.items[0].msg.find("use 'uint'"), std::string::npos) << t.diag.items[0].msg;
+    Parsed l("var f = (unsigned long a) => { return a; };");
+    ASSERT_GE(l.diag.items.size(), 1u);
+    EXPECT_NE(l.diag.items[0].msg.find("use 'ulong'"), std::string::npos) << l.diag.items[0].msg;
+}
+
+}  // namespace

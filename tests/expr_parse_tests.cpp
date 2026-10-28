@@ -116,10 +116,10 @@ TEST(ExprParse, CallsAndMembers)
 
 TEST(ExprParse, Names)
 {
-    EXPECT_EQ(round_trip("static_cast<int>(x)"), "static_cast<int>(x)");
+    EXPECT_EQ(round_trip("static_cast<int>(x)"), "static_cast<int32_t>(x)");
     EXPECT_EQ(round_trip("a.b.c"), "a::b::c");
-    EXPECT_EQ(round_trip("std.vector<int>.size_type"), "std::vector<int>::size_type");
-    EXPECT_EQ(round_trip("make<Foo<int>, 3>(x)"), "make<Foo<int>, 3>(x)");
+    EXPECT_EQ(round_trip("std.vector<int>.size_type"), "std::vector<int32_t>::size_type");
+    EXPECT_EQ(round_trip("make<Foo<int>, 3>(x)"), "make<Foo<int32_t>, 3>(x)");
     EXPECT_EQ(round_trip("std.max<float>(a, b)"), "std::max<float>(a, b)");
     EXPECT_EQ(round_trip("pick<Color.Red>(t)"), "pick<Color::Red>(t)");
     EXPECT_EQ(round_trip("std.vector<std.string>(a)"), "std::vector<std::string>(a)");
@@ -141,7 +141,7 @@ TEST(ExprParse, NameNode)
     const auto* n = std::get_if<ast::NameExpr>(&call->callee->v);
     ASSERT_TRUE(n);
     ASSERT_EQ(n->parts.size(), 3u);
-    EXPECT_EQ(n->parts[1], "B<int>");
+    EXPECT_EQ(n->parts[1], "B<int32_t>");
     EXPECT_EQ(n->parts[2], "c");
     EXPECT_EQ(n->template_args, "<float>");
 }
@@ -167,7 +167,7 @@ TEST(ExprParse, Lambda)
 {
     Parsed p("(float x, int* q) => { }");
     ASSERT_TRUE(p.expr);
-    EXPECT_EQ(ast::print(*p.expr), "[=](float x, int* q) {}");
+    EXPECT_EQ(ast::print(*p.expr), "[=](float x, int32_t* q) {}");
     EXPECT_EQ(p.diag.items.size(), 0u);
     const auto* l = std::get_if<ast::LambdaExpr>(&p.expr->v);
     ASSERT_TRUE(l);
@@ -181,7 +181,7 @@ TEST(ExprParse, Lambda)
     // A lambda as an argument; and the paren form still works.
     Parsed a("f((int n) => { }, (a + b) * c)");
     ASSERT_TRUE(a.expr);
-    EXPECT_EQ(ast::print(*a.expr), "f([=](int n) {}, (a + b) * c)");
+    EXPECT_EQ(ast::print(*a.expr), "f([=](int32_t n) {}, (a + b) * c)");
     EXPECT_EQ(round_trip("(a.b)"), "(a::b)");
 
     // An untyped parameter has an empty type. The printer gives "auto".
@@ -196,9 +196,9 @@ TEST(ExprParse, Lambda)
 
     // Qualified, const reference and template types.
     EXPECT_EQ(round_trip("(const std.string& s, std.map<int, float> m) => { }"),
-              "[=](const std::string& s, std::map<int, float> m) {}");
+              "[=](const std::string& s, std::map<int32_t, float> m) {}");
     EXPECT_EQ(round_trip("(std.function<void(int)> f) => { }"),
-              "[=](std::function<void(int)> f) {}");
+              "[=](std::function<void(int32_t)> f) {}");
     // A paren expression is still a paren expression.
     EXPECT_EQ(round_trip("(a)"), "(a)");
 }
@@ -462,7 +462,7 @@ TEST(ExprParse, RefAndOutLambdaParameters)
     EXPECT_EQ(l->params[1].mode, ast::PassMode::Out);
     EXPECT_EQ(l->params[2].mode, ast::PassMode::Ref);
     EXPECT_EQ(l->params[2].type, "");
-    EXPECT_EQ(ast::print(*p.expr), "[=](Vec3& v, int& n, auto& w) {}");
+    EXPECT_EQ(ast::print(*p.expr), "[=](Vec3& v, int32_t& n, auto& w) {}");
 }
 
 TEST(ExprParse, PrefixAmpersandIsRemoved)

@@ -206,7 +206,7 @@ TEST(Lower, NullAndDeclarations)
 {
     Fixture f;
     EXPECT_EQ(f.body("var p = null; const Actor* q = null; int k;"),
-              "auto p = nullptr; const Actor* q = nullptr; int k = int();");
+              "auto p = nullptr; const Actor* q = nullptr; int32_t k = int32_t();");
 }
 
 TEST(Lower, HandleLocalUsesStorageType)
@@ -224,7 +224,7 @@ TEST(Lower, HandleLocalUsesStorageType)
     Fixture f;
     f.cx.types = &types;
     EXPECT_EQ(f.body("Weapon x = null; var y = null; int k;"),
-              "std::shared_ptr<Weapon> x = nullptr; auto y = nullptr; int k = int();");
+              "std::shared_ptr<Weapon> x = nullptr; auto y = nullptr; int32_t k = int32_t();");
     EXPECT_EQ(f.body("foreach (Weapon w in ws) { }"), "for (std::shared_ptr<Weapon> w : ws) {}");
 
     // Without a type model the output does not change.
@@ -309,7 +309,7 @@ TEST(Lower, Lambda)
 {
     Fixture f;
     EXPECT_EQ(f.body("var f = (float x, int* q) => { q.foo(); this.n = x; };"),
-              "auto f = script::make_closure(GEN, \"Player::run lambda\", [=](float x, int* q) "
+              "auto f = script::make_closure(GEN, \"Player::run lambda\", [=](float x, int32_t* q) "
               "{ [[maybe_unused]] auto* st = state_of(self); script::deref(q).foo(); st->n = x; });");
     EXPECT_EQ(f.expr("(Actor* a) => { a.x = 1; }"),
               "script::make_closure(GEN, \"Player::run lambda\", [=](Actor* a) "
@@ -352,7 +352,7 @@ TEST(Lower, LambdaParameterLeaks)
 {
     Fixture f;
     EXPECT_EQ(f.body("var g = (int* q) => { }; q.x;"),
-              "auto g = script::make_closure(GEN, \"Player::run lambda\", [=](int* q) "
+              "auto g = script::make_closure(GEN, \"Player::run lambda\", [=](int32_t* q) "
               "{ [[maybe_unused]] auto* st = state_of(self); }); script::deref(q).x;");
 }
 
@@ -384,13 +384,13 @@ TEST(Lower, TemplateArgumentsAreLowered)
 TEST(Lower, TypeTemplateArgumentsKeepTheirText)
 {
     Fixture f;
-    EXPECT_EQ(f.expr("static_cast<int>(x)"), "static_cast<int>(x)");
-    EXPECT_EQ(f.expr("std.vector<std.vector<int>>()"), "std::vector<std::vector<int>>()");
+    EXPECT_EQ(f.expr("static_cast<int>(x)"), "static_cast<int32_t>(x)");
+    EXPECT_EQ(f.expr("std.vector<std.vector<int>>()"), "std::vector<std::vector<int32_t>>()");
     EXPECT_EQ(f.expr("f<b>(c)"), "f<b>(c)");
-    EXPECT_EQ(f.expr("f<int*>(c)"), "f<int*>(c)");
+    EXPECT_EQ(f.expr("f<int*>(c)"), "f<int32_t*>(c)");
     EXPECT_EQ(f.expr("f<const char*>(c)"), "f<const char*>(c)");
-    EXPECT_EQ(f.expr("std.map<int,float>()"), "std::map<int,float>()");
-    EXPECT_EQ(f.expr("f<std.vector<int>>(c)"), "f<std::vector<int>>(c)");
+    EXPECT_EQ(f.expr("std.map<int,float>()"), "std::map<int32_t,float>()");
+    EXPECT_EQ(f.expr("f<std.vector<int>>(c)"), "f<std::vector<int32_t>>(c)");
     EXPECT_EQ(f.expr("f<std.string>(c)"), "f<std::string>(c)");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
@@ -712,7 +712,7 @@ TEST(Lower, RefArgumentAndRefLocal)
 TEST(Lower, RefLambdaParameterGetsAReferenceType)
 {
     Fixture f;
-    EXPECT_NE(f.expr("(ref Vec3 a, out int b) => { }").find("[=](Vec3& a, int& b)"),
+    EXPECT_NE(f.expr("(ref Vec3 a, out int b) => { }").find("[=](Vec3& a, int32_t& b)"),
               std::string::npos);
 }
 

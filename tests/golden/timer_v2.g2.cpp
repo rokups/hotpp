@@ -55,24 +55,24 @@ struct Beeper_Shell final : Actor, script::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct BeeperState_g2 {
-    int ticks;
-    int fired;
+    int32_t ticks;
+    int32_t fired;
 };
 
 #line 5 "timer_v2.script"
-static void Beeper__init_ticks(void*, void* f) { using T = int; new (f) T(0); }
+static void Beeper__init_ticks(void*, void* f) { using T = int32_t; new (f) T(0); }
 #line 65 "timer_v2.script.cpp"
 #line 6 "timer_v2.script"
-static void Beeper__init_fired(void*, void* f) { using T = int; new (f) T(0); }
+static void Beeper__init_fired(void*, void* f) { using T = int32_t; new (f) T(0); }
 #line 68 "timer_v2.script.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static const script::FieldInfo Beeper_fields[] = {
-    {"ticks", nullptr, typeid(int).name(), offsetof(BeeperState_g2, ticks), sizeof(int),
-     alignof(int), script::field_flags<int>(), Beeper__init_ticks, script::move_field<int>, script::field_destroyer<int>()},
-    {"fired", nullptr, typeid(int).name(), offsetof(BeeperState_g2, fired), sizeof(int),
-     alignof(int), script::field_flags<int>(), Beeper__init_fired, script::move_field<int>, script::field_destroyer<int>()},
+    {"ticks", nullptr, typeid(int32_t).name(), offsetof(BeeperState_g2, ticks), sizeof(int32_t),
+     alignof(int32_t), script::field_flags<int32_t>(), Beeper__init_ticks, script::move_field<int32_t>, script::field_destroyer<int32_t>()},
+    {"fired", nullptr, typeid(int32_t).name(), offsetof(BeeperState_g2, fired), sizeof(int32_t),
+     alignof(int32_t), script::field_flags<int32_t>(), Beeper__init_fired, script::move_field<int32_t>, script::field_destroyer<int32_t>()},
 };
 #pragma clang diagnostic pop
 

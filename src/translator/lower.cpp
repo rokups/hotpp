@@ -1,6 +1,7 @@
 // The lowering pass. See lower.h.
 #include "lower.h"
 
+#include "builtin_types.h"
 #include "emit.h"
 
 #include <optional>
@@ -369,7 +370,7 @@ struct Lowerer {
         const std::string before = joined();
         exprs(n.targ_exprs);
         const std::string after = joined();
-        if (after != before) n.template_args = "<" + after + ">";
+        if (after != before) n.template_args = "<" + canonical_type(after) + ">";
     }
 
     // A bare name. A property of the class becomes a call of the getter.

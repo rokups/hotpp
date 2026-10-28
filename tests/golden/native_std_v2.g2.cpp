@@ -65,7 +65,7 @@ struct Tracker_Shell final : Actor, script::ShellBase {
 // ---------------------------------------------------------------- state
 struct TrackerState_g2 {
     std::string title;
-    std::vector<int> history;
+    std::vector<int32_t> history;
     float dist;
     float lowest;
     float sum;
@@ -77,7 +77,7 @@ struct TrackerState_g2 {
 static void Tracker__init_title(void*, void* f) { using T = std::string; new (f) T("new title"); }
 #line 79 "native_std_v2.script.cpp"
 #line 12 "native_std_v2.script"
-static void Tracker__init_history(void*, void* f) { using T = std::vector<int>; new (f) T(std::vector<int>()); }
+static void Tracker__init_history(void*, void* f) { using T = std::vector<int32_t>; new (f) T(std::vector<int32_t>()); }
 #line 82 "native_std_v2.script.cpp"
 #line 13 "native_std_v2.script"
 static void Tracker__init_dist(void*, void* f) { using T = float; new (f) T(0.0f); }
@@ -100,8 +100,8 @@ static void Tracker__init_note(void*, void* f) { using T = std::string; new (f) 
 static const script::FieldInfo Tracker_fields[] = {
     {"title", "label", typeid(std::string).name(), offsetof(TrackerState_g2, title), sizeof(std::string),
      alignof(std::string), script::field_flags<std::string>(), Tracker__init_title, script::move_field<std::string>, script::field_destroyer<std::string>()},
-    {"history", nullptr, typeid(std::vector<int>).name(), offsetof(TrackerState_g2, history), sizeof(std::vector<int>),
-     alignof(std::vector<int>), script::field_flags<std::vector<int>>(), Tracker__init_history, script::move_field<std::vector<int>>, script::field_destroyer<std::vector<int>>()},
+    {"history", nullptr, typeid(std::vector<int32_t>).name(), offsetof(TrackerState_g2, history), sizeof(std::vector<int32_t>),
+     alignof(std::vector<int32_t>), script::field_flags<std::vector<int32_t>>(), Tracker__init_history, script::move_field<std::vector<int32_t>>, script::field_destroyer<std::vector<int32_t>>()},
     {"dist", nullptr, typeid(float).name(), offsetof(TrackerState_g2, dist), sizeof(float),
      alignof(float), script::field_flags<float>(), Tracker__init_dist, script::move_field<float>, script::field_destroyer<float>()},
     {"lowest", nullptr, typeid(float).name(), offsetof(TrackerState_g2, lowest), sizeof(float),
@@ -155,7 +155,7 @@ static void Tracker__Tick(Actor* a, float dt)
 #line 29 "native_std_v2.script"
     self->Name = FormatVec(self->Position);
 #line 30 "native_std_v2.script"
-    script::deref(st->history).push_back(static_cast<int>(script::deref(st->history).size()) * 10);
+    script::deref(st->history).push_back(static_cast<int32_t>(script::deref(st->history).size()) * 10);
 #line 160 "native_std_v2.script.cpp"
 }
 

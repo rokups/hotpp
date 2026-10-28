@@ -22,6 +22,7 @@
 #include <type_traits>
 
 #include "../ast.h"
+#include "../builtin_types.h"
 #include "../diag.h"
 #include "span.h"
 
@@ -361,6 +362,16 @@ inline std::string type_text(std::string_view s, std::size_t* colons = nullptr)
 }
 
 
+// The canonical text of a type: the aliases become the C++ names ("ulong" and "uint64" give
+// "uint64_t"). An old C++ spelling such as "unsigned int" is an error with a hint at "pos".
+inline std::string canonical_type_at(const ParseState& st, const char* pos, const std::string& t)
+{
+    std::string error;
+    std::string r = canonical_type(t, &error);
+    if (!error.empty()) st.error(pos, error);
+    return r;
+}
+
 // The type text of a span. An empty type is an error. A "::" is an error: the script uses ".".
 inline std::string type_of_span(const ParseState& st, Span sp)
 {
@@ -369,7 +380,7 @@ inline std::string type_of_span(const ParseState& st, Span sp)
     std::size_t colons = std::string_view::npos;
     std::string t = type_text(raw, &colons);
     if (colons != std::string_view::npos) st.error(st.base + sp.begin + colons, e_use_dot_colons::name);
-    return t;
+    return canonical_type_at(st, st.base + sp.begin, t);
 }
 
 // Rewrites the scope separators of the raw text of template arguments: "." between two names

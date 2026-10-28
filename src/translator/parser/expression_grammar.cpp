@@ -115,8 +115,8 @@ ast::NameExpr split_name(const ParseState& st, std::string_view t, uint32_t pos)
                     break;
             }
             const std::size_t e = j < t.size() ? j + 1 : t.size();
-            const std::string targs =
-                scope_text(st, st.base + pos + i, t.substr(i, e - i));
+            const std::string targs = canonical_type_at(
+                st, st.base + pos + i, scope_text(st, st.base + pos + i, t.substr(i, e - i)));
             const std::size_t targs_at = i;
             i = e;
             if (i >= t.size()) {
@@ -365,8 +365,9 @@ struct new_p {
         lexy::callback<ExprP>([](const ParseState& st, const char* pos, Span name,
                                  std::vector<ExprP>&& args) {
             return ast::make_expr(ast::NewExpr{
-                scope_text(st, st.base + name.begin, span_text(st, name)), std::move(args),
-                st.offset(pos)});
+                canonical_type_at(st, st.base + name.begin,
+                                  scope_text(st, st.base + name.begin, span_text(st, name))),
+                std::move(args), st.offset(pos)});
         }),
         lexy::parse_state, lexy::values);
 };

@@ -65,7 +65,7 @@ struct GaugeState_g1 {
     float shield_raw;
     float __p_Hp;
     float __p_MaxHp;
-    int __p_Level;
+    int32_t __p_Level;
 };
 
 #line 10 "props_v1.script"
@@ -78,7 +78,7 @@ static void Gauge__init___p_Hp(void*, void* f) { using T = float; new (f) T(50.0
 static void Gauge__init___p_MaxHp(void*, void* f) { using T = float; new (f) T(100.0f); }
 #line 80 "props_v1.script.cpp"
 #line 9 "props_v1.script"
-static void Gauge__init___p_Level(void*, void* f) { using T = int; new (f) T(1); }
+static void Gauge__init___p_Level(void*, void* f) { using T = int32_t; new (f) T(1); }
 #line 83 "props_v1.script.cpp"
 
 #pragma clang diagnostic push
@@ -90,8 +90,8 @@ static const script::FieldInfo Gauge_fields[] = {
      alignof(float), script::field_flags<float>(), Gauge__init___p_Hp, script::move_field<float>, script::field_destroyer<float>()},
     {"__p_MaxHp", nullptr, typeid(float).name(), offsetof(GaugeState_g1, __p_MaxHp), sizeof(float),
      alignof(float), script::field_flags<float>(), Gauge__init___p_MaxHp, script::move_field<float>, script::field_destroyer<float>()},
-    {"__p_Level", nullptr, typeid(int).name(), offsetof(GaugeState_g1, __p_Level), sizeof(int),
-     alignof(int), script::field_flags<int>(), Gauge__init___p_Level, script::move_field<int>, script::field_destroyer<int>()},
+    {"__p_Level", nullptr, typeid(int32_t).name(), offsetof(GaugeState_g1, __p_Level), sizeof(int32_t),
+     alignof(int32_t), script::field_flags<int32_t>(), Gauge__init___p_Level, script::move_field<int32_t>, script::field_destroyer<int32_t>()},
 };
 #pragma clang diagnostic pop
 
@@ -109,8 +109,8 @@ static float Gauge__total(Gauge_Shell* self);
 static float Gauge__get_Hp(Gauge_Shell* self);
 static void Gauge__set_Hp(Gauge_Shell* self, float value);
 static float Gauge__get_MaxHp(Gauge_Shell* self);
-static int Gauge__get_Level(Gauge_Shell* self);
-static void Gauge__set_Level(Gauge_Shell* self, int value);
+static int32_t Gauge__get_Level(Gauge_Shell* self);
+static void Gauge__set_Level(Gauge_Shell* self, int32_t value);
 static float Gauge__get_Shield(Gauge_Shell* self);
 static void Gauge__set_Shield(Gauge_Shell* self, float value);
 
@@ -194,11 +194,11 @@ static float Gauge__get_MaxHp(Gauge_Shell* self)
 #line 195 "props_v1.script.cpp"
 }
 
-static int Gauge__get_Level(Gauge_Shell* self)
+static int32_t Gauge__get_Level(Gauge_Shell* self)
 {
     if (SCRIPT_UNLIKELY(script::active_generation != GEN)) {
         script::stale_call("Gauge::get_Level");
-        return int();
+        return int32_t();
     }
     [[maybe_unused]] auto* st = state_of(self);
 #line 9 "props_v1.script"
@@ -206,7 +206,7 @@ static int Gauge__get_Level(Gauge_Shell* self)
 #line 207 "props_v1.script.cpp"
 }
 
-static void Gauge__set_Level(Gauge_Shell* self, int value)
+static void Gauge__set_Level(Gauge_Shell* self, int32_t value)
 {
     if (SCRIPT_UNLIKELY(script::active_generation != GEN)) {
         script::stale_call("Gauge::set_Level");
@@ -268,12 +268,12 @@ static float Gauge__get_MaxHp_slot(Actor* a)
     return Gauge__get_MaxHp(static_cast<Gauge_Shell*>(a));
 }
 
-static int Gauge__get_Level_slot(Actor* a)
+static int32_t Gauge__get_Level_slot(Actor* a)
 {
     return Gauge__get_Level(static_cast<Gauge_Shell*>(a));
 }
 
-static void Gauge__set_Level_slot(Actor* a, int value)
+static void Gauge__set_Level_slot(Actor* a, int32_t value)
 {
     return Gauge__set_Level(static_cast<Gauge_Shell*>(a), value);
 }
@@ -322,18 +322,18 @@ static float Gauge__get_MaxHp__thunk(Actor* a)
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
-static int Gauge__get_Level__thunk(Actor* a)
+static int32_t Gauge__get_Level__thunk(Actor* a)
 {
     auto* self = static_cast<Gauge_Shell*>(a);
-    return script::call<int(Actor*)>(self->cls, SLOT_get_Level, a);
+    return script::call<int32_t(Actor*)>(self->cls, SLOT_get_Level, a);
 }
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
-static void Gauge__set_Level__thunk(Actor* a, int value)
+static void Gauge__set_Level__thunk(Actor* a, int32_t value)
 {
     auto* self = static_cast<Gauge_Shell*>(a);
-    return script::call<void(Actor*, int)>(self->cls, SLOT_set_Level, a, value);
+    return script::call<void(Actor*, int32_t)>(self->cls, SLOT_set_Level, a, value);
 }
 
 // The thunk has the same address in each generation (section 4.11). The

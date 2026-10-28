@@ -300,7 +300,7 @@ TEST(TranslatorLambda, ParametersGetTypesAndPointersUseArrow)
     const spc::TranslateResult r = spc::translate(
         temp_options(dir, lambda_script("        var f = (float x, int* q) => { q.foo(); this.n = x; };")));
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.cpp.find("[=](float x, int* q)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("[=](float x, int32_t* q)"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("script::deref(q).foo();"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("st->n = x;"), std::string::npos) << r.cpp;
 }
@@ -312,7 +312,7 @@ TEST(TranslatorLambda, ParameterWithoutTypeIsAuto)
     const spc::TranslateResult r =
         spc::translate(temp_options(dir, lambda_script("        var f = (x, int y) => { };")));
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.cpp.find("[=](auto x, int y)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("[=](auto x, int32_t y)"), std::string::npos) << r.cpp;
 }
 
 TEST(TranslatorLambda, OldParameterFormIsAnError)
@@ -836,7 +836,7 @@ TEST(TranslatorScope, FieldTypesAndBaseClassUseDoubleColons)
     const spc::TranslateResult r = spc::translate(temp_options(dir, script));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("std::string title"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("std::vector<int> history"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("std::vector<int32_t> history"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("Engine::Actor"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("Engine.Actor"), std::string::npos) << r.cpp;
 }
@@ -910,16 +910,16 @@ TEST(TranslatorProps, AutoPropertyLowersToAccessorCalls)
         "    int N { get; set; } = 3;\n"
         "    void run() { N = 1; this.N += 2; N++; int k = this.N + N; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.cpp.find("    int __p_N;\n"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("    int32_t __p_N;\n"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("new (f) T(3);"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("static int Foo__get_N(Foo_Shell* self)"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("static void Foo__set_N(Foo_Shell* self, int value)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("static int32_t Foo__get_N(Foo_Shell* self)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("static void Foo__set_N(Foo_Shell* self, int32_t value)"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("return st->__p_N;"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("st->__p_N = value;"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("Foo__set_N(self, 1);"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("Foo__set_N(self, Foo__get_N(self) + (2));"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("Foo__set_N(self, Foo__get_N(self) + 1);"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("int k = Foo__get_N(self) + Foo__get_N(self);"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("int32_t k = Foo__get_N(self) + Foo__get_N(self);"), std::string::npos) << r.cpp;
     EXPECT_NE(r.slots_out.find("Foo::get_N 1"), std::string::npos) << r.slots_out;
     EXPECT_NE(r.slots_out.find("Foo::set_N 1"), std::string::npos) << r.slots_out;
 }
@@ -971,11 +971,11 @@ TEST(TranslatorProps, OtherObjectUsesAccessors)
     EXPECT_NE(r.cpp.find("script::prop_update<script::op_add>(Foo__get_N, Foo__set_N, " + w + ", 1);"),
               std::string::npos)
         << r.cpp;
-    EXPECT_NE(r.cpp.find("int a = script::prop_set(Foo__set_N, self, script::prop_set(Foo__set_N, " + q +
+    EXPECT_NE(r.cpp.find("int32_t a = script::prop_set(Foo__set_N, self, script::prop_set(Foo__set_N, " + q +
                          ", 4));"),
               std::string::npos)
         << r.cpp;
-    EXPECT_NE(r.cpp.find("int b = (script::prop_set(Foo__set_N, " + w + ", 5));"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("int32_t b = (script::prop_set(Foo__set_N, " + w + ", 5));"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("return Foo__get_N(" + w + ") + Foo__get_N(" + q + ");"), std::string::npos) << r.cpp;
 }
 
@@ -1281,7 +1281,7 @@ TEST(DefaultValue, FieldsAreValueInitialized)
     const spc::TranslateResult r =
         weapon_translate("    int a;\n    Weapon w;\n    Vec3 v;\n    float f { get; set; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "using T = int; new (f) T();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "using T = int32_t; new (f) T();")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "using T = std::shared_ptr<Weapon>; new (f) T();")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "using T = Vec3; new (f) T();")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "using T = float; new (f) T();")) << r.cpp;
@@ -1293,10 +1293,10 @@ TEST(DefaultValue, LocalsAreValueInitialized)
         "    int K() { int x; Vec3 v; Weapon w; Weapon* p; return x; }\n"
         "    void L() { for (int i; i < 3; i++) { } }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "int x = int();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "int32_t x = int32_t();")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "Vec3 v = Vec3();")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Weapon> w = std::shared_ptr<Weapon>();")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "for (int i = int(); i < 3; i++)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "for (int32_t i = int32_t(); i < 3; i++)")) << r.cpp;
 }
 
 TEST(DefaultValue, VarAndConstNeedAnInitializer)
@@ -1308,3 +1308,97 @@ TEST(DefaultValue, VarAndConstNeedAnInitializer)
     EXPECT_FALSE(b.ok);
     EXPECT_TRUE(has(b.diagnostics, "a const needs an initializer")) << b.diagnostics;
 }
+
+// ---------------------------------------------------------------- builtin type names
+namespace {
+
+// A native base with virtual methods that have fixed-width and C++ spelled parameters.
+const char* kWidthHeader =
+    "#include <cstdint>\n"
+    "class Wide { public: virtual ~Wide() {}\n"
+    "  virtual void A(uint64_t id, int n) {}\n"
+    "  virtual void B(unsigned k, unsigned long long q, int8_t s) {}\n"
+    "  virtual int64_t C(const uint16_t& r) { return 0; }\n"
+    "};\n";
+
+spc::TranslateResult wide_translate(const std::string& members)
+{
+    static TempDir* dir = nullptr;
+    if (!dir) dir = new TempDir();
+    write_file(dir->path() / "w.h", kWidthHeader);
+    return spc::translate(temp_options(*dir, "using \"w.h\";\nclass Foo : Wide {\n" + members + "}\n"));
+}
+
+TEST(BuiltinTypes, FieldsEmitTheFixedWidthName)
+{
+    const struct {
+        const char* script;
+        const char* alias;
+        const char* cpp;
+    } rows[] = {
+        {"sbyte", "int8", "int8_t"},     {"byte", "uint8", "uint8_t"},     {"short", "int16", "int16_t"},
+        {"ushort", "uint16", "uint16_t"}, {"int", "int32", "int32_t"},     {"uint", "uint32", "uint32_t"},
+        {"long", "int64", "int64_t"},    {"ulong", "uint64", "uint64_t"},  {"nint", "intptr", "intptr_t"},
+        {"nuint", "uintptr", "uintptr_t"}, {"wchar", "char16", "char16_t"},
+    };
+    for (const auto& r : rows) {
+        for (const char* name : {r.script, r.alias}) {
+            const spc::TranslateResult t = wide_translate(std::string("    ") + name + " f;\n");
+            ASSERT_TRUE(t.ok) << name << ": " << t.diagnostics;
+            EXPECT_TRUE(has(t.cpp, std::string("    ") + r.cpp + " f;")) << name << "\n" << t.cpp;
+            EXPECT_TRUE(has(t.cpp, std::string("typeid(") + r.cpp + ").name()")) << name;
+        }
+    }
+}
+
+// The reload type key is typeid(T).name() of the field type. A rename of the type spelling
+// must give the same layout text, so the reload does not reject it.
+TEST(BuiltinTypes, RenamedAliasKeepsTheReloadTypeKey)
+{
+    const spc::TranslateResult a = wide_translate("    ulong x;\n");
+    const spc::TranslateResult b = wide_translate("    uint64 x;\n");
+    const spc::TranslateResult c = wide_translate("    uint64_t x;\n");
+    ASSERT_TRUE(a.ok) << a.diagnostics;
+    ASSERT_TRUE(b.ok) << b.diagnostics;
+    ASSERT_TRUE(c.ok) << c.diagnostics;
+    EXPECT_EQ(a.cpp, b.cpp);
+    EXPECT_EQ(a.cpp, c.cpp);
+    EXPECT_EQ(a.slots_out, b.slots_out);
+    EXPECT_TRUE(has(a.cpp, "{\"x\", nullptr, typeid(uint64_t).name()")) << a.cpp;
+}
+
+TEST(BuiltinTypes, OverrideKeyMatchesTheNativeParameters)
+{
+    // The aliases and the fixed-width names match uint64_t and int.
+    spc::TranslateResult r = wide_translate("    override void A(ulong id, int32 n) { }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    r = wide_translate("    override void A(uint64_t id, int n) { }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    // The native C++ spellings "unsigned" and "unsigned long long" match uint and ulong.
+    r = wide_translate("    override void B(uint k, ulong q, sbyte s) { }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    // A wrong width is not an override.
+    r = wide_translate("    override void A(uint id, int n) { }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "hides the virtual method")) << r.diagnostics;
+}
+
+TEST(BuiltinTypes, CppSpellingsAreErrorsWithAHint)
+{
+    const struct {
+        const char* type;
+        const char* hint;
+    } cases[] = {
+        {"unsigned", "use 'uint'"},           {"unsigned int", "use 'uint'"},
+        {"long long", "use 'long'"},          {"unsigned long", "use 'ulong'"},
+        {"unsigned long long", "use 'ulong'"}, {"unsigned char", "use 'byte'"},
+        {"unsigned short", "use 'ushort'"},   {"signed char", "use 'sbyte'"},
+    };
+    for (const auto& c : cases) {
+        const spc::TranslateResult r = wide_translate(std::string("    ") + c.type + " f;\n");
+        EXPECT_FALSE(r.ok) << c.type;
+        EXPECT_TRUE(has(r.diagnostics, c.hint)) << c.type << ": " << r.diagnostics;
+    }
+}
+
+}  // namespace
