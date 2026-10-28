@@ -5,12 +5,10 @@ enable_testing()
 
 # The script backend, chosen at build time (design section 3.3).
 #   CLANG_FILES: translate in memory, run an external clang++, dlopen the .so.
-#   JIT:         not implemented yet.
+#   JIT:         translate and compile in memory with the Clang library, load with LLVM ORC.
 set(SPP_BACKEND CLANG_FILES CACHE STRING "Script backend: CLANG_FILES or JIT")
 set_property(CACHE SPP_BACKEND PROPERTY STRINGS CLANG_FILES JIT)
-if(SPP_BACKEND STREQUAL "JIT")
-    message(FATAL_ERROR "JIT backend not implemented yet")
-elseif(NOT SPP_BACKEND STREQUAL "CLANG_FILES")
+if(NOT SPP_BACKEND STREQUAL "JIT" AND NOT SPP_BACKEND STREQUAL "CLANG_FILES")
     message(FATAL_ERROR "SPP_BACKEND must be CLANG_FILES or JIT. It is: ${SPP_BACKEND}")
 endif()
 
@@ -100,6 +98,21 @@ target_link_libraries(spp_clang_backend PUBLIC spp_runtime spc_lib)
 add_executable(sppc tools/sppc.cpp)
 target_link_libraries(sppc PRIVATE spp_clang_backend)
 
+# JitBackend: spc_lib in memory, the Clang library compiles in memory, LLVM ORC loads.
+# LLVM and Clang come from the system. CPM does not fetch them.
+if(SPP_BACKEND STREQUAL "JIT")
+    # LLVMConfig.cmake probes C headers (FindLibEdit), so the C language must be on.
+    enable_language(C)
+    find_package(LLVM REQUIRED CONFIG)
+    find_package(Clang REQUIRED CONFIG)
+    message(STATUS "JIT backend: LLVM ${LLVM_PACKAGE_VERSION}, Clang ${Clang_VERSION}")
+    add_library(spp_jit_backend STATIC runtime/jit_backend.cpp)
+    target_include_directories(spp_jit_backend PUBLIC runtime)
+    target_include_directories(spp_jit_backend SYSTEM PUBLIC ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
+    target_compile_definitions(spp_jit_backend PRIVATE ${LLVM_DEFINITIONS})
+    target_link_libraries(spp_jit_backend PUBLIC spp_runtime spc_lib clang-cpp LLVM)
+endif()
+
 # make_default_backend() returns the backend that SPP_BACKEND selected.
 # A list value uses "|" between the items.
 separate_arguments(SPP_CXXFLAGS_LIST NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
@@ -115,6 +128,14 @@ if(SPP_BACKEND STREQUAL "CLANG_FILES")
         SPP_DEFAULT_INCLUDES="${CMAKE_SOURCE_DIR}/engine|${CMAKE_SOURCE_DIR}/runtime"
         SPP_DEFAULT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}"
         SPP_DEFAULT_WORK_DIR="${CMAKE_BINARY_DIR}/spp_work")
+elseif(SPP_BACKEND STREQUAL "JIT")
+    target_link_libraries(spp_backend PUBLIC spp_jit_backend)
+    target_compile_definitions(spp_backend PRIVATE
+        SPP_BACKEND_JIT=1
+        SPP_DEFAULT_CXX="${CMAKE_CXX_COMPILER}"
+        SPP_DEFAULT_CXXFLAGS="${SPP_CXXFLAGS_JOINED}"
+        SPP_DEFAULT_INCLUDES="${CMAKE_SOURCE_DIR}/engine|${CMAKE_SOURCE_DIR}/runtime"
+        SPP_DEFAULT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
 endif()
 
 # ------------------------------------------------------------ Precompiled scripts
@@ -143,3 +164,32 @@ target_compile_definitions(backend_tests PRIVATE
     PRE_V1_SO="${CMAKE_BINARY_DIR}/spp_scripts/player_v1.g1.so"
     PRE_V2_SO="${CMAKE_BINARY_DIR}/spp_scripts/player_v2.g2.so")
 gtest_discover_tests(backend_tests)
+
+# JIT only: no file, no child process, the life of a generation.
+if(SPP_BACKEND STREQUAL "JIT")
+    add_executable(jit_tests tests/jit_tests.cpp engine/Actor.cpp)
+    target_include_directories(jit_tests PRIVATE tests)
+    target_link_libraries(jit_tests PRIVATE spp_backend GTest::gtest_main)
+    set_target_properties(jit_tests PROPERTIES ENABLE_EXPORTS ON)
+    target_compile_definitions(jit_tests PRIVATE SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        SPP_CXX="${CMAKE_CXX_COMPILER}" SPP_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
+    gtest_discover_tests(jit_tests)
+endif()
+
+# bench_backends times the compile and the load of the example scripts.
+add_executable(bench_backends tools/bench_backends.cpp engine/Actor.cpp)
+set_target_properties(bench_backends PROPERTIES ENABLE_EXPORTS ON)
+target_link_libraries(bench_backends PRIVATE spp_backend)
+if(SPP_BACKEND STREQUAL "JIT")
+    target_link_libraries(bench_backends PRIVATE spp_jit_backend)
+    target_compile_definitions(bench_backends PRIVATE BENCH_JIT=1)
+else()
+    target_link_libraries(bench_backends PRIVATE spp_clang_backend)
+    target_compile_definitions(bench_backends PRIVATE BENCH_CLANG_FILES=1)
+endif()
+target_compile_definitions(bench_backends PRIVATE
+    BENCH_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    BENCH_CXX="${CMAKE_CXX_COMPILER}"
+    BENCH_INCLUDES="${CMAKE_SOURCE_DIR}/engine|${CMAKE_SOURCE_DIR}/runtime"
+    BENCH_RESOURCE_DIR="${CLANG_RESOURCE_DIR}"
+    BENCH_WORK_DIR="${CMAKE_BINARY_DIR}/spp_work")

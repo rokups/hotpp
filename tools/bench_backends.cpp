@@ -1,0 +1,193 @@
+// bench_backends: time the compile and the load of the two example scripts.
+//
+// The tool uses the backend that the build selected (SPP_BACKEND). Run it
+// many times for the cold numbers: each process starts cold.
+//
+// Usage:
+//   bench_backends [--warm N] [--cxxflag F]... [--pch FILE] [--make-pch FILE]
+//
+// It prints one line: the cold time of generation 1 and 2 (the first load of
+// each in this process) and the median time of N warm loads of each. For the
+// JIT backend it also prints the phases of the last warm load.
+// --cxxflag adds a compile flag (for example -O1 for the CLANG_FILES backend).
+// --make-pch FILE (JIT only) makes a precompiled header and exits.
+// --pch FILE (JIT only) compiles with -include-pch FILE.
+//
+// CMake defines: BENCH_SOURCE_DIR, BENCH_CXX, BENCH_INCLUDES (items split by
+// "|"), BENCH_RESOURCE_DIR, BENCH_WORK_DIR and BENCH_JIT or BENCH_CLANG_FILES.
+#include <sys/resource.h>
+#include <unistd.h>
+
+#include <algorithm>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include "script_runtime.h"
+
+#if defined(BENCH_JIT)
+#include "jit_backend.h"
+#else
+#include "clang_files_backend.h"
+#endif
+
+namespace {
+
+using Clock = std::chrono::steady_clock;
+
+double ms_since(Clock::time_point t)
+{
+    return std::chrono::duration<double, std::milli>(Clock::now() - t).count();
+}
+
+std::vector<std::string> split(const std::string& s)
+{
+    std::vector<std::string> v;
+    std::stringstream ss(s);
+    for (std::string item; std::getline(ss, item, '|');)
+        if (!item.empty()) v.push_back(item);
+    return v;
+}
+
+script::ScriptSource source(const char* file)
+{
+    const std::string path = std::string(BENCH_SOURCE_DIR) + "/scripts/" + file;
+    std::ifstream f(path);
+    std::stringstream ss;
+    ss << f.rdbuf();
+    return {path, ss.str()};
+}
+
+// One load. Returns the time in ms, or -1 on error (the text goes to stderr).
+double timed_load(script::Backend& b, const script::ScriptSource& s, uint32_t gen)
+{
+    const Clock::time_point t = Clock::now();
+    script::LoadResult r = b.load(s, gen);
+    const double ms = ms_since(t);
+    if (!r) {
+        std::fprintf(stderr, "load failed: %s\n", r.error.c_str());
+        return -1;
+    }
+    // The Loader registers the class. This also proves that the module works,
+    // and it links the runtime into this executable (the JIT code needs it).
+    script::Loader loader;
+    std::string error;
+    if (!loader.load(std::move(*r.module), error)) {
+        std::fprintf(stderr, "register failed: %s\n", error.c_str());
+        return -1;
+    }
+    return ms;
+}
+
+double median(std::vector<double> v)
+{
+    if (v.empty()) return 0;
+    std::sort(v.begin(), v.end());
+    return v[v.size() / 2];
+}
+
+}  // namespace
+
+int main(int argc, char** argv)
+{
+    int warm = 5;
+    std::vector<std::string> flags;
+    std::string pch, make_pch;
+    for (int i = 1; i < argc; ++i) {
+        const std::string a = argv[i];
+        if (a == "--warm" && i + 1 < argc) warm = std::atoi(argv[++i]);
+        else if (a == "--cxxflag" && i + 1 < argc) flags.push_back(argv[++i]);
+        else if (a == "--pch" && i + 1 < argc) pch = argv[++i];
+        else if (a == "--make-pch" && i + 1 < argc) make_pch = argv[++i];
+        else {
+            std::fprintf(stderr, "usage: bench_backends [--warm N] [--cxxflag F]... [--pch FILE] "
+                                 "[--make-pch FILE]\n");
+            return 2;
+        }
+    }
+    const std::vector<std::string> includes = split(BENCH_INCLUDES);
+
+    auto make = [&]() -> std::unique_ptr<script::Backend> {
+#if defined(BENCH_JIT)
+        script::JitOptions o;
+        o.compiler = BENCH_CXX;
+        o.include_dirs = includes;
+        o.resource_dir = BENCH_RESOURCE_DIR;
+        o.extra_flags = flags;
+        o.pch_path = pch;
+        return std::make_unique<script::JitBackend>(std::move(o));
+#else
+        script::ClangFilesOptions o;
+        o.compiler = BENCH_CXX;
+        o.include_dirs = includes;
+        o.resource_dir = BENCH_RESOURCE_DIR;
+        o.extra_flags = flags;
+        o.work_dir = std::string(BENCH_WORK_DIR) + "/bench" + std::to_string(getpid());
+        return std::make_unique<script::ClangFilesBackend>(std::move(o));
+#endif
+    };
+
+#if defined(BENCH_JIT)
+    if (!make_pch.empty()) {
+        script::JitOptions o;
+        o.compiler = BENCH_CXX;
+        o.include_dirs = includes;
+        o.resource_dir = BENCH_RESOURCE_DIR;
+        o.extra_flags = flags;
+        script::JitBackend b(std::move(o));
+        const std::string header_path = make_pch + ".hpp";
+        const char* header =
+            "#include <algorithm>\n#include <cstddef>\n#include <cstdint>\n#include <cstdio>\n"
+            "#include <new>\n#include <string>\n#include <type_traits>\n#include <typeinfo>\n"
+            "#include <utility>\n#include \"script_runtime.h\"\n#include \"Actor.h\"\n"
+            "#include \"Math.h\"\n";
+        std::ofstream(header_path) << header;
+        std::string error;
+        const Clock::time_point t = Clock::now();
+        const bool ok = b.make_pch(header_path, make_pch, error);
+        std::printf("make_pch ok=%d ms=%.1f\n%s", ok, ms_since(t), error.c_str());
+        return ok ? 0 : 1;
+    }
+#else
+    if (!make_pch.empty() || !pch.empty()) {
+        std::fprintf(stderr, "--pch and --make-pch need the JIT backend\n");
+        return 2;
+    }
+#endif
+
+    const script::ScriptSource v1 = source("player_v1.script");
+    const script::ScriptSource v2 = source("player_v2.script");
+    std::unique_ptr<script::Backend> backend = make();
+    const double cold1 = timed_load(*backend, v1, 1);
+    const double cold2 = timed_load(*backend, v2, 2);
+    if (cold1 < 0 || cold2 < 0) return 1;
+
+    // Warm: each round has a new backend, so the slot file starts clean.
+    // The process keeps its LLVM state, its page cache and its file cache.
+    std::vector<double> w1, w2;
+    double tr = 0, co = 0, ji = 0;
+    for (int i = 0; i < warm; ++i) {
+        std::unique_ptr<script::Backend> b = make();
+        const double a = timed_load(*b, v1, 1);
+        const double c = timed_load(*b, v2, 2);
+        if (a < 0 || c < 0) return 1;
+        w1.push_back(a);
+        w2.push_back(c);
+#if defined(BENCH_JIT)
+        const script::JitTimings t = static_cast<script::JitBackend&>(*b).last_timings();
+        tr = t.translate_ms, co = t.compile_ms, ji = t.jit_ms;
+#endif
+    }
+    std::printf("backend=%s cold_v1=%.1f cold_v2=%.1f warm_v1=%.1f warm_v2=%.1f", backend->name(),
+                cold1, cold2, median(w1), median(w2));
+    if (tr > 0) std::printf(" (last v2: translate=%.1f compile=%.1f jit=%.1f)", tr, co, ji);
+    rusage ru{};
+    getrusage(RUSAGE_SELF, &ru);
+    std::printf(" peak_rss_mb=%.0f\n", static_cast<double>(ru.ru_maxrss) / 1024.0);
+    return 0;
+}

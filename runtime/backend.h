@@ -1,7 +1,7 @@
 // The backend interface: it turns script source into a loadable Module.
 //
 // The Loader does not know how a Module is made. A backend can run an external
-// compiler (ClangFilesBackend) or compile in the process (JIT, not implemented yet).
+// compiler (ClangFilesBackend) or compile in the process (JitBackend).
 // CMake selects the default backend with the cache option SPP_BACKEND.
 // A library that the tool sppc made ahead of time needs no backend: call
 // module_from_library (module.h) and give the Module to the Loader.
