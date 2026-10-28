@@ -60,38 +60,6 @@ add_executable(minengine example/engine/main.cpp example/engine/Actor.cpp exampl
 target_link_libraries(minengine PRIVATE spp_runtime)
 set_target_properties(minengine PROPERTIES ENABLE_EXPORTS ON)
 
-# Step R0: generation 1 of the Player class.
-add_library(gen1 SHARED example/poc/r0/gen1.cpp)
-target_include_directories(gen1 PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine)
-set_target_properties(gen1 PROPERTIES PREFIX "")
-
-# Step R1: generation 2 (migration) and generation 4 (rejected: other shell).
-# gen3_bad.cpp does not compile on purpose. It is not a target.
-# See example/poc/r1/make_bad.sh.
-foreach(g gen2:example/poc/r1/gen2.cpp gen4_base:example/poc/r1/gen4_base.cpp)
-    string(REPLACE ":" ";" parts ${g})
-    list(GET parts 0 gname)
-    list(GET parts 1 gsrc)
-    add_library(${gname} SHARED ${gsrc})
-    target_include_directories(${gname} PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine)
-    set_target_properties(${gname} PROPERTIES PREFIX "")
-endforeach()
-
-# GoogleTest cases R0 and R1. The file gen3_missing.so does not exist on purpose.
-foreach(r r0 r1)
-    add_executable(${r}_tests tests/${r}_tests.cpp example/engine/Actor.cpp example/engine/Util.cpp)
-    target_link_libraries(${r}_tests PRIVATE spp_runtime GTest::gtest_main)
-    set_target_properties(${r}_tests PROPERTIES ENABLE_EXPORTS ON)
-    target_include_directories(${r}_tests PRIVATE tests)
-    add_dependencies(${r}_tests gen1 gen2 gen4_base)
-    target_compile_definitions(${r}_tests PRIVATE
-        GEN1_SO="$<TARGET_FILE:gen1>"
-        GEN2_SO="$<TARGET_FILE:gen2>"
-        GEN4_BASE_SO="$<TARGET_FILE:gen4_base>"
-        GEN3_MISSING_SO="${CMAKE_BINARY_DIR}/gen3_missing.so")
-    gtest_discover_tests(${r}_tests)
-endforeach()
-
 # ------------------------------------------------------------ Step F1
 # The translator library spc_lib and the tool spc. They need libclang (C API)
 # from the system.
@@ -221,99 +189,8 @@ spp_add_scripts(TARGET pre_handle3 GEN 3 SCRIPTS example/scripts/handle_v1.scrip
                 INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
                 FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${CMAKE_SOURCE_DIR}/example/engine/Weapon.h)
 
-# GoogleTest cases: BackendTests (the selected backend) and PrecompiledTests (sppc).
-add_executable(backend_tests tests/backend_tests.cpp example/engine/Actor.cpp example/engine/Object.cpp example/engine/Util.cpp)
-target_include_directories(backend_tests PRIVATE tests)
-target_link_libraries(backend_tests PRIVATE spp_backend GTest::gtest_main)
-set_target_properties(backend_tests PROPERTIES ENABLE_EXPORTS ON)
-add_dependencies(backend_tests pre_gen1 pre_gen2 pre_native1 pre_native2 pre_handle1 pre_handle2 pre_handle3 sppc)
-target_compile_definitions(backend_tests PRIVATE
-    SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
-    SPP_BINARY_DIR="${CMAKE_BINARY_DIR}"
-    SPP_BACKEND_NAME="${SPP_BACKEND}"
-    SPPC_PATH="$<TARGET_FILE:sppc>"
-    SPP_CXX="${CMAKE_CXX_COMPILER}"
-    PRE_V1_SO="${CMAKE_BINARY_DIR}/spp_scripts/player_v1.g1.so"
-    PRE_V2_SO="${CMAKE_BINARY_DIR}/spp_scripts/player_v2.g2.so"
-    PRE_NATIVE_V1_SO="${CMAKE_BINARY_DIR}/spp_scripts/native_std_v1.g1.so"
-    PRE_NATIVE_V2_SO="${CMAKE_BINARY_DIR}/spp_scripts/native_std_v2.g2.so"
-    PRE_HANDLE_V1_SO="${CMAKE_BINARY_DIR}/spp_scripts/handle_v1.g1.so"
-    PRE_HANDLE_V2_SO="${CMAKE_BINARY_DIR}/spp_scripts/handle_v2.g2.so"
-    PRE_HANDLE_V1B_SO="${CMAKE_BINARY_DIR}/spp_scripts/handle_v1.g3.so")
-gtest_discover_tests(backend_tests)
-
-# Experiments R3 and R6: closures that outlive a generation, and the unload.
-add_executable(r3_tests tests/r3_tests.cpp example/engine/Actor.cpp example/engine/Util.cpp)
-target_include_directories(r3_tests PRIVATE tests)
-target_link_libraries(r3_tests PRIVATE spp_backend GTest::gtest_main)
-set_target_properties(r3_tests PROPERTIES ENABLE_EXPORTS ON)
-target_compile_definitions(r3_tests PRIVATE SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-gtest_discover_tests(r3_tests)
-
-# Experiment R5: worker threads, a barrier and a reload from a third thread.
-add_executable(r5_tests tests/r5_tests.cpp example/engine/Actor.cpp example/engine/Util.cpp)
-target_include_directories(r5_tests PRIVATE tests)
-target_link_libraries(r5_tests PRIVATE spp_backend GTest::gtest_main)
-set_target_properties(r5_tests PROPERTIES ENABLE_EXPORTS ON)
-add_dependencies(r5_tests gen4_base)
-target_compile_definitions(r5_tests PRIVATE
-    GEN4_BASE_SO="$<TARGET_FILE:gen4_base>"
-    GEN3_MISSING_SO="${CMAKE_BINARY_DIR}/gen3_missing.so")
-gtest_discover_tests(r5_tests)
-
-# The cache of the translator session needs only spc_lib.
-add_executable(translator_tests tests/translator_tests.cpp)
-target_link_libraries(translator_tests PRIVATE spc_lib GTest::gtest_main)
-target_include_directories(translator_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator/parser ${CMAKE_SOURCE_DIR}/src/translator)
-target_compile_definitions(translator_tests PRIVATE SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-gtest_discover_tests(translator_tests)
-
-# The printer of the expression and statement AST.
-add_executable(emit_tests tests/emit_tests.cpp)
-target_link_libraries(emit_tests PRIVATE spc_lib GTest::gtest_main)
-target_include_directories(emit_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator)
-gtest_discover_tests(emit_tests)
-
-# The type model: stubs to C++ storage types.
-add_executable(types_tests tests/types_tests.cpp)
-target_link_libraries(types_tests PRIVATE spc_lib GTest::gtest_main)
-target_include_directories(types_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator)
-gtest_discover_tests(types_tests)
-
-# The parser of the expressions: round trip with the printer.
-add_executable(expr_parse_tests tests/expr_parse_tests.cpp)
-target_link_libraries(expr_parse_tests PRIVATE spc_lib GTest::gtest_main)
-target_include_directories(expr_parse_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator)
-gtest_discover_tests(expr_parse_tests)
-
-# The parser of the statements: round trip with the printer, and the example scripts.
-add_executable(stmt_parse_tests tests/stmt_parse_tests.cpp)
-target_link_libraries(stmt_parse_tests PRIVATE spc_lib GTest::gtest_main)
-target_include_directories(stmt_parse_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator)
-target_compile_definitions(stmt_parse_tests PRIVATE SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-gtest_discover_tests(stmt_parse_tests)
-
-# The lowering pass.
-add_executable(lower_tests tests/lower_tests.cpp)
-target_link_libraries(lower_tests PRIVATE spc_lib GTest::gtest_main)
-target_include_directories(lower_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator)
-gtest_discover_tests(lower_tests)
-
-# The script::deref helper of the runtime header.
-add_executable(deref_tests tests/deref_tests.cpp)
-target_link_libraries(deref_tests PRIVATE spp_runtime GTest::gtest_main)
-gtest_discover_tests(deref_tests)
-
-# JIT only: no file, no child process, the life of a generation.
-if(SPP_BACKEND STREQUAL "JIT")
-    add_executable(jit_tests tests/jit_tests.cpp example/engine/Actor.cpp example/engine/Object.cpp example/engine/Util.cpp)
-    target_include_directories(jit_tests PRIVATE tests)
-    target_link_libraries(jit_tests PRIVATE spp_backend GTest::gtest_main)
-    set_target_properties(jit_tests PROPERTIES ENABLE_EXPORTS ON)
-    target_compile_definitions(jit_tests PRIVATE SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
-        SPP_CXX="${CMAKE_CXX_COMPILER}" SPP_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
-    gtest_discover_tests(jit_tests)
-endif()
+# GoogleTest targets. They need the pre_* targets and sppc from above.
+add_subdirectory(tests)
 
 # bench_backends times the compile and the load of the example scripts.
 add_executable(bench_backends example/bench_backends.cpp example/engine/Actor.cpp example/engine/Util.cpp)

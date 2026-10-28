@@ -19,7 +19,7 @@
 
 #include "spp/backend.h"
 #include "spp/jit_backend.h"
-#include "f1_scenario.h"
+#include "support/f1_scenario.h"
 
 namespace {
 

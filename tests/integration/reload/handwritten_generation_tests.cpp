@@ -1,16 +1,16 @@
-// Step R0: tests for the hand-written generation 1 of the Player class.
+// Tests for the hand-written generation 1 of the Player class.
 // CMake defines the macro GEN1_SO (the path of the library).
 #include <cstring>
 #include <typeinfo>
 
-#include "test_support.h"
+#include "support/test_support.h"
 
 namespace {
 
 using test_support::kDt;
 using test_support::Session;
 
-TEST(R0, PlayerShellTicksTakesDamageAndReflects)
+TEST(HandwrittenGeneration, PlayerShellTicksTakesDamageAndReflects)
 {
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(GEN1_SO));
@@ -39,7 +39,7 @@ script::FieldInfo make_field(const char* name, const char* type_key)
     return script::FieldInfo{name, nullptr, type_key, 0, 4, 4, 0, nullptr, nullptr, nullptr};
 }
 
-TEST(R0, PlanRejectsATypeChange)
+TEST(HandwrittenGeneration, PlanRejectsATypeChange)
 {
     script::FieldInfo of[] = {make_field("hp", script::type_key<float>())};
     script::FieldInfo nf[] = {make_field("hp", script::type_key<int>())};
@@ -51,7 +51,7 @@ TEST(R0, PlanRejectsATypeChange)
         << plan.error;
 }
 
-TEST(R0, PlanMovesASameTypeField)
+TEST(HandwrittenGeneration, PlanMovesASameTypeField)
 {
     script::FieldInfo of[] = {make_field("hp", script::type_key<float>())};
     script::FieldInfo nf[] = {make_field("hp", script::type_key<float>())};

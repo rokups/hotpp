@@ -1,4 +1,4 @@
-// Step R1: hand-written generation 4 of the Player class. The runtime must reject it.
+// Hand-written generation 4 of the Player class. The runtime must reject it.
 //
 // The shell has one extra member. The size of the shell changes, so the
 // shell layout hash differs from generation 1. Live objects of generation 1

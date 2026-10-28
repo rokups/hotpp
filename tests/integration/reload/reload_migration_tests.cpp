@@ -1,17 +1,17 @@
-// Step R1: reload with migration, a thunk and two rejected reloads.
+// Reload with migration, a thunk and two rejected reloads.
 // CMake defines the macros GEN1_SO, GEN2_SO, GEN4_BASE_SO and GEN3_MISSING_SO.
 // The file GEN3_MISSING_SO does not exist on purpose.
 #include <cmath>
 #include <string>
 
-#include "test_support.h"
+#include "support/test_support.h"
 
 namespace {
 
 using test_support::kDt;
 using test_support::Session;
 
-TEST(R1, ReloadMigratesAndRejectedReloadsKeepGeneration2)
+TEST(ReloadMigration, ReloadMigratesAndRejectedReloadsKeepGeneration2)
 {
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(GEN1_SO));

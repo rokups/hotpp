@@ -1,4 +1,4 @@
-// Step R5: the tick loop on worker threads, a reload from a third thread.
+// The tick loop on worker threads, a reload from a third thread.
 //
 // The world ticks 1000 Player actors on two worker threads (World::TickParallel).
 // The main thread waits at the barrier and runs the frame boundary hook there.
@@ -26,7 +26,7 @@
 #include <vector>
 
 #include "spp/backend.h"
-#include "test_support.h"
+#include "support/test_support.h"
 
 namespace {
 
@@ -260,7 +260,7 @@ void run_commit_only_at_barrier(unsigned seed)
     EXPECT_EQ(wrong, 0);
 }
 
-TEST(R5, R5_CommitOnlyAtBarrier)
+TEST(ParallelTick, CommitOnlyAtBarrier)
 {
     for (unsigned seed = 1; seed <= 20; ++seed) {
         SCOPED_TRACE("seed " + std::to_string(seed));
@@ -336,7 +336,7 @@ void run_rejected_reload(unsigned seed)
     EXPECT_EQ(rig.violations.load(), 0);
 }
 
-TEST(R5, R5_RejectedReloadFromOtherThread)
+TEST(ParallelTick, RejectedReloadFromOtherThread)
 {
     for (unsigned seed = 1; seed <= 5; ++seed) {
         SCOPED_TRACE("seed " + std::to_string(seed));

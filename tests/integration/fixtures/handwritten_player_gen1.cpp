@@ -1,4 +1,4 @@
-// Step R0: hand-written output of the translator for this script class.
+// Hand-written output of the translator for this script class.
 //
 //   class Player : Actor {
 //       float hp = 100;

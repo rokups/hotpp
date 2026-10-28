@@ -1,4 +1,4 @@
-// Step R1: hand-written generation 2 of the Player class.
+// Hand-written generation 2 of the Player class.
 //
 // Changes against generation 1:
 //   - The Tick body is different: the actor moves twice as fast and no heal runs.

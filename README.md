@@ -1,13 +1,13 @@
 # spp
 
-Prototype of a hot-reload scripting runtime. This is step 3 (R0, R1 and F1) with the backend interface.
+Prototype of a hot-reload scripting runtime. This is step 3 (F1) with the backend interface.
 The design is in `scriptlang-design.md` in the project root.
 
 ## Layout
 
 - `include/spp/` has the public headers: `script_runtime.h`, `module.h`, `backend.h`, `clang_files_backend.h`, `jit_backend.h` and `spc_lib.h`. Use the form `#include "spp/<name>.h"`.
 - `src/` has the library code. `src/runtime/` has the script runtime and the backends. `src/translator/` has the translator library `spc_lib` and the tool `spc`. `src/tools/` has the tool `sppc`.
-- `example/` has the example engine and the examples. `example/engine/` has the executable `minengine` (`Actor`, `World`, a small main program). `example/scripts/` has the example scripts. `example/poc/` has the hand-written generations (R0 and R1). `example/bench_backends.cpp` is the benchmark.
+- `example/` has the example engine and the examples. `example/engine/` has the executable `minengine` (`Actor`, `World`, a small main program). `example/scripts/` has the example scripts. `tests/integration/fixtures/` has the hand-written generations. `example/bench_backends.cpp` is the benchmark.
 - `tests/` has the GoogleTest cases and the shared headers.
 - `cmake/` has `CPM.cmake` and `SppScripts.cmake` (`spp_add_scripts`).
 
@@ -26,11 +26,11 @@ The file `CMakePresets.json` has the presets. A build goes to `cmake-build/<pres
 
 ## Run
 
-    cmake-build/linux-clang-files/Debug/minengine cmake-build/linux-clang-files/Debug/gen1.so
+    cmake-build/linux-clang-files/Debug/minengine cmake-build/linux-clang-files/Debug/tests/integration/fixtures/gen1.so
 
 The command loads `gen1.so` and makes one `Player`. It ticks the world 3 times. It exits with 0 on success.
 
-`example/poc/r1/make_bad.sh [build-dir]` compiles `gen3_bad.cpp` and shows that the compile fails. No library is made. The test `R1` uses the path of this missing library.
+The test `ReloadMigration` uses the path of a library that does not exist (`gen3_missing.so`). The load must fail.
 
 ## Translator
 
@@ -87,7 +87,7 @@ How it works (`src/runtime/jit_backend.cpp`):
 4. One `LLJIT` (JITLink) lives for the session. Each `load` makes a new `JITDylib` and a `ResourceTracker`, adds the module, runs the static initializers (`LLJIT::initialize`) and looks up `script_register`. The Main JITDylib has a `DynamicLibrarySearchGenerator` for the process. The executable needs `ENABLE_EXPORTS` (`-rdynamic`), and it must link the runtime objects that the script code uses.
 5. The `keep_alive` of the `Module` owns the generation. When the last copy goes, it runs `LLJIT::deinitialize`, `ResourceTracker::remove` and `removeJITDylib`. It also holds the `LLJIT`, so a `Module` can outlive the backend. As in the design, ORC does not track calls in flight. The safety rules are the same as for `dlclose`.
 
-No file is written and no process starts. `tests/jit_tests.cpp` checks this: it sets the current directory and `TMPDIR` to a new empty directory, loads two generations and a bad script, and asserts that the directory is empty and that no child process ran. `strace -f` on the same test shows one `execve` (the test itself), only thread `clone3` calls and no file opened for writing. The same file tests exceptions (a `throw` and a `catch` in JIT code, and a `throw` that goes through JIT frames to the host), `-include-pch`, and the life of a generation.
+No file is written and no process starts. `tests/integration/backends/jit_backend_tests.cpp` checks this: it sets the current directory and `TMPDIR` to a new empty directory, loads two generations and a bad script, and asserts that the directory is empty and that no child process ran. `strace -f` on the same test shows one `execve` (the test itself), only thread `clone3` calls and no file opened for writing. The same file tests exceptions (a `throw` and a `catch` in JIT code, and a `throw` that goes through JIT frames to the host), `-include-pch`, and the life of a generation.
 
 Facts that differ from the first design:
 
@@ -164,12 +164,12 @@ CMake uses CPM. It takes GoogleTest from the system, and fetches it only when it
 
 All tests are GoogleTest cases. CMake registers them with `gtest_discover_tests`.
 
-- `R0` (`tests/r0_tests.cpp`) loads `gen1.so` and makes one `Player`. It ticks the world 3 times and calls both `TakeDamage` overloads. It checks the type name, the position and the field `hp` by reflection.
-- `R1` (`tests/r1_tests.cpp`) binds a delegate to `heal` through a thunk. It reloads gen 2 at the frame boundary and checks the address, the migrated state, the new `Tick` and the delegate. It then tries gen 4 and a missing library. Both must be rejected, and gen 2 must keep running.
-- `BackendTests` (`tests/backend_tests.cpp`) use the backend that `SPP_BACKEND` selected. They run the F1 reload scenario (`tests/f1_scenario.h`): generation 1 then generation 2, the same address, `hp` becomes `health`, `shield` is 25 and a delegate calls the new `heal`. A bad script (`example/scripts/bad.script`) must give an error that names `bad.script` and the line. The runtime must keep running after the error.
+- `HandwrittenGeneration` (`tests/integration/reload/handwritten_generation_tests.cpp`) loads `gen1.so` and makes one `Player`. It ticks the world 3 times and calls both `TakeDamage` overloads. It checks the type name, the position and the field `hp` by reflection.
+- `ReloadMigration` (`tests/integration/reload/reload_migration_tests.cpp`) binds a delegate to `heal` through a thunk. It reloads gen 2 at the frame boundary and checks the address, the migrated state, the new `Tick` and the delegate. It then tries gen 4 and a missing library. Both must be rejected, and gen 2 must keep running.
+- `BackendTests` (`tests/integration/reload/`) use the backend that `SPP_BACKEND` selected. They run the F1 reload scenario (`tests/support/f1_scenario.h`): generation 1 then generation 2, the same address, `hp` becomes `health`, `shield` is 25 and a delegate calls the new `heal`. A bad script (`example/scripts/bad.script`) must give an error that names `bad.script` and the line. The runtime must keep running after the error.
 - `TranslatorSession` (`tests/translator_tests.cpp`) checks the cache: a hit gives the same output as a miss, a changed header (also a nested one) invalidates it, a second base class works in the same session, and the second translate takes less than 150 ms (the real value is about 1.3 ms).
-- `JitTests` (`tests/jit_tests.cpp`, only in a JIT build) check that no file appears and no child process runs. They also check exceptions in JIT code, a precompiled header and the life of a generation.
-- `ClosureTests`, `ReloadTests` (`tests/r3_tests.cpp`) run the experiments R3 and R6 with `example/scripts/timer_v1.script` and `timer_v2.script`. See "Closures and unload".
+- `JitTests` (`tests/integration/backends/jit_backend_tests.cpp`, only in a JIT build) check that no file appears and no child process runs. They also check exceptions in JIT code, a precompiled header and the life of a generation.
+- `Closure`, `GenerationUnload` (`tests/integration/closures/`) test escaped closures and the unload of generations with `example/scripts/timer_v1.script` and `timer_v2.script`. See "Closures and unload".
 - `TranslatorLambda` (`tests/translator_tests.cpp`) checks the output for an arrow lambda.
 - `PrecompiledTests` load the libraries that `spp_add_scripts` made with `sppc`, through `module_from_library`. They run the same F1 scenario. They run for each `SPP_BACKEND` value. One test runs `sppc` on `bad.script` and checks the exit code and the error line.
 
@@ -210,7 +210,7 @@ The `onReload` hook, the `convert` hook, unload of the first generation of a cla
 
 ## Threads and the safe point
 
-Experiment R5. The tests are in `tests/r5_tests.cpp`.
+The tests are in `tests/integration/threading/parallel_tick_tests.cpp` (suite `ParallelTick`).
 
 `World::TickParallel(dt, threads)` ticks the actors on worker threads. The workers start once. They stop when the world ends. Each worker ticks one chunk of the actor list. The main thread waits at a barrier. After all workers reach the barrier, the main thread runs the frame boundary hook. The workers stay idle until the hook ends.
 

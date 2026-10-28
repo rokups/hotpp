@@ -1,10 +1,10 @@
-// Experiments R3 (escaped closure) and R6 (unload of a retired generation).
+// Escaped closures and the unload of a retired generation.
 //
 // The scripts timer_v1 and timer_v2 define the class Beeper. The method arm
 // stores an arrow lambda in a World timer. The tests use the backend that
 // SPP_BACKEND selected (make_default_backend).
 //
-// Finding for R6: the first generation cannot unload while its class lives.
+// Finding: the first generation cannot unload while its class lives.
 // The class record, the factory, the thunks and the vtable of the first object
 // are in the module of generation 1. The loader keeps that module (code_refs).
 // The unload tests use generation 2 of a chain 1 -> 2 -> 3.
@@ -12,17 +12,13 @@
 // CMake defines SPP_SOURCE_DIR.
 #include <gtest/gtest.h>
 
-#include <fstream>
-#include <functional>
 #include <memory>
 #include <sstream>
 #include <string>
-#include <thread>
-#include <type_traits>
-#include <vector>
 
 #include "spp/backend.h"
-#include "test_support.h"
+#include "support/script_files.h"
+#include "support/test_support.h"
 
 namespace {
 
@@ -30,15 +26,7 @@ using script::GenerationInfo;
 using script::GenState;
 using test_support::kDt;
 using test_support::Session;
-
-script::ScriptSource source(const char* file)
-{
-    const std::string path = std::string(SPP_SOURCE_DIR) + "/example/scripts/" + file;
-    std::ifstream f(path);
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return {path, ss.str()};
-}
+using test_support::source;
 
 const GenerationInfo* find_gen(const script::LoaderStats& st, uint32_t generation)
 {
@@ -56,81 +44,7 @@ int count_lines(const std::string& text, const std::string& needle)
     return n;
 }
 
-// ------------------------------------------------------------ Closure (no backend)
-
-class ClosureTests : public ::testing::Test {
-protected:
-    void SetUp() override { script::active_generation = 9001; }
-    void TearDown() override { script::active_generation = 0; }
-};
-
-TEST_F(ClosureTests, PinsFollowTheCopiesAndMoves)
-{
-    EXPECT_EQ(script::pin_count(9001), 0u);
-    {
-        script::Closure<void()> a(9001, "a", [] {});
-        EXPECT_EQ(script::pin_count(9001), 1u);
-        script::Closure<void()> b = a;
-        EXPECT_EQ(script::pin_count(9001), 2u);
-        script::Closure<void()> c = std::move(b);
-        EXPECT_EQ(script::pin_count(9001), 2u);
-        a = c;
-        EXPECT_EQ(script::pin_count(9001), 2u);
-        std::function<void()> f = c;  // a std::function holds one more pin
-        EXPECT_EQ(script::pin_count(9001), 3u);
-    }
-    EXPECT_EQ(script::pin_count(9001), 0u);
-}
-
-TEST_F(ClosureTests, GuardRunsTheBodyOnlyInTheLiveGeneration)
-{
-    int runs = 0;
-    script::Closure<int(int)> c(9001, "c", [&runs](int x) { ++runs; return x + 1; });
-    EXPECT_EQ(c(1), 2);
-    EXPECT_EQ(runs, 1);
-    const uint64_t stale0 = script::stale_call_count();
-    script::active_generation = 9002;
-    EXPECT_EQ(c(1), 0);  // R(): a default value
-    EXPECT_EQ(runs, 1);
-    EXPECT_EQ(script::stale_call_count(), stale0 + 1);
-    script::active_generation = 9001;
-    EXPECT_EQ(c(5), 6);
-}
-
-TEST_F(ClosureTests, ConvertsToStdFunctionAndToADelegate)
-{
-    static_assert(std::is_convertible_v<script::Closure<void(float)>, std::function<void(float)>>);
-    float seen = 0;
-    auto c = script::make_closure(9001, "m", [&seen](float x) { seen = x; });
-    static_assert(std::is_same_v<decltype(c), script::Closure<void(float)>>);
-    Delegate<void(float)> d = c;
-    ASSERT_TRUE(d.IsBound());
-    d(2.5f);
-    EXPECT_EQ(seen, 2.5f);
-    std::function<void(float)> f = c;
-    f(4.0f);
-    EXPECT_EQ(seen, 4.0f);
-    EXPECT_EQ(script::pin_count(9001), 3u);  // c, d, f
-}
-
-TEST_F(ClosureTests, PinCountIsAtomic)
-{
-    // Not a proof, but a thread sanitizer or a lost update shows here.
-    std::vector<std::thread> threads;
-    for (int t = 0; t < 4; ++t)
-        threads.emplace_back([] {
-            for (int i = 0; i < 10000; ++i) {
-                script::pin(9100);
-                script::unpin(9100);
-            }
-        });
-    for (auto& t : threads) t.join();
-    EXPECT_EQ(script::pin_count(9100), 0u);
-}
-
-// ------------------------------------------------------------ R3 and R6 with a backend
-
-class ReloadTests : public ::testing::Test {
+class GenerationUnload : public ::testing::Test {
 public:
     void SetUp() override { backend = script::make_default_backend(); }
 
@@ -164,9 +78,9 @@ public:
     std::unique_ptr<script::Backend> backend;
 };
 
-// R3: a closure of generation 1 is in the world timer. After the reload to
+// Escaped closure: a closure of generation 1 is in the world timer. After the reload to
 // generation 2 it fires. The guard logs a stale call. The body does not run.
-TEST_F(ReloadTests, R3_EscapedClosureIsStaleAfterReload)
+TEST_F(GenerationUnload, EscapedClosureIsStaleAfterReload)
 {
     script::Module m1 = build("timer_v1.script", 1);
     script::Module m2 = build("timer_v2.script", 2);
@@ -208,7 +122,7 @@ TEST_F(ReloadTests, R3_EscapedClosureIsStaleAfterReload)
 }
 
 // Without a reload the closure runs its body.
-TEST_F(ReloadTests, R3_ClosureOfTheLiveGenerationRuns)
+TEST_F(GenerationUnload, ClosureOfTheLiveGenerationRuns)
 {
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(build("timer_v1.script", 1), "Beeper"));
@@ -223,7 +137,7 @@ TEST_F(ReloadTests, R3_ClosureOfTheLiveGenerationRuns)
 // The closure of generation 2 fires after generation 3 is live.
 // A chain keeps the test free of the first-generation anchor.
 struct Chain {
-    explicit Chain(ReloadTests& t)
+    explicit Chain(GenerationUnload& t)
     {
         m1 = t.build("timer_v1.script", 1);
         m2 = t.build("timer_v2.script", 2);
@@ -232,9 +146,9 @@ struct Chain {
     script::Module m1, m2, m3;
 };
 
-// R6: the closure fired and was dropped. One frame later generation 2 is unloaded.
+// Unload: the closure fired and was dropped. One frame later generation 2 is unloaded.
 // Later ticks are clean. The object keeps its address.
-TEST_F(ReloadTests, R6_GenerationUnloadsAfterTheClosureIsDropped)
+TEST_F(GenerationUnload, GenerationUnloadsAfterTheClosureIsDropped)
 {
     Chain c(*this);
     Session s;
@@ -283,7 +197,7 @@ TEST_F(ReloadTests, R6_GenerationUnloadsAfterTheClosureIsDropped)
 }
 
 // A closure that stays alive keeps the generation loaded (pin count one).
-TEST_F(ReloadTests, R6_AliveClosureKeepsTheGenerationLoaded)
+TEST_F(GenerationUnload, AliveClosureKeepsTheGenerationLoaded)
 {
     Chain c(*this);
     Session s;
@@ -308,7 +222,7 @@ TEST_F(ReloadTests, R6_AliveClosureKeepsTheGenerationLoaded)
 }
 
 // ClearTimers drops the closure too, so the generation can unload.
-TEST_F(ReloadTests, R6_ClearTimersReleasesThePin)
+TEST_F(GenerationUnload, ClearTimersReleasesThePin)
 {
     Chain c(*this);
     Session s;
@@ -326,7 +240,7 @@ TEST_F(ReloadTests, R6_ClearTimersReleasesThePin)
 
 // Finding: generation 1 holds the record, the factory, the thunks and the vtable
 // of the first object. It stays retired after the closure is dropped.
-TEST_F(ReloadTests, R6_FirstGenerationStaysLoadedWhileItsClassLives)
+TEST_F(GenerationUnload, FirstGenerationStaysLoadedWhileItsClassLives)
 {
     Session s;
     script::Module m2 = build("timer_v2.script", 2);
@@ -352,7 +266,7 @@ TEST_F(ReloadTests, R6_FirstGenerationStaysLoadedWhileItsClassLives)
 }
 
 // The stats report the active generation, all generations and the live objects.
-TEST_F(ReloadTests, StatsListGenerationsInOrder)
+TEST_F(GenerationUnload, StatsListGenerationsInOrder)
 {
     Session s;
     script::Module m2 = build("timer_v2.script", 2);
@@ -372,3 +286,4 @@ TEST_F(ReloadTests, StatsListGenerationsInOrder)
 }
 
 }  // namespace
+

@@ -1,4 +1,4 @@
-// Generation 1 of the Beeper class (experiments R3 and R6).
+// Generation 1 of the Beeper class.
 // The method arm stores an arrow lambda in a World timer.
 using "Actor.h";
 

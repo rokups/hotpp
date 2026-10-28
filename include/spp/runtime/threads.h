@@ -7,7 +7,7 @@ namespace script {
 // The generation that is live now. A generation function checks it.
 extern uint32_t active_generation;
 
-// Threads (design sections 6.2 and 6.3, experiment R5).
+// Threads (design sections 6.2 and 6.3).
 //
 // The engine can run script code on worker threads.
 // A reload commit changes the class records, the state blocks and active_generation.
