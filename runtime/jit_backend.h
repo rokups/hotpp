@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "backend.h"
+#include "spc_lib.h"
 
 namespace script {
 
@@ -15,6 +16,9 @@ struct JitOptions {
     std::string compiler = "clang++";       // the driver name; an absolute path finds the toolchain best
     std::vector<std::string> include_dirs;  // for the script imports and for the compile
     std::string resource_dir;               // the Clang resource dir (empty: the default)
+    // The translator cache. Empty: the backend makes its own. Share one to keep the
+    // cache between backends.
+    std::shared_ptr<spc::TranslatorSession> session;
     std::vector<std::string> extra_flags;   // added to the compile command
     std::string pch_path;                   // optional: a precompiled header for -include-pch
     // The debug flag. "-g" gives full debug info, but Clang leaks about 270 KB of

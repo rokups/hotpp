@@ -4,11 +4,15 @@
 // many times for the cold numbers: each process starts cold.
 //
 // Usage:
-//   bench_backends [--warm N] [--cxxflag F]... [--pch FILE] [--make-pch FILE]
+//   bench_backends [--warm N] [--cxxflag F]... [--pch FILE] [--make-pch FILE] [--no-cache]
 //
 // It prints one line: the cold time of generation 1 and 2 (the first load of
 // each in this process) and the median time of N warm loads of each. For the
 // JIT backend it also prints the phases of the last warm load.
+// The warm loads share one translator session (the header parse is cached).
+// --no-cache gives each warm backend a new session, so every load parses the headers.
+// The tool also prints the time of one translate with a new session (miss) and with
+// the same session again (hit).
 // --cxxflag adds a compile flag (for example -O1 for the CLANG_FILES backend).
 // --make-pch FILE (JIT only) makes a precompiled header and exits.
 // --pch FILE (JIT only) compiles with -include-pch FILE.
@@ -29,6 +33,7 @@
 #include <vector>
 
 #include "script_runtime.h"
+#include "spc_lib.h"
 
 #if defined(BENCH_JIT)
 #include "jit_backend.h"
@@ -98,21 +103,24 @@ int main(int argc, char** argv)
     int warm = 5;
     std::vector<std::string> flags;
     std::string pch, make_pch;
+    bool no_cache = false;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "--warm" && i + 1 < argc) warm = std::atoi(argv[++i]);
         else if (a == "--cxxflag" && i + 1 < argc) flags.push_back(argv[++i]);
+        else if (a == "--no-cache") no_cache = true;
         else if (a == "--pch" && i + 1 < argc) pch = argv[++i];
         else if (a == "--make-pch" && i + 1 < argc) make_pch = argv[++i];
         else {
             std::fprintf(stderr, "usage: bench_backends [--warm N] [--cxxflag F]... [--pch FILE] "
-                                 "[--make-pch FILE]\n");
+                                 "[--make-pch FILE] [--no-cache]\n");
             return 2;
         }
     }
     const std::vector<std::string> includes = split(BENCH_INCLUDES);
 
-    auto make = [&]() -> std::unique_ptr<script::Backend> {
+    auto session = std::make_shared<spc::TranslatorSession>();
+    auto make = [&](bool share) -> std::unique_ptr<script::Backend> {
 #if defined(BENCH_JIT)
         script::JitOptions o;
         o.compiler = BENCH_CXX;
@@ -120,6 +128,7 @@ int main(int argc, char** argv)
         o.resource_dir = BENCH_RESOURCE_DIR;
         o.extra_flags = flags;
         o.pch_path = pch;
+        if (share) o.session = session;
         return std::make_unique<script::JitBackend>(std::move(o));
 #else
         script::ClangFilesOptions o;
@@ -128,6 +137,7 @@ int main(int argc, char** argv)
         o.resource_dir = BENCH_RESOURCE_DIR;
         o.extra_flags = flags;
         o.work_dir = std::string(BENCH_WORK_DIR) + "/bench" + std::to_string(getpid());
+        if (share) o.session = session;
         return std::make_unique<script::ClangFilesBackend>(std::move(o));
 #endif
     };
@@ -162,7 +172,7 @@ int main(int argc, char** argv)
 
     const script::ScriptSource v1 = source("player_v1.script");
     const script::ScriptSource v2 = source("player_v2.script");
-    std::unique_ptr<script::Backend> backend = make();
+    std::unique_ptr<script::Backend> backend = make(false);
     const double cold1 = timed_load(*backend, v1, 1);
     const double cold2 = timed_load(*backend, v2, 2);
     if (cold1 < 0 || cold2 < 0) return 1;
@@ -172,7 +182,7 @@ int main(int argc, char** argv)
     std::vector<double> w1, w2;
     double tr = 0, co = 0, ji = 0;
     for (int i = 0; i < warm; ++i) {
-        std::unique_ptr<script::Backend> b = make();
+        std::unique_ptr<script::Backend> b = make(!no_cache);
         const double a = timed_load(*b, v1, 1);
         const double c = timed_load(*b, v2, 2);
         if (a < 0 || c < 0) return 1;
@@ -183,6 +193,25 @@ int main(int argc, char** argv)
         tr = t.translate_ms, co = t.compile_ms, ji = t.jit_ms;
 #endif
     }
+    // One translate alone: a new session (miss) and then the same session (hit).
+    double miss = 0, hit = 0;
+    {
+        spc::TranslateOptions to;
+        to.script_text = v1.text;
+        to.script_name = v1.name;
+        to.generation = 1;
+        to.include_dirs = includes;
+        to.resource_dir = BENCH_RESOURCE_DIR;
+        spc::TranslatorSession ts;
+        Clock::time_point t = Clock::now();
+        const bool ok1 = spc::translate(to, ts).ok;
+        miss = ms_since(t);
+        t = Clock::now();
+        const bool ok2 = spc::translate(to, ts).ok;
+        hit = ms_since(t);
+        if (!ok1 || !ok2) return 1;
+    }
+    std::printf("translate_miss=%.1f translate_hit=%.1f\n", miss, hit);
     std::printf("backend=%s cold_v1=%.1f cold_v2=%.1f warm_v1=%.1f warm_v2=%.1f", backend->name(),
                 cold1, cold2, median(w1), median(w2));
     if (tr > 0) std::printf(" (last v2: translate=%.1f compile=%.1f jit=%.1f)", tr, co, ji);

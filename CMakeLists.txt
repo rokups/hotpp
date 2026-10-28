@@ -165,6 +165,12 @@ target_compile_definitions(backend_tests PRIVATE
     PRE_V2_SO="${CMAKE_BINARY_DIR}/spp_scripts/player_v2.g2.so")
 gtest_discover_tests(backend_tests)
 
+# The cache of the translator session needs only spc_lib.
+add_executable(translator_tests tests/translator_tests.cpp)
+target_link_libraries(translator_tests PRIVATE spc_lib GTest::gtest_main)
+target_compile_definitions(translator_tests PRIVATE SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+gtest_discover_tests(translator_tests)
+
 # JIT only: no file, no child process, the life of a generation.
 if(SPP_BACKEND STREQUAL "JIT")
     add_executable(jit_tests tests/jit_tests.cpp engine/Actor.cpp)

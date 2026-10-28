@@ -3,11 +3,13 @@
 #pragma once
 
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
 
 #include "backend.h"
+#include "spc_lib.h"
 
 namespace script {
 
@@ -15,6 +17,9 @@ struct ClangFilesOptions {
     std::string compiler = "clang++";         // the compiler command
     std::vector<std::string> include_dirs;    // for the script imports and for the compile
     std::string resource_dir;                 // the Clang resource dir (empty: the default)
+    // The translator cache. Empty: the backend makes its own. Share one to keep the
+    // cache between backends.
+    std::shared_ptr<spc::TranslatorSession> session;
     std::vector<std::string> extra_flags;     // added to the compile command
     std::string work_dir = "spp_work";        // the .cpp and .so files go here
     std::string slots_file;                   // empty: <work_dir>/slots.txt

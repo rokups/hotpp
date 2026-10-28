@@ -151,7 +151,10 @@ Compiled compile(const JitOptions& opt, const std::string& path, const std::stri
 
 }  // namespace
 
-JitBackend::JitBackend(JitOptions options) : opt_(std::move(options)) {}
+JitBackend::JitBackend(JitOptions options) : opt_(std::move(options))
+{
+    if (!opt_.session) opt_.session = std::make_shared<spc::TranslatorSession>();
+}
 
 JitBackend::~JitBackend() = default;
 
@@ -176,7 +179,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
     to.include_dirs = opt_.include_dirs;
     to.resource_dir = opt_.resource_dir;
     to.slots_in = slots_;
-    spc::TranslateResult tr = spc::translate(to);
+    spc::TranslateResult tr = spc::translate(to, *opt_.session);
     timings_.translate_ms = ms_since(t0);
     if (!tr.ok) {
         r.error = tr.diagnostics;

@@ -21,12 +21,15 @@
 #include "spc_lib.h"
 
 #include <clang-c/Index.h>
+#include <sys/stat.h>
 
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <memory>
+#include <mutex>
 #include <fstream>
 #include <functional>
 #include <map>
@@ -438,7 +441,7 @@ struct BaseInfo {
     std::string name;
     std::vector<NativeVirtual> virtuals;
     bool virtual_dtor = false;
-    std::string ctor_arg;  // C++ text of the constructor argument, or empty
+    int ctor_kind = 0;  // the constructor argument: 0 none, 1 std::string, 2 const char*
     bool default_ctor = false;
     bool any_ctor = false;  // the class declares a constructor
 };
@@ -485,7 +488,7 @@ void collect_virtuals(CXCursor cls, BaseInfo& info)
     });
 }
 
-void collect_ctors(CXCursor cls, BaseInfo& info, const std::string& class_name)
+void collect_ctors(CXCursor cls, BaseInfo& info)
 {
     visit(cls, [&](CXCursor c) {
         if (clang_getCursorKind(c) == CXCursor_Constructor &&
@@ -493,13 +496,13 @@ void collect_ctors(CXCursor cls, BaseInfo& info, const std::string& class_name)
             int n = clang_Cursor_getNumArguments(c);
             info.any_ctor = true;
             if (clang_CXXConstructor_isDefaultConstructor(c)) info.default_ctor = true;
-            if (n == 1 && info.ctor_arg.empty()) {
+            if (n == 1 && info.ctor_kind == 0) {
                 std::string t = norm(
                     cxs(clang_getTypeSpelling(clang_getCursorType(clang_Cursor_getArgument(c, 0)))));
                 if (t.find("string") != std::string::npos && t.find("string_view") == std::string::npos)
-                    info.ctor_arg = "std::string(\"" + class_name + "\")";
+                    info.ctor_kind = 1;
                 else if (t == "constchar*")
-                    info.ctor_arg = "\"" + class_name + "\"";
+                    info.ctor_kind = 2;
             }
         }
         return CXChildVisit_Continue;
@@ -794,7 +797,150 @@ struct ClangHandles {
     }
 };
 
-void translate_impl(const spc::TranslateOptions& in, spc::TranslateResult& res)
+// The identity of a header file: the path, the time of the last change and the size.
+struct FileStamp {
+    std::string path;
+    long long mtime_ns = -1;
+    long long size = -1;
+    bool operator==(const FileStamp& o) const
+    {
+        return path == o.path && mtime_ns == o.mtime_ns && size == o.size;
+    }
+};
+
+FileStamp stamp_of(const std::string& path)
+{
+    FileStamp f;
+    f.path = path;
+    struct stat st;
+    if (::stat(path.c_str(), &st) == 0) {
+        f.mtime_ns = static_cast<long long>(st.st_mtim.tv_sec) * 1000000000LL + st.st_mtim.tv_nsec;
+        f.size = static_cast<long long>(st.st_size);
+    }
+    return f;
+}
+
+// Parses the imports with libclang. Reads the base classes in "names" that it finds.
+// Gives the stamps of all files that the parse included.
+void parse_bases(const std::string& probe, const std::vector<std::string>& args,
+                 const std::set<std::string>& names, std::map<std::string, BaseInfo>& out,
+                 std::vector<FileStamp>& files)
+{
+    std::vector<const char*> cargs;
+    for (const auto& a : args) cargs.push_back(a.c_str());
+    ClangHandles ch;
+    CXIndex idx = ch.idx = clang_createIndex(0, 0);
+    CXUnsavedFile unsaved{"spc_probe.cpp", probe.c_str(), static_cast<unsigned long>(probe.size())};
+    CXTranslationUnit tu = nullptr;
+    CXErrorCode ec = clang_parseTranslationUnit2(idx, "spc_probe.cpp", cargs.data(),
+                                                 static_cast<int>(cargs.size()), &unsaved, 1,
+                                                 CXTranslationUnit_SkipFunctionBodies, &tu);
+    ch.tu = tu;
+    if (ec != CXError_Success || !tu) fail(0, "libclang cannot parse the imports");
+    bool diag_error = false;
+    for (unsigned i = 0, n = clang_getNumDiagnostics(tu); i < n; ++i) {
+        CXDiagnostic d = clang_getDiagnostic(tu, i);
+        if (clang_getDiagnosticSeverity(d) >= CXDiagnostic_Error) {
+            g_diag += cxs(clang_formatDiagnostic(d, clang_defaultDiagnosticDisplayOptions())) + "\n";
+            diag_error = true;
+        }
+        clang_disposeDiagnostic(d);
+    }
+    if (diag_error) fail(0, "the imports have errors");
+
+    std::set<std::string> seen;
+    auto on_include = [](CXFile f, CXSourceLocation*, unsigned depth, CXClientData d) {
+        if (depth == 0) return;  // the probe file
+        auto* v = static_cast<std::pair<std::set<std::string>*, std::vector<FileStamp>*>*>(d);
+        std::string path = cxs(clang_getFileName(f));
+        if (v->first->insert(path).second) v->second->push_back(stamp_of(path));
+    };
+    std::pair<std::set<std::string>*, std::vector<FileStamp>*> ctx{&seen, &files};
+    files.clear();
+    clang_getInclusions(tu, on_include, &ctx);
+
+    CXCursor root = clang_getTranslationUnitCursor(tu);
+    for (const auto& name : names) {
+        CXCursor base_cur = find_class(root, name);
+        if (clang_Cursor_isNull(base_cur)) continue;
+        BaseInfo bi;
+        bi.name = name;
+        collect_virtuals(base_cur, bi);
+        collect_ctors(base_cur, bi);
+        out[name] = std::move(bi);
+    }
+}
+
+}  // namespace
+
+namespace spc {
+
+// The cache of one key (flags + imports): the base classes and the files that the parse read.
+struct TranslatorSession::Impl {
+    struct Entry {
+        std::vector<FileStamp> files;
+        std::map<std::string, BaseInfo> bases;
+    };
+    std::mutex mutex;
+    std::map<std::string, Entry> entries;
+    int parses = 0;
+};
+
+TranslatorSession::TranslatorSession() : impl_(new Impl) {}
+TranslatorSession::~TranslatorSession() = default;
+
+int TranslatorSession::parse_count() const
+{
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    return impl_->parses;
+}
+
+void TranslatorSession::clear()
+{
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    impl_->entries.clear();
+}
+
+}  // namespace spc
+
+namespace {
+
+// Gives the base classes for one key. A cache hit needs all names in the entry and
+// the same stamp for each file. Otherwise it parses again and keeps the new result.
+std::map<std::string, BaseInfo> session_bases(
+    spc::TranslatorSession::Impl& S, const std::string& key, const std::set<std::string>& names,
+    const std::function<void(std::map<std::string, BaseInfo>&, std::vector<FileStamp>&)>& parse)
+{
+    std::lock_guard<std::mutex> lock(S.mutex);
+    auto& e = S.entries[key];
+    bool fresh = !e.files.empty();
+    for (size_t i = 0; fresh && i < e.files.size(); ++i) fresh = stamp_of(e.files[i].path) == e.files[i];
+    if (!fresh) e = {};
+    bool complete = fresh;
+    for (const auto& n : names) complete = complete && e.bases.count(n);
+    if (!complete) {
+        std::map<std::string, BaseInfo> out = std::move(e.bases);
+        std::vector<FileStamp> files;
+        ++S.parses;
+        try {
+            parse(out, files);
+        } catch (...) {
+            S.entries.erase(key);
+            throw;
+        }
+        e.bases = std::move(out);
+        e.files = std::move(files);
+    }
+    std::map<std::string, BaseInfo> r;
+    for (const auto& n : names) {
+        auto it = e.bases.find(n);
+        if (it != e.bases.end()) r.emplace(n, it->second);
+    }
+    return r;
+}
+
+void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Impl& session,
+                    spc::TranslateResult& res)
 {
     Options opt;
     opt.input = in.script_name;
@@ -821,28 +967,18 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslateResult& res)
     args.push_back("-I" + (slash == std::string::npos ? std::string(".") : opt.input.substr(0, slash)));
     for (const auto& d : opt.includes) args.push_back("-I" + d);
     if (!opt.resource_dir.empty()) args.push_back("-resource-dir=" + opt.resource_dir);
-    std::vector<const char*> cargs;
-    for (const auto& a : args) cargs.push_back(a.c_str());
-    ClangHandles ch;
-    CXIndex idx = ch.idx = clang_createIndex(0, 0);
-    CXUnsavedFile unsaved{"spc_probe.cpp", probe.c_str(), static_cast<unsigned long>(probe.size())};
-    CXTranslationUnit tu = nullptr;
-    CXErrorCode ec = clang_parseTranslationUnit2(idx, "spc_probe.cpp", cargs.data(),
-                                                 static_cast<int>(cargs.size()), &unsaved, 1,
-                                                 CXTranslationUnit_SkipFunctionBodies, &tu);
-    ch.tu = tu;
-    if (ec != CXError_Success || !tu) fail(0, "libclang cannot parse the imports");
-    bool diag_error = false;
-    for (unsigned i = 0, n = clang_getNumDiagnostics(tu); i < n; ++i) {
-        CXDiagnostic d = clang_getDiagnostic(tu, i);
-        if (clang_getDiagnosticSeverity(d) >= CXDiagnostic_Error) {
-            g_diag += cxs(clang_formatDiagnostic(d, clang_defaultDiagnosticDisplayOptions())) + "\n";
-            diag_error = true;
-        }
-        clang_disposeDiagnostic(d);
-    }
-    if (diag_error) fail(0, "the imports have errors");
-    CXCursor root = clang_getTranslationUnitCursor(tu);
+    std::set<std::string> import_paths, base_names;
+    for (const auto& im : sc.imports) import_paths.insert(im.path);
+    for (const auto& cd : sc.classes) base_names.insert(cd.base);
+    // The key: the flags, the current directory and the imports (the order does not matter).
+    std::string key = std::filesystem::current_path().string() + "\n";
+    for (const auto& a : args) key += a + "\n";
+    for (const auto& p : import_paths) key += "#" + p + "\n";
+    const std::map<std::string, BaseInfo> bases =
+        session_bases(session, key, base_names,
+                      [&](std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files) {
+                          parse_bases(probe, args, base_names, out, files);
+                      });
 
     std::vector<ManifestEntry> old_manifest;
     {
@@ -879,18 +1015,16 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslateResult& res)
         auto slot_id = [&](const std::string& n) { return (multi ? cn + "_" : std::string()) + "SLOT_" + n; };
 
         // ---- base class information from libclang
-        CXCursor base_cur = find_class(root, cd.base);
-        if (clang_Cursor_isNull(base_cur))
+        auto base_it = bases.find(cd.base);
+        if (base_it == bases.end())
             fail(cd.line, "base class '" + cd.base + "' is not found in the imported headers");
-        BaseInfo bi;
-        bi.name = cd.base;
-        collect_virtuals(base_cur, bi);
-        collect_ctors(base_cur, bi, cn);
+        BaseInfo bi = base_it->second;
         if (!bi.any_ctor) bi.default_ctor = true;  // the compiler declares one
         if (!bi.virtual_dtor)
             fail(cd.line, "base class '" + cd.base + "' has no virtual destructor");
         std::string ctor_args;
-        if (!bi.ctor_arg.empty()) ctor_args = ", " + bi.ctor_arg;
+        if (bi.ctor_kind == 1) ctor_args = ", std::string(\"" + cn + "\")";
+        else if (bi.ctor_kind == 2) ctor_args = ", \"" + cn + "\"";
         else if (!bi.default_ctor)
             fail(cd.line, "base class '" + cd.base + "' has no default constructor and no constructor that takes a name");
 
@@ -1223,11 +1357,17 @@ namespace spc {
 
 TranslateResult translate(const TranslateOptions& in)
 {
+    TranslatorSession session;
+    return translate(in, session);
+}
+
+TranslateResult translate(const TranslateOptions& in, TranslatorSession& session)
+{
     TranslateResult res;
     g_diag.clear();
     g_script = in.script_name;
     try {
-        translate_impl(in, res);
+        translate_impl(in, *session.impl_, res);
         res.ok = true;
     } catch (const TranslateAbort&) {
         res.ok = false;

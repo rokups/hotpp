@@ -79,6 +79,7 @@ bool write_text(const std::string& path, const std::string& text)
 
 ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options) : opt_(std::move(options))
 {
+    if (!opt_.session) opt_.session = std::make_shared<spc::TranslatorSession>();
     if (opt_.slots_file.empty()) opt_.slots_file = opt_.work_dir + "/slots.txt";
 }
 
@@ -104,7 +105,7 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation,
     to.include_dirs = opt_.include_dirs;
     to.resource_dir = opt_.resource_dir;
     read_text(opt_.slots_file, to.slots_in);  // a missing file means the first generation
-    spc::TranslateResult tr = spc::translate(to);
+    spc::TranslateResult tr = spc::translate(to, *opt_.session);
     if (!tr.ok) {
         error = tr.diagnostics;
         return false;
