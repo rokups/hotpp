@@ -75,7 +75,7 @@ TEST(TranslateDiagnostics, StrayControlByteHasNoFoundText)
 {
     const sppc::TranslateResult r = translate_text(std::string("\0abc\n", 5));
     EXPECT_FALSE(r.ok);
-    EXPECT_EQ(r.diagnostics, "t.spp:1:1: error: expected 'using' or 'class'\n") << r.diagnostics;
+    EXPECT_EQ(r.diagnostics, "t.spp:1:1: error: expected 'using', 'class', 'struct', 'enum' or a variable\n") << r.diagnostics;
 }
 
 TEST(TranslateDiagnostics, DeepNestingGivesOneError)

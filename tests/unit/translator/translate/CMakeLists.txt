@@ -10,6 +10,7 @@ add_executable(unit_translator_translate_tests
     import_translation_tests.cpp
     inherited_handle_translation_tests.cpp
     lambda_translation_tests.cpp
+    module_decl_translation_tests.cpp
     override_translation_tests.cpp
     inheritance_translation_tests.cpp
     reload_hook_translation_tests.cpp

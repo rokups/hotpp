@@ -1,0 +1,50 @@
+// Generation 2 of the module-level declarations (S8a, design 5.3 and 7.2).
+// The module variable "total" is now "sum". The alias keeps the value.
+// The enum gets a new enumerator. The struct Point gets a new field before the old fields.
+// The new module variable "bonus" has its initializer.
+using "Actor.h";
+using <string>;
+
+enum Mode { Idle, Walk, Run, Jump }
+
+struct Point {
+    float z = 5.0;
+    float x = 0.0;
+    float y = 0.0;
+}
+
+[alias("total")] int sum = 0;
+Mode mode = Mode.Idle;
+Point last;
+int bonus = 7;
+
+class Hero : Actor {
+    Mode state = Mode.Walk;
+    int ticks = 0;
+    int score = 0;
+
+    int Weight(Mode m) {
+        switch (m) {
+            case Mode.Idle: return 0;
+            case Mode.Walk: return 1;
+            case Mode.Jump: return 20;
+            default: return 10;
+        }
+    }
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        sum = sum + this.Weight(this.state) + bonus;
+        this.score = this.Weight(mode);
+        last.x = last.x + 1.0;
+    }
+}
+
+class Helper : Actor {
+    int seen = 0;
+
+    override void Tick(float dt) {
+        sum = sum + 100;
+        this.seen = sum;
+    }
+}

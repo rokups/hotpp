@@ -9,6 +9,7 @@ add_executable(integration_reload_tests
     hook_tests.cpp
     constructor_tests.cpp
     script_kinds_tests.cpp
+    module_state_tests.cpp
     property_tests.cpp
     exception_tests.cpp
     inheritance_tests.cpp

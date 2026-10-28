@@ -11,6 +11,7 @@ add_executable(unit_translator_parser_tests
     local_declaration_parse_tests.cpp
     method_parameter_parse_tests.cpp
     modifier_parse_tests.cpp
+    module_decl_parse_tests.cpp
     native_stub_parse_tests.cpp
     property_parse_tests.cpp
     ref_out_expression_parse_tests.cpp

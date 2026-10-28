@@ -1,0 +1,50 @@
+// Generation 1 of the module-level declarations (S8a, design 5.3 and 7.2).
+// A module variable lives in the module state block. All classes of the module use it.
+// A script enum is an "enum class". A script struct is a [value] class.
+using "Actor.h";
+using <string>;
+
+enum Mode { Idle, Walk, Run }
+
+struct Point {
+    float x = 0.0;
+    float y = 0.0;
+}
+
+int total = 0;
+Mode mode = Mode.Idle;
+Point last;
+
+class Hero : Actor {
+    Mode state = Mode.Walk;
+    int ticks = 0;
+    int score = 0;
+
+    int Weight(Mode m) {
+        switch (m) {
+            case Mode.Idle: return 0;
+            case Mode.Walk: return 1;
+            default: return 10;
+        }
+    }
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        total = total + this.Weight(this.state);
+        if (this.state == Mode.Walk) {
+            mode = Mode.Run;
+        }
+        Mode local = Mode.Walk;
+        this.score = this.Weight(local) + this.Weight(mode);
+        last.x = last.x + 1.0;
+    }
+}
+
+class Helper : Actor {
+    int seen = 0;
+
+    override void Tick(float dt) {
+        total = total + 100;
+        this.seen = total;
+    }
+}

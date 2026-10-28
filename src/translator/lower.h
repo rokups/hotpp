@@ -90,6 +90,12 @@ struct RCtx {
     // string becomes a call of the format function. The translator then adds the include. May be null.
     std::string format_lib = "std";
     bool* uses_format = nullptr;
+    // Module variables (design 5.3, 7.3): "Type name = init;" at file level. A bare name that is
+    // not a local becomes "spp_mod()->name", an access to the module state block. The map has the
+    // names and the script types. "in_module_init" is true in the initializer of a module
+    // variable: a module variable is an error there, because the block is not complete.
+    std::map<std::string, std::string> module_vars;
+    bool in_module_init = false;
 };
 
 // The context of a class: the fields and the script fns. A body or an initializer

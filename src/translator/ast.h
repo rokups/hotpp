@@ -374,6 +374,24 @@ struct Stub {
     uint32_t pos = 0;
 };
 
+// A script enum: "enum Name : type { A, B = 5 }". It becomes a C++ "enum class". The
+// underlying type is a builtin integer type; empty means int32_t. A value is optional.
+struct Enumerator {
+    std::string name;
+    ExprP value;      // null when the enumerator has no value, or the parse failed
+    Span value_span;  // the raw text after "="
+    bool has_value = false;
+    int line = 0;
+    uint32_t pos = 0;
+};
+
+struct EnumDef {
+    std::string name, underlying;  // underlying: C++ type text, or empty
+    std::vector<Enumerator> items;
+    int line = 0;
+    uint32_t pos = 0, underlying_pos = 0;
+};
+
 struct Import {
     std::string path;  // the header name; a system header keeps its angle brackets
     int line;
@@ -389,6 +407,10 @@ struct Script {
     std::vector<Import> imports;
     std::vector<ClassDef> classes;
     std::vector<Stub> stubs;  // in source order
+    std::vector<EnumDef> enums;
+    // Module variables: "Type name = init;" at file level. The translator collects them in
+    // the module state block.
+    std::vector<Field> vars;
 };
 
 }  // namespace sppc::ast

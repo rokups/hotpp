@@ -87,6 +87,8 @@ constexpr auto kw_using = LEXY_KEYWORD("using", id);
 // "import" is removed. The parser still knows the word to give a clear error.
 constexpr auto kw_import = LEXY_KEYWORD("import", id);
 constexpr auto kw_class = LEXY_KEYWORD("class", id);
+constexpr auto kw_struct = LEXY_KEYWORD("struct", id);
+constexpr auto kw_enum = LEXY_KEYWORD("enum", id);
 constexpr auto kw_override = LEXY_KEYWORD("override", id);
 constexpr auto kw_function = LEXY_KEYWORD("function", id);
 constexpr auto kw_virtual = LEXY_KEYWORD("virtual", id);

@@ -22,7 +22,9 @@ namespace {
 using namespace parser;  // NOLINT: the grammar uses the names of lexy_common.hpp
 
 // ---------------------------------------------------------------- error texts
-SPP_ERROR_TAG(e_top, "expected 'using' or 'class'");
+SPP_ERROR_TAG(e_top, "expected 'using', 'class', 'struct', 'enum' or a variable");
+SPP_ERROR_TAG(e_enum_name, "expected an enum name");
+SPP_ERROR_TAG(e_enumerator, "expected an enumerator name");
 SPP_ERROR_TAG(e_member, "expected a member: 'Type name;' or 'Ret name(...)'");
 SPP_ERROR_TAG(e_member_name, "expected a member name");
 SPP_ERROR_TAG(e_old_field, "field syntax changed; write 'Type name;'");
@@ -122,10 +124,12 @@ void check_name(const ParseState& st, const char* pos, const std::string& name)
 }
 
 struct TopItem {
-    enum Kind { None, IsImport, IsClass, IsStub } kind = None;
+    enum Kind { None, IsImport, IsClass, IsStub, IsEnum, IsVar } kind = None;
     ast::Import import;
     ast::ClassDef cls;
     ast::Stub stub;
+    ast::EnumDef en;
+    ast::Field var;  // a module variable
 };
 
 const Annot* annot_of(lexy::nullopt) { return nullptr; }
@@ -828,6 +832,8 @@ struct ClassAttrs {
     const char* pos = nullptr;  // the "["
     bool is_native = false, is_value = false;
     std::string handle, default_handle, intrusive_add, intrusive_release;
+    std::string alias;  // [alias("old")]: valid on a module variable only
+    bool has_alias = false;
     const char* handle_pos = nullptr;  // the "handle" name, or null
     std::vector<std::pair<const char*, std::string>> used;  // the valid attributes
 };
@@ -836,7 +842,7 @@ struct ClassAttrs {
 int class_attr_arity(const std::string& name)
 {
     if (name == "native" || name == "value") return 0;
-    if (name == "handle" || name == "default_handle") return 1;
+    if (name == "handle" || name == "default_handle" || name == "alias") return 1;
     if (name == "intrusive") return 2;
     return -1;
 }
@@ -869,6 +875,10 @@ struct class_attrs_p {
                 a.used.emplace_back(it.pos, it.name);
                 if (it.name == "native") a.is_native = true;
                 else if (it.name == "value") a.is_value = true;
+                else if (it.name == "alias") {
+                    a.alias = std::move(it.args[0]);
+                    a.has_alias = true;
+                }
                 else if (it.name == "handle") {
                     a.handle = std::move(it.args[0]);
                     a.handle_pos = it.pos;
@@ -948,18 +958,28 @@ void add_members(const ParseState& st, ast::ClassDef& c, std::vector<Member>&& m
 const ClassAttrs* class_attrs_of(lexy::nullopt) { return nullptr; }
 const ClassAttrs* class_attrs_of(const ClassAttrs& a) { return &a; }
 
+// The part of a class, a struct or a stub after the keyword: the name, then ";" (a stub) or
+// the base and the members. The value is the position and the name first.
+constexpr auto class_rest =
+    dsl::position + dsl::p<stub_name_p> +
+    (dsl::lit_c<';'> >> dsl::nullopt |
+     dsl::else_ >> (dsl::opt(dsl::lit_c<':'> >> dsl::p<base_p>) + dsl::lit_c<'{'> + dsl::p<members_p>));
+
 // [attributes] class name ";" is a stub. [attributes] class name ":" Base "{" members "}" is a class.
+// "struct" is the same as "[value] class". Else the declaration is a module variable:
+// [alias("old")] Type name [= init];
 struct class_p {
     static constexpr auto rule =
-        dsl::position + dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<class_attrs_p>) + kw_class +
-        dsl::position + dsl::p<stub_name_p> +
-        (dsl::lit_c<';'> >> dsl::nullopt |
-         dsl::else_ >> (dsl::opt(dsl::lit_c<':'> >> dsl::p<base_p>) + dsl::lit_c<'{'> + dsl::p<members_p>));
+        dsl::position + dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<class_attrs_p>) +
+        (dsl::peek(kw_class) >> (dsl::capture(kw_class) + class_rest) |
+         dsl::peek(kw_struct) >> (dsl::capture(kw_struct) + class_rest) |
+         dsl::else_ >> dsl::p<typed_member>);
     static constexpr auto value = lexy::bind(
         lexy::callback<TopItem>(
-            [](const ParseState& st, const char* pos, const auto& attrs, const char* name_pos,
-               std::string&& name, lexy::nullopt) {
+            [](const ParseState& st, const char* pos, const auto& attrs, const auto& kw,
+               const char* name_pos, std::string&& name, lexy::nullopt) {
                 const ClassAttrs* a = class_attrs_of(attrs);
+                const bool is_struct = std::distance(kw.begin(), kw.end()) == 6;
                 TopItem t;
                 t.kind = TopItem::IsStub;
                 ast::Stub& s = t.stub;
@@ -975,14 +995,18 @@ struct class_p {
                     s.intrusive_release = a->intrusive_release;
                     if (a->is_value && a->handle_pos)
                         st.error(a->handle_pos, "'value' and 'handle' are exclusive");
+                    if (a->has_alias)
+                        st.error(a->pos, "attribute 'alias' is not allowed on a stub");
                 }
-                if (!s.is_native) st.error(pos, "a stub needs the attribute 'native'");
+                if (is_struct) st.error(pos, "a native stub is declared with 'class', not 'struct'");
+                else if (!s.is_native) st.error(pos, "a stub needs the attribute 'native'");
                 (void)name_pos;
                 return t;
             },
-            [](const ParseState& st, const char* pos, const auto& attrs, const char* name_pos,
-               std::string&& name, auto&& base, auto&& members) {
+            [](const ParseState& st, const char* pos, const auto& attrs, const auto& kw,
+               const char* name_pos, std::string&& name, auto&& base, auto&& members) {
                 const ClassAttrs* a = class_attrs_of(attrs);
+                const bool is_struct = std::distance(kw.begin(), kw.end()) == 6;
                 TopItem t;
                 t.kind = TopItem::IsClass;
                 ast::ClassDef& c = t.cls;
@@ -993,14 +1017,110 @@ struct class_p {
                     c.base = std::move(base);
                 c.pos = st.offset(pos);
                 c.line = st.map->line(c.pos);
+                // A struct is a [value] class (design 5.3, 7.10.1).
+                c.is_value = is_struct;
                 if (a) {
-                    c.is_value = a->is_value;
+                    c.is_value = c.is_value || a->is_value;
                     for (const auto& u : a->used)
                         if (u.second != "value")
                             st.error(u.first,
                                      "attribute '" + u.second + "' is not allowed on a script class");
                 }
                 add_members(st, c, std::move(members));
+                return t;
+            },
+            [](const ParseState& st, const char* pos, const auto& attrs, Member&& m) {
+                const ClassAttrs* a = class_attrs_of(attrs);
+                TopItem t;
+                if (m.kind != Member::IsField) {
+                    st.error(pos, m.kind == Member::IsMethod
+                                      ? "a function must be a member of a class"
+                                      : "expected 'class', 'struct', 'enum' or a variable 'Type name = init;'");
+                    return t;
+                }
+                t.kind = TopItem::IsVar;
+                t.var = std::move(m.field);
+                if (a) {
+                    t.var.alias = a->alias;
+                    for (const auto& u : a->used)
+                        if (u.second != "alias")
+                            st.error(u.first, "attribute '" + u.second +
+                                                  "' is not allowed on a module variable");
+                }
+                return t;
+            }),
+        lexy::parse_state, lexy::values);
+};
+
+// ---------------------------------------------------------------- enums
+// The end of an enumerator value: a "," or the closing brace at depth zero.
+struct enum_value_cfg {
+    static constexpr auto open = dsl::lit_c<'='>;
+    static constexpr auto term = dsl::lit_c<','> / dsl::lit_c<'}'>;
+};
+
+struct enumerator_p {
+    static constexpr auto rule =
+        dsl::position + dsl::p<name_p<e_enumerator>> +
+        dsl::opt(dsl::peek(dsl::lit_c<'='>) >> dsl::p<scan_until<enum_value_cfg>>);
+    static constexpr auto value = lexy::bind(
+        lexy::callback<ast::Enumerator>(
+            [](const ParseState& st, const char* pos, std::string&& name, lexy::nullopt) {
+                ast::Enumerator e;
+                e.name = std::move(name);
+                e.pos = st.offset(pos);
+                e.line = st.map->line(e.pos);
+                return e;
+            },
+            [](const ParseState& st, const char* pos, std::string&& name, Span value) {
+                ast::Enumerator e;
+                e.name = std::move(name);
+                e.pos = st.offset(pos);
+                e.line = st.map->line(e.pos);
+                e.has_value = true;
+                e.value_span = value;
+                if (only_blank(span_text(st, value)))
+                    st.error(st.base + value.begin, "expected an enumerator value");
+                return e;
+            }),
+        lexy::parse_state, lexy::values);
+};
+
+struct enumerators_p {
+    static constexpr auto rule = dsl::lit_c<'{'> +
+                                 dsl::terminator(dsl::lit_c<'}'>)
+                                     .opt_list(dsl::p<enumerator_p>, dsl::trailing_sep(dsl::lit_c<','>));
+    static constexpr auto value = lexy::as_list<std::vector<ast::Enumerator>>;
+};
+
+// "enum Name { A, B = 5 }" or "enum Name : type { ... }".
+struct enum_p {
+    static constexpr auto rule =
+        dsl::position + kw_enum + dsl::position + dsl::p<name_p<e_enum_name>> +
+        dsl::opt(dsl::lit_c<':'> >> (dsl::position + dsl::p<scan_type<ret_term>>)) +
+        dsl::p<enumerators_p>;
+    static constexpr auto value = lexy::bind(
+        lexy::callback<TopItem>(
+            [](const ParseState& st, const char* pos, const char*, std::string&& name,
+               lexy::nullopt, std::vector<ast::Enumerator>&& items) {
+                TopItem t;
+                t.kind = TopItem::IsEnum;
+                t.en.name = std::move(name);
+                t.en.pos = st.offset(pos);
+                t.en.line = st.map->line(t.en.pos);
+                t.en.items = std::move(items);
+                return t;
+            },
+            [](const ParseState& st, const char* pos, const char*, std::string&& name,
+               const char* type_pos, Span type, std::vector<ast::Enumerator>&& items) {
+                TopItem t;
+                t.kind = TopItem::IsEnum;
+                t.en.name = std::move(name);
+                t.en.pos = st.offset(pos);
+                t.en.line = st.map->line(t.en.pos);
+                t.en.items = std::move(items);
+                t.en.underlying = type_of(st, type);
+                t.en.underlying_pos = st.offset(type_pos);
                 return t;
             }),
         lexy::parse_state, lexy::values);
@@ -1011,7 +1131,9 @@ struct decl {
     static constexpr auto rule =
         dsl::peek(kw_using) >> dsl::p<import_p> |
         dsl::peek(kw_import) >> dsl::p<old_import_p> |
-        dsl::peek(dsl::literal_set(dsl::lit_c<'['>, kw_class)) >> dsl::p<class_p> |
+        dsl::peek(kw_enum) >> dsl::p<enum_p> |
+        dsl::peek(dsl::literal_set(dsl::lit_c<'['>, kw_class, kw_struct)) >> dsl::p<class_p> |
+        dsl::peek(id) >> dsl::p<class_p> |
         dsl::else_ >> dsl::error<e_top>(junk);
     static constexpr auto value = lexy::callback<TopItem>(
         [](ast::Import&& im) {
@@ -1027,7 +1149,7 @@ struct decl {
 struct sync_decl : lexy::token_production {
     static constexpr auto rule = dsl::loop(
         dsl::eof >> dsl::break_ |  // the end of the file is not a new error after a broken decl
-        dsl::peek(dsl::literal_set(kw_using, kw_import, kw_class)) >> dsl::break_ |
+        dsl::peek(dsl::literal_set(kw_using, kw_import, kw_class, kw_struct, kw_enum)) >> dsl::break_ |
         dsl::else_ >> dsl::p<skip_item>);
     static constexpr auto value = lexy::noop;
 };
@@ -1056,10 +1178,21 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
                 script.classes.push_back(std::move(t.cls));
             else if (t.kind == TopItem::IsStub)
                 script.stubs.push_back(std::move(t.stub));
+            else if (t.kind == TopItem::IsEnum)
+                script.enums.push_back(std::move(t.en));
+            else if (t.kind == TopItem::IsVar)
+                script.vars.push_back(std::move(t.var));
         }
     }
     // The span-then-call step: parse each body and each initializer.
     const ParseInput in{text, &map};
+    for (ast::EnumDef& e : script.enums)
+        for (ast::Enumerator& m : e.items)
+            if (m.has_value && !only_blank(span_text(st, m.value_span)))
+                m.value = parse_expression(in, m.value_span, diag);
+    for (ast::Field& f : script.vars)
+        if (f.has_init && !only_blank(span_text(st, f.init_span)))
+            f.init = parse_expression(in, f.init_span, diag);
     for (ast::ClassDef& c : script.classes) {
         for (ast::Method& m : c.methods) m.body = parse_block(in, m.body_span, diag);
         for (ast::Method& d : c.dtors) d.body = parse_block(in, d.body_span, diag);

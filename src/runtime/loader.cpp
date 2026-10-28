@@ -20,7 +20,13 @@ struct Loader::Pending {
     Module module;  // keeps the code alive; released with the Pending when the reload fails
     Registry staged;
     std::vector<PendingClass> classes;
+    MigrationPlan mod_plan;  // the plan of the module state block (old layout to new layout)
 };
+
+namespace {
+// The layout of a script without module variables: the plan of a new block is all "Init".
+const StateLayout kEmptyLayout = {"", 1, 1, 0, nullptr};
+}  // namespace
 
 namespace {
 std::atomic<RestartHandler> g_restart_handler{nullptr};
@@ -43,7 +49,38 @@ void request_restart(const char* reason)
 }
 
 Loader::Loader() = default;
-Loader::~Loader() = default;
+Loader::~Loader()
+{
+    if (mod_block_) {  // the code of the field destroyers is still loaded: "gens_" goes later
+        destroy_fields(mod_layout_, mod_block_);
+        std::free(mod_block_);
+    }
+}
+
+bool Loader::make_module_block(const ModuleStateInfo& info, std::string& error)
+{
+    char* block = alloc_state(info.layout);
+    if (!block) {
+        error = "out of memory for the module state";
+        return false;
+    }
+    *info.slot = block;  // an initializer can read the block
+    try {
+        for (uint32_t i = 0; i < info.layout->field_count; ++i) {
+            const FieldInfo& f = info.layout->fields[i];
+            if (f.init) f.init(block, block + f.offset);
+        }
+    } catch (...) {
+        *info.slot = nullptr;
+        std::free(block);  // the partial state is unknown: no destructor call
+        error = "an initializer of a module variable threw an exception";
+        return false;
+    }
+    mod_layout_ = info.layout;
+    mod_slot_ = info.slot;
+    mod_block_ = block;
+    return true;
+}
 
 bool Loader::load(Module module, std::string& error)
 {
@@ -52,7 +89,15 @@ bool Loader::load(Module module, std::string& error)
         return false;
     }
     std::lock_guard<std::mutex> lock(mutex_);
+    registry_.clear_module_state();
     module.register_fn(registry_);
+    if (const ModuleStateInfo& ms = registry_.module_state(); ms.layout) {
+        if (mod_block_) {
+            error = "the loader has a module state block already";
+            return false;
+        }
+        if (!make_module_block(ms, error)) return false;
+    }
     const uint32_t gen = registry_.max_generation();
     note_records(registry_, gen);
     add_generation(std::move(module), gen);
@@ -202,6 +247,15 @@ bool Loader::request_reload(Module module, std::string& error)
         }
         p->classes.push_back(std::move(pc));
     }
+    // The module state block migrates like the fields of a class (design 5.3). A type change
+    // never rejects the reload. Without a block in the old generation, all variables are new.
+    if (const ModuleStateInfo& nms = p->staged.module_state(); nms.layout) {
+        if (!nms.slot) {
+            error = "the module state has no slot";
+            return false;
+        }
+        p->mod_plan = build_plan(mod_layout_ ? *mod_layout_ : kEmptyLayout, *nms.layout);
+    }
     pending_ = std::move(p);
     return true;
 }
@@ -228,9 +282,15 @@ bool Loader::commit_pending(std::string& error)
         const PendingClass* pc;
     };
     std::vector<Work> work;
+    const ModuleStateInfo& nms = P.staged.module_state();
+    char* new_mod = nullptr;
 
     // Step 1: allocate all new blocks. A failure here changes nothing.
     try {
+        if (nms.layout) {
+            new_mod = alloc_state(nms.layout);
+            if (!new_mod) throw std::bad_alloc();
+        }
         work.reserve(g_live.size());
         for (ShellBase* s : g_live) {
             const PendingClass* pc = nullptr;
@@ -243,11 +303,14 @@ bool Loader::commit_pending(std::string& error)
         }
     } catch (...) {
         for (Work& w : work) std::free(w.new_block);
+        std::free(new_mod);
         error = "out of memory in commit step 1; the old generation continues";
         pending_.reset();
         return false;
     }
 
+    for (const std::string& w : P.mod_plan.warnings)
+        std::fprintf(stderr, "[script] WARNING: %s\n", w.c_str());
     for (const PendingClass& pc : P.classes)
         for (const std::string& w : pc.plan.warnings)
             std::fprintf(stderr, "[script] WARNING: %s\n", w.c_str());
@@ -257,11 +320,21 @@ bool Loader::commit_pending(std::string& error)
     // If the handler returns, the old objects and the old generation stay as they are. The
     // new blocks are freed without a destructor call, because the partial state is unknown.
     try {
+        // The module block comes first. A field initializer of a class can read a module variable.
+        if (nms.layout) {
+            *nms.slot = new_mod;
+            migrate_block(mod_layout_ ? *mod_layout_ : kEmptyLayout, *nms.layout, P.mod_plan,
+                          mod_block_, new_mod);
+        }
         for (Work& w : work)
             migrate_block(*w.old_layout, *w.pc->incoming->layout, w.pc->plan, w.old_block,
                           w.new_block);
     } catch (...) {
         for (Work& w : work) std::free(w.new_block);
+        if (nms.layout) {
+            *nms.slot = nullptr;
+            std::free(new_mod);
+        }
         pending_.reset();
         error = "FATAL: exception during state migration; a restart is needed";
         request_restart(error.c_str());
@@ -322,6 +395,14 @@ bool Loader::commit_pending(std::string& error)
         destroy_fields(w.old_layout, w.old_block);
         std::free(w.old_block);
     }
+    if (mod_block_) {
+        *mod_slot_ = nullptr;  // the old generation must not read the freed block
+        destroy_fields(mod_layout_, mod_block_);
+        std::free(mod_block_);
+    }
+    mod_layout_ = nms.layout;
+    mod_slot_ = nms.slot;
+    mod_block_ = new_mod;
 
     std::fprintf(stderr, "[script] reload committed: %s, generation %u, %zu objects migrated\n",
                  P.module.origin.c_str(), active_generation, work.size());

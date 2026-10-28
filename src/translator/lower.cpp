@@ -676,9 +676,27 @@ struct Lowerer {
     }
 
     // A bare name. A property of the class becomes a call of the getter.
+    // True when the name is a module variable that no local hides.
+    bool is_module_var(const std::string& n) const
+    {
+        return cx.module_vars.count(n) != 0 && cx.locals.count(n) == 0;
+    }
+
+    // The access to a module variable: "spp_mod()->name".
+    ExprP module_ref(const std::string& n, uint32_t pos)
+    {
+        if (cx.in_module_init)
+            error(pos, "the module variable '" + n + "' cannot be used in the initializer of a module variable");
+        return raw("spp_mod()->" + n, pos);
+    }
+
     void name(ExprP& e, NameExpr& n)
     {
         targs(n);
+        if (n.parts.size() == 1 && is_module_var(n.parts[0])) {
+            e = module_ref(n.parts[0], n.pos);
+            return;
+        }
         if (std::optional<PropRef> r = prop_ref(*e)) e = prop_read(std::move(*r), n.pos);
     }
 
@@ -689,14 +707,16 @@ struct Lowerer {
     void member_chain(ExprP& e)
     {
         auto* np = std::get_if<NameExpr>(&e->v);
-        if (!np || np->parts.size() < 2 || !cx.locals.count(np->parts[0])) return;
+        if (!np || np->parts.size() < 2) return;
+        const bool module_head = is_module_var(np->parts[0]);
+        if (!module_head && !cx.locals.count(np->parts[0])) return;
         NameExpr& n = *np;
         targs(n);
         const uint32_t pos = n.pos;
         NameExpr head;
         head.parts = {n.parts[0]};
         head.pos = pos;
-        ExprP chain = make_expr(std::move(head));
+        ExprP chain = module_head ? module_ref(n.parts[0], pos) : make_expr(std::move(head));
         for (size_t i = 1; i < n.parts.size(); ++i) {
             std::string member_name = n.parts[i];
             if (i + 1 == n.parts.size()) member_name += n.template_args;

@@ -108,6 +108,8 @@ public:
     LoaderStats stats() const;
 
     const ClassEntry* find(const std::string& name) const { return registry_.find(name); }
+    // The module state of the live generation: the layout and the slot. Null layout: none.
+    ModuleStateInfo module_state() const { return {mod_layout_, mod_slot_}; }
     void* thunk(const std::string& name) const { return registry_.thunk(name); }
 
 private:
@@ -121,6 +123,8 @@ private:
     };
     void add_generation(Module module, uint32_t generation);
     void note_records(const Registry& reg, uint32_t generation);
+    // Makes the module state block of a registry and sets the slot. False: an initializer threw.
+    bool make_module_block(const ModuleStateInfo& info, std::string& error);
     // The number of live objects for each module (the module that made the object).
     std::unordered_map<uint32_t, uint32_t> live_by_module() const;
     uint32_t code_refs(const Gen& g, const std::unordered_map<uint32_t, uint32_t>& live) const;
@@ -131,6 +135,11 @@ private:
     std::unordered_map<const ClassRecord*, uint32_t> record_gen_;  // the module that holds a record
     uint64_t frame_ = 0;
     std::unique_ptr<Pending> pending_;
+    // The live module state block (module-level script variables). Null: the script has none.
+    // "mod_slot_" is the slot variable of the module that made the layout. It points to the block.
+    const StateLayout* mod_layout_ = nullptr;
+    void** mod_slot_ = nullptr;
+    char* mod_block_ = nullptr;
 };
 
 }  // namespace spp
