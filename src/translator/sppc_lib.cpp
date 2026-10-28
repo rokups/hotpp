@@ -48,6 +48,7 @@
 #include <map>
 #include <set>
 #include <sstream>
+#include <tuple>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -302,10 +303,41 @@ void collect_hierarchy(CXCursor root, Hierarchy& out)
 struct Out {
     std::string s;
     int lines = 0;
+    std::vector<sppc::SourceSegment> segs;  // in the order of writing
     void w(const std::string& t)
     {
         s += t;
         lines += static_cast<int>(std::count(t.begin(), t.end(), '\n'));
+    }
+    // Writes the text of an emitter and records its segments. "script" is the script text. A
+    // leaf that is not the same text as the script at its position is a rewritten name (for
+    // example "int32_t" for "int"): its script range is the name at the position.
+    void w_emitted(const sppc::ast::Emitter& em, const std::string& script)
+    {
+        const uint32_t base = static_cast<uint32_t>(s.size());
+        for (const auto& g : em.segments()) {
+            const std::string_view gen(em.text().data() + g.gen_begin, g.gen_len);
+            sppc::SourceSegment seg;
+            seg.gen_begin = base + g.gen_begin;
+            seg.gen_len = g.gen_len;
+            seg.script_begin = g.pos;
+            if (g.pos + g.gen_len <= script.size() && script.compare(g.pos, g.gen_len, gen) == 0) {
+                seg.script_len = g.gen_len;
+            } else {
+                size_t e = g.pos;
+                while (e < script.size() && (std::isalnum(static_cast<unsigned char>(script[e])) || script[e] == '_')) ++e;
+                seg.script_len = static_cast<uint32_t>(std::max<size_t>(e - g.pos, 1));
+            }
+            segs.push_back(seg);
+        }
+        w(em.text());
+    }
+    // Inserts text inside a line. The segments after the place move.
+    void insert(size_t at, const std::string& t)
+    {
+        s.insert(at, t);
+        for (auto& g : segs)
+            if (g.gen_begin >= at) g.gen_begin += static_cast<uint32_t>(t.size());
     }
 };
 
@@ -1350,7 +1382,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             sppc::ast::Emitter em(map, opt.input);
             sppc::ast::emit_stmts(m.body.stmts, em, 1);
             em.finish();
-            o.w(em.text());
+            o.w_emitted(em, in.script_text);
             reset();
             o.w("}\n\n");
         };
@@ -2130,7 +2162,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             sppc::ast::Emitter em(map, opt.input);
             sppc::ast::emit_stmts(m.body.stmts, em, 1);
             em.finish();
-            o.w(em.text());
+            o.w_emitted(em, in.script_text);
             reset();
             o.w("}\n\n");
         };
@@ -2149,7 +2181,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             sppc::ast::Emitter em(map, opt.input);
             sppc::ast::emit_stmts(m.body.stmts, em, 1);
             em.finish();
-            o.w(em.text());
+            o.w_emitted(em, in.script_text);
             reset();
             o.w("}\n\n");
         };
@@ -2229,7 +2261,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         // A shell with script children always gets it: a child cannot add it to the parent.
         if ((handle_this || parent_shell) && !par && !cd.base.empty() &&
             types.storage(cn).rfind("std::shared_ptr<", 0) == 0)
-            o.s.insert(shell_head_end, ", std::enable_shared_from_this<" + shell + ">");
+            o.insert(shell_head_end, ", std::enable_shared_from_this<" + shell + ">");
 
         // ---- record and entry
         o.w("// ------------------------------------------------------ record and entry\n");
@@ -2287,8 +2319,10 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
     for (const auto& t : thunk_regs) o.w(t);
     o.w("}\n");
 
-    if (uses_format) o.s.insert(format_include_pos, in.format_lib == "fmt" ? "#include <fmt/format.h>" : "#include <format>");
+    if (uses_format) o.insert(format_include_pos, in.format_lib == "fmt" ? "#include <fmt/format.h>" : "#include <format>");
     res.cpp = o.s;
+    for (const auto& g : o.segs) res.source_map.add(g);
+    res.source_map.build(in.script_text, res.cpp);
     std::ostringstream mf;
     for (const auto& e : new_manifest) mf << e.cls << "::" << e.fn << " " << e.gen << "\n";
     res.slots_out = mf.str();
@@ -2297,6 +2331,80 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
 }  // namespace
 
 namespace sppc {
+
+namespace {
+
+std::vector<uint32_t> line_starts(std::string_view text)
+{
+    std::vector<uint32_t> v{0};
+    for (size_t i = 0; i < text.size(); ++i)
+        if (text[i] == '\n') v.push_back(static_cast<uint32_t>(i + 1));
+    return v;
+}
+
+// The byte offset of a 1-based line and column, or no value when the line does not exist.
+std::optional<uint32_t> offset_of(const std::vector<uint32_t>& starts, int line, int col)
+{
+    if (line < 1 || col < 1 || static_cast<size_t>(line) > starts.size()) return std::nullopt;
+    return starts[static_cast<size_t>(line) - 1] + static_cast<uint32_t>(col - 1);
+}
+
+SourcePos pos_of(const std::vector<uint32_t>& starts, uint32_t off)
+{
+    const auto it = std::upper_bound(starts.begin(), starts.end(), off);
+    const int line = static_cast<int>(it - starts.begin());
+    return {line, static_cast<int>(off - starts[static_cast<size_t>(line) - 1]) + 1};
+}
+
+}  // namespace
+
+void SourceMap::build(std::string_view script, std::string_view generated)
+{
+    std::stable_sort(segments_.begin(), segments_.end(),
+                     [](const SourceSegment& a, const SourceSegment& b) { return a.gen_begin < b.gen_begin; });
+    by_script_.resize(segments_.size());
+    for (size_t i = 0; i < by_script_.size(); ++i) by_script_[i] = static_cast<uint32_t>(i);
+    std::stable_sort(by_script_.begin(), by_script_.end(), [&](uint32_t a, uint32_t b) {
+        return segments_[a].script_begin < segments_[b].script_begin;
+    });
+    script_lines_ = line_starts(script);
+    gen_lines_ = line_starts(generated);
+}
+
+std::optional<SourcePos> SourceMap::map_to_script(int gen_line, int gen_col) const
+{
+    const auto off = offset_of(gen_lines_, gen_line, gen_col);
+    if (!off || segments_.empty()) return std::nullopt;
+    // The last segment that starts at or before the offset.
+    auto it = std::upper_bound(segments_.begin(), segments_.end(), *off,
+                               [](uint32_t o, const SourceSegment& g) { return o < g.gen_begin; });
+    if (it == segments_.begin()) return std::nullopt;
+    --it;
+    if (*off >= it->gen_begin + it->gen_len) return std::nullopt;
+    const uint32_t d = *off - it->gen_begin;
+    return pos_of(script_lines_, it->script_begin + (it->script_len == it->gen_len ? d : 0));
+}
+
+std::optional<SourcePos> SourceMap::map_to_generated(int script_line, int script_col) const
+{
+    const auto off = offset_of(script_lines_, script_line, script_col);
+    if (!off || by_script_.empty()) return std::nullopt;
+    // The segments that start at or before the offset: the nearest one that holds the offset.
+    auto it = std::upper_bound(by_script_.begin(), by_script_.end(), *off,
+                               [&](uint32_t o, uint32_t i) { return o < segments_[i].script_begin; });
+    for (int tries = 0; it != by_script_.begin() && tries < 16; ++tries) {
+        --it;
+        const SourceSegment& g = segments_[*it];
+        if (*off >= g.script_begin + g.script_len) continue;
+        // Several segments can start at the same offset: take the first one in the generated text.
+        auto first = it;
+        while (first != by_script_.begin() && segments_[*(first - 1)].script_begin == g.script_begin) --first;
+        const SourceSegment& f = segments_[*first];
+        const uint32_t d = *off - f.script_begin;
+        return pos_of(gen_lines_, f.gen_begin + (f.script_len == f.gen_len ? d : 0));
+    }
+    return std::nullopt;
+}
 
 TranslateResult translate(const TranslateOptions& in)
 {
@@ -2319,6 +2427,118 @@ TranslateResult translate(const TranslateOptions& in, TranslatorSession& session
     }
     res.diagnostics = g_diag.format(g_script);
     res.warnings = g_diag.format_warnings(g_script);
+    return res;
+}
+
+}  // namespace sppc
+
+namespace sppc {
+
+namespace {
+
+SourcePos src_pos(const LineMap& map, uint32_t off) { return {map.line(off), map.col(off)}; }
+
+// Replaces the bytes of [begin, end) with spaces. The line breaks stay, so no position moves.
+void blank(std::string& text, size_t begin, size_t end)
+{
+    end = std::min(end, text.size());
+    for (size_t i = begin; i < end; ++i)
+        if (text[i] != '\n') text[i] = ' ';
+}
+
+size_t line_begin(const std::string& text, size_t off)
+{
+    const size_t nl = off == 0 ? std::string::npos : text.rfind('\n', off - 1);
+    return nl == std::string::npos ? 0 : nl + 1;
+}
+
+size_t line_end(const std::string& text, size_t off)
+{
+    const size_t nl = text.find('\n', off);
+    return nl == std::string::npos ? text.size() : nl;
+}
+
+}  // namespace
+
+// The offset of the first whole word "name" at or after "from", or "from".
+uint32_t find_word(const std::string& text, uint32_t from, const std::string& name)
+{
+    auto is_id = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+    for (size_t at = text.find(name, from); at != std::string::npos; at = text.find(name, at + 1)) {
+        const bool left = at == 0 || !is_id(text[at - 1]);
+        const bool right = at + name.size() >= text.size() || !is_id(text[at + name.size()]);
+        if (left && right) return static_cast<uint32_t>(at);
+    }
+    return from;
+}
+
+AnalyzeResult analyze(const std::string& text, const TranslateOptions& options)
+{
+    TranslatorSession session;
+    return analyze(text, options, session);
+}
+
+AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, TranslatorSession& session)
+{
+    AnalyzeResult res;
+    const LineMap map(text);
+    Diagnostics diag;
+    const ast::Script sc = parse_script(text, map, diag);
+
+    for (const Diag& d : diag.items) res.errors.push_back({{d.line, d.col}, d.pos, d.msg});
+    for (uint32_t h : diag.member_holes) res.completion_points.push_back(src_pos(map, h));
+
+    // The ranges of the members, as (begin, end) byte offsets. The class facts and the map use them.
+    std::vector<std::pair<size_t, size_t>> ranges;
+    for (const ast::ClassDef& c : sc.classes) {
+        AnalyzedClass ac;
+        ac.name = c.name;
+        ac.base = c.base;
+        ac.begin = src_pos(map, c.pos);
+        auto add = [&](const char* kind, const std::string& name, uint32_t begin, uint32_t end, bool body) {
+            const uint32_t e = std::max(end, begin + static_cast<uint32_t>(name.size()));
+            ac.members.push_back({kind, name, src_pos(map, begin), src_pos(map, e)});
+            if (body) ranges.emplace_back(begin, e);
+        };
+        for (const ast::Field& f : c.fields)
+            add("field", f.name, f.pos, f.has_init ? f.init_span.end + 1 : 0, false);
+        // The pos of a method is the start of its type. The name comes after it.
+        for (const ast::Method& m : c.methods)
+            add("method", m.name, find_word(text, m.pos, m.name), m.end_pos + 1, true);
+        for (const ast::Ctor& k : c.ctors) add("constructor", c.name, k.pos, k.end_pos + 1, true);
+        for (const ast::Method& d : c.dtors) add("destructor", d.name, d.pos, d.end_pos + 1, true);
+        for (const ast::Property& p : c.props)
+            add("property", p.name, p.pos,
+                std::max({p.has_init ? p.init_span.end + 1 : 0, p.get_body ? p.get_span.end + 1 : 0,
+                          p.set_body ? p.set_span.end + 1 : 0}),
+                p.get_body || p.set_body);
+        std::stable_sort(ac.members.begin(), ac.members.end(), [](const AnalyzedMember& a, const AnalyzedMember& b) {
+            return std::tie(a.begin.line, a.begin.col) < std::tie(b.begin.line, b.begin.col);
+        });
+        res.classes.push_back(std::move(ac));
+    }
+
+    // The text for the translation. A member that holds an error, or a line that holds an
+    // error outside a member, is replaced by white space. The offsets stay the same.
+    std::string valid = text;
+    for (const Diag& d : diag.items) {
+        bool in_member = false;
+        for (const auto& [b, e] : ranges)
+            if (d.pos >= b && d.pos < e) {
+                blank(valid, line_begin(valid, b), e);
+                in_member = true;
+            }
+        if (!in_member) blank(valid, line_begin(valid, d.pos), line_end(valid, d.pos));
+    }
+    TranslateOptions o = options;
+    o.script_text = valid;
+    TranslateResult tr = translate(o, session);
+    if (diag.items.empty()) {
+        res.ok = tr.ok;
+        res.diagnostics = tr.diagnostics;
+    }
+    // The blank text has the same offsets and the same lines as "text". So the map is valid for it.
+    if (tr.ok) res.source_map = std::move(tr.source_map);
     return res;
 }
 

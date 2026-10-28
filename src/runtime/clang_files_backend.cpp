@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -83,6 +84,59 @@ ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options) : opt_(std::move
     if (opt_.slots_file.empty()) opt_.slots_file = opt_.work_dir + "/slots.txt";
 }
 
+std::vector<std::string> compile_command(const ClangFilesOptions& opt, const std::string& cpp_path,
+                                         const std::string& out_so)
+{
+    std::vector<std::string> cmd = {opt.compiler, "-std=c++20", "-fPIC", "-shared", "-g", "-Werror=return-type"};
+    if (!opt.resource_dir.empty()) cmd.push_back("-resource-dir=" + opt.resource_dir);
+    for (const std::string& f : opt.extra_flags) cmd.push_back(f);
+    for (const std::string& d : opt.include_dirs) cmd.push_back("-I" + d);
+    cmd.push_back(cpp_path);
+    cmd.push_back("-o");
+    cmd.push_back(out_so);
+    return cmd;
+}
+
+namespace {
+
+std::string json_string(const std::string& s)
+{
+    std::string r = "\"";
+    for (char ch : s) {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        switch (c) {
+        case '"': r += "\\\""; break;
+        case '\\': r += "\\\\"; break;
+        case '\n': r += "\\n"; break;
+        case '\r': r += "\\r"; break;
+        case '\t': r += "\\t"; break;
+        default:
+            if (c < 0x20) {
+                char buf[8];
+                std::snprintf(buf, sizeof buf, "\\u%04x", c);
+                r += buf;
+            } else
+                r += ch;
+        }
+    }
+    return r + "\"";
+}
+
+}  // namespace
+
+std::string compile_commands_json(const std::vector<CompileCommandEntry>& entries)
+{
+    std::string r = "[\n";
+    for (size_t i = 0; i < entries.size(); ++i) {
+        const CompileCommandEntry& e = entries[i];
+        r += "  {\n    \"directory\": " + json_string(e.directory) + ",\n    \"file\": " + json_string(e.file) +
+             ",\n    \"arguments\": [";
+        for (size_t k = 0; k < e.arguments.size(); ++k) r += (k ? ", " : "") + json_string(e.arguments[k]);
+        r += "],\n    \"output\": " + json_string(e.output) + "\n  }" + (i + 1 < entries.size() ? "," : "") + "\n";
+    }
+    return r + "]\n";
+}
+
 bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation,
                               const std::string& out_so, std::string& error)
 {
@@ -117,14 +171,7 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation,
         return false;
     }
 
-    std::vector<std::string> cmd = {opt_.compiler, "-std=c++20", "-fPIC", "-shared", "-g",
-                                    "-Werror=return-type"};
-    if (!opt_.resource_dir.empty()) cmd.push_back("-resource-dir=" + opt_.resource_dir);
-    for (const std::string& f : opt_.extra_flags) cmd.push_back(f);
-    for (const std::string& d : opt_.include_dirs) cmd.push_back("-I" + d);
-    cmd.push_back(cpp_path);
-    cmd.push_back("-o");
-    cmd.push_back(out_so);
+    const std::vector<std::string> cmd = compile_command(opt_, cpp_path, out_so);
     fs::remove(so_path, ec);
     std::string output;
     const int rc = run_command(cmd, output);

@@ -15,6 +15,12 @@
 // A compile error speaks script names (design 4.2). --raw-diagnostics prints the text of the
 // compiler as it is. Emit mode has no compiler, so the option has no effect there.
 //
+// Build mode can write a compile database for clangd (design M14):
+//   sppc <file.spp>... --gen N --out-dir DIR --compile-commands CDIR
+// The tool writes CDIR/compile_commands.json with one entry for each generated .cpp. The entry
+// has the compile command of the backend (the compiler, the include paths and the flags).
+// The tool writes the entries also when a compile fails, because the .cpp exists then.
+//
 // Emit mode (--emit-cpp): translate one .spp file to C++. The tool does not compile it.
 //   sppc --emit-cpp <file.spp> --gen N [-o out.cpp] [-I dir]... [--prelude file]...
 //        [--slots file] [--resource-dir dir]
@@ -52,7 +58,7 @@ namespace {
     std::fprintf(stderr,
                  "usage: sppc <file.spp>... --gen N (--out-dir DIR | -o x.so) [-I dir]... [--resource-dir dir]\n"
                  "            [--cxx command] [--cxxflag flag]... [--slots file] [--no-strict-borrowed] [--format=std|fmt]\n"
-                 "            [--raw-diagnostics]\n"
+                 "            [--raw-diagnostics] [--compile-commands dir]\n"
                  "       sppc --emit-cpp <file.spp> --gen N [-o out.cpp] [-I dir]... [--prelude file]... [--no-strict-borrowed] [--format=std|fmt]\n"
                  "            [--slots file] [--resource-dir dir]\n"
                  "       sppc --ship <file.spp>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]\n"
@@ -85,6 +91,7 @@ struct Args {
     std::string format_lib = "std";  // --format=std|fmt
     bool strict_borrowed = true;  // --no-strict-borrowed turns it off
     bool raw_diagnostics = false;  // --raw-diagnostics: the compiler text as it is
+    std::string compile_commands;  // --compile-commands: the directory of compile_commands.json
 };
 
 Args parse_args(int argc, char** argv)
@@ -109,6 +116,7 @@ Args parse_args(int argc, char** argv)
         else if (a == "--strict-borrowed") r.strict_borrowed = true;
         else if (a == "--no-strict-borrowed") r.strict_borrowed = false;
         else if (a == "--raw-diagnostics") r.raw_diagnostics = true;
+        else if (a == "--compile-commands") { r.compile_commands = next(); r.has_build_only = true; }
         else if (a == "--format=std") r.format_lib = "std";
         else if (a == "--format=fmt") r.format_lib = "fmt";
         else if (a == "-I") r.include_dirs.push_back(next());
@@ -296,6 +304,7 @@ int run_build(const Args& args)
     }
 
     spp::ClangFilesBackend backend(opt);
+    std::vector<spp::CompileCommandEntry> db;
     bool failed = false;
     for (const std::string& path : args.inputs) {
         std::ifstream in(path);
@@ -310,10 +319,24 @@ int run_build(const Args& args)
         const std::string so = single_so ? args.output
                                          : out_dir + "/" + stem + ".g" + std::to_string(args.gen) + ".so";
         std::string error;
-        if (!backend.build({path, ss.str()}, static_cast<uint32_t>(args.gen), so, error)) {
+        const bool built = backend.build({path, ss.str()}, static_cast<uint32_t>(args.gen), so, error);
+        if (!built) {
             std::fputs(error.c_str(), stderr);
             failed = true;
         }
+        // The .cpp exists after a failed compile too. A translation error leaves no .cpp.
+        const fs::path cpp = fs::path(so).replace_extension(".cpp");
+        if (!args.compile_commands.empty() && fs::exists(cpp)) {
+            const std::string abs_cpp = fs::absolute(cpp).string();
+            const std::string abs_so = fs::absolute(so).string();
+            db.push_back({fs::current_path().string(), abs_cpp, spp::compile_command(opt, abs_cpp, abs_so), abs_so});
+        }
+    }
+    if (!args.compile_commands.empty()) {
+        std::error_code ec;
+        fs::create_directories(args.compile_commands, ec);
+        if (!write_file(args.compile_commands + "/compile_commands.json", spp::compile_commands_json(db)))
+            failed = true;
     }
     return failed ? 1 : 0;
 }

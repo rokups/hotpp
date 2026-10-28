@@ -50,6 +50,22 @@ private:
     std::atomic<unsigned> sequence_{0};
 };
 
+// The compile command of the backend for one generated .cpp and its .so. The backend and
+// the compile database (sppc --compile-commands) both use it, so the flags are the same.
+std::vector<std::string> compile_command(const ClangFilesOptions& options, const std::string& cpp_path,
+                                         const std::string& out_so);
+
+// One entry of a compile database (the format of clangd and CMake's compile_commands.json).
+struct CompileCommandEntry {
+    std::string directory;  // the working directory of the command
+    std::string file;       // the source file
+    std::vector<std::string> arguments;
+    std::string output;
+};
+
+// The text of compile_commands.json. One entry takes 6 lines. The strings are escaped.
+std::string compile_commands_json(const std::vector<CompileCommandEntry>& entries);
+
 // Runs a command without a shell. "output" gets stdout and stderr together.
 // Returns the exit code, or -1 when the command did not run.
 int run_command(const std::vector<std::string>& argv, std::string& output);

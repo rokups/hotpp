@@ -129,6 +129,7 @@ bool list_of(const ParseState& st, Span sp, std::vector<ExprP>& out)
 // ---------------------------------------------------------------- values
 struct VarHead {
     uint32_t pos = 0;
+    uint32_t name_pos = 0;  // the byte offset of the name
     bool is_const = false;
     std::string name, type;
 };
@@ -171,6 +172,7 @@ StmtP make_decl(const ParseState& st, DeclParts&& d)
     v.name = std::move(d.head.name);
     v.type = std::move(d.head.type);
     v.pos = d.head.pos;
+    v.name_pos = d.head.name_pos;
     // "Type name;" is value-initialized by the emitter. "var" and "const" need an initializer.
     // A future "out" parameter will be exempt: it is not a local declaration.
     if (!d.has_init) {
@@ -581,19 +583,34 @@ struct var_head {
         dsl::position +
         (dsl::peek(kw_let) >> dsl::error<e_let> | kw_var >> dsl::p<name_p> |
          kw_const >> dsl::p<const_rest<E>> | decl_type<E> >> dsl::p<name_p> |
-         dsl::else_ >> dsl::error<e_decl_type>);
+         dsl::else_ >> dsl::error<e_decl_type>) +
+        dsl::position;
+    // The last argument is the end of the name. White space can come before it, so the name
+    // starts "name.size()" bytes before the end, after the white space is removed.
+    static uint32_t name_at(const ParseState& st, const char* pos, const char* end, size_t len)
+    {
+        while (end > pos && std::isspace(static_cast<unsigned char>(end[-1]))) --end;
+        return st.offset(end) - static_cast<uint32_t>(len);
+    }
     static constexpr auto value = lexy::bind(
         lexy::callback<VarHead>(
-            [](const ParseState& st, const char* pos, std::string name) {
-                return make_head(st, pos, std::move(name));
+            [](const ParseState& st, const char* pos, std::string name, const char* end) {
+                VarHead h = make_head(st, pos, std::move(name));
+                h.name_pos = name_at(st, pos, end, h.name.size());
+                return h;
             },
-            [](const ParseState& st, const char* pos, VarHead&& h) {
+            [](const ParseState& st, const char* pos, VarHead&& h, const char* end) {
                 h.pos = st.offset(pos);
                 h.is_const = true;
+                h.name_pos = name_at(st, pos, end, h.name.size());
                 return std::move(h);
             },
             [](const ParseState& st, const char* pos, const char* b, const char* e,
-               std::string name) { return make_typed_head(st, pos, b, e, std::move(name)); }),
+               std::string name, const char* end) {
+                VarHead h = make_typed_head(st, pos, b, e, std::move(name));
+                h.name_pos = name_at(st, pos, end, h.name.size());
+                return h;
+            }),
         lexy::parse_state, lexy::values);
 };
 
@@ -920,6 +937,7 @@ struct foreach_stmt {
                 n.pos = st.offset(pos);
                 n.is_const = h.is_const;
                 n.name = std::move(h.name);
+                n.name_pos = h.name_pos;
                 n.type = std::move(h.type);
                 n.range = expr_of(st, range);
                 n.body = std::move(body);

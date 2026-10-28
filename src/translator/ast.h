@@ -71,8 +71,9 @@ struct CharExpr {  // the text keeps the quotes
 };
 struct MemberExpr {
     ExprP obj;
-    std::string name;
+    std::string name;  // empty: the script has "obj." and no name (a tolerant parse, with an error)
     uint32_t pos = 0;
+    uint32_t name_pos = 0;  // the byte offset where the name starts (or would start)
 };
 struct CallExpr {
     ExprP callee;
@@ -166,6 +167,7 @@ struct VarDeclStmt {
     std::string type;  // empty: auto
     ExprP init;        // may be null
     uint32_t pos = 0;
+    uint32_t name_pos = 0;  // the byte offset of the name (0: not known)
 };
 struct IfStmt {
     ExprP cond;
@@ -196,6 +198,7 @@ struct ForOfStmt {
     ExprP range;
     StmtP body;
     uint32_t pos = 0;
+    uint32_t name_pos = 0;  // the byte offset of the name (0: not known)
 };
 struct ReturnStmt {
     ExprP expr;  // may be null

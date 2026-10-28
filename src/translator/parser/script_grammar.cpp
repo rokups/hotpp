@@ -800,15 +800,21 @@ struct member_p {
 // Skips the rest of a broken member. It stops after a ";" or before a "}", "override" or "function".
 struct sync_member : lexy::token_production {
     static constexpr auto rule = dsl::loop(
-        dsl::eof >> dsl::error<e_unexpected_eof> | dsl::lit_c<';'> >> dsl::break_ |
+        dsl::eof >> dsl::break_ |  // the broken member gave the error; the class keeps its members
+        dsl::lit_c<';'> >> dsl::break_ |
         dsl::peek(dsl::literal_set(dsl::lit_c<'}'>, kw_override, kw_function)) >> dsl::break_ |
         dsl::else_ >> dsl::p<skip_item>);
     static constexpr auto value = lexy::noop;
 };
 
+// The members up to the "}". A missing "}" at the end of the file is one error ("expected
+// '}'"). The class keeps the members that the parser read (a tolerant parse).
 struct members_p {
-    static constexpr auto rule = dsl::terminator(dsl::lit_c<'}'>).opt_list(
-        dsl::try_(dsl::p<member_p>, dsl::p<sync_member>));
+    static constexpr auto closer = dsl::eof | dsl::lit_c<'}'>;
+    static constexpr auto item =
+        dsl::peek_not(closer) >> dsl::try_(dsl::p<member_p>, dsl::p<sync_member>);
+    static constexpr auto rule =
+        dsl::opt(dsl::peek_not(closer) >> dsl::list(item)) + dsl::try_(dsl::lit_c<'}'>);
     static constexpr auto value = lexy::as_list<std::vector<Member>>;
 };
 
@@ -1225,10 +1231,19 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
     for (size_t i = first_item; i < diag.items.size(); ++i)
         if (diag.items[i].msg.compare(0, 12, "unterminated") == 0)
             cut = std::min(cut, diag.items[i].pos);
+    // A class that is not closed gives "unexpected end of file" and "expected '}'" in one place.
+    // Keep the first.
+    auto is_eof_error = [&](const Diag& d) { return d.msg == "unexpected end of file"; };
+    const std::vector<Diag> before_cut(diag.items.begin() + static_cast<std::ptrdiff_t>(first_item),
+                                       diag.items.end());
     diag.items.erase(std::remove_if(diag.items.begin() + static_cast<std::ptrdiff_t>(first_item),
                                     diag.items.end(),
                                     [&](const Diag& d) {
-                                        return d.msg == "unexpected end of file" && d.pos >= cut;
+                                        if ((is_eof_error(d) || d.msg == "expected '}'") && d.pos >= cut) return true;
+                                        if (d.msg != "expected '}'") return false;
+                                        for (const Diag& o : before_cut)
+                                            if (is_eof_error(o) && o.pos == d.pos) return true;
+                                        return false;
                                     }),
                      diag.items.end());
     // The errors of the structure come before the errors of the bodies. Sort them.

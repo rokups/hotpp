@@ -46,6 +46,9 @@ struct Diag {
 struct Diagnostics {
     std::vector<Diag> items;     // the errors
     std::vector<Diag> warnings;  // the warnings. They do not stop the translation.
+    // The byte offsets of a "." with no member name after it ("player." and then nothing).
+    // The parser also adds an error for each. A language server uses them for completion.
+    std::vector<uint32_t> member_holes;
 
     void add(uint32_t pos, const LineMap& map, std::string msg)
     {
@@ -72,6 +75,7 @@ struct Diagnostics {
     {
         items.clear();
         warnings.clear();
+        member_holes.clear();
     }
 
     // One diagnostic in each text line, in the order of insertion. The errors only.

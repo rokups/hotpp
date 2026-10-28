@@ -14,6 +14,7 @@
 //    at ";" and at each char that a type cannot have.
 #include "expression.h"
 
+#include <cctype>
 #include <cstddef>
 #include <string>
 #include <string_view>
@@ -160,6 +161,11 @@ template <Str S>
 struct Post {};  // "++" or "--" after the operand
 template <Str S>
 struct Member {};  // "."
+// The name after a ".": the text and the byte offset. The text is empty when the name is missing.
+struct MemberName {
+    std::string name;
+    uint32_t pos = 0;
+};
 template <Str S>
 struct Pre {  // a prefix operator; it keeps the position of the operator
     const char* pos;
@@ -247,10 +253,10 @@ struct Builder {
     // "a->b": the parse reported the error and read the name. The result is not used.
     ExprP operator()(const ParseState&, ExprP o, ArrowTag, std::string) const { return o; }
     template <Str S>
-    ExprP operator()(const ParseState&, ExprP o, Member<S>, std::string name) const
+    ExprP operator()(const ParseState&, ExprP o, Member<S>, MemberName&& name) const
     {
         const uint32_t pos = ast::pos_of(*o);
-        return ast::make_expr(ast::MemberExpr{std::move(o), std::move(name), pos});
+        return ast::make_expr(ast::MemberExpr{std::move(o), std::move(name.name), pos, name.pos});
     }
 };
 
@@ -258,6 +264,27 @@ struct Builder {
 struct id_str : lexy::token_production {
     static constexpr auto rule = id;
     static constexpr auto value = lexy::as_string<std::string>;
+};
+
+// The name after a ".". When there is no name, the parse adds an error and the name is empty.
+// The tree keeps the node, so a language server can complete the name (tolerant parse).
+struct member_name_p {
+    static constexpr auto rule =
+        dsl::peek(id) >> (dsl::position + dsl::p<id_str>) | dsl::else_ >> dsl::position;
+    static constexpr auto value = lexy::bind(
+        lexy::callback<MemberName>(
+            [](const ParseState& st, const char* pos, std::string&& name) {
+                return MemberName{std::move(name), st.offset(pos)};
+            },
+            [](const ParseState& st, const char* pos) {
+                // The hole is right after the ".", before any white space.
+                uint32_t dot_end = st.offset(pos);
+                while (dot_end > 0 && std::isspace(static_cast<unsigned char>(st.base[dot_end - 1]))) --dot_end;
+                st.diag->add(dot_end, *st.map, "expected a member name after '.'");
+                st.diag->member_holes.push_back(dot_end);
+                return MemberName{std::string(), st.offset(pos)};
+            }),
+        lexy::parse_state, lexy::values);
 };
 
 // A number. The rules are the rules of the old lexer. The text stays raw.
@@ -614,7 +641,7 @@ struct expr : lexy::expression_production {
             SPP_POST("++") / SPP_POST("--") /
             dsl::op<CallTag>(LEXY_LIT("(") >> dsl::p<elems_p<')'>>) /
             dsl::op<IndexTag>(LEXY_LIT("[") >> dsl::p<index_p>) /
-            dsl::op<Member<".">>(LEXY_LIT(".") >> dsl::p<id_str>) /
+            dsl::op<Member<".">>(LEXY_LIT(".") >> dsl::p<member_name_p>) /
             dsl::op<ArrowTag>(LEXY_LIT("->") >>
                               dsl::try_(dsl::error<e_use_dot_arrow>, dsl::p<id_str>));
         using operand = dsl::atom;

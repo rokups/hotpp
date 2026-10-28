@@ -63,9 +63,25 @@ void Emitter::put(std::string_view t, uint32_t pos)
     }
     if (!broke && space_ && !out_.empty()) out_ += ' ';
     space_ = false;
+    if (map_ && pos != 0 && !t.empty())
+        segments_.push_back({pos, static_cast<uint32_t>(out_.size()), static_cast<uint32_t>(t.size())});
     out_ += t;
     if (t == "{") ++depth;
     if (t == "}") --depth;
+}
+
+void Emitter::put_mapped(std::string_view t, uint32_t pos)
+{
+    if (!t.empty() && pos != 0) {
+        if (map_) {
+            if (space_ && !out_.empty()) out_ += ' ';
+            space_ = false;
+            segments_.push_back({pos, static_cast<uint32_t>(out_.size()), static_cast<uint32_t>(t.size())});
+            out_ += t;
+            return;
+        }
+    }
+    put(t);
 }
 
 void Emitter::finish()
@@ -130,7 +146,7 @@ struct ExprPrinter {
     {
         emit_expr(*n.obj, e);
         e.put(".");
-        e.put(n.name);
+        e.put_mapped(n.name, n.name_pos);
     }
     void operator()(const CallExpr& n) const
     {
@@ -262,7 +278,7 @@ void decl(const VarDeclStmt& d, Emitter& e)
               (alias ? "&" : ""),
           d.pos);
     e.space();
-    e.put(d.name);
+    e.put_mapped(d.name, d.name_pos);
     if (d.init) {
         e.space();
         e.put("=");
@@ -366,7 +382,7 @@ struct StmtPrinter {
         open_paren(e);
         e.put(std::string(n.is_const ? "const " : "") + (n.type.empty() ? "auto" : n.type));
         e.space();
-        e.put(n.name);
+        e.put_mapped(n.name, n.name_pos);
         e.space();
         e.put(":");
         e.space();

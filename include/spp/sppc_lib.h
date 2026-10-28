@@ -5,8 +5,11 @@
 // The function is thread safe when each thread uses its own call.
 #pragma once
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -32,6 +35,45 @@ struct TranslateOptions {
     std::string format_lib = "std";
 };
 
+// A position in a text: a 1-based line and a 1-based byte column.
+struct SourcePos {
+    int line = 0, col = 0;
+    bool operator==(const SourcePos& o) const { return line == o.line && col == o.col; }
+};
+
+// One range of generated C++ that comes from one range of the script. The offsets are bytes.
+// When the two lengths are equal, the text is the same in both places and a position maps
+// byte by byte. When they differ (for example "int" and "int32_t"), any position in the
+// range maps to the start of the other range.
+struct SourceSegment {
+    uint32_t script_begin = 0, script_len = 0;
+    uint32_t gen_begin = 0, gen_len = 0;
+};
+
+// The map between the script text and the generated C++ text (design 10.1, M10). The map covers
+// the bodies of the methods, the constructors, the destructors and the property accessors.
+// Text that the translator writes by itself (for example "spp::deref(" or the class shell)
+// has no segment: the functions return no value for it.
+class SourceMap {
+public:
+    // The sorted tables are built here. Call it after the last add().
+    void build(std::string_view script, std::string_view generated);
+    void add(const SourceSegment& s) { segments_.push_back(s); }
+
+    // A position in the generated text gives the position in the script, or no value.
+    std::optional<SourcePos> map_to_script(int gen_line, int gen_col) const;
+    // A position in the script gives the position in the generated text, or no value.
+    std::optional<SourcePos> map_to_generated(int script_line, int script_col) const;
+
+    const std::vector<SourceSegment>& segments() const { return segments_; }  // in generated order
+    bool empty() const { return segments_.empty(); }
+
+private:
+    std::vector<SourceSegment> segments_;
+    std::vector<uint32_t> by_script_;  // indexes into segments_, sorted by script_begin
+    std::vector<uint32_t> script_lines_, gen_lines_;  // the byte offset of each line start
+};
+
 struct TranslateResult {
     bool ok = false;
     std::string cpp;          // the generated C++ text (valid when ok)
@@ -40,6 +82,46 @@ struct TranslateResult {
     // The warnings, one line each: "name:line:col: warning: text". The translation can be ok
     // with warnings. The text is empty when there is no warning.
     std::string warnings;
+    // The map between the generated C++ and the script. It is valid when ok.
+    SourceMap source_map;
+};
+
+// The facts of a script that has errors (design 10.1, M10). A language server calls analyze().
+//
+// The parser is tolerant. A broken statement or member is skipped to the next ";" or "}" and the
+// parse goes on, so one error does not hide the others. The facts hold what the parser read.
+struct AnalyzedMember {
+    std::string kind;  // "field", "method", "constructor", "destructor" or "property"
+    std::string name;
+    // The begin is the start of the name. The end is after the closing brace of a body, after
+    // the initializer of a field or a property, or else after the name.
+    SourcePos begin, end;
+};
+
+struct AnalyzedClass {
+    std::string name, base;
+    SourcePos begin;
+    std::vector<AnalyzedMember> members;  // in source order
+};
+
+struct AnalyzeError {
+    SourcePos pos;
+    uint32_t offset = 0;  // the byte offset in the script
+    std::string message;
+};
+
+struct AnalyzeResult {
+    bool ok = false;  // no syntax error, and the translation is ok
+    std::vector<AnalyzedClass> classes;  // the classes that the parser read
+    std::vector<AnalyzeError> errors;    // the syntax errors, in source order
+    // A "." with no member name after it ("player." at the end of a line). The position is
+    // right after the ".". A completion request there lists the members of the object.
+    std::vector<SourcePos> completion_points;
+    // The translation errors of a script with no syntax error, as in TranslateResult.
+    std::string diagnostics;
+    // The map for the valid parts. A member with a syntax error is left out of the translation.
+    // The map is empty when the rest does not translate (for example a type error).
+    SourceMap source_map;
 };
 
 // The cache of a translator session. A backend holds one for its life.
@@ -93,5 +175,11 @@ TranslateResult translate(const TranslateOptions& options);
 
 // Uses the cache of the session.
 TranslateResult translate(const TranslateOptions& options, TranslatorSession& session);
+
+// Reads "text" with the tolerant parser and returns the facts. The text replaces
+// options.script_text. The function does not change the result of translate(): a script
+// with a syntax error still gives ok = false and no C++ there.
+AnalyzeResult analyze(const std::string& text, const TranslateOptions& options);
+AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, TranslatorSession& session);
 
 }  // namespace sppc

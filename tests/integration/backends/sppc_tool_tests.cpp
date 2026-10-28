@@ -12,6 +12,7 @@
 #include <string>
 
 #include "spp/backend.h"
+#include "spp/clang_files_backend.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 
@@ -309,6 +310,76 @@ TEST(SppcTool, ShipModeReportsParseErrorAtTheScriptLine)
     EXPECT_EQ(WEXITSTATUS(status), 1) << text;
     EXPECT_NE(text.find("broken.spp:4:"), std::string::npos) << text;
     EXPECT_FALSE(std::filesystem::exists(out_dir + "/spp_shipped_registry.cpp"));
+}
+
+// The text of compile_commands.json is exact, and a quote or a backslash is escaped.
+TEST(SppcTool, CompileCommandsJsonText)
+{
+    spp::CompileCommandEntry a{"/work", "/work/a.cpp", {"clang++", "-I/inc dir", "/work/a.cpp"}, "/work/a.so"};
+    spp::CompileCommandEntry b{"/w\"x", "/w\"x/b.cpp", {"c\\d"}, "/w\"x/b.so"};
+    EXPECT_EQ(spp::compile_commands_json({}), "[\n]\n");
+    EXPECT_EQ(spp::compile_commands_json({a, b}),
+              "[\n"
+              "  {\n"
+              "    \"directory\": \"/work\",\n"
+              "    \"file\": \"/work/a.cpp\",\n"
+              "    \"arguments\": [\"clang++\", \"-I/inc dir\", \"/work/a.cpp\"],\n"
+              "    \"output\": \"/work/a.so\"\n"
+              "  },\n"
+              "  {\n"
+              "    \"directory\": \"/w\\\"x\",\n"
+              "    \"file\": \"/w\\\"x/b.cpp\",\n"
+              "    \"arguments\": [\"c\\\\d\"],\n"
+              "    \"output\": \"/w\\\"x/b.so\"\n"
+              "  }\n"
+              "]\n");
+}
+
+// The compile command is the command of the backend.
+TEST(SppcTool, CompileCommandUsesTheBackendFlags)
+{
+    spp::ClangFilesOptions o;
+    o.compiler = "cc";
+    o.include_dirs = {"/i1", "/i2"};
+    o.extra_flags = {"-O2"};
+    o.resource_dir = "/res";
+    EXPECT_EQ(spp::compile_command(o, "/x.cpp", "/x.so"),
+              (std::vector<std::string>{"cc", "-std=c++20", "-fPIC", "-shared", "-g", "-Werror=return-type",
+                                        "-resource-dir=/res", "-O2", "-I/i1", "-I/i2", "/x.cpp", "-o", "/x.so"}));
+}
+
+// sppc --compile-commands writes one entry for each generated .cpp.
+TEST(SppcTool, CompileCommandsOptionWritesTheDatabase)
+{
+    namespace fs = std::filesystem;
+    const std::string out_dir = std::string(SPP_BINARY_DIR) + "/sppc_cdb";
+    const std::string cdb_dir = std::string(SPP_BINARY_DIR) + "/sppc_cdb_json";
+    fs::remove_all(out_dir);
+    fs::remove_all(cdb_dir);
+    const std::string script = std::string(SPP_SOURCE_DIR) + "/example/scripts/boss_v1.spp";
+    const std::string engine = std::string(SPP_SOURCE_DIR) + "/example/engine";
+    const std::string inc = std::string(SPP_SOURCE_DIR) + "/include";
+    const std::string cmd = std::string("'") + SPPC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir +
+                            "' -I '" + engine + "' -I '" + inc + "' --cxx '" + SPP_CXX +
+                            "' --cxxflag -O1 --compile-commands '" + cdb_dir + "' 2>&1";
+    std::string text;
+    FILE* p = popen(cmd.c_str(), "r");
+    ASSERT_NE(p, nullptr);
+    char buf[512];
+    while (size_t n = fread(buf, 1, sizeof buf, p)) text.append(buf, n);
+    const int status = pclose(p);
+    ASSERT_TRUE(WIFEXITED(status));
+    ASSERT_EQ(WEXITSTATUS(status), 0) << text;
+
+    const std::string cpp = fs::absolute(out_dir + "/boss_v1.g1.cpp").string();
+    const std::string so = fs::absolute(out_dir + "/boss_v1.g1.so").string();
+    const std::string cxx = SPP_CXX;
+    const std::string expected =
+        "[\n  {\n    \"directory\": \"" + fs::current_path().string() + "\",\n    \"file\": \"" + cpp +
+        "\",\n    \"arguments\": [\"" + cxx + "\", \"-std=c++20\", \"-fPIC\", \"-shared\", \"-g\", "
+        "\"-Werror=return-type\", \"-O1\", \"-I" + engine + "\", \"-I" + inc + "\", \"" + cpp +
+        "\", \"-o\", \"" + so + "\"],\n    \"output\": \"" + so + "\"\n  }\n]\n";
+    EXPECT_EQ(read_file(cdb_dir + "/compile_commands.json"), expected);
 }
 
 }  // namespace

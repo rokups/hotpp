@@ -21,8 +21,18 @@ public:
     // Line mode. The map must live as long as the Emitter.
     Emitter(const LineMap& map, std::string file) : map_(&map), file_(std::move(file)) {}
 
+    // A leaf with a script position: the script byte offset, and the byte range that the leaf
+    // fills in text(). Line mode records one for each leaf with a pos. Plain mode records none.
+    struct Segment {
+        uint32_t pos = 0, gen_begin = 0, gen_len = 0;
+    };
+    const std::vector<Segment>& segments() const { return segments_; }
+
     // Writes one leaf. A pos of 0 means: stay on the current line.
     void put(std::string_view text, uint32_t pos = 0);
+    // Writes one leaf that stays on the current line, and records "pos" for the source map.
+    // The "#line" directives do not change.
+    void put_mapped(std::string_view text, uint32_t pos);
     // Asks for one space before the next leaf. A line break drops it.
     void space() { space_ = true; }
     // Line mode: ends the last line. Call it once at the end.
@@ -46,6 +56,7 @@ private:
     int line_ = 0;  // the script line of the last "#line"; 0: none yet
     bool space_ = false;
     int finally_count_ = 0;
+    std::vector<Segment> segments_;
 };
 
 void emit_expr(const Expr& e, Emitter& out);
