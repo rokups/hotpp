@@ -197,3 +197,80 @@ TEST(ErrorRows, ALocalWithTheNameOfAFunctionIsNotAnAddress)
         "", "    void G() { }\n    int Run() { int G = 1; return G; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
+
+// ---- a local that is bound with "ref" (design 7.10.6): allowed in a local, not stored.
+
+TEST(RefLocal, ALambdaCannotCaptureAVarRefLocal)
+{
+    const sppc::TranslateResult r = check_translate(
+        "", "    Vec3 pos;\n    void Move() { var r = ref this.pos; var f = () => { r.x = 1; }; }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'r'")) << r.diagnostics;
+}
+
+TEST(RefLocal, ALambdaCannotCaptureATypedRefLocal)
+{
+    const sppc::TranslateResult r = check_translate(
+        "", "    Vec3 pos;\n    void Move() { Vec3 r = ref this.pos; var f = () => { r.x = 1; }; }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'r'")) << r.diagnostics;
+}
+
+TEST(RefLocal, ALaterRefLocalDoesNotHideAnEarlierCapture)
+{
+    const sppc::TranslateResult r = check_translate(
+        "", "    Vec3 pos;\n    void Move() { var f = () => { this.pos.x = 1; }; var r = ref this.pos; r.x = 2; }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(RefLocal, AVarRefLocalCannotBeReturned)
+{
+    const sppc::TranslateResult r = check_translate(
+        "", "    Vec3 pos;\n    Vec3* Get() { var r = ref this.pos; return r; }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "a return value cannot hold a borrowed pointer")) << r.diagnostics;
+}
+
+TEST(RefLocal, AVarRefLocalCannotInitializeAField)
+{
+    const sppc::TranslateResult r = check_translate("", "    Vec3 pos;\n    Vec3 copy = ref this.pos;\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "a 'ref' value cannot be stored")) << r.diagnostics;
+}
+
+TEST(RefLocal, AssigningAVarRefLocalToAValueFieldCopiesTheValue)
+{
+    const sppc::TranslateResult r = check_translate(
+        "", "    Vec3 pos;\n    Vec3 saved;\n    void Move() { var r = ref this.pos; this.saved = r; }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(RefLocal, ARefLocalCannotBeStoredInAPointerField)
+{
+    const sppc::TranslateResult r = check_translate(
+        "", "    Vec3 pos;\n    Vec3* p;\n    void Move() { var r = ref this.pos; this.p = r; }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "a field cannot hold a borrowed pointer")) << r.diagnostics;
+}
+
+TEST(RefLocal, AVarRefLocalInAConditionalIsAnError)
+{
+    const sppc::TranslateResult r = check_translate(
+        "", "    Vec3 pos;\n    void Move(bool c) { var r = c ? ref this.pos : ref this.pos; }\n");
+    EXPECT_FALSE(r.ok);
+}
+
+TEST(RefLocal, ACopyOfAVarRefLocalIsAValueAndMayBeCaptured)
+{
+    const sppc::TranslateResult r = check_translate(
+        "", "    Vec3 pos;\n    void Move() { var r = ref this.pos; Vec3 c = r; var f = () => { c.x = 1; }; }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(RefLocal, AVarRefLocalIsAWarningWithoutStrictMode)
+{
+    const sppc::TranslateResult r = check_translate(
+        "", "    Vec3 pos;\n    void Move() { var r = ref this.pos; var f = () => { r.x = 1; }; }\n", {}, false);
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.warnings, "the lambda captures 'r'")) << r.warnings;
+}

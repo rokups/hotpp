@@ -1,0 +1,83 @@
+// Generation 2 of a family of script classes (S6b, design 4.5, 7.6 and 7.9).
+// A is the root. B and S are children of A. G is a child of B. A has the property Score.
+// B has the property Bonus. A child object reads and writes the inherited properties.
+// Driver uses the family through a parent handle and through a child handle.
+using "Actor.h";
+using <string>;
+
+class A : Actor {
+    int a = 1;
+    int Score { get; set; } = 10;
+    int Rank { get; set; } = 3;
+
+    A(int v) : super(std.string("a")) { this.a = v; }
+
+    virtual int f(int k) { return k; }
+}
+
+class B : A {
+    int b = 2;
+    int Bonus {
+        get { return this.b * 3; }
+        set { this.b = value; }
+    }
+
+    B(int v) : super(v * 2) { }
+
+    override int f(int k) { return k + this.b; }
+
+    virtual void h() { this.b = this.b + Score; }
+}
+
+class S : A {
+    S() : super(3) { }
+
+    int only() { return Score + 100; }
+}
+
+class G : B {
+    G() : super(4) { }
+
+    override int f(int k) { return super.f(k) * 2; }
+
+    override void h() {
+        super.h();
+        Score += 1;
+        this.Bonus = Bonus + 1;
+    }
+}
+
+class Driver : Actor {
+    A top = null;
+    S sib = null;
+    G leaf = null;
+    int top_score = 0;
+    int leaf_score = 0;
+    int sib_score = 0;
+    int sib_only = 0;
+    int top_f = 0;
+    int leaf_bonus = 0;
+    int leaf_a = 0;
+    int leaf_rank = 0;
+    int ticks = 0;
+
+    override void Tick(float dt) {
+        if (this.top == null) {
+            this.leaf = new G();
+            this.top = this.leaf;
+            this.sib = new S();
+            this.leaf.Score = 20;
+            this.leaf.h();
+            this.sib.Score = 7;
+        }
+        this.ticks = this.ticks + 1;
+        this.top_score = this.top.Score;
+        this.leaf_score = this.leaf.Score;
+        this.sib_score = this.sib.Score;
+        this.sib_only = this.sib.only();
+        this.top_f = this.top.f(1);
+        this.leaf_bonus = this.leaf.Bonus;
+        this.leaf_a = this.leaf.a;
+        this.leaf_rank = this.leaf.Rank + this.sib.Rank;
+    }
+}

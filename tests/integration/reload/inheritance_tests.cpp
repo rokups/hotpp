@@ -114,4 +114,72 @@ TEST_P(BackendTests, ReloadMigratesTheParentAndTheChildPart)
     EXPECT_EQ(s.inst.shell->cls->super->generation, 2u);
 }
 
+// A family of three levels with a sibling (S6b). A child object reads and writes the properties
+// of its parents. The access works through a parent handle and through a child handle.
+TEST_P(BackendTests, FamilyOfThreeLevelsWithInheritedProperties)
+{
+    spp::LoadResult v1 = backend->load(source("family_v1.spp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Driver"));
+    s.commit_at_frame_boundary();
+    s.world.Tick(kDt);
+    // G: Score = 20 (written through the child handle), then h(): b = 2 + 20, Score += 1, Bonus = 44 + 1 (b = 45).
+    EXPECT_EQ(*fld<int>(s, "top_score"), 21);  // the same object through the parent handle
+    EXPECT_EQ(*fld<int>(s, "leaf_score"), 21);
+    EXPECT_EQ(*fld<int>(s, "sib_score"), 7);   // the sibling has its own value
+    EXPECT_EQ(*fld<int>(s, "sib_only"), 107);  // a bare "Score" in a child of A
+    EXPECT_EQ(*fld<int>(s, "top_f"), 92);      // G.f: (B.f(1) = 1 + 45) * 2
+    EXPECT_EQ(*fld<int>(s, "leaf_bonus"), 90); // B.Bonus getter: b * 2 with b = 45
+    EXPECT_EQ(*fld<int>(s, "leaf_a"), 8);      // A(int) got 4 * 2
+}
+
+// A reload of the family. The new property of the root gets its initializer in an old object.
+// The changed getter of the middle class applies. The values of the old objects stay.
+TEST_P(BackendTests, FamilyReloadKeepsInheritedPropertyValues)
+{
+    spp::LoadResult v1 = backend->load(source("family_v1.spp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult v2 = backend->load(source("family_v2.spp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Driver"));
+    s.commit_at_frame_boundary();
+    s.world.Tick(kDt);
+    ASSERT_EQ(*fld<int>(s, "leaf_bonus"), 90);
+
+    std::string error;
+    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    s.world.Tick(kDt);  // the commit happens at the end of this frame
+    ASSERT_FALSE(s.commit_failed);
+    EXPECT_EQ(spp::active_generation, 2u);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "top_score"), 21);
+    EXPECT_EQ(*fld<int>(s, "sib_score"), 7);
+    EXPECT_EQ(*fld<int>(s, "sib_only"), 107);
+    EXPECT_EQ(*fld<int>(s, "top_f"), 92);
+    EXPECT_EQ(*fld<int>(s, "leaf_bonus"), 135);  // the getter of generation 2: b * 3
+    EXPECT_EQ(*fld<int>(s, "leaf_rank"), 6);    // the new property Rank: 3 for the child and the sibling
+}
+
+// A reload that changes the script parent of a class is rejected. The old generation stays.
+TEST_P(BackendTests, ReloadThatChangesTheScriptParentIsRejected)
+{
+    spp::LoadResult v1 = backend->load(source("family_v1.spp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult bad = backend->load(source("family_reparent.spp"), 2);
+    ASSERT_TRUE(bad) << bad.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Driver"));
+    s.commit_at_frame_boundary();
+    s.world.Tick(kDt);
+    std::string error;
+    EXPECT_FALSE(s.loader.request_reload(std::move(*bad.module), error));
+    EXPECT_NE(error.find("script parent class changed"), std::string::npos) << error;
+    EXPECT_NE(error.find("G"), std::string::npos) << error;
+    EXPECT_FALSE(s.loader.reload_pending());
+    s.world.Tick(kDt);
+    EXPECT_EQ(spp::active_generation, 1u);
+}
+
 }  // namespace

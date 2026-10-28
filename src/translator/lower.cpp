@@ -101,17 +101,24 @@ struct Lowerer {
         return it == cx.classes.end() ? nullptr : it->second;
     }
 
-    static const Property* find_prop(const ClassDef& c, const std::string& n)
-    {
-        for (const Property& p : c.props)
-            if (p.name == n) return &p;
-        return nullptr;
-    }
-
     // The script parent of a class, or null (design 4.5).
     const ClassDef* parent_of(const ClassDef& c) const
     {
         return c.base.empty() || c.base == c.name ? nullptr : class_named(c.base);
+    }
+
+    // A property of the class or of a script parent. The nearest class wins. "owner" gets the
+    // class that declares the property (it has the accessor functions).
+    const Property* find_prop(const ClassDef& c, const std::string& n, const ClassDef** owner = nullptr) const
+    {
+        int depth = 0;
+        for (const ClassDef* d = &c; d && depth < 64; d = parent_of(*d), ++depth)
+            for (const Property& p : d->props)
+                if (p.name == n) {
+                    if (owner) *owner = d;
+                    return &p;
+                }
+        return nullptr;
     }
 
     // A field of the class or of a script parent.
@@ -274,8 +281,9 @@ struct Lowerer {
         } else if ((n = simple_name(e)) && cx.locals.count(*n)) {
             n = nullptr;
         }
-        if (!n || !d || !find_prop(*d, *n)) return std::nullopt;
-        return PropRef{*n, obj, d};
+        const ClassDef* owner = nullptr;
+        if (!n || !d || !find_prop(*d, *n, &owner)) return std::nullopt;
+        return PropRef{*n, obj, owner};
     }
 
     // The checks of an accessor use. Gives the name of the accessor fn: "Cls__get_P".
@@ -550,8 +558,9 @@ struct Lowerer {
     {
         const uint32_t obj_pos = pos_of(*m.obj);
         if (std::holds_alternative<ThisExpr>(m.obj->v)) {
-            if (cx.props.count(m.name)) {
-                e = prop_read({m.name, nullptr, cx.cls}, obj_pos);  // "m" is gone now
+            const ClassDef* prop_owner = nullptr;
+            if (cx.cls && find_prop(*cx.cls, m.name, &prop_owner)) {
+                e = prop_read({m.name, nullptr, prop_owner}, obj_pos);  // "m" is gone now
             } else if (!cx.allow_this) {
                 error(obj_pos, "'this' is not allowed in a field initializer");
             } else if (cx.field_type.count(m.name)) {
@@ -587,8 +596,9 @@ struct Lowerer {
         const std::string t = type_of(*m.obj);
         const ClassDef* td = class_named(t);
         const ClassDef* d = td ? td : cx.cls;  // a native type: the old name rule
-        if (d && find_prop(*d, m.name)) {
-            e = prop_read({m.name, &m.obj, d}, obj_pos);  // "m" is gone now
+        const ClassDef* prop_owner = nullptr;
+        if (d && find_prop(*d, m.name, &prop_owner)) {
+            e = prop_read({m.name, &m.obj, prop_owner}, obj_pos);  // "m" is gone now
             return;
         }
         if (td && !td->is_value) {
