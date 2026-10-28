@@ -5,10 +5,10 @@ The design is in `scriptlang-design/scriptlang-design.md`.
 
 ## Layout
 
-- `engine/` has the executable `minengine`. It has `Actor`, `World` and the test driver.
+- `engine/` has the executable `minengine`. It has `Actor`, `World` and a small main program.
 - `runtime/` has the script runtime: class records, shells, dispatch, reflection and the loader.
 - `poc/r0/gen1.cpp` is hand-written code. The translator `spc` makes code with the same structure.
-- `translator/spc.cpp` is the translator `spc` (step F1). `scripts/` has the example scripts. `tools/build_gen.sh` translates and compiles one script. `tests/f1_tests.cpp` has the GoogleTest cases.
+- `translator/spc.cpp` is the translator `spc` (step F1). `scripts/` has the example scripts. `tools/build_gen.sh` translates and compiles one script. `tests/` has the GoogleTest cases (`r0_tests.cpp`, `r1_tests.cpp`, `f1_tests.cpp`) and the shared header `test_support.h`.
 - `cmake/CPM.cmake` fetches a dependency when the system has no copy of it.
 - `poc/r1/` has generation 2 (`gen2.cpp`: new `Tick`, `hp` renamed to `health`, new `shield`), the rejected generation 4 (`gen4_base.cpp`: other shell layout) and `gen3_bad.cpp` (does not compile; not in the build).
 
@@ -21,15 +21,11 @@ For an AddressSanitizer build, use `-DCMAKE_CXX_FLAGS=-fsanitize=address` and th
 
 ## Run
 
-    build/minengine --r0 build/gen1.so
+    build/minengine build/gen1.so
 
-The command loads `gen1.so` and makes one `Player`. It ticks the world 3 times and calls both `TakeDamage` overloads. It exits with 0 on success.
+The command loads `gen1.so` and makes one `Player`. It ticks the world 3 times. It exits with 0 on success.
 
-    build/minengine --r1 build/gen1.so build/gen2.so build/gen4_base.so build/gen3_missing.so
-
-The R1 command spawns one `Player` and binds a delegate to `heal` through a thunk. It reloads gen 2 at the frame boundary and checks the address, the migrated state, the new `Tick` and the delegate. It then tries gen 4 and a missing library. Both must be rejected, and gen 2 must keep running.
-
-`poc/r1/make_bad.sh [build-dir]` compiles `gen3_bad.cpp`, shows that the compile fails and runs R1 with the missing library.
+`poc/r1/make_bad.sh [build-dir]` compiles `gen3_bad.cpp` and shows that the compile fails. No library is made. The test `R1` uses the path of this missing library.
 
 ## Translator
 
@@ -49,7 +45,12 @@ CMake uses CPM. It takes GoogleTest from the system, and fetches it only when it
 
     ninja -C build && ctest --test-dir build
 
-The cases `F1Reload` and `F1Diag` are GoogleTest cases in `f1_tests`. `F1Reload` repeats the R1 checks with the libraries that `spc` made from `scripts/player_v1.script` and `scripts/player_v2.script`. `F1Diag` compiles `scripts/bad.script`. The Clang error must name `bad.script` and the right line.
+All tests are GoogleTest cases. CMake registers them with `gtest_discover_tests`.
+
+- `R0` (`tests/r0_tests.cpp`) loads `gen1.so` and makes one `Player`. It ticks the world 3 times and calls both `TakeDamage` overloads. It checks the type name, the position and the field `hp` by reflection.
+- `R1` (`tests/r1_tests.cpp`) binds a delegate to `heal` through a thunk. It reloads gen 2 at the frame boundary and checks the address, the migrated state, the new `Tick` and the delegate. It then tries gen 4 and a missing library. Both must be rejected, and gen 2 must keep running.
+- `F1Reload` repeats the R1 checks with the libraries that `spc` made from `scripts/player_v1.script` and `scripts/player_v2.script`.
+- `F1Diag` compiles `scripts/bad.script`. The Clang error must name `bad.script` and the right line.
 
 ## Reload
 

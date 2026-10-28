@@ -16,38 +16,29 @@
 #include <string>
 #include <vector>
 
-#include "Actor.h"
-#include "script_runtime.h"
+#include "test_support.h"
 
 namespace {
 
+using test_support::kDt;
+using test_support::Session;
+
 TEST(F1Reload, GeneratedLibrariesKeepAddressAndMigrateState)
 {
-    script::Loader loader;  // declared first: it is destroyed last
-    World world;            // the world deletes the actors while the libraries are loaded
-    const float dt = 1.0f / 60.0f;
-
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(F1_V1_SO));
+    s.commit_at_frame_boundary();
+    script::Loader& loader = s.loader;
+    World& world = s.world;
+    script::Instance& inst = s.inst;
+    Actor* a = s.actor;
+    const float dt = kDt;
     std::string error;
-    ASSERT_TRUE(loader.load(F1_V1_SO, error)) << error;
-    const script::ClassEntry* entry = loader.find("Player");
-    ASSERT_NE(entry, nullptr);
-
-    script::Instance inst = entry->create();
-    Actor* a = static_cast<Actor*>(inst.native);
-    world.Add(a);
     Actor* source = new Actor("Source");
     world.Add(source);
     EXPECT_EQ(a->Name, "Player");
 
-    bool commit_failed = false;
-    world.SetFrameBoundaryHook([&] {
-        std::string err;
-        if (loader.reload_pending() && !loader.commit_pending(err)) {
-            ADD_FAILURE() << "commit failed: " << err;
-            commit_failed = true;
-        }
-    });
-    auto field = [&](const char* name) { return script::field_ptr<float>(inst.shell, name); };
+    auto field = [&](const char* name) { return s.field(name); };
 
     // Generation 1: change the state, then bind a delegate through the thunk.
     a->TakeDamage(30.0f);                        // hp 70
@@ -81,7 +72,7 @@ TEST(F1Reload, GeneratedLibrariesKeepAddressAndMigrateState)
 
     // The commit runs at the frame boundary, after the actors ticked.
     world.Tick(dt);  // generation 1 Tick heals 1: hp 74; then the commit
-    ASSERT_FALSE(commit_failed);
+    ASSERT_FALSE(s.commit_failed);
     EXPECT_FALSE(loader.reload_pending());
     EXPECT_EQ(script::active_generation, 2u);
     ASSERT_EQ(world.Actors().size(), 2u);

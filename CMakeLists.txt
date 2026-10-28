@@ -50,9 +50,20 @@ foreach(g gen2:poc/r1/gen2.cpp gen4_base:poc/r1/gen4_base.cpp)
     set_target_properties(${gname} PROPERTIES PREFIX "")
 endforeach()
 
-add_test(NAME r0 COMMAND minengine --r0 $<TARGET_FILE:gen1>)
-add_test(NAME r1 COMMAND minengine --r1 $<TARGET_FILE:gen1> $<TARGET_FILE:gen2>
-         $<TARGET_FILE:gen4_base> ${CMAKE_BINARY_DIR}/gen3_missing.so)
+# GoogleTest cases R0 and R1. The file gen3_missing.so does not exist on purpose.
+foreach(r r0 r1)
+    add_executable(${r}_tests tests/${r}_tests.cpp engine/Actor.cpp)
+    target_link_libraries(${r}_tests PRIVATE spp_runtime GTest::gtest_main)
+    set_target_properties(${r}_tests PROPERTIES ENABLE_EXPORTS ON)
+    target_include_directories(${r}_tests PRIVATE tests)
+    add_dependencies(${r}_tests gen1 gen2 gen4_base)
+    target_compile_definitions(${r}_tests PRIVATE
+        GEN1_SO="$<TARGET_FILE:gen1>"
+        GEN2_SO="$<TARGET_FILE:gen2>"
+        GEN4_BASE_SO="$<TARGET_FILE:gen4_base>"
+        GEN3_MISSING_SO="${CMAKE_BINARY_DIR}/gen3_missing.so")
+    gtest_discover_tests(${r}_tests)
+endforeach()
 
 # ------------------------------------------------------------ Step F1
 # The translator spc. It needs libclang (C API) from the system.
@@ -92,6 +103,7 @@ endforeach()
 
 # GoogleTest cases: F1Reload (generated libraries) and F1Diag (error at the script).
 add_executable(f1_tests tests/f1_tests.cpp engine/Actor.cpp)
+target_include_directories(f1_tests PRIVATE tests)
 target_link_libraries(f1_tests PRIVATE spp_runtime GTest::gtest_main)
 set_target_properties(f1_tests PROPERTIES ENABLE_EXPORTS ON)
 add_dependencies(f1_tests f1_v1 f1_v2 spc)
