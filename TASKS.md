@@ -22,7 +22,9 @@ Status: [ ] open, [x] done. One slice is one commit.
 - [ ] S11 Diagnostic rewriter, LLDB formatters.
 - [x] S12 Done (M7): `sppc --ship`, `spp_add_shipped_scripts`, `spp::ShippedRegistry` (`include/spp/shipped.h`), target `spp_ship` (no loader), example `ship_demo`, tests in `tests/integration/ship/`. Open: see the open items in README "Shipping mode" and HANDOFF.md.
 - [ ] S13 Tolerant parse and `source_map` (M10).
-- [ ] S14 VS Code extension (M11), `sppc --compile-commands`.
+- [ ] S14a VS Code extension (M11): grammar, language config, file association, thin client for spp-ls, snapshot test.
+- [ ] S14b Language server `spp-ls` (M12 to M14) as clangd proxy.
+- [ ] S14 old: VS Code extension (M11), `sppc --compile-commands`.
 - [ ] S15 CPM fetch test.
 
 Not testable here: Windows, macOS, a real engine, the clangd fork (M12 to M14). See DECISIONS.md.
