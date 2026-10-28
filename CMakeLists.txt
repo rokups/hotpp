@@ -212,6 +212,7 @@ target_link_libraries(ship_demo PRIVATE ship_demo_scripts)
 
 # GoogleTest targets. They need the pre_* targets and sppc from above.
 add_subdirectory(tests)
+add_subdirectory(editors/vscode)
 
 # bench_backends times the compile and the load of the example scripts.
 add_executable(bench_backends example/bench_backends.cpp example/engine/Actor.cpp example/engine/Util.cpp)

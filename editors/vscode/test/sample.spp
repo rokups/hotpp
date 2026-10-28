@@ -1,0 +1,17 @@
+// A sample for the grammar snapshot.
+using <vector>;
+using "Actor.h";
+
+[native, handle("Actor")]
+[value] class Stats : Actor {
+    float hp = 1.5f;
+    ulong big = 0xFFul;
+    int Level { get; private set; } = 1;
+    override void Tick(float dt) {
+        var s = "hp ${this.hp:.2f} of ${Max(a, {1}[0])} \${no} \"q\"";
+        foreach (var x in this.items) { x += 1e-3 + 2u; }
+        try { throw std.runtime_error("e"); } catch (std.exception& e) { } finally { }
+        if (a is Stats && b as Foo) { return null; } /* block */
+    }
+}
+enum Mode { Idle, Walk }

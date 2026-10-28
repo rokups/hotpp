@@ -1,0 +1,206 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "S++",
+  "scopeName": "source.spp",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#attribute" },
+    { "include": "#using" },
+    { "include": "#declaration" },
+    { "include": "#expression" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.double-slash.spp", "match": "//.*$" },
+        {
+          "name": "comment.block.spp",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "attribute": {
+      "name": "meta.attribute.spp",
+      "begin": "^\\s*(\\[)(?=\\s*[A-Za-z_]\\w*\\s*[,\\](])",
+      "beginCaptures": { "1": { "name": "punctuation.definition.attribute.begin.spp" } },
+      "end": "\\]",
+      "endCaptures": { "0": { "name": "punctuation.definition.attribute.end.spp" } },
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#string" },
+        { "include": "#number" },
+        { "name": "entity.other.attribute-name.spp", "match": "\\b[A-Za-z_]\\w*\\b(?=\\s*[,\\](])" },
+        { "name": "constant.language.spp", "match": "\\b(?:true|false|null)\\b" },
+        { "name": "punctuation.separator.comma.spp", "match": "," },
+        {
+          "begin": "\\(",
+          "end": "\\)",
+          "patterns": [
+            { "include": "#string" },
+            { "include": "#number" },
+            { "name": "constant.language.spp", "match": "\\b(?:true|false|null)\\b" },
+            { "name": "variable.parameter.spp", "match": "\\b[A-Za-z_]\\w*\\b" },
+            { "name": "punctuation.separator.comma.spp", "match": "," }
+          ]
+        }
+      ]
+    },
+    "using": {
+      "match": "\\b(using)\\b\\s*(<[^>\\n]*>)?",
+      "captures": {
+        "1": { "name": "keyword.control.import.spp" },
+        "2": { "name": "string.quoted.other.lt-gt.include.spp" }
+      }
+    },
+    "declaration": {
+      "patterns": [
+        {
+          "match": "\\b(class|struct|enum)\\b(?:\\s+([A-Za-z_]\\w*))?(?:\\s*(:)\\s*([^{;]+?)(?=\\s*\\{))?",
+          "captures": {
+            "1": { "name": "storage.type.class.spp" },
+            "2": { "name": "entity.name.type.class.spp" },
+            "3": { "name": "punctuation.separator.inheritance.spp" },
+            "4": { "name": "entity.other.inherited-class.spp" }
+          }
+        }
+      ]
+    },
+    "expression": {
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#string" },
+        { "include": "#char" },
+        { "include": "#number" },
+        { "include": "#keywords" },
+        { "include": "#types" },
+        { "include": "#function-call" },
+        { "include": "#operators" },
+        { "name": "punctuation.terminator.statement.spp", "match": ";" },
+        { "name": "punctuation.separator.comma.spp", "match": "," }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.flow.spp",
+          "match": "\\b(?:if|else|while|do|for|foreach|in|of|return|break|continue|switch|case|default)\\b"
+        },
+        {
+          "name": "keyword.control.exception.spp",
+          "match": "\\b(?:try|catch|finally|throw)\\b"
+        },
+        {
+          "name": "storage.modifier.spp",
+          "match": "\\b(?:public|private|protected|override|virtual|const|ref|out|get|set)\\b"
+        },
+        {
+          "name": "storage.type.spp",
+          "match": "\\b(?:var|let|void)\\b"
+        },
+        {
+          "name": "keyword.operator.new.spp",
+          "match": "\\b(?:new|delete)\\b"
+        },
+        {
+          "name": "keyword.operator.word.spp",
+          "match": "\\b(?:is|as)\\b"
+        },
+        {
+          "name": "variable.language.spp",
+          "match": "\\b(?:this|super)\\b"
+        },
+        {
+          "name": "constant.language.spp",
+          "match": "\\b(?:true|false|null)\\b"
+        }
+      ]
+    },
+    "types": {
+      "name": "storage.type.builtin.spp",
+      "match": "\\b(?:bool|sbyte|int8|byte|uint8|short|int16|ushort|uint16|int|int32|uint|uint32|long|int64|ulong|uint64|nint|intptr|nuint|uintptr|float|double|char|wchar|char16)\\b"
+    },
+    "function-call": {
+      "match": "\\b([A-Za-z_]\\w*)\\s*(?=\\()",
+      "captures": { "1": { "name": "entity.name.function.spp" } }
+    },
+    "operators": {
+      "patterns": [
+        { "name": "keyword.operator.arrow.spp", "match": "->|=>" },
+        { "name": "keyword.operator.comparison.spp", "match": "==|!=|<=|>=|<|>" },
+        { "name": "keyword.operator.logical.spp", "match": "&&|\\|\\||!" },
+        { "name": "keyword.operator.assignment.spp", "match": "(?:<<|>>|[-+*/%&|^])?=" },
+        { "name": "keyword.operator.arithmetic.spp", "match": "\\+\\+|--|[-+*/%&|^~]|<<|>>" },
+        { "name": "keyword.operator.ternary.spp", "match": "\\?|:" },
+        { "name": "punctuation.accessor.spp", "match": "\\." }
+      ]
+    },
+    "number": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.spp",
+          "match": "\\b0[xX][0-9a-fA-F]+(?:[uU]?[lL]{0,2})\\b"
+        },
+        {
+          "name": "constant.numeric.float.spp",
+          "match": "(?:\\b\\d+\\.\\d*|\\B\\.\\d+|\\b\\d+(?=[eE]))(?:[eE][+-]?\\d+)?[fF]?\\b|\\b\\d+[fF]\\b"
+        },
+        {
+          "name": "constant.numeric.integer.spp",
+          "match": "\\b\\d+(?:[uU]?[lL]{0,2})\\b"
+        }
+      ]
+    },
+    "char": {
+      "name": "string.quoted.single.spp",
+      "begin": "'",
+      "end": "'|$",
+      "patterns": [
+        { "name": "constant.character.escape.spp", "match": "\\\\." }
+      ]
+    },
+    "string": {
+      "name": "string.quoted.double.spp",
+      "begin": "\"",
+      "end": "\"|$",
+      "patterns": [
+        { "name": "constant.character.escape.spp", "match": "\\\\." },
+        { "include": "#interpolation" }
+      ]
+    },
+    "interpolation": {
+      "name": "meta.interpolation.spp",
+      "begin": "\\$\\{",
+      "beginCaptures": { "0": { "name": "punctuation.section.interpolation.begin.spp" } },
+      "end": "\\}",
+      "endCaptures": { "0": { "name": "punctuation.section.interpolation.end.spp" } },
+      "contentName": "meta.embedded.expression.spp",
+      "patterns": [
+        {
+          "name": "constant.other.format-spec.spp",
+          "match": ":(?!\\s)[^\\s:?{}\"]*(?=\\})"
+        },
+        { "include": "#interpolation-braces" },
+        { "include": "#expression-in-string" }
+      ]
+    },
+    "interpolation-braces": {
+      "begin": "\\{",
+      "end": "\\}",
+      "patterns": [
+        { "include": "#interpolation-braces" },
+        { "include": "#expression-in-string" }
+      ]
+    },
+    "expression-in-string": {
+      "patterns": [
+        { "include": "#number" },
+        { "include": "#keywords" },
+        { "include": "#types" },
+        { "include": "#function-call" },
+        { "include": "#operators" },
+        { "name": "punctuation.separator.comma.spp", "match": "," }
+      ]
+    }
+  }
+}

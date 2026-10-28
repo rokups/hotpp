@@ -1,0 +1,61 @@
+{
+  "name": "spp",
+  "displayName": "S++",
+  "description": "Syntax highlighting and language server client for S++ scripts (.spp).",
+  "version": "0.1.0",
+  "publisher": "spp",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Programming Languages"],
+  "main": "./src/extension.js",
+  "activationEvents": ["onLanguage:spp"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "spp",
+        "aliases": ["S++", "spp"],
+        "extensions": [".spp"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "spp",
+        "scopeName": "source.spp",
+        "path": "./syntaxes/spp.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "S++",
+      "properties": {
+        "spp.server.path": {
+          "type": "string",
+          "default": "spp-ls",
+          "description": "Path of the S++ language server binary. The default finds spp-ls in PATH."
+        },
+        "spp.server.args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["--stdio"],
+          "description": "Arguments for the language server."
+        },
+        "spp.server.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start the language server. Highlighting works when this is off."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.0.0"
+  },
+  "scripts": {
+    "test": "node test/grammar.test.js"
+  }
+}

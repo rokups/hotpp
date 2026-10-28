@@ -1,0 +1,141 @@
+1: "// A sample for the grammar snapshot." comment.line.double-slash.spp
+2: "using" keyword.control.import.spp
+2: "<vector>" string.quoted.other.lt-gt.include.spp
+2: ";" punctuation.terminator.statement.spp
+3: "using" keyword.control.import.spp
+3: "\"" string.quoted.double.spp
+3: "Actor.h" string.quoted.double.spp
+3: "\"" string.quoted.double.spp
+3: ";" punctuation.terminator.statement.spp
+5: "[" meta.attribute.spp punctuation.definition.attribute.begin.spp
+5: "native" meta.attribute.spp entity.other.attribute-name.spp
+5: "," meta.attribute.spp punctuation.separator.comma.spp
+5: "handle" meta.attribute.spp entity.other.attribute-name.spp
+5: "(" meta.attribute.spp
+5: "\"" meta.attribute.spp string.quoted.double.spp
+5: "Actor" meta.attribute.spp string.quoted.double.spp
+5: "\"" meta.attribute.spp string.quoted.double.spp
+5: ")" meta.attribute.spp
+5: "]" meta.attribute.spp punctuation.definition.attribute.end.spp
+6: "[" meta.attribute.spp punctuation.definition.attribute.begin.spp
+6: "value" meta.attribute.spp entity.other.attribute-name.spp
+6: "]" meta.attribute.spp punctuation.definition.attribute.end.spp
+6: "class" storage.type.class.spp
+6: "Stats" entity.name.type.class.spp
+6: ":" punctuation.separator.inheritance.spp
+6: "Actor" entity.other.inherited-class.spp
+6: " {" 
+7: "float" storage.type.builtin.spp
+7: " hp " 
+7: "=" keyword.operator.assignment.spp
+7: "1.5f" constant.numeric.float.spp
+7: ";" punctuation.terminator.statement.spp
+8: "ulong" storage.type.builtin.spp
+8: " big " 
+8: "=" keyword.operator.assignment.spp
+8: "0xFFul" constant.numeric.hex.spp
+8: ";" punctuation.terminator.statement.spp
+9: "int" storage.type.builtin.spp
+9: " Level { " 
+9: "get" storage.modifier.spp
+9: ";" punctuation.terminator.statement.spp
+9: "private" storage.modifier.spp
+9: "set" storage.modifier.spp
+9: ";" punctuation.terminator.statement.spp
+9: " } " 
+9: "=" keyword.operator.assignment.spp
+9: "1" constant.numeric.integer.spp
+9: ";" punctuation.terminator.statement.spp
+10: "override" storage.modifier.spp
+10: "void" storage.type.spp
+10: "Tick" entity.name.function.spp
+10: "(" 
+10: "float" storage.type.builtin.spp
+10: " dt) {" 
+11: "var" storage.type.spp
+11: " s " 
+11: "=" keyword.operator.assignment.spp
+11: "\"" string.quoted.double.spp
+11: "hp " string.quoted.double.spp
+11: "${" string.quoted.double.spp meta.interpolation.spp punctuation.section.interpolation.begin.spp
+11: "this" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp variable.language.spp
+11: "." string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp punctuation.accessor.spp
+11: "hp" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp
+11: ":.2f" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp constant.other.format-spec.spp
+11: "}" string.quoted.double.spp meta.interpolation.spp punctuation.section.interpolation.end.spp
+11: " of " string.quoted.double.spp
+11: "${" string.quoted.double.spp meta.interpolation.spp punctuation.section.interpolation.begin.spp
+11: "Max" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp entity.name.function.spp
+11: "(a" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp
+11: "," string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp punctuation.separator.comma.spp
+11: "{" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp
+11: "1" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp constant.numeric.integer.spp
+11: "}" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp
+11: "[" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp
+11: "0" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp constant.numeric.integer.spp
+11: "])" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp
+11: "}" string.quoted.double.spp meta.interpolation.spp punctuation.section.interpolation.end.spp
+11: "\\$" string.quoted.double.spp constant.character.escape.spp
+11: "{no} " string.quoted.double.spp
+11: "\\\"" string.quoted.double.spp constant.character.escape.spp
+11: "q" string.quoted.double.spp
+11: "\\\"" string.quoted.double.spp constant.character.escape.spp
+11: "\"" string.quoted.double.spp
+11: ";" punctuation.terminator.statement.spp
+12: "foreach" keyword.control.flow.spp
+12: " (" 
+12: "var" storage.type.spp
+12: " x " 
+12: "in" keyword.control.flow.spp
+12: "this" variable.language.spp
+12: "." punctuation.accessor.spp
+12: "items) { x " 
+12: "+=" keyword.operator.assignment.spp
+12: "1e-3" constant.numeric.float.spp
+12: "+" keyword.operator.arithmetic.spp
+12: "2u" constant.numeric.integer.spp
+12: ";" punctuation.terminator.statement.spp
+12: " }" 
+13: "try" keyword.control.exception.spp
+13: " { " 
+13: "throw" keyword.control.exception.spp
+13: " std" 
+13: "." punctuation.accessor.spp
+13: "runtime_error" entity.name.function.spp
+13: "(" 
+13: "\"" string.quoted.double.spp
+13: "e" string.quoted.double.spp
+13: "\"" string.quoted.double.spp
+13: ")" 
+13: ";" punctuation.terminator.statement.spp
+13: " } " 
+13: "catch" keyword.control.exception.spp
+13: " (std" 
+13: "." punctuation.accessor.spp
+13: "exception" 
+13: "&" keyword.operator.arithmetic.spp
+13: " e) { } " 
+13: "finally" keyword.control.exception.spp
+13: " { }" 
+14: "if" keyword.control.flow.spp
+14: " (a " 
+14: "is" keyword.operator.word.spp
+14: " Stats " 
+14: "&&" keyword.operator.logical.spp
+14: " b " 
+14: "as" keyword.operator.word.spp
+14: " Foo) { " 
+14: "return" keyword.control.flow.spp
+14: "null" constant.language.spp
+14: ";" punctuation.terminator.statement.spp
+14: " } " 
+14: "/*" comment.block.spp
+14: " block " comment.block.spp
+14: "*/" comment.block.spp
+15: "    }" 
+16: "}" 
+17: "enum" storage.type.class.spp
+17: "Mode" entity.name.type.class.spp
+17: " { Idle" 
+17: "," punctuation.separator.comma.spp
+17: " Walk }" 
