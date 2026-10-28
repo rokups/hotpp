@@ -2,6 +2,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <new>
@@ -54,6 +55,13 @@ inline void init_state(ShellBase* self, ClassRecord* cls)
 inline void destroy_state(ShellBase* self)
 {
     if (!self->state) return;
+    if (self->cls->dtor) {  // the script destructor of the current generation
+        try {
+            self->cls->dtor(self);
+        } catch (...) {
+            std::fprintf(stderr, "[script] ERROR: the destructor of %s threw\n", self->cls->name);
+        }
+    }
     untrack_object(self);
     char* mem = static_cast<char*>(self->state);
     destroy_fields(self->cls->layout, mem);

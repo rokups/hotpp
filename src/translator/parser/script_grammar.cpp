@@ -38,6 +38,7 @@ SPP_ERROR_TAG(e_import_name, "using needs a header name");
 SPP_ERROR_TAG(e_import_arg, "using needs a string or <header>");
 SPP_ERROR_TAG(e_import_close, "using <...> needs a closing '>'");
 SPP_ERROR_TAG(e_accessor, "expected 'get' or 'set'");
+SPP_ERROR_TAG(e_super, "expected 'super(...)' after ':' of a constructor");
 
 // The text of a span.
 std::string_view span_text(const ParseState& st, Span sp)
@@ -63,11 +64,19 @@ struct AttrItem {
     std::vector<std::string> args;
 };
 
+// The base call of a constructor: ": super(args)".
+struct SuperCall {
+    const char* pos = nullptr;  // the "super" word
+    Span args;                  // the text between the parentheses
+};
+
 struct MethodRest {
     std::string name;
     std::vector<ast::Param> params;
     std::string ret;
     const char* arrow = nullptr;  // the removed "->", or null
+    const char* super_pos = nullptr;  // the "super" word of a base call, or null
+    Span super_args;
     Span body;
 };
 
@@ -96,8 +105,10 @@ struct PropRest {
 };
 
 struct Member {
-    enum Kind { None, IsMethod, IsField, IsProp } kind = None;
+    enum Kind { None, IsMethod, IsField, IsProp, IsCtor, IsDtor } kind = None;
     ast::Method method;
+    ast::Ctor ctor;          // a member with no type: the add step checks the name
+    std::string ctor_name;
     ast::Field field;
     ast::Property prop;
     bool get_has_access = false, set_has_access = false;  // an access word on the accessor
@@ -194,7 +205,15 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
             st.error(a->pos, "[alias] applies to fields only");
     }
     const Mods mods = mods_of(st, mods_in);
-    if (m.kind == Member::IsField || m.kind == Member::IsProp) {
+    if (m.kind == Member::IsDtor) {
+        m.method.access = mods.access;
+        for (const ModTok& t : mods.kind_toks)
+            st.error(t.pos, "'" + t.word + "' is not valid on a destructor");
+    } else if (m.kind == Member::IsCtor) {
+        m.ctor.access = mods.access;
+        for (const ModTok& t : mods.kind_toks)
+            st.error(t.pos, "'" + t.word + "' is not valid on a constructor");
+    } else if (m.kind == Member::IsField || m.kind == Member::IsProp) {
         if (m.kind == Member::IsField) {
             m.field.access = mods.access;
         } else {
@@ -435,18 +454,35 @@ struct arrow_p : lexy::token_production {
 };
 
 // The part of a method after the name: params, an old "->" return type and body.
+constexpr auto kw_super = LEXY_KEYWORD("super", id);
+
+// ": super(args)". The args stay a raw span. The call is valid in a constructor only.
+struct super_call_p {
+    static constexpr auto rule =
+        dsl::lit_c<':'> + dsl::position + (kw_super | dsl::else_ >> dsl::error<e_super>) +
+        dsl::p<scan_until<paren_cfg>> + dsl::lit_c<')'>;
+    static constexpr auto value = lexy::callback<SuperCall>(
+        [](const char* pos, Span args) { return SuperCall{pos, args}; });
+};
+
 struct method_tail {
     static constexpr auto rule = dsl::p<params_p> +
                                  dsl::opt(dsl::peek(LEXY_LIT("->")) >> dsl::p<arrow_p>) +
+                                 dsl::opt(dsl::peek(dsl::lit_c<':'>) >> dsl::p<super_call_p>) +
                                  dsl::p<scan_balanced>;
     static constexpr auto value = lexy::bind(
-        lexy::callback<MethodRest>([](const ParseState& st, auto&& params, auto&& arrow, Span body) {
+        lexy::callback<MethodRest>([](const ParseState& st, auto&& params, auto&& arrow, auto&& sup,
+                                      Span body) {
             MethodRest r;
             if constexpr (!std::is_same_v<std::decay_t<decltype(params)>, lexy::nullopt>)
                 r.params = std::move(params);
             if constexpr (!std::is_same_v<std::decay_t<decltype(arrow)>, lexy::nullopt>) {
                 r.arrow = arrow.pos;
                 r.ret = type_of(st, arrow.type);
+            }
+            if constexpr (!std::is_same_v<std::decay_t<decltype(sup)>, lexy::nullopt>) {
+                r.super_pos = sup.pos;
+                r.super_args = sup.args;
             }
             r.body = body;
             return r;
@@ -613,11 +649,32 @@ struct typed_member {
                std::string name, MethodRest&& rest) {
                 Member m;
                 check_name(st, name_pos, name);
+                if (only_blank(span_text(st, type))) {
+                    // No type: a constructor, when the name is the name of the class. The step
+                    // that adds the members to the class checks the name.
+                    m.kind = Member::IsCtor;
+                    ast::Ctor& c = m.ctor;
+                    m.ctor_name = std::move(name);
+                    c.params = std::move(rest.params);
+                    c.body_span = rest.body;
+                    c.pos = st.offset(name_pos);
+                    c.line = st.map->line(c.pos);
+                    c.end_pos = rest.body.end;
+                    c.end_line = st.map->line(c.end_pos);
+                    if (rest.arrow)
+                        st.error(rest.arrow, "'->' return type is removed; write the type before the name");
+                    if (rest.super_pos) {
+                        c.has_super = true;
+                        c.super_span = rest.super_args;
+                        c.super_pos = st.offset(rest.super_pos);
+                    }
+                    return m;
+                }
                 m.kind = Member::IsMethod;
                 ast::Method& me = m.method;
                 std::string ret = type_of(st, type);
-                if (only_blank(span_text(st, type)))
-                    st.error(start, "a method needs a return type; write 'Ret name(...)'");
+                if (rest.super_pos)
+                    st.error(rest.super_pos, "only a constructor can call 'super(...)' after the parameters");
                 if (rest.arrow)
                     st.error(rest.arrow,
                              "'->' return type is removed; write the type before the name");
@@ -676,6 +733,32 @@ struct mods_p {
     static constexpr auto value = lexy::as_list<std::vector<ModTok>>;
 };
 
+// "~Name() { body }". The add step checks the name.
+struct dtor_p {
+    static constexpr auto rule = dsl::position + dsl::lit_c<'~'> + dsl::position +
+                                 dsl::p<name_p<e_member_name>> + dsl::p<method_tail>;
+    static constexpr auto value = lexy::bind(
+        lexy::callback<Member>([](const ParseState& st, const char* start, const char* name_pos,
+                                  std::string name, MethodRest&& rest) {
+            Member m;
+            m.kind = Member::IsDtor;
+            ast::Method& me = m.method;
+            if (!rest.params.empty())
+                st.error(name_pos, "a destructor has no parameters");
+            if (rest.super_pos)
+                st.error(rest.super_pos, "only a constructor can call 'super(...)'");
+            m.ctor_name = name;
+            me.name = "~" + name;
+            me.body_span = rest.body;
+            me.pos = st.offset(start);
+            me.line = st.map->line(me.pos);
+            me.end_pos = rest.body.end;
+            me.end_line = st.map->line(me.end_pos);
+            return m;
+        }),
+        lexy::parse_state, lexy::values);
+};
+
 struct member_p {
     static constexpr auto rule =
         dsl::position +
@@ -683,6 +766,7 @@ struct member_p {
         dsl::opt(dsl::peek(modifier_set) >> dsl::p<mods_p>) +
         (dsl::eof >> dsl::error<e_unexpected_eof> |
          dsl::capture(kw_function) >> dsl::p<method_rest> |
+         dsl::peek(dsl::lit_c<'~'>) >> dsl::p<dtor_p> |
          dsl::peek(old_field_ahead) >> dsl::error<e_old_field>(id) |
          dsl::peek(id) >> dsl::p<typed_member> | dsl::else_ >> dsl::error<e_member>(junk));
     static constexpr auto value = lexy::bind(
@@ -838,11 +922,21 @@ struct stub_name_p {
         [](std::string&& name, std::string&& suffix) { return std::move(name) + suffix; });
 };
 
-void add_members(ast::ClassDef&, lexy::nullopt) {}
-void add_members(ast::ClassDef& c, std::vector<Member>&& members)
+void add_members(const ParseState&, ast::ClassDef&, lexy::nullopt) {}
+void add_members(const ParseState& st, ast::ClassDef& c, std::vector<Member>&& members)
 {
     for (Member& m : members) {
-        if (m.kind == Member::IsMethod)
+        if (m.kind == Member::IsDtor) {
+            if (m.ctor_name == c.name)
+                c.dtors.push_back(std::move(m.method));
+            else
+                st.error(st.base + m.method.pos, "the name of a destructor is '~" + c.name + "'");
+        } else if (m.kind == Member::IsCtor) {
+            if (m.ctor_name == c.name)
+                c.ctors.push_back(std::move(m.ctor));
+            else
+                st.error(st.base + m.ctor.pos, "a method needs a return type; write 'Ret name(...)'");
+        } else if (m.kind == Member::IsMethod)
             c.methods.push_back(std::move(m.method));
         else if (m.kind == Member::IsField)
             c.fields.push_back(std::move(m.field));
@@ -905,7 +999,7 @@ struct class_p {
                             st.error(u.first,
                                      "attribute '" + u.second + "' is not allowed on a script class");
                 }
-                add_members(c, std::move(members));
+                add_members(st, c, std::move(members));
                 return t;
             }),
         lexy::parse_state, lexy::values);
@@ -967,6 +1061,11 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
     const ParseInput in{text, &map};
     for (ast::ClassDef& c : script.classes) {
         for (ast::Method& m : c.methods) m.body = parse_block(in, m.body_span, diag);
+        for (ast::Method& d : c.dtors) d.body = parse_block(in, d.body_span, diag);
+        for (ast::Ctor& k : c.ctors) {
+            k.body = parse_block(in, k.body_span, diag);
+            if (k.has_super) k.super_args = parse_expression_list(in, k.super_span, diag);
+        }
         for (ast::Field& f : c.fields)
             if (f.has_init && !only_blank(span_text(st, f.init_span)))
                 f.init = parse_expression(in, f.init_span, diag);

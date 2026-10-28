@@ -1,0 +1,34 @@
+// Generation 2 of the Squad and Spawner classes: constructor, base call and destructor (S4).
+// Squad builds its base with super(label). Spawner builds a Squad with "new" in each Tick.
+using "Actor.h";
+using <memory>;
+using <string>;
+
+class Squad : Actor {
+    int size = 5;
+    int ctor_runs = 0;
+
+    Squad(std.string label, int extra) : super(label) {
+        this.size = this.size + extra;
+        this.ctor_runs = this.ctor_runs + 1;
+        this.Position.x = extra * 10;
+    }
+
+    ~Squad() {
+        std.printf("[ctor_v2] %s gone\n", this.Name.c_str());
+    }
+}
+
+class Spawner : Actor {
+    int spawned = 0;
+    std.string last = "";
+    float seen_x = 0.0;
+    std.shared_ptr<Squad> kid;
+
+    override void Tick(float dt) {
+        this.kid = std.shared_ptr<Squad>(new Squad(std.string("unit"), 2));
+        this.last = this.kid.Name;
+        this.seen_x = this.kid.Position.x;
+        this.spawned = this.spawned + 1;
+    }
+}

@@ -53,6 +53,25 @@ struct ClassRecord {
     uint64_t shell_hash;    // hash of the shell layout (see shell_layout_hash)
     // The onReload hook of the script class, or null. The commit calls it after the migration.
     void (*on_reload)(ShellBase* self, const OldState& old) = nullptr;
+    // Script constructors (design 7.3). The first record of a class keeps "construct" and
+    // "construct_key". They live in the module that made the shell.
+    //  - construct: makes a shell and gives it the base arguments. "args" points to a
+    //    std::tuple of the decayed types of the "super(...)" arguments. Null when no code
+    //    of the script builds the class with "new" and the class has no constructor.
+    //  - construct_key: typeid(tuple).name() of those arguments in the generation that
+    //    made "construct". A later generation that changes the types cannot build the class.
+    //  - ctor_default: runs the constructor with default values on a new shell. The
+    //    factory of the engine calls it. A commit copies it from the new record. Null: no
+    //    constructor.
+    //  - canonical: set by a commit in a record of a later generation. It points to the
+    //    first record of the class.
+    ShellBase* (*construct)(const void* args) = nullptr;
+    const char* construct_key = nullptr;
+    void (*ctor_default)(ShellBase* self) = nullptr;
+    ClassRecord* canonical = nullptr;
+    // The script destructor, or null. destroy_state calls it before it destroys the fields.
+    // A commit copies it from the new record, so the current generation runs at destruction.
+    void (*dtor)(ShellBase* self) = nullptr;
 };
 
 }  // namespace spp

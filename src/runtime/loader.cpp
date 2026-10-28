@@ -270,6 +270,9 @@ bool Loader::commit_pending(std::string& error)
             r->layout = pc.incoming->layout;
             r->generation = pc.incoming->generation;
             r->on_reload = pc.incoming->on_reload;
+            r->ctor_default = pc.incoming->ctor_default;
+            r->dtor = pc.incoming->dtor;
+            pc.incoming->canonical = r;
         } else {
             registry_.add(pc.incoming, pc.create);
         }

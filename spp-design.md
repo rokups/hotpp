@@ -716,7 +716,7 @@ class Player : Actor {
 | `class Player : Actor { ... }` | `Player_Shell` (once) plus `PlayerState_gN`, free functions and a reflection table | runtime model |
 | `float health = 100.0;` | `float health;` in the state struct plus `init_health(self, field)` that runs `100.0f` | runtime model |
 | `[alias("hp")]` | `alias = "hp"` in the FieldInfo | runtime model |
-| `Player(FString name) : super(name)` | Planned. `spp::construct<Player_Shell>(name)` then `Player__init_gN(self, name)`. The `super` arguments can use parameters only. | runtime model |
+| `Player(FString name) : super(name)` | Done (S4). The canonical record of generation 1 builds the shell from the `super` arguments (`spp::construct_shell`). Then `Player__ctor(self, name)` runs. The `super` arguments can use parameters only. | runtime model |
 | `override void Tick(float dt)` | `void Player__Tick_gN(Player_Shell* self, float dt)` installed in `SLOT_Tick`. The translator matches the name and the parameter types against the libclang list. A match makes the function an override, and `override` is required. | runtime model |
 | `public`, `private`, `protected` | The parser reads and stores the access word. The translator does not enforce it. | none |
 | `virtual`, `new` | The parser reads and stores the word. It has no effect yet. | none |
@@ -762,7 +762,7 @@ class Level : Actor {
 }
 ```
 
-`new T(args)` for a script class calls the shell constructor and the script constructor. `new T(args)` for a native class is C++ `new`. The result type follows section 7.10: the handle of the class, or a value. Ownership follows the handle. The examples above that show raw pointers use the engine's intrusive handle. The parser does not support `new` expressions yet.
+`new T(args)` for a script class calls the shell constructor and the script constructor. `new T(args)` for a native class is C++ `new`. The result type follows section 7.10: the handle of the class, or a value. Ownership follows the handle. The examples above that show raw pointers use the engine's intrusive handle. In the prototype (S4), `new T(args)` of a script class gives a raw shell pointer. The limits are in `HANDOFF.md`.
 
 ### 7.5 Lambdas
 

@@ -237,15 +237,17 @@ struct Checker {
     }
 
     // ---- one body
-    void body(const Method& m)
+    void body(const Method& m) { body(m.params, m.body); }
+
+    void body(const std::vector<Param>& params, const BlockStmt& block)
     {
         locals.clear();
         borrowed.clear();
-        for (const Param& p : m.params) {
+        for (const Param& p : params) {
             locals.insert(p.name);
             if (p.mode != PassMode::Value || is_borrowed_type(p.type)) borrowed.insert(p.name);
         }
-        walk_block(m.body);
+        walk_block(block);
     }
 
     void walk_block(const BlockStmt& b)
@@ -349,6 +351,8 @@ struct Checker {
             }
             body(m);
         }
+        for (const Ctor& c : cd.ctors) body(c.params, c.body);
+        for (const Method& d : cd.dtors) body(d);
     }
 };
 
@@ -358,6 +362,70 @@ void check_class(const ClassDef& cd, const TypeModel& types, const LineMap& map,
                  bool strict_borrowed)
 {
     Checker{cd, types, map, diag, strict_borrowed, {}, {}, {}, {}, {}, {}, {}}.run();
+}
+
+void check_ctors(const ClassDef& cd, const LineMap& map, Diagnostics& diag)
+{
+    std::set<std::string> members;  // the names that a super argument cannot use
+    for (const Field& f : cd.fields) members.insert(f.name);
+    for (const Method& m : cd.methods) members.insert(m.name);
+    for (const Property& p : cd.props) members.insert(p.name);
+    if (cd.dtors.size() > 1)
+        diag.add(cd.dtors[1].pos, map, "class '" + cd.name + "' has more than one destructor");
+    if (cd.ctors.size() > 1)
+        diag.add(cd.ctors[1].pos, map, "class '" + cd.name + "' has more than one constructor (overloads are not supported)");
+    for (const Ctor& c : cd.ctors) {
+        std::set<std::string> params;
+        for (const Param& p : c.params) {
+            if (p.mode != PassMode::Value)
+                diag.add(c.pos, map, "constructor parameter '" + p.name + "' cannot be 'ref' or 'out'");
+            if (!params.insert(p.name).second)
+                diag.add(c.pos, map, "constructor parameter '" + p.name + "' is declared twice");
+        }
+        if (c.super_args.empty()) continue;
+        const std::string rule = "the arguments of 'super(...)' may use the constructor parameters only";
+        std::set<std::pair<uint32_t, std::string>> seen;
+        auto bad = [&](uint32_t pos, const std::string& what) {
+            if (seen.insert({pos, what}).second) diag.add(pos, map, what + ": " + rule);
+        };
+        auto fe = [&](const Expr& e) {
+            if (auto* t = std::get_if<ThisExpr>(&e.v)) bad(t->pos, "'this' is not allowed");
+            else if (auto* sp = std::get_if<SuperExpr>(&e.v)) bad(sp->pos, "'super' is not allowed");
+            else if (auto* l = std::get_if<LambdaExpr>(&e.v)) bad(l->pos, "a lambda is not allowed");
+            else if (auto* n = std::get_if<NameExpr>(&e.v)) {
+                if (!n->parts.empty() && !params.count(n->parts[0]) && members.count(n->parts[0]))
+                    bad(n->pos, "'" + n->parts[0] + "' is a member of the class");
+            }
+        };
+        auto fs = [](const Stmt&) {};
+        auto w = make_walker(fe, fs);
+        for (const ExprP& a : c.super_args) w.expr(a);
+    }
+}
+
+std::set<std::string> new_targets(const Script& sc)
+{
+    std::set<std::string> out;
+    auto fe = [&](const Expr& e) {
+        if (auto* n = std::get_if<NewExpr>(&e.v)) out.insert(n->type);
+    };
+    auto fs = [](const Stmt&) {};
+    auto w = make_walker(fe, fs);
+    for (const ClassDef& cd : sc.classes) {
+        for (const Field& f : cd.fields) w.expr(f.init);
+        for (const Method& m : cd.methods) w.block(m.body);
+        for (const Method& d : cd.dtors) w.block(d.body);
+        for (const Ctor& c : cd.ctors) {
+            w.block(c.body);
+            for (const ExprP& a : c.super_args) w.expr(a);
+        }
+        for (const Property& p : cd.props) {
+            w.expr(p.init);
+            if (p.get_body) w.block(*p.get_body);
+            if (p.set_body) w.block(*p.set_body);
+        }
+    }
+    return out;
 }
 
 std::set<std::string> used_type_names(const Script& sc)
@@ -393,6 +461,11 @@ std::set<std::string> used_type_names(const Script& sc)
             add(m.ret);
             for (const Param& p : m.params) add(p.type);
             w.block(m.body);
+        }
+        for (const Method& d : cd.dtors) w.block(d.body);
+        for (const Ctor& c : cd.ctors) {
+            for (const Param& p : c.params) add(p.type);
+            w.block(c.body);
         }
         for (const Property& p : cd.props) {
             add(p.type);

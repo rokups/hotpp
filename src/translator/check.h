@@ -29,6 +29,15 @@ namespace sppc {
 void check_class(const ast::ClassDef& cd, const TypeModel& types, const LineMap& map, Diagnostics& diag,
                  bool strict_borrowed);
 
+// Checks the constructors of a class: one constructor, no "ref" or "out" parameter, and the
+// arguments of "super(...)" use the constructor parameters only (design 7.3). Each error goes
+// to the diagnostics.
+void check_ctors(const ast::ClassDef& cd, const LineMap& map, Diagnostics& diag);
+
+// The type names that a "new" expression names, in all classes of the script. The translator
+// emits a "new" function for each script class in the set.
+std::set<std::string> new_targets(const ast::Script& sc);
+
 // The C++ type names that the script writes in declarations, "new" and lambda parameters.
 // The translator asks libclang about them when the stub "class *;" is active.
 std::set<std::string> used_type_names(const ast::Script& sc);

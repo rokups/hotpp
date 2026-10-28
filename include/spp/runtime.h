@@ -12,6 +12,7 @@
 #include <new>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <typeinfo>
 #include <unordered_map>

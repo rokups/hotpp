@@ -256,7 +256,16 @@ struct Lowerer {
     {
         const uint32_t pos = n.pos;
         if (cx.script_classes.count(n.type)) {
-            error(pos, "new of a script class is not supported yet");
+            if (!cx.new_classes.count(n.type)) {
+                error(pos, "class '" + n.type + "' must come before the class that builds it with 'new'");
+                return;
+            }
+            exprs(n.args);
+            CallExpr c;
+            c.pos = pos;
+            c.callee = raw(n.type + "__new", pos);
+            c.args = std::move(n.args);
+            e = make_expr(std::move(c));
             return;
         }
         exprs(n.args);

@@ -23,6 +23,23 @@ inline auto call(const ClassRecord* cls, unsigned slot, A&&... a)
     return reinterpret_cast<Sig*>(cls->slots[slot])(std::forward<A>(a)...);
 }
 
+// Builds the shell of a script object in the module that made the class (design 7.3).
+// "rec" is the record of the running generation. "key" is typeid(std::tuple<...>).name()
+// of the base arguments in "args". The first record of the class holds the constructor of
+// the shell, so every object has the vtable of that module. The caller runs the script
+// constructor on the shell.
+inline ShellBase* construct_shell(const ClassRecord* rec, const char* key, const void* args)
+{
+    const ClassRecord* canon = rec->canonical ? rec->canonical : rec;
+    if (!canon->construct)
+        throw std::runtime_error(std::string("class ") + rec->name +
+                                 " has no constructor entry in its first generation; restart the program");
+    if (std::strcmp(canon->construct_key, key) != 0)
+        throw std::runtime_error(std::string("class ") + rec->name +
+                                 ": the types of the 'super(...)' arguments changed since the first generation");
+    return canon->construct(args);
+}
+
 // Property access on an object other than "this" (lower.h). "p.P" becomes
 // "Cls__get_P(spp::shell_of<Cls_Shell>(p, "Cls"))". The helper accepts a pointer and
 // a reference. The object must be a live script object of the class "cls". Else the

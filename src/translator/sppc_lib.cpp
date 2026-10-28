@@ -1007,9 +1007,14 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
 
     std::vector<std::pair<std::string, bool>> registers;  // class name, for the register function
     std::vector<std::string> thunk_regs;
+    // The script classes that a "new" expression names (design 7.3). They get a "new" function.
+    const std::set<std::string> new_set = sppc::new_targets(sc);
+    std::set<std::string> new_ready;  // the classes with a "new" function that are emitted so far
 
     for (ClassDef& cd : sc.classes) {
         const std::string cn = cd.name;
+        const bool has_ctor = !cd.ctors.empty(), has_dtor = !cd.dtors.empty();
+        const bool gen_new = has_ctor || new_set.count(cn) > 0;
         const std::string P = cn + "__";
         auto slot_id = [&](const std::string& n) { return (multi ? cn + "_" : std::string()) + "SLOT_" + n; };
 
@@ -1024,11 +1029,20 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         std::string ctor_args;
         if (bi.ctor_kind == 1) ctor_args = ", std::string(\"" + cn + "\")";
         else if (bi.ctor_kind == 2) ctor_args = ", \"" + cn + "\"";
-        else if (!bi.default_ctor)
+        else if (!bi.default_ctor && !(has_ctor && cd.ctors[0].has_super))
             fail_at(map, cd.pos, "base class '" + cd.base + "' has no default constructor and no constructor that takes a name");
 
         // ---- check the script members
         desugar_props(cd, map);
+        {
+            const size_t before = g_diag.items.size();
+            sppc::check_ctors(cd, map, g_diag);
+            if (g_diag.items.size() != before) throw TranslateAbort{};
+        }
+        for (const sppc::ast::Ctor& c : cd.ctors)
+            for (const Param& p : c.params)
+                if (p.name == "self" || p.name == "st" || p.name == "a")
+                    fail_at(map, c.pos, "parameter name '" + p.name + "' is reserved");
         std::set<std::string> field_names;
         for (const Field& f : cd.fields)
             if (!field_names.insert(f.name).second) fail_at(map, f.pos, "field '" + f.name + "' is declared twice");
@@ -1152,6 +1166,9 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             if (!m.ret.empty()) m.ret = types.storage(m.ret);
         }
 
+        for (sppc::ast::Ctor& c : cd.ctors)
+            for (Param& p : c.params) p.type = types.param(p.type);
+
         // ---- slots: native virtuals first, then the script functions
         std::vector<Slot> slots;
         std::map<std::string, int> name_count;
@@ -1208,6 +1225,8 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         base_cx.map = &map;
         base_cx.types = &types;
         for (const auto& sc_cls : sc.classes) base_cx.script_classes.insert(sc_cls.name);
+        if (gen_new) new_ready.insert(cn);
+        base_cx.new_classes = new_ready;
 
         const std::string S = cn + "State_g" + std::to_string(opt.gen);
         const std::string shell = cn + "_Shell";
@@ -1321,6 +1340,72 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 o.w("static " + fn_ret(m) + " " + P + m.name + "(" + shell + "* self" + param_decl(m) + ");\n");
         o.w("\n");
 
+        // The constructor (design 7.3). The constructor body is not a slot. A "new" function
+        // builds the shell in the module that made the class, then runs the body here.
+        Method ctor_m;
+        if (has_ctor) {
+            ctor_m.name = cn;
+            ctor_m.params = cd.ctors[0].params;
+            ctor_m.pos = cd.ctors[0].pos;
+            o.w("static void " + P + "ctor(" + shell + "* self" + param_decl(ctor_m) + ");\n");
+        }
+        if (has_dtor) o.w("static void " + P + "dtor(" + shell + "* self);\n");
+        if (gen_new) {
+            std::string pd = param_decl(ctor_m), names, declvals, defaults;
+            if (!pd.empty()) pd = pd.substr(2);
+            for (size_t i = 0; i < ctor_m.params.size(); ++i) {
+                const Param& p = ctor_m.params[i];
+                names += (i ? ", " : "") + p.name;
+                declvals += (i ? ", " : "") + ("std::declval<" + p.type + ">()");
+                defaults += (i ? ", " : "") + ("std::decay_t<" + p.type + ">()");
+            }
+            std::string ctor_fwd = arg_list(ctor_m);
+            std::string sup_text;
+            int sup_line = cd.line;
+            if (has_ctor) sup_line = cd.ctors[0].line;
+            if (has_ctor && cd.ctors[0].has_super) {
+                RCtx fc = base_cx;
+                fc.allow_this = false;
+                fc.where = cn + "::" + cn;
+                sppc::add_params(fc, ctor_m.params);
+                std::vector<std::string> parts;
+                for (ExprP& a : cd.ctors[0].super_args) {
+                    sppc::lower_expr(a, fc, g_diag);
+                    if (!g_diag.items.empty()) throw TranslateAbort{};
+                    parts.push_back(sppc::ast::print(*a));
+                }
+                sup_text = str_join(parts, ", ");
+            } else if (!ctor_args.empty()) {
+                sup_text = ctor_args.substr(2);
+            }
+            o.w("#line " + std::to_string(sup_line) + " \"" + esc(opt.input) + "\"\n");
+            o.w("[[maybe_unused]] static auto " + P + "super_args(" + pd + ")\n{\n    return std::make_tuple(" + sup_text +
+                ");\n}\n");
+            reset();
+            o.w("using " + cn + "_SuperArgs = decltype(" + P + "super_args(" + declvals + "));\n");
+            o.w("using " + cn + " = " + shell + ";\n\n");
+            o.w("// Makes the shell with the base arguments. Only the first generation of the class runs it.\n");
+            o.w("static spp::ShellBase* " + P + "construct(const void* args)\n{\n    const auto& t = *static_cast<const " +
+                cn + "_SuperArgs*>(args);\n    return std::apply([](const auto&... x) -> spp::ShellBase* { return new " +
+                shell + "(spp::Construct{}, x...); }, t);\n}\n\n");
+            o.w("[[maybe_unused]] static " + shell + "* " + P + "new(" + pd + ")\n{\n");
+            o.w("    auto sa = " + P + "super_args(" + names + ");\n");
+            o.w("    auto* self = static_cast<" + shell + "*>(spp::construct_shell(&" + cn + "_record, typeid(" + cn +
+                "_SuperArgs).name(), &sa));\n");
+            if (has_ctor) {
+                o.w("    try {\n        " + P + "ctor(self" + ctor_fwd + ");\n    } catch (...) {\n        delete static_cast<" + B +
+                    "*>(self);\n        throw;\n    }\n");
+            }
+            o.w("    return self;\n}\n\n");
+            if (has_ctor) {
+                o.w("static void " + P + "ctor_default(spp::ShellBase* s)\n{\n    " + P + "ctor(static_cast<" + shell +
+                    "*>(s)" + (defaults.empty() ? "" : ", " + defaults) + ");\n}\n\n");
+            }
+        }
+        if (has_dtor)
+            o.w("static void " + P + "dtor_slot(spp::ShellBase* s)\n{\n    " + P + "dtor(static_cast<" + shell +
+                "*>(s));\n}\n\n");
+
         auto emit_body = [&](Method& m, bool is_fn, const std::string& sym, const std::string& ret,
                              const std::string& what) {
             RCtx cx = base_cx;
@@ -1364,6 +1449,11 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             o.w("}\n\n");
         };
 
+        if (has_ctor) {
+            ctor_m.body = std::move(cd.ctors[0].body);
+            emit_body(ctor_m, true, P + "ctor", "void", cn + "::" + cn);
+        }
+        if (has_dtor) emit_body(cd.dtors[0], true, P + "dtor", "void", cn + "::~" + cn);
         for (Method& m : cd.methods) {
             if (hook_of(m) == Hook::Convert) {
                 emit_convert(m);
@@ -1428,12 +1518,32 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                     "onReload(static_cast<" + shell + "*>(s), old);\n}\n\n");
                 on_reload_init = " " + P + "onReload_hook,\n";
             }
+        // After on_reload: construct, construct_key, ctor_default, canonical and dtor.
+        std::string ctor_init;
+        if (gen_new || has_dtor)
+            ctor_init = std::string(on_reload_init.empty() ? "    nullptr,\n" : "") + "    " +
+                        (gen_new ? "&" + P + "construct, typeid(" + cn + "_SuperArgs).name()" : "nullptr, nullptr") +
+                        ", " + (has_ctor ? "&" + P + "ctor_default" : std::string("nullptr")) + ", nullptr, " +
+                        (has_dtor ? "&" + P + "dtor_slot" : std::string("nullptr")) + ",\n";
         o.w("spp::ClassRecord " + cn + "_record = {\n    \"" + cn + "\", GEN, " + cn + "_slots, " +
             slot_id("COUNT") + ", &" + cn + "_layout, nullptr,\n    \"" + B + "\", spp::shell_layout_hash(\"" +
             B + "\", sizeof(" + shell + "), alignof(" + shell + "), " + std::to_string(native_count) +
-            "),\n" + (on_reload_init.empty() ? "" : "   " + on_reload_init) + "};\n\n");
-        o.w("static spp::Instance " + cn + "_create()\n{\n    auto* p = new " + shell +
-            "(spp::Construct{}" + ctor_args + ");\n    return {static_cast<" + B + "*>(p), p};\n}\n\n");
+            "),\n" + (on_reload_init.empty() ? "" : "   " + on_reload_init) + ctor_init + "};\n\n");
+        if (has_ctor) {
+            // The factory of the engine has no arguments. It builds the base and runs the
+            // current constructor with default values.
+            std::string defaults;
+            for (size_t i = 0; i < ctor_m.params.size(); ++i)
+                defaults += (i ? ", " : "") + ("std::decay_t<" + ctor_m.params[i].type + ">()");
+            o.w("static spp::Instance " + cn + "_create()\n{\n    auto sa = " + P + "super_args(" + defaults + ");\n" +
+                "    auto* p = static_cast<" + shell + "*>(" + P + "construct(&sa));\n" +
+                "    try {\n        if (" + cn + "_record.ctor_default) " + cn + "_record.ctor_default(p);\n" +
+                "    } catch (...) {\n        delete static_cast<" + B + "*>(p);\n        throw;\n    }\n" +
+                "    return {static_cast<" + B + "*>(p), p};\n}\n\n");
+        } else {
+            o.w("static spp::Instance " + cn + "_create()\n{\n    auto* p = new " + shell +
+                "(spp::Construct{}" + ctor_args + ");\n    return {static_cast<" + B + "*>(p), p};\n}\n\n");
+        }
         registers.push_back({cn, true});
     }
 

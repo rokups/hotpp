@@ -67,11 +67,21 @@ TEST(HandleLowering, NewCustomHandle)
     EXPECT_EQ(f.expr("new Texture(\"a\")"), "TexPtr<Texture>(new Texture(\"a\"))");
 }
 
-TEST(HandleLowering, NewScriptClassIsAnError)
+TEST(HandleLowering, NewScriptClassCallsTheNewFunction)
+{
+    Fixture f;
+    f.cx.script_classes.insert("Player");
+    f.cx.new_classes.insert("Player");
+    EXPECT_EQ(f.expr("new Player(1, f)"), "Player__new(1, f)");
+    EXPECT_TRUE(f.errors().empty());
+}
+
+TEST(HandleLowering, NewScriptClassBeforeItsDefinitionIsAnError)
 {
     Fixture f;
     f.cx.script_classes.insert("Player");
     f.expr("new Player()");
     ASSERT_EQ(f.errors().size(), 1u);
-    EXPECT_NE(f.errors()[0].find("new of a script class is not supported yet"), std::string::npos);
+    EXPECT_NE(f.errors()[0].find("must come before the class that builds it with 'new'"),
+              std::string::npos);
 }

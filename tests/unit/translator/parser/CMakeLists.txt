@@ -2,6 +2,7 @@
 add_executable(unit_translator_parser_tests
     builtin_type_parse_tests.cpp
     class_member_parse_tests.cpp
+    constructor_parse_tests.cpp
     example_script_parse_tests.cpp
     expression_error_parse_tests.cpp
     expression_limit_parse_tests.cpp

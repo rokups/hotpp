@@ -54,8 +54,11 @@ struct RCtx {
     const LineMap* map = nullptr;
     // The type model. With null, the pass keeps the types as the script writes them.
     const TypeModel* types = nullptr;
-    // The names of all classes of the script. "new" of such a class is an error.
+    // The names of all classes of the script.
     std::set<std::string> script_classes;
+    // The script classes that "new" can build now: the class itself and the classes that the
+    // translator emitted before it. "new C(args)" of such a class becomes "C__new(args)".
+    std::set<std::string> new_classes;
 };
 
 // The context of a class: the fields and the script fns. A body or an initializer

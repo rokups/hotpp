@@ -2,6 +2,7 @@
 add_executable(unit_translator_translate_tests
     alias_translation_tests.cpp
     builtin_type_translation_tests.cpp
+    constructor_translation_tests.cpp
     borrowed_storage_translation_tests.cpp
     default_handle_translation_tests.cpp
     default_value_translation_tests.cpp

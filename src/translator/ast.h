@@ -284,6 +284,21 @@ struct Method {
     uint32_t pos = 0, end_pos = 0;
 };
 
+// A constructor: "Name(T a) : super(args) { body }". The name is the name of the class.
+// The super call is optional. Its arguments may use the parameters only (checked by the
+// translator). The body runs after the state block has its field initializers.
+struct Ctor {
+    std::vector<Param> params;
+    Access access = Access::Public;
+    bool has_super = false;
+    std::vector<ExprP> super_args;
+    Span super_span;  // the raw text between the parentheses of "super(...)"
+    BlockStmt body;   // the statements; the parser fills them from body_span
+    Span body_span;   // the raw text between the braces
+    int line = 0, end_line = 0;
+    uint32_t pos = 0, end_pos = 0, super_pos = 0;  // the name, the "}", the "super" word
+};
+
 // A property: "Type Name { get; set; }" or "Type Name { get { ... } set { ... } }".
 // An accessor without a body is an auto accessor. An auto property can have "= init;".
 // The access on an accessor is parsed and stored. Nothing checks it yet.
@@ -307,6 +322,8 @@ struct ClassDef {
     std::string name, base;
     std::vector<Field> fields;
     std::vector<Method> methods;
+    std::vector<Ctor> ctors;      // the parser accepts more than one; the translator allows one
+    std::vector<Method> dtors;    // "~Name() { }": the name is "~Name"; the translator allows one
     std::vector<Property> props;  // in source order
     bool is_value = false;        // the attribute [value]
     int line = 0;

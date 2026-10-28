@@ -34,7 +34,7 @@ Layout of the sources:
 | Language subset | No brace initialization: use parentheses, `T(args)` and `new T(args)`. `using "Actor.h";` and `using <vector>;`, `class N : Base`, fields `Type name = init;`, `[alias("old")]`, methods `Ret name(T a) { }` with `void` and with the modifiers `override`, `virtual`, `new`, `public`, `private`, `protected`, properties, locals `Type x = e;`, `var x = e;`, `const Type X = e;`, `foreach (Type x in c)`, `throw`, `try`, `catch (Type e)`, `catch (...)`, `finally`, `this`, `super`, arrow lambdas `(T a) => ...`, `Math.Min` as `Math::Min`, native stubs `[native, handle("std::shared_ptr<$T>")] class Weapon;`, `[native, value] class std.string;` and pattern stubs (`std.vector<*>`, `physics.*`), `new T(args)`. Stubs live in the script or in a prelude file (`sppc --emit-cpp --prelude file`, `TranslateOptions::preludes`). Handle types use the storage type in a field, a local, a return and `foreach`; a handle parameter is `const H&`; `.` on a handle uses `spp::deref` (`spp::is_handle` for custom handles). A type with no stub keeps its raw text. `new T(args)` gives `std::make_shared<T>` (shared_ptr), `H(new T(args))` (other handle) or `T(args)`. A reload that changes a field type is rejected and the old generation stays. |
 | Backends | `SPP_BACKEND=CLANG_FILES` (default; external clang++ through files) or `JIT` (in-process Clang plus ORC; no files). Chosen at build time. |
 | Tools | `sppc` (default: precompile to `.so`; `--emit-cpp`: translate to C++), `bench_backends`. |
-| Tests | 419 tests pass in `build` and `build-asan` (CLANG_FILES) after S3. The JIT build adds a few tests. `build-tsan`: 330 of 332 pass. `StatementParseLimits.DeepNesting` overflows the stack and `TranslateDiagnostics.TruncatedInputsTerminate` exceeds its 5 s bound. Both come from the TSan overhead and are not data races. |
+| Tests | 440 tests pass in `build` and `build-asan` (CLANG_FILES) after S4. The JIT build adds a few tests (446 pass). `build-tsan`: 330 of 332 pass. `StatementParseLimits.DeepNesting` overflows the stack and `TranslateDiagnostics.TruncatedInputsTerminate` exceeds its 5 s bound. Both come from the TSan overhead and are not data races. |
 
 Build commands:
 - `cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ && ninja -C build && ctest --test-dir build`
@@ -43,7 +43,7 @@ Build commands:
 Measured on this machine (warm load of v2): JIT 808 ms, JIT with PCH 166 ms, CLANG_FILES 947 ms. Compile time dominates now.
 
 ## Not done (in this order of value)
-1. Language: `void onReload(OldState old)` and the `convert` hook. Script constructors (`Name(T a) : super(a)`). Script inheritance and script virtual methods (`virtual` has no effect yet). String interpolation. `is` and `as`.
+1. Language: `void onReload(OldState old)` and the `convert` hook. Script inheritance and script virtual methods (`virtual` has no effect yet). String interpolation. `is` and `as`.
 2. Generation 1 never unloads. Move the canonical `ClassRecord`, the factory, the thunks and the first vtable into a module that never unloads (design milestone M8).
 3. Experiment F3: debugger check. lldb is not installed here (see `DECISIONS.md`); the DWARF line table has the script lines. Set a breakpoint in a script method and step. Check that lldb shows `player.spp` lines. The JIT backend registers no debugger plugin and uses `-gline-tables-only`.
 4. Windows and macOS are not tested. The design lists the risks (RTTI comparison, symbol export, PDB).
@@ -58,6 +58,8 @@ The syntax is type-first. See `README.md` and `spp-design.md` (section 7) for th
 - A class is `class Name : Base { ... }`.
 - A field is `[alias("old")] [public|private|protected] Type name = init;`.
 - A method is `[modifiers] Ret name(T a, ...) { }`. `void` means no return value. `override` is required when the method overrides a native virtual method.
+- A constructor is `Name(T a, ...) : super(args) { body }`. The name is the name of the class. The `super(...)` call is optional. Without it, the base default constructor runs. The `super` arguments may use the constructor parameters only. A destructor is `~Name() { body }`. See `example/scripts/ctor_v1.spp`.
+- `new Name(args)` of a script class gives a raw `Name_Shell*`. See the limits below.
 - A property is `Type N { get; set; }`, `{ get; }`, `{ get; private set; }` or `{ get { ... } set { ... } }`. The setter body reads the new value as `value`. See `example/scripts/props_v1.spp`.
 - A read or a write of `p.N` on another object of the class calls `get_N` or `set_N` of that object. A write gives the assigned value, so `a = p.N = 1` works.
 - A local is `int x = 5;`, `var x = 5;` or `const int X = 5;`. A loop is `foreach (Type x in c)`. A catch clause is `catch (Type e)` or `catch (...)`.
@@ -72,7 +74,18 @@ The syntax is type-first. See `README.md` and `spp-design.md` (section 7) for th
 - The parser reads and stores the access words. The translator does not enforce them.
 - The parser reads and stores `virtual` and `new`. They have no effect yet.
 - The rewrite of `p.N` uses the name only, because the lowering has no types. It knows only the properties of the current class. If `p` is not an object of the class, the access throws `std::runtime_error`.
-- Not in the parser: script constructors, `onReload`, string interpolation, `is`, `as`, `new` of a script class. `new T(args)` of a native type works (parentheses only).
+- Not in the parser: string interpolation, `is`, `as`. `new T(args)` of a native type works (parentheses only).
+- Script constructors and `new` of a script class (S4):
+  - How it works. The shell and the vtable stay in generation 1. So the canonical `ClassRecord` of generation 1 has a type-erased entry `construct`. It builds the shell from a tuple of the `super` arguments. A later generation calls it through `spp::construct_shell` (`include/spp/runtime/shell.h`) and then runs its own constructor body. The key `construct_key` is the type name of the tuple. A mismatch gives a `std::runtime_error`.
+  - A constructor is not in the slot table. A reload does not run it again. A changed body applies to new objects only. The commit copies `ctor_default` and `dtor` to the canonical record. The loader does not touch `construct`.
+  - A destructor runs from `destroy_state` through `ClassRecord::dtor`. The record of the current generation gives the code. A throw is logged and does not escape.
+  - The engine factory `create()` runs the constructor with default values for the parameters (`ctor_default`). It uses the `super` arguments of generation 1.
+  - Limits. One constructor and one destructor for each class. No overloads. No `ref`/`out` parameters in a constructor. No `&&` parameters.
+  - `new Name(...)` works for the class itself and for the classes earlier in the file. The other order gives an error.
+  - A class needs a constructor or one `new` use in generation 1. Else the canonical record has no `construct` entry and a later `new` throws "has no constructor entry". Restart the process in this case.
+  - The types of the `super` arguments must not change after generation 1. A change gives the `construct_key` error at run time.
+  - If a constructor body throws, the shell is deleted and the exception goes on. The script destructor still runs on the half-built object.
+  - The result of `new` is a raw pointer, as for a native class. Nothing owns it. Put it in a `std.shared_ptr<Name>` (see `ctor_v1.spp`) or give it to the engine. A raw `Name*` in a field gives the borrowed-storage warning. Script classes as handles and as `[value]` are S5.
 - `ref e` and `out e` in a call argument give `spp::ref_arg(e)`. The prefix `&e` gives the error "use 'ref' instead of '&'". A `ref` of a handle converts to the raw pointer of its pointee, so a native `Actor*` parameter takes it (`include/spp/runtime/ref_arg.h`). `var r = ref this.pos` gives `auto& r = st->pos;`.
 - Base stubs: a `handle` or `intrusive` stub on a native base class applies to all native subclasses. The nearest base wins. An exact stub on a subclass wins. A base stub beats a pattern stub. `value` is not inherited. The hierarchy comes from libclang. System-header classes, nested classes and templates are not in the map.
 - `intrusive("AddRef","Release")` implies a handle. If `handle` is given, it must be `$T*`. It does not combine with `value`. The storage is `spp::Intrusive<T, &Owner::Add, &Owner::Release>`, with Owner the class with the stub. A new object starts with zero references. The wrapper adds a reference on construction from `T*`. Add and Release must be non-overloaded, non-template members. A missing method gives a clang error that names it. A reload copies the field (add) and destroys the old block (release), so the count stays correct.
