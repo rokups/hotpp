@@ -74,7 +74,7 @@ std::vector<Tok> lex(const std::string& s)
     static const char* const p3[] = {"<<=", ">>=", "...", nullptr};
     static const char* const p2[] = {"::", "->", "++", "--", "+=", "-=", "*=", "/=", "%=", "==",
                                      "!=", "<=", ">=", "&&", "||", "<<", ">>", "&=", "|=", "^=",
-                                     nullptr};
+                                     "=>", nullptr};
     std::vector<Tok> out;
     size_t i = 0, n = s.size();
     int line = 1;
@@ -568,6 +568,7 @@ struct RCtx {
     std::set<std::string> ptr_names;  // fields and parameters of pointer type
     std::set<std::string> locals;     // parameters and declared locals
     bool allow_this = true;
+    std::string where;  // the name of the function, for the stale call log of a lambda
 };
 
 std::string rewrite_number(const std::string& n)
@@ -599,6 +600,61 @@ std::vector<RTok> rewrite(const std::vector<Tok>& b, RCtx& cx)
         bool after_access = i > 0 && (is_p(i - 1, ".") || is_p(i - 1, "->") || is_p(i - 1, "::"));
         auto emit = [&](const std::string& s, bool space) { out.push_back({s, t.line, space}); };
 
+        // Arrow lambda: ( name: type, ... ) => { body }
+        if (t.kind == K::Punct && t.text == "(" && !for_state) {
+            size_t close = i;
+            for (int d = 0; close < b.size(); ++close) {
+                if (is_p(close, "(")) ++d;
+                if (is_p(close, ")") && --d == 0) break;
+            }
+            if (close < b.size() && is_p(close + 1, "=>")) {
+                if (!cx.allow_this) fail(t.line, "a lambda is not allowed in a field initializer");
+                if (!is_p(close + 2, "{")) fail(t.line, "a lambda body must be a block");
+                size_t end = close + 2;
+                for (int d = 0; end < b.size(); ++end) {
+                    if (is_p(end, "{")) ++d;
+                    if (is_p(end, "}") && --d == 0) break;
+                }
+                if (end >= b.size()) fail(t.line, "unterminated lambda body");
+                // Parameters: split at the commas outside of <> () [].
+                std::string params;
+                std::vector<std::string> pnames;
+                for (size_t j = i + 1; j < close;) {
+                    size_t k = j;
+                    int d = 0;
+                    for (; k < close; ++k) {
+                        const std::string& x = b[k].text;
+                        if (x == "<" || x == "(" || x == "[") ++d;
+                        if (x == ">" || x == ")" || x == "]") --d;
+                        if (x == ">>") d -= 2;
+                        if (x == "," && d == 0) break;
+                    }
+                    if (k - j < 3 || b[j].kind != K::Ident || !is_p(j + 1, ":"))
+                        fail(b[j].line, "a lambda parameter needs the form 'name: type'");
+                    std::vector<Tok> ty(b.begin() + static_cast<std::ptrdiff_t>(j + 2),
+                                        b.begin() + static_cast<std::ptrdiff_t>(k));
+                    const std::string ptype = join_type(ty);
+                    params += (params.empty() ? "" : ", ") + ptype + " " + b[j].text;
+                    cx.locals.insert(b[j].text);
+                    if (ptype.back() == '*') cx.ptr_names.insert(b[j].text);
+                    j = k + 1;
+                }
+                std::vector<Tok> inner(b.begin() + static_cast<std::ptrdiff_t>(close + 3),
+                                       b.begin() + static_cast<std::ptrdiff_t>(end));
+                std::vector<RTok> body = rewrite(inner, cx);
+                // The lambda captures by value. "self" is a pointer to the shell; the state
+                // pointer is read again inside, so a lambda never keeps the pointer to a block.
+                emit("script::make_closure(GEN, \"" + cx.where + " lambda\", [=](" + params + ")",
+                     t.space);
+                out.push_back({"{", b[close + 2].line, true});
+                out.push_back({"[[maybe_unused]] auto* st = state_of(self);", b[close + 2].line, true});
+                for (RTok& r : body) out.push_back(std::move(r));
+                out.push_back({"}", b[end].line, true});
+                out.push_back({")", b[end].line, false});
+                i = end;
+                continue;
+            }
+        }
         if (t.kind == K::Punct) {
             if (for_state && t.text == "(") ++for_state;
             if (for_state && t.text == ")" && --for_state == 1) for_state = 0;
@@ -1240,6 +1296,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
         auto emit_body = [&](const Method& m, bool is_fn, const std::string& sym, const std::string& ret,
                              const std::string& what) {
             RCtx cx = base_cx;
+            cx.where = what;
             for (const Param& p : m.params) {
                 cx.locals.insert(p.name);
                 if (!p.type.empty() && p.type.back() == '*') cx.ptr_names.insert(p.name);

@@ -40,13 +40,26 @@ public:
     {
         object_ = object;
         fn_ = fn;
+        callable_ = nullptr;
     }
-    bool IsBound() const { return fn_ != nullptr; }
-    R operator()(A... a) const { return fn_(object_, std::forward<A>(a)...); }
+    // Binds a callable, for example a script closure.
+    void Bind(std::function<R(A...)> callable)
+    {
+        object_ = nullptr;
+        fn_ = nullptr;
+        callable_ = std::move(callable);
+    }
+    bool IsBound() const { return fn_ != nullptr || static_cast<bool>(callable_); }
+    R operator()(A... a) const
+    {
+        if (callable_) return callable_(std::forward<A>(a)...);
+        return fn_(object_, std::forward<A>(a)...);
+    }
 
 private:
     Actor* object_ = nullptr;
     Fn fn_ = nullptr;
+    std::function<R(A...)> callable_;
 };
 
 // The world owns the actors that it holds. It deletes them in the destructor.
@@ -65,7 +78,18 @@ public:
     // safe point for a script reload commit.
     void SetFrameBoundaryHook(std::function<void()> hook) { hook_ = std::move(hook); }
 
+    // A one-shot timer. Tick fires it when "seconds" of Tick time passed, and
+    // then destroys the callable. It runs before the frame boundary hook.
+    void AddTimer(float seconds, std::function<void()> fn);
+    void ClearTimers() { timers_.clear(); }
+    size_t TimerCount() const { return timers_.size(); }
+
 private:
+    struct Timer {
+        float remaining;
+        std::function<void()> fn;
+    };
     std::vector<Actor*> actors_;
+    std::vector<Timer> timers_;
     std::function<void()> hook_;
 };

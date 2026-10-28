@@ -32,13 +32,13 @@ struct Session {
     Actor* actor = nullptr;
     bool commit_failed = false;
 
-    // Register the module, make the Player and add it to the world.
-    void start(script::Module module)
+    // Register the module, make an object of the class (default: Player) and add it to the world.
+    void start(script::Module module, const char* class_name = "Player")
     {
         std::string error;
         ASSERT_TRUE(loader.load(std::move(module), error)) << error;
-        const script::ClassEntry* entry = loader.find("Player");
-        ASSERT_NE(entry, nullptr) << "class Player is not registered";
+        const script::ClassEntry* entry = loader.find(class_name);
+        ASSERT_NE(entry, nullptr) << "class " << class_name << " is not registered";
         inst = entry->create();
         actor = static_cast<Actor*>(inst.native);
         world.Add(actor);
@@ -52,7 +52,8 @@ struct Session {
         start(std::move(*r.module));
     }
 
-    // Commit a pending reload at the frame boundary.
+    // Commit a pending reload at the frame boundary. Then let the loader unload
+    // the retired generations that may unload.
     void commit_at_frame_boundary()
     {
         world.SetFrameBoundaryHook([this] {
@@ -61,6 +62,7 @@ struct Session {
                 ADD_FAILURE() << "commit failed: " << err;
                 commit_failed = true;
             }
+            loader.frame_boundary();
         });
     }
 

@@ -10,7 +10,7 @@ The design is in `scriptlang-design/scriptlang-design.md`.
 - `poc/r0/gen1.cpp` is hand-written code. The translator `spc` makes code with the same structure.
 - `translator/spc_lib.cpp` is the translator library `spc_lib` (step F1). `translator/spc.cpp` is the thin file wrapper `spc`. `scripts/` has the example scripts.
 - `runtime/backend.h`, `runtime/clang_files_backend.cpp`, `runtime/jit_backend.cpp` and `runtime/default_backend.cpp` are the script backends. `tools/sppc.cpp` is the tool `sppc`. `cmake/SppScripts.cmake` has `spp_add_scripts`.
-- `tests/` has the GoogleTest cases (`r0_tests.cpp`, `r1_tests.cpp`, `backend_tests.cpp`, `translator_tests.cpp`), the F1 scenario `f1_scenario.h` and the shared header `test_support.h`.
+- `tests/` has the GoogleTest cases (`r0_tests.cpp`, `r1_tests.cpp`, `r3_tests.cpp`, `backend_tests.cpp`, `translator_tests.cpp`), the F1 scenario `f1_scenario.h` and the shared header `test_support.h`.
 - `cmake/CPM.cmake` fetches a dependency when the system has no copy of it.
 - `poc/r1/` has generation 2 (`gen2.cpp`: new `Tick`, `hp` renamed to `health`, new `shield`), the rejected generation 4 (`gen4_base.cpp`: other shell layout) and `gen3_bad.cpp` (does not compile; not in the build).
 
@@ -35,7 +35,9 @@ The command loads `gen1.so` and makes one `Player`. It ticks the world 3 times. 
 
 `spc` is a thin wrapper. It reads the files and calls `spc::translate` from `spc_lib` (`translator/spc_lib.h`). The function takes strings: script text, script name for `#line`, generation, slot file content, include dirs and resource dir. It returns strings: C++ text, new slot file content and diagnostics. It does not write a file. The translator reads the script and the imported headers. It asks libclang (C API) for the virtual methods of the native base class. A `spc::TranslatorSession` keeps the answer, see "Translator session". It writes the shell (one stub for each virtual), the state struct, the reflection table, the generation functions, the thunks and the record. It writes `#line` directives, so a Clang error points to the script line. It reports a missing pure virtual override and an override of a `final` method.
 
-The script subset: `import`, `class N : Base`, fields with `@was("old")`, `override`, `fn`, `let`, `const`, `this.`, `super.`, `null`, float literals, `Math.Min` as `Math::Min`, `if`, `while`, `for`, `return`. The body rewrite works on tokens. The translator does not parse expressions. A pointer needs `->` in a body, except a field or a parameter that has a pointer type.
+The script subset: `import`, `class N : Base`, fields with `@was("old")`, `override`, `fn`, `let`, `const`, `this.`, `super.`, `null`, float literals, `Math.Min` as `Math::Min`, `if`, `while`, `for`, `return`. The arrow lambda `() => { ... }` and `(x: float) => { ... }` works in a function body. Each parameter needs a type. The lambda body is a block. See "Closures and unload".
+
+The body rewrite works on tokens. The translator does not parse expressions. A pointer needs `->` in a body, except a field or a parameter that has a pointer type.
 
 The slot file (`--slots`) keeps the slot order of the `fn` methods stable between generations. A generation can add a `fn`, but it cannot remove one.
 
@@ -154,12 +156,24 @@ All tests are GoogleTest cases. CMake registers them with `gtest_discover_tests`
 - `BackendTests` (`tests/backend_tests.cpp`) use the backend that `SPP_BACKEND` selected. They run the F1 reload scenario (`tests/f1_scenario.h`): generation 1 then generation 2, the same address, `hp` becomes `health`, `shield` is 25 and a delegate calls the new `heal`. A bad script (`scripts/bad.script`) must give an error that names `bad.script` and the line. The runtime must keep running after the error.
 - `TranslatorSession` (`tests/translator_tests.cpp`) checks the cache: a hit gives the same output as a miss, a changed header (also a nested one) invalidates it, a second base class works in the same session, and the second translate takes less than 150 ms (the real value is about 1.3 ms).
 - `JitTests` (`tests/jit_tests.cpp`, only in a JIT build) check that no file appears and no child process runs. They also check exceptions in JIT code, a precompiled header and the life of a generation.
+- `ClosureTests`, `ReloadTests` (`tests/r3_tests.cpp`) run the experiments R3 and R6 with `scripts/timer_v1.script` and `timer_v2.script`. See "Closures and unload".
+- `TranslatorLambda` (`tests/translator_tests.cpp`) checks the output for an arrow lambda.
 - `PrecompiledTests` load the libraries that `spp_add_scripts` made with `sppc`, through `module_from_library`. They run the same F1 scenario. They run for each `SPP_BACKEND` value. One test runs `sppc` on `bad.script` and checks the exit code and the error line.
 
 ## Reload
 
 `Loader::request_reload` validates a `Module` with no side effect: `script_register`, base class, shell layout hash, slot count. `Loader::commit_pending` runs at the frame boundary (the `World` hook). It allocates all new state blocks, migrates, swaps the table and layout, sets `active_generation` and frees the old blocks.
 
+## Closures and unload
+
+An arrow lambda becomes `script::make_closure(GEN, "Class::fn lambda", [=](params) { ... })`. It captures by value. `this` is the pointer `self`. The body reads the state pointer again, so a lambda never keeps a pointer to a state block. The result is a `script::Closure<Sig>`. It holds one pin of its generation (`script::pin`, `unpin`, `pin_count`; the counts are atomic). Each call checks the generation. When the generation is not live, the call logs a stale call, counts it (`script::stale_call_count()`) and returns a default value. The body does not run. A `Closure` converts to `std::function` and to an engine delegate that has `Bind(std::function<Sig>)`.
+
+`World::AddTimer(seconds, fn)` stores a one-shot callable. `World::Tick` fires it before the frame boundary hook and then destroys it. `ClearTimers()` drops all timers.
+
+The `Loader` owns all modules. A reload retires the old generation. `Loader::frame_boundary()` (call it in the hook, after `commit_pending`) unloads a retired generation when all of these are true: the pin count is zero, a frame boundary passed after the commit, and `code_refs` is zero. The unload is `dlclose` (CLANG_FILES) or the removal of the ORC resource tracker (JIT). `Loader::stats()` gives the active generation, each generation with its state (active, retired, unloaded), its pins and its `code_refs`, and the number of live objects.
+
+Result of R3: the stale call is logged once and the old body does not run. No ASan error. Result of R6: generation 2 of the chain 1, 2, 3 unloads after its closure is dropped, and later ticks are clean. Generation 1 does not unload. Its module holds the class record, the factory, the thunks and the vtable of the first object. `code_refs` counts them. Generation 1 can unload only if these move to a module that never unloads. Destroy the last copy of a closure on the main thread. The destructor code is in the module.
+
 ## Not done yet
 
-The `onReload` hook, the `convert` hook, generation unload, closures, string interpolation, script inheritance and constructors in scripts.
+The `onReload` hook, the `convert` hook, unload of the first generation of a class, string interpolation, script inheritance and constructors in scripts.

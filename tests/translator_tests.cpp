@@ -224,4 +224,48 @@ TEST(TranslatorSession, SecondTranslateIsFast)
     EXPECT_LT(second, 150.0);  // the target is 50 ms; the bound is wide to avoid a flaky test
 }
 
+// ------------------------------------------------------------ arrow lambda
+
+std::string lambda_script(const std::string& body)
+{
+    return "import \"w.h\";\nclass Foo : Widget {\n    n: int = 0;\n    fn run(p: int*) {\n" + body +
+           "\n    }\n}\n";
+}
+
+TEST(TranslatorLambda, ArrowLambdaBecomesAClosureThatCapturesByValue)
+{
+    const spc::TranslateOptions o = engine_options("timer_v1.script", 1);
+    const spc::TranslateResult r = spc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("script::make_closure(GEN, \"Beeper::arm lambda\", [=]()"),
+              std::string::npos)
+        << r.cpp;
+    // The body uses self and a new state pointer, not the pointer of the outer function.
+    EXPECT_NE(r.cpp.find("auto* st = state_of(self);\n#line 15"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("st->fired = st->fired + 1;"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("=>"), std::string::npos);
+}
+
+TEST(TranslatorLambda, ParametersGetTypesAndPointersUseArrow)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    const spc::TranslateResult r = spc::translate(
+        temp_options(dir, lambda_script("        let f = (x: float, q: int*) => { q.foo(); this.n = x; };")));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("[=](float x, int* q)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("q->foo();"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("st->n = x;"), std::string::npos) << r.cpp;
+}
+
+TEST(TranslatorLambda, ParameterWithoutTypeIsAnError)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    const spc::TranslateResult r =
+        spc::translate(temp_options(dir, lambda_script("        let f = (x) => { };")));
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("name: type"), std::string::npos) << r.diagnostics;
+}
+
 }  // namespace

@@ -1,5 +1,6 @@
 #include "script_runtime.h"
 
+#include <atomic>
 #include <cstdio>
 #include <unordered_set>
 
@@ -12,10 +13,35 @@ static std::unordered_set<ShellBase*> g_live;
 void track_object(ShellBase* self) { g_live.insert(self); }
 void untrack_object(ShellBase* self) { g_live.erase(self); }
 
+static std::atomic<uint64_t> g_stale_calls{0};
+
+uint64_t stale_call_count() { return g_stale_calls.load(std::memory_order_relaxed); }
+
 void stale_call(const char* what)
 {
+    g_stale_calls.fetch_add(1, std::memory_order_relaxed);
     std::fprintf(stderr, "[script] stale call ignored: %s (active generation %u)\n", what,
                  active_generation);
+}
+
+// ---------------------------------------------------------------- pins
+static constexpr uint32_t kPinSlots = 1u << 16;
+static std::atomic<uint32_t> g_pins[kPinSlots];
+
+void pin(uint32_t generation)
+{
+    g_pins[generation % kPinSlots].fetch_add(1, std::memory_order_relaxed);
+}
+
+void unpin(uint32_t generation)
+{
+    // Release: all uses of the module code before the unpin happen before the unload.
+    g_pins[generation % kPinSlots].fetch_sub(1, std::memory_order_release);
+}
+
+uint32_t pin_count(uint32_t generation)
+{
+    return g_pins[generation % kPinSlots].load(std::memory_order_acquire);
 }
 
 // ------------------------------------------------------------ registry
@@ -142,9 +168,74 @@ bool Loader::load(Module module, std::string& error)
         return false;
     }
     module.register_fn(registry_);
-    modules_.push_back(std::move(module));
-    active_generation = registry_.max_generation();
+    const uint32_t gen = registry_.max_generation();
+    note_records(registry_, gen);
+    add_generation(std::move(module), gen);
+    gens_.back().registry_refs =
+        static_cast<uint32_t>(registry_.entries().size() + registry_.thunks().size());
+    active_generation = gen;
     return true;
+}
+
+// Remembers which module holds each record of a registry.
+void Loader::note_records(const Registry& reg, uint32_t generation)
+{
+    for (const auto& [name, e] : reg.entries()) record_gen_.emplace(e.record, generation);
+}
+
+void Loader::add_generation(Module module, uint32_t generation)
+{
+    Gen g;
+    g.generation = generation;
+    g.module = std::move(module);
+    gens_.push_back(std::move(g));
+}
+
+std::unordered_map<uint32_t, uint32_t> Loader::live_by_module() const
+{
+    std::unordered_map<uint32_t, uint32_t> live;
+    for (const ShellBase* s : g_live) {
+        auto it = record_gen_.find(s->cls);
+        if (it != record_gen_.end()) ++live[it->second];
+    }
+    return live;
+}
+
+uint32_t Loader::code_refs(const Gen& g, const std::unordered_map<uint32_t, uint32_t>& live) const
+{
+    auto it = live.find(g.generation);
+    return g.registry_refs + (it == live.end() ? 0 : it->second);
+}
+
+unsigned Loader::frame_boundary()
+{
+    unsigned unloaded = 0;
+    std::unordered_map<uint32_t, uint32_t> live;
+    bool have_live = false;
+    for (Gen& g : gens_) {
+        if (g.state != GenState::Retired || g.retired_frame >= frame_) continue;
+        if (pin_count(g.generation) != 0) continue;
+        if (!have_live) live = live_by_module(), have_live = true;
+        if (code_refs(g, live) != 0) continue;
+        g.module = Module{};  // the keep-alive object releases the code
+        g.state = GenState::Unloaded;
+        std::fprintf(stderr, "[script] generation %u unloaded\n", g.generation);
+        ++unloaded;
+    }
+    ++frame_;
+    return unloaded;
+}
+
+LoaderStats Loader::stats() const
+{
+    LoaderStats st;
+    st.active_generation = active_generation;
+    st.live_objects = g_live.size();
+    const auto live = live_by_module();
+    for (const Gen& g : gens_)
+        st.generations.push_back({g.generation, g.state, pin_count(g.generation),
+                                  code_refs(g, live), g.module.origin});
+    return st;
 }
 
 bool Loader::request_reload(Module module, std::string& error)
@@ -269,7 +360,13 @@ bool Loader::commit_pending(std::string& error)
             registry_.add(pc.incoming, pc.create);
         }
     }
-    for (const auto& [name, fn] : P.staged.thunks()) registry_.add_thunk(name, fn);
+    uint32_t new_refs = 0;
+    for (const PendingClass& pc : P.classes)
+        if (!pc.canon) ++new_refs;
+    for (const auto& [name, fn] : P.staged.thunks()) {
+        if (!registry_.thunk(name)) ++new_refs;
+        registry_.add_thunk(name, fn);
+    }
 
     // Step 5: switch the generation.
     active_generation = P.staged.max_generation();
@@ -282,7 +379,15 @@ bool Loader::commit_pending(std::string& error)
 
     std::fprintf(stderr, "[script] reload committed: %s, generation %u, %zu objects migrated\n",
                  P.module.origin.c_str(), active_generation, work.size());
-    modules_.push_back(std::move(P.module));  // a retired generation stays loaded
+    // The loader owns the module. The old generations are retired now.
+    for (Gen& g : gens_)
+        if (g.state == GenState::Active) {
+            g.state = GenState::Retired;
+            g.retired_frame = frame_;
+        }
+    note_records(P.staged, active_generation);
+    add_generation(std::move(P.module), active_generation);
+    gens_.back().registry_refs = new_refs;
     pending_.reset();
     return true;
 }

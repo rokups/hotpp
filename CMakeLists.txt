@@ -165,6 +165,14 @@ target_compile_definitions(backend_tests PRIVATE
     PRE_V2_SO="${CMAKE_BINARY_DIR}/spp_scripts/player_v2.g2.so")
 gtest_discover_tests(backend_tests)
 
+# Experiments R3 and R6: closures that outlive a generation, and the unload.
+add_executable(r3_tests tests/r3_tests.cpp engine/Actor.cpp)
+target_include_directories(r3_tests PRIVATE tests)
+target_link_libraries(r3_tests PRIVATE spp_backend GTest::gtest_main)
+set_target_properties(r3_tests PROPERTIES ENABLE_EXPORTS ON)
+target_compile_definitions(r3_tests PRIVATE SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+gtest_discover_tests(r3_tests)
+
 # The cache of the translator session needs only spc_lib.
 add_executable(translator_tests tests/translator_tests.cpp)
 target_link_libraries(translator_tests PRIVATE spc_lib GTest::gtest_main)

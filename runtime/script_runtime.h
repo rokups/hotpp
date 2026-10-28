@@ -4,6 +4,7 @@
 #pragma once
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <cstring>
 #include <memory>
 #include <new>
@@ -93,6 +94,127 @@ extern uint32_t active_generation;
 
 // Called by a generation function when its generation is not live.
 void stale_call(const char* what);
+
+// The number of stale calls that the guard ignored since the start.
+uint64_t stale_call_count();
+
+// Generation pins (section 4.11). A pin tells the runtime that something outside
+// script code (for example a closure in an engine timer) still holds code of the
+// generation. The counts are atomic: any thread can pin or unpin. A generation
+// number maps to one of 65536 counters; two numbers that are 65536 apart share a
+// counter. This can only delay an unload.
+void pin(uint32_t generation);
+void unpin(uint32_t generation);
+uint32_t pin_count(uint32_t generation);
+
+// A closure that leaves script code (section 4.11). It holds one pin of its
+// generation for its whole life. Each call checks the generation guard: when the
+// generation is not live, the call logs a stale call and returns R(). The lambda
+// body does not run. A copy of the closure holds its own pin.
+//
+// The closure converts to std::function (the constructor of std::function takes
+// any callable) and to an engine delegate type D that has Bind(std::function<Sig>).
+// The closure code lives in the generation module. Destroy the last copy on the
+// main thread, before the frame boundary at which the generation can unload.
+template <class Sig>
+class Closure;
+
+template <class R, class... A>
+class Closure<R(A...)> {
+public:
+    using Function = std::function<R(A...)>;
+
+    Closure() = default;
+
+    template <class F>
+    Closure(uint32_t generation, const char* what, F fn)
+        : fn_(std::move(fn)), gen_(generation), what_(what)
+    {
+        pin(gen_);
+    }
+
+    Closure(const Closure& o) : fn_(o.fn_), gen_(o.gen_), what_(o.what_)
+    {
+        if (gen_) pin(gen_);
+    }
+
+    Closure(Closure&& o) noexcept : fn_(std::move(o.fn_)), gen_(o.gen_), what_(o.what_)
+    {
+        o.fn_ = nullptr;
+        o.gen_ = 0;
+    }
+
+    Closure& operator=(Closure o) noexcept
+    {
+        std::swap(fn_, o.fn_);
+        std::swap(gen_, o.gen_);
+        std::swap(what_, o.what_);
+        return *this;
+    }
+
+    // The lambda goes first (its captures can use the generation code), then the pin.
+    ~Closure()
+    {
+        fn_ = nullptr;
+        if (gen_) unpin(gen_);
+    }
+
+    R operator()(A... a) const
+    {
+        if (SCRIPT_UNLIKELY(!fn_ || gen_ != active_generation)) {
+            stale_call(what_ ? what_ : "closure");
+            return R();
+        }
+        return fn_(std::forward<A>(a)...);
+    }
+
+    explicit operator bool() const { return gen_ != 0; }
+    uint32_t generation() const { return gen_; }
+
+    // A std::function that holds a copy of this closure (and so one more pin).
+    Function to_function() const
+    {
+        Closure copy(*this);
+        return Function(std::move(copy));
+    }
+
+    // Conversion to an engine delegate type that binds a std::function.
+    template <class D>
+        requires requires(D& d, Function f) { d.Bind(std::move(f)); }
+    operator D() const
+    {
+        D d;
+        d.Bind(to_function());
+        return d;
+    }
+
+private:
+    Function fn_;
+    uint32_t gen_ = 0;
+    const char* what_ = nullptr;
+};
+
+namespace detail {
+template <class M>
+struct SigOf;
+template <class C, class R, class... A>
+struct SigOf<R (C::*)(A...) const> {
+    using type = R(A...);
+};
+template <class C, class R, class... A>
+struct SigOf<R (C::*)(A...)> {
+    using type = R(A...);
+};
+}  // namespace detail
+
+// The translator wraps each arrow lambda in this call. "what" names the lambda
+// in the stale call log.
+template <class F>
+auto make_closure(uint32_t generation, const char* what, F fn)
+{
+    using Sig = typename detail::SigOf<decltype(&F::operator())>::type;
+    return Closure<Sig>(generation, what, std::move(fn));
+}
 
 // Calls slot "slot" of the class record. "Sig" is the signature of the slot.
 template <class Sig, class... A>
@@ -253,6 +375,27 @@ private:
     uint32_t max_generation_ = 0;
 };
 
+// The state of a generation module in the loader (section 4.9).
+enum class GenState : uint8_t {
+    Active,    // the live generation
+    Retired,   // a reload replaced it; the code stays loaded
+    Unloaded,  // the loader released the code (dlclose or ORC tracker removal)
+};
+
+struct GenerationInfo {
+    uint32_t generation;
+    GenState state;
+    uint32_t pins;       // pin_count(generation)
+    uint32_t code_refs;  // registry entries, thunks and live objects that use the module code
+    std::string origin;
+};
+
+struct LoaderStats {
+    uint32_t active_generation = 0;
+    std::vector<GenerationInfo> generations;  // in load order
+    size_t live_objects = 0;
+};
+
 // Registers generation modules. A module has the function: extern "C" void script_register(Registry&).
 //
 // The first module goes through load(). A later module goes through
@@ -261,6 +404,15 @@ private:
 // The first record of a class stays the record of the class for ever. A
 // commit copies the slots and the layout of the new record into it.
 // A thunk keeps the address of the first registration (append-only).
+//
+// The loader owns every Module. A generation that a reload replaced is
+// retired. frame_boundary() unloads a retired generation when all of these hold:
+//   1. its pin count is zero;
+//   2. at least one frame boundary passed after the commit that retired it;
+//   3. no code of the module is in use (code_refs is zero).
+// The record, the factory and the thunks of a class stay in the module that
+// registered the class first. The vtable of an object stays in the module that
+// made the object. Condition 3 keeps those modules loaded.
 class Loader {
 public:
     Loader();
@@ -279,13 +431,35 @@ public:
     // reload was committed. On false, "error" tells why (empty: nothing pending).
     bool commit_pending(std::string& error);
 
+    // Call it at each frame boundary, after commit_pending. It unloads the
+    // retired generations that may unload, then counts the boundary.
+    // Returns the number of generations that it unloaded.
+    unsigned frame_boundary();
+
+    LoaderStats stats() const;
+
     const ClassEntry* find(const std::string& name) const { return registry_.find(name); }
     void* thunk(const std::string& name) const { return registry_.thunk(name); }
 
 private:
     struct Pending;
+    struct Gen {
+        uint32_t generation = 0;
+        GenState state = GenState::Active;
+        Module module;               // empty after the unload
+        uint64_t retired_frame = 0;  // the frame counter at the retirement
+        uint32_t registry_refs = 0;  // classes and thunks that this module registered
+    };
+    void add_generation(Module module, uint32_t generation);
+    void note_records(const Registry& reg, uint32_t generation);
+    // The number of live objects for each module (the module that made the object).
+    std::unordered_map<uint32_t, uint32_t> live_by_module() const;
+    uint32_t code_refs(const Gen& g, const std::unordered_map<uint32_t, uint32_t>& live) const;
+
     Registry registry_;
-    std::vector<Module> modules_;  // a retired generation stays loaded
+    std::vector<Gen> gens_;  // the loader owns all modules; a retired one stays until it unloads
+    std::unordered_map<const ClassRecord*, uint32_t> record_gen_;  // the module that holds a record
+    uint64_t frame_ = 0;
     std::unique_ptr<Pending> pending_;
 };
 

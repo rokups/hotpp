@@ -41,8 +41,28 @@ void World::Add(Actor* actor)
     actors_.push_back(actor);
 }
 
+void World::AddTimer(float seconds, std::function<void()> fn)
+{
+    timers_.push_back({seconds, std::move(fn)});
+}
+
 void World::Tick(float dt)
 {
     for (Actor* a : actors_) a->Tick(dt);
+    // Move the due timers out first: a callable can add a timer.
+    std::vector<Timer> due;
+    for (size_t i = 0; i < timers_.size();) {
+        timers_[i].remaining -= dt;
+        if (timers_[i].remaining <= 0.0f) {
+            due.push_back(std::move(timers_[i]));
+            timers_.erase(timers_.begin() + static_cast<std::ptrdiff_t>(i));
+        } else {
+            ++i;
+        }
+    }
+    for (Timer& t : due) {
+        if (t.fn) t.fn();
+        t.fn = nullptr;  // the callable ends here, before the hook
+    }
     if (hook_) hook_();  // frame boundary
 }
