@@ -1032,6 +1032,16 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         std::set<std::string> field_names;
         for (const Field& f : cd.fields)
             if (!field_names.insert(f.name).second) fail_at(map, f.pos, "field '" + f.name + "' is declared twice");
+        // The hooks of design 4.7: "void onReload(OldState old)" and "convert_<field>(Old old)".
+        // They are not script functions: they get no slot and no thunk.
+        enum class Hook { None, OnReload, Convert };
+        auto hook_of = [&](const Method& m) {
+            if (m.overrides_virtual) return Hook::None;
+            if (m.name == "onReload") return Hook::OnReload;
+            if (m.name.rfind("convert_", 0) == 0 && field_names.count(m.name.substr(8)))
+                return Hook::Convert;
+            return Hook::None;
+        };
         std::set<std::string> fn_names;
         std::map<std::string, const Method*> overrides;  // by native key
         for (Method& m : cd.methods) {
@@ -1086,6 +1096,26 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 fail_at(map, cd.pos, "class " + cn + " does not override the pure virtual method '" +
                                   nv.text() + "' of " + nv.owner);
 
+        // ---- the hooks (design 4.7)
+        for (const Method& m : cd.methods) {
+            const Hook h = hook_of(m);
+            if (h == Hook::None) continue;
+            if (m.is_override || m.is_virtual)
+                fail_at(map, m.pos, "the hook '" + m.name + "' cannot be 'override' or 'virtual'");
+            if (h == Hook::OnReload) {
+                if (!m.ret.empty() && m.ret != "void")
+                    fail_at(map, m.pos, "'onReload' must return void");
+                if (m.params.size() != 1 || m.params[0].type != "OldState" ||
+                    m.params[0].mode != PassMode::Value)
+                    fail_at(map, m.pos, "'onReload' takes one parameter: 'OldState old'");
+            } else {
+                if (m.params.size() != 1 || m.params[0].mode != PassMode::Value)
+                    fail_at(map, m.pos, "'" + m.name + "' is a convert hook. It takes one parameter: the old value");
+                if (m.ret.empty() || m.ret == "void")
+                    fail_at(map, m.pos, "'" + m.name + "' is a convert hook. It must return the new field type");
+            }
+        }
+
         // ---- the borrowed-storage rule and the rows of design 5.3 that the script text shows
         {
             const size_t before = g_diag.items.size();
@@ -1100,6 +1130,21 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 // An override keeps the native type. A "ref" or "out" parameter is a reference.
                 for (Param& p : m.params)
                     if (p.mode != PassMode::Value) p.type += "&";
+                continue;
+            }
+            const Hook h = hook_of(m);
+            if (h == Hook::OnReload) {
+                m.params[0].type = "const spp::OldState&";
+                m.ret = "void";
+                continue;
+            }
+            if (h == Hook::Convert) {  // the old value is a copy of the old field type
+                m.params[0].type = types.storage(m.params[0].type);
+                m.ret = types.storage(m.ret);
+                const std::string fname = m.name.substr(8);
+                for (const Field& f : cd.fields)
+                    if (f.name == fname && f.type != m.ret)
+                        fail_at(map, m.pos, "'" + m.name + "' must return the type of the field: '" + f.type + "'");
                 continue;
             }
             for (Param& p : m.params)
@@ -1133,7 +1178,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         const size_t native_count = slots.size();
         std::map<std::string, const Method*> fn_by_name;
         for (const Method& m : cd.methods)
-            if (!m.overrides_virtual) fn_by_name[m.name] = &m;
+            if (!m.overrides_virtual && hook_of(m) == Hook::None) fn_by_name[m.name] = &m;
         for (const auto& e : old_manifest) {
             if (e.cls != cn) continue;
             auto it = fn_by_name.find(e.fn);
@@ -1146,7 +1191,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             slots.push_back(s);
         }
         for (const Method& m : cd.methods) {
-            if (m.overrides_virtual) continue;
+            if (m.overrides_virtual || hook_of(m) != Hook::None) continue;
             bool known = false;
             for (const auto& s : slots) known |= !s.native() && s.id == m.name;
             if (known) continue;
@@ -1217,6 +1262,15 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 "; new (f) T(" + init + "); }\n");
             reset();
         }
+        // A convert hook of a field (design 4.7). The wrapper builds the new field from the old one.
+        std::map<std::string, const Method*> converts;  // by field name
+        for (const Method& m : cd.methods)
+            if (hook_of(m) == Hook::Convert) converts[m.name.substr(8)] = &m;
+        for (const auto& [fname, m] : converts) {
+            o.w("static " + m->ret + " " + P + m->name + "(" + m->params[0].type + " " + m->params[0].name + ");\n");
+            o.w("static void " + P + m->name + "_hook(void* dst, const void* src)\n{\n    new (dst) " + m->ret + "(" +
+                P + m->name + "(*static_cast<const " + m->params[0].type + "*>(src)));\n}\n");
+        }
         o.w("\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n");
         if (cd.fields.empty()) {
             o.w("static const spp::FieldInfo* const " + cn + "_fields = nullptr;\n");
@@ -1227,8 +1281,11 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 o.w("    {\"" + f.name + "\", " + (f.alias.empty() ? "nullptr" : "\"" + f.alias + "\"") +
                     ", typeid(" + T + ").name(), offsetof(" + S + ", " + f.name + "), sizeof(" + T +
                     "),\n     alignof(" + T + "), spp::field_flags<" + T + ">(), " + P + "init_" +
-                    f.name + ", spp::move_field<" + T + ">, spp::field_destroyer<" + T +
-                    ">()},\n");
+                    f.name + ", spp::move_field<" + T + ">, spp::field_destroyer<" + T + ">()");
+                auto cv = converts.find(f.name);
+                if (cv != converts.end())
+                    o.w(", typeid(" + cv->second->params[0].type + ").name(), " + P + cv->second->name + "_hook");
+                o.w("},\n");
             }
             o.w("};\n");
         }
@@ -1260,7 +1317,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
 
         // forward declarations of the script functions
         for (const Method& m : cd.methods)
-            if (!m.overrides_virtual)
+            if (!m.overrides_virtual && hook_of(m) != Hook::Convert)
                 o.w("static " + fn_ret(m) + " " + P + m.name + "(" + shell + "* self" + param_decl(m) + ");\n");
         o.w("\n");
 
@@ -1288,8 +1345,29 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             o.w("}\n\n");
         };
 
+        // A convert hook has no self and no state: the new block is not complete yet.
+        auto emit_convert = [&](Method& m) {
+            RCtx cx = base_cx;
+            cx.where = body_what(cn, m);
+            cx.allow_this = false;
+            cx.field_type.clear();
+            cx.fns.clear();
+            sppc::add_params(cx, m.params);
+            o.w("static " + m.ret + " " + P + m.name + "(" + m.params[0].type + " " + m.params[0].name + ")\n{\n");
+            sppc::lower_block(m.body, cx, g_diag);
+            if (!g_diag.items.empty()) throw TranslateAbort{};
+            sppc::ast::Emitter em(map, opt.input);
+            sppc::ast::emit_stmts(m.body.stmts, em, 1);
+            em.finish();
+            o.w(em.text());
+            reset();
+            o.w("}\n\n");
+        };
+
         for (Method& m : cd.methods) {
-            if (m.overrides_virtual) {
+            if (hook_of(m) == Hook::Convert) {
+                emit_convert(m);
+            } else if (m.overrides_virtual) {
                 const Slot* s = nullptr;
                 for (const Slot& x : slots)
                     if (x.impl == &m) s = &x;
@@ -1343,10 +1421,17 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             o.w("    reinterpret_cast<void*>(&" + fn + "),\n");
         }
         o.w("};\n\n");
+        std::string on_reload_init;
+        for (const Method& m : cd.methods)
+            if (hook_of(m) == Hook::OnReload) {
+                o.w("static void " + P + "onReload_hook(spp::ShellBase* s, const spp::OldState& old)\n{\n    " + P +
+                    "onReload(static_cast<" + shell + "*>(s), old);\n}\n\n");
+                on_reload_init = " " + P + "onReload_hook,\n";
+            }
         o.w("spp::ClassRecord " + cn + "_record = {\n    \"" + cn + "\", GEN, " + cn + "_slots, " +
             slot_id("COUNT") + ", &" + cn + "_layout, nullptr,\n    \"" + B + "\", spp::shell_layout_hash(\"" +
             B + "\", sizeof(" + shell + "), alignof(" + shell + "), " + std::to_string(native_count) +
-            "),\n};\n\n");
+            "),\n" + (on_reload_init.empty() ? "" : "   " + on_reload_init) + "};\n\n");
         o.w("static spp::Instance " + cn + "_create()\n{\n    auto* p = new " + shell +
             "(spp::Construct{}" + ctor_args + ");\n    return {static_cast<" + B + "*>(p), p};\n}\n\n");
         registers.push_back({cn, true});

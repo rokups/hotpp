@@ -23,22 +23,25 @@ struct ClassEntry {
 
 // What the migration does for one field of the new layout (section 4.7).
 enum class FieldAction : uint8_t {
-    Move,  // copy or move the old field "old_index"
-    Init,  // run the initializer
+    Move,     // copy or move the old field "old_index"
+    Convert,  // the type changed: run the convert hook of the new field on the old field
+    Init,     // run the initializer
 };
 
 struct FieldStep {
     FieldAction action;
-    uint32_t old_index;  // valid for Move
+    uint32_t old_index;  // valid for Move and Convert
 };
 
 struct MigrationPlan {
     std::vector<FieldStep> steps;        // one step for each new field, in order
     std::vector<uint32_t> removed;       // old fields that nothing receives
-    std::string error;                   // not empty: the reload is rejected (type change)
+    std::vector<uint32_t> changed;       // old fields whose type changed (converted or lost)
+    std::vector<std::string> warnings;   // data loss that the reload accepts; the commit logs them
 };
 
-// Compares the old and the new field tables. It has no side effects.
+// Compares the old and the new field tables. It has no side effects. A type change never
+// rejects the reload: it converts the value (hook) or it uses the default value (warning).
 MigrationPlan build_plan(const StateLayout& old_layout, const StateLayout& new_layout);
 
 }  // namespace spp

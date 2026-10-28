@@ -1,7 +1,9 @@
 #include "spp/runtime/loader.h"
 
+#include <atomic>
 #include <cassert>
 #include <cstdio>
+#include <exception>
 
 #include "runtime_internal.h"
 
@@ -19,6 +21,26 @@ struct Loader::Pending {
     Registry staged;
     std::vector<PendingClass> classes;
 };
+
+namespace {
+std::atomic<RestartHandler> g_restart_handler{nullptr};
+std::atomic<bool> g_restart_requested{false};
+}  // namespace
+
+void set_restart_handler(RestartHandler h) { g_restart_handler.store(h); }
+bool restart_requested() { return g_restart_requested.load(); }
+void clear_restart_request() { g_restart_requested.store(false); }
+
+void request_restart(const char* reason)
+{
+    g_restart_requested.store(true);
+    std::fprintf(stderr, "[script] FATAL: restart requested: %s\n", reason);
+    if (RestartHandler h = g_restart_handler.load()) {
+        h(reason);
+        return;
+    }
+    std::abort();  // no engine handler: the process cannot go on
+}
 
 Loader::Loader() = default;
 Loader::~Loader() = default;
@@ -166,11 +188,9 @@ bool Loader::request_reload(Module module, std::string& error)
                 error = "class " + name + ": the new generation has fewer slots";
                 return false;
             }
+            // A type change does not reject the reload (design 4.7): the plan converts the
+            // field or uses the default value. The commit logs the warnings of the plan.
             pc.plan = build_plan(*cur->layout, *in.record->layout);
-            if (!pc.plan.error.empty()) {
-                error = pc.plan.error;
-                return false;
-            }
         }
         p->classes.push_back(std::move(pc));
     }
@@ -220,14 +240,24 @@ bool Loader::commit_pending(std::string& error)
         return false;
     }
 
-    // Step 2: migrate. A throwing move constructor is fatal.
+    for (const PendingClass& pc : P.classes)
+        for (const std::string& w : pc.plan.warnings)
+            std::fprintf(stderr, "[script] WARNING: %s\n", w.c_str());
+
+    // Step 2: migrate. A throwing move constructor (or initializer) is fatal (design 6.6): the
+    // runtime cannot undo a partial move of native objects. The runtime requests a restart.
+    // If the handler returns, the old objects and the old generation stay as they are. The
+    // new blocks are freed without a destructor call, because the partial state is unknown.
     try {
         for (Work& w : work)
             migrate_block(*w.old_layout, *w.pc->incoming->layout, w.pc->plan, w.old_block,
                           w.new_block);
     } catch (...) {
-        std::fprintf(stderr, "[script] FATAL: exception during state migration; restart\n");
-        std::abort();
+        for (Work& w : work) std::free(w.new_block);
+        pending_.reset();
+        error = "FATAL: exception during state migration; a restart is needed";
+        request_restart(error.c_str());
+        return false;
     }
     for (Work& w : work) w.obj->state = w.new_block;
 
@@ -239,6 +269,7 @@ bool Loader::commit_pending(std::string& error)
             r->slot_count = pc.incoming->slot_count;
             r->layout = pc.incoming->layout;
             r->generation = pc.incoming->generation;
+            r->on_reload = pc.incoming->on_reload;
         } else {
             registry_.add(pc.incoming, pc.create);
         }
@@ -253,6 +284,21 @@ bool Loader::commit_pending(std::string& error)
 
     // Step 5: switch the generation.
     active_generation = P.staged.max_generation();
+
+    // Step 5b: run the onReload hooks (design 4.7, 6.6). They run in the new generation. The
+    // old blocks are still alive. A hook that throws is logged. The object stays valid.
+    for (Work& w : work) {
+        if (!w.obj->cls->on_reload) continue;
+        try {
+            w.obj->cls->on_reload(w.obj, OldState(w.old_layout, w.old_block));
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "[script] ERROR: onReload of %s threw: %s\n",
+                         w.obj->cls->name, e.what());
+        } catch (...) {
+            std::fprintf(stderr, "[script] ERROR: onReload of %s threw an unknown exception\n",
+                         w.obj->cls->name);
+        }
+    }
 
     // Step 6: destroy the old fields and free the old blocks.
     for (Work& w : work) {

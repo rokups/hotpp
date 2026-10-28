@@ -1,4 +1,4 @@
-// Generation 3: the type of the field weapon changes. The reload must fail.
+// Generation 3: the type of the field weapon changes. The reload converts or uses the default.
 using "Actor.h";
 
 class Knight : Actor {

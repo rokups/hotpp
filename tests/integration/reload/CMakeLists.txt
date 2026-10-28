@@ -6,6 +6,7 @@ add_executable(integration_reload_tests
     script_reload_tests.cpp
     script_language_tests.cpp
     handle_reload_tests.cpp
+    hook_tests.cpp
     property_tests.cpp
     exception_tests.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Actor.cpp

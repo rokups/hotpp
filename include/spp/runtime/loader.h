@@ -35,6 +35,17 @@ struct LoaderStats {
     size_t live_objects = 0;
 };
 
+// Restart request (design 6.6). The runtime calls it when it cannot go on, for example
+// when a native move constructor throws during a migration. The engine sets a handler
+// that saves its work and restarts the process. Without a handler the runtime aborts.
+// When the handler returns, the failed commit returns false, the old generation stays
+// active and restart_requested() is true.
+using RestartHandler = void (*)(const char* reason);
+void set_restart_handler(RestartHandler handler);  // null: abort
+bool restart_requested();
+void clear_restart_request();
+void request_restart(const char* reason);
+
 // Registers generation modules. A module has the function: extern "C" void script_register(Registry&).
 //
 // Threads. The Loader has one mutex.

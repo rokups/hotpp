@@ -1,0 +1,30 @@
+// Generation 2 of the Hero class.
+// - hp has the new name health ([alias]). onReload clamps it.
+// - level changes from int to float. The convert hook keeps the value.
+// - mana has the new name energy without [alias]: the value is lost and the runtime warns.
+// - title changes from std::string to int. There is no convert hook: the default value is used.
+using "Actor.h";
+
+class Hero : Actor {
+    [alias("hp")] float health = 100.0;
+    float level = 1.0;
+    float energy = 5.0;
+    int title = 0;
+    int ticks = 0;
+    float old_hp = 0.0;
+    int reloads = 0;
+
+    float convert_level(int old) {
+        return old * 10.0;
+    }
+
+    void onReload(OldState old) {
+        this.reloads = this.reloads + 1;
+        if (old.has("hp")) this.old_hp = old.get<float>("hp");
+        if (old.has("hp") && old.get<float>("hp") > 100.0) this.health = 100.0;
+    }
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+    }
+}

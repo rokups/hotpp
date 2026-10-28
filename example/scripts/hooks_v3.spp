@@ -1,0 +1,22 @@
+// Generation 3 of the Hero class. The onReload hook throws. The reload still completes.
+using "Actor.h";
+using <stdexcept>;
+
+class Hero : Actor {
+    [alias("health")] float hp = 100.0;
+    float level = 1.0;
+    float energy = 5.0;
+    int title = 0;
+    int ticks = 0;
+    float old_hp = 0.0;
+    int reloads = 0;
+
+    void onReload(OldState old) {
+        this.reloads = this.reloads + 100;
+        throw std.runtime_error("hook failed");
+    }
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+    }
+}

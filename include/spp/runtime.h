@@ -28,6 +28,7 @@
 #include "spp/runtime/deref.h"
 #include "spp/runtime/ref_arg.h"
 #include "spp/runtime/properties.h"
+#include "spp/runtime/old_state.h"
 #include "spp/runtime/state.h"
 #include "spp/runtime/migration.h"
 #include "spp/runtime/registry.h"

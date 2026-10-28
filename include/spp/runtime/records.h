@@ -4,6 +4,9 @@
 
 namespace spp {
 
+struct ShellBase;
+class OldState;
+
 // Tag type. It marks the constructor of a shell that the script runtime makes.
 struct Construct {};
 
@@ -23,6 +26,11 @@ struct FieldInfo {
     void (*init)(void* self, void* field);     // runs the field initializer
     void (*move)(void* dst, const void* src);  // move-construct
     void (*destroy)(void* field);              // null for a trivial type
+    // Optional convert hook for a change of the field type. "convert_from" is the type key
+    // of the parameter. The hook runs when the old field has that type key. "dst" is raw
+    // memory. The hook constructs the new field there. Both members are null without a hook.
+    const char* convert_from = nullptr;
+    void (*convert)(void* dst, const void* src) = nullptr;
 };
 
 // Size, alignment and fields of the state struct of one generation.
@@ -43,6 +51,8 @@ struct ClassRecord {
     ClassRecord* super;
     const char* base_name;  // name of the native base class
     uint64_t shell_hash;    // hash of the shell layout (see shell_layout_hash)
+    // The onReload hook of the script class, or null. The commit calls it after the migration.
+    void (*on_reload)(ShellBase* self, const OldState& old) = nullptr;
 };
 
 }  // namespace spp

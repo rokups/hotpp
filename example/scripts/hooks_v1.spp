@@ -1,0 +1,15 @@
+// Generation 1 of the Hero class. The reload tests of the hooks (design 4.7) use it.
+using "Actor.h";
+using <string>;
+
+class Hero : Actor {
+    float hp = 120.0;
+    int level = 3;
+    float mana = 10.0;
+    std.string title = "novice";
+    int ticks = 0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+    }
+}

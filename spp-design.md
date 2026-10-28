@@ -366,6 +366,10 @@ The type key is the mangled C++ type name. Two generations agree on the mangled 
 
 A class can define an optional hook `void onReload(OldState old)`. The hook runs after the structural migration. `OldState` is a reflection view. The hook can read any old field by name. The hook runs in the new generation and can fail. A failed hook logs an error and leaves the defaults in place.
 
+`OldState` offers `has("name")`, `has<T>("name")` and `get<T>("name")`. `get` throws `std::runtime_error` for an absent field or a wrong type. The view shows every field of the old generation by its old name, also a field that the migration moved.
+
+The `convert` hook of a field `X` is a class function `T convert_X(Old old)`. `T` is the type of the new field. `Old` is the old type. The hook has no `this`. The runtime uses it when the old field type equals `Old`. A rename without `[alias]` logs a warning when the removed and the added field have the same type.
+
 ### 4.8 Reload sequence
 
 ```
@@ -812,7 +816,7 @@ class Player : Actor {
     [alias("hp")] float health = 100.0;
     float shield = 25.0;
     void heal(float amount) { this.health = Math.Min(this.health + amount, 100.0); }
-    void onReload(OldState old) {                     // planned: the parser does not support it yet
+    void onReload(OldState old) {
         if (old.has("hp") && old.get<float>("hp") > 100.0) this.health = 100.0;
     }
 }
@@ -949,7 +953,7 @@ The keywords `ref` and `out` stay. They are the only syntax for the details of p
 
 - A `value` field lives in the state block. The migration moves it. The `FieldInfo` flags `trivially_copyable` and `nothrow_move` apply.
 - A handle field migrates as a handle. The reload does not change the pointee.
-- A change of kind for a type changes the layout of all fields of that type. The type key detects this. The reload is rejected, as for any other type change. A `convert` hook can handle it later.
+- A change of kind for a type changes the layout of all fields of that type. The type key detects this. The reload follows the type-change row of section 5.3: the `convert` hook converts the value, else the field gets its default value and the runtime logs a warning.
 
 #### 7.10.9 Known limits
 

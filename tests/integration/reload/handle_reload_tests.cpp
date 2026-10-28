@@ -33,8 +33,10 @@ TEST_P(BackendTests, HandleFieldSurvivesReload)
     handlereload::run_handle_reload(std::move(*v1.module), std::move(*v2.module), std::move(*v1b.module));
 }
 
-// A change of the field type from a handle to int is rejected. The old generation stays.
-TEST_P(BackendTests, HandleTypeChangeIsRejected)
+// A change of the field type from a handle to int does not reject the reload (design 4.7).
+// The field gets its default value and the runtime logs a warning. The other fields migrate.
+// The Weapon object dies with the old block.
+TEST_P(BackendTests, HandleTypeChangeUsesTheDefaultAndWarns)
 {
     spp::LoadResult v1 = backend->load(source("handle_v1.spp"), 1);
     ASSERT_TRUE(v1) << v1.error;
@@ -44,14 +46,25 @@ TEST_P(BackendTests, HandleTypeChangeIsRejected)
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Knight"));
     s.commit_at_frame_boundary();
     s.world.Tick(kDt);
-    std::string error;
-    EXPECT_FALSE(s.loader.request_reload(std::move(*v3.module), error));
-    EXPECT_FALSE(error.empty());
     s.world.Tick(kDt);
-    EXPECT_EQ(spp::active_generation, 1u);
-    auto handle = spp::field_ptr<std::shared_ptr<Weapon>>(s.inst.shell, "weapon");
-    ASSERT_NE(handle, nullptr);
-    EXPECT_NE(handle->get(), nullptr);
+    auto swings = spp::field_ptr<int>(s.inst.shell, "swings");
+    ASSERT_NE(swings, nullptr);
+    EXPECT_EQ(*swings, 2);
+    std::string error;
+    ASSERT_TRUE(s.loader.request_reload(std::move(*v3.module), error)) << error;
+    testing::internal::CaptureStderr();
+    s.world.Tick(kDt);
+    const std::string log = testing::internal::GetCapturedStderr();
+    EXPECT_FALSE(s.commit_failed);
+    EXPECT_NE(log.find("WARNING: Knight"), std::string::npos) << log;
+    EXPECT_NE(log.find("field weapon changed its type"), std::string::npos) << log;
+    EXPECT_EQ(spp::active_generation, 2u);
+    auto weapon = spp::field_ptr<int>(s.inst.shell, "weapon");
+    ASSERT_NE(weapon, nullptr);
+    EXPECT_EQ(*weapon, 0);
+    swings = spp::field_ptr<int>(s.inst.shell, "swings");
+    ASSERT_NE(swings, nullptr);
+    EXPECT_EQ(*swings, 3);  // the migrated value plus the Tick of generation 3
 }
 
 // An intrusive handle in a field of a subclass type survives reloads. The count is right:
