@@ -6,7 +6,7 @@
 // as a Module with module_from_library. They run for every SPP_BACKEND value.
 //
 // CMake defines these macros: SPP_SOURCE_DIR, SPP_BINARY_DIR, SPP_BACKEND_NAME,
-// SPPC_PATH, SPP_CXX, PRE_V1_SO and PRE_V2_SO.
+// SPPC_PATH, SPP_CXX, PRE_V1_SO, PRE_V2_SO, PRE_NATIVE_V1_SO and PRE_NATIVE_V2_SO.
 #include <gtest/gtest.h>
 
 #include <sys/wait.h>
@@ -20,6 +20,7 @@
 
 #include "backend.h"
 #include "f1_scenario.h"
+#include "native_std_scenario.h"
 
 namespace {
 
@@ -86,6 +87,17 @@ TEST_P(BackendTests, F1ReloadKeepsAddressAndMigratesState)
     f1::run_f1_reload(std::move(*v1.module), std::move(*v2.module));
 }
 
+// A script calls native functions from Util.cpp and uses std containers. The reload
+// migrates a std::string and a std::vector.
+TEST_P(BackendTests, NativeFunctionsAndStdContainersMigrate)
+{
+    script::LoadResult v1 = backend->load(source("native_std_v1.script"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    script::LoadResult v2 = backend->load(source("native_std_v2.script"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    nativestd::run_native_std_reload(std::move(*v1.module), std::move(*v2.module));
+}
+
 // A bad script gives an error at the script line. The runtime keeps running.
 TEST_P(BackendTests, BadScriptGivesErrorAndRuntimeKeepsRunning)
 {
@@ -127,6 +139,12 @@ INSTANTIATE_TEST_SUITE_P(Selected, BackendTests, ::testing::Values(std::string(S
 TEST(PrecompiledTests, F1ReloadWithModulesFromLibraries)
 {
     f1::run_f1_reload(test_support::library(PRE_V1_SO), test_support::library(PRE_V2_SO));
+}
+
+TEST(PrecompiledTests, NativeFunctionsAndStdContainersWithLibraries)
+{
+    nativestd::run_native_std_reload(test_support::library(PRE_NATIVE_V1_SO),
+                                     test_support::library(PRE_NATIVE_V2_SO));
 }
 
 TEST(PrecompiledTests, MissingLibraryGivesErrorString)

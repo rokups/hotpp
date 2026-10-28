@@ -45,7 +45,7 @@ target_link_libraries(spp_runtime PUBLIC ${CMAKE_DL_LIBS} Threads::Threads)
 
 # Engine harness. ENABLE_EXPORTS adds -rdynamic, so a generation module
 # resolves the engine symbols and the runtime symbols from the executable.
-add_executable(minengine engine/main.cpp engine/Actor.cpp)
+add_executable(minengine engine/main.cpp engine/Actor.cpp engine/Util.cpp)
 target_link_libraries(minengine PRIVATE spp_runtime)
 set_target_properties(minengine PROPERTIES ENABLE_EXPORTS ON)
 
@@ -68,7 +68,7 @@ endforeach()
 
 # GoogleTest cases R0 and R1. The file gen3_missing.so does not exist on purpose.
 foreach(r r0 r1)
-    add_executable(${r}_tests tests/${r}_tests.cpp engine/Actor.cpp)
+    add_executable(${r}_tests tests/${r}_tests.cpp engine/Actor.cpp engine/Util.cpp)
     target_link_libraries(${r}_tests PRIVATE spp_runtime GTest::gtest_main)
     set_target_properties(${r}_tests PROPERTIES ENABLE_EXPORTS ON)
     target_include_directories(${r}_tests PRIVATE tests)
@@ -155,13 +155,19 @@ spp_add_scripts(TARGET pre_gen1 GEN 1 SCRIPTS scripts/player_v1.script
 spp_add_scripts(TARGET pre_gen2 GEN 2 SCRIPTS scripts/player_v2.script AFTER pre_gen1
                 INCLUDES ${CMAKE_SOURCE_DIR}/engine ${CMAKE_SOURCE_DIR}/runtime
                 FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS})
+spp_add_scripts(TARGET pre_native1 GEN 1 SCRIPTS scripts/native_std_v1.script AFTER pre_gen2
+                INCLUDES ${CMAKE_SOURCE_DIR}/engine ${CMAKE_SOURCE_DIR}/runtime
+                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${CMAKE_SOURCE_DIR}/engine/Util.h)
+spp_add_scripts(TARGET pre_native2 GEN 2 SCRIPTS scripts/native_std_v2.script AFTER pre_native1
+                INCLUDES ${CMAKE_SOURCE_DIR}/engine ${CMAKE_SOURCE_DIR}/runtime
+                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${CMAKE_SOURCE_DIR}/engine/Util.h)
 
 # GoogleTest cases: BackendTests (the selected backend) and PrecompiledTests (sppc).
-add_executable(backend_tests tests/backend_tests.cpp engine/Actor.cpp)
+add_executable(backend_tests tests/backend_tests.cpp engine/Actor.cpp engine/Util.cpp)
 target_include_directories(backend_tests PRIVATE tests)
 target_link_libraries(backend_tests PRIVATE spp_backend GTest::gtest_main)
 set_target_properties(backend_tests PROPERTIES ENABLE_EXPORTS ON)
-add_dependencies(backend_tests pre_gen1 pre_gen2 sppc)
+add_dependencies(backend_tests pre_gen1 pre_gen2 pre_native1 pre_native2 sppc)
 target_compile_definitions(backend_tests PRIVATE
     SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     SPP_BINARY_DIR="${CMAKE_BINARY_DIR}"
@@ -169,11 +175,13 @@ target_compile_definitions(backend_tests PRIVATE
     SPPC_PATH="$<TARGET_FILE:sppc>"
     SPP_CXX="${CMAKE_CXX_COMPILER}"
     PRE_V1_SO="${CMAKE_BINARY_DIR}/spp_scripts/player_v1.g1.so"
-    PRE_V2_SO="${CMAKE_BINARY_DIR}/spp_scripts/player_v2.g2.so")
+    PRE_V2_SO="${CMAKE_BINARY_DIR}/spp_scripts/player_v2.g2.so"
+    PRE_NATIVE_V1_SO="${CMAKE_BINARY_DIR}/spp_scripts/native_std_v1.g1.so"
+    PRE_NATIVE_V2_SO="${CMAKE_BINARY_DIR}/spp_scripts/native_std_v2.g2.so")
 gtest_discover_tests(backend_tests)
 
 # Experiments R3 and R6: closures that outlive a generation, and the unload.
-add_executable(r3_tests tests/r3_tests.cpp engine/Actor.cpp)
+add_executable(r3_tests tests/r3_tests.cpp engine/Actor.cpp engine/Util.cpp)
 target_include_directories(r3_tests PRIVATE tests)
 target_link_libraries(r3_tests PRIVATE spp_backend GTest::gtest_main)
 set_target_properties(r3_tests PROPERTIES ENABLE_EXPORTS ON)
@@ -181,7 +189,7 @@ target_compile_definitions(r3_tests PRIVATE SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
 gtest_discover_tests(r3_tests)
 
 # Experiment R5: worker threads, a barrier and a reload from a third thread.
-add_executable(r5_tests tests/r5_tests.cpp engine/Actor.cpp)
+add_executable(r5_tests tests/r5_tests.cpp engine/Actor.cpp engine/Util.cpp)
 target_include_directories(r5_tests PRIVATE tests)
 target_link_libraries(r5_tests PRIVATE spp_backend GTest::gtest_main)
 set_target_properties(r5_tests PROPERTIES ENABLE_EXPORTS ON)
@@ -199,7 +207,7 @@ gtest_discover_tests(translator_tests)
 
 # JIT only: no file, no child process, the life of a generation.
 if(SPP_BACKEND STREQUAL "JIT")
-    add_executable(jit_tests tests/jit_tests.cpp engine/Actor.cpp)
+    add_executable(jit_tests tests/jit_tests.cpp engine/Actor.cpp engine/Util.cpp)
     target_include_directories(jit_tests PRIVATE tests)
     target_link_libraries(jit_tests PRIVATE spp_backend GTest::gtest_main)
     set_target_properties(jit_tests PROPERTIES ENABLE_EXPORTS ON)
@@ -209,7 +217,7 @@ if(SPP_BACKEND STREQUAL "JIT")
 endif()
 
 # bench_backends times the compile and the load of the example scripts.
-add_executable(bench_backends tools/bench_backends.cpp engine/Actor.cpp)
+add_executable(bench_backends tools/bench_backends.cpp engine/Actor.cpp engine/Util.cpp)
 set_target_properties(bench_backends PROPERTIES ENABLE_EXPORTS ON)
 target_link_libraries(bench_backends PRIVATE spp_backend)
 if(SPP_BACKEND STREQUAL "JIT")

@@ -1,0 +1,29 @@
+// Generation 2: the field label is now title, and the field note is new.
+// The std::string and the std::vector move to the new block.
+import <vector>;
+import "<algorithm>";
+import <string>;
+import "Actor.h";
+import "Math.h";
+import "Util.h";
+
+class Tracker : Actor {
+    @was("label") title: std::string = "new title";
+    history: std::vector<int> = {};
+    dist: float = 0.0;
+    lowest: float = 0.0;
+    sum: float = 0.0;
+    described: std::string = "";
+    note: std::string = "note from generation 2";
+
+    override Tick(dt: float) {
+        let v = std::vector<float>{9.0, 8.0, 7.0};
+        std::sort(v.begin(), v.end(), std::greater<float>());
+        this.lowest = Math.Min(v[0], v[2]);
+        this.dist = Distance(this.Position, Vec3{1, 1, 1});
+        this.sum = Util.Sum(this.Position) * 2.0;
+        this.described = Util.Describe(*this);
+        this.Name = FormatVec(this.Position);
+        this.history.push_back(static_cast<int>(this.history.size()) * 10);
+    }
+}

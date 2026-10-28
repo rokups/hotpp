@@ -40,6 +40,8 @@ The command loads `gen1.so` and makes one `Player`. It ticks the world 3 times. 
 
 The script subset: `import`, `class N : Base`, fields with `@was("old")`, `override`, `fn`, `let`, `const`, `this.`, `super.`, `null`, float literals, `Math.Min` as `Math::Min`, `if`, `while`, `for`, `return`. The arrow lambda `() => { ... }` and `(x: float) => { ... }` works in a function body. Each parameter needs a type. The lambda body is a block. See "Closures and unload".
 
+Imports: `import "Actor.h";` becomes `#include "Actor.h"`. A standard header uses angle brackets: `import <vector>;` or `import "<vector>";`. Both forms become `#include <vector>`, in the generated file and in the libclang probe. A missing header gives an error with the script name and line. The generated file always includes `<cstddef>`, `<cstdint>`, `<cstdio>`, `<new>`, `<string>`, `<type_traits>`, `<typeinfo>`, `<utility>` and `script_runtime.h`. Import any other standard header, for example `<algorithm>`. A script can call a non-inline function of the host, for example `Distance` in `engine/Util.cpp`. The host executable must export it (`ENABLE_EXPORTS`, `-rdynamic`).
+
 The body rewrite works on tokens. The translator does not parse expressions. A pointer needs `->` in a body, except a field or a parameter that has a pointer type.
 
 The slot file (`--slots`) keeps the slot order of the `fn` methods stable between generations. A generation can add a `fn`, but it cannot remove one.
