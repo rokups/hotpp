@@ -36,6 +36,15 @@ CPMAddPackage(
     OPTIONS "INSTALL_GTEST OFF" "gtest_force_shared_crt ON"
 )
 include(GoogleTest)
+# lexy: header-only parser library. Only src/translator/parser/ includes its headers.
+# Use only foonathan::lexy::core. Do not link foonathan::lexy (it builds lexy_file).
+CPMAddPackage(
+    NAME lexy
+    GITHUB_REPOSITORY foonathan/lexy
+    GIT_TAG v2025.05.0
+    VERSION 2025.05.0
+    OPTIONS "LEXY_BUILD_EXAMPLES OFF" "LEXY_BUILD_TESTS OFF" "LEXY_BUILD_PACKAGE OFF" "LEXY_ENABLE_INSTALL OFF"
+)
 
 # Script runtime: a small static library for the executable.
 add_library(spp_runtime STATIC src/runtime/script_runtime.cpp src/runtime/module.cpp)
@@ -88,10 +97,13 @@ find_library(CLANG_C_LIBRARY NAMES clang REQUIRED)
 find_path(CLANG_C_INCLUDE_DIR clang-c/Index.h REQUIRED)
 execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
                 OUTPUT_VARIABLE CLANG_RESOURCE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
-add_library(spc_lib STATIC src/translator/spc_lib.cpp)
+add_library(spc_lib STATIC src/translator/spc_lib.cpp src/translator/emit.cpp src/translator/lower.cpp
+    src/translator/parser/script_grammar.cpp
+    src/translator/parser/expression_grammar.cpp src/translator/parser/statement_grammar.cpp)
 target_include_directories(spc_lib PUBLIC ${CMAKE_SOURCE_DIR}/include)
 target_include_directories(spc_lib PRIVATE ${CLANG_C_INCLUDE_DIR})
 target_link_libraries(spc_lib PUBLIC ${CLANG_C_LIBRARY})
+target_link_libraries(spc_lib PRIVATE foonathan::lexy::core)
 target_compile_definitions(spc_lib PRIVATE SPC_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
 add_executable(spc src/translator/spc.cpp)
 target_link_libraries(spc PRIVATE spc_lib)
@@ -202,8 +214,34 @@ gtest_discover_tests(r5_tests)
 # The cache of the translator session needs only spc_lib.
 add_executable(translator_tests tests/translator_tests.cpp)
 target_link_libraries(translator_tests PRIVATE spc_lib GTest::gtest_main)
+target_include_directories(translator_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator/parser ${CMAKE_SOURCE_DIR}/src/translator)
 target_compile_definitions(translator_tests PRIVATE SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 gtest_discover_tests(translator_tests)
+
+# The printer of the expression and statement AST.
+add_executable(emit_tests tests/emit_tests.cpp)
+target_link_libraries(emit_tests PRIVATE spc_lib GTest::gtest_main)
+target_include_directories(emit_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator)
+gtest_discover_tests(emit_tests)
+
+# The parser of the expressions: round trip with the printer.
+add_executable(expr_parse_tests tests/expr_parse_tests.cpp)
+target_link_libraries(expr_parse_tests PRIVATE spc_lib GTest::gtest_main)
+target_include_directories(expr_parse_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator)
+gtest_discover_tests(expr_parse_tests)
+
+# The parser of the statements: round trip with the printer, and the example scripts.
+add_executable(stmt_parse_tests tests/stmt_parse_tests.cpp)
+target_link_libraries(stmt_parse_tests PRIVATE spc_lib GTest::gtest_main)
+target_include_directories(stmt_parse_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator)
+target_compile_definitions(stmt_parse_tests PRIVATE SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+gtest_discover_tests(stmt_parse_tests)
+
+# The lowering pass.
+add_executable(lower_tests tests/lower_tests.cpp)
+target_link_libraries(lower_tests PRIVATE spc_lib GTest::gtest_main)
+target_include_directories(lower_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator)
+gtest_discover_tests(lower_tests)
 
 # JIT only: no file, no child process, the life of a generation.
 if(SPP_BACKEND STREQUAL "JIT")

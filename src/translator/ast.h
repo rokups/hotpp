@@ -1,0 +1,279 @@
+// The plain AST types of the script. The parser, the lowering pass and the printer share them.
+// This header has no parser-library include and no libclang include.
+#pragma once
+
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include "parser/span.h"
+
+namespace spc::ast {
+
+using spc::Span;
+
+struct Param {
+    std::string name, type;
+};
+
+// ------------------------------------------------------------------ expressions
+// A node is a plain struct with a pos field. A pos of 0 means: no source position.
+// The pos of a node is the byte offset of its first token, unless the comment says
+// otherwise. The emitter uses pos to find the script line of a leaf.
+struct Expr;
+struct Stmt;
+using ExprP = std::unique_ptr<Expr>;
+using StmtP = std::unique_ptr<Stmt>;
+
+struct NameExpr {  // a::b::c<int>
+    std::vector<std::string> parts;
+    bool leading_colons = false;
+    std::string template_args;  // raw text with the angle brackets; may be empty
+    // The arguments as expressions, when they parse as a list of expressions. The text in
+    // template_args stays. The lowering pass lowers the nodes and rewrites the text.
+    std::vector<ExprP> targ_exprs;
+    bool targ_parsed = false;
+    uint32_t pos = 0;
+};
+struct ThisExpr {
+    uint32_t pos = 0;
+};
+struct SuperExpr {
+    uint32_t pos = 0;
+};
+struct NullExpr {
+    uint32_t pos = 0;
+};
+struct NumberExpr {
+    std::string text;
+    uint32_t pos = 0;
+};
+struct StringExpr {  // the text keeps the quotes
+    std::string text;
+    uint32_t pos = 0;
+};
+struct CharExpr {  // the text keeps the quotes
+    std::string text;
+    uint32_t pos = 0;
+};
+struct MemberExpr {
+    ExprP obj;
+    std::string name;
+    bool arrow = false;
+    uint32_t pos = 0;
+};
+struct CallExpr {
+    ExprP callee;
+    std::vector<ExprP> args;
+    uint32_t pos = 0;
+};
+struct IndexExpr {
+    ExprP obj, index;
+    uint32_t pos = 0;
+};
+struct UnaryExpr {  // the pos is the pos of the operator, if it is a prefix operator
+    std::string op;
+    ExprP operand;
+    bool postfix = false;
+    uint32_t pos = 0;
+};
+struct BinaryExpr {  // also the assignment operators
+    std::string op;
+    ExprP lhs, rhs;
+    uint32_t pos = 0;
+};
+struct TernaryExpr {
+    ExprP cond, a, b;
+    uint32_t pos = 0;
+};
+struct ParenExpr {
+    ExprP inner;
+    uint32_t pos = 0;
+};
+struct BracedListExpr {  // {a, b, c}
+    std::vector<ExprP> elems;
+    uint32_t pos = 0;
+};
+struct TypedBracedExpr {  // T{a, b}
+    std::string type;
+    std::vector<ExprP> elems;
+    uint32_t pos = 0;
+};
+
+// A block of statements. The pos is the "{". The end_pos is the "}".
+struct BlockStmt {
+    std::vector<StmtP> stmts;
+    uint32_t pos = 0, end_pos = 0;
+};
+
+struct LambdaExpr {
+    std::vector<Param> params;  // an empty type prints as "auto"
+    BlockStmt body;
+    uint32_t pos = 0;
+};
+struct RawExpr {  // C++ text that is already lowered
+    std::string text;
+    uint32_t pos = 0;
+};
+
+struct Expr {
+    std::variant<NameExpr, ThisExpr, SuperExpr, NullExpr, NumberExpr, StringExpr, CharExpr, MemberExpr,
+                 CallExpr, IndexExpr, UnaryExpr, BinaryExpr, TernaryExpr, ParenExpr, BracedListExpr,
+                 TypedBracedExpr, LambdaExpr, RawExpr>
+        v;
+};
+
+// ------------------------------------------------------------------ statements
+struct ExprStmt {
+    ExprP expr;
+    uint32_t pos = 0;
+};
+struct VarDeclStmt {
+    bool is_const = false;
+    std::string name;
+    std::string type;  // empty: auto
+    ExprP init;        // may be null
+    uint32_t pos = 0;
+};
+struct IfStmt {
+    ExprP cond;
+    StmtP then, otherwise;  // otherwise may be null
+    uint32_t pos = 0, else_pos = 0;
+};
+struct WhileStmt {
+    ExprP cond;
+    StmtP body;
+    uint32_t pos = 0;
+};
+struct DoWhileStmt {
+    StmtP body;
+    ExprP cond;
+    uint32_t pos = 0, while_pos = 0;
+};
+struct ForStmt {
+    std::vector<StmtP> init;  // VarDeclStmt or ExprStmt
+    ExprP cond;               // may be null
+    std::vector<ExprP> step;
+    StmtP body;
+    uint32_t pos = 0;
+};
+struct ForOfStmt {
+    bool is_const = false;
+    std::string name;
+    std::string type;  // empty: auto
+    ExprP range;
+    StmtP body;
+    uint32_t pos = 0;
+};
+struct ReturnStmt {
+    ExprP expr;  // may be null
+    uint32_t pos = 0;
+};
+struct BreakStmt {
+    uint32_t pos = 0;
+};
+struct ContinueStmt {
+    uint32_t pos = 0;
+};
+struct SwitchCase {  // the pos is the first "case" or the "default"
+    std::vector<ExprP> labels;
+    // The pos of the "case" word of each label. It can be empty (a node built by hand).
+    std::vector<uint32_t> label_pos;
+    bool is_default = false;
+    uint32_t default_pos = 0;  // the pos of the "default" word; 0: use pos
+    std::vector<StmtP> stmts;
+    uint32_t pos = 0;
+};
+struct SwitchStmt {
+    ExprP subject;
+    std::vector<SwitchCase> cases;
+    uint32_t pos = 0, end_pos = 0;  // end_pos is the "}"
+};
+struct EmptyStmt {
+    uint32_t pos = 0;
+};
+struct RawStmt {  // C++ text that is already lowered
+    std::string text;
+    uint32_t pos = 0;
+};
+
+struct Stmt {
+    std::variant<BlockStmt, ExprStmt, VarDeclStmt, IfStmt, WhileStmt, DoWhileStmt, ForStmt, ForOfStmt,
+                 ReturnStmt, BreakStmt, ContinueStmt, SwitchStmt, EmptyStmt, RawStmt>
+        v;
+};
+
+// Put a node in a new Expr or Stmt.
+template <class T>
+ExprP make_expr(T node)
+{
+    auto p = std::make_unique<Expr>();
+    p->v = std::move(node);
+    return p;
+}
+template <class T>
+StmtP make_stmt(T node)
+{
+    auto p = std::make_unique<Stmt>();
+    p->v = std::move(node);
+    return p;
+}
+
+inline uint32_t pos_of(const Expr& e)
+{
+    return std::visit([](const auto& n) { return n.pos; }, e.v);
+}
+inline uint32_t pos_of(const Stmt& s)
+{
+    return std::visit([](const auto& n) { return n.pos; }, s.v);
+}
+
+// ------------------------------------------------------------------ script
+struct Field {
+    std::string name, was, type;
+    ExprP init;      // null when the field has no initializer, or the parse failed
+    Span init_span;  // the raw text after "=", up to the ";"
+    bool has_init = false;
+    int line = 0;
+    uint32_t pos = 0;
+};
+
+struct Method {
+    bool is_override = false;
+    std::string name;
+    std::vector<Param> params;
+    std::string ret;  // empty: not written
+    BlockStmt body;  // the statements; the parser fills them from body_span
+    Span body_span;  // the raw text between the braces
+    int line = 0, end_line = 0;
+    uint32_t pos = 0, end_pos = 0;
+};
+
+struct ClassDef {
+    std::string name, base;
+    std::vector<Field> fields;
+    std::vector<Method> methods;
+    int line = 0;
+    uint32_t pos = 0;
+};
+
+struct Import {
+    std::string path;  // the header name; a system header keeps its angle brackets
+    int line;
+    uint32_t pos = 0;
+    // The text after #include: <vector> for a system header, "Actor.h" for the others.
+    std::string target() const
+    {
+        return !path.empty() && path.front() == '<' ? path : "\"" + path + "\"";
+    }
+};
+
+struct Script {
+    std::vector<Import> imports;
+    std::vector<ClassDef> classes;
+};
+
+}  // namespace spc::ast

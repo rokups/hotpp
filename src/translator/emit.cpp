@@ -1,0 +1,430 @@
+// The printer of the expression and statement AST.
+//
+// Spacing rules and quirks. The old token rewriter keeps the white space of the
+// script. The printer writes a fixed layout, and it keeps these rules of the old
+// body emitter:
+//  1. A leaf starts a new output line when its script line differs from the
+//     current one. The line starts with "#line N "file"", a new line, and the
+//     indentation (4 spaces for each level). The first "#line" has no new line
+//     before it, because the caller ends the previous line. finish() ends the
+//     last line.
+//  2. Only the first leaf of an output line gets the indentation. A "}" at the
+//     start of a line gets one level less.
+//  3. The level counts each leaf with the text "{" or "}", also the braces of a
+//     braced list. This is a quirk of the old emitter. A braced list over more
+//     than one line has the same indentation effect as a block.
+//  4. A "case" or "default" label has the same indentation as the statements
+//     of the switch. It has no outdent.
+//  5. A line break drops the space before the leaf. A leaf with pos 0 never
+//     starts a line. A node that has no pos (for example ";" or ")") stays on
+//     the line of the leaf before it.
+// Differences from the old emitter:
+//  6. The old emitter breaks on any change of the line. The printer breaks only
+//     when the line is greater than the current line.
+//  7. An operator, a "." or a "->" has no pos. A line break before an operator
+//     appears before the next leaf. The old emitter breaks before the operator.
+//  8. This prints as "this", Super as "super" and Null as "nullptr". The
+//     lowering pass must replace "this" and "super" with Raw nodes.
+//  9. A For with more than one VarDecl in init prints invalid C++. Several
+//     ExprStmt in init print as a comma expression.
+#include "emit.h"
+
+#include <algorithm>
+
+namespace spc::ast {
+
+namespace {
+
+std::string escape(const std::string& f)
+{
+    std::string r;
+    for (char c : f) {
+        if (c == '\\' || c == '"') r += '\\';
+        r += c;
+    }
+    return r;
+}
+
+}  // namespace
+
+void Emitter::put(std::string_view t, uint32_t pos)
+{
+    bool broke = false;
+    if (map_ && pos != 0) {
+        int line = map_->line(pos);
+        if (line > line_) {
+            if (!out_.empty()) out_ += '\n';
+            out_ += "#line " + std::to_string(line) + " \"" + escape(file_) + "\"\n";
+            int d = depth - (t == "}" ? 1 : 0);
+            out_.append(static_cast<size_t>(4 * std::max(d, 0)), ' ');
+            line_ = line;
+            broke = true;
+        }
+    }
+    if (!broke && space_ && !out_.empty()) out_ += ' ';
+    space_ = false;
+    out_ += t;
+    if (t == "{") ++depth;
+    if (t == "}") --depth;
+}
+
+void Emitter::finish()
+{
+    if (map_ && line_ != 0) out_ += '\n';
+}
+
+namespace {
+
+void block(const BlockStmt& b, Emitter& e);
+void stmt_list(const std::vector<StmtP>& v, Emitter& e);
+
+void expr_list(const std::vector<ExprP>& v, Emitter& e)
+{
+    for (size_t i = 0; i < v.size(); ++i) {
+        if (i) {
+            e.put(",");
+            e.space();
+        }
+        emit_expr(*v[i], e);
+    }
+}
+
+struct ExprPrinter {
+    Emitter& e;
+
+    void operator()(const NameExpr& n) const
+    {
+        std::string t = n.leading_colons ? "::" : "";
+        for (size_t i = 0; i < n.parts.size(); ++i) t += (i ? "::" : "") + n.parts[i];
+        e.put(t + n.template_args, n.pos);
+    }
+    void operator()(const ThisExpr& n) const { e.put("this", n.pos); }
+    void operator()(const SuperExpr& n) const { e.put("super", n.pos); }
+    void operator()(const NullExpr& n) const { e.put("nullptr", n.pos); }
+    void operator()(const NumberExpr& n) const { e.put(n.text, n.pos); }
+    void operator()(const StringExpr& n) const { e.put(n.text, n.pos); }
+    void operator()(const CharExpr& n) const { e.put(n.text, n.pos); }
+    void operator()(const RawExpr& n) const { e.put(n.text, n.pos); }
+    void operator()(const MemberExpr& n) const
+    {
+        emit_expr(*n.obj, e);
+        e.put(n.arrow ? "->" : ".");
+        e.put(n.name);
+    }
+    void operator()(const CallExpr& n) const
+    {
+        emit_expr(*n.callee, e);
+        e.put("(");
+        expr_list(n.args, e);
+        e.put(")");
+    }
+    void operator()(const IndexExpr& n) const
+    {
+        emit_expr(*n.obj, e);
+        e.put("[");
+        emit_expr(*n.index, e);
+        e.put("]");
+    }
+    void operator()(const UnaryExpr& n) const
+    {
+        if (n.postfix) {
+            emit_expr(*n.operand, e);
+            e.put(n.op);
+            return;
+        }
+        e.put(n.op, n.pos);
+        // "- -x" must not become "--x".
+        const auto* inner = std::get_if<UnaryExpr>(&n.operand->v);
+        if (inner && !inner->postfix && !n.op.empty() && !inner->op.empty() && inner->op[0] == n.op.back() &&
+            (n.op.back() == '-' || n.op.back() == '+' || n.op.back() == '&'))
+            e.space();
+        emit_expr(*n.operand, e);
+    }
+    void operator()(const BinaryExpr& n) const
+    {
+        emit_expr(*n.lhs, e);
+        e.space();
+        e.put(n.op);
+        e.space();
+        emit_expr(*n.rhs, e);
+    }
+    void operator()(const TernaryExpr& n) const
+    {
+        emit_expr(*n.cond, e);
+        e.space();
+        e.put("?");
+        e.space();
+        emit_expr(*n.a, e);
+        e.space();
+        e.put(":");
+        e.space();
+        emit_expr(*n.b, e);
+    }
+    void operator()(const ParenExpr& n) const
+    {
+        e.put("(", n.pos);
+        emit_expr(*n.inner, e);
+        e.put(")");
+    }
+    void operator()(const BracedListExpr& n) const
+    {
+        e.put("{", n.pos);
+        expr_list(n.elems, e);
+        e.put("}");
+    }
+    void operator()(const TypedBracedExpr& n) const
+    {
+        e.put(n.type, n.pos);
+        e.put("{");
+        expr_list(n.elems, e);
+        e.put("}");
+    }
+    void operator()(const LambdaExpr& n) const
+    {
+        e.put("[=]", n.pos);
+        e.put("(");
+        for (size_t i = 0; i < n.params.size(); ++i) {
+            if (i) {
+                e.put(",");
+                e.space();
+            }
+            const Param& p = n.params[i];
+            e.put(p.type.empty() ? "auto" : p.type);
+            e.space();
+            e.put(p.name);
+        }
+        e.put(")");
+        block(n.body, e);
+    }
+};
+
+// A declaration or an expression statement without the ";" (the header of a for).
+void simple(const Stmt& s, Emitter& e);
+
+void decl(const VarDeclStmt& d, Emitter& e)
+{
+    e.put(std::string(d.is_const ? "const " : "") + (d.type.empty() ? "auto" : d.type), d.pos);
+    e.space();
+    e.put(d.name);
+    if (d.init) {
+        e.space();
+        e.put("=");
+        e.space();
+        emit_expr(*d.init, e);
+    }
+}
+
+// The "(" ... ")" part of a statement keyword, then a space.
+void open_paren(Emitter& e)
+{
+    e.space();
+    e.put("(");
+}
+void close_paren(Emitter& e)
+{
+    e.put(")");
+    e.space();
+}
+
+struct StmtPrinter {
+    Emitter& e;
+
+    void operator()(const BlockStmt& n) const { block(n, e); }
+    void operator()(const ExprStmt& n) const
+    {
+        emit_expr(*n.expr, e);
+        e.put(";");
+    }
+    void operator()(const VarDeclStmt& n) const
+    {
+        decl(n, e);
+        e.put(";");
+    }
+    void operator()(const IfStmt& n) const
+    {
+        e.put("if", n.pos);
+        open_paren(e);
+        emit_expr(*n.cond, e);
+        close_paren(e);
+        emit_stmt(*n.then, e);
+        if (n.otherwise) {
+            e.space();
+            e.put("else", n.else_pos);
+            e.space();
+            emit_stmt(*n.otherwise, e);
+        }
+    }
+    void operator()(const WhileStmt& n) const
+    {
+        e.put("while", n.pos);
+        open_paren(e);
+        emit_expr(*n.cond, e);
+        close_paren(e);
+        emit_stmt(*n.body, e);
+    }
+    void operator()(const DoWhileStmt& n) const
+    {
+        e.put("do", n.pos);
+        e.space();
+        emit_stmt(*n.body, e);
+        e.space();
+        e.put("while", n.while_pos);
+        open_paren(e);
+        emit_expr(*n.cond, e);
+        e.put(")");
+        e.put(";");
+    }
+    void operator()(const ForStmt& n) const
+    {
+        e.put("for", n.pos);
+        open_paren(e);
+        for (size_t i = 0; i < n.init.size(); ++i) {
+            if (i) {
+                e.put(",");
+                e.space();
+            }
+            simple(*n.init[i], e);
+        }
+        e.put(";");
+        if (n.cond) {
+            e.space();
+            emit_expr(*n.cond, e);
+        }
+        e.put(";");
+        if (!n.step.empty()) {
+            e.space();
+            expr_list(n.step, e);
+        }
+        close_paren(e);
+        emit_stmt(*n.body, e);
+    }
+    void operator()(const ForOfStmt& n) const
+    {
+        e.put("for", n.pos);
+        open_paren(e);
+        e.put(std::string(n.is_const ? "const " : "") + (n.type.empty() ? "auto" : n.type));
+        e.space();
+        e.put(n.name);
+        e.space();
+        e.put(":");
+        e.space();
+        emit_expr(*n.range, e);
+        close_paren(e);
+        emit_stmt(*n.body, e);
+    }
+    void operator()(const ReturnStmt& n) const
+    {
+        e.put("return", n.pos);
+        if (n.expr) {
+            e.space();
+            emit_expr(*n.expr, e);
+        }
+        e.put(";");
+    }
+    void operator()(const BreakStmt& n) const
+    {
+        e.put("break", n.pos);
+        e.put(";");
+    }
+    void operator()(const ContinueStmt& n) const
+    {
+        e.put("continue", n.pos);
+        e.put(";");
+    }
+    void operator()(const SwitchStmt& n) const
+    {
+        e.put("switch", n.pos);
+        open_paren(e);
+        emit_expr(*n.subject, e);
+        close_paren(e);
+        e.put("{");
+        for (const SwitchCase& c : n.cases) {
+            bool first = true;
+            for (size_t i = 0; i < c.labels.size(); ++i) {
+                e.space();
+                e.put("case", i < c.label_pos.size() ? c.label_pos[i] : first ? c.pos : 0);
+                first = false;
+                e.space();
+                emit_expr(*c.labels[i], e);
+                e.put(":");
+            }
+            if (c.is_default) {
+                e.space();
+                e.put("default", c.default_pos != 0 ? c.default_pos : first ? c.pos : 0);
+                e.put(":");
+            }
+            stmt_list(c.stmts, e);
+        }
+        e.space();
+        e.put("}", n.end_pos);
+    }
+    void operator()(const EmptyStmt& n) const { e.put(";", n.pos); }
+    void operator()(const RawStmt& n) const { e.put(n.text, n.pos); }
+};
+
+void simple(const Stmt& s, Emitter& e)
+{
+    if (const auto* d = std::get_if<VarDeclStmt>(&s.v)) decl(*d, e);
+    else if (const auto* x = std::get_if<ExprStmt>(&s.v)) emit_expr(*x->expr, e);
+    else emit_stmt(s, e);
+}
+
+void stmt_list(const std::vector<StmtP>& v, Emitter& e)
+{
+    for (const StmtP& s : v) {
+        e.space();
+        emit_stmt(*s, e);
+    }
+}
+
+// The braces of a block at the current depth.
+void block(const BlockStmt& b, Emitter& e)
+{
+    e.space();
+    e.put("{", b.pos);
+    stmt_list(b.stmts, e);
+    if (!b.stmts.empty()) e.space();
+    e.put("}", b.end_pos);
+}
+
+}  // namespace
+
+void emit_expr(const Expr& x, Emitter& out) { std::visit(ExprPrinter{out}, x.v); }
+void emit_stmt(const Stmt& s, Emitter& out) { std::visit(StmtPrinter{out}, s.v); }
+
+void emit_block(const BlockStmt& b, Emitter& out, int depth)
+{
+    out.depth = depth;
+    block(b, out);
+}
+
+void emit_stmts(const std::vector<StmtP>& v, Emitter& out, int depth)
+{
+    out.depth = depth;
+    stmt_list(v, out);
+}
+
+std::string print(const Expr& x)
+{
+    Emitter e;
+    emit_expr(x, e);
+    return e.text();
+}
+
+std::string print(const Stmt& s)
+{
+    Emitter e;
+    emit_stmt(s, e);
+    return e.text();
+}
+
+std::string print_lines(const Stmt& s, const LineMap& map, const std::string& file, int depth)
+{
+    Emitter e(map, file);
+    e.depth = depth;
+    emit_stmt(s, e);
+    e.finish();
+    return e.text();
+}
+
+}  // namespace spc::ast

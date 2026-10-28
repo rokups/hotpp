@@ -25,7 +25,7 @@ struct TranslateResult {
     bool ok = false;
     std::string cpp;          // the generated C++ text (valid when ok)
     std::string slots_out;    // the new slot file content (valid when ok)
-    std::string diagnostics;  // the errors, one line each: "name:line: error: text"
+    std::string diagnostics;  // the errors, one line each: "name:line:col: error: text"
 };
 
 // The cache of a translator session. A backend holds one for its life.

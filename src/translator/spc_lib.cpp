@@ -1,15 +1,17 @@
 // spc_lib: the translator from script text to the text of a generation .cpp file.
 //
 // The translator has three parts.
-//   1. A lexer and a parser for the structure of the script: imports, classes,
-//      fields, overrides and fns. The parser keeps the tokens of each body.
+//   1. A parser (src/translator/parser/). It reads the structure of the script:
+//      imports, classes, fields, overrides and fns. It also parses each body and
+//      each field initializer into an AST (ast.h). A lowering pass (lower.cpp)
+//      changes the AST into C++ names.
 //   2. A query to libclang (C API). It reads the virtual methods of the native
 //      base class. The translator resolves script names only. Clang resolves
 //      all native names when it compiles the generated file.
 //   3. An emitter. It writes the shell, the state struct, the reflection table,
-//      the generation functions, the thunks and the record. Each body is a
-//      token-level rewrite of the script tokens. A "#line" directive before
-//      each line makes the Clang diagnostics point to the script.
+//      the generation functions, the thunks and the record. The printer
+//      (emit.cpp) writes each body. A "#line" directive before each line makes
+//      the Clang diagnostics point to the script.
 //
 // The function spc::translate takes strings and returns strings. It does not
 // write a file. libclang reads the imported headers from the include dirs.
@@ -19,6 +21,12 @@
 // generations. Native virtuals come first, in the order of the base class.
 // The script fns follow. A fn keeps its slot in all later generations.
 #include "spp/spc_lib.h"
+
+#include "ast.h"
+#include "diag.h"
+#include "emit.h"
+#include "lower.h"
+#include "parser/parser.h"
 
 #include <clang-c/Index.h>
 #include <sys/stat.h>
@@ -41,373 +49,35 @@
 
 namespace {
 
+using namespace spc::ast;
+
 // State of the call in progress. Each thread has its own copy.
 thread_local std::string g_script;  // the script name, as given by the caller
-thread_local std::string g_diag;    // the diagnostics text
+thread_local spc::Diagnostics g_diag;  // the diagnostics of the call
 
 struct TranslateAbort {};
 
 [[noreturn]] void fail(int line, const std::string& msg)
 {
-    if (line > 0)
-        g_diag += g_script + ":" + std::to_string(line) + ": error: " + msg + "\n";
-    else
-        g_diag += "spc: error: " + msg + "\n";
+    g_diag.add_line(line, msg);
     throw TranslateAbort{};
 }
 
-// ------------------------------------------------------------------ lexer
-enum class K { Ident, Number, String, Char, Punct };
-
-struct Tok {
-    K kind;
-    std::string text;
-    int line;
-    bool space;  // white space before the token in the script
-};
-
-bool is_id0(char c) { return std::isalpha(static_cast<unsigned char>(c)) || c == '_'; }
-bool is_id(char c) { return is_id0(c) || std::isdigit(static_cast<unsigned char>(c)); }
-
-std::vector<Tok> lex(const std::string& s)
+// An error at a byte offset of the script. The diagnostic has a line and a column.
+[[noreturn]] void fail_at(const spc::LineMap& map, uint32_t pos, const std::string& msg)
 {
-    static const char* const p3[] = {"<<=", ">>=", "...", nullptr};
-    static const char* const p2[] = {"::", "->", "++", "--", "+=", "-=", "*=", "/=", "%=", "==",
-                                     "!=", "<=", ">=", "&&", "||", "<<", ">>", "&=", "|=", "^=",
-                                     "=>", nullptr};
-    std::vector<Tok> out;
-    size_t i = 0, n = s.size();
-    int line = 1;
-    bool space = false;
-    while (i < n) {
-        char c = s[i];
-        if (c == '\n') {
-            ++line, ++i, space = true;
-            continue;
-        }
-        if (std::isspace(static_cast<unsigned char>(c))) {
-            ++i, space = true;
-            continue;
-        }
-        if (c == '/' && i + 1 < n && s[i + 1] == '/') {
-            while (i < n && s[i] != '\n') ++i;
-            space = true;
-            continue;
-        }
-        if (c == '/' && i + 1 < n && s[i + 1] == '*') {
-            int start = line;
-            i += 2;
-            while (i + 1 < n && !(s[i] == '*' && s[i + 1] == '/')) {
-                if (s[i] == '\n') ++line;
-                ++i;
-            }
-            if (i + 1 >= n) fail(start, "unterminated comment");
-            i += 2;
-            space = true;
-            continue;
-        }
-        Tok t{K::Punct, "", line, space};
-        space = false;
-        size_t b = i;
-        bool prev_operand =
-            !out.empty() && (out.back().kind == K::Ident || out.back().kind == K::Number ||
-                             out.back().text == ")" || out.back().text == "]");
-        if (is_id0(c)) {
-            while (i < n && is_id(s[i])) ++i;
-            t.kind = K::Ident;
-        } else if (std::isdigit(static_cast<unsigned char>(c)) ||
-                   (c == '.' && i + 1 < n && std::isdigit(static_cast<unsigned char>(s[i + 1])) &&
-                    !prev_operand)) {
-            bool hex = c == '0' && i + 1 < n && (s[i + 1] == 'x' || s[i + 1] == 'X');
-            while (i < n) {
-                char d = s[i];
-                if (is_id(d) || d == '.') {
-                    ++i;
-                } else if ((d == '+' || d == '-') && !hex && (s[i - 1] == 'e' || s[i - 1] == 'E')) {
-                    ++i;
-                } else {
-                    break;
-                }
-            }
-            t.kind = K::Number;
-        } else if (c == '"' || c == '\'') {
-            ++i;
-            while (i < n && s[i] != c) {
-                if (s[i] == '\n') fail(line, "unterminated string or character literal");
-                if (s[i] == '\\') ++i;
-                ++i;
-            }
-            if (i >= n) fail(line, "unterminated string or character literal");
-            ++i;
-            t.kind = c == '"' ? K::String : K::Char;
-        } else if (c == '`') {
-            fail(line, "string interpolation is not supported");
-        } else {
-            size_t len = 1;
-            for (int k = 0; p3[k]; ++k)
-                if (s.compare(i, 3, p3[k]) == 0) len = 3;
-            if (len == 1)
-                for (int k = 0; p2[k]; ++k)
-                    if (s.compare(i, 2, p2[k]) == 0) len = 2;
-            i += len;
-        }
-        t.text = s.substr(b, i - b);
-        out.push_back(t);
-    }
-    return out;
+    g_diag.add(pos, map, msg);
+    throw TranslateAbort{};
 }
 
-// -------------------------------------------------------------- script AST
-struct Param {
-    std::string name, type;
-};
-
-struct Field {
-    std::string name, was, type;
-    std::vector<Tok> init;
-    bool has_init = false;
-    int line = 0;
-};
-
-struct Method {
-    bool is_override = false;
-    std::string name;
-    std::vector<Param> params;
-    std::string ret;  // empty: not written
-    std::vector<Tok> body;
-    int line = 0, end_line = 0;
-};
-
-struct ClassDef {
-    std::string name, base;
-    std::vector<Field> fields;
-    std::vector<Method> methods;
-    int line = 0;
-};
-
-struct Import {
-    std::string path;  // the header name; a system header keeps its angle brackets
-    int line;
-    // The text after #include: <vector> for a system header, "Actor.h" for the others.
-    std::string target() const
-    {
-        return !path.empty() && path.front() == '<' ? path : "\"" + path + "\"";
-    }
-};
-
-struct Script {
-    std::vector<Import> imports;
-    std::vector<ClassDef> classes;
-};
-
-bool is_word(const Tok& t) { return t.kind == K::Ident || t.kind == K::Number; }
-
-// Joins type tokens into C++ text.
-std::string join_type(const std::vector<Tok>& v)
+// Parses the script: the structure, the method bodies and the field initializers.
+// The parser reports all syntax errors in source order. Any error stops the translation.
+Script parse_structure(const std::string& text, const spc::LineMap& map)
 {
-    std::string r;
-    for (size_t i = 0; i < v.size(); ++i) {
-        if (i && ((is_word(v[i - 1]) && is_word(v[i])) || v[i - 1].text == ",")) r += ' ';
-        r += v[i].text;
-    }
-    return r;
+    Script sc = spc::parse_script(text, map, g_diag);
+    if (!g_diag.items.empty()) throw TranslateAbort{};
+    return sc;
 }
-
-class Parser {
-public:
-    explicit Parser(std::vector<Tok> t) : t_(std::move(t)) {}
-
-    Script parse()
-    {
-        Script sc;
-        while (!eof()) {
-            if (is("import")) {
-                int line = cur().line;
-                ++p_;
-                if (eof()) fail(line, "import needs a header name");
-                std::string path;
-                if (cur().kind == K::String) {
-                    path = unquote(cur().text);  // "Actor.h" or "<vector>"
-                    ++p_;
-                } else if (is("<")) {
-                    // import <vector>;  The lexer splits the name into tokens.
-                    path = "<";
-                    ++p_;
-                    while (!is(">")) {
-                        if (eof() || cur().line != line) fail(line, "import <...> needs a closing '>'");
-                        path += t_[p_++].text;
-                    }
-                    ++p_;
-                    path += ">";
-                } else {
-                    fail(line, "import needs a string or <header>");
-                }
-                if (path.size() > 2 && path.front() == '<' && path.back() != '>')
-                    fail(line, "import <...> needs a closing '>'");
-                if (path == "<>" || path.empty()) fail(line, "import needs a header name");
-                sc.imports.push_back({path, line});
-                expect(";");
-            } else if (is("class")) {
-                sc.classes.push_back(parse_class());
-            } else {
-                fail(cur().line, "expected 'import' or 'class', found '" + cur().text + "'");
-            }
-        }
-        return sc;
-    }
-
-private:
-    std::vector<Tok> t_;
-    size_t p_ = 0;
-
-    bool eof() const { return p_ >= t_.size(); }
-    const Tok& cur() const
-    {
-        if (eof()) fail(t_.empty() ? 0 : t_.back().line, "unexpected end of file");
-        return t_[p_];
-    }
-    bool is(const char* s) const { return !eof() && t_[p_].text == s && t_[p_].kind != K::String; }
-    void expect(const char* s)
-    {
-        if (!is(s)) fail(eof() ? t_.back().line : cur().line, std::string("expected '") + s + "'");
-        ++p_;
-    }
-    std::string ident(const char* what)
-    {
-        if (cur().kind != K::Ident) fail(cur().line, std::string("expected ") + what);
-        return t_[p_++].text;
-    }
-    static std::string unquote(const std::string& s) { return s.substr(1, s.size() - 2); }
-
-    // Reads type tokens up to a terminator at depth zero.
-    std::string type_until(std::initializer_list<const char*> terms)
-    {
-        std::vector<Tok> v;
-        int angle = 0, paren = 0;
-        while (true) {
-            const Tok& t = cur();
-            if (angle == 0 && paren == 0) {
-                bool stop = false;
-                for (const char* x : terms)
-                    if (t.text == x && t.kind == K::Punct) stop = true;
-                if (stop) break;
-            }
-            if (t.text == "<") ++angle;
-            else if (t.text == ">") --angle;
-            else if (t.text == ">>") angle -= 2;
-            else if (t.text == "(" || t.text == "[") ++paren;
-            else if (t.text == ")" || t.text == "]") --paren;
-            v.push_back(t);
-            ++p_;
-        }
-        if (v.empty()) fail(cur().line, "expected a type");
-        return join_type(v);
-    }
-
-    std::vector<Param> parse_params()
-    {
-        std::vector<Param> ps;
-        expect("(");
-        while (!is(")")) {
-            Param p;
-            p.name = ident("a parameter name");
-            expect(":");
-            p.type = type_until({",", ")"});
-            ps.push_back(p);
-            if (is(",")) ++p_;
-        }
-        expect(")");
-        return ps;
-    }
-
-    std::vector<Tok> parse_block(int& end_line)
-    {
-        expect("{");
-        std::vector<Tok> body;
-        int depth = 1;
-        while (true) {
-            const Tok& t = cur();
-            if (t.kind == K::Punct && t.text == "{") ++depth;
-            if (t.kind == K::Punct && t.text == "}" && --depth == 0) {
-                end_line = t.line;
-                ++p_;
-                break;
-            }
-            body.push_back(t);
-            ++p_;
-        }
-        return body;
-    }
-
-    ClassDef parse_class()
-    {
-        ClassDef c;
-        c.line = cur().line;
-        ++p_;
-        c.name = ident("a class name");
-        expect(":");
-        c.base = ident("a base class name");
-        while (is("::")) {
-            ++p_;
-            c.base += "::" + ident("a name");
-        }
-        expect("{");
-        while (!is("}")) {
-            int line = cur().line;
-            std::string was;
-            if (is("@")) {
-                ++p_;
-                if (ident("an annotation name") != "was") fail(line, "unknown annotation");
-                expect("(");
-                if (cur().kind != K::String) fail(line, "@was needs a string");
-                was = unquote(cur().text);
-                ++p_;
-                expect(")");
-            }
-            if (is("override") || is("fn")) {
-                if (!was.empty()) fail(line, "@was applies to fields only");
-                Method m;
-                m.is_override = is("override");
-                m.line = cur().line;
-                ++p_;
-                m.name = ident("a method name");
-                m.params = parse_params();
-                if (is("->")) {
-                    ++p_;
-                    m.ret = type_until({"{"});
-                }
-                m.body = parse_block(m.end_line);
-                c.methods.push_back(std::move(m));
-            } else if (cur().kind == K::Ident && p_ + 1 < t_.size() && t_[p_ + 1].text == ":") {
-                Field f;
-                f.line = cur().line;
-                f.was = was;
-                f.name = ident("a field name");
-                expect(":");
-                f.type = type_until({"=", ";"});
-                if (is("=")) {
-                    ++p_;
-                    f.has_init = true;
-                    int depth = 0;
-                    while (!(depth == 0 && is(";"))) {
-                        const Tok& t = cur();
-                        if (t.text == "(" || t.text == "{" || t.text == "[") ++depth;
-                        if (t.text == ")" || t.text == "}" || t.text == "]") --depth;
-                        f.init.push_back(t);
-                        ++p_;
-                    }
-                    if (f.init.empty()) fail(f.line, "expected an initializer");
-                }
-                expect(";");
-                c.fields.push_back(std::move(f));
-            } else {
-                fail(line, "expected a field, 'override' or 'fn', found '" + cur().text + "'");
-            }
-        }
-        expect("}");
-        return c;
-    }
-};
 
 // ----------------------------------------------------------------- libclang
 std::string cxs(CXString s)
@@ -578,217 +248,16 @@ std::string str_join(const std::vector<std::string>& v, const char* sep)
     return r;
 }
 
-struct RTok {
-    std::string text;
-    int line;
-    bool space;
-};
+using spc::RCtx;
 
-// What the rewriter knows about the class that it works on.
-struct RCtx {
-    const ClassDef* cls = nullptr;
-    std::map<std::string, std::string> field_type;
-    std::set<std::string> fns;
-    std::set<std::string> ptr_names;  // fields and parameters of pointer type
-    std::set<std::string> locals;     // parameters and declared locals
-    bool allow_this = true;
-    std::string where;  // the name of the function, for the stale call log of a lambda
-};
-
-std::string rewrite_number(const std::string& n)
+// The name of a function for the stale call log: "Cls::fn" or "Cls::fn(types)".
+std::string body_what(const std::string& cn, const Method& m)
 {
-    if (n.size() > 1 && n[0] == '0' && (n[1] == 'x' || n[1] == 'X')) return n;
-    bool fp = n.find_first_of(".eE") != std::string::npos;
-    char last = n.back();
-    if (fp && (last == 'd' || last == 'D')) return n.substr(0, n.size() - 1);
-    if (fp && (last == 'f' || last == 'F')) return n;
-    if (fp) return n + "f";
-    if (last == 'L') return "int64_t{" + n.substr(0, n.size() - 1) + "}";
-    return n;
-}
-
-bool starts_upper(const std::string& s) { return !s.empty() && std::isupper(static_cast<unsigned char>(s[0])); }
-
-// Token-level rewrite of a body or an expression. It is not a parser.
-std::vector<RTok> rewrite(const std::vector<Tok>& b, RCtx& cx)
-{
-    std::vector<RTok> out;
-    const std::string& cn = cx.cls->name;
-    auto at = [&](size_t i) -> const Tok* { return i < b.size() ? &b[i] : nullptr; };
-    auto is_p = [&](size_t i, const char* s) {
-        return i < b.size() && b[i].kind == K::Punct && b[i].text == s;
-    };
-    int for_state = 0;  // 0: none, else the paren depth inside a for header + 1
-    for (size_t i = 0; i < b.size(); ++i) {
-        const Tok& t = b[i];
-        bool after_access = i > 0 && (is_p(i - 1, ".") || is_p(i - 1, "->") || is_p(i - 1, "::"));
-        auto emit = [&](const std::string& s, bool space) { out.push_back({s, t.line, space}); };
-
-        // Arrow lambda: ( name: type, ... ) => { body }
-        if (t.kind == K::Punct && t.text == "(" && !for_state) {
-            size_t close = i;
-            for (int d = 0; close < b.size(); ++close) {
-                if (is_p(close, "(")) ++d;
-                if (is_p(close, ")") && --d == 0) break;
-            }
-            if (close < b.size() && is_p(close + 1, "=>")) {
-                if (!cx.allow_this) fail(t.line, "a lambda is not allowed in a field initializer");
-                if (!is_p(close + 2, "{")) fail(t.line, "a lambda body must be a block");
-                size_t end = close + 2;
-                for (int d = 0; end < b.size(); ++end) {
-                    if (is_p(end, "{")) ++d;
-                    if (is_p(end, "}") && --d == 0) break;
-                }
-                if (end >= b.size()) fail(t.line, "unterminated lambda body");
-                // Parameters: split at the commas outside of <> () [].
-                std::string params;
-                std::vector<std::string> pnames;
-                for (size_t j = i + 1; j < close;) {
-                    size_t k = j;
-                    int d = 0;
-                    for (; k < close; ++k) {
-                        const std::string& x = b[k].text;
-                        if (x == "<" || x == "(" || x == "[") ++d;
-                        if (x == ">" || x == ")" || x == "]") --d;
-                        if (x == ">>") d -= 2;
-                        if (x == "," && d == 0) break;
-                    }
-                    if (k - j < 3 || b[j].kind != K::Ident || !is_p(j + 1, ":"))
-                        fail(b[j].line, "a lambda parameter needs the form 'name: type'");
-                    std::vector<Tok> ty(b.begin() + static_cast<std::ptrdiff_t>(j + 2),
-                                        b.begin() + static_cast<std::ptrdiff_t>(k));
-                    const std::string ptype = join_type(ty);
-                    params += (params.empty() ? "" : ", ") + ptype + " " + b[j].text;
-                    cx.locals.insert(b[j].text);
-                    if (ptype.back() == '*') cx.ptr_names.insert(b[j].text);
-                    j = k + 1;
-                }
-                std::vector<Tok> inner(b.begin() + static_cast<std::ptrdiff_t>(close + 3),
-                                       b.begin() + static_cast<std::ptrdiff_t>(end));
-                std::vector<RTok> body = rewrite(inner, cx);
-                // The lambda captures by value. "self" is a pointer to the shell; the state
-                // pointer is read again inside, so a lambda never keeps the pointer to a block.
-                emit("script::make_closure(GEN, \"" + cx.where + " lambda\", [=](" + params + ")",
-                     t.space);
-                out.push_back({"{", b[close + 2].line, true});
-                out.push_back({"[[maybe_unused]] auto* st = state_of(self);", b[close + 2].line, true});
-                for (RTok& r : body) out.push_back(std::move(r));
-                out.push_back({"}", b[end].line, true});
-                out.push_back({")", b[end].line, false});
-                i = end;
-                continue;
-            }
-        }
-        if (t.kind == K::Punct) {
-            if (for_state && t.text == "(") ++for_state;
-            if (for_state && t.text == ")" && --for_state == 1) for_state = 0;
-            emit(t.text, t.space);
-            continue;
-        }
-        if (t.kind == K::Number) {
-            emit(rewrite_number(t.text), t.space);
-            continue;
-        }
-        if (t.kind != K::Ident) {
-            emit(t.text, t.space);
-            continue;
-        }
-        const std::string& id = t.text;
-        if (after_access) {
-            emit(id, t.space);
-            continue;
-        }
-        if (id == "for" && is_p(i + 1, "(")) {
-            for_state = 1;
-            emit(id, t.space);
-            continue;
-        }
-        if (id == "of" && for_state == 2) {
-            emit(":", t.space);
-            continue;
-        }
-        if (id == "null") {
-            emit("nullptr", t.space);
-            continue;
-        }
-        if (id == "this") {
-            if (!cx.allow_this) fail(t.line, "'this' is not allowed in a field initializer");
-            if (!(is_p(i + 1, ".") && at(i + 2) && at(i + 2)->kind == K::Ident)) {
-                emit("self", t.space);
-                continue;
-            }
-            const std::string& m = b[i + 2].text;
-            if (cx.field_type.count(m)) {
-                emit("st->" + m, t.space);
-                i += 2;
-                if (cx.ptr_names.count(m) && is_p(i + 1, ".") && at(i + 2) && at(i + 2)->kind == K::Ident) {
-                    emit("->", false);
-                    ++i;
-                }
-            } else if (cx.fns.count(m)) {
-                if (!is_p(i + 3, "(")) fail(t.line, "script fn '" + m + "' must be called");
-                bool empty = is_p(i + 4, ")");
-                emit(cn + "__" + m + "(self" + (empty ? "" : ", "), t.space);
-                i += 3;
-            } else {
-                emit("self->" + m, t.space);
-                i += 2;
-            }
-            continue;
-        }
-        if (id == "super" && is_p(i + 1, ".") && at(i + 2) && at(i + 2)->kind == K::Ident) {
-            emit("self->" + cx.cls->base + "::" + b[i + 2].text, t.space);
-            i += 2;
-            continue;
-        }
-        if ((id == "let" || id == "const") && at(i + 1) && at(i + 1)->kind == K::Ident &&
-            (is_p(i + 2, "=") || is_p(i + 2, ":") || is_p(i + 2, ";") || at(i + 2)->text == "of")) {
-            const std::string& name = b[i + 1].text;
-            cx.locals.insert(name);
-            std::string pre = id == "const" ? "const " : "";
-            if (is_p(i + 2, ":")) {
-                std::vector<Tok> ty;
-                size_t j = i + 3;
-                int angle = 0;
-                for (; j < b.size(); ++j) {
-                    if (b[j].text == "<") ++angle;
-                    else if (b[j].text == ">") --angle;
-                    else if (b[j].text == ">>") angle -= 2;
-                    if (angle == 0 && b[j].kind == K::Punct &&
-                        (b[j].text == "=" || b[j].text == ";" || b[j].text == "," || b[j].text == ")"))
-                        break;
-                    ty.push_back(b[j]);
-                }
-                if (ty.empty()) fail(t.line, "expected a type");
-                emit(pre + join_type(ty) + " " + name, t.space);
-                i = j - 1;
-            } else {
-                emit(pre + "auto " + name, t.space);
-                i += 1;
-            }
-            continue;
-        }
-        if (cx.fns.count(id) && is_p(i + 1, "(") && !cx.locals.count(id)) {
-            bool empty = is_p(i + 2, ")");
-            emit(cn + "__" + id + "(self" + (empty ? "" : ", "), t.space);
-            i += 1;
-            continue;
-        }
-        if (starts_upper(id) && !cx.locals.count(id) && is_p(i + 1, ".") && at(i + 2) &&
-            at(i + 2)->kind == K::Ident) {
-            emit(id + "::", t.space);
-            ++i;
-            continue;
-        }
-        if (cx.ptr_names.count(id) && cx.locals.count(id) && is_p(i + 1, ".") && at(i + 2) &&
-            at(i + 2)->kind == K::Ident) {
-            emit(id + "->", t.space);
-            ++i;
-            continue;
-        }
-        emit(id, t.space);
-    }
-    return out;
+    std::string what = cn + "::" + m.name;
+    if (!m.is_override) return what;
+    what += "(";
+    for (size_t i = 0; i < m.params.size(); ++i) what += (i ? ", " : "") + m.params[i].type;
+    return what + ")";
 }
 
 // ------------------------------------------------------------------ driver
@@ -926,8 +395,8 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
             unsigned line = 0, col = 0;
             clang_getPresumedLocation(clang_getDiagnosticLocation(d), &file, &line, &col);
             const char* sev = clang_getDiagnosticSeverity(d) == CXDiagnostic_Fatal ? "fatal error" : "error";
-            g_diag += cxs(file) + ":" + std::to_string(line) + ":" + std::to_string(col) + ": " + sev +
-                      ": " + cxs(clang_getDiagnosticSpelling(d)) + "\n";
+            g_diag.add_foreign(cxs(file), static_cast<int>(line), static_cast<int>(col), sev,
+                               cxs(clang_getDiagnosticSpelling(d)));
             diag_error = true;
         }
         clang_disposeDiagnostic(d);
@@ -1041,7 +510,8 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
     if (opt.output.empty()) opt.output = opt.input + ".cpp";
     g_script = opt.input;
 
-    Script sc = Parser(lex(in.script_text)).parse();
+    const spc::LineMap map(in.script_text);
+    Script sc = parse_structure(in.script_text, map);
 
     // ---- libclang: parse the imports and read the native base classes.
     std::string probe;
@@ -1095,7 +565,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
     std::vector<std::pair<std::string, bool>> registers;  // class name, for the register function
     std::vector<std::string> thunk_regs;
 
-    for (const ClassDef& cd : sc.classes) {
+    for (ClassDef& cd : sc.classes) {
         const std::string cn = cd.name;
         const std::string P = cn + "__";
         auto slot_id = [&](const std::string& n) { return (multi ? cn + "_" : std::string()) + "SLOT_" + n; };
@@ -1103,34 +573,34 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
         // ---- base class information from libclang
         auto base_it = bases.find(cd.base);
         if (base_it == bases.end())
-            fail(cd.line, "base class '" + cd.base + "' is not found in the imported headers");
+            fail_at(map, cd.pos, "base class '" + cd.base + "' is not found in the imported headers");
         BaseInfo bi = base_it->second;
         if (!bi.any_ctor) bi.default_ctor = true;  // the compiler declares one
         if (!bi.virtual_dtor)
-            fail(cd.line, "base class '" + cd.base + "' has no virtual destructor");
+            fail_at(map, cd.pos, "base class '" + cd.base + "' has no virtual destructor");
         std::string ctor_args;
         if (bi.ctor_kind == 1) ctor_args = ", std::string(\"" + cn + "\")";
         else if (bi.ctor_kind == 2) ctor_args = ", \"" + cn + "\"";
         else if (!bi.default_ctor)
-            fail(cd.line, "base class '" + cd.base + "' has no default constructor and no constructor that takes a name");
+            fail_at(map, cd.pos, "base class '" + cd.base + "' has no default constructor and no constructor that takes a name");
 
         // ---- check the script members
         std::set<std::string> field_names;
         for (const Field& f : cd.fields)
-            if (!field_names.insert(f.name).second) fail(f.line, "field '" + f.name + "' is declared twice");
+            if (!field_names.insert(f.name).second) fail_at(map, f.pos, "field '" + f.name + "' is declared twice");
         std::set<std::string> fn_names;
         std::map<std::string, const Method*> overrides;  // by native key
         for (const Method& m : cd.methods) {
             for (const Param& p : m.params)
                 if (p.name == "self" || p.name == "st" || p.name == "a")
-                    fail(m.line, "parameter name '" + p.name + "' is reserved");
+                    fail_at(map, m.pos, "parameter name '" + p.name + "' is reserved");
             if (!m.is_override) {
                 if (!fn_names.insert(m.name).second)
-                    fail(m.line, "fn '" + m.name + "' is declared twice (overloads are not supported)");
-                if (field_names.count(m.name)) fail(m.line, "'" + m.name + "' is a field and a fn");
+                    fail_at(map, m.pos, "fn '" + m.name + "' is declared twice (overloads are not supported)");
+                if (field_names.count(m.name)) fail_at(map, m.pos, "'" + m.name + "' is a field and a fn");
                 for (const auto& nv : bi.virtuals)
                     if (nv.name == m.name)
-                        fail(m.line, "fn '" + m.name + "' hides the virtual method of " + nv.owner);
+                        fail_at(map, m.pos, "fn '" + m.name + "' hides the virtual method of " + nv.owner);
                 continue;
             }
             std::string key = m.name + "(";
@@ -1149,18 +619,18 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
                 for (const auto& nv : bi.virtuals)
                     if (nv.name == m.name) cands += (cands.empty() ? "" : "; ") + nv.text();
                 if (!cands.empty()) msg += ". Candidates: " + cands;
-                fail(m.line, msg);
+                fail_at(map, m.pos, msg);
             }
             if (hit->final_)
-                fail(m.line, "'" + hit->text() + "' of " + hit->owner + " is final and cannot be overridden");
+                fail_at(map, m.pos, "'" + hit->text() + "' of " + hit->owner + " is final and cannot be overridden");
             if (!m.ret.empty() && norm(m.ret) != norm(hit->ret))
-                fail(m.line, "return type '" + m.ret + "' differs from '" + hit->ret + "'");
+                fail_at(map, m.pos, "return type '" + m.ret + "' differs from '" + hit->ret + "'");
             if (!overrides.emplace(hit->key(), &m).second)
-                fail(m.line, "'" + hit->text() + "' is overridden twice");
+                fail_at(map, m.pos, "'" + hit->text() + "' is overridden twice");
         }
         for (const auto& nv : bi.virtuals)
             if (nv.pure && !overrides.count(nv.key()))
-                fail(cd.line, "class " + cn + " does not override the pure virtual method '" +
+                fail_at(map, cd.pos, "class " + cn + " does not override the pure virtual method '" +
                                   nv.text() + "' of " + nv.owner);
 
         // ---- slots: native virtuals first, then the script fns
@@ -1194,7 +664,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
             if (e.cls != cn) continue;
             auto it = fn_by_name.find(e.fn);
             if (it == fn_by_name.end())
-                fail(cd.line, "fn '" + e.fn + "' of an earlier generation is removed. The slot count must not shrink");
+                fail_at(map, cd.pos, "fn '" + e.fn + "' of an earlier generation is removed. The slot count must not shrink");
             Slot s;
             s.id = e.fn;
             s.impl = it->second;
@@ -1214,15 +684,9 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
             new_manifest.push_back({cn, m.name, opt.gen});
         }
 
-        // ---- rewriter context
-        RCtx base_cx;
-        base_cx.cls = &cd;
-        for (const Field& f : cd.fields) {
-            base_cx.field_type[f.name] = f.type;
-            if (!f.type.empty() && f.type.back() == '*') base_cx.ptr_names.insert(f.name);
-        }
-        for (const Method& m : cd.methods)
-            if (!m.is_override) base_cx.fns.insert(m.name);
+        // ---- lowering context
+        RCtx base_cx = spc::make_class_ctx(cd);
+        base_cx.map = &map;
 
         const std::string S = cn + "State_g" + std::to_string(opt.gen);
         const std::string shell = cn + "_Shell";
@@ -1263,13 +727,14 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
         for (const Field& f : cd.fields) o.w("    " + f.type + " " + f.name + ";\n");
         if (cd.fields.empty()) o.w("    char unused_;\n");
         o.w("};\n\n");
-        for (const Field& f : cd.fields) {
+        for (Field& f : cd.fields) {
             RCtx fc = base_cx;
             fc.allow_this = false;
             std::string init;
-            if (f.has_init) {
-                auto rt = rewrite(f.init, fc);
-                for (size_t i = 0; i < rt.size(); ++i) init += (i && rt[i].space ? " " : "") + rt[i].text;
+            if (f.has_init && f.init) {
+                spc::lower_expr(f.init, fc, g_diag);
+                if (!g_diag.items.empty()) throw TranslateAbort{};
+                init = spc::ast::print(*f.init);
             }
             o.w("#line " + std::to_string(f.line) + " \"" + esc(opt.input) + "\"\n");
             o.w("static void " + P + "init_" + f.name + "(void*, void* f) { using T = " + f.type +
@@ -1323,14 +788,11 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
                 o.w("static " + fn_ret(m) + " " + P + m.name + "(" + shell + "* self" + param_decl(m) + ");\n");
         o.w("\n");
 
-        auto emit_body = [&](const Method& m, bool is_fn, const std::string& sym, const std::string& ret,
+        auto emit_body = [&](Method& m, bool is_fn, const std::string& sym, const std::string& ret,
                              const std::string& what) {
             RCtx cx = base_cx;
             cx.where = what;
-            for (const Param& p : m.params) {
-                cx.locals.insert(p.name);
-                if (!p.type.empty() && p.type.back() == '*') cx.ptr_names.insert(p.name);
-            }
+            spc::add_params(cx, m.params);
             std::string head = "static " + ret + " " + sym + "(";
             if (is_fn) head += shell + "* self" + param_decl(m);
             else head += B + "* a" + param_decl(m);
@@ -1340,37 +802,24 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
             o.w("        script::stale_call(\"" + what + "\");\n        return" +
                 (ret == "void" ? std::string() : " " + ret + "()") + ";\n    }\n");
             o.w("    [[maybe_unused]] auto* st = state_of(self);\n");
-            std::vector<RTok> rt = rewrite(m.body, cx);
-            int cur = -1, depth = 1;
-            for (size_t i = 0; i < rt.size(); ++i) {
-                if (rt[i].line != cur) {
-                    if (cur != -1) o.w("\n");
-                    cur = rt[i].line;
-                    int d = depth - (rt[i].text == "}" ? 1 : 0);
-                    o.w("#line " + std::to_string(cur) + " \"" + esc(opt.input) + "\"\n");
-                    o.w(std::string(4 * std::max(d, 0), ' ') + rt[i].text);
-                } else {
-                    o.w((rt[i].space ? " " : "") + rt[i].text);
-                }
-                if (rt[i].text == "{") ++depth;
-                if (rt[i].text == "}") --depth;
-            }
-            if (cur != -1) o.w("\n");
+            spc::lower_block(m.body, cx, g_diag);
+            if (!g_diag.items.empty()) throw TranslateAbort{};
+            spc::ast::Emitter em(map, opt.input);
+            spc::ast::emit_stmts(m.body.stmts, em, 1);
+            em.finish();
+            o.w(em.text());
             reset();
             o.w("}\n\n");
         };
 
-        for (const Method& m : cd.methods) {
+        for (Method& m : cd.methods) {
             if (m.is_override) {
                 const Slot* s = nullptr;
                 for (const Slot& x : slots)
                     if (x.impl == &m) s = &x;
-                std::string what = cn + "::" + m.name + "(";
-                for (size_t i = 0; i < m.params.size(); ++i) what += (i ? ", " : "") + m.params[i].type;
-                what += ")";
-                emit_body(m, false, P + s->id, s->nv->ret, what);
+                emit_body(m, false, P + s->id, s->nv->ret, body_what(cn, m));
             } else {
-                emit_body(m, true, P + m.name, fn_ret(m), cn + "::" + m.name);
+                emit_body(m, true, P + m.name, fn_ret(m), body_what(cn, m));
             }
         }
 
@@ -1461,7 +910,7 @@ TranslateResult translate(const TranslateOptions& in, TranslatorSession& session
         res.cpp.clear();
         res.slots_out.clear();
     }
-    res.diagnostics = g_diag;
+    res.diagnostics = g_diag.format(g_script);
     return res;
 }
 
