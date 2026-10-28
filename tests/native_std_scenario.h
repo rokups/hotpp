@@ -2,7 +2,7 @@
 //
 // Generation 1 (example/scripts/native_std_v1.script) calls the non-inline functions of
 // example/engine/Util.cpp and uses std::vector and std::sort. Generation 2 renames the
-// field label to title (@was) and adds the field note. The reload must move
+// field label to title ([alias]) and adds the field note. The reload must move
 // the std::string and the std::vector (the non-trivial move path).
 #pragma once
 

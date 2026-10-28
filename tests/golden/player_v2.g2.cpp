@@ -115,7 +115,7 @@ static void Player__Tick(Actor* a, float dt)
 #line 14 "player_v2.script"
     std::printf("[v2] %s: Tick dt=%.4f pos.x=%.4f health=%.1f shield=%.1f\n",
 #line 15 "player_v2.script"
-    self->Name.c_str(), dt, self->Position.x, st->health, st->shield);
+    script::deref(self->Name).c_str(), dt, script::deref(self->Position).x, st->health, st->shield);
 #line 120 "player_v2.script.cpp"
 }
 
@@ -130,7 +130,7 @@ static void Player__TakeDamage_f(Actor* a, float amount)
 #line 19 "player_v2.script"
     st->health = Math::Max(st->health - amount, 0.0f);
 #line 20 "player_v2.script"
-    std::printf("[v2] %s: TakeDamage %.1f -> health=%.1f\n", self->Name.c_str(), amount,
+    std::printf("[v2] %s: TakeDamage %.1f -> health=%.1f\n", script::deref(self->Name).c_str(), amount,
 #line 21 "player_v2.script"
     st->health);
 #line 137 "player_v2.script.cpp"
@@ -147,7 +147,7 @@ static void Player__TakeDamage_Af(Actor* a, Actor& source, float amount)
 #line 25 "player_v2.script"
     st->target = &source;
 #line 26 "player_v2.script"
-    std::printf("[v2] %s: hit by %s\n", self->Name.c_str(), st->target->Name.c_str());
+    std::printf("[v2] %s: hit by %s\n", script::deref(self->Name).c_str(), script::deref(script::deref(st->target).Name).c_str());
 #line 27 "player_v2.script"
     self->TakeDamage(amount);
 #line 154 "player_v2.script.cpp"
@@ -163,7 +163,7 @@ static void Player__heal(Player_Shell* self, float amount)
 #line 31 "player_v2.script"
     st->health = Math::Min(st->health + 2.0f * amount, 100.0f);
 #line 32 "player_v2.script"
-    std::printf("[v2] %s: heal %.1f (x2) -> health=%.1f\n", self->Name.c_str(), amount,
+    std::printf("[v2] %s: heal %.1f (x2) -> health=%.1f\n", script::deref(self->Name).c_str(), amount,
 #line 33 "player_v2.script"
     st->health);
 #line 170 "player_v2.script.cpp"

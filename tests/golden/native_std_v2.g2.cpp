@@ -137,7 +137,7 @@ static void Tracker__Tick(Actor* a, float dt)
 #line 20 "native_std_v2.script"
     auto v = std::vector<float>{9.0f, 8.0f, 7.0f};
 #line 21 "native_std_v2.script"
-    std::sort(v.begin(), v.end(), std::greater<float>());
+    std::sort(script::deref(v).begin(), script::deref(v).end(), std::greater<float>());
 #line 22 "native_std_v2.script"
     st->lowest = Math::Min(v[0], v[2]);
 #line 23 "native_std_v2.script"
@@ -149,7 +149,7 @@ static void Tracker__Tick(Actor* a, float dt)
 #line 26 "native_std_v2.script"
     self->Name = FormatVec(self->Position);
 #line 27 "native_std_v2.script"
-    st->history.push_back(static_cast<int>(st->history.size()) * 10);
+    script::deref(st->history).push_back(static_cast<int>(script::deref(st->history).size()) * 10);
 #line 154 "native_std_v2.script.cpp"
 }
 

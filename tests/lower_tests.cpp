@@ -79,50 +79,88 @@ struct Fixture {
         return ast::print(*e);
     }
 
-    void param(const char* name, bool ptr)
-    {
-        cx.locals.insert(name);
-        if (ptr) cx.ptr_names.insert(name);
-    }
+    void param(const char* name) { cx.locals.insert(name); }
 };
 
 TEST(Lower, FieldAccess)
 {
     Fixture f;
-    f.param("x", false);
+    f.param("x");
     EXPECT_EQ(f.body("this.fired = this.fired + 1;"), "st->fired = st->fired + 1;");
     EXPECT_EQ(f.body("this.n = x;"), "st->n = x;");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
-TEST(Lower, PointerFieldGetsArrow)
+TEST(Lower, CatchNameIsALocal)
 {
     Fixture f;
-    EXPECT_EQ(f.expr("this.target.Name.c_str()"), "st->target->Name.c_str()");
+    EXPECT_EQ(f.body("try { throw 1; } catch (e: std.exception&) { e.what(); } catch (...) { throw; }"),
+              "try { throw 1; } catch (std::exception& e) { script::deref(e).what(); } "
+              "catch (...) { throw; }");
+    EXPECT_EQ(f.body("throw this.health;"), "throw st->health;");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+TEST(Lower, PointerFieldUsesDeref)
+{
+    Fixture f;
+    // The field target has the type Actor*.
+    EXPECT_EQ(f.expr("this.target.Name.c_str()"),
+              "script::deref(script::deref(st->target).Name).c_str()");
     EXPECT_EQ(f.expr("this.target"), "st->target");
+    EXPECT_EQ(f.expr("this.target.m"), "script::deref(st->target).m");
+    EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
-TEST(Lower, PointerParameterGetsArrow)
+TEST(Lower, MemberChainOfAParameter)
 {
     Fixture f;
-    f.param("q", true);
-    f.param("v", false);
-    EXPECT_EQ(f.body("q.foo();"), "q->foo();");
-    EXPECT_EQ(f.body("v.foo();"), "v.foo();");
+    f.param("q");
+    f.param("v");
+    EXPECT_EQ(f.body("q.foo();"), "script::deref(q).foo();");
+    EXPECT_EQ(f.body("v.begin();"), "script::deref(v).begin();");
+    EXPECT_EQ(f.body("v.begin().x;"), "script::deref(script::deref(v).begin()).x;");
+    EXPECT_EQ(f.body("q.a.b.c = 1;"),
+              "script::deref(script::deref(script::deref(q).a).b).c = 1;");
+    EXPECT_EQ(f.body("q.m = 1;"), "script::deref(q).m = 1;");
+    EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
-TEST(Lower, StaticMember)
+TEST(Lower, MemberOfAValue)
+{
+    Fixture f;
+    f.param("a");
+    EXPECT_EQ(f.expr("make().x"), "script::deref(make()).x");
+    EXPECT_EQ(f.expr("a[1].x"), "script::deref(a[1]).x");
+    EXPECT_EQ(f.expr("(a).x"), "script::deref((a)).x");
+    EXPECT_EQ(f.expr("Vec3.Zero().x"), "script::deref(Vec3::Zero()).x");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+TEST(Lower, ScopeChain)
 {
     Fixture f;
     EXPECT_EQ(f.expr("Math.Max(this.health - amount, 0.0)"), "Math::Max(st->health - amount, 0.0f)");
-    EXPECT_EQ(f.expr("std::printf(\"a\")"), "std::printf(\"a\")");
-    EXPECT_EQ(f.expr("A::B.c"), "A::B.c");
+    EXPECT_EQ(f.expr("std.printf(\"a\")"), "std::printf(\"a\")");
+    EXPECT_EQ(f.expr("Engine.World.Spawn()"), "Engine::World::Spawn()");
+    EXPECT_EQ(f.expr("Color.Red"), "Color::Red");
+    EXPECT_EQ(f.expr("A.B.c"), "A::B::c");
+    EXPECT_EQ(f.expr("std.vector<float>{1.0, 2.0}"), "std::vector<float>{1.0f, 2.0f}");
+    EXPECT_EQ(f.expr("std.vector<std.string>{}"), "std::vector<std::string>{}");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+TEST(Lower, LocalShadowsAScope)
+{
+    Fixture f;
+    EXPECT_EQ(f.body("let std = 1; std.x;"), "auto std = 1; script::deref(std).x;");
+    EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
 TEST(Lower, EngineMemberAndThis)
 {
     Fixture f;
-    EXPECT_EQ(f.expr("this.Name.c_str()"), "self->Name.c_str()");
+    EXPECT_EQ(f.expr("this.Name.c_str()"), "script::deref(self->Name).c_str()");
     EXPECT_EQ(f.expr("this.Move(1)"), "self->Move(1)");
     EXPECT_EQ(f.expr("this"), "self");
     EXPECT_EQ(f.expr("f(this)"), "f(self)");
@@ -147,7 +185,7 @@ TEST(Lower, ScriptFnCall)
 TEST(Lower, LocalHidesScriptFn)
 {
     Fixture f;
-    f.param("heal", false);
+    f.param("heal");
     EXPECT_EQ(f.expr("heal(1)"), "heal(1)");
 }
 
@@ -190,7 +228,10 @@ TEST(Lower, Lambda)
     Fixture f;
     EXPECT_EQ(f.body("let f = (x: float, q: int*) => { q.foo(); this.n = x; };"),
               "auto f = script::make_closure(GEN, \"Player::run lambda\", [=](float x, int* q) "
-              "{ [[maybe_unused]] auto* st = state_of(self); q->foo(); st->n = x; });");
+              "{ [[maybe_unused]] auto* st = state_of(self); script::deref(q).foo(); st->n = x; });");
+    EXPECT_EQ(f.expr("(a: Actor*) => { a.x = 1; }"),
+              "script::make_closure(GEN, \"Player::run lambda\", [=](Actor* a) "
+              "{ [[maybe_unused]] auto* st = state_of(self); script::deref(a).x = 1; })");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
@@ -209,13 +250,14 @@ TEST(Lower, LocalDoesNotLeakIntoEarlierText)
     Fixture f;
     // The use is before the declaration, so the name is not yet a local.
     EXPECT_EQ(f.body("Foo.bar(); let Foo = 1;"), "Foo::bar(); auto Foo = 1;");
+    EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
 TEST(Lower, LocalLeaksOutOfABlock)
 {
     Fixture f;
     // The old rewriter has no block scope: Foo stays a local after the block.
-    EXPECT_EQ(f.body("{ let Foo = 1; } Foo.bar();"), "{ auto Foo = 1; } Foo.bar();");
+    EXPECT_EQ(f.body("{ let Foo = 1; } Foo.bar();"), "{ auto Foo = 1; } script::deref(Foo).bar();");
 }
 
 TEST(Lower, ScriptFnHiddenAfterBlock)
@@ -229,20 +271,20 @@ TEST(Lower, LambdaParameterLeaks)
     Fixture f;
     EXPECT_EQ(f.body("let g = (q: int*) => { }; q.x;"),
               "auto g = script::make_closure(GEN, \"Player::run lambda\", [=](int* q) "
-              "{ [[maybe_unused]] auto* st = state_of(self); }); q->x;");
+              "{ [[maybe_unused]] auto* st = state_of(self); }); script::deref(q).x;");
 }
 
 TEST(Lower, ForOfVariableIsLocal)
 {
     Fixture f;
-    EXPECT_EQ(f.body("for (let Foo of xs) { Foo.a(); }"), "for (auto Foo : xs) { Foo.a(); }");
+    EXPECT_EQ(f.body("for (let Foo of xs) { Foo.a(); }"), "for (auto Foo : xs) { script::deref(Foo).a(); }");
 }
 
-TEST(Lower, LetDoesNotMakeAPointerName)
+TEST(Lower, LetPointerUsesDeref)
 {
     Fixture f;
-    // The old rewriter adds a let to the locals only. So "p.x" keeps the dot.
-    EXPECT_EQ(f.body("let p: Actor* = null; p.x;"), "Actor* p = nullptr; p.x;");
+    // The member access has one form for a pointer and for a reference.
+    EXPECT_EQ(f.body("let p: Actor* = null; p.x;"), "Actor* p = nullptr; script::deref(p).x;");
 }
 
 // ---- template arguments
@@ -261,12 +303,13 @@ TEST(Lower, TypeTemplateArgumentsKeepTheirText)
 {
     Fixture f;
     EXPECT_EQ(f.expr("static_cast<int>(x)"), "static_cast<int>(x)");
-    EXPECT_EQ(f.expr("std::vector<std::vector<int>>{}"), "std::vector<std::vector<int>>{}");
+    EXPECT_EQ(f.expr("std.vector<std.vector<int>>{}"), "std::vector<std::vector<int>>{}");
     EXPECT_EQ(f.expr("f<b>(c)"), "f<b>(c)");
     EXPECT_EQ(f.expr("f<int*>(c)"), "f<int*>(c)");
     EXPECT_EQ(f.expr("f<const char*>(c)"), "f<const char*>(c)");
-    EXPECT_EQ(f.expr("std::map<int,float>{}"), "std::map<int,float>{}");
-    EXPECT_EQ(f.expr("f<std::vector<int>>(c)"), "f<std::vector<int>>(c)");
+    EXPECT_EQ(f.expr("std.map<int,float>{}"), "std::map<int,float>{}");
+    EXPECT_EQ(f.expr("f<std.vector<int>>(c)"), "f<std::vector<int>>(c)");
+    EXPECT_EQ(f.expr("f<std.string>(c)"), "f<std::string>(c)");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
@@ -319,7 +362,7 @@ TEST(Lower, ErrorScriptFnMustBeCalled)
     Fixture f;
     EXPECT_EQ(f.body("let a = 1;\nlet b = this.heal;"), "auto a = 1; auto b = Player__heal;");
     ASSERT_EQ(f.errors().size(), 1u);
-    EXPECT_EQ(f.errors()[0], "2:9: script fn 'heal' must be called");
+    EXPECT_EQ(f.errors()[0], "2:9: script function 'heal' must be called");
 }
 
 TEST(Lower, ErrorBadLambdaParameter)

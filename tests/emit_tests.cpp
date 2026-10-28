@@ -20,8 +20,13 @@ ExprP name(std::initializer_list<std::string> parts, uint32_t pos = 0)
 ExprP id(const std::string& s, uint32_t pos = 0) { return name({s}, pos); }
 ExprP num(const std::string& s, uint32_t pos = 0) { return make_expr(NumberExpr{s, pos}); }
 ExprP str(const std::string& s) { return make_expr(StringExpr{s}); }
-ExprP arrow(ExprP obj, const std::string& m) { return make_expr(MemberExpr{std::move(obj), m, true}); }
-ExprP dot(ExprP obj, const std::string& m) { return make_expr(MemberExpr{std::move(obj), m, false}); }
+// The lowering pass writes "st->x" as raw text. This helper makes the same node.
+ExprP arrow(ExprP obj, const std::string& m)
+{
+    const uint32_t pos = pos_of(*obj);
+    return make_expr(RawExpr{print(*obj) + "->" + m, pos});
+}
+ExprP dot(ExprP obj, const std::string& m) { return make_expr(MemberExpr{std::move(obj), m}); }
 ExprP bin(const std::string& op, ExprP l, ExprP r)
 {
     return make_expr(BinaryExpr{op, std::move(l), std::move(r)});
@@ -83,9 +88,8 @@ TEST(Emit, NameParts)
 {
     NameExpr n;
     n.parts = {"std", "vector"};
-    n.leading_colons = true;
     n.template_args = "<int>";
-    EXPECT_EQ(print(*make_expr(std::move(n))), "::std::vector<int>");
+    EXPECT_EQ(print(*make_expr(std::move(n))), "std::vector<int>");
 }
 
 TEST(Emit, Unary)
@@ -145,6 +149,23 @@ TEST(Emit, IfElse)
     i.then = blk(slist(es(bin("=", id("x"), num("1")))));
     i.otherwise = blk(slist(es(bin("=", id("x"), num("2")))));
     EXPECT_EQ(print(*make_stmt(std::move(i))), "if (a > 0) { x = 1; } else { x = 2; }");
+}
+
+TEST(Emit, TryCatchThrow)
+{
+    TryStmt t;
+    t.block = BlockStmt{slist(make_stmt(ThrowStmt{num("1"), 0})), 0, 0};
+    CatchClause c1;
+    c1.type = "int";
+    c1.name = "e";
+    c1.block = BlockStmt{slist(es(id("f"))), 0, 0};
+    CatchClause c2;
+    c2.is_all = true;
+    c2.block = BlockStmt{slist(make_stmt(ThrowStmt{})), 0, 0};
+    t.catches.push_back(std::move(c1));
+    t.catches.push_back(std::move(c2));
+    EXPECT_EQ(print(*make_stmt(std::move(t))),
+              "try { throw 1; } catch (int e) { f; } catch (...) { throw; }");
 }
 
 TEST(Emit, ElseIfAndWhile)

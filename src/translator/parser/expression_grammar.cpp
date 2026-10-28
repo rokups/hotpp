@@ -9,7 +9,7 @@
 //    that has no "=>" gives an error of the lambda path, not an error of the paren path.
 //    The text "(" name ")" "=>" gives the error "a lambda parameter needs the form 'name: type'".
 //  - A "<" starts template arguments when a scan of "<...>" ends before a "(", a "{" or
-//    a "::". The scan has a fixed nesting depth (targs_depth). It stops at a newline,
+//    a ".". The scan has a fixed nesting depth (targs_depth). It stops at a newline,
 //    at ";" and at each char that a type cannot have.
 #include "expression.h"
 
@@ -27,6 +27,7 @@ using namespace parser;  // NOLINT: the grammar uses the names of lexy_common.hp
 using ast::ExprP;
 
 // ---------------------------------------------------------------- error texts
+// The script has no "::" and no "->". A "." does both jobs. The errors tell the user.
 SPC_ERROR_TAG(e_expected_expr, "expected an expression");
 SPC_ERROR_TAG(e_end_of_expr, "expected end of expression");
 SPC_ERROR_TAG(e_lambda_param, "a lambda parameter needs the form 'name: type'");
@@ -56,11 +57,14 @@ constexpr auto kw_continue = LEXY_KEYWORD("continue", id);
 constexpr auto kw_switch = LEXY_KEYWORD("switch", id);
 constexpr auto kw_case = LEXY_KEYWORD("case", id);
 constexpr auto kw_default = LEXY_KEYWORD("default", id);
+constexpr auto kw_try = LEXY_KEYWORD("try", id);
+constexpr auto kw_catch = LEXY_KEYWORD("catch", id);
+constexpr auto kw_throw = LEXY_KEYWORD("throw", id);
 
 // A name. The words of the body syntax are not names.
 constexpr auto id_r = id.reserve(kw_let, kw_const, kw_this, kw_super, kw_null, kw_if, kw_else,
                                  kw_while, kw_do, kw_for, kw_return, kw_break, kw_continue,
-                                 kw_switch, kw_case, kw_default);
+                                 kw_switch, kw_case, kw_default, kw_try, kw_catch, kw_throw);
 
 // ---------------------------------------------------------------- plain helpers
 std::string_view span_text(const ParseState& st, Span sp)
@@ -68,15 +72,13 @@ std::string_view span_text(const ParseState& st, Span sp)
     return std::string_view(st.base + sp.begin, sp.end - sp.begin);
 }
 
-std::string type_of(const ParseState& st, Span sp)
-{
-    if (only_blank(span_text(st, sp))) st.error(st.base + sp.begin, "expected a type");
-    return type_text(span_text(st, sp));
-}
+// The type text of a span. A "." is a scope and becomes "::". A "::" is an error.
+std::string type_of(const ParseState& st, Span sp) { return type_of_span(st, sp); }
 
-// Splits the raw text of a qualified name. The text is "::"? part ("::" part)*. A part
-// can have template arguments. The arguments of the last part go to template_args. The
-// arguments of the other parts stay in the text of the part, for example "A<int>".
+// Splits the raw text of a qualified name. The text is part ("." part)*. A part can have
+// template arguments. The arguments of the last part go to template_args. The arguments of
+// the other parts stay in the text of the part, for example "A<int>". In both texts a "."
+// between two names becomes "::" (see scope_text). A "::" in the arguments is an error.
 // The arguments of the last part are also parsed as a list of expressions, when that works.
 // The try is quiet: a failed try records no error. The text stays in template_args.
 ast::NameExpr split_name(const ParseState& st, std::string_view t, uint32_t pos)
@@ -84,10 +86,6 @@ ast::NameExpr split_name(const ParseState& st, std::string_view t, uint32_t pos)
     ast::NameExpr n;
     n.pos = pos;
     std::size_t i = 0;
-    if (t.substr(0, 2) == "::") {
-        n.leading_colons = true;
-        i = 2;
-    }
     while (i < t.size()) {
         const std::size_t b = i;
         while (i < t.size() && is_id(t[i])) ++i;
@@ -102,13 +100,16 @@ ast::NameExpr split_name(const ParseState& st, std::string_view t, uint32_t pos)
                     break;
             }
             const std::size_t e = j < t.size() ? j + 1 : t.size();
-            const std::string targs(t.substr(i, e - i));
+            const std::string targs =
+                scope_text(st, st.base + pos + i, t.substr(i, e - i));
+            const std::size_t targs_at = i;
             i = e;
             if (i >= t.size()) {
                 n.template_args = targs;
                 if (targs.size() > 2) {
-                    const uint32_t b = pos + static_cast<uint32_t>(e - targs.size()) + 1;
-                    const Span args{b, b + static_cast<uint32_t>(targs.size()) - 2};
+                    // The offsets of the raw text. The scope text can be longer than the raw text.
+                    const uint32_t b = pos + static_cast<uint32_t>(targs_at) + 1;
+                    const Span args{b, pos + static_cast<uint32_t>(e) - 1};
                     Diagnostics quiet;
                     std::vector<ExprP> list = parse_expression_list(
                         ParseInput{std::string_view(st.base, st.size), st.map}, args, quiet);
@@ -121,8 +122,8 @@ ast::NameExpr split_name(const ParseState& st, std::string_view t, uint32_t pos)
                 part += targs;
         }
         n.parts.push_back(std::move(part));
-        if (t.substr(i, 2) != "::") break;
-        i += 2;
+        if (i >= t.size() || t[i] != '.') break;
+        ++i;
     }
     return n;
 }
@@ -143,7 +144,7 @@ struct Bin {};  // an infix operator, also an assignment
 template <Str S>
 struct Post {};  // "++" or "--" after the operand
 template <Str S>
-struct Member {};  // "." or "->"
+struct Member {};  // "."
 template <Str S>
 struct Pre {  // a prefix operator; it keeps the position of the operator
     const char* pos;
@@ -151,6 +152,7 @@ struct Pre {  // a prefix operator; it keeps the position of the operator
 };
 struct CondTag {};
 struct CallTag {};
+struct ArrowTag {};  // "->": always an error
 struct IndexTag {};
 
 #define SPC_BIN(S) dsl::op<Bin<S>>(LEXY_LIT(S))
@@ -211,11 +213,13 @@ struct Builder {
         const uint32_t pos = ast::pos_of(*o);
         return ast::make_expr(ast::IndexExpr{std::move(o), std::move(i), pos});
     }
+    // "a->b": the parse reported the error and read the name. The result is not used.
+    ExprP operator()(const ParseState&, ExprP o, ArrowTag, std::string) const { return o; }
     template <Str S>
     ExprP operator()(const ParseState&, ExprP o, Member<S>, std::string name) const
     {
         const uint32_t pos = ast::pos_of(*o);
-        return ast::make_expr(ast::MemberExpr{std::move(o), std::move(name), S.v[0] == '-', pos});
+        return ast::make_expr(ast::MemberExpr{std::move(o), std::move(name), pos});
     }
 };
 
@@ -289,19 +293,21 @@ struct targs_tok : lexy::token_production {
     static constexpr auto value = lexy::noop;
 };
 
-// "<...>" that is followed by "(", "{" or "::".
+// "<...>" that is followed by "(", "{" or ".".
 constexpr auto targs_head =
     dsl::lit_c<'<'> + dsl::p<targs_body<targs_depth>> +
     dsl::while_(dsl::lit_c<' '> / dsl::lit_c<'\t'>) +
-    dsl::literal_set(dsl::lit_c<'('>, dsl::lit_c<'{'>, LEXY_LIT("::"));
+    dsl::literal_set(dsl::lit_c<'('>, dsl::lit_c<'{'>, dsl::lit_c<'.'>);
 
 // ---------------------------------------------------------------- names
 // The value is the span of the whole name, with the template arguments.
+// The parts are joined by ".". A "::" is an error.
 struct qname_tok : lexy::token_production {
     static constexpr auto rule = [] {
         auto seg = dsl::token(id_r) + dsl::if_(dsl::peek(targs_head) >> dsl::p<targs_tok>);
-        return dsl::position + dsl::if_(LEXY_LIT("::")) + seg +
-               dsl::loop(dsl::peek(LEXY_LIT("::") + id_r) >> (LEXY_LIT("::") + seg) |
+        return dsl::position + seg +
+               dsl::loop(dsl::peek(dsl::lit_c<'.'> + id_r) >> (dsl::lit_c<'.'> + seg) |
+                         dsl::peek(LEXY_LIT("::")) >> dsl::error<e_use_dot_colons> |
                          dsl::else_ >> dsl::break_) +
                dsl::position;
     }();
@@ -329,8 +335,9 @@ struct name_p {
                 return ast::make_expr(split_name(st, span_text(st, name), name.begin));
             },
             [](const ParseState& st, Span name, std::vector<ExprP>&& elems) {
-                return ast::make_expr(ast::TypedBracedExpr{std::string(span_text(st, name)),
-                                                           std::move(elems), name.begin});
+                return ast::make_expr(ast::TypedBracedExpr{
+                    scope_text(st, st.base + name.begin, span_text(st, name)), std::move(elems),
+                    name.begin});
             }),
         lexy::parse_state, lexy::values);
 };
@@ -439,17 +446,20 @@ struct expr : lexy::expression_production {
         dsl::peek(kw_this) >> dsl::p<kw_p<ast::ThisExpr, std::remove_cv_t<decltype(kw_this)>>> |
         dsl::peek(kw_super) >> dsl::p<kw_p<ast::SuperExpr, std::remove_cv_t<decltype(kw_super)>>> |
         dsl::peek(kw_null) >> dsl::p<kw_p<ast::NullExpr, std::remove_cv_t<decltype(kw_null)>>> |
-        dsl::peek(dsl::if_(LEXY_LIT("::")) + id_r) >> dsl::p<name_p> |
+        dsl::peek(LEXY_LIT("::")) >> dsl::error<e_use_dot_colons> |
+        dsl::peek(id_r) >> dsl::p<name_p> |
         dsl::else_ >> dsl::error<e_expected_expr>;
 
-    // a++  a--  f(args)  a[i]  a.b  a->b
+    // a++  a--  f(args)  a[i]  a.b. The text "a->b" is an error. The parse reports it at the
+    // "->" and goes on, so a call or an index after it gives no second error.
     struct postfix_lvl : dsl::postfix_op {
         static constexpr auto op =
             SPC_POST("++") / SPC_POST("--") /
             dsl::op<CallTag>(LEXY_LIT("(") >> dsl::p<elems_p<')'>>) /
             dsl::op<IndexTag>(LEXY_LIT("[") >> dsl::p<index_p>) /
             dsl::op<Member<".">>(LEXY_LIT(".") >> dsl::p<id_str>) /
-            dsl::op<Member<"->">>(LEXY_LIT("->") >> dsl::p<id_str>);
+            dsl::op<ArrowTag>(LEXY_LIT("->") >>
+                              dsl::try_(dsl::error<e_use_dot_arrow>, dsl::p<id_str>));
         using operand = dsl::atom;
     };
 

@@ -8,17 +8,17 @@ import "Math.h";
 import "Util.h";
 
 class Tracker : Actor {
-    label: std::string = "tracker label that is longer than the small string buffer";
-    history: std::vector<int> = {};
+    label: std.string = "tracker label that is longer than the small string buffer";
+    history: std.vector<int> = {};
     dist: float = 0.0;
     lowest: float = 0.0;
     sum: float = 0.0;
-    described: std::string = "";
+    described: std.string = "";
 
-    override Tick(dt: float) {
-        let v = std::vector<float>{4.0, 2.5, 3.0, 1.5};
+    function Tick(dt: float) {
+        let v = std.vector<float>{4.0, 2.5, 3.0, 1.5};
         v.push_back(this.Position.x);
-        std::sort(v.begin(), v.end());
+        std.sort(v.begin(), v.end());
         this.lowest = Math.Min(v[0], v[1]);
         this.dist = Distance(this.Position, Vec3{0, 0, 0});
         this.sum = Util.Sum(this.Position);

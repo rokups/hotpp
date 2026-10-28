@@ -174,15 +174,15 @@ import "Math.h";
 class Player : Actor {
     speed: float = 5.0;
 
-    override Tick(dt: float) {
-        try { throw 7; } catch (int e) { this.speed = 9.0; }
+    function Tick(dt: float) {
+        try { throw 7; } catch (e: int) { this.speed = 9.0; }
     }
 
-    override TakeDamage(amount: float) {
+    function TakeDamage(amount: float) {
         throw 42;
     }
 
-    override TakeDamage(source: Actor&, amount: float) {}
+    function TakeDamage(source: Actor&, amount: float) {}
 }
 )"};
     std::unique_ptr<script::Backend> backend = script::make_default_backend();

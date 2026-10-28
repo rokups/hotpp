@@ -114,11 +114,11 @@ MigrationPlan build_plan(const StateLayout& o, const StateLayout& n)
                 match(i, j);
                 break;
             }
-    // Pass 2: the "was" name of a new field.
+    // Pass 2: the "alias" name of a new field.
     for (uint32_t i = 0; i < n.field_count; ++i) {
-        if (done[i] || !n.fields[i].was) continue;
+        if (done[i] || !n.fields[i].alias) continue;
         for (uint32_t j = 0; j < o.field_count; ++j)
-            if (!claimed[j] && std::strcmp(n.fields[i].was, o.fields[j].name) == 0) {
+            if (!claimed[j] && std::strcmp(n.fields[i].alias, o.fields[j].name) == 0) {
                 match(i, j);
                 break;
             }

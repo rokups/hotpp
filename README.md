@@ -36,15 +36,17 @@ The command loads `gen1.so` and makes one `Player`. It ticks the world 3 times. 
 
     cmake-build/linux-clang-files/Debug/spc example/scripts/player_v1.script --gen 1 -o out.cpp -I include -I example/engine --slots player.slots
 
-`spc` is a thin wrapper. It reads the files and calls `spc::translate` from `spc_lib` (`include/spp/spc_lib.h`). The function takes strings: script text, script name for `#line`, generation, slot file content, include dirs and resource dir. It returns strings: C++ text, new slot file content and diagnostics. It does not write a file. The translator reads the script and the imported headers. It asks libclang (C API) for the virtual methods of the native base class. A `spc::TranslatorSession` keeps the answer, see "Translator session". It writes the shell (one stub for each virtual), the state struct, the reflection table, the generation functions, the thunks and the record. It writes `#line` directives, so a Clang error points to the script line. It reports a missing pure virtual override and an override of a `final` method.
+`spc` is a thin wrapper. It reads the files and calls `spc::translate` from `spc_lib` (`include/spp/spc_lib.h`). The function takes strings: script text, script name for `#line`, generation, slot file content, include dirs and resource dir. It returns strings: C++ text, new slot file content and diagnostics. It does not write a file. The translator reads the script and the imported headers. It asks libclang (C API) for the virtual methods of the native base class. A `spc::TranslatorSession` keeps the answer, see "Translator session". It writes the shell (one stub for each virtual), the state struct, the reflection table, the generation functions, the thunks and the record. It writes `#line` directives, so a Clang error points to the script line. It reports a missing pure virtual override and an override of a `final` method. A `function` with the name of a base virtual method and other parameter types is an error (it hides the virtual method).
 
-The script subset: `import`, `class N : Base`, fields with `@was("old")`, `override`, `fn`, `let`, `const`, `this.`, `super.`, `null`, float literals, `Math.Min` as `Math::Min`, `if`, `while`, `for`, `return`. The arrow lambda `() => { ... }` and `(x: float) => { ... }` works in a function body. Each parameter needs a type. The lambda body is a block. See "Closures and unload".
+The script subset: `import`, `class N : Base`, fields with `[alias("old")]`, `function` (a `function` overrides a base virtual method when the name and the parameter types match), `let`, `const`, `this.`, `super.`, `null`, float literals, `Math.Min` as `Math::Min`, `if`, `while`, `for`, `return`, `throw`, `try` and `catch`. A catch clause is `catch (e: Type)` or `catch (...)`. The arrow lambda `() => { ... }` and `(x: float) => { ... }` works in a function body. Each parameter needs a type. The lambda body is a block. See "Closures and unload".
 
 Imports: `import "Actor.h";` becomes `#include "Actor.h"`. A standard header uses angle brackets: `import <vector>;` or `import "<vector>";`. Both forms become `#include <vector>`, in the generated file and in the libclang probe. A missing header gives an error with the script name and line. The generated file always includes `<cstddef>`, `<cstdint>`, `<cstdio>`, `<new>`, `<string>`, `<type_traits>`, `<typeinfo>`, `<utility>` and `spp/script_runtime.h`. Import any other standard header, for example `<algorithm>`. A script can call a non-inline function of the host, for example `Distance` in `example/engine/Util.cpp`. The host executable must export it (`ENABLE_EXPORTS`, `-rdynamic`).
 
-The body rewrite works on tokens. The translator does not parse expressions. A pointer needs `->` in a body, except a field or a parameter that has a pointer type.
+A script uses `.` for a scope and for a member access, for a pointer and for a reference. `std.string` becomes `std::string`. `p.m` becomes `script::deref(p).m`, and the C++ compiler picks the pointer or the reference form. The text `::` and `->` in a script is an error: "use '.' instead of '::'" and "use '.' instead of '->'". The `->` of a return type and the `=>` of a lambda stay.
 
-The slot file (`--slots`) keeps the slot order of the `fn` methods stable between generations. A generation can add a `fn`, but it cannot remove one.
+Limits of the `.` access. The translator writes `a.b` as `script::deref(a).b`. This works for a pointer and for a reference only. A type with `operator->` has no member access through `.`: a smart pointer, an iterator and `std::optional`. For `p: std.unique_ptr<Actor>`, `this.p.x` gives a Clang error "no member named 'x'". Call `.get()` or `.operator*()` first, for example `this.p.get().x`. A native global or a static data member, for example `Vec3.Zero.x`, becomes `Vec3::Zero.x`. The scope chain does not go through `script::deref`. Copy the value to a typed local first. An array has no `.` access (the `deref` overload for an array is deleted).
+
+The slot file (`--slots`) keeps the slot order of the script `function` methods stable between generations. A generation can add a `function`, but it cannot remove one.
 
 ### Translator session
 
@@ -135,7 +137,7 @@ Command line:
 - `--resource-dir dir` is the Clang resource dir. The default is the one that the build found.
 - `--cxx command` is the compiler command. The default is `clang++`.
 - `--cxxflag flag` adds one flag to the compile command. Repeat it for more flags.
-- `--slots file` is the slot file. The default is `DIR/slots.txt`. It keeps the slot order of the `fn` methods between generations. Build the generations of one class in order.
+- `--slots file` is the slot file. The default is `DIR/slots.txt`. It keeps the slot order of the script `function` methods between generations. Build the generations of one class in order.
 
 The exit code is 0 for success, 1 for an error and 2 for a wrong command line. The tool prints the compiler errors at the script line. It does not need CMake.
 

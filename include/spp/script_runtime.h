@@ -2,6 +2,7 @@
 // The header has the types and the inline hot path.
 // The file script_runtime.cpp has the globals and the generation loader.
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
@@ -34,7 +35,7 @@ enum FieldFlags : uint8_t {
 // One row of the reflection table of a state struct (section 4.7).
 struct FieldInfo {
     const char* name;      // stable field identifier
-    const char* was;       // previous name from @was("..."), or null
+    const char* alias;     // previous name from [alias("...")], or null
     const char* type_key;  // mangled C++ type name of the field
     uint32_t offset, size, align;
     uint8_t flags;
@@ -252,6 +253,35 @@ auto make_closure(uint32_t generation, const char* what, F fn)
     using Sig = typename detail::SigOf<decltype(&F::operator())>::type;
     return Closure<Sig>(generation, what, std::move(fn));
 }
+
+// The script writes "a.b" for a pointer and for a reference. The translator writes
+// "script::deref(a).b". The helper gives an object for both.
+// A pointer gives the object that it points to. This includes an lvalue pointer ("T*&"):
+// the pointer overload is more specialized than the reference overloads.
+// An lvalue passes through as a reference, without a copy.
+// An rvalue returns BY VALUE (moved). A reference to the argument would dangle at the end
+// of the full expression. A member of the returned prvalue keeps its lifetime in a
+// range-for and in a reference binding: "for (auto x : deref(make()).list)".
+template <class T>
+T& deref(T* p)
+{
+    return *p;
+}
+template <class T>
+T& deref(T& v)
+{
+    return v;
+}
+template <class T>
+std::remove_cvref_t<T> deref(T&& v)
+    requires(!std::is_lvalue_reference_v<T>)
+{
+    return static_cast<T&&>(v);
+}
+// An array is not an object that has members. The script cannot use "arr.x" on an array.
+// Without this overload, the array would decay to a pointer and "arr.x" would compile.
+template <class T, std::size_t N>
+void deref(T (&)[N]) = delete;
 
 // Calls slot "slot" of the class record. "Sig" is the signature of the slot.
 template <class Sig, class... A>

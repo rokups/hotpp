@@ -46,7 +46,7 @@ class Player : Actor {
     hp: float = 10.0;
     speed: float = 5.0;
 
-    override Tick(dt: float) {
+    function Tick(dt: float) {
         this.Move({this.speed * dt, 0, 0});
         this.hp = Math.Min(this.hp + 1.0, 100000.0);
     }
@@ -58,11 +58,11 @@ import "Actor.h";
 import "Math.h";
 
 class Player : Actor {
-    @was("hp") health: float = 10.0;
+    [alias("hp")] health: float = 10.0;
     speed: float = 5.0;
     shield: float = 25.0;
 
-    override Tick(dt: float) {
+    function Tick(dt: float) {
         this.Move({2.0 * this.speed * dt, 0, 0});
     }
 }

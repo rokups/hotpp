@@ -28,9 +28,8 @@ struct Stmt;
 using ExprP = std::unique_ptr<Expr>;
 using StmtP = std::unique_ptr<Stmt>;
 
-struct NameExpr {  // a::b::c<int>
+struct NameExpr {  // a.b.c<int> in the script. The lowering pass decides: a scope or a member chain.
     std::vector<std::string> parts;
-    bool leading_colons = false;
     std::string template_args;  // raw text with the angle brackets; may be empty
     // The arguments as expressions, when they parse as a list of expressions. The text in
     // template_args stays. The lowering pass lowers the nodes and rewrites the text.
@@ -62,7 +61,6 @@ struct CharExpr {  // the text keeps the quotes
 struct MemberExpr {
     ExprP obj;
     std::string name;
-    bool arrow = false;
     uint32_t pos = 0;
 };
 struct CallExpr {
@@ -192,6 +190,23 @@ struct SwitchStmt {
     std::vector<SwitchCase> cases;
     uint32_t pos = 0, end_pos = 0;  // end_pos is the "}"
 };
+struct ThrowStmt {
+    ExprP expr;  // null: rethrow
+    uint32_t pos = 0;
+};
+// One catch clause. The pos is the "catch" word. A catch-all clause has no type and no name.
+struct CatchClause {
+    std::string type;  // the C++ type text, for example "const std::exception&"
+    std::string name;
+    bool is_all = false;
+    BlockStmt block;
+    uint32_t pos = 0;
+};
+struct TryStmt {
+    BlockStmt block;
+    std::vector<CatchClause> catches;  // one or more
+    uint32_t pos = 0;
+};
 struct EmptyStmt {
     uint32_t pos = 0;
 };
@@ -202,7 +217,7 @@ struct RawStmt {  // C++ text that is already lowered
 
 struct Stmt {
     std::variant<BlockStmt, ExprStmt, VarDeclStmt, IfStmt, WhileStmt, DoWhileStmt, ForStmt, ForOfStmt,
-                 ReturnStmt, BreakStmt, ContinueStmt, SwitchStmt, EmptyStmt, RawStmt>
+                 ReturnStmt, BreakStmt, ContinueStmt, SwitchStmt, ThrowStmt, TryStmt, EmptyStmt, RawStmt>
         v;
 };
 
@@ -233,7 +248,7 @@ inline uint32_t pos_of(const Stmt& s)
 
 // ------------------------------------------------------------------ script
 struct Field {
-    std::string name, was, type;
+    std::string name, alias, type;  // alias: the previous name from [alias("...")]
     ExprP init;      // null when the field has no initializer, or the parse failed
     Span init_span;  // the raw text after "=", up to the ";"
     bool has_init = false;
@@ -242,7 +257,9 @@ struct Field {
 };
 
 struct Method {
-    bool is_override = false;
+    // True when the function overrides a base virtual method. The translator sets it after
+    // the match. The parser leaves it false.
+    bool overrides_virtual = false;
     std::string name;
     std::vector<Param> params;
     std::string ret;  // empty: not written

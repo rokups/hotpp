@@ -107,9 +107,9 @@ static void Player__Tick(Actor* a, float dt)
 #line 11 "player_v1.script"
     self->Move({st->speed * dt, 0, 0});
 #line 12 "player_v1.script"
-    std::printf("[v1] %s: Tick dt=%.4f pos.x=%.4f hp=%.1f\n", self->Name.c_str(), dt,
+    std::printf("[v1] %s: Tick dt=%.4f pos.x=%.4f hp=%.1f\n", script::deref(self->Name).c_str(), dt,
 #line 13 "player_v1.script"
-    self->Position.x, st->hp);
+    script::deref(self->Position).x, st->hp);
 #line 14 "player_v1.script"
     Player__heal(self, 1.0f);
 #line 116 "player_v1.script.cpp"
@@ -126,7 +126,7 @@ static void Player__TakeDamage_f(Actor* a, float amount)
 #line 18 "player_v1.script"
     st->hp = Math::Max(st->hp - amount, 0.0f);
 #line 19 "player_v1.script"
-    std::printf("[v1] %s: TakeDamage %.1f -> hp=%.1f\n", self->Name.c_str(), amount, st->hp);
+    std::printf("[v1] %s: TakeDamage %.1f -> hp=%.1f\n", script::deref(self->Name).c_str(), amount, st->hp);
 #line 131 "player_v1.script.cpp"
 }
 
@@ -141,7 +141,7 @@ static void Player__TakeDamage_Af(Actor* a, Actor& source, float amount)
 #line 23 "player_v1.script"
     st->target = &source;
 #line 24 "player_v1.script"
-    std::printf("[v1] %s: hit by %s\n", self->Name.c_str(), st->target->Name.c_str());
+    std::printf("[v1] %s: hit by %s\n", script::deref(self->Name).c_str(), script::deref(script::deref(st->target).Name).c_str());
 #line 25 "player_v1.script"
     self->TakeDamage(amount);
 #line 148 "player_v1.script.cpp"
@@ -157,7 +157,7 @@ static void Player__heal(Player_Shell* self, float amount)
 #line 29 "player_v1.script"
     st->hp = Math::Min(st->hp + amount, 100.0f);
 #line 30 "player_v1.script"
-    std::printf("[v1] %s: heal %.1f -> hp=%.1f\n", self->Name.c_str(), amount, st->hp);
+    std::printf("[v1] %s: heal %.1f -> hp=%.1f\n", script::deref(self->Name).c_str(), amount, st->hp);
 #line 162 "player_v1.script.cpp"
 }
 
@@ -167,7 +167,7 @@ static void Player__heal_slot(Actor* a, float amount)
 }
 
 // The thunk has the same address in each generation (section 4.11). The
-// generation that adds the fn emits it. It reads the slot at call time.
+// generation that adds the function emits it. It reads the slot at call time.
 static void Player__heal__thunk(Actor* a, float amount)
 {
     auto* self = static_cast<Player_Shell*>(a);

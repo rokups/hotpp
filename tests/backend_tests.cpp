@@ -131,6 +131,90 @@ TEST_P(BackendTests, BadScriptGivesErrorAndRuntimeKeepsRunning)
     EXPECT_NE(s.field("health"), nullptr);
 }
 
+// A member of a temporary in a for-of loop: "this.mk().first". The temporary must live
+// during the whole loop. The generated code compiles and runs with the selected backend.
+TEST_P(BackendTests, ForOfOverAMemberOfATemporaryRuns)
+{
+    const script::ScriptSource src = {"temp.script", R"(
+import "Actor.h";
+import <utility>;
+import <vector>;
+
+class Player : Actor {
+    total: float = 0.0;
+
+    function mk() -> std.pair<std.vector<int>, int> {
+        let p = std.pair<std.vector<int>, int>();
+        p.first.push_back(1);
+        p.first.push_back(2);
+        p.first.push_back(3);
+        return p;
+    }
+
+    function Tick(dt: float) {
+        for (let a of this.mk().first) {
+            this.total = this.total + a;
+        }
+    }
+
+    function TakeDamage(amount: float) {}
+    function TakeDamage(source: Actor&, amount: float) {}
+}
+)"};
+    script::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    s.world.Tick(kDt);
+    ASSERT_NE(s.field("total"), nullptr);
+    EXPECT_EQ(*s.field("total"), 6.0f);
+}
+
+// The statements throw, try and catch translate to C++ that compiles and runs.
+TEST_P(BackendTests, TryCatchThrowRun)
+{
+    const script::ScriptSource src = {"exc.script", R"(
+import "Actor.h";
+import <stdexcept>;
+
+class Player : Actor {
+    total: float = 0.0;
+
+    function Tick(dt: float) {
+        try {
+            throw std.runtime_error("boom");
+        } catch (e: const std.exception&) {
+            let w = e.what();
+            if (w[0] == 'b') {
+                this.total = this.total + 1.0;
+            }
+        }
+        try {
+            try {
+                throw 3;
+            } catch (...) {
+                throw;
+            }
+        } catch (v: double) {
+            this.total = 100.0;
+        } catch (v: int) {
+            this.total = this.total + v;
+        }
+    }
+
+    function TakeDamage(amount: float) {}
+    function TakeDamage(source: Actor&, amount: float) {}
+}
+)"};
+    script::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    s.world.Tick(kDt);
+    ASSERT_NE(s.field("total"), nullptr);
+    EXPECT_EQ(*s.field("total"), 4.0f);
+}
+
 INSTANTIATE_TEST_SUITE_P(Selected, BackendTests, ::testing::Values(std::string(SPP_BACKEND_NAME)));
 
 // ---------------------------------------------------------------- precompiled

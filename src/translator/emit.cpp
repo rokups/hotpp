@@ -94,7 +94,7 @@ struct ExprPrinter {
 
     void operator()(const NameExpr& n) const
     {
-        std::string t = n.leading_colons ? "::" : "";
+        std::string t;
         for (size_t i = 0; i < n.parts.size(); ++i) t += (i ? "::" : "") + n.parts[i];
         e.put(t + n.template_args, n.pos);
     }
@@ -108,7 +108,7 @@ struct ExprPrinter {
     void operator()(const MemberExpr& n) const
     {
         emit_expr(*n.obj, e);
-        e.put(n.arrow ? "->" : ".");
+        e.put(".");
         e.put(n.name);
     }
     void operator()(const CallExpr& n) const
@@ -357,6 +357,34 @@ struct StmtPrinter {
         }
         e.space();
         e.put("}", n.end_pos);
+    }
+    void operator()(const ThrowStmt& n) const
+    {
+        e.put("throw", n.pos);
+        if (n.expr) {
+            e.space();
+            emit_expr(*n.expr, e);
+        }
+        e.put(";");
+    }
+    void operator()(const TryStmt& n) const
+    {
+        e.put("try", n.pos);
+        block(n.block, e);
+        for (const CatchClause& c : n.catches) {
+            e.space();
+            e.put("catch", c.pos);
+            open_paren(e);
+            if (c.is_all) {
+                e.put("...");
+            } else {
+                e.put(c.type);
+                e.space();
+                e.put(c.name);
+            }
+            e.put(")");
+            block(c.block, e);
+        }
     }
     void operator()(const EmptyStmt& n) const { e.put(";", n.pos); }
     void operator()(const RawStmt& n) const { e.put(n.text, n.pos); }

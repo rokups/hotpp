@@ -56,6 +56,13 @@ SPC_ERROR_TAG(e_unterminated_comment, "unterminated comment");
 SPC_ERROR_TAG(e_unterminated_literal, "unterminated string or character literal");
 SPC_ERROR_TAG(e_unexpected_eof, "unexpected end of file");
 SPC_ERROR_TAG(e_interpolation, "string interpolation is not supported");
+SPC_ERROR_TAG(e_use_dot_colons, "use '.' instead of '::'");
+// The parse reads the "->" token before it raises this error. "rewind" is the size of the token:
+// the report of the error (detail::report) moves back to the start of the token.
+struct e_use_dot_arrow {
+    static constexpr auto name = "use '.' instead of '->'";
+    static constexpr std::size_t rewind = 2;
+};
 
 // ---------------------------------------------------------------- white space
 constexpr auto line_comment = LEXY_LIT("//") >> dsl::until(dsl::newline).or_eof();
@@ -72,7 +79,7 @@ constexpr auto id = dsl::identifier(dsl::ascii::alpha_underscore, dsl::ascii::wo
 constexpr auto kw_import = LEXY_KEYWORD("import", id);
 constexpr auto kw_class = LEXY_KEYWORD("class", id);
 constexpr auto kw_override = LEXY_KEYWORD("override", id);
-constexpr auto kw_fn = LEXY_KEYWORD("fn", id);
+constexpr auto kw_function = LEXY_KEYWORD("function", id);
 
 // ---------------------------------------------------------------- literals
 // A string or character literal. It has two values: the position after the opening quote
@@ -221,7 +228,11 @@ inline bool only_blank(std::string_view s)
 
 // The text of a type: the tokens, joined like the old join_type function.
 // A space goes between two words and after a comma. The comments and the white space go away.
-inline std::string type_text(std::string_view s)
+// A "." between two names is a scope separator in the script. The result has "::" in its place.
+// So the type text is C++ text. The rest of the translator compares it with the spelling
+// of libclang, which uses "::". The script has no "::". If the text has one, *colons is the
+// offset of the first one. The caller reports the error.
+inline std::string type_text(std::string_view s, std::size_t* colons = nullptr)
 {
     static const char* const p3[] = {"<<=", ">>=", "...", nullptr};
     static const char* const p2[] = {"::", "->", "++", "--", "+=", "-=", "*=", "/=", "%=", "==",
@@ -279,7 +290,9 @@ inline std::string type_text(std::string_view s)
                     if (s.compare(i, 2, p2[k]) == 0) len = 2;
             i += len;
         }
-        const std::string_view tok = s.substr(b, i - b);
+        std::string_view tok = s.substr(b, i - b);
+        if (tok == "::" && colons && *colons == std::string_view::npos) *colons = b;
+        if (tok == ".") tok = "::";
         if (have_prev && ((prev_word && word) || prev_comma)) out += ' ';
         out += tok;
         have_prev = true;
@@ -290,6 +303,36 @@ inline std::string type_text(std::string_view s)
     return out;
 }
 
+
+// The type text of a span. An empty type is an error. A "::" is an error: the script uses ".".
+inline std::string type_of_span(const ParseState& st, Span sp)
+{
+    const std::string_view raw(st.base + sp.begin, sp.end - sp.begin);
+    if (only_blank(raw)) st.error(st.base + sp.begin, "expected a type");
+    std::size_t colons = std::string_view::npos;
+    std::string t = type_text(raw, &colons);
+    if (colons != std::string_view::npos) st.error(st.base + sp.begin + colons, e_use_dot_colons::name);
+    return t;
+}
+
+// Rewrites the scope separators of the raw text of template arguments: "." between two names
+// becomes "::". A number such as "1.5" and a pack "..." stay. If the text has a "::", the
+// function reports the error at the first one. "begin" is the position of the text.
+inline std::string scope_text(const ParseState& st, const char* begin, std::string_view t)
+{
+    const std::size_t colons = t.find("::");
+    if (colons != std::string_view::npos) st.error(begin + colons, e_use_dot_colons::name);
+    std::string out;
+    for (std::size_t i = 0; i < t.size(); ++i) {
+        const bool scope = t[i] == '.' && i > 0 && i + 1 < t.size() &&
+                           (is_id(t[i - 1]) || t[i - 1] == '>') && is_id0(t[i + 1]);
+        if (scope)
+            out += "::";
+        else
+            out += t[i];
+    }
+    return out;
+}
 
 // ---------------------------------------------------------------- error sink
 namespace detail {
@@ -333,7 +376,10 @@ void report(const ParseState& st, const lexy::error<Reader, Tag>& e)
         return static_cast<unsigned char>(c) < 0x20 || c == 0x7f;
     });
     if (plain) msg += ", found '" + found + "'";
-    add_unique(st, e.position(), std::move(msg));
+    const char* pos = e.position();
+    // The sink gets a generic error, so the code finds the tag by its text.
+    if (e.template is<e_use_dot_arrow>()) pos -= e_use_dot_arrow::rewind;
+    add_unique(st, pos, std::move(msg));
 }
 
 }  // namespace detail

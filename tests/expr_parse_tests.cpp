@@ -98,11 +98,15 @@ TEST(ExprParse, CallsAndMembers)
 {
     EXPECT_EQ(round_trip("this.Move({2.0 * this.speed * dt, 0, 0})"),
               "this.Move({2.0 * this.speed * dt, 0, 0})");
+    // The printer joins the parts of a name with "::". The lowering pass chooses the form.
     EXPECT_EQ(round_trip("Math.Max(this.health - amount, 0.0)"),
-              "Math.Max(this.health - amount, 0.0)");
-    EXPECT_EQ(round_trip("std::printf(\"x\", a)"), "std::printf(\"x\", a)");
-    EXPECT_EQ(round_trip("v.size() < n"), "v.size() < n");
-    EXPECT_EQ(round_trip("x[i + 1].y->z"), "x[i + 1].y->z");
+              "Math::Max(this.health - amount, 0.0)");
+    EXPECT_EQ(round_trip("std.printf(\"x\", a)"), "std::printf(\"x\", a)");
+    EXPECT_EQ(round_trip("v.size() < n"), "v::size() < n");
+    EXPECT_EQ(round_trip("x[i + 1].y.z"), "x[i + 1].y.z");
+    EXPECT_EQ(round_trip("f().x"), "f().x");
+    EXPECT_EQ(round_trip("this.p.m"), "this.p.m");
+    EXPECT_EQ(round_trip("(a).x"), "(a).x");
     EXPECT_EQ(round_trip("f()"), "f()");
     EXPECT_EQ(round_trip("f(a)(b)[c]"), "f(a)(b)[c]");
     EXPECT_EQ(round_trip("super.Tick(dt)"), "super.Tick(dt)");
@@ -112,28 +116,29 @@ TEST(ExprParse, CallsAndMembers)
 TEST(ExprParse, Names)
 {
     EXPECT_EQ(round_trip("static_cast<int>(x)"), "static_cast<int>(x)");
-    EXPECT_EQ(round_trip("::a::b::c"), "::a::b::c");
-    EXPECT_EQ(round_trip("std::vector<int>::size_type"), "std::vector<int>::size_type");
+    EXPECT_EQ(round_trip("a.b.c"), "a::b::c");
+    EXPECT_EQ(round_trip("std.vector<int>.size_type"), "std::vector<int>::size_type");
     EXPECT_EQ(round_trip("make<Foo<int>, 3>(x)"), "make<Foo<int>, 3>(x)");
-    EXPECT_EQ(round_trip("std::max<float>(a, b)"), "std::max<float>(a, b)");
+    EXPECT_EQ(round_trip("std.max<float>(a, b)"), "std::max<float>(a, b)");
+    EXPECT_EQ(round_trip("get<Color.Red>(t)"), "get<Color::Red>(t)");
+    EXPECT_EQ(round_trip("std.vector<std.string>{a}"), "std::vector<std::string>{a}");
     // A "<" that does not start template arguments is less-than.
     EXPECT_EQ(round_trip("a < b && c > (d)"), "a < b && c > (d)");
     EXPECT_EQ(round_trip("a < b > c"), "a < b > c");
     // The word "of" is a name. The words "let", "if" and so on are not.
     EXPECT_EQ(round_trip("of + x"), "of + x");
-    // "<int>" is not followed by "(", "{" or "::", so "<" is less-than and the text is bad.
-    EXPECT_EQ(one_error("a::b<int>"), "1:10: expected an expression");
+    // "<int>" is not followed by "(", "{" or ".", so "<" is less-than and the text is bad.
+    EXPECT_EQ(one_error("a.b<int>"), "1:9: expected an expression");
 }
 
 TEST(ExprParse, NameNode)
 {
-    Parsed p("::a::B<int>::c<float>(x)");
+    Parsed p("a.B<int>.c<float>(x)");
     ASSERT_TRUE(p.expr);
     const auto* call = std::get_if<ast::CallExpr>(&p.expr->v);
     ASSERT_TRUE(call);
     const auto* n = std::get_if<ast::NameExpr>(&call->callee->v);
     ASSERT_TRUE(n);
-    EXPECT_TRUE(n->leading_colons);
     ASSERT_EQ(n->parts.size(), 3u);
     EXPECT_EQ(n->parts[1], "B<int>");
     EXPECT_EQ(n->parts[2], "c");
@@ -145,7 +150,7 @@ TEST(ExprParse, Bracedlists)
     EXPECT_EQ(round_trip("Vec3{1, 2, 3}"), "Vec3{1, 2, 3}");
     EXPECT_EQ(round_trip("{1, {2, 3}}"), "{1, {2, 3}}");
     EXPECT_EQ(round_trip("{}"), "{}");
-    EXPECT_EQ(round_trip("std::array<int, 2>{1, 2}"), "std::array<int, 2>{1, 2}");
+    EXPECT_EQ(round_trip("std.array<int, 2>{1, 2}"), "std::array<int, 2>{1, 2}");
     Parsed p("Vec3{1}");
     ASSERT_TRUE(p.expr);
     EXPECT_TRUE(std::get_if<ast::TypedBracedExpr>(&p.expr->v));
@@ -180,7 +185,7 @@ TEST(ExprParse, Lambda)
     Parsed a("f((n: int) => { }, (a + b) * c)");
     ASSERT_TRUE(a.expr);
     EXPECT_EQ(ast::print(*a.expr), "f([=](int n) {}, (a + b) * c)");
-    EXPECT_EQ(round_trip("(a::b)"), "(a::b)");
+    EXPECT_EQ(round_trip("(a.b)"), "(a::b)");
 }
 
 TEST(ExprParse, Errors)
@@ -196,6 +201,27 @@ TEST(ExprParse, Errors)
     EXPECT_EQ(one_error("a +\n  )"), "2:3: expected an expression");
     EXPECT_EQ(one_error(""), "1:1: expected an expression");
     EXPECT_EQ(one_error("\"abc"), "1:5: unterminated string or character literal");
+}
+
+// The script has no "::" and no "->". Each one gives an error at the token.
+TEST(ExprParse, ScopeAndArrowErrors)
+{
+    EXPECT_EQ(one_error("std::printf(1)"), "1:4: use '.' instead of '::'");
+    EXPECT_EQ(one_error("a + b::c"), "1:6: use '.' instead of '::'");
+    EXPECT_EQ(one_error("::a"), "1:1: use '.' instead of '::'");
+    EXPECT_EQ(one_error("x = ::std.max(1)"), "1:5: use '.' instead of '::'");
+    EXPECT_EQ(one_error("p->m"), "1:2: use '.' instead of '->'");
+    EXPECT_EQ(one_error("f(a, x.y->z)"), "1:9: use '.' instead of '->'");
+    EXPECT_EQ(one_error("this->m"), "1:5: use '.' instead of '->'");
+    // The "::" in template arguments: the expression parses, the diagnostics have the error.
+    Parsed t("std.vector<std::string>{}");
+    ASSERT_EQ(t.diag.items.size(), 1u) << t.diag.format("t");
+    EXPECT_EQ(t.diag.items[0].msg, "use '.' instead of '::'");
+    EXPECT_EQ(t.diag.items[0].col, 15u);
+    Parsed u("f<a::B>(x)");
+    ASSERT_EQ(u.diag.items.size(), 1u) << u.diag.format("t");
+    EXPECT_EQ(u.diag.items[0].msg, "use '.' instead of '::'");
+    EXPECT_EQ(u.diag.items[0].col, 4u);
 }
 
 TEST(ExprParse, Offsets)

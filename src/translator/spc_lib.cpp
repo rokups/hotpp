@@ -2,7 +2,7 @@
 //
 // The translator has three parts.
 //   1. A parser (src/translator/parser/). It reads the structure of the script:
-//      imports, classes, fields, overrides and fns. It also parses each body and
+//      imports, classes, fields, overrides and functions. It also parses each body and
 //      each field initializer into an AST (ast.h). A lowering pass (lower.cpp)
 //      changes the AST into C++ names.
 //   2. A query to libclang (C API). It reads the virtual methods of the native
@@ -17,9 +17,9 @@
 // write a file. libclang reads the imported headers from the include dirs.
 // The command line tool spc (src/translator/spc.cpp) is a thin file wrapper.
 //
-// The slot file keeps the slot order of the script fns stable between the
+// The slot file keeps the slot order of the script functions stable between the
 // generations. Native virtuals come first, in the order of the base class.
-// The script fns follow. A fn keeps its slot in all later generations.
+// The script functions follow. A function keeps its slot in all later generations.
 #include "spp/spc_lib.h"
 
 #include "ast.h"
@@ -250,11 +250,11 @@ std::string str_join(const std::vector<std::string>& v, const char* sep)
 
 using spc::RCtx;
 
-// The name of a function for the stale call log: "Cls::fn" or "Cls::fn(types)".
+// The name of a function for the stale call log: "Cls::name" or "Cls::name(types)".
 std::string body_what(const std::string& cn, const Method& m)
 {
     std::string what = cn + "::" + m.name;
-    if (!m.is_override) return what;
+    if (!m.overrides_virtual) return what;
     what += "(";
     for (size_t i = 0; i < m.params.size(); ++i) what += (i ? ", " : "") + m.params[i].type;
     return what + ")";
@@ -264,8 +264,8 @@ std::string body_what(const std::string& cn, const Method& m)
 struct Slot {
     std::string id;  // "Tick", "TakeDamage_f", "heal"
     const NativeVirtual* nv = nullptr;
-    const Method* impl = nullptr;  // override (native slot) or fn (script slot)
-    int intro_gen = 0;             // script fns only
+    const Method* impl = nullptr;  // override (native slot) or function (script slot)
+    int intro_gen = 0;             // script functions only
     bool native() const { return nv != nullptr; }
 };
 
@@ -590,19 +590,11 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
             if (!field_names.insert(f.name).second) fail_at(map, f.pos, "field '" + f.name + "' is declared twice");
         std::set<std::string> fn_names;
         std::map<std::string, const Method*> overrides;  // by native key
-        for (const Method& m : cd.methods) {
+        for (Method& m : cd.methods) {
             for (const Param& p : m.params)
                 if (p.name == "self" || p.name == "st" || p.name == "a")
                     fail_at(map, m.pos, "parameter name '" + p.name + "' is reserved");
-            if (!m.is_override) {
-                if (!fn_names.insert(m.name).second)
-                    fail_at(map, m.pos, "fn '" + m.name + "' is declared twice (overloads are not supported)");
-                if (field_names.count(m.name)) fail_at(map, m.pos, "'" + m.name + "' is a field and a fn");
-                for (const auto& nv : bi.virtuals)
-                    if (nv.name == m.name)
-                        fail_at(map, m.pos, "fn '" + m.name + "' hides the virtual method of " + nv.owner);
-                continue;
-            }
+            // A function overrides a base virtual method when the name and the parameter types match.
             std::string key = m.name + "(";
             for (const Param& p : m.params) key += norm(p.type) + ",";
             const NativeVirtual* hit = nullptr;
@@ -612,15 +604,25 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
                 if (k == key + ")") hit = &nv;
             }
             if (!hit) {
-                std::string msg = "no virtual method " + m.name + "(";
-                for (size_t i = 0; i < m.params.size(); ++i) msg += (i ? ", " : "") + m.params[i].type;
-                msg += ") in " + cd.base;
+                // A virtual method with the same name and other parameters: the function hides it.
+                const NativeVirtual* same_name = nullptr;
                 std::string cands;
                 for (const auto& nv : bi.virtuals)
-                    if (nv.name == m.name) cands += (cands.empty() ? "" : "; ") + nv.text();
-                if (!cands.empty()) msg += ". Candidates: " + cands;
-                fail_at(map, m.pos, msg);
+                    if (nv.name == m.name) {
+                        if (!same_name) same_name = &nv;
+                        cands += (cands.empty() ? "" : "; ") + nv.text();
+                    }
+                if (same_name) {
+                    std::string msg = "function '" + m.name + "' hides the virtual method of " + same_name->owner;
+                    if (!cands.empty()) msg += ". Candidates: " + cands;
+                    fail_at(map, m.pos, msg);
+                }
+                if (!fn_names.insert(m.name).second)
+                    fail_at(map, m.pos, "function '" + m.name + "' is declared twice (overloads are not supported)");
+                if (field_names.count(m.name)) fail_at(map, m.pos, "'" + m.name + "' is a field and a function");
+                continue;
             }
+            m.overrides_virtual = true;
             if (hit->final_)
                 fail_at(map, m.pos, "'" + hit->text() + "' of " + hit->owner + " is final and cannot be overridden");
             if (!m.ret.empty() && norm(m.ret) != norm(hit->ret))
@@ -633,7 +635,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
                 fail_at(map, cd.pos, "class " + cn + " does not override the pure virtual method '" +
                                   nv.text() + "' of " + nv.owner);
 
-        // ---- slots: native virtuals first, then the script fns
+        // ---- slots: native virtuals first, then the script functions
         std::vector<Slot> slots;
         std::map<std::string, int> name_count;
         // A final method gets no slot: the shell cannot override it.
@@ -659,12 +661,12 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
         const size_t native_count = slots.size();
         std::map<std::string, const Method*> fn_by_name;
         for (const Method& m : cd.methods)
-            if (!m.is_override) fn_by_name[m.name] = &m;
+            if (!m.overrides_virtual) fn_by_name[m.name] = &m;
         for (const auto& e : old_manifest) {
             if (e.cls != cn) continue;
             auto it = fn_by_name.find(e.fn);
             if (it == fn_by_name.end())
-                fail_at(map, cd.pos, "fn '" + e.fn + "' of an earlier generation is removed. The slot count must not shrink");
+                fail_at(map, cd.pos, "function '" + e.fn + "' of an earlier generation is removed. The slot count must not shrink");
             Slot s;
             s.id = e.fn;
             s.impl = it->second;
@@ -672,7 +674,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
             slots.push_back(s);
         }
         for (const Method& m : cd.methods) {
-            if (m.is_override) continue;
+            if (m.overrides_virtual) continue;
             bool known = false;
             for (const auto& s : slots) known |= !s.native() && s.id == m.name;
             if (known) continue;
@@ -748,7 +750,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
             o.w("static const script::FieldInfo " + cn + "_fields[] = {\n");
             for (const Field& f : cd.fields) {
                 const std::string T = f.type;
-                o.w("    {\"" + f.name + "\", " + (f.was.empty() ? "nullptr" : "\"" + f.was + "\"") +
+                o.w("    {\"" + f.name + "\", " + (f.alias.empty() ? "nullptr" : "\"" + f.alias + "\"") +
                     ", typeid(" + T + ").name(), offsetof(" + S + ", " + f.name + "), sizeof(" + T +
                     "),\n     alignof(" + T + "), script::field_flags<" + T + ">(), " + P + "init_" +
                     f.name + ", script::move_field<" + T + ">, script::field_destroyer<" + T +
@@ -782,9 +784,9 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
             return r;
         };
 
-        // forward declarations of the script fns
+        // forward declarations of the script functions
         for (const Method& m : cd.methods)
-            if (!m.is_override)
+            if (!m.overrides_virtual)
                 o.w("static " + fn_ret(m) + " " + P + m.name + "(" + shell + "* self" + param_decl(m) + ");\n");
         o.w("\n");
 
@@ -813,7 +815,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
         };
 
         for (Method& m : cd.methods) {
-            if (m.is_override) {
+            if (m.overrides_virtual) {
                 const Slot* s = nullptr;
                 for (const Slot& x : slots)
                     if (x.impl == &m) s = &x;
@@ -838,7 +840,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
             o.w("    return static_cast<" + shell + "*>(a)->" + B + "::" + nv.name + "(" + as + ");\n}\n\n");
         }
 
-        // slot adapters and thunks for the script fns
+        // slot adapters and thunks for the script functions
         for (size_t i = native_count; i < slots.size(); ++i) {
             const Method& m = *slots[i].impl;
             o.w("static " + fn_ret(m) + " " + P + m.name + "_slot(" + B + "* a" + param_decl(m) + ")\n{\n");
@@ -848,7 +850,7 @@ void translate_impl(const spc::TranslateOptions& in, spc::TranslatorSession::Imp
             if (slots[i].intro_gen != opt.gen) continue;
             const Method& m = *slots[i].impl;
             o.w("// The thunk has the same address in each generation (section 4.11). The\n"
-                "// generation that adds the fn emits it. It reads the slot at call time.\n");
+                "// generation that adds the function emits it. It reads the slot at call time.\n");
             o.w("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* a" + param_decl(m) + ")\n{\n");
             o.w("    auto* self = static_cast<" + shell + "*>(a);\n");
             o.w("    return script::call<" + fn_ret(m) + "(" + B + "*" + type_list(m) + ")>(self->cls, " +

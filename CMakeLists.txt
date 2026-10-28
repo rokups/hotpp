@@ -243,6 +243,11 @@ target_link_libraries(lower_tests PRIVATE spc_lib GTest::gtest_main)
 target_include_directories(lower_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator)
 gtest_discover_tests(lower_tests)
 
+# The script::deref helper of the runtime header.
+add_executable(deref_tests tests/deref_tests.cpp)
+target_link_libraries(deref_tests PRIVATE spp_runtime GTest::gtest_main)
+gtest_discover_tests(deref_tests)
+
 # JIT only: no file, no child process, the life of a generation.
 if(SPP_BACKEND STREQUAL "JIT")
     add_executable(jit_tests tests/jit_tests.cpp example/engine/Actor.cpp example/engine/Util.cpp)

@@ -3,8 +3,6 @@
 
 #include "emit.h"
 
-#include <cctype>
-
 namespace spc {
 
 std::string rewrite_number(const std::string& n)
@@ -25,40 +23,34 @@ RCtx make_class_ctx(const ast::ClassDef& cd)
     cx.cls = &cd;
     for (const ast::Field& f : cd.fields) {
         cx.field_type[f.name] = f.type;
-        if (!f.type.empty() && f.type.back() == '*') cx.ptr_names.insert(f.name);
     }
     for (const ast::Method& m : cd.methods)
-        if (!m.is_override) cx.fns.insert(m.name);
+        if (!m.overrides_virtual) cx.fns.insert(m.name);
     return cx;
 }
 
 void add_params(RCtx& cx, const std::vector<ast::Param>& params)
 {
-    for (const ast::Param& p : params) {
-        cx.locals.insert(p.name);
-        if (!p.type.empty() && p.type.back() == '*') cx.ptr_names.insert(p.name);
-    }
+    for (const ast::Param& p : params) cx.locals.insert(p.name);
 }
 
 namespace {
 
 using namespace ast;
 
-bool starts_upper(const std::string& s) { return !s.empty() && std::isupper(static_cast<unsigned char>(s[0])); }
-
-// A name with one part and no "::" and no template arguments. Gives the part or null.
+// A name with one part and no template arguments. Gives the part or null.
 const std::string* simple_name(const Expr& e)
 {
     const auto* n = std::get_if<NameExpr>(&e.v);
-    if (!n || n->parts.size() != 1 || n->leading_colons || !n->template_args.empty()) return nullptr;
+    if (!n || n->parts.size() != 1 || !n->template_args.empty()) return nullptr;
     return &n->parts[0];
 }
 
-// The member of "this" (not "this->"). Gives the node or null.
+// The member of "this". Gives the node or null.
 const MemberExpr* this_member(const Expr& e)
 {
     const auto* m = std::get_if<MemberExpr>(&e.v);
-    if (!m || m->arrow || !std::holds_alternative<ThisExpr>(m->obj->v)) return nullptr;
+    if (!m || !std::holds_alternative<ThisExpr>(m->obj->v)) return nullptr;
     return m;
 }
 
@@ -106,47 +98,40 @@ struct Lowerer {
         exprs(c.args);
     }
 
+    // Wraps an object in "script::deref(...)". The helper gives a reference for a pointer and
+    // for a reference. So the member access after it is the same for both.
+    void deref(ExprP& obj)
+    {
+        const uint32_t pos = pos_of(*obj);
+        CallExpr c;
+        c.pos = pos;
+        c.callee = raw("script::deref", pos);
+        c.args.push_back(std::move(obj));
+        obj = make_expr(std::move(c));
+    }
+
     void member(ExprP& e, MemberExpr& m)
     {
         const uint32_t obj_pos = pos_of(*m.obj);
-        if (!m.arrow && std::holds_alternative<ThisExpr>(m.obj->v)) {
+        if (std::holds_alternative<ThisExpr>(m.obj->v)) {
             if (!cx.allow_this) {
                 error(obj_pos, "'this' is not allowed in a field initializer");
             } else if (cx.field_type.count(m.name)) {
                 e = raw("st->" + m.name, obj_pos);
             } else if (cx.fns.count(m.name)) {
-                error(obj_pos, "script fn '" + m.name + "' must be called");
+                error(obj_pos, "script function '" + m.name + "' must be called");
                 e = raw(cx.cls->name + "__" + m.name, obj_pos);
             } else {
                 e = raw("self->" + m.name, obj_pos);
             }
             return;
         }
-        if (!m.arrow && std::holds_alternative<SuperExpr>(m.obj->v)) {
+        if (std::holds_alternative<SuperExpr>(m.obj->v)) {
             e = raw("self->" + cx.cls->base + "::" + m.name, obj_pos);
             return;
         }
-        if (!m.arrow) {
-            if (const std::string* n = simple_name(*m.obj)) {
-                if (starts_upper(*n) && !cx.locals.count(*n)) {
-                    NameExpr q;
-                    q.parts = {*n, m.name};
-                    q.pos = obj_pos;
-                    e = make_expr(std::move(q));
-                    return;
-                }
-                if (cx.ptr_names.count(*n) && cx.locals.count(*n)) {
-                    m.arrow = true;
-                    return;
-                }
-                return;
-            }
-            // "this.p.x" where p is a pointer field gives "st->p->x".
-            const MemberExpr* inner = this_member(*m.obj);
-            if (inner && cx.allow_this && cx.field_type.count(inner->name) && cx.ptr_names.count(inner->name))
-                m.arrow = true;
-        }
         expr(m.obj);
+        deref(m.obj);
     }
 
     void lambda(ExprP& e, LambdaExpr& l)
@@ -159,7 +144,6 @@ struct Lowerer {
             if (p.name.empty() || p.type.empty())
                 error(l.pos, "a lambda parameter needs the form 'name: type'");
             cx.locals.insert(p.name);
-            if (!p.type.empty() && p.type.back() == '*') cx.ptr_names.insert(p.name);
         }
         block(l.body);
         // The lambda captures by value. "self" is a pointer to the shell. The state pointer
@@ -178,7 +162,8 @@ struct Lowerer {
 
     // The template arguments that are expressions get the same lowering as other expressions.
     // The text changes only when the lowering changes an argument. So a type keeps its text.
-    void name(NameExpr& n)
+    // The parser already wrote the type text with "::" for each scope.
+    void targs(NameExpr& n)
     {
         if (!n.targ_parsed) return;
         auto joined = [&] {
@@ -192,6 +177,27 @@ struct Lowerer {
         if (after != before) n.template_args = "<" + after + ">";
     }
 
+    // A name with more than one part. If the first part is a local, the name is a member
+    // chain: "a.b.c" is "script::deref(script::deref(a).b).c". Else it is a scope chain:
+    // the printer joins the parts with "::".
+    void name(ExprP& e, NameExpr& n)
+    {
+        targs(n);
+        if (n.parts.size() < 2 || !cx.locals.count(n.parts[0])) return;
+        const uint32_t pos = n.pos;
+        NameExpr head;
+        head.parts = {n.parts[0]};
+        head.pos = pos;
+        ExprP chain = make_expr(std::move(head));
+        for (size_t i = 1; i < n.parts.size(); ++i) {
+            std::string member_name = n.parts[i];
+            if (i + 1 == n.parts.size()) member_name += n.template_args;
+            chain = make_expr(MemberExpr{std::move(chain), std::move(member_name), pos});
+        }
+        e = std::move(chain);  // "n" is gone now
+        expr(e);
+    }
+
     void expr(ExprP& e)
     {
         if (!e) return;
@@ -202,7 +208,7 @@ struct Lowerer {
         } else if (auto* n2 = std::get_if<NullExpr>(&x.v)) {
             e = raw("nullptr", n2->pos);
         } else if (auto* nm = std::get_if<NameExpr>(&x.v)) {
-            name(*nm);
+            name(e, *nm);
         } else if (auto* num = std::get_if<NumberExpr>(&x.v)) {
             num->text = rewrite_number(num->text);
         } else if (auto* m = std::get_if<MemberExpr>(&x.v)) {
@@ -271,6 +277,14 @@ struct Lowerer {
             stmt(fo->body);
         } else if (auto* r = std::get_if<ReturnStmt>(&x.v)) {
             expr(r->expr);
+        } else if (auto* th = std::get_if<ThrowStmt>(&x.v)) {
+            expr(th->expr);
+        } else if (auto* tr = std::get_if<TryStmt>(&x.v)) {
+            block(tr->block);
+            for (CatchClause& c : tr->catches) {
+                if (!c.is_all) cx.locals.insert(c.name);
+                block(c.block);
+            }
         } else if (auto* sw = std::get_if<SwitchStmt>(&x.v)) {
             expr(sw->subject);
             for (SwitchCase& c : sw->cases) {

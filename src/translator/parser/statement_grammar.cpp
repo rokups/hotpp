@@ -11,9 +11,11 @@
 //    "of" is a keyword only in the header of a for-of statement.
 //  - An expression span ends at a terminator at depth 0. The depth counts (), [] and {}.
 //    Strings, characters and comments are skipped.
-//  - The label of a "case" ends at the first ":" at depth 0 that is not part of "::".
+//  - The label of a "case" ends at the first ":" at depth 0. The script has no "::".
 //    A bare ternary "a ? b : c" in a label is not supported, because its ":" ends the
 //    label. Put the ternary in parentheses.
+//  - A catch clause is "catch (name: type)" or "catch (...)". A clause with a type and no
+//    name is an error.
 //  - A for statement is a for-of statement when dsl::peek finds
 //    "( (let|const) name (: type)? of". Other for statements are classic.
 //  - The init of a classic for is one declaration or a list of expressions.
@@ -50,6 +52,7 @@ constexpr int max_block_nesting = 16;
 SPC_ERROR_TAG(e_stmt, "expected a statement");
 SPC_ERROR_TAG(e_while, "expected 'while'");
 SPC_ERROR_TAG(e_name, "expected a name");
+SPC_ERROR_TAG(e_catch, "expected 'catch'");
 
 // ---------------------------------------------------------------- words
 constexpr auto kw_let = LEXY_KEYWORD("let", id);
@@ -66,6 +69,9 @@ constexpr auto kw_continue = LEXY_KEYWORD("continue", id);
 constexpr auto kw_switch = LEXY_KEYWORD("switch", id);
 constexpr auto kw_case = LEXY_KEYWORD("case", id);
 constexpr auto kw_default = LEXY_KEYWORD("default", id);
+constexpr auto kw_try = LEXY_KEYWORD("try", id);
+constexpr auto kw_catch = LEXY_KEYWORD("catch", id);
+constexpr auto kw_throw = LEXY_KEYWORD("throw", id);
 
 constexpr auto let_or_const = dsl::literal_set(kw_let, kw_const);
 
@@ -77,11 +83,8 @@ std::string_view span_text(const ParseState& st, Span sp)
 
 bool blank(const ParseState& st, Span sp) { return only_blank(span_text(st, sp)); }
 
-std::string type_of(const ParseState& st, Span sp)
-{
-    if (blank(st, sp)) st.error(st.base + sp.begin, "expected a type");
-    return type_text(span_text(st, sp));
-}
+// The type text of a span. A "." is a scope and becomes "::". A "::" is an error.
+std::string type_of(const ParseState& st, Span sp) { return type_of_span(st, sp); }
 
 ParseInput input_of(const ParseState& st)
 {
@@ -284,6 +287,21 @@ struct return_stmt {
         lexy::parse_state, lexy::values);
 };
 
+struct throw_stmt {
+    static constexpr auto rule = dsl::position + kw_throw + dsl::p<scan_until<expr_cfg>> + semi;
+    static constexpr auto value = lexy::bind(
+        lexy::callback<StmtP>([](const ParseState& st, const char* pos, Span sp) -> StmtP {
+            ast::ThrowStmt t;
+            t.pos = st.offset(pos);
+            if (!blank(st, sp)) {
+                t.expr = expr_of(st, sp);
+                if (!t.expr) return nullptr;
+            }
+            return ast::make_stmt(std::move(t));
+        }),
+        lexy::parse_state, lexy::values);
+};
+
 struct break_stmt {
     static constexpr auto rule = dsl::position + kw_break + semi;
     static constexpr auto value = lexy::bind(
@@ -425,6 +443,82 @@ struct do_stmt {
         lexy::parse_state, lexy::values);
 };
 
+// ---------------------------------------------------------------- try
+// The type of a catch clause ends at the ")".
+struct catch_type_cfg {
+    static constexpr auto term = end_of_part;
+};
+
+// "...": the clause catches all.
+struct catch_all {
+    static constexpr auto rule = LEXY_LIT("...");
+    static constexpr auto value = lexy::callback<ast::CatchClause>([]() {
+        ast::CatchClause c;
+        c.is_all = true;
+        return c;
+    });
+};
+
+// "name: type". A clause without a ":" has no name. Its name stays empty and the error is
+// in the diagnostics.
+struct catch_named {
+    static constexpr auto rule = dsl::position + dsl::p<name_p> +
+                                 dsl::opt(dsl::lit_c<':'> >> dsl::p<scan_type<catch_type_cfg>>);
+    static constexpr auto value = lexy::bind(
+        lexy::callback<ast::CatchClause>(
+            [](const ParseState& st, const char* pos, std::string&& name, auto type) {
+                ast::CatchClause c;
+                if constexpr (std::is_same_v<decltype(type), lexy::nullopt>) {
+                    st.error(pos, "expected a name");
+                } else if (blank(st, type)) {
+                    st.error(st.base + type.begin, "expected a type");
+                } else {
+                    c.name = std::move(name);
+                    c.type = type_of(st, type);
+                }
+                return c;
+            }),
+        lexy::parse_state, lexy::values);
+};
+
+struct catch_clause {
+    static constexpr auto rule =
+        dsl::position + kw_catch + dsl::lit_c<'('> +
+        (dsl::peek(LEXY_LIT("...")) >> dsl::p<catch_all> | dsl::else_ >> dsl::p<catch_named>) +
+        dsl::lit_c<')'> + dsl::p<block_p>;
+    static constexpr auto value = lexy::bind(
+        lexy::callback<ast::CatchClause>(
+            [](const ParseState& st, const char* pos, ast::CatchClause&& c, StmtP&& body) {
+                c.pos = st.offset(pos);
+                c.block = std::move(std::get<ast::BlockStmt>(body->v));
+                return std::move(c);
+            }),
+        lexy::parse_state, lexy::values);
+};
+
+struct catch_list {
+    static constexpr auto rule = dsl::list(dsl::peek(kw_catch) >> dsl::p<catch_clause>);
+    static constexpr auto value = lexy::as_list<std::vector<ast::CatchClause>>;
+};
+
+struct try_stmt {
+    static constexpr auto rule = dsl::position + kw_try + dsl::p<block_p> +
+                                 dsl::must(dsl::peek(kw_catch)).template error<e_catch> +
+                                 dsl::p<catch_list>;
+    static constexpr auto value = lexy::bind(
+        lexy::callback<StmtP>([](const ParseState& st, const char* pos, StmtP&& body,
+                                 std::vector<ast::CatchClause>&& list) -> StmtP {
+            ast::TryStmt n;
+            n.pos = st.offset(pos);
+            n.block = std::move(std::get<ast::BlockStmt>(body->v));
+            for (const ast::CatchClause& c : list)
+                if (!c.is_all && c.name.empty()) return nullptr;
+            n.catches = std::move(list);
+            return ast::make_stmt(std::move(n));
+        }),
+        lexy::parse_state, lexy::values);
+};
+
 // ---------------------------------------------------------------- for
 // "( (let|const) name (: type)? of" is the start of a for-of statement.
 constexpr auto ws = dsl::whitespace(ws_rule);
@@ -526,13 +620,12 @@ struct for_stmt {
 };
 
 // ---------------------------------------------------------------- switch
-// The text of a case label. It ends before the first ":" at depth 0 that is not part of
-// "::". A ";" and a "}" at depth 0 end it too.
+// The text of a case label. It ends before the first ":" at depth 0.
+// A ";" and a "}" at depth 0 end it too.
 struct case_span : lexy::token_production {
     static constexpr auto rule =
         dsl::position +
-        dsl::loop(dsl::peek(LEXY_LIT("::")) >> LEXY_LIT("::") |
-                  dsl::peek(dsl::eof | (dsl::lit_c<':'> / dsl::lit_c<';'> / dsl::lit_c<'}'>)) >>
+        dsl::loop(dsl::peek(dsl::eof | (dsl::lit_c<':'> / dsl::lit_c<';'> / dsl::lit_c<'}'>)) >>
                       dsl::break_ |
                   dsl::else_ >> dsl::p<until_item>) +
         dsl::position;
@@ -647,7 +740,8 @@ struct stmt {
         dsl::peek(kw_for) >> dsl::p<for_stmt> | dsl::peek(kw_return) >> dsl::p<return_stmt> |
         dsl::peek(kw_break) >> dsl::p<break_stmt> |
         dsl::peek(kw_continue) >> dsl::p<continue_stmt> |
-        dsl::peek(kw_switch) >> dsl::p<switch_stmt> |
+        dsl::peek(kw_switch) >> dsl::p<switch_stmt> | dsl::peek(kw_throw) >> dsl::p<throw_stmt> |
+        dsl::peek(kw_try) >> dsl::p<try_stmt> |
         dsl::peek(dsl::lit_c<';'>) >> dsl::p<empty_stmt> |
         dsl::peek(dsl::eof | dsl::lit_c<'}'>) >> dsl::error<e_stmt> |
         dsl::else_ >> dsl::p<expr_stmt>;

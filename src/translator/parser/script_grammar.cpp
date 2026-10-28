@@ -23,14 +23,14 @@ using namespace parser;  // NOLINT: the grammar uses the names of lexy_common.hp
 
 // ---------------------------------------------------------------- error texts
 SPC_ERROR_TAG(e_top, "expected 'import' or 'class'");
-SPC_ERROR_TAG(e_member, "expected a field, 'override' or 'fn'");
+SPC_ERROR_TAG(e_member, "expected a field, '[' or 'function'");
 SPC_ERROR_TAG(e_class_name, "expected a class name");
 SPC_ERROR_TAG(e_base_name, "expected a base class name");
 SPC_ERROR_TAG(e_method_name, "expected a method name");
 SPC_ERROR_TAG(e_field_name, "expected a field name");
 SPC_ERROR_TAG(e_param_name, "expected a parameter name");
-SPC_ERROR_TAG(e_annot_name, "expected an annotation name");
-SPC_ERROR_TAG(e_was_string, "@was needs a string");
+SPC_ERROR_TAG(e_attr_name, "expected an attribute name");
+SPC_ERROR_TAG(e_alias_string, "expected a string in [alias(...)]");
 SPC_ERROR_TAG(e_import_name, "import needs a header name");
 SPC_ERROR_TAG(e_import_arg, "import needs a string or <header>");
 SPC_ERROR_TAG(e_import_close, "import <...> needs a closing '>'");
@@ -41,17 +41,22 @@ std::string_view span_text(const ParseState& st, Span sp)
     return std::string_view(st.base + sp.begin, sp.end - sp.begin);
 }
 
-// The type text of a span. An empty type is an error.
-std::string type_of(const ParseState& st, Span sp)
-{
-    if (only_blank(span_text(st, sp))) st.error(st.base + sp.begin, "expected a type");
-    return type_text(span_text(st, sp));
-}
+// The type text of a span. A "." is a scope and becomes "::". A "::" is an error.
+std::string type_of(const ParseState& st, Span sp) { return type_of_span(st, sp); }
 
 // ---------------------------------------------------------------- values
+// The attributes before a field. The value is the alias, or empty.
 struct Annot {
-    const char* pos = nullptr;
-    std::string was;
+    const char* pos = nullptr;  // the "[" or the "@"
+    std::string alias;
+    bool has_alias = false;
+};
+
+// One attribute: a name and a string.
+struct AttrItem {
+    const char* pos = nullptr;  // the name
+    std::string name;
+    std::string arg;
 };
 
 struct MethodRest {
@@ -149,18 +154,71 @@ struct import_p {
 };
 
 // ---------------------------------------------------------------- members
-struct annotation {
+// One attribute in the list: name "(" string ")".
+struct attr_p {
     static constexpr auto rule =
-        dsl::position + dsl::lit_c<'@'> + dsl::p<name_p<e_annot_name>> + dsl::lit_c<'('> +
-        dsl::must(dsl::peek(dsl::lit_c<'"'>)).template error<e_was_string> +
+        dsl::position + dsl::p<name_p<e_attr_name>> + dsl::lit_c<'('> +
+        dsl::must(dsl::peek(dsl::lit_c<'"'>)).template error<e_alias_string> +
         dsl::p<string_value> + dsl::lit_c<')'>;
+    static constexpr auto value = lexy::callback<AttrItem>(
+        [](const char* pos, std::string name, std::string arg) {
+            return AttrItem{pos, std::move(name), std::move(arg)};
+        });
+};
+
+struct attr_list {
+    static constexpr auto rule = dsl::terminator(dsl::lit_c<']'>).list(
+        dsl::p<attr_p>, dsl::sep(dsl::lit_c<','>));
+    static constexpr auto value = lexy::as_list<std::vector<AttrItem>>;
+};
+
+// "[" attribute { "," attribute } "]". Only "alias" is known.
+struct attrs_p {
+    static constexpr auto rule = dsl::position + dsl::lit_c<'['> + dsl::p<attr_list>;
     static constexpr auto value = lexy::bind(
-        lexy::callback<Annot>([](const ParseState& st, const char* pos, std::string name,
-                                 std::string was) {
-            if (name != "was") st.error(pos, "unknown annotation");
-            return Annot{pos, std::move(was)};
+        lexy::callback<Annot>([](const ParseState& st, const char* pos,
+                                 std::vector<AttrItem>&& items) {
+            Annot a;
+            a.pos = pos;
+            for (AttrItem& it : items) {
+                if (it.name != "alias")
+                    st.error(it.pos, "unknown attribute '" + it.name + "'");
+                else if (a.has_alias)
+                    st.error(it.pos, "duplicate attribute 'alias'");
+                else {
+                    a.has_alias = true;
+                    a.alias = std::move(it.arg);
+                }
+            }
+            return a;
         }),
         lexy::parse_state, lexy::values);
+};
+
+struct paren_cfg {
+    static constexpr auto open = dsl::lit_c<'('>;
+    static constexpr auto term = dsl::lit_c<')'>;
+};
+
+// The removed form "@name(...)". The parser reports it and goes on with the member.
+struct old_attr_p {
+    static constexpr auto rule =
+        dsl::position + dsl::lit_c<'@'> + dsl::p<name_p<e_attr_name>> +
+        dsl::opt(dsl::peek(dsl::lit_c<'('>) >> dsl::p<scan_until<paren_cfg>> + dsl::lit_c<')'>);
+    static constexpr auto value = lexy::bind(
+        lexy::callback<Annot>([](const ParseState& st, const char* pos, std::string, auto&&) {
+            st.error(pos, "use [alias(...)] instead of @was(...)");
+            Annot a;
+            a.pos = pos;
+            return a;
+        }),
+        lexy::parse_state, lexy::values);
+};
+
+struct annot_p {
+    static constexpr auto rule =
+        dsl::peek(dsl::lit_c<'@'>) >> dsl::p<old_attr_p> | dsl::else_ >> dsl::p<attrs_p>;
+    static constexpr auto value = lexy::forward<Annot>;
 };
 
 struct param_p {
@@ -228,9 +286,12 @@ constexpr auto junk = dsl::while_one(dsl::ascii::word) | dsl::else_ >> any_unit;
 
 struct member_p {
     static constexpr auto rule =
-        dsl::position + dsl::opt(dsl::peek(dsl::lit_c<'@'>) >> dsl::p<annotation>) +
+        dsl::position +
+        dsl::opt(dsl::peek(dsl::lit_c<'@'> / dsl::lit_c<'['>) >> dsl::p<annot_p>) +
         (dsl::eof >> dsl::error<e_unexpected_eof> |
-         dsl::capture(dsl::literal_set(kw_override, kw_fn)) >> dsl::p<method_rest> |
+         dsl::capture(kw_function) >> dsl::p<method_rest> |
+         // "override" gives one error. A "function" after it is skipped. The parse goes on.
+         dsl::capture(kw_override) >> dsl::if_(kw_function) + dsl::p<method_rest> |
          dsl::peek(id + dsl::whitespace(ws_rule) + dsl::lit_c<':'> +
                    dsl::peek_not(dsl::lit_c<':'>)) >>
              dsl::p<field_rest> |
@@ -242,7 +303,9 @@ struct member_p {
                 Member m;
                 m.kind = Member::IsMethod;
                 ast::Method& me = m.method;
-                me.is_override = kw.end() - kw.begin() == 8;
+                if (std::string_view(kw.begin(), kw.size()) == "override")
+                    st.error(kw.begin(),
+                             "'override' is removed; a function overrides a virtual method implicitly");
                 me.name = std::move(rest.name);
                 me.params = std::move(rest.params);
                 me.ret = std::move(rest.ret);
@@ -251,24 +314,25 @@ struct member_p {
                 me.line = st.map->line(me.pos);
                 me.end_pos = rest.body.end;
                 me.end_line = st.map->line(me.end_pos);
-                if (const Annot* a = annot_of(ann)) st.error(a->pos, "@was applies to fields only");
+                if (const Annot* a = annot_of(ann))
+                    if (a->has_alias) st.error(a->pos, "[alias] applies to fields only");
                 return m;
             },
             [](const ParseState&, const char*, const auto& ann, ast::Field&& f) {
                 Member m;
                 m.kind = Member::IsField;
                 m.field = std::move(f);
-                if (const Annot* a = annot_of(ann)) m.field.was = a->was;
+                if (const Annot* a = annot_of(ann)) m.field.alias = a->alias;
                 return m;
             }),
         lexy::parse_state, lexy::values);
 };
 
-// Skips the rest of a broken member. It stops after a ";" or before a "}", "override" or "fn".
+// Skips the rest of a broken member. It stops after a ";" or before a "}", "override" or "function".
 struct sync_member : lexy::token_production {
     static constexpr auto rule = dsl::loop(
         dsl::eof >> dsl::error<e_unexpected_eof> | dsl::lit_c<';'> >> dsl::break_ |
-        dsl::peek(dsl::literal_set(dsl::lit_c<'}'>, kw_override, kw_fn)) >> dsl::break_ |
+        dsl::peek(dsl::literal_set(dsl::lit_c<'}'>, kw_override, kw_function)) >> dsl::break_ |
         dsl::else_ >> dsl::p<skip_item>);
     static constexpr auto value = lexy::noop;
 };
@@ -280,10 +344,13 @@ struct members_p {
 };
 
 // ---------------------------------------------------------------- classes
-// A base class name with optional "::" parts.
+// A base class name with optional "." parts. The text joins the parts with "::".
+// A "::" in the name is an error.
 struct base_p {
     static constexpr auto rule =
-        dsl::list(dsl::p<name_p<e_base_name>>, dsl::sep(LEXY_LIT("::")));
+        dsl::if_(dsl::peek(LEXY_LIT("::")) >> dsl::error<e_use_dot_colons>) +
+        dsl::list(dsl::p<name_p<e_base_name>>, dsl::sep(dsl::lit_c<'.'>)) +
+        dsl::if_(dsl::peek(LEXY_LIT("::")) >> dsl::error<e_use_dot_colons>);
     static constexpr auto value = lexy::fold_inplace<std::string>(
         std::string{}, [](std::string& acc, std::string&& part) {
             if (!acc.empty()) acc += "::";

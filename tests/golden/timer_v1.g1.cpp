@@ -109,11 +109,11 @@ static void Beeper__arm(Beeper_Shell* self, World& w, float delay)
     }
     [[maybe_unused]] auto* st = state_of(self);
 #line 14 "timer_v1.script"
-    w.AddTimer(delay, script::make_closure(GEN, "Beeper::arm lambda", [=]() { [[maybe_unused]] auto* st = state_of(self);
+    script::deref(w).AddTimer(delay, script::make_closure(GEN, "Beeper::arm lambda", [=]() { [[maybe_unused]] auto* st = state_of(self);
 #line 15 "timer_v1.script"
         st->fired = st->fired + 1;
 #line 16 "timer_v1.script"
-        std::printf("[timer v1] %s: fired=%d\n", self->Name.c_str(), st->fired);
+        std::printf("[timer v1] %s: fired=%d\n", script::deref(self->Name).c_str(), st->fired);
 #line 17 "timer_v1.script"
     }));
 #line 120 "timer_v1.script.cpp"
@@ -137,7 +137,7 @@ static void Beeper__arm_slot(Actor* a, World& w, float delay)
 }
 
 // The thunk has the same address in each generation (section 4.11). The
-// generation that adds the fn emits it. It reads the slot at call time.
+// generation that adds the function emits it. It reads the slot at call time.
 static void Beeper__arm__thunk(Actor* a, World& w, float delay)
 {
     auto* self = static_cast<Beeper_Shell*>(a);

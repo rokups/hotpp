@@ -75,9 +75,9 @@ TEST(StmtParse, Declarations)
     EXPECT_EQ(round_trip("let x;"), "auto x;");
     EXPECT_EQ(round_trip("const x = f(1);"), "const auto x = f(1);");
     EXPECT_EQ(round_trip("let x: float = 2.0;"), "float x = 2.0;");
-    EXPECT_EQ(round_trip("let v: std::vector<int> = {1, 2};"), "std::vector<int> v = {1, 2};");
+    EXPECT_EQ(round_trip("let v: std.vector<int> = {1, 2};"), "std::vector<int> v = {1, 2};");
     EXPECT_EQ(round_trip("const p: Actor* = null;"), "const Actor* p = nullptr;");
-    EXPECT_EQ(round_trip("let m: std::map<int, std::vector<int>>;"),
+    EXPECT_EQ(round_trip("let m: std.map<int, std.vector<int>>;"),
               "std::map<int, std::vector<int>> m;");
     EXPECT_EQ(round_trip("let f = (a: int) => { return a; };"),
               "auto f = [=](int a) { return a; };");
@@ -110,7 +110,7 @@ TEST(StmtParse, For)
     EXPECT_EQ(round_trip("for (const x of this.items) { f(x); }"),
               "for (const auto x : this.items) { f(x); }");
     EXPECT_EQ(round_trip("for (let x: Actor* of actors) f(x);"), "for (Actor* x : actors) f(x);");
-    EXPECT_EQ(round_trip("for (let x: std::vector<int> of g()) f(x);"),
+    EXPECT_EQ(round_trip("for (let x: std.vector<int> of g()) f(x);"),
               "for (std::vector<int> x : g()) f(x);");
     // A name that has "of" inside is not the keyword.
     EXPECT_EQ(round_trip("for (let x: Dof of xs) f(x);"), "for (Dof x : xs) f(x);");
@@ -123,7 +123,7 @@ TEST(StmtParse, Switch)
 {
     EXPECT_EQ(round_trip("switch (x) { case 1: a(); break; case 2: case 3: b(); default: c(); }"),
               "switch (x) { case 1: a(); break; case 2: case 3: b(); default: c(); }");
-    EXPECT_EQ(round_trip("switch (x) { case A::B: f(); break; case 'a': g(); }"),
+    EXPECT_EQ(round_trip("switch (x) { case A.B: f(); break; case 'a': g(); }"),
               "switch (x) { case A::B: f(); break; case 'a': g(); }");
     EXPECT_EQ(round_trip("switch (x) { case (a ? 1 : 2): f(); }"),
               "switch (x) { case (a ? 1 : 2): f(); }");
@@ -152,6 +152,73 @@ TEST(StmtParse, Keywords)
     ASSERT_EQ(p.block.stmts.size(), 6u);
     for (const auto& s : p.block.stmts) EXPECT_TRUE(std::holds_alternative<ast::ExprStmt>(s->v));
     EXPECT_EQ(p.printed(), "ifx = 1; letter = 2; forx(3); doing = whiley; returned = 1; ofx = 1;");
+}
+
+TEST(StmtParse, Exceptions)
+{
+    EXPECT_EQ(round_trip("throw 42;"), "throw 42;");
+    EXPECT_EQ(round_trip("throw;"), "throw;");
+    EXPECT_EQ(round_trip("throw std.runtime_error(\"x\");"), "throw std::runtime_error(\"x\");");
+    EXPECT_EQ(round_trip("try { f(); } catch (e: int) { g(e); }"),
+              "try { f(); } catch (int e) { g(e); }");
+    EXPECT_EQ(round_trip("try { f(); } catch (e: std.exception&) { g(); }\n"
+                         "catch (m: const std.string&) { throw; } catch (...) { }"),
+              "try { f(); } catch (std::exception& e) { g(); } "
+              "catch (const std::string& m) { throw; } catch (...) {}");
+    EXPECT_EQ(round_trip("try { try { throw 1; } catch (...) { throw; } } catch (e: int) { }"),
+              "try { try { throw 1; } catch (...) { throw; } } catch (int e) {}");
+    // The words are keywords only as whole words.
+    Parsed p("tryit = 1; thrown = 2; catcher(3);");
+    EXPECT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    EXPECT_EQ(p.block.stmts.size(), 3u);
+    for (const auto& s : p.block.stmts) EXPECT_TRUE(std::holds_alternative<ast::ExprStmt>(s->v));
+    {
+        Parsed q("try { f(); } catch (e: int) { }\nthrow;");
+        ASSERT_EQ(q.block.stmts.size(), 2u);
+        const auto* t = std::get_if<ast::TryStmt>(&q.block.stmts[0]->v);
+        ASSERT_NE(t, nullptr);
+        ASSERT_EQ(t->catches.size(), 1u);
+        EXPECT_EQ(t->catches[0].type, "int");
+        EXPECT_EQ(t->catches[0].name, "e");
+        EXPECT_FALSE(t->catches[0].is_all);
+        EXPECT_TRUE(std::holds_alternative<ast::ThrowStmt>(q.block.stmts[1]->v));
+    }
+}
+
+TEST(StmtParse, ExceptionErrors)
+{
+    {
+        Parsed p("try { f(); }\nb = 1;");
+        EXPECT_EQ(errors_of(p), (std::vector<std::string>{"2:1: expected 'catch'"}))
+            << p.diag.format("t");
+    }
+    {
+        // A type without a name is not supported.
+        Parsed p("a = 1;\ntry { f(); } catch (int) { }\nc = 2;");
+        EXPECT_EQ(errors_of(p), (std::vector<std::string>{"2:21: expected a name"}))
+            << p.diag.format("t");
+        EXPECT_EQ(p.printed(), "a = 1; c = 2;");
+    }
+    {
+        Parsed p("try { } catch (e: std::exception&) { }");
+        EXPECT_EQ(errors_of(p), (std::vector<std::string>{"1:22: use '.' instead of '::'"}))
+            << p.diag.format("t");
+    }
+    {
+        Parsed p("try { } catch (e: ) { }");
+        EXPECT_EQ(errors_of(p), (std::vector<std::string>{"1:19: expected a type"}))
+            << p.diag.format("t");
+    }
+    {
+        // The statements after a broken throw stay.
+        Parsed p("throw 1 +;\na = 1;");
+        EXPECT_EQ(p.diag.items.size(), 1u) << p.diag.format("t");
+        EXPECT_EQ(p.printed(), "a = 1;");
+    }
+    {
+        Parsed p("try { f(); } catch (e: int { }\na = 1;");
+        EXPECT_GE(p.diag.items.size(), 1u);
+    }
 }
 
 TEST(StmtParse, Lambda)
@@ -194,7 +261,7 @@ TEST(StmtParse, Positions)
 TEST(StmtParse, OffsetsInBuffer)
 {
     // A block in the middle of a larger buffer. Positions and errors are absolute.
-    const std::string text = "class A : B {\n  fn f() {\n    x = 1;\n    y = ;\n  }\n}\n";
+    const std::string text = "class A : B {\n  function f() {\n    x = 1;\n    y = ;\n  }\n}\n";
     const LineMap map(text);
     const uint32_t b = static_cast<uint32_t>(text.find("{\n    x")) + 1;
     const uint32_t e = static_cast<uint32_t>(text.find("  }\n}"));
@@ -274,21 +341,35 @@ TEST(StmtParse, Errors)
     }
 }
 
+// A "." in the text of a type is a scope. The parser writes "::". A "::" is an error.
+TEST(StmtParse, TypeScope)
+{
+    EXPECT_EQ(round_trip("let a: std.string = x; let b: std.vector<std.string>;"),
+              "std::string a = x; std::vector<std::string> b;");
+    EXPECT_EQ(round_trip("let c: A.B.C*; let d: std.array<int, 3>; let e: float;"),
+              "A::B::C* c; std::array<int, 3> d; float e;");
+    Parsed p("let a: int;\nlet b: std::string = x;");
+    EXPECT_EQ(errors_of(p), (std::vector<std::string>{"2:11: use '.' instead of '::'"}));
+    Parsed q("for (let s: std::string of xs) f(s);");
+    EXPECT_EQ(errors_of(q), (std::vector<std::string>{"1:16: use '.' instead of '::'"}));
+}
+
 TEST(StmtParse, Truncation)
 {
     // Each prefix of a long block ends: no crash and no hang.
     const std::string full =
-        "let a = 1;\nconst b: std::vector<int> = {1, 2};\nif (a < b) { f(a); } else g(b);\n"
+        "let a = 1;\nconst b: std.vector<int> = {1, 2};\nif (a < b) { f(a); } else g(b);\n"
         "while (a) a--;\ndo { a++; } while (a < 3);\n"
         "for (let i = 0; i < n; i++) { f(i); }\nfor (let x: Actor* of xs) f(x);\n"
-        "for (i = 0, j = 1; i < n; i++, j--) ;\nswitch (a) { case 1: case A::B: f(); break;\n"
+        "for (i = 0, j = 1; i < n; i++, j--) ;\nswitch (a) { case 1: case A.B: f(); break;\n"
         "default: { g(); } }\nlet h = (x: float) => { if (x) { return x; } return 0; };\n"
         "return a + \"s;}\" + 'c' /* c */;\n// end\n"
         "a = 1;\nb = 2;\nc = 3;\nd = 4;\ne = 5;\nf = 6;\ng = 7;\nh = 8;\ni = 9;\nj = 10;\n"
         "k = 11;\nl = 12;\nm = 13;\nn = 14;\no = 15;\np = 16;\nq = 17;\nr = 18;\ns = 19;\nt = 20;\n"
         "u = 21;\nv = 22;\nw = 23;\nx = 24;\ny = 25;\nz = 26;\nbreak;\ncontinue;\n"
         "if (a) {\n  b = 1;\n  while (c) {\n    d();\n  }\n}\nfor (let k of ks) {\n  f(k);\n}\n"
-        "switch (a) {\n  case 1:\n    f();\n  default:\n    g();\n}\nlet z: int;\nz = 1;\nz = 2;\nz = 3;\n";
+        "switch (a) {\n  case 1:\n    f();\n  default:\n    g();\n}\nlet z: int;\nz = 1;\nz = 2;\nz = 3;\n"
+        "try {\n  f();\n} catch (e: const std.exception&) {\n  throw;\n} catch (...) {\n  throw 1;\n}\n";
     size_t lines = 0;
     for (char c : full) lines += c == '\n';
     EXPECT_GE(lines, 60u);
@@ -340,6 +421,9 @@ TEST(StmtParse, DeepNesting)
         fails(std::string(n, '{'), "maximum recursion depth exceeded");
         std::string t;
         for (std::size_t i = 0; i < n; ++i) t += "if (a) ";
+        fails(t, "maximum recursion depth exceeded");
+        t.clear();
+        for (std::size_t i = 0; i < n; ++i) t += "try { ";
         fails(t, "maximum recursion depth exceeded");
         t.clear();
         for (std::size_t i = 0; i < n; ++i) t += "{ while (a) ";

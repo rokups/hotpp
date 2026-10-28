@@ -109,11 +109,11 @@ static void Beeper__arm(Beeper_Shell* self, World& w, float delay)
     }
     [[maybe_unused]] auto* st = state_of(self);
 #line 13 "timer_v2.script"
-    w.AddTimer(delay, script::make_closure(GEN, "Beeper::arm lambda", [=]() { [[maybe_unused]] auto* st = state_of(self);
+    script::deref(w).AddTimer(delay, script::make_closure(GEN, "Beeper::arm lambda", [=]() { [[maybe_unused]] auto* st = state_of(self);
 #line 14 "timer_v2.script"
         st->fired = st->fired + 10;
 #line 15 "timer_v2.script"
-        std::printf("[timer v2] %s: fired=%d\n", self->Name.c_str(), st->fired);
+        std::printf("[timer v2] %s: fired=%d\n", script::deref(self->Name).c_str(), st->fired);
 #line 16 "timer_v2.script"
     }));
 #line 120 "timer_v2.script.cpp"
