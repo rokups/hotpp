@@ -18,7 +18,7 @@ using test_support::line_with;
 using test_support::read_file;
 
 // sppc on a bad script: exit code 1, an error at the script line, no library.
-TEST(PrecompiledTests, SppcReportsErrorAtTheScriptLine)
+TEST(SppcTool, SppcReportsErrorAtTheScriptLine)
 {
     const std::string out_dir = std::string(SPP_BINARY_DIR) + "/sppc_diag";
     std::filesystem::remove_all(out_dir);

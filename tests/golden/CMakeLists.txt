@@ -1,0 +1,6 @@
+# Golden-output tests. The expected files are in the folder expected/.
+add_executable(golden_translation_tests golden_translation_tests.cpp)
+target_link_libraries(golden_translation_tests PRIVATE spc_lib GTest::gtest_main)
+target_include_directories(golden_translation_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator ${CMAKE_SOURCE_DIR}/tests)
+target_compile_definitions(golden_translation_tests PRIVATE SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+gtest_discover_tests(golden_translation_tests)

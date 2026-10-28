@@ -1,0 +1,16 @@
+# The tests of spc::translate for each language feature.
+add_executable(unit_translator_translate_tests
+    alias_translation_tests.cpp
+    builtin_type_translation_tests.cpp
+    default_value_translation_tests.cpp
+    handle_translation_tests.cpp
+    import_translation_tests.cpp
+    inherited_handle_translation_tests.cpp
+    lambda_translation_tests.cpp
+    override_translation_tests.cpp
+    property_translation_tests.cpp
+    scope_translation_tests.cpp)
+target_link_libraries(unit_translator_translate_tests PRIVATE spc_lib GTest::gtest_main)
+target_include_directories(unit_translator_translate_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/translator ${CMAKE_SOURCE_DIR}/tests)
+target_compile_definitions(unit_translator_translate_tests PRIVATE SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+gtest_discover_tests(unit_translator_translate_tests)

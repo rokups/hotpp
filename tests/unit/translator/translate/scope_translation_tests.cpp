@@ -1,0 +1,72 @@
+// Tests for spc::translate with scopes. The script writes "." for a scope.
+// The generated C++ uses "::".
+#include <gtest/gtest.h>
+
+#include <string>
+
+#include "spp/spc_lib.h"
+#include "support/translator_test_support.h"
+
+using namespace translator_test;
+
+namespace {
+
+const char* kScopeHeader =
+    "#include <string>\n#include <vector>\n"
+    "namespace Engine { class Actor { public: virtual ~Actor() {} virtual void Tick(float dt) {} }; }\n";
+
+}  // namespace
+
+TEST(ScopeTranslation, FieldTypesAndBaseClassUseDoubleColons)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kScopeHeader);
+    const std::string script =
+        "using \"w.h\";\nclass P : Engine.Actor {\n    std.string title;\n"
+        "    std.vector<int> history;\n    override void Tick(float dt) { }\n}\n";
+    const spc::TranslateResult r = spc::translate(temp_options(dir, script));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("std::string title"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("std::vector<int32_t> history"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("Engine::Actor"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("Engine.Actor"), std::string::npos) << r.cpp;
+}
+
+TEST(ScopeTranslation, MemberAccessUsesDeref)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kScopeHeader);
+    const std::string script =
+        "using \"w.h\";\nclass P : Engine.Actor {\n    std.string title;\n"
+        "    override void Tick(float dt) { var n = this.title.size(); }\n}\n";
+    const spc::TranslateResult r = spc::translate(temp_options(dir, script));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("script::deref(st->title).size()"), std::string::npos) << r.cpp;
+}
+
+TEST(ScopeTranslation, DoubleColonInABaseClassIsAnError)
+{
+    const spc::TranslateResult r = translate_text("class P : Engine::Actor {\n}\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("use '.' instead of '::'"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("t.script:1:"), std::string::npos) << r.diagnostics;
+}
+
+TEST(ScopeTranslation, DoubleColonInAFieldTypeIsAnError)
+{
+    const spc::TranslateResult r = translate_text("class P : B {\n    std::string title;\n}\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("use '.' instead of '::'"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("t.script:2:"), std::string::npos) << r.diagnostics;
+}
+
+TEST(ScopeTranslation, ArrowInABodyIsAnError)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    const spc::TranslateResult r =
+        spc::translate(temp_options(dir, lambda_script("        p->foo();")));
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("use '.' instead of '->'"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("t.script:5:"), std::string::npos) << r.diagnostics;
+}

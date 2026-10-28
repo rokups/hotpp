@@ -1,0 +1,92 @@
+// Tests for the lowering of names: locals, parameters and script functions, and their scope.
+#include <gtest/gtest.h>
+
+#include <string>
+#include <vector>
+
+#include "emit.h"
+#include "lower.h"
+#include "parser/expression.h"
+#include "parser/parser.h"
+#include "parser/statement.h"
+#include "support/lowering_test_support.h"
+
+using namespace spc;
+using namespace lowering_test;
+
+TEST(NameResolutionLowering, CatchNameIsALocal)
+{
+    Fixture f;
+    EXPECT_EQ(f.body("try { throw 1; } catch (std.exception& e) { e.what(); } catch (...) { throw; }"),
+              "try { throw 1; } catch (std::exception& e) { script::deref(e).what(); } "
+              "catch (...) { throw; }");
+    EXPECT_EQ(f.body("throw this.health;"), "throw st->health;");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+TEST(NameResolutionLowering, LocalShadowsAScope)
+{
+    Fixture f;
+    EXPECT_EQ(f.body("var std = 1; std.x;"), "auto std = 1; script::deref(std).x;");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+TEST(NameResolutionLowering, ScriptFnCall)
+{
+    Fixture f;
+    EXPECT_EQ(f.expr("this.heal(1.0)"), "Player__heal(self, 1.0f)");
+    EXPECT_EQ(f.expr("this.heal()"), "Player__heal(self)");
+    EXPECT_EQ(f.expr("heal(1.0)"), "Player__heal(self, 1.0f)");
+    EXPECT_EQ(f.expr("heal()"), "Player__heal(self)");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+TEST(NameResolutionLowering, LocalHidesScriptFn)
+{
+    Fixture f;
+    f.param("heal");
+    EXPECT_EQ(f.expr("heal(1)"), "heal(1)");
+}
+
+TEST(NameResolutionLowering, LocalDoesNotLeakIntoEarlierText)
+{
+    Fixture f;
+    // The use is before the declaration, so the name is not yet a local.
+    EXPECT_EQ(f.body("Foo.bar(); var Foo = 1;"), "Foo::bar(); auto Foo = 1;");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+TEST(NameResolutionLowering, LocalLeaksOutOfABlock)
+{
+    Fixture f;
+    // The old rewriter has no block scope: Foo stays a local after the block.
+    EXPECT_EQ(f.body("{ var Foo = 1; } Foo.bar();"), "{ auto Foo = 1; } script::deref(Foo).bar();");
+}
+
+TEST(NameResolutionLowering, ScriptFnHiddenAfterBlock)
+{
+    Fixture f;
+    EXPECT_EQ(f.body("{ var heal = 1; } heal(2);"), "{ auto heal = 1; } heal(2);");
+}
+
+TEST(NameResolutionLowering, LambdaParameterLeaks)
+{
+    Fixture f;
+    EXPECT_EQ(f.body("var g = (int* q) => { }; q.x;"),
+              "auto g = script::make_closure(GEN, \"Player::run lambda\", [=](int32_t* q) "
+              "{ [[maybe_unused]] auto* st = state_of(self); }); script::deref(q).x;");
+}
+
+TEST(NameResolutionLowering, ForOfVariableIsLocal)
+{
+    Fixture f;
+    EXPECT_EQ(f.body("foreach (var Foo in xs) { Foo.a(); }"), "for (auto Foo : xs) { script::deref(Foo).a(); }");
+}
+
+TEST(NameResolutionLowering, ErrorScriptFnMustBeCalled)
+{
+    Fixture f;
+    EXPECT_EQ(f.body("var a = 1;\nvar b = this.heal;"), "auto a = 1; auto b = Player__heal;");
+    ASSERT_EQ(f.errors().size(), 1u);
+    EXPECT_EQ(f.errors()[0], "2:9: script function 'heal' must be called");
+}

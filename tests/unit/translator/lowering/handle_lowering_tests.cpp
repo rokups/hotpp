@@ -1,0 +1,77 @@
+// Tests for the lowering of the handle types: storage types and "new".
+#include <gtest/gtest.h>
+
+#include <string>
+#include <vector>
+
+#include "emit.h"
+#include "lower.h"
+#include "parser/expression.h"
+#include "parser/parser.h"
+#include "parser/statement.h"
+#include "support/lowering_test_support.h"
+
+using namespace spc;
+using namespace lowering_test;
+
+TEST(HandleLowering, HandleLocalUsesStorageType)
+{
+    std::vector<ast::Stub> stubs(1);
+    stubs[0].name = "Weapon";
+    stubs[0].is_native = true;
+    stubs[0].handle = "std::shared_ptr<$T>";
+    LineMap smap("");
+    Diagnostics sdiag;
+    TypeModel types;
+    types.add_stubs(stubs, sdiag, smap);
+    ASSERT_TRUE(sdiag.items.empty());
+
+    Fixture f;
+    f.cx.types = &types;
+    EXPECT_EQ(f.body("Weapon x = null; var y = null; int k;"),
+              "std::shared_ptr<Weapon> x = nullptr; auto y = nullptr; int32_t k = int32_t();");
+    EXPECT_EQ(f.body("foreach (Weapon w in ws) { }"), "for (std::shared_ptr<Weapon> w : ws) {}");
+
+    // Without a type model the output does not change.
+    Fixture g;
+    EXPECT_EQ(g.body("Weapon x = null;"), "Weapon x = nullptr;");
+}
+
+TEST(HandleLowering, NewHandle)
+{
+    const TypeModel types = stub_model("Weapon", "std::shared_ptr<$T>");
+    Fixture f;
+    f.cx.types = &types;
+    EXPECT_EQ(f.expr("new Weapon(1)"), "std::make_shared<Weapon>(1)");
+    EXPECT_EQ(f.expr("new Weapon(this.n)"), "std::make_shared<Weapon>(st->n)");
+    // Without a type model the type stays as written.
+    Fixture g;
+    EXPECT_EQ(g.expr("new Weapon(1)"), "Weapon(1)");
+}
+
+TEST(HandleLowering, NewValue)
+{
+    const TypeModel types = stub_model("Vec3", "", true);
+    Fixture f;
+    f.cx.types = &types;
+    EXPECT_EQ(f.expr("new Vec3(1, 2, 3)"), "Vec3(1, 2, 3)");
+    Fixture g;
+    EXPECT_EQ(g.expr("new Vec3(1, 2, 3)"), "Vec3(1, 2, 3)");
+}
+
+TEST(HandleLowering, NewCustomHandle)
+{
+    const TypeModel types = stub_model("Texture", "TexPtr<$T>");
+    Fixture f;
+    f.cx.types = &types;
+    EXPECT_EQ(f.expr("new Texture(\"a\")"), "TexPtr<Texture>(new Texture(\"a\"))");
+}
+
+TEST(HandleLowering, NewScriptClassIsAnError)
+{
+    Fixture f;
+    f.cx.script_classes.insert("Player");
+    f.expr("new Player()");
+    ASSERT_EQ(f.errors().size(), 1u);
+    EXPECT_NE(f.errors()[0].find("new of a script class is not supported yet"), std::string::npos);
+}
