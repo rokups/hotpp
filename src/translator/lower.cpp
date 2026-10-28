@@ -108,20 +108,42 @@ struct Lowerer {
         return nullptr;
     }
 
-    static const Field* find_field(const ClassDef& c, const std::string& n)
+    // The script parent of a class, or null (design 4.5).
+    const ClassDef* parent_of(const ClassDef& c) const
     {
-        for (const Field& f : c.fields)
-            if (f.name == n) return &f;
+        return c.base.empty() || c.base == c.name ? nullptr : class_named(c.base);
+    }
+
+    // A field of the class or of a script parent.
+    const Field* find_field(const ClassDef& c, const std::string& n) const
+    {
+        int depth = 0;
+        for (const ClassDef* d = &c; d && depth < 64; d = parent_of(*d), ++depth)
+            for (const Field& f : d->fields)
+                if (f.name == n) return &f;
         return nullptr;
     }
 
-    // A script function of the class: not an override and not a hook. The call gets the shell.
-    static const Method* find_fn(const ClassDef& c, const std::string& n)
+    // A script function of the class or of a script parent: not an override of a native
+    // virtual and not a hook. The nearest class wins. "owner" gets the class of the function.
+    const Method* find_fn(const ClassDef& c, const std::string& n, const ClassDef** owner = nullptr) const
     {
         if (n == "onReload" || n.rfind("convert_", 0) == 0) return nullptr;
-        for (const Method& m : c.methods)
-            if (m.name == n && !m.overrides_virtual) return &m;
+        int depth = 0;
+        for (const ClassDef* d = &c; d && depth < 64; d = parent_of(*d), ++depth)
+            for (const Method& m : d->methods)
+                if (m.name == n && !m.overrides_virtual) {
+                    if (owner) *owner = d;
+                    return &m;
+                }
         return nullptr;
+    }
+
+    // The C++ name for a call of the script function "m" of "owner". A virtual function goes
+    // through the dispatcher of its slot (design 7.6). Else the call is direct.
+    static std::string fn_symbol(const ClassDef& owner, const Method& m)
+    {
+        return m.vslot_owner.empty() ? owner.name + "__" + m.name : m.vslot_owner + "__" + m.name + "_virt";
     }
 
     static const std::string& type_text(const Field& f) { return f.script_type.empty() ? f.type : f.script_type; }
@@ -137,6 +159,10 @@ struct Lowerer {
         }
         if (auto* nw = std::get_if<NewExpr>(&e.v)) return class_named(nw->type) ? nw->type : std::string();
         if (auto* p = std::get_if<ParenExpr>(&e.v)) return type_of(*p->inner);
+        if (auto* tt = std::get_if<TypeTestExpr>(&e.v)) {
+            const ClassDef* d = tt->is_as ? class_named(tt->type) : nullptr;
+            return d && !d->is_value ? tt->type : std::string();
+        }
         if (auto* nm = std::get_if<NameExpr>(&e.v)) {  // a.b.c with a local head, before member_chain
             if (nm->parts.size() < 2 || !cx.locals.count(nm->parts[0])) return {};
             auto it = cx.local_type.find(nm->parts[0]);
@@ -382,7 +408,9 @@ struct Lowerer {
     // A script fn that "this.f" or "f" names. The call gets the "self" argument.
     void script_call(CallExpr& c, const std::string& fn, uint32_t pos)
     {
-        c.callee = raw(cx.cls->name + "__" + fn, pos);
+        const ClassDef* owner = cx.cls;
+        const Method* m = find_fn(*cx.cls, fn, &owner);
+        c.callee = raw(m ? fn_symbol(*owner, *m) : cx.cls->name + "__" + fn, pos);
         c.args.insert(c.args.begin(), raw("self", 0));
     }
 
@@ -406,16 +434,37 @@ struct Lowerer {
                 return;
             }
         }
+        // "super.M(args)" in a class with a script parent P (design 4.5): the implementation
+        // that P sees, with a direct call. A native virtual M uses the helper "P__base_M".
+        if (auto* sm = std::get_if<MemberExpr>(&c.callee->v);
+            sm && std::holds_alternative<SuperExpr>(sm->obj->v) && cx.cls && cx.allow_this) {
+            if (const ClassDef* par = parent_of(*cx.cls)) {
+                const ClassDef* owner = nullptr;
+                const Method* fn = find_fn(*par, sm->name, &owner);
+                std::string callee;
+                if (fn) callee = owner->name + "__" + sm->name;
+                else if (cx.native_virtuals.count(sm->name)) callee = par->name + "__base_" + sm->name;
+                if (!callee.empty()) {
+                    c.callee = raw(callee, pos_of(*sm->obj));
+                    c.args.insert(c.args.begin(), raw("self", 0));
+                    if (fn) coerce_args(c, fn, 1);
+                    for (size_t i = 1; i < c.args.size(); ++i) expr(c.args[i]);
+                    return;
+                }
+            }
+        }
         // "obj.M(args)" where obj has the type of a script class (not a [value] class) and M is
         // a script function of it: a direct call of the generation function.
         member_chain(c.callee);
         if (auto* mm = std::get_if<MemberExpr>(&c.callee->v)) {
             if (!std::holds_alternative<ThisExpr>(mm->obj->v) && !std::holds_alternative<SuperExpr>(mm->obj->v)) {
                 const ClassDef* d = class_named(type_of(*mm->obj));
-                const Method* fn = d && !d->is_value && !find_prop(*d, mm->name) ? find_fn(*d, mm->name) : nullptr;
+                const ClassDef* owner = d;
+                const Method* fn =
+                    d && !d->is_value && !find_prop(*d, mm->name) ? find_fn(*d, mm->name, &owner) : nullptr;
                 if (fn) {
                     const uint32_t pos = pos_of(*mm->obj);
-                    const std::string name = d->name + "__" + mm->name;
+                    const std::string name = fn_symbol(*owner, *fn);
                     expr(mm->obj);
                     ExprP recv = raw(shell_text(*d, print(*mm->obj)), pos);
                     c.callee = raw(name, pos);
@@ -518,6 +567,16 @@ struct Lowerer {
         if (std::holds_alternative<SuperExpr>(m.obj->v)) {
             if (cx.cls->base.empty()) {
                 error(obj_pos, "'super' needs a base class: '" + cx.cls->name + "' has none");
+                return;
+            }
+            // With a script parent, the member is a member of the native base of the root.
+            if (parent_of(*cx.cls)) {
+                if (cx.native_base.empty()) {
+                    error(obj_pos, "'super." + m.name + "' needs a native base: the classes of '" + cx.cls->name +
+                                       "' have none");
+                    return;
+                }
+                e = raw("self->" + cx.native_base + "::" + m.name, obj_pos);
                 return;
             }
             e = raw("self->" + cx.cls->base + "::" + m.name, obj_pos);
@@ -681,7 +740,32 @@ struct Lowerer {
             new_expr(e, *nw);
         } else if (auto* l = std::get_if<LambdaExpr>(&x.v)) {
             lambda(e, *l);
+        } else if (auto* tt = std::get_if<TypeTestExpr>(&x.v)) {
+            type_test(e, *tt);
         }
+    }
+
+    // "obj is T" and "obj as T" (design 7.7). A script class T uses the class records:
+    // "spp::is_script(obj, "T")" and "spp::as_script<T_Shell>(obj, "T")". A native type T uses
+    // RTTI: "spp::is_native<T>(obj)" and "spp::as_native<T>(obj)" (dynamic_cast).
+    void type_test(ExprP& e, TypeTestExpr& t)
+    {
+        const uint32_t pos = t.pos;
+        const std::string type = t.type;
+        const ClassDef* d = class_named(type);
+        if (d && d->is_value) {
+            error(pos, std::string("'") + (t.is_as ? "as" : "is") + "' needs a class with a handle: '" + type +
+                           "' is a [value] class");
+            return;
+        }
+        expr(t.obj);
+        CallExpr c;
+        c.pos = pos;
+        if (d) c.callee = raw(t.is_as ? "spp::as_script<" + type + "_Shell>" : std::string("spp::is_script"), pos);
+        else c.callee = raw((t.is_as ? "spp::as_native<" : "spp::is_native<") + type + ">", pos);
+        c.args.push_back(std::move(t.obj));
+        if (d) c.args.push_back(raw("\"" + type + "\"", pos));
+        e = make_expr(std::move(c));
     }
 
     void stmts(std::vector<StmtP>& v)

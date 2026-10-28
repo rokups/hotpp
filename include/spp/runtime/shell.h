@@ -26,6 +26,15 @@ struct PlainObject : std::enable_shared_from_this<PlainObject> {
     virtual ~PlainObject() = default;
 };
 
+// True when the record "r" is the class "name" or a script class that derives from it. The
+// walk uses the names, so a record of any generation gives the same answer (design 7.7).
+inline bool record_is(const ClassRecord* r, const char* name)
+{
+    for (int depth = 0; r && depth < 64; r = r->super, ++depth)
+        if (std::strcmp(r->name, name) == 0) return true;
+    return false;
+}
+
 // Calls slot "slot" of the class record. "Sig" is the signature of the slot.
 template <class Sig, class... A>
 inline auto call(const ClassRecord* cls, unsigned slot, A&&... a)
@@ -87,13 +96,13 @@ template <class Shell, class T>
 Shell* shell_of(T* p, const char* cls)
 {
     if (!p) throw std::runtime_error(std::string("the handle is null: expected a script object of class ") + cls);
-    if constexpr (std::is_same_v<T, Shell>) {
-        return p;
+    if constexpr (std::is_same_v<T, Shell> || std::is_base_of_v<Shell, T>) {
+        return p;  // the shell of the class or of a derived script class
     } else {
         static_assert(std::is_base_of_v<T, Shell>,
                       "the object of a property access is not of the native base of the script class");
         auto* s = dynamic_cast<ShellBase*>(p);
-        if (!s || !s->cls || std::strcmp(s->cls->name, cls) != 0)
+        if (!s || !s->cls || !record_is(s->cls, cls))
             throw std::runtime_error(std::string("the object is not a script object of class ") + cls);
         return static_cast<Shell*>(p);
     }
@@ -110,6 +119,110 @@ template <class Shell, class H>
 Shell* shell_of(const H& h, const char* cls)
 {
     return shell_of<Shell>(h.get(), cls);
+}
+
+// ---- "is" and "as" (design 7.7)
+// The ShellBase of the object behind "p", or null: a null pointer or a native object.
+template <class T>
+const ShellBase* shell_base_of(T* p)
+{
+    if (!p) return nullptr;
+    if constexpr (std::is_base_of_v<ShellBase, T>)
+        return p;
+    else if constexpr (std::is_polymorphic_v<T>)
+        return dynamic_cast<const ShellBase*>(p);
+    else
+        return nullptr;
+}
+
+// "obj is C" of a script class C: the class records of the object, not RTTI. A pointer,
+// a reference and a handle (a type with get()) are accepted. Null gives false.
+template <class T>
+bool is_script(T* p, const char* cls)
+{
+    const ShellBase* s = shell_base_of(p);
+    return s && s->cls && record_is(s->cls, cls);
+}
+template <class H>
+    requires requires(const H& h) { h.get(); }
+bool is_script(const H& h, const char* cls)
+{
+    return is_script(h.get(), cls);
+}
+template <class T>
+    requires(!std::is_pointer_v<T> && !requires(const T& h) { h.get(); })
+bool is_script(T& v, const char* cls)
+{
+    return is_script(&v, cls);
+}
+
+// "obj as C" of a script class C. A pointer or a reference gives the shell pointer or null.
+// A std::shared_ptr gives a std::shared_ptr of the shell that shares the ownership. Another
+// handle gives the shell pointer, so the handle type of C can take it.
+template <class Shell, class T>
+Shell* as_script(T* p, const char* cls)
+{
+    if (!is_script(p, cls)) return nullptr;
+    return static_cast<Shell*>(const_cast<ShellBase*>(shell_base_of(p)));
+}
+template <class Shell, class U>
+std::shared_ptr<Shell> as_script(const std::shared_ptr<U>& h, const char* cls)
+{
+    Shell* s = as_script<Shell>(h.get(), cls);
+    return s ? std::shared_ptr<Shell>(h, s) : nullptr;
+}
+template <class Shell, class H>
+    requires requires(const H& h) { h.get(); }
+Shell* as_script(const H& h, const char* cls)
+{
+    return as_script<Shell>(h.get(), cls);
+}
+template <class Shell, class T>
+    requires(!std::is_pointer_v<T> && !requires(const T& h) { h.get(); })
+Shell* as_script(T& v, const char* cls)
+{
+    return as_script<Shell>(&v, cls);
+}
+
+// "obj is T" and "obj as T" of a native class T: dynamic_cast, as in C++.
+template <class T, class U>
+bool is_native(U* p)
+{
+    return dynamic_cast<const T*>(p) != nullptr;
+}
+template <class T, class H>
+    requires requires(const H& h) { h.get(); }
+bool is_native(const H& h)
+{
+    return is_native<T>(h.get());
+}
+template <class T, class U>
+    requires(!std::is_pointer_v<U> && !requires(const U& h) { h.get(); })
+bool is_native(U& v)
+{
+    return is_native<T>(&v);
+}
+template <class T, class U>
+T* as_native(U* p)
+{
+    return dynamic_cast<T*>(p);
+}
+template <class T, class U>
+std::shared_ptr<T> as_native(const std::shared_ptr<U>& h)
+{
+    return std::dynamic_pointer_cast<T>(h);
+}
+template <class T, class H>
+    requires requires(const H& h) { h.get(); }
+T* as_native(const H& h)
+{
+    return as_native<T>(h.get());
+}
+template <class T, class U>
+    requires(!std::is_pointer_v<U> && !requires(const U& h) { h.get(); })
+T* as_native(U& v)
+{
+    return as_native<T>(&v);
 }
 
 }  // namespace spp

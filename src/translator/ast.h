@@ -119,6 +119,15 @@ struct BlockStmt {
     uint32_t pos = 0, end_pos = 0;
 };
 
+// "obj is T" or "obj as T" (design 7.7). The type is C++ text, as in NewExpr. The pos is
+// the pos of the object. The lowering replaces the node with a call of a runtime helper.
+struct TypeTestExpr {
+    ExprP obj;
+    std::string type;
+    bool is_as = false;  // false: "is", true: "as"
+    uint32_t pos = 0;
+};
+
 struct LambdaExpr {
     std::vector<Param> params;  // an empty type prints as "auto"
     BlockStmt body;
@@ -132,7 +141,7 @@ struct RawExpr {  // C++ text that is already lowered
 struct Expr {
     std::variant<NameExpr, ThisExpr, SuperExpr, NullExpr, NumberExpr, StringExpr, CharExpr, MemberExpr,
                  CallExpr, IndexExpr, UnaryExpr, RefExpr, BinaryExpr, TernaryExpr, ParenExpr,
-                 NewExpr, LambdaExpr, RawExpr>
+                 NewExpr, LambdaExpr, RawExpr, TypeTestExpr>
         v;
 };
 
@@ -281,6 +290,11 @@ struct Method {
     bool overrides_virtual = false;
     // The modifiers as written. The parser stores them. Nothing checks them yet.
     bool is_override = false, is_virtual = false, is_new = false;
+    // The script class that owns the virtual slot of the function (design 7.6): the class
+    // with the "virtual" declaration. A call goes through the slot then. The translator sets
+    // it for a "virtual" function and for an "override" of a script virtual function. Empty:
+    // a direct call.
+    std::string vslot_owner;
     Access access = Access::Public;
     std::string name;
     std::vector<Param> params;

@@ -190,6 +190,15 @@ struct ExprPrinter {
         expr_list(n.args, e);
         e.put(")");
     }
+    // The script form. The lowering replaces the node, so only a parse test prints it.
+    void operator()(const TypeTestExpr& n) const
+    {
+        emit_expr(*n.obj, e);
+        e.space();
+        e.put(n.is_as ? "as" : "is");
+        e.space();
+        e.put(n.type);
+    }
     void operator()(const LambdaExpr& n) const
     {
         e.put("[=]", n.pos);

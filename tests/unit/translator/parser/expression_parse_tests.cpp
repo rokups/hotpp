@@ -30,6 +30,21 @@ TEST(ExpressionParse, Precedence)
     EXPECT_EQ(round_trip("x == y != z <= w >= v"), "x == y != z <= w >= v");
 }
 
+// "is" and "as" (design 7.7) bind tighter than a comparison and looser than a shift.
+TEST(ExpressionParse, IsAndAs)
+{
+    EXPECT_EQ(round_trip("a is B"), "a is B");
+    EXPECT_EQ(round_trip("x as Game.Unit"), "x as Game::Unit");
+    EXPECT_EQ(round_trip("a is B == c"), "a is B == c");
+    EXPECT_EQ(round_trip("!(a is B) && c"), "!(a is B) && c");
+    Parsed p("a << 1 as B");
+    ASSERT_TRUE(p.expr);
+    const auto* t = std::get_if<ast::TypeTestExpr>(&p.expr->v);
+    ASSERT_TRUE(t);
+    EXPECT_TRUE(t->is_as);
+    EXPECT_EQ(t->type, "B");
+}
+
 TEST(ExpressionParse, Tree)
 {
     // The tree has the right shape, not only the right text.

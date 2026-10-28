@@ -77,6 +77,12 @@ struct RCtx {
     std::map<std::string, const ast::ClassDef*> classes;
     std::map<std::string, std::string> local_type;
     std::string ret_type;
+    // Script inheritance (design 4.5). "native_base" is the native base of the root of the
+    // script classes (empty: no native base). "native_virtuals" has the names of its virtual
+    // methods. "super.M(args)" of such a name in a class with a script parent P becomes
+    // "P__base_M(self, args)": the implementation that P sees.
+    std::string native_base;
+    std::set<std::string> native_virtuals;
     // Set to true when a bare "this" becomes a handle (spp::handle_from_this). The translator
     // then gives a native-base shell the base std::enable_shared_from_this. May be null.
     bool* handle_this = nullptr;

@@ -11,7 +11,8 @@ Status: [ ] open, [x] done. One slice is one commit.
 - [x] S4 Script constructors, `new` of a script class. Done. The limits are in `HANDOFF.md` (Known limits).
 - [ ] S5 Value/handle slice 2: parameter analysis, `var r = ref`, member access on script handles. S5a done: `[value]` script classes, plain script classes, script classes as handles.
 - [x] S5b Done. Open: the `var r = ref` check, the type of a `var` from a native call, and a reload check for the `enable_shared_from_this` layout. Parameter analysis (const T& vs T, store takes a copy), plain trivially-copyable native type is a value (7.10.2 rule 4), type-directed member access on script handles, `return this` handle, strict borrowed by default and migrate examples, order-independent class use (a cycle is an error).
-- [ ] S6 Script inheritance, script `virtual`/`override`, `is` and `as`.
+- [x] S6 Script inheritance, script `virtual`/`override`, `is` and `as`. S6a done. The limits are in `HANDOFF.md` (Known limits). Open: inherited properties, a parent in another script, multiple script inheritance.
+- [ ] S6b Inherited properties, 3-level family test, test for loader rejection of a parent change, `var r = ref` check.
 - [ ] S7 String interpolation: lower `${..}` to `std::format` (C++20) or `fmt::format`. The fmt library may be user-supplied: pick it by a translator option and a header check, no hard dependency.
 - [ ] S8 Module variables, enums, structs, native interface bases.
 - [ ] S9 Runtime polish: removed-class handler, `script_stats`, entry-count debug check, watcher and command channel.

@@ -1,0 +1,73 @@
+// Generation 1 of the Unit, Grunt and Spotter classes: script inheritance (S6a, design 4.5 and 7.6).
+// Grunt derives from the script class Unit. Unit has a virtual function. Grunt overrides it.
+// Spotter keeps a Grunt in a Unit handle. It uses "is", "as" and a virtual call.
+using "Actor.h";
+using <string>;
+
+class Unit : Actor {
+    int hp = 100;
+    int ctor_log = 0;
+    int ticks = 0;
+    int dtor_runs = 0;
+
+    Unit(int start) : super(std.string("unit")) {
+        this.hp = start;
+        this.ctor_log = this.ctor_log * 10 + 1;
+    }
+
+    ~Unit() {
+        std.printf("[inherit_v1] Unit dtor %d\n", this.hp);
+    }
+
+    virtual int Power() { return 1; }
+
+    int Attack() { return Power() * 10; }
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+    }
+}
+
+class Grunt : Unit {
+    int rage = 3;
+    int unit_power = 0;
+    int super_ticks = 0;
+
+    Grunt(int start, int r) : super(start + 1) {
+        this.rage = r;
+        this.ctor_log = this.ctor_log * 10 + 2;
+    }
+
+    ~Grunt() {
+        std.printf("[inherit_v1] Grunt dtor %d\n", this.rage);
+    }
+
+    override int Power() { return this.rage; }
+
+    new int Attack() { return super.Attack() + 1; }
+
+    override void Tick(float dt) {
+        super.Tick(dt);
+        this.unit_power = super.Power();
+        this.super_ticks = this.ticks;
+    }
+}
+
+class Spotter : Actor {
+    Unit seen = null;
+    int seen_power = 0;
+    int attack = 0;
+    bool saw_grunt = false;
+    bool saw_unit = false;
+    int grunt_rage = 0;
+
+    override void Tick(float dt) {
+        if (this.seen == null) this.seen = new Grunt(5, 7);
+        this.seen_power = this.seen.Power();
+        this.attack = this.seen.Attack();
+        this.saw_grunt = this.seen is Grunt;
+        this.saw_unit = this.seen is Unit;
+        var g = this.seen as Grunt;
+        if (g != null) this.grunt_rage = g.rage;
+    }
+}

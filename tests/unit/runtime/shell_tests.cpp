@@ -43,4 +43,43 @@ TEST(HandleFromThis, ObjectWithoutAnOwnerThrows)
     EXPECT_THROW(spp::handle_from_this<std::shared_ptr<Cell_Shell>>(&cell), std::runtime_error);
 }
 
+// A child record names its parent in "super" (design 4.5). "is" and "as" walk the chain (design 7.7).
+struct Parent_Shell : Base, spp::ShellBase {};
+struct Child_Shell final : Parent_Shell {};
+
+TEST(IsAs, ScriptClassesWalkTheParentRecords)
+{
+    spp::ClassRecord parent{};
+    parent.name = "Parent";
+    spp::ClassRecord child{};
+    child.name = "Child";
+    child.super = &parent;
+    auto obj = std::make_shared<Child_Shell>();
+    obj->cls = &child;
+    const std::shared_ptr<Base> h = obj;
+    EXPECT_TRUE(spp::record_is(&child, "Parent"));
+    EXPECT_FALSE(spp::record_is(&parent, "Child"));
+    EXPECT_TRUE(spp::is_script(h, "Child"));
+    EXPECT_TRUE(spp::is_script(h, "Parent"));
+    EXPECT_FALSE(spp::is_script(h, "Other"));
+    EXPECT_EQ(spp::shell_of<Parent_Shell>(h, "Parent"), obj.get());
+    const std::shared_ptr<Child_Shell> c = spp::as_script<Child_Shell>(h, "Child");
+    EXPECT_EQ(c.get(), obj.get());
+    EXPECT_EQ(spp::as_script<Child_Shell>(h, "Other"), nullptr);
+    std::shared_ptr<Base> none;
+    EXPECT_FALSE(spp::is_script(none, "Child"));
+    EXPECT_EQ(spp::as_script<Child_Shell>(none, "Child"), nullptr);
+}
+
+TEST(IsAs, NativeTypesUseRtti)
+{
+    auto cell = std::make_shared<Cell_Shell>();
+    const std::shared_ptr<Base> h = cell;
+    EXPECT_TRUE(spp::is_native<Cell_Shell>(h));
+    EXPECT_FALSE(spp::is_native<Plain_Shell>(cell.get()));
+    EXPECT_EQ(spp::as_native<Cell_Shell>(h), cell);
+    Base* raw = cell.get();
+    EXPECT_EQ(spp::as_native<Cell_Shell>(raw), cell.get());
+}
+
 }  // namespace

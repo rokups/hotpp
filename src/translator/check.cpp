@@ -52,6 +52,8 @@ struct Walker {
             expr(p->inner);
         } else if (auto* n = std::get_if<NewExpr>(&e.v)) {
             for (const ExprP& a : n->args) expr(a);
+        } else if (auto* tt = std::get_if<TypeTestExpr>(&e.v)) {
+            expr(tt->obj);
         } else if (auto* l = std::get_if<LambdaExpr>(&e.v)) {
             block(l->body);
         }
@@ -543,6 +545,7 @@ std::set<std::string> used_type_names(const ClassDef& cd)
     };
     auto fe = [&](const Expr& e) {
         if (auto* n = std::get_if<NewExpr>(&e.v)) add(n->type);
+        if (auto* tt = std::get_if<TypeTestExpr>(&e.v); tt && tt->is_as) add(tt->type);
         if (auto* l = std::get_if<LambdaExpr>(&e.v))
             for (const Param& p : l->params) add(p.type);
     };

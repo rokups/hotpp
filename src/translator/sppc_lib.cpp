@@ -427,6 +427,7 @@ struct Slot {
     const NativeVirtual* nv = nullptr;
     const Method* impl = nullptr;  // override (native slot) or function (script slot)
     int intro_gen = 0;             // script functions only
+    int index = -1;                // the slot number in a family of script classes, else -1
     bool native() const { return nv != nullptr; }
 };
 
@@ -927,6 +928,34 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 if (c.has_super)
                     fail_at(map, c.pos, "class '" + cd.name + "' has no base class: remove 'super(...)'");
 
+    // ---- script inheritance (design 4.5). A base that is a script class of this script is a
+    // script parent. The root of a chain is the first class without a script parent. Its base
+    // is the native base of every class of the chain.
+    std::map<std::string, ClassDef*> class_by_name;
+    for (ClassDef& cd : sc.classes) class_by_name[cd.name] = &cd;
+    auto script_parent = [&](const ClassDef& cd) -> ClassDef* {
+        if (cd.base.empty()) return nullptr;
+        auto it = class_by_name.find(cd.base);
+        return it == class_by_name.end() ? nullptr : it->second;
+    };
+    for (const ClassDef& cd : sc.classes) {
+        const ClassDef* par = script_parent(cd);
+        if (!par) continue;
+        if (par == &cd) fail_at(map, cd.pos, "class '" + cd.name + "' cannot derive from itself");
+        if (par->is_value)
+            fail_at(map, cd.pos, "class '" + cd.name + "' cannot derive from the [value] class '" + par->name + "'");
+        if (cd.is_value)
+            fail_at(map, cd.pos, "the [value] class '" + cd.name + "' cannot derive from the script class '" + par->name + "'");
+    }
+    auto script_root = [&](const ClassDef& cd) {
+        const ClassDef* r = &cd;
+        for (int depth = 0; script_parent(*r) && depth < 64; ++depth) r = script_parent(*r);
+        return r;
+    };
+    std::set<std::string> has_children;
+    for (const ClassDef& cd : sc.classes)
+        if (const ClassDef* par = script_parent(cd)) has_children.insert(par->name);
+
     // ---- the questions for libclang about the types (design 7.10.7 and the stub "class *;")
     std::map<std::string, std::set<std::string>> asked;  // type text, member names
     auto is_exact = [](const std::string& n) {
@@ -961,7 +990,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
     std::set<std::string> import_paths, base_names;
     for (const auto& im : sc.imports) import_paths.insert(im.path);
     for (const auto& cd : sc.classes)
-        if (!cd.base.empty()) base_names.insert(cd.base);
+        if (!cd.base.empty() && !class_by_name.count(cd.base)) base_names.insert(cd.base);
     // The key: the flags, the current directory and the imports (the order does not matter).
     std::string key = std::filesystem::current_path().string() + "\n";
     for (const auto& a : args) key += a + "\n";
@@ -1236,6 +1265,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                     fail_at(map, cd.pos, "a [value] class can use only native types and [value] classes: '" + u + "' is not");
                 deps[cd.name].insert(u);
             }
+            if (script_parent(cd)) deps[cd.name].insert(cd.base);  // the parent shell comes first
         }
         std::map<std::string, int> state;  // 1: on the path, 2: done
         std::vector<std::string> path;
@@ -1261,6 +1291,20 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             if (!cd.is_value) visit(cd);
     }
     std::set<std::string> emitted;
+    // What a class with a script parent takes from the parent (design 4.5). The parent comes
+    // first in the emit order, so its entry is complete then.
+    struct ClassInfo {
+        std::string S;                         // the name of the state struct
+        std::vector<std::string> table;        // the function of each slot; empty is a hole
+        std::vector<std::string> rows;         // the field table rows; "$S$" is the state struct
+        std::set<std::string> fields;          // all field names, the inherited ones too
+        std::string ctor_entry;                // the function that runs the constructors, or empty
+        size_t ctor_params = 0;                // the parameter count of the constructor
+        bool dtor_chain = false;               // the class or a parent has a destructor
+        std::string on_reload;                 // the onReload hook of the class or a parent
+        bool esft = false;                     // the shell has std::enable_shared_from_this
+    };
+    std::map<std::string, ClassInfo> infos;
 
     for (ClassDef* cdp : order) {
         ClassDef& cd = *cdp;
@@ -1271,30 +1315,49 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             continue;
         }
         const bool has_ctor = !cd.ctors.empty(), has_dtor = !cd.dtors.empty();
-        const bool gen_new = has_ctor || new_set.count(cn) > 0;
+        // The classes of a chain (design 4.5): "par" is the script parent, "root" the first class.
+        ClassDef* par = script_parent(cd);
+        const ClassDef& root = *script_root(cd);
+        const ClassInfo* pinfo = par ? &infos.at(par->name) : nullptr;
+        const bool family = par || has_children.count(cn);
+        const bool gen_new = has_ctor || new_set.count(cn) > 0 || family;
         const std::string P = cn + "__";
+        const std::string PP = par ? par->name + "__" : std::string();
         auto slot_id = [&](const std::string& n) { return (multi ? cn + "_" : std::string()) + "SLOT_" + n; };
 
         // ---- base class information from libclang
         // A class without a base derives from spp::PlainObject (design 7.10.1).
+        // A class with a script parent uses the native base of the root of the chain.
         BaseInfo bi;
-        const std::string B = cd.base.empty() ? std::string("spp::PlainObject") : cd.base;
-        if (cd.base.empty()) {
+        const std::string B = root.base.empty() ? std::string("spp::PlainObject") : root.base;
+        if (root.base.empty()) {
             bi.virtual_dtor = true;
         } else {
-            auto base_it = bases.find(cd.base);
+            auto base_it = bases.find(root.base);
             if (base_it == bases.end())
-                fail_at(map, cd.pos, "base class '" + cd.base + "' is not found in the imported headers");
+                fail_at(map, root.pos, "base class '" + root.base + "' is not found in the imported headers");
             bi = base_it->second;
         }
         if (!bi.any_ctor) bi.default_ctor = true;  // the compiler declares one
         if (!bi.virtual_dtor)
-            fail_at(map, cd.pos, "base class '" + cd.base + "' has no virtual destructor");
+            fail_at(map, cd.pos, "base class '" + root.base + "' has no virtual destructor");
+        const bool root_super = !root.ctors.empty() && root.ctors[0].has_super;
         std::string ctor_args;
         if (bi.ctor_kind == 1) ctor_args = ", std::string(\"" + cn + "\")";
         else if (bi.ctor_kind == 2) ctor_args = ", \"" + cn + "\"";
-        else if (!bi.default_ctor && !(has_ctor && cd.ctors[0].has_super))
-            fail_at(map, cd.pos, "base class '" + cd.base + "' has no default constructor and no constructor that takes a name");
+        else if (!bi.default_ctor && !root_super)
+            fail_at(map, cd.pos, "base class '" + root.base + "' has no default constructor and no constructor that takes a name");
+        if (par) {
+            // The constructor of the parent runs first. Its arguments come from "super(...)".
+            const bool sup = has_ctor && cd.ctors[0].has_super;
+            if (pinfo->ctor_params > 0 && !sup)
+                fail_at(map, has_ctor ? cd.ctors[0].pos : cd.pos,
+                        "class '" + cn + "' must call 'super(...)': the constructor of '" + par->name + "' has parameters");
+            if (sup && cd.ctors[0].super_args.size() != pinfo->ctor_params)
+                fail_at(map, cd.ctors[0].super_pos,
+                        "'super(...)' has " + std::to_string(cd.ctors[0].super_args.size()) + " arguments; the constructor of '" +
+                            par->name + "' takes " + std::to_string(pinfo->ctor_params));
+        }
 
         // ---- check the script members
         desugar_props(cd, map);
@@ -1310,6 +1373,10 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         std::set<std::string> field_names;
         for (const Field& f : cd.fields)
             if (!field_names.insert(f.name).second) fail_at(map, f.pos, "field '" + f.name + "' is declared twice");
+        if (par)
+            for (const Field& f : cd.fields)
+                if (pinfo->fields.count(f.name))
+                    fail_at(map, f.pos, "field '" + f.name + "' hides a field of the script parent '" + par->name + "'");
         // The hooks of design 4.7: "void onReload(OldState old)" and "convert_<field>(Old old)".
         // They are not script functions: they get no slot and no thunk.
         enum class Hook { None, OnReload, Convert };
@@ -1351,7 +1418,51 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                     if (!cands.empty()) msg += ". Candidates: " + cands;
                     fail_at(map, m.pos, msg);
                 }
-                if (m.is_override) fail_at(map, m.pos, "'override' has no virtual method to override");
+                // A script virtual method (design 7.6). "override" replaces the slot of the nearest
+                // parent function with the name. "new" hides it. "virtual" adds a slot.
+                if (hook_of(m) == Hook::None) {
+                    const Method* am = nullptr;
+                    const ClassDef* aowner = nullptr;
+                    for (const ClassDef* a = par; a && !am; a = script_parent(*a))
+                        for (const Method& pm : a->methods)
+                            if (pm.name == m.name && !pm.overrides_virtual && pm.name != "onReload" &&
+                                pm.name.rfind("convert_", 0) != 0) {
+                                am = &pm;
+                                aowner = a;
+                                break;
+                            }
+                    if (m.is_override) {
+                        if (!am || am->vslot_owner.empty())
+                            fail_at(map, m.pos, "'override' has no virtual method to override");
+                        auto ptext = [](const Param& p) {
+                            return key_norm(p.script_type.empty() ? p.type : p.script_type) +
+                                   (p.mode == PassMode::Value ? "" : "&");
+                        };
+                        bool same = am->params.size() == m.params.size();
+                        for (size_t k = 0; same && k < m.params.size(); ++k)
+                            same = ptext(am->params[k]) == ptext(m.params[k]);
+                        if (!same)
+                            fail_at(map, m.pos, "'" + m.name + "' has other parameter types than the virtual method of " +
+                                                    aowner->name + "; write 'new' to hide it");
+                        const std::string r0 = am->script_ret.empty() ? "void" : am->script_ret;
+                        const std::string r1 = m.script_ret.empty() ? "void" : m.script_ret;
+                        if (key_norm(r0) != key_norm(r1))
+                            fail_at(map, m.pos, "return type '" + r1 + "' differs from '" + r0 + "'");
+                        m.vslot_owner = am->vslot_owner;
+                    } else {
+                        if (am && !m.is_new) {
+                            const bool v = !am->vslot_owner.empty();
+                            fail_at(map, m.pos, "function '" + m.name + "' hides the " + (v ? "virtual " : "") +
+                                                    "function of " + aowner->name + "; write " +
+                                                    (v ? "'override' or 'new'" : "'new'"));
+                        }
+                        if (m.is_virtual) m.vslot_owner = cn;
+                    }
+                    if (par && pinfo->fields.count(m.name))
+                        fail_at(map, m.pos, "'" + m.name + "' is a field of '" + par->name + "' and a function");
+                } else if (m.is_override) {
+                    fail_at(map, m.pos, "'override' has no virtual method to override");
+                }
                 if (!fn_names.insert(m.name).second)
                     fail_at(map, m.pos, "function '" + m.name + "' is declared twice (overloads are not supported)");
                 if (field_names.count(m.name)) fail_at(map, m.pos, "'" + m.name + "' is a field and a function");
@@ -1470,29 +1581,84 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         std::map<std::string, const Method*> fn_by_name;
         for (const Method& m : cd.methods)
             if (!m.overrides_virtual && hook_of(m) == Hook::None) fn_by_name[m.name] = &m;
-        for (const auto& e : old_manifest) {
-            if (e.cls != cn) continue;
-            auto it = fn_by_name.find(e.fn);
-            if (it == fn_by_name.end())
-                fail_at(map, cd.pos, "function '" + e.fn + "' of an earlier generation is removed. The slot count must not shrink");
-            Slot s;
-            s.id = e.fn;
-            s.impl = it->second;
-            s.intro_gen = e.gen;
-            slots.push_back(s);
+        // The classes of a family (one root) share one slot numbering (design 7.6). The slots of
+        // the manifest entries of the family come in the manifest order, so a number is stable
+        // over generations. The table of a class has holes for the functions of other branches.
+        std::map<std::string, size_t> fam_index;  // "Cls::fn" to the slot number
+        size_t table_size = 0;
+        if (!family) {
+            for (const auto& e : old_manifest) {
+                if (e.cls != cn) continue;
+                auto it = fn_by_name.find(e.fn);
+                if (it == fn_by_name.end())
+                    fail_at(map, cd.pos, "function '" + e.fn + "' of an earlier generation is removed. The slot count must not shrink");
+                Slot s;
+                s.id = e.fn;
+                s.impl = it->second;
+                s.intro_gen = e.gen;
+                slots.push_back(s);
+            }
+            for (const Method& m : cd.methods) {
+                if (m.overrides_virtual || hook_of(m) != Hook::None) continue;
+                bool known = false;
+                for (const auto& s : slots) known |= !s.native() && s.id == m.name;
+                if (known) continue;
+                Slot s;
+                s.id = m.name;
+                s.impl = &m;
+                s.intro_gen = opt.gen;
+                slots.push_back(s);
+                new_manifest.push_back({cn, m.name, opt.gen});
+            }
+            table_size = slots.size();
+        } else {
+            for (const auto& e : old_manifest)
+                if (e.cls == cn && !fn_by_name.count(e.fn))
+                    fail_at(map, cd.pos, "function '" + e.fn + "' of an earlier generation is removed. The slot count must not shrink");
+            // An "override" of a script virtual uses the slot of the parent. It adds no entry.
+            for (const Method& m : cd.methods) {
+                if (m.overrides_virtual || m.is_override || hook_of(m) != Hook::None) continue;
+                bool known = false;
+                for (const auto& e : new_manifest) known |= e.cls == cn && e.fn == m.name;
+                if (!known) new_manifest.push_back({cn, m.name, opt.gen});
+            }
+            std::set<std::string> fam;
+            for (const ClassDef& c : sc.classes)
+                if (script_root(c) == &root) fam.insert(c.name);
+            size_t k = native_count;
+            for (const auto& e : new_manifest) {
+                if (!fam.count(e.cls)) continue;
+                const size_t idx = k++;
+                fam_index[e.cls + "::" + e.fn] = idx;
+                if (e.cls != cn) continue;
+                Slot s;
+                s.id = e.fn;
+                s.impl = fn_by_name.at(e.fn);
+                s.intro_gen = e.gen;
+                s.index = static_cast<int>(idx);
+                slots.push_back(s);
+            }
+            table_size = k;
         }
+        // The function of each slot. A class with a script parent starts from the table of the
+        // parent: the inherited functions and the overrides of the parent stay.
+        std::vector<std::string> table(table_size);
+        for (size_t i = 0; i < native_count; ++i)
+            table[i] = !slots[i].impl && pinfo ? pinfo->table[i] : P + (slots[i].impl ? "" : "fwd_") + slots[i].id;
+        if (pinfo)
+            for (size_t i = native_count; i < pinfo->table.size() && i < table_size; ++i) table[i] = pinfo->table[i];
+        for (size_t i = native_count; i < slots.size(); ++i)
+            table[slots[i].index >= 0 ? size_t(slots[i].index) : i] = P + slots[i].id + "_slot";
+        std::vector<const Method*> script_overrides;  // "override" of a script virtual, without an own slot
         for (const Method& m : cd.methods) {
-            if (m.overrides_virtual || hook_of(m) != Hook::None) continue;
-            bool known = false;
-            for (const auto& s : slots) known |= !s.native() && s.id == m.name;
-            if (known) continue;
-            Slot s;
-            s.id = m.name;
-            s.impl = &m;
-            s.intro_gen = opt.gen;
-            slots.push_back(s);
-            new_manifest.push_back({cn, m.name, opt.gen});
+            if (!m.is_override || m.overrides_virtual) continue;
+            bool own = false;
+            for (size_t i = native_count; i < slots.size(); ++i) own |= slots[i].id == m.name;
+            table[fam_index.at(m.vslot_owner + "::" + m.name)] = P + m.name + "_slot";
+            if (!own) script_overrides.push_back(&m);
         }
+        ClassInfo info;
+        info.table = table;
 
         // ---- lowering context
         RCtx base_cx = sppc::make_class_ctx(cd);
@@ -1504,6 +1670,16 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         }
         if (gen_new) new_ready.insert(cn);
         base_cx.new_classes = new_ready;
+        if (par) {
+            // A child sees the fields and the functions of its script parents.
+            for (const ClassDef* a = par; a; a = script_parent(*a)) {
+                RCtx pc = sppc::make_class_ctx(*a);
+                for (const auto& [n, t] : pc.field_type) base_cx.field_type.emplace(n, t);
+                base_cx.fns.insert(pc.fns.begin(), pc.fns.end());
+            }
+            base_cx.native_base = root.base;
+            for (const auto& nv : bi.virtuals) base_cx.native_virtuals.insert(nv.name);
+        }
 
         const std::string S = cn + "State_g" + std::to_string(opt.gen);
         const std::string shell = cn + "_Shell";
@@ -1512,8 +1688,9 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         o.w("// Slot numbers. Native virtuals come first, in the order of " + B + ".\n");
         o.w("enum : unsigned {\n");
         for (size_t i = 0; i < slots.size(); ++i)
-            o.w("    " + slot_id(slots[i].id) + " = " + std::to_string(i) + ",\n");
-        o.w("    " + slot_id("COUNT") + " = " + std::to_string(slots.size()) + ",\n};\n\n");
+            o.w("    " + slot_id(slots[i].id) + " = " + std::to_string(slots[i].index >= 0 ? size_t(slots[i].index) : i) +
+                ",\n");
+        o.w("    " + slot_id("COUNT") + " = " + std::to_string(table_size) + ",\n};\n\n");
         o.w("extern spp::ClassRecord " + cn + "_record;\n\n");
 
         // ---- shell
@@ -1523,13 +1700,29 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         // The lowering of the bodies sets "handle_this". The base is added to this line then.
         bool handle_this = false;
         base_cx.handle_this = &handle_this;
-        const std::string shell_head = "struct " + shell + " final : " + B + ", spp::ShellBase";
+        // A shell with script children is not final. The tag spp::ConstructChild builds the base
+        // without the state: the shell of the child makes the state of the child (design 4.5).
+        const bool parent_shell = has_children.count(cn) > 0;
+        const std::string shell_head = "struct " + shell + (parent_shell ? "" : " final") + " : " +
+                                       (par ? par->name + "_Shell" : B + ", spp::ShellBase");
         const size_t shell_head_end = o.s.size() + shell_head.size();
         o.w(shell_head + " {\n");
-        o.w("    template <class... A>\n    explicit " + shell + "(spp::Construct, A&&... a) : " + B +
-            "(std::forward<A>(a)...)\n    {\n        spp::init_state(this, &" + cn +
-            "_record);\n    }\n    ~" + shell + "() override { spp::destroy_state(this); }\n");
-        for (size_t i = 0; i < native_count; ++i) {
+        if (par) {
+            o.w("    template <class... A>\n    explicit " + shell + "(spp::Construct, A&&... a)\n        : " + par->name +
+                "_Shell(spp::ConstructChild{}, std::forward<A>(a)...)\n    {\n        spp::init_state(this, &" + cn +
+                "_record);\n    }\n");
+            if (parent_shell)
+                o.w("    template <class... A>\n    explicit " + shell + "(spp::ConstructChild c, A&&... a) : " + par->name +
+                    "_Shell(c, std::forward<A>(a)...)\n    {\n    }\n");
+        } else {
+            o.w("    template <class... A>\n    explicit " + shell + "(spp::Construct, A&&... a) : " + B +
+                "(std::forward<A>(a)...)\n    {\n        spp::init_state(this, &" + cn +
+                "_record);\n    }\n    ~" + shell + "() override { spp::destroy_state(this); }\n");
+            if (parent_shell)
+                o.w("    template <class... A>\n    explicit " + shell + "(spp::ConstructChild, A&&... a) : " + B +
+                    "(std::forward<A>(a)...)\n    {\n    }\n");
+        }
+        for (size_t i = 0; i < native_count && !par; ++i) {
             const NativeVirtual& nv = *slots[i].nv;
             std::vector<std::string> ps, sig = {B + "*"}, as = {nv.is_const ? "const_cast<" + shell + "*>(this)" : "this"};
             for (size_t k = 0; k < nv.ptypes.size(); ++k) {
@@ -1548,9 +1741,10 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
 
         // ---- state struct and field table
         o.w("// ---------------------------------------------------------------- state\n");
-        o.w("struct " + S + " {\n");
+        info.S = S;
+        o.w("struct " + S + (pinfo ? " : " + pinfo->S : std::string()) + " {\n");
         for (const Field& f : cd.fields) o.w("    " + f.type + " " + f.name + ";\n");
-        if (cd.fields.empty()) o.w("    char unused_;\n");
+        if (cd.fields.empty() && !pinfo) o.w("    char unused_;\n");
         o.w("};\n\n");
         for (Field& f : cd.fields) {
             RCtx fc = base_cx;
@@ -1576,30 +1770,40 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 P + m->name + "(*static_cast<const " + m->params[0].type + "*>(src)));\n}\n");
         }
         o.w("\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n");
-        if (cd.fields.empty()) {
+        // The field table of a child has the rows of the parent first. "$S$" is the state struct.
+        if (pinfo) info.rows = pinfo->rows;
+        if (pinfo) info.fields = pinfo->fields;
+        for (const Field& f : cd.fields) {
+            info.fields.insert(f.name);
+            const std::string T = f.type;
+            const bool sub = types.is_script_value(T);
+            std::string row = "    {\"" + f.name + "\", " + (f.alias.empty() ? "nullptr" : "\"" + f.alias + "\"") +
+                              ", typeid(" + T + ").name(), offsetof($S$, " + f.name + "), sizeof(" + T +
+                              "),\n     alignof(" + T + "), spp::" + (sub ? "value_field_flags" : "field_flags") + "<" + T +
+                              ">(), " + P + "init_" + f.name + ", spp::move_field<" + T + ">, spp::field_destroyer<" + T +
+                              ">()";
+            auto cv = converts.find(f.name);
+            if (cv != converts.end())
+                row += ", typeid(" + cv->second->params[0].type + ").name(), " + P + cv->second->name + "_hook";
+            else if (sub)
+                row += ", nullptr, nullptr";
+            if (sub) row += ", &" + T + "_layout";
+            info.rows.push_back(row + "},\n");
+        }
+        if (info.rows.empty()) {
             o.w("static const spp::FieldInfo* const " + cn + "_fields = nullptr;\n");
         } else {
             o.w("static const spp::FieldInfo " + cn + "_fields[] = {\n");
-            for (const Field& f : cd.fields) {
-                const std::string T = f.type;
-                const bool sub = types.is_script_value(T);
-                o.w("    {\"" + f.name + "\", " + (f.alias.empty() ? "nullptr" : "\"" + f.alias + "\"") +
-                    ", typeid(" + T + ").name(), offsetof(" + S + ", " + f.name + "), sizeof(" + T +
-                    "),\n     alignof(" + T + "), spp::" + (sub ? "value_field_flags" : "field_flags") + "<" + T +
-                    ">(), " + P + "init_" + f.name + ", spp::move_field<" + T + ">, spp::field_destroyer<" + T + ">()");
-                auto cv = converts.find(f.name);
-                if (cv != converts.end())
-                    o.w(", typeid(" + cv->second->params[0].type + ").name(), " + P + cv->second->name + "_hook");
-                else if (sub)
-                    o.w(", nullptr, nullptr");
-                if (sub) o.w(", &" + T + "_layout");
-                o.w("},\n");
+            for (std::string row : info.rows) {
+                const size_t at = row.find("$S$");
+                if (at != std::string::npos) row.replace(at, 3, S);
+                o.w(row);
             }
             o.w("};\n");
         }
         o.w("#pragma clang diagnostic pop\n\n");
         o.w("static const spp::StateLayout " + cn + "_layout = {\n    \"" + S + "\", sizeof(" + S +
-            "), alignof(" + S + "), " + std::to_string(cd.fields.size()) + ", " + cn + "_fields,\n};\n\n");
+            "), alignof(" + S + "), " + std::to_string(info.rows.size()) + ", " + cn + "_fields,\n};\n\n");
 
         // ---- generation functions
         o.w("// ------------------------------------------------- generation functions\n");
@@ -1634,6 +1838,13 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             if (!m.overrides_virtual && hook_of(m) != Hook::Convert)
                 o.w("static " + fn_ret(m) + " " + P + m.name + "(" + shell + "* self" + body_decl(m) + ");\n");
         o.w("\n");
+        // A script virtual function (design 7.6). A call reads the slot of the class of the object.
+        for (const Method& m : cd.methods) {
+            if (m.vslot_owner != cn || m.is_override) continue;
+            o.w("[[maybe_unused]] static " + fn_ret(m) + " " + P + m.name + "_virt(" + shell + "* self" + param_decl(m) +
+                ")\n{\n    return spp::call<" + fn_ret(m) + "(" + B + "*" + type_list(m) + ")>(self->cls, " +
+                slot_id(m.name) + ", static_cast<" + B + "*>(self)" + arg_list(m) + ");\n}\n\n");
+        }
 
         // The constructor (design 7.3). The constructor body is not a slot. A "new" function
         // builds the shell in the module that made the class, then runs the body here.
@@ -1645,6 +1856,11 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             o.w("static void " + P + "ctor(" + shell + "* self" + param_decl(ctor_m) + ");\n");
         }
         if (has_dtor) o.w("static void " + P + "dtor(" + shell + "* self);\n");
+        // The function that runs the constructors: the constructor of the parent first.
+        std::string entry = has_ctor ? P + "ctor" : std::string();
+        if (pinfo && !pinfo->ctor_entry.empty()) entry = P + "ctor_chain";
+        info.ctor_entry = entry;
+        info.ctor_params = ctor_m.params.size();
         if (gen_new) {
             std::string pd = param_decl(ctor_m), names, declvals, defaults;
             if (!pd.empty()) pd = pd.substr(2);
@@ -1674,8 +1890,27 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 sup_text = ctor_args.substr(2);
             }
             o.w("#line " + std::to_string(sup_line) + " \"" + esc(opt.input) + "\"\n");
-            o.w("[[maybe_unused]] static auto " + P + "super_args(" + pd + ")\n{\n    return std::make_tuple(" + sup_text +
-                ");\n}\n");
+            if (!par) {
+                o.w("[[maybe_unused]] static auto " + P + "super_args(" + pd + ")\n{\n    return std::make_tuple(" + sup_text +
+                    ");\n}\n");
+            } else {
+                // The base arguments come from the chain of the parents.
+                std::string body;
+                if (pinfo->ctor_params > 0)
+                    body = "std::apply([](const auto&... x) { return " + PP + "super_args(x...); }, std::make_tuple(" +
+                           sup_text + "))";
+                else if (root_super)
+                    body = PP + "super_args()";
+                else
+                    body = "std::make_tuple(" + (ctor_args.empty() ? std::string() : ctor_args.substr(2)) + ")";
+                o.w("[[maybe_unused]] static auto " + P + "super_args(" + pd + ")\n{\n    return " + body + ";\n}\n");
+                if (entry == P + "ctor_chain") {
+                    o.w("static void " + P + "ctor_chain(" + shell + "* self" + param_decl(ctor_m) + ")\n{\n    " +
+                        pinfo->ctor_entry + "(self" + (pinfo->ctor_params > 0 ? ", " + sup_text : std::string()) + ");\n");
+                    if (has_ctor) o.w("    " + P + "ctor(self" + ctor_fwd + ");\n");
+                    o.w("}\n");
+                }
+            }
             reset();
             o.w("using " + cn + "_SuperArgs = decltype(" + P + "super_args(" + declvals + "));\n");
             o.w("// Makes the shell with the base arguments. Only the first generation of the class runs it.\n");
@@ -1686,19 +1921,25 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             o.w("    auto sa = " + P + "super_args(" + names + ");\n");
             o.w("    auto* self = static_cast<" + shell + "*>(spp::construct_shell(&" + cn + "_record, typeid(" + cn +
                 "_SuperArgs).name(), &sa));\n");
-            if (has_ctor) {
-                o.w("    try {\n        " + P + "ctor(self" + ctor_fwd + ");\n    } catch (...) {\n        delete static_cast<" + B +
+            if (!entry.empty()) {
+                o.w("    try {\n        " + entry + "(self" + ctor_fwd + ");\n    } catch (...) {\n        delete static_cast<" + B +
                     "*>(self);\n        throw;\n    }\n");
             }
             o.w("    return self;\n}\n\n");
-            if (has_ctor) {
-                o.w("static void " + P + "ctor_default(spp::ShellBase* s)\n{\n    " + P + "ctor(static_cast<" + shell +
+            if (!entry.empty()) {
+                o.w("static void " + P + "ctor_default(spp::ShellBase* s)\n{\n    " + entry + "(static_cast<" + shell +
                     "*>(s)" + (defaults.empty() ? "" : ", " + defaults) + ");\n}\n\n");
             }
         }
-        if (has_dtor)
-            o.w("static void " + P + "dtor_slot(spp::ShellBase* s)\n{\n    " + P + "dtor(static_cast<" + shell +
-                "*>(s));\n}\n\n");
+        // The destructor slot runs the destructor of the class, then the one of the parent.
+        const bool dtor_chain = has_dtor || (pinfo && pinfo->dtor_chain);
+        info.dtor_chain = dtor_chain;
+        if (dtor_chain) {
+            o.w("static void " + P + "dtor_slot(spp::ShellBase* s)\n{\n");
+            if (has_dtor) o.w("    " + P + "dtor(static_cast<" + shell + "*>(s));\n");
+            if (pinfo && pinfo->dtor_chain) o.w("    " + PP + "dtor_slot(s);\n");
+            o.w("}\n\n");
+        }
 
         auto emit_body = [&](Method& m, bool is_fn, const std::string& sym, const std::string& ret,
                              const std::string& what) {
@@ -1765,7 +2006,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         // forwarders for the native virtuals that the script does not override
         for (size_t i = 0; i < native_count; ++i) {
             const Slot& s = slots[i];
-            if (s.impl) continue;
+            if (s.impl || par) continue;
             const NativeVirtual& nv = *s.nv;
             std::string ps, as;
             for (size_t k = 0; k < nv.ptypes.size(); ++k) {
@@ -1777,9 +2018,27 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             o.w("    return static_cast<" + shell + "*>(a)->" + B + "::" + nv.name + "(" + as + ");\n}\n\n");
         }
 
+        // The native implementation that a child sees: "super.M()" in a child calls it.
+        if (parent_shell)
+            for (size_t i = 0; i < native_count; ++i) {
+                const NativeVirtual& nv = *slots[i].nv;
+                std::string ps, as;
+                for (size_t k = 0; k < nv.ptypes.size(); ++k) {
+                    ps += ", " + nv.ptypes[k] + " a" + std::to_string(k);
+                    as += ", " + arg_expr(nv.ptypes[k], "a" + std::to_string(k));
+                }
+                o.w("[[maybe_unused]] static " + nv.ret + " " + P + "base_" + nv.name + "(" + B + "* a" + ps +
+                    ")\n{\n    return " + table[i] + "(a" + as + ");\n}\n\n");
+            }
+
         // slot adapters and thunks for the script functions
         for (size_t i = native_count; i < slots.size(); ++i) {
             const Method& m = *slots[i].impl;
+            o.w("static " + fn_ret(m) + " " + P + m.name + "_slot(" + B + "* a" + param_decl(m) + ")\n{\n");
+            o.w("    return " + P + m.name + "(static_cast<" + shell + "*>(a)" + arg_list(m) + ");\n}\n\n");
+        }
+        for (const Method* mp : script_overrides) {
+            const Method& m = *mp;
             o.w("static " + fn_ret(m) + " " + P + m.name + "_slot(" + B + "* a" + param_decl(m) + ")\n{\n");
             o.w("    return " + P + m.name + "(static_cast<" + shell + "*>(a)" + arg_list(m) + ");\n}\n\n");
         }
@@ -1798,18 +2057,16 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
 
         // A bare "this" used as a handle in a native-base class needs shared_from_this in the
         // shell. The insert stays in one line, so the line numbers do not change.
-        if (handle_this && !cd.base.empty() && types.storage(cn).rfind("std::shared_ptr<", 0) == 0)
+        // A shell with script children always gets it: a child cannot add it to the parent.
+        if ((handle_this || parent_shell) && !par && !cd.base.empty() &&
+            types.storage(cn).rfind("std::shared_ptr<", 0) == 0)
             o.s.insert(shell_head_end, ", std::enable_shared_from_this<" + shell + ">");
 
         // ---- record and entry
         o.w("// ------------------------------------------------------ record and entry\n");
         o.w("static void* " + cn + "_slots[" + slot_id("COUNT") + "] = {\n");
-        for (size_t i = 0; i < slots.size(); ++i) {
-            std::string fn;
-            if (!slots[i].native()) fn = P + slots[i].id + "_slot";
-            else fn = P + (slots[i].impl ? "" : "fwd_") + slots[i].id;
-            o.w("    reinterpret_cast<void*>(&" + fn + "),\n");
-        }
+        for (const std::string& fn : table)
+            o.w(fn.empty() ? std::string("    nullptr,\n") : "    reinterpret_cast<void*>(&" + fn + "),\n");
         o.w("};\n\n");
         std::string on_reload_init;
         for (const Method& m : cd.methods)
@@ -1817,19 +2074,26 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 o.w("static void " + P + "onReload_hook(spp::ShellBase* s, const spp::OldState& old)\n{\n    " + P +
                     "onReload(static_cast<" + shell + "*>(s), old);\n}\n\n");
                 on_reload_init = " " + P + "onReload_hook,\n";
+                info.on_reload = P + "onReload_hook";
             }
+        // A child without an onReload hook uses the hook of the parent.
+        if (on_reload_init.empty() && pinfo && !pinfo->on_reload.empty()) {
+            on_reload_init = " " + pinfo->on_reload + ",\n";
+            info.on_reload = pinfo->on_reload;
+        }
         // After on_reload: construct, construct_key, ctor_default, canonical and dtor.
         std::string ctor_init;
-        if (gen_new || has_dtor)
+        if (gen_new || dtor_chain)
             ctor_init = std::string(on_reload_init.empty() ? "    nullptr,\n" : "") + "    " +
                         (gen_new ? "&" + P + "construct, typeid(" + cn + "_SuperArgs).name()" : "nullptr, nullptr") +
-                        ", " + (has_ctor ? "&" + P + "ctor_default" : std::string("nullptr")) + ", nullptr, " +
-                        (has_dtor ? "&" + P + "dtor_slot" : std::string("nullptr")) + ",\n";
+                        ", " + (!entry.empty() ? "&" + P + "ctor_default" : std::string("nullptr")) + ", nullptr, " +
+                        (dtor_chain ? "&" + P + "dtor_slot" : std::string("nullptr")) + ",\n";
         o.w("spp::ClassRecord " + cn + "_record = {\n    \"" + cn + "\", GEN, " + cn + "_slots, " +
-            slot_id("COUNT") + ", &" + cn + "_layout, nullptr,\n    \"" + B + "\", spp::shell_layout_hash(\"" +
+            slot_id("COUNT") + ", &" + cn + "_layout, " + (par ? "&" + par->name + "_record" : std::string("nullptr")) +
+            ",\n    \"" + B + "\", spp::shell_layout_hash(\"" +
             B + "\", sizeof(" + shell + "), alignof(" + shell + "), " + std::to_string(native_count) +
             "),\n" + (on_reload_init.empty() ? "" : "   " + on_reload_init) + ctor_init + "};\n\n");
-        if (has_ctor) {
+        if (!entry.empty()) {
             // The factory of the engine has no arguments. It builds the base and runs the
             // current constructor with default values.
             std::string defaults;
@@ -1845,6 +2109,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 "(spp::Construct{}" + ctor_args + ");\n    return {static_cast<" + B + "*>(p), p};\n}\n\n");
         }
         registers.push_back({cn, true});
+        infos[cn] = std::move(info);
     }
 
     o.w("extern \"C\" void script_register(spp::Registry& reg)\n{\n");

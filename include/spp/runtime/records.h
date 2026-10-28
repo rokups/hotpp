@@ -10,6 +10,9 @@ class OldState;
 
 // Tag type. It marks the constructor of a shell that the script runtime makes.
 struct Construct {};
+// Tag type. A derived shell (design 4.5) gives it to the shell of its script parent. That
+// constructor builds the native base only. The derived shell makes the state block.
+struct ConstructChild {};
 
 enum FieldFlags : uint8_t {
     kTriviallyCopyable = 1,

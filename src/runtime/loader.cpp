@@ -180,6 +180,14 @@ bool Loader::request_reload(Module module, std::string& error)
                 error = "class " + name + ": base class changed (" + b0 + " -> " + b1 + ")";
                 return false;
             }
+            // A change of the script parent changes the shell hierarchy (design 5.3: RECONSTRUCT).
+            const char* p0 = cur->super ? cur->super->name : "";
+            const char* p1 = in.record->super ? in.record->super->name : "";
+            if (std::strcmp(p0, p1) != 0) {
+                error = "class " + name + ": script parent class changed (" + (*p0 ? p0 : "none") + " -> " +
+                        (*p1 ? p1 : "none") + "; RECONSTRUCT change)";
+                return false;
+            }
             if (cur->shell_hash != in.record->shell_hash) {
                 error = "class " + name + ": shell layout hash differs (RECONSTRUCT change)";
                 return false;
@@ -276,6 +284,12 @@ bool Loader::commit_pending(std::string& error)
         } else {
             registry_.add(pc.incoming, pc.create);
         }
+    }
+    // A new class with a script parent: "super" points to the record of the parent in the
+    // registry, so a walk of the records sees the canonical records (design 4.5).
+    for (const PendingClass& pc : P.classes) {
+        if (pc.canon || !pc.incoming->super) continue;
+        if (ClassEntry* pe = registry_.find(pc.incoming->super->name)) pc.incoming->super = pe->record;
     }
     uint32_t new_refs = 0;
     for (const PendingClass& pc : P.classes)

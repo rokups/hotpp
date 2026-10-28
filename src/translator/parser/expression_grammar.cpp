@@ -167,6 +167,8 @@ struct Pre {  // a prefix operator; it keeps the position of the operator
 };
 struct CondTag {};
 struct CallTag {};
+struct IsTag {};  // "obj is T"
+struct AsTag {};  // "obj as T"
 struct ArrowTag {};  // "->": always an error
 struct IndexTag {};
 
@@ -231,6 +233,16 @@ struct Builder {
     {
         const uint32_t pos = ast::pos_of(*o);
         return ast::make_expr(ast::IndexExpr{std::move(o), std::move(i), pos});
+    }
+    // "obj is T" and "obj as T" (design 7.7). The type text is C++ text, as in "new T(...)".
+    ExprP operator()(const ParseState& st, ExprP o, IsTag, Span name) const { return test(st, std::move(o), name, false); }
+    ExprP operator()(const ParseState& st, ExprP o, AsTag, Span name) const { return test(st, std::move(o), name, true); }
+    static ExprP test(const ParseState& st, ExprP o, Span name, bool is_as)
+    {
+        const uint32_t pos = ast::pos_of(*o);
+        std::string type =
+            canonical_type_at(st, st.base + name.begin, scope_text(st, st.base + name.begin, span_text(st, name)));
+        return ast::make_expr(ast::TypeTestExpr{std::move(o), std::move(type), is_as, pos});
     }
     // "a->b": the parse reported the error and read the name. The result is not used.
     ExprP operator()(const ParseState&, ExprP o, ArrowTag, std::string) const { return o; }
@@ -524,10 +536,16 @@ struct expr : lexy::expression_production {
         static constexpr auto op = SPP_BIN_NF("<<", cc_eq) / SPP_BIN_NF(">>", cc_eq);
         using operand = add_lvl;
     };
+    // "obj is T" and "obj as T". They bind tighter than "<" and looser than "<<".
+    struct test_lvl : dsl::postfix_op {
+        static constexpr auto op = dsl::op<IsTag>(LEXY_KEYWORD("is", id) >> dsl::p<qname_tok>) /
+                                   dsl::op<AsTag>(LEXY_KEYWORD("as", id) >> dsl::p<qname_tok>);
+        using operand = shift_lvl;
+    };
     struct rel_lvl : dsl::infix_op_left {
         static constexpr auto op = SPP_BIN_NF("<", cc_lt) / SPP_BIN("<=") /
                                    SPP_BIN_NF(">", cc_gt) / SPP_BIN(">=");
-        using operand = shift_lvl;
+        using operand = test_lvl;
     };
     struct eq_lvl : dsl::infix_op_left {
         static constexpr auto op = SPP_BIN("==") / SPP_BIN("!=");
