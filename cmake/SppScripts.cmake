@@ -1,5 +1,8 @@
 # spp_add_scripts: compile scripts ahead of time with the tool sppc.
 #
+# The function also calls spp_script_host with the name TARGET. The host has the scripts,
+# the INCLUDES and the FLAGS. The language server uses it for completion.
+#
 #   spp_add_scripts(TARGET name SCRIPTS a.spp b.spp GEN n
 #                   [INCLUDES dir...] [FLAGS flag...] [DEPENDS file...]
 #                   [OUT_DIR dir] [AFTER target])
@@ -47,6 +50,9 @@ function(spp_add_scripts)
         add_dependencies(${A_TARGET} ${A_AFTER})
     endif()
     set(SPP_SCRIPTS_${A_TARGET}_LIBRARIES ${outputs} PARENT_SCOPE)
+    # The language server gets a script host with the same scripts, includes and flags.
+    spp_script_host(NAME ${A_TARGET} SCRIPTS ${scripts}
+                    INCLUDES ${A_INCLUDES} FLAGS ${A_FLAGS})
 endfunction()
 
 # spp_add_shipped_scripts: build scripts into the program (shipping mode, design M7).
@@ -60,6 +66,7 @@ endfunction()
 # (PUBLIC), so a program that links "name" has no loader, no reload and no Clang. INCLUDES
 # are the include dirs of the translator and of the compile. OUT_DIR defaults to
 # ${CMAKE_BINARY_DIR}/spp_ship/<name>.
+# The function also calls spp_script_host with the name TARGET (scripts and INCLUDES).
 function(spp_add_shipped_scripts)
     cmake_parse_arguments(A "" "TARGET;OUT_DIR" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS" ${ARGN})
     if(NOT A_TARGET OR NOT A_SCRIPTS)
@@ -97,11 +104,13 @@ function(spp_add_shipped_scripts)
     # The generated code has parameters that a script does not use.
     target_compile_options(${A_TARGET} PRIVATE -Wno-unused-parameter)
     target_include_directories(${A_TARGET} PUBLIC ${A_INCLUDES})
+    # The language server gets a script host with the same scripts and includes.
+    spp_script_host(NAME ${A_TARGET} SCRIPTS ${scripts} INCLUDES ${A_INCLUDES})
 endfunction()
 
 # spp_script_host: describe a script host for the language server spp-ls.
 #
-#   spp_script_host(NAME name [TARGET target] SCRIPT_DIRS dir... [SCRIPTS file...]
+#   spp_script_host(NAME name [TARGET target] [SCRIPT_DIRS dir...] [SCRIPTS file...]
 #                   [INCLUDES dir...] [FLAGS flag...])
 #
 # The function writes the JSON file ${SPP_HOSTS_DIR}/<name>.json when CMake generates
@@ -145,8 +154,8 @@ endfunction()
 
 function(spp_script_host)
     cmake_parse_arguments(A "" "NAME;TARGET" "SCRIPT_DIRS;SCRIPTS;INCLUDES;FLAGS" ${ARGN})
-    if(NOT A_NAME OR NOT A_SCRIPT_DIRS)
-        message(FATAL_ERROR "spp_script_host needs NAME and SCRIPT_DIRS")
+    if(NOT A_NAME OR (NOT A_SCRIPT_DIRS AND NOT A_SCRIPTS))
+        message(FATAL_ERROR "spp_script_host needs NAME and SCRIPT_DIRS or SCRIPTS")
     endif()
     set(use_target FALSE)
     if(A_TARGET)
