@@ -683,7 +683,7 @@ struct Lowerer {
         // The lambda captures by value. "self" is a pointer to the shell. The state pointer
         // is read again inside, so a lambda never keeps the pointer to a block.
         l.body.stmts.insert(l.body.stmts.begin(),
-                            make_stmt(RawStmt{"[[maybe_unused]] auto* st = state_of(self);", 0}));
+                            make_stmt(RawStmt{"[[maybe_unused, gnu::nodebug]] auto* st = state_of(self);", 0}));
         const uint32_t pos = l.pos;
         CallExpr c;
         c.pos = pos;

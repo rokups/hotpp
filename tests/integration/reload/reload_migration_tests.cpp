@@ -108,4 +108,21 @@ TEST(ReloadMigration, ReloadMigratesAndRejectedReloadsKeepGeneration2)
     EXPECT_EQ(*field("health"), 91.0f);
 }
 
+// The commit writes the owner of the new block. Generation 2 has an owner slot, generation 1 has none.
+TEST(ReloadMigration, CommitWritesTheOwnerOfTheNewBlock)
+{
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(GEN1_SO));
+    s.commit_at_frame_boundary();
+    spp::ShellBase* const shell = s.inst.shell;
+    std::string error;
+    ASSERT_TRUE(s.loader.request_reload(test_support::library(GEN2_SO), error)) << error;
+    s.world.Tick(kDt);
+    ASSERT_FALSE(s.commit_failed);
+    ASSERT_EQ(shell->cls->generation, 2u);
+    EXPECT_EQ(*reinterpret_cast<spp::ShellBase**>(shell->state), shell);
+    ASSERT_NE(s.field("health"), nullptr);  // the fields still migrate after the owner slot
+    EXPECT_EQ(*s.field("shield"), 25.0f);
+}
+
 }  // namespace

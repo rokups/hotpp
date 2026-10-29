@@ -5,6 +5,8 @@
 #include <type_traits>
 #include <utility>
 
+#include "spp/runtime/hidden.h"
+
 namespace spp {
 
 // A handle is a smart pointer. "is_handle<T>" is true for std::shared_ptr. A user can
@@ -25,74 +27,74 @@ inline constexpr bool is_handle_v = is_handle<std::remove_cvref_t<T>>::value;
 template <class T, auto Add, auto Release>
 class Intrusive {
 public:
-    Intrusive() noexcept = default;
-    Intrusive(std::nullptr_t) noexcept {}
-    Intrusive(T* p) : p_(p)
+    SPP_HIDDEN Intrusive() noexcept {}
+    SPP_HIDDEN Intrusive(std::nullptr_t) noexcept {}
+    SPP_HIDDEN Intrusive(T* p) : p_(p)
     {
         if (p_)
             (p_->*Add)();
     }
-    Intrusive(const Intrusive& o) : p_(o.p_)
+    SPP_HIDDEN Intrusive(const Intrusive& o) : p_(o.p_)
     {
         if (p_)
             (p_->*Add)();
     }
-    Intrusive(Intrusive&& o) noexcept : p_(o.p_) { o.p_ = nullptr; }
+    SPP_HIDDEN Intrusive(Intrusive&& o) noexcept : p_(o.p_) { o.p_ = nullptr; }
 
     // Conversion from a handle of a derived type. Add and Release stay the same.
     template <class U>
         requires(!std::is_same_v<U, T> && std::is_convertible_v<U*, T*>)
-    Intrusive(const Intrusive<U, Add, Release>& o) : p_(o.get())
+    SPP_HIDDEN Intrusive(const Intrusive<U, Add, Release>& o) : p_(o.get())
     {
         if (p_)
             (p_->*Add)();
     }
     template <class U>
         requires(!std::is_same_v<U, T> && std::is_convertible_v<U*, T*>)
-    Intrusive(Intrusive<U, Add, Release>&& o) noexcept : p_(o.get())
+    SPP_HIDDEN Intrusive(Intrusive<U, Add, Release>&& o) noexcept : p_(o.get())
     {
         o.detach_();
     }
 
-    Intrusive& operator=(const Intrusive& o)
+    SPP_HIDDEN Intrusive& operator=(const Intrusive& o)
     {
         Intrusive(o).swap(*this);
         return *this;
     }
-    Intrusive& operator=(Intrusive&& o) noexcept
+    SPP_HIDDEN Intrusive& operator=(Intrusive&& o) noexcept
     {
         Intrusive(std::move(o)).swap(*this);
         return *this;
     }
 
-    ~Intrusive()
+    SPP_HIDDEN ~Intrusive()
     {
         if (p_)
             (p_->*Release)();
     }
 
-    T* get() const noexcept { return p_; }
-    T* operator->() const noexcept { return p_; }
-    T& operator*() const noexcept { return *p_; }
-    explicit operator bool() const noexcept { return p_ != nullptr; }
-    operator T*() const noexcept { return p_; }
+    SPP_HIDDEN T* get() const noexcept { return p_; }
+    SPP_HIDDEN T* operator->() const noexcept { return p_; }
+    SPP_HIDDEN T& operator*() const noexcept { return *p_; }
+    SPP_HIDDEN explicit operator bool() const noexcept { return p_ != nullptr; }
+    SPP_HIDDEN operator T*() const noexcept { return p_; }
 
-    void reset() noexcept { Intrusive().swap(*this); }
-    void swap(Intrusive& o) noexcept { std::swap(p_, o.p_); }
+    SPP_HIDDEN void reset() noexcept { Intrusive().swap(*this); }
+    SPP_HIDDEN void swap(Intrusive& o) noexcept { std::swap(p_, o.p_); }
 
-    friend bool operator==(const Intrusive& a, const Intrusive& b) noexcept { return a.p_ == b.p_; }
-    friend bool operator==(const Intrusive& a, std::nullptr_t) noexcept { return a.p_ == nullptr; }
+    SPP_HIDDEN friend bool operator==(const Intrusive& a, const Intrusive& b) noexcept { return a.p_ == b.p_; }
+    SPP_HIDDEN friend bool operator==(const Intrusive& a, std::nullptr_t) noexcept { return a.p_ == nullptr; }
     // A comparison with a raw pointer compares the addresses. It makes no temporary wrapper,
     // so the reference count does not change. C++20 gives "!=" and the reversed forms. The
     // exact "T*" form wins over the built-in comparison through "operator T*".
-    friend bool operator==(const Intrusive& a, T* b) noexcept { return a.p_ == b; }
-    friend bool operator==(const Intrusive& a, const T* b) noexcept { return a.p_ == b; }
+    SPP_HIDDEN friend bool operator==(const Intrusive& a, T* b) noexcept { return a.p_ == b; }
+    SPP_HIDDEN friend bool operator==(const Intrusive& a, const T* b) noexcept { return a.p_ == b; }
 
 private:
     template <class, auto, auto>
     friend class Intrusive;
     // Gives up the pointer without a Release call. The converting move uses it.
-    void detach_() noexcept { p_ = nullptr; }
+    SPP_HIDDEN void detach_() noexcept { p_ = nullptr; }
 
     T* p_ = nullptr;
 };

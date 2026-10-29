@@ -39,60 +39,86 @@ extern spp::ClassRecord Tracker_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Tracker_Shell final : Actor, spp::ShellBase {
+#line 10 "native_std_v1.spp"
     template <class... A>
+#line 10 "native_std_v1.spp"
     explicit Tracker_Shell(spp::Construct, A&&... a) : Actor(std::forward<A>(a)...)
+#line 10 "native_std_v1.spp"
     {
+#line 10 "native_std_v1.spp"
         spp::init_state(this, &Tracker_record);
+#line 10 "native_std_v1.spp"
     }
+#line 10 "native_std_v1.spp"
     ~Tracker_Shell() override { spp::destroy_state(this); }
+#line 55 "native_std_v1.spp.cpp"
 
+#line 18 "native_std_v1.spp"
     void Tick(float a0) override
+#line 18 "native_std_v1.spp"
     {
+#line 18 "native_std_v1.spp"
         return spp::call<void(Actor*, float)>(cls, SLOT_Tick, this, a0);
+#line 18 "native_std_v1.spp"
     }
+#line 65 "native_std_v1.spp.cpp"
 
+#line 10 "native_std_v1.spp"
     void TakeDamage(float a0) override
+#line 10 "native_std_v1.spp"
     {
+#line 10 "native_std_v1.spp"
         return spp::call<void(Actor*, float)>(cls, SLOT_TakeDamage_f, this, a0);
+#line 10 "native_std_v1.spp"
     }
+#line 75 "native_std_v1.spp.cpp"
 
+#line 10 "native_std_v1.spp"
     void TakeDamage(Actor& a0, float a1) override
+#line 10 "native_std_v1.spp"
     {
+#line 10 "native_std_v1.spp"
         return spp::call<void(Actor*, Actor&, float)>(cls, SLOT_TakeDamage_Af, this, a0, a1);
+#line 10 "native_std_v1.spp"
     }
+#line 85 "native_std_v1.spp.cpp"
 };
 
 // ---------------------------------------------------------------- state
 struct TrackerState_g1 {
+    spp::ShellBase* __spp_owner;
     std::string label;
     std::vector<int32_t> history;
     float dist;
     float lowest;
     float sum;
     std::string described;
+
+    void Tick(float dt);
 };
 
 #line 11 "native_std_v1.spp"
 static void Tracker__init_label(void*, void* f) { using T = std::string; new (f) T("tracker label that is longer than the small string buffer"); }
-#line 78 "native_std_v1.spp.cpp"
+#line 103 "native_std_v1.spp.cpp"
 #line 12 "native_std_v1.spp"
 static void Tracker__init_history(void*, void* f) { using T = std::vector<int32_t>; new (f) T(std::vector<int32_t>()); }
-#line 81 "native_std_v1.spp.cpp"
+#line 106 "native_std_v1.spp.cpp"
 #line 13 "native_std_v1.spp"
 static void Tracker__init_dist(void*, void* f) { using T = float; new (f) T(0.0f); }
-#line 84 "native_std_v1.spp.cpp"
+#line 109 "native_std_v1.spp.cpp"
 #line 14 "native_std_v1.spp"
 static void Tracker__init_lowest(void*, void* f) { using T = float; new (f) T(0.0f); }
-#line 87 "native_std_v1.spp.cpp"
+#line 112 "native_std_v1.spp.cpp"
 #line 15 "native_std_v1.spp"
 static void Tracker__init_sum(void*, void* f) { using T = float; new (f) T(0.0f); }
-#line 90 "native_std_v1.spp.cpp"
+#line 115 "native_std_v1.spp.cpp"
 #line 16 "native_std_v1.spp"
 static void Tracker__init_described(void*, void* f) { using T = std::string; new (f) T(""); }
-#line 93 "native_std_v1.spp.cpp"
+#line 118 "native_std_v1.spp.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+static_assert(offsetof(TrackerState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
 static const spp::FieldInfo Tracker_fields[] = {
     {"label", nullptr, typeid(std::string).name(), offsetof(TrackerState_g1, label), sizeof(std::string),
      alignof(std::string), spp::field_flags<std::string>(), Tracker__init_label, spp::move_field<std::string>, spp::field_destroyer<std::string>()},
@@ -110,60 +136,104 @@ static const spp::FieldInfo Tracker_fields[] = {
 #pragma clang diagnostic pop
 
 static const spp::StateLayout Tracker_layout = {
-    "TrackerState_g1", sizeof(TrackerState_g1), alignof(TrackerState_g1), 6, Tracker_fields,
+    "TrackerState_g1", sizeof(TrackerState_g1), alignof(TrackerState_g1), 6, Tracker_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-static inline TrackerState_g1* state_of(Tracker_Shell* self)
+SPP_HIDDEN TrackerState_g1* state_of(Tracker_Shell* self)
 {
     return static_cast<TrackerState_g1*>(self->state);
 }
 
 
 #line 10 "native_std_v1.spp"
-[[maybe_unused]] static auto Tracker__super_args()
+[[maybe_unused]] SPP_HIDDEN static auto Tracker__super_args()
+#line 10 "native_std_v1.spp"
 {
+#line 10 "native_std_v1.spp"
     return std::make_tuple(std::string("Tracker"));
+#line 10 "native_std_v1.spp"
 }
-static auto Tracker__plan()
+#line 10 "native_std_v1.spp"
+SPP_HIDDEN static auto Tracker__plan()
+#line 10 "native_std_v1.spp"
 {
+#line 10 "native_std_v1.spp"
     return std::make_pair(Tracker__super_args(), std::tuple<>());
+#line 10 "native_std_v1.spp"
 }
-#line 133 "native_std_v1.spp.cpp"
+#line 166 "native_std_v1.spp.cpp"
 using Tracker_SuperArgs = decltype(Tracker__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
-static spp::ShellBase* Tracker__construct(const char* key, const void* args)
+#line 10 "native_std_v1.spp"
+SPP_NODEBUG static spp::ShellBase* Tracker__construct(const char* key, const void* args)
+#line 10 "native_std_v1.spp"
 {
+#line 10 "native_std_v1.spp"
     if (std::strcmp(key, typeid(Tracker_SuperArgs).name()) == 0) {
+#line 10 "native_std_v1.spp"
         const auto& t = *static_cast<const Tracker_SuperArgs*>(args);
+#line 10 "native_std_v1.spp"
         return std::apply([](const auto&... x) -> spp::ShellBase* { return new Tracker_Shell(spp::Construct{}, x...); }, t);
+#line 10 "native_std_v1.spp"
     }
+#line 10 "native_std_v1.spp"
     return nullptr;
+#line 10 "native_std_v1.spp"
 }
+#line 186 "native_std_v1.spp.cpp"
 
 static const char* const Tracker__construct_keys[] = {typeid(Tracker_SuperArgs).name(), nullptr};
 
-static Tracker_Shell* Tracker__build([[maybe_unused]] bool note)
+#line 10 "native_std_v1.spp"
+SPP_HIDDEN static Tracker_Shell* Tracker__build([[maybe_unused]] bool note)
+#line 10 "native_std_v1.spp"
 {
+#line 10 "native_std_v1.spp"
     auto plan = Tracker__plan();
+#line 10 "native_std_v1.spp"
     auto* self = static_cast<Tracker_Shell*>(spp::construct_shell(&Tracker_record, typeid(Tracker_SuperArgs).name(), &plan.first, note));
+#line 10 "native_std_v1.spp"
     return self;
+#line 10 "native_std_v1.spp"
 }
-
-[[maybe_unused]] static Tracker_Shell* Tracker__new()
+#line 202 "native_std_v1.spp.cpp"
+#line 10 "native_std_v1.spp"
+[[maybe_unused]] SPP_HIDDEN static Tracker_Shell* Tracker__new()
+#line 10 "native_std_v1.spp"
 {
+#line 10 "native_std_v1.spp"
     return Tracker__build(true);
+#line 10 "native_std_v1.spp"
 }
+#line 211 "native_std_v1.spp.cpp"
 
+#line 18 "native_std_v1.spp"
 static void Tracker__Tick(Actor* a, float dt)
+#line 18 "native_std_v1.spp"
 {
-    [[maybe_unused]] auto* self = static_cast<Tracker_Shell*>(a);
+#line 18 "native_std_v1.spp"
     if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+#line 18 "native_std_v1.spp"
         spp::stale_call("Tracker::Tick(float)");
+#line 18 "native_std_v1.spp"
         return;
+#line 18 "native_std_v1.spp"
     }
-    [[maybe_unused]] auto* st = state_of(self);
+#line 18 "native_std_v1.spp"
+    return state_of(static_cast<Tracker_Shell*>(a))->Tick(std::forward<float>(dt));
+#line 18 "native_std_v1.spp"
+}
+#line 229 "native_std_v1.spp.cpp"
+#line 18 "native_std_v1.spp"
+void TrackerState_g1::Tick(float dt)
+#line 19 "native_std_v1.spp"
+{
+#line 19 "native_std_v1.spp"
+    [[maybe_unused, gnu::nodebug]] auto* self = static_cast<Tracker_Shell*>(this->__spp_owner);
+#line 19 "native_std_v1.spp"
+    [[maybe_unused, gnu::nodebug]] auto* st = this;
 #line 19 "native_std_v1.spp"
     auto v = std::vector<float>();
 #line 20 "native_std_v1.spp"
@@ -190,20 +260,31 @@ static void Tracker__Tick(Actor* a, float dt)
     self->Name = FormatVec(self->Position);
 #line 31 "native_std_v1.spp"
     spp::deref(st->history).push_back(static_cast<int32_t>(spp::deref(st->history).size()) * 10);
-#line 194 "native_std_v1.spp.cpp"
+#line 32 "native_std_v1.spp"
 }
+#line 266 "native_std_v1.spp.cpp"
 
 // Not overridden: call the implementation of Actor.
-static void Tracker__fwd_TakeDamage_f(Actor* a, float a0)
+#line 10 "native_std_v1.spp"
+SPP_NODEBUG static void Tracker__fwd_TakeDamage_f(Actor* a, float a0)
+#line 10 "native_std_v1.spp"
 {
+#line 10 "native_std_v1.spp"
     return static_cast<Tracker_Shell*>(a)->Actor::TakeDamage(a0);
+#line 10 "native_std_v1.spp"
 }
+#line 277 "native_std_v1.spp.cpp"
 
 // Not overridden: call the implementation of Actor.
-static void Tracker__fwd_TakeDamage_Af(Actor* a, Actor& a0, float a1)
+#line 10 "native_std_v1.spp"
+SPP_NODEBUG static void Tracker__fwd_TakeDamage_Af(Actor* a, Actor& a0, float a1)
+#line 10 "native_std_v1.spp"
 {
+#line 10 "native_std_v1.spp"
     return static_cast<Tracker_Shell*>(a)->Actor::TakeDamage(a0, a1);
+#line 10 "native_std_v1.spp"
 }
+#line 288 "native_std_v1.spp.cpp"
 
 // ------------------------------------------------------ record and entry
 static void* Tracker_slots[SLOT_COUNT] = {
@@ -219,12 +300,19 @@ spp::ClassRecord Tracker_record = {
     &Tracker__construct, typeid(Tracker_SuperArgs).name(), nullptr, nullptr, nullptr,
 };
 
-static spp::Instance Tracker_create()
+#line 10 "native_std_v1.spp"
+SPP_NODEBUG static spp::Instance Tracker_create()
+#line 10 "native_std_v1.spp"
 {
+#line 10 "native_std_v1.spp"
     spp::ScriptEntry entry;  // the creation is an entry (S27)
+#line 10 "native_std_v1.spp"
     auto* p = new Tracker_Shell(spp::Construct{}, std::string("Tracker"));
+#line 10 "native_std_v1.spp"
     return {static_cast<Actor*>(p), p};
+#line 10 "native_std_v1.spp"
 }
+#line 316 "native_std_v1.spp.cpp"
 
 extern "C" void script_register(spp::Registry& reg)
 {

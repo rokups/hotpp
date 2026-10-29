@@ -628,12 +628,13 @@ struct Out {
         return {p + script_name.size(), g + gen_name.size()};
     }
     // Records the segments of a function head: the name and the parameter names (design 10.1).
+    // The search for the name starts at "head_from". A member head skips "State::" this way.
     void head_segments(const std::string& head, const std::string& sym, const sppc::ast::Method& m,
-                       const std::string& script)
+                       const std::string& script, size_t head_from = 0)
     {
         if (m.pos == 0) return;
-        auto [sp, gp] = name_segment(head, 0, sym, script, m.pos, m.name);
-        if (gp == 0) return;
+        auto [sp, gp] = name_segment(head, head_from, sym, script, m.pos, m.name);
+        if (gp == head_from) return;
         for (const auto& prm : m.params) std::tie(sp, gp) = name_segment(head, gp, prm.name, script, sp, prm.name);
     }
     // Inserts text inside a line. The segments after the place move.
@@ -2084,6 +2085,20 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
     const size_t format_include_pos = o.s.size();
     o.w("\n#include \"spp/runtime.h\"\n\n");
     auto reset = [&] { o.w("#line " + std::to_string(o.lines + 2) + " \"" + esc(opt.output) + "\"\n"); };
+    // Writes generated code that can run at runtime. A "#line" directive names the script line
+    // before each line of the text, so the line table has no row in the generated file. Then the
+    // generated file is the current file again. A debugger never stops in generated code.
+    auto mapped = [&](const std::string& text, int line, uint32_t pos) {
+        const std::string directive = "#line " + std::to_string(line) + " \"" + esc(file_at(pos)) + "\"\n";
+        for (size_t b = 0; b < text.size();) {
+            const size_t nl = text.find('\n', b);
+            const size_t e = nl == std::string::npos ? text.size() : nl + 1;
+            if (text[b] != '\n') o.w(directive);
+            o.w(text.substr(b, e - b));
+            b = e;
+        }
+        reset();
+    };
     for (const auto& im : sc.imports) {
         o.w("#line " + std::to_string(im.line) + " \"" + esc(file_at(im.pos)) + "\"\n");
         o.w("#include " + im.target() + "\n");
@@ -2197,6 +2212,9 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
     };
     auto emit_value = [&](ClassDef& cd) {
         const std::string cn = cd.name, P = cn + "__";
+        // A name that starts with "__" is for the generated code (a property field, the owner pointer).
+        for (const Field& f : cd.fields)
+            if (f.name.compare(0, 2, "__") == 0) fail_at(map, f.pos, "field name '" + f.name + "' is reserved");
         desugar_props(cd, map);
         {
             const size_t before = g_diag.items.size();
@@ -2291,7 +2309,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             // An initializer and a function of the module read the block through spp_mod().
             o.w("// The module state block of this generation. The loader sets the slot.\n");
             o.w("static void* " + cn + "_slot = nullptr;\n");
-            o.w("static inline " + cn + "* spp_mod() { return static_cast<" + cn + "*>(" + cn + "_slot); }\n");
+            o.w("[[maybe_unused]] SPP_HIDDEN static " + cn + "* spp_mod() { return static_cast<" + cn + "*>(" + cn + "_slot); }\n");
         }
         for (const Method& m : cd.methods)
             o.w("static " + fn_ret(m) + " " + P + m.name + "(" + cn + "* self" + param_text(m.params) + ");\n");
@@ -2309,36 +2327,42 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             // declaration order. An initializer can read an earlier variable through spp_mod().
             o.w("};\n\n");
         } else {
+        // The constructors and the forwarders of the struct map to the script lines. A debugger
+        // never stops in the generated file.
+        auto at_line = [&](int line, uint32_t pos) {
+            return "#line " + std::to_string(line) + " \"" + esc(file_at(pos)) + "\"\n";
+        };
+        o.w(at_line(cd.line, cd.pos));
         o.w("    " + cn + (tag_init ? "(spp::Construct)" : "()"));
         for (size_t i = 0; i < cd.fields.size(); ++i) {
-            o.w("\n#line " + std::to_string(cd.fields[i].line) + " \"" + esc(file_at(cd.fields[i].pos)) + "\"\n");
+            o.w("\n" + at_line(cd.fields[i].line, cd.fields[i].pos));
             o.w(std::string(i ? "        , " : "        : ") + cd.fields[i].name + "(" + inits[i] + ")");
         }
-        if (!cd.fields.empty()) {
-            o.w("\n");
-            reset();
-        }
+        o.w("\n" + at_line(cd.line, cd.pos));
         if (zero && !tag_init) o.w(" { " + P + "ctor(this); }\n");
         else o.w(" {}\n");
         const std::string init_call = cn + (tag_init ? "(spp::Construct{})" : "()");
-        if (tag_init) o.w("    " + cn + "() : " + init_call + " { " + P + "ctor(this); }\n");
+        if (tag_init) o.w(at_line(cd.line, cd.pos) + "    " + cn + "() : " + init_call + " { " + P + "ctor(this); }\n");
         for (const sppc::ast::Ctor& c : cd.ctors)
             if (!c.params.empty())
-                o.w("    " + cn + "(" + param_text(c.params).substr(2) + ") : " + init_call + " { " + P + "ctor(this, " +
-                    arg_names(c.params) + "); }\n");
+                o.w(at_line(c.line, c.pos) + "    " + cn + "(" + param_text(c.params).substr(2) + ") : " + init_call + " { " + P +
+                    "ctor(this, " + arg_names(c.params) + "); }\n");
         for (const Method& m : cd.methods) {
             std::string ps = param_text(m.params);
             if (!ps.empty()) ps = ps.substr(2);
-            o.w("    " + fn_ret(m) + " " + m.name + "(" + ps + ") { " + (fn_ret(m) == "void" ? "" : "return ") + P +
-                m.name + "(this" + (m.params.empty() ? "" : ", " + arg_names(m.params)) + "); }\n");
+            o.w(at_line(m.line, m.pos) + "    " + fn_ret(m) + " " + m.name + "(" + ps + ") { " +
+                (fn_ret(m) == "void" ? "" : "return ") + P + m.name + "(this" +
+                (m.params.empty() ? "" : ", " + arg_names(m.params)) + "); }\n");
         }
+        reset();
         o.w("};\n\n");
         }
         // A convert hook of a module variable (design 4.7). The wrapper builds the new value.
         for (const auto& [vname, m] : hooks) {
             o.w("static " + m->ret + " " + P + m->name + "(" + m->params[0].type + " " + m->params[0].name + ");\n");
-            o.w("static void " + P + m->name + "_hook(void* dst, const void* src)\n{\n    new (dst) " + m->ret + "(" + P +
-                m->name + "(*static_cast<const " + m->params[0].type + "*>(src)));\n}\n");
+            mapped("static void " + P + m->name + "_hook(void* dst, const void* src)\n{\n    new (dst) " + m->ret + "(" + P +
+                       m->name + "(*static_cast<const " + m->params[0].type + "*>(src)));\n}\n",
+                   m->line, m->pos);
         }
 
         // The field table of the struct: the migration recurses into it.
@@ -2379,22 +2403,30 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             RCtx cx = base_cx;
             cx.where = what;
             sppc::add_params(cx, m.params);
-            o.w("static " + ret + " " + sym + "(" + cn + "* self" + param_text(m.params) + ")\n{\n");
-            o.w("    [[maybe_unused]] auto* st = self;\n");
+            // The head, the braces and the local name map to the script line of the function.
+            const std::string at = "#line " + std::to_string(m.line) + " \"" + esc(file_at(m.pos)) + "\"\n";
+            const int end_line = m.end_line > 0 ? m.end_line : m.line;
+            o.w(at);
+            o.w("static " + ret + " " + sym + "(" + cn + "* self" + param_text(m.params) + ")\n");
+            o.w(at + "{\n");
+            o.w(at + "    [[maybe_unused, gnu::nodebug]] auto* st = self;\n");
             sppc::lower_block(m.body, cx, g_diag);
             if (!g_diag.items.empty()) throw TranslateAbort{};
             sppc::ast::Emitter em(map, opt.input);
             sppc::ast::emit_stmts(m.body.stmts, em, 1);
             em.finish();
             o.w_emitted(em, all_text);
+            o.w("#line " + std::to_string(end_line) + " \"" + esc(file_at(m.pos)) + "\"\n}\n");
             reset();
-            o.w("}\n\n");
+            o.w("\n");
         };
         for (sppc::ast::Ctor& c : cd.ctors) {
             Method cm;
             cm.name = cn;
             cm.params = c.params;
             cm.pos = c.pos;
+            cm.line = c.line;
+            cm.end_line = c.end_line;
             cm.body = std::move(c.body);
             emit_vbody(cm, P + "ctor", "void", cn + "::" + cn);
         }
@@ -2581,6 +2613,23 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         }
 
         // ---- check the script members
+        // A name that starts with "__" is for the generated code (a property field, the owner pointer).
+        for (const Field& f : cd.fields)
+            if (f.name.compare(0, 2, "__") == 0) fail_at(map, f.pos, "field name '" + f.name + "' is reserved");
+        // The state struct has the members "ctor" and "dtor". The lambdas call the function "state_of".
+        // A script field or function with one of these names clashes with them. This includes the parents.
+        {
+            auto generated_name = [](const std::string& n) { return n == "ctor" || n == "dtor" || n == "state_of"; };
+            for (const ClassDef* a = &cd; a; a = script_parent(*a)) {
+                const std::string where = a == &cd ? "" : " (in the script parent '" + a->name + "')";
+                for (const Field& f : a->fields)
+                    if (generated_name(f.name))
+                        fail_at(map, a == &cd ? f.pos : cd.pos, "field name '" + f.name + "' is reserved" + where);
+                for (const Method& m : a->methods)
+                    if (generated_name(m.name))
+                        fail_at(map, a == &cd ? m.pos : cd.pos, "function name '" + m.name + "' is reserved" + where);
+            }
+        }
         desugar_props(cd, map);
         {
             const size_t before = g_diag.items.size();
@@ -2996,20 +3045,26 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                                        (par ? par->name + "_Shell" : BL + ", spp::ShellBase");
         const size_t shell_head_end = o.s.size() + shell_head.size();
         o.w(shell_head + " {\n");
+        // The members of the shell map to the class line. An override of a script function maps to
+        // the line of the function.
         if (par) {
-            o.w("    template <class... A>\n    explicit " + shell + "(spp::Construct, A&&... a)\n        : " + par->name +
-                "_Shell(spp::ConstructChild{}, std::forward<A>(a)...)\n    {\n        spp::init_state(this, &" + cn +
-                "_record);\n    }\n");
+            mapped("    template <class... A>\n    explicit " + shell + "(spp::Construct, A&&... a)\n        : " + par->name +
+                       "_Shell(spp::ConstructChild{}, std::forward<A>(a)...)\n    {\n        spp::init_state(this, &" + cn +
+                       "_record);\n    }\n",
+                   cd.line, cd.pos);
             if (parent_shell)
-                o.w("    template <class... A>\n    explicit " + shell + "(spp::ConstructChild c, A&&... a) : " + par->name +
-                    "_Shell(c, std::forward<A>(a)...)\n    {\n    }\n");
+                mapped("    template <class... A>\n    explicit " + shell + "(spp::ConstructChild c, A&&... a) : " + par->name +
+                           "_Shell(c, std::forward<A>(a)...)\n    {\n    }\n",
+                       cd.line, cd.pos);
         } else {
-            o.w("    template <class... A>\n    explicit " + shell + "(spp::Construct, A&&... a) : " + B +
-                "(std::forward<A>(a)...)\n    {\n        spp::init_state(this, &" + cn +
-                "_record);\n    }\n    ~" + shell + "() override { spp::destroy_state(this); }\n");
+            mapped("    template <class... A>\n    explicit " + shell + "(spp::Construct, A&&... a) : " + B +
+                       "(std::forward<A>(a)...)\n    {\n        spp::init_state(this, &" + cn +
+                       "_record);\n    }\n    ~" + shell + "() override { spp::destroy_state(this); }\n",
+                   cd.line, cd.pos);
             if (parent_shell)
-                o.w("    template <class... A>\n    explicit " + shell + "(spp::ConstructChild, A&&... a) : " + B +
-                    "(std::forward<A>(a)...)\n    {\n    }\n");
+                mapped("    template <class... A>\n    explicit " + shell + "(spp::ConstructChild, A&&... a) : " + B +
+                           "(std::forward<A>(a)...)\n    {\n    }\n",
+                       cd.line, cd.pos);
         }
         for (size_t i = 0; i < native_count && !par; ++i) {
             const NativeVirtual& nv = *slots[i].nv;
@@ -3019,10 +3074,12 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 sig.push_back(nv.ptypes[k]);
                 as.push_back(arg_expr(nv.ptypes[k], "a" + std::to_string(k)));
             }
-            o.w("\n    " + nv.ret + " " + nv.name + "(" + str_join(ps, ", ") + ")" +
-                (nv.is_const ? " const" : "") + (nv.no_except ? " noexcept" : "") + " override\n    {\n");
-            o.w("        return spp::call<" + nv.ret + "(" + str_join(sig, ", ") + ")>(cls, " +
-                slot_id(slots[i].id) + ", " + str_join(as, ", ") + ");\n    }\n");
+            const Method* impl = slots[i].impl;
+            std::string text = "\n    " + nv.ret + " " + nv.name + "(" + str_join(ps, ", ") + ")" +
+                               (nv.is_const ? " const" : "") + (nv.no_except ? " noexcept" : "") + " override\n    {\n";
+            text += "        return spp::call<" + nv.ret + "(" + str_join(sig, ", ") + ")>(cls, " + slot_id(slots[i].id) + ", " +
+                    str_join(as, ", ") + ");\n    }\n";
+            mapped(text, impl ? impl->line : cd.line, impl ? impl->pos : cd.pos);
         }
         o.w("};\n\n");
         // The type name of the class for the script: a handle field names it (design 7.10.1).
@@ -3031,13 +3088,50 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         // ---- state struct and field table
         o.w("// ---------------------------------------------------------------- state\n");
         info.S = S;
+        auto param_decl = [](const Method& m) {
+            std::string r;
+            for (const Param& p : m.params) r += ", " + p.type + " " + p.name;
+            return r;
+        };
+        // The parameters of the generation function of a script function (design 7.10.5).
+        auto body_decl = [](const Method& m) {
+            std::string r;
+            for (const Param& p : m.params) r += ", " + (p.body_type.empty() ? p.type : p.body_type) + " " + p.name;
+            return r;
+        };
+        auto fn_ret = [](const Method& m) { return m.ret.empty() ? std::string("void") : m.ret; };
         o.w("struct " + S + (pinfo ? " : " + pinfo->S : std::string()) + " {\n");
+        // The runtime writes the owner shell into the first member of a root state struct.
+        if (!pinfo) o.w("    spp::ShellBase* __spp_owner;\n");
         for (const Field& f : cd.fields) {
             const std::string decl = "    " + f.type + " " + f.name + ";\n";
             if (f.pos != 0) o.name_segment(decl, 4 + f.type.size(), f.name, all_text, f.pos, f.name);
             o.w(decl);
         }
-        if (cd.fields.empty() && !pinfo) o.w("    char unused_;\n");
+        // The bodies of the class are members of the state struct. A debugger shows "this" with
+        // the script fields. The generation functions call the members.
+        {
+            auto no_comma = [](const std::string& l) { return l.empty() ? l : l.substr(2); };
+            std::string members;
+            for (const sppc::ast::Ctor& c : cd.ctors) {
+                Method cm;
+                cm.params = c.params;
+                members += "    void ctor(" + no_comma(body_decl(cm)) + ");\n";
+            }
+            if (!cd.dtors.empty()) members += "    void dtor();\n";
+            for (const Method& m : cd.methods) {
+                if (hook_of(m) == Hook::Convert) continue;
+                if (m.overrides_virtual) {
+                    const Slot* s = nullptr;
+                    for (const Slot& x : slots)
+                        if (x.impl == &m) s = &x;
+                    members += "    " + s->nv->ret + " " + s->id + "(" + no_comma(param_decl(m)) + ");\n";
+                } else {
+                    members += "    " + fn_ret(m) + " " + m.name + "(" + no_comma(body_decl(m)) + ");\n";
+                }
+            }
+            if (!members.empty()) o.w("\n" + members);
+        }
         o.w("};\n\n");
         for (Field& f : cd.fields) {
             RCtx fc = base_cx;
@@ -3059,10 +3153,12 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             if (hook_of(m) == Hook::Convert) converts[m.name.substr(8)] = &m;
         for (const auto& [fname, m] : converts) {
             o.w("static " + m->ret + " " + P + m->name + "(" + m->params[0].type + " " + m->params[0].name + ");\n");
-            o.w("static void " + P + m->name + "_hook(void* dst, const void* src)\n{\n    new (dst) " + m->ret + "(" +
-                P + m->name + "(*static_cast<const " + m->params[0].type + "*>(src)));\n}\n");
+            mapped("static void " + P + m->name + "_hook(void* dst, const void* src)\n{\n    new (dst) " + m->ret + "(" + P +
+                       m->name + "(*static_cast<const " + m->params[0].type + "*>(src)));\n}\n",
+                   m->line, m->pos);
         }
         o.w("\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n");
+        o.w("static_assert(offsetof(" + S + ", __spp_owner) == 0, \"the owner pointer must be the first member\");\n");
         // The field table of a child has the rows of the parent first. "$S$" is the state struct.
         if (pinfo) info.rows = pinfo->rows;
         if (pinfo) info.fields = pinfo->fields;
@@ -3096,25 +3192,13 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         }
         o.w("#pragma clang diagnostic pop\n\n");
         o.w("static const spp::StateLayout " + cn + "_layout = {\n    \"" + S + "\", sizeof(" + S +
-            "), alignof(" + S + "), " + std::to_string(info.rows.size()) + ", " + cn + "_fields,\n};\n\n");
+            "), alignof(" + S + "), " + std::to_string(info.rows.size()) + ", " + cn + "_fields, true,\n};\n\n");
 
         // ---- generation functions
         o.w("// ------------------------------------------------- generation functions\n");
-        o.w("static inline " + S + "* state_of(" + shell + "* self)\n{\n    return static_cast<" + S +
+        o.w("SPP_HIDDEN " + S + "* state_of(" + shell + "* self)\n{\n    return static_cast<" + S +
             "*>(self->state);\n}\n\n");
 
-        auto param_decl = [](const Method& m) {
-            std::string r;
-            for (const Param& p : m.params) r += ", " + p.type + " " + p.name;
-            return r;
-        };
-        // The parameters of the generation function of a script function (design 7.10.5).
-        auto body_decl = [](const Method& m) {
-            std::string r;
-            for (const Param& p : m.params) r += ", " + (p.body_type.empty() ? p.type : p.body_type) + " " + p.name;
-            return r;
-        };
-        auto fn_ret = [](const Method& m) { return m.ret.empty() ? std::string("void") : m.ret; };
         auto type_list = [](const Method& m) {
             std::string r;
             for (const Param& p : m.params) r += ", " + p.type;
@@ -3137,7 +3221,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         // A script virtual function (design 7.6). A call reads the slot of the class of the object.
         for (const Method& m : cd.methods) {
             if (m.vslot_owner != cn || m.is_override) continue;
-            o.w("[[maybe_unused]] static " + fn_ret(m) + " " + P + m.name + "_virt(" + shell + "* self" + param_decl(m) +
+            o.w("[[maybe_unused]] SPP_HIDDEN static " + fn_ret(m) + " " + P + m.name + "_virt(" + shell + "* self" + param_decl(m) +
                 ")\n{\n    return spp::call<" + fn_ret(m) + "(" + B + "*" + type_list(m) + ")>(self->cls, " +
                 slot_id(m.name) + ", static_cast<" + B + "*>(self)" + arg_list(m) + ");\n}\n\n");
         }
@@ -3151,6 +3235,8 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             ctor_ms[k].name = cn;
             ctor_ms[k].params = cd.ctors[k].params;
             ctor_ms[k].pos = cd.ctors[k].pos;
+            ctor_ms[k].line = cd.ctors[k].line;
+            ctor_ms[k].end_line = cd.ctors[k].end_line;
             o.w("static void " + P + "ctor(" + shell + "* self" + param_decl(ctor_ms[k]) + ");\n");
         }
         // The default overload has the fewest parameters. The factory of the engine uses it.
@@ -3222,45 +3308,50 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 // time. "first" is the tuple of the native base arguments. "second" is the chain: a
                 // pair of the constructor arguments of the parent and the chain of the parent. The
                 // chain of a root is an empty tuple.
-                o.w("#line " + std::to_string(sup_line) + " \"" + esc(file_at(sc ? sc->pos : cd.pos)) + "\"\n");
+                // Each line of the plan and of the chain maps to the line of the constructor.
+                std::string plan_text;
                 if (!par) {
-                    o.w("[[maybe_unused]] static auto " + P + "super_args(" + pd + ")\n{\n    return std::make_tuple(" +
-                        sup_text + ");\n}\n");
-                    o.w("static auto " + P + "plan(" + pd + ")\n{\n    return std::make_pair(" + P + "super_args(" + names +
-                        "), std::tuple<>());\n}\n");
+                    plan_text += "[[maybe_unused]] SPP_HIDDEN static auto " + P + "super_args(" + pd + ")\n{\n    return std::make_tuple(" +
+                                 sup_text + ");\n}\n";
+                    plan_text += "SPP_HIDDEN static auto " + P + "plan(" + pd + ")\n{\n    return std::make_pair(" + P + "super_args(" +
+                                 names + "), std::tuple<>());\n}\n";
                 } else {
                     // The base arguments come from the plan of the parent, or from the name of this
                     // class when no class of the chain calls "super(...)" with arguments.
                     const bool own_base = (has_super ? sc->super_args.size() : 0) == 0 && !root_super;
-                    o.w("static auto " + P + "plan(" + pd + ")\n{\n    auto up = std::make_tuple(" +
-                        (has_super ? sup_text : std::string()) + ");\n    auto pp = std::apply([](const auto&... x) { return " +
-                        PP + "plan(x...); }, up);\n    return std::make_pair(" +
-                        (own_base ? "std::make_tuple(" + (ctor_args.empty() ? std::string() : ctor_args.substr(2)) + ")"
-                                  : std::string("std::move(pp.first)")) +
-                        ", std::make_pair(std::move(up), std::move(pp.second)));\n}\n");
+                    plan_text += "SPP_HIDDEN static auto " + P + "plan(" + pd + ")\n{\n    auto up = std::make_tuple(" +
+                                 (has_super ? sup_text : std::string()) +
+                                 ");\n    auto pp = std::apply([](const auto&... x) { return " + PP +
+                                 "plan(x...); }, up);\n    return std::make_pair(" +
+                                 (own_base ? "std::make_tuple(" + (ctor_args.empty() ? std::string() : ctor_args.substr(2)) + ")"
+                                           : std::string("std::move(pp.first)")) +
+                                 ", std::make_pair(std::move(up), std::move(pp.second)));\n}\n";
                 }
                 if (has_entry) {
                     // Runs the constructor of each parent first, with the arguments of the plan. The
                     // plan owns the arguments, so the parent can move them.
-                    o.w("static void " + P + "ctor_chain(" + shell + "* self, [[maybe_unused]] auto& chain" +
-                        param_decl(cm) + ")\n{\n");
+                    plan_text += "SPP_HIDDEN static void " + P + "ctor_chain(" + shell + "* self, [[maybe_unused]] auto& chain" +
+                                 param_decl(cm) + ")\n{\n";
                     if (pinfo && !pinfo->ctor_entry.empty())
-                        o.w("    std::apply([&](auto&&... x) { " + pinfo->ctor_entry +
-                            "(self, chain.second, std::forward<decltype(x)>(x)...); }, std::move(chain.first));\n");
-                    if (sc) o.w("    " + P + "ctor(self" + ctor_fwd + ");\n");
-                    o.w("}\n");
+                        plan_text += "    std::apply([&](auto&&... x) { " + pinfo->ctor_entry +
+                                     "(self, chain.second, std::forward<decltype(x)>(x)...); }, std::move(chain.first));\n";
+                    if (sc) plan_text += "    " + P + "ctor(self" + ctor_fwd + ");\n";
+                    plan_text += "}\n";
                 }
-                reset();
+                mapped(plan_text, sup_line, sc ? sc->pos : cd.pos);
                 o.w("using " + sa_name(k) + " = decltype(" + P + "plan(" + declvals + ").first);\n");
             }
             o.w("// Makes the shell with the base arguments. Only the first generation of the class runs it.\n");
             o.w("// \"key\" names the type of the arguments. An unknown key gives nullptr.\n");
-            o.w("static spp::ShellBase* " + P + "construct(const char* key, const void* args)\n{\n");
+            std::string construct_text = "SPP_NODEBUG static spp::ShellBase* " + P + "construct(const char* key, const void* args)\n{\n";
             for (size_t k = 0; k < ctor_ms.size(); ++k)
-                o.w("    if (std::strcmp(key, typeid(" + sa_name(k) + ").name()) == 0) {\n        const auto& t = *static_cast<const " +
-                    sa_name(k) + "*>(args);\n        return std::apply([](const auto&... x) -> spp::ShellBase* { return new " +
-                    shell + "(spp::Construct{}, x...); }, t);\n    }\n");
-            o.w("    return nullptr;\n}\n\n");
+                construct_text += "    if (std::strcmp(key, typeid(" + sa_name(k) +
+                                  ").name()) == 0) {\n        const auto& t = *static_cast<const " + sa_name(k) +
+                                  "*>(args);\n        return std::apply([](const auto&... x) -> spp::ShellBase* { return new " +
+                                  shell + "(spp::Construct{}, x...); }, t);\n    }\n";
+            construct_text += "    return nullptr;\n}\n";
+            mapped(construct_text, cd.line, cd.pos);
+            o.w("\n");
             // The keys that "construct" accepts. The loader compares them with the keys of the
             // canonical record: a new key needs a new core module (S27).
             o.w("static const char* const " + P + "construct_keys[] = {");
@@ -3274,61 +3365,107 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 const std::string ctor_fwd = arg_list(cm);
                 // "new" and the factory both use this function. "note" is false for the factory: the
                 // engine owns that object, so its handle has no code of this generation.
-                o.w("static " + shell + "* " + P + "build([[maybe_unused]] bool note" + param_decl(cm) + ")\n{\n");
-                o.w("    auto plan = " + P + "plan(" + (ctor_fwd.empty() ? std::string() : ctor_fwd.substr(2)) + ");\n");
-                o.w("    auto* self = static_cast<" + shell + "*>(spp::construct_shell(&" + cn + "_record, typeid(" + sa_name(k) +
-                    ").name(), &plan.first, note));\n");
+                // The functions of a constructor overload map to the line of the constructor.
+                const int cline = cm.line > 0 ? cm.line : cd.line;
+                const uint32_t cpos = cm.pos != 0 ? cm.pos : cd.pos;
+                std::string build_text = "SPP_HIDDEN static " + shell + "* " + P + "build([[maybe_unused]] bool note" + param_decl(cm) + ")\n{\n";
+                build_text += "    auto plan = " + P + "plan(" + (ctor_fwd.empty() ? std::string() : ctor_fwd.substr(2)) + ");\n";
+                build_text += "    auto* self = static_cast<" + shell + "*>(spp::construct_shell(&" + cn + "_record, typeid(" +
+                              sa_name(k) + ").name(), &plan.first, note));\n";
                 if (has_entry) {
-                    o.w("    try {\n        " + entry + "(self, plan.second" + ctor_fwd + ");\n    } catch (...) {\n        delete static_cast<" +
-                        B + "*>(self);\n        throw;\n    }\n");
+                    build_text += "    try {\n        " + entry + "(self, plan.second" + ctor_fwd +
+                                  ");\n    } catch (...) {\n        delete static_cast<" + B + "*>(self);\n        throw;\n    }\n";
                 }
-                o.w("    return self;\n}\n\n");
-                o.w("[[maybe_unused]] static " + shell + "* " + P + "new(" + pd + ")\n{\n    return " + P + "build(true" +
-                    ctor_fwd + ");\n}\n\n");
+                build_text += "    return self;\n}\n";
+                mapped(build_text, cline, cpos);
+                mapped("[[maybe_unused]] SPP_HIDDEN static " + shell + "* " + P + "new(" + pd + ")\n{\n    return " + P + "build(true" +
+                           ctor_fwd + ");\n}\n",
+                       cline, cpos);
+                o.w("\n");
             }
             if (has_entry) {
                 std::string locals;
                 const std::string defaults = default_args(ctor_ms[dflt], locals);
                 o.w("// The factory of the engine calls it through the canonical record: the current generation\n"
                     "// gives the base arguments and the constructors.\n");
-                o.w("static spp::ShellBase* " + P + "new_default()\n{\n" + locals + "    return " + P + "build(false" +
-                    (defaults.empty() ? "" : ", " + defaults) + ");\n}\n\n");
+                const Method& dm = ctor_ms[dflt];
+                mapped("SPP_NODEBUG static spp::ShellBase* " + P + "new_default()\n{\n" + locals + "    return " + P + "build(false" +
+                           (defaults.empty() ? "" : ", " + defaults) + ");\n}\n",
+                       dm.line > 0 ? dm.line : cd.line, dm.pos != 0 ? dm.pos : cd.pos);
+                o.w("\n");
             }
         }
         // The destructor slot runs the destructor of the class, then the one of the parent.
         const bool dtor_chain = has_dtor || (pinfo && pinfo->dtor_chain);
         info.dtor_chain = dtor_chain;
         if (dtor_chain) {
-            o.w("static void " + P + "dtor_slot(spp::ShellBase* s)\n{\n");
-            if (has_dtor) o.w("    " + P + "dtor(static_cast<" + shell + "*>(s));\n");
-            if (pinfo && pinfo->dtor_chain) o.w("    " + PP + "dtor_slot(s);\n");
-            o.w("}\n\n");
+            std::string slot_text = "static void " + P + "dtor_slot(spp::ShellBase* s)\n{\n";
+            if (has_dtor) slot_text += "    " + P + "dtor(static_cast<" + shell + "*>(s));\n";
+            if (pinfo && pinfo->dtor_chain) slot_text += "    " + PP + "dtor_slot(s);\n";
+            slot_text += "}\n";
+            mapped(slot_text, has_dtor ? cd.dtors[0].line : cd.line, has_dtor ? cd.dtors[0].pos : cd.pos);
+            o.w("\n");
         }
 
+        // A body makes two functions. The generation function keeps the symbol and the slot ABI.
+        // It checks the generation and calls the member of the state struct. The member holds the
+        // statements. Both map to the script lines, so a debugger never shows generated code.
         auto emit_body = [&](Method& m, bool is_fn, const std::string& sym, const std::string& ret,
-                             const std::string& what) {
+                             const std::string& what, const std::string& member) {
             RCtx cx = base_cx;
             cx.where = what;
             cx.ret_type = m.script_ret;
             sppc::add_params(cx, m.params);
+            const std::string file = esc(file_at(m.pos));
+            auto line_at = [&](int l) { return "#line " + std::to_string(l) + " \"" + file + "\"\n"; };
+            const int end_line = m.end_line > 0 ? m.end_line : m.line;
+            int first_line = m.line;
+            if (!m.body.stmts.empty() && sppc::ast::pos_of(*m.body.stmts.front()) != 0)
+                first_line = map.line(sppc::ast::pos_of(*m.body.stmts.front()));
+            // The generation function.
             std::string head = "static " + ret + " " + sym + "(";
+            std::string fwd;
+            auto forward = [&](const Param& p, const std::string& type) {
+                fwd += std::string(fwd.empty() ? "" : ", ") + "std::forward<" + type + ">(" + p.name + ")";
+            };
             if (is_fn) head += shell + "* self" + body_decl(m);
             else head += B + "* a" + param_decl(m);
+            for (const Param& p : m.params) forward(p, is_fn && !p.body_type.empty() ? p.body_type : p.type);
+            // Each line of the wrapper maps to the line of the function.
+            o.w(line_at(m.line));
             o.head_segments(head, sym, m, all_text);
-            o.w(head + ")\n{\n");
-            if (!is_fn) o.w("    [[maybe_unused]] auto* self = static_cast<" + shell + "*>(a);\n");
-            o.w("    if (SPP_UNLIKELY(spp::active_generation != GEN)) {\n");
-            o.w("        spp::stale_call(\"" + what + "\");\n        return" +
-                (ret == "void" ? std::string() : " " + ret + "()") + ";\n    }\n");
-            o.w("    [[maybe_unused]] auto* st = state_of(self);\n");
+            o.w(head + ")\n");
+            std::string wrapper = "{\n";
+            wrapper += "    if (SPP_UNLIKELY(spp::active_generation != GEN)) {\n";
+            wrapper += "        spp::stale_call(\"" + what + "\");\n        return" +
+                       (ret == "void" ? std::string() : " " + ret + "()") + ";\n    }\n";
+            wrapper += "    return state_of(" + (is_fn ? std::string("self") : "static_cast<" + shell + "*>(a)") + ")->" + member +
+                       "(" + fwd + ");\n";
+            wrapper += "}\n";
+            mapped(wrapper, m.line, m.pos);
+            // The member of the state struct.
+            std::string mhead = ret + " " + S + "::" + member + "(" +
+                                (is_fn ? body_decl(m) : param_decl(m)).substr(m.params.empty() ? 0 : 2);
+            o.w(line_at(m.line));
+            o.head_segments(mhead, member, m, all_text, ret.size() + 1 + S.size() + 2);
+            o.w(mhead + ")\n");
+            // The braces and the two local names map to the first statement.
+            o.w(line_at(first_line));
+            o.w("{\n");
+            o.w(line_at(first_line));
+            o.w("    [[maybe_unused, gnu::nodebug]] auto* self = static_cast<" + shell + "*>(this->__spp_owner);\n");
+            o.w(line_at(first_line));
+            o.w("    [[maybe_unused, gnu::nodebug]] auto* st = this;\n");
             sppc::lower_block(m.body, cx, g_diag);
             if (!g_diag.items.empty()) throw TranslateAbort{};
             sppc::ast::Emitter em(map, opt.input);
             sppc::ast::emit_stmts(m.body.stmts, em, 1);
             em.finish();
             o.w_emitted(em, all_text);
+            o.w(line_at(end_line));
+            o.w("}\n");
             reset();
-            o.w("}\n\n");
+            o.w("\n");
         };
 
         // A convert hook has no self and no state: the new block is not complete yet.
@@ -3339,22 +3476,27 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             cx.field_type.clear();
             cx.fns.clear();
             sppc::add_params(cx, m.params);
-            o.w("static " + m.ret + " " + P + m.name + "(" + m.params[0].type + " " + m.params[0].name + ")\n{\n");
+            const std::string file = esc(file_at(m.pos));
+            const int end_line = m.end_line > 0 ? m.end_line : m.line;
+            o.w("#line " + std::to_string(m.line) + " \"" + file + "\"\n");
+            o.w("static " + m.ret + " " + P + m.name + "(" + m.params[0].type + " " + m.params[0].name + ")\n");
+            o.w("#line " + std::to_string(m.line) + " \"" + file + "\"\n{\n");
             sppc::lower_block(m.body, cx, g_diag);
             if (!g_diag.items.empty()) throw TranslateAbort{};
             sppc::ast::Emitter em(map, opt.input);
             sppc::ast::emit_stmts(m.body.stmts, em, 1);
             em.finish();
             o.w_emitted(em, all_text);
+            o.w("#line " + std::to_string(end_line) + " \"" + file + "\"\n}\n");
             reset();
-            o.w("}\n\n");
+            o.w("\n");
         };
 
         for (size_t k = 0; has_ctor && k < cd.ctors.size(); ++k) {
             ctor_ms[k].body = std::move(cd.ctors[k].body);
-            emit_body(ctor_ms[k], true, P + "ctor", "void", cn + "::" + cn);
+            emit_body(ctor_ms[k], true, P + "ctor", "void", cn + "::" + cn, "ctor");
         }
-        if (has_dtor) emit_body(cd.dtors[0], true, P + "dtor", "void", cn + "::~" + cn);
+        if (has_dtor) emit_body(cd.dtors[0], true, P + "dtor", "void", cn + "::~" + cn, "dtor");
         for (Method& m : cd.methods) {
             if (hook_of(m) == Hook::Convert) {
                 emit_convert(m);
@@ -3362,9 +3504,9 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 const Slot* s = nullptr;
                 for (const Slot& x : slots)
                     if (x.impl == &m) s = &x;
-                emit_body(m, false, P + s->id, s->nv->ret, body_what(cn, m));
+                emit_body(m, false, P + s->id, s->nv->ret, body_what(cn, m), s->id);
             } else {
-                emit_body(m, true, P + m.name, fn_ret(m), body_what(cn, m));
+                emit_body(m, true, P + m.name, fn_ret(m), body_what(cn, m), m.name);
             }
         }
 
@@ -3379,8 +3521,10 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 as += (k ? ", " : "") + arg_expr(nv.ptypes[k], "a" + std::to_string(k));
             }
             o.w("// Not overridden: call the implementation of " + nv.from + ".\n");
-            o.w("static " + nv.ret + " " + P + "fwd_" + s.id + "(" + B + "* a" + ps + ")\n{\n");
-            o.w("    return static_cast<" + shell + "*>(a)->" + nv.from + "::" + nv.name + "(" + as + ");\n}\n\n");
+            mapped("SPP_NODEBUG static " + nv.ret + " " + P + "fwd_" + s.id + "(" + B + "* a" + ps + ")\n{\n    return static_cast<" + shell +
+                       "*>(a)->" + nv.from + "::" + nv.name + "(" + as + ");\n}\n",
+                   cd.line, cd.pos);
+            o.w("\n");
         }
 
         // The native implementation that a child sees: "super.M()" in a child calls it.
@@ -3392,20 +3536,24 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                     ps += ", " + nv.ptypes[k] + " a" + std::to_string(k);
                     as += ", " + arg_expr(nv.ptypes[k], "a" + std::to_string(k));
                 }
-                o.w("[[maybe_unused]] static " + nv.ret + " " + P + "base_" + nv.name + "(" + B + "* a" + ps +
+                o.w("[[maybe_unused]] SPP_HIDDEN static " + nv.ret + " " + P + "base_" + nv.name + "(" + B + "* a" + ps +
                     ")\n{\n    return " + table[i] + "(a" + as + ");\n}\n\n");
             }
 
         // slot adapters and thunks for the script functions
         for (size_t i = native_count; i < slots.size(); ++i) {
             const Method& m = *slots[i].impl;
-            o.w("static " + fn_ret(m) + " " + P + m.name + "_slot(" + B + "* a" + param_decl(m) + ")\n{\n");
-            o.w("    return " + P + m.name + "(static_cast<" + shell + "*>(a)" + arg_list(m) + ");\n}\n\n");
+            mapped("static " + fn_ret(m) + " " + P + m.name + "_slot(" + B + "* a" + param_decl(m) + ")\n{\n    return " + P +
+                       m.name + "(static_cast<" + shell + "*>(a)" + arg_list(m) + ");\n}\n",
+                   m.line, m.pos);
+            o.w("\n");
         }
         for (const Method* mp : script_overrides) {
             const Method& m = *mp;
-            o.w("static " + fn_ret(m) + " " + P + m.name + "_slot(" + B + "* a" + param_decl(m) + ")\n{\n");
-            o.w("    return " + P + m.name + "(static_cast<" + shell + "*>(a)" + arg_list(m) + ");\n}\n\n");
+            mapped("static " + fn_ret(m) + " " + P + m.name + "_slot(" + B + "* a" + param_decl(m) + ")\n{\n    return " + P +
+                       m.name + "(static_cast<" + shell + "*>(a)" + arg_list(m) + ");\n}\n",
+                   m.line, m.pos);
+            o.w("\n");
         }
         for (size_t i = native_count; i < slots.size(); ++i) {
             const Method& m = *slots[i].impl;
@@ -3422,19 +3570,22 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             if (changed) {
                 o.w("// The signature changed (design 5.3). This thunk serves the new signature. A\n"
                     "// delegate on the thunk of the old signature detaches.\n");
-                o.w("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* a" + param_decl(m) + ")\n{\n");
-                o.w("    auto* self = static_cast<" + shell + "*>(a);\n");
-                o.w("    return spp::call<" + sig + ">(self->cls, " + slot_id(m.name) + ", a" + arg_list(m) + ");\n}\n\n");
+                mapped("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* a" + param_decl(m) +
+                           ")\n{\n    [[gnu::nodebug]] auto* self = static_cast<" + shell + "*>(a);\n    return spp::call<" + sig +
+                           ">(self->cls, " + slot_id(m.name) + ", a" + arg_list(m) + ");\n}\n",
+                       m.line, m.pos);
+                o.w("\n");
                 thunk_regs.push_back("    reg.add_thunk(\"" + cn + "::" + m.name + "\", reinterpret_cast<void*>(&" + P +
                                      m.name + "__thunk), typeid(" + sig + ").name(), " + slot_id(m.name) + ");\n");
                 continue;
             }
             o.w("// The thunk has the same address in each generation (section 4.11). The\n"
                 "// generation that adds the function emits it. It reads the slot at call time.\n");
-            o.w("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* a" + param_decl(m) + ")\n{\n");
-            o.w("    auto* self = static_cast<" + shell + "*>(a);\n");
-            o.w("    return spp::call<" + fn_ret(m) + "(" + B + "*" + type_list(m) + ")>(self->cls, " +
-                slot_id(m.name) + ", a" + arg_list(m) + ");\n}\n\n");
+            mapped("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* a" + param_decl(m) +
+                       ")\n{\n    [[gnu::nodebug]] auto* self = static_cast<" + shell + "*>(a);\n    return spp::call<" + fn_ret(m) +
+                       "(" + B + "*" + type_list(m) + ")>(self->cls, " + slot_id(m.name) + ", a" + arg_list(m) + ");\n}\n",
+                   m.line, m.pos);
+            o.w("\n");
             thunk_regs.push_back("    reg.add_thunk(\"" + cn + "::" + m.name +
                                  "\", reinterpret_cast<void*>(&" + P + m.name + "__thunk));\n");
         }
@@ -3458,8 +3609,10 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         std::string on_reload_init;
         for (const Method& m : cd.methods)
             if (hook_of(m) == Hook::OnReload) {
-                o.w("static void " + P + "onReload_hook(spp::ShellBase* s, const spp::OldState& old)\n{\n    " + P +
-                    "onReload(static_cast<" + shell + "*>(s), old);\n}\n\n");
+                mapped("static void " + P + "onReload_hook(spp::ShellBase* s, const spp::OldState& old)\n{\n    " + P +
+                           "onReload(static_cast<" + shell + "*>(s), old);\n}\n",
+                       m.line, m.pos);
+                o.w("\n");
                 on_reload_init = " " + P + "onReload_hook,\n";
                 info.on_reload = P + "onReload_hook";
             }
@@ -3487,13 +3640,17 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             // The plan takes a "ref" or "out" parameter by reference: default_args gives a variable.
             std::string plan_locals;
             const std::string defaults = default_args(ctor_ms[dflt], plan_locals);
-            o.w("static spp::Instance " + cn + "_create()\n{\n    spp::ScriptEntry entry;  // the creation is an entry (S27)\n    spp::ShellBase* s = nullptr;\n    if (" + cn +
-                "_record.new_default) {\n        s = " + cn + "_record.new_default();\n    } else {\n" + plan_locals + "        auto plan = " + P +
-                "plan(" + defaults + ");\n        s = " + P + "construct(typeid(" + sa_name(dflt) + ").name(), &plan.first);\n    }\n    auto* p = static_cast<" +
-                shell + "*>(s);\n    return {static_cast<" + B + "*>(p), p};\n}\n\n");
+            mapped("SPP_NODEBUG static spp::Instance " + cn + "_create()\n{\n    spp::ScriptEntry entry;  // the creation is an entry (S27)\n    spp::ShellBase* s = nullptr;\n    if (" + cn +
+                       "_record.new_default) {\n        s = " + cn + "_record.new_default();\n    } else {\n" + plan_locals + "        auto plan = " + P +
+                       "plan(" + defaults + ");\n        s = " + P + "construct(typeid(" + sa_name(dflt) + ").name(), &plan.first);\n    }\n    auto* p = static_cast<" +
+                       shell + "*>(s);\n    return {static_cast<" + B + "*>(p), p};\n}\n",
+                   cd.line, cd.pos);
+            o.w("\n");
         } else {
-            o.w("static spp::Instance " + cn + "_create()\n{\n    spp::ScriptEntry entry;  // the creation is an entry (S27)\n    auto* p = new " + shell +
-                "(spp::Construct{}" + ctor_args + ");\n    return {static_cast<" + B + "*>(p), p};\n}\n\n");
+            mapped("SPP_NODEBUG static spp::Instance " + cn + "_create()\n{\n    spp::ScriptEntry entry;  // the creation is an entry (S27)\n    auto* p = new " + shell +
+                       "(spp::Construct{}" + ctor_args + ");\n    return {static_cast<" + B + "*>(p), p};\n}\n",
+                   cd.line, cd.pos);
+            o.w("\n");
         }
         registers.push_back({cn, true});
         infos[cn] = std::move(info);

@@ -418,17 +418,28 @@ LineIndex index_generated(const std::vector<std::string>& gen)
 
 // The script column of a generated column on the script line "line". Zero: not known. The
 // column of a text that the translator writes by itself (for example "spp::deref(") has no
-// segment, so the function looks at the next columns of the same generated line.
+// segment, so the function looks at the next columns of the same generated line. Several
+// generated lines can have the same script line (a generation function, a member head, a
+// body). "snippet" is the generated line that the compiler shows. It selects the right one.
 int script_column(const SourceMap& map, const LineIndex& index, const std::vector<std::string>& gen,
-                  const std::string& file, int line, int col)
+                  const std::string& file, int line, int col, const std::string& snippet)
 {
     auto it = index.find({file, line});
     if (it == index.end() || col < 1) return 0;
+    auto trimmed = [](const std::string& t) {
+        const size_t b = t.find_first_not_of(" \t");
+        return b == std::string::npos ? std::string() : t.substr(b, t.find_last_not_of(" \t\r") - b + 1);
+    };
+    std::vector<int> candidates;
+    if (!trimmed(snippet).empty())
+        for (int physical : it->second)
+            if (trimmed(gen[static_cast<size_t>(physical) - 1]) == trimmed(snippet)) candidates.push_back(physical);
+    if (candidates.empty()) candidates = it->second;
     // The file number in the map: 0 is the main script, else an imported script.
     uint32_t want = 0;
     for (size_t i = 0; i < map.files().size(); ++i)
         if (map.files()[i].name == file) want = static_cast<uint32_t>(i + 1);
-    for (int physical : it->second) {
+    for (int physical : candidates) {
         const size_t width = gen[static_cast<size_t>(physical) - 1].size();
         for (size_t c = static_cast<size_t>(col); c <= width && c < static_cast<size_t>(col) + 80; ++c) {
             const auto p = map.locate(physical, static_cast<int>(c));
@@ -532,7 +543,13 @@ std::string rewrite_diagnostic(const std::string& text, const ScriptTexts& scrip
             }
             if (place == Place::Script) {
                 // The generated column means nothing here, unless the source map gives the real one.
-                const int real = map_gen && !mapped ? script_column(*map, line_index, *map_gen, h.file, h.line, h.col) : 0;
+                std::string shown;  // the generated line that the compiler shows under the header
+                int shown_number = 0;
+                size_t shown_begin = 0;
+                if (i + 1 < lines.size() && parse_gutter(lines[i + 1], shown_number, shown_begin))
+                    shown = lines[i + 1].substr(shown_begin);
+                const int real =
+                    map_gen && !mapped ? script_column(*map, line_index, *map_gen, h.file, h.line, h.col, shown) : 0;
                 h.col = real > 0 ? real : 1;
             }
             std::string location = h.file + ":" + std::to_string(h.line) + ":" + std::to_string(h.col);

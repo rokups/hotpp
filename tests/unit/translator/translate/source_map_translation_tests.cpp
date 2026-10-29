@@ -116,8 +116,9 @@ TEST(SourceMapTranslation, EverySegmentOfEqualLengthRoundTrips)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     ASSERT_FALSE(r.source_map.empty());
     // The segments of the two statements: int64_t, total, hits, 2, hits, total. The segments
-    // of the names: the field "hits" in the state struct, the function name and "dt" in the head.
-    EXPECT_EQ(r.source_map.segments().size(), 9u);
+    // of the names: the field "hits" in the state struct, the function name and "dt" in the head
+    // of the generation function and in the head of the member.
+    EXPECT_EQ(r.source_map.segments().size(), 11u);
     const sppc::LineMap gm(r.cpp), sm(kScript);
     for (const sppc::SourceSegment& s : r.source_map.segments()) {
         if (s.script_len != s.gen_len) continue;
@@ -125,6 +126,12 @@ TEST(SourceMapTranslation, EverySegmentOfEqualLengthRoundTrips)
             const auto sp = r.source_map.map_to_script(gm.line(s.gen_begin + d), gm.col(s.gen_begin + d));
             ASSERT_TRUE(sp);
             EXPECT_EQ(*sp, (SourcePos{sm.line(s.script_begin + d), sm.col(s.script_begin + d)}));
+            // The way back gives the first generated text of a script name. The head of the
+            // member repeats the name of the head of the generation function.
+            bool repeated = false;
+            for (const sppc::SourceSegment& o : r.source_map.segments())
+                repeated = repeated || (o.file == s.file && o.script_begin == s.script_begin && o.gen_begin < s.gen_begin);
+            if (repeated) continue;
             const auto gp = r.source_map.map_to_generated(sp->line, sp->col);
             ASSERT_TRUE(gp);
             EXPECT_EQ(*gp, (SourcePos{gm.line(s.gen_begin + d), gm.col(s.gen_begin + d)}));

@@ -32,7 +32,7 @@ ScriptTickScope::~ScriptTickScope() { g_in_script_tick.fetch_sub(1); }
 // The entry reads the open gate with acquire after the release of the commit end, so the
 // commit happens before the entry.
 namespace detail {
-std::atomic<bool> g_entry_counters{false};
+bool g_entry_counters = false;
 }
 
 namespace {

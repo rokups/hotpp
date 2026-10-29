@@ -50,6 +50,8 @@ struct StateLayout {
     uint32_t size, align;
     uint32_t field_count;
     const FieldInfo* fields;
+    // When true, the block starts with a ShellBase* that the runtime writes (set_owner).
+    bool has_owner = false;
 };
 
 // Runtime record of a script class. It lives as long as the session.

@@ -32,52 +32,81 @@ extern spp::ClassRecord Player_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Player_Shell final : Actor, spp::ShellBase {
+#line 6 "player_v2.spp"
     template <class... A>
+#line 6 "player_v2.spp"
     explicit Player_Shell(spp::Construct, A&&... a) : Actor(std::forward<A>(a)...)
+#line 6 "player_v2.spp"
     {
+#line 6 "player_v2.spp"
         spp::init_state(this, &Player_record);
+#line 6 "player_v2.spp"
     }
+#line 6 "player_v2.spp"
     ~Player_Shell() override { spp::destroy_state(this); }
+#line 48 "player_v2.spp.cpp"
 
+#line 12 "player_v2.spp"
     void Tick(float a0) override
+#line 12 "player_v2.spp"
     {
+#line 12 "player_v2.spp"
         return spp::call<void(Actor*, float)>(cls, SLOT_Tick, this, a0);
+#line 12 "player_v2.spp"
     }
+#line 58 "player_v2.spp.cpp"
 
+#line 18 "player_v2.spp"
     void TakeDamage(float a0) override
+#line 18 "player_v2.spp"
     {
+#line 18 "player_v2.spp"
         return spp::call<void(Actor*, float)>(cls, SLOT_TakeDamage_f, this, a0);
+#line 18 "player_v2.spp"
     }
+#line 68 "player_v2.spp.cpp"
 
+#line 24 "player_v2.spp"
     void TakeDamage(Actor& a0, float a1) override
+#line 24 "player_v2.spp"
     {
+#line 24 "player_v2.spp"
         return spp::call<void(Actor*, Actor&, float)>(cls, SLOT_TakeDamage_Af, this, a0, a1);
+#line 24 "player_v2.spp"
     }
+#line 78 "player_v2.spp.cpp"
 };
 
 // ---------------------------------------------------------------- state
 struct PlayerState_g2 {
+    spp::ShellBase* __spp_owner;
     float health;
     float speed;
     std::string target;
     float shield;
+
+    void Tick(float dt);
+    void TakeDamage_f(float amount);
+    void TakeDamage_Af(Actor& source, float amount);
+    void heal(float amount);
 };
 
 #line 7 "player_v2.spp"
 static void Player__init_health(void*, void* f) { using T = float; new (f) T(100.0f); }
-#line 69 "player_v2.spp.cpp"
+#line 97 "player_v2.spp.cpp"
 #line 8 "player_v2.spp"
 static void Player__init_speed(void*, void* f) { using T = float; new (f) T(5.0f); }
-#line 72 "player_v2.spp.cpp"
+#line 100 "player_v2.spp.cpp"
 #line 9 "player_v2.spp"
 static void Player__init_target(void*, void* f) { using T = std::string; new (f) T(""); }
-#line 75 "player_v2.spp.cpp"
+#line 103 "player_v2.spp.cpp"
 #line 10 "player_v2.spp"
 static void Player__init_shield(void*, void* f) { using T = float; new (f) T(25.0f); }
-#line 78 "player_v2.spp.cpp"
+#line 106 "player_v2.spp.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+static_assert(offsetof(PlayerState_g2, __spp_owner) == 0, "the owner pointer must be the first member");
 static const spp::FieldInfo Player_fields[] = {
     {"health", "hp", typeid(float).name(), offsetof(PlayerState_g2, health), sizeof(float),
      alignof(float), spp::field_flags<float>(), Player__init_health, spp::move_field<float>, spp::field_destroyer<float>()},
@@ -91,11 +120,11 @@ static const spp::FieldInfo Player_fields[] = {
 #pragma clang diagnostic pop
 
 static const spp::StateLayout Player_layout = {
-    "PlayerState_g2", sizeof(PlayerState_g2), alignof(PlayerState_g2), 4, Player_fields,
+    "PlayerState_g2", sizeof(PlayerState_g2), alignof(PlayerState_g2), 4, Player_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-static inline PlayerState_g2* state_of(Player_Shell* self)
+SPP_HIDDEN PlayerState_g2* state_of(Player_Shell* self)
 {
     return static_cast<PlayerState_g2*>(self->state);
 }
@@ -103,112 +132,217 @@ static inline PlayerState_g2* state_of(Player_Shell* self)
 static void Player__heal(Player_Shell* self, float amount);
 
 #line 6 "player_v2.spp"
-[[maybe_unused]] static auto Player__super_args()
+[[maybe_unused]] SPP_HIDDEN static auto Player__super_args()
+#line 6 "player_v2.spp"
 {
+#line 6 "player_v2.spp"
     return std::make_tuple(std::string("Player"));
+#line 6 "player_v2.spp"
 }
-static auto Player__plan()
+#line 6 "player_v2.spp"
+SPP_HIDDEN static auto Player__plan()
+#line 6 "player_v2.spp"
 {
+#line 6 "player_v2.spp"
     return std::make_pair(Player__super_args(), std::tuple<>());
+#line 6 "player_v2.spp"
 }
-#line 115 "player_v2.spp.cpp"
+#line 151 "player_v2.spp.cpp"
 using Player_SuperArgs = decltype(Player__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
-static spp::ShellBase* Player__construct(const char* key, const void* args)
+#line 6 "player_v2.spp"
+SPP_NODEBUG static spp::ShellBase* Player__construct(const char* key, const void* args)
+#line 6 "player_v2.spp"
 {
+#line 6 "player_v2.spp"
     if (std::strcmp(key, typeid(Player_SuperArgs).name()) == 0) {
+#line 6 "player_v2.spp"
         const auto& t = *static_cast<const Player_SuperArgs*>(args);
+#line 6 "player_v2.spp"
         return std::apply([](const auto&... x) -> spp::ShellBase* { return new Player_Shell(spp::Construct{}, x...); }, t);
+#line 6 "player_v2.spp"
     }
+#line 6 "player_v2.spp"
     return nullptr;
+#line 6 "player_v2.spp"
 }
+#line 171 "player_v2.spp.cpp"
 
 static const char* const Player__construct_keys[] = {typeid(Player_SuperArgs).name(), nullptr};
 
-static Player_Shell* Player__build([[maybe_unused]] bool note)
+#line 6 "player_v2.spp"
+SPP_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool note)
+#line 6 "player_v2.spp"
 {
+#line 6 "player_v2.spp"
     auto plan = Player__plan();
+#line 6 "player_v2.spp"
     auto* self = static_cast<Player_Shell*>(spp::construct_shell(&Player_record, typeid(Player_SuperArgs).name(), &plan.first, note));
+#line 6 "player_v2.spp"
     return self;
+#line 6 "player_v2.spp"
 }
-
-[[maybe_unused]] static Player_Shell* Player__new()
+#line 187 "player_v2.spp.cpp"
+#line 6 "player_v2.spp"
+[[maybe_unused]] SPP_HIDDEN static Player_Shell* Player__new()
+#line 6 "player_v2.spp"
 {
+#line 6 "player_v2.spp"
     return Player__build(true);
+#line 6 "player_v2.spp"
 }
+#line 196 "player_v2.spp.cpp"
 
+#line 12 "player_v2.spp"
 static void Player__Tick(Actor* a, float dt)
+#line 12 "player_v2.spp"
 {
-    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(a);
+#line 12 "player_v2.spp"
     if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+#line 12 "player_v2.spp"
         spp::stale_call("Player::Tick(float)");
+#line 12 "player_v2.spp"
         return;
+#line 12 "player_v2.spp"
     }
-    [[maybe_unused]] auto* st = state_of(self);
+#line 12 "player_v2.spp"
+    return state_of(static_cast<Player_Shell*>(a))->Tick(std::forward<float>(dt));
+#line 12 "player_v2.spp"
+}
+#line 214 "player_v2.spp.cpp"
+#line 12 "player_v2.spp"
+void PlayerState_g2::Tick(float dt)
+#line 13 "player_v2.spp"
+{
+#line 13 "player_v2.spp"
+    [[maybe_unused, gnu::nodebug]] auto* self = static_cast<Player_Shell*>(this->__spp_owner);
+#line 13 "player_v2.spp"
+    [[maybe_unused, gnu::nodebug]] auto* st = this;
 #line 13 "player_v2.spp"
     self->Move(Vec3(2.0f * st->speed * dt, 0, 0));
 #line 14 "player_v2.spp"
     std::printf("[v2] %s: Tick dt=%.4f pos.x=%.4f health=%.1f shield=%.1f\n",
 #line 15 "player_v2.spp"
     spp::deref(self->Name).c_str(), dt, spp::deref(self->Position).x, st->health, st->shield);
-#line 156 "player_v2.spp.cpp"
+#line 16 "player_v2.spp"
 }
+#line 231 "player_v2.spp.cpp"
 
+#line 18 "player_v2.spp"
 static void Player__TakeDamage_f(Actor* a, float amount)
+#line 18 "player_v2.spp"
 {
-    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(a);
+#line 18 "player_v2.spp"
     if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+#line 18 "player_v2.spp"
         spp::stale_call("Player::TakeDamage(float)");
+#line 18 "player_v2.spp"
         return;
+#line 18 "player_v2.spp"
     }
-    [[maybe_unused]] auto* st = state_of(self);
+#line 18 "player_v2.spp"
+    return state_of(static_cast<Player_Shell*>(a))->TakeDamage_f(std::forward<float>(amount));
+#line 18 "player_v2.spp"
+}
+#line 249 "player_v2.spp.cpp"
+#line 18 "player_v2.spp"
+void PlayerState_g2::TakeDamage_f(float amount)
+#line 19 "player_v2.spp"
+{
+#line 19 "player_v2.spp"
+    [[maybe_unused, gnu::nodebug]] auto* self = static_cast<Player_Shell*>(this->__spp_owner);
+#line 19 "player_v2.spp"
+    [[maybe_unused, gnu::nodebug]] auto* st = this;
 #line 19 "player_v2.spp"
     st->health = Math::Max(st->health - amount, 0.0f);
 #line 20 "player_v2.spp"
     std::printf("[v2] %s: TakeDamage %.1f -> health=%.1f\n", spp::deref(self->Name).c_str(), amount,
 #line 21 "player_v2.spp"
     st->health);
-#line 173 "player_v2.spp.cpp"
+#line 22 "player_v2.spp"
 }
+#line 266 "player_v2.spp.cpp"
 
+#line 24 "player_v2.spp"
 static void Player__TakeDamage_Af(Actor* a, Actor& source, float amount)
+#line 24 "player_v2.spp"
 {
-    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(a);
+#line 24 "player_v2.spp"
     if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+#line 24 "player_v2.spp"
         spp::stale_call("Player::TakeDamage(Actor&, float)");
+#line 24 "player_v2.spp"
         return;
+#line 24 "player_v2.spp"
     }
-    [[maybe_unused]] auto* st = state_of(self);
+#line 24 "player_v2.spp"
+    return state_of(static_cast<Player_Shell*>(a))->TakeDamage_Af(std::forward<Actor&>(source), std::forward<float>(amount));
+#line 24 "player_v2.spp"
+}
+#line 284 "player_v2.spp.cpp"
+#line 24 "player_v2.spp"
+void PlayerState_g2::TakeDamage_Af(Actor& source, float amount)
+#line 25 "player_v2.spp"
+{
+#line 25 "player_v2.spp"
+    [[maybe_unused, gnu::nodebug]] auto* self = static_cast<Player_Shell*>(this->__spp_owner);
+#line 25 "player_v2.spp"
+    [[maybe_unused, gnu::nodebug]] auto* st = this;
 #line 25 "player_v2.spp"
     st->target = spp::deref(source).Name;
 #line 26 "player_v2.spp"
     std::printf("[v2] %s: hit by %s\n", spp::deref(self->Name).c_str(), spp::deref(st->target).c_str());
 #line 27 "player_v2.spp"
     self->TakeDamage(amount);
-#line 190 "player_v2.spp.cpp"
+#line 28 "player_v2.spp"
 }
+#line 301 "player_v2.spp.cpp"
 
+#line 30 "player_v2.spp"
 static void Player__heal(Player_Shell* self, float amount)
+#line 30 "player_v2.spp"
 {
+#line 30 "player_v2.spp"
     if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+#line 30 "player_v2.spp"
         spp::stale_call("Player::heal");
+#line 30 "player_v2.spp"
         return;
+#line 30 "player_v2.spp"
     }
-    [[maybe_unused]] auto* st = state_of(self);
+#line 30 "player_v2.spp"
+    return state_of(self)->heal(std::forward<float>(amount));
+#line 30 "player_v2.spp"
+}
+#line 319 "player_v2.spp.cpp"
+#line 30 "player_v2.spp"
+void PlayerState_g2::heal(float amount)
+#line 31 "player_v2.spp"
+{
+#line 31 "player_v2.spp"
+    [[maybe_unused, gnu::nodebug]] auto* self = static_cast<Player_Shell*>(this->__spp_owner);
+#line 31 "player_v2.spp"
+    [[maybe_unused, gnu::nodebug]] auto* st = this;
 #line 31 "player_v2.spp"
     st->health = Math::Min(st->health + 2.0f * amount, 100.0f);
 #line 32 "player_v2.spp"
     std::printf("[v2] %s: heal %.1f (x2) -> health=%.1f\n", spp::deref(self->Name).c_str(), amount,
 #line 33 "player_v2.spp"
     st->health);
-#line 206 "player_v2.spp.cpp"
+#line 34 "player_v2.spp"
 }
+#line 336 "player_v2.spp.cpp"
 
+#line 30 "player_v2.spp"
 static void Player__heal_slot(Actor* a, float amount)
+#line 30 "player_v2.spp"
 {
+#line 30 "player_v2.spp"
     return Player__heal(static_cast<Player_Shell*>(a), amount);
+#line 30 "player_v2.spp"
 }
+#line 346 "player_v2.spp.cpp"
 
 // ------------------------------------------------------ record and entry
 static void* Player_slots[SLOT_COUNT] = {
@@ -225,12 +359,19 @@ spp::ClassRecord Player_record = {
     &Player__construct, typeid(Player_SuperArgs).name(), nullptr, nullptr, nullptr,
 };
 
-static spp::Instance Player_create()
+#line 6 "player_v2.spp"
+SPP_NODEBUG static spp::Instance Player_create()
+#line 6 "player_v2.spp"
 {
+#line 6 "player_v2.spp"
     spp::ScriptEntry entry;  // the creation is an entry (S27)
+#line 6 "player_v2.spp"
     auto* p = new Player_Shell(spp::Construct{}, std::string("Player"));
+#line 6 "player_v2.spp"
     return {static_cast<Actor*>(p), p};
+#line 6 "player_v2.spp"
 }
+#line 375 "player_v2.spp.cpp"
 
 extern "C" void script_register(spp::Registry& reg)
 {

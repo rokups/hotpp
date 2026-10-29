@@ -5,6 +5,7 @@
 #include <type_traits>
 
 #include "spp/runtime/handles.h"
+#include "spp/runtime/hidden.h"
 
 namespace spp {
 
@@ -14,20 +15,20 @@ namespace spp {
 template <class T>
 struct RefArg {
     T& ref;
-    constexpr operator T&() const noexcept { return ref; }
-    constexpr operator T*() const noexcept { return &ref; }
+    SPP_HIDDEN constexpr operator T&() const noexcept { return ref; }
+    SPP_HIDDEN constexpr operator T*() const noexcept { return &ref; }
     // A handle converts also to the raw pointer of its pointee. A native "Actor*" parameter then
     // takes "ref h" where "h" is a handle to Actor (design 7.10.6). The callee must not keep it.
     template <class P>
         requires(is_handle_v<T> && std::is_pointer_v<P> && !std::is_same_v<P, T*> &&
                  std::is_convertible_v<decltype(std::to_address(std::declval<T&>())), P>)
-    operator P() const
+    SPP_HIDDEN operator P() const
     {
         return std::to_address(ref);
     }
 };
 template <class T>
-constexpr RefArg<T> ref_arg(T& v) noexcept
+SPP_HIDDEN constexpr RefArg<T> ref_arg(T& v) noexcept
 {
     return RefArg<T>{v};
 }

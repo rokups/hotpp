@@ -29,6 +29,9 @@
         "configuration": "./language-configuration.json"
       }
     ],
+    "breakpoints": [
+      { "language": "spp" }
+    ],
     "grammars": [
       {
         "language": "spp",

@@ -125,8 +125,11 @@ TEST(ScriptImportTranslation, CompilerErrorHasRealFileLineColumnAndSnippet)
     ASSERT_NE(at, std::string::npos);
     const int line = 1 + static_cast<int>(std::count(r.cpp.begin(), r.cpp.begin() + static_cast<long>(at), '\n'));
     const int col = static_cast<int>(at - (r.cpp.rfind('\n', at) + 1)) + 1;
-    // Clang prints the position of the "#line" directive: the file and the script line.
-    const std::string clang = "base.spp:4:" + std::to_string(col) + ": error: expected ';'\n    4 | generated\n      | ^\n";
+    // Clang prints the position of the "#line" directive: the file and the script line. It shows
+    // the generated line. Several generated lines can have the same script line.
+    const size_t line_end = r.cpp.find('\n', at);
+    const std::string shown = r.cpp.substr(r.cpp.rfind('\n', at) + 1, line_end - (r.cpp.rfind('\n', at) + 1));
+    const std::string clang = "base.spp:4:" + std::to_string(col) + ": error: expected ';'\n    4 | " + shown + "\n      | ^\n";
     const std::string out = sppc::rewrite_diagnostic(clang, {{"t.spp", kChild}}, {{"/w/t.spp.cpp", r.cpp}}, &r.source_map);
     // "    virtual int Power() { return 1; }": "return" is at column 27.
     EXPECT_EQ(out, "base.spp:4:27: error: expected ';'\n    4 |     virtual int Power() { return 1; }\n");

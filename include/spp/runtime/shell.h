@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "spp/runtime/records.h"
+#include "spp/runtime/hidden.h"
 #include "spp/runtime/threads.h"
 
 namespace spp {
@@ -18,20 +19,21 @@ namespace spp {
 struct ShellBase {
     ClassRecord* cls = nullptr;
     void* state = nullptr;
+    SPP_HIDDEN ShellBase() noexcept {}
 };
 
 // The base of the shell of a script class that has no native base (design 7.10.1). It gives
 // the shell a virtual destructor, so a handle can destroy it through the base.
 struct PlainObject : std::enable_shared_from_this<PlainObject> {
-    PlainObject() = default;
+    SPP_HIDDEN PlainObject() {}
     PlainObject(const PlainObject&) = delete;
     PlainObject& operator=(const PlainObject&) = delete;
-    virtual ~PlainObject() = default;
+    SPP_NODEBUG virtual ~PlainObject() = default;
 };
 
 // True when the record "r" is the class "name" or a script class that derives from it. The
 // walk uses the names, so a record of any generation gives the same answer (design 7.7).
-inline bool record_is(const ClassRecord* r, const char* name)
+SPP_HIDDEN bool record_is(const ClassRecord* r, const char* name)
 {
     for (int depth = 0; r && depth < 64; r = r->super, ++depth)
         if (std::strcmp(r->name, name) == 0) return true;
@@ -41,7 +43,7 @@ inline bool record_is(const ClassRecord* r, const char* name)
 // A call through a slot with an old signature (design 5.3): a native delegate on the thunk of a
 // signature that a reload changed. The runtime logs the first call of each slot and counts the
 // calls (loader.cpp). The call does not run.
-void detached_call(const ClassRecord* cls, unsigned slot);
+SPP_NODEBUG void detached_call(const ClassRecord* cls, unsigned slot);
 uint64_t detached_call_count();
 
 namespace detail {
@@ -54,7 +56,7 @@ struct sig_result<R(P...)> {
 // The result of a detached call: nothing, a value-initialized value, or an exception when the
 // result type has no default value (for example a reference).
 template <class R>
-R detached_result()
+SPP_HIDDEN R detached_result()
 {
     if constexpr (std::is_void_v<R>)
         return;
@@ -70,7 +72,7 @@ R detached_result()
 // The call is a script entry (threads.h). In StopTheWorld mode the entry is one flag check.
 // The entry starts before the read of the slot, so a commit cannot change the slot under it.
 template <class Sig, class... A>
-inline auto call(const ClassRecord* cls, unsigned slot, A&&... a)
+SPP_HIDDEN auto call(const ClassRecord* cls, unsigned slot, A&&... a)
 {
     ScriptEntry entry;
     if (const char* const* keys = cls->slot_keys) [[unlikely]] {
@@ -93,7 +95,7 @@ void note_creator(ShellBase* self, uint32_t generation);
 // (module.h), or in the first generation when there is no core. So every object has the vtable
 // of that module. The caller runs the script constructor on the shell. "note" false skips
 // note_creator: the engine factory uses it, because the engine owns that object.
-inline ShellBase* construct_shell(const ClassRecord* rec, const char* key, const void* args, bool note = true)
+SPP_NODEBUG inline ShellBase* construct_shell(const ClassRecord* rec, const char* key, const void* args, bool note = true)
 {
     const ClassRecord* canon = rec->canonical ? rec->canonical : rec;
     if (!canon->construct)
@@ -111,7 +113,7 @@ inline ShellBase* construct_shell(const ClassRecord* rec, const char* key, const
 // where a handle type is expected (design 7.10.1). "H" is the handle type of the class.
 // A std::shared_ptr handle uses shared_from_this. The object must be owned by a handle.
 template <class H, class S>
-H handle_from_this(S* self)
+SPP_HIDDEN H handle_from_this(S* self)
 {
     if constexpr (requires { typename H::element_type; } && requires { self->shared_from_this(); }) {
         try {
@@ -126,12 +128,12 @@ H handle_from_this(S* self)
 
 // The address of a [value] script object, for a property access on another object.
 template <class T>
-T* value_ptr(T& v)
+SPP_HIDDEN T* value_ptr(T& v)
 {
     return &v;
 }
 template <class T>
-T* value_ptr(T* p)
+SPP_HIDDEN T* value_ptr(T* p)
 {
     return p;
 }
@@ -141,7 +143,7 @@ T* value_ptr(T* p)
 // a reference. The object must be a live script object of the class "cls". Else the
 // helper throws std::runtime_error. A pointer to the shell itself needs no check.
 template <class Shell, class T>
-Shell* shell_of(T* p, const char* cls)
+SPP_HIDDEN Shell* shell_of(T* p, const char* cls)
 {
     if (!p) throw std::runtime_error(std::string("the handle is null: expected a script object of class ") + cls);
     if constexpr (std::is_same_v<T, Shell> || std::is_base_of_v<Shell, T>) {
@@ -157,14 +159,14 @@ Shell* shell_of(T* p, const char* cls)
 }
 template <class Shell, class T>
     requires(!requires(const T& h) { h.get(); })
-Shell* shell_of(T& v, const char* cls)
+SPP_HIDDEN Shell* shell_of(T& v, const char* cls)
 {
     return shell_of<Shell>(&v, cls);
 }
 // A handle of a script object (std::shared_ptr or Intrusive): check the pointee.
 template <class Shell, class H>
     requires requires(const H& h) { h.get(); }
-Shell* shell_of(const H& h, const char* cls)
+SPP_HIDDEN Shell* shell_of(const H& h, const char* cls)
 {
     return shell_of<Shell>(h.get(), cls);
 }
@@ -172,7 +174,7 @@ Shell* shell_of(const H& h, const char* cls)
 // ---- "is" and "as" (design 7.7)
 // The ShellBase of the object behind "p", or null: a null pointer or a native object.
 template <class T>
-const ShellBase* shell_base_of(T* p)
+SPP_HIDDEN const ShellBase* shell_base_of(T* p)
 {
     if (!p) return nullptr;
     if constexpr (std::is_base_of_v<ShellBase, T>)
@@ -186,20 +188,20 @@ const ShellBase* shell_base_of(T* p)
 // "obj is C" of a script class C: the class records of the object, not RTTI. A pointer,
 // a reference and a handle (a type with get()) are accepted. Null gives false.
 template <class T>
-bool is_script(T* p, const char* cls)
+SPP_HIDDEN bool is_script(T* p, const char* cls)
 {
     const ShellBase* s = shell_base_of(p);
     return s && s->cls && record_is(s->cls, cls);
 }
 template <class H>
     requires requires(const H& h) { h.get(); }
-bool is_script(const H& h, const char* cls)
+SPP_HIDDEN bool is_script(const H& h, const char* cls)
 {
     return is_script(h.get(), cls);
 }
 template <class T>
     requires(!std::is_pointer_v<T> && !requires(const T& h) { h.get(); })
-bool is_script(T& v, const char* cls)
+SPP_HIDDEN bool is_script(T& v, const char* cls)
 {
     return is_script(&v, cls);
 }
@@ -208,67 +210,67 @@ bool is_script(T& v, const char* cls)
 // A std::shared_ptr gives a std::shared_ptr of the shell that shares the ownership. Another
 // handle gives the shell pointer, so the handle type of C can take it.
 template <class Shell, class T>
-Shell* as_script(T* p, const char* cls)
+SPP_HIDDEN Shell* as_script(T* p, const char* cls)
 {
     if (!is_script(p, cls)) return nullptr;
     return static_cast<Shell*>(const_cast<ShellBase*>(shell_base_of(p)));
 }
 template <class Shell, class U>
-std::shared_ptr<Shell> as_script(const std::shared_ptr<U>& h, const char* cls)
+SPP_HIDDEN std::shared_ptr<Shell> as_script(const std::shared_ptr<U>& h, const char* cls)
 {
     Shell* s = as_script<Shell>(h.get(), cls);
     return s ? std::shared_ptr<Shell>(h, s) : nullptr;
 }
 template <class Shell, class H>
     requires requires(const H& h) { h.get(); }
-Shell* as_script(const H& h, const char* cls)
+SPP_HIDDEN Shell* as_script(const H& h, const char* cls)
 {
     return as_script<Shell>(h.get(), cls);
 }
 template <class Shell, class T>
     requires(!std::is_pointer_v<T> && !requires(const T& h) { h.get(); })
-Shell* as_script(T& v, const char* cls)
+SPP_HIDDEN Shell* as_script(T& v, const char* cls)
 {
     return as_script<Shell>(&v, cls);
 }
 
 // "obj is T" and "obj as T" of a native class T: dynamic_cast, as in C++.
 template <class T, class U>
-bool is_native(U* p)
+SPP_HIDDEN bool is_native(U* p)
 {
     return dynamic_cast<const T*>(p) != nullptr;
 }
 template <class T, class H>
     requires requires(const H& h) { h.get(); }
-bool is_native(const H& h)
+SPP_HIDDEN bool is_native(const H& h)
 {
     return is_native<T>(h.get());
 }
 template <class T, class U>
     requires(!std::is_pointer_v<U> && !requires(const U& h) { h.get(); })
-bool is_native(U& v)
+SPP_HIDDEN bool is_native(U& v)
 {
     return is_native<T>(&v);
 }
 template <class T, class U>
-T* as_native(U* p)
+SPP_HIDDEN T* as_native(U* p)
 {
     return dynamic_cast<T*>(p);
 }
 template <class T, class U>
-std::shared_ptr<T> as_native(const std::shared_ptr<U>& h)
+SPP_HIDDEN std::shared_ptr<T> as_native(const std::shared_ptr<U>& h)
 {
     return std::dynamic_pointer_cast<T>(h);
 }
 template <class T, class H>
     requires requires(const H& h) { h.get(); }
-T* as_native(const H& h)
+SPP_HIDDEN T* as_native(const H& h)
 {
     return as_native<T>(h.get());
 }
 template <class T, class U>
     requires(!std::is_pointer_v<U> && !requires(const U& h) { h.get(); })
-T* as_native(U& v)
+SPP_HIDDEN T* as_native(U& v)
 {
     return as_native<T>(&v);
 }

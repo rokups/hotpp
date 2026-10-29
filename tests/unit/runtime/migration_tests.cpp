@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <functional>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -471,6 +472,50 @@ TEST(MayHoldCode, FunctionPointersAndStdFunctionHoldCode)
     EXPECT_FALSE(spp::field_flags<int*>() & spp::kMayHoldCode);
     EXPECT_FALSE(spp::field_flags<PlainData>() & spp::kMayHoldCode);
     EXPECT_FALSE(spp::field_flags<int Obj::*>() & spp::kMayHoldCode);  // a data member pointer
+}
+
+// ---- the owner slot (has_owner)
+struct OwnedState {
+    spp::ShellBase* owner;
+    int value;
+};
+spp::FieldInfo owned_fields[] = {
+    mk<int>("value", nullptr, offsetof(OwnedState, value), [](void*, void* f) { new (f) int(7); }),
+};
+spp::StateLayout owned_layout{"Owned", sizeof(OwnedState), alignof(OwnedState), 1, owned_fields, true};
+
+struct PlainState {
+    int first;
+};
+spp::FieldInfo plain_fields[] = {
+    mk<int>("first", nullptr, offsetof(PlainState, first), [](void*, void* f) { new (f) int(42); }),
+};
+spp::StateLayout plain_layout{"Plain", sizeof(PlainState), alignof(PlainState), 1, plain_fields};
+
+TEST(OwnerSlot, InitStateWritesTheOwnerFirstSlot)
+{
+    spp::ClassRecord rec{};
+    rec.name = "Owned";
+    rec.layout = &owned_layout;
+    auto obj = std::make_unique<Fake>();
+    spp::init_state(obj.get(), &rec);
+    ASSERT_NE(obj->state, nullptr);
+    EXPECT_EQ(*reinterpret_cast<spp::ShellBase**>(obj->state), obj.get());
+    EXPECT_EQ(static_cast<OwnedState*>(obj->state)->value, 7);
+    spp::destroy_state(obj.get());
+    EXPECT_EQ(obj->state, nullptr);
+}
+
+TEST(OwnerSlot, InitStateKeepsTheFirstFieldWithoutAnOwner)
+{
+    spp::ClassRecord rec{};
+    rec.name = "Plain";
+    rec.layout = &plain_layout;
+    auto obj = std::make_unique<Fake>();
+    spp::init_state(obj.get(), &rec);
+    ASSERT_NE(obj->state, nullptr);
+    EXPECT_EQ(static_cast<PlainState*>(obj->state)->first, 42);
+    spp::destroy_state(obj.get());
 }
 
 }  // namespace

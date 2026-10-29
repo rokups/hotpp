@@ -1,4 +1,5 @@
 06_script_argument_type.spp:11:41: error: no method or function 'Player.heal' fits these arguments
    11 |     override void Tick(float dt) { this.heal("x"); }
-06_script_argument_type.spp:11:41: note: candidate does not fit: the 1st argument needs 'float', but it has type 'string'
+06_script_argument_type.spp:7:10: note: candidate does not fit: the 1st argument needs 'float', but it has type 'string'
+    7 |     void heal(float amount)  {
 1 error generated.

@@ -17,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "spp/runtime/hidden.h"
 #include "spp/runtime/records.h"
 #include "spp/runtime/shell.h"
 
@@ -27,7 +28,7 @@ void track_object(ShellBase* self);
 void untrack_object(ShellBase* self);
 
 // Allocates a state block for a layout. Returns null when memory is out.
-inline char* alloc_state(const StateLayout* l)
+SPP_HIDDEN char* alloc_state(const StateLayout* l)
 {
     size_t align = l->align;
     size_t size = (l->size + align - 1) / align * align;
@@ -36,7 +37,7 @@ inline char* alloc_state(const StateLayout* l)
 }
 
 // Destroys the fields in reverse order. It does not free the block.
-inline void destroy_fields(const StateLayout* l, char* mem)
+SPP_HIDDEN void destroy_fields(const StateLayout* l, char* mem)
 {
     for (uint32_t i = l->field_count; i-- > 0;) {
         const FieldInfo& f = l->fields[i];
@@ -44,8 +45,14 @@ inline void destroy_fields(const StateLayout* l, char* mem)
     }
 }
 
+// Writes the owner shell into the first slot of a block. The layout must say has_owner.
+SPP_HIDDEN void set_owner(const StateLayout* l, char* mem, ShellBase* self)
+{
+    if (l->has_owner) *reinterpret_cast<ShellBase**>(mem) = self;
+}
+
 // Makes the state block of a new object and runs the field initializers.
-inline void init_state(ShellBase* self, ClassRecord* cls)
+SPP_NODEBUG inline void init_state(ShellBase* self, ClassRecord* cls)
 {
     // A record of a later core module can make the shell (S27). The object uses the canonical record.
     if (cls->canonical) cls = cls->canonical;
@@ -53,6 +60,7 @@ inline void init_state(ShellBase* self, ClassRecord* cls)
     const StateLayout* l = cls->layout;
     char* mem = alloc_state(l);
     if (!mem) throw std::bad_alloc();
+    set_owner(l, mem, self);
     for (uint32_t i = 0; i < l->field_count; ++i) {
         const FieldInfo& f = l->fields[i];
         if (f.init) f.init(mem, mem + f.offset);
@@ -62,7 +70,7 @@ inline void init_state(ShellBase* self, ClassRecord* cls)
 }
 
 // Destroys the fields in reverse order and frees the state block.
-inline void destroy_state(ShellBase* self)
+SPP_NODEBUG inline void destroy_state(ShellBase* self)
 {
     if (!self->state) return;
     ScriptEntry entry;  // design 6.3: a commit must not migrate the object during the destructor
@@ -125,7 +133,7 @@ struct holds_no_code<const T> : holds_no_code<T> {};
 
 // Helpers for the reflection table of generated code. T is the field type.
 template <class T>
-constexpr uint8_t field_flags()
+SPP_HIDDEN constexpr uint8_t field_flags()
 {
     return static_cast<uint8_t>((std::is_trivially_copyable_v<T> ? kTriviallyCopyable : 0) |
                                 (std::is_nothrow_move_constructible_v<T> ? kNothrowMove : 0) |
@@ -135,25 +143,25 @@ constexpr uint8_t field_flags()
 // The flags of a field that holds a [value] script class (design 5.3). The loader looks at the
 // fields of the sub layout for kMayHoldCode, so the flag of the struct itself is not set.
 template <class T>
-constexpr uint8_t value_field_flags()
+SPP_HIDDEN constexpr uint8_t value_field_flags()
 {
     return static_cast<uint8_t>((field_flags<T>() & ~kMayHoldCode) | kScriptStruct);
 }
 
 template <class T>
-inline void move_field(void* dst, const void* src)
+SPP_NODEBUG inline void move_field(void* dst, const void* src)
 {
     new (dst) T(*static_cast<const T*>(src));
 }
 
 template <class T>
-inline void destroy_field(void* field)
+SPP_NODEBUG inline void destroy_field(void* field)
 {
     static_cast<T*>(field)->~T();
 }
 
 template <class T>
-constexpr void (*field_destroyer())(void*)
+SPP_HIDDEN constexpr void (*field_destroyer())(void*)
 {
     if constexpr (std::is_trivially_destructible_v<T>)
         return nullptr;
@@ -178,7 +186,7 @@ inline const char* type_key()
 // The type key of a native container of a [value] script class (design 5.3): "type#hash".
 // "hash" is the hash of the layout of the [value] classes in the type. The text stays valid
 // after the module unloads. A different hash with the same type resets the container.
-const char* layout_keyed(const char* type, const char* hash);
+SPP_NODEBUG const char* layout_keyed(const char* type, const char* hash);
 
 // True when the type key of a field is the typeid name, with or without a layout hash.
 inline bool type_key_matches(const char* key, const char* name)

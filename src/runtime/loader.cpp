@@ -497,7 +497,7 @@ bool Loader::request_reload(Module module, std::string& error)
 
 void Loader::set_sync_mode(SyncMode mode)
 {
-    detail::g_entry_counters.store(kEntryCounters && mode == SyncMode::EntryCounters);
+    detail::store_entry_counters(kEntryCounters && mode == SyncMode::EntryCounters);
 }
 
 SyncMode Loader::sync_mode() const
@@ -563,6 +563,7 @@ bool Loader::commit_locked(std::string& error)
             if (!pc) continue;
             char* b = alloc_state(pc->incoming->layout);
             if (!b) throw std::bad_alloc();
+            set_owner(pc->incoming->layout, b, s);
             work.push_back({s, s->cls->layout, static_cast<char*>(s->state), b, pc});
         }
     } catch (...) {

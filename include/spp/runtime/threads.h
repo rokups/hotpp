@@ -3,6 +3,8 @@
 #include <atomic>
 #include <cstdint>
 
+#include "spp/runtime/hidden.h"
+
 namespace spp {
 
 // The generation that is live now. A generation function checks it.
@@ -47,16 +49,25 @@ inline constexpr bool kEntryCounters = true;
 
 namespace detail {
 // True in EntryCounters mode. Loader::set_sync_mode writes it.
-extern std::atomic<bool> g_entry_counters;
-void enter_script();  // the slow path of ScriptEntry (threads.cpp)
-void leave_script();
+// A plain bool: the accessors below use atomic builtins, so no std frame appears in the debugger.
+extern bool g_entry_counters;
+SPP_HIDDEN bool load_entry_counters()
+{
+    return __atomic_load_n(&g_entry_counters, __ATOMIC_RELAXED);
+}
+SPP_HIDDEN void store_entry_counters(bool value)
+{
+    __atomic_store_n(&g_entry_counters, value, __ATOMIC_SEQ_CST);
+}
+SPP_NODEBUG void enter_script();  // the slow path of ScriptEntry (threads.cpp)
+SPP_NODEBUG void leave_script();
 }  // namespace detail
 
 // True when the process uses the EntryCounters mode.
-inline bool entry_counters_enabled()
+SPP_HIDDEN bool entry_counters_enabled()
 {
     if constexpr (kEntryCounters)
-        return detail::g_entry_counters.load(std::memory_order_relaxed);
+        return detail::load_entry_counters();
     else
         return false;
 }
@@ -65,12 +76,12 @@ inline bool entry_counters_enabled()
 // The constructor can block while a commit runs (EntryCounters mode).
 class ScriptEntry {
 public:
-    ScriptEntry() : counted_(entry_counters_enabled())
+    SPP_HIDDEN ScriptEntry() : counted_(entry_counters_enabled())
     {
         if (counted_) [[unlikely]]
             detail::enter_script();
     }
-    ~ScriptEntry()
+    SPP_HIDDEN ~ScriptEntry()
     {
         if (counted_) [[unlikely]]
             detail::leave_script();
@@ -163,7 +174,7 @@ public:
 #endif
 
 // Called by a generation function when its generation is not live.
-void stale_call(const char* what);
+SPP_NODEBUG void stale_call(const char* what);
 
 // The number of stale calls that the guard ignored since the start.
 uint64_t stale_call_count();
@@ -173,8 +184,8 @@ uint64_t stale_call_count();
 // generation. The counts are atomic: any thread can pin or unpin. A generation
 // number maps to one of 65536 counters; two numbers that are 65536 apart share a
 // counter. This can only delay an unload.
-void pin(uint32_t generation);
-void unpin(uint32_t generation);
+SPP_NODEBUG void pin(uint32_t generation);
+SPP_NODEBUG void unpin(uint32_t generation);
 uint32_t pin_count(uint32_t generation);
 
 }  // namespace spp

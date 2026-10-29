@@ -74,7 +74,7 @@ TEST(NameResolutionLowering, LambdaParameterLeaks)
     Fixture f;
     EXPECT_EQ(f.body("var g = (int* q) => { }; q.x;"),
               "auto g = spp::make_closure(GEN, \"Player::run lambda\", [=](int32_t* q) "
-              "{ [[maybe_unused]] auto* st = state_of(self); }); spp::deref(q).x;");
+              "{ [[maybe_unused, gnu::nodebug]] auto* st = state_of(self); }); spp::deref(q).x;");
 }
 
 TEST(NameResolutionLowering, ForOfVariableIsLocal)

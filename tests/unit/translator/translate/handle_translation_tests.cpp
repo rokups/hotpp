@@ -27,7 +27,8 @@ TEST(HandleTranslation, ParamIsConstRef)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const std::string p = "const std::shared_ptr<Weapon>& src";
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit(Foo_Shell* self, " + p + ");")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "static void Foo__Hit(Foo_Shell* self, " + p + ")\n{")) << r.cpp;
+    // A "#line" directive maps the brace of the generation function to the script line.
+    EXPECT_TRUE(has(r.cpp, "static void Foo__Hit(Foo_Shell* self, " + p + ")\n#line 5 \"t.spp\"\n{")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit_slot(Widget* a, " + p + ")")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit__thunk(Widget* a, " + p + ")")) << r.cpp;
 }

@@ -1,0 +1,7 @@
+using "Actor.h";
+
+class Player : Actor {
+    int hp = 10;
+
+    void hp() { }
+}

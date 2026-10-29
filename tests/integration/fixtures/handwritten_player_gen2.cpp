@@ -53,6 +53,7 @@ struct Player_Shell final : Actor, spp::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct PlayerState_g2 {
+    spp::ShellBase* __spp_owner;  // the runtime writes it (has_owner)
     float health;
     float speed;
     float shield;
@@ -78,7 +79,7 @@ static const spp::FieldInfo Player_fields[] = {
 };
 
 static const spp::StateLayout Player_layout = {
-    "PlayerState_g2", sizeof(PlayerState_g2), alignof(PlayerState_g2), 3, Player_fields,
+    "PlayerState_g2", sizeof(PlayerState_g2), alignof(PlayerState_g2), 3, Player_fields, true,
 };
 
 // ------------------------------------------------- generation functions

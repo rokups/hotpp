@@ -348,8 +348,30 @@ Debug information:
 
 - The generated C++ has `#line` directives. The JIT and `sppc` use `-gline-tables-only`, so the DWARF line table names the `.spp` file. The tests `DebugInfo.*` check this with `llvm-dwarfdump`.
 - The JIT backend registers each object with the debugger through the GDB JIT interface (`llvm::orc::enableDebuggerSupport`). `JitOptions::debugger_support` turns it off. `debugger_support()` and `debugger_error()` tell the result. The test `JitTests.DebuggerGetsObjectWithScriptLines` reads `__jit_debug_descriptor`. LLVM 23 has no `createJITLoaderGDBRegistrar`.
-- `tools/lldb/spp_formatters.py` and `tools/lldb/spp.lldbinit` show state blocks, shells and handles by script name. The command `spp-bt` prints the script frames. `tools/natvis/spp.natvis` does the same for Visual Studio.
+- `tools/lldb/spp_formatters.py` and `tools/lldb/spp.lldbinit` show state blocks, shells and handles by script name. The command `spp-bt` prints the script frames. A synthetic child provider hides `__spp_owner` from the state blocks. `tools/natvis/spp.natvis` does the same for Visual Studio.
 - The pure Python helpers have a test (`PythonLldbFormatters`, `python3 -I`). lldb itself, a real debugger session and Visual Studio were NOT run. The F3 check (breakpoint in `heal`, step, inspect `this.health`) stays open.
+
+### Debugging
+
+What the debugger shows:
+
+- Each script class has a state struct, for example `PlayerState_g1`. Its first member is `spp::ShellBase* __spp_owner` (offset 0, with a `static_assert`).
+- Script methods are members of the state struct. A frame shows `this` (the script fields) and the parameters. The locals `self` and `st` have `[[gnu::nodebug]]`.
+- A thin wrapper function for each method keeps the slot ABI (`Player__Tick(Actor* a, float dt)`). It shows as one extra frame on step-in. Phase 2 will remove it.
+- Every generated line that makes code has a `#line N "script.spp"` before it. Breakpoints and stepping use the `.spp` lines.
+- A name that starts with `__` is internal state. A script field with such a name is a compile error.
+
+For runtime header authors:
+
+- `include/spp/runtime/hidden.h` has two macros. `SPP_HIDDEN` is `always_inline` and `nodebug`: the debugger never sees the function. `SPP_NODEBUG` is `nodebug`: the debugger steps over the function.
+- Put one of them on each runtime helper, so that step-in does not enter it.
+- Clang rejects `#pragma clang attribute` with `nodebug`. The C++ standard library functions (`c_str`, `shared_ptr`, `make_shared`) still show on step-in at `-O0`.
+
+Editors:
+
+- `editors/vscode/package.json` has `contributes.breakpoints` for the language `spp`. The C++ extension (`cppdbg` with gdb, or lldb) works with no custom launch configuration.
+- Option: the gdb setting `skip -gfi "*/include/c++/*"` hides the libstdc++ stops.
+- MSVC and Visual Studio are untested.
 
 ## Language server
 

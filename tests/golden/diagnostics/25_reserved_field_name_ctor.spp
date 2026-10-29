@@ -1,0 +1,8 @@
+using "Actor.h";
+
+class Player : Actor {
+    float speed = 5.0;
+    int ctor = 0;
+
+    override void Tick(float dt) { this.speed = dt; }
+}

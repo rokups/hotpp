@@ -30,44 +30,71 @@ extern spp::ClassRecord Beeper_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Beeper_Shell final : Actor, spp::ShellBase {
+#line 4 "timer_v2.spp"
     template <class... A>
+#line 4 "timer_v2.spp"
     explicit Beeper_Shell(spp::Construct, A&&... a) : Actor(std::forward<A>(a)...)
+#line 4 "timer_v2.spp"
     {
+#line 4 "timer_v2.spp"
         spp::init_state(this, &Beeper_record);
+#line 4 "timer_v2.spp"
     }
+#line 4 "timer_v2.spp"
     ~Beeper_Shell() override { spp::destroy_state(this); }
+#line 46 "timer_v2.spp.cpp"
 
+#line 8 "timer_v2.spp"
     void Tick(float a0) override
+#line 8 "timer_v2.spp"
     {
+#line 8 "timer_v2.spp"
         return spp::call<void(Actor*, float)>(cls, SLOT_Tick, this, a0);
+#line 8 "timer_v2.spp"
     }
+#line 56 "timer_v2.spp.cpp"
 
+#line 4 "timer_v2.spp"
     void TakeDamage(float a0) override
+#line 4 "timer_v2.spp"
     {
+#line 4 "timer_v2.spp"
         return spp::call<void(Actor*, float)>(cls, SLOT_TakeDamage_f, this, a0);
+#line 4 "timer_v2.spp"
     }
+#line 66 "timer_v2.spp.cpp"
 
+#line 4 "timer_v2.spp"
     void TakeDamage(Actor& a0, float a1) override
+#line 4 "timer_v2.spp"
     {
+#line 4 "timer_v2.spp"
         return spp::call<void(Actor*, Actor&, float)>(cls, SLOT_TakeDamage_Af, this, a0, a1);
+#line 4 "timer_v2.spp"
     }
+#line 76 "timer_v2.spp.cpp"
 };
 
 // ---------------------------------------------------------------- state
 struct BeeperState_g2 {
+    spp::ShellBase* __spp_owner;
     int32_t ticks;
     int32_t fired;
+
+    void Tick(float dt);
+    void arm(World& w, float delay);
 };
 
 #line 5 "timer_v2.spp"
 static void Beeper__init_ticks(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 65 "timer_v2.spp.cpp"
+#line 91 "timer_v2.spp.cpp"
 #line 6 "timer_v2.spp"
 static void Beeper__init_fired(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 68 "timer_v2.spp.cpp"
+#line 94 "timer_v2.spp.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+static_assert(offsetof(BeeperState_g2, __spp_owner) == 0, "the owner pointer must be the first member");
 static const spp::FieldInfo Beeper_fields[] = {
     {"ticks", nullptr, typeid(int32_t).name(), offsetof(BeeperState_g2, ticks), sizeof(int32_t),
      alignof(int32_t), spp::field_flags<int32_t>(), Beeper__init_ticks, spp::move_field<int32_t>, spp::field_destroyer<int32_t>()},
@@ -77,11 +104,11 @@ static const spp::FieldInfo Beeper_fields[] = {
 #pragma clang diagnostic pop
 
 static const spp::StateLayout Beeper_layout = {
-    "BeeperState_g2", sizeof(BeeperState_g2), alignof(BeeperState_g2), 2, Beeper_fields,
+    "BeeperState_g2", sizeof(BeeperState_g2), alignof(BeeperState_g2), 2, Beeper_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-static inline BeeperState_g2* state_of(Beeper_Shell* self)
+SPP_HIDDEN BeeperState_g2* state_of(Beeper_Shell* self)
 {
     return static_cast<BeeperState_g2*>(self->state);
 }
@@ -89,88 +116,167 @@ static inline BeeperState_g2* state_of(Beeper_Shell* self)
 static void Beeper__arm(Beeper_Shell* self, World& w, float delay);
 
 #line 4 "timer_v2.spp"
-[[maybe_unused]] static auto Beeper__super_args()
+[[maybe_unused]] SPP_HIDDEN static auto Beeper__super_args()
+#line 4 "timer_v2.spp"
 {
+#line 4 "timer_v2.spp"
     return std::make_tuple(std::string("Beeper"));
+#line 4 "timer_v2.spp"
 }
-static auto Beeper__plan()
+#line 4 "timer_v2.spp"
+SPP_HIDDEN static auto Beeper__plan()
+#line 4 "timer_v2.spp"
 {
+#line 4 "timer_v2.spp"
     return std::make_pair(Beeper__super_args(), std::tuple<>());
+#line 4 "timer_v2.spp"
 }
-#line 101 "timer_v2.spp.cpp"
+#line 135 "timer_v2.spp.cpp"
 using Beeper_SuperArgs = decltype(Beeper__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
-static spp::ShellBase* Beeper__construct(const char* key, const void* args)
+#line 4 "timer_v2.spp"
+SPP_NODEBUG static spp::ShellBase* Beeper__construct(const char* key, const void* args)
+#line 4 "timer_v2.spp"
 {
+#line 4 "timer_v2.spp"
     if (std::strcmp(key, typeid(Beeper_SuperArgs).name()) == 0) {
+#line 4 "timer_v2.spp"
         const auto& t = *static_cast<const Beeper_SuperArgs*>(args);
+#line 4 "timer_v2.spp"
         return std::apply([](const auto&... x) -> spp::ShellBase* { return new Beeper_Shell(spp::Construct{}, x...); }, t);
+#line 4 "timer_v2.spp"
     }
+#line 4 "timer_v2.spp"
     return nullptr;
+#line 4 "timer_v2.spp"
 }
+#line 155 "timer_v2.spp.cpp"
 
 static const char* const Beeper__construct_keys[] = {typeid(Beeper_SuperArgs).name(), nullptr};
 
-static Beeper_Shell* Beeper__build([[maybe_unused]] bool note)
+#line 4 "timer_v2.spp"
+SPP_HIDDEN static Beeper_Shell* Beeper__build([[maybe_unused]] bool note)
+#line 4 "timer_v2.spp"
 {
+#line 4 "timer_v2.spp"
     auto plan = Beeper__plan();
+#line 4 "timer_v2.spp"
     auto* self = static_cast<Beeper_Shell*>(spp::construct_shell(&Beeper_record, typeid(Beeper_SuperArgs).name(), &plan.first, note));
+#line 4 "timer_v2.spp"
     return self;
+#line 4 "timer_v2.spp"
 }
-
-[[maybe_unused]] static Beeper_Shell* Beeper__new()
+#line 171 "timer_v2.spp.cpp"
+#line 4 "timer_v2.spp"
+[[maybe_unused]] SPP_HIDDEN static Beeper_Shell* Beeper__new()
+#line 4 "timer_v2.spp"
 {
+#line 4 "timer_v2.spp"
     return Beeper__build(true);
+#line 4 "timer_v2.spp"
 }
+#line 180 "timer_v2.spp.cpp"
 
+#line 8 "timer_v2.spp"
 static void Beeper__Tick(Actor* a, float dt)
+#line 8 "timer_v2.spp"
 {
-    [[maybe_unused]] auto* self = static_cast<Beeper_Shell*>(a);
+#line 8 "timer_v2.spp"
     if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+#line 8 "timer_v2.spp"
         spp::stale_call("Beeper::Tick(float)");
+#line 8 "timer_v2.spp"
         return;
+#line 8 "timer_v2.spp"
     }
-    [[maybe_unused]] auto* st = state_of(self);
+#line 8 "timer_v2.spp"
+    return state_of(static_cast<Beeper_Shell*>(a))->Tick(std::forward<float>(dt));
+#line 8 "timer_v2.spp"
+}
+#line 198 "timer_v2.spp.cpp"
+#line 8 "timer_v2.spp"
+void BeeperState_g2::Tick(float dt)
+#line 9 "timer_v2.spp"
+{
+#line 9 "timer_v2.spp"
+    [[maybe_unused, gnu::nodebug]] auto* self = static_cast<Beeper_Shell*>(this->__spp_owner);
+#line 9 "timer_v2.spp"
+    [[maybe_unused, gnu::nodebug]] auto* st = this;
 #line 9 "timer_v2.spp"
     st->ticks = st->ticks + 1;
-#line 138 "timer_v2.spp.cpp"
+#line 10 "timer_v2.spp"
 }
+#line 211 "timer_v2.spp.cpp"
 
+#line 12 "timer_v2.spp"
 static void Beeper__arm(Beeper_Shell* self, World& w, float delay)
+#line 12 "timer_v2.spp"
 {
+#line 12 "timer_v2.spp"
     if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+#line 12 "timer_v2.spp"
         spp::stale_call("Beeper::arm");
+#line 12 "timer_v2.spp"
         return;
+#line 12 "timer_v2.spp"
     }
-    [[maybe_unused]] auto* st = state_of(self);
+#line 12 "timer_v2.spp"
+    return state_of(self)->arm(std::forward<World&>(w), std::forward<float>(delay));
+#line 12 "timer_v2.spp"
+}
+#line 229 "timer_v2.spp.cpp"
+#line 12 "timer_v2.spp"
+void BeeperState_g2::arm(World& w, float delay)
 #line 13 "timer_v2.spp"
-    spp::deref(w).AddTimer(delay, spp::make_closure(GEN, "Beeper::arm lambda", [=]() { [[maybe_unused]] auto* st = state_of(self);
+{
+#line 13 "timer_v2.spp"
+    [[maybe_unused, gnu::nodebug]] auto* self = static_cast<Beeper_Shell*>(this->__spp_owner);
+#line 13 "timer_v2.spp"
+    [[maybe_unused, gnu::nodebug]] auto* st = this;
+#line 13 "timer_v2.spp"
+    spp::deref(w).AddTimer(delay, spp::make_closure(GEN, "Beeper::arm lambda", [=]() { [[maybe_unused, gnu::nodebug]] auto* st = state_of(self);
 #line 14 "timer_v2.spp"
         st->fired = st->fired + 10;
 #line 15 "timer_v2.spp"
         std::printf("[timer v2] %s: fired=%d\n", spp::deref(self->Name).c_str(), st->fired);
 #line 16 "timer_v2.spp"
     }));
-#line 156 "timer_v2.spp.cpp"
+#line 17 "timer_v2.spp"
 }
+#line 248 "timer_v2.spp.cpp"
 
 // Not overridden: call the implementation of Actor.
-static void Beeper__fwd_TakeDamage_f(Actor* a, float a0)
+#line 4 "timer_v2.spp"
+SPP_NODEBUG static void Beeper__fwd_TakeDamage_f(Actor* a, float a0)
+#line 4 "timer_v2.spp"
 {
+#line 4 "timer_v2.spp"
     return static_cast<Beeper_Shell*>(a)->Actor::TakeDamage(a0);
+#line 4 "timer_v2.spp"
 }
+#line 259 "timer_v2.spp.cpp"
 
 // Not overridden: call the implementation of Actor.
-static void Beeper__fwd_TakeDamage_Af(Actor* a, Actor& a0, float a1)
+#line 4 "timer_v2.spp"
+SPP_NODEBUG static void Beeper__fwd_TakeDamage_Af(Actor* a, Actor& a0, float a1)
+#line 4 "timer_v2.spp"
 {
+#line 4 "timer_v2.spp"
     return static_cast<Beeper_Shell*>(a)->Actor::TakeDamage(a0, a1);
+#line 4 "timer_v2.spp"
 }
+#line 270 "timer_v2.spp.cpp"
 
+#line 12 "timer_v2.spp"
 static void Beeper__arm_slot(Actor* a, World& w, float delay)
+#line 12 "timer_v2.spp"
 {
+#line 12 "timer_v2.spp"
     return Beeper__arm(static_cast<Beeper_Shell*>(a), w, delay);
+#line 12 "timer_v2.spp"
 }
+#line 280 "timer_v2.spp.cpp"
 
 // ------------------------------------------------------ record and entry
 static void* Beeper_slots[SLOT_COUNT] = {
@@ -187,12 +293,19 @@ spp::ClassRecord Beeper_record = {
     &Beeper__construct, typeid(Beeper_SuperArgs).name(), nullptr, nullptr, nullptr,
 };
 
-static spp::Instance Beeper_create()
+#line 4 "timer_v2.spp"
+SPP_NODEBUG static spp::Instance Beeper_create()
+#line 4 "timer_v2.spp"
 {
+#line 4 "timer_v2.spp"
     spp::ScriptEntry entry;  // the creation is an entry (S27)
+#line 4 "timer_v2.spp"
     auto* p = new Beeper_Shell(spp::Construct{}, std::string("Beeper"));
+#line 4 "timer_v2.spp"
     return {static_cast<Actor*>(p), p};
+#line 4 "timer_v2.spp"
 }
+#line 309 "timer_v2.spp.cpp"
 
 extern "C" void script_register(spp::Registry& reg)
 {

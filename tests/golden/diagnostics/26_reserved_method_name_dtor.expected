@@ -1,0 +1,3 @@
+26_reserved_method_name_dtor.spp:6:5: error: function name 'dtor' is reserved
+    6 |     void dtor() { }
+1 error generated.

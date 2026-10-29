@@ -72,8 +72,12 @@ TEST_P(DiagnosticMistakes, ErrorSpeaksScriptNames)
     }
     EXPECT_EQ(actual, normalize(test_support::read_file(kDir + name + ".expected")));
     // No generated name is left in the lines that name the script.
-    for (const char* generated : {"_Shell", "State_g", "__", "self->", "spp::deref", ".cpp"})
+    // A script that uses "__" in a name of its own can see that name in the error.
+    const bool script_has_dunder = source.text.find("__") != std::string::npos;
+    for (const char* generated : {"_Shell", "State_g", "__", "self->", "spp::deref", ".cpp"}) {
+        if (script_has_dunder && std::string(generated) == "__") continue;
         EXPECT_EQ(actual.find(generated), std::string::npos) << generated << " in:\n" << actual;
+    }
 }
 
 INSTANTIATE_TEST_SUITE_P(Mistakes, DiagnosticMistakes, ::testing::ValuesIn(case_names()),

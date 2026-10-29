@@ -1,0 +1,9 @@
+using "Actor.h";
+
+class Hero : Actor {
+    int hp = 10;
+}
+
+class Knight : Hero {
+    void hp() { }
+}

@@ -4,6 +4,7 @@ The translator makes C++ with generated names. These formatters show the script 
   - a state block "Player_State_g2" or "PlayerState_g2" is shown as "Player"
   - a shell "Player_Shell" and a handle to it are shown as "Player"
   - a frame "Player__heal" is shown as "Player.heal at player.spp:12"
+  - the internal member "__spp_owner" of a state block is hidden from the children
 
 The first part of this file is pure Python. It does not import lldb, so a plain Python test
 can run it (tests/unit/python/test_spp_formatters.py). The second part needs lldb. It runs
@@ -60,6 +61,18 @@ def script_function_name(symbol):
     if a:
         return "%s.%s (%s)" % (cls, a.group(2), "read" if a.group(1) == "get" else "write")
     return "%s.%s" % (cls, member)
+
+
+OWNER_MEMBER = "__spp_owner"
+
+
+def visible_child_indices(names):
+    """Return the real indices of the children to show.
+
+    "names" is the list of the child names of a state block. The member "__spp_owner" is
+    internal. It is the first member (index 0). The function hides it only at index 0.
+    """
+    return [i for i, n in enumerate(names) if not (i == 0 and n == OWNER_MEMBER)]
 
 
 def is_script_file(path):
@@ -140,6 +153,35 @@ def handle_summary_provider(valobj, internal_dict):  # pragma: no cover
     return handle_summary(valobj.GetType().GetName(), "?", null)
 
 
+class StateChildren:  # pragma: no cover - needs lldb
+    """Synthetic children of a state block. It hides the internal member "__spp_owner"."""
+
+    def __init__(self, valobj, internal_dict):
+        self.valobj = valobj
+        self.update()
+
+    def update(self):
+        names = [self.valobj.GetChildAtIndex(i).GetName() or ""
+                 for i in range(self.valobj.GetNumChildren())]
+        self.map = visible_child_indices(names)
+        self.names = [names[i] for i in self.map]
+        return False
+
+    def num_children(self):
+        return len(self.map)
+
+    def get_child_at_index(self, index):
+        if index < 0 or index >= len(self.map):
+            return None
+        return self.valobj.GetChildAtIndex(self.map[index])
+
+    def get_child_index(self, name):
+        return self.names.index(name) if name in self.names else -1
+
+    def has_children(self):
+        return len(self.map) > 0
+
+
 def script_backtrace(debugger, command, result, internal_dict):  # pragma: no cover
     """The command "spp-bt": print the stack of the selected thread with script names."""
     thread = debugger.GetSelectedTarget().GetProcess().GetSelectedThread()
@@ -158,4 +200,6 @@ def __lldb_init_module(debugger, internal_dict):  # pragma: no cover
     debugger.HandleCommand(add % ("shell_summary_provider", r"^(\w+::)*\w+_Shell$"))
     debugger.HandleCommand(add % ("handle_summary_provider",
                                   r"^(std::(__1::)?shared_ptr|spp::Intrusive)<(\w+::)*\w+_Shell.*>$"))
+    debugger.HandleCommand("type synthetic add --regex --python-class %s.StateChildren \"%s\""
+                           % (module, r"^(\w+::)*\w+State_g[0-9]+$"))
     debugger.HandleCommand("command script add -f %s.script_backtrace spp-bt" % module)
