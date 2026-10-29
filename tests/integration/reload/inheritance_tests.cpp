@@ -237,4 +237,56 @@ TEST_P(BackendTests, SuperArgumentsOfAChainEvaluateOneTime)
     EXPECT_EQ(*fld<int>(s, "made"), 3);
 }
 
+// A child of a script class under the slot ABI of the state member (design 4.4 and 4.5).
+// Kid inherits Bump and Twice from Base. Kid overrides the script virtual Power and the native
+// virtuals Tick and TakeDamage. Each override calls the parent version with "super". Kid calls
+// the native method Move. A reload of Kid changes the overrides and adds fields.
+TEST_P(BackendTests, ChildUsesInheritedMethodsNativeBaseAndSuperUnderTheSlotAbi)
+{
+    spp::LoadResult v1 = backend->load(source("abi_child_v1.spp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult v2 = backend->load(source("abi_child_v2.spp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Kid"));
+    s.commit_at_frame_boundary();
+    ASSERT_NE(s.inst.shell->cls->super, nullptr);
+    EXPECT_STREQ(s.inst.shell->cls->super->name, "Base");
+
+    s.world.Tick(kDt);
+    EXPECT_FLOAT_EQ(*fld<float>(s, "moved"), 1.0f);  // the native Move through the child
+    EXPECT_FLOAT_EQ(s.actor->Position.x, 1.0f);
+    EXPECT_EQ(*fld<int>(s, "hits"), 10);         // the inherited Bump
+    EXPECT_EQ(*fld<int>(s, "twice"), 10);        // the inherited Twice calls the virtual Kid.Power (5)
+    EXPECT_EQ(*fld<int>(s, "super_power"), 1);   // super.Power() is Base.Power
+
+    // A native virtual call: native code to the shell, the slot and the Kid override.
+    // Kid.TakeDamage calls Base.TakeDamage with twice the amount.
+    s.actor->TakeDamage(3.0f);
+    EXPECT_FLOAT_EQ(*fld<float>(s, "hp"), 94.0f);
+    EXPECT_EQ(*fld<int>(s, "hits"), 11);
+    EXPECT_EQ(*fld<int>(s, "kid_hits"), 1);
+    s.world.Tick(kDt);
+    EXPECT_FLOAT_EQ(*fld<float>(s, "moved"), 2.0f);
+    EXPECT_EQ(*fld<int>(s, "hits"), 21);
+
+    std::string error;
+    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    s.world.Tick(kDt);  // the commit happens at the end of this frame
+    ASSERT_FALSE(s.commit_failed);
+    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(*fld<int>(s, "twice"), 10);  // the old value stays until the next Tick
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "twice"), 14);  // Twice of Base now calls Kid.Power (7)
+    EXPECT_EQ(*fld<int>(s, "super_power"), 1);
+    EXPECT_EQ(*fld<int>(s, "armor"), 4);   // the new parent field has its initializer
+    EXPECT_EQ(*fld<int>(s, "gen"), 2);     // the new child field
+    EXPECT_FLOAT_EQ(*fld<float>(s, "moved"), 4.0f);
+    s.actor->TakeDamage(2.0f);             // the new override: Base.TakeDamage(6)
+    EXPECT_FLOAT_EQ(*fld<float>(s, "hp"), 88.0f);
+    EXPECT_EQ(*fld<int>(s, "hits"), 42);  // 21 + 10 + 10 + 1
+    EXPECT_EQ(*fld<int>(s, "kid_hits"), 2);
+    EXPECT_EQ(s.inst.shell->cls->super->generation, 2u);
+}
+
 }  // namespace

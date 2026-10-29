@@ -73,3 +73,5 @@ TEST(GoldenTranslation, NativeStd) { golden_pair("native_std"); }
 TEST(GoldenTranslation, Timer) { golden_pair("timer"); }
 
 TEST(GoldenTranslation, Props) { golden_one("props_v1"); }
+
+TEST(GoldenTranslation, AbiChild) { golden_pair("abi_child"); }

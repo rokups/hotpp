@@ -1,0 +1,44 @@
+// Generation 1 of the Base and Kid classes: a script child under the slot ABI of the state member.
+// Kid inherits Bump and Twice from Base. Kid overrides Power, TakeDamage and Tick.
+// Kid calls the parent version with "super". Kid calls the native Move and reads Position.
+using "Actor.h";
+using "Math.h";
+
+class Base : Actor {
+    float hp = 100.0;
+    int hits = 0;
+    int twice = 0;
+
+    virtual int Power() { return 1; }
+
+    int Twice() { return Power() * 2; }
+
+    void Bump() { this.hits = this.hits + 10; }
+
+    override void TakeDamage(float amount) {
+        this.hp = this.hp - amount;
+        this.hits = this.hits + 1;
+    }
+}
+
+class Kid : Base {
+    int kid_hits = 0;
+    float moved = 0.0;
+    int super_power = 0;
+
+    override int Power() { return 5; }
+
+    override void TakeDamage(float amount) {
+        super.TakeDamage(amount * 2.0);
+        this.kid_hits = this.kid_hits + 1;
+    }
+
+    override void Tick(float dt) {
+        super.Tick(dt);
+        this.Move(Vec3(1.0, 0, 0));
+        this.moved = this.Position.x;
+        this.Bump();
+        this.twice = Twice();
+        this.super_power = super.Power();
+    }
+}
