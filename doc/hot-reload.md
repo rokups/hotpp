@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Hot reload
-nav_order: 10
+nav_order: 11
 ---
 
 A reload swaps the code of a running object. The object keeps its field values.

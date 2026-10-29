@@ -80,29 +80,51 @@ class Knight : Actor {
 }
 ```
 
-## ref and out
+## References and pointers
 
-Mark the parameter and the argument with `ref` or `out`. A reference parameter such as `Actor&` is borrowed: use it in the method, but do not store it in a field.
+A parameter `T&` is a reference. The call has no marker: write `f(x)`. A reference is borrowed: use it in the method, but do not store it in a field.
+
+`&x` is the address of `x` and has the type `T*`: write `f(&x)`. `*e` reads through an iterator, an `std.optional`, a smart pointer or a handle. `&h` on a handle is an error: [Native interop](native-interop.html) shows the right forms.
+
+`var& r = x;` and `const var& r = x;` make a reference local. `var r = x;` copies.
 
 ```csharp
+using <vector>;
 using "Actor.h";
 
+class Bullet {
+    int dmg = 1;
+}
+
 class Mover : Actor {
-    void Split(float total, out float half, ref int calls) {
+    Bullet shot = null;
+    int n = 0;
+
+    void Split(float total, float& half, int& calls) {
         half = total / 2.0;
         calls++;
     }
 
-    void Look(Actor& other) {             // borrowed
-        var name = other.Name;
-    }
+    void Make(Bullet& b) { b = new Bullet(); }            // b is the handle itself
 
     override void Tick(float dt) {
         float h = 0.0;
-        int n = 0;
-        this.Split(dt, out h, ref n);
+        int calls = 0;
+        this.Split(dt, h, calls);                         // no marker
+        this.Make(this.shot);
+
+        var& r = this.n;                                  // a reference, not a copy
+        r = 2;
+        var copy = this.n;
+        std.vector<int> xs = std.vector<int>();
+        foreach (var& x in xs) x = x + copy;
+        foreach (const var& x in xs) calls += x;
     }
 }
 ```
+
+A `T&` of a script class is a reference to the handle, so the callee can rebind it. A single `T*` of a script class is an error: write `T`. A native handle type keeps the raw `T&` and `T*`.
+
+[Borrowing](borrowing.html) lists every place where a reference or a pointer is allowed.
 
 Not supported: generics in script code, `?.`, `::`, `->` and brace initializers. Write `T(args)` instead of `T{args}`.

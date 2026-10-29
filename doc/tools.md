@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Tools
-nav_order: 13
+nav_order: 14
 ---
 
 `spp-ls` is the language server. The VS Code extension starts it.

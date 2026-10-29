@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Native interop
-nav_order: 9
+nav_order: 10
 ---
 
 A script calls engine code directly. There is no wrapper code.
@@ -45,48 +45,79 @@ using "Actor.h";
 class Hitter : Actor {
     void Hit(Actor& other) {
         other.TakeDamage(5.0);
-        other.TakeDamage(this, 2.0);
+        other.TakeDamage(*this, 2.0);
         other.Move(Vec3(1, 0, 0));
         var name = other.Name;          // a copy of the member
     }
 }
 ```
 
-## ref and out
+## Native API patterns
 
-Mark the parameter and the argument. The native side gets a reference.
+The translator reads the native signature. You write the call in the plain form.
+
+```cpp
+// Armory.h (engine)
+struct Armory {
+    bool Damage(int id, int& dmg);           // out-parameter
+    Weapon* Best();                          // can return nullptr
+    bool Find(int id, Weapon** out);         // out-pointer
+    std::optional<int> Pick(int id);
+    std::shared_ptr<Vec3> Origin();
+    void Hit(const Weapon& w);
+    void Use(Weapon* w);
+    std::vector<int> ids;
+};
+```
 
 ```csharp
-using "Actor.h";
+using "Armory.h";
+using <vector>;
 
-class Mover : Actor {
-    void Split(float total, out float half, ref int calls) {
-        half = total / 2.0;
-        calls++;
-    }
+[native, handle("std::shared_ptr<$T>")] class Weapon;
 
-    override void Tick(float dt) {
-        float h = 0.0;
-        int n = 0;
-        this.Split(dt, out h, ref n);
+class Shop : Actor {
+    int total = 0;
+
+    void Run(Armory& a, Weapon h) {
+        int dmg = 0;
+        if (a.Damage(7, dmg)) this.total += dmg;       // T& out-parameter: no marker
+
+        Weapon* best = a.Best();                       // T* result: compare with null
+        if (best != null) this.total += best.dmg;
+
+        Weapon* w = null;
+        if (a.Find(7, &w)) this.total += w.dmg;        // Weapon** takes &w
+
+        var it = a.ids.begin();
+        this.total += *it;                             // iterator
+
+        var o = a.Pick(3);
+        if (o.has_value()) this.total += *o;           // std.optional
+
+        var p = a.Origin();
+        float x = (*p).x;                              // smart pointer
+
+        a.Hit(*h);                                     // handle to const T&
+        a.Use(&*h);                                    // handle to T*
     }
 }
 ```
 
+`&h` on a handle is an error. Pass `h` for a handle parameter, `&*h` for a `T*` and `*h` for a `T&`. `.` on a handle always means a member of the pointee, so `h.get()` calls `get` of the pointee. Inside a method, `this` is a handle for a handle parameter. For a native `Actor&` parameter, write `*this`. A `T&` parameter of a script class takes a variable, not `this`: write `Hero me = this;` first.
+
 ## Types with operator->
 
-`.` works on a value, a pointer and a reference. It does not work on a type that has `operator->`: a smart pointer, an iterator or `std::optional`. Call `.get()` first.
+`.` works on a value, a pointer, a reference and a `std.shared_ptr`. It does not work on an iterator, a `std.optional` or a `std.unique_ptr`. Write `(*p).x` for these types.
 
 ```csharp
 using <memory>;
 using "Actor.h";
 
 class Holder : Actor {
-    std.unique_ptr<Actor> p;
-
-    void Run() {
-        // this.p.Position.x does not compile
-        float x = this.p.get().Position.x;
+    void Run(std.unique_ptr<Actor>& p) {
+        // p.Position.x does not compile
+        float x = (*p).Position.x;
     }
 }
 ```

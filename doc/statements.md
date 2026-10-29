@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Statements
-nav_order: 7
+nav_order: 8
 ---
 
 Statements look like C#, with C++ names and `.` for scope.
@@ -47,7 +47,7 @@ class Speed {
 
 ## foreach
 
-`foreach` walks a container. Use `var` or a type, with or without `const`.
+`foreach` walks a container. `var x` and `T x` copy each element. `var& x` and `const var& x` bind a reference to the element.
 
 ```csharp
 using <vector>;
@@ -57,7 +57,12 @@ class Sum {
         int sum = 0;
         foreach (var x in xs) sum += x;
         foreach (const int y in xs) sum += y;
+        foreach (const var& z in xs) sum += z;     // no copy
         return sum;
+    }
+
+    void Double(std.vector<int>& xs) {
+        foreach (var& x in xs) x = x * 2;          // changes the element
     }
 }
 ```
@@ -107,13 +112,14 @@ class Hud : Actor {
 
 ## Casts
 
-Use the C++ cast operators. A C style cast `(int)x` is not supported.
+A C style cast `(T)e` works for a builtin type (`(int)f`) and for a name with `*` or `&` (`(Foo*)p`). For any other type, use `static_cast<T>(e)`.
 
 ```csharp
 class Caster {
     void Run(float f) {
         int i = static_cast<int>(f * 100.0);
         float g = static_cast<float>(i);
+        var h = (float)i;                // C style cast
         var k = int(f);                  // function style
     }
 }

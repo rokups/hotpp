@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Module level
-nav_order: 6
+nav_order: 7
 ---
 
 The top of a script file can hold imports, enums, structs, variables and native stubs.
@@ -16,7 +16,7 @@ using "Actor.h";               // native header
 using <string>;                // standard header
 
 class Grunt : Unit {
-    Grunt(int r) : super(r + 1) { }
+    Grunt(int r) : base(r + 1) { }
 }
 ```
 

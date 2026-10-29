@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Diagnostics
-nav_order: 11
+nav_order: 12
 ---
 
 The tools show errors at the script line, with script names.

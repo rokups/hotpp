@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Classes
-nav_order: 4
+nav_order: 5
 ---
 
 A class holds fields and methods. Use `this.` to reach a member.

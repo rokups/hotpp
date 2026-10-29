@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Embedding
-nav_order: 12
+nav_order: 13
 ---
 
 The host loads scripts with a `Loader`. A development build compiles them. An AOT build links them.
@@ -74,7 +74,7 @@ Script names and class names must be unique. Do not link `spp_runtime` and `spp_
 
 ## CMake
 
-`spp_add_scripts` runs `sppc` for one generation. `spp_add_aot_scripts` runs `sppc --aot` and makes a static library. `spp_script_host` tells `spp-ls` how the engine compiles the scripts. The first two call it for you.
+`spp_add_scripts` runs `sppc` for one generation. With `AOT` it runs `sppc --aot` and makes a static library. `PRELUDES` works only with `AOT`. `spp_script_host` tells `spp-ls` how the engine compiles the scripts. `spp_add_scripts` calls it for you.
 
 ```cmake
 include(cmake/SppScripts.cmake)
@@ -82,8 +82,8 @@ include(cmake/SppScripts.cmake)
 spp_add_scripts(TARGET pre_gen1 GEN 1 SCRIPTS example/scripts/player_v1.spp
                 INCLUDES include example/engine)
 
-spp_add_aot_scripts(TARGET game_scripts SCRIPTS player.spp boss.spp
-                        INCLUDES include example/engine)
+spp_add_scripts(TARGET game_scripts SCRIPTS player.spp boss.spp AOT
+                INCLUDES include example/engine)
 target_link_libraries(game PRIVATE game_scripts)
 
 spp_script_host(NAME game TARGET game_engine

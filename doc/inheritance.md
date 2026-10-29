@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Inheritance
-nav_order: 5
+nav_order: 6
 ---
 
 A script class can derive from native classes and from other script classes.
@@ -23,7 +23,7 @@ class Player : Actor {
 
 ## Several native bases
 
-The first base is the main base. The other bases are interfaces. Implement each pure virtual method with `override`. `super.` calls the interface code.
+The first base is the main base. The other bases are interfaces. Implement each pure virtual method with `override`. `base.` calls the interface code.
 
 ```csharp
 using "Actor.h";
@@ -36,13 +36,13 @@ class Boss : Actor, IDamageable {
         this.hp = this.hp - amount;
         return this.hp;
     }
-    int BaseArmor() { return super.Armor(); }
+    int BaseArmor() { return base.Armor(); }
 }
 ```
 
 ## Script parent
 
-A script class can derive from a script class. `virtual` opens a method for overrides. `super(...)` calls the parent constructor. `new` hides a parent method instead of replacing it.
+A script class can derive from a script class. `virtual` opens a method for overrides. `base(...)` calls the parent constructor. `new` hides a parent method instead of replacing it.
 
 ```csharp
 using "Actor.h";
@@ -50,7 +50,7 @@ using "Actor.h";
 class Unit : Actor {
     int hp = 100;
 
-    Unit(int start) : super(std.string("unit")) { this.hp = start; }
+    Unit(int start) : base(std.string("unit")) { this.hp = start; }
     virtual int Power() { return 1; }
     int Attack() { return Power() * 10; }
 }
@@ -58,9 +58,9 @@ class Unit : Actor {
 class Grunt : Unit {
     int rage = 3;
 
-    Grunt(int start, int r) : super(start + 1) { this.rage = r; }
+    Grunt(int start, int r) : base(start + 1) { this.rage = r; }
     override int Power() { return this.rage * 2; }
-    new int Attack() { return super.Attack() + 1; }
+    new int Attack() { return base.Attack() + 1; }
 }
 ```
 
@@ -73,7 +73,7 @@ using "parent.spp";
 using "Actor.h";
 
 class Grunt : Unit {
-    Grunt(int r) : super(r + 1) { }
+    Grunt(int r) : base(r + 1) { }
 }
 ```
 

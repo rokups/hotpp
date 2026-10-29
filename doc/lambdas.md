@@ -1,14 +1,14 @@
 ---
 layout: default
 title: Lambdas
-nav_order: 8
+nav_order: 9
 ---
 
-A lambda is an arrow function with a block body. It captures by value.
+A lambda is an arrow function with a block body or an expression body. It captures by value.
 
 ## Syntax
 
-The form is `(params) => { body }`. The body must be a block. An expression body is an error. A lambda can go to a `std.function` parameter or a native timer.
+The form is `(params) => { body }` or `(params) => expression`. The expression form means `{ return expression; }`. A lambda can go to a `std.function` parameter or a native timer.
 
 ```csharp
 using "Actor.h";
@@ -25,7 +25,7 @@ class Calc : Actor {
         int k = 3;
         std.function<int(int)> twice = (int x) => { return x * 2 + k; };
         this.total = this.Apply(twice, 4);
-        this.total = this.Apply((int x) => { return x + 1; }, 4);
+        this.total = this.Apply((int x) => x + 1, 4);          // expression body
     }
 }
 ```
