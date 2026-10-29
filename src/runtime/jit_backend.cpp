@@ -229,7 +229,8 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
     sppc::TranslateResult tr = sppc::translate(to, *opt_.session);
     timings_.translate_ms = ms_since(t0);
     if (!tr.ok) {
-        r.error = tr.diagnostics;
+        r.error = opt_.raw_diagnostics ? tr.diagnostics
+                                       : sppc::rewrite_translator_diagnostic(tr.diagnostics, {{source.name, source.text}});
         return r;
     }
 
@@ -238,7 +239,8 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
     timings_.compile_ms = ms_since(t0);
     if (!c.module) {
         if (!opt_.raw_diagnostics)
-            c.diagnostics = sppc::rewrite_diagnostic(c.diagnostics, {{source.name, source.text}}, {{cpp_path, tr.cpp}});
+            c.diagnostics = sppc::rewrite_diagnostic(c.diagnostics, {{source.name, source.text}}, {{cpp_path, tr.cpp}},
+                                                  &tr.source_map);
         r.error = c.diagnostics + "the compile of " + source.name + " failed\n";
         return r;
     }

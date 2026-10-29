@@ -206,3 +206,58 @@ TEST(DiagRewrite, RewriteTwiceGivesTheSameText)
     const std::string once = rewrite_diagnostic(in);
     EXPECT_EQ(rewrite_diagnostic(once), once);
 }
+
+// The rewriter with a source map: the column of a script location is the real one.
+TEST(DiagRewrite, SourceMapGivesTheScriptColumn)
+{
+    // Script line 2: "  go(total);" - "total" starts at column 6.
+    const std::string script = "class A {\n  go(total);\n}\n";
+    const std::string gen = "#line 2 \"a.spp\"\n    go(total);\n";
+    sppc::SourceMap map;
+    map.add({static_cast<uint32_t>(script.find("total")), 5, static_cast<uint32_t>(gen.find("total")), 5});
+    map.build(script, gen);
+    // Clang reports the generated column: "total" is at column 8 of the physical line 2.
+    const std::string in = "a.spp:2:8: error: use of undeclared identifier 'total'\n";
+    EXPECT_EQ(rewrite_diagnostic(in, {{"a.spp", script}}, {{"a.cpp", gen}}, &map),
+              "a.spp:2:6: error: unknown name 'total': it is not a local, a parameter, a field or a type\n");
+}
+
+TEST(DiagRewrite, WithoutSegmentTheColumnStaysOne)
+{
+    const std::string script = "class A {\n  go(total);\n}\n";
+    const std::string gen = "#line 2 \"a.spp\"\n    go(total);\n";
+    sppc::SourceMap map;
+    map.add({static_cast<uint32_t>(script.find("total")), 5, static_cast<uint32_t>(gen.find("total")), 5});
+    map.build(script, gen);
+    // Column 13 is the ")" after the mapped name: no segment at or after it.
+    const std::string in = "a.spp:2:13: error: expected ';'\n";
+    EXPECT_EQ(rewrite_diagnostic(in, {{"a.spp", script}}, {{"a.cpp", gen}}, &map), "a.spp:2:1: error: expected ';'\n");
+    // No map: the column is 1.
+    EXPECT_EQ(rewrite_diagnostic("a.spp:2:8: error: expected ';'\n", {{"a.spp", script}}, {{"a.cpp", gen}}),
+              "a.spp:2:1: error: expected ';'\n");
+}
+
+TEST(DiagRewrite, TranslatorDiagnosticGetsSnippetAndCount)
+{
+    const std::string script = "class A {\n  int x = ;\n}\n";
+    EXPECT_EQ(sppc::rewrite_translator_diagnostic("a.spp:2:11: error: expected an expression\n", {{"a.spp", script}}),
+              "a.spp:2:11: error: expected an expression\n"
+              "    2 |   int x = ;\n"
+              "1 error generated.\n");
+}
+
+TEST(DiagRewrite, TranslatorDiagnosticKeepsOtherLinesAndCountsAll)
+{
+    const std::string script = "class A {\n  int x = ;\n}\n";
+    const std::string in = "a.spp:2:11: error: one\nsppc: error: two\nh.h:3:1: error: three\n"
+                           "a.spp:1:1: warning: four\n";
+    EXPECT_EQ(sppc::rewrite_translator_diagnostic(in, {{"a.spp", script}}),
+              "a.spp:2:11: error: one\n"
+              "    2 |   int x = ;\n"
+              "sppc: error: two\n"
+              "h.h:3:1: error: three\n"
+              "a.spp:1:1: warning: four\n"
+              "    1 | class A {\n"
+              "1 warning and 3 errors generated.\n");
+    EXPECT_EQ(sppc::rewrite_translator_diagnostic("", {{"a.spp", script}}), "");
+}

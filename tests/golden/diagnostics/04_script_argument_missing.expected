@@ -1,4 +1,4 @@
-04_script_argument_missing.spp:11:1: error: no method or function 'Player.heal' fits these arguments
+04_script_argument_missing.spp:11:41: error: no method or function 'Player.heal' fits these arguments
    11 |     override void Tick(float dt) { this.heal(); }
-04_script_argument_missing.spp:11:1: note: candidate does not fit: takes 1 argument, but 0 were given
+04_script_argument_missing.spp:11:41: note: candidate does not fit: takes 1 argument, but 0 were given
 1 error generated.

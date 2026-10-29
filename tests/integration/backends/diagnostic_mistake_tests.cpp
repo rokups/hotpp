@@ -5,11 +5,14 @@
 // The test loads the script with the backend that SPP_BACKEND selected. The text of the error
 // must equal the expected file. The source directory shows as "<src>". The last line of the
 // error ("the compile of ... failed") is not part of the expected text.
-// To change a golden file, run sppc on the script, look at the result and copy it.
+// To change a golden file, set SPP_UPDATE_GOLDEN: the test writes the error text of the run
+// (without the "the compile of" line) and still compares. Look at the diff before you commit.
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -57,6 +60,16 @@ TEST_P(DiagnosticMistakes, ErrorSpeaksScriptNames)
     const spp::LoadResult r = backend->load(source, 1);
     ASSERT_FALSE(r) << "the script must not compile";
     const std::string actual = normalize(r.error);
+    if (std::getenv("SPP_UPDATE_GOLDEN")) {
+        std::string text = r.error;
+        for (size_t p = text.find(SPP_SOURCE_DIR); p != std::string::npos; p = text.find(SPP_SOURCE_DIR, p))
+            text.replace(p, std::string(SPP_SOURCE_DIR).size(), "<src>");
+        std::istringstream in(text);
+        std::string out;
+        for (std::string l; std::getline(in, l);)
+            if (l.rfind("the compile of ", 0) != 0) out += l + "\n";
+        std::ofstream(kDir + name + ".expected") << out;
+    }
     EXPECT_EQ(actual, normalize(test_support::read_file(kDir + name + ".expected")));
     // No generated name is left in the lines that name the script.
     for (const char* generated : {"_Shell", "State_g", "__", "self->", "spp::deref", ".cpp"})

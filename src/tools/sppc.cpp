@@ -127,6 +127,18 @@ Args parse_args(int argc, char** argv)
     return r;
 }
 
+// Prints the errors and the warnings of the translator. The default form is the form of a
+// rewritten compiler diagnostic. --raw-diagnostics prints the text as it is.
+void print_diagnostics(const Args& args, const sppc::TranslateOptions& opt, const sppc::TranslateResult& r)
+{
+    sppc::ScriptTexts scripts{{opt.script_name, opt.script_text}};
+    scripts.insert(scripts.end(), opt.modules.begin(), opt.modules.end());
+    for (const std::string* text : {&r.diagnostics, &r.warnings}) {
+        const std::string out = args.raw_diagnostics ? *text : sppc::rewrite_translator_diagnostic(*text, scripts);
+        std::fputs(out.c_str(), stderr);
+    }
+}
+
 // The C++ identifier of a script name: letters, digits and "_".
 std::string identifier(const std::string& stem)
 {
@@ -190,8 +202,7 @@ int run_ship(const Args& args)
             continue;
         }
         sppc::TranslateResult r = sppc::translate(opt, session);
-        std::fputs(r.diagnostics.c_str(), stderr);
-        std::fputs(r.warnings.c_str(), stderr);
+        print_diagnostics(args, opt, r);
         if (!r.ok) {
             failed = true;
             continue;
@@ -246,8 +257,7 @@ int run_emit(const Args& args)
     if (!args.slots.empty()) read_file(args.slots, opt.slots_in);  // a missing slot file is empty
 
     sppc::TranslateResult r = sppc::translate(opt);
-    std::fputs(r.diagnostics.c_str(), stderr);
-    std::fputs(r.warnings.c_str(), stderr);
+    print_diagnostics(args, opt, r);
     if (!r.ok) return 1;
 
     if (args.output.empty()) {

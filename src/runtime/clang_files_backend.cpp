@@ -164,7 +164,8 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation,
     read_text(opt_.slots_file, to.slots_in);  // a missing file means the first generation
     sppc::TranslateResult tr = sppc::translate(to, *opt_.session);
     if (!tr.ok) {
-        error = tr.diagnostics;
+        error = opt_.raw_diagnostics ? tr.diagnostics
+                                     : sppc::rewrite_translator_diagnostic(tr.diagnostics, {{source.name, source.text}});
         return false;
     }
     if (!write_text(cpp_path, tr.cpp)) {
@@ -177,7 +178,8 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation,
     std::string output;
     const int rc = run_command(cmd, output);
     if (rc != 0) {
-        if (!opt_.raw_diagnostics) output = sppc::rewrite_diagnostic(output, {{source.name, source.text}}, {{cpp_path, tr.cpp}});
+        if (!opt_.raw_diagnostics) output = sppc::rewrite_diagnostic(output, {{source.name, source.text}}, {{cpp_path, tr.cpp}},
+                                                  &tr.source_map);
         error = output + "the compile of " + source.name + " failed (exit code " +
                 std::to_string(rc) + ")\n";
         return false;

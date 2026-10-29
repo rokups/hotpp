@@ -338,7 +338,8 @@ Diagnostics (S11, design 4.2 and 4.12):
 
 - `sppc::rewrite_diagnostic(text, scripts, generated)` is a pure function in the translator library. It changes the Clang text to script names (`Player_Shell` to `Player`, `Player__heal` to `Player.heal`, `int32_t` to `int`). It does not count the hidden `self` argument. It gives a plain message for the common mistakes (the table is in `src/translator/diag_rewrite.cpp`). It shows the script line in place of the generated line.
 - Both backends and `sppc` use it. `raw_diagnostics` in the backend options and `sppc --raw-diagnostics` keep the compiler text.
-- The column of a script location is always 1. `#line` does not map the column.
+- `#line` has no column in standard C++, so the generated C++ keeps `#line N "file"` only. The rewriter takes an optional `SourceMap` (the backends pass `TranslateResult::source_map`). It finds the generated line from the `#line` directives, maps the Clang column through the map, and prints the real script column. If the map has no segment for the column, the column is 1. Without a map the column is 1.
+- `sppc::rewrite_translator_diagnostic(text, scripts)` gives the translator errors (parse, check, libclang facts) the same final form: `script:line:col: error: message`, the script line in the gutter form, and the count line (`1 error generated.`). `sppc` and both backends use it. `--raw-diagnostics` keeps the plain translator text.
 - The backends compile with `-Werror=return-type`. A missing `return` is an error.
 - The translator errors do not pass through the rewriter.
 - The golden cases are in `tests/golden/diagnostics/` (21 mistakes). The test is `DiagnosticMistakes`.

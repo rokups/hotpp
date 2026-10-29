@@ -107,6 +107,7 @@ Other limits:
 - Nesting limits: 64 nested statements, 15 nested lambdas, 256 operators in one expression.
 - Shipping mode: generation 1 only, no slot file. A type error shows in the C++ compile of the generated file. Script type and class names must be unique over all shipped scripts. `onReload` and `convert` never run.
 - Language server: after a translation error, clangd keeps the last good C++. The column of a `#line` fallback is 0.
+- Diagnostic columns: the rewriter uses the source map for the script column. A column in text that the translator writes by itself (for example `spp::deref(`) has no segment: the rewriter then takes the next mapped column of the same line, or 1. An imported script has no segments, so its column is 1.
 
 ## Parser
 The grammar uses lexy. Only the files in `src/translator/parser/` include lexy headers. Keep each grammar in its own file (they compile slowly: about 3 to 6 s each in Debug).

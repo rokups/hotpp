@@ -1,3 +1,3 @@
-13_void_used_as_value.spp:11:1: error: the method returns void: its result is not a value
+13_void_used_as_value.spp:11:40: error: the method returns void: its result is not a value
    11 |     override void Tick(float dt) { int x = this.heal(1.0); }
 1 error generated.

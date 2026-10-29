@@ -108,6 +108,35 @@ TEST(SppcTool, EmitCppModeTranslatesWithoutCompiling)
     EXPECT_NE(read_file(out).find("spp::deref"), std::string::npos);  // the #line names differ
 }
 
+// A translator error (here a parse error) has the final form of a rewritten compiler error:
+// script path, line, real column, the script line, and the count line. --raw-diagnostics keeps
+// the plain translator text.
+TEST(SppcTool, TranslatorErrorHasTheFinalForm)
+{
+    const std::string script = std::string(SPP_BINARY_DIR) + "/sppc_final_form.spp";
+    {
+        std::ofstream f(script);
+        f << "class Foo {\n    void Run() { int x = ; }\n}\n";
+    }
+    std::string text, raw;
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "' --gen 1 2>&1", text), 1);
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script +
+                              "' --gen 1 --raw-diagnostics 2>&1",
+                          raw),
+              1);
+    const size_t at = text.find(":2:");
+    ASSERT_NE(at, std::string::npos) << text;
+    EXPECT_EQ(text.compare(0, script.size(), script), 0) << text;
+    EXPECT_EQ(text.compare(at, 3, ":2:"), 0);
+    EXPECT_NE(text.find("\n    2 |     void Run() { int x = ; }\n"), std::string::npos) << text;
+    EXPECT_NE(text.find("1 error generated."), std::string::npos) << text;
+    // The column is the real one, not 1.
+    EXPECT_EQ(text.find(":2:1:"), std::string::npos) << text;
+    EXPECT_NE(raw.find(":2:"), std::string::npos) << raw;
+    EXPECT_EQ(raw.find("|"), std::string::npos) << raw;
+    EXPECT_EQ(raw.find("generated."), std::string::npos) << raw;
+}
+
 // sppc -o x.so builds one library. A mode flag of the other mode gives a usage error.
 TEST(SppcTool, OutputOptionBuildsOneLibrary)
 {

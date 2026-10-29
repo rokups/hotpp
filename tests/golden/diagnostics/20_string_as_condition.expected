@@ -1,4 +1,4 @@
-20_string_as_condition.spp:11:1: error: cannot convert 'std.string' to 'bool'
+20_string_as_condition.spp:11:40: error: cannot convert 'std.string' to 'bool'
    11 |     override void Tick(float dt) { if (this.Name) { } }
-20_string_as_condition.spp:11:1: note: 1 note in system headers hidden (use --raw-diagnostics to see them)
+20_string_as_condition.spp:11:40: note: 1 note in system headers hidden (use --raw-diagnostics to see them)
 1 error generated.

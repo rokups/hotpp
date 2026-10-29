@@ -1,4 +1,4 @@
-16_native_argument_type.spp:11:1: error: cannot convert 'int' to 'Vec3'
+16_native_argument_type.spp:11:46: error: cannot convert 'int' to 'Vec3'
    11 |     override void Tick(float dt) { this.Move(5); }
 <src>/example/engine/Actor.h:10:8: note: candidate constructor (the implicit copy constructor) not viable: no known conversion from 'int' to 'const Vec3 &' for 1st argument
    10 | struct Vec3 {

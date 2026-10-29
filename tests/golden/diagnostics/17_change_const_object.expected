@@ -1,4 +1,4 @@
-17_change_const_object.spp:11:1: error: 'clear' changes the object, but the object is const (type 'const std.string')
+17_change_const_object.spp:11:61: error: 'clear' changes the object, but the object is const (type 'const std.string')
    11 |     override void Tick(float dt) { const std.string s = ""; s.clear(); }
-17_change_const_object.spp:11:1: note: 1 note in system headers hidden (use --raw-diagnostics to see them)
+17_change_const_object.spp:11:61: note: 1 note in system headers hidden (use --raw-diagnostics to see them)
 1 error generated.

@@ -254,3 +254,20 @@ TEST(SourceMapTranslation, MemberNameAfterThisMapsToTheScript)
     EXPECT_EQ(r.source_map.map_to_script(g, 20), (SourcePos{5, 26}));
     EXPECT_EQ(r.source_map.map_to_generated(5, 15), (SourcePos{g, 10}));
 }
+
+// The map keeps the real script column of an expression, also at a column other than 1.
+TEST(SourceMapTranslation, ExpressionMapsToItsRealScriptColumn)
+{
+    const sppc::TranslateResult r = translate_script(kScript);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const int g = line_of(r.cpp, "    int64_t total = hits + 2;");
+    ASSERT_GT(g, 0) << r.cpp;
+    // "hits" in "hits + 2": generated col 21, script col 22 (8 spaces of indent).
+    const std::optional<SourcePos> p = r.source_map.map_to_script(g, 21);
+    ASSERT_TRUE(p.has_value());
+    EXPECT_EQ(p->line, 5);
+    EXPECT_EQ(p->col, 22);
+    const std::optional<SourcePos> back = r.source_map.map_to_generated(5, 22);
+    ASSERT_TRUE(back.has_value());
+    EXPECT_EQ(*back, (SourcePos{g, 21}));
+}

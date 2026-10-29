@@ -173,7 +173,10 @@ using ScriptTexts = std::vector<std::pair<std::string, std::string>>;
 //   - A common mistake gets a plain message (the table is in diag_rewrite.cpp).
 //   - A source line from the generated code is not shown. If "scripts" has the text of the
 //     script, the line of the script replaces it. The caret line is dropped.
-//   - The column of a script location is 1: the generated column has no meaning in the script.
+//   - The column of a script location is 1, unless the caller gives "map". Then the rewriter
+//     finds the generated line of the location (from the "#line" directives in the first text
+//     of "generated"), maps the generated column with the source map, and prints the script
+//     column. A column that the map cannot give stays 1.
 //   - A note that points into the generated file gets the location of its error. An error that
 //     points into the generated file gets the last script line before it, if "generated" has the
 //     text of that file (pairs of the "#line" name of the file and its text). A note from a
@@ -181,7 +184,16 @@ using ScriptTexts = std::vector<std::pair<std::string, std::string>>;
 // A line that is not part of a Clang diagnostic stays as it is. Pass the raw text on when the
 // user asks for it (--raw-diagnostics).
 std::string rewrite_diagnostic(const std::string& text, const ScriptTexts& scripts = {},
-                               const ScriptTexts& generated = {});
+                               const ScriptTexts& generated = {}, const SourceMap* map = nullptr);
+
+// Gives the text of the translator diagnostics (TranslateResult::diagnostics or ::warnings) the
+// same final form as rewrite_diagnostic(): the header line "script:line:col: level: message",
+// then the script line in the gutter form ("   11 | code"), and at the end the count line
+// ("1 error generated."). A line that is not a diagnostic of a script in "scripts" stays as it
+// is. The message and the position do not change: the translator already speaks script names
+// and gives the real script column. Pass the raw text on when the user asks for it
+// (--raw-diagnostics).
+std::string rewrite_translator_diagnostic(const std::string& text, const ScriptTexts& scripts);
 
 // Changes the generated names in one text to script names, as rewrite_diagnostic() does for a
 // message: "Player__heal" -> "Player.heal", "int32_t" -> "int", "std::string" -> "std.string".

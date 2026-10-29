@@ -10,6 +10,7 @@
 // tests/golden/diagnostics (one script and one expected text).
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <functional>
 #include <map>
@@ -389,10 +390,54 @@ bool last_script_line(const std::vector<std::string>& gen, size_t before, std::s
 
 enum class Snippet { None, Keep, Replace, Drop };
 
+// The physical lines of a generated text, by the script location that "#line" gives them.
+// The key is the name and the presumed line.
+using LineIndex = std::map<std::pair<std::string, int>, std::vector<int>>;
+
+LineIndex index_generated(const std::vector<std::string>& gen)
+{
+    LineIndex index;
+    std::string name;
+    int next = 0;  // the presumed line of the next physical line; 0: no directive yet
+    for (size_t i = 0; i < gen.size(); ++i) {
+        const std::string& l = gen[i];
+        if (l.rfind("#line ", 0) == 0) {
+            const size_t q1 = l.find('"');
+            const size_t q2 = l.rfind('"');
+            if (q1 != std::string::npos && q2 > q1) {
+                name = l.substr(q1 + 1, q2 - q1 - 1);
+                next = std::atoi(l.c_str() + 6);
+            }
+            continue;
+        }
+        if (next > 0) index[{name, next}].push_back(static_cast<int>(i) + 1);
+        if (next > 0) ++next;
+    }
+    return index;
+}
+
+// The script column of a generated column on the script line "line". Zero: not known. The
+// column of a text that the translator writes by itself (for example "spp::deref(") has no
+// segment, so the function looks at the next columns of the same generated line.
+int script_column(const SourceMap& map, const LineIndex& index, const std::vector<std::string>& gen,
+                  const std::string& file, int line, int col)
+{
+    auto it = index.find({file, line});
+    if (it == index.end() || col < 1) return 0;
+    for (int physical : it->second) {
+        const size_t width = gen[static_cast<size_t>(physical) - 1].size();
+        for (size_t c = static_cast<size_t>(col); c <= width && c < static_cast<size_t>(col) + 80; ++c) {
+            const auto p = map.map_to_script(physical, static_cast<int>(c));
+            if (p && p->line == line) return p->col;
+        }
+    }
+    return 0;
+}
+
 }  // namespace
 
 std::string rewrite_diagnostic(const std::string& text, const ScriptTexts& scripts,
-                               const ScriptTexts& generated)
+                               const ScriptTexts& generated, const SourceMap* map)
 {
     bool final_newline = true;
     const std::vector<std::string> lines = split_lines(text, final_newline);
@@ -407,6 +452,13 @@ std::string rewrite_diagnostic(const std::string& text, const ScriptTexts& scrip
     for (const auto& g : generated) {
         bool nl = true;
         generated_lines[g.first] = split_lines(g.second, nl);
+    }
+
+    LineIndex line_index;
+    const std::vector<std::string>* map_gen = nullptr;  // the generated text that "map" describes
+    if (map && !map->empty() && !generated.empty()) {
+        map_gen = &generated_lines[generated.front().first];
+        line_index = index_generated(*map_gen);
     }
 
     // Pass 1: the headers, and for each error group whether it calls a script function.
@@ -468,7 +520,11 @@ std::string rewrite_diagnostic(const std::string& text, const ScriptTexts& scrip
                     }
                 }
             }
-            if (place == Place::Script) h.col = 1;  // the generated column means nothing here
+            if (place == Place::Script) {
+                // The generated column means nothing here, unless the source map gives the real one.
+                const int real = map_gen && !mapped ? script_column(*map, line_index, *map_gen, h.file, h.line, h.col) : 0;
+                h.col = real > 0 ? real : 1;
+            }
             std::string location = h.file + ":" + std::to_string(h.line) + ":" + std::to_string(h.col);
             if (place == Place::Script && !note) primary_location = location;
             if (place == Place::Generated && note && !primary_location.empty()) location = primary_location;
@@ -514,6 +570,53 @@ std::string rewrite_diagnostic(const std::string& text, const ScriptTexts& scrip
     }
     flush_hidden();
 
+    std::string result;
+    for (size_t i = 0; i < out.size(); ++i) {
+        result += out[i];
+        if (i + 1 < out.size() || final_newline) result += '\n';
+    }
+    return result;
+}
+
+std::string rewrite_translator_diagnostic(const std::string& text, const ScriptTexts& scripts)
+{
+    bool final_newline = true;
+    const std::vector<std::string> lines = split_lines(text, final_newline);
+    std::map<std::string, std::vector<std::string>> script_lines;
+    for (const auto& s : scripts) {
+        bool nl = true;
+        script_lines[s.first] = split_lines(s.second, nl);
+    }
+
+    std::vector<std::string> out;
+    int errors = 0, warnings = 0;
+    for (const std::string& l : lines) {
+        Header h;
+        const bool header = parse_header(l, h);
+        if (!header && l.rfind("sppc: error: ", 0) == 0) ++errors;
+        if (!header) {
+            out.push_back(l);
+            continue;
+        }
+        if (h.level == "warning") ++warnings;
+        if (h.level == "error" || h.level == "fatal error") ++errors;
+        out.push_back(l);
+        auto it = script_lines.find(h.file);
+        if (it == script_lines.end() || h.line < 1 || static_cast<size_t>(h.line) > it->second.size()) continue;
+        char gutter[32];
+        std::snprintf(gutter, sizeof gutter, "%5d | ", h.line);
+        out.push_back(gutter + it->second[static_cast<size_t>(h.line) - 1]);
+    }
+    auto plural = [](int n, const char* word) {
+        return std::to_string(n) + " " + word + (n == 1 ? "" : "s");
+    };
+    if (errors > 0 || warnings > 0) {
+        std::string count;
+        if (warnings > 0) count += plural(warnings, "warning");
+        if (warnings > 0 && errors > 0) count += " and ";
+        if (errors > 0) count += plural(errors, "error");
+        out.push_back(count + " generated.");
+    }
     std::string result;
     for (size_t i = 0; i < out.size(); ++i) {
         result += out[i];
