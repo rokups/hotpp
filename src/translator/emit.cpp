@@ -130,6 +130,17 @@ struct ExprPrinter {
     {
         std::string t;
         for (size_t i = 0; i < n.parts.size(); ++i) t += (i ? "::" : "") + n.parts[i];
+        if (n.parts.size() >= 2 && n.pos != 0) {
+            // The last part gets its own segment, so the language server maps a position in it.
+            // The script writes the parts with one "." between them.
+            size_t name_at = 0, script_at = 0;
+            for (size_t i = 0; i + 1 < n.parts.size(); ++i) {
+                name_at += n.parts[i].size() + 2;
+                script_at += n.parts[i].size() + 1;
+            }
+            e.put_named(t + n.template_args, n.pos, name_at, n.pos + static_cast<uint32_t>(script_at));
+            return;
+        }
         e.put(t + n.template_args, n.pos);
     }
     void operator()(const ThisExpr& n) const { e.put("this", n.pos); }

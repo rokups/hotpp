@@ -18,6 +18,7 @@
 #include <nlohmann/json.hpp>
 
 #include "clangd_process.h"
+#include "hosts.h"
 #include "jsonrpc.h"
 #include "semantic.h"
 #include "symbol_index.h"
@@ -156,6 +157,8 @@ struct Doc {
     int gen_version = 0;   // the clangd version of the real text
     int sent_version = 0;  // the last clangd version
     bool in_clangd = false;
+    // The host of the script at the last update. Null: no host.
+    std::shared_ptr<const Host> host;
     json clang_diags = json::array();  // the mapped clangd diagnostics of gen_version
     // The last diagnostics of clangd as clangd sent them. clangd does not send them again when a
     // new version has the same diagnostics. So update() maps them again to the new text.
@@ -286,10 +289,47 @@ private:
         sppc::TranslateOptions o;
         o.script_name = d.path;
         o.generation = 1;
-        o.include_dirs = opt_.include_dirs;
-        o.resource_dir = opt_.resource_dir;
+        const Effective e = effective_options(d.path);
+        o.include_dirs = e.include_dirs;
+        o.resource_dir = e.resource_dir;
         return o;
     }
+    // ---- hosts
+    // The options for one script: the host first, then the options of the command line.
+    struct Effective {
+        std::vector<std::string> include_dirs, extra_flags;
+        std::string resource_dir;
+    };
+    std::shared_ptr<const Host> host_of(const std::string& path) const
+    {
+        for (const HostSet& h : hosts_)
+            if (auto m = h.match(path)) return m;
+        return nullptr;
+    }
+    Effective effective_options(const std::string& path) const
+    {
+        Effective e;
+        const auto host = host_of(path);
+        if (host) {
+            e.include_dirs = host->include_dirs;
+            e.extra_flags = host->cxx_flags();
+        }
+        e.include_dirs.insert(e.include_dirs.end(), opt_.include_dirs.begin(), opt_.include_dirs.end());
+        e.extra_flags.insert(e.extra_flags.end(), opt_.extra_flags.begin(), opt_.extra_flags.end());
+        e.resource_dir = host && !host->resource_dir.empty() ? host->resource_dir : opt_.resource_dir;
+        return e;
+    }
+    static bool same_host(const std::shared_ptr<const Host>& a, const std::shared_ptr<const Host>& b)
+    {
+        if (a == b) return true;
+        if (!a || !b) return false;
+        return a->name == b->name && a->resource_dir == b->resource_dir && a->include_dirs == b->include_dirs &&
+               a->cxx_flags() == b->cxx_flags();
+    }
+    void load_hosts();
+    // Checks the host files after a document event. A document whose host changed gets the new
+    // compile command. "current" is the document of the event: the caller updates it.
+    void refresh_hosts(Doc* current);
     void update(Doc& d);
     void send_generated(Doc& d, const std::string& cpp);
     json publish_message(const Doc& d) const;
@@ -357,6 +397,7 @@ private:
     std::map<std::string, std::shared_ptr<Doc>> gen_docs_;  // by the generated uri
     std::unique_ptr<ClangdProcess> clangd_;
     std::vector<std::string> roots_;  // the workspace folders (paths), from initialize
+    std::vector<HostSet> hosts_;      // the host files: one set for each hosts dir
     bool utf8_ = false, clangd_utf8_ = false, shutdown_ = false;
     std::set<std::string> preamble_ready_;
     // The analyze facts of the scripts on disk that are not open (script_member_location).
@@ -467,6 +508,40 @@ void Server::start_clangd(const json& init)
     clangd_ = std::move(c);
 }
 
+void Server::load_hosts()
+{
+    hosts_.clear();
+    std::vector<std::string> dirs;
+    if (!opt_.hosts_dir.empty()) dirs.push_back(opt_.hosts_dir);
+    else
+        for (const std::string& r : roots_) dirs.push_back((fs::path(r) / ".cache" / "spp" / "hosts").string());
+    for (const std::string& dir : dirs) {
+        HostSet set;
+        set.load(dir, true);
+        hosts_.push_back(std::move(set));
+    }
+}
+
+void Server::refresh_hosts(Doc* current)
+{
+    bool changed = false;
+    for (HostSet& h : hosts_) changed = h.refresh() || changed;
+    if (!changed) return;
+    disk_facts_.clear();
+    std::vector<std::shared_ptr<Doc>> redo;
+    for (const auto& [uri, d] : docs_) {
+        const auto now = host_of(d->path);
+        if (same_host(now, d->host)) continue;
+        d->host = now;
+        // clangd gets the new compile command at the next send_generated.
+        if (clangd_ && d->in_clangd) clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", d->gen_uri}}}});
+        d->in_clangd = false;
+        preamble_ready_.erase(d->gen_uri);
+        if (d.get() != current) redo.push_back(d);
+    }
+    for (const auto& d : redo) update(*d);
+}
+
 json Server::on_initialize(const json& p)
 {
     const json encodings = p.value("/capabilities/general/positionEncodings"_json_pointer, json::array());
@@ -475,6 +550,7 @@ json Server::on_initialize(const json& p)
     if (const json o = p.value("initializationOptions", json::object()); o.is_object()) {
         for (const json& d : o.value("includeDirs", json::array())) opt_.include_dirs.push_back(d.get<std::string>());
         if (o.contains("clangd")) opt_.clangd = o.value("clangd", opt_.clangd);
+        if (o.contains("hostsDir")) opt_.hosts_dir = o.value("hostsDir", std::string());
         if (o.contains("compileCommandsDir")) {
             opt_.compile_commands_dir = o.value("compileCommandsDir", std::string());
             read_compile_commands();
@@ -490,6 +566,7 @@ json Server::on_initialize(const json& p)
     if (!opt_.index_dir.empty()) index_.open(opt_.index_dir);
     else if (!roots_.empty()) index_.open((fs::path(roots_[0]) / ".cache" / "spp" / "index").string());
     index_.prune();
+    load_hosts();
     start_clangd(p);
     json tokens = json::array();
     for (const std::string& t : semantic_token_types()) tokens.push_back(t);
@@ -523,9 +600,10 @@ void Server::send_generated(Doc& d, const std::string& cpp)
     if (!d.in_clangd) {
         // The compile command of the backend for the virtual file (design 10.1).
         spp::ClangFilesOptions co;
-        co.include_dirs = opt_.include_dirs;
-        co.resource_dir = opt_.resource_dir;
-        co.extra_flags = opt_.extra_flags;
+        const Effective e = effective_options(d.path);
+        co.include_dirs = e.include_dirs;
+        co.resource_dir = e.resource_dir;
+        co.extra_flags = e.extra_flags;
         const std::vector<std::string> cmd = spp::compile_command(co, d.gen_path, d.gen_path + ".so");
         clangd_->notify("workspace/didChangeConfiguration",
                         {{"settings",
@@ -1369,7 +1447,11 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
             ++closed_analyses_;
         };
         // The saved shard of the file holds the symbols and the references of the last analyze.
-        const std::string digest = SymbolIndex::digest(path, *text, opt_.include_dirs);
+        // The digest holds the import files. The flags of the host also go in, as the one-argument digest.
+        const Effective eff = effective_options(path);
+        std::string flags_text;
+        for (const std::string& f : eff.extra_flags) flags_text += f + '\n';
+        const std::string digest = SymbolIndex::digest(SymbolIndex::digest(path, *text, eff.include_dirs) + flags_text);
         auto shard = index_.load(path, digest);
         if (!shard) {
             if (text->find(name) == std::string::npos) continue;
@@ -1642,6 +1724,8 @@ void Server::handle(const json& msg)
             docs_[d->uri] = d;
             gen_docs_[d->gen_uri] = d;
         }
+        d->host = host_of(d->path);
+        refresh_hosts(d.get());
         return update(*d);
     }
     if (method == "textDocument/didChange") {
@@ -1653,6 +1737,7 @@ void Server::handle(const json& msg)
             std::lock_guard<std::mutex> lock(docs_mutex_);
             d->text = Text(changes.back().value("text", std::string()));
         }
+        refresh_hosts(d.get());
         return update(*d);
     }
     if (method == "textDocument/didClose") {
@@ -1760,14 +1845,16 @@ const char* usage_text()
 {
     return "usage: spp-ls [--stdio] [--clangd path] [-I dir]... [--resource-dir dir] [--cxxflag flag]...\n"
            "              [--compile-commands-dir dir] [--index-dir dir]\n"
-           "              [--clangd-log file]\n"
+           "              [--hosts-dir dir] [--clangd-log file]\n"
            "  --clangd path      the clangd binary (default: clangd from PATH). \"\" turns clangd off.\n"
            "  -I dir             an include dir for the script imports and for clangd.\n"
            "  --compile-commands-dir dir\n"
            "                     the directory of compile_commands.json from sppc --compile-commands.\n"
            "                     clangd runs its background index on it.\n"
            "  --index-dir dir    the directory of the saved symbol index (default:\n"
-           "                     .cache/spp/index in the first workspace folder).\n";
+           "                     .cache/spp/index in the first workspace folder).\n"
+           "  --hosts-dir dir    the directory of the host files from spp_script_host (default:\n"
+           "                     .cache/spp/hosts in each workspace folder).\n";
 }
 
 bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, std::string& error)
@@ -1800,6 +1887,8 @@ bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, s
             if (!next(out.compile_commands_dir)) return false;
         } else if (a == "--index-dir") {
             if (!next(out.index_dir)) return false;
+        } else if (a == "--hosts-dir") {
+            if (!next(out.hosts_dir)) return false;
         } else if (a == "--clangd-log") {
             if (!next(out.clangd_log)) return false;
         } else {

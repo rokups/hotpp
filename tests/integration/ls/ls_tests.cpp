@@ -1223,3 +1223,77 @@ TEST(LanguageServer, CodeActionAppliesTheNameThatClangdSuggests)
     EXPECT_EQ(edit["newText"], "amount") << r.dump();
     EXPECT_EQ(edit["range"], diag["range"]);
 }
+
+// ------------------------------------------------------------------ hosts (step 2b)
+namespace {
+
+// A workspace with a header in "inc" and a script in "scripts". The script uses the header.
+// With "host" the hosts dir holds a host file for the scripts dir, with "inc" as include dir.
+// The server gets no -I option for "inc". The completion after "Thing." comes from the host only.
+std::vector<std::string> host_completion_labels(bool host, bool change_host_later = false)
+{
+    TempDir dir;
+    const std::filesystem::path root = dir.path();
+    std::filesystem::create_directories(root / "inc");
+    std::filesystem::create_directories(root / "scripts");
+    std::filesystem::create_directories(root / "build");
+    std::filesystem::create_directories(root / "hosts");
+    write_file((root / "inc" / "thing.h").string(), "#pragma once\nnamespace Thing { int Value(); }\n");
+    const std::string text = "using \"thing.h\";\n\nclass A {\n    void f() {\n        Thing.\n    }\n}\n";
+    const std::string path = (root / "scripts" / "a.spp").string();
+    write_file(path, text);
+    write_file((root / "build" / "CMakeCache.txt").string(), "# cache\n");
+    auto write_host = [&] {
+        write_file((root / "hosts" / "h.json").string(),
+                   R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string() +
+                       R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")" +
+                       (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" +
+                       (root / "inc").string() + R"(",")" + SPP_SOURCE_DIR + R"(/include"],"defines":[],"flags":[]})");
+    };
+    if (host && !change_host_later) write_host();
+    spp::ls::ServerOptions o;
+    o.clangd = SPP_CLANGD_PATH;
+    o.hosts_dir = (root / "hosts").string();
+    o.clangd_log = (root / "clangd.log").string();
+    // The runtime headers are needed to translate. Without a host, they come from -I.
+    if (!host) o.include_dirs = {SPP_SOURCE_DIR "/include"};
+    LsClient client(o);
+    client.initialize(uri_of(root.string()));
+    const std::string uri = uri_of(path);
+    client.open(uri, text);
+    if (host && change_host_later) {
+        // The host file appears after the open. The next change must pick it up.
+        write_host();
+        client.change(uri, 2, text + "\n");
+    }
+    const json r = client.request("textDocument/completion", doc_pos(uri, 4, 14));
+    std::vector<std::string> labels;
+    if (r.contains("result") && r["result"].is_object())
+        for (const json& i : r["result"]["items"]) labels.push_back(i.value("insertText", i.value("label", "")));
+    return labels;
+}
+
+bool has_label(const std::vector<std::string>& labels, const char* n)
+{
+    return std::find(labels.begin(), labels.end(), n) != labels.end();
+}
+
+}  // namespace
+
+TEST(LanguageServerHosts, ScriptUsesTheIncludeDirsOfItsHost)
+{
+    REQUIRE_CLANGD();
+    EXPECT_TRUE(has_label(host_completion_labels(true), "Value"));
+}
+
+TEST(LanguageServerHosts, ScriptWithoutAHostHasNoHostIncludeDirs)
+{
+    REQUIRE_CLANGD();
+    EXPECT_FALSE(has_label(host_completion_labels(false), "Value"));
+}
+
+TEST(LanguageServerHosts, NewHostFileAppliesToAnOpenScriptAtTheNextChange)
+{
+    REQUIRE_CLANGD();
+    EXPECT_TRUE(has_label(host_completion_labels(true, true), "Value"));
+}

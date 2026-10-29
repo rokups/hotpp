@@ -152,12 +152,14 @@ CPMAddPackage(
     OPTIONS "JSON_BuildTests OFF" "JSON_Install OFF"
 )
 add_library(spp_ls_lib STATIC src/ls/jsonrpc.cpp src/ls/clangd_process.cpp src/ls/server.cpp
-    src/ls/semantic.cpp src/ls/symbol_index.cpp)
+    src/ls/semantic.cpp src/ls/symbol_index.cpp src/ls/hosts.cpp)
 target_include_directories(spp_ls_lib PUBLIC ${CMAKE_SOURCE_DIR}/src/ls PRIVATE ${CMAKE_SOURCE_DIR}/src/translator)
 target_link_libraries(spp_ls_lib PUBLIC spp_clang_backend nlohmann_json::nlohmann_json Threads::Threads)
 add_executable(spp_ls src/ls/main.cpp)
 target_link_libraries(spp_ls PRIVATE spp_ls_lib)
 set_target_properties(spp_ls PROPERTIES OUTPUT_NAME spp-ls)
+
+include(cmake/SppScripts.cmake)
 
 # ------------------------------------------------------------ Dear ImGui example
 # imgui_app draws a Dear ImGui user interface from a script. It needs SDL3.
@@ -189,12 +191,15 @@ if(SDL3_FOUND AND NOT CMAKE_VERSION VERSION_LESS 3.24)
         IMGUI_APP_RESOURCE_DIR="${CLANG_RESOURCE_DIR}"
         IMGUI_APP_WORK_DIR="${CMAKE_BINARY_DIR}/imgui_work"
         IMGUI_APP_DEFAULT_SCRIPT="${CMAKE_SOURCE_DIR}/example/imgui/demo.spp")
+    # The language server reads this file. The engine dir is in IMGUI_APP_INCLUDES.
+    spp_script_host(NAME imgui_app TARGET imgui_app
+        SCRIPT_DIRS ${CMAKE_SOURCE_DIR}/example/imgui
+        INCLUDES ${CMAKE_SOURCE_DIR}/example/engine)
 else()
     message(STATUS "SDL3 or CMake 3.24 not found: the target imgui_app is not built")
 endif()
 
 # ------------------------------------------------------------ Precompiled scripts
-include(cmake/SppScripts.cmake)
 file(GLOB SPP_RUNTIME_HEADERS ${CMAKE_SOURCE_DIR}/include/spp/runtime/*.h)
 set(SPP_HEADERS ${CMAKE_SOURCE_DIR}/example/engine/Actor.h ${CMAKE_SOURCE_DIR}/example/engine/Math.h
                 ${CMAKE_SOURCE_DIR}/include/spp/runtime.h ${CMAKE_SOURCE_DIR}/include/spp/module.h

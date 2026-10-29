@@ -25,6 +25,8 @@ struct ServerOptions {
     // The directory of the saved symbol index (S28). Empty: ".cache/spp/index" in the first
     // workspace folder.
     std::string index_dir;
+    // The directory of the host files (hosts.h). Empty: ".cache/spp/hosts" in each workspace folder.
+    std::string hosts_dir;
     std::string clangd_log;  // the stderr of clangd. Empty: /dev/null.
 };
 
