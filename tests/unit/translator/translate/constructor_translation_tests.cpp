@@ -144,6 +144,38 @@ TEST(ConstructorTranslation, OverloadsAndRefParameters)
     EXPECT_TRUE(has(r, "return Squad__build(false);")) << r.cpp;
 }
 
+// A "super(...)" argument "ref e" binds to the "ref" parameter of a script parent (S23). The
+// plan keeps a reference and evaluates the operand one time.
+TEST(ConstructorTranslation, SuperArgumentBindsToARefParameter)
+{
+    const sppc::TranslateResult r = translate_script(
+        "class A : Unit {\n    A(int v, ref int seen) { seen = v; }\n}\n"
+        "class B : A {\n    B(int w, ref int seen) : super(w + 1, ref seen) { }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "static auto B__plan(int32_t w, int32_t& seen)")) << r.cpp;
+    EXPECT_TRUE(has(r, "std::make_tuple(w + 1, spp::ref_arg(seen))")) << r.cpp;
+    EXPECT_EQ(r.cpp.find("spp::ref_arg(seen)"), r.cpp.rfind("spp::ref_arg(seen)")) << r.cpp;
+}
+
+TEST(ConstructorTranslation, SuperArgumentWithoutRefIsAnError)
+{
+    expect_error("class A : Unit {\n    A(int v, ref int seen) { seen = v; }\n}\n"
+                 "class B : A {\n    B(int w, int x) : super(w, x) { }\n}\n",
+                 "needs 'ref' or 'out' in the 'super(...)' argument");
+}
+
+// A "&&" constructor parameter is a const reference in the plan and moves into the constructor.
+TEST(ConstructorTranslation, RvalueReferenceParameter)
+{
+    const sppc::TranslateResult r = translate_script(
+        "class A : Unit {\n    std.string t = std.string();\n    A(std.string&& s) { this.t = s; }\n}\n"
+        "class B : A {\n    B(std.string&& s) : super(std.move(s)) { }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "static void A__ctor(A_Shell* self, std::string&& s);")) << r.cpp;
+    EXPECT_TRUE(has(r, "static auto A__plan(const std::remove_reference_t<std::string&&>& s)")) << r.cpp;
+    EXPECT_TRUE(has(r, "A__ctor_chain(self, plan.second, std::move(s));")) << r.cpp;
+}
+
 TEST(ConstructorTranslation, SuperArgumentsMayUseParametersOnly)
 {
     const std::string tail = "the arguments of 'super(...)' may use the constructor parameters only";

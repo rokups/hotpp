@@ -2199,6 +2199,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         std::string ctor_entry;                // the function that runs the constructors, or empty
         std::set<size_t> ctor_arities;         // the parameter counts of the constructor overloads
         std::set<size_t> ref_arities;          // the counts of the overloads with a "ref" or "out" parameter
+        std::set<size_t> plain_arities;        // the counts of the overloads with no "ref" or "out" parameter
         bool dtor_chain = false;               // the class or a parent has a destructor
         std::string on_reload;                 // the onReload hook of the class or a parent
         bool esft = false;                     // the shell has std::enable_shared_from_this
@@ -2293,10 +2294,15 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                             "'super(...)' has " + std::to_string(n) + " arguments; " +
                                 (ar.size() == 1 ? "the constructor of '" + par->name + "' takes " + std::to_string(*ar.begin())
                                                 : "no constructor of '" + par->name + "' takes " + std::to_string(n)));
-                if (sup && n > 0 && pinfo->ref_arities.count(n))
+                // A "ref" or "out" parameter needs "ref e" or "out e" in the argument.
+                bool any_ref = false;
+                if (sup)
+                    for (const ExprP& a : cd.ctors[k].super_args)
+                        any_ref = any_ref || (a && std::holds_alternative<sppc::ast::RefExpr>(a->v));
+                if (sup && n > 0 && !any_ref && pinfo->ref_arities.count(n) && !pinfo->plain_arities.count(n))
                     fail_at(map, cd.ctors[k].super_pos,
-                            "a 'super(...)' argument cannot go to a 'ref' or 'out' parameter of a constructor of '" +
-                                par->name + "'");
+                            "a 'ref' or 'out' parameter of a constructor of '" + par->name +
+                                "' needs 'ref' or 'out' in the 'super(...)' argument");
             }
         }
 
@@ -2870,8 +2876,9 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         info.ctor_entry = entry;
         for (const Method& m : ctor_ms) {
             info.ctor_arities.insert(m.params.size());
-            for (const Param& p : m.params)
-                if (p.mode != PassMode::Value) info.ref_arities.insert(m.params.size());
+            bool has_ref = false;
+            for (const Param& p : m.params) has_ref = has_ref || p.mode != PassMode::Value;
+            (has_ref ? info.ref_arities : info.plain_arities).insert(m.params.size());
         }
         // The key type of overload k: the tuple of the native base arguments.
         auto sa_name = [&](size_t k) { return cn + "_SuperArgs" + (k ? "_" + std::to_string(k) : std::string()); };
@@ -2879,13 +2886,14 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             for (size_t k = 0; k < ctor_ms.size(); ++k) {
                 const Method& cm = ctor_ms[k];
                 const sppc::ast::Ctor* sc = has_ctor ? &cd.ctors[k] : nullptr;
-                // The plan reads the parameters only. A "ref", "out" or "&&" parameter is a const
-                // reference there, so the plan of a child can give it a value of its chain.
+                // A "&&" parameter is a const reference in the plan: the plan only reads it. A "ref"
+                // or "out" parameter stays a reference, so "super(ref x)" binds the parent
+                // parameter to the lvalue of the child.
                 std::string pd, names, declvals;
                 for (size_t i = 0; i < cm.params.size(); ++i) {
                     const Param& p = cm.params[i];
                     const std::string n = norm(p.type);
-                    const bool by_ref = p.mode != PassMode::Value || (n.size() > 2 && n.compare(n.size() - 2, 2, "&&") == 0);
+                    const bool by_ref = p.mode == PassMode::Value && n.size() > 2 && n.compare(n.size() - 2, 2, "&&") == 0;
                     pd += (i ? ", " : "") + (by_ref ? "const std::remove_reference_t<" + p.type + ">&" : p.type) + " " + p.name;
                     names += (i ? ", " : "") + p.name;
                     declvals += (i ? ", " : "") + ("std::declval<" + p.type + ">()");
@@ -3169,12 +3177,11 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             // The factory of the engine has no arguments. The current generation builds the
             // object with default values (new_default). A removed class has no new_default: then
             // the factory builds the base with the plan of this generation and runs no constructor.
-            // The plan reads a "ref" or "out" parameter through a const reference: a value is enough.
-            std::string defaults;
-            for (size_t i = 0; i < ctor_ms[dflt].params.size(); ++i)
-                defaults += (i ? ", " : "") + ("std::decay_t<" + ctor_ms[dflt].params[i].type + ">()");
+            // The plan takes a "ref" or "out" parameter by reference: default_args gives a variable.
+            std::string plan_locals;
+            const std::string defaults = default_args(ctor_ms[dflt], plan_locals);
             o.w("static spp::Instance " + cn + "_create()\n{\n    spp::ShellBase* s = nullptr;\n    if (" + cn +
-                "_record.new_default) {\n        s = " + cn + "_record.new_default();\n    } else {\n        auto plan = " + P +
+                "_record.new_default) {\n        s = " + cn + "_record.new_default();\n    } else {\n" + plan_locals + "        auto plan = " + P +
                 "plan(" + defaults + ");\n        s = " + P + "construct(typeid(" + sa_name(dflt) + ").name(), &plan.first);\n    }\n    auto* p = static_cast<" +
                 shell + "*>(s);\n    return {static_cast<" + B + "*>(p), p};\n}\n\n");
         } else {

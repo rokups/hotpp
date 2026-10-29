@@ -75,7 +75,7 @@ Constructors (S4, S16, S20a):
 - The shell and the vtable live in the core module of generation 1. The canonical `ClassRecord` has a type-erased `construct`. A later generation calls it through `spp::construct_shell` and then runs its own constructor body. An unknown key throws `std::runtime_error`.
 - A constructor is not in the slot table. A reload does not run it again. A changed body applies to new objects only.
 - One plan for each construction: `Name__plan(args)` evaluates each `super(...)` argument of the chain one time. `new` and the factory both call `Name__build`. Each overload gets C++ overloads of the generated functions, keyed by `Name_SuperArgs_k`.
-- Limits: one destructor for each class. Two overloads cannot differ only in the pass mode. A `super(...)` argument cannot go to a `ref` or `out` parameter. The types of the `super` arguments must not change after generation 1 (the `construct_key` error). If a constructor body throws, the shell is deleted and the script destructor still runs.
+- Limits: one destructor for each class. Two overloads cannot differ only in the pass mode. A `super(...)` argument for a `ref` or `out` parameter of a script parent needs `ref e` or `out e` (S23); the plan keeps the reference and evaluates `e` one time. A `&&` constructor parameter works: the plan reads it as a const reference. The types of the `super` arguments must not change after generation 1 (the `construct_key` error). If a constructor body throws, the shell is deleted and the script destructor still runs.
 
 Typed access (S5b, S20b):
 - The lowering knows the script class of a local, a parameter, a field and a `new` result. Then `obj.field`, `obj.Method(args)` and `obj.P` use the class directly.

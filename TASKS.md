@@ -51,7 +51,7 @@ The language server is the proxy `spp-ls`, not a clangd fork (DECISIONS.md 13). 
 
 ## Third pass: known limits
 - [x] S22 Parser and templates: direct script base `class Foo : Tmpl<int>`; template that derives from a template; partial specialization.
-- [ ] S23 `super(...)` argument to a `ref`/`out` parent constructor parameter; test for a `&&` constructor parameter.
+- [x] S23 `super(...)` argument to a `ref`/`out` parent constructor parameter; test for a `&&` constructor parameter.
 - [ ] S24 Translator errors pass through the diagnostic rewriter; script column in `#line`.
 - [ ] S25 Parameter analysis follows native functions, lambdas and calls on script handle parameters.
 - [ ] S26 Function pointers in trivially copyable native structs count as code holders.

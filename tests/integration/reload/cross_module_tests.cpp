@@ -129,4 +129,22 @@ TEST_P(BackendTests, ConstructorOverloadsAndALaterNew)
     EXPECT_EQ(*fld<int>(s, "plain"), 3);
 }
 
+// A "super(...)" argument binds to a "ref" or "out" parameter of a script parent (S23). The
+// "ref" reaches the parent through two levels. A "&&" constructor parameter takes a temporary.
+TEST_P(BackendTests, SuperArgumentBindsToARefParameter)
+{
+    spp::LoadResult g1 = backend->load(test_support::source("ctor_ref_v1.spp"), 1);
+    ASSERT_TRUE(g1) << g1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*g1.module), "Spawner"));
+    s.commit_at_frame_boundary();
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "mid_hp"), 5);
+    EXPECT_EQ(*fld<int>(s, "seen"), 10);  // Base wrote 5 * 2 into the "ref" of Mid
+    EXPECT_EQ(*fld<int>(s, "leaf_hp"), 12);
+    EXPECT_EQ(*fld<int>(s, "leaf_seen"), 24);
+    EXPECT_EQ(*fld<int>(s, "made"), 100);  // "out" through Wrap
+    EXPECT_EQ(*fld<std::string>(s, "named"), "abc");
+}
+
 }  // namespace
