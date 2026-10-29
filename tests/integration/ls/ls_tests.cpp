@@ -420,7 +420,7 @@ TEST(LanguageServer, GeneratedFileOnDiskMapsBackToTheScript)
     const std::string cpp = (s.dir.path() / "player.g1.cpp").string();
     write_file(cpp, t.cpp);
     // The generated line of "this.hp = this.hp + amount;" (0-based).
-    const size_t at = t.cpp.find("st->hp = st->hp + amount;");
+    const size_t at = t.cpp.find("__st->hp = __st->hp + amount;");
     ASSERT_NE(at, std::string::npos);
     const int gline = static_cast<int>(std::count(t.cpp.begin(), t.cpp.begin() + static_cast<long>(at), '\n'));
     const json r = s.client->request("spp/toScript", doc_pos(uri_of(cpp), gline, 4));

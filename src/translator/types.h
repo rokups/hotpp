@@ -78,6 +78,13 @@ public:
     // Only the Handle kind is inherited. "owner" is the stub that matched.
     TypeRule lookup(const std::string& cpp_type) const;
 
+    // True when the name is a script class of the script ([value] classes too).
+    bool is_script_class(const std::string& type) const;
+
+    // The C++ type of "T&", "T*&" and "const T&" when T is a script class that is a handle:
+    // "storage(T)&" or "const storage(T)&". Else an empty string (the native types stay raw).
+    std::string script_ref_storage(const std::string& type) const;
+
     // The C++ storage type of a declaration.
     std::string storage(const std::string& type) const;
 
@@ -94,9 +101,6 @@ public:
     // change when a reload changes the body.
     std::string body_param(const std::string& type, bool mutated, bool rebound, bool stored) const;
 
-    // The C++ type of a "ref" or "out" parameter: storage() with "&". A handle has no "const".
-    std::string ref_param(const std::string& type) const;
-
     // The text of a new expression.
     std::string make(const std::string& type, const std::string& args) const;
 
@@ -108,8 +112,10 @@ public:
     };
     Callee make_callee(const std::string& type) const;
 
-private:
+    // True when the type is a plain handle type (not a pointer, a reference or a builtin).
     bool is_handle(const std::string& type) const;
+
+private:
     TypeRule lookup_stub(const std::string& cpp_type) const;
 
     std::map<std::string, TypeRule> exact_;

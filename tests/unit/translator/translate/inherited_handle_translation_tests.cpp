@@ -39,9 +39,9 @@ TEST(InheritedHandleTranslation, ParamReturnLocalAndNew)
         "    void Make() { this.item = new Item(3); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "const " + kIntr + "& i")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "static " + kIntr + " Foo__Get(Foo_Shell* self);")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, kIntr + " x = st->item;")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "st->item = " + kIntr + "(new Item(3));")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "static " + kIntr + " Foo__Get(Foo_Shell* __self);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, kIntr + " x = __st->item;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "__st->item = " + kIntr + "(new Item(3));")) << r.cpp;
 }
 
 TEST(InheritedHandleTranslation, SharedPtrBase)

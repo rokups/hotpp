@@ -124,12 +124,12 @@ static const spp::StateLayout Player_layout = {
 };
 
 // ------------------------------------------------- generation functions
-SPP_HIDDEN PlayerState_g2* state_of(Player_Shell* self)
+SPP_HIDDEN PlayerState_g2* state_of(Player_Shell* __self)
 {
-    return static_cast<PlayerState_g2*>(self->state);
+    return static_cast<PlayerState_g2*>(__self->state);
 }
 
-[[maybe_unused]] SPP_HIDDEN static void Player__heal(Player_Shell* self, float amount);
+[[maybe_unused]] SPP_HIDDEN static void Player__heal(Player_Shell* __self, float amount);
 
 #line 6 "player_v2.spp"
 [[maybe_unused]] SPP_HIDDEN static auto Player__super_args()
@@ -160,7 +160,7 @@ SPP_NODEBUG static spp::ShellBase* Player__construct(const char* key, const void
 #line 6 "player_v2.spp"
         const auto& t = *static_cast<const Player_SuperArgs*>(args);
 #line 6 "player_v2.spp"
-        return std::apply([](const auto&... x) -> spp::ShellBase* { return new Player_Shell(spp::Construct{}, x...); }, t);
+        return std::apply([](auto&... x) -> spp::ShellBase* { return new Player_Shell(spp::Construct{}, x...); }, t);
 #line 6 "player_v2.spp"
     }
 #line 6 "player_v2.spp"
@@ -172,15 +172,15 @@ SPP_NODEBUG static spp::ShellBase* Player__construct(const char* key, const void
 static const char* const Player__construct_keys[] = {typeid(Player_SuperArgs).name(), nullptr};
 
 #line 6 "player_v2.spp"
-SPP_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool note)
+SPP_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
 #line 6 "player_v2.spp"
 {
 #line 6 "player_v2.spp"
-    auto plan = Player__plan();
+    auto __plan = Player__plan();
 #line 6 "player_v2.spp"
-    auto* self = static_cast<Player_Shell*>(spp::construct_shell(&Player_record, typeid(Player_SuperArgs).name(), &plan.first, note));
+    auto* __self = static_cast<Player_Shell*>(spp::construct_shell(&Player_record, typeid(Player_SuperArgs).name(), &__plan.first, __note));
 #line 6 "player_v2.spp"
-    return self;
+    return __self;
 #line 6 "player_v2.spp"
 }
 #line 187 "player_v2.spp.cpp"
@@ -207,15 +207,15 @@ void PlayerState_g2::Tick(float dt)
 #line 12 "player_v2.spp"
     }
 #line 13 "player_v2.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Player_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
 #line 13 "player_v2.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 13 "player_v2.spp"
-    self->Move(Vec3(2.0f * st->speed * dt, 0, 0));
+    __self->Move(Vec3(2.0f * __st->speed * dt, 0, 0));
 #line 14 "player_v2.spp"
     std::printf("[v2] %s: Tick dt=%.4f pos.x=%.4f health=%.1f shield=%.1f\n",
 #line 15 "player_v2.spp"
-    spp::deref(self->Name).c_str(), dt, spp::deref(self->Position).x, st->health, st->shield);
+    spp::deref(__self->Name).c_str(), dt, spp::deref(__self->Position).x, __st->health, __st->shield);
 #line 16 "player_v2.spp"
 }
 #line 222 "player_v2.spp.cpp"
@@ -233,15 +233,15 @@ void PlayerState_g2::TakeDamage_f(float amount)
 #line 18 "player_v2.spp"
     }
 #line 19 "player_v2.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Player_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
 #line 19 "player_v2.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 19 "player_v2.spp"
-    st->health = Math::Max(st->health - amount, 0.0f);
+    __st->health = Math::Max(__st->health - amount, 0.0f);
 #line 20 "player_v2.spp"
-    std::printf("[v2] %s: TakeDamage %.1f -> health=%.1f\n", spp::deref(self->Name).c_str(), amount,
+    std::printf("[v2] %s: TakeDamage %.1f -> health=%.1f\n", spp::deref(__self->Name).c_str(), amount,
 #line 21 "player_v2.spp"
-    st->health);
+    __st->health);
 #line 22 "player_v2.spp"
 }
 #line 248 "player_v2.spp.cpp"
@@ -259,25 +259,25 @@ void PlayerState_g2::TakeDamage_Af(Actor& source, float amount)
 #line 24 "player_v2.spp"
     }
 #line 25 "player_v2.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Player_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
 #line 25 "player_v2.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 25 "player_v2.spp"
-    st->target = spp::deref(source).Name;
+    __st->target = spp::deref(source).Name;
 #line 26 "player_v2.spp"
-    std::printf("[v2] %s: hit by %s\n", spp::deref(self->Name).c_str(), spp::deref(st->target).c_str());
+    std::printf("[v2] %s: hit by %s\n", spp::deref(__self->Name).c_str(), spp::deref(__st->target).c_str());
 #line 27 "player_v2.spp"
-    self->TakeDamage(amount);
+    __self->TakeDamage(amount);
 #line 28 "player_v2.spp"
 }
 #line 274 "player_v2.spp.cpp"
 
 #line 30 "player_v2.spp"
-[[maybe_unused]] SPP_HIDDEN static void Player__heal(Player_Shell* self, float amount)
+[[maybe_unused]] SPP_HIDDEN static void Player__heal(Player_Shell* __self, float amount)
 #line 30 "player_v2.spp"
 {
 #line 30 "player_v2.spp"
-    return state_of(self)->heal(std::forward<float>(amount));
+    return state_of(__self)->heal(std::forward<float>(amount));
 #line 30 "player_v2.spp"
 }
 #line 284 "player_v2.spp.cpp"
@@ -294,15 +294,15 @@ void PlayerState_g2::heal(float amount)
 #line 30 "player_v2.spp"
     }
 #line 31 "player_v2.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Player_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
 #line 31 "player_v2.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 31 "player_v2.spp"
-    st->health = Math::Min(st->health + 2.0f * amount, 100.0f);
+    __st->health = Math::Min(__st->health + 2.0f * amount, 100.0f);
 #line 32 "player_v2.spp"
-    std::printf("[v2] %s: heal %.1f (x2) -> health=%.1f\n", spp::deref(self->Name).c_str(), amount,
+    std::printf("[v2] %s: heal %.1f (x2) -> health=%.1f\n", spp::deref(__self->Name).c_str(), amount,
 #line 33 "player_v2.spp"
-    st->health);
+    __st->health);
 #line 34 "player_v2.spp"
 }
 #line 309 "player_v2.spp.cpp"

@@ -17,8 +17,8 @@ TEST(LambdaTranslation, ArrowLambdaBecomesAClosureThatCapturesByValue)
               std::string::npos)
         << r.cpp;
     // The body uses self and a new state pointer, not the pointer of the outer function.
-    EXPECT_NE(r.cpp.find("auto* st = state_of(self);\n#line 15"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("st->fired = st->fired + 1;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("auto* __st = state_of(__self);\n#line 15"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("__st->fired = __st->fired + 1;"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("=>"), std::string::npos);
 }
 
@@ -31,7 +31,7 @@ TEST(LambdaTranslation, ParametersGetTypesAndPointersUseArrow)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("[=](float x, int32_t* q)"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("spp::deref(q).foo();"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("st->n = x;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("__st->n = x;"), std::string::npos) << r.cpp;
 }
 
 TEST(LambdaTranslation, ParameterWithoutTypeIsAuto)

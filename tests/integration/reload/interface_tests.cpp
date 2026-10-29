@@ -42,7 +42,7 @@ TEST_P(BackendTests, InterfaceVirtualsDispatchThroughTheShell)
     EXPECT_EQ(HitThrough(*dmg, 10), 35 + 2);  // native code with an interface reference
     s.world.Tick(kDt);
     EXPECT_EQ(*fld<int>(s, "ticks"), 1);       // the virtual of the primary base
-    EXPECT_EQ(*fld<int>(s, "base_armor"), 2);  // "super.Armor()" calls IDamageable::Armor
+    EXPECT_EQ(*fld<int>(s, "base_armor"), 2);  // "base.Armor()" calls IDamageable::Armor
     EXPECT_EQ(*fld<int>(s, "absorbed"), 2);
 }
 
@@ -73,7 +73,7 @@ TEST_P(BackendTests, ReloadAddsOverridesOfInterfaceVirtuals)
     EXPECT_EQ(dmg->Armor(), 5);     // the new override
     EXPECT_EQ(tag->Tag(), 70);      // the new override
     s.world.Tick(kDt);
-    EXPECT_EQ(*fld<int>(s, "base_armor"), 2);  // "super.Armor()" still calls the native code
+    EXPECT_EQ(*fld<int>(s, "base_armor"), 2);  // "base.Armor()" still calls the native code
     EXPECT_EQ(*fld<int>(s, "absorbed"), 2);
 }
 

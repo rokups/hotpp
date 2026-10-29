@@ -65,11 +65,6 @@ struct e_use_dot_arrow {
     static constexpr auto name = "use '.' instead of '->'";
     static constexpr std::size_t rewind = 2;
 };
-// The removed prefix "&". Same as above: the report moves back to the "&".
-struct e_amp_prefix {
-    static constexpr auto name = "use 'ref' instead of '&'";
-    static constexpr std::size_t rewind = 1;
-};
 
 // ---------------------------------------------------------------- white space
 constexpr auto line_comment = LEXY_LIT("//") >> dsl::until(dsl::newline).or_eof();
@@ -105,9 +100,6 @@ constexpr auto kw_get = LEXY_KEYWORD("get", id);
 constexpr auto kw_set = LEXY_KEYWORD("set", id);
 constexpr auto kw_finally = LEXY_KEYWORD("finally", id);
 constexpr auto kw_void = LEXY_KEYWORD("void", id);
-// "ref" and "out" mark a reference parameter, a reference argument or a reference local.
-constexpr auto kw_ref = LEXY_KEYWORD("ref", id);
-constexpr auto kw_out = LEXY_KEYWORD("out", id);
 
 // ---------------------------------------------------------------- literals
 // A string or character literal. It has two values: the position after the opening quote
@@ -288,16 +280,6 @@ struct scan_param_type : lexy::token_production {
     static constexpr auto value = span_value;
 };
 
-// The optional word "ref" or "out" before a parameter. The value is the pass mode.
-struct pass_mode_p {
-    static constexpr auto rule = dsl::opt(dsl::capture(dsl::literal_set(kw_ref, kw_out)));
-    static constexpr auto value = lexy::callback<ast::PassMode>(
-        [](lexy::nullopt) { return ast::PassMode::Value; },
-        [](const auto& word) {
-            return *word.begin() == 'r' ? ast::PassMode::Ref : ast::PassMode::Out;
-        });
-};
-
 // ---------------------------------------------------------------- plain text helpers
 inline bool is_id0(char c) { return std::isalpha(static_cast<unsigned char>(c)) || c == '_'; }
 inline bool is_id(char c) { return is_id0(c) || std::isdigit(static_cast<unsigned char>(c)); }
@@ -415,6 +397,12 @@ inline std::string type_of_span(const ParseState& st, Span sp)
 {
     const std::string_view raw(st.base + sp.begin, sp.end - sp.begin);
     if (only_blank(raw)) st.error(st.base + sp.begin, "expected a type");
+    // The words "ref" and "out" are removed. A type text that starts with one of them is an error.
+    for (const std::string_view w : {std::string_view("ref"), std::string_view("out")})
+        if (raw.size() > w.size() && raw.substr(0, w.size()) == w &&
+            std::isspace(static_cast<unsigned char>(raw[w.size()])))
+            st.error(st.base + sp.begin,
+                     "'ref' and 'out' are removed: use 'T&' for a reference parameter and '&x' for a pointer argument");
     std::size_t colons = std::string_view::npos;
     std::string t = type_text(raw, &colons);
     if (colons != std::string_view::npos) st.error(st.base + sp.begin + colons, e_use_dot_colons::name);
@@ -485,7 +473,6 @@ void report(const ParseState& st, const lexy::error<Reader, Tag>& e)
     const char* pos = e.position();
     // The sink gets a generic error, so the code finds the tag by its text.
     if (e.template is<e_use_dot_arrow>()) pos -= e_use_dot_arrow::rewind;
-    if (e.template is<e_amp_prefix>()) pos -= e_amp_prefix::rewind;
     add_unique(st, pos, std::move(msg));
 }
 

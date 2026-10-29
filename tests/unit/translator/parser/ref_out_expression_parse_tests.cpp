@@ -1,4 +1,4 @@
-// Tests for "ref" and "out" in an expression: arguments, lambda parameters and the removed "&".
+// Tests for the removed words "ref" and "out", the "T&" lambda parameter and the prefix "&".
 #include <gtest/gtest.h>
 
 #include <string>
@@ -12,58 +12,44 @@
 using namespace sppc;
 using namespace expr_test;
 
-TEST(RefOutExpressionParse, RefAndOutArguments)
+TEST(RefOutExpressionParse, ReferenceArgumentHasNoMarker)
 {
-    EXPECT_EQ(round_trip("f(ref a, out b.c)"), "f(spp::ref_arg(a), spp::ref_arg(b::c))");
-    EXPECT_EQ(round_trip("ref a[1]"), "spp::ref_arg(a[1])");
-    EXPECT_EQ(round_trip("this.target = ref source"), "this.target = spp::ref_arg(source)");
-    EXPECT_EQ(round_trip("Fill(out v) + 1"), "Fill(spp::ref_arg(v)) + 1");
+    EXPECT_EQ(round_trip("f(a, b.c)"), "f(a, b::c)");
+    EXPECT_EQ(round_trip("Fill(v) + 1"), "Fill(v) + 1");
 }
 
-TEST(RefOutExpressionParse, RefNode)
+TEST(RefOutExpressionParse, RefAndOutAreRemoved)
 {
-    Parsed p("f(ref a, out b)");
-    ASSERT_TRUE(p.expr != nullptr);
-    const auto* call = std::get_if<ast::CallExpr>(&p.expr->v);
-    ASSERT_TRUE(call != nullptr);
-    ASSERT_EQ(call->args.size(), 2u);
-    const auto* r = std::get_if<ast::RefExpr>(&call->args[0]->v);
-    const auto* o = std::get_if<ast::RefExpr>(&call->args[1]->v);
-    ASSERT_TRUE(r != nullptr);
-    ASSERT_TRUE(o != nullptr);
-    EXPECT_FALSE(r->is_out);
-    EXPECT_TRUE(o->is_out);
-    EXPECT_EQ(r->pos, 2u);
-    EXPECT_EQ(o->pos, 9u);
-}
-
-TEST(RefOutExpressionParse, RefAndOutAreReserved)
-{
-    // A name that only starts with the word is still a name.
+    // The words are plain names now. The old forms are parse errors.
+    for (const char* text : {"ref x", "f(ref a)", "f(out b.c)", "this.target = ref source", "ref a[1]"}) {
+        Parsed p(text);
+        EXPECT_TRUE(p.expr == nullptr || !p.diag.items.empty()) << text;
+    }
+    EXPECT_EQ(round_trip("ref + out"), "ref + out");
     EXPECT_EQ(round_trip("reference + outer"), "reference + outer");
-    EXPECT_NE(one_error("ref"), "<none>");
-    EXPECT_NE(one_error("a + out"), "<none>");
 }
 
-TEST(RefOutExpressionParse, RefAndOutLambdaParameters)
+TEST(RefOutExpressionParse, ReferenceLambdaParameters)
 {
-    Parsed p("(ref Vec3 v, out int n, ref w) => { }");
+    Parsed p("(Vec3& v, int& n, w) => { }");
     ASSERT_TRUE(p.expr != nullptr) << p.diag.format("t");
     const auto* l = std::get_if<ast::LambdaExpr>(&p.expr->v);
     ASSERT_TRUE(l != nullptr);
     ASSERT_EQ(l->params.size(), 3u);
-    EXPECT_EQ(l->params[0].mode, ast::PassMode::Ref);
-    EXPECT_EQ(l->params[0].type, "Vec3");
-    EXPECT_EQ(l->params[1].mode, ast::PassMode::Out);
-    EXPECT_EQ(l->params[2].mode, ast::PassMode::Ref);
+    EXPECT_TRUE(ast::is_ref_type(l->params[0].type));
+    EXPECT_EQ(l->params[0].type, "Vec3&");
+    EXPECT_TRUE(ast::is_ref_type(l->params[1].type));
+    EXPECT_FALSE(ast::is_ref_type(l->params[2].type));
     EXPECT_EQ(l->params[2].type, "");
-    EXPECT_EQ(ast::print(*p.expr), "[=](Vec3& v, int32_t& n, auto& w) {}");
+    EXPECT_EQ(ast::print(*p.expr), "[=](Vec3& v, int32_t& n, auto w) {}");
 }
 
-TEST(RefOutExpressionParse, PrefixAmpersandIsRemoved)
+TEST(RefOutExpressionParse, PrefixAmpersandIsAddressOf)
 {
-    EXPECT_EQ(one_error("&x"), "1:1: use 'ref' instead of '&'");
-    EXPECT_EQ(one_error("f(a, &b)"), "1:6: use 'ref' instead of '&'");
-    EXPECT_EQ(one_error("this.p = &source"), "1:10: use 'ref' instead of '&'");
+    EXPECT_EQ(round_trip("&x"), "&x");
+    EXPECT_EQ(round_trip("f(a, &b)"), "f(a, &b)");
+    EXPECT_EQ(round_trip("this.p = &source"), "this.p = &source");
     EXPECT_EQ(round_trip("a & b"), "a & b");
+    EXPECT_EQ(round_trip("a && b"), "a && b");
+    EXPECT_EQ(round_trip("a & &b"), "a & &b");
 }

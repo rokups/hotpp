@@ -19,10 +19,10 @@ TEST(LambdaLowering, Lambda)
     Fixture f;
     EXPECT_EQ(f.body("var f = (float x, int* q) => { q.foo(); this.n = x; };"),
               "auto f = spp::make_closure(GEN, \"Player::run lambda\", [=](float x, int32_t* q) "
-              "{ SPP_NODEBUG_LOCAL auto* st = state_of(self); spp::deref(q).foo(); st->n = x; });");
+              "{ SPP_NODEBUG_LOCAL auto* __st = state_of(__self); spp::deref(q).foo(); __st->n = x; });");
     EXPECT_EQ(f.expr("(Actor* a) => { a.x = 1; }"),
               "spp::make_closure(GEN, \"Player::run lambda\", [=](Actor* a) "
-              "{ SPP_NODEBUG_LOCAL auto* st = state_of(self); spp::deref(a).x = 1; })");
+              "{ SPP_NODEBUG_LOCAL auto* __st = state_of(__self); spp::deref(a).x = 1; })");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
@@ -31,7 +31,7 @@ TEST(LambdaLowering, LambdaNoParameters)
     Fixture f;
     EXPECT_EQ(f.expr("() => { this.fired = this.fired + 1; }"),
               "spp::make_closure(GEN, \"Player::run lambda\", [=]() "
-              "{ SPP_NODEBUG_LOCAL auto* st = state_of(self); st->fired = st->fired + 1; })");
+              "{ SPP_NODEBUG_LOCAL auto* __st = state_of(__self); __st->fired = __st->fired + 1; })");
 }
 
 TEST(LambdaLowering, ErrorLambdaInFieldInitializer)

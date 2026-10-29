@@ -18,7 +18,7 @@ const std::set<std::string>& keywords()
     static const std::set<std::string> k = {
         "if", "else", "while", "do", "for", "foreach", "in", "of", "return", "break", "continue", "switch",
         "case", "default", "is", "as", "new", "delete", "public", "private", "protected", "override",
-        "virtual", "const", "ref", "out", "get", "set", "this", "super", "true", "false", "null", "try",
+        "virtual", "const", "get", "set", "this", "base", "true", "false", "null", "try",
         "catch", "finally", "throw", "var", "let", "void", "class", "struct", "enum", "using", "static",
         "module", "native", "handle", "value"};
     return k;
@@ -306,7 +306,10 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
         }
         if (!is_name(t) || !prev || !next) continue;
         // A declaration: "Type name" followed by "=", ";", "," or ")", or "name in".
-        const bool by_type = is_type(*prev) || ((prev->s == ">" || prev->s == "]") && (next->s == "=" || next->s == ";"));
+        // "var& name" is a declaration too: the "&" follows "var".
+        const bool var_ref = prev->s == "&" && i > 1 && toks[i - 2].id && toks[i - 2].s == "var";
+        const bool by_type = is_type(*prev) || var_ref ||
+                             ((prev->s == ">" || prev->s == "]") && (next->s == "=" || next->s == ";"));
         const bool foreach_name = prev->s == "(" && next->id && next->s == "in";
         const bool ends = next->s == "=" || next->s == ";" || next->s == "," || next->s == ")" || (next->id && next->s == "in");
         if (!((by_type && ends) || foreach_name)) continue;

@@ -113,7 +113,7 @@ SPP_NODEBUG inline ShellBase* construct_shell(const ClassRecord* rec, const char
     ShellBase* s = canon->construct(key, args);
     if (!s)
         throw std::runtime_error(std::string("class ") + rec->name +
-                                 ": the types of the 'super(...)' arguments changed since the first generation");
+                                 ": the types of the 'base(...)' arguments changed since the first generation");
     if (note) note_creator(s, rec->generation);
     return s;
 }

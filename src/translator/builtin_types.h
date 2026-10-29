@@ -160,4 +160,29 @@ inline std::string canonical_type(std::string_view text, std::string* error = nu
     return out;
 }
 
+// The script spelling of a canonical type text, for a message to the script author:
+// "int32_t&" gives "int&". A word after "::" stays.
+inline std::string script_type_text(std::string_view text)
+{
+    std::string out;
+    const size_t n = text.size();
+    size_t i = 0;
+    while (i < n) {
+        if (!builtin_detail::is_id_start(text[i])) {
+            out += text[i++];
+            continue;
+        }
+        const size_t b = i;
+        while (i < n && builtin_detail::is_id_char(text[i])) ++i;
+        const std::string_view word = text.substr(b, i - b);
+        const bool scoped = out.size() >= 2 && out.compare(out.size() - 2, 2, "::") == 0;
+        const BuiltinType* hit = nullptr;
+        if (!scoped)
+            for (const BuiltinType& t : builtin_types())
+                if (word == t.cpp) hit = &t;
+        out += hit ? std::string(hit->script) : std::string(word);
+    }
+    return out;
+}
+
 }  // namespace sppc

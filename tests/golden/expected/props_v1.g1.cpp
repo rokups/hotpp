@@ -145,19 +145,19 @@ static const spp::StateLayout Gauge_layout = {
 };
 
 // ------------------------------------------------- generation functions
-SPP_HIDDEN GaugeState_g1* state_of(Gauge_Shell* self)
+SPP_HIDDEN GaugeState_g1* state_of(Gauge_Shell* __self)
 {
-    return static_cast<GaugeState_g1*>(self->state);
+    return static_cast<GaugeState_g1*>(__self->state);
 }
 
-[[maybe_unused]] SPP_HIDDEN static float Gauge__total(Gauge_Shell* self);
-[[maybe_unused]] SPP_HIDDEN static float Gauge__get_Hp(Gauge_Shell* self);
-[[maybe_unused]] SPP_HIDDEN static void Gauge__set_Hp(Gauge_Shell* self, float value);
-[[maybe_unused]] SPP_HIDDEN static float Gauge__get_MaxHp(Gauge_Shell* self);
-[[maybe_unused]] SPP_HIDDEN static int32_t Gauge__get_Level(Gauge_Shell* self);
-[[maybe_unused]] SPP_HIDDEN static void Gauge__set_Level(Gauge_Shell* self, int32_t value);
-[[maybe_unused]] SPP_HIDDEN static float Gauge__get_Shield(Gauge_Shell* self);
-[[maybe_unused]] SPP_HIDDEN static void Gauge__set_Shield(Gauge_Shell* self, float value);
+[[maybe_unused]] SPP_HIDDEN static float Gauge__total(Gauge_Shell* __self);
+[[maybe_unused]] SPP_HIDDEN static float Gauge__get_Hp(Gauge_Shell* __self);
+[[maybe_unused]] SPP_HIDDEN static void Gauge__set_Hp(Gauge_Shell* __self, float value);
+[[maybe_unused]] SPP_HIDDEN static float Gauge__get_MaxHp(Gauge_Shell* __self);
+[[maybe_unused]] SPP_HIDDEN static int32_t Gauge__get_Level(Gauge_Shell* __self);
+[[maybe_unused]] SPP_HIDDEN static void Gauge__set_Level(Gauge_Shell* __self, int32_t value);
+[[maybe_unused]] SPP_HIDDEN static float Gauge__get_Shield(Gauge_Shell* __self);
+[[maybe_unused]] SPP_HIDDEN static void Gauge__set_Shield(Gauge_Shell* __self, float value);
 
 #line 6 "props_v1.spp"
 [[maybe_unused]] SPP_HIDDEN static auto Gauge__super_args()
@@ -188,7 +188,7 @@ SPP_NODEBUG static spp::ShellBase* Gauge__construct(const char* key, const void*
 #line 6 "props_v1.spp"
         const auto& t = *static_cast<const Gauge_SuperArgs*>(args);
 #line 6 "props_v1.spp"
-        return std::apply([](const auto&... x) -> spp::ShellBase* { return new Gauge_Shell(spp::Construct{}, x...); }, t);
+        return std::apply([](auto&... x) -> spp::ShellBase* { return new Gauge_Shell(spp::Construct{}, x...); }, t);
 #line 6 "props_v1.spp"
     }
 #line 6 "props_v1.spp"
@@ -200,15 +200,15 @@ SPP_NODEBUG static spp::ShellBase* Gauge__construct(const char* key, const void*
 static const char* const Gauge__construct_keys[] = {typeid(Gauge_SuperArgs).name(), nullptr};
 
 #line 6 "props_v1.spp"
-SPP_HIDDEN static Gauge_Shell* Gauge__build([[maybe_unused]] bool note)
+SPP_HIDDEN static Gauge_Shell* Gauge__build([[maybe_unused]] bool __note)
 #line 6 "props_v1.spp"
 {
 #line 6 "props_v1.spp"
-    auto plan = Gauge__plan();
+    auto __plan = Gauge__plan();
 #line 6 "props_v1.spp"
-    auto* self = static_cast<Gauge_Shell*>(spp::construct_shell(&Gauge_record, typeid(Gauge_SuperArgs).name(), &plan.first, note));
+    auto* __self = static_cast<Gauge_Shell*>(spp::construct_shell(&Gauge_record, typeid(Gauge_SuperArgs).name(), &__plan.first, __note));
 #line 6 "props_v1.spp"
-    return self;
+    return __self;
 #line 6 "props_v1.spp"
 }
 #line 215 "props_v1.spp.cpp"
@@ -235,15 +235,15 @@ void GaugeState_g1::Tick(float dt)
 #line 16 "props_v1.spp"
     }
 #line 17 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
 #line 17 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 17 "props_v1.spp"
-    if (Gauge__get_Hp(self) < Gauge__get_MaxHp(self)) Gauge__set_Hp(self, Gauge__get_Hp(self) + (1.0f));
+    if (Gauge__get_Hp(__self) < Gauge__get_MaxHp(__self)) Gauge__set_Hp(__self, Gauge__get_Hp(__self) + (1.0f));
 #line 18 "props_v1.spp"
-    Gauge__set_Shield(self, Gauge__get_Shield(self) + 2.0f);
+    Gauge__set_Shield(__self, Gauge__get_Shield(__self) + 2.0f);
 #line 19 "props_v1.spp"
-    Gauge__set_Level(self, Gauge__get_Level(self) + 1);
+    Gauge__set_Level(__self, Gauge__get_Level(__self) + 1);
 #line 20 "props_v1.spp"
 }
 #line 250 "props_v1.spp.cpp"
@@ -261,23 +261,23 @@ void GaugeState_g1::TakeDamage_f(float amount)
 #line 22 "props_v1.spp"
     }
 #line 23 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
 #line 23 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 23 "props_v1.spp"
-    Gauge__set_Shield(self, Gauge__get_Shield(self) - (amount));
+    Gauge__set_Shield(__self, Gauge__get_Shield(__self) - (amount));
 #line 24 "props_v1.spp"
-    if (Gauge__get_Shield(self) <= 0.0f) Gauge__set_Hp(self, Gauge__get_Hp(self) - amount);
+    if (Gauge__get_Shield(__self) <= 0.0f) Gauge__set_Hp(__self, Gauge__get_Hp(__self) - amount);
 #line 25 "props_v1.spp"
 }
 #line 274 "props_v1.spp.cpp"
 
 #line 27 "props_v1.spp"
-[[maybe_unused]] SPP_HIDDEN static float Gauge__total(Gauge_Shell* self)
+[[maybe_unused]] SPP_HIDDEN static float Gauge__total(Gauge_Shell* __self)
 #line 27 "props_v1.spp"
 {
 #line 27 "props_v1.spp"
-    return state_of(self)->total();
+    return state_of(__self)->total();
 #line 27 "props_v1.spp"
 }
 #line 284 "props_v1.spp.cpp"
@@ -294,21 +294,21 @@ float GaugeState_g1::total()
 #line 27 "props_v1.spp"
     }
 #line 28 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
 #line 28 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 28 "props_v1.spp"
-    return Gauge__get_Hp(self) + Gauge__get_Shield(self);
+    return Gauge__get_Hp(__self) + Gauge__get_Shield(__self);
 #line 29 "props_v1.spp"
 }
 #line 305 "props_v1.spp.cpp"
 
 #line 7 "props_v1.spp"
-[[maybe_unused]] SPP_HIDDEN static float Gauge__get_Hp(Gauge_Shell* self)
+[[maybe_unused]] SPP_HIDDEN static float Gauge__get_Hp(Gauge_Shell* __self)
 #line 7 "props_v1.spp"
 {
 #line 7 "props_v1.spp"
-    return state_of(self)->get_Hp();
+    return state_of(__self)->get_Hp();
 #line 7 "props_v1.spp"
 }
 #line 315 "props_v1.spp.cpp"
@@ -325,21 +325,21 @@ float GaugeState_g1::get_Hp()
 #line 7 "props_v1.spp"
     }
 #line 7 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
 #line 7 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 7 "props_v1.spp"
-    return st->__p_Hp;
+    return __st->__p_Hp;
 #line 7 "props_v1.spp"
 }
 #line 336 "props_v1.spp.cpp"
 
 #line 7 "props_v1.spp"
-[[maybe_unused]] SPP_HIDDEN static void Gauge__set_Hp(Gauge_Shell* self, float value)
+[[maybe_unused]] SPP_HIDDEN static void Gauge__set_Hp(Gauge_Shell* __self, float value)
 #line 7 "props_v1.spp"
 {
 #line 7 "props_v1.spp"
-    return state_of(self)->set_Hp(std::forward<float>(value));
+    return state_of(__self)->set_Hp(std::forward<float>(value));
 #line 7 "props_v1.spp"
 }
 #line 346 "props_v1.spp.cpp"
@@ -356,21 +356,21 @@ void GaugeState_g1::set_Hp(float value)
 #line 7 "props_v1.spp"
     }
 #line 7 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
 #line 7 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 7 "props_v1.spp"
-    st->__p_Hp = value;
+    __st->__p_Hp = value;
 #line 7 "props_v1.spp"
 }
 #line 367 "props_v1.spp.cpp"
 
 #line 8 "props_v1.spp"
-[[maybe_unused]] SPP_HIDDEN static float Gauge__get_MaxHp(Gauge_Shell* self)
+[[maybe_unused]] SPP_HIDDEN static float Gauge__get_MaxHp(Gauge_Shell* __self)
 #line 8 "props_v1.spp"
 {
 #line 8 "props_v1.spp"
-    return state_of(self)->get_MaxHp();
+    return state_of(__self)->get_MaxHp();
 #line 8 "props_v1.spp"
 }
 #line 377 "props_v1.spp.cpp"
@@ -387,21 +387,21 @@ float GaugeState_g1::get_MaxHp()
 #line 8 "props_v1.spp"
     }
 #line 8 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
 #line 8 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 8 "props_v1.spp"
-    return st->__p_MaxHp;
+    return __st->__p_MaxHp;
 #line 8 "props_v1.spp"
 }
 #line 398 "props_v1.spp.cpp"
 
 #line 9 "props_v1.spp"
-[[maybe_unused]] SPP_HIDDEN static int32_t Gauge__get_Level(Gauge_Shell* self)
+[[maybe_unused]] SPP_HIDDEN static int32_t Gauge__get_Level(Gauge_Shell* __self)
 #line 9 "props_v1.spp"
 {
 #line 9 "props_v1.spp"
-    return state_of(self)->get_Level();
+    return state_of(__self)->get_Level();
 #line 9 "props_v1.spp"
 }
 #line 408 "props_v1.spp.cpp"
@@ -418,21 +418,21 @@ int32_t GaugeState_g1::get_Level()
 #line 9 "props_v1.spp"
     }
 #line 9 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
 #line 9 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 9 "props_v1.spp"
-    return st->__p_Level;
+    return __st->__p_Level;
 #line 9 "props_v1.spp"
 }
 #line 429 "props_v1.spp.cpp"
 
 #line 9 "props_v1.spp"
-[[maybe_unused]] SPP_HIDDEN static void Gauge__set_Level(Gauge_Shell* self, int32_t value)
+[[maybe_unused]] SPP_HIDDEN static void Gauge__set_Level(Gauge_Shell* __self, int32_t value)
 #line 9 "props_v1.spp"
 {
 #line 9 "props_v1.spp"
-    return state_of(self)->set_Level(std::forward<int32_t>(value));
+    return state_of(__self)->set_Level(std::forward<int32_t>(value));
 #line 9 "props_v1.spp"
 }
 #line 439 "props_v1.spp.cpp"
@@ -449,21 +449,21 @@ void GaugeState_g1::set_Level(int32_t value)
 #line 9 "props_v1.spp"
     }
 #line 9 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
 #line 9 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 9 "props_v1.spp"
-    st->__p_Level = value;
+    __st->__p_Level = value;
 #line 9 "props_v1.spp"
 }
 #line 460 "props_v1.spp.cpp"
 
 #line 12 "props_v1.spp"
-[[maybe_unused]] SPP_HIDDEN static float Gauge__get_Shield(Gauge_Shell* self)
+[[maybe_unused]] SPP_HIDDEN static float Gauge__get_Shield(Gauge_Shell* __self)
 #line 12 "props_v1.spp"
 {
 #line 12 "props_v1.spp"
-    return state_of(self)->get_Shield();
+    return state_of(__self)->get_Shield();
 #line 12 "props_v1.spp"
 }
 #line 470 "props_v1.spp.cpp"
@@ -480,21 +480,21 @@ float GaugeState_g1::get_Shield()
 #line 12 "props_v1.spp"
     }
 #line 12 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
 #line 12 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 12 "props_v1.spp"
-    return st->shield_raw;
+    return __st->shield_raw;
 #line 12 "props_v1.spp"
 }
 #line 491 "props_v1.spp.cpp"
 
 #line 13 "props_v1.spp"
-[[maybe_unused]] SPP_HIDDEN static void Gauge__set_Shield(Gauge_Shell* self, float value)
+[[maybe_unused]] SPP_HIDDEN static void Gauge__set_Shield(Gauge_Shell* __self, float value)
 #line 13 "props_v1.spp"
 {
 #line 13 "props_v1.spp"
-    return state_of(self)->set_Shield(std::forward<float>(value));
+    return state_of(__self)->set_Shield(std::forward<float>(value));
 #line 13 "props_v1.spp"
 }
 #line 501 "props_v1.spp.cpp"
@@ -511,11 +511,11 @@ void GaugeState_g1::set_Shield(float value)
 #line 13 "props_v1.spp"
     }
 #line 13 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
 #line 13 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 13 "props_v1.spp"
-    st->shield_raw = value < 0.0f ? 0.0f : value;
+    __st->shield_raw = value < 0.0f ? 0.0f : value;
 #line 13 "props_v1.spp"
 }
 #line 522 "props_v1.spp.cpp"
@@ -523,13 +523,13 @@ void GaugeState_g1::set_Shield(float value)
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 27 "props_v1.spp"
-static float Gauge__total__thunk(Actor* a)
+static float Gauge__total__thunk(Actor* __a)
 #line 27 "props_v1.spp"
 {
 #line 27 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(a);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(__a);
 #line 27 "props_v1.spp"
-    return spp::call<float(Actor*)>(self, SLOT_total);
+    return spp::call<float(Actor*)>(__self, SLOT_total);
 #line 27 "props_v1.spp"
 }
 #line 536 "props_v1.spp.cpp"
@@ -537,13 +537,13 @@ static float Gauge__total__thunk(Actor* a)
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 7 "props_v1.spp"
-static float Gauge__get_Hp__thunk(Actor* a)
+static float Gauge__get_Hp__thunk(Actor* __a)
 #line 7 "props_v1.spp"
 {
 #line 7 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(a);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(__a);
 #line 7 "props_v1.spp"
-    return spp::call<float(Actor*)>(self, SLOT_get_Hp);
+    return spp::call<float(Actor*)>(__self, SLOT_get_Hp);
 #line 7 "props_v1.spp"
 }
 #line 550 "props_v1.spp.cpp"
@@ -551,13 +551,13 @@ static float Gauge__get_Hp__thunk(Actor* a)
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 7 "props_v1.spp"
-static void Gauge__set_Hp__thunk(Actor* a, float value)
+static void Gauge__set_Hp__thunk(Actor* __a, float value)
 #line 7 "props_v1.spp"
 {
 #line 7 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(a);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(__a);
 #line 7 "props_v1.spp"
-    return spp::call<void(Actor*, float)>(self, SLOT_set_Hp, value);
+    return spp::call<void(Actor*, float)>(__self, SLOT_set_Hp, value);
 #line 7 "props_v1.spp"
 }
 #line 564 "props_v1.spp.cpp"
@@ -565,13 +565,13 @@ static void Gauge__set_Hp__thunk(Actor* a, float value)
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 8 "props_v1.spp"
-static float Gauge__get_MaxHp__thunk(Actor* a)
+static float Gauge__get_MaxHp__thunk(Actor* __a)
 #line 8 "props_v1.spp"
 {
 #line 8 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(a);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(__a);
 #line 8 "props_v1.spp"
-    return spp::call<float(Actor*)>(self, SLOT_get_MaxHp);
+    return spp::call<float(Actor*)>(__self, SLOT_get_MaxHp);
 #line 8 "props_v1.spp"
 }
 #line 578 "props_v1.spp.cpp"
@@ -579,13 +579,13 @@ static float Gauge__get_MaxHp__thunk(Actor* a)
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 9 "props_v1.spp"
-static int32_t Gauge__get_Level__thunk(Actor* a)
+static int32_t Gauge__get_Level__thunk(Actor* __a)
 #line 9 "props_v1.spp"
 {
 #line 9 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(a);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(__a);
 #line 9 "props_v1.spp"
-    return spp::call<int32_t(Actor*)>(self, SLOT_get_Level);
+    return spp::call<int32_t(Actor*)>(__self, SLOT_get_Level);
 #line 9 "props_v1.spp"
 }
 #line 592 "props_v1.spp.cpp"
@@ -593,13 +593,13 @@ static int32_t Gauge__get_Level__thunk(Actor* a)
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 9 "props_v1.spp"
-static void Gauge__set_Level__thunk(Actor* a, int32_t value)
+static void Gauge__set_Level__thunk(Actor* __a, int32_t value)
 #line 9 "props_v1.spp"
 {
 #line 9 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(a);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(__a);
 #line 9 "props_v1.spp"
-    return spp::call<void(Actor*, int32_t)>(self, SLOT_set_Level, value);
+    return spp::call<void(Actor*, int32_t)>(__self, SLOT_set_Level, value);
 #line 9 "props_v1.spp"
 }
 #line 606 "props_v1.spp.cpp"
@@ -607,13 +607,13 @@ static void Gauge__set_Level__thunk(Actor* a, int32_t value)
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 12 "props_v1.spp"
-static float Gauge__get_Shield__thunk(Actor* a)
+static float Gauge__get_Shield__thunk(Actor* __a)
 #line 12 "props_v1.spp"
 {
 #line 12 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(a);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(__a);
 #line 12 "props_v1.spp"
-    return spp::call<float(Actor*)>(self, SLOT_get_Shield);
+    return spp::call<float(Actor*)>(__self, SLOT_get_Shield);
 #line 12 "props_v1.spp"
 }
 #line 620 "props_v1.spp.cpp"
@@ -621,13 +621,13 @@ static float Gauge__get_Shield__thunk(Actor* a)
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 13 "props_v1.spp"
-static void Gauge__set_Shield__thunk(Actor* a, float value)
+static void Gauge__set_Shield__thunk(Actor* __a, float value)
 #line 13 "props_v1.spp"
 {
 #line 13 "props_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Gauge_Shell*>(a);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(__a);
 #line 13 "props_v1.spp"
-    return spp::call<void(Actor*, float)>(self, SLOT_set_Shield, value);
+    return spp::call<void(Actor*, float)>(__self, SLOT_set_Shield, value);
 #line 13 "props_v1.spp"
 }
 #line 634 "props_v1.spp.cpp"

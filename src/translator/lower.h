@@ -8,7 +8,7 @@
 //    name to "locals".
 //  - The script uses "." for a scope and for a member access. A name with more than one part
 //    is a member chain when the first part is a local. Else it is a scope chain and the
-//    parts join with "::". A member access on a value (not "this" and not "super") becomes
+//    parts join with "::". A member access on a value (not "this" and not "base") becomes
 //    "spp::deref(object).member". The helper works for a pointer and for a reference.
 //  - "this.P" and a bare "P" (not a local) name the property P of the class. A read becomes
 //    "Cls__get_P(self)". The statement "P = e;" becomes "Cls__set_P(self, e);". The statements
@@ -16,7 +16,7 @@
 //  - "obj.P" names the property P of another object of the class. A known type of obj decides
 //    (S20b): a script class gives its accessors, a native type gives the native member. The
 //    native base of the family and an unknown type keep the name rule: P must be a property
-//    of the class. "super.P" is not a property.
+//    of the class. "base.P" is not a property.
 //    The object becomes "spp::shell_of<Cls_Shell>(obj, "Cls")". The helper checks at run
 //    time that the object is a script object of the class. The C++ compiler rejects an
 //    object that is not of the native base type. A read becomes "Cls__get_P(shell)".
@@ -81,12 +81,12 @@ struct RCtx {
     std::string ret_type;
     // Script inheritance (design 4.5). "native_base" is the native base of the root of the
     // script classes (empty: no native base). "native_virtuals" has the names of its virtual
-    // methods. "super.M(args)" of such a name in a class with a script parent P becomes
+    // methods. "base.M(args)" of such a name in a class with a script parent P becomes
     // "P__base_M(self, args)": the implementation that P sees.
     std::string native_base;
     std::set<std::string> native_virtuals;
     // The virtuals of the native interface bases (design 4.4): the name to the interface base.
-    // "super.F()" of such a virtual calls the implementation of the interface base.
+    // "base.F()" of such a virtual calls the implementation of the interface base.
     std::map<std::string, std::string> interface_virtuals;
     // Set to true when a bare "this" becomes a handle (spp::handle_from_this). The translator
     // then gives a native-base shell the base std::enable_shared_from_this. May be null.

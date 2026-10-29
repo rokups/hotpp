@@ -40,7 +40,8 @@ SPP_ERROR_TAG(e_import_name, "using needs a header name");
 SPP_ERROR_TAG(e_import_arg, "using needs a string or <header>");
 SPP_ERROR_TAG(e_import_close, "using <...> needs a closing '>'");
 SPP_ERROR_TAG(e_accessor, "expected 'get' or 'set'");
-SPP_ERROR_TAG(e_super, "expected 'super(...)' after ':' of a constructor");
+SPP_ERROR_TAG(e_base, "expected 'base(...)' after ':' of a constructor");
+SPP_ERROR_TAG(e_super_renamed, "'super' was renamed to 'base'");
 
 // The text of a span.
 std::string_view span_text(const ParseState& st, Span sp)
@@ -66,9 +67,9 @@ struct AttrItem {
     std::vector<std::string> args;
 };
 
-// The base call of a constructor: ": super(args)".
-struct SuperCall {
-    const char* pos = nullptr;  // the "super" word
+// The base call of a constructor: ": base(args)".
+struct BaseCall {
+    const char* pos = nullptr;  // the "base" word
     Span args;                  // the text between the parentheses
 };
 
@@ -77,8 +78,8 @@ struct MethodRest {
     std::vector<ast::Param> params;
     std::string ret;
     const char* arrow = nullptr;  // the removed "->", or null
-    const char* super_pos = nullptr;  // the "super" word of a base call, or null
-    Span super_args;
+    const char* base_pos = nullptr;  // the "base" word of a base call, or null
+    Span base_args;
     Span body;
 };
 
@@ -116,10 +117,10 @@ struct Member {
     bool get_has_access = false, set_has_access = false;  // an access word on the accessor
 };
 
-// The words "get", "set", "ref" and "out" are reserved. They are not names of members or parameters.
+// The words "get" and "set" are reserved. They are not names of members or parameters.
 void check_name(const ParseState& st, const char* pos, const std::string& name)
 {
-    if (name == "get" || name == "set" || name == "ref" || name == "out")
+    if (name == "get" || name == "set")
         st.error(pos, "'" + name + "' is a reserved word");
 }
 
@@ -423,18 +424,17 @@ struct annot_p {
 struct param_p {
     static constexpr auto rule =
         dsl::peek(old_param_ahead) >> dsl::error<e_old_param> |
-        dsl::else_ >> (dsl::p<pass_mode_p> + dsl::position + dsl::p<scan_param_type> +
-                       dsl::p<name_p<e_param_name>> + dsl::if_(dsl::lit_c<','>));
+        dsl::else_ >> (dsl::position + dsl::p<scan_param_type> + dsl::p<name_p<e_param_name>> +
+                       dsl::if_(dsl::lit_c<','>));
     static constexpr auto value = lexy::bind(
         lexy::callback<ast::Param>(
-            [](const ParseState& st, ast::PassMode mode, const char* pos, Span type,
-               std::string name) {
+            [](const ParseState& st, const char* pos, Span type, std::string name) {
                 check_name(st, pos, name);
                 if (only_blank(span_text(st, type))) {
                     st.error(pos, "a parameter needs a type; write 'Type name'");
-                    return ast::Param{std::move(name), "", mode};
+                    return ast::Param{std::move(name), ""};
                 }
-                return ast::Param{std::move(name), type_of(st, type), mode};
+                return ast::Param{std::move(name), type_of(st, type)};
             }),
         lexy::parse_state, lexy::values);
 };
@@ -459,21 +459,23 @@ struct arrow_p : lexy::token_production {
 };
 
 // The part of a method after the name: params, an old "->" return type and body.
-constexpr auto kw_super = LEXY_KEYWORD("super", id);
+constexpr auto kw_base = LEXY_KEYWORD("base", id);
+constexpr auto kw_super_old = LEXY_KEYWORD("super", id);
 
-// ": super(args)". The args stay a raw span. The call is valid in a constructor only.
-struct super_call_p {
+// ": base(args)". The args stay a raw span. The call is valid in a constructor only.
+struct base_call_p {
     static constexpr auto rule =
-        dsl::lit_c<':'> + dsl::position + (kw_super | dsl::else_ >> dsl::error<e_super>) +
+        dsl::lit_c<':'> + dsl::position + (kw_base | dsl::peek(kw_super_old) >> dsl::error<e_super_renamed> |
+                                     dsl::else_ >> dsl::error<e_base>) +
         dsl::p<scan_until<paren_cfg>> + dsl::lit_c<')'>;
-    static constexpr auto value = lexy::callback<SuperCall>(
-        [](const char* pos, Span args) { return SuperCall{pos, args}; });
+    static constexpr auto value = lexy::callback<BaseCall>(
+        [](const char* pos, Span args) { return BaseCall{pos, args}; });
 };
 
 struct method_tail {
     static constexpr auto rule = dsl::p<params_p> +
                                  dsl::opt(dsl::peek(LEXY_LIT("->")) >> dsl::p<arrow_p>) +
-                                 dsl::opt(dsl::peek(dsl::lit_c<':'>) >> dsl::p<super_call_p>) +
+                                 dsl::opt(dsl::peek(dsl::lit_c<':'>) >> dsl::p<base_call_p>) +
                                  dsl::p<scan_balanced>;
     static constexpr auto value = lexy::bind(
         lexy::callback<MethodRest>([](const ParseState& st, auto&& params, auto&& arrow, auto&& sup,
@@ -486,8 +488,8 @@ struct method_tail {
                 r.ret = type_of(st, arrow.type);
             }
             if constexpr (!std::is_same_v<std::decay_t<decltype(sup)>, lexy::nullopt>) {
-                r.super_pos = sup.pos;
-                r.super_args = sup.args;
+                r.base_pos = sup.pos;
+                r.base_args = sup.args;
             }
             r.body = body;
             return r;
@@ -668,18 +670,18 @@ struct typed_member {
                     c.end_line = st.map->line(c.end_pos);
                     if (rest.arrow)
                         st.error(rest.arrow, "'->' return type is removed; write the type before the name");
-                    if (rest.super_pos) {
-                        c.has_super = true;
-                        c.super_span = rest.super_args;
-                        c.super_pos = st.offset(rest.super_pos);
+                    if (rest.base_pos) {
+                        c.has_base_call = true;
+                        c.base_span = rest.base_args;
+                        c.base_pos = st.offset(rest.base_pos);
                     }
                     return m;
                 }
                 m.kind = Member::IsMethod;
                 ast::Method& me = m.method;
                 std::string ret = type_of(st, type);
-                if (rest.super_pos)
-                    st.error(rest.super_pos, "only a constructor can call 'super(...)' after the parameters");
+                if (rest.base_pos)
+                    st.error(rest.base_pos, "only a constructor can call 'base(...)' after the parameters");
                 if (rest.arrow)
                     st.error(rest.arrow,
                              "'->' return type is removed; write the type before the name");
@@ -750,8 +752,8 @@ struct dtor_p {
             ast::Method& me = m.method;
             if (!rest.params.empty())
                 st.error(name_pos, "a destructor has no parameters");
-            if (rest.super_pos)
-                st.error(rest.super_pos, "only a constructor can call 'super(...)'");
+            if (rest.base_pos)
+                st.error(rest.base_pos, "only a constructor can call 'base(...)'");
             m.ctor_name = name;
             me.name = "~" + name;
             me.body_span = rest.body;
@@ -1252,7 +1254,7 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
         for (ast::Method& d : c.dtors) d.body = parse_block(in, d.body_span, diag);
         for (ast::Ctor& k : c.ctors) {
             k.body = parse_block(in, k.body_span, diag);
-            if (k.has_super) k.super_args = parse_expression_list(in, k.super_span, diag);
+            if (k.has_base_call) k.base_args = parse_expression_list(in, k.base_span, diag);
         }
         for (ast::Field& f : c.fields)
             if (f.has_init && !only_blank(span_text(st, f.init_span)))

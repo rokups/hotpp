@@ -18,18 +18,18 @@ TEST(PropertyLowering, PropertyReadAndWrite)
 {
     Fixture f;
     add_props(f);
-    EXPECT_EQ(f.expr("this.Hp"), "Player__get_Hp(self)");
-    EXPECT_EQ(f.expr("Hp + Max"), "Player__get_Hp(self) + Player__get_Max(self)");
-    EXPECT_EQ(f.body("Hp = 1;"), "Player__set_Hp(self, 1);");
-    EXPECT_EQ(f.body("this.Hp = this.Max;"), "Player__set_Hp(self, Player__get_Max(self));");
-    EXPECT_EQ(f.body("this.Hp *= 2 + 1;"), "Player__set_Hp(self, Player__get_Hp(self) * (2 + 1));");
-    EXPECT_EQ(f.body("Hp <<= 1;"), "Player__set_Hp(self, Player__get_Hp(self) << (1));");
-    EXPECT_EQ(f.body("--Hp;"), "Player__set_Hp(self, Player__get_Hp(self) - 1);");
-    EXPECT_EQ(f.body("this.Hp++;"), "Player__set_Hp(self, Player__get_Hp(self) + 1);");
+    EXPECT_EQ(f.expr("this.Hp"), "Player__get_Hp(__self)");
+    EXPECT_EQ(f.expr("Hp + Max"), "Player__get_Hp(__self) + Player__get_Max(__self)");
+    EXPECT_EQ(f.body("Hp = 1;"), "Player__set_Hp(__self, 1);");
+    EXPECT_EQ(f.body("this.Hp = this.Max;"), "Player__set_Hp(__self, Player__get_Max(__self));");
+    EXPECT_EQ(f.body("this.Hp *= 2 + 1;"), "Player__set_Hp(__self, Player__get_Hp(__self) * (2 + 1));");
+    EXPECT_EQ(f.body("Hp <<= 1;"), "Player__set_Hp(__self, Player__get_Hp(__self) << (1));");
+    EXPECT_EQ(f.body("--Hp;"), "Player__set_Hp(__self, Player__get_Hp(__self) - 1);");
+    EXPECT_EQ(f.body("this.Hp++;"), "Player__set_Hp(__self, Player__get_Hp(__self) + 1);");
     EXPECT_EQ(f.body("Sink = Hp == 1 ? 2 : 3;"),
-              "Player__set_Sink(self, Player__get_Hp(self) == 1 ? 2 : 3);");
+              "Player__set_Sink(__self, Player__get_Hp(__self) == 1 ? 2 : 3);");
     // A comparison is not a write.
-    EXPECT_EQ(f.expr("Hp <= 2"), "Player__get_Hp(self) <= 2");
+    EXPECT_EQ(f.expr("Hp <= 2"), "Player__get_Hp(__self) <= 2");
     EXPECT_EQ(f.diag.items.size(), 0u) << f.errors()[0];
 }
 
@@ -43,7 +43,7 @@ TEST(PropertyLowering, PropertyOfOtherObjectRead)
     EXPECT_EQ(f.expr("p.Hp"), "Player__get_Hp(" + sh + ")");
     EXPECT_EQ(f.expr("p.Hp + p.Max"), "Player__get_Hp(" + sh + ") + Player__get_Max(" + sh + ")");
     EXPECT_EQ(f.expr("this.target.Hp"),
-              "Player__get_Hp(spp::shell_of<Player_Shell>(st->target, \"Player\"))");
+              "Player__get_Hp(spp::shell_of<Player_Shell>(__st->target, \"Player\"))");
     EXPECT_EQ(f.expr("p.target.Hp"),
               "Player__get_Hp(spp::shell_of<Player_Shell>(spp::deref(p).target, \"Player\"))");
     EXPECT_EQ(f.expr("f(p).Hp"), "Player__get_Hp(spp::shell_of<Player_Shell>(f(p), \"Player\"))");
@@ -59,7 +59,7 @@ TEST(PropertyLowering, PropertyOfOtherObjectWrite)
     EXPECT_EQ(f.body("p.Hp = 1;"), "Player__set_Hp(" + sh + ", 1);");
     EXPECT_EQ(f.body("p.Sink = p.Hp;"), "Player__set_Sink(" + sh + ", Player__get_Hp(" + sh + "));");
     EXPECT_EQ(f.body("this.target.Hp = 2;"),
-              "Player__set_Hp(spp::shell_of<Player_Shell>(st->target, \"Player\"), 2);");
+              "Player__set_Hp(spp::shell_of<Player_Shell>(__st->target, \"Player\"), 2);");
     EXPECT_EQ(f.diag.items.size(), 0u) << f.errors()[0];
 }
 
@@ -89,7 +89,7 @@ TEST(PropertyLowering, PropertyOfOtherObjectIncrement)
     // The value of "P++" is the old value. The value of "++P" is the new value.
     EXPECT_EQ(f.expr("p.Hp++"), "spp::prop_post<spp::op_add>(" + acc);
     EXPECT_EQ(f.expr("++p.Hp"), "spp::prop_update<spp::op_add>(" + acc);
-    EXPECT_EQ(f.expr("Hp--"), "spp::prop_post<spp::op_sub>(Player__get_Hp, Player__set_Hp, self, 1)");
+    EXPECT_EQ(f.expr("Hp--"), "spp::prop_post<spp::op_sub>(Player__get_Hp, Player__set_Hp, __self, 1)");
     EXPECT_EQ(f.diag.items.size(), 0u) << f.errors()[0];
 }
 
@@ -101,16 +101,16 @@ TEST(PropertyLowering, PropertyWriteAsExpression)
     f.param("p");
     f.param("a");
     const std::string sh = "spp::shell_of<Player_Shell>(p, \"Player\")";
-    EXPECT_EQ(f.body("a = this.Hp = 1;"), "a = spp::prop_set(Player__set_Hp, self, 1);");
+    EXPECT_EQ(f.body("a = this.Hp = 1;"), "a = spp::prop_set(Player__set_Hp, __self, 1);");
     EXPECT_EQ(f.body("a = (p.Hp = 2);"), "a = (spp::prop_set(Player__set_Hp, " + sh + ", 2));");
     EXPECT_EQ(f.body("Hp = Sink = 3;"),
-              "Player__set_Hp(self, spp::prop_set(Player__set_Sink, self, 3));");
+              "Player__set_Hp(__self, spp::prop_set(Player__set_Sink, __self, 3));");
     EXPECT_EQ(f.body("a = Hp *= 2;"),
-              "a = spp::prop_update<spp::op_mul>(Player__get_Hp, Player__set_Hp, self, 2);");
+              "a = spp::prop_update<spp::op_mul>(Player__get_Hp, Player__set_Hp, __self, 2);");
     EXPECT_EQ(f.diag.items.size(), 0u) << f.errors()[0];
 }
 
-// A member that is not a property keeps the member access. "super.P" is not a property.
+// A member that is not a property keeps the member access. "base.P" is not a property.
 TEST(PropertyLowering, PropertyNameOnlyRewritesProperties)
 {
     Fixture f;
@@ -120,7 +120,7 @@ TEST(PropertyLowering, PropertyNameOnlyRewritesProperties)
     EXPECT_EQ(f.body("p.health = 1;"), "spp::deref(p).health = 1;");
     EXPECT_EQ(f.body("p.health += 1;"), "spp::deref(p).health += 1;");
     EXPECT_EQ(f.body("p.health++;"), "spp::deref(p).health++;");
-    EXPECT_EQ(f.expr("super.Hp"), "self->Actor::Hp");
+    EXPECT_EQ(f.expr("base.Hp"), "__self->Actor::Hp");
     EXPECT_EQ(f.diag.items.size(), 0u) << f.errors()[0];
 }
 
@@ -147,7 +147,7 @@ TEST(PropertyLowering, PropertyLocalHidesProperty)
     add_props(f);
     f.param("Hp");
     EXPECT_EQ(f.body("Hp = 1;"), "Hp = 1;");
-    EXPECT_EQ(f.body("this.Hp = 1;"), "Player__set_Hp(self, 1);");
+    EXPECT_EQ(f.body("this.Hp = 1;"), "Player__set_Hp(__self, 1);");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 

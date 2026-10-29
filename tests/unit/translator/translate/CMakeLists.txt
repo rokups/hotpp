@@ -11,6 +11,7 @@ add_executable(unit_translator_translate_tests
     script_import_translation_tests.cpp
     inherited_handle_translation_tests.cpp
     lambda_translation_tests.cpp
+    generated_name_translation_tests.cpp
     module_decl_translation_tests.cpp
     override_translation_tests.cpp
     inheritance_translation_tests.cpp
@@ -18,6 +19,7 @@ add_executable(unit_translator_translate_tests
     reload_hook_translation_tests.cpp
     reload_contract_translation_tests.cpp
     property_translation_tests.cpp
+    reference_translation_tests.cpp
     scope_translation_tests.cpp
     script_kinds_translation_tests.cpp
     stub_check_translation_tests.cpp

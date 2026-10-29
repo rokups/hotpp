@@ -23,11 +23,11 @@ TEST(MethodParameterParse, TypeFirstParameters)
     EXPECT_EQ(sd.items.size(), 0u) << sd.format("t");
 }
 
-TEST(MethodParameterParse, RefAndOutParameters)
+TEST(MethodParameterParse, ReferenceParameters)
 {
     const std::string text =
         "class W : B {\n"
-        "    void f(ref Vec3 a, out Actor b, int c) { var r = ref a; Fill(out b); }\n"
+        "    void f(Vec3& a, Actor& b, int c) { Vec3& r = a; Fill(b); }\n"
         "}\n";
     Diagnostics sd;
     const LineMap map(text);
@@ -37,21 +37,20 @@ TEST(MethodParameterParse, RefAndOutParameters)
     ASSERT_EQ(script.classes[0].methods.size(), 1u);
     const auto& ps = script.classes[0].methods[0].params;
     ASSERT_EQ(ps.size(), 3u);
-    EXPECT_EQ(ps[0].mode, ast::PassMode::Ref);
-    EXPECT_EQ(ps[0].type, "Vec3");
-    EXPECT_EQ(ps[1].mode, ast::PassMode::Out);
-    EXPECT_EQ(ps[1].type, "Actor");
-    EXPECT_EQ(ps[2].mode, ast::PassMode::Value);
+    EXPECT_EQ(ps[0].type, "Vec3&");
+    EXPECT_TRUE(ast::is_ref_type(ps[0].type));
+    EXPECT_EQ(ps[1].type, "Actor&");
+    EXPECT_FALSE(ast::is_ref_type(ps[2].type));
     EXPECT_EQ(script.classes[0].methods[0].body.stmts.size(), 2u);
 }
 
-TEST(MethodParameterParse, RefAndOutAreNotNames)
+TEST(MethodParameterParse, RefAndOutParameterWordsAreRemoved)
 {
     Diagnostics sd;
-    method_params("class W : B {\n    void f(int ref) { }\n}\n", sd);
+    method_params("class W : B {\n    void f(ref Vec3 a) { }\n}\n", sd);
     EXPECT_FALSE(sd.items.empty());
     Diagnostics sd2;
-    method_params("class W : B {\n    void f(int out) { }\n}\n", sd2);
+    method_params("class W : B {\n    void f(out Vec3 a) { }\n}\n", sd2);
     EXPECT_FALSE(sd2.items.empty());
 }
 

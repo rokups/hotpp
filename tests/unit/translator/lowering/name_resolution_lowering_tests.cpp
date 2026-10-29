@@ -20,7 +20,7 @@ TEST(NameResolutionLowering, CatchNameIsALocal)
     EXPECT_EQ(f.body("try { throw 1; } catch (std.exception& e) { e.what(); } catch (...) { throw; }"),
               "try { throw 1; } catch (std::exception& e) { spp::deref(e).what(); } "
               "catch (...) { throw; }");
-    EXPECT_EQ(f.body("throw this.health;"), "throw st->health;");
+    EXPECT_EQ(f.body("throw this.health;"), "throw __st->health;");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
@@ -34,10 +34,10 @@ TEST(NameResolutionLowering, LocalShadowsAScope)
 TEST(NameResolutionLowering, ScriptFnCall)
 {
     Fixture f;
-    EXPECT_EQ(f.expr("this.heal(1.0)"), "Player__heal(self, 1.0f)");
-    EXPECT_EQ(f.expr("this.heal()"), "Player__heal(self)");
-    EXPECT_EQ(f.expr("heal(1.0)"), "Player__heal(self, 1.0f)");
-    EXPECT_EQ(f.expr("heal()"), "Player__heal(self)");
+    EXPECT_EQ(f.expr("this.heal(1.0)"), "Player__heal(__self, 1.0f)");
+    EXPECT_EQ(f.expr("this.heal()"), "Player__heal(__self)");
+    EXPECT_EQ(f.expr("heal(1.0)"), "Player__heal(__self, 1.0f)");
+    EXPECT_EQ(f.expr("heal()"), "Player__heal(__self)");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
@@ -74,7 +74,7 @@ TEST(NameResolutionLowering, LambdaParameterLeaks)
     Fixture f;
     EXPECT_EQ(f.body("var g = (int* q) => { }; q.x;"),
               "auto g = spp::make_closure(GEN, \"Player::run lambda\", [=](int32_t* q) "
-              "{ SPP_NODEBUG_LOCAL auto* st = state_of(self); }); spp::deref(q).x;");
+              "{ SPP_NODEBUG_LOCAL auto* __st = state_of(__self); }); spp::deref(q).x;");
 }
 
 TEST(NameResolutionLowering, ForOfVariableIsLocal)

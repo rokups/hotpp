@@ -37,7 +37,7 @@ TEST(StatementLowering, NullAndDeclarations)
 TEST(StatementLowering, ForOf)
 {
     Fixture f;
-    EXPECT_EQ(f.body("foreach (var x in xs) { this.n = x; }"), "for (auto x : xs) { st->n = x; }");
+    EXPECT_EQ(f.body("foreach (var x in xs) { this.n = x; }"), "for (auto x : xs) { __st->n = x; }");
     EXPECT_EQ(f.body("foreach (const var y in ys) { }"), "for (const auto y : ys) {}");
 }
 
@@ -45,7 +45,7 @@ TEST(StatementLowering, ForAndControl)
 {
     Fixture f;
     EXPECT_EQ(f.body("for (var i = 0; i < this.n; i++) { if (i > 2.5) { break; } }"),
-              "for (auto i = 0; i < st->n; i++) { if (i > 2.5f) { break; } }");
+              "for (auto i = 0; i < __st->n; i++) { if (i > 2.5f) { break; } }");
 }
 
 TEST(StatementLowering, CaseLabelsOnSeparateLinesKeepTheirCase)
@@ -72,7 +72,7 @@ TEST(StatementLowering, FinallyBody)
 {
     Fixture f;
     EXPECT_EQ(f.body("try { throw 1; } finally { this.n = 1; }"),
-              "{ spp::Finally __fin_0([&] { st->n = 1; }); { throw 1; } }");
+              "{ spp::Finally __fin_0([&] { __st->n = 1; }); { throw 1; } }");
     // A loop or a switch fully inside the finally block can use break and continue.
     // A lambda in the finally block can use return.
     f.body("while (true) { try { } finally {\n"

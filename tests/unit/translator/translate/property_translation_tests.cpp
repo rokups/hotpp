@@ -39,14 +39,14 @@ TEST(PropertyTranslation, AutoPropertyLowersToAccessorCalls)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("    int32_t __p_N;\n"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("new (f) T(3);"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("static int32_t Foo__get_N(Foo_Shell* self)"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("static void Foo__set_N(Foo_Shell* self, int32_t value)"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("return st->__p_N;"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("st->__p_N = value;"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("Foo__set_N(self, 1);"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("Foo__set_N(self, Foo__get_N(self) + (2));"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("Foo__set_N(self, Foo__get_N(self) + 1);"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("int32_t k = Foo__get_N(self) + Foo__get_N(self);"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("static int32_t Foo__get_N(Foo_Shell* __self)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("static void Foo__set_N(Foo_Shell* __self, int32_t value)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("return __st->__p_N;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("__st->__p_N = value;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("Foo__set_N(__self, 1);"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("Foo__set_N(__self, Foo__get_N(__self) + (2));"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("Foo__set_N(__self, Foo__get_N(__self) + 1);"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("int32_t k = Foo__get_N(__self) + Foo__get_N(__self);"), std::string::npos) << r.cpp;
     EXPECT_NE(r.slots_out.find("Foo::get_N 1"), std::string::npos) << r.slots_out;
     EXPECT_NE(r.slots_out.find("Foo::set_N 1"), std::string::npos) << r.slots_out;
 }
@@ -59,10 +59,10 @@ TEST(PropertyTranslation, CustomAccessorsBecomeFunctions)
         "    int run(int value) { V = value; return V; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_EQ(r.cpp.find("__p_V"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("return st->raw * 2;"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("st->raw = value / 2;"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("Foo__set_V(self, value);"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("return Foo__get_V(self);"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("return __st->raw * 2;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("__st->raw = value / 2;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("Foo__set_V(__self, value);"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("return Foo__get_V(__self);"), std::string::npos) << r.cpp;
 }
 
 TEST(PropertyTranslation, LocalHidesProperty)
@@ -71,7 +71,7 @@ TEST(PropertyTranslation, LocalHidesProperty)
         translate_props("    int N { get; set; }\n    void run() { int N = 2; N = 3; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("N = 3;"), std::string::npos) << r.cpp;
-    EXPECT_EQ(r.cpp.find("Foo__set_N(self, 3)"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("Foo__set_N(__self, 3)"), std::string::npos) << r.cpp;
 }
 
 // "w.N" on another object of the class calls the accessors through spp::shell_of.
@@ -98,7 +98,7 @@ TEST(PropertyTranslation, OtherObjectUsesAccessors)
     EXPECT_NE(r.cpp.find("spp::prop_update<spp::op_add>(Foo__get_N, Foo__set_N, " + w + ", 1);"),
               std::string::npos)
         << r.cpp;
-    EXPECT_NE(r.cpp.find("int32_t a = spp::prop_set(Foo__set_N, self, spp::prop_set(Foo__set_N, " + q +
+    EXPECT_NE(r.cpp.find("int32_t a = spp::prop_set(Foo__set_N, __self, spp::prop_set(Foo__set_N, " + q +
                          ", 4));"),
               std::string::npos)
         << r.cpp;

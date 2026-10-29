@@ -232,8 +232,31 @@ bool TypeModel::is_handle(const std::string& type) const
     return lookup(type).kind == Kind::Handle;
 }
 
+bool TypeModel::is_script_class(const std::string& type) const
+{
+    return script_.count(type) != 0;
+}
+
+std::string TypeModel::script_ref_storage(const std::string& type) const
+{
+    size_t e = type.find_last_not_of(" \t");
+    if (e == std::string::npos || type[e] != '&' || (e > 0 && type[e - 1] == '&')) return {};
+    std::string t = type.substr(0, e);
+    bool is_const = false;
+    if (starts_with(t, "const ")) {
+        is_const = true;
+        t = t.substr(6);
+    }
+    while (!t.empty() && (t.back() == ' ' || t.back() == '\t')) t.pop_back();
+    if (!t.empty() && t.back() == '*') t.pop_back();  // "T*&": the script class is a handle
+    while (!t.empty() && (t.back() == ' ' || t.back() == '\t')) t.pop_back();
+    if (t.empty() || !is_script_class(t) || is_script_value(t) || !is_handle(t)) return {};
+    return std::string(is_const ? "const " : "") + storage(t) + "&";
+}
+
 std::string TypeModel::storage(const std::string& type) const
 {
+    if (const std::string r = script_ref_storage(type); !r.empty()) return r;
     if (!is_handle(type)) return type;
     const TypeRule rule = lookup(type);
     if (!rule.intrusive_add.empty())
@@ -244,6 +267,7 @@ std::string TypeModel::storage(const std::string& type) const
 
 std::string TypeModel::param(const std::string& type) const
 {
+    if (const std::string r = script_ref_storage(type); !r.empty()) return r;
     if (!is_handle(type)) return type;
     return "const " + storage(type) + "&";
 }
@@ -260,8 +284,6 @@ std::string TypeModel::body_param(const std::string& type, bool mutated, bool re
     if (classes_ && classes_(type).small) return type;
     return "const " + type + "&";
 }
-
-std::string TypeModel::ref_param(const std::string& type) const { return storage(type) + "&"; }
 
 std::string TypeModel::make(const std::string& type, const std::string& args) const
 {

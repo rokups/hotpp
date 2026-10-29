@@ -42,7 +42,7 @@ TEST(StringInterpolationTranslation, StdFormatAndInclude)
 {
     const sppc::TranslateResult r = translate_with("\"hp = ${this.hp}\"", "");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "std::format(\"hp = {}\", st->hp)")) << r.cpp;
+    EXPECT_TRUE(has(r, "std::format(\"hp = {}\", __st->hp)")) << r.cpp;
     EXPECT_TRUE(has(r, "#include <format>\n")) << r.cpp;
     EXPECT_FALSE(has(r, "fmt/format.h"));
 }
@@ -51,7 +51,7 @@ TEST(StringInterpolationTranslation, FmtFormatAndInclude)
 {
     const sppc::TranslateResult r = translate_with("\"hp = ${this.hp:>4}\"", "fmt");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "fmt::format(\"hp = {:>4}\", st->hp)")) << r.cpp;
+    EXPECT_TRUE(has(r, "fmt::format(\"hp = {:>4}\", __st->hp)")) << r.cpp;
     EXPECT_TRUE(has(r, "#include <fmt/format.h>\n")) << r.cpp;
     EXPECT_FALSE(has(r, "#include <format>"));
 }

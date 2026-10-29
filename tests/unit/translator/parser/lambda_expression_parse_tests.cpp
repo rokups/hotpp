@@ -56,3 +56,27 @@ TEST(LambdaExpressionParse, OldLambdaParameterIsAnError)
 {
     EXPECT_EQ(one_error("(x: int) => { }"), "1:2: parameter syntax changed; write 'Type name'");
 }
+
+TEST(LambdaExpressionParse, ExpressionBodyIsAReturnBlock)
+{
+    Parsed p("(int x) => x * 2");
+    ASSERT_TRUE(p.expr);
+    EXPECT_EQ(p.diag.items.size(), 0u);
+    const auto* l = std::get_if<ast::LambdaExpr>(&p.expr->v);
+    ASSERT_TRUE(l);
+    ASSERT_EQ(l->body.stmts.size(), 1u);
+    EXPECT_TRUE(std::get_if<ast::ReturnStmt>(&l->body.stmts[0]->v));
+    EXPECT_EQ(ast::print(*p.expr), "[=](int32_t x) { return x * 2; }");
+
+    EXPECT_EQ(round_trip("() => this.hp > 0"), "[=]() { return this.hp > 0; }");
+    EXPECT_EQ(round_trip("(a, b) => a + b"), "[=](auto a, auto b) { return a + b; }");
+    // The body ends at the "," of the argument list and at the ")" of the call.
+    EXPECT_EQ(round_trip("f((int n) => n + 1, 5)"), "f([=](int32_t n) { return n + 1; }, 5)");
+    EXPECT_EQ(round_trip("f(() => g(1))"), "f([=]() { return g(1); })");
+    // A conditional is part of the body. A nested lambda is the body.
+    EXPECT_EQ(round_trip("(int x) => x ? 1 : 2"), "[=](int32_t x) { return x ? 1 : 2; }");
+    EXPECT_EQ(round_trip("(int x) => (int y) => x + y"),
+              "[=](int32_t x) { return [=](int32_t y) { return x + y; }; }");
+    // A block body is still a block.
+    EXPECT_EQ(round_trip("() => { return 1; }"), "[=]() { return 1; }");
+}

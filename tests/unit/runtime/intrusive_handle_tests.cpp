@@ -202,4 +202,21 @@ TEST_F(IntrusiveFixture, CompareWithRawPointer)
     delete other;
 }
 
+// "&*h" gives a "T*" for an intrusive handle and for std::shared_ptr. "*h" gives a "T&".
+static_assert(std::is_same_v<decltype(&*std::declval<const BaseH&>()), RcBase*>);
+static_assert(std::is_same_v<decltype(*std::declval<const BaseH&>()), RcBase&>);
+static_assert(std::is_same_v<decltype(&*std::declval<const std::shared_ptr<RcBase>&>()), RcBase*>);
+
+TEST_F(IntrusiveFixture, AddressOfTheDereferenceIsTheRawPointer)
+{
+    BaseH a(new RcBase);
+    RcBase* p = &*a;
+    EXPECT_EQ(p, a.get());
+    EXPECT_EQ(a->refs, 1);
+    RcBase& r = *a;
+    EXPECT_EQ(&r, a.get());
+    auto s = std::make_shared<RcBase>();
+    EXPECT_EQ(&*s, s.get());
+}
+
 }  // namespace

@@ -34,11 +34,24 @@ RCtx make_class_ctx(const ast::ClassDef& cd)
     return cx;
 }
 
+// The type of the object that a reference type names: "const T&" and "T&" give "T". "T*&" gives
+// "T", because a reference to a script class pointer is a reference to the handle. Other types stay.
+static std::string object_type(const std::string& type)
+{
+    size_t e = type.find_last_not_of(" \t");
+    if (e == std::string::npos || type[e] != '&' || (e > 0 && type[e - 1] == '&')) return type;
+    std::string t = type.substr(0, e);
+    if (t.compare(0, 6, "const ") == 0) t = t.substr(6);
+    while (!t.empty() && (t.back() == ' ' || t.back() == '\t')) t.pop_back();
+    if (!t.empty() && t.back() == '*') t.pop_back();
+    return t;
+}
+
 void add_params(RCtx& cx, const std::vector<ast::Param>& params)
 {
     for (const ast::Param& p : params) {
         cx.locals.insert(p.name);
-        const std::string& t = p.script_type.empty() ? p.type : p.script_type;
+        const std::string t = object_type(p.script_type.empty() ? p.type : p.script_type);
         if (t.empty()) cx.local_type.erase(p.name);
         else cx.local_type[p.name] = t;
     }
@@ -186,7 +199,7 @@ struct Lowerer {
             return t;
         }
         if (auto* m = std::get_if<MemberExpr>(&e.v)) {
-            if (std::holds_alternative<SuperExpr>(m->obj->v)) return {};
+            if (std::holds_alternative<BaseExpr>(m->obj->v)) return {};
             return member_type(type_of(*m->obj), m->name);
         }
         if (auto* c = std::get_if<CallExpr>(&e.v)) {
@@ -236,7 +249,7 @@ struct Lowerer {
     {
         cx.locals.insert(name);
         if (type.empty()) cx.local_type.erase(name);
-        else cx.local_type[name] = type;
+        else cx.local_type[name] = object_type(type);
     }
 
     // "spp::shell_of<C_Shell>(obj, "C")" for the lowered text of the object.
@@ -254,7 +267,7 @@ struct Lowerer {
         if (h == type) return;  // not a handle type: "this" stays the pointer
         const uint32_t pos = std::get<ThisExpr>(e->v).pos;
         std::vector<ExprP> a;
-        a.push_back(raw("self", 0));
+        a.push_back(raw("__self", 0));
         if (cx.handle_this) *cx.handle_this = true;
         e = call_of("spp::handle_from_this<" + h + ">", std::move(a), pos);
     }
@@ -265,7 +278,16 @@ struct Lowerer {
         if (!fn) return;
         for (size_t i = first; i < c.args.size() && i - first < fn->params.size(); ++i) {
             const Param& p = fn->params[i - first];
-            if (p.mode == PassMode::Value) coerce(c.args[i], p.script_type.empty() ? p.type : p.script_type);
+            const std::string& t = p.script_type.empty() ? p.type : p.script_type;
+            if (!is_ref_type(t)) {
+                coerce(c.args[i], t);
+            } else if (c.args[i] && std::holds_alternative<ThisExpr>(c.args[i]->v) &&
+                       class_named(object_type(t))) {
+                // "T&" of a script class is a reference to a handle. "this" is not a variable.
+                error(std::get<ThisExpr>(c.args[i]->v).pos,
+                      "'this' cannot bind to the reference parameter '" + p.name + "' of the script class '" +
+                          object_type(t) + "'. Copy it to a local first: '" + object_type(t) + " me = this;'");
+            }
         }
     }
 
@@ -307,7 +329,7 @@ struct Lowerer {
         if (const MemberExpr* m = this_member(e)) {
             n = &m->name;
         } else if (auto* m2 = std::get_if<MemberExpr>(&e.v)) {
-            if (std::holds_alternative<SuperExpr>(m2->obj->v)) return std::nullopt;
+            if (std::holds_alternative<BaseExpr>(m2->obj->v)) return std::nullopt;
             n = &m2->name;
             obj = &m2->obj;
             if (!(d = prop_class(type_of(*m2->obj)))) return std::nullopt;
@@ -335,7 +357,7 @@ struct Lowerer {
     // for another object. The helper checks the class of the object at run time.
     ExprP receiver(PropRef& r, uint32_t pos)
     {
-        if (!r.obj) return raw("self", 0);
+        if (!r.obj) return raw("__self", 0);
         expr(*r.obj);
         CallExpr c;
         c.pos = pos;
@@ -424,7 +446,7 @@ struct Lowerer {
             if (!op.empty()) {
                 BinaryExpr bin;
                 bin.op = op;
-                bin.lhs = call_of(get, args_of(raw("self", 0)), pos);
+                bin.lhs = call_of(get, args_of(raw("__self", 0)), pos);
                 // "++P" adds 1 without parentheses. "P op= e" puts e in parentheses.
                 bin.rhs = is_inc ? std::move(value) : make_expr(ParenExpr{std::move(value), pos});
                 bin.pos = pos;
@@ -452,7 +474,7 @@ struct Lowerer {
         const ClassDef* owner = cx.cls;
         const Method* m = find_fn(*cx.cls, fn, &owner);
         c.callee = raw_named("", m ? fn_symbol(*owner, *m) : cx.cls->name + "__" + fn, pos, name_pos);
-        c.args.insert(c.args.begin(), raw("self", 0));
+        c.args.insert(c.args.begin(), raw("__self", 0));
     }
 
     void call(CallExpr& c)
@@ -475,10 +497,10 @@ struct Lowerer {
                 return;
             }
         }
-        // "super.M(args)" in a class with a script parent P (design 4.5): the implementation
+        // "base.M(args)" in a class with a script parent P (design 4.5): the implementation
         // that P sees, with a direct call. A native virtual M uses the helper "P__base_M".
         if (auto* sm = std::get_if<MemberExpr>(&c.callee->v);
-            sm && std::holds_alternative<SuperExpr>(sm->obj->v) && cx.cls && cx.allow_this) {
+            sm && std::holds_alternative<BaseExpr>(sm->obj->v) && cx.cls && cx.allow_this) {
             if (const ClassDef* par = parent_of(*cx.cls)) {
                 const ClassDef* owner = nullptr;
                 const Method* fn = find_fn(*par, sm->name, &owner);
@@ -487,7 +509,7 @@ struct Lowerer {
                 else if (cx.native_virtuals.count(sm->name)) callee = par->name + "__base_" + sm->name;
                 if (!callee.empty()) {
                     c.callee = raw(callee, pos_of(*sm->obj));
-                    c.args.insert(c.args.begin(), raw("self", 0));
+                    c.args.insert(c.args.begin(), raw("__self", 0));
                     if (fn) coerce_args(c, fn, 1);
                     for (size_t i = 1; i < c.args.size(); ++i) expr(c.args[i]);
                     return;
@@ -498,7 +520,7 @@ struct Lowerer {
         // a script function of it: a direct call of the generation function.
         member_chain(c.callee);
         if (auto* mm = std::get_if<MemberExpr>(&c.callee->v)) {
-            if (!std::holds_alternative<ThisExpr>(mm->obj->v) && !std::holds_alternative<SuperExpr>(mm->obj->v)) {
+            if (!std::holds_alternative<ThisExpr>(mm->obj->v) && !std::holds_alternative<BaseExpr>(mm->obj->v)) {
                 const ClassDef* d = class_named(type_of(*mm->obj));
                 const ClassDef* owner = d;
                 const Method* fn =
@@ -597,34 +619,34 @@ struct Lowerer {
             } else if (!cx.allow_this) {
                 error(obj_pos, "'this' is not allowed in a field initializer");
             } else if (cx.field_type.count(m.name)) {
-                e = raw_named("st->", m.name, obj_pos, m.name_pos);
+                e = raw_named("__st->", m.name, obj_pos, m.name_pos);
             } else if (cx.fns.count(m.name)) {
                 error(obj_pos, "script function '" + m.name + "' must be called");
                 e = raw_named("", cx.cls->name + "__" + m.name, obj_pos, m.name_pos);
             } else {
-                e = raw_named("self->", m.name, obj_pos, m.name_pos);
+                e = raw_named("__self->", m.name, obj_pos, m.name_pos);
             }
             return;
         }
-        if (std::holds_alternative<SuperExpr>(m.obj->v)) {
+        if (std::holds_alternative<BaseExpr>(m.obj->v)) {
             if (cx.cls->base.empty()) {
-                error(obj_pos, "'super' needs a base class: '" + cx.cls->name + "' has none");
+                error(obj_pos, "'base' needs a base class: '" + cx.cls->name + "' has none");
                 return;
             }
             // With a script parent, the member is a member of the native base of the root.
             if (parent_of(*cx.cls)) {
                 if (cx.native_base.empty()) {
-                    error(obj_pos, "'super." + m.name + "' needs a native base: the classes of '" + cx.cls->name +
+                    error(obj_pos, "'base." + m.name + "' needs a native base: the classes of '" + cx.cls->name +
                                        "' have none");
                     return;
                 }
                 auto iv = cx.interface_virtuals.find(m.name);
-                e = raw("self->" + (iv == cx.interface_virtuals.end() ? cx.native_base : iv->second) + "::" + m.name,
+                e = raw("__self->" + (iv == cx.interface_virtuals.end() ? cx.native_base : iv->second) + "::" + m.name,
                         obj_pos);
                 return;
             }
             auto iv = cx.interface_virtuals.find(m.name);
-            e = raw("self->" + (iv == cx.interface_virtuals.end() ? cx.cls->base : iv->second) + "::" + m.name, obj_pos);
+            e = raw("__self->" + (iv == cx.interface_virtuals.end() ? cx.cls->base : iv->second) + "::" + m.name, obj_pos);
             return;
         }
         // "obj.P", "obj.f": the type of obj decides. Without a type, P is a property of the
@@ -671,8 +693,7 @@ struct Lowerer {
         if (cx.types)
             for (Param& p : l.params)
                 if (!p.type.empty())
-                    p.type = p.mode == PassMode::Value ? cx.types->param(p.type)
-                                                       : cx.types->ref_param(p.type);
+                    p.type = cx.types->param(p.type);
         // A "return" in a lambda leaves only the lambda. So it is correct in a finally block.
         const FinallyState outer = fin;
         const std::string outer_ret = std::exchange(cx.ret_type, std::string());
@@ -683,7 +704,7 @@ struct Lowerer {
         // The lambda captures by value. "self" is a pointer to the shell. The state pointer
         // is read again inside, so a lambda never keeps the pointer to a block.
         l.body.stmts.insert(l.body.stmts.begin(),
-                            make_stmt(RawStmt{"SPP_NODEBUG_LOCAL auto* st = state_of(self);", 0}));
+                            make_stmt(RawStmt{"SPP_NODEBUG_LOCAL auto* __st = state_of(__self);", 0}));
         const uint32_t pos = l.pos;
         CallExpr c;
         c.pos = pos;
@@ -779,7 +800,7 @@ struct Lowerer {
         Expr& x = *e;
         if (auto* n = std::get_if<ThisExpr>(&x.v)) {
             if (!cx.allow_this) error(n->pos, "'this' is not allowed in a field initializer");
-            else e = raw("self", n->pos);
+            else e = raw("__self", n->pos);
         } else if (auto* n2 = std::get_if<NullExpr>(&x.v)) {
             e = raw("nullptr", n2->pos);
         } else if (auto* nm = std::get_if<NameExpr>(&x.v)) {
@@ -795,8 +816,6 @@ struct Lowerer {
             expr(ix->index);
         } else if (auto* u = std::get_if<UnaryExpr>(&x.v)) {
             expr(u->operand);
-        } else if (auto* rf = std::get_if<RefExpr>(&x.v)) {
-            expr(rf->operand);
         } else if (auto* b = std::get_if<BinaryExpr>(&x.v)) {
             if (b->op == "=" && b->lhs && b->rhs) coerce(b->rhs, type_of(*b->lhs));
             expr(b->lhs);

@@ -32,7 +32,7 @@
 // For each file the tool writes DIR/<name>.aot.cpp (generation 1). It also writes
 // DIR/spp_aot_registry.cpp, which defines the constant table spp::aot_table
 // (include/spp/aot.h). The tool does not compile. The CMake function
-// spp_add_aot_scripts builds a static library from these files. The program links the
+// spp_add_scripts with AOT builds a static library from these files. The program links the
 // library and spp_aot. It has no loader.
 //
 // Exit code: 0 success, 1 error, 2 bad usage.

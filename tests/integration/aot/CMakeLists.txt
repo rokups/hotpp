@@ -16,7 +16,7 @@ target_compile_definitions(integration_aot_parity_tests PRIVATE
 spp_gtest(integration_aot_parity_tests)
 
 # Two scripts in one AOT library: the demo and the module variables.
-spp_add_aot_scripts(TARGET aot_registry_scripts
+spp_add_scripts(TARGET aot_registry_scripts AOT
     SCRIPTS ${CMAKE_SOURCE_DIR}/example/scripts/aot_demo.spp ${CMAKE_SOURCE_DIR}/example/scripts/module_v1.spp
     INCLUDES ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine
     DEPENDS ${SPP_HEADERS})

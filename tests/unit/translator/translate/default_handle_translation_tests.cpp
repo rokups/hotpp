@@ -17,7 +17,7 @@ TEST(DefaultHandleTranslation, AClassGetsTheDefaultHandleAndPlainDataStaysAValue
     EXPECT_TRUE(has(r.cpp, "    std::shared_ptr<Mesh> m;\n")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "    Vec3 v;\n")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "    Plain p;\n")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "st->m = std::make_shared<Mesh>();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "__st->m = std::make_shared<Mesh>();")) << r.cpp;
 }
 
 TEST(DefaultHandleTranslation, TheStubInTheScriptWorks)

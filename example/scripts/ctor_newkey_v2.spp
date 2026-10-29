@@ -7,8 +7,8 @@ class Unit : Actor {
     int hp = 0;
     int kind = 0;
 
-    Unit(int h) : super(std.string("unit")) { this.hp = h; this.kind = 1; }
-    Unit(float f) : super() { this.hp = 40; this.kind = 2; }
+    Unit(int h) : base(std.string("unit")) { this.hp = h; this.kind = 1; }
+    Unit(float f) : base() { this.hp = 40; this.kind = 2; }
 }
 
 class Spawner : Actor {

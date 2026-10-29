@@ -4,7 +4,6 @@ add_executable(unit_runtime_tests
     migration_tests.cpp
     module_state_tests.cpp
     intrusive_handle_tests.cpp
-    ref_arg_tests.cpp
     shell_tests.cpp
     log_text_tests.cpp
     file_watcher_tests.cpp

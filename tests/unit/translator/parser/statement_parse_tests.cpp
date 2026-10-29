@@ -78,6 +78,25 @@ TEST(StatementParse, ForOfRemoved)
     }
 }
 
+TEST(StatementParse, OldSuperMemberIsRenamed)
+{
+    const std::vector<std::string> e = errors_of(Parsed("super.Tick(1);"));
+    ASSERT_FALSE(e.empty());
+    EXPECT_NE(e[0].find("'super' was renamed to 'base'"), std::string::npos) << e[0];
+}
+
+TEST(StatementParse, ForEachRefAndForOfRef)
+{
+    EXPECT_EQ(round_trip("foreach (var& x in xs) f(x);"), "for (auto& x : xs) f(x);");
+    EXPECT_EQ(round_trip("foreach (const var& x in xs) f(x);"), "for (const auto& x : xs) f(x);");
+    const std::string msg = "'for ... of' is removed; write 'foreach (Type x in c)'";
+    for (const char* text : {"for (var& x of c) f(x);", "for (const var& x of c) f(x);"}) {
+        const std::vector<std::string> e = errors_of(Parsed(text));
+        ASSERT_FALSE(e.empty()) << text;
+        EXPECT_NE(e[0].find(msg), std::string::npos) << text << ": " << e[0];
+    }
+}
+
 TEST(StatementParse, ReservedWords)
 {
     for (const char* w : {"var", "foreach", "in", "using", "override", "virtual", "new", "public",

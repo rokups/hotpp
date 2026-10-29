@@ -1,0 +1,9 @@
+using "Actor.h";
+
+class Player : Actor {
+    int hp = 10;
+
+    void Heal() {
+        var p = &(this.hp + 1);
+    }
+}

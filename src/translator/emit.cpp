@@ -23,8 +23,8 @@
 //     when the line is greater than the current line.
 //  7. An operator, a "." or a "->" has no pos. A line break before an operator
 //     appears before the next leaf. The old emitter breaks before the operator.
-//  8. This prints as "this", Super as "super" and Null as "nullptr". The
-//     lowering pass must replace "this" and "super" with Raw nodes.
+//  8. This prints as "this", Base as "base" and Null as "nullptr". The
+//     lowering pass must replace "this" and "base" with Raw nodes.
 //  9. A For with more than one VarDecl in init prints invalid C++. Several
 //     ExprStmt in init print as a comma expression.
 #include "emit.h"
@@ -142,7 +142,7 @@ struct ExprPrinter {
         e.put(t + n.template_args, n.pos);
     }
     void operator()(const ThisExpr& n) const { e.put("this", n.pos); }
-    void operator()(const SuperExpr& n) const { e.put("super", n.pos); }
+    void operator()(const BaseExpr& n) const { e.put("base", n.pos); }
     void operator()(const NullExpr& n) const { e.put("nullptr", n.pos); }
     void operator()(const NumberExpr& n) const { e.put(n.text, n.pos); }
     void operator()(const StringExpr& n) const { e.put(n.text, n.pos); }
@@ -196,14 +196,6 @@ struct ExprPrinter {
             (n.op.back() == '-' || n.op.back() == '+' || n.op.back() == '&'))
             e.space();
         emit_expr(*n.operand, e);
-    }
-    // "ref e" and "out e" as an argument or a value: spp::ref_arg(e).
-    void operator()(const RefExpr& n) const
-    {
-        e.put("spp::ref_arg", n.pos);
-        e.put("(");
-        emit_expr(*n.operand, e);
-        e.put(")");
     }
     void operator()(const BinaryExpr& n) const
     {
@@ -259,12 +251,7 @@ struct ExprPrinter {
                 e.space();
             }
             const Param& p = n.params[i];
-            // A "ref" or "out" parameter is a reference. The lowering pass may have added the "&".
-            const bool by_ref = p.mode != PassMode::Value;
-            if (p.type.empty())
-                e.put(by_ref ? "auto&" : "auto");
-            else
-                e.put(by_ref && p.type.back() != '&' ? p.type + "&" : p.type);
+            e.put(p.type.empty() ? "auto" : p.type);
             e.space();
             e.put(p.name);
         }
@@ -289,21 +276,17 @@ bool plain_type(const std::string& t)
 }
 
 // A local without an initializer is value-initialized: zero, null or the default constructor.
-// It is never indeterminate. A future "out" parameter will be exempt.
+// It is never indeterminate.
 void decl(const VarDeclStmt& d, Emitter& e)
 {
-    // "var r = ref e;" is a reference local: "auto& r = e;".
-    const auto* alias = d.init ? std::get_if<RefExpr>(&d.init->v) : nullptr;
-    e.put(std::string(d.is_const ? "const " : "") + (d.type.empty() ? "auto" : d.type) +
-              (alias ? "&" : ""),
-          d.pos);
+    e.put(std::string(d.is_const ? "const " : "") + (d.type.empty() ? (d.is_ref ? "auto&" : "auto") : d.type), d.pos);
     e.space();
     e.put_mapped(d.name, d.name_pos);
     if (d.init) {
         e.space();
         e.put("=");
         e.space();
-        emit_expr(alias ? *alias->operand : *d.init, e);
+        emit_expr(*d.init, e);
     } else if (!d.type.empty() && !d.is_const) {
         e.space();
         e.put("=");
@@ -400,7 +383,7 @@ struct StmtPrinter {
     {
         e.put("for", n.pos);
         open_paren(e);
-        e.put(std::string(n.is_const ? "const " : "") + (n.type.empty() ? "auto" : n.type));
+        e.put(std::string(n.is_const ? "const " : "") + (n.type.empty() ? (n.is_ref ? "auto&" : "auto") : n.type));
         e.space();
         e.put_mapped(n.name, n.name_pos);
         e.space();

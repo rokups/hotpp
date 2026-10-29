@@ -303,7 +303,7 @@ struct Player_Shell final : Actor, spp::ShellBase {
 };
 ```
 
-`spp::call<Sig>(self, slot, args...)` reads `self->cls` and `self->state`. It calls the member in the slot on the state. There is no wrapper function between the shell and the member. The debug line of the shell override maps to the line of the class.
+`spp::call<Sig>(__self, slot, args...)` reads `__self->cls` and `__self->state`. It calls the member in the slot on the state. There is no wrapper function between the shell and the member. The debug line of the shell override maps to the line of the class.
 
 Pure virtual functions in the base have no forwarding target. The translator reports an error when the script does not override them.
 
@@ -329,8 +329,8 @@ Each script method is a member of the state struct of its generation. The member
 ```cpp
 void PlayerState_g42::heal(float amount) {
     if (SPP_UNLIKELY(spp::active_generation != 42)) return spp::stale_call("Player::heal");
-    auto* st = this;
-    st->health = std::min(st->health + amount, 100.0f);
+    auto* __st = this;
+    __st->health = std::min(__st->health + amount, 100.0f);
 }
 ```
 
@@ -642,7 +642,7 @@ Rollback after the commit does not exist. The developer reverts the source. The 
 2. Native types keep their native names. `TArray<T>`, `FString`, `Vector3` appear as in C++. A prelude can add type aliases. The language adds no public wrapper types.
 3. The translator resolves script names only. Clang resolves native names, overloads, conversions and templates.
 4. Numeric literals: `5` is `int`. `5.0` is `float`. `5.0d` is `double`. `5L` is `int64_t`.
-5. `null` is `nullptr`. Storage is by value or by handle. The type decides. `ref` and `out` mark reference parameters. Section 7.10 has the rules.
+5. `null` is `nullptr`. Storage is by value or by handle. The type decides. `T&` marks a reference parameter. The call has no marker. Section 7.10 has the rules.
 6. No garbage collection. A handle is a smart pointer or an intrusive pointer.
 
 ### 7.1.1 Builtin types
@@ -686,7 +686,7 @@ class Player : Actor {
     TArray<Item*> inventory;
     [alias("hp")] float maxHealth = 100.0;
 
-    Player(FString name) : super(name) {      // planned: the parser does not support it yet
+    Player(FString name) : base(name) {
         this.inventory.Reserve(8);
     }
 
@@ -695,7 +695,7 @@ class Player : Actor {
             var dir = (this.target.Position - this.Position).Normalized();
             this.Move(dir * this.speed * dt);
         }
-        super.Tick(dt);
+        base.Tick(dt);
     }
 
     override void TakeDamage(float amount) {
@@ -704,7 +704,7 @@ class Player : Actor {
     }
 
     override void TakeDamage(Actor& source, float amount) {
-        this.target = ref source;
+        this.target = &source;
         this.TakeDamage(amount * 1.5);
     }
 
@@ -732,15 +732,15 @@ class Player : Actor {
 | `class Player : Actor { ... }` | `Player_Shell` (once) plus `PlayerState_gN`, free functions and a reflection table | runtime model |
 | `float health = 100.0;` | `float health;` in the state struct plus `init_health(self, field)` that runs `100.0f` | runtime model |
 | `[alias("hp")]` | `alias = "hp"` in the FieldInfo | runtime model |
-| `Player(FString name) : super(name)` | Done (S4). The canonical record of generation 1 builds the shell from the `super` arguments (`spp::construct_shell`). Then `Player__ctor(self, name)` runs. The `super` arguments can use parameters only. | runtime model |
+| `Player(FString name) : base(name)` | Done (S4). The canonical record of generation 1 builds the shell from the `base` arguments (`spp::construct_shell`). Then `Player__ctor(self, name)` runs. The `base` arguments can use parameters only. | runtime model |
 | `override void Tick(float dt)` | `void PlayerState_gN::Tick(float dt)`. A pointer to this member is installed in `SLOT_Tick`. No `Player__Tick` wrapper exists. The translator matches the name and the parameter types against the libclang list. A match makes the function an override, and `override` is required. | runtime model |
 | `public`, `private`, `protected` | The parser reads and stores the access word. The translator does not enforce it. | none |
 | `virtual`, `new` | `virtual` adds a slot (S6a). A call goes through `Owner__f_virt(self, args)`. `override` in a child fills the slot. A function that hides a parent function needs `new`. | runtime model |
-| `super.Tick(dt)` | `self->Actor::Tick(dt)` | sugar |
-| `this.health` | `st->health` where `st` is the typed state pointer | runtime model |
-| `this.Position`, `this.Move(...)` | `self->Position`, `self->Move(...)`. Clang resolves the member. | sugar |
-| `this.TakeDamage(amount * 1.5)` | `self->TakeDamage(amount * 1.5f)`. Clang resolves the overload. The call goes through the vtable and the shell. | sugar |
-| `ref source` | `spp::ref_arg(source)` | sugar |
+| `base.Tick(dt)` | `__self->Actor::Tick(dt)` | sugar |
+| `this.health` | `__st->health` where `__st` is the typed state pointer | runtime model |
+| `this.Position`, `this.Move(...)` | `__self->Position`, `__self->Move(...)`. Clang resolves the member. | sugar |
+| `this.TakeDamage(amount * 1.5)` | `__self->TakeDamage(amount * 1.5f)`. Clang resolves the overload. The call goes through the vtable and the shell. | sugar |
+| `&source` | `&source` (the C++ address-of operator) | sugar |
 | `void heal(float amount)` | The member `void PlayerState_gN::heal(float amount)`. A call `p.heal(1.0)` becomes a call of the hidden wrapper `Player__heal(p, 1.0f)`. | runtime model |
 | `bool pickUp(Item* item)` | The return type stands before the name. `void` means no return value. | sugar |
 | `float Hp { get; set; } = 50.0;` | A property. The state struct gets a hidden field `__p_Hp`. The translator makes the script methods `get_Hp` and `set_Hp`, each with its own slot. `{ get; }` has no setter. `{ get; private set; }` stores the access word of the setter. | runtime model |
@@ -846,7 +846,7 @@ The reload keeps every `Player` object at its address. The migration moves `hp` 
 |---|---|
 | keywords `var`, `const`, `foreach`, `using`, the type before the name | script fields in a separate state block |
 | `this.` for native members | `[alias(...)]`, `onReload`, `OldState` |
-| `super.` | override matching against libclang data |
+| `base.` | override matching against libclang data |
 | template arguments `T<U>` passed through | `is` and `as` on script classes |
 | string interpolation | pinned closures |
 | `foreach`, `null`, literals | script virtual slots |
@@ -930,7 +930,7 @@ An engine object is a handle when its type is intrusively reference counted. The
 
 A native signature can use `T*` or `T&` for a type that is not a value, not intrusive and has no `handle`. The pointee is then borrowed.
 
-- A script can use a borrowed pointer in a local or a parameter. It follows the rules of `ref` (7.10.6).
+- A script can use a borrowed pointer in a local or a parameter. It follows the rules of 7.10.6.
 - A script cannot store it. It cannot be a field, a closure capture, a collection element or a return value.
 - The translator reports the error at the script line. The message names the type and suggests a stub with `handle` or `intrusive`.
 - The fallback `class *;` does not change this. A script can create an object with `new Mesh(...)`. The translator then builds the default handle. A foreign raw pointer cannot become a `shared_ptr` safely.
@@ -940,24 +940,23 @@ A native signature can use `T*` or `T&` for a type that is not a value, not intr
 - A parameter whose body type differs from its signature type (for example the body needs a copy) is named `__<name>` in the member signature. The first body line makes `<name>` from `__<name>` with the body type. The body uses `<name>`.
 - A value parameter has by-value meaning. The translator emits `const T&` when the body only reads it. It emits `T` for small trivially copyable types (16 bytes or less) and when the body mutates or stores it.
 - A handle parameter is passed as `const Handle&` when the body does not store it. This avoids a reference-count change. The body that stores it takes a copy.
-- A call to a native function needs no marker. The translator reads the signature. It binds a `ref` argument to a native `T&` of a value type. It uses the handle for a native `T*` or `T&` of a handle type.
+- A call to a native function needs no marker. The translator reads the signature. It binds a plain argument `x` to a native `T&` of a value type. `&x` gives a `T*`, and `*h` gives a `T&` from a handle. It uses the handle for a native `T*` or `T&` of a handle type.
 
-#### 7.10.6 `ref` and `out`
+#### 7.10.6 References, `&x` and `*e`
 
-The keywords `ref` and `out` stay. They are the only syntax for the details of passing.
+The keywords `ref` and `out` are removed. A reference parameter is `T&`. The call has no marker: write `f(x)`. A native `out` parameter is also a `T&`.
 
 | Script | C++ |
 |---|---|
-| `ref Vec3 p` | `Vec3& p` |
-| `out Vec3 p` | `Vec3& p`. The caller passes an uninitialized `Vec3 v;`. |
-| `ref Actor p` | `Handle<Actor>& p`. The callee can rebind the caller's handle. |
-| `var r = ref this.pos` | `auto& r = st->pos;` |
+| `Vec3& p` | `Vec3& p`. The caller passes an uninitialized `Vec3 v;` for an out parameter. |
+| `Actor& p` (a script class) | `Handle<Actor>& p`. The callee can rebind the caller's handle. `this` cannot bind to it: copy `this` to a local first. |
+| `var& r = this.pos` | `auto& r = st->pos;` |
 
-- Changing the pointee of a handle needs no `ref`. A handle already shares the object.
-- **Restriction in version 1.** A `ref` is not storable. It cannot be a field, a closure capture, a collection element or a return type. A field such as `ref Weapon last;` is an error.
+- Changing the pointee of a handle needs no `T&`. A handle already shares the object.
+- **Restriction in version 1.** A reference or a borrowed pointer is not storable. It cannot be a field, a closure capture, a collection element or a return type. A field such as `Weapon& last;` is an error.
 - **Reason.** A field lives in the state block. The reload moves this block. A stored reference would dangle. With this rule the translator emits raw C++ references with no runtime check.
 - A later version can relax the rule for references to objects with a stable address.
-- **Implementation.** The prefix `&e` is removed. The parser gives the error "use 'ref' instead of '&'". A call argument `ref e` or `out e` becomes `spp::ref_arg(e)`. This wrapper converts to `T&` and to `T*`, so one form fits both a reference parameter and a pointer parameter. The not-storable rule and the borrowed-storage check are errors by default (`--no-strict-borrowed` makes them warnings).
+- **Implementation.** The prefix `&e` is the address-of operator. It gives a borrowed pointer with the borrowed-storage rules. `&h` on a handle is an error. `.` on a handle always means a member of the pointee, so `h.get()` is not the raw pointer. Pass `h` for a handle parameter, `&*h` for a `T*` and `*h` for a `T&`. A reload copies each state field, so a move-only field type such as `std.unique_ptr<T>` is an error: use a handle. The not-storable rule and the borrowed-storage check are errors by default (`--no-strict-borrowed` makes them warnings).
 
 #### 7.10.7 Checks on a stub
 
@@ -995,8 +994,8 @@ class Player : Actor {                       // Actor : Object, so Actor* is a h
     void Hit(Actor src, float dmg) {         // handle, passed by const handle
         this.mate = src;
     }
-    void Fill(out Vec3 v) {}                 // Vec3&
-    void Swap(ref Vec3 a, ref Vec3 b) {}
+    void Fill(Vec3& v) {}                    // Vec3&
+    void Swap(Vec3& a, Vec3& b) {}
 }
 ```
 

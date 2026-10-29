@@ -7,7 +7,7 @@ using <string>;
 class Link : Actor {
     int hits = 0;
 
-    Link(std.string label) : super(label) { }
+    Link(std.string label) : base(label) { }
 
     int Power {
         get { return this.hits * 2; }

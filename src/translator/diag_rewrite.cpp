@@ -306,6 +306,19 @@ const std::vector<Rule>& mistakes()
         {std::regex(R"(^no viable overloaded '=')"), "cannot assign: no assignment fits these types"},
         {std::regex(R"(^invalid operands to binary expression \((.*)\))"),
          "the operator does not fit these operand types ($1)"},
+        // 9b. A temporary value where the code needs a variable.
+        {std::regex(R"(^cannot take the address of an rvalue of type '([^']+)')"),
+         "cannot take the address of a temporary value of type '$1'. Store the value in a local first, "
+         "then use '&' on the local"},
+        {std::regex(R"(^non-const lvalue reference to type '([^']+)' cannot bind to a temporary of type '([^']+)')"),
+         "a 'T&' needs a variable, but this is a temporary value (type '$2'). Store the value in a local first, "
+         "or use 'const $1&'"},
+        {std::regex(R"(^non-const lvalue reference to type '([^']+)' cannot bind to a value of unrelated type '([^']+)')"),
+         "a 'T&' needs a variable of the type '$1', but the value has type '$2'. Use a variable of the type '$1', "
+         "or use 'const $1&'"},
+        {std::regex(R"(^candidate does not fit: expects an lvalue for (.+?) argument)"),
+         "candidate does not fit: the $1 argument is a 'T&' parameter and needs a variable. Store the value in "
+         "a local first"},
         // 10. A method that does not return a value on each path.
         {std::regex(R"(^non-void function does not return a value( in all control paths)?)"),
          "the method does not return a value on every path"},

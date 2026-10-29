@@ -157,18 +157,18 @@ static const spp::StateLayout Base_layout = {
 };
 
 // ------------------------------------------------- generation functions
-SPP_HIDDEN BaseState_g2* state_of(Base_Shell* self)
+SPP_HIDDEN BaseState_g2* state_of(Base_Shell* __self)
 {
-    return static_cast<BaseState_g2*>(self->state);
+    return static_cast<BaseState_g2*>(__self->state);
 }
 
-[[maybe_unused]] SPP_HIDDEN static int32_t Base__Power(Base_Shell* self);
-[[maybe_unused]] SPP_HIDDEN static int32_t Base__Twice(Base_Shell* self);
-[[maybe_unused]] SPP_HIDDEN static void Base__Bump(Base_Shell* self);
+[[maybe_unused]] SPP_HIDDEN static int32_t Base__Power(Base_Shell* __self);
+[[maybe_unused]] SPP_HIDDEN static int32_t Base__Twice(Base_Shell* __self);
+[[maybe_unused]] SPP_HIDDEN static void Base__Bump(Base_Shell* __self);
 
-[[maybe_unused]] SPP_HIDDEN static int32_t Base__Power_virt(Base_Shell* self)
+[[maybe_unused]] SPP_HIDDEN static int32_t Base__Power_virt(Base_Shell* __self)
 {
-    return spp::call<int32_t(Actor*)>(self, Base_SLOT_Power);
+    return spp::call<int32_t(Actor*)>(__self, Base_SLOT_Power);
 }
 
 #line 7 "abi_child_v2.spp"
@@ -200,7 +200,7 @@ SPP_NODEBUG static spp::ShellBase* Base__construct(const char* key, const void* 
 #line 7 "abi_child_v2.spp"
         const auto& t = *static_cast<const Base_SuperArgs*>(args);
 #line 7 "abi_child_v2.spp"
-        return std::apply([](const auto&... x) -> spp::ShellBase* { return new Base_Shell(spp::Construct{}, x...); }, t);
+        return std::apply([](auto&... x) -> spp::ShellBase* { return new Base_Shell(spp::Construct{}, x...); }, t);
 #line 7 "abi_child_v2.spp"
     }
 #line 7 "abi_child_v2.spp"
@@ -212,15 +212,15 @@ SPP_NODEBUG static spp::ShellBase* Base__construct(const char* key, const void* 
 static const char* const Base__construct_keys[] = {typeid(Base_SuperArgs).name(), nullptr};
 
 #line 7 "abi_child_v2.spp"
-SPP_HIDDEN static Base_Shell* Base__build([[maybe_unused]] bool note)
+SPP_HIDDEN static Base_Shell* Base__build([[maybe_unused]] bool __note)
 #line 7 "abi_child_v2.spp"
 {
 #line 7 "abi_child_v2.spp"
-    auto plan = Base__plan();
+    auto __plan = Base__plan();
 #line 7 "abi_child_v2.spp"
-    auto* self = static_cast<Base_Shell*>(spp::construct_shell(&Base_record, typeid(Base_SuperArgs).name(), &plan.first, note));
+    auto* __self = static_cast<Base_Shell*>(spp::construct_shell(&Base_record, typeid(Base_SuperArgs).name(), &__plan.first, __note));
 #line 7 "abi_child_v2.spp"
-    return self;
+    return __self;
 #line 7 "abi_child_v2.spp"
 }
 #line 227 "abi_child_v2.spp.cpp"
@@ -235,11 +235,11 @@ SPP_HIDDEN static Base_Shell* Base__build([[maybe_unused]] bool note)
 #line 236 "abi_child_v2.spp.cpp"
 
 #line 13 "abi_child_v2.spp"
-[[maybe_unused]] SPP_HIDDEN static int32_t Base__Power(Base_Shell* self)
+[[maybe_unused]] SPP_HIDDEN static int32_t Base__Power(Base_Shell* __self)
 #line 13 "abi_child_v2.spp"
 {
 #line 13 "abi_child_v2.spp"
-    return state_of(self)->Power();
+    return state_of(__self)->Power();
 #line 13 "abi_child_v2.spp"
 }
 #line 246 "abi_child_v2.spp.cpp"
@@ -256,9 +256,9 @@ int32_t BaseState_g2::Power()
 #line 13 "abi_child_v2.spp"
     }
 #line 13 "abi_child_v2.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Base_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
 #line 13 "abi_child_v2.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 13 "abi_child_v2.spp"
     return 1;
 #line 13 "abi_child_v2.spp"
@@ -266,11 +266,11 @@ int32_t BaseState_g2::Power()
 #line 267 "abi_child_v2.spp.cpp"
 
 #line 15 "abi_child_v2.spp"
-[[maybe_unused]] SPP_HIDDEN static int32_t Base__Twice(Base_Shell* self)
+[[maybe_unused]] SPP_HIDDEN static int32_t Base__Twice(Base_Shell* __self)
 #line 15 "abi_child_v2.spp"
 {
 #line 15 "abi_child_v2.spp"
-    return state_of(self)->Twice();
+    return state_of(__self)->Twice();
 #line 15 "abi_child_v2.spp"
 }
 #line 277 "abi_child_v2.spp.cpp"
@@ -287,21 +287,21 @@ int32_t BaseState_g2::Twice()
 #line 15 "abi_child_v2.spp"
     }
 #line 15 "abi_child_v2.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Base_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
 #line 15 "abi_child_v2.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 15 "abi_child_v2.spp"
-    return Base__Power_virt(self) * 2;
+    return Base__Power_virt(__self) * 2;
 #line 15 "abi_child_v2.spp"
 }
 #line 298 "abi_child_v2.spp.cpp"
 
 #line 17 "abi_child_v2.spp"
-[[maybe_unused]] SPP_HIDDEN static void Base__Bump(Base_Shell* self)
+[[maybe_unused]] SPP_HIDDEN static void Base__Bump(Base_Shell* __self)
 #line 17 "abi_child_v2.spp"
 {
 #line 17 "abi_child_v2.spp"
-    return state_of(self)->Bump();
+    return state_of(__self)->Bump();
 #line 17 "abi_child_v2.spp"
 }
 #line 308 "abi_child_v2.spp.cpp"
@@ -318,11 +318,11 @@ void BaseState_g2::Bump()
 #line 17 "abi_child_v2.spp"
     }
 #line 17 "abi_child_v2.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Base_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
 #line 17 "abi_child_v2.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 17 "abi_child_v2.spp"
-    st->hits = st->hits + 10;
+    __st->hits = __st->hits + 10;
 #line 17 "abi_child_v2.spp"
 }
 #line 329 "abi_child_v2.spp.cpp"
@@ -340,13 +340,13 @@ void BaseState_g2::TakeDamage_f(float amount)
 #line 19 "abi_child_v2.spp"
     }
 #line 20 "abi_child_v2.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Base_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
 #line 20 "abi_child_v2.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 20 "abi_child_v2.spp"
-    st->hp = st->hp - amount;
+    __st->hp = __st->hp - amount;
 #line 21 "abi_child_v2.spp"
-    st->hits = st->hits + 1;
+    __st->hits = __st->hits + 1;
 #line 22 "abi_child_v2.spp"
 }
 #line 353 "abi_child_v2.spp.cpp"
@@ -481,23 +481,23 @@ static const spp::StateLayout Kid_layout = {
 };
 
 // ------------------------------------------------- generation functions
-SPP_HIDDEN KidState_g2* state_of(Kid_Shell* self)
+SPP_HIDDEN KidState_g2* state_of(Kid_Shell* __self)
 {
-    return static_cast<KidState_g2*>(self->state);
+    return static_cast<KidState_g2*>(__self->state);
 }
 
-[[maybe_unused]] SPP_HIDDEN static int32_t Kid__Power(Kid_Shell* self);
+[[maybe_unused]] SPP_HIDDEN static int32_t Kid__Power(Kid_Shell* __self);
 
 #line 25 "abi_child_v2.spp"
 SPP_HIDDEN static auto Kid__plan()
 #line 25 "abi_child_v2.spp"
 {
 #line 25 "abi_child_v2.spp"
-    auto up = std::make_tuple();
+    auto __up = std::make_tuple();
 #line 25 "abi_child_v2.spp"
-    auto pp = std::apply([](const auto&... x) { return Base__plan(x...); }, up);
+    auto __pp = std::apply([](auto&... x) { return Base__plan(x...); }, __up);
 #line 25 "abi_child_v2.spp"
-    return std::make_pair(std::make_tuple(std::string("Kid")), std::make_pair(std::move(up), std::move(pp.second)));
+    return std::make_pair(std::make_tuple(std::string("Kid")), std::make_pair(std::move(__up), std::move(__pp.second)));
 #line 25 "abi_child_v2.spp"
 }
 #line 504 "abi_child_v2.spp.cpp"
@@ -513,7 +513,7 @@ SPP_NODEBUG static spp::ShellBase* Kid__construct(const char* key, const void* a
 #line 25 "abi_child_v2.spp"
         const auto& t = *static_cast<const Kid_SuperArgs*>(args);
 #line 25 "abi_child_v2.spp"
-        return std::apply([](const auto&... x) -> spp::ShellBase* { return new Kid_Shell(spp::Construct{}, x...); }, t);
+        return std::apply([](auto&... x) -> spp::ShellBase* { return new Kid_Shell(spp::Construct{}, x...); }, t);
 #line 25 "abi_child_v2.spp"
     }
 #line 25 "abi_child_v2.spp"
@@ -525,15 +525,15 @@ SPP_NODEBUG static spp::ShellBase* Kid__construct(const char* key, const void* a
 static const char* const Kid__construct_keys[] = {typeid(Kid_SuperArgs).name(), nullptr};
 
 #line 25 "abi_child_v2.spp"
-SPP_HIDDEN static Kid_Shell* Kid__build([[maybe_unused]] bool note)
+SPP_HIDDEN static Kid_Shell* Kid__build([[maybe_unused]] bool __note)
 #line 25 "abi_child_v2.spp"
 {
 #line 25 "abi_child_v2.spp"
-    auto plan = Kid__plan();
+    auto __plan = Kid__plan();
 #line 25 "abi_child_v2.spp"
-    auto* self = static_cast<Kid_Shell*>(spp::construct_shell(&Kid_record, typeid(Kid_SuperArgs).name(), &plan.first, note));
+    auto* __self = static_cast<Kid_Shell*>(spp::construct_shell(&Kid_record, typeid(Kid_SuperArgs).name(), &__plan.first, __note));
 #line 25 "abi_child_v2.spp"
-    return self;
+    return __self;
 #line 25 "abi_child_v2.spp"
 }
 #line 540 "abi_child_v2.spp.cpp"
@@ -548,11 +548,11 @@ SPP_HIDDEN static Kid_Shell* Kid__build([[maybe_unused]] bool note)
 #line 549 "abi_child_v2.spp.cpp"
 
 #line 31 "abi_child_v2.spp"
-[[maybe_unused]] SPP_HIDDEN static int32_t Kid__Power(Kid_Shell* self)
+[[maybe_unused]] SPP_HIDDEN static int32_t Kid__Power(Kid_Shell* __self)
 #line 31 "abi_child_v2.spp"
 {
 #line 31 "abi_child_v2.spp"
-    return state_of(self)->Power();
+    return state_of(__self)->Power();
 #line 31 "abi_child_v2.spp"
 }
 #line 559 "abi_child_v2.spp.cpp"
@@ -569,9 +569,9 @@ int32_t KidState_g2::Power()
 #line 31 "abi_child_v2.spp"
     }
 #line 31 "abi_child_v2.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Kid_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
 #line 31 "abi_child_v2.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 31 "abi_child_v2.spp"
     return 7;
 #line 31 "abi_child_v2.spp"
@@ -591,13 +591,13 @@ void KidState_g2::TakeDamage_f(float amount)
 #line 33 "abi_child_v2.spp"
     }
 #line 34 "abi_child_v2.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Kid_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
 #line 34 "abi_child_v2.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 34 "abi_child_v2.spp"
-    Base__base_TakeDamage(self, amount * 3.0f);
+    Base__base_TakeDamage(__self, amount * 3.0f);
 #line 35 "abi_child_v2.spp"
-    st->kid_hits = st->kid_hits + 1;
+    __st->kid_hits = __st->kid_hits + 1;
 #line 36 "abi_child_v2.spp"
 }
 #line 604 "abi_child_v2.spp.cpp"
@@ -615,21 +615,21 @@ void KidState_g2::Tick(float dt)
 #line 38 "abi_child_v2.spp"
     }
 #line 39 "abi_child_v2.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Kid_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
 #line 39 "abi_child_v2.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 39 "abi_child_v2.spp"
-    Base__base_Tick(self, dt);
+    Base__base_Tick(__self, dt);
 #line 40 "abi_child_v2.spp"
-    self->Move(Vec3(1.0f, 0, 0));
+    __self->Move(Vec3(1.0f, 0, 0));
 #line 41 "abi_child_v2.spp"
-    st->moved = spp::deref(self->Position).x;
+    __st->moved = spp::deref(__self->Position).x;
 #line 42 "abi_child_v2.spp"
-    Base__Bump(self);
+    Base__Bump(__self);
 #line 43 "abi_child_v2.spp"
-    st->twice = Base__Twice(self);
+    __st->twice = Base__Twice(__self);
 #line 44 "abi_child_v2.spp"
-    st->super_power = Base__Power(self);
+    __st->super_power = Base__Power(__self);
 #line 45 "abi_child_v2.spp"
 }
 #line 636 "abi_child_v2.spp.cpp"

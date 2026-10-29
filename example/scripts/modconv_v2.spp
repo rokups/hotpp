@@ -3,8 +3,8 @@
 // The new variable "bonus" reads the migrated value of "doubled" in its initializer.
 using "Actor.h";
 
-int base = 5;
-int doubled = base * 2;
+int seed = 5;
+int doubled = seed * 2;
 float level = 1.0;
 int bonus = doubled + 100;
 

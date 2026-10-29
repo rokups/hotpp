@@ -70,12 +70,12 @@ TEST(AotParity, AotProgramShowsTheLanguageFeatures)
     EXPECT_NE(out.find("frame 3: Fighter fighter pos.x=1.500 hp=100 ticks=3"), std::string::npos) << out;
     // constructor: Fighter(int) adds 100 to the start value and Veteran passes start + 1 to it
     EXPECT_NE(out.find("Veteran fighter pos.x=0.500 hp=101"), std::string::npos) << out;
-    // property: Level starts at 1 and counts the ticks, also in the child through super.Tick
+    // property: Level starts at 1 and counts the ticks, also in the child through base.Tick
     EXPECT_NE(out.find("frame 3: Veteran fighter pos.x=1.500 hp=101 ticks=3 shield_raw=6.000 __p_Level=4"),
               std::string::npos) << out;
     // virtual override: the script call of Power() reaches Veteran, "new Attack" adds one
     EXPECT_NE(out.find("Spawner Spawner pos.x=0.000 kid=? power=7 attack=70 is_veteran=true"), std::string::npos) << out;
-    // inheritance: super.Power() is the parent implementation
+    // inheritance: base.Power() is the parent implementation
     EXPECT_NE(out.find("parent_power=1"), std::string::npos) << out;
     // native virtual call to the override in the script: the damage goes to the shield
     EXPECT_NE(out.find("hit: Fighter fighter pos.x=1.500 hp=100 ticks=3 shield_raw=1.000"), std::string::npos) << out;

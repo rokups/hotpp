@@ -34,7 +34,7 @@ TEST_P(BackendTests, NewBuildsAScriptObjectAndRunsTheConstructor)
     s.world.Tick(kDt);
     const std::string log = testing::internal::GetCapturedStdout();
     EXPECT_EQ(*fld<int>(s, "spawned"), 2);
-    EXPECT_EQ(*fld<std::string>(s, "last"), "unit");  // super(label) reached the base
+    EXPECT_EQ(*fld<std::string>(s, "last"), "unit");  // base(label) reached the base
     EXPECT_EQ(*fld<float>(s, "seen_x"), 2.0f);        // the constructor body ran
     // The second "new" replaced the first Squad. Its destructor ran once.
     EXPECT_NE(log.find("[ctor_v1] unit gone"), std::string::npos) << log;

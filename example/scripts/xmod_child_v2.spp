@@ -7,7 +7,7 @@ class Grunt : Unit {
     int rage = 3;
     int fury = 4;
 
-    Grunt(int r) : super(r + 1) {
+    Grunt(int r) : base(r + 1) {
         this.rage = r;
         this.ctor_log = this.ctor_log * 10 + 2;
     }

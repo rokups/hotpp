@@ -107,7 +107,7 @@ TEST_P(BackendTests, FamilyOverTwoModulesMissingParent)
     EXPECT_NE(r.error.find("the script 'xmod_parent.spp' is not found"), std::string::npos) << r.error;
 }
 
-// Constructor overloads, a "ref" constructor parameter and parent overloads from "super(...)".
+// Constructor overloads, a "ref" constructor parameter and parent overloads from "base(...)".
 // Generation 2 uses "new" for a class without a constructor and without "new" in generation 1.
 TEST_P(BackendTests, ConstructorOverloadsAndALaterNew)
 {
@@ -129,7 +129,7 @@ TEST_P(BackendTests, ConstructorOverloadsAndALaterNew)
     EXPECT_EQ(*fld<int>(s, "plain"), 3);
 }
 
-// A "super(...)" argument binds to a "ref" or "out" parameter of a script parent (S23). The
+// A "base(...)" argument binds to a "ref" or "out" parameter of a script parent (S23). The
 // "ref" reaches the parent through two levels. A "&&" constructor parameter takes a temporary.
 TEST_P(BackendTests, SuperArgumentBindsToARefParameter)
 {
@@ -147,7 +147,7 @@ TEST_P(BackendTests, SuperArgumentBindsToARefParameter)
     EXPECT_EQ(*fld<std::string>(s, "named"), "abc");
 }
 
-// S27: an overload added in a later generation has a new key type (the types of the "super(...)"
+// S27: an overload added in a later generation has a new key type (the types of the "base(...)"
 // arguments). The generation makes a new core module, and its "construct" becomes canonical.
 // Generation 3 changes nothing in the keys, so it makes no new core.
 TEST_P(BackendTests, ConstructorOverloadWithANewKeyTypeInALaterGeneration)

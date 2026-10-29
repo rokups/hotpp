@@ -53,16 +53,16 @@ TEST(InterfaceTranslation, ShellDerivesFromAllBasesWithOneSlotForEachVirtual)
     EXPECT_TRUE(has(r.cpp, "\"Widget, IPing, IName\", spp::shell_layout_hash(\"Widget, IPing, IName\"")) << r.cpp;
 }
 
-// An override of a const interface virtual keeps the const stub. "super.F()" of an interface
+// An override of a const interface virtual keeps the const stub. "base.F()" of an interface
 // virtual calls the implementation of the interface base.
 TEST(InterfaceTranslation, OverrideAndSuperCallOfAnInterfaceVirtual)
 {
     const sppc::TranslateResult r = run(
-        "class Foo : Widget, IPing, IName {\n    override int Ping(int n) { return super.Id() + super.Size(); }\n"
+        "class Foo : Widget, IPing, IName {\n    override int Ping(int n) { return base.Id() + base.Size(); }\n"
         "    override int Id() { return 9; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "self->IName::Id()")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "self->Widget::Size()")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "__self->IName::Id()")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "__self->Widget::Size()")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "reinterpret_cast<spp::SlotFn>(&FooState_g1::Id)")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "__fwd_Id")) << r.cpp;
 }
@@ -72,11 +72,11 @@ TEST(InterfaceTranslation, ChildOverridesAnInterfaceVirtualOfTheRoot)
 {
     const sppc::TranslateResult r = run(
         "class Foo : Widget, IPing {\n    override int Ping(int n) { return n; }\n}\n"
-        "class Bar : Foo {\n    override int Ping(int n) { return super.Ping(n) + 1; }\n}\n");
+        "class Bar : Foo {\n    override int Ping(int n) { return base.Ping(n) + 1; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "struct Foo_Shell : Widget, IPing, spp::ShellBase")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "struct Bar_Shell final : Foo_Shell {")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "Foo__base_Ping(self, n)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Foo__base_Ping(__self, n)")) << r.cpp;
 }
 
 // A pure virtual of an interface base needs an override.

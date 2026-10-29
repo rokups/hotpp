@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 #include "lexy_common.hpp"
@@ -32,6 +33,7 @@ using ast::ExprP;
 // ---------------------------------------------------------------- error texts
 // The script has no "::" and no "->". A "." does both jobs. The errors tell the user.
 SPP_ERROR_TAG(e_expected_expr, "expected an expression");
+SPP_ERROR_TAG(e_super_renamed, "'super' was renamed to 'base'");
 SPP_ERROR_TAG(e_end_of_expr, "expected end of expression");
 SPP_ERROR_TAG(e_old_param, "parameter syntax changed; write 'Type name'");
 SPP_ERROR_TAG(e_brace_init, "brace initialization is not supported; use parentheses");
@@ -51,7 +53,8 @@ constexpr std::size_t max_depth = 256;
 constexpr auto kw_let = LEXY_KEYWORD("let", id);
 constexpr auto kw_const = LEXY_KEYWORD("const", id);
 constexpr auto kw_this = LEXY_KEYWORD("this", id);
-constexpr auto kw_super = LEXY_KEYWORD("super", id);
+constexpr auto kw_base = LEXY_KEYWORD("base", id);
+constexpr auto kw_super_old = LEXY_KEYWORD("super", id);
 constexpr auto kw_null = LEXY_KEYWORD("null", id);
 constexpr auto kw_if = LEXY_KEYWORD("if", id);
 constexpr auto kw_else = LEXY_KEYWORD("else", id);
@@ -70,17 +73,17 @@ constexpr auto kw_throw = LEXY_KEYWORD("throw", id);
 
 // The words of the body syntax. A member name after a "." can be any word of this set.
 // The set has no "get", "set" and "in", because a native method can have such a name.
-constexpr auto id_m = id.reserve(kw_let, kw_const, kw_this, kw_super, kw_null, kw_if, kw_else,
+constexpr auto id_m = id.reserve(kw_let, kw_const, kw_this, kw_base, kw_null, kw_if, kw_else,
                                  kw_while, kw_do, kw_for, kw_return, kw_break, kw_continue,
                                  kw_switch, kw_case, kw_default, kw_try, kw_catch, kw_throw);
 
 // A name. The words of the body syntax and the reserved words are not names.
-constexpr auto id_r = id.reserve(kw_let, kw_const, kw_this, kw_super, kw_null, kw_if, kw_else,
+constexpr auto id_r = id.reserve(kw_let, kw_const, kw_this, kw_base, kw_null, kw_if, kw_else,
                                  kw_while, kw_do, kw_for, kw_return, kw_break, kw_continue,
                                  kw_switch, kw_case, kw_default, kw_try, kw_catch, kw_throw,
                                  kw_var, kw_foreach, kw_in, kw_using, kw_override, kw_virtual,
                                  kw_new, kw_public, kw_private, kw_protected, kw_get, kw_set,
-                                 kw_finally, kw_void, kw_ref, kw_out);
+                                 kw_finally, kw_void);
 
 // ---------------------------------------------------------------- plain helpers
 std::string_view span_text(const ParseState& st, Span sp)
@@ -198,6 +201,7 @@ constexpr auto cc_minus_only = dsl::lit_c<'-'>;
 constexpr auto cc_amp_only = dsl::lit_c<'&'>;
 
 struct expr;
+struct unary_expr;  // the operand of a cast: a prefix operator or an atom with postfix operators
 
 // ---------------------------------------------------------------- the nodes
 // The value of an expression production. Each atom production gives an ExprP.
@@ -214,11 +218,7 @@ struct Builder {
     template <Str S>
     ExprP operator()(const ParseState& st, Pre<S> t, ExprP e) const
     {
-        constexpr std::string_view op = S.v;
-        if constexpr (op == "ref" || op == "out")
-            return ast::make_expr(ast::RefExpr{std::move(e), op == "out", st.offset(t.pos)});
-        else
-            return ast::make_expr(ast::UnaryExpr{S.v, std::move(e), false, st.offset(t.pos)});
+        return ast::make_expr(ast::UnaryExpr{S.v, std::move(e), false, st.offset(t.pos)});
     }
     template <Str S>
     ExprP operator()(const ParseState&, ExprP e, Post<S>) const
@@ -425,7 +425,7 @@ struct literal_p : lexy::token_production {
         lexy::parse_state, lexy::values);
 };
 
-// this, super, null
+// this, base, null
 template <typename Node, typename Kw>
 struct kw_p : lexy::token_production {
     static constexpr auto rule = dsl::position + dsl::token(Kw{});
@@ -526,13 +526,11 @@ struct new_p {
 struct param_p {
     static constexpr auto rule =
         dsl::peek(old_param_ahead) >> dsl::error<e_old_param> |
-        dsl::else_ >> (dsl::p<pass_mode_p> + dsl::p<scan_param_type> + dsl::p<id_str> +
-                       dsl::if_(dsl::lit_c<','>));
+        dsl::else_ >> (dsl::p<scan_param_type> + dsl::p<id_str> + dsl::if_(dsl::lit_c<','>));
     static constexpr auto value = lexy::bind(
-        lexy::callback<ast::Param>([](const ParseState& st, ast::PassMode mode, Span type,
-                                      std::string name) {
-            if (only_blank(span_text(st, type))) return ast::Param{std::move(name), "", mode};
-            return ast::Param{std::move(name), type_of(st, type), mode};
+        lexy::callback<ast::Param>([](const ParseState& st, Span type, std::string name) {
+            if (only_blank(span_text(st, type))) return ast::Param{std::move(name), ""};
+            return ast::Param{std::move(name), type_of(st, type)};
         }),
         lexy::parse_state, lexy::values);
 };
@@ -545,16 +543,26 @@ struct params_p {
 
 struct LambdaRest {
     std::vector<ast::Param> params;
-    Span body;
+    Span body;                      // a block body: the span between the braces
+    ExprP expr;                     // an expression body: the value of the lambda (else null)
 };
 
-// The part after "(": the parameters, "=>" and the body.
+// The part after "(": the parameters, "=>" and the body. The body is a block "{ ... }" or an
+// expression. An expression body "e" is the same as the block "{ return e; }".
 struct lambda_rest {
     static constexpr auto rule =
-        dsl::p<params_p> + LEXY_LIT("=>") + dsl::p<scan_balanced>;
+        dsl::p<params_p> + LEXY_LIT("=>") +
+        (dsl::peek(dsl::lit_c<'{'>) >> dsl::p<scan_balanced> |
+         dsl::else_ >> dsl::recurse<expr>);
     static constexpr auto value = lexy::callback<LambdaRest>(
-        [](lexy::nullopt, Span body) { return LambdaRest{{}, body}; },
-        [](std::vector<ast::Param>&& ps, Span body) { return LambdaRest{std::move(ps), body}; });
+        [](lexy::nullopt, Span body) { return LambdaRest{{}, body, nullptr}; },
+        [](std::vector<ast::Param>&& ps, Span body) {
+            return LambdaRest{std::move(ps), body, nullptr};
+        },
+        [](lexy::nullopt, ExprP&& e) { return LambdaRest{{}, {}, std::move(e)}; },
+        [](std::vector<ast::Param>&& ps, ExprP&& e) {
+            return LambdaRest{std::move(ps), {}, std::move(e)};
+        });
 };
 
 // The text after "(" up to the matching ")". It has a fixed nesting depth of "(".
@@ -596,6 +604,13 @@ struct paren_p {
                 ast::LambdaExpr l;
                 l.params = std::move(rest.params);
                 l.pos = st.offset(pos);
+                if (rest.expr) {
+                    // "{ return e; }": the synthetic braces and "return" have no position.
+                    ast::ReturnStmt r;
+                    r.expr = std::move(rest.expr);
+                    l.body.stmts.push_back(ast::make_stmt(std::move(r)));
+                    return ast::make_expr(std::move(l));
+                }
                 const ParseInput in{std::string_view(st.base, st.size), st.map};
                 l.body = parse_block(in, rest.body, *st.diag);
                 return ast::make_expr(std::move(l));
@@ -615,8 +630,58 @@ struct cond_mid {
     static constexpr auto value = lexy::forward<ExprP>;
 };
 
+// ---------------------------------------------------------------- cast
+// A C-style cast "(T)e" is only a cast when the text in the parentheses is a type for sure:
+//  - a builtin type word with the "*" and "&" marks and "const", for example "(int)", "(float*)",
+//  - a name with at least one "*" or "&" mark, for example "(Foo*)" or "(const Foo&)".
+// "(a * b)", "(x)" and "(int x) => ..." are not casts. The text "(a*)" is no expression.
+// The operand of a cast is a unary expression: "(int)a + b" is "((int)a) + b".
+constexpr auto cast_ws = dsl::whitespace(ws_rule);
+#define SPP_CAST_WORD(W) (LEXY_KEYWORD(W, id) >> cast_ws)
+constexpr auto cast_builtin =
+    SPP_CAST_WORD("bool") | SPP_CAST_WORD("sbyte") | SPP_CAST_WORD("int8") | SPP_CAST_WORD("byte") |
+    SPP_CAST_WORD("uint8") | SPP_CAST_WORD("short") | SPP_CAST_WORD("int16") |
+    SPP_CAST_WORD("ushort") | SPP_CAST_WORD("uint16") | SPP_CAST_WORD("int") |
+    SPP_CAST_WORD("int32") | SPP_CAST_WORD("uint") | SPP_CAST_WORD("uint32") | SPP_CAST_WORD("long") |
+    SPP_CAST_WORD("int64") | SPP_CAST_WORD("ulong") | SPP_CAST_WORD("uint64") | SPP_CAST_WORD("nint") |
+    SPP_CAST_WORD("intptr") | SPP_CAST_WORD("nuint") | SPP_CAST_WORD("uintptr") |
+    SPP_CAST_WORD("float") | SPP_CAST_WORD("double") | SPP_CAST_WORD("char") | SPP_CAST_WORD("wchar") |
+    SPP_CAST_WORD("char16");
+#undef SPP_CAST_WORD
+constexpr auto cast_mark = dsl::lit_c<'*'> / dsl::lit_c<'&'>;
+constexpr auto cast_const = dsl::if_(kw_const >> cast_ws);
+constexpr auto cast_marks = dsl::while_(cast_mark >> cast_ws);
+constexpr auto cast_qname = dsl::token(id) + dsl::while_(dsl::lit_c<'.'> >> dsl::token(id));
+constexpr auto cast_a = dsl::lit_c<'('> + cast_ws + cast_const + cast_builtin + cast_ws + cast_marks +
+                        dsl::lit_c<')'>;
+constexpr auto cast_b = dsl::lit_c<'('> + cast_ws + cast_const + cast_qname + cast_ws +
+                        cast_mark + cast_ws + cast_marks + dsl::lit_c<')'>;
+
+// The text between the parentheses of a cast. It is already checked by cast_a or cast_b.
+struct cast_scan : lexy::token_production {
+    static constexpr auto rule =
+        dsl::position +
+        dsl::loop(dsl::peek(dsl::lit_c<')'>) >> dsl::break_ | dsl::eof >> dsl::error<e_unexpected_eof> |
+                  dsl::else_ >> any_unit) +
+        dsl::position;
+    static constexpr auto value = span_value;
+};
+struct cast_atom_p {
+    static constexpr auto rule = dsl::position + dsl::lit_c<'('> + dsl::p<cast_scan> + dsl::lit_c<')'> +
+                                 dsl::recurse<unary_expr>;
+    static constexpr auto value = lexy::bind(
+        lexy::callback<ExprP>([](const ParseState& st, const char* pos, Span type, ExprP&& e) {
+            return ast::make_expr(
+                ast::UnaryExpr{"(" + type_of(st, type) + ")", std::move(e), false, st.offset(pos)});
+        }),
+        lexy::parse_state, lexy::values);
+};
+
 // ---------------------------------------------------------------- the expression
-struct expr : lexy::expression_production {
+// "Full" is the whole expression. Not "Full" is the unary expression: a prefix operator or an
+// atom with the postfix operators. A cast uses it for the operand.
+template <bool Full>
+struct expr_g : lexy::expression_production {
     static constexpr auto whitespace = ws_rule;
     static constexpr auto max_operator_nesting = 256;
 
@@ -625,10 +690,13 @@ struct expr : lexy::expression_production {
         dsl::peek(dsl::lit_c<'"'>) >> dsl::p<literal_p<ast::StringExpr, '"'>> |
         dsl::peek(dsl::lit_c<'\''>) >> dsl::p<literal_p<ast::CharExpr, '\''>> |
         dsl::peek(dsl::lit_c<'`'>) >> dsl::error<e_interpolation> |
+        dsl::peek(cast_a) >> dsl::p<cast_atom_p> |
+        dsl::peek(cast_b) >> dsl::p<cast_atom_p> |
         dsl::peek(dsl::lit_c<'('>) >> dsl::p<paren_p> |
         dsl::peek(dsl::lit_c<'{'>) >> dsl::error<e_brace_init> |
         dsl::peek(kw_this) >> dsl::p<kw_p<ast::ThisExpr, std::remove_cv_t<decltype(kw_this)>>> |
-        dsl::peek(kw_super) >> dsl::p<kw_p<ast::SuperExpr, std::remove_cv_t<decltype(kw_super)>>> |
+        dsl::peek(kw_base) >> dsl::p<kw_p<ast::BaseExpr, std::remove_cv_t<decltype(kw_base)>>> |
+        dsl::peek(kw_super_old + dsl::lit_c<'.'>) >> dsl::error<e_super_renamed> |
         dsl::peek(kw_null) >> dsl::p<kw_p<ast::NullExpr, std::remove_cv_t<decltype(kw_null)>>> |
         dsl::peek(kw_new) >> dsl::p<new_p> |
         dsl::peek(LEXY_LIT("::")) >> dsl::error<e_use_dot_colons> |
@@ -648,14 +716,12 @@ struct expr : lexy::expression_production {
         using operand = dsl::atom;
     };
 
-    // - + ! ~ * ++ -- ref out. A prefix "&" is removed; the parse reports it.
+    // - + ! ~ * & ++ --. The prefix "&" does not match "&&". A cast "(T)" is a prefix too.
     struct prefix_lvl : dsl::prefix_op {
         static constexpr auto op =
             SPP_PRE("++") / SPP_PRE("--") / SPP_PRE_NF("-", cc_minus_only) /
             SPP_PRE_NF("+", cc_plus_only) / SPP_PRE("!") / SPP_PRE("~") / SPP_PRE("*") /
-            dsl::op<Pre<"ref">>(kw_ref) / dsl::op<Pre<"out">>(kw_out) /
-            dsl::op<Pre<"&">>(dsl::not_followed_by(LEXY_LIT("&"), cc_amp_only) >>
-                              dsl::try_(dsl::error<e_amp_prefix>));
+            SPP_PRE_NF("&", cc_amp_only);
         using operand = postfix_lvl;
     };
 
@@ -719,11 +785,14 @@ struct expr : lexy::expression_production {
         using operand = cond_lvl;
     };
 
-    using operation = assign_lvl;
+    using operation = std::conditional_t<Full, assign_lvl, prefix_lvl>;
 
     static constexpr auto value =
         lexy::bind(lexy::callback<ExprP>(Builder{}), lexy::parse_state, lexy::values);
 };
+
+struct expr : expr_g<true> {};
+struct unary_expr : expr_g<false> {};
 
 // ---------------------------------------------------------------- the entry points
 struct ExprResult {

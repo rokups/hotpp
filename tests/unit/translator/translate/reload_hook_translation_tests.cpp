@@ -33,7 +33,7 @@ TEST(ReloadHookTranslation, OnReloadGetsNoSlotAndGoesToTheRecord)
         "    float hp = 1.0;\n"
         "    void onReload(OldState old) { if (old.has(\"x\")) this.hp = old.get<float>(\"x\"); }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.cpp.find("static void Foo__onReload(Foo_Shell* self, const spp::OldState& old)"),
+    EXPECT_NE(r.cpp.find("static void Foo__onReload(Foo_Shell* __self, const spp::OldState& old)"),
               std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("spp::deref(old).has(\"x\")"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("spp::deref(old).get<float>(\"x\")"), std::string::npos) << r.cpp;
@@ -69,7 +69,7 @@ TEST(ReloadHookTranslation, ConvertHookGoesToTheFieldRow)
     // The convert function has no state: it never reads "st".
     const size_t at = r.cpp.find("static float Foo__convert_level(int32_t old)\n");
     ASSERT_NE(at, std::string::npos) << r.cpp;
-    EXPECT_EQ(r.cpp.substr(at, r.cpp.find("\n}\n", at) - at).find("st->"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.substr(at, r.cpp.find("\n}\n", at) - at).find("__st->"), std::string::npos) << r.cpp;
     // The field "other" has no convert hook.
     EXPECT_NE(r.cpp.find("spp::field_destroyer<int32_t>()},"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("SLOT_convert_level"), std::string::npos) << r.cpp;

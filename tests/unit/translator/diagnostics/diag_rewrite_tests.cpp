@@ -99,7 +99,7 @@ TEST(DiagRewrite, CountsInTheNoteGetPluralWords)
 TEST(DiagRewrite, SnippetOfGeneratedCodeIsDroppedWithoutScriptText)
 {
     const std::string in = "a.spp:3:5: error: no member named 'x' in 'Boss_Shell'\n"
-                           "    3 |     self->x = 1;\n"
+                           "    3 |     __self->x = 1;\n"
                            "      |     ~~~~  ^\n"
                            "1 error generated.\n";
     EXPECT_EQ(rewrite_diagnostic(in),
@@ -109,7 +109,7 @@ TEST(DiagRewrite, SnippetOfGeneratedCodeIsDroppedWithoutScriptText)
 TEST(DiagRewrite, SnippetIsTheScriptLineWhenTheTextIsKnown)
 {
     const std::string in = "a.spp:2:5: error: no member named 'x' in 'Boss_Shell'\n"
-                           "    2 |     self->x = 1;\n"
+                           "    2 |     __self->x = 1;\n"
                            "      |     ~~~~  ^\n"
                            "1 error generated.\n";
     const sppc::ScriptTexts scripts = {{"a.spp", "class Boss {\n    this.x = 1;\n}\n"}};
@@ -131,7 +131,7 @@ TEST(DiagRewrite, NoteInGeneratedFileGetsTheLocationOfItsError)
 {
     const std::string in = "a.spp:3:5: error: no matching function for call to 'Boss__roar'\n"
                            "/w/a.g1.cpp:91:13: note: candidate function not viable: requires 2 arguments, but 1 was provided\n"
-                           "   91 | static void Boss__roar(Boss_Shell* self, float a)\n"
+                           "   91 | static void Boss__roar(Boss_Shell* __self, float a)\n"
                            "      |             ^\n";
     EXPECT_EQ(rewrite_diagnostic(in),
               "a.spp:3:1: error: no method or function 'Boss.roar' fits these arguments\n"
@@ -202,7 +202,7 @@ TEST(DiagRewrite, TextWithoutFinalNewlineKeepsThat)
 
 TEST(DiagRewrite, RewriteTwiceGivesTheSameText)
 {
-    const std::string in = "a.spp:3:5: error: no member named 'x' in 'Boss_Shell'\n    3 |   self->x\n      |   ^\n";
+    const std::string in = "a.spp:3:5: error: no member named 'x' in 'Boss_Shell'\n    3 |   __self->x\n      |   ^\n";
     const std::string once = rewrite_diagnostic(in);
     EXPECT_EQ(rewrite_diagnostic(once), once);
 }

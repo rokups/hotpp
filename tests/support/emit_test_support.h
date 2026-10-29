@@ -22,7 +22,7 @@ inline ExprP name(std::initializer_list<std::string> parts, uint32_t pos = 0)
 inline ExprP id(const std::string& s, uint32_t pos = 0) { return name({s}, pos); }
 inline ExprP num(const std::string& s, uint32_t pos = 0) { return make_expr(NumberExpr{s, pos}); }
 inline ExprP str(const std::string& s) { return make_expr(StringExpr{s}); }
-// The lowering pass writes "st->x" as raw text. This helper makes the same node.
+// The lowering pass writes "__st->x" as raw text. This helper makes the same node.
 inline ExprP arrow(ExprP obj, const std::string& m)
 {
     const uint32_t pos = pos_of(*obj);

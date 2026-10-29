@@ -1,5 +1,5 @@
 // Reload tests of script inheritance (S6a, design 4.5, 7.6 and 7.7) with the backend that
-// SPP_BACKEND selected: a child of a script class, script virtuals, "super" calls, "is" and "as".
+// SPP_BACKEND selected: a child of a script class, script virtuals, "base" calls, "is" and "as".
 #include <gtest/gtest.h>
 
 #include <string>
@@ -23,7 +23,7 @@ T* fld(Session& s, const char* name)
 }
 
 // The factory of a child runs the constructor of the parent first. The record knows the parent.
-// The child override of Tick calls the parent implementation with "super.Tick".
+// The child override of Tick calls the parent implementation with "base.Tick".
 TEST_P(BackendTests, ChildRunsTheParentConstructorAndSuperCalls)
 {
     spp::LoadResult v1 = backend->load(source("inherit_v1.spp"), 1);
@@ -34,11 +34,11 @@ TEST_P(BackendTests, ChildRunsTheParentConstructorAndSuperCalls)
     ASSERT_NE(s.inst.shell->cls->super, nullptr);
     EXPECT_STREQ(s.inst.shell->cls->super->name, "Unit");
     EXPECT_EQ(*fld<int>(s, "ctor_log"), 12);  // Unit(int) first, then Grunt(int, int)
-    EXPECT_EQ(*fld<int>(s, "hp"), 1);         // super(start + 1) with the default 0
+    EXPECT_EQ(*fld<int>(s, "hp"), 1);         // base(start + 1) with the default 0
     s.world.Tick(kDt);
-    EXPECT_EQ(*fld<int>(s, "ticks"), 1);       // super.Tick() ran the parent Tick
+    EXPECT_EQ(*fld<int>(s, "ticks"), 1);       // base.Tick() ran the parent Tick
     EXPECT_EQ(*fld<int>(s, "super_ticks"), 1);
-    EXPECT_EQ(*fld<int>(s, "unit_power"), 1);  // super.Power() is the parent implementation
+    EXPECT_EQ(*fld<int>(s, "unit_power"), 1);  // base.Power() is the parent implementation
 }
 
 // The destructor of the child runs first, then the destructor of the parent.
@@ -183,7 +183,7 @@ TEST_P(BackendTests, ReloadThatChangesTheScriptParentIsRejected)
     EXPECT_EQ(spp::active_generation, 1u);
 }
 
-// The "super(...)" arguments of a chain evaluate one time for each object (S16). Each argument
+// The "base(...)" arguments of a chain evaluate one time for each object (S16). Each argument
 // calls Util.Count, so one Leaf counts two calls: one for Leaf and one for Mid. This is true for
 // the factory and for "new", also after a reload that changes the argument of Leaf.
 TEST_P(BackendTests, SuperArgumentsOfAChainEvaluateOneTime)
@@ -196,7 +196,7 @@ TEST_P(BackendTests, SuperArgumentsOfAChainEvaluateOneTime)
     int calls = Util::Calls();
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Maker"));
     s.commit_at_frame_boundary();
-    EXPECT_EQ(Util::Calls(), calls);  // Maker has no "super(...)" argument
+    EXPECT_EQ(Util::Calls(), calls);  // Maker has no "base(...)" argument
 
     // The factory: Leaf(0) gives Mid(10) and Root(11).
     auto make_leaf = [&](int want_got, int want_mid) {
@@ -227,7 +227,7 @@ TEST_P(BackendTests, SuperArgumentsOfAChainEvaluateOneTime)
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);
 
-    // Generation 2 adds 20 in the "super(...)" argument of Leaf. The factory uses it now.
+    // Generation 2 adds 20 in the "base(...)" argument of Leaf. The factory uses it now.
     ASSERT_NO_FATAL_FAILURE(make_leaf(21, 20));
     calls = Util::Calls();
     s.world.Tick(kDt);
@@ -239,7 +239,7 @@ TEST_P(BackendTests, SuperArgumentsOfAChainEvaluateOneTime)
 
 // A child of a script class under the slot ABI of the state member (design 4.4 and 4.5).
 // Kid inherits Bump and Twice from Base. Kid overrides the script virtual Power and the native
-// virtuals Tick and TakeDamage. Each override calls the parent version with "super". Kid calls
+// virtuals Tick and TakeDamage. Each override calls the parent version with "base". Kid calls
 // the native method Move. A reload of Kid changes the overrides and adds fields.
 TEST_P(BackendTests, ChildUsesInheritedMethodsNativeBaseAndSuperUnderTheSlotAbi)
 {
@@ -258,7 +258,7 @@ TEST_P(BackendTests, ChildUsesInheritedMethodsNativeBaseAndSuperUnderTheSlotAbi)
     EXPECT_FLOAT_EQ(s.actor->Position.x, 1.0f);
     EXPECT_EQ(*fld<int>(s, "hits"), 10);         // the inherited Bump
     EXPECT_EQ(*fld<int>(s, "twice"), 10);        // the inherited Twice calls the virtual Kid.Power (5)
-    EXPECT_EQ(*fld<int>(s, "super_power"), 1);   // super.Power() is Base.Power
+    EXPECT_EQ(*fld<int>(s, "super_power"), 1);   // base.Power() is Base.Power
 
     // A native virtual call: native code to the shell, the slot and the Kid override.
     // Kid.TakeDamage calls Base.TakeDamage with twice the amount.

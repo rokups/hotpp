@@ -93,7 +93,7 @@ TEST(ExpressionParse, CallsAndMembers)
     EXPECT_EQ(round_trip("(a).x"), "(a).x");
     EXPECT_EQ(round_trip("f()"), "f()");
     EXPECT_EQ(round_trip("f(a)(b)[c]"), "f(a)(b)[c]");
-    EXPECT_EQ(round_trip("super.Tick(dt)"), "super.Tick(dt)");
+    EXPECT_EQ(round_trip("base.Tick(dt)"), "base.Tick(dt)");
     EXPECT_EQ(round_trip("x = null"), "x = nullptr");
 }
 
@@ -226,4 +226,46 @@ TEST(ExpressionParse, Offsets)
     Diagnostics d5;
     EXPECT_TRUE(parse_expression({text, &map}, {b - 2, b + 1}, d5) == nullptr);  // "= a"
     EXPECT_EQ(d5.items.size(), 1u);
+}
+
+TEST(ExpressionParse, CastOfABuiltinType)
+{
+    EXPECT_EQ(round_trip("(int)f"), "(int32_t)f");
+    EXPECT_EQ(round_trip("(float)i + 1"), "(float)i + 1");
+    EXPECT_EQ(round_trip("( uint )  x"), "(uint32_t)x");
+    EXPECT_EQ(round_trip("(double)-x * 2"), "(double)-x * 2");
+    EXPECT_EQ(round_trip("(int)f(x).y"), "(int32_t)f(x).y");
+    EXPECT_EQ(round_trip("(int)(a + b)"), "(int32_t)(a + b)");
+    EXPECT_EQ(round_trip("(int)(float)x"), "(int32_t)(float)x");
+    EXPECT_EQ(round_trip("(byte*)p"), "(uint8_t*)p");
+    EXPECT_EQ(round_trip("(const int&)i"), "(const int32_t&)i");
+    Parsed p("(int)f");
+    ASSERT_TRUE(p.expr);
+    const auto* u = std::get_if<ast::UnaryExpr>(&p.expr->v);
+    ASSERT_TRUE(u);
+    EXPECT_EQ(u->op, "(int32_t)");
+    EXPECT_FALSE(u->postfix);
+    EXPECT_EQ(p.diag.items.size(), 0u);
+}
+
+TEST(ExpressionParse, CastOfAPointerOrReferenceType)
+{
+    EXPECT_EQ(round_trip("(Foo*)p"), "(Foo*)p");
+    EXPECT_EQ(round_trip("(const Foo&)r"), "(const Foo&)r");
+    EXPECT_EQ(round_trip("(std.string*)p"), "(std::string*)p");
+    EXPECT_EQ(round_trip("(Foo **)p"), "(Foo**)p");
+}
+
+TEST(ExpressionParse, ParenthesizedTextIsNotACast)
+{
+    EXPECT_EQ(round_trip("(x)"), "(x)");
+    EXPECT_EQ(round_trip("(a * b)"), "(a * b)");
+    EXPECT_EQ(round_trip("(a) + b"), "(a) + b");
+    EXPECT_EQ(round_trip("(a)-b"), "(a) - b");
+    EXPECT_EQ(round_trip("(a & b) * c"), "(a & b) * c");
+    EXPECT_EQ(round_trip("(i) * 2"), "(i) * 2");
+    EXPECT_EQ(round_trip("(x) => { }"), "[=](auto x) {}");
+    EXPECT_EQ(round_trip("(int x) => { }"), "[=](int32_t x) {}");
+    // A name without a mark is not sure to be a type: it is no cast. Use static_cast.
+    EXPECT_EQ(one_error("(Foo)x"), "1:6: expected end of expression");
 }

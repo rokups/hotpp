@@ -6,7 +6,7 @@ class Unit : Actor {
     int hp = 0;
     int kind = 0;
 
-    Unit(int h) : super(std.string("unit")) { this.hp = h; this.kind = 1; }
+    Unit(int h) : base(std.string("unit")) { this.hp = h; this.kind = 1; }
 }
 
 class Spawner : Actor {

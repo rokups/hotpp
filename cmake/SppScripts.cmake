@@ -1,38 +1,99 @@
-# spp_add_scripts: compile scripts ahead of time with the tool sppc.
-#
-# The function also calls spp_script_host with the name TARGET. The host has the scripts,
-# the INCLUDES and the FLAGS. The language server uses it for completion.
+# spp_add_scripts: compile scripts with the tool sppc. There are two modes.
 #
 #   spp_add_scripts(TARGET name SCRIPTS a.spp b.spp GEN n
-#                   [INCLUDES dir...] [FLAGS flag...] [DEPENDS file...]
+#                   [INCLUDES dir...] [FLAGS cxxflag...] [DEPENDS file...]
 #                   [OUT_DIR dir] [AFTER target])
+#   spp_add_scripts(TARGET name SCRIPTS a.spp b.spp AOT
+#                   [INCLUDES dir...] [PRELUDES file...] [FLAGS sppc-flag...]
+#                   [DEPENDS file...] [OUT_DIR dir])
 #
-# The function only runs sppc. It makes one custom target "name". The target
-# makes the library OUT_DIR/<script name>.g<n>.so for each script. OUT_DIR
+# The function also calls spp_script_host with the name TARGET. The host has the scripts
+# and the INCLUDES. In the default mode it has the FLAGS too. The language server uses
+# the host for completion.
+#
+# Default mode (no AOT): the function only runs sppc. It makes one custom target "name".
+# The target makes the library OUT_DIR/<script name>.g<n>.so for each script. OUT_DIR
 # defaults to ${CMAKE_BINARY_DIR}/spp_scripts. Load such a library with
 # spp::module_from_library. The variable SPP_SCRIPTS_<TARGET>_LIBRARIES gets the paths.
+# GEN is required. FLAGS are compile flags (--cxxflag). The generations of one class
+# share a slot file in OUT_DIR. Build generation 2 after generation 1: give AFTER the
+# target of generation 1.
 #
-# The generations of one class share a slot file in OUT_DIR. Build generation 2
-# after generation 1: give AFTER the target of generation 1.
+# AOT mode (design M7): the function runs "sppc --aot" and makes the static library "name"
+# from the generated C++. The library defines spp::aot_table (include/spp/aot.h). It links
+# spp_aot (PUBLIC), so a program that links "name" has no loader, no reload and no Clang.
+# INCLUDES are the include dirs of the translator and of the compile. FLAGS are flags
+# for sppc. OUT_DIR defaults to ${CMAKE_BINARY_DIR}/spp_aot/<name>. AOT mode has no GEN
+# and no AFTER. PRELUDES is only for AOT mode.
 function(spp_add_scripts)
-    cmake_parse_arguments(A "" "TARGET;GEN;OUT_DIR;AFTER" "SCRIPTS;INCLUDES;FLAGS;DEPENDS" ${ARGN})
-    if(NOT A_TARGET OR NOT A_SCRIPTS OR NOT A_GEN)
-        message(FATAL_ERROR "spp_add_scripts needs TARGET, SCRIPTS and GEN")
+    cmake_parse_arguments(A "AOT" "TARGET;GEN;OUT_DIR;AFTER" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS" ${ARGN})
+    if(A_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR "spp_add_scripts: unknown arguments: ${A_UNPARSED_ARGUMENTS}")
     endif()
-    if(NOT A_OUT_DIR)
-        set(A_OUT_DIR ${CMAKE_BINARY_DIR}/spp_scripts)
+    if(NOT A_TARGET OR NOT A_SCRIPTS)
+        message(FATAL_ERROR "spp_add_scripts needs TARGET and SCRIPTS")
     endif()
+    if(A_AOT)
+        if(DEFINED A_GEN OR DEFINED A_AFTER)
+            message(FATAL_ERROR "spp_add_scripts: GEN and AFTER do not work with AOT (target ${A_TARGET})")
+        endif()
+    else()
+        if(NOT A_GEN)
+            message(FATAL_ERROR "spp_add_scripts needs GEN when AOT is not set (target ${A_TARGET})")
+        endif()
+        if(A_PRELUDES)
+            message(FATAL_ERROR "spp_add_scripts: PRELUDES works only with AOT (target ${A_TARGET})")
+        endif()
+    endif()
+
     set(scripts "")
-    set(outputs "")
     foreach(s ${A_SCRIPTS})
         get_filename_component(abs ${s} ABSOLUTE)
-        get_filename_component(stem ${s} NAME_WLE)
         list(APPEND scripts ${abs})
-        list(APPEND outputs ${A_OUT_DIR}/${stem}.g${A_GEN}.so)
     endforeach()
     set(args "")
     foreach(i ${A_INCLUDES})
         list(APPEND args -I ${i})
+    endforeach()
+
+    if(A_AOT)
+        if(NOT A_OUT_DIR)
+            set(A_OUT_DIR ${CMAKE_BINARY_DIR}/spp_aot/${A_TARGET})
+        endif()
+        set(sources "")
+        foreach(s ${A_SCRIPTS})
+            get_filename_component(stem ${s} NAME_WLE)
+            list(APPEND sources ${A_OUT_DIR}/${stem}.aot.cpp)
+        endforeach()
+        set(registry ${A_OUT_DIR}/spp_aot_registry.cpp)
+        foreach(p ${A_PRELUDES})
+            get_filename_component(abs ${p} ABSOLUTE)
+            list(APPEND args --prelude ${abs})
+        endforeach()
+        add_custom_command(
+            OUTPUT ${sources} ${registry}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
+            COMMAND sppc --aot ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS}
+            DEPENDS sppc ${scripts} ${A_PRELUDES} ${A_DEPENDS}
+            COMMENT "sppc --aot: ${A_SCRIPTS}"
+            VERBATIM)
+        add_library(${A_TARGET} STATIC ${sources} ${registry})
+        target_link_libraries(${A_TARGET} PUBLIC spp_aot)
+        # The generated code has parameters that a script does not use.
+        target_compile_options(${A_TARGET} PRIVATE -Wno-unused-parameter)
+        target_include_directories(${A_TARGET} PUBLIC ${A_INCLUDES})
+        # The language server gets a script host with the same scripts and includes.
+        spp_script_host(NAME ${A_TARGET} SCRIPTS ${scripts} INCLUDES ${A_INCLUDES})
+        return()
+    endif()
+
+    if(NOT A_OUT_DIR)
+        set(A_OUT_DIR ${CMAKE_BINARY_DIR}/spp_scripts)
+    endif()
+    set(outputs "")
+    foreach(s ${A_SCRIPTS})
+        get_filename_component(stem ${s} NAME_WLE)
+        list(APPEND outputs ${A_OUT_DIR}/${stem}.g${A_GEN}.so)
     endforeach()
     foreach(f ${A_FLAGS})
         list(APPEND args --cxxflag ${f})
@@ -53,59 +114,6 @@ function(spp_add_scripts)
     # The language server gets a script host with the same scripts, includes and flags.
     spp_script_host(NAME ${A_TARGET} SCRIPTS ${scripts}
                     INCLUDES ${A_INCLUDES} FLAGS ${A_FLAGS})
-endfunction()
-
-# spp_add_aot_scripts: build scripts into the program (AOT mode, design M7).
-#
-#   spp_add_aot_scripts(TARGET name SCRIPTS a.spp b.spp
-#                           [INCLUDES dir...] [PRELUDES file...] [FLAGS sppc-flag...]
-#                           [DEPENDS file...] [OUT_DIR dir])
-#
-# The function runs "sppc --aot" and makes the static library "name" from the generated
-# C++. The library defines spp::aot_table (include/spp/aot.h). It links spp_aot
-# (PUBLIC), so a program that links "name" has no loader, no reload and no Clang. INCLUDES
-# are the include dirs of the translator and of the compile. OUT_DIR defaults to
-# ${CMAKE_BINARY_DIR}/spp_aot/<name>.
-# The function also calls spp_script_host with the name TARGET (scripts and INCLUDES).
-function(spp_add_aot_scripts)
-    cmake_parse_arguments(A "" "TARGET;OUT_DIR" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS" ${ARGN})
-    if(NOT A_TARGET OR NOT A_SCRIPTS)
-        message(FATAL_ERROR "spp_add_aot_scripts needs TARGET and SCRIPTS")
-    endif()
-    if(NOT A_OUT_DIR)
-        set(A_OUT_DIR ${CMAKE_BINARY_DIR}/spp_aot/${A_TARGET})
-    endif()
-    set(scripts "")
-    set(sources "")
-    foreach(s ${A_SCRIPTS})
-        get_filename_component(abs ${s} ABSOLUTE)
-        get_filename_component(stem ${s} NAME_WLE)
-        list(APPEND scripts ${abs})
-        list(APPEND sources ${A_OUT_DIR}/${stem}.aot.cpp)
-    endforeach()
-    set(registry ${A_OUT_DIR}/spp_aot_registry.cpp)
-    set(args "")
-    foreach(i ${A_INCLUDES})
-        list(APPEND args -I ${i})
-    endforeach()
-    foreach(p ${A_PRELUDES})
-        get_filename_component(abs ${p} ABSOLUTE)
-        list(APPEND args --prelude ${abs})
-    endforeach()
-    add_custom_command(
-        OUTPUT ${sources} ${registry}
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
-        COMMAND sppc --aot ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS}
-        DEPENDS sppc ${scripts} ${A_PRELUDES} ${A_DEPENDS}
-        COMMENT "sppc --aot: ${A_SCRIPTS}"
-        VERBATIM)
-    add_library(${A_TARGET} STATIC ${sources} ${registry})
-    target_link_libraries(${A_TARGET} PUBLIC spp_aot)
-    # The generated code has parameters that a script does not use.
-    target_compile_options(${A_TARGET} PRIVATE -Wno-unused-parameter)
-    target_include_directories(${A_TARGET} PUBLIC ${A_INCLUDES})
-    # The language server gets a script host with the same scripts and includes.
-    spp_script_host(NAME ${A_TARGET} SCRIPTS ${scripts} INCLUDES ${A_INCLUDES})
 endfunction()
 
 # spp_script_host: describe a script host for the language server spp-ls.

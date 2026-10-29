@@ -121,7 +121,7 @@ TEST_P(BackendTests, ModuleVariableOrderAndConvertHook)
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Probe"));
     s.commit_at_frame_boundary();
     ASSERT_NE(modvar<int>(s, "doubled"), nullptr);
-    EXPECT_EQ(*modvar<int>(s, "doubled"), 10);  // base * 2
+    EXPECT_EQ(*modvar<int>(s, "doubled"), 10);  // seed * 2
     s.world.Tick(kDt);
     EXPECT_EQ(*modvar<int>(s, "doubled"), 11);
 

@@ -3,10 +3,10 @@
 //
 // It reports:
 //  - a field, a property, a return type or a collection element that holds a borrowed
-//    pointer or reference: "T*", "T&", "ref T" or "out T" of a type that is not a handle,
-//  - a lambda that captures a "ref" or "out" parameter or a local that holds a borrowed
+//    pointer or reference: "T*" or "T&" of a type that is not a handle,
+//  - a lambda that captures a "T&" parameter or a local that holds a borrowed
 //    pointer or reference,
-//  - a "ref e" that the script stores: the right side of an assignment, a "return" or a
+//  - a "&e" that the script stores: the right side of an assignment, a "return" or a
 //    field initializer,
 //  - a script function used as a value (it has no address, because a reload replaces it).
 //
@@ -34,7 +34,7 @@ void check_class(const ast::ClassDef& cd, const TypeModel& types, const LineMap&
                  bool strict_borrowed);
 
 // Checks the constructors of a class: no two overloads with the same parameter types, and the
-// arguments of "super(...)" use the constructor parameters only (design 7.3). Each error goes
+// arguments of "base(...)" use the constructor parameters only (design 7.3). Each error goes
 // to the diagnostics.
 void check_ctors(const ast::ClassDef& cd, const LineMap& map, Diagnostics& diag);
 
@@ -51,10 +51,10 @@ std::set<std::string> used_type_names(const ast::ClassDef& cd);
 // How the body of a script function uses one parameter (design 7.10.5). The pass sees the
 // names only, because the lowering has not run. It is conservative:
 //  - "mutated": the body assigns to the parameter or to a member of it, applies "++" or "--",
-//    passes it with "ref" or "out", or calls a member function on it (the function can be
+//    passes it to a "T&" parameter or takes "&" of it, or calls a member function on it (the function can be
 //    non-const).
 //  - "rebound": the body assigns to the whole parameter, applies "++" or "--" to it, or passes
-//    it with "ref" or "out". For a handle this is the only change that needs a copy.
+//    it to a "T&" parameter or takes "&" of it. For a handle this is the only change that needs a copy.
 //  - "stored": the body assigns the parameter as a whole (right side of "="), returns it,
 //    passes it to "new", or uses it in a lambda (a capture keeps a copy).
 //

@@ -1825,14 +1825,14 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 fail_at(map, m.pos, "a [value] class '" + cd.name + "' cannot have the hook '" + m.name + "'");
         }
         for (const sppc::ast::Ctor& c : cd.ctors)
-            if (c.has_super)
-                fail_at(map, c.pos, "a [value] class '" + cd.name + "' has no base class: remove 'super(...)'");
+            if (c.has_base_call)
+                fail_at(map, c.pos, "a [value] class '" + cd.name + "' has no base class: remove 'base(...)'");
     }
     for (const ClassDef& cd : sc.classes)
         if (cd.base.empty() && !cd.is_value)
             for (const sppc::ast::Ctor& c : cd.ctors)
-                if (c.has_super)
-                    fail_at(map, c.pos, "class '" + cd.name + "' has no base class: remove 'super(...)'");
+                if (c.has_base_call)
+                    fail_at(map, c.pos, "class '" + cd.name + "' has no base class: remove 'base(...)'");
 
     // ---- script inheritance (design 4.5). A base that is a script class of this script is a
     // script parent. The root of a chain is the first class without a script parent. Its base
@@ -2223,7 +2223,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         }
         auto reserved = [&](uint32_t pos, const std::vector<sppc::ast::Param>& ps) {
             for (const Param& p : ps)
-                if (p.name == "self" || p.name == "st" || p.name == "a")
+                if (p.name.compare(0, 2, "__") == 0)
                     fail_at(map, pos, "parameter name '" + p.name + "' is reserved");
         };
         std::set<std::string> field_names, fn_names;
@@ -2243,11 +2243,11 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         }
         for (Field& f : cd.fields) f.type = types.storage(f.type);
         for (Method& m : cd.methods) {
-            for (Param& p : m.params) p.type = p.mode == PassMode::Value ? types.param(p.type) : types.ref_param(p.type);
+            for (Param& p : m.params) p.type = types.param(p.type);
             if (!m.ret.empty()) m.ret = types.storage(m.ret);
         }
         for (sppc::ast::Ctor& c : cd.ctors)
-            for (Param& p : c.params) p.type = p.mode == PassMode::Value ? types.param(p.type) : types.ref_param(p.type);
+            for (Param& p : c.params) p.type = types.param(p.type);
         // The convert hooks of the module variables: the same rules as a convert hook of a field.
         const bool is_module = cn == kModuleName;
         std::map<std::string, Method*> hooks;  // by variable name
@@ -2255,7 +2255,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             for (Method& m : mod_hooks) {
                 if (m.is_override || m.is_virtual || m.is_new)
                     fail_at(map, m.pos, "'" + m.name + "' is a convert hook. It takes no modifier");
-                if (m.params.size() != 1 || m.params[0].mode != PassMode::Value)
+                if (m.params.size() != 1 || sppc::ast::is_ref_type(m.params[0].type))
                     fail_at(map, m.pos, "'" + m.name + "' is a convert hook. It takes one parameter: the old value");
                 if (m.ret.empty() || m.ret == "void")
                     fail_at(map, m.pos, "'" + m.name + "' is a convert hook. It must return the new variable type");
@@ -2265,7 +2265,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 m.ret = types.storage(m.ret);
                 for (const Field& f : cd.fields)
                     if (f.name == m.name.substr(8) && f.type != m.ret)
-                        fail_at(map, m.pos, "'" + m.name + "' must return the type of the module variable: '" + f.type + "'");
+                        fail_at(map, m.pos, "'" + m.name + "' must return the type of the module variable: '" + sppc::script_type_text(f.type) + "'");
             }
 
         new_ready.insert(cn);
@@ -2312,8 +2312,8 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             o.w("[[maybe_unused]] SPP_HIDDEN static " + cn + "* spp_mod() { return static_cast<" + cn + "*>(" + cn + "_slot); }\n");
         }
         for (const Method& m : cd.methods)
-            o.w("static " + fn_ret(m) + " " + P + m.name + "(" + cn + "* self" + param_text(m.params) + ");\n");
-        for (const sppc::ast::Ctor& c : cd.ctors) o.w("static void " + P + "ctor(" + cn + "* self" + param_text(c.params) + ");\n");
+            o.w("static " + fn_ret(m) + " " + P + m.name + "(" + cn + "* __self" + param_text(m.params) + ");\n");
+        for (const sppc::ast::Ctor& c : cd.ctors) o.w("static void " + P + "ctor(" + cn + "* __self" + param_text(c.params) + ");\n");
         // A constructor without parameters next to other overloads: the field initializers go to a
         // tag constructor. So an overload with parameters does not run the body of the other one.
         const sppc::ast::Ctor* zero = nullptr;
@@ -2407,9 +2407,9 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             const std::string at = "#line " + std::to_string(m.line) + " \"" + esc(file_at(m.pos)) + "\"\n";
             const int end_line = m.end_line > 0 ? m.end_line : m.line;
             o.w(at);
-            o.w("static " + ret + " " + sym + "(" + cn + "* self" + param_text(m.params) + ")\n");
+            o.w("static " + ret + " " + sym + "(" + cn + "* __self" + param_text(m.params) + ")\n");
             o.w(at + "{\n");
-            o.w(at + "    SPP_NODEBUG_LOCAL auto* st = self;\n");
+            o.w(at + "    SPP_NODEBUG_LOCAL auto* __st = __self;\n");
             sppc::lower_block(m.body, cx, g_diag);
             if (!g_diag.items.empty()) throw TranslateAbort{};
             sppc::ast::Emitter em(map, opt.input);
@@ -2504,8 +2504,6 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         std::set<std::string> fields;          // all field names, the inherited ones too
         std::string ctor_entry;                // the function that runs the constructors, or empty
         std::set<size_t> ctor_arities;         // the parameter counts of the constructor overloads
-        std::set<size_t> ref_arities;          // the counts of the overloads with a "ref" or "out" parameter
-        std::set<size_t> plain_arities;        // the counts of the overloads with no "ref" or "out" parameter
         bool dtor_chain = false;               // the class or a parent has a destructor
         std::string on_reload;                 // the onReload hook of the class or a parent
         bool esft = false;                     // the shell has std::enable_shared_from_this
@@ -2578,37 +2576,28 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             BL += ", " + iname;
         }
         bool root_super = false;
-        for (const sppc::ast::Ctor& c : root.ctors) root_super = root_super || c.has_super;
+        for (const sppc::ast::Ctor& c : root.ctors) root_super = root_super || c.has_base_call;
         std::string ctor_args;
         if (bi.ctor_kind == 1) ctor_args = ", std::string(\"" + cn + "\")";
         else if (bi.ctor_kind == 2) ctor_args = ", \"" + cn + "\"";
         else if (!bi.default_ctor && !root_super)
             fail_at(map, cd.pos, "base class '" + root.base + "' has no default constructor and no constructor that takes a name");
         if (par) {
-            // The constructor of the parent runs first. Its arguments come from "super(...)".
+            // The constructor of the parent runs first. Its arguments come from "base(...)".
             // Each overload of the child selects one overload of the parent by the argument count.
             // C++ then selects by the argument types.
             const std::set<size_t>& ar = pinfo->ctor_arities;
             for (size_t k = 0; k < std::max<size_t>(cd.ctors.size(), 1); ++k) {
-                const bool sup = has_ctor && cd.ctors[k].has_super;
-                const size_t n = sup ? cd.ctors[k].super_args.size() : 0;
+                const bool sup = has_ctor && cd.ctors[k].has_base_call;
+                const size_t n = sup ? cd.ctors[k].base_args.size() : 0;
                 if (!sup && !ar.count(0))
                     fail_at(map, has_ctor ? cd.ctors[k].pos : cd.pos,
-                            "class '" + cn + "' must call 'super(...)': the constructor of '" + par->name + "' has parameters");
+                            "class '" + cn + "' must call 'base(...)': the constructor of '" + par->name + "' has parameters");
                 if (sup && !ar.count(n))
-                    fail_at(map, cd.ctors[k].super_pos,
-                            "'super(...)' has " + std::to_string(n) + " arguments; " +
+                    fail_at(map, cd.ctors[k].base_pos,
+                            "'base(...)' has " + std::to_string(n) + " arguments; " +
                                 (ar.size() == 1 ? "the constructor of '" + par->name + "' takes " + std::to_string(*ar.begin())
                                                 : "no constructor of '" + par->name + "' takes " + std::to_string(n)));
-                // A "ref" or "out" parameter needs "ref e" or "out e" in the argument.
-                bool any_ref = false;
-                if (sup)
-                    for (const ExprP& a : cd.ctors[k].super_args)
-                        any_ref = any_ref || (a && std::holds_alternative<sppc::ast::RefExpr>(a->v));
-                if (sup && n > 0 && !any_ref && pinfo->ref_arities.count(n) && !pinfo->plain_arities.count(n))
-                    fail_at(map, cd.ctors[k].super_pos,
-                            "a 'ref' or 'out' parameter of a constructor of '" + par->name +
-                                "' needs 'ref' or 'out' in the 'super(...)' argument");
             }
         }
 
@@ -2638,7 +2627,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         }
         for (const sppc::ast::Ctor& c : cd.ctors)
             for (const Param& p : c.params)
-                if (p.name == "self" || p.name == "st" || p.name == "a")
+                if (p.name.compare(0, 2, "__") == 0)
                     fail_at(map, c.pos, "parameter name '" + p.name + "' is reserved");
         std::set<std::string> field_names;
         for (const Field& f : cd.fields)
@@ -2661,13 +2650,13 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         std::map<std::string, const Method*> overrides;  // by native key
         for (Method& m : cd.methods) {
             for (const Param& p : m.params)
-                if (p.name == "self" || p.name == "st" || p.name == "a")
+                if (p.name.compare(0, 2, "__") == 0)
                     fail_at(map, m.pos, "parameter name '" + p.name + "' is reserved");
             // A method overrides a base virtual method when the name and the parameter types match.
             // The method must have the modifier "override" (C# rules).
             std::string key = m.name + "(";
             for (const Param& p : m.params)
-                key += key_norm(p.type) + (p.mode == PassMode::Value ? "" : "&") + ",";
+                key += key_norm(p.type) + ",";
             const NativeVirtual* hit = nullptr;
             for (const auto& nv : bi.virtuals) {
                 std::string k = nv.key();
@@ -2711,8 +2700,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                         if (!am || am->vslot_owner.empty())
                             fail_at(map, m.pos, "'override' has no virtual method to override");
                         auto ptext = [](const Param& p) {
-                            return key_norm(p.script_type.empty() ? p.type : p.script_type) +
-                                   (p.mode == PassMode::Value ? "" : "&");
+                            return key_norm(p.script_type.empty() ? p.type : p.script_type);
                         };
                         bool same = am->params.size() == m.params.size();
                         for (size_t k = 0; same && k < m.params.size(); ++k)
@@ -2723,7 +2711,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                         const std::string r0 = am->script_ret.empty() ? "void" : am->script_ret;
                         const std::string r1 = m.script_ret.empty() ? "void" : m.script_ret;
                         if (key_norm(r0) != key_norm(r1))
-                            fail_at(map, m.pos, "return type '" + r1 + "' differs from '" + r0 + "'");
+                            fail_at(map, m.pos, "return type '" + sppc::script_type_text(r1) + "' differs from '" + sppc::script_type_text(r0) + "'");
                         m.vslot_owner = am->vslot_owner;
                     } else {
                         if (am && !m.is_new) {
@@ -2752,7 +2740,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             if (hit->final_)
                 fail_at(map, m.pos, "'" + hit->text() + "' of " + hit->owner + " is final and cannot be overridden");
             if (!m.ret.empty() && key_norm(m.ret) != key_norm(hit->ret))
-                fail_at(map, m.pos, "return type '" + m.ret + "' differs from '" + hit->ret + "'");
+                fail_at(map, m.pos, "return type '" + sppc::script_type_text(m.ret) + "' differs from '" + sppc::script_type_text(hit->ret) + "'");
             if (!overrides.emplace(hit->key(), &m).second)
                 fail_at(map, m.pos, "'" + hit->text() + "' is overridden twice");
         }
@@ -2770,11 +2758,10 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             if (h == Hook::OnReload) {
                 if (!m.ret.empty() && m.ret != "void")
                     fail_at(map, m.pos, "'onReload' must return void");
-                if (m.params.size() != 1 || m.params[0].type != "OldState" ||
-                    m.params[0].mode != PassMode::Value)
+                if (m.params.size() != 1 || m.params[0].type != "OldState")
                     fail_at(map, m.pos, "'onReload' takes one parameter: 'OldState old'");
             } else {
-                if (m.params.size() != 1 || m.params[0].mode != PassMode::Value)
+                if (m.params.size() != 1 || sppc::ast::is_ref_type(m.params[0].type))
                     fail_at(map, m.pos, "'" + m.name + "' is a convert hook. It takes one parameter: the old value");
                 if (m.ret.empty() || m.ret == "void")
                     fail_at(map, m.pos, "'" + m.name + "' is a convert hook. It must return the new field type");
@@ -2840,9 +2827,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         for (Field& f : cd.fields) f.type = types.storage(f.type);
         for (Method& m : cd.methods) {
             if (m.overrides_virtual) {
-                // An override keeps the native type. A "ref" or "out" parameter is a reference.
-                for (Param& p : m.params)
-                    if (p.mode != PassMode::Value) p.type += "&";
+                // An override keeps the native type.
                 continue;
             }
             const Hook h = hook_of(m);
@@ -2857,14 +2842,14 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 const std::string fname = m.name.substr(8);
                 for (const Field& f : cd.fields)
                     if (f.name == fname && f.type != m.ret)
-                        fail_at(map, m.pos, "'" + m.name + "' must return the type of the field: '" + f.type + "'");
+                        fail_at(map, m.pos, "'" + m.name + "' must return the type of the field: '" + sppc::script_type_text(f.type) + "'");
                 continue;
             }
             // The parameter analysis (design 7.10.5) picks the form in the generation function.
             // The slot adapter and the thunk keep the form of param().
             for (Param& p : m.params) {
-                if (p.mode != PassMode::Value) {
-                    p.type = types.ref_param(p.type);
+                if (sppc::ast::is_ref_type(p.type)) {  // a "T&" parameter keeps its form
+                    p.type = types.param(p.type);      // a script class gives "storage(T)&"
                     continue;
                 }
                 const sppc::ParamUse use = sppc::analyze_param_use(m, p.name, param_ctx);
@@ -2877,7 +2862,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         }
 
         for (sppc::ast::Ctor& c : cd.ctors)
-            for (Param& p : c.params) p.type = p.mode == PassMode::Value ? types.param(p.type) : types.ref_param(p.type);
+            for (Param& p : c.params) p.type = types.param(p.type);
 
         // ---- slots: native virtuals first, then the script functions
         std::vector<Slot> slots;
@@ -3003,7 +2988,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             base_cx.native_base = root.base;
             for (const auto& nv : bi.virtuals) base_cx.native_virtuals.insert(nv.name);
         }
-        // "super.F()" names a base by the name F only. A name of the primary base keeps the
+        // "base.F()" names a base by the name F only. A name of the primary base keeps the
         // primary base. Else the first interface base with a virtual F gives the implementation.
         {
             std::set<std::string> primary_names;
@@ -3207,8 +3192,8 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
 
         // ---- generation functions
         o.w("// ------------------------------------------------- generation functions\n");
-        o.w("SPP_HIDDEN " + S + "* state_of(" + shell + "* self)\n{\n    return static_cast<" + S +
-            "*>(self->state);\n}\n\n");
+        o.w("SPP_HIDDEN " + S + "* state_of(" + shell + "* __self)\n{\n    return static_cast<" + S +
+            "*>(__self->state);\n}\n\n");
 
         auto type_list = [](const Method& m) {
             std::string r;
@@ -3224,7 +3209,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         // forward declarations of the script functions
         for (const Method& m : cd.methods)
             if (!m.overrides_virtual && hook_of(m) != Hook::Convert) {
-                const std::string decl = "[[maybe_unused]] SPP_HIDDEN static " + fn_ret(m) + " " + P + m.name + "(" + shell + "* self" + body_decl(m) + ");\n";
+                const std::string decl = "[[maybe_unused]] SPP_HIDDEN static " + fn_ret(m) + " " + P + m.name + "(" + shell + "* __self" + body_decl(m) + ");\n";
                 o.head_segments(decl, P + m.name, m, all_text);
                 o.w(decl);
             }
@@ -3232,8 +3217,8 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         // A script virtual function (design 7.6). A call reads the slot of the class of the object.
         for (const Method& m : cd.methods) {
             if (m.vslot_owner != cn || m.is_override) continue;
-            o.w("[[maybe_unused]] SPP_HIDDEN static " + fn_ret(m) + " " + P + m.name + "_virt(" + shell + "* self" + param_decl(m) +
-                ")\n{\n    return spp::call<" + fn_ret(m) + "(" + B + "*" + type_list(m) + ")>(self, " +
+            o.w("[[maybe_unused]] SPP_HIDDEN static " + fn_ret(m) + " " + P + m.name + "_virt(" + shell + "* __self" + param_decl(m) +
+                ")\n{\n    return spp::call<" + fn_ret(m) + "(" + B + "*" + type_list(m) + ")>(__self, " +
                 slot_id(m.name) + arg_list(m) + ");\n}\n\n");
         }
 
@@ -3248,16 +3233,16 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             ctor_ms[k].pos = cd.ctors[k].pos;
             ctor_ms[k].line = cd.ctors[k].line;
             ctor_ms[k].end_line = cd.ctors[k].end_line;
-            o.w("[[maybe_unused]] SPP_HIDDEN static void " + P + "ctor(" + shell + "* self" + param_decl(ctor_ms[k]) + ");\n");
+            o.w("[[maybe_unused]] SPP_HIDDEN static void " + P + "ctor(" + shell + "* __self" + param_decl(ctor_ms[k]) + ");\n");
         }
         // The default overload has the fewest parameters. The factory of the engine uses it.
         size_t dflt = 0;
         for (size_t k = 1; k < ctor_ms.size(); ++k)
             if (ctor_ms[k].params.size() < ctor_ms[dflt].params.size()) dflt = k;
-        // The default arguments of an overload. A "ref" or "out" parameter needs a variable.
+        // The default arguments of an overload. A "T&" parameter needs a variable.
         auto default_args = [&](const Method& m, std::string& locals) {
             bool vars = false;
-            for (const Param& p : m.params) vars = vars || p.mode != PassMode::Value;
+            for (const Param& p : m.params) vars = vars || sppc::ast::is_ref_type(p.type);
             std::string r;
             for (size_t i = 0; i < m.params.size(); ++i) {
                 const Param& p = m.params[i];
@@ -3267,55 +3252,55 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             }
             return r;
         };
-        if (has_dtor) o.w("[[maybe_unused]] SPP_HIDDEN static void " + P + "dtor(" + shell + "* self);\n");
+        if (has_dtor) o.w("[[maybe_unused]] SPP_HIDDEN static void " + P + "dtor(" + shell + "* __self);\n");
         // The function that runs the constructors: the constructor of the parent first.
         const bool has_entry = has_ctor || (pinfo && !pinfo->ctor_entry.empty());
         const std::string entry = has_entry ? P + "ctor_chain" : std::string();
         info.ctor_entry = entry;
-        for (const Method& m : ctor_ms) {
-            info.ctor_arities.insert(m.params.size());
-            bool has_ref = false;
-            for (const Param& p : m.params) has_ref = has_ref || p.mode != PassMode::Value;
-            (has_ref ? info.ref_arities : info.plain_arities).insert(m.params.size());
-        }
+        for (const Method& m : ctor_ms) info.ctor_arities.insert(m.params.size());
         // The key type of overload k: the tuple of the native base arguments.
         auto sa_name = [&](size_t k) { return cn + "_SuperArgs" + (k ? "_" + std::to_string(k) : std::string()); };
         if (gen_new) {
             for (size_t k = 0; k < ctor_ms.size(); ++k) {
                 const Method& cm = ctor_ms[k];
                 const sppc::ast::Ctor* sc = has_ctor ? &cd.ctors[k] : nullptr;
-                // A "&&" parameter is a const reference in the plan: the plan only reads it. A "ref"
-                // or "out" parameter stays a reference, so "super(ref x)" binds the parent
-                // parameter to the lvalue of the child.
+                // A "&&" parameter is a const reference in the plan: the plan only reads it. A "T&"
+                // parameter stays a reference, and "base(x)" with the name of such a parameter
+                // binds the parent parameter to the lvalue of the child (std::ref).
                 std::string pd, names, declvals;
                 for (size_t i = 0; i < cm.params.size(); ++i) {
                     const Param& p = cm.params[i];
                     const std::string n = norm(p.type);
-                    const bool by_ref = p.mode == PassMode::Value && n.size() > 2 && n.compare(n.size() - 2, 2, "&&") == 0;
+                    const bool by_ref = n.size() > 2 && n.compare(n.size() - 2, 2, "&&") == 0;
                     pd += (i ? ", " : "") + (by_ref ? "const std::remove_reference_t<" + p.type + ">&" : p.type) + " " + p.name;
                     names += (i ? ", " : "") + p.name;
                     declvals += (i ? ", " : "") + ("std::declval<" + p.type + ">()");
                 }
                 const std::string ctor_fwd = arg_list(cm);
                 std::string sup_text;
-                const bool has_super = sc && sc->has_super;
+                const bool has_base_call = sc && sc->has_base_call;
                 const int sup_line = sc ? sc->line : cd.line;
-                if (has_super) {
+                if (has_base_call) {
                     RCtx fc = base_cx;
                     fc.allow_this = false;
                     fc.where = cn + "::" + cn;
                     sppc::add_params(fc, cm.params);
                     std::vector<std::string> parts;
-                    for (ExprP& a : cd.ctors[k].super_args) {
+                    for (ExprP& a : cd.ctors[k].base_args) {
+                        // The bare name of a "T&" parameter of this constructor binds by reference.
+                        bool bind_ref = false;
+                        if (const auto* nm = std::get_if<sppc::ast::NameExpr>(&a->v); nm && nm->parts.size() == 1)
+                            for (const Param& p : cm.params)
+                                bind_ref = bind_ref || (p.name == nm->parts[0] && sppc::ast::is_ref_type(p.type));
                         sppc::lower_expr(a, fc, g_diag);
                         if (!g_diag.items.empty()) throw TranslateAbort{};
-                        parts.push_back(sppc::ast::print(*a));
+                        parts.push_back(bind_ref ? "std::ref(" + sppc::ast::print(*a) + ")" : sppc::ast::print(*a));
                     }
                     sup_text = str_join(parts, ", ");
                 } else if (!ctor_args.empty()) {
                     sup_text = ctor_args.substr(2);
                 }
-                // The plan of a construction evaluates each "super(...)" argument of the chain one
+                // The plan of a construction evaluates each "base(...)" argument of the chain one
                 // time. "first" is the tuple of the native base arguments. "second" is the chain: a
                 // pair of the constructor arguments of the parent and the chain of the parent. The
                 // chain of a root is an empty tuple.
@@ -3328,25 +3313,25 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                                  names + "), std::tuple<>());\n}\n";
                 } else {
                     // The base arguments come from the plan of the parent, or from the name of this
-                    // class when no class of the chain calls "super(...)" with arguments.
-                    const bool own_base = (has_super ? sc->super_args.size() : 0) == 0 && !root_super;
-                    plan_text += "SPP_HIDDEN static auto " + P + "plan(" + pd + ")\n{\n    auto up = std::make_tuple(" +
-                                 (has_super ? sup_text : std::string()) +
-                                 ");\n    auto pp = std::apply([](const auto&... x) { return " + PP +
-                                 "plan(x...); }, up);\n    return std::make_pair(" +
+                    // class when no class of the chain calls "base(...)" with arguments.
+                    const bool own_base = (has_base_call ? sc->base_args.size() : 0) == 0 && !root_super;
+                    plan_text += "SPP_HIDDEN static auto " + P + "plan(" + pd + ")\n{\n    auto __up = std::make_tuple(" +
+                                 (has_base_call ? sup_text : std::string()) +
+                                 ");\n    auto __pp = std::apply([](auto&... x) { return " + PP +
+                                 "plan(x...); }, __up);\n    return std::make_pair(" +
                                  (own_base ? "std::make_tuple(" + (ctor_args.empty() ? std::string() : ctor_args.substr(2)) + ")"
-                                           : std::string("std::move(pp.first)")) +
-                                 ", std::make_pair(std::move(up), std::move(pp.second)));\n}\n";
+                                           : std::string("std::move(__pp.first)")) +
+                                 ", std::make_pair(std::move(__up), std::move(__pp.second)));\n}\n";
                 }
                 if (has_entry) {
                     // Runs the constructor of each parent first, with the arguments of the plan. The
                     // plan owns the arguments, so the parent can move them.
-                    plan_text += "SPP_HIDDEN static void " + P + "ctor_chain(" + shell + "* self, [[maybe_unused]] auto& chain" +
+                    plan_text += "SPP_HIDDEN static void " + P + "ctor_chain(" + shell + "* __self, [[maybe_unused]] auto& __chain" +
                                  param_decl(cm) + ")\n{\n";
                     if (pinfo && !pinfo->ctor_entry.empty())
                         plan_text += "    std::apply([&](auto&&... x) { " + pinfo->ctor_entry +
-                                     "(self, chain.second, std::forward<decltype(x)>(x)...); }, std::move(chain.first));\n";
-                    if (sc) plan_text += "    " + P + "ctor(self" + ctor_fwd + ");\n";
+                                     "(__self, __chain.second, std::forward<decltype(x)>(x)...); }, std::move(__chain.first));\n";
+                    if (sc) plan_text += "    " + P + "ctor(__self" + ctor_fwd + ");\n";
                     plan_text += "}\n";
                 }
                 mapped(plan_text, sup_line, sc ? sc->pos : cd.pos);
@@ -3358,7 +3343,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             for (size_t k = 0; k < ctor_ms.size(); ++k)
                 construct_text += "    if (std::strcmp(key, typeid(" + sa_name(k) +
                                   ").name()) == 0) {\n        const auto& t = *static_cast<const " + sa_name(k) +
-                                  "*>(args);\n        return std::apply([](const auto&... x) -> spp::ShellBase* { return new " +
+                                  "*>(args);\n        return std::apply([](auto&... x) -> spp::ShellBase* { return new " +
                                   shell + "(spp::Construct{}, x...); }, t);\n    }\n";
             construct_text += "    return nullptr;\n}\n";
             mapped(construct_text, cd.line, cd.pos);
@@ -3379,15 +3364,15 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 // The functions of a constructor overload map to the line of the constructor.
                 const int cline = cm.line > 0 ? cm.line : cd.line;
                 const uint32_t cpos = cm.pos != 0 ? cm.pos : cd.pos;
-                std::string build_text = "SPP_HIDDEN static " + shell + "* " + P + "build([[maybe_unused]] bool note" + param_decl(cm) + ")\n{\n";
-                build_text += "    auto plan = " + P + "plan(" + (ctor_fwd.empty() ? std::string() : ctor_fwd.substr(2)) + ");\n";
-                build_text += "    auto* self = static_cast<" + shell + "*>(spp::construct_shell(&" + cn + "_record, typeid(" +
-                              sa_name(k) + ").name(), &plan.first, note));\n";
+                std::string build_text = "SPP_HIDDEN static " + shell + "* " + P + "build([[maybe_unused]] bool __note" + param_decl(cm) + ")\n{\n";
+                build_text += "    auto __plan = " + P + "plan(" + (ctor_fwd.empty() ? std::string() : ctor_fwd.substr(2)) + ");\n";
+                build_text += "    auto* __self = static_cast<" + shell + "*>(spp::construct_shell(&" + cn + "_record, typeid(" +
+                              sa_name(k) + ").name(), &__plan.first, __note));\n";
                 if (has_entry) {
-                    build_text += "    try {\n        " + entry + "(self, plan.second" + ctor_fwd +
-                                  ");\n    } catch (...) {\n        delete static_cast<" + B + "*>(self);\n        throw;\n    }\n";
+                    build_text += "    try {\n        " + entry + "(__self, __plan.second" + ctor_fwd +
+                                  ");\n    } catch (...) {\n        delete static_cast<" + B + "*>(__self);\n        throw;\n    }\n";
                 }
-                build_text += "    return self;\n}\n";
+                build_text += "    return __self;\n}\n";
                 mapped(build_text, cline, cpos);
                 mapped("[[maybe_unused]] SPP_HIDDEN static " + shell + "* " + P + "new(" + pd + ")\n{\n    return " + P + "build(true" +
                            ctor_fwd + ");\n}\n",
@@ -3440,11 +3425,11 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 for (const Param& p : m.params)
                     fwd += std::string(fwd.empty() ? "" : ", ") + "std::forward<" + (p.body_type.empty() ? p.type : p.body_type) +
                            ">(" + p.name + ")";
-                const std::string whead = "[[maybe_unused]] SPP_HIDDEN static " + ret + " " + sym + "(" + shell + "* self" + body_decl(m);
+                const std::string whead = "[[maybe_unused]] SPP_HIDDEN static " + ret + " " + sym + "(" + shell + "* __self" + body_decl(m);
                 o.w(line_at(m.line));
                 o.head_segments(whead, sym, m, all_text);
                 o.w(whead + ")\n");
-                mapped("{\n    return state_of(self)->" + member + "(" + fwd + ");\n}\n", m.line, m.pos);
+                mapped("{\n    return state_of(__self)->" + member + "(" + fwd + ");\n}\n", m.line, m.pos);
             }
             // The member of the state struct. It has the parameter forms of the slot signature. A
             // parameter with a body form gets the name "__<name>"; the first line copies or moves it.
@@ -3474,9 +3459,9 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             o.w("    }\n");
             // The two local names and the body forms map to the first statement.
             o.w(line_at(first_line));
-            o.w("    SPP_NODEBUG_LOCAL auto* self = static_cast<" + shell + "*>(this->__spp_owner);\n");
+            o.w("    SPP_NODEBUG_LOCAL auto* __self = static_cast<" + shell + "*>(this->__spp_owner);\n");
             o.w(line_at(first_line));
-            o.w("    SPP_NODEBUG_LOCAL auto* st = this;\n");
+            o.w("    SPP_NODEBUG_LOCAL auto* __st = this;\n");
             for (size_t b = 0; b < body_locals.size();) {
                 const size_t e = body_locals.find('\n', b) + 1;
                 o.w(line_at(first_line));
@@ -3537,7 +3522,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             }
         }
 
-        // The native implementation that a child sees: "super.M()" in a child calls it.
+        // The native implementation that a child sees: "base.M()" in a child calls it.
         if (parent_shell)
             for (size_t i = 0; i < native_count; ++i) {
                 const NativeVirtual& nv = *slots[i].nv;
@@ -3566,9 +3551,9 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             if (changed) {
                 o.w("// The signature changed (design 5.3). This thunk serves the new signature. A\n"
                     "// delegate on the thunk of the old signature detaches.\n");
-                mapped("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* a" + param_decl(m) +
-                           ")\n{\n    SPP_NODEBUG_LOCAL auto* self = static_cast<" + shell + "*>(a);\n    return spp::call<" + sig +
-                           ">(self, " + slot_id(m.name) + arg_list(m) + ");\n}\n",
+                mapped("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* __a" + param_decl(m) +
+                           ")\n{\n    SPP_NODEBUG_LOCAL auto* __self = static_cast<" + shell + "*>(__a);\n    return spp::call<" + sig +
+                           ">(__self, " + slot_id(m.name) + arg_list(m) + ");\n}\n",
                        m.line, m.pos);
                 o.w("\n");
                 thunk_regs.push_back("    reg.add_thunk(\"" + cn + "::" + m.name + "\", reinterpret_cast<void*>(&" + P +
@@ -3577,9 +3562,9 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             }
             o.w("// The thunk has the same address in each generation (section 4.11). The\n"
                 "// generation that adds the function emits it. It reads the slot at call time.\n");
-            mapped("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* a" + param_decl(m) +
-                       ")\n{\n    SPP_NODEBUG_LOCAL auto* self = static_cast<" + shell + "*>(a);\n    return spp::call<" + fn_ret(m) +
-                       "(" + B + "*" + type_list(m) + ")>(self, " + slot_id(m.name) + arg_list(m) + ");\n}\n",
+            mapped("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* __a" + param_decl(m) +
+                       ")\n{\n    SPP_NODEBUG_LOCAL auto* __self = static_cast<" + shell + "*>(__a);\n    return spp::call<" + fn_ret(m) +
+                       "(" + B + "*" + type_list(m) + ")>(__self, " + slot_id(m.name) + arg_list(m) + ");\n}\n",
                    m.line, m.pos);
             o.w("\n");
             thunk_regs.push_back("    reg.add_thunk(\"" + cn + "::" + m.name +
@@ -3633,7 +3618,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             // The factory of the engine has no arguments. The current generation builds the
             // object with default values (new_default). A removed class has no new_default: then
             // the factory builds the base with the plan of this generation and runs no constructor.
-            // The plan takes a "ref" or "out" parameter by reference: default_args gives a variable.
+            // The plan takes a "T&" parameter by reference: default_args gives a variable.
             std::string plan_locals;
             const std::string defaults = default_args(ctor_ms[dflt], plan_locals);
             mapped("SPP_NODEBUG static spp::Instance " + cn + "_create()\n{\n    spp::ScriptEntry entry;  // the creation is an entry (S27)\n    spp::ShellBase* s = nullptr;\n    if (" + cn +

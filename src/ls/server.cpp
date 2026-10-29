@@ -1048,7 +1048,7 @@ json Server::on_completion(const Doc& d, const json& p)
             if (!member) {
                 // A name in scope: a variable, a function, a type, an enumerator, a namespace.
                 static const std::set<int> kinds = {3, 6, 7, 9, 13, 20, 21, 22};
-                if (!kinds.count(kind) || name == "self" || name == "st" || name == "a") continue;
+                if (!kinds.count(kind) || name.compare(0, 2, "__") == 0) continue;
             }
             std::string label = it.value("label", name);
             while (!label.empty() && (label[0] == ' ')) label.erase(0, 1);

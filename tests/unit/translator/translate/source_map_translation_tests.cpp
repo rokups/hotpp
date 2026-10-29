@@ -242,7 +242,7 @@ TEST(SourceMapTranslation, FunctionHeadAndStateFieldNamesMapToTheScript)
     EXPECT_EQ(r.source_map.map_to_script(h, dt_col + 1), (SourcePos{4, 33}));
 }
 
-// "this.hits" lowers to "st->hits". The member name has its own segment, so a request on "hits"
+// "this.hits" lowers to "__st->hits". The member name has its own segment, so a request on "hits"
 // in the script finds "hits" in the generated code (hover, go-to-definition, references).
 TEST(SourceMapTranslation, MemberNameAfterThisMapsToTheScript)
 {
@@ -256,11 +256,11 @@ TEST(SourceMapTranslation, MemberNameAfterThisMapsToTheScript)
         "}\n";
     const sppc::TranslateResult r = translate_script(script);
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    const int g = line_of(r.cpp, "    st->hits = st->hits + 2;");
+    const int g = line_of(r.cpp, "    __st->hits = __st->hits + 2;");
     ASSERT_GT(g, 0) << r.cpp;
-    EXPECT_EQ(r.source_map.map_to_script(g, 9), (SourcePos{5, 14}));
-    EXPECT_EQ(r.source_map.map_to_script(g, 20), (SourcePos{5, 26}));
-    EXPECT_EQ(r.source_map.map_to_generated(5, 15), (SourcePos{g, 10}));
+    EXPECT_EQ(r.source_map.map_to_script(g, 11), (SourcePos{5, 14}));
+    EXPECT_EQ(r.source_map.map_to_script(g, 24), (SourcePos{5, 26}));
+    EXPECT_EQ(r.source_map.map_to_generated(5, 15), (SourcePos{g, 12}));
 }
 
 // The map keeps the real script column of an expression, also at a column other than 1.

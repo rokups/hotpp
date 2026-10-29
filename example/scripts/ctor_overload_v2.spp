@@ -5,16 +5,16 @@ class Unit : Actor {
     int hp = 0;
     int kind = 0;
 
-    Unit() : super(std.string("unit")) { this.kind = 1; }
-    Unit(int h) : super(std.string("unit")) { this.hp = h; this.kind = 2; }
-    Unit(float f) : super(std.string("unit")) { this.hp = 50; this.kind = 3; }
-    Unit(int h, ref int seen) : super(std.string("unit")) { this.hp = h; seen = h * 2; this.kind = 4; }
+    Unit() : base(std.string("unit")) { this.kind = 1; }
+    Unit(int h) : base(std.string("unit")) { this.hp = h; this.kind = 2; }
+    Unit(float f) : base(std.string("unit")) { this.hp = 50; this.kind = 3; }
+    Unit(int h, int& seen) : base(std.string("unit")) { this.hp = h; seen = h * 2; this.kind = 4; }
 }
 
-// The parent overload comes from the "super(...)" arguments of the child.
+// The parent overload comes from the "base(...)" arguments of the child.
 class Elite : Unit {
-    Elite() : super(1.5) { }
-    Elite(int h) : super(h + 1) { }
+    Elite() : base(1.5) { }
+    Elite(int h) : base(h + 1) { }
 }
 
 // No constructor and no "new" in generation 1.
@@ -36,7 +36,7 @@ class Spawner : Actor {
         Unit u1 = new Unit(7);
         Unit u2 = new Unit(2.5);
         int s = 0;
-        Unit u3 = new Unit(4, ref s);
+        Unit u3 = new Unit(4, s);
         Unit u4 = new Elite();
         Unit u5 = new Elite(8);
         this.k0 = u0.kind;

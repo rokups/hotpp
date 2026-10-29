@@ -20,7 +20,7 @@ Status: [ ] open, [x] done. One slice is one commit.
 - [x] S9 Runtime polish: removed-class handler, `script_stats`, entry-count debug check, watcher and command channel.
 - [x] S10 M8 Done: core module (`Module::make_core`), generation 1 unloads, `kMayHoldCode` unload block, stress tests in `tests/integration/reload/core_module_tests.cpp`. Open: see HANDOFF.md, Not done item 2.
 - [x] S11 Diagnostic rewriter, LLDB formatters.
-- [x] S12 Done (M7): `sppc --aot`, `spp_add_aot_scripts`, `spp::AotRegistry` (`include/spp/aot.h`), target `spp_aot` (no loader), example `aot_demo`, tests in `tests/integration/aot/`. Open: see the open items in README "AOT compilation" and HANDOFF.md.
+- [x] S12 Done (M7): `sppc --aot`, `spp_add_scripts` with `AOT`, `spp::AotRegistry` (`include/spp/aot.h`), target `spp_aot` (no loader), example `aot_demo`, tests in `tests/integration/aot/`. Open: see the open items in README "AOT compilation" and HANDOFF.md.
 - [x] S13 Tolerant parse and `source_map` (M10).
 - [x] S14a VS Code extension (M11): grammar, language config, file association, thin client for spp-ls, snapshot test.
 - [x] S14b Language server `spp-ls` (M12 to M14) as clangd proxy. `sppc --compile-commands` is part of it.

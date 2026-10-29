@@ -1,4 +1,4 @@
-// Tests for the lowering of "ref" and "out".
+// Tests for the lowering of a "T&" parameter, a "T&" local and a "&e" argument.
 #include <gtest/gtest.h>
 
 #include <string>
@@ -14,28 +14,26 @@
 using namespace sppc;
 using namespace lowering_test;
 
-TEST(RefOutLowering, RefArgumentAndRefLocal)
+TEST(RefOutLowering, ReferenceArgumentAndReferenceLocal)
 {
     Fixture f;
     f.param("v");
-    EXPECT_EQ(f.body("Fill(out v);"), "Fill(spp::ref_arg(v));");
-    EXPECT_EQ(f.body("this.target = ref v;"), "st->target = spp::ref_arg(v);");
-    EXPECT_EQ(f.body("var r = ref this.health;"), "auto& r = st->health;");
-    EXPECT_EQ(f.body("r = 2.0;"), "r = 2.0f;");
+    EXPECT_EQ(f.body("Fill(v);"), "Fill(v);");
+    EXPECT_EQ(f.body("Vec3& r = this.health;"), "Vec3& r = __st->health;");
+    EXPECT_EQ(f.body("this.target = &v;"), "__st->target = &v;");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
-TEST(RefOutLowering, RefLambdaParameterGetsAReferenceType)
+TEST(RefOutLowering, ReferenceLambdaParameterKeepsItsReferenceType)
 {
     Fixture f;
-    EXPECT_NE(f.expr("(ref Vec3 a, out int b) => { }").find("[=](Vec3& a, int32_t& b)"),
+    EXPECT_NE(f.expr("(Vec3& a, int& b) => { }").find("[=](Vec3& a, int32_t& b)"),
               std::string::npos);
 }
 
-TEST(RefOutLowering, PrefixAmpersandIsAnError)
+TEST(RefOutLowering, PrefixAmpersandIsNotAnError)
 {
     Fixture f;
     f.body("var p = &this.health;");
-    ASSERT_EQ(f.errors().size(), 1u);
-    EXPECT_EQ(f.errors()[0], "1:9: use 'ref' instead of '&'");
+    EXPECT_EQ(f.errors().size(), 0u);
 }

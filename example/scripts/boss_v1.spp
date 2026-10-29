@@ -12,8 +12,8 @@ class Boss : Actor, IDamageable, ITagged {
     // A virtual of the primary base.
     override void Tick(float dt) {
         this.ticks = this.ticks + 1;
-        // "super.Armor()" calls the implementation of the interface base IDamageable.
-        this.base_armor = super.Armor();
+        // "base.Armor()" calls the implementation of the interface base IDamageable.
+        this.base_armor = base.Armor();
     }
 
     // The pure virtual of IDamageable. Armor and Tag have no override: the shell forwards them.

@@ -18,9 +18,10 @@
 //  - A catch clause is "catch (Type name)" or "catch (...)". A clause with a type and no
 //    name is an error. The old form "catch (name: type)" is an error.
 //  - A try statement has one or more catch clauses, a "finally" block, or both.
-//  - A local declaration is "Type name", "var name", "const Type name" or "const var name".
+//  - A local declaration is "Type name", "var name", "var& name", "const Type name",
+//    "const var name" or "const var& name". The "var&" form is a local reference.
 //    The look-ahead rule for "Type name" is in the comment above DeclEnd. "let" is an error.
-//  - A foreach statement is "foreach ( (const)? (var | Type) name in expr ) stmt".
+//  - A foreach statement is "foreach ( (const)? (var &? | Type) name in expr ) stmt".
 //    The old for-of form "for (x of c)" is an error. The look-ahead finds
 //    "( (const)? (var | Type) name of" or "( name of". Other for statements are classic.
 //  - The init of a classic for is one declaration or a list of expressions.
@@ -91,7 +92,7 @@ constexpr auto id_r = id.reserve(kw_let, kw_const, kw_if, kw_else, kw_while, kw_
                                  kw_default, kw_try, kw_catch, kw_throw, kw_var, kw_foreach,
                                  kw_in, kw_using, kw_override, kw_virtual, kw_new, kw_public,
                                  kw_private, kw_protected, kw_get, kw_set, kw_finally,
-                                 kw_void, kw_ref, kw_out);
+                                 kw_void);
 
 constexpr auto var_or_const = dsl::literal_set(kw_var, kw_const);
 
@@ -131,6 +132,7 @@ struct VarHead {
     uint32_t pos = 0;
     uint32_t name_pos = 0;  // the byte offset of the name
     bool is_const = false;
+    bool is_ref = false;  // "var& name"
     std::string name, type;
 };
 
@@ -169,12 +171,12 @@ StmtP make_decl(const ParseState& st, DeclParts&& d)
 {
     ast::VarDeclStmt v;
     v.is_const = d.head.is_const;
+    v.is_ref = d.head.is_ref;
     v.name = std::move(d.head.name);
     v.type = std::move(d.head.type);
     v.pos = d.head.pos;
     v.name_pos = d.head.name_pos;
     // "Type name;" is value-initialized by the emitter. "var" and "const" need an initializer.
-    // A future "out" parameter will be exempt: it is not a local declaration.
     if (!d.has_init) {
         if (v.type.empty())
             st.error(st.base + v.pos, "var needs an initializer");
@@ -333,7 +335,7 @@ inline bool is_decl_keyword(const std::string& w)
         "if",    "else",  "while", "do",   "for",  "return", "break", "continue",
         "switch", "case", "default", "try", "catch", "throw", "let",  "var",
         "foreach", "in",
-        "const", "this",  "super", "null", "new",  "true",   "false", "delete", nullptr};
+        "const", "this",  "base", "null", "new",  "true",   "false", "delete", nullptr};
     for (int i = 0; words[i]; ++i)
         if (w == words[i]) return true;
     return false;
@@ -427,7 +429,7 @@ bool find_decl_type(DeclCursor<Reader> c, typename Reader::marker* name)
     }
 }
 
-// The look-ahead of a removed for-of head: "( (const)? (var | Type) name of" or "( name of".
+// The look-ahead of a removed for-of head: "( (const)? (var &? | Type) name of" or "( name of".
 template <typename Reader>
 bool find_for_of(DeclCursor<Reader> c, typename Reader::marker* name)
 {
@@ -443,6 +445,10 @@ bool find_for_of(DeclCursor<Reader> c, typename Reader::marker* name)
     word_end = c;
     if (c.at_id0() && word_end.word() == "var") {
         word_end.skip_blank();
+        if (word_end.get() == '&') {
+            word_end.bump();
+            word_end.skip_blank();
+        }
         if (!word_end.at_id0()) return false;
         word_end.word();
         word_end.skip_blank();
@@ -559,15 +565,24 @@ VarHead make_typed_head(const ParseState& st, const char* pos, const char* type_
     return h;
 }
 
-// The part after "const": "var name" or "Type name".
+// The optional "&" after "var": a local reference. The value is true when the "&" is there.
+struct ref_mark {
+    static constexpr auto rule = dsl::opt(dsl::capture(dsl::lit_c<'&'>));
+    static constexpr auto value =
+        lexy::callback<bool>([](lexy::nullopt) { return false; }, [](auto&&) { return true; });
+};
+
+// The part after "const": "var name", "var& name" or "Type name".
 template <DeclEnd E>
 struct const_rest {
-    static constexpr auto rule = kw_var >> dsl::p<name_p> | decl_type<E> >> dsl::p<name_p> |
+    static constexpr auto rule = kw_var >> dsl::p<ref_mark> + dsl::p<name_p> | decl_type<E> >> dsl::p<name_p> |
                                  dsl::else_ >> dsl::error<e_const_form>;
     static constexpr auto value = lexy::bind(
         lexy::callback<VarHead>(
-            [](const ParseState& st, std::string name) {
-                return make_head(st, st.base, std::move(name));
+            [](const ParseState& st, bool is_ref, std::string name) {
+                VarHead h = make_head(st, st.base, std::move(name));
+                h.is_ref = is_ref;
+                return h;
             },
             [](const ParseState& st, const char* b, const char* e, std::string name) {
                 return make_typed_head(st, st.base, b, e, std::move(name));
@@ -581,7 +596,7 @@ template <DeclEnd E>
 struct var_head {
     static constexpr auto rule =
         dsl::position +
-        (dsl::peek(kw_let) >> dsl::error<e_let> | kw_var >> dsl::p<name_p> |
+        (dsl::peek(kw_let) >> dsl::error<e_let> | kw_var >> dsl::p<ref_mark> + dsl::p<name_p> |
          kw_const >> dsl::p<const_rest<E>> | decl_type<E> >> dsl::p<name_p> |
          dsl::else_ >> dsl::error<e_decl_type>) +
         dsl::position;
@@ -594,8 +609,9 @@ struct var_head {
     }
     static constexpr auto value = lexy::bind(
         lexy::callback<VarHead>(
-            [](const ParseState& st, const char* pos, std::string name, const char* end) {
+            [](const ParseState& st, const char* pos, bool is_ref, std::string name, const char* end) {
                 VarHead h = make_head(st, pos, std::move(name));
+                h.is_ref = is_ref;
                 h.name_pos = name_at(st, pos, end, h.name.size());
                 return h;
             },
@@ -923,7 +939,7 @@ struct try_stmt {
 };
 
 // ---------------------------------------------------------------- for
-// "foreach ( (const)? (var | Type) name in expr ) stmt".
+// "foreach ( (const)? (var &? | Type) name in expr ) stmt".
 struct foreach_stmt {
     static constexpr auto rule = dsl::position + kw_foreach + dsl::lit_c<'('> +
                                  dsl::p<var_head<DeclEnd::ForEach>> + kw_in +
@@ -936,6 +952,7 @@ struct foreach_stmt {
                 ast::ForOfStmt n;
                 n.pos = st.offset(pos);
                 n.is_const = h.is_const;
+                n.is_ref = h.is_ref;
                 n.name = std::move(h.name);
                 n.name_pos = h.name_pos;
                 n.type = std::move(h.type);

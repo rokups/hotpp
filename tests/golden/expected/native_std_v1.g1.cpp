@@ -160,9 +160,9 @@ static const spp::StateLayout Tracker_layout = {
 };
 
 // ------------------------------------------------- generation functions
-SPP_HIDDEN TrackerState_g1* state_of(Tracker_Shell* self)
+SPP_HIDDEN TrackerState_g1* state_of(Tracker_Shell* __self)
 {
-    return static_cast<TrackerState_g1*>(self->state);
+    return static_cast<TrackerState_g1*>(__self->state);
 }
 
 
@@ -195,7 +195,7 @@ SPP_NODEBUG static spp::ShellBase* Tracker__construct(const char* key, const voi
 #line 10 "native_std_v1.spp"
         const auto& t = *static_cast<const Tracker_SuperArgs*>(args);
 #line 10 "native_std_v1.spp"
-        return std::apply([](const auto&... x) -> spp::ShellBase* { return new Tracker_Shell(spp::Construct{}, x...); }, t);
+        return std::apply([](auto&... x) -> spp::ShellBase* { return new Tracker_Shell(spp::Construct{}, x...); }, t);
 #line 10 "native_std_v1.spp"
     }
 #line 10 "native_std_v1.spp"
@@ -207,15 +207,15 @@ SPP_NODEBUG static spp::ShellBase* Tracker__construct(const char* key, const voi
 static const char* const Tracker__construct_keys[] = {typeid(Tracker_SuperArgs).name(), nullptr};
 
 #line 10 "native_std_v1.spp"
-SPP_HIDDEN static Tracker_Shell* Tracker__build([[maybe_unused]] bool note)
+SPP_HIDDEN static Tracker_Shell* Tracker__build([[maybe_unused]] bool __note)
 #line 10 "native_std_v1.spp"
 {
 #line 10 "native_std_v1.spp"
-    auto plan = Tracker__plan();
+    auto __plan = Tracker__plan();
 #line 10 "native_std_v1.spp"
-    auto* self = static_cast<Tracker_Shell*>(spp::construct_shell(&Tracker_record, typeid(Tracker_SuperArgs).name(), &plan.first, note));
+    auto* __self = static_cast<Tracker_Shell*>(spp::construct_shell(&Tracker_record, typeid(Tracker_SuperArgs).name(), &__plan.first, __note));
 #line 10 "native_std_v1.spp"
-    return self;
+    return __self;
 #line 10 "native_std_v1.spp"
 }
 #line 222 "native_std_v1.spp.cpp"
@@ -242,9 +242,9 @@ void TrackerState_g1::Tick(float dt)
 #line 18 "native_std_v1.spp"
     }
 #line 19 "native_std_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Tracker_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Tracker_Shell*>(this->__spp_owner);
 #line 19 "native_std_v1.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 19 "native_std_v1.spp"
     auto v = std::vector<float>();
 #line 20 "native_std_v1.spp"
@@ -256,21 +256,21 @@ void TrackerState_g1::Tick(float dt)
 #line 23 "native_std_v1.spp"
     spp::deref(v).push_back(1.5f);
 #line 24 "native_std_v1.spp"
-    spp::deref(v).push_back(spp::deref(self->Position).x);
+    spp::deref(v).push_back(spp::deref(__self->Position).x);
 #line 25 "native_std_v1.spp"
     std::sort(spp::deref(v).begin(), spp::deref(v).end());
 #line 26 "native_std_v1.spp"
-    st->lowest = Math::Min(v[0], v[1]);
+    __st->lowest = Math::Min(v[0], v[1]);
 #line 27 "native_std_v1.spp"
-    st->dist = Distance(self->Position, Vec3(0, 0, 0));
+    __st->dist = Distance(__self->Position, Vec3(0, 0, 0));
 #line 28 "native_std_v1.spp"
-    st->sum = Util::Sum(self->Position);
+    __st->sum = Util::Sum(__self->Position);
 #line 29 "native_std_v1.spp"
-    st->described = Util::Describe(*self);
+    __st->described = Util::Describe(*__self);
 #line 30 "native_std_v1.spp"
-    self->Name = FormatVec(self->Position);
+    __self->Name = FormatVec(__self->Position);
 #line 31 "native_std_v1.spp"
-    spp::deref(st->history).push_back(static_cast<int32_t>(spp::deref(st->history).size()) * 10);
+    spp::deref(__st->history).push_back(static_cast<int32_t>(spp::deref(__st->history).size()) * 10);
 #line 32 "native_std_v1.spp"
 }
 #line 277 "native_std_v1.spp.cpp"

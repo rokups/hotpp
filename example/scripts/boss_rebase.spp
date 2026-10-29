@@ -12,7 +12,7 @@ class Boss : Actor, IDamageable {
 
     override void Tick(float dt) {
         this.ticks = this.ticks + 1;
-        this.base_armor = super.Armor();
+        this.base_armor = base.Armor();
     }
 
     override int Absorb(int amount) {

@@ -1,0 +1,3 @@
+28_address_of_temporary.spp:7:17: error: cannot take the address of a temporary value of type 'int'. Store the value in a local first, then use '&' on the local
+    7 |         var p = &(this.hp + 1);
+1 error generated.

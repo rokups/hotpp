@@ -16,12 +16,18 @@ namespace sppc::ast {
 
 using sppc::Span;
 
-// How a parameter is passed. "ref" and "out" lower to a C++ reference.
-enum class PassMode { Value, Ref, Out };
+// True when a parameter type is a "T&" (a non-const lvalue reference). A "T&&" and a
+// "const T&" are not. The translator rewrites a handle value type to "const H&": it stays false.
+inline bool is_ref_type(const std::string& type)
+{
+    size_t e = type.find_last_not_of(" \t");
+    if (e == std::string::npos || type[e] != '&') return false;
+    if (e > 0 && type[e - 1] == '&') return false;
+    return type.compare(0, 6, "const ") != 0;
+}
 
 struct Param {
     std::string name, type;
-    PassMode mode = PassMode::Value;
     // The type as the script writes it. The translator sets it before it rewrites "type" to the
     // C++ storage type. The lowering pass reads it for the type-directed member access.
     std::string script_type{};
@@ -54,7 +60,7 @@ struct NameExpr {  // a.b.c<int> in the script. The lowering pass decides: a sco
 struct ThisExpr {
     uint32_t pos = 0;
 };
-struct SuperExpr {
+struct BaseExpr {
     uint32_t pos = 0;
 };
 struct NullExpr {
@@ -91,11 +97,6 @@ struct UnaryExpr {  // the pos is the pos of the operator, if it is a prefix ope
     std::string op;
     ExprP operand;
     bool postfix = false;
-    uint32_t pos = 0;
-};
-struct RefExpr {  // "ref e" or "out e". The pos is the pos of the word.
-    ExprP operand;
-    bool is_out = false;
     uint32_t pos = 0;
 };
 struct BinaryExpr {  // also the assignment operators
@@ -157,8 +158,8 @@ struct RawExpr {  // C++ text that is already lowered
 };
 
 struct Expr {
-    std::variant<NameExpr, ThisExpr, SuperExpr, NullExpr, NumberExpr, StringExpr, CharExpr, MemberExpr,
-                 CallExpr, IndexExpr, UnaryExpr, RefExpr, BinaryExpr, TernaryExpr, ParenExpr,
+    std::variant<NameExpr, ThisExpr, BaseExpr, NullExpr, NumberExpr, StringExpr, CharExpr, MemberExpr,
+                 CallExpr, IndexExpr, UnaryExpr, BinaryExpr, TernaryExpr, ParenExpr,
                  NewExpr, LambdaExpr, RawExpr, TypeTestExpr, InterpExpr>
         v;
 };
@@ -170,6 +171,7 @@ struct ExprStmt {
 };
 struct VarDeclStmt {
     bool is_const = false;
+    bool is_ref = false;  // "var& x = e": a local reference, the C++ text is "auto&"
     std::string name;
     std::string type;  // empty: auto
     ExprP init;        // may be null
@@ -204,6 +206,7 @@ struct ForStmt {
 };
 struct ForOfStmt {
     bool is_const = false;
+    bool is_ref = false;  // "foreach (var& x in c)": the C++ text is "auto&"
     std::string name;
     std::string type;  // empty: auto
     ExprP range;
@@ -330,19 +333,19 @@ struct Method {
     uint32_t pos = 0, end_pos = 0;
 };
 
-// A constructor: "Name(T a) : super(args) { body }". The name is the name of the class.
-// The super call is optional. Its arguments may use the parameters only (checked by the
+// A constructor: "Name(T a) : base(args) { body }". The name is the name of the class.
+// The base call is optional. Its arguments may use the parameters only (checked by the
 // translator). The body runs after the state block has its field initializers.
 struct Ctor {
     std::vector<Param> params;
     Access access = Access::Public;
-    bool has_super = false;
-    std::vector<ExprP> super_args;
-    Span super_span;  // the raw text between the parentheses of "super(...)"
+    bool has_base_call = false;
+    std::vector<ExprP> base_args;
+    Span base_span;  // the raw text between the parentheses of "base(...)"
     BlockStmt body;   // the statements; the parser fills them from body_span
     Span body_span;   // the raw text between the braces
     int line = 0, end_line = 0;
-    uint32_t pos = 0, end_pos = 0, super_pos = 0;  // the name, the "}", the "super" word
+    uint32_t pos = 0, end_pos = 0, base_pos = 0;  // the name, the "}", the "base" word
 };
 
 // A property: "Type Name { get; set; }" or "Type Name { get { ... } set { ... } }".

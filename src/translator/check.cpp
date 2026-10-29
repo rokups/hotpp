@@ -1,9 +1,12 @@
 // The checks of the script AST. See check.h.
 #include "check.h"
 
+#include "builtin_types.h"
+
 #include <algorithm>
 #include <cctype>
 #include <functional>
+#include <map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -21,6 +24,7 @@ template <class FE, class FS>
 struct Walker {
     FE& on_expr;
     FS& on_stmt;
+    std::function<void()> lambda_end;  // optional: called after the body of each lambda
 
     void expr(const ExprP& e)
     {
@@ -40,8 +44,6 @@ struct Walker {
             expr(ix->index);
         } else if (auto* u = std::get_if<UnaryExpr>(&e.v)) {
             expr(u->operand);
-        } else if (auto* r = std::get_if<RefExpr>(&e.v)) {
-            expr(r->operand);
         } else if (auto* b = std::get_if<BinaryExpr>(&e.v)) {
             expr(b->lhs);
             expr(b->rhs);
@@ -59,6 +61,7 @@ struct Walker {
             for (const ExprP& a : ip->args) expr(a);
         } else if (auto* l = std::get_if<LambdaExpr>(&e.v)) {
             block(l->body);
+            if (lambda_end) lambda_end();
         }
     }
 
@@ -120,7 +123,7 @@ struct Walker {
 template <class FE, class FS>
 Walker<FE, FS> make_walker(FE& fe, FS& fs)
 {
-    return Walker<FE, FS>{fe, fs};
+    return Walker<FE, FS>{fe, fs, nullptr};
 }
 
 // ------------------------------------------------------------------ type text
@@ -134,18 +137,6 @@ std::string trim(const std::string& s)
 bool starts_with(const std::string& s, const char* p)
 {
     return s.compare(0, std::char_traits<char>::length(p), p) == 0;
-}
-
-// The "ref" or "out" word before a type. Gives true and removes the word.
-bool strip_pass_word(std::string& t)
-{
-    t = trim(t);
-    for (const char* w : {"ref ", "out "})
-        if (starts_with(t, w)) {
-            t = trim(t.substr(4));
-            return true;
-        }
-    return false;
 }
 
 // A trailing "*" or "&" of the type. Gives the type without it in "base".
@@ -196,7 +187,16 @@ struct Checker {
     std::set<std::string> fn_names, field_names;
     std::set<std::string> locals;    // parameters and locals of the body in progress
     std::set<std::string> borrowed;  // the locals that hold a borrowed pointer or a reference
-    std::set<const Expr*> allowed_refs;   // "ref e" nodes in a place where they are valid
+    struct Scope {
+        std::set<std::string> locals;
+        std::map<std::string, std::string> local_types;
+        std::set<std::string> borrowed, pointers;
+    };
+    std::vector<Scope> scopes;  // the state at the start of each lambda that is open
+    std::set<std::string> pointers;  // the part of "borrowed" that is a pointer: a copy is borrowed too
+    std::map<std::string, std::string> local_types;  // the declared type of a local ("": not known)
+    std::map<std::string, std::string> field_types;  // the declared type of each field
+    std::set<const Expr*> allowed_refs;   // "&x" nodes in a place where they are valid
     std::set<const Expr*> callee_names;   // names in the callee place of a call
 
     void error(uint32_t pos, const std::string& msg)
@@ -215,30 +215,67 @@ struct Checker {
     // "what" names the place: "a field", "a return value", "a collection element".
     void check_storage(const std::string& type, uint32_t pos, const std::string& what)
     {
-        std::string t = type;
-        if (strip_pass_word(t)) {
-            borrowed_finding(pos, "a 'ref' or 'out' value cannot be " + what + ". A reload moves the state block, "
-                       "so a stored reference would dangle. Use 'ref' only for a parameter or a local");
-            return;
-        }
+        const std::string& t = type;
         std::string base;
         if (is_borrowed_form(t, base)) {
             if (base == "char") return;  // "const char*": the text of a string literal
-            if (types.lookup(base).kind == Kind::Handle) return;
-            borrowed_finding(pos, what + " cannot hold a borrowed pointer or reference to '" + base +
-                           "'. Declare a stub with 'handle' or 'intrusive' for '" + base +
+            if (script_pointer(t, pos)) return;
+            const TypeRule rule = types.lookup(base);
+            // An intrusive stub: "T*" is the handle. A "T&" or a "T**" is still borrowed.
+            if (rule.kind == Kind::Handle && !rule.intrusive_add.empty() && !types.is_script_class(base) &&
+                is_single_pointer(t))
+                return;
+            const std::string name = script_type_text(base);
+            borrowed_finding(pos, what + " cannot hold a borrowed pointer or reference to '" + name +
+                           "'. Declare a stub with 'handle' or 'intrusive' for '" + name +
                            "', or use a value");
             return;
         }
         for (const std::string& arg : template_args(t)) check_storage(arg, pos, "a collection element");
     }
 
+    // A reload copies each field into the new state block (design 4.7). A field type must be
+    // copyable. "std::unique_ptr" is the move-only type that a script can name.
+    void check_copyable(const std::string& type, uint32_t pos)
+    {
+        std::string t = trim(type);
+        if (t.compare(0, 5, "const") == 0 && t.size() > 5 && t[5] == ' ') t = trim(t.substr(6));
+        for (const char* q : {"std.unique_ptr", "std::unique_ptr"}) {
+            const size_t n = std::string(q).size();
+            if (t.compare(0, n, q) == 0 && (t.size() == n || t[n] == '<' || t[n] == ' ')) {
+                error(pos, "field of move-only type '" + t + "' is not supported: a reload copies each field. "
+                               "Use a handle");
+                return;
+            }
+        }
+        for (const std::string& arg : template_args(t)) check_copyable(arg, pos);
+    }
+
+    // True when the type is "T*" or "const T*" with one star and no reference.
+    static bool is_single_pointer(const std::string& type)
+    {
+        const std::string t = trim(type);
+        if (t.empty() || t.back() != '*') return false;
+        const std::string rest = trim(t.substr(0, t.size() - 1));
+        return rest.empty() || (rest.back() != '*' && rest.back() != '&');
+    }
+
+    // A single "T*" of a script class is always an error: the class is already a handle.
+    // Gives true when the type is such a pointer.
+    bool script_pointer(const std::string& type, uint32_t pos)
+    {
+        std::string base;
+        if (!is_borrowed_form(type, base) || !is_single_pointer(type) || !types.is_script_class(base)) return false;
+        error(pos, "a pointer to the script class '" + base + "' is not allowed: use '" + base +
+                       "' (a handle)");
+        return true;
+    }
+
     // True when a local of this declared type holds a borrowed pointer or a reference.
     static bool is_borrowed_type(const std::string& type)
     {
-        std::string t = type, base;
-        if (strip_pass_word(t)) return true;
-        return is_borrowed_form(t, base) && base != "char";
+        std::string base;
+        return is_borrowed_form(type, base) && base != "char";
     }
 
     // True when libclang gives a "T*" of a type that is not a handle for a "var" local (S20b).
@@ -257,9 +294,11 @@ struct Checker {
     {
         locals.clear();
         borrowed.clear();
+        pointers.clear();
+        local_types.clear();
         for (const Param& p : params) {
-            locals.insert(p.name);
-            if (p.mode != PassMode::Value || is_borrowed_type(p.type)) borrowed.insert(p.name);
+            record_local(p.name, p.type);
+            if (is_borrowed_type(p.type)) add_borrowed(p.name, p.type);
         }
         walk_block(block);
     }
@@ -269,41 +308,141 @@ struct Checker {
         auto fe = [&](const Expr& e) { on_expr(e); };
         auto fs = [&](const Stmt& s) { on_stmt(s); };
         auto w = make_walker(fe, fs);
+        w.lambda_end = [&] { lambda_end(); };
         w.block(b);
+    }
+
+    // True when the expression is the prefix "&" (the address-of operator).
+    static const UnaryExpr* as_address_of(const Expr& e)
+    {
+        const auto* u = std::get_if<UnaryExpr>(&e.v);
+        return u && !u->postfix && u->op == "&" ? u : nullptr;
+    }
+
+    // True when the expression is a "&e" value.
+    static bool is_borrow_form(const Expr& e) { return as_address_of(e) != nullptr; }
+
+    // Marks a local of a borrowed type. A pointer stays borrowed when a "var" copies it.
+    void add_borrowed(const std::string& name, const std::string& type)
+    {
+        borrowed.insert(name);
+        const std::string t = trim(type);
+        if (!t.empty() && t.back() == '*') pointers.insert(name);
+    }
+
+    // True when the expression is a borrowed pointer local, also in parentheses, in a cast to a
+    // pointer type or in a branch of a ternary expression.
+    bool copies_borrowed_pointer(const Expr& e) const
+    {
+        if (auto* p = std::get_if<ParenExpr>(&e.v)) return p->inner && copies_borrowed_pointer(*p->inner);
+        if (auto* t = std::get_if<TernaryExpr>(&e.v))
+            return (t->a && copies_borrowed_pointer(*t->a)) || (t->b && copies_borrowed_pointer(*t->b));
+        if (auto* u = std::get_if<UnaryExpr>(&e.v)) {
+            if (u->postfix || !u->operand || u->op.size() < 3 || u->op.front() != '(') return false;
+            std::string ty = trim(u->op.substr(1, u->op.size() - 2));
+            return !ty.empty() && ty.back() == '*' && copies_borrowed_pointer(*u->operand);
+        }
+        if (auto* n = std::get_if<NameExpr>(&e.v))
+            return n->parts.size() == 1 && n->template_args.empty() && pointers.count(n->parts[0]) != 0;
+        return false;
+    }
+
+    void record_local(const std::string& name, const std::string& type)
+    {
+        locals.insert(name);
+        local_types[name] = type;
+    }
+
+    // The name of the handle that the operand of "&" is, else an empty string. A handle is a
+    // field, a typed local or a parameter of a handle type, or "this". The type of a "var" local
+    // is not known here, so the check skips it. The C++ compiler reports that case.
+    std::string handle_operand(const Expr& e) const
+    {
+        if (auto* p = std::get_if<ParenExpr>(&e.v)) return p->inner ? handle_operand(*p->inner) : std::string();
+        if (std::holds_alternative<ThisExpr>(e.v)) return "this";
+        std::string name, type;
+        if (auto* n = std::get_if<NameExpr>(&e.v)) {
+            if (n->parts.size() != 1 || !n->template_args.empty()) return {};
+            name = n->parts[0];
+        } else if (auto* m = std::get_if<MemberExpr>(&e.v)) {
+            if (!m->obj || !std::holds_alternative<ThisExpr>(m->obj->v)) return {};
+            auto f = field_types.find(m->name);
+            if (f == field_types.end()) return {};
+            return types.is_handle(f->second) ? m->name : std::string();
+        } else {
+            return {};
+        }
+        auto l = local_types.find(name);
+        if (l != local_types.end()) {
+            type = l->second;
+        } else if (!locals.count(name)) {
+            auto f = field_types.find(name);
+            if (f == field_types.end()) return {};
+            type = f->second;
+        }
+        return !type.empty() && types.is_handle(type) ? name : std::string();
     }
 
     void on_stmt(const Stmt& s)
     {
         if (auto* d = std::get_if<VarDeclStmt>(&s.v)) {
-            locals.insert(d->name);
-            if (d->init && std::holds_alternative<RefExpr>(d->init->v)) {
+            record_local(d->name, d->type);
+            if (!d->type.empty()) script_pointer(d->type, d->pos);
+            if (d->is_ref) {
+                borrowed.insert(d->name);  // "var& r = x": a local reference
+            } else if (d->init && is_borrow_form(*d->init)) {
                 allowed_refs.insert(d->init.get());
-                borrowed.insert(d->name);
+                add_borrowed(d->name, "*");
             } else if (!d->type.empty() && is_borrowed_type(d->type)) {
-                borrowed.insert(d->name);
+                add_borrowed(d->name, d->type);
             } else if (d->type.empty() && is_borrowed_native(d->native_type)) {
-                borrowed.insert(d->name);  // "var w = a.GetWeapon()" with a native "Weapon*" (S20b)
+                add_borrowed(d->name, d->native_type);  // "var w = a.GetWeapon()" with a native "Weapon*" (S20b)
+            } else if (d->type.empty() && d->init && copies_borrowed_pointer(*d->init)) {
+                add_borrowed(d->name, "*");  // "var q = p": the copy of a borrowed pointer
             }
         } else if (auto* fo = std::get_if<ForOfStmt>(&s.v)) {
-            locals.insert(fo->name);
+            record_local(fo->name, fo->type);
+            if (!fo->type.empty()) script_pointer(fo->type, fo->pos);
+            if (fo->is_ref) borrowed.insert(fo->name);
         } else if (auto* tr = std::get_if<TryStmt>(&s.v)) {
-            for (const CatchClause& c : tr->catches) locals.insert(c.name);
+            for (const CatchClause& c : tr->catches) record_local(c.name, c.type);
         }
+    }
+
+    // A cast "(T&)e", "(T*)e" or "(T**)e" to a script class or a handle type is a C-style cast of
+    // the handle storage in C++. It would reinterpret the handle.
+    void check_cast(const UnaryExpr& u)
+    {
+        if (u.postfix || u.op.size() < 3 || u.op.front() != '(' || u.op.back() != ')') return;
+        const std::string type = trim(u.op.substr(1, u.op.size() - 2));
+        std::string base;
+        if (!is_borrowed_form(type, base)) return;
+        if (types.is_script_class(base) || types.is_handle(base))
+            error(u.pos, "a cast to '" + type + "' of the script class or handle '" + base +
+                             "' is not allowed: use 'as' or static_cast<" + base + ">(...)");
     }
 
     void on_expr(const Expr& e)
     {
+        if (auto* un = std::get_if<UnaryExpr>(&e.v)) check_cast(*un);
         if (auto* c = std::get_if<CallExpr>(&e.v)) {
             callee_names.insert(c->callee.get());
             for (const ExprP& a : c->args)
-                if (a && std::holds_alternative<RefExpr>(a->v)) allowed_refs.insert(a.get());
+                if (a && is_borrow_form(*a)) allowed_refs.insert(a.get());
         } else if (auto* n = std::get_if<NewExpr>(&e.v)) {
             for (const ExprP& a : n->args)
-                if (a && std::holds_alternative<RefExpr>(a->v)) allowed_refs.insert(a.get());
-        } else if (auto* r = std::get_if<RefExpr>(&e.v)) {
+                if (a && is_borrow_form(*a)) allowed_refs.insert(a.get());
+        } else if (const UnaryExpr* u = as_address_of(e)) {
+            if (u->operand) {
+                const std::string h = handle_operand(*u->operand);
+                if (!h.empty())
+                    error(u->pos, "'&' on the handle '" + h + "' is not allowed. Pass '" + h +
+                                      "' for a handle parameter, '&*" + h + "' for a 'T*' parameter, or '*" + h +
+                                      "' for a 'T&' parameter");
+            }
             if (!allowed_refs.count(&e))
-                borrowed_finding(r->pos, "a 'ref' value cannot be stored in an assignment, a 'return' or a "
-                              "field initializer. Use 'ref' only for a call argument or a local");
+                borrowed_finding(u->pos, "a '&' value cannot be stored in an assignment, a 'return' or a "
+                              "field initializer. Use '&' only for a call argument or a local");
         } else if (auto* nm = std::get_if<NameExpr>(&e.v)) {
             // 5.3: the script takes the address of a script function.
             if (nm->parts.size() == 1 && nm->template_args.empty() && fn_names.count(nm->parts[0]) &&
@@ -336,29 +475,52 @@ struct Checker {
             if (!declared.count(n) && borrowed.count(n))
                 borrowed_finding(l.pos, "the lambda captures '" + n + "', a borrowed pointer or reference. "
                              "A closure cannot keep it. Copy the value or use a handle");
+        // The parameters and the locals of the body live only to the end of the lambda.
+        scopes.push_back({locals, local_types, borrowed, pointers});
         for (const Param& p : l.params) {
-            locals.insert(p.name);
-            if (p.mode != PassMode::Value || is_borrowed_type(p.type)) borrowed.insert(p.name);
+            record_local(p.name, p.type);
+            if (is_borrowed_type(p.type)) add_borrowed(p.name, p.type);
         }
+    }
+
+    // The walker calls this after the body of a lambda.
+    void lambda_end()
+    {
+        if (scopes.empty()) return;
+        Scope& sc = scopes.back();
+        locals = std::move(sc.locals);
+        local_types = std::move(sc.local_types);
+        borrowed = std::move(sc.borrowed);
+        pointers = std::move(sc.pointers);
+        scopes.pop_back();
     }
 
     void run()
     {
         for (const Method& m : cd.methods)
             if (!m.overrides_virtual) fn_names.insert(m.name);
-        for (const Field& f : cd.fields) field_names.insert(f.name);
+        for (const Field& f : cd.fields) {
+            field_names.insert(f.name);
+            field_types[f.name] = f.type;
+        }
 
         for (const Field& f : cd.fields) {
             check_storage(f.type, f.pos, "a field");
+            check_copyable(f.type, f.pos);
             if (f.init) {
                 locals.clear();
                 borrowed.clear();
+                pointers.clear();
+                local_types.clear();
                 auto fe = [&](const Expr& e) { on_expr(e); };
                 auto fs = [&](const Stmt& s) { on_stmt(s); };
-                make_walker(fe, fs).expr(*f.init);
+                auto w = make_walker(fe, fs);
+                w.lambda_end = [&] { lambda_end(); };
+                w.expr(*f.init);
             }
         }
         for (const Method& m : cd.methods) {
+            for (const Param& p : m.params) script_pointer(p.type, m.pos);
             // An override keeps the native signature. The script cannot change its return type.
             if (!m.overrides_virtual && !m.ret.empty()) {
                 // The hidden field of an auto property reports the type, so skip the getter.
@@ -367,7 +529,10 @@ struct Checker {
             }
             body(m);
         }
-        for (const Ctor& c : cd.ctors) body(c.params, c.body);
+        for (const Ctor& c : cd.ctors) {
+            for (const Param& p : c.params) script_pointer(p.type, c.pos);
+            body(c.params, c.body);
+        }
         for (const Method& d : cd.dtors) body(d);
     }
 };
@@ -382,7 +547,7 @@ void check_class(const ClassDef& cd, const TypeModel& types, const LineMap& map,
 
 void check_ctors(const ClassDef& cd, const LineMap& map, Diagnostics& diag)
 {
-    std::set<std::string> members;  // the names that a super argument cannot use
+    std::set<std::string> members;  // the names that a base argument cannot use
     for (const Field& f : cd.fields) members.insert(f.name);
     for (const Method& m : cd.methods) members.insert(m.name);
     for (const Property& p : cd.props) members.insert(p.name);
@@ -392,7 +557,14 @@ void check_ctors(const ClassDef& cd, const LineMap& map, Diagnostics& diag)
     std::set<std::vector<std::string>> sigs;
     for (const Ctor& c : cd.ctors) {
         std::vector<std::string> sig;
-        for (const Param& p : c.params) sig.push_back(p.type);
+        // "int" and "int&" are not two overloads: a call with a variable is ambiguous. A handle
+        // "Bar", "Bar&" and "const Bar&" all lower to "const std::shared_ptr<Bar>&" (a redefinition).
+        for (const Param& p : c.params) {
+            std::string t = trim(p.type);
+            if (t.size() > 1 && t.back() == '&' && t[t.size() - 2] != '&') t = trim(t.substr(0, t.size() - 1));
+            if (starts_with(t, "const ")) t = trim(t.substr(6));
+            sig.push_back(t);
+        }
         if (!sigs.insert(sig).second)
             diag.add(c.pos, map, "class '" + cd.name + "' has two constructors with the same parameter types");
     }
@@ -402,15 +574,15 @@ void check_ctors(const ClassDef& cd, const LineMap& map, Diagnostics& diag)
             if (!params.insert(p.name).second)
                 diag.add(c.pos, map, "constructor parameter '" + p.name + "' is declared twice");
         }
-        if (c.super_args.empty()) continue;
-        const std::string rule = "the arguments of 'super(...)' may use the constructor parameters only";
+        if (c.base_args.empty()) continue;
+        const std::string rule = "the arguments of 'base(...)' may use the constructor parameters only";
         std::set<std::pair<uint32_t, std::string>> seen;
         auto bad = [&](uint32_t pos, const std::string& what) {
             if (seen.insert({pos, what}).second) diag.add(pos, map, what + ": " + rule);
         };
         auto fe = [&](const Expr& e) {
             if (auto* t = std::get_if<ThisExpr>(&e.v)) bad(t->pos, "'this' is not allowed");
-            else if (auto* sp = std::get_if<SuperExpr>(&e.v)) bad(sp->pos, "'super' is not allowed");
+            else if (auto* sp = std::get_if<BaseExpr>(&e.v)) bad(sp->pos, "'base' is not allowed");
             else if (auto* l = std::get_if<LambdaExpr>(&e.v)) bad(l->pos, "a lambda is not allowed");
             else if (auto* n = std::get_if<NameExpr>(&e.v)) {
                 if (!n->parts.empty() && !params.count(n->parts[0]) && members.count(n->parts[0]))
@@ -419,7 +591,7 @@ void check_ctors(const ClassDef& cd, const LineMap& map, Diagnostics& diag)
         };
         auto fs = [](const Stmt&) {};
         auto w = make_walker(fe, fs);
-        for (const ExprP& a : c.super_args) w.expr(a);
+        for (const ExprP& a : c.base_args) w.expr(a);
     }
 }
 
@@ -532,9 +704,7 @@ struct ParamAnalysis {
             if (auto* b = std::get_if<BinaryExpr>(&e.v)) {
                 if (is_assign_op(b->op)) mark(b->lhs);
             } else if (auto* u = std::get_if<UnaryExpr>(&e.v)) {
-                if (u->op == "++" || u->op == "--") mark(u->operand);
-            } else if (auto* r = std::get_if<RefExpr>(&e.v)) {
-                mark(r->operand);
+                if (u->op == "++" || u->op == "--" || (u->op == "&" && !u->postfix)) mark(u->operand);
             } else if (auto* c = std::get_if<CallExpr>(&e.v)) {
                 // "f.M()" or "this.f.M()": a member function can change the field.
                 if (auto* n = std::get_if<NameExpr>(&c->callee->v)) {
@@ -569,12 +739,15 @@ struct ParamAnalysis {
             if (n->parts.size() == 1 && declared.count(n->parts[0])) {
                 auto it = lambdas.find(n->parts[0]);
                 if (it != lambdas.end() && i < it->second->params.size() &&
-                    it->second->params[i].mode == PassMode::Value) {
+                    !is_ref_type(it->second->params[i].type)) {
                     const LambdaExpr* l = it->second;
                     merge(use, run_fn(l, l->params, l->body, l->params[i].name, nullptr));
                     return;
                 }
-                if (it != lambdas.end() && i < it->second->params.size()) return;  // "ref" or "out"
+                if (it != lambdas.end() && i < it->second->params.size()) {  // a "T&" parameter
+                    use.mutated = use.rebound = true;
+                    return;
+                }
                 use.stored = true;  // a callable value that the analysis cannot see
                 return;
             }
@@ -586,7 +759,10 @@ struct ParamAnalysis {
             const Method* tm = other.script_fn ? other.script_fn(t->name) : nullptr;
             if (tm) {
                 if (i >= tm->params.size()) return;
-                if (tm->params[i].mode != PassMode::Value) return;
+                if (is_ref_type(tm->params[i].script_type.empty() ? tm->params[i].type : tm->params[i].script_type)) {
+                    use.mutated = use.rebound = true;  // a "T&" parameter: the callee can write it
+                    return;
+                }
                 if (tm->is_virtual || tm->is_override) {  // an override can do more: be careful
                     use.stored = true;
                     return;
@@ -655,14 +831,9 @@ struct ParamAnalysis {
                 if (b->lhs && is_exactly(*b->lhs, name)) use.rebound = true;
                 if (b->op == "=" && b->rhs && is_exactly(*b->rhs, name)) use.stored = true;
             } else if (auto* u = std::get_if<UnaryExpr>(&e.v)) {
-                if ((u->op == "++" || u->op == "--") && rooted(u->operand)) {
+                if ((u->op == "++" || u->op == "--" || (u->op == "&" && !u->postfix)) && rooted(u->operand)) {
                     use.mutated = true;
                     if (is_exactly(*u->operand, name)) use.rebound = true;
-                }
-            } else if (auto* r = std::get_if<RefExpr>(&e.v)) {
-                if (rooted(r->operand)) {
-                    use.mutated = true;
-                    if (is_exactly(*r->operand, name)) use.rebound = true;
                 }
             } else if (auto* c = std::get_if<CallExpr>(&e.v)) {
                 // "p.M()": a member function can change the object, unless it is const.
@@ -679,8 +850,12 @@ struct ParamAnalysis {
                 for (size_t i = 0; i < c->args.size(); ++i) {
                     if (!c->args[i] || !is_exactly(*c->args[i], name)) continue;
                     if (gm) {
-                        if (i < gm->params.size() && gm->params[i].mode == PassMode::Value)
-                            merge(use, run(*gm, gm->params[i].name));
+                        if (i >= gm->params.size()) continue;
+                        const Param& gp = gm->params[i];
+                        if (is_ref_type(gp.script_type.empty() ? gp.type : gp.script_type))
+                            use.mutated = use.rebound = true;  // a "T&" parameter: the callee can write it
+                        else
+                            merge(use, run(*gm, gp.name));
                         continue;
                     }
                     call_arg(use, *c, i, lambdas, declared);
@@ -700,6 +875,16 @@ struct ParamAnalysis {
         auto fs = [&](const Stmt& s) {
             if (auto* r = std::get_if<ReturnStmt>(&s.v))
                 if (r->expr && is_exactly(*r->expr, name)) use.stored = true;
+            // "T& r = p;" and "var& r = p;" bind a writable alias to the parameter.
+            if (auto* d = std::get_if<VarDeclStmt>(&s.v))
+                if (d->init && (is_ref_type(d->type) || (d->is_ref && d->type.empty() && !d->is_const)) &&
+                    rooted(d->init)) {
+                    use.mutated = true;
+                    if (is_exactly(*d->init, name)) use.rebound = true;
+                }
+            // "foreach (var& e in p)" binds a writable alias to an element of the parameter.
+            if (auto* fo = std::get_if<ForOfStmt>(&s.v))
+                if (fo->is_ref && !fo->is_const && rooted(fo->range)) use.mutated = true;
         };
         make_walker(fe, fs).block(body);
         // A "const T&" can alias a field that the function writes (S20b): then take a copy.
@@ -895,7 +1080,7 @@ struct QueryCollector {
             return s.empty() ? QType{} : QType{"decltype(" + s + ")"};
         }
         if (auto* m = std::get_if<MemberExpr>(&e.v)) {
-            if (m->name.empty() || std::holds_alternative<SuperExpr>(m->obj->v)) return {};
+            if (m->name.empty() || std::holds_alternative<BaseExpr>(m->obj->v)) return {};
             return member(type_of(*m->obj), m->name);
         }
         if (auto* c = std::get_if<CallExpr>(&e.v)) {
@@ -923,7 +1108,7 @@ struct QueryCollector {
                 return s.empty() ? QType{} : QType{"decltype(sppc_ret_f(&" + s + "))"};
             }
             if (auto* m = std::get_if<MemberExpr>(&c->callee->v)) {
-                if (m->name.empty() || std::holds_alternative<SuperExpr>(m->obj->v)) return {};
+                if (m->name.empty() || std::holds_alternative<BaseExpr>(m->obj->v)) return {};
                 return method(type_of(*m->obj), m->name);
             }
         }
@@ -1014,7 +1199,7 @@ struct QueryCollector {
                 t.native = scope_text(n->parts, n->parts.size());
             }
         } else if (auto* m = std::get_if<MemberExpr>(&c.callee->v)) {
-            if (m->name.empty() || std::holds_alternative<SuperExpr>(m->obj->v)) return;
+            if (m->name.empty() || std::holds_alternative<BaseExpr>(m->obj->v)) return;
             const QType q = type_of(*m->obj);
             if (std::holds_alternative<ThisExpr>(m->obj->v) && q.script && has_script_method(*q.script, m->name)) return;
             if (q.known()) from_receiver(q, m->name);
@@ -1037,11 +1222,11 @@ struct QueryCollector {
         value_params.clear();
         param_names.clear();
         auto add = [&](const Param& p) {
-            if (p.mode == PassMode::Value) param_names.insert(p.name);
             const std::string& t = p.script_type.empty() ? p.type : p.script_type;
+            if (!is_ref_type(t)) param_names.insert(p.name);
             declare(p.name, of_text(t));
             const QType q = of_text(t);
-            if (p.mode == PassMode::Value && !q.cpp.empty()) value_params[p.name] = q.cpp;
+            if (!is_ref_type(t) && !q.cpp.empty()) value_params[p.name] = q.cpp;
         };
         for (const Param& p : params) add(p);
         if (extra)
@@ -1065,7 +1250,7 @@ struct QueryCollector {
                     return;
                 }
                 QType q;
-                if (d->init && !std::holds_alternative<RefExpr>(d->init->v)) q = type_of(*d->init);
+                if (d->init) q = type_of(*d->init);
                 if (!q.cpp.empty()) out.vars.emplace_back(const_cast<VarDeclStmt*>(d), q.cpp);
                 declare(d->name, q);
             } else if (auto* fo = std::get_if<ForOfStmt>(&st.v)) {
@@ -1148,7 +1333,7 @@ std::set<std::string> new_targets(const Script& sc)
         for (const Method& d : cd.dtors) w.block(d.body);
         for (const Ctor& c : cd.ctors) {
             w.block(c.body);
-            for (const ExprP& a : c.super_args) w.expr(a);
+            for (const ExprP& a : c.base_args) w.expr(a);
         }
         for (const Property& p : cd.props) {
             w.expr(p.init);
@@ -1165,7 +1350,6 @@ std::set<std::string> used_type_names(const ClassDef& cd)
     // Also the type behind a "*" or "&", and the template arguments: the check of a
     // borrowed pointer asks for the rule of the type behind it.
     std::function<void(std::string)> add = [&](std::string t) {
-        strip_pass_word(t);
         if (t.empty()) return;
         out.insert(t);
         std::string base;

@@ -29,7 +29,7 @@ All work is committed, except what `git status` shows. Slices S0 to S21 are done
 | Language | Classes, properties, constructors, inheritance, virtuals, `is`/`as`, enums, structs, module variables, native interface bases, interpolation. Done (syntax below). |
 | Backends | `SPP_BACKEND=CLANG_FILES` (default, external `clang++`) or `JIT` (in-process Clang plus ORC). Chosen at build time. Done. |
 | Tools | `sppc` (build `.so`, `--emit-cpp`, `--aot`, `--compile-commands`), `bench_backends`, `spp-ls`. Done. |
-| AOT compilation | `sppc --aot`, `spp_add_aot_scripts`, library `spp_aot` with no loader. Done (generation 1 only). |
+| AOT compilation | `sppc --aot`, `spp_add_scripts` with `AOT`, library `spp_aot` with no loader. Done (generation 1 only). |
 | Diagnostics, debug | Diagnostic rewriter, `#line`, DWARF script lines, lldb formatters, natvis. gdb check done (F3, see below). lldb and Visual Studio not run. |
 | Language server | `spp-ls`: a stdio LSP proxy in front of stock clangd (`src/ls/`, `DECISIONS.md` 13). VS Code extension in `editors/vscode/`. Done. |
 
@@ -54,15 +54,15 @@ The full list is in `README.md` and `spp-design.md` section 7.
 - `class Name : Base, IFace { }`. The base is optional. `[value] class` and `struct` are inline values.
 - Field: `[alias("old")] [public|private|protected] Type name = init;`. The initializer is optional.
 - Method: `[modifiers] Ret name(T a) { }`. Modifiers: `override`, `virtual`, `new`, access words. `void` means no return value.
-- Constructor `Name(T a) : super(args) { }`. Destructor `~Name() { }`. Hooks: `void onReload(OldState old)` and `T convert_<field>(Old old)`.
+- Constructor `Name(T a) : base(args) { }`. Destructor `~Name() { }`. Hooks: `void onReload(OldState old)` and `T convert_<field>(Old old)`.
 - Property: `Type N { get; set; }`, `{ get; }`, `{ get; private set; }` or `{ get { } set { } }`. The setter reads `value`.
-- Locals: `Type x = e;`, `var x = e;`, `const Type X = e;`, `var r = ref e;`. Loop: `foreach (Type x in c)`. Also `throw`, `try`, `catch (Type e)`, `catch (...)`, `finally`.
-- Expressions: `this`, `super`, `new T(args)`, `ref e`, `out e`, `obj is T`, `obj as T`, arrow lambdas `(T a) => ...`, `Math.Min` as `Math::Min`. `.` is the only scope separator. No brace initialization.
+- Locals: `Type x = e;`, `var x = e;`, `const Type X = e;`, `Type& r = e;`, `var& r = e;`. Loop: `foreach (Type x in c)`. Also `throw`, `try`, `catch (Type e)`, `catch (...)`, `finally`.
+- Expressions: `this`, `base`, `new T(args)`, `&x` (borrowed pointer), `*e` (dereference), `obj is T`, `obj as T`, arrow lambdas `(T a) => ...`, `Math.Min` as `Math::Min`. `.` is the only scope separator. No brace initialization.
 - Strings: `"${expr}"` and `"${expr:spec}"` lower to `std::format` (default) or `fmt::format` (`--format=fmt`). The result is `std::string`. `\${` is a literal.
 - Module level: `enum Name [: type] { A, B = 5 }`, `struct Name { }`, module variables `[alias("old")] Type name [= init];`, `T convert_<var>(Old old)`.
 - Stubs: `[native, handle("std::shared_ptr<$T>")] class Weapon;`, `[native, value] class std.string;`, `[native, intrusive("AddRef","Release")]`, pattern stubs (`std.vector<*>`), `class *;` with `default_handle("H<$T>")`. Stubs live in the script or in a prelude (`--prelude`, `TranslateOptions::preludes`).
 - Builtin types have a fixed width: `bool`, `sbyte`/`int8`, `byte`/`uint8`, `short`/`int16`, `ushort`/`uint16`, `int`/`int32`, `uint`/`uint32`, `long`/`int64`, `ulong`/`uint64`, `nint`/`intptr`, `nuint`/`uintptr`, `float`, `double`, `char`, `wchar`/`char16`. `unsigned`, `signed` and `long long` give an error with a hint.
-- Reserved words: `var`, `foreach`, `in`, `using`, `override`, `virtual`, `new`, `public`, `private`, `protected`, `get`, `set`, `finally`, `ref`, `out`, `void`.
+- Reserved words: `var`, `foreach`, `in`, `using`, `override`, `virtual`, `new`, `public`, `private`, `protected`, `get`, `set`, `finally`, `void`. (`ref` and `out` are not reserved: a pass-by-reference parameter is `T&`, with no marker at the call.)
 - Removed forms give a clear error: `function`, `let`, `import`, `name: Type`, `-> Ret`, `for ... of`, `@was(...)`, prefix `&e`, backtick strings.
 
 ## How it works (limits that matter)
@@ -74,13 +74,13 @@ Kinds of class:
 Constructors (S4, S16, S20a):
 - The shell and the vtable live in the core module of generation 1. The canonical `ClassRecord` has a type-erased `construct`. A later generation calls it through `spp::construct_shell` and then runs its own constructor body. An unknown key throws `std::runtime_error`; a new key of a later generation gets a new core first (S27).
 - A constructor is not in the slot table. A reload does not run it again. A changed body applies to new objects only.
-- One plan for each construction: `Name__plan(args)` evaluates each `super(...)` argument of the chain one time. `new` and the factory both call `Name__build`. Each overload gets C++ overloads of the generated functions, keyed by `Name_SuperArgs_k`.
-- Limits: one destructor for each class. Two overloads cannot differ only in the pass mode. A `super(...)` argument for a `ref` or `out` parameter of a script parent needs `ref e` or `out e` (S23); the plan keeps the reference and evaluates `e` one time. A `&&` constructor parameter works: the plan reads it as a const reference. A new overload in a later generation can have a new key type (S27): the loader makes a new core module, and its `construct` becomes canonical. The key list is `ClassRecord::construct_keys`. The old key types stay valid only while the new generation keeps the overload. If a constructor body throws, the shell is deleted and the script destructor still runs.
+- One plan for each construction: `Name__plan(args)` evaluates each `base(...)` argument of the chain one time. `new` and the factory both call `Name__build`. Each overload gets C++ overloads of the generated functions, keyed by `Name_SuperArgs_k`.
+- Limits: one destructor for each class. Two overloads cannot differ only in the pass mode. A `base(...)` argument for a `T&` parameter of a script parent is a plain variable (S23); the plan keeps the reference and evaluates `e` one time. A `&&` constructor parameter works: the plan reads it as a const reference. A new overload in a later generation can have a new key type (S27): the loader makes a new core module, and its `construct` becomes canonical. The key list is `ClassRecord::construct_keys`. The old key types stay valid only while the new generation keeps the overload. If a constructor body throws, the shell is deleted and the script destructor still runs.
 
 Typed access (S5b, S20b):
 - The lowering knows the script class of a local, a parameter, a field and a `new` result. Then `obj.field`, `obj.Method(args)` and `obj.P` use the class directly.
 - A `var` from a native call gets its type from libclang. An overloaded or template function gives no type. The native base of the family keeps the name rule: `N` must be a property of the current class.
-- Limit of the `.` access: it lowers to `spp::deref(a).b`. A smart pointer, an iterator and `std::optional` have `operator->`, so use `.get()`. A native static data member (`Vec3.Zero.x`) needs a typed local. A null handle in `obj.field` throws `std::runtime_error`.
+- Limit of the `.` access: it lowers to `spp::deref(a).b`. A smart pointer, an iterator and `std::optional` have `operator->` and are not handles, so write `(*p).x`. `.` on a handle always means a member of the pointee, so `h.get()` is not the raw pointer: write `&*h`. A native static data member (`Vec3.Zero.x`) needs a typed local. A null handle in `obj.field` throws `std::runtime_error`.
 - `return this` as a handle becomes `spp::handle_from_this<H>(self)`. It needs `std::enable_shared_from_this` in the shell. A reload that adds the first such use (or the first script child) changes the shell layout, and the loader rejects it with a message. Use it in generation 1. A lambda does not convert `this`.
 - Parameter analysis (7.10.5): a value or handle parameter is `const T&`, unless the body changes, stores or rebinds it, or the type is small. The analysis follows these calls with a parameter as an argument (S25):
   - a script function of the class and its script parents;
@@ -90,7 +90,7 @@ Typed access (S5b, S20b):
   A result of a finished class is kept in a memo, because the lowering changes its bodies.
 
 Inheritance (S6, S20a):
-- The shell of a child derives from the shell of the parent. A family has one slot numbering. `virtual` adds a slot (`Owner__f_virt`). `override` fills it. A name that hides a parent function needs `new`. `super.f()` calls the parent directly.
+- The shell of a child derives from the shell of the parent. A family has one slot numbering. `virtual` adds a slot (`Owner__f_virt`). `override` fills it. A name that hides a parent function needs `new`. `base.f()` calls the parent directly.
 - `is` and `as` walk the `super` records by name. A native type uses `dynamic_cast`. `as` of a raw pointer gives a raw shell pointer: use `var`. A `[value]` class is an error.
 - A reload that changes the script parent is rejected. Multiple script inheritance is not supported. Only the root of a family can have native interface bases (design 4.5).
 - A script parent in another script (`using "parent.spp";`) merges into the generation of the child. An imported script cannot have module variables or convert hooks. A class name in two scripts is an error. The source map has a file number for each imported script (`SourceSegment::file`, `SourceMap::files()`, `SourceMap::locate()`), so errors in an imported script have the real file, line and column.
@@ -101,7 +101,7 @@ Reload hooks and module state (S3, S8a, S16, S17): `onReload` and `convert_<fiel
 
 Unload limits (core module): the loader does not see a code pointer that native code keeps. `kMayHoldCode` is set for `std::shared_ptr`, a raw function pointer, a member function pointer and `std::function`. S26: the translator marks a trivially copyable native struct that has a function pointer field, so it counts as a holder too. The translator finds the struct by its class or alias name. It does not find a template instance such as `Cb<int>`, and it does not find a type that no script field or local names. Each generation that adds a class or a thunk loads one more copy of its module as a core. The JIT keeps an IR clone of each module until the loader takes it.
 
-Stubs and checks (S2, S20b): order of the rules: exact stub, base stub, pattern stub, plain data (value), `class *`, raw. The checks of 7.10.7 use libclang constexpr probes, cached by the session. A borrowed pointer or `ref` in a field, return, collection or lambda capture is an error (`--no-strict-borrowed` makes it a warning). A `ref x` passed to a native function that keeps it is not detectable (the S25 signature query serves the value/handle parameter form only, not this error: a `T*` parameter is too common to be an error). A custom `spp::is_handle` is checked for `operator->` only. `intrusive` needs non-overloaded Add and Release members.
+Stubs and checks (S2, S20b): order of the rules: exact stub, base stub, pattern stub, plain data (value), `class *`, raw. The checks of 7.10.7 use libclang constexpr probes, cached by the session. A borrowed pointer or reference (`&x`, `T&`) in a field, return, collection or lambda capture is an error (`--no-strict-borrowed` makes it a warning). A `&x` passed to a native function that keeps it is not detectable (the S25 signature query serves the value/handle parameter form only, not this error: a `T*` parameter is too common to be an error). A custom `spp::is_handle` is checked for `operator->` only. `intrusive` needs non-overloaded Add and Release members.
 
 Translator cache: it hashes a header that changed in the last 2 seconds. It checks paths that hide a header earlier in the include path. The stamp has the inode, the ctime and a content hash. The prelude is not in the cache key.
 

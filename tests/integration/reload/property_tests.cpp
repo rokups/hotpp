@@ -73,7 +73,7 @@ class Gauge : Actor {
         source.Hp -= amount;
         source.Hits++;
         source.Shield = -5.0;
-        var p = ref source;
+        Actor& p = source;
         p.Shield += 3.0;
         this.chained = source.Hp = this.Hp = 30.0;
         this.old_hits = source.Hits++;

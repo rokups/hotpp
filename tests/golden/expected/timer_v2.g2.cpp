@@ -128,12 +128,12 @@ static const spp::StateLayout Beeper_layout = {
 };
 
 // ------------------------------------------------- generation functions
-SPP_HIDDEN BeeperState_g2* state_of(Beeper_Shell* self)
+SPP_HIDDEN BeeperState_g2* state_of(Beeper_Shell* __self)
 {
-    return static_cast<BeeperState_g2*>(self->state);
+    return static_cast<BeeperState_g2*>(__self->state);
 }
 
-[[maybe_unused]] SPP_HIDDEN static void Beeper__arm(Beeper_Shell* self, World& w, float delay);
+[[maybe_unused]] SPP_HIDDEN static void Beeper__arm(Beeper_Shell* __self, World& w, float delay);
 
 #line 4 "timer_v2.spp"
 [[maybe_unused]] SPP_HIDDEN static auto Beeper__super_args()
@@ -164,7 +164,7 @@ SPP_NODEBUG static spp::ShellBase* Beeper__construct(const char* key, const void
 #line 4 "timer_v2.spp"
         const auto& t = *static_cast<const Beeper_SuperArgs*>(args);
 #line 4 "timer_v2.spp"
-        return std::apply([](const auto&... x) -> spp::ShellBase* { return new Beeper_Shell(spp::Construct{}, x...); }, t);
+        return std::apply([](auto&... x) -> spp::ShellBase* { return new Beeper_Shell(spp::Construct{}, x...); }, t);
 #line 4 "timer_v2.spp"
     }
 #line 4 "timer_v2.spp"
@@ -176,15 +176,15 @@ SPP_NODEBUG static spp::ShellBase* Beeper__construct(const char* key, const void
 static const char* const Beeper__construct_keys[] = {typeid(Beeper_SuperArgs).name(), nullptr};
 
 #line 4 "timer_v2.spp"
-SPP_HIDDEN static Beeper_Shell* Beeper__build([[maybe_unused]] bool note)
+SPP_HIDDEN static Beeper_Shell* Beeper__build([[maybe_unused]] bool __note)
 #line 4 "timer_v2.spp"
 {
 #line 4 "timer_v2.spp"
-    auto plan = Beeper__plan();
+    auto __plan = Beeper__plan();
 #line 4 "timer_v2.spp"
-    auto* self = static_cast<Beeper_Shell*>(spp::construct_shell(&Beeper_record, typeid(Beeper_SuperArgs).name(), &plan.first, note));
+    auto* __self = static_cast<Beeper_Shell*>(spp::construct_shell(&Beeper_record, typeid(Beeper_SuperArgs).name(), &__plan.first, __note));
 #line 4 "timer_v2.spp"
-    return self;
+    return __self;
 #line 4 "timer_v2.spp"
 }
 #line 191 "timer_v2.spp.cpp"
@@ -211,21 +211,21 @@ void BeeperState_g2::Tick(float dt)
 #line 8 "timer_v2.spp"
     }
 #line 9 "timer_v2.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Beeper_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Beeper_Shell*>(this->__spp_owner);
 #line 9 "timer_v2.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 9 "timer_v2.spp"
-    st->ticks = st->ticks + 1;
+    __st->ticks = __st->ticks + 1;
 #line 10 "timer_v2.spp"
 }
 #line 222 "timer_v2.spp.cpp"
 
 #line 12 "timer_v2.spp"
-[[maybe_unused]] SPP_HIDDEN static void Beeper__arm(Beeper_Shell* self, World& w, float delay)
+[[maybe_unused]] SPP_HIDDEN static void Beeper__arm(Beeper_Shell* __self, World& w, float delay)
 #line 12 "timer_v2.spp"
 {
 #line 12 "timer_v2.spp"
-    return state_of(self)->arm(std::forward<World&>(w), std::forward<float>(delay));
+    return state_of(__self)->arm(std::forward<World&>(w), std::forward<float>(delay));
 #line 12 "timer_v2.spp"
 }
 #line 232 "timer_v2.spp.cpp"
@@ -242,15 +242,15 @@ void BeeperState_g2::arm(World& w, float delay)
 #line 12 "timer_v2.spp"
     }
 #line 13 "timer_v2.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Beeper_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Beeper_Shell*>(this->__spp_owner);
 #line 13 "timer_v2.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 13 "timer_v2.spp"
-    spp::deref(w).AddTimer(delay, spp::make_closure(GEN, "Beeper::arm lambda", [=]() { SPP_NODEBUG_LOCAL auto* st = state_of(self);
+    spp::deref(w).AddTimer(delay, spp::make_closure(GEN, "Beeper::arm lambda", [=]() { SPP_NODEBUG_LOCAL auto* __st = state_of(__self);
 #line 14 "timer_v2.spp"
-        st->fired = st->fired + 10;
+        __st->fired = __st->fired + 10;
 #line 15 "timer_v2.spp"
-        std::printf("[timer v2] %s: fired=%d\n", spp::deref(self->Name).c_str(), st->fired);
+        std::printf("[timer v2] %s: fired=%d\n", spp::deref(__self->Name).c_str(), __st->fired);
 #line 16 "timer_v2.spp"
     }));
 #line 17 "timer_v2.spp"

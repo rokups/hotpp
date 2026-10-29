@@ -118,12 +118,12 @@ static const spp::StateLayout Player_layout = {
 };
 
 // ------------------------------------------------- generation functions
-SPP_HIDDEN PlayerState_g1* state_of(Player_Shell* self)
+SPP_HIDDEN PlayerState_g1* state_of(Player_Shell* __self)
 {
-    return static_cast<PlayerState_g1*>(self->state);
+    return static_cast<PlayerState_g1*>(__self->state);
 }
 
-[[maybe_unused]] SPP_HIDDEN static void Player__heal(Player_Shell* self, float amount);
+[[maybe_unused]] SPP_HIDDEN static void Player__heal(Player_Shell* __self, float amount);
 
 #line 5 "player_v1.spp"
 [[maybe_unused]] SPP_HIDDEN static auto Player__super_args()
@@ -154,7 +154,7 @@ SPP_NODEBUG static spp::ShellBase* Player__construct(const char* key, const void
 #line 5 "player_v1.spp"
         const auto& t = *static_cast<const Player_SuperArgs*>(args);
 #line 5 "player_v1.spp"
-        return std::apply([](const auto&... x) -> spp::ShellBase* { return new Player_Shell(spp::Construct{}, x...); }, t);
+        return std::apply([](auto&... x) -> spp::ShellBase* { return new Player_Shell(spp::Construct{}, x...); }, t);
 #line 5 "player_v1.spp"
     }
 #line 5 "player_v1.spp"
@@ -166,15 +166,15 @@ SPP_NODEBUG static spp::ShellBase* Player__construct(const char* key, const void
 static const char* const Player__construct_keys[] = {typeid(Player_SuperArgs).name(), nullptr};
 
 #line 5 "player_v1.spp"
-SPP_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool note)
+SPP_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
 #line 5 "player_v1.spp"
 {
 #line 5 "player_v1.spp"
-    auto plan = Player__plan();
+    auto __plan = Player__plan();
 #line 5 "player_v1.spp"
-    auto* self = static_cast<Player_Shell*>(spp::construct_shell(&Player_record, typeid(Player_SuperArgs).name(), &plan.first, note));
+    auto* __self = static_cast<Player_Shell*>(spp::construct_shell(&Player_record, typeid(Player_SuperArgs).name(), &__plan.first, __note));
 #line 5 "player_v1.spp"
-    return self;
+    return __self;
 #line 5 "player_v1.spp"
 }
 #line 181 "player_v1.spp.cpp"
@@ -201,17 +201,17 @@ void PlayerState_g1::Tick(float dt)
 #line 10 "player_v1.spp"
     }
 #line 11 "player_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Player_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
 #line 11 "player_v1.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 11 "player_v1.spp"
-    self->Move(Vec3(st->speed * dt, 0, 0));
+    __self->Move(Vec3(__st->speed * dt, 0, 0));
 #line 12 "player_v1.spp"
-    std::printf("[v1] %s: Tick dt=%.4f pos.x=%.4f hp=%.1f\n", spp::deref(self->Name).c_str(), dt,
+    std::printf("[v1] %s: Tick dt=%.4f pos.x=%.4f hp=%.1f\n", spp::deref(__self->Name).c_str(), dt,
 #line 13 "player_v1.spp"
-    spp::deref(self->Position).x, st->hp);
+    spp::deref(__self->Position).x, __st->hp);
 #line 14 "player_v1.spp"
-    Player__heal(self, 1.0f);
+    Player__heal(__self, 1.0f);
 #line 15 "player_v1.spp"
 }
 #line 218 "player_v1.spp.cpp"
@@ -229,13 +229,13 @@ void PlayerState_g1::TakeDamage_f(float amount)
 #line 17 "player_v1.spp"
     }
 #line 18 "player_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Player_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
 #line 18 "player_v1.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 18 "player_v1.spp"
-    st->hp = Math::Max(st->hp - amount, 0.0f);
+    __st->hp = Math::Max(__st->hp - amount, 0.0f);
 #line 19 "player_v1.spp"
-    std::printf("[v1] %s: TakeDamage %.1f -> hp=%.1f\n", spp::deref(self->Name).c_str(), amount, st->hp);
+    std::printf("[v1] %s: TakeDamage %.1f -> hp=%.1f\n", spp::deref(__self->Name).c_str(), amount, __st->hp);
 #line 20 "player_v1.spp"
 }
 #line 242 "player_v1.spp.cpp"
@@ -253,25 +253,25 @@ void PlayerState_g1::TakeDamage_Af(Actor& source, float amount)
 #line 22 "player_v1.spp"
     }
 #line 23 "player_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Player_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
 #line 23 "player_v1.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 23 "player_v1.spp"
-    st->target = spp::deref(source).Name;
+    __st->target = spp::deref(source).Name;
 #line 24 "player_v1.spp"
-    std::printf("[v1] %s: hit by %s\n", spp::deref(self->Name).c_str(), spp::deref(st->target).c_str());
+    std::printf("[v1] %s: hit by %s\n", spp::deref(__self->Name).c_str(), spp::deref(__st->target).c_str());
 #line 25 "player_v1.spp"
-    self->TakeDamage(amount);
+    __self->TakeDamage(amount);
 #line 26 "player_v1.spp"
 }
 #line 268 "player_v1.spp.cpp"
 
 #line 28 "player_v1.spp"
-[[maybe_unused]] SPP_HIDDEN static void Player__heal(Player_Shell* self, float amount)
+[[maybe_unused]] SPP_HIDDEN static void Player__heal(Player_Shell* __self, float amount)
 #line 28 "player_v1.spp"
 {
 #line 28 "player_v1.spp"
-    return state_of(self)->heal(std::forward<float>(amount));
+    return state_of(__self)->heal(std::forward<float>(amount));
 #line 28 "player_v1.spp"
 }
 #line 278 "player_v1.spp.cpp"
@@ -288,13 +288,13 @@ void PlayerState_g1::heal(float amount)
 #line 28 "player_v1.spp"
     }
 #line 29 "player_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Player_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
 #line 29 "player_v1.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 29 "player_v1.spp"
-    st->hp = Math::Min(st->hp + amount, 100.0f);
+    __st->hp = Math::Min(__st->hp + amount, 100.0f);
 #line 30 "player_v1.spp"
-    std::printf("[v1] %s: heal %.1f -> hp=%.1f\n", spp::deref(self->Name).c_str(), amount, st->hp);
+    std::printf("[v1] %s: heal %.1f -> hp=%.1f\n", spp::deref(__self->Name).c_str(), amount, __st->hp);
 #line 31 "player_v1.spp"
 }
 #line 301 "player_v1.spp.cpp"
@@ -302,13 +302,13 @@ void PlayerState_g1::heal(float amount)
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 28 "player_v1.spp"
-static void Player__heal__thunk(Actor* a, float amount)
+static void Player__heal__thunk(Actor* __a, float amount)
 #line 28 "player_v1.spp"
 {
 #line 28 "player_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Player_Shell*>(a);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(__a);
 #line 28 "player_v1.spp"
-    return spp::call<void(Actor*, float)>(self, SLOT_heal, amount);
+    return spp::call<void(Actor*, float)>(__self, SLOT_heal, amount);
 #line 28 "player_v1.spp"
 }
 #line 315 "player_v1.spp.cpp"

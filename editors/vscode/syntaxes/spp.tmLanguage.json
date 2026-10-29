@@ -92,7 +92,7 @@
         },
         {
           "name": "storage.modifier.spp",
-          "match": "\\b(?:public|private|protected|override|virtual|const|ref|out|get|set)\\b"
+          "match": "\\b(?:public|private|protected|override|virtual|const|get|set)\\b"
         },
         {
           "name": "storage.type.spp",
@@ -108,7 +108,7 @@
         },
         {
           "name": "variable.language.spp",
-          "match": "\\b(?:this|super)\\b"
+          "match": "\\b(?:this|base)\\b"
         },
         {
           "name": "constant.language.spp",

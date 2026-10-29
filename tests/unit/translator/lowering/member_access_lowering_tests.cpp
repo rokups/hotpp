@@ -1,4 +1,4 @@
-// Tests for the lowering of member access: fields, "this", "super", scopes and template arguments.
+// Tests for the lowering of member access: fields, "this", "base", scopes and template arguments.
 // Parse the text, lower it, print it and compare the C++ text.
 // The golden tests in tests/golden/ check the lowering of the example scripts.
 #include <gtest/gtest.h>
@@ -20,8 +20,8 @@ TEST(MemberAccessLowering, FieldAccess)
 {
     Fixture f;
     f.param("x");
-    EXPECT_EQ(f.body("this.fired = this.fired + 1;"), "st->fired = st->fired + 1;");
-    EXPECT_EQ(f.body("this.n = x;"), "st->n = x;");
+    EXPECT_EQ(f.body("this.fired = this.fired + 1;"), "__st->fired = __st->fired + 1;");
+    EXPECT_EQ(f.body("this.n = x;"), "__st->n = x;");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
@@ -30,9 +30,9 @@ TEST(MemberAccessLowering, PointerFieldUsesDeref)
     Fixture f;
     // The field target has the type Actor*.
     EXPECT_EQ(f.expr("this.target.Name.c_str()"),
-              "spp::deref(spp::deref(st->target).Name).c_str()");
-    EXPECT_EQ(f.expr("this.target"), "st->target");
-    EXPECT_EQ(f.expr("this.target.m"), "spp::deref(st->target).m");
+              "spp::deref(spp::deref(__st->target).Name).c_str()");
+    EXPECT_EQ(f.expr("this.target"), "__st->target");
+    EXPECT_EQ(f.expr("this.target.m"), "spp::deref(__st->target).m");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
@@ -64,7 +64,7 @@ TEST(MemberAccessLowering, MemberOfAValue)
 TEST(MemberAccessLowering, ScopeChain)
 {
     Fixture f;
-    EXPECT_EQ(f.expr("Math.Max(this.health - amount, 0.0)"), "Math::Max(st->health - amount, 0.0f)");
+    EXPECT_EQ(f.expr("Math.Max(this.health - amount, 0.0)"), "Math::Max(__st->health - amount, 0.0f)");
     EXPECT_EQ(f.expr("std.printf(\"a\")"), "std::printf(\"a\")");
     EXPECT_EQ(f.expr("Engine.World.Spawn()"), "Engine::World::Spawn()");
     EXPECT_EQ(f.expr("Color.Red"), "Color::Red");
@@ -77,16 +77,16 @@ TEST(MemberAccessLowering, ScopeChain)
 TEST(MemberAccessLowering, EngineMemberAndThis)
 {
     Fixture f;
-    EXPECT_EQ(f.expr("this.Name.c_str()"), "spp::deref(self->Name).c_str()");
-    EXPECT_EQ(f.expr("this.Move(1)"), "self->Move(1)");
-    EXPECT_EQ(f.expr("this"), "self");
-    EXPECT_EQ(f.expr("f(this)"), "f(self)");
+    EXPECT_EQ(f.expr("this.Name.c_str()"), "spp::deref(__self->Name).c_str()");
+    EXPECT_EQ(f.expr("this.Move(1)"), "__self->Move(1)");
+    EXPECT_EQ(f.expr("this"), "__self");
+    EXPECT_EQ(f.expr("f(this)"), "f(__self)");
 }
 
-TEST(MemberAccessLowering, Super)
+TEST(MemberAccessLowering, Base)
 {
     Fixture f;
-    EXPECT_EQ(f.expr("super.Tick(dt)"), "self->Actor::Tick(dt)");
+    EXPECT_EQ(f.expr("base.Tick(dt)"), "__self->Actor::Tick(dt)");
 }
 
 TEST(MemberAccessLowering, LetPointerUsesDeref)
@@ -99,11 +99,11 @@ TEST(MemberAccessLowering, LetPointerUsesDeref)
 TEST(MemberAccessLowering, TemplateArgumentsAreLowered)
 {
     Fixture f;
-    EXPECT_EQ(f.expr("x<this.health>(c)"), "x<st->health>(c)");
+    EXPECT_EQ(f.expr("x<this.health>(c)"), "x<__st->health>(c)");
     EXPECT_EQ(f.expr("pick<Color.Red>(t)"), "pick<Color::Red>(t)");
     EXPECT_EQ(f.expr("f<1.0>(c)"), "f<1.0f>(c)");
-    EXPECT_EQ(f.expr("f<this.n, 2.5>(c)"), "f<st->n, 2.5f>(c)");
-    EXPECT_EQ(f.body("var b2 = x<this.health>(c);"), "auto b2 = x<st->health>(c);");
+    EXPECT_EQ(f.expr("f<this.n, 2.5>(c)"), "f<__st->n, 2.5f>(c)");
+    EXPECT_EQ(f.body("var b2 = x<this.health>(c);"), "auto b2 = x<__st->health>(c);");
 }
 
 TEST(MemberAccessLowering, TypeTemplateArgumentsKeepTheirText)

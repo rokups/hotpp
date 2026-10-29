@@ -18,9 +18,9 @@ TEST(LambdaEmit, Lambda)
     EXPECT_EQ(print(*make_expr(LambdaExpr{})), "[=]() {}");
 }
 
-TEST(LambdaEmit, RefLambdaParameters)
+TEST(LambdaEmit, ReferenceLambdaParameters)
 {
     LambdaExpr l;
-    l.params = {{"x", "Vec3&", PassMode::Ref}, {"y", "", PassMode::Out}, {"z", ""}};
-    EXPECT_EQ(print(*make_expr(std::move(l))), "[=](Vec3& x, auto& y, auto z) {}");
+    l.params = {{"x", "Vec3&"}, {"y", "int32_t&"}, {"z", ""}};
+    EXPECT_EQ(print(*make_expr(std::move(l))), "[=](Vec3& x, int32_t& y, auto z) {}");
 }

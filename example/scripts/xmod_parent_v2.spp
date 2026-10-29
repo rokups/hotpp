@@ -11,7 +11,7 @@ class Unit : Actor {
     int armor = 9;
     int bonus = 0;
 
-    Unit(int start) : super(std.string("unit")) {
+    Unit(int start) : base(std.string("unit")) {
         this.hp = start;
         this.ctor_log = this.ctor_log * 10 + 1;
     }

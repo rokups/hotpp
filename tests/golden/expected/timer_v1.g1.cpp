@@ -128,12 +128,12 @@ static const spp::StateLayout Beeper_layout = {
 };
 
 // ------------------------------------------------- generation functions
-SPP_HIDDEN BeeperState_g1* state_of(Beeper_Shell* self)
+SPP_HIDDEN BeeperState_g1* state_of(Beeper_Shell* __self)
 {
-    return static_cast<BeeperState_g1*>(self->state);
+    return static_cast<BeeperState_g1*>(__self->state);
 }
 
-[[maybe_unused]] SPP_HIDDEN static void Beeper__arm(Beeper_Shell* self, World& w, float delay);
+[[maybe_unused]] SPP_HIDDEN static void Beeper__arm(Beeper_Shell* __self, World& w, float delay);
 
 #line 5 "timer_v1.spp"
 [[maybe_unused]] SPP_HIDDEN static auto Beeper__super_args()
@@ -164,7 +164,7 @@ SPP_NODEBUG static spp::ShellBase* Beeper__construct(const char* key, const void
 #line 5 "timer_v1.spp"
         const auto& t = *static_cast<const Beeper_SuperArgs*>(args);
 #line 5 "timer_v1.spp"
-        return std::apply([](const auto&... x) -> spp::ShellBase* { return new Beeper_Shell(spp::Construct{}, x...); }, t);
+        return std::apply([](auto&... x) -> spp::ShellBase* { return new Beeper_Shell(spp::Construct{}, x...); }, t);
 #line 5 "timer_v1.spp"
     }
 #line 5 "timer_v1.spp"
@@ -176,15 +176,15 @@ SPP_NODEBUG static spp::ShellBase* Beeper__construct(const char* key, const void
 static const char* const Beeper__construct_keys[] = {typeid(Beeper_SuperArgs).name(), nullptr};
 
 #line 5 "timer_v1.spp"
-SPP_HIDDEN static Beeper_Shell* Beeper__build([[maybe_unused]] bool note)
+SPP_HIDDEN static Beeper_Shell* Beeper__build([[maybe_unused]] bool __note)
 #line 5 "timer_v1.spp"
 {
 #line 5 "timer_v1.spp"
-    auto plan = Beeper__plan();
+    auto __plan = Beeper__plan();
 #line 5 "timer_v1.spp"
-    auto* self = static_cast<Beeper_Shell*>(spp::construct_shell(&Beeper_record, typeid(Beeper_SuperArgs).name(), &plan.first, note));
+    auto* __self = static_cast<Beeper_Shell*>(spp::construct_shell(&Beeper_record, typeid(Beeper_SuperArgs).name(), &__plan.first, __note));
 #line 5 "timer_v1.spp"
-    return self;
+    return __self;
 #line 5 "timer_v1.spp"
 }
 #line 191 "timer_v1.spp.cpp"
@@ -211,21 +211,21 @@ void BeeperState_g1::Tick(float dt)
 #line 9 "timer_v1.spp"
     }
 #line 10 "timer_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Beeper_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Beeper_Shell*>(this->__spp_owner);
 #line 10 "timer_v1.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 10 "timer_v1.spp"
-    st->ticks = st->ticks + 1;
+    __st->ticks = __st->ticks + 1;
 #line 11 "timer_v1.spp"
 }
 #line 222 "timer_v1.spp.cpp"
 
 #line 13 "timer_v1.spp"
-[[maybe_unused]] SPP_HIDDEN static void Beeper__arm(Beeper_Shell* self, World& w, float delay)
+[[maybe_unused]] SPP_HIDDEN static void Beeper__arm(Beeper_Shell* __self, World& w, float delay)
 #line 13 "timer_v1.spp"
 {
 #line 13 "timer_v1.spp"
-    return state_of(self)->arm(std::forward<World&>(w), std::forward<float>(delay));
+    return state_of(__self)->arm(std::forward<World&>(w), std::forward<float>(delay));
 #line 13 "timer_v1.spp"
 }
 #line 232 "timer_v1.spp.cpp"
@@ -242,15 +242,15 @@ void BeeperState_g1::arm(World& w, float delay)
 #line 13 "timer_v1.spp"
     }
 #line 14 "timer_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Beeper_Shell*>(this->__spp_owner);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Beeper_Shell*>(this->__spp_owner);
 #line 14 "timer_v1.spp"
-    SPP_NODEBUG_LOCAL auto* st = this;
+    SPP_NODEBUG_LOCAL auto* __st = this;
 #line 14 "timer_v1.spp"
-    spp::deref(w).AddTimer(delay, spp::make_closure(GEN, "Beeper::arm lambda", [=]() { SPP_NODEBUG_LOCAL auto* st = state_of(self);
+    spp::deref(w).AddTimer(delay, spp::make_closure(GEN, "Beeper::arm lambda", [=]() { SPP_NODEBUG_LOCAL auto* __st = state_of(__self);
 #line 15 "timer_v1.spp"
-        st->fired = st->fired + 1;
+        __st->fired = __st->fired + 1;
 #line 16 "timer_v1.spp"
-        std::printf("[timer v1] %s: fired=%d\n", spp::deref(self->Name).c_str(), st->fired);
+        std::printf("[timer v1] %s: fired=%d\n", spp::deref(__self->Name).c_str(), __st->fired);
 #line 17 "timer_v1.spp"
     }));
 #line 18 "timer_v1.spp"
@@ -260,13 +260,13 @@ void BeeperState_g1::arm(World& w, float delay)
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 13 "timer_v1.spp"
-static void Beeper__arm__thunk(Actor* a, World& w, float delay)
+static void Beeper__arm__thunk(Actor* __a, World& w, float delay)
 #line 13 "timer_v1.spp"
 {
 #line 13 "timer_v1.spp"
-    SPP_NODEBUG_LOCAL auto* self = static_cast<Beeper_Shell*>(a);
+    SPP_NODEBUG_LOCAL auto* __self = static_cast<Beeper_Shell*>(__a);
 #line 13 "timer_v1.spp"
-    return spp::call<void(Actor*, World&, float)>(self, SLOT_arm, w, delay);
+    return spp::call<void(Actor*, World&, float)>(__self, SLOT_arm, w, delay);
 #line 13 "timer_v1.spp"
 }
 #line 273 "timer_v1.spp.cpp"

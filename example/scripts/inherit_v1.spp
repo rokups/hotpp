@@ -10,7 +10,7 @@ class Unit : Actor {
     int ticks = 0;
     int dtor_runs = 0;
 
-    Unit(int start) : super(std.string("unit")) {
+    Unit(int start) : base(std.string("unit")) {
         this.hp = start;
         this.ctor_log = this.ctor_log * 10 + 1;
     }
@@ -33,7 +33,7 @@ class Grunt : Unit {
     int unit_power = 0;
     int super_ticks = 0;
 
-    Grunt(int start, int r) : super(start + 1) {
+    Grunt(int start, int r) : base(start + 1) {
         this.rage = r;
         this.ctor_log = this.ctor_log * 10 + 2;
     }
@@ -44,11 +44,11 @@ class Grunt : Unit {
 
     override int Power() { return this.rage; }
 
-    new int Attack() { return super.Attack() + 1; }
+    new int Attack() { return base.Attack() + 1; }
 
     override void Tick(float dt) {
-        super.Tick(dt);
-        this.unit_power = super.Power();
+        base.Tick(dt);
+        this.unit_power = base.Power();
         this.super_ticks = this.ticks;
     }
 }

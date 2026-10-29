@@ -153,7 +153,7 @@ TEST(ModuleDeclTranslation, ConvertHookErrors)
     expect_error("int a;\nint convert_b(int old) { return old; }\nclass C : Unit { }\n",
                  "'convert_b' is not a convert hook: the script has no module variable 'b'");
     expect_error("int a;\nfloat convert_a(int old) { return 1.0; }\nclass C : Unit { }\n",
-                 "'convert_a' must return the type of the module variable: 'int32_t'");
+                 "'convert_a' must return the type of the module variable: 'int'");
     expect_error("int a;\nint convert_a(int old, int x) { return old; }\nclass C : Unit { }\n",
                  "'convert_a' is a convert hook. It takes one parameter: the old value");
     expect_error("int a;\nint b;\nint convert_a(float old) { return b; }\nclass C : Unit { }\n",

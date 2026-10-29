@@ -43,7 +43,7 @@ TEST(HandleLowering, NewHandle)
     Fixture f;
     f.cx.types = &types;
     EXPECT_EQ(f.expr("new Weapon(1)"), "std::make_shared<Weapon>(1)");
-    EXPECT_EQ(f.expr("new Weapon(this.n)"), "std::make_shared<Weapon>(st->n)");
+    EXPECT_EQ(f.expr("new Weapon(this.n)"), "std::make_shared<Weapon>(__st->n)");
     // Without a type model the type stays as written.
     Fixture g;
     EXPECT_EQ(g.expr("new Weapon(1)"), "Weapon(1)");

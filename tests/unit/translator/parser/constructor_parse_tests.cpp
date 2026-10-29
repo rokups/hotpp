@@ -1,4 +1,4 @@
-// Tests for the parser of the constructor, the super call and the destructor of a script class.
+// Tests for the parser of the constructor, the base call and the destructor of a script class.
 #include <gtest/gtest.h>
 
 #include <string>
@@ -30,15 +30,15 @@ struct Parsed {
 
 TEST(ConstructorParse, ConstructorWithSuperCall)
 {
-    Parsed p("    int n = 1;\n    A(int a, std.string b) : super(a, b) { this.n = a; }");
+    Parsed p("    int n = 1;\n    A(int a, std.string b) : base(a, b) { this.n = a; }");
     ASSERT_TRUE(p.diag.items.empty()) << p.errors();
     ASSERT_EQ(p.cls().ctors.size(), 1u);
     const ast::Ctor& c = p.cls().ctors[0];
     EXPECT_EQ(c.params.size(), 2u);
     EXPECT_EQ(c.params[0].type, "int32_t");
     EXPECT_EQ(c.params[1].name, "b");
-    EXPECT_TRUE(c.has_super);
-    EXPECT_EQ(c.super_args.size(), 2u);
+    EXPECT_TRUE(c.has_base_call);
+    EXPECT_EQ(c.base_args.size(), 2u);
     EXPECT_EQ(c.body.stmts.size(), 1u);
     EXPECT_TRUE(p.cls().methods.empty());
 }
@@ -48,16 +48,22 @@ TEST(ConstructorParse, ConstructorWithoutSuperCall)
     Parsed p("    A() { }");
     ASSERT_TRUE(p.diag.items.empty()) << p.errors();
     ASSERT_EQ(p.cls().ctors.size(), 1u);
-    EXPECT_FALSE(p.cls().ctors[0].has_super);
+    EXPECT_FALSE(p.cls().ctors[0].has_base_call);
     EXPECT_TRUE(p.cls().ctors[0].params.empty());
 }
 
 TEST(ConstructorParse, SuperCallWithoutArguments)
 {
-    Parsed p("    A(int a) : super() { }");
+    Parsed p("    A(int a) : base() { }");
     ASSERT_TRUE(p.diag.items.empty()) << p.errors();
-    EXPECT_TRUE(p.cls().ctors[0].has_super);
-    EXPECT_TRUE(p.cls().ctors[0].super_args.empty());
+    EXPECT_TRUE(p.cls().ctors[0].has_base_call);
+    EXPECT_TRUE(p.cls().ctors[0].base_args.empty());
+}
+
+TEST(ConstructorParse, OldSuperCallIsRenamed)
+{
+    Parsed p("    A(int a) : super(a) { }");
+    EXPECT_NE(p.errors().find("'super' was renamed to 'base'"), std::string::npos) << p.errors();
 }
 
 TEST(ConstructorParse, Destructor)
@@ -72,7 +78,7 @@ TEST(ConstructorParse, Destructor)
 
 TEST(ConstructorParse, MethodsAndConstructorTogether)
 {
-    Parsed p("    A(int a) : super(a) { }\n    void Tick(float dt) { }\n    ~A() { }");
+    Parsed p("    A(int a) : base(a) { }\n    void Tick(float dt) { }\n    ~A() { }");
     ASSERT_TRUE(p.diag.items.empty()) << p.errors();
     EXPECT_EQ(p.cls().ctors.size(), 1u);
     EXPECT_EQ(p.cls().methods.size(), 1u);
@@ -85,9 +91,9 @@ TEST(ConstructorParse, Errors)
              {"C(int a) { }", "a method needs a return type"},
              {"~C() { }", "the name of a destructor is '~A'"},
              {"~A(int a) { }", "a destructor has no parameters"},
-             {"~A() : super() { }", "only a constructor can call 'super(...)'"},
-             {"void f() : super() { }", "only a constructor can call 'super(...)' after the parameters"},
-             {"A() : base() { }", "expected 'super(...)' after ':' of a constructor"},
+             {"~A() : base() { }", "only a constructor can call 'base(...)'"},
+             {"void f() : base() { }", "only a constructor can call 'base(...)' after the parameters"},
+             {"A() : other() { }", "expected 'base(...)' after ':' of a constructor"},
              {"override A() { }", "'override' is not valid on a constructor"},
              {"virtual ~A() { }", "'virtual' is not valid on a destructor"},
          }) {

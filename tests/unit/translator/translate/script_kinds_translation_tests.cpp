@@ -98,7 +98,7 @@ TEST(ScriptKindsTranslation, ValueClassErrors)
 
 TEST(ScriptKindsTranslation, SuperNeedsABase)
 {
-    expect_error("class P { int a = 0; P(int x) : super(x) { } }\n", "has no base class");
+    expect_error("class P { int a = 0; P(int x) : base(x) { } }\n", "has no base class");
 }
 
 TEST(ScriptKindsTranslation, ClassOrderIsChecked)

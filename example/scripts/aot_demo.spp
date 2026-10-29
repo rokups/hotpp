@@ -14,7 +14,7 @@ class Fighter : Actor {
         set { this.shield_raw = value < 0.0 ? 0.0 : value; }
     }
 
-    Fighter(int start) : super(std.string("fighter")) {
+    Fighter(int start) : base(std.string("fighter")) {
         this.hp = start + 100;
     }
 
@@ -43,7 +43,7 @@ class Veteran : Fighter {
     int rage = 3;
     int parent_power = 0;
 
-    Veteran(int start, int r) : super(start + 1) {
+    Veteran(int start, int r) : base(start + 1) {
         this.rage = r;
     }
 
@@ -53,12 +53,12 @@ class Veteran : Fighter {
 
     override int Power() { return this.rage; }
 
-    new int Attack() { return super.Attack() + 1; }
+    new int Attack() { return base.Attack() + 1; }
 
     override void Tick(float dt) {
-        super.Tick(dt);
+        base.Tick(dt);
         this.rage = this.rage + 1;
-        this.parent_power = super.Power();
+        this.parent_power = base.Power();
     }
 }
 

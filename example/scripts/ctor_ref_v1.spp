@@ -1,36 +1,36 @@
 using "Actor.h";
 using <string>;
 
-// A "super(...)" argument binds to a "ref" or "out" parameter of a script parent (S23).
+// A "base(...)" argument binds to a "T&" parameter of a script parent (S23).
 class Base : Actor {
     int hp = 0;
     int kind = 0;
 
-    Base(int h, ref int seen) : super(std.string("base")) { this.hp = h; seen = h * 2; this.kind = 1; }
+    Base(int h, int& seen) : base(std.string("base")) { this.hp = h; seen = h * 2; this.kind = 1; }
 }
 
 class Sink : Actor {
-    Sink(out int made) : super(std.string("sink")) { made = 100; }
+    Sink(int& made) : base(std.string("sink")) { made = 100; }
 }
 
 class Wrap : Sink {
-    Wrap(out int made) : super(out made) { }
+    Wrap(int& made) : base(made) { }
 }
 
 class Mid : Base {
-    Mid(int h, ref int seen) : super(h + 1, ref seen) { }
+    Mid(int h, int& seen) : base(h + 1, seen) { }
 }
 
-// The chain has two levels. The "ref" reaches Base from Leaf.
+// The chain has two levels. The reference reaches Base from Leaf.
 class Leaf : Mid {
-    Leaf(int h, ref int seen) : super(h + 1, ref seen) { }
+    Leaf(int h, int& seen) : base(h + 1, seen) { }
 }
 
 // A constructor with a "&&" parameter (S23).
 class Named : Actor {
     std.string label = std.string();
 
-    Named(std.string&& s) : super(std.string("named")) { this.label = s; }
+    Named(std.string&& s) : base(std.string("named")) { this.label = s; }
 }
 
 class Spawner : Actor {
@@ -43,15 +43,15 @@ class Spawner : Actor {
 
     override void Tick(float dt) {
         int s = 0;
-        Mid m = new Mid(4, ref s);
+        Mid m = new Mid(4, s);
         this.mid_hp = m.hp;
         this.seen = s;
         int t = 0;
-        Leaf l = new Leaf(10, ref t);
+        Leaf l = new Leaf(10, t);
         this.leaf_hp = l.hp;
         this.leaf_seen = t;
         int o = 0;
-        Wrap w = new Wrap(out o);
+        Wrap w = new Wrap(o);
         this.made = o;
         Named n = new Named(std.string("abc"));
         this.named = n.label;

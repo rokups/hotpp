@@ -217,7 +217,7 @@ const std::vector<std::string> kScripts = {"player_v1", "intrusive_v1", "ctor_re
 TEST(DebugInfo, RuntimeHelpersHaveNoSubprogram)
 {
     if (!have_dwarfdump()) GTEST_SKIP() << "llvm-dwarfdump is not installed";
-    const std::vector<std::string> helpers = {"ref_arg", "deref", "shell_of", "Intrusive", "Closure", "ScriptEntry", "stale_call"};
+    const std::vector<std::string> helpers = {"deref", "shell_of", "Intrusive", "Closure", "ScriptEntry", "stale_call"};
     for (const std::string& script : kScripts) {
         for (const std::string& opt : kOptimizations) {
             SCOPED_TRACE(script + " " + opt);

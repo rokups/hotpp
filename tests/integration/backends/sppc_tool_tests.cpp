@@ -217,6 +217,153 @@ std::string engine_args()
            "/include'";
 }
 
+// A "T&" parameter and a "T&" local of a script class: the generated C++ must compile.
+TEST(SppcTool, ScriptClassReferenceCompiles)
+{
+    TestScratch scratch;
+    const std::string script = scratch.file("sppc_class_ref.spp");
+    std::FILE* f = std::fopen(script.c_str(), "w");
+    ASSERT_NE(f, nullptr);
+    std::fputs(
+        "using \"Actor.h\";\nusing <vector>;\n\n"
+        "class Weapon : Actor {\n    int dmg = 1;\n}\n\n"
+        "class Hero : Actor {\n    Weapon wp;\n    int n = 0;\n\n"
+        "    void Make(Weapon& w) { w = new Weapon(); }\n"
+        "    int Peek(const Weapon& w) { return w.dmg; }\n"
+        "    void Run() {\n"
+        "        Make(this.wp);\n"
+        "        Weapon& r = this.wp;\n"
+        "        var& q = this.n;\n"
+        "        q = Peek(r);\n"
+        "        foreach (var& x in std.vector<int>()) { x = 1; }\n"
+        "        foreach (const var& x in std.vector<int>()) { this.n = x; }\n"
+        "    }\n}\n",
+        f);
+    std::fclose(f);
+    const std::string out = scratch.file("sppc_class_ref.cpp");
+    std::string log;
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'" +
+                              engine_args() + " 2>&1",
+                          log),
+              0)
+        << log;
+    std::string cc;
+    EXPECT_EQ(run_command(std::string("'") + SPP_CXX + "' -std=c++20 -fsyntax-only -I '" + SPP_SOURCE_DIR +
+                              "/example/engine' -I '" + SPP_SOURCE_DIR + "/include' '" + out + "' 2>&1",
+                          cc),
+              0)
+        << cc;
+}
+
+// Translates the script text and compiles the C++ with -fsyntax-only.
+void expect_script_compiles(TestScratch& scratch, const char* name, const char* text)
+{
+    const std::string script = scratch.file(name);
+    std::FILE* f = std::fopen(script.c_str(), "w");
+    ASSERT_NE(f, nullptr);
+    std::fputs(text, f);
+    std::fclose(f);
+    const std::string out = scratch.file(std::string(name) + ".cpp");
+    std::string log;
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'" +
+                              engine_args() + " 2>&1",
+                          log),
+              0)
+        << log;
+    std::string cc;
+    EXPECT_EQ(run_command(std::string("'") + SPP_CXX + "' -std=c++20 -fsyntax-only -I '" + SPP_SOURCE_DIR +
+                              "/example/engine' -I '" + SPP_SOURCE_DIR + "/include' '" + out + "' 2>&1",
+                          cc),
+              0)
+        << cc;
+}
+
+// "var& r = p;" and "foreach (var& e in p)" write through a value parameter: the generated
+// function must not take it as "const T&".
+TEST(SppcTool, VarReferenceToAValueParameterCompiles)
+{
+    TestScratch scratch;
+    expect_script_compiles(
+        scratch, "sppc_param_ref.spp",
+        "using \"Actor.h\";\nusing <vector>;\n\n"
+        "class Hero : Actor {\n"
+        "    void A(std.vector<int> p) { var& r = p; r.clear(); }\n"
+        "    void B(std.vector<int> p) { foreach (var& e in p) { e = 0; } }\n"
+        "    int C(std.vector<int> p) { int s = 0; foreach (const var& e in p) { s += e; } return s; }\n"
+        "}\n");
+}
+
+// A constructor parameter may have the name of a generated local of the construction code.
+TEST(SppcTool, ConstructorParametersMayUseOldGeneratedNames)
+{
+    TestScratch scratch;
+    expect_script_compiles(
+        scratch, "sppc_ctor_names.spp",
+        "using \"Actor.h\";\n\n"
+        "class Base : Actor {\n    int v = 0;\n    Base(int chain, int up) { this.v = chain + up; }\n}\n\n"
+        "class Kid : Base {\n    Kid(int chain, int up, int pp, int plan, int note) : base(chain, up) { this.v += pp + plan + note; }\n}\n");
+}
+
+// "&*h" gives a "T*" and "*h" gives a "T&" for a std::shared_ptr handle and for an intrusive
+// handle. "this" is a handle argument for a script handle parameter. "*this" is a "T&" argument for
+// a native "Actor&" parameter. The generated C++ must compile.
+TEST(SppcTool, HandleAddressOfDereferenceAndThisCompile)
+{
+    TestScratch scratch;
+    const std::string script = scratch.file("sppc_handle_deref.spp");
+    std::FILE* f = std::fopen(script.c_str(), "w");
+    ASSERT_NE(f, nullptr);
+    std::fputs(
+        "using <memory>;\nusing \"Actor.h\";\nusing \"Weapon.h\";\nusing \"Object.h\";\n"
+        "[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n"
+        "[native, handle(\"$T*\"), intrusive(\"AddRef\", \"Release\")] class Object;\n\n"
+        "class Hero : Actor {\n"
+        "    void TakeW(Weapon* w) { }\n    void RefW(Weapon& w) { }\n"
+        "    void TakeI(Item* i) { }\n    void RefI(Item& i) { }\n"
+        "    void Hurt(Hero h, float d) { }\n"
+        "    void Run(Weapon w, Item i, Hero other, Actor a) {\n"
+        "        TakeW(&*w); RefW(*w); TakeI(&*i); RefI(*i);\n"
+        "        other.Hurt(this, 2.0);\n"
+        "        a.TakeDamage(*this, 2.0);\n"
+        "    }\n}\n",
+        f);
+    std::fclose(f);
+    const std::string out = scratch.file("sppc_handle_deref.cpp");
+    std::string log;
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'" +
+                              engine_args() + " 2>&1",
+                          log),
+              0)
+        << log;
+    std::string cc;
+    EXPECT_EQ(run_command(std::string("'") + SPP_CXX + "' -std=c++20 -fsyntax-only -I '" + SPP_SOURCE_DIR +
+                              "/example/engine' -I '" + SPP_SOURCE_DIR + "/include' '" + out + "' 2>&1",
+                          cc),
+              0)
+        << cc;
+}
+
+// A std.unique_ptr field is an error: a reload copies each field.
+TEST(SppcTool, MoveOnlyFieldIsAnError)
+{
+    TestScratch scratch;
+    const std::string script = scratch.file("sppc_unique_field.spp");
+    std::FILE* f = std::fopen(script.c_str(), "w");
+    ASSERT_NE(f, nullptr);
+    std::fputs("using <memory>;\nusing \"Actor.h\";\nusing \"Weapon.h\";\n"
+               "class Holder : Actor {\n    std.unique_ptr<Weapon> w;\n}\n",
+               f);
+    std::fclose(f);
+    const std::string out = scratch.file("sppc_unique_field.cpp");
+    std::string log;
+    EXPECT_NE(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'" +
+                              engine_args() + " 2>&1",
+                          log),
+              0);
+    EXPECT_NE(log.find("field of move-only type 'std::unique_ptr<Weapon>' is not supported"), std::string::npos)
+        << log;
+}
+
 // --format=fmt only changes the text. The default is std::format.
 TEST(SppcTool, FormatOptionSelectsTheFormatFunction)
 {

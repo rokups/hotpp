@@ -9,7 +9,7 @@ class A : Actor {
     int a = 1;
     int Score { get; set; } = 10;
 
-    A(int v) : super(std.string("a")) { this.a = v; }
+    A(int v) : base(std.string("a")) { this.a = v; }
 
     virtual int f(int k) { return k; }
 }
@@ -21,7 +21,7 @@ class B : A {
         set { this.b = value; }
     }
 
-    B(int v) : super(v * 2) { }
+    B(int v) : base(v * 2) { }
 
     override int f(int k) { return k + this.b; }
 
@@ -29,18 +29,18 @@ class B : A {
 }
 
 class S : A {
-    S() : super(3) { }
+    S() : base(3) { }
 
     int only() { return Score + 100; }
 }
 
 class G : B {
-    G() : super(4) { }
+    G() : base(4) { }
 
-    override int f(int k) { return super.f(k) * 2; }
+    override int f(int k) { return base.f(k) * 2; }
 
     override void h() {
-        super.h();
+        base.h();
         Score += 1;
         this.Bonus = Bonus + 1;
     }

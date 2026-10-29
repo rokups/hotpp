@@ -139,3 +139,18 @@
 17: " { Idle" 
 17: "," punctuation.separator.comma.spp
 17: " Walk }" 
+18: "void" storage.type.spp
+18: "Each" entity.name.function.spp
+18: "() { " 
+18: "foreach" keyword.control.flow.spp
+18: " (" 
+18: "const" storage.modifier.spp
+18: "var" storage.type.spp
+18: "&" keyword.operator.arithmetic.spp
+18: " y " 
+18: "in" keyword.control.flow.spp
+18: "this" variable.language.spp
+18: "." punctuation.accessor.spp
+18: "items) { y" 
+18: ";" punctuation.terminator.statement.spp
+18: " } }" 
