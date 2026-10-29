@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <map>
 #include <memory>
@@ -112,6 +113,11 @@ struct Pos {
     int line = 0, col = 0;  // 0-based line, byte column
     bool operator<(const Pos& o) const { return std::tie(line, col) < std::tie(o.line, o.col); }
     bool operator==(const Pos& o) const { return line == o.line && col == o.col; }
+};
+
+// A script symbol that other scripts can have too: a class, or a member of a class.
+struct SymbolKey {
+    std::string cls, member;  // member is empty for a class
 };
 
 // One open .spp document and its state in clangd.
@@ -250,6 +256,24 @@ private:
     // Gives the edit, or an error message.
     std::variant<json, std::string> on_rename(const Doc& d, const json& p);
 
+    // ---- symbols across the .spp files of the workspace (S18)
+    // The script places of the symbol at "cur": the declaration and each use. Or an error
+    // message. "decl" gets the script place of the declaration.
+    std::variant<std::set<Pos>, std::string> symbol_places(const Doc& d, Pos cur, const std::string& name, Pos* decl);
+    // The class (and the member) that is declared at "decl", or no value for a local symbol.
+    std::optional<SymbolKey> symbol_key(const Doc& d, Pos decl, const std::string& name) const;
+    std::optional<SymbolKey> key_at(const Doc& d, Pos cur);
+    std::optional<Pos> key_position(const Doc& d, const SymbolKey& key) const;
+    Pos class_name_pos(const Doc& d, const sppc::AnalyzedClass& c) const;
+    std::set<Pos> class_places(const Doc& d, const std::string& name) const;
+    bool is_script_class(const Doc& d, const std::string& name) const;
+    std::vector<std::string> workspace_scripts() const;
+    // Calls "fn" for each other .spp file of the workspace that declares the symbol "key".
+    // "places" are the places of the symbol in that file. An open document is used as it is.
+    // A file on disk goes to clangd only for the call.
+    void for_other_scripts(const Doc& origin, const SymbolKey& key, const std::string& name,
+                           const std::function<void(const Doc&, const std::set<Pos>&)>& fn);
+
     int in_, out_;
     ServerOptions opt_;
     std::mutex out_mutex_;
@@ -259,6 +283,7 @@ private:
     std::map<std::string, std::shared_ptr<Doc>> docs_;      // by the script uri
     std::map<std::string, std::shared_ptr<Doc>> gen_docs_;  // by the generated uri
     std::unique_ptr<ClangdProcess> clangd_;
+    std::vector<std::string> roots_;  // the workspace folders (paths), from initialize
     bool utf8_ = false, clangd_utf8_ = false, shutdown_ = false;
     std::set<std::string> preamble_ready_;
     // The analyze facts of the scripts on disk that are not open (script_member_location).
@@ -359,6 +384,13 @@ json Server::on_initialize(const json& p)
             read_compile_commands();
         }
     }
+    roots_.clear();
+    if (p.contains("workspaceFolders") && p["workspaceFolders"].is_array()) {
+        for (const json& f : p["workspaceFolders"])
+            if (f.is_object() && f.value("uri", std::string()).size()) roots_.push_back(uri_to_path(f.value("uri", std::string())));
+    }
+    if (roots_.empty() && p.value("rootUri", json()).is_string()) roots_.push_back(uri_to_path(p["rootUri"].get<std::string>()));
+    if (roots_.empty() && p.value("rootPath", json()).is_string()) roots_.push_back(p["rootPath"].get<std::string>());
     start_clangd(p);
     json tokens = json::array();
     for (const std::string& t : semantic_token_types()) tokens.push_back(t);
@@ -607,8 +639,22 @@ json Server::on_hover(const Doc& d, const json& p)
 
 json Server::on_locations(const Doc& d, const json& p, const std::string& method)
 {
-    const auto g = to_gen(d, from_lsp(d.text, p["position"], utf8_));
     json out = json::array();
+    const Pos here = from_lsp(d.text, p["position"], utf8_);
+    const bool is_ref = method == "textDocument/references";
+    const std::string here_word = word(d, here);
+    if (is_ref && !here_word.empty() && is_script_class(d, here_word)) {
+        // A script class: the places come from the tokens (see class_places).
+        auto add = [&](const Doc& doc, const std::set<Pos>& places) {
+            for (const Pos& s : places)
+                out.push_back({{"uri", doc.uri},
+                               {"range", script_range(doc, s, {s.line, s.col + static_cast<int>(here_word.size())})}});
+        };
+        add(d, class_places(d, here_word));
+        if (roots_.size()) for_other_scripts(d, {here_word, ""}, here_word, add);
+        return out;
+    }
+    const auto g = to_gen(d, here);
     if (!g) return out;
     json params = {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}};
     if (method == "textDocument/references") params["context"] = {{"includeDeclaration", true}};
@@ -621,18 +667,45 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
         if (m.is_null() || !seen.insert(m.dump()).second) continue;
         out.push_back(std::move(m));
     }
+    if (method == "textDocument/references" && roots_.size()) {
+        const Pos cur = from_lsp(d.text, p["position"], utf8_);
+        const std::string name = word(d, cur);
+        if (const auto key = name.empty() ? std::nullopt : key_at(d, cur))
+            for_other_scripts(d, *key, name, [&](const Doc& doc, const std::set<Pos>& places) {
+                for (const Pos& s : places)
+                    out.push_back({{"uri", doc.uri},
+                                   {"range", script_range(doc, s, {s.line, s.col + static_cast<int>(name.size())})}});
+            });
+    }
     return out;
 }
 
-std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
+std::set<Pos> Server::class_places(const Doc& d, const std::string& name) const
 {
-    const Pos cur = from_lsp(d.text, p["position"], utf8_);
-    const std::string old_name = word(d, cur);
-    const std::string new_name = p.value("newName", std::string());
-    if (old_name.empty()) return std::string("no symbol at the position");
-    if (new_name.empty() || !std::all_of(new_name.begin(), new_name.end(), is_id_char) ||
-        (new_name[0] >= '0' && new_name[0] <= '9'))
-        return std::string("the new name is not an identifier: " + new_name);
+    // The class name has no segment in the source map, so clangd cannot find it. The semantic
+    // tokens of the facts mark each word that is the name of a script class.
+    constexpr int kClassToken = 2;  // the index of "class" in semantic_token_types()
+    std::set<Pos> out;
+    for (const SemanticToken& t : script_tokens(d.text.s, d.facts))
+        if (t.type == kClassToken && d.text.line(t.line).substr(static_cast<size_t>(t.col), static_cast<size_t>(t.len)) == name)
+            out.insert({t.line, t.col});
+    return out;
+}
+
+bool Server::is_script_class(const Doc& d, const std::string& name) const
+{
+    return std::any_of(d.facts.classes.begin(), d.facts.classes.end(),
+                       [&](const sppc::AnalyzedClass& c) { return c.name == name; });
+}
+
+std::variant<std::set<Pos>, std::string> Server::symbol_places(const Doc& d, Pos cur, const std::string& old_name, Pos* decl)
+{
+    if (is_script_class(d, old_name)) {
+        if (decl)
+            for (const sppc::AnalyzedClass& c : d.facts.classes)
+                if (c.name == old_name) *decl = class_name_pos(d, c);
+        return class_places(d, old_name);
+    }
     const auto g = to_gen(d, {cur.line, word_at(d, cur).first});
     if (!g || !clangd_) return std::string("no script symbol at the position");
     const json tdp = {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}};
@@ -641,8 +714,18 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
     if (def_list.empty()) return std::string("no script symbol at the position");
     for (const json& loc : def_list) {
         const std::string uri = loc.contains("targetUri") ? loc.value("targetUri", std::string()) : loc.value("uri", std::string());
-        if (uri != d.gen_uri) return std::string("cannot rename a native symbol: " + old_name);
-        if (map_location(d, loc).is_null()) return std::string("cannot rename a generated name: " + old_name);
+        // clangd can answer with the same symbol in the generated file of another script.
+        if (uri != d.gen_uri && !gen_docs_.count(uri)) return std::string("cannot rename a native symbol: " + old_name);
+        if (uri == d.gen_uri && map_location(d, loc).is_null()) return std::string("cannot rename a generated name: " + old_name);
+    }
+    if (decl) {
+        *decl = {-1, -1};
+        const std::string uri = def_list[0].contains("targetUri") ? def_list[0].value("targetUri", std::string())
+                                                                   : def_list[0].value("uri", std::string());
+        if (uri == d.gen_uri) {
+            const json m = map_location(d, def_list[0]);
+            *decl = from_lsp(d.text, m["range"]["start"], utf8_);
+        }
     }
     json params = tdp;
     params["context"] = {{"includeDeclaration", true}};
@@ -665,11 +748,150 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
             }
         }
     }
-    json edits = json::array();
-    for (const Pos& s : starts)
-        edits.push_back({{"range", script_range(d, s, {s.line, s.col + static_cast<int>(old_name.size())})},
-                         {"newText", new_name}});
-    return json{{"changes", {{d.uri, edits}}}};
+    return starts;
+}
+
+std::optional<SymbolKey> Server::symbol_key(const Doc& d, Pos decl, const std::string& name) const
+{
+    if (decl.line < 0) {
+        // The declaration is in another script. Take the member of this script, if it is the only one.
+        std::optional<SymbolKey> found;
+        for (const sppc::AnalyzedClass& c : d.facts.classes)
+            for (const sppc::AnalyzedMember& m : c.members)
+                if (m.name == name) {
+                    if (found) return std::nullopt;
+                    found = SymbolKey{c.name, name};
+                }
+        return found;
+    }
+    for (const sppc::AnalyzedClass& c : d.facts.classes) {
+        if (c.name == name && c.begin.line - 1 == decl.line) return SymbolKey{name, ""};
+        for (const sppc::AnalyzedMember& m : c.members)
+            if (m.name == name && m.begin.line - 1 == decl.line) return SymbolKey{c.name, name};
+    }
+    return std::nullopt;
+}
+
+std::optional<SymbolKey> Server::key_at(const Doc& d, Pos cur)
+{
+    const std::string name = word(d, cur);
+    if (name.empty()) return std::nullopt;
+    Pos decl;
+    const auto r = symbol_places(d, cur, name, &decl);
+    if (std::holds_alternative<std::string>(r)) return std::nullopt;
+    return symbol_key(d, decl, name);
+}
+
+Pos Server::class_name_pos(const Doc& d, const sppc::AnalyzedClass& c) const
+{
+    // The begin of a class is at the keyword "class". The name comes after it on the line.
+    const Pos b = {c.begin.line - 1, c.begin.col - 1};
+    const std::string_view l = d.text.line(b.line);
+    for (size_t at = l.find(c.name, static_cast<size_t>(b.col)); at != std::string_view::npos; at = l.find(c.name, at + 1))
+        if ((at == 0 || !is_id_char(l[at - 1])) && (at + c.name.size() >= l.size() || !is_id_char(l[at + c.name.size()])))
+            return {b.line, static_cast<int>(at)};
+    return b;
+}
+
+std::optional<Pos> Server::key_position(const Doc& d, const SymbolKey& key) const
+{
+    for (const sppc::AnalyzedClass& c : d.facts.classes) {
+        if (c.name != key.cls) continue;
+        if (key.member.empty()) return class_name_pos(d, c);
+        for (const sppc::AnalyzedMember& m : c.members)
+            if (m.name == key.member) return Pos{m.begin.line - 1, m.begin.col - 1};
+    }
+    return std::nullopt;
+}
+
+std::vector<std::string> Server::workspace_scripts() const
+{
+    std::vector<std::string> out;
+    constexpr size_t kMaxFiles = 5000;
+    for (const std::string& root : roots_) {
+        std::error_code ec;
+        fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
+        for (; !ec && it != end && out.size() < kMaxFiles; it.increment(ec)) {
+            const std::string name = it->path().filename().string();
+            std::error_code ec2;
+            if (it->is_directory(ec2)) {
+                if ((!name.empty() && name[0] == '.') || name == "node_modules") it.disable_recursion_pending();
+                continue;
+            }
+            if (it->path().extension() == ".spp" && it->is_regular_file(ec2)) out.push_back(it->path().lexically_normal().string());
+        }
+    }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
+
+void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const std::string& name,
+                               const std::function<void(const Doc&, const std::set<Pos>&)>& fn)
+{
+    for (const std::string& path : workspace_scripts()) {
+        if (path == origin.path) continue;
+        std::shared_ptr<Doc> open;
+        for (const auto& [uri, doc] : docs_)
+            if (doc->path == path) open = doc;
+        if (open) {
+            const auto at = key_position(*open, key);
+            if (!at || word(*open, *at) != name) continue;
+            const auto r = symbol_places(*open, *at, name, nullptr);
+            if (const auto* places = std::get_if<std::set<Pos>>(&r); places && !places->empty()) fn(*open, *places);
+            continue;
+        }
+        const auto text = read_file(path);
+        if (!text || text->find(name) == std::string::npos) continue;
+        Doc tmp;
+        tmp.uri = path_to_uri(path);
+        tmp.path = path;
+        tmp.gen_path = path + ".cpp";
+        tmp.gen_uri = path_to_uri(tmp.gen_path);
+        tmp.text = Text(*text);
+        tmp.facts = sppc::analyze(tmp.text.s, translate_options(tmp), session_);
+        const auto at = key_position(tmp, key);
+        if (!at || word(tmp, *at) != name) continue;
+        if (!key.member.empty()) {  // a member needs clangd. A class does not.
+            if (tmp.facts.cpp.empty()) continue;
+            tmp.gen = Text(tmp.facts.cpp);
+            tmp.map = std::make_shared<const sppc::SourceMap>(tmp.facts.source_map);
+            tmp.gen_version = 1;
+            send_generated(tmp, tmp.facts.cpp);
+        }
+        const auto r = symbol_places(tmp, *at, name, nullptr);
+        if (const auto* places = std::get_if<std::set<Pos>>(&r); places && !places->empty()) fn(tmp, *places);
+        if (clangd_ && tmp.in_clangd) clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", tmp.gen_uri}}}});
+    }
+}
+
+std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
+{
+    const Pos cur = from_lsp(d.text, p["position"], utf8_);
+    const std::string old_name = word(d, cur);
+    const std::string new_name = p.value("newName", std::string());
+    if (old_name.empty()) return std::string("no symbol at the position");
+    if (new_name.empty() || !std::all_of(new_name.begin(), new_name.end(), is_id_char) ||
+        (new_name[0] >= '0' && new_name[0] <= '9'))
+        return std::string("the new name is not an identifier: " + new_name);
+    Pos decl;
+    const auto r = symbol_places(d, cur, old_name, &decl);
+    if (const auto* e = std::get_if<std::string>(&r)) return *e;
+    auto edits_of = [&](const Doc& doc, const std::set<Pos>& places) {
+        json edits = json::array();
+        for (const Pos& s : places)
+            edits.push_back({{"range", script_range(doc, s, {s.line, s.col + static_cast<int>(old_name.size())})},
+                             {"newText", new_name}});
+        return edits;
+    };
+    json changes = {{d.uri, edits_of(d, std::get<std::set<Pos>>(r))}};
+    // A class or a member that other scripts of the workspace declare too (the versions of a
+    // script) gets the new name there as well.
+    if (const auto key = symbol_key(d, decl, old_name))
+        for_other_scripts(d, *key, old_name, [&](const Doc& doc, const std::set<Pos>& places) {
+            changes[doc.uri] = edits_of(doc, places);
+        });
+    return json{{"changes", changes}};
 }
 
 json Server::on_document_symbol(const Doc& d)

@@ -585,14 +585,19 @@ struct ClangHandles {
     }
 };
 
-// The identity of a header file: the path, the time of the last change and the size.
-// A file that changed lately also has a hash of its content. An edit can keep the time and
-// the size, so the hash covers this case. A missing file has the time -1.
+// The identity of a header file: the path, the time of the last change, the size, the inode
+// and the time of the last status change (ctime). A file has the hash of its content. An edit
+// can set the old time back and keep the size (for example "touch -r", rsync or a restore of a
+// backup). Such an edit changes the ctime or the inode, so a difference of these two values
+// makes the check read the content. A file that changed lately is always hashed, because the
+// ctime has a coarse tick. A missing file has the time -1.
 struct FileStamp {
     std::string path;
     long long mtime_ns = -1;
+    long long ctime_ns = -1;
     long long size = -1;
-    bool hashed = false;
+    unsigned long long ino = 0;
+    bool hashed = false;  // the file is recent: each check reads the content
     unsigned long long hash = 0;
 };
 
@@ -621,36 +626,46 @@ unsigned long long hash_file(const std::string& path)
     return h;
 }
 
-// Reads the stamp. A file with a recent time also gets the hash of its content.
+long long ns_of(const struct timespec& ts) { return static_cast<long long>(ts.tv_sec) * 1000000000LL + ts.tv_nsec; }
+
+// Reads the stamp. The stamp has the hash of the content of an existing file.
 FileStamp stamp_of(const std::string& path)
 {
     FileStamp f;
     f.path = path;
     struct stat st;
     if (::stat(path.c_str(), &st) == 0) {
-        f.mtime_ns = static_cast<long long>(st.st_mtim.tv_sec) * 1000000000LL + st.st_mtim.tv_nsec;
+        f.mtime_ns = ns_of(st.st_mtim);
+        f.ctime_ns = ns_of(st.st_ctim);
         f.size = static_cast<long long>(st.st_size);
-        if (f.mtime_ns > now_ns() - kRecentNs) {
-            f.hashed = true;
-            f.hash = hash_file(path);
-        }
+        f.ino = static_cast<unsigned long long>(st.st_ino);
+        f.hashed = f.mtime_ns > now_ns() - kRecentNs;
+        f.hash = hash_file(path);
     }
     return f;
 }
 
 // True when the file is the same as at the time of the record. The check reads the content
-// only when the record has a hash. It drops the hash when the file is no longer recent.
+// when the record is recent, or when the inode or the ctime differ although the time and the
+// size are equal. A new ctime with the same content is accepted, and the record learns it.
 bool stamp_fresh(FileStamp& rec)
 {
     struct stat st;
-    long long mtime = -1, size = -1;
+    long long mtime = -1, ctime = -1, size = -1;
+    unsigned long long ino = 0;
     if (::stat(rec.path.c_str(), &st) == 0) {
-        mtime = static_cast<long long>(st.st_mtim.tv_sec) * 1000000000LL + st.st_mtim.tv_nsec;
+        mtime = ns_of(st.st_mtim);
+        ctime = ns_of(st.st_ctim);
         size = static_cast<long long>(st.st_size);
+        ino = static_cast<unsigned long long>(st.st_ino);
     }
     if (mtime != rec.mtime_ns || size != rec.size) return false;
-    if (rec.hashed) {
+    if (size < 0) return true;  // the file is still missing
+    const bool moved = ctime != rec.ctime_ns || ino != rec.ino;
+    if (rec.hashed || moved) {
         if (hash_file(rec.path) != rec.hash) return false;
+        rec.ctime_ns = ctime;
+        rec.ino = ino;
         if (mtime <= now_ns() - kRecentNs) rec.hashed = false;
     }
     return true;

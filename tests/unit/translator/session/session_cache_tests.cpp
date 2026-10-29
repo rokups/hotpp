@@ -200,6 +200,56 @@ TEST(SessionCache, EditWithEqualSizeAndTimeInvalidatesTheCache)
     EXPECT_NE(r.slots_out.find("Foo::Update"), std::string::npos) << r.slots_out;  // not an override
 }
 
+// An old header (not recent) gets an edit that resets the time and keeps the size. The ctime or
+// the inode shows the edit, and the hash of the content confirms it.
+TEST(SessionCache, EditOfAnOldHeaderWithEqualSizeAndTimeInvalidatesTheCache)
+{
+    for (const bool replace_file : {false, true}) {
+        TempDir dir;
+        const fs::path header = dir.path() / "w.h";
+        write_file(header, kHeaderV1);
+        const auto old_time = fs::file_time_type::clock::now() - std::chrono::hours(2);
+        fs::last_write_time(header, old_time);  // not recent: no hash of the time window
+        sppc::TranslatorSession session;
+        ASSERT_TRUE(sppc::translate(temp_options(dir, widget_script("Update(float dt)", "override ")), session).ok);
+        EXPECT_EQ(session.parse_count(), 1);
+        // A check without an edit hits.
+        ASSERT_TRUE(sppc::translate(temp_options(dir, widget_script("Update(float dt)", "override ")), session).ok);
+        EXPECT_EQ(session.parse_count(), 1);
+
+        std::string edited = read_file(header.string());
+        edited.replace(edited.find("Update"), 6, "Updatf");
+        if (replace_file) {  // a new inode, as an editor or a restore tool makes it
+            write_file(dir.path() / "w.tmp", edited);
+            fs::rename(dir.path() / "w.tmp", header);
+        } else {
+            write_file(header, edited);
+        }
+        fs::last_write_time(header, old_time);
+
+        const sppc::TranslateResult r = sppc::translate(temp_options(dir, widget_script("Update(float dt)")), session);
+        EXPECT_TRUE(r.ok) << r.diagnostics;
+        EXPECT_EQ(session.parse_count(), 2) << "replace_file=" << replace_file;
+        EXPECT_NE(r.slots_out.find("Foo::Update"), std::string::npos) << r.slots_out;
+    }
+}
+
+// A touch that keeps the content gives no new parse, also when the ctime changes.
+TEST(SessionCache, TouchWithTheSameContentKeepsTheCache)
+{
+    TempDir dir;
+    const fs::path header = dir.path() / "w.h";
+    write_file(header, kHeaderV1);
+    const auto old_time = fs::file_time_type::clock::now() - std::chrono::hours(2);
+    fs::last_write_time(header, old_time);
+    sppc::TranslatorSession session;
+    ASSERT_TRUE(sppc::translate(temp_options(dir, widget_script("Update(float dt)", "override ")), session).ok);
+    write_file(header, kHeaderV1);
+    fs::last_write_time(header, old_time);
+    ASSERT_TRUE(sppc::translate(temp_options(dir, widget_script("Update(float dt)", "override ")), session).ok);
+    EXPECT_EQ(session.parse_count(), 1);
+}
+
 // A new header earlier in the include path hides the header that the cache used.
 TEST(SessionCache, NewHeaderEarlierInTheIncludePathInvalidatesTheCache)
 {

@@ -1,7 +1,9 @@
 // A watcher of one file for the harness (design 8.1).
 // On Linux it uses inotify on the parent directory. This also sees an editor that
 // writes a new file and renames it over the old one. Without inotify it polls the
-// modification time and the size of the file.
+// modification time, the size, the inode and the ctime of the file. When only the inode or the
+// ctime changes, it compares the hash of the content, so an edit that restores the old
+// modification time with the same size is seen.
 #pragma once
 #include <ctime>
 #include <string>
@@ -30,6 +32,9 @@ private:
     int fd_ = -1;  // the inotify descriptor, or -1
     long long stamp_ns_ = -1;
     long long size_ = -1;
+    long long ctime_ns_ = -1;
+    unsigned long long ino_ = 0;
+    unsigned long long hash_ = 0;  // the hash of the content at the last stamp
 };
 
 }  // namespace harness

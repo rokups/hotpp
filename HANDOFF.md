@@ -48,7 +48,7 @@ Measured on this machine (warm load of v2): JIT 808 ms, JIT with PCH 166 ms, CLA
 3. Experiment F3: debugger check. lldb is not installed here (see `DECISIONS.md`); the DWARF line table has the script lines. Set a breakpoint in a script method and step. Check that lldb shows `player.spp` lines. The JIT backend registers no debugger plugin and uses `-gline-tables-only`.
 4. Windows and macOS are not tested. The design lists the risks (RTTI comparison, symbol export, PDB).
 5. The CPM fetch path never ran, because the system gtest was found. Test it with an environment where gtest is missing.
-6. The translator cache hashes the content of a header that changed in the last 2 seconds. It also checks the paths that hide a header earlier in the include path. A header with an old time that an edit resets to the same time and size is not seen. `TranslatorSession::clear()` covers this.
+6. The translator cache hashes the content of a header that changed in the last 2 seconds. It also checks the paths that hide a header earlier in the include path. A header with an old time that an edit resets to the same time and size is seen now: the stamp has the inode, the ctime and a content hash (S18).
 7. Known workaround: libclang does not find its builtin headers here, so the build passes `-resource-dir` from `clang++ -print-resource-dir`.
 
 ## Syntax

@@ -34,6 +34,16 @@ protected:
     std::string file;
 };
 
+// Waits for a change until the timeout. A machine under load can need more than one second.
+bool changed_within(harness::FileWatcher& w, int timeout_ms)
+{
+    const auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    do {
+        if (w.wait_changed(100)) return true;
+    } while (std::chrono::steady_clock::now() < end);
+    return false;
+}
+
 TEST_P(FileWatcherTests, SeesWriteAndRenameButNotOtherFiles)
 {
     harness::FileWatcher w(file, GetParam());
@@ -44,14 +54,42 @@ TEST_P(FileWatcherTests, SeesWriteAndRenameButNotOtherFiles)
     EXPECT_FALSE(w.wait_changed(50));
 
     write(file, "two words");
-    EXPECT_TRUE(w.wait_changed(1000));
+    EXPECT_TRUE(changed_within(w, 15000));
     EXPECT_FALSE(w.wait_changed(0));  // the change is consumed
 
     // An editor writes a new file and renames it over the old one.
     write((dir / "a.tmp").string(), "three");
     fs::rename(dir / "a.tmp", file);
+    EXPECT_TRUE(changed_within(w, 15000));
+    EXPECT_FALSE(w.wait_changed(0));
+}
+
+// An edit sets the old modification time back and keeps the size. The polling mode sees it
+// through the ctime and the hash of the content.
+TEST_P(FileWatcherTests, PollingSeesAnEditThatRestoresTheTimeAndTheSize)
+{
+    if (GetParam() != harness::FileWatcher::Mode::Polling) GTEST_SKIP() << "inotify sees every write";
+    write(file, "aaaa");
+    const auto old_time = fs::file_time_type::clock::now() - std::chrono::hours(2);
+    fs::last_write_time(file, old_time);
+    harness::FileWatcher w(file, harness::FileWatcher::Mode::Polling);
+    EXPECT_FALSE(w.wait_changed(0));
+
+    write(file, "bbbb");
+    fs::last_write_time(file, old_time);
     EXPECT_TRUE(w.wait_changed(1000));
     EXPECT_FALSE(w.wait_changed(0));
+
+    // A touch with the same content is no change.
+    write(file, "bbbb");
+    fs::last_write_time(file, old_time);
+    EXPECT_FALSE(w.wait_changed(50));
+
+    // A new file with another inode, the old time and the same size.
+    write((dir / "a.tmp").string(), "cccc");
+    fs::last_write_time(dir / "a.tmp", old_time);
+    fs::rename(dir / "a.tmp", file);
+    EXPECT_TRUE(w.wait_changed(1000));
 }
 
 INSTANTIATE_TEST_SUITE_P(Modes, FileWatcherTests,

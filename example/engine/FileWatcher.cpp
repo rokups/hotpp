@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <thread>
 
 #ifdef __linux__
@@ -39,17 +40,51 @@ FileWatcher::~FileWatcher()
     if (fd_ >= 0) close(fd_);
 }
 
+namespace {
+
+long long ns_of(const timespec& ts) { return static_cast<long long>(ts.tv_sec) * 1000000000LL + ts.tv_nsec; }
+
+// FNV-1a hash of the content of a file.
+unsigned long long hash_file(const std::string& path)
+{
+    unsigned long long h = 14695981039346656037ULL;
+    std::ifstream f(path, std::ios::binary);
+    char buf[8192];
+    while (f.read(buf, sizeof buf) || f.gcount() > 0) {
+        for (std::streamsize i = 0; i < f.gcount(); ++i) {
+            h ^= static_cast<unsigned char>(buf[i]);
+            h *= 1099511628211ULL;
+        }
+    }
+    return h;
+}
+
+}  // namespace
+
 bool FileWatcher::poll_stamp()
 {
     struct stat st {};
-    long long ns = -1, size = -1;
+    long long ns = -1, size = -1, cns = -1;
+    unsigned long long ino = 0;
     if (stat(path_.c_str(), &st) == 0) {
-        ns = static_cast<long long>(st.st_mtim.tv_sec) * 1000000000LL + st.st_mtim.tv_nsec;
+        ns = ns_of(st.st_mtim);
+        cns = ns_of(st.st_ctim);
         size = st.st_size;
+        ino = static_cast<unsigned long long>(st.st_ino);
     }
-    const bool changed = ns != stamp_ns_ || size != size_;
+    bool changed = ns != stamp_ns_ || size != size_;
+    // The time and the size are equal, but the inode or the ctime differ: an edit can have
+    // set the old time back. The content decides.
+    unsigned long long hash = hash_;
+    if (size >= 0 && (changed || cns != ctime_ns_ || ino != ino_)) {
+        hash = hash_file(path_);
+        if (!changed && hash != hash_) changed = true;
+    }
     stamp_ns_ = ns;
     size_ = size;
+    ctime_ns_ = cns;
+    ino_ = ino;
+    hash_ = hash;
     return changed;
 }
 

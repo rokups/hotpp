@@ -40,6 +40,21 @@ void run_small_stack(std::size_t bytes, const std::function<void()>& fn)
     pthread_attr_destroy(&attr);
 }
 
+// The stack of the deep parse. A thread sanitizer makes each frame much larger, so the stack
+// is larger there. The nesting limits of the parser stay the same.
+#if defined(__SANITIZE_THREAD__)
+#define SPP_TEST_TSAN 1
+#elif defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+#define SPP_TEST_TSAN 1
+#endif
+#endif
+#ifdef SPP_TEST_TSAN
+constexpr std::size_t kDeepParseStack = 16u << 20;
+#else
+constexpr std::size_t kDeepParseStack = 512u << 10;
+#endif
+
 }  // namespace
 
 TEST(StatementParseLimits, Truncation)
@@ -83,7 +98,7 @@ TEST(StatementParseLimits, DeepNesting)
         EXPECT_TRUE(found) << p.diag.items[0].msg;
     };
     const std::size_t n = 100000;
-    run_small_stack(512 << 10, [&] {
+    run_small_stack(kDeepParseStack, [&] {
         fails(std::string(n, '{'), "maximum recursion depth exceeded");
         std::string t;
         for (std::size_t i = 0; i < n; ++i) t += "if (a) ";
@@ -116,5 +131,5 @@ TEST(StatementParseLimits, DeepNesting)
         lam += "f(() => { ";
         lclose += " });";
     }
-    run_small_stack(512 << 10, [&] { EXPECT_EQ(round_trip(lam + "x;" + lclose).empty(), false); });
+    run_small_stack(kDeepParseStack, [&] { EXPECT_EQ(round_trip(lam + "x;" + lclose).empty(), false); });
 }

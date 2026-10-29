@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -258,6 +259,9 @@ TEST(LanguageServer, SemanticTokensMarkKeywordsTypesAndMembers)
 TEST(LanguageServer, GeneratedFileOnDiskMapsBackToTheScript)
 {
     Session s(false);
+    // Wait for the analyze of the server. Two parses at the same time race inside libclang
+    // (TSan reports it), and the test does not test this.
+    s.diagnostics([](const json&) { return true; });
     sppc::TranslateOptions o;
     o.script_text = kScript;
     o.script_name = s.path;
@@ -310,6 +314,90 @@ TEST(LanguageServer, RenameOfANativeSymbolIsAnError)
     const json r = s.client->request("textDocument/rename", p);
     ASSERT_TRUE(r.contains("error")) << r.dump();
     EXPECT_NE(r["error"].value("message", "").find("native"), std::string::npos) << r.dump();
+}
+
+// The workspace has two versions of the script. Both declare the class Player. A rename of a
+// member in one version changes the other version too, also when it is not open (S18).
+TEST(LanguageServer, RenameChangesTheSameSymbolInOtherScriptsOfTheWorkspace)
+{
+    REQUIRE_CLANGD();
+    Session s(true);
+    const std::string other_path = (s.dir.path() / "sub" / "player_v2.spp").string();
+    std::string v2 = kScript;
+    v2.replace(v2.find("100.0"), 5, "50.0");
+    std::filesystem::create_directories(std::filesystem::path(other_path).parent_path());
+    write_file(other_path, v2);
+    write_file(s.dir.path() / "unrelated.spp", "class Other {\n    float hp = 1.0;\n}\n");
+    json p = doc_pos(s.uri, 3, 11);
+    p["newName"] = "health";
+    const json r = s.client->request("textDocument/rename", p);
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    const json& changes = r["result"]["changes"];
+    EXPECT_EQ(changes.size(), 2u) << r.dump();
+    ASSERT_TRUE(changes.contains(s.uri)) << r.dump();
+    ASSERT_TRUE(changes.contains(uri_of(other_path))) << r.dump();
+    std::vector<std::pair<int, int>> at;
+    for (const json& e : changes[uri_of(other_path)]) {
+        EXPECT_EQ(e["newText"], "health");
+        at.emplace_back(e["range"]["start"]["line"], e["range"]["start"]["character"]);
+    }
+    std::sort(at.begin(), at.end());
+    EXPECT_EQ(at, (std::vector<std::pair<int, int>>{{3, 10}, {11, 13}, {11, 23}})) << r.dump();
+}
+
+// The other script is open in the editor too. clangd can answer a definition with the symbol
+// of the other generated file. The rename still works in both files.
+TEST(LanguageServer, RenameWorksWhenTheOtherScriptIsOpenToo)
+{
+    REQUIRE_CLANGD();
+    Session s(true);
+    const std::string other_path = (s.dir.path() / "player_v2.spp").string();
+    write_file(other_path, kScript);
+    s.client->open(uri_of(other_path), kScript);
+    for (const std::string& uri : {uri_of(other_path), s.uri}) {
+        json p = doc_pos(uri, 3, 11);
+        p["newName"] = "health";
+        const json r = s.client->request("textDocument/rename", p);
+        ASSERT_TRUE(r.contains("result")) << r.dump();
+        const json& changes = r["result"]["changes"];
+        EXPECT_EQ(changes[s.uri].size(), 3u) << r.dump();
+        EXPECT_EQ(changes[uri_of(other_path)].size(), 3u) << r.dump();
+    }
+}
+
+TEST(LanguageServer, RenameOfAClassChangesTheOtherScripts)
+{
+    REQUIRE_CLANGD();
+    Session s(true);
+    const std::string other_path = (s.dir.path() / "player_v2.spp").string();
+    write_file(other_path, kScript);
+    json p = doc_pos(s.uri, 2, 7);
+    p["newName"] = "Hero";
+    const json r = s.client->request("textDocument/rename", p);
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    const json& changes = r["result"]["changes"];
+    ASSERT_TRUE(changes.contains(uri_of(other_path))) << r.dump();
+    ASSERT_FALSE(changes[uri_of(other_path)].empty()) << r.dump();
+    EXPECT_EQ(changes[uri_of(other_path)][0]["range"]["start"]["line"], 2);
+}
+
+TEST(LanguageServer, ReferencesIncludeTheOtherScriptsOfTheWorkspace)
+{
+    REQUIRE_CLANGD();
+    Session s(true);
+    const std::string other_path = (s.dir.path() / "player_v2.spp").string();
+    write_file(other_path, kScript);
+    const json r = s.client->request("textDocument/references",
+                                     {{"textDocument", {{"uri", s.uri}}}, {"position", pos(11, 14)},
+                                      {"context", {{"includeDeclaration", true}}}});
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array()) << r.dump();
+    int here = 0, there = 0;
+    for (const json& l : r["result"]) {
+        if (l["uri"] == s.uri) ++here;
+        if (l["uri"] == uri_of(other_path)) ++there;
+    }
+    EXPECT_EQ(here, 3) << r.dump();
+    EXPECT_EQ(there, 3) << r.dump();
 }
 
 // clangd runs its background index on the compile_commands.json of "sppc --compile-commands".

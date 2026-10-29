@@ -9,8 +9,14 @@
   "engines": { "vscode": "^1.80.0" },
   "categories": ["Programming Languages"],
   "main": "./src/extension.js",
-  "activationEvents": ["onLanguage:spp"],
+  "activationEvents": ["onLanguage:spp", "onCommand:spp.showScriptPosition"],
   "contributes": {
+    "commands": [
+      {
+        "command": "spp.showScriptPosition",
+        "title": "S++: Show Script Position"
+      }
+    ],
     "languages": [
       {
         "id": "spp",
@@ -32,13 +38,13 @@
         "spp.server.path": {
           "type": "string",
           "default": "spp-ls",
-          "description": "Path of the S++ language server binary. The default finds spp-ls in PATH."
+          "description": "Path of the S++ language server binary. The default finds spp-ls in PATH. ${workspaceFolder} is expanded."
         },
         "spp.server.args": {
           "type": "array",
           "items": { "type": "string" },
           "default": ["--stdio"],
-          "description": "Arguments for the language server."
+          "description": "Arguments for the language server. ${workspaceFolder} is expanded."
         },
         "spp.server.enable": {
           "type": "boolean",
@@ -56,6 +62,6 @@
     "vscode-textmate": "^9.0.0"
   },
   "scripts": {
-    "test": "node test/grammar.test.js"
+    "test": "node test/grammar.test.js && node test/expand.test.js"
   }
 }

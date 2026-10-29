@@ -82,7 +82,8 @@ libclang needs about 400 ms to parse the engine headers. `sppc::TranslatorSessio
 
 - The key is the include flags, the current directory and the set of imports. A script that names a base class that the entry does not have causes one new parse. The next calls for both bases hit.
 - The entry keeps the path, the change time (ns) and the size of each file that the parse included (`clang_getInclusions`, with the system headers). Each call checks them with `stat`. If one differs, the session parses again. The check costs about 1 ms.
-- The cache does not see a new header that comes earlier in the include path, or a change that keeps the same time and size. Use `TranslatorSession::clear()` for these cases.
+- The stamp of each file also has the inode, the ctime and a hash of the content. An edit that restores the old time and keeps the size changes the ctime or the inode. Then the check reads the content and compares the hash. A header that changed in the last 2 seconds is always hashed. The same check is in the polling mode of `harness::FileWatcher` (the script file).
+- The cache does not see a new header that comes earlier in the include path when no shadow stamp covers it. Use `TranslatorSession::clear()` for odd cases.
 - Calls that use one session are thread safe. They wait for each other during a parse.
 - `ClangFilesBackend` and `JitBackend` hold a session. `ClangFilesOptions::session` and `JitOptions::session` share one session between backends. `sppc` and `sppc` do one translate for each run, so they do not gain.
 
@@ -330,7 +331,7 @@ Features:
 - Completion: `this.` lists the script members and the native members of the base. The server puts the placeholder `__spp_complete` in place of the word at the cursor, translates again and asks clangd at the placeholder.
 - Hover, go-to-definition and references. A script symbol goes to the script. A native symbol goes to the native header.
 - Document symbols come from analyze. Semantic tokens come from a small lexer and the facts.
-- Rename changes the script symbols in the document. Rename of a native symbol gives the error `cannot rename a native symbol: X`.
+- Rename changes the script symbols (class, member, field) in all `.spp` files of the workspace. The server scans the workspace folders from `initialize` (it skips hidden folders and `node_modules`). A class or a member with the same name in another script (for example the versions of a script) gets the new name there too. An open document uses its editor text. A file on disk goes to clangd only for the request. A class name has no segment in the source map, so the semantic tokens find its places. References also look in the other `.spp` files. Rename of a native symbol gives the error `cannot rename a native symbol: X`.
 - Workspace symbols come from the clangd index. Give `--compile-commands-dir` with the output dir of `sppc --compile-commands`. Then clangd runs its background index on the generated files. A symbol of a generated file maps to its script member. The helpers of the translator (thunks, slot functions) are not shown.
 
 The `#line` check: clangd reports the real line of the generated file, not the `#line` line. So the generated C++ keeps its `#line` directives. No translator option is necessary.
