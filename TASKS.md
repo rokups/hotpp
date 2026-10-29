@@ -57,3 +57,4 @@ The language server is the proxy `spp-ls`, not a clangd fork (DECISIONS.md 13). 
 - [ ] S26 Function pointers in trivially copyable native structs count as code holders.
 - [ ] S27 Overload added in a later generation with a new key type; object creation in entry-counter mode.
 - [ ] S28 `spp-ls` rename on closed files: faster scan, no 5000 file cap.
+- [ ] S24b Imported scripts (`using "x.spp";`) get source-map segments and real line and column in all diagnostics (translator, compiler, spp-ls). Run after S25.
