@@ -35,3 +35,12 @@ using IntFn = int (*)(int);
 inline int TwiceInt(int x) { return 2 * x; }
 inline IntFn PickDoubler() { return &TwiceInt; }
 inline int CallIntFn(IntFn f, int x) { return f ? f(x) : 0; }
+
+// A trivially copyable struct with a function pointer field (S26). It holds code, but the type
+// is plain data. The translator marks it, so a script field of this type blocks the unload.
+struct IntCallback {
+    IntFn fn;
+    int tag;
+};
+inline IntCallback MakeIntCallback() { return IntCallback{&TwiceInt, 1}; }
+inline int CallIntCallback(const IntCallback& c, int x) { return c.fn ? c.fn(x) : 0; }

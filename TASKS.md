@@ -54,7 +54,7 @@ The language server is the proxy `spp-ls`, not a clangd fork (DECISIONS.md 13). 
 - [x] S23 `super(...)` argument to a `ref`/`out` parent constructor parameter; test for a `&&` constructor parameter.
 - [x] S24 Translator errors pass through the diagnostic rewriter; script column in `#line`.
 - [x] S25 Parameter analysis follows native functions, lambdas and calls on script handle parameters.
-- [ ] S26 Function pointers in trivially copyable native structs count as code holders.
+- [x] S26 Function pointers in trivially copyable native structs count as code holders. Done: query `@code:T`, trait `native_holds_code`. Limit: no template instance.
 - [ ] S27 Overload added in a later generation with a new key type; object creation in entry-counter mode.
 - [ ] S28 `spp-ls` rename on closed files: faster scan, no 5000 file cap.
 - [x] S24b Imported scripts (`using "x.spp";`) get source-map segments and real line and column in all diagnostics (translator, compiler, spp-ls). Run after S25.

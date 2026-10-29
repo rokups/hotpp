@@ -1,0 +1,13 @@
+// Generation 1 of Holder (S26). A state field keeps a native struct with a function pointer
+// field. The pointer can point into the code of a generation, so no retired generation unloads.
+using "Actor.h";
+using "Util.h";
+
+class Holder : Actor {
+    IntCallback cb = MakeIntCallback();
+    int result = 0;
+
+    override void Tick(float dt) {
+        this.result = CallIntCallback(this.cb, 1);
+    }
+}

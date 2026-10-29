@@ -86,13 +86,20 @@ inline constexpr bool is_code_pointer_v =
      std::is_function_v<std::remove_pointer_t<std::remove_all_extents_t<T>>>) ||
     std::is_member_function_pointer_v<std::remove_all_extents_t<T>>;
 
+// True when the translator found a function pointer in a field of the native struct T (S26).
+// The translator specializes it to true_type in the generated code. The default is false.
+template <class T>
+struct native_holds_code : std::false_type {};
+
 // True when a value of T cannot point into the code of the module that made it (no vtable, no
 // function pointer). A trivially copyable type is not polymorphic. A raw function pointer and a
 // std::function hold code. The standard containers with the default allocator, hash and order
-// are free of code when their elements are. A function pointer inside a trivially copyable
-// native struct is not detected. An engine can add a specialization for such a struct.
+// are free of code when their elements are. A trivially copyable native struct with a function
+// pointer field holds code: the translator marks it with native_holds_code. An engine can add a
+// specialization of holds_no_code for a type that the translator cannot see.
 template <class T>
-struct holds_no_code : std::bool_constant<std::is_trivially_copyable_v<T> && !is_code_pointer_v<T>> {};
+struct holds_no_code
+    : std::bool_constant<std::is_trivially_copyable_v<T> && !is_code_pointer_v<T> && !native_holds_code<T>::value> {};
 template <class Sig>
 struct holds_no_code<std::function<Sig>> : std::false_type {};
 template <class C, class Tr>

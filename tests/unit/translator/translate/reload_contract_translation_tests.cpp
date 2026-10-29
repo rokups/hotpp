@@ -112,4 +112,40 @@ TEST(SharesThisFlag, SetOnlyWhenTheShellSharesThis)
     EXPECT_TRUE(has(shared.cpp, "    Foo_record.shares_this = true;\n")) << shared.cpp;
 }
 
+// A native struct with a function pointer field gets native_holds_code (S26). This covers a
+// plain pointer, a member function pointer, an array, a nested struct and a base struct. A
+// struct with a data pointer only, or with a data member pointer, does not get it. The type
+// is found also inside a native container.
+TEST(NativeHoldsCode, FunctionPointerFieldsMarkTheStruct)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", std::string(kHeaderV1) +
+        "using Fn = int (*)(int);\n"
+        "struct Plain { int a; float b; };\n"
+        "struct DataPtr { int* p; int Plain::* m; };\n"
+        "struct RawCb { Fn fn; int tag; };\n"
+        "struct MemCb { int (Widget::*mf)(int); };\n"
+        "struct ArrCb { void (*fns[2])(); };\n"
+        "struct Inner { Fn fn; };\n"
+        "struct Nested { int a; Inner in; };\n"
+        "struct Derived : RawCb { int more; };\n");
+    const std::string head = "using \"w.h\";\nclass Foo : Widget {\n";
+    const std::string tail = "    void f() { }\n}\n";
+    const auto mark = [](const char* t) { return std::string("native_holds_code<") + t + "> : std::true_type"; };
+    for (const char* t : {"RawCb", "MemCb", "ArrCb", "Nested", "Derived"}) {
+        sppc::TranslateResult r = sppc::translate(temp_options(dir, head + "    " + t + " v;\n" + tail));
+        ASSERT_TRUE(r.ok) << t << ": " << r.diagnostics;
+        EXPECT_TRUE(has(r.cpp, mark(t))) << t << "\n" << r.cpp;
+    }
+    for (const char* t : {"Plain", "DataPtr"}) {
+        sppc::TranslateResult r = sppc::translate(temp_options(dir, head + "    " + t + " v;\n" + tail));
+        ASSERT_TRUE(r.ok) << t << ": " << r.diagnostics;
+        EXPECT_FALSE(has(r.cpp, "native_holds_code<")) << t << "\n" << r.cpp;
+    }
+    sppc::TranslateResult v = sppc::translate(
+        temp_options(dir, "using <vector>;\n" + head + "    std.vector<RawCb> v;\n" + tail));
+    ASSERT_TRUE(v.ok) << v.diagnostics;
+    EXPECT_TRUE(has(v.cpp, mark("RawCb"))) << v.cpp;
+}
+
 }  // namespace

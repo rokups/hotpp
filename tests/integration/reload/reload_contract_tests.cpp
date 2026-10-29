@@ -171,4 +171,30 @@ TEST_P(BackendTests, FunctionPointerFieldBlocksTheUnload)
     EXPECT_EQ(find_gen(st, 1)->state, GenState::Retired);
 }
 
+// A trivially copyable native struct with a function pointer field (S26): the translator marks
+// the type as a code holder. The field has kMayHoldCode, so no retired generation unloads.
+TEST_P(BackendTests, StructWithFunctionPointerFieldBlocksTheUnload)
+{
+    spp::LoadResult v1 = backend->load(source("codestruct_v1.spp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult v2 = backend->load(source("codestruct_v2.spp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Holder"));
+    s.commit_at_frame_boundary();
+    const spp::FieldInfo* cb = spp::find_field(s.inst.shell->cls, "cb");
+    ASSERT_NE(cb, nullptr);
+    EXPECT_TRUE(cb->flags & spp::kMayHoldCode);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*int_field(s, "result"), 2);
+    reload(s, v2);
+    for (int i = 0; i < 4; ++i) s.world.Tick(kDt);
+    ASSERT_FALSE(s.commit_failed);
+    EXPECT_EQ(*int_field(s, "result"), 4);
+    const spp::LoaderStats st = s.loader.stats();
+    EXPECT_TRUE(st.state_holds_code);
+    ASSERT_NE(find_gen(st, 1), nullptr);
+    EXPECT_EQ(find_gen(st, 1)->state, GenState::Retired);
+}
+
 }  // namespace

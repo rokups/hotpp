@@ -966,6 +966,14 @@ bool is_fn_query(const std::string& q)
     return q.compare(0, 4, kFnQuery) == 0;
 }
 
+// A query "@code:T" asks: does the native type T hold a code pointer in a field (S26)? A cursor
+// walk answers it with "1" or "0". T is a class name or an alias name, not a template instance.
+const char* const kCodeQuery = "@code:";
+bool is_code_query(const std::string& q)
+{
+    return q.compare(0, 6, kCodeQuery) == 0;
+}
+
 // The name of the probe section with the facts. libclang reports an error in it for a type
 // that it does not know. The translator does not treat such an error as an error of the imports.
 const char* const kFactsFile = "sppc_facts";
@@ -1026,7 +1034,7 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
         if (const_query) body += "using sppc_c" + std::to_string(i) + " = " + t + ";\n";
     }
     for (size_t i = 0; i < queries.size(); ++i) {
-        if (is_fn_query(queries[i])) continue;  // a cursor walk answers it (see function_kinds)
+        if (is_fn_query(queries[i]) || is_code_query(queries[i])) continue;  // a cursor walk answers it
         body += "using sppc_q" + std::to_string(i) + " = " + queries[i] + ";\n";
     }
     return head + "#line 1 \"" + kFactsFile + "\"\n" + body;
@@ -1138,6 +1146,78 @@ void answer_function_queries(CXCursor root, const std::vector<std::string>& quer
     }
 }
 
+bool type_holds_code(CXType t, int depth);
+bool class_holds_code(CXCursor cls, int depth);
+
+// True when the class may be trivially copyable. This is a filter only: a class with a virtual
+// function, a declared destructor or a declared copy or move operation is not trivially copyable.
+bool maybe_trivially_copyable(CXCursor cls, int depth = 0)
+{
+    if (clang_Cursor_isNull(cls) || depth > 16) return true;
+    bool ok = true;
+    visit(cls, [&](CXCursor c) {
+        const CXCursorKind k = clang_getCursorKind(c);
+        if (k == CXCursor_CXXMethod || k == CXCursor_Destructor || k == CXCursor_Constructor) {
+            if (clang_CXXMethod_isVirtual(c)) ok = false;
+            const bool copy_op = k == CXCursor_Destructor || (k == CXCursor_Constructor &&
+                                     (clang_CXXConstructor_isCopyConstructor(c) || clang_CXXConstructor_isMoveConstructor(c))) ||
+                                 (k == CXCursor_CXXMethod && cxs(clang_getCursorSpelling(c)) == "operator=");
+            if (copy_op && !clang_CXXMethod_isDefaulted(c)) ok = false;
+        } else if (k == CXCursor_CXXBaseSpecifier) {
+            if (!maybe_trivially_copyable(base_definition(c), depth + 1)) ok = false;
+        }
+        return ok ? CXChildVisit_Continue : CXChildVisit_Break;
+    });
+    return ok;
+}
+
+// Answers the queries "@code:T" (S26). The name T matches the qualified name of a class at its
+// end, or the name of a typedef or an alias. The answer is "1" when the type can hold a code
+// pointer and may be trivially copyable (a class with a destructor already counts as a holder).
+void answer_code_queries(CXCursor root, const std::vector<std::string>& queries,
+                         std::map<std::string, std::string>& answers)
+{
+    std::set<std::string> last;  // the last name of each type
+    for (const std::string& q : queries)
+        if (is_code_query(q)) {
+            const std::string key = q.substr(6);
+            const size_t p = key.rfind("::");
+            last.insert(p == std::string::npos ? key : key.substr(p + 2));
+        }
+    if (last.empty()) return;
+    std::map<std::string, std::vector<CXCursor>> decls;  // by qualified name
+    std::function<CXChildVisitResult(CXCursor)> walk = [&](CXCursor c) {
+        const CXCursorKind k = clang_getCursorKind(c);
+        if (k == CXCursor_ClassDecl || k == CXCursor_StructDecl) {
+            if (clang_isCursorDefinition(c) && last.count(cxs(clang_getCursorSpelling(c)))) decls[qualified_name(c)].push_back(c);
+            visit(c, walk);
+        } else if (k == CXCursor_TypedefDecl || k == CXCursor_TypeAliasDecl) {
+            if (last.count(cxs(clang_getCursorSpelling(c)))) decls[qualified_name(c)].push_back(c);
+        } else if (k == CXCursor_Namespace || k == CXCursor_LinkageSpec) {
+            visit(c, walk);
+        }
+        return CXChildVisit_Continue;
+    };
+    visit(root, walk);
+    for (const std::string& q : queries) {
+        if (!is_code_query(q)) continue;
+        const std::string key = q.substr(6);
+        bool holds = false;
+        for (const auto& [qn, v] : decls) {
+            if (!ends_with_scope(qn, key)) continue;
+            for (CXCursor d : v) {
+                const CXCursorKind k = clang_getCursorKind(d);
+                if (k == CXCursor_TypedefDecl || k == CXCursor_TypeAliasDecl) {
+                    holds = holds || type_holds_code(clang_getTypedefDeclUnderlyingType(d), 0);
+                } else {
+                    holds = holds || (class_holds_code(d, 0) && maybe_trivially_copyable(d));
+                }
+            }
+        }
+        answers[q] = holds ? "1" : "0";
+    }
+}
+
 // The type of a query alias as "auto" deduces it: no reference and no top-level const.
 // Empty: libclang does not know the type.
 std::string alias_type(CXCursor alias)
@@ -1178,6 +1258,42 @@ int const_member(CXCursor cls, const std::string& name, int depth = 0)
         if (v == 1) r = 1;
     }
     return r;
+}
+
+// True when a value of the type can hold a code pointer (S26): a function pointer, a member
+// function pointer, or an array of them. A class type holds code when one of its fields or
+// bases does. A pointer to data, a data member pointer and a scalar do not.
+bool class_holds_code(CXCursor cls, int depth);
+
+bool type_holds_code(CXType t, int depth)
+{
+    if (depth > 16) return false;
+    t = clang_getCanonicalType(t);
+    while (t.kind == CXType_ConstantArray || t.kind == CXType_IncompleteArray || t.kind == CXType_VariableArray)
+        t = clang_getCanonicalType(clang_getArrayElementType(t));
+    if (t.kind == CXType_Pointer || t.kind == CXType_MemberPointer) {
+        const CXTypeKind pk = clang_getCanonicalType(clang_getPointeeType(t)).kind;
+        return pk == CXType_FunctionProto || pk == CXType_FunctionNoProto;
+    }
+    if (t.kind != CXType_Record) return false;
+    return class_holds_code(clang_getCursorDefinition(clang_getTypeDeclaration(t)), depth + 1);
+}
+
+bool class_holds_code(CXCursor cls, int depth)
+{
+    if (clang_Cursor_isNull(cls) || depth > 16) return false;
+    CXCursor pat = implicit_pattern(cls);  // libclang does not visit the members of an implicit instance
+    bool found = false;
+    visit(clang_Cursor_isNull(pat) ? cls : pat, [&](CXCursor c) {
+        const CXCursorKind k = clang_getCursorKind(c);
+        if (k == CXCursor_FieldDecl) {
+            if (type_holds_code(clang_getCursorType(c), depth)) found = true;
+        } else if (k == CXCursor_CXXBaseSpecifier) {
+            if (class_holds_code(base_definition(c), depth + 1)) found = true;
+        }
+        return found ? CXChildVisit_Break : CXChildVisit_Continue;
+    });
+    return found;
 }
 
 // Reads the value of "sppc_f<N>" from the translation unit. Gives -1 when libclang cannot
@@ -1311,9 +1427,10 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         });
         for (size_t i = 0; i < queries.size(); ++i) {
             auto it = aliases.find("sppc_q" + std::to_string(i));
-            if (!is_fn_query(queries[i])) answers[queries[i]] = it == aliases.end() ? std::string() : alias_type(it->second);
+            if (!is_fn_query(queries[i]) && !is_code_query(queries[i])) answers[queries[i]] = it == aliases.end() ? std::string() : alias_type(it->second);
         }
         answer_function_queries(root, queries, answers);
+        answer_code_queries(root, queries, answers);
         for (size_t i = 0; i < reqs.size(); ++i)
             for (const std::string& m : reqs[i].members) {
                 if (m.rfind("const:", 0) != 0) continue;
@@ -1819,6 +1936,18 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             if (uniq.insert(q).second) query_texts.push_back(q);
         for (const std::string& k : native_q.fn_keys) query_texts.push_back(kFnQuery + k);
     }
+    // S26: the native structs that the script uses. A cursor walk checks them for a code pointer.
+    {
+        std::set<std::string> script_class_names;
+        for (const ClassDef& cd : sc.classes) script_class_names.insert(cd.name);
+        std::set<std::string> uniq;
+        for (const std::string& t : sppc::used_type_names(sc)) {
+            if (t.empty() || !(std::isalpha(static_cast<unsigned char>(t[0])) || t[0] == '_' || t[0] == ':')) continue;
+            if (t.find_first_of("*&< ") != std::string::npos || t.rfind("std::", 0) == 0) continue;
+            if (script_class_names.count(t) || sppc::builtin_cpp_name(t) || t == "void" || t == "var" || t == "string") continue;
+            if (uniq.insert(t).second) query_texts.push_back(kCodeQuery + t);
+        }
+    }
     std::vector<FactReq> reqs;
     for (auto& [t, ms] : asked) reqs.push_back({t, std::vector<std::string>(ms.begin(), ms.end())});
 
@@ -1960,6 +2089,14 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         o.w("#include " + im.target() + "\n");
     }
     reset();
+    // S26: the native structs with a function pointer field. The runtime reads this as a code holder.
+    bool marked = false;
+    for (const std::string& q : query_texts)
+        if (is_code_query(q) && query_answers[q] == "1") {
+            o.w("namespace spp { template <> struct native_holds_code<" + q.substr(6) + "> : std::true_type {}; }\n");
+            marked = true;
+        }
+    if (marked) reset();
     o.w("\nconstexpr uint32_t GEN = " + std::to_string(opt.gen) + ";\n");
 
     // ---- script enums. The enum is a C++ "enum class" with the underlying type of the script.
