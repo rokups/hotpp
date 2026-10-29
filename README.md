@@ -21,7 +21,7 @@ Each row is a milestone of `spp-design.md` section 10. "Not testable here" means
 | M9 Optional ORC backend | Partial | The JIT backend works on Linux. The debug-symbol resolver for Windows is not testable here. |
 | M10 Source map and tolerant parse | Done | `TranslateResult::source_map`, `sppc::analyze`. |
 | M11 VS Code extension | Done | Grammar snapshot test and package. A real VS Code session is not testable here. |
-| M12 Language server stage 1 | Done | `spp-ls`, a proxy in front of stock clangd (no fork). |
+| M12 Language server stage 1 | Done | `spp-ls`, a server that uses a stock clangd as a child process (no fork). |
 | M13 Language server stage 2 | Done | One test for each feature. |
 | M14 Language server stage 3 | Done | Background index, `spp/toScript`, rename across the workspace, `sppc --compile-commands`. |
 
@@ -355,6 +355,27 @@ Debug information:
 
 `spp-ls` (S14b, design 10.1, M12 to M14) is a stdio LSP 3.17 server. The code is in `src/ls/`. The extension in `editors/vscode/` starts it.
 
+### Editor setup: two servers (S31, DECISIONS 18)
+
+An editor uses two language servers on one project:
+
+- The official clangd extension serves the C++ files. It reads the `compile_commands.json` of the project build.
+- The `spp` extension and `spp-ls` serve only the `.spp` files. `spp-ls` is not a transparent clangd proxy. It does not answer for C++ files.
+
+Steps:
+
+1. Install the clangd extension (`llvm-vs-code-extensions.vscode-clangd`) and `clangd`. Set it up for the C++ build as usual.
+2. Build `spp-ls` and install the extension in `editors/vscode/`. Put the `spp-ls` arguments in `spp.server.args`.
+3. Optional, for workspace symbols and the background index of scripts: run `sppc <file.spp>... --gen N --out-dir DIR --compile-commands CDIR`. Give `--compile-commands-dir CDIR` to `spp-ls`.
+4. Add `.cache/` to the ignore list of the project (for example in `.gitignore`).
+
+Both servers can use the same project and the same `.cache/` directory. They do not disturb each other:
+
+- The C++ clangd stores its index in `<dir of compile_commands.json>/.cache/clangd/index/`.
+- The clangd child of `spp-ls` has its own database directory `.cache/spp/clangd/` in the first workspace folder. The directory has a link to the real `compile_commands.json`. So its index is in `.cache/spp/clangd/.cache/clangd/index/`. The extra nesting is accepted. `XDG_CACHE_HOME` does not move this index (see DECISIONS 18).
+- The symbol index of `spp-ls` is in `.cache/spp/index/`.
+- The C++ clangd does not get an open `.spp` document, and `spp-ls` does not get a C++ document. A diagnostic of one server never shows in the files of the other.
+
 How it works:
 
 - The server owns the text of each open `.spp` document. On each change it runs `sppc::analyze()`. It gets the parse errors, the facts (classes, members), the generated C++ and the source map.
@@ -392,6 +413,7 @@ From C++ to the script:
 Limits:
 
 - After a translation error, clangd keeps the last good generated C++. The server keeps the script text of that C++ and maps each position through the edit (common prefix and suffix). A position inside the edit has no mapping. The old clangd diagnostics are dropped until the next good translation.
+- clangd does not publish again when a new version has the same diagnostics. The server keeps the last raw clangd diagnostics of each document. After each edit it maps them again to the new script text. A new publish of clangd replaces them.
 - A `#line` fallback has the line only. The column is the column of the same word in the script line, or the first non-blank column.
 - Two open scripts that import the same script publish diagnostics for it. The last publish wins.
 

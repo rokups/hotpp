@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "clangd_process.h"
 #include "integration/ls/ls_client.h"
 #include "spp/clang_files_backend.h"
 #include "spp/sppc_lib.h"
@@ -135,6 +136,35 @@ TEST(LanguageServer, ClangdTypeErrorIsAtTheScriptLine)
         EXPECT_EQ(msg.find("int32_t"), std::string::npos) << msg;
     }
     EXPECT_TRUE(found) << n.dump();
+}
+
+// clangd does not publish again when a new version has the same diagnostics. An edit that gives
+// the same C++ must not remove the clangd diagnostics. The positions follow the edit.
+TEST(LanguageServer, ClangdDiagnosticStaysAfterAnEditThatGivesTheSameCpp)
+{
+    REQUIRE_CLANGD();
+    std::string text = kScript;
+    text.replace(text.find("this.hp = this.hp + amount;"), 27, "int x = \"abc\";");
+    Session s(true, text);
+    const json first = s.diagnostics([](const json& d) { return has_source(d, "clangd"); });
+    ASSERT_FALSE(first.is_null()) << "no clangd diagnostics";
+    // Extra spaces in a field line, away from the error. The C++ may stay equal.
+    std::string t2 = text;
+    t2.replace(t2.find("float hp"), 8, "float   hp");
+    s.client->change(s.uri, 2, t2);
+    // The last publish of the script must still have the diagnostic.
+    json last;
+    for (;;) {
+        const json n = s.client->wait_notification("textDocument/publishDiagnostics",
+                                                   [&](const json& p) { return p.value("uri", std::string()) == s.uri; }, 5000);
+        if (n.is_null()) break;
+        last = n;
+    }
+    ASSERT_FALSE(last.is_null());
+    bool found = false;
+    for (const json& d : last["params"]["diagnostics"])
+        if (d.value("source", "") == "clangd" && d["range"]["start"]["line"] == 11) found = true;
+    EXPECT_TRUE(found) << last.dump();
 }
 
 // ------------------------------------------------------------------ M13: navigation and editing
@@ -556,6 +586,108 @@ TEST(LanguageServer, BackgroundIndexFindsAScriptSymbolInAGeneratedFile)
     ASSERT_FALSE(found.is_null()) << "the index has no script symbol";
     EXPECT_EQ(found["name"], "Player.heal");
     EXPECT_EQ(found["location"]["range"]["start"]["line"], 10);
+}
+
+// S31 (DECISIONS 18): a C++ clangd (the editor extension) and spp-ls run on one project. The
+// project has one compile_commands.json and one ".cache" directory. The clangd child of spp-ls
+// keeps its index in ".cache/spp/clangd", so it does not mix with the index of the C++ clangd.
+TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOther)
+{
+    REQUIRE_CLANGD();
+    namespace fs = std::filesystem;
+    TempDir dir;
+    const fs::path root = dir.path();
+    const std::string script = (root / "player.spp").string();
+    write_file(script, kScript);
+    sppc::TranslateOptions o;
+    o.script_text = kScript;
+    o.script_name = script;
+    o.generation = 1;
+    o.include_dirs = {SPP_SOURCE_DIR "/include", SPP_SOURCE_DIR "/example/engine"};
+    const sppc::TranslateResult t = sppc::translate(o);
+    ASSERT_TRUE(t.ok) << t.diagnostics;
+    const std::string gen = (root / "player.g1.cpp").string();
+    write_file(gen, t.cpp);
+    const std::string cpp_text = "int cpp_function() { return 1; }\nint cpp_bad() { int x = \"abc\"; return x; }\n";
+    const std::string cpp = (root / "main.cpp").string();
+    write_file(cpp, cpp_text);
+    spp::ClangFilesOptions co;
+    co.include_dirs = o.include_dirs;
+    write_file(root / "compile_commands.json",
+               spp::compile_commands_json({{root.string(), gen, spp::compile_command(co, gen, gen + ".so"), gen + ".so"},
+                                           {root.string(), cpp, spp::compile_command(co, cpp, cpp + ".so"), cpp + ".so"}}));
+
+    // The C++ clangd, as the clangd extension starts it.
+    std::mutex mu;
+    std::vector<json> published;
+    spp::ls::ClangdProcess cpp_clangd;
+    ASSERT_TRUE(cpp_clangd.start(SPP_CLANGD_PATH, {"--log=error", "--background-index", "--compile-commands-dir=" + root.string()}, "",
+                                 [&](const json& m) {
+                                     if (m.value("method", std::string()) != "textDocument/publishDiagnostics") return;
+                                     std::lock_guard<std::mutex> lock(mu);
+                                     published.push_back(m["params"]);
+                                 }));
+    const json init = cpp_clangd.request("initialize", {{"processId", nullptr}, {"rootUri", uri_of(root.string())}, {"capabilities", json::object()}}, 30000);
+    ASSERT_TRUE(init.contains("result")) << init.dump();
+    cpp_clangd.notify("initialized", json::object());
+    cpp_clangd.notify("textDocument/didOpen", {{"textDocument", {{"uri", uri_of(cpp)}, {"languageId", "cpp"}, {"version", 1}, {"text", cpp_text}}}});
+
+    // spp-ls on the same project.
+    spp::ls::ServerOptions opt = options(dir, true);
+    opt.include_dirs.clear();
+    opt.compile_commands_dir = root.string();
+    LsClient client(opt);
+    client.initialize(uri_of(root.string()));
+    std::string bad = kScript;
+    bad.replace(bad.find("this.hp = this.hp + amount;"), 27, "int x = \"abc\";");
+    write_file(script, bad);
+    client.open(uri_of(script), bad);
+
+    // Both servers give their own diagnostics.
+    const json spp_diag = client.wait_notification("textDocument/publishDiagnostics", [&](const json& p) {
+        return p.value("uri", std::string()) == uri_of(script) && has_source(p["diagnostics"], "clangd");
+    });
+    EXPECT_FALSE(spp_diag.is_null()) << "spp-ls has no clangd diagnostic";
+    bool cpp_diag = false;
+    for (int i = 0; i < 100 && !cpp_diag; ++i) {
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            for (const json& p : published)
+                if (p.value("uri", std::string()) == uri_of(cpp) && !p["diagnostics"].empty()) cpp_diag = true;
+        }
+        if (!cpp_diag) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    EXPECT_TRUE(cpp_diag) << "the C++ clangd has no diagnostic";
+    {
+        // The C++ clangd never gets a diagnostic for the script, and spp-ls never for main.cpp.
+        std::lock_guard<std::mutex> lock(mu);
+        for (const json& p : published) EXPECT_EQ(p.value("uri", std::string()).find(".spp"), std::string::npos) << p.dump();
+    }
+
+    // Both background indexes run. The shards of the two clangd processes are in two directories.
+    const fs::path cpp_index = root / ".cache" / "clangd" / "index";
+    const fs::path spp_index = root / ".cache" / "spp" / "clangd" / ".cache" / "clangd" / "index";
+    auto has_shard = [](const fs::path& dir_, const std::string& stem) {
+        std::error_code ec;
+        for (const auto& e : fs::directory_iterator(dir_, ec))
+            if (e.path().filename().string().rfind(stem, 0) == 0) return true;
+        return false;
+    };
+    bool ready = false;
+    for (int i = 0; i < 120 && !ready; ++i) {
+        ready = has_shard(cpp_index, "main.cpp.") && has_shard(spp_index, "main.cpp.");
+        if (!ready) std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+    EXPECT_TRUE(ready) << "a background index is missing";
+    EXPECT_TRUE(fs::exists(root / ".cache" / "spp" / "clangd" / "compile_commands.json"));
+
+    // The C++ clangd still answers for C++, and spp-ls still answers for the script.
+    const json sym = cpp_clangd.request("workspace/symbol", {{"query", "cpp_function"}}, 30000);
+    ASSERT_TRUE(sym.contains("result")) << sym.dump();
+    EXPECT_FALSE(sym["result"].empty()) << sym.dump();
+    const json hover = client.request("textDocument/hover", doc_pos(uri_of(script), 3, 11));
+    EXPECT_TRUE(hover.contains("result")) << hover.dump();
+    cpp_clangd.stop();
 }
 
 // ------------------------------------------------------------------ S28: saved symbol index

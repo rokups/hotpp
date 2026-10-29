@@ -31,7 +31,7 @@ This extension gives support for S++ scripts (`.spp`, language id `spp`).
 
 If the binary is missing, the extension shows one warning. Highlighting still works.
 
-The build makes `build/spp-ls`. It is a proxy in front of a stock `clangd` (see `DECISIONS.md`, item 13).
+The build makes `build/spp-ls`. It uses a stock `clangd` as a child process (see `DECISIONS.md`, items 13 and 18).
 `clangd` must be in `PATH`, or you give its path with `--clangd`.
 Put the server arguments in `spp.server.args`. For example:
 
@@ -52,6 +52,22 @@ Put the server arguments in `spp.server.args`. For example:
 The client can also give `includeDirs`, `clangd` and `compileCommandsDir` in `initializationOptions`.
 The extension expands `${workspaceFolder}` in `spp.server.path` and in `spp.server.args`.
 It is the path of the first workspace folder. For example: `"-I", "${workspaceFolder}/include"`.
+
+## Use with the clangd extension
+
+This extension and `spp-ls` serve only `.spp` files. The official clangd extension serves the C++ files.
+Install both extensions. They run side by side on one project.
+
+1. Install the clangd extension and `clangd`. Set it up for the C++ build as usual.
+2. Install this extension and set `spp.server.path` and `spp.server.args`.
+3. Optional: run `sppc <file.spp>... --gen N --out-dir DIR --compile-commands CDIR`.
+   Add `"--compile-commands-dir", "CDIR"` to `spp.server.args`.
+4. Add `.cache/` to the ignore list of the project.
+
+The two servers can share the `.cache/` directory. The index of the clangd extension is in
+`.cache/clangd/index/` next to its `compile_commands.json`. The clangd child of `spp-ls` has its own
+index in `.cache/spp/clangd/.cache/clangd/index/`. The index of `spp-ls` is in `.cache/spp/index/`.
+See "Language server" in the top `README.md`.
 
 ## Install for development
 

@@ -157,6 +157,9 @@ struct Doc {
     int sent_version = 0;  // the last clangd version
     bool in_clangd = false;
     json clang_diags = json::array();  // the mapped clangd diagnostics of gen_version
+    // The last diagnostics of clangd as clangd sent them. clangd does not send them again when a
+    // new version has the same diagnostics. So update() maps them again to the new text.
+    json raw_clang_diags = json::array();
     // The clangd diagnostics of gen_version that come from imported scripts, by the URI of the script.
     std::map<std::string, json> clang_import_diags;
     // The URIs of the imported scripts that got translator errors from this document.
@@ -298,7 +301,9 @@ private:
     // ---- clangd
     void read_compile_commands();
     void start_clangd(const json& init);
+    std::string private_cdb_dir() const;
     void on_clangd_notification(const json& msg);
+    void map_clangd_diagnostics(Doc& d);
     std::optional<json> clangd_result(const std::string& method, json params, int timeout_ms = 60000)
     {
         if (!clangd_ || !clangd_->running()) return std::nullopt;
@@ -402,12 +407,31 @@ void Server::read_compile_commands()
     }
 }
 
+// clangd stores its background index in "<dir of compile_commands.json>/.cache/clangd/index".
+// XDG_CACHE_HOME does not change this. The child of spp-ls gets its own directory under
+// ".cache/spp/clangd" with a link to the real compile_commands.json. So its index does not mix
+// with the index of a C++ clangd on the same database (DECISIONS 18).
+std::string Server::private_cdb_dir() const
+{
+    if (roots_.empty()) return opt_.compile_commands_dir;
+    std::error_code ec;
+    const fs::path dir = fs::path(roots_[0]) / ".cache" / "spp" / "clangd";
+    fs::create_directories(dir, ec);
+    if (ec) return opt_.compile_commands_dir;
+    const fs::path link = dir / "compile_commands.json";
+    const fs::path target = fs::absolute(fs::path(opt_.compile_commands_dir) / "compile_commands.json", ec);
+    if (ec || !fs::exists(target)) return opt_.compile_commands_dir;
+    fs::remove(link, ec);
+    fs::create_symlink(target, link, ec);
+    return ec ? opt_.compile_commands_dir : dir.string();
+}
+
 void Server::start_clangd(const json& init)
 {
     if (opt_.clangd.empty()) return;
     std::vector<std::string> args = {opt_.clangd_log.empty() ? "--log=error" : "--log=info", "--header-insertion=never", "-j=2"};
     if (!opt_.compile_commands_dir.empty()) {
-        args.push_back("--compile-commands-dir=" + opt_.compile_commands_dir);
+        args.push_back("--compile-commands-dir=" + private_cdb_dir());
         args.push_back("--background-index");
     } else {
         args.push_back("--background-index=false");
@@ -528,17 +552,16 @@ void Server::update(Doc& d)
         if (!cpp.empty()) {
             d.gen = Text(cpp);
             d.map = std::make_shared<const sppc::SourceMap>(d.facts.source_map);
-            d.clang_diags = json::array();
-            d.clang_import_diags.clear();
             d.gen_script = d.text;
             d.gen_version = d.sent_version + 1;
             send_generated(d, cpp);
         }
-        else {  // the old positions do not fit the new text
-            d.clang_diags = json::array();
-            d.clang_import_diags.clear();
-        }
+        d.clang_diags = json::array();
+        d.clang_import_diags.clear();
         d.set_edit();
+        // clangd sends no new diagnostics when the new version has the same ones. So the last
+        // ones go to the new text. A new publish of clangd replaces them.
+        if (!cpp.empty()) map_clangd_diagnostics(d);
         send_client(publish_message(d));
         publish_imports(d);
     }
@@ -658,19 +681,13 @@ json Server::publish_message(const Doc& d) const
             {"params", {{"uri", d.uri}, {"diagnostics", diags}}}};
 }
 
-void Server::on_clangd_notification(const json& msg)
+// Maps the raw clangd diagnostics of the document to the script text. The caller holds docs_mutex_.
+void Server::map_clangd_diagnostics(Doc& d)
 {
-    if (msg.value("method", std::string()) != "textDocument/publishDiagnostics") return;
-    const json& p = msg["params"];
-    std::lock_guard<std::mutex> lock(docs_mutex_);
-    const auto it = gen_docs_.find(p.value("uri", std::string()));
-    if (it == gen_docs_.end()) return;
-    Doc& d = *it->second;
-    // A diagnostic of a completion text (or of an old text) is not shown.
-    if (p.contains("version") && p["version"].is_number_integer() && p["version"].get<int>() != d.gen_version) return;
+    const json raw = d.raw_clang_diags;
     json out = json::array();
     std::map<std::string, json> from_imports;
-    for (const json& g : p.value("diagnostics", json::array())) {
+    for (const json& g : raw) {
         Pos b, e;
         const auto s = to_script(d, g["range"]["start"]);
         if (!s) {
@@ -725,6 +742,20 @@ void Server::on_clangd_notification(const json& msg)
     }
     d.clang_diags = std::move(out);
     d.clang_import_diags = std::move(from_imports);
+}
+
+void Server::on_clangd_notification(const json& msg)
+{
+    if (msg.value("method", std::string()) != "textDocument/publishDiagnostics") return;
+    const json& p = msg["params"];
+    std::lock_guard<std::mutex> lock(docs_mutex_);
+    const auto it = gen_docs_.find(p.value("uri", std::string()));
+    if (it == gen_docs_.end()) return;
+    Doc& d = *it->second;
+    // A diagnostic of a completion text (or of an old text) is not shown.
+    if (p.contains("version") && p["version"].is_number_integer() && p["version"].get<int>() != d.gen_version) return;
+    d.raw_clang_diags = p.value("diagnostics", json::array());
+    map_clangd_diagnostics(d);
     send_client(publish_message(d));
     publish_imports(d);
 }
