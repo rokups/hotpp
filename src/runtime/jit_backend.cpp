@@ -230,7 +230,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
     timings_.translate_ms = ms_since(t0);
     if (!tr.ok) {
         r.error = opt_.raw_diagnostics ? tr.diagnostics
-                                       : sppc::rewrite_translator_diagnostic(tr.diagnostics, {{source.name, source.text}});
+                                       : sppc::rewrite_translator_diagnostic(tr.diagnostics, sppc::script_texts(source.name, source.text, tr));
         return r;
     }
 

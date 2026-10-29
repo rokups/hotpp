@@ -165,7 +165,7 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation,
     sppc::TranslateResult tr = sppc::translate(to, *opt_.session);
     if (!tr.ok) {
         error = opt_.raw_diagnostics ? tr.diagnostics
-                                     : sppc::rewrite_translator_diagnostic(tr.diagnostics, {{source.name, source.text}});
+                                     : sppc::rewrite_translator_diagnostic(tr.diagnostics, sppc::script_texts(source.name, source.text, tr));
         return false;
     }
     if (!write_text(cpp_path, tr.cpp)) {

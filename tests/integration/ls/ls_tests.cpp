@@ -178,6 +178,57 @@ TEST(LanguageServer, DefinitionOfAScriptMethodIsInTheScript)
     EXPECT_EQ(loc["range"]["start"]["character"], 9) << r.dump();
 }
 
+// The imported script of the next two tests. 0-based lines: 2 hp, 3 hp again, 5 Boost.
+const char* const kImported =
+    "using \"Actor.h\";\n"
+    "class Base : Actor {\n"
+    "    float hp = 1.0;\n"
+    "    float hp = 2.0;\n"
+    "\n"
+    "    void Boost() { }\n"
+    "}\n";
+
+const char* const kImporter =
+    "using \"base.spp\";\n"
+    "class Kid : Base {\n"
+    "    void Go() { this.Boost(); }\n"
+    "}\n";
+
+// A translator error in an imported script is published for that script, at its own line and
+// column. The importing script gets no error at that position.
+TEST(LanguageServer, TranslatorErrorInAnImportedScriptIsPublishedForThatScript)
+{
+    Session s(false, kImporter);
+    write_file(s.dir.path() / "base.spp", kImported);
+    s.client->change(s.uri, 2, kImporter);
+    const std::string base_uri = uri_of((s.dir.path() / "base.spp").lexically_normal().string());
+    const json n = s.client->wait_notification("textDocument/publishDiagnostics", [&](const json& p) {
+        return p.value("uri", std::string()) == base_uri && !p["diagnostics"].empty();
+    });
+    ASSERT_FALSE(n.is_null()) << "no diagnostics for the imported script";
+    const json& d = n["params"]["diagnostics"][0];
+    EXPECT_EQ(d["range"]["start"]["line"], 3) << n.dump();
+    EXPECT_EQ(d["range"]["start"]["character"], 10) << n.dump();
+    EXPECT_EQ(d["source"], "spp");
+}
+
+// The definition of a method of an imported script is in that script, at the real line and column.
+TEST(LanguageServer, DefinitionInAnImportedScriptIsInThatScript)
+{
+    REQUIRE_CLANGD();
+    std::string imported = kImported;
+    imported.replace(imported.find("    float hp = 2.0;\n"), 20, "");
+    Session s(true, kImporter);
+    write_file(s.dir.path() / "base.spp", imported);
+    s.client->change(s.uri, 2, kImporter);
+    const json r = s.client->request("textDocument/definition", doc_pos(s.uri, 2, 21));
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
+    const json& loc = r["result"][0];
+    EXPECT_EQ(loc["uri"], uri_of((s.dir.path() / "base.spp").lexically_normal().string())) << r.dump();
+    EXPECT_EQ(loc["range"]["start"]["line"], 4) << r.dump();
+    EXPECT_EQ(loc["range"]["start"]["character"], 9) << r.dump();
+}
+
 TEST(LanguageServer, DefinitionOfANativeMethodIsInTheNativeHeader)
 {
     REQUIRE_CLANGD();

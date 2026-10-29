@@ -131,7 +131,7 @@ Args parse_args(int argc, char** argv)
 // rewritten compiler diagnostic. --raw-diagnostics prints the text as it is.
 void print_diagnostics(const Args& args, const sppc::TranslateOptions& opt, const sppc::TranslateResult& r)
 {
-    sppc::ScriptTexts scripts{{opt.script_name, opt.script_text}};
+    sppc::ScriptTexts scripts = sppc::script_texts(opt.script_name, opt.script_text, r);
     scripts.insert(scripts.end(), opt.modules.begin(), opt.modules.end());
     for (const std::string* text : {&r.diagnostics, &r.warnings}) {
         const std::string out = args.raw_diagnostics ? *text : sppc::rewrite_translator_diagnostic(*text, scripts);

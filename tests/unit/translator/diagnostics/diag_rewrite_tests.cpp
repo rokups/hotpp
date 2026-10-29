@@ -237,6 +237,24 @@ TEST(DiagRewrite, WithoutSegmentTheColumnStaysOne)
               "a.spp:2:1: error: expected ';'\n");
 }
 
+// A segment of an imported script gives the real column in that script. The map holds the text
+// of the script, so the caller does not list it.
+TEST(DiagRewrite, SourceMapGivesTheColumnInAnImportedScript)
+{
+    const std::string script = "using \"b.spp\";\nclass K : B { }\n";
+    const std::string imported = "class B {\n  int f() { return total; }\n}\n";
+    const std::string gen = "#line 2 \"b.spp\"\n    int f() { return total; }\n";
+    sppc::SourceMap map;
+    const uint32_t id = map.add_file("b.spp", imported);
+    map.add({static_cast<uint32_t>(imported.find("total")), 5, static_cast<uint32_t>(gen.find("total")), 5, id});
+    map.build(script, gen);
+    const std::string in = "b.spp:2:" + std::to_string(gen.find("total") - gen.rfind('\n', gen.find("total")))
+                           + ": error: use of undeclared identifier 'total'\n    2 | generated\n      | ^\n";
+    EXPECT_EQ(rewrite_diagnostic(in, {{"a.spp", script}}, {{"a.cpp", gen}}, &map),
+              "b.spp:2:20: error: unknown name 'total': it is not a local, a parameter, a field or a type\n"
+              "    2 |   int f() { return total; }\n");
+}
+
 TEST(DiagRewrite, TranslatorDiagnosticGetsSnippetAndCount)
 {
     const std::string script = "class A {\n  int x = ;\n}\n";

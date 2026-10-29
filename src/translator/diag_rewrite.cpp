@@ -424,11 +424,15 @@ int script_column(const SourceMap& map, const LineIndex& index, const std::vecto
 {
     auto it = index.find({file, line});
     if (it == index.end() || col < 1) return 0;
+    // The file number in the map: 0 is the main script, else an imported script.
+    uint32_t want = 0;
+    for (size_t i = 0; i < map.files().size(); ++i)
+        if (map.files()[i].name == file) want = static_cast<uint32_t>(i + 1);
     for (int physical : it->second) {
         const size_t width = gen[static_cast<size_t>(physical) - 1].size();
         for (size_t c = static_cast<size_t>(col); c <= width && c < static_cast<size_t>(col) + 80; ++c) {
-            const auto p = map.map_to_script(physical, static_cast<int>(c));
-            if (p && p->line == line) return p->col;
+            const auto p = map.locate(physical, static_cast<int>(c));
+            if (p && p->file == want && p->pos.line == line) return p->pos.col;
         }
     }
     return 0;
@@ -447,6 +451,12 @@ std::string rewrite_diagnostic(const std::string& text, const ScriptTexts& scrip
         bool nl = true;
         script_lines[s.first] = split_lines(s.second, nl);
     }
+    // The imported scripts of the source map. The caller needs not list them.
+    if (map)
+        for (const SourceFile& f : map->files()) {
+            bool nl = true;
+            if (!script_lines.count(f.name)) script_lines[f.name] = split_lines(f.text, nl);
+        }
 
     std::map<std::string, std::vector<std::string>> generated_lines;
     for (const auto& g : generated) {

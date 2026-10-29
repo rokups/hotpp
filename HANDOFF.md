@@ -93,7 +93,7 @@ Inheritance (S6, S20a):
 - The shell of a child derives from the shell of the parent. A family has one slot numbering. `virtual` adds a slot (`Owner__f_virt`). `override` fills it. A name that hides a parent function needs `new`. `super.f()` calls the parent directly.
 - `is` and `as` walk the `super` records by name. A native type uses `dynamic_cast`. `as` of a raw pointer gives a raw shell pointer: use `var`. A `[value]` class is an error.
 - A reload that changes the script parent is rejected. Multiple script inheritance is not supported. Only the root of a family can have native interface bases (design 4.5).
-- A script parent in another script (`using "parent.spp";`) merges into the generation of the child. An imported script cannot have module variables or convert hooks. A class name in two scripts is an error. The source map has the main script only.
+- A script parent in another script (`using "parent.spp";`) merges into the generation of the child. An imported script cannot have module variables or convert hooks. A class name in two scripts is an error. The source map has a file number for each imported script (`SourceSegment::file`, `SourceMap::files()`, `SourceMap::locate()`), so errors in an imported script have the real file, line and column.
 
 Native interface bases (S8b): the first base is primary. Each virtual of each base gets one slot (primary first). The same signature in two bases is an error. `F()` and `F() const` ambiguity, `final`, a duplicate base, a script class as interface, and an interface without a default constructor are errors. A changed list of bases is rejected.
 
@@ -112,7 +112,7 @@ Other limits:
 - Nesting limits: 64 nested statements, 15 nested lambdas, 256 operators in one expression.
 - Shipping mode: generation 1 only, no slot file. A type error shows in the C++ compile of the generated file. Script type and class names must be unique over all shipped scripts. `onReload` and `convert` never run.
 - Language server: after a translation error, clangd keeps the last good C++. The column of a `#line` fallback is 0.
-- Diagnostic columns: the rewriter uses the source map for the script column. A column in text that the translator writes by itself (for example `spp::deref(`) has no segment: the rewriter then takes the next mapped column of the same line, or 1. An imported script has no segments, so its column is 1.
+- Diagnostic columns: the rewriter uses the source map for the script column. A column in text that the translator writes by itself (for example `spp::deref(`) has no segment: the rewriter then takes the next mapped column of the same line, or 1.
 
 ## Parser
 The grammar uses lexy. Only the files in `src/translator/parser/` include lexy headers. Keep each grammar in its own file (they compile slowly: about 3 to 6 s each in Debug).

@@ -589,7 +589,7 @@ struct Out {
     {
         const uint32_t base = static_cast<uint32_t>(s.size());
         for (const auto& g : em.segments()) {
-            if (g.pos >= script.size()) continue;  // an imported script: no segment
+            if (g.pos >= script.size()) continue;
             const std::string_view gen(em.text().data() + g.gen_begin, g.gen_len);
             sppc::SourceSegment seg;
             seg.gen_begin = base + g.gen_begin;
@@ -617,7 +617,7 @@ struct Out {
                                            const std::string& script, size_t script_from,
                                            const std::string& script_name)
     {
-        if (script_from >= script.size()) return {script_from, head_from};  // an imported script
+        if (script_from >= script.size()) return {script_from, head_from};
         const size_t g = sppc::find_word(head, static_cast<uint32_t>(head_from), gen_name);
         const size_t p = sppc::find_word(script, static_cast<uint32_t>(script_from), script_name);
         if (gen_name.empty() || script_name.empty() || head.compare(g, gen_name.size(), gen_name) != 0 ||
@@ -1483,6 +1483,13 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
     // reads the imported text after a blank prefix, so its positions come after the earlier
     // texts. The map gives the file and the line of each position (LineMap::add_file).
     std::deque<std::string> import_texts;  // the parsed texts; the AST spans point into them
+    // The imported scripts in the order of reading: the offset of the text in the map, the file
+    // name and the text. The source map gets a file number for each (the first is 1).
+    struct ImportedFile {
+        uint32_t base;
+        std::string file, text;
+    };
+    std::vector<ImportedFile> imported_files;
     {
         auto is_script = [](const Import& im) {
             return im.path.size() > 4 && im.path.compare(im.path.size() - 4, 4, ".spp") == 0;
@@ -1532,6 +1539,8 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 const uint32_t base = next_base;
                 next_base += static_cast<uint32_t>(text.size()) + 1;
                 map.add_file(base, text, file);
+                imported_files.push_back({base, file, text});
+                res.imports.emplace_back(file, text);
                 import_texts.push_back(std::string(base, ' ') + text);
                 Script is = parse_structure(import_texts.back(), map);
                 if (!is.vars.empty())
@@ -1576,6 +1585,14 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             sc.stubs = std::move(merged);
         }
     }
+    // The main script and the imported scripts at the offsets of the map. The positions of the
+    // AST point into this text, so the emitter finds the names of an imported script in it.
+    std::string all_text = in.script_text;
+    for (const ImportedFile& f : imported_files) {
+        all_text.resize(f.base, ' ');
+        all_text += f.text;
+    }
+
     // The file name of a position for "#line": the imported script or the script itself.
     auto file_at = [&](uint32_t pos) -> const std::string& {
         const std::string& f = map.file(pos);
@@ -2232,7 +2249,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             sppc::ast::Emitter em(map, opt.input);
             sppc::ast::emit_stmts(m.body.stmts, em, 1);
             em.finish();
-            o.w_emitted(em, in.script_text);
+            o.w_emitted(em, all_text);
             reset();
             o.w("}\n\n");
         };
@@ -2259,7 +2276,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             sppc::ast::Emitter em(map, opt.input);
             sppc::ast::emit_stmts(m->body.stmts, em, 1);
             em.finish();
-            o.w_emitted(em, in.script_text);
+            o.w_emitted(em, all_text);
             reset();
             o.w("}\n\n");
         }
@@ -2880,7 +2897,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         o.w("struct " + S + (pinfo ? " : " + pinfo->S : std::string()) + " {\n");
         for (const Field& f : cd.fields) {
             const std::string decl = "    " + f.type + " " + f.name + ";\n";
-            if (f.pos != 0) o.name_segment(decl, 4 + f.type.size(), f.name, in.script_text, f.pos, f.name);
+            if (f.pos != 0) o.name_segment(decl, 4 + f.type.size(), f.name, all_text, f.pos, f.name);
             o.w(decl);
         }
         if (cd.fields.empty() && !pinfo) o.w("    char unused_;\n");
@@ -2976,7 +2993,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         for (const Method& m : cd.methods)
             if (!m.overrides_virtual && hook_of(m) != Hook::Convert) {
                 const std::string decl = "static " + fn_ret(m) + " " + P + m.name + "(" + shell + "* self" + body_decl(m) + ");\n";
-                o.head_segments(decl, P + m.name, m, in.script_text);
+                o.head_segments(decl, P + m.name, m, all_text);
                 o.w(decl);
             }
         o.w("\n");
@@ -3154,7 +3171,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             std::string head = "static " + ret + " " + sym + "(";
             if (is_fn) head += shell + "* self" + body_decl(m);
             else head += B + "* a" + param_decl(m);
-            o.head_segments(head, sym, m, in.script_text);
+            o.head_segments(head, sym, m, all_text);
             o.w(head + ")\n{\n");
             if (!is_fn) o.w("    [[maybe_unused]] auto* self = static_cast<" + shell + "*>(a);\n");
             o.w("    if (SPP_UNLIKELY(spp::active_generation != GEN)) {\n");
@@ -3166,7 +3183,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             sppc::ast::Emitter em(map, opt.input);
             sppc::ast::emit_stmts(m.body.stmts, em, 1);
             em.finish();
-            o.w_emitted(em, in.script_text);
+            o.w_emitted(em, all_text);
             reset();
             o.w("}\n\n");
         };
@@ -3185,7 +3202,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             sppc::ast::Emitter em(map, opt.input);
             sppc::ast::emit_stmts(m.body.stmts, em, 1);
             em.finish();
-            o.w_emitted(em, in.script_text);
+            o.w_emitted(em, all_text);
             reset();
             o.w("}\n\n");
         };
@@ -3348,7 +3365,18 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
 
     if (uses_format) o.insert(format_include_pos, in.format_lib == "fmt" ? "#include <fmt/format.h>" : "#include <format>");
     res.cpp = o.s;
-    for (const auto& g : o.segs) res.source_map.add(g);
+    // A segment of an imported script holds a position of the map. It becomes the file number
+    // and the offset in the text of that file.
+    for (const ImportedFile& f : imported_files) res.source_map.add_file(f.file, f.text);
+    for (sppc::SourceSegment g : o.segs) {
+        for (size_t i = imported_files.size(); i-- > 0;) {
+            if (g.script_begin < imported_files[i].base) continue;
+            g.file = static_cast<uint32_t>(i + 1);
+            g.script_begin -= imported_files[i].base;
+            break;
+        }
+        res.source_map.add(g);
+    }
     res.source_map.build(in.script_text, res.cpp);
     std::ostringstream mf;
     for (const auto& e : new_manifest) mf << e.cls << "::" << e.fn << " " << e.gen << "\n";
@@ -3393,13 +3421,16 @@ void SourceMap::build(std::string_view script, std::string_view generated)
     by_script_.resize(segments_.size());
     for (size_t i = 0; i < by_script_.size(); ++i) by_script_[i] = static_cast<uint32_t>(i);
     std::stable_sort(by_script_.begin(), by_script_.end(), [&](uint32_t a, uint32_t b) {
-        return segments_[a].script_begin < segments_[b].script_begin;
+        return std::tie(segments_[a].file, segments_[a].script_begin) <
+               std::tie(segments_[b].file, segments_[b].script_begin);
     });
-    script_lines_ = line_starts(script);
+    script_lines_.clear();
+    script_lines_.push_back(line_starts(script));
+    for (const SourceFile& f : files_) script_lines_.push_back(line_starts(f.text));
     gen_lines_ = line_starts(generated);
 }
 
-std::optional<SourcePos> SourceMap::map_to_script(int gen_line, int gen_col) const
+std::optional<SourceLocation> SourceMap::locate(int gen_line, int gen_col) const
 {
     const auto off = offset_of(gen_lines_, gen_line, gen_col);
     if (!off || segments_.empty()) return std::nullopt;
@@ -3409,24 +3440,43 @@ std::optional<SourcePos> SourceMap::map_to_script(int gen_line, int gen_col) con
     if (it == segments_.begin()) return std::nullopt;
     --it;
     if (*off >= it->gen_begin + it->gen_len) return std::nullopt;
+    if (it->file >= script_lines_.size()) return std::nullopt;
     const uint32_t d = *off - it->gen_begin;
-    return pos_of(script_lines_, it->script_begin + (it->script_len == it->gen_len ? d : 0));
+    return SourceLocation{it->file, pos_of(script_lines_[it->file], it->script_begin + (it->script_len == it->gen_len ? d : 0))};
+}
+
+std::optional<SourcePos> SourceMap::map_to_script(int gen_line, int gen_col) const
+{
+    const auto loc = locate(gen_line, gen_col);
+    if (!loc || loc->file != 0) return std::nullopt;
+    return loc->pos;
 }
 
 std::optional<SourcePos> SourceMap::map_to_generated(int script_line, int script_col) const
 {
-    const auto off = offset_of(script_lines_, script_line, script_col);
+    return map_to_generated(0, script_line, script_col);
+}
+
+std::optional<SourcePos> SourceMap::map_to_generated(uint32_t file, int script_line, int script_col) const
+{
+    if (file >= script_lines_.size()) return std::nullopt;
+    const auto off = offset_of(script_lines_[file], script_line, script_col);
     if (!off || by_script_.empty()) return std::nullopt;
-    // The segments that start at or before the offset: the nearest one that holds the offset.
-    auto it = std::upper_bound(by_script_.begin(), by_script_.end(), *off,
-                               [&](uint32_t o, uint32_t i) { return o < segments_[i].script_begin; });
+    // The segments of the file that start at or before the offset: the nearest one that holds it.
+    auto it = std::upper_bound(by_script_.begin(), by_script_.end(), std::make_pair(file, *off),
+                               [&](const std::pair<uint32_t, uint32_t>& key, uint32_t i) {
+                                   return key < std::make_pair(segments_[i].file, segments_[i].script_begin);
+                               });
     for (int tries = 0; it != by_script_.begin() && tries < 16; ++tries) {
         --it;
         const SourceSegment& g = segments_[*it];
+        if (g.file != file) break;
         if (*off >= g.script_begin + g.script_len) continue;
         // Several segments can start at the same offset: take the first one in the generated text.
         auto first = it;
-        while (first != by_script_.begin() && segments_[*(first - 1)].script_begin == g.script_begin) --first;
+        while (first != by_script_.begin() && segments_[*(first - 1)].file == file &&
+               segments_[*(first - 1)].script_begin == g.script_begin)
+            --first;
         const SourceSegment& f = segments_[*first];
         const uint32_t d = *off - f.script_begin;
         return pos_of(gen_lines_, f.gen_begin + (f.script_len == f.gen_len ? d : 0));

@@ -2,6 +2,7 @@
 // classes of another script module to the generation. The child can derive from them.
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <string>
 
 #include "spp/sppc_lib.h"
@@ -46,14 +47,89 @@ TEST(ScriptImportTranslation, ChildDerivesFromAClassOfAnotherModule)
     EXPECT_NE(r.slots_out.find("Base::Power"), std::string::npos) << r.slots_out;
 }
 
-// The source map covers the importing script only.
-TEST(ScriptImportTranslation, SourceMapHasOnlyTheMainScript)
+// The source map has segments for the imported script too. The file number tells the script.
+TEST(ScriptImportTranslation, SourceMapHasSegmentsOfTheImportedScript)
 {
     TempDir dir;
     const sppc::TranslateResult r = sppc::translate(options(dir, kParent));
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    const std::string child = kChild;
-    for (const sppc::SourceSegment& s : r.source_map.segments()) EXPECT_LE(s.script_begin + s.script_len, child.size());
+    const std::string child = kChild, parent = kParent;
+    ASSERT_EQ(r.source_map.files().size(), 1u);
+    EXPECT_EQ(r.source_map.files()[0].name, "base.spp");
+    EXPECT_EQ(r.source_map.files()[0].text, parent);
+    ASSERT_EQ(r.imports.size(), 1u);
+    EXPECT_EQ(r.imports[0].first, "base.spp");
+    size_t imported = 0, main = 0;
+    for (const sppc::SourceSegment& s : r.source_map.segments()) {
+        if (s.file == 0) {
+            ++main;
+            EXPECT_LE(s.script_begin + s.script_len, child.size());
+        } else {
+            ++imported;
+            EXPECT_EQ(s.file, 1u);
+            EXPECT_LE(s.script_begin + s.script_len, parent.size());
+        }
+    }
+    EXPECT_GT(main, 0u);
+    EXPECT_GT(imported, 0u);
+}
+
+// A generated position of the imported script maps back to the real line and column of that
+// script. map_to_script() gives no value for it, because it is not in the main script.
+TEST(ScriptImportTranslation, LocateGivesTheImportedFileLineAndColumn)
+{
+    TempDir dir;
+    const sppc::TranslateResult r = sppc::translate(options(dir, kParent));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    // kParent line 4: "    virtual int Power() { return 1; }". The name "Power" is at column 17.
+    const auto gen = r.source_map.map_to_generated(1, 4, 17);
+    ASSERT_TRUE(gen.has_value());
+    const auto loc = r.source_map.locate(gen->line, gen->col);
+    ASSERT_TRUE(loc.has_value());
+    EXPECT_EQ(loc->file, 1u);
+    EXPECT_EQ(loc->pos.line, 4);
+    EXPECT_EQ(loc->pos.col, 17);
+    EXPECT_FALSE(r.source_map.map_to_script(gen->line, gen->col).has_value());
+    // The same position in the main script does not hit the imported segment.
+    EXPECT_FALSE(r.source_map.map_to_generated(3, 17).has_value() && r.source_map.map_to_generated(3, 17) == gen);
+    // The main script still maps. kChild line 3: "    override int Power() { return 2; }".
+    const auto mg = r.source_map.map_to_generated(3, 18);
+    ASSERT_TRUE(mg.has_value());
+    const auto mloc = r.source_map.locate(mg->line, mg->col);
+    ASSERT_TRUE(mloc.has_value());
+    EXPECT_EQ(mloc->file, 0u);
+    EXPECT_EQ(mloc->pos.line, 3);
+}
+
+// A translator error in the imported script names its file, line and column and shows its line.
+TEST(ScriptImportTranslation, TranslatorErrorHasRealFileLineColumnAndSnippet)
+{
+    TempDir dir;
+    const std::string bad = "using \"w.h\";\nclass Base : Widget {\n    int hp = 1;\n    int hp = 2;\n}\n";
+    const sppc::TranslateResult r = sppc::translate(options(dir, bad));
+    ASSERT_FALSE(r.ok);
+    ASSERT_EQ(r.imports.size(), 1u) << "the imports are there also when the translation fails";
+    const std::string out = sppc::rewrite_translator_diagnostic(r.diagnostics, sppc::script_texts("t.spp", kChild, r));
+    EXPECT_NE(out.find("base.spp:4:9: error:"), std::string::npos) << out;
+    EXPECT_NE(out.find("    4 |     int hp = 2;\n"), std::string::npos) << out;
+}
+
+// A compiler error in the imported script gets its file, line, column and source line.
+TEST(ScriptImportTranslation, CompilerErrorHasRealFileLineColumnAndSnippet)
+{
+    TempDir dir;
+    const sppc::TranslateResult r = sppc::translate(options(dir, kParent));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    // The physical line and column of "return 1" in the generated text.
+    const size_t at = r.cpp.find("return 1");
+    ASSERT_NE(at, std::string::npos);
+    const int line = 1 + static_cast<int>(std::count(r.cpp.begin(), r.cpp.begin() + static_cast<long>(at), '\n'));
+    const int col = static_cast<int>(at - (r.cpp.rfind('\n', at) + 1)) + 1;
+    // Clang prints the position of the "#line" directive: the file and the script line.
+    const std::string clang = "base.spp:4:" + std::to_string(col) + ": error: expected ';'\n    4 | generated\n      | ^\n";
+    const std::string out = sppc::rewrite_diagnostic(clang, {{"t.spp", kChild}}, {{"/w/t.spp.cpp", r.cpp}}, &r.source_map);
+    // "    virtual int Power() { return 1; }": "return" is at column 27.
+    EXPECT_EQ(out, "base.spp:4:27: error: expected ';'\n    4 |     virtual int Power() { return 1; }\n");
 }
 
 // An error in the imported script names the file and the line of that script.

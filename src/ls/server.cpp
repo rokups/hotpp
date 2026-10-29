@@ -134,6 +134,8 @@ struct Doc {
     int sent_version = 0;  // the last clangd version
     bool in_clangd = false;
     json clang_diags = json::array();  // the mapped clangd diagnostics of gen_version
+    // The URIs of the imported scripts that got translator errors from this document.
+    std::set<std::string> import_uris;
 };
 
 class Server {
@@ -229,6 +231,9 @@ private:
     void update(Doc& d);
     void send_generated(Doc& d, const std::string& cpp);
     json publish_message(const Doc& d) const;
+    std::map<std::string, json> import_diagnostics(const Doc& d) const;
+    void publish_imports(Doc& d);
+    json imported_location(const Doc& d, const json& gen_lsp_pos, bool whole_word) const;
     json analyze_diagnostics(const Doc& d) const;
 
     // ---- clangd
@@ -455,6 +460,7 @@ void Server::update(Doc& d)
             send_generated(d, cpp);
         }
         send_client(publish_message(d));
+        publish_imports(d);
     }
 }
 
@@ -474,9 +480,89 @@ json Server::analyze_diagnostics(const Doc& d) const
     for (std::string l; std::getline(ss, l);) {
         std::smatch m;
         if (!std::regex_match(l, m, re)) continue;
+        if (m[1] != d.path) continue;  // an imported script: import_diagnostics() has it
         add({std::stoi(m[2]) - 1, std::stoi(m[3]) - 1}, m[5], m[4] == "error" ? 1 : 2);
     }
     return out;
+}
+
+// The path of a script that the translator names, as an absolute path.
+static std::string script_file_path(const Doc& d, const std::string& name)
+{
+    fs::path f(name);
+    if (f.is_relative()) {
+        const fs::path near = fs::path(d.path).parent_path() / f;
+        std::error_code ec;
+        f = fs::exists(near, ec) ? near : fs::absolute(f);
+    }
+    return f.lexically_normal().string();
+}
+
+// The translator errors in the imported scripts, by the URI of the script. The line and the
+// column are the real ones in that script.
+std::map<std::string, json> Server::import_diagnostics(const Doc& d) const
+{
+    std::map<std::string, json> out;
+    static const std::regex re(R"(^(.*):(\d+):(\d+): (error|warning): (.*)$)");
+    std::istringstream ss(d.facts.diagnostics);
+    std::map<std::string, Text> texts;
+    for (std::string l; std::getline(ss, l);) {
+        std::smatch m;
+        if (!std::regex_match(l, m, re) || m[1] == d.path || m[1].length() == 0) continue;
+        const std::string path = script_file_path(d, m[1]);
+        const std::string uri = path_to_uri(path);
+        if (uri == d.uri) continue;
+        auto t = texts.find(path);
+        if (t == texts.end()) t = texts.emplace(path, Text(read_file(path).value_or(std::string()))).first;
+        const int line = std::stoi(m[2]) - 1, col = std::stoi(m[3]) - 1;
+        const std::string_view text = t->second.line(line);
+        int end = std::min<int>(col, static_cast<int>(text.size()));
+        while (end < static_cast<int>(text.size()) && is_id_char(text[static_cast<size_t>(end)])) ++end;
+        if (end <= col) end = col + 1;
+        const json range = {{"start", to_lsp(t->second, {line, col}, utf8_)}, {"end", to_lsp(t->second, {line, end}, utf8_)}};
+        out[uri].push_back({{"range", range}, {"severity", m[4] == "error" ? 1 : 2}, {"source", "spp"}, {"message", m[5].str()}});
+    }
+    return out;
+}
+
+// Publishes the translator errors of the imported scripts. A script that is open has its own
+// diagnostics: it gets none here. A script that had errors and has none now gets an empty list.
+void Server::publish_imports(Doc& d)
+{
+    std::map<std::string, json> now = import_diagnostics(d);
+    for (auto it = now.begin(); it != now.end();) {
+        if (docs_.count(it->first)) it = now.erase(it);
+        else ++it;
+    }
+    auto send = [&](const std::string& uri, const json& diags) {
+        send_client({{"jsonrpc", "2.0"},
+                     {"method", "textDocument/publishDiagnostics"},
+                     {"params", {{"uri", uri}, {"diagnostics", diags}}}});
+    };
+    for (const auto& [uri, diags] : now) send(uri, diags);
+    for (const std::string& uri : d.import_uris)
+        if (!now.count(uri)) send(uri, json::array());
+    d.import_uris.clear();
+    for (const auto& [uri, diags] : now) d.import_uris.insert(uri);
+}
+
+// A place in the generated text that comes from an imported script, as an LSP location in that
+// script, or null. The range is the word at the place if "whole_word" is true.
+json Server::imported_location(const Doc& d, const json& gen_lsp_pos, bool whole_word) const
+{
+    if (!d.map) return nullptr;
+    const Pos g = from_lsp(d.gen, gen_lsp_pos, clangd_utf8_);
+    const auto loc = d.map->locate(g.line + 1, g.col + 1);
+    if (!loc || loc->file == 0 || loc->file > d.map->files().size()) return nullptr;
+    const sppc::SourceFile& f = d.map->files()[loc->file - 1];
+    const Text t(f.text);
+    const Pos b{loc->pos.line - 1, loc->pos.col - 1};
+    const std::string_view text = t.line(b.line);
+    int end = std::min<int>(b.col, static_cast<int>(text.size()));
+    if (whole_word)
+        while (end < static_cast<int>(text.size()) && is_id_char(text[static_cast<size_t>(end)])) ++end;
+    const std::string path = script_file_path(d, f.name);
+    return {{"uri", path_to_uri(path)}, {"range", {{"start", to_lsp(t, b, utf8_)}, {"end", to_lsp(t, {b.line, std::max(end, b.col)}, utf8_)}}}};
 }
 
 json Server::publish_message(const Doc& d) const
@@ -531,7 +617,7 @@ json Server::map_location(const Doc& d, const json& loc) const
     const json range = loc.contains("targetSelectionRange") ? loc["targetSelectionRange"] : loc.value("range", json());
     if (uri != d.gen_uri) return {{"uri", uri}, {"range", range}};  // a native place: no change
     const auto s = to_script(d, range["start"]);
-    if (!s) return nullptr;
+    if (!s) return imported_location(d, range["start"], true);  // null when not in an import
     const auto [b, e] = word_at(d, *s);
     return {{"uri", d.uri}, {"range", script_range(d, {s->line, b}, {s->line, std::max(e, b)})}};
 }
@@ -1045,6 +1131,7 @@ json Server::on_to_script(const json& p)
     if (const auto it = gen_docs_.find(uri); it != gen_docs_.end()) {
         const Doc& d = *it->second;
         if (const auto s = to_script(d, pos)) return {{"uri", d.uri}, {"range", script_range(d, *s, *s)}};
+        if (json imp = imported_location(d, pos, false); !imp.is_null()) return imp;
         const auto t = line_directive_target(d.gen.s, pos.value("line", 0));
         if (!t || t->file != d.path) return nullptr;
         return {{"uri", d.uri}, {"range", script_range(d, {t->line, 0}, {t->line, 0})}};
@@ -1106,6 +1193,10 @@ void Server::handle(const json& msg)
         send_client({{"jsonrpc", "2.0"},
                      {"method", "textDocument/publishDiagnostics"},
                      {"params", {{"uri", d->uri}, {"diagnostics", json::array()}}}});
+        for (const std::string& uri : d->import_uris)
+            send_client({{"jsonrpc", "2.0"},
+                         {"method", "textDocument/publishDiagnostics"},
+                         {"params", {{"uri", uri}, {"diagnostics", json::array()}}}});
         return;
     }
     if (!is_request) return;  // initialized, $/cancelRequest and other notifications
