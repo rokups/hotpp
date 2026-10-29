@@ -9,12 +9,16 @@
   "engines": { "vscode": "^1.80.0" },
   "categories": ["Programming Languages"],
   "main": "./src/extension.js",
-  "activationEvents": ["onLanguage:spp", "onCommand:spp.showScriptPosition"],
+  "activationEvents": ["onLanguage:spp", "onCommand:spp.showScriptPosition", "onCommand:spp.restartServer"],
   "contributes": {
     "commands": [
       {
         "command": "spp.showScriptPosition",
         "title": "S++: Show Script Position"
+      },
+      {
+        "command": "spp.restartServer",
+        "title": "S++: Restart Language Server"
       }
     ],
     "languages": [

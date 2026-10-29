@@ -19,6 +19,7 @@ This extension gives support for S++ scripts (`.spp`, language id `spp`).
 | Command | Meaning |
 | --- | --- |
 | `S++: Show Script Position` (`spp.showScriptPosition`) | Run it in a generated `.cpp` file (for example `player.g1.cpp`). It sends `spp/toScript` for the cursor and opens the script at that place. |
+| `S++: Restart Language Server` (`spp.restartServer`) | Stops `spp-ls` and starts it again. It reads the settings again. Use it after you change `spp.server.path` or `spp.server.args`, or after you rebuild `spp-ls`. |
 
 ## Settings
 

@@ -43,17 +43,18 @@ async function showScriptPosition() {
   await vscode.window.showTextDocument(doc, { selection: new vscode.Range(start, end) });
 }
 
-function activate(context) {
-  context.subscriptions.push(vscode.commands.registerCommand('spp.showScriptPosition', showScriptPosition));
+// Start the server with the current settings. It returns false if the server is off or the
+// client package is missing.
+function startServer() {
   const config = vscode.workspace.getConfiguration('spp');
-  if (!config.get('server.enable', true)) return;
+  if (!config.get('server.enable', true)) return false;
 
   let lc;
   try {
     lc = require('vscode-languageclient/node');
   } catch (e) {
     warn('the package vscode-languageclient is missing. Run "npm install" in the extension folder.');
-    return;
+    return false;
   }
 
   const folders = vscode.workspace.workspaceFolders;
@@ -80,7 +81,24 @@ function activate(context) {
     client.start().catch(() => warn(`the server "${command}" does not start. Set "spp.server.path".`));
   } catch (e) {
     warn(`the server "${command}" does not start. Set "spp.server.path".`);
+    return false;
   }
+  return true;
+}
+
+// The command "spp.restartServer". It stops the server and starts it again. It reads the
+// settings again, so a new "spp.server.path" or "spp.server.args" takes effect.
+async function restartServer() {
+  warned = false;
+  await deactivate();
+  if (startServer()) vscode.window.showInformationMessage('S++: the language server restarted.');
+  else vscode.window.showWarningMessage('S++: the language server is off or does not start.');
+}
+
+function activate(context) {
+  context.subscriptions.push(vscode.commands.registerCommand('spp.showScriptPosition', showScriptPosition));
+  context.subscriptions.push(vscode.commands.registerCommand('spp.restartServer', restartServer));
+  startServer();
   context.subscriptions.push({ dispose: () => deactivate() });
 }
 
