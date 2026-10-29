@@ -70,10 +70,30 @@ std::set<std::string> used_type_names(const ast::ClassDef& cd);
 struct ParamUse {
     bool mutated = false, rebound = false, stored = false, aliased = false;
 };
+// More parts of the context (S25). The analysis follows a parameter that a call gets:
+//  - "call_target" says what a call with a parameter as an argument calls, when it is not a
+//    script function of the class (S25): a method of another script class (a call on a handle),
+//    or a native function by its key. The call is the node of the AST. Null: not known.
+//  - "native_arg" gives how the native function "key" takes the argument "arg" of "argc": 'c' a
+//    "const T&" (no change, no store), 'm' a "T&", "T&&" or "T*" (a change, may store), 's' a
+//    value or any other form (may store). 's' also means: not known (the conservative answer).
+//  - "for_class" gives the context of another script class. A call on a handle uses it, so a
+//    bare call in the body of the callee finds the functions of the callee class.
+struct CallTarget {
+    const ast::ClassDef* script = nullptr;  // the static class of the receiver, with "name"
+    std::string name;                       // the method name for "script"
+    std::string native;                     // the key of the native function, e.g. "ns::f"
+};
+// The finished results by method and parameter name. The context shares one memo for the script.
+using ParamMemo = std::map<std::pair<const ast::Method*, std::string>, ParamUse>;
 struct ParamContext {
+    ParamMemo* memo = nullptr;
     std::function<const ast::Method*(const std::string&)> script_fn;
     std::map<std::string, std::string> fields;
     std::function<bool(const std::string& type, const std::string& method)> const_method;
+    std::function<const CallTarget*(const ast::CallExpr&)> call_target;
+    std::function<char(const std::string& key, size_t arg, size_t argc)> native_arg;
+    std::function<ParamContext(const ast::ClassDef&)> for_class;
 };
 ParamUse analyze_param_use(const ast::Method& m, const std::string& name, const ParamContext& ctx = {});
 
@@ -86,9 +106,14 @@ ParamUse analyze_param_use(const ast::Method& m, const std::string& name, const 
 //  - "methods": for each native type of a value parameter, the names of the member functions
 //    that a body calls on the parameter ("p.M()"). The translator asks if they are const.
 // A type that names a script class or a script enum is not a query: libclang does not know it.
+//  - "calls": for each call that has a parameter of the function as an argument, what it calls
+//    (S25). "fn_keys" has the keys of the native functions. The translator asks libclang for
+//    their parameters.
 struct NativeQueries {
     std::vector<std::pair<ast::VarDeclStmt*, std::string>> vars;
     std::map<std::string, std::set<std::string>> methods;
+    std::map<const ast::CallExpr*, CallTarget> calls;
+    std::set<std::string> fn_keys;
 };
 NativeQueries collect_native_queries(ast::Script& sc);
 

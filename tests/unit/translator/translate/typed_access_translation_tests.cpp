@@ -16,6 +16,15 @@ const char* kHeader =
     "struct Vec3 { float x, y, z; };\n"
     "struct Blob { std::string s; Blob() {} Blob(const Blob&) {} Blob(Blob&&) noexcept {} void Add(int) {} int Get() const { return 0; } };\n"
     "struct Rec { int N = 0; static Rec* Get() { return nullptr; } };\n"
+    "void ReadBlob(const Blob&);\n"
+    "void TakeBlob(Blob);\n"
+    "void MoveBlob(Blob&&);\n"
+    "void ChangeBlob(Blob&);\n"
+    "void Both(const Blob&);\n"
+    "void Both(Blob);\n"
+    "namespace eng { void Peek(const Blob&); void Keep(Blob); }\n"
+    "struct Sink { void Read(const Blob&) {} void Keep(Blob) {} };\n"
+    "struct SubSink : Sink { };\n"
     "class Unit { public:\n"
     "    Unit() {}\n"
     "    virtual ~Unit() {}\n"
@@ -201,4 +210,97 @@ TEST(TypedAccess, PropertyNameOnAKnownNativeTypeIsTheNativeMember)
     EXPECT_TRUE(has(r, "spp::deref(r).N = 2;")) << r.cpp;
     EXPECT_TRUE(has(r, "spp::deref(q).N = 3;")) << r.cpp;
     EXPECT_FALSE(has(r, "shell_of")) << r.cpp;
+}
+
+// S25: the analysis follows a parameter into a native function. The signature of libclang tells
+// the form: a "const T&" does not store, any other form may store.
+TEST(ParamAnalysis, ParamPassedToANativeFunctionFollowsItsSignature)
+{
+    const sppc::TranslateResult r = translate_script(
+        "[native, value] class Blob;\nclass Box : Unit {\n"
+        "    void A(Blob b) { ReadBlob(b); }\n    void B(Blob b) { TakeBlob(b); }\n"
+        "    void C(Blob b) { MoveBlob(b); }\n    void D(Blob b) { ChangeBlob(b); }\n"
+        "    void E(Blob b) { Both(b); }\n    void F(Blob b) { Mystery(b); }\n"
+        "    void G(Blob b) { eng.Peek(b); }\n    void H(Blob b) { eng.Keep(b); }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "static void Box__A(Box_Shell* self, const Blob& b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__B(Box_Shell* self, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__C(Box_Shell* self, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__D(Box_Shell* self, Blob b)")) << r.cpp;
+    // An overload set: the worst form counts. A function that libclang does not find: a copy.
+    EXPECT_TRUE(has(r, "static void Box__E(Box_Shell* self, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__F(Box_Shell* self, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__G(Box_Shell* self, const Blob& b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__H(Box_Shell* self, Blob b)")) << r.cpp;
+}
+
+TEST(ParamAnalysis, ParamPassedToANativeMemberFunctionFollowsItsSignature)
+{
+    const sppc::TranslateResult r = translate_script(
+        "[native, value] class Blob;\n[native, value] class Sink;\n[native, value] class SubSink;\n"
+        "class Box : Unit {\n    Sink sink;\n    SubSink sub;\n"
+        "    void A(Blob b) { this.sink.Read(b); }\n    void B(Blob b) { this.sink.Keep(b); }\n"
+        "    void C(Blob b, Sink s) { s.Read(b); }\n    void D(Blob b, Sink s) { s.Keep(b); }\n"
+        "    void E(Blob b) { this.sub.Read(b); }\n    void F(Blob b) { this.sub.Keep(b); }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "static void Box__A(Box_Shell* self, const Blob& b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__B(Box_Shell* self, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__C(Box_Shell* self, const Blob& b, ")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__D(Box_Shell* self, Blob b, ")) << r.cpp;
+    // The member function comes from a native base class.
+    EXPECT_TRUE(has(r, "static void Box__E(Box_Shell* self, const Blob& b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__F(Box_Shell* self, Blob b)")) << r.cpp;
+}
+
+// S25: a call on a script handle uses the declared method of the script class.
+TEST(ParamAnalysis, ParamPassedToAMethodOfAScriptHandleFollowsTheMethod)
+{
+    const sppc::TranslateResult r = translate_script(
+        "[native, value] class Blob;\n"
+        "class Squad : Unit {\n    Blob kept;\n    Squad mate;\n"
+        "    void Take(Blob b) { this.kept = b; }\n    int Look(Blob b) { return b.Get(); }\n"
+        "    void Change(Blob b) { b.Add(1); }\n    virtual void Over(Blob b) { }\n"
+        "    void Link(Squad s) { this.mate = s; }\n    int Count(Squad s) { return 1; }\n}\n"
+        "class Box : Unit {\n    Squad lead;\n"
+        "    int A(Squad s, Blob b) { return s.Look(b); }\n    void B(Squad s, Blob b) { s.Take(b); }\n"
+        "    void C(Squad s, Blob b) { s.Change(b); }\n    void D(Squad s, Blob b) { s.Over(b); }\n"
+        "    int E(Blob b) { return this.lead.Look(b); }\n    void F(Blob b) { this.lead.Take(b); }\n"
+        "    int G(Squad s, Squad t) { return s.Count(t); }\n    void H(Squad s, Squad t) { s.Link(t); }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "static int32_t Box__A(Box_Shell* self, const std::shared_ptr<Squad>& s, const Blob& b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__B(Box_Shell* self, const std::shared_ptr<Squad>& s, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__C(Box_Shell* self, const std::shared_ptr<Squad>& s, Blob b)")) << r.cpp;
+    // A virtual method can have an override that does more: a copy.
+    EXPECT_TRUE(has(r, "static void Box__D(Box_Shell* self, const std::shared_ptr<Squad>& s, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__E(Box_Shell* self, const Blob& b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__F(Box_Shell* self, Blob b)")) << r.cpp;
+    // A handle argument: a read keeps "const Handle&", a store takes a copy.
+    EXPECT_TRUE(has(r, "static int32_t Box__G(Box_Shell* self, const std::shared_ptr<Squad>& s, const std::shared_ptr<Squad>& t)"))
+        << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__H(Box_Shell* self, const std::shared_ptr<Squad>& s, std::shared_ptr<Squad> t)"))
+        << r.cpp;
+}
+
+// S25: a call of a local lambda follows the parameter into the body of the lambda.
+TEST(ParamAnalysis, ParamPassedToALocalLambdaFollowsTheLambda)
+{
+    const sppc::TranslateResult r = translate_script(
+        "[native, value] class Blob;\nclass Box : Unit {\n    Blob kept;\n"
+        "    int A(Blob b) { var f = (Blob x) => { return x.Get(); }; return f(b); }\n"
+        "    void B(Blob b) { var f = (Blob x) => { x.Add(1); }; f(b); }\n"
+        "    void C(Blob b) { var f = (Blob x) => { this.kept = x; }; f(b); }\n"
+        "    int D(Blob b) { var f = (Blob x) => { return 1; }; return f(1); }\n"
+        "    void E(Blob b) { var f = (Blob x) => { return x.Get(); }; var g = f; g(b); }\n"
+        "    int F(Blob b, int n) { var f = (Blob x) => { return x.Get(); }; return b.Get() + n; }\n"
+        "    int G(Blob b) { var f = () => { return b.Get(); }; return f(); }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "static int32_t Box__A(Box_Shell* self, const Blob& b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__B(Box_Shell* self, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__C(Box_Shell* self, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__D(Box_Shell* self, const Blob& b)")) << r.cpp;
+    // A callable that the analysis does not see: a copy.
+    EXPECT_TRUE(has(r, "static void Box__E(Box_Shell* self, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__F(Box_Shell* self, const Blob& b, int32_t n)")) << r.cpp;
+    // A lambda that captures the parameter keeps a copy of it.
+    EXPECT_TRUE(has(r, "static int32_t Box__G(Box_Shell* self, Blob b)")) << r.cpp;
 }

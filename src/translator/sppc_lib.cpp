@@ -958,6 +958,14 @@ std::string handle_type(std::string tpl, const std::string& name)
     return tpl;
 }
 
+// A query "@fn:KEY" asks how the native function KEY takes its parameters (S25). The probe does
+// not hold it. A cursor walk of the imports answers it.
+const char* const kFnQuery = "@fn:";
+bool is_fn_query(const std::string& q)
+{
+    return q.compare(0, 4, kFnQuery) == 0;
+}
+
 // The name of the probe section with the facts. libclang reports an error in it for a type
 // that it does not know. The translator does not treat such an error as an error of the imports.
 const char* const kFactsFile = "sppc_facts";
@@ -1017,8 +1025,117 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
         }
         if (const_query) body += "using sppc_c" + std::to_string(i) + " = " + t + ";\n";
     }
-    for (size_t i = 0; i < queries.size(); ++i) body += "using sppc_q" + std::to_string(i) + " = " + queries[i] + ";\n";
+    for (size_t i = 0; i < queries.size(); ++i) {
+        if (is_fn_query(queries[i])) continue;  // a cursor walk answers it (see function_kinds)
+        body += "using sppc_q" + std::to_string(i) + " = " + queries[i] + ";\n";
+    }
     return head + "#line 1 \"" + kFactsFile + "\"\n" + body;
+}
+
+// How a parameter takes its argument: 'c' a "const T&" (no change and no store), 'm' a "T&",
+// a "T&&" or a "T*" (a change, may store), 's' any other form (a value: may store).
+char param_kind(CXType t)
+{
+    switch (t.kind) {
+    case CXType_LValueReference:
+        return clang_isConstQualifiedType(clang_getPointeeType(t)) ? 'c' : 'm';
+    case CXType_RValueReference:
+        return 'm';
+    case CXType_Pointer:
+        return clang_isConstQualifiedType(clang_getPointeeType(t)) ? 's' : 'm';
+    default:
+        return 's';
+    }
+}
+
+// The kinds of the parameters of one function, one letter each. A "+" at the end: the function
+// takes more arguments (a C variadic function or a parameter pack).
+std::string function_kinds(CXCursor fn)
+{
+    std::string r;
+    bool pack = clang_Cursor_isVariadic(fn) != 0;
+    visit(fn, [&](CXCursor c) {
+        if (clang_getCursorKind(c) == CXCursor_ParmDecl) {
+            const CXType t = clang_getCursorType(c);
+            if (cxs(clang_getTypeSpelling(t)).find("...") != std::string::npos) pack = true;
+            r += param_kind(t);
+        }
+        return CXChildVisit_Continue;
+    });
+    return pack ? r + "+" : r;
+}
+
+// Adds the functions "name" of the class and, when it has none, of its bases.
+void member_functions(CXCursor cls, const std::string& name, std::vector<CXCursor>& out, int depth = 0)
+{
+    if (clang_Cursor_isNull(cls) || depth > 32) return;
+    const size_t before = out.size();
+    std::vector<CXCursor> bases;
+    visit(cls, [&](CXCursor c) {
+        const CXCursorKind k = clang_getCursorKind(c);
+        if ((k == CXCursor_CXXMethod || k == CXCursor_FunctionTemplate) && cxs(clang_getCursorSpelling(c)) == name) {
+            out.push_back(c);
+        } else if (k == CXCursor_CXXBaseSpecifier) {
+            CXCursor def = base_definition(c);
+            CXCursor pat = implicit_pattern(def);
+            bases.push_back(clang_Cursor_isNull(pat) ? def : pat);
+        }
+        return CXChildVisit_Continue;
+    });
+    if (out.size() != before) return;
+    for (CXCursor b : bases) member_functions(b, name, out, depth + 1);
+}
+
+bool ends_with_scope(const std::string& qn, const std::string& key)
+{
+    return qn == key || (qn.size() > key.size() + 2 && qn.compare(qn.size() - key.size() - 2, 2, "::") == 0 &&
+                         qn.compare(qn.size() - key.size(), key.size(), key) == 0);
+}
+
+// Answers the queries "@fn:KEY" (S25). KEY is a name like "ns::f" or "Type::M". It matches the
+// qualified name at its end. The answer has the kinds of each overload, divided by ";" (see
+// function_kinds). An empty answer means: libclang finds no such function.
+void answer_function_queries(CXCursor root, const std::vector<std::string>& queries,
+                             std::map<std::string, std::string>& answers)
+{
+    std::set<std::string> last;  // the last name of each key
+    for (const std::string& q : queries)
+        if (is_fn_query(q)) {
+            const std::string key = q.substr(4);
+            const size_t p = key.rfind("::");
+            last.insert(p == std::string::npos ? key : key.substr(p + 2));
+        }
+    if (last.empty()) return;
+    std::map<std::string, std::vector<CXCursor>> fns;  // by qualified name
+    std::map<std::string, CXCursor> classes;
+    std::function<CXChildVisitResult(CXCursor)> walk = [&](CXCursor c) {
+        const CXCursorKind k = clang_getCursorKind(c);
+        if (k == CXCursor_FunctionDecl || k == CXCursor_CXXMethod || k == CXCursor_FunctionTemplate) {
+            if (last.count(cxs(clang_getCursorSpelling(c)))) fns[qualified_name(c)].push_back(c);
+        } else if (k == CXCursor_ClassDecl || k == CXCursor_StructDecl || k == CXCursor_ClassTemplate) {
+            if (clang_isCursorDefinition(c)) classes.emplace(qualified_name(c), c);
+            visit(c, walk);
+        } else if (k == CXCursor_Namespace || k == CXCursor_LinkageSpec) {
+            visit(c, walk);
+        }
+        return CXChildVisit_Continue;
+    };
+    visit(root, walk);
+    for (const std::string& q : queries) {
+        if (!is_fn_query(q)) continue;
+        const std::string key = q.substr(4);
+        std::vector<CXCursor> found;
+        for (const auto& [qn, v] : fns)
+            if (ends_with_scope(qn, key)) found.insert(found.end(), v.begin(), v.end());
+        const size_t p = key.rfind("::");
+        if (found.empty() && p != std::string::npos) {  // a function of a base class
+            for (const auto& [qn, cls] : classes)
+                if (ends_with_scope(qn, key.substr(0, p))) member_functions(cls, key.substr(p + 2), found);
+        }
+        std::string r;
+        for (CXCursor f : found) r += (r.empty() ? "" : ";") + function_kinds(f);
+        answers[q] = r;
+    }
 }
 
 // The type of a query alias as "auto" deduces it: no reference and no top-level const.
@@ -1194,8 +1311,9 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         });
         for (size_t i = 0; i < queries.size(); ++i) {
             auto it = aliases.find("sppc_q" + std::to_string(i));
-            answers[queries[i]] = it == aliases.end() ? std::string() : alias_type(it->second);
+            if (!is_fn_query(queries[i])) answers[queries[i]] = it == aliases.end() ? std::string() : alias_type(it->second);
         }
+        answer_function_queries(root, queries, answers);
         for (size_t i = 0; i < reqs.size(); ++i)
             for (const std::string& m : reqs[i].members) {
                 if (m.rfind("const:", 0) != 0) continue;
@@ -1682,6 +1800,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         std::set<std::string> uniq;
         for (const auto& [d, q] : native_q.vars)
             if (uniq.insert(q).second) query_texts.push_back(q);
+        for (const std::string& k : native_q.fn_keys) query_texts.push_back(kFnQuery + k);
     }
     std::vector<FactReq> reqs;
     for (auto& [t, ms] : asked) reqs.push_back({t, std::vector<std::string>(ms.begin(), ms.end())});
@@ -1708,6 +1827,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
     for (const auto& p : import_paths) key += "#" + p + "\n";
     Hierarchy hier;  // must outlive every use of "types"
     FactMap facts;
+    sppc::ParamMemo param_memo;  // the parameter analysis of the classes that are done (S25)
     std::map<std::string, std::string> query_answers;
     const std::map<std::string, BaseInfo> bases =
         session_bases(session, key, base_names, reqs, query_texts,
@@ -2467,24 +2587,51 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
 
         // ---- the context of the parameter analysis (S20b): the script functions and the fields
         // of the class and of its script parents, and the const member functions of native types.
-        sppc::ParamContext param_ctx;
-        int pdepth = 0;
-        for (const ClassDef* d = &cd; d && pdepth < 64; d = script_parent(*d), ++pdepth)
-            for (const Field& f : d->fields)
-                param_ctx.fields.emplace(f.name, f.script_type.empty() ? f.type : f.script_type);
-        param_ctx.script_fn = [&](const std::string& n) -> const Method* {
-            int depth = 0;
-            for (const ClassDef* d = &cd; d && depth < 64; d = script_parent(*d), ++depth)
-                for (const Method& m : d->methods)
-                    if (m.name == n && !m.overrides_virtual && hook_of(m) == Hook::None) return &m;
-            return nullptr;
+        // The context of another class is the same with its own fields and functions (S25).
+        std::function<sppc::ParamContext(const ClassDef&)> make_ctx = [&](const ClassDef& c0) {
+            sppc::ParamContext ctx;
+            ctx.memo = &param_memo;
+            int pdepth = 0;
+            for (const ClassDef* d = &c0; d && pdepth < 64; d = script_parent(*d), ++pdepth)
+                for (const Field& f : d->fields)
+                    ctx.fields.emplace(f.name, f.script_type.empty() ? f.type : f.script_type);
+            ctx.script_fn = [&script_parent, &hook_of, &c0](const std::string& n) -> const Method* {
+                int depth = 0;
+                for (const ClassDef* d = &c0; d && depth < 64; d = script_parent(*d), ++depth)
+                    for (const Method& m : d->methods)
+                        if (m.name == n && !m.overrides_virtual && hook_of(m) == Hook::None) return &m;
+                return nullptr;
+            };
+            ctx.const_method = [&facts](const std::string& type, const std::string& method) {
+                auto it = facts.find(type);
+                if (it == facts.end()) return false;
+                auto m = it->second.members.find("const:" + method);
+                return m != it->second.members.end() && m->second;
+            };
+            ctx.call_target = [&native_q](const sppc::ast::CallExpr& c) -> const sppc::CallTarget* {
+                auto it = native_q.calls.find(&c);
+                return it == native_q.calls.end() ? nullptr : &it->second;
+            };
+            // The native function takes the argument: the worst form of its overloads (S25).
+            ctx.native_arg = [&query_answers](const std::string& key, size_t arg, size_t argc) -> char {
+                auto it = query_answers.find(kFnQuery + key);
+                if (it == query_answers.end() || it->second.empty()) return 's';
+                const std::string rank = "csm";
+                int worst = -1;
+                std::stringstream ss(it->second);
+                for (std::string kinds; std::getline(ss, kinds, ';');) {
+                    const bool pack = !kinds.empty() && kinds.back() == '+';
+                    if (pack) kinds.pop_back();
+                    if (argc > kinds.size() && !pack) continue;  // too many arguments: not this overload
+                    const char k = arg < kinds.size() ? kinds[arg] : 's';
+                    worst = std::max(worst, static_cast<int>(rank.find(k)));
+                }
+                return worst < 0 ? 's' : rank[worst];
+            };
+            ctx.for_class = make_ctx;
+            return ctx;
         };
-        param_ctx.const_method = [&facts](const std::string& type, const std::string& method) {
-            auto it = facts.find(type);
-            if (it == facts.end()) return false;
-            auto m = it->second.members.find("const:" + method);
-            return m != it->second.members.end() && m->second;
-        };
+        const sppc::ParamContext param_ctx = make_ctx(cd);
 
         // ---- the C++ storage types. An override keeps the native types.
         for (Field& f : cd.fields) f.type = types.storage(f.type);

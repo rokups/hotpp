@@ -481,10 +481,10 @@ std::string script_callee(const CallExpr& c, const std::set<std::string>& locals
 }
 
 // The names that a function declares: the parameters and the locals of the body.
-std::set<std::string> declared_names(const Method& m)
+std::set<std::string> declared_names(const std::vector<Param>& params, const BlockStmt& body)
 {
     std::set<std::string> out;
-    for (const Param& p : m.params) out.insert(p.name);
+    for (const Param& p : params) out.insert(p.name);
     auto fe = [&](const Expr& e) {
         if (auto* l = std::get_if<LambdaExpr>(&e.v))
             for (const Param& p : l->params) out.insert(p.name);
@@ -495,8 +495,13 @@ std::set<std::string> declared_names(const Method& m)
         else if (auto* tr = std::get_if<TryStmt>(&s.v))
             for (const CatchClause& c : tr->catches) out.insert(c.name);
     };
-    make_walker(fe, fs).block(m.body);
+    make_walker(fe, fs).block(body);
     return out;
+}
+
+std::set<std::string> declared_names(const Method& m)
+{
+    return declared_names(m.params, m.body);
 }
 
 // True when a value of the type "param" can be a part of a field of the type "field": the same
@@ -511,7 +516,7 @@ bool can_alias(const std::string& param, const std::string& field)
 
 struct ParamAnalysis {
     const ParamContext& ctx;
-    std::set<std::pair<const Method*, std::string>> visiting;  // stops a cycle of calls
+    std::set<std::pair<const void*, std::string>> visiting;  // stops a cycle of calls
 
     // Adds the fields that the function writes, also through the script functions that it
     // calls. "seen" visits each function one time.
@@ -547,13 +552,93 @@ struct ParamAnalysis {
         make_walker(fe, fs).block(m.body);
     }
 
+    static void merge(ParamUse& use, const ParamUse& sub)
+    {
+        use.stored = use.stored || sub.stored;
+        use.mutated = use.mutated || sub.mutated || sub.rebound;
+    }
+
+    // The parameter is the argument "i" of a call that is not a script function of the class
+    // (S25). The call can go to a local lambda, to a method of a script handle or to a native
+    // function. The analysis follows the parameter into the callee. When it cannot, the
+    // parameter counts as stored: the body takes a copy.
+    void call_arg(ParamUse& use, const CallExpr& c, size_t i,
+                  const std::map<std::string, const LambdaExpr*>& lambdas, const std::set<std::string>& declared)
+    {
+        if (auto* n = std::get_if<NameExpr>(&c.callee->v)) {
+            if (n->parts.size() == 1 && declared.count(n->parts[0])) {
+                auto it = lambdas.find(n->parts[0]);
+                if (it != lambdas.end() && i < it->second->params.size() &&
+                    it->second->params[i].mode == PassMode::Value) {
+                    const LambdaExpr* l = it->second;
+                    merge(use, run_fn(l, l->params, l->body, l->params[i].name, nullptr));
+                    return;
+                }
+                if (it != lambdas.end() && i < it->second->params.size()) return;  // "ref" or "out"
+                use.stored = true;  // a callable value that the analysis cannot see
+                return;
+            }
+        }
+        const CallTarget* t = ctx.call_target ? ctx.call_target(c) : nullptr;
+        if (t && t->script && ctx.for_class) {
+            // A call on a script handle: the declared method gives the mode and the body.
+            ParamContext other = ctx.for_class(*t->script);
+            const Method* tm = other.script_fn ? other.script_fn(t->name) : nullptr;
+            if (tm) {
+                if (i >= tm->params.size()) return;
+                if (tm->params[i].mode != PassMode::Value) return;
+                if (tm->is_virtual || tm->is_override) {  // an override can do more: be careful
+                    use.stored = true;
+                    return;
+                }
+                ParamAnalysis sub{other, visiting};
+                merge(use, sub.run(*tm, tm->params[i].name));
+                return;
+            }
+        }
+        if (t && !t->native.empty() && ctx.native_arg) {
+            const char k = ctx.native_arg(t->native, i, c.args.size());
+            if (k == 'c') return;  // "const T&": no change and no store
+            use.stored = true;
+            if (k == 'm') use.mutated = true;
+            return;
+        }
+        use.stored = true;  // the callee is not known
+    }
+
+    // The use of a parameter of a script function. The lowering changes the body of a class
+    // after its analysis, so the memo has the result of a class that is done (S25).
     ParamUse run(const Method& m, const std::string& name)
     {
+        if (ctx.memo) {
+            auto it = ctx.memo->find({&m, name});
+            if (it != ctx.memo->end()) return it->second;
+        }
+        return run_fn(&m, m.params, m.body, name, &m);
+    }
+
+    // The use of the parameter "name" in a function body. "m" is the method, or null for a
+    // lambda. A lambda gets no alias check: the method that holds it has the check (S25).
+    ParamUse run_fn(const void* key, const std::vector<Param>& params, const BlockStmt& body,
+                    const std::string& name, const Method* m)
+    {
         ParamUse use;
-        if (!visiting.insert({&m, name}).second) return use;  // a recursive call adds nothing new
+        if (!visiting.insert({key, name}).second) return use;  // a recursive call adds nothing new
         std::string ptype;
-        for (const Param& p : m.params)
+        for (const Param& p : params)
             if (p.name == name) ptype = p.script_type.empty() ? p.type : p.script_type;
+        // The local lambdas by name: a call "f(p)" of one follows the parameter into the lambda.
+        std::map<std::string, const LambdaExpr*> lambdas;
+        {
+            auto le = [](const Expr&) {};
+            auto ls = [&](const Stmt& s) {
+                if (auto* d = std::get_if<VarDeclStmt>(&s.v))
+                    if (d->init)
+                        if (auto* l = std::get_if<LambdaExpr>(&d->init->v)) lambdas[d->name] = l;
+            };
+            make_walker(le, ls).block(body);
+        }
+        const std::set<std::string> declared = declared_names(params, body);
         auto rooted = [&](const ExprP& e) {
             if (!e) return false;
             const std::string* r = root_name(*e);
@@ -591,12 +676,14 @@ struct ParamAnalysis {
                 // "G(p)" of a script function G: the use of the parameter of G counts (S20b).
                 const std::string g = ctx.script_fn ? script_callee(*c, {name}) : std::string();
                 const Method* gm = g.empty() ? nullptr : ctx.script_fn(g);
-                for (size_t i = 0; gm && i < c->args.size() && i < gm->params.size(); ++i) {
-                    if (!c->args[i] || !is_exactly(*c->args[i], name) || gm->params[i].mode != PassMode::Value)
+                for (size_t i = 0; i < c->args.size(); ++i) {
+                    if (!c->args[i] || !is_exactly(*c->args[i], name)) continue;
+                    if (gm) {
+                        if (i < gm->params.size() && gm->params[i].mode == PassMode::Value)
+                            merge(use, run(*gm, gm->params[i].name));
                         continue;
-                    const ParamUse sub = run(*gm, gm->params[i].name);
-                    use.stored = use.stored || sub.stored;
-                    use.mutated = use.mutated || sub.mutated || sub.rebound;
+                    }
+                    call_arg(use, *c, i, lambdas, declared);
                 }
             } else if (auto* nw = std::get_if<NewExpr>(&e.v)) {
                 for (const ExprP& a : nw->args)
@@ -614,18 +701,18 @@ struct ParamAnalysis {
             if (auto* r = std::get_if<ReturnStmt>(&s.v))
                 if (r->expr && is_exactly(*r->expr, name)) use.stored = true;
         };
-        make_walker(fe, fs).block(m.body);
+        make_walker(fe, fs).block(body);
         // A "const T&" can alias a field that the function writes (S20b): then take a copy.
-        if (!ptype.empty() && !ctx.fields.empty()) {
+        if (m && !ptype.empty() && !ctx.fields.empty()) {
             std::set<const Method*> seen;
             std::set<std::string> written;
-            fields_written(m, seen, written);
+            fields_written(*m, seen, written);
             for (const std::string& f : written) {
                 auto it = ctx.fields.find(f);
                 if (it != ctx.fields.end() && can_alias(ptype, it->second)) use.aliased = true;
             }
         }
-        visiting.erase({&m, name});
+        visiting.erase({key, name});
         return use;
     }
 };
@@ -635,7 +722,9 @@ struct ParamAnalysis {
 ParamUse analyze_param_use(const Method& m, const std::string& name, const ParamContext& ctx)
 {
     ParamAnalysis a{ctx, {}};
-    return a.run(m, name);
+    const ParamUse use = a.run_fn(&m, m.params, m.body, name, &m);
+    if (ctx.memo) (*ctx.memo)[{&m, name}] = use;
+    return use;
 }
 
 // ------------------------------------------------------------------ native type queries
@@ -665,6 +754,7 @@ struct QueryCollector {
     std::set<std::string> locals;
     std::map<std::string, QType> env;
     std::map<std::string, std::string> value_params;  // name to the type: the parameters for "methods"
+    std::set<std::string> param_names;                // the by-value parameters of the body in progress
 
     // True when the type text names a script class or a script enum.
     bool mentions_script(const std::string& t) const
@@ -865,6 +955,75 @@ struct QueryCollector {
         if (it != value_params.end() && !fn.empty()) out.methods[it->second].insert(fn);
     }
 
+    // The key of a native class for the lookup of its functions: no "const", no "*" or "&" and no
+    // template arguments ("std::vector<int>" gives "std::vector"). Empty: not a plain name.
+    static std::string type_key(const std::string& cpp)
+    {
+        std::string t = trim(cpp), r;
+        if (t.rfind("const ", 0) == 0) t = trim(t.substr(6));
+        int depth = 0;
+        for (char ch : t) {
+            if (ch == '<') ++depth;
+            else if (ch == '>') --depth;
+            else if (depth == 0 && ch != '*' && ch != '&' && ch != ' ') r += ch;
+        }
+        return r.find("decltype") != std::string::npos || r.find('(') != std::string::npos ? std::string() : r;
+    }
+
+    bool has_script_method(const ClassDef& c, const std::string& name) const
+    {
+        int depth = 0;
+        for (const ClassDef* d = &c; d && depth < 64; d = parent_of(*d), ++depth)
+            for (const Method& m : d->methods)
+                if (m.name == name && !m.overrides_virtual) return true;
+        return false;
+    }
+
+    // What a call with a parameter as an argument calls (S25). Nothing is recorded for a call of
+    // a script function of the class: the parameter analysis reads its body.
+    void note_call_target(const CallExpr& c)
+    {
+        bool has = false;
+        for (const ExprP& a : c.args)
+            if (a)
+                if (const std::string* n = simple_name_of(*a)) has = has || param_names.count(*n) > 0;
+        if (!has) return;
+        CallTarget t;
+        auto from_receiver = [&](const QType& q, const std::string& fn) {
+            if (q.script) {
+                t.script = q.script;
+                t.name = fn;
+                const std::string nb = native_root(*q.script);
+                if (!nb.empty()) t.native = type_key(nb) + "::" + fn;
+            } else if (!q.cpp.empty()) {
+                const std::string k = type_key(q.cpp);
+                if (!k.empty()) t.native = k + "::" + fn;
+            }
+        };
+        if (auto* n = std::get_if<NameExpr>(&c.callee->v)) {
+            if (n->parts.empty() || !n->template_args.empty()) return;
+            if (n->parts.size() == 1) {
+                const std::string& f = n->parts[0];
+                if (locals.count(f) || script_names.count(f) || (cls && has_script_method(*cls, f))) return;
+                t.native = f;
+            } else if (is_head_value(n->parts[0])) {
+                QType q = name_type(n->parts[0]);
+                for (size_t i = 1; i + 1 < n->parts.size() && q.known(); ++i) q = member(q, n->parts[i]);
+                if (q.known()) from_receiver(q, n->parts.back());
+            } else {
+                t.native = scope_text(n->parts, n->parts.size());
+            }
+        } else if (auto* m = std::get_if<MemberExpr>(&c.callee->v)) {
+            if (m->name.empty() || std::holds_alternative<SuperExpr>(m->obj->v)) return;
+            const QType q = type_of(*m->obj);
+            if (std::holds_alternative<ThisExpr>(m->obj->v) && q.script && has_script_method(*q.script, m->name)) return;
+            if (q.known()) from_receiver(q, m->name);
+        }
+        if (!t.script && t.native.empty()) return;
+        if (!t.native.empty()) out.fn_keys.insert(t.native);
+        out.calls[&c] = t;
+    }
+
     static const std::string* simple_name_of(const Expr& e)
     {
         auto* n = std::get_if<NameExpr>(&e.v);
@@ -876,7 +1035,9 @@ struct QueryCollector {
         locals.clear();
         env.clear();
         value_params.clear();
+        param_names.clear();
         auto add = [&](const Param& p) {
+            if (p.mode == PassMode::Value) param_names.insert(p.name);
             const std::string& t = p.script_type.empty() ? p.type : p.script_type;
             declare(p.name, of_text(t));
             const QType q = of_text(t);
@@ -893,6 +1054,7 @@ struct QueryCollector {
                 }
             } else if (auto* c = std::get_if<CallExpr>(&e.v)) {
                 note_method_call(*c);
+                note_call_target(*c);
             }
         };
         auto fs = [&](const Stmt& st) {

@@ -82,7 +82,12 @@ Typed access (S5b, S20b):
 - A `var` from a native call gets its type from libclang. An overloaded or template function gives no type. The native base of the family keeps the name rule: `N` must be a property of the current class.
 - Limit of the `.` access: it lowers to `spp::deref(a).b`. A smart pointer, an iterator and `std::optional` have `operator->`, so use `.get()`. A native static data member (`Vec3.Zero.x`) needs a typed local. A null handle in `obj.field` throws `std::runtime_error`.
 - `return this` as a handle becomes `spp::handle_from_this<H>(self)`. It needs `std::enable_shared_from_this` in the shell. A reload that adds the first such use (or the first script child) changes the shell layout, and the loader rejects it with a message. Use it in generation 1. A lambda does not convert `this`.
-- Parameter analysis (7.10.5): a value or handle parameter is `const T&`, unless the body changes, stores or rebinds it, or the type is small. The analysis follows script functions of the class and its script parents only. A native function and a lambda are not followed.
+- Parameter analysis (7.10.5): a value or handle parameter is `const T&`, unless the body changes, stores or rebinds it, or the type is small. The analysis follows these calls with a parameter as an argument (S25):
+  - a script function of the class and its script parents;
+  - a method of a script handle (a parameter, a field or a typed local): the declared method gives the mode and the body. A `virtual` or `override` method counts as a store;
+  - a call of a local lambda `var f = (T x) => {...}; f(p)`: the body of the lambda. A callable value that is not such a local lambda counts as a store. A lambda body that names the parameter is a capture and counts as a store;
+  - a native function or member function: libclang gives the signature (query `@fn:KEY`, matched at the end of the qualified name, with the bases of a class). `const T&` does not store. `T&`, `T&&` and a non-const pointer change and may store. A by-value parameter and a pointer to const may store. An overload set gives the worst form. A function that libclang does not find, or a receiver with an unknown type, counts as a store (a copy).
+  A result of a finished class is kept in a memo, because the lowering changes its bodies.
 
 Inheritance (S6, S20a):
 - The shell of a child derives from the shell of the parent. A family has one slot numbering. `virtual` adds a slot (`Owner__f_virt`). `override` fills it. A name that hides a parent function needs `new`. `super.f()` calls the parent directly.
@@ -96,7 +101,7 @@ Reload hooks and module state (S3, S8a, S16, S17): `onReload` and `convert_<fiel
 
 Unload limits (core module): the loader does not see a code pointer that native code keeps. `kMayHoldCode` is set for `std::shared_ptr`, a raw function pointer, a member function pointer and `std::function`. A function pointer inside a trivially copyable native struct is not found. Each generation that adds a class or a thunk loads one more copy of its module as a core. The JIT keeps an IR clone of each module until the loader takes it.
 
-Stubs and checks (S2, S20b): order of the rules: exact stub, base stub, pattern stub, plain data (value), `class *`, raw. The checks of 7.10.7 use libclang constexpr probes, cached by the session. A borrowed pointer or `ref` in a field, return, collection or lambda capture is an error (`--no-strict-borrowed` makes it a warning). A `ref x` passed to a native function that keeps it is not detectable. A custom `spp::is_handle` is checked for `operator->` only. `intrusive` needs non-overloaded Add and Release members.
+Stubs and checks (S2, S20b): order of the rules: exact stub, base stub, pattern stub, plain data (value), `class *`, raw. The checks of 7.10.7 use libclang constexpr probes, cached by the session. A borrowed pointer or `ref` in a field, return, collection or lambda capture is an error (`--no-strict-borrowed` makes it a warning). A `ref x` passed to a native function that keeps it is not detectable (the S25 signature query serves the value/handle parameter form only, not this error: a `T*` parameter is too common to be an error). A custom `spp::is_handle` is checked for `operator->` only. `intrusive` needs non-overloaded Add and Release members.
 
 Translator cache: it hashes a header that changed in the last 2 seconds. It checks paths that hide a header earlier in the include path. The stamp has the inode, the ctime and a content hash. The prelude is not in the cache key.
 
