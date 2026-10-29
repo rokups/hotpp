@@ -1,0 +1,11 @@
+body{margin:0;font:16px/1.6 system-ui,sans-serif;color:#222;display:flex}
+nav.side{width:14rem;min-height:100vh;padding:1rem;background:#f3f4f6;box-sizing:border-box;flex-shrink:0}
+nav.side .brand{font-size:1.4rem;font-weight:700;text-decoration:none;color:#222}
+nav.side ul{list-style:none;padding:0}
+nav.side li{margin:.3rem 0}
+nav.side li.active a{font-weight:700}
+nav.side a{color:#1d4ed8;text-decoration:none}
+main{max-width:50rem;padding:1rem 2rem;min-width:0}
+pre{background:#f6f8fa;padding:.8rem;overflow-x:auto;border-radius:4px}
+code{font-size:.9em}
+table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:.3rem .6rem}

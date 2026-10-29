@@ -1,0 +1,41 @@
+---
+layout: default
+title: Getting started
+nav_order: 2
+---
+
+A script is a class in a `.spp` file. It derives from a native engine class.
+
+## Write a class
+
+`using` pulls in a native header. A method with `override` replaces a native virtual method. Use `.` to reach members of `this`.
+
+```csharp
+using "Actor.h";
+using "Math.h";
+
+class Player : Actor {
+    float hp = 100.0;
+    float speed = 5.0;
+
+    override void Tick(float dt) {
+        this.Move(Vec3(this.speed * dt, 0, 0));
+        this.heal(1.0);
+    }
+
+    void heal(float amount) {
+        this.hp = Math.Min(this.hp + amount, 100.0);
+    }
+}
+```
+
+## Check and compile
+
+The first command translates the script to C++ and prints it. The second command builds a shared library for generation 1.
+
+```
+sppc --emit-cpp player.spp --gen 1 -I include -I example/engine
+sppc player.spp --gen 1 -I include -I example/engine -o player.so
+```
+
+The build presets are in `README.md`.
