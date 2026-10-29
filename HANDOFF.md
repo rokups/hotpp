@@ -111,6 +111,7 @@ Other limits:
 - The parser stores the access words. The translator does not enforce them.
 - Nesting limits: 64 nested statements, 15 nested lambdas, 256 operators in one expression.
 - Shipping mode: generation 1 only, no slot file. A type error shows in the C++ compile of the generated file. Script type and class names must be unique over all shipped scripts. `onReload` and `convert` never run.
+- Language server index (S28): the shard of a closed `.spp` file is made at the first rename or references scan, not at startup. The shard digest covers only the text of that file, not the scripts it imports. A changed import does not invalidate the shard. Delete `.cache/spp/index/` to force a new analyze. The index dir is the first workspace folder only. Code: `src/ls/symbol_index.{h,cpp}`.
 - Language server: after a translation error, clangd keeps the last good C++. The column of a `#line` fallback is 0.
 - Diagnostic columns: the rewriter uses the source map for the script column. A column in text that the translator writes by itself (for example `spp::deref(`) has no segment: the rewriter then takes the next mapped column of the same line, or 1.
 

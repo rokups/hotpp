@@ -5,12 +5,16 @@
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include "integration/ls/ls_client.h"
 #include "spp/clang_files_backend.h"
 #include "spp/sppc_lib.h"
+#include "symbol_index.h"
 #include "support/translator_test_support.h"
 
 using ls_test::json;
@@ -489,4 +493,203 @@ TEST(LanguageServer, BackgroundIndexFindsAScriptSymbolInAGeneratedFile)
     ASSERT_FALSE(found.is_null()) << "the index has no script symbol";
     EXPECT_EQ(found["name"], "Player.heal");
     EXPECT_EQ(found["location"]["range"]["start"]["line"], 10);
+}
+
+// ------------------------------------------------------------------ S28: saved symbol index
+
+namespace {
+
+spp::ls::IndexShard sample_shard()
+{
+    spp::ls::IndexShard shard;
+    spp::ls::IndexClass c;
+    c.name = "Player";
+    c.begin = {2, 6};
+    c.refs = {{2, 6}, {9, 4}};
+    spp::ls::IndexMember known{"hp", "field", {3, 10}, std::vector<spp::ls::IndexPos>{{3, 10}, {11, 13}}};
+    spp::ls::IndexMember unknown{"heal", "method", {10, 9}, std::nullopt};
+    c.members = {known, unknown};
+    shard.classes.push_back(c);
+    return shard;
+}
+
+size_t file_count(const std::filesystem::path& dir)
+{
+    size_t n = 0;
+    for (const auto& e : std::filesystem::directory_iterator(dir)) {
+        (void)e;
+        ++n;
+    }
+    return n;
+}
+
+int analyzed_files(LsClient& client)
+{
+    const json r = client.request("spp/indexStats", json::object());
+    return r["result"].value("analyzed", -1);
+}
+
+}  // namespace
+
+TEST(SymbolIndex, ReusesAShardWhenTheDigestMatches)
+{
+    TempDir dir;
+    spp::ls::SymbolIndex index;
+    index.open((dir.path() / "index").string());
+    const std::string script = (dir.path() / "a.spp").string();
+    write_file(script, "class A {}\n");
+    const std::string digest = spp::ls::SymbolIndex::digest("class A {}\n");
+    ASSERT_TRUE(index.store(script, digest, sample_shard()));
+    auto shard = index.load(script, digest);
+    ASSERT_TRUE(shard);
+    spp::ls::IndexClass* c = shard->find_class("Player");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->refs.size(), 2u);
+    ASSERT_NE(c->find_member("hp"), nullptr);
+    ASSERT_TRUE(c->find_member("hp")->refs);
+    EXPECT_EQ(c->find_member("hp")->refs->size(), 2u);
+    ASSERT_NE(c->find_member("heal"), nullptr);
+    EXPECT_FALSE(c->find_member("heal")->refs);
+    EXPECT_EQ(index.loads(), 1);
+}
+
+TEST(SymbolIndex, ADifferentDigestGivesNoShardAndTheNewShardReplacesTheOld)
+{
+    TempDir dir;
+    spp::ls::SymbolIndex index;
+    index.open((dir.path() / "index").string());
+    const std::string script = (dir.path() / "a.spp").string();
+    write_file(script, "x");
+    const std::string d1 = spp::ls::SymbolIndex::digest("one"), d2 = spp::ls::SymbolIndex::digest("two");
+    ASSERT_NE(d1, d2);
+    ASSERT_TRUE(index.store(script, d1, sample_shard()));
+    EXPECT_FALSE(index.load(script, d2));
+    ASSERT_TRUE(index.store(script, d2, spp::ls::IndexShard{}));
+    EXPECT_FALSE(index.load(script, d1));
+    ASSERT_TRUE(index.load(script, d2));
+    EXPECT_EQ(file_count(dir.path() / "index"), 1u);
+}
+
+TEST(SymbolIndex, PruneDeletesTheShardOfAMissingFile)
+{
+    TempDir dir;
+    spp::ls::SymbolIndex index;
+    index.open((dir.path() / "index").string());
+    const std::string a = (dir.path() / "a.spp").string(), b = (dir.path() / "b.spp").string();
+    write_file(a, "x");
+    write_file(b, "y");
+    ASSERT_TRUE(index.store(a, "da", sample_shard()));
+    ASSERT_TRUE(index.store(b, "db", sample_shard()));
+    EXPECT_EQ(index.prune(), 0);
+    std::filesystem::remove(a);
+    EXPECT_EQ(index.prune(), 1);
+    EXPECT_EQ(file_count(dir.path() / "index"), 1u);
+    EXPECT_FALSE(std::filesystem::exists(index.shard_path(a)));
+    EXPECT_TRUE(index.load(b, "db"));
+}
+
+TEST(SymbolIndex, ADifferentFormatVersionIsDropped)
+{
+    TempDir dir;
+    spp::ls::SymbolIndex index;
+    index.open((dir.path() / "index").string());
+    const std::string script = (dir.path() / "a.spp").string();
+    write_file(script, "x");
+    ASSERT_TRUE(index.store(script, "d", sample_shard()));
+    const std::string file = index.shard_path(script);
+    std::string text = *[&] {
+        std::ifstream in(file, std::ios::binary);
+        std::stringstream ss;
+        ss << in.rdbuf();
+        return std::optional<std::string>(ss.str());
+    }();
+    const std::string head = "spp-index " + std::to_string(spp::ls::SymbolIndex::kFormatVersion) + " ";
+    ASSERT_EQ(text.rfind(head, 0), 0u);
+    text.replace(0, head.size(), "spp-index 999 ");
+    write_file(file, text);
+    EXPECT_FALSE(index.load(script, "d"));
+    EXPECT_FALSE(std::filesystem::exists(file));
+}
+
+TEST(SymbolIndex, TheIndexDoesNotGrowAfter1000EditsOfOneFile)
+{
+    TempDir dir;
+    spp::ls::SymbolIndex index;
+    index.open((dir.path() / "index").string());
+    const std::string script = (dir.path() / "a.spp").string();
+    write_file(script, "x");
+    std::uintmax_t first_size = 0;
+    for (int i = 0; i < 1000; ++i) {
+        const std::string digest = spp::ls::SymbolIndex::digest("version " + std::to_string(i));
+        ASSERT_TRUE(index.store(script, digest, sample_shard()));
+        if (i == 0) first_size = std::filesystem::file_size(index.shard_path(script));
+    }
+    EXPECT_EQ(file_count(dir.path() / "index"), 1u);  // no old shard and no temporary file
+    EXPECT_LE(std::filesystem::file_size(index.shard_path(script)), first_size + 16);
+}
+
+// A class rename in a closed file. The first server analyzes the file and saves the shard.
+// A new server after a restart loads the shard and analyzes no file.
+TEST(LanguageServer, RenameOnAClosedFileAfterARestartUsesTheIndex)
+{
+    Session s(false);
+    const std::string other_path = (s.dir.path() / "player_v2.spp").string();
+    write_file(other_path, kScript);
+    write_file(s.dir.path() / "unrelated.spp", "class Other {\n    float hp = 1.0;\n}\n");
+    json p = doc_pos(s.uri, 2, 7);
+    p["newName"] = "Hero";
+    json r = s.client->request("textDocument/rename", p);
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    ASSERT_TRUE(r["result"]["changes"].contains(uri_of(other_path))) << r.dump();
+    const json first = r["result"]["changes"][uri_of(other_path)];
+    EXPECT_EQ(analyzed_files(*s.client), 1);
+    EXPECT_TRUE(std::filesystem::exists(s.dir.path() / ".cache" / "spp" / "index"));
+    s.client.reset();  // the restart
+    s.client = std::make_unique<LsClient>(options(s.dir, false));
+    s.client->initialize(uri_of(s.dir.path().string()));
+    s.client->open(s.uri, kScript);
+    r = s.client->request("textDocument/rename", p);
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    EXPECT_EQ(r["result"]["changes"][uri_of(other_path)], first) << r.dump();
+    EXPECT_EQ(analyzed_files(*s.client), 0);
+    // A changed file is analyzed again. The shard count stays the same.
+    const size_t shards = file_count(s.dir.path() / ".cache" / "spp" / "index");
+    std::string changed = kScript;
+    changed += "\n";
+    write_file(other_path, changed);
+    r = s.client->request("textDocument/rename", p);
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    EXPECT_EQ(analyzed_files(*s.client), 1);
+    EXPECT_EQ(file_count(s.dir.path() / ".cache" / "spp" / "index"), shards);
+}
+
+// The same for a member. The references of a member come from clangd. The shard keeps them.
+TEST(LanguageServer, MemberRenameOnAClosedFileAfterARestartUsesTheIndex)
+{
+    REQUIRE_CLANGD();
+    Session s(true);
+    spp::ls::ServerOptions o = options(s.dir, true);
+    o.index_dir = (s.dir.path() / "my-index").string();
+    s.client.reset();
+    s.client = std::make_unique<LsClient>(o);
+    s.client->initialize(uri_of(s.dir.path().string()));
+    s.client->open(s.uri, kScript);
+    const std::string other_path = (s.dir.path() / "player_v2.spp").string();
+    write_file(other_path, kScript);
+    json p = doc_pos(s.uri, 3, 11);
+    p["newName"] = "health";
+    json r = s.client->request("textDocument/rename", p);
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    ASSERT_TRUE(r["result"]["changes"].contains(uri_of(other_path))) << r.dump();
+    EXPECT_EQ(r["result"]["changes"][uri_of(other_path)].size(), 3u) << r.dump();
+    EXPECT_EQ(analyzed_files(*s.client), 1);
+    EXPECT_FALSE(std::filesystem::exists(s.dir.path() / ".cache"));  // --index-dir is used
+    s.client.reset();
+    s.client = std::make_unique<LsClient>(o);
+    s.client->initialize(uri_of(s.dir.path().string()));
+    s.client->open(s.uri, kScript);
+    r = s.client->request("textDocument/rename", p);
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    EXPECT_EQ(r["result"]["changes"][uri_of(other_path)].size(), 3u) << r.dump();
+    EXPECT_EQ(analyzed_files(*s.client), 0);
 }

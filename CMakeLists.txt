@@ -152,7 +152,7 @@ CPMAddPackage(
     OPTIONS "JSON_BuildTests OFF" "JSON_Install OFF"
 )
 add_library(spp_ls_lib STATIC src/ls/jsonrpc.cpp src/ls/clangd_process.cpp src/ls/server.cpp
-    src/ls/semantic.cpp)
+    src/ls/semantic.cpp src/ls/symbol_index.cpp)
 target_include_directories(spp_ls_lib PUBLIC ${CMAKE_SOURCE_DIR}/src/ls PRIVATE ${CMAKE_SOURCE_DIR}/src/translator)
 target_link_libraries(spp_ls_lib PUBLIC spp_clang_backend nlohmann_json::nlohmann_json Threads::Threads)
 add_executable(spp_ls src/ls/main.cpp)

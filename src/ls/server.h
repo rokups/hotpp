@@ -22,6 +22,9 @@ struct ServerOptions {
     // (--compile-commands-dir) and runs its background index on the generated files. The
     // server also reads the -I, -isystem and -D flags of the first entry.
     std::string compile_commands_dir;
+    // The directory of the saved symbol index (S28). Empty: ".cache/spp/index" in the first
+    // workspace folder.
+    std::string index_dir;
     std::string clangd_log;  // the stderr of clangd. Empty: /dev/null.
 };
 

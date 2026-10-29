@@ -20,6 +20,7 @@
 #include "clangd_process.h"
 #include "jsonrpc.h"
 #include "semantic.h"
+#include "symbol_index.h"
 #include "spp/clang_files_backend.h"
 #include "spp/sppc_lib.h"
 
@@ -273,6 +274,7 @@ private:
     std::set<Pos> class_places(const Doc& d, const std::string& name) const;
     bool is_script_class(const Doc& d, const std::string& name) const;
     std::vector<std::string> workspace_scripts() const;
+    IndexShard shard_of_doc(const Doc& d) const;
     // Calls "fn" for each other .spp file of the workspace that declares the symbol "key".
     // "places" are the places of the symbol in that file. An open document is used as it is.
     // A file on disk goes to clangd only for the call.
@@ -294,6 +296,9 @@ private:
     // The analyze facts of the scripts on disk that are not open (script_member_location).
     std::map<std::string, std::pair<std::string, sppc::AnalyzeResult>> disk_facts_;
     std::string index_seed_;  // the first file of compile_commands.json (start_clangd)  // the generated files with a first completion
+    // The saved symbol index of the scripts on disk (S28, symbol_index.h).
+    SymbolIndex index_;
+    int closed_analyses_ = 0;  // the analyze calls of for_other_scripts (spp/indexStats)
     sppc::TranslatorSession session_;
 };
 
@@ -396,6 +401,9 @@ json Server::on_initialize(const json& p)
     }
     if (roots_.empty() && p.value("rootUri", json()).is_string()) roots_.push_back(uri_to_path(p["rootUri"].get<std::string>()));
     if (roots_.empty() && p.value("rootPath", json()).is_string()) roots_.push_back(p["rootPath"].get<std::string>());
+    if (!opt_.index_dir.empty()) index_.open(opt_.index_dir);
+    else if (!roots_.empty()) index_.open((fs::path(roots_[0]) / ".cache" / "spp" / "index").string());
+    index_.prune();
     start_clangd(p);
     json tokens = json::array();
     for (const std::string& t : semantic_token_types()) tokens.push_back(t);
@@ -893,11 +901,10 @@ std::optional<Pos> Server::key_position(const Doc& d, const SymbolKey& key) cons
 std::vector<std::string> Server::workspace_scripts() const
 {
     std::vector<std::string> out;
-    constexpr size_t kMaxFiles = 5000;
     for (const std::string& root : roots_) {
         std::error_code ec;
         fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
-        for (; !ec && it != end && out.size() < kMaxFiles; it.increment(ec)) {
+        for (; !ec && it != end; it.increment(ec)) {
             const std::string name = it->path().filename().string();
             std::error_code ec2;
             if (it->is_directory(ec2)) {
@@ -915,6 +922,7 @@ std::vector<std::string> Server::workspace_scripts() const
 void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const std::string& name,
                                const std::function<void(const Doc&, const std::set<Pos>&)>& fn)
 {
+    index_.prune();  // the shard of a file that is gone
     for (const std::string& path : workspace_scripts()) {
         if (path == origin.path) continue;
         std::shared_ptr<Doc> open;
@@ -928,27 +936,73 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
             continue;
         }
         const auto text = read_file(path);
-        if (!text || text->find(name) == std::string::npos) continue;
+        if (!text) continue;
         Doc tmp;
         tmp.uri = path_to_uri(path);
         tmp.path = path;
         tmp.gen_path = path + ".cpp";
         tmp.gen_uri = path_to_uri(tmp.gen_path);
         tmp.text = Text(*text);
-        tmp.facts = sppc::analyze(tmp.text.s, translate_options(tmp), session_);
-        const auto at = key_position(tmp, key);
-        if (!at || word(tmp, *at) != name) continue;
-        if (!key.member.empty()) {  // a member needs clangd. A class does not.
-            if (tmp.facts.cpp.empty()) continue;
-            tmp.gen = Text(tmp.facts.cpp);
-            tmp.map = std::make_shared<const sppc::SourceMap>(tmp.facts.source_map);
-            tmp.gen_version = 1;
-            send_generated(tmp, tmp.facts.cpp);
+        bool analyzed = false;
+        auto analyze_tmp = [&] {
+            tmp.facts = sppc::analyze(tmp.text.s, translate_options(tmp), session_);
+            analyzed = true;
+            ++closed_analyses_;
+        };
+        // The saved shard of the file holds the symbols and the references of the last analyze.
+        const std::string digest = SymbolIndex::digest(*text);
+        auto shard = index_.load(path, digest);
+        if (!shard) {
+            if (text->find(name) == std::string::npos) continue;
+            analyze_tmp();
+            shard = shard_of_doc(tmp);
+            index_.store(path, digest, *shard);
         }
-        const auto r = symbol_places(tmp, *at, name, nullptr);
-        if (const auto* places = std::get_if<std::set<Pos>>(&r); places && !places->empty()) fn(tmp, *places);
-        if (clangd_ && tmp.in_clangd) clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", tmp.gen_uri}}}});
+        IndexClass* cls = shard->find_class(key.cls);
+        if (!cls) continue;
+        std::set<Pos> places;
+        if (key.member.empty()) {
+            for (const IndexPos& r : cls->refs) places.insert({r.line, r.col});
+        } else {
+            IndexMember* m = cls->find_member(key.member);
+            if (!m) continue;
+            if (m->refs) {
+                for (const IndexPos& r : *m->refs) places.insert({r.line, r.col});
+            } else {  // a member needs clangd. The result goes into the shard.
+                if (!analyzed) analyze_tmp();
+                const auto at = key_position(tmp, key);
+                if (!at || tmp.facts.cpp.empty()) continue;
+                tmp.gen = Text(tmp.facts.cpp);
+                tmp.map = std::make_shared<const sppc::SourceMap>(tmp.facts.source_map);
+                tmp.gen_version = 1;
+                send_generated(tmp, tmp.facts.cpp);
+                const auto r = symbol_places(tmp, *at, name, nullptr);
+                if (const auto* found = std::get_if<std::set<Pos>>(&r)) places = *found;
+                if (clangd_ && tmp.in_clangd) clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", tmp.gen_uri}}}});
+                if (!places.empty()) {
+                    m->refs = std::vector<IndexPos>();
+                    for (const Pos& q : places) m->refs->push_back({q.line, q.col});
+                    index_.store(path, digest, *shard);
+                }
+            }
+        }
+        if (!places.empty()) fn(tmp, places);
     }
+}
+
+IndexShard Server::shard_of_doc(const Doc& d) const
+{
+    IndexShard shard;
+    for (const sppc::AnalyzedClass& c : d.facts.classes) {
+        IndexClass ic;
+        ic.name = c.name;
+        const Pos b = class_name_pos(d, c);
+        ic.begin = {b.line, b.col};
+        for (const Pos& q : class_places(d, c.name)) ic.refs.push_back({q.line, q.col});
+        for (const sppc::AnalyzedMember& m : c.members) ic.members.push_back({m.name, m.kind, {m.begin.line - 1, m.begin.col - 1}, std::nullopt});
+        shard.classes.push_back(std::move(ic));
+    }
+    return shard;
 }
 
 std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
@@ -1201,6 +1255,8 @@ void Server::handle(const json& msg)
     }
     if (!is_request) return;  // initialized, $/cancelRequest and other notifications
     if (method == "workspace/symbol") return reply(id, on_workspace_symbol(p));
+    if (method == "spp/indexStats")
+        return reply(id, {{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"stored", index_.stores()}, {"dir", index_.dir()}});
     if (method == "spp/toScript") return reply(id, on_to_script(p));
 
     static const std::set<std::string> doc_methods = {
@@ -1279,12 +1335,15 @@ int run_server(int in_fd, int out_fd, const ServerOptions& options)
 const char* usage_text()
 {
     return "usage: spp-ls [--stdio] [--clangd path] [-I dir]... [--resource-dir dir] [--cxxflag flag]...\n"
-           "              [--compile-commands-dir dir] [--clangd-log file]\n"
+           "              [--compile-commands-dir dir] [--index-dir dir]\n"
+           "              [--clangd-log file]\n"
            "  --clangd path      the clangd binary (default: clangd from PATH). \"\" turns clangd off.\n"
            "  -I dir             an include dir for the script imports and for clangd.\n"
            "  --compile-commands-dir dir\n"
            "                     the directory of compile_commands.json from sppc --compile-commands.\n"
-           "                     clangd runs its background index on it.\n";
+           "                     clangd runs its background index on it.\n"
+           "  --index-dir dir    the directory of the saved symbol index (default:\n"
+           "                     .cache/spp/index in the first workspace folder).\n";
 }
 
 bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, std::string& error)
@@ -1315,6 +1374,8 @@ bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, s
             out.extra_flags.push_back(v);
         } else if (a == "--compile-commands-dir") {
             if (!next(out.compile_commands_dir)) return false;
+        } else if (a == "--index-dir") {
+            if (!next(out.index_dir)) return false;
         } else if (a == "--clangd-log") {
             if (!next(out.clangd_log)) return false;
         } else {
