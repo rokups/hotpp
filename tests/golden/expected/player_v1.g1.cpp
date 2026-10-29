@@ -96,6 +96,40 @@ static inline PlayerState_g1* state_of(Player_Shell* self)
 
 static void Player__heal(Player_Shell* self, float amount);
 
+#line 5 "player_v1.spp"
+[[maybe_unused]] static auto Player__super_args()
+{
+    return std::make_tuple(std::string("Player"));
+}
+static auto Player__plan()
+{
+    return std::make_pair(Player__super_args(), std::tuple<>());
+}
+#line 109 "player_v1.spp.cpp"
+using Player_SuperArgs = decltype(Player__plan().first);
+// Makes the shell with the base arguments. Only the first generation of the class runs it.
+// "key" names the type of the arguments. An unknown key gives nullptr.
+static spp::ShellBase* Player__construct(const char* key, const void* args)
+{
+    if (std::strcmp(key, typeid(Player_SuperArgs).name()) == 0) {
+        const auto& t = *static_cast<const Player_SuperArgs*>(args);
+        return std::apply([](const auto&... x) -> spp::ShellBase* { return new Player_Shell(spp::Construct{}, x...); }, t);
+    }
+    return nullptr;
+}
+
+static Player_Shell* Player__build([[maybe_unused]] bool note)
+{
+    auto plan = Player__plan();
+    auto* self = static_cast<Player_Shell*>(spp::construct_shell(&Player_record, typeid(Player_SuperArgs).name(), &plan.first, note));
+    return self;
+}
+
+[[maybe_unused]] static Player_Shell* Player__new()
+{
+    return Player__build(true);
+}
+
 static void Player__Tick(Actor* a, float dt)
 {
     [[maybe_unused]] auto* self = static_cast<Player_Shell*>(a);
@@ -112,7 +146,7 @@ static void Player__Tick(Actor* a, float dt)
     spp::deref(self->Position).x, st->hp);
 #line 14 "player_v1.spp"
     Player__heal(self, 1.0f);
-#line 116 "player_v1.spp.cpp"
+#line 150 "player_v1.spp.cpp"
 }
 
 static void Player__TakeDamage_f(Actor* a, float amount)
@@ -127,7 +161,7 @@ static void Player__TakeDamage_f(Actor* a, float amount)
     st->hp = Math::Max(st->hp - amount, 0.0f);
 #line 19 "player_v1.spp"
     std::printf("[v1] %s: TakeDamage %.1f -> hp=%.1f\n", spp::deref(self->Name).c_str(), amount, st->hp);
-#line 131 "player_v1.spp.cpp"
+#line 165 "player_v1.spp.cpp"
 }
 
 static void Player__TakeDamage_Af(Actor* a, Actor& source, float amount)
@@ -144,7 +178,7 @@ static void Player__TakeDamage_Af(Actor* a, Actor& source, float amount)
     std::printf("[v1] %s: hit by %s\n", spp::deref(self->Name).c_str(), spp::deref(st->target).c_str());
 #line 25 "player_v1.spp"
     self->TakeDamage(amount);
-#line 148 "player_v1.spp.cpp"
+#line 182 "player_v1.spp.cpp"
 }
 
 static void Player__heal(Player_Shell* self, float amount)
@@ -158,7 +192,7 @@ static void Player__heal(Player_Shell* self, float amount)
     st->hp = Math::Min(st->hp + amount, 100.0f);
 #line 30 "player_v1.spp"
     std::printf("[v1] %s: heal %.1f -> hp=%.1f\n", spp::deref(self->Name).c_str(), amount, st->hp);
-#line 162 "player_v1.spp.cpp"
+#line 196 "player_v1.spp.cpp"
 }
 
 static void Player__heal_slot(Actor* a, float amount)
@@ -185,6 +219,8 @@ static void* Player_slots[SLOT_COUNT] = {
 spp::ClassRecord Player_record = {
     "Player", GEN, Player_slots, SLOT_COUNT, &Player_layout, nullptr,
     "Actor", spp::shell_layout_hash("Actor", sizeof(Player_Shell), alignof(Player_Shell), 3),
+    nullptr,
+    &Player__construct, typeid(Player_SuperArgs).name(), nullptr, nullptr, nullptr,
 };
 
 static spp::Instance Player_create()

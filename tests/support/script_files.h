@@ -22,7 +22,7 @@ inline std::string read_file(const std::string& path)
 inline spp::ScriptSource source(const char* file)
 {
     const std::string path = std::string(SPP_SOURCE_DIR) + "/example/scripts/" + file;
-    return {path, read_file(path)};
+    return {path, read_file(path), {}};
 }
 
 // The line number of the first line that has the text.

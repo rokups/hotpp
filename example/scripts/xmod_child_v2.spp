@@ -1,0 +1,29 @@
+// Generation 2 of the child module (S20a). It changes "Power", adds a field and overrides the
+// virtual function "Bonus" that generation 2 of the parent module added.
+using "xmod_parent.spp";
+using "Actor.h";
+
+class Grunt : Unit {
+    int rage = 3;
+    int fury = 4;
+
+    Grunt(int r) : super(r + 1) {
+        this.rage = r;
+        this.ctor_log = this.ctor_log * 10 + 2;
+    }
+
+    override int Power() { return this.rage * 2; }
+
+    override int Bonus() { return this.fury; }
+}
+
+class Spawner : Actor {
+    int made_power = 0;
+    bool made_unit = false;
+
+    override void Tick(float dt) {
+        Unit u = new Grunt(6);
+        this.made_power = u.Power();
+        this.made_unit = u is Unit;
+    }
+}

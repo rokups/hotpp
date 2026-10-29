@@ -319,7 +319,7 @@ int run_build(const Args& args)
         const std::string so = single_so ? args.output
                                          : out_dir + "/" + stem + ".g" + std::to_string(args.gen) + ".so";
         std::string error;
-        const bool built = backend.build({path, ss.str()}, static_cast<uint32_t>(args.gen), so, error);
+        const bool built = backend.build({path, ss.str(), {}}, static_cast<uint32_t>(args.gen), so, error);
         if (!built) {
             std::fputs(error.c_str(), stderr);
             failed = true;

@@ -114,6 +114,40 @@ static void Gauge__set_Level(Gauge_Shell* self, int32_t value);
 static float Gauge__get_Shield(Gauge_Shell* self);
 static void Gauge__set_Shield(Gauge_Shell* self, float value);
 
+#line 6 "props_v1.spp"
+[[maybe_unused]] static auto Gauge__super_args()
+{
+    return std::make_tuple(std::string("Gauge"));
+}
+static auto Gauge__plan()
+{
+    return std::make_pair(Gauge__super_args(), std::tuple<>());
+}
+#line 127 "props_v1.spp.cpp"
+using Gauge_SuperArgs = decltype(Gauge__plan().first);
+// Makes the shell with the base arguments. Only the first generation of the class runs it.
+// "key" names the type of the arguments. An unknown key gives nullptr.
+static spp::ShellBase* Gauge__construct(const char* key, const void* args)
+{
+    if (std::strcmp(key, typeid(Gauge_SuperArgs).name()) == 0) {
+        const auto& t = *static_cast<const Gauge_SuperArgs*>(args);
+        return std::apply([](const auto&... x) -> spp::ShellBase* { return new Gauge_Shell(spp::Construct{}, x...); }, t);
+    }
+    return nullptr;
+}
+
+static Gauge_Shell* Gauge__build([[maybe_unused]] bool note)
+{
+    auto plan = Gauge__plan();
+    auto* self = static_cast<Gauge_Shell*>(spp::construct_shell(&Gauge_record, typeid(Gauge_SuperArgs).name(), &plan.first, note));
+    return self;
+}
+
+[[maybe_unused]] static Gauge_Shell* Gauge__new()
+{
+    return Gauge__build(true);
+}
+
 static void Gauge__Tick(Actor* a, float dt)
 {
     [[maybe_unused]] auto* self = static_cast<Gauge_Shell*>(a);
@@ -128,7 +162,7 @@ static void Gauge__Tick(Actor* a, float dt)
     Gauge__set_Shield(self, Gauge__get_Shield(self) + 2.0f);
 #line 19 "props_v1.spp"
     Gauge__set_Level(self, Gauge__get_Level(self) + 1);
-#line 132 "props_v1.spp.cpp"
+#line 166 "props_v1.spp.cpp"
 }
 
 static void Gauge__TakeDamage_f(Actor* a, float amount)
@@ -143,7 +177,7 @@ static void Gauge__TakeDamage_f(Actor* a, float amount)
     Gauge__set_Shield(self, Gauge__get_Shield(self) - (amount));
 #line 24 "props_v1.spp"
     if (Gauge__get_Shield(self) <= 0.0f) Gauge__set_Hp(self, Gauge__get_Hp(self) - amount);
-#line 147 "props_v1.spp.cpp"
+#line 181 "props_v1.spp.cpp"
 }
 
 static float Gauge__total(Gauge_Shell* self)
@@ -155,7 +189,7 @@ static float Gauge__total(Gauge_Shell* self)
     [[maybe_unused]] auto* st = state_of(self);
 #line 28 "props_v1.spp"
     return Gauge__get_Hp(self) + Gauge__get_Shield(self);
-#line 159 "props_v1.spp.cpp"
+#line 193 "props_v1.spp.cpp"
 }
 
 static float Gauge__get_Hp(Gauge_Shell* self)
@@ -167,7 +201,7 @@ static float Gauge__get_Hp(Gauge_Shell* self)
     [[maybe_unused]] auto* st = state_of(self);
 #line 7 "props_v1.spp"
     return st->__p_Hp;
-#line 171 "props_v1.spp.cpp"
+#line 205 "props_v1.spp.cpp"
 }
 
 static void Gauge__set_Hp(Gauge_Shell* self, float value)
@@ -179,7 +213,7 @@ static void Gauge__set_Hp(Gauge_Shell* self, float value)
     [[maybe_unused]] auto* st = state_of(self);
 #line 7 "props_v1.spp"
     st->__p_Hp = value;
-#line 183 "props_v1.spp.cpp"
+#line 217 "props_v1.spp.cpp"
 }
 
 static float Gauge__get_MaxHp(Gauge_Shell* self)
@@ -191,7 +225,7 @@ static float Gauge__get_MaxHp(Gauge_Shell* self)
     [[maybe_unused]] auto* st = state_of(self);
 #line 8 "props_v1.spp"
     return st->__p_MaxHp;
-#line 195 "props_v1.spp.cpp"
+#line 229 "props_v1.spp.cpp"
 }
 
 static int32_t Gauge__get_Level(Gauge_Shell* self)
@@ -203,7 +237,7 @@ static int32_t Gauge__get_Level(Gauge_Shell* self)
     [[maybe_unused]] auto* st = state_of(self);
 #line 9 "props_v1.spp"
     return st->__p_Level;
-#line 207 "props_v1.spp.cpp"
+#line 241 "props_v1.spp.cpp"
 }
 
 static void Gauge__set_Level(Gauge_Shell* self, int32_t value)
@@ -215,7 +249,7 @@ static void Gauge__set_Level(Gauge_Shell* self, int32_t value)
     [[maybe_unused]] auto* st = state_of(self);
 #line 9 "props_v1.spp"
     st->__p_Level = value;
-#line 219 "props_v1.spp.cpp"
+#line 253 "props_v1.spp.cpp"
 }
 
 static float Gauge__get_Shield(Gauge_Shell* self)
@@ -227,7 +261,7 @@ static float Gauge__get_Shield(Gauge_Shell* self)
     [[maybe_unused]] auto* st = state_of(self);
 #line 12 "props_v1.spp"
     return st->shield_raw;
-#line 231 "props_v1.spp.cpp"
+#line 265 "props_v1.spp.cpp"
 }
 
 static void Gauge__set_Shield(Gauge_Shell* self, float value)
@@ -239,7 +273,7 @@ static void Gauge__set_Shield(Gauge_Shell* self, float value)
     [[maybe_unused]] auto* st = state_of(self);
 #line 13 "props_v1.spp"
     st->shield_raw = value < 0.0f ? 0.0f : value;
-#line 243 "props_v1.spp.cpp"
+#line 277 "props_v1.spp.cpp"
 }
 
 // Not overridden: call the implementation of Actor.
@@ -370,6 +404,8 @@ static void* Gauge_slots[SLOT_COUNT] = {
 spp::ClassRecord Gauge_record = {
     "Gauge", GEN, Gauge_slots, SLOT_COUNT, &Gauge_layout, nullptr,
     "Actor", spp::shell_layout_hash("Actor", sizeof(Gauge_Shell), alignof(Gauge_Shell), 3),
+    nullptr,
+    &Gauge__construct, typeid(Gauge_SuperArgs).name(), nullptr, nullptr, nullptr,
 };
 
 static spp::Instance Gauge_create()

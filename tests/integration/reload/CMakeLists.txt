@@ -13,6 +13,7 @@ add_executable(integration_reload_tests
     property_tests.cpp
     exception_tests.cpp
     inheritance_tests.cpp
+    cross_module_tests.cpp
     interface_tests.cpp
     runtime_polish_tests.cpp
     core_module_tests.cpp

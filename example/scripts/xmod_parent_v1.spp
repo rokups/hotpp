@@ -1,0 +1,24 @@
+// Generation 1 of the parent module of a family over two modules (S20a, design 4.5 and 4.10).
+// The child module "xmod_child_v1.spp" imports this file with "using "xmod_parent.spp";".
+// One generation holds both modules, so the family has one slot numbering.
+using "Actor.h";
+using <string>;
+
+class Unit : Actor {
+    int hp = 100;
+    int ctor_log = 0;
+    int ticks = 0;
+    int power = 0;
+
+    Unit(int start) : super(std.string("unit")) {
+        this.hp = start;
+        this.ctor_log = this.ctor_log * 10 + 1;
+    }
+
+    virtual int Power() { return 1; }
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        this.power = Power();
+    }
+}

@@ -1,0 +1,25 @@
+// Generation 1 of the child module (S20a). "Grunt" derives from "Unit" of another module.
+using "xmod_parent.spp";
+using "Actor.h";
+
+class Grunt : Unit {
+    int rage = 3;
+
+    Grunt(int r) : super(r + 1) {
+        this.rage = r;
+        this.ctor_log = this.ctor_log * 10 + 2;
+    }
+
+    override int Power() { return this.rage; }
+}
+
+class Spawner : Actor {
+    int made_power = 0;
+    bool made_unit = false;
+
+    override void Tick(float dt) {
+        Unit u = new Grunt(6);
+        this.made_power = u.Power();
+        this.made_unit = u is Unit;
+    }
+}

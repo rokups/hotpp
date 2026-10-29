@@ -71,7 +71,8 @@ TEST(InheritanceTranslation, ParentConstructorRunsFirst)
     // The plan evaluates "x + 1" one time. The chain gives the value to the constructor of A.
     EXPECT_TRUE(has(r.cpp, "auto up = std::make_tuple(x + 1);")) << r.cpp;
     EXPECT_EQ(r.cpp.find("x + 1"), r.cpp.rfind("x + 1")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "A__ctor_chain(self, chain.second, x...); }, chain.first);\n    B__ctor(self, x);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "A__ctor_chain(self, chain.second, std::forward<decltype(x)>(x)...); }, std::move(chain.first));\n"
+                           "    B__ctor(self, x);")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "B__ctor_chain(self, plan.second, x);")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "&B__new_default")) << r.cpp;
 }

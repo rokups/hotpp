@@ -50,7 +50,7 @@ spp::ScriptSource source(const char* file)
     std::ifstream f(path);
     std::stringstream ss;
     ss << f.rdbuf();
-    return {path, ss.str()};
+    return {path, ss.str(), {}};
 }
 
 // The page faults of the children that the process waited for. A child that
@@ -203,7 +203,7 @@ class Player : Actor {
 
     override void TakeDamage(Actor& source, float amount) {}
 }
-)"};
+)", {}};
     std::unique_ptr<spp::Backend> backend = spp::make_default_backend();
     spp::LoadResult r = backend->load(src, 1);
     ASSERT_TRUE(r) << r.error;

@@ -217,6 +217,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
     Clock::time_point t0 = Clock::now();
     sppc::TranslateOptions to;
     to.script_text = source.text;
+    to.modules = source.modules;
     to.script_name = source.name;
     to.output_name = cpp_path;
     to.generation = static_cast<int>(generation);

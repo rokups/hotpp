@@ -95,10 +95,10 @@ inline ShellBase* construct_shell(const ClassRecord* rec, const char* key, const
     if (!canon->construct)
         throw std::runtime_error(std::string("class ") + rec->name +
                                  " has no constructor entry in its first generation; restart the program");
-    if (std::strcmp(canon->construct_key, key) != 0)
+    ShellBase* s = canon->construct(key, args);
+    if (!s)
         throw std::runtime_error(std::string("class ") + rec->name +
                                  ": the types of the 'super(...)' arguments changed since the first generation");
-    ShellBase* s = canon->construct(args);
     if (note) note_creator(s, rec->generation);
     return s;
 }

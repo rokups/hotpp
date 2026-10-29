@@ -1,0 +1,28 @@
+// Generation 2 of the parent module (S20a). It adds a field and a virtual function before
+// "Power". The slot of "Power" does not change, because the slots come in manifest order.
+using "Actor.h";
+using <string>;
+
+class Unit : Actor {
+    int hp = 100;
+    int ctor_log = 0;
+    int ticks = 0;
+    int power = 0;
+    int armor = 9;
+    int bonus = 0;
+
+    Unit(int start) : super(std.string("unit")) {
+        this.hp = start;
+        this.ctor_log = this.ctor_log * 10 + 1;
+    }
+
+    virtual int Bonus() { return 5; }
+
+    virtual int Power() { return 1; }
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        this.power = Power() + 100;
+        this.bonus = Bonus();
+    }
+}

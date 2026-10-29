@@ -51,7 +51,7 @@ TEST_P(DiagnosticMistakes, ErrorSpeaksScriptNames)
 {
     const std::string name = GetParam();
     // A relative name: the error text starts with it.
-    const spp::ScriptSource source{name + ".spp", test_support::read_file(kDir + name + ".spp")};
+    const spp::ScriptSource source{name + ".spp", test_support::read_file(kDir + name + ".spp"), {}};
     ASSERT_FALSE(source.text.empty());
     auto backend = spp::make_default_backend();
     const spp::LoadResult r = backend->load(source, 1);

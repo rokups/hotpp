@@ -376,13 +376,17 @@ void check_ctors(const ClassDef& cd, const LineMap& map, Diagnostics& diag)
     for (const Property& p : cd.props) members.insert(p.name);
     if (cd.dtors.size() > 1)
         diag.add(cd.dtors[1].pos, map, "class '" + cd.name + "' has more than one destructor");
-    if (cd.ctors.size() > 1)
-        diag.add(cd.ctors[1].pos, map, "class '" + cd.name + "' has more than one constructor (overloads are not supported)");
+    // Overloads (S20a): C++ picks one by the argument types. Two overloads need other types.
+    std::set<std::vector<std::string>> sigs;
+    for (const Ctor& c : cd.ctors) {
+        std::vector<std::string> sig;
+        for (const Param& p : c.params) sig.push_back(p.type);
+        if (!sigs.insert(sig).second)
+            diag.add(c.pos, map, "class '" + cd.name + "' has two constructors with the same parameter types");
+    }
     for (const Ctor& c : cd.ctors) {
         std::set<std::string> params;
         for (const Param& p : c.params) {
-            if (p.mode != PassMode::Value)
-                diag.add(c.pos, map, "constructor parameter '" + p.name + "' cannot be 'ref' or 'out'");
             if (!params.insert(p.name).second)
                 diag.add(c.pos, map, "constructor parameter '" + p.name + "' is declared twice");
         }

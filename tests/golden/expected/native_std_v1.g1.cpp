@@ -120,6 +120,40 @@ static inline TrackerState_g1* state_of(Tracker_Shell* self)
 }
 
 
+#line 10 "native_std_v1.spp"
+[[maybe_unused]] static auto Tracker__super_args()
+{
+    return std::make_tuple(std::string("Tracker"));
+}
+static auto Tracker__plan()
+{
+    return std::make_pair(Tracker__super_args(), std::tuple<>());
+}
+#line 133 "native_std_v1.spp.cpp"
+using Tracker_SuperArgs = decltype(Tracker__plan().first);
+// Makes the shell with the base arguments. Only the first generation of the class runs it.
+// "key" names the type of the arguments. An unknown key gives nullptr.
+static spp::ShellBase* Tracker__construct(const char* key, const void* args)
+{
+    if (std::strcmp(key, typeid(Tracker_SuperArgs).name()) == 0) {
+        const auto& t = *static_cast<const Tracker_SuperArgs*>(args);
+        return std::apply([](const auto&... x) -> spp::ShellBase* { return new Tracker_Shell(spp::Construct{}, x...); }, t);
+    }
+    return nullptr;
+}
+
+static Tracker_Shell* Tracker__build([[maybe_unused]] bool note)
+{
+    auto plan = Tracker__plan();
+    auto* self = static_cast<Tracker_Shell*>(spp::construct_shell(&Tracker_record, typeid(Tracker_SuperArgs).name(), &plan.first, note));
+    return self;
+}
+
+[[maybe_unused]] static Tracker_Shell* Tracker__new()
+{
+    return Tracker__build(true);
+}
+
 static void Tracker__Tick(Actor* a, float dt)
 {
     [[maybe_unused]] auto* self = static_cast<Tracker_Shell*>(a);
@@ -154,7 +188,7 @@ static void Tracker__Tick(Actor* a, float dt)
     self->Name = FormatVec(self->Position);
 #line 31 "native_std_v1.spp"
     spp::deref(st->history).push_back(static_cast<int32_t>(spp::deref(st->history).size()) * 10);
-#line 158 "native_std_v1.spp.cpp"
+#line 192 "native_std_v1.spp.cpp"
 }
 
 // Not overridden: call the implementation of Actor.
@@ -179,6 +213,8 @@ static void* Tracker_slots[SLOT_COUNT] = {
 spp::ClassRecord Tracker_record = {
     "Tracker", GEN, Tracker_slots, SLOT_COUNT, &Tracker_layout, nullptr,
     "Actor", spp::shell_layout_hash("Actor", sizeof(Tracker_Shell), alignof(Tracker_Shell), 3),
+    nullptr,
+    &Tracker__construct, typeid(Tracker_SuperArgs).name(), nullptr, nullptr, nullptr,
 };
 
 static spp::Instance Tracker_create()

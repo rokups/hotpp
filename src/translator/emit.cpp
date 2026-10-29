@@ -54,7 +54,9 @@ void Emitter::put(std::string_view t, uint32_t pos)
         int line = map_->line(pos);
         if (line > line_) {
             if (!out_.empty()) out_ += '\n';
-            out_ += "#line " + std::to_string(line) + " \"" + escape(file_) + "\"\n";
+            // A position in an imported script names the file of that script (LineMap::add_file).
+            const std::string& f = map_->file(pos);
+            out_ += "#line " + std::to_string(line) + " \"" + escape(f.empty() ? file_ : f) + "\"\n";
             int d = depth - (t == "}" ? 1 : 0);
             out_.append(static_cast<size_t>(4 * std::max(d, 0)), ' ');
             line_ = line;

@@ -10,6 +10,8 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "spp/module.h"
 
@@ -18,6 +20,9 @@ namespace spp {
 struct ScriptSource {
     std::string name;  // the script name or path; the diagnostics and "#line" use it
     std::string text;  // the content of the script
+    // The imported scripts ("using "parent.spp";"), as the path in the "using" line and the text.
+    // One generation holds them all (design 4.10). A path that is not here is read from disk.
+    std::vector<std::pair<std::string, std::string>> modules;
 };
 
 class Backend {

@@ -70,10 +70,11 @@ struct ClassRecord {
     // "construct_key". They live in the module that made the shell: the core module (module.h),
     // or the first generation of the class when there is no core.
     //  - construct: makes a shell and gives it the base arguments. "args" points to a
-    //    std::tuple of the decayed types of the "super(...)" arguments. Null when no code
-    //    of the script builds the class with "new" and the class has no constructor.
-    //  - construct_key: typeid(tuple).name() of those arguments in the generation that
-    //    made "construct". A later generation that changes the types cannot build the class.
+    //    std::tuple of the decayed types of the "super(...)" arguments. "key" is
+    //    typeid(tuple).name(). Each constructor overload of the first generation gives a
+    //    known key. An unknown key gives nullptr: a later generation changed the types.
+    //    Each script shell class has it (S20a). Null for a record without a script shell.
+    //  - construct_key: the key of the first overload. Information only.
     //  - new_default: makes a new object with default constructor arguments. It evaluates
     //    the "super(...)" arguments one time, makes the shell through "construct" and runs
     //    the constructor chain. The factory of the engine calls it. A commit copies it from
@@ -81,7 +82,7 @@ struct ClassRecord {
     //  - canonical: set by the loader in each generation record that is not canonical. It
     //    points to the canonical record of the class: the record of the core module, or the
     //    first record of the class when there is no core.
-    ShellBase* (*construct)(const void* args) = nullptr;
+    ShellBase* (*construct)(const char* key, const void* args) = nullptr;
     const char* construct_key = nullptr;
     ShellBase* (*new_default)() = nullptr;
     ClassRecord* canonical = nullptr;

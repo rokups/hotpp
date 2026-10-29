@@ -29,7 +29,7 @@ namespace sppc {
 void check_class(const ast::ClassDef& cd, const TypeModel& types, const LineMap& map, Diagnostics& diag,
                  bool strict_borrowed);
 
-// Checks the constructors of a class: one constructor, no "ref" or "out" parameter, and the
+// Checks the constructors of a class: no two overloads with the same parameter types, and the
 // arguments of "super(...)" use the constructor parameters only (design 7.3). Each error goes
 // to the diagnostics.
 void check_ctors(const ast::ClassDef& cd, const LineMap& map, Diagnostics& diag);

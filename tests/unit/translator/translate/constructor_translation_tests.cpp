@@ -109,7 +109,8 @@ TEST(ConstructorTranslation, DestructorGoesToTheRecord)
     EXPECT_EQ(r.slots_out.find("dtor"), std::string::npos) << r.slots_out;
 }
 
-TEST(ConstructorTranslation, AClassWithoutConstructorKeepsTheOldOutput)
+// A class without a constructor gets a construct entry, so a later generation can use "new".
+TEST(ConstructorTranslation, AClassWithoutConstructorGetsAConstructEntry)
 {
     const sppc::TranslateResult r = translate_script(
         "class Squad : Unit {\n"
@@ -118,9 +119,29 @@ TEST(ConstructorTranslation, AClassWithoutConstructorKeepsTheOldOutput)
         "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_FALSE(has(r, "__ctor")) << r.cpp;
-    EXPECT_FALSE(has(r, "__new")) << r.cpp;
     EXPECT_FALSE(has(r, "__dtor")) << r.cpp;
-    EXPECT_FALSE(has(r, "construct_shell")) << r.cpp;
+    EXPECT_FALSE(has(r, "Squad__new_default")) << r.cpp;
+    EXPECT_TRUE(has(r, "&Squad__construct, typeid(Squad_SuperArgs).name(), nullptr,")) << r.cpp;
+    EXPECT_TRUE(has(r, "static Squad_Shell* Squad__new()")) << r.cpp;
+}
+
+// Overloads are C++ overloads of the same functions. A "ref" parameter is a reference.
+TEST(ConstructorTranslation, OverloadsAndRefParameters)
+{
+    const sppc::TranslateResult r = translate_script(
+        "class Squad : Unit {\n"
+        "    int size = 5;\n"
+        "    Squad() { this.size = 1; }\n"
+        "    Squad(int n, ref int seen) { this.size = n; seen = n; }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "static void Squad__ctor(Squad_Shell* self);")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Squad__ctor(Squad_Shell* self, int32_t n, int32_t& seen);")) << r.cpp;
+    EXPECT_TRUE(has(r, "using Squad_SuperArgs_1 = ")) << r.cpp;
+    EXPECT_TRUE(has(r, "static spp::ShellBase* Squad__construct(const char* key, const void* args)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static Squad_Shell* Squad__new(int32_t n, int32_t& seen)")) << r.cpp;
+    // The factory uses the overload with the fewest parameters.
+    EXPECT_TRUE(has(r, "return Squad__build(false);")) << r.cpp;
 }
 
 TEST(ConstructorTranslation, SuperArgumentsMayUseParametersOnly)
@@ -134,9 +155,9 @@ TEST(ConstructorTranslation, SuperArgumentsMayUseParametersOnly)
 
 TEST(ConstructorTranslation, ConstructorErrors)
 {
-    expect_error("class S : Unit {\n    S() { }\n    S(int a) { }\n}\n", "one constructor");
+    expect_error("class S : Unit {\n    S(int v) { }\n    S(ref int w) { }\n}\n",
+                 "class 'S' has two constructors with the same parameter types");
     expect_error("class S : Unit {\n    ~S() { }\n    ~S() { }\n}\n", "one destructor");
-    expect_error("class S : Unit {\n    S(ref int a) { }\n}\n", "constructor");
     expect_error("class S : Unit {\n    S(int v, int v) { }\n}\n", "is declared twice");
     expect_error("class S : Unit {\n    S(int a) { }\n}\n", "parameter name 'a' is reserved");
 }

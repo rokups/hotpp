@@ -37,7 +37,7 @@ TEST(ReloadHookTranslation, OnReloadGetsNoSlotAndGoesToTheRecord)
               std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("spp::deref(old).has(\"x\")"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("spp::deref(old).get<float>(\"x\")"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("    Foo__onReload_hook,\n};"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("    Foo__onReload_hook,\n    &Foo__construct"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("SLOT_onReload"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("__thunk"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.slots_out.find("onReload"), std::string::npos) << r.slots_out;

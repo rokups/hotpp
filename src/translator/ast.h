@@ -365,7 +365,7 @@ struct ClassDef {
     std::vector<std::string> interfaces;
     std::vector<Field> fields;
     std::vector<Method> methods;
-    std::vector<Ctor> ctors;      // the parser accepts more than one; the translator allows one
+    std::vector<Ctor> ctors;      // the overloads; C++ picks one by the argument types
     std::vector<Method> dtors;    // "~Name() { }": the name is "~Name"; the translator allows one
     std::vector<Property> props;  // in source order
     bool is_value = false;        // the attribute [value]

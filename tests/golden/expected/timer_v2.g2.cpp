@@ -88,6 +88,40 @@ static inline BeeperState_g2* state_of(Beeper_Shell* self)
 
 static void Beeper__arm(Beeper_Shell* self, World& w, float delay);
 
+#line 4 "timer_v2.spp"
+[[maybe_unused]] static auto Beeper__super_args()
+{
+    return std::make_tuple(std::string("Beeper"));
+}
+static auto Beeper__plan()
+{
+    return std::make_pair(Beeper__super_args(), std::tuple<>());
+}
+#line 101 "timer_v2.spp.cpp"
+using Beeper_SuperArgs = decltype(Beeper__plan().first);
+// Makes the shell with the base arguments. Only the first generation of the class runs it.
+// "key" names the type of the arguments. An unknown key gives nullptr.
+static spp::ShellBase* Beeper__construct(const char* key, const void* args)
+{
+    if (std::strcmp(key, typeid(Beeper_SuperArgs).name()) == 0) {
+        const auto& t = *static_cast<const Beeper_SuperArgs*>(args);
+        return std::apply([](const auto&... x) -> spp::ShellBase* { return new Beeper_Shell(spp::Construct{}, x...); }, t);
+    }
+    return nullptr;
+}
+
+static Beeper_Shell* Beeper__build([[maybe_unused]] bool note)
+{
+    auto plan = Beeper__plan();
+    auto* self = static_cast<Beeper_Shell*>(spp::construct_shell(&Beeper_record, typeid(Beeper_SuperArgs).name(), &plan.first, note));
+    return self;
+}
+
+[[maybe_unused]] static Beeper_Shell* Beeper__new()
+{
+    return Beeper__build(true);
+}
+
 static void Beeper__Tick(Actor* a, float dt)
 {
     [[maybe_unused]] auto* self = static_cast<Beeper_Shell*>(a);
@@ -98,7 +132,7 @@ static void Beeper__Tick(Actor* a, float dt)
     [[maybe_unused]] auto* st = state_of(self);
 #line 9 "timer_v2.spp"
     st->ticks = st->ticks + 1;
-#line 102 "timer_v2.spp.cpp"
+#line 136 "timer_v2.spp.cpp"
 }
 
 static void Beeper__arm(Beeper_Shell* self, World& w, float delay)
@@ -116,7 +150,7 @@ static void Beeper__arm(Beeper_Shell* self, World& w, float delay)
         std::printf("[timer v2] %s: fired=%d\n", spp::deref(self->Name).c_str(), st->fired);
 #line 16 "timer_v2.spp"
     }));
-#line 120 "timer_v2.spp.cpp"
+#line 154 "timer_v2.spp.cpp"
 }
 
 // Not overridden: call the implementation of Actor.
@@ -147,6 +181,8 @@ static void* Beeper_slots[SLOT_COUNT] = {
 spp::ClassRecord Beeper_record = {
     "Beeper", GEN, Beeper_slots, SLOT_COUNT, &Beeper_layout, nullptr,
     "Actor", spp::shell_layout_hash("Actor", sizeof(Beeper_Shell), alignof(Beeper_Shell), 3),
+    nullptr,
+    &Beeper__construct, typeid(Beeper_SuperArgs).name(), nullptr, nullptr, nullptr,
 };
 
 static spp::Instance Beeper_create()
