@@ -1297,3 +1297,80 @@ TEST(LanguageServerHosts, NewHostFileAppliesToAnOpenScriptAtTheNextChange)
     REQUIRE_CLANGD();
     EXPECT_TRUE(has_label(host_completion_labels(true, true), "Value"));
 }
+
+// The information diagnostic "No script host". Rule: a .spp script has no host and the server
+// has no -I option.
+namespace {
+
+struct HostDiagCase {
+    TempDir dir;
+    std::string path, uri, text = "class A {\n}\n";
+    spp::ls::ServerOptions o;
+    HostDiagCase()
+    {
+        const std::filesystem::path root = dir.path();
+        std::filesystem::create_directories(root / "scripts");
+        std::filesystem::create_directories(root / "build");
+        std::filesystem::create_directories(root / "hosts");
+        path = (root / "scripts" / "a.spp").string();
+        uri = uri_of(path);
+        write_file(path, text);
+        write_file((root / "build" / "CMakeCache.txt").string(), "# cache\n");
+        o.hosts_dir = (root / "hosts").string();
+    }
+    void write_host() const
+    {
+        const std::filesystem::path root = dir.path();
+        write_file((root / "hosts" / "h.json").string(),
+                   R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string() +
+                       R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")" +
+                       (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" + SPP_SOURCE_DIR +
+                       R"(/include"],"defines":[],"flags":[]})");
+    }
+    json next_diagnostics(LsClient& c) const
+    {
+        return c.wait_notification("textDocument/publishDiagnostics",
+                                   [&](const json& p) { return p.value("uri", std::string()) == uri; });
+    }
+};
+
+}  // namespace
+
+TEST(LanguageServerHosts, NoHostGivesAnInformationDiagnostic)
+{
+    HostDiagCase c;
+    LsClient client(c.o);
+    client.initialize(uri_of(c.dir.path().string()));
+    client.open(c.uri, c.text);
+    const json n = c.next_diagnostics(client);
+    ASSERT_TRUE(has_source(n["params"]["diagnostics"], "spp-ls")) << n.dump();
+    for (const json& d : n["params"]["diagnostics"])
+        if (d.value("source", "") == "spp-ls") {
+            EXPECT_EQ(d["severity"], 3);
+            EXPECT_EQ(d["range"]["start"], pos(0, 0));
+            EXPECT_NE(d.value("message", "").find("No script host"), std::string::npos);
+        }
+}
+
+TEST(LanguageServerHosts, MatchingHostGivesNoInformationDiagnostic)
+{
+    HostDiagCase c;
+    c.write_host();
+    LsClient client(c.o);
+    client.initialize(uri_of(c.dir.path().string()));
+    client.open(c.uri, c.text);
+    const json n = c.next_diagnostics(client);
+    EXPECT_FALSE(has_source(n["params"]["diagnostics"], "spp-ls")) << n.dump();
+}
+
+TEST(LanguageServerHosts, InformationDiagnosticGoesWhenAHostAppears)
+{
+    HostDiagCase c;
+    LsClient client(c.o);
+    client.initialize(uri_of(c.dir.path().string()));
+    client.open(c.uri, c.text);
+    EXPECT_TRUE(has_source(c.next_diagnostics(client)["params"]["diagnostics"], "spp-ls"));
+    c.write_host();
+    client.change(c.uri, 2, c.text + "\n");
+    EXPECT_FALSE(has_source(c.next_diagnostics(client)["params"]["diagnostics"], "spp-ls"));
+}

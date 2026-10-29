@@ -166,4 +166,37 @@ TEST_F(HostsTest, RefreshReloadsAfterChange)
     EXPECT_FALSE(set.refresh());
 }
 
+TEST_F(HostsTest, RefreshAddsHostWhenCacheAppears)
+{
+    const std::string build = make_build("s", false);
+    write_host("late", build, R"("/src")");
+    HostSet set;
+    set.load(hosts_dir.string());
+    EXPECT_EQ(set.size(), 0u);
+    EXPECT_FALSE(set.refresh());
+    std::ofstream(fs::path(build) / "CMakeCache.txt") << "# cache\n";
+    EXPECT_TRUE(set.refresh());
+    EXPECT_EQ(set.size(), 1u);
+    EXPECT_EQ(set.match("/src/x.spp")->name, "late");
+    EXPECT_FALSE(set.refresh());
+}
+
+TEST_F(HostsTest, RefreshDropsHostWhenCacheVanishes)
+{
+    const std::string build = make_build("g");
+    write_host("gone", build, R"("/src")");
+    HostSet set;
+    set.load(hosts_dir.string());
+    EXPECT_EQ(set.size(), 1u);
+    fs::remove(fs::path(build) / "CMakeCache.txt");
+    EXPECT_TRUE(set.refresh());
+    EXPECT_EQ(set.size(), 0u);
+    EXPECT_EQ(set.match("/src/x.spp"), nullptr);
+    EXPECT_FALSE(set.refresh());
+    // The cache file returns: the host returns.
+    std::ofstream(fs::path(build) / "CMakeCache.txt") << "# cache\n";
+    EXPECT_TRUE(set.refresh());
+    EXPECT_EQ(set.size(), 1u);
+}
+
 }  // namespace

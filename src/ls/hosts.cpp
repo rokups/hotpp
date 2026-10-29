@@ -47,6 +47,13 @@ bool contains(const std::string& dir, const std::string& path)
     return dir == "/" || path.size() == dir.size() || path[dir.size()] == '/';
 }
 
+// True when the build directory of the host has a CMakeCache.txt.
+bool has_cache(const Host& h)
+{
+    std::error_code ec;
+    return fs::exists(fs::path(h.binary_dir) / "CMakeCache.txt", ec);
+}
+
 }  // namespace
 
 std::vector<std::string> Host::cxx_flags() const
@@ -62,6 +69,7 @@ void HostSet::load(const std::string& dir, bool require_cache)
     require_cache_ = require_cache;
     loaded_ = true;
     hosts_.clear();
+    skipped_.clear();
     std::error_code ec;
     mtime_ = fs::last_write_time(dir, ec);
     if (ec) return;
@@ -84,8 +92,10 @@ void HostSet::load(const std::string& dir, bool require_cache)
         host->include_dirs = get_strings(j, "includeDirs");
         host->defines = get_strings(j, "defines");
         host->flags = get_strings(j, "flags");
-        if (require_cache && !fs::exists(fs::path(host->binary_dir) / "CMakeCache.txt", ec))
+        if (require_cache && !has_cache(*host)) {
+            skipped_.push_back(host);  // refresh() checks it again
             continue;
+        }
         hosts_.push_back(std::move(host));
     }
     std::sort(hosts_.begin(), hosts_.end(),
@@ -97,9 +107,35 @@ bool HostSet::refresh()
     if (!loaded_) return false;
     std::error_code ec;
     const auto now = fs::last_write_time(dir_, ec);
-    if (ec ? mtime_ == fs::file_time_type{} : now == mtime_) return false;
-    load(dir_, require_cache_);
-    return true;
+    if (!(ec ? mtime_ == fs::file_time_type{} : now == mtime_)) {
+        load(dir_, require_cache_);
+        return true;
+    }
+    if (!require_cache_) return false;
+    // The directory is the same. A build directory can still appear or vanish.
+    bool changed = false;
+    for (auto it = skipped_.begin(); it != skipped_.end();) {
+        if (has_cache(**it)) {
+            hosts_.push_back(*it);
+            it = skipped_.erase(it);
+            changed = true;
+        } else {
+            ++it;
+        }
+    }
+    for (auto it = hosts_.begin(); it != hosts_.end();) {
+        if (has_cache(**it)) {
+            ++it;
+        } else {
+            skipped_.push_back(*it);
+            it = hosts_.erase(it);
+            changed = true;
+        }
+    }
+    if (changed)
+        std::sort(hosts_.begin(), hosts_.end(),
+            [](const auto& a, const auto& b) { return a->name < b->name; });
+    return changed;
 }
 
 std::shared_ptr<const Host> HostSet::match(const std::string& script_path) const

@@ -31,6 +31,9 @@ public:
     void load(const std::string& dir, bool require_cache = true);
 
     // Returns true and loads again when the modification time of the directory changed.
+    // Else, when require_cache is true, it checks "<binaryDir>/CMakeCache.txt" of each host.
+    // A skipped host whose cache file now exists is added. A host whose cache file is gone
+    // is dropped (and kept as skipped). It returns true when the set of hosts changed.
     bool refresh();
 
     // Gives the best host for an absolute script path, or nullptr. An exact entry in "scripts"
@@ -47,6 +50,7 @@ private:
     bool loaded_ = false;
     std::filesystem::file_time_type mtime_{};
     std::vector<std::shared_ptr<const Host>> hosts_;  // sorted by name
+    std::vector<std::shared_ptr<const Host>> skipped_;  // valid, but no CMakeCache.txt
 };
 
 }  // namespace spp::ls

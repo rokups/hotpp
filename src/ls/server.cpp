@@ -327,6 +327,14 @@ private:
                a->cxx_flags() == b->cxx_flags();
     }
     void load_hosts();
+    // Tells the client which host a document uses (window/logMessage, type Info).
+    void log_host(const Doc& d, const std::shared_ptr<const Host>& host)
+    {
+        send_client({{"jsonrpc", "2.0"},
+                     {"method", "window/logMessage"},
+                     {"params", {{"type", 3},
+                                 {"message", "spp-ls: " + d.path + " uses " + (host ? "host " + host->name : std::string("no host"))}}}});
+    }
     // Checks the host files after a document event. A document whose host changed gets the new
     // compile command. "current" is the document of the event: the caller updates it.
     void refresh_hosts(Doc* current);
@@ -533,6 +541,7 @@ void Server::refresh_hosts(Doc* current)
         const auto now = host_of(d->path);
         if (same_host(now, d->host)) continue;
         d->host = now;
+        if (d.get() != current) log_host(*d, now);  // the caller logs the current document
         // clangd gets the new compile command at the next send_generated.
         if (clangd_ && d->in_clangd) clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", d->gen_uri}}}});
         d->in_clangd = false;
@@ -664,6 +673,12 @@ json Server::analyze_diagnostics(const Doc& d) const
         if (m[1] != d.path) continue;  // an imported script: import_diagnostics() has it
         add({std::stoi(m[2]) - 1, std::stoi(m[3]) - 1}, m[5], m[4] == "error" ? 1 : 2);
     }
+    // A script without a host and without -I options has no include directories.
+    if (opt_.include_dirs.empty() && opt_.compile_commands_dir.empty() && fs::path(d.path).extension() == ".spp" && !host_of(d.path))
+        out.push_back({{"range", {{"start", {{"line", 0}, {"character", 0}}}, {"end", {{"line", 0}, {"character", 0}}}}},
+                       {"severity", 3},
+                       {"source", "spp-ls"},
+                       {"message", "No script host for this file. Add spp_script_host(...) in CMake and run CMake again."}});
     return out;
 }
 
@@ -1726,6 +1741,7 @@ void Server::handle(const json& msg)
         }
         d->host = host_of(d->path);
         refresh_hosts(d.get());
+        log_host(*d, d->host);
         return update(*d);
     }
     if (method == "textDocument/didChange") {
@@ -1737,7 +1753,9 @@ void Server::handle(const json& msg)
             std::lock_guard<std::mutex> lock(docs_mutex_);
             d->text = Text(changes.back().value("text", std::string()));
         }
+        const auto host_before = d->host;
         refresh_hosts(d.get());
+        if (!same_host(host_before, d->host)) log_host(*d, d->host);
         return update(*d);
     }
     if (method == "textDocument/didClose") {
