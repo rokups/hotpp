@@ -127,14 +127,38 @@ struct Doc {
     Text text;
     sppc::AnalyzeResult facts;
     // The generated C++ that clangd has as the real text, and its map. The map belongs to the
-    // script text "gen_script". After a translation error, the last good state stays.
+    // script text "gen_script". After a translation error, the last good state stays. The
+    // positions of the script then go through the edit between "gen_script" and "text".
     std::string gen_path, gen_uri;
     Text gen;
     std::shared_ptr<const sppc::SourceMap> map;
+    Text gen_script;
+    bool edited = false;  // the text differs from gen_script
+    // The edit from gen_script to text: the bytes [0, edit_prefix) are equal. The old bytes from
+    // edit_old_end and the new bytes from edit_new_end are equal to the end.
+    size_t edit_prefix = 0, edit_old_end = 0, edit_new_end = 0;
+    void set_edit()
+    {
+        const std::string &a = gen_script.s, &b = text.s;
+        edited = a != b;
+        size_t p = 0;
+        const size_t n = std::min(a.size(), b.size());
+        while (p < n && a[p] == b[p]) ++p;
+        size_t q = 0;
+        while (q < n - p && a[a.size() - 1 - q] == b[b.size() - 1 - q]) ++q;
+        edit_prefix = p;
+        edit_old_end = a.size() - q;
+        edit_new_end = b.size() - q;
+    }
+    // A position of the text as a position of gen_script, and back. No value inside the edit.
+    std::optional<Pos> text_to_gen_script(Pos p) const;
+    std::optional<Pos> gen_script_to_text(Pos p) const;
     int gen_version = 0;   // the clangd version of the real text
     int sent_version = 0;  // the last clangd version
     bool in_clangd = false;
     json clang_diags = json::array();  // the mapped clangd diagnostics of gen_version
+    // The clangd diagnostics of gen_version that come from imported scripts, by the URI of the script.
+    std::map<std::string, json> clang_import_diags;
     // The URIs of the imported scripts that got translator errors from this document.
     std::set<std::string> import_uris;
     // The last clangd answer of a completion. "rest" is the script text without the word at the
@@ -146,6 +170,30 @@ struct Doc {
     };
     mutable CompletionCache completion;
 };
+
+std::optional<Pos> Doc::text_to_gen_script(Pos p) const
+{
+    if (!edited) return p;
+    const size_t off = text.offset(p.line, p.col);
+    size_t old;
+    if (off < edit_prefix) old = off;
+    else if (off >= edit_new_end) old = off - edit_new_end + edit_old_end;
+    else return std::nullopt;
+    const auto [l, c] = gen_script.pos(old);
+    return Pos{l, c};
+}
+
+std::optional<Pos> Doc::gen_script_to_text(Pos p) const
+{
+    if (!edited) return p;
+    const size_t old = gen_script.offset(p.line, p.col);
+    size_t off;
+    if (old < edit_prefix) off = old;
+    else if (old >= edit_old_end) off = old - edit_old_end + edit_new_end;
+    else return std::nullopt;
+    const auto [l, c] = text.pos(off);
+    return Pos{l, c};
+}
 
 class Server {
 public:
@@ -188,7 +236,9 @@ private:
     std::optional<Pos> to_gen(const Doc& d, Pos p) const
     {
         if (!d.map) return std::nullopt;
-        const auto g = d.map->map_to_generated(p.line + 1, p.col + 1);
+        const auto old = d.text_to_gen_script(p);
+        if (!old) return std::nullopt;
+        const auto g = d.map->map_to_generated(old->line + 1, old->col + 1);
         if (!g) return std::nullopt;
         return Pos{g->line - 1, g->col - 1};
     }
@@ -198,7 +248,7 @@ private:
         const Pos g = from_lsp(d.gen, lsp_pos, clangd_utf8_);
         const auto s = d.map->map_to_script(g.line + 1, g.col + 1);
         if (!s) return std::nullopt;
-        return Pos{s->line - 1, s->col - 1};
+        return d.gen_script_to_text(Pos{s->line - 1, s->col - 1});
     }
     // The word at a script position, or the word that ends there. Gives [begin, end) columns.
     std::pair<int, int> word_at(const Doc& d, Pos p) const
@@ -261,6 +311,9 @@ private:
     json on_initialize(const json& p);
     json on_completion(const Doc& d, const json& p);
     json on_hover(const Doc& d, const json& p);
+    json on_signature_help(const Doc& d, const json& p);
+    json on_formatting(const Doc& d, const json& p);
+    json on_code_action(const Doc& d, const json& p);
     json on_locations(const Doc& d, const json& p, const std::string& method);
     json on_document_symbol(const Doc& d);
     json on_semantic_tokens(const Doc& d);
@@ -306,6 +359,7 @@ private:
     std::string index_seed_;  // the first file of compile_commands.json (start_clangd)  // the generated files with a first completion
     // The saved symbol index of the scripts on disk (S28, symbol_index.h).
     SymbolIndex index_;
+    int completion_translations_ = 0;  // the translations of a completion text (spp/indexStats)
     int closed_analyses_ = 0;  // the analyze calls of for_other_scripts (spp/indexStats)
     sppc::TranslatorSession session_;
 };
@@ -421,6 +475,9 @@ json Server::on_initialize(const json& p)
           {"textDocumentSync", {{"openClose", true}, {"change", 1}}},
           {"completionProvider", {{"triggerCharacters", {".", ":"}}}},
           {"hoverProvider", true},
+          {"signatureHelpProvider", {{"triggerCharacters", {"(", ","}}}},
+          {"documentFormattingProvider", true},
+          {"codeActionProvider", {{"codeActionKinds", {"quickfix"}}}},
           {"definitionProvider", true},
           {"referencesProvider", true},
           {"documentSymbolProvider", true},
@@ -472,9 +529,16 @@ void Server::update(Doc& d)
             d.gen = Text(cpp);
             d.map = std::make_shared<const sppc::SourceMap>(d.facts.source_map);
             d.clang_diags = json::array();
+            d.clang_import_diags.clear();
+            d.gen_script = d.text;
             d.gen_version = d.sent_version + 1;
             send_generated(d, cpp);
         }
+        else {  // the old positions do not fit the new text
+            d.clang_diags = json::array();
+            d.clang_import_diags.clear();
+        }
+        d.set_edit();
         send_client(publish_message(d));
         publish_imports(d);
     }
@@ -537,6 +601,10 @@ std::map<std::string, json> Server::import_diagnostics(const Doc& d) const
         if (end <= col) end = col + 1;
         const json range = {{"start", to_lsp(t->second, {line, col}, utf8_)}, {"end", to_lsp(t->second, {line, end}, utf8_)}};
         out[uri].push_back({{"range", range}, {"severity", m[4] == "error" ? 1 : 2}, {"source", "spp"}, {"message", m[5].str()}});
+    }
+    for (const auto& [uri, diags] : d.clang_import_diags) {
+        if (uri == d.uri) continue;
+        for (const json& x : diags) out[uri].push_back(x);
     }
     return out;
 }
@@ -601,20 +669,54 @@ void Server::on_clangd_notification(const json& msg)
     // A diagnostic of a completion text (or of an old text) is not shown.
     if (p.contains("version") && p["version"].is_number_integer() && p["version"].get<int>() != d.gen_version) return;
     json out = json::array();
+    std::map<std::string, json> from_imports;
     for (const json& g : p.value("diagnostics", json::array())) {
         Pos b, e;
         const auto s = to_script(d, g["range"]["start"]);
+        if (!s) {
+            // The place can be in an imported script: the diagnostic goes to that script.
+            const json at = imported_location(d, g["range"]["start"], true);
+            if (!at.is_null()) {
+                from_imports[at.value("uri", std::string())].push_back(
+                    {{"range", at["range"]},
+                     {"severity", g.value("severity", 1)},
+                     {"source", "clangd"},
+                     {"message", sppc::rewrite_clang_message(g.value("message", std::string()))}});
+                continue;
+            }
+        }
         if (s) {
             b = *s;
             const auto se = to_script(d, g["range"]["end"]);
             e = se && se->line == b.line && b.col < se->col ? *se : Pos{b.line, word_at(d, b).second};
             if (e.col <= b.col) e.col = b.col + 1;
         } else {
-            // No segment: the "#line" directives give the script line (column 0).
-            const auto t = line_directive_target(d.gen.s, from_lsp(d.gen, g["range"]["start"], clangd_utf8_).line);
+            // No segment: the "#line" directives give the script line only. The column is the
+            // column of the same word in the script line. Else it is the text of the line.
+            const Pos gs = from_lsp(d.gen, g["range"]["start"], clangd_utf8_);
+            const auto t = line_directive_target(d.gen.s, gs.line);
             if (!t || t->file != d.path) continue;
-            b = {t->line, 0};
-            e = {t->line, static_cast<int>(d.text.line(t->line).size())};
+            const auto at = d.gen_script_to_text({t->line, 0});
+            const int line = at ? at->line : t->line;
+            const std::string_view sl = d.text.line(line), gl = d.gen.line(gs.line);
+            int wb = std::min<int>(gs.col, static_cast<int>(gl.size())), we = wb;
+            while (we < static_cast<int>(gl.size()) && is_id_char(gl[static_cast<size_t>(we)])) ++we;
+            const std::string_view w = gl.substr(static_cast<size_t>(wb), static_cast<size_t>(we - wb));
+            size_t found = std::string_view::npos;
+            for (size_t from = 0; !w.empty() && (found = sl.find(w, from)) != std::string_view::npos; from = found + 1) {
+                const bool left = found == 0 || !is_id_char(sl[found - 1]);
+                const bool right = found + w.size() >= sl.size() || !is_id_char(sl[found + w.size()]);
+                if (left && right) break;
+            }
+            if (found != std::string_view::npos && !w.empty()) {
+                b = {line, static_cast<int>(found)};
+                e = {line, static_cast<int>(found + w.size())};
+            } else {
+                int first = 0;
+                while (first < static_cast<int>(sl.size()) && (sl[static_cast<size_t>(first)] == ' ' || sl[static_cast<size_t>(first)] == '\t')) ++first;
+                b = {line, first};
+                e = {line, std::max(first + 1, static_cast<int>(sl.size()))};
+            }
         }
         out.push_back({{"range", script_range(d, b, e)},
                        {"severity", g.value("severity", 1)},
@@ -622,7 +724,9 @@ void Server::on_clangd_notification(const json& msg)
                        {"message", sppc::rewrite_clang_message(g.value("message", std::string()))}});
     }
     d.clang_diags = std::move(out);
+    d.clang_import_diags = std::move(from_imports);
     send_client(publish_message(d));
+    publish_imports(d);
 }
 
 // ------------------------------------------------------------------ features
@@ -743,6 +847,7 @@ json Server::on_completion(const Doc& d, const json& p)
         const std::string rest = t.substr(0, s) + '\x01' + t.substr(e);
         const bool hit = cc.valid && cc.complete && cc.rest == rest && prefix.compare(0, cc.prefix.size(), cc.prefix) == 0;
         if (!hit) {
+            ++completion_translations_;
             size_t n = e;
             while (n < t.size() && (t[n] == ' ' || t[n] == '\t' || t[n] == '\r' || t[n] == '\n')) ++n;
             const bool end = n < t.size() && std::string_view(";),]([+-*/%=<>!&|^?:.").find(t[n]) != std::string_view::npos;
@@ -841,6 +946,177 @@ json Server::on_hover(const Doc& d, const json& p)
         }
     }
     return out;
+}
+
+// The signature of the function that the cursor is in. The call is in the script. clangd gets the
+// place after the "(" of the generated call. The active parameter is the number of commas
+// between the "(" and the cursor, so it does not depend on the generated arguments.
+json Server::on_signature_help(const Doc& d, const json& p)
+{
+    const std::string& t = d.text.s;
+    const Pos cur = from_lsp(d.text, p["position"], utf8_);
+    size_t i = d.text.offset(cur.line, cur.col), open = std::string::npos;
+    int depth = 0, commas = 0;
+    while (i > 0) {
+        const char c = t[--i];
+        if (c == ')' || c == ']' || c == '}') {
+            ++depth;
+        } else if (c == '(' || c == '[' || c == '{') {
+            if (depth == 0) {
+                if (c == '(') open = i;
+                break;
+            }
+            --depth;
+        } else if (depth == 0 && c == ',') {
+            ++commas;
+        } else if (depth == 0 && c == ';') {
+            break;
+        }
+    }
+    if (open == std::string::npos) return nullptr;
+    // The name of the function is before the "(".
+    size_t name_end = open;
+    while (name_end > 0 && (t[name_end - 1] == ' ' || t[name_end - 1] == '\t')) --name_end;
+    size_t name_begin = name_end;
+    while (name_begin > 0 && is_id_char(t[name_begin - 1])) --name_begin;
+    if (name_begin == name_end) return nullptr;
+    const auto [nl, nc] = d.text.pos(name_begin);
+    const auto g = to_gen(d, {nl, nc});
+    if (!g) return nullptr;
+    // The "(" of the generated call is the first one after the name.
+    const std::string_view gl = d.gen.line(g->line);
+    const size_t paren = gl.find('(', static_cast<size_t>(g->col));
+    if (paren == std::string_view::npos) return nullptr;
+    auto r = clangd_result("textDocument/signatureHelp",
+                           {{"textDocument", {{"uri", d.gen_uri}}},
+                            {"position", gen_pos(d, {g->line, static_cast<int>(paren) + 1})}});
+    if (!r || !r->contains("signatures") || (*r)["signatures"].empty()) return nullptr;
+    json out = *r;
+    for (json& sig : out["signatures"]) {
+        sig["label"] = sppc::rewrite_generated_names(sig.value("label", std::string()));
+        sig.erase("activeParameter");
+        if (sig.contains("parameters"))
+            for (json& prm : sig["parameters"])
+                if (prm.contains("label") && prm["label"].is_string())
+                    prm["label"] = sppc::rewrite_generated_names(prm["label"].get<std::string>());
+    }
+    out["activeParameter"] = commas;
+    return out;
+}
+
+// The format of a script: the indent follows the braces, a line inside open brackets has one
+// more level, a line has no trailing white space, and the text ends with a new line. The text
+// of a string, of a char and of a comment does not change.
+static std::string format_script(const std::string& text, int tab_size, bool use_spaces)
+{
+    const std::string unit = use_spaces ? std::string(static_cast<size_t>(std::max(tab_size, 1)), ' ') : "\t";
+    std::string out;
+    int braces = 0, parens = 0;
+    bool in_block = false;
+    size_t pos = 0;
+    while (pos < text.size()) {
+        size_t end = text.find('\n', pos);
+        const bool last = end == std::string::npos;
+        if (last) end = text.size();
+        std::string line = text.substr(pos, end - pos);
+        const bool cr = !line.empty() && line.back() == '\r';
+        if (cr) line.pop_back();
+        while (!line.empty() && (line.back() == ' ' || line.back() == '\t')) line.pop_back();
+        size_t first = 0;
+        while (first < line.size() && (line[first] == ' ' || line[first] == '\t')) ++first;
+        std::string body = line.substr(first);
+        if (in_block) {
+            // The inside of a block comment keeps its own indent.
+        } else if (!body.empty()) {
+            int b = braces, q = parens;
+            if (body[0] == '}') b = std::max(b - 1, 0);
+            if (body[0] == ')' || body[0] == ']') q = std::max(q - 1, 0);
+            int level = b + (q > 0 ? 1 : 0);
+            std::string indent;
+            for (int k = 0; k < level; ++k) indent += unit;
+            line = indent + body;
+        } else {
+            line.clear();
+        }
+        // Scan the line for the brackets.
+        char quote = 0;
+        for (size_t k = 0; k < body.size(); ++k) {
+            const char c = body[k];
+            if (in_block) {
+                if (c == '*' && k + 1 < body.size() && body[k + 1] == '/') {
+                    in_block = false;
+                    ++k;
+                }
+            } else if (quote) {
+                if (c == '\\') ++k;
+                else if (c == quote) quote = 0;
+            } else if (c == '"' || c == '\'') {
+                quote = c;
+            } else if (c == '/' && k + 1 < body.size() && body[k + 1] == '/') {
+                break;
+            } else if (c == '/' && k + 1 < body.size() && body[k + 1] == '*') {
+                in_block = true;
+                ++k;
+            } else if (c == '{') {
+                ++braces;
+            } else if (c == '}') {
+                braces = std::max(braces - 1, 0);
+            } else if (c == '(' || c == '[') {
+                ++parens;
+            } else if (c == ')' || c == ']') {
+                parens = std::max(parens - 1, 0);
+            }
+        }
+        out += line;
+        if (!last) out += cr ? "\r\n" : "\n";
+        else if (!line.empty() || !out.empty()) out += cr ? "\r\n" : "\n";
+        pos = end + 1;
+    }
+    return out;
+}
+
+json Server::on_formatting(const Doc& d, const json& p)
+{
+    const json o = p.value("options", json::object());
+    const std::string formatted = format_script(d.text.s, o.value("tabSize", 4), o.value("insertSpaces", true));
+    if (formatted == d.text.s) return json::array();
+    const int last = static_cast<int>(d.text.starts.size()) - 1;
+    const Pos end = {last, static_cast<int>(d.text.line(last).size())};
+    return json::array({{{"range", script_range(d, {0, 0}, end)}, {"newText", formatted}}});
+}
+
+// The quick fixes for the diagnostics of the request: a missing ";" and a name that clangd
+// suggests ("did you mean 'x'").
+json Server::on_code_action(const Doc& d, const json& p)
+{
+    json actions = json::array();
+    const std::string& t = d.text.s;
+    auto add = [&](const std::string& title, const json& diag, const json& edit) {
+        actions.push_back({{"title", title},
+                           {"kind", "quickfix"},
+                           {"diagnostics", json::array({diag})},
+                           {"edit", {{"changes", {{d.uri, json::array({edit})}}}}}});
+    };
+    static const std::regex suggestion(R"(did you mean '([^']+)')");
+    for (const json& diag : p.value("/context/diagnostics"_json_pointer, json::array())) {
+        const std::string message = diag.value("message", std::string());
+        const json range = diag.value("range", json::object());
+        if (!range.contains("start") || !range.contains("end")) continue;
+        const Pos b = from_lsp(d.text, range["start"], utf8_), e = from_lsp(d.text, range["end"], utf8_);
+        if (diag.value("source", "") == "spp" && message == "expected ';'") {
+            // The error is at the next token. The ";" goes after the last token before it.
+            size_t at = d.text.offset(b.line, b.col);
+            while (at > 0 && std::isspace(static_cast<unsigned char>(t[at - 1]))) --at;
+            const auto [l, c] = d.text.pos(at);
+            const json pt = to_lsp(d.text, {l, c}, utf8_);
+            add("Insert ';'", diag, {{"range", {{"start", pt}, {"end", pt}}}, {"newText", ";"}});
+            continue;
+        }
+        std::smatch m;
+        if (diag.value("source", "") == "clangd" && std::regex_search(message, m, suggestion) && b.line == e.line && b < e)
+            add("Replace with '" + m[1].str() + "'", diag, {{"range", range}, {"newText", m[1].str()}});
+    }
+    return actions;
 }
 
 json Server::on_locations(const Doc& d, const json& p, const std::string& method)
@@ -1062,7 +1338,7 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
             ++closed_analyses_;
         };
         // The saved shard of the file holds the symbols and the references of the last analyze.
-        const std::string digest = SymbolIndex::digest(*text);
+        const std::string digest = SymbolIndex::digest(path, *text, opt_.include_dirs);
         auto shard = index_.load(path, digest);
         if (!shard) {
             if (text->find(name) == std::string::npos) continue;
@@ -1086,6 +1362,7 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
                 if (!at || tmp.facts.cpp.empty()) continue;
                 tmp.gen = Text(tmp.facts.cpp);
                 tmp.map = std::make_shared<const sppc::SourceMap>(tmp.facts.source_map);
+                tmp.gen_script = tmp.text;
                 tmp.gen_version = 1;
                 send_generated(tmp, tmp.facts.cpp);
                 const auto r = symbol_places(tmp, *at, name, nullptr);
@@ -1368,17 +1645,21 @@ void Server::handle(const json& msg)
     if (!is_request) return;  // initialized, $/cancelRequest and other notifications
     if (method == "workspace/symbol") return reply(id, on_workspace_symbol(p));
     if (method == "spp/indexStats")
-        return reply(id, {{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"stored", index_.stores()}, {"dir", index_.dir()}});
+        return reply(id, {{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"stored", index_.stores()}, {"dir", index_.dir()}, {"completions", completion_translations_}});
     if (method == "spp/toScript") return reply(id, on_to_script(p));
 
     static const std::set<std::string> doc_methods = {
         "textDocument/completion", "textDocument/hover", "textDocument/definition", "textDocument/references",
-        "textDocument/documentSymbol", "textDocument/semanticTokens/full", "textDocument/rename"};
+        "textDocument/documentSymbol", "textDocument/semanticTokens/full", "textDocument/rename",
+        "textDocument/signatureHelp", "textDocument/formatting", "textDocument/codeAction"};
     if (!doc_methods.count(method)) return reply_error(id, kMethodNotFound, "unknown method: " + method);
     auto d = doc_of(p);
     if (!d) return reply_error(id, kInvalidParams, "the document is not open");
     if (method == "textDocument/completion") return reply(id, on_completion(*d, p));
     if (method == "textDocument/hover") return reply(id, on_hover(*d, p));
+    if (method == "textDocument/signatureHelp") return reply(id, on_signature_help(*d, p));
+    if (method == "textDocument/formatting") return reply(id, on_formatting(*d, p));
+    if (method == "textDocument/codeAction") return reply(id, on_code_action(*d, p));
     if (method == "textDocument/definition" || method == "textDocument/references")
         return reply(id, on_locations(*d, p, method));
     if (method == "textDocument/documentSymbol") return reply(id, on_document_symbol(*d));

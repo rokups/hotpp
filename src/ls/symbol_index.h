@@ -9,6 +9,7 @@
 // "spp-index <version> <digest> <path>". The body holds the symbols and the references.
 // load() gives a shard only when the format version and the content digest match. A shard
 // with another version is deleted. prune() deletes the shard of a missing file.
+// The digest covers the text of the file and the texts of the scripts that it imports.
 // A write goes to a temporary file first. Then a rename puts it in place.
 #pragma once
 
@@ -53,6 +54,11 @@ public:
 
     // The digest of a file content.
     static std::string digest(const std::string& content);
+    // The digest of a script and of the scripts that it imports ("using "x.spp";"), also the
+    // imports of the imports. A script import is read from the directory of the script, then from
+    // the include dirs. When an imported script changes, the digest changes.
+    static std::string digest(const std::string& script_path, const std::string& content,
+                              const std::vector<std::string>& include_dirs);
     // The path of the shard file of a script path.
     std::string shard_path(const std::string& script_path) const;
 

@@ -7,6 +7,8 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <regex>
+#include <set>
 #include <sstream>
 
 #include <nlohmann/json.hpp>
@@ -132,6 +134,37 @@ std::string SymbolIndex::digest(const std::string& content)
     // Two FNV-1a runs with different starts, and the size.
     return hex16(fnv1a(content, 14695981039346656037ull)) + hex16(fnv1a(content, 0x9e3779b97f4a7c15ull)) + "-" +
            std::to_string(content.size());
+}
+
+std::string SymbolIndex::digest(const std::string& script_path, const std::string& content,
+                                const std::vector<std::string>& include_dirs)
+{
+    static const std::regex using_line(R"re(\busing\s*"([^"\n]+\.spp)")re");
+    std::string all = content;
+    std::set<std::string> seen;  // the files that are read already
+    std::vector<std::pair<std::string, std::string>> todo = {{script_path, content}};
+    while (!todo.empty()) {
+        const auto [path, text] = todo.back();
+        todo.pop_back();
+        for (std::sregex_iterator it(text.begin(), text.end(), using_line), end; it != end; ++it) {
+            const std::string name = (*it)[1].str();
+            std::vector<fs::path> dirs = {fs::path(path).parent_path()};
+            for (const std::string& d : include_dirs) dirs.push_back(d);
+            for (const fs::path& d : dirs) {
+                const std::string file = (d / name).string();
+                std::ifstream in(file, std::ios::binary);
+                if (!in) continue;
+                if (seen.insert(file).second) {
+                    std::stringstream ss;
+                    ss << in.rdbuf();
+                    all += '\0' + file + '\0' + ss.str();
+                    todo.emplace_back(file, ss.str());
+                }
+                break;
+            }
+        }
+    }
+    return digest(all);
 }
 
 std::string SymbolIndex::shard_path(const std::string& script_path) const

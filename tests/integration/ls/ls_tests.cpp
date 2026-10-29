@@ -182,6 +182,47 @@ TEST(LanguageServer, DefinitionOfAScriptMethodIsInTheScript)
     EXPECT_EQ(loc["range"]["start"]["character"], 9) << r.dump();
 }
 
+// S30 (a): the translation fails, so clangd keeps the last good C++. The positions go through
+// the edit. The call of heal moves two lines down. A missing import makes the translation fail. The definition is still found.
+TEST(LanguageServer, DefinitionAfterATranslationErrorUsesTheShiftedPositions)
+{
+    REQUIRE_CLANGD();
+    Session s(true);
+    ASSERT_TRUE(s.client->request("textDocument/definition", doc_pos(s.uri, 7, 14)).contains("result"));
+    std::string text = kScript;
+    text.replace(text.find("\nclass Player"), 0, "using \"missing.spp\";\n\n");
+    s.client->change(s.uri, 2, text);
+    const json n = s.diagnostics([](const json& d) { return has_source(d, "spp"); });
+    ASSERT_FALSE(n.is_null()) << "the translation must fail";
+    const json r = s.client->request("textDocument/definition", doc_pos(s.uri, 9, 14));
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
+    EXPECT_EQ(r["result"][0]["uri"], s.uri);
+    EXPECT_EQ(r["result"][0]["range"]["start"]["line"], 12) << r.dump();
+    EXPECT_EQ(r["result"][0]["range"]["start"]["character"], 9) << r.dump();
+    // A place inside the edit has no mapping.
+    const json e = s.client->request("textDocument/hover", doc_pos(s.uri, 2, 8));
+    EXPECT_TRUE(e["result"].is_null()) << e.dump();
+}
+
+// S30 (b): a clangd note in the generated glue has no map segment. The "#line" directive gives the
+// script line. The column is the column of the same word in that line, not 0.
+TEST(LanguageServer, DiagnosticWithoutASegmentGetsTheColumnOfTheWord)
+{
+    REQUIRE_CLANGD();
+    std::string text = kScript;
+    text.replace(text.find("this.hp = this.hp + amount;"), 27, "this.heal(\"a\", 2);");
+    Session s(true, text);
+    const json n = s.diagnostics([](const json& d) {
+        return std::any_of(d.begin(), d.end(), [](const json& x) { return x.value("message", "").find("not viable") != std::string::npos; });
+    });
+    ASSERT_FALSE(n.is_null());
+    for (const json& d : n["params"]["diagnostics"]) {
+        if (d.value("message", "").find("not viable") == std::string::npos) continue;
+        EXPECT_EQ(d["range"]["start"], pos(10, 9)) << d.dump();  // the name "heal" in the definition line
+        EXPECT_EQ(d["range"]["end"], pos(10, 13)) << d.dump();
+    }
+}
+
 // The imported script of the next two tests. 0-based lines: 2 hp, 3 hp again, 5 Boost.
 const char* const kImported =
     "using \"Actor.h\";\n"
@@ -214,6 +255,28 @@ TEST(LanguageServer, TranslatorErrorInAnImportedScriptIsPublishedForThatScript)
     EXPECT_EQ(d["range"]["start"]["line"], 3) << n.dump();
     EXPECT_EQ(d["range"]["start"]["character"], 10) << n.dump();
     EXPECT_EQ(d["source"], "spp");
+}
+
+// S30 (c): a clangd error in imported code is published for the imported script, at its own line
+// and column. The importing script does not get it.
+TEST(LanguageServer, ClangdErrorInAnImportedScriptIsPublishedForThatScript)
+{
+    REQUIRE_CLANGD();
+    std::string imported = kImported;
+    imported.replace(imported.find("    float hp = 2.0;\n"), 20, "");
+    imported.replace(imported.find("void Boost() { }"), 16, "void Boost() { int x = \"abc\"; }");
+    Session s(true);  // the importer comes after the imported script is on disk
+    write_file(s.dir.path() / "base.spp", imported);
+    s.client->change(s.uri, 2, kImporter);
+    const std::string base_uri = uri_of((s.dir.path() / "base.spp").lexically_normal().string());
+    const json n = s.client->wait_notification("textDocument/publishDiagnostics", [&](const json& p) {
+        return p.value("uri", std::string()) == base_uri && has_source(p["diagnostics"], "clangd");
+    });
+    ASSERT_FALSE(n.is_null()) << "no clangd diagnostics for the imported script";
+    const json& d = n["params"]["diagnostics"][0];
+    EXPECT_EQ(d["range"]["start"]["line"], 4) << n.dump();
+    EXPECT_EQ(d["range"]["start"]["character"], 23) << n.dump();
+    EXPECT_NE(d.value("message", "").find("initialize"), std::string::npos) << n.dump();
 }
 
 // The definition of a method of an imported script is in that script, at the real line and column.
@@ -530,6 +593,30 @@ int analyzed_files(LsClient& client)
 }
 
 }  // namespace
+
+TEST(SymbolIndex, DigestCoversTheImportedScripts)
+{
+    TempDir dir;
+    const std::string main = (dir.path() / "main.spp").string();
+    const std::string deep = (dir.path() / "deep.spp").string();
+    const std::string inc = (dir.path() / "inc").string();
+    std::filesystem::create_directories(inc);
+    write_file(main, "using \"deep.spp\";\nusing \"lib.spp\";\n");
+    write_file(deep, "class Deep {}\n");
+    write_file(inc + "/lib.spp", "using \"far.spp\";\n");
+    write_file(inc + "/far.spp", "class Far {}\n");
+    const std::string text = "using \"deep.spp\";\nusing \"lib.spp\";\n";
+    const auto digest = [&] { return spp::ls::SymbolIndex::digest(main, text, {inc}); };
+    const std::string before = digest();
+    EXPECT_EQ(before, digest());
+    write_file(deep, "class Deep { int x = 1; }\n");  // an import
+    const std::string after_deep = digest();
+    EXPECT_NE(before, after_deep);
+    write_file(inc + "/far.spp", "class Far { int y = 1; }\n");  // an import of an import
+    EXPECT_NE(after_deep, digest());
+    // A script with no import has the digest of its text, plus nothing else.
+    EXPECT_EQ(spp::ls::SymbolIndex::digest(main, "class A {}\n", {}), spp::ls::SymbolIndex::digest("class A {}\n"));
+}
 
 TEST(SymbolIndex, ReusesAShardWhenTheDigestMatches)
 {
@@ -862,19 +949,145 @@ TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
     for (const char* n : {"self", "st", "a"}) EXPECT_FALSE(c.has(n)) << n;
 }
 
+int completion_translations(LsClient& client)
+{
+    return client.request("spp/indexStats", json::object())["result"].value("completions", -1);
+}
+
 TEST(LanguageServer, CompletionReusesTheAnswerWhileThePrefixGrows)
 {
     REQUIRE_CLANGD();
     std::string text = kCompleteScript;
-    text.replace(text.find('@'), 1, "co");
-    Session s(true, text);
-    // The cursor is after "co" on line 19. The next requests have the same rest of the text.
-    const json a = s.client->request("textDocument/completion", doc_pos(s.uri, 19, 10));
+    auto with_word = [&](const std::string& word) {
+        std::string t = text;
+        t.replace(t.find('@'), 1, word);
+        return t;
+    };
+    Session s(true, with_word("cou"));
+    // The cursor is after the word on line 19. The text around the word stays the same.
+    // The first prefix is long enough, so clangd gives a complete answer.
+    const json a = s.client->request("textDocument/completion", doc_pos(s.uri, 19, 11));
     ASSERT_TRUE(a.contains("result")) << a.dump();
-    const json b = s.client->request("textDocument/completion", doc_pos(s.uri, 19, 10));
+    EXPECT_EQ(completion_translations(*s.client), 1);
+    s.client->change(s.uri, 2, with_word("coun"));
+    const json b = s.client->request("textDocument/completion", doc_pos(s.uri, 19, 12));
     ASSERT_TRUE(b.contains("result")) << b.dump();
-    EXPECT_EQ(a["result"], b["result"]);
+    EXPECT_EQ(completion_translations(*s.client), 1);  // the longer prefix reuses the answer
     bool counter = false;
     for (const json& i : b["result"]["items"]) counter = counter || i.value("insertText", "") == "counter";
     EXPECT_TRUE(counter) << b.dump();
+    for (const json& i : b["result"]["items"]) EXPECT_EQ(i.value("filterText", "coun").compare(0, 4, "coun"), 0) << i.dump();
+    // A change of the text around the word needs a new translation.
+    std::string other = with_word("coun");
+    other.replace(other.find("int counter = 1;"), 16, "int counter = 2;");
+    s.client->change(s.uri, 3, other);
+    const json c = s.client->request("textDocument/completion", doc_pos(s.uri, 19, 12));
+    ASSERT_TRUE(c.contains("result")) << c.dump();
+    EXPECT_EQ(completion_translations(*s.client), 2);
+}
+
+// ------------------------------------------------------------------ S30: signature help, formatting, code actions
+
+TEST(LanguageServer, SignatureHelpShowsTheScriptMethodAndTheActiveParameter)
+{
+    REQUIRE_CLANGD();
+    Session s(true);
+    // Line 7 is "        this.heal(1.0);". The cursor is right after the "(".
+    const json a = s.client->request("textDocument/signatureHelp", doc_pos(s.uri, 7, 18));
+    ASSERT_TRUE(a.contains("result") && a["result"].is_object()) << a.dump();
+    ASSERT_FALSE(a["result"]["signatures"].empty()) << a.dump();
+    const std::string label = a["result"]["signatures"][0].value("label", "");
+    EXPECT_NE(label.find("heal"), std::string::npos) << label;
+    EXPECT_NE(label.find("float amount"), std::string::npos) << label;
+    EXPECT_EQ(a["result"]["activeParameter"], 0) << a.dump();
+    // Line 6 is "        this.Move(Vec3(dt, 0, 0));". The cursor is after "dt, ": the second argument.
+    const json b = s.client->request("textDocument/signatureHelp", doc_pos(s.uri, 6, 28));
+    ASSERT_TRUE(b.contains("result") && b["result"].is_object()) << b.dump();
+    EXPECT_NE(b["result"]["signatures"][0].value("label", "").find("Vec3"), std::string::npos) << b.dump();
+    EXPECT_EQ(b["result"]["activeParameter"], 1) << b.dump();
+    // Outside a call there is no signature.
+    const json c = s.client->request("textDocument/signatureHelp", doc_pos(s.uri, 3, 10));
+    ASSERT_TRUE(c.contains("result")) << c.dump();
+    EXPECT_TRUE(c["result"].is_null()) << c.dump();
+}
+
+TEST(LanguageServer, FormattingFixesTheIndentAndKeepsStringsAndComments)
+{
+    const std::string messy =
+        "class A {\n"
+        "int x = 1;   \n"
+        "      void f(int a,\n"
+        "int b) {\n"
+        "  if (a) {\n"
+        "        string s = \"{ not a brace\"; // } nor this\n"
+        "}\n"
+        "    /* a comment\n"
+        "       { stays */\n"
+        "}\n"
+        "}";
+    const std::string good =
+        "class A {\n"
+        "    int x = 1;\n"
+        "    void f(int a,\n"
+        "        int b) {\n"
+        "        if (a) {\n"
+        "            string s = \"{ not a brace\"; // } nor this\n"
+        "        }\n"
+        "        /* a comment\n"
+        "       { stays */\n"
+        "    }\n"
+        "}\n";
+    Session s(false, messy);
+    json o = {{"tabSize", 4}, {"insertSpaces", true}};
+    const json r = s.client->request("textDocument/formatting", {{"textDocument", {{"uri", s.uri}}}, {"options", o}});
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array() && r["result"].size() == 1) << r.dump();
+    EXPECT_EQ(r["result"][0]["newText"], good);
+    EXPECT_EQ(r["result"][0]["range"]["start"], pos(0, 0));
+    // The formatted text has no edit.
+    s.client->change(s.uri, 2, good);
+    const json again = s.client->request("textDocument/formatting", {{"textDocument", {{"uri", s.uri}}}, {"options", o}});
+    ASSERT_TRUE(again.contains("result")) << again.dump();
+    EXPECT_TRUE(again["result"].empty()) << again.dump();
+}
+
+TEST(LanguageServer, CodeActionInsertsAMissingSemicolon)
+{
+    std::string text = kScript;
+    text.replace(text.find("this.hp = this.hp + amount;"), 27, "this.hp = this.hp + amount");
+    Session s(false, text);
+    const json n = s.diagnostics([](const json& d) { return has_source(d, "spp"); });
+    ASSERT_FALSE(n.is_null());
+    const json diag = n["params"]["diagnostics"][0];
+    ASSERT_EQ(diag["message"], "expected ';'") << diag.dump();
+    const json r = s.client->request("textDocument/codeAction",
+                                     {{"textDocument", {{"uri", s.uri}}}, {"range", diag["range"]},
+                                      {"context", {{"diagnostics", json::array({diag})}}}});
+    ASSERT_TRUE(r.contains("result") && r["result"].size() == 1) << r.dump();
+    const json& edit = r["result"][0]["edit"]["changes"][s.uri][0];
+    EXPECT_EQ(r["result"][0]["kind"], "quickfix");
+    EXPECT_EQ(edit["newText"], ";");
+    EXPECT_EQ(edit["range"]["start"], pos(11, 34)) << r.dump();  // after "amount"
+    EXPECT_EQ(edit["range"]["end"], pos(11, 34)) << r.dump();
+}
+
+TEST(LanguageServer, CodeActionAppliesTheNameThatClangdSuggests)
+{
+    REQUIRE_CLANGD();
+    std::string text = kScript;
+    text.replace(text.find("this.hp = this.hp + amount;"), 27, "this.hp = amoun;");
+    Session s(true, text);
+    const json n = s.diagnostics([](const json& d) {
+        return std::any_of(d.begin(), d.end(), [](const json& x) { return x.value("message", "").find("did you mean") != std::string::npos; });
+    });
+    ASSERT_FALSE(n.is_null());
+    json diag;
+    for (const json& x : n["params"]["diagnostics"])
+        if (x.value("message", "").find("did you mean") != std::string::npos) diag = x;
+    const json r = s.client->request("textDocument/codeAction",
+                                     {{"textDocument", {{"uri", s.uri}}}, {"range", diag["range"]},
+                                      {"context", {{"diagnostics", json::array({diag})}}}});
+    ASSERT_TRUE(r.contains("result") && r["result"].size() == 1) << r.dump();
+    const json& edit = r["result"][0]["edit"]["changes"][s.uri][0];
+    EXPECT_EQ(edit["newText"], "amount") << r.dump();
+    EXPECT_EQ(edit["range"], diag["range"]);
 }
