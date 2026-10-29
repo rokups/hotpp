@@ -48,11 +48,37 @@ std::vector<std::string> read_lines(const fs::path& dir, const std::string& name
     return out;
 }
 
-// True for a file that makes a host: the JSON file and its two side files.
+// True for a file that makes a host: the JSON file and its three side files.
 bool is_host_file(const fs::path& p)
 {
     const std::string ext = p.extension().string();
-    return ext == ".json" || ext == ".defines" || ext == ".options";
+    return ext == ".json" || ext == ".defines" || ext == ".options" || ext == ".includes";
+}
+
+// Makes a path absolute against base (when the path is relative) and normalizes it with no
+// access to the file system. The result has no trailing slash. An empty path stays empty.
+std::string resolve_path(const std::string& base, const std::string& path)
+{
+    if (path.empty()) return path;
+    fs::path p(path);
+    if (p.is_relative() && !base.empty()) p = fs::path(base) / p;
+    std::string out = p.lexically_normal().string();
+    while (out.size() > 1 && out.back() == '/') out.pop_back();
+    return out;
+}
+
+// Resolves all paths against base. With unique, a repeated path is dropped (the first stays).
+std::vector<std::string> resolve_paths(const std::string& base, const std::vector<std::string>& in,
+                                       bool unique)
+{
+    std::vector<std::string> out;
+    for (const std::string& s : in) {
+        std::string r = resolve_path(base, s);
+        if (r.empty()) continue;
+        if (unique && std::find(out.begin(), out.end(), r) != out.end()) continue;
+        out.push_back(std::move(r));
+    }
+    return out;
 }
 
 // Removes the trailing slashes. The root directory stays "/".
@@ -109,9 +135,19 @@ void HostSet::load(const std::string& dir, bool require_cache)
         host->compiler = get_string(j, "compiler");
         host->std_version = get_string(j, "std");
         host->resource_dir = get_string(j, "resourceDir");
-        host->script_dirs = get_strings(j, "scriptDirs");
-        host->scripts = get_strings(j, "scripts");
-        host->include_dirs = get_strings(j, "includeDirs");
+        const std::string source_dir = get_string(j, "sourceDir");
+        host->script_dirs = resolve_paths(source_dir, get_strings(j, "scriptDirs"), false);
+        host->scripts = resolve_paths(source_dir, get_strings(j, "scripts"), false);
+        // The first entry of "includeDirs" is the project dir. The dirs of the target (from the
+        // side file) come next, then the other entries. Each relative path is relative to
+        // "sourceDir". A repeated dir is dropped; the first one stays.
+        std::vector<std::string> inc = get_strings(j, "includeDirs");
+        std::vector<std::string> ordered;
+        if (!inc.empty()) ordered.push_back(inc.front());
+        for (std::string& d : read_lines(e.path().parent_path(), get_string(j, "includesFile")))
+            ordered.push_back(std::move(d));
+        if (inc.size() > 1) ordered.insert(ordered.end(), inc.begin() + 1, inc.end());
+        host->include_dirs = resolve_paths(source_dir, ordered, true);
         // The options of the target come first, then the explicit flags (the last flag wins).
         host->flags = read_lines(e.path().parent_path(), get_string(j, "optionsFile"));
         for (std::string& f : get_strings(j, "flags")) host->flags.push_back(std::move(f));

@@ -1306,6 +1306,47 @@ TEST(LanguageServerHosts, DefineWithQuotesFromADefinesFileApplies)
     EXPECT_TRUE(has_label(host_completion_labels(true, false, false, "HOST_NAME=\"a b\"\nOTHER=\"C:\\dir\"\n"), "Value"));
 }
 
+// The include dir is in an includes side file. Its name has a space, a quote, a backslash and
+// a non-ASCII character. The file holds the path with no escape.
+TEST(LanguageServerHosts, IncludeDirWithSpecialCharactersFromAnIncludesFileApplies)
+{
+    REQUIRE_CLANGD();
+    TempDir dir;
+    const std::filesystem::path root = dir.path();
+    const std::filesystem::path weird = root / "we\"ird \\x d\xC3\xADr";
+    std::error_code ec;
+    std::filesystem::create_directories(weird, ec);
+    if (ec) GTEST_SKIP() << "the file system does not allow the directory name";
+    std::filesystem::create_directories(root / "scripts");
+    std::filesystem::create_directories(root / "build");
+    std::filesystem::create_directories(root / "hosts");
+    write_file((weird / "thing.h").string(), "#pragma once\nnamespace Thing { int Value(); }\n");
+    write_file((root / "hosts" / "h.includes").string(), weird.string() + "\n");
+    write_file((root / "build" / "CMakeCache.txt").string(), "# cache\n");
+    write_file((root / "hosts" / "h.json").string(),
+               R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string() +
+                   R"(","sourceDir":")" + root.string() +
+                   R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":["scripts"],)" +
+                   R"("scripts":[],"includeDirs":[")" + SPP_SOURCE_DIR + R"(/include"],"defines":[],)" +
+                   R"("includesFile":"h.includes","flags":[]})");
+    const std::string text = "using \"thing.h\";\n\nclass A {\n    void f() {\n        Thing.\n    }\n}\n";
+    const std::string path = (root / "scripts" / "a.spp").string();
+    write_file(path, text);
+    spp::ls::ServerOptions o;
+    o.clangd = SPP_CLANGD_PATH;
+    o.hosts_dir = (root / "hosts").string();
+    o.clangd_log = (root / "clangd.log").string();
+    LsClient client(o);
+    client.initialize(uri_of(root.string()));
+    const std::string uri = uri_of(path);
+    client.open(uri, text);
+    const json r = client.request("textDocument/completion", doc_pos(uri, 4, 14));
+    std::vector<std::string> labels;
+    if (r.contains("result") && r["result"].is_object())
+        for (const json& i : r["result"]["items"]) labels.push_back(i.value("insertText", i.value("label", "")));
+    EXPECT_TRUE(has_label(labels, "Value"));
+}
+
 TEST(LanguageServerHosts, MissingDefinesFileGivesNoDefines)
 {
     REQUIRE_CLANGD();

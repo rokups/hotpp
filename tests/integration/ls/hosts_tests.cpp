@@ -136,6 +136,80 @@ TEST_F(HostsTest, SideFileChangeForcesReload)
     EXPECT_FALSE(set.force_reload_for((hosts_dir / "a.txt").string()));
 }
 
+// The include dirs come from "includeDirs" and from an includes side file. The lines hold any
+// character. A relative line is relative to "sourceDir". The result is normalized and unique.
+TEST_F(HostsTest, IncludesFileGivesResolvedUniqueIncludeDirs)
+{
+    const std::string build = make_build("a");
+    std::ofstream(hosts_dir / "a.json")
+        << R"({"version":1,"name":"a","binaryDir":")" << build << R"(","sourceDir":"/proj/sub",)"
+        << R"("scriptDirs":["/src/a"],"includeDirs":["/proj/include","/ex/q\"uote","rel/ex","/proj/include/"],)"
+        << R"("includesFile":"a.includes","flags":[]})";
+    std::ofstream(hosts_dir / "a.includes", std::ios::binary)
+        << "/abs/sp ace\n"
+        << "/abs/q\"uote\\back\n"
+        << "/abs/\xC3\xA5\xC5\xBE\xE2\x82\xAC\n"  // UTF-8
+        << "/abs/[br,ack]$HOME#=|>-x\n"
+        << "-lead\n"
+        << "rel/inc\n"
+        << "rel/../other/\n"
+        << "/abs/trail/\n"
+        << "/abs/dot/./sub/../x\n"
+        << "/ex/q\"uote\r\n"  // repeated from "includeDirs"
+        << "\n"
+        << "/abs/sp ace\n";  // repeated
+    HostSet set;
+    set.load(hosts_dir.string());
+    ASSERT_EQ(set.size(), 1u);
+    const auto h = set.match("/src/a/x.spp");
+    ASSERT_TRUE(h);
+    const std::vector<std::string> want{
+        "/proj/include",  // the first entry of "includeDirs" stays first
+        "/abs/sp ace",
+        "/abs/q\"uote\\back",
+        "/abs/\xC3\xA5\xC5\xBE\xE2\x82\xAC",
+        "/abs/[br,ack]$HOME#=|>-x",
+        "/proj/sub/-lead",
+        "/proj/sub/rel/inc",
+        "/proj/sub/other",
+        "/abs/trail",
+        "/abs/dot/x",
+        "/ex/q\"uote",
+        "/proj/sub/rel/ex",
+    };
+    EXPECT_EQ(h->include_dirs, want);
+}
+
+TEST_F(HostsTest, RelativeScriptPathsUseSourceDir)
+{
+    const std::string build = make_build("a");
+    std::ofstream(hosts_dir / "a.json")
+        << R"({"version":1,"name":"a","binaryDir":")" << build << R"(","sourceDir":"/proj/sub",)"
+        << R"("scriptDirs":["scripts/","../other"],"scripts":["one.spp"],"flags":[]})";
+    HostSet set;
+    set.load(hosts_dir.string());
+    ASSERT_EQ(set.size(), 1u);
+    EXPECT_TRUE(set.match("/proj/sub/scripts/x.spp"));
+    EXPECT_TRUE(set.match("/proj/other/x.spp"));
+    EXPECT_TRUE(set.match("/proj/sub/one.spp"));
+    EXPECT_FALSE(set.match("/proj/sub/two.spp"));
+}
+
+TEST_F(HostsTest, IncludesFileChangeForcesReload)
+{
+    const std::string build = make_build("a");
+    std::ofstream(hosts_dir / "a.json")
+        << R"({"version":1,"name":"a","binaryDir":")" << build << R"(","scriptDirs":["/src/a"],)"
+        << R"("includesFile":"a.includes","flags":[]})";
+    HostSet set;
+    set.load(hosts_dir.string());
+    EXPECT_TRUE(set.match("/src/a/x.spp")->include_dirs.empty());  // a missing file is empty
+    std::ofstream(hosts_dir / "a.includes") << "/i/one\n";
+    EXPECT_TRUE(set.force_reload_for((hosts_dir / "a.includes").string()));
+    EXPECT_TRUE(set.refresh());
+    EXPECT_EQ(set.match("/src/a/x.spp")->include_dirs, std::vector<std::string>{"/i/one"});
+}
+
 TEST_F(HostsTest, LongestPrefixWins)
 {
     write_host("outer", make_build("o"), R"("/src")");

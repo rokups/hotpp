@@ -71,10 +71,12 @@ See "Language server" in the top `README.md`.
 
 ## Host files and file watchers
 
-The CMake function `spp_script_host` writes the host files to `.cache/spp/hosts/*.json`, and the side files `*.defines` and `*.options`. They tell
+The CMake function `spp_script_host` writes the host files to `.cache/spp/hosts/*.json`, and the side files `*.defines`, `*.options` and `*.includes`. They tell
 `spp-ls` the include directories and flags of each script. The extension watches `**/*.spp` and
 `.cache/spp/hosts/*` and sends the events to the server. A new, changed or deleted script, or a
 new or changed host file, takes effect without a restart of the server.
+
+Every valid include path works: spaces, quotes, backslashes, non-ASCII characters, `$`, `#`, brackets, relative paths and paths from imported targets. Two cases do not work. A path with a newline cannot be in a side file. A path with a semicolon is a CMake list separator, so CMake splits it before `spp_script_host` sees it.
 
 ## Install for development
 
