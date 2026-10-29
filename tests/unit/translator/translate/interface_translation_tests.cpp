@@ -46,9 +46,9 @@ TEST(InterfaceTranslation, ShellDerivesFromAllBasesWithOneSlotForEachVirtual)
     EXPECT_TRUE(has(r.cpp, "int Ping(int a0) override")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "int Id() const override")) << r.cpp;
     // A virtual without an override calls the implementation of the base that declares it.
-    EXPECT_TRUE(has(r.cpp, "static_cast<Foo_Shell*>(a)->IPing::Size(a0);")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "static_cast<Foo_Shell*>(a)->IName::Id();")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "static_cast<Foo_Shell*>(a)->Widget::Size();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "static_cast<Foo_Shell*>(__spp_owner)->IPing::Size(a0);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "static_cast<Foo_Shell*>(__spp_owner)->IName::Id();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "static_cast<Foo_Shell*>(__spp_owner)->Widget::Size();")) << r.cpp;
     // The record lists all bases. The reload check compares the list (design 5.3).
     EXPECT_TRUE(has(r.cpp, "\"Widget, IPing, IName\", spp::shell_layout_hash(\"Widget, IPing, IName\"")) << r.cpp;
 }
@@ -63,8 +63,8 @@ TEST(InterfaceTranslation, OverrideAndSuperCallOfAnInterfaceVirtual)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "self->IName::Id()")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "self->Widget::Size()")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<void*>(&Foo__Id)")) << r.cpp;
-    EXPECT_FALSE(has(r.cpp, "Foo__fwd_Id")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<spp::SlotFn>(&FooState_g1::Id)")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "__fwd_Id")) << r.cpp;
 }
 
 // A child of a class with interface bases inherits the interface slots. It can override them.

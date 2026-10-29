@@ -192,7 +192,7 @@ private:
     std::unique_ptr<Pending> pending_;
     // The dispatch tables of the removed classes (design 6.1), by class name. The record of a
     // removed class keeps its place in "registry_" while objects live.
-    std::unordered_map<std::string, std::vector<void*>> removed_;
+    std::unordered_map<std::string, std::vector<SlotFn>> removed_;
     // The live module state block (module-level script variables). Null: the script has none.
     // "mod_slot_" is the slot variable of the module that made the layout. It points to the block.
     const StateLayout* mod_layout_ = nullptr;

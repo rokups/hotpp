@@ -17,6 +17,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_compile_options(-Wall -Wextra)
+if(MSVC)
+    # unverified: not built on MSVC. /JMC (Just My Code) helps the debugger skip the library code.
+    add_compile_options($<$<CONFIG:Debug>:/JMC>)
+endif()
 
 # Sanitizers. Use -DCMAKE_CXX_FLAGS=-fsanitize=address or -fsanitize=thread.
 # CMake passes the flags to the compile and to the link of every target.
@@ -80,8 +84,15 @@ set_target_properties(minengine PROPERTIES ENABLE_EXPORTS ON)
 # The tool sppc (below) uses it.
 find_library(CLANG_C_LIBRARY NAMES clang REQUIRED)
 find_path(CLANG_C_INCLUDE_DIR clang-c/Index.h REQUIRED)
-execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
-                OUTPUT_VARIABLE CLANG_RESOURCE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT MSVC)
+    execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
+                    OUTPUT_VARIABLE CLANG_RESOURCE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+else()
+    # unverified: not built on MSVC. MSVC has no -print-resource-dir. Set the cache variable
+    # SPP_CLANG_RESOURCE_DIR to the resource directory of a Clang install.
+    set(SPP_CLANG_RESOURCE_DIR "" CACHE PATH "The Clang resource directory (MSVC builds)")
+    set(CLANG_RESOURCE_DIR "${SPP_CLANG_RESOURCE_DIR}")
+endif()
 add_library(sppc_lib STATIC src/translator/sppc_lib.cpp src/translator/emit.cpp src/translator/lower.cpp src/translator/types.cpp src/translator/check.cpp src/translator/diag_rewrite.cpp
     src/translator/parser/script_grammar.cpp
     src/translator/parser/expression_grammar.cpp src/translator/parser/statement_grammar.cpp)

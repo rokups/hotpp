@@ -138,7 +138,7 @@ Loader::~Loader()
     set_sync_mode(SyncMode::StopTheWorld);  // the mode is global; the next loader starts clean
     if (mod_block_) {  // the code of the field destroyers is still loaded: "gens_" goes later
         destroy_fields(mod_layout_, mod_block_);
-        std::free(mod_block_);
+        aligned_free(mod_block_);
     }
 }
 
@@ -157,7 +157,7 @@ bool Loader::make_module_block(const ModuleStateInfo& info, std::string& error)
         }
     } catch (...) {
         *info.slot = nullptr;
-        std::free(block);  // the partial state is unknown: no destructor call
+        aligned_free(block);  // the partial state is unknown: no destructor call
         error = "an initializer of a module variable threw an exception";
         return false;
     }
@@ -374,6 +374,8 @@ void* removed_class_handler()
     return nullptr;
 }
 
+void* StateBase::__removed() { return removed_class_handler(); }
+
 uint64_t removed_class_call_count() { return g_removed_calls.load(std::memory_order_relaxed); }
 
 bool Loader::request_reload(Module module, std::string& error)
@@ -567,8 +569,8 @@ bool Loader::commit_locked(std::string& error)
             work.push_back({s, s->cls->layout, static_cast<char*>(s->state), b, pc});
         }
     } catch (...) {
-        for (Work& w : work) std::free(w.new_block);
-        std::free(new_mod);
+        for (Work& w : work) aligned_free(w.new_block);
+        aligned_free(new_mod);
         error = "out of memory in commit step 1; the old generation continues";
         pending_.reset();
         return false;
@@ -595,10 +597,10 @@ bool Loader::commit_locked(std::string& error)
             migrate_block(*w.old_layout, *w.pc->incoming->layout, w.pc->plan, w.old_block,
                           w.new_block);
     } catch (...) {
-        for (Work& w : work) std::free(w.new_block);
+        for (Work& w : work) aligned_free(w.new_block);
         if (nms.layout) {
             *nms.slot = nullptr;
-            std::free(new_mod);
+            aligned_free(new_mod);
         }
         pending_.reset();
         error = "FATAL: exception during state migration; a restart is needed";
@@ -637,8 +639,8 @@ bool Loader::commit_locked(std::string& error)
     for (auto& [name, entry] : registry_.entries()) {
         if (P.staged.find(name) || removed_.count(name)) continue;
         ClassRecord* r = entry.record;
-        std::vector<void*>& table = removed_[name];
-        table.assign(r->slot_count, reinterpret_cast<void*>(&removed_class_handler));
+        std::vector<SlotFn>& table = removed_[name];
+        table.assign(r->slot_count, reinterpret_cast<SlotFn>(&StateBase::__removed));
         r->slots = table.data();
         r->on_reload = nullptr;
         r->dtor = nullptr;  // the script destructor belongs to a source that does not exist now
@@ -706,12 +708,12 @@ bool Loader::commit_locked(std::string& error)
     // Step 6: destroy the old fields and free the old blocks.
     for (Work& w : work) {
         destroy_fields(w.old_layout, w.old_block);
-        std::free(w.old_block);
+        aligned_free(w.old_block);
     }
     if (mod_block_) {
         *mod_slot_ = nullptr;  // the old generation must not read the freed block
         destroy_fields(mod_layout_, mod_block_);
-        std::free(mod_block_);
+        aligned_free(mod_block_);
     }
     mod_layout_ = nms.layout;
     mod_slot_ = nms.slot;

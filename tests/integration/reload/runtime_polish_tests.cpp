@@ -70,7 +70,7 @@ TEST_P(BackendTests, RemovedClassKeepsItsObjectsValid)
     EXPECT_TRUE(g->removed);
     EXPECT_EQ(g->live_objects, 1u);
     for (uint32_t i = 0; i < g->slots; ++i)
-        EXPECT_EQ(ghost.shell->cls->slots[i], reinterpret_cast<void*>(&spp::removed_class_handler));
+        EXPECT_TRUE(ghost.shell->cls->slots[i] == reinterpret_cast<spp::SlotFn>(&spp::StateBase::__removed));
     EXPECT_FALSE(find_class(st, "Hero")->removed);
 }
 

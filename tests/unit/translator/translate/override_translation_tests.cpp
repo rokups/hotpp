@@ -17,7 +17,10 @@ TEST(OverrideTranslation, ExplicitOverrideUsesTheVirtualSlot)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // An override gets no entry in the slot file. A plain function gets one.
     EXPECT_EQ(r.slots_out.find("Foo::Update"), std::string::npos) << r.slots_out;
-    EXPECT_NE(r.cpp.find("Foo__Update(Widget* a"), std::string::npos) << r.cpp;
+    // The state member is the slot. No wrapper frame exists.
+    EXPECT_NE(r.cpp.find("void FooState_g1::Update(float dt)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("reinterpret_cast<spp::SlotFn>(&FooState_g1::Update)"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("Foo__Update"), std::string::npos) << r.cpp;
 }
 
 TEST(OverrideTranslation, MissingOverrideIsAnError)

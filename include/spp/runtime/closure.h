@@ -7,7 +7,13 @@
 #include "spp/runtime/hidden.h"
 #include "spp/runtime/threads.h"
 
+// A hint that a condition is rarely true.
+#if defined(__clang__) || defined(__GNUC__)
 #define SPP_UNLIKELY(x) __builtin_expect(!!(x), 0)
+#else
+// unverified: not built on MSVC. The MSVC form is the plain condition.
+#define SPP_UNLIKELY(x) (x)
+#endif
 
 namespace spp {
 

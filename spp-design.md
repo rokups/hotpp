@@ -284,7 +284,7 @@ A script class `Player : Actor` becomes three C++ entities.
 
 The shell is a real C++ subclass of `Actor`. The engine sees a normal object. `dynamic_cast<Actor*>`, `typeid`, and every native registration work on the shell.
 
-The shell overrides every virtual method of the base, not only the overridden ones. Each override reads one slot of the current dispatch table. A slot that the script does not override points to a forwarding function. The forwarding function calls the base implementation. This choice makes the shell independent of the set of overrides. The script can add or remove an override without a new shell.
+The shell overrides every virtual method of the base, not only the overridden ones. Each override reads one slot of the current dispatch table. A slot holds a pointer to a member function of the state struct (`spp::SlotFn`). A slot that the script does not override points to a forwarding member `__fwd_<id>` of the state struct. The forwarding member calls the base implementation. This choice makes the shell independent of the set of overrides. The script can add or remove an override without a new shell.
 
 ```cpp
 // Generated shell (compiled once)
@@ -294,14 +294,16 @@ struct Player_Shell final : Actor, spp::ShellBase {
     ~Player_Shell() override { spp::destroy_state(this); }
 
     void Tick(float dt) override
-    { return spp::call<void(Actor*, float)>(cls, SLOT_Tick, this, dt); }
+    { return spp::call<void(Actor*, float)>(this, SLOT_Tick, dt); }
     void TakeDamage(float a) override
-    { return spp::call<void(Actor*, float)>(cls, SLOT_TakeDamage_f, this, a); }
+    { return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a); }
     void TakeDamage(Actor& src, float a) override
-    { return spp::call<void(Actor*, Actor&, float)>(cls, SLOT_TakeDamage_Af, this, src, a); }
+    { return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, src, a); }
     // one slot for each virtual of Actor and of each interface base
 };
 ```
+
+`spp::call<Sig>(self, slot, args...)` reads `self->cls` and `self->state`. It calls the member in the slot on the state. There is no wrapper function between the shell and the member. The debug line of the shell override maps to the line of the class.
 
 Pure virtual functions in the base have no forwarding target. The translator reports an error when the script does not override them.
 
@@ -315,19 +317,19 @@ A script class can derive from a script class. `Enemy : Player` produces `Enemy_
 
 | Call | Path | Cost over plain C++ |
 |---|---|---|
-| Native code calls a native virtual on a script object | vtable → shell stub → table slot → generation function | one extra indirect call |
+| Native code calls a native virtual on a script object | vtable → shell stub → table slot → state member | one extra indirect call |
 | Script calls a native method | direct C++ call, resolved by Clang | none |
-| Script calls a non-virtual script method in the same generation | direct call to a generation function | none |
+| Script calls a non-virtual script method in the same generation | direct call to the hidden wrapper (`SPP_HIDDEN`) of the state member | none |
 | Script calls a script virtual method | table slot | one indirect call |
 | Script reads a script field | `state->field` through the state pointer | one load |
-| Native delegate calls a script method | thunk → table slot → generation function | one extra indirect call |
+| Native delegate calls a script method | thunk → table slot → state member | one extra indirect call |
 
-Each generation function starts with a generation guard.
+Each script method is a member of the state struct of its generation. The member starts with a generation guard. This is the stale-generation check in the member prologue. A script function, a constructor and a destructor also have a hidden wrapper (`SPP_HIDDEN`) for direct script-to-script calls.
 
 ```cpp
-void Player__heal(Player_Shell* self, float amount) {
+void PlayerState_g42::heal(float amount) {
     if (SPP_UNLIKELY(spp::active_generation != 42)) return spp::stale_call("Player::heal");
-    auto* st = static_cast<PlayerState_g42*>(self->state);
+    auto* st = this;
     st->health = std::min(st->health + amount, 100.0f);
 }
 ```
@@ -423,7 +425,7 @@ A native delegate needs a function address that stays valid across reloads. The 
 ```cpp
 // Player.thunks_3.cpp (append-only, compiled when a new bindable method appears)
 void Player__onHit__thunk(Player_Shell* self, Actor& src, float a)
-{ return spp::call<void(Player_Shell*, Actor&, float)>(self->cls, SLOT_onHit, self, src, a); }
+{ return spp::call<void(Player_Shell*, Actor&, float)>(self, SLOT_onHit, src, a); }
 ```
 
 A closure that leaves script code becomes a `spp::Closure<Sig>` object. The object holds a generation pin. Its call operator checks the guard and calls the lambda. The object converts to `std::function` and to engine delegate types. The translator applies this conversion when a lambda converts to a non-script type.
@@ -731,7 +733,7 @@ class Player : Actor {
 | `float health = 100.0;` | `float health;` in the state struct plus `init_health(self, field)` that runs `100.0f` | runtime model |
 | `[alias("hp")]` | `alias = "hp"` in the FieldInfo | runtime model |
 | `Player(FString name) : super(name)` | Done (S4). The canonical record of generation 1 builds the shell from the `super` arguments (`spp::construct_shell`). Then `Player__ctor(self, name)` runs. The `super` arguments can use parameters only. | runtime model |
-| `override void Tick(float dt)` | `void Player__Tick_gN(Player_Shell* self, float dt)` installed in `SLOT_Tick`. The translator matches the name and the parameter types against the libclang list. A match makes the function an override, and `override` is required. | runtime model |
+| `override void Tick(float dt)` | `void PlayerState_gN::Tick(float dt)`. A pointer to this member is installed in `SLOT_Tick`. No `Player__Tick` wrapper exists. The translator matches the name and the parameter types against the libclang list. A match makes the function an override, and `override` is required. | runtime model |
 | `public`, `private`, `protected` | The parser reads and stores the access word. The translator does not enforce it. | none |
 | `virtual`, `new` | `virtual` adds a slot (S6a). A call goes through `Owner__f_virt(self, args)`. `override` in a child fills the slot. A function that hides a parent function needs `new`. | runtime model |
 | `super.Tick(dt)` | `self->Actor::Tick(dt)` | sugar |
@@ -739,7 +741,7 @@ class Player : Actor {
 | `this.Position`, `this.Move(...)` | `self->Position`, `self->Move(...)`. Clang resolves the member. | sugar |
 | `this.TakeDamage(amount * 1.5)` | `self->TakeDamage(amount * 1.5f)`. Clang resolves the overload. The call goes through the vtable and the shell. | sugar |
 | `ref source` | `spp::ref_arg(source)` | sugar |
-| `void heal(float amount)` | `void Player__heal_gN(Player_Shell* self, float amount)`. A call `p.heal(1.0)` becomes `Player__heal_gN(p, 1.0f)`. | runtime model |
+| `void heal(float amount)` | The member `void PlayerState_gN::heal(float amount)`. A call `p.heal(1.0)` becomes a call of the hidden wrapper `Player__heal(p, 1.0f)`. | runtime model |
 | `bool pickUp(Item* item)` | The return type stands before the name. `void` means no return value. | sugar |
 | `float Hp { get; set; } = 50.0;` | A property. The state struct gets a hidden field `__p_Hp`. The translator makes the script methods `get_Hp` and `set_Hp`, each with its own slot. `{ get; }` has no setter. `{ get; private set; }` stores the access word of the setter. | runtime model |
 | `float Shield { get { ... } set { ... } }` | A custom accessor. The setter body uses the name `value` for the new value. A read `Shield` or `this.Shield` calls the getter. A write calls the setter. | runtime model |
@@ -935,6 +937,7 @@ A native signature can use `T*` or `T&` for a type that is not a value, not intr
 
 #### 7.10.5 Parameters and performance
 
+- A parameter whose body type differs from its signature type (for example the body needs a copy) is named `__<name>` in the member signature. The first body line makes `<name>` from `__<name>` with the body type. The body uses `<name>`.
 - A value parameter has by-value meaning. The translator emits `const T&` when the body only reads it. It emits `T` for small trivially copyable types (16 bytes or less) and when the body mutates or stores it.
 - A handle parameter is passed as `const Handle&` when the body does not store it. This avoids a reference-count change. The body that stores it takes a copy.
 - A call to a native function needs no marker. The translator reads the signature. It binds a `ref` argument to a native `T&` of a value type. It uses the handle for a native `T*` or `T&` of a handle type.
@@ -1034,7 +1037,7 @@ Status of the experiments (S19). R0 to R6 pass with hand-written and generated c
 |---|---|---|
 | F1 | Pass for plain native bases, bases that derive from a plain class, and explicit template specializations. A base that derives from an implicit instance of a class template gives no virtuals: see risk 8. | `tests/support/f1_scenario.h`, `tests/unit/translator/translate/template_base_translation_tests.cpp` |
 | F2 | Pass. 21 mistakes, each with a golden message that names the script line and script names. | `tests/golden/diagnostics/`, `DiagnosticMistakes` |
-| F3 | Partial. The DWARF line table has the `.spp` lines. gdb 18.1 stops at `player_v1.spp:11` in a live process, prints `Player__Tick ... at example/scripts/player_v1.spp:13` and steps by script lines. lldb and Visual Studio were not run. The lldb formatters and natvis have unit tests for the pure Python part only. | `DebugInfo.*`, `JitTests.DebuggerGetsObjectWithScriptLines`, `tools/lldb/`, `tools/natvis/` |
+| F3 | Partial. The DWARF line table has the `.spp` lines. gdb 18.1 stops at `player_v1.spp:11` in a live process, prints `Player__Tick ... at example/scripts/player_v1.spp:13` and steps by script lines. This frame name is from before phase 2. The frame is now the state member `PlayerState_g1::Tick`. This is not run again. lldb and Visual Studio were not run. The lldb formatters and natvis have unit tests for the pure Python part only. | `DebugInfo.*`, `JitTests.DebuggerGetsObjectWithScriptLines`, `tools/lldb/`, `tools/natvis/` |
 | P1 | Pass, without the real engine headers. One module after a one-line change, `-O1`, warm, on the test machine: JIT 808 ms, JIT with PCH 166 ms, CLANG_FILES 1105 ms, CLANG_FILES with PCH 350 ms. The criterion is under 2 s. The PCH for CLANG_FILES is made with `clang++ -x c++-header` (1.1 s once, 13.5 MB) and used with `--cxxflag -include-pch`. | `example/bench_backends.cpp`, README "Measurements" |
 
 The test engine headers are small. The real engine headers can change the numbers. Measure again when they are available.

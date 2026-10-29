@@ -39,15 +39,15 @@ struct Player_Shell final : Actor, spp::ShellBase {
 
     void Tick(float dt) override
     {
-        return spp::call<void(Actor*, float)>(cls, SLOT_Tick, this, dt);
+        return spp::call<void(Actor*, float)>(this, SLOT_Tick, dt);
     }
     void TakeDamage(float a) override
     {
-        return spp::call<void(Actor*, float)>(cls, SLOT_TakeDamage_f, this, a);
+        return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a);
     }
     void TakeDamage(Actor& src, float a) override
     {
-        return spp::call<void(Actor*, Actor&, float)>(cls, SLOT_TakeDamage_Af, this, src, a);
+        return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, src, a);
     }
 };
 
@@ -57,6 +57,11 @@ struct PlayerState_g2 {
     float health;
     float speed;
     float shield;
+
+    void Tick(float dt);
+    void TakeDamage_f(float amount);
+    void TakeDamage_Af(Actor& src, float amount);
+    void heal(float amount);
 };
 
 static void init_health(void*, void* f) { new (f) float(100.0f); }
@@ -88,56 +93,51 @@ static inline PlayerState_g2* state_of(Player_Shell* self)
     return static_cast<PlayerState_g2*>(self->state);
 }
 
-static void Player__heal(Player_Shell* self, float amount)
+void PlayerState_g2::heal(float amount)
 {
     if (SPP_UNLIKELY(spp::active_generation != GEN)) return spp::stale_call("Player::heal");
-    auto* st = state_of(self);
+    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
+    [[maybe_unused]] auto* st = this;
     st->health = std::min(st->health + 2.0f * amount, 100.0f);
     std::printf("[gen2] %s: heal %.1f (x2) -> health=%.1f\n", self->Name.c_str(), amount,
                 st->health);
 }
 
-static void Player__heal_slot(Actor* a, float amount)
+void PlayerState_g2::Tick(float dt)
 {
-    Player__heal(static_cast<Player_Shell*>(a), amount);
-}
-
-static void Player__Tick(Actor* a, float dt)
-{
-    auto* self = static_cast<Player_Shell*>(a);
     if (SPP_UNLIKELY(spp::active_generation != GEN)) return spp::stale_call("Player::Tick");
-    auto* st = state_of(self);
+    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
+    [[maybe_unused]] auto* st = this;
     self->Move({2.0f * st->speed * dt, 0, 0});
     std::printf("[gen2] %s: Tick dt=%.4f pos.x=%.4f health=%.1f shield=%.1f\n", self->Name.c_str(),
                 dt, self->Position.x, st->health, st->shield);
 }
 
-static void Player__TakeDamage_f(Actor* a, float amount)
+void PlayerState_g2::TakeDamage_f(float amount)
 {
-    auto* self = static_cast<Player_Shell*>(a);
-    if (SPP_UNLIKELY(spp::active_generation != GEN))
-        return spp::stale_call("Player::TakeDamage(float)");
-    auto* st = state_of(self);
+    if (SPP_UNLIKELY(spp::active_generation != GEN)) return spp::stale_call("Player::TakeDamage(float)");
+    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
+    [[maybe_unused]] auto* st = this;
     st->health = std::max(st->health - amount, 0.0f);
     std::printf("[gen2] %s: TakeDamage %.1f -> health=%.1f\n", self->Name.c_str(), amount,
                 st->health);
 }
 
-static void Player__TakeDamage_Af(Actor* a, Actor& src, float amount)
+void PlayerState_g2::TakeDamage_Af(Actor& src, float amount)
 {
-    auto* self = static_cast<Player_Shell*>(a);
-    if (SPP_UNLIKELY(spp::active_generation != GEN))
-        return spp::stale_call("Player::TakeDamage(Actor&, float)");
+    if (SPP_UNLIKELY(spp::active_generation != GEN)) return spp::stale_call("Player::TakeDamage(Actor&, float)");
+    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
+    [[maybe_unused]] auto* st = this;
     std::printf("[gen2] %s: hit by %s\n", self->Name.c_str(), src.Name.c_str());
     self->TakeDamage(amount);
 }
 
 // ------------------------------------------------------ record and entry
-static void* Player_slots[SLOT_COUNT] = {
-    reinterpret_cast<void*>(&Player__Tick),
-    reinterpret_cast<void*>(&Player__TakeDamage_f),
-    reinterpret_cast<void*>(&Player__TakeDamage_Af),
-    reinterpret_cast<void*>(&Player__heal_slot),
+static const spp::SlotFn Player_slots[SLOT_COUNT] = {
+    reinterpret_cast<spp::SlotFn>(&PlayerState_g2::Tick),
+    reinterpret_cast<spp::SlotFn>(&PlayerState_g2::TakeDamage_f),
+    reinterpret_cast<spp::SlotFn>(&PlayerState_g2::TakeDamage_Af),
+    reinterpret_cast<spp::SlotFn>(&PlayerState_g2::heal),
 };
 
 spp::ClassRecord Player_record = {

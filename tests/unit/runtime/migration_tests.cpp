@@ -60,7 +60,7 @@ spp::FieldInfo fields2[] = {
 };
 spp::StateLayout layout2{"State2", sizeof(State2), alignof(State2), 5, fields2};
 
-void* slots[1] = {nullptr};
+spp::SlotFn slots[1] = {nullptr};
 constexpr uint64_t kHash = spp::shell_layout_hash("Base", sizeof(Fake), alignof(Fake), 0);
 
 spp::ClassRecord record1{"Fake", 1, slots, 1, &layout1, nullptr, "Base", kHash};

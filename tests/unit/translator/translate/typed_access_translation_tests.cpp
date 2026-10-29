@@ -151,7 +151,9 @@ TEST(ParamAnalysis, SlotAdapterKeepsTheCanonicalForm)
     const sppc::TranslateResult r = translate_script(
         "[native, value] class Blob;\nclass Box : Unit {\n    int Peek(Blob b) { return 1; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "static int32_t Box__Peek_slot(Unit* a, Blob b)")) << r.cpp;
+    // The slot is the state member. It has the canonical form of the parameter.
+    EXPECT_TRUE(has(r, "int32_t BoxState_g1::Peek(Blob __b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "reinterpret_cast<spp::SlotFn>(&BoxState_g1::Peek)")) << r.cpp;
 }
 
 // S20b: the analysis follows a parameter into the script functions that get it by value.

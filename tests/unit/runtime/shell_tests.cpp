@@ -83,36 +83,54 @@ TEST(IsAs, NativeTypesUseRtti)
 }
 
 // ---- signature keys of the slots (design 5.3, S17)
-int add_one(Base*, int x) { return x + 1; }
-void touch(Base*, int* hits) { ++*hits; }
+// A script state: the first field is the owner pointer. The slots are members of it.
+struct TestState {
+    spp::ShellBase* owner = nullptr;
+    int add_one(int x) { return x + 1; }
+    void touch(int* hits) { ++*hits; }
+};
+
+template <class Pmf>
+spp::SlotFn slot_of(Pmf p)
+{
+    return reinterpret_cast<spp::SlotFn>(p);
+}
 
 // A slot without a key calls the function. A matching key also calls it.
 TEST(SlotKeys, MatchingOrMissingKeyCalls)
 {
-    void* slots[1] = {reinterpret_cast<void*>(&add_one)};
+    const spp::SlotFn slots[1] = {slot_of(&TestState::add_one)};
     spp::ClassRecord rec{"Keyed", 1, slots, 1, nullptr, nullptr, "Base", 0};
-    Base b;
-    EXPECT_EQ(spp::call<int(Base*, int)>(&rec, 0, &b, 4), 5);
+    TestState state;
+    spp::ShellBase shell;
+    shell.cls = &rec;
+    shell.state = &state;
+    state.owner = &shell;
+    EXPECT_EQ(spp::call<int(Base*, int)>(&shell, 0, 4), 5);
     const char* keys[1] = {typeid(int(Base*, int)).name()};
     rec.slot_keys = keys;
-    EXPECT_EQ(spp::call<int(Base*, int)>(&rec, 0, &b, 4), 5);
+    EXPECT_EQ(spp::call<int(Base*, int)>(&shell, 0, 4), 5);
 }
 
 // A call with another signature than the key detaches: the function does not run, the result
 // is the default value and the runtime counts the call.
 TEST(SlotKeys, OtherSignatureDetaches)
 {
-    void* slots[2] = {reinterpret_cast<void*>(&add_one), reinterpret_cast<void*>(&touch)};
+    const spp::SlotFn slots[2] = {slot_of(&TestState::add_one), slot_of(&TestState::touch)};
     const char* keys[2] = {typeid(int(Base*, int, int)).name(), typeid(void(Base*, int*, int)).name()};
     spp::ClassRecord rec{"Detached", 1, slots, 2, nullptr, nullptr, "Base", 0};
     rec.slot_keys = keys;
-    Base b;
+    TestState state;
+    spp::ShellBase shell;
+    shell.cls = &rec;
+    shell.state = &state;
+    state.owner = &shell;
     int hits = 0;
     const uint64_t before = spp::detached_call_count();
     testing::internal::CaptureStderr();
-    EXPECT_EQ(spp::call<int(Base*, int)>(&rec, 0, &b, 4), 0);
-    EXPECT_EQ(spp::call<int(Base*, int)>(&rec, 0, &b, 4), 0);
-    spp::call<void(Base*, int*)>(&rec, 1, &b, &hits);
+    EXPECT_EQ(spp::call<int(Base*, int)>(&shell, 0, 4), 0);
+    EXPECT_EQ(spp::call<int(Base*, int)>(&shell, 0, 4), 0);
+    spp::call<void(Base*, int*)>(&shell, 1, &hits);
     const std::string log = testing::internal::GetCapturedStderr();
     EXPECT_EQ(hits, 0);
     EXPECT_EQ(spp::detached_call_count(), before + 3);

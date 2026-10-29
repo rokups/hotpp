@@ -51,7 +51,7 @@ void* slot2 = nullptr;
 
 // A class record gives the generation number. It has no fields.
 spp::StateLayout empty_layout{"Empty", 1, 1, 0, nullptr};
-void* cslots[1] = {nullptr};
+spp::SlotFn cslots[1] = {nullptr};
 constexpr uint64_t kHash = spp::shell_layout_hash("Base", 1, 1, 0);
 spp::ClassRecord crec1{"Empty", 1, cslots, 1, &empty_layout, nullptr, "Base", kHash};
 spp::ClassRecord crec2{"Empty", 2, cslots, 1, &empty_layout, nullptr, "Base", kHash};

@@ -53,6 +53,13 @@ template <class R, class... P>
 struct sig_result<R(P...)> {
     using type = R;
 };
+// The pointer-to-member type of a slot with the signature "Sig". The state is the object.
+template <class Sig>
+struct sig_pmf;
+template <class R, class B, class... P>
+struct sig_pmf<R(B*, P...)> {
+    using type = R (StateBase::*)(P...);
+};
 // The result of a detached call: nothing, a value-initialized value, or an exception when the
 // result type has no default value (for example a reference).
 template <class R>
@@ -67,21 +74,23 @@ SPP_HIDDEN R detached_result()
 }
 }  // namespace detail
 
-// Calls slot "slot" of the class record. "Sig" is the signature of the slot. When the slot has
+// Calls slot "slot" of the class of the shell "self". The slot is a member of the state of "self". "Sig" is the signature of the slot. When the slot has
 // a signature key (ClassRecord::slot_keys) and "Sig" is another signature, the call detaches.
 // The call is a script entry (threads.h). In StopTheWorld mode the entry is one flag check.
 // The entry starts before the read of the slot, so a commit cannot change the slot under it.
 template <class Sig, class... A>
-SPP_HIDDEN auto call(const ClassRecord* cls, unsigned slot, A&&... a)
+SPP_HIDDEN auto call(ShellBase* self, unsigned slot, A&&... a)
 {
     ScriptEntry entry;
+    const ClassRecord* cls = self->cls;
     if (const char* const* keys = cls->slot_keys) [[unlikely]] {
         if (keys[slot] && std::strcmp(keys[slot], typeid(Sig).name()) != 0) {
             detached_call(cls, slot);
             return detail::detached_result<typename detail::sig_result<Sig>::type>();
         }
     }
-    return reinterpret_cast<Sig*>(cls->slots[slot])(std::forward<A>(a)...);
+    using Pmf = typename detail::sig_pmf<Sig>::type;
+    return (static_cast<StateBase*>(self->state)->*reinterpret_cast<Pmf>(cls->slots[slot]))(std::forward<A>(a)...);
 }
 
 // Records that the code of "generation" made the object "self" (state.cpp). The loader keeps

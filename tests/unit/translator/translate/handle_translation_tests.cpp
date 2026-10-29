@@ -27,22 +27,25 @@ TEST(HandleTranslation, ParamIsConstRef)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const std::string p = "const std::shared_ptr<Weapon>& src";
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit(Foo_Shell* self, " + p + ");")) << r.cpp;
-    // A "#line" directive maps the brace of the generation function to the script line.
-    EXPECT_TRUE(has(r.cpp, "static void Foo__Hit(Foo_Shell* self, " + p + ")\n#line 5 \"t.spp\"\n{")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "static void Foo__Hit_slot(Widget* a, " + p + ")")) << r.cpp;
+    // A "#line" directive maps the brace of the state member to the script line.
+    EXPECT_TRUE(has(r.cpp, "void FooState_g1::Hit(" + p + ")\n#line 5 \"t.spp\"\n{")) << r.cpp;
+    // The slot is the state member. No slot adapter exists.
+    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<spp::SlotFn>(&FooState_g1::Hit)")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "Foo__Hit_slot")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit__thunk(Widget* a, " + p + ")")) << r.cpp;
 }
 
 TEST(HandleTranslation, StoredParamTakesACopyInTheBody)
 {
     // The body stores the handle: the generation function takes a copy (design 7.10.5).
-    // The slot adapter and the thunk keep the canonical form, so a reload keeps the interface.
+    // The state member and the thunk keep the canonical form, so a reload keeps the interface.
     const sppc::TranslateResult r =
         weapon_translate("    Weapon w = null;\n    void Hit(Weapon src) { this.w = src; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const std::string p = "const std::shared_ptr<Weapon>& src";
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit(Foo_Shell* self, std::shared_ptr<Weapon> src);")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "static void Foo__Hit_slot(Widget* a, " + p + ")")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "void FooState_g1::Hit(" + p.substr(0, p.size() - 3) + "__src)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Weapon> src = std::forward<" + p.substr(0, p.size() - 4) + ">(__src);")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit__thunk(Widget* a, " + p + ")")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "st->w = src;")) << r.cpp;
 }
@@ -54,7 +57,7 @@ TEST(HandleTranslation, RefParamIsAHandleReference)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const std::string p = "std::shared_ptr<Weapon>& wp, Vec3& v";
     EXPECT_TRUE(has(r.cpp, "static void Foo__Swap(Foo_Shell* self, " + p + ");")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "static void Foo__Swap_slot(Widget* a, " + p + ")")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<spp::SlotFn>(&FooState_g1::Swap)")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "const std::shared_ptr<Weapon>& wp")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "auto& r = v;")) << r.cpp;
 }

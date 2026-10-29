@@ -26,7 +26,7 @@ void destroy_module_block(const ModuleStateInfo& info)
     if (!info.slot || !*info.slot) return;
     char* block = static_cast<char*>(*info.slot);
     destroy_fields(info.layout, block);
-    std::free(block);
+    aligned_free(block);
     *info.slot = nullptr;
 }
 
@@ -58,7 +58,7 @@ ShippedRegistry::ShippedRegistry(const ShippedTable& table)
                     }
                 } catch (...) {
                     *ms.slot = nullptr;
-                    std::free(block);  // the partial state is unknown: no destructor call
+                    aligned_free(block);  // the partial state is unknown: no destructor call
                     throw;
                 }
                 module_blocks_.push_back(ms);

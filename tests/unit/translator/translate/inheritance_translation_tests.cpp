@@ -43,10 +43,10 @@ TEST(InheritanceTranslation, VirtualCallUsesTheSlotOfTheObject)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "return A__f_virt(self) + 1;")) << r.cpp;
     // The override fills the slot of A.f in the table of B. It adds no manifest entry.
-    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<void*>(&B__f_slot),")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<spp::SlotFn>(&BState_g1::f),")) << r.cpp;
     EXPECT_FALSE(has(r.slots_out, "B::f")) << r.slots_out;
     // B inherits A.g: the slot of A.g in the table of B is the one of A.
-    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<void*>(&A__g_slot),")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<spp::SlotFn>(&AState_g1::g),")) << r.cpp;
 }
 
 TEST(InheritanceTranslation, SuperCallsTheParentImplementation)

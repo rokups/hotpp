@@ -17,6 +17,11 @@
 #include <utility>
 #include <vector>
 
+#ifdef _MSC_VER
+// unverified: not built on MSVC. This header declares _aligned_malloc and _aligned_free.
+#include <malloc.h>
+#endif
+
 #include "spp/runtime/hidden.h"
 #include "spp/runtime/records.h"
 #include "spp/runtime/shell.h"
@@ -27,13 +32,35 @@ namespace spp {
 void track_object(ShellBase* self);
 void untrack_object(ShellBase* self);
 
+// An aligned block and its free function. A block from aligned_alloc must go to aligned_free.
+// The "size" must be a multiple of "align" for std::aligned_alloc.
+SPP_HIDDEN void* aligned_alloc(size_t align, size_t size)
+{
+#ifdef _MSC_VER
+    // unverified: not built on MSVC. MSVC has no std::aligned_alloc.
+    return _aligned_malloc(size, align);
+#else
+    return std::aligned_alloc(align, size);
+#endif
+}
+
+SPP_HIDDEN void aligned_free(void* p)
+{
+#ifdef _MSC_VER
+    // unverified: not built on MSVC. A block from _aligned_malloc goes to _aligned_free.
+    _aligned_free(p);
+#else
+    std::free(p);
+#endif
+}
+
 // Allocates a state block for a layout. Returns null when memory is out.
 SPP_HIDDEN char* alloc_state(const StateLayout* l)
 {
     size_t align = l->align;
     size_t size = (l->size + align - 1) / align * align;
     if (size == 0) size = align;
-    return static_cast<char*>(std::aligned_alloc(align, size));
+    return static_cast<char*>(spp::aligned_alloc(align, size));
 }
 
 // Destroys the fields in reverse order. It does not free the block.
@@ -84,7 +111,7 @@ SPP_NODEBUG inline void destroy_state(ShellBase* self)
     untrack_object(self);
     char* mem = static_cast<char*>(self->state);
     destroy_fields(self->cls->layout, mem);
-    std::free(mem);
+    spp::aligned_free(mem);
     self->state = nullptr;
 }
 

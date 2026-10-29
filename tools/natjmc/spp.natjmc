@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Just My Code file for generated S++ code (Visual Studio).
+  Status: UNVERIFIED. No Visual Studio session ran with this file.
+  Visual Studio reads .natjmc files from the Visual Studio Visualizers folder of the user
+  (Documents\Visual Studio <version>\Visualizers).
+  The cppdbg and cppvsdbg debuggers in VS Code may not read .natjmc files.
+  The entries mark the runtime and the generated glue as non-user code.
+  Step-in then skips them and goes to the script member of the state struct.
+-->
+<NonUserCode xmlns="http://schemas.microsoft.com/vstudio/debugger/jmc/2015">
+  <Function Name="spp::*" />
+  <Function Name="*_Shell::*" />
+  <Function Name="*__*_virt" />
+  <Function Name="*__*__thunk" />
+  <Function Name="*__base_*" />
+  <Function Name="state_of" />
+  <Function Name="*::__fwd_*" />
+</NonUserCode>

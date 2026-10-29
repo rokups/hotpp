@@ -3,6 +3,11 @@
 #include <atomic>
 #include <cstdint>
 
+#if defined(_MSC_VER) && !defined(__clang__)
+// unverified: not built on MSVC. This header declares the intrinsics of the atomic helpers.
+#include <intrin.h>
+#endif
+
 #include "spp/runtime/hidden.h"
 
 namespace spp {
@@ -53,11 +58,23 @@ namespace detail {
 extern bool g_entry_counters;
 SPP_HIDDEN bool load_entry_counters()
 {
+#if defined(_MSC_VER) && !defined(__clang__)
+    // unverified: not built on MSVC. A volatile load of one byte, then a compiler barrier.
+    const bool value = __iso_volatile_load8(reinterpret_cast<const volatile char*>(&g_entry_counters)) != 0;
+    _ReadWriteBarrier();
+    return value;
+#else
     return __atomic_load_n(&g_entry_counters, __ATOMIC_RELAXED);
+#endif
 }
 SPP_HIDDEN void store_entry_counters(bool value)
 {
+#if defined(_MSC_VER) && !defined(__clang__)
+    // unverified: not built on MSVC. An interlocked exchange of one byte is a full barrier.
+    _InterlockedExchange8(reinterpret_cast<volatile char*>(&g_entry_counters), value ? 1 : 0);
+#else
     __atomic_store_n(&g_entry_counters, value, __ATOMIC_SEQ_CST);
+#endif
 }
 SPP_NODEBUG void enter_script();  // the slow path of ScriptEntry (threads.cpp)
 SPP_NODEBUG void leave_script();

@@ -165,21 +165,50 @@ TEST(DebugInfo, MemberFunctionHasOnlyThisAndItsParameters)
     }
 }
 
-// The thin wrapper "Player__Tick(Actor* a, float dt)" has no local variable at all. Its parameter
-// "a" is part of the signature. The wrapper has no "self" and no "st".
-TEST(DebugInfo, WrapperFunctionHasNoSelfStOrLocals)
+// The slot is the state member itself, so no wrapper frame exists for a slot call. The member
+// "PlayerState_g1::Tick" has "this" and "dt" and no "a". No subprogram "Player__Tick" has code.
+TEST(DebugInfo, SlotIsTheStateMemberWithoutWrapper)
 {
     if (!have_dwarfdump()) GTEST_SKIP() << "llvm-dwarfdump is not installed";
     for (const std::string& opt : kOptimizations) {
         SCOPED_TRACE(opt);
         const Compiled& c = compile_with_debug_info("player_v1", opt);
-        const auto* wrapper = find_by_name(c, "Player__Tick");
-        ASSERT_NE(wrapper, nullptr) << "no code for Player__Tick";
-        EXPECT_TRUE(wrapper->names("DW_TAG_variable").empty());
-        const auto names = wrapper->all_names();
-        EXPECT_EQ(std::count(names.begin(), names.end(), "self"), 0);
-        EXPECT_EQ(std::count(names.begin(), names.end(), "st"), 0);
-        EXPECT_EQ(wrapper->names("DW_TAG_formal_parameter"), (std::vector<std::string>{"a", "dt"}));
+        const auto* tick = find_by_linkage(c, "_ZN14PlayerState_g14TickEf");
+        ASSERT_NE(tick, nullptr) << "no code for PlayerState_g1::Tick";
+        const auto names = tick->all_names();
+        EXPECT_EQ(tick->names("DW_TAG_formal_parameter"), (std::vector<std::string>{"this", "dt"}));
+        EXPECT_EQ(std::count(names.begin(), names.end(), "a"), 0);
+        EXPECT_EQ(find_by_name(c, "Player__Tick"), nullptr) << "a wrapper with code exists";
+    }
+}
+
+// The line table of the state member has the row of the "fn" line first and then a row of the
+// first body line. So a breakpoint on the first body line does not resolve to the "fn" line.
+TEST(DebugInfo, MemberLineTableHasFirstBodyLineAfterFnLine)
+{
+    if (!have_dwarfdump()) GTEST_SKIP() << "llvm-dwarfdump is not installed";
+    const std::string text = test_support::read_file(std::string(SPP_SOURCE_DIR) + "/example/scripts/player_v1.spp");
+    const int fn_line = test_support::line_with(text, "override void Tick");
+    const int body_line = test_support::line_with(text, "this.Move");
+    ASSERT_EQ(body_line, fn_line + 1);
+    for (const std::string& opt : kOptimizations) {
+        SCOPED_TRACE(opt);
+        const Compiled& c = compile_with_debug_info("player_v1", opt);
+        const auto* tick = find_by_linkage(c, "_ZN14PlayerState_g14TickEf");
+        ASSERT_NE(tick, nullptr) << "no code for PlayerState_g1::Tick";
+        std::vector<int> lines;
+        for (const auto& r : test_support::line_rows(c.lines)) {
+            if (r.address < tick->low_pc || r.address >= tick->high_pc) continue;
+            if (!test_support::file_has_base_name(r.file, c.script_file)) continue;
+            if (r.line == 0) continue;
+            lines.push_back(r.line);
+        }
+        ASSERT_FALSE(lines.empty());
+        // The entry row is the "fn" line. The row of the first body line comes after it.
+        EXPECT_EQ(lines.front(), fn_line);
+        const auto body = std::find(lines.begin(), lines.end(), body_line);
+        ASSERT_NE(body, lines.end()) << "no row for the first body line";
+        EXPECT_LT(std::find(lines.begin(), lines.end(), fn_line), body);
     }
 }
 

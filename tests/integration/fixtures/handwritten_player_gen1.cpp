@@ -43,22 +43,28 @@ struct Player_Shell final : Actor, spp::ShellBase {
 
     void Tick(float dt) override
     {
-        return spp::call<void(Actor*, float)>(cls, SLOT_Tick, this, dt);
+        return spp::call<void(Actor*, float)>(this, SLOT_Tick, dt);
     }
     void TakeDamage(float a) override
     {
-        return spp::call<void(Actor*, float)>(cls, SLOT_TakeDamage_f, this, a);
+        return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a);
     }
     void TakeDamage(Actor& src, float a) override
     {
-        return spp::call<void(Actor*, Actor&, float)>(cls, SLOT_TakeDamage_Af, this, src, a);
+        return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, src, a);
     }
 };
 
 // ---------------------------------------------------------------- state
 struct PlayerState_g1 {
+    spp::ShellBase* __spp_owner;  // the runtime writes it (has_owner)
     float hp;
     float speed;
+
+    void Tick(float dt);
+    void TakeDamage_f(float amount);
+    void TakeDamage_Af(Actor& src, float amount);
+    void heal(float amount);
 };
 
 static void init_hp(void*, void* f) { new (f) float(100.0f); }
@@ -78,7 +84,7 @@ static const spp::FieldInfo Player_fields[] = {
 };
 
 static const spp::StateLayout Player_layout = {
-    "PlayerState_g1", sizeof(PlayerState_g1), alignof(PlayerState_g1), 2, Player_fields,
+    "PlayerState_g1", sizeof(PlayerState_g1), alignof(PlayerState_g1), 2, Player_fields, true,
 };
 
 // ------------------------------------------------- generation functions
@@ -88,47 +94,48 @@ static inline PlayerState_g1* state_of(Player_Shell* self)
     return static_cast<PlayerState_g1*>(self->state);
 }
 
-static void Player__heal(Player_Shell* self, float amount)
+void PlayerState_g1::heal(float amount)
 {
     if (SPP_UNLIKELY(spp::active_generation != GEN)) return spp::stale_call("Player::heal");
-    auto* st = state_of(self);
+    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
+    [[maybe_unused]] auto* st = this;
     st->hp = std::min(st->hp + amount, 100.0f);
     std::printf("[gen1] %s: heal %.1f -> hp=%.1f\n", self->Name.c_str(), amount, st->hp);
 }
 
-static void Player__Tick(Actor* a, float dt)
+// The wrapper for the direct calls of script code. The slot names the member.
+static void Player__heal(Player_Shell* self, float amount)
 {
-    auto* self = static_cast<Player_Shell*>(a);
+    state_of(self)->heal(amount);
+}
+
+void PlayerState_g1::Tick(float dt)
+{
     if (SPP_UNLIKELY(spp::active_generation != GEN)) return spp::stale_call("Player::Tick");
-    auto* st = state_of(self);
+    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
+    [[maybe_unused]] auto* st = this;
     self->Move({st->speed * dt, 0, 0});  // direct call of a native method
     std::printf("[gen1] %s: Tick dt=%.4f pos.x=%.4f hp=%.1f\n", self->Name.c_str(), dt,
                 self->Position.x, st->hp);
     Player__heal(self, 1.0f);  // non-virtual script method: direct call
 }
 
-static void Player__TakeDamage_f(Actor* a, float amount)
+void PlayerState_g1::TakeDamage_f(float amount)
 {
-    auto* self = static_cast<Player_Shell*>(a);
-    if (SPP_UNLIKELY(spp::active_generation != GEN))
-        return spp::stale_call("Player::TakeDamage(float)");
-    auto* st = state_of(self);
+    if (SPP_UNLIKELY(spp::active_generation != GEN)) return spp::stale_call("Player::TakeDamage(float)");
+    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
+    [[maybe_unused]] auto* st = this;
     st->hp = std::max(st->hp - amount, 0.0f);
     std::printf("[gen1] %s: TakeDamage %.1f -> hp=%.1f\n", self->Name.c_str(), amount, st->hp);
 }
 
-static void Player__TakeDamage_Af(Actor* a, Actor& src, float amount)
+void PlayerState_g1::TakeDamage_Af(Actor& src, float amount)
 {
-    auto* self = static_cast<Player_Shell*>(a);
-    if (SPP_UNLIKELY(spp::active_generation != GEN))
-        return spp::stale_call("Player::TakeDamage(Actor&, float)");
+    if (SPP_UNLIKELY(spp::active_generation != GEN)) return spp::stale_call("Player::TakeDamage(Actor&, float)");
+    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
+    [[maybe_unused]] auto* st = this;
     std::printf("[gen1] %s: hit by %s\n", self->Name.c_str(), src.Name.c_str());
     self->TakeDamage(amount);  // script virtual method: goes through the slot
-}
-
-static void Player__heal_slot(Actor* a, float amount)
-{
-    Player__heal(static_cast<Player_Shell*>(a), amount);
 }
 
 // ------------------------------------------------------------- thunk
@@ -137,15 +144,15 @@ static void Player__heal_slot(Actor* a, float amount)
 static void Player__heal__thunk(Actor* a, float amount)
 {
     auto* self = static_cast<Player_Shell*>(a);
-    return spp::call<void(Actor*, float)>(self->cls, SLOT_heal, a, amount);
+    return spp::call<void(Actor*, float)>(self, SLOT_heal, amount);
 }
 
 // ------------------------------------------------------ record and entry
-static void* Player_slots[SLOT_COUNT] = {
-    reinterpret_cast<void*>(&Player__Tick),
-    reinterpret_cast<void*>(&Player__TakeDamage_f),
-    reinterpret_cast<void*>(&Player__TakeDamage_Af),
-    reinterpret_cast<void*>(&Player__heal_slot),
+static const spp::SlotFn Player_slots[SLOT_COUNT] = {
+    reinterpret_cast<spp::SlotFn>(&PlayerState_g1::Tick),
+    reinterpret_cast<spp::SlotFn>(&PlayerState_g1::TakeDamage_f),
+    reinterpret_cast<spp::SlotFn>(&PlayerState_g1::TakeDamage_Af),
+    reinterpret_cast<spp::SlotFn>(&PlayerState_g1::heal),
 };
 
 spp::ClassRecord Player_record = {

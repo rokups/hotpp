@@ -6,6 +6,13 @@ namespace spp {
 
 struct ShellBase;
 struct StateLayout;
+
+// An opaque state type. A slot holds a pointer to a member function of the script state. The
+// runtime stores it as a member of this type and casts it back at the call (shell.h).
+struct StateBase {
+    void* __removed();  // the slot of a removed class (loader.cpp)
+};
+using SlotFn = void (StateBase::*)();
 class OldState;
 
 // Tag type. It marks the constructor of a shell that the script runtime makes.
@@ -58,7 +65,7 @@ struct StateLayout {
 struct ClassRecord {
     const char* name;
     uint32_t generation;
-    void** slots;  // dispatch table: one entry for each slot
+    const SlotFn* slots;  // dispatch table: one entry for each slot
     uint32_t slot_count;
     const StateLayout* layout;
     ClassRecord* super;

@@ -117,8 +117,8 @@ TEST(SourceMapTranslation, EverySegmentOfEqualLengthRoundTrips)
     ASSERT_FALSE(r.source_map.empty());
     // The segments of the two statements: int64_t, total, hits, 2, hits, total. The segments
     // of the names: the field "hits" in the state struct, the function name and "dt" in the head
-    // of the generation function and in the head of the member.
-    EXPECT_EQ(r.source_map.segments().size(), 11u);
+    // of the member. The override has no wrapper, so the head of the member is the only head.
+    EXPECT_EQ(r.source_map.segments().size(), 9u);
     const sppc::LineMap gm(r.cpp), sm(kScript);
     for (const sppc::SourceSegment& s : r.source_map.segments()) {
         if (s.script_len != s.gen_len) continue;
@@ -230,12 +230,13 @@ TEST(SourceMapTranslation, FunctionHeadAndStateFieldNamesMapToTheScript)
     ASSERT_GT(f, 0) << r.cpp;
     EXPECT_EQ(r.source_map.map_to_script(f, 13), (SourcePos{3, 9}));
     EXPECT_EQ(r.source_map.map_to_generated(3, 10), (SourcePos{f, 14}));
-    // The head of the generation function of "Update" (script line 4: name col 19, "dt" col 32).
-    const int h = line_of(r.cpp, "static void Foo__Update(");
+    // The head of the member "Update" (script line 4: name col 19, "dt" col 32).
+    const int h = line_of(r.cpp, "void FooState_g1::Update(");
     ASSERT_GT(h, 0) << r.cpp;
-    EXPECT_EQ(r.source_map.map_to_script(h, 13), (SourcePos{4, 19}));
-    EXPECT_EQ(r.source_map.map_to_script(h, 20), (SourcePos{4, 19}));
-    const std::string head = r.cpp.substr(r.cpp.find("static void Foo__Update("));
+    const std::string head = r.cpp.substr(r.cpp.find("void FooState_g1::Update("));
+    const int name_col = 1 + static_cast<int>(head.find("Update("));
+    EXPECT_EQ(r.source_map.map_to_script(h, name_col), (SourcePos{4, 19}));
+    EXPECT_EQ(r.source_map.map_to_script(h, name_col + 3), (SourcePos{4, 22}));
     const int dt_col = 1 + static_cast<int>(head.find(" dt)") + 1);
     EXPECT_EQ(r.source_map.map_to_script(h, dt_col), (SourcePos{4, 32}));
     EXPECT_EQ(r.source_map.map_to_script(h, dt_col + 1), (SourcePos{4, 33}));

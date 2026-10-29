@@ -356,8 +356,10 @@ Debug information:
 What the debugger shows:
 
 - Each script class has a state struct, for example `PlayerState_g1`. Its first member is `spp::ShellBase* __spp_owner` (offset 0, with a `static_assert`).
-- Script methods are members of the state struct. A frame shows `this` (the script fields) and the parameters. The locals `self` and `st` have `[[gnu::nodebug]]`.
-- A thin wrapper function for each method keeps the slot ABI (`Player__Tick(Actor* a, float dt)`). It shows as one extra frame on step-in. Phase 2 will remove it.
+- Script methods are members of the state struct. A frame shows `this` (the script fields) and the parameters. The locals `self` and `st` have the attribute `SPP_NODEBUG_LOCAL` (`[[gnu::nodebug]]` on Clang and GCC).
+- A slot holds a pointer to the state member (`spp::SlotFn`, for example `PlayerState_g1::Tick`). `spp::call<Sig>(self, slot, args...)` calls the member. No `Player__Tick` wrapper exists. A script function, a constructor and a destructor keep a hidden `SPP_HIDDEN` wrapper for direct script calls.
+- The member prologue has the stale-generation check. A parameter with a body type has the name `__<name>` in the member. The first body line copies it to `<name>`.
+- A line breakpoint on a `fn` line hits once. Step-in from the engine reaches the member after the frame of the shell override. The shell override maps to the class line.
 - Every generated line that makes code has a `#line N "script.spp"` before it. Breakpoints and stepping use the `.spp` lines.
 - A name that starts with `__` is internal state. A script field with such a name is a compile error.
 
@@ -371,7 +373,8 @@ Editors:
 
 - `editors/vscode/package.json` has `contributes.breakpoints` for the language `spp`. The C++ extension (`cppdbg` with gdb, or lldb) works with no custom launch configuration.
 - Option: the gdb setting `skip -gfi "*/include/c++/*"` hides the libstdc++ stops.
-- MSVC and Visual Studio are untested.
+- `tools/natjmc/spp.natjmc` is a Just My Code file. It marks `spp::*`, the shell, the thunks, the virtual helpers, the base forwarders and `state_of` as non-user code. Status: unverified. Visual Studio reads it from the user Visual Studio Visualizers folder. `cppvsdbg` in VS Code may not read it.
+- MSVC and Visual Studio are untested. The MSVC code paths are unverified: `SPP_NODEBUG_LOCAL` in `hidden.h`, `spp::aligned_alloc`, the `LoadLibrary` branch in `module.cpp` and `/JMC` in CMake.
 
 ## Language server
 

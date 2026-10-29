@@ -128,7 +128,7 @@ The grammar uses lexy. Only the files in `src/translator/parser/` include lexy h
 - R0 to R6: pass (tests in `tests/integration/reload`, `closures`, `threading`; ASan and TSan clean).
 - F1: pass for plain bases and explicit specializations. Pass for implicit template instances, templates over templates and partial specializations (type arguments).
 - F2: pass. `tests/golden/diagnostics/` has 21 mistakes (`DiagnosticMistakes`).
-- F3: partial. gdb stops at `player_v1.spp:11` in a real process, shows `Player__Tick ... at example/scripts/player_v1.spp:13` and steps by script lines. lldb, the lldb formatters in a live session, natvis and Visual Studio are not run.
+- F3: partial. gdb stops at `player_v1.spp:11` in a real process, shows `Player__Tick ... at example/scripts/player_v1.spp:13` and steps by script lines. The frame name is from before phase 2. The frame is now the state member `PlayerState_g1::Tick`. This is not run again. lldb, the lldb formatters in a live session, natvis and Visual Studio are not run.
 - P1: pass (see Measures).
 
 ## Not done

@@ -18,3 +18,12 @@
 #else
 #define SPP_NODEBUG
 #endif
+
+// An attribute list for a local variable in generated code. The variable can be unused. It has
+// no debug info, so the debugger does not show it.
+// unverified: not built on MSVC. The MSVC form has no nodebug attribute.
+#if defined(__clang__) || defined(__GNUC__)
+#define SPP_NODEBUG_LOCAL [[maybe_unused, gnu::nodebug]]
+#else
+#define SPP_NODEBUG_LOCAL [[maybe_unused]]
+#endif
