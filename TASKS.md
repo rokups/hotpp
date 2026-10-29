@@ -47,10 +47,10 @@ The language server is the proxy `spp-ls`, not a clangd fork (DECISIONS.md 13). 
 - A real VS Code session for the extension in `editors/vscode/`. The grammar snapshot test and the LSP tests pass.
 
 ## Open work (can be tested here)
-- Done: a native base that derives from an implicit class template instance now gives virtuals (design risk 8). Open: a template that derives from another template, and a partial specialization.
+- Done: a native base that derives from an implicit class template instance now gives virtuals (design risk 8). Done in S22: a template over a template, a partial specialization, and a direct `class Foo : Tmpl<int>`.
 
 ## Third pass: known limits
-- [ ] S22 Parser and templates: direct script base `class Foo : Tmpl<int>`; template that derives from a template; partial specialization.
+- [x] S22 Parser and templates: direct script base `class Foo : Tmpl<int>`; template that derives from a template; partial specialization.
 - [ ] S23 `super(...)` argument to a `ref`/`out` parent constructor parameter; test for a `&&` constructor parameter.
 - [ ] S24 Translator errors pass through the diagnostic rewriter; script column in `#line`.
 - [ ] S25 Parameter analysis follows native functions, lambdas and calls on script handle parameters.

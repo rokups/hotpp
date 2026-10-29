@@ -100,7 +100,7 @@ Stubs and checks (S2, S20b): order of the rules: exact stub, base stub, pattern 
 
 Translator cache: it hashes a header that changed in the last 2 seconds. It checks paths that hide a header earlier in the include path. The stamp has the inode, the ctime and a content hash. The prelude is not in the cache key.
 
-Native bases (risk 8): libclang describes a plain base class, a base that derives from a plain class, and an explicit template specialization. A native base that derives from an implicit instance of a class template gives no virtuals. The script then gets an error (`has no virtual destructor` or `'override' has no virtual method to override`). `tests/unit/translator/translate/template_base_translation_tests.cpp` pins this. A likely fix: take the base declaration from `clang_getTypeDeclaration` of the base specifier type in `collect_virtuals`.
+Native bases (risk 8): libclang describes a plain base class, a base that derives from a plain class, an explicit template specialization and an implicit instance of a class template. The translator reads the members of the pattern and replaces the parameter names with the arguments (`implicit_pattern`, `make_subst`, `subst_text` in `src/translator/sppc_lib.cpp`). This works through a template that derives from another template (`choose_pattern`) and for a partial specialization (`bind_args` deduces the parameters from the argument pattern, for example `U*`). A script class can name an instance as its direct base: `class Foo : Tmpl<int>`. The probe file makes an alias for the instance. Limits: the deduction handles type arguments only. A non-type argument in a partial specialization pattern is not deduced. Constructor parameter types of an instance base keep the parameter names. `tests/unit/translator/translate/template_base_translation_tests.cpp` pins this.
 
 Other limits:
 - The parser stores the access words. The translator does not enforce them.
@@ -116,7 +116,7 @@ The grammar uses lexy. Only the files in `src/translator/parser/` include lexy h
 
 ## Experiments (design 8.2)
 - R0 to R6: pass (tests in `tests/integration/reload`, `closures`, `threading`; ASan and TSan clean).
-- F1: pass for plain bases and explicit specializations. Gap for an implicit template instance in the base chain (see risk 8 above).
+- F1: pass for plain bases and explicit specializations. Pass for implicit template instances, templates over templates and partial specializations (type arguments).
 - F2: pass. `tests/golden/diagnostics/` has 21 mistakes (`DiagnosticMistakes`).
 - F3: partial. gdb stops at `player_v1.spp:11` in a real process, shows `Player__Tick ... at example/scripts/player_v1.spp:13` and steps by script lines. lldb, the lldb formatters in a live session, natvis and Visual Studio are not run.
 - P1: pass (see Measures).
@@ -128,7 +128,7 @@ The grammar uses lexy. Only the files in `src/translator/parser/` include lexy h
 4. M9: the ORC backend exists, but the optional version with a debug-symbol resolver for Windows is not done.
 5. Engine coroutines (v2): a coroutine frame needs a pin and a design. Not started.
 6. The `shared_ptr` cycles are not detected (`DECISIONS.md` 6).
-7. The fix for implicit template instances in a native base (risk 8).
+7. The deduction of non-type arguments in a partial specialization (risk 8).
 8. The sanitizer and JIT builds need a new run after S19.
 
 ## How to work

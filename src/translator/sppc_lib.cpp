@@ -169,19 +169,110 @@ CXCursor base_definition(CXCursor spec)
 // has them, with the names of the template parameters. "Subst" maps each name to its argument.
 using Subst = std::vector<std::pair<std::string, std::string>>;
 
-// The template pattern of an implicit instance. Gives a null cursor for any other class: a
+// The template pattern of an implicit instance: the class template, or the partial
+// specialization that the instance comes from. Gives a null cursor for any other class: a
 // normal class and an explicit specialization have members that libclang visits.
 CXCursor implicit_pattern(CXCursor inst)
 {
     if (clang_Cursor_isNull(inst) || clang_getCursorKind(inst) != CXCursor_ClassDecl) return clang_getNullCursor();
     CXCursor pat = clang_getSpecializedCursorTemplate(inst);
-    if (clang_Cursor_isNull(pat) || clang_getCursorKind(pat) != CXCursor_ClassTemplate) return clang_getNullCursor();
+    if (clang_Cursor_isNull(pat)) return clang_getNullCursor();
+    const CXCursorKind pk = clang_getCursorKind(pat);
+    if (pk != CXCursor_ClassTemplate && pk != CXCursor_ClassTemplatePartialSpecialization)
+        return clang_getNullCursor();
     if (!clang_equalLocations(clang_getCursorLocation(inst), clang_getCursorLocation(pat)))
         return clang_getNullCursor();
     return pat;
 }
 
-Subst make_subst(CXCursor inst, CXCursor pattern)
+// The text of each template argument of an instance. An argument that is not a type or an
+// integer has an empty text.
+std::vector<std::string> instance_args(CXCursor inst)
+{
+    std::vector<std::string> out;
+    const int n = clang_Cursor_getNumTemplateArguments(inst);
+    for (int i = 0; i < n; ++i) {
+        switch (clang_Cursor_getTemplateArgumentKind(inst, i)) {
+        case CXTemplateArgumentKind_Type:
+            out.push_back(tidy(cxs(clang_getTypeSpelling(clang_Cursor_getTemplateArgumentType(inst, i)))));
+            break;
+        case CXTemplateArgumentKind_Integral:
+            out.push_back(std::to_string(clang_Cursor_getTemplateArgumentValue(inst, i)));
+            break;
+        default:
+            out.emplace_back();
+            break;
+        }
+    }
+    return out;
+}
+
+// The text of each template argument of a type such as "Other<T*>". A name of the Subst is
+// replaced. A non-type argument has an empty text.
+std::vector<std::string> type_args(CXType t, const Subst& sub);
+
+std::vector<std::string> word_tokens(const std::string& text)
+{
+    auto is_id = [](char ch) { return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_'; };
+    std::vector<std::string> out;
+    for (size_t i = 0; i < text.size();) {
+        if (std::isspace(static_cast<unsigned char>(text[i]))) {
+            ++i;
+        } else if (is_id(text[i])) {
+            size_t j = i;
+            while (j < text.size() && is_id(text[j])) ++j;
+            out.push_back(text.substr(i, j - i));
+            i = j;
+        } else {
+            out.push_back(std::string(1, text[i++]));
+        }
+    }
+    return out;
+}
+
+std::string join_tokens(const std::vector<std::string>& t, size_t b, size_t e)
+{
+    auto is_word = [](const std::string& w) { return std::isalnum(static_cast<unsigned char>(w[0])) || w[0] == '_'; };
+    std::string out;
+    for (size_t i = b; i < e; ++i) {
+        if (i > b && is_word(t[i - 1]) && is_word(t[i])) out += ' ';
+        out += t[i];
+    }
+    return out;
+}
+
+using Binding = std::map<std::string, std::pair<size_t, size_t>>;  // name to a token range
+
+// Matches the pattern tokens against the argument tokens. A parameter takes a balanced run.
+bool unify(const std::vector<std::string>& p, size_t i, const std::vector<std::string>& s, size_t j,
+           const std::set<std::string>& params, Binding& bind)
+{
+    if (i == p.size()) return j == s.size();
+    if (!params.count(p[i])) return j < s.size() && p[i] == s[j] && unify(p, i + 1, s, j + 1, params, bind);
+    auto it = bind.find(p[i]);
+    if (it != bind.end()) {
+        const size_t len = it->second.second - it->second.first;
+        if (j + len > s.size()) return false;
+        for (size_t k = 0; k < len; ++k)
+            if (s[it->second.first + k] != s[j + k]) return false;
+        return unify(p, i + 1, s, j + len, params, bind);
+    }
+    int depth = 0;
+    for (size_t k = j; k < s.size(); ++k) {
+        const std::string& w = s[k];
+        if (w == "<" || w == "(" || w == "[") ++depth;
+        if (w == ">" || w == ")" || w == "]") --depth;
+        if (depth < 0) return false;
+        if (depth > 0) continue;
+        bind[p[i]] = {j, k + 1};
+        if (unify(p, i + 1, s, k + 1, params, bind)) return true;
+        bind.erase(p[i]);
+    }
+    return false;
+}
+
+// The names of the template parameters of a pattern.
+std::vector<std::string> param_names(CXCursor pattern)
 {
     std::vector<std::string> names;
     visit(pattern, [&](CXCursor c) {
@@ -191,20 +282,53 @@ Subst make_subst(CXCursor inst, CXCursor pattern)
             names.push_back(cxs(clang_getCursorSpelling(c)));
         return CXChildVisit_Continue;
     });
-    Subst out;
-    const int n = clang_Cursor_getNumTemplateArguments(inst);
-    for (int i = 0; i < n && i < static_cast<int>(names.size()); ++i) {
-        switch (clang_Cursor_getTemplateArgumentKind(inst, i)) {
-        case CXTemplateArgumentKind_Type:
-            out.emplace_back(names[i], tidy(cxs(clang_getTypeSpelling(clang_Cursor_getTemplateArgumentType(inst, i)))));
-            break;
-        case CXTemplateArgumentKind_Integral:
-            out.emplace_back(names[i], std::to_string(clang_Cursor_getTemplateArgumentValue(inst, i)));
-            break;
-        default:
-            break;
+    return names;
+}
+
+// Maps the parameters of a pattern to the argument texts. For a class template the arguments
+// go by position. A partial specialization has its own argument pattern ("U*"): the function
+// deduces the parameters from it. It gives false when the arguments do not match.
+bool bind_args(CXCursor pattern, const std::vector<std::string>& args, Subst& out)
+{
+    const std::vector<std::string> names = param_names(pattern);
+    if (clang_getCursorKind(pattern) != CXCursor_ClassTemplatePartialSpecialization) {
+        for (size_t i = 0; i < args.size() && i < names.size(); ++i)
+            if (!args[i].empty()) out.emplace_back(names[i], args[i]);
+        return true;
+    }
+    // libclang spells a parameter of the partial specialization as "type-parameter-0-N".
+    std::vector<std::string> pargs = instance_args(pattern);
+    for (std::string& a : pargs) {
+        const std::string key = "type-parameter-0-";
+        for (size_t at = a.find(key); at != std::string::npos; at = a.find(key, at)) {
+            size_t e = at + key.size(), idx = 0;
+            while (e < a.size() && std::isdigit(static_cast<unsigned char>(a[e]))) idx = idx * 10 + (a[e++] - '0');
+            a.replace(at, e - at, idx < names.size() ? names[idx] : std::string("?"));
         }
     }
+    if (pargs.size() != args.size()) return false;
+    const std::set<std::string> params(names.begin(), names.end());
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (pargs[i].empty() || args[i].empty()) continue;  // not a type: no deduction
+        const std::vector<std::string> p = word_tokens(pargs[i]), s = word_tokens(args[i]);
+        Binding bind;
+        if (!unify(p, 0, s, 0, params, bind)) return false;
+        for (const auto& [name, range] : bind) {
+            const std::string text = join_tokens(s, range.first, range.second);
+            auto it = std::find_if(out.begin(), out.end(), [&](const auto& kv) { return kv.first == name; });
+            if (it == out.end())
+                out.emplace_back(name, text);
+            else if (it->second != text)
+                return false;
+        }
+    }
+    return true;
+}
+
+Subst make_subst(CXCursor inst, CXCursor pattern)
+{
+    Subst out;
+    bind_args(pattern, instance_args(inst), out);
     return out;
 }
 
@@ -231,6 +355,60 @@ std::string subst_text(const std::string& text, const Subst& sub)
     return out;
 }
 
+std::vector<std::string> type_args(CXType t, const Subst& sub)
+{
+    std::vector<std::string> out;
+    const int n = clang_Type_getNumTemplateArguments(t);
+    for (int i = 0; i < n; ++i) {
+        const CXType a = clang_Type_getTemplateArgumentAsType(t, i);
+        out.push_back(a.kind == CXType_Invalid ? std::string()
+                                               : subst_text(tidy(cxs(clang_getTypeSpelling(a))), sub));
+    }
+    return out;
+}
+
+// The partial specializations and the explicit specializations of a class template, as the
+// user headers declare them.
+std::vector<CXCursor> specializations_of(CXCursor tmpl)
+{
+    std::vector<CXCursor> out;
+    const std::string name = cxs(clang_getCursorSpelling(tmpl));
+    const CXSourceLocation tloc = clang_getCursorLocation(tmpl);
+    CXCursor root = clang_getTranslationUnitCursor(clang_Cursor_getTranslationUnit(tmpl));
+    visit(root, [&](CXCursor c) {
+        const CXCursorKind k = clang_getCursorKind(c);
+        if (clang_Location_isInSystemHeader(clang_getCursorLocation(c))) return CXChildVisit_Continue;
+        if (k == CXCursor_Namespace) return CXChildVisit_Recurse;
+        if (k != CXCursor_ClassTemplatePartialSpecialization && k != CXCursor_ClassDecl) return CXChildVisit_Continue;
+        if (!clang_isCursorDefinition(c) || cxs(clang_getCursorSpelling(c)) != name) return CXChildVisit_Continue;
+        const CXCursor primary = clang_getSpecializedCursorTemplate(c);  // the primary template
+        if (!clang_Cursor_isNull(primary) && clang_equalLocations(clang_getCursorLocation(primary), tloc) &&
+            !clang_equalLocations(clang_getCursorLocation(c), tloc))
+            out.push_back(c);
+        return CXChildVisit_Continue;
+    });
+    return out;
+}
+
+// The pattern of a template in a base specifier "Other<args>" of a template pattern. The
+// arguments are text. A partial specialization or an explicit specialization wins over the
+// primary template. "sub" gets the names of the pattern. Gives the class to walk.
+CXCursor choose_pattern(CXCursor tmpl, const std::vector<std::string>& args, Subst& sub)
+{
+    for (CXCursor spec : specializations_of(tmpl)) {
+        Subst s;
+        if (clang_getCursorKind(spec) == CXCursor_ClassTemplatePartialSpecialization) {
+            if (!bind_args(spec, args, s)) continue;
+            sub = std::move(s);
+            return spec;
+        }
+        const std::vector<std::string> sargs = instance_args(spec);  // an explicit specialization
+        if (sargs == args) return spec;
+    }
+    bind_args(tmpl, args, sub);
+    return tmpl;
+}
+
 void collect_virtuals(CXCursor cls, BaseInfo& info, const Subst& sub = {})
 {
     std::string owner = cxs(clang_getCursorSpelling(cls));
@@ -241,6 +419,11 @@ void collect_virtuals(CXCursor cls, BaseInfo& info, const Subst& sub = {})
             if (clang_Cursor_isNull(def) || clang_getCursorKind(def) == CXCursor_NoDeclFound) {
             } else if (CXCursor pat = implicit_pattern(def); !clang_Cursor_isNull(pat)) {
                 collect_virtuals(pat, info, make_subst(def, pat));
+            } else if (clang_getCursorKind(def) == CXCursor_ClassTemplate) {
+                // The base of a template pattern: "Other<T>". The arguments hold names of "sub".
+                Subst inner;
+                const CXCursor target = choose_pattern(def, type_args(clang_getCursorType(c), sub), inner);
+                collect_virtuals(target, info, inner);
             } else {
                 collect_virtuals(def, info);
             }
@@ -900,8 +1083,20 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
                  const std::vector<std::string>& queries, std::map<std::string, std::string>& answers)
 {
     std::vector<std::pair<size_t, std::string>> fact_lines;
-    const std::string full_probe =
-        reqs.empty() && queries.empty() ? probe : probe + facts_text(reqs, fact_lines, queries);
+    // A template instance as a base ("Tmpl<int>") is named by an alias. The size check makes the
+    // compiler instantiate the class.
+    std::string base_probe = probe;
+    std::vector<std::pair<std::string, std::string>> instance_aliases;  // alias, base name
+    for (const auto& name : names)
+        if (name.find('<') != std::string::npos) {
+            if (instance_aliases.empty()) base_probe += "#include <cstdint>\n";
+            const std::string alias = "sppc_b" + std::to_string(instance_aliases.size());
+            base_probe += "using " + alias + " = " + name + ";\nstatic_assert(sizeof(" + alias + ") > 0);\n";
+            instance_aliases.emplace_back(alias, name);
+        }
+    const std::string full_probe = reqs.empty() && queries.empty()
+                                       ? base_probe
+                                       : base_probe + facts_text(reqs, fact_lines, queries);
     std::vector<const char*> cargs;
     for (const auto& a : args) cargs.push_back(a.c_str());
     ClangHandles ch;
@@ -1014,13 +1209,39 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
     }
     hierarchy.clear();
     collect_hierarchy(root, hierarchy);
+    std::map<std::string, CXCursor> instance_bases;  // the class of each instance name
+    if (!instance_aliases.empty()) {
+        std::map<std::string, CXCursor> aliases;
+        visit(root, [&](CXCursor c) {
+            if (clang_getCursorKind(c) == CXCursor_TypeAliasDecl) {
+                const std::string n = cxs(clang_getCursorSpelling(c));
+                if (n.compare(0, 6, "sppc_b") == 0) aliases[n] = c;
+            }
+            return CXChildVisit_Continue;
+        });
+        for (const auto& [alias, name] : instance_aliases) {
+            auto it = aliases.find(alias);
+            if (it == aliases.end() || clang_isInvalidDeclaration(it->second)) continue;
+            instance_bases[name] = clang_getCursorDefinition(clang_getTypeDeclaration(
+                clang_getCanonicalType(clang_getTypedefDeclUnderlyingType(it->second))));
+        }
+    }
     for (const auto& name : names) {
         CXCursor base_cur = find_class(root, name);
+        if (auto ib = instance_bases.find(name); ib != instance_bases.end()) base_cur = ib->second;
         if (clang_Cursor_isNull(base_cur)) continue;
         BaseInfo bi;
         bi.name = name;
-        collect_virtuals(base_cur, bi);
-        collect_ctors(base_cur, bi);
+        // libclang does not visit the members of an implicit instance. The pattern has them.
+        const CXCursor pattern = implicit_pattern(base_cur);
+        if (!clang_Cursor_isNull(pattern)) {
+            collect_virtuals(pattern, bi, make_subst(base_cur, pattern));
+            collect_ctors(pattern, bi);
+            base_cur = pattern;
+        } else {
+            collect_virtuals(base_cur, bi);
+            collect_ctors(base_cur, bi);
+        }
         visit(base_cur, [&](CXCursor a) {
             if (clang_getCursorKind(a) == CXCursor_CXXFinalAttr) bi.final_cls = true;
             return CXChildVisit_Continue;

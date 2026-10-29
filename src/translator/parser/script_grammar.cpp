@@ -820,18 +820,42 @@ struct members_p {
 };
 
 // ---------------------------------------------------------------- classes
-// A base class name with optional "." parts. The text joins the parts with "::".
-// A "::" in the name is an error.
-struct base_p {
+// The name of a base class with optional "." parts. The text joins the parts with "::".
+struct base_name_p {
     static constexpr auto rule =
-        dsl::if_(dsl::peek(LEXY_LIT("::")) >> dsl::error<e_use_dot_colons>) +
-        dsl::list(dsl::p<name_p<e_base_name>>, dsl::sep(dsl::lit_c<'.'>)) +
-        dsl::if_(dsl::peek(LEXY_LIT("::")) >> dsl::error<e_use_dot_colons>);
+        dsl::list(dsl::p<name_p<e_base_name>>, dsl::sep(dsl::lit_c<'.'>));
     static constexpr auto value = lexy::fold_inplace<std::string>(
         std::string{}, [](std::string& acc, std::string&& part) {
             if (!acc.empty()) acc += "::";
             acc += part;
         });
+};
+
+// The template argument list of a base name: "<int, std.string>". The value is the span.
+struct base_args_p {
+    static constexpr auto rule = dsl::position + dsl::p<type_item> + dsl::position;
+    static constexpr auto value = span_value;
+};
+
+// A base class name with optional "." parts and an optional template argument list
+// ("Tmpl<int>"). A "::" in the name is an error.
+struct base_p {
+    static constexpr auto rule =
+        dsl::if_(dsl::peek(LEXY_LIT("::")) >> dsl::error<e_use_dot_colons>) + dsl::p<base_name_p> +
+        dsl::opt(dsl::peek(dsl::lit_c<'<'>) >> dsl::p<base_args_p>) +
+        dsl::if_(dsl::peek(LEXY_LIT("::")) >> dsl::error<e_use_dot_colons>);
+    static constexpr auto value = lexy::bind(
+        lexy::callback<std::string>(
+            [](const ParseState&, std::string&& name, lexy::nullopt) { return std::move(name); },
+            [](const ParseState& st, std::string&& name, Span args) {
+                const std::string_view raw(st.base + args.begin, args.end - args.begin);
+                std::size_t colons = std::string_view::npos;
+                const std::string text = type_text(raw, &colons);
+                if (colons != std::string_view::npos)
+                    st.error(st.base + args.begin + colons, e_use_dot_colons::name);
+                return canonical_type_at(st, st.base + args.begin, name + text);
+            }),
+        lexy::parse_state, lexy::values);
 };
 
 // The bases of a class: "Base" or "Base, IFace, ...". The first name is the primary base. The

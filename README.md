@@ -11,7 +11,7 @@ Each row is a milestone of `spp-design.md` section 10. "Not testable here" means
 |---|---|---|
 | M0 Spikes | Partial | R0 and P1 are done with `minengine`. The spikes for risk 2 and 3 need the real engine: not testable here. |
 | M1 Runtime spine | Done | R1 to R6 pass, also under ASan and TSan. |
-| M2 Translator v0 | Done | F1 passes. Gap: a native base that derives from an implicit class template instance (design risk 8). |
+| M2 Translator v0 | Done | F1 passes, also for a native base that derives from a class template instance, a template over a template and a partial specialization (design risk 8). `class Foo : Tmpl<int>` works. |
 | M3 Diagnostics and debugging | Partial | F2 passes. F3 passes with gdb. lldb, the lldb formatters in a live session and Visual Studio with natvis are not testable here. |
 | M4 Engine integration | Not testable here | `minengine` is the only host. A real engine is needed. |
 | M5 Contract enforcement | Done | The rows of design 5.3 have tests in `tests/integration/reload/` and `tests/unit/translator/translate/`. |

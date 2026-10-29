@@ -49,3 +49,20 @@ TEST(ClassMemberParse, FieldAlias)
         EXPECT_EQ(p.diag.items[0].msg, "unknown attribute 'native'");
     }
 }
+
+// The base of a class can be a template instance. The dots of the arguments become "::".
+TEST(ClassMemberParse, TemplateInstanceBase)
+{
+    StubParsed p("class A : Tmpl<int>, ns.Other<std.string, Map<int, float>> { }\n");
+    ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    ASSERT_EQ(p.script.classes.size(), 1u);
+    EXPECT_EQ(p.script.classes[0].base, "Tmpl<int32_t>");
+    ASSERT_EQ(p.script.classes[0].interfaces.size(), 1u);
+    EXPECT_EQ(p.script.classes[0].interfaces[0], "ns::Other<std::string, Map<int32_t, float>>");
+}
+
+TEST(ClassMemberParse, TemplateInstanceBaseNeedsClosingBracket)
+{
+    StubParsed p("class A : Tmpl<int { }\n");
+    EXPECT_GT(p.diag.items.size(), 0u);
+}
