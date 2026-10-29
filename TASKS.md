@@ -48,3 +48,12 @@ The language server is the proxy `spp-ls`, not a clangd fork (DECISIONS.md 13). 
 
 ## Open work (can be tested here)
 - Done: a native base that derives from an implicit class template instance now gives virtuals (design risk 8). Open: a template that derives from another template, and a partial specialization.
+
+## Third pass: known limits
+- [ ] S22 Parser and templates: direct script base `class Foo : Tmpl<int>`; template that derives from a template; partial specialization.
+- [ ] S23 `super(...)` argument to a `ref`/`out` parent constructor parameter; test for a `&&` constructor parameter.
+- [ ] S24 Translator errors pass through the diagnostic rewriter; script column in `#line`.
+- [ ] S25 Parameter analysis follows native functions, lambdas and calls on script handle parameters.
+- [ ] S26 Function pointers in trivially copyable native structs count as code holders.
+- [ ] S27 Overload added in a later generation with a new key type; object creation in entry-counter mode.
+- [ ] S28 `spp-ls` rename on closed files: faster scan, no 5000 file cap.
