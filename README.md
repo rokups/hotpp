@@ -437,7 +437,7 @@ Cost: in the default mode, each entry reads one global flag (a relaxed atomic lo
 Limits:
 
 - A deadlock occurs when script code waits for a thread that waits at the gate, or for the end of the commit.
-- The creation of a script object is not an entry. Native code that creates a script object or reads its fields holds a `spp::ScriptEntry`. Object creation and destruction stay on one thread at a time.
+- The creation of a script object through the factory (`ClassEntry::create`) is an entry (S27), so a commit cannot swap the class during the construction. Native code that reads the fields of an object holds a `spp::ScriptEntry`. `new` in script code runs inside a script entry. Object creation and destruction stay on one thread at a time.
 - A thread that entered script code in the default mode is not counted.
 - `ScriptTickScope` and its debug check apply to the default mode only. A worker can wait at the gate inside a `ScriptTickScope`.
 

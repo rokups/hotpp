@@ -147,4 +147,38 @@ TEST_P(BackendTests, SuperArgumentBindsToARefParameter)
     EXPECT_EQ(*fld<std::string>(s, "named"), "abc");
 }
 
+// S27: an overload added in a later generation has a new key type (the types of the "super(...)"
+// arguments). The generation makes a new core module, and its "construct" becomes canonical.
+// Generation 3 changes nothing in the keys, so it makes no new core.
+TEST_P(BackendTests, ConstructorOverloadWithANewKeyTypeInALaterGeneration)
+{
+    spp::LoadResult g1 = backend->load(test_support::source("ctor_newkey_v1.spp"), 1);
+    ASSERT_TRUE(g1) << g1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*g1.module), "Spawner"));
+    s.commit_at_frame_boundary();
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "hp_int"), 3);
+    EXPECT_EQ(*fld<int>(s, "hp_float"), 0);
+    const size_t cores1 = s.loader.stats().core_modules;
+
+    spp::LoadResult g2 = backend->load(test_support::source("ctor_newkey_v2.spp"), 2);
+    ASSERT_NO_FATAL_FAILURE(reload(s, g2, 2));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "hp_int"), 3);
+    EXPECT_EQ(*fld<int>(s, "hp_float"), 40);  // the new overload ran
+    EXPECT_EQ(*fld<int>(s, "kind_float"), 2);
+    EXPECT_EQ(s.loader.stats().core_modules, cores1 + 1);
+    // The object of the new key uses the canonical record: a later reload reaches it.
+    spp::Instance made = s.loader.find("Unit")->create();
+    EXPECT_EQ(made.shell->cls, s.loader.find("Unit")->record);
+    delete static_cast<Actor*>(made.native);
+
+    spp::LoadResult g3 = backend->load(test_support::source("ctor_newkey_v2.spp"), 3);
+    ASSERT_NO_FATAL_FAILURE(reload(s, g3, 3));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "hp_float"), 40);
+    EXPECT_EQ(s.loader.stats().core_modules, cores1 + 1);
+}
+
 }  // namespace

@@ -148,6 +148,8 @@ static spp::ShellBase* Tracker__construct(const char* key, const void* args)
     return nullptr;
 }
 
+static const char* const Tracker__construct_keys[] = {typeid(Tracker_SuperArgs).name(), nullptr};
+
 static Tracker_Shell* Tracker__build([[maybe_unused]] bool note)
 {
     auto plan = Tracker__plan();
@@ -190,7 +192,7 @@ static void Tracker__Tick(Actor* a, float dt)
     self->Name = FormatVec(self->Position);
 #line 30 "native_std_v2.spp"
     spp::deref(st->history).push_back(static_cast<int32_t>(spp::deref(st->history).size()) * 10);
-#line 194 "native_std_v2.spp.cpp"
+#line 196 "native_std_v2.spp.cpp"
 }
 
 // Not overridden: call the implementation of Actor.
@@ -221,6 +223,7 @@ spp::ClassRecord Tracker_record = {
 
 static spp::Instance Tracker_create()
 {
+    spp::ScriptEntry entry;  // the creation is an entry (S27)
     auto* p = new Tracker_Shell(spp::Construct{}, std::string("Tracker"));
     return {static_cast<Actor*>(p), p};
 }
@@ -228,4 +231,5 @@ static spp::Instance Tracker_create()
 extern "C" void script_register(spp::Registry& reg)
 {
     reg.add(&Tracker_record, &Tracker_create);
+    Tracker_record.construct_keys = Tracker__construct_keys;
 }

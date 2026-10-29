@@ -50,6 +50,21 @@ void adopt(ClassRecord* canon, ClassRecord* in)
     if (in != canon) in->canonical = canon;
 }
 
+// True when generation record "in" has a constructor key that the canonical record "canon" does
+// not know (S27). Then the canonical "construct" cannot build the shell for that key. A new core
+// module provides it.
+bool has_new_ctor_key(const ClassRecord* canon, const ClassRecord* in)
+{
+    if (!in->construct_keys) return false;
+    for (const char* const* k = in->construct_keys; *k; ++k) {
+        bool known = false;
+        if (canon->construct_keys)
+            for (const char* const* c = canon->construct_keys; *c && !known; ++c) known = std::strcmp(*c, *k) == 0;
+        if (!known) return true;
+    }
+    return false;
+}
+
 // Makes the core instance of "m" (module.h) and registers it in "reg". The core must register
 // the same classes and thunks as "code", in other memory. On false there is no core and a
 // warning tells why; then "m" keeps the parts. The function clears m.make_core in each case.
@@ -388,7 +403,10 @@ bool Loader::request_reload(Module module, std::string& error)
     bool adds = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        for (const auto& [name, e] : p->staged.entries()) adds = adds || !registry_.find(name);
+        for (const auto& [name, e] : p->staged.entries()) {
+            const ClassEntry* ce = registry_.find(name);
+            adds = adds || !ce || has_new_ctor_key(ce->record, e.record);
+        }
         for (const auto& [key, t] : p->staged.thunks()) adds = adds || !registry_.has_thunk(key);
     }
     if (adds) p->have_core = open_core(p->module, p->staged, p->core, p->core_reg);
@@ -592,6 +610,16 @@ bool Loader::commit_locked(std::string& error)
     for (const PendingClass& pc : P.classes) {
         if (pc.canon) {
             ClassRecord* r = pc.canon->record;
+            // A new constructor key: the "construct" of the new core becomes canonical. The shell
+            // of the core uses the canonical record (init_state).
+            if (P.have_core && has_new_ctor_key(r, pc.incoming)) {
+                if (const ClassEntry* ce = P.core_reg.find(pc.incoming->name)) {
+                    r->construct = ce->record->construct;
+                    r->construct_key = ce->record->construct_key;
+                    r->construct_keys = ce->record->construct_keys;
+                    ce->record->canonical = r;
+                }
+            }
             adopt(r, pc.incoming);
             removed_.erase(r->name);  // the class is back; the table above replaced the handler table
         } else if (P.have_core) {

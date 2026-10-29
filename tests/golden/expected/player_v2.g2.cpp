@@ -124,6 +124,8 @@ static spp::ShellBase* Player__construct(const char* key, const void* args)
     return nullptr;
 }
 
+static const char* const Player__construct_keys[] = {typeid(Player_SuperArgs).name(), nullptr};
+
 static Player_Shell* Player__build([[maybe_unused]] bool note)
 {
     auto plan = Player__plan();
@@ -150,7 +152,7 @@ static void Player__Tick(Actor* a, float dt)
     std::printf("[v2] %s: Tick dt=%.4f pos.x=%.4f health=%.1f shield=%.1f\n",
 #line 15 "player_v2.spp"
     spp::deref(self->Name).c_str(), dt, spp::deref(self->Position).x, st->health, st->shield);
-#line 154 "player_v2.spp.cpp"
+#line 156 "player_v2.spp.cpp"
 }
 
 static void Player__TakeDamage_f(Actor* a, float amount)
@@ -167,7 +169,7 @@ static void Player__TakeDamage_f(Actor* a, float amount)
     std::printf("[v2] %s: TakeDamage %.1f -> health=%.1f\n", spp::deref(self->Name).c_str(), amount,
 #line 21 "player_v2.spp"
     st->health);
-#line 171 "player_v2.spp.cpp"
+#line 173 "player_v2.spp.cpp"
 }
 
 static void Player__TakeDamage_Af(Actor* a, Actor& source, float amount)
@@ -184,7 +186,7 @@ static void Player__TakeDamage_Af(Actor* a, Actor& source, float amount)
     std::printf("[v2] %s: hit by %s\n", spp::deref(self->Name).c_str(), spp::deref(st->target).c_str());
 #line 27 "player_v2.spp"
     self->TakeDamage(amount);
-#line 188 "player_v2.spp.cpp"
+#line 190 "player_v2.spp.cpp"
 }
 
 static void Player__heal(Player_Shell* self, float amount)
@@ -200,7 +202,7 @@ static void Player__heal(Player_Shell* self, float amount)
     std::printf("[v2] %s: heal %.1f (x2) -> health=%.1f\n", spp::deref(self->Name).c_str(), amount,
 #line 33 "player_v2.spp"
     st->health);
-#line 204 "player_v2.spp.cpp"
+#line 206 "player_v2.spp.cpp"
 }
 
 static void Player__heal_slot(Actor* a, float amount)
@@ -225,6 +227,7 @@ spp::ClassRecord Player_record = {
 
 static spp::Instance Player_create()
 {
+    spp::ScriptEntry entry;  // the creation is an entry (S27)
     auto* p = new Player_Shell(spp::Construct{}, std::string("Player"));
     return {static_cast<Actor*>(p), p};
 }
@@ -232,4 +235,5 @@ static spp::Instance Player_create()
 extern "C" void script_register(spp::Registry& reg)
 {
     reg.add(&Player_record, &Player_create);
+    Player_record.construct_keys = Player__construct_keys;
 }

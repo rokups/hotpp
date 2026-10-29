@@ -110,6 +110,8 @@ static spp::ShellBase* Beeper__construct(const char* key, const void* args)
     return nullptr;
 }
 
+static const char* const Beeper__construct_keys[] = {typeid(Beeper_SuperArgs).name(), nullptr};
+
 static Beeper_Shell* Beeper__build([[maybe_unused]] bool note)
 {
     auto plan = Beeper__plan();
@@ -132,7 +134,7 @@ static void Beeper__Tick(Actor* a, float dt)
     [[maybe_unused]] auto* st = state_of(self);
 #line 10 "timer_v1.spp"
     st->ticks = st->ticks + 1;
-#line 136 "timer_v1.spp.cpp"
+#line 138 "timer_v1.spp.cpp"
 }
 
 static void Beeper__arm(Beeper_Shell* self, World& w, float delay)
@@ -150,7 +152,7 @@ static void Beeper__arm(Beeper_Shell* self, World& w, float delay)
         std::printf("[timer v1] %s: fired=%d\n", spp::deref(self->Name).c_str(), st->fired);
 #line 17 "timer_v1.spp"
     }));
-#line 154 "timer_v1.spp.cpp"
+#line 156 "timer_v1.spp.cpp"
 }
 
 // Not overridden: call the implementation of Actor.
@@ -195,6 +197,7 @@ spp::ClassRecord Beeper_record = {
 
 static spp::Instance Beeper_create()
 {
+    spp::ScriptEntry entry;  // the creation is an entry (S27)
     auto* p = new Beeper_Shell(spp::Construct{}, std::string("Beeper"));
     return {static_cast<Actor*>(p), p};
 }
@@ -202,5 +205,6 @@ static spp::Instance Beeper_create()
 extern "C" void script_register(spp::Registry& reg)
 {
     reg.add(&Beeper_record, &Beeper_create);
+    Beeper_record.construct_keys = Beeper__construct_keys;
     reg.add_thunk("Beeper::arm", reinterpret_cast<void*>(&Beeper__arm__thunk));
 }

@@ -72,7 +72,8 @@ struct ClassRecord {
     //  - construct: makes a shell and gives it the base arguments. "args" points to a
     //    std::tuple of the decayed types of the "super(...)" arguments. "key" is
     //    typeid(tuple).name(). Each constructor overload of the first generation gives a
-    //    known key. An unknown key gives nullptr: a later generation changed the types.
+    //    known key. An unknown key gives nullptr. A later generation with a new key gets a new core
+    //    module, and its "construct" replaces this one (S27).
     //    Each script shell class has it (S20a). Null for a record without a script shell.
     //  - construct_key: the key of the first overload. Information only.
     //  - new_default: makes a new object with default constructor arguments. It evaluates
@@ -96,6 +97,11 @@ struct ClassRecord {
     // True when the shell derives from std::enable_shared_from_this (design 7.10.1): the class
     // uses "this" as a handle or has script children. The bit changes the shell layout.
     bool shares_this = false;
+    // The keys that "construct" accepts: the keys of all constructor overloads of the module
+    // that made it, ending with nullptr. Null without "construct". The loader compares the keys
+    // of a new generation with this list. A new key makes a new core module, and its "construct"
+    // replaces the canonical one (S27). The generation record has its own list.
+    const char* const* construct_keys = nullptr;
 };
 
 }  // namespace spp

@@ -18,6 +18,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <deque>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -38,7 +39,8 @@ constexpr uint32_t kGenerations = 9;  // generation 1 and 8 reloads
 constexpr int kActors = 64;
 constexpr int kWorkers = 4;
 
-std::string script_text(uint32_t generation)
+// "creator" adds a constructor. It calls the probe, so the test sees the entry depth of a creation.
+std::string script_text(uint32_t generation, bool creator = false)
 {
     const bool even = generation % 2 == 0;
     return std::string(R"(
@@ -49,6 +51,7 @@ class Player : Actor {
     int calls = 0;
     int hits = 0;
 )") + (even ? "    float shield = 25.0;\n" : "    int spare = 7;\n") +
+           (creator ? "    Player() { Util.Probe(this, 1.0); }\n" : "") +
            R"(
     override void Tick(float dt) {
         this.calls = this.calls + 1;
@@ -70,15 +73,16 @@ spp::Backend& backend()
 
 // A new Module of the generation for each call. The first call builds it (about a second).
 // A later call loads the library file again. A backend without a file (JIT) builds again.
-spp::Module module_of(uint32_t generation)
+spp::Module module_of(uint32_t generation, bool creator = false)
 {
     static std::vector<std::string> paths(kGenerations + 1);
-    std::string& path = paths.at(generation);
+    static std::vector<std::string> creator_paths(kGenerations + 1);
+    std::string& path = (creator ? creator_paths : paths).at(generation);
     if (!path.empty()) {
         spp::LoadResult again = spp::module_from_library(path);
         if (again) return std::move(*again.module);
     }
-    spp::ScriptSource src{"s21_player.spp", script_text(generation)};
+    spp::ScriptSource src{creator ? "s27_player.spp" : "s21_player.spp", script_text(generation, creator)};
     spp::LoadResult r = backend().load(src, generation);
     if (!r) throw std::runtime_error(r.error);
     if (std::filesystem::exists(r.module->origin)) path = r.module->origin;
@@ -335,6 +339,96 @@ TEST(EntryCounters, DefaultModeCountsNothing)
     EXPECT_EQ(g_depth_in_probe, 0u);
     EXPECT_EQ(g_active_in_probe, 0u);
     EXPECT_EQ(int_field(s.inst.shell, "hits"), 1);
+}
+
+// S27: the creation of an object through the factory is an entry. A thread creates objects while
+// another thread commits reloads. The constructor calls the probe: it sees the entry depth of the
+// creation. The creator checks each new object while it holds an entry, so a commit cannot
+// migrate the object under the check.
+std::atomic<int> g_unguarded{0};
+
+void creation_probe(Actor* a)
+{
+    g_probes.fetch_add(1, std::memory_order_relaxed);
+    if (spp::entry_depth() != 1 || spp::active_entries() < 1 || !dynamic_cast<spp::ShellBase*>(a))
+        g_unguarded.fetch_add(1, std::memory_order_relaxed);
+}
+
+TEST(EntryCounters, CreationThroughTheFactoryIsAnEntry)
+{
+    constexpr uint32_t kCreatorGenerations = 5;
+    std::vector<spp::Module> mods;
+    for (uint32_t g = 2; g <= kCreatorGenerations; ++g) mods.push_back(module_of(g, true));
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(module_of(1, true)));
+    s.loader.set_sync_mode(spp::SyncMode::EntryCounters);
+    g_unguarded = 0;
+    g_probes = 0;
+    Util::SetProbe(&creation_probe);
+    Watchdog watchdog(240s);
+
+    const spp::ClassEntry* entry = s.loader.find("Player");
+    std::atomic<bool> stop{false};
+    std::atomic<long> created{0};
+    std::atomic<int> bad{0};
+    std::thread creator([&] {
+        std::deque<spp::Instance> live;
+        while (!stop.load(std::memory_order_relaxed)) {
+            spp::Instance inst = entry->create();
+            {
+                spp::ScriptEntry hold;  // a commit cannot run now
+                const uint32_t gen = inst.shell->cls->generation;
+                const int32_t* hits = spp::field_ptr<int32_t>(inst.shell, "hits");
+                const bool spare = spp::field_ptr<int32_t>(inst.shell, "spare") != nullptr;
+                const bool shield = spp::field_ptr<float>(inst.shell, "shield") != nullptr;
+                // The object has the layout of the generation of its record. The constructor ran once.
+                if (gen != spp::active_generation || !hits || *hits != 1 || spare == shield || spare != (gen % 2 == 1))
+                    bad.fetch_add(1, std::memory_order_relaxed);
+            }
+            live.push_back(inst);
+            if (live.size() > 32) {
+                delete static_cast<Actor*>(live.front().native);
+                live.pop_front();
+            }
+            created.fetch_add(1, std::memory_order_relaxed);
+        }
+        for (spp::Instance& i : live) delete static_cast<Actor*>(i.native);
+    });
+
+    int committed = 0;
+    std::string errors;
+    const uint64_t windows0 = spp::commit_window_count();
+    std::thread committer([&] {
+        for (spp::Module& m : mods) {
+            const long seen = created.load();
+            while (created.load() < seen + 200) std::this_thread::yield();
+            std::string err;
+            if (!s.loader.request_reload(std::move(m), err)) {
+                errors += "request: " + err + "\n";
+                continue;
+            }
+            if (s.loader.commit_pending(err))
+                ++committed;
+            else
+                errors += "commit: " + err + "\n";
+            // No frame_boundary here: it walks the live object table, which the creator changes.
+        }
+        const long seen = created.load();
+        while (created.load() < seen + 200) std::this_thread::yield();
+    });
+    committer.join();
+    stop.store(true);
+    creator.join();
+    Util::SetProbe(nullptr);
+
+    EXPECT_TRUE(errors.empty()) << errors;
+    EXPECT_EQ(committed, static_cast<int>(kCreatorGenerations) - 1);
+    EXPECT_EQ(spp::commit_window_count() - windows0, kCreatorGenerations - 1);
+    EXPECT_EQ(spp::active_generation, kCreatorGenerations);
+    EXPECT_EQ(g_unguarded.load(), 0);  // each constructor ran inside an entry of depth 1
+    EXPECT_GE(g_probes.load(), created.load());
+    EXPECT_EQ(bad.load(), 0);
+    EXPECT_EQ(spp::active_entries(), 0u);
 }
 
 }  // namespace

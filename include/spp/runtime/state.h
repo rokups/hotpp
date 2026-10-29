@@ -47,6 +47,8 @@ inline void destroy_fields(const StateLayout* l, char* mem)
 // Makes the state block of a new object and runs the field initializers.
 inline void init_state(ShellBase* self, ClassRecord* cls)
 {
+    // A record of a later core module can make the shell (S27). The object uses the canonical record.
+    if (cls->canonical) cls = cls->canonical;
     self->cls = cls;
     const StateLayout* l = cls->layout;
     char* mem = alloc_state(l);

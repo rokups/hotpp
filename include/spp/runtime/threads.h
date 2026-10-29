@@ -29,9 +29,9 @@ extern uint32_t active_generation;
 //   - commit_pending on a thread that is in script code fails. It does not wait for itself.
 //   - A thread that entered script code in StopTheWorld mode is not counted.
 //     Change the mode only when no thread is in script code.
-//   - The creation of a script object is not an entry. Native code that creates a script
-//     object, or reads its fields, holds a ScriptEntry. Object creation and destruction stay
-//     on one thread at a time (the rule of the live object table).
+//   - The creation through the factory (ClassEntry::create) is an entry. Native code that
+//     reads the fields of a script object holds a ScriptEntry. Object creation and
+//     destruction stay on one thread at a time (the rule of the live object table).
 //
 // Define SPP_NO_ENTRY_COUNTERS to remove the mode at compile time. Then a ScriptEntry is empty.
 enum class SyncMode : uint8_t {

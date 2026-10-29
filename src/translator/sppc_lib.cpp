@@ -3261,6 +3261,12 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                     sa_name(k) + "*>(args);\n        return std::apply([](const auto&... x) -> spp::ShellBase* { return new " +
                     shell + "(spp::Construct{}, x...); }, t);\n    }\n");
             o.w("    return nullptr;\n}\n\n");
+            // The keys that "construct" accepts. The loader compares them with the keys of the
+            // canonical record: a new key needs a new core module (S27).
+            o.w("static const char* const " + P + "construct_keys[] = {");
+            for (size_t k = 0; k < ctor_ms.size(); ++k) o.w("typeid(" + sa_name(k) + ").name(), ");
+            o.w("nullptr};\n\n");
+            flag_regs.push_back("    " + cn + "_record.construct_keys = " + P + "construct_keys;\n");
             for (size_t k = 0; k < ctor_ms.size(); ++k) {
                 const Method& cm = ctor_ms[k];
                 std::string pd = param_decl(cm);
@@ -3481,12 +3487,12 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             // The plan takes a "ref" or "out" parameter by reference: default_args gives a variable.
             std::string plan_locals;
             const std::string defaults = default_args(ctor_ms[dflt], plan_locals);
-            o.w("static spp::Instance " + cn + "_create()\n{\n    spp::ShellBase* s = nullptr;\n    if (" + cn +
+            o.w("static spp::Instance " + cn + "_create()\n{\n    spp::ScriptEntry entry;  // the creation is an entry (S27)\n    spp::ShellBase* s = nullptr;\n    if (" + cn +
                 "_record.new_default) {\n        s = " + cn + "_record.new_default();\n    } else {\n" + plan_locals + "        auto plan = " + P +
                 "plan(" + defaults + ");\n        s = " + P + "construct(typeid(" + sa_name(dflt) + ").name(), &plan.first);\n    }\n    auto* p = static_cast<" +
                 shell + "*>(s);\n    return {static_cast<" + B + "*>(p), p};\n}\n\n");
         } else {
-            o.w("static spp::Instance " + cn + "_create()\n{\n    auto* p = new " + shell +
+            o.w("static spp::Instance " + cn + "_create()\n{\n    spp::ScriptEntry entry;  // the creation is an entry (S27)\n    auto* p = new " + shell +
                 "(spp::Construct{}" + ctor_args + ");\n    return {static_cast<" + B + "*>(p), p};\n}\n\n");
         }
         registers.push_back({cn, true});

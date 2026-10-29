@@ -136,6 +136,8 @@ static spp::ShellBase* Gauge__construct(const char* key, const void* args)
     return nullptr;
 }
 
+static const char* const Gauge__construct_keys[] = {typeid(Gauge_SuperArgs).name(), nullptr};
+
 static Gauge_Shell* Gauge__build([[maybe_unused]] bool note)
 {
     auto plan = Gauge__plan();
@@ -162,7 +164,7 @@ static void Gauge__Tick(Actor* a, float dt)
     Gauge__set_Shield(self, Gauge__get_Shield(self) + 2.0f);
 #line 19 "props_v1.spp"
     Gauge__set_Level(self, Gauge__get_Level(self) + 1);
-#line 166 "props_v1.spp.cpp"
+#line 168 "props_v1.spp.cpp"
 }
 
 static void Gauge__TakeDamage_f(Actor* a, float amount)
@@ -177,7 +179,7 @@ static void Gauge__TakeDamage_f(Actor* a, float amount)
     Gauge__set_Shield(self, Gauge__get_Shield(self) - (amount));
 #line 24 "props_v1.spp"
     if (Gauge__get_Shield(self) <= 0.0f) Gauge__set_Hp(self, Gauge__get_Hp(self) - amount);
-#line 181 "props_v1.spp.cpp"
+#line 183 "props_v1.spp.cpp"
 }
 
 static float Gauge__total(Gauge_Shell* self)
@@ -189,7 +191,7 @@ static float Gauge__total(Gauge_Shell* self)
     [[maybe_unused]] auto* st = state_of(self);
 #line 28 "props_v1.spp"
     return Gauge__get_Hp(self) + Gauge__get_Shield(self);
-#line 193 "props_v1.spp.cpp"
+#line 195 "props_v1.spp.cpp"
 }
 
 static float Gauge__get_Hp(Gauge_Shell* self)
@@ -201,7 +203,7 @@ static float Gauge__get_Hp(Gauge_Shell* self)
     [[maybe_unused]] auto* st = state_of(self);
 #line 7 "props_v1.spp"
     return st->__p_Hp;
-#line 205 "props_v1.spp.cpp"
+#line 207 "props_v1.spp.cpp"
 }
 
 static void Gauge__set_Hp(Gauge_Shell* self, float value)
@@ -213,7 +215,7 @@ static void Gauge__set_Hp(Gauge_Shell* self, float value)
     [[maybe_unused]] auto* st = state_of(self);
 #line 7 "props_v1.spp"
     st->__p_Hp = value;
-#line 217 "props_v1.spp.cpp"
+#line 219 "props_v1.spp.cpp"
 }
 
 static float Gauge__get_MaxHp(Gauge_Shell* self)
@@ -225,7 +227,7 @@ static float Gauge__get_MaxHp(Gauge_Shell* self)
     [[maybe_unused]] auto* st = state_of(self);
 #line 8 "props_v1.spp"
     return st->__p_MaxHp;
-#line 229 "props_v1.spp.cpp"
+#line 231 "props_v1.spp.cpp"
 }
 
 static int32_t Gauge__get_Level(Gauge_Shell* self)
@@ -237,7 +239,7 @@ static int32_t Gauge__get_Level(Gauge_Shell* self)
     [[maybe_unused]] auto* st = state_of(self);
 #line 9 "props_v1.spp"
     return st->__p_Level;
-#line 241 "props_v1.spp.cpp"
+#line 243 "props_v1.spp.cpp"
 }
 
 static void Gauge__set_Level(Gauge_Shell* self, int32_t value)
@@ -249,7 +251,7 @@ static void Gauge__set_Level(Gauge_Shell* self, int32_t value)
     [[maybe_unused]] auto* st = state_of(self);
 #line 9 "props_v1.spp"
     st->__p_Level = value;
-#line 253 "props_v1.spp.cpp"
+#line 255 "props_v1.spp.cpp"
 }
 
 static float Gauge__get_Shield(Gauge_Shell* self)
@@ -261,7 +263,7 @@ static float Gauge__get_Shield(Gauge_Shell* self)
     [[maybe_unused]] auto* st = state_of(self);
 #line 12 "props_v1.spp"
     return st->shield_raw;
-#line 265 "props_v1.spp.cpp"
+#line 267 "props_v1.spp.cpp"
 }
 
 static void Gauge__set_Shield(Gauge_Shell* self, float value)
@@ -273,7 +275,7 @@ static void Gauge__set_Shield(Gauge_Shell* self, float value)
     [[maybe_unused]] auto* st = state_of(self);
 #line 13 "props_v1.spp"
     st->shield_raw = value < 0.0f ? 0.0f : value;
-#line 277 "props_v1.spp.cpp"
+#line 279 "props_v1.spp.cpp"
 }
 
 // Not overridden: call the implementation of Actor.
@@ -410,6 +412,7 @@ spp::ClassRecord Gauge_record = {
 
 static spp::Instance Gauge_create()
 {
+    spp::ScriptEntry entry;  // the creation is an entry (S27)
     auto* p = new Gauge_Shell(spp::Construct{}, std::string("Gauge"));
     return {static_cast<Actor*>(p), p};
 }
@@ -417,6 +420,7 @@ static spp::Instance Gauge_create()
 extern "C" void script_register(spp::Registry& reg)
 {
     reg.add(&Gauge_record, &Gauge_create);
+    Gauge_record.construct_keys = Gauge__construct_keys;
     reg.add_thunk("Gauge::total", reinterpret_cast<void*>(&Gauge__total__thunk));
     reg.add_thunk("Gauge::get_Hp", reinterpret_cast<void*>(&Gauge__get_Hp__thunk));
     reg.add_thunk("Gauge::set_Hp", reinterpret_cast<void*>(&Gauge__set_Hp__thunk));
