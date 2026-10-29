@@ -9,7 +9,7 @@ Status: [ ] open, [x] done. One slice is one commit.
 - [x] S2 Translator checks: 7.10.7 stub checks, borrowed-pointer and ref rules, ERROR rows, prelude details, `class *;` rules. Done. Borrowed-storage findings are warnings until the examples migrate (S5); see HANDOFF.md.
 - [x] S3 `onReload(OldState)`, `OldState`, `convert` hook, live type change, rename warning, restart request. Done.
 - [x] S4 Script constructors, `new` of a script class. Done. The limits are in `HANDOFF.md` (Known limits).
-- [ ] S5 Value/handle slice 2: parameter analysis, `var r = ref`, member access on script handles. S5a done: `[value]` script classes, plain script classes, script classes as handles.
+- [x] S5 Value/handle slice 2 (done in S5a and S5b): parameter analysis, `var r = ref`, member access on script handles. S5a done: `[value]` script classes, plain script classes, script classes as handles.
 - [x] S5b Done. Open: the `var r = ref` check, the type of a `var` from a native call, and a reload check for the `enable_shared_from_this` layout. Parameter analysis (const T& vs T, store takes a copy), plain trivially-copyable native type is a value (7.10.2 rule 4), type-directed member access on script handles, `return this` handle, strict borrowed by default and migrate examples, order-independent class use (a cycle is an error).
 - [x] S6 Script inheritance, script `virtual`/`override`, `is` and `as`. S6a done. The limits are in `HANDOFF.md` (Known limits). Open: a parent in another script, multiple script inheritance.
 - [x] S6b Done: inherited properties, 3-level family test with a reload, test for loader rejection of a parent change, `var r = ref` tests. Open: the `super(...)` arguments of a child run two times (see HANDOFF.md).
@@ -23,18 +23,29 @@ Status: [ ] open, [x] done. One slice is one commit.
 - [x] S12 Done (M7): `sppc --ship`, `spp_add_shipped_scripts`, `spp::ShippedRegistry` (`include/spp/shipped.h`), target `spp_ship` (no loader), example `ship_demo`, tests in `tests/integration/ship/`. Open: see the open items in README "Shipping mode" and HANDOFF.md.
 - [x] S13 Tolerant parse and `source_map` (M10).
 - [x] S14a VS Code extension (M11): grammar, language config, file association, thin client for spp-ls, snapshot test.
-- [x] S14b Language server `spp-ls` (M12 to M14) as clangd proxy.
-- [ ] S14 old: VS Code extension (M11), `sppc --compile-commands`.
+- [x] S14b Language server `spp-ls` (M12 to M14) as clangd proxy. `sppc --compile-commands` is part of it.
 - [x] S15 CPM fetch test. Done.
 
-Not testable here: Windows, macOS, a real engine, the clangd fork (M12 to M14). See DECISIONS.md.
+The language server is the proxy `spp-ls`, not a clangd fork (DECISIONS.md 13). See "Not done" at the end.
 
 ## Second audit (after S15)
 - [x] S16 `super(...)` args evaluate once; interface bases on a child of a script class; module variable convert hook and initializer that uses another module variable.
   - Done: one plan per construction (`new`, factory). Interface bases on a child stay an error (design 4.5), with a clearer message. Module variables: ordered initializers and `T convert_<var>(Old old)` at file level (DECISIONS.md 14).
 - [x] S17 Runtime: signature change detaches native delegates with a warning; script value type in a native container resets on layout change; first handle use of `this` layout check; code pointers in native memory/function pointer fields.
 - [x] S18 Rename across all `.spp` files in spp-ls; VS Code `spp/toScript` command and `${workspaceFolder}`; TSan DeepNesting stack and watcher flake; cache edge case.
-- [ ] S19 Docs: refresh TASKS, HANDOFF, design 10.1 (proxy instead of fork), 7.3 interpolation text, F1 templated bases result, P1 CLANG_FILES with PCH measure.
+- [x] S19 Docs and measures: HANDOFF, TASKS, README status table, design 4.9, 7.3, 10.1, status of F1 to F3, P1 and risk 8. P1 for CLANG_FILES with a PCH is measured (README "Measurements"). A new test, `TemplateBaseTranslation`, pins the limit for a native base that derives from an implicit class template instance.
 - [x] S20 Script parent from another script; constructor overloads and ref/out ctor params; `var` from native call type; pattern-stub checks; `p.N` typed property access; deeper parameter analysis.
   - Done: S20a cross-script parents and constructor overloads (DECISIONS.md 16). S20b typing limits (DECISIONS.md 17): `var` types from libclang, typed `p.N`, pattern-stub checks, deeper parameter analysis, `Intrusive` and raw `T*` comparison test.
 - [x] S21 Entry-counter blocking sync mode (design 6.3 fallback).
+
+## Not done (cannot be tested here)
+- Windows and macOS: the RTTI comparison, the symbol export and the PDB.
+- A real engine: the export surface (design risk 2), the registration of shells (risk 3), the safe point hook and the first gameplay class (M4).
+- A real lldb session (F3 passes with gdb), the lldb formatters in a live session, and Visual Studio with natvis.
+- M9, optional part: the ORC debug-symbol resolver for Windows. The JIT backend itself works on Linux.
+- Engine coroutines (version 2): the pin design for a coroutine frame.
+- A real VS Code session for the extension in `editors/vscode/`. The grammar snapshot test and the LSP tests pass.
+
+## Open work (can be tested here)
+- A native base that derives from an implicit class template instance gives no virtuals (design risk 8). The fix: take the base declaration from `clang_getTypeDeclaration` in `collect_virtuals` (`src/translator/sppc_lib.cpp`). Change the test `TemplateBaseTranslation.ImplicitInstanceBaseIsAKnownLimit` with it.
+- Run the sanitizer and JIT builds again (`build-asan`, `build-jit`, `build-tsan`) after S19.

@@ -1,7 +1,31 @@
 # S++
 
-S++ is a hot-reloadable scripting language for C++. This is a prototype of its runtime and translator. This is step 3 (F1) with the backend interface.
-The design is in `spp-design.md` in the project root.
+S++ is a hot-reloadable scripting language for C++. This is a prototype of its runtime, translator, tools and language server.
+The design is in `spp-design.md` in the project root. See "Status" for the milestones.
+
+## Status
+
+Each row is a milestone of `spp-design.md` section 10. "Not testable here" means that the work needs a part that this machine does not have. `DECISIONS.md` has the decisions and the reasons. `TASKS.md` has the slices. `HANDOFF.md` has the state and the limits.
+
+| Milestone | Status | Note |
+|---|---|---|
+| M0 Spikes | Partial | R0 and P1 are done with `minengine`. The spikes for risk 2 and 3 need the real engine: not testable here. |
+| M1 Runtime spine | Done | R1 to R6 pass, also under ASan and TSan. |
+| M2 Translator v0 | Done | F1 passes. Gap: a native base that derives from an implicit class template instance (design risk 8). |
+| M3 Diagnostics and debugging | Partial | F2 passes. F3 passes with gdb. lldb, the lldb formatters in a live session and Visual Studio with natvis are not testable here. |
+| M4 Engine integration | Not testable here | `minengine` is the only host. A real engine is needed. |
+| M5 Contract enforcement | Done | The rows of design 5.3 have tests in `tests/integration/reload/` and `tests/unit/translator/translate/`. |
+| M6 Language v1 | Done | Inheritance, virtuals, `is`/`as`, lambdas, enums, structs, module variables, interpolation, constructors. Coroutines are not in version 1. |
+| M7 Shipping mode | Done | `sppc --ship`. Generation 1 only. |
+| M8 Unloading | Done | Core module. Generation 1 unloads. 1000 reloads with `SPP_STRESS=1`. |
+| M9 Optional ORC backend | Partial | The JIT backend works on Linux. The debug-symbol resolver for Windows is not testable here. |
+| M10 Source map and tolerant parse | Done | `TranslateResult::source_map`, `sppc::analyze`. |
+| M11 VS Code extension | Done | Grammar snapshot test and package. A real VS Code session is not testable here. |
+| M12 Language server stage 1 | Done | `spp-ls`, a proxy in front of stock clangd (no fork). |
+| M13 Language server stage 2 | Done | One test for each feature. |
+| M14 Language server stage 3 | Done | Background index, `spp/toScript`, rename across the workspace, `sppc --compile-commands`. |
+
+Not done, and not testable here: Windows and macOS, a real engine, a real lldb and Visual Studio session, the optional ORC debug-symbol resolver, and engine coroutines (version 2).
 
 ## Layout
 
@@ -135,7 +159,20 @@ Machine: 32 threads, Linux 7.2, clang 23.1.3, `-O0`/`-O1` as noted, the page cac
 | CLANG_FILES, `-O1`, cache | 1394 | 941 | 957 | 947 |
 | CLANG_FILES, `-O1`, no cache | 1395 | 940 | 1356 | 940 |
 
-CLANG_FILES with a PCH is not measured: the bench tool makes the PCH only in the JIT backend.
+CLANG_FILES with a PCH (P1, S19). The bench tool makes a PCH only in the JIT backend. For CLANG_FILES, make the PCH with the compiler and pass it through `--cxxflag`. The PCH header has the same includes as the one in `bench_backends.cpp`.
+
+    clang++ -std=c++20 -fPIC -g -O1 -resource-dir=$(clang++ -print-resource-dir) -I include -I example/engine \
+        -x c++-header pch.hpp -o p.pch
+    bench_backends --warm 9 --cxxflag -O1 --cxxflag -include-pch --cxxflag $PWD/p.pch
+
+| Configuration (S19 run, same machine, other load) | v1 cold | v2 cold | v1 warm | v2 warm |
+|---|---|---|---|---|
+| CLANG_FILES, `-O1`, cache | 1693 | 1111 | 1110 | 1104 |
+| CLANG_FILES, `-O1`, `-include-pch`, cache | 931 | 344 | 357 | 349 |
+
+The PCH takes 1.1 s to make, once, and is 13.5 MB. It saves 755 ms of 1104 ms in a warm load (68%). The numbers of this run are higher than the rows above, because the machine had more load. Compare the two rows of one run only.
+
+P1 criterion (design 8.2): under 2 s for one module after a one-line change, fail over 5 s. Result: pass in every configuration, also CLANG_FILES with no PCH (1.1 s). With a PCH: JIT 166 ms and CLANG_FILES 350 ms. The test headers are small. Measure again with the real engine headers.
 
 Before the cache, the translate time was 411 ms in each load. The split of one translate (v2, `std::chrono` in `translate_impl`, measured before the change) was: libclang parse of the imports 406 ms, script parser 0.4 ms, visit of the base class 0.5 ms, text emit 2.7 ms. Only the libclang parse is large.
 
@@ -344,15 +381,10 @@ From C++ to the script:
 
 Limits:
 
-- Rename changes only the open document. It does not change other `.spp` files.
 - After a translation error, clangd keeps the last good generated C++. Its positions can be old until the next good translation.
 - The column of a `#line` fallback is 0.
 
 The tests are in `tests/integration/ls/` (`LanguageServer.*`). They run the server on a thread with an LSP client over pipes. The clangd tests are skipped when `clangd` is missing. Set `SPP_LS_CLANGD_LOG=file` to get the clangd log of a test.
-
-## Not done yet
-
-Unload of the first generation of a class, string interpolation, script inheritance and constructors in scripts.
 
 ## Threads and the safe point
 

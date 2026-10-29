@@ -394,19 +394,19 @@ Step 1 runs before any move. An allocation failure aborts the reload before any 
 
 ### 4.9 Generation retirement
 
-A retired generation stays loaded in version 1. The guard makes its code harmless. Memory grows by the size of one module per reload. A development session with 500 reloads of a 1 MB module uses 500 MB. The runtime reports this and the developer restarts.
+Status: implemented (S10, milestone M8). The text below is the contract and the limits of the implementation.
 
-Version 2 unloads a retired generation when three conditions hold.
+A retired generation stays loaded while the guard needs it. The guard makes its code harmless. A generation unloads when three conditions hold.
 
-1. The generation pin count is zero. Closures that leave script code and coroutine frames hold a pin.
+1. The generation pin count is zero. Closures that leave script code hold a pin. Coroutine frames would hold a pin too, but coroutines are not implemented.
 2. A full frame boundary passed after retirement.
 3. No thread was inside a function of that generation at retirement. The safe point guarantees this.
 
 Raw function pointers to script code do not exist in the language. Only thunks and pinned closures leave script code. See section 5.
 
-The core module (M8). The canonical class record, the factory, the shell constructor (and so the vtables) and the thunks must stay valid for ever. So the loader loads a second instance of a generation that adds a class or a thunk: the core module. The core never unloads. The code module of the generation gives the slots, the layout and the constructor bodies. So every retired generation can unload, generation 1 too. CLANG_FILES loads a private copy of the library. JIT adds an IR clone to a separate JITDylib.
+The core module (M8, S10). The canonical class record, the factory, the shell constructor (and so the vtables) and the thunks must stay valid for ever. So the loader loads a second instance of a generation that adds a class or a thunk: the core module (`Module::make_core`). The core never unloads. The code module of the generation gives the slots, the layout and the constructor bodies. So every retired generation can unload, generation 1 too. CLANG_FILES loads a private copy of the library. JIT adds an IR clone to a separate JITDylib. The cost is one more loaded copy for each generation that adds a class or a thunk. The tests in `tests/integration/reload/core_module_tests.cpp` run 1000 reloads with `SPP_STRESS=1`.
 
-A live object keeps three generations loaded: the generation of its layout, the generation of its record when no core exists, and the generation that ran `new` for it. A state field of a type that can hold code (`kMayHoldCode`, for example `std::shared_ptr` with its control block) blocks each unload while it lives. The runtime does not see a code pointer that native code keeps.
+A live object keeps three generations loaded: the generation of its layout, the generation of its record when no core exists, and the generation that ran `new` for it. A state field of a type that can hold code (`kMayHoldCode`) blocks each unload while it lives. S17 sets the flag for `std::shared_ptr` (with its control block), a raw function pointer, a member function pointer and `std::function`. Limits: the runtime does not see a code pointer that native code keeps, for example a `std::function` from a generation in an engine container. A function pointer inside a trivially copyable native struct does not get the flag.
 
 ### 4.10 Compile and load of a generation
 
@@ -733,7 +733,7 @@ class Player : Actor {
 | `Player(FString name) : super(name)` | Done (S4). The canonical record of generation 1 builds the shell from the `super` arguments (`spp::construct_shell`). Then `Player__ctor(self, name)` runs. The `super` arguments can use parameters only. | runtime model |
 | `override void Tick(float dt)` | `void Player__Tick_gN(Player_Shell* self, float dt)` installed in `SLOT_Tick`. The translator matches the name and the parameter types against the libclang list. A match makes the function an override, and `override` is required. | runtime model |
 | `public`, `private`, `protected` | The parser reads and stores the access word. The translator does not enforce it. | none |
-| `virtual`, `new` | The parser reads and stores the word. It has no effect yet. | none |
+| `virtual`, `new` | `virtual` adds a slot (S6a). A call goes through `Owner__f_virt(self, args)`. `override` in a child fills the slot. A function that hides a parent function needs `new`. | runtime model |
 | `super.Tick(dt)` | `self->Actor::Tick(dt)` | sugar |
 | `this.health` | `st->health` where `st` is the typed state pointer | runtime model |
 | `this.Position`, `this.Move(...)` | `self->Position`, `self->Move(...)`. Clang resolves the member. | sugar |
@@ -745,7 +745,7 @@ class Player : Actor {
 | `float Shield { get { ... } set { ... } }` | A custom accessor. The setter body uses the name `value` for the new value. A read `Shield` or `this.Shield` calls the getter. A write calls the setter. | runtime model |
 | `var dir = ...`, `int x = 5;` | `auto dir = ...;`, `int x = 5;` | sugar |
 | `const int X = 5;`, `const var x = ...` | `const int X = 5;`, `const auto x = ...;` | sugar |
-| `` `${a} hp=${b}` `` | Planned. `spp::format("{} hp={}", a, b)` which calls the engine string format. The parser gives an error now. | sugar |
+| `"${a} hp=${b:.2f}"` | Done (S7, `DECISIONS.md` 10). `std::format("{} hp={:.2f}", a, b)`, or `fmt::format` with `--format=fmt` (`TranslateOptions::format_lib`). The user supplies fmt. The result is `std::string`. An engine string type needs a conversion in the script. `{` and `}` double in the format string. `\${` gives a literal `${`. A backtick string is an error. | sugar |
 | `if`, `while`, `for (int i = 0; ...)`, `foreach (Type x in xs)` | same C++ statements; `foreach` is a range-for. `foreach (var x in xs)` gives `auto`. | sugar |
 | `throw e;`, `throw;`, `try { ... } catch (T e) { ... }`, `catch (...) { ... }`, `finally` | `throw e;`, `throw;`, `try { ... } catch (T e) { ... }`, `catch (...) { ... }`. A catch clause needs a name, except `catch (...)`. | sugar |
 | `Math.Min(...)` | `Math::Min(...)`. `.` on a type name means `::`. | sugar |
@@ -1028,6 +1028,17 @@ Step R0 comes before the translator. It proves the runtime model with hand-writt
 | F3 | Set a breakpoint in `heal` in lldb or Visual Studio. Step. Inspect `this.health`. | The debugger shows `player.spp` lines. The natvis or formatter shows state fields. | The debugger shows generated code. | `#line` is enough for debugging. |
 | P1 | Measure translate, compile and link time with a PCH of a large header set. Use the real engine headers when available. | Under two seconds for one module after a one-line change. | Over five seconds. | Iteration speed is acceptable without a JIT. |
 
+Status of the experiments (S19). R0 to R6 pass with hand-written and generated code, under ASan and TSan.
+
+| Step | Status | Evidence |
+|---|---|---|
+| F1 | Pass for plain native bases, bases that derive from a plain class, and explicit template specializations. A base that derives from an implicit instance of a class template gives no virtuals: see risk 8. | `tests/support/f1_scenario.h`, `tests/unit/translator/translate/template_base_translation_tests.cpp` |
+| F2 | Pass. 21 mistakes, each with a golden message that names the script line and script names. | `tests/golden/diagnostics/`, `DiagnosticMistakes` |
+| F3 | Partial. The DWARF line table has the `.spp` lines. gdb 18.1 stops at `player_v1.spp:11` in a live process, prints `Player__Tick ... at example/scripts/player_v1.spp:13` and steps by script lines. lldb and Visual Studio were not run. The lldb formatters and natvis have unit tests for the pure Python part only. | `DebugInfo.*`, `JitTests.DebuggerGetsObjectWithScriptLines`, `tools/lldb/`, `tools/natvis/` |
+| P1 | Pass, without the real engine headers. One module after a one-line change, `-O1`, warm, on the test machine: JIT 808 ms, JIT with PCH 166 ms, CLANG_FILES 1105 ms, CLANG_FILES with PCH 350 ms. The criterion is under 2 s. The PCH for CLANG_FILES is made with `clang++ -x c++-header` (1.1 s once, 13.5 MB) and used with `--cxxflag -include-pch`. | `example/bench_backends.cpp`, README "Measurements" |
+
+The test engine headers are small. The real engine headers can change the numbers. Measure again when they are available.
+
 ### 8.3 Mapping to the requested prototype steps
 
 | Requested step | Experiment |
@@ -1058,7 +1069,7 @@ Step R0 comes before the translator. It proves the runtime model with hand-writt
 | 5 | Compile latency with large engine headers. | Medium | Slow iteration | P1 | PCH. Parallel TUs. Keep the compiler process warm. ORC backend later for link-free loading. |
 | 6 | Diagnostics quality. Clang errors speak C++. | High | Poor developer experience | F2 | `#line`. A diagnostic rewriter. Translator-side checks for common script errors before Clang. |
 | 7 | Debugging quality on Windows. | Medium | Poor developer experience | F3 | Shared libraries get real PDBs. natvis for state blocks. Avoid ORC on Windows until JIT debug support exists. |
-| 8 | libclang cannot describe a base class. Templated bases, dependent types, private virtuals, deleted constructors. | Medium | Shell generation fails for some bases | F1 with templated bases | Use the C++ LibTooling API behind one small adapter. Accept version coupling in that adapter only. |
+| 8 | libclang cannot describe a base class. Templated bases, dependent types, private virtuals, deleted constructors. | Medium | Shell generation fails for some bases | F1 with templated bases | Use the C++ LibTooling API behind one small adapter. Accept version coupling in that adapter only. **Status (S19):** tested. An explicit specialization works. A base that derives from an implicit instance (`class IntBase : public Tmpl<int>`) gives no virtuals, and the translator reports an error. The fix is small: take the base declaration from the type of the base specifier (`clang_getTypeDeclaration`). LibTooling is not needed yet. The test pins the limit. |
 | 9 | Reload on a non-quiescent job system. | Medium. Engine-specific. | Data races | R5, S21 (`EntryCounters` tests) | Entry counters plus blocking of new entries as a second mode. Implemented: `SyncMode::EntryCounters` (section 6.3). |
 | 10 | Native move constructors throw during migration. | Low | Fatal reload | R1 with a throwing type | Require nothrow move for field types. The translator warns on other types. |
 | 11 | Template instantiations differ between the engine and a generation module. ODR with function-local statics in headers. | Low | Duplicated singletons | R0 | Same as any plugin DLL. Export singleton accessors from the engine. |
@@ -1080,44 +1091,42 @@ The highest risk is number 1. The guard and the pin design answer it on paper. R
 | M8 Unloading (2 weeks) | Pin counts, retirement and `dlclose`. | M6 | R6 passes in the engine with 1000 reloads. |
 | M9 Optional ORC backend (4 weeks) | In-process JIT behind the loader interface. Debug-symbol resolver. | M8 | Reload latency improves by a measured factor. Debugging still works on the target platform. |
 | M10 Source map and tolerant parse | `TranslateResult::source_map`. A parse that recovers from a bad statement. | M2 | Each identifier maps to the same text in both directions. Other methods stay byte-identical. |
-| M11 VS Code extension | Syntax highlighting, language configuration, file association and a thin client for the forked clangd. | none | The extension packages. A grammar snapshot test passes. |
-| M12 Language server stage 1 | A clangd fork with script diagnostics at script positions. | M10 | A type error and a parse error show at the script line. |
+| M11 VS Code extension | Syntax highlighting, language configuration, file association and a thin client for `spp-ls`. Done (S14a). | none | The extension packages. A grammar snapshot test passes. |
+| M12 Language server stage 1 | The proxy `spp-ls` in front of stock clangd, with script diagnostics at script positions. Done (S14b, `DECISIONS.md` 13). | M10 | A type error and a parse error show at the script line. |
 | M13 Language server stage 2 | Completion, hover, go-to-definition, references, document symbols, semantic tokens. | M12, M11 | One test per feature. `this.` lists native base members. |
-| M14 Language server stage 3 | Background index, C++ to script navigation, rename across both, `sppc --compile-commands`. | M13 | Go-to-definition from a `.cpp` into a `.spp` works. |
+| M14 Language server stage 3 | Background index, C++ to script navigation, rename across all scripts of the workspace, `sppc --compile-commands`. Done (S14b, S18). C++ to script navigation uses the `spp/toScript` request. clangd itself does not follow `#line`. | M13 | A symbol search finds a script member through the generated files. `spp/toScript` maps a generated position to the script. |
 
-Estimates assume one engineer with Clang experience. M9 runs only when P1 shows a latency problem or risk 2 forces it.
+Estimates assume one engineer with Clang experience. M9 runs only when P1 shows a latency problem or risk 2 forces it. P1 passes without a JIT (section 8.2), so the JIT backend stays optional. It exists, but the debug-symbol resolver for Windows is not done.
 ### 10.1 Language server and editor support
 
-**Server.** The server is a fork of clangd. It keeps full C++ support and adds script support.
-- The fork translates a `.spp` document to C++ in process. It maps every position with a source map.
-- `Emitter::put` already receives the script offset of each leaf. A side table of segments (script offset, generated offset, length) gives both directions. Synthesized text, for example `spp::deref(`, has no segment. A result in such text is dropped.
-- Clang Sema gives types, overloads, native base members, templates and includes. A native script front end inside clangd needs a new Sema and takes months.
-- A translation stops at a parse error today. Completion after `this.` needs a tolerant parse (M10). A bad statement is skipped to the next `;` or `}`. A trailing `.` gives an empty member name. The result keeps `ok = false` and a non-empty `cpp`.
-- The `#line` directives stay in the generated text. clangd uses file locations, so this should be safe. This is unverified. M12 checks it. If it fails, a translator option omits `#line` for the server.
-- A proxy server in front of stock clangd is the alternative with no fork. It costs less to maintain, but the index does not see scripts. It is not chosen.
+Status: implemented as the proxy `spp-ls` (S14b, `DECISIONS.md` 13). The fork of clangd from the first draft of this design is not built.
 
-**Fork layout and maintenance.**
-- Fork `llvm/llvm-project` as `spp-llvm`. Branch `spp/release-23.x` comes from `release/23.x`.
-- New code lives in `clang-tools-extra/clangd/spp/`. Hooks in upstream files stay under `#if CLANGD_SPP`, in at most 5 files.
-- `sppc_lib` comes in with `FetchContent` at a pinned commit.
-- Rebase on each LLVM major release, about every 6 months. `UPSTREAM.md` holds the procedure. After a rebase, run `ninja check-clangd` and the tests in `clangd/test/spp/`.
-- A cold build takes 30 to 60 minutes with `LLVM_TARGETS_TO_BUILD=host`. Use `ccache`.
-- A `.spp` file gets its compile flags from a `.clangd` fragment (`PathMatch: .*\.spp`, `Add: [-xc++, ...]`). Stage 3 adds `sppc --compile-commands`.
+**Server.** `spp-ls` is a stdio LSP 3.17 server. The code is in `src/ls/`. It runs stock `clangd` as a child process.
+- On each change `spp-ls` runs `sppc::analyze()` on the `.spp` document. It gets the parse errors, the facts (classes, members), the generated C++ and the source map.
+- It gives the generated C++ to clangd as the virtual file `<script>.spp.cpp`. The compile command comes from `spp::compile_command`.
+- `Emitter::put` receives the script offset of each leaf. A side table of segments (script offset, generated offset, length) gives both directions (M10). Synthesized text, for example `spp::deref(`, has no segment. A result in such text is dropped.
+- Clang Sema gives types, overloads, native base members, templates and includes. A native script front end inside clangd needs a new Sema and takes months. The proxy avoids this.
+- A translation stops at a parse error. Completion after `this.` needs the tolerant parse (M10). A bad statement is skipped to the next `;` or `}`. The server puts the placeholder `__spp_complete` in place of the word at the cursor, translates again and asks clangd at the placeholder.
+- `sppc::rewrite_generated_names` and `sppc::rewrite_clang_message` change generated names to script names in hover text, diagnostics and completion labels.
+- Features: diagnostics, completion, hover, go-to-definition, references, document symbols, semantic tokens, rename across all `.spp` files of the workspace, and workspace symbols from the clangd background index (`--compile-commands-dir`, from `sppc --compile-commands`). The custom request `spp/toScript` maps a position in a generated file to the script.
+
+**The `#line` directives.** The first draft said that the `#line` directives in the generated text were unverified for clangd. This is now verified by `tests/integration/ls/ls_tests.cpp` (`LanguageServer.ClangdTypeErrorIsAtTheScriptLine`). clangd reports the file position of the generated C++, not the `#line` position. The source map gives the script line. So the generated C++ keeps its `#line` directives, and no translator option is necessary. The compiler and the debugger use the directives. A line without a segment uses them as a fallback (the column is 0).
+
+**Trade-off of the proxy.** The proxy costs less to maintain than a fork. It needs no LLVM build and no rebase. The index of clangd sees the generated files only when the server gets `--compile-commands-dir`. The server cannot add a feature that needs a change inside clangd. After a translation error, clangd keeps the last good generated C++, so its positions can be old until the next good translation.
 
 **VS Code extension.** It lives in `editors/vscode/`. The extension does not fork the clangd extension.
-- It provides the language id `spp` for `.spp`, a TextMate grammar, a language configuration and a command that sets `clangd.path` to the forked binary.
-- The official clangd extension serves only the language ids `c`, `cpp`, `cuda-cpp`, `objective-c` and `objective-cpp`. No setting adds an id. This comes from the extension sources and is not tested here.
-- So the extension starts a thin `vscode-languageclient` client for `spp`. It uses the same binary as the official extension. Both processes share one index directory. This is unverified.
-- Bootstrap: `files.associations` maps `*.spp` to `cpp`. One process serves both, but the grammar does not apply. Use it until the thin client works.
-- A later option is a setting for extra language ids in the official extension, sent upstream.
+- It provides the language id `spp` for `.spp`, a TextMate grammar, a language configuration and a thin `vscode-languageclient` client that starts `spp-ls`. It has a `spp/toScript` command and supports `${workspaceFolder}` in its settings (S18).
+- The official clangd extension serves only the language ids `c`, `cpp`, `cuda-cpp`, `objective-c` and `objective-cpp`. This comes from the extension sources and is not tested here. So the extension has its own client.
+- Bootstrap: `files.associations` maps `*.spp` to `cpp`. clangd then reads the script as C++ text, and the grammar does not apply.
+- A real VS Code session was not run here. The grammar snapshot test and the LSP tests with a test client are the evidence.
 
-**Order.** M10, M12, M13, M14 form one chain. M11 runs in parallel and joins M13. The language slices of section 7.10 and M6 run after M10, because both touch the parser.
+**Order.** M10, M12, M13, M14 formed one chain. M11 ran in parallel and joined M13. The language slices of section 7.10 and M6 ran after M10, because both touch the parser.
 
-**Open decisions.** These need an answer before M12:
-1. File extension: decided. The extension is `.spp` and the language id is `spp` (see `DECISIONS.md`).
-2. Fork layout: `spp-llvm` fork as above, a patch series in this repository, or a submodule.
-3. Extension location: `editors/vscode/` here, or a separate repository.
-4. Build order: language server first (M10 to M13) or language v1 (M6) first.
+**Open decisions.** All four are answered (`DECISIONS.md`):
+1. File extension: answered. The extension is `.spp` and the language id is `spp` (item 1).
+2. Fork layout: answered, no fork. The proxy `spp-ls` lives in this repository (item 13).
+3. Extension location: answered. `editors/vscode/` in this repository (item 2).
+4. Build order: answered. The language slices ran before the language server. The tolerant parse (M10) came after the language slices (item 4).
 
 ## 11. Open questions
 
