@@ -1,5 +1,6 @@
 #include "semantic.h"
 
+#include <algorithm>
 #include <map>
 #include <set>
 
@@ -148,6 +149,180 @@ std::vector<SemanticToken> script_tokens(const std::string& text, const sppc::An
         }
     }
     return out;
+}
+
+const std::vector<std::string>& script_keywords()
+{
+    static const std::vector<std::string> k(keywords().begin(), keywords().end());
+    return k;
+}
+
+const std::vector<std::string>& builtin_type_names()
+{
+    static const std::vector<std::string> n = [] {
+        std::vector<std::string> r;
+        for (const sppc::BuiltinType& b : sppc::builtin_types()) {
+            r.push_back(b.script);
+            if (b.alias) r.push_back(b.alias);
+        }
+        return r;
+    }();
+    return n;
+}
+
+namespace {
+
+struct Tok {
+    std::string s;
+    size_t off = 0;
+    bool id = false;
+};
+
+// The identifiers and the punctuation of a script. Comments, strings and numbers are left out.
+std::vector<Tok> tokenize(const std::string& text)
+{
+    std::vector<Tok> out;
+    size_t i = 0;
+    while (i < text.size()) {
+        const char c = text[i];
+        if (c == '/' && i + 1 < text.size() && text[i + 1] == '/') {
+            while (i < text.size() && text[i] != '\n') ++i;
+        } else if (c == '/' && i + 1 < text.size() && text[i + 1] == '*') {
+            const size_t e = text.find("*/", i + 2);
+            i = e == std::string::npos ? text.size() : e + 2;
+        } else if (c == '"' || c == '\'') {
+            size_t e = i + 1;
+            while (e < text.size() && text[e] != c && text[e] != '\n') e += text[e] == '\\' ? 2 : 1;
+            i = std::min(e + 1, text.size());
+        } else if (c >= '0' && c <= '9') {
+            while (i < text.size() && (is_id_char(text[i]) || text[i] == '.')) ++i;
+        } else if (is_id_char(c)) {
+            size_t e = i;
+            while (e < text.size() && is_id_char(text[e])) ++e;
+            out.push_back({text.substr(i, e - i), i, true});
+            i = e;
+        } else {
+            if (c != ' ' && c != '\t' && c != '\r' && c != '\n') out.push_back({std::string(1, c), i, false});
+            ++i;
+        }
+    }
+    return out;
+}
+
+enum class Block { Type, Enum, Body };
+
+struct Scope {
+    Block kind = Block::Body;
+    std::string enum_name;
+    std::vector<ScopeName> locals;
+};
+
+}  // namespace
+
+ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
+{
+    ScriptScope r;
+    const std::vector<Tok> toks = tokenize(text);
+    const std::set<std::string>& kw = keywords();
+    auto is_name = [&](const Tok& t) { return t.id && !kw.count(t.s); };
+    // A word that can stand for a type in a declaration.
+    auto is_type = [&](const Tok& t) { return t.id && (!kw.count(t.s) || t.s == "var" || t.s == "let"); };
+    auto add_unique = [](std::vector<std::string>& v, const std::string& n) {
+        if (std::find(v.begin(), v.end(), n) == v.end()) v.push_back(n);
+    };
+
+    std::vector<Scope> stack;
+    std::vector<ScopeName> params;
+    std::string pending;  // "class", "struct" or "enum" after the keyword, until "{" or ";"
+    std::string pending_name;
+    int par = 0;
+    std::vector<ScopeName> snapshot;
+    bool snapped = false;
+    auto snap = [&] {
+        snapped = true;
+        std::vector<ScopeName> all;
+        for (const Scope& sc : stack)
+            if (sc.kind == Block::Body) all.insert(all.end(), sc.locals.begin(), sc.locals.end());
+        // Parameters of a function header that the cursor is in.
+        all.insert(all.end(), params.begin(), params.end());
+        for (const ScopeName& n : all) {
+            snapshot.erase(std::remove_if(snapshot.begin(), snapshot.end(), [&](const ScopeName& o) { return o.name == n.name; }),
+                           snapshot.end());
+            snapshot.push_back(n);
+        }
+    };
+
+    for (size_t i = 0; i < toks.size(); ++i) {
+        const Tok& t = toks[i];
+        if (!snapped && t.off >= at) snap();
+        if (t.id && t.off == typed_begin) continue;  // the word that is typed
+        const Tok* prev = i > 0 ? &toks[i - 1] : nullptr;
+        const Tok* next = i + 1 < toks.size() ? &toks[i + 1] : nullptr;
+        if (prev && prev->id && prev->off == typed_begin) prev = nullptr;
+        if (!t.id) {
+            if (t.s == "(") ++par;
+            else if (t.s == ")") par = std::max(0, par - 1);
+            else if (t.s == ";") {
+                params.clear();
+                pending.clear();
+            } else if (t.s == "{") {
+                Scope sc;
+                if (pending == "enum") {
+                    sc.kind = Block::Enum;
+                    sc.enum_name = pending_name;
+                } else if (pending == "class" || pending == "struct") {
+                    sc.kind = Block::Type;
+                } else {
+                    sc.locals = params;
+                }
+                pending.clear();
+                params.clear();
+                par = 0;
+                stack.push_back(std::move(sc));
+            } else if (t.s == "}") {
+                if (!stack.empty()) stack.pop_back();
+                params.clear();
+            }
+            continue;
+        }
+        if (t.s == "class" || t.s == "struct" || t.s == "enum") {
+            if (next && is_name(*next)) {
+                pending = t.s;
+                pending_name = next->s;
+                if (t.s == "enum") {
+                    add_unique(r.enums, next->s);
+                    r.enum_members[next->s];
+                } else {
+                    add_unique(t.s == "class" ? r.classes : r.structs, next->s);
+                }
+            }
+            continue;
+        }
+        const Block here = stack.empty() ? Block::Type : stack.back().kind;
+        const bool at_module = stack.empty();
+        if (!at_module && here == Block::Enum) {
+            if (is_name(t) && prev && (prev->s == "{" || prev->s == ",")) r.enum_members[stack.back().enum_name].push_back(t.s);
+            continue;
+        }
+        if (!is_name(t) || !prev || !next) continue;
+        // A declaration: "Type name" followed by "=", ";", "," or ")", or "name in".
+        const bool by_type = is_type(*prev) || ((prev->s == ">" || prev->s == "]") && (next->s == "=" || next->s == ";"));
+        const bool foreach_name = prev->s == "(" && next->id && next->s == "in";
+        const bool ends = next->s == "=" || next->s == ";" || next->s == "," || next->s == ")" || (next->id && next->s == "in");
+        if (!((by_type && ends) || foreach_name)) continue;
+        std::string type = by_type && prev->id ? prev->s : std::string();
+        if (type == "var" || type == "let") type.clear();
+        if (at_module && par == 0) {
+            r.module_vars.push_back({t.s, type, "module variable"});
+        } else if (here == Block::Body) {
+            stack.back().locals.push_back({t.s, type, "local"});
+        } else if (par > 0) {
+            params.push_back({t.s, type, "parameter"});
+        }
+    }
+    if (!snapped) snap();
+    r.locals = std::move(snapshot);
+    return r;
 }
 
 }  // namespace spp::ls

@@ -693,3 +693,188 @@ TEST(LanguageServer, MemberRenameOnAClosedFileAfterARestartUsesTheIndex)
     EXPECT_EQ(r["result"]["changes"][uri_of(other_path)].size(), 3u) << r.dump();
     EXPECT_EQ(analyzed_files(*s.client), 0);
 }
+
+// ------------------------------------------------------------------ S29: completion of all symbols
+
+namespace {
+
+// A script with one of each kind of symbol. "@" marks the cursor.
+const char* const kCompleteScript =
+    "using \"Actor.h\";\n"
+    "using \"Damageable.h\";\n"
+    "\n"
+    "enum Mode { Idle, Walk }\n"
+    "struct Point {\n"
+    "    float x = 0.0;\n"
+    "}\n"
+    "int total = 0;\n"
+    "\n"
+    "class Base : Actor {\n"
+    "    int baseField = 0;\n"
+    "    void baseMethod() { }\n"
+    "}\n"
+    "\n"
+    "class Hero : Base {\n"
+    "    int ticks = 0;\n"
+    "    void run(float speed) {\n"
+    "        int counter = 1;\n"
+    "        Mode current = Mode.Idle;\n"
+    "        @\n"
+    "    }\n"
+    "}\n";
+
+struct Completion {
+    json result;
+    std::vector<std::string> names;
+    bool has(const std::string& n) const { return std::find(names.begin(), names.end(), n) != names.end(); }
+};
+
+// Opens the script (without the "@") and completes at the "@".
+Completion complete_at(bool clangd, std::string text, const std::string& replace = "")
+{
+    const size_t at = text.find('@');
+    text.replace(at, 1, replace);
+    int line = 0, col = 0;
+    for (size_t i = 0; i < at; ++i) {
+        if (text[i] == '\n') {
+            ++line;
+            col = 0;
+        } else {
+            ++col;
+        }
+    }
+    col += static_cast<int>(replace.size());
+    Session s(clangd, text);
+    Completion c;
+    json r = s.client->request("textDocument/completion", doc_pos(s.uri, line, col));
+    c.result = r.contains("result") ? r["result"] : json::object();
+    for (const json& i : c.result.value("items", json::array())) c.names.push_back(i.value("insertText", i.value("label", "")));
+    return c;
+}
+
+}  // namespace
+
+TEST(LanguageServer, CompletionListsLocalsParametersAndModuleVariables)
+{
+    REQUIRE_CLANGD();
+    const Completion c = complete_at(true, kCompleteScript);
+    EXPECT_TRUE(c.has("counter")) << c.result.dump();  // a local
+    EXPECT_TRUE(c.has("current")) << c.result.dump();
+    EXPECT_TRUE(c.has("speed")) << c.result.dump();    // a parameter
+    EXPECT_TRUE(c.has("total")) << c.result.dump();    // a module variable
+}
+
+TEST(LanguageServer, CompletionListsEnumsAndEnumMembers)
+{
+    REQUIRE_CLANGD();
+    const Completion c = complete_at(true, kCompleteScript);
+    EXPECT_TRUE(c.has("Mode")) << c.result.dump();
+    const Completion m = complete_at(true, kCompleteScript, "Mode.");
+    EXPECT_TRUE(m.has("Idle")) << m.result.dump();
+    EXPECT_TRUE(m.has("Walk")) << m.result.dump();
+    EXPECT_FALSE(m.has("counter"));
+}
+
+TEST(LanguageServer, CompletionListsScriptClassesAndTheirOwnAndInheritedMembers)
+{
+    REQUIRE_CLANGD();
+    const Completion c = complete_at(true, kCompleteScript);
+    EXPECT_TRUE(c.has("Hero")) << c.result.dump();
+    EXPECT_TRUE(c.has("Base"));
+    EXPECT_TRUE(c.has("Point"));
+    const Completion m = complete_at(true, kCompleteScript, "this.");
+    EXPECT_TRUE(m.has("ticks")) << m.result.dump();        // own
+    EXPECT_TRUE(m.has("run"));
+    EXPECT_TRUE(m.has("baseField")) << m.result.dump();    // from the script base
+    EXPECT_TRUE(m.has("baseMethod"));
+    EXPECT_TRUE(m.has("Move")) << m.result.dump();         // from the native base
+}
+
+TEST(LanguageServer, CompletionListsNativeTypesAndFreeFunctions)
+{
+    REQUIRE_CLANGD();
+    const Completion c = complete_at(true, kCompleteScript, "Vec");
+    EXPECT_TRUE(c.has("Vec3")) << c.result.dump();  // a native type of Math.h
+    const Completion f = complete_at(true, kCompleteScript, "Hit");
+    bool function = false;
+    for (const json& i : f.result.value("items", json::array()))
+        if (i.value("kind", 0) == 3) function = true;
+    EXPECT_TRUE(function) << f.result.dump();  // a native free function
+}
+
+TEST(LanguageServer, CompletionListsKeywordsAndBuiltinTypes)
+{
+    const Completion c = complete_at(false, kCompleteScript);
+    EXPECT_TRUE(c.has("while")) << c.result.dump();
+    EXPECT_TRUE(c.has("return"));
+    EXPECT_TRUE(c.has("float"));
+    EXPECT_TRUE(c.has("int32"));  // an alias of a builtin type
+}
+
+TEST(LanguageServer, CompletionFiltersByThePrefix)
+{
+    REQUIRE_CLANGD();
+    const Completion c = complete_at(true, kCompleteScript, "co");
+    EXPECT_TRUE(c.has("counter")) << c.result.dump();
+    EXPECT_TRUE(c.has("const"));
+    EXPECT_TRUE(c.has("continue"));
+    EXPECT_FALSE(c.has("total"));
+    EXPECT_FALSE(c.has("while"));
+    for (const json& i : c.result["items"]) {  // the filter text is the name without the namespace
+        std::string n = i.value("filterText", i.value("label", ""));
+        for (char& ch : n) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        EXPECT_EQ(n.substr(0, 2), "co") << i.dump();
+    }
+}
+
+TEST(LanguageServer, CompletionWorksInAnIncompleteStatement)
+{
+    REQUIRE_CLANGD();
+    // The call has no closing bracket and no semicolon.
+    std::string text = kCompleteScript;
+    text.replace(text.find('@'), 1, "this.run(cou@");
+    const Completion c = complete_at(true, text);
+    EXPECT_TRUE(c.has("counter")) << c.result.dump();
+}
+
+TEST(LanguageServer, CompletionFallsBackToTheScriptFactsWhenTheTranslationFails)
+{
+    REQUIRE_CLANGD();
+    // The type "Missing" does not exist. The whole script fails to translate.
+    std::string text = kCompleteScript;
+    text.replace(text.find("@"), 1, "Missing broken = ;\n        @");
+    const Completion c = complete_at(true, text, "cou");
+    EXPECT_TRUE(c.has("counter")) << c.result.dump();  // a script fact
+    const Completion k = complete_at(true, text, "whi");
+    EXPECT_TRUE(k.has("while")) << k.result.dump();     // a keyword
+}
+
+TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
+{
+    REQUIRE_CLANGD();
+    const Completion c = complete_at(true, kCompleteScript);
+    ASSERT_FALSE(c.names.empty());
+    for (const std::string& n : c.names) {
+        for (const char* bad : {"__", "_Shell", "SLOT_", "thunk", "spp_", "_slot", "_layout", "_fields", "SppModule", "_g1"})
+            EXPECT_EQ(n.find(bad), std::string::npos) << n << " has " << bad;
+        EXPECT_NE(n[0], '_') << n;
+    }
+    for (const char* n : {"self", "st", "a"}) EXPECT_FALSE(c.has(n)) << n;
+}
+
+TEST(LanguageServer, CompletionReusesTheAnswerWhileThePrefixGrows)
+{
+    REQUIRE_CLANGD();
+    std::string text = kCompleteScript;
+    text.replace(text.find('@'), 1, "co");
+    Session s(true, text);
+    // The cursor is after "co" on line 19. The next requests have the same rest of the text.
+    const json a = s.client->request("textDocument/completion", doc_pos(s.uri, 19, 10));
+    ASSERT_TRUE(a.contains("result")) << a.dump();
+    const json b = s.client->request("textDocument/completion", doc_pos(s.uri, 19, 10));
+    ASSERT_TRUE(b.contains("result")) << b.dump();
+    EXPECT_EQ(a["result"], b["result"]);
+    bool counter = false;
+    for (const json& i : b["result"]["items"]) counter = counter || i.value("insertText", "") == "counter";
+    EXPECT_TRUE(counter) << b.dump();
+}

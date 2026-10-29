@@ -137,6 +137,14 @@ struct Doc {
     json clang_diags = json::array();  // the mapped clangd diagnostics of gen_version
     // The URIs of the imported scripts that got translator errors from this document.
     std::set<std::string> import_uris;
+    // The last clangd answer of a completion. "rest" is the script text without the word at the
+    // cursor. The answer holds the names that start with "prefix".
+    struct CompletionCache {
+        std::string rest, prefix;
+        bool valid = false, complete = false;
+        json list = json::array();
+    };
+    mutable CompletionCache completion;
 };
 
 class Server {
@@ -411,7 +419,7 @@ json Server::on_initialize(const json& p)
         {"capabilities",
          {{"positionEncoding", utf8_ ? "utf-8" : "utf-16"},
           {"textDocumentSync", {{"openClose", true}, {"change", 1}}},
-          {"completionProvider", {{"triggerCharacters", {"."}}}},
+          {"completionProvider", {{"triggerCharacters", {".", ":"}}}},
           {"hoverProvider", true},
           {"definitionProvider", true},
           {"referencesProvider", true},
@@ -630,85 +638,189 @@ json Server::map_location(const Doc& d, const json& loc) const
     return {{"uri", d.uri}, {"range", script_range(d, {s->line, b}, {s->line, std::max(e, b)})}};
 }
 
+// A word that the translator or the shell makes. It is not a script name (see design 4.2).
+static bool is_generated_name(const std::string& n)
+{
+    static const char* const parts[] = {"__", "_Shell", "_SLOT_", "_thunk", "_slot", "_layout", "_fields", "_g1", "_vtable"};
+    for (const char* x : parts)
+        if (n.find(x) != std::string::npos) return true;
+    return n[0] == '_' || n.compare(0, 4, "spp_") == 0 || n.compare(0, 3, "Spp") == 0 || n == "spp";
+}
+
+static bool has_prefix(const std::string& name, const std::string& prefix)
+{
+    if (name.size() < prefix.size()) return false;
+    for (size_t i = 0; i < prefix.size(); ++i)
+        if (std::tolower(static_cast<unsigned char>(name[i])) != std::tolower(static_cast<unsigned char>(prefix[i]))) return false;
+    return true;
+}
+
 json Server::on_completion(const Doc& d, const json& p)
 {
     const Pos cur = from_lsp(d.text, p["position"], utf8_);
     const std::string& t = d.text.s;
     const size_t off = d.text.offset(cur.line, cur.col);
-    size_t s = off;
+    // The word at the cursor is [s, e). The typed prefix is [s, off).
+    size_t s = off, e = off;
     while (s > 0 && is_id_char(t[s - 1])) --s;
+    while (e < t.size() && is_id_char(t[e])) ++e;
+    const std::string prefix = t.substr(s, off - s);
     const bool after_dot = s > 0 && t[s - 1] == '.';
-    const bool after_this = after_dot && s >= 5 && t.compare(s - 5, 5, "this.") == 0 && (s == 5 || !is_id_char(t[s - 6]));
+    const bool after_scope = s >= 2 && t[s - 1] == ':' && t[s - 2] == ':';
+    const json empty = {{"isIncomplete", false}, {"items", json::array()}};
+    // A single ":" is a trigger character only for "::".
+    if (p.value("/context/triggerCharacter"_json_pointer, std::string()) == ":" && !after_scope) return empty;
+    // No completion in a line comment.
+    const size_t line_begin = d.text.starts[static_cast<size_t>(cur.line)];
+    if (t.substr(line_begin, off - line_begin).find("//") != std::string::npos) return empty;
 
+    const bool member = after_dot || after_scope;
     json items = json::array();
     std::set<std::string> names;
-    // The script members of the class at the cursor (clangd does not see them on the shell).
-    if (after_this) {
-        const sppc::AnalyzedClass* cls = nullptr;
-        for (const sppc::AnalyzedClass& c : d.facts.classes)
-            if (Pos{c.begin.line - 1, c.begin.col - 1} < Pos{cur.line, cur.col + 1}) cls = &c;
-        if (cls) {
+    auto add = [&](const std::string& name, int kind, const std::string& detail, const std::string& sort,
+                   const std::string& label = std::string()) {
+        if (name.empty() || !has_prefix(name, prefix) || !names.insert(name).second) return;
+        json item = {{"label", label.empty() ? name : label}, {"kind", kind}, {"insertText", name},
+                     {"filterText", name}, {"sortText", sort + name}};
+        if (!detail.empty()) item["detail"] = detail;
+        items.push_back(std::move(item));
+    };
+
+    // ---- the script facts (they work without clangd)
+    const ScriptScope scope = scan_scope(t, s, s);
+    // The members of a script class and of its script bases. clangd does not see them on the shell.
+    auto add_members = [&](const std::string& class_name) {
+        std::set<std::string> seen;
+        for (std::string n = class_name; !n.empty() && seen.insert(n).second;) {
+            const sppc::AnalyzedClass* cls = nullptr;
+            for (const sppc::AnalyzedClass& c : d.facts.classes)
+                if (c.name == n) cls = &c;
+            if (!cls) break;
             for (const sppc::AnalyzedMember& m : cls->members) {
                 int kind = 0;
                 if (m.kind == "field") kind = 5;
                 else if (m.kind == "method") kind = 2;
                 else if (m.kind == "property") kind = 10;
-                if (!kind || !names.insert(m.name).second) continue;
-                items.push_back({{"label", m.name}, {"kind", kind}, {"detail", "script " + m.kind + " of " + cls->name},
-                                 {"insertText", m.name}, {"sortText", "0" + m.name}});
+                if (kind) add(m.name, kind, "script " + m.kind + " of " + cls->name, "0");
             }
+            n = cls->base;
         }
+    };
+    if (after_dot) {
+        size_t ob = s - 1;
+        while (ob > 0 && is_id_char(t[ob - 1])) --ob;
+        const std::string obj = t.substr(ob, s - 1 - ob);
+        if (obj == "this") {
+            const sppc::AnalyzedClass* cls = nullptr;
+            for (const sppc::AnalyzedClass& c : d.facts.classes)
+                if (Pos{c.begin.line - 1, c.begin.col - 1} < Pos{cur.line, cur.col + 1}) cls = &c;
+            if (cls) add_members(cls->name);
+        } else if (const auto en = scope.enum_members.find(obj); en != scope.enum_members.end()) {
+            for (const std::string& m : en->second) add(m, 20, "enumerator of " + obj, "0");
+        } else {
+            std::string type;
+            for (const ScopeName& n : scope.locals)
+                if (n.name == obj) type = n.type;
+            for (const ScopeName& n : scope.module_vars)
+                if (n.name == obj && type.empty()) type = n.type;
+            if (!type.empty()) add_members(type);
+        }
+    } else if (!member) {
+        for (const ScopeName& n : scope.locals) add(n.name, 6, n.detail + (n.type.empty() ? "" : ": " + n.type), "0");
+        for (const ScopeName& n : scope.module_vars) add(n.name, 6, n.detail + (n.type.empty() ? "" : ": " + n.type), "0");
+        for (const std::string& n : scope.enums) add(n, 13, "script enum", "1");
+        for (const std::string& n : scope.classes) add(n, 7, "script class", "1");
+        for (const std::string& n : scope.structs) add(n, 22, "script struct", "1");
     }
 
-    // The clangd part. The word at the cursor is replaced by a placeholder name, so the statement
-    // translates and clangd completes at its generated place. The real text comes back after.
+    // ---- the clangd part. The word at the cursor is replaced by the typed prefix and a placeholder
+    // name, so the statement translates and clangd completes at its generated place. The real text
+    // comes back after. The last answer is reused while only the prefix grows: clangd filters by
+    // the prefix, so an answer that was not cut by the limit holds the longer prefix too.
+    bool incomplete = false;
     if (clangd_ && clangd_->running()) {
-        size_t n = off;
-        while (n < t.size() && (t[n] == ' ' || t[n] == '\t' || t[n] == '\r' || t[n] == '\n')) ++n;
-        const bool end = n < t.size() && std::string_view(";),]([+-*/%=<>!&|^?:.").find(t[n]) != std::string_view::npos;
-        const std::string patched = t.substr(0, s) + kHole + (end ? "" : ";") + t.substr(off);
-        sppc::AnalyzeResult facts = sppc::analyze(patched, translate_options(d), session_);
-        const Pos hole = {cur.line, static_cast<int>(s - d.text.starts[static_cast<size_t>(cur.line)])};
-        const auto g = facts.cpp.empty() ? std::nullopt : facts.source_map.map_to_generated(hole.line + 1, hole.col + 1);
-        std::optional<json> r;
-        if (g) {
-            Doc& md = const_cast<Doc&>(d);
-            const Text gen(facts.cpp);
-            send_generated(md, facts.cpp);
-            // Before its first preamble, clangd gives only "fallback" words of the file. A
-            // request that needs the AST waits for the preamble.
-            if (preamble_ready_.insert(d.gen_uri).second)
-                clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}});
-            r = clangd_result("textDocument/completion",
-                              {{"textDocument", {{"uri", d.gen_uri}}},
-                               {"position", to_lsp(gen, {g->line - 1, g->col - 1}, clangd_utf8_)}});
-            std::lock_guard<std::mutex> lock(docs_mutex_);
-            md.gen_version = md.sent_version + 1;  // before the send: the diagnostics can come at once
-            send_generated(md, d.gen.s);
+        Doc::CompletionCache& cc = d.completion;
+        const std::string rest = t.substr(0, s) + '\x01' + t.substr(e);
+        const bool hit = cc.valid && cc.complete && cc.rest == rest && prefix.compare(0, cc.prefix.size(), cc.prefix) == 0;
+        if (!hit) {
+            size_t n = e;
+            while (n < t.size() && (t[n] == ' ' || t[n] == '\t' || t[n] == '\r' || t[n] == '\n')) ++n;
+            const bool end = n < t.size() && std::string_view(";),]([+-*/%=<>!&|^?:.").find(t[n]) != std::string_view::npos;
+            // The brackets that the statement before the word leaves open.
+            std::string closers;
+            if (!end) {
+                std::vector<char> open;
+                for (size_t i = s; i > 0 && t[i - 1] != ';' && t[i - 1] != '{' && t[i - 1] != '}'; --i) {
+                    const char c = t[i - 1];
+                    if (c == ')' || c == ']') open.push_back(c == ')' ? '(' : '[');
+                    else if (c == '(' || c == '[') {
+                        if (!open.empty() && open.back() == c) open.pop_back();
+                        else closers += c == '(' ? ')' : ']';
+                    }
+                }
+            }
+            const std::string patched = t.substr(0, s) + prefix + kHole + closers + (end ? "" : ";") + t.substr(e);
+            sppc::AnalyzeResult facts = sppc::analyze(patched, translate_options(d), session_);
+            const Pos hole = {cur.line, static_cast<int>(s - d.text.starts[static_cast<size_t>(cur.line)])};
+            const auto g = facts.cpp.empty() ? std::nullopt : facts.source_map.map_to_generated(hole.line + 1, hole.col + 1);
+            std::optional<json> r;
+            if (g) {
+                Doc& md = const_cast<Doc&>(d);
+                const Text gen(facts.cpp);
+                send_generated(md, facts.cpp);
+                // Before its first preamble, clangd gives only "fallback" words of the file. A
+                // request that needs the AST waits for the preamble.
+                if (preamble_ready_.insert(d.gen_uri).second)
+                    clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}});
+                r = clangd_result("textDocument/completion",
+                                  {{"textDocument", {{"uri", d.gen_uri}}},
+                                   {"position", to_lsp(gen, {g->line - 1, g->col - 1 + static_cast<int>(prefix.size())}, clangd_utf8_)}});
+                std::lock_guard<std::mutex> lock(docs_mutex_);
+                md.gen_version = md.sent_version + 1;  // before the send: the diagnostics can come at once
+                send_generated(md, d.gen.s);
+            }
+            cc.rest = rest;
+            cc.prefix = prefix;
+            cc.valid = true;
+            // A translation that fails stays failed while the prefix grows.
+            cc.complete = !g || (r && !(r->is_object() && r->value("isIncomplete", false)));
+            cc.list = r ? (r->is_array() ? *r : r->value("items", json::array())) : json::array();
         }
-        const json list = r ? (r->is_array() ? *r : r->value("items", json::array())) : json::array();
-        for (const json& it : list) {
+        incomplete = !cc.complete;
+        for (const json& it : cc.list) {
             std::string name = it.value("filterText", std::string());
             if (name.empty()) name = it.value("insertText", it.value("label", std::string()));
             const int kind = it.value("kind", 1);
             // The names of the generated code and of the shell are not script names.
-            if (name.empty() || name == kHole || name.find("__") != std::string::npos ||
-                name.find("_Shell") != std::string::npos || name.compare(0, 8, "operator") == 0 || name[0] == '~' ||
-                kind == 4 || name.find("::") != std::string::npos)
+            if (name.empty() || name.find(kHole) != std::string::npos || is_generated_name(name) ||
+                name.compare(0, 8, "operator") == 0 || name[0] == '~' || kind == 4 || name.find("::") != std::string::npos)
                 continue;
             if (after_dot && (name == "cls" || name == "state")) continue;  // spp::ShellBase (runtime/shell.h)
-            if (!after_dot && (kind != 6 || name == "self" || name == "st" || name == "a")) continue;
-            if (!names.insert(name).second) continue;
+            if (!member) {
+                // A name in scope: a variable, a function, a type, an enumerator, a namespace.
+                static const std::set<int> kinds = {3, 6, 7, 9, 13, 20, 21, 22};
+                if (!kinds.count(kind) || name == "self" || name == "st" || name == "a") continue;
+            }
             std::string label = it.value("label", name);
             while (!label.empty() && (label[0] == ' ')) label.erase(0, 1);
             if (label.compare(0, 3, "\xE2\x80\xA2") == 0) label.erase(0, 3);  // the include bullet
-            json item = {{"label", sppc::rewrite_generated_names(label)}, {"kind", kind}, {"insertText", name},
-                         {"filterText", name}, {"sortText", "1" + it.value("sortText", name)}};
+            if (!has_prefix(name, prefix) || !names.insert(name).second) continue;
+            // A name from a namespace comes as "std::string": the script form is "std.string".
+            std::string insert = it.value("insertText", name);
+            insert = insert.find("::") != std::string::npos ? sppc::rewrite_generated_names(insert) : name;
+            json item = {{"label", sppc::rewrite_generated_names(label)}, {"kind", kind}, {"insertText", insert},
+                         {"filterText", name}, {"sortText", "2" + it.value("sortText", name)}};
             if (it.contains("detail")) item["detail"] = sppc::rewrite_generated_names(it.value("detail", std::string()));
             items.push_back(std::move(item));
         }
     }
-    return {{"isIncomplete", false}, {"items", items}};
+
+    // ---- the keywords and the builtin types
+    if (!member) {
+        for (const std::string& k : script_keywords()) add(k, 14, "keyword", "3");
+        for (const std::string& k : builtin_type_names()) add(k, 25, "builtin type", "3");
+    }
+    return {{"isIncomplete", incomplete}, {"items", items}};
 }
 
 json Server::on_hover(const Doc& d, const json& p)

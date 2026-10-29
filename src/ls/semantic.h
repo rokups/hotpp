@@ -1,6 +1,7 @@
 // The script facts that the server makes without clangd: semantic tokens and text helpers.
 #pragma once
 
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -20,6 +21,31 @@ struct SemanticToken {
 // The tokens of a script: keywords, types, classes, methods, properties, numbers, strings and
 // comments. The names come from the facts of analyze(). A token never spans two lines.
 std::vector<SemanticToken> script_tokens(const std::string& text, const sppc::AnalyzeResult& facts);
+
+// The keywords of the script, and the names of its builtin types (with the aliases).
+const std::vector<std::string>& script_keywords();
+const std::vector<std::string>& builtin_type_names();
+
+// A name that the script declares, for a completion list.
+struct ScopeName {
+    std::string name;
+    std::string type;    // the declared type as written, or empty
+    std::string detail;  // "local", "parameter" or "module variable"
+};
+
+// The script names that a completion at one place can use. The scan reads the tokens only: it
+// works on a script with syntax errors.
+struct ScriptScope {
+    std::vector<ScopeName> locals;                                   // locals and parameters in scope
+    std::vector<ScopeName> module_vars;                              // the variables at module level
+    std::vector<std::string> enums;                                  // the script enums
+    std::map<std::string, std::vector<std::string>> enum_members;    // the enumerators of each enum
+    std::vector<std::string> classes, structs;                       // the script classes and structs
+};
+
+// Scans "text". The locals are the ones in scope at the byte offset "at". The word that starts at
+// "typed_begin" is the word that the user types: it is not a declaration.
+ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin);
 
 // The byte offset of the start of each line.
 std::vector<size_t> line_starts(const std::string& text);
