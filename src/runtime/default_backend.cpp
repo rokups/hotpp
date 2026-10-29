@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "spp/backend.h"
+#include "spp/scratch.h"
 #if defined(SPP_BACKEND_CLANG_FILES)
 #include "spp/clang_files_backend.h"
 #elif defined(SPP_BACKEND_JIT)
@@ -45,6 +46,8 @@ std::unique_ptr<Backend> make_default_backend()
     o.work_dir = std::string(SPP_DEFAULT_WORK_DIR) + "/p" + std::to_string(getpid());
     std::error_code ec;
     std::filesystem::remove_all(o.work_dir, ec);
+    // Only this p<pid> directory goes. The parent directory is shared with other processes.
+    o.remove_work_dir_at_exit = !keep_temp();
     return std::make_unique<ClangFilesBackend>(std::move(o));
 #elif defined(SPP_BACKEND_JIT)
     JitOptions o;

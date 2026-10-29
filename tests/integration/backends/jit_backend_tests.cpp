@@ -3,7 +3,7 @@
 // The backend must not write a file and must not start a process. These tests
 // check this, and they check that a generation can go away.
 //
-// CMake defines these macros: SPP_SOURCE_DIR, SPP_CXX and SPP_RESOURCE_DIR.
+// CMake defines these macros: SPP_SOURCE_DIR, SPP_SCRATCH_DIR, SPP_CXX and SPP_RESOURCE_DIR.
 #include <gtest/gtest.h>
 
 #include <sys/resource.h>
@@ -22,6 +22,7 @@
 #include "support/dwarf_lines.h"
 #include "support/f1_scenario.h"
 #include "support/script_files.h"
+#include "support/scratch_dir.h"
 
 // The GDB JIT interface (the layout is fixed by the GDB manual). LLVM defines the descriptor.
 extern "C" {
@@ -261,7 +262,8 @@ TEST(JitTests, DebuggerGetsObjectWithScriptLines)
     ASSERT_NE(last, nullptr) << "no object was registered";
     while (last->next_entry) last = last->next_entry;
     ASSERT_GT(last->symfile_size, 0u);
-    const std::string image = std::string(SPP_BINARY_DIR) + "/jit_debug_object.o";
+    test_support::TestScratch scratch;
+    const std::string image = scratch.file("jit_debug_object.o");
     {
         std::ofstream f(image, std::ios::binary);
         f.write(last->symfile_addr, static_cast<std::streamsize>(last->symfile_size));

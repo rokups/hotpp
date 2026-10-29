@@ -9,7 +9,7 @@ You continue work on `/home/rk/src/spp`. S++ is a hot-reloadable scripting langu
 
 ## Rules from the user
 - Write all prose in ASD-STE100 Simplified Technical English. This includes code comments, documents, commit message bodies and subagent prompts. Maximum 20 words per sentence.
-- All tests are GoogleTest. Register them with `gtest_discover_tests`.
+- All tests are GoogleTest. Register them with `spp_gtest`.
 - Fetch dependencies through CPM.cmake when they are not installed (`CPM_USE_LOCAL_PACKAGES ON`). Libclang and LLVM come from the system.
 - Commit messages: short title, terse body. No attribution lines of any kind.
 - Subagents: set `model` and `effort` on every Agent call. Use the cheapest suitable model.

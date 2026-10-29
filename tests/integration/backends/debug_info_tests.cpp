@@ -4,7 +4,7 @@
 // tests read the table with llvm-dwarfdump. They skip when the tool is not installed.
 // The debugger itself (lldb, gdb) is not started here.
 //
-// CMake defines these macros: SPP_SOURCE_DIR, SPP_BINARY_DIR, SPP_CXX and PRE_V2_SO.
+// CMake defines these macros: SPP_SOURCE_DIR, SPP_SCRATCH_DIR, SPP_CXX and PRE_V2_SO.
 #include <gtest/gtest.h>
 
 #include <filesystem>
@@ -14,11 +14,10 @@
 #include <string>
 #include <vector>
 
-#include <unistd.h>
-
 #include "spp/sppc_lib.h"
 #include "support/dwarf_lines.h"
 #include "support/script_files.h"
+#include "support/scratch_dir.h"
 
 namespace {
 
@@ -50,9 +49,8 @@ const Compiled& compile_with_debug_info(const std::string& script, const std::st
     auto found = cache.find(key);
     if (found != cache.end()) return found->second;
     // CTest starts the tests in parallel as separate processes. A directory for each process
-    // stops them from writing the same files. The directory is removed at the end.
-    const std::string dir = std::string(SPP_BINARY_DIR) + "/debug_info/" + std::to_string(getpid());
-    fs::create_directories(dir);
+    // stops them from writing the same files. The directory is removed when the process ends.
+    const std::string dir = test_support::process_scratch("debug_info").path();
     sppc::TranslateOptions to;
     to.script_name = script + ".spp";
     to.script_text = test_support::read_file(std::string(SPP_SOURCE_DIR) + "/example/scripts/" + script + ".spp");
@@ -77,7 +75,6 @@ const Compiled& compile_with_debug_info(const std::string& script, const std::st
     c.info = test_support::dump_debug_info(library);
     c.lines = test_support::dump_line_table(library);
     c.functions = test_support::functions_of(c.info);
-    fs::remove_all(dir);
     return cache[key] = c;
 }
 
@@ -119,8 +116,8 @@ TEST(DebugInfo, LibraryFromSppcHasLinesOfTheScript)
 TEST(DebugInfo, LineTablesOnlyKeepsTheScriptLines)
 {
     if (!have_dwarfdump()) GTEST_SKIP() << "llvm-dwarfdump is not installed";
-    const std::string dir = std::string(SPP_BINARY_DIR) + "/debug_info";
-    fs::create_directories(dir);
+    test_support::TestScratch scratch;
+    const std::string dir = scratch.path();
     sppc::TranslateOptions to;
     to.script_name = "player_v2.spp";
     to.script_text = test_support::read_file(std::string(SPP_SOURCE_DIR) + "/example/scripts/player_v2.spp");

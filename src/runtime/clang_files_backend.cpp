@@ -11,6 +11,7 @@
 #include <fstream>
 #include <sstream>
 
+#include "spp/scratch.h"
 #include "spp/sppc_lib.h"
 
 extern char** environ;
@@ -82,6 +83,11 @@ ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options) : opt_(std::move
 {
     if (!opt_.session) opt_.session = std::make_shared<sppc::TranslatorSession>();
     if (opt_.slots_file.empty()) opt_.slots_file = opt_.work_dir + "/slots.txt";
+}
+
+ClangFilesBackend::~ClangFilesBackend()
+{
+    if (opt_.remove_work_dir_at_exit) remove_scratch(opt_.work_dir);
 }
 
 std::vector<std::string> compile_command(const ClangFilesOptions& opt, const std::string& cpp_path,

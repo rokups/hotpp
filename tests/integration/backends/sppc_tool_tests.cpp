@@ -1,6 +1,6 @@
 // Tests of the tool sppc as a child process.
 //
-// CMake defines these macros: SPP_SOURCE_DIR, SPP_BINARY_DIR, SPPC_PATH and SPP_CXX.
+// CMake defines these macros: SPP_SOURCE_DIR, SPP_SCRATCH_DIR, SPPC_PATH and SPP_CXX.
 #include <gtest/gtest.h>
 
 #include <sys/wait.h>
@@ -14,6 +14,7 @@
 #include "spp/backend.h"
 #include "spp/clang_files_backend.h"
 #include "support/script_files.h"
+#include "support/scratch_dir.h"
 #include "support/test_support.h"
 
 namespace {
@@ -21,12 +22,13 @@ namespace {
 using test_support::expect_errors_at_script;
 using test_support::line_with;
 using test_support::read_file;
+using test_support::TestScratch;
 
 // sppc on a bad script: exit code 1, an error at the script line, no library.
 TEST(SppcTool, SppcReportsErrorAtTheScriptLine)
 {
-    const std::string out_dir = std::string(SPP_BINARY_DIR) + "/sppc_diag";
-    std::filesystem::remove_all(out_dir);
+    TestScratch scratch;
+    const std::string out_dir = scratch.file("sppc_diag");
     const std::string script = std::string(SPP_SOURCE_DIR) + "/example/scripts/bad.spp";
     const std::string cmd = std::string("'") + SPPC_PATH + "' '" + script + "' --gen 1 --out-dir '" +
                             out_dir + "' -I '" + SPP_SOURCE_DIR + "/example/engine' -I '" + SPP_SOURCE_DIR +
@@ -46,8 +48,8 @@ TEST(SppcTool, SppcReportsErrorAtTheScriptLine)
 // The error text speaks script names. --raw-diagnostics gives the text of the compiler.
 TEST(SppcTool, RawDiagnosticsKeepsTheCompilerText)
 {
-    const std::string out_dir = std::string(SPP_BINARY_DIR) + "/sppc_raw_diag";
-    std::filesystem::remove_all(out_dir);
+    TestScratch scratch;
+    const std::string out_dir = scratch.file("sppc_raw_diag");
     const std::string script = std::string(SPP_SOURCE_DIR) + "/example/scripts/bad.spp";
     const std::string base = std::string("'") + SPPC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir +
                              "' -I '" + SPP_SOURCE_DIR + "/example/engine' -I '" + SPP_SOURCE_DIR +
@@ -97,8 +99,8 @@ TEST(SppcTool, EmitCppModeTranslatesWithoutCompiling)
         << text;
     EXPECT_NE(text.find("spp::deref"), std::string::npos);
 
-    const std::string out = std::string(SPP_BINARY_DIR) + "/sppc_emit.cpp";
-    std::filesystem::remove(out);
+    TestScratch scratch;
+    const std::string out = scratch.file("sppc_emit.cpp");
     std::string text2;
     EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp " + player_args() + " -o '" + out +
                               "' 2>&1",
@@ -113,7 +115,8 @@ TEST(SppcTool, EmitCppModeTranslatesWithoutCompiling)
 // the plain translator text.
 TEST(SppcTool, TranslatorErrorHasTheFinalForm)
 {
-    const std::string script = std::string(SPP_BINARY_DIR) + "/sppc_final_form.spp";
+    TestScratch scratch;
+    const std::string script = scratch.file("sppc_final_form.spp");
     {
         std::ofstream f(script);
         f << "class Foo {\n    void Run() { int x = ; }\n}\n";
@@ -140,8 +143,8 @@ TEST(SppcTool, TranslatorErrorHasTheFinalForm)
 // sppc -o x.so builds one library. A mode flag of the other mode gives a usage error.
 TEST(SppcTool, OutputOptionBuildsOneLibrary)
 {
-    const std::string dir = std::string(SPP_BINARY_DIR) + "/sppc_one_so";
-    std::filesystem::remove_all(dir);
+    TestScratch scratch;
+    const std::string dir = scratch.file("sppc_one_so");
     std::filesystem::create_directories(dir);
     std::string text;
     EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' " + player_args() + " -o '" + dir +
@@ -161,7 +164,8 @@ TEST(SppcTool, OutputOptionBuildsOneLibrary)
 // A field with a borrowed pointer is an error by default. --no-strict-borrowed makes it a warning.
 TEST(SppcTool, StrictBorrowedIsTheDefault)
 {
-    const std::string script = std::string(SPP_BINARY_DIR) + "/sppc_strict.spp";
+    TestScratch scratch;
+    const std::string script = scratch.file("sppc_strict.spp");
     {
         std::FILE* f = std::fopen(script.c_str(), "w");
         ASSERT_NE(f, nullptr);
@@ -196,9 +200,9 @@ const char* kInterpScript =
     "    }\n"
     "}\n";
 
-std::string write_interp_script(const std::string& name)
+std::string write_interp_script(const TestScratch& scratch, const std::string& name)
 {
-    const std::string script = std::string(SPP_BINARY_DIR) + "/" + name;
+    const std::string script = scratch.file(name);
     std::FILE* f = std::fopen(script.c_str(), "w");
     if (f) {
         std::fputs(kInterpScript, f);
@@ -216,7 +220,8 @@ std::string engine_args()
 // --format=fmt only changes the text. The default is std::format.
 TEST(SppcTool, FormatOptionSelectsTheFormatFunction)
 {
-    const std::string script = write_interp_script("sppc_interp_text.spp");
+    TestScratch scratch;
+    const std::string script = write_interp_script(scratch, "sppc_interp_text.spp");
     std::string std_text, fmt_text, bad;
     EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1",
                           std_text),
@@ -239,7 +244,7 @@ TEST(SppcTool, FormatOptionSelectsTheFormatFunction)
               2);
 #if __has_include(<fmt/format.h>)
     // fmt is installed: the generated text compiles.
-    const std::string out = std::string(SPP_BINARY_DIR) + "/sppc_interp_fmt.cpp";
+    const std::string out = scratch.file("sppc_interp_fmt.cpp");
     std::string log;
     EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp --format=fmt -o '" + out + "' '" + script +
                               "'" + engine_args() + " 2>&1",
@@ -260,9 +265,9 @@ TEST(SppcTool, FormatOptionSelectsTheFormatFunction)
 // The script is compiled with std::format and run.
 TEST(SppcTool, InterpolationRunsWithStdFormat)
 {
-    const std::string script = write_interp_script("sppc_interp_run.spp");
-    const std::string so = std::string(SPP_BINARY_DIR) + "/sppc_interp_run.so";
-    std::filesystem::remove(so);
+    TestScratch scratch;
+    const std::string script = write_interp_script(scratch, "sppc_interp_run.spp");
+    const std::string so = scratch.file("sppc_interp_run.so");
     std::string log;
     ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so +
                               "' --cxx '" + SPP_CXX + "' 2>&1",
@@ -279,8 +284,8 @@ TEST(SppcTool, InterpolationRunsWithStdFormat)
 // --ship writes the C++ of each script and the registration file. It does not compile.
 TEST(SppcTool, ShipModeWritesTheCppAndTheRegistrationFile)
 {
-    const std::string out_dir = std::string(SPP_BINARY_DIR) + "/sppc_ship";
-    std::filesystem::remove_all(out_dir);
+    TestScratch scratch;
+    const std::string out_dir = scratch.file("sppc_ship");
     const std::string scripts = std::string("'") + SPP_SOURCE_DIR + "/example/scripts/ship_demo.spp' '" +
                                 SPP_SOURCE_DIR + "/example/scripts/props_v1.spp'";
     const std::string cmd = std::string("'") + SPPC_PATH + "' --ship " + scripts + " --out-dir '" + out_dir +
@@ -319,8 +324,8 @@ TEST(SppcTool, ShipModeRejectsBadUsage)
 // registration file. A type error appears later, in the compile of the library.
 TEST(SppcTool, ShipModeReportsParseErrorAtTheScriptLine)
 {
-    const std::string out_dir = std::string(SPP_BINARY_DIR) + "/sppc_ship_bad";
-    std::filesystem::remove_all(out_dir);
+    TestScratch scratch;
+    const std::string out_dir = scratch.file("sppc_ship_bad");
     std::filesystem::create_directories(out_dir);
     const std::string script = out_dir + "/broken.spp";
     {
@@ -381,10 +386,9 @@ TEST(SppcTool, CompileCommandUsesTheBackendFlags)
 TEST(SppcTool, CompileCommandsOptionWritesTheDatabase)
 {
     namespace fs = std::filesystem;
-    const std::string out_dir = std::string(SPP_BINARY_DIR) + "/sppc_cdb";
-    const std::string cdb_dir = std::string(SPP_BINARY_DIR) + "/sppc_cdb_json";
-    fs::remove_all(out_dir);
-    fs::remove_all(cdb_dir);
+    TestScratch scratch;
+    const std::string out_dir = scratch.file("sppc_cdb");
+    const std::string cdb_dir = scratch.file("sppc_cdb_json");
     const std::string script = std::string(SPP_SOURCE_DIR) + "/example/scripts/boss_v1.spp";
     const std::string engine = std::string(SPP_SOURCE_DIR) + "/example/engine";
     const std::string inc = std::string(SPP_SOURCE_DIR) + "/include";

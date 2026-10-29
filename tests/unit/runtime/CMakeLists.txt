@@ -8,6 +8,7 @@ add_executable(unit_runtime_tests
     shell_tests.cpp
     log_text_tests.cpp
     file_watcher_tests.cpp
-    entry_counter_tests.cpp)
+    entry_counter_tests.cpp
+    scratch_tests.cpp)
 target_link_libraries(unit_runtime_tests PRIVATE spp_runtime engine_harness GTest::gtest_main)
-gtest_discover_tests(unit_runtime_tests)
+spp_gtest(unit_runtime_tests)

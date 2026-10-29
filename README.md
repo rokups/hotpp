@@ -48,9 +48,34 @@ The file `CMakePresets.json` has the presets. A build goes to `cmake-build/<pres
 - The build presets end with `-dbg` or `-rel`.
 - The JIT backend also works with ThreadSanitizer. ORC and ThreadSanitizer do not conflict.
 
+### Build tree layout
+
+The source tree has one `CMakeLists.txt` in each directory (`src/*`, `example/*`, `tests/*`). The build tree `cmake-build/<preset>` has these folders:
+
+- `bin/<CONFIG>/` has the executables.
+- `lib/<CONFIG>/` has the libraries and the fixture `.so` files.
+- `spp_scripts/` and `spp_ship/` have the precompiled scripts.
+- `tmp/` has the scratch files: the work directories, the directory of each test, the ImGui work directory and `imgui.ini`. ctest and the programs remove them by default.
+- `tests/**` has the ctest discovery files.
+
+To keep the scratch files, set the CMake option or the environment variable.
+
+    cmake -DSPP_KEEP_TEMP=ON ...
+    SPP_KEEP_TEMP=1 ctest --preset linux-clang-files-dbg
+
+- The environment variable overrides the option. The value `0` or an empty value means off.
+- The backend then keeps `tmp/spp_work/p<pid>`.
+- Each test keeps `tmp/tests/<Suite>.<Test>/p<pid>`.
+- ctest runs the fixture `spp_scratch_clean` first. It wipes `tmp/tests`, `tmp/spp_work` and `tmp/bench`, unless keep is on.
+
+To purge an old build tree, remove the preset directory and configure again:
+
+    rm -rf cmake-build/<preset>
+    cmake --preset <preset>
+
 ## Run
 
-    cmake-build/linux-clang-files/Debug/minengine cmake-build/linux-clang-files/Debug/tests/integration/fixtures/gen1.so
+    cmake-build/linux-clang-files/bin/Debug/minengine cmake-build/linux-clang-files/lib/Debug/gen1.so
 
 The command loads `gen1.so` and makes one `Player`. It ticks the world 3 times. It exits with 0 on success.
 
@@ -58,7 +83,7 @@ The test `ReloadMigration` uses the path of a library that does not exist (`gen3
 
 ## Translator
 
-    cmake-build/linux-clang-files/Debug/sppc --emit-cpp example/scripts/player_v1.spp --gen 1 -o out.cpp -I include -I example/engine --slots player.slots
+    cmake-build/linux-clang-files/bin/Debug/sppc --emit-cpp example/scripts/player_v1.spp --gen 1 -o out.cpp -I include -I example/engine --slots player.slots
 
 `sppc --emit-cpp` is a thin wrapper. It reads the files and calls `sppc::translate` from `sppc_lib` (`include/spp/sppc_lib.h`). The function takes strings: script text, script name for `#line`, generation, slot file content, include dirs and resource dir. It returns strings: C++ text, new slot file content and diagnostics. It does not write a file. The translator reads the script and the imported headers. It asks libclang (C API) for the virtual methods of the native base class. A `sppc::TranslatorSession` keeps the answer, see "Translator session". It writes the shell (one stub for each virtual), the state struct, the reflection table, the generation functions, the thunks and the record. It writes `#line` directives, so a Clang error points to the script line. It reports a missing pure virtual override and an override of a `final` method. A method with the name of a base virtual method and other parameter types is an error (it hides the virtual method).
 
@@ -146,7 +171,7 @@ Facts that differ from the first design:
 
 ### Measurements
 
-Machine: 32 threads, Linux 7.2, clang 23.1.3, `-O0`/`-O1` as noted, the page cache is warm. Tool: `cmake-build/<preset>/Debug/bench_backends` (`example/bench_backends.cpp`, `std::chrono`). Times in ms for one `load` (translate + compile + load) of `player_v1.spp` (v1) and `player_v2.spp` (v2). "Cold" is the first load in a new process (a new session). "Warm" is the median of 5 later loads in the same process. Warm backends share one translator session, except in the rows "no cache" (`--no-cache`). Cold v1 always parses the headers. Cold v2 and all warm loads use the cache, except v1 in the rows "no cache".
+Machine: 32 threads, Linux 7.2, clang 23.1.3, `-O0`/`-O1` as noted, the page cache is warm. Tool: `cmake-build/<preset>/bin/Debug/bench_backends` (`example/bench_backends.cpp`, `std::chrono`). Times in ms for one `load` (translate + compile + load) of `player_v1.spp` (v1) and `player_v2.spp` (v2). "Cold" is the first load in a new process (a new session). "Warm" is the median of 5 later loads in the same process. Warm backends share one translator session, except in the rows "no cache" (`--no-cache`). Cold v1 always parses the headers. Cold v2 and all warm loads use the cache, except v1 in the rows "no cache".
 
 | Configuration | v1 cold | v2 cold | v1 warm | v2 warm |
 |---|---|---|---|---|
@@ -277,7 +302,7 @@ Options to force the fetch:
 
     cmake --build --preset linux-clang-files-dbg && ctest --preset linux-clang-files-dbg
 
-All tests are GoogleTest cases. CMake registers them with `gtest_discover_tests`.
+All tests are GoogleTest cases. CMake registers them with `spp_gtest` (a wrapper of `gtest_discover_tests`).
 
 - `HandwrittenGeneration` (`tests/integration/reload/handwritten_generation_tests.cpp`) loads `gen1.so` and makes one `Player`. It ticks the world 3 times and calls both `TakeDamage` overloads. It checks the type name, the position and the field `hp` by reflection.
 - `ReloadMigration` (`tests/integration/reload/reload_migration_tests.cpp`) binds a delegate to `heal` through a thunk. It reloads gen 2 at the frame boundary and checks the address, the migrated state, the new `Tick` and the delegate. It then tries gen 4 and a missing library. Both must be rejected, and gen 2 must keep running.
@@ -300,7 +325,7 @@ Build. The target exists only when CMake finds SDL3 (`find_package(SDL3)`). With
 
 Run. The default script is `example/imgui/demo.spp`.
 
-    cmake-build/linux-clang-files/Debug/imgui_app [script]
+    cmake-build/linux-clang-files/bin/Debug/imgui_app [script]
 
 Hot reload. The host checks the modification time of the script file at each frame. When it changes, the host compiles the script as a new generation and starts a reload. The commit happens after `Frame()`, at the frame boundary. The object keeps its field values. If the compile or the reload fails, the window "Script error" shows the text and the old generation keeps running. If `Frame()` throws, the host drops the object and shows the message. The next good reload makes a new object. The host writes `reloaded gen N` and `reload failed: ...` to stderr.
 

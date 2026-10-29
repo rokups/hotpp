@@ -8,4 +8,4 @@ target_include_directories(integration_closure_tests PRIVATE ${CMAKE_SOURCE_DIR}
 target_link_libraries(integration_closure_tests PRIVATE spp_backend GTest::gtest_main)
 set_target_properties(integration_closure_tests PROPERTIES ENABLE_EXPORTS ON)
 target_compile_definitions(integration_closure_tests PRIVATE SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-gtest_discover_tests(integration_closure_tests)
+spp_gtest(integration_closure_tests)

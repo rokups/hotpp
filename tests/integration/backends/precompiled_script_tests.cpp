@@ -3,7 +3,7 @@
 // PrecompiledTests load .so files that sppc made at build time (spp_add_scripts)
 // as a Module with module_from_library. They run for every SPP_BACKEND value.
 //
-// CMake defines these macros: SPP_BINARY_DIR, PRE_V1_SO, PRE_V2_SO, PRE_NATIVE_V1_SO,
+// CMake defines these macros: SPP_SCRATCH_DIR, PRE_V1_SO, PRE_V2_SO, PRE_NATIVE_V1_SO,
 // PRE_NATIVE_V2_SO, PRE_HANDLE_V1_SO, PRE_HANDLE_V2_SO and PRE_HANDLE_V1B_SO.
 #include <gtest/gtest.h>
 
@@ -37,7 +37,7 @@ TEST(PrecompiledTests, HandleFieldSurvivesReloadWithLibraries)
 
 TEST(PrecompiledTests, MissingLibraryGivesErrorString)
 {
-    spp::LoadResult r = spp::module_from_library(std::string(SPP_BINARY_DIR) + "/none.so");
+    spp::LoadResult r = spp::module_from_library(std::string(SPP_SCRATCH_DIR) + "/none.so");
     EXPECT_FALSE(r);
     EXPECT_FALSE(r.error.empty());
 }

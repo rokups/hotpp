@@ -23,6 +23,9 @@ struct ClangFilesOptions {
     std::vector<std::string> extra_flags;     // added to the compile command
     std::string work_dir = "spp_work";        // the .cpp and .so files go here
     std::string slots_file;                   // empty: <work_dir>/slots.txt
+    // True: the destructor of the backend removes work_dir (remove_scratch). The owner must give
+    // a directory that no other backend uses.
+    bool remove_work_dir_at_exit = false;
     bool strict_borrowed = true;              // false: a borrowed-storage finding is a warning
     std::string format_lib = "std";           // string interpolation: "std" or "fmt"
     // True: the error text is the raw output of the compiler. False (the default): it speaks
@@ -33,6 +36,7 @@ struct ClangFilesOptions {
 class ClangFilesBackend : public Backend {
 public:
     explicit ClangFilesBackend(ClangFilesOptions options);
+    ~ClangFilesBackend() override;
 
     // Makes a new .so for each call, so a reload of the same generation is possible.
     LoadResult load(const ScriptSource& source, uint32_t generation) override;

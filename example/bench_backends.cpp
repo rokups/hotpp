@@ -26,6 +26,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -33,6 +34,7 @@
 #include <vector>
 
 #include "spp/runtime.h"
+#include "spp/scratch.h"
 #include "spp/sppc_lib.h"
 
 #if defined(BENCH_JIT)
@@ -137,6 +139,9 @@ int main(int argc, char** argv)
         o.resource_dir = BENCH_RESOURCE_DIR;
         o.extra_flags = flags;
         o.work_dir = std::string(BENCH_WORK_DIR) + "/bench" + std::to_string(getpid());
+        std::error_code ec;
+        std::filesystem::remove_all(o.work_dir, ec);
+        o.remove_work_dir_at_exit = !spp::keep_temp();
         if (share) o.session = session;
         return std::make_unique<spp::ClangFilesBackend>(std::move(o));
 #endif

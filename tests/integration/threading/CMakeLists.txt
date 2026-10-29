@@ -11,4 +11,4 @@ add_dependencies(integration_threading_tests gen4_base)
 target_compile_definitions(integration_threading_tests PRIVATE
     GEN4_BASE_SO="$<TARGET_FILE:gen4_base>"
     GEN3_MISSING_SO="${CMAKE_BINARY_DIR}/gen3_missing.so")
-gtest_discover_tests(integration_threading_tests)
+spp_gtest(integration_threading_tests)

@@ -11,9 +11,9 @@ target_compile_definitions(integration_ls_tests PRIVATE
     SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     SPP_CLANGD_PATH="${SPP_CLANGD}"
     SPP_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
-gtest_discover_tests(integration_ls_tests DISCOVERY_TIMEOUT 30)
+spp_gtest(integration_ls_tests DISCOVERY_TIMEOUT 30)
 
 # Unit test of the host files (step 2a). It needs no clangd.
 add_executable(integration_ls_hosts_tests hosts_tests.cpp)
 target_link_libraries(integration_ls_hosts_tests PRIVATE spp_ls_lib GTest::gtest_main)
-gtest_discover_tests(integration_ls_hosts_tests DISCOVERY_TIMEOUT 30)
+spp_gtest(integration_ls_hosts_tests DISCOVERY_TIMEOUT 30)

@@ -17,7 +17,7 @@ set_target_properties(integration_backend_tests PROPERTIES ENABLE_EXPORTS ON)
 add_dependencies(integration_backend_tests pre_gen1 pre_gen2 pre_native1 pre_native2 pre_handle1 pre_handle2 pre_handle3 sppc)
 target_compile_definitions(integration_backend_tests PRIVATE
     SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
-    SPP_BINARY_DIR="${CMAKE_BINARY_DIR}"
+    SPP_SCRATCH_DIR="${SPP_SCRATCH_DIR}/tests"
     SPPC_PATH="$<TARGET_FILE:sppc>"
     SPP_CXX="${CMAKE_CXX_COMPILER}"
     PRE_V1_SO="${CMAKE_BINARY_DIR}/spp_scripts/player_v1.g1.so"
@@ -30,4 +30,4 @@ target_compile_definitions(integration_backend_tests PRIVATE
 if(SPP_BACKEND STREQUAL "JIT")
     target_compile_definitions(integration_backend_tests PRIVATE SPP_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
 endif()
-gtest_discover_tests(integration_backend_tests)
+spp_gtest(integration_backend_tests)

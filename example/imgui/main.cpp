@@ -21,6 +21,7 @@
 #include "imgui.h"
 #include "spp/clang_files_backend.h"
 #include "spp/runtime.h"
+#include "spp/scratch.h"
 
 namespace {
 
@@ -43,6 +44,9 @@ std::unique_ptr<spp::Backend> make_backend()
     o.work_dir = std::string(IMGUI_APP_WORK_DIR) + "/p" + std::to_string(getpid());
     std::error_code ec;
     std::filesystem::remove_all(o.work_dir, ec);
+    std::filesystem::create_directories(IMGUI_APP_WORK_DIR, ec);
+    // Only the p<pid> directory goes. The ini file in IMGUI_APP_WORK_DIR stays.
+    o.remove_work_dir_at_exit = !spp::keep_temp();
     return std::make_unique<spp::ClangFilesBackend>(std::move(o));
 }
 
@@ -217,6 +221,9 @@ int main(int argc, char** argv)
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    // The ini file goes to the app work directory. The backend does not remove it.
+    static const std::string ini_path = std::string(IMGUI_APP_WORK_DIR) + "/imgui.ini";
+    ImGui::GetIO().IniFilename = ini_path.c_str();
     // A script that throws inside Begin leaves the window stack open. ImGui recovers.
     ImGui::GetIO().ConfigErrorRecoveryEnableAssert = false;
     ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);

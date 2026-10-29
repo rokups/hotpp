@@ -34,4 +34,4 @@ target_compile_definitions(integration_reload_tests PRIVATE
     GEN4_BASE_SO="$<TARGET_FILE:gen4_base>"
     STRESS_SO="$<TARGET_FILE:stress_generation>"
     GEN3_MISSING_SO="${CMAKE_BINARY_DIR}/gen3_missing.so")
-gtest_discover_tests(integration_reload_tests)
+spp_gtest(integration_reload_tests)
