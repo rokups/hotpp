@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "spp/runtime/records.h"
+#include "spp/runtime/threads.h"
 
 namespace spp {
 
@@ -66,9 +67,12 @@ R detached_result()
 
 // Calls slot "slot" of the class record. "Sig" is the signature of the slot. When the slot has
 // a signature key (ClassRecord::slot_keys) and "Sig" is another signature, the call detaches.
+// The call is a script entry (threads.h). In StopTheWorld mode the entry is one flag check.
+// The entry starts before the read of the slot, so a commit cannot change the slot under it.
 template <class Sig, class... A>
 inline auto call(const ClassRecord* cls, unsigned slot, A&&... a)
 {
+    ScriptEntry entry;
     if (const char* const* keys = cls->slot_keys) [[unlikely]] {
         if (keys[slot] && std::strcmp(keys[slot], typeid(Sig).name()) != 0) {
             detached_call(cls, slot);

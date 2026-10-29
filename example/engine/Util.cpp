@@ -1,6 +1,7 @@
 #include "Util.h"
 
 #include <cmath>
+#include <atomic>
 #include <cstdio>
 
 float Distance(const Vec3& a, const Vec3& b)
@@ -40,4 +41,14 @@ int Util::Count(int v)
 int Util::Calls()
 {
     return g_count_calls;
+}
+
+static std::atomic<Util::ProbeFn> g_probe{nullptr};
+
+void Util::SetProbe(ProbeFn fn) { g_probe.store(fn); }
+
+void Util::Probe(Actor* a, float amount)
+{
+    if (ProbeFn fn = g_probe.load()) fn(a);
+    a->TakeDamage(amount);
 }

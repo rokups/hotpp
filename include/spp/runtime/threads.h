@@ -1,5 +1,6 @@
 // The live generation, the thread rules, the stale call guard and the generation pins.
 #pragma once
+#include <atomic>
 #include <cstdint>
 
 namespace spp {
@@ -7,7 +8,106 @@ namespace spp {
 // The generation that is live now. A generation function checks it.
 extern uint32_t active_generation;
 
-// Threads (design sections 6.2 and 6.3).
+// ---------------------------------------------------------------- synchronization modes
+// The two modes of design 6.3. Loader::set_sync_mode selects one at run time.
+//
+// StopTheWorld (the default). The engine commits at a frame boundary, when no thread is in
+// script code (see "Threads in StopTheWorld mode" below). A script entry pays one relaxed load
+// of a global flag and one branch that is not taken.
+//
+// EntryCounters. For an engine with no frame boundary. Each script entry (a slot call through
+// spp::call, a thunk, a closure call, a script destructor) is a ScriptEntry. The outermost entry
+// of a thread increments one global count of active entries. A nested entry on the same thread
+// (script -> native -> script) only increments a thread-local depth, so it never blocks.
+// A commit (CommitWindow) closes the gate and waits until the count is zero. A new outermost
+// entry blocks at the closed gate. When the commit ends, the gate opens and the blocked threads
+// go on in the new generation.
+//
+// Limits of EntryCounters:
+//   - A deadlock occurs when script code waits for a thread that is blocked at the gate,
+//     or for the end of the commit. The commit waits for that script code.
+//   - commit_pending on a thread that is in script code fails. It does not wait for itself.
+//   - A thread that entered script code in StopTheWorld mode is not counted.
+//     Change the mode only when no thread is in script code.
+//   - The creation of a script object is not an entry. Native code that creates a script
+//     object, or reads its fields, holds a ScriptEntry. Object creation and destruction stay
+//     on one thread at a time (the rule of the live object table).
+//
+// Define SPP_NO_ENTRY_COUNTERS to remove the mode at compile time. Then a ScriptEntry is empty.
+enum class SyncMode : uint8_t {
+    StopTheWorld,
+    EntryCounters,
+};
+
+#ifdef SPP_NO_ENTRY_COUNTERS
+inline constexpr bool kEntryCounters = false;
+#else
+inline constexpr bool kEntryCounters = true;
+#endif
+
+namespace detail {
+// True in EntryCounters mode. Loader::set_sync_mode writes it.
+extern std::atomic<bool> g_entry_counters;
+void enter_script();  // the slow path of ScriptEntry (threads.cpp)
+void leave_script();
+}  // namespace detail
+
+// True when the process uses the EntryCounters mode.
+inline bool entry_counters_enabled()
+{
+    if constexpr (kEntryCounters)
+        return detail::g_entry_counters.load(std::memory_order_relaxed);
+    else
+        return false;
+}
+
+// RAII: one script entry. In StopTheWorld mode it does nothing after the flag check.
+// The constructor can block while a commit runs (EntryCounters mode).
+class ScriptEntry {
+public:
+    ScriptEntry() : counted_(entry_counters_enabled())
+    {
+        if (counted_) [[unlikely]]
+            detail::enter_script();
+    }
+    ~ScriptEntry()
+    {
+        if (counted_) [[unlikely]]
+            detail::leave_script();
+    }
+    ScriptEntry(const ScriptEntry&) = delete;
+    ScriptEntry& operator=(const ScriptEntry&) = delete;
+
+private:
+    bool counted_;
+};
+
+// The number of threads in a counted script entry now (EntryCounters mode).
+uint32_t active_entries();
+// The depth of counted script entries on the calling thread. A commit window counts as one.
+uint32_t entry_depth();
+// True while a commit window is closed (from the start of the wait to the end of the commit).
+bool commit_window_closed();
+// The number of commit windows since the program start.
+uint64_t commit_window_count();
+// The number of entries that waited at a closed gate since the program start.
+uint64_t blocked_entry_count();
+
+// RAII: a commit window (EntryCounters mode). The constructor closes the gate and waits until
+// no thread is in a counted entry. Then the calling thread is the only thread in script code.
+// It can run script code (for example the onReload hooks): its depth is one.
+// The destructor opens the gate. Only one window is open at a time; a second one waits.
+// The caller must not be in a counted script entry (entry_depth() == 0), else it waits for ever.
+// Loader::commit_pending uses it. An engine needs it only for its own changes of script state.
+class CommitWindow {
+public:
+    CommitWindow();
+    ~CommitWindow();
+    CommitWindow(const CommitWindow&) = delete;
+    CommitWindow& operator=(const CommitWindow&) = delete;
+};
+
+// Threads in StopTheWorld mode (design sections 6.2 and 6.3).
 //
 // The engine can run script code on worker threads.
 // A reload commit changes the class records, the state blocks and active_generation.
@@ -35,6 +135,8 @@ extern uint32_t active_generation;
 // The check exists in debug builds only (design 6.3). With NDEBUG, kTickChecks is false,
 // ScriptTickScope does nothing, in_script_tick() is always zero and the commit does not
 // check the depths. So a release build pays nothing.
+// In EntryCounters mode the commit does not check this counter: a worker can wait at the
+// gate inside a ScriptTickScope.
 #ifdef NDEBUG
 inline constexpr bool kTickChecks = false;
 inline int in_script_tick() { return 0; }

@@ -380,3 +380,34 @@ Rules for threads:
 - Any thread can pin or unpin a generation.
 
 Test results: `R5_CommitOnlyAtBarrier` runs 20 seeds with 1000 actors and 2 workers. `R5_RejectedReloadFromOtherThread` runs 5 seeds. Both tests pass in the normal, ASan and TSan builds. They also pass with `--gtest_repeat=20` in the normal and TSan builds. TSan reports no race. When the lock in `request_reload` is removed, TSan reports a race. So the test can find this kind of error.
+
+### Entry counters: a commit without a frame boundary
+
+Some engines have no frame boundary. For them, the loader has a second mode (design 6.3):
+
+```cpp
+loader.set_sync_mode(spp::SyncMode::EntryCounters);  // default: spp::SyncMode::StopTheWorld
+```
+
+The mode applies to the whole process. Set it when no thread is in script code. The destructor of the `Loader` sets `StopTheWorld` again.
+
+How it works:
+
+- Each script entry is a `spp::ScriptEntry`. The entries are the slot calls (`spp::call`: shell stubs, thunks and script virtual calls), the closure calls and the script destructors.
+- The outermost entry of a thread increments one global count. A nested entry (script, then native, then script) increments only a thread-local depth. So a nested entry never blocks.
+- `commit_pending` opens a `spp::CommitWindow`. It closes the gate and waits until the count is zero. A new outermost entry waits at the closed gate. Then the commit runs. After the commit, the gate opens and the waiting threads continue in the new generation.
+- The commit thread can run script code in the window, for example an `onReload` hook.
+- `commit_pending` can run on any one thread. It fails with an error when the calling thread is in script code. `frame_boundary` can run on the commit thread after the commit.
+
+Cost: in the default mode, each entry reads one global flag (a relaxed atomic load) and takes no branch. Define `SPP_NO_ENTRY_COUNTERS` to remove the check at compile time. In the `EntryCounters` mode, each outermost entry does one atomic increment and one atomic decrement of a shared counter.
+
+Limits:
+
+- A deadlock occurs when script code waits for a thread that waits at the gate, or for the end of the commit.
+- The creation of a script object is not an entry. Native code that creates a script object or reads its fields holds a `spp::ScriptEntry`. Object creation and destruction stay on one thread at a time.
+- A thread that entered script code in the default mode is not counted.
+- `ScriptTickScope` and its debug check apply to the default mode only. A worker can wait at the gate inside a `ScriptTickScope`.
+
+Diagnostics: `spp::active_entries()`, `spp::entry_depth()`, `spp::commit_window_closed()`, `spp::commit_window_count()` and `spp::blocked_entry_count()`.
+
+The tests are in `tests/unit/runtime/entry_counter_tests.cpp` and `tests/integration/threading/entry_counter_tests.cpp` (suite `EntryCounters`). In the integration test, 4 worker threads call `Tick` on 64 actors in a loop. Another thread commits 8 reloads at the same time. Each `Tick` calls the native `Util::Probe`, and the probe calls the script `TakeDamage`. The test checks that no call is lost, that no call runs on a half migrated object, and that a nested call during a waiting commit does not deadlock. The unit test opens 2000 commit windows while 4 threads enter.

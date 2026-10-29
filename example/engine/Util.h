@@ -21,6 +21,12 @@ struct Util {
     static int Count(int v);
     // The number of Count calls since the program start.
     static int Calls();
+    // Native code between two script frames (design 6.3, S21). It calls the probe function of
+    // a test (when one is set) and then a->TakeDamage(amount). So a script that calls it
+    // runs script code again: script -> native -> script.
+    using ProbeFn = void (*)(Actor*);
+    static void Probe(Actor* a, float amount);
+    static void SetProbe(ProbeFn fn);
 };
 
 // A raw function pointer for a script state field (design 4.9). The inline functions compile

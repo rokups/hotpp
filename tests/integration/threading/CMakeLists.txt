@@ -1,6 +1,7 @@
 # Worker threads, a barrier and a reload from a third thread.
 add_executable(integration_threading_tests
     parallel_tick_tests.cpp
+    entry_counter_tests.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Actor.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Util.cpp)
 target_include_directories(integration_threading_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests)

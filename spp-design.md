@@ -592,11 +592,21 @@ Most engines have a frame boundary after the job system drains. The commit runs 
 | Option | Mechanism | Cost | Risk |
 |---|---|---|---|
 | Stop-the-world at frame boundary (recommended) | Engine guarantees quiescence. No instrumentation. | Zero per call | Depends on an engine guarantee |
-| Per-thread entry counters | Every thunk and shell stub increments a thread-local depth. The commit spins until all depths are zero and blocks new entries. | One increment per entry | Deadlock when a script frame waits for the commit |
+| Entry counters (implemented, `SyncMode::EntryCounters`) | Every slot call, thunk, closure call and script destructor is a script entry. The outermost entry of a thread increments a global count. A nested entry increments only a thread-local depth. The commit closes a gate and waits until the count is zero. New entries wait at the gate. | One flag check per entry in the default mode. One atomic increment and decrement per outermost entry in this mode. | Deadlock when a script frame waits for the commit or for a thread at the gate |
 | Epochs or RCU | Readers publish an epoch. The commit waits for a grace period. | Small | Complex. Needed only for lock-free reload during execution. |
 | Per-object locks | Each shell has a lock. | High | Deadlocks, no benefit |
 
-The recommendation is stop-the-world at the frame boundary. The entry counters stay as a debug check. The runtime asserts that all depths are zero at commit.
+The recommendation is stop-the-world at the frame boundary. It is the default mode. The debug counter `ScriptTickScope` checks it: the runtime asserts that the counter is zero at commit.
+
+The second mode is for an engine with no frame boundary (risk 9, open question 3). The engine selects it at run time with `Loader::set_sync_mode(SyncMode::EntryCounters)`. The protocol:
+
+1. A script entry (`ScriptEntry`) reads one global flag. In the default mode, the entry does nothing more.
+2. In the second mode, the outermost entry of a thread increments the active count. Then it reads the gate. When the gate is closed, the entry decrements the count, waits until the gate opens and tries again.
+3. A nested entry on the same thread (script, native, then script) increments only a thread-local depth. So a call back into script code never waits for a commit that waits for the outer call.
+4. The commit (`CommitWindow`) closes the gate. Then it waits until the active count is zero. The commit thread gets depth one, so it can run hooks. At the end, the gate opens.
+5. All operations on the count and the gate are sequentially consistent. So an entry sees the closed gate, or the commit sees the entry. The last decrement before the commit is a release, and the commit reads zero with acquire. So the commit sees all writes of the script code before it. The entry reads the open gate with acquire, so it sees all writes of the commit.
+
+The second mode does not count object creation. Native code that creates a script object or reads its fields holds a `ScriptEntry`. A commit on a thread that is in script code fails with an error and does not wait. A script frame that waits for the commit, or for a thread at the gate, deadlocks. Change the mode only when no thread is in script code. `SPP_NO_ENTRY_COUNTERS` removes the mode at compile time.
 
 ### 6.4 In-flight call tracking
 
@@ -1049,7 +1059,7 @@ Step R0 comes before the translator. It proves the runtime model with hand-writt
 | 6 | Diagnostics quality. Clang errors speak C++. | High | Poor developer experience | F2 | `#line`. A diagnostic rewriter. Translator-side checks for common script errors before Clang. |
 | 7 | Debugging quality on Windows. | Medium | Poor developer experience | F3 | Shared libraries get real PDBs. natvis for state blocks. Avoid ORC on Windows until JIT debug support exists. |
 | 8 | libclang cannot describe a base class. Templated bases, dependent types, private virtuals, deleted constructors. | Medium | Shell generation fails for some bases | F1 with templated bases | Use the C++ LibTooling API behind one small adapter. Accept version coupling in that adapter only. |
-| 9 | Reload on a non-quiescent job system. | Medium. Engine-specific. | Data races | R5 | Entry counters plus blocking of new entries as a second mode. |
+| 9 | Reload on a non-quiescent job system. | Medium. Engine-specific. | Data races | R5, S21 (`EntryCounters` tests) | Entry counters plus blocking of new entries as a second mode. Implemented: `SyncMode::EntryCounters` (section 6.3). |
 | 10 | Native move constructors throw during migration. | Low | Fatal reload | R1 with a throwing type | Require nothrow move for field types. The translator warns on other types. |
 | 11 | Template instantiations differ between the engine and a generation module. ODR with function-local statics in headers. | Low | Duplicated singletons | R0 | Same as any plugin DLL. Export singleton accessors from the engine. |
 | 12 | Scope creep in the language. Coroutines, generics, properties, optional chaining. | High | Delays | Roadmap review | Version 1 is section 7 only. |

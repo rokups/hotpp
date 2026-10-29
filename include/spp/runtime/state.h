@@ -63,6 +63,7 @@ inline void init_state(ShellBase* self, ClassRecord* cls)
 inline void destroy_state(ShellBase* self)
 {
     if (!self->state) return;
+    ScriptEntry entry;  // design 6.3: a commit must not migrate the object during the destructor
     if (self->cls->dtor) {  // the script destructor of the current generation
         try {
             self->cls->dtor(self);

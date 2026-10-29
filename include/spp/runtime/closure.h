@@ -64,6 +64,7 @@ public:
 
     R operator()(A... a) const
     {
+        ScriptEntry entry;  // design 6.3: the guard reads active_generation
         if (SPP_UNLIKELY(!fn_ || gen_ != active_generation)) {
             stale_call(what_ ? what_ : "closure");
             return R();

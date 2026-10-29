@@ -12,6 +12,7 @@
 #include "spp/module.h"
 #include "spp/runtime/records.h"
 #include "spp/runtime/registry.h"
+#include "spp/runtime/threads.h"
 
 namespace spp {
 
@@ -80,10 +81,15 @@ void request_restart(const char* reason);
 //     They read only data that changes in commit_pending (under the same mutex)
 //     and the data of the modules, which does not change.
 //     They write only the staged data of the new Pending.
-//   - commit_pending runs only at the frame boundary, on the main thread,
-//     when no worker is in script code. It takes the mutex.
+//   - StopTheWorld mode (the default, design 6.3): commit_pending runs only at the frame
+//     boundary, on the main thread, when no worker is in script code. It takes the mutex.
 //     So it waits for a validation that runs at that time.
 //     It also checks in_script_tick() (debug check).
+//   - EntryCounters mode (set_sync_mode, threads.h): commit_pending can run on any one thread
+//     while other threads call script code. It opens a CommitWindow first: new script entries
+//     block and the commit waits until no thread is in script code. Then it takes the mutex.
+//     It fails when the calling thread is in script code (entry_depth() != 0).
+//     frame_boundary may run on the commit thread after the commit.
 //   - load, frame_boundary, stats, find and thunk run on the main thread only.
 //     The workers do not call them.
 //
@@ -139,6 +145,13 @@ public:
     // Returns the number of generations that it unloaded.
     unsigned frame_boundary();
 
+    // The synchronization mode of the commit (design 6.3, threads.h). The default is
+    // StopTheWorld. The mode applies to the whole process, because the generation code reads
+    // one global flag. Change it only when no thread is in script code. The destructor of the
+    // Loader sets StopTheWorld again.
+    void set_sync_mode(SyncMode mode);
+    SyncMode sync_mode() const;
+
     LoaderStats stats() const;
     std::string stats_text() const { return format_stats(stats()); }
 
@@ -167,6 +180,8 @@ private:
     bool state_holds_code() const;
     // Sets the signature key of the slot of a keyed thunk in the canonical record (design 5.3).
     void set_slot_key(const ThunkEntry& t);
+    // The commit itself, after the synchronization of the mode.
+    bool commit_locked(std::string& error);
 
     mutable std::mutex mutex_;  // see "Threads" above
     Registry registry_;

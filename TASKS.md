@@ -37,4 +37,4 @@ Not testable here: Windows, macOS, a real engine, the clangd fork (M12 to M14). 
 - [ ] S19 Docs: refresh TASKS, HANDOFF, design 10.1 (proxy instead of fork), 7.3 interpolation text, F1 templated bases result, P1 CLANG_FILES with PCH measure.
 - [x] S20 Script parent from another script; constructor overloads and ref/out ctor params; `var` from native call type; pattern-stub checks; `p.N` typed property access; deeper parameter analysis.
   - Done: S20a cross-script parents and constructor overloads (DECISIONS.md 16). S20b typing limits (DECISIONS.md 17): `var` types from libclang, typed `p.N`, pattern-stub checks, deeper parameter analysis, `Intrusive` and raw `T*` comparison test.
-- [ ] S21 Entry-counter blocking sync mode (design 6.3 fallback).
+- [x] S21 Entry-counter blocking sync mode (design 6.3 fallback).

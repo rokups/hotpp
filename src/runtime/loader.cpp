@@ -120,6 +120,7 @@ void request_restart(const char* reason)
 Loader::Loader() = default;
 Loader::~Loader()
 {
+    set_sync_mode(SyncMode::StopTheWorld);  // the mode is global; the next loader starts clean
     if (mod_block_) {  // the code of the field destroyers is still loaded: "gens_" goes later
         destroy_fields(mod_layout_, mod_block_);
         std::free(mod_block_);
@@ -476,11 +477,32 @@ bool Loader::request_reload(Module module, std::string& error)
     return true;
 }
 
+void Loader::set_sync_mode(SyncMode mode)
+{
+    detail::g_entry_counters.store(kEntryCounters && mode == SyncMode::EntryCounters);
+}
+
+SyncMode Loader::sync_mode() const
+{
+    return entry_counters_enabled() ? SyncMode::EntryCounters : SyncMode::StopTheWorld;
+}
+
 bool Loader::commit_pending(std::string& error)
 {
     error.clear();
-    // Debug check (design 6.3): all entry depths are zero. Count first, then assert.
-    // In a release build kTickChecks is false and this code is gone.
+    if (entry_counters_enabled()) {
+        // EntryCounters mode (design 6.3). The thread must not wait for its own entry.
+        if (entry_depth() != 0) {
+            error = "commit_pending was called inside script code; the commit would wait for itself";
+            return false;
+        }
+        if (!reload_pending()) return false;  // no window when nothing is pending
+        CommitWindow window;  // no thread is in script code until the end of the scope
+        std::lock_guard<std::mutex> lock(mutex_);
+        return commit_locked(error);
+    }
+    // StopTheWorld mode. Debug check (design 6.3): all entry depths are zero. Count first,
+    // then assert. In a release build kTickChecks is false and this code is gone.
     if constexpr (kTickChecks) {
         const int busy = in_script_tick();
         if (busy != 0) {
@@ -490,6 +512,11 @@ bool Loader::commit_pending(std::string& error)
         assert(busy == 0 && "commit_pending must run at the safe point");
     }
     std::lock_guard<std::mutex> lock(mutex_);
+    return commit_locked(error);
+}
+
+bool Loader::commit_locked(std::string& error)
+{
     if (!pending_) return false;
     Pending& P = *pending_;
 
