@@ -122,8 +122,12 @@ endfunction()
 # always the first include dir. INCLUDES and FLAGS come after the lists of the target.
 # A UTILITY target has no such lists, so the function skips them.
 #
-# A define or an option that has a double quote or a backslash does not go into the
-# file. A generator expression cannot escape such a character.
+# The defines and the options of the target can have a double quote or a backslash. A
+# generator expression cannot escape such a character for JSON. So the function writes them
+# to two side files, one entry on each line: ${SPP_HOSTS_DIR}/<name>.defines and
+# ${SPP_HOSTS_DIR}/<name>.options. The JSON file names them in "definesFile" and
+# "optionsFile". A line needs no escape. A target include dir with a quote or a backslash
+# does not go into the JSON file. The explicit FLAGS go into the JSON file with an escape.
 set(SPP_HOSTS_DIR "${CMAKE_SOURCE_DIR}/.cache/spp/hosts" CACHE PATH
     "Directory for the script host files that spp-ls reads")
 
@@ -189,27 +193,28 @@ function(spp_script_host)
     _spp_host_static_array(extra_includes ${includes})
     _spp_host_static_array(extra_flags ${A_FLAGS})
 
-    # A define or an option with a quote or a backslash is not in the file.
+    # An include dir with a quote or a backslash is not in the JSON file.
     set(bad [=["|\\]=])
     set(target_includes "")
-    set(target_defines "")
-    set(target_flags "")
     if(use_target)
         set(t ${A_TARGET})
         set(target_includes
             "$<FILTER:$<TARGET_PROPERTY:${t},INCLUDE_DIRECTORIES>,EXCLUDE,${bad}>")
-        set(target_defines
-            "$<FILTER:$<TARGET_PROPERTY:${t},COMPILE_DEFINITIONS>,EXCLUDE,${bad}>")
-        set(target_flags
-            "$<FILTER:$<TARGET_PROPERTY:${t},COMPILE_OPTIONS>,EXCLUDE,${bad}>")
+        # One entry on each line. A literal newline joins the entries.
+        set(nl "\n")
+        set(side_defines
+            "$<JOIN:$<REMOVE_DUPLICATES:$<FILTER:$<TARGET_PROPERTY:${t},COMPILE_DEFINITIONS>,EXCLUDE,^$>>,${nl}>${nl}")
+        set(side_options
+            "$<JOIN:$<REMOVE_DUPLICATES:$<FILTER:$<TARGET_PROPERTY:${t},COMPILE_OPTIONS>,EXCLUDE,^$>>,${nl}>${nl}")
+        file(GENERATE OUTPUT "${SPP_HOSTS_DIR}/${A_NAME}.defines" CONTENT "${side_defines}")
+        file(GENERATE OUTPUT "${SPP_HOSTS_DIR}/${A_NAME}.options" CONTENT "${side_options}")
     endif()
     # The project include dir comes first, then the target dirs, then INCLUDES.
     list(GET extra_includes 0 first_include)
     list(REMOVE_AT extra_includes 0)
     _spp_host_json_array(j_includes
         "$<REMOVE_DUPLICATES:${first_include};${target_includes};${extra_includes}>")
-    _spp_host_json_array(j_defines "$<REMOVE_DUPLICATES:${target_defines}>")
-    _spp_host_json_array(j_flags "$<REMOVE_DUPLICATES:${target_flags};${extra_flags}>")
+    _spp_host_json_array(j_flags "$<REMOVE_DUPLICATES:${extra_flags}>")
     _spp_host_json_array(j_dirs "${dirs}")
     _spp_host_json_array(j_scripts "${scripts}")
 
@@ -232,7 +237,11 @@ function(spp_script_host)
     string(APPEND json "  \"scriptDirs\": ${j_dirs},\n")
     string(APPEND json "  \"scripts\": ${j_scripts},\n")
     string(APPEND json "  \"includeDirs\": ${j_includes},\n")
-    string(APPEND json "  \"defines\": ${j_defines},\n")
+    string(APPEND json "  \"defines\": [],\n")
+    if(use_target)
+        string(APPEND json "  \"definesFile\": \"${e_name}.defines\",\n")
+        string(APPEND json "  \"optionsFile\": \"${e_name}.options\",\n")
+    endif()
     string(APPEND json "  \"flags\": ${j_flags}\n")
     string(APPEND json "}\n")
     file(GENERATE OUTPUT "${SPP_HOSTS_DIR}/${A_NAME}.json" CONTENT "${json}")

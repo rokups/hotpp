@@ -389,7 +389,7 @@ spp_script_host(NAME game TARGET game_engine
                 INCLUDES ${CMAKE_SOURCE_DIR}/engine)
 ```
 
-- At generate time, `spp_script_host` writes `${SPP_HOSTS_DIR}/<NAME>.json`. The default is `<source dir>/.cache/spp/hosts`. The file has the include dirs, defines and options of `TARGET`, and the script dirs and scripts. A define with a quote or a backslash is dropped.
+- At generate time, `spp_script_host` writes `${SPP_HOSTS_DIR}/<NAME>.json`. The default is `<source dir>/.cache/spp/hosts`. The file has the include dirs of `TARGET`, and the script dirs and scripts. The defines and options of `TARGET` go to the side files `<NAME>.defines` and `<NAME>.options`, one entry on each line. The JSON file names them in `definesFile` and `optionsFile`. A define can have a quote or a backslash. The server passes each flag to clangd as one item of an argument array, so no shell escape is needed.
 - `spp-ls` reads the host files from `<root>/.cache/spp/hosts`. The argument `--hosts-dir` (init option `hostsDir`) sets another directory.
 - A script matches the host with the exact `scripts` entry. Else it matches the host with the longest `scriptDirs` prefix. A tie goes to the lower name.
 - The effective options are the host values, then the explicit `-I` and `--cxxflag` values. So the flags override the host.

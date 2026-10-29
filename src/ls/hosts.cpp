@@ -33,6 +33,28 @@ std::vector<std::string> get_strings(const json& j, const char* key)
     return out;
 }
 
+// Reads the lines of a side file. A missing file gives no line. The code removes a trailing
+// "\r" and skips the empty lines. A name with a directory part is relative to dir.
+std::vector<std::string> read_lines(const fs::path& dir, const std::string& name)
+{
+    std::vector<std::string> out;
+    if (name.empty()) return out;
+    std::ifstream in(dir / name);
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (!line.empty()) out.push_back(std::move(line));
+    }
+    return out;
+}
+
+// True for a file that makes a host: the JSON file and its two side files.
+bool is_host_file(const fs::path& p)
+{
+    const std::string ext = p.extension().string();
+    return ext == ".json" || ext == ".defines" || ext == ".options";
+}
+
 // Removes the trailing slashes. The root directory stays "/".
 std::string strip_slash(std::string s)
 {
@@ -90,8 +112,12 @@ void HostSet::load(const std::string& dir, bool require_cache)
         host->script_dirs = get_strings(j, "scriptDirs");
         host->scripts = get_strings(j, "scripts");
         host->include_dirs = get_strings(j, "includeDirs");
+        // The options of the target come first, then the explicit flags (the last flag wins).
+        host->flags = read_lines(e.path().parent_path(), get_string(j, "optionsFile"));
+        for (std::string& f : get_strings(j, "flags")) host->flags.push_back(std::move(f));
         host->defines = get_strings(j, "defines");
-        host->flags = get_strings(j, "flags");
+        for (std::string& d : read_lines(e.path().parent_path(), get_string(j, "definesFile")))
+            host->defines.push_back(std::move(d));
         if (require_cache && !has_cache(*host)) {
             skipped_.push_back(host);  // refresh() checks it again
             continue;
@@ -142,7 +168,7 @@ bool HostSet::refresh()
 bool HostSet::force_reload_for(const std::string& file)
 {
     const fs::path f(file);
-    if (!loaded_ || f.extension() != ".json") return false;
+    if (!loaded_ || !is_host_file(f)) return false;
     if (f.parent_path().lexically_normal() != fs::path(dir_).lexically_normal()) return false;
     forced_ = true;
     return true;

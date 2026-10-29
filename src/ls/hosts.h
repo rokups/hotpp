@@ -3,6 +3,8 @@
 // A host is a program that runs scripts. The CMake function spp_script_host writes one JSON
 // file for each host: "<hosts-dir>/<name>.json". The file tells the compiler, the include
 // directories and the defines of the host. It also tells which scripts the host runs.
+// The JSON file can name two side files, "definesFile" and "optionsFile". They hold one define
+// or one option on each line, with no escape. They are relative to the directory of the JSON file.
 // HostSet loads these files. match() finds the best host for a script path.
 #pragma once
 
@@ -36,7 +38,7 @@ public:
     // is dropped (and kept as skipped). It returns true when the set of hosts changed.
     bool refresh();
 
-    // Marks the set for a full reload at the next refresh(), when file is a "*.json" file in the
+    // Marks the set for a full reload at the next refresh(), when file is a "*.json", "*.defines" or "*.options" file in the
     // directory of the set. The modification time of the directory does not change when a
     // host file changes in place. Returns true when the file belongs to the set.
     bool force_reload_for(const std::string& file);

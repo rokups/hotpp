@@ -559,9 +559,10 @@ void Server::on_watched_files(const json& p)
     for (const json& c : p.value("changes", json::array())) {
         if (!c.is_object() || !c.value("uri", json()).is_string()) continue;
         const std::string path = uri_to_path(c["uri"].get<std::string>());
-        if (fs::path(path).extension() == ".json") {
+        const std::string ext = fs::path(path).extension().string();
+        if (ext == ".json" || ext == ".defines" || ext == ".options") {
             for (HostSet& h : hosts_) host_file = h.force_reload_for(path) || host_file;
-        } else if (fs::path(path).extension() == ".spp") {
+        } else if (ext == ".spp") {
             // An open document owns its text. For a closed file, the cache of the analysis goes.
             // A shard of a deleted file goes at the next index_.prune().
             disk_facts_.erase(path);

@@ -1232,7 +1232,10 @@ namespace {
 // The server gets no -I option for "inc". The completion after "Thing." comes from the host only.
 // With "watched" the client sends workspace/didChangeWatchedFiles for the new host file. The
 // script gets no further change.
-std::vector<std::string> host_completion_labels(bool host, bool change_host_later = false, bool watched = false)
+// With "defines_file" the header needs the define HOST_NAME. The host file names "h.defines" in
+// "definesFile". The file holds the text of the argument, or no file when the text is "-".
+std::vector<std::string> host_completion_labels(bool host, bool change_host_later = false, bool watched = false,
+                                                const std::string& defines_file = "")
 {
     TempDir dir;
     const std::filesystem::path root = dir.path();
@@ -1240,7 +1243,10 @@ std::vector<std::string> host_completion_labels(bool host, bool change_host_late
     std::filesystem::create_directories(root / "scripts");
     std::filesystem::create_directories(root / "build");
     std::filesystem::create_directories(root / "hosts");
-    write_file((root / "inc" / "thing.h").string(), "#pragma once\nnamespace Thing { int Value(); }\n");
+    const std::string body = "namespace Thing { int Value(); }\n";
+    write_file((root / "inc" / "thing.h").string(),
+               "#pragma once\n" + (defines_file.empty() ? body : "#ifdef HOST_NAME\n" + body + "#endif\n"));
+    if (!defines_file.empty() && defines_file != "-") write_file((root / "hosts" / "h.defines").string(), defines_file);
     const std::string text = "using \"thing.h\";\n\nclass A {\n    void f() {\n        Thing.\n    }\n}\n";
     const std::string path = (root / "scripts" / "a.spp").string();
     write_file(path, text);
@@ -1250,7 +1256,8 @@ std::vector<std::string> host_completion_labels(bool host, bool change_host_late
                    R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string() +
                        R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")" +
                        (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" +
-                       (root / "inc").string() + R"(",")" + SPP_SOURCE_DIR + R"(/include"],"defines":[],"flags":[]})");
+                       (root / "inc").string() + R"(",")" + SPP_SOURCE_DIR + R"(/include"],"defines":[],)" +
+                       (defines_file.empty() ? "" : R"("definesFile":"h.defines",)") + R"("flags":[]})");
     };
     if (host && !change_host_later) write_host();
     spp::ls::ServerOptions o;
@@ -1290,6 +1297,19 @@ TEST(LanguageServerHosts, ScriptUsesTheIncludeDirsOfItsHost)
 {
     REQUIRE_CLANGD();
     EXPECT_TRUE(has_label(host_completion_labels(true), "Value"));
+}
+
+TEST(LanguageServerHosts, DefineWithQuotesFromADefinesFileApplies)
+{
+    REQUIRE_CLANGD();
+    // The lines hold quotes and a backslash. The server passes them to clangd as they are.
+    EXPECT_TRUE(has_label(host_completion_labels(true, false, false, "HOST_NAME=\"a b\"\nOTHER=\"C:\\dir\"\n"), "Value"));
+}
+
+TEST(LanguageServerHosts, MissingDefinesFileGivesNoDefines)
+{
+    REQUIRE_CLANGD();
+    EXPECT_FALSE(has_label(host_completion_labels(true, false, false, "-"), "Value"));
 }
 
 TEST(LanguageServerHosts, ScriptWithoutAHostHasNoHostIncludeDirs)

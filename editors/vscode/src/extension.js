@@ -64,7 +64,7 @@ function startServer() {
   const args = expandAll(config.get('server.args', ['--stdio']), folder);
   watchers = [
     vscode.workspace.createFileSystemWatcher('**/*.spp'),
-    vscode.workspace.createFileSystemWatcher('**/.cache/spp/hosts/*.json'),
+    vscode.workspace.createFileSystemWatcher('**/.cache/spp/hosts/*'),
   ];
   const options = {
     documentSelector: [{ scheme: 'file', language: 'spp' }],

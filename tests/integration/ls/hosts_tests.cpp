@@ -80,6 +80,62 @@ TEST_F(HostsTest, CxxFlagsAddDefines)
     EXPECT_EQ(set.match("/src/a/x.spp")->cxx_flags(), want);
 }
 
+// A host whose defines and options come from side files. The lines hold quotes and backslashes.
+TEST_F(HostsTest, SideFilesGiveDefinesAndOptions)
+{
+    const std::string build = make_build("a");
+    std::ofstream(hosts_dir / "a.json")
+        << R"({"version":1,"name":"a","binaryDir":")" << build << R"(","scriptDirs":["/src/a"],)"
+        << R"("defines":["X=1"],"definesFile":"a.defines","optionsFile":"a.options","flags":["-Wall"]})";
+    std::ofstream(hosts_dir / "a.defines", std::ios::binary)
+        << "Q=\"a b\"\r\n\nP=\"C:\\dir\"\nPIPE=\"x|y\"\n";
+    std::ofstream(hosts_dir / "a.options") << "-Wextra\n-DR=\"1\"\n";
+    HostSet set;
+    set.load(hosts_dir.string());
+    EXPECT_EQ(set.size(), 1u);  // the side files are not hosts
+    const auto h = set.match("/src/a/x.spp");
+    ASSERT_TRUE(h);
+    const std::vector<std::string> defines{"X=1", "Q=\"a b\"", "P=\"C:\\dir\"", "PIPE=\"x|y\""};
+    EXPECT_EQ(h->defines, defines);
+    const std::vector<std::string> flags{"-Wextra", "-DR=\"1\"", "-Wall"};
+    EXPECT_EQ(h->flags, flags);
+    EXPECT_EQ(h->cxx_flags().back(), "-DPIPE=\"x|y\"");
+}
+
+TEST_F(HostsTest, MissingSideFileIsEmpty)
+{
+    const std::string build = make_build("a");
+    std::ofstream(hosts_dir / "a.json")
+        << R"({"version":1,"name":"a","binaryDir":")" << build << R"(","scriptDirs":["/src/a"],)"
+        << R"("definesFile":"none.defines","optionsFile":"none.options","flags":[]})";
+    HostSet set;
+    set.load(hosts_dir.string());
+    ASSERT_EQ(set.size(), 1u);
+    const auto h = set.match("/src/a/x.spp");
+    ASSERT_TRUE(h);
+    EXPECT_TRUE(h->defines.empty());
+    EXPECT_TRUE(h->flags.empty());
+}
+
+TEST_F(HostsTest, SideFileChangeForcesReload)
+{
+    const std::string build = make_build("a");
+    std::ofstream(hosts_dir / "a.json")
+        << R"({"version":1,"name":"a","binaryDir":")" << build << R"(","scriptDirs":["/src/a"],)"
+        << R"("definesFile":"a.defines","flags":[]})";
+    std::ofstream(hosts_dir / "a.defines") << "A=1\n";
+    HostSet set;
+    set.load(hosts_dir.string());
+    EXPECT_EQ(set.match("/src/a/x.spp")->defines, std::vector<std::string>{"A=1"});
+    std::ofstream(hosts_dir / "a.defines") << "B=\"2\"\n";
+    EXPECT_FALSE(set.refresh());  // the modification time of the directory is the same
+    EXPECT_TRUE(set.force_reload_for((hosts_dir / "a.defines").string()));
+    EXPECT_TRUE(set.refresh());
+    EXPECT_EQ(set.match("/src/a/x.spp")->defines, std::vector<std::string>{"B=\"2\""});
+    EXPECT_TRUE(set.force_reload_for((hosts_dir / "a.options").string()));
+    EXPECT_FALSE(set.force_reload_for((hosts_dir / "a.txt").string()));
+}
+
 TEST_F(HostsTest, LongestPrefixWins)
 {
     write_host("outer", make_build("o"), R"("/src")");
