@@ -55,25 +55,25 @@ function(spp_add_scripts)
                     INCLUDES ${A_INCLUDES} FLAGS ${A_FLAGS})
 endfunction()
 
-# spp_add_shipped_scripts: build scripts into the program (shipping mode, design M7).
+# spp_add_aot_scripts: build scripts into the program (AOT mode, design M7).
 #
-#   spp_add_shipped_scripts(TARGET name SCRIPTS a.spp b.spp
+#   spp_add_aot_scripts(TARGET name SCRIPTS a.spp b.spp
 #                           [INCLUDES dir...] [PRELUDES file...] [FLAGS sppc-flag...]
 #                           [DEPENDS file...] [OUT_DIR dir])
 #
-# The function runs "sppc --ship" and makes the static library "name" from the generated
-# C++. The library defines spp::shipped_table (include/spp/shipped.h). It links spp_ship
+# The function runs "sppc --aot" and makes the static library "name" from the generated
+# C++. The library defines spp::aot_table (include/spp/aot.h). It links spp_aot
 # (PUBLIC), so a program that links "name" has no loader, no reload and no Clang. INCLUDES
 # are the include dirs of the translator and of the compile. OUT_DIR defaults to
-# ${CMAKE_BINARY_DIR}/spp_ship/<name>.
+# ${CMAKE_BINARY_DIR}/spp_aot/<name>.
 # The function also calls spp_script_host with the name TARGET (scripts and INCLUDES).
-function(spp_add_shipped_scripts)
+function(spp_add_aot_scripts)
     cmake_parse_arguments(A "" "TARGET;OUT_DIR" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS" ${ARGN})
     if(NOT A_TARGET OR NOT A_SCRIPTS)
-        message(FATAL_ERROR "spp_add_shipped_scripts needs TARGET and SCRIPTS")
+        message(FATAL_ERROR "spp_add_aot_scripts needs TARGET and SCRIPTS")
     endif()
     if(NOT A_OUT_DIR)
-        set(A_OUT_DIR ${CMAKE_BINARY_DIR}/spp_ship/${A_TARGET})
+        set(A_OUT_DIR ${CMAKE_BINARY_DIR}/spp_aot/${A_TARGET})
     endif()
     set(scripts "")
     set(sources "")
@@ -81,9 +81,9 @@ function(spp_add_shipped_scripts)
         get_filename_component(abs ${s} ABSOLUTE)
         get_filename_component(stem ${s} NAME_WLE)
         list(APPEND scripts ${abs})
-        list(APPEND sources ${A_OUT_DIR}/${stem}.ship.cpp)
+        list(APPEND sources ${A_OUT_DIR}/${stem}.aot.cpp)
     endforeach()
-    set(registry ${A_OUT_DIR}/spp_shipped_registry.cpp)
+    set(registry ${A_OUT_DIR}/spp_aot_registry.cpp)
     set(args "")
     foreach(i ${A_INCLUDES})
         list(APPEND args -I ${i})
@@ -95,12 +95,12 @@ function(spp_add_shipped_scripts)
     add_custom_command(
         OUTPUT ${sources} ${registry}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
-        COMMAND sppc --ship ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS}
+        COMMAND sppc --aot ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS}
         DEPENDS sppc ${scripts} ${A_PRELUDES} ${A_DEPENDS}
-        COMMENT "sppc --ship: ${A_SCRIPTS}"
+        COMMENT "sppc --aot: ${A_SCRIPTS}"
         VERBATIM)
     add_library(${A_TARGET} STATIC ${sources} ${registry})
-    target_link_libraries(${A_TARGET} PUBLIC spp_ship)
+    target_link_libraries(${A_TARGET} PUBLIC spp_aot)
     # The generated code has parameters that a script does not use.
     target_compile_options(${A_TARGET} PRIVATE -Wno-unused-parameter)
     target_include_directories(${A_TARGET} PUBLIC ${A_INCLUDES})

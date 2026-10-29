@@ -98,7 +98,7 @@ endif()
 separate_arguments(SPP_CXXFLAGS_LIST NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
 list(JOIN SPP_CXXFLAGS_LIST "|" SPP_CXXFLAGS_JOINED)
 
-# The headers that the precompiled and shipped scripts depend on. The examples and the tests use them.
+# The headers that the precompiled and AOT scripts depend on. The examples and the tests use them.
 file(GLOB SPP_RUNTIME_HEADERS ${CMAKE_SOURCE_DIR}/include/spp/runtime/*.h)
 set(SPP_HEADERS ${CMAKE_SOURCE_DIR}/example/engine/Actor.h ${CMAKE_SOURCE_DIR}/example/engine/Math.h
                 ${CMAKE_SOURCE_DIR}/include/spp/runtime.h ${CMAKE_SOURCE_DIR}/include/spp/module.h

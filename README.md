@@ -16,7 +16,7 @@ Each row is a milestone of `spp-design.md` section 10. "Not testable here" means
 | M4 Engine integration | Not testable here | `minengine` is the only host. A real engine is needed. |
 | M5 Contract enforcement | Done | The rows of design 5.3 have tests in `tests/integration/reload/` and `tests/unit/translator/translate/`. |
 | M6 Language v1 | Done | Inheritance, virtuals, `is`/`as`, lambdas, enums, structs, module variables, interpolation, constructors. Coroutines are not in version 1. |
-| M7 Shipping mode | Done | `sppc --ship`. Generation 1 only. |
+| M7 AOT compilation | Done | `sppc --aot`. Generation 1 only. |
 | M8 Unloading | Done | Core module. Generation 1 unloads. 1000 reloads with `SPP_STRESS=1`. |
 | M9 Optional ORC backend | Partial | The JIT backend works on Linux. The debug-symbol resolver for Windows is not testable here. |
 | M10 Source map and tolerant parse | Done | `TranslateResult::source_map`, `sppc::analyze`. |
@@ -54,7 +54,7 @@ The source tree has one `CMakeLists.txt` in each directory (`src/*`, `example/*`
 
 - `bin/<CONFIG>/` has the executables.
 - `lib/<CONFIG>/` has the libraries and the fixture `.so` files.
-- `spp_scripts/` and `spp_ship/` have the precompiled scripts.
+- `spp_scripts/` and `spp_aot/` have the precompiled scripts.
 - `tmp/` has the scratch files: the work directories, the directory of each test, the ImGui work directory and `imgui.ini`. ctest and the programs remove them by default.
 - `tests/**` has the ctest discovery files.
 
@@ -251,36 +251,36 @@ The CMake function `spp_add_scripts` (`cmake/SppScripts.cmake`) only runs `sppc`
 
 `TARGET` is a custom target that makes the libraries in `OUT_DIR` (default `${CMAKE_BINARY_DIR}/spp_scripts`). `AFTER` orders a generation after the earlier one.
 
-## Shipping mode
+## AOT compilation
 
-A shipping build has no loader, no reload, no JIT and no Clang (design M7). The generated C++ of all scripts is part of the game binary. The objects are plain C++ objects with the same shell classes. The class records, the slot tables and the factories are constant data of the binary.
+An AOT build has no loader, no reload, no JIT and no Clang (design M7). The generated C++ of all scripts is part of the game binary. The objects are plain C++ objects with the same shell classes. The class records, the slot tables and the factories are constant data of the binary.
 
 Command line (S12). The tool translates generation 1 of each script. It does not compile:
 
-    sppc --ship <script>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]
+    sppc --aot <script>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]
          [--format=std|fmt] [--resource-dir dir]
 
-- For each script `sppc` writes `DIR/<name>.ship.cpp`. The register function has the name `spp_script_register_<name>`, so many scripts link into one program.
-- `sppc` also writes `DIR/spp_shipped_registry.cpp`. It defines the constant table `spp::shipped_table` (`include/spp/shipped.h`).
-- The script names must be different. The class names must be different over all the scripts of a program. A shipped script has no slot file and no later generation.
+- For each script `sppc` writes `DIR/<name>.aot.cpp`. The register function has the name `spp_script_register_<name>`, so many scripts link into one program.
+- `sppc` also writes `DIR/spp_aot_registry.cpp`. It defines the constant table `spp::aot_table` (`include/spp/aot.h`).
+- The script names must be different. The class names must be different over all the scripts of a program. An AOT script has no slot file and no later generation.
 
-The CMake function `spp_add_shipped_scripts` (`cmake/SppScripts.cmake`) runs `sppc --ship` and builds a static library:
+The CMake function `spp_add_aot_scripts` (`cmake/SppScripts.cmake`) runs `sppc --aot` and builds a static library:
 
-    spp_add_shipped_scripts(TARGET game_scripts SCRIPTS player.spp boss.spp
+    spp_add_aot_scripts(TARGET game_scripts SCRIPTS player.spp boss.spp
                             INCLUDES include example/engine [PRELUDES file...] [DEPENDS file...])
     target_link_libraries(game PRIVATE game_scripts)
 
-The library links `spp_ship`. This target holds the core of the runtime (`threads.cpp`, `registry.cpp`) and the shipped registry (`shipped.cpp`). The loader, the migration and `dlopen` are in the other target `spp_runtime`. Do not link both targets in one program.
+The library links `spp_aot`. This target holds the core of the runtime (`threads.cpp`, `registry.cpp`) and the AOT registry (`aot.cpp`). The loader, the migration and `dlopen` are in the other target `spp_runtime`. Do not link both targets in one program.
 
 At start-up the program makes the registry. The registry calls the register function of each script, makes the blocks of the module variables and sets `spp::active_generation` to 1:
 
-    spp::ShippedRegistry registry(spp::shipped_table);
+    spp::AotRegistry registry(spp::aot_table);
     Actor* boss = registry.create_as<Actor>("Boss");   // the factory: the constructor with default arguments
     world.Add(boss);                                    // the engine ticks it as before
 
-`new` of a script class, script virtuals, properties, `is`/`as` and constructors work as under the loader, because the code is the same. The generation guard stays in the code and costs one compare. A shipped program never runs `onReload`.
+`new` of a script class, script virtuals, properties, `is`/`as` and constructors work as under the loader, because the code is the same. The generation guard stays in the code and costs one compare. An AOT program never runs `onReload`.
 
-The example is `example/ship/main.cpp` (target `ship_demo`) with the script `example/scripts/ship_demo.spp`. The tests are in `tests/integration/ship/`. They run the same steps with the loader and with the shipped program and compare the text. They check with `nm` that `ship_demo` has no loader and no Clang symbol. A compile error in the shipped C++ shows the generated file, not the script line.
+The example is `example/aot/main.cpp` (target `aot_demo`) with the script `example/scripts/aot_demo.spp`. The tests are in `tests/integration/aot/`. They run the same steps with the loader and with the AOT program and compare the text. They check with `nm` that `aot_demo` has no loader and no Clang symbol. A compile error in the AOT C++ shows the generated file, not the script line.
 
 ## Dependencies
 
@@ -432,7 +432,7 @@ A script host tells `spp-ls` how the engine compiles its scripts. CMake writes t
 
 ```cmake
 include(cmake/SppScripts.cmake)
-# spp_add_scripts and spp_add_shipped_scripts call spp_script_host by themselves.
+# spp_add_scripts and spp_add_aot_scripts call spp_script_host by themselves.
 # Call it directly for a host without these functions:
 spp_script_host(NAME game TARGET game_engine
                 SCRIPT_DIRS ${CMAKE_SOURCE_DIR}/scripts

@@ -1,4 +1,4 @@
-// The run of the shipping demo (S12). The shipped program and the test of the loader use this
+// The run of the AOT demo (S12). The AOT program and the test of the loader use this
 // same function, so they run the same steps. The result is a text that shows the state of each
 // object after each frame. Two runs that give the same text behave the same.
 #pragma once
@@ -11,7 +11,7 @@
 #include "Actor.h"
 #include "spp/runtime.h"
 
-namespace ship_demo {
+namespace aot_demo {
 
 // The text of one field of a script object. Types that the demo does not print show "?".
 inline std::string field_text(const spp::FieldInfo& f, const char* state)
@@ -67,4 +67,4 @@ std::string run(Create&& create)
     return log;
 }
 
-}  // namespace ship_demo
+}  // namespace aot_demo

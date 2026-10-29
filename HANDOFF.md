@@ -28,15 +28,15 @@ All work is committed, except what `git status` shows. Slices S0 to S21 are done
 | Translator | `sppc_lib` works on strings. It reads the native base with libclang. It emits `#line`. A session cache cuts a warm translate to about 1.3 ms. Tolerant parse, `source_map`, `analyze`. Done. |
 | Language | Classes, properties, constructors, inheritance, virtuals, `is`/`as`, enums, structs, module variables, native interface bases, interpolation. Done (syntax below). |
 | Backends | `SPP_BACKEND=CLANG_FILES` (default, external `clang++`) or `JIT` (in-process Clang plus ORC). Chosen at build time. Done. |
-| Tools | `sppc` (build `.so`, `--emit-cpp`, `--ship`, `--compile-commands`), `bench_backends`, `spp-ls`. Done. |
-| Shipping mode | `sppc --ship`, `spp_add_shipped_scripts`, library `spp_ship` with no loader. Done (generation 1 only). |
+| Tools | `sppc` (build `.so`, `--emit-cpp`, `--aot`, `--compile-commands`), `bench_backends`, `spp-ls`. Done. |
+| AOT compilation | `sppc --aot`, `spp_add_aot_scripts`, library `spp_aot` with no loader. Done (generation 1 only). |
 | Diagnostics, debug | Diagnostic rewriter, `#line`, DWARF script lines, lldb formatters, natvis. gdb check done (F3, see below). lldb and Visual Studio not run. |
 | Language server | `spp-ls`: a stdio LSP proxy in front of stock clangd (`src/ls/`, `DECISIONS.md` 13). VS Code extension in `editors/vscode/`. Done. |
 
 Layout:
 - `include/spp/` public headers. `src/runtime/` runtime and backends. `src/translator/` translator (`sppc_lib`). `src/translator/parser/` lexy grammars. `src/tools/` the tool `sppc`. `src/ls/` the language server.
-- `example/` has `engine`, `scripts`, `imgui`, `ship` and `bench_backends.cpp`. `editors/vscode/` the extension. `tools/` has the lldb and natvis files.
-- `tests/unit/translator/` (`parser`, `emit`, `lowering`, `translate`, `types`, `session`, `diagnostics`), `tests/unit/runtime/`, `tests/unit/python/`, `tests/integration/` (`backends`, `closures`, `reload`, `threading`, `ship`, `ls`), `tests/golden/`, `tests/support/`.
+- `example/` has `engine`, `scripts`, `imgui`, `aot` and `bench_backends.cpp`. `editors/vscode/` the extension. `tools/` has the lldb and natvis files.
+- `tests/unit/translator/` (`parser`, `emit`, `lowering`, `translate`, `types`, `session`, `diagnostics`), `tests/unit/runtime/`, `tests/unit/python/`, `tests/integration/` (`backends`, `closures`, `reload`, `threading`, `aot`, `ls`), `tests/golden/`, `tests/support/`.
 
 ## Build and test
 - `cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ && ninja -C build && ctest --test-dir build -j8`
@@ -110,7 +110,7 @@ Native bases (risk 8): libclang describes a plain base class, a base that derive
 Other limits:
 - The parser stores the access words. The translator does not enforce them.
 - Nesting limits: 64 nested statements, 15 nested lambdas, 256 operators in one expression.
-- Shipping mode: generation 1 only, no slot file. A type error shows in the C++ compile of the generated file. Script type and class names must be unique over all shipped scripts. `onReload` and `convert` never run.
+- AOT compilation: generation 1 only, no slot file. A type error shows in the C++ compile of the generated file. Script type and class names must be unique over all AOT scripts. `onReload` and `convert` never run.
 - Language server index (S28): the shard of a closed `.spp` file is made at the first rename or references scan, not at startup. The shard digest covers the file text and the texts of the scripts it imports, found by a scan for `using "x.spp";` in the script dir and the include dirs. A changed import makes the shard stale. The index dir is the first workspace folder only. Code: `src/ls/symbol_index.{h,cpp}`.
 - Language server hosts (`DECISIONS.md` 19): `spp_script_host` writes `.cache/spp/hosts/<name>.json`. Code: `src/ls/hosts.{h,cpp}`. Many build dirs share one hosts dir, so the last configure wins. Symlinked workspace paths are not canonicalized in matching. Multi-Config generators are untested. The host defines, options and include dirs are in the side files `<name>.defines`, `<name>.options` and `<name>.includes` (one entry on each line), so all valid paths are safe. The JSON has `sourceDir`; `spp-ls` resolves relative paths with it and removes repeated include dirs. Unsupported: a path with a newline, and a path with `;` (CMake splits it in a list before the function sees it).
 - Language server: after a translation error, clangd keeps the last good C++. Positions go through a prefix/suffix edit map (`Doc::set_edit`). A position inside the edit has no mapping. The `#line` fallback takes the column of the same word in the script line.

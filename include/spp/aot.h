@@ -1,13 +1,13 @@
-// Shipping mode (design M7). The generated C++ of all scripts is part of the game binary.
+// AOT compilation (design M7). The generated C++ of all scripts is part of the game binary.
 // There is no loader, no reload, no JIT and no Clang at run time.
 //
-// "sppc --ship" writes the C++ of each script and one registration file. The registration
-// file defines the constant table spp::shipped_table. The table lists the register function
+// "sppc --aot" writes the C++ of each script and one registration file. The registration
+// file defines the constant table spp::aot_table. The table lists the register function
 // of each script. A script registers its classes through the same Registry calls as a
 // generation module. The class records, the slot tables and the factories are constant data
 // of the binary.
 //
-// A program that ships scripts links spp_ship (the core of the runtime) and the static
+// A program with AOT scripts links spp_aot (the core of the runtime) and the static
 // library of the scripts. It must not link spp_runtime (loader, migration, dlopen).
 #pragma once
 #include <cstddef>
@@ -20,32 +20,32 @@
 
 namespace spp {
 
-// One script of the shipped table.
-struct ShippedScript {
+// One script of the AOT table.
+struct AotScript {
     const char* name;                 // the file name of the script without the extension
     void (*register_fn)(Registry&);  // the register function that sppc generated
 };
 
-struct ShippedTable {
-    const ShippedScript* scripts;
+struct AotTable {
+    const AotScript* scripts;
     size_t count;
 };
 
-// The table that the registration file of "sppc --ship" defines. A program that does not
-// use shipped scripts does not refer to it.
-extern const ShippedTable shipped_table;
+// The table that the registration file of "sppc --aot" defines. A program that does not
+// use AOT scripts does not refer to it.
+extern const AotTable aot_table;
 
 // Registers the classes of all scripts of a table at start-up. The registry lives as long as
 // the program uses script objects. The constructor and the destructor run on the main thread.
-class ShippedRegistry {
+class AotRegistry {
 public:
     // Calls the register function of each script. It makes the module variable blocks.
     // It throws std::runtime_error when two scripts have a class of the same name or
     // an initializer of a module variable throws.
-    explicit ShippedRegistry(const ShippedTable& table);
-    ~ShippedRegistry();
-    ShippedRegistry(const ShippedRegistry&) = delete;
-    ShippedRegistry& operator=(const ShippedRegistry&) = delete;
+    explicit AotRegistry(const AotTable& table);
+    ~AotRegistry();
+    AotRegistry(const AotRegistry&) = delete;
+    AotRegistry& operator=(const AotRegistry&) = delete;
 
     bool has(const std::string& class_name) const { return registry_.find(class_name) != nullptr; }
     // The names of all script classes, sorted.

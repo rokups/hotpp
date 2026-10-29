@@ -13,9 +13,9 @@ The recommended architecture has four parts.
 3. **Stable shell objects.** Each script class becomes a real C++ subclass of its native base. The shell compiles once per session. It stubs every virtual of the base and dispatches through a per-class table. Script fields live in a separate state block.
 4. **Generation loader and migration.** Each reload compiles one shared library. The runtime validates it, migrates state by field name and type at a frame boundary, and swaps the tables. Every generation function starts with a generation guard. Stale code fails safely instead of reading a migrated state block.
 
-**Why this and not the proposed Clang AST frontend.** Clang's Sema has no stable API. A parser that drives Sema inherits the full internal surface of Clang and breaks on each LLVM release. Carbon and Swift pay that cost with dedicated teams. The gain is only better diagnostics. Source translation with `#line` gives the same C++ semantics and the same ABI. It gives normal debugging and a shipping path with no LLVM in the game. The local experiment in section 2.1 confirms that `#line` reaches both DWARF and CodeView line tables.
+**Why this and not the proposed Clang AST frontend.** Clang's Sema has no stable API. A parser that drives Sema inherits the full internal surface of Clang and breaks on each LLVM release. Carbon and Swift pay that cost with dedicated teams. The gain is only better diagnostics. Source translation with `#line` gives the same C++ semantics and the same ABI. It gives normal debugging and an AOT path with no LLVM in the game. The local experiment in section 2.1 confirms that `#line` reaches both DWARF and CodeView line tables.
 
-**Why not a JIT first.** The requirement is hot reload, not JIT. A shared library per generation gives real debug symbols on every platform. It gives crash symbolication and the same code path as a shipping build. ORC adds value only for link latency or for symbol resolution in an engine that cannot export symbols. The loader interface keeps ORC as a later backend.
+**Why not a JIT first.** The requirement is hot reload, not JIT. A shared library per generation gives real debug symbols on every platform. It gives crash symbolication and the same code path as an AOT build. ORC adds value only for link latency or for symbol resolution in an engine that cannot export symbols. The loader interface keeps ORC as a later backend.
 
 **Why the shell model and not vtable replacement.** Vtable or vptr replacement on live objects works only with a fixed layout. Every surveyed C++ hot-reload system confirms this limit. The shell separates the stable parts from the changing parts. The address and the vtable stay. The code and the fields change.
 
@@ -171,7 +171,7 @@ Scores: 5 is best. The rightmost column weights the criterion.
 | Compiler-version coupling | 5. Driver flags only. | 1 | 2 | 1 | 5 | 5 | high |
 | Build time per reload | 3. PCH plus link. | 3 | 3 | 4 | 3 | 5 | medium |
 | Runtime performance | 5 | 5 | 4 | 4 | 5 | 2 | high |
-| Licensing and shipping | 5. No LLVM in the shipped game. | 3. LLVM in the editor. | 3 | 2. Cling license and fork. | 4. Live++ is commercial. | 5 | medium |
+| Licensing and AOT builds | 5. No LLVM in the AOT game build. | 3. LLVM in the editor. | 3 | 2. Cling license and fork. | 4. Live++ is commercial. | 5 | medium |
 | Meets the syntax goal | 5 | 5 | 5 | 4 | 1 | 4 | high |
 
 ### 3.3 Backend: shared library per generation versus ORC JIT
@@ -186,7 +186,7 @@ Scores: 5 is best. The rightmost column weights the criterion.
 | Exceptions | Normal | Supported on ELF, MachO and COFF x86-64. A FIXME for native-to-JIT propagation on Windows. |
 | Unloading | `dlclose` or `FreeLibrary`. Same safety rules. | `ResourceTracker::remove`. Same safety rules. |
 | Engine dependency | None. The compiler is a separate process. | The engine links LLVM. |
-| Shipping | Same generated C++ builds into the binary. | A second code path for shipping. |
+| AOT compilation | Same generated C++ builds into the binary. | A second code path for AOT compilation. |
 | Stable stubs for delegates | Generated thunk modules | `IndirectStubsManager` with `updatePointer` |
 
 The shared library backend wins for version 1. ORC wins only when the link step dominates latency or when the engine cannot export symbols. The loader interface hides the choice. The runtime model is identical in both.
@@ -207,7 +207,7 @@ The shared library backend wins for version 1. ORC wins only when the link step 
 
 ### 3.5 Conclusion
 
-Option A with the shell runtime model and a shared library backend has the highest weighted score. Its weak point is diagnostics. Its strong points are no compiler coupling, exact C++ semantics, normal debugging and a shipping path with no LLVM. Option B is the only credible alternative and costs an order of magnitude more for a better error message.
+Option A with the shell runtime model and a shared library backend has the highest weighted score. Its weak point is diagnostics. Its strong points are no compiler coupling, exact C++ semantics, normal debugging and an AOT path with no LLVM. Option B is the only credible alternative and costs an order of magnitude more for a better error message.
 ## 4. Proposed architecture
 
 ### 4.1 Summary
@@ -243,7 +243,7 @@ The translator resolves only the names that the script language defines. Clang r
 
 The translator needs type information from Clang in one place only. It needs the list of virtual methods of each native base class to emit a shell. The libclang C API gives this list. The libclang API has a stable ABI, unlike the C++ Sema API.
 
-The pipeline runs Clang as a separate process. The engine does not link LLVM. A crash in the compiler does not stop the game. The same generated C++ compiles into shipping builds with a constant dispatch table.
+The pipeline runs Clang as a separate process. The engine does not link LLVM. A crash in the compiler does not stop the game. The same generated C++ compiles into AOT builds with a constant dispatch table.
 
 ### 4.3 Three kinds of generated code
 
@@ -1090,7 +1090,7 @@ The highest risk is number 1. The guard and the pin design answer it on paper. R
 | M4 Engine integration (3 to 4 weeks) | Safe point hook, allocators, registration of shells, file watcher, editor command. First gameplay class in the real engine. | M1, M2 | One real actor class runs from script with reload. |
 | M5 Contract enforcement (2 weeks) | Validation of every row in section 5.3. Error texts. `[alias(...)]`, `convert`, `onReload`. | M4 | Each row has a test. |
 | M6 Language v1 (4 weeks) | Script inheritance, script virtuals, `is` and `as`, lambdas and pinned closures, module variables, enums, structs. | M5 | Section 7 complete. |
-| M7 Shipping mode (2 weeks) | Build generated C++ into the shipping binary. Constant tables. No loader. | M6 | Shipping build has no LLVM and no file watcher. |
+| M7 AOT compilation (2 weeks) | Build generated C++ into the AOT binary. Constant tables. No loader. | M6 | AOT build has no LLVM and no file watcher. |
 | M8 Unloading (2 weeks) | Pin counts, retirement and `dlclose`. | M6 | R6 passes in the engine with 1000 reloads. |
 | M9 Optional ORC backend (4 weeks) | In-process JIT behind the loader interface. Debug-symbol resolver. | M8 | Reload latency improves by a measured factor. Debugging still works on the target platform. |
 | M10 Source map and tolerant parse | `TranslateResult::source_map`. A parse that recovers from a bad statement. | M2 | Each identifier maps to the same text in both directions. Other methods stay byte-identical. |
@@ -1146,7 +1146,7 @@ Each question changes the architecture.
 2. Which engine systems must know a new subclass? Reflection, GC, serialization, networking, factories. The answer decides whether shells can register at load time.
 3. Does a frame boundary exist where no thread runs gameplay code? A "no" selects entry counters instead of stop-the-world.
 4. Which compiler and flags build the engine? MSVC or Clang. Exceptions on or off. RTTI on or off. The script toolchain must match.
-5. Must shipping builds precompile scripts into the binary? A "yes" confirms source translation and excludes a runtime JIT in shipping.
+5. Must AOT builds precompile scripts into the binary? A "yes" confirms source translation and excludes a runtime JIT in AOT builds.
 6. Does version 1 need coroutines or async? A "yes" adds a translator milestone and the coroutine pin design before M6.
 7. Are there engine base classes with pure virtuals that take or return engine template types? This decides whether libclang is enough for shell generation.
 8. Which engine types are intrusively reference counted, and which smart pointers does the engine use? These need stubs in the prelude (section 7.10). Other engine pointers are borrowed and scripts cannot store them.

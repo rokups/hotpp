@@ -1,4 +1,4 @@
-// The script of the shipping demo (S12, design M7). The loader and the shipped build run the
+// The script of the AOT demo (S12, design M7). The loader and the AOT build run the
 // same code. Fighter has a constructor, a property and a virtual function. Veteran derives
 // from Fighter and overrides the virtual function. Spawner builds a Veteran with "new".
 using "Actor.h";
@@ -19,7 +19,7 @@ class Fighter : Actor {
     }
 
     ~Fighter() {
-        std.printf("[ship_demo] Fighter dtor %d\n", this.hp);
+        std.printf("[aot_demo] Fighter dtor %d\n", this.hp);
     }
 
     virtual int Power() { return 1; }
@@ -48,7 +48,7 @@ class Veteran : Fighter {
     }
 
     ~Veteran() {
-        std.printf("[ship_demo] Veteran dtor %d\n", this.rage);
+        std.printf("[aot_demo] Veteran dtor %d\n", this.rage);
     }
 
     override int Power() { return this.rage; }

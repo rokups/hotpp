@@ -281,14 +281,14 @@ TEST(SppcTool, InterpolationRunsWithStdFormat)
 }
 #endif
 
-// --ship writes the C++ of each script and the registration file. It does not compile.
-TEST(SppcTool, ShipModeWritesTheCppAndTheRegistrationFile)
+// --aot writes the C++ of each script and the registration file. It does not compile.
+TEST(SppcTool, AotModeWritesTheCppAndTheRegistrationFile)
 {
     TestScratch scratch;
-    const std::string out_dir = scratch.file("sppc_ship");
-    const std::string scripts = std::string("'") + SPP_SOURCE_DIR + "/example/scripts/ship_demo.spp' '" +
+    const std::string out_dir = scratch.file("sppc_aot");
+    const std::string scripts = std::string("'") + SPP_SOURCE_DIR + "/example/scripts/aot_demo.spp' '" +
                                 SPP_SOURCE_DIR + "/example/scripts/props_v1.spp'";
-    const std::string cmd = std::string("'") + SPPC_PATH + "' --ship " + scripts + " --out-dir '" + out_dir +
+    const std::string cmd = std::string("'") + SPPC_PATH + "' --aot " + scripts + " --out-dir '" + out_dir +
                             "' -I '" + SPP_SOURCE_DIR + "/example/engine' -I '" + SPP_SOURCE_DIR + "/include' 2>&1";
     FILE* p = popen(cmd.c_str(), "r");
     ASSERT_NE(p, nullptr);
@@ -298,22 +298,22 @@ TEST(SppcTool, ShipModeWritesTheCppAndTheRegistrationFile)
     const int status = pclose(p);
     ASSERT_TRUE(WIFEXITED(status));
     EXPECT_EQ(WEXITSTATUS(status), 0) << text;
-    const std::string demo = read_file(out_dir + "/ship_demo.ship.cpp");
-    EXPECT_NE(demo.find("#define script_register spp_script_register_ship_demo"), std::string::npos);
+    const std::string demo = read_file(out_dir + "/aot_demo.aot.cpp");
+    EXPECT_NE(demo.find("#define script_register spp_script_register_aot_demo"), std::string::npos);
     EXPECT_NE(demo.find("extern \"C\" void script_register("), std::string::npos);
-    EXPECT_FALSE(std::filesystem::exists(out_dir + "/ship_demo.g1.so"));
-    const std::string reg = read_file(out_dir + "/spp_shipped_registry.cpp");
-    EXPECT_NE(reg.find("{\"ship_demo\", &spp_script_register_ship_demo}"), std::string::npos) << reg;
+    EXPECT_FALSE(std::filesystem::exists(out_dir + "/aot_demo.g1.so"));
+    const std::string reg = read_file(out_dir + "/spp_aot_registry.cpp");
+    EXPECT_NE(reg.find("{\"aot_demo\", &spp_script_register_aot_demo}"), std::string::npos) << reg;
     EXPECT_NE(reg.find("{\"props_v1\", &spp_script_register_props_v1}"), std::string::npos) << reg;
-    EXPECT_NE(reg.find("shipped_table = {kShippedScripts, 2}"), std::string::npos) << reg;
+    EXPECT_NE(reg.find("aot_table = {kAotScripts, 2}"), std::string::npos) << reg;
 }
 
-// --ship needs an output directory and does not take the options of the other modes.
-TEST(SppcTool, ShipModeRejectsBadUsage)
+// --aot needs an output directory and does not take the options of the other modes.
+TEST(SppcTool, AotModeRejectsBadUsage)
 {
-    const std::string script = std::string(SPP_SOURCE_DIR) + "/example/scripts/ship_demo.spp";
+    const std::string script = std::string(SPP_SOURCE_DIR) + "/example/scripts/aot_demo.spp";
     for (const char* extra : {"", "--out-dir /tmp/x --gen 1", "--out-dir /tmp/x -o /tmp/x.so", "--emit-cpp --out-dir /tmp/x"}) {
-        const std::string cmd = std::string("'") + SPPC_PATH + "' --ship '" + script + "' " + extra + " >/dev/null 2>&1";
+        const std::string cmd = std::string("'") + SPPC_PATH + "' --aot '" + script + "' " + extra + " >/dev/null 2>&1";
         const int status = std::system(cmd.c_str());
         ASSERT_TRUE(WIFEXITED(status));
         EXPECT_EQ(WEXITSTATUS(status), 2) << extra;
@@ -322,17 +322,17 @@ TEST(SppcTool, ShipModeRejectsBadUsage)
 
 // A script that does not parse gives exit code 1, an error at the script line and no
 // registration file. A type error appears later, in the compile of the library.
-TEST(SppcTool, ShipModeReportsParseErrorAtTheScriptLine)
+TEST(SppcTool, AotModeReportsParseErrorAtTheScriptLine)
 {
     TestScratch scratch;
-    const std::string out_dir = scratch.file("sppc_ship_bad");
+    const std::string out_dir = scratch.file("sppc_aot_bad");
     std::filesystem::create_directories(out_dir);
     const std::string script = out_dir + "/broken.spp";
     {
         std::ofstream f(script);
         f << "using \"Actor.h\";\n\nclass Broken : Actor {\n    int x = ;\n}\n";
     }
-    const std::string cmd = std::string("'") + SPPC_PATH + "' --ship '" + script + "' --out-dir '" + out_dir +
+    const std::string cmd = std::string("'") + SPPC_PATH + "' --aot '" + script + "' --out-dir '" + out_dir +
                             "' -I '" + SPP_SOURCE_DIR + "/example/engine' -I '" + SPP_SOURCE_DIR + "/include' 2>&1";
     FILE* p = popen(cmd.c_str(), "r");
     ASSERT_NE(p, nullptr);
@@ -343,7 +343,7 @@ TEST(SppcTool, ShipModeReportsParseErrorAtTheScriptLine)
     ASSERT_TRUE(WIFEXITED(status));
     EXPECT_EQ(WEXITSTATUS(status), 1) << text;
     EXPECT_NE(text.find("broken.spp:4:"), std::string::npos) << text;
-    EXPECT_FALSE(std::filesystem::exists(out_dir + "/spp_shipped_registry.cpp"));
+    EXPECT_FALSE(std::filesystem::exists(out_dir + "/spp_aot_registry.cpp"));
 }
 
 // The text of compile_commands.json is exact, and a quote or a backslash is escaped.

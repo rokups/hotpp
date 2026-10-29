@@ -2,7 +2,7 @@
 add_subdirectory(engine)
 add_subdirectory(imgui)
 add_subdirectory(scripts)
-add_subdirectory(ship)
+add_subdirectory(aot)
 
 # bench_backends times the compile and the load of the example scripts.
 add_executable(bench_backends bench_backends.cpp engine/Actor.cpp engine/Util.cpp)

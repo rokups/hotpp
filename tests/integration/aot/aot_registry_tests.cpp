@@ -1,5 +1,5 @@
-// Shipping mode (S12, design M7), part 2. This program links spp_ship and the shipped scripts.
-// It does not link the loader. The tests use the ShippedRegistry API.
+// AOT compilation (S12, design M7), part 2. This program links spp_aot and the AOT scripts.
+// It does not link the loader. The tests use the AotRegistry API.
 #include <gtest/gtest.h>
 
 #include <stdexcept>
@@ -7,13 +7,13 @@
 
 #include "Actor.h"
 #include "demo_run.h"
-#include "spp/shipped.h"
+#include "spp/aot.h"
 
 namespace {
 
-TEST(ShippedRegistry, RegistersTheClassesOfAllScripts)
+TEST(AotRegistry, RegistersTheClassesOfAllScripts)
 {
-    spp::ShippedRegistry reg(spp::shipped_table);
+    spp::AotRegistry reg(spp::aot_table);
     EXPECT_EQ(reg.script_count(), 2u);
     EXPECT_TRUE(reg.has("Fighter"));
     EXPECT_TRUE(reg.has("Hero"));  // from the second script
@@ -23,9 +23,9 @@ TEST(ShippedRegistry, RegistersTheClassesOfAllScripts)
     EXPECT_EQ(reg.class_count(), 5u);
 }
 
-TEST(ShippedRegistry, RecordsHaveTheGenerationAndTheParent)
+TEST(AotRegistry, RecordsHaveTheGenerationAndTheParent)
 {
-    spp::ShippedRegistry reg(spp::shipped_table);
+    spp::AotRegistry reg(spp::aot_table);
     const spp::ClassRecord* veteran = reg.record("Veteran");
     ASSERT_NE(veteran, nullptr);
     EXPECT_EQ(veteran->generation, 1u);
@@ -35,9 +35,9 @@ TEST(ShippedRegistry, RecordsHaveTheGenerationAndTheParent)
     EXPECT_EQ(spp::active_generation, 1u);
 }
 
-TEST(ShippedRegistry, CreateGivesAnObjectThatTheWorldTicks)
+TEST(AotRegistry, CreateGivesAnObjectThatTheWorldTicks)
 {
-    spp::ShippedRegistry reg(spp::shipped_table);
+    spp::AotRegistry reg(spp::aot_table);
     World world;
     Actor* fighter = reg.create_as<Actor>("Fighter");
     world.Add(fighter);
@@ -50,16 +50,16 @@ TEST(ShippedRegistry, CreateGivesAnObjectThatTheWorldTicks)
     EXPECT_EQ(*spp::field_ptr<int>(shell, "ticks"), 2);
 }
 
-TEST(ShippedRegistry, CreateOfAnUnknownClassThrows)
+TEST(AotRegistry, CreateOfAnUnknownClassThrows)
 {
-    spp::ShippedRegistry reg(spp::shipped_table);
+    spp::AotRegistry reg(spp::aot_table);
     EXPECT_THROW(reg.create("Nobody"), std::runtime_error);
 }
 
 // The module variable "total" lives in a block that the registry made. Hero and Helper share it.
-TEST(ShippedRegistry, ModuleVariablesAreSharedByTheClassesOfAScript)
+TEST(AotRegistry, ModuleVariablesAreSharedByTheClassesOfAScript)
 {
-    spp::ShippedRegistry reg(spp::shipped_table);
+    spp::AotRegistry reg(spp::aot_table);
     World world;
     Actor* hero = reg.create_as<Actor>("Hero");
     Actor* helper = reg.create_as<Actor>("Helper");
@@ -71,18 +71,18 @@ TEST(ShippedRegistry, ModuleVariablesAreSharedByTheClassesOfAScript)
     EXPECT_EQ(*spp::field_ptr<int>(shell, "seen"), 101);  // Hero adds 1 (Walk), Helper adds 100
 }
 
-TEST(ShippedRegistry, TwoScriptsWithTheSameClassAreRejected)
+TEST(AotRegistry, TwoScriptsWithTheSameClassAreRejected)
 {
-    const spp::ShippedScript scripts[] = {spp::shipped_table.scripts[0], spp::shipped_table.scripts[0]};
-    const spp::ShippedTable table = {scripts, 2};
-    EXPECT_THROW(spp::ShippedRegistry reg(table), std::runtime_error);
+    const spp::AotScript scripts[] = {spp::aot_table.scripts[0], spp::aot_table.scripts[0]};
+    const spp::AotTable table = {scripts, 2};
+    EXPECT_THROW(spp::AotRegistry reg(table), std::runtime_error);
 }
 
-TEST(ShippedRegistry, RegistryCanBeMadeAgainAfterItEnds)
+TEST(AotRegistry, RegistryCanBeMadeAgainAfterItEnds)
 {
     for (int i = 0; i < 2; ++i) {
-        spp::ShippedRegistry reg(spp::shipped_table);
-        const std::string log = ship_demo::run([&](const char* name) { return reg.create(name); });
+        spp::AotRegistry reg(spp::aot_table);
+        const std::string log = aot_demo::run([&](const char* name) { return reg.create(name); });
         EXPECT_NE(log.find("done"), std::string::npos);
     }
 }

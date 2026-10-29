@@ -1,6 +1,6 @@
-// Shipping mode (S12, design M7), part 1. The loader runs the demo script in this process.
-// The shipped program ship_demo runs the same steps in another process. The text must be the
-// same. A symbol check shows that ship_demo has no loader and no Clang code.
+// AOT compilation (S12, design M7), part 1. The loader runs the demo script in this process.
+// The AOT program aot_demo runs the same steps in another process. The text must be the
+// same. A symbol check shows that aot_demo has no loader and no Clang code.
 #include <gtest/gtest.h>
 
 #include <cstdio>
@@ -32,7 +32,7 @@ std::string run_command(const std::string& command, int* status = nullptr)
 std::string run_with_loader()
 {
     std::unique_ptr<spp::Backend> backend = spp::make_default_backend();
-    spp::LoadResult r = backend->load(test_support::source("ship_demo.spp"), 1);
+    spp::LoadResult r = backend->load(test_support::source("aot_demo.spp"), 1);
     if (!r) {
         ADD_FAILURE() << r.error;
         return {};
@@ -45,27 +45,27 @@ std::string run_with_loader()
         if (!loader.load(std::move(*r.module), error)) {
             ADD_FAILURE() << error;
         } else {
-            log = ship_demo::run([&](const char* name) { return loader.find(name)->create(); });
+            log = aot_demo::run([&](const char* name) { return loader.find(name)->create(); });
         }
     }
     std::fflush(stdout);
     return testing::internal::GetCapturedStdout() + log;
 }
 
-TEST(ShipParity, ShippedProgramBehavesLikeTheLoader)
+TEST(AotParity, AotProgramBehavesLikeTheLoader)
 {
     const std::string loaded = run_with_loader();
     int status = -1;
-    const std::string shipped = run_command(std::string(SHIP_DEMO_PATH) + " 2>&1", &status);
+    const std::string aot = run_command(std::string(AOT_DEMO_PATH) + " 2>&1", &status);
     EXPECT_EQ(status, 0);
     ASSERT_FALSE(loaded.empty());
-    EXPECT_EQ(shipped, loaded);
+    EXPECT_EQ(aot, loaded);
 }
 
 // The text has the facts that the task names, so an empty or a wrong run cannot pass.
-TEST(ShipParity, ShippedProgramShowsTheLanguageFeatures)
+TEST(AotParity, AotProgramShowsTheLanguageFeatures)
 {
-    const std::string out = run_command(std::string(SHIP_DEMO_PATH) + " 2>&1");
+    const std::string out = run_command(std::string(AOT_DEMO_PATH) + " 2>&1");
     // create and tick: three frames of 0.5 move the Fighter to x=1.5
     EXPECT_NE(out.find("frame 3: Fighter fighter pos.x=1.500 hp=100 ticks=3"), std::string::npos) << out;
     // constructor: Fighter(int) adds 100 to the start value and Veteran passes start + 1 to it
@@ -80,7 +80,7 @@ TEST(ShipParity, ShippedProgramShowsTheLanguageFeatures)
     // native virtual call to the override in the script: the damage goes to the shield
     EXPECT_NE(out.find("hit: Fighter fighter pos.x=1.500 hp=100 ticks=3 shield_raw=1.000"), std::string::npos) << out;
     // destructors: the child first, then the parent
-    const size_t child = out.find("[ship_demo] Veteran dtor"), parent = out.find("[ship_demo] Fighter dtor", child);
+    const size_t child = out.find("[aot_demo] Veteran dtor"), parent = out.find("[aot_demo] Fighter dtor", child);
     EXPECT_NE(child, std::string::npos) << out;
     EXPECT_NE(parent, std::string::npos) << out;
 }
@@ -110,19 +110,19 @@ const char* const kLoaderMarks[] = {"spp::Loader", "spp::module_from_library", "
                                     "clang_createIndex", "clang_parseTranslationUnit", "clang::", "LLVM", "llvm::"};
 #endif
 
-TEST(ShipLink, ShippedProgramHasNoLoaderOrClangSymbol)
+TEST(AotLink, AotProgramHasNoLoaderOrClangSymbol)
 {
-    const std::string syms = symbols_of(SHIP_DEMO_PATH);
+    const std::string syms = symbols_of(AOT_DEMO_PATH);
     if (syms.empty()) GTEST_SKIP() << "nm is not available";
-    // The scripts and the shipped runtime are in the binary.
-    EXPECT_NE(syms.find("spp::ShippedRegistry::ShippedRegistry"), std::string::npos);
+    // The scripts and the AOT runtime are in the binary.
+    EXPECT_NE(syms.find("spp::AotRegistry::AotRegistry"), std::string::npos);
     EXPECT_NE(syms.find("Veteran_record"), std::string::npos);
-    EXPECT_NE(syms.find("spp::shipped_table"), std::string::npos);
+    EXPECT_NE(syms.find("spp::aot_table"), std::string::npos);
     for (const char* mark : kLoaderMarks) EXPECT_EQ(syms.find(mark), std::string::npos) << mark;
 }
 
 // A control: the same scan finds the loader in this test program, which links it.
-TEST(ShipLink, ScanFindsTheLoaderInAProgramThatLinksIt)
+TEST(AotLink, ScanFindsTheLoaderInAProgramThatLinksIt)
 {
     const std::string syms = symbols_of(std::filesystem::read_symlink("/proc/self/exe").string());
     if (syms.empty()) GTEST_SKIP() << "nm is not available";
@@ -130,9 +130,9 @@ TEST(ShipLink, ScanFindsTheLoaderInAProgramThatLinksIt)
     EXPECT_NE(syms.find("migrate_block"), std::string::npos);
 }
 
-TEST(ShipLink, ShippedProgramNeedsNoClangLibrary)
+TEST(AotLink, AotProgramNeedsNoClangLibrary)
 {
-    const std::string needed = run_command(std::string("readelf -d '") + SHIP_DEMO_PATH + "' 2>/dev/null | grep NEEDED");
+    const std::string needed = run_command(std::string("readelf -d '") + AOT_DEMO_PATH + "' 2>/dev/null | grep NEEDED");
     if (needed.empty()) GTEST_SKIP() << "readelf is not available";
     EXPECT_EQ(needed.find("clang"), std::string::npos) << needed;
     EXPECT_EQ(needed.find("LLVM"), std::string::npos) << needed;

@@ -1,6 +1,6 @@
-// The shipping runtime (design M7): the shipped registry and the object tracking of a
+// The AOT runtime (design M7): the AOT registry and the object tracking of a
 // program that has no loader. It does not include loader.h.
-#include "spp/shipped.h"
+#include "spp/aot.h"
 
 #include <algorithm>
 #include <stdexcept>
@@ -11,15 +11,15 @@
 
 namespace spp {
 
-// A shipped program never reloads. Nobody reads the list of live objects, so the calls do nothing.
+// An AOT program never reloads. Nobody reads the list of live objects, so the calls do nothing.
 void track_object(ShellBase*) {}
 void untrack_object(ShellBase*) {}
 void note_creator(ShellBase*, uint32_t) {}
 
 namespace {
 
-// The generation number of all shipped code. The guard of each generation function reads it.
-constexpr uint32_t kShippedGeneration = 1;
+// The generation number of all AOT code. The guard of each generation function reads it.
+constexpr uint32_t kAotGeneration = 1;
 
 void destroy_module_block(const ModuleStateInfo& info)
 {
@@ -32,17 +32,17 @@ void destroy_module_block(const ModuleStateInfo& info)
 
 }  // namespace
 
-ShippedRegistry::ShippedRegistry(const ShippedTable& table)
+AotRegistry::AotRegistry(const AotTable& table)
 {
-    active_generation = kShippedGeneration;
+    active_generation = kAotGeneration;
     try {
         for (size_t i = 0; i < table.count; ++i) {
-            const ShippedScript& script = table.scripts[i];
+            const AotScript& script = table.scripts[i];
             Registry reg;
             script.register_fn(reg);
             for (const auto& [name, e] : reg.entries()) {
                 if (registry_.find(name))
-                    throw std::runtime_error("the class " + name + " is in two shipped scripts (" + script.name + ")");
+                    throw std::runtime_error("the class " + name + " is in two AOT scripts (" + script.name + ")");
                 registry_.add(e.record, e.create);
             }
             for (const auto& [key, t] : reg.thunks()) registry_.add_thunk(t);
@@ -72,12 +72,12 @@ ShippedRegistry::ShippedRegistry(const ShippedTable& table)
     }
 }
 
-ShippedRegistry::~ShippedRegistry()
+AotRegistry::~AotRegistry()
 {
     for (auto it = module_blocks_.rbegin(); it != module_blocks_.rend(); ++it) destroy_module_block(*it);
 }
 
-std::vector<std::string> ShippedRegistry::class_names() const
+std::vector<std::string> AotRegistry::class_names() const
 {
     std::vector<std::string> names;
     for (const auto& [name, e] : registry_.entries()) names.push_back(name);
@@ -85,16 +85,16 @@ std::vector<std::string> ShippedRegistry::class_names() const
     return names;
 }
 
-const ClassRecord* ShippedRegistry::record(const std::string& class_name) const
+const ClassRecord* AotRegistry::record(const std::string& class_name) const
 {
     const ClassEntry* e = registry_.find(class_name);
     return e ? e->record : nullptr;
 }
 
-Instance ShippedRegistry::create(const std::string& class_name) const
+Instance AotRegistry::create(const std::string& class_name) const
 {
     const ClassEntry* e = registry_.find(class_name);
-    if (!e) throw std::runtime_error("no shipped script class " + class_name);
+    if (!e) throw std::runtime_error("no AOT script class " + class_name);
     return e->create();
 }
 

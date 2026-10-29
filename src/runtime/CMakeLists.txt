@@ -1,5 +1,5 @@
 # Script runtime. It has two parts.
-#   spp_runtime_core: the globals and the registry that generated code needs. A shipping
+#   spp_runtime_core: the globals and the registry that generated code needs. An AOT
 #     build links only this part (design M7). It has no loader, no migration, no dlopen.
 #   spp_runtime: the core plus the state tracking, the migration and the generation loader.
 add_library(spp_runtime_core STATIC threads.cpp registry.cpp)
@@ -11,10 +11,10 @@ add_library(spp_runtime STATIC
 target_compile_definitions(spp_runtime PRIVATE SPP_KEEP_TEMP_DEFAULT=$<BOOL:${SPP_KEEP_TEMP}>)
 target_link_libraries(spp_runtime PUBLIC spp_runtime_core ${CMAKE_DL_LIBS} Threads::Threads)
 
-# Shipping runtime (design M7): the core, the shipped registry and no-op object tracking.
+# AOT runtime (design M7): the core, the AOT registry and no-op object tracking.
 # Do not link it together with spp_runtime.
-add_library(spp_ship STATIC shipped.cpp)
-target_link_libraries(spp_ship PUBLIC spp_runtime_core Threads::Threads)
+add_library(spp_aot STATIC aot.cpp)
+target_link_libraries(spp_aot PUBLIC spp_runtime_core Threads::Threads)
 
 # ------------------------------------------------------------ Backends
 # ClangFilesBackend: sppc_lib in memory, then an external compiler.
