@@ -1110,6 +1110,13 @@ Status: implemented as the proxy `spp-ls` (S14b, `DECISIONS.md` 13). The fork of
 - `sppc::rewrite_generated_names` and `sppc::rewrite_clang_message` change generated names to script names in hover text, diagnostics and completion labels.
 - Features: diagnostics, completion, hover, go-to-definition, references, document symbols, semantic tokens, rename across all `.spp` files of the workspace, and workspace symbols from the clangd background index (`--compile-commands-dir`, from `sppc --compile-commands`). The custom request `spp/toScript` maps a position in a generated file to the script.
 
+**Script hosts.** A script host is the compile setup of the engine that runs a script. The server does not guess it.
+- CMake writes one JSON file for each host at generate time: `<source>/.cache/spp/hosts/<name>.json` (`spp_script_host`, `cmake/SppScripts.cmake`). The file has the include dirs, defines, options, script dirs and scripts.
+- `spp-ls` loads the files (`src/ls/hosts.{h,cpp}`). A script uses the host with the exact `scripts` entry, else the longest `scriptDirs` prefix, with a tie by name.
+- The effective options are the host values, then the explicit `-I` and `--cxxflag` values.
+- A host whose `binaryDir/CMakeCache.txt` is missing is skipped and checked again. With no host, the server shows an Information diagnostic.
+- The server reloads on a change of the hosts dir (mtime check, and `workspace/didChangeWatchedFiles`). `DECISIONS.md` 19 has the rejected alternatives.
+
 **The `#line` directives.** The first draft said that the `#line` directives in the generated text were unverified for clangd. This is now verified by `tests/integration/ls/ls_tests.cpp` (`LanguageServer.ClangdTypeErrorIsAtTheScriptLine`). clangd reports the file position of the generated C++, not the `#line` position. The source map gives the script line. So the generated C++ keeps its `#line` directives, and no translator option is necessary. The compiler and the debugger use the directives. A line without a segment uses them as a fallback (the column is 0).
 
 **Trade-off of the proxy.** The proxy costs less to maintain than a fork. It needs no LLVM build and no rebase. The index of clangd sees the generated files only when the server gets `--compile-commands-dir`. The server cannot add a feature that needs a change inside clangd. After a translation error, clangd keeps the last good generated C++, so its positions can be old until the next good translation.

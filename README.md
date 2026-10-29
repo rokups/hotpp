@@ -365,7 +365,7 @@ An editor uses two language servers on one project:
 Steps:
 
 1. Install the clangd extension (`llvm-vs-code-extensions.vscode-clangd`) and `clangd`. Set it up for the C++ build as usual.
-2. Build `spp-ls` and install the extension in `editors/vscode/`. Put the `spp-ls` arguments in `spp.server.args`.
+2. Build `spp-ls` and install the extension in `editors/vscode/`. Put the `spp-ls` arguments in `spp.server.args`. The include dirs come from the script hosts (next subsection). The flags `-I` and `--cxxflag` still work as overrides.
 3. Optional, for workspace symbols and the background index of scripts: run `sppc <file.spp>... --gen N --out-dir DIR --compile-commands CDIR`. Give `--compile-commands-dir CDIR` to `spp-ls`.
 4. Add `.cache/` to the ignore list of the project (for example in `.gitignore`).
 
@@ -375,6 +375,28 @@ Both servers can use the same project and the same `.cache/` directory. They do 
 - The clangd child of `spp-ls` has its own database directory `.cache/spp/clangd/` in the first workspace folder. The directory has a link to the real `compile_commands.json`. So its index is in `.cache/spp/clangd/.cache/clangd/index/`. The extra nesting is accepted. `XDG_CACHE_HOME` does not move this index (see DECISIONS 18).
 - The symbol index of `spp-ls` is in `.cache/spp/index/`.
 - The C++ clangd does not get an open `.spp` document, and `spp-ls` does not get a C++ document. A diagnostic of one server never shows in the files of the other.
+
+### Automatic setup (script hosts)
+
+A script host tells `spp-ls` how the engine compiles its scripts. CMake writes the host files. So the user does not pass `-I` flags.
+
+```cmake
+include(cmake/SppScripts.cmake)
+# spp_add_scripts and spp_add_shipped_scripts call spp_script_host by themselves.
+# Call it directly for a host without these functions:
+spp_script_host(NAME game TARGET game_engine
+                SCRIPT_DIRS ${CMAKE_SOURCE_DIR}/scripts
+                INCLUDES ${CMAKE_SOURCE_DIR}/engine)
+```
+
+- At generate time, `spp_script_host` writes `${SPP_HOSTS_DIR}/<NAME>.json`. The default is `<source dir>/.cache/spp/hosts`. The file has the include dirs, defines and options of `TARGET`, and the script dirs and scripts. A define with a quote or a backslash is dropped.
+- `spp-ls` reads the host files from `<root>/.cache/spp/hosts`. The argument `--hosts-dir` (init option `hostsDir`) sets another directory.
+- A script matches the host with the exact `scripts` entry. Else it matches the host with the longest `scriptDirs` prefix. A tie goes to the lower name.
+- The effective options are the host values, then the explicit `-I` and `--cxxflag` values. So the flags override the host.
+- A host is skipped when its `binaryDir/CMakeCache.txt` is missing. The server checks it again later.
+- With no host, the old behavior stays. The server also shows an Information diagnostic at 0:0. It does not show it when `-I` or `--compile-commands-dir` is set.
+- The server reloads the host files when the mtime of the hosts dir changes. The VS Code extension watches `**/*.spp` and the host files.
+- Limits: many build dirs share one hosts dir, so the last configure wins. The server does not canonicalize symlinked workspace paths. Multi-Config generators are not tested.
 
 How it works:
 
