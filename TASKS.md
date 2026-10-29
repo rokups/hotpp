@@ -47,5 +47,5 @@ The language server is the proxy `spp-ls`, not a clangd fork (DECISIONS.md 13). 
 - A real VS Code session for the extension in `editors/vscode/`. The grammar snapshot test and the LSP tests pass.
 
 ## Open work (can be tested here)
-- A native base that derives from an implicit class template instance gives no virtuals (design risk 8). The fix: take the base declaration from `clang_getTypeDeclaration` in `collect_virtuals` (`src/translator/sppc_lib.cpp`). Change the test `TemplateBaseTranslation.ImplicitInstanceBaseIsAKnownLimit` with it.
+- Done: a native base that derives from an implicit class template instance now gives virtuals (design risk 8). Open: a template that derives from another template, and a partial specialization.
 - Run the sanitizer and JIT builds again (`build-asan`, `build-jit`, `build-tsan`) after S19.

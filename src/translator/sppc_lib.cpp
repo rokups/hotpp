@@ -155,15 +155,95 @@ struct BaseInfo {
     bool final_cls = false; // the class is "final": no class can derive from it
 };
 
-void collect_virtuals(CXCursor cls, BaseInfo& info)
+// The class that a base specifier names. The type declaration is the right one for a template
+// base: it is the instance (Tmpl<int>), not the template pattern.
+CXCursor base_definition(CXCursor spec)
+{
+    CXCursor decl = clang_getTypeDeclaration(clang_getCursorType(spec));
+    if (clang_Cursor_isNull(decl) || clang_getCursorKind(decl) == CXCursor_NoDeclFound)
+        decl = clang_getCursorReferenced(spec);
+    return clang_getCursorDefinition(decl);
+}
+
+// libclang does not visit the members of an implicit instance of a class template. The pattern
+// has them, with the names of the template parameters. "Subst" maps each name to its argument.
+using Subst = std::vector<std::pair<std::string, std::string>>;
+
+// The template pattern of an implicit instance. Gives a null cursor for any other class: a
+// normal class and an explicit specialization have members that libclang visits.
+CXCursor implicit_pattern(CXCursor inst)
+{
+    if (clang_Cursor_isNull(inst) || clang_getCursorKind(inst) != CXCursor_ClassDecl) return clang_getNullCursor();
+    CXCursor pat = clang_getSpecializedCursorTemplate(inst);
+    if (clang_Cursor_isNull(pat) || clang_getCursorKind(pat) != CXCursor_ClassTemplate) return clang_getNullCursor();
+    if (!clang_equalLocations(clang_getCursorLocation(inst), clang_getCursorLocation(pat)))
+        return clang_getNullCursor();
+    return pat;
+}
+
+Subst make_subst(CXCursor inst, CXCursor pattern)
+{
+    std::vector<std::string> names;
+    visit(pattern, [&](CXCursor c) {
+        const CXCursorKind k = clang_getCursorKind(c);
+        if (k == CXCursor_TemplateTypeParameter || k == CXCursor_NonTypeTemplateParameter ||
+            k == CXCursor_TemplateTemplateParameter)
+            names.push_back(cxs(clang_getCursorSpelling(c)));
+        return CXChildVisit_Continue;
+    });
+    Subst out;
+    const int n = clang_Cursor_getNumTemplateArguments(inst);
+    for (int i = 0; i < n && i < static_cast<int>(names.size()); ++i) {
+        switch (clang_Cursor_getTemplateArgumentKind(inst, i)) {
+        case CXTemplateArgumentKind_Type:
+            out.emplace_back(names[i], tidy(cxs(clang_getTypeSpelling(clang_Cursor_getTemplateArgumentType(inst, i)))));
+            break;
+        case CXTemplateArgumentKind_Integral:
+            out.emplace_back(names[i], std::to_string(clang_Cursor_getTemplateArgumentValue(inst, i)));
+            break;
+        default:
+            break;
+        }
+    }
+    return out;
+}
+
+// Replaces each whole identifier of the text that is a template parameter name.
+std::string subst_text(const std::string& text, const Subst& sub)
+{
+    if (sub.empty()) return text;
+    auto is_id = [](char ch) { return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_'; };
+    std::string out;
+    for (size_t i = 0; i < text.size();) {
+        if (!is_id(text[i])) {
+            out += text[i++];
+            continue;
+        }
+        size_t j = i;
+        while (j < text.size() && is_id(text[j])) ++j;
+        const std::string word = text.substr(i, j - i);
+        std::string repl = word;
+        for (const auto& kv : sub)
+            if (kv.first == word) repl = kv.second;
+        out += repl;
+        i = j;
+    }
+    return out;
+}
+
+void collect_virtuals(CXCursor cls, BaseInfo& info, const Subst& sub = {})
 {
     std::string owner = cxs(clang_getCursorSpelling(cls));
     visit(cls, [&](CXCursor c) {
         CXCursorKind k = clang_getCursorKind(c);
         if (k == CXCursor_CXXBaseSpecifier) {
-            CXCursor def = clang_getCursorDefinition(clang_getCursorReferenced(c));
-            if (!clang_Cursor_isNull(def) && clang_getCursorKind(def) != CXCursor_NoDeclFound)
+            CXCursor def = base_definition(c);
+            if (clang_Cursor_isNull(def) || clang_getCursorKind(def) == CXCursor_NoDeclFound) {
+            } else if (CXCursor pat = implicit_pattern(def); !clang_Cursor_isNull(pat)) {
+                collect_virtuals(pat, info, make_subst(def, pat));
+            } else {
                 collect_virtuals(def, info);
+            }
         } else if (k == CXCursor_Destructor) {
             if (clang_CXXMethod_isVirtual(c)) info.virtual_dtor = true;
         } else if (k == CXCursor_CXXMethod && clang_CXXMethod_isVirtual(c) &&
@@ -171,11 +251,11 @@ void collect_virtuals(CXCursor cls, BaseInfo& info)
             NativeVirtual v;
             v.name = cxs(clang_getCursorSpelling(c));
             v.owner = owner;
-            v.ret = tidy(cxs(clang_getTypeSpelling(clang_getResultType(clang_getCursorType(c)))));
+            v.ret = subst_text(tidy(cxs(clang_getTypeSpelling(clang_getResultType(clang_getCursorType(c))))), sub);
             int n = clang_Cursor_getNumArguments(c);
             for (int i = 0; i < n; ++i)
-                v.ptypes.push_back(tidy(
-                    cxs(clang_getTypeSpelling(clang_getCursorType(clang_Cursor_getArgument(c, i))))));
+                v.ptypes.push_back(subst_text(
+                    tidy(cxs(clang_getTypeSpelling(clang_getCursorType(clang_Cursor_getArgument(c, i))))), sub));
             v.is_const = clang_CXXMethod_isConst(c);
             v.pure = clang_CXXMethod_isPureVirtual(c);
             auto es = clang_getCursorExceptionSpecificationType(c);
@@ -285,8 +365,10 @@ void collect_hierarchy(CXCursor root, Hierarchy& out)
             std::vector<std::string> bases;
             visit(c, [&](CXCursor bs) {
                 if (clang_getCursorKind(bs) == CXCursor_CXXBaseSpecifier) {
-                    CXCursor def = clang_getCursorDefinition(clang_getCursorReferenced(bs));
-                    if (!clang_Cursor_isNull(def) && clang_getCursorKind(def) != CXCursor_NoDeclFound)
+                    CXCursor def = base_definition(bs);
+                    if (!clang_Cursor_isNull(implicit_pattern(def)))  // an instance: "Tmpl<int>"
+                        bases.push_back(tidy(cxs(clang_getTypeSpelling(clang_getCursorType(bs)))));
+                    else if (!clang_Cursor_isNull(def) && clang_getCursorKind(def) != CXCursor_NoDeclFound)
                         bases.push_back(qualified_name(def));
                     else
                         bases.push_back(tidy(cxs(clang_getTypeSpelling(clang_getCursorType(bs)))));
@@ -780,7 +862,11 @@ int const_member(CXCursor cls, const std::string& name, int depth = 0)
             found = true;
             if (!clang_CXXMethod_isConst(c) && !clang_CXXMethod_isStatic(c)) non_const = true;
         } else if (k == CXCursor_CXXBaseSpecifier) {
-            bases.push_back(clang_getCursorDefinition(clang_getCursorReferenced(c)));
+            {
+            CXCursor def = base_definition(c);
+            CXCursor pat = implicit_pattern(def);
+            bases.push_back(clang_Cursor_isNull(pat) ? def : pat);
+        }
         }
         return CXChildVisit_Continue;
     });

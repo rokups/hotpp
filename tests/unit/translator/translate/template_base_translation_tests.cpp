@@ -37,13 +37,22 @@ TEST(TemplateBaseTranslation, ExplicitSpecializationBaseGivesSlots)
     EXPECT_TRUE(has(r.cpp, "struct Foo_Shell final : FloatBase, spp::ShellBase {")) << r.cpp;
 }
 
-// Known limit (risk 8): a base that derives from an implicit instance of a class template gives
-// no virtual to the translator. The translator reports the error and does not make a wrong shell.
-// A fix needs the type declaration of the base specifier. Update this test when that is done.
-TEST(TemplateBaseTranslation, ImplicitInstanceBaseIsAKnownLimit)
+// A base that derives from an implicit instance of a class template gives its virtuals. The
+// translator walks the type declaration of the base specifier (design risk 8).
+TEST(TemplateBaseTranslation, ImplicitInstanceBaseGivesSlots)
 {
     const sppc::TranslateResult r = run("class Foo : IntBase {\n    override void Step(int v) { }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "SLOT_Step = 0,")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "struct Foo_Shell final : IntBase, spp::ShellBase {")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "void Step(int a0) override")) << r.cpp;
+}
+
+
+// A wrong signature still gives an error: the parameter type is int, not float.
+TEST(TemplateBaseTranslation, ImplicitInstanceBaseChecksSignature)
+{
+    const sppc::TranslateResult r = run("class Foo : IntBase {\n    override void Step(float v) { }\n}\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "error:")) << r.diagnostics;
     EXPECT_FALSE(has(r.cpp, "SLOT_Step")) << r.cpp;
 }
