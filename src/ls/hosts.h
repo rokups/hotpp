@@ -36,6 +36,11 @@ public:
     // is dropped (and kept as skipped). It returns true when the set of hosts changed.
     bool refresh();
 
+    // Marks the set for a full reload at the next refresh(), when file is a "*.json" file in the
+    // directory of the set. The modification time of the directory does not change when a
+    // host file changes in place. Returns true when the file belongs to the set.
+    bool force_reload_for(const std::string& file);
+
     // Gives the best host for an absolute script path, or nullptr. An exact entry in "scripts"
     // scores 1000000. Else the longest "scriptDirs" entry that contains the path scores its
     // length. A directory contains a path only at a path component border. On a tie, the first
@@ -48,6 +53,7 @@ private:
     std::string dir_;
     bool require_cache_ = true;
     bool loaded_ = false;
+    bool forced_ = false;  // reload at the next refresh()
     std::filesystem::file_time_type mtime_{};
     std::vector<std::shared_ptr<const Host>> hosts_;  // sorted by name
     std::vector<std::shared_ptr<const Host>> skipped_;  // valid, but no CMakeCache.txt

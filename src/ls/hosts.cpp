@@ -107,7 +107,8 @@ bool HostSet::refresh()
     if (!loaded_) return false;
     std::error_code ec;
     const auto now = fs::last_write_time(dir_, ec);
-    if (!(ec ? mtime_ == fs::file_time_type{} : now == mtime_)) {
+    if (forced_ || !(ec ? mtime_ == fs::file_time_type{} : now == mtime_)) {
+        forced_ = false;
         load(dir_, require_cache_);
         return true;
     }
@@ -136,6 +137,15 @@ bool HostSet::refresh()
         std::sort(hosts_.begin(), hosts_.end(),
             [](const auto& a, const auto& b) { return a->name < b->name; });
     return changed;
+}
+
+bool HostSet::force_reload_for(const std::string& file)
+{
+    const fs::path f(file);
+    if (!loaded_ || f.extension() != ".json") return false;
+    if (f.parent_path().lexically_normal() != fs::path(dir_).lexically_normal()) return false;
+    forced_ = true;
+    return true;
 }
 
 std::shared_ptr<const Host> HostSet::match(const std::string& script_path) const

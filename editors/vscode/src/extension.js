@@ -6,6 +6,7 @@ const vscode = require('vscode');
 const { expandWorkspaceFolder, expandAll } = require('./expand.js');
 
 let client;
+let watchers = [];  // the file watchers of the client
 let warned = false;
 
 function warn(message) {
@@ -61,8 +62,15 @@ function startServer() {
   const folder = folders && folders.length ? folders[0].uri.fsPath : undefined;
   const command = expandWorkspaceFolder(config.get('server.path', 'spp-ls'), folder);
   const args = expandAll(config.get('server.args', ['--stdio']), folder);
+  watchers = [
+    vscode.workspace.createFileSystemWatcher('**/*.spp'),
+    vscode.workspace.createFileSystemWatcher('**/.cache/spp/hosts/*.json'),
+  ];
   const options = {
     documentSelector: [{ scheme: 'file', language: 'spp' }],
+    // The client sends workspace/didChangeWatchedFiles for these files. The code disposes the
+    // watchers in deactivate(), so a restart does not leave old watchers.
+    synchronize: { fileEvents: watchers },
     // Do not restart a server that does not start.
     errorHandler: {
       error: () => {
@@ -105,6 +113,8 @@ function activate(context) {
 function deactivate() {
   const c = client;
   client = undefined;
+  for (const w of watchers) w.dispose();
+  watchers = [];
   return c ? c.stop().catch(() => undefined) : undefined;
 }
 

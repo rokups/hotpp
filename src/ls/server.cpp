@@ -338,6 +338,8 @@ private:
     // Checks the host files after a document event. A document whose host changed gets the new
     // compile command. "current" is the document of the event: the caller updates it.
     void refresh_hosts(Doc* current);
+    // The notification workspace/didChangeWatchedFiles: new, changed and deleted files on disk.
+    void on_watched_files(const json& p);
     void update(Doc& d);
     void send_generated(Doc& d, const std::string& cpp);
     json publish_message(const Doc& d) const;
@@ -549,6 +551,23 @@ void Server::refresh_hosts(Doc* current)
         if (d.get() != current) redo.push_back(d);
     }
     for (const auto& d : redo) update(*d);
+}
+
+void Server::on_watched_files(const json& p)
+{
+    bool host_file = false;
+    for (const json& c : p.value("changes", json::array())) {
+        if (!c.is_object() || !c.value("uri", json()).is_string()) continue;
+        const std::string path = uri_to_path(c["uri"].get<std::string>());
+        if (fs::path(path).extension() == ".json") {
+            for (HostSet& h : hosts_) host_file = h.force_reload_for(path) || host_file;
+        } else if (fs::path(path).extension() == ".spp") {
+            // An open document owns its text. For a closed file, the cache of the analysis goes.
+            // A shard of a deleted file goes at the next index_.prune().
+            disk_facts_.erase(path);
+        }
+    }
+    if (host_file) refresh_hosts(nullptr);
 }
 
 json Server::on_initialize(const json& p)
@@ -1776,6 +1795,7 @@ void Server::handle(const json& msg)
                          {"params", {{"uri", uri}, {"diagnostics", json::array()}}}});
         return;
     }
+    if (method == "workspace/didChangeWatchedFiles") return on_watched_files(p);
     if (!is_request) return;  // initialized, $/cancelRequest and other notifications
     if (method == "workspace/symbol") return reply(id, on_workspace_symbol(p));
     if (method == "spp/indexStats")

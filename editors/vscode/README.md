@@ -69,6 +69,13 @@ The two servers can share the `.cache/` directory. The index of the clangd exten
 index in `.cache/spp/clangd/.cache/clangd/index/`. The index of `spp-ls` is in `.cache/spp/index/`.
 See "Language server" in the top `README.md`.
 
+## Host files and file watchers
+
+The CMake function `spp_script_host` writes the host files to `.cache/spp/hosts/*.json`. They tell
+`spp-ls` the include directories and flags of each script. The extension watches `**/*.spp` and
+`.cache/spp/hosts/*.json` and sends the events to the server. A new, changed or deleted script, or a
+new or changed host file, takes effect without a restart of the server.
+
 ## Install for development
 
 1. Run `npm install` in this folder.

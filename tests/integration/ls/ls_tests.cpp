@@ -1230,7 +1230,9 @@ namespace {
 // A workspace with a header in "inc" and a script in "scripts". The script uses the header.
 // With "host" the hosts dir holds a host file for the scripts dir, with "inc" as include dir.
 // The server gets no -I option for "inc". The completion after "Thing." comes from the host only.
-std::vector<std::string> host_completion_labels(bool host, bool change_host_later = false)
+// With "watched" the client sends workspace/didChangeWatchedFiles for the new host file. The
+// script gets no further change.
+std::vector<std::string> host_completion_labels(bool host, bool change_host_later = false, bool watched = false)
 {
     TempDir dir;
     const std::filesystem::path root = dir.path();
@@ -1264,7 +1266,11 @@ std::vector<std::string> host_completion_labels(bool host, bool change_host_late
     if (host && change_host_later) {
         // The host file appears after the open. The next change must pick it up.
         write_host();
-        client.change(uri, 2, text + "\n");
+        if (watched)
+            client.notify("workspace/didChangeWatchedFiles",
+                          {{"changes", json::array({{{"uri", uri_of((root / "hosts" / "h.json").string())}, {"type", 1}}})}});
+        else
+            client.change(uri, 2, text + "\n");
     }
     const json r = client.request("textDocument/completion", doc_pos(uri, 4, 14));
     std::vector<std::string> labels;
@@ -1296,6 +1302,49 @@ TEST(LanguageServerHosts, NewHostFileAppliesToAnOpenScriptAtTheNextChange)
 {
     REQUIRE_CLANGD();
     EXPECT_TRUE(has_label(host_completion_labels(true, true), "Value"));
+}
+
+TEST(LanguageServerHosts, NewHostFileAppliesToAnOpenScriptAfterAWatchedFilesEvent)
+{
+    REQUIRE_CLANGD();
+    EXPECT_TRUE(has_label(host_completion_labels(true, true, true), "Value"));
+}
+
+// A script file that appears on disk after the start. The client sends a Created event. The
+// references of a symbol in an open script include the new file.
+TEST(LanguageServerHosts, NewScriptFileIsFoundAfterAWatchedFilesEvent)
+{
+    REQUIRE_CLANGD();
+    TempDir dir;
+    const std::filesystem::path root = dir.path();
+    std::filesystem::create_directories(root / "hosts");
+    const std::string text = "class Player {\n    float hp = 1.0;\n}\n";
+    const std::string path = (root / "a.spp").string();
+    write_file(path, text);
+    spp::ls::ServerOptions o;
+    o.hosts_dir = (root / "hosts").string();
+    o.include_dirs = {SPP_SOURCE_DIR "/include"};
+    LsClient client(o);
+    client.initialize(uri_of(root.string()));
+    client.open(uri_of(path), text);
+    auto count_other = [&](const std::string& other_uri) {
+        const json r = client.request("textDocument/references",
+                                      {{"textDocument", {{"uri", uri_of(path)}}}, {"position", {{"line", 1}, {"character", 11}}},
+                                       {"context", {{"includeDeclaration", true}}}});
+        int n = 0;
+        if (r.contains("result") && r["result"].is_array())
+            for (const json& l : r["result"])
+                if (l["uri"] == other_uri) ++n;
+        return n;
+    };
+    const std::string other = (root / "b.spp").string();
+    EXPECT_EQ(count_other(uri_of(other)), 0);
+    write_file(other, text);
+    client.notify("workspace/didChangeWatchedFiles", {{"changes", json::array({{{"uri", uri_of(other)}, {"type", 1}}})}});
+    EXPECT_EQ(count_other(uri_of(other)), 1);
+    std::filesystem::remove(other);
+    client.notify("workspace/didChangeWatchedFiles", {{"changes", json::array({{{"uri", uri_of(other)}, {"type", 3}}})}});
+    EXPECT_EQ(count_other(uri_of(other)), 0);
 }
 
 // The information diagnostic "No script host". Rule: a .spp script has no host and the server
