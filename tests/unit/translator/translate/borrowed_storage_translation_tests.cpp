@@ -274,3 +274,48 @@ TEST(RefLocal, AVarRefLocalIsAWarningWithoutStrictMode)
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.warnings, "the lambda captures 'r'")) << r.warnings;
 }
+
+// S20b: a "var" local from a native call or member gets its type from libclang.
+TEST(BorrowedStorage, VarFromANativeMethodIsBorrowed)
+{
+    const sppc::TranslateResult r =
+        check_translate("", "    void Run(Owner& o) { var w = o.GetWeapon(); var f = () => { int d = w.dmg; }; }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'w', a borrowed pointer or reference")) << r.diagnostics;
+}
+
+TEST(BorrowedStorage, VarFromANativeFieldOrFunctionIsBorrowed)
+{
+    const sppc::TranslateResult r = check_translate(
+        "", "    void Run(Owner* o) { var a = o.weapon; var b = FindWeapon(); var c = Owner.Get().weapon;\n"
+            "        var f = () => { int d = a.dmg + b.dmg + c.dmg; }; }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'a'")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'b'")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'c'")) << r.diagnostics;
+}
+
+TEST(BorrowedStorage, VarOfAPointerToAHandleTypeIsNotBorrowed)
+{
+    const sppc::TranslateResult r =
+        check_translate("[native, handle(\"Arrow<$T>\")] class Weapon;\n",
+                        "    void Run(Owner& o) { var w = o.GetWeapon(); var f = () => { int d = w.dmg; }; }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(BorrowedStorage, VarOfAnUnknownTypeKeepsTheOldRule)
+{
+    // "Pick" has two overloads. Libclang gives no single type, so the local has no type.
+    const sppc::TranslateResult r =
+        check_translate("", "    void Run(Owner& o) { var w = o.Pick(); var f = () => { int d = w.dmg; }; }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(BorrowedStorage, VarFromAChainOfLocalsIsTyped)
+{
+    const sppc::TranslateResult r = check_translate(
+        "", "    void Run(Owner& o) { var a = o.GetWeapon(); var n = a.dmg; var f = () => { int d = n; }; }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "auto n = spp::deref(a).dmg;")) << r.cpp;
+}
+

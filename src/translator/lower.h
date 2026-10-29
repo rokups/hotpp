@@ -13,8 +13,10 @@
 //  - "this.P" and a bare "P" (not a local) name the property P of the class. A read becomes
 //    "Cls__get_P(self)". The statement "P = e;" becomes "Cls__set_P(self, e);". The statements
 //    "P op= e;", "++P;" and "P++;" become "Cls__set_P(self, Cls__get_P(self) op (e));".
-//  - "obj.P" names the property P of another object of the class. The pass has no types. So
-//    the rule uses the name: P must be a property of the class. "super.P" is not a property.
+//  - "obj.P" names the property P of another object of the class. A known type of obj decides
+//    (S20b): a script class gives its accessors, a native type gives the native member. The
+//    native base of the family and an unknown type keep the name rule: P must be a property
+//    of the class. "super.P" is not a property.
 //    The object becomes "spp::shell_of<Cls_Shell>(obj, "Cls")". The helper checks at run
 //    time that the object is a script object of the class. The C++ compiler rejects an
 //    object that is not of the native base type. A read becomes "Cls__get_P(shell)".

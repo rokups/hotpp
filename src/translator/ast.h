@@ -172,6 +172,10 @@ struct VarDeclStmt {
     ExprP init;        // may be null
     uint32_t pos = 0;
     uint32_t name_pos = 0;  // the byte offset of the name (0: not known)
+    // The C++ type of a "var" local that libclang gives for a native initializer (S20b), without
+    // a reference and a top-level "const", as "auto" deduces it. Empty: not known. The emitter
+    // does not print it. The checks and the type-directed lowering read it.
+    std::string native_type{};
 };
 struct IfStmt {
     ExprP cond;

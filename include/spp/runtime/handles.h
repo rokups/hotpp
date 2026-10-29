@@ -82,6 +82,11 @@ public:
 
     friend bool operator==(const Intrusive& a, const Intrusive& b) noexcept { return a.p_ == b.p_; }
     friend bool operator==(const Intrusive& a, std::nullptr_t) noexcept { return a.p_ == nullptr; }
+    // A comparison with a raw pointer compares the addresses. It makes no temporary wrapper,
+    // so the reference count does not change. C++20 gives "!=" and the reversed forms. The
+    // exact "T*" form wins over the built-in comparison through "operator T*".
+    friend bool operator==(const Intrusive& a, T* b) noexcept { return a.p_ == b; }
+    friend bool operator==(const Intrusive& a, const T* b) noexcept { return a.p_ == b; }
 
 private:
     template <class, auto, auto>

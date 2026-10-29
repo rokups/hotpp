@@ -15,6 +15,7 @@ const char* kHeader =
     "#include <string>\n"
     "struct Vec3 { float x, y, z; };\n"
     "struct Blob { std::string s; Blob() {} Blob(const Blob&) {} Blob(Blob&&) noexcept {} void Add(int) {} int Get() const { return 0; } };\n"
+    "struct Rec { int N = 0; static Rec* Get() { return nullptr; } };\n"
     "class Unit { public:\n"
     "    Unit() {}\n"
     "    virtual ~Unit() {}\n"
@@ -110,11 +111,14 @@ TEST(TypedAccess, BareThisAsAPointerNeedsNoSharedFromThis)
 TEST(ParamAnalysis, ReadOnlyValueParamIsAConstReference)
 {
     const sppc::TranslateResult r = translate_script(
-        "[native, value] class Blob;\nclass Box : Unit {\n    int Size(Blob b) { return b.Get(); }\n    int Peek(Blob b) { return 1; }\n}\n");
+        "[native, value] class Blob;\nclass Box : Unit {\n    int Size(Blob b) { return b.Get(); }\n    int Peek(Blob b) { return 1; }\n"
+        "    void Grow(Blob b) { b.Add(1); }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    // A member call counts as a possible change (a limit of the analysis).
-    EXPECT_TRUE(has(r, "static int32_t Box__Size(Box_Shell* self, Blob b)")) << r.cpp;
+    // A call of a const native member function is not a change (S20b). Libclang gives the constness.
+    EXPECT_TRUE(has(r, "static int32_t Box__Size(Box_Shell* self, const Blob& b)")) << r.cpp;
     EXPECT_TRUE(has(r, "static int32_t Box__Peek(Box_Shell* self, const Blob& b)")) << r.cpp;
+    // A non-const member function can change the object: the body gets a copy.
+    EXPECT_TRUE(has(r, "static void Box__Grow(Box_Shell* self, Blob b)")) << r.cpp;
 }
 
 TEST(ParamAnalysis, StoredValueParamIsACopy)
@@ -139,4 +143,62 @@ TEST(ParamAnalysis, SlotAdapterKeepsTheCanonicalForm)
         "[native, value] class Blob;\nclass Box : Unit {\n    int Peek(Blob b) { return 1; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "static int32_t Box__Peek_slot(Unit* a, Blob b)")) << r.cpp;
+}
+
+// S20b: the analysis follows a parameter into the script functions that get it by value.
+TEST(ParamAnalysis, ParamPassedToAScriptFunctionGetsItsUse)
+{
+    const sppc::TranslateResult r = translate_script(
+        "[native, value] class Blob;\nclass Box : Unit {\n    void Change(Blob b) { b.Add(1); }\n"
+        "    int Read(Blob b) { return b.Get(); }\n    void PassChange(Blob b) { this.Change(b); }\n"
+        "    void PassChangeBare(Blob b) { Change(b); }\n    int PassRead(Blob b) { return this.Read(b); }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "static void Box__PassChange(Box_Shell* self, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__PassChangeBare(Box_Shell* self, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__PassRead(Box_Shell* self, const Blob& b)")) << r.cpp;
+}
+
+TEST(ParamAnalysis, ParamPassedToAStoringScriptFunctionIsACopy)
+{
+    const sppc::TranslateResult r = translate_script(
+        "[native, value] class Blob;\nclass Box : Unit {\n    Blob kept;\n    void Keep(Blob b) { this.kept = b; }\n"
+        "    void Pass(Blob b) { this.Keep(b); }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "static void Box__Pass(Box_Shell* self, Blob b)")) << r.cpp;
+}
+
+// A "const T&" can alias a field of the class. When the function writes such a field, it takes a copy.
+TEST(ParamAnalysis, ParamThatCanAliasAWrittenFieldIsACopy)
+{
+    const sppc::TranslateResult r = translate_script(
+        "[native, value] class Blob;\nclass Box : Unit {\n    Blob cur;\n    int hp = 0;\n"
+        "    int Swap(Blob b) { this.cur.Add(1); return b.Get(); }\n"
+        "    int Hit(Blob b) { this.hp = 2; return b.Get(); }\n"
+        "    void Inner() { this.cur.Add(2); }\n    int Deep(Blob b) { this.Inner(); return b.Get(); }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "static int32_t Box__Swap(Box_Shell* self, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__Hit(Box_Shell* self, const Blob& b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__Deep(Box_Shell* self, Blob b)")) << r.cpp;
+}
+
+TEST(ParamAnalysis, HandleParamThatCanAliasAWrittenFieldIsACopy)
+{
+    const sppc::TranslateResult r = translate_script(
+        "class Squad : Unit {\n    int size = 3;\n}\nclass Box : Unit {\n    Squad lead;\n"
+        "    int Set(Squad s) { this.lead = new Squad(); return s.size; }\n    int Get(Squad s) { return s.size; }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "static int32_t Box__Set(Box_Shell* self, std::shared_ptr<Squad> s)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__Get(Box_Shell* self, const std::shared_ptr<Squad>& s)")) << r.cpp;
+}
+
+// S20b: "obj.P" on a known native type is the native member, not a property of the class.
+TEST(TypedAccess, PropertyNameOnAKnownNativeTypeIsTheNativeMember)
+{
+    const sppc::TranslateResult r = translate_script(
+        "class Box : Unit {\n    int N { get; set; }\n"
+        "    int Run(Rec& r) { r.N = 2; var q = Rec.Get(); q.N = 3; return r.N + q.N; }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "spp::deref(r).N = 2;")) << r.cpp;
+    EXPECT_TRUE(has(r, "spp::deref(q).N = 3;")) << r.cpp;
+    EXPECT_FALSE(has(r, "shell_of")) << r.cpp;
 }

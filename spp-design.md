@@ -740,7 +740,7 @@ class Player : Actor {
 | `throw e;`, `throw;`, `try { ... } catch (T e) { ... }`, `catch (...) { ... }`, `finally` | `throw e;`, `throw;`, `try { ... } catch (T e) { ... }`, `catch (...) { ... }`. A catch clause needs a name, except `catch (...)`. | sugar |
 | `Math.Min(...)` | `Math::Min(...)`. `.` on a type name means `::`. | sugar |
 
-The parser reports a clear error for each removed form: `function`, `let`, `import`, `name: Type`, `-> Ret` and `for ... of`. The words `var`, `foreach`, `in`, `using`, `override`, `virtual`, `new`, `public`, `private`, `protected`, `get`, `set`, `finally` and `void` are reserved. A read or a write of `p.N` on another object of the class calls `get_N` or `set_N` of that object. A write gives the assigned value, so `a = p.N = 1` works. The limit: the rewrite uses the name only. If `p` is not an object of the class, the access throws `std::runtime_error`.
+The parser reports a clear error for each removed form: `function`, `let`, `import`, `name: Type`, `-> Ret` and `for ... of`. The words `var`, `foreach`, `in`, `using`, `override`, `virtual`, `new`, `public`, `private`, `protected`, `get`, `set`, `finally` and `void` are reserved. A read or a write of `p.N` on another object of the class calls `get_N` or `set_N` of that object. A write gives the assigned value, so `a = p.N = 1` works. The rewrite uses the type of `p` when it is known. A known native type gives the native member. For the native base of the class or an unknown type, the rewrite uses the name only. If `p` is then not an object of the class, the access throws `std::runtime_error`.
 
 ### 7.4 Constructing native objects and ownership
 

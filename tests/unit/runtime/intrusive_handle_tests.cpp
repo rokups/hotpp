@@ -171,4 +171,35 @@ TEST_F(IntrusiveFixture, BaseConversion)
     EXPECT_EQ(RcBase::live, 0);
 }
 
+// A comparison with a raw pointer compares the addresses in both orders. It does not change
+// the reference count, so an object with zero references is not released.
+TEST_F(IntrusiveFixture, CompareWithRawPointer)
+{
+    RcBase* raw = new RcBase;
+    RcBase* other = new RcBase;
+    {
+        BaseH a(raw);
+        EXPECT_EQ(raw->refs, 1);
+        EXPECT_TRUE(a == raw);
+        EXPECT_TRUE(raw == a);
+        EXPECT_FALSE(a != raw);
+        EXPECT_FALSE(raw != a);
+        EXPECT_FALSE(a == other);
+        EXPECT_TRUE(other != a);
+        const RcBase* craw = raw;
+        EXPECT_TRUE(a == craw);
+        EXPECT_EQ(raw->refs, 1);
+        EXPECT_EQ(other->refs, 0);  // no temporary wrapper took and released a reference
+        BaseH n;
+        RcBase* null_raw = nullptr;
+        EXPECT_TRUE(n == null_raw);
+        EXPECT_FALSE(a == null_raw);
+        DerivedH d(new RcDerived);
+        RcBase* as_base = d.get();
+        EXPECT_TRUE(d == static_cast<RcDerived*>(as_base));
+    }
+    EXPECT_EQ(RcBase::live, 1);
+    delete other;
+}
+
 }  // namespace

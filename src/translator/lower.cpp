@@ -165,7 +165,10 @@ struct Lowerer {
     {
         if (std::holds_alternative<ThisExpr>(e.v)) return cx.allow_this && cx.cls ? cx.cls->name : std::string();
         if (const std::string* n = simple_name(e)) {
-            if (!cx.locals.count(*n)) return {};
+            if (!cx.locals.count(*n)) {  // a field of the class (S20b)
+                const Field* f = cx.allow_this && cx.cls ? find_field(*cx.cls, *n) : nullptr;
+                return f ? type_text(*f) : std::string();
+            }
             auto it = cx.local_type.find(*n);
             return it == cx.local_type.end() ? std::string() : it->second;
         }
@@ -266,10 +269,36 @@ struct Lowerer {
         }
     }
 
+    // The native base of the root of the script family of the current class. It is empty for a
+    // class without a native base.
+    std::string root_native_base() const
+    {
+        if (!cx.native_base.empty() || !cx.cls) return cx.native_base;
+        const ClassDef* r = cx.cls;
+        while (const ClassDef* p = class_named(r->base)) {
+            if (p == r) break;
+            r = p;
+        }
+        return r->base;
+    }
+
+    // The class whose properties "obj.P" can name, from the type "t" of obj. A script class
+    // gives itself. A known native type gives nullptr (S20b): "obj.P" is the native member.
+    // The native base of the family is the exception: the object can be a script object of the
+    // class, so the old name rule checks it at run time. An unknown type keeps the old rule too.
+    const ClassDef* prop_class(const std::string& t) const
+    {
+        std::string base = t;
+        while (!base.empty() && (base.back() == '*' || base.back() == '&' || base.back() == ' ')) base.pop_back();
+        if (base.rfind("const ", 0) == 0) base = base.substr(6);
+        if (const ClassDef* td = class_named(base)) return td;
+        if (!t.empty() && base != root_native_base()) return nullptr;
+        return cx.cls;
+    }
+
     // The property that "this.P", a bare "P" or "obj.P" names. A local hides a bare "P".
-    // The pass has no types: "obj.P" is a property when P is a property of the class.
-    // "obj.P" uses the declared type of obj when it is known. Else P must be a property of
-    // the current class.
+    // "obj.P" uses the type of obj (see prop_class). An unknown type keeps the name rule: P
+    // must be a property of the current class.
     std::optional<PropRef> prop_ref(Expr& e) const
     {
         const std::string* n = nullptr;
@@ -281,8 +310,7 @@ struct Lowerer {
             if (std::holds_alternative<SuperExpr>(m2->obj->v)) return std::nullopt;
             n = &m2->name;
             obj = &m2->obj;
-            const std::string t = type_of(*m2->obj);
-            if (const ClassDef* td = class_named(t)) d = td;  // else: the old name rule
+            if (!(d = prop_class(type_of(*m2->obj)))) return std::nullopt;
         } else if ((n = simple_name(e)) && cx.locals.count(*n)) {
             n = nullptr;
         }
@@ -603,7 +631,7 @@ struct Lowerer {
         // current class (the old rule).
         const std::string t = type_of(*m.obj);
         const ClassDef* td = class_named(t);
-        const ClassDef* d = td ? td : cx.cls;  // a native type: the old name rule
+        const ClassDef* d = td ? td : prop_class(t);  // nullptr for a known native type
         const ClassDef* prop_owner = nullptr;
         if (d && find_prop(*d, m.name, &prop_owner)) {
             e = prop_read({m.name, &m.obj, prop_owner}, obj_pos);  // "m" is gone now
@@ -879,6 +907,7 @@ struct Lowerer {
         } else if (auto* d = std::get_if<VarDeclStmt>(&x.v)) {
             std::string t = d->type;
             if (t.empty() && d->init) t = type_of(*d->init);  // "var x = new C()"
+            if (t.empty()) t = d->native_type;                 // a native call or member (S20b)
             coerce(d->init, d->type);
             declare(d->name, t);
             if (cx.types && !d->type.empty()) d->type = cx.types->storage(d->type);

@@ -28,7 +28,11 @@ inline const char* kCheckHeader =
     "template <class T> struct Arrow { T* p = nullptr; T* operator->() const { return p; } };\n"
     "struct Counted { void AddRef(); void Release(); };\n"
     "struct Overloaded { void AddRef(); void AddRef(int); void Release(); };\n"
-    "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n";
+    "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n"
+    "template <class T> struct Box { Box() {} Box(const Box&) = delete; };\n"
+    "struct Owner { Weapon* weapon = nullptr; int N = 0; Weapon* GetWeapon() { return weapon; }\n"
+    "    Weapon* Pick() { return weapon; } Weapon* Pick(int) { return weapon; } static Owner* Get() { return nullptr; } };\n"
+    "inline Weapon* FindWeapon() { return nullptr; }\n";
 
 // Translates "using \"c.h\"; <stubs> class Foo : Widget { <members> }".
 // "preludes" are (name, text) pairs. "strict" sets strict_borrowed.

@@ -10,12 +10,16 @@
 //    field initializer,
 //  - a script function used as a value (it has no address, because a reload replaces it).
 //
-// The pass sees only the types that the script writes. A "var" local gets its type from a
-// native call, so the pass does not know it. See HANDOFF.md for the gaps.
+// The pass sees the types that the script writes. A "var" local from a native call or member
+// gets its type from libclang (VarDeclStmt::native_type, S20b). See HANDOFF.md for the gaps.
 #pragma once
 
+#include <functional>
+#include <map>
 #include <set>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "ast.h"
 #include "diag.h"
@@ -53,10 +57,40 @@ std::set<std::string> used_type_names(const ast::ClassDef& cd);
 //    it with "ref" or "out". For a handle this is the only change that needs a copy.
 //  - "stored": the body assigns the parameter as a whole (right side of "="), returns it,
 //    passes it to "new", or uses it in a lambda (a capture keeps a copy).
+//
+// The context makes the analysis deeper (S20b). All parts are optional:
+//  - "script_fn" finds a script function of the class by name. A parameter that the body passes
+//    by value to a script function gets the use of the parameter of that function.
+//  - "fields" has the fields of the class (and of its script parents) with their script types.
+//    A parameter of the type T can alias a field of the type T or a field with T in its template
+//    arguments. When the function (or a script function that it calls) writes such a field, the
+//    parameter is "aliased": the generation function takes a copy (a value and a handle).
+//  - "const_method" is true when each member function of the name on the native type is const.
+//    A call "p.M()" of such a function does not count as a change.
 struct ParamUse {
-    bool mutated = false, rebound = false, stored = false;
+    bool mutated = false, rebound = false, stored = false, aliased = false;
 };
-ParamUse analyze_param_use(const ast::Method& m, const std::string& name);
+struct ParamContext {
+    std::function<const ast::Method*(const std::string&)> script_fn;
+    std::map<std::string, std::string> fields;
+    std::function<bool(const std::string& type, const std::string& method)> const_method;
+};
+ParamUse analyze_param_use(const ast::Method& m, const std::string& name, const ParamContext& ctx = {});
+
+// The questions for libclang about native types (S20b, design 7.10.4 and 7.10.5).
+// A query is the text of a C++ type for the probe of libclang. The probe has the helpers
+// "sppc_ret_f" (the return type of a function pointer or of a member function pointer) and
+// "sppc_obj<T>" (the class of an object, of a pointer or of a handle with "element_type").
+//  - "vars": each "var" local whose initializer is a native call, a native member or a chain of
+//    them, with the query of the type. A chain uses the query of an earlier "var" local.
+//  - "methods": for each native type of a value parameter, the names of the member functions
+//    that a body calls on the parameter ("p.M()"). The translator asks if they are const.
+// A type that names a script class or a script enum is not a query: libclang does not know it.
+struct NativeQueries {
+    std::vector<std::pair<ast::VarDeclStmt*, std::string>> vars;
+    std::map<std::string, std::set<std::string>> methods;
+};
+NativeQueries collect_native_queries(ast::Script& sc);
 
 // True when the class uses "this" on its own, not as the object of a member access. Such a
 // class can need a handle for "this" (design 7.10.1). Its shell then derives from

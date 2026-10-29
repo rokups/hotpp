@@ -2,6 +2,7 @@
 #include "check.h"
 
 #include <algorithm>
+#include <cctype>
 #include <functional>
 #include <utility>
 #include <variant>
@@ -240,6 +241,15 @@ struct Checker {
         return is_borrowed_form(t, base) && base != "char";
     }
 
+    // True when libclang gives a "T*" of a type that is not a handle for a "var" local (S20b).
+    // A handle type is a full owner, for example an intrusive "Actor*".
+    bool is_borrowed_native(const std::string& type) const
+    {
+        std::string base;
+        if (!is_borrowed_form(type, base) || base == "char") return false;
+        return types.lookup(base).kind != Kind::Handle;
+    }
+
     // ---- one body
     void body(const Method& m) { body(m.params, m.body); }
 
@@ -271,6 +281,8 @@ struct Checker {
                 borrowed.insert(d->name);
             } else if (!d->type.empty() && is_borrowed_type(d->type)) {
                 borrowed.insert(d->name);
+            } else if (d->type.empty() && is_borrowed_native(d->native_type)) {
+                borrowed.insert(d->name);  // "var w = a.GetWeapon()" with a native "Weapon*" (S20b)
             }
         } else if (auto* fo = std::get_if<ForOfStmt>(&s.v)) {
             locals.insert(fo->name);
@@ -438,55 +450,505 @@ bool is_assign_op(const std::string& op)
 
 }  // namespace
 
-ParamUse analyze_param_use(const Method& m, const std::string& name)
+namespace {
+
+// The field that an access path writes: "f", "f.x", "this.f", "this.f.x", "f[1]". A bare name
+// that is a local is not a field. Gives the name or null.
+const std::string* field_root(const Expr& e, const std::set<std::string>& locals,
+                              const std::map<std::string, std::string>& fields)
 {
-    ParamUse use;
-    auto rooted = [&](const ExprP& e) {
-        if (!e) return false;
-        const std::string* r = root_name(*e);
-        return r && *r == name;
-    };
+    if (auto* n = std::get_if<NameExpr>(&e.v)) {
+        if (n->parts.empty() || locals.count(n->parts[0]) || !fields.count(n->parts[0])) return nullptr;
+        return &n->parts[0];
+    }
+    if (auto* m = std::get_if<MemberExpr>(&e.v)) {
+        if (std::holds_alternative<ThisExpr>(m->obj->v)) return fields.count(m->name) ? &m->name : nullptr;
+        return field_root(*m->obj, locals, fields);
+    }
+    if (auto* ix = std::get_if<IndexExpr>(&e.v)) return field_root(*ix->obj, locals, fields);
+    if (auto* p = std::get_if<ParenExpr>(&e.v)) return field_root(*p->inner, locals, fields);
+    return nullptr;
+}
+
+// The name of the script function that a call names: "G(...)" or "this.G(...)". Else empty.
+std::string script_callee(const CallExpr& c, const std::set<std::string>& locals)
+{
+    if (auto* n = std::get_if<NameExpr>(&c.callee->v))
+        if (n->parts.size() == 1 && n->template_args.empty() && !locals.count(n->parts[0])) return n->parts[0];
+    if (auto* m = std::get_if<MemberExpr>(&c.callee->v))
+        if (std::holds_alternative<ThisExpr>(m->obj->v)) return m->name;
+    return {};
+}
+
+// The names that a function declares: the parameters and the locals of the body.
+std::set<std::string> declared_names(const Method& m)
+{
+    std::set<std::string> out;
+    for (const Param& p : m.params) out.insert(p.name);
     auto fe = [&](const Expr& e) {
-        if (auto* b = std::get_if<BinaryExpr>(&e.v)) {
-            if (!is_assign_op(b->op)) return;
-            if (rooted(b->lhs)) use.mutated = true;
-            if (b->lhs && is_exactly(*b->lhs, name)) use.rebound = true;
-            if (b->op == "=" && b->rhs && is_exactly(*b->rhs, name)) use.stored = true;
-        } else if (auto* u = std::get_if<UnaryExpr>(&e.v)) {
-            if ((u->op == "++" || u->op == "--") && rooted(u->operand)) {
-                use.mutated = true;
-                if (is_exactly(*u->operand, name)) use.rebound = true;
-            }
-        } else if (auto* r = std::get_if<RefExpr>(&e.v)) {
-            if (rooted(r->operand)) {
-                use.mutated = true;
-                if (is_exactly(*r->operand, name)) use.rebound = true;
-            }
-        } else if (auto* c = std::get_if<CallExpr>(&e.v)) {
-            // "p.M()": a member function can change the object.
-            if (auto* n = std::get_if<NameExpr>(&c->callee->v)) {
-                if (n->parts.size() >= 2 && n->parts[0] == name) use.mutated = true;
-            } else if (auto* mm = std::get_if<MemberExpr>(&c->callee->v)) {
-                if (rooted(mm->obj)) use.mutated = true;
-            }
-        } else if (auto* nw = std::get_if<NewExpr>(&e.v)) {
-            for (const ExprP& a : nw->args)
-                if (a && is_exactly(*a, name)) use.stored = true;
-        } else if (auto* l = std::get_if<LambdaExpr>(&e.v)) {
-            auto inner_e = [&](const Expr& x) {
-                if (auto* n = std::get_if<NameExpr>(&x.v))
-                    if (!n->parts.empty() && n->parts[0] == name) use.stored = true;
-            };
-            auto inner_s = [](const Stmt&) {};
-            make_walker(inner_e, inner_s).block(l->body);
-        }
+        if (auto* l = std::get_if<LambdaExpr>(&e.v))
+            for (const Param& p : l->params) out.insert(p.name);
     };
     auto fs = [&](const Stmt& s) {
-        if (auto* r = std::get_if<ReturnStmt>(&s.v))
-            if (r->expr && is_exactly(*r->expr, name)) use.stored = true;
+        if (auto* d = std::get_if<VarDeclStmt>(&s.v)) out.insert(d->name);
+        else if (auto* fo = std::get_if<ForOfStmt>(&s.v)) out.insert(fo->name);
+        else if (auto* tr = std::get_if<TryStmt>(&s.v))
+            for (const CatchClause& c : tr->catches) out.insert(c.name);
     };
     make_walker(fe, fs).block(m.body);
-    return use;
+    return out;
+}
+
+// True when a value of the type "param" can be a part of a field of the type "field": the same
+// type, or the type of a template argument (for example an element of a std::vector).
+bool can_alias(const std::string& param, const std::string& field)
+{
+    if (trim(param) == trim(field)) return true;
+    for (const std::string& a : template_args(field))
+        if (can_alias(param, a)) return true;
+    return false;
+}
+
+struct ParamAnalysis {
+    const ParamContext& ctx;
+    std::set<std::pair<const Method*, std::string>> visiting;  // stops a cycle of calls
+
+    // Adds the fields that the function writes, also through the script functions that it
+    // calls. "seen" visits each function one time.
+    void fields_written(const Method& m, std::set<const Method*>& seen, std::set<std::string>& out)
+    {
+        if (!seen.insert(&m).second || ctx.fields.empty()) return;
+        const std::set<std::string> locals = declared_names(m);
+        auto mark = [&](const ExprP& e) {
+            if (!e) return;
+            if (const std::string* f = field_root(*e, locals, ctx.fields)) out.insert(*f);
+        };
+        auto fe = [&](const Expr& e) {
+            if (auto* b = std::get_if<BinaryExpr>(&e.v)) {
+                if (is_assign_op(b->op)) mark(b->lhs);
+            } else if (auto* u = std::get_if<UnaryExpr>(&e.v)) {
+                if (u->op == "++" || u->op == "--") mark(u->operand);
+            } else if (auto* r = std::get_if<RefExpr>(&e.v)) {
+                mark(r->operand);
+            } else if (auto* c = std::get_if<CallExpr>(&e.v)) {
+                // "f.M()" or "this.f.M()": a member function can change the field.
+                if (auto* n = std::get_if<NameExpr>(&c->callee->v)) {
+                    if (n->parts.size() >= 2 && !locals.count(n->parts[0]) && ctx.fields.count(n->parts[0]))
+                        out.insert(n->parts[0]);
+                } else if (auto* mm = std::get_if<MemberExpr>(&c->callee->v)) {
+                    if (!std::holds_alternative<ThisExpr>(mm->obj->v)) mark(mm->obj);
+                }
+                const std::string g = script_callee(*c, locals);
+                if (!g.empty() && ctx.script_fn)
+                    if (const Method* gm = ctx.script_fn(g)) fields_written(*gm, seen, out);
+            }
+        };
+        auto fs = [](const Stmt&) {};
+        make_walker(fe, fs).block(m.body);
+    }
+
+    ParamUse run(const Method& m, const std::string& name)
+    {
+        ParamUse use;
+        if (!visiting.insert({&m, name}).second) return use;  // a recursive call adds nothing new
+        std::string ptype;
+        for (const Param& p : m.params)
+            if (p.name == name) ptype = p.script_type.empty() ? p.type : p.script_type;
+        auto rooted = [&](const ExprP& e) {
+            if (!e) return false;
+            const std::string* r = root_name(*e);
+            return r && *r == name;
+        };
+        // "p.M()" of a const native member function does not change "p".
+        auto const_call = [&](const std::string& method) {
+            return ctx.const_method && !ptype.empty() && ctx.const_method(ptype, method);
+        };
+        auto fe = [&](const Expr& e) {
+            if (auto* b = std::get_if<BinaryExpr>(&e.v)) {
+                if (!is_assign_op(b->op)) return;
+                if (rooted(b->lhs)) use.mutated = true;
+                if (b->lhs && is_exactly(*b->lhs, name)) use.rebound = true;
+                if (b->op == "=" && b->rhs && is_exactly(*b->rhs, name)) use.stored = true;
+            } else if (auto* u = std::get_if<UnaryExpr>(&e.v)) {
+                if ((u->op == "++" || u->op == "--") && rooted(u->operand)) {
+                    use.mutated = true;
+                    if (is_exactly(*u->operand, name)) use.rebound = true;
+                }
+            } else if (auto* r = std::get_if<RefExpr>(&e.v)) {
+                if (rooted(r->operand)) {
+                    use.mutated = true;
+                    if (is_exactly(*r->operand, name)) use.rebound = true;
+                }
+            } else if (auto* c = std::get_if<CallExpr>(&e.v)) {
+                // "p.M()": a member function can change the object, unless it is const.
+                if (auto* n = std::get_if<NameExpr>(&c->callee->v)) {
+                    if (n->parts.size() >= 2 && n->parts[0] == name &&
+                        !(n->parts.size() == 2 && const_call(n->parts[1])))
+                        use.mutated = true;
+                } else if (auto* mm = std::get_if<MemberExpr>(&c->callee->v)) {
+                    if (rooted(mm->obj) && !(is_exactly(*mm->obj, name) && const_call(mm->name))) use.mutated = true;
+                }
+                // "G(p)" of a script function G: the use of the parameter of G counts (S20b).
+                const std::string g = ctx.script_fn ? script_callee(*c, {name}) : std::string();
+                const Method* gm = g.empty() ? nullptr : ctx.script_fn(g);
+                for (size_t i = 0; gm && i < c->args.size() && i < gm->params.size(); ++i) {
+                    if (!c->args[i] || !is_exactly(*c->args[i], name) || gm->params[i].mode != PassMode::Value)
+                        continue;
+                    const ParamUse sub = run(*gm, gm->params[i].name);
+                    use.stored = use.stored || sub.stored;
+                    use.mutated = use.mutated || sub.mutated || sub.rebound;
+                }
+            } else if (auto* nw = std::get_if<NewExpr>(&e.v)) {
+                for (const ExprP& a : nw->args)
+                    if (a && is_exactly(*a, name)) use.stored = true;
+            } else if (auto* l = std::get_if<LambdaExpr>(&e.v)) {
+                auto inner_e = [&](const Expr& x) {
+                    if (auto* n = std::get_if<NameExpr>(&x.v))
+                        if (!n->parts.empty() && n->parts[0] == name) use.stored = true;
+                };
+                auto inner_s = [](const Stmt&) {};
+                make_walker(inner_e, inner_s).block(l->body);
+            }
+        };
+        auto fs = [&](const Stmt& s) {
+            if (auto* r = std::get_if<ReturnStmt>(&s.v))
+                if (r->expr && is_exactly(*r->expr, name)) use.stored = true;
+        };
+        make_walker(fe, fs).block(m.body);
+        // A "const T&" can alias a field that the function writes (S20b): then take a copy.
+        if (!ptype.empty() && !ctx.fields.empty()) {
+            std::set<const Method*> seen;
+            std::set<std::string> written;
+            fields_written(m, seen, written);
+            for (const std::string& f : written) {
+                auto it = ctx.fields.find(f);
+                if (it != ctx.fields.end() && can_alias(ptype, it->second)) use.aliased = true;
+            }
+        }
+        visiting.erase({&m, name});
+        return use;
+    }
+};
+
+}  // namespace
+
+ParamUse analyze_param_use(const Method& m, const std::string& name, const ParamContext& ctx)
+{
+    ParamAnalysis a{ctx, {}};
+    return a.run(m, name);
+}
+
+// ------------------------------------------------------------------ native type queries
+namespace {
+
+bool is_ident_char(char c)
+{
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+}
+
+// The type of an expression for the probe. "cpp" is a C++ type text that libclang can read.
+// "script" is a script class (the type of "this", or a type that the script declares).
+struct QType {
+    std::string cpp;
+    const ClassDef* script = nullptr;
+    bool known() const { return script || !cpp.empty(); }
+};
+
+struct QueryCollector {
+    Script& sc;
+    std::map<std::string, const ClassDef*> classes;
+    std::set<std::string> script_names;  // the script classes and the script enums
+    NativeQueries out;
+
+    const ClassDef* cls = nullptr;
+    bool allow_this = true;
+    std::set<std::string> locals;
+    std::map<std::string, QType> env;
+    std::map<std::string, std::string> value_params;  // name to the type: the parameters for "methods"
+
+    // True when the type text names a script class or a script enum.
+    bool mentions_script(const std::string& t) const
+    {
+        for (size_t i = 0; i < t.size();) {
+            if (!is_ident_char(t[i])) {
+                ++i;
+                continue;
+            }
+            size_t j = i;
+            while (j < t.size() && is_ident_char(t[j])) ++j;
+            const bool scoped = i >= 2 && t.compare(i - 2, 2, "::") == 0;
+            if (!scoped && script_names.count(t.substr(i, j - i))) return true;
+            i = j;
+        }
+        return false;
+    }
+
+    const ClassDef* parent_of(const ClassDef& c) const
+    {
+        auto it = classes.find(c.base);
+        return c.base.empty() || it == classes.end() || it->second == &c ? nullptr : it->second;
+    }
+
+    // The native base of the root of a script class. Empty: none.
+    std::string native_root(const ClassDef& c) const
+    {
+        const ClassDef* d = &c;
+        for (int depth = 0; parent_of(*d) && depth < 64; ++depth) d = parent_of(*d);
+        return d->base.empty() || classes.count(d->base) ? std::string() : d->base;
+    }
+
+    // The type of a declaration as the script writes it.
+    QType of_text(const std::string& type) const
+    {
+        QType q;
+        std::string t = trim(type), base = t;
+        if (t.empty()) return q;
+        is_borrowed_form(t, base);
+        auto it = classes.find(trim(base));
+        if (it != classes.end()) {
+            q.script = it->second;
+            return q;
+        }
+        if (!mentions_script(t)) q.cpp = t;
+        return q;
+    }
+
+    template <class FieldT>
+    static const std::string& stype(const FieldT& f)
+    {
+        return f.script_type.empty() ? f.type : f.script_type;
+    }
+
+    // The member "name" of an object of the type "obj" (not a call).
+    QType member(const QType& obj, const std::string& name) const
+    {
+        if (obj.script) {
+            int depth = 0;
+            for (const ClassDef* d = obj.script; d && depth < 64; d = parent_of(*d), ++depth) {
+                for (const Field& f : d->fields)
+                    if (f.name == name) return of_text(stype(f));
+                for (const Property& p : d->props)
+                    if (p.name == name) return of_text(stype(p));
+            }
+            const std::string nb = native_root(*obj.script);
+            return nb.empty() ? QType{} : QType{"decltype(std::declval<" + nb + "&>()." + name + ")"};
+        }
+        if (obj.cpp.empty()) return {};
+        return QType{"decltype(std::declval<sppc_obj<" + obj.cpp + ">&>()." + name + ")"};
+    }
+
+    // The result of a call of the member function "name" of an object of the type "obj".
+    QType method(const QType& obj, const std::string& name) const
+    {
+        if (obj.script) {
+            int depth = 0;
+            for (const ClassDef* d = obj.script; d && depth < 64; d = parent_of(*d), ++depth)
+                for (const Method& m : d->methods)
+                    if (m.name == name && !m.overrides_virtual)
+                        return of_text(m.script_ret.empty() ? m.ret : m.script_ret);
+            const std::string nb = native_root(*obj.script);
+            return nb.empty() ? QType{} : QType{"decltype(sppc_ret_f(&" + nb + "::" + name + "))"};
+        }
+        if (obj.cpp.empty()) return {};
+        return QType{"decltype(sppc_ret_f(&sppc_obj<" + obj.cpp + ">::" + name + "))"};
+    }
+
+    // The type of a bare name: a local, a field of the class or a module variable.
+    QType name_type(const std::string& n) const
+    {
+        if (locals.count(n)) {
+            auto it = env.find(n);
+            return it == env.end() ? QType{} : it->second;
+        }
+        if (cls && allow_this) {
+            QType self;
+            self.script = cls;
+            QType f = member(self, n);
+            if (f.script || (!f.cpp.empty() && f.cpp.rfind("decltype", 0) != 0)) return f;
+        }
+        for (const Field& v : sc.vars)
+            if (v.name == n) return of_text(stype(v));
+        return {};
+    }
+
+    // A scope chain "A.B.c": a static member or a name in a namespace. Gives "A::B::c" or empty.
+    std::string scope_text(const std::vector<std::string>& parts, size_t n) const
+    {
+        if (n == 0 || script_names.count(parts[0])) return {};
+        std::string r;
+        for (size_t i = 0; i < n; ++i) r += (i ? "::" : "") + parts[i];
+        return r;
+    }
+
+    bool is_head_value(const std::string& n) const
+    {
+        return locals.count(n) || name_type(n).known();
+    }
+
+    QType type_of(const Expr& e) const
+    {
+        if (std::holds_alternative<ThisExpr>(e.v)) {
+            QType q;
+            q.script = allow_this ? cls : nullptr;
+            return q;
+        }
+        if (auto* p = std::get_if<ParenExpr>(&e.v)) return type_of(*p->inner);
+        if (auto* n = std::get_if<NameExpr>(&e.v)) {
+            if (n->parts.empty() || !n->template_args.empty()) return {};
+            if (n->parts.size() == 1) return name_type(n->parts[0]);
+            if (is_head_value(n->parts[0])) {
+                QType q = name_type(n->parts[0]);
+                for (size_t i = 1; i < n->parts.size() && q.known(); ++i) q = member(q, n->parts[i]);
+                return q;
+            }
+            const std::string s = scope_text(n->parts, n->parts.size());
+            return s.empty() ? QType{} : QType{"decltype(" + s + ")"};
+        }
+        if (auto* m = std::get_if<MemberExpr>(&e.v)) {
+            if (m->name.empty() || std::holds_alternative<SuperExpr>(m->obj->v)) return {};
+            return member(type_of(*m->obj), m->name);
+        }
+        if (auto* c = std::get_if<CallExpr>(&e.v)) {
+            if (auto* n = std::get_if<NameExpr>(&c->callee->v)) {
+                if (n->parts.empty() || !n->template_args.empty()) return {};
+                if (n->parts.size() == 1) {
+                    const std::string& f = n->parts[0];
+                    if (locals.count(f)) return {};
+                    if (cls) {
+                        QType self;
+                        self.script = cls;
+                        int depth = 0;
+                        for (const ClassDef* d = cls; d && depth < 64; d = parent_of(*d), ++depth)
+                            for (const Method& m : d->methods)
+                                if (m.name == f && !m.overrides_virtual) return method(self, f);
+                    }
+                    return script_names.count(f) ? QType{} : QType{"decltype(sppc_ret_f(&" + f + "))"};
+                }
+                if (is_head_value(n->parts[0])) {
+                    QType q = name_type(n->parts[0]);
+                    for (size_t i = 1; i + 1 < n->parts.size() && q.known(); ++i) q = member(q, n->parts[i]);
+                    return q.known() ? method(q, n->parts.back()) : QType{};
+                }
+                const std::string s = scope_text(n->parts, n->parts.size());
+                return s.empty() ? QType{} : QType{"decltype(sppc_ret_f(&" + s + "))"};
+            }
+            if (auto* m = std::get_if<MemberExpr>(&c->callee->v)) {
+                if (m->name.empty() || std::holds_alternative<SuperExpr>(m->obj->v)) return {};
+                return method(type_of(*m->obj), m->name);
+            }
+        }
+        return {};
+    }
+
+    void declare(const std::string& name, const QType& q)
+    {
+        locals.insert(name);
+        if (q.known()) env[name] = q;
+        else env.erase(name);
+    }
+
+    // The member function "p.M()" on a value parameter "p".
+    void note_method_call(const CallExpr& c)
+    {
+        std::string obj, fn;
+        if (auto* n = std::get_if<NameExpr>(&c.callee->v)) {
+            if (n->parts.size() != 2) return;
+            obj = n->parts[0];
+            fn = n->parts[1];
+        } else if (auto* m = std::get_if<MemberExpr>(&c.callee->v)) {
+            const std::string* r = simple_name_of(*m->obj);
+            if (!r) return;
+            obj = *r;
+            fn = m->name;
+        }
+        auto it = value_params.find(obj);
+        if (it != value_params.end() && !fn.empty()) out.methods[it->second].insert(fn);
+    }
+
+    static const std::string* simple_name_of(const Expr& e)
+    {
+        auto* n = std::get_if<NameExpr>(&e.v);
+        return n && n->parts.size() == 1 ? &n->parts[0] : nullptr;
+    }
+
+    void body(const std::vector<Param>& params, const BlockStmt& block, const std::vector<Param>* extra = nullptr)
+    {
+        locals.clear();
+        env.clear();
+        value_params.clear();
+        auto add = [&](const Param& p) {
+            const std::string& t = p.script_type.empty() ? p.type : p.script_type;
+            declare(p.name, of_text(t));
+            const QType q = of_text(t);
+            if (p.mode == PassMode::Value && !q.cpp.empty()) value_params[p.name] = q.cpp;
+        };
+        for (const Param& p : params) add(p);
+        if (extra)
+            for (const Param& p : *extra) add(p);
+        auto fe = [&](const Expr& e) {
+            if (auto* l = std::get_if<LambdaExpr>(&e.v)) {
+                for (const Param& p : l->params) {
+                    declare(p.name, of_text(p.type));
+                    value_params.erase(p.name);
+                }
+            } else if (auto* c = std::get_if<CallExpr>(&e.v)) {
+                note_method_call(*c);
+            }
+        };
+        auto fs = [&](const Stmt& st) {
+            if (auto* d = std::get_if<VarDeclStmt>(&st.v)) {
+                value_params.erase(d->name);
+                if (!d->type.empty()) {
+                    declare(d->name, of_text(d->type));
+                    return;
+                }
+                QType q;
+                if (d->init && !std::holds_alternative<RefExpr>(d->init->v)) q = type_of(*d->init);
+                if (!q.cpp.empty()) out.vars.emplace_back(const_cast<VarDeclStmt*>(d), q.cpp);
+                declare(d->name, q);
+            } else if (auto* fo = std::get_if<ForOfStmt>(&st.v)) {
+                value_params.erase(fo->name);
+                declare(fo->name, of_text(fo->type));
+            } else if (auto* tr = std::get_if<TryStmt>(&st.v)) {
+                for (const CatchClause& c : tr->catches) declare(c.name, QType{});
+            }
+        };
+        make_walker(fe, fs).block(block);
+    }
+
+    void run()
+    {
+        for (const ClassDef& c : sc.classes) {
+            classes[c.name] = &c;
+            script_names.insert(c.name);
+        }
+        for (const EnumDef& en : sc.enums) script_names.insert(en.name);
+        for (const ClassDef& c : sc.classes) {
+            cls = &c;
+            allow_this = true;
+            for (const Method& m : c.methods) body(m.params, m.body);
+            for (const Ctor& k : c.ctors) body(k.params, k.body);
+            for (const Method& d : c.dtors) body(d.params, d.body);
+            for (const Property& p : c.props) {
+                if (p.get_body) body({}, *p.get_body);
+                if (p.set_body) {
+                    Param v;
+                    v.name = "value";
+                    v.type = stype(p);
+                    body({v}, *p.set_body);
+                }
+            }
+        }
+    }
+};
+
+}  // namespace
+
+NativeQueries collect_native_queries(Script& sc)
+{
+    QueryCollector q{sc, {}, {}, {}};
+    q.run();
+    return std::move(q.out);
 }
 
 bool uses_bare_this(const ClassDef& cd)

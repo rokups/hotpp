@@ -127,3 +127,20 @@ TEST(StubChecks, TheFactsComeFromTheSessionCache)
     ASSERT_TRUE(check_translate("[native, value] class PolyFinal;\n", "", {}, true, &session).ok);
     EXPECT_EQ(session.parse_count(), 2);
 }
+
+// S20b: each instantiation of a pattern stub that the script uses gets the checks of design 7.10.7.
+TEST(StubChecks, UsedPatternInstantiationIsChecked)
+{
+    const sppc::TranslateResult r = check_translate("[native, value] class Box<*>;\n", "    Box<int> b;\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "'value' needs a copy constructor")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "(the pattern stub")) << r.diagnostics;
+}
+
+TEST(StubChecks, UsedStandardPatternInstantiationIsOk)
+{
+    const sppc::TranslateResult r =
+        check_translate("[native, value] class std.vector<*>;\n[native, value] class Plain;\n", "    std.vector<Plain> v;\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
