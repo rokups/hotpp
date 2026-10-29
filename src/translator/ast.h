@@ -47,6 +47,9 @@ struct NameExpr {  // a.b.c<int> in the script. The lowering pass decides: a sco
     std::vector<ExprP> targ_exprs;
     bool targ_parsed = false;
     uint32_t pos = 0;
+    // The script offset of the last part of the name. The value is absolute. 0 means unknown.
+    // The raw text of the earlier parts can differ from parts[i] (see split_name).
+    uint32_t last_pos = 0;
 };
 struct ThisExpr {
     uint32_t pos = 0;

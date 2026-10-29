@@ -106,6 +106,7 @@ ast::NameExpr split_name(const ParseState& st, std::string_view t, uint32_t pos)
         const std::size_t b = i;
         while (i < t.size() && is_id(t[i])) ++i;
         std::string part(t.substr(b, i - b));
+        n.last_pos = pos + static_cast<uint32_t>(b);  // the raw offset of this part
         if (i < t.size() && t[i] == '<') {
             int depth = 0;
             std::size_t j = i;

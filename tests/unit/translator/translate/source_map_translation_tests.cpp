@@ -271,3 +271,59 @@ TEST(SourceMapTranslation, ExpressionMapsToItsRealScriptColumn)
     ASSERT_TRUE(back.has_value());
     EXPECT_EQ(*back, (SourcePos{g, 21}));
 }
+
+namespace {
+
+// Translates a script with one statement in Update (script line 5). Then checks that the
+// last name in the script maps to the last name in the generated text, and back.
+void expect_last_part_maps(const std::string& stmt, const std::string& last)
+{
+    const std::string script = "using \"w.h\";\n"
+                               "class Foo : Widget {\n"
+                               "    int hits = 0;\n"
+                               "    override void Update(float dt) {\n"
+                               "        " + stmt + "\n"
+                               "    }\n"
+                               "}\n";
+    TempDir dir;
+    write_file(dir.path() / "w.h",
+               "#include <cstdint>\n"
+               "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n"
+               "namespace Ns { struct T {}; int Get() { return 1; } template <class A> struct L { static int Make() { return 1; } }; }\n"
+               "template <class A> struct Pool { static int Get() { return 1; } };\n"
+               "template <class A, class B> struct Map { static int Make() { return 1; } };\n");
+    const sppc::TranslateResult r = sppc::translate(temp_options(dir, script));
+    ASSERT_TRUE(r.ok) << r.diagnostics << "\n" << r.cpp;
+    // The last occurrence of the name in the statement is the call name.
+    const size_t col0 = stmt.rfind(last);
+    ASSERT_NE(col0, std::string::npos);
+    const int script_col = 9 + static_cast<int>(col0);
+    const std::optional<SourcePos> g = r.source_map.map_to_generated(5, script_col);
+    ASSERT_TRUE(g.has_value()) << r.cpp;
+    EXPECT_EQ(text_at(r.cpp, *g, last.size()), last) << r.cpp;
+    const std::optional<SourcePos> s = r.source_map.map_to_script(g->line, g->col);
+    ASSERT_TRUE(s.has_value());
+    EXPECT_EQ(*s, (SourcePos{5, script_col}));
+}
+
+}  // namespace
+
+TEST(SourceMapTranslation, LastPartOfScopeNameMaps)
+{
+    expect_last_part_maps("int x = Ns.Get();", "Get");
+}
+
+TEST(SourceMapTranslation, LastPartAfterRewrittenTemplateTypeMaps)
+{
+    expect_last_part_maps("int x = Pool<ulong>.Get();", "Get");
+}
+
+TEST(SourceMapTranslation, LastPartAfterTemplateArgsWithCommaMaps)
+{
+    expect_last_part_maps("int x = Map<int,float>.Make();", "Make");
+}
+
+TEST(SourceMapTranslation, LastPartAfterTemplateArgsWithScopeMaps)
+{
+    expect_last_part_maps("int x = Ns.L<Ns.T>.Make();", "Make");
+}
