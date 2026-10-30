@@ -100,6 +100,65 @@ TEST(AccessTranslation, BaseCallOfAPrivateMethodIsAnError)
     expect_ok(base_class("protected") + "class Sub : Base { int Go() { return base.Twice(); } }\n");
 }
 
+TEST(AccessTranslation, ProtectedMemberIsUsableOnlyThroughTheTypeOfTheCode)
+{
+    const std::string base = base_class("protected");
+    // Through this and through a D object. A subclass of D cannot be named in D: it is a cycle.
+    expect_ok(base + "class D : Base { int A() { return secret + this.secret + Twice() + Level; } }\n");
+    expect_ok(base + "class D : Base { int A(D o) { return o.secret + o.Twice() + o.Level; } }\n");
+    // Through a Base object and through a sibling class.
+    const std::string expected = "(use it through 'D' or a subclass)";
+    expect_error(base + "class D : Base { int A(Base o) { return o.secret; } }\n",
+        "'secret' is protected in 'Base' " + expected);
+    expect_error(base + "class D : Base { int A(Base o) { return o.Twice(); } }\n",
+        "'Twice' is protected in 'Base' " + expected);
+    expect_error(
+        base + "class D : Base { int A(Base o) { return o.Level; } }\n", "'Level' is protected in 'Base' " + expected);
+    expect_error(
+        base + "class D : Base { void A(Base o) { o.Level = 2; } }\n", "'Level' is protected in 'Base' " + expected);
+    expect_error(base + "class D : Base { int A(E o) { return o.secret; } }\nclass E : Base {}\n",
+        "'secret' is protected in 'Base' " + expected);
+    expect_error(base + "class D : Base { int A(E o) { return o.Twice(); } }\nclass E : Base {}\n",
+        "'Twice' is protected in 'Base' " + expected);
+    // The class that declares the member can use it through an object of its own type.
+    expect_ok("class Base : Widget { protected int secret = 1; int Get(Base o) { return o.secret; } }\n");
+    // A base call stays allowed.
+    expect_ok(base + "class D : Base { int A() { return base.Twice(); } }\n");
+}
+
+TEST(AccessTranslation, SeveralAccessErrorsInOneMethodAreAllReported)
+{
+    const sppc::TranslateResult r = translate_classes(base_class("private")
+        + "class Other : Widget {\n"
+          "    int Go(Base b)\n"
+          "    {\n"
+          "        int x = b.secret;\n"
+          "        b.secret = 2;\n"
+          "        return x + b.Twice() + b.Level;\n"
+          "    }\n"
+          "}\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find(":10:"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find(":11:"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find(":12:"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("'Twice' is private in 'Base'"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("'Level' is private in 'Base'"), std::string::npos) << r.diagnostics;
+}
+
+TEST(AccessTranslation, AccessErrorsInSeveralMethodsAreAllReported)
+{
+    const sppc::TranslateResult r = translate_classes(base_class("private")
+        + "class Other : Widget {\n"
+          "    int A(Base b) { return b.secret; }\n"
+          "    int B(Base b) { return b.Twice(); }\n"
+          "    int C(Base b) { return b.Level; }\n"
+          "}\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("'secret' is private in 'Base'"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("'Twice' is private in 'Base'"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("'Level' is private in 'Base'"), std::string::npos) << r.diagnostics;
+}
+
 TEST(AccessTranslation, PrivatePropertyFromAnotherClassIsAnError)
 {
     expect_error(base_class("private") + "class Other : Widget { int Peek(Base b) { return b.Level; } }\n",

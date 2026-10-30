@@ -3057,8 +3057,11 @@ void translate_impl(
             o.w(at + "{\n");
             o.w(at + "    SPP_NODEBUG_LOCAL auto* __st = __self;\n");
             sppc::lower_block(m.body, cx, g_diag);
-            if (!g_diag.items.empty())
-                throw TranslateAbort{};
+            if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
+            {
+                reset();
+                return;
+            }
             sppc::ast::Emitter em(map, opt.input);
             sppc::ast::emit_stmts(m.body.stmts, em, 1);
             em.finish();
@@ -3091,8 +3094,8 @@ void translate_impl(
             sppc::add_params(cx, m->params);
             o.w("static " + m->ret + " " + P + m->name + "(" + m->params[0].type + " " + m->params[0].name + ")\n{\n");
             sppc::lower_block(m->body, cx, g_diag);
-            if (!g_diag.items.empty())
-                throw TranslateAbort{};
+            if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
+                continue;
             sppc::ast::Emitter em(map, opt.input);
             sppc::ast::emit_stmts(m->body.stmts, em, 1);
             em.finish();
@@ -3100,6 +3103,8 @@ void translate_impl(
             reset();
             o.w("}\n\n");
         }
+        if (!g_diag.items.empty())
+            throw TranslateAbort{};
     };
 
     // The emit order (design 7.10.1). A class that names another script class in a field, a
@@ -4398,8 +4403,11 @@ void translate_impl(
                 b = e;
             }
             sppc::lower_block(m.body, cx, g_diag);
-            if (!g_diag.items.empty())
-                throw TranslateAbort{};
+            if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
+            {
+                reset();
+                return;
+            }
             sppc::ast::Emitter em(map, opt.input);
             sppc::ast::emit_stmts(m.body.stmts, em, 1);
             em.finish();
@@ -4425,8 +4433,11 @@ void translate_impl(
             o.w("static " + m.ret + " " + P + m.name + "(" + m.params[0].type + " " + m.params[0].name + ")\n");
             o.w("#line " + std::to_string(m.line) + " \"" + file + "\"\n{\n");
             sppc::lower_block(m.body, cx, g_diag);
-            if (!g_diag.items.empty())
-                throw TranslateAbort{};
+            if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
+            {
+                reset();
+                return;
+            }
             sppc::ast::Emitter em(map, opt.input);
             sppc::ast::emit_stmts(m.body.stmts, em, 1);
             em.finish();
@@ -4462,6 +4473,8 @@ void translate_impl(
                 emit_body(m, true, P + m.name, fn_ret(m), body_what(cn, m), m.name);
             }
         }
+        if (!g_diag.items.empty())
+            throw TranslateAbort{};
 
         // The native implementation that a child sees: "base.M()" in a child calls it.
         if (parent_shell)

@@ -131,7 +131,7 @@ class Squad {
 
 ## Access words
 
-`public`, `protected` and `private` work on fields, methods, properties, accessors and constructors. The default is `public`. `private` is for the class. `protected` is for the class and its script subclasses. A bad use gives `'X' is private in 'C'`.
+`public`, `protected` and `private` work on fields, methods, properties, accessors and constructors. The default is `public`. `private` is for the class. `protected` is for the class and its script subclasses. A subclass `D` uses a protected member of its parent only through `this` or a `D` object, not through a parent object or a sibling subclass object. A bad use gives `'X' is private in 'C'`.
 
 ```csharp
 class Account {
@@ -154,7 +154,7 @@ class Spy {
 }
 ```
 
-Limits: sppc checks only known script types. It does not check native members. The generated C++ has no `private:`, so a hot reload can still move the data.
+Limits: sppc checks only known script types. It does not check native members. sppc reports all access errors of a class, but it stops after the first class that has an error. The generated C++ has no `private:`, so a hot reload can still move the data.
 
 ## Renamed fields
 

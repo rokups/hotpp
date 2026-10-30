@@ -141,6 +141,7 @@ struct Lowerer
         std::string name;
         ExprP* obj = nullptr;
         const ClassDef* cls = nullptr; // the class that has the property
+        const ClassDef* via = nullptr; // the static class of "obj", or null for "this"
     };
 
     // ---- type information (see RCtx)
@@ -190,9 +191,10 @@ struct Lowerer
     // ---- access words (design: public, protected, private)
     // True when the code that the pass lowers can use a member with the access "a" that the
     // class "owner" declares. A private member is for the class itself. A protected member is
-    // also for the script subclasses. A lambda in the class has the same class. The pass does
-    // not check a native member.
-    bool can_access(Access a, const ClassDef& owner) const
+    // also for the script subclasses, but only through an object of the subclass or of a
+    // subclass of it ("via" is the static class of the object; null is "this"). A lambda in the
+    // class has the same class. The pass does not check a native member.
+    bool can_access(Access a, const ClassDef& owner, const ClassDef* via = nullptr) const
     {
         if (a == Access::Public)
             return true;
@@ -205,22 +207,38 @@ struct Lowerer
             int depth = 0;
             for (const ClassDef* p = parent_of(*cx.cls); p && depth < 64; p = parent_of(*p), ++depth)
                 if (p == &owner || p->name == owner.name)
-                    return true;
+                    return !via || is_same_or_sub(*via, *cx.cls);
         }
+        return false;
+    }
+
+    // True when "c" is the class "base" or has "base" as a script ancestor.
+    bool is_same_or_sub(const ClassDef& c, const ClassDef& base) const
+    {
+        int depth = 0;
+        for (const ClassDef* p = &c; p && depth < 64; p = parent_of(*p), ++depth)
+            if (p == &base || p->name == base.name)
+                return true;
         return false;
     }
 
     // Reports a use of a private or protected member from a place that cannot use it.
     // "what" is the text before "is": "'name'", or "the 'set' accessor of 'name'".
-    void check_access(Access a, const ClassDef& owner, const std::string& what, uint32_t pos)
+    void check_access(
+        Access a, const ClassDef& owner, const std::string& what, uint32_t pos, const ClassDef* via = nullptr)
     {
-        if (can_access(a, owner))
+        if (can_access(a, owner, via))
             return;
-        error(pos, what + " is " + (a == Access::Private ? "private" : "protected") + " in '" + owner.name + "'");
+        std::string msg = what + " is " + (a == Access::Private ? "private" : "protected") + " in '" + owner.name + "'";
+        // The class may use the member, but not through this object.
+        if (a == Access::Protected && can_access(a, owner))
+            msg += " (use it through '" + cx.cls->name + "' or a subclass)";
+        error(pos, msg);
     }
-    void check_member(Access a, const ClassDef& owner, const std::string& name, uint32_t pos)
+    void check_member(
+        Access a, const ClassDef& owner, const std::string& name, uint32_t pos, const ClassDef* via = nullptr)
     {
-        check_access(a, owner, "'" + name + "'", pos);
+        check_access(a, owner, "'" + name + "'", pos, via);
     }
 
     // A script function of the class or of a script parent: not an override of a native
@@ -494,11 +512,12 @@ struct Lowerer
         const ClassDef* owner = nullptr;
         if (!n || !d || !find_prop(*d, *n, &owner))
             return std::nullopt;
-        return PropRef{*n, obj, owner};
+        return PropRef{*n, obj, owner, obj ? d : nullptr};
     }
 
     // The checks of an accessor use. Gives the name of the accessor fn: "Cls__get_P".
-    std::string accessor(const ClassDef& d, const std::string& prop, bool is_get, uint32_t pos)
+    std::string accessor(
+        const ClassDef& d, const std::string& prop, bool is_get, uint32_t pos, const ClassDef* via = nullptr)
     {
         const char* word = is_get ? "get" : "set";
         const Property* p = find_prop(d, prop);
@@ -511,7 +530,8 @@ struct Lowerer
             // An accessor with its own access word has its own message.
             const Access a = is_get ? p->get_access : p->set_access;
             check_access(a, d,
-                a == p->access ? "'" + prop + "'" : std::string("the '") + word + "' accessor of '" + prop + "'", pos);
+                a == p->access ? "'" + prop + "'" : std::string("the '") + word + "' accessor of '" + prop + "'", pos,
+                via);
         }
         return d.name + "__" + word + "_" + prop;
     }
@@ -556,7 +576,7 @@ struct Lowerer
     // A read of a property: "Cls__get_P(receiver)".
     ExprP prop_read(PropRef r, uint32_t pos)
     {
-        const std::string get = accessor(*r.cls, r.name, true, pos);
+        const std::string get = accessor(*r.cls, r.name, true, pos, r.via);
         return call_of(get, args_of(receiver(r, pos)), pos);
     }
 
@@ -613,8 +633,8 @@ struct Lowerer
             return false;
         }
         const bool on_this = !r->obj;
-        const std::string get = op.empty() ? std::string() : accessor(*r->cls, r->name, true, pos);
-        const std::string set = accessor(*r->cls, r->name, false, pos);
+        const std::string get = op.empty() ? std::string() : accessor(*r->cls, r->name, true, pos, r->via);
+        const std::string set = accessor(*r->cls, r->name, false, pos, r->via);
         ExprP recv = receiver(*r, pos);
         if (discard && (op.empty() || on_this))
         {
@@ -756,7 +776,7 @@ struct Lowerer
                 const Method* fn =
                     d && !d->is_value && !find_prop(*d, mm->name) ? find_fn(*d, mm->name, &owner) : nullptr;
                 if (fn)
-                    check_member(fn->access, *owner, mm->name, mm->name_pos ? mm->name_pos : pos_of(*mm->obj));
+                    check_member(fn->access, *owner, mm->name, mm->name_pos ? mm->name_pos : pos_of(*mm->obj), d);
                 if (fn)
                 {
                     const uint32_t pos = pos_of(*mm->obj);
@@ -954,14 +974,14 @@ struct Lowerer
         const ClassDef* prop_owner = nullptr;
         if (d && find_prop(*d, m.name, &prop_owner))
         {
-            e = prop_read({m.name, &m.obj, prop_owner}, obj_pos); // "m" is gone now
+            e = prop_read({m.name, &m.obj, prop_owner, d}, obj_pos); // "m" is gone now
             return;
         }
         if (td)
         {
             const ClassDef* owner = nullptr;
             if (const Field* f = find_field(*td, m.name, &owner))
-                check_member(f->access, *owner, m.name, m.name_pos ? m.name_pos : obj_pos);
+                check_member(f->access, *owner, m.name, m.name_pos ? m.name_pos : obj_pos, td);
         }
         if (td && !td->is_value)
         {
