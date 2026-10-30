@@ -2,6 +2,7 @@
 // clangd are skipped when CMake did not find clangd.
 #include "clangd_process.h"
 #include "integration/ls/ls_client.h"
+#include "semantic.h"
 #include "spp/clang_files_backend.h"
 #include "spp/sppc_lib.h"
 #include "support/translator_test_support.h"
@@ -13,9 +14,12 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 using ls_test::json;
@@ -421,6 +425,153 @@ TEST(LanguageServer, SemanticTokensMarkKeywordsTypesAndMembers)
     EXPECT_TRUE(has(3, 10, 2, "property")); // hp
     EXPECT_TRUE(has(3, 15, 5, "number")); // 100.0
     EXPECT_TRUE(has(7, 13, 4, "method")); // heal
+}
+
+// ------------------------------------------------------------------ the recent syntax
+
+namespace
+{
+
+// A script with one of each construct of the recent syntax. The lines are 0-based in the checks.
+const char* const kNewSyntaxScript =
+    "using \"Actor.h\";\n" // 0
+    "using <vector>;\n" // 1
+    "using <map>;\n" // 2
+    "using <string>;\n" // 3
+    "\n" // 4
+    "class Shape {\n" // 5
+    "    int Area => 1;\n" // 6
+    "}\n" // 7
+    "class Circle : Shape {\n" // 8
+    "    protected int r = 2;\n" // 9
+    "    public int Both => this.r;\n" // 10
+    "}\n" // 11
+    "class Hero : Actor {\n" // 12
+    "    int sum = 0;\n" // 13
+    "    private int Twice(int a = 1) => a * 2;\n" // 14
+    "    std.vector<int> xs = [1, 2, 3];\n" // 15
+    "    std.map<std.string, int> table = [\"a\": 1, \"b\": 2];\n" // 16
+    "    Hero other; override void Tick(float dt) { base.Tick(dt); }\n" // 17
+    "    void Run(Shape s) {\n" // 18
+    "        var f = (int x) => x * 2;\n" // 19
+    "        var (a, b) = std.make_pair(1, 2);\n" // 20
+    "        foreach (var (k, v) in this.table) { this.sum = this.sum + v; }\n" // 21
+    "        foreach (var (i, e) in enumerate(this.xs)) { this.sum = this.sum + i + e; }\n" // 22
+    "        foreach (var j in range(0, 3)) { this.sum = this.sum + j; }\n" // 23
+    "        this.other?.Run(s);\n" // 24
+    "        if (s is Circle c && c.Both > 0) { this.sum = c.Both; }\n" // 25
+    "        var sq = s as Circle;\n" // 26
+    "        std.string name = \"a\";\n" // 27
+    "        switch (name) {\n" // 28
+    "            case \"a\":\n" // 29
+    "                this.sum = 1;\n" // 30
+    "                break;\n" // 31
+    "            default:\n" // 32
+    "                break;\n" // 33
+    "        }\n" // 34
+    "        this.sum = f(this.sum) + a + b;\n" // 35
+    "    }\n" // 36
+    "}\n";
+
+// Decodes the data of a semantic tokens answer to (line, col, len, type name).
+std::vector<std::tuple<int, int, int, std::string>> decode_tokens(const json& data)
+{
+    const json types = {"keyword", "type", "class", "method", "property", "number", "string", "comment"};
+    std::vector<std::tuple<int, int, int, std::string>> tokens;
+    int line = 0, col = 0;
+    for (size_t i = 0; i + 4 < data.size(); i += 5)
+    {
+        line += data[i].get<int>();
+        col = data[i].get<int>() == 0 ? col + data[i + 1].get<int>() : data[i + 1].get<int>();
+        tokens.emplace_back(line, col, data[i + 2].get<int>(), types[data[i + 3].get<int>()]);
+    }
+    return tokens;
+}
+
+} // namespace
+
+TEST(LanguageServer, ScriptWithTheRecentSyntaxGivesNoServerError)
+{
+    Session s(false, kNewSyntaxScript);
+    const json n = s.diagnostics([](const json&) { return true; });
+    ASSERT_FALSE(n.is_null());
+    for (const json& d : n["params"]["diagnostics"])
+        EXPECT_NE(d.value("severity", 0), 1) << d.dump();
+    // The analysis ran: the document symbols list the classes and their members.
+    const json r = s.client->request("textDocument/documentSymbol", {{"textDocument", {{"uri", s.uri}}}});
+    ASSERT_TRUE(r.contains("result") && r["result"].size() == 3) << r.dump();
+    const json& hero = r["result"][2];
+    EXPECT_EQ(hero["name"], "Hero");
+    std::vector<std::string> names;
+    for (const json& m : hero["children"])
+        names.push_back(m["name"]);
+    EXPECT_EQ(names, (std::vector<std::string>{"sum", "Twice", "xs", "table", "other", "Tick", "Run"}));
+}
+
+TEST(LanguageServer, SemanticTokensMarkBaseIsAsAndTheAccessWordsAsKeywords)
+{
+    Session s(false, kNewSyntaxScript);
+    const json r = s.client->request("textDocument/semanticTokens/full", {{"textDocument", {{"uri", s.uri}}}});
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    const auto tokens = decode_tokens(r["result"]["data"]);
+    // The word is the first one with this text on the line of the script.
+    auto has = [&](int line, const std::string& word, const char* type)
+    {
+        std::istringstream in(kNewSyntaxScript);
+        std::string text;
+        for (int l = 0; l <= line; ++l)
+            std::getline(in, text);
+        const size_t col = text.find(word);
+        return col != std::string::npos
+            && std::find(tokens.begin(), tokens.end(),
+                   std::make_tuple(line, static_cast<int>(col), static_cast<int>(word.size()), std::string(type)))
+            != tokens.end();
+    };
+    EXPECT_TRUE(has(9, "protected", "keyword"));
+    EXPECT_TRUE(has(10, "public", "keyword"));
+    EXPECT_TRUE(has(10, "this", "keyword"));
+    EXPECT_TRUE(has(14, "private", "keyword"));
+    EXPECT_TRUE(has(17, "override", "keyword"));
+    EXPECT_TRUE(has(17, "base", "keyword"));
+    EXPECT_TRUE(has(20, "var", "keyword"));
+    EXPECT_TRUE(has(25, "is", "keyword"));
+    EXPECT_TRUE(has(26, "as", "keyword"));
+    EXPECT_TRUE(has(22, "enumerate", "method"));
+    EXPECT_TRUE(has(23, "range", "method"));
+}
+
+TEST(LanguageServer, TheRemovedWordsAreNotKeywords)
+{
+    const std::vector<std::string>& k = spp::ls::script_keywords();
+    for (const char* w : {"function", "let", "import", "ref", "out", "super", "static", "module"})
+        EXPECT_EQ(std::count(k.begin(), k.end(), w), 0) << w;
+    for (const char* w : {"base", "is", "as", "public", "protected", "private", "this", "struct", "using"})
+        EXPECT_EQ(std::count(k.begin(), k.end(), w), 1) << w;
+    const std::vector<std::string>& h = spp::ls::script_helpers();
+    EXPECT_EQ(h, (std::vector<std::string>{"enumerate", "range"}));
+}
+
+TEST(LanguageServer, BindingsAreLocals)
+{
+    const std::string text = kNewSyntaxScript;
+    const size_t at = text.find("this.sum = f(this.sum)");
+    const spp::ls::ScriptScope scope = spp::ls::scan_scope(text, at, at);
+    std::map<std::string, std::string> locals; // name -> type
+    for (const spp::ls::ScopeName& n : scope.locals)
+        locals[n.name] = n.type;
+    // "var (a, b)" and the foreach with "var (k, v)" or "var (i, e)" bind plain locals.
+    for (const char* n : {"a", "b", "k", "v", "i", "e", "j", "f", "sq", "name", "s"})
+        EXPECT_EQ(locals.count(n), 1u) << n;
+    EXPECT_EQ(locals["c"], "Circle"); // "s is Circle c"
+    EXPECT_EQ(locals["a"], ""); // no type is written
+
+    const std::string ref = "class A { void F() { var& (x, y) = G(); if (o is std.vector<int> list) { @ } } }";
+    const size_t p = ref.find('@');
+    const spp::ls::ScriptScope s2 = spp::ls::scan_scope(ref, p, p);
+    std::set<std::string> names;
+    for (const spp::ls::ScopeName& n : s2.locals)
+        names.insert(n.name);
+    EXPECT_EQ(names, (std::set<std::string>{"x", "y", "list"}));
 }
 
 // ------------------------------------------------------------------ M14: index, C++ to script, rename

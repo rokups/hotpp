@@ -30,8 +30,7 @@ const std::set<std::string>& keywords()
     static const std::set<std::string> k = {"if", "else", "while", "do", "for", "foreach", "in", "return", "break",
         "continue", "switch", "case", "default", "is", "as", "new", "delete", "public", "private", "protected",
         "override", "virtual", "const", "get", "set", "this", "base", "true", "false", "null", "try", "catch",
-        "finally", "throw", "var", "void", "class", "struct", "enum", "using", "static", "module", "native", "handle",
-        "value"};
+        "finally", "throw", "var", "void", "class", "struct", "enum", "using", "native", "handle", "value"};
     return k;
 }
 
@@ -96,6 +95,24 @@ int byte_to_utf16(std::string_view line, int col)
         units += static_cast<int>(end - line.size());
     return units;
 }
+
+namespace
+{
+
+bool is_helper(const std::string& w)
+{
+    return w == "enumerate" || w == "range";
+}
+
+// True when the next character after the byte e that is not a space is "(".
+bool next_char_is_paren(const std::string& text, size_t e)
+{
+    while (e < text.size() && (text[e] == ' ' || text[e] == '\t'))
+        ++e;
+    return e < text.size() && text[e] == '(';
+}
+
+} // namespace
 
 std::vector<SemanticToken> script_tokens(const std::string& text, const sppc::AnalyzeResult& facts)
 {
@@ -191,6 +208,8 @@ std::vector<SemanticToken> script_tokens(const std::string& text, const sppc::An
                 type = Method;
             else if (properties.count(w))
                 type = Property;
+            else if (is_helper(w) && (i == 0 || text[i - 1] != '.') && next_char_is_paren(text, e))
+                type = Method; // enumerate(...) and range(...)
             if (type >= 0)
                 add(i, e, type);
             i = e;
@@ -207,6 +226,12 @@ const std::vector<std::string>& script_keywords()
 {
     static const std::vector<std::string> k(keywords().begin(), keywords().end());
     return k;
+}
+
+const std::vector<std::string>& script_helpers()
+{
+    static const std::vector<std::string> h = {"enumerate", "range"};
+    return h;
 }
 
 const std::vector<std::string>& builtin_type_names()
@@ -413,6 +438,67 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
         {
             if (is_name(t) && prev && (prev->s == "{" || prev->s == ","))
                 r.enum_members[stack.back().enum_name].push_back(t.s);
+            continue;
+        }
+        if (!at_module && here == Block::Body && t.s == "var" && next)
+        {
+            // A structured binding: "var (a, b)" or "var& (a, b)". Each name is a local.
+            size_t o = i + 1;
+            if (toks[o].s == "&" && o + 1 < toks.size())
+                ++o;
+            if (toks[o].s == "(")
+            {
+                size_t close = o + 1;
+                while (close < toks.size() && toks[close].s != ")" && toks[close].s != ";" && toks[close].s != "{")
+                    ++close;
+                if (close + 1 < toks.size() && toks[close].s == ")"
+                    && (toks[close + 1].s == "=" || (toks[close + 1].id && toks[close + 1].s == "in")))
+                {
+                    for (size_t k = o + 1; k < close; ++k)
+                        if (is_name(toks[k]) && toks[k].off != typed_begin)
+                            stack.back().locals.push_back({toks[k].s, std::string(), "local"});
+                    i = close;
+                    continue;
+                }
+            }
+        }
+        if (!at_module && here == Block::Body && t.id && t.s == "is")
+        {
+            // A binding of a type test: "x is T name". The type can have dots and template arguments.
+            size_t k = i + 1;
+            std::string type;
+            while (k < toks.size() && is_name(toks[k]) && toks[k].off != typed_begin)
+            {
+                type += toks[k].s;
+                if (k + 2 < toks.size() && toks[k + 1].s == "." && toks[k + 2].id)
+                {
+                    type += ".";
+                    k += 2;
+                    continue;
+                }
+                ++k;
+                break;
+            }
+            if (!type.empty())
+            {
+                if (k < toks.size() && toks[k].s == "<")
+                {
+                    int depth = 0;
+                    for (; k < toks.size(); ++k)
+                    {
+                        depth += toks[k].s == "<" ? 1 : toks[k].s == ">" ? -1 : 0;
+                        if (depth == 0 || toks[k].s == ";" || toks[k].s == "{")
+                            break;
+                    }
+                    if (k < toks.size() && depth == 0)
+                        ++k;
+                }
+                while (
+                    k < toks.size() && (toks[k].s == "*" || toks[k].s == "&") && k + 1 < toks.size() && toks[k + 1].id)
+                    ++k;
+                if (k < toks.size() && is_name(toks[k]) && toks[k].off != typed_begin)
+                    stack.back().locals.push_back({toks[k].s, type, "local"});
+            }
             continue;
         }
         if (!is_name(t) || !prev || !next)

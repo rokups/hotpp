@@ -68,6 +68,9 @@ const words = new Set(matches.flatMap((r) => r.replace(/\\b|\(\?[:=!]|[()]/g, '|
 const covered = (w) => words.has(w);
 for (const w of keywords) if (!covered(w)) fail(`keyword not in the grammar: ${w}`);
 for (const w of types) if (!covered(w)) fail(`builtin type not in the grammar: ${w}`);
+// The words of the removed syntax must not be keywords of the grammar.
+for (const w of ['function', 'let', 'import', 'ref', 'out', 'super'])
+  if (covered(w)) fail(`removed word is in the grammar: ${w}`);
 
 // ---- part 2: tokenizer
 let textmate, oniguruma;

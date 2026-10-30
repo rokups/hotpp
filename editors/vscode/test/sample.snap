@@ -3,9 +3,7 @@
 2: "<vector>" string.quoted.other.lt-gt.include.spp
 2: ";" punctuation.terminator.statement.spp
 3: "using" keyword.control.import.spp
-3: "\"" string.quoted.double.spp
-3: "Actor.h" string.quoted.double.spp
-3: "\"" string.quoted.double.spp
+3: "\"Actor.h\"" string.quoted.double.include.spp
 3: ";" punctuation.terminator.statement.spp
 5: "[" meta.attribute.spp punctuation.definition.attribute.begin.spp
 5: "native" meta.attribute.spp entity.other.attribute-name.spp
@@ -117,11 +115,12 @@
 14: "if" keyword.control.flow.spp
 14: " (a " 
 14: "is" keyword.operator.word.spp
-14: " Stats " 
+14: "Stats" entity.name.type.spp
 14: "&&" keyword.operator.logical.spp
 14: " b " 
 14: "as" keyword.operator.word.spp
-14: " Foo) { " 
+14: "Foo" entity.name.type.spp
+14: ") { " 
 14: "return" keyword.control.flow.spp
 14: "null" constant.language.spp
 14: ";" punctuation.terminator.statement.spp
@@ -132,7 +131,8 @@
 15: "if" keyword.control.flow.spp
 15: " (a " 
 15: "is" keyword.operator.word.spp
-15: " Stats st " 
+15: "Stats" entity.name.type.spp
+15: "st" variable.other.local.spp
 15: "&&" keyword.operator.logical.spp
 15: " st" 
 15: "." punctuation.accessor.spp
@@ -172,3 +172,224 @@
 19: "items) { y" 
 19: ";" punctuation.terminator.statement.spp
 19: " } }" 
+20: "// New syntax: bodies with =>, lambdas, bindings, helpers, switch on strings, literals." comment.line.double-slash.spp
+21: "class" storage.type.class.spp
+21: "Calc" entity.name.type.class.spp
+21: ":" punctuation.separator.inheritance.spp
+21: "Base" entity.other.inherited-class.spp
+21: " {" 
+22: "int" storage.type.builtin.spp
+22: "Twice" entity.name.function.spp
+22: "(" 
+22: "int" storage.type.builtin.spp
+22: " a " 
+22: "=" keyword.operator.assignment.spp
+22: "1" constant.numeric.integer.spp
+22: ") " 
+22: "=>" storage.type.function.arrow.spp
+22: " a " 
+22: "*" keyword.operator.arithmetic.spp
+22: "2" constant.numeric.integer.spp
+22: ";" punctuation.terminator.statement.spp
+23: "int" storage.type.builtin.spp
+23: " Total " 
+23: "=>" storage.type.function.arrow.spp
+23: "this" variable.language.spp
+23: "." punctuation.accessor.spp
+23: "sum " 
+23: "+" keyword.operator.arithmetic.spp
+23: "base" variable.language.spp
+23: "." punctuation.accessor.spp
+23: "Total" 
+23: ";" punctuation.terminator.statement.spp
+24: "protected" storage.modifier.spp
+24: "int" storage.type.builtin.spp
+24: " sum " 
+24: "=" keyword.operator.assignment.spp
+24: "0" constant.numeric.integer.spp
+24: ";" punctuation.terminator.statement.spp
+25: "    List" 
+25: "<" keyword.operator.comparison.spp
+25: "int" storage.type.builtin.spp
+25: ">" keyword.operator.comparison.spp
+25: " xs " 
+25: "=" keyword.operator.assignment.spp
+25: "[" meta.collection-literal.spp punctuation.definition.collection.begin.spp
+25: "1" meta.collection-literal.spp constant.numeric.integer.spp
+25: "," meta.collection-literal.spp punctuation.separator.comma.spp
+25: "2" meta.collection-literal.spp constant.numeric.integer.spp
+25: "," meta.collection-literal.spp punctuation.separator.comma.spp
+25: "3" meta.collection-literal.spp constant.numeric.integer.spp
+25: "]" meta.collection-literal.spp punctuation.definition.collection.end.spp
+25: ";" punctuation.terminator.statement.spp
+26: "    Map" 
+26: "<" keyword.operator.comparison.spp
+26: "string" 
+26: "," punctuation.separator.comma.spp
+26: "int" storage.type.builtin.spp
+26: ">" keyword.operator.comparison.spp
+26: " m " 
+26: "=" keyword.operator.assignment.spp
+26: "[" meta.collection-literal.spp punctuation.definition.collection.begin.spp
+26: "\"" meta.collection-literal.spp string.quoted.double.spp
+26: "a" meta.collection-literal.spp string.quoted.double.spp
+26: "\"" meta.collection-literal.spp string.quoted.double.spp
+26: ":" meta.collection-literal.spp keyword.operator.ternary.spp
+26: "1" meta.collection-literal.spp constant.numeric.integer.spp
+26: "," meta.collection-literal.spp punctuation.separator.comma.spp
+26: "\"" meta.collection-literal.spp string.quoted.double.spp
+26: "b" meta.collection-literal.spp string.quoted.double.spp
+26: "\"" meta.collection-literal.spp string.quoted.double.spp
+26: ":" meta.collection-literal.spp keyword.operator.ternary.spp
+26: "2" meta.collection-literal.spp constant.numeric.integer.spp
+26: "]" meta.collection-literal.spp punctuation.definition.collection.end.spp
+26: ";" punctuation.terminator.statement.spp
+27: "void" storage.type.spp
+27: "Run" entity.name.function.spp
+27: "(Map" 
+27: "<" keyword.operator.comparison.spp
+27: "string" 
+27: "," punctuation.separator.comma.spp
+27: "int" storage.type.builtin.spp
+27: ">" keyword.operator.comparison.spp
+27: "&" keyword.operator.arithmetic.spp
+27: " m2" 
+27: "," punctuation.separator.comma.spp
+27: " Shape" 
+27: "*" keyword.operator.arithmetic.spp
+27: " sh) {" 
+28: "var" storage.type.spp
+28: " f " 
+28: "=" keyword.operator.assignment.spp
+28: " (" 
+28: "int" storage.type.builtin.spp
+28: " x) " 
+28: "=>" storage.type.function.arrow.spp
+28: " x " 
+28: "*" keyword.operator.arithmetic.spp
+28: "2" constant.numeric.integer.spp
+28: ";" punctuation.terminator.statement.spp
+29: "var" storage.type.spp
+29: "(" punctuation.definition.binding.begin.spp
+29: "a" variable.other.local.spp
+29: "," punctuation.separator.comma.spp
+29: "b" variable.other.local.spp
+29: ")" punctuation.definition.binding.end.spp
+29: "=" keyword.operator.assignment.spp
+29: "Pair" entity.name.function.spp
+29: "()" 
+29: ";" punctuation.terminator.statement.spp
+30: "var" storage.type.spp
+30: "&" storage.modifier.reference.spp
+30: "(" punctuation.definition.binding.begin.spp
+30: "c" variable.other.local.spp
+30: "," punctuation.separator.comma.spp
+30: "d" variable.other.local.spp
+30: ")" punctuation.definition.binding.end.spp
+30: "=" keyword.operator.assignment.spp
+30: "Pair" entity.name.function.spp
+30: "()" 
+30: ";" punctuation.terminator.statement.spp
+31: "foreach" keyword.control.flow.spp
+31: " (" 
+31: "var" storage.type.spp
+31: "(" punctuation.definition.binding.begin.spp
+31: "k" variable.other.local.spp
+31: "," punctuation.separator.comma.spp
+31: "v" variable.other.local.spp
+31: ")" punctuation.definition.binding.end.spp
+31: "in" keyword.control.flow.spp
+31: " m2) { k" 
+31: ";" punctuation.terminator.statement.spp
+31: " }" 
+32: "foreach" keyword.control.flow.spp
+32: " (" 
+32: "var" storage.type.spp
+32: "(" punctuation.definition.binding.begin.spp
+32: "i" variable.other.local.spp
+32: "," punctuation.separator.comma.spp
+32: "e" variable.other.local.spp
+32: ")" punctuation.definition.binding.end.spp
+32: "in" keyword.control.flow.spp
+32: "enumerate" support.function.builtin.spp
+32: "(" 
+32: "this" variable.language.spp
+32: "." punctuation.accessor.spp
+32: "xs)) { i" 
+32: ";" punctuation.terminator.statement.spp
+32: " }" 
+33: "for" keyword.control.flow.spp
+33: " (" 
+33: "var" storage.type.spp
+33: " i " 
+33: "in" keyword.control.flow.spp
+33: "range" support.function.builtin.spp
+33: "(" 
+33: "0" constant.numeric.integer.spp
+33: "," punctuation.separator.comma.spp
+33: "3" constant.numeric.integer.spp
+33: ")) { " 
+33: "&" keyword.operator.arithmetic.spp
+33: "i" 
+33: ";" punctuation.terminator.statement.spp
+33: "*" keyword.operator.arithmetic.spp
+33: "sh" 
+33: ";" punctuation.terminator.statement.spp
+33: " }" 
+34: "this" variable.language.spp
+34: "." punctuation.accessor.spp
+34: "owner" 
+34: "?." punctuation.accessor.safe.spp
+34: "Tick" entity.name.function.spp
+34: "(" 
+34: "1.0f" constant.numeric.float.spp
+34: ")" 
+34: ";" punctuation.terminator.statement.spp
+35: "if" keyword.control.flow.spp
+35: " (sh " 
+35: "is" keyword.operator.word.spp
+35: "Circle" entity.name.type.spp
+35: "ci" variable.other.local.spp
+35: "&&" keyword.operator.logical.spp
+35: " ci" 
+35: "." punctuation.accessor.spp
+35: "r " 
+35: ">" keyword.operator.comparison.spp
+35: "0" constant.numeric.integer.spp
+35: ") { " 
+35: "var" storage.type.spp
+35: " sq " 
+35: "=" keyword.operator.assignment.spp
+35: " sh " 
+35: "as" keyword.operator.word.spp
+35: "Square" entity.name.type.spp
+35: ";" punctuation.terminator.statement.spp
+35: " }" 
+36: "switch" keyword.control.flow.spp
+36: " (name) { " 
+36: "case" keyword.control.flow.spp
+36: "\"" string.quoted.double.spp
+36: "a" string.quoted.double.spp
+36: "\"" string.quoted.double.spp
+36: ":" keyword.operator.ternary.spp
+36: "case" keyword.control.flow.spp
+36: "\"" string.quoted.double.spp
+36: "b" string.quoted.double.spp
+36: "\"" string.quoted.double.spp
+36: ":" keyword.operator.ternary.spp
+36: "return" keyword.control.flow.spp
+36: ";" punctuation.terminator.statement.spp
+36: "default" keyword.control.flow.spp
+36: ":" keyword.operator.ternary.spp
+36: "break" keyword.control.flow.spp
+36: ";" punctuation.terminator.statement.spp
+36: " }" 
+37: "var" storage.type.spp
+37: " let " 
+37: "=" keyword.operator.assignment.spp
+37: " function " 
+37: "+" keyword.operator.arithmetic.spp
+37: " super" 
+37: ";" punctuation.terminator.statement.spp
+38: "    }" 
+39: "}" 

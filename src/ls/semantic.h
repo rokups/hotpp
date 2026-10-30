@@ -26,6 +26,8 @@ std::vector<SemanticToken> script_tokens(const std::string& text, const sppc::An
 
 // The keywords of the script, and the names of its builtin types (with the aliases).
 const std::vector<std::string>& script_keywords();
+// The global helper functions that every script has: "enumerate" and "range". They are not keywords.
+const std::vector<std::string>& script_helpers();
 const std::vector<std::string>& builtin_type_names();
 
 // A name that the script declares, for a completion list.

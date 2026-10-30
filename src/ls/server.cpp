@@ -1305,6 +1305,9 @@ json Server::on_completion(const Doc& d, const json& p)
     {
         for (const std::string& k : script_keywords())
             add(k, 14, "keyword", "3");
+        // The global helpers of a script (include/spp/runtime/enumerate.h).
+        for (const std::string& h : script_helpers())
+            add(h, 3, "global function", "3");
         for (const std::string& k : builtin_type_names())
             add(k, 25, "builtin type", "3");
     }
