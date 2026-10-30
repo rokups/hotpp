@@ -2,6 +2,7 @@
 // and overrides Tick. A normal C++ build compiles this file. The tool sppc also translates it.
 // A .cpp script has no string interpolation, so Tick formats the line with snprintf.
 #include "Creature.h"
+#include "spp/script.h"
 
 #include <cstdio>
 #include <string>

@@ -13,5 +13,5 @@ The `sppc` tool turns a script into C++. The engine reloads a changed script whi
 - [Classes](classes.html): fields, methods, `=>` bodies, default values, constructors, properties, structs, access words.
 - [Inheritance](inheritance.html): native bases, virtual methods, script parents.
 - [Module level](module-level.html): `using`, enums, structs, module variables, native stubs.
-- [C++ scripts](cpp-scripts.html): a script as a plain `.cpp` file in standard C++ with no spp header. It also compiles in a normal build.
+- [C++ scripts](cpp-scripts.html): a script as a plain `.cpp` file that also compiles in a normal build.
 - [Statements](statements.html): control flow, string `switch`, `foreach` and bindings, `try`, string interpolation, casts, `??`, `?.`, `is` and `as`.

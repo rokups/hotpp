@@ -48,7 +48,7 @@ struct Parsed
 };
 
 const char* const kMain = R"(#include "Actor.h"
-#include <string>
+#include <spp/script.h>
 #include <vector>
 
 const int kMax = 5;
@@ -66,8 +66,9 @@ public:
     void Jump() {}
     void Use(Actor* a) { (void)a; }
     void Peek(Player& other) { other.Move(Vec3()); }
+    void onReload(const spp::OldState& old) { (void)old; }
     int hp = 100;
-    int energy = 3;
+    SPP_ALIAS("mana") int energy = 3;
     std::vector<int> items{1, 2, 3};
     int lives{3};
 };
@@ -83,7 +84,7 @@ TEST(CppFrontend, Structure)
     EXPECT_TRUE(s.is_cpp);
     ASSERT_EQ(s.imports.size(), 3u);
     EXPECT_EQ(s.imports[0].path, "Actor.h");
-    EXPECT_EQ(s.imports[1].path, "<string>");
+    EXPECT_EQ(s.imports[1].path, "<spp/script.h>");
     EXPECT_EQ(s.imports[2].line, 3);
     ASSERT_EQ(s.prelude.size(), 2u);
     EXPECT_EQ(s.prelude[0].text, "const int kMax = 5;");
@@ -111,6 +112,7 @@ TEST(CppFrontend, Structure)
     EXPECT_EQ(tick.params[0].type, "float");
     EXPECT_EQ(tick.line, 15);
     EXPECT_EQ(tick.end_line, 15);
+    EXPECT_EQ(p.method("onReload").params.at(0).type, "OldState");
 }
 
 TEST(CppFrontend, MethodBodyEdits)
@@ -147,6 +149,7 @@ TEST(CppFrontend, CtorDtorFields)
     EXPECT_EQ(c.fields[0].raw_init, "100");
     EXPECT_TRUE(c.fields[0].raw);
     EXPECT_EQ(c.fields[1].name, "energy");
+    EXPECT_EQ(c.fields[1].alias, "mana");
     EXPECT_EQ(c.fields[1].raw_init, "3");
     EXPECT_EQ(c.fields[2].raw_init, "{1, 2, 3}");
     EXPECT_TRUE(c.fields[2].raw_brace_init);

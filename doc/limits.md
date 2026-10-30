@@ -23,4 +23,4 @@ This list shows what version 1 does not support.
 - Windows and macOS. They are untested.
 - MSVC, Visual Studio, and a real gdb or lldb session. They are untested.
 
-A `.cpp` script (see [C++ scripts](cpp-scripts.html)) has more limits. It has no properties, no script virtual methods without `override`, no script-class handles and no `new`, and no script inheritance. It has no alias and no `onReload`: a field rename needs a `.spp` script.
+A `.cpp` script (see [C++ scripts](cpp-scripts.html)) has more limits. It has no properties, no script virtual methods without `override`, no script-class handles and no `new`, and no script inheritance.

@@ -2,6 +2,7 @@
 // and overrides Frame. A normal C++ build compiles this file. The tool sppc also translates it.
 #include "UiApp.h"
 #include "imgui.h"
+#include "spp/script.h"
 
 class Demo : public UiApp
 {

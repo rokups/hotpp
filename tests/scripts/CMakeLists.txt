@@ -24,11 +24,11 @@ spp_add_scripts(TARGET pre_cpp1 SCRIPTS cpp_player_v1.cpp AFTER pre_handle3
                 INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
                 FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS})
 
-# The .cpp scripts are standard C++. A normal build compiles them with no sppc and no spp include dir.
+# The .cpp scripts are plain C++. A normal build compiles them without sppc.
 # Each generation has its own library, because both define Player and the module variable total.
 foreach(gen 1 2)
     add_library(cpp_scripts_plain${gen} OBJECT cpp_player_v${gen}.cpp)
     target_include_directories(cpp_scripts_plain${gen} PRIVATE
-        ${PROJECT_SOURCE_DIR}/tests/engine)
+        ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/tests/engine)
     target_compile_features(cpp_scripts_plain${gen} PRIVATE cxx_std_17)
 endforeach()
