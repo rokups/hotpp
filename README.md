@@ -258,7 +258,7 @@ The CMake function `spp_add_scripts` (`cmake/SppScripts.cmake`) only runs `sppc`
     spp_add_scripts(TARGET player SCRIPTS example/scripts/player_v1.spp
                     INCLUDES include example/engine FLAGS ${flags} DEPENDS ${headers})
 
-`TARGET` is a custom target that makes the libraries in `OUT_DIR` (default `${CMAKE_BINARY_DIR}/spp_scripts`). The generation is 1. The tests use the internal options `GEN n` and `AFTER` to build later generations.
+`TARGET` is a custom target that makes the libraries in `OUT_DIR` (default `${CMAKE_BINARY_DIR}/spp_scripts`). The generation is 1. `SPPC_ARGS` passes extra arguments to `sppc`. The tests use `SPPC_ARGS --gen n` and `AFTER` to build later generations.
 
 ## AOT compilation
 
@@ -273,7 +273,7 @@ Command line (S12). The tool translates generation 1 of each script. It does not
 - `sppc` also writes `DIR/spp_aot_registry.cpp`. It defines the constant table `spp::aot_table` (`include/spp/aot.h`).
 - The script names must be different. The class names must be different over all the scripts of a program. An AOT script has no slot file and no later generation.
 
-The CMake function `spp_add_scripts` with the option `AOT` (`cmake/SppScripts.cmake`) runs `sppc --aot` and builds a static library. `GEN` and `AFTER` do not work with `AOT`. `PRELUDES` works only with `AOT`:
+The CMake function `spp_add_scripts` with the option `AOT` (`cmake/SppScripts.cmake`) runs `sppc --aot` and builds a static library. `AFTER` does not work with `AOT`. `PRELUDES` works only with `AOT`:
 
     spp_add_scripts(TARGET game_scripts AOT SCRIPTS player.spp boss.spp
                     INCLUDES include example/engine [PRELUDES file...] [DEPENDS file...])

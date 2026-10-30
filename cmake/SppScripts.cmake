@@ -15,7 +15,9 @@
 # The target makes the library OUT_DIR/<script name>.g<n>.so for each script. OUT_DIR
 # defaults to ${CMAKE_BINARY_DIR}/spp_scripts. Load such a library with
 # spp::module_from_library. The variable SPP_SCRIPTS_<TARGET>_LIBRARIES gets the paths.
-# The generation is 1. The tests set GEN n to build later generations. FLAGS are compile flags (--cxxflag). The generations of one class
+# SPPC_ARGS are extra arguments for sppc, in both modes. The generation is 1; the option
+# --gen n in SPPC_ARGS sets another one (the tests build later generations this way).
+# FLAGS are compile flags (--cxxflag). The generations of one class
 # share a slot file in OUT_DIR. Build generation 2 after generation 1: give AFTER the
 # target of generation 1.
 #
@@ -33,7 +35,7 @@
 # package, else CPM.cmake, by default), passes --format=fmt to sppc and gives the compile the fmt include directory.
 # In AOT mode the library "name" links the target spp_fmt (fmt). There is no runtime switch.
 function(spp_add_scripts)
-    cmake_parse_arguments(A "AOT" "TARGET;GEN;OUT_DIR;AFTER" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS" ${ARGN})
+    cmake_parse_arguments(A "AOT" "TARGET;OUT_DIR;AFTER" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS;SPPC_ARGS" ${ARGN})
     if(A_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "spp_add_scripts: unknown arguments: ${A_UNPARSED_ARGUMENTS}")
     endif()
@@ -41,12 +43,15 @@ function(spp_add_scripts)
         message(FATAL_ERROR "spp_add_scripts needs TARGET and SCRIPTS")
     endif()
     if(A_AOT)
-        if(DEFINED A_GEN OR DEFINED A_AFTER)
-            message(FATAL_ERROR "spp_add_scripts: GEN and AFTER do not work with AOT (target ${A_TARGET})")
+        if(DEFINED A_AFTER)
+            message(FATAL_ERROR "spp_add_scripts: AFTER does not work with AOT (target ${A_TARGET})")
         endif()
     else()
-        if(NOT A_GEN)
-            set(A_GEN 1)
+        set(A_GEN 1)
+        list(FIND A_SPPC_ARGS --gen gen_at)
+        if(NOT gen_at EQUAL -1)
+            math(EXPR gen_at "${gen_at} + 1")
+            list(GET A_SPPC_ARGS ${gen_at} A_GEN)
         endif()
         if(A_PRELUDES)
             message(FATAL_ERROR "spp_add_scripts: PRELUDES works only with AOT (target ${A_TARGET})")
@@ -100,7 +105,7 @@ function(spp_add_scripts)
         add_custom_command(
             OUTPUT ${sources} ${registry}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
-            COMMAND sppc --aot ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS} ${format_args}
+            COMMAND sppc --aot ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS} ${format_args} ${A_SPPC_ARGS}
             DEPENDS sppc ${scripts} ${A_PRELUDES} ${A_DEPENDS}
             COMMENT "sppc --aot: ${A_SCRIPTS}"
             VERBATIM)
@@ -134,8 +139,8 @@ function(spp_add_scripts)
     add_custom_command(
         OUTPUT ${outputs}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
-        COMMAND sppc ${scripts} --gen ${A_GEN} --out-dir ${A_OUT_DIR}
-                --cxx ${CMAKE_CXX_COMPILER} ${args}
+        COMMAND sppc ${scripts} --out-dir ${A_OUT_DIR}
+                --cxx ${CMAKE_CXX_COMPILER} ${args} --gen ${A_GEN} ${A_SPPC_ARGS}
         DEPENDS sppc ${scripts} ${A_DEPENDS}
         COMMENT "sppc: generation ${A_GEN} of ${A_SCRIPTS}"
         VERBATIM)
