@@ -17,9 +17,11 @@ struct SppModule;
 // The module state block of this generation. The loader sets the slot.
 static void* SppModule_slot = nullptr;
 [[maybe_unused]] SPP_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+struct Limiter_Shell;
+using Limiter = Limiter_Shell;
 #line 3 "cpp_constexpr.cpp"
 #include "Actor.h"
-#line 23 "cpp_constexpr.cpp.cpp"
+#line 25 "cpp_constexpr.cpp.cpp"
 
 // ---------------------------------------------------------------- [value] class SppModule
 struct SppModule {
@@ -28,11 +30,11 @@ struct SppModule {
 
 #line 6 "cpp_constexpr.cpp"
 static void SppModule__init_total(void*, void* f) { using T = int; new (f) T(0); }
-#line 32 "cpp_constexpr.cpp.cpp"
+#line 34 "cpp_constexpr.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static const spp::FieldInfo SppModule_fields[] = {
-    {"total", nullptr, typeid(int).name(), offsetof(SppModule, total), sizeof(int),
+    {"total", nullptr, spp::type_key<int>(), offsetof(SppModule, total), sizeof(int),
      alignof(int), spp::field_flags<int>(), SppModule__init_total, spp::move_field<int>, spp::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
@@ -47,12 +49,12 @@ constexpr int limit(bool fixed)
     return fixed ? 10 : spp_mod()->total;
 }
 
-#line 51 "cpp_constexpr.cpp.cpp"
+#line 53 "cpp_constexpr.cpp.cpp"
 
 #line 14 "cpp_constexpr.cpp"
 static_assert(limit(true) == 10, "a constant call does not read the module variable");
 
-#line 56 "cpp_constexpr.cpp.cpp"
+#line 58 "cpp_constexpr.cpp.cpp"
 
 // ---------------------------------------------------------------- class Limiter
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -79,7 +81,7 @@ struct Limiter_Shell final : Actor, spp::ShellBase {
     }
 #line 16 "cpp_constexpr.cpp"
     ~Limiter_Shell() override { spp::destroy_state(this); }
-#line 83 "cpp_constexpr.cpp.cpp"
+#line 85 "cpp_constexpr.cpp.cpp"
 
 #line 16 "cpp_constexpr.cpp"
     void Tick(float a0) override
@@ -89,7 +91,7 @@ struct Limiter_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 16 "cpp_constexpr.cpp"
     }
-#line 93 "cpp_constexpr.cpp.cpp"
+#line 95 "cpp_constexpr.cpp.cpp"
 
 #line 16 "cpp_constexpr.cpp"
     void TakeDamage(float a0) override
@@ -99,7 +101,7 @@ struct Limiter_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 16 "cpp_constexpr.cpp"
     }
-#line 103 "cpp_constexpr.cpp.cpp"
+#line 105 "cpp_constexpr.cpp.cpp"
 
 #line 16 "cpp_constexpr.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -109,10 +111,8 @@ struct Limiter_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 16 "cpp_constexpr.cpp"
     }
-#line 113 "cpp_constexpr.cpp.cpp"
+#line 115 "cpp_constexpr.cpp.cpp"
 };
-
-using Limiter = Limiter_Shell;
 
 // ---------------------------------------------------------------- state
 struct LimiterState_g1 {
@@ -151,7 +151,7 @@ static void Limiter__init_last(void*, void* f) { using T = int; new (f) T(0); }
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static_assert(offsetof(LimiterState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
 static const spp::FieldInfo Limiter_fields[] = {
-    {"last", nullptr, typeid(int).name(), offsetof(LimiterState_g1, last), sizeof(int),
+    {"last", nullptr, spp::type_key<int>(), offsetof(LimiterState_g1, last), sizeof(int),
      alignof(int), spp::field_flags<int>(), Limiter__init_last, spp::move_field<int>, spp::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop

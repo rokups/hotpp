@@ -160,6 +160,8 @@ class Caster {
 }
 ```
 
+For a checked cast to a script class, use `as` (see "is and as").
+
 ## Null coalescing and safe calls
 
 `a ?? b` gives `a` when `a` is not null (or not false). Otherwise it gives `b`. The right side runs only when it is needed. `??` binds between `||` and `?:`. It is right associative.
@@ -208,3 +210,16 @@ class Spotter {
     }
 }
 ```
+
+`is` and `as` work after a reload. An object that a generation made keeps its class after the reload, and `is` still finds it. The test uses the name of the script class. It does not use C++ RTTI, so a cast of an object of an old generation also works.
+
+A `.cpp` script has the same rules with the C++ forms (see [C++ scripts](cpp-scripts.html#script-classes-as-types)):
+
+| `.spp` | `.cpp` | Difference |
+|---|---|---|
+| `x is T` | `dynamic_cast<T*>(x) != nullptr` | None. |
+| `x as T` | `dynamic_cast<T*>(x)` | `as` gives a handle. `dynamic_cast` gives a raw pointer. |
+| None | `dynamic_cast<T&>(x)` | It throws `std::runtime_error` when the type does not match. |
+| `new T()` | `new T()` | `.spp` gives a handle. `.cpp` gives a raw pointer, and the script code must `delete` the object. |
+| `T` (a handle) | `T*` or `T&` | A `.cpp` script cannot hold a script object by value. |
+| None | `typeid(T)` | An error in a `.cpp` script. Use `dynamic_cast`. |

@@ -279,7 +279,7 @@ bool TypeModel::is_script_class(const std::string& type) const
 std::string TypeModel::script_ref_storage(const std::string& type) const
 {
     size_t e = type.find_last_not_of(" \t");
-    if (e == std::string::npos || type[e] != '&' || (e > 0 && type[e - 1] == '&'))
+    if (raw_script_refs_ || e == std::string::npos || type[e] != '&' || (e > 0 && type[e - 1] == '&'))
         return {};
     std::string t = type.substr(0, e);
     bool is_const = false;

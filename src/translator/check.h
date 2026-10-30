@@ -30,9 +30,10 @@ namespace sppc
 
 // Checks one class. Each error goes to the diagnostics. The pass continues after an error.
 // The findings of the borrowed-storage rule are errors with "strict_borrowed". Otherwise they
-// are warnings. The rule on the address of a script function is always an error.
-void check_class(
-    const ast::ClassDef& cd, const TypeModel& types, const LineMap& map, Diagnostics& diag, bool strict_borrowed);
+// are warnings. The rule on the address of a script function is always an error. "is_cpp" is
+// true for a class of a ".cpp" script: it can hold a raw pointer to a script class.
+void check_class(const ast::ClassDef& cd, const TypeModel& types, const LineMap& map, Diagnostics& diag,
+    bool strict_borrowed, bool is_cpp = false);
 
 // Checks the constructors of a class: no two overloads with the same parameter types, and the
 // arguments of "base(...)" use the constructor parameters only (design 7.3). Each error goes

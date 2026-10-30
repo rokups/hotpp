@@ -17,6 +17,8 @@ struct SppModule;
 // The module state block of this generation. The loader sets the slot.
 static void* SppModule_slot = nullptr;
 [[maybe_unused]] SPP_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+struct Player_Shell;
+using Player = Player_Shell;
 #line 4 "cpp_player_v2.cpp"
 #include "Actor.h"
 #line 5 "cpp_player_v2.cpp"
@@ -25,12 +27,12 @@ static void* SppModule_slot = nullptr;
 #include <cstdio>
 #line 8 "cpp_player_v2.cpp"
 #include <string>
-#line 29 "cpp_player_v2.cpp.cpp"
+#line 31 "cpp_player_v2.cpp.cpp"
 
 #line 10 "cpp_player_v2.cpp"
 enum class Mode { Idle, Run };
 
-#line 34 "cpp_player_v2.cpp.cpp"
+#line 36 "cpp_player_v2.cpp.cpp"
 
 #line 12 "cpp_player_v2.cpp"
 struct Point
@@ -38,7 +40,7 @@ struct Point
     float x = 0, y = 0;
 };
 
-#line 42 "cpp_player_v2.cpp.cpp"
+#line 44 "cpp_player_v2.cpp.cpp"
 
 // ---------------------------------------------------------------- [value] class SppModule
 struct SppModule {
@@ -54,15 +56,15 @@ static void SppModule__convert_total_hook(void* dst, const void* src)
     new (dst) float(SppModule__convert_total(*static_cast<const int*>(src)));
 #line 26 "cpp_player_v2.cpp"
 }
-#line 58 "cpp_player_v2.cpp.cpp"
+#line 60 "cpp_player_v2.cpp.cpp"
 #line 17 "cpp_player_v2.cpp"
 static void SppModule__init_total(void*, void* f) { using T = float; new (f) T(0); }
-#line 61 "cpp_player_v2.cpp.cpp"
+#line 63 "cpp_player_v2.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static const spp::FieldInfo SppModule_fields[] = {
-    {"total", nullptr, typeid(float).name(), offsetof(SppModule, total), sizeof(float),
-     alignof(float), spp::field_flags<float>(), SppModule__init_total, spp::move_field<float>, spp::field_destroyer<float>(), typeid(int).name(), SppModule__convert_total_hook},
+    {"total", nullptr, spp::type_key<float>(), offsetof(SppModule, total), sizeof(float),
+     alignof(float), spp::field_flags<float>(), SppModule__init_total, spp::move_field<float>, spp::field_destroyer<float>(), spp::type_key<int>(), SppModule__convert_total_hook},
 };
 #pragma clang diagnostic pop
 static const spp::StateLayout SppModule_layout = {
@@ -75,14 +77,14 @@ static float SppModule__convert_total(int old)
 
     return old * 2.0f;
 
-#line 79 "cpp_player_v2.cpp.cpp"
+#line 81 "cpp_player_v2.cpp.cpp"
 }
 
 
 #line 18 "cpp_player_v2.cpp"
 const float kMaxHp = 100.0f;
 
-#line 86 "cpp_player_v2.cpp.cpp"
+#line 88 "cpp_player_v2.cpp.cpp"
 
 #line 20 "cpp_player_v2.cpp"
 static float clamp_hp(float v)
@@ -90,7 +92,7 @@ static float clamp_hp(float v)
     return Math::Max(Math::Min(v, kMaxHp), 0.0f);
 }
 
-#line 94 "cpp_player_v2.cpp.cpp"
+#line 96 "cpp_player_v2.cpp.cpp"
 
 // ---------------------------------------------------------------- class Player
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -118,7 +120,7 @@ struct Player_Shell final : Actor, spp::ShellBase {
     }
 #line 31 "cpp_player_v2.cpp"
     ~Player_Shell() override { spp::destroy_state(this); }
-#line 122 "cpp_player_v2.cpp.cpp"
+#line 124 "cpp_player_v2.cpp.cpp"
 
 #line 31 "cpp_player_v2.cpp"
     void Tick(float a0) override
@@ -128,7 +130,7 @@ struct Player_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 31 "cpp_player_v2.cpp"
     }
-#line 132 "cpp_player_v2.cpp.cpp"
+#line 134 "cpp_player_v2.cpp.cpp"
 
 #line 31 "cpp_player_v2.cpp"
     void TakeDamage(float a0) override
@@ -138,7 +140,7 @@ struct Player_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 31 "cpp_player_v2.cpp"
     }
-#line 142 "cpp_player_v2.cpp.cpp"
+#line 144 "cpp_player_v2.cpp.cpp"
 
 #line 31 "cpp_player_v2.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -148,10 +150,8 @@ struct Player_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 31 "cpp_player_v2.cpp"
     }
-#line 152 "cpp_player_v2.cpp.cpp"
+#line 154 "cpp_player_v2.cpp.cpp"
 };
-
-using Player = Player_Shell;
 
 // ---------------------------------------------------------------- state
 struct PlayerState_g2 {
@@ -204,17 +204,17 @@ static void Player__convert_level_hook(void* dst, const void* src)
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static_assert(offsetof(PlayerState_g2, __spp_owner) == 0, "the owner pointer must be the first member");
 static const spp::FieldInfo Player_fields[] = {
-    {"health", "hp", typeid(float).name(), offsetof(PlayerState_g2, health), sizeof(float),
+    {"health", "hp", spp::type_key<float>(), offsetof(PlayerState_g2, health), sizeof(float),
      alignof(float), spp::field_flags<float>(), Player__init_health, spp::move_field<float>, spp::field_destroyer<float>()},
-    {"speed", nullptr, typeid(float).name(), offsetof(PlayerState_g2, speed), sizeof(float),
+    {"speed", nullptr, spp::type_key<float>(), offsetof(PlayerState_g2, speed), sizeof(float),
      alignof(float), spp::field_flags<float>(), Player__init_speed, spp::move_field<float>, spp::field_destroyer<float>()},
-    {"target", nullptr, typeid(std::string).name(), offsetof(PlayerState_g2, target), sizeof(std::string),
+    {"target", nullptr, spp::type_key<std::string>(), offsetof(PlayerState_g2, target), sizeof(std::string),
      alignof(std::string), spp::field_flags<std::string>(), Player__init_target, spp::move_field<std::string>, spp::field_destroyer<std::string>()},
-    {"p", nullptr, typeid(Point).name(), offsetof(PlayerState_g2, p), sizeof(Point),
+    {"p", nullptr, spp::type_key<Point>(), offsetof(PlayerState_g2, p), sizeof(Point),
      alignof(Point), spp::field_flags<Point>(), Player__init_p, spp::move_field<Point>, spp::field_destroyer<Point>()},
-    {"mode", nullptr, typeid(Mode).name(), offsetof(PlayerState_g2, mode), sizeof(Mode),
+    {"mode", nullptr, spp::type_key<Mode>(), offsetof(PlayerState_g2, mode), sizeof(Mode),
      alignof(Mode), spp::field_flags<Mode>(), Player__init_mode, spp::move_field<Mode>, spp::field_destroyer<Mode>()},
-    {"level", nullptr, typeid(float).name(), offsetof(PlayerState_g2, level), sizeof(float),
+    {"level", nullptr, spp::type_key<float>(), offsetof(PlayerState_g2, level), sizeof(float),
      alignof(float), spp::field_flags<float>(), Player__init_level, spp::move_field<float>, spp::field_destroyer<float>(), typeid(int).name(), Player__convert_level_hook},
 };
 #pragma clang diagnostic pop

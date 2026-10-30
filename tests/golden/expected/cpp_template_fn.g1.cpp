@@ -17,9 +17,11 @@ struct SppModule;
 // The module state block of this generation. The loader sets the slot.
 static void* SppModule_slot = nullptr;
 [[maybe_unused]] SPP_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+struct Scaler_Shell;
+using Scaler = Scaler_Shell;
 #line 3 "cpp_template_fn.cpp"
 #include "Actor.h"
-#line 23 "cpp_template_fn.cpp.cpp"
+#line 25 "cpp_template_fn.cpp.cpp"
 
 // ---------------------------------------------------------------- [value] class SppModule
 struct SppModule {
@@ -28,11 +30,11 @@ struct SppModule {
 
 #line 6 "cpp_template_fn.cpp"
 static void SppModule__init_total(void*, void* f) { using T = int; new (f) T(0); }
-#line 32 "cpp_template_fn.cpp.cpp"
+#line 34 "cpp_template_fn.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static const spp::FieldInfo SppModule_fields[] = {
-    {"total", nullptr, typeid(int).name(), offsetof(SppModule, total), sizeof(int),
+    {"total", nullptr, spp::type_key<int>(), offsetof(SppModule, total), sizeof(int),
      alignof(int), spp::field_flags<int>(), SppModule__init_total, spp::move_field<int>, spp::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
@@ -48,7 +50,7 @@ T scaled(T k)
     return k * static_cast<T>(spp_mod()->total);
 }
 
-#line 52 "cpp_template_fn.cpp.cpp"
+#line 54 "cpp_template_fn.cpp.cpp"
 
 // ---------------------------------------------------------------- class Scaler
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -75,7 +77,7 @@ struct Scaler_Shell final : Actor, spp::ShellBase {
     }
 #line 15 "cpp_template_fn.cpp"
     ~Scaler_Shell() override { spp::destroy_state(this); }
-#line 79 "cpp_template_fn.cpp.cpp"
+#line 81 "cpp_template_fn.cpp.cpp"
 
 #line 15 "cpp_template_fn.cpp"
     void Tick(float a0) override
@@ -85,7 +87,7 @@ struct Scaler_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 15 "cpp_template_fn.cpp"
     }
-#line 89 "cpp_template_fn.cpp.cpp"
+#line 91 "cpp_template_fn.cpp.cpp"
 
 #line 15 "cpp_template_fn.cpp"
     void TakeDamage(float a0) override
@@ -95,7 +97,7 @@ struct Scaler_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 15 "cpp_template_fn.cpp"
     }
-#line 99 "cpp_template_fn.cpp.cpp"
+#line 101 "cpp_template_fn.cpp.cpp"
 
 #line 15 "cpp_template_fn.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -105,10 +107,8 @@ struct Scaler_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 15 "cpp_template_fn.cpp"
     }
-#line 109 "cpp_template_fn.cpp.cpp"
+#line 111 "cpp_template_fn.cpp.cpp"
 };
-
-using Scaler = Scaler_Shell;
 
 // ---------------------------------------------------------------- state
 struct ScalerState_g1 {
@@ -147,7 +147,7 @@ static void Scaler__init_last(void*, void* f) { using T = int; new (f) T(0); }
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static_assert(offsetof(ScalerState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
 static const spp::FieldInfo Scaler_fields[] = {
-    {"last", nullptr, typeid(int).name(), offsetof(ScalerState_g1, last), sizeof(int),
+    {"last", nullptr, spp::type_key<int>(), offsetof(ScalerState_g1, last), sizeof(int),
      alignof(int), spp::field_flags<int>(), Scaler__init_last, spp::move_field<int>, spp::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop

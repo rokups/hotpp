@@ -290,6 +290,63 @@ TEST_P(BackendTests, CppScriptOnReloadRuns)
     EXPECT_EQ(*fld<float>(s.inst.shell, "health"), 100.0f); // onReload set it
 }
 
+// Script code creates a script object with "new" and keeps the pointer in a module variable.
+// The object, its state and the casts on it work in generation 1 and after the reload.
+TEST_P(BackendTests, CppScriptObjectsSurviveReload)
+{
+    spp::LoadResult v1 = backend->load(source("cpp_objects_v1.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult v2 = backend->load(source("cpp_objects_v2.cpp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Spawner"));
+    // The variable holds a pointer to the shell. "Actor" is the first base of the shell.
+    Actor** slot = modvar<Actor*>(s, "minion");
+    ASSERT_NE(slot, nullptr);
+    EXPECT_EQ(*slot, nullptr);
+
+    s.actor->Tick(kDt); // new Minion(3), boost(2): power 5, hits 1
+    s.actor->Tick(kDt); // boost(2): power 7, hits 2
+    ASSERT_NE(*slot, nullptr);
+    Actor* minion = *slot;
+    auto* shell = dynamic_cast<spp::ShellBase*>(minion);
+    ASSERT_NE(shell, nullptr);
+    EXPECT_EQ(*fld<int>(shell, "power"), 7);
+    EXPECT_EQ(*fld<int>(shell, "hits"), 2);
+    EXPECT_EQ(*modvar<int>(s, "cast_hits"), 2);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 7 + 9 + 1); // power + total() + 1
+    // The static method "spawn" made a second object. The static data member holds it.
+    Actor** made = modvar<Actor*>(s, "Minion__s_first_made");
+    ASSERT_NE(made, nullptr);
+    ASSERT_NE(*made, nullptr);
+    Actor* first = *made;
+    EXPECT_EQ(*fld<int>(dynamic_cast<spp::ShellBase*>(first), "power"), 1);
+    EXPECT_FLOAT_EQ(minion->Position.x, 2.0f * kDt);
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    const spp::ReloadResult res = s.loader.commit_pending();
+    ASSERT_TRUE(res) << res.error;
+    EXPECT_EQ(spp::active_generation, 2u);
+    ASSERT_EQ(*modvar<Actor*>(s, "minion"), minion); // the same object
+    EXPECT_EQ(*fld<int>(shell, "power"), 7);
+    EXPECT_EQ(*fld<int>(shell, "hits"), 2);
+    ASSERT_NE(fld<int>(shell, "shield"), nullptr);
+    EXPECT_EQ(*fld<int>(shell, "shield"), 5);
+
+    s.actor->Tick(kDt); // generation 2: boost(2) adds 4
+    EXPECT_EQ(*fld<int>(shell, "power"), 11);
+    EXPECT_EQ(*fld<int>(shell, "hits"), 3);
+    EXPECT_EQ(*modvar<int>(s, "cast_hits"), 3); // the casts of generation 2 find the object
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 11 + 14 + 1);
+    EXPECT_EQ(*modvar<Actor*>(s, "Minion__s_first_made"), first);
+    EXPECT_EQ(*fld<int>(dynamic_cast<spp::ShellBase*>(first), "shield"), 5);
+
+    *modvar<Actor*>(s, "minion") = nullptr;
+    delete minion; // the virtual destructor of the shell runs
+    *modvar<Actor*>(s, "Minion__s_first_made") = nullptr;
+    delete first;
+}
+
 // A .spp script and a .cpp script live in the same process. Each has its own loader and one object.
 // One loader holds one module for each generation, so the two scripts use two loaders.
 TEST_P(BackendTests, SppAndCppScriptsRunSideBySide)

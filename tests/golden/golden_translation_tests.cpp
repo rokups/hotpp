@@ -107,6 +107,13 @@ TEST(GoldenTranslation, CppStatic)
     golden_pair("cpp_static", ".cpp");
 }
 
+// A .cpp script uses a script class as a type: "new", pointers, references, field access,
+// method calls and casts on another script object.
+TEST(GoldenTranslation, CppObjects)
+{
+    golden_pair("cpp_objects", ".cpp");
+}
+
 // A .cpp script with default arguments: the prototype has them and the definition does not.
 TEST(GoldenTranslation, CppDefaults)
 {

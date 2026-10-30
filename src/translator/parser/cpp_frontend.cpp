@@ -268,6 +268,7 @@ struct Edit
 {
     uint32_t pos, len;
     std::string text;
+    bool keep = false; // a second equal edit at the same place is a real edit: do not merge it
 };
 
 // The state of the one walk of the main file (see apply_slices). All offsets are absolute.
@@ -366,7 +367,10 @@ private:
     int line(uint32_t pos) const { return map_.line(pos); }
 
     void collect_bases(CXCursor rec, std::set<std::string>& out);
-    void check_type_refs(CXCursor c, const std::string& own_usr);
+    const Entry* class_entry(CXType t) const;
+    bool names_script_class(CXCursor c) const;
+    void check_class_use(CXCursor k, CXCursor parent, const Entry& en, bool static_parent);
+    void check_type_refs(CXCursor c);
     void check_hook_refs(CXCursor c);
     // Which references find_module_ref looks for.
     enum : unsigned
@@ -423,22 +427,148 @@ void Frontend::collect_bases(CXCursor rec, std::set<std::string>& out)
     }
 }
 
-// Fails on a type reference to a script class other than "own_usr".
-void Frontend::check_type_refs(CXCursor c, const std::string& own_usr)
+// The entry of the script class that the type "t" names, or null. A pointer or a reference is
+// not the class.
+const Frontend::Entry* Frontend::class_entry(CXType t) const
 {
+    CXCursor d = clang_getTypeDeclaration(clang_getCanonicalType(t));
+    if (clang_Cursor_isNull(d) || clang_getCursorKind(d) == CXCursor_NoDeclFound)
+        return nullptr;
+    const Entry* en = lookup(d);
+    return en && en->kind == Kind::ScriptClass ? en : nullptr;
+}
+
+// True when a declaration below "c" names a script class, or uses a field or a method of one.
+// The walk must then edit the text of the declaration.
+bool Frontend::names_script_class(CXCursor c) const
+{
+    for (CXCursor k : children(c))
+    {
+        const CXCursorKind kind = clang_getCursorKind(k);
+        if (kind == CXCursor_TypeRef || kind == CXCursor_MemberRefExpr)
+        {
+            const Entry* en = lookup(clang_getCursorReferenced(k));
+            if (en && (en->kind == Kind::ScriptClass || en->kind == Kind::ScriptField || en->kind == Kind::ScriptMethod))
+                return true;
+        }
+        if (names_script_class(k))
+            return true;
+    }
+    return false;
+}
+
+// Checks one use "k" of the name of the script class "en". A .cpp script uses a script class
+// through a pointer or a reference. "sizeof" and "alignof" are also valid. A name before "::" is
+// valid only for a static member. All other uses fail: a value, an array, a template argument.
+void Frontend::check_class_use(CXCursor k, CXCursor parent, const Entry& en, bool static_parent)
+{
+    const std::string cls = "the script class '" + en.name + "'";
+    size_t i = skip_ws(text_, extent_of(k).end, text_.size());
+    for (bool more = true; more;)
+    {
+        more = false;
+        for (const char* cv : {"const", "volatile"})
+            if (word_at(text_, i, cv))
+            {
+                i = skip_ws(text_, i + std::strlen(cv), text_.size());
+                more = true;
+            }
+    }
+    const char next = i < text_.size() ? text_[i] : '\0';
+    if (next == '*' || next == '&')
+        return;
+    if (text_.compare(i, 2, "::") == 0)
+    {
+        if (static_parent)
+            return;
+        fail(pos_of(k), cls + " can qualify only a static member in a .cpp script");
+    }
+    if (clang_getCursorKind(parent) == CXCursor_UnaryExpr)
+    {
+        const uint32_t b = extent_of(parent).begin;
+        if (word_at(text_, b, "sizeof") || word_at(text_, b, "alignof"))
+            return;
+    }
+    size_t p = extent_of(k).begin;
+    while (p > 0 && is_space(text_[p - 1]))
+        --p;
+    const char prev = p > 0 ? text_[p - 1] : '\0';
+    std::string form = cls + " by value";
+    const CXTypeKind pk = clang_getCursorType(parent).kind;
+    if (next == '[' || pk == CXType_ConstantArray || pk == CXType_IncompleteArray || pk == CXType_VariableArray ||
+        pk == CXType_DependentSizedArray)
+        form = "an array of " + cls; // "S a[2]": the declaration has the array type
+    else if (next == '>' || (next == ',' && prev == '<'))
+        form = cls + " as a template argument";
+    fail(pos_of(k), form + " is not supported in a .cpp script; use a pointer or a reference");
+}
+
+// Fails on a use of a script class name that a .cpp script does not support (see
+// check_class_use), on "typeid" of a script class and on a placement or array "new" of one.
+void Frontend::check_type_refs(CXCursor c)
+{
+    const CXCursorKind ck = clang_getCursorKind(c);
+    // A script class has no C++ RTTI that works after a reload: each generation has its own
+    // type info. So "typeid" of a script class fails. dynamic_cast uses the class records.
+    if (ck == CXCursor_CXXTypeidExpr)
+        for (CXCursor k : children(c))
+        {
+            const Entry* en = nullptr;
+            if (clang_getCursorKind(k) == CXCursor_TypeRef)
+            {
+                en = lookup(clang_getCursorReferenced(k));
+                en = en && en->kind == Kind::ScriptClass ? en : nullptr;
+            }
+            else
+            {
+                CXType t = clang_getCursorType(k);
+                for (int n = 0; n < 8 && (t.kind == CXType_Pointer || t.kind == CXType_LValueReference ||
+                                             t.kind == CXType_RValueReference);
+                     ++n)
+                    t = clang_getPointeeType(t);
+                en = class_entry(t);
+            }
+            if (en)
+                fail(pos_of(c),
+                    "'typeid' of the script class '" + en->name +
+                        "' is not supported in a .cpp script: a script class has no C++ RTTI; use dynamic_cast");
+        }
+    // "new C(args)": the TypeRef of C is valid. The placement and the array forms fail.
+    const Entry* alloc = nullptr;
+    if (ck == CXCursor_CXXNewExpr)
+    {
+        alloc = class_entry(clang_getPointeeType(clang_getCursorType(c)));
+        if (alloc)
+            for (CXCursor k : children(c))
+            {
+                const CXCursorKind kind = clang_getCursorKind(k);
+                if (kind == CXCursor_TypeRef && lookup(clang_getCursorReferenced(k)) == alloc)
+                {
+                    if (skip_ws(text_, extent_of(k).end, text_.size()) < text_.size() &&
+                        text_[skip_ws(text_, extent_of(k).end, text_.size())] == '[')
+                        fail(pos_of(c),
+                            "an array 'new' of the script class '" + alloc->name +
+                                "' is not supported in a .cpp script; use an array of pointers");
+                    break;
+                }
+                if (clang_isExpression(kind))
+                    fail(pos_of(c),
+                        "a placement 'new' of the script class '" + alloc->name +
+                            "' is not supported in a .cpp script");
+            }
+    }
     // The class name in "Player::count" is the qualifier of a static member: it is allowed.
     const bool static_parent = qualifies_static(c);
     for (CXCursor k : children(c))
     {
-        if (clang_getCursorKind(k) == CXCursor_TypeRef && !(static_parent && scope_follows(k)))
+        // A base specifier of a script class is an error of process_class.
+        if (clang_getCursorKind(k) == CXCursor_TypeRef && ck != CXCursor_CXXBaseSpecifier)
         {
-            std::string u = usr(clang_getCursorReferenced(k));
             const Entry* en = lookup(clang_getCursorReferenced(k));
-            if (en && en->kind == Kind::ScriptClass && u != own_usr)
-                fail(pos_of(k),
-                    "the script class '" + en->name + "' cannot be named outside its body (first version)");
+            if (en && en->kind == Kind::ScriptClass && en != alloc)
+                check_class_use(k, c, *en, static_parent);
         }
-        check_type_refs(k, own_usr);
+        check_type_refs(k);
     }
 }
 
@@ -605,6 +735,13 @@ void Frontend::check_late_refs(CXCursor var)
                 if (clang_Cursor_isNull(d))
                     d = ref;
                 const Entry* en = lookup(ref);
+                // A pointer or a reference to a script class: the generated file declares the
+                // class before the module block.
+                if (decl_only && en && en->kind == Kind::ScriptClass)
+                {
+                    walk(k);
+                    continue;
+                }
                 // "Player" in "int Player::x = 1;" is the qualifier of a static data member.
                 const bool qualifier = type && en && en->kind == Kind::ScriptClass && qualifies_static(c) &&
                     scope_follows(k);
@@ -676,11 +813,11 @@ void Frontend::examine(CXCursor k, WalkState& st)
     if (st.cls != slices_[st.slice].cls)
         fail(e.begin, "internal error: the walk found a different class for this slice");
     const bool macro = in_macro(k);
-    auto add = [&](uint32_t pos, uint32_t len, std::string rep)
+    auto add = [&](uint32_t pos, uint32_t len, std::string rep, bool keep = false)
     {
         if (macro)
             fail(e.begin, kMacroMsg);
-        edits_.push_back(Edit{pos, len, std::move(rep)});
+        edits_.push_back(Edit{pos, len, std::move(rep), keep});
     };
     // True when the text before "pos" ends with "::" (a qualified name).
     auto qualified = [&](uint32_t pos)
@@ -718,6 +855,79 @@ void Frontend::examine(CXCursor k, WalkState& st)
         return true;
     };
 
+    // True when the object "c" of a member access is "this" or "*this".
+    std::function<bool(CXCursor)> is_this = [&](CXCursor c)
+    {
+        switch (clang_getCursorKind(c))
+        {
+        case CXCursor_CXXThisExpr:
+            return true;
+        case CXCursor_UnaryOperator:
+            if (extent_of(c).begin >= text_.size() || text_[extent_of(c).begin] != '*')
+                return false;
+            [[fallthrough]];
+        case CXCursor_ParenExpr:
+        case CXCursor_UnexposedExpr:
+        {
+            const std::vector<CXCursor> ks = children(c);
+            return ks.size() == 1 && is_this(ks[0]);
+        }
+        default:
+            return false;
+        }
+    };
+    // A field or a non-virtual method of a script class on an object other than "this". The
+    // object is a pointer or a reference to the shell. A field is in the state of the object:
+    // "p->f" becomes "state_of(p)->f". A method call becomes the call of the generated
+    // function: "p->m(a)" becomes "C__m(p, a)". A reference object gives its address.
+    auto rewrite_member = [&](const Entry& en)
+    {
+        const std::vector<CXCursor> ks = children(k);
+        if (ks.empty() || is_this(ks[0]))
+            return false;
+        const Range o = extent_of(ks[0]);
+        const uint32_t name = pos_of(k);
+        const std::string op = name > o.end ? trim(text_.substr(o.end, name - o.end)) : std::string();
+        if (op != "->" && op != ".")
+            fail(e.begin, "cannot read the member access of the script class '" + en.owner_name + "'");
+        const bool arrow = op == "->";
+        // A call of a const method adds an implicit const conversion of the object. The type
+        // of the object is the type under that conversion.
+        CXCursor obj = ks[0];
+        for (;;)
+        {
+            if (clang_getCursorKind(obj) != CXCursor_UnexposedExpr)
+                break;
+            const std::vector<CXCursor> in = children(obj);
+            if (in.size() != 1 || extent_of(in[0]).begin != o.begin || extent_of(in[0]).end != o.end)
+                break;
+            obj = in[0];
+        }
+        CXType ot = clang_getCursorType(obj);
+        if (arrow)
+            ot = clang_getPointeeType(ot);
+        std::string open = arrow ? "" : "&(", close = arrow ? "" : ")";
+        if (clang_isConstQualifiedType(ot)) // the source compiles, so the access does not write
+        {
+            open = "const_cast<" + en.owner_name + "_Shell*>(" + open;
+            close += ")";
+        }
+        if (en.kind == Kind::ScriptField)
+        {
+            add(o.begin, 0, "state_of(" + open, true);
+            add(o.end, name - o.end, close + ")->", true);
+            return true;
+        }
+        const size_t paren = skip_ws(text_, e.end, text_.size());
+        if (paren >= text_.size() || text_[paren] != '(')
+            fail(name, "the method '" + en.owner_name + "::" + en.name + "' of a script class must be called");
+        const size_t first = skip_ws(text_, paren + 1, text_.size());
+        const bool no_args = first < text_.size() && text_[first] == ')';
+        add(o.begin, 0, en.owner_name + "__" + en.name + "(" + open, true);
+        add(o.end, static_cast<uint32_t>(paren + 1 - o.end), close + (no_args ? "" : ", "), true);
+        return true;
+    };
+
     switch (kind)
     {
     case CXCursor_MemberRefExpr:
@@ -726,6 +936,10 @@ void Frontend::examine(CXCursor k, WalkState& st)
         if (clang_Cursor_isNull(ref))
             return;
         if (rewrite_static(ref))
+            return;
+        const Entry* men = lookup(ref);
+        if (men && (men->kind == Kind::ScriptField || (men->kind == Kind::ScriptMethod && !men->virt)) &&
+            rewrite_member(*men))
             return;
         if (!st.cls)
             return;
@@ -792,9 +1006,68 @@ void Frontend::examine(CXCursor k, WalkState& st)
         CXCursor ref = clang_getCursorReferenced(k);
         const Entry* en = lookup(ref);
         if (en && en->kind == Kind::ScriptClass)
-            fail(e.begin, "the script class '" + en->name + "' cannot be named outside its body (first version)");
+        { // check_type_refs allows only a pointer, a reference, sizeof and a static qualifier
+            if (!scope_follows(k))
+                add(e.begin, e.end - e.begin, en->name + "_Shell");
+            return;
+        }
         if (!qualified(e.begin) && base_scoped(ref))
             add(e.begin, 0, st.cls->base + "::");
+        return;
+    }
+    case CXCursor_CXXNewExpr:
+    { // "new C(args)" becomes "C__new(args)": the factory of the class (the same as in .spp)
+        const Entry* en = class_entry(clang_getPointeeType(clang_getCursorType(k)));
+        if (!en)
+            return;
+        Range tr{};
+        for (CXCursor c : children(k))
+            if (clang_getCursorKind(c) == CXCursor_TypeRef && lookup(clang_getCursorReferenced(c)) == en)
+            {
+                tr = extent_of(c);
+                break;
+            }
+        if (tr.end <= e.begin || tr.end > e.end)
+            fail(e.begin, "cannot read this 'new' of the script class '" + en->name + "'");
+        add(e.begin, tr.end - e.begin, en->name + "__new");
+        const size_t i = skip_ws(text_, tr.end, e.end);
+        if (i >= e.end)
+            add(tr.end, 0, "()");
+        else if (text_[i] == '{' && text_[e.end - 1] == '}')
+        {
+            add(static_cast<uint32_t>(i), 1, "(");
+            add(e.end - 1, 1, ")");
+        }
+        st.skip_end = std::max(st.skip_end, tr.end);
+        return;
+    }
+    case CXCursor_CXXDynamicCastExpr:
+    { // the class records give the answer, not the C++ RTTI (see doc/cpp-scripts.md)
+        CXType t = clang_getCursorType(k);
+        const bool ptr = t.kind == CXType_Pointer;
+        if (t.kind == CXType_Pointer || t.kind == CXType_LValueReference || t.kind == CXType_RValueReference)
+            t = clang_getPointeeType(t);
+        const Entry* en = class_entry(t);
+        if (!en)
+            return;
+        const size_t lt = text_.find('<', e.begin);
+        const size_t gt = lt == std::string::npos ? lt : match_close(text_, lt, e.end);
+        const size_t open = gt == std::string::npos ? gt : skip_ws(text_, gt + 1, e.end);
+        if (open >= e.end || text_[open] != '(' || text_[e.end - 1] != ')')
+            fail(e.begin, "cannot read this dynamic_cast to the script class '" + en->name + "'");
+        const std::string shell = en->name + "_Shell", quoted = "\"" + en->name + "\"";
+        const uint32_t head = static_cast<uint32_t>(open + 1 - e.begin);
+        if (ptr)
+        {
+            add(e.begin, head, "spp::as_script<" + shell + ">(");
+            add(e.end - 1, 1, ", " + quoted + ")");
+        }
+        else
+        { // a reference: the object must be of the class, else std::runtime_error
+            add(e.begin, head, "(*spp::shell_of<" + shell + ">(");
+            add(e.end - 1, 1, ", " + quoted + "))");
+        }
+        st.skip_end = std::max(st.skip_end, static_cast<uint32_t>(open + 1));
         return;
     }
     case CXCursor_LambdaExpr:
@@ -909,13 +1182,24 @@ void Frontend::apply_slices()
             for (const Edit* ed : eds)
                 if (l.has(ed->pos))
                     fail(l.begin, "a lambda that uses a base member must capture with [&] or [=]");
-        std::stable_sort(eds.begin(), eds.end(), [](const Edit* a, const Edit* b) { return a->pos > b->pos; });
+        // From the last offset to the first. At one offset, a replacement comes before an
+        // insertion. The insertions at one offset apply in the reverse order of the walk, so
+        // the insertion of an outer expression comes first in the text: "state_of(state_of(a)->b)".
+        std::stable_sort(eds.begin(), eds.end(),
+            [](const Edit* a, const Edit* b)
+            {
+                if (a->pos != b->pos)
+                    return a->pos > b->pos;
+                if ((a->len == 0) != (b->len == 0))
+                    return a->len != 0;
+                return a->len == 0 && a > b; // the edits are in one vector in the order of the walk
+            });
         const Range region = slices_[i].extent;
         std::string s = text_.substr(region.begin, region.end - region.begin);
         const Edit* prev = nullptr;
         for (const Edit* ed : eds)
         {
-            if (prev && prev->pos == ed->pos && prev->len == ed->len && prev->text == ed->text)
+            if (prev && !ed->keep && prev->pos == ed->pos && prev->len == ed->len && prev->text == ed->text)
                 continue; // the same edit twice
             s.replace(ed->pos - region.begin, ed->len, ed->text);
             prev = ed;
@@ -1579,7 +1863,15 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
         // A declaration that is not a definition (a prototype) has the USR of its definition.
         const Entry* en = clang_isCursorDefinition(k) ? lookup(k) : nullptr;
         const bool script_class = en && en->kind == Kind::ScriptClass;
-        check_type_refs(k, script_class ? usr(k) : std::string());
+        if ((kind == CXCursor_ClassDecl || kind == CXCursor_StructDecl) && !en)
+        { // the generated code names the class: a forward declaration of it does not fit
+            const Entry* fwd = lookup(k);
+            if (fwd && fwd->kind == Kind::ScriptClass)
+                fail(pos_of(k),
+                    "a forward declaration of the script class '" + fwd->name +
+                        "' is not supported in a .cpp script; define the class before its first use");
+        }
+        check_type_refs(k);
         const Range e = extent_of(k);
         if (script_class)
             process_class(k);
@@ -1616,7 +1908,7 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
                 make_method(k, nullptr, [this]() -> std::vector<ast::Method>& { return sc_.var_hooks; });
             }
             else
-                add_text(e, find_module_ref(k, nullptr, var, var_pos, kAll));
+                add_text(e, find_module_ref(k, nullptr, var, var_pos, kAll) || names_script_class(k));
         }
         else if (kind == CXCursor_MacroDefinition)
         { // the extent starts at the name: take the "#define" of the line too
@@ -1630,7 +1922,7 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
             check_static_init(k);
             std::string var;
             uint32_t var_pos = 0;
-            add_text(e, find_module_ref(k, nullptr, var, var_pos, kAll));
+            add_text(e, find_module_ref(k, nullptr, var, var_pos, kAll) || names_script_class(k));
         }
     }
 }

@@ -17,9 +17,11 @@ struct SppModule;
 // The module state block of this generation. The loader sets the slot.
 static void* SppModule_slot = nullptr;
 [[maybe_unused]] SPP_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+struct Counter_Shell;
+using Counter = Counter_Shell;
 #line 3 "cpp_freefn.cpp"
 #include "Actor.h"
-#line 23 "cpp_freefn.cpp.cpp"
+#line 25 "cpp_freefn.cpp.cpp"
 
 // ---------------------------------------------------------------- [value] class SppModule
 struct SppModule {
@@ -28,11 +30,11 @@ struct SppModule {
 
 #line 6 "cpp_freefn.cpp"
 static void SppModule__init_total(void*, void* f) { using T = int; new (f) T(0); }
-#line 32 "cpp_freefn.cpp.cpp"
+#line 34 "cpp_freefn.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static const spp::FieldInfo SppModule_fields[] = {
-    {"total", nullptr, typeid(int).name(), offsetof(SppModule, total), sizeof(int),
+    {"total", nullptr, spp::type_key<int>(), offsetof(SppModule, total), sizeof(int),
      alignof(int), spp::field_flags<int>(), SppModule__init_total, spp::move_field<int>, spp::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
@@ -47,7 +49,7 @@ static int twice(int a)
     return a * 2;
 }
 
-#line 51 "cpp_freefn.cpp.cpp"
+#line 53 "cpp_freefn.cpp.cpp"
 
 #line 15 "cpp_freefn.cpp"
 static int add_total(int a, int b = 1)
@@ -56,7 +58,7 @@ static int add_total(int a, int b = 1)
     return spp_mod()->total;
 }
 
-#line 60 "cpp_freefn.cpp.cpp"
+#line 62 "cpp_freefn.cpp.cpp"
 
 #line 21 "cpp_freefn.cpp"
 inline int read_total()
@@ -64,7 +66,7 @@ inline int read_total()
     return spp_mod()->total;
 }
 
-#line 68 "cpp_freefn.cpp.cpp"
+#line 70 "cpp_freefn.cpp.cpp"
 
 // ---------------------------------------------------------------- class Counter
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -92,7 +94,7 @@ struct Counter_Shell final : Actor, spp::ShellBase {
     }
 #line 26 "cpp_freefn.cpp"
     ~Counter_Shell() override { spp::destroy_state(this); }
-#line 96 "cpp_freefn.cpp.cpp"
+#line 98 "cpp_freefn.cpp.cpp"
 
 #line 26 "cpp_freefn.cpp"
     void Tick(float a0) override
@@ -102,7 +104,7 @@ struct Counter_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 26 "cpp_freefn.cpp"
     }
-#line 106 "cpp_freefn.cpp.cpp"
+#line 108 "cpp_freefn.cpp.cpp"
 
 #line 26 "cpp_freefn.cpp"
     void TakeDamage(float a0) override
@@ -112,7 +114,7 @@ struct Counter_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 26 "cpp_freefn.cpp"
     }
-#line 116 "cpp_freefn.cpp.cpp"
+#line 118 "cpp_freefn.cpp.cpp"
 
 #line 26 "cpp_freefn.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -122,10 +124,8 @@ struct Counter_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 26 "cpp_freefn.cpp"
     }
-#line 126 "cpp_freefn.cpp.cpp"
+#line 128 "cpp_freefn.cpp.cpp"
 };
-
-using Counter = Counter_Shell;
 
 // ---------------------------------------------------------------- state
 struct CounterState_g1 {
@@ -165,7 +165,7 @@ static void Counter__init_last(void*, void* f) { using T = int; new (f) T(0); }
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static_assert(offsetof(CounterState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
 static const spp::FieldInfo Counter_fields[] = {
-    {"last", nullptr, typeid(int).name(), offsetof(CounterState_g1, last), sizeof(int),
+    {"last", nullptr, spp::type_key<int>(), offsetof(CounterState_g1, last), sizeof(int),
      alignof(int), spp::field_flags<int>(), Counter__init_last, spp::move_field<int>, spp::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop

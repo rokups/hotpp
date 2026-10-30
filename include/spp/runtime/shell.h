@@ -164,7 +164,13 @@ template <class Shell, class T> SPP_HIDDEN Shell* shell_of(T* p, const char* cls
 {
     if (!p)
         throw std::runtime_error(std::string("the handle is null: expected a script object of class ") + cls);
-    if constexpr (std::is_same_v<T, Shell> || std::is_base_of_v<Shell, T>)
+    if constexpr (std::is_const_v<T>)
+    {
+        // A ".cpp" script casts a const object. The script code is const-correct C++, so it
+        // does not write through the result.
+        return shell_of<Shell>(const_cast<std::remove_const_t<T>*>(p), cls);
+    }
+    else if constexpr (std::is_same_v<T, Shell> || std::is_base_of_v<Shell, T>)
     {
         return p; // the shell of the class or of a derived script class
     }

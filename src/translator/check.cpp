@@ -261,6 +261,7 @@ struct Checker
     const LineMap& map;
     Diagnostics& diag;
     bool strict; // true: a borrowed-storage finding is an error. False: a warning.
+    bool is_cpp; // true: the class is from a ".cpp" script
 
     std::set<std::pair<uint32_t, std::string>> reported;
     std::set<std::string> fn_names, field_names;
@@ -352,13 +353,17 @@ struct Checker
         return rest.empty() || (rest.back() != '*' && rest.back() != '&');
     }
 
+
     // A single "T*" of a script class is always an error: the class is already a handle.
-    // Gives true when the type is such a pointer.
+    // Gives true when the type is such a pointer. A ".cpp" script has no handles: there the
+    // pointer is the valid form, and it is not a borrowed pointer.
     bool script_pointer(const std::string& type, uint32_t pos)
     {
         std::string base;
         if (!is_borrowed_form(type, base) || !is_single_pointer(type) || !types.is_script_class(base))
             return false;
+        if (is_cpp)
+            return true;
         error(pos, "a pointer to the script class '" + base + "' is not allowed: use '" + base + "' (a handle)");
         return true;
     }
@@ -742,10 +747,10 @@ struct Checker
 
 } // namespace
 
-void check_class(
-    const ClassDef& cd, const TypeModel& types, const LineMap& map, Diagnostics& diag, bool strict_borrowed)
+void check_class(const ClassDef& cd, const TypeModel& types, const LineMap& map, Diagnostics& diag,
+    bool strict_borrowed, bool is_cpp)
 {
-    Checker{cd, types, map, diag, strict_borrowed, {}, {}, {}, {}, {}, {}, {}}.run();
+    Checker{cd, types, map, diag, strict_borrowed, is_cpp, {}, {}, {}, {}, {}, {}, {}}.run();
 }
 
 void check_ctors(const ClassDef& cd, const LineMap& map, Diagnostics& diag)

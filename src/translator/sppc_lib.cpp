@@ -2326,6 +2326,7 @@ void translate_impl(
             fail_at(map, m.pos,
                 "'" + m.name + "' is not a convert hook: the script has no module variable '" + m.name.substr(8) + "'");
     types.add_script_classes(sc.classes);
+    types.set_raw_script_refs(sc.is_cpp);
     for (ClassDef& cd : sc.classes)
         snapshot_types(cd);
     for (const ClassDef& cd : sc.classes)
@@ -2761,6 +2762,12 @@ void translate_impl(
         o.w("[[maybe_unused]] SPP_HIDDEN static " + kModuleName + "* spp_mod() { return static_cast<" + kModuleName
             + "*>(" + kModuleName + "_slot); }\n");
     }
+    // A ".cpp" script can name a script class before its class block: a static method prototype
+    // or a module variable with a pointer to the class. The shell and its alias are declared here.
+    if (sc.is_cpp)
+        for (const ClassDef& c : sc.classes)
+            if (c.name != kModuleName && !c.is_value)
+                o.w("struct " + c.name + "_Shell;\nusing " + c.name + " = " + c.name + "_Shell;\n");
 
     // ---- script enums. The enum is a C++ "enum class" with the underlying type of the script.
     {
@@ -2864,7 +2871,12 @@ void translate_impl(
     // migration resets the container. Other types keep the plain typeid name.
     auto field_key = [&](const std::string& t)
     {
-        const std::string plain = "typeid(" + key_type(t) + ").name()";
+        // The module block of a ".cpp" script can come before the class of a pointer field.
+        // "typeid(C*)" of an incomplete class C makes clang emit an RTTI record of C without
+        // its bases, and a later dynamic_cast of a C object fails. The function template
+        // spp::type_key runs the typeid at the end of the file, where C is complete.
+        const std::string plain =
+            sc.is_cpp ? "spp::type_key<" + key_type(t) + ">()" : "typeid(" + key_type(t) + ").name()";
         const std::vector<std::string> vals = values_in(t);
         if (vals.empty())
             return plain;
@@ -2914,7 +2926,7 @@ void translate_impl(
             reserved(c.pos, c.params);
         {
             const size_t before = g_diag.items.size();
-            sppc::check_class(cd, types, map, g_diag, in.strict_borrowed);
+            sppc::check_class(cd, types, map, g_diag, in.strict_borrowed, sc.is_cpp);
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }
@@ -3110,7 +3122,9 @@ void translate_impl(
                     + f.name + ", spp::move_field<" + T + ">, spp::field_destroyer<" + T + ">()");
                 auto hk = hooks.find(f.name);
                 if (hk != hooks.end())
-                    o.w(", typeid(" + hk->second->params[0].type + ").name(), " + P + hk->second->name + "_hook");
+                    o.w(", " + (sc.is_cpp ? "spp::type_key<" + hk->second->params[0].type + ">()"
+                                          : "typeid(" + hk->second->params[0].type + ").name()")
+                        + ", " + P + hk->second->name + "_hook");
                 else if (sub)
                     o.w(", nullptr, nullptr");
                 o.w((sub ? ", &" + T + "_layout" : std::string()) + "},\n");
@@ -3210,10 +3224,12 @@ void translate_impl(
             {
                 if (!by_name.count(u) || u == cd.name)
                     continue;
-                if (cd.name == kModuleName && !types.is_script_value(u))
+                // A ".cpp" script holds a pointer to a script object. The module block is at the
+                // first module variable, and the frontend checks that the class comes before it.
+                if (cd.name == kModuleName && !sc.is_cpp && !types.is_script_value(u))
                     fail_at(map, cd.pos,
                         "a module variable can use only native types, enums and structs: '" + u + "' is not");
-                if (cd.is_value && !types.is_script_value(u))
+                if (cd.is_value && !(cd.name == kModuleName && sc.is_cpp) && !types.is_script_value(u))
                     fail_at(map, cd.pos, "a struct can use only native types and structs: '" + u + "' is not");
                 deps[cd.name].insert(u);
             }
@@ -3662,7 +3678,7 @@ void translate_impl(
         // ---- the borrowed-storage rule and the rows of design 5.3 that the script text shows
         {
             const size_t before = g_diag.items.size();
-            sppc::check_class(cd, types, map, g_diag, in.strict_borrowed);
+            sppc::check_class(cd, types, map, g_diag, in.strict_borrowed, sc.is_cpp);
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }
@@ -4030,7 +4046,7 @@ void translate_impl(
         }
         o.w("};\n\n");
         // The type name of the class for the script: a handle field names it (design 7.10.1).
-        if (type_alias || used_types.count(cn))
+        if (!sc.is_cpp && (type_alias || used_types.count(cn))) // a ".cpp" script has it in the forward block
             o.w("using " + cn + " = " + shell + ";\n\n");
 
         // ---- state struct and field table

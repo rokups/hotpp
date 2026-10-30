@@ -17,14 +17,16 @@ struct SppModule;
 // The module state block of this generation. The loader sets the slot.
 static void* SppModule_slot = nullptr;
 [[maybe_unused]] SPP_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+struct Counter_Shell;
+using Counter = Counter_Shell;
 #line 3 "cpp_defaults.cpp"
 #include "Actor.h"
-#line 23 "cpp_defaults.cpp.cpp"
+#line 25 "cpp_defaults.cpp.cpp"
 
 #line 5 "cpp_defaults.cpp"
 const int kStep = 2;
 
-#line 28 "cpp_defaults.cpp.cpp"
+#line 30 "cpp_defaults.cpp.cpp"
 
 // ---------------------------------------------------------------- [value] class SppModule
 struct SppModule {
@@ -33,11 +35,11 @@ struct SppModule {
 
 #line 8 "cpp_defaults.cpp"
 static void SppModule__init_calls(void*, void* f) { using T = int; new (f) T(0); }
-#line 37 "cpp_defaults.cpp.cpp"
+#line 39 "cpp_defaults.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static const spp::FieldInfo SppModule_fields[] = {
-    {"calls", nullptr, typeid(int).name(), offsetof(SppModule, calls), sizeof(int),
+    {"calls", nullptr, spp::type_key<int>(), offsetof(SppModule, calls), sizeof(int),
      alignof(int), spp::field_flags<int>(), SppModule__init_calls, spp::move_field<int>, spp::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
@@ -72,7 +74,7 @@ struct Counter_Shell final : Actor, spp::ShellBase {
     }
 #line 10 "cpp_defaults.cpp"
     ~Counter_Shell() override { spp::destroy_state(this); }
-#line 76 "cpp_defaults.cpp.cpp"
+#line 78 "cpp_defaults.cpp.cpp"
 
 #line 10 "cpp_defaults.cpp"
     void Tick(float a0) override
@@ -82,7 +84,7 @@ struct Counter_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 10 "cpp_defaults.cpp"
     }
-#line 86 "cpp_defaults.cpp.cpp"
+#line 88 "cpp_defaults.cpp.cpp"
 
 #line 10 "cpp_defaults.cpp"
     void TakeDamage(float a0) override
@@ -92,7 +94,7 @@ struct Counter_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 10 "cpp_defaults.cpp"
     }
-#line 96 "cpp_defaults.cpp.cpp"
+#line 98 "cpp_defaults.cpp.cpp"
 
 #line 10 "cpp_defaults.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -102,10 +104,8 @@ struct Counter_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 10 "cpp_defaults.cpp"
     }
-#line 106 "cpp_defaults.cpp.cpp"
+#line 108 "cpp_defaults.cpp.cpp"
 };
-
-using Counter = Counter_Shell;
 
 // ---------------------------------------------------------------- state
 struct CounterState_g1 {
@@ -140,9 +140,9 @@ static void Counter__init_last(void*, void* f) { using T = int; new (f) T(0); }
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static_assert(offsetof(CounterState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
 static const spp::FieldInfo Counter_fields[] = {
-    {"value", nullptr, typeid(int).name(), offsetof(CounterState_g1, value), sizeof(int),
+    {"value", nullptr, spp::type_key<int>(), offsetof(CounterState_g1, value), sizeof(int),
      alignof(int), spp::field_flags<int>(), Counter__init_value, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"last", nullptr, typeid(int).name(), offsetof(CounterState_g1, last), sizeof(int),
+    {"last", nullptr, spp::type_key<int>(), offsetof(CounterState_g1, last), sizeof(int),
      alignof(int), spp::field_flags<int>(), Counter__init_last, spp::move_field<int>, spp::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop

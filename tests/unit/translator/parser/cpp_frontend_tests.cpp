@@ -211,8 +211,8 @@ TEST(CppFrontend, StructureErrors)
     expect_error("int total = 0;\nnamespace n { const int k = total; }",
         "the variable 'k' cannot use the module variable 'total' in a .cpp script: it gets its value before "
         "the module state exists");
-    expect_error("class S : public Actor {};\nvoid g(S* s) { (void)s; }",
-        "the script class 'S' cannot be named outside its body (first version)");
+    expect_error("class S : public Actor {};\nvoid g(S s) { (void)s; }",
+        "the script class 'S' by value is not supported in a .cpp script; use a pointer or a reference");
 }
 
 // A static data member is a module variable "<Class>__<name>". The out-of-class definition gives the
@@ -362,7 +362,7 @@ TEST(CppFrontend, StaticMemberErrors)
     expect_error("class S : public Actor { static void F() { this->Move(Vec3()); } };",
         "invalid use of 'this' outside of a non-static member function");
     expect_error("class S : public Actor { static int n; };\nint g() { S s; return 0; }",
-        "the script class 'S' cannot be named outside its body (first version)");
+        "the script class 'S' by value is not supported in a .cpp script; use a pointer or a reference");
     expect_error("class S : public Actor { static void F(); };", "define the method inside the class");
     expect_error("class S : public Actor { static const int k; };", "a static const member needs an initializer");
     expect_error("int a = 1;\nclass S : public Actor { public: static int f() { return 1; } static int n; };\nint b = S::f();",
@@ -577,8 +577,8 @@ TEST(CppFrontend, EditErrors)
         "a macro hides a member of the base class; write the member in the script text");
     expect_error("class S : public Actor { void F() { auto f = [this] { Move(Vec3()); }; f(); } };",
         "a lambda that uses a base member must capture with [&] or [=]");
-    expect_error("class S : public Actor { void F() { S* p = nullptr; (void)p; } };",
-        "the script class 'S' cannot be named outside its body (first version)");
+    expect_error("class S : public Actor { void F() { S p; (void)p; } };",
+        "the script class 'S' by value is not supported in a .cpp script; use a pointer or a reference");
 }
 
 // A file with two errors reports the first error in the order of the source. The body edits
@@ -587,7 +587,7 @@ TEST(CppFrontend, FirstErrorInSourceOrder)
 {
     const std::string lambda_msg = "a lambda that uses a base member must capture with [&] or [=]";
     const std::string static_msg = "'virtual' is not supported in a .cpp script";
-    const std::string type_msg = "the script class 'S' cannot be named outside its body (first version)";
+    const std::string type_msg = "the script class 'S' by value is not supported in a .cpp script; use a pointer or a reference";
     {
         Parsed p("#include \"Actor.h\"\nclass S : public Actor { void F() { auto f = [this] { Move(Vec3()); }; f(); } };\n"
                  "class T : public Actor { virtual void G() {} };");
@@ -602,10 +602,93 @@ TEST(CppFrontend, FirstErrorInSourceOrder)
     }
     {
         Parsed p("#include \"Actor.h\"\nclass S : public Actor { void F() { auto f = [this] { Move(Vec3()); }; f(); } };\n"
-                 "class T : public Actor { void G() { S* p = nullptr; (void)p; } };");
+                 "class T : public Actor { void G() { S p; (void)p; } };");
         EXPECT_NE(p.errors().find(lambda_msg), std::string::npos) << p.errors();
         EXPECT_EQ(p.errors().find(type_msg), std::string::npos) << p.errors();
     }
+}
+
+const char* const kObjects = R"(#include "Actor.h"
+class S : public Actor
+{
+public:
+    S(int a = 1) : Actor("S") { v = a; }
+    int get() const { return v; }
+    void set(int x) { v = x; }
+    S* peer() { return this; }
+    void Tick(float dt) override { (void)dt; }
+    int v = 0;
+};
+
+S* first = nullptr;
+
+class T : public Actor
+{
+public:
+    T() : Actor("T") {}
+    void A(Actor* a) { S* p = new S(2); S* q = new S; S* r = new S{3}; const S& c = *p; p->v = c.v; q->set(p->get()); r->peer()->v = (int)sizeof(S); (void)static_cast<S*>(a); (void)(S*)a; }
+    void B(Actor* a, S& s) { S* d = dynamic_cast<S*>(a); S& e = dynamic_cast<S&>(*a); s.set(d->v + e.v); d->Tick(1); delete d; }
+    void C() { first->v = 1; first->set(first->get()); }
+    int D(const Actor* a) { const S& r = dynamic_cast<const S&>(*a); return r.v; }
+};
+)";
+
+const ast::Method& method_of(const Parsed& p, const std::string& cls, const std::string& name)
+{
+    for (const auto& c : p.script.classes)
+        if (c.name == cls)
+            for (const auto& m : c.methods)
+                if (m.name == name)
+                    return m;
+    throw std::runtime_error("no method " + cls + "::" + name);
+}
+
+// Script code uses a script class as a type. A pointer, a reference, sizeof and a cast name the
+// shell. "new" calls the generated constructor function. A field of another object is in its
+// state. A script method of another object is a call of the generated function. An override
+// stays a virtual call. "dynamic_cast" uses the class records of the runtime.
+TEST(CppFrontend, ScriptClassTypeEdits)
+{
+    Parsed p(kObjects);
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    EXPECT_EQ(method_of(p, "T", "A").raw_body,
+        " S_Shell* p = S__new(2); S_Shell* q = S__new(); S_Shell* r = S__new(3); const S_Shell& c = *p; "
+        "state_of(p)->v = state_of(const_cast<S_Shell*>(&(c)))->v; S__set(q, S__get(p)); "
+        "state_of(S__peer(r))->v = (int)sizeof(S_Shell); (void)static_cast<S_Shell*>(a); (void)(S_Shell*)a; ");
+    EXPECT_EQ(method_of(p, "T", "B").raw_body,
+        " S_Shell* d = spp::as_script<S_Shell>(a, \"S\"); "
+        "S_Shell& e = (*spp::shell_of<S_Shell>(*a, \"S\")); "
+        "S__set(&(s), state_of(d)->v + state_of(&(e))->v); d->Tick(1); delete d; ");
+    // A module variable and a field access edit the same place: the field access is outside.
+    EXPECT_EQ(method_of(p, "T", "C").raw_body,
+        " state_of(spp_mod()->first)->v = 1; S__set(spp_mod()->first, S__get(spp_mod()->first)); ");
+    // A const object: the field access keeps the C++ check of the source.
+    EXPECT_EQ(method_of(p, "T", "D").raw_body,
+        " const S_Shell& r = (*spp::shell_of<S_Shell>(*a, \"S\")); return state_of(const_cast<S_Shell*>(&(r)))->v; ");
+}
+
+TEST(CppFrontend, ScriptClassTypeErrors)
+{
+    const std::string cls = "class S : public Actor { public: void set(int x) { (void)x; } int v = 0; };\n";
+    expect_error(cls + "void g() { S arr[2]; (void)arr; }",
+        "an array of the script class 'S' is not supported in a .cpp script; use a pointer or a reference");
+    expect_error("#include <vector>\n" + cls + "void g() { std::vector<S> l; (void)l; }",
+        "the script class 'S' as a template argument is not supported in a .cpp script; use a pointer or a "
+        "reference");
+    expect_error("#include <typeinfo>\n" + cls + "void g() { (void)typeid(S); }",
+        "'typeid' of the script class 'S' is not supported in a .cpp script: a script class has no C++ RTTI; "
+        "use dynamic_cast");
+    expect_error("#include <typeinfo>\n" + cls + "void g(S* p) { (void)typeid(*p); }",
+        "'typeid' of the script class 'S' is not supported in a .cpp script");
+    expect_error("#include <new>\n" + cls + "void g(void* b) { (void)new (b) S(); }",
+        "a placement 'new' of the script class 'S' is not supported in a .cpp script");
+    expect_error(cls + "void g() { (void)new S[2]; }",
+        "an array 'new' of the script class 'S' is not supported in a .cpp script; use an array of pointers");
+    expect_error(cls + "void g(S* p) { p->S::set(1); }",
+        "the script class 'S' can qualify only a static member in a .cpp script");
+    expect_error("class S;\nclass S : public Actor {};",
+        "a forward declaration of the script class 'S' is not supported in a .cpp script; define the class "
+        "before its first use");
 }
 
 // A brace initializer goes to the generated code once: "T{1, 2}", not "T{{1, 2}}". An aggregate

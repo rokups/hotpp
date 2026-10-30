@@ -201,6 +201,7 @@ public:
 
 The generated file keeps the source order of the script. A block at the top declares `spp_mod()`. The module block comes at the place of the first module variable. The block of a class comes at the place of the class. So a module variable can use only the types and the functions that come before the first module variable. A variable that is not a module variable cannot use a module variable: it gets its value when the library loads, before the module state exists.
 - A static member or a nested type of the base gets the `Base::` prefix.
+- A use of a script class as a type gets the edits in "Script classes as types".
 
 All other text stays as you wrote it.
 
@@ -244,7 +245,7 @@ A static method is a free function with the name `<Class>__s_<name>`. It has no 
 - Calls with arguments, for example `Counter::scale(3)`.
 - The uses outside the class body, for example in a free function or in the initializer of a module variable. A module variable can read a static data member. It cannot call a static method: the prototype comes after the module block. A free function can do both.
 
-Every other use of the class name outside its body is still an error.
+The class name is also a type. See "Script classes as types".
 
 A static data member that is `const` or `constexpr` is not a module variable. It has no state. `sppc` writes it as a `const` at file scope before the class block, with the name `<Class>__s_<name>`. The uses in the class and outside it use this name. The member needs an initializer in the class. `static constexpr int kFactor = 3;` becomes `constexpr int Counter__s_kFactor = 3;`.
 
@@ -264,6 +265,39 @@ float Counter::count = 10.0f;
 ```
 
 The fixtures `tests/scripts/cpp_static_v1.cpp` and `tests/scripts/cpp_static_v2.cpp` show the forms. The second one changes the type of `count` from `int` to `float`.
+
+## Script classes as types
+
+Script code can use a script class as a type. A method of another class, a free function and a module variable can hold a pointer or a reference to a script object. The fixtures `tests/scripts/cpp_objects_v1.cpp` and `tests/scripts/cpp_objects_v2.cpp` show the forms.
+
+| Form | Meaning |
+|---|---|
+| `Minion*`, `Minion&`, `const Minion&` | A pointer or a reference to a script object. |
+| `new Minion(3)`, `new Minion`, `new Minion{3}` | Makes a script object with the constructor of the script class. |
+| `p->power`, `ref.power` | Reads or writes a field of the object. |
+| `p->boost(2)` | Calls a method of the object. |
+| `p->Tick(dt)` | Calls an `override` through the native virtual method. |
+| `dynamic_cast<Minion*>(actor)` | Gives the object, or `nullptr` when `actor` is not a `Minion`. |
+| `dynamic_cast<Minion&>(*actor)` | Gives the object. It throws `std::runtime_error` when `*actor` is not a `Minion`. |
+| `static_cast<Minion*>(actor)`, `(Minion*)actor` | A cast without a check, as in C++. |
+| `sizeof(Minion)`, `alignof(Minion)` | The size and the alignment of the object. |
+| `delete p` | Destroys the object. The destructor of the script class runs. |
+
+These rules apply:
+
+- A pointer to a script object stays valid after a reload. The fields of the object migrate as the fields of any script object. A call after the reload runs the new code.
+- A module variable can hold the pointer. The class must come before the first module variable.
+- `dynamic_cast` to a script class works after a reload. It does not use the C++ RTTI of the script class. The test uses the name of the script class.
+- A failed `dynamic_cast` to a reference throws `std::runtime_error`, not `std::bad_cast`.
+- The script code owns an object that it makes with `new`. Delete it with `delete` through a pointer to the script class or to its native base. `sppc` does not delete it. A `.spp` script has no `delete`, because it uses handles.
+
+A function template or a generic lambda (`auto` parameter) that gets a pointer to a script object can use only the native base members and the `override` methods of the object. Write `p->power` or `p->boost(2)` only in code that names the script class, for example `int power_of(Minion* p)`. `sppc` does not check the body of a template. A use of a script field or a script method there gives an error of the C++ compiler. Do not give a script field the name of a member of the native base: a template then uses the base member without an error.
+
+A static method and a static data member can name their own class, for example `static Minion* spawn(int p)` and `inline static Minion* first_made = nullptr;`.
+
+The size of a script object can change at a reload. So a script object cannot be a value: only a pointer or a reference can follow it. The C++ RTTI of a script class is not the same in two generations. So `typeid` of a script class is an error. Use `dynamic_cast`.
+
+The `.spp` page [Statements](statements.html#is-and-as) compares these forms with `is`, `as` and `new` of a `.spp` script.
 
 ## Aliases, onReload and convert hooks
 
@@ -290,9 +324,16 @@ The first version gives an error for each form in this list. The text in the sec
 | A member initializer in a constructor | `use a default member initializer` |
 | Any other declaration in the class | `this declaration is not supported in a .cpp script class` |
 | Properties | There is no property syntax in C++. Use two methods. |
-| Script-class handles and `new` | A script class is not a handle in a `.cpp` script. |
+| Script-class handles | A script class is not a handle in a `.cpp` script. Use a pointer. See "Script classes as types". |
 | Script inheritance | See "A class that derives from another class of the same file". |
-| The name of the script class outside its body | `the script class '<name>' cannot be named outside its body (first version)` |
+| A script class by value, for example `Minion m;` or a parameter `Minion m` | `the script class '<name>' by value is not supported in a .cpp script; use a pointer or a reference` |
+| An array of a script class, for example `Minion a[2];` | `an array of the script class '<name>' is not supported in a .cpp script; use a pointer or a reference` |
+| A script class as a template argument, for example `std::vector<Minion>` | `the script class '<name>' as a template argument is not supported in a .cpp script; use a pointer or a reference` |
+| `typeid` of a script class or of a script object | `'typeid' of the script class '<name>' is not supported in a .cpp script: a script class has no C++ RTTI; use dynamic_cast` |
+| A placement `new` of a script class | `a placement 'new' of the script class '<name>' is not supported in a .cpp script` |
+| An array `new` of a script class, for example `new Minion[2]` | `an array 'new' of the script class '<name>' is not supported in a .cpp script; use an array of pointers` |
+| `Minion::` before a member that is not static, for example `p->Minion::boost(1)` | `the script class '<name>' can qualify only a static member in a .cpp script` |
+| A forward declaration of a script class | `a forward declaration of the script class '<name>' is not supported in a .cpp script; define the class before its first use` |
 | A `[this]` lambda that uses a base member | `a lambda that uses a base member must capture with [&] or [=]` |
 | A module variable that uses a type of the file that comes after the first module variable | `the type '<type>' must come before the first module variable '<name>': the module block is there and needs the complete type` |
 | A module variable whose initializer uses a function of the file that comes after the first module variable | `'<function>' must come before the first module variable '<name>': the module block is there and holds the initializers` |

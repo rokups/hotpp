@@ -17,19 +17,21 @@ struct SppModule;
 // The module state block of this generation. The loader sets the slot.
 static void* SppModule_slot = nullptr;
 [[maybe_unused]] SPP_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+struct Counter_Shell;
+using Counter = Counter_Shell;
 #line 3 "cpp_static_v1.cpp"
 #include "Actor.h"
-#line 23 "cpp_static_v1.cpp.cpp"
+#line 25 "cpp_static_v1.cpp.cpp"
 
 #line 6 "cpp_static_v1.cpp"
 int tally();
 
-#line 28 "cpp_static_v1.cpp.cpp"
+#line 30 "cpp_static_v1.cpp.cpp"
 
 #line 39 "cpp_static_v1.cpp"
 constexpr int Counter__s_kFactor = 3;
 
-#line 33 "cpp_static_v1.cpp.cpp"
+#line 35 "cpp_static_v1.cpp.cpp"
 
 // ---------------------------------------------------------------- [value] class SppModule
 struct SppModule {
@@ -40,21 +42,21 @@ struct SppModule {
 
 #line 35 "cpp_static_v1.cpp"
 static void SppModule__init_Counter__s_count(void*, void* f) { using T = int; new (f) T(10); }
-#line 44 "cpp_static_v1.cpp.cpp"
+#line 46 "cpp_static_v1.cpp.cpp"
 #line 37 "cpp_static_v1.cpp"
 static void SppModule__init_Counter__s_hits(void*, void* f) { using T = int; new (f) T(5); }
-#line 47 "cpp_static_v1.cpp.cpp"
+#line 49 "cpp_static_v1.cpp.cpp"
 #line 52 "cpp_static_v1.cpp"
 static void SppModule__init_snapshot(void*, void* f) { using T = int; new (f) T(spp_mod()->Counter__s_count + 1); }
-#line 50 "cpp_static_v1.cpp.cpp"
+#line 52 "cpp_static_v1.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static const spp::FieldInfo SppModule_fields[] = {
-    {"Counter__s_count", nullptr, typeid(int).name(), offsetof(SppModule, Counter__s_count), sizeof(int),
+    {"Counter__s_count", nullptr, spp::type_key<int>(), offsetof(SppModule, Counter__s_count), sizeof(int),
      alignof(int), spp::field_flags<int>(), SppModule__init_Counter__s_count, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"Counter__s_hits", nullptr, typeid(int).name(), offsetof(SppModule, Counter__s_hits), sizeof(int),
+    {"Counter__s_hits", nullptr, spp::type_key<int>(), offsetof(SppModule, Counter__s_hits), sizeof(int),
      alignof(int), spp::field_flags<int>(), SppModule__init_Counter__s_hits, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"snapshot", nullptr, typeid(int).name(), offsetof(SppModule, snapshot), sizeof(int),
+    {"snapshot", nullptr, spp::type_key<int>(), offsetof(SppModule, snapshot), sizeof(int),
      alignof(int), spp::field_flags<int>(), SppModule__init_snapshot, spp::move_field<int>, spp::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
@@ -66,7 +68,7 @@ static const spp::StateLayout SppModule_layout = {
 #line 29 "cpp_static_v1.cpp"
 int Counter__s_scale(int v);
 
-#line 70 "cpp_static_v1.cpp.cpp"
+#line 72 "cpp_static_v1.cpp.cpp"
 
 // ---------------------------------------------------------------- class Counter
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -94,7 +96,7 @@ struct Counter_Shell final : Actor, spp::ShellBase {
     }
 #line 8 "cpp_static_v1.cpp"
     ~Counter_Shell() override { spp::destroy_state(this); }
-#line 98 "cpp_static_v1.cpp.cpp"
+#line 100 "cpp_static_v1.cpp.cpp"
 
 #line 8 "cpp_static_v1.cpp"
     void Tick(float a0) override
@@ -104,7 +106,7 @@ struct Counter_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 8 "cpp_static_v1.cpp"
     }
-#line 108 "cpp_static_v1.cpp.cpp"
+#line 110 "cpp_static_v1.cpp.cpp"
 
 #line 8 "cpp_static_v1.cpp"
     void TakeDamage(float a0) override
@@ -114,7 +116,7 @@ struct Counter_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 8 "cpp_static_v1.cpp"
     }
-#line 118 "cpp_static_v1.cpp.cpp"
+#line 120 "cpp_static_v1.cpp.cpp"
 
 #line 8 "cpp_static_v1.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -124,10 +126,8 @@ struct Counter_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 8 "cpp_static_v1.cpp"
     }
-#line 128 "cpp_static_v1.cpp.cpp"
+#line 130 "cpp_static_v1.cpp.cpp"
 };
-
-using Counter = Counter_Shell;
 
 // ---------------------------------------------------------------- state
 struct CounterState_g1 {
@@ -171,9 +171,9 @@ static void Counter__init_via_free(void*, void* f) { using T = int; new (f) T(0)
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static_assert(offsetof(CounterState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
 static const spp::FieldInfo Counter_fields[] = {
-    {"last", nullptr, typeid(int).name(), offsetof(CounterState_g1, last), sizeof(int),
+    {"last", nullptr, spp::type_key<int>(), offsetof(CounterState_g1, last), sizeof(int),
      alignof(int), spp::field_flags<int>(), Counter__init_last, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"via_free", nullptr, typeid(int).name(), offsetof(CounterState_g1, via_free), sizeof(int),
+    {"via_free", nullptr, spp::type_key<int>(), offsetof(CounterState_g1, via_free), sizeof(int),
      alignof(int), spp::field_flags<int>(), Counter__init_via_free, spp::move_field<int>, spp::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop

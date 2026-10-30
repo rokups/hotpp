@@ -102,7 +102,10 @@ public:
 
     // The C++ type of "T&", "T*&" and "const T&" when T is a script class that is a handle:
     // "storage(T)&" or "const storage(T)&". Else an empty string (the native types stay raw).
+    // A ".cpp" script keeps raw pointers and references to a script class: the function
+    // script_ref_storage() then gives an empty string.
     std::string script_ref_storage(const std::string& type) const;
+    void set_raw_script_refs(bool raw) { raw_script_refs_ = raw; }
 
     // The C++ storage type of a declaration.
     std::string storage(const std::string& type) const;
@@ -150,6 +153,7 @@ private:
     };
     std::map<std::string, ScriptClass> script_;
     std::set<std::string> native_globals_;
+    bool raw_script_refs_ = false;
     std::set<std::string> prelude_names_; // the stubs that a prelude gave
 };
 
