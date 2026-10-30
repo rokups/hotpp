@@ -1,6 +1,6 @@
 // The native-and-std reload scenario. Every way to get a module runs the same checks.
 //
-// Generation 1 (tests/scripts/native_std_v1.spp) calls the non-inline functions of
+// Generation 1 (tests/scripts/native_std_v1.hot) calls the non-inline functions of
 // tests/engine/Util.cpp and uses std::vector and std::sort. Generation 2 renames the
 // field label to title ([alias]) and adds the field note. The reload must move
 // the std::string and the std::vector (the non-trivial move path).

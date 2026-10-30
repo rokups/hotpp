@@ -77,9 +77,9 @@ class Synthetic(unittest.TestCase):
 
 class Text(unittest.TestCase):
     def test_frame_label(self):
-        self.assertEqual(f.frame_label("Player__heal", "/a/b/player.spp", 12), "Player.heal at player.spp:12")
+        self.assertEqual(f.frame_label("Player__heal", "/a/b/player.hot", 12), "Player.heal at player.hot:12")
         self.assertEqual(f.frame_label("Player__heal", None, None), "Player.heal")
-        self.assertEqual(f.frame_label("helper", "x/y.spp", None), "helper at y.spp:?")
+        self.assertEqual(f.frame_label("helper", "x/y.hot", None), "helper at y.hot:?")
         self.assertIsNone(f.frame_label("main", "main.cpp", 3))
 
     def test_state_summary(self):

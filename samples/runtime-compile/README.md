@@ -8,12 +8,12 @@ The host needs a C++ compiler at run time.
 
 The sample has one program (`main.cpp`) and two variants of the same script:
 
-- `script/wolf.spp`: the script in the S++ syntax.
+- `script/wolf.hot`: the script in the S++ syntax.
 - `script/wolf.cpp`: the script as plain C++. See [C++ scripts](../../doc/cpp-scripts.md).
 
 The build makes one program for each variant from the same `main.cpp`:
 
-- `sample_runtime_compile_spp` reads the `.spp` script.
+- `sample_runtime_compile_spp` reads the `.hot` script.
 - `sample_runtime_compile_cpp` reads the `.cpp` script.
 
 Both variants are in the folder `script`. The file extension picks the variant.
@@ -38,7 +38,7 @@ machine that runs the program.
 ## Files
 
 - `Creature.h`: the host class. It is header-only.
-- `script/wolf.spp` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`.
+- `script/wolf.hot` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`.
 - `main.cpp`: the program. It reads the script, compiles it, loads it and calls `Tick` three times.
 - `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
 
@@ -81,7 +81,7 @@ To use another S++ tree, add `-DSPP_ROOT=/path/to/spp`. The `CMakeLists.txt` of 
 - `ENABLE_EXPORTS` is ON. The generation modules resolve host and runtime symbols from the
   executable.
 - `SAMPLE_DIR` is a compile definition. It is the folder of `Creature.h`.
-- `SAMPLE_SCRIPT_DIR` and `SAMPLE_SCRIPT_EXT` are compile definitions. `SAMPLE_SCRIPT_DIR` is the folder `script`. `SAMPLE_SCRIPT_EXT` (`.spp` or `.cpp`) picks the variant.
+- `SAMPLE_SCRIPT_DIR` and `SAMPLE_SCRIPT_EXT` are compile definitions. `SAMPLE_SCRIPT_DIR` is the folder `script`. `SAMPLE_SCRIPT_EXT` (`.hot` or `.cpp`) picks the variant.
 
 ## Adapt it to your project
 

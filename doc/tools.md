@@ -12,13 +12,13 @@ nav_order: 15
 - The `sppc` errors of a `.cpp` script, as diagnostics (see [A `.cpp` script in the editor](#a-cpp-script-in-the-editor)).
 - Completion for locals, fields, enums, classes, native members and keywords.
 - Signature help, hover, go to definition and references.
-- Rename of script symbols in all `.spp` files of the workspace.
+- Rename of script symbols in all `.hot` files of the workspace.
 - Document symbols, workspace symbols and semantic tokens.
 - Formatting, and quick fixes for a missing `;` and for a typo.
 
 ## Setup
 
-`spp-ls` serves all features for `.spp` files. For a `.cpp` script, `spp-ls` gives only the errors of `sppc`. The clangd extension serves all other features of a C++ file. `clangd` must be in `PATH`. CMake writes the script host files, so you do not pass `-I` flags.
+`spp-ls` serves all features for `.hot` files. For a `.cpp` script, `spp-ls` gives only the errors of `sppc`. The clangd extension serves all other features of a C++ file. `clangd` must be in `PATH`. CMake writes the script host files, so you do not pass `-I` flags.
 
 ```cmake
 spp_script_host(NAME engine TARGET engine
@@ -35,7 +35,7 @@ A `.cpp` script is a C++ file (see [C++ scripts](cpp-scripts.html)). The editor 
 - `spp-ls` treats a `.cpp` file as a script only when a host lists it. The host lists the file in `SCRIPTS`, or in a directory of `SCRIPT_DIRS`. See `spp_script_host` in [CMake](cmake.html). Put no other `.cpp` file in a script directory: `spp-ls` treats it as a script too.
 - `spp-ls` ignores any other `.cpp` file. It gives no diagnostic and no answer for it.
 - The diagnostics come from the same checks as `sppc` does at build time. They appear when you open, edit or save the file.
-- For a script, `spp-ls` gives no completion, hover, definition, references, rename, symbols or semantic tokens. The answer is empty. clangd owns these features. `spp-ls` does not add the script to the index of `.spp` symbols.
+- For a script, `spp-ls` gives no completion, hover, definition, references, rename, symbols or semantic tokens. The answer is empty. clangd owns these features. `spp-ls` does not add the script to the index of `.hot` symbols.
 - The VS Code extension does not register `.cpp` as the language `spp`. It sends the `.cpp` documents to `spp-ls`. It keeps all features other than the diagnostics on the `spp` documents.
 
 ### clangd setup
@@ -65,7 +65,7 @@ Or add the same flags to the entry of the script in `compile_commands.json`:
 
 ## VS Code
 
-The extension is in `editors/vscode/`. It gives highlighting, the language server client and breakpoints in `.spp` files. For a `.cpp` script, the extension shows the errors of `sppc` as diagnostics. It does not register `.cpp` as the language `spp`. It gives no other `spp` feature on a `.cpp` file.
+The extension is in `editors/vscode/`. It gives highlighting, the language server client and breakpoints in `.hot` files. For a `.cpp` script, the extension shows the errors of `sppc` as diagnostics. It does not register `.cpp` as the language `spp`. It gives no other `spp` feature on a `.cpp` file.
 
 | Setting | Default |
 |---|---|

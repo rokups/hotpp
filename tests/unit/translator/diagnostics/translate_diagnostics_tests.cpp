@@ -21,8 +21,8 @@ TEST(TranslateDiagnostics, TwoBrokenMembersGiveTwoErrors)
         "}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_EQ(count_errors(r.diagnostics), 2) << r.diagnostics;
-    EXPECT_NE(r.diagnostics.find("t.spp:2:"), std::string::npos) << r.diagnostics;
-    EXPECT_NE(r.diagnostics.find("t.spp:4:"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("t.hot:2:"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("t.hot:4:"), std::string::npos) << r.diagnostics;
 }
 
 // The syntax errors of two bodies and an unknown annotation come in source order, each with
@@ -48,7 +48,7 @@ TEST(TranslateDiagnostics, BodyErrorsAndAnnotationErrorsComeInSourceOrder)
         ASSERT_NE(e, std::string::npos) << r.diagnostics;
         prefixes.push_back(line.substr(0, e));
     }
-    EXPECT_EQ(prefixes, (std::vector<std::string>{"t.spp:2:24", "t.spp:3:28", "t.spp:6:6", "t.spp:7:24"}))
+    EXPECT_EQ(prefixes, (std::vector<std::string>{"t.hot:2:24", "t.hot:3:28", "t.hot:6:6", "t.hot:7:24"}))
         << r.diagnostics;
     EXPECT_NE(r.diagnostics.find("unknown attribute 'foo'"), std::string::npos) << r.diagnostics;
 }
@@ -76,7 +76,7 @@ TEST(TranslateDiagnostics, StrayControlByteHasNoFoundText)
 {
     const sppc::TranslateResult r = translate_text(std::string("\0abc\n", 5));
     EXPECT_FALSE(r.ok);
-    EXPECT_EQ(r.diagnostics, "t.spp:1:1: error: expected 'using', 'class', 'struct', 'enum' or a variable\n")
+    EXPECT_EQ(r.diagnostics, "t.hot:1:1: error: expected 'using', 'class', 'struct', 'enum' or a variable\n")
         << r.diagnostics;
 }
 
@@ -95,7 +95,7 @@ TEST(TranslateDiagnostics, BadImportKeepsItsText)
     const sppc::TranslateResult r = translate_text("using 5;\nclass A : B { }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("using needs"), std::string::npos) << r.diagnostics;
-    EXPECT_NE(r.diagnostics.find("t.spp:1:7: error:"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("t.hot:1:7: error:"), std::string::npos) << r.diagnostics;
 }
 
 TEST(TranslateDiagnostics, UnterminatedBraceEndsWithAnError)
@@ -132,7 +132,7 @@ TEST(TranslateDiagnostics, DoubleColonIsNotAField)
 {
     const sppc::TranslateResult r = translate_text("class A : B {\n    x::y : int;\n}\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("t.spp:2:6: error: use '.' instead of '::'"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("t.hot:2:6: error: use '.' instead of '::'"), std::string::npos) << r.diagnostics;
 }
 
 TEST(TranslateDiagnostics, BacktickInATypeIsAnError)
@@ -153,7 +153,7 @@ TEST(TranslateDiagnostics, TruncatedInputsTerminate)
     {
         for (int gen = 1; gen <= 2; ++gen, ++first)
         {
-            const std::string file = std::string(base) + "_v" + std::to_string(gen) + ".spp";
+            const std::string file = std::string(base) + "_v" + std::to_string(gen) + ".hot";
             const sppc::TranslateOptions full = engine_options(file.c_str(), gen);
             sppc::TranslatorSession session; // the header parse is cached
             for (size_t cut = 0; cut <= full.script_text.size(); ++cut)

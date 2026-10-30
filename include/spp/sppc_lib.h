@@ -29,7 +29,7 @@ struct TranslateOptions
     // standard of the host (SPP_CXX_STANDARD in spp/config.h).
     std::string std_version;
     std::vector<std::pair<std::string, std::string>> preludes; // name, text
-    // The texts of the imported scripts ("using "parent.spp";"), as name and text. The name is
+    // The texts of the imported scripts ("using "parent.hot";"), as name and text. The name is
     // the path in the "using" line. A name that is not here is read from the directory of the
     // script, then from the include directories.
     std::vector<std::pair<std::string, std::string>> modules;
@@ -59,7 +59,7 @@ struct SourcePos
 // byte by byte. When they differ (for example "int" and "int32_t"), any position in the
 // range maps to the start of the other range.
 //
-// The "file" is 0 for the main script. For an imported script ("using "x.spp";") it is the number
+// The "file" is 0 for the main script. For an imported script ("using "x.hot";") it is the number
 // of the file in SourceMap::files() (the first file is 1). The script offsets are then offsets in
 // the text of that file.
 struct SourceSegment

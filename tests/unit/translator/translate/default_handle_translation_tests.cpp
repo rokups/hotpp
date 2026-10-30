@@ -67,7 +67,7 @@ TEST(DefaultHandleTranslation, ValueOnStarIsAnError)
 {
     const sppc::TranslateResult r = check_translate("[native, value] class *;\n", "");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "t.spp:2:1: error: 'value' is not allowed on 'class *'")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "t.hot:2:1: error: 'value' is not allowed on 'class *'")) << r.diagnostics;
 }
 
 TEST(DefaultHandleTranslation, TwoStarsInOneFileAreAnError)
@@ -75,7 +75,7 @@ TEST(DefaultHandleTranslation, TwoStarsInOneFileAreAnError)
     const sppc::TranslateResult r =
         check_translate(std::string(kDefaultShared) + "[native, default_handle(\"Arrow<$T>\")] class *;\n", "");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "t.spp:3:1: error: only one 'class *'")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "t.hot:3:1: error: only one 'class *'")) << r.diagnostics;
 }
 
 TEST(DefaultHandleTranslation, TwoConflictingStubsInOneFileAreAnError)
@@ -83,7 +83,7 @@ TEST(DefaultHandleTranslation, TwoConflictingStubsInOneFileAreAnError)
     const sppc::TranslateResult r =
         check_translate("[native, value] class Plain;\n[native, handle(\"Arrow<$T>\")] class Plain;\n", "");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "t.spp:3:1: error: duplicate stub for 'Plain'")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "t.hot:3:1: error: duplicate stub for 'Plain'")) << r.diagnostics;
 }
 
 TEST(DefaultHandleTranslation, ScriptStubOverridesPreludeStubWithAWarning)
@@ -92,7 +92,7 @@ TEST(DefaultHandleTranslation, ScriptStubOverridesPreludeStubWithAWarning)
         "    Weapon w;\n", {{"engine.prelude", "[native, value] class Weapon;\n"}});
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(r.diagnostics.empty()) << r.diagnostics;
-    EXPECT_TRUE(has(r.warnings, "t.spp:2:1: warning: the stub for 'Weapon' overrides the stub of a prelude"))
+    EXPECT_TRUE(has(r.warnings, "t.hot:2:1: warning: the stub for 'Weapon' overrides the stub of a prelude"))
         << r.warnings;
     EXPECT_TRUE(has(r.cpp, "    std::shared_ptr<Weapon> w;\n")) << r.cpp;
 }

@@ -1,4 +1,4 @@
-18_bad_operands.spp:11:50: error: the operator does not fit these operand types ('float' and 'std.string')
+18_bad_operands.hot:11:50: error: the operator does not fit these operand types ('float' and 'std.string')
    11 |     override void Tick(float dt) { int x = 1.5 + this.Name; }
-18_bad_operands.spp:11:50: note: 14 notes in system headers hidden (use --raw-diagnostics to see them)
+18_bad_operands.hot:11:50: note: 14 notes in system headers hidden (use --raw-diagnostics to see them)
 1 error generated.

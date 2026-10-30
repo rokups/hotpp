@@ -11,13 +11,18 @@ endif()
 
 # One program source, two script variants. The extension picks the script. Both variants are
 # in the folder script. Each variant has its own AOT library and its own program.
-#   sample_aot_spp has the C++ that sppc makes from script/wolf.spp.
+#   sample_aot_spp has the C++ that sppc makes from script/wolf.hot.
 #   sample_aot_cpp has the C++ that sppc makes from script/wolf.cpp.
 # A call of spp_add_scripts takes scripts with one stem only, so each variant has its own call and
 # its own OUT_DIR. The library sample_aot_<variant>_scripts has the result and links spp_aot.
 enable_testing()
 foreach(variant spp cpp)
-    spp_add_scripts(TARGET sample_aot_${variant}_scripts AOT SCRIPTS script/wolf.${variant}
+    # The variant "spp" uses the extension ".hot".
+    set(ext ${variant})
+    if(variant STREQUAL "spp")
+        set(ext hot)
+    endif()
+    spp_add_scripts(TARGET sample_aot_${variant}_scripts AOT SCRIPTS script/wolf.${ext}
                     OUT_DIR ${CMAKE_BINARY_DIR}/spp_aot/sample_aot_${variant}
                     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS Creature.h)
     set(target sample_aot_${variant})

@@ -22,7 +22,7 @@ using test_support::source;
 // The statements throw, try and catch translate to C++ that compiles and runs.
 TEST_P(BackendTests, TryCatchThrowRun)
 {
-    const spp::ScriptSource src = {"exc.spp", R"(
+    const spp::ScriptSource src = {"exc.hot", R"(
 using "Actor.h";
 using <stdexcept>;
 
@@ -68,7 +68,7 @@ class Player : Actor {
 // a finally body is dropped. Nested finally blocks run from the inside out.
 TEST_P(BackendTests, TryFinallyRun)
 {
-    const spp::ScriptSource src = {"fin.spp", R"(
+    const spp::ScriptSource src = {"fin.hot", R"(
 using "Actor.h";
 
 class Player : Actor {

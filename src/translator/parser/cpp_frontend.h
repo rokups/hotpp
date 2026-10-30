@@ -1,5 +1,5 @@
 // The ".cpp" frontend. It reads a plain C++ script file with libclang.
-// The result is the same ast::Script that parse_script gives for a ".spp" file.
+// The result is the same ast::Script that parse_script gives for a ".hot" file.
 #pragma once
 
 #include "../ast.h"

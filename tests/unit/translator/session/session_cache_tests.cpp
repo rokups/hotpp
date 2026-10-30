@@ -18,7 +18,7 @@ using namespace stub_translate_test;
 
 TEST(SessionCache, HitGivesTheSameOutputAsMiss)
 {
-    sppc::TranslateOptions o = engine_options("player_v1.spp", 1);
+    sppc::TranslateOptions o = engine_options("player_v1.hot", 1);
     const sppc::TranslateResult alone = sppc::translate(o); // a temporary session
     ASSERT_TRUE(alone.ok) << alone.diagnostics;
 
@@ -33,7 +33,7 @@ TEST(SessionCache, HitGivesTheSameOutputAsMiss)
     EXPECT_EQ(hit.slots_out, alone.slots_out);
 
     // The second generation also hits and agrees with a call without a session.
-    sppc::TranslateOptions o2 = engine_options("player_v2.spp", 2);
+    sppc::TranslateOptions o2 = engine_options("player_v2.hot", 2);
     o2.slots_in = alone.slots_out;
     const sppc::TranslateResult alone2 = sppc::translate(o2);
     const sppc::TranslateResult hit2 = sppc::translate(o2, session);
@@ -150,7 +150,7 @@ TEST(SessionCache, UnknownBaseAndBadImportsFail)
 
 TEST(SessionCache, SecondTranslateIsFast)
 {
-    const sppc::TranslateOptions o = engine_options("player_v1.spp", 1);
+    const sppc::TranslateOptions o = engine_options("player_v1.hot", 1);
     sppc::TranslatorSession session;
     Clock::time_point t = Clock::now();
     ASSERT_TRUE(sppc::translate(o, session).ok);

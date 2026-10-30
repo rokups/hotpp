@@ -2,7 +2,7 @@
 // ticks the same object again. The object keeps its field values.
 // The host needs a C++ compiler at run time.
 // The build makes two programs from this file. The definitions SAMPLE_SCRIPT_DIR and
-// SAMPLE_SCRIPT_EXT select the script variant (.spp or .cpp).
+// SAMPLE_SCRIPT_EXT select the script variant (.hot or .cpp).
 #include "Creature.h"
 #include "spp/backend.h"
 #include "spp/runtime/loader.h"

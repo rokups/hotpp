@@ -3,7 +3,7 @@
 The translator makes C++ with generated names. These formatters show the script names:
   - a state block "Player_State_g2" or "PlayerState_g2" is shown as "Player"
   - a shell "Player_Shell" and a handle to it are shown as "Player"
-  - a frame "Player__heal" is shown as "Player.heal at player.spp:12"
+  - a frame "Player__heal" is shown as "Player.heal at player.hot:12"
   - the internal member "__spp_owner" of a state block is hidden from the children
 
 The first part of this file is pure Python. It does not import lldb, so a plain Python test
@@ -76,7 +76,7 @@ def visible_child_indices(names):
 
 
 def is_script_file(path):
-    return bool(path) and path.endswith(".spp")
+    return bool(path) and path.endswith(".hot")
 
 
 def frame_label(symbol, path=None, line=None):

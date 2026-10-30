@@ -24,7 +24,7 @@ using test_support::source;
 // A field or a local without an initializer has the zero value.
 TEST_P(BackendTests, DefaultValues)
 {
-    spp::LoadResult v1 = backend->load(source("default_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("default_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Knight"));
@@ -41,7 +41,7 @@ TEST_P(BackendTests, DefaultValues)
 // during the whole loop. The generated code compiles and runs with the selected backend.
 TEST_P(BackendTests, ForOfOverAMemberOfATemporaryRuns)
 {
-    const spp::ScriptSource src = {"temp.spp", R"(
+    const spp::ScriptSource src = {"temp.hot", R"(
 using "Actor.h";
 using <utility>;
 using <vector>;

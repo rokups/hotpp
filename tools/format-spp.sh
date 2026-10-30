@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Format S++ scripts (*.spp) with the CSharp style of the repo .clang-format.
-# clang-format has no mapping for the .spp extension, so the script
+# Format S++ scripts (*.hot) with the CSharp style of the repo .clang-format.
+# clang-format has no mapping for the .hot extension, so the script
 # uses --assume-filename=<file>.cs to select the C# language.
 #
 # Usage: tools/format-spp.sh [--check] files...

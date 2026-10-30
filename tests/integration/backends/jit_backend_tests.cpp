@@ -137,12 +137,12 @@ TEST(JitTests, NoFileAndNoChildProcess)
     EmptyWorkDir work;
     const long faults_before = child_faults();
     {
-        spp::LoadResult v1 = backend->load(source("player_v1.spp"), 1);
+        spp::LoadResult v1 = backend->load(source("player_v1.hot"), 1);
         ASSERT_TRUE(v1) << v1.error;
-        spp::LoadResult v2 = backend->load(source("player_v2.spp"), 2);
+        spp::LoadResult v2 = backend->load(source("player_v2.hot"), 2);
         ASSERT_TRUE(v2) << v2.error;
         // A bad script also leaves no file and starts no process.
-        spp::LoadResult bad = backend->load(source("bad.spp"), 1);
+        spp::LoadResult bad = backend->load(source("bad.hot"), 1);
         EXPECT_FALSE(bad);
         f1::run_f1_reload(std::move(*v1.module), std::move(*v2.module));
     }
@@ -155,9 +155,9 @@ TEST(JitTests, NoFileAndNoChildProcess)
 TEST(JitTests, ErrorTextNamesTheScript)
 {
     std::unique_ptr<spp::Backend> backend = spp::make_default_backend();
-    spp::LoadResult bad = backend->load(source("bad.spp"), 1);
+    spp::LoadResult bad = backend->load(source("bad.hot"), 1);
     ASSERT_FALSE(bad);
-    EXPECT_NE(bad.error.find("bad.spp:9:"), std::string::npos) << bad.error;
+    EXPECT_NE(bad.error.find("bad.hot:9:"), std::string::npos) << bad.error;
     EXPECT_NE(bad.error.find(" error: "), std::string::npos) << bad.error;
 }
 
@@ -186,9 +186,9 @@ TEST(JitTests, PrecompiledHeaderWorks)
     ASSERT_TRUE(fs::exists(pch));
     o.pch_path = pch;
     spp::JitBackend backend(o);
-    spp::LoadResult v1 = backend.load(source("player_v1.spp"), 1);
+    spp::LoadResult v1 = backend.load(source("player_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend.load(source("player_v2.spp"), 2);
+    spp::LoadResult v2 = backend.load(source("player_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     f1::run_f1_reload(std::move(*v1.module), std::move(*v2.module));
 }
@@ -197,7 +197,7 @@ TEST(JitTests, PrecompiledHeaderWorks)
 // host. Both need the unwind tables of the JIT code (EH frames), which JITLink registers.
 TEST(JitTests, ExceptionsWorkInJitCode)
 {
-    const spp::ScriptSource src = {"throws.spp", R"(
+    const spp::ScriptSource src = {"throws.hot", R"(
 using "Actor.h";
 using "Math.h";
 
@@ -245,7 +245,7 @@ TEST(JitTests, ModuleOutlivesBackendAndGenerationsCanBeRemoved)
         std::unique_ptr<spp::Backend> backend = spp::make_default_backend();
         for (int i = 0; i < 3; ++i)
         {
-            spp::LoadResult r = backend->load(source("player_v1.spp"), 1);
+            spp::LoadResult r = backend->load(source("player_v1.hot"), 1);
             ASSERT_TRUE(r) << r.error;
             // The same generation loads again and again: each time a new JITDylib.
             if (i == 2)
@@ -259,7 +259,7 @@ TEST(JitTests, ModuleOutlivesBackendAndGenerationsCanBeRemoved)
 }
 
 // Experiment F3: the JIT registers each object with the debugger. The object is an ELF image
-// in memory. Its line table names the .spp file and the lines of the script.
+// in memory. Its line table names the .hot file and the lines of the script.
 TEST(JitTests, DebuggerGetsObjectWithScriptLines)
 {
     if (!test_support::have_dwarfdump())
@@ -269,7 +269,7 @@ TEST(JitTests, DebuggerGetsObjectWithScriptLines)
     o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/include", std::string(SPP_SOURCE_DIR) + "/tests/engine"};
     o.resource_dir = SPP_RESOURCE_DIR;
     spp::JitBackend backend(o);
-    const spp::ScriptSource src = source("player_v2.spp");
+    const spp::ScriptSource src = source("player_v2.hot");
     spp::LoadResult r = backend.load(src, 1);
     ASSERT_TRUE(r) << r.error;
     ASSERT_TRUE(backend.debugger_support()) << backend.debugger_error();
@@ -286,7 +286,7 @@ TEST(JitTests, DebuggerGetsObjectWithScriptLines)
         std::ofstream f(image, std::ios::binary);
         f.write(last->symfile_addr, static_cast<std::streamsize>(last->symfile_size));
     }
-    const std::set<int> lines = test_support::lines_of_file(test_support::dump_line_table(image), "player_v2.spp");
+    const std::set<int> lines = test_support::lines_of_file(test_support::dump_line_table(image), "player_v2.hot");
     EXPECT_TRUE(lines.count(test_support::line_with(src.text, "Math.Min")));
 }
 
@@ -299,7 +299,7 @@ TEST(JitTests, DebuggerSupportCanBeOff)
     o.resource_dir = SPP_RESOURCE_DIR;
     o.debugger_support = false;
     spp::JitBackend backend(o);
-    spp::LoadResult r = backend.load(source("player_v1.spp"), 1);
+    spp::LoadResult r = backend.load(source("player_v1.hot"), 1);
     ASSERT_TRUE(r) << r.error;
     EXPECT_FALSE(backend.debugger_support());
 }

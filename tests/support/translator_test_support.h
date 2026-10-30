@@ -68,7 +68,7 @@ inline sppc::TranslateOptions engine_options(const char* script_file, int genera
 inline sppc::TranslateOptions temp_options(const TempDir& dir, const std::string& script_text)
 {
     sppc::TranslateOptions o;
-    o.script_name = "t.spp";
+    o.script_name = "t.hot";
     o.script_text = script_text;
     o.generation = 1;
     o.include_dirs = {dir.path().string()};
@@ -96,7 +96,7 @@ inline int count_errors(const std::string& text)
 inline sppc::TranslateResult translate_text(const std::string& script)
 {
     sppc::TranslateOptions o;
-    o.script_name = "t.spp";
+    o.script_name = "t.hot";
     o.script_text = script;
     o.generation = 1;
     return sppc::translate(o);

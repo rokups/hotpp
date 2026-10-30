@@ -1,7 +1,7 @@
-29_private_member_access.spp:11:34: error: 'count' is private in 'Counter'
+29_private_member_access.hot:11:34: error: 'count' is private in 'Counter'
    11 |     int Peek(Counter c) { return c.count; }
-29_private_member_access.spp:15:17: error: 'count' is private in 'Counter'
+29_private_member_access.hot:15:17: error: 'count' is private in 'Counter'
    15 |         int a = c.count;
-29_private_member_access.spp:16:17: error: 'Twice' is private in 'Counter'
+29_private_member_access.hot:16:17: error: 'Twice' is private in 'Counter'
    16 |         int b = c.Twice();
 3 errors generated.

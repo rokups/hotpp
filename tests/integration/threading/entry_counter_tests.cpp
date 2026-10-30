@@ -86,7 +86,7 @@ spp::Module module_of(uint32_t generation, bool creator = false)
         if (again)
             return std::move(*again.module);
     }
-    spp::ScriptSource src{creator ? "s27_player.spp" : "s21_player.spp", script_text(generation, creator)};
+    spp::ScriptSource src{creator ? "s27_player.hot" : "s21_player.hot", script_text(generation, creator)};
     spp::LoadResult r = backend().load(src, generation);
     if (!r)
         throw std::runtime_error(r.error);

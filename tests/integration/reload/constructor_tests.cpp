@@ -25,7 +25,7 @@ template <class T> T* fld(Session& s, const char* name)
 // A script object builds a Squad with "new". The constructor runs once for each new object.
 TEST_P(BackendTests, NewBuildsAScriptObjectAndRunsTheConstructor)
 {
-    spp::LoadResult v1 = backend->load(source("ctor_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("ctor_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Spawner"));
@@ -44,7 +44,7 @@ TEST_P(BackendTests, NewBuildsAScriptObjectAndRunsTheConstructor)
 // The engine factory runs the constructor with default arguments.
 TEST_P(BackendTests, FactoryRunsTheConstructorOnce)
 {
-    spp::LoadResult v1 = backend->load(source("ctor_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("ctor_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Squad"));
@@ -57,9 +57,9 @@ TEST_P(BackendTests, FactoryRunsTheConstructorOnce)
 // A "new" after the reload uses the new constructor body.
 TEST_P(BackendTests, ReloadDoesNotRerunTheConstructor)
 {
-    spp::LoadResult v1 = backend->load(source("ctor_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("ctor_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("ctor_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("ctor_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Spawner"));
@@ -84,9 +84,9 @@ TEST_P(BackendTests, ReloadDoesNotRerunTheConstructor)
 // A Squad that exists before the reload keeps its state. The constructor does not run again.
 TEST_P(BackendTests, OldObjectKeepsItsConstructorState)
 {
-    spp::LoadResult v1 = backend->load(source("ctor_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("ctor_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("ctor_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("ctor_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Squad"));

@@ -93,7 +93,7 @@ struct Session
     std::unique_ptr<LsClient> client;
     explicit Session(bool clangd, const std::string& text = kScript, spp::ls::ServerOptions* o = nullptr)
     {
-        path = (dir.path() / "player.spp").string();
+        path = (dir.path() / "player.hot").string();
         uri = uri_of(path);
         write_file(path, text);
         client = std::make_unique<LsClient>(o ? *o : options(dir, clangd));
@@ -244,7 +244,7 @@ TEST(LanguageServer, DefinitionAfterATranslationErrorUsesTheShiftedPositions)
     Session s(true);
     ASSERT_TRUE(s.client->request("textDocument/definition", doc_pos(s.uri, 7, 14)).contains("result"));
     std::string text = kScript;
-    text.replace(text.find("\nclass Player"), 0, "using \"missing.spp\";\n\n");
+    text.replace(text.find("\nclass Player"), 0, "using \"missing.hot\";\n\n");
     s.client->change(s.uri, 2, text);
     const json n = s.diagnostics([](const json& d) { return has_source(d, "spp"); });
     ASSERT_FALSE(n.is_null()) << "the translation must fail";
@@ -292,7 +292,7 @@ const char* const kImported =
     "}\n";
 
 const char* const kImporter =
-    "using \"base.spp\";\n"
+    "using \"base.hot\";\n"
     "class Kid : Base {\n"
     "    void Go() { this.Boost(); }\n"
     "}\n";
@@ -302,9 +302,9 @@ const char* const kImporter =
 TEST(LanguageServer, TranslatorErrorInAnImportedScriptIsPublishedForThatScript)
 {
     Session s(false, kImporter);
-    write_file(s.dir.path() / "base.spp", kImported);
+    write_file(s.dir.path() / "base.hot", kImported);
     s.client->change(s.uri, 2, kImporter);
-    const std::string base_uri = uri_of((s.dir.path() / "base.spp").lexically_normal().string());
+    const std::string base_uri = uri_of((s.dir.path() / "base.hot").lexically_normal().string());
     const json n = s.client->wait_notification("textDocument/publishDiagnostics",
         [&](const json& p) { return p.value("uri", std::string()) == base_uri && !p["diagnostics"].empty(); });
     ASSERT_FALSE(n.is_null()) << "no diagnostics for the imported script";
@@ -323,9 +323,9 @@ TEST(LanguageServer, ClangdErrorInAnImportedScriptIsPublishedForThatScript)
     imported.replace(imported.find("    float hp = 2.0;\n"), 20, "");
     imported.replace(imported.find("void Boost() { }"), 16, "void Boost() { int x = \"abc\"; }");
     Session s(true); // the importer comes after the imported script is on disk
-    write_file(s.dir.path() / "base.spp", imported);
+    write_file(s.dir.path() / "base.hot", imported);
     s.client->change(s.uri, 2, kImporter);
-    const std::string base_uri = uri_of((s.dir.path() / "base.spp").lexically_normal().string());
+    const std::string base_uri = uri_of((s.dir.path() / "base.hot").lexically_normal().string());
     const json n = s.client->wait_notification("textDocument/publishDiagnostics", [&](const json& p)
     { return p.value("uri", std::string()) == base_uri && has_source(p["diagnostics"], "clangd"); });
     ASSERT_FALSE(n.is_null()) << "no clangd diagnostics for the imported script";
@@ -342,12 +342,12 @@ TEST(LanguageServer, DefinitionInAnImportedScriptIsInThatScript)
     std::string imported = kImported;
     imported.replace(imported.find("    float hp = 2.0;\n"), 20, "");
     Session s(true, kImporter);
-    write_file(s.dir.path() / "base.spp", imported);
+    write_file(s.dir.path() / "base.hot", imported);
     s.client->change(s.uri, 2, kImporter);
     const json r = s.client->request("textDocument/definition", doc_pos(s.uri, 2, 21));
     ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
     const json& loc = r["result"][0];
-    EXPECT_EQ(loc["uri"], uri_of((s.dir.path() / "base.spp").lexically_normal().string())) << r.dump();
+    EXPECT_EQ(loc["uri"], uri_of((s.dir.path() / "base.hot").lexically_normal().string())) << r.dump();
     EXPECT_EQ(loc["range"]["start"]["line"], 4) << r.dump();
     EXPECT_EQ(loc["range"]["start"]["character"], 9) << r.dump();
 }
@@ -645,12 +645,12 @@ TEST(LanguageServer, RenameChangesTheSameSymbolInOtherScriptsOfTheWorkspace)
 {
     REQUIRE_CLANGD();
     Session s(true);
-    const std::string other_path = (s.dir.path() / "sub" / "player_v2.spp").string();
+    const std::string other_path = (s.dir.path() / "sub" / "player_v2.hot").string();
     std::string v2 = kScript;
     v2.replace(v2.find("100.0"), 5, "50.0");
     std::filesystem::create_directories(std::filesystem::path(other_path).parent_path());
     write_file(other_path, v2);
-    write_file(s.dir.path() / "unrelated.spp", "class Other {\n    float hp = 1.0;\n}\n");
+    write_file(s.dir.path() / "unrelated.hot", "class Other {\n    float hp = 1.0;\n}\n");
     json p = doc_pos(s.uri, 3, 11);
     p["newName"] = "health";
     const json r = s.client->request("textDocument/rename", p);
@@ -675,7 +675,7 @@ TEST(LanguageServer, RenameWorksWhenTheOtherScriptIsOpenToo)
 {
     REQUIRE_CLANGD();
     Session s(true);
-    const std::string other_path = (s.dir.path() / "player_v2.spp").string();
+    const std::string other_path = (s.dir.path() / "player_v2.hot").string();
     write_file(other_path, kScript);
     s.client->open(uri_of(other_path), kScript);
     for (const std::string& uri : {uri_of(other_path), s.uri})
@@ -694,7 +694,7 @@ TEST(LanguageServer, RenameOfAClassChangesTheOtherScripts)
 {
     REQUIRE_CLANGD();
     Session s(true);
-    const std::string other_path = (s.dir.path() / "player_v2.spp").string();
+    const std::string other_path = (s.dir.path() / "player_v2.hot").string();
     write_file(other_path, kScript);
     json p = doc_pos(s.uri, 2, 7);
     p["newName"] = "Hero";
@@ -710,7 +710,7 @@ TEST(LanguageServer, ReferencesIncludeTheOtherScriptsOfTheWorkspace)
 {
     REQUIRE_CLANGD();
     Session s(true);
-    const std::string other_path = (s.dir.path() / "player_v2.spp").string();
+    const std::string other_path = (s.dir.path() / "player_v2.hot").string();
     write_file(other_path, kScript);
     const json r = s.client->request("textDocument/references",
         {{"textDocument", {{"uri", s.uri}}}, {"position", pos(11, 14)}, {"context", {{"includeDeclaration", true}}}});
@@ -733,7 +733,7 @@ TEST(LanguageServer, BackgroundIndexFindsAScriptSymbolInAGeneratedFile)
 {
     REQUIRE_CLANGD();
     TempDir dir;
-    const std::string script = (dir.path() / "player.spp").string();
+    const std::string script = (dir.path() / "player.hot").string();
     write_file(script, kScript);
     sppc::TranslateOptions o;
     o.script_text = kScript;
@@ -779,7 +779,7 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
     namespace fs = std::filesystem;
     TempDir dir;
     const fs::path root = dir.path();
-    const std::string script = (root / "player.spp").string();
+    const std::string script = (root / "player.hot").string();
     write_file(script, kScript);
     sppc::TranslateOptions o;
     o.script_text = kScript;
@@ -850,7 +850,7 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
         // The C++ clangd never gets a diagnostic for the script, and spp-ls never for main.cpp.
         std::lock_guard<std::mutex> lock(mu);
         for (const json& p : published)
-            EXPECT_EQ(p.value("uri", std::string()).find(".spp"), std::string::npos) << p.dump();
+            EXPECT_EQ(p.value("uri", std::string()).find(".hot"), std::string::npos) << p.dump();
     }
 
     // Both background indexes run. The shards of the two clangd processes are in two directories.
@@ -924,22 +924,22 @@ int analyzed_files(LsClient& client)
 TEST(SymbolIndex, DigestCoversTheImportedScripts)
 {
     TempDir dir;
-    const std::string main = (dir.path() / "main.spp").string();
-    const std::string deep = (dir.path() / "deep.spp").string();
+    const std::string main = (dir.path() / "main.hot").string();
+    const std::string deep = (dir.path() / "deep.hot").string();
     const std::string inc = (dir.path() / "inc").string();
     std::filesystem::create_directories(inc);
-    write_file(main, "using \"deep.spp\";\nusing \"lib.spp\";\n");
+    write_file(main, "using \"deep.hot\";\nusing \"lib.hot\";\n");
     write_file(deep, "class Deep {}\n");
-    write_file(inc + "/lib.spp", "using \"far.spp\";\n");
-    write_file(inc + "/far.spp", "class Far {}\n");
-    const std::string text = "using \"deep.spp\";\nusing \"lib.spp\";\n";
+    write_file(inc + "/lib.hot", "using \"far.hot\";\n");
+    write_file(inc + "/far.hot", "class Far {}\n");
+    const std::string text = "using \"deep.hot\";\nusing \"lib.hot\";\n";
     const auto digest = [&] { return spp::ls::SymbolIndex::digest(main, text, {inc}); };
     const std::string before = digest();
     EXPECT_EQ(before, digest());
     write_file(deep, "class Deep { int x = 1; }\n"); // an import
     const std::string after_deep = digest();
     EXPECT_NE(before, after_deep);
-    write_file(inc + "/far.spp", "class Far { int y = 1; }\n"); // an import of an import
+    write_file(inc + "/far.hot", "class Far { int y = 1; }\n"); // an import of an import
     EXPECT_NE(after_deep, digest());
     // A script with no import has the digest of its text, plus nothing else.
     EXPECT_EQ(spp::ls::SymbolIndex::digest(main, "class A {}\n", {}), spp::ls::SymbolIndex::digest("class A {}\n"));
@@ -950,7 +950,7 @@ TEST(SymbolIndex, ReusesAShardWhenTheDigestMatches)
     TempDir dir;
     spp::ls::SymbolIndex index;
     index.open((dir.path() / "index").string());
-    const std::string script = (dir.path() / "a.spp").string();
+    const std::string script = (dir.path() / "a.hot").string();
     write_file(script, "class A {}\n");
     const std::string digest = spp::ls::SymbolIndex::digest("class A {}\n");
     ASSERT_TRUE(index.store(script, digest, sample_shard()));
@@ -972,7 +972,7 @@ TEST(SymbolIndex, ADifferentDigestGivesNoShardAndTheNewShardReplacesTheOld)
     TempDir dir;
     spp::ls::SymbolIndex index;
     index.open((dir.path() / "index").string());
-    const std::string script = (dir.path() / "a.spp").string();
+    const std::string script = (dir.path() / "a.hot").string();
     write_file(script, "x");
     const std::string d1 = spp::ls::SymbolIndex::digest("one"), d2 = spp::ls::SymbolIndex::digest("two");
     ASSERT_NE(d1, d2);
@@ -989,7 +989,7 @@ TEST(SymbolIndex, PruneDeletesTheShardOfAMissingFile)
     TempDir dir;
     spp::ls::SymbolIndex index;
     index.open((dir.path() / "index").string());
-    const std::string a = (dir.path() / "a.spp").string(), b = (dir.path() / "b.spp").string();
+    const std::string a = (dir.path() / "a.hot").string(), b = (dir.path() / "b.hot").string();
     write_file(a, "x");
     write_file(b, "y");
     ASSERT_TRUE(index.store(a, "da", sample_shard()));
@@ -1007,7 +1007,7 @@ TEST(SymbolIndex, ADifferentFormatVersionIsDropped)
     TempDir dir;
     spp::ls::SymbolIndex index;
     index.open((dir.path() / "index").string());
-    const std::string script = (dir.path() / "a.spp").string();
+    const std::string script = (dir.path() / "a.hot").string();
     write_file(script, "x");
     ASSERT_TRUE(index.store(script, "d", sample_shard()));
     const std::string file = index.shard_path(script);
@@ -1031,7 +1031,7 @@ TEST(SymbolIndex, TheIndexDoesNotGrowAfter1000EditsOfOneFile)
     TempDir dir;
     spp::ls::SymbolIndex index;
     index.open((dir.path() / "index").string());
-    const std::string script = (dir.path() / "a.spp").string();
+    const std::string script = (dir.path() / "a.hot").string();
     write_file(script, "x");
     std::uintmax_t first_size = 0;
     for (int i = 0; i < 1000; ++i)
@@ -1050,9 +1050,9 @@ TEST(SymbolIndex, TheIndexDoesNotGrowAfter1000EditsOfOneFile)
 TEST(LanguageServer, RenameOnAClosedFileAfterARestartUsesTheIndex)
 {
     Session s(false);
-    const std::string other_path = (s.dir.path() / "player_v2.spp").string();
+    const std::string other_path = (s.dir.path() / "player_v2.hot").string();
     write_file(other_path, kScript);
-    write_file(s.dir.path() / "unrelated.spp", "class Other {\n    float hp = 1.0;\n}\n");
+    write_file(s.dir.path() / "unrelated.hot", "class Other {\n    float hp = 1.0;\n}\n");
     json p = doc_pos(s.uri, 2, 7);
     p["newName"] = "Hero";
     json r = s.client->request("textDocument/rename", p);
@@ -1091,7 +1091,7 @@ TEST(LanguageServer, MemberRenameOnAClosedFileAfterARestartUsesTheIndex)
     s.client = std::make_unique<LsClient>(o);
     s.client->initialize(uri_of(s.dir.path().string()));
     s.client->open(s.uri, kScript);
-    const std::string other_path = (s.dir.path() / "player_v2.spp").string();
+    const std::string other_path = (s.dir.path() / "player_v2.hot").string();
     write_file(other_path, kScript);
     json p = doc_pos(s.uri, 3, 11);
     p["newName"] = "health";
@@ -1468,7 +1468,7 @@ std::vector<std::string> host_completion_labels(
     if (!defines_file.empty() && defines_file != "-")
         write_file((root / "hosts" / "h.defines").string(), defines_file);
     const std::string text = "using \"thing.h\";\n\nclass A {\n    void f() {\n        Thing.\n    }\n}\n";
-    const std::string path = (root / "scripts" / "a.spp").string();
+    const std::string path = (root / "scripts" / "a.hot").string();
     write_file(path, text);
     write_file((root / "build" / "CMakeCache.txt").string(), "# cache\n");
     auto write_host = [&]
@@ -1556,7 +1556,7 @@ TEST(LanguageServerHosts, IncludeDirWithSpecialCharactersFromAnIncludesFileAppli
             + R"("scripts":[],"includeDirs":[")" + SPP_SOURCE_DIR + R"(/include"],"defines":[],)"
             + R"("includesFile":"h.includes","flags":[]})");
     const std::string text = "using \"thing.h\";\n\nclass A {\n    void f() {\n        Thing.\n    }\n}\n";
-    const std::string path = (root / "scripts" / "a.spp").string();
+    const std::string path = (root / "scripts" / "a.hot").string();
     write_file(path, text);
     spp::ls::ServerOptions o;
     o.clangd = SPP_CLANGD_PATH;
@@ -1607,7 +1607,7 @@ TEST(LanguageServerHosts, NewScriptFileIsFoundAfterAWatchedFilesEvent)
     const std::filesystem::path root = dir.path();
     std::filesystem::create_directories(root / "hosts");
     const std::string text = "class Player {\n    float hp = 1.0;\n}\n";
-    const std::string path = (root / "a.spp").string();
+    const std::string path = (root / "a.hot").string();
     write_file(path, text);
     spp::ls::ServerOptions o;
     o.hosts_dir = (root / "hosts").string();
@@ -1627,7 +1627,7 @@ TEST(LanguageServerHosts, NewScriptFileIsFoundAfterAWatchedFilesEvent)
                     ++n;
         return n;
     };
-    const std::string other = (root / "b.spp").string();
+    const std::string other = (root / "b.hot").string();
     EXPECT_EQ(count_other(uri_of(other)), 0);
     write_file(other, text);
     client.notify(
@@ -1639,7 +1639,7 @@ TEST(LanguageServerHosts, NewScriptFileIsFoundAfterAWatchedFilesEvent)
     EXPECT_EQ(count_other(uri_of(other)), 0);
 }
 
-// The information diagnostic "No script host". Rule: a .spp script has no host and the server
+// The information diagnostic "No script host". Rule: a .hot script has no host and the server
 // has no -I option.
 namespace
 {
@@ -1655,7 +1655,7 @@ struct HostDiagCase
         std::filesystem::create_directories(root / "scripts");
         std::filesystem::create_directories(root / "build");
         std::filesystem::create_directories(root / "hosts");
-        path = (root / "scripts" / "a.spp").string();
+        path = (root / "scripts" / "a.hot").string();
         uri = uri_of(path);
         write_file(path, text);
         write_file((root / "build" / "CMakeCache.txt").string(), "# cache\n");

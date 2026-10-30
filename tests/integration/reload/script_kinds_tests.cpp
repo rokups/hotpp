@@ -52,7 +52,7 @@ spp::ShellBase* handle_target(Session& s, const char* name)
 // copy: "Hurt" on one value does not change the other.
 TEST_P(BackendTests, ValueClassHasCopySemantics)
 {
-    spp::LoadResult v1 = backend->load(source("kinds_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("kinds_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
@@ -71,7 +71,7 @@ TEST_P(BackendTests, ValueClassHasCopySemantics)
 // "new Counter(10)" of a class without a base gives a handle. The handle owns the object.
 TEST_P(BackendTests, PlainClassIsAHandle)
 {
-    spp::LoadResult v1 = backend->load(source("kinds_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("kinds_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
@@ -92,9 +92,9 @@ TEST_P(BackendTests, PlainClassIsAHandle)
 // and a field is new (design 5.3). A handle field keeps its object.
 TEST_P(BackendTests, ReloadMigratesInlineValuesRecursively)
 {
-    spp::LoadResult v1 = backend->load(source("kinds_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("kinds_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("kinds_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("kinds_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
@@ -142,7 +142,7 @@ TEST_P(BackendTests, ReloadMigratesInlineValuesRecursively)
 // The destructor of the class runs once.
 TEST_P(BackendTests, ShellClassHandleOwnsTheObject)
 {
-    spp::LoadResult v1 = backend->load(source("ctor_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("ctor_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Spawner"));
@@ -161,7 +161,7 @@ TEST_P(BackendTests, ShellClassHandleOwnsTheObject)
 // Link through the handle field "first". "Self" returns "this" as a handle (S5b).
 TEST_P(BackendTests, TypedAccessOnScriptHandlesAndReturnThis)
 {
-    spp::LoadResult v1 = backend->load(source("typed_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("typed_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Chain"));
@@ -176,7 +176,7 @@ TEST_P(BackendTests, TypedAccessOnScriptHandlesAndReturnThis)
 // "h?.F();" and "h?.field = v;" do nothing for a null handle. The receiver of a call runs once.
 TEST_P(BackendTests, SafeCallRunsOnlyForANonNullHandle)
 {
-    spp::LoadResult v1 = backend->load(source("safe_nav_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("safe_nav_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Prober"));

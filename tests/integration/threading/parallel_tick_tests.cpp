@@ -84,7 +84,7 @@ class ModuleSupplier
 {
 public:
     ModuleSupplier(const char* text, uint32_t generation)
-        : source_{std::string("r5_player_v") + std::to_string(generation) + ".spp", text}
+        : source_{std::string("r5_player_v") + std::to_string(generation) + ".hot", text}
         , generation_(generation)
     {
     }

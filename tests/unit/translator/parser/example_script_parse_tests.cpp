@@ -19,7 +19,7 @@ TEST(ExampleScriptParse, ExampleScripts)
     size_t bodies = 0;
     for (const char* name : names)
     {
-        const std::string text = read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/" + name + ".spp");
+        const std::string text = read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/" + name + ".hot");
         ASSERT_FALSE(text.empty()) << name;
         const LineMap map(text);
         Diagnostics sd;

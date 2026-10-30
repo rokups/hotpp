@@ -135,7 +135,7 @@ enum class Place
 
 Place classify(const std::string& file, const std::map<std::string, std::vector<std::string>>& scripts)
 {
-    if (scripts.count(file) || ends_with(file, ".spp"))
+    if (scripts.count(file) || ends_with(file, ".hot"))
         return Place::Script;
     static const char* const kSystem[] = {
         "/include/c++/", "/lib/gcc/", "/lib64/gcc/", "/usr/include/", "/lib/clang/", "/lib64/clang/", "/lib/llvm"};

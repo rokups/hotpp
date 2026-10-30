@@ -1,6 +1,6 @@
 // spp-ls: a stdio Language Server (LSP 3.17) for S++ scripts (design 10.1, M12 to M14).
 //
-// The server is a proxy. It owns the text of each .spp document. It runs sppc::analyze() on the
+// The server is a proxy. It owns the text of each .hot document. It runs sppc::analyze() on the
 // text and gets the generated C++ and the source map. It gives the generated C++ to a stock
 // clangd child process as a virtual file "<script>.cpp" with the compile command of the backend
 // (spp::compile_command). It maps the positions of each request and each answer between the

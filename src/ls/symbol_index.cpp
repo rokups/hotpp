@@ -164,7 +164,7 @@ std::string SymbolIndex::digest(const std::string& content)
 std::string SymbolIndex::digest(
     const std::string& script_path, const std::string& content, const std::vector<std::string>& include_dirs)
 {
-    static const std::regex using_line(R"re(\busing\s*"([^"\n]+\.spp)")re");
+    static const std::regex using_line(R"re(\busing\s*"([^"\n]+\.hot)")re");
     std::string all = content;
     std::set<std::string> seen; // the files that are read already
     std::vector<std::pair<std::string, std::string>> todo = {{script_path, content}};

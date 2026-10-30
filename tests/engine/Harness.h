@@ -29,7 +29,7 @@ Command parse_command(const std::string& line);
 class Harness
 {
 public:
-    // "script" is a .spp file. "class_name" is the class of the first object.
+    // "script" is a .hot file. "class_name" is the class of the first object.
     Harness(std::string script, std::string class_name = "Player");
 
     // Compiles the file as generation 1, loads it and adds one object to the world.

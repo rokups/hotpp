@@ -50,7 +50,7 @@ TEST(ScopeTranslation, DoubleColonInABaseClassIsAnError)
     const sppc::TranslateResult r = translate_text("class P : Engine::Actor {\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("use '.' instead of '::'"), std::string::npos) << r.diagnostics;
-    EXPECT_NE(r.diagnostics.find("t.spp:1:"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("t.hot:1:"), std::string::npos) << r.diagnostics;
 }
 
 TEST(ScopeTranslation, DoubleColonInAFieldTypeIsAnError)
@@ -58,7 +58,7 @@ TEST(ScopeTranslation, DoubleColonInAFieldTypeIsAnError)
     const sppc::TranslateResult r = translate_text("class P : B {\n    std::string title;\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("use '.' instead of '::'"), std::string::npos) << r.diagnostics;
-    EXPECT_NE(r.diagnostics.find("t.spp:2:"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("t.hot:2:"), std::string::npos) << r.diagnostics;
 }
 
 TEST(ScopeTranslation, ArrowInABodyIsAnError)
@@ -68,5 +68,5 @@ TEST(ScopeTranslation, ArrowInABodyIsAnError)
     const sppc::TranslateResult r = sppc::translate(temp_options(dir, lambda_script("        p->foo();")));
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("use '.' instead of '->'"), std::string::npos) << r.diagnostics;
-    EXPECT_NE(r.diagnostics.find("t.spp:5:"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("t.hot:5:"), std::string::npos) << r.diagnostics;
 }

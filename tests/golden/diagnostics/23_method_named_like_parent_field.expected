@@ -1,3 +1,3 @@
-23_method_named_like_parent_field.spp:8:5: error: 'hp' is a field of 'Hero' and a function
+23_method_named_like_parent_field.hot:8:5: error: 'hp' is a field of 'Hero' and a function
     8 |     void hp() { }
 1 error generated.

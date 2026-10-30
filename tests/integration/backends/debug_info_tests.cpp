@@ -1,4 +1,4 @@
-// Experiment F3 (design 4.10, 4.12): the debug info names the .spp files.
+// Experiment F3 (design 4.10, 4.12): the debug info names the .hot files.
 //
 // The translator writes "#line" directives. Clang copies them into the DWARF line table. These
 // tests read the table with llvm-dwarfdump. They skip when the tool is not installed.
@@ -25,17 +25,17 @@ namespace
 namespace fs = std::filesystem;
 using test_support::have_dwarfdump;
 
-// The line of the method heal in player_v2.spp that calls Math.Min.
+// The line of the method heal in player_v2.hot that calls Math.Min.
 int heal_line()
 {
     return test_support::line_with(
-        test_support::read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/player_v2.spp"), "Math.Min");
+        test_support::read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/player_v2.hot"), "Math.Min");
 }
 
 // A script that the test translated and compiled with "-g" and a given optimization flag.
 struct Compiled
 {
-    std::string script_file; // the base name of the script, for example "player_v1.spp"
+    std::string script_file; // the base name of the script, for example "player_v1.hot"
     std::string info; // llvm-dwarfdump --debug-info
     std::string lines; // llvm-dwarfdump --debug-line
     std::vector<test_support::DwarfFunction> functions;
@@ -55,8 +55,8 @@ const Compiled& compile_with_debug_info(const std::string& script, const std::st
     // stops them from writing the same files. The directory is removed when the process ends.
     const std::string dir = test_support::process_scratch("debug_info").path();
     sppc::TranslateOptions to;
-    to.script_name = script + ".spp";
-    to.script_text = test_support::read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/" + script + ".spp");
+    to.script_name = script + ".hot";
+    to.script_text = test_support::read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/" + script + ".hot");
     to.output_name = dir + "/" + script + ".cpp";
     to.generation = 1;
     to.include_dirs = {std::string(SPP_SOURCE_DIR) + "/include", std::string(SPP_SOURCE_DIR) + "/tests/engine"};
@@ -117,7 +117,7 @@ TEST(DebugInfo, LibraryFromSppcHasLinesOfTheScript)
 {
     if (!have_dwarfdump())
         GTEST_SKIP() << "llvm-dwarfdump is not installed";
-    const std::set<int> lines = test_support::lines_of_file(test_support::dump_line_table(PRE_V2_SO), "player_v2.spp");
+    const std::set<int> lines = test_support::lines_of_file(test_support::dump_line_table(PRE_V2_SO), "player_v2.hot");
     EXPECT_FALSE(lines.empty());
     EXPECT_TRUE(lines.count(heal_line())) << "no row for line " << heal_line();
 }
@@ -130,8 +130,8 @@ TEST(DebugInfo, LineTablesOnlyKeepsTheScriptLines)
     test_support::TestScratch scratch;
     const std::string dir = scratch.path();
     sppc::TranslateOptions to;
-    to.script_name = "player_v2.spp";
-    to.script_text = test_support::read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/player_v2.spp");
+    to.script_name = "player_v2.hot";
+    to.script_text = test_support::read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/player_v2.hot");
     to.output_name = dir + "/player_v2.cpp";
     to.generation = 1;
     to.include_dirs = {std::string(SPP_SOURCE_DIR) + "/include", std::string(SPP_SOURCE_DIR) + "/tests/engine"};
@@ -147,7 +147,7 @@ TEST(DebugInfo, LineTablesOnlyKeepsTheScriptLines)
     const std::string compile_output = test_support::run_capture(cmd);
     ASSERT_TRUE(fs::exists(object)) << compile_output;
     const std::string dump = test_support::dump_line_table(object);
-    const std::set<int> lines = test_support::lines_of_file(dump, "player_v2.spp");
+    const std::set<int> lines = test_support::lines_of_file(dump, "player_v2.hot");
     EXPECT_TRUE(lines.count(heal_line())) << "no row for line " << heal_line();
     EXPECT_GT(lines.size(), 10u);
 }
@@ -202,7 +202,7 @@ TEST(DebugInfo, MemberLineTableHasFirstBodyLineAfterFnLine)
 {
     if (!have_dwarfdump())
         GTEST_SKIP() << "llvm-dwarfdump is not installed";
-    const std::string text = test_support::read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/player_v1.spp");
+    const std::string text = test_support::read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/player_v1.hot");
     const int fn_line = test_support::line_with(text, "override void Tick");
     const int body_line = test_support::line_with(text, "this.Move");
     ASSERT_EQ(body_line, fn_line + 1);
@@ -262,9 +262,9 @@ TEST(DebugInfo, RuntimeHelpersHaveNoSubprogram)
     }
 }
 
-// Every line of generated code that does something maps to the .spp file. The functions of the
+// Every line of generated code that does something maps to the .hot file. The functions of the
 // script (shell, wrapper, member, slot, thunk, build, construct, create) have no row of the
-// generated files "x.spp.cpp" and "x.cpp". The module code ("script_register") is not checked.
+// generated files "x.hot.cpp" and "x.cpp". The module code ("script_register") is not checked.
 TEST(DebugInfo, ScriptFunctionsHaveNoRowsOfTheGeneratedFile)
 {
     if (!have_dwarfdump())

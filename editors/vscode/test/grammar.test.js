@@ -4,9 +4,9 @@
 //  - package.json, language-configuration.json and the grammar are valid JSON.
 //  - Every keyword and every builtin type name of the language is in the grammar.
 // Run when vscode-textmate and vscode-oniguruma are installed (npm install in this folder):
-//  - Every file of tests/scripts/*.spp tokenizes. No token has an "invalid" scope.
+//  - Every file of tests/scripts/*.hot tokenizes. No token has an "invalid" scope.
 //    No rule stays open at the end of a file.
-//  - test/sample.spp matches the snapshot test/sample.snap.
+//  - test/sample.hot matches the snapshot test/sample.snap.
 // Without the two packages the second part is skipped and a notice says so.
 'use strict';
 
@@ -36,7 +36,7 @@ const grammar = readJson(grammarFile);
 if (!grammar) process.exit(1);
 if (pkg) {
   const c = pkg.contributes || {};
-  if (!(c.languages || []).some((l) => l.id === 'spp' && l.extensions.includes('.spp'))) fail('language spp');
+  if (!(c.languages || []).some((l) => l.id === 'spp' && l.extensions.includes('.hot'))) fail('language spp');
   if (!(c.grammars || []).some((g) => g.scopeName === grammar.scopeName)) fail('grammar scope');
   if (!c.configuration || !c.configuration.properties['spp.server.path']) fail('setting spp.server.path');
 }
@@ -117,19 +117,19 @@ async function main() {
   }
 
   const dir = path.join(repo, 'tests', 'scripts');
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.spp')).sort();
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.hot')).sort();
   if (files.length === 0) fail('no example scripts found');
   for (const f of files) tokenize(fs.readFileSync(path.join(dir, f), 'utf8'), f, false);
   console.log(`tokenized ${files.length} example scripts`);
 
-  const sample = fs.readFileSync(path.join(root, 'test', 'sample.spp'), 'utf8');
-  const got = tokenize(sample, 'sample.spp', true).join('\n') + '\n';
+  const sample = fs.readFileSync(path.join(root, 'test', 'sample.hot'), 'utf8');
+  const got = tokenize(sample, 'sample.hot', true).join('\n') + '\n';
   const snap = path.join(root, 'test', 'sample.snap');
   if (update || !fs.existsSync(snap)) {
     fs.writeFileSync(snap, got);
     console.log('snapshot written: test/sample.snap');
   } else if (fs.readFileSync(snap, 'utf8') !== got) {
-    fail('test/sample.spp differs from test/sample.snap. Run with --update to accept.');
+    fail('test/sample.hot differs from test/sample.snap. Run with --update to accept.');
   }
 }
 

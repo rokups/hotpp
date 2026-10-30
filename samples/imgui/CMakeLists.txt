@@ -41,10 +41,15 @@ separate_arguments(cxxflags_list NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
 list(JOIN cxxflags_list "|" cxxflags_joined)
 
 # One program source, two script variants. The extension picks the script.
-#   sample_imgui_spp reads script/demo.spp.
+#   sample_imgui_spp reads script/demo.hot.
 #   sample_imgui_cpp reads script/demo.cpp.
 # The host builds ClangFilesOptions itself. It does not use make_default_backend().
 foreach(variant spp cpp)
+    # The variant "spp" uses the extension ".hot".
+    set(ext ${variant})
+    if(variant STREQUAL "spp")
+        set(ext hot)
+    endif()
     set(target sample_imgui_${variant})
     add_executable(${target} main.cpp UiApp.cpp)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -60,7 +65,7 @@ foreach(variant spp cpp)
         IMGUI_APP_RESOURCE_DIR="${resource_dir}"
         IMGUI_APP_WORK_DIR="${CMAKE_CURRENT_BINARY_DIR}/spp_work"
         SAMPLE_SCRIPT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/script"
-        SAMPLE_SCRIPT_EXT=".${variant}")
+        SAMPLE_SCRIPT_EXT=".${ext}")
 endforeach()
 
 # The normal toolchain compiles the .cpp script too. A .cpp script must compile unchanged.
@@ -71,7 +76,7 @@ target_link_libraries(imgui_cpp_scripts_plain PRIVATE imgui_sdl3)
 target_compile_features(imgui_cpp_scripts_plain PRIVATE cxx_std_17)
 
 # The language server reads this file.
-# The language server serves the .spp scripts only.
+# The language server serves the .hot scripts only.
 spp_script_host(NAME sample_imgui TARGET sample_imgui_spp SCRIPT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/script)
 
 # No test: the program opens a window.

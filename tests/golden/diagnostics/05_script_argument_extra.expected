@@ -1,5 +1,5 @@
-05_script_argument_extra.spp:11:41: error: no method or function 'Player.heal' fits these arguments
+05_script_argument_extra.hot:11:41: error: no method or function 'Player.heal' fits these arguments
    11 |     override void Tick(float dt) { this.heal(1.0, 2.0); }
-05_script_argument_extra.spp:7:10: note: candidate does not fit: takes 1 argument, but 2 were given
+05_script_argument_extra.hot:7:10: note: candidate does not fit: takes 1 argument, but 2 were given
     7 |     void heal(float amount)  {
 1 error generated.

@@ -215,11 +215,11 @@ class Spotter {
 
 A `.cpp` script has the same rules with the C++ forms (see [C++ scripts](cpp-scripts.html#script-classes-as-types)):
 
-| `.spp` | `.cpp` | Difference |
+| `.hot` | `.cpp` | Difference |
 |---|---|---|
 | `x is T` | `dynamic_cast<T*>(x) != nullptr` | None. |
 | `x as T` | `dynamic_cast<T*>(x)` | `as` gives a handle. `dynamic_cast` gives a raw pointer. |
 | None | `dynamic_cast<T&>(x)` | It throws `std::runtime_error` when the type does not match. |
-| `new T()` | `new T()` | `.spp` gives a handle. `.cpp` gives a raw pointer, and the script code must `delete` the object. |
+| `new T()` | `new T()` | `.hot` gives a handle. `.cpp` gives a raw pointer, and the script code must `delete` the object. |
 | `T` (a handle) | `T*` or `T&` | A `.cpp` script cannot hold a script object by value. |
 | None | `typeid(T)` | An error in a `.cpp` script. Use `dynamic_cast`. |

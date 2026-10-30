@@ -89,5 +89,5 @@ TEST(StringInterpolationTranslation, SyntaxErrorInExpressionHasAScriptPosition)
 {
     const sppc::TranslateResult r = translate_with("\"a ${1 +} b\"", "");
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("t.spp:5:"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("t.hot:5:"), std::string::npos) << r.diagnostics;
 }

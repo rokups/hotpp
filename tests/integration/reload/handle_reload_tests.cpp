@@ -26,11 +26,11 @@ using test_support::source;
 
 TEST_P(BackendTests, HandleFieldSurvivesReload)
 {
-    spp::LoadResult v1 = backend->load(source("handle_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("handle_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("handle_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("handle_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
-    spp::LoadResult v1b = backend->load(source("handle_v1.spp"), 3);
+    spp::LoadResult v1b = backend->load(source("handle_v1.hot"), 3);
     ASSERT_TRUE(v1b) << v1b.error;
     handlereload::run_handle_reload(std::move(*v1.module), std::move(*v2.module), std::move(*v1b.module));
 }
@@ -40,9 +40,9 @@ TEST_P(BackendTests, HandleFieldSurvivesReload)
 // The Weapon object dies with the old block.
 TEST_P(BackendTests, HandleTypeChangeUsesTheDefaultAndWarns)
 {
-    spp::LoadResult v1 = backend->load(source("handle_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("handle_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v3 = backend->load(source("handle_v3.spp"), 2);
+    spp::LoadResult v3 = backend->load(source("handle_v3.hot"), 2);
     ASSERT_TRUE(v3) << v3.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Knight"));
@@ -74,11 +74,11 @@ TEST_P(BackendTests, HandleTypeChangeUsesTheDefaultAndWarns)
 TEST_P(BackendTests, IntrusiveHandleSurvivesReload)
 {
     using H = spp::Intrusive<Item, &Object::AddRef, &Object::Release>;
-    spp::LoadResult v1 = backend->load(source("intrusive_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("intrusive_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("intrusive_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("intrusive_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
-    spp::LoadResult v1b = backend->load(source("intrusive_v1.spp"), 3);
+    spp::LoadResult v1b = backend->load(source("intrusive_v1.hot"), 3);
     ASSERT_TRUE(v1b) << v1b.error;
     ASSERT_EQ(Object::live, 0);
     {
@@ -130,7 +130,7 @@ TEST_P(BackendTests, IntrusiveHandleSurvivesReload)
 // The stub names a method that the native class does not have. The load gives an error.
 TEST_P(BackendTests, IntrusiveMissingMethodIsAnError)
 {
-    spp::LoadResult r = backend->load(source("intrusive_bad.spp"), 1);
+    spp::LoadResult r = backend->load(source("intrusive_bad.hot"), 1);
     EXPECT_FALSE(r);
     EXPECT_NE(r.error.find("Grab"), std::string::npos) << r.error;
     EXPECT_NE(r.error.find("Object"), std::string::npos) << r.error;

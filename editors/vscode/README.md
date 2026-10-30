@@ -1,6 +1,6 @@
 # S++ for VS Code
 
-This extension gives support for S++ scripts (`.spp`, language id `spp`).
+This extension gives support for S++ scripts (`.hot`, language id `spp`).
 
 ## Features
 
@@ -11,7 +11,7 @@ This extension gives support for S++ scripts (`.spp`, language id `spp`).
 - A thin client of the S++ language server `spp-ls`. It runs `spp-ls --stdio`.
   The server gives diagnostics, completion, hover, go-to-definition, references,
   document symbols, workspace symbols, semantic tokens and rename.
-  Rename and references also cover the other `.spp` files of the workspace.
+  Rename and references also cover the other `.hot` files of the workspace.
   See "Language server" in the top `README.md`.
 
 ## Commands
@@ -55,12 +55,12 @@ It is the path of the first workspace folder. For example: `"-I", "${workspaceFo
 
 ## Use with the clangd extension
 
-This extension and `spp-ls` serve all features for `.spp` files. For a `.cpp` script that a host lists, they show only the errors of `sppc` as diagnostics. The official clangd extension serves the C++ files, with all other features.
+This extension and `spp-ls` serve all features for `.hot` files. For a `.cpp` script that a host lists, they show only the errors of `sppc` as diagnostics. The official clangd extension serves the C++ files, with all other features.
 Install both extensions. They run side by side on one project.
 
 1. Install the clangd extension and `clangd`. Set it up for the C++ build as usual.
 2. Install this extension and set `spp.server.path` and `spp.server.args`.
-3. Optional: run `sppc <file.spp>... --gen N --out-dir DIR --compile-commands CDIR`.
+3. Optional: run `sppc <file.hot>... --gen N --out-dir DIR --compile-commands CDIR`.
    Add `"--compile-commands-dir", "CDIR"` to `spp.server.args`.
 4. Add `.cache/` to the ignore list of the project.
 
@@ -72,7 +72,7 @@ See "Language server" in the top `README.md`.
 ## Host files and file watchers
 
 The CMake function `spp_script_host` writes the host files to `.cache/spp/hosts/*.json`, and the side files `*.defines`, `*.options` and `*.includes`. They tell
-`spp-ls` the include directories and flags of each script. The extension watches `**/*.spp` and
+`spp-ls` the include directories and flags of each script. The extension watches `**/*.hot` and
 `.cache/spp/hosts/*` and sends the events to the server. A new, changed or deleted script, or a
 new or changed host file, takes effect without a restart of the server.
 
@@ -84,7 +84,7 @@ Every valid include path works: spaces, quotes, backslashes, non-ASCII character
 2. Open this folder in VS Code and press F5.
 
 You can also link the folder into `~/.vscode/extensions/`.
-Without the server, set `files.associations` to map `*.spp` to `cpp`. The grammar does not apply then.
+Without the server, set `files.associations` to map `*.hot` to `cpp`. The grammar does not apply then.
 
 ## Test
 
@@ -93,8 +93,8 @@ Run `node test/grammar.test.js`. CTest runs it as `VscodeGrammar` when `node` is
 - The test always checks the JSON files and the keyword and builtin type coverage.
   It reads the builtin types from `src/translator/builtin_types.h`.
 - `node test/expand.test.js` checks the expansion of `${workspaceFolder}` (CTest: `VscodeExpand`).
-- After `npm install` it also tokenizes every `tests/scripts/*.spp` file
-  and compares `test/sample.spp` with `test/sample.snap`.
+- After `npm install` it also tokenizes every `tests/scripts/*.hot` file
+  and compares `test/sample.hot` with `test/sample.snap`.
 - Without `vscode-textmate` the tokenizer part is skipped and the test prints a notice.
 - Run `node test/grammar.test.js --update` to accept a new snapshot.
 

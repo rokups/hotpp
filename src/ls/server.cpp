@@ -148,7 +148,7 @@ struct SymbolKey
     std::string cls, member; // member is empty for a class
 };
 
-// One open .spp document and its state in clangd. A ".cpp" document is also a Doc, but with "cpp"
+// One open .hot document and its state in clangd. A ".cpp" document is also a Doc, but with "cpp"
 // set: it has no state in clangd and it gets the errors of sppc only (update_cpp).
 struct Doc
 {
@@ -452,7 +452,7 @@ private:
     // Gives the edit, or an error message.
     std::variant<json, std::string> on_rename(const Doc& d, const json& p);
 
-    // ---- symbols across the .spp files of the workspace (S18)
+    // ---- symbols across the .hot files of the workspace (S18)
     // The script places of the symbol at "cur": the declaration and each use. Or an error
     // message. "decl" gets the script place of the declaration.
     std::variant<std::set<Pos>, std::string> symbol_places(const Doc& d, Pos cur, const std::string& name, Pos* decl);
@@ -465,7 +465,7 @@ private:
     bool is_script_class(const Doc& d, const std::string& name) const;
     std::vector<std::string> workspace_scripts() const;
     IndexShard shard_of_doc(const Doc& d) const;
-    // Calls "fn" for each other .spp file of the workspace that declares the symbol "key".
+    // Calls "fn" for each other .hot file of the workspace that declares the symbol "key".
     // "places" are the places of the symbol in that file. An open document is used as it is.
     // A file on disk goes to clangd only for the call.
     void for_other_scripts(const Doc& origin, const SymbolKey& key, const std::string& name,
@@ -682,7 +682,7 @@ void Server::on_watched_files(const json& p)
             for (HostSet& h : hosts_)
                 host_file = h.force_reload_for(path) || host_file;
         }
-        else if (ext == ".spp")
+        else if (ext == ".hot")
         {
             // An open document owns its text. For a closed file, the cache of the analysis goes.
             // A shard of a deleted file goes at the next index_.prune().
@@ -864,7 +864,7 @@ json Server::analyze_diagnostics(const Doc& d) const
         add({std::stoi(m[2]) - 1, std::stoi(m[3]) - 1}, m[5], m[4] == "error" ? 1 : 2);
     }
     // A script without a host and without -I options has no include directories.
-    if (opt_.include_dirs.empty() && opt_.compile_commands_dir.empty() && fs::path(d.path).extension() == ".spp"
+    if (opt_.include_dirs.empty() && opt_.compile_commands_dir.empty() && fs::path(d.path).extension() == ".hot"
         && !host_of(d.path))
         out.push_back(
             {{"range", {{"start", {{"line", 0}, {"character", 0}}}, {"end", {{"line", 0}, {"character", 0}}}}},
@@ -1834,7 +1834,7 @@ std::vector<std::string> Server::workspace_scripts() const
                     it.disable_recursion_pending();
                 continue;
             }
-            if (it->path().extension() == ".spp" && it->is_regular_file(ec2))
+            if (it->path().extension() == ".hot" && it->is_regular_file(ec2))
                 out.push_back(it->path().lexically_normal().string());
         }
     }

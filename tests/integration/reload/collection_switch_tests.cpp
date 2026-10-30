@@ -19,7 +19,7 @@ using test_support::Session;
 // a return and the default case work. A continue in a case goes to the outer loop.
 TEST_P(BackendTests, StringSwitchRuns)
 {
-    const spp::ScriptSource src = {"strsw.spp", R"(
+    const spp::ScriptSource src = {"strsw.hot", R"(
 using "Actor.h";
 using <string>;
 using <vector>;
@@ -100,7 +100,7 @@ class Player : Actor {
 // A collection literal builds a vector and a map from a declared type. A field initializer works.
 TEST_P(BackendTests, CollectionLiteralRuns)
 {
-    const spp::ScriptSource src = {"coll.spp", R"(
+    const spp::ScriptSource src = {"coll.hot", R"(
 using "Actor.h";
 using <map>;
 using <string>;

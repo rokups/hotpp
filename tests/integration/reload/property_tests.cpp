@@ -23,7 +23,7 @@ using test_support::source;
 // set accessor and a custom getter and setter. The hidden fields are normal state fields.
 TEST_P(BackendTests, PropertiesReadAndWrite)
 {
-    spp::LoadResult v1 = backend->load(source("props_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("props_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Gauge"));
@@ -51,7 +51,7 @@ TEST_P(BackendTests, PropertiesReadAndWrite)
 // The accessors run for the other object. An object of another class gives an exception.
 TEST_P(BackendTests, PropertiesOfOtherObjectReadAndWrite)
 {
-    const spp::ScriptSource src = {"props_other.spp", R"(
+    const spp::ScriptSource src = {"props_other.hot", R"(
 using "Actor.h";
 
 class Gauge : Actor {

@@ -4,18 +4,18 @@ title: C++ scripts
 nav_order: 17
 ---
 
-A `.cpp` script is a plain C++ file. It uses the same hot reload as a `.spp` script. This page describes the `.cpp` script mode.
+A `.cpp` script is a plain C++ file. It uses the same hot reload as a `.hot` script. This page describes the `.cpp` script mode.
 
 ## What a `.cpp` script is
 
-A `.cpp` script holds a class that derives from a native engine class. The class has fields and methods. The host gives the path of the file to the engine, as it does for a `.spp` script.
+A `.cpp` script holds a class that derives from a native engine class. The class has fields and methods. The host gives the path of the file to the engine, as it does for a `.hot` script.
 
 The extension selects the parser:
 
-- `.spp` selects the custom S++ syntax.
+- `.hot` selects the custom S++ syntax.
 - `.cpp` selects libclang.
 
-Both modes work in one program. A `Loader` holds one module for each generation, as for `.spp` scripts. Use one session for each script. There is no import between the modes. A `.cpp` script cannot include a `.spp` script. A `.spp` script cannot import a `.cpp` script.
+Both modes work in one program. A `Loader` holds one module for each generation, as for `.hot` scripts. Use one session for each script. There is no import between the modes. A `.cpp` script cannot include a `.hot` script. A `.hot` script cannot import a `.cpp` script.
 
 ## The file compiles unchanged
 
@@ -350,7 +350,7 @@ These rules apply:
 - A module variable can hold the pointer. The class must come before the first module variable.
 - `dynamic_cast` to a script class works after a reload. It does not use the C++ RTTI of the script class. The test uses the name of the script class.
 - A failed `dynamic_cast` to a reference throws `std::runtime_error`, not `std::bad_cast`.
-- The script code owns an object that it makes with `new`. Delete it with `delete` through a pointer to the script class or to its native base. `sppc` does not delete it. A `.spp` script has no `delete`, because it uses handles.
+- The script code owns an object that it makes with `new`. Delete it with `delete` through a pointer to the script class or to its native base. `sppc` does not delete it. A `.hot` script has no `delete`, because it uses handles.
 
 A function template or a generic lambda (`auto` parameter) that gets a pointer to a script object can use only the native base members and the `override` methods of the object. Write `p->power` or `p->boost(2)` only in code that names the script class, for example `int power_of(Minion* p)`. `sppc` does not check the body of a template. A use of a script field or a script method there gives an error of the C++ compiler. Do not give a script field the name of a member of the native base: a template then uses the base member without an error.
 
@@ -358,7 +358,7 @@ A static method and a static data member can name their own class, for example `
 
 The size of a script object can change at a reload. So a script object cannot be a value: only a pointer or a reference can follow it. The C++ RTTI of a script class is not the same in two generations. So `typeid` of a script class is an error. Use `dynamic_cast`.
 
-The `.spp` page [Statements](statements.html#is-and-as) compares these forms with `is`, `as` and `new` of a `.spp` script.
+The `.hot` page [Statements](statements.html#is-and-as) compares these forms with `is`, `as` and `new` of a `.hot` script.
 
 ## Script class inheritance
 
@@ -521,7 +521,7 @@ The first version gives an error for each form in this list. The text in the sec
 | A module variable whose initializer uses a function of the file that comes after the first module variable | `'<function>' must come before the first module variable '<name>': the module block is there and holds the initializers` |
 | A variable that is not a module variable and uses a module variable in its initializer | `the variable '<variable>' cannot use the module variable '<name>' in a .cpp script: it gets its value before the module state exists` |
 | A base member hidden by a macro | `a macro hides a member of the base class; write the member in the script text` |
-| An include of a `.spp` script | `a .cpp script cannot include a .spp script` |
+| An include of a `.hot` script | `a .cpp script cannot include a .hot script` |
 
 For a `const` field or a reference field, use a default member initializer in the class body. For a delegating constructor, write the shared code in a method.
 
@@ -529,13 +529,13 @@ For a `const` field or a reference field, use a default member initializer in th
 
 - A field of a native struct type that has a function pointer can point into the code of an old version. `sppc` finds such a struct in an included header, wherever the `#include` is. Then the old version stays loaded while a live object has the field. `sppc` does not find a struct that you define in the script file itself.
 - An in-class brace initializer of a class-type field is not visited by libclang. A module variable inside such an initializer is not rewritten.
-- A `.cpp` translation does one more libclang parse than a `.spp` translation. A reload is slower. One parse of the engine headers takes about 400 ms.
+- A `.cpp` translation does one more libclang parse than a `.hot` translation. A reload is slower. One parse of the engine headers takes about 400 ms.
 - In a normal build the file has plain C++ meaning. There is no state migration and there are no slots. Objects must not be shared between the two builds.
 - The language server gives only the errors of `sppc` for a `.cpp` script, and only when a host lists the file. The other editor features come from clangd. For a script with aids, clangd needs the flags `-include spp/script.h` and `-I<spp>/include`. See [Tools](tools.html#a-cpp-script-in-the-editor).
 
 ## CMake
 
-`spp_add_scripts` takes `.cpp` paths in `SCRIPTS`, as it takes `.spp` paths. A `foo.spp` and a `foo.cpp` in one call fail at configure time, because they have the same stem. See [CMake](cmake.html).
+`spp_add_scripts` takes `.cpp` paths in `SCRIPTS`, as it takes `.hot` paths. A `foo.hot` and a `foo.cpp` in one call fail at configure time, because they have the same stem. See [CMake](cmake.html).
 
 ```cmake
 spp_add_scripts(TARGET gen1 SCRIPTS cpp_player_v1.cpp)

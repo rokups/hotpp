@@ -19,7 +19,7 @@ TEST(StubChecks, ValueNeedsACopyConstructor)
 {
     const sppc::TranslateResult r = check_translate("[native, value] class NoCopy;\n", "");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "t.spp:2:1: error: 'value' needs a copy constructor: 'NoCopy'")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "t.hot:2:1: error: 'value' needs a copy constructor: 'NoCopy'")) << r.diagnostics;
 }
 
 TEST(StubChecks, ValueNeedsANothrowMoveConstructor)
@@ -73,7 +73,7 @@ TEST(StubChecks, IntrusiveNeedsBothMethods)
 {
     const sppc::TranslateResult r = check_translate("[native, intrusive(\"AddRef\", \"Grab\")] class Counted;\n", "");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "t.spp:2:1: error: 'intrusive' method 'Grab' is not a usable member of 'Counted'"))
+    EXPECT_TRUE(has(r.diagnostics, "t.hot:2:1: error: 'intrusive' method 'Grab' is not a usable member of 'Counted'"))
         << r.diagnostics;
     EXPECT_FALSE(has(r.diagnostics, "'AddRef'")) << r.diagnostics;
 }

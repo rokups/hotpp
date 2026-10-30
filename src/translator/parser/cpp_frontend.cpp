@@ -795,7 +795,7 @@ void Frontend::check_hook_refs(CXCursor c)
 {
     std::string name;
     uint32_t pos = 0;
-    if (find_module_ref(c, nullptr, name, pos)) // the same text as the .spp lowering gives
+    if (find_module_ref(c, nullptr, name, pos)) // the same text as the .hot lowering gives
         fail(pos,
             "the module variable '" + name +
                 "' cannot be used in a convert hook: the new module state is not complete yet");
@@ -1276,7 +1276,7 @@ void Frontend::examine(CXCursor k, WalkState& st)
         const Entry* men = lookup(ref);
         const std::string parent = usr(clang_getCursorSemanticParent(ref));
         // "Player::m(a)" in a child of Player: the implementation that Player sees, with no
-        // virtual dispatch. This is "base.m(a)" of a .spp child.
+        // virtual dispatch. This is "base.m(a)" of a .hot child.
         const Entry* qual = nullptr;
         for (CXCursor c : children(k))
             if (clang_getCursorKind(c) == CXCursor_TypeRef && pos_of(c) < pos_of(k))
@@ -1407,7 +1407,7 @@ void Frontend::examine(CXCursor k, WalkState& st)
         return;
     }
     case CXCursor_CXXNewExpr:
-    { // "new C(args)" becomes "C__new(args)": the factory of the class (the same as in .spp)
+    { // "new C(args)" becomes "C__new(args)": the factory of the class (the same as in .hot)
         const Entry* en = class_entry(clang_getPointeeType(clang_getCursorType(k)));
         if (!en)
             return;
@@ -1710,7 +1710,7 @@ void Frontend::fill_params(CXCursor c, std::vector<ast::Param>& out, const Class
             if (clang_isExpression(clang_getCursorKind(k)))
             {
                 // The text is already C++. The edits are the same as in a body. The shared
-                // default is "lowered", so the .spp path ("default_arg") writes the text as is.
+                // default is "lowered", so the .hot path ("default_arg") writes the text as is.
                 p.def = std::make_shared<ast::ParamDefault>();
                 p.def->lowered = true;
                 p.def->pos = pos_of(k);
@@ -1892,7 +1892,7 @@ void Frontend::make_method(CXCursor c, const ClassInfo* cls, const Where<ast::Me
     {
         m.is_override = has_child(c, CXCursor_CXXOverrideAttr);
         if (clang_CXXMethod_isVirtual(c) && !m.is_override)
-        { // a new script virtual method: it has a slot, as a "virtual" method of a .spp class
+        { // a new script virtual method: it has a slot, as a "virtual" method of a .hot class
             CXCursor* over = nullptr;
             unsigned n = 0;
             clang_getOverriddenCursors(c, &over, &n);
@@ -1902,7 +1902,7 @@ void Frontend::make_method(CXCursor c, const ClassInfo* cls, const Where<ast::Me
             m.is_virtual = true;
         }
         // A method of a child hides the method of the parent with the same name, as in C++.
-        // The .spp spelling of this is "new".
+        // The .hot spelling of this is "new".
         if (cls && !clang_CXXMethod_isVirtual(c))
             for (const auto& v : table_)
                 if (v.second.kind == Kind::ScriptMethod && v.second.name == m.name &&
@@ -2421,7 +2421,7 @@ void Frontend::process_class(CXCursor c)
     info.usr = usr(c);
     info.end = extent_of(c).end;
     class_infos_[info.usr] = &info; // a deque does not move its elements
-    // A child of a script class (the same design as a .spp child): the shell of the child derives
+    // A child of a script class (the same design as a .hot child): the shell of the child derives
     // from the shell of the parent, and the state of the child holds the fields of the chain.
     const ClassInfo* parent = nullptr;
     size_t n_bases = 0;

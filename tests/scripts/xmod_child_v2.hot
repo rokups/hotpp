@@ -1,6 +1,6 @@
 // Generation 2 of the child module (S20a). It changes "Power", adds a field and overrides the
 // virtual function "Bonus" that generation 2 of the parent module added.
-using "xmod_parent.spp";
+using "xmod_parent.hot";
 using "Actor.h";
 
 class Grunt : Unit {

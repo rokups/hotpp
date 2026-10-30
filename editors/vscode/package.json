@@ -1,7 +1,7 @@
 {
   "name": "spp",
   "displayName": "S++",
-  "description": "Syntax highlighting and language server client for S++ scripts (.spp). Shows the sppc errors of .cpp scripts.",
+  "description": "Syntax highlighting and language server client for S++ scripts (.hot). Shows the sppc errors of .cpp scripts.",
   "version": "0.1.0",
   "publisher": "spp",
   "license": "UNLICENSED",
@@ -25,7 +25,7 @@
       {
         "id": "spp",
         "aliases": ["S++", "spp"],
-        "extensions": [".spp"],
+        "extensions": [".hot"],
         "configuration": "./language-configuration.json"
       }
     ],

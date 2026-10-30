@@ -1,9 +1,9 @@
 # spp_add_scripts: compile scripts with the tool sppc. There are two modes.
 #
-#   spp_add_scripts(TARGET name SCRIPTS a.spp b.spp
+#   spp_add_scripts(TARGET name SCRIPTS a.hot b.hot
 #                   [INCLUDES dir...] [FLAGS cxxflag...] [DEPENDS file...]
 #                   [OUT_DIR dir] [AFTER target] [SPPC_ARGS arg...])
-#   spp_add_scripts(TARGET name SCRIPTS a.spp b.spp AOT
+#   spp_add_scripts(TARGET name SCRIPTS a.hot b.hot AOT
 #                   [INCLUDES dir...] [PRELUDES file...] [FLAGS sppc-flag...]
 #                   [DEPENDS file...] [OUT_DIR dir] [SPPC_ARGS arg...])
 #

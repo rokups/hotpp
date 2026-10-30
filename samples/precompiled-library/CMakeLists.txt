@@ -11,15 +11,20 @@ endif()
 
 # One program source, two script variants. The extension picks the script. Both variants are
 # in the folder script. Each variant has its own library target and its own program.
-#   sample_precompiled_spp loads the library of script/wolf.spp.
+#   sample_precompiled_spp loads the library of script/wolf.hot.
 #   sample_precompiled_cpp loads the library of script/wolf.cpp.
 # A call of spp_add_scripts takes scripts with one stem only, so each variant has its own call and
 # its own OUT_DIR. The compile flags of the library follow the host flags.
 separate_arguments(host_flags NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
 enable_testing()
 foreach(variant spp cpp)
+    # The variant "spp" uses the extension ".hot".
+    set(ext ${variant})
+    if(variant STREQUAL "spp")
+        set(ext hot)
+    endif()
     # sppc builds wolf.g1.so at build time.
-    spp_add_scripts(TARGET sample_precompiled_${variant}_scripts SCRIPTS script/wolf.${variant}
+    spp_add_scripts(TARGET sample_precompiled_${variant}_scripts SCRIPTS script/wolf.${ext}
                     OUT_DIR ${CMAKE_BINARY_DIR}/spp_scripts/sample_precompiled_${variant}
                     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} FLAGS ${host_flags} DEPENDS Creature.h)
 

@@ -7,12 +7,12 @@ The program has no backend and no compiler at run time.
 
 The sample has one program (`main.cpp`) and two variants of the same script:
 
-- `script/wolf.spp`: the script in the S++ syntax.
+- `script/wolf.hot`: the script in the S++ syntax.
 - `script/wolf.cpp`: the script as plain C++. See [C++ scripts](../../doc/cpp-scripts.md).
 
 The build makes one library and one program for each variant:
 
-- `sample_precompiled_spp_scripts` builds the library of the `.spp` script. `sample_precompiled_spp` loads it.
+- `sample_precompiled_spp_scripts` builds the library of the `.hot` script. `sample_precompiled_spp` loads it.
 - `sample_precompiled_cpp_scripts` builds the library of the `.cpp` script. `sample_precompiled_cpp` loads it.
 
 Each variant has its own `spp_add_scripts` call and its own `OUT_DIR`, so the two `wolf.g1.so` files do not clash.
@@ -21,7 +21,7 @@ compiler (the object library `precompiled_library_cpp_scripts_plain`). This show
 
 ## How it works
 
-1. `spp_add_scripts(TARGET sample_precompiled_spp_scripts SCRIPTS script/wolf.spp ...)` runs `sppc`.
+1. `spp_add_scripts(TARGET sample_precompiled_spp_scripts SCRIPTS script/wolf.hot ...)` runs `sppc`.
    It makes the library `wolf.g1.so`. `FLAGS` pass the flags of the host build to the compile.
 2. The variable `SPP_SCRIPTS_sample_precompiled_spp_scripts_LIBRARIES` has the paths of the
    libraries. The test gives the path to the program as `argv[1]`.
@@ -40,7 +40,7 @@ module (`spp-core-<pid>-<n>-<name>`). See "Core copies" in [Embedding](../../doc
 ## Files
 
 - `Creature.h`: the host class. It is header-only.
-- `script/wolf.spp` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`.
+- `script/wolf.hot` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`.
 - `main.cpp`: the program. `argv[1]` is the path of the library. The program loads it and
   calls `Tick` three times.
 - `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
@@ -84,7 +84,7 @@ the path of a `wolf.g1.so` file. It is under `spp_scripts/sample_precompiled_spp
 
 ## Adapt it to your project
 
-1. Call `spp_add_scripts(TARGET <name> SCRIPTS <your .spp files> INCLUDES <absolute folders> FLAGS <host flags> DEPENDS <your headers>)`.
+1. Call `spp_add_scripts(TARGET <name> SCRIPTS <your .hot files> INCLUDES <absolute folders> FLAGS <host flags> DEPENDS <your headers>)`.
    Get the host flags from `separate_arguments(host_flags NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")`,
    as `CMakeLists.txt` does. A sanitizer or another runtime flag must be the same in the host and in the library.
 2. Link your program to `spp_runtime`, set `ENABLE_EXPORTS ON` and add `add_dependencies(<program> <name>)`.

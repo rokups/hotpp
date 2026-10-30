@@ -50,7 +50,7 @@ TEST(DiagFormat, FormatWithColumn)
     sppc::LineMap m("ab\ncd");
     sppc::Diagnostics d;
     d.add(4, m, "bad token");
-    EXPECT_EQ(d.format("a.spp"), "a.spp:2:2: error: bad token\n");
+    EXPECT_EQ(d.format("a.hot"), "a.hot:2:2: error: bad token\n");
 }
 
 TEST(DiagFormat, FormatWithoutColumn)
@@ -58,12 +58,12 @@ TEST(DiagFormat, FormatWithoutColumn)
     sppc::Diagnostics d;
     d.add_line(7, "bad line");
     d.add_line(9, "second");
-    EXPECT_EQ(d.format("a.spp"), "a.spp:7: error: bad line\na.spp:9: error: second\n");
+    EXPECT_EQ(d.format("a.hot"), "a.hot:7: error: bad line\na.hot:9: error: second\n");
 }
 
 TEST(DiagFormat, FormatWithLineZero)
 {
     sppc::Diagnostics d;
     d.add_line(0, "no line");
-    EXPECT_EQ(d.format("a.spp"), "sppc: error: no line\n");
+    EXPECT_EQ(d.format("a.hot"), "sppc: error: no line\n");
 }

@@ -49,7 +49,7 @@ The file `CMakePresets.json` has the presets. A build goes to `cmake-build/<pres
 - The build presets end with `-dbg` or `-rel`.
 - The JIT backend also works with ThreadSanitizer. ORC and ThreadSanitizer do not conflict.
 - `.clang-format` has a second document, `Language: CSharp`, for the S++ scripts. It uses the Microsoft style with the C++ choices on top (4 spaces, 120 columns, Allman braces).
-- `tools/format-spp.sh [--check] files...` formats `.spp` files in place. `--check` changes nothing and lists the files that need formatting. clang-format has no `.spp` mapping, so the script uses `--assume-filename=<file>.cs`.
+- `tools/format-spp.sh [--check] files...` formats `.hot` files in place. `--check` changes nothing and lists the files that need formatting. clang-format has no `.hot` mapping, so the script uses `--assume-filename=<file>.cs`.
 - Known limits: the formatter writes `using<map>;`, `std.string && s` (a qualified rvalue reference parameter) and `["a" : 1]`. It puts a lambda body on its own lines after `=>`. These are spaces only. Meaning stays the same. See DECISIONS.md.
 - S++ supports C++17 and later. The generated code, `include/spp`, the runtime library and the backends build as C++17 or later.
 - `sppc`, the language server and the tests need C++20. The build forces C++20 on these targets. The default standard of the other targets is 20. Set `-DCMAKE_CXX_STANDARD=17` for a C++17 host.
@@ -110,11 +110,11 @@ The test `ReloadMigration` uses the path of a library that does not exist (`gen3
 
 ## Translator
 
-    cmake-build/linux-clang-files/bin/Debug/sppc --emit-cpp tests/scripts/player_v1.spp --gen 1 -o out.cpp -I include -I tests/engine --slots player.slots
+    cmake-build/linux-clang-files/bin/Debug/sppc --emit-cpp tests/scripts/player_v1.hot --gen 1 -o out.cpp -I include -I tests/engine --slots player.slots
 
 `sppc --emit-cpp` is a thin wrapper. It reads the files and calls `sppc::translate` from `sppc_lib` (`include/spp/sppc_lib.h`). The function takes strings: script text, script name for `#line`, generation, slot file content, include dirs and resource dir. It returns strings: C++ text, new slot file content and diagnostics. It does not write a file. The translator reads the script and the imported headers. It asks libclang (C API) for the virtual methods of the native base class. A `sppc::TranslatorSession` keeps the answer, see "Translator session". It writes the shell (one stub for each virtual), the state struct, the reflection table, the generation functions, the thunks and the record. It writes `#line` directives, so a Clang error points to the script line. It reports a missing pure virtual override and an override of a `final` method. A method with the name of a base virtual method and other parameter types is an error (it hides the virtual method).
 
-The script has no brace initialization. Use parentheses: `T(args)` and `new T(args)`. A `{` in an expression gives an error. The script subset: `using`, `class N : Base`, fields `Type name;` or `Type name = init;` with `[alias("old")]`, methods `Ret name(T a) { ... }` (a method overrides a base virtual method when the name and the parameter types match; `void` means no return value), locals `Type name = e;`, `var name = e;`, `const Type name = e;` and `const var name = e;` (`var` gives `auto`), `this.`, `base.`, `null`, float literals, `Math.Min` as `Math::Min`, `if`, `while`, `for`, `return`, `throw`, `try`, `catch` and `finally`. A catch clause is `catch (Type e)` or `catch (...)`. A method can have a modifier: `override`, `virtual`, `new`, `public`, `private` or `protected`. A method that overrides a native virtual method needs `override`. The parser stores the access word and `virtual`. It does not enforce the access word, and `virtual` has no effect yet. A property is `Type N { get; set; }`, `{ get; }`, `{ get; private set; }` or `{ get { ... } set { ... } }`. The setter body reads the new value as `value`. A read or a write of `p.N` on another object of the class calls `get_N` or `set_N` of that object. A write gives the assigned value, so `a = p.N = 1` works. The rule uses the name only. If `p` is not an object of the class, the access throws `std::runtime_error`. Native stubs tell the translator how a C++ type behaves. `[native, handle("std::shared_ptr<$T>")] class Weapon;` declares a handle type. `$T` is the class. `[native, value] class std.string;` declares a value type. A pattern stub covers many types: `std.vector<*>` or `physics.*`. A stub lives in the script or in a prelude file. Give a prelude file to `sppc --prelude file` or in `TranslateOptions::preludes`. A handle type in a field, a local, a return type and `foreach` uses the storage type. A handle parameter becomes `const H&`. `.` on a handle uses `spp::deref`. `std::shared_ptr` is built in. A custom handle needs the `spp::is_handle` trait. A type with no stub keeps its raw text. `new T(args)` needs parentheses. It gives `std::make_shared<T>(args)` for a shared_ptr handle, `H(new T(args))` for another handle and `T(args)` otherwise. See `tests/scripts/handle_v1.spp` to `handle_v3.spp`. A reload that changes a field type is accepted (design 4.7): the `convert_<field>` hook converts the value, else the field gets its default value and the runtime logs a warning. See "Reload hooks". A handle stub on a native base class applies to all native subclasses. The nearest base wins. An exact stub on a subclass wins. A base stub beats a pattern stub. Only `handle` and `intrusive` are inherited. `value` is not inherited. The class hierarchy comes from libclang. A class in a system header is not in the map. A nested class and a template are not in the map. `intrusive("AddRef", "Release")` implies a handle: `[native, handle("$T*"), intrusive("AddRef", "Release")] class Object;`. If `handle` is given, it must be `$T*`. `intrusive` does not combine with `value`. The storage type is `spp::Intrusive<T, &Owner::AddRef, &Owner::Release>`. Owner is the class with the stub. A new object starts with zero references (the boost `intrusive_ptr` convention). The wrapper adds a reference when it is made from `T*`. The Add and Release methods must be non-overloaded, non-template members. A missing method gives a clang error that names it. A reload copies the field (add) and destroys the old block (release), so the count stays correct. See `tests/scripts/intrusive_v1.spp`, `intrusive_v2.spp` and `tests/engine/Object.h`. A script class is a handle. `class Name : Base { }` uses the handle of the native base. `class Name { }` has no base and is also a handle. `struct Name { }` is a value type inside the state block with copy semantics. `[value] class` on a script class is an error: use `struct`. A reload migrates it recursively. See `tests/scripts/kinds_v1.spp` and `kinds_v2.spp`. Deferred to slice 2: member access on a script handle, the borrowed-pointer checks of design 7.10.6, the checks of design 7.10.7, and the analysis of a parameter that a method stores as a copy. Native interface bases and their conflict checks are done (S8b, see "Native interface bases"). A comparison of an `Intrusive` with a raw `T*` is untested. Weak spot: a non-string attribute argument can give a spurious second error on a stub. A `T&` parameter takes its argument with no marker: `f(x)`. The prefix `&e` is the C++ address-of operator. It gives a borrowed pointer, and a field, a return value or a collection cannot hold it. `&h` on a handle is an error: use `h`, `&*h` or `*h`. `.` on a handle always means a member of the pointee, so `h.get()` calls `get` of the pointee. The arrow lambda `() => { ... }`, `(float x) => { ... }` and `(x) => { ... }` works in a method body. A parameter is `Type name`. A method parameter needs a type. A lambda parameter without a type is `auto`. The lambda body is a block or an expression: `(int x) => x * 2` is `(int32_t x) { return x * 2; }`. A C style cast `(T)e` works for a builtin type, `T*` and `T&`. A statement that starts with a chain with `?.` runs only when the receiver is not null: `h?.F(a);` and `h?.field = v;` give `if (h) ...`. The receiver runs once. `?.` in any other expression is an error. A parameter name has only one limit: the `__` prefix is reserved for generated code. See "Closures and unload".
+The script has no brace initialization. Use parentheses: `T(args)` and `new T(args)`. A `{` in an expression gives an error. The script subset: `using`, `class N : Base`, fields `Type name;` or `Type name = init;` with `[alias("old")]`, methods `Ret name(T a) { ... }` (a method overrides a base virtual method when the name and the parameter types match; `void` means no return value), locals `Type name = e;`, `var name = e;`, `const Type name = e;` and `const var name = e;` (`var` gives `auto`), `this.`, `base.`, `null`, float literals, `Math.Min` as `Math::Min`, `if`, `while`, `for`, `return`, `throw`, `try`, `catch` and `finally`. A catch clause is `catch (Type e)` or `catch (...)`. A method can have a modifier: `override`, `virtual`, `new`, `public`, `private` or `protected`. A method that overrides a native virtual method needs `override`. The parser stores the access word and `virtual`. It does not enforce the access word, and `virtual` has no effect yet. A property is `Type N { get; set; }`, `{ get; }`, `{ get; private set; }` or `{ get { ... } set { ... } }`. The setter body reads the new value as `value`. A read or a write of `p.N` on another object of the class calls `get_N` or `set_N` of that object. A write gives the assigned value, so `a = p.N = 1` works. The rule uses the name only. If `p` is not an object of the class, the access throws `std::runtime_error`. Native stubs tell the translator how a C++ type behaves. `[native, handle("std::shared_ptr<$T>")] class Weapon;` declares a handle type. `$T` is the class. `[native, value] class std.string;` declares a value type. A pattern stub covers many types: `std.vector<*>` or `physics.*`. A stub lives in the script or in a prelude file. Give a prelude file to `sppc --prelude file` or in `TranslateOptions::preludes`. A handle type in a field, a local, a return type and `foreach` uses the storage type. A handle parameter becomes `const H&`. `.` on a handle uses `spp::deref`. `std::shared_ptr` is built in. A custom handle needs the `spp::is_handle` trait. A type with no stub keeps its raw text. `new T(args)` needs parentheses. It gives `std::make_shared<T>(args)` for a shared_ptr handle, `H(new T(args))` for another handle and `T(args)` otherwise. See `tests/scripts/handle_v1.hot` to `handle_v3.hot`. A reload that changes a field type is accepted (design 4.7): the `convert_<field>` hook converts the value, else the field gets its default value and the runtime logs a warning. See "Reload hooks". A handle stub on a native base class applies to all native subclasses. The nearest base wins. An exact stub on a subclass wins. A base stub beats a pattern stub. Only `handle` and `intrusive` are inherited. `value` is not inherited. The class hierarchy comes from libclang. A class in a system header is not in the map. A nested class and a template are not in the map. `intrusive("AddRef", "Release")` implies a handle: `[native, handle("$T*"), intrusive("AddRef", "Release")] class Object;`. If `handle` is given, it must be `$T*`. `intrusive` does not combine with `value`. The storage type is `spp::Intrusive<T, &Owner::AddRef, &Owner::Release>`. Owner is the class with the stub. A new object starts with zero references (the boost `intrusive_ptr` convention). The wrapper adds a reference when it is made from `T*`. The Add and Release methods must be non-overloaded, non-template members. A missing method gives a clang error that names it. A reload copies the field (add) and destroys the old block (release), so the count stays correct. See `tests/scripts/intrusive_v1.hot`, `intrusive_v2.hot` and `tests/engine/Object.h`. A script class is a handle. `class Name : Base { }` uses the handle of the native base. `class Name { }` has no base and is also a handle. `struct Name { }` is a value type inside the state block with copy semantics. `[value] class` on a script class is an error: use `struct`. A reload migrates it recursively. See `tests/scripts/kinds_v1.hot` and `kinds_v2.hot`. Deferred to slice 2: member access on a script handle, the borrowed-pointer checks of design 7.10.6, the checks of design 7.10.7, and the analysis of a parameter that a method stores as a copy. Native interface bases and their conflict checks are done (S8b, see "Native interface bases"). A comparison of an `Intrusive` with a raw `T*` is untested. Weak spot: a non-string attribute argument can give a spurious second error on a stub. A `T&` parameter takes its argument with no marker: `f(x)`. The prefix `&e` is the C++ address-of operator. It gives a borrowed pointer, and a field, a return value or a collection cannot hold it. `&h` on a handle is an error: use `h`, `&*h` or `*h`. `.` on a handle always means a member of the pointee, so `h.get()` calls `get` of the pointee. The arrow lambda `() => { ... }`, `(float x) => { ... }` and `(x) => { ... }` works in a method body. A parameter is `Type name`. A method parameter needs a type. A lambda parameter without a type is `auto`. The lambda body is a block or an expression: `(int x) => x * 2` is `(int32_t x) { return x * 2; }`. A C style cast `(T)e` works for a builtin type, `T*` and `T&`. A statement that starts with a chain with `?.` runs only when the receiver is not null: `h?.F(a);` and `h?.field = v;` give `if (h) ...`. The receiver runs once. `?.` in any other expression is an error. A parameter name has only one limit: the `__` prefix is reserved for generated code. See "Closures and unload".
 
 Builtin type names are fixed-width. The parser changes each alias to one canonical C++ name, so `ulong` and `uint64` give the same text in the emitted C++, in the override key and in the reload type key. `int` becomes `int32_t`. The table is in `src/translator/builtin_types.h` and in `spp-design.md` (section 7.1.1). The names: `bool`, `sbyte`/`int8`, `byte`/`uint8`, `short`/`int16`, `ushort`/`uint16`, `int`/`int32`, `uint`/`uint32`, `long`/`int64`, `ulong`/`uint64`, `nint`/`intptr`, `nuint`/`uintptr`, `float`, `double`, `char` (8 bit) and `wchar`/`char16` (`char16_t`). The C++ multi-word spellings are errors with a hint: `unsigned int` gives "use 'uint'", and `long long` gives "use 'long'". A native name such as `int32_t` or `size_t` stays a normal native name.
 
@@ -134,22 +134,22 @@ The slot file (`--slots`) keeps the slot order of the script methods stable betw
 
 ### C++ scripts
 
-A script can be a plain `.cpp` file. Do not write `#include "spp/script.h"`: `sppc` injects the header itself. The hot-reload aids (`SPP_ALIAS`, `onReload`, `convert_*`) are temporary. After you remove them, the file is standard C++ and compiles in a normal CMake build with no `sppc`. A normal build of a file that still has aids needs `-include spp/script.h`. The extension selects the parser: `.spp` uses the custom syntax and `.cpp` uses libclang. Both modes load side by side in one program. A `.cpp` script cannot include a `.spp` script, and a `.spp` script cannot import a `.cpp` script. `sppc` keeps the method bodies as text and edits only a native base member, `this` as an argument, a module variable and a static member of the base. The fixtures are `tests/scripts/cpp_player_v1.cpp` and `tests/scripts/cpp_player_v2.cpp`. See [doc/cpp-scripts.md](doc/cpp-scripts.md) for the supported forms, the errors and the known limits. The language server and the VS Code extension serve `.spp` only. `spp_add_scripts` takes `.cpp` paths in `SCRIPTS`. A `foo.spp` and a `foo.cpp` in one call fail at configure time.
+A script can be a plain `.cpp` file. Do not write `#include "spp/script.h"`: `sppc` injects the header itself. The hot-reload aids (`SPP_ALIAS`, `onReload`, `convert_*`) are temporary. After you remove them, the file is standard C++ and compiles in a normal CMake build with no `sppc`. A normal build of a file that still has aids needs `-include spp/script.h`. The extension selects the parser: `.hot` uses the custom syntax and `.cpp` uses libclang. Both modes load side by side in one program. A `.cpp` script cannot include a `.hot` script, and a `.hot` script cannot import a `.cpp` script. `sppc` keeps the method bodies as text and edits only a native base member, `this` as an argument, a module variable and a static member of the base. The fixtures are `tests/scripts/cpp_player_v1.cpp` and `tests/scripts/cpp_player_v2.cpp`. See [doc/cpp-scripts.md](doc/cpp-scripts.md) for the supported forms, the errors and the known limits. The language server and the VS Code extension serve `.hot` only. `spp_add_scripts` takes `.cpp` paths in `SCRIPTS`. A `foo.hot` and a `foo.cpp` in one call fail at configure time.
 
 ### Module declarations (S8a)
 
-A script can declare enums, structs and module variables at file level (`DECISIONS.md` item 11). See `tests/scripts/module_v1.spp` and `module_v2.spp`.
+A script can declare enums, structs and module variables at file level (`DECISIONS.md` item 11). See `tests/scripts/module_v1.hot` and `module_v2.hot`.
 
 - `enum Name [: type] { A, B = 5, C }` becomes `enum class Name : T`. The default type is `int`. `Name.A` becomes `Name::A`. A reload migrates an enum field as an integer.
 - `struct Name { ... }` is the only way to declare a script value type. `[value] class Name { ... }` is an error: use `struct`. `[native, value] class X;` is a native stub and stays.
 - A module variable is `[alias("old")] Type name [= init];` at file level. Every class of the script reads it by its bare name. The translator puts the variables in a synthetic struct `SppModule`. The loader owns one module block. A reload migrates it like the fields of a class.
 - An initializer can use a module variable declared before it. The loader runs the initializers in declaration order.
-- A convert hook of a module variable is `T convert_<var>(Old old) { ... }` at file level (`DECISIONS.md` item 14). It cannot read a module variable. See `tests/scripts/modconv_v1.spp` and `modconv_v2.spp`.
+- A convert hook of a module variable is `T convert_<var>(Old old) { ... }` at file level (`DECISIONS.md` item 14). It cannot read a module variable. See `tests/scripts/modconv_v1.hot` and `modconv_v2.hot`.
 - Limits: a module variable is a native type, an enum or a struct. A script has no other free functions.
 
 ### Native interface bases (S8b)
 
-A script class can have more than one native base: `class Boss : Actor, IDamageable, ITagged`. The first base is the primary base. The other bases are interface bases (design 4.4). See `tests/scripts/boss_v1.spp`, `boss_v2.spp`, `boss_rebase.spp` and `tests/engine/Damageable.h`.
+A script class can have more than one native base: `class Boss : Actor, IDamageable, ITagged`. The first base is the primary base. The other bases are interface bases (design 4.4). See `tests/scripts/boss_v1.hot`, `boss_v2.hot`, `boss_rebase.hot` and `tests/engine/Damageable.h`.
 
 - The shell derives from all bases: `struct Boss_Shell final : Actor, IDamageable, ITagged, spp::ShellBase`. The constructor arguments go to the primary base. An interface base needs a default constructor.
 - libclang reads the virtuals of each base. Each virtual gets one slot. The slots of the primary base come first, then the slots of each interface base in the order of the list. A name in two bases gets a suffix of its parameter types, for example `SLOT_Size_i`.
@@ -196,7 +196,7 @@ No file is written and no process starts. `tests/integration/backends/jit_backen
 
 Facts that differ from the first design:
 
-- `-g` leaks. After a failed compile, Clang does not free the temporary debug metadata (about 270 KB for `bad.spp`, found with LeakSanitizer). `-gline-tables-only` does not leak, and it costs the same time. `JitOptions::debug_flag` sets the flag. LLJIT does not register a debugger plugin, so full debug info has no use now.
+- `-g` leaks. After a failed compile, Clang does not free the temporary debug metadata (about 270 KB for `bad.hot`, found with LeakSanitizer). `-gline-tables-only` does not leak, and it costs the same time. `JitOptions::debug_flag` sets the flag. LLJIT does not register a debugger plugin, so full debug info has no use now.
 - `CompilerInstance::ExecuteAction` prints "N errors generated." to stderr when `ShowCarets` is on. The backend uses its own copy of the diagnostic options for the printer, so the text goes only to the result.
 - `CompilerInvocation` keeps pointers into the argument strings. The strings must live as long as the compile.
 - `LLVMConfig.cmake` probes C headers, so CMake calls `enable_language(C)` for the JIT build.
@@ -204,7 +204,7 @@ Facts that differ from the first design:
 
 ### Measurements
 
-Machine: 32 threads, Linux 7.2, clang 23.1.3, `-O0`/`-O1` as noted, the page cache is warm. Tool: `cmake-build/<preset>/bin/Debug/bench_backends` (`tools/bench/bench_backends.cpp`, `std::chrono`). Times in ms for one `load` (translate + compile + load) of `player_v1.spp` (v1) and `player_v2.spp` (v2). "Cold" is the first load in a new process (a new session). "Warm" is the median of 5 later loads in the same process. Warm backends share one translator session, except in the rows "no cache" (`--no-cache`). Cold v1 always parses the headers. Cold v2 and all warm loads use the cache, except v1 in the rows "no cache".
+Machine: 32 threads, Linux 7.2, clang 23.1.3, `-O0`/`-O1` as noted, the page cache is warm. Tool: `cmake-build/<preset>/bin/Debug/bench_backends` (`tools/bench/bench_backends.cpp`, `std::chrono`). Times in ms for one `load` (translate + compile + load) of `player_v1.hot` (v1) and `player_v2.hot` (v2). "Cold" is the first load in a new process (a new session). "Warm" is the median of 5 later loads in the same process. Warm backends share one translator session, except in the rows "no cache" (`--no-cache`). Cold v1 always parses the headers. Cold v2 and all warm loads use the cache, except v1 in the rows "no cache".
 
 | Configuration | v1 cold | v2 cold | v1 warm | v2 warm |
 |---|---|---|---|---|
@@ -246,8 +246,8 @@ Phases of one JIT load (v2, warm, cache): translate 1.4, compile 782, ORC (code 
 
 The tool `sppc` compiles scripts ahead of time. This is not a backend. Any build can load the result. Call `spp::module_from_library(path)` and give the `Module` to the `Loader`. This call needs no backend object. The sample [samples/precompiled-library](samples/precompiled-library/) is a complete project.
 
-    sppc player_v1.spp --gen 1 -I include -I tests/engine --out-dir out/
-    sppc player_v2.spp --gen 2 -I include -I tests/engine --out-dir out/
+    sppc player_v1.hot --gen 1 -I include -I tests/engine --out-dir out/
+    sppc player_v2.hot --gen 2 -I include -I tests/engine --out-dir out/
 
 The tool `sppc` has two modes. The default mode builds a `.so`. The mode `--emit-cpp` only translates (see "Translator").
 
@@ -267,7 +267,7 @@ Command line of the translate mode. Without `-o`, the tool prints the C++ to the
 - `<script>...` is one or more script files. Each script gives one library.
 - `--gen N` is the generation number (1 or more).
 - `-o x.so` builds one script into the library `x.so`. The C++ file goes to the directory of `x.so`. Use `-o` or `--out-dir`, not both.
-- `--out-dir DIR` is the output directory. For a script `player_v1.spp`, `sppc` writes `DIR/player_v1.g1.cpp` and `DIR/player_v1.g1.so`.
+- `--out-dir DIR` is the output directory. For a script `player_v1.hot`, `sppc` writes `DIR/player_v1.g1.cpp` and `DIR/player_v1.g1.so`.
 - `-I dir` is an include dir. The translator and the compiler use it.
 - `--resource-dir dir` is the Clang resource dir. The default is the one that the build found.
 - `--cxx command` is the compiler command. The default is `clang++`.
@@ -278,7 +278,7 @@ The exit code is 0 for success, 1 for an error and 2 for a wrong command line. T
 
 The CMake function `spp_add_scripts` (`cmake/SppScripts.cmake`) only runs `sppc`:
 
-    spp_add_scripts(TARGET player SCRIPTS tests/scripts/player_v1.spp
+    spp_add_scripts(TARGET player SCRIPTS tests/scripts/player_v1.hot
                     INCLUDES include tests/engine FLAGS ${flags} DEPENDS ${headers})
 
 `TARGET` is a custom target that makes the libraries in `OUT_DIR` (default `${CMAKE_BINARY_DIR}/spp_scripts`). The generation is 1. `SPPC_ARGS` passes extra arguments to `sppc`. The tests use `SPPC_ARGS --gen n` and `AFTER` to build later generations.
@@ -298,7 +298,7 @@ Command line (S12). The tool translates generation 1 of each script. It does not
 
 The CMake function `spp_add_scripts` with the option `AOT` (`cmake/SppScripts.cmake`) runs `sppc --aot` and builds a static library. `AFTER` does not work with `AOT`. `PRELUDES` works only with `AOT`:
 
-    spp_add_scripts(TARGET game_scripts AOT SCRIPTS player.spp boss.spp
+    spp_add_scripts(TARGET game_scripts AOT SCRIPTS player.hot boss.hot
                     INCLUDES include tests/engine [PRELUDES file...] [DEPENDS file...])
     target_link_libraries(game PRIVATE game_scripts)
 
@@ -312,7 +312,7 @@ At start-up the program makes the registry. The registry calls the register func
 
 `new` of a script class, script virtuals, properties, `is`/`as` and constructors work as under the loader, because the code is the same. The generation guard stays in the code and costs one compare. An AOT program never runs `onReload`.
 
-The sample [samples/aot](samples/aot/) is a small project that consumes S++ with `add_subdirectory`. The test program is `tests/integration/aot/aot_demo_main.cpp` (target `aot_demo`) with the script `tests/scripts/aot_demo.spp`. The tests are in `tests/integration/aot/`. They run the same steps with the loader and with the AOT program and compare the text. They check with `nm` that `aot_demo` has no loader and no Clang symbol. A compile error in the AOT C++ shows the generated file, not the script line.
+The sample [samples/aot](samples/aot/) is a small project that consumes S++ with `add_subdirectory`. The test program is `tests/integration/aot/aot_demo_main.cpp` (target `aot_demo`) with the script `tests/scripts/aot_demo.hot`. The tests are in `tests/integration/aot/`. They run the same steps with the loader and with the AOT program and compare the text. They check with `nm` that `aot_demo` has no loader and no Clang symbol. A compile error in the AOT C++ shows the generated file, not the script line.
 
 ## Dependencies
 
@@ -338,13 +338,13 @@ All tests are GoogleTest cases. CMake registers them with `spp_gtest` (a wrapper
 
 - `HandwrittenGeneration` (`tests/integration/reload/handwritten_generation_tests.cpp`) loads `gen1.so` and makes one `Player`. It ticks the world 3 times and calls both `TakeDamage` overloads. It checks the type name, the position and the field `hp` by reflection.
 - `ReloadMigration` (`tests/integration/reload/reload_migration_tests.cpp`) binds a delegate to `heal` through a thunk. It reloads gen 2 at the frame boundary and checks the address, the migrated state, the new `Tick` and the delegate. It then tries gen 4 and a missing library. Both must be rejected, and gen 2 must keep running.
-- `BackendTests` (`tests/integration/reload/`) use the backend that `SPP_BACKEND` selected. They run the F1 reload scenario (`tests/support/f1_scenario.h`): generation 1 then generation 2, the same address, `hp` becomes `health`, `shield` is 25 and a delegate calls the new `heal`. A bad script (`tests/scripts/bad.spp`) must give an error that names `bad.spp` and the line. The runtime must keep running after the error.
+- `BackendTests` (`tests/integration/reload/`) use the backend that `SPP_BACKEND` selected. They run the F1 reload scenario (`tests/support/f1_scenario.h`): generation 1 then generation 2, the same address, `hp` becomes `health`, `shield` is 25 and a delegate calls the new `heal`. A bad script (`tests/scripts/bad.hot`) must give an error that names `bad.hot` and the line. The runtime must keep running after the error.
 - `SessionCache` (`tests/unit/translator/session/session_cache_tests.cpp`) checks the cache: a hit gives the same output as a miss, a changed header (also a nested one) invalidates it, a second base class works in the same session, and the second translate takes less than 150 ms (the real value is about 1.3 ms).
 - `JitTests` (`tests/integration/backends/jit_backend_tests.cpp`, only in a JIT build) check that no file appears and no child process runs. They also check exceptions in JIT code, a precompiled header and the life of a generation.
-- `Closure`, `GenerationUnload` (`tests/integration/closures/`) test escaped closures and the unload of generations with `tests/scripts/timer_v1.spp` and `timer_v2.spp`. See "Closures and unload".
+- `Closure`, `GenerationUnload` (`tests/integration/closures/`) test escaped closures and the unload of generations with `tests/scripts/timer_v1.hot` and `timer_v2.hot`. See "Closures and unload".
 - `LambdaTranslation` (`tests/unit/translator/translate/lambda_translation_tests.cpp`) checks the output for an arrow lambda.
 - The other translator tests are in `tests/unit/translator/`. Each folder is one test program: `parser`, `lowering`, `emit`, `types`, `diagnostics`, `session` and `translate`. The golden-output tests are in `tests/golden/`. The expected files are in `tests/golden/expected/`. Set `SPP_UPDATE_GOLDEN` to write them again.
-- `PrecompiledTests` load the libraries that `spp_add_scripts` made with `sppc`, through `module_from_library`. They run the same F1 scenario. They run for each `SPP_BACKEND` value. One test runs `sppc` on `bad.spp` and checks the exit code and the error line.
+- `PrecompiledTests` load the libraries that `spp_add_scripts` made with `sppc`, through `module_from_library`. They run the same F1 scenario. They run for each `SPP_BACKEND` value. One test runs `sppc` on `bad.hot` and checks the exit code and the error line.
 
 ## ImGui sample
 
@@ -355,7 +355,7 @@ Build. The target exists only when CMake finds SDL3 (`find_package(SDL3)`). With
     cmake --preset linux-clang-files
     cmake --build --preset linux-clang-files-dbg --target sample_imgui_spp sample_imgui_cpp
 
-Run. The default script of `sample_imgui_spp` is `samples/imgui/script/demo.spp`. The default script of `sample_imgui_cpp` is `samples/imgui/script/demo.cpp`, the same script as plain C++.
+Run. The default script of `sample_imgui_spp` is `samples/imgui/script/demo.hot`. The default script of `sample_imgui_cpp` is `samples/imgui/script/demo.cpp`, the same script as plain C++.
 
     cmake-build/linux-clang-files/bin/Debug/sample_imgui_spp [script]
     cmake-build/linux-clang-files/bin/Debug/sample_imgui_cpp [script]
@@ -388,7 +388,7 @@ A script class can define two kinds of hook (design 4.7). A hook is not a script
 - A native move constructor that throws during the migration is fatal (design 6.6). The runtime calls `spp::request_restart`. Without a handler (`spp::set_restart_handler`) it aborts. With a handler that returns, the commit returns false and the old generation stays.
 - The reload still rejects a change of the native base class and a change of the shell layout.
 
-See `tests/scripts/hooks_v1.spp` to `hooks_v3.spp`, `tests/unit/runtime/migration_tests.cpp` and `tests/integration/reload/hook_tests.cpp`.
+See `tests/scripts/hooks_v1.hot` to `hooks_v3.hot`, `tests/unit/runtime/migration_tests.cpp` and `tests/integration/reload/hook_tests.cpp`.
 
 ## Diagnostics and debugging
 
@@ -404,7 +404,7 @@ Diagnostics (S11, design 4.2 and 4.12):
 
 Debug information:
 
-- The generated C++ has `#line` directives. The JIT and `sppc` use `-gline-tables-only`, so the DWARF line table names the `.spp` file. The tests `DebugInfo.*` check this with `llvm-dwarfdump`.
+- The generated C++ has `#line` directives. The JIT and `sppc` use `-gline-tables-only`, so the DWARF line table names the `.hot` file. The tests `DebugInfo.*` check this with `llvm-dwarfdump`.
 - The JIT backend registers each object with the debugger through the GDB JIT interface (`llvm::orc::enableDebuggerSupport`). `JitOptions::debugger_support` turns it off. `debugger_support()` and `debugger_error()` tell the result. The test `JitTests.DebuggerGetsObjectWithScriptLines` reads `__jit_debug_descriptor`. LLVM 23 has no `createJITLoaderGDBRegistrar`.
 - `tools/lldb/spp_formatters.py` and `tools/lldb/spp.lldbinit` show state blocks, shells and handles by script name. The command `spp-bt` prints the script frames. A synthetic child provider hides `__spp_owner` from the state blocks. `tools/natvis/spp.natvis` does the same for Visual Studio.
 - The pure Python helpers have a test (`PythonLldbFormatters`, `python3 -I`). lldb itself, a real debugger session and Visual Studio were NOT run. The F3 check (breakpoint in `heal`, step, inspect `this.health`) stays open.
@@ -418,7 +418,7 @@ What the debugger shows:
 - A slot holds a pointer to the state member (`spp::SlotFn`, for example `PlayerState_g1::Tick`). `spp::call<Sig>(__self, slot, args...)` calls the member. No `Player__Tick` wrapper exists. A script function, a constructor and a destructor keep a hidden `SPP_HIDDEN` wrapper for direct script calls.
 - The member prologue has the stale-generation check. A parameter with a body type has the name `__<name>` in the member. The first body line copies it to `<name>`.
 - A line breakpoint on a `fn` line hits once. Step-in from the engine reaches the member after the frame of the shell override. The shell override maps to the class line.
-- Every generated line that makes code has a `#line N "script.spp"` before it. Breakpoints and stepping use the `.spp` lines.
+- Every generated line that makes code has a `#line N "script.hot"` before it. Breakpoints and stepping use the `.hot` lines.
 - A name that starts with `__` is internal state. A script field with such a name is a compile error.
 
 For runtime header authors:
@@ -436,20 +436,20 @@ Editors:
 
 ## Language server
 
-`spp-ls` (S14b, design 10.1, M12 to M14) is a stdio LSP 3.17 server. It serves `.spp` files only. A `.cpp` script is a C++ file for clangd (see [doc/cpp-scripts.md](doc/cpp-scripts.md)). The code is in `src/ls/`. The extension in `editors/vscode/` starts it.
+`spp-ls` (S14b, design 10.1, M12 to M14) is a stdio LSP 3.17 server. It serves `.hot` files only. A `.cpp` script is a C++ file for clangd (see [doc/cpp-scripts.md](doc/cpp-scripts.md)). The code is in `src/ls/`. The extension in `editors/vscode/` starts it.
 
 ### Editor setup: two servers (S31, DECISIONS 18)
 
 An editor uses two language servers on one project:
 
 - The official clangd extension serves the C++ files. It reads the `compile_commands.json` of the project build.
-- The `spp` extension and `spp-ls` serve all features for the `.spp` files. For a `.cpp` script that a host lists, they show only the errors of `sppc` as diagnostics. `spp-ls` is not a transparent clangd proxy. It does not answer for C++ files.
+- The `spp` extension and `spp-ls` serve all features for the `.hot` files. For a `.cpp` script that a host lists, they show only the errors of `sppc` as diagnostics. `spp-ls` is not a transparent clangd proxy. It does not answer for C++ files.
 
 Steps:
 
 1. Install the clangd extension (`llvm-vs-code-extensions.vscode-clangd`) and `clangd`. Set it up for the C++ build as usual.
 2. Build `spp-ls` and install the extension in `editors/vscode/`. Put the `spp-ls` arguments in `spp.server.args`. The include dirs come from the script hosts (next subsection). The flags `-I` and `--cxxflag` still work as overrides.
-3. Optional, for workspace symbols and the background index of scripts: run `sppc <file.spp>... --gen N --out-dir DIR --compile-commands CDIR`. Give `--compile-commands-dir CDIR` to `spp-ls`.
+3. Optional, for workspace symbols and the background index of scripts: run `sppc <file.hot>... --gen N --out-dir DIR --compile-commands CDIR`. Give `--compile-commands-dir CDIR` to `spp-ls`.
 4. Add `.cache/` to the ignore list of the project (for example in `.gitignore`).
 
 Both servers can use the same project and the same `.cache/` directory. They do not disturb each other:
@@ -457,7 +457,7 @@ Both servers can use the same project and the same `.cache/` directory. They do 
 - The C++ clangd stores its index in `<dir of compile_commands.json>/.cache/clangd/index/`.
 - The clangd child of `spp-ls` has its own database directory `.cache/spp/clangd/` in the first workspace folder. The directory has a link to the real `compile_commands.json`. So its index is in `.cache/spp/clangd/.cache/clangd/index/`. The extra nesting is accepted. `XDG_CACHE_HOME` does not move this index (see DECISIONS 18).
 - The symbol index of `spp-ls` is in `.cache/spp/index/`.
-- The C++ clangd does not get an open `.spp` document, and `spp-ls` does not get a C++ document. A diagnostic of one server never shows in the files of the other.
+- The C++ clangd does not get an open `.hot` document, and `spp-ls` does not get a C++ document. A diagnostic of one server never shows in the files of the other.
 
 ### Automatic setup (script hosts)
 
@@ -478,13 +478,13 @@ spp_script_host(NAME engine TARGET engine
 - The effective options are the host values, then the explicit `-I` and `--cxxflag` values. So the flags override the host.
 - A host is skipped when its `binaryDir/CMakeCache.txt` is missing. The server checks it again later.
 - With no host, the old behavior stays. The server also shows an Information diagnostic at 0:0. It does not show it when `-I` or `--compile-commands-dir` is set.
-- The server reloads the host files when the mtime of the hosts dir changes. The VS Code extension watches `**/*.spp` and the host files.
+- The server reloads the host files when the mtime of the hosts dir changes. The VS Code extension watches `**/*.hot` and the host files.
 - Limits: many build dirs share one hosts dir, so the last configure wins. The server does not canonicalize symlinked workspace paths. Multi-Config generators are not tested.
 
 How it works:
 
-- The server owns the text of each open `.spp` document. On each change it runs `sppc::analyze()`. It gets the parse errors, the facts (classes, members), the generated C++ and the source map.
-- It starts a stock `clangd` as a child process. It gives the generated C++ to clangd as the virtual file `<script>.spp.cpp`. The compile command comes from `spp::compile_command`, through `workspace/didChangeConfiguration`.
+- The server owns the text of each open `.hot` document. On each change it runs `sppc::analyze()`. It gets the parse errors, the facts (classes, members), the generated C++ and the source map.
+- It starts a stock `clangd` as a child process. It gives the generated C++ to clangd as the virtual file `<script>.hot.cpp`. The compile command comes from `spp::compile_command`, through `workspace/didChangeConfiguration`.
 - It maps each position between the script and the generated C++ with the source map. A line without a segment uses the `#line` directives.
 - `sppc::rewrite_generated_names` and `sppc::rewrite_clang_message` change generated names to script names in hover text, diagnostics and completion labels.
 - JSON comes from nlohmann_json (CPM).
@@ -503,15 +503,15 @@ Features:
 - Code actions (quick fix): insert a missing `;` for the error `expected ';'`, and replace a word with the name from a clangd `did you mean '...'` message.
 - Hover, go-to-definition and references. A script symbol goes to the script. A native symbol goes to the native header.
 - Document symbols come from analyze. Semantic tokens come from a small lexer and the facts.
-- Rename changes the script symbols (class, member, field) in all `.spp` files of the workspace. The server scans the workspace folders from `initialize` (it skips hidden folders and `node_modules`). A class or a member with the same name in another script (for example the versions of a script) gets the new name there too. An open document uses its editor text. A file on disk goes to clangd only for the request. A class name has no segment in the source map, so the semantic tokens find its places. References also look in the other `.spp` files. Rename of a native symbol gives the error `cannot rename a native symbol: X`.
-- The shard digest covers the text of the file and the texts of the scripts that it imports (also the imports of the imports). A changed import makes the shard stale. The saved symbol index speeds up rename and references on closed `.spp` files. There is no limit on the number of files. It has one shard for each `.spp` file. All shards are flat in `.cache/spp/index/` in the first workspace folder. `--index-dir dir` sets another directory. The shard name is a hash of the file path, so a new shard replaces the old shard and the index does not grow when a file changes. A shard holds a format version, the content digest, the classes and members, and the places of each class. The places of a member come from clangd. The server adds them to the shard at the first rename. The server loads a shard only if the version and the digest match. Else it analyzes the file again and writes the shard again. A write goes to a temporary file, then a rename puts it in place. At `initialize` and at each scan the server deletes the shards of missing files. The index is filled when a rename or a references request scans a closed file. It is not filled at startup. Add `.cache/` to the ignore list of the project. The request `spp/indexStats` gives the counts (`analyzed`, `loaded`, `stored`).
+- Rename changes the script symbols (class, member, field) in all `.hot` files of the workspace. The server scans the workspace folders from `initialize` (it skips hidden folders and `node_modules`). A class or a member with the same name in another script (for example the versions of a script) gets the new name there too. An open document uses its editor text. A file on disk goes to clangd only for the request. A class name has no segment in the source map, so the semantic tokens find its places. References also look in the other `.hot` files. Rename of a native symbol gives the error `cannot rename a native symbol: X`.
+- The shard digest covers the text of the file and the texts of the scripts that it imports (also the imports of the imports). A changed import makes the shard stale. The saved symbol index speeds up rename and references on closed `.hot` files. There is no limit on the number of files. It has one shard for each `.hot` file. All shards are flat in `.cache/spp/index/` in the first workspace folder. `--index-dir dir` sets another directory. The shard name is a hash of the file path, so a new shard replaces the old shard and the index does not grow when a file changes. A shard holds a format version, the content digest, the classes and members, and the places of each class. The places of a member come from clangd. The server adds them to the shard at the first rename. The server loads a shard only if the version and the digest match. Else it analyzes the file again and writes the shard again. A write goes to a temporary file, then a rename puts it in place. At `initialize` and at each scan the server deletes the shards of missing files. The index is filled when a rename or a references request scans a closed file. It is not filled at startup. Add `.cache/` to the ignore list of the project. The request `spp/indexStats` gives the counts (`analyzed`, `loaded`, `stored`).
 - Workspace symbols come from the clangd index. Give `--compile-commands-dir` with the output dir of `sppc --compile-commands`. Then clangd runs its background index on the generated files. A symbol of a generated file maps to its script member. The helpers of the translator (thunks, slot functions) are not shown.
 
 The `#line` check: clangd reports the real line of the generated file, not the `#line` line. So the generated C++ keeps its `#line` directives. No translator option is necessary.
 
 From C++ to the script:
 
-- In a `.cpp` file from `sppc --compile-commands`, the `#line` directives name the `.spp` file. A debugger and the compiler use them. clangd does not use them for navigation.
+- In a `.cpp` file from `sppc --compile-commands`, the `#line` directives name the `.hot` file. A debugger and the compiler use them. clangd does not use them for navigation.
 - The custom request `spp/toScript` (params: `textDocument`, `position`) gives the script location of a position in a generated file. It uses the source map for an open script, and the `#line` directives for a file on disk.
 - The test `LanguageServer.GeneratedFileOnDiskMapsBackToTheScript` checks it.
 

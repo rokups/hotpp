@@ -1,6 +1,6 @@
 # aot_demo has the C++ of a script in the binary. It links spp_aot and not spp_runtime, so it has
 # no loader, no migration, no dlopen and no Clang. Actor.cpp and Util.cpp are the engine.
-spp_add_scripts(TARGET aot_demo_scripts AOT SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/aot_demo.spp
+spp_add_scripts(TARGET aot_demo_scripts AOT SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/aot_demo.hot
                     INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
                     DEPENDS ${SPP_HEADERS})
 add_executable(aot_demo aot_demo_main.cpp ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
@@ -27,7 +27,7 @@ spp_gtest(integration_aot_parity_tests)
 
 # Two scripts in one AOT library: the demo and the module variables.
 spp_add_scripts(TARGET aot_registry_scripts AOT
-    SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/aot_demo.spp ${PROJECT_SOURCE_DIR}/tests/scripts/module_v1.spp
+    SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/aot_demo.hot ${PROJECT_SOURCE_DIR}/tests/scripts/module_v1.hot
     INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
     DEPENDS ${SPP_HEADERS})
 add_executable(integration_aot_registry_tests aot_registry_tests.cpp

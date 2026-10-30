@@ -1,6 +1,6 @@
 // sample_imgui: a Dear ImGui window whose user interface a script draws.
 // Usage: sample_imgui [script]
-// The default script is samples/imgui/script/demo.spp or demo.cpp. The script class Demo
+// The default script is samples/imgui/script/demo.hot or demo.cpp. The script class Demo
 // derives from UiApp. The host calls Frame once for each frame.
 // The struct Host loads the script and reloads it when the file changes.
 #include "UiApp.h"

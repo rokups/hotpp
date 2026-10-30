@@ -1,5 +1,5 @@
 // Generation 1 of the parent module of a family over two modules (S20a, design 4.5 and 4.10).
-// The child module "xmod_child_v1.spp" imports this file with "using "xmod_parent.spp";".
+// The child module "xmod_child_v1.hot" imports this file with "using "xmod_parent.hot";".
 // One generation holds both modules, so the family has one slot numbering.
 using "Actor.h";
 using <string>;

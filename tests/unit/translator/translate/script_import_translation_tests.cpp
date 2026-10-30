@@ -1,4 +1,4 @@
-// Translation tests of script imports (S20a, design 4.5 and 4.10): "using "parent.spp";" adds the
+// Translation tests of script imports (S20a, design 4.5 and 4.10): "using "parent.hot";" adds the
 // classes of another script module to the generation. The child can derive from them.
 #include "spp/sppc_lib.h"
 #include "support/translator_test_support.h"
@@ -21,7 +21,7 @@ const char* kParent =
     "}\n";
 
 const char* kChild =
-    "using \"base.spp\";\n"
+    "using \"base.hot\";\n"
     "class Kid : Base {\n"
     "    override int Power() { return 2; }\n"
     "}\n";
@@ -30,7 +30,7 @@ sppc::TranslateOptions options(const TempDir& dir, const std::string& parent)
 {
     write_file(dir.path() / "w.h", kHeaderV1);
     sppc::TranslateOptions o = temp_options(dir, kChild);
-    o.modules.emplace_back("base.spp", parent);
+    o.modules.emplace_back("base.hot", parent);
     return o;
 }
 
@@ -42,9 +42,9 @@ TEST(ScriptImportTranslation, ChildDerivesFromAClassOfAnotherModule)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("struct Kid_Shell"), std::string::npos);
     EXPECT_NE(r.cpp.find("&Base_record"), std::string::npos) << "the child record points to the parent record";
-    EXPECT_NE(r.cpp.find("#line 4 \"base.spp\""), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("#line 3 \"t.spp\""), std::string::npos) << r.cpp;
-    EXPECT_EQ(r.cpp.find("#include \"base.spp\""), std::string::npos) << "a script import is not a C++ include";
+    EXPECT_NE(r.cpp.find("#line 4 \"base.hot\""), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("#line 3 \"t.hot\""), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("#include \"base.hot\""), std::string::npos) << "a script import is not a C++ include";
     EXPECT_NE(r.slots_out.find("Base::Power"), std::string::npos) << r.slots_out;
 }
 
@@ -56,10 +56,10 @@ TEST(ScriptImportTranslation, SourceMapHasSegmentsOfTheImportedScript)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const std::string child = kChild, parent = kParent;
     ASSERT_EQ(r.source_map.files().size(), 1u);
-    EXPECT_EQ(r.source_map.files()[0].name, "base.spp");
+    EXPECT_EQ(r.source_map.files()[0].name, "base.hot");
     EXPECT_EQ(r.source_map.files()[0].text, parent);
     ASSERT_EQ(r.imports.size(), 1u);
-    EXPECT_EQ(r.imports[0].first, "base.spp");
+    EXPECT_EQ(r.imports[0].first, "base.hot");
     size_t imported = 0, main = 0;
     for (const sppc::SourceSegment& s : r.source_map.segments())
     {
@@ -114,8 +114,8 @@ TEST(ScriptImportTranslation, TranslatorErrorHasRealFileLineColumnAndSnippet)
     const sppc::TranslateResult r = sppc::translate(options(dir, bad));
     ASSERT_FALSE(r.ok);
     ASSERT_EQ(r.imports.size(), 1u) << "the imports are there also when the translation fails";
-    const std::string out = sppc::rewrite_translator_diagnostic(r.diagnostics, sppc::script_texts("t.spp", kChild, r));
-    EXPECT_NE(out.find("base.spp:4:9: error:"), std::string::npos) << out;
+    const std::string out = sppc::rewrite_translator_diagnostic(r.diagnostics, sppc::script_texts("t.hot", kChild, r));
+    EXPECT_NE(out.find("base.hot:4:9: error:"), std::string::npos) << out;
     EXPECT_NE(out.find("    4 |     int hp = 2;\n"), std::string::npos) << out;
 }
 
@@ -135,11 +135,11 @@ TEST(ScriptImportTranslation, CompilerErrorHasRealFileLineColumnAndSnippet)
     const size_t line_end = r.cpp.find('\n', at);
     const std::string shown = r.cpp.substr(r.cpp.rfind('\n', at) + 1, line_end - (r.cpp.rfind('\n', at) + 1));
     const std::string clang =
-        "base.spp:4:" + std::to_string(col) + ": error: expected ';'\n    4 | " + shown + "\n      | ^\n";
+        "base.hot:4:" + std::to_string(col) + ": error: expected ';'\n    4 | " + shown + "\n      | ^\n";
     const std::string out =
-        sppc::rewrite_diagnostic(clang, {{"t.spp", kChild}}, {{"/w/t.spp.cpp", r.cpp}}, &r.source_map);
+        sppc::rewrite_diagnostic(clang, {{"t.hot", kChild}}, {{"/w/t.hot.cpp", r.cpp}}, &r.source_map);
     // "    virtual int Power() { return 1; }": "return" is at column 27.
-    EXPECT_EQ(out, "base.spp:4:27: error: expected ';'\n    4 |     virtual int Power() { return 1; }\n");
+    EXPECT_EQ(out, "base.hot:4:27: error: expected ';'\n    4 |     virtual int Power() { return 1; }\n");
 }
 
 // An error in the imported script names the file and the line of that script.
@@ -149,7 +149,7 @@ TEST(ScriptImportTranslation, ErrorInTheImportNamesItsFile)
     const std::string bad = "using \"w.h\";\nclass Base : Widget {\n    int hp = 1;\n    int hp = 2;\n}\n";
     const sppc::TranslateResult r = sppc::translate(options(dir, bad));
     ASSERT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("base.spp:4:"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("base.hot:4:"), std::string::npos) << r.diagnostics;
 }
 
 // The import is read from the directory of the script when TranslateOptions::modules has no text.
@@ -157,12 +157,12 @@ TEST(ScriptImportTranslation, ImportFromDisk)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
-    write_file(dir.path() / "base.spp", kParent);
+    write_file(dir.path() / "base.hot", kParent);
     sppc::TranslateOptions o = temp_options(dir, kChild);
-    o.script_name = (dir.path() / "t.spp").string();
+    o.script_name = (dir.path() / "t.hot").string();
     const sppc::TranslateResult r = sppc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.cpp.find((dir.path() / "base.spp").string() + "\""), std::string::npos);
+    EXPECT_NE(r.cpp.find((dir.path() / "base.hot").string() + "\""), std::string::npos);
 }
 
 // Errors: a missing script, module variables in an import, and a class in two modules.
@@ -171,13 +171,13 @@ TEST(ScriptImportTranslation, ImportErrors)
     TempDir dir;
     sppc::TranslateOptions o = options(dir, kParent);
     o.modules.clear();
-    EXPECT_NE(sppc::translate(o).diagnostics.find("the script 'base.spp' is not found"), std::string::npos);
+    EXPECT_NE(sppc::translate(o).diagnostics.find("the script 'base.hot' is not found"), std::string::npos);
     const sppc::TranslateResult v = sppc::translate(options(dir, std::string(kParent) + "int count = 0;\n"));
     EXPECT_NE(v.diagnostics.find("an imported script cannot have module variables"), std::string::npos)
         << v.diagnostics;
     const sppc::TranslateResult twice =
         sppc::translate(options(dir, std::string(kParent) + "class Kid : Widget { }\n"));
-    EXPECT_NE(twice.diagnostics.find("class 'Kid' is declared in 'base.spp' and in 't.spp'"), std::string::npos)
+    EXPECT_NE(twice.diagnostics.find("class 'Kid' is declared in 'base.hot' and in 't.hot'"), std::string::npos)
         << twice.diagnostics;
 }
 
@@ -185,9 +185,9 @@ TEST(ScriptImportTranslation, ImportErrors)
 TEST(ScriptImportTranslation, NestedImports)
 {
     TempDir dir;
-    sppc::TranslateOptions o = options(dir, "using \"root.spp\";\nclass Base : Root { }\n");
-    o.modules.emplace_back("root.spp",
-        "using \"w.h\";\nusing \"base.spp\";\nclass Root : Widget {\n    virtual int Power() { return 0; }\n}\n");
+    sppc::TranslateOptions o = options(dir, "using \"root.hot\";\nclass Base : Root { }\n");
+    o.modules.emplace_back("root.hot",
+        "using \"w.h\";\nusing \"base.hot\";\nclass Root : Widget {\n    virtual int Power() { return 0; }\n}\n");
     const sppc::TranslateResult r = sppc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_LT(r.cpp.find("struct Root_Shell"), r.cpp.find("struct Base_Shell"));

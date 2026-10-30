@@ -7,12 +7,12 @@ The C++ is part of the program. The program has no loader and no compiler at run
 
 The sample has one program (`main.cpp`) and two variants of the same script:
 
-- `script/wolf.spp`: the script in the S++ syntax. `Tick` uses string interpolation.
+- `script/wolf.hot`: the script in the S++ syntax. `Tick` uses string interpolation.
 - `script/wolf.cpp`: the script as plain C++. See [C++ scripts](../../doc/cpp-scripts.md). A `.cpp` script has no string interpolation, so `Tick` uses `snprintf`.
 
 The build makes one AOT library and one program for each variant:
 
-- `sample_aot_spp_scripts` and `sample_aot_spp` use the `.spp` script.
+- `sample_aot_spp_scripts` and `sample_aot_spp` use the `.hot` script.
 - `sample_aot_cpp_scripts` and `sample_aot_cpp` use the `.cpp` script.
 
 Each variant has its own `spp_add_scripts` call and its own `OUT_DIR`, so the generated files
@@ -22,7 +22,7 @@ compiler (the object library `aot_cpp_scripts_plain`). This shows that a `.cpp` 
 
 ## How it works
 
-1. `spp_add_scripts(TARGET sample_aot_spp_scripts AOT SCRIPTS script/wolf.spp ...)` runs `sppc --aot`
+1. `spp_add_scripts(TARGET sample_aot_spp_scripts AOT SCRIPTS script/wolf.hot ...)` runs `sppc --aot`
    at build time. It makes C++ files and a table `spp::aot_table`. It builds them as a static library.
 2. The library links `spp_aot`. This library has `spp::AotRegistry` and does not have the loader.
 3. `main.cpp` makes `spp::AotRegistry registry(spp::aot_table)`. The constructor registers
@@ -35,7 +35,7 @@ The program does not call `dlopen`. It has no `ENABLE_EXPORTS`. A script change 
 ## Files
 
 - `Creature.h`: the host class. It is header-only.
-- `script/wolf.spp` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`. The `.spp` `Tick` uses string interpolation (`"${...}"`), so the build checks the format library and the C++ standard of the AOT library.
+- `script/wolf.hot` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`. The `.hot` `Tick` uses string interpolation (`"${...}"`), so the build checks the format library and the C++ standard of the AOT library.
 - `main.cpp`: the program. It makes a `Wolf` with `spp::AotRegistry` and calls `Tick` three times.
 - `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
 
@@ -97,7 +97,7 @@ The function `spp_add_scripts` is then available.
 ## Adapt it to your project
 
 1. Add S++ to your project with `add_subdirectory` or FetchContent (see above).
-2. Call `spp_add_scripts(TARGET <name> AOT SCRIPTS <your .spp files> INCLUDES <absolute folders of your headers> DEPENDS <your headers>)`.
+2. Call `spp_add_scripts(TARGET <name> AOT SCRIPTS <your .hot files> INCLUDES <absolute folders of your headers> DEPENDS <your headers>)`.
    The build does not track the headers by itself, so list them in `DEPENDS`.
 3. Link your program to `<name>`.
 4. Include `spp/aot.h`. Make one `spp::AotRegistry` on the main thread. It must live as long as the objects.

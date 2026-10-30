@@ -1,9 +1,9 @@
 // sppc: the command line tool of S++. It has two modes.
 //
-// Build mode (default): compile .spp files ahead of time into one shared library for each file.
-//   sppc <file.spp>... --gen N --out-dir DIR [-I dir]... [--resource-dir dir]
+// Build mode (default): compile .hot files ahead of time into one shared library for each file.
+//   sppc <file.hot>... --gen N --out-dir DIR [-I dir]... [--resource-dir dir]
 //        [--cxx command] [--cxxflag flag]... [--slots file] [--raw-diagnostics]
-//   sppc <file.spp> --gen N -o x.so [-I dir]... [--resource-dir dir]
+//   sppc <file.hot> --gen N -o x.so [-I dir]... [--resource-dir dir]
 //        [--cxx command] [--cxxflag flag]... [--slots file]
 // For each file the tool writes DIR/<name>.g<N>.cpp and DIR/<name>.g<N>.so.
 // <name> is the file name without the extension. With -o, the tool writes the one
@@ -16,18 +16,18 @@
 // compiler as it is. Emit mode has no compiler, so the option has no effect there.
 //
 // Build mode can write a compile database for clangd (design M14):
-//   sppc <file.spp>... --gen N --out-dir DIR --compile-commands CDIR
+//   sppc <file.hot>... --gen N --out-dir DIR --compile-commands CDIR
 // The tool writes CDIR/compile_commands.json with one entry for each generated .cpp. The entry
 // has the compile command of the backend (the compiler, the include paths and the flags).
 // The tool writes the entries also when a compile fails, because the .cpp exists then.
 //
-// Emit mode (--emit-cpp): translate one .spp file to C++. The tool does not compile it.
-//   sppc --emit-cpp <file.spp> --gen N [-o out.cpp] [-I dir]... [--prelude file]...
+// Emit mode (--emit-cpp): translate one .hot file to C++. The tool does not compile it.
+//   sppc --emit-cpp <file.hot> --gen N [-o out.cpp] [-I dir]... [--prelude file]...
 //        [--slots file] [--resource-dir dir]
 // Without -o, the tool prints the C++ to the standard output.
 //
 // AOT mode (--aot): translate scripts for an AOT build (design M7).
-//   sppc --aot <file.spp>... --out-dir DIR [-I dir]... [--prelude file]...
+//   sppc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]...
 //        [--no-strict-borrowed] [--format=std|fmt] [--resource-dir dir]
 // For each file the tool writes DIR/<name>.aot.cpp (generation 1). It also writes
 // DIR/spp_aot_registry.cpp, which defines the constant table spp::aot_table
@@ -65,13 +65,13 @@ namespace
 [[noreturn]] void usage()
 {
     std::fprintf(stderr,
-        "usage: sppc <file.spp>... --gen N (--out-dir DIR | -o x.so) [-I dir]... [--resource-dir dir]\n"
+        "usage: sppc <file.hot>... --gen N (--out-dir DIR | -o x.so) [-I dir]... [--resource-dir dir]\n"
         "            [--cxx command] [--cxxflag flag]... [--slots file] [--no-strict-borrowed] [--format=std|fmt]\n"
         "            [--raw-diagnostics] [--compile-commands dir] [--std=c++17|c++20|c++23]\n"
-        "       sppc --emit-cpp <file.spp> --gen N [-o out.cpp] [-I dir]... [--prelude file]... [--no-strict-borrowed] "
+        "       sppc --emit-cpp <file.hot> --gen N [-o out.cpp] [-I dir]... [--prelude file]... [--no-strict-borrowed] "
         "[--format=std|fmt]\n"
         "            [--slots file] [--resource-dir dir] [--std=c++17|c++20|c++23]\n"
-        "       sppc --aot <file.spp>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]\n"
+        "       sppc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]\n"
         "            [--format=std|fmt] [--resource-dir dir] [--std=c++17|c++20|c++23]\n");
     std::exit(2);
 }

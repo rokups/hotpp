@@ -40,7 +40,7 @@ inline int line_with(const std::string& text, const std::string& needle)
 // Each "error:" line must name the script, not a generated file.
 inline void expect_errors_at_script(const std::string& text, int bad_line)
 {
-    const std::string expect = "bad.spp:" + std::to_string(bad_line) + ":";
+    const std::string expect = "bad.hot:" + std::to_string(bad_line) + ":";
     EXPECT_NE(text.find(expect), std::string::npos) << "no '" << expect << "' in:\n" << text;
     std::istringstream ls(text);
     int errors = 0;
@@ -49,7 +49,7 @@ inline void expect_errors_at_script(const std::string& text, int bad_line)
         if (l.find(" error:") == std::string::npos)
             continue;
         ++errors;
-        EXPECT_NE(l.find("bad.spp:"), std::string::npos) << "error not at the script: " << l;
+        EXPECT_NE(l.find("bad.hot:"), std::string::npos) << "error not at the script: " << l;
         EXPECT_EQ(l.find(".cpp"), std::string::npos) << l;
     }
     EXPECT_GT(errors, 0) << text;

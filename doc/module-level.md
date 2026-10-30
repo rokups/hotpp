@@ -8,10 +8,10 @@ The top of a script file can hold imports, enums, structs, variables and native 
 
 ## Imports
 
-`using "x.h";` includes a native header. `using <x>;` includes a standard header. `using "x.spp";` loads another script. A `using` can stand anywhere at module level, also after a class.
+`using "x.h";` includes a native header. `using <x>;` includes a standard header. `using "x.hot";` loads another script. A `using` can stand anywhere at module level, also after a class.
 
 ```spp
-using "parent.spp";            // script
+using "parent.hot";            // script
 using "Actor.h";               // native header
 using <algorithm>;             // standard header
 

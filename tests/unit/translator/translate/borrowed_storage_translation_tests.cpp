@@ -18,7 +18,7 @@ TEST(BorrowedStorage, RawPointerFieldIsAnErrorInStrictMode)
     const sppc::TranslateResult r = check_translate("", "    Weapon* w;\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(
-        has(r.diagnostics, "t.spp:3:13: error: a field cannot hold a borrowed pointer or reference to 'Weapon'"))
+        has(r.diagnostics, "t.hot:3:13: error: a field cannot hold a borrowed pointer or reference to 'Weapon'"))
         << r.diagnostics;
     EXPECT_TRUE(has(r.diagnostics, "Declare a stub with 'handle' or 'intrusive'")) << r.diagnostics;
 }
@@ -28,7 +28,7 @@ TEST(BorrowedStorage, RawPointerFieldIsAWarningByDefault)
     const sppc::TranslateResult r = check_translate("", "    Weapon* w;\n", {}, false);
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(r.diagnostics.empty()) << r.diagnostics;
-    EXPECT_TRUE(has(r.warnings, "t.spp:3:13: warning: a field cannot hold a borrowed pointer")) << r.warnings;
+    EXPECT_TRUE(has(r.warnings, "t.hot:3:13: warning: a field cannot hold a borrowed pointer")) << r.warnings;
 }
 
 TEST(BorrowedStorage, StrictModeIsTheDefault)

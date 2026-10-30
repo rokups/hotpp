@@ -25,9 +25,9 @@ template <class T> T* fld(Session& s, const char* name)
 // Generation 1 to 2: alias, onReload with OldState, convert hook, default value, rename warning.
 TEST_P(BackendTests, HooksMigrateConvertAndWarn)
 {
-    spp::LoadResult v1 = backend->load(source("hooks_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("hooks_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("hooks_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("hooks_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
@@ -63,11 +63,11 @@ TEST_P(BackendTests, HooksMigrateConvertAndWarn)
 // A hook that throws is logged. The reload completes and the object stays valid.
 TEST_P(BackendTests, ThrowingOnReloadHookIsCaught)
 {
-    spp::LoadResult v1 = backend->load(source("hooks_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("hooks_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("hooks_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("hooks_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
-    spp::LoadResult v3 = backend->load(source("hooks_v3.spp"), 3);
+    spp::LoadResult v3 = backend->load(source("hooks_v3.hot"), 3);
     ASSERT_TRUE(v3) << v3.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));

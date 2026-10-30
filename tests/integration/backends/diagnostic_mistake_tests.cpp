@@ -1,7 +1,7 @@
 // Experiment F2 (design 4.2): common mistakes in a script. The compile fails. The error text
 // speaks script names and points to the script line.
 //
-// Each case is a pair of files in tests/golden/diagnostics: NN_name.spp and NN_name.expected.
+// Each case is a pair of files in tests/golden/diagnostics: NN_name.hot and NN_name.expected.
 // The test loads the script with the backend that SPP_BACKEND selected. The text of the error
 // must equal the expected file. The source directory shows as "<src>". The last line of the
 // error ("the compile of ... failed") is not part of the expected text.
@@ -59,7 +59,7 @@ TEST_P(DiagnosticMistakes, ErrorSpeaksScriptNames)
 {
     const std::string name = GetParam();
     // A relative name: the error text starts with it.
-    const spp::ScriptSource source{name + ".spp", test_support::read_file(kDir + name + ".spp"), {}};
+    const spp::ScriptSource source{name + ".hot", test_support::read_file(kDir + name + ".hot"), {}};
     ASSERT_FALSE(source.text.empty());
     auto backend = spp::make_default_backend();
     const spp::LoadResult r = backend->load(source, 1);

@@ -23,7 +23,7 @@ protected:
             / ("spp_watch_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) + "_"
                 + std::to_string(reinterpret_cast<uintptr_t>(this)));
         fs::create_directories(dir);
-        file = (dir / "a.spp").string();
+        file = (dir / "a.hot").string();
         write(file, "one");
     }
     void TearDown() override { fs::remove_all(dir); }

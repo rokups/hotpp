@@ -27,7 +27,7 @@ template <class T> T* fld(Session& s, const char* name)
 // reads the slot of the script override. A virtual without an override calls the native code.
 TEST_P(BackendTests, InterfaceVirtualsDispatchThroughTheShell)
 {
-    spp::LoadResult v1 = backend->load(source("boss_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("boss_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Boss"));
@@ -51,9 +51,9 @@ TEST_P(BackendTests, InterfaceVirtualsDispatchThroughTheShell)
 // The address of the object and its state stay.
 TEST_P(BackendTests, ReloadAddsOverridesOfInterfaceVirtuals)
 {
-    spp::LoadResult v1 = backend->load(source("boss_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("boss_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("boss_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("boss_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Boss"));
@@ -82,9 +82,9 @@ TEST_P(BackendTests, ReloadAddsOverridesOfInterfaceVirtuals)
 // loader rejects it. The old generation stays.
 TEST_P(BackendTests, ReloadThatRemovesAnInterfaceBaseIsRejected)
 {
-    spp::LoadResult v1 = backend->load(source("boss_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("boss_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult bad = backend->load(source("boss_rebase.spp"), 2);
+    spp::LoadResult bad = backend->load(source("boss_rebase.hot"), 2);
     ASSERT_TRUE(bad) << bad.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Boss"));
@@ -108,9 +108,9 @@ TEST_P(BackendTests, ReloadThatRemovesAnInterfaceBaseIsRejected)
 // A reload that adds an interface base is rejected too.
 TEST_P(BackendTests, ReloadThatAddsAnInterfaceBaseIsRejected)
 {
-    spp::LoadResult v1 = backend->load(source("boss_rebase.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("boss_rebase.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult bad = backend->load(source("boss_v1.spp"), 2);
+    spp::LoadResult bad = backend->load(source("boss_v1.hot"), 2);
     ASSERT_TRUE(bad) << bad.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Boss"));

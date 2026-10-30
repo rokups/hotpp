@@ -53,12 +53,12 @@ TEST_P(BackendTests, SignatureChangeDetachesTheOldDelegate)
 {
     // The slot state changes when the Loader accepts a module. So build each generation after the
     // Loader accepted the one before it.
-    spp::LoadResult v1 = backend->load(source("sigchange_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("sigchange_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Medic"));
     s.commit_at_frame_boundary();
-    spp::LoadResult v2 = backend->load(source("sigchange_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("sigchange_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     auto old_heal = reinterpret_cast<Heal1>(s.loader.thunk("Medic::heal"));
     ASSERT_NE(old_heal, nullptr);
@@ -83,7 +83,7 @@ TEST_P(BackendTests, SignatureChangeDetachesTheOldDelegate)
     EXPECT_EQ(*int_field(s, "hp"), 21);
 
     // The same signature: no new thunk, no warning. The new body runs through the same thunk.
-    spp::LoadResult v3 = backend->load(source("sigchange_v3.spp"), 3);
+    spp::LoadResult v3 = backend->load(source("sigchange_v3.hot"), 3);
     ASSERT_TRUE(v3) << v3.error;
     const std::string log3 = reload(s, v3);
     EXPECT_EQ(log3.find("signature"), std::string::npos) << log3;
@@ -99,11 +99,11 @@ TEST_P(BackendTests, SignatureChangeDetachesTheOldDelegate)
 // the value class stays. A changed layout resets the container with a warning.
 TEST_P(BackendTests, ContainerOfValueTypeResetsOnLayoutChange)
 {
-    spp::LoadResult v1 = backend->load(source("bag_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("bag_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("bag_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("bag_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
-    spp::LoadResult v3 = backend->load(source("bag_v3.spp"), 3);
+    spp::LoadResult v3 = backend->load(source("bag_v3.hot"), 3);
     ASSERT_TRUE(v3) << v3.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Bag"));
@@ -134,9 +134,9 @@ TEST_P(BackendTests, ContainerOfValueTypeResetsOnLayoutChange)
 // loader rejects the reload with a message that names the cause. The old generation stays.
 TEST_P(BackendTests, FirstHandleUseOfThisIsRejected)
 {
-    spp::LoadResult v1 = backend->load(source("echo_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("echo_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("echo_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("echo_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Echo"));
@@ -158,9 +158,9 @@ TEST_P(BackendTests, FirstHandleUseOfThisIsRejected)
 // retired generation unloads while the object lives.
 TEST_P(BackendTests, FunctionPointerFieldBlocksTheUnload)
 {
-    spp::LoadResult v1 = backend->load(source("codeptr_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("codeptr_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("codeptr_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("codeptr_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Relay"));
@@ -185,9 +185,9 @@ TEST_P(BackendTests, FunctionPointerFieldBlocksTheUnload)
 // the type as a code holder. The field has kMayHoldCode, so no retired generation unloads.
 TEST_P(BackendTests, StructWithFunctionPointerFieldBlocksTheUnload)
 {
-    spp::LoadResult v1 = backend->load(source("codestruct_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("codestruct_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("codestruct_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("codestruct_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Holder"));

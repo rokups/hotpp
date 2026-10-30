@@ -27,7 +27,7 @@ template <class T> T* fld(Session& s, const char* name)
 // The child override of Tick calls the parent implementation with "base.Tick".
 TEST_P(BackendTests, ChildRunsTheParentConstructorAndSuperCalls)
 {
-    spp::LoadResult v1 = backend->load(source("inherit_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("inherit_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Grunt"));
@@ -45,7 +45,7 @@ TEST_P(BackendTests, ChildRunsTheParentConstructorAndSuperCalls)
 // The destructor of the child runs first, then the destructor of the parent.
 TEST_P(BackendTests, ChildDestructorRunsBeforeTheParentDestructor)
 {
-    spp::LoadResult v1 = backend->load(source("inherit_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("inherit_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     testing::internal::CaptureStdout();
     {
@@ -64,9 +64,9 @@ TEST_P(BackendTests, ChildDestructorRunsBeforeTheParentDestructor)
 // After the reload, the changed child method runs and the new parent field has its initializer.
 TEST_P(BackendTests, VirtualCallThroughAParentHandleFollowsTheReload)
 {
-    spp::LoadResult v1 = backend->load(source("inherit_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("inherit_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("inherit_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("inherit_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Spotter"));
@@ -95,9 +95,9 @@ TEST_P(BackendTests, VirtualCallThroughAParentHandleFollowsTheReload)
 // gets a slot after the old slots of the family. The constructor does not run again.
 TEST_P(BackendTests, ReloadMigratesTheParentAndTheChildPart)
 {
-    spp::LoadResult v1 = backend->load(source("inherit_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("inherit_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("inherit_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("inherit_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Grunt"));
@@ -120,7 +120,7 @@ TEST_P(BackendTests, ReloadMigratesTheParentAndTheChildPart)
 // of its parents. The access works through a parent handle and through a child handle.
 TEST_P(BackendTests, FamilyOfThreeLevelsWithInheritedProperties)
 {
-    spp::LoadResult v1 = backend->load(source("family_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("family_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Driver"));
@@ -140,9 +140,9 @@ TEST_P(BackendTests, FamilyOfThreeLevelsWithInheritedProperties)
 // The changed getter of the middle class applies. The values of the old objects stay.
 TEST_P(BackendTests, FamilyReloadKeepsInheritedPropertyValues)
 {
-    spp::LoadResult v1 = backend->load(source("family_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("family_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("family_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("family_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Driver"));
@@ -167,9 +167,9 @@ TEST_P(BackendTests, FamilyReloadKeepsInheritedPropertyValues)
 // A reload that changes the script parent of a class is rejected. The old generation stays.
 TEST_P(BackendTests, ReloadThatChangesTheScriptParentIsRejected)
 {
-    spp::LoadResult v1 = backend->load(source("family_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("family_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult bad = backend->load(source("family_reparent.spp"), 2);
+    spp::LoadResult bad = backend->load(source("family_reparent.hot"), 2);
     ASSERT_TRUE(bad) << bad.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Driver"));
@@ -192,9 +192,9 @@ TEST_P(BackendTests, ReloadThatChangesTheScriptParentIsRejected)
 // the factory and for "new", also after a reload that changes the argument of Leaf.
 TEST_P(BackendTests, SuperArgumentsOfAChainEvaluateOneTime)
 {
-    spp::LoadResult v1 = backend->load(source("chain_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("chain_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("chain_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("chain_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     int calls = Util::Calls();
@@ -248,9 +248,9 @@ TEST_P(BackendTests, SuperArgumentsOfAChainEvaluateOneTime)
 // the native method Move. A reload of Kid changes the overrides and adds fields.
 TEST_P(BackendTests, ChildUsesInheritedMethodsNativeBaseAndSuperUnderTheSlotAbi)
 {
-    spp::LoadResult v1 = backend->load(source("abi_child_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("abi_child_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("abi_child_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("abi_child_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Kid"));

@@ -10,7 +10,7 @@ using namespace translator_test;
 
 TEST(LambdaTranslation, ArrowLambdaBecomesAClosureThatCapturesByValue)
 {
-    const sppc::TranslateOptions o = engine_options("timer_v1.spp", 1);
+    const sppc::TranslateOptions o = engine_options("timer_v1.hot", 1);
     const sppc::TranslateResult r = sppc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("spp::make_closure(GEN, \"Beeper::arm lambda\", [=]()"), std::string::npos) << r.cpp;

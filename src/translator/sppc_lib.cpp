@@ -2071,13 +2071,13 @@ void translate_impl(
         if (!g_diag.items.empty())
             throw TranslateAbort{};
         for (const Import& im : sc.imports)
-            if (im.path.size() > 4 && im.path.compare(im.path.size() - 4, 4, ".spp") == 0)
-                fail_at(map, im.pos, "a .cpp script cannot include a .spp script");
+            if (im.path.size() > 4 && im.path.compare(im.path.size() - 4, 4, ".hot") == 0)
+                fail_at(map, im.pos, "a .cpp script cannot include a .hot script");
     }
     else
         sc = parse_structure(in.script_text, map);
 
-    // ---- script imports (design 4.10): "using "parent.spp";". One generation holds all script
+    // ---- script imports (design 4.10): "using "parent.hot";". One generation holds all script
     // modules of the program, so a class can derive from a class of another script. The
     // translator parses each imported script and adds its classes, enums and stubs. The parser
     // reads the imported text after a blank prefix, so its positions come after the earlier
@@ -2093,7 +2093,7 @@ void translate_impl(
     std::vector<ImportedFile> imported_files;
     {
         auto is_script = [](const Import& im)
-        { return im.path.size() > 4 && im.path.compare(im.path.size() - 4, 4, ".spp") == 0; };
+        { return im.path.size() > 4 && im.path.compare(im.path.size() - 4, 4, ".hot") == 0; };
         // "file" is the name for "#line" and the diagnostics: the name in TranslateOptions::modules,
         // or the path of the file on disk.
         auto read_import = [&](const std::string& path, std::string& text, std::string& file)
@@ -3384,7 +3384,7 @@ void translate_impl(
         {
             const sppc::ast::Script::Chunk* ch = texts[i][j];
             if (include(j))
-            { // a run of includes has one "#line" of the generated file after it, as in a ".spp" script
+            { // a run of includes has one "#line" of the generated file after it, as in a ".hot" script
                 o.w("#line " + std::to_string(ch->line) + " \"" + esc(file_at(ch->pos)) + "\"\n");
                 o.w(ch->text + "\n");
                 if (!include(j + 1))

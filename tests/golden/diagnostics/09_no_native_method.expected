@@ -1,3 +1,3 @@
-09_no_native_method.spp:11:41: error: script class 'Player' has no member 'Jump'
+09_no_native_method.hot:11:41: error: script class 'Player' has no member 'Jump'
    11 |     override void Tick(float dt) { this.Jump(); }
 1 error generated.

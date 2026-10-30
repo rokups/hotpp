@@ -313,7 +313,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         impl->jit = std::move(*jit);
         // The debugger sees the JIT code: the plugin registers each linked object through the
         // GDB JIT interface (__jit_debug_descriptor). GDB and LLDB read it. The object has the
-        // line table of "-gline-tables-only", so the debugger shows the .spp files and lines.
+        // line table of "-gline-tables-only", so the debugger shows the .hot files and lines.
         // A failure is not fatal: the code runs, only without debugger support.
         if (opt_.debugger_support)
         {

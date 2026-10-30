@@ -31,7 +31,7 @@ TEST(SppcTool, SppcReportsErrorAtTheScriptLine)
 {
     TestScratch scratch;
     const std::string out_dir = scratch.file("sppc_diag");
-    const std::string script = std::string(SPP_SOURCE_DIR) + "/tests/scripts/bad.spp";
+    const std::string script = std::string(SPP_SOURCE_DIR) + "/tests/scripts/bad.hot";
     const std::string cmd = std::string("'") + SPPC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir + "' -I '"
         + SPP_SOURCE_DIR + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include' --cxx '" + SPP_CXX + "' 2>&1";
     std::string text;
@@ -52,7 +52,7 @@ TEST(SppcTool, RawDiagnosticsKeepsTheCompilerText)
 {
     TestScratch scratch;
     const std::string out_dir = scratch.file("sppc_raw_diag");
-    const std::string script = std::string(SPP_SOURCE_DIR) + "/tests/scripts/bad.spp";
+    const std::string script = std::string(SPP_SOURCE_DIR) + "/tests/scripts/bad.hot";
     const std::string base = std::string("'") + SPPC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir
         + "' -I '" + SPP_SOURCE_DIR + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include' --cxx '" + SPP_CXX + "' ";
     std::string script_names, raw;
@@ -94,7 +94,7 @@ int run_command(const std::string& cmd, std::string& text)
 
 std::string player_args()
 {
-    return std::string("'") + SPP_SOURCE_DIR + "/tests/scripts/player_v1.spp' --gen 1 -I '" + SPP_SOURCE_DIR
+    return std::string("'") + SPP_SOURCE_DIR + "/tests/scripts/player_v1.hot' --gen 1 -I '" + SPP_SOURCE_DIR
         + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include'";
 }
 
@@ -121,7 +121,7 @@ TEST(SppcTool, EmitCppModeTranslatesWithoutCompiling)
 TEST(SppcTool, TranslatorErrorHasTheFinalForm)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_final_form.spp");
+    const std::string script = scratch.file("sppc_final_form.hot");
     {
         std::ofstream f(script);
         f << "class Foo {\n    void Run() { int x = ; }\n}\n";
@@ -169,7 +169,7 @@ TEST(SppcTool, OutputOptionBuildsOneLibrary)
 TEST(SppcTool, StrictBorrowedIsTheDefault)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_strict.spp");
+    const std::string script = scratch.file("sppc_strict.hot");
     {
         std::FILE* f = std::fopen(script.c_str(), "w");
         ASSERT_NE(f, nullptr);
@@ -259,7 +259,7 @@ void expect_compiles_as_cxx17(const std::string& script)
 TEST(SppcTool, ScriptClassReferenceCompiles)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_class_ref.spp");
+    const std::string script = scratch.file("sppc_class_ref.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -323,7 +323,7 @@ void expect_script_compiles(TestScratch& scratch, const char* name, const char* 
 TEST(SppcTool, VarReferenceToAValueParameterCompiles)
 {
     TestScratch scratch;
-    expect_script_compiles(scratch, "sppc_param_ref.spp",
+    expect_script_compiles(scratch, "sppc_param_ref.hot",
         "using \"Actor.h\";\nusing <vector>;\n\n"
         "class Hero : Actor {\n"
         "    void A(std.vector<int> p) { var& r = p; r.clear(); }\n"
@@ -337,7 +337,7 @@ TEST(SppcTool, VarReferenceToAValueParameterCompiles)
 TEST(SppcTool, ConveniencesCompile)
 {
     TestScratch scratch;
-    expect_script_compiles(scratch, "conveniences.spp",
+    expect_script_compiles(scratch, "conveniences.hot",
         "struct Vec {\n"
         "    int x;\n"
         "    Vec(int q, int a = 5) { this.x = q + a; }\n"
@@ -367,7 +367,7 @@ TEST(SppcTool, ConveniencesCompile)
 TEST(SppcTool, IsBindingCompilesAndRuns)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_is_bind.spp");
+    const std::string script = scratch.file("sppc_is_bind.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -402,7 +402,7 @@ TEST(SppcTool, IsBindingCompilesAndRuns)
 TEST(SppcTool, AccessWordsCompileAndRun)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_access.spp");
+    const std::string script = scratch.file("sppc_access.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -447,7 +447,7 @@ TEST(SppcTool, AccessWordsCompileAndRun)
 TEST(SppcTool, BareMemberNamesCompileAndRun)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_bare_members.spp");
+    const std::string script = scratch.file("sppc_bare_members.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -496,7 +496,7 @@ TEST(SppcTool, BareMemberNamesCompileAndRun)
 TEST(SppcTool, StructuredBindingsCompileAndRun)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_bindings.spp");
+    const std::string script = scratch.file("sppc_bindings.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -552,7 +552,7 @@ TEST(SppcTool, StructuredBindingsCompileAndRun)
 TEST(SppcTool, ConstructorParametersMayUseOldGeneratedNames)
 {
     TestScratch scratch;
-    expect_script_compiles(scratch, "sppc_ctor_names.spp",
+    expect_script_compiles(scratch, "sppc_ctor_names.hot",
         "using \"Actor.h\";\n\n"
         "class Base : Actor {\n    int v = 0;\n    Base(int chain, int up) { this.v = chain + up; }\n}\n\n"
         "class Kid : Base {\n    Kid(int chain, int up, int pp, int plan, int note) : base(chain, up) { this.v += pp + "
@@ -565,7 +565,7 @@ TEST(SppcTool, ConstructorParametersMayUseOldGeneratedNames)
 TEST(SppcTool, HandleAddressOfDereferenceAndThisCompile)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_handle_deref.spp");
+    const std::string script = scratch.file("sppc_handle_deref.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -605,7 +605,7 @@ TEST(SppcTool, HandleAddressOfDereferenceAndThisCompile)
 TEST(SppcTool, MoveOnlyFieldIsAnError)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_unique_field.spp");
+    const std::string script = scratch.file("sppc_unique_field.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -626,7 +626,7 @@ TEST(SppcTool, MoveOnlyFieldIsAnError)
 TEST(SppcTool, FormatOptionSelectsTheFormatFunction)
 {
     TestScratch scratch;
-    const std::string script = write_interp_script(scratch, "sppc_interp_text.spp");
+    const std::string script = write_interp_script(scratch, "sppc_interp_text.hot");
     std::string std_text, fmt_text, bad;
     EXPECT_EQ(
         run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", std_text),
@@ -670,7 +670,7 @@ TEST(SppcTool, FormatOptionSelectsTheFormatFunction)
 TEST(SppcTool, FormatFmtOutputCompilesAsCxx17)
 {
     TestScratch scratch;
-    const std::string script = write_interp_script(scratch, "sppc_interp_fmt17.spp");
+    const std::string script = write_interp_script(scratch, "sppc_interp_fmt17.hot");
     const std::string out = scratch.file("sppc_interp_fmt17.cpp");
     std::string log, cc;
     EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp --format=fmt -o '" + out + "' '" + script + "'"
@@ -691,7 +691,7 @@ TEST(SppcTool, FormatFmtOutputCompilesAsCxx17)
 TEST(SppcTool, FormatStdOutputCompilesAsCxx20)
 {
     TestScratch scratch;
-    const std::string script = write_interp_script(scratch, "sppc_interp_std20.spp");
+    const std::string script = write_interp_script(scratch, "sppc_interp_std20.hot");
     const std::string out = scratch.file("sppc_interp_std20.cpp");
     std::string log, cc;
     EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp --format=std -o '" + out + "' '" + script + "'"
@@ -712,7 +712,7 @@ TEST(SppcTool, FormatStdOutputCompilesAsCxx20)
 TEST(SppcTool, BuildModeRejectsAFormatThatTheBuildDoesNotUse)
 {
     TestScratch scratch;
-    const std::string script = write_interp_script(scratch, "sppc_interp_mismatch.spp");
+    const std::string script = write_interp_script(scratch, "sppc_interp_mismatch.hot");
     const std::string other = SPP_USE_FMT ? "std" : "fmt";
     std::string log;
     EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '"
@@ -727,7 +727,7 @@ TEST(SppcTool, BuildModeRejectsAFormatThatTheBuildDoesNotUse)
 TEST(SppcTool, CoalesceRunsTheRightSideOnlyWhenNeeded)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_coalesce_run.spp");
+    const std::string script = scratch.file("sppc_coalesce_run.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -765,7 +765,7 @@ TEST(SppcTool, CoalesceRunsTheRightSideOnlyWhenNeeded)
 TEST(SppcTool, CoalesceInVarKeepsTheOperandType)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_coalesce_var.spp");
+    const std::string script = scratch.file("sppc_coalesce_var.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -814,7 +814,7 @@ TEST(SppcTool, CoalesceInVarKeepsTheOperandType)
 TEST(SppcTool, InterpolationRunsWithStdFormat)
 {
     TestScratch scratch;
-    const std::string script = write_interp_script(scratch, "sppc_interp_run.spp");
+    const std::string script = write_interp_script(scratch, "sppc_interp_run.hot");
     expect_compiles_as_cxx17(script);
     const std::string so = scratch.file("sppc_interp_run.so");
     std::string log;
@@ -836,7 +836,7 @@ TEST(SppcTool, InterpolationRunsWithStdFormat)
 TEST(SppcTool, LoweredStatementsCompileAsCxx17)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_cxx17.spp");
+    const std::string script = scratch.file("sppc_cxx17.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -909,8 +909,8 @@ TEST(SppcTool, AotModeWritesTheCppAndTheRegistrationFile)
 {
     TestScratch scratch;
     const std::string out_dir = scratch.file("sppc_aot");
-    const std::string scripts = std::string("'") + SPP_SOURCE_DIR + "/tests/scripts/aot_demo.spp' '" + SPP_SOURCE_DIR
-        + "/tests/scripts/props_v1.spp'";
+    const std::string scripts = std::string("'") + SPP_SOURCE_DIR + "/tests/scripts/aot_demo.hot' '" + SPP_SOURCE_DIR
+        + "/tests/scripts/props_v1.hot'";
     const std::string cmd = std::string("'") + SPPC_PATH + "' --aot " + scripts + " --out-dir '" + out_dir + "' -I '"
         + SPP_SOURCE_DIR + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include' 2>&1";
     FILE* p = popen(cmd.c_str(), "r");
@@ -935,7 +935,7 @@ TEST(SppcTool, AotModeWritesTheCppAndTheRegistrationFile)
 // --aot needs an output directory and does not take the options of the other modes.
 TEST(SppcTool, AotModeRejectsBadUsage)
 {
-    const std::string script = std::string(SPP_SOURCE_DIR) + "/tests/scripts/aot_demo.spp";
+    const std::string script = std::string(SPP_SOURCE_DIR) + "/tests/scripts/aot_demo.hot";
     for (const char* extra :
         {"", "--out-dir /tmp/x --gen 1", "--out-dir /tmp/x -o /tmp/x.so", "--emit-cpp --out-dir /tmp/x"})
     {
@@ -953,7 +953,7 @@ TEST(SppcTool, AotModeReportsParseErrorAtTheScriptLine)
     TestScratch scratch;
     const std::string out_dir = scratch.file("sppc_aot_bad");
     std::filesystem::create_directories(out_dir);
-    const std::string script = out_dir + "/broken.spp";
+    const std::string script = out_dir + "/broken.hot";
     {
         std::ofstream f(script);
         f << "using \"Actor.h\";\n\nclass Broken : Actor {\n    int x = ;\n}\n";
@@ -969,7 +969,7 @@ TEST(SppcTool, AotModeReportsParseErrorAtTheScriptLine)
     const int status = pclose(p);
     ASSERT_TRUE(WIFEXITED(status));
     EXPECT_EQ(WEXITSTATUS(status), 1) << text;
-    EXPECT_NE(text.find("broken.spp:4:"), std::string::npos) << text;
+    EXPECT_NE(text.find("broken.hot:4:"), std::string::npos) << text;
     EXPECT_FALSE(std::filesystem::exists(out_dir + "/spp_aot_registry.cpp"));
 }
 
@@ -1031,7 +1031,7 @@ TEST(SppcTool, CompileCommandsOptionWritesTheDatabase)
     TestScratch scratch;
     const std::string out_dir = scratch.file("sppc_cdb");
     const std::string cdb_dir = scratch.file("sppc_cdb_json");
-    const std::string script = std::string(SPP_SOURCE_DIR) + "/tests/scripts/boss_v1.spp";
+    const std::string script = std::string(SPP_SOURCE_DIR) + "/tests/scripts/boss_v1.hot";
     const std::string engine = std::string(SPP_SOURCE_DIR) + "/tests/engine";
     const std::string inc = std::string(SPP_SOURCE_DIR) + "/include";
     const std::string cmd = std::string("'") + SPPC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir + "' -I '"

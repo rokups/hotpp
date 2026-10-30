@@ -193,8 +193,8 @@ int main(int argc, char** argv)
     }
 #endif
 
-    const spp::ScriptSource v1 = source("player_v1.spp");
-    const spp::ScriptSource v2 = source("player_v2.spp");
+    const spp::ScriptSource v1 = source("player_v1.hot");
+    const spp::ScriptSource v2 = source("player_v2.hot");
     std::unique_ptr<spp::Backend> backend = make(false);
     const double cold1 = timed_load(*backend, v1, 1);
     const double cold2 = timed_load(*backend, v2, 2);

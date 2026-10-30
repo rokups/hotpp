@@ -88,8 +88,8 @@ public:
 // generation 2 it fires. The guard logs a stale call. The body does not run.
 TEST_F(GenerationUnload, EscapedClosureIsStaleAfterReload)
 {
-    spp::Module m1 = build("timer_v1.spp", 1);
-    spp::Module m2 = build("timer_v2.spp", 2);
+    spp::Module m1 = build("timer_v1.hot", 1);
+    spp::Module m2 = build("timer_v2.hot", 2);
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(m1), "Beeper"));
     s.commit_at_frame_boundary();
@@ -131,7 +131,7 @@ TEST_F(GenerationUnload, EscapedClosureIsStaleAfterReload)
 TEST_F(GenerationUnload, ClosureOfTheLiveGenerationRuns)
 {
     Session s;
-    ASSERT_NO_FATAL_FAILURE(s.start(build("timer_v1.spp", 1), "Beeper"));
+    ASSERT_NO_FATAL_FAILURE(s.start(build("timer_v1.hot", 1), "Beeper"));
     ASSERT_NO_FATAL_FAILURE(arm(s, 0.5f));
     const uint64_t stale0 = spp::stale_call_count();
     s.world.Tick(1.0f);
@@ -146,9 +146,9 @@ struct Chain
 {
     explicit Chain(GenerationUnload& t)
     {
-        m1 = t.build("timer_v1.spp", 1);
-        m2 = t.build("timer_v2.spp", 2);
-        m3 = t.build("timer_v2.spp", 3); // the same text, a new generation
+        m1 = t.build("timer_v1.hot", 1);
+        m2 = t.build("timer_v2.hot", 2);
+        m3 = t.build("timer_v2.hot", 3); // the same text, a new generation
     }
     spp::Module m1, m2, m3;
 };
@@ -252,8 +252,8 @@ TEST_F(GenerationUnload, ClearTimersReleasesThePin)
 TEST_F(GenerationUnload, FirstGenerationUnloadsWhileItsObjectLives)
 {
     Session s;
-    spp::Module m2 = build("timer_v2.spp", 2);
-    ASSERT_NO_FATAL_FAILURE(s.start(build("timer_v1.spp", 1), "Beeper"));
+    spp::Module m2 = build("timer_v2.hot", 2);
+    ASSERT_NO_FATAL_FAILURE(s.start(build("timer_v1.hot", 1), "Beeper"));
     s.commit_at_frame_boundary();
     ASSERT_NO_FATAL_FAILURE(arm(s, 1.0f));
     ASSERT_NO_FATAL_FAILURE(reload(s, std::move(m2)));
@@ -299,9 +299,9 @@ TEST_F(GenerationUnload, LoadedModulesStayBoundedOverReloads)
     constexpr uint32_t kLast = 6;
     std::vector<spp::Module> mods;
     for (uint32_t g = 2; g <= kLast; ++g)
-        mods.push_back(build("timer_v2.spp", g));
+        mods.push_back(build("timer_v2.hot", g));
     Session s;
-    ASSERT_NO_FATAL_FAILURE(s.start(build("timer_v1.spp", 1), "Beeper"));
+    ASSERT_NO_FATAL_FAILURE(s.start(build("timer_v1.hot", 1), "Beeper"));
     s.commit_at_frame_boundary();
     std::vector<spp::Instance> objs{s.inst};
     testing::internal::CaptureStderr();
@@ -338,8 +338,8 @@ TEST_F(GenerationUnload, LoadedModulesStayBoundedOverReloads)
 TEST_F(GenerationUnload, StatsListGenerationsInOrder)
 {
     Session s;
-    spp::Module m2 = build("timer_v2.spp", 2);
-    ASSERT_NO_FATAL_FAILURE(s.start(build("timer_v1.spp", 1), "Beeper"));
+    spp::Module m2 = build("timer_v2.hot", 2);
+    ASSERT_NO_FATAL_FAILURE(s.start(build("timer_v1.hot", 1), "Beeper"));
     s.commit_at_frame_boundary();
     spp::LoaderStats st = s.loader.stats();
     ASSERT_EQ(st.generations.size(), 1u);

@@ -33,9 +33,9 @@ const spp::ClassInfo* find_class(const spp::LoaderStats& st, const std::string& 
 // methods log and do nothing. The Hero object runs the new code.
 TEST_P(BackendTests, RemovedClassKeepsItsObjectsValid)
 {
-    spp::LoadResult v1 = backend->load(source("removed_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("removed_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("removed_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("removed_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
@@ -79,11 +79,11 @@ TEST_P(BackendTests, RemovedClassKeepsItsObjectsValid)
 // The class comes back in a later generation. The old object gets the new code.
 TEST_P(BackendTests, RemovedClassCanReturn)
 {
-    spp::LoadResult v1 = backend->load(source("removed_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("removed_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("removed_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("removed_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
-    spp::LoadResult v3 = backend->load(source("removed_v1.spp"), 3);
+    spp::LoadResult v3 = backend->load(source("removed_v1.hot"), 3);
     ASSERT_TRUE(v3) << v3.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
@@ -106,9 +106,9 @@ TEST_P(BackendTests, RemovedClassCanReturn)
 // script_stats: generations, pins, live objects and slots (design 8.4).
 TEST_P(BackendTests, StatsListGenerationsClassesAndSlots)
 {
-    spp::LoadResult v1 = backend->load(source("removed_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("removed_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("removed_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("removed_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
@@ -182,7 +182,7 @@ struct TempScript
         dir = std::filesystem::temp_directory_path()
             / ("spp_harness_" + std::to_string(reinterpret_cast<uintptr_t>(this)));
         std::filesystem::create_directories(dir);
-        file = dir / "watched.spp";
+        file = dir / "watched.hot";
         write(name);
     }
     ~TempScript() { std::filesystem::remove_all(dir); }
@@ -196,7 +196,7 @@ struct TempScript
 // The harness reloads when the file changes, and the commands work (design 8.1).
 TEST(HarnessTests, FileChangeReloadsAndCommandsWork)
 {
-    TempScript script("player_v1.spp");
+    TempScript script("player_v1.hot");
     harness::Harness h(script.file.string());
     std::string error;
     testing::internal::CaptureStdout();
@@ -206,7 +206,7 @@ TEST(HarnessTests, FileChangeReloadsAndCommandsWork)
     EXPECT_EQ(spp::active_generation, 1u);
     EXPECT_EQ(h.reloads_started(), 0u); // no change: no reload
 
-    script.write("player_v2.spp");
+    script.write("player_v2.hot");
     h.frame(kDt, 2000); // the watcher sees the change; the commit is at the end of the frame
     EXPECT_EQ(h.reloads_started(), 1u);
     EXPECT_EQ(spp::active_generation, 2u);
@@ -228,7 +228,7 @@ TEST(HarnessTests, FileChangeReloadsAndCommandsWork)
 // loads the script as generation 1 and makes the actors again with the saved state.
 TEST(HarnessTests, FullReloadKeepsPositionAndName)
 {
-    TempScript script("fnremoved_v1.spp");
+    TempScript script("fnremoved_v1.hot");
     harness::Harness h(script.file.string(), "Medic");
     std::string error;
     testing::internal::CaptureStdout();
@@ -237,7 +237,7 @@ TEST(HarnessTests, FullReloadKeepsPositionAndName)
     h.world().Actors()[0]->Position = Vec3(1.5f, 2.0f, -3.0f);
     h.frame(kDt, 0);
 
-    script.write("fnremoved_v2.spp");
+    script.write("fnremoved_v2.hot");
     h.frame(kDt, 2000);
     const std::string out = testing::internal::GetCapturedStdout();
     EXPECT_NE(out.find("[host] full reload: "), std::string::npos) << out;
@@ -253,7 +253,7 @@ TEST(HarnessTests, FullReloadKeepsPositionAndName)
 // harness clears the world. The actors and the old generation stay as they are.
 TEST(HarnessTests, FullReloadBuildErrorKeepsTheActors)
 {
-    TempScript script("fnremoved_v1.spp");
+    TempScript script("fnremoved_v1.hot");
     harness::Harness h(script.file.string(), "Medic");
     std::string error;
     testing::internal::CaptureStdout();
@@ -263,7 +263,7 @@ TEST(HarnessTests, FullReloadBuildErrorKeepsTheActors)
 
     {
         std::ofstream f(script.file, std::ios::trunc);
-        f << read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/fnremoved_v2.spp");
+        f << read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/fnremoved_v2.hot");
         f << "\nclass Broken : Actor {\n    void f() { int x = \"text\"; }\n}\n";
     }
     testing::internal::CaptureStderr();
@@ -276,7 +276,7 @@ TEST(HarnessTests, FullReloadBuildErrorKeepsTheActors)
     EXPECT_EQ(h.world().Actors()[0]->Name, "Doc");
 
     // The fixed script applies the full reload. The actor comes back.
-    script.write("fnremoved_v2.spp");
+    script.write("fnremoved_v2.hot");
     EXPECT_EQ(h.reload().status, spp::ReloadStatus::Applied);
     ASSERT_EQ(h.world().Actors().size(), 1u);
     EXPECT_EQ(h.world().Actors()[0]->Name, "Doc");
@@ -286,7 +286,7 @@ TEST(HarnessTests, FullReloadBuildErrorKeepsTheActors)
 // A script with an error keeps the old generation and the harness goes on.
 TEST(HarnessTests, BrokenScriptKeepsTheOldGeneration)
 {
-    TempScript script("player_v1.spp");
+    TempScript script("player_v1.hot");
     harness::Harness h(script.file.string());
     std::string error;
     testing::internal::CaptureStdout();

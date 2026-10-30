@@ -1594,7 +1594,7 @@ TEST(AnalyzeCpp, TranslationErrorIsReported)
 
 TEST(AnalyzeCpp, PathMustBeCpp)
 {
-    const sppc::AnalyzeResult r = sppc::analyze_cpp("class S {};", "/w/t.spp", analyze_options());
+    const sppc::AnalyzeResult r = sppc::analyze_cpp("class S {};", "/w/t.hot", analyze_options());
     EXPECT_FALSE(r.ok);
     ASSERT_EQ(r.errors.size(), 1u);
     EXPECT_EQ(r.errors[0].pos.line, 1);

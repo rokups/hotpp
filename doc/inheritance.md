@@ -66,10 +66,10 @@ class Grunt : Unit {
 
 ## Parent in another file
 
-`using "parent.spp";` makes the classes of another script visible.
+`using "parent.hot";` makes the classes of another script visible.
 
 ```spp
-using "parent.spp";
+using "parent.hot";
 using "Actor.h";
 
 class Grunt : Unit {

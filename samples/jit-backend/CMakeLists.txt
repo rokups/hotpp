@@ -25,9 +25,14 @@ execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
                 OUTPUT_VARIABLE resource_dir OUTPUT_STRIP_TRAILING_WHITESPACE)
 
 # One program source, two script variants. The extension picks the script.
-#   sample_jit_spp reads script/wolf.spp.
+#   sample_jit_spp reads script/wolf.hot.
 #   sample_jit_cpp reads script/wolf.cpp.
 foreach(variant spp cpp)
+    # The variant "spp" uses the extension ".hot".
+    set(ext ${variant})
+    if(variant STREQUAL "spp")
+        set(ext hot)
+    endif()
     set(target sample_jit_${variant})
     add_executable(${target} main.cpp)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -39,7 +44,7 @@ foreach(variant spp cpp)
     target_compile_definitions(${target} PRIVATE
         SAMPLE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
         SAMPLE_SCRIPT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/script"
-        SAMPLE_SCRIPT_EXT=".${variant}"
+        SAMPLE_SCRIPT_EXT=".${ext}"
         SAMPLE_SPP_INCLUDE_DIR="${SPP_INCLUDE_DIR}"
         SAMPLE_CXX="${CMAKE_CXX_COMPILER}"
         SAMPLE_CXXFLAGS="${CMAKE_CXX_FLAGS}"

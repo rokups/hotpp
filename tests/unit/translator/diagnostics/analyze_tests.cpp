@@ -136,5 +136,5 @@ TEST(Analyze, TranslateStillFailsForTheSameText)
     const sppc::TranslateResult t = sppc::translate(o);
     EXPECT_FALSE(t.ok);
     EXPECT_TRUE(t.cpp.empty());
-    EXPECT_EQ(t.diagnostics, "t.spp:3:20: error: expected an expression\n");
+    EXPECT_EQ(t.diagnostics, "t.hot:3:20: error: expected an expression\n");
 }

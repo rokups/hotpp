@@ -56,7 +56,7 @@ inline bool file_has_base_name(const std::string& n, const std::string& base_nam
 }
 
 // All rows of the line table, in the order of the dump.
-// The dump has a file table ("file_names[ 1]:" and "name: "x.spp"") and then the rows
+// The dump has a file table ("file_names[ 1]:" and "name: "x.hot"") and then the rows
 // "0x... LINE COLUMN FILE ...". A dump with more than one table is read table by table.
 inline std::vector<LineRow> line_rows(const std::string& dump)
 {
@@ -99,7 +99,7 @@ inline std::vector<LineRow> line_rows(const std::string& dump)
 }
 
 // The lines of the rows of the line table that belong to the file with this base name. A name
-// in the table can have a directory: "tests/scripts/x.spp" matches "x.spp".
+// in the table can have a directory: "tests/scripts/x.hot" matches "x.hot".
 inline std::set<int> lines_of_file(const std::string& dump, const std::string& base_name)
 {
     std::set<int> lines;

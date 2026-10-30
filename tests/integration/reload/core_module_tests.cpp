@@ -193,11 +193,11 @@ TEST(CoreModule, ThousandReloads)
 // is gone, the generation unloads and the factory makes an object with an empty state.
 TEST_P(BackendTests, RemovedClassHoldsOnlyTheGenerationOfItsLayout)
 {
-    spp::LoadResult v1 = backend->load(source("removed_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("removed_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("removed_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("removed_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
-    spp::LoadResult v3 = backend->load(source("removed_v2.spp"), 3);
+    spp::LoadResult v3 = backend->load(source("removed_v2.hot"), 3);
     ASSERT_TRUE(v3) << v3.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
@@ -244,9 +244,9 @@ TEST_P(BackendTests, RemovedClassHoldsOnlyTheGenerationOfItsLayout)
 // So no retired generation unloads while the object lives (kMayHoldCode).
 TEST_P(BackendTests, CodeHoldingFieldBlocksTheUnload)
 {
-    spp::LoadResult v1 = backend->load(source("handle_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("handle_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("handle_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("handle_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Knight"));

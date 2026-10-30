@@ -1,5 +1,5 @@
-// The Boss class without the interface base ITagged (S8b). A reload from boss_v1.spp to this
-// script removes a native base. A reload from this script to boss_v1.spp adds one. The shell
+// The Boss class without the interface base ITagged (S8b). A reload from boss_v1.hot to this
+// script removes a native base. A reload from this script to boss_v1.hot adds one. The shell
 // changes in both cases (design 5.3: RECONSTRUCT), so the loader rejects the reload.
 using "Actor.h";
 using "Damageable.h";

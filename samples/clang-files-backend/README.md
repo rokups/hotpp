@@ -11,12 +11,12 @@ builds it itself sets the compiler, the flags and the work folder.
 
 The sample has one program (`main.cpp`) and two variants of the same script:
 
-- `script/wolf.spp`: the script in the S++ syntax.
+- `script/wolf.hot`: the script in the S++ syntax.
 - `script/wolf.cpp`: the script as plain C++. See [C++ scripts](../../doc/cpp-scripts.md).
 
 The build makes one program for each variant from the same `main.cpp`:
 
-- `sample_clang_files_spp` reads the `.spp` script.
+- `sample_clang_files_spp` reads the `.hot` script.
 - `sample_clang_files_cpp` reads the `.cpp` script.
 
 Both variants are in the folder `script`. The file extension picks the variant.
@@ -35,7 +35,7 @@ compiler (the object library `clang_files_backend_cpp_scripts_plain`). This show
 ## Files
 
 - `Creature.h`: the host class. It is header-only.
-- `script/wolf.spp` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`.
+- `script/wolf.hot` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`.
 - `main.cpp`: the program. It fills `spp::ClangFilesOptions`, compiles the script, loads it
   and calls `Tick` three times.
 - `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.

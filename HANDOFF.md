@@ -13,7 +13,7 @@ You continue work on `/home/rk/src/spp`. S++ is a hot-reloadable scripting langu
 - Fetch dependencies through CPM.cmake when they are not installed (`CPM_USE_LOCAL_PACKAGES ON`). Libclang and LLVM come from the system.
 - Commit messages: short title, terse body. No attribution lines of any kind.
 - Subagents: set `model` and `effort` on every Agent call. Use the cheapest suitable model.
-- Precompiling a script to a `.so` is not a backend. It is a tool (`sppc`). Project S++, extension `.spp`, C++ namespace `spp`, translator namespace `sppc`.
+- Precompiling a script to a `.so` is not a backend. It is a tool (`sppc`). Project S++, extension `.hot`, C++ namespace `spp`, translator namespace `sppc`.
 
 ## State at HEAD
 All work is committed, except what `git status` shows. Slices S0 to S21 are done (`TASKS.md`).
@@ -50,7 +50,7 @@ Measures (P1, one module after a one-line change, this machine, `-O1`, warm): JI
 
 ## Syntax summary
 The full list is in `README.md` and `spp-design.md` section 7.
-- `using "Actor.h";` and `using <vector>;`. A `using "other.spp";` imports a script (cross-script parents).
+- `using "Actor.h";` and `using <vector>;`. A `using "other.hot";` imports a script (cross-script parents).
 - `class Name : Base, IFace { }`. The base is optional. `[value] class` and `struct` are inline values.
 - Field: `[alias("old")] [public|private|protected] Type name = init;`. The initializer is optional.
 - Method: `[modifiers] Ret name(T a) { }`. Modifiers: `override`, `virtual`, `new`, access words. `void` means no return value.
@@ -93,7 +93,7 @@ Inheritance (S6, S20a):
 - The shell of a child derives from the shell of the parent. A family has one slot numbering. `virtual` adds a slot (`Owner__f_virt`). `override` fills it. A name that hides a parent function needs `new`. `base.f()` calls the parent directly.
 - `is` and `as` walk the `super` records by name. A native type uses `dynamic_cast`. `as` of a raw pointer gives a raw shell pointer: use `var`. A `[value]` class is an error.
 - A reload that changes the script parent is rejected. Multiple script inheritance is not supported. Only the root of a family can have native interface bases (design 4.5).
-- A script parent in another script (`using "parent.spp";`) merges into the generation of the child. An imported script cannot have module variables or convert hooks. A class name in two scripts is an error. The source map has a file number for each imported script (`SourceSegment::file`, `SourceMap::files()`, `SourceMap::locate()`), so errors in an imported script have the real file, line and column.
+- A script parent in another script (`using "parent.hot";`) merges into the generation of the child. An imported script cannot have module variables or convert hooks. A class name in two scripts is an error. The source map has a file number for each imported script (`SourceSegment::file`, `SourceMap::files()`, `SourceMap::locate()`), so errors in an imported script have the real file, line and column.
 
 Native interface bases (S8b): the first base is primary. Each virtual of each base gets one slot (primary first). The same signature in two bases is an error. `F()` and `F() const` ambiguity, `final`, a duplicate base, a script class as interface, and an interface without a default constructor are errors. A changed list of bases is rejected.
 
@@ -111,7 +111,7 @@ Other limits:
 - The parser stores the access words. The translator does not enforce them.
 - Nesting limits: 64 nested statements, 15 nested lambdas, 256 operators in one expression.
 - AOT compilation: generation 1 only, no slot file. A type error shows in the C++ compile of the generated file. Script type and class names must be unique over all AOT scripts. `onReload` and `convert` never run.
-- Language server index (S28): the shard of a closed `.spp` file is made at the first rename or references scan, not at startup. The shard digest covers the file text and the texts of the scripts it imports, found by a scan for `using "x.spp";` in the script dir and the include dirs. A changed import makes the shard stale. The index dir is the first workspace folder only. Code: `src/ls/symbol_index.{h,cpp}`.
+- Language server index (S28): the shard of a closed `.hot` file is made at the first rename or references scan, not at startup. The shard digest covers the file text and the texts of the scripts it imports, found by a scan for `using "x.hot";` in the script dir and the include dirs. A changed import makes the shard stale. The index dir is the first workspace folder only. Code: `src/ls/symbol_index.{h,cpp}`.
 - Language server hosts (`DECISIONS.md` 19): `spp_script_host` writes `.cache/spp/hosts/<name>.json`. Code: `src/ls/hosts.{h,cpp}`. Many build dirs share one hosts dir, so the last configure wins. Symlinked workspace paths are not canonicalized in matching. Multi-Config generators are untested. The host defines, options and include dirs are in the side files `<name>.defines`, `<name>.options` and `<name>.includes` (one entry on each line), so all valid paths are safe. The JSON has `sourceDir`; `spp-ls` resolves relative paths with it and removes repeated include dirs. Unsupported: a path with a newline, and a path with `;` (CMake splits it in a list before the function sees it).
 - Language server: after a translation error, clangd keeps the last good C++. Positions go through a prefix/suffix edit map (`Doc::set_edit`). A position inside the edit has no mapping. The `#line` fallback takes the column of the same word in the script line.
 - Language server: clangd does not publish again when a new version gives the same diagnostics. The server drops diagnostics of an old version, so the diagnostics can be missing after an edit that gives the same C++.
@@ -128,7 +128,7 @@ The grammar uses lexy. Only the files in `src/translator/parser/` include lexy h
 - R0 to R6: pass (tests in `tests/integration/reload`, `closures`, `threading`; ASan and TSan clean).
 - F1: pass for plain bases and explicit specializations. Pass for implicit template instances, templates over templates and partial specializations (type arguments).
 - F2: pass. `tests/golden/diagnostics/` has 21 mistakes (`DiagnosticMistakes`).
-- F3: partial. gdb stops at `player_v1.spp:11` in a real process, shows `Player__Tick ... at tests/scripts/player_v1.spp:13` and steps by script lines. The frame name is from before phase 2. The frame is now the state member `PlayerState_g1::Tick`. This is not run again. lldb, the lldb formatters in a live session, natvis and Visual Studio are not run.
+- F3: partial. gdb stops at `player_v1.hot:11` in a real process, shows `Player__Tick ... at tests/scripts/player_v1.hot:13` and steps by script lines. The frame name is from before phase 2. The frame is now the state member `PlayerState_g1::Tick`. This is not run again. lldb, the lldb formatters in a live session, natvis and Visual Studio are not run.
 - P1: pass (see Measures).
 
 ## Not done

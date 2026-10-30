@@ -36,7 +36,7 @@ std::string run_command(const std::string& command, int* status = nullptr)
 std::string run_with_loader()
 {
     std::unique_ptr<spp::Backend> backend = spp::make_default_backend();
-    spp::LoadResult r = backend->load(test_support::source("aot_demo.spp"), 1);
+    spp::LoadResult r = backend->load(test_support::source("aot_demo.hot"), 1);
     if (!r)
     {
         ADD_FAILURE() << r.error;

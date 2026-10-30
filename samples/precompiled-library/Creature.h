@@ -1,4 +1,4 @@
-// The host class of the sample. The scripts wolf.spp and wolf.cpp derive from it.
+// The host class of the sample. The scripts wolf.hot and wolf.cpp derive from it.
 // The class is header-only, so the script and the program use the same header.
 #pragma once
 #include <string>

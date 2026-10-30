@@ -10,23 +10,23 @@ The sample needs SDL3 and CMake 3.24. Without SDL3 the configure prints
 
 The sample has one program (`main.cpp`) and two variants of the same script. Both are in the folder `script`:
 
-- `script/demo.spp`: the script in the S++ syntax.
+- `script/demo.hot`: the script in the S++ syntax.
 - `script/demo.cpp`: the script as plain C++. See [C++ scripts](../../doc/cpp-scripts.md).
 
 The build makes one program for each variant from the same `main.cpp`:
 
-- `sample_imgui_spp` reads `script/demo.spp`.
+- `sample_imgui_spp` reads `script/demo.hot`.
 - `sample_imgui_cpp` reads `script/demo.cpp`.
 
 The file extension picks the variant. Both programs show the same window. The build also compiles the
 `.cpp` script with the normal compiler (the object library `imgui_cpp_scripts_plain`).
 This shows that a `.cpp` script compiles unchanged.
 
-The language server serves `.spp` scripts only. It does not serve `demo.cpp`.
+The language server serves `.hot` scripts only. It does not serve `demo.cpp`.
 
 ## How it works
 
-1. The script `script/demo.spp` has the class `Demo`. It derives from the host class `UiApp` and
+1. The script `script/demo.hot` has the class `Demo`. It derives from the host class `UiApp` and
    overrides `Frame`. It includes the real `imgui.h` (`using "imgui.h";`) and calls the ImGui API as it is.
 2. A pointer parameter takes the address of a field, for example `ImGui.Checkbox("c", &this.on)`.
 3. `main.cpp` fills `spp::ClangFilesOptions` and loads the script. The host calls `Frame` once for each frame.
@@ -40,7 +40,7 @@ The language server serves `.spp` scripts only. It does not serve `demo.cpp`.
 ## Files
 
 - `UiApp.h`, `UiApp.cpp`: the host base class. It has the virtual function `Frame`.
-- `script/demo.spp` and `script/demo.cpp`: the script in two variants. The class `Demo` derives from `UiApp`.
+- `script/demo.hot` and `script/demo.cpp`: the script in two variants. The class `Demo` derives from `UiApp`.
 - `main.cpp`: the program. It makes the window, the backend and the loader. It reloads the script.
 - `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
 
@@ -57,7 +57,7 @@ cmake-build/linux-clang-files/bin/Debug/sample_imgui_spp [script]
 cmake-build/linux-clang-files/bin/Debug/sample_imgui_cpp [script]
 ```
 
-The default script of `sample_imgui_spp` is `script/demo.spp`.
+The default script of `sample_imgui_spp` is `script/demo.hot`.
 The default script of `sample_imgui_cpp` is `script/demo.cpp`.
 
 ### As a separate project

@@ -9,14 +9,14 @@ The host needs a C++ compiler at run time.
 
 The sample has one program (`main.cpp`) and two variants of the same scripts:
 
-- `script/wolf_v1.spp` and `script/wolf_v2.spp`: the scripts in the S++ syntax.
+- `script/wolf_v1.hot` and `script/wolf_v2.hot`: the scripts in the S++ syntax.
 - `script/wolf_v1.cpp` and `script/wolf_v2.cpp`: the scripts as plain C++. See [C++ scripts](../../doc/cpp-scripts.md).
 
 Both variants are in the folder `script`. The file extension picks the variant.
 
 The build makes one program for each variant from the same `main.cpp`:
 
-- `sample_hot_reload_spp` reads the `.spp` scripts.
+- `sample_hot_reload_spp` reads the `.hot` scripts.
 - `sample_hot_reload_cpp` reads the `.cpp` scripts.
 
 Both programs print the same output. The build also compiles the `.cpp` scripts with the normal
@@ -51,10 +51,10 @@ run on the main thread.
 ## Files
 
 - `Creature.h`: the host class. It is header-only.
-- `script/wolf_v1.spp` and `script/wolf_v1.cpp`: generation 1. The class `Wolf` prints the tag `[v1]`, `bites` and `hp`.
-- `script/wolf_v2.spp` and `script/wolf_v2.cpp`: generation 2. They add the field `howls` and print the tag `[v2]`, `hp` and `howls`.
+- `script/wolf_v1.hot` and `script/wolf_v1.cpp`: generation 1. The class `Wolf` prints the tag `[v1]`, `bites` and `hp`.
+- `script/wolf_v2.hot` and `script/wolf_v2.cpp`: generation 2. They add the field `howls` and print the tag `[v2]`, `hp` and `howls`.
 - `main.cpp`: the program. It ticks twice, reloads and ticks twice again.
-  The definition `SAMPLE_SCRIPT_DIR` is the folder `script`. The definition `SAMPLE_SCRIPT_EXT` (`.spp` or `.cpp`) picks the variant.
+  The definition `SAMPLE_SCRIPT_DIR` is the folder `script`. The definition `SAMPLE_SCRIPT_EXT` (`.hot` or `.cpp`) picks the variant.
   The definition `SAMPLE_DIR` is the folder of `Creature.h`.
 - `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
 

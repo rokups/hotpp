@@ -14,7 +14,7 @@ Answer these questions in order. Stop at the first answer that fits.
 
 1. Must the shipped program have no compiler, no libclang and no loader? Then the scripts are fixed at build time. Use **AOT**.
 2. Do the scripts change after the program is built, but you build them ahead of time (with the build or with `sppc`)? Use a **precompiled library**.
-3. Does the program read `.spp` text at run time and compile it? Then ask the next two questions.
+3. Does the program read `.hot` text at run time and compile it? Then ask the next two questions.
 4. Must a live object keep its field values while its code changes? Use **hot reload**.
 5. Do you want to avoid a compiler process, and can you link LLVM and Clang? Use the **in-process JIT**.
 6. Do you want to set the compiler, the include folders, the flags and the work folder in your own code? Use the **explicit Clang files backend** (or the explicit JIT backend).
@@ -115,7 +115,7 @@ cmake --preset linux-clang-jit
 ```cpp
 auto backend = spp::make_default_backend();   // declare before the loader
 spp::Loader loader;                           // declare before the objects
-spp::LoadResult module = backend->load({"player.spp", text}, 1);
+spp::LoadResult module = backend->load({"player.hot", text}, 1);
 if (!module) { /* report module.error and module.reason */ }
 spp::ReloadResult loaded = loader.load(std::move(*module.module));
 if (!loaded) { /* report loaded.error */ }
@@ -147,7 +147,7 @@ auto backend = spp::make_default_backend(options);
 `sppc` builds a script into a `.so` ahead of time. Any build can load it. In CMake use `spp_add_scripts` (default mode). On the command line:
 
 ```
-sppc player_v1.spp --gen 1 -I include -I tests/engine --out-dir out/
+sppc player_v1.hot --gen 1 -I include -I tests/engine --out-dir out/
 ```
 
 ```cpp
@@ -225,7 +225,7 @@ options.include_dirs = {SPP_INCLUDE_DIR, "engine"};
 options.resource_dir = RESOURCE_DIR;                // <compiler> -print-resource-dir
 spp::JitBackend backend(std::move(options));        // declare before the loader
 spp::Loader loader;
-spp::LoadResult built = backend.load({"player.spp", text}, 1);
+spp::LoadResult built = backend.load({"player.hot", text}, 1);
 ```
 
 **Run time:** the backend translates in memory, compiles in memory with the Clang library and loads the code with LLVM ORC. No process starts. The backend writes no file, except the precompiled header of `make_pch`. Each `load` makes a new JITDylib. The slot order stays in memory.
@@ -251,7 +251,7 @@ options.work_dir = "build/spp_work";
 options.remove_work_dir_at_exit = true;
 spp::ClangFilesBackend backend(std::move(options));   // declare before the loader
 spp::Loader loader;
-spp::LoadResult built = backend.load({"player.spp", text}, 1);
+spp::LoadResult built = backend.load({"player.hot", text}, 1);
 ```
 
 **Run time:** the backend translates in memory, writes a `.cpp` in `work_dir`, runs the compiler (without a shell) to make a `.so`, and loads it. Each call makes a new `.so`. The compile command is `<compiler> -std=<standard> -fPIC -shared -g -Werror=return-type`, then `-resource-dir`, `extra_flags`, the `-I` folders and the format flags (`compile_command` in `include/spp/clang_files_backend.h`).
@@ -271,7 +271,7 @@ spp::LoadResult built = backend.load({"player.spp", text}, 1);
 An AOT build has no loader, no reload and no Clang. `sppc --aot` (the AOT mode) translates generation 1 of each script to C++. The code becomes part of the game.
 
 ```
-sppc --aot player.spp boss.spp --out-dir gen -I include -I tests/engine
+sppc --aot player.hot boss.hot --out-dir gen -I include -I tests/engine
 ```
 
 ```cpp
@@ -310,7 +310,7 @@ Fields of `ScriptSource`:
 |---|---|
 | `name` | The script name or path. The diagnostics and the `#line` directives use it. The output name uses its file stem. |
 | `text` | The content of the script. |
-| `modules` | The imported scripts (`using "parent.spp";`) as pairs of the path in the `using` line and the text. One generation holds them all. A path that is not here is read from disk. |
+| `modules` | The imported scripts (`using "parent.hot";`) as pairs of the path in the `using` line and the text. One generation holds them all. A path that is not here is read from disk. |
 
 Fields of `LoadResult`:
 

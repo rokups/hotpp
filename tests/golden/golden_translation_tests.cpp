@@ -38,7 +38,7 @@ void check_golden(const std::string& name, const std::string& text)
 // Translates "<base>_v1" as generation 1 and "<base>_v2" as generation 2.
 // The slot input of generation 2 is the slot output of generation 1.
 // "ext" is the extension of the script files.
-void golden_pair(const std::string& base, const std::string& ext = ".spp")
+void golden_pair(const std::string& base, const std::string& ext = ".hot")
 {
     std::string slots;
     for (int gen = 1; gen <= 2; ++gen)
@@ -57,7 +57,7 @@ void golden_pair(const std::string& base, const std::string& ext = ".spp")
 }
 
 // Translates one script as generation 1. The script has no second generation.
-void golden_one(const std::string& base, const std::string& ext = ".spp")
+void golden_one(const std::string& base, const std::string& ext = ".hot")
 {
     const std::string file = base + ext;
     sppc::TranslateOptions o = engine_options(file.c_str(), 1);

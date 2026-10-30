@@ -1,5 +1,5 @@
 // Generation 1 of the child module (S20a). "Grunt" derives from "Unit" of another module.
-using "xmod_parent.spp";
+using "xmod_parent.hot";
 using "Actor.h";
 
 class Grunt : Unit {

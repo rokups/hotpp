@@ -21,7 +21,7 @@ bool has(const std::string& text, const std::string& part)
 sppc::TranslateResult gen(const std::string& script, int generation, const std::string& slots_in)
 {
     sppc::TranslateOptions o;
-    o.script_name = "t.spp";
+    o.script_name = "t.hot";
     o.script_text = script;
     o.generation = generation;
     o.slots_in = slots_in;

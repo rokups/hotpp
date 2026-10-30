@@ -1,7 +1,7 @@
 // The program of the sample. It reads the script wolf, compiles it at run time and calls Tick.
 // The host needs a C++ compiler at run time.
 // The build makes two programs from this file. The definitions SAMPLE_SCRIPT_DIR and
-// SAMPLE_SCRIPT_EXT select the script variant (.spp or .cpp).
+// SAMPLE_SCRIPT_EXT select the script variant (.hot or .cpp).
 #include "Creature.h"
 #include "spp/backend.h"
 #include "spp/runtime/loader.h"

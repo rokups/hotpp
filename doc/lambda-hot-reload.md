@@ -55,7 +55,7 @@ Give each lambda the same treatment as a method.
 - `src/runtime/loader.cpp:274-299`: `frame_boundary`, unload gate.
 - `include/spp/runtime/registry.h`: thunk entries.
 - `include/spp/runtime/shell.h:77-94`: `spp::call` and the slot key check.
-- `tests/scripts/timer_v1.spp`, `timer_v2.spp`: lambda in a World timer.
+- `tests/scripts/timer_v1.hot`, `timer_v2.hot`: lambda in a World timer.
 
 ## Next step
 

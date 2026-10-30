@@ -35,7 +35,7 @@ struct JitOptions
     // The empty string gives no debug info.
     std::string debug_flag = "-gline-tables-only";
     // True: register the JIT code with the debugger (GDB JIT interface, design 4.10). Needs
-    // a debug flag to be useful: the line table names the .spp files.
+    // a debug flag to be useful: the line table names the .hot files.
     bool debugger_support = true;
 };
 

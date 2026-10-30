@@ -10,14 +10,14 @@ The page [Embedding](embedding.html) describes the six hosting situations. Each 
 
 ## Quick start
 
-This quick start makes an AOT program. The C++ of the script is in the binary. The program needs no loader and no compiler at run time. Copy `Creature.h`, `script/wolf.spp` and `main.cpp` from [samples/aot](https://github.com/rokups/spp/tree/main/samples/aot).
+This quick start makes an AOT program. The C++ of the script is in the binary. The program needs no loader and no compiler at run time. Copy `Creature.h`, `script/wolf.hot` and `main.cpp` from [samples/aot](https://github.com/rokups/spp/tree/main/samples/aot).
 
 ```
 myapp/
   CMakeLists.txt
   main.cpp        (from samples/aot)
   Creature.h      (from samples/aot)
-  wolf.spp        (from samples/aot/script)
+  wolf.hot        (from samples/aot/script)
 ```
 
 This is the complete `CMakeLists.txt`:
@@ -32,8 +32,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(SPP_ROOT "/path/to/spp" CACHE PATH "The S++ source tree")
 add_subdirectory(${SPP_ROOT} spp)
 
-# sppc translates wolf.spp to C++. The library myapp_scripts has the result.
-spp_add_scripts(TARGET myapp_scripts AOT SCRIPTS wolf.spp
+# sppc translates wolf.hot to C++. The library myapp_scripts has the result.
+spp_add_scripts(TARGET myapp_scripts AOT SCRIPTS wolf.hot
                 INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS Creature.h)
 add_executable(myapp main.cpp)
 target_link_libraries(myapp PRIVATE myapp_scripts)
@@ -102,7 +102,7 @@ Add the S++ source tree with `add_subdirectory`. The second argument is a build 
 set(SPP_ROOT "/path/to/spp" CACHE PATH "The S++ source tree")
 add_subdirectory(${SPP_ROOT} spp)
 
-spp_add_scripts(TARGET app_scripts AOT SCRIPTS wolf.spp
+spp_add_scripts(TARGET app_scripts AOT SCRIPTS wolf.hot
                 INCLUDES ${CMAKE_CURRENT_SOURCE_DIR})
 add_executable(app main.cpp)
 target_link_libraries(app PRIVATE app_scripts)
@@ -248,10 +248,10 @@ A target `fmt::fmt-header-only` or `fmt::fmt` that exists already is always used
 ## spp_add_scripts
 
 ```
-spp_add_scripts(TARGET name SCRIPTS a.spp b.spp
+spp_add_scripts(TARGET name SCRIPTS a.hot b.hot
                 [INCLUDES dir...] [FLAGS cxxflag...] [DEPENDS file...]
                 [OUT_DIR dir] [AFTER target] [SPPC_ARGS arg...])
-spp_add_scripts(TARGET name SCRIPTS a.spp b.spp AOT
+spp_add_scripts(TARGET name SCRIPTS a.hot b.hot AOT
                 [INCLUDES dir...] [PRELUDES file...] [FLAGS sppc-flag...]
                 [DEPENDS file...] [OUT_DIR dir] [SPPC_ARGS arg...])
 ```
@@ -263,7 +263,7 @@ The function runs `sppc` at build time. It has two modes. `AOT` selects the seco
 | Keyword | Default | Meaning | Path rule |
 |---|---|---|---|
 | `TARGET` | none, required | The name of the target. In the default mode it is a custom target. In AOT mode it is a static library. | none |
-| `SCRIPTS` | none, required | The script files. A file is a `.spp` script or a `.cpp` script (see [C++ scripts](cpp-scripts.html)). The extension selects the parser. | A relative path is relative to the current source folder. The function makes it absolute. |
+| `SCRIPTS` | none, required | The script files. A file is a `.hot` script or a `.cpp` script (see [C++ scripts](cpp-scripts.html)). The extension selects the parser. | A relative path is relative to the current source folder. The function makes it absolute. |
 | `AOT` | off | A flag. It selects the AOT mode. | none |
 | `INCLUDES` | empty | Include folders. `sppc` gets each one as `-I`. In AOT mode the library also gets them as PUBLIC include folders. The language server host gets them too. | Use an absolute path. The function passes the text to `sppc` as it is, and the custom command runs in the current build folder. The AOT include folders and the host file read a relative path from the current source folder. |
 | `PRELUDES` | empty | Prelude files for `sppc --prelude`. They work only with `AOT`. The default mode stops with an error. | A relative path is relative to the current source folder. |
@@ -286,17 +286,17 @@ The custom command depends on these items:
 - every file in `DEPENDS`;
 - in AOT mode, every file in `PRELUDES`.
 
-The command does not read the headers of the script. The native headers that a script includes with `using "X.h";` are not dependencies. A script that another script imports with `using "parent.spp";` is also not a dependency. List such files in `DEPENDS`, or the build does not run `sppc` when they change. The samples use `DEPENDS Creature.h`.
+The command does not read the headers of the script. The native headers that a script includes with `using "X.h";` are not dependencies. A script that another script imports with `using "parent.hot";` is also not a dependency. List such files in `DEPENDS`, or the build does not run `sppc` when they change. The samples use `DEPENDS Creature.h`.
 
 ### Default mode
 
-The function makes one custom target `name`. The target makes the library `OUT_DIR/<script name>.g<n>.so` for each script. The script name is the file name without the last extension. `wolf.spp` gives `wolf.g1.so`. The command also writes the generated `.cpp` files and the slot file `OUT_DIR/slots.txt` there. Load a library with `spp::module_from_library`.
+The function makes one custom target `name`. The target makes the library `OUT_DIR/<script name>.g<n>.so` for each script. The script name is the file name without the last extension. `wolf.hot` gives `wolf.g1.so`. The command also writes the generated `.cpp` files and the slot file `OUT_DIR/slots.txt` there. Load a library with `spp::module_from_library`.
 
 Each library gets the compile flags `-fPIC -shared -g -Werror=return-type` and the standard from the section above. The compiler is `CMAKE_CXX_COMPILER`. `sppc` adds no `-O` flag and does not read `CMAKE_CXX_FLAGS`. Give the flags of the host in `FLAGS`.
 
 Two scripts in one call must have different names (the file name without the extension). Else `sppc` stops with `two scripts have the name ...`.
 
-The stem rule also applies to `.cpp` scripts. A `foo.spp` and a `foo.cpp` in one call have the same stem `foo`. The configure step fails with an error that names both scripts. The `sppc` output of a `.cpp` script is named `<input>.cpp`, for example `foo.cpp.cpp`. The backends keep the stem rule, for example `foo.g1.cpp` and `foo.g1.so`.
+The stem rule also applies to `.cpp` scripts. A `foo.hot` and a `foo.cpp` in one call have the same stem `foo`. The configure step fails with an error that names both scripts. The `sppc` output of a `.cpp` script is named `<input>.cpp`, for example `foo.cpp.cpp`. The backends keep the stem rule, for example `foo.g1.cpp` and `foo.g1.so`.
 
 The target does not build automatically. Your host target must depend on it: `add_dependencies(app name)`.
 
@@ -325,9 +325,9 @@ With `Ninja Multi-Config` or another multi-config generator, the default `OUT_DI
 separate_arguments(host_flags NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
 set(engine ${CMAKE_SOURCE_DIR}/engine)
 
-spp_add_scripts(TARGET gen1 SCRIPTS player_v1.spp
+spp_add_scripts(TARGET gen1 SCRIPTS player_v1.hot
                 INCLUDES ${engine} FLAGS ${host_flags} DEPENDS ${engine}/Actor.h)
-spp_add_scripts(TARGET gen2 SCRIPTS player_v2.spp AFTER gen1 SPPC_ARGS --gen 2
+spp_add_scripts(TARGET gen2 SCRIPTS player_v2.hot AFTER gen1 SPPC_ARGS --gen 2
                 INCLUDES ${engine} FLAGS ${host_flags} DEPENDS ${engine}/Actor.h)
 
 add_executable(app main.cpp)
@@ -344,9 +344,9 @@ The build makes these files in `${CMAKE_BINARY_DIR}/spp_scripts`: `player_v1.g1.
 ### Worked example: AOT mode
 
 ```cmake
-spp_add_scripts(TARGET game_scripts AOT SCRIPTS player.spp boss.spp
+spp_add_scripts(TARGET game_scripts AOT SCRIPTS player.hot boss.hot
                 INCLUDES ${CMAKE_SOURCE_DIR}/engine
-                PRELUDES ${CMAKE_SOURCE_DIR}/scripts/stubs.spp
+                PRELUDES ${CMAKE_SOURCE_DIR}/scripts/stubs.hot
                 DEPENDS ${CMAKE_SOURCE_DIR}/engine/Actor.h
                 SPPC_ARGS --no-strict-borrowed)
 add_executable(game main.cpp)
@@ -464,7 +464,7 @@ The first column has the text as it appears in the source. A text with `...` has
 | `sppc: error: two scripts have the name ...` | Two scripts have the same file name in one call. | Give the files different names. |
 | `sppc: error: cannot read ...` | A script file does not exist. | Check the path in `SCRIPTS`. |
 | `the compile of ... failed (exit code ...)` | The C++ compiler rejected the generated code. The text before it has the compiler diagnostics. | Read the diagnostics. Check `INCLUDES`, `FLAGS` and the standard. |
-| `the script '...' is not found` | A `using "x.spp";` line names a script that the translator cannot read. | Check the path. Add the folder to `INCLUDES`. |
+| `the script '...' is not found` | A `using "x.hot";` line names a script that the translator cannot read. | Check the path. Add the folder to `INCLUDES`. |
 | `base class '...' is not found in the imported headers` | The header of the native base class is not in the `using` lines or not in the include folders. | Add the header with `using`. Add its folder to `INCLUDES`. |
 | `symbol script_register not found in ...` | The file is a library, but not an S++ generation module. | Load a library that `sppc` made. |
 | `the class ... is in two AOT scripts (...)` | Two AOT scripts have a class of the same name. It is an exception of `AotRegistry`. | Rename one class. |

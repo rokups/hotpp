@@ -38,7 +38,7 @@ class Names : Actor {
 TEST(GeneratedNameCompile, UserNamesLambdaExpressionAndCastCompile)
 {
     auto backend = spp::make_default_backend();
-    const spp::ScriptSource source{"names_compile.spp", kScript, {}};
+    const spp::ScriptSource source{"names_compile.hot", kScript, {}};
     const spp::LoadResult r = backend->load(source, 1);
     ASSERT_TRUE(r) << r.error;
 }

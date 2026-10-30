@@ -38,7 +38,7 @@ template <class T> T* modvar(Session& s, const char* name)
 // a local, a parameter, a switch and a compare.
 TEST_P(BackendTests, ModuleVariableIsSharedByAllClasses)
 {
-    spp::LoadResult v1 = backend->load(source("module_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("module_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
@@ -62,9 +62,9 @@ TEST_P(BackendTests, ModuleVariableIsSharedByAllClasses)
 // new variable "bonus" has its initializer. The struct and the enum change.
 TEST_P(BackendTests, ReloadKeepsModuleVariables)
 {
-    spp::LoadResult v1 = backend->load(source("module_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("module_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("module_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("module_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
@@ -118,9 +118,9 @@ TEST_P(BackendTests, ReloadKeepsModuleVariables)
 // value of a variable whose type changes. A new variable reads the migrated earlier variable.
 TEST_P(BackendTests, ModuleVariableOrderAndConvertHook)
 {
-    spp::LoadResult v1 = backend->load(source("modconv_v1.spp"), 1);
+    spp::LoadResult v1 = backend->load(source("modconv_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("modconv_v2.spp"), 2);
+    spp::LoadResult v2 = backend->load(source("modconv_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Probe"));

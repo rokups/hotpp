@@ -27,7 +27,7 @@ TEST(HandleTranslation, ParamIsConstRef)
     const std::string p = "const std::shared_ptr<Weapon>& src";
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit(Foo_Shell* __self, " + p + ");")) << r.cpp;
     // A "#line" directive maps the brace of the state member to the script line.
-    EXPECT_TRUE(has(r.cpp, "void FooState_g1::Hit(" + p + ")\n#line 5 \"t.spp\"\n{")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "void FooState_g1::Hit(" + p + ")\n#line 5 \"t.hot\"\n{")) << r.cpp;
     // The slot is the state member. No slot adapter exists.
     EXPECT_TRUE(has(r.cpp, "reinterpret_cast<spp::SlotFn>(&FooState_g1::Hit)")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "Foo__Hit_slot")) << r.cpp;

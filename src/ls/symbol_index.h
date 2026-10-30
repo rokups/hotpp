@@ -1,6 +1,6 @@
 // The saved symbol index of spp-ls (S28). It is like the index of clangd.
 //
-// There is one shard for each .spp file. All shards are in one flat directory (by default
+// There is one shard for each .hot file. All shards are in one flat directory (by default
 // ".cache/spp/index/" in the project root). The name of a shard is a hash of the file path. So
 // a new shard replaces the old shard of the same file, and the index does not grow when a file
 // changes.
@@ -60,7 +60,7 @@ public:
 
     // The digest of a file content.
     static std::string digest(const std::string& content);
-    // The digest of a script and of the scripts that it imports ("using "x.spp";"), also the
+    // The digest of a script and of the scripts that it imports ("using "x.hot";"), also the
     // imports of the imports. A script import is read from the directory of the script, then from
     // the include dirs. When an imported script changes, the digest changes.
     static std::string digest(

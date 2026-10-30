@@ -678,11 +678,11 @@ TEST_P(BackendTests, CppScriptNamespaceNamesInScriptCode)
     EXPECT_NE(*modvar<void*>(s, "brain"), nullptr);
 }
 
-// A .spp script and a .cpp script live in the same process. Each has its own loader and one object.
+// A .hot script and a .cpp script live in the same process. Each has its own loader and one object.
 // One loader holds one module for each generation, so the two scripts use two loaders.
 TEST_P(BackendTests, SppAndCppScriptsRunSideBySide)
 {
-    spp::LoadResult spp_mod = backend->load(source("echo_v1.spp"), 1);
+    spp::LoadResult spp_mod = backend->load(source("echo_v1.hot"), 1);
     ASSERT_TRUE(spp_mod) << spp_mod.error;
     spp::LoadResult cpp_mod = backend->load(source("cpp_player_v1.cpp"), 1);
     ASSERT_TRUE(cpp_mod) << cpp_mod.error;

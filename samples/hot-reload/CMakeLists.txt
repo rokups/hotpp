@@ -11,10 +11,15 @@ endif()
 
 # One program source, two script variants. The extension picks the
 # scripts. Both variants are in the folder script. The names of the script files stay wolf_v1 and wolf_v2.
-#   sample_hot_reload_spp reads script/wolf_v1.spp and wolf_v2.spp.
+#   sample_hot_reload_spp reads script/wolf_v1.hot and wolf_v2.hot.
 #   sample_hot_reload_cpp reads script/wolf_v1.cpp and wolf_v2.cpp.
 # spp_backend has make_default_backend and the loader (spp_runtime).
 foreach(variant spp cpp)
+    # The variant "spp" uses the extension ".hot".
+    set(ext ${variant})
+    if(variant STREQUAL "spp")
+        set(ext hot)
+    endif()
     set(target sample_hot_reload_${variant})
     add_executable(${target} main.cpp)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -26,7 +31,7 @@ foreach(variant spp cpp)
     target_compile_definitions(${target} PRIVATE
         SAMPLE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
         SAMPLE_SCRIPT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/script"
-        SAMPLE_SCRIPT_EXT=".${variant}")
+        SAMPLE_SCRIPT_EXT=".${ext}")
 
     add_test(NAME ${target} COMMAND ${target})
     # The output must have the lines of both generations.

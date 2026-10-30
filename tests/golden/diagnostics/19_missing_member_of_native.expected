@@ -1,3 +1,3 @@
-19_missing_member_of_native.spp:11:50: error: 'Vec3' has no member 'w'
+19_missing_member_of_native.hot:11:50: error: 'Vec3' has no member 'w'
    11 |     override void Tick(float dt) { this.Position.w = 1.0; }
 1 error generated.

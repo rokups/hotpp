@@ -64,7 +64,7 @@ function startServer() {
   const command = expandWorkspaceFolder(config.get('server.path', 'spp-ls'), folder);
   const args = expandAll(config.get('server.args', ['--stdio']), folder);
   watchers = [
-    vscode.workspace.createFileSystemWatcher('**/*.spp'),
+    vscode.workspace.createFileSystemWatcher('**/*.hot'),
     vscode.workspace.createFileSystemWatcher('**/.cache/spp/hosts/*'),
   ];
   const options = {

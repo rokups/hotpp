@@ -62,13 +62,13 @@ TEST_F(HostsTest, LoadsTwoHosts)
     HostSet set;
     set.load(hosts_dir.string());
     EXPECT_EQ(set.size(), 2u);
-    const auto h = set.match("/src/a/x.spp");
+    const auto h = set.match("/src/a/x.hot");
     ASSERT_TRUE(h);
     EXPECT_EQ(h->name, "a");
     EXPECT_EQ(h->compiler, "/usr/bin/c++");
     EXPECT_EQ(h->std_version, "c++20");
     EXPECT_EQ(h->include_dirs, std::vector<std::string>{"/inc"});
-    EXPECT_EQ(set.match("/src/b/y.spp")->name, "b");
+    EXPECT_EQ(set.match("/src/b/y.hot")->name, "b");
 }
 
 TEST_F(HostsTest, CxxFlagsAddDefines)
@@ -77,7 +77,7 @@ TEST_F(HostsTest, CxxFlagsAddDefines)
     HostSet set;
     set.load(hosts_dir.string());
     const std::vector<std::string> want{"-Wall", "-DA=1", "-DB"};
-    EXPECT_EQ(set.match("/src/a/x.spp")->cxx_flags(), want);
+    EXPECT_EQ(set.match("/src/a/x.hot")->cxx_flags(), want);
 }
 
 // A host whose defines and options come from side files. The lines hold quotes and backslashes.
@@ -92,7 +92,7 @@ TEST_F(HostsTest, SideFilesGiveDefinesAndOptions)
     HostSet set;
     set.load(hosts_dir.string());
     EXPECT_EQ(set.size(), 1u); // the side files are not hosts
-    const auto h = set.match("/src/a/x.spp");
+    const auto h = set.match("/src/a/x.hot");
     ASSERT_TRUE(h);
     const std::vector<std::string> defines{"X=1", "Q=\"a b\"", "P=\"C:\\dir\"", "PIPE=\"x|y\""};
     EXPECT_EQ(h->defines, defines);
@@ -110,7 +110,7 @@ TEST_F(HostsTest, MissingSideFileIsEmpty)
     HostSet set;
     set.load(hosts_dir.string());
     ASSERT_EQ(set.size(), 1u);
-    const auto h = set.match("/src/a/x.spp");
+    const auto h = set.match("/src/a/x.hot");
     ASSERT_TRUE(h);
     EXPECT_TRUE(h->defines.empty());
     EXPECT_TRUE(h->flags.empty());
@@ -125,12 +125,12 @@ TEST_F(HostsTest, SideFileChangeForcesReload)
     std::ofstream(hosts_dir / "a.defines") << "A=1\n";
     HostSet set;
     set.load(hosts_dir.string());
-    EXPECT_EQ(set.match("/src/a/x.spp")->defines, std::vector<std::string>{"A=1"});
+    EXPECT_EQ(set.match("/src/a/x.hot")->defines, std::vector<std::string>{"A=1"});
     std::ofstream(hosts_dir / "a.defines") << "B=\"2\"\n";
     EXPECT_FALSE(set.refresh()); // the modification time of the directory is the same
     EXPECT_TRUE(set.force_reload_for((hosts_dir / "a.defines").string()));
     EXPECT_TRUE(set.refresh());
-    EXPECT_EQ(set.match("/src/a/x.spp")->defines, std::vector<std::string>{"B=\"2\""});
+    EXPECT_EQ(set.match("/src/a/x.hot")->defines, std::vector<std::string>{"B=\"2\""});
     EXPECT_TRUE(set.force_reload_for((hosts_dir / "a.options").string()));
     EXPECT_FALSE(set.force_reload_for((hosts_dir / "a.txt").string()));
 }
@@ -159,7 +159,7 @@ TEST_F(HostsTest, IncludesFileGivesResolvedUniqueIncludeDirs)
     HostSet set;
     set.load(hosts_dir.string());
     ASSERT_EQ(set.size(), 1u);
-    const auto h = set.match("/src/a/x.spp");
+    const auto h = set.match("/src/a/x.hot");
     ASSERT_TRUE(h);
     const std::vector<std::string> want{
         "/proj/include", // the first entry of "includeDirs" stays first
@@ -183,14 +183,14 @@ TEST_F(HostsTest, RelativeScriptPathsUseSourceDir)
     const std::string build = make_build("a");
     std::ofstream(hosts_dir / "a.json") << R"({"version":1,"name":"a","binaryDir":")" << build
                                         << R"(","sourceDir":"/proj/sub",)"
-                                        << R"("scriptDirs":["scripts/","../other"],"scripts":["one.spp"],"flags":[]})";
+                                        << R"("scriptDirs":["scripts/","../other"],"scripts":["one.hot"],"flags":[]})";
     HostSet set;
     set.load(hosts_dir.string());
     ASSERT_EQ(set.size(), 1u);
-    EXPECT_TRUE(set.match("/proj/sub/scripts/x.spp"));
-    EXPECT_TRUE(set.match("/proj/other/x.spp"));
-    EXPECT_TRUE(set.match("/proj/sub/one.spp"));
-    EXPECT_FALSE(set.match("/proj/sub/two.spp"));
+    EXPECT_TRUE(set.match("/proj/sub/scripts/x.hot"));
+    EXPECT_TRUE(set.match("/proj/other/x.hot"));
+    EXPECT_TRUE(set.match("/proj/sub/one.hot"));
+    EXPECT_FALSE(set.match("/proj/sub/two.hot"));
 }
 
 TEST_F(HostsTest, IncludesFileChangeForcesReload)
@@ -201,11 +201,11 @@ TEST_F(HostsTest, IncludesFileChangeForcesReload)
                                         << R"("includesFile":"a.includes","flags":[]})";
     HostSet set;
     set.load(hosts_dir.string());
-    EXPECT_TRUE(set.match("/src/a/x.spp")->include_dirs.empty()); // a missing file is empty
+    EXPECT_TRUE(set.match("/src/a/x.hot")->include_dirs.empty()); // a missing file is empty
     std::ofstream(hosts_dir / "a.includes") << "/i/one\n";
     EXPECT_TRUE(set.force_reload_for((hosts_dir / "a.includes").string()));
     EXPECT_TRUE(set.refresh());
-    EXPECT_EQ(set.match("/src/a/x.spp")->include_dirs, std::vector<std::string>{"/i/one"});
+    EXPECT_EQ(set.match("/src/a/x.hot")->include_dirs, std::vector<std::string>{"/i/one"});
 }
 
 TEST_F(HostsTest, LongestPrefixWins)
@@ -214,18 +214,18 @@ TEST_F(HostsTest, LongestPrefixWins)
     write_host("inner", make_build("i"), R"("/src/deep/dir")");
     HostSet set;
     set.load(hosts_dir.string());
-    EXPECT_EQ(set.match("/src/deep/dir/x.spp")->name, "inner");
-    EXPECT_EQ(set.match("/src/other/x.spp")->name, "outer");
+    EXPECT_EQ(set.match("/src/deep/dir/x.hot")->name, "inner");
+    EXPECT_EQ(set.match("/src/other/x.hot")->name, "outer");
 }
 
 TEST_F(HostsTest, ExactScriptBeatsDir)
 {
     write_host("dir", make_build("d"), R"("/src/deep/dir")");
-    write_host("exact", make_build("e"), R"("/src")", R"("/src/deep/dir/x.spp")");
+    write_host("exact", make_build("e"), R"("/src")", R"("/src/deep/dir/x.hot")");
     HostSet set;
     set.load(hosts_dir.string());
-    EXPECT_EQ(set.match("/src/deep/dir/x.spp")->name, "exact");
-    EXPECT_EQ(set.match("/src/deep/dir/y.spp")->name, "dir");
+    EXPECT_EQ(set.match("/src/deep/dir/x.hot")->name, "exact");
+    EXPECT_EQ(set.match("/src/deep/dir/y.hot")->name, "dir");
 }
 
 TEST_F(HostsTest, PrefixIsComponentAware)
@@ -233,8 +233,8 @@ TEST_F(HostsTest, PrefixIsComponentAware)
     write_host("a", make_build("a"), R"("/a/b/")");
     HostSet set;
     set.load(hosts_dir.string());
-    EXPECT_TRUE(set.match("/a/b/c.spp"));
-    EXPECT_FALSE(set.match("/a/bc/x.spp"));
+    EXPECT_TRUE(set.match("/a/b/c.hot"));
+    EXPECT_FALSE(set.match("/a/bc/x.hot"));
 }
 
 TEST_F(HostsTest, TieGoesToFirstName)
@@ -243,7 +243,7 @@ TEST_F(HostsTest, TieGoesToFirstName)
     write_host("alpha", make_build("a"), R"("/src")");
     HostSet set;
     set.load(hosts_dir.string());
-    EXPECT_EQ(set.match("/src/x.spp")->name, "alpha");
+    EXPECT_EQ(set.match("/src/x.hot")->name, "alpha");
 }
 
 TEST_F(HostsTest, NoMatchGivesNull)
@@ -251,9 +251,9 @@ TEST_F(HostsTest, NoMatchGivesNull)
     write_host("a", make_build("a"), R"("/src/a")");
     HostSet set;
     set.load(hosts_dir.string());
-    EXPECT_EQ(set.match("/elsewhere/x.spp"), nullptr);
+    EXPECT_EQ(set.match("/elsewhere/x.hot"), nullptr);
     HostSet empty;
-    EXPECT_EQ(empty.match("/src/a/x.spp"), nullptr);
+    EXPECT_EQ(empty.match("/src/a/x.hot"), nullptr);
 }
 
 TEST_F(HostsTest, SkipsInvalidJsonAndWrongVersion)
@@ -266,7 +266,7 @@ TEST_F(HostsTest, SkipsInvalidJsonAndWrongVersion)
     HostSet set;
     set.load(hosts_dir.string());
     EXPECT_EQ(set.size(), 1u);
-    EXPECT_EQ(set.match("/src/x.spp")->name, "good");
+    EXPECT_EQ(set.match("/src/x.hot")->name, "good");
 }
 
 TEST_F(HostsTest, SkipsStaleHost)
@@ -290,7 +290,7 @@ TEST_F(HostsTest, RefreshReloadsAfterChange)
     bump_dir();
     EXPECT_TRUE(set.refresh());
     EXPECT_EQ(set.size(), 2u);
-    EXPECT_EQ(set.match("/src/b/x.spp")->name, "b");
+    EXPECT_EQ(set.match("/src/b/x.hot")->name, "b");
     EXPECT_FALSE(set.refresh());
 }
 
@@ -305,7 +305,7 @@ TEST_F(HostsTest, RefreshAddsHostWhenCacheAppears)
     std::ofstream(fs::path(build) / "CMakeCache.txt") << "# cache\n";
     EXPECT_TRUE(set.refresh());
     EXPECT_EQ(set.size(), 1u);
-    EXPECT_EQ(set.match("/src/x.spp")->name, "late");
+    EXPECT_EQ(set.match("/src/x.hot")->name, "late");
     EXPECT_FALSE(set.refresh());
 }
 
@@ -319,7 +319,7 @@ TEST_F(HostsTest, RefreshDropsHostWhenCacheVanishes)
     fs::remove(fs::path(build) / "CMakeCache.txt");
     EXPECT_TRUE(set.refresh());
     EXPECT_EQ(set.size(), 0u);
-    EXPECT_EQ(set.match("/src/x.spp"), nullptr);
+    EXPECT_EQ(set.match("/src/x.hot"), nullptr);
     EXPECT_FALSE(set.refresh());
     // The cache file returns: the host returns.
     std::ofstream(fs::path(build) / "CMakeCache.txt") << "# cache\n";

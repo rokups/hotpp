@@ -10,10 +10,15 @@ if(NOT TARGET sppc)
 endif()
 
 # One program source, two script variants. The extension picks the script.
-#   sample_runtime_compile_spp reads script/wolf.spp.
+#   sample_runtime_compile_spp reads script/wolf.hot.
 #   sample_runtime_compile_cpp reads script/wolf.cpp.
 # spp_backend has make_default_backend and the loader (spp_runtime).
 foreach(variant spp cpp)
+    # The variant "spp" uses the extension ".hot".
+    set(ext ${variant})
+    if(variant STREQUAL "spp")
+        set(ext hot)
+    endif()
     set(target sample_runtime_compile_${variant})
     add_executable(${target} main.cpp)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -25,7 +30,7 @@ foreach(variant spp cpp)
     target_compile_definitions(${target} PRIVATE
         SAMPLE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
         SAMPLE_SCRIPT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/script"
-        SAMPLE_SCRIPT_EXT=".${variant}")
+        SAMPLE_SCRIPT_EXT=".${ext}")
 
     add_test(NAME ${target} COMMAND ${target})
 endforeach()

@@ -56,16 +56,16 @@ TEST(StatementLowering, CaseLabelsOnSeparateLinesKeepTheirCase)
     f.cx.map = &map;
     ast::BlockStmt b = parse_block({text, &map}, {0, static_cast<uint32_t>(text.size())}, f.diag);
     lower_block(b, f.cx, f.diag);
-    ast::Emitter e(map, "f.spp");
+    ast::Emitter e(map, "f.hot");
     ast::emit_stmts(b.stmts, e, 1);
     e.finish();
     EXPECT_EQ(f.diag.items.size(), 0u);
     EXPECT_EQ(e.text(),
-        "#line 1 \"f.spp\"\n    switch (k) {\n"
-        "#line 2 \"f.spp\"\n        case 1:\n"
-        "#line 3 \"f.spp\"\n        case 2: default:\n"
-        "#line 4 \"f.spp\"\n        x = 1;\n"
-        "#line 5 \"f.spp\"\n    }\n");
+        "#line 1 \"f.hot\"\n    switch (k) {\n"
+        "#line 2 \"f.hot\"\n        case 1:\n"
+        "#line 3 \"f.hot\"\n        case 2: default:\n"
+        "#line 4 \"f.hot\"\n        x = 1;\n"
+        "#line 5 \"f.hot\"\n    }\n");
 }
 
 TEST(StatementLowering, FinallyBody)
