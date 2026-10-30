@@ -135,6 +135,13 @@ TEST(GoldenTranslation, CppInherit)
     golden_pair("cpp_inherit", ".cpp");
 }
 
+// A .cpp script with lambdas that use the object: the capture of "this" becomes the capture of
+// the shell, and a field reads through the state of the shell.
+TEST(GoldenTranslation, CppLambda)
+{
+    golden_pair("cpp_lambda", ".cpp");
+}
+
 // A .cpp script with default arguments: the prototype has them and the definition does not.
 TEST(GoldenTranslation, CppDefaults)
 {

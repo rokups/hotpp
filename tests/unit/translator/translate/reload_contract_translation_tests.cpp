@@ -156,4 +156,28 @@ TEST(NativeHoldsCode, FunctionPointerFieldsMarkTheStruct)
     EXPECT_TRUE(has(v.cpp, mark("RawCb"))) << v.cpp;
 }
 
+// A .cpp script has its includes in source order. The mark of a struct comes just before the first
+// class that uses the struct: after the include of the struct, and before the first use.
+TEST(NativeHoldsCode, CppMarkComesAfterTheIncludeOfTheStruct)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    write_file(dir.path() / "cb.h", "using Fn = int (*)(int);\nstruct RawCb { Fn fn; int tag; };\nstruct Plain { int a; };\n");
+    sppc::TranslateOptions o = temp_options(dir, "#include \"w.h\"\n"
+                                                 "class A : public Widget { public: int x = 0; };\n"
+                                                 "#include \"cb.h\"\n"
+                                                 "class B : public Widget { public: RawCb cb{}; Plain p{}; };\n"
+                                                 "class C : public Widget { public: RawCb cb2{}; };\n");
+    o.script_name = "t.cpp";
+    const sppc::TranslateResult r = sppc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const std::string mark = "native_holds_code<RawCb> : std::true_type";
+    const size_t at = r.cpp.find(mark);
+    ASSERT_NE(at, std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find(mark, at + 1), std::string::npos) << "one mark only";
+    EXPECT_GT(at, r.cpp.find("#include \"cb.h\"")) << "after the include";
+    EXPECT_LT(at, r.cpp.find("B_fields")) << "before the class that uses it";
+    EXPECT_FALSE(has(r.cpp, "native_holds_code<Plain>"));
+}
+
 } // namespace

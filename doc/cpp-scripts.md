@@ -195,6 +195,7 @@ public:
 `sppc` parses the `.cpp` file with libclang. It keeps each method body as text. It edits only the names that the generated code cannot resolve:
 
 - A bare use or a `this->` use of a native base member goes to the native owner. Examples are `Move(...)` and `this->Name`.
+- In a lambda, a field or a method of the object goes through the object. See "Lambdas".
 - `this` as an argument becomes the native owner.
 - A non-const file-scope variable becomes a migrated module variable.
 - A file-scope declaration can use a module variable. Examples are a free function, a function template, a `constexpr` function, a function in a namespace and a default argument. `sppc` edits the declaration like a method body: the name becomes `spp_mod()->name`. The declaration stays in its place. A declaration that uses no module variable stays as written.
@@ -204,6 +205,30 @@ The generated file keeps the source order of the script. A block at the top decl
 - A use of a script class as a type gets the edits in "Script classes as types".
 
 All other text stays as you wrote it.
+
+## Lambdas
+
+A lambda in a method, in a constructor or in a field initializer can use the fields, the methods and the native base members of the object. Use any capture: `[this]`, `[=]`, `[&]`, `[=, this]`, `[&, this]` or an init-capture such as `[self = this]`. A generic lambda and a nested lambda work too.
+
+A reload moves the fields of an object to a new place. So a lambda must not keep the address of the fields. `sppc` makes the lambda keep the object instead. The object keeps its address for all its life. Each use of a field in the lambda finds the fields at the time of the call. A lambda that a field holds sees the new values after a reload.
+
+- `[this]` becomes a capture of the object. `[=, this]` becomes `[=]`.
+- `[&]` keeps the object by copy. A lambda that you store and call after the method returns is safe if it uses only fields and methods. It still holds a reference to each local that it uses, so do not store a lambda that uses a local.
+- In `[self = this]`, the name `self` is the object. `self->count` reads the field of the object.
+
+```cpp
+void Tick(float dt) override
+{
+    auto bump = [this] { count += 1; Move(Vec3(dt, 0, 0)); };
+    bump();
+    if (!later)
+        later = [&] { return count + 1000; }; // the field "later" is a std::function<int()>
+}
+```
+
+The lambda in a field has the code of the version that made it. A reload does not replace the body. The old version stays loaded while a live field can hold code. The next reload does not unload the old version. A lambda that you make again after the reload has the new code. To get the new code, set the field again.
+
+A lambda cannot capture `*this`. A copy of the object has no meaning in a script. `sppc` gives an error. Capture a copy of the fields, for example `[n = count]`.
 
 ## What a script class can have
 
@@ -450,17 +475,18 @@ The first version gives an error for each form in this list. The text in the sec
 | An array `new` of a script class, for example `new Minion[2]` | `an array 'new' of the script class '<name>' is not supported in a .cpp script; use an array of pointers` |
 | `Minion::` before a member that is not static, on another object or outside a child class, for example `p->Minion::boost(1)` | `the script class '<name>' can qualify only a static member, or a member that a child class uses on itself, in a .cpp script` (outside a script class the end of the message is `can qualify only a static member in a .cpp script`) |
 | A forward declaration of a script class | `a forward declaration of the script class '<name>' is not supported in a .cpp script; define the class before its first use` |
-| A `[this]` lambda that uses a base member | `a lambda that uses a base member must capture with [&] or [=]` |
+| A lambda that captures `*this` | `a lambda cannot capture '*this' in a .cpp script: it would copy the object; capture a copy of the fields` |
 | A module variable that uses a type of the file that comes after the first module variable | `the type '<type>' must come before the first module variable '<name>': the module block is there and needs the complete type` |
 | A module variable whose initializer uses a function of the file that comes after the first module variable | `'<function>' must come before the first module variable '<name>': the module block is there and holds the initializers` |
 | A variable that is not a module variable and uses a module variable in its initializer | `the variable '<variable>' cannot use the module variable '<name>' in a .cpp script: it gets its value before the module state exists` |
 | A base member hidden by a macro | `a macro hides a member of the base class; write the member in the script text` |
 | An include of a `.spp` script | `a .cpp script cannot include a .spp script` |
 
-For a `[this]` lambda, use `[&]` or `[=]`. For a `const` field or a reference field, use a default member initializer in the class body. For a delegating constructor, write the shared code in a method.
+For a `const` field or a reference field, use a default member initializer in the class body. For a delegating constructor, write the shared code in a method.
 
 ## Known limits
 
+- A field of a native struct type that has a function pointer can point into the code of an old version. `sppc` finds such a struct in an included header, wherever the `#include` is. Then the old version stays loaded while a live object has the field. `sppc` does not find a struct that you define in the script file itself.
 - An in-class brace initializer of a class-type field is not visited by libclang. A module variable inside such an initializer is not rewritten.
 - A `.cpp` translation does one more libclang parse than a `.spp` translation. A reload is slower. One parse of the engine headers takes about 400 ms.
 - In a normal build the file has plain C++ meaning. There is no state migration and there are no slots. Objects must not be shared between the two builds.

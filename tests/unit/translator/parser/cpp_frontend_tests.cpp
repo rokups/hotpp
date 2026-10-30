@@ -136,7 +136,7 @@ TEST(CppFrontend, MethodBodyEdits)
         "__self->TakeDamage(dt); Jump(); spp_mod()->total += 1; __self->Position.x = 1; ");
     // A call of an override goes through the shell. A [&] lambda can use a base member.
     EXPECT_EQ(p.method("Again").raw_body,
-        " __self->Tick(0.5f); __self->Tick(1); auto f = [&] { __self->Move(Vec3()); }; f(); ");
+        " __self->Tick(0.5f); __self->Tick(1); auto f = [&, __self] { __self->Move(Vec3()); }; f(); ");
     // An explicit other object stays.
     EXPECT_EQ(p.method("Peek").raw_body, " other.Move(Vec3()); ");
 }
@@ -905,33 +905,104 @@ TEST(CppFrontend, EditErrors)
 {
     expect_error("#define MV Move(Vec3())\nclass S : public Actor { void F() { MV; } };",
         "a macro hides a member of the base class; write the member in the script text");
-    expect_error("class S : public Actor { void F() { auto f = [this] { Move(Vec3()); }; f(); } };",
-        "a lambda that uses a base member must capture with [&] or [=]");
+    expect_error("class S : public Actor { void F() { auto f = [*this] { return 1; }; f(); } };",
+        "a lambda cannot capture '*this' in a .cpp script: it would copy the object; capture a copy of the fields");
     expect_error("class S : public Actor { void F() { S p; (void)p; } };",
         "the script class 'S' by value is not supported in a .cpp script; use a pointer or a reference");
+}
+
+// A lambda must not keep the pointer to the state, because a reload moves the state. A capture of
+// "this" becomes a capture of "__self". A field or a script method reads through the shell.
+TEST(CppFrontend, LambdaCapturesShell)
+{
+    Parsed p(R"(#include "Actor.h"
+int total = 0;
+#include <functional>
+class S : public Actor
+{
+public:
+    S() { auto f = [=] { return n; }; n = f(); }
+    void A() { auto f = [this] { bump(1); Move(Vec3()); return n; }; f(); }
+    void B() { auto f = [=] { return n + k; }; f(); }
+    void C() { auto f = [&] { n += 1; bump(2); Move(Vec3()); }; f(); }
+    void D() { auto f = [this](auto v) { return n + v; }; f(1); }
+    void E() { auto f = [this] { auto g = [this] { return this->n; }; return g(); }; f(); }
+    void F() { auto f = [=, this] { Use(this); total += 1; return this->n; }; f(); }
+    void G() { auto f = [&, this] { return n; }; f(); }
+    void H(int x) { auto f = [this, x, y = n] { return x + y; }; f(); }
+    void I() { auto f = [] { return 1; }; f(); n = 2; }
+    void J() { auto f = [&] { return n; }; f(); }
+    void K(int x) { auto f = [&, x] { return x + n; }; f(); }
+    void L() { auto f = [&] { return 1; }; f(); }
+    void M() { auto f = [x = this] { return x->n; }; f(); }
+    void N() { auto f = [&] { auto g = [this] { return n; }; return g(); }; f(); }
+    void bump(int d) { n += d; }
+    void Use(Actor*) {}
+    int n = 0;
+    int k = 0;
+    std::function<int()> stored = [this] { return n; };
+    std::function<int()> by_ref = [&] { return k; };
+};
+)");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    EXPECT_EQ(p.script.classes.at(0).ctors.at(0).raw_body,
+        " auto f = [=] { return state_of(__self)->n; }; n = f(); ");
+    EXPECT_EQ(p.method("A").raw_body,
+        " auto f = [__self] { state_of(__self)->bump(1); __self->Move(Vec3()); return state_of(__self)->n; }; f(); ");
+    EXPECT_EQ(p.method("B").raw_body, " auto f = [=] { return state_of(__self)->n + state_of(__self)->k; }; f(); ");
+    EXPECT_EQ(p.method("C").raw_body,
+        " auto f = [&, __self] { state_of(__self)->n += 1; state_of(__self)->bump(2); __self->Move(Vec3()); }; f(); ");
+    EXPECT_EQ(p.method("D").raw_body, " auto f = [__self](auto v) { return state_of(__self)->n + v; }; f(1); ");
+    EXPECT_EQ(p.method("E").raw_body,
+        " auto f = [__self] { auto g = [__self] { return state_of(__self)->n; }; return g(); }; f(); ");
+    // The default "=" makes the item "this" useless, so it goes away. "[&, this]" keeps the shell by copy.
+    EXPECT_EQ(p.method("F").raw_body,
+        " auto f = [=] { state_of(__self)->Use(__self); spp_mod()->total += 1; return state_of(__self)->n; }; f(); ");
+    EXPECT_EQ(p.method("G").raw_body, " auto f = [&, __self] { return state_of(__self)->n; }; f(); ");
+    EXPECT_EQ(p.method("H").raw_body, " auto f = [__self, x, y = state_of(__self)->n] { return x + y; }; f(); ");
+    // A lambda with no capture and a field outside a lambda stay as they are.
+    EXPECT_EQ(p.method("I").raw_body, " auto f = [] { return 1; }; f(); n = 2; ");
+    // A lambda with "[&]" keeps the shell by copy, so it can live longer than the method.
+    EXPECT_EQ(p.method("J").raw_body, " auto f = [&, __self] { return state_of(__self)->n; }; f(); ");
+    EXPECT_EQ(p.method("K").raw_body, " auto f = [&, x, __self] { return x + state_of(__self)->n; }; f(); ");
+    EXPECT_EQ(p.method("L").raw_body, " auto f = [&] { return 1; }; f(); ");
+    // An init-capture of "this" is the shell.
+    EXPECT_EQ(p.method("M").raw_body, " auto f = [x = __self] { return state_of(x)->n; }; f(); ");
+    EXPECT_EQ(p.method("N").raw_body,
+        " auto f = [&, __self] { auto g = [__self] { return state_of(__self)->n; }; return g(); }; f(); ");
+    // A lambda in a field initializer has the same rules.
+    const ast::ClassDef& c = p.script.classes.at(0);
+    for (const auto& f : c.fields)
+    {
+        if (f.name == "stored")
+            EXPECT_EQ(f.raw_init, "[__self] { return state_of(__self)->n; }");
+        if (f.name == "by_ref")
+            EXPECT_EQ(f.raw_init, "[&, __self] { return state_of(__self)->k; }");
+    }
 }
 
 // A file with two errors reports the first error in the order of the source. The body edits
 // run after the read of the structure, but an earlier edit error must stay first.
 TEST(CppFrontend, FirstErrorInSourceOrder)
 {
-    const std::string lambda_msg = "a lambda that uses a base member must capture with [&] or [=]";
+    const std::string lambda_msg =
+        "a lambda cannot capture '*this' in a .cpp script: it would copy the object; capture a copy of the fields";
     const std::string static_msg = "a pure virtual method is not supported in a .cpp script class";
     const std::string type_msg = "the script class 'S' by value is not supported in a .cpp script; use a pointer or a reference";
     {
-        Parsed p("#include \"Actor.h\"\nclass S : public Actor { void F() { auto f = [this] { Move(Vec3()); }; f(); } };\n"
+        Parsed p("#include \"Actor.h\"\nclass S : public Actor { void F() { auto f = [*this] { return 1; }; f(); } };\n"
                  "class T : public Actor { virtual void G() = 0; };");
         EXPECT_NE(p.errors().find(lambda_msg), std::string::npos) << p.errors();
         EXPECT_EQ(p.errors().find(static_msg), std::string::npos) << p.errors();
     }
     {
-        Parsed p("#include \"Actor.h\"\nclass T : public Actor { virtual void G() = 0; void F() { auto f = [this] { "
-                 "Move(Vec3()); }; f(); } };");
+        Parsed p("#include \"Actor.h\"\n#define MV Move(Vec3())\n"
+                 "class T : public Actor { virtual void G() = 0; void F() { MV; } };");
         EXPECT_NE(p.errors().find(static_msg), std::string::npos) << p.errors();
-        EXPECT_EQ(p.errors().find(lambda_msg), std::string::npos) << p.errors();
+        EXPECT_EQ(p.errors().find("a macro hides"), std::string::npos) << p.errors();
     }
     {
-        Parsed p("#include \"Actor.h\"\nclass S : public Actor { void F() { auto f = [this] { Move(Vec3()); }; f(); } };\n"
+        Parsed p("#include \"Actor.h\"\nclass S : public Actor { void F() { auto f = [*this] { return 1; }; f(); } };\n"
                  "class T : public Actor { void G() { S p; (void)p; } };");
         EXPECT_NE(p.errors().find(lambda_msg), std::string::npos) << p.errors();
         EXPECT_EQ(p.errors().find(type_msg), std::string::npos) << p.errors();

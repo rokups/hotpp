@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 
+#include <functional>
 #include <string>
 
 namespace
@@ -535,6 +536,65 @@ TEST_P(BackendTests, CppScriptChainReload)
     EXPECT_EQ(*fld<int>(shell, "total"), 220 + 210 + 1001);
     EXPECT_EQ(*fld<int>(shell, "leaf"), 9);
     EXPECT_EQ(*modvar<int>(s, "mids"), 3);
+}
+
+// Lambdas in the methods and in the constructor. A lambda reaches the fields through the shell,
+// not through a pointer to the state. A reload moves the state to a new block. The lambda in the
+// field "stored" is from generation 1. It still works after the reload and reads the new state.
+// The old generation stays loaded, because a live field can hold code.
+TEST_P(BackendTests, CppScriptLambdasUseTheShell)
+{
+    spp::LoadResult v1 = backend->load(source("cpp_lambda_v1.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult v2 = backend->load(source("cpp_lambda_v2.cpp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Lamp"));
+    EXPECT_EQ(*fld<int>(s.inst.shell, "level"), 6); // the lambda of the constructor: 3 * 2
+
+    s.actor->Tick(kDt);
+    // [this]: bump(1) gives 1. [&]: +10 and bump(2) give 13.
+    EXPECT_EQ(*fld<int>(s.inst.shell, "count"), 13);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "sum"), 7); // [=]: 1 + 6
+    EXPECT_EQ(*fld<int>(s.inst.shell, "gen"), 113); // the generic lambda
+    EXPECT_EQ(*fld<int>(s.inst.shell, "nested"), 13 * 2 + 6); // the nested lambda
+    EXPECT_TRUE(*fld<bool>(s.inst.shell, "flag")); // "this" as a value
+    EXPECT_EQ(*modvar<int>(s, "calls"), 1);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "stored_result"), 1013);
+    EXPECT_FLOAT_EQ(s.actor->Position.x, kDt);
+    EXPECT_FLOAT_EQ(s.actor->Position.y, kDt);
+    // The method returned. The stored lambdas use the object, not a local of the method.
+    using Fn = std::function<int()>;
+    ASSERT_NE(fld<Fn>(s.inst.shell, "kept_ref"), nullptr);
+    EXPECT_EQ((*fld<Fn>(s.inst.shell, "kept_ref"))(), 13 * 3); // [&]
+    EXPECT_EQ((*fld<Fn>(s.inst.shell, "kept_init"))(), 13 + 5); // [self = this]
+    EXPECT_EQ((*fld<Fn>(s.inst.shell, "from_init"))(), 13 + 6); // a lambda in a field initializer
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    const spp::ReloadResult res = s.loader.commit_pending();
+    ASSERT_TRUE(res) << res.error;
+    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "count"), 13); // kept
+
+    s.actor->Tick(kDt); // bump adds 5 more in generation 2: 13 + 6 + 10 + 7 = 36
+    EXPECT_EQ(*fld<int>(s.inst.shell, "count"), 36);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "sum"), 19 + 6);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "gen"), 136);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "nested"), 36 * 2 + 6);
+    EXPECT_EQ(*modvar<int>(s, "calls"), 2);
+    // The stored lambda is the one of generation 1 (+1000), not the one of generation 2 (+2000).
+    EXPECT_EQ(*fld<int>(s.inst.shell, "stored_result"), 1036);
+
+    EXPECT_EQ((*fld<Fn>(s.inst.shell, "kept_ref"))(), 36 * 3);
+    EXPECT_EQ((*fld<Fn>(s.inst.shell, "kept_init"))(), 36 + 5);
+    EXPECT_EQ((*fld<Fn>(s.inst.shell, "from_init"))(), 36 + 6);
+
+    // The stored lambda holds code of generation 1: the generation does not unload.
+    s.loader.frame_boundary();
+    s.loader.frame_boundary();
+    ASSERT_EQ(s.loader.stats().generations.size(), 2u);
+    EXPECT_NE(s.loader.stats().generations[0].state, spp::GenState::Unloaded);
+    EXPECT_TRUE(s.loader.stats().state_holds_code);
 }
 
 // A .spp script and a .cpp script live in the same process. Each has its own loader and one object.

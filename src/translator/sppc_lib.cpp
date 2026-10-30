@@ -2741,12 +2741,15 @@ void translate_impl(
     };
     reset();
     // S26: the native structs with a function pointer field. The runtime reads this as a code holder.
-    // A ".cpp" script writes them later: its includes come in source order (see write_marks).
-    auto write_marks = [&]()
+    // "only" limits the marks to the types in the set. A mark comes once. A ".cpp" script writes the
+    // marks of a block just before the block (see below): its includes come in source order.
+    std::set<std::string> marked_types;
+    auto write_marks = [&](const std::set<std::string>* only = nullptr)
     {
         bool marked = false;
         for (const std::string& q : query_texts)
-            if (is_code_query(q) && query_answers[q] == "1")
+            if (is_code_query(q) && query_answers[q] == "1" && (!only || only->count(q.substr(6)))
+                && marked_types.insert(q).second)
             {
                 o.w("namespace spp { template <> struct native_holds_code<" + q.substr(6)
                     + "> : std::true_type {}; }\n");
@@ -3343,14 +3346,19 @@ void translate_impl(
             o.w("\n\n");
             reset();
         }
-        if (sc.is_cpp && i == 0) // the first block uses them, and the includes are before it
-            write_marks();
     };
 
     for (size_t si = 0; si < seq.size(); ++si)
     {
         write_texts(si);
         ClassDef& cd = *seq[si];
+        // A type that the block uses is complete here. So the mark is after its declaration and
+        // before the first use of the block.
+        if (sc.is_cpp)
+        {
+            const std::set<std::string> block_types = sppc::used_type_names(cd);
+            write_marks(&block_types);
+        }
         const std::string cn = cd.name;
         emitted.insert(cn);
         if (cd.is_value)
@@ -4158,6 +4166,7 @@ void translate_impl(
             }
         }
         o.w("};\n\n");
+        bool state_of_declared = false;
         for (Field& f : cd.fields)
         {
             RCtx fc = base_cx;
@@ -4174,8 +4183,20 @@ void translate_impl(
                 init = sppc::ast::print(*f.init);
             }
             o.w("#line " + std::to_string(f.line) + " \"" + esc(file_at(f.pos)) + "\"\n");
-            o.w("static void " + P + "init_" + f.name + "(void*, void* f) { using T = " + f.type + "; new (f) T"
-                + (f.raw_brace_init ? init : "(" + init + ")") + "; }\n");
+            // A ".cpp" initializer can have a lambda that captures the shell ("[__self]"). The state block
+            // starts with the owner, so the function finds the shell there. The lambda reads the state
+            // at the time of the call, so the pointer "state" of the shell can be null now.
+            const bool uses_self = f.raw && init.find("__self") != std::string::npos;
+            if (uses_self && !state_of_declared)
+            {
+                o.w("SPP_HIDDEN " + S + "* state_of(" + shell + "* __self);\n");
+                state_of_declared = true;
+            }
+            o.w("static void " + P + "init_" + f.name + (uses_self ? "(void* st, void* f) { " : "(void*, void* f) { ")
+                + (uses_self ? "[[maybe_unused]] auto* __self = static_cast<" + shell + "*>(static_cast<" + S
+                        + "*>(st)->__spp_owner); "
+                             : std::string())
+                + "using T = " + f.type + "; new (f) T" + (f.raw_brace_init ? init : "(" + init + ")") + "; }\n");
             reset();
         }
         // A convert hook of a field (design 4.7). The wrapper builds the new field from the old one.

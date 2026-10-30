@@ -282,7 +282,10 @@ struct WalkState
     size_t slice = 0; // the slice that holds the cursor that examine looks at
     std::set<uint32_t> this_member; // the offsets of a "this" that a member access uses
     uint32_t skip_end = 0; // the cursors that start before this offset are inside an expression that has its edit
-    std::vector<std::pair<size_t, Range>> this_lambdas; // the lambdas that capture "this" by name, and their slice
+    // The lambdas with the default capture "&" and no item "this", with the offset of the "]". A lambda
+    // that stays can use the local "__self" only by copy, so apply_slices adds the capture "__self".
+    std::vector<std::pair<Range, uint32_t>> ref_lambdas;
+    std::vector<Range> lambdas; // the lambdas of the walk so far. A cursor inside one of them is in a lambda.
     std::vector<std::optional<CppFail>> fails; // the first error of the walk in each slice
 };
 
@@ -1045,6 +1048,77 @@ void Frontend::examine(CXCursor k, WalkState& st)
         return true;
     };
 
+    // True when the cursor is inside a lambda. The state has no stable address there.
+    const bool in_lambda = std::any_of(st.lambdas.begin(), st.lambdas.end(),
+        [&](const Range& r) { return r.has(e.begin); });
+    // The capture list of the lambda "lt" (its text) has "this": "[this]", "[&, this]" or "[=, this]".
+    // The item "this" becomes "__self". The default "=" makes the item redundant, so it goes away.
+    auto rewrite_this_capture = [&](const std::string& lt)
+    {
+        if (lt.empty() || lt[0] != '[')
+            return;
+        struct Item
+        {
+            size_t begin, end, comma; // the trimmed text of the item, and the comma before it
+        };
+        std::vector<Item> items;
+        size_t start = 1, comma = std::string::npos, close = std::string::npos;
+        int depth = 0;
+        for (size_t i = 1; i < lt.size(); ++i)
+        {
+            const char ch = lt[i];
+            if (ch == '(' || ch == '[' || ch == '{')
+                ++depth;
+            else if ((ch == ')' || ch == '}' || (ch == ']' && depth > 0)))
+                --depth;
+            else if ((ch == ',' || ch == ']') && depth == 0)
+            {
+                size_t b = skip_ws(lt, start, i), en = i;
+                while (en > b && is_space(lt[en - 1]))
+                    --en;
+                if (en > b)
+                    items.push_back(Item{b, en, comma});
+                comma = i;
+                start = i + 1;
+                if (ch == ']')
+                {
+                    close = i;
+                    break;
+                }
+            }
+        }
+        bool has_this = false;
+        const bool copy_default = !items.empty() && lt.compare(items[0].begin, items[0].end - items[0].begin, "=") == 0;
+        for (size_t i = 0; i < items.size(); ++i)
+        {
+            const std::string item = lt.substr(items[i].begin, items[i].end - items[i].begin);
+            if (item.size() > 1 && item[0] == '*' && trim(item.substr(1)) == "this")
+                fail(e.begin + items[i].begin,
+                    "a lambda cannot capture '*this' in a .cpp script: it would copy the object; capture a copy of the fields");
+            // An init-capture "x = this": the new name is the shell, so "x->f" reads through the shell.
+            const size_t eq = item.find('=');
+            if (eq != std::string::npos && eq > 0 && item[eq - 1] != '!' && item[eq - 1] != '<' &&
+                item[eq - 1] != '>' && (eq + 1 >= item.size() || item[eq + 1] != '=') &&
+                trim(item.substr(eq + 1)) == "this")
+            {
+                add(e.begin + items[i].end - 4, 4, "__self");
+                continue;
+            }
+            if (item != "this")
+                continue;
+            has_this = true;
+            if (copy_default && items[i].comma != std::string::npos)
+                add(e.begin + items[i].comma, items[i].end - items[i].comma, "");
+            else
+                add(e.begin + items[i].begin, 4, "__self");
+        }
+        // The default "&" captures the local "__self" by reference. A stored lambda would keep a
+        // dangling reference. So the capture "__self" by copy comes in, when the body uses the shell.
+        const bool ref_default = !items.empty() && lt.compare(items[0].begin, items[0].end - items[0].begin, "&") == 0;
+        if (ref_default && !has_this && close != std::string::npos)
+            st.ref_lambdas.emplace_back(e, static_cast<uint32_t>(e.begin + close));
+    };
+
     switch (kind)
     {
     case CXCursor_MemberRefExpr:
@@ -1125,6 +1199,16 @@ void Frontend::examine(CXCursor k, WalkState& st)
             return; // another object, for example "other.Move"
         if (explicit_this)
             st.this_member.insert(e.begin);
+        // A field or a script method of the object itself in a lambda: the state of the shell.
+        if (in_lambda && men &&
+            (men->kind == Kind::ScriptField || (men->kind == Kind::ScriptMethod && !men->virt)))
+        {
+            if (explicit_this)
+                add(e.begin, 4, "state_of(__self)");
+            else
+                add(e.begin, 0, "state_of(__self)->");
+            return;
+        }
         if (!need)
             return;
         if (explicit_this)
@@ -1231,14 +1315,11 @@ void Frontend::examine(CXCursor k, WalkState& st)
     }
     case CXCursor_LambdaExpr:
     {
-        size_t close = t.find(']');
-        std::string capture = t.substr(0, close == std::string::npos ? t.size() : close);
-        for (size_t i = 0; i < capture.size(); ++i)
-            if (word_at(capture, i, "this"))
-            {
-                st.this_lambdas.emplace_back(st.slice, e);
-                break;
-            }
+        // A lambda must not keep the pointer to the state: a reload moves the state to a new block.
+        // So the body reaches a field through the shell (see in_lambda), and the capture "this"
+        // becomes the capture "__self". The shell keeps its address.
+        st.lambdas.push_back(e);
+        rewrite_this_capture(t);
         return;
     }
     default:
@@ -1327,6 +1408,15 @@ void Frontend::apply_slices()
     st.fails.resize(slices_.size());
     edits_ = fixed_edits_;
     walk_main(st);
+    for (const auto& [range, close] : st.ref_lambdas)
+    {
+        bool uses_self = false;
+        for (const Edit& ed : edits_)
+            if (range.has(ed.pos) && ed.pos != close && ed.text.find("__self") != std::string::npos)
+                uses_self = true;
+        if (uses_self)
+            edits_.push_back(Edit{close, 0, ", __self", false});
+    }
     std::vector<std::vector<const Edit*>> edits(slices_.size()); // the edits of each slice, in walk order
     for (const Edit& ed : edits_)
     {
@@ -1335,18 +1425,11 @@ void Frontend::apply_slices()
             fail(ed.pos, "internal error: an edit is outside every slice");
         edits[si].push_back(&ed);
     }
-    std::vector<std::vector<Range>> lambdas(slices_.size());
-    for (const auto& sl : st.this_lambdas)
-        lambdas[sl.first].push_back(sl.second);
     for (size_t i = 0; i < slices_.size(); ++i)
     {
         if (st.fails[i])
             throw *st.fails[i];
         std::vector<const Edit*>& eds = edits[i];
-        for (const Range& l : lambdas[i])
-            for (const Edit* ed : eds)
-                if (l.has(ed->pos))
-                    fail(l.begin, "a lambda that uses a base member must capture with [&] or [=]");
         // From the last offset to the first. At one offset, a replacement comes before an
         // insertion. The insertions at one offset apply in the reverse order of the walk, so
         // the insertion of an outer expression comes first in the text: "state_of(state_of(a)->b)".
