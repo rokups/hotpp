@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Deploy doc/ to the gh-pages branch of github.com/rokups/spp (https://rokups.github.io/spp).
+# Code highlighting runs in the browser (highlight.js from cdnjs, see _layouts/default.html and assets/highlight-spp.js). Jekyll safe mode blocks custom Rouge lexers.
 # Usage: doc/deploy.sh [--build-only] [--yes]
 #   --build-only  Build the site with Jekyll and do not push.
 #   --yes         Push without a confirmation prompt.

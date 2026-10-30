@@ -10,7 +10,7 @@ Statements look like C#, with C++ names and `.` for scope.
 
 `if`, `for`, `while`, `do` and `?:` work as in C++.
 
-```csharp
+```spp
 class Flow {
     int Run(int n) {
         int sum = 0;
@@ -31,7 +31,7 @@ class Flow {
 
 `switch` works as in C++ for enums and integers. A `switch` on string labels becomes an `if` chain. Each case must end with `break`, `return`, `throw` or `continue`. The last case can end any way. A case can have several labels. Mixed labels and repeated labels are errors.
 
-```csharp
+```spp
 enum Mode { Idle, Walk, Run }
 
 class Speed {
@@ -58,7 +58,7 @@ class Speed {
 
 `foreach` walks a container. `var x` and `T x` copy each element. `var& x` and `const var& x` bind a reference to the element.
 
-```csharp
+```spp
 using <map>;
 
 class Sum {
@@ -91,7 +91,7 @@ class Sum {
 
 `var (a, b) = e;` names the parts of a `std.pair`, a `std.tuple`, a struct or a map entry. It needs two names or more. `var&` binds references. `const var` is also allowed.
 
-```csharp
+```spp
 class Split {
     std.pair<int, float> pair = std.make_pair(3, 4.5);
 
@@ -109,7 +109,7 @@ class Split {
 
 You throw and catch C++ exception types. A `finally` block always runs. A script cannot declare an exception type.
 
-```csharp
+```spp
 class Safe {
     int Div(int x, int y) {
         try {
@@ -131,7 +131,7 @@ class Safe {
 
 `${expr}` puts a value in a string. Add `:` and a format spec after the expression.
 
-```csharp
+```spp
 using "Actor.h";
 
 class Hud : Actor {
@@ -149,7 +149,7 @@ class Hud : Actor {
 
 A C style cast `(T)e` works for a builtin type (`(int)f`) and for a name with `*` or `&` (`(Foo*)p`). For any other type, use `static_cast<T>(e)`.
 
-```csharp
+```spp
 class Caster {
     void Run(float f) {
         int i = static_cast<int>(f * 100.0);
@@ -166,7 +166,7 @@ class Caster {
 
 `?.` works only at the start of an expression statement: `h?.F();` and `h?.x = 1;` do nothing when `h` is null.
 
-```csharp
+```spp
 class Pick {
     Pick next = null;
     int x = 0;
@@ -185,7 +185,7 @@ class Pick {
 
 `x is T` tests the type of a handle. `x as T` gives a `T` handle, or `null` when the type does not match. `x is T name` also binds a `T` handle. It works only as the first part of an `if` or `while` condition. `&&` can follow it.
 
-```csharp
+```spp
 class Unit {
     int hp = 100;
     virtual int Power() { return 1; }

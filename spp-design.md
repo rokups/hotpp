@@ -687,7 +687,7 @@ The script has fixed-width builtin type names. A C++ `long` is 32 bit on Windows
 
 ### 7.2 Example: a script class with native base, fields, overrides and overloads
 
-```csharp
+```spp
 // player.spp
 using "Engine/Actor.h";
 using "Engine/Combat.h";
@@ -769,7 +769,7 @@ The parser reports a clear error for each removed form: `function`, `let`, `impo
 
 ### 7.4 Constructing native objects and ownership
 
-```csharp
+```spp
 class Level : Actor {
     Player* spawn(World& world) {
         var p = new Player("Bob");            // spp::construct<Player_Shell>(FString("Bob"))
@@ -795,7 +795,7 @@ class Level : Actor {
 
 ### 7.5 Lambdas
 
-```csharp
+```spp
 class Level : Actor {
     void arm(TimerSystem& timer) {
         timer.After(2.0, () => { this.heal(10.0); });
@@ -807,7 +807,7 @@ A lambda is `(T a) => ...` or `(a) => ...`. A lambda parameter without a type is
 
 ### 7.6 Script-to-script inheritance and script virtual methods
 
-```csharp
+```spp
 class Enemy : Player {
     virtual float threat() { return 1.0; }
 }
@@ -821,7 +821,7 @@ A `virtual` method adds a script slot. An `override` method in the derived class
 
 ### 7.7 Type tests
 
-```csharp
+```spp
 if (actor is Player) { Player p = actor as Player; p.heal(5.0); }
 ```
 
@@ -831,7 +831,7 @@ if (actor is Player) { Player p = actor as Player; p.heal(5.0); }
 
 Before:
 
-```csharp
+```spp
 class Player : Actor {
     float hp = 100.0;
     void heal(float amount) { this.hp += amount; }
@@ -840,7 +840,7 @@ class Player : Actor {
 
 After:
 
-```csharp
+```spp
 class Player : Actor {
     [alias("hp")] float health = 100.0;
     float shield = 25.0;
@@ -910,7 +910,7 @@ Configuration has no separate file. Builtin scripts (preludes) hold it.
 
 A native type is declared by a class stub. The stub has no body.
 
-```csharp
+```spp
 // engine.spp (prelude)
 [native, default_handle("std::shared_ptr<$T>")] class *;      // fallback for native classes
 [native, value] class std.string;                             // forced value, not trivially copyable
@@ -991,7 +991,7 @@ The keywords `ref` and `out` are removed. A reference parameter is `T&`. The cal
 
 #### 7.10.10 Example
 
-```csharp
+```spp
 // prelude: [native, default_handle("std::shared_ptr<$T>")] class *;
 //          [native, handle("$T*"), intrusive("AddRef", "Release")] class Object;
 //          [native, value] class std.string;

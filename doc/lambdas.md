@@ -10,7 +10,7 @@ A lambda is an arrow function with a block body or an expression body. It captur
 
 The form is `(params) => { body }` or `(params) => expression`. The expression form means `{ return expression; }`. A lambda can go to a `std.function` parameter or a native timer.
 
-```csharp
+```spp
 using "Actor.h";
 
 class Calc : Actor {
@@ -33,7 +33,7 @@ class Calc : Actor {
 
 A lambda copies the locals that it uses. It also reaches the members of `this`. A later change of the local does not change the copy.
 
-```csharp
+```spp
 using "Actor.h";
 
 class Beeper : Actor {
@@ -53,7 +53,7 @@ class Beeper : Actor {
 
 Native code can keep a lambda, for example a timer. A reload does not change the body of a kept lambda. A call after the reload does nothing and logs a stale call. A lambda that the script creates after the reload uses the new body.
 
-```csharp
+```spp
 using "Actor.h";
 
 class Beeper : Actor {

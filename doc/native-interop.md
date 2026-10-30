@@ -10,7 +10,7 @@ A script calls engine code directly. There is no wrapper code.
 
 Include the header with `using`. Then call its functions, methods and types. Use `.` for every scope. Use `T(args)` to build a value.
 
-```csharp
+```spp
 using <algorithm>;
 using "Actor.h";
 using "Math.h";
@@ -37,7 +37,7 @@ class Tracker : Actor {
 
 Take a native object as `T&`. You call its methods and read its members. The overload comes from the argument types.
 
-```csharp
+```spp
 using "Actor.h";
 
 class Hitter : Actor {
@@ -68,7 +68,7 @@ struct Armory {
 };
 ```
 
-```csharp
+```spp
 using "Armory.h";
 
 [native, handle("std::shared_ptr<$T>")] class Weapon;
@@ -107,7 +107,7 @@ class Shop : Actor {
 
 `[native, default_handle("std::shared_ptr<$T>")] class *;` sets the handle for every native class that has no stub of its own.
 
-```csharp
+```spp
 using "Weapon.h";
 
 [native, default_handle("std::shared_ptr<$T>")] class *;
@@ -121,7 +121,7 @@ class Smith {
 
 `.` works on a value, a pointer, a reference and a `std.shared_ptr`. It does not work on an iterator, a `std.optional` or a `std.unique_ptr`. Write `(*p).x` for these types.
 
-```csharp
+```spp
 using "Actor.h";
 
 class Holder : Actor {

@@ -10,7 +10,7 @@ The top of a script file can hold imports, enums, structs, variables and native 
 
 `using "x.h";` includes a native header. `using <x>;` includes a standard header. `using "x.spp";` loads another script. A `using` can stand anywhere at module level, also after a class.
 
-```csharp
+```spp
 using "parent.spp";            // script
 using "Actor.h";               // native header
 using <algorithm>;             // standard header
@@ -29,7 +29,7 @@ These headers are always included, so they need no `using`:
 
 An enum is a scoped enum. Add a base type after `:`. A struct is a value type. It is the only way to make one: `[value]` on a script class is an error.
 
-```csharp
+```spp
 enum Mode { Idle, Walk, Run }
 enum Small : byte { A, B = 5, C }
 
@@ -43,7 +43,7 @@ struct Point {
 
 A variable at file level is shared by all classes of the file. A reload keeps its value.
 
-```csharp
+```spp
 using "Actor.h";
 
 enum Mode { Idle, Walk, Run }
@@ -61,7 +61,7 @@ class Hero : Actor {
 
 `[alias("old")]` before a variable keeps the value of the old name.
 
-```csharp
+```spp
 [alias("total")] int sum = 0;
 ```
 
@@ -69,7 +69,7 @@ class Hero : Actor {
 
 A stub tells the translator how a native type behaves. `handle` makes it a shared handle. `value` makes it a copied value.
 
-```csharp
+```spp
 using "Actor.h";
 using "Weapon.h";
 
