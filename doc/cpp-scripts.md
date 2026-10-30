@@ -19,9 +19,11 @@ Both modes work in one program. A `Loader` holds one module for each generation,
 
 ## The file compiles unchanged
 
-A normal CMake build compiles a `.cpp` script with no `sppc`. The file includes `spp/script.h`. The header gives the macro `SPP_ALIAS` and the type `spp::OldState`.
+A normal CMake build compiles a `.cpp` script with no `sppc`. Do not write `#include "spp/script.h"` in the script. The tool `sppc` injects `spp/script.h` itself. The header gives the macro `SPP_ALIAS` and the type `spp::OldState`.
 
-The include is optional for `sppc`, because `sppc` force-includes the header. A normal build needs the include.
+The aids `SPP_ALIAS`, `onReload` and `convert_*` are temporary. Use them for a reload session. Remove them after the session. Then the file is standard C++ and a normal build compiles it with no extra option. The fixture `tests/scripts/cpp_player_v1.cpp` has no aids.
+
+A normal build of a file that still has aids needs the header. Pass `-include spp/script.h` to the compiler, and add the `include` directory of spp to the include path. The fixture `tests/scripts/cpp_player_v2.cpp` has aids. Its plain target `cpp_scripts_plain2` does this.
 
 In a normal build the file has plain C++ meaning. There is no state migration and there are no slots. Do not share objects between the two builds.
 
@@ -34,7 +36,6 @@ The file `tests/scripts/cpp_player_v1.cpp` is generation 1.
 // A normal C++ build compiles this file. The tool sppc also translates it.
 #include "Actor.h"
 #include "Math.h"
-#include "spp/script.h"
 
 #include <cstdio>
 #include <string>
@@ -112,7 +113,6 @@ The file `tests/scripts/cpp_player_v2.cpp` is generation 2. It makes these chang
 // The module variable total changes from int to float.
 #include "Actor.h"
 #include "Math.h"
-#include "spp/script.h"
 
 #include <cstdio>
 #include <string>

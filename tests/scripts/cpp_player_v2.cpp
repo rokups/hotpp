@@ -3,7 +3,6 @@
 // The module variable total changes from int to float.
 #include "Actor.h"
 #include "Math.h"
-#include "spp/script.h"
 
 #include <cstdio>
 #include <string>

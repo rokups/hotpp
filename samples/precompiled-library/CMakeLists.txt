@@ -39,5 +39,5 @@ endforeach()
 # The normal toolchain compiles the .cpp script too. A .cpp script must compile unchanged.
 add_library(precompiled_library_cpp_scripts_plain OBJECT script/wolf.cpp)
 target_include_directories(precompiled_library_cpp_scripts_plain PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR} ${SPP_ROOT}/include)
+    ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(precompiled_library_cpp_scripts_plain PRIVATE cxx_std_17)

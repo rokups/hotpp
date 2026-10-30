@@ -14,39 +14,37 @@
 #include "Actor.h"
 #line 5 "cpp_player_v2.cpp"
 #include "Math.h"
-#line 6 "cpp_player_v2.cpp"
-#include "spp/script.h"
-#line 8 "cpp_player_v2.cpp"
+#line 7 "cpp_player_v2.cpp"
 #include <cstdio>
-#line 9 "cpp_player_v2.cpp"
+#line 8 "cpp_player_v2.cpp"
 #include <string>
-#line 24 "cpp_player_v2.cpp.cpp"
+#line 22 "cpp_player_v2.cpp.cpp"
 
-#line 11 "cpp_player_v2.cpp"
+#line 10 "cpp_player_v2.cpp"
 enum class Mode { Idle, Run };
 
-#line 29 "cpp_player_v2.cpp.cpp"
+#line 27 "cpp_player_v2.cpp.cpp"
 
-#line 13 "cpp_player_v2.cpp"
+#line 12 "cpp_player_v2.cpp"
 struct Point
 {
     float x = 0, y = 0;
 };
 
-#line 37 "cpp_player_v2.cpp.cpp"
+#line 35 "cpp_player_v2.cpp.cpp"
 
-#line 19 "cpp_player_v2.cpp"
+#line 18 "cpp_player_v2.cpp"
 const float kMaxHp = 100.0f;
 
-#line 42 "cpp_player_v2.cpp.cpp"
+#line 40 "cpp_player_v2.cpp.cpp"
 
-#line 21 "cpp_player_v2.cpp"
+#line 20 "cpp_player_v2.cpp"
 static float clamp_hp(float v)
 {
     return Math::Max(Math::Min(v, kMaxHp), 0.0f);
 }
 
-#line 50 "cpp_player_v2.cpp.cpp"
+#line 48 "cpp_player_v2.cpp.cpp"
 
 constexpr uint32_t GEN = 2;
 
@@ -60,18 +58,18 @@ struct SppModule {
 };
 
 static float SppModule__convert_total(int old);
-#line 27 "cpp_player_v2.cpp"
+#line 26 "cpp_player_v2.cpp"
 static void SppModule__convert_total_hook(void* dst, const void* src)
-#line 27 "cpp_player_v2.cpp"
+#line 26 "cpp_player_v2.cpp"
 {
-#line 27 "cpp_player_v2.cpp"
+#line 26 "cpp_player_v2.cpp"
     new (dst) float(SppModule__convert_total(*static_cast<const int*>(src)));
-#line 27 "cpp_player_v2.cpp"
+#line 26 "cpp_player_v2.cpp"
 }
-#line 72 "cpp_player_v2.cpp.cpp"
-#line 18 "cpp_player_v2.cpp"
+#line 70 "cpp_player_v2.cpp.cpp"
+#line 17 "cpp_player_v2.cpp"
 static void SppModule__init_total(void*, void* f) { using T = float; new (f) T(0); }
-#line 75 "cpp_player_v2.cpp.cpp"
+#line 73 "cpp_player_v2.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static const spp::FieldInfo SppModule_fields[] = {
@@ -85,11 +83,11 @@ static const spp::StateLayout SppModule_layout = {
 
 static float SppModule__convert_total(int old)
 {
-#line 28 "cpp_player_v2.cpp"
+#line 27 "cpp_player_v2.cpp"
 
     return old * 2.0f;
 
-#line 93 "cpp_player_v2.cpp.cpp"
+#line 91 "cpp_player_v2.cpp.cpp"
 }
 
 
@@ -107,49 +105,49 @@ extern spp::ClassRecord Player_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Player_Shell final : Actor, spp::ShellBase {
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     template <class... A>
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     explicit Player_Shell(spp::Construct, A&&... a) : Actor(std::forward<A>(a)...)
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     {
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
         spp::init_state(this, &Player_record);
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     }
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     ~Player_Shell() override { spp::destroy_state(this); }
-#line 123 "cpp_player_v2.cpp.cpp"
+#line 121 "cpp_player_v2.cpp.cpp"
 
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     void Tick(float a0) override
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     {
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
         return spp::call<void(Actor*, float)>(this, SLOT_Tick, a0);
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     }
-#line 133 "cpp_player_v2.cpp.cpp"
+#line 131 "cpp_player_v2.cpp.cpp"
 
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     void TakeDamage(float a0) override
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     {
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
         return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     }
-#line 143 "cpp_player_v2.cpp.cpp"
+#line 141 "cpp_player_v2.cpp.cpp"
 
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     void TakeDamage(Actor& a0, float a1) override
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     {
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
         return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     }
-#line 153 "cpp_player_v2.cpp.cpp"
+#line 151 "cpp_player_v2.cpp.cpp"
 };
 
 using Player = Player_Shell;
@@ -172,34 +170,34 @@ struct PlayerState_g2 {
     void onReload(const spp::OldState& old);
 };
 
-#line 75 "cpp_player_v2.cpp"
+#line 74 "cpp_player_v2.cpp"
 static void Player__init_health(void*, void* f) { using T = float; new (f) T(100.0f); }
-#line 178 "cpp_player_v2.cpp.cpp"
-#line 76 "cpp_player_v2.cpp"
+#line 176 "cpp_player_v2.cpp.cpp"
+#line 75 "cpp_player_v2.cpp"
 static void Player__init_speed(void*, void* f) { using T = float; new (f) T(5.0f); }
-#line 181 "cpp_player_v2.cpp.cpp"
-#line 77 "cpp_player_v2.cpp"
+#line 179 "cpp_player_v2.cpp.cpp"
+#line 76 "cpp_player_v2.cpp"
 static void Player__init_target(void*, void* f) { using T = std::string; new (f) T(); }
-#line 184 "cpp_player_v2.cpp.cpp"
-#line 78 "cpp_player_v2.cpp"
+#line 182 "cpp_player_v2.cpp.cpp"
+#line 77 "cpp_player_v2.cpp"
 static void Player__init_p(void*, void* f) { using T = Point; new (f) T{1, 2}; }
-#line 187 "cpp_player_v2.cpp.cpp"
-#line 79 "cpp_player_v2.cpp"
+#line 185 "cpp_player_v2.cpp.cpp"
+#line 78 "cpp_player_v2.cpp"
 static void Player__init_mode(void*, void* f) { using T = Mode; new (f) T(Mode::Idle); }
-#line 190 "cpp_player_v2.cpp.cpp"
-#line 80 "cpp_player_v2.cpp"
+#line 188 "cpp_player_v2.cpp.cpp"
+#line 79 "cpp_player_v2.cpp"
 static void Player__init_level(void*, void* f) { using T = float; new (f) T(1.0f); }
-#line 193 "cpp_player_v2.cpp.cpp"
+#line 191 "cpp_player_v2.cpp.cpp"
 static float Player__convert_level(int old);
-#line 67 "cpp_player_v2.cpp"
+#line 66 "cpp_player_v2.cpp"
 static void Player__convert_level_hook(void* dst, const void* src)
-#line 67 "cpp_player_v2.cpp"
+#line 66 "cpp_player_v2.cpp"
 {
-#line 67 "cpp_player_v2.cpp"
+#line 66 "cpp_player_v2.cpp"
     new (dst) float(Player__convert_level(*static_cast<const int*>(src)));
-#line 67 "cpp_player_v2.cpp"
+#line 66 "cpp_player_v2.cpp"
 }
-#line 203 "cpp_player_v2.cpp.cpp"
+#line 201 "cpp_player_v2.cpp.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -234,151 +232,151 @@ SPP_HIDDEN PlayerState_g2* state_of(Player_Shell* __self)
 [[maybe_unused]] SPP_HIDDEN static void Player__onReload(Player_Shell* __self, const spp::OldState& old);
 
 [[maybe_unused]] SPP_HIDDEN static void Player__ctor(Player_Shell* __self);
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 [[maybe_unused]] SPP_HIDDEN static auto Player__super_args()
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 {
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
     return std::make_tuple("Player");
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 }
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 SPP_HIDDEN static auto Player__plan()
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 {
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
     return std::make_pair(Player__super_args(), std::tuple<>());
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 }
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 template <class Chain>
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 SPP_HIDDEN static void Player__ctor_chain(Player_Shell* __self, [[maybe_unused]] Chain& __chain)
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 {
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
     Player__ctor(__self);
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 }
-#line 264 "cpp_player_v2.cpp.cpp"
+#line 262 "cpp_player_v2.cpp.cpp"
 using Player_SuperArgs = decltype(Player__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
 SPP_NODEBUG static spp::ShellBase* Player__construct(const char* key, const void* args)
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
 {
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     if (std::strcmp(key, typeid(Player_SuperArgs).name()) == 0) {
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
         const auto& t = *static_cast<const Player_SuperArgs*>(args);
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
         return std::apply([](auto&... x) -> spp::ShellBase* { return new Player_Shell(spp::Construct{}, x...); }, t);
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     }
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     return nullptr;
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
 }
-#line 284 "cpp_player_v2.cpp.cpp"
+#line 282 "cpp_player_v2.cpp.cpp"
 
 static const char* const Player__construct_keys[] = {typeid(Player_SuperArgs).name(), nullptr};
 
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 SPP_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 {
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
     auto __plan = Player__plan();
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
     auto* __self = static_cast<Player_Shell*>(spp::construct_shell(&Player_record, typeid(Player_SuperArgs).name(), &__plan.first, __note));
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
     try {
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
         Player__ctor_chain(__self, __plan.second);
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
     } catch (...) {
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
         delete static_cast<Actor*>(__self);
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
         throw;
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
     }
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
     return __self;
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 }
-#line 312 "cpp_player_v2.cpp.cpp"
-#line 35 "cpp_player_v2.cpp"
+#line 310 "cpp_player_v2.cpp.cpp"
+#line 34 "cpp_player_v2.cpp"
 [[maybe_unused]] SPP_HIDDEN static Player_Shell* Player__new()
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 {
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
     return Player__build(true);
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 }
-#line 321 "cpp_player_v2.cpp.cpp"
+#line 319 "cpp_player_v2.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 SPP_NODEBUG static spp::ShellBase* Player__new_default()
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 {
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
     return Player__build(false);
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 }
-#line 333 "cpp_player_v2.cpp.cpp"
+#line 331 "cpp_player_v2.cpp.cpp"
 
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 [[maybe_unused]] SPP_HIDDEN static void Player__ctor(Player_Shell* __self)
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 {
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
     return state_of(__self)->ctor();
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 }
-#line 343 "cpp_player_v2.cpp.cpp"
-#line 35 "cpp_player_v2.cpp"
+#line 341 "cpp_player_v2.cpp.cpp"
+#line 34 "cpp_player_v2.cpp"
 void PlayerState_g2::ctor()
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 {
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
     if (SPP_UNLIKELY(spp::active_generation != GEN)) {
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
         spp::stale_call("Player::Player");
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
         return;
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
     }
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
     SPP_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
     SPP_NODEBUG_LOCAL auto* __st = this;
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 
-#line 35 "cpp_player_v2.cpp"
+#line 34 "cpp_player_v2.cpp"
 }
-#line 364 "cpp_player_v2.cpp.cpp"
+#line 362 "cpp_player_v2.cpp.cpp"
 
-#line 37 "cpp_player_v2.cpp"
+#line 36 "cpp_player_v2.cpp"
 void PlayerState_g2::Tick(float dt)
-#line 37 "cpp_player_v2.cpp"
+#line 36 "cpp_player_v2.cpp"
 {
-#line 37 "cpp_player_v2.cpp"
+#line 36 "cpp_player_v2.cpp"
     if (SPP_UNLIKELY(spp::active_generation != GEN)) {
-#line 37 "cpp_player_v2.cpp"
+#line 36 "cpp_player_v2.cpp"
         spp::stale_call("Player::Tick(float)");
-#line 37 "cpp_player_v2.cpp"
+#line 36 "cpp_player_v2.cpp"
         return;
-#line 37 "cpp_player_v2.cpp"
+#line 36 "cpp_player_v2.cpp"
     }
-#line 37 "cpp_player_v2.cpp"
+#line 36 "cpp_player_v2.cpp"
     SPP_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
-#line 37 "cpp_player_v2.cpp"
+#line 36 "cpp_player_v2.cpp"
     SPP_NODEBUG_LOCAL auto* __st = this;
-#line 38 "cpp_player_v2.cpp"
+#line 37 "cpp_player_v2.cpp"
 
         __self->Move(Vec3(2.0f * speed * dt, 0, 0));
         std::printf("[v2] %s: Tick dt=%.4f pos.x=%.4f health=%.1f level=%.1f\n", __self->Name.c_str(), dt,
@@ -387,138 +385,138 @@ void PlayerState_g2::Tick(float dt)
         auto step = [&] { __self->Move(Vec3(0, 1, 0)); };
         step();
     
-#line 45 "cpp_player_v2.cpp"
+#line 44 "cpp_player_v2.cpp"
 }
-#line 393 "cpp_player_v2.cpp.cpp"
+#line 391 "cpp_player_v2.cpp.cpp"
 
-#line 47 "cpp_player_v2.cpp"
+#line 46 "cpp_player_v2.cpp"
 void PlayerState_g2::TakeDamage_f(float amount)
-#line 47 "cpp_player_v2.cpp"
+#line 46 "cpp_player_v2.cpp"
 {
-#line 47 "cpp_player_v2.cpp"
+#line 46 "cpp_player_v2.cpp"
     if (SPP_UNLIKELY(spp::active_generation != GEN)) {
-#line 47 "cpp_player_v2.cpp"
+#line 46 "cpp_player_v2.cpp"
         spp::stale_call("Player::TakeDamage(float)");
-#line 47 "cpp_player_v2.cpp"
+#line 46 "cpp_player_v2.cpp"
         return;
-#line 47 "cpp_player_v2.cpp"
+#line 46 "cpp_player_v2.cpp"
     }
-#line 47 "cpp_player_v2.cpp"
+#line 46 "cpp_player_v2.cpp"
     SPP_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
-#line 47 "cpp_player_v2.cpp"
+#line 46 "cpp_player_v2.cpp"
     SPP_NODEBUG_LOCAL auto* __st = this;
-#line 48 "cpp_player_v2.cpp"
+#line 47 "cpp_player_v2.cpp"
 
         health = clamp_hp(health - amount);
         std::printf("[v2] %s: TakeDamage %.1f -> health=%.1f\n", __self->Name.c_str(), amount, health);
     
-#line 51 "cpp_player_v2.cpp"
+#line 50 "cpp_player_v2.cpp"
 }
-#line 418 "cpp_player_v2.cpp.cpp"
+#line 416 "cpp_player_v2.cpp.cpp"
 
-#line 53 "cpp_player_v2.cpp"
+#line 52 "cpp_player_v2.cpp"
 void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
-#line 53 "cpp_player_v2.cpp"
+#line 52 "cpp_player_v2.cpp"
 {
-#line 53 "cpp_player_v2.cpp"
+#line 52 "cpp_player_v2.cpp"
     if (SPP_UNLIKELY(spp::active_generation != GEN)) {
-#line 53 "cpp_player_v2.cpp"
+#line 52 "cpp_player_v2.cpp"
         spp::stale_call("Player::TakeDamage(Actor &, float)");
-#line 53 "cpp_player_v2.cpp"
+#line 52 "cpp_player_v2.cpp"
         return;
-#line 53 "cpp_player_v2.cpp"
+#line 52 "cpp_player_v2.cpp"
     }
-#line 53 "cpp_player_v2.cpp"
+#line 52 "cpp_player_v2.cpp"
     SPP_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
-#line 53 "cpp_player_v2.cpp"
+#line 52 "cpp_player_v2.cpp"
     SPP_NODEBUG_LOCAL auto* __st = this;
-#line 54 "cpp_player_v2.cpp"
+#line 53 "cpp_player_v2.cpp"
 
         target = source.Name;
         std::printf("[v2] %s: hit by %s\n", __self->Name.c_str(), target.c_str());
         __self->TakeDamage(amount);
     
-#line 58 "cpp_player_v2.cpp"
+#line 57 "cpp_player_v2.cpp"
 }
-#line 444 "cpp_player_v2.cpp.cpp"
+#line 442 "cpp_player_v2.cpp.cpp"
 
-#line 60 "cpp_player_v2.cpp"
+#line 59 "cpp_player_v2.cpp"
 [[maybe_unused]] SPP_HIDDEN static void Player__heal(Player_Shell* __self, float a)
-#line 60 "cpp_player_v2.cpp"
+#line 59 "cpp_player_v2.cpp"
 {
-#line 60 "cpp_player_v2.cpp"
+#line 59 "cpp_player_v2.cpp"
     return state_of(__self)->heal(std::forward<float>(a));
-#line 60 "cpp_player_v2.cpp"
+#line 59 "cpp_player_v2.cpp"
 }
-#line 454 "cpp_player_v2.cpp.cpp"
-#line 60 "cpp_player_v2.cpp"
+#line 452 "cpp_player_v2.cpp.cpp"
+#line 59 "cpp_player_v2.cpp"
 void PlayerState_g2::heal(float a)
-#line 60 "cpp_player_v2.cpp"
+#line 59 "cpp_player_v2.cpp"
 {
-#line 60 "cpp_player_v2.cpp"
+#line 59 "cpp_player_v2.cpp"
     if (SPP_UNLIKELY(spp::active_generation != GEN)) {
-#line 60 "cpp_player_v2.cpp"
+#line 59 "cpp_player_v2.cpp"
         spp::stale_call("Player::heal");
-#line 60 "cpp_player_v2.cpp"
+#line 59 "cpp_player_v2.cpp"
         return;
-#line 60 "cpp_player_v2.cpp"
+#line 59 "cpp_player_v2.cpp"
     }
-#line 60 "cpp_player_v2.cpp"
+#line 59 "cpp_player_v2.cpp"
     SPP_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
-#line 60 "cpp_player_v2.cpp"
+#line 59 "cpp_player_v2.cpp"
     SPP_NODEBUG_LOCAL auto* __st = this;
-#line 61 "cpp_player_v2.cpp"
+#line 60 "cpp_player_v2.cpp"
 
         health = clamp_hp(health + 2.0f * a);
         std::printf("[v2] %s: heal %.1f (x2) -> health=%.1f\n", __self->Name.c_str(), a, health);
     
-#line 64 "cpp_player_v2.cpp"
+#line 63 "cpp_player_v2.cpp"
 }
-#line 478 "cpp_player_v2.cpp.cpp"
+#line 476 "cpp_player_v2.cpp.cpp"
 
-#line 67 "cpp_player_v2.cpp"
+#line 66 "cpp_player_v2.cpp"
 static float Player__convert_level(int old)
-#line 67 "cpp_player_v2.cpp"
+#line 66 "cpp_player_v2.cpp"
 {
-#line 67 "cpp_player_v2.cpp"
+#line 66 "cpp_player_v2.cpp"
  return old * 10.0f; 
-#line 67 "cpp_player_v2.cpp"
+#line 66 "cpp_player_v2.cpp"
 }
-#line 488 "cpp_player_v2.cpp.cpp"
+#line 486 "cpp_player_v2.cpp.cpp"
 
-#line 69 "cpp_player_v2.cpp"
+#line 68 "cpp_player_v2.cpp"
 [[maybe_unused]] SPP_HIDDEN static void Player__onReload(Player_Shell* __self, const spp::OldState& old)
-#line 69 "cpp_player_v2.cpp"
+#line 68 "cpp_player_v2.cpp"
 {
-#line 69 "cpp_player_v2.cpp"
+#line 68 "cpp_player_v2.cpp"
     return state_of(__self)->onReload(std::forward<const spp::OldState&>(old));
-#line 69 "cpp_player_v2.cpp"
+#line 68 "cpp_player_v2.cpp"
 }
-#line 498 "cpp_player_v2.cpp.cpp"
-#line 69 "cpp_player_v2.cpp"
+#line 496 "cpp_player_v2.cpp.cpp"
+#line 68 "cpp_player_v2.cpp"
 void PlayerState_g2::onReload(const spp::OldState& old)
-#line 69 "cpp_player_v2.cpp"
+#line 68 "cpp_player_v2.cpp"
 {
-#line 69 "cpp_player_v2.cpp"
+#line 68 "cpp_player_v2.cpp"
     if (SPP_UNLIKELY(spp::active_generation != GEN)) {
-#line 69 "cpp_player_v2.cpp"
+#line 68 "cpp_player_v2.cpp"
         spp::stale_call("Player::onReload");
-#line 69 "cpp_player_v2.cpp"
+#line 68 "cpp_player_v2.cpp"
         return;
-#line 69 "cpp_player_v2.cpp"
+#line 68 "cpp_player_v2.cpp"
     }
-#line 69 "cpp_player_v2.cpp"
+#line 68 "cpp_player_v2.cpp"
     SPP_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
-#line 69 "cpp_player_v2.cpp"
+#line 68 "cpp_player_v2.cpp"
     SPP_NODEBUG_LOCAL auto* __st = this;
-#line 70 "cpp_player_v2.cpp"
+#line 69 "cpp_player_v2.cpp"
 
         if (old.has("hp") && old.get<float>("hp") > 100.0f)
             health = 100.0f;
     
-#line 73 "cpp_player_v2.cpp"
+#line 72 "cpp_player_v2.cpp"
 }
-#line 522 "cpp_player_v2.cpp.cpp"
+#line 520 "cpp_player_v2.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const spp::SlotFn Player_slots[SLOT_COUNT] = {
@@ -528,15 +526,15 @@ static const spp::SlotFn Player_slots[SLOT_COUNT] = {
     reinterpret_cast<spp::SlotFn>(&PlayerState_g2::heal),
 };
 
-#line 69 "cpp_player_v2.cpp"
+#line 68 "cpp_player_v2.cpp"
 static void Player__onReload_hook(spp::ShellBase* s, const spp::OldState& old)
-#line 69 "cpp_player_v2.cpp"
+#line 68 "cpp_player_v2.cpp"
 {
-#line 69 "cpp_player_v2.cpp"
+#line 68 "cpp_player_v2.cpp"
     Player__onReload(static_cast<Player_Shell*>(s), old);
-#line 69 "cpp_player_v2.cpp"
+#line 68 "cpp_player_v2.cpp"
 }
-#line 540 "cpp_player_v2.cpp.cpp"
+#line 538 "cpp_player_v2.cpp.cpp"
 
 spp::ClassRecord Player_record = {
     "Player", GEN, Player_slots, SLOT_COUNT, &Player_layout, nullptr,
@@ -545,33 +543,33 @@ spp::ClassRecord Player_record = {
     &Player__construct, typeid(Player_SuperArgs).name(), &Player__new_default, nullptr, nullptr,
 };
 
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
 SPP_NODEBUG static spp::Instance Player_create()
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
 {
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     spp::ScriptEntry entry;  // the creation is an entry (S27)
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     spp::ShellBase* s = nullptr;
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     if (Player_record.new_default) {
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
         s = Player_record.new_default();
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     } else {
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
         auto plan = Player__plan();
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
         s = Player__construct(typeid(Player_SuperArgs).name(), &plan.first);
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     }
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     auto* p = static_cast<Player_Shell*>(s);
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
     return {static_cast<Actor*>(p), p};
-#line 32 "cpp_player_v2.cpp"
+#line 31 "cpp_player_v2.cpp"
 }
-#line 575 "cpp_player_v2.cpp.cpp"
+#line 573 "cpp_player_v2.cpp.cpp"
 
 extern "C" void script_register(spp::Registry& reg)
 {

@@ -66,7 +66,7 @@ endforeach()
 # The normal toolchain compiles the .cpp script too. A .cpp script must compile unchanged.
 add_library(imgui_cpp_scripts_plain OBJECT script/demo.cpp)
 target_include_directories(imgui_cpp_scripts_plain PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR} ${SPP_ROOT}/include)
+    ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(imgui_cpp_scripts_plain PRIVATE imgui_sdl3)
 target_compile_features(imgui_cpp_scripts_plain PRIVATE cxx_std_17)
 

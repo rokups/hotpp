@@ -1,7 +1,6 @@
 // Generation 1 of the script as a plain C++ file. Wolf derives from the host class Creature.
 // A normal C++ build compiles this file. The tool sppc also translates it.
 #include "Creature.h"
-#include "spp/script.h"
 
 #include <cstdio>
 #include <string>

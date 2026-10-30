@@ -1071,6 +1071,18 @@ TEST(SppcTool, EmitCppTranslatesACppScript)
     EXPECT_NE(text.find("script_register"), std::string::npos) << text;
 }
 
+// The fixture v2 uses SPP_ALIAS and onReload and has no include of "spp/script.h".
+// sppc injects the header itself, so the translation works.
+TEST(SppcTool, EmitCppInjectsTheScriptHeaderForTheAids)
+{
+    std::string text;
+    const std::string script = std::string(SPP_SOURCE_DIR) + "/tests/scripts/cpp_player_v2.cpp";
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
+        0)
+        << text;
+    EXPECT_NE(text.find("script_register"), std::string::npos) << text;
+}
+
 // A virtual method without "override" is not supported in a ".cpp" script. sppc fails.
 TEST(SppcTool, CppScriptWithUnsupportedFormFails)
 {
