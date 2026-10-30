@@ -99,21 +99,6 @@ TEST(LocalDeclarationParse, TypeFirstDeclarations)
     EXPECT_FALSE(decl("this.n = 1;"));
     EXPECT_FALSE(decl("a *= b;"));
 
-    // "let" is removed. The old "let x: T = e;" gives the same error.
-    const std::string let_error = "1:1: 'let' is removed; write 'var x = ...' or 'Type x = ...'";
-    EXPECT_EQ(errors_of(Parsed("let x = 1;")), (std::vector<std::string>{let_error}));
-    EXPECT_EQ(errors_of(Parsed("let x: int = 1;")), (std::vector<std::string>{let_error}));
-    // In a for head, the first error is the "let" error.
-    for (const char* text : {"for (let i = 0; i < 3; i++) f(i);"}) {
-        const std::vector<std::string> e = errors_of(Parsed(text));
-        ASSERT_FALSE(e.empty()) << text;
-        EXPECT_EQ(e[0], "1:6: 'let' is removed; write 'var x = ...' or 'Type x = ...'") << text;
-    }
-    {
-        const std::vector<std::string> e = errors_of(Parsed("foreach (let x in xs) f(x);"));
-        ASSERT_FALSE(e.empty());
-        EXPECT_EQ(e[0], "1:10: 'let' is removed; write 'var x = ...' or 'Type x = ...'");
-    }
     // A "const" needs "var" or a type.
     EXPECT_EQ(errors_of(Parsed("const x = 1;")),
               (std::vector<std::string>{"1:7: expected 'var' or a type after 'const'"}));
@@ -142,4 +127,12 @@ TEST(LocalDeclarationParse, TypeScope)
     EXPECT_EQ(errors_of(p), (std::vector<std::string>{"2:4: use '.' instead of '::'"}));
     Parsed q("foreach (std::string s in xs) f(s);");
     EXPECT_EQ(errors_of(q), (std::vector<std::string>{"1:13: use '.' instead of '::'"}));
+}
+
+TEST(LocalDeclarationParse, CollectionLiteralInitializer)
+{
+    EXPECT_EQ(round_trip("std.vector<int> xs = [1, 2, 3];"), "std::vector<int32_t> xs = {1, 2, 3};");
+    EXPECT_EQ(round_trip("std.map<std.string, int> m = [\"a\": 1, \"b\": 2];"),
+              "std::map<std::string, int32_t> m = {{\"a\", 1}, {\"b\", 2}};");
+    EXPECT_EQ(round_trip("const std.vector<int> e = [];"), "const std::vector<int32_t> e = {};");
 }

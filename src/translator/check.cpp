@@ -59,6 +59,9 @@ struct Walker {
             expr(tt->obj);
         } else if (auto* ip = std::get_if<InterpExpr>(&e.v)) {
             for (const ExprP& a : ip->args) expr(a);
+        } else if (auto* co = std::get_if<CollectionExpr>(&e.v)) {
+            for (const ExprP& a : co->elems) expr(a);
+            for (const ExprP& a : co->values) expr(a);
         } else if (auto* l = std::get_if<LambdaExpr>(&e.v)) {
             block(l->body);
             if (lambda_end) lambda_end();
@@ -337,6 +340,10 @@ struct Checker {
         if (auto* p = std::get_if<ParenExpr>(&e.v)) return p->inner && copies_borrowed_pointer(*p->inner);
         if (auto* t = std::get_if<TernaryExpr>(&e.v))
             return (t->a && copies_borrowed_pointer(*t->a)) || (t->b && copies_borrowed_pointer(*t->b));
+        // "p ?? q" gives p or q, so it copies a borrowed pointer when one side is borrowed.
+        if (auto* b = std::get_if<BinaryExpr>(&e.v))
+            return b->op == "??" && ((b->lhs && copies_borrowed_pointer(*b->lhs)) ||
+                                     (b->rhs && copies_borrowed_pointer(*b->rhs)));
         if (auto* u = std::get_if<UnaryExpr>(&e.v)) {
             if (u->postfix || !u->operand || u->op.size() < 3 || u->op.front() != '(') return false;
             std::string ty = trim(u->op.substr(1, u->op.size() - 2));
@@ -386,6 +393,13 @@ struct Checker {
     void on_stmt(const Stmt& s)
     {
         if (auto* d = std::get_if<VarDeclStmt>(&s.v)) {
+            if (!d->names.empty()) {  // a structured binding: plain locals, "var&" borrows
+                for (const std::string& n : d->names) {
+                    record_local(n, std::string());
+                    if (d->is_ref) borrowed.insert(n);
+                }
+                return;
+            }
             record_local(d->name, d->type);
             if (!d->type.empty()) script_pointer(d->type, d->pos);
             if (d->is_ref) {
@@ -404,6 +418,10 @@ struct Checker {
             record_local(fo->name, fo->type);
             if (!fo->type.empty()) script_pointer(fo->type, fo->pos);
             if (fo->is_ref) borrowed.insert(fo->name);
+            for (const std::string& n : fo->names) {
+                record_local(n, std::string());
+                if (fo->is_ref) borrowed.insert(n);
+            }
         } else if (auto* tr = std::get_if<TryStmt>(&s.v)) {
             for (const CatchClause& c : tr->catches) record_local(c.name, c.type);
         }
@@ -473,8 +491,14 @@ struct Checker {
                 for (const Param& p : inner->params) declared.insert(p.name);
         };
         auto fs = [&](const Stmt& s) {
-            if (auto* d = std::get_if<VarDeclStmt>(&s.v)) declared.insert(d->name);
-            if (auto* fo = std::get_if<ForOfStmt>(&s.v)) declared.insert(fo->name);
+            if (auto* d = std::get_if<VarDeclStmt>(&s.v)) {
+                declared.insert(d->name);
+                declared.insert(d->names.begin(), d->names.end());
+            }
+            if (auto* fo = std::get_if<ForOfStmt>(&s.v)) {
+                declared.insert(fo->name);
+                declared.insert(fo->names.begin(), fo->names.end());
+            }
         };
         make_walker(fe, fs).block(l.body);
         for (const std::string& n : used)
@@ -601,6 +625,33 @@ void check_ctors(const ClassDef& cd, const LineMap& map, Diagnostics& diag)
     }
 }
 
+void check_base_ctor_access(const ClassDef& cd, const ClassDef& parent, const LineMap& map, Diagnostics& diag)
+{
+    if (parent.ctors.empty()) return;  // a public default constructor
+    // A private constructor of the parent is for the parent only. A protected one is for
+    // the subclass. The candidates are the constructors with this number of arguments.
+    auto check = [&](size_t n, uint32_t pos) {
+        bool any = false, usable = false;
+        for (const Ctor& c : parent.ctors) {
+            size_t required = 0;
+            for (const Param& p : c.params)
+                if (!p.def) ++required;
+            if (n < required || n > c.params.size()) continue;
+            any = true;
+            usable = usable || c.access != Access::Private;
+        }
+        if (any && !usable) diag.add(pos, map, "the constructor is private in '" + parent.name + "'");
+    };
+    if (cd.ctors.empty()) {
+        check(0, cd.pos);
+        return;
+    }
+    for (const Ctor& c : cd.ctors) {
+        if (c.has_base_call) check(c.base_args.size(), c.base_pos);
+        else check(0, c.pos);
+    }
+}
+
 namespace {
 
 // The name at the root of an access path: "p", "p.x" (NameExpr with parts), "(p).x[1]".
@@ -668,9 +719,13 @@ std::set<std::string> declared_names(const std::vector<Param>& params, const Blo
             for (const Param& p : l->params) out.insert(p.name);
     };
     auto fs = [&](const Stmt& s) {
-        if (auto* d = std::get_if<VarDeclStmt>(&s.v)) out.insert(d->name);
-        else if (auto* fo = std::get_if<ForOfStmt>(&s.v)) out.insert(fo->name);
-        else if (auto* tr = std::get_if<TryStmt>(&s.v))
+        if (auto* d = std::get_if<VarDeclStmt>(&s.v)) {
+            out.insert(d->name);
+            out.insert(d->names.begin(), d->names.end());
+        } else if (auto* fo = std::get_if<ForOfStmt>(&s.v)) {
+            out.insert(fo->name);
+            out.insert(fo->names.begin(), fo->names.end());
+        } else if (auto* tr = std::get_if<TryStmt>(&s.v))
             for (const CatchClause& c : tr->catches) out.insert(c.name);
     };
     make_walker(fe, fs).block(body);
@@ -1250,6 +1305,11 @@ struct QueryCollector {
         };
         auto fs = [&](const Stmt& st) {
             if (auto* d = std::get_if<VarDeclStmt>(&st.v)) {
+                for (const std::string& n : d->names) {
+                    value_params.erase(n);
+                    declare(n, QType{});
+                }
+                if (!d->names.empty()) return;
                 value_params.erase(d->name);
                 if (!d->type.empty()) {
                     declare(d->name, of_text(d->type));
@@ -1260,6 +1320,10 @@ struct QueryCollector {
                 if (!q.cpp.empty()) out.vars.emplace_back(const_cast<VarDeclStmt*>(d), q.cpp);
                 declare(d->name, q);
             } else if (auto* fo = std::get_if<ForOfStmt>(&st.v)) {
+                for (const std::string& n : fo->names) {
+                    value_params.erase(n);
+                    declare(n, QType{});
+                }
                 value_params.erase(fo->name);
                 declare(fo->name, of_text(fo->type));
             } else if (auto* tr = std::get_if<TryStmt>(&st.v)) {
@@ -1365,7 +1429,7 @@ std::set<std::string> used_type_names(const ClassDef& cd)
     };
     auto fe = [&](const Expr& e) {
         if (auto* n = std::get_if<NewExpr>(&e.v)) add(n->type);
-        if (auto* tt = std::get_if<TypeTestExpr>(&e.v); tt && tt->is_as) add(tt->type);
+        if (auto* tt = std::get_if<TypeTestExpr>(&e.v); tt && (tt->is_as || !tt->bind.empty())) add(tt->type);
         if (auto* l = std::get_if<LambdaExpr>(&e.v))
             for (const Param& p : l->params) add(p.type);
     };

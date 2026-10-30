@@ -29,17 +29,17 @@ class Hero : Actor {
 | `catch`, lambda parameter, `foreach` | `catch (std.exception& e)`, `(Vec3& v) => ...`, `foreach (var& x in xs)` | yes |
 | `&x` in a call, `new` or `base(...)` | `f(&x)`, `new Hero(&x)` | yes |
 | Field, return type, collection element, lambda capture | `Vec3& last;`, `() => p.x` | no |
-| `&x` in an assignment or `return` | `this.p = &x;` | no |
+| `&x` in an assignment or `return` | `p = &x;` | no |
 
 ```csharp
-using <vector>; using <exception>; using "Actor.h";
+using "Actor.h";
 class Hero {
     Hero(int* n) { }
     void Show(Vec3& p) { }
     void Run(Vec3& pos, int total) {                   // parameter
-        try { this.Show(pos); }
-        catch (std.exception& e) { this.Show(pos); }   // catch
-        var f = (Vec3& v) => { this.Show(v); };        // lambda parameter
+        try { Show(pos); }
+        catch (std.exception& e) { Show(pos); }   // catch
+        var f = (Vec3& v) => { Show(v); };        // lambda parameter
         std.vector<int> xs = std.vector<int>();
         foreach (var& x in xs) x = x + 1;              // foreach
         var& r = total;                                // local reference
@@ -55,14 +55,14 @@ A field, a return value, a collection element, a lambda capture and a stored `&x
 
 ```csharp
 // error
-using <vector>; using <memory>; using "Actor.h";
+using "Actor.h";
 class Bad {
     Vec3& last;                         // field
     std.vector<Vec3*> all;              // collection element
     std.unique_ptr<Vec3> own;           // move-only field
-    Vec3* Addr() { return &this.last; } // return value, return &x
+    Vec3* Addr() { return &last; } // return value, return &x
     void Run(Vec3& v) {
-        this.last = &v;                 // assignment of &x
+        last = &v;                 // assignment of &x
         var f = () => { v.x = 1; };     // capture
     }
 }
@@ -89,11 +89,11 @@ using "Actor.h"; using "Weapon.h"; using "Armory.h"; using "Object.h";
 class Hero : Actor {
     Hero buddy = null;
     Object* rc = null;                           // intrusive: the pointer is the handle
-    void Pair(Hero& out) { out = this.buddy; }   // out is the handle itself
+    void Pair(Hero& out) { out = buddy; }   // out is the handle itself
     void Join(Hero& other) { }
     void Run(Armory& a, Weapon h) {
         a.Use(&*h); a.Hit(*h);           // T* parameter, T& parameter
-        Hero me = this; this.Join(me);   // this is not a variable: pass a copy
+        Hero me = this; Join(me);        // this is not a variable: pass a copy
     }
 }
 ```
@@ -111,7 +111,7 @@ class Hero : Actor {
     void Join(Hero& other) { }
     void Run(Armory& a, Weapon h) {
         a.Use(&h);
-        this.Join(this);
+        Join(this);
     }
 }
 ```

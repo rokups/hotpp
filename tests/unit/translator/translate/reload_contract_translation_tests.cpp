@@ -67,7 +67,7 @@ TEST(SignatureLines, ChangedSignatureEmitsAKeyedThunk)
 
 std::string bag(const std::string& item_fields)
 {
-    return "using <vector>;\n[value] class Item {\n" + item_fields + "}\nclass Bag {\n    std.vector<Item> items;\n    Item one;\n}\n";
+    return "using <vector>;\nstruct Item {\n" + item_fields + "}\nclass Bag {\n    std.vector<Item> items;\n    Item one;\n}\n";
 }
 
 std::string key_of(const std::string& cpp)

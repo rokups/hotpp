@@ -59,3 +59,16 @@ TEST(ExpressionParseError, NewBraceIsAnError)
 {
     EXPECT_EQ(one_error("new Weapon{1}"), "1:11: expected '(' after the type of 'new'");
 }
+
+TEST(ExpressionParseError, CollectionLiteralErrors)
+{
+    // The first entry decides: a list or a map.
+    Parsed a("[1, 2: 3]");
+    ASSERT_EQ(a.diag.items.size(), 1u) << a.diag.format("t");
+    EXPECT_EQ(a.diag.items[0].msg, "a list element has no value");
+    EXPECT_EQ(a.diag.items[0].col, 5u);
+    Parsed b("[1: 2, 3]");
+    ASSERT_EQ(b.diag.items.size(), 1u) << b.diag.format("t");
+    EXPECT_EQ(b.diag.items[0].msg, "a map entry needs a value: key: value");
+    EXPECT_EQ(b.diag.items[0].col, 8u);
+}

@@ -44,27 +44,8 @@ TEST(MethodParameterParse, ReferenceParameters)
     EXPECT_EQ(script.classes[0].methods[0].body.stmts.size(), 2u);
 }
 
-TEST(MethodParameterParse, RefAndOutParameterWordsAreRemoved)
-{
-    Diagnostics sd;
-    method_params("class W : B {\n    void f(ref Vec3 a) { }\n}\n", sd);
-    EXPECT_FALSE(sd.items.empty());
-    Diagnostics sd2;
-    method_params("class W : B {\n    void f(out Vec3 a) { }\n}\n", sd2);
-    EXPECT_FALSE(sd2.items.empty());
-}
-
 TEST(MethodParameterParse, ParameterErrors)
 {
-    {
-        // The old form "name: type" gives a clear error.
-        Diagnostics sd;
-        method_params("class W : B {\n    void f(dt: float) { }\n}\n", sd);
-        ASSERT_GE(sd.items.size(), 1u);
-        EXPECT_NE(sd.format("t").find("t:2:12: error: parameter syntax changed; write 'Type name'"),
-                  std::string::npos)
-            << sd.format("t");
-    }
     {
         // A method parameter needs a type.
         Diagnostics sd;

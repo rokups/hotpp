@@ -27,6 +27,8 @@
 #include "spp/runtime/closure.h"
 #include "spp/runtime/handles.h"
 #include "spp/runtime/deref.h"
+#include "spp/runtime/coalesce.h"
+#include "spp/runtime/enumerate.h"
 #include "spp/runtime/properties.h"
 #include "spp/runtime/old_state.h"
 #include "spp/runtime/state.h"

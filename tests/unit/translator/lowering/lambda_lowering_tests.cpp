@@ -57,3 +57,21 @@ TEST(LambdaLowering, ErrorBadLambdaParameter)
     ASSERT_EQ(f.errors().size(), 1u);
     EXPECT_EQ(f.errors()[0], "2:3: a lambda parameter needs a name");
 }
+
+// A bare field in a lambda reads "__st" like "this.n": the lambda must not capture "this".
+TEST(LambdaLowering, BareFieldInALambdaReadsTheStateBlock)
+{
+    Fixture f;
+    EXPECT_EQ(f.expr("() => { fired = fired + n; }"),
+              "spp::make_closure(GEN, \"Player::run lambda\", [=]() "
+              "{ SPP_NODEBUG_LOCAL auto* __st = state_of(__self); __st->fired = __st->fired + __st->n; })");
+    EXPECT_EQ(f.expr("() => { target.hp = 1; }"),
+              "spp::make_closure(GEN, \"Player::run lambda\", [=]() "
+              "{ SPP_NODEBUG_LOCAL auto* __st = state_of(__self); spp::deref(__st->target).hp = 1; })");
+    // A parameter of the lambda hides the field. Outside the lambda a bare field stays bare.
+    EXPECT_EQ(f.expr("(int n) => { n = 1; }"),
+              "spp::make_closure(GEN, \"Player::run lambda\", [=](int32_t n) "
+              "{ SPP_NODEBUG_LOCAL auto* __st = state_of(__self); n = 1; })");
+    EXPECT_EQ(f.expr("n"), "n");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}

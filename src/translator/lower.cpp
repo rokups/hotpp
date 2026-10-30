@@ -5,6 +5,7 @@
 #include "emit.h"
 
 #include <optional>
+#include <set>
 #include <utility>
 
 namespace sppc {
@@ -91,6 +92,11 @@ struct Lowerer {
     };
     FinallyState fin;
 
+    // The collection literals that have a declared type. Only these are allowed.
+    std::set<const Expr*> typed_collections;
+    // The number of the next string switch. It makes the name of the local that holds the value.
+    int string_switches = 0;
+
     void error(uint32_t pos, const std::string& msg)
     {
         if (cx.map) diag.add(pos, *cx.map, msg);
@@ -140,13 +146,46 @@ struct Lowerer {
     }
 
     // A field of the class or of a script parent.
-    const Field* find_field(const ClassDef& c, const std::string& n) const
+    const Field* find_field(const ClassDef& c, const std::string& n, const ClassDef** owner = nullptr) const
     {
         int depth = 0;
         for (const ClassDef* d = &c; d && depth < 64; d = parent_of(*d), ++depth)
             for (const Field& f : d->fields)
-                if (f.name == n) return &f;
+                if (f.name == n) {
+                    if (owner) *owner = d;
+                    return &f;
+                }
         return nullptr;
+    }
+
+    // ---- access words (design: public, protected, private)
+    // True when the code that the pass lowers can use a member with the access "a" that the
+    // class "owner" declares. A private member is for the class itself. A protected member is
+    // also for the script subclasses. A lambda in the class has the same class. The pass does
+    // not check a native member.
+    bool can_access(Access a, const ClassDef& owner) const
+    {
+        if (a == Access::Public) return true;
+        if (!cx.cls) return false;
+        if (cx.cls == &owner || (!owner.name.empty() && cx.cls->name == owner.name)) return true;
+        if (a == Access::Protected) {
+            int depth = 0;
+            for (const ClassDef* p = parent_of(*cx.cls); p && depth < 64; p = parent_of(*p), ++depth)
+                if (p == &owner || p->name == owner.name) return true;
+        }
+        return false;
+    }
+
+    // Reports a use of a private or protected member from a place that cannot use it.
+    // "what" is the text before "is": "'name'", or "the 'set' accessor of 'name'".
+    void check_access(Access a, const ClassDef& owner, const std::string& what, uint32_t pos)
+    {
+        if (can_access(a, owner)) return;
+        error(pos, what + " is " + (a == Access::Private ? "private" : "protected") + " in '" + owner.name + "'");
+    }
+    void check_member(Access a, const ClassDef& owner, const std::string& name, uint32_t pos)
+    {
+        check_access(a, owner, "'" + name + "'", pos);
     }
 
     // A script function of the class or of a script parent: not an override of a native
@@ -187,6 +226,12 @@ struct Lowerer {
         }
         if (auto* nw = std::get_if<NewExpr>(&e.v)) return class_named(nw->type) ? nw->type : std::string();
         if (auto* p = std::get_if<ParenExpr>(&e.v)) return type_of(*p->inner);
+        if (auto* b = std::get_if<BinaryExpr>(&e.v)) {
+            if (b->op != "??" || !b->lhs || !b->rhs) return {};
+            const std::string t = common_type(type_of(*b->lhs), type_of(*b->rhs));
+            const ClassDef* d = class_named(t);
+            return d && !d->is_value ? t : std::string();
+        }
         if (auto* tt = std::get_if<TypeTestExpr>(&e.v)) {
             const ClassDef* d = tt->is_as ? class_named(tt->type) : nullptr;
             return d && !d->is_value ? tt->type : std::string();
@@ -222,6 +267,28 @@ struct Lowerer {
             }
         }
         return {};
+    }
+
+    // True when the script class "anc" is the class "c" or one of its script parents.
+    bool is_ancestor_or_same(const std::string& anc, const std::string& c) const
+    {
+        int depth = 0;
+        for (const ClassDef* d = class_named(c); d && depth < 64; d = parent_of(*d), ++depth)
+            if (d->name == anc) return true;
+        return false;
+    }
+
+    // The type of "x ?? y" before its lowering. An unknown side gives the type of the other side.
+    // Two different script classes give the nearest common script parent of the left class. When
+    // there is no such parent, the type is the left type.
+    std::string common_type(const std::string& l, const std::string& r) const
+    {
+        if (l.empty()) return r;
+        if (r.empty() || l == r) return l;
+        int depth = 0;
+        for (const ClassDef* d = class_named(l); d && depth < 64; d = parent_of(*d), ++depth)
+            if (is_ancestor_or_same(d->name, r)) return d->name;
+        return l;
     }
 
     // The type of the member "name" of an object of the type "t": a field or a property.
@@ -350,6 +417,12 @@ struct Lowerer {
             error(pos, "property '" + prop + "' is not allowed in a field initializer");
         else if (p && !(is_get ? p->has_get : p->has_set))
             error(pos, "property '" + prop + "' has no '" + word + "' accessor");
+        else if (p) {
+            // An accessor with its own access word has its own message.
+            const Access a = is_get ? p->get_access : p->set_access;
+            check_access(a, d, a == p->access ? "'" + prop + "'" : std::string("the '") + word + "' accessor of '" + prop + "'",
+                         pos);
+        }
         return d.name + "__" + word + "_" + prop;
     }
 
@@ -480,8 +553,14 @@ struct Lowerer {
     void call(CallExpr& c)
     {
         if (const std::string* n = simple_name(*c.callee)) {
+            if (default_banned(*n)) {
+                error(std::get<NameExpr>(c.callee->v).pos, kDefaultBan);
+                return;
+            }
             if (cx.fns.count(*n) && !cx.locals.count(*n)) {
-                const Method* fn = find_fn(*cx.cls, *n);
+                const ClassDef* owner = nullptr;
+                const Method* fn = find_fn(*cx.cls, *n, &owner);
+                if (fn) check_member(fn->access, *owner, *n, std::get<NameExpr>(c.callee->v).pos);
                 script_call(c, *n, std::get<NameExpr>(c.callee->v).pos);
                 coerce_args(c, fn, 1);
                 exprs(c.args);
@@ -490,7 +569,9 @@ struct Lowerer {
         }
         if (const MemberExpr* m = this_member(*c.callee)) {
             if (cx.allow_this && !cx.field_type.count(m->name) && cx.fns.count(m->name)) {
-                const Method* fn = find_fn(*cx.cls, m->name);
+                const ClassDef* owner = nullptr;
+                const Method* fn = find_fn(*cx.cls, m->name, &owner);
+                if (fn) check_member(fn->access, *owner, m->name, m->name_pos ? m->name_pos : pos_of(*m->obj));
                 script_call(c, m->name, pos_of(*m->obj), m->name_pos);
                 coerce_args(c, fn, 1);
                 exprs(c.args);
@@ -504,6 +585,7 @@ struct Lowerer {
             if (const ClassDef* par = parent_of(*cx.cls)) {
                 const ClassDef* owner = nullptr;
                 const Method* fn = find_fn(*par, sm->name, &owner);
+                if (fn) check_member(fn->access, *owner, sm->name, sm->name_pos ? sm->name_pos : pos_of(*sm->obj));
                 std::string callee;
                 if (fn) callee = owner->name + "__" + sm->name;
                 else if (cx.native_virtuals.count(sm->name)) callee = par->name + "__base_" + sm->name;
@@ -525,6 +607,7 @@ struct Lowerer {
                 const ClassDef* owner = d;
                 const Method* fn =
                     d && !d->is_value && !find_prop(*d, mm->name) ? find_fn(*d, mm->name, &owner) : nullptr;
+                if (fn) check_member(fn->access, *owner, mm->name, mm->name_pos ? mm->name_pos : pos_of(*mm->obj));
                 if (fn) {
                     const uint32_t pos = pos_of(*mm->obj);
                     const std::string name = fn_symbol(*owner, *fn);
@@ -542,6 +625,28 @@ struct Lowerer {
         exprs(c.args);
     }
 
+    // "new C(args)" of a script class. The constructors that take this number of arguments are
+    // the candidates (the pass has no argument types). If all candidates are private or
+    // protected and the code cannot use them, this is an error. A class with no constructor has
+    // a public default constructor.
+    void check_ctor_access(const NewExpr& n)
+    {
+        const ClassDef* d = class_named(n.type);
+        if (!d || d->ctors.empty()) return;
+        bool any = false, usable = false;
+        Access first = Access::Public;
+        for (const Ctor& c : d->ctors) {
+            size_t required = 0;
+            for (const Param& p : c.params)
+                if (!p.def) ++required;
+            if (n.args.size() < required || n.args.size() > c.params.size()) continue;
+            if (!any) first = c.access;
+            any = true;
+            usable = usable || can_access(c.access, *d);
+        }
+        if (any && !usable) check_access(first, *d, "the constructor", n.pos);
+    }
+
     // new T(args). The type model gives the callee: a handle, a value or a raw type.
     void new_expr(ExprP& e, NewExpr& n)
     {
@@ -552,6 +657,7 @@ struct Lowerer {
                 error(pos, "class '" + n.type + "' must come before the class that builds it with 'new'");
                 return;
             }
+            check_ctor_access(n);
             exprs(n.args);
             CallExpr c;
             c.pos = pos;
@@ -611,7 +717,12 @@ struct Lowerer {
 
     void member(ExprP& e, MemberExpr& m)
     {
+        if (m.safe) error(pos_of(*m.obj), "'?.' is allowed only at the start of an expression statement");
         const uint32_t obj_pos = pos_of(*m.obj);
+        if (cx.in_default && (std::holds_alternative<ThisExpr>(m.obj->v) || std::holds_alternative<BaseExpr>(m.obj->v))) {
+            error(obj_pos, kDefaultBan);
+            return;
+        }
         if (std::holds_alternative<ThisExpr>(m.obj->v)) {
             const ClassDef* prop_owner = nullptr;
             if (cx.cls && find_prop(*cx.cls, m.name, &prop_owner)) {
@@ -619,6 +730,9 @@ struct Lowerer {
             } else if (!cx.allow_this) {
                 error(obj_pos, "'this' is not allowed in a field initializer");
             } else if (cx.field_type.count(m.name)) {
+                const ClassDef* owner = nullptr;
+                if (const Field* f = find_field(*cx.cls, m.name, &owner))
+                    check_member(f->access, *owner, m.name, m.name_pos ? m.name_pos : obj_pos);
                 e = raw_named("__st->", m.name, obj_pos, m.name_pos);
             } else if (cx.fns.count(m.name)) {
                 error(obj_pos, "script function '" + m.name + "' must be called");
@@ -659,6 +773,11 @@ struct Lowerer {
             e = prop_read({m.name, &m.obj, prop_owner}, obj_pos);  // "m" is gone now
             return;
         }
+        if (td) {
+            const ClassDef* owner = nullptr;
+            if (const Field* f = find_field(*td, m.name, &owner))
+                check_member(f->access, *owner, m.name, m.name_pos ? m.name_pos : obj_pos);
+        }
         if (td && !td->is_value) {
             if (find_field(*d, m.name)) {  // a field of a script object behind a handle
                 expr(m.obj);
@@ -674,6 +793,9 @@ struct Lowerer {
         deref(m.obj);
     }
 
+    // True while the pass lowers the body of a lambda.
+    bool in_lambda = false;
+
     void lambda(ExprP& e, LambdaExpr& l)
     {
         if (!cx.allow_this) {
@@ -681,7 +803,7 @@ struct Lowerer {
             return;
         }
         if (cx.cls && cx.cls->is_value) {
-            error(l.pos, "a lambda is not allowed in a [value] class: a value can move");
+            error(l.pos, "a lambda is not allowed in a struct: a value can move");
             return;
         }
         for (const Param& p : l.params) {
@@ -698,7 +820,9 @@ struct Lowerer {
         const FinallyState outer = fin;
         const std::string outer_ret = std::exchange(cx.ret_type, std::string());
         fin = {};
+        const bool outer_lambda = std::exchange(in_lambda, true);
         block(l.body);
+        in_lambda = outer_lambda;
         fin = outer;
         cx.ret_type = outer_ret;
         // The lambda captures by value. "self" is a pointer to the shell. The state pointer
@@ -739,6 +863,39 @@ struct Lowerer {
         return cx.module_vars.count(n) != 0 && cx.locals.count(n) == 0;
     }
 
+    // True when a bare name is a member of the native base of the class. A local, a field, a
+    // property and a script fn of the class (or of a script parent) hide it.
+    bool native_member_name(const std::string& n) const
+    {
+        if (!cx.cls || cx.cls->is_value || !cx.native_members.count(n)) return false;
+        if (cx.locals.count(n) || cx.field_type.count(n) || cx.fns.count(n) || cx.props.count(n)) return false;
+        return !find_field(*cx.cls, n) && !find_prop(*cx.cls, n) && !find_fn(*cx.cls, n);
+    }
+
+    bool is_native_member(const std::string& n) const
+    {
+        return cx.allow_this && native_member_name(n);
+    }
+
+    // True when a bare name is a script member of "this": a field or a property of the class or
+    // of a script parent. A local hides it. It wins over a module variable.
+    bool is_script_member(const std::string& n) const
+    {
+        if (!cx.cls || cx.locals.count(n)) return false;
+        // The class of the module variables has them as fields. Here they are module variables.
+        if (cx.in_module_init || cx.in_module_hook) return false;
+        return cx.field_type.count(n) || find_field(*cx.cls, n) || find_prop(*cx.cls, n);
+    }
+
+    // True when a bare name is a member of "this": a script member, or a member of the native
+    // base. A local hides it. A module variable wins over a native member only. This is true
+    // also in a field initializer, where the use of "this" is an error.
+    bool is_this_member(const std::string& n) const
+    {
+        if (is_script_member(n)) return true;
+        return !is_module_var(n) && native_member_name(n);
+    }
+
     // The access to a module variable: "spp_mod()->name".
     ExprP module_ref(const std::string& n, uint32_t pos)
     {
@@ -752,14 +909,59 @@ struct Lowerer {
         return raw("spp_mod()->" + n, pos);
     }
 
+    static constexpr const char* kDefaultBan = "a default value cannot use a field, a parameter or 'this'";
+
+    // In a default value: true when the first part of the name is a script member or a parameter.
+    bool default_banned(const std::string& head) const
+    {
+        if (!cx.in_default) return false;
+        if (cx.locals.count(head) || is_module_var(head) || cx.fns.count(head) || cx.field_type.count(head)) return true;
+        // A member of the native base (a static member too) is a member of the shell.
+        if (cx.native_members.count(head)) return true;
+        return cx.cls && (find_field(*cx.cls, head) || find_prop(*cx.cls, head));
+    }
+
     void name(ExprP& e, NameExpr& n)
     {
+        if (!n.parts.empty() && default_banned(n.parts[0])) {
+            error(n.pos, kDefaultBan);
+            return;
+        }
         targs(n);
-        if (n.parts.size() == 1 && is_module_var(n.parts[0])) {
+        const bool bare = n.parts.size() == 1 && !cx.locals.count(n.parts[0]);
+        // A script member wins over a module variable. A module variable wins over a native member.
+        if (bare && is_module_var(n.parts[0]) && !is_script_member(n.parts[0])) {
             e = module_ref(n.parts[0], n.pos);
             return;
         }
-        if (std::optional<PropRef> r = prop_ref(*e)) e = prop_read(std::move(*r), n.pos);
+        if (std::optional<PropRef> r = prop_ref(*e)) {
+            e = prop_read(std::move(*r), n.pos);
+            return;
+        }
+        // A bare member in a field initializer: there is no "this".
+        if (bare && !cx.allow_this && !cx.in_default && is_this_member(n.parts[0])) {
+            error(n.pos, "'this' is not allowed in a field initializer");
+            return;
+        }
+        if (bare) {
+            // A bare field of a [value] class: its functions are free functions, "__st" is the object.
+            // In a lambda, a field of a class reads "__st" too: the lambda must not capture "this".
+            if (cx.cls && cx.allow_this && (cx.cls->is_value || in_lambda) &&
+                (cx.field_type.count(n.parts[0]) || find_field(*cx.cls, n.parts[0]))) {
+                e = raw_named("__st->", n.parts[0], n.pos, n.pos);
+                return;
+            }
+            // A bare member of the native base: the member of the shell.
+            if (is_native_member(n.parts[0])) {
+                e = raw_named("__self->", n.parts[0], n.pos, n.pos);
+                return;
+            }
+        }
+        // A bare name of a field of a script parent: a private field of the parent is an error.
+        if (cx.cls && cx.allow_this && !n.parts.empty() && !cx.locals.count(n.parts[0])) {
+            const ClassDef* owner = nullptr;
+            if (const Field* f = find_field(*cx.cls, n.parts[0], &owner)) check_member(f->access, *owner, n.parts[0], n.pos);
+        }
     }
 
     // A name with more than one part. If the first part is a local, the name is a member
@@ -770,8 +972,12 @@ struct Lowerer {
     {
         auto* np = std::get_if<NameExpr>(&e->v);
         if (!np || np->parts.size() < 2) return;
-        const bool module_head = is_module_var(np->parts[0]);
-        if (!module_head && !cx.locals.count(np->parts[0])) return;
+        // A member of "this" is the head of "m.x": a field or a property of the class, or a
+        // member of the native base. The member wins over a type or a namespace of that name.
+        // A script member wins over a module variable. A module variable wins over a native member.
+        const bool module_head = is_module_var(np->parts[0]) && !is_script_member(np->parts[0]);
+        const bool this_head = !module_head && !cx.locals.count(np->parts[0]) && is_this_member(np->parts[0]);
+        if (!module_head && !this_head && !cx.locals.count(np->parts[0])) return;
         NameExpr& n = *np;
         targs(n);
         const uint32_t pos = n.pos;
@@ -779,6 +985,7 @@ struct Lowerer {
         head.parts = {n.parts[0]};
         head.pos = pos;
         ExprP chain = module_head ? module_ref(n.parts[0], pos) : make_expr(std::move(head));
+        if (this_head) chain = make_expr(MemberExpr{make_expr(ThisExpr{pos}), n.parts[0], pos, pos});
         for (size_t i = 1; i < n.parts.size(); ++i) {
             std::string member_name = n.parts[i];
             if (i + 1 == n.parts.size()) member_name += n.template_args;
@@ -799,7 +1006,8 @@ struct Lowerer {
         if (prop_write(e, discard)) return;
         Expr& x = *e;
         if (auto* n = std::get_if<ThisExpr>(&x.v)) {
-            if (!cx.allow_this) error(n->pos, "'this' is not allowed in a field initializer");
+            if (cx.in_default) error(n->pos, kDefaultBan);
+            else if (!cx.allow_this) error(n->pos, "'this' is not allowed in a field initializer");
             else e = raw("__self", n->pos);
         } else if (auto* n2 = std::get_if<NullExpr>(&x.v)) {
             e = raw("nullptr", n2->pos);
@@ -820,6 +1028,19 @@ struct Lowerer {
             if (b->op == "=" && b->lhs && b->rhs) coerce(b->rhs, type_of(*b->lhs));
             expr(b->lhs);
             expr(b->rhs);
+            // "x ?? y" is a call of the runtime helper. The helper reads x one time. The
+            // second argument is a lambda, so y runs only when x is false.
+            if (b->op == "??" && b->lhs && b->rhs) {
+                const uint32_t pos = b->pos != 0 ? b->pos : pos_of(*b->lhs);
+                ExprP inner = make_expr(ParenExpr{std::move(b->rhs), 0});
+                // A default value is not in a function, so its lambda has no capture. The lambda gives a
+                // value (not a reference), so a temporary on the right side cannot dangle.
+                const char* open = cx.in_default ? "[]() -> auto { return " : "[&]() -> auto { return ";
+                ExprP head = make_expr(UnaryExpr{open, std::move(inner), false, 0});
+                ExprP lazy = make_expr(UnaryExpr{"; }", std::move(head), true, 0});
+                e = call_of("spp::coalesce", args_of(std::move(b->lhs), std::move(lazy)), pos);
+                return;
+            }
         } else if (auto* t = std::get_if<TernaryExpr>(&x.v)) {
             expr(t->cond);
             expr(t->a);
@@ -834,7 +1055,19 @@ struct Lowerer {
             type_test(e, *tt);
         } else if (auto* ip = std::get_if<InterpExpr>(&x.v)) {
             interp(e, *ip);
+        } else if (auto* co = std::get_if<CollectionExpr>(&x.v)) {
+            if (!typed_collections.count(&x)) error(co->pos, "a collection literal needs a declared type");
+            // A literal inside a typed literal gets its type from the C++ braces.
+            for (ExprP& a : co->elems) nested_collection(a);
+            for (ExprP& a : co->values) nested_collection(a);
+            exprs(co->elems);
+            exprs(co->values);
         }
+    }
+
+    void nested_collection(const ExprP& a)
+    {
+        if (a && std::holds_alternative<CollectionExpr>(a->v)) typed_collections.insert(a.get());
     }
 
     // A string with "${...}" (design 7.3, DECISIONS item 10) becomes a call of std::format or
@@ -883,10 +1116,12 @@ struct Lowerer {
     {
         const uint32_t pos = t.pos;
         const std::string type = t.type;
+        if (!t.bind.empty())
+            error(t.bind_pos, "a 'is T name' binding is allowed only at the start of an if or while condition");
         const ClassDef* d = class_named(type);
         if (d && d->is_value) {
             error(pos, std::string("'") + (t.is_as ? "as" : "is") + "' needs a class with a handle: '" + type +
-                           "' is a [value] class");
+                           "' is a struct");
             return;
         }
         expr(t.obj);
@@ -897,6 +1132,168 @@ struct Lowerer {
         c.args.push_back(std::move(t.obj));
         if (d) c.args.push_back(raw("\"" + type + "\"", pos));
         e = make_expr(std::move(c));
+    }
+
+    // "if (x is T g && rest)": the binding is the leftmost operand of the condition. The
+    // lowering takes it out and gives the declaration "auto g = <x as T>;". The first operand
+    // of the condition is then the name "g". This is a take of the first operand only.
+    struct Binding {
+        std::string name, type;
+        uint32_t pos = 0, name_pos = 0;
+        ExprP init;
+    };
+    static std::optional<Binding> take_binding(ExprP& cond)
+    {
+        ExprP* leaf = &cond;
+        while (*leaf) {
+            auto* b = std::get_if<BinaryExpr>(&(*leaf)->v);
+            if (!b || b->op != "&&" || !b->lhs) break;
+            leaf = &b->lhs;
+        }
+        auto* t = *leaf ? std::get_if<TypeTestExpr>(&(*leaf)->v) : nullptr;
+        if (!t || t->is_as || t->bind.empty()) return std::nullopt;
+        Binding bd;
+        bd.name = t->bind;
+        bd.type = t->type;
+        bd.pos = t->pos;
+        bd.name_pos = t->bind_pos;
+        bd.init = make_expr(TypeTestExpr{std::move(t->obj), t->type, true, t->pos});
+        NameExpr nm;
+        nm.parts.push_back(bd.name);
+        nm.pos = nm.last_pos = t->bind_pos;
+        *leaf = make_expr(std::move(nm));  // "t" is gone now
+        return bd;
+    }
+
+    // True for an assignment operator ("=", "+=" and so on), but not for a comparison.
+    static bool is_assign_op(const std::string& op)
+    {
+        return op == "=" || (op.size() >= 2 && op.back() == '=' && op != "==" && op != "!=" && op != "<=" &&
+                             op != ">=");
+    }
+
+    // The innermost "?." in the leftmost chain of the expression of a statement. The chain goes
+    // down the callee of a call, the object of a member or an index, the operand of a postfix
+    // operator and the left side of an assignment.
+    static MemberExpr* find_safe(ExprP& root)
+    {
+        MemberExpr* found = nullptr;
+        ExprP* cur = &root;
+        while (cur && *cur) {
+            ExprP* next = nullptr;
+            Expr& x = **cur;
+            if (auto* m = std::get_if<MemberExpr>(&x.v)) {
+                if (m->safe) found = m;
+                next = &m->obj;
+            } else if (auto* c = std::get_if<CallExpr>(&x.v)) {
+                next = &c->callee;
+            } else if (auto* ix = std::get_if<IndexExpr>(&x.v)) {
+                next = &ix->obj;
+            } else if (auto* u = std::get_if<UnaryExpr>(&x.v)) {
+                if (u->postfix) next = &u->operand;
+            } else if (auto* b = std::get_if<BinaryExpr>(&x.v)) {
+                if (is_assign_op(b->op)) next = &b->lhs;
+            }
+            cur = next;
+        }
+        return found;
+    }
+
+    // A new node for a name without template arguments.
+    static ExprP copy_name(const NameExpr& n)
+    {
+        NameExpr c;
+        c.parts = n.parts;
+        c.pos = n.pos;
+        c.last_pos = n.last_pos;
+        return make_expr(std::move(c));
+    }
+
+    // "foreach (var& x in spp.enumerate(xs))": the range gives temporary values, so a reference
+    // cannot bind to them.
+    void check_ref_range(const ForOfStmt& fo)
+    {
+        if (!fo.is_ref || !fo.range) return;
+        const auto* call = std::get_if<CallExpr>(&fo.range->v);
+        const auto* callee = call ? std::get_if<NameExpr>(&call->callee->v) : nullptr;
+        if (!callee || callee->parts.size() != 2 || callee->parts[0] != "spp") return;
+        if (callee->parts[1] != "enumerate" && callee->parts[1] != "range") return;
+        std::string use = "var ";
+        if (fo.names.empty()) {
+            use += fo.name;
+        } else {
+            use += "(";
+            for (size_t i = 0; i < fo.names.size(); ++i) use += (i ? ", " : "") + fo.names[i];
+            use += ")";
+        }
+        error(callee->pos, "'var&' cannot bind to the temporary value of 'spp." + callee->parts[1] + "'; use '" + use + "'");
+    }
+
+    // "h?.f(a);" becomes "{ if (h) h.f(a); }". When the receiver is not a simple name, the
+    // receiver goes in a temporary local, so it runs one time:
+    // "{ auto __safeN = recv; if (__safeN) __safeN.f(a); }". The new statement is lowered here.
+    // A second "?." in the chain is lowered by the new statement.
+    bool safe_stmt(StmtP& s, ExprStmt& es)
+    {
+        MemberExpr* m = find_safe(es.expr);
+        if (!m) return false;
+        const uint32_t pos = m->pos;
+        BlockStmt blk;
+        blk.pos = es.pos;
+        ExprP cond;
+        const auto* nm = std::get_if<NameExpr>(&m->obj->v);
+        // A property is a call of the getter, so it goes in a temporary too.
+        const bool is_prop = nm && nm->parts.size() == 1 && !cx.locals.count(nm->parts[0]) && cx.cls &&
+                             find_prop(*cx.cls, nm->parts[0]);
+        if (nm && nm->parts.size() == 1 && nm->template_args.empty() && !is_prop) {
+            cond = copy_name(*nm);
+        } else {
+            NameExpr tmp;
+            tmp.parts.push_back("__safe" + std::to_string(safe_count++));
+            tmp.pos = tmp.last_pos = pos;
+            blk.stmts.push_back(make_stmt(
+                VarDeclStmt{false, false, tmp.parts[0], std::string(), std::move(m->obj), pos, pos}));
+            m->obj = copy_name(tmp);
+            cond = copy_name(tmp);
+        }
+        m->safe = false;
+        ExprStmt inner = std::move(es);
+        const uint32_t spos = inner.pos;
+        blk.stmts.push_back(make_stmt(IfStmt{std::move(cond), make_stmt(std::move(inner)), nullptr, spos, 0}));
+        s->v = std::move(blk);
+        stmt(s);
+        return true;
+    }
+    int safe_count = 0;
+
+    // The statement "s" is an if or a while with a binding in the condition. An if becomes
+    // "{ auto g = ...; if (g && rest) ... }". A while becomes
+    // "for (;;) { auto g = ...; if (!(g && rest)) break; body }". Returns true when it did so.
+    // The new statement is lowered here.
+    bool bind_stmt(StmtP& s, ExprP& cond)
+    {
+        std::optional<Binding> bd = take_binding(cond);
+        if (!bd) return false;
+        auto decl = make_stmt(VarDeclStmt{false, false, bd->name, std::string(), std::move(bd->init), bd->pos, bd->name_pos});
+        BlockStmt blk;
+        blk.stmts.push_back(std::move(decl));
+        if (auto* i = std::get_if<IfStmt>(&s->v)) {
+            blk.pos = i->pos;
+            blk.stmts.push_back(make_stmt(std::move(*i)));
+            s->v = std::move(blk);
+        } else {
+            WhileStmt& w = std::get<WhileStmt>(s->v);
+            blk.pos = w.pos;
+            auto unary = make_expr(UnaryExpr{"!", make_expr(ParenExpr{std::move(w.cond), 0}), false, 0});
+            blk.stmts.push_back(make_stmt(IfStmt{std::move(unary), make_stmt(BreakStmt{w.pos}), nullptr, w.pos, 0}));
+            blk.stmts.push_back(std::move(w.body));
+            ForStmt f;
+            f.pos = w.pos;
+            f.body = make_stmt(std::move(blk));
+            s->v = std::move(f);
+        }
+        stmt(s);
+        return true;
     }
 
     void stmts(std::vector<StmtP>& v)
@@ -921,21 +1318,32 @@ struct Lowerer {
         if (auto* b = std::get_if<BlockStmt>(&x.v)) {
             block(*b);
         } else if (auto* es = std::get_if<ExprStmt>(&x.v)) {
+            if (safe_stmt(s, *es)) return;
             discard_next = true;
             expr(es->expr);
         } else if (auto* d = std::get_if<VarDeclStmt>(&x.v)) {
+            if (!d->names.empty()) {  // a structured binding: the names are plain locals
+                for (const std::string& n : d->names) declare(n, std::string());
+                expr(d->init);
+                return;
+            }
             std::string t = d->type;
             if (t.empty() && d->init) t = type_of(*d->init);  // "var x = new C()"
             if (t.empty()) t = d->native_type;                 // a native call or member (S20b)
-            coerce(d->init, d->type);
+            // A collection literal needs the declared type: it is the C++ type of the braces.
+            if (d->init && !d->type.empty()) nested_collection(d->init);
+            // "var me = this;" holds a handle of the current class.
+            coerce(d->init, d->type.empty() && cx.cls ? cx.cls->name : d->type);
             declare(d->name, t);
             if (cx.types && !d->type.empty()) d->type = cx.types->storage(d->type);
             expr(d->init);
         } else if (auto* i = std::get_if<IfStmt>(&x.v)) {
+            if (bind_stmt(s, i->cond)) return;
             expr(i->cond);
             stmt(i->then);
             stmt(i->otherwise);
         } else if (auto* w = std::get_if<WhileStmt>(&x.v)) {
+            if (bind_stmt(s, w->cond)) return;
             expr(w->cond);
             loop_body(w->body);
         } else if (auto* dw = std::get_if<DoWhileStmt>(&x.v)) {
@@ -951,7 +1359,9 @@ struct Lowerer {
             loop_body(f->body);
         } else if (auto* fo = std::get_if<ForOfStmt>(&x.v)) {
             declare(fo->name, std::string());
+            for (const std::string& n : fo->names) declare(n, std::string());
             if (cx.types && !fo->type.empty()) fo->type = cx.types->storage(fo->type);
+            check_ref_range(*fo);
             expr(fo->range);
             loop_body(fo->body);
         } else if (auto* r = std::get_if<ReturnStmt>(&x.v)) {
@@ -979,6 +1389,7 @@ struct Lowerer {
                 fin = outer;
             }
         } else if (auto* sw = std::get_if<SwitchStmt>(&x.v)) {
+            const bool strings = classify_labels(*sw);
             expr(sw->subject);
             ++fin.switches;
             for (SwitchCase& c : sw->cases) {
@@ -986,7 +1397,147 @@ struct Lowerer {
                 stmts(c.stmts);
             }
             --fin.switches;
+            if (strings) string_switch(s);
         }
+    }
+
+    // ---- switch on a string (DECISIONS item on string switch)
+    // True when each label is a string literal. An error when only some labels are.
+    bool classify_labels(const SwitchStmt& sw)
+    {
+        size_t strings = 0, others = 0;
+        for (const SwitchCase& c : sw.cases)
+            for (const ExprP& l : c.labels) (l && std::holds_alternative<StringExpr>(l->v) ? strings : others)++;
+        if (strings == 0) return false;
+        if (others == 0) return true;
+        for (const SwitchCase& c : sw.cases)
+            for (size_t i = 0; i < c.labels.size(); ++i)
+                if (!c.labels[i] || !std::holds_alternative<StringExpr>(c.labels[i]->v)) {
+                    error(i < c.label_pos.size() ? c.label_pos[i] : c.pos,
+                          "a switch cannot mix string labels and other labels");
+                    return false;
+                }
+        return false;
+    }
+
+    // True when the statements end with a jump out of the case.
+    static bool ends_with_jump(const std::vector<StmtP>& v)
+    {
+        if (v.empty() || !v.back()) return false;
+        const Stmt& l = *v.back();
+        if (std::holds_alternative<BreakStmt>(l.v) || std::holds_alternative<ReturnStmt>(l.v) ||
+            std::holds_alternative<ThrowStmt>(l.v) || std::holds_alternative<ContinueStmt>(l.v))
+            return true;
+        if (auto* b = std::get_if<BlockStmt>(&l.v)) return ends_with_jump(b->stmts);
+        return false;
+    }
+
+    // Looks for a "break" that leaves the switch, or a "continue" that leaves the switch for an
+    // outer loop. A loop owns the "break" and the "continue" in it. A nested switch owns the
+    // "break" in it, but a "continue" in it goes to the outer loop.
+    struct Jumps {
+        bool brk = false, cont = false;
+    };
+    static void find_jumps(const std::vector<StmtP>& v, bool in_switch, Jumps& j)
+    {
+        for (const StmtP& s : v) find_jumps(s, in_switch, j);
+    }
+    static void find_jumps(const StmtP& s, bool in_switch, Jumps& j)
+    {
+        if (!s) return;
+        const Stmt& x = *s;
+        if (std::holds_alternative<BreakStmt>(x.v)) {
+            if (!in_switch) j.brk = true;
+        } else if (std::holds_alternative<ContinueStmt>(x.v)) {
+            j.cont = true;
+        } else if (auto* b = std::get_if<BlockStmt>(&x.v)) {
+            find_jumps(b->stmts, in_switch, j);
+        } else if (auto* i = std::get_if<IfStmt>(&x.v)) {
+            find_jumps(i->then, in_switch, j);
+            find_jumps(i->otherwise, in_switch, j);
+        } else if (auto* t = std::get_if<TryStmt>(&x.v)) {
+            find_jumps(t->block.stmts, in_switch, j);
+            for (const CatchClause& c : t->catches) find_jumps(c.block.stmts, in_switch, j);
+            if (t->finally_block) find_jumps(t->finally_block->stmts, in_switch, j);
+        } else if (auto* sw = std::get_if<SwitchStmt>(&x.v)) {
+            for (const SwitchCase& c : sw->cases) find_jumps(c.stmts, true, j);
+        }
+        // A loop owns its "break" and its "continue".
+    }
+
+    // A switch with string labels becomes a block. The block has a local with the value and an
+    // if / else-if chain. C++ cannot switch on a string.
+    //   { const auto& __sw_1 = s; if (__sw_1 == "a" || __sw_1 == "b") { ... } else { ... } }
+    // A "break" at the end of a case is dropped. Another "break" that leaves the switch needs
+    // a C++ construct, so the chain goes in "do { ... } while (false);".
+    void string_switch(StmtP& s)
+    {
+        SwitchStmt& sw = std::get<SwitchStmt>(s->v);
+        std::vector<SwitchCase>& cs = sw.cases;
+        std::set<std::string> seen;
+        Jumps jumps;
+        for (size_t i = 0; i < cs.size(); ++i) {
+            SwitchCase& c = cs[i];
+            if (i + 1 < cs.size() && !ends_with_jump(c.stmts)) {
+                error(c.pos, "a string switch case must end with break, return, throw or continue");
+                return;
+            }
+            for (size_t k = 0; k < c.labels.size(); ++k) {
+                const std::string& t = std::get<StringExpr>(c.labels[k]->v).text;
+                if (!c.is_default && !seen.insert(t).second)
+                    error(k < c.label_pos.size() ? c.label_pos[k] : c.pos, "duplicate case label " + t);
+            }
+            if (!c.stmts.empty() && c.stmts.back() && std::holds_alternative<BreakStmt>(c.stmts.back()->v))
+                c.stmts.pop_back();
+            find_jumps(c.stmts, false, jumps);
+        }
+        if (jumps.brk && jumps.cont) {
+            error(sw.pos, "a string switch cannot have both a nested 'break' and a 'continue'");
+            return;
+        }
+        const std::string name = "__sw_" + std::to_string(++string_switches);
+        auto body_of = [](SwitchCase& c, uint32_t pos) {
+            BlockStmt b;
+            b.pos = pos;
+            b.stmts = std::move(c.stmts);
+            return make_stmt(std::move(b));
+        };
+        StmtP chain;
+        for (SwitchCase& c : cs)
+            if (c.is_default) chain = body_of(c, c.default_pos != 0 ? c.default_pos : c.pos);
+        for (size_t i = cs.size(); i-- > 0;) {
+            SwitchCase& c = cs[i];
+            if (c.is_default) continue;
+            ExprP cond;
+            for (ExprP& l : c.labels) {
+                ExprP eq = make_expr(BinaryExpr{"==", raw(name, 0), std::move(l), 0});
+                cond = cond ? make_expr(BinaryExpr{"||", std::move(cond), std::move(eq), 0}) : std::move(eq);
+            }
+            IfStmt n;
+            n.cond = std::move(cond);
+            n.then = body_of(c, 0);
+            n.otherwise = std::move(chain);
+            n.pos = c.pos;
+            chain = make_stmt(std::move(n));
+        }
+        BlockStmt out;
+        out.pos = sw.pos;
+        out.end_pos = sw.end_pos;
+        VarDeclStmt v;
+        v.type = "const auto&";
+        v.name = name;
+        v.init = std::move(sw.subject);
+        out.stmts.push_back(make_stmt(std::move(v)));
+        if (chain && jumps.brk) {
+            BlockStmt inner;
+            inner.stmts.push_back(std::move(chain));
+            DoWhileStmt dw;
+            dw.body = make_stmt(std::move(inner));
+            dw.cond = raw("false", 0);
+            chain = make_stmt(std::move(dw));
+        }
+        if (chain) out.stmts.push_back(std::move(chain));
+        s->v = std::move(out);
     }
 };
 
@@ -994,6 +1545,11 @@ struct Lowerer {
 
 void lower_block(ast::BlockStmt& b, RCtx& cx, Diagnostics& diag) { Lowerer{cx, diag}.block(b); }
 
-void lower_expr(ast::ExprP& e, RCtx& cx, Diagnostics& diag) { Lowerer{cx, diag}.expr(e); }
+void lower_expr(ast::ExprP& e, RCtx& cx, Diagnostics& diag)
+{
+    Lowerer lw{cx, diag};
+    if (cx.typed_init && e) lw.nested_collection(e);
+    lw.expr(e);
+}
 
 }  // namespace sppc

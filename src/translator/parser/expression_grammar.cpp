@@ -33,9 +33,7 @@ using ast::ExprP;
 // ---------------------------------------------------------------- error texts
 // The script has no "::" and no "->". A "." does both jobs. The errors tell the user.
 SPP_ERROR_TAG(e_expected_expr, "expected an expression");
-SPP_ERROR_TAG(e_super_renamed, "'super' was renamed to 'base'");
 SPP_ERROR_TAG(e_end_of_expr, "expected end of expression");
-SPP_ERROR_TAG(e_old_param, "parameter syntax changed; write 'Type name'");
 SPP_ERROR_TAG(e_brace_init, "brace initialization is not supported; use parentheses");
 SPP_ERROR_TAG(e_new_paren, "expected '(' after the type of 'new'");
 SPP_ERROR_TAG(e_targs, "not a template argument list");
@@ -50,11 +48,9 @@ constexpr int lambda_depth = 4;
 constexpr std::size_t max_depth = 256;
 
 // ---------------------------------------------------------------- words
-constexpr auto kw_let = LEXY_KEYWORD("let", id);
 constexpr auto kw_const = LEXY_KEYWORD("const", id);
 constexpr auto kw_this = LEXY_KEYWORD("this", id);
 constexpr auto kw_base = LEXY_KEYWORD("base", id);
-constexpr auto kw_super_old = LEXY_KEYWORD("super", id);
 constexpr auto kw_null = LEXY_KEYWORD("null", id);
 constexpr auto kw_if = LEXY_KEYWORD("if", id);
 constexpr auto kw_else = LEXY_KEYWORD("else", id);
@@ -73,12 +69,12 @@ constexpr auto kw_throw = LEXY_KEYWORD("throw", id);
 
 // The words of the body syntax. A member name after a "." can be any word of this set.
 // The set has no "get", "set" and "in", because a native method can have such a name.
-constexpr auto id_m = id.reserve(kw_let, kw_const, kw_this, kw_base, kw_null, kw_if, kw_else,
+constexpr auto id_m = id.reserve(kw_const, kw_this, kw_base, kw_null, kw_if, kw_else,
                                  kw_while, kw_do, kw_for, kw_return, kw_break, kw_continue,
                                  kw_switch, kw_case, kw_default, kw_try, kw_catch, kw_throw);
 
 // A name. The words of the body syntax and the reserved words are not names.
-constexpr auto id_r = id.reserve(kw_let, kw_const, kw_this, kw_base, kw_null, kw_if, kw_else,
+constexpr auto id_r = id.reserve(kw_const, kw_this, kw_base, kw_null, kw_if, kw_else,
                                  kw_while, kw_do, kw_for, kw_return, kw_break, kw_continue,
                                  kw_switch, kw_case, kw_default, kw_try, kw_catch, kw_throw,
                                  kw_var, kw_foreach, kw_in, kw_using, kw_override, kw_virtual,
@@ -166,6 +162,7 @@ struct Post {};  // "++" or "--" after the operand
 template <Str S>
 struct Member {};  // "."
 // The name after a ".": the text and the byte offset. The text is empty when the name is missing.
+struct SafeTag {};  // "?."
 struct MemberName {
     std::string name;
     uint32_t pos = 0;
@@ -242,7 +239,19 @@ struct Builder {
         return ast::make_expr(ast::IndexExpr{std::move(o), std::move(i), pos});
     }
     // "obj is T" and "obj as T" (design 7.7). The type text is C++ text, as in "new T(...)".
-    ExprP operator()(const ParseState& st, ExprP o, IsTag, Span name) const { return test(st, std::move(o), name, false); }
+    ExprP operator()(const ParseState& st, ExprP o, IsTag, Span name, lexy::nullopt) const
+    {
+        return test(st, std::move(o), name, false);
+    }
+    // "obj is T name": the test with a binding.
+    ExprP operator()(const ParseState& st, ExprP o, IsTag, Span name, Span bind) const
+    {
+        ExprP e = test(st, std::move(o), name, false);
+        auto& t = std::get<ast::TypeTestExpr>(e->v);
+        t.bind = std::string(span_text(st, bind));
+        t.bind_pos = bind.begin;
+        return e;
+    }
     ExprP operator()(const ParseState& st, ExprP o, AsTag, Span name) const { return test(st, std::move(o), name, true); }
     static ExprP test(const ParseState& st, ExprP o, Span name, bool is_as)
     {
@@ -253,6 +262,14 @@ struct Builder {
     }
     // "a->b": the parse reported the error and read the name. The result is not used.
     ExprP operator()(const ParseState&, ExprP o, ArrowTag, std::string) const { return o; }
+    // "o?.name". The lowering allows it only at the start of an expression statement.
+    ExprP operator()(const ParseState&, ExprP o, SafeTag, MemberName&& name) const
+    {
+        const uint32_t pos = ast::pos_of(*o);
+        ast::MemberExpr m{std::move(o), std::move(name.name), pos, name.pos};
+        m.safe = true;
+        return ast::make_expr(std::move(m));
+    }
     template <Str S>
     ExprP operator()(const ParseState&, ExprP o, Member<S>, MemberName&& name) const
     {
@@ -482,6 +499,16 @@ struct qname_tok : lexy::token_production {
     static constexpr auto value = span_value;
 };
 
+constexpr auto kw_is = LEXY_KEYWORD("is", id);
+constexpr auto kw_as = LEXY_KEYWORD("as", id);
+
+// The name of a binding: "x is T name".
+constexpr auto id_b = id_r.reserve(kw_is, kw_as);
+struct bind_tok : lexy::token_production {
+    static constexpr auto rule = dsl::position + dsl::token(id_b) + dsl::position;
+    static constexpr auto value = span_value;
+};
+
 // The elements of a list up to the closer. The opener is already read.
 template <char Close>
 struct elems_p {
@@ -520,13 +547,59 @@ struct new_p {
         lexy::parse_state, lexy::values);
 };
 
+// ---------------------------------------------------------------- collection literal
+// "[a, b]" or "[k: v, ...]". An entry is an expression, with an optional ": value" after it.
+// A ternary key needs no parentheses: its own ":" is read first.
+struct CollEntry {
+    ExprP key, value;  // value is null for a list element
+};
+
+struct coll_entry {
+    static constexpr auto rule =
+        dsl::recurse<expr> + dsl::opt(dsl::lit_c<':'> >> dsl::recurse<expr>);
+    static constexpr auto value = lexy::callback<CollEntry>(
+        [](ExprP&& k, lexy::nullopt) { return CollEntry{std::move(k), nullptr}; },
+        [](ExprP&& k, ExprP&& v) { return CollEntry{std::move(k), std::move(v)}; });
+};
+
+struct coll_entries {
+    static constexpr auto rule =
+        dsl::opt(dsl::peek_not(dsl::lit_c<']'>) >> dsl::list(dsl::p<coll_entry>, dsl::sep(dsl::comma)));
+    static constexpr auto value = lexy::as_list<std::vector<CollEntry>>;
+};
+
+struct coll_p {
+    static constexpr auto rule =
+        dsl::position + dsl::lit_c<'['> + dsl::p<coll_entries> + dsl::position + dsl::lit_c<']'>;
+    static constexpr auto value = lexy::bind(
+        lexy::callback<ExprP>([](const ParseState& st, const char* pos, std::vector<CollEntry>&& es,
+                                 const char* end) {
+            ast::CollectionExpr c;
+            c.pos = st.offset(pos);
+            c.end_pos = st.offset(end);
+            c.is_map = !es.empty() && es[0].value;
+            for (CollEntry& en : es) {
+                if (c.is_map && !en.value) {
+                    st.error(st.base + ast::pos_of(*en.key), "a map entry needs a value: key: value");
+                    continue;
+                }
+                if (!c.is_map && en.value) {
+                    st.error(st.base + ast::pos_of(*en.key), "a list element has no value");
+                    continue;
+                }
+                c.elems.push_back(std::move(en.key));
+                if (c.is_map) c.values.push_back(std::move(en.value));
+            }
+            return ast::make_expr(std::move(c));
+        }),
+        lexy::parse_state, lexy::values);
+};
+
 // ---------------------------------------------------------------- lambda
 // "Type name" or "name". A parameter without a type has an empty type ("auto").
-// The old form "name: type" is an error.
 struct param_p {
     static constexpr auto rule =
-        dsl::peek(old_param_ahead) >> dsl::error<e_old_param> |
-        dsl::else_ >> (dsl::p<scan_param_type> + dsl::p<id_str> + dsl::if_(dsl::lit_c<','>));
+        dsl::p<scan_param_type> + dsl::p<id_str> + dsl::if_(dsl::lit_c<','>);
     static constexpr auto value = lexy::bind(
         lexy::callback<ast::Param>([](const ParseState& st, Span type, std::string name) {
             if (only_blank(span_text(st, type))) return ast::Param{std::move(name), ""};
@@ -582,18 +655,15 @@ struct lambda_body : lexy::token_production {
     static constexpr auto value = lexy::noop;
 };
 
-// "(" ... ")" "=>" is a lambda. The "(" is already consumed. The old form "name:" is
-// also a lambda, so the parameter rule reports it.
+// "(" ... ")" "=>" is a lambda. The "(" is already consumed.
 constexpr auto lambda_head =
     dsl::p<lambda_body<lambda_depth>> + dsl::whitespace(ws_rule) + LEXY_LIT("=>");
-constexpr auto lambda_old = old_param_ahead;
 
 // A parenthesized expression or an arrow lambda.
 struct paren_p {
     static constexpr auto rule =
         dsl::position + dsl::lit_c<'('> +
         (dsl::peek(lambda_head) >> dsl::p<lambda_rest> |
-         dsl::peek(lambda_old) >> dsl::p<lambda_rest> |
          dsl::else_ >> (dsl::recurse<expr> + dsl::lit_c<')'>));
     static constexpr auto value = lexy::bind(
         lexy::callback<ExprP>(
@@ -694,9 +764,9 @@ struct expr_g : lexy::expression_production {
         dsl::peek(cast_b) >> dsl::p<cast_atom_p> |
         dsl::peek(dsl::lit_c<'('>) >> dsl::p<paren_p> |
         dsl::peek(dsl::lit_c<'{'>) >> dsl::error<e_brace_init> |
+        dsl::peek(dsl::lit_c<'['>) >> dsl::p<coll_p> |
         dsl::peek(kw_this) >> dsl::p<kw_p<ast::ThisExpr, std::remove_cv_t<decltype(kw_this)>>> |
         dsl::peek(kw_base) >> dsl::p<kw_p<ast::BaseExpr, std::remove_cv_t<decltype(kw_base)>>> |
-        dsl::peek(kw_super_old + dsl::lit_c<'.'>) >> dsl::error<e_super_renamed> |
         dsl::peek(kw_null) >> dsl::p<kw_p<ast::NullExpr, std::remove_cv_t<decltype(kw_null)>>> |
         dsl::peek(kw_new) >> dsl::p<new_p> |
         dsl::peek(LEXY_LIT("::")) >> dsl::error<e_use_dot_colons> |
@@ -710,6 +780,8 @@ struct expr_g : lexy::expression_production {
             SPP_POST("++") / SPP_POST("--") /
             dsl::op<CallTag>(LEXY_LIT("(") >> dsl::p<elems_p<')'>>) /
             dsl::op<IndexTag>(LEXY_LIT("[") >> dsl::p<index_p>) /
+            dsl::op<SafeTag>(dsl::not_followed_by(LEXY_LIT("?."), dsl::ascii::digit) >>
+                             dsl::p<member_name_p>) /
             dsl::op<Member<".">>(LEXY_LIT(".") >> dsl::p<member_name_p>) /
             dsl::op<ArrowTag>(LEXY_LIT("->") >>
                               dsl::try_(dsl::error<e_use_dot_arrow>, dsl::p<id_str>));
@@ -740,7 +812,7 @@ struct expr_g : lexy::expression_production {
     };
     // "obj is T" and "obj as T". They bind tighter than "<" and looser than "<<".
     struct test_lvl : dsl::postfix_op {
-        static constexpr auto op = dsl::op<IsTag>(LEXY_KEYWORD("is", id) >> dsl::p<qname_tok>) /
+        static constexpr auto op = dsl::op<IsTag>(kw_is >> dsl::p<qname_tok> + dsl::opt(dsl::peek(id_b) >> dsl::p<bind_tok>)) /
                                    dsl::op<AsTag>(LEXY_KEYWORD("as", id) >> dsl::p<qname_tok>);
         using operand = shift_lvl;
     };
@@ -773,9 +845,14 @@ struct expr_g : lexy::expression_production {
         static constexpr auto op = SPP_BIN("||");
         using operand = land_lvl;
     };
+    // "x ?? y": binds looser than "||" and tighter than "?:". It is right associative.
+    struct coalesce_lvl : dsl::infix_op_right {
+        static constexpr auto op = SPP_BIN("??");
+        using operand = lor_lvl;
+    };
     struct cond_lvl : dsl::infix_op_right {
         static constexpr auto op = dsl::op<CondTag>(LEXY_LIT("?") >> dsl::p<cond_mid>);
-        using operand = lor_lvl;
+        using operand = coalesce_lvl;
     };
     struct assign_lvl : dsl::infix_op_right {
         static constexpr auto op =

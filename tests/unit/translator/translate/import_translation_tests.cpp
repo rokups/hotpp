@@ -44,3 +44,23 @@ TEST(ImportTranslation, MissingSystemHeaderNamesScriptAndLine)
             << r.diagnostics;
     }
 }
+
+// Many std types in the members must not give "too many errors" from libclang. The facts file
+// can have more than 20 errors (one for each unknown type), and they are not errors of the imports.
+TEST(ImportTranslation, ManyStdMembersAreNotImportErrors)
+{
+    TempDir dir;
+    write_file(dir.path() / "u.h", "#pragma once\n#include <map>\n#include <utility>\n#include <vector>\n");
+    const std::string script =
+        "using \"u.h\";\n"
+        "class P {\n"
+        "    std.pair<int,int> a;\n"
+        "    std.map<std.string,int> m;\n"
+        "    std.vector<int> v;\n"
+        "    std.pair<int,int> F() { return a; }\n"
+        "}\n";
+    sppc::TranslatorSession session;
+    sppc::TranslateResult r = sppc::translate(temp_options(dir, script), session);
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(r.diagnostics.find("the imports have errors"), std::string::npos) << r.diagnostics;
+}

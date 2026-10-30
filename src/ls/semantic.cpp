@@ -16,10 +16,10 @@ enum Type { Keyword, TypeName, ClassName, Method, Property, Number, String, Comm
 const std::set<std::string>& keywords()
 {
     static const std::set<std::string> k = {
-        "if", "else", "while", "do", "for", "foreach", "in", "of", "return", "break", "continue", "switch",
+        "if", "else", "while", "do", "for", "foreach", "in", "return", "break", "continue", "switch",
         "case", "default", "is", "as", "new", "delete", "public", "private", "protected", "override",
         "virtual", "const", "get", "set", "this", "base", "true", "false", "null", "try",
-        "catch", "finally", "throw", "var", "let", "void", "class", "struct", "enum", "using", "static",
+        "catch", "finally", "throw", "var", "void", "class", "struct", "enum", "using", "static",
         "module", "native", "handle", "value"};
     return k;
 }
@@ -226,7 +226,7 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
     const std::set<std::string>& kw = keywords();
     auto is_name = [&](const Tok& t) { return t.id && !kw.count(t.s); };
     // A word that can stand for a type in a declaration.
-    auto is_type = [&](const Tok& t) { return t.id && (!kw.count(t.s) || t.s == "var" || t.s == "let"); };
+    auto is_type = [&](const Tok& t) { return t.id && (!kw.count(t.s) || t.s == "var"); };
     auto add_unique = [](std::vector<std::string>& v, const std::string& n) {
         if (std::find(v.begin(), v.end(), n) == v.end()) v.push_back(n);
     };
@@ -314,7 +314,7 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
         const bool ends = next->s == "=" || next->s == ";" || next->s == "," || next->s == ")" || (next->id && next->s == "in");
         if (!((by_type && ends) || foreach_name)) continue;
         std::string type = by_type && prev->id ? prev->s : std::string();
-        if (type == "var" || type == "let") type.clear();
+        if (type == "var") type.clear();
         if (at_module && par == 0) {
             r.module_vars.push_back({t.s, type, "module variable"});
         } else if (here == Block::Body) {

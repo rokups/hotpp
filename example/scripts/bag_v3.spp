@@ -2,7 +2,7 @@
 using "Actor.h";
 using <vector>;
 
-[value] class Item {
+struct Item {
     int weight = 0;
     int color = 0;
 

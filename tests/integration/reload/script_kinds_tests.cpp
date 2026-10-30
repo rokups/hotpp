@@ -171,4 +171,20 @@ TEST_P(BackendTests, TypedAccessOnScriptHandlesAndReturnThis)
     EXPECT_EQ(*fld<int>(s, "seen"), 5);   // Self() is the same object: Hit(1) changes it
 }
 
+// "h?.F();" and "h?.field = v;" do nothing for a null handle. The receiver of a call runs once.
+TEST_P(BackendTests, SafeCallRunsOnlyForANonNullHandle)
+{
+    spp::LoadResult v1 = backend->load(source("safe_nav_v1.spp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Prober"));
+    s.commit_at_frame_boundary();
+    testing::internal::CaptureStdout();
+    s.world.Tick(kDt);
+    testing::internal::GetCapturedStdout();
+    EXPECT_EQ(*fld<int>(s, "total"), 12);  // Hit, then += 10, then Hit through Pick()
+    EXPECT_EQ(*fld<int>(s, "calls"), 1);   // Pick() runs once
+    EXPECT_EQ(handle_target(s, "empty"), nullptr);
+}
+
 }  // namespace

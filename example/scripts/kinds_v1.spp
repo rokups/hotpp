@@ -1,11 +1,11 @@
 // Generation 1 of the kinds of script classes (S5, design 7.10.1).
-// Stats is a [value] class. It lives inline in the state block and a copy is a real copy.
+// Stats is a struct. It lives inline in the state block and a copy is a real copy.
 // Counter has no base class. It is a handle: "new Counter(...)" gives a std::shared_ptr.
 // Hero has a native base. It uses the handle of that base.
 using "Actor.h";
 using <string>;
 
-[value] class Stats {
+struct Stats {
     float hp = 100.0;
     float armor = 2.0;
 

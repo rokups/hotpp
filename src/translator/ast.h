@@ -26,8 +26,13 @@ inline bool is_ref_type(const std::string& type)
     return type.compare(0, 6, "const ") != 0;
 }
 
+// The default value of a parameter: "T name = e". The copies of a parameter share it. The parser
+// fills "expr" and "span". The lowering fills "cpp" one time (empty until then).
+struct ParamDefault;
+
 struct Param {
     std::string name, type;
+    std::shared_ptr<ParamDefault> def{};  // null: the parameter has no default value
     // The type as the script writes it. The translator sets it before it rewrites "type" to the
     // C++ storage type. The lowering pass reads it for the type-directed member access.
     std::string script_type{};
@@ -83,6 +88,7 @@ struct MemberExpr {
     std::string name;  // empty: the script has "obj." and no name (a tolerant parse, with an error)
     uint32_t pos = 0;
     uint32_t name_pos = 0;  // the byte offset where the name starts (or would start)
+    bool safe = false;      // "obj?.name": allowed only at the start of an expression statement
 };
 struct CallExpr {
     ExprP callee;
@@ -118,6 +124,15 @@ struct NewExpr {  // new T(a, b). The type is C++ text, for example "std::vector
     uint32_t pos = 0;
 };
 
+// The shared part of a parameter with a default value.
+struct ParamDefault {
+    ExprP expr;           // the script expression (null after the lowering moved it)
+    Span span;            // the raw text after "="
+    std::string cpp;      // the lowered C++ text, when "lowered" is true
+    bool lowered = false;
+    uint32_t pos = 0;     // the byte offset of the "="
+};
+
 // A block of statements. The pos is the "{". The end_pos is the "}".
 struct BlockStmt {
     std::vector<StmtP> stmts;
@@ -131,6 +146,10 @@ struct TypeTestExpr {
     std::string type;
     bool is_as = false;  // false: "is", true: "as"
     uint32_t pos = 0;
+    // "obj is T name": the name of the binding. Empty: no binding. The lowering of an if or a
+    // while moves the binding to the condition. Any other place is an error.
+    std::string bind{};
+    uint32_t bind_pos = 0;
 };
 
 struct LambdaExpr {
@@ -148,6 +167,15 @@ struct InterpExpr {
     std::vector<std::string> specs;  // the format spec of each arg, without the ":" (may be empty)
     uint32_t pos = 0;
 };
+// A collection literal: "[1, 2, 3]" or "["a": 1, "b": 2]". A list has only "elems". A map
+// has the keys in "elems" and the values in "values". The pos is the "[". The end_pos is the "]".
+// The lowering accepts the literal only where the type is declared. The C++ text is a braced list.
+struct CollectionExpr {
+    std::vector<ExprP> elems;
+    std::vector<ExprP> values;
+    bool is_map = false;
+    uint32_t pos = 0, end_pos = 0;
+};
 struct RawExpr {  // C++ text that is already lowered
     std::string text;
     uint32_t pos = 0;
@@ -160,7 +188,7 @@ struct RawExpr {  // C++ text that is already lowered
 struct Expr {
     std::variant<NameExpr, ThisExpr, BaseExpr, NullExpr, NumberExpr, StringExpr, CharExpr, MemberExpr,
                  CallExpr, IndexExpr, UnaryExpr, BinaryExpr, TernaryExpr, ParenExpr,
-                 NewExpr, LambdaExpr, RawExpr, TypeTestExpr, InterpExpr>
+                 NewExpr, LambdaExpr, RawExpr, TypeTestExpr, InterpExpr, CollectionExpr>
         v;
 };
 
@@ -181,6 +209,10 @@ struct VarDeclStmt {
     // a reference and a top-level "const", as "auto" deduces it. Empty: not known. The emitter
     // does not print it. The checks and the type-directed lowering read it.
     std::string native_type{};
+    // "var (a, b) = e": a structured binding. The names are here and "name" is empty. The C++
+    // text is "auto [a, b]". "type" is empty. "var&" and "const var" set "is_ref" and "is_const".
+    std::vector<std::string> names{};
+    std::vector<uint32_t> name_poss{};  // the byte offset of each name in "names"
 };
 struct IfStmt {
     ExprP cond;
@@ -213,6 +245,9 @@ struct ForOfStmt {
     StmtP body;
     uint32_t pos = 0;
     uint32_t name_pos = 0;  // the byte offset of the name (0: not known)
+    // "foreach (var (k, v) in c)": a structured binding. "name" is empty. See VarDeclStmt.
+    std::vector<std::string> names{};
+    std::vector<uint32_t> name_poss{};
 };
 struct ReturnStmt {
     ExprP expr;  // may be null
@@ -329,6 +364,9 @@ struct Method {
     std::string script_ret;  // "ret" as the script writes it (see Param)
     BlockStmt body;  // the statements; the parser fills them from body_span
     Span body_span;  // the raw text between the braces
+    // True for "T f() => e;". The body_span is then the text of "e" and the parser builds the
+    // body as "{ return e; }", or as "{ e; }" for a void function.
+    bool expr_body = false;
     int line = 0, end_line = 0;
     uint32_t pos = 0, end_pos = 0;
 };
@@ -360,6 +398,7 @@ struct Property {
     // A custom accessor has a body. The parser fills the body from the span.
     std::optional<BlockStmt> get_body, set_body;
     Span get_span, set_span;  // the raw text between the braces of a custom accessor
+    bool get_is_expr = false;  // "T Name => e;": get_span is the text of "e"
     ExprP init;               // null when the property has no initializer, or the parse failed
     Span init_span;           // the raw text after "=", up to the ";"
     bool has_init = false;

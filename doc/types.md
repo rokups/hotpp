@@ -52,12 +52,29 @@ class Demo {
 Use `.` for a scope. The translator writes `::` and `->` for you.
 
 ```csharp
-using <string>;
-using <vector>;
-
 class Names {
     std.string name = "demo";
     std.vector<int> list = std.vector<int>();
+}
+```
+
+`string`, `vector` and the other headers in [Module level](module-level.html) need no `using`.
+
+## Collection literals
+
+`[a, b]` builds a list. `[k: v]` builds a map. `[]` is empty. The C++ type comes from the declaration, so a literal needs a typed local, a typed field initializer or a place inside another literal. `var x = [1, 2];` is an error.
+
+```csharp
+using <map>;
+
+class Tables {
+    std.vector<int> ids = [1, 2, 3];
+    std.map<std.string, int> score = ["a": 1, "b": 2];
+
+    void Run() {
+        std.vector<std.vector<int>> grid = [[1, 2], [3]];
+        std.vector<int> none = [];
+    }
 }
 ```
 
@@ -75,7 +92,7 @@ class Knight : Actor {
     Weapon weapon = null;
 
     override void Tick(float dt) {
-        if (this.weapon == null) this.weapon = new Weapon(7, "sword");
+        if (weapon == null) weapon = new Weapon(7, "sword");
     }
 }
 ```
@@ -89,7 +106,6 @@ A parameter `T&` is a reference. The call has no marker: write `f(x)`. A referen
 `var& r = x;` and `const var& r = x;` make a reference local. `var r = x;` copies.
 
 ```csharp
-using <vector>;
 using "Actor.h";
 
 class Bullet {
@@ -110,12 +126,12 @@ class Mover : Actor {
     override void Tick(float dt) {
         float h = 0.0;
         int calls = 0;
-        this.Split(dt, h, calls);                         // no marker
-        this.Make(this.shot);
+        Split(dt, h, calls);                              // no marker
+        Make(shot);
 
-        var& r = this.n;                                  // a reference, not a copy
+        var& r = n;                                       // a reference, not a copy
         r = 2;
-        var copy = this.n;
+        var copy = n;
         std.vector<int> xs = std.vector<int>();
         foreach (var& x in xs) x = x + copy;
         foreach (const var& x in xs) calls += x;
@@ -127,4 +143,4 @@ A `T&` of a script class is a reference to the handle, so the callee can rebind 
 
 [Borrowing](borrowing.html) lists every place where a reference or a pointer is allowed.
 
-Not supported: generics in script code, `?.`, `::`, `->` and brace initializers. Write `T(args)` instead of `T{args}`.
+Not supported: generics in script code, `::`, `->` and brace initializers. `?.` works only at the start of a statement: see [Statements](statements.html). Write `T(args)` instead of `T{args}`.

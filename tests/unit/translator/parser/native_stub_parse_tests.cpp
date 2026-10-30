@@ -61,7 +61,7 @@ TEST(NativeStubParse, DefaultHandle)
 
 TEST(NativeStubParse, ValueScriptClass)
 {
-    StubParsed p("[value] class Stats : Base { }\nclass Other : Base { }\n");
+    StubParsed p("struct Stats : Base { }\nclass Other : Base { }\n");
     ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
     ASSERT_EQ(p.script.classes.size(), 2u);
     EXPECT_TRUE(p.script.classes[0].is_value);

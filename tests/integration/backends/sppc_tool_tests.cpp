@@ -294,6 +294,217 @@ TEST(SppcTool, VarReferenceToAValueParameterCompiles)
 }
 
 // A constructor parameter may have the name of a generated local of the construction code.
+// Expression bodies, default values and "??" give C++ that compiles. The calls omit the defaults.
+TEST(SppcTool, ConveniencesCompile)
+{
+    TestScratch scratch;
+    expect_script_compiles(
+        scratch, "conveniences.spp",
+        "struct Vec {\n"
+        "    int x;\n"
+        "    Vec(int q, int a = 5) { this.x = q + a; }\n"
+        "    int Get() => this.x;\n"
+        "    void Add(int d = 2) { this.x += d; }\n"
+        "}\n"
+        "class Bar {\n"
+        "    void Run(Foo g) {\n"
+        "        g.Heal(); g.Heal(2.0); Twice(); this.Twice(4);\n"
+        "        var f = new Foo(); var f2 = new Foo(7); var h = f ?? f2;\n"
+        "        var v = new Vec(1); v.Add(); int p = g.Power + v.Get();\n"
+        "    }\n"
+        "    void Twice(int a = 10) { }\n"
+        "}\n"
+        "class Foo {\n"
+        "    int count;\n"
+        "    Foo(int start = 3) { count = start; }\n"
+        "    int Get() => count;\n"
+        "    int Power => count * 2;\n"
+        "    void Heal(float amount = 1.0, int times = 2 * 3) { count += 1; }\n"
+        "    void Bump(Foo other = null) => Heal();\n"
+        "    Foo Pick(Foo a, Foo b) => a ?? b;\n"
+        "}\n");
+}
+
+// "x is T name" in an if or a while gives C++ that compiles and runs.
+TEST(SppcTool, IsBindingCompilesAndRuns)
+{
+    TestScratch scratch;
+    const std::string script = scratch.file("sppc_is_bind.spp");
+    std::FILE* f = std::fopen(script.c_str(), "w");
+    ASSERT_NE(f, nullptr);
+    std::fputs(
+        "using <string>;\nusing \"Actor.h\";\n"
+        "class Grunt : Actor {\n    int rage = 2;\n    void Rage() { rage += 1; }\n}\n"
+        "class Hero : Actor {\n"
+        "    override void Tick(float dt) {\n"
+        "        Hero me = new Hero(); Grunt a = new Grunt(); int n = 0; int hits = 0;\n"
+        "        if (a is Grunt g && g.rage > 1) { g.Rage(); hits += g.rage; }\n"
+        "        if (me is Grunt g2) { hits += 100; } else if (a is Grunt g3) { hits += 10; }\n"
+        "        while (a is Grunt g4 && g4.rage < 6) { g4.Rage(); n += 1; if (n == 2) continue; }\n"
+        "        this.Name = \"hits ${hits} n ${n}\";\n"
+        "    }\n}\n",
+        f);
+    std::fclose(f);
+    const std::string so = scratch.file("sppc_is_bind.so");
+    std::string log;
+    ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so +
+                              "' --cxx '" + SPP_CXX + "' 2>&1",
+                          log),
+              0)
+        << log;
+    test_support::Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(test_support::library(so.c_str()), "Hero"));
+    s.world.Tick(1.0f / 60);
+    EXPECT_EQ(s.actor->Name, "hits 13 n 3");
+}
+
+// Private and protected members of a script class: sppc enforces them, the generated C++ keeps
+// them public. A script that uses them in the allowed ways builds and runs.
+TEST(SppcTool, AccessWordsCompileAndRun)
+{
+    TestScratch scratch;
+    const std::string script = scratch.file("sppc_access.spp");
+    std::FILE* f = std::fopen(script.c_str(), "w");
+    ASSERT_NE(f, nullptr);
+    std::fputs(
+        "using <string>;\nusing \"Actor.h\";\n"
+        "class Core : Actor {\n"
+        "    private int secret = 2;\n"
+        "    protected int shared = 3;\n"
+        "    private int Twice() { return secret * 2; }\n"
+        "    protected int Thrice() { return shared * 3; }\n"
+        "    int Level { get; private set; } = 5;\n"
+        "    Core() {}\n"
+        "    private Core(int n) { secret = n; }\n"
+        "    int Total(Core other) { return other.secret + other.Twice() + Twice(); }\n"
+        "    int Make() { Core c = new Core(10); return c.secret; }\n"
+        "    int Via() { var f = () => { Level = 7; return secret + this.Twice(); }; return f(); }\n"
+        "}\n"
+        "class Hero : Core {\n"
+        "    override void Tick(float dt) {\n"
+        "        Core other = new Core();\n"
+        "        int via = Via();\n"
+        "        this.Name = \"total ${Total(other)} sub ${shared + Thrice()} make ${Make()} via ${via} level ${Level}\";\n"
+        "    }\n}\n",
+        f);
+    std::fclose(f);
+    const std::string so = scratch.file("sppc_access.so");
+    std::string log;
+    ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so +
+                              "' --cxx '" + SPP_CXX + "' 2>&1",
+                          log),
+              0)
+        << log;
+    test_support::Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(test_support::library(so.c_str()), "Hero"));
+    s.world.Tick(1.0f / 60);
+    EXPECT_EQ(s.actor->Name, "total 10 sub 12 make 10 via 6 level 7");
+}
+
+// A bare member name is "this.name" everywhere: before ".", in a struct method and for a
+// member of the native base. The script builds and runs.
+TEST(SppcTool, BareMemberNamesCompileAndRun)
+{
+    TestScratch scratch;
+    const std::string script = scratch.file("sppc_bare_members.spp");
+    std::FILE* f = std::fopen(script.c_str(), "w");
+    ASSERT_NE(f, nullptr);
+    std::fputs(
+        "using <string>;\nusing <vector>;\nusing \"Actor.h\";\n"
+        "struct Pt { int x; int y; }\n"
+        "struct Acc {\n"
+        "    int hp; Pt p; std.vector<int> history;\n"
+        "    int Effective() { return hp * 2 + Extra(); }\n"
+        "    int Extra() { return p.x + p.y; }\n"
+        "    void Add(int v) { hp += v; history.push_back(v); p.x = v; }\n"
+        "}\n"
+        "class Unit { int hp = 1; }\n"
+        "class Mid : Actor { std.vector<int> seen; Pt where; }\n"
+        "class Hero : Mid {\n"
+        "    Unit u = new Unit();\n"
+        "    Acc acc;\n"
+        "    void Fill(int Name) { u.hp = 3; seen.push_back(Name); where.y = u.hp; }\n"
+        "    override void Tick(float dt) {\n"
+        "        Fill(4);\n"
+        "        acc.Add(5);\n"
+        "        Move(Vec3(1, 2, 3));\n"
+        "        var p = Position;\n"
+        "        Position.x = p.x + 1;\n"
+        "        Name = \"hp ${u.hp} seen ${seen.size()} eff ${acc.Effective()} hist ${acc.history.size()} "
+        "y ${where.y} px ${Position.x} p ${p.x}\";\n"
+        "    }\n}\n",
+        f);
+    std::fclose(f);
+    const std::string so = scratch.file("sppc_bare_members.so");
+    std::string log;
+    ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so +
+                              "' --cxx '" + SPP_CXX + "' 2>&1",
+                          log),
+              0)
+        << log;
+    test_support::Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(test_support::library(so.c_str()), "Hero"));
+    s.world.Tick(1.0f / 60);
+    EXPECT_EQ(s.actor->Name, "hp 3 seen 1 eff 15 hist 1 y 3 px 2 p 1");
+}
+
+// A structured binding "var (a, b) = e" and "foreach (var (k, v) in c)" give C++ that compiles and
+// runs. They work for std.pair, std.tuple, a struct and a std.map. "spp.enumerate" and
+// "spp.range" are the helpers of the foreach with an index.
+TEST(SppcTool, StructuredBindingsCompileAndRun)
+{
+    TestScratch scratch;
+    const std::string script = scratch.file("sppc_bindings.spp");
+    std::FILE* f = std::fopen(script.c_str(), "w");
+    ASSERT_NE(f, nullptr);
+    std::fputs(
+        "using <map>;\nusing <string>;\nusing <tuple>;\nusing <utility>;\nusing <vector>;\nusing \"Actor.h\";\n"
+        "struct P { int x; int y; }\n"
+        "class Hero : Actor {\n"
+        "    std.pair<int, int> pr;\n"
+        "    std.pair<int, int> Mk() { return std.make_pair(3, 4); }\n"
+        "    override void Tick(float dt) {\n"
+        "        var (a, b) = Mk();\n"
+        "        var t = std.make_tuple(1, 2, 3);\n"
+        "        var (t1, t2, t3) = t;\n"
+        "        var p = new P(); p.x = 7; p.y = 8;\n"
+        "        var (px, py) = p;\n"
+        "        this.pr = std.make_pair(10, 20);\n"
+        "        var& (c, d) = this.pr; c += 1; d += 2;\n"
+        "        const var (e, g) = Mk();\n"
+        "        std.vector<int> xs; xs.push_back(5); xs.push_back(6); xs.push_back(7);\n"
+        "        std.map<int, int> m; m[1] = 2; m[3] = 4;\n"
+        "        int sum = 0;\n"
+        "        foreach (var (k, v) in m) sum += k * v;\n"
+        "        foreach (var& (k, v) in m) v += 1;\n"
+        "        foreach (const var& (k, v) in m) sum += v;\n"
+        "        foreach (var (i, x) in spp.enumerate(xs)) sum += (int)i * x;\n"
+        "        foreach (var (i, x) in spp.enumerate(xs)) x += 1;\n"
+        "        foreach (int i in spp.range(3)) sum += i;\n"
+        "        foreach (int i in spp.range(2, 4)) sum += i;\n"
+        "        foreach (int i in spp.range(0)) sum += 1000;\n"
+        "        int last = 0;\n"
+        "        foreach (var x in spp.enumerate(xs)) last = x.second;\n"
+        "        var fn = () => a + b;\n"
+        "        last += fn();\n"
+        "        this.Name = \"s ${sum} ${a}${b} ${t1}${t2}${t3} ${px}${py} ${this.pr.first} ${this.pr.second} ${e}${g} ${xs[0]}${xs[2]} ${last}\";\n"
+        "    }\n}\n",
+        f);
+    std::fclose(f);
+    const std::string so = scratch.file("sppc_bindings.so");
+    std::string log;
+    ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so +
+                              "' --cxx '" + SPP_CXX + "' 2>&1",
+                          log),
+              0)
+        << log;
+    test_support::Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(test_support::library(so.c_str()), "Hero"));
+    s.world.Tick(1.0f / 60);
+    // sum: 1*2+3*4=14; +3+5=22; enumerate 0*5+1*6+2*7=20 -> 42; range(3)=3 -> 45; range(2,4)=5 -> 50
+    EXPECT_EQ(s.actor->Name, "s 50 34 123 78 11 22 34 68 15");
+}
+
 TEST(SppcTool, ConstructorParametersMayUseOldGeneratedNames)
 {
     TestScratch scratch;
@@ -321,8 +532,10 @@ TEST(SppcTool, HandleAddressOfDereferenceAndThisCompile)
         "    void TakeW(Weapon* w) { }\n    void RefW(Weapon& w) { }\n"
         "    void TakeI(Item* i) { }\n    void RefI(Item& i) { }\n"
         "    void Hurt(Hero h, float d) { }\n"
+        "    void Join(Hero h) { }\n    void Nat(Actor* a) { }\n    Hero buddy;\n    Hero Me() { return this; }\n"
         "    void Run(Weapon w, Item i, Hero other, Actor a) {\n"
         "        TakeW(&*w); RefW(*w); TakeI(&*i); RefI(*i);\n"
+        "        Join(this); Nat(this); this.buddy = this; var me = this; Join(me);\n"
         "        other.Hurt(this, 2.0);\n"
         "        a.TakeDamage(*this, 2.0);\n"
         "    }\n}\n",
@@ -406,6 +619,89 @@ TEST(SppcTool, FormatOptionSelectsTheFormatFunction)
               0)
         << cc;
 #endif
+}
+
+// "x ?? y" runs y only when x is false.
+TEST(SppcTool, CoalesceRunsTheRightSideOnlyWhenNeeded)
+{
+    TestScratch scratch;
+    const std::string script = scratch.file("sppc_coalesce_run.spp");
+    std::FILE* f = std::fopen(script.c_str(), "w");
+    ASSERT_NE(f, nullptr);
+    std::fputs(
+        "using <string>;\nusing \"Actor.h\";\n"
+        "class Hero : Actor {\n"
+        "    int runs = 0;\n"
+        "    Hero Make() { runs += 1; return new Hero(); }\n"
+        "    override void Tick(float dt) {\n"
+        "        Hero a = new Hero(); Hero n = null;\n"
+        "        Hero r1 = a ?? Make();\n"
+        "        int after_first = runs;\n"
+        "        Hero r2 = n ?? Make();\n"
+        "        Hero r3 = n ?? null;\n"
+        "        this.Name = \"first ${after_first} second ${runs} same ${r1 == a} made ${r2 != null} null ${r3 == null}\";\n"
+        "    }\n}\n",
+        f);
+    std::fclose(f);
+    const std::string so = scratch.file("sppc_coalesce_run.so");
+    std::string log;
+    ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so +
+                              "' --cxx '" + SPP_CXX + "' 2>&1",
+                          log),
+              0)
+        << log;
+    test_support::Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(test_support::library(so.c_str()), "Hero"));
+    s.world.Tick(1.0f / 60);
+    EXPECT_EQ(s.actor->Name, "first 0 second 1 same true made true null true");
+}
+
+// "var p = a ?? b;" has the type of the operands: "p.F()" works on a script handle, on a native
+// handle and on a native pointer.
+TEST(SppcTool, CoalesceInVarKeepsTheOperandType)
+{
+    TestScratch scratch;
+    const std::string script = scratch.file("sppc_coalesce_var.spp");
+    std::FILE* f = std::fopen(script.c_str(), "w");
+    ASSERT_NE(f, nullptr);
+    std::fputs(
+        "using <string>;\nusing \"Actor.h\";\nusing \"Weapon.h\";\n"
+        "[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n"
+        "class Pick {\n"
+        "    int v = 1;\n"
+        "    int F() { return v; }\n"
+        "}\n"
+        "class Sub : Pick { }\n"
+        "class Hero : Actor {\n"
+        "    override void Tick(float dt) {\n"
+        "        Pick a = new Pick(); Pick n = null; Sub s = new Sub();\n"
+        "        var p = a ?? n;\n"
+        "        int r1 = p.F();\n"
+        "        var q = n ?? a;\n"
+        "        int r2 = 0;\n"
+        "        q?.F();\n"
+        "        var m = s ?? a;\n"
+        "        int r3 = m.F();\n"
+        "        Weapon w1 = null; Weapon w2 = new Weapon(5, \"axe\");\n"
+        "        var w = w1 ?? w2;\n"
+        "        int r4 = w.dmg;\n"
+        "        Actor* x = this; Actor* y = null;\n"
+        "        var z = y ?? x;\n"
+        "        z.Name = \"set ${r1} ${r3} ${r4}\";\n"
+        "    }\n}\n",
+        f);
+    std::fclose(f);
+    const std::string so = scratch.file("sppc_coalesce_var.so");
+    std::string log;
+    ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so +
+                              "' --cxx '" + SPP_CXX + "' 2>&1",
+                          log),
+              0)
+        << log;
+    test_support::Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(test_support::library(so.c_str()), "Hero"));
+    s.world.Tick(1.0f / 60);
+    EXPECT_EQ(s.actor->Name, "set 1 1 5");
 }
 
 #if __has_include(<format>)

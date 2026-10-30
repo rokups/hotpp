@@ -41,7 +41,7 @@ if (pkg) {
   if (!c.configuration || !c.configuration.properties['spp.server.path']) fail('setting spp.server.path');
 }
 
-const keywords = ['var', 'let', 'foreach', 'in', 'using', 'override', 'virtual', 'new', 'public', 'private',
+const keywords = ['var', 'foreach', 'in', 'using', 'override', 'virtual', 'new', 'public', 'private',
   'protected', 'get', 'set', 'finally', 'void', 'is', 'as', 'try', 'catch', 'throw', 'class',
   'struct', 'enum', 'const', 'if', 'else', 'while', 'do', 'for', 'return', 'break', 'continue', 'switch',
   'case', 'default', 'this', 'base', 'null', 'true', 'false', 'delete'];

@@ -21,7 +21,7 @@ TEST(ModuleDeclParse, StructIsAValueClass)
 
 TEST(ModuleDeclParse, ClassIsNotAValueClass)
 {
-    StubParsed p("class A { int n; }\n[value] class B { int n; }\n");
+    StubParsed p("class A { int n; }\nstruct B { int n; }\n");
     ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
     ASSERT_EQ(p.script.classes.size(), 2u);
     EXPECT_FALSE(p.script.classes[0].is_value);

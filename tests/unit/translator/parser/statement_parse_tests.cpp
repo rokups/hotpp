@@ -67,34 +67,10 @@ TEST(StatementParse, For)
     EXPECT_EQ(round_trip("for (var i = of; i < 3; i++) f();"), "for (auto i = of; i < 3; i++) f();");
 }
 
-TEST(StatementParse, ForOfRemoved)
-{
-    const std::string msg = "'for ... of' is removed; write 'foreach (Type x in c)'";
-    for (const char* text : {"for (x of c) f(x);", "for (var x of c) f(x);",
-                             "for (Actor* x of c) f(x);", "for (const var x of c) f(x);"}) {
-        const std::vector<std::string> e = errors_of(Parsed(text));
-        ASSERT_FALSE(e.empty()) << text;
-        EXPECT_NE(e[0].find(msg), std::string::npos) << text << ": " << e[0];
-    }
-}
-
-TEST(StatementParse, OldSuperMemberIsRenamed)
-{
-    const std::vector<std::string> e = errors_of(Parsed("super.Tick(1);"));
-    ASSERT_FALSE(e.empty());
-    EXPECT_NE(e[0].find("'super' was renamed to 'base'"), std::string::npos) << e[0];
-}
-
-TEST(StatementParse, ForEachRefAndForOfRef)
+TEST(StatementParse, ForEachRef)
 {
     EXPECT_EQ(round_trip("foreach (var& x in xs) f(x);"), "for (auto& x : xs) f(x);");
     EXPECT_EQ(round_trip("foreach (const var& x in xs) f(x);"), "for (const auto& x : xs) f(x);");
-    const std::string msg = "'for ... of' is removed; write 'foreach (Type x in c)'";
-    for (const char* text : {"for (var& x of c) f(x);", "for (const var& x of c) f(x);"}) {
-        const std::vector<std::string> e = errors_of(Parsed(text));
-        ASSERT_FALSE(e.empty()) << text;
-        EXPECT_NE(e[0].find(msg), std::string::npos) << text << ": " << e[0];
-    }
 }
 
 TEST(StatementParse, ReservedWords)
@@ -158,4 +134,10 @@ TEST(StatementParse, Lambda)
     // An error inside the lambda has an absolute position.
     Parsed p("a;\nb;\nvar f = (int a) => {\n  x = ;\n};");
     EXPECT_EQ(errors_of(p), (std::vector<std::string>{"4:7: expected an expression"}));
+}
+
+TEST(StatementParse, SwitchWithStringLabels)
+{
+    EXPECT_EQ(round_trip("switch (s) { case \"a\": f(); break; case \"b\": case \"c\": g(); break; default: h(); }"),
+              "switch (s) { case \"a\": f(); break; case \"b\": case \"c\": g(); break; default: h(); }");
 }

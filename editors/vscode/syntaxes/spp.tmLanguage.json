@@ -84,7 +84,7 @@
       "patterns": [
         {
           "name": "keyword.control.flow.spp",
-          "match": "\\b(?:if|else|while|do|for|foreach|in|of|return|break|continue|switch|case|default)\\b"
+          "match": "\\b(?:if|else|while|do|for|foreach|in|return|break|continue|switch|case|default)\\b"
         },
         {
           "name": "keyword.control.exception.spp",
@@ -96,7 +96,7 @@
         },
         {
           "name": "storage.type.spp",
-          "match": "\\b(?:var|let|void)\\b"
+          "match": "\\b(?:var|void)\\b"
         },
         {
           "name": "keyword.operator.new.spp",
@@ -131,6 +131,7 @@
         { "name": "keyword.operator.logical.spp", "match": "&&|\\|\\||!" },
         { "name": "keyword.operator.assignment.spp", "match": "(?:<<|>>|[-+*/%&|^])?=" },
         { "name": "keyword.operator.arithmetic.spp", "match": "\\+\\+|--|[-+*/%&|^~]|<<|>>" },
+        { "name": "keyword.operator.coalesce.spp", "match": "\\?\\?" },
         { "name": "keyword.operator.ternary.spp", "match": "\\?|:" },
         { "name": "punctuation.accessor.spp", "match": "\\." }
       ]

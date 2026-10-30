@@ -8,7 +8,7 @@ A script is a class in a `.spp` file. It derives from a native engine class.
 
 ## Write a class
 
-`using` pulls in a native header. A method with `override` replaces a native virtual method. Use `.` to reach members of `this`.
+`using` pulls in a native header. A method with `override` replaces a native virtual method. A bare name reaches a script member or a native member of the base. Use `this.` only when a parameter has the same name.
 
 ```csharp
 using "Actor.h";
@@ -19,12 +19,12 @@ class Player : Actor {
     float speed = 5.0;
 
     override void Tick(float dt) {
-        this.Move(Vec3(this.speed * dt, 0, 0));
-        this.heal(1.0);
+        Move(Vec3(speed * dt, 0, 0));
+        heal(1.0);
     }
 
     void heal(float amount) {
-        this.hp = Math.Min(this.hp + amount, 100.0);
+        hp = Math.Min(hp + amount, 100.0);
     }
 }
 ```

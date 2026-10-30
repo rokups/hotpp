@@ -52,11 +52,6 @@ TEST(LambdaExpressionParse, Lambda)
     EXPECT_EQ(round_trip("(a)"), "(a)");
 }
 
-TEST(LambdaExpressionParse, OldLambdaParameterIsAnError)
-{
-    EXPECT_EQ(one_error("(x: int) => { }"), "1:2: parameter syntax changed; write 'Type name'");
-}
-
 TEST(LambdaExpressionParse, ExpressionBodyIsAReturnBlock)
 {
     Parsed p("(int x) => x * 2");

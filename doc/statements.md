@@ -29,7 +29,7 @@ class Flow {
 
 ## switch
 
-`switch` works as in C++. Use it with enums and integers.
+`switch` works as in C++ for enums and integers. A `switch` on string labels becomes an `if` chain. Each case must end with `break`, `return`, `throw` or `continue`. The last case can end any way. A case can have several labels. Mixed labels and repeated labels are errors.
 
 ```csharp
 enum Mode { Idle, Walk, Run }
@@ -42,6 +42,15 @@ class Speed {
             default: return 10;
         }
     }
+
+    int Word(std.string s) {
+        switch (s) {
+            case "idle": return 0;
+            case "walk":
+            case "run": return 1;
+            default: return 10;
+        }
+    }
 }
 ```
 
@@ -50,7 +59,7 @@ class Speed {
 `foreach` walks a container. `var x` and `T x` copy each element. `var& x` and `const var& x` bind a reference to the element.
 
 ```csharp
-using <vector>;
+using <map>;
 
 class Sum {
     int Total(std.vector<int>& xs) {
@@ -64,6 +73,35 @@ class Sum {
     void Double(std.vector<int>& xs) {
         foreach (var& x in xs) x = x * 2;          // changes the element
     }
+
+    int Pairs(std.map<std.string, int>& m, std.vector<int>& xs) {
+        int sum = 0;
+        foreach (var (k, v) in m) sum += v;                    // key and value
+        foreach (var (i, x) in spp.enumerate(xs)) sum += i * x;   // index and element
+        foreach (int i in spp.range(3)) sum += i;                 // 0, 1, 2
+        foreach (int i in spp.range(2, 5)) sum += i;              // 2, 3, 4
+        return sum;
+    }
+}
+```
+
+In `spp.enumerate`, `i` is a copy and `x` is a reference to the element. `var&` over `spp.enumerate` is an error.
+
+## Structured bindings
+
+`var (a, b) = e;` names the parts of a `std.pair`, a `std.tuple`, a struct or a map entry. It needs two names or more. `var&` binds references. `const var` is also allowed.
+
+```csharp
+class Split {
+    std.pair<int, float> pair = std.make_pair(3, 4.5);
+
+    std.pair<int, float> Make() => std.make_pair(1, 2.5);
+
+    void Run() {
+        var (a, b) = Make();       // copies
+        var& (c, d) = pair;        // references into the field
+        c = a + 1;
+    }
 }
 ```
 
@@ -72,8 +110,6 @@ class Sum {
 You throw and catch C++ exception types. A `finally` block always runs. A script cannot declare an exception type.
 
 ```csharp
-using <stdexcept>;
-
 class Safe {
     int Div(int x, int y) {
         try {
@@ -97,15 +133,14 @@ class Safe {
 
 ```csharp
 using "Actor.h";
-using <string>;
 
 class Hud : Actor {
     float hp = 12.3456;
 
     override void Tick(float dt) {
-        this.Name = "hp = ${this.hp}";
-        this.Name = "hp = ${this.hp:.2f}";
-        this.Name = "${this.hp:>8.1f} at ${dt * 2}";
+        Name = "hp = ${hp}";
+        Name = "hp = ${hp:.2f}";
+        Name = "${hp:>8.1f} at ${dt * 2}";
     }
 }
 ```
@@ -125,9 +160,30 @@ class Caster {
 }
 ```
 
+## Null coalescing and safe calls
+
+`a ?? b` gives `a` when `a` is not null (or not false). Otherwise it gives `b`. The right side runs only when it is needed. `??` binds between `||` and `?:`. It is right associative.
+
+`?.` works only at the start of an expression statement: `h?.F();` and `h?.x = 1;` do nothing when `h` is null.
+
+```csharp
+class Pick {
+    Pick next = null;
+    int x = 0;
+    void F() { }
+
+    Pick Choose(Pick a, Pick b, Pick c) {
+        var p = a ?? b ?? c;                  // a ?? (b ?? c)
+        p?.F();
+        p?.x = 1;
+        return p;
+    }
+}
+```
+
 ## is and as
 
-`x is T` tests the type of a handle. `x as T` gives a `T` handle, or `null` when the type does not match.
+`x is T` tests the type of a handle. `x as T` gives a `T` handle, or `null` when the type does not match. `x is T name` also binds a `T` handle. It works only as the first part of an `if` or `while` condition. `&&` can follow it.
 
 ```csharp
 class Unit {
@@ -137,17 +193,18 @@ class Unit {
 
 class Grunt : Unit {
     int rage = 3;
-    override int Power() { return this.rage; }
+    override int Power() { return rage; }
 }
 
 class Spotter {
     Unit seen = null;
 
     void Look() {
-        if (this.seen == null) this.seen = new Grunt();
-        bool isGrunt = this.seen is Grunt;
-        var g = this.seen as Grunt;
-        if (g != null) this.seen.hp = g.rage;
+        if (seen == null) seen = new Grunt();
+        bool isGrunt = seen is Grunt;
+        var g = seen as Grunt;
+        if (g != null) seen.hp = g.rage;
+        if (seen is Grunt h && h.rage > 1) seen.hp = h.rage;
     }
 }
 ```

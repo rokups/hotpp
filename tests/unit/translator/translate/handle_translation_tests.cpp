@@ -92,16 +92,6 @@ TEST(HandleTranslation, AddressOfAPointerLocalGivesANativeOutParameter)
     EXPECT_TRUE(has(r.cpp, "Foo__Find(__self, &w);")) << r.cpp;
 }
 
-TEST(HandleTranslation, RefAndOutWordsAreRemoved)
-{
-    const sppc::TranslateResult r = weapon_translate("    void Fill(ref Vec3 v) { }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "'ref' and 'out' are removed: use 'T&' for a reference parameter and '&x' for a pointer argument"))
-        << r.diagnostics;
-    const sppc::TranslateResult o = weapon_translate("    void Run() { Vec3 p; this.Fill(out p); }\n");
-    EXPECT_FALSE(o.ok);
-}
-
 TEST(HandleTranslation, AddressOfAValueLocalIsAPointer)
 {
     const sppc::TranslateResult r = weapon_translate(
@@ -269,6 +259,18 @@ TEST(HandleTranslation, ThisIsAHandleArgumentForAScriptHandleParameter)
         "    void Hurt(Foo h, float d) { }\n    void Run(Foo other) { other.Hurt(this, 2.0); this.Hurt(this, 1.0); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "spp::handle_from_this<std::shared_ptr<Foo>>(__self), 2.0f")) << r.cpp;
+}
+
+// "var me = this;" is a handle. "this" for a native pointer parameter stays the pointer.
+TEST(HandleTranslation, VarOfThisIsAHandle)
+{
+    const sppc::TranslateResult r = weapon_translate(
+        "    void Join(Foo h) { }\n    void Nat(Actor* a) { }\n"
+        "    void Run() { var me = this; Join(me); Join(this); Nat(this); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "auto me = spp::handle_from_this<std::shared_ptr<Foo>>(__self);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Foo__Join(__self, spp::handle_from_this<std::shared_ptr<Foo>>(__self));")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Foo__Nat(__self, __self);")) << r.cpp;
 }
 
 // "T&" of a script class is a reference to a handle. "this" is not a variable: sppc says so.

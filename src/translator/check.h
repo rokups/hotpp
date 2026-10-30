@@ -37,6 +37,10 @@ void check_class(const ast::ClassDef& cd, const TypeModel& types, const LineMap&
 // arguments of "base(...)" use the constructor parameters only (design 7.3). Each error goes
 // to the diagnostics.
 void check_ctors(const ast::ClassDef& cd, const LineMap& map, Diagnostics& diag);
+// A subclass calls a constructor of its script parent with "base(...)", or implicitly. A private
+// constructor of the parent is an error. A protected one is allowed.
+void check_base_ctor_access(const ast::ClassDef& cd, const ast::ClassDef& parent, const LineMap& map,
+                            Diagnostics& diag);
 
 // The type names that a "new" expression names, in all classes of the script. The translator
 // emits a "new" function for each script class in the set.

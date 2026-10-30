@@ -1,8 +1,8 @@
-// Generation 1: a std::vector of the [value] class Item in a state field (design 5.3, S17).
+// Generation 1: a std::vector of the struct Item in a state field (design 5.3, S17).
 using "Actor.h";
 using <vector>;
 
-[value] class Item {
+struct Item {
     int weight = 0;
 
     Item(int w) {

@@ -79,13 +79,10 @@ constexpr auto ws_rule = dsl::ascii::space | line_comment | block_comment;
 constexpr auto id = dsl::identifier(dsl::ascii::alpha_underscore, dsl::ascii::word);
 
 constexpr auto kw_using = LEXY_KEYWORD("using", id);
-// "import" is removed. The parser still knows the word to give a clear error.
-constexpr auto kw_import = LEXY_KEYWORD("import", id);
 constexpr auto kw_class = LEXY_KEYWORD("class", id);
 constexpr auto kw_struct = LEXY_KEYWORD("struct", id);
 constexpr auto kw_enum = LEXY_KEYWORD("enum", id);
 constexpr auto kw_override = LEXY_KEYWORD("override", id);
-constexpr auto kw_function = LEXY_KEYWORD("function", id);
 constexpr auto kw_virtual = LEXY_KEYWORD("virtual", id);
 constexpr auto kw_new = LEXY_KEYWORD("new", id);
 constexpr auto kw_public = LEXY_KEYWORD("public", id);
@@ -259,11 +256,9 @@ struct scan_type : lexy::token_production {
 };
 
 // The name of a "Type name" parameter: an identifier before a "," or a ")".
+// A "=" after the name starts a default value.
 constexpr auto param_name_ahead =
-    id + dsl::whitespace(ws_rule) + (dsl::lit_c<','> / dsl::lit_c<')'>);
-// The old form "name: type". A "::" is not the old form.
-constexpr auto old_param_ahead =
-    id + dsl::whitespace(ws_rule) + dsl::lit_c<':'> + dsl::peek_not(dsl::lit_c<':'>);
+    id + dsl::whitespace(ws_rule) + (dsl::lit_c<','> / dsl::lit_c<')'> / dsl::lit_c<'='>);
 
 // Matches the type of a "Type name" parameter. The scan stops before the name.
 // The name is the last identifier before a "," or a ")" at depth zero.
@@ -397,12 +392,6 @@ inline std::string type_of_span(const ParseState& st, Span sp)
 {
     const std::string_view raw(st.base + sp.begin, sp.end - sp.begin);
     if (only_blank(raw)) st.error(st.base + sp.begin, "expected a type");
-    // The words "ref" and "out" are removed. A type text that starts with one of them is an error.
-    for (const std::string_view w : {std::string_view("ref"), std::string_view("out")})
-        if (raw.size() > w.size() && raw.substr(0, w.size()) == w &&
-            std::isspace(static_cast<unsigned char>(raw[w.size()])))
-            st.error(st.base + sp.begin,
-                     "'ref' and 'out' are removed: use 'T&' for a reference parameter and '&x' for a pointer argument");
     std::size_t colons = std::string_view::npos;
     std::string t = type_text(raw, &colons);
     if (colons != std::string_view::npos) st.error(st.base + sp.begin + colons, e_use_dot_colons::name);

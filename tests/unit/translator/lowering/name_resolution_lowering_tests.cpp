@@ -90,3 +90,105 @@ TEST(NameResolutionLowering, ErrorScriptFnMustBeCalled)
     ASSERT_EQ(f.errors().size(), 1u);
     EXPECT_EQ(f.errors()[0], "2:9: script function 'heal' must be called");
 }
+
+// A bare field before "." is the field (as "this.f"), not a scope.
+TEST(NameResolutionLowering, BareFieldBeforeADotIsAMember)
+{
+    Fixture f;
+    EXPECT_EQ(f.expr("target.hp"), "spp::deref(__st->target).hp");
+    EXPECT_EQ(f.expr("target.hp"), f.expr("this.target.hp"));
+    EXPECT_EQ(f.body("target.push_back(1);"), "spp::deref(__st->target).push_back(1);");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+TEST(NameResolutionLowering, LocalHidesABareFieldBeforeADot)
+{
+    Fixture f;
+    f.param("target");
+    EXPECT_EQ(f.expr("target.hp"), "spp::deref(target).hp");
+    // A name that is not a member stays a scope.
+    EXPECT_EQ(f.expr("Foo.bar"), "Foo::bar");
+}
+
+// A bare member of the native base is "this.m" when nothing of the class has the name.
+TEST(NameResolutionLowering, BareNativeBaseMember)
+{
+    Fixture f;
+    f.cx.native_members = {"Move", "Position", "Name", "health"};
+    EXPECT_EQ(f.expr("Move(1)"), "__self->Move(1)");
+    EXPECT_EQ(f.expr("Position"), "__self->Position");
+    EXPECT_EQ(f.expr("Position.x"), "spp::deref(__self->Position).x");
+    EXPECT_EQ(f.body("Name = 1;"), "__self->Name = 1;");
+    // A field of the script class wins over the native member.
+    EXPECT_EQ(f.expr("health"), "health");
+    // A local wins over the native member.
+    f.param("Name");
+    EXPECT_EQ(f.expr("Name"), "Name");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+// In a [value] class the functions are free functions, so a bare field is "__st->f".
+TEST(NameResolutionLowering, BareFieldOfAValueClass)
+{
+    Fixture f;
+    f.cd.is_value = true;
+    EXPECT_EQ(f.expr("health * 2"), "__st->health * 2");
+    EXPECT_EQ(f.body("n += 1;"), "__st->n += 1;");
+    EXPECT_EQ(f.expr("target.x"), "spp::deref(__st->target).x");
+    f.param("n");
+    EXPECT_EQ(f.expr("n"), "n");
+}
+
+// A script member (a field, a property) wins over a module variable of the same name. A
+// module variable wins over a native base member.
+TEST(NameResolutionLowering, ScriptMemberWinsOverAModuleVariable)
+{
+    Fixture f;
+    f.cx.module_vars = {{"health", "float"}, {"level", "int"}, {"Name", "int"}};
+    f.cx.native_members = {"level", "Name"};
+    EXPECT_EQ(f.expr("health"), "health");
+    EXPECT_EQ(f.expr("target.hp"), "spp::deref(__st->target).hp");
+    EXPECT_EQ(f.expr("target.hp"), f.expr("this.target.hp"));
+    EXPECT_EQ(f.expr("level"), "spp_mod()->level");
+    EXPECT_EQ(f.expr("Name"), "spp_mod()->Name");
+    // A local still hides both.
+    f.param("health");
+    EXPECT_EQ(f.expr("health"), "health");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+TEST(NameResolutionLowering, FieldWinsOverAModuleVariableInAValueClass)
+{
+    Fixture f;
+    f.cd.is_value = true;
+    f.cx.module_vars = {{"n", "int"}};
+    EXPECT_EQ(f.expr("n + 1"), "__st->n + 1");
+}
+
+// A bare member in a field initializer is an error, as "this.m" is.
+TEST(NameResolutionLowering, ErrorBareMemberInAFieldInitializer)
+{
+    Fixture f;
+    f.cx.allow_this = false;
+    f.cx.native_members = {"Name"};
+    f.expr("n + 1");
+    f.expr("target.hp");
+    f.expr("Name");
+    f.expr("Foo.bar");
+    const std::string msg = "'this' is not allowed in a field initializer";
+    ASSERT_EQ(f.errors().size(), 3u);
+    EXPECT_EQ(f.errors()[0], "1:1: " + msg);
+    EXPECT_EQ(f.errors()[1], "1:1: " + msg);
+    EXPECT_EQ(f.errors()[2], "1:1: " + msg);
+}
+
+// A module variable and a name that is not a member stay valid in a field initializer.
+TEST(NameResolutionLowering, FieldInitializerKeepsModuleVariableAndOtherNames)
+{
+    Fixture f;
+    f.cx.allow_this = false;
+    f.cx.module_vars = {{"limit", "int"}};
+    EXPECT_EQ(f.expr("limit + 1"), "spp_mod()->limit + 1");
+    EXPECT_EQ(f.expr("Foo.bar"), "Foo::bar");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}

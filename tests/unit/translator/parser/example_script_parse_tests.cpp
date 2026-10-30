@@ -15,7 +15,7 @@ TEST(ExampleScriptParse, ExampleScripts)
 {
     const char* names[] = {"player_v1", "player_v2", "timer_v1", "timer_v2", "native_std_v1",
                            "native_std_v2", "ctor_v1", "ctor_v2", "kinds_v1", "kinds_v2", "typed_v1", "module_v1", "module_v2",
-                           "boss_v1", "boss_v2", "boss_rebase"};
+                           "boss_v1", "boss_v2", "boss_rebase", "safe_nav_v1"};
     size_t bodies = 0;
     for (const char* name : names) {
         const std::string text =

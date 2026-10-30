@@ -4,7 +4,7 @@
 using "Actor.h";
 using <string>;
 
-[value] class Stats {
+struct Stats {
     float mana = 7.0;
     float hp = 100.0;
     float armor = 2.0;

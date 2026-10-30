@@ -143,7 +143,7 @@ TEST(InterfaceTranslation, BaseListErrors)
          "Add 'IName' to the bases of the root class 'Foo'"},
         {"class Foo : Widget { }\nclass Bar : Widget, Foo { }\n",
          "the interface base 'Foo' of class 'Bar' is a script class. An interface base must be a native class"},
-        {"[value] class V : Widget, IName { }\n", "a [value] class 'V' has no base class"},
+        {"struct V : Widget, IName { }\n", "a struct 'V' has no base class"},
     };
     for (const Case& c : cases) {
         const sppc::TranslateResult r = run(c.script);

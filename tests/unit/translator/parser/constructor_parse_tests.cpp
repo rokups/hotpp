@@ -60,12 +60,6 @@ TEST(ConstructorParse, SuperCallWithoutArguments)
     EXPECT_TRUE(p.cls().ctors[0].base_args.empty());
 }
 
-TEST(ConstructorParse, OldSuperCallIsRenamed)
-{
-    Parsed p("    A(int a) : super(a) { }");
-    EXPECT_NE(p.errors().find("'super' was renamed to 'base'"), std::string::npos) << p.errors();
-}
-
 TEST(ConstructorParse, Destructor)
 {
     Parsed p("    ~A() { this.n = 0; }\n    int n = 1;");
@@ -118,7 +112,7 @@ TEST(ClassKindParse, ClassWithoutBase)
 
 TEST(ClassKindParse, ValueClassWithoutBase)
 {
-    const std::string text = "[value] class Stats {\n    float hp = 1.0;\n}\n";
+    const std::string text = "struct Stats {\n    float hp = 1.0;\n}\n";
     const LineMap map(text);
     Diagnostics diag;
     const ast::Script script = parse_script(text, map, diag);

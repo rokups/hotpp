@@ -1,0 +1,33 @@
+// Generation 1 of the safe call "?." (S C3).
+// "h?.F();" and "h?.field = v;" run only when the handle is not null.
+using "Actor.h";
+
+class Cell {
+    int hits = 0;
+
+    void Hit() { this.hits = this.hits + 1; }
+}
+
+class Prober : Actor {
+    Cell full;
+    Cell empty;
+    int total = 0;
+    int calls = 0;
+
+    Cell Pick() {
+        this.calls = this.calls + 1;
+        return this.full;
+    }
+
+    override void Tick(float dt) {
+        if (this.full == null) {
+            this.full = new Cell();
+        }
+        this.full?.Hit();
+        this.empty?.Hit();
+        this.full?.hits += 10;
+        this.empty?.hits = 99;
+        this.Pick()?.Hit();
+        this.total = this.full.hits;
+    }
+}

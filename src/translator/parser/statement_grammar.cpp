@@ -16,14 +16,13 @@
 //    A bare ternary "a ? b : c" in a label is not supported, because its ":" ends the
 //    label. Put the ternary in parentheses.
 //  - A catch clause is "catch (Type name)" or "catch (...)". A clause with a type and no
-//    name is an error. The old form "catch (name: type)" is an error.
+//    name is an error.
 //  - A try statement has one or more catch clauses, a "finally" block, or both.
 //  - A local declaration is "Type name", "var name", "var& name", "const Type name",
 //    "const var name" or "const var& name". The "var&" form is a local reference.
-//    The look-ahead rule for "Type name" is in the comment above DeclEnd. "let" is an error.
+//    The look-ahead rule for "Type name" is in the comment above DeclEnd.
 //  - A foreach statement is "foreach ( (const)? (var &? | Type) name in expr ) stmt".
-//    The old for-of form "for (x of c)" is an error. The look-ahead finds
-//    "( (const)? (var | Type) name of" or "( name of". Other for statements are classic.
+//    Other for statements are classic.
 //  - The init of a classic for is one declaration or a list of expressions.
 //
 // Error recovery: a broken statement skips to the next ";" (consumed) or to the "}" that
@@ -61,21 +60,15 @@ SPP_ERROR_TAG(e_stmt, "expected a statement");
 SPP_ERROR_TAG(e_while, "expected 'while'");
 SPP_ERROR_TAG(e_name, "expected a name");
 SPP_ERROR_TAG(e_catch, "expected 'catch' or 'finally'");
-SPP_ERROR_TAG(e_old_catch, "catch syntax changed; write 'catch (Type name)'");
-SPP_ERROR_TAG(e_let, "'let' is removed; write 'var x = ...' or 'Type x = ...'");
-SPP_ERROR_TAG(e_for_of, "'for ... of' is removed; write 'foreach (Type x in c)'");
 SPP_ERROR_TAG(e_const_form, "expected 'var' or a type after 'const'");
 
 // ---------------------------------------------------------------- words
-constexpr auto kw_let = LEXY_KEYWORD("let", id);
 constexpr auto kw_const = LEXY_KEYWORD("const", id);
 constexpr auto kw_if = LEXY_KEYWORD("if", id);
 constexpr auto kw_else = LEXY_KEYWORD("else", id);
 constexpr auto kw_while = LEXY_KEYWORD("while", id);
 constexpr auto kw_do = LEXY_KEYWORD("do", id);
 constexpr auto kw_for = LEXY_KEYWORD("for", id);
-// "of" is removed. The parser still knows the word to give a clear error.
-constexpr auto kw_of = LEXY_KEYWORD("of", id);
 constexpr auto kw_return = LEXY_KEYWORD("return", id);
 constexpr auto kw_break = LEXY_KEYWORD("break", id);
 constexpr auto kw_continue = LEXY_KEYWORD("continue", id);
@@ -87,7 +80,7 @@ constexpr auto kw_catch = LEXY_KEYWORD("catch", id);
 constexpr auto kw_throw = LEXY_KEYWORD("throw", id);
 
 // A name. The words of the body syntax and the reserved words are not names.
-constexpr auto id_r = id.reserve(kw_let, kw_const, kw_if, kw_else, kw_while, kw_do, kw_for,
+constexpr auto id_r = id.reserve(kw_const, kw_if, kw_else, kw_while, kw_do, kw_for,
                                  kw_return, kw_break, kw_continue, kw_switch, kw_case,
                                  kw_default, kw_try, kw_catch, kw_throw, kw_var, kw_foreach,
                                  kw_in, kw_using, kw_override, kw_virtual, kw_new, kw_public,
@@ -134,7 +127,24 @@ struct VarHead {
     bool is_const = false;
     bool is_ref = false;  // "var& name"
     std::string name, type;
+    std::vector<std::string> names;  // "var (a, b)": a structured binding, "name" is empty
+    std::vector<uint32_t> name_poss;
 };
+
+// The names after "var": one name, or the names of a structured binding "(a, b)".
+struct NameList {
+    std::vector<std::string> names;
+    std::vector<uint32_t> poss;
+    bool binding = false;
+};
+
+// A binding needs two or more names and an initializer. The error is in the diagnostics.
+bool binding_ok(const ParseState& st, uint32_t pos, size_t count)
+{
+    if (count >= 2) return true;
+    st.error(st.base + pos, "a structured binding needs two or more names");
+    return false;
+}
 
 struct DeclParts {
     VarHead head;
@@ -174,8 +184,17 @@ StmtP make_decl(const ParseState& st, DeclParts&& d)
     v.is_ref = d.head.is_ref;
     v.name = std::move(d.head.name);
     v.type = std::move(d.head.type);
+    v.names = std::move(d.head.names);
+    v.name_poss = std::move(d.head.name_poss);
     v.pos = d.head.pos;
     v.name_pos = d.head.name_pos;
+    if (!v.names.empty()) {
+        if (!binding_ok(st, v.pos, v.names.size())) return nullptr;
+        if (!d.has_init) {
+            st.error(st.base + v.pos, "a structured binding needs an initializer");
+            return nullptr;
+        }
+    }
     // "Type name;" is value-initialized by the emitter. "var" and "const" need an initializer.
     if (!d.has_init) {
         if (v.type.empty())
@@ -203,6 +222,42 @@ std::vector<StmtP> keep(std::vector<StmtP>&& v)
 struct name_p : lexy::token_production {
     static constexpr auto rule = dsl::must(id_r).template error<e_name>;
     static constexpr auto value = lexy::as_string<std::string>;
+};
+
+// A name of a structured binding, with its byte offset.
+struct binding_name {
+    static constexpr auto rule = dsl::position + dsl::p<name_p>;
+    static constexpr auto value = lexy::bind(
+        lexy::callback<std::pair<std::string, uint32_t>>(
+            [](const ParseState& st, const char* pos, std::string name) {
+                return std::make_pair(std::move(name), st.offset(pos));
+            }),
+        lexy::parse_state, lexy::values);
+};
+
+// "(a, b, ...)": the names of a structured binding.
+struct binding_names {
+    static constexpr auto rule = dsl::lit_c<'('> +
+                                 dsl::list(dsl::p<binding_name>, dsl::sep(dsl::lit_c<','>)) +
+                                 dsl::lit_c<')'>;
+    static constexpr auto value = lexy::as_list<std::vector<std::pair<std::string, uint32_t>>>;
+};
+
+// The name after "var": "name" or "(a, b)".
+struct decl_names {
+    static constexpr auto rule =
+        dsl::peek(dsl::lit_c<'('>) >> dsl::p<binding_names> | dsl::else_ >> dsl::p<name_p>;
+    static constexpr auto value = lexy::callback<NameList>(
+        [](std::string&& name) { return NameList{{std::move(name)}, {}, false}; },
+        [](std::vector<std::pair<std::string, uint32_t>>&& list) {
+            NameList n;
+            n.binding = true;
+            for (auto& [name, pos] : list) {
+                n.names.push_back(std::move(name));
+                n.poss.push_back(pos);
+            }
+            return n;
+        });
 };
 
 // ---------------------------------------------------------------- terminators
@@ -254,8 +309,7 @@ struct for_init_cfg {
 // the list means: not a declaration. So "a < b > c;" declares "c" with the type "a<b>", as
 // in C++. "a < b;" has no ">", so it stays an expression. Write "(a < b) > c;" to compare.
 // In the head of a foreach statement, the keyword "in" follows the name, not "=" or ";".
-// ForOf is the removed form: the keyword "of" follows the name. It is only for the error.
-enum class DeclEnd { Stmt, ForEach, ForOf };
+enum class DeclEnd { Stmt, ForEach };
 
 // A cursor over a copy of a lexy reader. A char is a value 0..255. The end of the text is -1.
 template <typename Reader>
@@ -333,7 +387,7 @@ inline bool is_decl_keyword(const std::string& w)
 {
     static const char* const words[] = {
         "if",    "else",  "while", "do",   "for",  "return", "break", "continue",
-        "switch", "case", "default", "try", "catch", "throw", "let",  "var",
+        "switch", "case", "default", "try", "catch", "throw", "var",
         "foreach", "in",
         "const", "this",  "base", "null", "new",  "true",   "false", "delete", nullptr};
     for (int i = 0; words[i]; ++i)
@@ -399,7 +453,7 @@ bool find_decl_type(DeclCursor<Reader> c, typename Reader::marker* name)
                 if constexpr (E == DeclEnd::Stmt) {
                     end = n == ';' || (n == '=' && next.get(1) != '=');
                 } else {
-                    end = next.at_id0() && next.word() == (E == DeclEnd::ForEach ? "in" : "of");
+                    end = next.at_id0() && next.word() == "in";
                 }
                 if (end) {
                     *name = at;
@@ -429,40 +483,6 @@ bool find_decl_type(DeclCursor<Reader> c, typename Reader::marker* name)
     }
 }
 
-// The look-ahead of a removed for-of head: "( (const)? (var &? | Type) name of" or "( name of".
-template <typename Reader>
-bool find_for_of(DeclCursor<Reader> c, typename Reader::marker* name)
-{
-    c.skip_blank();
-    if (c.get() != '(') return false;
-    c.bump();
-    c.skip_blank();
-    DeclCursor<Reader> word_end = c;
-    if (c.at_id0() && word_end.word() == "const") {
-        c = word_end;
-        c.skip_blank();
-    }
-    word_end = c;
-    if (c.at_id0() && word_end.word() == "var") {
-        word_end.skip_blank();
-        if (word_end.get() == '&') {
-            word_end.bump();
-            word_end.skip_blank();
-        }
-        if (!word_end.at_id0()) return false;
-        word_end.word();
-        word_end.skip_blank();
-        return word_end.at_id0() && word_end.word() == "of";
-    }
-    if (find_decl_type<DeclEnd::ForOf>(c, name)) return true;
-    // A name without a type: "for (x of c)".
-    if (!c.at_id0()) return false;
-    *name = c.marker();
-    c.word();
-    c.skip_blank();
-    return c.at_id0() && c.word() == "of";
-}
-
 struct probe_decl_stmt {
     template <typename Reader>
     static bool run(Reader r, typename Reader::marker* name)
@@ -477,14 +497,6 @@ struct probe_decl_foreach {
         return find_decl_type<DeclEnd::ForEach>(DeclCursor<Reader>(r), name);
     }
 };
-struct probe_for_of {
-    template <typename Reader>
-    static bool run(Reader r, typename Reader::marker* name)
-    {
-        return find_for_of(DeclCursor<Reader>(r), name);
-    }
-};
-
 SPP_ERROR_TAG(e_decl_type, "expected a declaration");
 
 // A branch rule over a plain C++ look-ahead. Probe::run decides the branch.
@@ -541,8 +553,6 @@ struct probe_rule : dsl::branch_base {
 
 // The peek of "Type name" in a statement and in the init of a for statement.
 constexpr auto decl_ahead = probe_rule<probe_decl_stmt, false>{};
-// The peek of a removed for-of head.
-constexpr auto for_of_ahead = probe_rule<probe_for_of, false>{};
 // The type of "Type name". It produces the begin of the type and the begin of the name.
 template <DeclEnd E>
 constexpr auto decl_type = probe_rule<std::conditional_t<E == DeclEnd::Stmt, probe_decl_stmt,
@@ -565,6 +575,17 @@ VarHead make_typed_head(const ParseState& st, const char* pos, const char* type_
     return h;
 }
 
+// Puts the names of a "var" head: one name, or the names of a structured binding.
+void set_names(VarHead& h, NameList&& n)
+{
+    if (n.binding) {
+        h.names = std::move(n.names);
+        h.name_poss = std::move(n.poss);
+    } else {
+        h.name = std::move(n.names[0]);
+    }
+}
+
 // The optional "&" after "var": a local reference. The value is true when the "&" is there.
 struct ref_mark {
     static constexpr auto rule = dsl::opt(dsl::capture(dsl::lit_c<'&'>));
@@ -575,13 +596,14 @@ struct ref_mark {
 // The part after "const": "var name", "var& name" or "Type name".
 template <DeclEnd E>
 struct const_rest {
-    static constexpr auto rule = kw_var >> dsl::p<ref_mark> + dsl::p<name_p> | decl_type<E> >> dsl::p<name_p> |
+    static constexpr auto rule = kw_var >> dsl::p<ref_mark> + dsl::p<decl_names> | decl_type<E> >> dsl::p<name_p> |
                                  dsl::else_ >> dsl::error<e_const_form>;
     static constexpr auto value = lexy::bind(
         lexy::callback<VarHead>(
-            [](const ParseState& st, bool is_ref, std::string name) {
-                VarHead h = make_head(st, st.base, std::move(name));
+            [](const ParseState& st, bool is_ref, NameList&& n) {
+                VarHead h = make_head(st, st.base, std::string());
                 h.is_ref = is_ref;
+                set_names(h, std::move(n));
                 return h;
             },
             [](const ParseState& st, const char* b, const char* e, std::string name) {
@@ -591,12 +613,11 @@ struct const_rest {
 };
 
 // "var name", "const var name", "const Type name" or "Type name".
-// The old "let" is an error.
 template <DeclEnd E>
 struct var_head {
     static constexpr auto rule =
         dsl::position +
-        (dsl::peek(kw_let) >> dsl::error<e_let> | kw_var >> dsl::p<ref_mark> + dsl::p<name_p> |
+        (kw_var >> dsl::p<ref_mark> + dsl::p<decl_names> |
          kw_const >> dsl::p<const_rest<E>> | decl_type<E> >> dsl::p<name_p> |
          dsl::else_ >> dsl::error<e_decl_type>) +
         dsl::position;
@@ -609,16 +630,19 @@ struct var_head {
     }
     static constexpr auto value = lexy::bind(
         lexy::callback<VarHead>(
-            [](const ParseState& st, const char* pos, bool is_ref, std::string name, const char* end) {
-                VarHead h = make_head(st, pos, std::move(name));
+            [](const ParseState& st, const char* pos, bool is_ref, NameList&& n, const char* end) {
+                VarHead h = make_head(st, pos, std::string());
                 h.is_ref = is_ref;
-                h.name_pos = name_at(st, pos, end, h.name.size());
+                set_names(h, std::move(n));
+                if (h.names.empty()) h.name_pos = name_at(st, pos, end, h.name.size());
+                else h.name_pos = h.name_poss[0];
                 return h;
             },
             [](const ParseState& st, const char* pos, VarHead&& h, const char* end) {
                 h.pos = st.offset(pos);
                 h.is_const = true;
-                h.name_pos = name_at(st, pos, end, h.name.size());
+                if (h.names.empty()) h.name_pos = name_at(st, pos, end, h.name.size());
+                else h.name_pos = h.name_poss[0];
                 return std::move(h);
             },
             [](const ParseState& st, const char* pos, const char* b, const char* e,
@@ -848,12 +872,9 @@ struct catch_all {
 
 // "Type name". A clause without a type or without a name has an empty name. The error is
 // in the diagnostics. One word is the type, so "catch (int)" has no name.
-// The old form "name: type" is an error.
 struct catch_named {
-    static constexpr auto rule =
-        dsl::peek(old_param_ahead) >> dsl::error<e_old_catch> |
-        dsl::else_ >> (dsl::position + dsl::p<scan_param_type> +
-                       dsl::opt(dsl::peek(id) >> dsl::p<name_p>));
+    static constexpr auto rule = dsl::position + dsl::p<scan_param_type> +
+                                 dsl::opt(dsl::peek(id) >> dsl::p<name_p>);
     static constexpr auto value = lexy::bind(
         lexy::callback<ast::CatchClause>(
             [](const ParseState& st, const char* pos, Span type, auto&& name) {
@@ -954,8 +975,11 @@ struct foreach_stmt {
                 n.is_const = h.is_const;
                 n.is_ref = h.is_ref;
                 n.name = std::move(h.name);
+                n.names = std::move(h.names);
+                n.name_poss = std::move(h.name_poss);
                 n.name_pos = h.name_pos;
                 n.type = std::move(h.type);
+                if (!n.names.empty() && !binding_ok(st, n.pos, n.names.size())) return nullptr;
                 n.range = expr_of(st, range);
                 n.body = std::move(body);
                 if (!n.range || !n.body) return nullptr;
@@ -966,7 +990,6 @@ struct foreach_stmt {
 
 struct for_init {
     static constexpr auto rule =
-        dsl::peek(kw_let) >> dsl::error<e_let> |
         dsl::peek(var_or_const) >> dsl::p<decl_p<for_init_cfg>> |
         decl_ahead >> dsl::p<decl_p<for_init_cfg>> | dsl::else_ >> dsl::p<scan_until<part_cfg>>;
     static constexpr auto value = lexy::callback<ForInit>(
@@ -995,9 +1018,7 @@ struct for_classic_rest {
 };
 
 struct for_stmt {
-    static constexpr auto rule =
-        dsl::position + kw_for +
-        (for_of_ahead >> dsl::error<e_for_of> | dsl::else_ >> dsl::p<for_classic_rest>);
+    static constexpr auto rule = dsl::position + kw_for + dsl::p<for_classic_rest>;
     static constexpr auto value = lexy::bind(
         lexy::callback<StmtP>(
             [](const ParseState& st, const char* pos, ForRest&& r) -> StmtP {
@@ -1147,7 +1168,7 @@ struct switch_stmt {
 struct stmt {
     static constexpr auto rule =
         dsl::peek(dsl::lit_c<'{'>) >> dsl::p<block_p> |
-        dsl::peek(kw_let) >> dsl::error<e_let> | dsl::peek(var_or_const) >> dsl::p<decl_stmt> |
+        dsl::peek(var_or_const) >> dsl::p<decl_stmt> |
         dsl::peek(kw_if) >> dsl::p<if_stmt> |
         dsl::peek(kw_while) >> dsl::p<while_stmt> | dsl::peek(kw_do) >> dsl::p<do_stmt> |
         dsl::peek(kw_for) >> dsl::p<for_stmt> |

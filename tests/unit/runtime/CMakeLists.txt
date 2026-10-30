@@ -1,5 +1,6 @@
 # Unit tests of the runtime header. They need no backend and no script.
 add_executable(unit_runtime_tests
+    coalesce_tests.cpp
     deref_tests.cpp
     migration_tests.cpp
     module_state_tests.cpp

@@ -100,3 +100,67 @@ TEST(StatementLowering, ErrorJumpOutOfFinally)
                               "2:3: 'return' is not allowed in a 'finally' block",
                           }));
 }
+
+// A switch with string labels becomes an if / else-if chain on a local with the value.
+TEST(StatementLowering, StringSwitchBecomesAnIfChain)
+{
+    Fixture f;
+    EXPECT_EQ(f.body("switch (s) { case \"a\": f(); break; case \"b\": case \"c\": return; default: g(); }"),
+              "{ const auto& __sw_1 = s; if (__sw_1 == \"a\") { f(); } else "
+              "if (__sw_1 == \"b\" || __sw_1 == \"c\") { return; } else { g(); } }");
+    EXPECT_EQ(f.errors().size(), 0u);
+}
+
+TEST(StatementLowering, StringSwitchWithoutDefaultAndTheLastCaseNeedsNoJump)
+{
+    Fixture f;
+    EXPECT_EQ(f.body("switch (s) { case \"a\": f(); break; case \"b\": g(); }"),
+              "{ const auto& __sw_1 = s; if (__sw_1 == \"a\") { f(); } else if (__sw_1 == \"b\") { g(); } }");
+    EXPECT_EQ(f.errors().size(), 0u);
+}
+
+// A nested break needs a C++ construct. The chain goes in a do-while that runs one time.
+TEST(StatementLowering, StringSwitchWithNestedBreakUsesDoWhile)
+{
+    Fixture f;
+    EXPECT_EQ(f.body("switch (s) { case \"a\": if (x) { break; } f(); break; }"),
+              "{ const auto& __sw_1 = s; do { if (__sw_1 == \"a\") { if (x) { break; } f(); } } while (false); }");
+    // A break in a loop in the case belongs to the loop: no do-while.
+    EXPECT_EQ(f.body("switch (s) { case \"a\": while (x) { break; } break; }"),
+              "{ const auto& __sw_1 = s; if (__sw_1 == \"a\") { while (x) { break; } } }");
+    EXPECT_EQ(f.errors().size(), 0u);
+}
+
+// The name counter restarts in each body. The two switches here are in one body.
+TEST(StatementLowering, StringSwitchesInOneBodyGetOwnNames)
+{
+    Fixture f;
+    EXPECT_EQ(f.body("switch (a) { case \"x\": f(); } switch (b) { case \"y\": g(); }"),
+              "{ const auto& __sw_1 = a; if (__sw_1 == \"x\") { f(); } } "
+              "{ const auto& __sw_2 = b; if (__sw_2 == \"y\") { g(); } }");
+}
+
+TEST(StatementLowering, NumberSwitchStaysASwitch)
+{
+    Fixture f;
+    EXPECT_EQ(f.body("switch (k) { case 1: f(); break; default: g(); }"),
+              "switch (k) { case 1: f(); break; default: g(); }");
+}
+
+TEST(StatementLowering, CollectionLiteralWithDeclaredType)
+{
+    Fixture f;
+    EXPECT_EQ(f.body("std.vector<int> xs = [1, 2, 3]; std.map<std.string, int> m = [\"a\": 1]; "
+                     "std.vector<int> e = [];"),
+              "std::vector<int32_t> xs = {1, 2, 3}; std::map<std::string, int32_t> m = {{\"a\", 1}}; "
+              "std::vector<int32_t> e = {};");
+    EXPECT_EQ(f.errors().size(), 0u);
+}
+
+TEST(StatementLowering, CollectionLiteralAsFieldInitializer)
+{
+    Fixture f;
+    f.cx.typed_init = true;
+    EXPECT_EQ(f.expr("[1, 2]"), "{1, 2}");
+    EXPECT_EQ(f.errors().size(), 0u);
+}

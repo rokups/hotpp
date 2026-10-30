@@ -1,0 +1,11 @@
+using "Actor.h";
+
+class Counter : Actor {
+    private int count = 0;
+
+    void Bump() { count += 1; }
+}
+
+class Spy : Actor {
+    int Peek(Counter c) { return c.count; }
+}

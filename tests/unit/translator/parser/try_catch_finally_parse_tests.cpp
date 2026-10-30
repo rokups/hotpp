@@ -113,13 +113,6 @@ TEST(TryCatchFinallyParse, ExceptionErrors)
             << p.diag.format("t");
     }
     {
-        // The old form "catch (name: type)" gives a clear error.
-        Parsed p("try { } catch (e: int) { }");
-        EXPECT_EQ(errors_of(p), (std::vector<std::string>{
-                                    "1:16: catch syntax changed; write 'catch (Type name)'"}))
-            << p.diag.format("t");
-    }
-    {
         // A pointer type and a qualified type.
         EXPECT_EQ(round_trip("try { f(); } catch (Actor* a) { } catch (std.runtime_error e) { }"),
                   "try { f(); } catch (Actor* a) {} catch (std::runtime_error e) {}");
@@ -129,9 +122,5 @@ TEST(TryCatchFinallyParse, ExceptionErrors)
         Parsed p("throw 1 +;\na = 1;");
         EXPECT_EQ(p.diag.items.size(), 1u) << p.diag.format("t");
         EXPECT_EQ(p.printed(), "a = 1;");
-    }
-    {
-        Parsed p("try { f(); } catch (e: int { }\na = 1;");
-        EXPECT_GE(p.diag.items.size(), 1u);
     }
 }

@@ -97,14 +97,6 @@ TEST(TranslateDiagnostics, BadImportKeepsItsText)
     EXPECT_NE(r.diagnostics.find("t.spp:1:7: error:"), std::string::npos) << r.diagnostics;
 }
 
-TEST(TranslateDiagnostics, ImportIsRemoved)
-{
-    const sppc::TranslateResult r = translate_text("import \"x.h\";\nclass A : B { }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("'import' is removed; write 'using'"), std::string::npos)
-        << r.diagnostics;
-}
-
 TEST(TranslateDiagnostics, UnterminatedBraceEndsWithAnError)
 {
     const sppc::TranslateResult r = translate_text("class A : B {\n    void f() {\n");

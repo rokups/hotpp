@@ -56,6 +56,9 @@ struct RCtx {
     std::map<std::string, PropInfo> props;
     std::set<std::string> locals;     // parameters and declared locals
     bool allow_this = true;
+    // True in the default value of a parameter. The value is in a C++ declaration, so it cannot
+    // use a field, a parameter, a script function or "this".
+    bool in_default = false;
     std::string where;  // the name of the function, for the stale call log of a lambda
     // The map gives the line and column of an error. Without a map an error has no line.
     const LineMap* map = nullptr;
@@ -85,6 +88,10 @@ struct RCtx {
     // "P__base_M(self, args)": the implementation that P sees.
     std::string native_base;
     std::set<std::string> native_virtuals;
+    // The names of the members of the native bases (methods, fields, static members). A bare
+    // name of this set, which no local, field, property or script fn hides, names a member of
+    // the native base: "Move(1)" means "this.Move(1)".
+    std::set<std::string> native_members;
     // The virtuals of the native interface bases (design 4.4): the name to the interface base.
     // "base.F()" of such a virtual calls the implementation of the interface base.
     std::map<std::string, std::string> interface_virtuals;
@@ -106,6 +113,9 @@ struct RCtx {
     bool in_module_init = false;
     std::set<std::string> module_earlier;
     bool in_module_hook = false;
+    // True when the top expression of lower_expr is an initializer with a declared type. Then a
+    // collection literal is allowed as the whole expression.
+    bool typed_init = false;
 };
 
 // The context of a class: the fields and the script fns. A body or an initializer

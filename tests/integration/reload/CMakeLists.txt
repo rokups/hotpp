@@ -12,6 +12,7 @@ add_executable(integration_reload_tests
     module_state_tests.cpp
     property_tests.cpp
     exception_tests.cpp
+    collection_switch_tests.cpp
     inheritance_tests.cpp
     cross_module_tests.cpp
     interface_tests.cpp

@@ -67,8 +67,8 @@ class Hero : Actor {
     float old_hp = 0.0;
 
     void onReload(OldState old) {
-        if (old.has("hp")) this.old_hp = old.get<float>("hp");
-        if (this.health > 100.0) this.health = 100.0;
+        if (old.has("hp")) old_hp = old.get<float>("hp");
+        if (health > 100.0) health = 100.0;
     }
 }
 ```

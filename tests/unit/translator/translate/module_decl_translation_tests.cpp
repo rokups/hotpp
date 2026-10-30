@@ -63,7 +63,7 @@ TEST(ModuleDeclTranslation, StructIsAValueClass)
 {
     const auto r = translate_script("struct P { float x = 1.0; }\nclass A : Unit { P p; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "[value] class P")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "struct P")) << r.cpp;
 }
 
 TEST(ModuleDeclTranslation, ModuleVariableUsesTheModuleBlock)
@@ -117,7 +117,7 @@ TEST(ModuleDeclTranslation, ErrorEnumUnderlyingType)
 
 TEST(ModuleDeclTranslation, ErrorModuleVariableOfAScriptHandleClass)
 {
-    expect_error("class H { int n; }\nH h;\nclass C : Unit { }\n", "a module variable can use only native types, enums and [value] classes");
+    expect_error("class H { int n; }\nH h;\nclass C : Unit { }\n", "a module variable can use only native types, enums and structs");
 }
 
 // An initializer can read a module variable declared before it (S16). The loader runs the

@@ -44,14 +44,3 @@ TEST(LambdaTranslation, ParameterWithoutTypeIsAuto)
     EXPECT_NE(r.cpp.find("[=](auto x, int32_t y)"), std::string::npos) << r.cpp;
 }
 
-TEST(LambdaTranslation, OldParameterFormIsAnError)
-{
-    TempDir dir;
-    write_file(dir.path() / "w.h", kHeaderV1);
-    const sppc::TranslateResult r =
-        sppc::translate(temp_options(dir, lambda_script("        var f = (x: int) => { };")));
-    EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("parameter syntax changed; write 'Type name'"),
-              std::string::npos)
-        << r.diagnostics;
-}

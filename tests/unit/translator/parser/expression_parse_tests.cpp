@@ -269,3 +269,32 @@ TEST(ExpressionParse, ParenthesizedTextIsNotACast)
     // A name without a mark is not sure to be a type: it is no cast. Use static_cast.
     EXPECT_EQ(one_error("(Foo)x"), "1:6: expected end of expression");
 }
+
+// A "[" in the position of an operand starts a collection literal. A postfix "[" is an index.
+TEST(ExpressionParse, CollectionLiteral)
+{
+    EXPECT_EQ(round_trip("[1, 2, 3]"), "{1, 2, 3}");
+    EXPECT_EQ(round_trip("[]"), "{}");
+    EXPECT_EQ(round_trip("[\"a\": 1, \"b\": 2]"), "{{\"a\", 1}, {\"b\", 2}}");
+    EXPECT_EQ(round_trip("[[1], [2, 3]]"), "{{1}, {2, 3}}");
+    EXPECT_EQ(round_trip("a[i] + [1][0]"), "a[i] + {1}[0]");
+    // A ternary in an element or in a map value needs no parentheses.
+    EXPECT_EQ(round_trip("[c ? 1 : 2, 3]"), "{c ? 1 : 2, 3}");
+    EXPECT_EQ(round_trip("[\"a\": c ? 1 : 2, \"b\": 3]"), "{{\"a\", c ? 1 : 2}, {\"b\", 3}}");
+    EXPECT_EQ(round_trip("[c ? \"a\" : \"b\": 1]"), "{{c ? \"a\" : \"b\", 1}}");
+}
+
+// "a?.b" is a member access with the safe flag. "c ?.5 : 1" stays a conditional.
+TEST(ExpressionParse, SafeMember)
+{
+    EXPECT_EQ(round_trip("a?.b"), "a.b");
+    EXPECT_EQ(round_trip("a?.b(1).c"), "a.b(1).c");
+    EXPECT_EQ(round_trip("a?.b = 2"), "a.b = 2");
+    EXPECT_EQ(round_trip("c ?.5 : 1"), "c ? .5 : 1");
+    Parsed p("a?.b");
+    ASSERT_TRUE(p.expr);
+    const auto* m = std::get_if<ast::MemberExpr>(&p.expr->v);
+    ASSERT_NE(m, nullptr);
+    EXPECT_TRUE(m->safe);
+    EXPECT_EQ(m->name, "b");
+}

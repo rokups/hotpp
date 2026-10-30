@@ -17,10 +17,7 @@
 5: "\"" meta.attribute.spp string.quoted.double.spp
 5: ")" meta.attribute.spp
 5: "]" meta.attribute.spp punctuation.definition.attribute.end.spp
-6: "[" meta.attribute.spp punctuation.definition.attribute.begin.spp
-6: "value" meta.attribute.spp entity.other.attribute-name.spp
-6: "]" meta.attribute.spp punctuation.definition.attribute.end.spp
-6: "class" storage.type.class.spp
+6: "struct" storage.type.class.spp
 6: "Stats" entity.name.type.class.spp
 6: ":" punctuation.separator.inheritance.spp
 6: "Actor" entity.other.inherited-class.spp
@@ -132,25 +129,46 @@
 14: "/*" comment.block.spp
 14: " block " comment.block.spp
 14: "*/" comment.block.spp
-15: "    }" 
-16: "}" 
-17: "enum" storage.type.class.spp
-17: "Mode" entity.name.type.class.spp
-17: " { Idle" 
-17: "," punctuation.separator.comma.spp
-17: " Walk }" 
-18: "void" storage.type.spp
-18: "Each" entity.name.function.spp
-18: "() { " 
-18: "foreach" keyword.control.flow.spp
-18: " (" 
-18: "const" storage.modifier.spp
-18: "var" storage.type.spp
-18: "&" keyword.operator.arithmetic.spp
-18: " y " 
-18: "in" keyword.control.flow.spp
-18: "this" variable.language.spp
-18: "." punctuation.accessor.spp
-18: "items) { y" 
-18: ";" punctuation.terminator.statement.spp
-18: " } }" 
+15: "if" keyword.control.flow.spp
+15: " (a " 
+15: "is" keyword.operator.word.spp
+15: " Stats st " 
+15: "&&" keyword.operator.logical.spp
+15: " st" 
+15: "." punctuation.accessor.spp
+15: "n " 
+15: ">" keyword.operator.comparison.spp
+15: "1" constant.numeric.integer.spp
+15: ") { " 
+15: "var" storage.type.spp
+15: " q " 
+15: "=" keyword.operator.assignment.spp
+15: " a " 
+15: "??" keyword.operator.coalesce.spp
+15: " b " 
+15: "??" keyword.operator.coalesce.spp
+15: "null" constant.language.spp
+15: ";" punctuation.terminator.statement.spp
+15: " }" 
+16: "    }" 
+17: "}" 
+18: "enum" storage.type.class.spp
+18: "Mode" entity.name.type.class.spp
+18: " { Idle" 
+18: "," punctuation.separator.comma.spp
+18: " Walk }" 
+19: "void" storage.type.spp
+19: "Each" entity.name.function.spp
+19: "() { " 
+19: "foreach" keyword.control.flow.spp
+19: " (" 
+19: "const" storage.modifier.spp
+19: "var" storage.type.spp
+19: "&" keyword.operator.arithmetic.spp
+19: " y " 
+19: "in" keyword.control.flow.spp
+19: "this" variable.language.spp
+19: "." punctuation.accessor.spp
+19: "items) { y" 
+19: ";" punctuation.terminator.statement.spp
+19: " } }" 

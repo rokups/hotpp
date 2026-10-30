@@ -15,7 +15,7 @@ using "Actor.h";
 
 class Player : Actor {
     override void Tick(float dt) {
-        this.Move(Vec3(dt, 0, 0));
+        Move(Vec3(dt, 0, 0));
     }
     override void TakeDamage(float amount) { }
 }
@@ -33,8 +33,8 @@ class Boss : Actor, IDamageable {
     int hp = 50;
 
     override int Absorb(int amount) {
-        this.hp = this.hp - amount;
-        return this.hp;
+        hp = hp - amount;
+        return hp;
     }
     int BaseArmor() { return base.Armor(); }
 }
@@ -50,7 +50,7 @@ using "Actor.h";
 class Unit : Actor {
     int hp = 100;
 
-    Unit(int start) : base(std.string("unit")) { this.hp = start; }
+    Unit(int start) : base(std.string("unit")) { hp = start; }
     virtual int Power() { return 1; }
     int Attack() { return Power() * 10; }
 }
@@ -58,8 +58,8 @@ class Unit : Actor {
 class Grunt : Unit {
     int rage = 3;
 
-    Grunt(int start, int r) : base(start + 1) { this.rage = r; }
-    override int Power() { return this.rage * 2; }
+    Grunt(int start, int r) : base(start + 1) { rage = r; }
+    override int Power() { return rage * 2; }
     new int Attack() { return base.Attack() + 1; }
 }
 ```

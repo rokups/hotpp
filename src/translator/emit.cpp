@@ -162,6 +162,26 @@ struct ExprPrinter {
         }
         e.put(t + "\"", n.pos);
     }
+    // A braced list. A map entry is a braced pair.
+    void operator()(const CollectionExpr& n) const
+    {
+        e.put("{", n.pos);
+        for (size_t i = 0; i < n.elems.size(); ++i) {
+            if (i) {
+                e.put(",");
+                e.space();
+            }
+            if (n.is_map) e.put("{");
+            emit_expr(*n.elems[i], e);
+            if (n.is_map) {
+                e.put(",");
+                e.space();
+                emit_expr(*n.values[i], e);
+                e.put("}");
+            }
+        }
+        e.put("}", n.end_pos);
+    }
     void operator()(const MemberExpr& n) const
     {
         emit_expr(*n.obj, e);
@@ -240,6 +260,10 @@ struct ExprPrinter {
         e.put(n.is_as ? "as" : "is");
         e.space();
         e.put(n.type);
+        if (!n.bind.empty()) {
+            e.space();
+            e.put(n.bind);
+        }
     }
     void operator()(const LambdaExpr& n) const
     {
@@ -277,11 +301,26 @@ bool plain_type(const std::string& t)
 
 // A local without an initializer is value-initialized: zero, null or the default constructor.
 // It is never indeterminate.
+// The names of a structured binding: "[a, b]".
+void binding_names(const std::vector<std::string>& names, const std::vector<uint32_t>& poss, Emitter& e)
+{
+    e.put("[");
+    for (size_t i = 0; i < names.size(); ++i) {
+        if (i) {
+            e.put(",");
+            e.space();
+        }
+        e.put_mapped(names[i], i < poss.size() ? poss[i] : 0);
+    }
+    e.put("]");
+}
+
 void decl(const VarDeclStmt& d, Emitter& e)
 {
     e.put(std::string(d.is_const ? "const " : "") + (d.type.empty() ? (d.is_ref ? "auto&" : "auto") : d.type), d.pos);
     e.space();
-    e.put_mapped(d.name, d.name_pos);
+    if (!d.names.empty()) binding_names(d.names, d.name_poss, e);
+    else e.put_mapped(d.name, d.name_pos);
     if (d.init) {
         e.space();
         e.put("=");
@@ -385,7 +424,8 @@ struct StmtPrinter {
         open_paren(e);
         e.put(std::string(n.is_const ? "const " : "") + (n.type.empty() ? (n.is_ref ? "auto&" : "auto") : n.type));
         e.space();
-        e.put_mapped(n.name, n.name_pos);
+        if (!n.names.empty()) binding_names(n.names, n.name_poss, e);
+        else e.put_mapped(n.name, n.name_pos);
         e.space();
         e.put(":");
         e.space();

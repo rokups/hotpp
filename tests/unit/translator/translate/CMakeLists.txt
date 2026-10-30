@@ -1,10 +1,14 @@
 # The tests of sppc::translate for each language feature.
 add_executable(unit_translator_translate_tests
+    access_translation_tests.cpp
     alias_translation_tests.cpp
+    collection_switch_translation_tests.cpp
     builtin_type_translation_tests.cpp
     constructor_translation_tests.cpp
+    convenience_translation_tests.cpp
     borrowed_storage_translation_tests.cpp
     default_handle_translation_tests.cpp
+    safe_call_translation_tests.cpp
     default_value_translation_tests.cpp
     handle_translation_tests.cpp
     import_translation_tests.cpp
@@ -21,6 +25,7 @@ add_executable(unit_translator_translate_tests
     property_translation_tests.cpp
     reference_translation_tests.cpp
     scope_translation_tests.cpp
+    structured_binding_translation_tests.cpp
     script_kinds_translation_tests.cpp
     stub_check_translation_tests.cpp
     string_interpolation_translation_tests.cpp

@@ -8,21 +8,26 @@ The top of a script file can hold imports, enums, structs, variables and native 
 
 ## Imports
 
-`using "x.h";` includes a native header. `using <x>;` includes a standard header. `using "x.spp";` loads another script.
+`using "x.h";` includes a native header. `using <x>;` includes a standard header. `using "x.spp";` loads another script. A `using` can stand anywhere at module level, also after a class.
 
 ```csharp
 using "parent.spp";            // script
 using "Actor.h";               // native header
-using <string>;                // standard header
+using <algorithm>;             // standard header
 
 class Grunt : Unit {
     Grunt(int r) : base(r + 1) { }
 }
+
+using <map>;                   // allowed here too
 ```
+
+These headers are always included, so they need no `using`:
+`<cstddef>`, `<cstdint>`, `<cstdio>`, `<cstdlib>`, `<cstring>`, `<functional>`, `<memory>`, `<mutex>`, `<new>`, `<stdexcept>`, `<string>`, `<tuple>`, `<type_traits>`, `<typeinfo>`, `<unordered_map>`, `<utility>` and `<vector>`. Any other standard header (`<map>`, `<optional>`, `<algorithm>`) needs a `using`.
 
 ## Enums and structs
 
-An enum is a scoped enum. Add a base type after `:`. A struct is a `[value] class`.
+An enum is a scoped enum. Add a base type after `:`. A struct is a value type. It is the only way to make one: `[value]` on a script class is an error.
 
 ```csharp
 enum Mode { Idle, Walk, Run }
@@ -48,7 +53,7 @@ Mode mode = Mode.Idle;
 
 class Hero : Actor {
     override void Tick(float dt) {
-        total = total + 1;
+        total++;
         mode = Mode.Run;
     }
 }

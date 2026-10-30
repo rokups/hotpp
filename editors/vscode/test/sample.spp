@@ -3,7 +3,7 @@ using <vector>;
 using "Actor.h";
 
 [native, handle("Actor")]
-[value] class Stats : Actor {
+struct Stats : Actor {
     float hp = 1.5f;
     ulong big = 0xFFul;
     int Level { get; private set; } = 1;
@@ -12,6 +12,7 @@ using "Actor.h";
         foreach (var x in this.items) { x += 1e-3 + 2u; }
         try { throw std.runtime_error("e"); } catch (std.exception& e) { } finally { }
         if (a is Stats && b as Foo) { return null; } /* block */
+        if (a is Stats st && st.n > 1) { var q = a ?? b ?? null; }
     }
 }
 enum Mode { Idle, Walk }

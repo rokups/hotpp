@@ -44,7 +44,7 @@ TEST(ExpressionParseLimits, DeepNesting)
     fails_with(std::string(n, '('), "maximum recursion depth exceeded");
     fails_with(std::string(n, '(') + "a" + std::string(n, ')'),
                "maximum recursion depth exceeded");
-    fails_with(std::string(n, '['), "expected an expression");
+    fails_with(std::string(n, '['), "maximum recursion depth exceeded");
     {
         std::string t;
         for (size_t i = 0; i < n; ++i) t += "a[";

@@ -92,8 +92,8 @@ TEST(InheritanceTranslation, Errors)
                     "class 'B' must call 'base(...)': the constructor of 'A' has parameters"));
     EXPECT_TRUE(has(diag_of(family("    B() : base(1, 2) { }", "    A(int v) { this.hp = v; }\n")),
                     "'base(...)' has 2 arguments; the constructor of 'A' takes 1"));
-    EXPECT_TRUE(has(diag_of("[value] class V { int x = 0; }\nclass W : V { }\n"),
-                    "class 'W' cannot derive from the [value] class 'V'"));
+    EXPECT_TRUE(has(diag_of("struct V { int x = 0; }\nclass W : V { }\n"),
+                    "class 'W' cannot derive from the struct 'V'"));
 }
 
 TEST(InheritanceTranslation, IsAndAsUseTheClassRecords)
@@ -104,8 +104,8 @@ TEST(InheritanceTranslation, IsAndAsUseTheClassRecords)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "auto b = spp::as_script<B_Shell>(__st->a, \"B\");")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "spp::is_script(__st->a, \"B\")")) << r.cpp;
-    EXPECT_TRUE(has(diag_of("[value] class V { int x = 0; }\nclass C {\n    bool t(V v) { return v is V; }\n}\n"),
-                    "'is' needs a class with a handle: 'V' is a [value] class"));
+    EXPECT_TRUE(has(diag_of("struct V { int x = 0; }\nclass C {\n    bool t(V v) { return v is V; }\n}\n"),
+                    "'is' needs a class with a handle: 'V' is a struct"));
 }
 
 TEST(InheritanceTranslation, IsAndAsOnANativeTypeUseRtti)

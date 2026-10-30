@@ -38,7 +38,7 @@ bool has(const sppc::TranslateResult& r, const std::string& text)
 }
 
 const char* kStats =
-    "[value] class Stats {\n"
+    "struct Stats {\n"
     "    float hp = 1.0;\n"
     "    Stats(float h) { this.hp = h; }\n"
     "    float Twice() { return this.hp * 2.0; }\n"
@@ -90,10 +90,10 @@ TEST(ScriptKindsTranslation, ValueClassIsAStructWithCopySemantics)
 
 TEST(ScriptKindsTranslation, ValueClassErrors)
 {
-    expect_error("[value] class V : Unit { int a = 0; }\n", "a [value] class 'V' has no base class");
-    expect_error("[value] class V { int a = 0; ~V() { } }\n", "cannot have a destructor");
-    expect_error("[value] class V { int a = 0; virtual void F() { } }\n", "has no virtual methods");
-    expect_error("[value] class V { int a = 0; void onReload() { } }\n", "cannot have the hook 'onReload'");
+    expect_error("struct V : Unit { int a = 0; }\n", "a struct 'V' has no base class");
+    expect_error("struct V { int a = 0; ~V() { } }\n", "cannot have a destructor");
+    expect_error("struct V { int a = 0; virtual void F() { } }\n", "has no virtual methods");
+    expect_error("struct V { int a = 0; void onReload() { } }\n", "cannot have the hook 'onReload'");
 }
 
 TEST(ScriptKindsTranslation, SuperNeedsABase)
@@ -105,7 +105,7 @@ TEST(ScriptKindsTranslation, ClassOrderIsChecked)
 {
     // A [value] class is emitted first, so a later [value] class is fine.
     const sppc::TranslateResult r =
-        translate_script("class Boss : Unit { Stats s; }\n[value] class Stats { int a = 0; }\n");
+        translate_script("class Boss : Unit { Stats s; }\nstruct Stats { int a = 0; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
@@ -126,6 +126,6 @@ TEST(ScriptKindsTranslation, ClassesThatUseEachOtherInACycleAreAnError)
 
 TEST(ScriptKindsTranslation, ValueClassCannotUseAHandleClass)
 {
-    expect_error("[value] class V { Squad s; }\nclass Squad : Unit { int a = 0; }\n",
-                 "a [value] class can use only native types and [value] classes");
+    expect_error("struct V { Squad s; }\nclass Squad : Unit { int a = 0; }\n",
+                 "a struct can use only native types and structs");
 }

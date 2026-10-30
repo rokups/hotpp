@@ -12,7 +12,6 @@ The form is `(params) => { body }` or `(params) => expression`. The expression f
 
 ```csharp
 using "Actor.h";
-using <functional>;
 
 class Calc : Actor {
     int total = 0;
@@ -24,15 +23,15 @@ class Calc : Actor {
     void Run() {
         int k = 3;
         std.function<int(int)> twice = (int x) => { return x * 2 + k; };
-        this.total = this.Apply(twice, 4);
-        this.total = this.Apply((int x) => x + 1, 4);          // expression body
+        total = Apply(twice, 4);
+        total = Apply((int x) => x + 1, 4);          // expression body
     }
 }
 ```
 
 ## Captures
 
-A lambda copies the locals that it uses. It also reaches `this`. A later change of the local does not change the copy.
+A lambda copies the locals that it uses. It also reaches the members of `this`. A later change of the local does not change the copy.
 
 ```csharp
 using "Actor.h";
@@ -43,8 +42,8 @@ class Beeper : Actor {
     void arm(World& w, float delay) {
         int step = 5;
         w.AddTimer(delay, () => {
-            this.fired = this.fired + step;
-            std.printf("fired=%d\n", this.fired);
+            fired = fired + step;
+            std.printf("fired=%d\n", fired);
         });
     }
 }
@@ -63,7 +62,7 @@ class Beeper : Actor {
     // The timer holds this lambda. After a reload, the old timer is stale.
     // A new call of arm() makes a timer with the new body.
     void arm(World& w, float delay) {
-        w.AddTimer(delay, () => { this.fired = this.fired + 1; });
+        w.AddTimer(delay, () => { fired = fired + 1; });
     }
 }
 ```
