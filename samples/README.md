@@ -5,9 +5,9 @@ A sample builds in the Hot++ source tree. Most samples also build as a separate 
 
 | Sample | Situation | Key API | Link | State |
 |---|---|---|---|---|
-| [aot](aot/) | The C++ of the scripts is in the binary. No loader. No compiler at run time. | `hot::AotRegistry`, `hot_add_scripts(... AOT ...)` | the library of `hot_add_scripts`. It links `hot_aot`. | ready |
+| [aot](aot/) | The C++ of the scripts is in the binary. No loader. No compiler at run time. | `hot::AotRegistry`, `hot_add_host(... MODE AOT ...)` | `hot_add_host` links the script library. It links `hot::aot`. | ready |
 | [runtime-compile](runtime-compile/) | The program compiles a script at run time and loads it. | `hot::make_default_backend`, `hot::DefaultBackendOptions`, `hot::Loader` | `hot_backend` | ready |
-| [precompiled-library](precompiled-library/) | The build makes a script library. The program loads it. | `hot::module_from_library`, `hot::Loader`, `hot_add_scripts` | `hot_runtime` | ready |
+| [precompiled-library](precompiled-library/) | The build makes a script library. The program loads it. | `hot::module_from_library`, `hot::Loader`, `hot_add_host(... MODE PRECOMPILED ...)` | `hot::runtime` | ready |
 | [hot-reload](hot-reload/) | The program reloads a script and keeps the live object. | `hot::Loader::request_reload`, `commit_pending`, `frame_boundary` | `hot_backend` | ready |
 | [clang-files-backend](clang-files-backend/) | The backend runs an external `clang++` and loads the `.so`. | `hot::ClangFilesBackend`, `hot::ClangFilesOptions` | `hot_clang_backend` | ready |
 | [jit-backend](jit-backend/) | The backend compiles in memory with the Clang library. It needs `HOT_BACKEND=JIT`. | `hot::JitBackend`, `hot::JitOptions` | `hot_jit_backend` | ready |
@@ -37,5 +37,5 @@ The other samples have no such test.
 ## More information
 
 - [Embedding](../doc/embedding.md): which situation fits, and the backend interface.
-- [CMake](../doc/cmake.md): the options, `hot_add_scripts` and `hot_script_host`.
+- [CMake](../doc/cmake.md): the options, `hot_add_host`, `hot_add_scripts` and `hot_script_host`.
 - Each sample README has the sections "How it works", "Files", "Build and run" and "Adapt it to your project".

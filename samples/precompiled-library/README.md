@@ -15,21 +15,21 @@ The build makes one library and one program for each variant:
 - `sample_precompiled_hot_scripts` builds the library of the `.hot` script. `sample_precompiled_hot` loads it.
 - `sample_precompiled_cpp_scripts` builds the library of the `.cpp` script. `sample_precompiled_cpp` loads it.
 
-Each variant has its own `hot_add_scripts` call and its own `OUT_DIR`, so the two `wolf.g1.so` files do not clash.
+Each variant has its own `hot_add_host` call. Each call has its own output directory, so the two `wolf.g1.so` files do not clash.
 Both programs print the same output. The build also compiles the `.cpp` script with the normal
 compiler (the object library `precompiled_library_cpp_scripts_plain`). This shows that a `.cpp` script compiles unchanged.
 
 ## How it works
 
-1. `hot_add_scripts(TARGET sample_precompiled_hot_scripts SCRIPTS script/wolf.hot ...)` runs `hotc`.
+1. `hot_add_host(TARGET sample_precompiled_hot MODE PRECOMPILED SCRIPTS script/wolf.hot ...)` runs `hotc`.
    It makes the library `wolf.g1.so`. `FLAGS` pass the flags of the host build to the compile.
-2. The variable `HOT_SCRIPTS_sample_precompiled_hot_scripts_LIBRARIES` has the paths of the
+2. The variable `HOT_SCRIPTS_sample_precompiled_hot_LIBRARIES` has the paths of the
    libraries. The test gives the path to the program as `argv[1]`.
 3. `hot::module_from_library(path)` opens the library. `hot::Loader::load` takes the module.
    `Loader::find("Wolf")` returns the class entry and `create()` makes an object.
 4. The loader is declared first, so it is destroyed last. The object dies before it.
 
-The program links `hot_runtime`. It does not link `hot_backend`. `ENABLE_EXPORTS` is ON.
+The program links `hot::runtime`. It does not link `hot::backend`. `ENABLE_EXPORTS` is ON.
 The library resolves host and runtime symbols from the executable.
 Each program depends on the library target of its variant, so the library
 exists before the test runs.
@@ -84,11 +84,12 @@ the path of a `wolf.g1.so` file. It is under `hot_scripts/sample_precompiled_hot
 
 ## Adapt it to your project
 
-1. Call `hot_add_scripts(TARGET <name> SCRIPTS <your .hot files> INCLUDES <absolute folders> FLAGS <host flags> DEPENDS <your headers>)`.
+1. Make your program with `add_executable(<name> ...)`. Then call
+   `hot_add_host(TARGET <name> MODE PRECOMPILED SCRIPTS <your .hot files> INCLUDES <absolute folders> FLAGS <host flags> DEPENDS <your headers>)`.
    Get the host flags from `separate_arguments(host_flags NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")`,
    as `CMakeLists.txt` does. A sanitizer or another runtime flag must be the same in the host and in the library.
-2. Link your program to `hot_runtime`, set `ENABLE_EXPORTS ON` and add `add_dependencies(<program> <name>)`.
-3. Take the library paths from `HOT_SCRIPTS_<name>_LIBRARIES`. Give them to the program in
+2. The call links `hot::runtime`, sets `ENABLE_EXPORTS ON` and adds the dependency on the library target `<name>_scripts`.
+3. Take the library paths from `HOT_SCRIPTS_<name>_LIBRARIES` (same scope as the call). Give them to the program in
    a way that suits you (an argument, a config file or a fixed folder).
 4. Call `hot::module_from_library(path)`. Check the `LoadResult`. Give the module to `Loader::load`.
 5. For a later generation, build another library with `HOTC_ARGS --gen 2` and give it to
@@ -107,4 +108,4 @@ Both variants print the same lines. The tests `sample_precompiled_hot` and `samp
 ## More information
 
 - [Embedding](../../doc/embedding.md): the six hosting situations and the backend interface.
-- [CMake](../../doc/cmake.md): the options and the function `hot_add_scripts`.
+- [CMake](../../doc/cmake.md): the options and the functions `hot_add_host` and `hot_add_scripts`.

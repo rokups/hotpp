@@ -13,7 +13,6 @@ endif()
 # scripts. Both variants are in the folder script. The names of the script files stay wolf_v1 and wolf_v2.
 #   sample_hot_reload_hot reads script/wolf_v1.hot and wolf_v2.hot.
 #   sample_hot_reload_cpp reads script/wolf_v1.cpp and wolf_v2.cpp.
-# hot_backend has make_default_backend and the loader (hot_runtime).
 foreach(variant hot cpp)
     # The variant "hot" uses the extension ".hot".
     set(ext ${variant})
@@ -22,18 +21,15 @@ foreach(variant hot cpp)
     endif()
     set(target sample_hot_reload_${variant})
     add_executable(${target} main.cpp)
-    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(${target} PRIVATE hot_backend)
-    # The generation modules resolve host and runtime symbols from the executable.
-    set_target_properties(${target} PROPERTIES ENABLE_EXPORTS ON)
-    # SAMPLE_DIR has Creature.h (an include dir of the compile at run time).
-    # SAMPLE_SCRIPT_DIR and SAMPLE_SCRIPT_EXT select the scripts that the program reads at run time.
-    target_compile_definitions(${target} PRIVATE
-        SAMPLE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-        SAMPLE_SCRIPT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/script"
-        SAMPLE_SCRIPT_EXT=".${ext}")
+    # hot_add_host links hot::backend (make_default_backend and the loader) and exports the symbols
+    # that the generation modules need. HOT_SCRIPT_DIR is the folder script. HOT_SAMPLE_EXT is the
+    # extension of the variant (.hot or .cpp).
+    target_compile_definitions(${target} PRIVATE HOT_SAMPLE_EXT=".${ext}")
+    hot_add_host(TARGET ${target} MODE HOT_RELOAD
+                 SCRIPTS script/wolf_v1.${ext} script/wolf_v2.${ext}
+                 INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS Creature.h)
 
-    add_test(NAME ${target} COMMAND ${target})
+    add_test(NAME ${target} COMMAND ${target} ${CMAKE_CURRENT_SOURCE_DIR}/script)
     # The output must have the lines of both generations.
     set_tests_properties(${target} PROPERTIES
         PASS_REGULAR_EXPRESSION "\\[v1\\][^\n]*\n[^\n]*\\[v1\\][^\n]*\n[^\n]*\\[v2\\][^\n]*\n[^\n]*\\[v2\\]")

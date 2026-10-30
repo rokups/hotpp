@@ -33,13 +33,6 @@ add_library(imgui_sdl3 STATIC
 target_include_directories(imgui_sdl3 PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
 target_link_libraries(imgui_sdl3 PUBLIC SDL3::SDL3)
 
-# The compiler needs its resource folder to find the compiler headers.
-execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
-                OUTPUT_VARIABLE resource_dir OUTPUT_STRIP_TRAILING_WHITESPACE)
-# A list value uses "|" between the items.
-separate_arguments(cxxflags_list NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
-list(JOIN cxxflags_list "|" cxxflags_joined)
-
 # One program source, two script variants. The extension picks the script.
 #   sample_imgui_hot reads script/demo.hot.
 #   sample_imgui_cpp reads script/demo.cpp.
@@ -54,18 +47,18 @@ foreach(variant hot cpp)
     add_executable(${target} main.cpp UiApp.cpp)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     # Whole archive: a script can call any ImGui function. The linker must keep all objects.
-    target_link_libraries(${target} PRIVATE hot_runtime hot_clang_backend "$<LINK_LIBRARY:WHOLE_ARCHIVE,imgui_sdl3>")
+    target_link_libraries(${target} PRIVATE hot::runtime hot::clang_backend "$<LINK_LIBRARY:WHOLE_ARCHIVE,imgui_sdl3>")
     # The generation modules resolve host and runtime symbols from the executable.
     set_target_properties(${target} PROPERTIES ENABLE_EXPORTS ON)
-    # SAMPLE_SCRIPT_DIR and SAMPLE_SCRIPT_EXT select the default script of the program.
-    target_compile_definitions(${target} PRIVATE
-        IMGUI_APP_CXX="${CMAKE_CXX_COMPILER}"
-        IMGUI_APP_CXXFLAGS="${cxxflags_joined}"
-        IMGUI_APP_INCLUDES="${HOT_INCLUDE_DIR}|${CMAKE_CURRENT_SOURCE_DIR}|${imgui_SOURCE_DIR}"
-        IMGUI_APP_RESOURCE_DIR="${resource_dir}"
-        IMGUI_APP_WORK_DIR="${CMAKE_CURRENT_BINARY_DIR}/hot_work"
-        SAMPLE_SCRIPT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/script"
-        SAMPLE_SCRIPT_EXT=".${ext}")
+    # HOT_SAMPLE_EXT is the extension of the variant. The paths of the build go in only in a
+    # development build. A portable build gets the script from argv[1] and the include folder
+    # of ImGui from the environment variable HOT_IMGUI_INCLUDE_DIR.
+    target_compile_definitions(${target} PRIVATE HOT_SAMPLE_EXT=".${ext}")
+    if(NOT HOT_PORTABLE)
+        target_compile_definitions(${target} PRIVATE
+            HOT_SCRIPT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/script"
+            HOT_IMGUI_INCLUDE_DIR="${imgui_SOURCE_DIR}")
+    endif()
 endforeach()
 
 # The normal toolchain compiles the .cpp script too. A .cpp script must compile unchanged.

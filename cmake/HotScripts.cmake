@@ -43,6 +43,17 @@
 get_filename_component(_hot_include_dir "${CMAKE_CURRENT_LIST_DIR}/../include" ABSOLUTE)
 set(HOT_INCLUDE_DIR "${_hot_include_dir}" CACHE INTERNAL "The include dir of Hot++")
 
+# Sets the variable named by "out" to the Clang resource directory of the build compiler.
+# It uses CLANG_RESOURCE_DIR if set. Else it asks CMAKE_CXX_COMPILER (Clang only). Empty if unknown.
+function(_hot_resource_dir out)
+    set(dir "${CLANG_RESOURCE_DIR}")
+    if(NOT dir AND NOT MSVC)
+        execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
+                        OUTPUT_VARIABLE dir OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    endif()
+    set(${out} "${dir}" PARENT_SCOPE)
+endfunction()
+
 function(hot_add_scripts)
     cmake_parse_arguments(A "AOT" "TARGET;OUT_DIR;AFTER" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS;HOTC_ARGS" ${ARGN})
     if(A_UNPARSED_ARGUMENTS)
@@ -103,6 +114,12 @@ function(hot_add_scripts)
     endforeach()
     # The include dir of Hot++ comes first. A caller does not need to pass it in INCLUDES.
     set(args -I ${HOT_INCLUDE_DIR})
+    # hotc at build time takes the resource directory of the build compiler. It does not search
+    # PATH. This option is build-time only. It does not go into a host binary.
+    _hot_resource_dir(res_dir)
+    if(res_dir)
+        list(APPEND args --resource-dir ${res_dir})
+    endif()
     foreach(i ${A_INCLUDES})
         list(APPEND args -I ${i})
     endforeach()
@@ -180,6 +197,93 @@ function(hot_add_scripts)
     # The language server gets a script host with the same scripts, includes and flags.
     hot_script_host(NAME ${A_TARGET} SCRIPTS ${scripts}
                     INCLUDES ${A_INCLUDES} FLAGS ${all_flags})
+endfunction()
+
+# hot_add_host: set up the scripts of one host program. The target must exist before the call.
+#
+#   hot_add_host(TARGET t [MODE AOT|HOT_RELOAD|PRECOMPILED] SCRIPTS a.hot b.hot
+#                [INCLUDES dir...] [DEPENDS file...] [PRELUDES file...] [FLAGS flag...]
+#                [HOTC_ARGS arg...])
+#
+# MODE defaults to HOT_RELOAD. The options have the meaning that they have in hot_add_scripts.
+#   AOT:         hot_add_scripts makes the static library ${t}_scripts. The target t links it.
+#   PRECOMPILED: hot_add_scripts makes the script libraries with the target ${t}_scripts. The
+#                target t links hot::runtime, exports its symbols and depends on ${t}_scripts.
+#                The libraries go to ${CMAKE_BINARY_DIR}/hot_scripts/${t}, so two hosts do not clash.
+#                The variable HOT_SCRIPTS_${t}_LIBRARIES gets the library paths.
+#   HOT_RELOAD:  the target t links hot::backend and exports its symbols. A development build
+#                gets the define HOT_SCRIPT_DIR (the directory of the first script). A portable
+#                build (HOT_PORTABLE) holds no build path. It copies the include dir of Hot++ to
+#                <directory of t>/hot/include after the build, where default_paths() finds it.
+# In every mode, INCLUDES are include dirs of the target t.
+function(hot_add_host)
+    cmake_parse_arguments(H "" "TARGET;MODE" "SCRIPTS;INCLUDES;DEPENDS;PRELUDES;FLAGS;HOTC_ARGS" ${ARGN})
+    if(H_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR "hot_add_host: unknown arguments: ${H_UNPARSED_ARGUMENTS}")
+    endif()
+    if(NOT H_TARGET OR NOT H_SCRIPTS)
+        message(FATAL_ERROR "hot_add_host needs TARGET and SCRIPTS")
+    endif()
+    if(NOT TARGET ${H_TARGET})
+        message(FATAL_ERROR "hot_add_host: the target ${H_TARGET} does not exist")
+    endif()
+    if(NOT H_MODE)
+        set(H_MODE HOT_RELOAD)
+    endif()
+    if(NOT H_MODE STREQUAL "AOT" AND NOT H_MODE STREQUAL "HOT_RELOAD" AND NOT H_MODE STREQUAL "PRECOMPILED")
+        message(FATAL_ERROR "hot_add_host: MODE must be AOT, HOT_RELOAD or PRECOMPILED. It is: ${H_MODE}")
+    endif()
+    set(t ${H_TARGET})
+    set(common_args SCRIPTS ${H_SCRIPTS})
+    if(H_INCLUDES)
+        list(APPEND common_args INCLUDES ${H_INCLUDES})
+    endif()
+    if(H_DEPENDS)
+        list(APPEND common_args DEPENDS ${H_DEPENDS})
+    endif()
+    if(H_FLAGS)
+        list(APPEND common_args FLAGS ${H_FLAGS})
+    endif()
+    if(H_HOTC_ARGS)
+        list(APPEND common_args HOTC_ARGS ${H_HOTC_ARGS})
+    endif()
+
+    if(H_MODE STREQUAL "AOT")
+        set(prelude_args "")
+        if(H_PRELUDES)
+            set(prelude_args PRELUDES ${H_PRELUDES})
+        endif()
+        hot_add_scripts(TARGET ${t}_scripts AOT ${common_args} ${prelude_args})
+        target_link_libraries(${t} PRIVATE ${t}_scripts)
+    elseif(H_MODE STREQUAL "PRECOMPILED")
+        if(H_PRELUDES)
+            message(FATAL_ERROR "hot_add_host: PRELUDES works only with MODE AOT (target ${t})")
+        endif()
+        hot_add_scripts(TARGET ${t}_scripts OUT_DIR ${CMAKE_BINARY_DIR}/hot_scripts/${t} ${common_args})
+        target_link_libraries(${t} PRIVATE hot::runtime)
+        set_target_properties(${t} PROPERTIES ENABLE_EXPORTS ON)
+        add_dependencies(${t} ${t}_scripts)
+        set(HOT_SCRIPTS_${t}_LIBRARIES ${HOT_SCRIPTS_${t}_scripts_LIBRARIES} PARENT_SCOPE)
+    else()
+        if(H_PRELUDES)
+            message(FATAL_ERROR "hot_add_host: PRELUDES works only with MODE AOT (target ${t})")
+        endif()
+        target_link_libraries(${t} PRIVATE hot::backend)
+        set_target_properties(${t} PROPERTIES ENABLE_EXPORTS ON)
+        hot_script_host(NAME ${t} TARGET ${t} ${common_args})
+        if(HOT_PORTABLE)
+            add_custom_command(TARGET ${t} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${HOT_INCLUDE_DIR} $<TARGET_FILE_DIR:${t}>/hot/include
+                COMMENT "Copy the Hot++ include directory next to ${t}"
+                VERBATIM)
+        else()
+            list(GET H_SCRIPTS 0 first_script)
+            get_filename_component(first_abs ${first_script} ABSOLUTE)
+            get_filename_component(script_dir ${first_abs} DIRECTORY)
+            target_compile_definitions(${t} PRIVATE HOT_SCRIPT_DIR="${script_dir}")
+        endif()
+    endif()
+    target_include_directories(${t} PRIVATE ${H_INCLUDES})
 endfunction()
 
 # hot_script_host: describe a script host for the language server hot-ls.

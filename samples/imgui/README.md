@@ -57,6 +57,7 @@ cmake-build/linux-clang-files/bin/Debug/sample_imgui_hot [script]
 cmake-build/linux-clang-files/bin/Debug/sample_imgui_cpp [script]
 ```
 
+The default script comes from the definition `HOT_SCRIPT_DIR` (a development build only). In a portable build, give the script as `argv[1]`.
 The default script of `sample_imgui_hot` is `script/demo.hot`.
 The default script of `sample_imgui_cpp` is `script/demo.cpp`.
 
@@ -71,11 +72,13 @@ To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`.
 
 ## Adapt it to your project
 
-1. Link your program to `hot_runtime` and `hot_clang_backend`. Set `ENABLE_EXPORTS ON`.
+1. Link your program to `hot::runtime` and `hot::clang_backend`. Set `ENABLE_EXPORTS ON`.
 2. Link a library that the scripts call (here `imgui_sdl3`) as a whole archive.
    The linker then keeps all objects.
-3. Put the include folders of the script in `include_dirs`: the include folder of Hot++,
-   the folder of the host headers and the folder of the library headers.
+3. Fill the options from `hot::default_paths()` (`hot/paths.h`): it gives the compiler, the resource folder,
+   the work folder and the include folder of Hot++. Add the folder of the host headers and the folder of
+   the library headers to `include_dirs`. In a portable build (`HOT_PORTABLE=ON`) this sample reads the
+   ImGui include folder from the environment variable `HOT_IMGUI_INCLUDE_DIR`.
 4. Call `hot_script_host` so that the language server knows the script folder.
 5. Gap: a native array field such as `float rgb[3];` gives "expected a member name". Use `ImVec4 col`
    and `&this.col.x`, or three float fields.

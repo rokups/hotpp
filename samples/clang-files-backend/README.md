@@ -44,14 +44,18 @@ compiler (the object library `clang_files_backend_cpp_scripts_plain`). This show
 
 | Field | Value in the sample |
 |---|---|
-| `compiler` | `CMAKE_CXX_COMPILER` |
-| `include_dirs` | the include dir of Hot++ and the folder of the sample |
-| `extra_flags` | `CMAKE_CXX_FLAGS` (the flags of the host, for example a sanitizer) |
-| `resource_dir` | the output of `<compiler> -print-resource-dir` |
-| `work_dir` | `hot_work_hot` or `hot_work_cpp` in the build folder (one for each program) |
+| `compiler` | `hot::default_paths().compiler` |
+| `include_dirs` | `hot::default_paths().include_dirs` and the folder of `Creature.h` (the parent of the script folder) |
+| `extra_flags` | `hot::default_paths().cxxflags` (the flags of the host, for example a sanitizer) |
+| `resource_dir` | `hot::default_paths().resource_dir` |
+| `work_dir` | `hot::default_paths().work_dir` and `/sample_clang_files_p<pid>` (one for each process) |
 | `remove_work_dir_at_exit` | `true` |
 
-The sample does not use `HOT_DEFAULT_CXXFLAGS`. The compile works with the flags above.
+`hot::default_paths()` (`hot/paths.h`) gives the compiler, the Hot++ include folders, the resource
+folder and the work folder. A development build takes them from the build tree. A portable build
+(`HOT_PORTABLE=ON`) has no build path in the binary and finds them at run time (see
+[CMake](../../doc/cmake.md)). The script folder is `argv[1]`, else the definition `HOT_SCRIPT_DIR`.
+The definition `HOT_SAMPLE_EXT` (`.hot` or `.cpp`) picks the variant. `argv[2]` replaces it.
 The C++ standard is empty in the options, so the backend uses the standard of the host.
 The other fields (`slots_file`, `session`, `strict_borrowed`, `raw_diagnostics`) keep their defaults.
 See the table of the options in [Embedding](../../doc/embedding.md).
@@ -91,15 +95,15 @@ To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`. The `CMakeLists.txt` o
 
 ## Link
 
-- The program links `hot_clang_backend`. It brings `hot_runtime` and `hotc_lib`.
+- The program links `hot::clang_backend`. It brings `hot::runtime` and `hotc_lib`. `hot_add_host` also links `hot::backend`.
 - `ENABLE_EXPORTS` is ON. The generation modules resolve host and runtime symbols from the
   executable.
 
 ## Adapt it to your project
 
-1. Link your program to `hot_clang_backend` and set `ENABLE_EXPORTS ON`.
-2. Pass values from CMake as compile definitions, as `CMakeLists.txt` does: the compiler, the flags,
-   the include folders of Hot++ (`HOT_INCLUDE_DIR`) and of your headers, and the resource folder.
+1. Link your program to `hot::clang_backend` and set `ENABLE_EXPORTS ON` (`hot_add_host` does this).
+2. Fill the options from `hot::default_paths()`, as `main.cpp` does. Add the include folders of your headers.
+   Do not put build paths in the binary: the compiler, the resource folder and the Hot++ folders come from this call.
 3. Use a work folder that only this backend uses when you set `remove_work_dir_at_exit` to `true`.
 4. Keep the compiler flags of the host, such as a sanitizer, in `extra_flags`.
 5. The compiler must exist on the machine that runs the program.
@@ -117,4 +121,4 @@ Each test (`sample_clang_files_hot` and `sample_clang_files_cpp`) passes when th
 ## More information
 
 - [Embedding](../../doc/embedding.md): the six hosting situations and the backend interface.
-- [CMake](../../doc/cmake.md): the options and the function `hot_add_scripts`.
+- [CMake](../../doc/cmake.md): the options and the functions `hot_add_host` and `hot_add_scripts`.

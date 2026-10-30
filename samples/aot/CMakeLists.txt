@@ -13,8 +13,8 @@ endif()
 # in the folder script. Each variant has its own AOT library and its own program.
 #   sample_aot_hot has the C++ that hotc makes from script/wolf.hot.
 #   sample_aot_cpp has the C++ that hotc makes from script/wolf.cpp.
-# A call of hot_add_scripts takes scripts with one stem only, so each variant has its own call and
-# its own OUT_DIR. The library sample_aot_<variant>_scripts has the result and links hot_aot.
+# A call of hot_add_host takes scripts with one stem only, so each variant has its own call.
+# The library sample_aot_<variant>_scripts has the result and links hot::aot.
 enable_testing()
 foreach(variant hot cpp)
     # The variant "hot" uses the extension ".hot".
@@ -22,13 +22,10 @@ foreach(variant hot cpp)
     if(variant STREQUAL "hot")
         set(ext hot)
     endif()
-    hot_add_scripts(TARGET sample_aot_${variant}_scripts AOT SCRIPTS script/wolf.${ext}
-                    OUT_DIR ${CMAKE_BINARY_DIR}/hot_aot/sample_aot_${variant}
-                    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS Creature.h)
     set(target sample_aot_${variant})
     add_executable(${target} main.cpp)
-    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(${target} PRIVATE sample_aot_${variant}_scripts)
+    hot_add_host(TARGET ${target} MODE AOT SCRIPTS script/wolf.${ext}
+                 INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS Creature.h)
     add_test(NAME ${target} COMMAND ${target})
 endforeach()
 

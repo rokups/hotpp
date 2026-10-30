@@ -46,6 +46,7 @@
 #include "hot/clang_files_backend.h"
 #include "hot/config.h"
 #include "hot/hotc_lib.h"
+#include "hot/paths.h"
 
 #include <cctype>
 #include <cstdio>
@@ -240,7 +241,8 @@ int run_aot(const Args& args)
     base.generation = 1;
     base.strict_borrowed = args.strict_borrowed;
     base.format_lib = args.format_lib;
-    base.resource_dir = args.resource_dir;
+    // Without --resource-dir the translator needs the default. A portable build finds it at run time.
+    base.resource_dir = args.resource_dir.empty() ? hot::default_paths().resource_dir : args.resource_dir;
     base.std_version = args.std_version;
     base.include_dirs = args.include_dirs;
     for (const std::string& file : args.preludes)
@@ -342,7 +344,7 @@ int run_emit(const Args& args)
     opt.generation = args.gen;
     opt.strict_borrowed = args.strict_borrowed;
     opt.format_lib = args.format_lib;
-    opt.resource_dir = args.resource_dir;
+    opt.resource_dir = args.resource_dir.empty() ? hot::default_paths().resource_dir : args.resource_dir;
     opt.std_version = args.std_version;
     opt.include_dirs = args.include_dirs;
     for (const std::string& file : args.preludes)

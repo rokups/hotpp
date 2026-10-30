@@ -11,10 +11,6 @@ if(NOT TARGET hotc)
     add_subdirectory(${HOT_ROOT} hot)
 endif()
 
-# The compiler needs its resource folder to find the compiler headers.
-execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
-                OUTPUT_VARIABLE resource_dir OUTPUT_STRIP_TRAILING_WHITESPACE)
-
 # One program source, two script variants. The extension picks the script.
 #   sample_clang_files_hot reads script/wolf.hot.
 #   sample_clang_files_cpp reads script/wolf.cpp.
@@ -26,23 +22,15 @@ foreach(variant hot cpp)
     endif()
     set(target sample_clang_files_${variant})
     add_executable(${target} main.cpp)
-    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(${target} PRIVATE hot_clang_backend)
-    # The generation modules resolve host and runtime symbols from the executable.
-    set_target_properties(${target} PROPERTIES ENABLE_EXPORTS ON)
-    # SAMPLE_DIR has Creature.h. SAMPLE_SCRIPT_DIR and SAMPLE_SCRIPT_EXT select the script
-    # that the program reads at run time.
-    target_compile_definitions(${target} PRIVATE
-        SAMPLE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-        SAMPLE_SCRIPT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/script"
-        SAMPLE_SCRIPT_EXT=".${ext}"
-        SAMPLE_HOT_INCLUDE_DIR="${HOT_INCLUDE_DIR}"
-        SAMPLE_CXX="${CMAKE_CXX_COMPILER}"
-        SAMPLE_CXXFLAGS="${CMAKE_CXX_FLAGS}"
-        SAMPLE_RESOURCE_DIR="${resource_dir}"
-        SAMPLE_WORK_DIR="${CMAKE_CURRENT_BINARY_DIR}/hot_work_${variant}")
+    # hot_add_host sets ENABLE_EXPORTS (the generation modules resolve host and runtime symbols
+    # from the executable) and the define HOT_SCRIPT_DIR (the folder script, not in a portable
+    # build). HOT_SAMPLE_EXT is the extension of the variant.
+    hot_add_host(TARGET ${target} MODE HOT_RELOAD SCRIPTS script/wolf.${ext}
+                 INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS Creature.h)
+    target_link_libraries(${target} PRIVATE hot::clang_backend)
+    target_compile_definitions(${target} PRIVATE HOT_SAMPLE_EXT=".${ext}")
 
-    add_test(NAME ${target} COMMAND ${target})
+    add_test(NAME ${target} COMMAND ${target} ${CMAKE_CURRENT_SOURCE_DIR}/script)
 endforeach()
 
 # The normal toolchain compiles the .cpp script too. A .cpp script must compile unchanged.

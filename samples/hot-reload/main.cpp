@@ -1,13 +1,16 @@
 // The program of the sample. It loads generation 1 of wolf, ticks, reloads generation 2 and
 // ticks the same object again. The object keeps its field values.
 // The host needs a C++ compiler at run time.
-// The build makes two programs from this file. The definitions SAMPLE_SCRIPT_DIR and
-// SAMPLE_SCRIPT_EXT select the script variant (.hot or .cpp).
+// The build makes two programs from this file. The arguments select the script variant:
+//   sample_hot_reload [script-dir [extension]]
+// The folder defaults to the definition HOT_SCRIPT_DIR. The extension (.hot or .cpp) defaults to
+// the definition HOT_SAMPLE_EXT, else .hot.
 #include "Creature.h"
 #include "hot/backend.h"
 #include "hot/runtime/loader.h"
 
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -25,23 +28,52 @@ bool read_file(const std::string& path, std::string& text)
     text = buffer.str();
     return true;
 }
+
+// The script extension of this variant: the build definition HOT_SAMPLE_EXT, else ".hot".
+std::string script_ext()
+{
+#ifdef HOT_SAMPLE_EXT
+    return HOT_SAMPLE_EXT;
+#else
+    return ".hot";
+#endif
+}
+
+// The folder of the scripts: argv[1], else the build definition HOT_SCRIPT_DIR. Empty if none.
+std::string script_dir(int argc, char** argv)
+{
+    if (argc > 1)
+        return argv[1];
+#ifdef HOT_SCRIPT_DIR
+    return HOT_SCRIPT_DIR;
+#else
+    return {};
+#endif
+}
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-    const std::string path_v1 = std::string(SAMPLE_SCRIPT_DIR) + "/wolf_v1" + SAMPLE_SCRIPT_EXT;
-    const std::string path_v2 = std::string(SAMPLE_SCRIPT_DIR) + "/wolf_v2" + SAMPLE_SCRIPT_EXT;
+    const std::string dir = script_dir(argc, argv);
+    if (dir.empty())
+    {
+        std::fprintf(stderr, "usage: sample_hot_reload <script-dir> [extension]\n");
+        return 2;
+    }
+    const std::string ext = argc > 2 ? argv[2] : script_ext();
+    const std::string path_v1 = dir + "/wolf_v1" + ext;
+    const std::string path_v2 = dir + "/wolf_v2" + ext;
     std::string text_v1;
     std::string text_v2;
     if (!read_file(path_v1, text_v1) || !read_file(path_v2, text_v2))
     {
-        std::fprintf(stderr, "sample_hot_reload: cannot read the scripts in %s\n", SAMPLE_SCRIPT_DIR);
+        std::fprintf(stderr, "sample_hot_reload: cannot read the scripts in %s\n", dir.c_str());
         return 1;
     }
 
     // The backend runs the compiler. The folder of Creature.h is an include dir of the compile.
     hot::DefaultBackendOptions options;
-    options.include_dirs = {SAMPLE_DIR};
+    options.include_dirs = {std::filesystem::path(dir).parent_path().string()};
     std::unique_ptr<hot::Backend> backend = hot::make_default_backend(options);
 
     // The loader is first, so it is destroyed last. The script object dies before it.

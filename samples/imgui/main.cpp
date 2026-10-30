@@ -8,12 +8,14 @@
 #include "backends/imgui_impl_sdlrenderer3.h"
 #include "imgui.h"
 #include "hot/clang_files_backend.h"
+#include "hot/paths.h"
 #include "hot/runtime.h"
 #include "hot/scratch.h"
 
 #include <SDL3/SDL.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -26,28 +28,51 @@
 namespace
 {
 
-std::vector<std::string> split_list(const std::string& s)
+// The include folder of ImGui: the build definition (development build), else the environment.
+std::string imgui_include_dir()
 {
-    std::vector<std::string> v;
-    std::stringstream ss(s);
-    for (std::string item; std::getline(ss, item, '|');)
-        if (!item.empty())
-            v.push_back(item);
-    return v;
+#ifdef HOT_IMGUI_INCLUDE_DIR
+    return HOT_IMGUI_INCLUDE_DIR;
+#else
+    const char* env = std::getenv("HOT_IMGUI_INCLUDE_DIR");
+    return env ? env : "";
+#endif
 }
 
-std::unique_ptr<hot::Backend> make_backend()
+// The default script: the definition HOT_SCRIPT_DIR with the extension of the variant.
+std::string default_script()
 {
+#ifdef HOT_SCRIPT_DIR
+    return std::string(HOT_SCRIPT_DIR) + "/demo" + HOT_SAMPLE_EXT;
+#else
+    return {};
+#endif
+}
+
+// The folder for the work files and the ini file.
+std::string app_work_dir()
+{
+    return hot::default_paths().work_dir;
+}
+
+std::unique_ptr<hot::Backend> make_backend(const std::string& script_path)
+{
+    const hot::DefaultPaths paths = hot::default_paths();
     hot::ClangFilesOptions o;
-    o.compiler = IMGUI_APP_CXX;
-    o.include_dirs = split_list(IMGUI_APP_INCLUDES);
-    o.extra_flags = split_list(IMGUI_APP_CXXFLAGS);
-    o.resource_dir = IMGUI_APP_RESOURCE_DIR;
-    o.work_dir = std::string(IMGUI_APP_WORK_DIR) + "/p" + std::to_string(getpid());
+    o.compiler = paths.compiler;
+    o.include_dirs = paths.include_dirs;
+    // The folder of UiApp.h is the parent of the script folder.
+    o.include_dirs.push_back(std::filesystem::path(script_path).parent_path().parent_path().string());
+    if (const std::string imgui = imgui_include_dir(); !imgui.empty())
+        o.include_dirs.push_back(imgui);
+    o.extra_flags = paths.cxxflags;
+    o.resource_dir = paths.resource_dir;
+    const std::string work = app_work_dir();
+    o.work_dir = work + "/p" + std::to_string(getpid());
     std::error_code ec;
     std::filesystem::remove_all(o.work_dir, ec);
-    std::filesystem::create_directories(IMGUI_APP_WORK_DIR, ec);
-    // Only the p<pid> directory goes. The ini file in IMGUI_APP_WORK_DIR stays.
+    std::filesystem::create_directories(work, ec);
+    // Only the p<pid> directory goes. The ini file in the work directory stays.
     o.remove_work_dir_at_exit = !hot::keep_temp();
     return std::make_unique<hot::ClangFilesBackend>(std::move(o));
 }
@@ -99,7 +124,7 @@ UiApp* create_app(hot::Loader& loader, std::string& error)
 struct Host
 {
     hot::Loader loader;
-    std::unique_ptr<hot::Backend> backend = make_backend();
+    std::unique_ptr<hot::Backend> backend; // made in main, when the script path is known
     std::string path;
     uint32_t generation = 0; // the number of the last compile
     bool loaded = false; // the loader has a first module
@@ -229,7 +254,13 @@ struct Host
 int main(int argc, char** argv)
 {
     Host host; // the host ends last: the app is deleted before the loader
-    host.path = argc > 1 ? argv[1] : SAMPLE_SCRIPT_DIR "/demo" SAMPLE_SCRIPT_EXT;
+    host.path = argc > 1 ? argv[1] : default_script();
+    if (host.path.empty())
+    {
+        std::fprintf(stderr, "usage: sample_imgui <script>\n");
+        return 2;
+    }
+    host.backend = make_backend(host.path);
     host.first_load();
 
     if (!SDL_Init(SDL_INIT_VIDEO))
@@ -252,7 +283,7 @@ int main(int argc, char** argv)
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     // The ini file goes to the app work directory. The backend does not remove it.
-    static const std::string ini_path = std::string(IMGUI_APP_WORK_DIR) + "/imgui.ini";
+    static const std::string ini_path = app_work_dir() + "/imgui.ini";
     ImGui::GetIO().IniFilename = ini_path.c_str();
     // A script that throws inside Begin leaves the window stack open. ImGui recovers.
     ImGui::GetIO().ConfigErrorRecoveryEnableAssert = false;

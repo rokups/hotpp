@@ -7,6 +7,10 @@ target_include_directories(hot_runtime_core PUBLIC ${PROJECT_SOURCE_DIR}/include
 # The format library is a build-time choice (include/hot/config.h). It has no runtime switch.
 if(HOT_FORMAT_LIB STREQUAL "fmt")
     get_property(HOT_FMT_INCLUDE_DIR GLOBAL PROPERTY HOT_FMT_INCLUDE_DIR)
+    if(HOT_PORTABLE)
+        # A portable build holds no build path. The empty value means: the compiler finds fmt.
+        set(HOT_FMT_INCLUDE_DIR "")
+    endif()
     target_compile_definitions(hot_runtime_core PUBLIC HOT_USE_FMT=1 HOT_FMT_INCLUDE_DIR="${HOT_FMT_INCLUDE_DIR}")
 else()
     target_compile_definitions(hot_runtime_core PUBLIC HOT_USE_FMT=0)
@@ -17,10 +21,22 @@ hot_effective_cxx_standard(HOT_HOST_CXX_STANDARD hot_runtime_core)
 target_compile_definitions(hot_runtime_core PUBLIC HOT_CXX_STANDARD=${HOT_HOST_CXX_STANDARD})
 add_library(hot_runtime STATIC
     state.cpp migration.cpp loader.cpp module.cpp
-    scratch.cpp)
+    scratch.cpp paths.cpp)
 # scratch.cpp reads the option as the default of keep_temp().
 target_compile_definitions(hot_runtime PRIVATE HOT_KEEP_TEMP_DEFAULT=$<BOOL:${HOT_KEEP_TEMP}>)
 target_link_libraries(hot_runtime PUBLIC hot_runtime_core ${CMAKE_DL_LIBS} Threads::Threads)
+# paths.cpp reads these (include/hot/paths.h). The compile flags are not paths, so both modes
+# have them. A portable build (HOT_PORTABLE) defines no build path. It finds the paths at run time.
+target_compile_definitions(hot_runtime PRIVATE HOT_DEFAULT_CXXFLAGS="${HOT_CXXFLAGS_JOINED}")
+if(HOT_PORTABLE)
+    target_compile_definitions(hot_runtime PRIVATE HOT_PORTABLE=1)
+else()
+    target_compile_definitions(hot_runtime PRIVATE
+        HOT_DEFAULT_CXX="${CMAKE_CXX_COMPILER}"
+        HOT_DEFAULT_INCLUDES="${HOT_DEFAULT_INCLUDES_JOINED}"
+        HOT_DEFAULT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}"
+        HOT_DEFAULT_WORK_DIR="${HOT_SCRATCH_DIR}/hot_work")
+endif()
 
 # AOT runtime (design M7): the core, the AOT registry and no-op object tracking.
 # Do not link it together with hot_runtime.
@@ -45,21 +61,24 @@ endif()
 # make_default_backend() returns the backend that HOT_BACKEND selected.
 add_library(hot_backend STATIC default_backend.cpp)
 target_link_libraries(hot_backend PUBLIC hot_runtime)
+if(HOT_PORTABLE)
+    # default_backend.cpp checks the work directory of a portable host.
+    target_compile_definitions(hot_backend PRIVATE HOT_PORTABLE=1)
+endif()
 if(HOT_BACKEND STREQUAL "CLANG_FILES")
     target_link_libraries(hot_backend PUBLIC hot_clang_backend)
-    target_compile_definitions(hot_backend PRIVATE
-        HOT_BACKEND_CLANG_FILES=1
-        HOT_DEFAULT_CXX="${CMAKE_CXX_COMPILER}"
-        HOT_DEFAULT_CXXFLAGS="${HOT_CXXFLAGS_JOINED}"
-        HOT_DEFAULT_INCLUDES="${HOT_DEFAULT_INCLUDES_JOINED}"
-        HOT_DEFAULT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}"
-        HOT_DEFAULT_WORK_DIR="${HOT_SCRATCH_DIR}/hot_work")
+    target_compile_definitions(hot_backend PRIVATE HOT_BACKEND_CLANG_FILES=1)
 elseif(HOT_BACKEND STREQUAL "JIT")
     target_link_libraries(hot_backend PUBLIC hot_jit_backend)
-    target_compile_definitions(hot_backend PRIVATE
-        HOT_BACKEND_JIT=1
-        HOT_DEFAULT_CXX="${CMAKE_CXX_COMPILER}"
-        HOT_DEFAULT_CXXFLAGS="${HOT_CXXFLAGS_JOINED}"
-        HOT_DEFAULT_INCLUDES="${HOT_DEFAULT_INCLUDES_JOINED}"
-        HOT_DEFAULT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
+    target_compile_definitions(hot_backend PRIVATE HOT_BACKEND_JIT=1)
+endif()
+
+# Alias targets for a consumer project. They have the namespace hot::.
+add_library(hot::runtime ALIAS hot_runtime)
+add_library(hot::runtime_core ALIAS hot_runtime_core)
+add_library(hot::aot ALIAS hot_aot)
+add_library(hot::backend ALIAS hot_backend)
+add_library(hot::clang_backend ALIAS hot_clang_backend)
+if(TARGET hot_jit_backend)
+    add_library(hot::jit_backend ALIAS hot_jit_backend)
 endif()

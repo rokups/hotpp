@@ -3,10 +3,11 @@
 // CMake defines HOT_BACKEND_CLANG_FILES or HOT_BACKEND_JIT.
 // A list value uses "|" between the items.
 #include "hot/backend.h"
+#include "hot/paths.h"
 #include "hot/scratch.h"
 
 #include <filesystem>
-#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <unistd.h>
 #include <vector>
@@ -21,21 +22,6 @@
 namespace hot
 {
 
-#if defined(HOT_BACKEND_CLANG_FILES) || defined(HOT_BACKEND_JIT)
-namespace
-{
-std::vector<std::string> split_list(const std::string& s)
-{
-    std::vector<std::string> v;
-    std::stringstream ss(s);
-    for (std::string item; std::getline(ss, item, '|');)
-        if (!item.empty())
-            v.push_back(item);
-    return v;
-}
-} // namespace
-#endif
-
 std::unique_ptr<Backend> make_default_backend()
 {
     return make_default_backend(DefaultBackendOptions{});
@@ -45,14 +31,21 @@ std::unique_ptr<Backend> make_default_backend(const DefaultBackendOptions& optio
 {
 #if defined(HOT_BACKEND_CLANG_FILES)
     ClangFilesOptions o;
-    o.compiler = HOT_DEFAULT_CXX;
-    o.include_dirs = split_list(HOT_DEFAULT_INCLUDES);
-    o.extra_flags = split_list(HOT_DEFAULT_CXXFLAGS);
+    const DefaultPaths paths = default_paths();
+    o.compiler = paths.compiler;
+    o.include_dirs = paths.include_dirs;
+    o.extra_flags = paths.cxxflags;
     o.include_dirs.insert(o.include_dirs.end(), options.include_dirs.begin(), options.include_dirs.end());
     o.extra_flags.insert(o.extra_flags.end(), options.extra_flags.begin(), options.extra_flags.end());
-    o.resource_dir = HOT_DEFAULT_RESOURCE_DIR;
+    o.resource_dir = paths.resource_dir;
+#ifdef HOT_PORTABLE
+    // The work directory of a portable host is in a shared place. Refuse an unsafe one.
+    const std::string work_error = check_work_dir(paths.work_dir);
+    if (!work_error.empty())
+        throw std::runtime_error(work_error);
+#endif
     // One work directory for each process, so parallel test processes do not share files.
-    o.work_dir = std::string(HOT_DEFAULT_WORK_DIR) + "/p" + std::to_string(getpid());
+    o.work_dir = paths.work_dir + "/p" + std::to_string(getpid());
     std::error_code ec;
     std::filesystem::remove_all(o.work_dir, ec);
     // Only this p<pid> directory goes. The parent directory is shared with other processes.
@@ -60,12 +53,13 @@ std::unique_ptr<Backend> make_default_backend(const DefaultBackendOptions& optio
     return std::make_unique<ClangFilesBackend>(std::move(o));
 #elif defined(HOT_BACKEND_JIT)
     JitOptions o;
-    o.compiler = HOT_DEFAULT_CXX;
-    o.include_dirs = split_list(HOT_DEFAULT_INCLUDES);
-    o.extra_flags = split_list(HOT_DEFAULT_CXXFLAGS);
+    const DefaultPaths paths = default_paths();
+    o.compiler = paths.compiler;
+    o.include_dirs = paths.include_dirs;
+    o.extra_flags = paths.cxxflags;
     o.include_dirs.insert(o.include_dirs.end(), options.include_dirs.begin(), options.include_dirs.end());
     o.extra_flags.insert(o.extra_flags.end(), options.extra_flags.begin(), options.extra_flags.end());
-    o.resource_dir = HOT_DEFAULT_RESOURCE_DIR;
+    o.resource_dir = paths.resource_dir;
     return std::make_unique<JitBackend>(std::move(o));
 #endif
 }

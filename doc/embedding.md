@@ -6,7 +6,7 @@ nav_order: 13
 
 The host loads scripts with a `Loader`. A development build compiles them. An AOT build links them.
 
-This page has six hosting situations. Each situation has a sample project. The page [CMake](cmake.html) has the build side: the targets, the options and `hot_add_scripts`.
+This page has six hosting situations. Each situation has a sample project. The page [CMake](cmake.html) has the build side: the targets, the options, `hot_add_host` and `hot_add_scripts`. A release build needs the section "Portable binaries" there.
 
 ## Which situation fits?
 
@@ -42,7 +42,7 @@ Pick the row that matches your program. Each sample is a small project that buil
 | Hot reload | `hot_backend` | `request_reload`, `commit_pending`, `frame_boundary` | [hot-reload](https://github.com/rokups/hotpp/tree/main/samples/hot-reload) |
 | In-process JIT | `hot_jit_backend` (needs `HOT_BACKEND=JIT`) | `JitBackend` | [jit-backend](https://github.com/rokups/hotpp/tree/main/samples/jit-backend) |
 | Explicit Clang files backend | `hot_clang_backend` | `ClangFilesBackend` | [clang-files-backend](https://github.com/rokups/hotpp/tree/main/samples/clang-files-backend) |
-| AOT | `hot_aot` (through the library of `hot_add_scripts`) | `AotRegistry` | [aot](https://github.com/rokups/hotpp/tree/main/samples/aot) |
+| AOT | `hot::aot` (through `hot_add_host` with `MODE AOT`) | `AotRegistry` | [aot](https://github.com/rokups/hotpp/tree/main/samples/aot) |
 
 ### Comparison
 
@@ -144,7 +144,7 @@ auto backend = hot::make_default_backend(options);
 
 **Links:** `hot_runtime`. No backend and no libclang. Set `ENABLE_EXPORTS`.
 
-`hotc` builds a script into a `.so` ahead of time. Any build can load it. In CMake use `hot_add_scripts` (default mode). On the command line:
+`hotc` builds a script into a `.so` ahead of time. Any build can load it. In CMake use `hot_add_host` with `MODE PRECOMPILED`, or `hot_add_scripts` for more control. On the command line:
 
 ```
 hotc player_v1.hot --gen 1 -I include -I tests/engine --out-dir out/
@@ -266,7 +266,7 @@ hot::LoadResult built = backend.load({"player.hot", text}, 1);
 
 ## AOT
 
-**Links:** `hot_aot`, through the library of `hot_add_scripts(... AOT ...)`. `hot_aot` links `hot_runtime_core` only. It has no loader. No `ENABLE_EXPORTS`.
+**Links:** `hot::aot`, through `hot_add_host(... MODE AOT ...)`. `hot_aot` links `hot_runtime_core` only. It has no loader. No `ENABLE_EXPORTS`.
 
 An AOT build has no loader, no reload and no Clang. `hotc --aot` (the AOT mode) translates generation 1 of each script to C++. The code becomes part of the game.
 
@@ -379,7 +379,7 @@ Fields of `Module`:
 
 ## CMake
 
-The page [CMake](cmake.html) describes the targets, the options and the functions `hot_add_scripts` and `hot_script_host`. A complete project is the sample [aot](https://github.com/rokups/hotpp/tree/main/samples/aot).
+The page [CMake](cmake.html) describes the targets, the options and the functions `hot_add_host`, `hot_add_scripts` and `hot_script_host`. A complete project is the sample [aot](https://github.com/rokups/hotpp/tree/main/samples/aot).
 
 ## Format library for `${}`
 

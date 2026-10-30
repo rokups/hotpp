@@ -77,15 +77,19 @@ To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`. The `CMakeLists.txt` o
 
 ## Link
 
-- The program links `hot_backend`. It brings `hot_runtime` and the backend library.
-- `ENABLE_EXPORTS` is ON. The generation modules resolve host and runtime symbols from the
+- `hot_add_host(... MODE HOT_RELOAD ...)` links `hot::backend`. It brings `hot::runtime` and the backend library.
+- The call sets `ENABLE_EXPORTS` to ON. The generation modules resolve host and runtime symbols from the
   executable.
-- `SAMPLE_DIR` is a compile definition. It is the folder of `Creature.h`.
-- `SAMPLE_SCRIPT_DIR` and `SAMPLE_SCRIPT_EXT` are compile definitions. `SAMPLE_SCRIPT_DIR` is the folder `script`. `SAMPLE_SCRIPT_EXT` (`.hot` or `.cpp`) picks the variant.
+- The compiler, the resource directory and the work directory come from `hot::default_paths()`
+  (`hot/paths.h`). The build of the sample is not portable, so they are the build values.
+- `HOT_SCRIPT_DIR` is a compile definition from `hot_add_host`. It is the folder `script`.
+  `argv[1]` replaces it. `HOT_SAMPLE_EXT` (`.hot` or `.cpp`) picks the variant. `argv[2]` replaces it.
+- The folder of `Creature.h` is the parent of the script folder. The program gives it to the backend.
 
 ## Adapt it to your project
 
-1. Link your program to `hot_backend` and set `ENABLE_EXPORTS ON` on it.
+1. Make your program with `add_executable`. Call `hot_add_host(TARGET <program> MODE HOT_RELOAD SCRIPTS <your scripts> INCLUDES <your header folders>)`.
+   It links `hot::backend` and sets `ENABLE_EXPORTS ON`.
 2. Fill `hot::DefaultBackendOptions`. Put the folders of your headers in `include_dirs`.
    Put extra compiler flags in `extra_flags`. They come after the build defaults.
 3. Read the script text yourself and give it to `backend->load({name, text, {}}, generation)`.
@@ -110,4 +114,4 @@ Each test (`sample_runtime_compile_hot` and `sample_runtime_compile_cpp`) passes
 ## More information
 
 - [Embedding](../../doc/embedding.md): the six hosting situations and the backend interface.
-- [CMake](../../doc/cmake.md): the options and the function `hot_add_scripts`.
+- [CMake](../../doc/cmake.md): the options and the functions `hot_add_host` and `hot_add_scripts`.

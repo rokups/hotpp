@@ -13,8 +13,8 @@ endif()
 # in the folder script. Each variant has its own library target and its own program.
 #   sample_precompiled_hot loads the library of script/wolf.hot.
 #   sample_precompiled_cpp loads the library of script/wolf.cpp.
-# A call of hot_add_scripts takes scripts with one stem only, so each variant has its own call and
-# its own OUT_DIR. The compile flags of the library follow the host flags.
+# A call of hot_add_host takes scripts with one stem only, so each variant has its own call.
+# The compile flags of the library follow the host flags.
 separate_arguments(host_flags NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
 enable_testing()
 foreach(variant hot cpp)
@@ -23,22 +23,15 @@ foreach(variant hot cpp)
     if(variant STREQUAL "hot")
         set(ext hot)
     endif()
-    # hotc builds wolf.g1.so at build time.
-    hot_add_scripts(TARGET sample_precompiled_${variant}_scripts SCRIPTS script/wolf.${ext}
-                    OUT_DIR ${CMAKE_BINARY_DIR}/hot_scripts/sample_precompiled_${variant}
-                    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} FLAGS ${host_flags} DEPENDS Creature.h)
-
     # The program has no backend and no compiler at run time. It links only the runtime.
+    # hotc builds wolf.g1.so at build time.
     set(target sample_precompiled_${variant})
     add_executable(${target} main.cpp)
-    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(${target} PRIVATE hot_runtime)
-    # The library resolves host and runtime symbols from the executable.
-    set_target_properties(${target} PROPERTIES ENABLE_EXPORTS ON)
-    add_dependencies(${target} sample_precompiled_${variant}_scripts)
+    hot_add_host(TARGET ${target} MODE PRECOMPILED SCRIPTS script/wolf.${ext}
+                 INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} FLAGS ${host_flags} DEPENDS Creature.h)
 
     # HOT_SCRIPTS_<target>_LIBRARIES has the paths of the libraries.
-    add_test(NAME ${target} COMMAND ${target} ${HOT_SCRIPTS_sample_precompiled_${variant}_scripts_LIBRARIES})
+    add_test(NAME ${target} COMMAND ${target} ${HOT_SCRIPTS_${target}_LIBRARIES})
 endforeach()
 
 # The normal toolchain compiles the .cpp script too. A .cpp script must compile unchanged.

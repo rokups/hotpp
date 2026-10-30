@@ -45,10 +45,15 @@ compiler (the object library `jit_backend_cpp_scripts_plain`). This shows that a
 
 | Field | Value in the sample |
 |---|---|
-| `compiler` | `CMAKE_CXX_COMPILER` |
-| `include_dirs` | the include dir of Hot++ and the folder of the sample |
-| `resource_dir` | the output of `<compiler> -print-resource-dir` |
-| `extra_flags` | `CMAKE_CXX_FLAGS` (the flags of the host, for example a sanitizer) |
+| `compiler` | `hot::default_paths().compiler` |
+| `include_dirs` | `hot::default_paths().include_dirs` and the folder of `Creature.h` (the parent of the script folder) |
+| `resource_dir` | `hot::default_paths().resource_dir` |
+| `extra_flags` | `hot::default_paths().cxxflags` (the flags of the host, for example a sanitizer) |
+
+`hot::default_paths()` (`hot/paths.h`) takes the values from the build tree in a development build.
+A portable build (`HOT_PORTABLE=ON`) finds them at run time (see [CMake](../../doc/cmake.md)).
+The script folder is `argv[1]`, else the definition `HOT_SCRIPT_DIR`. The definition
+`HOT_SAMPLE_EXT` (`.hot` or `.cpp`) picks the variant. `argv[2]` replaces it.
 
 The C++ standard (`std_version`) is empty, so the backend uses the standard of the host.
 The other fields (`session`, `pch_path`, `strict_borrowed`, `raw_diagnostics`, `debug_flag`,
@@ -90,15 +95,14 @@ To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`. The `CMakeLists.txt` o
 
 ## Link
 
-- The program links `hot_jit_backend`. It brings `hot_runtime`, `hotc_lib`, `clang-cpp` and `LLVM`.
+- The program links `hot::jit_backend`. It brings `hot::runtime`, `hotc_lib`, `clang-cpp` and `LLVM`.
 - `ENABLE_EXPORTS` is ON. The JIT code resolves host and runtime symbols from the executable.
 
 ## Adapt it to your project
 
 1. Configure Hot++ with `HOT_BACKEND=JIT`. LLVM and Clang must be installed. CPM does not fetch them.
-2. Link your program to `hot_jit_backend` and set `ENABLE_EXPORTS ON`.
-3. Give `compiler` as a full path when you can. The backend uses it to find the toolchain.
-   Set `resource_dir` from `<compiler> -print-resource-dir`.
+2. Link your program to `hot::jit_backend` and set `ENABLE_EXPORTS ON` (`hot_add_host` does this).
+3. Fill `compiler` and `resource_dir` from `hot::default_paths()`. The backend uses the compiler path to find the toolchain.
 4. Keep the compiler flags of the host, such as a sanitizer, in `extra_flags`.
 5. To cut the translate time, share one `TranslatorSession` between loads. To cut the compile time,
    use `make_pch` and `pch_path`.
@@ -116,4 +120,4 @@ Each test (`sample_jit_hot` and `sample_jit_cpp`) passes when the program return
 ## More information
 
 - [Embedding](../../doc/embedding.md): the six hosting situations and the backend interface.
-- [CMake](../../doc/cmake.md): the options and the function `hot_add_scripts`.
+- [CMake](../../doc/cmake.md): the options and the functions `hot_add_host` and `hot_add_scripts`.

@@ -1,21 +1,57 @@
 // The program of the sample. It builds JitBackend itself, compiles the script wolf in memory with it and
 // calls Tick. The host needs the Clang library, but no external compiler process.
-// The build makes two programs from this file. The definitions SAMPLE_SCRIPT_DIR and
-// SAMPLE_SCRIPT_EXT select the script variant (.hot or .cpp).
+// The build makes two programs from this file. The arguments select the script variant:
+//   sample_jit [script-dir [extension]]
+// The folder defaults to the definition HOT_SCRIPT_DIR. The extension (.hot or .cpp) defaults to
+// the definition HOT_SAMPLE_EXT, else .hot.
 #include "Creature.h"
 #include "hot/jit_backend.h"
+#include "hot/paths.h"
 #include "hot/runtime/loader.h"
 
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <utility>
 
-int main()
+namespace
 {
-    const std::string path = std::string(SAMPLE_SCRIPT_DIR) + "/wolf" + SAMPLE_SCRIPT_EXT;
+// The script extension of this variant: the build definition HOT_SAMPLE_EXT, else ".hot".
+std::string script_ext()
+{
+#ifdef HOT_SAMPLE_EXT
+    return HOT_SAMPLE_EXT;
+#else
+    return ".hot";
+#endif
+}
+
+// The folder of the scripts: argv[1], else the build definition HOT_SCRIPT_DIR. Empty if none.
+std::string script_dir(int argc, char** argv)
+{
+    if (argc > 1)
+        return argv[1];
+#ifdef HOT_SCRIPT_DIR
+    return HOT_SCRIPT_DIR;
+#else
+    return {};
+#endif
+}
+} // namespace
+
+int main(int argc, char** argv)
+{
+    const std::string dir = script_dir(argc, argv);
+    if (dir.empty())
+    {
+        std::fprintf(stderr, "usage: sample_jit <script-dir> [extension]\n");
+        return 2;
+    }
+    const std::string ext = argc > 2 ? argv[2] : script_ext();
+    const std::string path = dir + "/wolf" + ext;
     std::ifstream in(path, std::ios::binary);
     if (!in)
     {
@@ -26,14 +62,16 @@ int main()
     text << in.rdbuf();
 
     // The program sets the compiler name, the include dirs, the resource dir and the flags.
+    // hot::default_paths() gives the defaults. A portable build finds them at run time.
+    const hot::DefaultPaths paths = hot::default_paths();
     hot::JitOptions options;
-    options.compiler = SAMPLE_CXX;
-    options.include_dirs = {SAMPLE_HOT_INCLUDE_DIR, SAMPLE_DIR};
-    options.resource_dir = SAMPLE_RESOURCE_DIR;
+    options.compiler = paths.compiler;
+    options.include_dirs = paths.include_dirs;
+    // The folder of Creature.h is the parent of the script folder.
+    options.include_dirs.push_back(std::filesystem::path(dir).parent_path().string());
+    options.resource_dir = paths.resource_dir;
     // The flags of the host, for example a sanitizer. The JIT code must use the same ones.
-    std::istringstream flags(SAMPLE_CXXFLAGS);
-    for (std::string flag; flags >> flag;)
-        options.extra_flags.push_back(flag);
+    options.extra_flags = paths.cxxflags;
     hot::JitBackend backend(std::move(options));
 
     // The loader is after the backend, so it is destroyed first. The script object dies before it.

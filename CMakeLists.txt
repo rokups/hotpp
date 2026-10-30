@@ -32,6 +32,13 @@ endif()
 option(HOT_KEEP_TEMP "Keep the scratch files under tmp/ for debugging" OFF)
 set(HOT_SCRATCH_DIR ${CMAKE_BINARY_DIR}/tmp)
 
+# HOT_PORTABLE keeps build paths out of the binaries. The host finds the paths at run time
+# (include/hot/paths.h). The tests need the build paths, so the two options exclude each other.
+option(HOT_PORTABLE "No build paths in binaries" OFF)
+if(HOT_PORTABLE AND HOT_BUILD_TESTS)
+    message(FATAL_ERROR "HOT_PORTABLE and HOT_BUILD_TESTS are both ON. The tests need the build paths. Set HOT_BUILD_TESTS=OFF.")
+endif()
+
 # The default standard is C++20. A parent project can set CMAKE_CXX_STANDARD to 17.
 if(NOT CMAKE_CXX_STANDARD)
     set(CMAKE_CXX_STANDARD 20)

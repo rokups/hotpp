@@ -3,6 +3,7 @@
 #include "hot/config.h"
 #include "hot/scratch.h"
 #include "hot/hotc_lib.h"
+#include "hot/paths.h"
 
 #include <sys/wait.h>
 
@@ -206,7 +207,8 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     to.output_name = cpp_path;
     to.generation = static_cast<int>(generation);
     to.include_dirs = opt_.include_dirs;
-    to.resource_dir = opt_.resource_dir;
+    // The translator needs the resource dir for the native headers. A portable build finds it at run time.
+    to.resource_dir = opt_.resource_dir.empty() ? default_paths().resource_dir : opt_.resource_dir;
     to.std_version = opt_.std_version.empty() ? cxx_std_name() : opt_.std_version;
     to.strict_borrowed = opt_.strict_borrowed;
     to.format_lib = format_lib_name();

@@ -54,8 +54,9 @@ run on the main thread.
 - `script/wolf_v1.hot` and `script/wolf_v1.cpp`: generation 1. The class `Wolf` prints the tag `[v1]`, `bites` and `hp`.
 - `script/wolf_v2.hot` and `script/wolf_v2.cpp`: generation 2. They add the field `howls` and print the tag `[v2]`, `hp` and `howls`.
 - `main.cpp`: the program. It ticks twice, reloads and ticks twice again.
-  The definition `SAMPLE_SCRIPT_DIR` is the folder `script`. The definition `SAMPLE_SCRIPT_EXT` (`.hot` or `.cpp`) picks the variant.
-  The definition `SAMPLE_DIR` is the folder of `Creature.h`.
+  The folder `script` comes from `argv[1]`, else from the definition `HOT_SCRIPT_DIR` (set by `hot_add_host`).
+  The definition `HOT_SAMPLE_EXT` (`.hot` or `.cpp`) picks the variant. `argv[2]` replaces it.
+  The folder of `Creature.h` is the parent of the script folder. The compiler and the work folder come from `hot::default_paths()`.
 - `CMakeLists.txt`: the build. It works in the Hot++ tree and as a separate project.
 
 ## Build and run
@@ -93,7 +94,7 @@ To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`. The `CMakeLists.txt` o
 
 ## Adapt it to your project
 
-1. Link your program to `hot_backend` and set `ENABLE_EXPORTS ON`, as in the sample [runtime-compile](../runtime-compile/).
+1. Call `hot_add_host(TARGET <program> MODE HOT_RELOAD SCRIPTS <your scripts> ...)`. It links `hot::backend` and sets `ENABLE_EXPORTS ON`, as in the sample [runtime-compile](../runtime-compile/).
 2. Load the first generation with `Loader::load`. Use the generation number 1.
 3. When a script file changes, read it and call `request_reload(backend->load({name, text, {}}, next_generation))`.
    Increase `next_generation` each time. Do not send a reload while another is pending (the reason is `Busy`).
@@ -116,4 +117,4 @@ output has the lines `[v1]` then the lines `[v2]`.
 ## More information
 
 - [Embedding](../../doc/embedding.md): the six hosting situations and the backend interface.
-- [CMake](../../doc/cmake.md): the options and the function `hot_add_scripts`.
+- [CMake](../../doc/cmake.md): the options and the functions `hot_add_host` and `hot_add_scripts`.

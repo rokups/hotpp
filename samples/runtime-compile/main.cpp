@@ -1,20 +1,55 @@
 // The program of the sample. It reads the script wolf, compiles it at run time and calls Tick.
 // The host needs a C++ compiler at run time.
-// The build makes two programs from this file. The definitions SAMPLE_SCRIPT_DIR and
-// SAMPLE_SCRIPT_EXT select the script variant (.hot or .cpp).
+// The build makes two programs from this file. The arguments select the script variant:
+//   sample_runtime_compile [script-dir [extension]]
+// The folder defaults to the definition HOT_SCRIPT_DIR. The extension (.hot or .cpp) defaults to
+// the definition HOT_SAMPLE_EXT, else .hot.
 #include "Creature.h"
 #include "hot/backend.h"
 #include "hot/runtime/loader.h"
 
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <sstream>
 #include <string>
 
-int main()
+namespace
 {
-    const std::string path = std::string(SAMPLE_SCRIPT_DIR) + "/wolf" + SAMPLE_SCRIPT_EXT;
+// The script extension of this variant: the build definition HOT_SAMPLE_EXT, else ".hot".
+std::string script_ext()
+{
+#ifdef HOT_SAMPLE_EXT
+    return HOT_SAMPLE_EXT;
+#else
+    return ".hot";
+#endif
+}
+
+// The folder of the scripts: argv[1], else the build definition HOT_SCRIPT_DIR. Empty if none.
+std::string script_dir(int argc, char** argv)
+{
+    if (argc > 1)
+        return argv[1];
+#ifdef HOT_SCRIPT_DIR
+    return HOT_SCRIPT_DIR;
+#else
+    return {};
+#endif
+}
+} // namespace
+
+int main(int argc, char** argv)
+{
+    const std::string dir = script_dir(argc, argv);
+    if (dir.empty())
+    {
+        std::fprintf(stderr, "usage: sample_runtime_compile <script-dir> [extension]\n");
+        return 2;
+    }
+    const std::string ext = argc > 2 ? argv[2] : script_ext();
+    const std::string path = dir + "/wolf" + ext;
     std::ifstream in(path, std::ios::binary);
     if (!in)
     {
@@ -26,7 +61,7 @@ int main()
 
     // The backend runs the compiler. The folder of Creature.h is an include dir of the compile.
     hot::DefaultBackendOptions options;
-    options.include_dirs = {SAMPLE_DIR};
+    options.include_dirs = {std::filesystem::path(dir).parent_path().string()};
     std::unique_ptr<hot::Backend> backend = hot::make_default_backend(options);
 
     // The loader is first, so it is destroyed last. The script object dies before it.
