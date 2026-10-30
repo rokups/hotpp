@@ -100,6 +100,13 @@ TEST(GoldenTranslation, CppPlayer)
     golden_pair("cpp_player", ".cpp");
 }
 
+// A .cpp script with static members: a static data member is a module variable, a static method
+// is a free function, and a static constant is a const before the class block.
+TEST(GoldenTranslation, CppStatic)
+{
+    golden_pair("cpp_static", ".cpp");
+}
+
 // A .cpp script with default arguments: the prototype has them and the definition does not.
 TEST(GoldenTranslation, CppDefaults)
 {

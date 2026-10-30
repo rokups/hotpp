@@ -1734,14 +1734,14 @@ const char* const kCppValid =
     "    void Tick(float dt) override {}\n"
     "};\n";
 
-// The static method is on the 0-based line 5.
+// The virtual method is on the 0-based line 5.
 const char* const kCppStatic =
     "#include \"Actor.h\"\n"
     "\n"
     "class Hero : public Actor\n"
     "{\n"
     "public:\n"
-    "    static void F() {}\n"
+    "    virtual void F() {}\n"
     "};\n";
 
 struct CppScriptCase
@@ -1792,7 +1792,7 @@ TEST(LanguageServerCpp, ScriptWithAnUnsupportedFormGivesTheSppcMessageAtTheLine)
     ASSERT_FALSE(n.is_null());
     const json& diags = n["params"]["diagnostics"];
     ASSERT_EQ(diags.size(), 1u) << n.dump();
-    EXPECT_EQ(diags[0]["message"], "a static method is not supported in a .cpp script");
+    EXPECT_EQ(diags[0]["message"], "'virtual' is not supported in a .cpp script; use 'override' of a native virtual");
     EXPECT_EQ(diags[0]["range"]["start"]["line"], 5);
     EXPECT_EQ(diags[0]["severity"], 1);
     EXPECT_EQ(diags[0]["source"], "spp");

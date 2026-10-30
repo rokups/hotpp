@@ -276,6 +276,7 @@ struct WalkState
     const ClassInfo* cls = nullptr; // the enclosing script class; null outside one (a module variable, a hook)
     size_t slice = 0; // the slice that holds the cursor that examine looks at
     std::set<uint32_t> this_member; // the offsets of a "this" that a member access uses
+    uint32_t skip_end = 0; // the cursors that start before this offset are inside an expression that has its edit
     std::vector<std::pair<size_t, Range>> this_lambdas; // the lambdas that capture "this" by name, and their slice
     std::vector<std::optional<CppFail>> fails; // the first error of the walk in each slice
 };
@@ -303,18 +304,31 @@ private:
         ScriptClass,
         ScriptField,
         ScriptMethod,
-        ScriptStatic,
+        ScriptStatic, // a static data member: a module variable
+        ScriptStaticConst, // a static const or constexpr data member: a const at file scope
         ScriptStaticFn,
         ModuleVar
     };
 
-    // One declaration of the script. "mangled" is "<Class>__<name>" for a static member.
+    // One declaration of the script. "mangled" is "<Class>__s_<name>" for a static member.
+    // "cpos" is the start of the class of a member.
     struct Entry
     {
         Kind kind;
         std::string owner_usr, owner_name, name, mangled;
         bool virt = false;
+        uint32_t cpos = 0;
     };
+
+    // The output of a static method: a prototype before the class block and the definition after
+    // it. The two header and body slices give the text.
+    // A static const member uses only "proto".
+    struct StaticFn
+    {
+        size_t proto = 0, def = 0; // the indexes of the chunks
+    };
+    std::map<std::string, StaticFn> static_fns_; // USR of the static method -> its chunks
+    std::map<std::string, size_t> static_vars_; // USR of a static data member -> the index in the module variables
 
     std::map<std::string, Entry> table_; // USR of the declaration -> entry
 
@@ -333,6 +347,7 @@ private:
     std::vector<Slice> slices_;
     std::vector<size_t> by_pos_; // the indexes of the slices in the order of the extents
     std::vector<Edit> edits_; // the edits of the walk, with absolute offsets
+    std::vector<Edit> fixed_edits_; // the edits that the readers record (the names of static members)
     std::deque<ClassInfo> infos_; // the class facts that the slices point to
     std::map<std::string, const ClassInfo*> class_infos_; // USR of a script class -> its facts
     // The first module variable. The module block is at its place in the output.
@@ -345,7 +360,7 @@ private:
     void read_top(const std::vector<CXCursor>& top);
 
     void index(const std::vector<CXCursor>& top);
-    void index_member(CXCursor k, const std::string& owner_usr, const std::string& owner_name);
+    void index_member(CXCursor k, const std::string& owner_usr, const std::string& owner_name, uint32_t cpos);
     const Entry* lookup(CXCursor ref) const;
 
     int line(uint32_t pos) const { return map_.line(pos); }
@@ -353,7 +368,25 @@ private:
     void collect_bases(CXCursor rec, std::set<std::string>& out);
     void check_type_refs(CXCursor c, const std::string& own_usr);
     void check_hook_refs(CXCursor c);
-    bool find_module_ref(CXCursor c, const CXCursor* skip, std::string& name, uint32_t& pos);
+    // Which references find_module_ref looks for.
+    enum : unsigned
+    {
+        kVars = 1, // a module variable or a static data member
+        kFns = 2, // a static method
+        kConsts = 4, // a static const data member
+        kAll = 7
+    };
+    bool find_module_ref(CXCursor c, const CXCursor* skip, std::string& name, uint32_t& pos, unsigned what = kVars);
+    bool is_static_ref(CXCursor c) const;
+    bool scope_follows(CXCursor k) const;
+    bool qualifies_static(CXCursor parent) const;
+    bool no_side_effects(CXCursor c) const;
+    bool static_hook_of(CXCursor m, const std::string& owner_usr, std::string* var) const;
+    void pre_class(CXCursor c);
+    void drop_static_word(CXCursor c);
+    void make_static_const(CXCursor c, const ClassInfo* cls);
+    void make_static_fn(CXCursor c, const ClassInfo* cls);
+    void read_static_def(CXCursor c);
     void check_late_refs(CXCursor var);
     void check_static_init(CXCursor c);
     void examine(CXCursor k, WalkState& st);
@@ -362,7 +395,8 @@ private:
     void process_class(CXCursor c);
     template <class T> using Where = std::function<std::vector<T>&()>; // gives the vector of a model list
 
-    void make_field(CXCursor c, const ClassInfo* cls, const Where<ast::Field>& where);
+    void make_field(CXCursor c, const ClassInfo* cls, const Where<ast::Field>& where, const std::string& mangled = {});
+    void read_init(CXCursor c, const ClassInfo* cls, const Where<ast::Field>& where, size_t index);
     void fill_params(CXCursor c, std::vector<ast::Param>& out, const ClassInfo* cls);
     CXCursor body_of(CXCursor c);
     void make_method(CXCursor c, const ClassInfo* cls, const Where<ast::Method>& where);
@@ -392,9 +426,11 @@ void Frontend::collect_bases(CXCursor rec, std::set<std::string>& out)
 // Fails on a type reference to a script class other than "own_usr".
 void Frontend::check_type_refs(CXCursor c, const std::string& own_usr)
 {
+    // The class name in "Player::count" is the qualifier of a static member: it is allowed.
+    const bool static_parent = qualifies_static(c);
     for (CXCursor k : children(c))
     {
-        if (clang_getCursorKind(k) == CXCursor_TypeRef)
+        if (clang_getCursorKind(k) == CXCursor_TypeRef && !(static_parent && scope_follows(k)))
         {
             std::string u = usr(clang_getCursorReferenced(k));
             const Entry* en = lookup(clang_getCursorReferenced(k));
@@ -415,29 +451,112 @@ void Frontend::check_hook_refs(CXCursor c)
         fail(pos,
             "the module variable '" + name +
                 "' cannot be used in a convert hook: the new module state is not complete yet");
+    if (find_module_ref(c, nullptr, name, pos, kFns))
+        fail(pos, "the static method '" + name + "' cannot be used in a convert hook");
+}
+
+// True when the text after the cursor "k" starts with "::" (the cursor is a qualifier).
+bool Frontend::scope_follows(CXCursor k) const
+{
+    const size_t i = skip_ws(text_, extent_of(k).end, text_.size());
+    return text_.compare(i, 2, "::") == 0;
+}
+
+// True when "parent" is a use of a static member, or the definition of one outside its class.
+// The class name can be a qualifier below it.
+bool Frontend::qualifies_static(CXCursor parent) const
+{
+    if (is_static_ref(parent))
+        return true;
+    if (clang_getCursorKind(parent) != CXCursor_VarDecl)
+        return false;
+    const Entry* en = lookup(parent);
+    return en && (en->kind == Kind::ScriptStatic || en->kind == Kind::ScriptStaticConst);
+}
+
+// True when "c" is a use of a static member of a script class.
+bool Frontend::is_static_ref(CXCursor c) const
+{
+    const CXCursorKind kind = clang_getCursorKind(c);
+    if (kind != CXCursor_DeclRefExpr && kind != CXCursor_MemberRefExpr)
+        return false;
+    const Entry* en = lookup(clang_getCursorReferenced(c));
+    return en && (en->kind == Kind::ScriptStatic || en->kind == Kind::ScriptStaticConst ||
+                     en->kind == Kind::ScriptStaticFn);
 }
 
 // Finds the first reference to a module variable below "c". It does not search below "skip".
-bool Frontend::find_module_ref(CXCursor c, const CXCursor* skip, std::string& name, uint32_t& pos)
+// "what" selects the kinds of reference. A static data member is a module variable. The name of
+// a static member is "<Class>::<name>".
+bool Frontend::find_module_ref(CXCursor c, const CXCursor* skip, std::string& name, uint32_t& pos, unsigned what)
 {
     for (CXCursor k : children(c))
     {
         if (skip && clang_equalCursors(k, *skip))
             continue;
-        if (clang_getCursorKind(k) == CXCursor_DeclRefExpr)
+        const CXCursorKind kind = clang_getCursorKind(k);
+        if (kind == CXCursor_DeclRefExpr || kind == CXCursor_MemberRefExpr)
         {
             const Entry* en = lookup(clang_getCursorReferenced(k));
-            if (en && en->kind == Kind::ModuleVar)
+            unsigned have = 0;
+            if (en)
+                switch (en->kind)
+                {
+                case Kind::ModuleVar:
+                case Kind::ScriptStatic:
+                    have = kVars;
+                    break;
+                case Kind::ScriptStaticFn:
+                    have = kFns;
+                    break;
+                case Kind::ScriptStaticConst:
+                    have = kConsts;
+                    break;
+                default:
+                    break;
+                }
+            if (have & what)
             {
-                name = en->name;
+                name = en->owner_name.empty() ? en->name : en->owner_name + "::" + en->name;
                 pos = pos_of(k);
                 return true;
             }
         }
-        if (find_module_ref(k, skip, name, pos))
+        if (find_module_ref(k, skip, name, pos, what))
             return true;
     }
     return false;
+}
+
+// True when the expression "c" has no side effect, so the code can drop it: a name, "this", a
+// member access, a dereference.
+bool Frontend::no_side_effects(CXCursor c) const
+{
+    switch (clang_getCursorKind(c))
+    {
+    case CXCursor_DeclRefExpr:
+    case CXCursor_MemberRefExpr:
+    case CXCursor_CXXThisExpr:
+    case CXCursor_ParenExpr:
+    case CXCursor_UnexposedExpr:
+    case CXCursor_TypeRef:
+    case CXCursor_NamespaceRef:
+    case CXCursor_TemplateRef:
+        break;
+    case CXCursor_UnaryOperator:
+    {
+        const uint32_t b = extent_of(c).begin;
+        if (b >= text_.size() || text_[b] != '*')
+            return false;
+        break;
+    }
+    default:
+        return false;
+    }
+    for (CXCursor k : children(c))
+        if (!no_side_effects(k))
+            return false;
+    return true;
 }
 
 // The module block is at the place of the first module variable. It holds the fields and the
@@ -486,8 +605,19 @@ void Frontend::check_late_refs(CXCursor var)
                 if (clang_Cursor_isNull(d))
                     d = ref;
                 const Entry* en = lookup(ref);
-                const bool module_var = en && en->kind == Kind::ModuleVar;
-                if (!module_var && from_main(d) && pos_of(d) > first_var_pos_ && !own.has(pos_of(d)))
+                // "Player" in "int Player::x = 1;" is the qualifier of a static data member.
+                const bool qualifier = type && en && en->kind == Kind::ScriptClass && qualifies_static(c) &&
+                    scope_follows(k);
+                const bool module_var =
+                    qualifier || (en && (en->kind == Kind::ModuleVar || en->kind == Kind::ScriptStatic));
+                // A static const member is a const before the module block of its class. A static
+                // method has its prototype after the module block: the initializer cannot call it.
+                uint32_t dpos = pos_of(d);
+                if (en && en->kind == Kind::ScriptStaticConst)
+                    dpos = en->cpos;
+                else if (en && en->kind == Kind::ScriptStaticFn)
+                    dpos = UINT32_MAX;
+                if (!module_var && from_main(d) && dpos > first_var_pos_ && !own.has(dpos))
                 {
                     const std::string first = "the first module variable '" + first_var_name_ + "'";
                     if (type)
@@ -539,6 +669,8 @@ void Frontend::examine(CXCursor k, WalkState& st)
         return;
     const CXCursorKind kind = clang_getCursorKind(k);
     const Range e = extent_of(k);
+    if (e.begin < st.skip_end)
+        return; // inside a static member use: the edit of that use replaces the text
     if (!slice_at(e.begin, st.slice))
         return;
     if (st.cls != slices_[st.slice].cls)
@@ -569,15 +701,33 @@ void Frontend::examine(CXCursor k, WalkState& st)
         return is_record(clang_getCursorKind(p)) && st.cls->base_usrs.count(usr(p)) != 0;
     };
     const std::string t = e.end > e.begin ? text_.substr(e.begin, e.end - e.begin) : std::string();
+    // A use of a static member of a script class: the whole expression becomes the mangled name.
+    // The object of "obj.name" is dropped, so it must have no side effect.
+    auto rewrite_static = [&](CXCursor ref)
+    {
+        const Entry* en = lookup(ref);
+        if (!en || (en->kind != Kind::ScriptStatic && en->kind != Kind::ScriptStaticConst &&
+                       en->kind != Kind::ScriptStaticFn))
+            return false;
+        if (kind == CXCursor_MemberRefExpr)
+            for (CXCursor c : children(k))
+                if (!no_side_effects(c))
+                    fail(e.begin, "a static member must be used by its name");
+        add(e.begin, e.end - e.begin, (en->kind == Kind::ScriptStatic ? "spp_mod()->" : "") + en->mangled);
+        st.skip_end = e.end;
+        return true;
+    };
 
     switch (kind)
     {
     case CXCursor_MemberRefExpr:
     {
-        if (!st.cls)
-            return;
         CXCursor ref = clang_getCursorReferenced(k);
         if (clang_Cursor_isNull(ref))
+            return;
+        if (rewrite_static(ref))
+            return;
+        if (!st.cls)
             return;
         const std::string parent = usr(clang_getCursorSemanticParent(ref));
         const bool need = st.cls->base_usrs.count(parent) != 0 ||
@@ -624,6 +774,8 @@ void Frontend::examine(CXCursor k, WalkState& st)
     {
         CXCursor ref = clang_getCursorReferenced(k);
         if (clang_Cursor_isNull(ref))
+            return;
+        if (rewrite_static(ref))
             return;
         const Entry* en = lookup(ref);
         if (en && en->kind == Kind::ModuleVar)
@@ -735,7 +887,7 @@ void Frontend::apply_slices()
             fail(slices_[by_pos_[i]].extent.begin, "internal error: two edit slices overlap");
     WalkState st;
     st.fails.resize(slices_.size());
-    edits_.clear();
+    edits_ = fixed_edits_;
     walk_main(st);
     std::vector<std::vector<const Edit*>> edits(slices_.size()); // the edits of each slice, in walk order
     for (const Edit& ed : edits_)
@@ -773,22 +925,24 @@ void Frontend::apply_slices()
     slices_.clear();
     by_pos_.clear();
     edits_.clear();
+    fixed_edits_.clear();
 }
 
 // A field or a module variable. The initializer is the text after "=", or "{...}", or "(...)".
-// The function adds the field to the list that "where" gives.
-void Frontend::make_field(CXCursor c, const ClassInfo* cls, const Where<ast::Field>& where)
+// The function adds the field to the list that "where" gives. "mangled" is the name of a static
+// data member as a module variable: "<Class>__s_<name>".
+void Frontend::make_field(CXCursor c, const ClassInfo* cls, const Where<ast::Field>& where, const std::string& mangled)
 {
     std::vector<ast::Field>& out = where();
     out.emplace_back();
     const size_t index = out.size() - 1;
     ast::Field& f = out.back();
     f.raw = true;
-    f.name = spelling(c);
+    f.name = mangled.empty() ? spelling(c) : mangled;
     f.type = f.script_type = type_text(clang_getCursorType(c));
     f.pos = pos_of(c);
     f.line = line(f.pos);
-    switch (clang_getCXXAccessSpecifier(c))
+    switch (mangled.empty() ? clang_getCXXAccessSpecifier(c) : CX_CXXPublic)
     {
     case CX_CXXPrivate:
         f.access = ast::Access::Private;
@@ -806,10 +960,17 @@ void Frontend::make_field(CXCursor c, const ClassInfo* cls, const Where<ast::Fie
             if (a.rfind("spp.alias=", 0) == 0)
                 f.alias = a.substr(std::strlen("spp.alias="));
         }
-    // The text finds the initializer. libclang does not visit every initializer: it skips
-    // the "{...}" of a class-type field. The edits of such an initializer are then missing.
+    read_init(c, cls, where, index);
+}
+
+// Reads the initializer of the declaration "c" for the field "index". The text finds the
+// initializer. libclang does not visit every initializer: it skips the "{...}" of a class-type
+// field. The edits of such an initializer are then missing.
+void Frontend::read_init(CXCursor c, const ClassInfo* cls, const Where<ast::Field>& where, size_t index)
+{
+    ast::Field& f = where()[index];
     const Range decl = extent_of(c);
-    size_t i = f.pos + f.name.size();
+    size_t i = pos_of(c) + spelling(c).size();
     for (;;)
     {
         i = skip_ws(text_, i, decl.end);
@@ -913,10 +1074,8 @@ void Frontend::make_method(CXCursor c, const ClassInfo* cls, const Where<ast::Me
     m.line = line(m.pos);
     m.access = access_of(c);
     const CXCursorKind kind = clang_getCursorKind(c);
-    if (kind == CXCursor_CXXMethod)
+    if (kind == CXCursor_CXXMethod && !clang_CXXMethod_isStatic(c)) // a static convert hook has no "this"
     {
-        if (clang_CXXMethod_isStatic(c))
-            fail(m.pos, "a static method is not supported in a .cpp script");
         m.is_override = has_child(c, CXCursor_CXXOverrideAttr);
         if (clang_CXXMethod_isVirtual(c) && !m.is_override)
             fail(m.pos, "'virtual' is not supported in a .cpp script; use 'override' of a native virtual");
@@ -989,6 +1148,205 @@ void Frontend::make_ctor(CXCursor c, const ClassInfo& cls, const Where<ast::Ctor
         [where, index](std::string&& s) { where()[index].raw_body = std::move(s); });
 }
 
+// The chunks before the block of a class: the consts of the static const members, the module
+// block (when the first module variable is a static data member of this class) and the
+// prototypes of the static methods. The text of the chunks comes later, from the slices.
+void Frontend::pre_class(CXCursor c)
+{
+    const std::string cu = usr(c);
+    const Range ce = extent_of(c);
+    auto chunk_at = [&](uint32_t pos)
+    {
+        ast::Script::Chunk ch;
+        ch.pos = pos;
+        ch.line = line(pos);
+        sc_.chunks.push_back(std::move(ch));
+        return sc_.chunks.size() - 1;
+    };
+    bool has_var = false;
+    std::string first_var;
+    for (CXCursor m : children(c))
+    {
+        if (clang_getCursorKind(m) != CXCursor_VarDecl)
+            continue;
+        const Entry* en = lookup(m);
+        if (en && en->kind == Kind::ScriptStaticConst)
+            static_fns_[usr(m)].proto = chunk_at(extent_of(m).begin);
+        else if (en && en->kind == Kind::ScriptStatic && !has_var)
+        {
+            has_var = true;
+            first_var = en->owner_name + "::" + en->name;
+        }
+    }
+    if (has_var && first_var_pos_ == UINT32_MAX)
+    { // the module block comes before the class: the methods use the static data members
+        first_var_pos_ = ce.begin;
+        first_var_name_ = first_var;
+        const size_t i = chunk_at(ce.begin);
+        sc_.chunks[i].kind = ast::Script::Chunk::Kind::Module;
+    }
+    for (CXCursor m : children(c))
+        if (clang_getCursorKind(m) == CXCursor_CXXMethod && clang_CXXMethod_isStatic(m) &&
+            !static_hook_of(m, cu, nullptr))
+            static_fns_[usr(m)].proto = chunk_at(extent_of(m).begin);
+}
+
+// True when "m" is a static method "convert_<name>" and the class has the static data member
+// "<name>". The method is the convert hook of the module variable then.
+bool Frontend::static_hook_of(CXCursor m, const std::string& owner_usr, std::string* var) const
+{
+    if (clang_getCursorKind(m) != CXCursor_CXXMethod || !clang_CXXMethod_isStatic(m))
+        return false;
+    const std::string n = spelling(m);
+    if (n.rfind("convert_", 0) != 0)
+        return false;
+    for (const auto& v : table_)
+        if (v.second.kind == Kind::ScriptStatic && v.second.owner_usr == owner_usr &&
+            v.second.name == n.substr(std::strlen("convert_")))
+        {
+            if (var)
+                *var = v.second.name;
+            return true;
+        }
+    return false;
+}
+
+// Records the edit that removes the word "static" before the name of the declaration "c" and
+// the edit that gives the name "<Class>__s_<name>".
+void Frontend::drop_static_word(CXCursor c)
+{
+    const Entry* en = lookup(c);
+    const Range e = extent_of(c);
+    const uint32_t name = pos_of(c);
+    if (!en || name < e.begin || text_.compare(name, en->name.size(), en->name) != 0)
+        fail(name, "cannot read the declaration of this static member");
+    fixed_edits_.push_back(Edit{name, static_cast<uint32_t>(en->name.size()), en->mangled});
+    for (uint32_t i = e.begin; i < name; ++i)
+        if (word_at(text_, i, "static"))
+        {
+            uint32_t n = 6;
+            while (i + n < name && (text_[i + n] == ' ' || text_[i + n] == '\t'))
+                ++n;
+            fixed_edits_.push_back(Edit{i, n, std::string()});
+            return;
+        }
+}
+
+// A static const or constexpr data member is a const at file scope before the class block. The
+// text is the declaration without "static", with the mangled name.
+void Frontend::make_static_const(CXCursor c, const ClassInfo* cls)
+{
+    bool init = false;
+    for (CXCursor k : children(c))
+        init = init || clang_isExpression(clang_getCursorKind(k));
+    if (!init)
+        fail(pos_of(c), "a static const member needs an initializer in the class");
+    // The const gets its value when the library loads. The module state does not exist then.
+    // The prototype of a static method comes after the const.
+    check_static_init(c);
+    std::string used;
+    uint32_t used_pos = 0;
+    if (find_module_ref(c, nullptr, used, used_pos, kFns))
+        fail(used_pos,
+            "the static const member '" + spelling(c) + "' cannot call the static method '" + used +
+                "': it gets its value before the prototype of the method");
+    drop_static_word(c);
+    const size_t idx = static_fns_.at(usr(c)).proto;
+    add_slice(extent_of(c), cls, [this, idx](std::string&& s) { sc_.chunks[idx].text = s + ";"; });
+}
+
+// A static method is a free function "<Class>__s_<name>". The prototype comes before the class
+// block, the definition after it. The prototype has the default arguments and the definition does
+// not (C++ allows a default argument only once). So the text up to the body is in pieces: the
+// text between the defaults, and the defaults. The definition keeps the lines of the defaults.
+void Frontend::make_static_fn(CXCursor c, const ClassInfo* cls)
+{
+    const Range b = extent_of(body_of(c));
+    drop_static_word(c);
+    const Range e = extent_of(c);
+    ast::Script::Chunk def;
+    def.pos = e.begin;
+    def.line = line(e.begin);
+    sc_.chunks.push_back(std::move(def));
+    StaticFn& fn = static_fns_.at(usr(c));
+    fn.def = sc_.chunks.size() - 1;
+    const size_t proto = fn.proto, defn = fn.def;
+    std::vector<Range> pieces; // even index: text of the header, odd index: a default argument
+    uint32_t at = e.begin;
+    const int n = clang_Cursor_getNumArguments(c);
+    for (int i = 0; i < n; ++i)
+        for (CXCursor k : children(clang_Cursor_getArgument(c, static_cast<unsigned>(i))))
+            if (clang_isExpression(clang_getCursorKind(k)))
+            {
+                // An array bound or a template argument of the type is an expression too. The
+                // default argument follows a "=" (or it is a "{...}" after the name).
+                const Range d = extent_of(k);
+                size_t q = d.begin;
+                while (q > 0 && is_space(text_[q - 1]))
+                    --q;
+                const bool after_eq = q > 0 && text_[q - 1] == '=' && !(q > 1 && std::strchr("=!<>", text_[q - 2]));
+                const bool brace = d.begin < text_.size() && text_[d.begin] == '{' && q > 0 && is_ident(text_[q - 1]);
+                if ((after_eq || brace) && d.begin >= at && d.end > d.begin && d.end <= b.begin)
+                {
+                    pieces.push_back(Range{at, d.begin});
+                    pieces.push_back(d);
+                    at = d.end;
+                    break;
+                }
+            }
+    pieces.push_back(Range{at, b.begin});
+    auto parts = std::make_shared<std::vector<std::string>>(pieces.size());
+    for (size_t i = 0; i < pieces.size(); ++i)
+        add_slice(pieces[i], cls, [parts, i](std::string&& s) { (*parts)[i] = std::move(s); });
+    add_slice(b, cls,
+        [this, parts, proto, defn](std::string&& body)
+        {
+            std::string all, header;
+            for (size_t i = 0; i < parts->size(); ++i)
+            {
+                const std::string& p = (*parts)[i];
+                all += p;
+                if (i % 2 == 1)
+                { // a default argument: the definition keeps only its lines
+                    header.append(static_cast<size_t>(std::count(p.begin(), p.end(), '\n')), '\n');
+                    continue;
+                }
+                std::string t = p;
+                if (i + 1 < parts->size())
+                { // remove the "=" before the default argument
+                    const size_t keep = t.find_last_not_of(" \t\r\n");
+                    if (keep != std::string::npos && t[keep] == '=')
+                    {
+                        const std::string cut = t.substr(keep);
+                        t.resize(keep);
+                        const size_t k2 = t.find_last_not_of(" \t");
+                        t.resize(k2 == std::string::npos ? 0 : k2 + 1);
+                        header += t;
+                        header.append(static_cast<size_t>(std::count(cut.begin(), cut.end(), '\n')), '\n');
+                        continue;
+                    }
+                }
+                header += t;
+            }
+            sc_.chunks[proto].text = trim(all) + ";";
+            sc_.chunks[defn].text = header + body;
+        });
+}
+
+// The definition outside the class of a static data member: "T Player::x = init;". The text
+// gives the initializer of the module variable. It does not stay in the output.
+void Frontend::read_static_def(CXCursor c)
+{
+    const Entry* en = lookup(c);
+    if (en->kind == Kind::ScriptStaticConst)
+        return; // the class has the value: a static const member is a const before the class block
+    auto it = static_vars_.find(usr(c));
+    if (it == static_vars_.end())
+        fail(pos_of(c), "internal error: a static data member has no module variable");
+    check_late_refs(c);
+    read_init(c, nullptr, [this]() -> std::vector<ast::Field>& { return sc_.vars; }, it->second);
+}
+
 void Frontend::process_class(CXCursor c)
 {
     const size_t ci = sc_.classes.size(); // the slices find the class by this index
@@ -1017,6 +1375,14 @@ void Frontend::process_class(CXCursor c)
     }
     info.base = cd.base;
     collect_bases(c, info.base_usrs);
+    pre_class(c);
+    const Range ce = extent_of(c);
+    ast::Script::Chunk block;
+    block.kind = ast::Script::Chunk::Kind::Class;
+    block.pos = ce.begin;
+    block.line = line(ce.begin);
+    block.name = cd.name;
+    sc_.chunks.push_back(std::move(block));
     for (CXCursor k : children(c))
     {
         const CXCursorKind kind = clang_getCursorKind(k);
@@ -1028,10 +1394,33 @@ void Frontend::process_class(CXCursor c)
             make_field(k, &info, [this, ci]() -> std::vector<ast::Field>& { return sc_.classes[ci].fields; });
             break;
         case CXCursor_VarDecl:
-            fail(pos_of(k), "a static data member is not supported in a .cpp script");
-        case CXCursor_CXXMethod:
-            make_method(k, &info, [this, ci]() -> std::vector<ast::Method>& { return sc_.classes[ci].methods; });
+        {
+            const Entry* en = lookup(k);
+            if (en && en->kind == Kind::ScriptStaticConst)
+            {
+                make_static_const(k, &info);
+                break;
+            }
+            check_late_refs(k);
+            make_field(k, &info, [this]() -> std::vector<ast::Field>& { return sc_.vars; }, en->mangled);
+            static_vars_[usr(k)] = sc_.vars.size() - 1;
             break;
+        }
+        case CXCursor_CXXMethod:
+        {
+            std::string var;
+            if (!clang_CXXMethod_isStatic(k))
+                make_method(k, &info, [this, ci]() -> std::vector<ast::Method>& { return sc_.classes[ci].methods; });
+            else if (static_hook_of(k, info.usr, &var))
+            { // a convert hook of the module variable "<Class>__s_<var>"
+                check_hook_refs(k);
+                make_method(k, &info, [this]() -> std::vector<ast::Method>& { return sc_.var_hooks; });
+                sc_.var_hooks.back().name = "convert_" + info.name + "__s_" + var;
+            }
+            else
+                make_static_fn(k, &info);
+            break;
+        }
         case CXCursor_Constructor:
             make_ctor(k, info, [this, ci]() -> std::vector<ast::Ctor>& { return sc_.classes[ci].ctors; });
             break;
@@ -1096,24 +1485,24 @@ bool is_script_class(CXCursor c)
         has_child(c, CXCursor_CXXBaseSpecifier);
 }
 
-// Records a member of the script class "owner_usr". A static member is recorded, but
-// process_class still rejects it. An out-of-class method definition has the USR of its
-// declaration: the first entry stays.
-void Frontend::index_member(CXCursor k, const std::string& owner_usr, const std::string& owner_name)
+// Records a member of the script class "owner_usr". An out-of-class method definition has the
+// USR of its declaration: the first entry stays. The same is true for a static data member.
+void Frontend::index_member(CXCursor k, const std::string& owner_usr, const std::string& owner_name, uint32_t cpos)
 {
     const CXCursorKind kind = clang_getCursorKind(k);
     Entry en{Kind::ScriptField, owner_usr, owner_name, spelling(k), std::string()};
+    en.cpos = cpos;
     if (kind == CXCursor_VarDecl)
     {
-        en.kind = Kind::ScriptStatic;
-        en.mangled = owner_name + "__" + en.name;
+        en.kind = clang_isConstQualifiedType(clang_getCursorType(k)) ? Kind::ScriptStaticConst : Kind::ScriptStatic;
+        en.mangled = owner_name + "__s_" + en.name;
     }
     else if (kind == CXCursor_CXXMethod)
     {
         const bool is_static = clang_CXXMethod_isStatic(k) != 0;
         en.kind = is_static ? Kind::ScriptStaticFn : Kind::ScriptMethod;
         if (is_static)
-            en.mangled = owner_name + "__" + en.name;
+            en.mangled = owner_name + "__s_" + en.name;
         en.virt = clang_CXXMethod_isVirtual(k) || has_child(k, CXCursor_CXXOverrideAttr);
     }
     else if (kind != CXCursor_FieldDecl)
@@ -1131,10 +1520,11 @@ void Frontend::index(const std::vector<CXCursor>& top)
         {
             const std::string u = usr(k), n = spelling(k);
             table_[u] = Entry{Kind::ScriptClass, u, n, n, std::string()};
+            const uint32_t cpos = extent_of(k).begin;
             for (CXCursor m : children(k))
-                index_member(m, u, n);
+                index_member(m, u, n, cpos);
         }
-        else if (is_module_var(k))
+        else if (is_module_var(k) && !is_record(clang_getCursorKind(clang_getCursorSemanticParent(k))))
             table_[usr(k)] = Entry{Kind::ModuleVar, std::string(), std::string(), spelling(k), std::string()};
     }
     for (CXCursor k : top)
@@ -1143,7 +1533,7 @@ void Frontend::index(const std::vector<CXCursor>& top)
             continue;
         auto it = table_.find(usr(clang_getCursorSemanticParent(k)));
         if (it != table_.end() && it->second.kind == Kind::ScriptClass)
-            index_member(k, it->first, it->second.name);
+            index_member(k, it->first, it->second.name, 0);
     }
 }
 
@@ -1192,15 +1582,9 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
         check_type_refs(k, script_class ? usr(k) : std::string());
         const Range e = extent_of(k);
         if (script_class)
-        {
-            ast::Script::Chunk ch;
-            ch.kind = ast::Script::Chunk::Kind::Class;
-            ch.pos = e.begin;
-            ch.line = line(e.begin);
-            ch.name = spelling(k);
-            sc_.chunks.push_back(std::move(ch));
             process_class(k);
-        }
+        else if (kind == CXCursor_VarDecl && en && (en->kind == Kind::ScriptStatic || en->kind == Kind::ScriptStaticConst))
+            read_static_def(k);
         else if (en && en->kind == Kind::ModuleVar)
         {
             if (first_var_pos_ == UINT32_MAX)
@@ -1232,7 +1616,7 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
                 make_method(k, nullptr, [this]() -> std::vector<ast::Method>& { return sc_.var_hooks; });
             }
             else
-                add_text(e, find_module_ref(k, nullptr, var, var_pos));
+                add_text(e, find_module_ref(k, nullptr, var, var_pos, kAll));
         }
         else if (kind == CXCursor_MacroDefinition)
         { // the extent starts at the name: take the "#define" of the line too
@@ -1246,7 +1630,7 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
             check_static_init(k);
             std::string var;
             uint32_t var_pos = 0;
-            add_text(e, find_module_ref(k, nullptr, var, var_pos));
+            add_text(e, find_module_ref(k, nullptr, var, var_pos, kAll));
         }
     }
 }

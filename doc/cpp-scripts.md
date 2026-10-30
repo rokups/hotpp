@@ -213,6 +213,7 @@ All other text stays as you wrote it.
 - The method `onReload(const spp::OldState&)`.
 - Constructors with a base initializer, for example `Actor(args)`.
 - Destructors.
+- Static data members and static methods (see "Static members").
 - `override` of native virtual methods, and native interface bases.
 - Default arguments on a constructor and on a method. The text of a default gets the same edits as a method body, so it can name a module variable. An `override` has no default argument (sppc gives an error): the call through the base sees the base declaration. The fixture `tests/scripts/cpp_defaults.cpp` shows them.
 
@@ -221,6 +222,48 @@ At file scope a `.cpp` script can have:
 - Module variables, with free-function `convert_<var>` hooks.
 - Verbatim code: enums, structs without a base, free functions, `using`, namespaces and `const` or `constexpr` variables.
 - A free function, a function template, a `constexpr` function or a function in a namespace can use a module variable (see "How sppc edits a body"). A `constexpr` function can read it only in a call at runtime.
+
+## Static members
+
+A script class can have static data members and static methods. A normal C++ build compiles them as written. `sppc` moves them out of the class, because the generated class is a state struct with free functions.
+
+A static data member is a module variable. Its name is `<Class>__s_<name>`. For `static int count;` in `Counter`, the name is `Counter__s_count`. The marker `s_` keeps the name apart from the names that `sppc` generates for the class, such as `Counter__plan`. So a static member can have the name `plan`. The module state holds the variable. It migrates by name and type, as any module variable does. The value survives a reload. A new static data member takes its initializer.
+
+`sppc` accepts these forms of the initializer:
+
+- `static inline int count = 10;` (C++17) in the class.
+- `static int count;` in the class and `int Counter::count = 10;` at file scope. The file-scope text defines the module variable. `sppc` removes it from the output. Do not put an initializer in both places.
+
+A static method is a free function with the name `<Class>__s_<name>`. It has no `__self`. `sppc` writes its prototype before the class block, so the methods of the class can call it. It writes the definition after the class block. The prototype keeps the default arguments. The definition has none. A static method has the edits of a free function: module variables and static members become `spp_mod()->...` or the mangled name. A static method that uses `this` or a member of the base class is an error of the C++ compiler (for example `call to non-static member function without an object argument`).
+
+`sppc` rewrites every use of a static member in the file. These forms are valid:
+
+- The bare name in the class, in a method or in another static method.
+- `Counter::count`, `this->count`, `(*this).count` and `&Counter::count`.
+- `obj.count` and `obj->count`. `sppc` drops the object, so the object must have no side effect. Else the message is `a static member must be used by its name`.
+- Calls with arguments, for example `Counter::scale(3)`.
+- The uses outside the class body, for example in a free function or in the initializer of a module variable. A module variable can read a static data member. It cannot call a static method: the prototype comes after the module block. A free function can do both.
+
+Every other use of the class name outside its body is still an error.
+
+A static data member that is `const` or `constexpr` is not a module variable. It has no state. `sppc` writes it as a `const` at file scope before the class block, with the name `<Class>__s_<name>`. The uses in the class and outside it use this name. The member needs an initializer in the class. `static constexpr int kFactor = 3;` becomes `constexpr int Counter__s_kFactor = 3;`.
+
+When the module block does not exist before the class, a static data member makes the module block at the class. So the types of the static data members must come before the class.
+
+### Convert hooks of a static data member
+
+A static method `convert_<name>` in the class is the hook of the static data member `<name>`. It works as the free function `convert_<var>` of a module variable. The generated hook is `convert_<Class>__s_<name>`. It converts the old value when the type changes. It cannot use a module variable, a static data member or a static method.
+
+```cpp
+class Counter : public Actor
+{
+    static float count; // was: static int count;
+    static float convert_count(int old) { return old + 0.5f; }
+};
+float Counter::count = 10.0f;
+```
+
+The fixtures `tests/scripts/cpp_static_v1.cpp` and `tests/scripts/cpp_static_v2.cpp` show the forms. The second one changes the type of `count` from `int` to `float`.
 
 ## Aliases, onReload and convert hooks
 
@@ -241,8 +284,8 @@ The first version gives an error for each form in this list. The text in the sec
 |---|---|
 | A class that derives from another class of the same file | `a .cpp script class cannot derive from a class of the same file (first version)` |
 | `virtual` without `override` | `'virtual' is not supported in a .cpp script; use 'override' of a native virtual` |
-| A static data member | `a static data member is not supported in a .cpp script` |
-| A static member function | `a static method is not supported in a .cpp script` |
+| A static member used through an object that has a side effect, for example `f().count` | `a static member must be used by its name` |
+| A static const member without an initializer in the class | `a static const member needs an initializer in the class` |
 | A method defined outside the class | `define the method inside the class` |
 | A member initializer in a constructor | `use a default member initializer` |
 | Any other declaration in the class | `this declaration is not supported in a .cpp script class` |

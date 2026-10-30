@@ -191,6 +191,86 @@ TEST_P(BackendTests, CppScriptReloadMigratesFieldsAndModuleVariable)
     EXPECT_FLOAT_EQ(s.actor->Position.x, 5.0f * kDt + 2.0f * 5.0f * kDt);
 }
 
+// Static members of a script class. A static data member is a module variable "Counter__s_count".
+// A static method is a free function. A reload keeps the value of a static data member. A new
+// static data member takes its initializer. The hook convert_count converts the changed type.
+TEST_P(BackendTests, CppScriptStaticMembersMigrate)
+{
+    spp::LoadResult v1 = backend->load(source("cpp_static_v1.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult v2 = backend->load(source("cpp_static_v2.cpp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Counter"));
+    ASSERT_NE(modvar<int>(s, "Counter__s_count"), nullptr);
+    EXPECT_EQ(*modvar<int>(s, "Counter__s_count"), 10); // the definition outside the class
+    EXPECT_EQ(*modvar<int>(s, "Counter__s_hits"), 5); // the inline initializer
+    EXPECT_EQ(*modvar<int>(s, "snapshot"), 11); // a module variable reads a static data member
+
+    s.actor->Tick(kDt);
+    s.actor->Tick(kDt); // count 12, hits 9
+    EXPECT_EQ(*modvar<int>(s, "Counter__s_count"), 12);
+    EXPECT_EQ(*modvar<int>(s, "Counter__s_hits"), 9);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 36); // a method calls the static method scale(12)
+    EXPECT_EQ(*fld<int>(s.inst.shell, "via_free"), 45); // a free function: scale(12) + hits
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    const spp::ReloadResult res = s.loader.commit_pending();
+    ASSERT_TRUE(res) << res.error;
+    EXPECT_EQ(spp::active_generation, 2u);
+    ASSERT_NE(modvar<float>(s, "Counter__s_count"), nullptr);
+    EXPECT_FLOAT_EQ(*modvar<float>(s, "Counter__s_count"), 12.5f); // convert_count(12)
+    EXPECT_EQ(*modvar<int>(s, "Counter__s_hits"), 9); // migrated
+    ASSERT_NE(modvar<int>(s, "Counter__s_extra"), nullptr);
+    EXPECT_EQ(*modvar<int>(s, "Counter__s_extra"), 7); // the new static takes its initializer
+    EXPECT_EQ(*modvar<int>(s, "snapshot"), 11);
+
+    s.actor->Tick(kDt); // count 13.5, hits 11, extra 8
+    EXPECT_FLOAT_EQ(*modvar<float>(s, "Counter__s_count"), 13.5f);
+    EXPECT_EQ(*modvar<int>(s, "Counter__s_hits"), 11);
+    EXPECT_EQ(*modvar<int>(s, "Counter__s_extra"), 8);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 47); // plus(scale(13), 8): a new static method
+    EXPECT_EQ(*fld<int>(s.inst.shell, "via_free"), 50); // scale(13) + hits
+}
+
+// A static member can have the name of a function that the generated code has for the class.
+TEST_P(BackendTests, CppScriptStaticMembersWithGeneratedNames)
+{
+    spp::LoadResult v1 = backend->load(source("cpp_static_names.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Names"));
+    s.actor->Tick(kDt);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 4321);
+}
+
+// A static data member changes its type without a convert hook. It follows the rule of a module
+// variable: a warning, and the new variable takes its default value.
+TEST_P(BackendTests, CppScriptStaticMemberRetypeWithoutHook)
+{
+    spp::LoadResult v1 = backend->load(source("cpp_retype_v1.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult v2 = backend->load(source("cpp_retype_v2.cpp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Gauge"));
+    s.actor->Tick(kDt);
+    EXPECT_EQ(*modvar<int>(s, "Gauge__s_reading"), 11);
+    EXPECT_EQ(*modvar<int>(s, "level"), 11);
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    testing::internal::CaptureStderr();
+    const spp::ReloadResult res = s.loader.commit_pending();
+    const std::string log = testing::internal::GetCapturedStderr();
+    ASSERT_TRUE(res) << res.error;
+    ASSERT_NE(modvar<float>(s, "Gauge__s_reading"), nullptr);
+    ASSERT_NE(modvar<float>(s, "level"), nullptr);
+    // The static data member and the module variable get the same value.
+    EXPECT_FLOAT_EQ(*modvar<float>(s, "Gauge__s_reading"), *modvar<float>(s, "level"));
+    EXPECT_NE(log.find("field Gauge__s_reading changed its type"), std::string::npos) << log;
+    EXPECT_NE(log.find("field level changed its type"), std::string::npos) << log;
+}
+
 // The hook onReload runs at the reload and reads the old value through its old name.
 TEST_P(BackendTests, CppScriptOnReloadRuns)
 {

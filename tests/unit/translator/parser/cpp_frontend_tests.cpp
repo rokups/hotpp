@@ -193,10 +193,8 @@ TEST(CppFrontend, StructureErrors)
 {
     expect_error("struct B { virtual ~B() {} };\nclass S : public B {};",
         "a .cpp script class cannot derive from a class of the same file (first version)");
-    expect_error("class S : public Actor { static int n; };", "a static data member is not supported in a .cpp script");
     expect_error("class S : public Actor { virtual void F() {} };",
         "'virtual' is not supported in a .cpp script; use 'override' of a native virtual");
-    expect_error("class S : public Actor { static void F() {} };", "a static method is not supported in a .cpp script");
     expect_error("class S : public Actor { void F(); };", "define the method inside the class");
     expect_error("class S : public Actor { int hp = 0; S() : hp(1) {} };", "use a default member initializer");
     expect_error("class S : public Actor { int hp = 0; S() : Actor(), hp(1) {} };", "use a default member initializer");
@@ -215,6 +213,223 @@ TEST(CppFrontend, StructureErrors)
         "the module state exists");
     expect_error("class S : public Actor {};\nvoid g(S* s) { (void)s; }",
         "the script class 'S' cannot be named outside its body (first version)");
+}
+
+// A static data member is a module variable "<Class>__<name>". The out-of-class definition gives the
+// initializer and does not stay in the output. A static const member is a const before the class.
+TEST(CppFrontend, StaticDataMembers)
+{
+    Parsed p("#include \"Actor.h\"\n"
+             "int total = 0;\n"
+             "class S : public Actor\n"
+             "{\n"
+             "public:\n"
+             "    void F() { n++; S::n += 1; this->n += 1; hits = k + S::k; int* q = &S::n; (void)q; }\n"
+             "    static int n;\n"
+             "    static inline int hits = 5;\n"
+             "    static constexpr int k = 3;\n"
+             "private:\n"
+             "    static const int f = 2;\n"
+             "};\n"
+             "int S::n = total + 1;\n"
+             "int later() { return S::n + S::hits + S::k; }\n"
+             "int after = S::n;\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    const ast::Script& s = p.script;
+    using K = ast::Script::Chunk::Kind;
+    // include, module block, k, f, class, later. The definition "int S::n" has no chunk.
+    ASSERT_EQ(s.chunks.size(), 6u);
+    EXPECT_EQ(s.chunks[1].kind, K::Module);
+    EXPECT_EQ(s.chunks[2].text, "constexpr int S__s_k = 3;");
+    EXPECT_EQ(s.chunks[3].text, "const int S__s_f = 2;");
+    EXPECT_EQ(s.chunks[4].kind, K::Class);
+    EXPECT_EQ(s.chunks[5].text, "int later() { return spp_mod()->S__s_n + spp_mod()->S__s_hits + S__s_k; }");
+    ASSERT_EQ(s.vars.size(), 4u);
+    EXPECT_EQ(s.vars[0].name, "total");
+    EXPECT_EQ(s.vars[1].name, "S__s_n");
+    EXPECT_EQ(s.vars[1].type, "int");
+    EXPECT_EQ(s.vars[1].raw_init, "spp_mod()->total + 1"); // from the definition outside the class
+    EXPECT_EQ(s.vars[2].name, "S__s_hits");
+    EXPECT_EQ(s.vars[2].raw_init, "5");
+    EXPECT_EQ(s.vars[3].name, "after");
+    EXPECT_EQ(s.vars[3].raw_init, "spp_mod()->S__s_n");
+    EXPECT_EQ(p.method("F").raw_body,
+        " spp_mod()->S__s_n++; spp_mod()->S__s_n += 1; spp_mod()->S__s_n += 1; spp_mod()->S__s_hits = S__s_k + S__s_k; "
+        "int* q = &spp_mod()->S__s_n; (void)q; ");
+}
+
+// A static data member in a class makes the module block, when no module variable comes before.
+TEST(CppFrontend, StaticDataMemberStartsModuleBlock)
+{
+    Parsed p("#include \"Actor.h\"\nint pre = 1;\nclass S : public Actor { static int n; };\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    using K = ast::Script::Chunk::Kind;
+    ASSERT_EQ(p.script.chunks.size(), 3u);
+    EXPECT_EQ(p.script.chunks[1].kind, K::Module); // at "pre"
+    EXPECT_EQ(p.script.chunks[2].kind, K::Class);
+    Parsed q("#include \"Actor.h\"\nclass S : public Actor { static int n; };\nint post = 1;\n");
+    ASSERT_TRUE(q.diag.items.empty()) << q.errors();
+    ASSERT_EQ(q.script.chunks.size(), 3u);
+    EXPECT_EQ(q.script.chunks[1].kind, K::Module); // at the class
+    EXPECT_EQ(q.script.chunks[2].kind, K::Class);
+}
+
+// A static method is a free function: a prototype before the class block and the definition after
+// it. The prototype has the default arguments. The definition has none and keeps the lines.
+TEST(CppFrontend, StaticMethods)
+{
+    Parsed p("#include \"Actor.h\"\n"
+             "int total = 0;\n"
+             "class S : public Actor\n"
+             "{\n"
+             "public:\n"
+             "    void F() { total = make(1) + S::make(2, 3) + this->make(4) + (*this).make(5); }\n"
+             "    static int make(int a, int b = total,\n"
+             "                    int c = 2) { total += a; return helper(a) + b + c; }\n"
+             "    static int helper(int a) { return a + total; }\n"
+             "};\n"
+             "int g() { return S::make(1) + S::helper(2); }\n"
+             "int (*const fp)(int) = &S::helper;\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    const ast::Script& s = p.script;
+    using K = ast::Script::Chunk::Kind;
+    // include, module, 2 prototypes, class, 2 definitions, g, fp
+    ASSERT_EQ(s.chunks.size(), 9u);
+    EXPECT_EQ(s.chunks[2].text,
+        "int S__s_make(int a, int b = spp_mod()->total,\n                    int c = 2);");
+    EXPECT_EQ(s.chunks[3].text, "int S__s_helper(int a);");
+    EXPECT_EQ(s.chunks[4].kind, K::Class);
+    EXPECT_EQ(s.chunks[5].text,
+        "int S__s_make(int a, int b,\n                    int c)"
+        " { spp_mod()->total += a; return S__s_helper(a) + b + c; }");
+    EXPECT_EQ(s.chunks[5].line, 7);
+    EXPECT_EQ(s.chunks[6].text, "int S__s_helper(int a) { return a + spp_mod()->total; }");
+    EXPECT_EQ(s.chunks[7].text, "int g() { return S__s_make(1) + S__s_helper(2); }");
+    EXPECT_EQ(s.chunks[8].text, "int (*const fp)(int) = &S__s_helper;");
+    EXPECT_EQ(p.method("F").raw_body,
+        " spp_mod()->total = S__s_make(1) + S__s_make(2, 3) + S__s_make(4) + S__s_make(5); ");
+    EXPECT_TRUE(p.script.classes.at(0).methods.size() == 1u); // a static method is not a method of the class
+}
+
+// A static method "convert_<name>" is the hook of the static data member <name>.
+TEST(CppFrontend, StaticConvertHook)
+{
+    Parsed p("#include \"Actor.h\"\n"
+             "class S : public Actor\n"
+             "{\n"
+             "    static float n;\n"
+             "    static float convert_n(int old) { return old * 2.0f; }\n"
+             "    static int convert_other(int old) { return old; }\n"
+             "};\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    ASSERT_EQ(p.script.var_hooks.size(), 1u);
+    EXPECT_EQ(p.script.var_hooks[0].name, "convert_S__s_n");
+    EXPECT_EQ(p.script.var_hooks[0].ret, "float");
+    EXPECT_EQ(p.script.var_hooks[0].raw_body, " return old * 2.0f; ");
+    // "convert_other" has no static data member "other": it is a plain static method.
+    bool found = false;
+    for (const auto& c : p.script.chunks)
+        found = found || c.text == "int S__s_convert_other(int old);";
+    EXPECT_TRUE(found);
+}
+
+// The uses of a static member: the object of "obj.name" is dropped only when it has no side effect.
+TEST(CppFrontend, StaticMemberObject)
+{
+    Parsed p("#include \"Actor.h\"\n"
+             "class S : public Actor\n"
+             "{\n"
+             "    void F(Actor* a) { (void)a; }\n"
+             "    static int n;\n"
+             "    static int make() { return 1; }\n"
+             "};\n"
+             "struct Plain { static int v; };\n"
+             "int Plain::v = 1;\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    // A static member of a class that is not a script class stays as written.
+    ASSERT_EQ(p.script.vars.size(), 1u);
+    EXPECT_EQ(p.script.vars[0].name, "S__s_n");
+    EXPECT_EQ(p.script.chunks.back().text, "int Plain::v = 1;");
+    expect_error("class S : public Actor { int get() { return 0; } void F() { (get(), this)->n = 1; } static int n; };",
+        "a static member must be used by its name");
+}
+
+TEST(CppFrontend, StaticMemberErrors)
+{
+    // clang rejects "this" and a base member in a static method. The message is clear.
+    expect_error("class S : public Actor { static void F() { Move(Vec3()); } };",
+        "call to non-static member function without an object argument");
+    expect_error("class S : public Actor { static void F() { this->Move(Vec3()); } };",
+        "invalid use of 'this' outside of a non-static member function");
+    expect_error("class S : public Actor { static int n; };\nint g() { S s; return 0; }",
+        "the script class 'S' cannot be named outside its body (first version)");
+    expect_error("class S : public Actor { static void F(); };", "define the method inside the class");
+    expect_error("class S : public Actor { static const int k; };", "a static const member needs an initializer");
+    expect_error("int a = 1;\nclass S : public Actor { public: static int f() { return 1; } static int n; };\nint b = S::f();",
+        "'f' must come before the first module variable 'a'");
+}
+
+// A static const member gets its value at load. It cannot use a module variable or a static method.
+TEST(CppFrontend, StaticConstInitializerErrors)
+{
+    expect_error("int g = 1;\nclass C : public Actor { inline static const int s = g; };",
+        "cannot use the module variable 'g'");
+    expect_error("class C : public Actor { static int scale(int v) { return v; } inline static const int s = scale(2); };",
+        "the static const member 's' cannot call the static method");
+}
+
+// The default argument of a static method follows "=". An array bound or a template argument in
+// the type is not a default argument.
+TEST(CppFrontend, StaticMethodDefaultArgumentDetection)
+{
+    Parsed p("#include <array>\n#include \"Actor.h\"\n"
+             "constexpr int kN = 3;\n"
+             "class C : public Actor {\n"
+             "public:\n"
+             "    static int sum(const std::array<int, kN>& a, int k = kN) { return a[0] + k; }\n"
+             "    static int arr(int (&a)[kN], int k = 2) { return a[0] + k; }\n"
+             "};\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    std::string protos, defs;
+    for (const auto& c : p.script.chunks)
+        (c.text.find("{") == std::string::npos ? protos : defs) += c.text + "\n";
+    EXPECT_NE(protos.find("std::array<int, kN>& a, int k = kN)"), std::string::npos) << protos;
+    EXPECT_NE(protos.find("int (&a)[kN], int k = 2)"), std::string::npos) << protos;
+    EXPECT_NE(defs.find("std::array<int, kN>& a, int k)"), std::string::npos) << defs;
+    EXPECT_NE(defs.find("int (&a)[kN], int k)"), std::string::npos) << defs;
+}
+
+// A static member has the name "<Class>__s_<name>". It never equals a generated name of the class,
+// such as "C__plan". The generated code has the function "C__plan" next to the static method.
+TEST(CppFrontend, StaticMemberNamesDoNotCollide)
+{
+    sppc::TranslateOptions o;
+    o.script_name = "t.cpp";
+    o.script_text = R"(#include "Actor.h"
+class C : public Actor
+{
+public:
+    C() : Actor("C") {}
+    void Tick(float dt) override { last = plan() + super_args() + new_default() + construct_keys; }
+    static int plan() { return 1; }
+    static int super_args() { return 2; }
+    static int new_default() { return 3; }
+    inline static const int construct_keys = 4;
+    int last = 0;
+};
+)";
+    o.generation = 1;
+    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/tests/engine", std::string(SPP_SOURCE_DIR) + "/include"};
+    o.resource_dir = SPP_RESOURCE_DIR;
+    const sppc::TranslateResult r = sppc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    for (const char* n : {"int C__s_plan() {", "int C__s_super_args() {", "int C__s_new_default() {",
+             "const int C__s_construct_keys = 4;"})
+        EXPECT_NE(r.cpp.find(n), std::string::npos) << n << "\n" << r.cpp;
+    EXPECT_NE(r.cpp.find("C__s_plan() + C__s_super_args() + C__s_new_default() + C__s_construct_keys"),
+        std::string::npos)
+        << r.cpp;
+    EXPECT_NE(r.cpp.find("SPP_HIDDEN static auto C__plan()"), std::string::npos) << r.cpp; // the generated one
 }
 
 // A pointer or a reference to a type needs only a declaration before the first module variable.
@@ -371,16 +586,16 @@ TEST(CppFrontend, EditErrors)
 TEST(CppFrontend, FirstErrorInSourceOrder)
 {
     const std::string lambda_msg = "a lambda that uses a base member must capture with [&] or [=]";
-    const std::string static_msg = "a static method is not supported in a .cpp script";
+    const std::string static_msg = "'virtual' is not supported in a .cpp script";
     const std::string type_msg = "the script class 'S' cannot be named outside its body (first version)";
     {
         Parsed p("#include \"Actor.h\"\nclass S : public Actor { void F() { auto f = [this] { Move(Vec3()); }; f(); } };\n"
-                 "class T : public Actor { static void G() {} };");
+                 "class T : public Actor { virtual void G() {} };");
         EXPECT_NE(p.errors().find(lambda_msg), std::string::npos) << p.errors();
         EXPECT_EQ(p.errors().find(static_msg), std::string::npos) << p.errors();
     }
     {
-        Parsed p("#include \"Actor.h\"\nclass T : public Actor { static void G() {} void F() { auto f = [this] { "
+        Parsed p("#include \"Actor.h\"\nclass T : public Actor { virtual void G() {} void F() { auto f = [this] { "
                  "Move(Vec3()); }; f(); } };");
         EXPECT_NE(p.errors().find(static_msg), std::string::npos) << p.errors();
         EXPECT_EQ(p.errors().find(lambda_msg), std::string::npos) << p.errors();
@@ -612,14 +827,14 @@ TEST(AnalyzeCpp, ValidScriptHasNoError)
 }
 
 // A parse error comes with the line and the column of the script.
-TEST(AnalyzeCpp, StaticMethodHasPlace)
+TEST(AnalyzeCpp, VirtualMethodHasPlace)
 {
     const std::string text =
-        "#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    static void F() {}\n};\n";
+        "#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    virtual void F() {}\n};\n";
     const sppc::AnalyzeResult r = sppc::analyze_cpp(text, "/w/t.cpp", analyze_options());
     EXPECT_FALSE(r.ok);
     ASSERT_EQ(r.errors.size(), 1u) << r.diagnostics;
-    EXPECT_EQ(r.errors[0].message, "a static method is not supported in a .cpp script");
+    EXPECT_EQ(r.errors[0].message, "'virtual' is not supported in a .cpp script; use 'override' of a native virtual");
     EXPECT_EQ(r.errors[0].pos.line, 5);
     EXPECT_GT(r.errors[0].pos.col, 0);
     // The offset is the place of the error in the text.
