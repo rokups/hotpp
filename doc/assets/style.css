@@ -13,6 +13,22 @@ pre{background:var(--code);padding:.8rem;overflow-x:auto;border-radius:4px}
 code{font-size:.9em}
 table{border-collapse:collapse}td,th{border:1px solid var(--line);padding:.3rem .6rem}
 #theme{margin-top:1rem;background:none;color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:.2rem .6rem;cursor:pointer}
+header.topbar{display:none}
+#menu{background:none;color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:.2rem .8rem;cursor:pointer}
+/* Portrait and narrow screens: no sidebar. A Menu button in the top bar opens the page list. */
+@media (orientation:portrait),(max-width:48rem){
+header.topbar{display:flex;align-items:center;justify-content:space-between;padding:.6rem 1rem;background:var(--side);border-bottom:1px solid var(--line)}
+header.topbar .brand{font-size:1.2rem;font-weight:700;color:var(--fg)}
+body{display:block}
+nav.side{display:none;width:auto;min-height:0}
+nav.side .brand{display:none}
+body.menu nav.side{display:block}
+main{max-width:none;padding:1rem}
+table{display:block;overflow-x:auto}
+img{max-width:100%;height:auto}
+main code{overflow-wrap:anywhere}
+pre code{overflow-wrap:normal}
+}
 /* Code tokens. highlight.js adds the hljs classes in the browser. */
 .hljs-keyword,.hljs-doctag{color:var(--tk-kw)}
 .hljs-type,.hljs-built_in,.hljs-title.class_,.hljs-title.class_.inherited__{color:var(--tk-type)}

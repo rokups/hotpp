@@ -8,7 +8,11 @@
   <link rel="stylesheet" href="{{ '/assets/style.css' | relative_url }}">
 </head>
 <body>
-<nav class="side">
+<header class="topbar">
+  <a class="brand" href="{{ '/' | relative_url }}">{{ site.title }}</a>
+  <button id="menu" type="button" aria-expanded="false" aria-controls="sidenav">Menu</button>
+</header>
+<nav class="side" id="sidenav">
   <a class="brand" href="{{ '/' | relative_url }}">{{ site.title }}</a>
   <ul>
   {% assign pages = site.pages | where_exp: "p", "p.nav_order" | sort: "nav_order" %}
@@ -29,6 +33,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/cmake.min.js" integrity="sha384-iqJTnKrAPlpoueHQticEO1SgUDmD+Lv1EGplrE41YfNgnnVCt6pLeVjutOnr/Ddi" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="{{ '/assets/highlight-spp.js' | relative_url }}"></script>
 <script>
+document.getElementById("menu").onclick=function(){
+  var open=document.body.classList.toggle("menu");this.setAttribute("aria-expanded",open);};
 document.getElementById("theme").onclick=function(){
   var d=document.documentElement,dark=d.dataset.theme?d.dataset.theme=="dark":matchMedia("(prefers-color-scheme: dark)").matches;
   d.dataset.theme=dark?"light":"dark";localStorage.setItem("theme",d.dataset.theme);};
