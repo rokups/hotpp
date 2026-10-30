@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <deque>
+#include <functional>
 #include <map>
 #include <set>
 #include <utility>
@@ -315,6 +317,24 @@ private:
 
     std::map<std::string, Entry> table_; // USR of the declaration -> entry
 
+    // A text region that needs edits. The functions that read the declarations record a slice.
+    // apply_slices() edits all slices in the order of the records. "store" puts the edited text
+    // in the model. It finds the target by an index, because the model vectors can move.
+    struct Slice
+    {
+        CXCursor root;
+        Range extent;
+        const ClassInfo* cls;
+        std::function<void(std::string&&)> store;
+    };
+
+    std::vector<Slice> slices_;
+    std::deque<ClassInfo> infos_; // the class facts that the slices point to
+
+    void add_slice(CXCursor root, Range extent, const ClassInfo* cls, std::function<void(std::string&&)> store);
+    void apply_slices();
+    void read_top(const std::vector<CXCursor>& top);
+
     void index(const std::vector<CXCursor>& top);
     void index_member(CXCursor k, const std::string& owner_usr, const std::string& owner_name);
     const Entry* lookup(CXCursor ref) const;
@@ -331,11 +351,13 @@ private:
     void walk(CXCursor c, EditCtx& ctx);
     std::string edit_region(CXCursor root, Range region, const ClassInfo* cls);
     void process_class(CXCursor c);
-    ast::Field make_field(CXCursor c, const ClassInfo* cls);
+    template <class T> using Where = std::function<std::vector<T>&()>; // gives the vector of a model list
+
+    void make_field(CXCursor c, const ClassInfo* cls, const Where<ast::Field>& where);
     void fill_params(CXCursor c, std::vector<ast::Param>& out, const ClassInfo* cls);
     CXCursor body_of(CXCursor c);
-    ast::Method make_method(CXCursor c, const ClassInfo* cls);
-    ast::Ctor make_ctor(CXCursor c, const ClassInfo& cls);
+    void make_method(CXCursor c, const ClassInfo* cls, const Where<ast::Method>& where);
+    void make_ctor(CXCursor c, const ClassInfo& cls, const Where<ast::Ctor>& where);
     void add_prelude(CXCursor c, Range e);
     void add_import(CXCursor c);
 };
@@ -483,8 +505,12 @@ void Frontend::add_module_func(CXCursor fn, Range e, const std::string& var, uin
     ast::Script::RawDecl def;
     def.pos = e.begin;
     def.line = line(e.begin);
-    def.text = strip_defaults(fn, e.begin, sig) + edit_region(fn, Range{b.begin, b.end}, nullptr);
+    def.text = strip_defaults(fn, e.begin, sig);
+    const size_t index = sc_.post_funcs.size();
+    const std::string head = def.text;
     sc_.post_funcs.push_back(std::move(def));
+    add_slice(fn, Range{b.begin, b.end}, nullptr,
+        [this, index, head](std::string&& s) { sc_.post_funcs[index].text = head + s; });
 }
 
 // Records the edit of one cursor of a region. The cases of the switch are the rules.
@@ -653,10 +679,31 @@ std::string Frontend::edit_region(CXCursor root, Range region, const ClassInfo* 
     return s;
 }
 
-// A field or a module variable. The initializer is the text after "=", or "{...}", or "(...)".
-ast::Field Frontend::make_field(CXCursor c, const ClassInfo* cls)
+void Frontend::add_slice(CXCursor root, Range extent, const ClassInfo* cls, std::function<void(std::string&&)> store)
 {
-    ast::Field f;
+    slices_.push_back(Slice{root, extent, cls, std::move(store)});
+}
+
+// Edits the slices in the order of the records. So the first error is the same as with an edit
+// at the time of the record.
+void Frontend::apply_slices()
+{
+    for (size_t i = 0; i < slices_.size(); ++i)
+    {
+        const Slice& sl = slices_[i];
+        sl.store(edit_region(sl.root, sl.extent, sl.cls));
+    }
+    slices_.clear();
+}
+
+// A field or a module variable. The initializer is the text after "=", or "{...}", or "(...)".
+// The function adds the field to the list that "where" gives.
+void Frontend::make_field(CXCursor c, const ClassInfo* cls, const Where<ast::Field>& where)
+{
+    std::vector<ast::Field>& out = where();
+    out.emplace_back();
+    const size_t index = out.size() - 1;
+    ast::Field& f = out.back();
     f.raw = true;
     f.name = spelling(c);
     f.type = f.script_type = type_text(clang_getCursorType(c));
@@ -712,16 +759,20 @@ ast::Field Frontend::make_field(CXCursor c, const ClassInfo* cls)
     {
         const uint32_t start = static_cast<uint32_t>(text_[i] == '=' ? i + 1 : i);
         f.has_init = true;
-        f.raw_init = trim(edit_region(c, Range{start, decl.end}, cls));
-        if (text_[i] == '(')
-        { // "T x(a, b);": the text inside the parentheses, so "T(a, b)" is not "T((a, b))"
-            if (f.raw_init.size() < 2 || f.raw_init.back() != ')')
-                fail(f.pos, "cannot read the initializer of this declaration");
-            f.raw_init = trim(f.raw_init.substr(1, f.raw_init.size() - 2));
-        }
-        f.raw_brace_init = text_[i] != '(' && !f.raw_init.empty() && f.raw_init.front() == '{';
+        const char open = text_[i];
+        const uint32_t fpos = f.pos;
+        add_slice(c, Range{start, decl.end}, cls, [where, index, open, fpos](std::string&& s) {
+            ast::Field& fd = where()[index];
+            fd.raw_init = trim(s);
+            if (open == '(')
+            { // "T x(a, b);": the text inside the parentheses, so "T(a, b)" is not "T((a, b))"
+                if (fd.raw_init.size() < 2 || fd.raw_init.back() != ')')
+                    fail(fpos, "cannot read the initializer of this declaration");
+                fd.raw_init = trim(fd.raw_init.substr(1, fd.raw_init.size() - 2));
+            }
+            fd.raw_brace_init = open != '(' && !fd.raw_init.empty() && fd.raw_init.front() == '{';
+        });
     }
-    return f;
 }
 
 void Frontend::fill_params(CXCursor c, std::vector<ast::Param>& out, const ClassInfo* cls)
@@ -739,9 +790,10 @@ void Frontend::fill_params(CXCursor c, std::vector<ast::Param>& out, const Class
                 // The text is already C++. The edits are the same as in a body. The shared
                 // default is "lowered", so the .spp path ("default_arg") writes the text as is.
                 p.def = std::make_shared<ast::ParamDefault>();
-                p.def->cpp = trim(edit_region(a, extent_of(k), cls));
                 p.def->lowered = true;
                 p.def->pos = pos_of(k);
+                std::shared_ptr<ast::ParamDefault> def = p.def;
+                add_slice(a, extent_of(k), cls, [def](std::string&& s) { def->cpp = trim(s); });
                 break;
             }
         out.push_back(std::move(p));
@@ -770,9 +822,12 @@ ast::Access access_of(CXCursor c)
 }
 
 // A method, a destructor or a convert hook. "cls" is null for a hook.
-ast::Method Frontend::make_method(CXCursor c, const ClassInfo* cls)
+void Frontend::make_method(CXCursor c, const ClassInfo* cls, const Where<ast::Method>& where)
 {
-    ast::Method m;
+    std::vector<ast::Method>& out = where();
+    out.emplace_back();
+    const size_t index = out.size() - 1;
+    ast::Method& m = out.back();
     m.raw = true;
     m.name = spelling(c);
     m.pos = pos_of(c);
@@ -804,13 +859,16 @@ ast::Method Frontend::make_method(CXCursor c, const ClassInfo* cls)
     m.end_pos = b.end - 1;
     m.end_line = line(m.end_pos);
     m.raw_line = line(b.begin); // "raw_body" starts right after the "{"
-    m.raw_body = edit_region(c, Range{b.begin + 1, b.end - 1}, cls);
-    return m;
+    add_slice(c, Range{b.begin + 1, b.end - 1}, cls,
+        [where, index](std::string&& s) { where()[index].raw_body = std::move(s); });
 }
 
-ast::Ctor Frontend::make_ctor(CXCursor c, const ClassInfo& cls)
+void Frontend::make_ctor(CXCursor c, const ClassInfo& cls, const Where<ast::Ctor>& where)
 {
-    ast::Ctor ct;
+    std::vector<ast::Ctor>& out = where();
+    out.emplace_back();
+    const size_t index = out.size() - 1;
+    ast::Ctor& ct = out.back();
     ct.raw = true;
     ct.pos = pos_of(c);
     ct.line = line(ct.pos);
@@ -844,20 +902,24 @@ ast::Ctor Frontend::make_ctor(CXCursor c, const ClassInfo& cls)
             fail(colon, "use a default member initializer");
         ct.has_base_call = true;
         ct.base_pos = static_cast<uint32_t>(s);
-        ct.raw_base_args = edit_region(c, Range{static_cast<uint32_t>(a + 1), static_cast<uint32_t>(a_end)}, &cls);
+        add_slice(c, Range{static_cast<uint32_t>(a + 1), static_cast<uint32_t>(a_end)}, &cls,
+            [where, index](std::string&& s) { where()[index].raw_base_args = std::move(s); });
     }
     ct.raw_line = line(b.begin); // "raw_body" starts right after the "{"
-    ct.raw_body = edit_region(c, Range{b.begin + 1, b.end - 1}, &cls);
-    return ct;
+    add_slice(c, Range{b.begin + 1, b.end - 1}, &cls,
+        [where, index](std::string&& s) { where()[index].raw_body = std::move(s); });
 }
 
 void Frontend::process_class(CXCursor c)
 {
-    ast::ClassDef cd;
+    const size_t ci = sc_.classes.size(); // the slices find the class by this index
+    sc_.classes.emplace_back();
+    ast::ClassDef& cd = sc_.classes.back(); // valid until the next class
     cd.name = spelling(c);
     cd.pos = pos_of(c);
     cd.line = line(cd.pos);
-    ClassInfo info;
+    infos_.emplace_back();
+    ClassInfo& info = infos_.back();
     info.name = cd.name;
     info.usr = usr(c);
     for (CXCursor k : children(c))
@@ -883,24 +945,23 @@ void Frontend::process_class(CXCursor c)
         switch (kind)
         {
         case CXCursor_FieldDecl:
-            cd.fields.push_back(make_field(k, &info));
+            make_field(k, &info, [this, ci]() -> std::vector<ast::Field>& { return sc_.classes[ci].fields; });
             break;
         case CXCursor_VarDecl:
             fail(pos_of(k), "a static data member is not supported in a .cpp script");
         case CXCursor_CXXMethod:
-            cd.methods.push_back(make_method(k, &info));
+            make_method(k, &info, [this, ci]() -> std::vector<ast::Method>& { return sc_.classes[ci].methods; });
             break;
         case CXCursor_Constructor:
-            cd.ctors.push_back(make_ctor(k, info));
+            make_ctor(k, info, [this, ci]() -> std::vector<ast::Ctor>& { return sc_.classes[ci].ctors; });
             break;
         case CXCursor_Destructor:
-            cd.dtors.push_back(make_method(k, &info));
+            make_method(k, &info, [this, ci]() -> std::vector<ast::Method>& { return sc_.classes[ci].dtors; });
             break;
         default:
             fail(pos_of(k), "this declaration is not supported in a .cpp script class");
         }
     }
-    sc_.classes.push_back(std::move(cd));
 }
 
 // A verbatim file-scope declaration. A ";" after the extent belongs to it.
@@ -1009,6 +1070,22 @@ ast::Script Frontend::run(CXTranslationUnit tu, const std::string& name)
         if (from_main(k))
             top.push_back(k);
     index(top);
+    try
+    {
+        read_top(top);
+    }
+    catch (const CppFail&)
+    { // an earlier slice with an error is the first error: the edit was at the record before
+        apply_slices();
+        throw;
+    }
+    apply_slices();
+    return std::move(sc_);
+}
+
+// Reads the declarations of the main file in the order of the text. It records the slices.
+void Frontend::read_top(const std::vector<CXCursor>& top)
+{
     for (CXCursor k : top)
     {
         const CXCursorKind kind = clang_getCursorKind(k);
@@ -1027,7 +1104,7 @@ ast::Script Frontend::run(CXTranslationUnit tu, const std::string& name)
         if (script_class)
             process_class(k);
         else if (en && en->kind == Kind::ModuleVar)
-            sc_.vars.push_back(make_field(k, nullptr));
+            make_field(k, nullptr, [this]() -> std::vector<ast::Field>& { return sc_.vars; });
         else if (kind == CXCursor_FunctionDecl && clang_isCursorDefinition(k))
         {
             const std::string n = spelling(k);
@@ -1041,7 +1118,7 @@ ast::Script Frontend::run(CXTranslationUnit tu, const std::string& name)
             if (hook)
             {
                 check_hook_refs(k);
-                sc_.var_hooks.push_back(make_method(k, nullptr));
+                make_method(k, nullptr, [this]() -> std::vector<ast::Method>& { return sc_.var_hooks; });
             }
             else if (find_module_ref(k, nullptr, var, var_pos))
                 add_module_func(k, e, var, var_pos);
@@ -1070,7 +1147,6 @@ ast::Script Frontend::run(CXTranslationUnit tu, const std::string& name)
             add_prelude(k, e);
         }
     }
-    return std::move(sc_);
 }
 
 } // namespace

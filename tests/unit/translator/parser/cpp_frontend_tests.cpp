@@ -319,6 +319,33 @@ TEST(CppFrontend, EditErrors)
         "the script class 'S' cannot be named outside its body (first version)");
 }
 
+// A file with two errors reports the first error in the order of the source. The body edits
+// run after the read of the structure, but an earlier edit error must stay first.
+TEST(CppFrontend, FirstErrorInSourceOrder)
+{
+    const std::string lambda_msg = "a lambda that uses a base member must capture with [&] or [=]";
+    const std::string static_msg = "a static method is not supported in a .cpp script";
+    const std::string type_msg = "the script class 'S' cannot be named outside its body (first version)";
+    {
+        Parsed p("#include \"Actor.h\"\nclass S : public Actor { void F() { auto f = [this] { Move(Vec3()); }; f(); } };\n"
+                 "class T : public Actor { static void G() {} };");
+        EXPECT_NE(p.errors().find(lambda_msg), std::string::npos) << p.errors();
+        EXPECT_EQ(p.errors().find(static_msg), std::string::npos) << p.errors();
+    }
+    {
+        Parsed p("#include \"Actor.h\"\nclass T : public Actor { static void G() {} void F() { auto f = [this] { "
+                 "Move(Vec3()); }; f(); } };");
+        EXPECT_NE(p.errors().find(static_msg), std::string::npos) << p.errors();
+        EXPECT_EQ(p.errors().find(lambda_msg), std::string::npos) << p.errors();
+    }
+    {
+        Parsed p("#include \"Actor.h\"\nclass S : public Actor { void F() { auto f = [this] { Move(Vec3()); }; f(); } };\n"
+                 "class T : public Actor { void G() { S* p = nullptr; (void)p; } };");
+        EXPECT_NE(p.errors().find(lambda_msg), std::string::npos) << p.errors();
+        EXPECT_EQ(p.errors().find(type_msg), std::string::npos) << p.errors();
+    }
+}
+
 // A brace initializer goes to the generated code once: "T{1, 2}", not "T{{1, 2}}". An aggregate
 // and a container need this.
 TEST(CppFrontend, BraceInitializerEmit)
