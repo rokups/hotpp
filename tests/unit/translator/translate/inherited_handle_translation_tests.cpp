@@ -1,5 +1,5 @@
-// Tests for sppc::translate with a handle stub on a base class: intrusive and shared handles.
-#include "hot/sppc_lib.h"
+// Tests for hotc::translate with a handle stub on a base class: intrusive and shared handles.
+#include "hot/hotc_lib.h"
 #include "support/stub_translate_test_support.h"
 #include "support/translator_test_support.h"
 
@@ -12,7 +12,7 @@ using namespace stub_translate_test;
 
 TEST(InheritedHandleTranslation, IntrusiveField)
 {
-    const sppc::TranslateResult r = hier_translate(kIntrusiveStub, "    Item item;\n");
+    const hotc::TranslateResult r = hier_translate(kIntrusiveStub, "    Item item;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "    " + kIntr + " item;\n")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "using T = " + kIntr + "; new (f) T();")) << r.cpp;
@@ -21,7 +21,7 @@ TEST(InheritedHandleTranslation, IntrusiveField)
 
 TEST(InheritedHandleTranslation, OwnerIsTheStubClass)
 {
-    const sppc::TranslateResult r = hier_translate(kIntrusiveStub, "    Gadget g;\n    eng.Thing t;\n");
+    const hotc::TranslateResult r = hier_translate(kIntrusiveStub, "    Gadget g;\n    eng.Thing t;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "    hot::Intrusive<Gadget, &Object::AddRef, &Object::Release> g;\n")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "    hot::Intrusive<eng::Thing, &Object::AddRef, &Object::Release> t;\n")) << r.cpp;
@@ -29,7 +29,7 @@ TEST(InheritedHandleTranslation, OwnerIsTheStubClass)
 
 TEST(InheritedHandleTranslation, ParamReturnLocalAndNew)
 {
-    const sppc::TranslateResult r = hier_translate(kIntrusiveStub,
+    const hotc::TranslateResult r = hier_translate(kIntrusiveStub,
         "    Item item;\n"
         "    void Put(Item i) { this.item = i; }\n"
         "    Item Get() { Item x = this.item; return x; }\n"
@@ -43,7 +43,7 @@ TEST(InheritedHandleTranslation, ParamReturnLocalAndNew)
 
 TEST(InheritedHandleTranslation, SharedPtrBase)
 {
-    const sppc::TranslateResult r = hier_translate(kSharedStub, "    Item item;\n");
+    const hotc::TranslateResult r = hier_translate(kSharedStub, "    Item item;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "    std::shared_ptr<Item> item;\n")) << r.cpp;
 }
@@ -51,7 +51,7 @@ TEST(InheritedHandleTranslation, SharedPtrBase)
 TEST(InheritedHandleTranslation, ExactStubWins)
 {
     const std::string stubs = std::string(kIntrusiveStub) + "[native, handle(\"std::shared_ptr<$T>\")] class Item;\n";
-    const sppc::TranslateResult r = hier_translate(stubs, "    Item item;\n    Gadget g;\n    Object o;\n");
+    const hotc::TranslateResult r = hier_translate(stubs, "    Item item;\n    Gadget g;\n    Object o;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "    std::shared_ptr<Item> item;\n")) << r.cpp;
     // Gadget has no stub: the nearest base with a stub is Item.
@@ -60,7 +60,7 @@ TEST(InheritedHandleTranslation, ExactStubWins)
 
 TEST(InheritedHandleTranslation, ValueBaseIsNotInherited)
 {
-    const sppc::TranslateResult r = hier_translate("[native, value] class Flat;\n", "    FlatKid kid;\n");
+    const hotc::TranslateResult r = hier_translate("[native, value] class Flat;\n", "    FlatKid kid;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "    FlatKid kid;\n")) << r.cpp;
 }
@@ -68,8 +68,8 @@ TEST(InheritedHandleTranslation, ValueBaseIsNotInherited)
 TEST(InheritedHandleTranslation, PreludeGivesTheSameOutput)
 {
     const std::string members = "    Item item;\n    eng.Thing t;\n    void Put(Item i) { this.item = i; }\n";
-    const sppc::TranslateResult a = hier_translate(kIntrusiveStub, members);
-    const sppc::TranslateResult b = hier_translate(kIntrusiveStub, members, true);
+    const hotc::TranslateResult a = hier_translate(kIntrusiveStub, members);
+    const hotc::TranslateResult b = hier_translate(kIntrusiveStub, members, true);
     ASSERT_TRUE(a.ok) << a.diagnostics;
     ASSERT_TRUE(b.ok) << b.diagnostics;
     EXPECT_TRUE(has(b.cpp, "    " + kIntr + " item;\n")) << b.cpp;

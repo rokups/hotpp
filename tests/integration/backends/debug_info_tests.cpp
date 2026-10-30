@@ -5,7 +5,7 @@
 // The debugger itself (lldb, gdb) is not started here.
 //
 // CMake defines these macros: HOT_SOURCE_DIR, HOT_SCRATCH_DIR, HOT_CXX and PRE_V2_SO.
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 #include "support/dwarf_lines.h"
 #include "support/scratch_dir.h"
 #include "support/script_files.h"
@@ -54,13 +54,13 @@ const Compiled& compile_with_debug_info(const std::string& script, const std::st
     // CTest starts the tests in parallel as separate processes. A directory for each process
     // stops them from writing the same files. The directory is removed when the process ends.
     const std::string dir = test_support::process_scratch("debug_info").path();
-    sppc::TranslateOptions to;
+    hotc::TranslateOptions to;
     to.script_name = script + ".hot";
     to.script_text = test_support::read_file(std::string(HOT_SOURCE_DIR) + "/tests/scripts/" + script + ".hot");
     to.output_name = dir + "/" + script + ".cpp";
     to.generation = 1;
     to.include_dirs = {std::string(HOT_SOURCE_DIR) + "/include", std::string(HOT_SOURCE_DIR) + "/tests/engine"};
-    const sppc::TranslateResult tr = sppc::translate(to);
+    const hotc::TranslateResult tr = hotc::translate(to);
     Compiled c;
     c.script_file = to.script_name;
     EXPECT_TRUE(tr.ok) << tr.diagnostics;
@@ -112,8 +112,8 @@ std::vector<const test_support::DwarfFunction*> script_functions(const Compiled&
 
 const std::vector<std::string> kOptimizations = {"-O0", "-O2"};
 
-// The library that sppc built ahead of time (full debug info, "-g").
-TEST(DebugInfo, LibraryFromSppcHasLinesOfTheScript)
+// The library that hotc built ahead of time (full debug info, "-g").
+TEST(DebugInfo, LibraryFromHotcHasLinesOfTheScript)
 {
     if (!have_dwarfdump())
         GTEST_SKIP() << "llvm-dwarfdump is not installed";
@@ -129,13 +129,13 @@ TEST(DebugInfo, LineTablesOnlyKeepsTheScriptLines)
         GTEST_SKIP() << "llvm-dwarfdump is not installed";
     test_support::TestScratch scratch;
     const std::string dir = scratch.path();
-    sppc::TranslateOptions to;
+    hotc::TranslateOptions to;
     to.script_name = "player_v2.hot";
     to.script_text = test_support::read_file(std::string(HOT_SOURCE_DIR) + "/tests/scripts/player_v2.hot");
     to.output_name = dir + "/player_v2.cpp";
     to.generation = 1;
     to.include_dirs = {std::string(HOT_SOURCE_DIR) + "/include", std::string(HOT_SOURCE_DIR) + "/tests/engine"};
-    const sppc::TranslateResult tr = sppc::translate(to);
+    const hotc::TranslateResult tr = hotc::translate(to);
     ASSERT_TRUE(tr.ok) << tr.diagnostics;
     {
         std::ofstream(to.output_name) << tr.cpp;

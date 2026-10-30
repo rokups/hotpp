@@ -1,5 +1,5 @@
-// Tests for sppc::translate with three conveniences: "=>" bodies, default values and "??".
-#include "hot/sppc_lib.h"
+// Tests for hotc::translate with three conveniences: "=>" bodies, default values and "??".
+#include "hot/hotc_lib.h"
 #include "support/check_translate_test_support.h"
 
 #include <gtest/gtest.h>
@@ -25,7 +25,7 @@ std::string lines_with(const std::string& text, const std::string& part)
 
 TEST(ExpressionBodyTranslation, MethodsAndReadOnlyProperty)
 {
-    const sppc::TranslateResult r = check_translate("",
+    const hotc::TranslateResult r = check_translate("",
         "    int count;\n"
         "    int Get() => count;\n"
         "    void Bump() => this.count += 1;\n"
@@ -41,7 +41,7 @@ TEST(ExpressionBodyTranslation, MethodsAndReadOnlyProperty)
 
 TEST(ExpressionBodyTranslation, OverrideWithVoidExpression)
 {
-    const sppc::TranslateResult r = check_translate(
+    const hotc::TranslateResult r = check_translate(
         "", "    int n;\n    void Move(float dt) { n += 1; }\n    override void Update(float dt) => Move(dt);\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "Foo__Move(__self, dt);")) << r.cpp;
@@ -50,7 +50,7 @@ TEST(ExpressionBodyTranslation, OverrideWithVoidExpression)
 
 TEST(DefaultValueTranslation, DefaultIsOnTheFirstDeclarationOnly)
 {
-    const sppc::TranslateResult r = check_translate("",
+    const hotc::TranslateResult r = check_translate("",
         "    int n;\n"
         "    void Heal(float amount = 1.0, int times = 2 * 3) { n += 1; }\n"
         "    void Run() { Heal(); Heal(2.0); }\n");
@@ -68,9 +68,9 @@ TEST(DefaultValueTranslation, DefaultIsOnTheFirstDeclarationOnly)
 
 TEST(DefaultValueTranslation, SlotKeyDoesNotChangeWithTheDefault)
 {
-    const sppc::TranslateResult a = check_translate("", "    void Heal(float amount = 1.0) { }\n");
-    const sppc::TranslateResult b = check_translate("", "    void Heal(float amount = 5.0) { }\n");
-    const sppc::TranslateResult c = check_translate("", "    void Heal(float amount) { }\n");
+    const hotc::TranslateResult a = check_translate("", "    void Heal(float amount = 1.0) { }\n");
+    const hotc::TranslateResult b = check_translate("", "    void Heal(float amount = 5.0) { }\n");
+    const hotc::TranslateResult c = check_translate("", "    void Heal(float amount) { }\n");
     ASSERT_TRUE(a.ok && b.ok && c.ok) << a.diagnostics << b.diagnostics << c.diagnostics;
     for (const char* part : {"add_thunk", "hot::call<", "reinterpret_cast<hot::SlotFn>", "typeid"})
     {
@@ -81,7 +81,7 @@ TEST(DefaultValueTranslation, SlotKeyDoesNotChangeWithTheDefault)
 
 TEST(DefaultValueTranslation, ConstructorMayHaveDefaults)
 {
-    const sppc::TranslateResult r = check_translate("",
+    const hotc::TranslateResult r = check_translate("",
         "    int n;\n    Foo(int start = 3) { n = start; }\n    static void Make() { var f = new Foo(); var g = new "
         "Foo(7); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -92,29 +92,29 @@ TEST(DefaultValueTranslation, ConstructorMayHaveDefaults)
 
 TEST(DefaultValueTranslation, VirtualAndOverrideCannotHaveDefaults)
 {
-    const sppc::TranslateResult v = check_translate("", "    virtual void F(int a = 1) { }\n");
+    const hotc::TranslateResult v = check_translate("", "    virtual void F(int a = 1) { }\n");
     EXPECT_FALSE(v.ok);
     EXPECT_TRUE(has(v.diagnostics, "default values are not allowed on virtual or override methods")) << v.diagnostics;
-    const sppc::TranslateResult o = check_translate("", "    override void Update(float dt = 1.0) { }\n");
+    const hotc::TranslateResult o = check_translate("", "    override void Update(float dt = 1.0) { }\n");
     EXPECT_FALSE(o.ok);
     EXPECT_TRUE(has(o.diagnostics, "default values are not allowed on virtual or override methods")) << o.diagnostics;
 }
 
 TEST(DefaultValueTranslation, StructMethodAndConstructor)
 {
-    const sppc::TranslateResult r = check_translate(
+    const hotc::TranslateResult r = check_translate(
         "struct V { int x; V(int q, int a = 5) { this.x = q + a; } void Add(int d = 2) { this.x += d; } }\n", "");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "void Add(int32_t d = 2) {")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "V(int32_t q, int32_t a = 5)")) << r.cpp;
-    const sppc::TranslateResult bad = check_translate("struct V { int x; V(int a = 5) { this.x = a; } }\n", "");
+    const hotc::TranslateResult bad = check_translate("struct V { int x; V(int a = 5) { this.x = a; } }\n", "");
     EXPECT_FALSE(bad.ok);
     EXPECT_TRUE(has(bad.diagnostics, "default value for each parameter")) << bad.diagnostics;
 }
 
 TEST(CoalesceTranslation, BecomesARuntimeHelperCall)
 {
-    const sppc::TranslateResult r = check_translate("",
+    const hotc::TranslateResult r = check_translate("",
         "    Foo Pick(Foo a, Foo b) { return a ?? b; }\n    int Num(std.shared_ptr<int> p, int d) { return *(p ?? p) + "
         "d; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -123,7 +123,7 @@ TEST(CoalesceTranslation, BecomesARuntimeHelperCall)
 
 TEST(CoalesceTranslation, ChainIsRightAssociative)
 {
-    const sppc::TranslateResult r = check_translate("", "    Foo Pick(Foo a, Foo b, Foo c) => a ?? b ?? c;\n");
+    const hotc::TranslateResult r = check_translate("", "    Foo Pick(Foo a, Foo b, Foo c) => a ?? b ?? c;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(
         has(r.cpp, "hot::coalesce(a, [&]() -> auto { return (hot::coalesce(b, [&]() -> auto { return (c); })); })"))
@@ -132,13 +132,13 @@ TEST(CoalesceTranslation, ChainIsRightAssociative)
 
 TEST(CoalesceTranslation, BorrowedPointerOnEitherSideIsBorrowed)
 {
-    const sppc::TranslateResult l = check_translate("",
+    const hotc::TranslateResult l = check_translate("",
         "    std.function<int()> cb;\n"
         "    void Run() { int x = 1; var p = &x; var n = (int*)null; var q = (int*)null;\n"
         "        q = p ?? n; this.cb = () => *q; }\n");
     EXPECT_FALSE(l.ok);
     EXPECT_TRUE(has(l.diagnostics, "the lambda captures 'q'")) << l.diagnostics;
-    const sppc::TranslateResult rr = check_translate("",
+    const hotc::TranslateResult rr = check_translate("",
         "    std.function<int()> cb;\n"
         "    void Run() { int x = 1; var p = &x; var n = (int*)null; var q = (int*)null;\n"
         "        q = n ?? p; this.cb = () => *q; }\n");
@@ -148,7 +148,7 @@ TEST(CoalesceTranslation, BorrowedPointerOnEitherSideIsBorrowed)
 
 TEST(IsBindingTranslation, IfAndWhileBindAHandle)
 {
-    const sppc::TranslateResult r = check_translate("",
+    const hotc::TranslateResult r = check_translate("",
         "    int rage;\n    void Rage() { rage += 1; }\n"
         "    void Run(Foo x) {\n"
         "        if (x is Foo g) { g.Rage(); }\n"
@@ -178,7 +178,7 @@ TEST(IsBindingTranslation, BindingOutsideTheStartOfAConditionIsAnError)
     };
     for (const char* stmt : bad)
     {
-        const sppc::TranslateResult r =
+        const hotc::TranslateResult r =
             check_translate("", std::string("    void Run(Foo x, bool a) { ") + stmt + " }\n");
         EXPECT_FALSE(r.ok) << stmt;
         EXPECT_TRUE(
@@ -197,7 +197,7 @@ TEST(DefaultValueTranslation, FieldParameterAndThisAreErrors)
              "    int Num() { return 1; }\n    int Add4(int b = Num()) { return b; }\n",
              "    int P { get; set; }\n    int Add5(int b = P) { return b; }\n"})
     {
-        const sppc::TranslateResult r = check_translate("", body);
+        const hotc::TranslateResult r = check_translate("", body);
         EXPECT_FALSE(r.ok) << body;
         EXPECT_TRUE(has(r.diagnostics, kMsg)) << body << r.diagnostics;
     }
@@ -215,20 +215,20 @@ TEST(DefaultValueTranslation, NativeBaseMemberIsAnError)
     for (const char* body :
         {"    int Add(int a, int b = kMax) { return a + b; }\n", "    void Show(std.string s = Name) { }\n"})
     {
-        const sppc::TranslateResult r = sppc::translate(
+        const hotc::TranslateResult r = hotc::translate(
             translator_test::temp_options(dir, std::string("using \"nb.h\";\nclass Foo : NBase {\n") + body + "}\n"));
         EXPECT_FALSE(r.ok) << body;
         EXPECT_TRUE(has(r.diagnostics, kMsg)) << body << r.diagnostics;
     }
     // A literal and an own name stay allowed.
-    const sppc::TranslateResult ok = sppc::translate(translator_test::temp_options(
+    const hotc::TranslateResult ok = hotc::translate(translator_test::temp_options(
         dir, "using \"nb.h\";\nclass Foo : NBase {\n    int Add(int a, int b = 3) { return a + b + kMax; }\n}\n"));
     EXPECT_TRUE(ok.ok) << ok.diagnostics;
 }
 
 TEST(DefaultValueTranslation, LiteralsOperatorsAndNativeNamesStayAllowed)
 {
-    const sppc::TranslateResult r = check_translate("",
+    const hotc::TranslateResult r = check_translate("",
         "    int Add(int a, int b = 2 * 3 + 1, float f = 1.5, int m = std.numeric_limits<int>.max()) { return a + b; "
         "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -237,7 +237,7 @@ TEST(DefaultValueTranslation, LiteralsOperatorsAndNativeNamesStayAllowed)
 
 TEST(DefaultValueTranslation, CoalesceInADefaultHasNoCapture)
 {
-    const sppc::TranslateResult r = check_translate("", "    int Add(int a, int b = 1 ?? 2) { return a + b; }\n");
+    const hotc::TranslateResult r = check_translate("", "    int Add(int a, int b = 1 ?? 2) { return a + b; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "[]() -> auto { return (2); }")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "b = hot::coalesce(1, [&]")) << r.cpp;

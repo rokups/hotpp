@@ -1,5 +1,5 @@
-// Tests for sppc::translate with the kinds of script classes: shell class, plain class, [value] class.
-#include "hot/sppc_lib.h"
+// Tests for hotc::translate with the kinds of script classes: shell class, plain class, [value] class.
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -19,21 +19,21 @@ const char* kHeader =
     "    virtual void Update(float dt) {}\n"
     "};\n";
 
-sppc::TranslateResult translate_script(const std::string& body)
+hotc::TranslateResult translate_script(const std::string& body)
 {
     TempDir dir;
     write_file(dir.path() / "u.h", kHeader);
-    return sppc::translate(temp_options(dir, "using \"u.h\";\nusing <string>;\n" + body));
+    return hotc::translate(temp_options(dir, "using \"u.h\";\nusing <string>;\n" + body));
 }
 
 void expect_error(const std::string& body, const std::string& msg)
 {
-    const sppc::TranslateResult r = translate_script(body);
+    const hotc::TranslateResult r = translate_script(body);
     EXPECT_FALSE(r.ok) << body;
     EXPECT_NE(r.diagnostics.find(msg), std::string::npos) << body << "\n" << r.diagnostics;
 }
 
-bool has(const sppc::TranslateResult& r, const std::string& text)
+bool has(const hotc::TranslateResult& r, const std::string& text)
 {
     return r.cpp.find(text) != std::string::npos;
 }
@@ -49,7 +49,7 @@ const char* kStats =
 
 TEST(ScriptKindsTranslation, NewOfAShellClassGivesAHandle)
 {
-    const sppc::TranslateResult r = translate_script(
+    const hotc::TranslateResult r = translate_script(
         "class Squad : Unit { int size = 5; Squad(int n) { this.size = n; } }\n"
         "class Boss : Unit {\n"
         "    Squad kid;\n"
@@ -62,7 +62,7 @@ TEST(ScriptKindsTranslation, NewOfAShellClassGivesAHandle)
 
 TEST(ScriptKindsTranslation, PlainClassUsesThePlainObjectBase)
 {
-    const sppc::TranslateResult r = translate_script(
+    const hotc::TranslateResult r = translate_script(
         "class Counter { int count = 0; Counter(int c) { this.count = c; } }\n"
         "class Boss : Unit {\n"
         "    Counter c;\n"
@@ -75,7 +75,7 @@ TEST(ScriptKindsTranslation, PlainClassUsesThePlainObjectBase)
 
 TEST(ScriptKindsTranslation, ValueClassIsAStructWithCopySemantics)
 {
-    const sppc::TranslateResult r = translate_script(
+    const hotc::TranslateResult r = translate_script(
         std::string(kStats) +
         "class Boss : Unit {\n"
         "    Stats s = Stats(2.0);\n"
@@ -105,14 +105,14 @@ TEST(ScriptKindsTranslation, SuperNeedsABase)
 TEST(ScriptKindsTranslation, ClassOrderIsChecked)
 {
     // A [value] class is emitted first, so a later [value] class is fine.
-    const sppc::TranslateResult r = translate_script("class Boss : Unit { Stats s; }\nstruct Stats { int a = 0; }\n");
+    const hotc::TranslateResult r = translate_script("class Boss : Unit { Stats s; }\nstruct Stats { int a = 0; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
 TEST(ScriptKindsTranslation, HandleClassCanBeUsedBeforeItsDeclaration)
 {
     // The translator sorts the classes by use. Squad is emitted before Boss.
-    const sppc::TranslateResult r =
+    const hotc::TranslateResult r =
         translate_script("class Boss : Unit { Squad s; }\nclass Squad : Unit { int a = 0; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_LT(r.cpp.find("struct Squad_Shell"), r.cpp.find("struct Boss_Shell")) << r.cpp;

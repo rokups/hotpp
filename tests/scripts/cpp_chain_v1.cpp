@@ -1,6 +1,6 @@
 // Generation 1 of a chain of three script classes: Leaf derives from Mid, and Mid derives from Base.
 // Base declares the virtual method Step. Mid and Leaf override it.
-// A normal C++ build compiles this file. The tool sppc also translates it.
+// A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
 
 // The number of Tick calls on an object that is a Mid.

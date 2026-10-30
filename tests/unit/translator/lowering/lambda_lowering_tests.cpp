@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-using namespace sppc;
+using namespace hotc;
 using namespace lowering_test;
 
 TEST(LambdaLowering, Lambda)

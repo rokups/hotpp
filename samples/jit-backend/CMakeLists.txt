@@ -11,7 +11,7 @@ endif()
 
 # The S++ source tree. A separate build uses it. The S++ build already has the targets.
 set(HOT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The S++ source tree")
-if(NOT TARGET sppc)
+if(NOT TARGET hotc)
     add_subdirectory(${HOT_ROOT} hot)
 endif()
 

@@ -1,6 +1,6 @@
-// Tests of scripts that sppc compiled ahead of time.
+// Tests of scripts that hotc compiled ahead of time.
 //
-// PrecompiledTests load .so files that sppc made at build time (hot_add_scripts)
+// PrecompiledTests load .so files that hotc made at build time (hot_add_scripts)
 // as a Module with module_from_library. They run for every HOT_BACKEND value.
 //
 // CMake defines these macros: HOT_SCRATCH_DIR, PRE_V1_SO, PRE_V2_SO, PRE_NATIVE_V1_SO,
@@ -18,7 +18,7 @@
 namespace
 {
 
-// The libraries come from hot_add_scripts, which calls sppc.
+// The libraries come from hot_add_scripts, which calls hotc.
 TEST(PrecompiledTests, F1ReloadWithModulesFromLibraries)
 {
     f1::run_f1_reload(test_support::library(PRE_V1_SO), test_support::library(PRE_V2_SO));

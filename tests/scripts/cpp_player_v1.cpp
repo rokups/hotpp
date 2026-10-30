@@ -1,5 +1,5 @@
 // Generation 1 of the Player class as a plain C++ script.
-// A normal C++ build compiles this file. The tool sppc also translates it.
+// A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
 #include "Math.h"
 

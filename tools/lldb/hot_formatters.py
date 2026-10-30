@@ -7,10 +7,10 @@ The translator makes C++ with generated names. These formatters show the script 
   - the internal member "__hot_owner" of a state block is hidden from the children
 
 The first part of this file is pure Python. It does not import lldb, so a plain Python test
-can run it (tests/unit/python/test_spp_formatters.py). The second part needs lldb. It runs
+can run it (tests/unit/python/test_hot_formatters.py). The second part needs lldb. It runs
 only when lldb loads the file. lldb was NOT run against this file in the session that wrote it.
 
-Use: "command script import /path/to/spp_formatters.py" (see tools/lldb/spp.lldbinit).
+Use: "command script import /path/to/hot_formatters.py" (see tools/lldb/hot.lldbinit).
 """
 
 import re
@@ -183,7 +183,7 @@ class StateChildren:  # pragma: no cover - needs lldb
 
 
 def script_backtrace(debugger, command, result, internal_dict):  # pragma: no cover
-    """The command "spp-bt": print the stack of the selected thread with script names."""
+    """The command "hot-bt": print the stack of the selected thread with script names."""
     thread = debugger.GetSelectedTarget().GetProcess().GetSelectedThread()
     for frame in thread:
         le = frame.GetLineEntry()
@@ -202,4 +202,4 @@ def __lldb_init_module(debugger, internal_dict):  # pragma: no cover
                                   r"^(std::(__1::)?shared_ptr|hot::Intrusive)<(\w+::)*\w+_Shell.*>$"))
     debugger.HandleCommand("type synthetic add --regex --python-class %s.StateChildren \"%s\""
                            % (module, r"^(\w+::)*\w+State_g[0-9]+$"))
-    debugger.HandleCommand("command script add -f %s.script_backtrace spp-bt" % module)
+    debugger.HandleCommand("command script add -f %s.script_backtrace hot-bt" % module)

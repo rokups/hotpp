@@ -1,5 +1,5 @@
-// Tests for sppc::analyze: the facts of a script that has syntax errors.
-#include "hot/sppc_lib.h"
+// Tests for hotc::analyze: the facts of a script that has syntax errors.
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -7,23 +7,23 @@
 #include <string>
 
 using namespace translator_test;
-using sppc::SourcePos;
+using hotc::SourcePos;
 
 namespace
 {
 
-sppc::AnalyzeResult analyze_text(const std::string& text)
+hotc::AnalyzeResult analyze_text(const std::string& text)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
-    return sppc::analyze(text, temp_options(dir, ""));
+    return hotc::analyze(text, temp_options(dir, ""));
 }
 
 } // namespace
 
 TEST(Analyze, ValidScriptHasNoErrorAndAMap)
 {
-    const sppc::AnalyzeResult r = analyze_text(
+    const hotc::AnalyzeResult r = analyze_text(
         "using \"w.h\";\n"
         "class Foo : Widget {\n"
         "    int hits = 0;\n"
@@ -49,7 +49,7 @@ TEST(Analyze, ValidScriptHasNoErrorAndAMap)
 
 TEST(Analyze, ErrorsInTwoMethodsKeepTheValidMethod)
 {
-    const sppc::AnalyzeResult r = analyze_text(
+    const hotc::AnalyzeResult r = analyze_text(
         "using \"w.h\";\n"
         "class Foo : Widget {\n"
         "    int n = 0;\n"
@@ -78,7 +78,7 @@ TEST(Analyze, ErrorsInTwoMethodsKeepTheValidMethod)
 
 TEST(Analyze, HalfTypedMemberAccessGivesACompletionPoint)
 {
-    const sppc::AnalyzeResult r = analyze_text(
+    const hotc::AnalyzeResult r = analyze_text(
         "using \"w.h\";\n"
         "class Foo : Widget {\n"
         "    override void Update(float dt) {\n"
@@ -97,7 +97,7 @@ TEST(Analyze, HalfTypedMemberAccessGivesACompletionPoint)
 
 TEST(Analyze, MissingClassBraceKeepsTheClassAndTheMembers)
 {
-    const sppc::AnalyzeResult r = analyze_text(
+    const hotc::AnalyzeResult r = analyze_text(
         "using \"w.h\";\n"
         "class Foo : Widget {\n"
         "    int n = 0;\n"
@@ -112,7 +112,7 @@ TEST(Analyze, MissingClassBraceKeepsTheClassAndTheMembers)
 
 TEST(Analyze, MissingSemicolonIsOneErrorAndTheOtherMembersStay)
 {
-    const sppc::AnalyzeResult r = analyze_text(
+    const hotc::AnalyzeResult r = analyze_text(
         "using \"w.h\";\n"
         "class Foo : Widget {\n"
         "    void a() {\n"
@@ -132,8 +132,8 @@ TEST(Analyze, TranslateStillFailsForTheSameText)
     const std::string text = "using \"w.h\";\nclass Foo : Widget {\n    void a() { x = ; }\n}\n";
     TempDir dir;
     write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} };\n");
-    sppc::TranslateOptions o = temp_options(dir, text);
-    const sppc::TranslateResult t = sppc::translate(o);
+    hotc::TranslateOptions o = temp_options(dir, text);
+    const hotc::TranslateResult t = hotc::translate(o);
     EXPECT_FALSE(t.ok);
     EXPECT_TRUE(t.cpp.empty());
     EXPECT_EQ(t.diagnostics, "t.hot:3:20: error: expected an expression\n");

@@ -1,5 +1,5 @@
 // Generation 1 of a script class with static members as a plain C++ script.
-// A normal C++ build compiles this file. The tool sppc also translates it.
+// A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
 
 // The method Tick calls this function. It is defined after the class.

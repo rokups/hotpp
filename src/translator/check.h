@@ -25,7 +25,7 @@
 #include <utility>
 #include <vector>
 
-namespace sppc
+namespace hotc
 {
 
 // Checks one class. Each error goes to the diagnostics. The pass continues after an error.
@@ -132,4 +132,4 @@ NativeQueries collect_native_queries(ast::Script& sc);
 // std::enable_shared_from_this.
 bool uses_bare_this(const ast::ClassDef& cd);
 
-} // namespace sppc
+} // namespace hotc

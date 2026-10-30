@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(spp CXX)
+project(hotpp CXX)
 
 # HOT_TOP_LEVEL is ON when S++ is the main project. It is OFF when a consumer project
 # uses add_subdirectory. The options below default to ON only for the main project.
@@ -36,7 +36,7 @@ set(HOT_SCRATCH_DIR ${CMAKE_BINARY_DIR}/tmp)
 if(NOT CMAKE_CXX_STANDARD)
     set(CMAKE_CXX_STANDARD 20)
     # The scope of a parent project does not see the variable. hot_add_scripts in that scope
-    # reads this property (hot_effective_cxx_standard), so it agrees with the build of sppc.
+    # reads this property (hot_effective_cxx_standard), so it agrees with the build of hotc.
     set_property(GLOBAL PROPERTY HOT_DEFAULT_CXX_STANDARD 20)
 endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -149,7 +149,7 @@ include(cmake/HotScripts.cmake)
 # The order follows the dependencies: the libraries, then the tests.
 add_subdirectory(src)
 
-# GoogleTest targets. They need the pre_* targets and sppc from above.
+# GoogleTest targets. They need the pre_* targets and hotc from above.
 if(HOT_BUILD_TESTS)
     add_subdirectory(tests)
     # The benchmark uses the test engine and the test scripts.

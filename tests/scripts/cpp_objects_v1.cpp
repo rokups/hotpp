@@ -1,5 +1,5 @@
 // Generation 1 of two script classes. Script code uses a script class as a type.
-// A normal C++ build compiles this file. The tool sppc also translates it.
+// A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
 
 class Minion : public Actor

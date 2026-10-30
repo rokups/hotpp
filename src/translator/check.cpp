@@ -11,7 +11,7 @@
 #include <variant>
 #include <vector>
 
-namespace sppc
+namespace hotc
 {
 
 namespace
@@ -1929,4 +1929,4 @@ std::set<std::string> used_type_names(const Script& sc)
     return out;
 }
 
-} // namespace sppc
+} // namespace hotc

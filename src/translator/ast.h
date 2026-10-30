@@ -12,17 +12,17 @@
 #include <variant>
 #include <vector>
 
-namespace sppc::ast
+namespace hotc::ast
 {
 
-// The nested namespace of a namespace "ns" of a ".cpp" script. It holds the names that sppc
+// The nested namespace of a namespace "ns" of a ".cpp" script. It holds the names that hotc
 // generates for the script classes of "ns". It is empty for the file scope.
 inline std::string gen_namespace(const std::string& ns)
 {
     return ns.empty() ? ns : ns + "::hot_gen";
 }
 
-using sppc::Span;
+using hotc::Span;
 
 // True when a parameter type is a "T&" (a non-const lvalue reference). A "T&&" and a
 // "const T&" are not. The translator rewrites a handle value type to "const H&": it stays false.
@@ -588,4 +588,4 @@ struct Script
     std::vector<Chunk> chunks; // a ".cpp" script only
 };
 
-} // namespace sppc::ast
+} // namespace hotc::ast

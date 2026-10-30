@@ -1,9 +1,9 @@
 # Handoff: S++ hot-reload scripting prototype
 
-You continue work on `/home/rk/src/spp`. S++ is a hot-reloadable scripting language for C++. The script syntax is type-first, in the style of Vala and C#. The translator (`sppc`) turns it into C++. Clang compiles the C++. The runtime reloads it and keeps the live objects.
+You continue work on `/home/rk/src/spp`. S++ is a hot-reloadable scripting language for C++. The script syntax is type-first, in the style of Vala and C#. The translator (`hotc`) turns it into C++. Clang compiles the C++. The runtime reloads it and keeps the live objects.
 
 ## Read first
-1. `spp-design.md`: the design. Read sections 4, 5, 7, 8 and 9. Use `grep -n '^## '` and `sed -n`.
+1. `hot-design.md`: the design. Read sections 4, 5, 7, 8 and 9. Use `grep -n '^## '` and `sed -n`.
 2. `README.md`: the backends, the tools, the tests, the status table (M0 to M14).
 3. `DECISIONS.md`: each decision with its reason. `TASKS.md`: the slices S0 to S21 (all done).
 
@@ -13,7 +13,7 @@ You continue work on `/home/rk/src/spp`. S++ is a hot-reloadable scripting langu
 - Fetch dependencies through CPM.cmake when they are not installed (`CPM_USE_LOCAL_PACKAGES ON`). Libclang and LLVM come from the system.
 - Commit messages: short title, terse body. No attribution lines of any kind.
 - Subagents: set `model` and `effort` on every Agent call. Use the cheapest suitable model.
-- Precompiling a script to a `.so` is not a backend. It is a tool (`sppc`). Project S++, extension `.hot`, C++ namespace `spp`, translator namespace `sppc`.
+- Precompiling a script to a `.so` is not a backend. It is a tool (`hotc`). Project S++, extension `.hot`, C++ namespace `hot`, translator namespace `hotc`.
 
 ## State at HEAD
 All work is committed, except what `git status` shows. Slices S0 to S21 are done (`TASKS.md`).
@@ -25,16 +25,16 @@ All work is committed, except what `git status` shows. Slices S0 to S21 are done
 | Thunks, closures | Delegates survive a reload. `hot::Closure` pins a generation. A stale closure logs one stale call and does not run. A signature change detaches a delegate with a warning. Done. |
 | Unload | A retired generation unloads when the pin count is zero, a frame passed and no live object uses its code. Generation 1 unloads too (core module). Done. |
 | Threads | `World::TickParallel` with a barrier. Stop-the-world commit at the barrier. A second mode, `SyncMode::EntryCounters`, blocks new entries. ASan and TSan are clean. Done. |
-| Translator | `sppc_lib` works on strings. It reads the native base with libclang. It emits `#line`. A session cache cuts a warm translate to about 1.3 ms. Tolerant parse, `source_map`, `analyze`. Done. |
+| Translator | `hotc_lib` works on strings. It reads the native base with libclang. It emits `#line`. A session cache cuts a warm translate to about 1.3 ms. Tolerant parse, `source_map`, `analyze`. Done. |
 | Language | Classes, properties, constructors, inheritance, virtuals, `is`/`as`, enums, structs, module variables, native interface bases, interpolation. Done (syntax below). |
 | Backends | `HOT_BACKEND=CLANG_FILES` (default, external `clang++`) or `JIT` (in-process Clang plus ORC). Chosen at build time. Done. |
-| Tools | `sppc` (build `.so`, `--emit-cpp`, `--aot`, `--compile-commands`), `bench_backends`, `spp-ls`. Done. |
-| AOT compilation | `sppc --aot`, `hot_add_scripts` with `AOT`, library `hot_aot` with no loader. Done (generation 1 only). |
+| Tools | `hotc` (build `.so`, `--emit-cpp`, `--aot`, `--compile-commands`), `bench_backends`, `hot-ls`. Done. |
+| AOT compilation | `hotc --aot`, `hot_add_scripts` with `AOT`, library `hot_aot` with no loader. Done (generation 1 only). |
 | Diagnostics, debug | Diagnostic rewriter, `#line`, DWARF script lines, lldb formatters, natvis. gdb check done (F3, see below). lldb and Visual Studio not run. |
-| Language server | `spp-ls`: a stdio LSP proxy in front of stock clangd (`src/ls/`, `DECISIONS.md` 13). VS Code extension in `editors/vscode/`. Done. |
+| Language server | `hot-ls`: a stdio LSP proxy in front of stock clangd (`src/ls/`, `DECISIONS.md` 13). VS Code extension in `editors/vscode/`. Done. |
 
 Layout:
-- `include/hot/` public headers. `src/runtime/` runtime and backends. `src/translator/` translator (`sppc_lib`). `src/translator/parser/` lexy grammars. `src/tools/` the tool `sppc`. `src/ls/` the language server.
+- `include/hot/` public headers. `src/runtime/` runtime and backends. `src/translator/` translator (`hotc_lib`). `src/translator/parser/` lexy grammars. `src/tools/` the tool `hotc`. `src/ls/` the language server.
 - `tests/engine/` is the test host (not a model for users), `tests/scripts/` the test scripts, `tests/integration/aot/` the `aot_demo` program, `samples/` the seven self-contained sample projects (incl. `imgui`), `tools/bench/bench_backends.cpp` the benchmark. `editors/vscode/` the extension. `tools/` has the lldb and natvis files.
 - `tests/unit/translator/` (`parser`, `emit`, `lowering`, `translate`, `types`, `session`, `diagnostics`), `tests/unit/runtime/`, `tests/unit/python/`, `tests/integration/` (`backends`, `closures`, `reload`, `threading`, `aot`, `ls`), `tests/golden/`, `tests/support/`.
 
@@ -49,7 +49,7 @@ Layout:
 Measures (P1, one module after a one-line change, this machine, `-O1`, warm): JIT 808 ms, JIT with PCH 166 ms, CLANG_FILES about 1105 ms, CLANG_FILES with PCH about 350 ms. The criterion is under 2 s. See README "Measurements".
 
 ## Syntax summary
-The full list is in `README.md` and `spp-design.md` section 7.
+The full list is in `README.md` and `hot-design.md` section 7.
 - `using "Actor.h";` and `using <vector>;`. A `using "other.hot";` imports a script (cross-script parents).
 - `class Name : Base, IFace { }`. The base is optional. `[value] class` and `struct` are inline values.
 - Field: `[alias("old")] [public|private|protected] Type name = init;`. The initializer is optional.
@@ -105,14 +105,14 @@ Stubs and checks (S2, S20b): order of the rules: exact stub, base stub, pattern 
 
 Translator cache: it hashes a header that changed in the last 2 seconds. It checks paths that hide a header earlier in the include path. The stamp has the inode, the ctime and a content hash. The prelude is not in the cache key.
 
-Native bases (risk 8): libclang describes a plain base class, a base that derives from a plain class, an explicit template specialization and an implicit instance of a class template. The translator reads the members of the pattern and replaces the parameter names with the arguments (`implicit_pattern`, `make_subst`, `subst_text` in `src/translator/sppc_lib.cpp`). This works through a template that derives from another template (`choose_pattern`) and for a partial specialization (`bind_args` deduces the parameters from the argument pattern, for example `U*`). A script class can name an instance as its direct base: `class Foo : Tmpl<int>`. The probe file makes an alias for the instance. Limits: the deduction handles type arguments only. A non-type argument in a partial specialization pattern is not deduced. Constructor parameter types of an instance base keep the parameter names. `tests/unit/translator/translate/template_base_translation_tests.cpp` pins this.
+Native bases (risk 8): libclang describes a plain base class, a base that derives from a plain class, an explicit template specialization and an implicit instance of a class template. The translator reads the members of the pattern and replaces the parameter names with the arguments (`implicit_pattern`, `make_subst`, `subst_text` in `src/translator/hotc_lib.cpp`). This works through a template that derives from another template (`choose_pattern`) and for a partial specialization (`bind_args` deduces the parameters from the argument pattern, for example `U*`). A script class can name an instance as its direct base: `class Foo : Tmpl<int>`. The probe file makes an alias for the instance. Limits: the deduction handles type arguments only. A non-type argument in a partial specialization pattern is not deduced. Constructor parameter types of an instance base keep the parameter names. `tests/unit/translator/translate/template_base_translation_tests.cpp` pins this.
 
 Other limits:
 - The parser stores the access words. The translator does not enforce them.
 - Nesting limits: 64 nested statements, 15 nested lambdas, 256 operators in one expression.
 - AOT compilation: generation 1 only, no slot file. A type error shows in the C++ compile of the generated file. Script type and class names must be unique over all AOT scripts. `onReload` and `convert` never run.
 - Language server index (S28): the shard of a closed `.hot` file is made at the first rename or references scan, not at startup. The shard digest covers the file text and the texts of the scripts it imports, found by a scan for `using "x.hot";` in the script dir and the include dirs. A changed import makes the shard stale. The index dir is the first workspace folder only. Code: `src/ls/symbol_index.{h,cpp}`.
-- Language server hosts (`DECISIONS.md` 19): `hot_script_host` writes `.cache/hot/hosts/<name>.json`. Code: `src/ls/hosts.{h,cpp}`. Many build dirs share one hosts dir, so the last configure wins. Symlinked workspace paths are not canonicalized in matching. Multi-Config generators are untested. The host defines, options and include dirs are in the side files `<name>.defines`, `<name>.options` and `<name>.includes` (one entry on each line), so all valid paths are safe. The JSON has `sourceDir`; `spp-ls` resolves relative paths with it and removes repeated include dirs. Unsupported: a path with a newline, and a path with `;` (CMake splits it in a list before the function sees it).
+- Language server hosts (`DECISIONS.md` 19): `hot_script_host` writes `.cache/hot/hosts/<name>.json`. Code: `src/ls/hosts.{h,cpp}`. Many build dirs share one hosts dir, so the last configure wins. Symlinked workspace paths are not canonicalized in matching. Multi-Config generators are untested. The host defines, options and include dirs are in the side files `<name>.defines`, `<name>.options` and `<name>.includes` (one entry on each line), so all valid paths are safe. The JSON has `sourceDir`; `hot-ls` resolves relative paths with it and removes repeated include dirs. Unsupported: a path with a newline, and a path with `;` (CMake splits it in a list before the function sees it).
 - Language server: after a translation error, clangd keeps the last good C++. Positions go through a prefix/suffix edit map (`Doc::set_edit`). A position inside the edit has no mapping. The `#line` fallback takes the column of the same word in the script line.
 - Language server: clangd does not publish again when a new version gives the same diagnostics. The server drops diagnostics of an old version, so the diagnostics can be missing after an edit that gives the same C++.
 - Language server: two open scripts that import the same script both publish diagnostics for it. The last publish wins. The formatter is a brace-depth indenter, not a full formatter.

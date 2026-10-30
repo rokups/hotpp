@@ -5,14 +5,14 @@ project(hot_sample_aot CXX)
 
 # The S++ source tree. A separate build uses it. The S++ build already has the targets.
 set(HOT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The S++ source tree")
-if(NOT TARGET sppc)
+if(NOT TARGET hotc)
     add_subdirectory(${HOT_ROOT} hot)
 endif()
 
 # One program source, two script variants. The extension picks the script. Both variants are
 # in the folder script. Each variant has its own AOT library and its own program.
-#   sample_aot_hot has the C++ that sppc makes from script/wolf.hot.
-#   sample_aot_cpp has the C++ that sppc makes from script/wolf.cpp.
+#   sample_aot_hot has the C++ that hotc makes from script/wolf.hot.
+#   sample_aot_cpp has the C++ that hotc makes from script/wolf.cpp.
 # A call of hot_add_scripts takes scripts with one stem only, so each variant has its own call and
 # its own OUT_DIR. The library sample_aot_<variant>_scripts has the result and links hot_aot.
 enable_testing()

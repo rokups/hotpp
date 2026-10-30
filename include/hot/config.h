@@ -35,7 +35,7 @@
 namespace hot
 {
 
-// The value for sppc::TranslateOptions::format_lib: "fmt" or "std".
+// The value for hotc::TranslateOptions::format_lib: "fmt" or "std".
 constexpr const char* format_lib_name()
 {
     return HOT_USE_FMT ? "fmt" : "std";

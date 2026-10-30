@@ -5,7 +5,7 @@
 #include "../diag.h"
 #include "span.h"
 
-namespace sppc
+namespace hotc
 {
 
 // Parses the text of the span as the statements of a block. The span is the text between
@@ -14,4 +14,4 @@ namespace sppc
 // The function in this step is a stub. It records an error and returns an empty block.
 ast::BlockStmt parse_block(ParseInput in, Span body_without_braces, Diagnostics& diag);
 
-} // namespace sppc
+} // namespace hotc

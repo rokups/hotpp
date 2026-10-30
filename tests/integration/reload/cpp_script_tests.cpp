@@ -1,5 +1,5 @@
 // Reload tests of a plain C++ script (a ".cpp" script). The file extension selects the parser
-// of sppc. The host passes the script as a ScriptSource like any other script. The tests use
+// of hotc. The host passes the script as a ScriptSource like any other script. The tests use
 // the backend that HOT_BACKEND selected.
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
@@ -680,7 +680,7 @@ TEST_P(BackendTests, CppScriptNamespaceNamesInScriptCode)
 
 // A .hot script and a .cpp script live in the same process. Each has its own loader and one object.
 // One loader holds one module for each generation, so the two scripts use two loaders.
-TEST_P(BackendTests, SppAndCppScriptsRunSideBySide)
+TEST_P(BackendTests, HotAndCppScriptsRunSideBySide)
 {
     hot::LoadResult hot_mod = backend->load(source("echo_v1.hot"), 1);
     ASSERT_TRUE(hot_mod) << hot_mod.error;

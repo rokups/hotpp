@@ -41,7 +41,7 @@
 #include <utility>
 #include <vector>
 
-namespace sppc
+namespace hotc
 {
 namespace
 {
@@ -1372,4 +1372,4 @@ ast::BlockStmt parse_block(ParseInput in, Span body_without_braces, Diagnostics&
     return block;
 }
 
-} // namespace sppc
+} // namespace hotc

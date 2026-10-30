@@ -1,5 +1,5 @@
 // Tests for the translation of the structured bindings and the foreach helpers.
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -14,11 +14,11 @@ using namespace translator_test;
 // A header with the standard types of the scripts.
 const char* kHeader = "#include <map>\n#include <utility>\n#include <vector>\n";
 
-sppc::TranslateResult translate_with_header(const std::string& text)
+hotc::TranslateResult translate_with_header(const std::string& text)
 {
     TempDir dir;
     write_file(dir.path() / "u.h", kHeader);
-    return sppc::translate(temp_options(dir, text));
+    return hotc::translate(temp_options(dir, text));
 }
 
 bool has(const std::string& text, const std::string& part)
@@ -40,7 +40,7 @@ std::string script(const std::string& body)
 
 TEST(StructuredBindingTranslation, LocalForms)
 {
-    const sppc::TranslateResult r = translate_with_header(
+    const hotc::TranslateResult r = translate_with_header(
         script("var (a, b) = Mk(); var& (c, d) = this.pr; const var (e, f) = Mk(); int s = a + b + c + d + e + f;"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "auto [a, b] = A__Mk(__self);")) << r.cpp;
@@ -50,7 +50,7 @@ TEST(StructuredBindingTranslation, LocalForms)
 
 TEST(StructuredBindingTranslation, ForeachForms)
 {
-    const sppc::TranslateResult r = translate_with_header(
+    const hotc::TranslateResult r = translate_with_header(
         script("int s = 0; foreach (var (k, v) in this.m) s += k + v; foreach (var& (k, v) in this.m) v += 1;"
                " foreach (var (i, x) in enumerate(this.m)) s += x; foreach (int i in range(3)) s += i;"
                " foreach (int i in range(1, 3)) s += i;"));
@@ -65,20 +65,20 @@ TEST(StructuredBindingTranslation, ForeachForms)
 TEST(StructuredBindingTranslation, NamesAreLocals)
 {
     // A binding name can shadow nothing and is not borrowed: a lambda may capture it.
-    const sppc::TranslateResult r = translate_with_header(script("var (a, b) = Mk(); var f = () => a + b;"));
+    const hotc::TranslateResult r = translate_with_header(script("var (a, b) = Mk(); var f = () => a + b;"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
 }
 
 TEST(StructuredBindingTranslation, RefBindingIsBorrowedForALambda)
 {
-    const sppc::TranslateResult r = translate_with_header(script("var& (c, d) = this.pr; var f = () => c + d;"));
+    const hotc::TranslateResult r = translate_with_header(script("var& (c, d) = this.pr; var f = () => c + d;"));
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'c', a borrowed pointer or reference")) << r.diagnostics;
 }
 
 TEST(StructuredBindingTranslation, ForeachRefBindingIsBorrowedForALambda)
 {
-    const sppc::TranslateResult r =
+    const hotc::TranslateResult r =
         translate_with_header(script("foreach (var& (k, v) in this.m) { var f = () => k + v; }"));
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'k', a borrowed pointer or reference")) << r.diagnostics;
@@ -86,7 +86,7 @@ TEST(StructuredBindingTranslation, ForeachRefBindingIsBorrowedForALambda)
 
 TEST(StructuredBindingTranslation, MalformedBindingIsAnError)
 {
-    sppc::TranslateResult r = translate_with_header(script("var (a) = Mk();"));
+    hotc::TranslateResult r = translate_with_header(script("var (a) = Mk();"));
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "a structured binding needs two or more names")) << r.diagnostics;
     r = translate_with_header(script("var (a, b);"));
@@ -96,7 +96,7 @@ TEST(StructuredBindingTranslation, MalformedBindingIsAnError)
 
 TEST(StructuredBindingTranslation, RefBindingCannotBindToATemporaryRange)
 {
-    sppc::TranslateResult r =
+    hotc::TranslateResult r =
         translate_with_header(script("int s = 0; foreach (var& (i, x) in enumerate(this.m)) s += x;"));
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "'var&' cannot bind to the temporary value of 'enumerate'; use 'var (i, x)'"))
@@ -114,7 +114,7 @@ namespace
 // parameter and a native global of the same name win.
 TEST(StructuredBindingTranslation, UserDefinedRangeWinsOverTheHelper)
 {
-    sppc::TranslateResult r = translate_with_header(
+    hotc::TranslateResult r = translate_with_header(
         "using \"u.h\";\n"
         "class A {\n    int range(int n) { return n + 1; }\n"
         "    int Run() { return range(2); }\n}\n");
@@ -131,7 +131,7 @@ TEST(StructuredBindingTranslation, UserDefinedRangeWinsOverTheHelper)
 
     TempDir dir;
     write_file(dir.path() / "g.h", "inline int range(int n) { return n; }\n");
-    r = sppc::translate(temp_options(dir, "using \"g.h\";\nclass A {\n    int Run() { return range(3); }\n}\n"));
+    r = hotc::translate(temp_options(dir, "using \"g.h\";\nclass A {\n    int Run() { return range(3); }\n}\n"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "return range(3);")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "hot::range")) << r.cpp;
@@ -143,7 +143,7 @@ TEST(StructuredBindingTranslation, UserDefinedRangeWinsOverTheHelper)
 // use a binding get an init-capture. A name after "." and a lambda parameter get no capture.
 TEST(StructuredBindingTranslation, LambdaCapturesBindingsByInitCapture)
 {
-    const sppc::TranslateResult r = translate_with_header(
+    const hotc::TranslateResult r = translate_with_header(
         script("var (a, b) = Mk(); var fn = () => a + b; int s = fn();"
                " foreach (var (k, v) in this.m) { var g = (int a) => a + v + this.pr.first; s += g(1); }"
                " try { s += a; } finally { s += b; }"));

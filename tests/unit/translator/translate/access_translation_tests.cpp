@@ -1,6 +1,6 @@
 // Tests for the access words public, protected and private on the members of a script class.
 // The checker enforces them. The generated C++ keeps all members public.
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -12,22 +12,22 @@ using namespace translator_test;
 namespace
 {
 
-sppc::TranslateResult translate_classes(const std::string& classes)
+hotc::TranslateResult translate_classes(const std::string& classes)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
-    return sppc::translate(temp_options(dir, "using \"w.h\";\n" + classes));
+    return hotc::translate(temp_options(dir, "using \"w.h\";\n" + classes));
 }
 
 void expect_ok(const std::string& classes)
 {
-    const sppc::TranslateResult r = translate_classes(classes);
+    const hotc::TranslateResult r = translate_classes(classes);
     EXPECT_TRUE(r.ok) << classes << "\n" << r.diagnostics;
 }
 
 void expect_error(const std::string& classes, const std::string& msg)
 {
-    const sppc::TranslateResult r = translate_classes(classes);
+    const hotc::TranslateResult r = translate_classes(classes);
     EXPECT_FALSE(r.ok) << classes;
     EXPECT_NE(r.diagnostics.find(msg), std::string::npos) << classes << "\n" << r.diagnostics;
 }
@@ -128,7 +128,7 @@ TEST(AccessTranslation, ProtectedMemberIsUsableOnlyThroughTheTypeOfTheCode)
 
 TEST(AccessTranslation, SeveralAccessErrorsInOneMethodAreAllReported)
 {
-    const sppc::TranslateResult r = translate_classes(base_class("private")
+    const hotc::TranslateResult r = translate_classes(base_class("private")
         + "class Other : Widget {\n"
           "    int Go(Base b)\n"
           "    {\n"
@@ -147,7 +147,7 @@ TEST(AccessTranslation, SeveralAccessErrorsInOneMethodAreAllReported)
 
 TEST(AccessTranslation, AccessErrorsInSeveralMethodsAreAllReported)
 {
-    const sppc::TranslateResult r = translate_classes(base_class("private")
+    const hotc::TranslateResult r = translate_classes(base_class("private")
         + "class Other : Widget {\n"
           "    int A(Base b) { return b.secret; }\n"
           "    int B(Base b) { return b.Twice(); }\n"
@@ -224,7 +224,7 @@ TEST(AccessTranslation, StructMembersFollowTheSameRules)
 
 TEST(AccessTranslation, GeneratedCppKeepsEveryMemberPublic)
 {
-    const sppc::TranslateResult r = translate_classes(base_class("private"));
+    const hotc::TranslateResult r = translate_classes(base_class("private"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_EQ(r.cpp.find("private:"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("protected:"), std::string::npos) << r.cpp;

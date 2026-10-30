@@ -5,7 +5,7 @@
 
 #include <string>
 
-using namespace sppc;
+using namespace hotc;
 
 namespace
 {

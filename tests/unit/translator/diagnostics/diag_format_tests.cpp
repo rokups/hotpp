@@ -6,18 +6,18 @@
 
 #include <string>
 
-using namespace sppc;
+using namespace hotc;
 
 TEST(DiagFormat, LineMapFirstChar)
 {
-    sppc::LineMap m("ab\ncd");
+    hotc::LineMap m("ab\ncd");
     EXPECT_EQ(m.line(0), 1);
     EXPECT_EQ(m.col(0), 1);
 }
 
 TEST(DiagFormat, LineMapCharAfterNewline)
 {
-    sppc::LineMap m("ab\ncd");
+    hotc::LineMap m("ab\ncd");
     EXPECT_EQ(m.line(2), 1); // the newline char
     EXPECT_EQ(m.col(2), 3);
     EXPECT_EQ(m.line(3), 2);
@@ -26,10 +26,10 @@ TEST(DiagFormat, LineMapCharAfterNewline)
 
 TEST(DiagFormat, LineMapLastCharWithAndWithoutTrailingNewline)
 {
-    sppc::LineMap a("ab\ncd");
+    hotc::LineMap a("ab\ncd");
     EXPECT_EQ(a.line(4), 2);
     EXPECT_EQ(a.col(4), 2);
-    sppc::LineMap b("ab\ncd\n");
+    hotc::LineMap b("ab\ncd\n");
     EXPECT_EQ(b.line(4), 2);
     EXPECT_EQ(b.col(4), 2);
     EXPECT_EQ(b.line(5), 2); // the trailing newline
@@ -40,22 +40,22 @@ TEST(DiagFormat, LineMapLastCharWithAndWithoutTrailingNewline)
 
 TEST(DiagFormat, LineMapEmptyText)
 {
-    sppc::LineMap m("");
+    hotc::LineMap m("");
     EXPECT_EQ(m.line(0), 1);
     EXPECT_EQ(m.col(0), 1);
 }
 
 TEST(DiagFormat, FormatWithColumn)
 {
-    sppc::LineMap m("ab\ncd");
-    sppc::Diagnostics d;
+    hotc::LineMap m("ab\ncd");
+    hotc::Diagnostics d;
     d.add(4, m, "bad token");
     EXPECT_EQ(d.format("a.hot"), "a.hot:2:2: error: bad token\n");
 }
 
 TEST(DiagFormat, FormatWithoutColumn)
 {
-    sppc::Diagnostics d;
+    hotc::Diagnostics d;
     d.add_line(7, "bad line");
     d.add_line(9, "second");
     EXPECT_EQ(d.format("a.hot"), "a.hot:7: error: bad line\na.hot:9: error: second\n");
@@ -63,7 +63,7 @@ TEST(DiagFormat, FormatWithoutColumn)
 
 TEST(DiagFormat, FormatWithLineZero)
 {
-    sppc::Diagnostics d;
+    hotc::Diagnostics d;
     d.add_line(0, "no line");
-    EXPECT_EQ(d.format("a.hot"), "sppc: error: no line\n");
+    EXPECT_EQ(d.format("a.hot"), "hotc: error: no line\n");
 }

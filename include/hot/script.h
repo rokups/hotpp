@@ -1,12 +1,12 @@
 // The optional header for a script file (design 4.7 and 7.8).
-// The sppc tool injects this header, so a script does not need the include for sppc.
-// A normal C++ build (without sppc) needs the include. It gives the macro HOT_ALIAS
+// The hotc tool injects this header, so a script does not need the include for hotc.
+// A normal C++ build (without hotc) needs the include. It gives the macro HOT_ALIAS
 // and the type hot::OldState, and the file compiles unchanged.
 // The header is C++17 only, header-only, and has no link dependency.
 #pragma once
 #include "hot/runtime/old_state.h"
 
-// HOT_ALIAS("old") on a field gives the old name of the field to sppc.
+// HOT_ALIAS("old") on a field gives the old name of the field to hotc.
 // The argument is a string literal. Only clang keeps the annotation.
 // Other compilers ignore the macro.
 #if defined(__clang__)

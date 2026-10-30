@@ -1,5 +1,5 @@
 // The lowering pass. It changes the parsed script AST into AST that the printer
-// (emit.h) prints as C++. translate() in sppc_lib.cpp uses this pass. The pass has the
+// (emit.h) prints as C++. translate() in hotc_lib.cpp uses this pass. The pass has the
 // rules of the old token rewriter:
 //  - The set "locals" has no block scope. A name stays in the set until the end of the
 //    body. The pass visits the nodes in the order of the script text, so a use before a
@@ -41,7 +41,7 @@
 #include <string>
 #include <vector>
 
-namespace sppc
+namespace hotc
 {
 
 // What the lowering pass knows about the class that it works on.
@@ -136,4 +136,4 @@ void lower_block(ast::BlockStmt& b, RCtx& cx, Diagnostics& diag);
 // Lowers one expression. The pass can replace the node.
 void lower_expr(ast::ExprP& e, RCtx& cx, Diagnostics& diag);
 
-} // namespace sppc
+} // namespace hotc

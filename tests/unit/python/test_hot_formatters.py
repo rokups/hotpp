@@ -1,4 +1,4 @@
-"""Test of the pure helpers in tools/lldb/spp_formatters.py. lldb is not needed."""
+"""Test of the pure helpers in tools/lldb/hot_formatters.py. lldb is not needed."""
 
 import os
 import sys
@@ -6,7 +6,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "..", "tools", "lldb"))
-import spp_formatters as f  # noqa: E402
+import hot_formatters as f  # noqa: E402
 
 
 class Names(unittest.TestCase):

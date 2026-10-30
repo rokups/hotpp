@@ -1,5 +1,5 @@
-// Tests for sppc::translate with properties: auto accessors, custom accessors and errors.
-#include "hot/sppc_lib.h"
+// Tests for hotc::translate with properties: auto accessors, custom accessors and errors.
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -16,16 +16,16 @@ std::string prop_script(const std::string& members)
     return "using \"w.h\";\nclass Foo : Widget {\n" + members + "\n}\n";
 }
 
-sppc::TranslateResult translate_props(const std::string& members)
+hotc::TranslateResult translate_props(const std::string& members)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
-    return sppc::translate(temp_options(dir, prop_script(members)));
+    return hotc::translate(temp_options(dir, prop_script(members)));
 }
 
 void expect_prop_error(const std::string& members, const std::string& msg)
 {
-    const sppc::TranslateResult r = translate_props(members);
+    const hotc::TranslateResult r = translate_props(members);
     EXPECT_FALSE(r.ok) << members;
     EXPECT_NE(r.diagnostics.find(msg), std::string::npos) << members << "\n" << r.diagnostics;
 }
@@ -34,7 +34,7 @@ void expect_prop_error(const std::string& members, const std::string& msg)
 
 TEST(PropertyTranslation, AutoPropertyLowersToAccessorCalls)
 {
-    const sppc::TranslateResult r = translate_props(
+    const hotc::TranslateResult r = translate_props(
         "    int N { get; set; } = 3;\n"
         "    void run() { N = 1; this.N += 2; N++; int k = this.N + N; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -54,7 +54,7 @@ TEST(PropertyTranslation, AutoPropertyLowersToAccessorCalls)
 
 TEST(PropertyTranslation, CustomAccessorsBecomeFunctions)
 {
-    const sppc::TranslateResult r = translate_props(
+    const hotc::TranslateResult r = translate_props(
         "    int raw = 0;\n"
         "    int V { get { return this.raw * 2; } set { this.raw = value / 2; } }\n"
         "    int run(int value) { V = value; return V; }");
@@ -68,7 +68,7 @@ TEST(PropertyTranslation, CustomAccessorsBecomeFunctions)
 
 TEST(PropertyTranslation, LocalHidesProperty)
 {
-    const sppc::TranslateResult r = translate_props("    int N { get; set; }\n    void run() { int N = 2; N = 3; }");
+    const hotc::TranslateResult r = translate_props("    int N { get; set; }\n    void run() { int N = 2; N = 3; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("N = 3;"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("Foo__set_N(__self, 3)"), std::string::npos) << r.cpp;
@@ -77,7 +77,7 @@ TEST(PropertyTranslation, LocalHidesProperty)
 // "w.N" on another object of the class calls the accessors through hot::shell_of.
 TEST(PropertyTranslation, OtherObjectUsesAccessors)
 {
-    const sppc::TranslateResult r = translate_props(
+    const hotc::TranslateResult r = translate_props(
         "    int N { get; set; }\n"
         "    int hp = 0;\n"
         "    int run(Widget& w, Widget* q) {\n"
@@ -106,7 +106,7 @@ TEST(PropertyTranslation, OtherObjectUsesAccessors)
 // A member that is not a property keeps the native member access.
 TEST(PropertyTranslation, OtherObjectPlainMemberIsNotRewritten)
 {
-    const sppc::TranslateResult r = translate_props(
+    const hotc::TranslateResult r = translate_props(
         "    int N { get; set; }\n"
         "    void run(Foo2& p) { p.hp = 1; p.hp += p.n; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;

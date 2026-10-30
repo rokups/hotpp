@@ -13,7 +13,7 @@ This page has six hosting situations. Each situation has a sample project. The p
 Answer these questions in order. Stop at the first answer that fits.
 
 1. Must the shipped program have no compiler, no libclang and no loader? Then the scripts are fixed at build time. Use **AOT**.
-2. Do the scripts change after the program is built, but you build them ahead of time (with the build or with `sppc`)? Use a **precompiled library**.
+2. Do the scripts change after the program is built, but you build them ahead of time (with the build or with `hotc`)? Use a **precompiled library**.
 3. Does the program read `.hot` text at run time and compile it? Then ask the next two questions.
 4. Must a live object keep its field values while its code changes? Use **hot reload**.
 5. Do you want to avoid a compiler process, and can you link LLVM and Clang? Use the **in-process JIT**.
@@ -99,7 +99,7 @@ The generated code, `include/hot` and the runtime library need C++17 only. A C++
 
 ### Core copies
 
-`module_from_library` makes a second, independent instance of the library for the loader (the "core"). It copies the file to the temp folder as `spp-core-<pid>-<n>-<name>` and removes the copy after `dlclose`. If the temp folder is not available, it uses the folder of the library. If the copy fails (`cannot copy <path> for the core module: ...`), the generation stays loaded and the loader prints `[script] WARNING: no core module for ...` to `stderr`.
+`module_from_library` makes a second, independent instance of the library for the loader (the "core"). It copies the file to the temp folder as `hot-core-<pid>-<n>-<name>` and removes the copy after `dlclose`. If the temp folder is not available, it uses the folder of the library. If the copy fails (`cannot copy <path> for the core module: ...`), the generation stays loaded and the loader prints `[script] WARNING: no core module for ...` to `stderr`.
 
 ## Compile at run time
 
@@ -144,10 +144,10 @@ auto backend = hot::make_default_backend(options);
 
 **Links:** `hot_runtime`. No backend and no libclang. Set `ENABLE_EXPORTS`.
 
-`sppc` builds a script into a `.so` ahead of time. Any build can load it. In CMake use `hot_add_scripts` (default mode). On the command line:
+`hotc` builds a script into a `.so` ahead of time. Any build can load it. In CMake use `hot_add_scripts` (default mode). On the command line:
 
 ```
-sppc player_v1.hot --gen 1 -I include -I tests/engine --out-dir out/
+hotc player_v1.hot --gen 1 -I include -I tests/engine --out-dir out/
 ```
 
 ```cpp
@@ -216,7 +216,7 @@ The host does the serialization. The script has no hook for it. `reset` returns 
 
 ## In-process JIT
 
-**Links:** `hot_jit_backend`. It brings `hot_runtime`, `sppc_lib`, `clang-cpp` and `LLVM`. Set `ENABLE_EXPORTS`. The target exists only when `HOT_BACKEND` is `JIT`.
+**Links:** `hot_jit_backend`. It brings `hot_runtime`, `hotc_lib`, `clang-cpp` and `LLVM`. Set `ENABLE_EXPORTS`. The target exists only when `HOT_BACKEND` is `JIT`.
 
 ```cpp
 hot::JitOptions options;
@@ -240,7 +240,7 @@ hot::LoadResult built = backend.load({"player.hot", text}, 1);
 
 ## Explicit Clang files backend
 
-**Links:** `hot_clang_backend`. It brings `hot_runtime` and `sppc_lib`. Set `ENABLE_EXPORTS`.
+**Links:** `hot_clang_backend`. It brings `hot_runtime` and `hotc_lib`. Set `ENABLE_EXPORTS`.
 
 ```cpp
 hot::ClangFilesOptions options;
@@ -260,7 +260,7 @@ hot::LoadResult built = backend.load({"player.hot", text}, 1);
 
 **Failure:** `LoadResult::error` has the diagnostics and `the compile of <script> failed (exit code N)`, or `cannot write <path>`.
 
-**Extra API:** `build(source, generation, out_so, error)` builds a `.so` without loading it (`sppc` uses it). `slots_file()` gives the slot file path. `compile_commands_json` and `run_command` are helpers.
+**Extra API:** `build(source, generation, out_so, error)` builds a `.so` without loading it (`hotc` uses it). `slots_file()` gives the slot file path. `compile_commands_json` and `run_command` are helpers.
 
 **Sample:** [clang-files-backend](https://github.com/rokups/spp/tree/main/samples/clang-files-backend).
 
@@ -268,10 +268,10 @@ hot::LoadResult built = backend.load({"player.hot", text}, 1);
 
 **Links:** `hot_aot`, through the library of `hot_add_scripts(... AOT ...)`. `hot_aot` links `hot_runtime_core` only. It has no loader. No `ENABLE_EXPORTS`.
 
-An AOT build has no loader, no reload and no Clang. `sppc --aot` (the AOT mode) translates generation 1 of each script to C++. The code becomes part of the game.
+An AOT build has no loader, no reload and no Clang. `hotc --aot` (the AOT mode) translates generation 1 of each script to C++. The code becomes part of the game.
 
 ```
-sppc --aot player.hot boss.hot --out-dir gen -I include -I tests/engine
+hotc --aot player.hot boss.hot --out-dir gen -I include -I tests/engine
 ```
 
 ```cpp

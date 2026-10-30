@@ -1,13 +1,13 @@
-// Tests of the pure function sppc::rewrite_diagnostic (design 4.2, experiment F2).
+// Tests of the pure function hotc::rewrite_diagnostic (design 4.2, experiment F2).
 // The input is Clang text that the tests write by hand. The golden tests with a real
 // compile are in tests/integration/backends/diagnostic_mistake_tests.cpp.
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 
 #include <gtest/gtest.h>
 
 #include <string>
 
-using sppc::rewrite_diagnostic;
+using hotc::rewrite_diagnostic;
 
 TEST(DiagRewrite, EmptyTextStaysEmpty)
 {
@@ -121,7 +121,7 @@ TEST(DiagRewrite, SnippetIsTheScriptLineWhenTheTextIsKnown)
         "    2 |     __self->x = 1;\n"
         "      |     ~~~~  ^\n"
         "1 error generated.\n";
-    const sppc::ScriptTexts scripts = {{"a.hot", "class Boss {\n    this.x = 1;\n}\n"}};
+    const hotc::ScriptTexts scripts = {{"a.hot", "class Boss {\n    this.x = 1;\n}\n"}};
     EXPECT_EQ(rewrite_diagnostic(in, scripts),
         "a.hot:2:1: error: script class 'Boss' has no member 'x'\n"
         "    2 |     this.x = 1;\n"
@@ -227,7 +227,7 @@ TEST(DiagRewrite, SourceMapGivesTheScriptColumn)
     // Script line 2: "  go(total);" - "total" starts at column 6.
     const std::string script = "class A {\n  go(total);\n}\n";
     const std::string gen = "#line 2 \"a.hot\"\n    go(total);\n";
-    sppc::SourceMap map;
+    hotc::SourceMap map;
     map.add({static_cast<uint32_t>(script.find("total")), 5, static_cast<uint32_t>(gen.find("total")), 5});
     map.build(script, gen);
     // Clang reports the generated column: "total" is at column 8 of the physical line 2.
@@ -240,7 +240,7 @@ TEST(DiagRewrite, WithoutSegmentTheColumnStaysOne)
 {
     const std::string script = "class A {\n  go(total);\n}\n";
     const std::string gen = "#line 2 \"a.hot\"\n    go(total);\n";
-    sppc::SourceMap map;
+    hotc::SourceMap map;
     map.add({static_cast<uint32_t>(script.find("total")), 5, static_cast<uint32_t>(gen.find("total")), 5});
     map.build(script, gen);
     // Column 13 is the ")" after the mapped name: no segment at or after it.
@@ -258,7 +258,7 @@ TEST(DiagRewrite, SourceMapGivesTheColumnInAnImportedScript)
     const std::string script = "using \"b.hot\";\nclass K : B { }\n";
     const std::string imported = "class B {\n  int f() { return total; }\n}\n";
     const std::string gen = "#line 2 \"b.hot\"\n    int f() { return total; }\n";
-    sppc::SourceMap map;
+    hotc::SourceMap map;
     const uint32_t id = map.add_file("b.hot", imported);
     map.add({static_cast<uint32_t>(imported.find("total")), 5, static_cast<uint32_t>(gen.find("total")), 5, id});
     map.build(script, gen);
@@ -272,7 +272,7 @@ TEST(DiagRewrite, SourceMapGivesTheColumnInAnImportedScript)
 TEST(DiagRewrite, TranslatorDiagnosticGetsSnippetAndCount)
 {
     const std::string script = "class A {\n  int x = ;\n}\n";
-    EXPECT_EQ(sppc::rewrite_translator_diagnostic("a.hot:2:11: error: expected an expression\n", {{"a.hot", script}}),
+    EXPECT_EQ(hotc::rewrite_translator_diagnostic("a.hot:2:11: error: expected an expression\n", {{"a.hot", script}}),
         "a.hot:2:11: error: expected an expression\n"
         "    2 |   int x = ;\n"
         "1 error generated.\n");
@@ -282,15 +282,15 @@ TEST(DiagRewrite, TranslatorDiagnosticKeepsOtherLinesAndCountsAll)
 {
     const std::string script = "class A {\n  int x = ;\n}\n";
     const std::string in =
-        "a.hot:2:11: error: one\nsppc: error: two\nh.h:3:1: error: three\n"
+        "a.hot:2:11: error: one\nhotc: error: two\nh.h:3:1: error: three\n"
         "a.hot:1:1: warning: four\n";
-    EXPECT_EQ(sppc::rewrite_translator_diagnostic(in, {{"a.hot", script}}),
+    EXPECT_EQ(hotc::rewrite_translator_diagnostic(in, {{"a.hot", script}}),
         "a.hot:2:11: error: one\n"
         "    2 |   int x = ;\n"
-        "sppc: error: two\n"
+        "hotc: error: two\n"
         "h.h:3:1: error: three\n"
         "a.hot:1:1: warning: four\n"
         "    1 | class A {\n"
         "1 warning and 3 errors generated.\n");
-    EXPECT_EQ(sppc::rewrite_translator_diagnostic("", {{"a.hot", script}}), "");
+    EXPECT_EQ(hotc::rewrite_translator_diagnostic("", {{"a.hot", script}}), "");
 }

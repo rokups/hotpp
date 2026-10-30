@@ -1,5 +1,5 @@
 // Generation 1 of a script class with lambdas that use the object, as a plain C++ script.
-// A normal C++ build compiles this file. The tool sppc also translates it.
+// A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
 
 #include <functional>

@@ -95,7 +95,7 @@ TEST_P(BackendTests, RejectedReloadLeavesTheSlotsFileUnchanged)
 #endif
 }
 
-// A removed script function shrinks the slot count. sppc fails with the reason SlotsRemoved.
+// A removed script function shrinks the slot count. hotc fails with the reason SlotsRemoved.
 // The Loader overload for a LoadResult gives FullReloadRequired.
 TEST_P(BackendTests, SlotsRemovalRequiresFullReload)
 {

@@ -90,7 +90,7 @@ To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`. The `CMakeLists.txt` of 
 
 ## Link
 
-- The program links `hot_jit_backend`. It brings `hot_runtime`, `sppc_lib`, `clang-cpp` and `LLVM`.
+- The program links `hot_jit_backend`. It brings `hot_runtime`, `hotc_lib`, `clang-cpp` and `LLVM`.
 - `ENABLE_EXPORTS` is ON. The JIT code resolves host and runtime symbols from the executable.
 
 ## Adapt it to your project

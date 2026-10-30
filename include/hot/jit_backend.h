@@ -3,7 +3,7 @@
 #pragma once
 
 #include "hot/backend.h"
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 
 #include <memory>
 #include <mutex>
@@ -23,12 +23,12 @@ struct JitOptions
     std::string std_version;
     // The translator cache. Empty: the backend makes its own. Share one to keep the
     // cache between backends.
-    std::shared_ptr<sppc::TranslatorSession> session;
+    std::shared_ptr<hotc::TranslatorSession> session;
     std::vector<std::string> extra_flags; // added to the compile command
     std::string pch_path; // optional: a precompiled header for -include-pch
     bool strict_borrowed = true; // false: a borrowed-storage finding is a warning
     // True: the error text is the raw output of the compiler. False (the default): it speaks
-    // script names (sppc::rewrite_diagnostic).
+    // script names (hotc::rewrite_diagnostic).
     bool raw_diagnostics = false;
     // The debug flag. "-g" gives full debug info, but Clang leaks about 270 KB of
     // debug metadata in each compile that fails. Line tables do not leak.
@@ -44,7 +44,7 @@ struct JitState; // the LLJIT of the session
 // The time of the phases of the last successful or failed load, in milliseconds.
 struct JitTimings
 {
-    double translate_ms = 0; // sppc::translate (libclang parses the headers)
+    double translate_ms = 0; // hotc::translate (libclang parses the headers)
     double compile_ms = 0; // Clang: parse, Sema, IR generation, IR optimization
     double jit_ms = 0; // ORC: code generation, link, static initializers, lookup
 };

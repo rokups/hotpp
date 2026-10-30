@@ -3,7 +3,7 @@
 # clang-format has no mapping for the .hot extension, so the script
 # uses --assume-filename=<file>.cs to select the C# language.
 #
-# Usage: tools/format-spp.sh [--check] files...
+# Usage: tools/format-hot.sh [--check] files...
 #   default   format the files in place
 #   --check   change nothing, exit 1 if a file needs formatting
 set -u

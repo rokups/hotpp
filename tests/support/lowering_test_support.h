@@ -16,7 +16,7 @@
 namespace lowering_test
 {
 
-using namespace sppc;
+using namespace hotc;
 
 // The class "Player : Actor" with these members.
 //   fields: health float, fired int, n int, target Actor*

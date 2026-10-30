@@ -34,13 +34,13 @@ Typos, wrong types and a missing `return` have plain messages.
 
 ## Raw compiler text
 
-`sppc --raw-diagnostics` prints the text of the C++ compiler as it is. Use it when a message is not clear. The option `raw_diagnostics` does the same in the backends.
+`hotc --raw-diagnostics` prints the text of the C++ compiler as it is. Use it when a message is not clear. The option `raw_diagnostics` does the same in the backends.
 
 ## Debugging
 
 The generated C++ has `#line` directives. A debugger shows `.hot` files and lines. A breakpoint on a script line works, and so does stepping.
 
 - gdb and lldb: set a breakpoint with `breakpoint set --file player.hot --line 12` (lldb) or `break player.hot:12` (gdb).
-- lldb: `tools/lldb/spp.lldbinit` loads formatters. The command `spp-bt` prints script frames.
+- lldb: `tools/lldb/hot.lldbinit` loads formatters. The command `hot-bt` prints script frames.
 - VS Code: the extension enables breakpoints in `.hot` files.
 - Status: a real gdb or lldb session and Visual Studio are untested. Tests check only the `.hot` line table.

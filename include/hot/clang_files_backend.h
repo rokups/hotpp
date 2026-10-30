@@ -3,7 +3,7 @@
 #pragma once
 
 #include "hot/backend.h"
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 
 #include <atomic>
 #include <memory>
@@ -24,7 +24,7 @@ struct ClangFilesOptions
     std::string std_version;
     // The translator cache. Empty: the backend makes its own. Share one to keep the
     // cache between backends.
-    std::shared_ptr<sppc::TranslatorSession> session;
+    std::shared_ptr<hotc::TranslatorSession> session;
     std::vector<std::string> extra_flags; // added to the compile command
     std::string work_dir = "hot_work"; // the .cpp and .so files go here
     std::string slots_file; // empty: <work_dir>/slots.txt
@@ -33,7 +33,7 @@ struct ClangFilesOptions
     bool remove_work_dir_at_exit = false;
     bool strict_borrowed = true; // false: a borrowed-storage finding is a warning
     // True: the error text is the raw output of the compiler. False (the default): it speaks
-    // script names (sppc::rewrite_diagnostic).
+    // script names (hotc::rewrite_diagnostic).
     bool raw_diagnostics = false;
 };
 
@@ -68,7 +68,7 @@ private:
 };
 
 // The compile command of the backend for one generated .cpp and its .so. The backend and
-// the compile database (sppc --compile-commands) both use it, so the flags are the same.
+// the compile database (hotc --compile-commands) both use it, so the flags are the same.
 std::vector<std::string> compile_command(
     const ClangFilesOptions& options, const std::string& cpp_path, const std::string& out_so);
 

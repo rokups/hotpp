@@ -1,5 +1,5 @@
-// Tests for sppc::translate with the module-level declarations: module variables, enum, struct.
-#include "hot/sppc_lib.h"
+// Tests for hotc::translate with the module-level declarations: module variables, enum, struct.
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -19,16 +19,16 @@ const char* kHeader =
     "    virtual void Update(float dt) {}\n"
     "};\n";
 
-sppc::TranslateResult translate_script(const std::string& body)
+hotc::TranslateResult translate_script(const std::string& body)
 {
     TempDir dir;
     write_file(dir.path() / "u.h", kHeader);
-    return sppc::translate(temp_options(dir, "using \"u.h\";\nusing <string>;\n" + body));
+    return hotc::translate(temp_options(dir, "using \"u.h\";\nusing <string>;\n" + body));
 }
 
 void expect_error(const std::string& body, const std::string& msg)
 {
-    const sppc::TranslateResult r = translate_script(body);
+    const hotc::TranslateResult r = translate_script(body);
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find(msg), std::string::npos) << r.diagnostics;
 }
@@ -130,7 +130,7 @@ TEST(ModuleDeclTranslation, ErrorModuleVariableOfAScriptHandleClass)
 // initializers in declaration order, so the earlier variable has its value.
 TEST(ModuleDeclTranslation, InitializerReadsAnEarlierModuleVariable)
 {
-    const sppc::TranslateResult r = translate_script("int a = 1;\nint b = a + 1;\nclass C : Unit { }\n");
+    const hotc::TranslateResult r = translate_script("int a = 1;\nint b = a + 1;\nclass C : Unit { }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("new (f) T(hot_mod()->a + 1);"), std::string::npos) << r.cpp;
     // hot_mod() comes before the init functions that use it.
@@ -148,7 +148,7 @@ TEST(ModuleDeclTranslation, ErrorModuleVariableDeclaredLaterInAnInitializer)
 // "T convert_<var>(Old old)" at file level is the convert hook of a module variable (S16).
 TEST(ModuleDeclTranslation, ConvertHookOfAModuleVariable)
 {
-    const sppc::TranslateResult r = translate_script(
+    const hotc::TranslateResult r = translate_script(
         "float level = 1.0;\nfloat convert_level(int old) { return old * 1.5; }\nclass C : Unit { }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("static float HotModule__convert_level(int32_t old)"), std::string::npos) << r.cpp;

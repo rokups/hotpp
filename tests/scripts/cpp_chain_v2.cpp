@@ -1,6 +1,6 @@
 // Generation 2 of a chain of three script classes: Leaf derives from Mid, and Mid derives from Base.
 // Base has the new field armor and the new virtual method Extra. Mid and Leaf override Extra.
-// A normal C++ build compiles this file. The tool sppc also translates it.
+// A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
 
 // The number of Tick calls on an object that is a Mid.

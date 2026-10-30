@@ -1,5 +1,5 @@
 // A plain C++ script with a function in a namespace that uses a module variable. A normal C++
-// build compiles this file. The tool sppc also translates it. It has no include of the spp headers.
+// build compiles this file. The tool hotc also translates it. It has no include of the hot headers.
 #include "Actor.h"
 
 // A module variable. It keeps its value across a reload.

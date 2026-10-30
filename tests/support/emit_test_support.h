@@ -12,7 +12,7 @@
 namespace emit_test
 {
 
-using namespace sppc::ast;
+using namespace hotc::ast;
 
 inline ExprP name(std::initializer_list<std::string> parts, uint32_t pos = 0)
 {

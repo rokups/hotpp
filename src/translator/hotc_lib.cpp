@@ -1,4 +1,4 @@
-// sppc_lib: the translator from script text to the text of a generation .cpp file.
+// hotc_lib: the translator from script text to the text of a generation .cpp file.
 //
 // The translator has three parts.
 //   1. A parser (src/translator/parser/). It reads the structure of the script:
@@ -13,14 +13,14 @@
 //      (emit.cpp) writes each body. A "#line" directive before each line makes
 //      the Clang diagnostics point to the script.
 //
-// The function sppc::translate takes strings and returns strings. It does not
+// The function hotc::translate takes strings and returns strings. It does not
 // write a file. libclang reads the imported headers from the include dirs.
-// The command line tool sppc (src/translator/sppc.cpp) is a thin file wrapper.
+// The command line tool hotc (src/translator/hotc.cpp) is a thin file wrapper.
 //
 // The slot file keeps the slot order of the script functions stable between the
 // generations. Native virtuals come first, in the order of the base class.
 // The script functions follow. A function keeps its slot in all later generations.
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 
 #include "ast.h"
 #include "builtin_types.h"
@@ -58,11 +58,11 @@
 namespace
 {
 
-using namespace sppc::ast;
+using namespace hotc::ast;
 
 // State of the call in progress. Each thread has its own copy.
 thread_local std::string g_script; // the script name, as given by the caller
-thread_local sppc::Diagnostics g_diag; // the diagnostics of the call
+thread_local hotc::Diagnostics g_diag; // the diagnostics of the call
 thread_local bool g_slots_removed = false; // the call failed because a slot of an earlier generation is gone
 
 struct TranslateAbort
@@ -73,7 +73,7 @@ struct TranslateAbort
 // one time, as an initializer (no "this" and no locals). The text is for the first declaration
 // of a function only: the slot and the thunk signatures never have it.
 // "ps" are the parameters of the function: a default value cannot use them.
-std::string default_arg(const sppc::ast::Param& p, const std::vector<sppc::ast::Param>& ps, sppc::RCtx cx)
+std::string default_arg(const hotc::ast::Param& p, const std::vector<hotc::ast::Param>& ps, hotc::RCtx cx)
 {
     if (!p.def)
         return {};
@@ -81,14 +81,14 @@ std::string default_arg(const sppc::ast::Param& p, const std::vector<sppc::ast::
     {
         cx.allow_this = false;
         cx.in_default = true;
-        for (const sppc::ast::Param& q : ps)
+        for (const hotc::ast::Param& q : ps)
             cx.locals.insert(q.name);
         if (p.def->expr)
         {
-            sppc::lower_expr(p.def->expr, cx, g_diag);
+            hotc::lower_expr(p.def->expr, cx, g_diag);
             if (!g_diag.items.empty())
                 throw TranslateAbort{};
-            p.def->cpp = sppc::ast::print(*p.def->expr);
+            p.def->cpp = hotc::ast::print(*p.def->expr);
         }
         p.def->lowered = true;
     }
@@ -105,7 +105,7 @@ const std::string kModuleName = "HotModule";
 }
 
 // An error at a byte offset of the script. The diagnostic has a line and a column.
-[[noreturn]] void fail_at(const sppc::LineMap& map, uint32_t pos, const std::string& msg)
+[[noreturn]] void fail_at(const hotc::LineMap& map, uint32_t pos, const std::string& msg)
 {
     g_diag.add(pos, map, msg);
     throw TranslateAbort{};
@@ -113,9 +113,9 @@ const std::string kModuleName = "HotModule";
 
 // Parses the script: the structure, the method bodies and the field initializers.
 // The parser reports all syntax errors in source order. Any error stops the translation.
-Script parse_structure(const std::string& text, const sppc::LineMap& map)
+Script parse_structure(const std::string& text, const hotc::LineMap& map)
 {
-    Script sc = sppc::parse_script(text, map, g_diag);
+    Script sc = hotc::parse_script(text, map, g_diag);
     if (!g_diag.items.empty())
         throw TranslateAbort{};
     return sc;
@@ -160,7 +160,7 @@ std::string norm(const std::string& s)
 // A native "int" and a script "int" or "int32" give the same key.
 std::string key_norm(const std::string& s)
 {
-    return norm(sppc::canonical_type(s, nullptr, true));
+    return norm(hotc::canonical_type(s, nullptr, true));
 }
 
 struct NativeVirtual
@@ -693,10 +693,10 @@ void collect_hierarchy(CXCursor root, Hierarchy& out)
 
 } // namespace
 
-namespace sppc
+namespace hotc
 {
 uint32_t find_word(const std::string& text, uint32_t from, const std::string& name);
-} // namespace sppc
+} // namespace hotc
 
 namespace
 {
@@ -706,7 +706,7 @@ struct Out
 {
     std::string s;
     int lines = 0;
-    std::vector<sppc::SourceSegment> segs; // in the order of writing
+    std::vector<hotc::SourceSegment> segs; // in the order of writing
     void w(const std::string& t)
     {
         s += t;
@@ -715,7 +715,7 @@ struct Out
     // Writes the text of an emitter and records its segments. "script" is the script text. A
     // leaf that is not the same text as the script at its position is a rewritten name (for
     // example "int32_t" for "int"): its script range is the name at the position.
-    void w_emitted(const sppc::ast::Emitter& em, const std::string& script)
+    void w_emitted(const hotc::ast::Emitter& em, const std::string& script)
     {
         const uint32_t base = static_cast<uint32_t>(s.size());
         for (const auto& g : em.segments())
@@ -723,7 +723,7 @@ struct Out
             if (g.pos >= script.size())
                 continue;
             const std::string_view gen(em.text().data() + g.gen_begin, g.gen_len);
-            sppc::SourceSegment seg;
+            hotc::SourceSegment seg;
             seg.gen_begin = base + g.gen_begin;
             seg.gen_len = g.gen_len;
             seg.script_begin = g.pos;
@@ -755,8 +755,8 @@ struct Out
     {
         if (script_from >= script.size())
             return {script_from, head_from};
-        const size_t g = sppc::find_word(head, static_cast<uint32_t>(head_from), gen_name);
-        const size_t p = sppc::find_word(script, static_cast<uint32_t>(script_from), script_name);
+        const size_t g = hotc::find_word(head, static_cast<uint32_t>(head_from), gen_name);
+        const size_t p = hotc::find_word(script, static_cast<uint32_t>(script_from), script_name);
         if (gen_name.empty() || script_name.empty() || head.compare(g, gen_name.size(), gen_name) != 0
             || script.compare(p, script_name.size(), script_name) != 0)
             return {script_from, head_from};
@@ -766,7 +766,7 @@ struct Out
     }
     // Records the segments of a function head: the name and the parameter names (design 10.1).
     // The search for the name starts at "head_from". A member head skips "State::" this way.
-    void head_segments(const std::string& head, const std::string& sym, const sppc::ast::Method& m,
+    void head_segments(const std::string& head, const std::string& sym, const hotc::ast::Method& m,
         const std::string& script, size_t head_from = 0)
     {
         if (m.pos == 0)
@@ -807,7 +807,7 @@ std::string str_join(const std::vector<std::string>& v, const char* sep)
     return r;
 }
 
-using sppc::RCtx;
+using hotc::RCtx;
 
 // The last part of a qualified name: "game::Player" gives "Player".
 std::string last_component(const std::string& q)
@@ -853,7 +853,7 @@ void snapshot_types(ClassDef& cd)
         keep(m.script_ret, m.ret);
         params(m.params);
     }
-    for (sppc::ast::Ctor& c : cd.ctors)
+    for (hotc::ast::Ctor& c : cd.ctors)
         params(c.params);
 }
 
@@ -864,7 +864,7 @@ void snapshot_types(ClassDef& cd)
 //  - Each accessor becomes a script fn: "Type get_Name()" and "void set_Name(Type value)".
 //    The body of an auto accessor reads or writes the hidden field.
 // The property stays in cd.props. The lowering pass uses it to rewrite reads and writes.
-void desugar_props(ClassDef& cd, const sppc::LineMap& map)
+void desugar_props(ClassDef& cd, const hotc::LineMap& map)
 {
     std::set<std::string> prop_names;
     for (const Property& p : cd.props)
@@ -1909,7 +1909,7 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
 
 } // namespace
 
-namespace sppc
+namespace hotc
 {
 
 // The cache of one key (flags + imports): the base classes and the files that the parse read.
@@ -1946,14 +1946,14 @@ void TranslatorSession::clear()
     impl_->entries.clear();
 }
 
-} // namespace sppc
+} // namespace hotc
 
 namespace
 {
 
 // Gives the base classes for one key. A cache hit needs all names in the entry and
 // the same stamp for each file. Otherwise it parses again and keeps the new result.
-std::map<std::string, BaseInfo> session_bases(sppc::TranslatorSession::Impl& S, const std::string& key,
+std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, const std::string& key,
     const std::set<std::string>& names, const std::vector<FactReq>& reqs, const std::vector<std::string>& queries,
     const std::function<void(std::map<std::string, BaseInfo>&, std::vector<FileStamp>&, Hierarchy&, FactMap&,
         std::map<std::string, std::string>&)>& parse,
@@ -2041,7 +2041,7 @@ std::vector<std::string> clang_args(const Options& opt)
 }
 
 void translate_impl(
-    const sppc::TranslateOptions& in, sppc::TranslatorSession::Impl& session, sppc::TranslateResult& res)
+    const hotc::TranslateOptions& in, hotc::TranslatorSession::Impl& session, hotc::TranslateResult& res)
 {
     Options opt;
     opt.input = in.script_name;
@@ -2062,12 +2062,12 @@ void translate_impl(
         opt.output = opt.input + ".cpp";
     g_script = opt.input;
 
-    sppc::LineMap map(in.script_text);
+    hotc::LineMap map(in.script_text);
     const bool is_cpp_script = opt.input.size() > 4 && opt.input.compare(opt.input.size() - 4, 4, ".cpp") == 0;
     Script sc;
     if (is_cpp_script)
     {
-        sc = sppc::parse_cpp_script(in.script_text, opt.input, clang_args(opt), map, g_diag);
+        sc = hotc::parse_cpp_script(in.script_text, opt.input, clang_args(opt), map, g_diag);
         if (!g_diag.items.empty())
             throw TranslateAbort{};
         for (const Import& im : sc.imports)
@@ -2127,7 +2127,7 @@ void translate_impl(
         std::set<std::string> native_paths;
         std::vector<Import> natives;
         std::vector<ClassDef> classes;
-        std::vector<sppc::ast::EnumDef> enums;
+        std::vector<hotc::ast::EnumDef> enums;
         std::vector<Stub> stubs;
         uint32_t next_base = static_cast<uint32_t>(in.script_text.size()) + 1;
         // Depth first: the imports of an imported script come before its own classes.
@@ -2224,12 +2224,12 @@ void translate_impl(
     };
 
     // ---- the type model: the preludes first, then the stubs of the script
-    sppc::TypeModel types;
+    hotc::TypeModel types;
     // A stub with the place that holds it. The checks of the stubs (7.10.7) report there.
     struct StubSrc
     {
         const Stub* stub;
-        const sppc::LineMap* map;
+        const hotc::LineMap* map;
         std::string file; // empty: the script
     };
     std::vector<StubSrc> all_stubs;
@@ -2237,14 +2237,14 @@ void translate_impl(
     {
         std::string name;
         Script script;
-        sppc::LineMap map;
+        hotc::LineMap map;
     };
     std::deque<PreludeData> prelude_data; // the addresses must stay
     for (const auto& [pname, ptext] : in.preludes)
     {
-        const sppc::LineMap pmap(ptext);
-        sppc::Diagnostics pd;
-        Script ps = sppc::parse_script(ptext, pmap, pd);
+        const hotc::LineMap pmap(ptext);
+        hotc::Diagnostics pd;
+        Script ps = hotc::parse_script(ptext, pmap, pd);
         if (pd.items.empty() && !ps.classes.empty())
         {
             const ClassDef& pc = ps.classes.front();
@@ -2255,7 +2255,7 @@ void translate_impl(
         if (pd.items.empty() && !ps.vars.empty())
             pd.add(ps.vars.front().pos, pmap, "a prelude can hold only stubs: '" + pname + "' has a module variable");
         if (pd.items.empty())
-            types.add_stubs(ps.stubs, pd, pmap, sppc::TypeModel::Source::Prelude);
+            types.add_stubs(ps.stubs, pd, pmap, hotc::TypeModel::Source::Prelude);
         if (!pd.items.empty())
         {
             for (auto& d : pd.items)
@@ -2269,7 +2269,7 @@ void translate_impl(
         for (const Stub& st : prelude_data.back().script.stubs)
             all_stubs.push_back({&st, &prelude_data.back().map, pname});
     }
-    types.add_stubs(sc.stubs, g_diag, map, sppc::TypeModel::Source::Script);
+    types.add_stubs(sc.stubs, g_diag, map, hotc::TypeModel::Source::Script);
     if (!g_diag.items.empty())
         throw TranslateAbort{};
     for (const Stub& st : sc.stubs)
@@ -2283,7 +2283,7 @@ void translate_impl(
         std::set<std::string> class_names;
         for (const ClassDef& cd : sc.classes)
             class_names.insert(cd.name);
-        for (sppc::ast::EnumDef& e : sc.enums)
+        for (hotc::ast::EnumDef& e : sc.enums)
         {
             if (class_names.count(e.name))
                 fail_at(map, e.pos, "'" + e.name + "' is a class and an enum");
@@ -2295,7 +2295,7 @@ void translate_impl(
             if (!enum_types.emplace(e.name, e.underlying).second)
                 fail_at(map, e.pos, "enum '" + e.name + "' is declared twice");
             std::set<std::string> names;
-            for (const sppc::ast::Enumerator& m : e.items)
+            for (const hotc::ast::Enumerator& m : e.items)
                 if (!names.insert(m.name).second)
                     fail_at(map, m.pos, "enumerator '" + m.name + "' is declared twice in enum '" + e.name + "'");
         }
@@ -2352,13 +2352,13 @@ void translate_impl(
             if (m.name == "onReload" || m.name.rfind("convert_", 0) == 0)
                 fail_at(map, m.pos, "a struct '" + cd.name + "' cannot have the hook '" + m.name + "'");
         }
-        for (const sppc::ast::Ctor& c : cd.ctors)
+        for (const hotc::ast::Ctor& c : cd.ctors)
             if (c.has_base_call)
                 fail_at(map, c.pos, "a struct '" + cd.name + "' has no base class: remove 'base(...)'");
         // A constructor with a default value for each parameter would be a second default
         // constructor of the C++ struct.
-        for (const sppc::ast::Ctor& c : cd.ctors)
-            if (!c.params.empty() && std::all_of(c.params.begin(), c.params.end(), [](const sppc::ast::Param& p) {
+        for (const hotc::ast::Ctor& c : cd.ctors)
+            if (!c.params.empty() && std::all_of(c.params.begin(), c.params.end(), [](const hotc::ast::Param& p) {
                 return p.def != nullptr;
             }))
                 fail_at(map, c.pos,
@@ -2366,7 +2366,7 @@ void translate_impl(
     }
     for (const ClassDef& cd : sc.classes)
         if (cd.base.empty() && !cd.is_value)
-            for (const sppc::ast::Ctor& c : cd.ctors)
+            for (const hotc::ast::Ctor& c : cd.ctors)
                 if (c.has_base_call)
                     fail_at(map, c.pos, "class '" + cd.name + "' has no base class: remove 'base(...)'");
 
@@ -2457,16 +2457,16 @@ void translate_impl(
             asked[handle_type(st.handle, st.name)];
         }
     }
-    for (const std::string& t : sppc::used_type_names(sc))
+    for (const std::string& t : hotc::used_type_names(sc))
         if (types.wants_facts(t))
             asked[t];
     // A pattern stub ("std.vector<*>") gets the 7.10.7 checks for each instantiation that the
     // script writes (S20b). The rule can change after the parse (a base stub wins), so the check
     // looks the rule up again later.
     std::vector<std::pair<std::string, const StubSrc*>> pattern_uses;
-    for (const std::string& t : sppc::used_type_names(sc))
+    for (const std::string& t : hotc::used_type_names(sc))
     {
-        const sppc::TypeRule r = types.lookup(t);
+        const hotc::TypeRule r = types.lookup(t);
         if (r.owner.empty() || r.owner == "*" || r.owner.find('*') == std::string::npos)
             continue;
         const StubSrc* src = nullptr;
@@ -2490,7 +2490,7 @@ void translate_impl(
     }
     // The native type queries (S20b): the type of a "var" local from a native call or member,
     // and the constness of the member functions that a body calls on a value parameter.
-    sppc::NativeQueries native_q = sppc::collect_native_queries(sc);
+    hotc::NativeQueries native_q = hotc::collect_native_queries(sc);
     for (const auto& [t, ms] : native_q.methods)
         for (const std::string& m : ms)
             asked[t].insert("const:" + m);
@@ -2527,13 +2527,13 @@ void translate_impl(
         for (const ClassDef& cd : sc.classes)
             script_class_names.insert(cd.name);
         std::set<std::string> uniq;
-        for (const std::string& t : sppc::used_type_names(sc))
+        for (const std::string& t : hotc::used_type_names(sc))
         {
             if (t.empty() || !(std::isalpha(static_cast<unsigned char>(t[0])) || t[0] == '_' || t[0] == ':'))
                 continue;
             if (t.find_first_of("*&< ") != std::string::npos || t.rfind("std::", 0) == 0)
                 continue;
-            if (script_class_names.count(t) || sppc::builtin_cpp_name(t) || t == "void" || t == "var" || t == "string")
+            if (script_class_names.count(t) || hotc::builtin_cpp_name(t) || t == "void" || t == "var" || t == "string")
                 continue;
             if (uniq.insert(t).second)
                 query_texts.push_back(kCodeQuery + t);
@@ -2569,7 +2569,7 @@ void translate_impl(
         key += "#" + p + "\n";
     Hierarchy hier; // must outlive every use of "types"
     FactMap facts;
-    sppc::ParamMemo param_memo; // the parameter analysis of the classes that are done (S25)
+    hotc::ParamMemo param_memo; // the parameter analysis of the classes that are done (S25)
     std::map<std::string, std::string> query_answers;
     const std::map<std::string, BaseInfo> bases = session_bases(session, key, base_names, reqs, query_texts,
         [&](std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files, Hierarchy& h, FactMap& fm,
@@ -2588,7 +2588,7 @@ void translate_impl(
     types.set_classes([&facts](const std::string& name)
     {
         auto it = facts.find(name);
-        sppc::TypeModel::ClassFacts c;
+        hotc::TypeModel::ClassFacts c;
         if (it != facts.end())
         {
             c.known = it->second.known && it->second.is_class;
@@ -2696,7 +2696,7 @@ void translate_impl(
     const bool multi = sc.classes.size() - (has_module ? 1 : 0) > 1;
     Out o;
     bool uses_format = false; // the lowering sets it when a string uses "${...}"
-    o.w("// Generated by sppc from " + opt.input + " (generation " + std::to_string(opt.gen) + "). Do not edit.\n");
+    o.w("// Generated by hotc from " + opt.input + " (generation " + std::to_string(opt.gen) + "). Do not edit.\n");
     o.w("#include <cstddef>\n#include <cstdint>\n#include <cstdio>\n"
         "#include <new>\n#include <string>\n#include <type_traits>\n#include <typeinfo>\n"
         "#include <utility>\n");
@@ -2723,7 +2723,7 @@ void translate_impl(
         reset();
     };
     // A ".cpp" script writes its includes in source order, with the other text of the file.
-    for (const auto& im : sc.is_cpp ? std::vector<sppc::ast::Import>() : sc.imports)
+    for (const auto& im : sc.is_cpp ? std::vector<hotc::ast::Import>() : sc.imports)
     {
         o.w("#line " + std::to_string(im.line) + " \"" + esc(file_at(im.pos)) + "\"\n");
         o.w("#include " + im.target() + "\n");
@@ -2796,7 +2796,7 @@ void translate_impl(
                 o.w("struct " + c.name + "_Shell;\nusing " + c.name + " = " + c.name + "_Shell;\n");
                 continue;
             }
-            const std::string gen = sppc::ast::gen_namespace(c.ns);
+            const std::string gen = hotc::ast::gen_namespace(c.ns);
             o.w("namespace " + gen + " { struct " + c.name + "_Shell; using " + c.name + " = " + c.name + "_Shell; }\n");
             o.w("namespace " + c.ns + " { using " + last_component(c.key_name()) + " = ::" + gen + "::" + c.name
                 + "_Shell; }\n");
@@ -2807,9 +2807,9 @@ void translate_impl(
         for (const ClassDef& c : sc.classes)
             if (c.name == kModuleName)
                 for (const Field& f : c.fields)
-                    if (!f.ns.empty() && directives.insert(sppc::ast::gen_namespace(f.ns)).second)
+                    if (!f.ns.empty() && directives.insert(hotc::ast::gen_namespace(f.ns)).second)
                     {
-                        const std::string gen = sppc::ast::gen_namespace(f.ns);
+                        const std::string gen = hotc::ast::gen_namespace(f.ns);
                         o.w("namespace " + gen + " {}\nusing namespace " + gen + ";\n");
                     }
     }
@@ -2817,9 +2817,9 @@ void translate_impl(
     // ---- script enums. The enum is a C++ "enum class" with the underlying type of the script.
     {
         const ClassDef no_class;
-        for (sppc::ast::EnumDef& e : sc.enums)
+        for (hotc::ast::EnumDef& e : sc.enums)
         {
-            RCtx ec = sppc::make_class_ctx(no_class);
+            RCtx ec = hotc::make_class_ctx(no_class);
             ec.map = &map;
             ec.types = &types;
             ec.allow_this = false;
@@ -2827,16 +2827,16 @@ void translate_impl(
             ec.uses_format = &uses_format;
             o.w("\n#line " + std::to_string(e.line) + " \"" + esc(file_at(e.pos)) + "\"\n");
             o.w("enum class " + e.name + " : " + e.underlying + " {\n");
-            for (sppc::ast::Enumerator& m : e.items)
+            for (hotc::ast::Enumerator& m : e.items)
             {
                 o.w("#line " + std::to_string(m.line) + " \"" + esc(file_at(e.pos)) + "\"\n");
                 o.w("    " + m.name);
                 if (m.has_value && m.value)
                 {
-                    sppc::lower_expr(m.value, ec, g_diag);
+                    hotc::lower_expr(m.value, ec, g_diag);
                     if (!g_diag.items.empty())
                         throw TranslateAbort{};
-                    o.w(" = " + sppc::ast::print(*m.value));
+                    o.w(" = " + hotc::ast::print(*m.value));
                 }
                 o.w(",\n");
             }
@@ -2849,20 +2849,20 @@ void translate_impl(
     std::vector<std::string> thunk_regs;
     std::vector<std::string> flag_regs; // the record flags that script_register sets
     // The script classes that a "new" expression names (design 7.3). They get a "new" function.
-    const std::set<std::string> new_set = sppc::new_targets(sc);
+    const std::set<std::string> new_set = hotc::new_targets(sc);
     std::set<std::string> new_ready; // the classes with a "new" function that are emitted so far
 
     // ---- [value] script classes (design 7.10.1). A value class is a C++ struct with real
     // copy semantics. Its member functions are inline in the generation module, so a reload
     // replaces them with the module. Its field table lets the migration recurse (design 5.3).
-    const std::set<std::string> used_types = sppc::used_type_names(sc);
+    const std::set<std::string> used_types = hotc::used_type_names(sc);
     std::set<std::string> script_names;
     for (const ClassDef& cd : sc.classes)
         script_names.insert(cd.name);
-    auto param_text = [](const std::vector<sppc::ast::Param>& ps)
+    auto param_text = [](const std::vector<hotc::ast::Param>& ps)
     {
         std::string r;
-        for (const sppc::ast::Param& p : ps)
+        for (const hotc::ast::Param& p : ps)
             r += ", " + p.type + " " + p.name;
         return r;
     };
@@ -2945,11 +2945,11 @@ void translate_impl(
         desugar_props(cd, map);
         {
             const size_t before = g_diag.items.size();
-            sppc::check_ctors(cd, map, g_diag);
+            hotc::check_ctors(cd, map, g_diag);
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }
-        auto reserved = [&](uint32_t pos, const std::vector<sppc::ast::Param>& ps)
+        auto reserved = [&](uint32_t pos, const std::vector<hotc::ast::Param>& ps)
         {
             for (const Param& p : ps)
                 if (p.name.compare(0, 2, "__") == 0)
@@ -2967,11 +2967,11 @@ void translate_impl(
             if (field_names.count(m.name))
                 fail_at(map, m.pos, "'" + m.name + "' is a field and a function");
         }
-        for (const sppc::ast::Ctor& c : cd.ctors)
+        for (const hotc::ast::Ctor& c : cd.ctors)
             reserved(c.pos, c.params);
         {
             const size_t before = g_diag.items.size();
-            sppc::check_class(cd, types, map, g_diag, in.strict_borrowed, sc.is_cpp);
+            hotc::check_class(cd, types, map, g_diag, in.strict_borrowed, sc.is_cpp);
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }
@@ -2984,7 +2984,7 @@ void translate_impl(
             if (!m.ret.empty())
                 m.ret = types.storage(m.ret);
         }
-        for (sppc::ast::Ctor& c : cd.ctors)
+        for (hotc::ast::Ctor& c : cd.ctors)
             for (Param& p : c.params)
                 p.type = types.param(p.type);
         // The convert hooks of the module variables: the same rules as a convert hook of a field.
@@ -2995,7 +2995,7 @@ void translate_impl(
             {
                 if (m.is_override || m.is_virtual || m.is_new)
                     fail_at(map, m.pos, "'" + m.name + "' is a convert hook. It takes no modifier");
-                if (m.params.size() != 1 || sppc::ast::is_ref_type(m.params[0].type))
+                if (m.params.size() != 1 || hotc::ast::is_ref_type(m.params[0].type))
                     fail_at(map, m.pos, "'" + m.name + "' is a convert hook. It takes one parameter: the old value");
                 if (m.ret.empty() || m.ret == "void")
                     fail_at(map, m.pos, "'" + m.name + "' is a convert hook. It must return the new variable type");
@@ -3007,11 +3007,11 @@ void translate_impl(
                     if (f.name == m.name.substr(8) && f.type != m.ret)
                         fail_at(map, m.pos,
                             "'" + m.name + "' must return the type of the module variable: '"
-                                + sppc::script_type_text(f.type) + "'");
+                                + hotc::script_type_text(f.type) + "'");
             }
 
         new_ready.insert(cn);
-        RCtx base_cx = sppc::make_class_ctx(cd);
+        RCtx base_cx = hotc::make_class_ctx(cd);
         base_cx.map = &map;
         base_cx.types = &types;
         base_cx.script_classes = script_names;
@@ -3038,15 +3038,15 @@ void translate_impl(
                 init = f.raw_init; // a ".cpp" script: the text is already C++
             else if (f.has_init && f.init)
             {
-                sppc::lower_expr(f.init, fc, g_diag);
+                hotc::lower_expr(f.init, fc, g_diag);
                 if (!g_diag.items.empty())
                     throw TranslateAbort{};
-                init = sppc::ast::print(*f.init);
+                init = hotc::ast::print(*f.init);
             }
             inits.push_back(init);
             earlier.insert(f.name);
         }
-        auto arg_names = [](const std::vector<sppc::ast::Param>& ps)
+        auto arg_names = [](const std::vector<hotc::ast::Param>& ps)
         {
             std::string r;
             for (size_t i = 0; i < ps.size(); ++i)
@@ -3055,10 +3055,10 @@ void translate_impl(
         };
         auto fn_ret = [](const Method& m) { return m.ret.empty() ? std::string("void") : m.ret; };
         // The parameters with their default values, for the declarations that the script calls.
-        auto param_text_def = [&](const std::vector<sppc::ast::Param>& ps)
+        auto param_text_def = [&](const std::vector<hotc::ast::Param>& ps)
         {
             std::string r;
-            for (const sppc::ast::Param& p : ps)
+            for (const hotc::ast::Param& p : ps)
                 r += ", " + p.type + " " + p.name + default_arg(p, ps, base_cx);
             return r;
         };
@@ -3075,12 +3075,12 @@ void translate_impl(
         }
         for (const Method& m : cd.methods)
             o.w("static " + fn_ret(m) + " " + P + m.name + "(" + cn + "* __self" + param_text_def(m.params) + ");\n");
-        for (const sppc::ast::Ctor& c : cd.ctors)
+        for (const hotc::ast::Ctor& c : cd.ctors)
             o.w("static void " + P + "ctor(" + cn + "* __self" + param_text(c.params) + ");\n");
         // A constructor without parameters next to other overloads: the field initializers go to a
         // tag constructor. So an overload with parameters does not run the body of the other one.
-        const sppc::ast::Ctor* zero = nullptr;
-        for (const sppc::ast::Ctor& c : cd.ctors)
+        const hotc::ast::Ctor* zero = nullptr;
+        for (const hotc::ast::Ctor& c : cd.ctors)
             if (c.params.empty())
                 zero = &c;
         const bool tag_init = zero && cd.ctors.size() > 1;
@@ -3089,7 +3089,7 @@ void translate_impl(
         for (Field& f : cd.fields)
             if (!f.ns.empty())
             {
-                const std::string gen = sppc::ast::gen_namespace(f.ns), alias = f.name + "_t";
+                const std::string gen = hotc::ast::gen_namespace(f.ns), alias = f.name + "_t";
                 o.w("namespace " + gen + " { using " + alias + " = " + f.type + "; }\n");
                 f.type = "::" + gen + "::" + alias;
             }
@@ -3124,7 +3124,7 @@ void translate_impl(
             const std::string init_call = cn + (tag_init ? "(hot::Construct{})" : "()");
             if (tag_init)
                 o.w(at_line(cd.line, cd.pos) + "    " + cn + "() : " + init_call + " { " + P + "ctor(this); }\n");
-            for (const sppc::ast::Ctor& c : cd.ctors)
+            for (const hotc::ast::Ctor& c : cd.ctors)
                 if (!c.params.empty())
                     o.w(at_line(c.line, c.pos) + "    " + cn + "(" + param_text_def(c.params).substr(2)
                         + ") : " + init_call + " { " + P + "ctor(this, " + arg_names(c.params) + "); }\n");
@@ -3155,7 +3155,7 @@ void translate_impl(
             const Field& f = cd.fields[i];
             // The initializer is in the namespace of the variable: it can name the entities there.
             if (!f.ns.empty())
-                o.w("namespace " + sppc::ast::gen_namespace(f.ns) + " {\n");
+                o.w("namespace " + hotc::ast::gen_namespace(f.ns) + " {\n");
             o.w("#line " + std::to_string(f.line) + " \"" + esc(file_at(f.pos)) + "\"\n");
             o.w("static void " + P + "init_" + f.name + "(void*, void* f) { using T = " + f.type + "; new (f) T"
                 + (f.raw_brace_init ? inits[i] : "(" + inits[i] + ")") + "; }\n");
@@ -3199,7 +3199,7 @@ void translate_impl(
         {
             RCtx cx = base_cx;
             cx.where = what;
-            sppc::add_params(cx, m.params);
+            hotc::add_params(cx, m.params);
             // The head, the braces and the local name map to the script line of the function.
             const std::string at = "#line " + std::to_string(m.line) + " \"" + esc(file_at(m.pos)) + "\"\n";
             const int end_line = m.end_line > 0 ? m.end_line : m.line;
@@ -3209,14 +3209,14 @@ void translate_impl(
             o.w(at + "    HOT_NODEBUG_LOCAL auto* __st = __self;\n");
             if (!write_raw(m))
             {
-                sppc::lower_block(m.body, cx, g_diag);
+                hotc::lower_block(m.body, cx, g_diag);
                 if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
                 {
                     reset();
                     return;
                 }
-                sppc::ast::Emitter em(map, opt.input);
-                sppc::ast::emit_stmts(m.body.stmts, em, 1);
+                hotc::ast::Emitter em(map, opt.input);
+                hotc::ast::emit_stmts(m.body.stmts, em, 1);
                 em.finish();
                 o.w_emitted(em, all_text);
             }
@@ -3224,7 +3224,7 @@ void translate_impl(
             reset();
             o.w("\n");
         };
-        for (sppc::ast::Ctor& c : cd.ctors)
+        for (hotc::ast::Ctor& c : cd.ctors)
         {
             Method cm;
             cm.name = cn;
@@ -3248,15 +3248,15 @@ void translate_impl(
             cx.allow_this = false;
             cx.in_module_init = false;
             cx.in_module_hook = true;
-            sppc::add_params(cx, m->params);
+            hotc::add_params(cx, m->params);
             o.w("static " + m->ret + " " + P + m->name + "(" + m->params[0].type + " " + m->params[0].name + ")\n{\n");
             if (!write_raw(*m))
             {
-                sppc::lower_block(m->body, cx, g_diag);
+                hotc::lower_block(m->body, cx, g_diag);
                 if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
                     continue;
-                sppc::ast::Emitter em(map, opt.input);
-                sppc::ast::emit_stmts(m->body.stmts, em, 1);
+                hotc::ast::Emitter em(map, opt.input);
+                hotc::ast::emit_stmts(m->body.stmts, em, 1);
                 em.finish();
                 o.w_emitted(em, all_text);
             }
@@ -3279,7 +3279,7 @@ void translate_impl(
         std::map<std::string, std::set<std::string>> deps;
         for (ClassDef& cd : sc.classes)
         {
-            for (const std::string& u : sppc::used_type_names(cd))
+            for (const std::string& u : hotc::used_type_names(cd))
             {
                 if (!by_name.count(u) || u == cd.name)
                     continue;
@@ -3347,16 +3347,16 @@ void translate_impl(
     // class, and the module block comes at the first module variable. "texts[i]" is the text
     // before the block "seq[i]". The last entry of "texts" is the text after the last block.
     std::vector<ClassDef*> seq = order;
-    std::vector<std::vector<const sppc::ast::Script::Chunk*>> texts(order.size() + 1);
+    std::vector<std::vector<const hotc::ast::Script::Chunk*>> texts(order.size() + 1);
     if (sc.is_cpp)
     {
-        using Kind = sppc::ast::Script::Chunk::Kind;
+        using Kind = hotc::ast::Script::Chunk::Kind;
         std::map<std::string, ClassDef*> by_name;
         for (ClassDef* cdp : order)
             by_name[cdp->name] = cdp;
         seq.clear();
         texts.assign(1, {});
-        for (const sppc::ast::Script::Chunk& ch : sc.chunks)
+        for (const hotc::ast::Script::Chunk& ch : sc.chunks)
         {
             if (ch.kind == Kind::Text)
             {
@@ -3382,7 +3382,7 @@ void translate_impl(
         auto include = [&](size_t j) { return j < texts[i].size() && texts[i][j]->text.rfind("#include", 0) == 0; };
         for (size_t j = 0; j < texts[i].size(); ++j)
         {
-            const sppc::ast::Script::Chunk* ch = texts[i][j];
+            const hotc::ast::Script::Chunk* ch = texts[i][j];
             if (include(j))
             { // a run of includes has one "#line" of the generated file after it, as in a ".hot" script
                 o.w("#line " + std::to_string(ch->line) + " \"" + esc(file_at(ch->pos)) + "\"\n");
@@ -3408,7 +3408,7 @@ void translate_impl(
         // before the first use of the block.
         if (sc.is_cpp)
         {
-            const std::set<std::string> block_types = sppc::used_type_names(cd);
+            const std::set<std::string> block_types = hotc::used_type_names(cd);
             write_marks(&block_types);
         }
         const std::string cn = cd.name;
@@ -3421,7 +3421,7 @@ void translate_impl(
         // The block of a class in a namespace is in the nested namespace "hot_gen" of the namespace,
         // so the script text in the class finds the names of the namespace.
         if (!cd.ns.empty())
-            o.w("namespace " + sppc::ast::gen_namespace(cd.ns) + " {\n");
+            o.w("namespace " + hotc::ast::gen_namespace(cd.ns) + " {\n");
         const bool has_ctor = !cd.ctors.empty(), has_dtor = !cd.dtors.empty();
         // The classes of a chain (design 4.5): "par" is the script parent, "root" the first class.
         ClassDef* par = script_parent(cd);
@@ -3491,7 +3491,7 @@ void translate_impl(
             BL += ", " + iname;
         }
         bool root_super = false;
-        for (const sppc::ast::Ctor& c : root.ctors)
+        for (const hotc::ast::Ctor& c : root.ctors)
             root_super = root_super || c.has_base_call;
         std::string ctor_args;
         if (bi.ctor_kind == 1)
@@ -3509,7 +3509,7 @@ void translate_impl(
             const std::set<size_t>& ar = pinfo->ctor_arities;
             {
                 const size_t before = g_diag.items.size();
-                sppc::check_base_ctor_access(cd, *par, map, g_diag);
+                hotc::check_base_ctor_access(cd, *par, map, g_diag);
                 if (g_diag.items.size() != before)
                     throw TranslateAbort{};
             }
@@ -3553,11 +3553,11 @@ void translate_impl(
         desugar_props(cd, map);
         {
             const size_t before = g_diag.items.size();
-            sppc::check_ctors(cd, map, g_diag);
+            hotc::check_ctors(cd, map, g_diag);
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }
-        for (const sppc::ast::Ctor& c : cd.ctors)
+        for (const hotc::ast::Ctor& c : cd.ctors)
             for (const Param& p : c.params)
                 if (p.name.compare(0, 2, "__") == 0)
                     fail_at(map, c.pos, "parameter name '" + p.name + "' is reserved");
@@ -3672,8 +3672,8 @@ void translate_impl(
                         const std::string r1 = m.script_ret.empty() ? "void" : m.script_ret;
                         if (key_norm(r0) != key_norm(r1))
                             fail_at(map, m.pos,
-                                "return type '" + sppc::script_type_text(r1) + "' differs from '"
-                                    + sppc::script_type_text(r0) + "'");
+                                "return type '" + hotc::script_type_text(r1) + "' differs from '"
+                                    + hotc::script_type_text(r0) + "'");
                         m.vslot_owner = am->vslot_owner;
                     }
                     else
@@ -3711,8 +3711,8 @@ void translate_impl(
                 fail_at(map, m.pos, "'" + hit->text() + "' of " + hit->owner + " is final and cannot be overridden");
             if (!m.ret.empty() && key_norm(m.ret) != key_norm(hit->ret))
                 fail_at(map, m.pos,
-                    "return type '" + sppc::script_type_text(m.ret) + "' differs from '"
-                        + sppc::script_type_text(hit->ret) + "'");
+                    "return type '" + hotc::script_type_text(m.ret) + "' differs from '"
+                        + hotc::script_type_text(hit->ret) + "'");
             if (!overrides.emplace(hit->key(), &m).second)
                 fail_at(map, m.pos, "'" + hit->text() + "' is overridden twice");
         }
@@ -3738,7 +3738,7 @@ void translate_impl(
             }
             else
             {
-                if (m.params.size() != 1 || sppc::ast::is_ref_type(m.params[0].type))
+                if (m.params.size() != 1 || hotc::ast::is_ref_type(m.params[0].type))
                     fail_at(map, m.pos, "'" + m.name + "' is a convert hook. It takes one parameter: the old value");
                 if (m.ret.empty() || m.ret == "void")
                     fail_at(map, m.pos, "'" + m.name + "' is a convert hook. It must return the new field type");
@@ -3748,7 +3748,7 @@ void translate_impl(
         // ---- the borrowed-storage rule and the rows of design 5.3 that the script text shows
         {
             const size_t before = g_diag.items.size();
-            sppc::check_class(cd, types, map, g_diag, in.strict_borrowed, sc.is_cpp);
+            hotc::check_class(cd, types, map, g_diag, in.strict_borrowed, sc.is_cpp);
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }
@@ -3756,9 +3756,9 @@ void translate_impl(
         // ---- the context of the parameter analysis (S20b): the script functions and the fields
         // of the class and of its script parents, and the const member functions of native types.
         // The context of another class is the same with its own fields and functions (S25).
-        std::function<sppc::ParamContext(const ClassDef&)> make_ctx = [&](const ClassDef& c0)
+        std::function<hotc::ParamContext(const ClassDef&)> make_ctx = [&](const ClassDef& c0)
         {
-            sppc::ParamContext ctx;
+            hotc::ParamContext ctx;
             ctx.memo = &param_memo;
             int pdepth = 0;
             for (const ClassDef* d = &c0; d && pdepth < 64; d = script_parent(*d), ++pdepth)
@@ -3781,7 +3781,7 @@ void translate_impl(
                 auto m = it->second.members.find("const:" + method);
                 return m != it->second.members.end() && m->second;
             };
-            ctx.call_target = [&native_q](const sppc::ast::CallExpr& c) -> const sppc::CallTarget*
+            ctx.call_target = [&native_q](const hotc::ast::CallExpr& c) -> const hotc::CallTarget*
             {
                 auto it = native_q.calls.find(&c);
                 return it == native_q.calls.end() ? nullptr : &it->second;
@@ -3810,7 +3810,7 @@ void translate_impl(
             ctx.for_class = make_ctx;
             return ctx;
         };
-        const sppc::ParamContext param_ctx = make_ctx(cd);
+        const hotc::ParamContext param_ctx = make_ctx(cd);
 
         // ---- the C++ storage types. An override keeps the native types.
         for (Field& f : cd.fields)
@@ -3837,7 +3837,7 @@ void translate_impl(
                 for (const Field& f : cd.fields)
                     if (f.name == fname && f.type != m.ret)
                         fail_at(map, m.pos,
-                            "'" + m.name + "' must return the type of the field: '" + sppc::script_type_text(f.type)
+                            "'" + m.name + "' must return the type of the field: '" + hotc::script_type_text(f.type)
                                 + "'");
                 continue;
             }
@@ -3845,12 +3845,12 @@ void translate_impl(
             // The slot adapter and the thunk keep the form of param().
             for (Param& p : m.params)
             {
-                if (sppc::ast::is_ref_type(p.type))
+                if (hotc::ast::is_ref_type(p.type))
                 { // a "T&" parameter keeps its form
                     p.type = types.param(p.type); // a script class gives "storage(T)&"
                     continue;
                 }
-                const sppc::ParamUse use = sppc::analyze_param_use(m, p.name, param_ctx);
+                const hotc::ParamUse use = hotc::analyze_param_use(m, p.name, param_ctx);
                 const std::string body =
                     types.body_param(p.type, use.mutated || use.aliased, use.rebound || use.aliased, use.stored);
                 p.type = types.param(p.type);
@@ -3861,7 +3861,7 @@ void translate_impl(
                 m.ret = types.storage(m.ret);
         }
 
-        for (sppc::ast::Ctor& c : cd.ctors)
+        for (hotc::ast::Ctor& c : cd.ctors)
             for (Param& p : c.params)
                 p.type = types.param(p.type);
 
@@ -4006,7 +4006,7 @@ void translate_impl(
         info.table = table;
 
         // ---- lowering context
-        RCtx base_cx = sppc::make_class_ctx(cd);
+        RCtx base_cx = hotc::make_class_ctx(cd);
         base_cx.map = &map;
         base_cx.types = &types;
         for (const auto& sc_cls : sc.classes)
@@ -4022,7 +4022,7 @@ void translate_impl(
             // A child sees the fields and the functions of its script parents.
             for (const ClassDef* a = par; a; a = script_parent(*a))
             {
-                RCtx pc = sppc::make_class_ctx(*a);
+                RCtx pc = hotc::make_class_ctx(*a);
                 for (const auto& [n, t] : pc.field_type)
                     base_cx.field_type.emplace(n, t);
                 base_cx.fns.insert(pc.fns.begin(), pc.fns.end());
@@ -4170,7 +4170,7 @@ void translate_impl(
         {
             auto no_comma = [](const std::string& l) { return l.empty() ? l : l.substr(2); };
             std::string members;
-            for (const sppc::ast::Ctor& c : cd.ctors)
+            for (const hotc::ast::Ctor& c : cd.ctors)
             {
                 Method cm;
                 cm.params = c.params;
@@ -4233,10 +4233,10 @@ void translate_impl(
                 init = f.raw_init; // a ".cpp" script: the text is already C++
             else if (f.has_init && f.init)
             {
-                sppc::lower_expr(f.init, fc, g_diag);
+                hotc::lower_expr(f.init, fc, g_diag);
                 if (!g_diag.items.empty())
                     throw TranslateAbort{};
-                init = sppc::ast::print(*f.init);
+                init = hotc::ast::print(*f.init);
             }
             o.w("#line " + std::to_string(f.line) + " \"" + esc(file_at(f.pos)) + "\"\n");
             // A ".cpp" initializer can have a lambda that captures the shell ("[__self]"). The state block
@@ -4377,7 +4377,7 @@ void translate_impl(
         {
             bool vars = false;
             for (const Param& p : m.params)
-                vars = vars || sppc::ast::is_ref_type(p.type);
+                vars = vars || hotc::ast::is_ref_type(p.type);
             std::string r;
             for (size_t i = 0; i < m.params.size(); ++i)
             {
@@ -4412,7 +4412,7 @@ void translate_impl(
             for (size_t k = 0; k < ctor_ms.size(); ++k)
             {
                 const Method& cm = ctor_ms[k];
-                const sppc::ast::Ctor* sc = has_ctor ? &cd.ctors[k] : nullptr;
+                const hotc::ast::Ctor* sc = has_ctor ? &cd.ctors[k] : nullptr;
                 // A "&&" parameter is a const reference in the plan: the plan only reads it. A "T&"
                 // parameter stays a reference, and "base(x)" with the name of such a parameter
                 // binds the parent parameter to the lvalue of the child (std::ref).
@@ -4440,19 +4440,19 @@ void translate_impl(
                     RCtx fc = base_cx;
                     fc.allow_this = false;
                     fc.where = cd.key_name() + "::" + last_component(cd.key_name());
-                    sppc::add_params(fc, cm.params);
+                    hotc::add_params(fc, cm.params);
                     std::vector<std::string> parts;
                     for (ExprP& a : cd.ctors[k].base_args)
                     {
                         // The bare name of a "T&" parameter of this constructor binds by reference.
                         bool bind_ref = false;
-                        if (const auto* nm = std::get_if<sppc::ast::NameExpr>(&a->v); nm && nm->parts.size() == 1)
+                        if (const auto* nm = std::get_if<hotc::ast::NameExpr>(&a->v); nm && nm->parts.size() == 1)
                             for (const Param& p : cm.params)
-                                bind_ref = bind_ref || (p.name == nm->parts[0] && sppc::ast::is_ref_type(p.type));
-                        sppc::lower_expr(a, fc, g_diag);
+                                bind_ref = bind_ref || (p.name == nm->parts[0] && hotc::ast::is_ref_type(p.type));
+                        hotc::lower_expr(a, fc, g_diag);
                         if (!g_diag.items.empty())
                             throw TranslateAbort{};
-                        parts.push_back(bind_ref ? "std::ref(" + sppc::ast::print(*a) + ")" : sppc::ast::print(*a));
+                        parts.push_back(bind_ref ? "std::ref(" + hotc::ast::print(*a) + ")" : hotc::ast::print(*a));
                     }
                     sup_text = str_join(parts, ", ");
                 }
@@ -4595,13 +4595,13 @@ void translate_impl(
             RCtx cx = base_cx;
             cx.where = what;
             cx.ret_type = m.script_ret;
-            sppc::add_params(cx, m.params);
+            hotc::add_params(cx, m.params);
             const std::string file = esc(file_at(m.pos));
             auto line_at = [&](int l) { return "#line " + std::to_string(l) + " \"" + file + "\"\n"; };
             const int end_line = m.end_line > 0 ? m.end_line : m.line;
             int first_line = m.line;
-            if (!m.body.stmts.empty() && sppc::ast::pos_of(*m.body.stmts.front()) != 0)
-                first_line = map.line(sppc::ast::pos_of(*m.body.stmts.front()));
+            if (!m.body.stmts.empty() && hotc::ast::pos_of(*m.body.stmts.front()) != 0)
+                first_line = map.line(hotc::ast::pos_of(*m.body.stmts.front()));
             // The wrapper of a script function: it only calls the member.
             if (is_fn)
             {
@@ -4658,14 +4658,14 @@ void translate_impl(
             }
             if (!write_raw(m))
             {
-                sppc::lower_block(m.body, cx, g_diag);
+                hotc::lower_block(m.body, cx, g_diag);
                 if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
                 {
                     reset();
                     return;
                 }
-                sppc::ast::Emitter em(map, opt.input);
-                sppc::ast::emit_stmts(m.body.stmts, em, 1);
+                hotc::ast::Emitter em(map, opt.input);
+                hotc::ast::emit_stmts(m.body.stmts, em, 1);
                 em.finish();
                 o.w_emitted(em, all_text);
             }
@@ -4683,7 +4683,7 @@ void translate_impl(
             cx.allow_this = false;
             cx.field_type.clear();
             cx.fns.clear();
-            sppc::add_params(cx, m.params);
+            hotc::add_params(cx, m.params);
             const std::string file = esc(file_at(m.pos));
             const int end_line = m.end_line > 0 ? m.end_line : m.line;
             o.w("#line " + std::to_string(m.line) + " \"" + file + "\"\n");
@@ -4691,14 +4691,14 @@ void translate_impl(
             o.w("#line " + std::to_string(m.line) + " \"" + file + "\"\n{\n");
             if (!write_raw(m))
             {
-                sppc::lower_block(m.body, cx, g_diag);
+                hotc::lower_block(m.body, cx, g_diag);
                 if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
                 {
                     reset();
                     return;
                 }
-                sppc::ast::Emitter em(map, opt.input);
-                sppc::ast::emit_stmts(m.body.stmts, em, 1);
+                hotc::ast::Emitter em(map, opt.input);
+                hotc::ast::emit_stmts(m.body.stmts, em, 1);
                 em.finish();
                 o.w_emitted(em, all_text);
             }
@@ -4878,7 +4878,7 @@ void translate_impl(
         registers.push_back({cn, true});
         infos[cn] = std::move(info);
         if (!cd.ns.empty())
-            o.w("} // namespace " + sppc::ast::gen_namespace(cd.ns) + "\n");
+            o.w("} // namespace " + hotc::ast::gen_namespace(cd.ns) + "\n");
     }
     write_texts(seq.size());
 
@@ -4900,7 +4900,7 @@ void translate_impl(
     // and the offset in the text of that file.
     for (const ImportedFile& f : imported_files)
         res.source_map.add_file(f.file, f.text);
-    for (sppc::SourceSegment g : o.segs)
+    for (hotc::SourceSegment g : o.segs)
     {
         for (size_t i = imported_files.size(); i-- > 0;)
         {
@@ -4923,7 +4923,7 @@ void translate_impl(
 
 } // namespace
 
-namespace sppc
+namespace hotc
 {
 
 namespace
@@ -5068,9 +5068,9 @@ TranslateResult translate(const TranslateOptions& in, TranslatorSession& session
     return res;
 }
 
-} // namespace sppc
+} // namespace hotc
 
-namespace sppc
+namespace hotc
 {
 
 namespace
@@ -5231,7 +5231,7 @@ AnalyzeResult analyze_cpp(
         if (text[i] == '\n')
             starts.push_back(static_cast<uint32_t>(i + 1));
 
-    // Each line is "path:line:col: error: text", "path:line: error: text" or "sppc: error: text".
+    // Each line is "path:line:col: error: text", "path:line: error: text" or "hotc: error: text".
     const std::string head = path + ":";
     std::istringstream in(tr.diagnostics);
     for (std::string l; std::getline(in, l);)
@@ -5259,7 +5259,7 @@ AnalyzeResult analyze_cpp(
             }
             rest = l.substr(at);
         }
-        else if (l.compare(0, 6, "sppc: ") == 0)
+        else if (l.compare(0, 6, "hotc: ") == 0)
             rest = l.substr(4); // ": error: text"
         else
             continue; // an error in another file (a header that libclang reads)
@@ -5276,4 +5276,4 @@ AnalyzeResult analyze_cpp(
     return res;
 }
 
-} // namespace sppc
+} // namespace hotc

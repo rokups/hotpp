@@ -1,5 +1,5 @@
 // The script of the sample as a plain C++ file. Wolf derives from the host class Creature
-// and overrides Tick. A normal C++ build compiles this file. The tool sppc also translates it.
+// and overrides Tick. A normal C++ build compiles this file. The tool hotc also translates it.
 // A .cpp script has no string interpolation, so Tick formats the line with snprintf.
 #include "Creature.h"
 

@@ -22,7 +22,7 @@ using json = nlohmann::json;
 namespace
 {
 
-constexpr const char* kMagic = "spp-index";
+constexpr const char* kMagic = "hot-index";
 
 uint64_t fnv1a(const std::string& s, uint64_t h)
 {

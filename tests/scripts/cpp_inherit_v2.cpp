@@ -1,7 +1,7 @@
 // Generation 2 of the Base and Kid classes: a script class derives from a script class.
 // Base has the new field armor. Kid has the new field gen, a new override of the native virtual
 // TakeDamage and the new virtual method Bonus. Power of Kid gives 7.
-// A normal C++ build compiles this file. The tool sppc also translates it.
+// A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
 #include "Math.h"
 

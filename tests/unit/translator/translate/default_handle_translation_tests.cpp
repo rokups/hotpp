@@ -1,5 +1,5 @@
 // Tests for the stub "class *;", "default_handle", the warnings and the preludes (design 7.10.2, 7.10.3).
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 #include "support/check_translate_test_support.h"
 
 #include <gtest/gtest.h>
@@ -10,7 +10,7 @@ using namespace check_translate_test;
 
 TEST(DefaultHandleTranslation, AClassGetsTheDefaultHandleAndPlainDataStaysAValue)
 {
-    const sppc::TranslateResult r =
+    const hotc::TranslateResult r =
         check_translate("", "    Mesh m;\n    Vec3 v;\n    Plain p;\n    void Make() { this.m = new Mesh(); }\n",
             {{"engine.prelude", kDefaultShared}});
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -22,7 +22,7 @@ TEST(DefaultHandleTranslation, AClassGetsTheDefaultHandleAndPlainDataStaysAValue
 
 TEST(DefaultHandleTranslation, TheStubInTheScriptWorks)
 {
-    const sppc::TranslateResult r =
+    const hotc::TranslateResult r =
         check_translate(kDefaultShared, "    void Take(Mesh m) { }\n    Mesh Get() { return null; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "const std::shared_ptr<Mesh>& m")) << r.cpp;
@@ -31,7 +31,7 @@ TEST(DefaultHandleTranslation, TheStubInTheScriptWorks)
 
 TEST(DefaultHandleTranslation, ACustomDefaultHandleWorks)
 {
-    const sppc::TranslateResult r =
+    const hotc::TranslateResult r =
         check_translate("[native, default_handle(\"Arrow<$T>\")] class *;\n", "    Mesh m;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "    Arrow<Mesh> m;\n")) << r.cpp;
@@ -39,7 +39,7 @@ TEST(DefaultHandleTranslation, ACustomDefaultHandleWorks)
 
 TEST(DefaultHandleTranslation, ExactStubAndPatternStubBeatTheFallback)
 {
-    const sppc::TranslateResult r = check_translate(std::string(kDefaultShared)
+    const hotc::TranslateResult r = check_translate(std::string(kDefaultShared)
             + "[native, value] class std.vector<*>;\n[native, handle(\"Arrow<$T>\")] class Weapon;\n",
         "    Mesh m;\n    Weapon w;\n    std.vector<int> v;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -50,7 +50,7 @@ TEST(DefaultHandleTranslation, ExactStubAndPatternStubBeatTheFallback)
 
 TEST(DefaultHandleTranslation, ValueStubOnAStandardTypeBeatsTheFallback)
 {
-    const sppc::TranslateResult r = check_translate("", "    std.string s;\n",
+    const hotc::TranslateResult r = check_translate("", "    std.string s;\n",
         {{"engine.prelude", std::string(kDefaultShared) + "[native, value] class std.string;\n"}});
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "    std::string s;\n")) << r.cpp;
@@ -58,21 +58,21 @@ TEST(DefaultHandleTranslation, ValueStubOnAStandardTypeBeatsTheFallback)
 
 TEST(DefaultHandleTranslation, WithoutTheStubAClassHasNoHandle)
 {
-    const sppc::TranslateResult r = check_translate("", "    Mesh m;\n");
+    const hotc::TranslateResult r = check_translate("", "    Mesh m;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "    Mesh m;\n")) << r.cpp;
 }
 
 TEST(DefaultHandleTranslation, ValueOnStarIsAnError)
 {
-    const sppc::TranslateResult r = check_translate("[native, value] class *;\n", "");
+    const hotc::TranslateResult r = check_translate("[native, value] class *;\n", "");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "t.hot:2:1: error: 'value' is not allowed on 'class *'")) << r.diagnostics;
 }
 
 TEST(DefaultHandleTranslation, TwoStarsInOneFileAreAnError)
 {
-    const sppc::TranslateResult r =
+    const hotc::TranslateResult r =
         check_translate(std::string(kDefaultShared) + "[native, default_handle(\"Arrow<$T>\")] class *;\n", "");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "t.hot:3:1: error: only one 'class *'")) << r.diagnostics;
@@ -80,7 +80,7 @@ TEST(DefaultHandleTranslation, TwoStarsInOneFileAreAnError)
 
 TEST(DefaultHandleTranslation, TwoConflictingStubsInOneFileAreAnError)
 {
-    const sppc::TranslateResult r =
+    const hotc::TranslateResult r =
         check_translate("[native, value] class Plain;\n[native, handle(\"Arrow<$T>\")] class Plain;\n", "");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "t.hot:3:1: error: duplicate stub for 'Plain'")) << r.diagnostics;
@@ -88,7 +88,7 @@ TEST(DefaultHandleTranslation, TwoConflictingStubsInOneFileAreAnError)
 
 TEST(DefaultHandleTranslation, ScriptStubOverridesPreludeStubWithAWarning)
 {
-    const sppc::TranslateResult r = check_translate("[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n",
+    const hotc::TranslateResult r = check_translate("[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n",
         "    Weapon w;\n", {{"engine.prelude", "[native, value] class Weapon;\n"}});
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(r.diagnostics.empty()) << r.diagnostics;
@@ -99,7 +99,7 @@ TEST(DefaultHandleTranslation, ScriptStubOverridesPreludeStubWithAWarning)
 
 TEST(DefaultHandleTranslation, ScriptStarOverridesPreludeStarWithAWarning)
 {
-    const sppc::TranslateResult r = check_translate(
+    const hotc::TranslateResult r = check_translate(
         "[native, default_handle(\"Arrow<$T>\")] class *;\n", "    Mesh m;\n", {{"engine.prelude", kDefaultShared}});
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.warnings, "warning: the 'class *' of the script overrides")) << r.warnings;
@@ -108,7 +108,7 @@ TEST(DefaultHandleTranslation, ScriptStarOverridesPreludeStarWithAWarning)
 
 TEST(DefaultHandleTranslation, ALaterPreludeOverridesAnEarlierOneWithoutAWarning)
 {
-    const sppc::TranslateResult r = check_translate("", "    Weapon w;\n    Mesh m;\n",
+    const hotc::TranslateResult r = check_translate("", "    Weapon w;\n    Mesh m;\n",
         {{"a.prelude", std::string(kDefaultShared) + "[native, value] class Weapon;\n"},
             {"b.prelude",
                 "[native, default_handle(\"Arrow<$T>\")] class *;\n[native, handle(\"Arrow<$T>\")] class Weapon;\n"}});
@@ -121,12 +121,12 @@ TEST(DefaultHandleTranslation, ALaterPreludeOverridesAnEarlierOneWithoutAWarning
 TEST(DefaultHandleTranslation, ThePreludeTextChangesTheOutputThroughOneSession)
 {
     // The cache holds the facts of the headers only. The prelude is read on every call.
-    sppc::TranslatorSession session;
+    hotc::TranslatorSession session;
     const auto run = [&](const std::string& prelude)
     { return check_translate("", "    Weapon w;\n", {{"engine.prelude", prelude}}, true, &session); };
-    const sppc::TranslateResult a = run("[native, value] class Weapon;\n");
-    const sppc::TranslateResult b = run("[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n");
-    const sppc::TranslateResult c = run("[native, value] class Weapon;\n");
+    const hotc::TranslateResult a = run("[native, value] class Weapon;\n");
+    const hotc::TranslateResult b = run("[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n");
+    const hotc::TranslateResult c = run("[native, value] class Weapon;\n");
     ASSERT_TRUE(a.ok) << a.diagnostics;
     ASSERT_TRUE(b.ok) << b.diagnostics;
     EXPECT_TRUE(has(a.cpp, "    Weapon w;\n"));
@@ -138,7 +138,7 @@ TEST(DefaultHandleTranslation, ThePreludeTextChangesTheOutputThroughOneSession)
 
 TEST(DefaultHandleTranslation, TheFactsOfUsedTypesComeFromTheSessionCache)
 {
-    sppc::TranslatorSession session;
+    hotc::TranslatorSession session;
     const auto run = [&]
     { return check_translate("", "    Mesh m;\n", {{"engine.prelude", kDefaultShared}}, true, &session); };
     ASSERT_TRUE(run().ok);

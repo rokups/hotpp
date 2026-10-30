@@ -73,7 +73,7 @@ ctest --test-dir build --output-on-failure
 ```
 
 To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample calls
-`add_subdirectory` for `HOT_ROOT` only when the target `sppc` does not exist yet.
+`add_subdirectory` for `HOT_ROOT` only when the target `hotc` does not exist yet.
 
 ## Link
 

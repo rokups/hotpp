@@ -2,7 +2,7 @@
 // file of each example script. A later parser port must give the same bytes.
 // Set HOT_UPDATE_GOLDEN to write the files and pass.
 // CMake defines HOT_SOURCE_DIR.
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -44,10 +44,10 @@ void golden_pair(const std::string& base, const std::string& ext = ".hot")
     for (int gen = 1; gen <= 2; ++gen)
     {
         const std::string file = base + "_v" + std::to_string(gen) + ext;
-        sppc::TranslateOptions o = engine_options(file.c_str(), gen);
+        hotc::TranslateOptions o = engine_options(file.c_str(), gen);
         o.script_name = file; // the file name only, so the output has no absolute path
         o.slots_in = slots;
-        const sppc::TranslateResult r = sppc::translate(o);
+        const hotc::TranslateResult r = hotc::translate(o);
         ASSERT_TRUE(r.ok) << r.diagnostics;
         const std::string stem = base + "_v" + std::to_string(gen) + ".g" + std::to_string(gen);
         check_golden(stem + ".cpp", r.cpp);
@@ -60,9 +60,9 @@ void golden_pair(const std::string& base, const std::string& ext = ".hot")
 void golden_one(const std::string& base, const std::string& ext = ".hot")
 {
     const std::string file = base + ext;
-    sppc::TranslateOptions o = engine_options(file.c_str(), 1);
+    hotc::TranslateOptions o = engine_options(file.c_str(), 1);
     o.script_name = file;
-    const sppc::TranslateResult r = sppc::translate(o);
+    const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     check_golden(base + ".g1.cpp", r.cpp);
     check_golden(base + ".g1.slots", r.slots_out);

@@ -1,7 +1,7 @@
-// Tests for the diagnostics of sppc::translate: the count, the order, the position and the recovery.
+// Tests for the diagnostics of hotc::translate: the count, the order, the position and the recovery.
 #include "diag.h"
 #include "parser/parser.h"
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -13,7 +13,7 @@ using namespace translator_test;
 
 TEST(TranslateDiagnostics, TwoBrokenMembersGiveTwoErrors)
 {
-    const sppc::TranslateResult r = translate_text(
+    const hotc::TranslateResult r = translate_text(
         "class A : B {\n"
         "    x : ;\n"
         "    void ok() { }\n"
@@ -29,7 +29,7 @@ TEST(TranslateDiagnostics, TwoBrokenMembersGiveTwoErrors)
 // a line and a column.
 TEST(TranslateDiagnostics, BodyErrorsAndAnnotationErrorsComeInSourceOrder)
 {
-    const sppc::TranslateResult r = translate_text(
+    const hotc::TranslateResult r = translate_text(
         "class A : B {\n"
         "    void f() { var x = ; }\n"
         "    void g() { var y = 1 + ; }\n"
@@ -66,7 +66,7 @@ TEST(TranslateDiagnostics, OneFaultGivesOneError)
     };
     for (const char* text : scripts)
     {
-        const sppc::TranslateResult r = translate_text(text);
+        const hotc::TranslateResult r = translate_text(text);
         EXPECT_FALSE(r.ok) << text;
         EXPECT_EQ(count_errors(r.diagnostics), 1) << text << "\n" << r.diagnostics;
     }
@@ -74,7 +74,7 @@ TEST(TranslateDiagnostics, OneFaultGivesOneError)
 
 TEST(TranslateDiagnostics, StrayControlByteHasNoFoundText)
 {
-    const sppc::TranslateResult r = translate_text(std::string("\0abc\n", 5));
+    const hotc::TranslateResult r = translate_text(std::string("\0abc\n", 5));
     EXPECT_FALSE(r.ok);
     EXPECT_EQ(r.diagnostics, "t.hot:1:1: error: expected 'using', 'class', 'struct', 'enum' or a variable\n")
         << r.diagnostics;
@@ -83,7 +83,7 @@ TEST(TranslateDiagnostics, StrayControlByteHasNoFoundText)
 TEST(TranslateDiagnostics, DeepNestingGivesOneError)
 {
     const std::string deep(300, '{');
-    const sppc::TranslateResult r =
+    const hotc::TranslateResult r =
         translate_text("class A : B {\n    void f() " + deep + std::string(300, '}') + "\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_EQ(count_errors(r.diagnostics), 1) << r.diagnostics;
@@ -92,7 +92,7 @@ TEST(TranslateDiagnostics, DeepNestingGivesOneError)
 
 TEST(TranslateDiagnostics, BadImportKeepsItsText)
 {
-    const sppc::TranslateResult r = translate_text("using 5;\nclass A : B { }\n");
+    const hotc::TranslateResult r = translate_text("using 5;\nclass A : B { }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("using needs"), std::string::npos) << r.diagnostics;
     EXPECT_NE(r.diagnostics.find("t.hot:1:7: error:"), std::string::npos) << r.diagnostics;
@@ -100,17 +100,17 @@ TEST(TranslateDiagnostics, BadImportKeepsItsText)
 
 TEST(TranslateDiagnostics, UnterminatedBraceEndsWithAnError)
 {
-    const sppc::TranslateResult r = translate_text("class A : B {\n    void f() {\n");
+    const hotc::TranslateResult r = translate_text("class A : B {\n    void f() {\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("unexpected end of file"), std::string::npos) << r.diagnostics;
 }
 
 TEST(TranslateDiagnostics, UnterminatedCommentEndsWithAnError)
 {
-    const sppc::TranslateResult r = translate_text("class A : B { }\n/* open\n");
+    const hotc::TranslateResult r = translate_text("class A : B { }\n/* open\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("unterminated comment"), std::string::npos) << r.diagnostics;
-    const sppc::TranslateResult r2 = translate_text("class A : B { void f() { /* open }\n");
+    const hotc::TranslateResult r2 = translate_text("class A : B { void f() { /* open }\n");
     EXPECT_FALSE(r2.ok);
     EXPECT_FALSE(r2.diagnostics.empty());
 }
@@ -123,21 +123,21 @@ TEST(TranslateDiagnostics, AnyByteIsAccepted)
     const std::string script =
         "using \"w.h\";\n// caf\xE9\nclass Foo : Widget {\n    int n = 3;  // caf\xE9\n"
         "    override void Update(float dt) { /* \xE9 */ const char* t = \"na\xE9\"; t; }\n}\n";
-    const sppc::TranslateResult r = sppc::translate(temp_options(dir, script));
+    const hotc::TranslateResult r = hotc::translate(temp_options(dir, script));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("\"na\xE9\""), std::string::npos) << r.cpp;
 }
 
 TEST(TranslateDiagnostics, DoubleColonIsNotAField)
 {
-    const sppc::TranslateResult r = translate_text("class A : B {\n    x::y : int;\n}\n");
+    const hotc::TranslateResult r = translate_text("class A : B {\n    x::y : int;\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("t.hot:2:6: error: use '.' instead of '::'"), std::string::npos) << r.diagnostics;
 }
 
 TEST(TranslateDiagnostics, BacktickInATypeIsAnError)
 {
-    const sppc::TranslateResult r = translate_text("class A : B {\n    Foo`a` x;\n}\n");
+    const hotc::TranslateResult r = translate_text("class A : B {\n    Foo`a` x;\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("string interpolation is not supported"), std::string::npos) << r.diagnostics;
 }
@@ -154,19 +154,19 @@ TEST(TranslateDiagnostics, TruncatedInputsTerminate)
         for (int gen = 1; gen <= 2; ++gen, ++first)
         {
             const std::string file = std::string(base) + "_v" + std::to_string(gen) + ".hot";
-            const sppc::TranslateOptions full = engine_options(file.c_str(), gen);
-            sppc::TranslatorSession session; // the header parse is cached
+            const hotc::TranslateOptions full = engine_options(file.c_str(), gen);
+            hotc::TranslatorSession session; // the header parse is cached
             for (size_t cut = 0; cut <= full.script_text.size(); ++cut)
             {
                 const std::string text = full.script_text.substr(0, cut);
-                const sppc::LineMap map(text);
-                sppc::Diagnostics diag;
-                (void)sppc::parse_script(text, map, diag);
+                const hotc::LineMap map(text);
+                hotc::Diagnostics diag;
+                (void)hotc::parse_script(text, map, diag);
                 if (cut % 16 != first * 3 % 16)
                     continue;
-                sppc::TranslateOptions o = full;
+                hotc::TranslateOptions o = full;
                 o.script_text = text;
-                const sppc::TranslateResult r = sppc::translate(o, session);
+                const hotc::TranslateResult r = hotc::translate(o, session);
                 if (!r.ok)
                 {
                     ASSERT_FALSE(r.diagnostics.empty()) << file << " cut at " << cut;
@@ -187,7 +187,7 @@ TEST(TranslateDiagnostics, NonStringStubAttributeArgumentGivesOneError)
              "[native, handle(\"std::shared_ptr<$T>\"), intrusive(x, \"R\")] class Weapon;\n",
              "[native, intrusive(\"A\", 2)] class Weapon;\n"})
     {
-        const sppc::TranslateResult r = translate_text(std::string(stub) + "class A : B {\n    void f() { }\n}\n");
+        const hotc::TranslateResult r = translate_text(std::string(stub) + "class A : B {\n    void f() { }\n}\n");
         EXPECT_FALSE(r.ok);
         EXPECT_EQ(count_errors(r.diagnostics), 1) << stub << r.diagnostics;
     }

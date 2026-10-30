@@ -1,6 +1,6 @@
 // Generation 2 of a script class with a constructor member initializer list.
 // The initializers change. The class has a new field. The spawner makes a second object.
-// A normal C++ build compiles this file. The tool sppc also translates it.
+// A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
 
 #include <string>

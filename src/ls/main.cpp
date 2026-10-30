@@ -1,4 +1,4 @@
-// spp-ls: the S++ language server. It speaks LSP over stdin and stdout (see server.h).
+// hot-ls: the S++ language server. It speaks LSP over stdin and stdout (see server.h).
 #include "server.h"
 
 #include <cstdio>
@@ -19,7 +19,7 @@ int main(int argc, char** argv)
     std::string error;
     if (!hot::ls::parse_arguments(args, options, error))
     {
-        std::fprintf(stderr, "spp-ls: error: %s\n%s", error.c_str(), hot::ls::usage_text());
+        std::fprintf(stderr, "hot-ls: error: %s\n%s", error.c_str(), hot::ls::usage_text());
         return 2;
     }
     return hot::ls::run_server(0, 1, options);

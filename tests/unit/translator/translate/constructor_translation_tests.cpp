@@ -1,5 +1,5 @@
-// Tests for sppc::translate with a script constructor, a destructor and "new" of a script class.
-#include "hot/sppc_lib.h"
+// Tests for hotc::translate with a script constructor, a destructor and "new" of a script class.
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -22,21 +22,21 @@ const char* kHeader =
     "};\n"
     "class Plain { public: Plain(int v) {} virtual ~Plain() {} virtual void Update(float dt) {} };\n";
 
-sppc::TranslateResult translate_script(const std::string& body)
+hotc::TranslateResult translate_script(const std::string& body)
 {
     TempDir dir;
     write_file(dir.path() / "u.h", kHeader);
-    return sppc::translate(temp_options(dir, "using \"u.h\";\nusing <string>;\n" + body));
+    return hotc::translate(temp_options(dir, "using \"u.h\";\nusing <string>;\n" + body));
 }
 
 void expect_error(const std::string& body, const std::string& msg)
 {
-    const sppc::TranslateResult r = translate_script(body);
+    const hotc::TranslateResult r = translate_script(body);
     EXPECT_FALSE(r.ok) << body;
     EXPECT_NE(r.diagnostics.find(msg), std::string::npos) << body << "\n" << r.diagnostics;
 }
 
-bool has(const sppc::TranslateResult& r, const std::string& text)
+bool has(const hotc::TranslateResult& r, const std::string& text)
 {
     return r.cpp.find(text) != std::string::npos;
 }
@@ -45,7 +45,7 @@ bool has(const sppc::TranslateResult& r, const std::string& text)
 
 TEST(ConstructorTranslation, ConstructorEmitsTheEntryPoints)
 {
-    const sppc::TranslateResult r = translate_script(
+    const hotc::TranslateResult r = translate_script(
         "class Squad : Unit {\n"
         "    int size = 5;\n"
         "    Squad(std.string label, int extra) : base(label) { this.size = this.size + extra; }\n"
@@ -63,7 +63,7 @@ TEST(ConstructorTranslation, ConstructorEmitsTheEntryPoints)
 
 TEST(ConstructorTranslation, ConstructorWithoutSuperUsesTheBaseDefaultConstructor)
 {
-    const sppc::TranslateResult r = translate_script(
+    const hotc::TranslateResult r = translate_script(
         "class Squad : Unit {\n"
         "    int size = 5;\n"
         "    Squad(int extra) { this.size = extra; }\n"
@@ -74,7 +74,7 @@ TEST(ConstructorTranslation, ConstructorWithoutSuperUsesTheBaseDefaultConstructo
 
 TEST(ConstructorTranslation, NewOfAScriptClass)
 {
-    const sppc::TranslateResult r = translate_script(
+    const hotc::TranslateResult r = translate_script(
         "class Squad : Unit {\n"
         "    int size = 5;\n"
         "    Squad(int extra) { this.size = extra; }\n"
@@ -88,7 +88,7 @@ TEST(ConstructorTranslation, NewOfAScriptClass)
 
 TEST(ConstructorTranslation, NewNeedsNoConstructor)
 {
-    const sppc::TranslateResult r = translate_script(
+    const hotc::TranslateResult r = translate_script(
         "class Squad : Unit { int size = 5; }\n"
         "class Boss : Unit {\n"
         "    override void Update(float dt) { var s = new Squad(); }\n"
@@ -99,7 +99,7 @@ TEST(ConstructorTranslation, NewNeedsNoConstructor)
 
 TEST(ConstructorTranslation, DestructorGoesToTheRecord)
 {
-    const sppc::TranslateResult r = translate_script(
+    const hotc::TranslateResult r = translate_script(
         "class Squad : Unit {\n"
         "    int size = 5;\n"
         "    ~Squad() { this.size = 0; }\n"
@@ -113,7 +113,7 @@ TEST(ConstructorTranslation, DestructorGoesToTheRecord)
 // A class without a constructor gets a construct entry, so a later generation can use "new".
 TEST(ConstructorTranslation, AClassWithoutConstructorGetsAConstructEntry)
 {
-    const sppc::TranslateResult r = translate_script(
+    const hotc::TranslateResult r = translate_script(
         "class Squad : Unit {\n"
         "    int size = 5;\n"
         "    override void Update(float dt) { this.size = this.size + 1; }\n"
@@ -129,7 +129,7 @@ TEST(ConstructorTranslation, AClassWithoutConstructorGetsAConstructEntry)
 // Overloads are C++ overloads of the same functions. A "T&" parameter is a reference.
 TEST(ConstructorTranslation, OverloadsAndRefParameters)
 {
-    const sppc::TranslateResult r = translate_script(
+    const hotc::TranslateResult r = translate_script(
         "class Squad : Unit {\n"
         "    int size = 5;\n"
         "    Squad() { this.size = 1; }\n"
@@ -149,7 +149,7 @@ TEST(ConstructorTranslation, OverloadsAndRefParameters)
 // parent (S23). The plan keeps a reference and evaluates the operand one time.
 TEST(ConstructorTranslation, SuperArgumentBindsToARefParameter)
 {
-    const sppc::TranslateResult r = translate_script(
+    const hotc::TranslateResult r = translate_script(
         "class A : Unit {\n    A(int v, int& seen) { seen = v; }\n}\n"
         "class B : A {\n    B(int w, int& seen) : base(w + 1, seen) { }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -161,7 +161,7 @@ TEST(ConstructorTranslation, SuperArgumentBindsToARefParameter)
 // A "&&" constructor parameter is a const reference in the plan and moves into the constructor.
 TEST(ConstructorTranslation, RvalueReferenceParameter)
 {
-    const sppc::TranslateResult r = translate_script(
+    const hotc::TranslateResult r = translate_script(
         "class A : Unit {\n    std.string t = std.string();\n    A(std.string&& s) { this.t = s; }\n}\n"
         "class B : A {\n    B(std.string&& s) : base(std.move(s)) { }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -197,13 +197,13 @@ TEST(ConstructorTranslation, ConstructorErrors)
 TEST(ConstructorTranslation, BaseWithoutDefaultConstructorNeedsSuper)
 {
     expect_error("class S : Plain {\n    S(int v) { }\n}\n", "Plain");
-    const sppc::TranslateResult r = translate_script("class S : Plain {\n    S(int v) : base(v) { }\n}\n");
+    const hotc::TranslateResult r = translate_script("class S : Plain {\n    S(int v) : base(v) { }\n}\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
 TEST(ConstructorTranslation, NewBeforeTheDefinitionIsAccepted)
 {
-    const sppc::TranslateResult r = translate_script(
+    const hotc::TranslateResult r = translate_script(
         "class Boss : Unit {\n"
         "    override void Update(float dt) { var s = new Squad(3); }\n"
         "}\n"

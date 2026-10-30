@@ -1,5 +1,5 @@
-// Tests for sppc::translate with the reload hooks: onReload(OldState) and convert_<field>.
-#include "hot/sppc_lib.h"
+// Tests for hotc::translate with the reload hooks: onReload(OldState) and convert_<field>.
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -11,16 +11,16 @@ using namespace translator_test;
 namespace
 {
 
-sppc::TranslateResult translate_class(const std::string& members)
+hotc::TranslateResult translate_class(const std::string& members)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
-    return sppc::translate(temp_options(dir, "using \"w.h\";\nclass Foo : Widget {\n" + members + "\n}\n"));
+    return hotc::translate(temp_options(dir, "using \"w.h\";\nclass Foo : Widget {\n" + members + "\n}\n"));
 }
 
 void expect_error(const std::string& members, const std::string& msg)
 {
-    const sppc::TranslateResult r = translate_class(members);
+    const hotc::TranslateResult r = translate_class(members);
     EXPECT_FALSE(r.ok) << members;
     EXPECT_NE(r.diagnostics.find(msg), std::string::npos) << members << "\n" << r.diagnostics;
 }
@@ -29,7 +29,7 @@ void expect_error(const std::string& members, const std::string& msg)
 
 TEST(ReloadHookTranslation, OnReloadGetsNoSlotAndGoesToTheRecord)
 {
-    const sppc::TranslateResult r = translate_class(
+    const hotc::TranslateResult r = translate_class(
         "    float hp = 1.0;\n"
         "    void onReload(OldState old) { if (old.has(\"x\")) this.hp = old.get<float>(\"x\"); }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -45,7 +45,7 @@ TEST(ReloadHookTranslation, OnReloadGetsNoSlotAndGoesToTheRecord)
 
 TEST(ReloadHookTranslation, AClassWithoutHooksHasNoHookMembers)
 {
-    const sppc::TranslateResult r = translate_class("    float hp = 1.0;");
+    const hotc::TranslateResult r = translate_class("    float hp = 1.0;");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_EQ(r.cpp.find("onReload"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("_hook"), std::string::npos) << r.cpp;
@@ -60,7 +60,7 @@ TEST(ReloadHookTranslation, OnReloadNeedsTheOldStateParameter)
 
 TEST(ReloadHookTranslation, ConvertHookGoesToTheFieldRow)
 {
-    const sppc::TranslateResult r = translate_class(
+    const hotc::TranslateResult r = translate_class(
         "    float level = 1.0;\n    int other = 0;\n"
         "    float convert_level(int old) { return old * 2.0; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -88,7 +88,7 @@ TEST(ReloadHookTranslation, ConvertHookChecks)
 
 TEST(ReloadHookTranslation, AFunctionWithAConvertNameButNoFieldIsAnOrdinaryFunction)
 {
-    const sppc::TranslateResult r =
+    const hotc::TranslateResult r =
         translate_class("    float level = 1.0;\n    float convert_other(int old) { return 1.0; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("SLOT_convert_other"), std::string::npos) << r.cpp;

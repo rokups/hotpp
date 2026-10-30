@@ -13,7 +13,7 @@
 #include <string_view>
 #include <vector>
 
-namespace sppc::ast
+namespace hotc::ast
 {
 
 class Emitter
@@ -82,4 +82,4 @@ std::string print(const Stmt& s);
 // Line mode text of one statement, with the last line end.
 std::string print_lines(const Stmt& s, const LineMap& map, const std::string& file, int depth);
 
-} // namespace sppc::ast
+} // namespace hotc::ast

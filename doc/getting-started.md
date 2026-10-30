@@ -36,8 +36,8 @@ class Player : Actor {
 The first command translates the script to C++ and prints it. The second command builds a shared library for generation 1.
 
 ```
-sppc --emit-cpp player.hot --gen 1 -I include -I tests/engine
-sppc player.hot --gen 1 -I include -I tests/engine -o player.so
+hotc --emit-cpp player.hot --gen 1 -I include -I tests/engine
+hotc player.hot --gen 1 -I include -I tests/engine -o player.so
 ```
 
 The scripts of this page use the headers of the test host in `tests/engine` (`Actor.h`). For your own project, use your own native headers. The folder `tests/engine` is a test host and is not a model for a user project. Copy from `samples/` (see `samples/README.md`).

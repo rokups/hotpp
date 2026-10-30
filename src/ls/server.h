@@ -1,6 +1,6 @@
-// spp-ls: a stdio Language Server (LSP 3.17) for S++ scripts (design 10.1, M12 to M14).
+// hot-ls: a stdio Language Server (LSP 3.17) for S++ scripts (design 10.1, M12 to M14).
 //
-// The server is a proxy. It owns the text of each .hot document. It runs sppc::analyze() on the
+// The server is a proxy. It owns the text of each .hot document. It runs hotc::analyze() on the
 // text and gets the generated C++ and the source map. It gives the generated C++ to a stock
 // clangd child process as a virtual file "<script>.cpp" with the compile command of the backend
 // (hot::compile_command). It maps the positions of each request and each answer between the
@@ -20,7 +20,7 @@ struct ServerOptions
     std::vector<std::string> include_dirs; // for the script imports and for the compile
     std::string resource_dir; // the Clang resource dir (empty: the default)
     std::vector<std::string> extra_flags; // added to the compile command
-    // The directory of a compile_commands.json from "sppc --compile-commands". clangd gets it
+    // The directory of a compile_commands.json from "hotc --compile-commands". clangd gets it
     // (--compile-commands-dir) and runs its background index on the generated files. The
     // server also reads the -I, -isystem and -D flags of the first entry.
     std::string compile_commands_dir;
@@ -47,7 +47,7 @@ struct ScriptLine
 };
 std::optional<ScriptLine> line_directive_target(const std::string& cpp, int line);
 
-// Reads the command line of spp-ls (without argv[0]). Gives false and a message on an error.
+// Reads the command line of hot-ls (without argv[0]). Gives false and a message on an error.
 bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, std::string& error);
 
 // The text of the usage message.

@@ -39,9 +39,9 @@ inline const char* kCheckHeader =
 
 // Translates "using \"c.h\"; <stubs> class Foo : Widget { <members> }".
 // "preludes" are (name, text) pairs. "strict" sets strict_borrowed.
-inline sppc::TranslateResult check_translate(const std::string& stubs, const std::string& members,
+inline hotc::TranslateResult check_translate(const std::string& stubs, const std::string& members,
     const std::vector<std::pair<std::string, std::string>>& preludes = {}, bool strict = true,
-    sppc::TranslatorSession* session = nullptr)
+    hotc::TranslatorSession* session = nullptr)
 {
     static TempDir* dir = nullptr;
     if (!dir)
@@ -49,11 +49,11 @@ inline sppc::TranslateResult check_translate(const std::string& stubs, const std
         dir = new TempDir();
         write_file(dir->path() / "c.h", kCheckHeader); // once: a new time would make the session parse again
     }
-    sppc::TranslateOptions o =
+    hotc::TranslateOptions o =
         temp_options(*dir, "using \"c.h\";\n" + stubs + "class Foo : Widget {\n" + members + "}\n");
     o.preludes = preludes;
     o.strict_borrowed = strict;
-    return session ? sppc::translate(o, *session) : sppc::translate(o);
+    return session ? hotc::translate(o, *session) : hotc::translate(o);
 }
 
 inline bool has(const std::string& text, const std::string& part)

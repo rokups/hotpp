@@ -1,7 +1,7 @@
 // Generation 1 of the Base and Kid classes: a script class derives from a script class.
 // Base declares the virtual method Power. Kid inherits Bump and Twice from Base. Kid overrides
 // Power and the native virtual Tick. Kid calls the version of the parent with "Base::".
-// A normal C++ build compiles this file. The tool sppc also translates it.
+// A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
 #include "Math.h"
 

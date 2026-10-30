@@ -5,7 +5,7 @@
 #include <deque>
 #include <set>
 
-namespace sppc
+namespace hotc
 {
 
 namespace
@@ -356,4 +356,4 @@ TypeModel::Callee TypeModel::make_callee(const std::string& type) const
     return {storage(type), true};
 }
 
-} // namespace sppc
+} // namespace hotc

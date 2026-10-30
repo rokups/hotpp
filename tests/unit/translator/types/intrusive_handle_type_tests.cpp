@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-using namespace sppc;
+using namespace hotc;
 using namespace type_model_test;
 
 namespace

@@ -27,12 +27,12 @@ async function showScriptPosition() {
   }
   let location;
   try {
-    location = await client.sendRequest('spp/toScript', {
+    location = await client.sendRequest('hot/toScript', {
       textDocument: { uri: editor.document.uri.toString() },
       position: { line: editor.selection.active.line, character: editor.selection.active.character },
     });
   } catch (e) {
-    vscode.window.showWarningMessage(`S++: the request spp/toScript fails: ${e.message}`);
+    vscode.window.showWarningMessage(`S++: the request hot/toScript fails: ${e.message}`);
     return;
   }
   if (!location || !location.uri) {
@@ -61,19 +61,19 @@ function startServer() {
 
   const folders = vscode.workspace.workspaceFolders;
   const folder = folders && folders.length ? folders[0].uri.fsPath : undefined;
-  const command = expandWorkspaceFolder(config.get('server.path', 'spp-ls'), folder);
+  const command = expandWorkspaceFolder(config.get('server.path', 'hot-ls'), folder);
   const args = expandAll(config.get('server.args', ['--stdio']), folder);
   watchers = [
     vscode.workspace.createFileSystemWatcher('**/*.hot'),
     vscode.workspace.createFileSystemWatcher('**/.cache/hot/hosts/*'),
   ];
   const options = {
-    // The server gets the ".cpp" documents too. It publishes the sppc errors for a ".cpp" script,
+    // The server gets the ".cpp" documents too. It publishes the hotc errors for a ".cpp" script,
     // which a host lists, and it ignores any other ".cpp" file. The middleware keeps all the
-    // other features (completion, hover, tokens, formatting) on the "spp" documents: clangd owns
+    // other features (completion, hover, tokens, formatting) on the "hot" documents: clangd owns
     // them for a ".cpp" file.
     documentSelector: [
-      { scheme: 'file', language: 'spp' },
+      { scheme: 'file', language: 'hot' },
       { scheme: 'file', language: 'cpp' },
     ],
     middleware: onlySpp(),

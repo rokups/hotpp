@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- S++ natvis for Visual Studio (design 4.12). It was NOT tested: the session had no Windows.
      A state block "XState_gN" and a shell "X_Shell" show as the script class X.
-     The generated names follow the translator: see tools/lldb/spp_formatters.py. -->
+     The generated names follow the translator: see tools/lldb/hot_formatters.py. -->
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
   <!-- Any state block of any generation. Visual Studio shows the fields with their names. -->
   <Type Name="*State_g*">

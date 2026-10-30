@@ -1,7 +1,7 @@
-// Helpers for the tests that call sppc::translate. CMake defines HOT_SOURCE_DIR.
+// Helpers for the tests that call hotc::translate. CMake defines HOT_SOURCE_DIR.
 #pragma once
 
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 
 #include <gtest/gtest.h>
 
@@ -39,7 +39,7 @@ public:
     {
         static int n = 0;
         path_ =
-            fs::temp_directory_path() / ("sppc_session_test_" + std::to_string(::getpid()) + "_" + std::to_string(n++));
+            fs::temp_directory_path() / ("hotc_session_test_" + std::to_string(::getpid()) + "_" + std::to_string(n++));
         fs::remove_all(path_);
         fs::create_directories(path_);
     }
@@ -54,10 +54,10 @@ private:
     fs::path path_;
 };
 
-inline sppc::TranslateOptions engine_options(const char* script_file, int generation)
+inline hotc::TranslateOptions engine_options(const char* script_file, int generation)
 {
     const std::string root = HOT_SOURCE_DIR;
-    sppc::TranslateOptions o;
+    hotc::TranslateOptions o;
     o.script_name = root + "/tests/scripts/" + script_file;
     o.script_text = read_file(o.script_name);
     o.generation = generation;
@@ -65,9 +65,9 @@ inline sppc::TranslateOptions engine_options(const char* script_file, int genera
     return o;
 }
 
-inline sppc::TranslateOptions temp_options(const TempDir& dir, const std::string& script_text)
+inline hotc::TranslateOptions temp_options(const TempDir& dir, const std::string& script_text)
 {
-    sppc::TranslateOptions o;
+    hotc::TranslateOptions o;
     o.script_name = "t.hot";
     o.script_text = script_text;
     o.generation = 1;
@@ -93,13 +93,13 @@ inline int count_errors(const std::string& text)
     return n;
 }
 
-inline sppc::TranslateResult translate_text(const std::string& script)
+inline hotc::TranslateResult translate_text(const std::string& script)
 {
-    sppc::TranslateOptions o;
+    hotc::TranslateOptions o;
     o.script_name = "t.hot";
     o.script_text = script;
     o.generation = 1;
-    return sppc::translate(o);
+    return hotc::translate(o);
 }
 
 // The error text for a script text that needs no header.

@@ -1,6 +1,6 @@
 // The middleware of the language client. The client also sends the ".cpp" documents to the
-// server, to get the sppc errors of a ".cpp" script. The other features of a ".cpp" file belong
-// to clangd. So each feature request of the client for a document that is not language "spp"
+// server, to get the hotc errors of a ".cpp" script. The other features of a ".cpp" file belong
+// to clangd. So each feature request of the client for a document that is not language "hot"
 // returns no answer, and the server does not get the request. No dependency on the vscode
 // module, so a plain node test can run it.
 'use strict';
@@ -42,7 +42,7 @@ function onlySpp() {
     middleware[name] = (...args) => {
       const next = args[args.length - 1];
       const document = args[0];
-      if (document && document.languageId !== 'spp') return undefined;
+      if (document && document.languageId !== 'hot') return undefined;
       return next(...args.slice(0, -1));
     };
   }

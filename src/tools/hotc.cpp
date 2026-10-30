@@ -1,9 +1,9 @@
-// sppc: the command line tool of S++. It has two modes.
+// hotc: the command line tool of S++. It has two modes.
 //
 // Build mode (default): compile .hot files ahead of time into one shared library for each file.
-//   sppc <file.hot>... --gen N --out-dir DIR [-I dir]... [--resource-dir dir]
+//   hotc <file.hot>... --gen N --out-dir DIR [-I dir]... [--resource-dir dir]
 //        [--cxx command] [--cxxflag flag]... [--slots file] [--raw-diagnostics]
-//   sppc <file.hot> --gen N -o x.so [-I dir]... [--resource-dir dir]
+//   hotc <file.hot> --gen N -o x.so [-I dir]... [--resource-dir dir]
 //        [--cxx command] [--cxxflag flag]... [--slots file]
 // For each file the tool writes DIR/<name>.g<N>.cpp and DIR/<name>.g<N>.so.
 // <name> is the file name without the extension. With -o, the tool writes the one
@@ -16,18 +16,18 @@
 // compiler as it is. Emit mode has no compiler, so the option has no effect there.
 //
 // Build mode can write a compile database for clangd (design M14):
-//   sppc <file.hot>... --gen N --out-dir DIR --compile-commands CDIR
+//   hotc <file.hot>... --gen N --out-dir DIR --compile-commands CDIR
 // The tool writes CDIR/compile_commands.json with one entry for each generated .cpp. The entry
 // has the compile command of the backend (the compiler, the include paths and the flags).
 // The tool writes the entries also when a compile fails, because the .cpp exists then.
 //
 // Emit mode (--emit-cpp): translate one .hot file to C++. The tool does not compile it.
-//   sppc --emit-cpp <file.hot> --gen N [-o out.cpp] [-I dir]... [--prelude file]...
+//   hotc --emit-cpp <file.hot> --gen N [-o out.cpp] [-I dir]... [--prelude file]...
 //        [--slots file] [--resource-dir dir]
 // Without -o, the tool prints the C++ to the standard output.
 //
 // AOT mode (--aot): translate scripts for an AOT build (design M7).
-//   sppc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]...
+//   hotc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]...
 //        [--no-strict-borrowed] [--format=std|fmt] [--resource-dir dir]
 // For each file the tool writes DIR/<name>.aot.cpp (generation 1). It also writes
 // DIR/hot_aot_registry.cpp, which defines the constant table hot::aot_table
@@ -35,17 +35,17 @@
 // hot_add_scripts with AOT builds a static library from these files. The program links the
 // library and hot_aot. It has no loader.
 //
-// The flag --format=std|fmt is a flag for build systems. In build mode the build of sppc fixes
+// The flag --format=std|fmt is a flag for build systems. In build mode the build of hotc fixes
 // the format library (include/hot/config.h), and a different --format is an error (exit code 2).
 //
 // The flag --std=c++17|c++20|c++23 sets the C++ standard of the parse of the native headers and
 // of the compile of the generated code. The default is the C++ standard of the host (HOT_CXX_STANDARD
-// in include/hot/config.h). The flag is useful when sppc is built apart from the host.
+// in include/hot/config.h). The flag is useful when hotc is built apart from the host.
 //
 // Exit code: 0 success, 1 error, 2 bad usage.
 #include "hot/clang_files_backend.h"
 #include "hot/config.h"
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 
 #include <cctype>
 #include <cstdio>
@@ -65,13 +65,13 @@ namespace
 [[noreturn]] void usage()
 {
     std::fprintf(stderr,
-        "usage: sppc <file.hot>... --gen N (--out-dir DIR | -o x.so) [-I dir]... [--resource-dir dir]\n"
+        "usage: hotc <file.hot>... --gen N (--out-dir DIR | -o x.so) [-I dir]... [--resource-dir dir]\n"
         "            [--cxx command] [--cxxflag flag]... [--slots file] [--no-strict-borrowed] [--format=std|fmt]\n"
         "            [--raw-diagnostics] [--compile-commands dir] [--std=c++17|c++20|c++23]\n"
-        "       sppc --emit-cpp <file.hot> --gen N [-o out.cpp] [-I dir]... [--prelude file]... [--no-strict-borrowed] "
+        "       hotc --emit-cpp <file.hot> --gen N [-o out.cpp] [-I dir]... [--prelude file]... [--no-strict-borrowed] "
         "[--format=std|fmt]\n"
         "            [--slots file] [--resource-dir dir] [--std=c++17|c++20|c++23]\n"
-        "       sppc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]\n"
+        "       hotc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]\n"
         "            [--format=std|fmt] [--resource-dir dir] [--std=c++17|c++20|c++23]\n");
     std::exit(2);
 }
@@ -200,13 +200,13 @@ Args parse_args(int argc, char** argv)
 
 // Prints the errors and the warnings of the translator. The default form is the form of a
 // rewritten compiler diagnostic. --raw-diagnostics prints the text as it is.
-void print_diagnostics(const Args& args, const sppc::TranslateOptions& opt, const sppc::TranslateResult& r)
+void print_diagnostics(const Args& args, const hotc::TranslateOptions& opt, const hotc::TranslateResult& r)
 {
-    sppc::ScriptTexts scripts = sppc::script_texts(opt.script_name, opt.script_text, r);
+    hotc::ScriptTexts scripts = hotc::script_texts(opt.script_name, opt.script_text, r);
     scripts.insert(scripts.end(), opt.modules.begin(), opt.modules.end());
     for (const std::string* text : {&r.diagnostics, &r.warnings})
     {
-        const std::string out = args.raw_diagnostics ? *text : sppc::rewrite_translator_diagnostic(*text, scripts);
+        const std::string out = args.raw_diagnostics ? *text : hotc::rewrite_translator_diagnostic(*text, scripts);
         std::fputs(out.c_str(), stderr);
     }
 }
@@ -225,7 +225,7 @@ bool write_file(const std::string& path, const std::string& text)
     std::ofstream of(path);
     if (!of)
     {
-        std::fprintf(stderr, "sppc: error: cannot write %s\n", path.c_str());
+        std::fprintf(stderr, "hotc: error: cannot write %s\n", path.c_str());
         return false;
     }
     of << text;
@@ -236,7 +236,7 @@ int run_aot(const Args& args)
 {
     if (args.has_compiler_option || args.out_dir.empty() || args.inputs.empty())
         usage();
-    sppc::TranslateOptions base;
+    hotc::TranslateOptions base;
     base.generation = 1;
     base.strict_borrowed = args.strict_borrowed;
     base.format_lib = args.format_lib;
@@ -248,7 +248,7 @@ int run_aot(const Args& args)
         std::string text;
         if (!read_file(file, text))
         {
-            std::fprintf(stderr, "sppc: error: cannot read %s\n", file.c_str());
+            std::fprintf(stderr, "hotc: error: cannot read %s\n", file.c_str());
             return 1;
         }
         base.preludes.emplace_back(file, std::move(text));
@@ -259,14 +259,14 @@ int run_aot(const Args& args)
         const std::string stem = fs::path(s).stem().string();
         if (!ids.insert(identifier(stem)).second)
         {
-            std::fprintf(stderr, "sppc: error: two scripts have the name %s\n", stem.c_str());
+            std::fprintf(stderr, "hotc: error: two scripts have the name %s\n", stem.c_str());
             return 1;
         }
     }
     std::error_code ec;
     fs::create_directories(args.out_dir, ec);
 
-    sppc::TranslatorSession session;
+    hotc::TranslatorSession session;
     std::vector<std::string> names;
     bool failed = false;
     for (const std::string& path : args.inputs)
@@ -274,16 +274,16 @@ int run_aot(const Args& args)
         const std::string stem = fs::path(path).stem().string();
         const std::string id = identifier(stem);
         const std::string out = args.out_dir + "/" + stem + ".aot.cpp";
-        sppc::TranslateOptions opt = base;
+        hotc::TranslateOptions opt = base;
         opt.script_name = path;
         opt.output_name = out;
         if (!read_file(path, opt.script_text))
         {
-            std::fprintf(stderr, "sppc: error: cannot read %s\n", path.c_str());
+            std::fprintf(stderr, "hotc: error: cannot read %s\n", path.c_str());
             failed = true;
             continue;
         }
-        sppc::TranslateResult r = sppc::translate(opt, session);
+        hotc::TranslateResult r = hotc::translate(opt, session);
         print_diagnostics(args, opt, r);
         if (!r.ok)
         {
@@ -303,7 +303,7 @@ int run_aot(const Args& args)
     if (failed)
         return 1;
 
-    std::string reg = "// Generated by sppc --aot. Do not edit.\n#include \"hot/aot.h\"\n\n";
+    std::string reg = "// Generated by hotc --aot. Do not edit.\n#include \"hot/aot.h\"\n\n";
     for (const std::string& n : names)
         reg += "extern \"C\" void hot_script_register_" + identifier(n) + "(hot::Registry&);\n";
     reg += "\nnamespace hot {\nnamespace {\nconst AotScript kAotScripts[] = {\n";
@@ -328,7 +328,7 @@ bool check_not_input(const Args& args, const std::string& out)
     for (const std::string& in : args.inputs)
         if (same_file(in, out))
         {
-            std::fprintf(stderr, "sppc: error: the output file %s is the input file %s\n", out.c_str(), in.c_str());
+            std::fprintf(stderr, "hotc: error: the output file %s is the input file %s\n", out.c_str(), in.c_str());
             return false;
         }
     return true;
@@ -338,7 +338,7 @@ int run_emit(const Args& args)
 {
     if (args.has_build_only || args.inputs.size() != 1 || args.gen < 1)
         usage();
-    sppc::TranslateOptions opt;
+    hotc::TranslateOptions opt;
     opt.generation = args.gen;
     opt.strict_borrowed = args.strict_borrowed;
     opt.format_lib = args.format_lib;
@@ -350,7 +350,7 @@ int run_emit(const Args& args)
         std::string text;
         if (!read_file(file, text))
         {
-            std::fprintf(stderr, "sppc: error: cannot read %s\n", file.c_str());
+            std::fprintf(stderr, "hotc: error: cannot read %s\n", file.c_str());
             return 1;
         }
         opt.preludes.emplace_back(file, std::move(text));
@@ -362,13 +362,13 @@ int run_emit(const Args& args)
         return 1;
     if (!read_file(input, opt.script_text))
     {
-        std::fprintf(stderr, "sppc: error: cannot read %s\n", input.c_str());
+        std::fprintf(stderr, "hotc: error: cannot read %s\n", input.c_str());
         return 1;
     }
     if (!args.slots.empty())
         read_file(args.slots, opt.slots_in); // a missing slot file is empty
 
-    sppc::TranslateResult r = sppc::translate(opt);
+    hotc::TranslateResult r = hotc::translate(opt);
     print_diagnostics(args, opt, r);
     if (!r.ok)
         return 1;
@@ -382,7 +382,7 @@ int run_emit(const Args& args)
         std::ofstream of(args.output);
         if (!of)
         {
-            std::fprintf(stderr, "sppc: error: cannot write %s\n", args.output.c_str());
+            std::fprintf(stderr, "hotc: error: cannot write %s\n", args.output.c_str());
             return 1;
         }
         of << r.cpp;
@@ -392,7 +392,7 @@ int run_emit(const Args& args)
         std::ofstream mf(args.slots);
         if (!mf)
         {
-            std::fprintf(stderr, "sppc: error: cannot write %s\n", args.slots.c_str());
+            std::fprintf(stderr, "hotc: error: cannot write %s\n", args.slots.c_str());
             return 1;
         }
         mf << r.slots_out << r.sigs_out;
@@ -410,11 +410,11 @@ int run_build(const Args& args)
     if (single_so && args.inputs.size() != 1)
         usage();
 
-    // Build mode uses the format library that the build of sppc selected (include/hot/config.h).
+    // Build mode uses the format library that the build of hotc selected (include/hot/config.h).
     // The flag --format must agree with it. This catches a build system that mixes two choices.
     if (args.format_given && args.format_lib != hot::format_lib_name())
     {
-        std::fprintf(stderr, "sppc: error: this sppc is built for --format=%s, not --format=%s\n",
+        std::fprintf(stderr, "hotc: error: this hotc is built for --format=%s, not --format=%s\n",
             hot::format_lib_name(), args.format_lib.c_str());
         return 2;
     }
@@ -443,7 +443,7 @@ int run_build(const Args& args)
     {
         if (!seen.insert(fs::path(s).stem().string()).second)
         {
-            std::fprintf(stderr, "sppc: error: two scripts have the name %s\n", fs::path(s).stem().string().c_str());
+            std::fprintf(stderr, "hotc: error: two scripts have the name %s\n", fs::path(s).stem().string().c_str());
             return 1;
         }
     }
@@ -466,7 +466,7 @@ int run_build(const Args& args)
         std::ifstream in(path);
         if (!in)
         {
-            std::fprintf(stderr, "sppc: error: cannot read %s\n", path.c_str());
+            std::fprintf(stderr, "hotc: error: cannot read %s\n", path.c_str());
             failed = true;
             continue;
         }

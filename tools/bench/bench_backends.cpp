@@ -21,7 +21,7 @@
 // "|"), BENCH_RESOURCE_DIR, BENCH_WORK_DIR and BENCH_JIT or BENCH_CLANG_FILES.
 #include "hot/runtime.h"
 #include "hot/scratch.h"
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 
 #include <sys/resource.h>
 
@@ -134,7 +134,7 @@ int main(int argc, char** argv)
     }
     const std::vector<std::string> includes = split(BENCH_INCLUDES);
 
-    auto session = std::make_shared<sppc::TranslatorSession>();
+    auto session = std::make_shared<hotc::TranslatorSession>();
     auto make = [&](bool share) -> std::unique_ptr<hot::Backend>
     {
 #if defined(BENCH_JIT)
@@ -222,18 +222,18 @@ int main(int argc, char** argv)
     // One translate alone: a new session (miss) and then the same session (hit).
     double miss = 0, hit = 0;
     {
-        sppc::TranslateOptions to;
+        hotc::TranslateOptions to;
         to.script_text = v1.text;
         to.script_name = v1.name;
         to.generation = 1;
         to.include_dirs = includes;
         to.resource_dir = BENCH_RESOURCE_DIR;
-        sppc::TranslatorSession ts;
+        hotc::TranslatorSession ts;
         Clock::time_point t = Clock::now();
-        const bool ok1 = sppc::translate(to, ts).ok;
+        const bool ok1 = hotc::translate(to, ts).ok;
         miss = ms_since(t);
         t = Clock::now();
-        const bool ok2 = sppc::translate(to, ts).ok;
+        const bool ok2 = hotc::translate(to, ts).ok;
         hit = ms_since(t);
         if (!ok1 || !ok2)
             return 1;

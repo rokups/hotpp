@@ -9,7 +9,7 @@
 #include <set>
 #include <utility>
 
-namespace sppc
+namespace hotc
 {
 
 std::string rewrite_number(const std::string& n)
@@ -2051,4 +2051,4 @@ void lower_expr(ast::ExprP& e, RCtx& cx, Diagnostics& diag)
     lw.expr(e);
 }
 
-} // namespace sppc
+} // namespace hotc

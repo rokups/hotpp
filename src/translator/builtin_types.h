@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace sppc
+namespace hotc
 {
 
 struct BuiltinType
@@ -249,4 +249,4 @@ inline std::string script_type_text(std::string_view text)
     return out;
 }
 
-} // namespace sppc
+} // namespace hotc

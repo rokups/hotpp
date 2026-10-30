@@ -1,10 +1,10 @@
-// Tests for spp-ls (S14b, design M12 to M14). One test for each feature. The tests that need
+// Tests for hot-ls (S14b, design M12 to M14). One test for each feature. The tests that need
 // clangd are skipped when CMake did not find clangd.
 #include "clangd_process.h"
 #include "integration/ls/ls_client.h"
 #include "semantic.h"
 #include "hot/clang_files_backend.h"
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 #include "symbol_index.h"
 
@@ -577,19 +577,19 @@ TEST(LanguageServer, BindingsAreLocals)
 // ------------------------------------------------------------------ M14: index, C++ to script, rename
 
 // A .cpp go-to-definition that ends in a generated .cpp file goes on to the script with the
-// request spp/toScript. The "#line" directives of the file give the script line.
+// request hot/toScript. The "#line" directives of the file give the script line.
 TEST(LanguageServer, GeneratedFileOnDiskMapsBackToTheScript)
 {
     Session s(false);
     // Wait for the analyze of the server. Two parses at the same time race inside libclang
     // (TSan reports it), and the test does not test this.
     s.diagnostics([](const json&) { return true; });
-    sppc::TranslateOptions o;
+    hotc::TranslateOptions o;
     o.script_text = kScript;
     o.script_name = s.path;
     o.generation = 1;
     o.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine"};
-    const sppc::TranslateResult t = sppc::translate(o);
+    const hotc::TranslateResult t = hotc::translate(o);
     ASSERT_TRUE(t.ok) << t.diagnostics;
     const std::string cpp = (s.dir.path() / "player.g1.cpp").string();
     write_file(cpp, t.cpp);
@@ -597,7 +597,7 @@ TEST(LanguageServer, GeneratedFileOnDiskMapsBackToTheScript)
     const size_t at = t.cpp.find("__st->hp = __st->hp + amount;");
     ASSERT_NE(at, std::string::npos);
     const int gline = static_cast<int>(std::count(t.cpp.begin(), t.cpp.begin() + static_cast<long>(at), '\n'));
-    const json r = s.client->request("spp/toScript", doc_pos(uri_of(cpp), gline, 4));
+    const json r = s.client->request("hot/toScript", doc_pos(uri_of(cpp), gline, 4));
     ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
     EXPECT_EQ(r["result"]["uri"], s.uri);
     EXPECT_EQ(r["result"]["range"]["start"]["line"], 11);
@@ -727,7 +727,7 @@ TEST(LanguageServer, ReferencesIncludeTheOtherScriptsOfTheWorkspace)
     EXPECT_EQ(there, 3) << r.dump();
 }
 
-// clangd runs its background index on the compile_commands.json of "sppc --compile-commands".
+// clangd runs its background index on the compile_commands.json of "hotc --compile-commands".
 // A workspace symbol from a generated file that is not open maps back to the script.
 TEST(LanguageServer, BackgroundIndexFindsAScriptSymbolInAGeneratedFile)
 {
@@ -735,12 +735,12 @@ TEST(LanguageServer, BackgroundIndexFindsAScriptSymbolInAGeneratedFile)
     TempDir dir;
     const std::string script = (dir.path() / "player.hot").string();
     write_file(script, kScript);
-    sppc::TranslateOptions o;
+    hotc::TranslateOptions o;
     o.script_text = kScript;
     o.script_name = script;
     o.generation = 1;
     o.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine"};
-    const sppc::TranslateResult t = sppc::translate(o);
+    const hotc::TranslateResult t = hotc::translate(o);
     ASSERT_TRUE(t.ok) << t.diagnostics;
     const std::string cpp = (dir.path() / "player.g1.cpp").string();
     write_file(cpp, t.cpp);
@@ -770,8 +770,8 @@ TEST(LanguageServer, BackgroundIndexFindsAScriptSymbolInAGeneratedFile)
     EXPECT_EQ(found["location"]["range"]["start"]["line"], 10);
 }
 
-// S31 (DECISIONS 18): a C++ clangd (the editor extension) and spp-ls run on one project. The
-// project has one compile_commands.json and one ".cache" directory. The clangd child of spp-ls
+// S31 (DECISIONS 18): a C++ clangd (the editor extension) and hot-ls run on one project. The
+// project has one compile_commands.json and one ".cache" directory. The clangd child of hot-ls
 // keeps its index in ".cache/hot/clangd", so it does not mix with the index of the C++ clangd.
 TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOther)
 {
@@ -781,12 +781,12 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
     const fs::path root = dir.path();
     const std::string script = (root / "player.hot").string();
     write_file(script, kScript);
-    sppc::TranslateOptions o;
+    hotc::TranslateOptions o;
     o.script_text = kScript;
     o.script_name = script;
     o.generation = 1;
     o.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine"};
-    const sppc::TranslateResult t = sppc::translate(o);
+    const hotc::TranslateResult t = hotc::translate(o);
     ASSERT_TRUE(t.ok) << t.diagnostics;
     const std::string gen = (root / "player.g1.cpp").string();
     write_file(gen, t.cpp);
@@ -818,7 +818,7 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
     cpp_clangd.notify("textDocument/didOpen",
         {{"textDocument", {{"uri", uri_of(cpp)}, {"languageId", "cpp"}, {"version", 1}, {"text", cpp_text}}}});
 
-    // spp-ls on the same project.
+    // hot-ls on the same project.
     hot::ls::ServerOptions opt = options(dir, true);
     opt.include_dirs.clear();
     opt.compile_commands_dir = root.string();
@@ -832,7 +832,7 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
     // Both servers give their own diagnostics.
     const json hot_diag = client.wait_notification("textDocument/publishDiagnostics", [&](const json& p)
     { return p.value("uri", std::string()) == uri_of(script) && has_source(p["diagnostics"], "clangd"); });
-    EXPECT_FALSE(hot_diag.is_null()) << "spp-ls has no clangd diagnostic";
+    EXPECT_FALSE(hot_diag.is_null()) << "hot-ls has no clangd diagnostic";
     bool cpp_diag = false;
     for (int i = 0; i < 100 && !cpp_diag; ++i)
     {
@@ -847,7 +847,7 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
     }
     EXPECT_TRUE(cpp_diag) << "the C++ clangd has no diagnostic";
     {
-        // The C++ clangd never gets a diagnostic for the script, and spp-ls never for main.cpp.
+        // The C++ clangd never gets a diagnostic for the script, and hot-ls never for main.cpp.
         std::lock_guard<std::mutex> lock(mu);
         for (const json& p : published)
             EXPECT_EQ(p.value("uri", std::string()).find(".hot"), std::string::npos) << p.dump();
@@ -874,7 +874,7 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
     EXPECT_TRUE(ready) << "a background index is missing";
     EXPECT_TRUE(fs::exists(root / ".cache" / "hot" / "clangd" / "compile_commands.json"));
 
-    // The C++ clangd still answers for C++, and spp-ls still answers for the script.
+    // The C++ clangd still answers for C++, and hot-ls still answers for the script.
     const json sym = cpp_clangd.request("workspace/symbol", {{"query", "cpp_function"}}, 30000);
     ASSERT_TRUE(sym.contains("result")) << sym.dump();
     EXPECT_FALSE(sym["result"].empty()) << sym.dump();
@@ -915,7 +915,7 @@ size_t file_count(const std::filesystem::path& dir)
 
 int analyzed_files(LsClient& client)
 {
-    const json r = client.request("spp/indexStats", json::object());
+    const json r = client.request("hot/indexStats", json::object());
     return r["result"].value("analyzed", -1);
 }
 
@@ -1018,9 +1018,9 @@ TEST(SymbolIndex, ADifferentFormatVersionIsDropped)
         ss << in.rdbuf();
         return std::optional<std::string>(ss.str());
     }();
-    const std::string head = "spp-index " + std::to_string(hot::ls::SymbolIndex::kFormatVersion) + " ";
+    const std::string head = "hot-index " + std::to_string(hot::ls::SymbolIndex::kFormatVersion) + " ";
     ASSERT_EQ(text.rfind(head, 0), 0u);
-    text.replace(0, head.size(), "spp-index 999 ");
+    text.replace(0, head.size(), "hot-index 999 ");
     write_file(file, text);
     EXPECT_FALSE(index.load(script, "d"));
     EXPECT_FALSE(std::filesystem::exists(file));
@@ -1294,7 +1294,7 @@ TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
 
 int completion_translations(LsClient& client)
 {
-    return client.request("spp/indexStats", json::object())["result"].value("completions", -1);
+    return client.request("hot/indexStats", json::object())["result"].value("completions", -1);
 }
 
 TEST(LanguageServer, CompletionReusesTheAnswerWhileThePrefixGrows)
@@ -1686,9 +1686,9 @@ TEST(LanguageServerHosts, NoHostGivesAnInformationDiagnostic)
     client.initialize(uri_of(c.dir.path().string()));
     client.open(c.uri, c.text);
     const json n = c.next_diagnostics(client);
-    ASSERT_TRUE(has_source(n["params"]["diagnostics"], "spp-ls")) << n.dump();
+    ASSERT_TRUE(has_source(n["params"]["diagnostics"], "hot-ls")) << n.dump();
     for (const json& d : n["params"]["diagnostics"])
-        if (d.value("source", "") == "spp-ls")
+        if (d.value("source", "") == "hot-ls")
         {
             EXPECT_EQ(d["severity"], 3);
             EXPECT_EQ(d["range"]["start"], pos(0, 0));
@@ -1704,7 +1704,7 @@ TEST(LanguageServerHosts, MatchingHostGivesNoInformationDiagnostic)
     client.initialize(uri_of(c.dir.path().string()));
     client.open(c.uri, c.text);
     const json n = c.next_diagnostics(client);
-    EXPECT_FALSE(has_source(n["params"]["diagnostics"], "spp-ls")) << n.dump();
+    EXPECT_FALSE(has_source(n["params"]["diagnostics"], "hot-ls")) << n.dump();
 }
 
 TEST(LanguageServerHosts, InformationDiagnosticGoesWhenAHostAppears)
@@ -1713,15 +1713,15 @@ TEST(LanguageServerHosts, InformationDiagnosticGoesWhenAHostAppears)
     LsClient client(c.o);
     client.initialize(uri_of(c.dir.path().string()));
     client.open(c.uri, c.text);
-    EXPECT_TRUE(has_source(c.next_diagnostics(client)["params"]["diagnostics"], "spp-ls"));
+    EXPECT_TRUE(has_source(c.next_diagnostics(client)["params"]["diagnostics"], "hot-ls"));
     c.write_host();
     client.change(c.uri, 2, c.text + "\n");
-    EXPECT_FALSE(has_source(c.next_diagnostics(client)["params"]["diagnostics"], "spp-ls"));
+    EXPECT_FALSE(has_source(c.next_diagnostics(client)["params"]["diagnostics"], "hot-ls"));
 }
 
 // ------------------------------------------------------------------ ".cpp" scripts
 // A ".cpp" file is a script only when a host lists it (a script or a script dir). The server then
-// publishes the sppc errors as diagnostics. It gives no other answer for the file: clangd owns it.
+// publishes the hotc errors as diagnostics. It gives no other answer for the file: clangd owns it.
 namespace
 {
 
@@ -1782,7 +1782,7 @@ struct CppScriptCase
 
 } // namespace
 
-TEST(LanguageServerCpp, ScriptWithAnUnsupportedFormGivesTheSppcMessageAtTheLine)
+TEST(LanguageServerCpp, ScriptWithAnUnsupportedFormGivesTheHotcMessageAtTheLine)
 {
     CppScriptCase c;
     LsClient client(c.o);

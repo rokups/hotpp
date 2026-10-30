@@ -1,6 +1,6 @@
-// Tests of the tool sppc as a child process.
+// Tests of the tool hotc as a child process.
 //
-// CMake defines these macros: HOT_SOURCE_DIR, HOT_SCRATCH_DIR, SPPC_PATH and HOT_CXX.
+// CMake defines these macros: HOT_SOURCE_DIR, HOT_SCRATCH_DIR, HOTC_PATH and HOT_CXX.
 #include "hot/backend.h"
 #include "hot/clang_files_backend.h"
 #include "hot/config.h"
@@ -26,13 +26,13 @@ using test_support::line_with;
 using test_support::read_file;
 using test_support::TestScratch;
 
-// sppc on a bad script: exit code 1, an error at the script line, no library.
-TEST(SppcTool, SppcReportsErrorAtTheScriptLine)
+// hotc on a bad script: exit code 1, an error at the script line, no library.
+TEST(HotcTool, HotcReportsErrorAtTheScriptLine)
 {
     TestScratch scratch;
-    const std::string out_dir = scratch.file("sppc_diag");
+    const std::string out_dir = scratch.file("hotc_diag");
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/bad.hot";
-    const std::string cmd = std::string("'") + SPPC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir + "' -I '"
+    const std::string cmd = std::string("'") + HOTC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir + "' -I '"
         + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' --cxx '" + HOT_CXX + "' 2>&1";
     std::string text;
     FILE* p = popen(cmd.c_str(), "r");
@@ -48,12 +48,12 @@ TEST(SppcTool, SppcReportsErrorAtTheScriptLine)
 }
 
 // The error text speaks script names. --raw-diagnostics gives the text of the compiler.
-TEST(SppcTool, RawDiagnosticsKeepsTheCompilerText)
+TEST(HotcTool, RawDiagnosticsKeepsTheCompilerText)
 {
     TestScratch scratch;
-    const std::string out_dir = scratch.file("sppc_raw_diag");
+    const std::string out_dir = scratch.file("hotc_raw_diag");
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/bad.hot";
-    const std::string base = std::string("'") + SPPC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir
+    const std::string base = std::string("'") + HOTC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir
         + "' -I '" + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' --cxx '" + HOT_CXX + "' ";
     std::string script_names, raw;
     FILE* p = popen((base + "2>&1").c_str(), "r");
@@ -98,18 +98,18 @@ std::string player_args()
         + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include'";
 }
 
-// sppc --emit-cpp prints the C++ to the standard output, or writes it with -o.
-TEST(SppcTool, EmitCppModeTranslatesWithoutCompiling)
+// hotc --emit-cpp prints the C++ to the standard output, or writes it with -o.
+TEST(HotcTool, EmitCppModeTranslatesWithoutCompiling)
 {
     std::string text;
-    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp " + player_args() + " 2>&1", text), 0) << text;
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp " + player_args() + " 2>&1", text), 0) << text;
     EXPECT_NE(text.find("hot::deref"), std::string::npos);
 
     TestScratch scratch;
-    const std::string out = scratch.file("sppc_emit.cpp");
+    const std::string out = scratch.file("hotc_emit.cpp");
     std::string text2;
     EXPECT_EQ(
-        run_command(std::string("'") + SPPC_PATH + "' --emit-cpp " + player_args() + " -o '" + out + "' 2>&1", text2),
+        run_command(std::string("'") + HOTC_PATH + "' --emit-cpp " + player_args() + " -o '" + out + "' 2>&1", text2),
         0)
         << text2;
     EXPECT_NE(read_file(out).find("hot::deref"), std::string::npos); // the #line names differ
@@ -118,18 +118,18 @@ TEST(SppcTool, EmitCppModeTranslatesWithoutCompiling)
 // A translator error (here a parse error) has the final form of a rewritten compiler error:
 // script path, line, real column, the script line, and the count line. --raw-diagnostics keeps
 // the plain translator text.
-TEST(SppcTool, TranslatorErrorHasTheFinalForm)
+TEST(HotcTool, TranslatorErrorHasTheFinalForm)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_final_form.hot");
+    const std::string script = scratch.file("hotc_final_form.hot");
     {
         std::ofstream f(script);
         f << "class Foo {\n    void Run() { int x = ; }\n}\n";
     }
     std::string text, raw;
-    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "' --gen 1 2>&1", text), 1);
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "' --gen 1 2>&1", text), 1);
     EXPECT_EQ(
-        run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "' --gen 1 --raw-diagnostics 2>&1", raw),
+        run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "' --gen 1 --raw-diagnostics 2>&1", raw),
         1);
     const size_t at = text.find(":2:");
     ASSERT_NE(at, std::string::npos) << text;
@@ -144,14 +144,14 @@ TEST(SppcTool, TranslatorErrorHasTheFinalForm)
     EXPECT_EQ(raw.find("generated."), std::string::npos) << raw;
 }
 
-// sppc -o x.so builds one library. A mode flag of the other mode gives a usage error.
-TEST(SppcTool, OutputOptionBuildsOneLibrary)
+// hotc -o x.so builds one library. A mode flag of the other mode gives a usage error.
+TEST(HotcTool, OutputOptionBuildsOneLibrary)
 {
     TestScratch scratch;
-    const std::string dir = scratch.file("sppc_one_so");
+    const std::string dir = scratch.file("hotc_one_so");
     std::filesystem::create_directories(dir);
     std::string text;
-    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' " + player_args() + " -o '" + dir + "/x.so' --cxx '"
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' " + player_args() + " -o '" + dir + "/x.so' --cxx '"
                       + HOT_CXX + "' 2>&1",
                   text),
         0)
@@ -161,15 +161,15 @@ TEST(SppcTool, OutputOptionBuildsOneLibrary)
     std::string text2;
     EXPECT_EQ(
         run_command(
-            std::string("'") + SPPC_PATH + "' --emit-cpp " + player_args() + " --out-dir '" + dir + "' 2>&1", text2),
+            std::string("'") + HOTC_PATH + "' --emit-cpp " + player_args() + " --out-dir '" + dir + "' 2>&1", text2),
         2);
 }
 
 // A field with a borrowed pointer is an error by default. --no-strict-borrowed makes it a warning.
-TEST(SppcTool, StrictBorrowedIsTheDefault)
+TEST(HotcTool, StrictBorrowedIsTheDefault)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_strict.hot");
+    const std::string script = scratch.file("hotc_strict.hot");
     {
         std::FILE* f = std::fopen(script.c_str(), "w");
         ASSERT_NE(f, nullptr);
@@ -179,12 +179,12 @@ TEST(SppcTool, StrictBorrowedIsTheDefault)
     const std::string args =
         std::string("' --gen 1 -I '") + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include'";
     std::string strict, relaxed;
-    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + args + " 2>&1", strict), 1)
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + args + " 2>&1", strict), 1)
         << strict;
     EXPECT_NE(strict.find("a field cannot hold a borrowed pointer"), std::string::npos) << strict;
     EXPECT_EQ(
         run_command(
-            std::string("'") + SPPC_PATH + "' --emit-cpp --no-strict-borrowed '" + script + args + " 2>&1", relaxed),
+            std::string("'") + HOTC_PATH + "' --emit-cpp --no-strict-borrowed '" + script + args + " 2>&1", relaxed),
         0)
         << relaxed;
     EXPECT_NE(relaxed.find("warning"), std::string::npos) << relaxed;
@@ -241,7 +241,7 @@ void expect_compiles_as_cxx17(const std::string& script)
     }
     const std::string out = script + ".cxx17.cpp";
     std::string log;
-    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp" + format + " -o '" + out + "' '" + script + "'"
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp" + format + " -o '" + out + "' '" + script + "'"
                       + engine_args() + " 2>&1",
                   log),
         0)
@@ -256,10 +256,10 @@ void expect_compiles_as_cxx17(const std::string& script)
 }
 
 // A "T&" parameter and a "T&" local of a script class: the generated C++ must compile.
-TEST(SppcTool, ScriptClassReferenceCompiles)
+TEST(HotcTool, ScriptClassReferenceCompiles)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_class_ref.hot");
+    const std::string script = scratch.file("hotc_class_ref.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -279,9 +279,9 @@ TEST(SppcTool, ScriptClassReferenceCompiles)
         f);
     std::fclose(f);
     expect_compiles_as_cxx17(script);
-    const std::string out = scratch.file("sppc_class_ref.cpp");
+    const std::string out = scratch.file("hotc_class_ref.cpp");
     std::string log;
-    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
                       + engine_args() + " 2>&1",
                   log),
         0)
@@ -305,7 +305,7 @@ void expect_script_compiles(TestScratch& scratch, const char* name, const char* 
     expect_compiles_as_cxx17(script);
     const std::string out = scratch.file(std::string(name) + ".cpp");
     std::string log;
-    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
                       + engine_args() + " 2>&1",
                   log),
         0)
@@ -320,10 +320,10 @@ void expect_script_compiles(TestScratch& scratch, const char* name, const char* 
 
 // "var& r = p;" and "foreach (var& e in p)" write through a value parameter: the generated
 // function must not take it as "const T&".
-TEST(SppcTool, VarReferenceToAValueParameterCompiles)
+TEST(HotcTool, VarReferenceToAValueParameterCompiles)
 {
     TestScratch scratch;
-    expect_script_compiles(scratch, "sppc_param_ref.hot",
+    expect_script_compiles(scratch, "hotc_param_ref.hot",
         "using \"Actor.h\";\nusing <vector>;\n\n"
         "class Hero : Actor {\n"
         "    void A(std.vector<int> p) { var& r = p; r.clear(); }\n"
@@ -334,7 +334,7 @@ TEST(SppcTool, VarReferenceToAValueParameterCompiles)
 
 // A constructor parameter may have the name of a generated local of the construction code.
 // Expression bodies, default values and "??" give C++ that compiles. The calls omit the defaults.
-TEST(SppcTool, ConveniencesCompile)
+TEST(HotcTool, ConveniencesCompile)
 {
     TestScratch scratch;
     expect_script_compiles(scratch, "conveniences.hot",
@@ -364,10 +364,10 @@ TEST(SppcTool, ConveniencesCompile)
 }
 
 // "x is T name" in an if or a while gives C++ that compiles and runs.
-TEST(SppcTool, IsBindingCompilesAndRuns)
+TEST(HotcTool, IsBindingCompilesAndRuns)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_is_bind.hot");
+    const std::string script = scratch.file("hotc_is_bind.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -384,9 +384,9 @@ TEST(SppcTool, IsBindingCompilesAndRuns)
         f);
     std::fclose(f);
     expect_compiles_as_cxx17(script);
-    const std::string so = scratch.file("sppc_is_bind.so");
+    const std::string so = scratch.file("hotc_is_bind.so");
     std::string log;
-    ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
+    ASSERT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
                       + "' --cxx '" + HOT_CXX + "' 2>&1",
                   log),
         0)
@@ -397,12 +397,12 @@ TEST(SppcTool, IsBindingCompilesAndRuns)
     EXPECT_EQ(s.actor->Name, "hits 13 n 3");
 }
 
-// Private and protected members of a script class: sppc enforces them, the generated C++ keeps
+// Private and protected members of a script class: hotc enforces them, the generated C++ keeps
 // them public. A script that uses them in the allowed ways builds and runs.
-TEST(SppcTool, AccessWordsCompileAndRun)
+TEST(HotcTool, AccessWordsCompileAndRun)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_access.hot");
+    const std::string script = scratch.file("hotc_access.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -429,9 +429,9 @@ TEST(SppcTool, AccessWordsCompileAndRun)
         f);
     std::fclose(f);
     expect_compiles_as_cxx17(script);
-    const std::string so = scratch.file("sppc_access.so");
+    const std::string so = scratch.file("hotc_access.so");
     std::string log;
-    ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
+    ASSERT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
                       + "' --cxx '" + HOT_CXX + "' 2>&1",
                   log),
         0)
@@ -444,10 +444,10 @@ TEST(SppcTool, AccessWordsCompileAndRun)
 
 // A bare member name is "this.name" everywhere: before ".", in a struct method and for a
 // member of the native base. The script builds and runs.
-TEST(SppcTool, BareMemberNamesCompileAndRun)
+TEST(HotcTool, BareMemberNamesCompileAndRun)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_bare_members.hot");
+    const std::string script = scratch.file("hotc_bare_members.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -477,9 +477,9 @@ TEST(SppcTool, BareMemberNamesCompileAndRun)
         f);
     std::fclose(f);
     expect_compiles_as_cxx17(script);
-    const std::string so = scratch.file("sppc_bare_members.so");
+    const std::string so = scratch.file("hotc_bare_members.so");
     std::string log;
-    ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
+    ASSERT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
                       + "' --cxx '" + HOT_CXX + "' 2>&1",
                   log),
         0)
@@ -493,10 +493,10 @@ TEST(SppcTool, BareMemberNamesCompileAndRun)
 // A structured binding "var (a, b) = e" and "foreach (var (k, v) in c)" give C++ that compiles and
 // runs. They work for std.pair, std.tuple, a struct and a std.map. "enumerate" and
 // "range" are the helpers of the foreach with an index.
-TEST(SppcTool, StructuredBindingsCompileAndRun)
+TEST(HotcTool, StructuredBindingsCompileAndRun)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_bindings.hot");
+    const std::string script = scratch.file("hotc_bindings.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -535,9 +535,9 @@ TEST(SppcTool, StructuredBindingsCompileAndRun)
         f);
     std::fclose(f);
     expect_compiles_as_cxx17(script);
-    const std::string so = scratch.file("sppc_bindings.so");
+    const std::string so = scratch.file("hotc_bindings.so");
     std::string log;
-    ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
+    ASSERT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
                       + "' --cxx '" + HOT_CXX + "' 2>&1",
                   log),
         0)
@@ -549,10 +549,10 @@ TEST(SppcTool, StructuredBindingsCompileAndRun)
     EXPECT_EQ(s.actor->Name, "s 50 34 123 78 11 22 34 68 15");
 }
 
-TEST(SppcTool, ConstructorParametersMayUseOldGeneratedNames)
+TEST(HotcTool, ConstructorParametersMayUseOldGeneratedNames)
 {
     TestScratch scratch;
-    expect_script_compiles(scratch, "sppc_ctor_names.hot",
+    expect_script_compiles(scratch, "hotc_ctor_names.hot",
         "using \"Actor.h\";\n\n"
         "class Base : Actor {\n    int v = 0;\n    Base(int chain, int up) { this.v = chain + up; }\n}\n\n"
         "class Kid : Base {\n    Kid(int chain, int up, int pp, int plan, int note) : base(chain, up) { this.v += pp + "
@@ -562,10 +562,10 @@ TEST(SppcTool, ConstructorParametersMayUseOldGeneratedNames)
 // "&*h" gives a "T*" and "*h" gives a "T&" for a std::shared_ptr handle and for an intrusive
 // handle. "this" is a handle argument for a script handle parameter. "*this" is a "T&" argument for
 // a native "Actor&" parameter. The generated C++ must compile.
-TEST(SppcTool, HandleAddressOfDereferenceAndThisCompile)
+TEST(HotcTool, HandleAddressOfDereferenceAndThisCompile)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_handle_deref.hot");
+    const std::string script = scratch.file("hotc_handle_deref.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -586,9 +586,9 @@ TEST(SppcTool, HandleAddressOfDereferenceAndThisCompile)
         f);
     std::fclose(f);
     expect_compiles_as_cxx17(script);
-    const std::string out = scratch.file("sppc_handle_deref.cpp");
+    const std::string out = scratch.file("hotc_handle_deref.cpp");
     std::string log;
-    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
                       + engine_args() + " 2>&1",
                   log),
         0)
@@ -602,10 +602,10 @@ TEST(SppcTool, HandleAddressOfDereferenceAndThisCompile)
 }
 
 // A std.unique_ptr field is an error: a reload copies each field.
-TEST(SppcTool, MoveOnlyFieldIsAnError)
+TEST(HotcTool, MoveOnlyFieldIsAnError)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_unique_field.hot");
+    const std::string script = scratch.file("hotc_unique_field.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -613,9 +613,9 @@ TEST(SppcTool, MoveOnlyFieldIsAnError)
         "class Holder : Actor {\n    std.unique_ptr<Weapon> w;\n}\n",
         f);
     std::fclose(f);
-    const std::string out = scratch.file("sppc_unique_field.cpp");
+    const std::string out = scratch.file("hotc_unique_field.cpp");
     std::string log;
-    EXPECT_NE(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
+    EXPECT_NE(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
                       + engine_args() + " 2>&1",
                   log),
         0);
@@ -623,35 +623,35 @@ TEST(SppcTool, MoveOnlyFieldIsAnError)
 }
 
 // --format=fmt only changes the text. The default is std::format.
-TEST(SppcTool, FormatOptionSelectsTheFormatFunction)
+TEST(HotcTool, FormatOptionSelectsTheFormatFunction)
 {
     TestScratch scratch;
-    const std::string script = write_interp_script(scratch, "sppc_interp_text.hot");
+    const std::string script = write_interp_script(scratch, "hotc_interp_text.hot");
     std::string std_text, fmt_text, bad;
     EXPECT_EQ(
-        run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", std_text),
+        run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", std_text),
         0)
         << std_text;
     EXPECT_NE(std_text.find("#include <format>"), std::string::npos) << std_text;
     EXPECT_NE(std_text.find("std::format(\"hp = {}, name {}, r {:.2f} {{x}} ${{y}} {}\""), std::string::npos)
         << std_text;
     EXPECT_EQ(run_command(
-                  std::string("'") + SPPC_PATH + "' --emit-cpp --format=fmt '" + script + "'" + engine_args() + " 2>&1",
+                  std::string("'") + HOTC_PATH + "' --emit-cpp --format=fmt '" + script + "'" + engine_args() + " 2>&1",
                   fmt_text),
         0)
         << fmt_text;
     EXPECT_NE(fmt_text.find("#include <fmt/format.h>"), std::string::npos) << fmt_text;
     EXPECT_NE(fmt_text.find("fmt::format(\"hp = {}"), std::string::npos) << fmt_text;
     EXPECT_EQ(fmt_text.find("std::format"), std::string::npos) << fmt_text;
-    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp --format=printf '" + script + "'" + engine_args()
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp --format=printf '" + script + "'" + engine_args()
                       + " 2>&1",
                   bad),
         2);
 #if __has_include(<fmt/format.h>)
     // fmt is installed: the generated text compiles.
-    const std::string out = scratch.file("sppc_interp_fmt.cpp");
+    const std::string out = scratch.file("hotc_interp_fmt.cpp");
     std::string log;
-    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp --format=fmt -o '" + out + "' '" + script + "'"
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp --format=fmt -o '" + out + "' '" + script + "'"
                       + engine_args() + " 2>&1",
                   log),
         0)
@@ -667,13 +667,13 @@ TEST(SppcTool, FormatOptionSelectsTheFormatFunction)
 
 #if __has_include(<fmt/format.h>)
 // The text of --format=fmt compiles as C++17. This is the format of a C++17 build.
-TEST(SppcTool, FormatFmtOutputCompilesAsCxx17)
+TEST(HotcTool, FormatFmtOutputCompilesAsCxx17)
 {
     TestScratch scratch;
-    const std::string script = write_interp_script(scratch, "sppc_interp_fmt17.hot");
-    const std::string out = scratch.file("sppc_interp_fmt17.cpp");
+    const std::string script = write_interp_script(scratch, "hotc_interp_fmt17.hot");
+    const std::string out = scratch.file("hotc_interp_fmt17.cpp");
     std::string log, cc;
-    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp --format=fmt -o '" + out + "' '" + script + "'"
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp --format=fmt -o '" + out + "' '" + script + "'"
                       + engine_args() + " 2>&1",
                   log),
         0)
@@ -688,13 +688,13 @@ TEST(SppcTool, FormatFmtOutputCompilesAsCxx17)
 
 #if __has_include(<format>)
 // The text of --format=std compiles as C++20. This is the format of a C++20 build.
-TEST(SppcTool, FormatStdOutputCompilesAsCxx20)
+TEST(HotcTool, FormatStdOutputCompilesAsCxx20)
 {
     TestScratch scratch;
-    const std::string script = write_interp_script(scratch, "sppc_interp_std20.hot");
-    const std::string out = scratch.file("sppc_interp_std20.cpp");
+    const std::string script = write_interp_script(scratch, "hotc_interp_std20.hot");
+    const std::string out = scratch.file("hotc_interp_std20.cpp");
     std::string log, cc;
-    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp --format=std -o '" + out + "' '" + script + "'"
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp --format=std -o '" + out + "' '" + script + "'"
                       + engine_args() + " 2>&1",
                   log),
         0)
@@ -707,27 +707,27 @@ TEST(SppcTool, FormatStdOutputCompilesAsCxx20)
 }
 #endif
 
-// The build of sppc fixes the format library (include/hot/config.h). In build mode, a
+// The build of hotc fixes the format library (include/hot/config.h). In build mode, a
 // different --format is an error.
-TEST(SppcTool, BuildModeRejectsAFormatThatTheBuildDoesNotUse)
+TEST(HotcTool, BuildModeRejectsAFormatThatTheBuildDoesNotUse)
 {
     TestScratch scratch;
-    const std::string script = write_interp_script(scratch, "sppc_interp_mismatch.hot");
+    const std::string script = write_interp_script(scratch, "hotc_interp_mismatch.hot");
     const std::string other = HOT_USE_FMT ? "std" : "fmt";
     std::string log;
-    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '"
-                      + scratch.file("sppc_interp_mismatch.so") + "' --format=" + other + " 2>&1",
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '"
+                      + scratch.file("hotc_interp_mismatch.so") + "' --format=" + other + " 2>&1",
                   log),
         2)
         << log;
-    EXPECT_NE(log.find("this sppc is built for --format="), std::string::npos) << log;
+    EXPECT_NE(log.find("this hotc is built for --format="), std::string::npos) << log;
 }
 
 // "x ?? y" runs y only when x is false.
-TEST(SppcTool, CoalesceRunsTheRightSideOnlyWhenNeeded)
+TEST(HotcTool, CoalesceRunsTheRightSideOnlyWhenNeeded)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_coalesce_run.hot");
+    const std::string script = scratch.file("hotc_coalesce_run.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -747,9 +747,9 @@ TEST(SppcTool, CoalesceRunsTheRightSideOnlyWhenNeeded)
         f);
     std::fclose(f);
     expect_compiles_as_cxx17(script);
-    const std::string so = scratch.file("sppc_coalesce_run.so");
+    const std::string so = scratch.file("hotc_coalesce_run.so");
     std::string log;
-    ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
+    ASSERT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
                       + "' --cxx '" + HOT_CXX + "' 2>&1",
                   log),
         0)
@@ -762,10 +762,10 @@ TEST(SppcTool, CoalesceRunsTheRightSideOnlyWhenNeeded)
 
 // "var p = a ?? b;" has the type of the operands: "p.F()" works on a script handle, on a native
 // handle and on a native pointer.
-TEST(SppcTool, CoalesceInVarKeepsTheOperandType)
+TEST(HotcTool, CoalesceInVarKeepsTheOperandType)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_coalesce_var.hot");
+    const std::string script = scratch.file("hotc_coalesce_var.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -796,9 +796,9 @@ TEST(SppcTool, CoalesceInVarKeepsTheOperandType)
         f);
     std::fclose(f);
     expect_compiles_as_cxx17(script);
-    const std::string so = scratch.file("sppc_coalesce_var.so");
+    const std::string so = scratch.file("hotc_coalesce_var.so");
     std::string log;
-    ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
+    ASSERT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
                       + "' --cxx '" + HOT_CXX + "' 2>&1",
                   log),
         0)
@@ -811,14 +811,14 @@ TEST(SppcTool, CoalesceInVarKeepsTheOperandType)
 
 #if __has_include(<format>)
 // The script is compiled with std::format and run.
-TEST(SppcTool, InterpolationRunsWithStdFormat)
+TEST(HotcTool, InterpolationRunsWithStdFormat)
 {
     TestScratch scratch;
-    const std::string script = write_interp_script(scratch, "sppc_interp_run.hot");
+    const std::string script = write_interp_script(scratch, "hotc_interp_run.hot");
     expect_compiles_as_cxx17(script);
-    const std::string so = scratch.file("sppc_interp_run.so");
+    const std::string so = scratch.file("hotc_interp_run.so");
     std::string log;
-    ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
+    ASSERT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
                       + "' --cxx '" + HOT_CXX + "' 2>&1",
                   log),
         0)
@@ -833,10 +833,10 @@ TEST(SppcTool, InterpolationRunsWithStdFormat)
 // Statements and expressions that lower to more complex C++ compile with -std=c++17: a string
 // switch, collection literals, "?.", "??", "is" with a binding, default arguments, structured
 // bindings in lambdas, in "??" and in "finally", enumerate and range.
-TEST(SppcTool, LoweredStatementsCompileAsCxx17)
+TEST(HotcTool, LoweredStatementsCompileAsCxx17)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_cxx17.hot");
+    const std::string script = scratch.file("hotc_cxx17.hot");
     std::FILE* f = std::fopen(script.c_str(), "w");
     ASSERT_NE(f, nullptr);
     std::fputs(
@@ -878,7 +878,7 @@ TEST(SppcTool, LoweredStatementsCompileAsCxx17)
 }
 
 // Each public header compiles alone with -std=c++17. A script or an embedder can include it.
-TEST(SppcTool, PublicHeadersCompileAloneAsCxx17)
+TEST(HotcTool, PublicHeadersCompileAloneAsCxx17)
 {
     TestScratch scratch;
     std::vector<std::string> headers;
@@ -905,13 +905,13 @@ TEST(SppcTool, PublicHeadersCompileAloneAsCxx17)
 }
 
 // --aot writes the C++ of each script and the registration file. It does not compile.
-TEST(SppcTool, AotModeWritesTheCppAndTheRegistrationFile)
+TEST(HotcTool, AotModeWritesTheCppAndTheRegistrationFile)
 {
     TestScratch scratch;
-    const std::string out_dir = scratch.file("sppc_aot");
+    const std::string out_dir = scratch.file("hotc_aot");
     const std::string scripts = std::string("'") + HOT_SOURCE_DIR + "/tests/scripts/aot_demo.hot' '" + HOT_SOURCE_DIR
         + "/tests/scripts/props_v1.hot'";
-    const std::string cmd = std::string("'") + SPPC_PATH + "' --aot " + scripts + " --out-dir '" + out_dir + "' -I '"
+    const std::string cmd = std::string("'") + HOTC_PATH + "' --aot " + scripts + " --out-dir '" + out_dir + "' -I '"
         + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' 2>&1";
     FILE* p = popen(cmd.c_str(), "r");
     ASSERT_NE(p, nullptr);
@@ -933,13 +933,13 @@ TEST(SppcTool, AotModeWritesTheCppAndTheRegistrationFile)
 }
 
 // --aot needs an output directory and does not take the options of the other modes.
-TEST(SppcTool, AotModeRejectsBadUsage)
+TEST(HotcTool, AotModeRejectsBadUsage)
 {
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/aot_demo.hot";
     for (const char* extra :
         {"", "--out-dir /tmp/x --gen 1", "--out-dir /tmp/x -o /tmp/x.so", "--emit-cpp --out-dir /tmp/x"})
     {
-        const std::string cmd = std::string("'") + SPPC_PATH + "' --aot '" + script + "' " + extra + " >/dev/null 2>&1";
+        const std::string cmd = std::string("'") + HOTC_PATH + "' --aot '" + script + "' " + extra + " >/dev/null 2>&1";
         const int status = std::system(cmd.c_str());
         ASSERT_TRUE(WIFEXITED(status));
         EXPECT_EQ(WEXITSTATUS(status), 2) << extra;
@@ -948,17 +948,17 @@ TEST(SppcTool, AotModeRejectsBadUsage)
 
 // A script that does not parse gives exit code 1, an error at the script line and no
 // registration file. A type error appears later, in the compile of the library.
-TEST(SppcTool, AotModeReportsParseErrorAtTheScriptLine)
+TEST(HotcTool, AotModeReportsParseErrorAtTheScriptLine)
 {
     TestScratch scratch;
-    const std::string out_dir = scratch.file("sppc_aot_bad");
+    const std::string out_dir = scratch.file("hotc_aot_bad");
     std::filesystem::create_directories(out_dir);
     const std::string script = out_dir + "/broken.hot";
     {
         std::ofstream f(script);
         f << "using \"Actor.h\";\n\nclass Broken : Actor {\n    int x = ;\n}\n";
     }
-    const std::string cmd = std::string("'") + SPPC_PATH + "' --aot '" + script + "' --out-dir '" + out_dir + "' -I '"
+    const std::string cmd = std::string("'") + HOTC_PATH + "' --aot '" + script + "' --out-dir '" + out_dir + "' -I '"
         + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' 2>&1";
     FILE* p = popen(cmd.c_str(), "r");
     ASSERT_NE(p, nullptr);
@@ -974,7 +974,7 @@ TEST(SppcTool, AotModeReportsParseErrorAtTheScriptLine)
 }
 
 // The text of compile_commands.json is exact, and a quote or a backslash is escaped.
-TEST(SppcTool, CompileCommandsJsonText)
+TEST(HotcTool, CompileCommandsJsonText)
 {
     hot::CompileCommandEntry a{"/work", "/work/a.cpp", {"clang++", "-I/inc dir", "/work/a.cpp"}, "/work/a.so"};
     hot::CompileCommandEntry b{"/w\"x", "/w\"x/b.cpp", {"c\\d"}, "/w\"x/b.so"};
@@ -997,7 +997,7 @@ TEST(SppcTool, CompileCommandsJsonText)
 }
 
 // The compile command is the command of the backend.
-TEST(SppcTool, CompileCommandUsesTheBackendFlags)
+TEST(HotcTool, CompileCommandUsesTheBackendFlags)
 {
     hot::ClangFilesOptions o;
     o.compiler = "cc";
@@ -1014,7 +1014,7 @@ TEST(SppcTool, CompileCommandUsesTheBackendFlags)
 }
 
 // The option std_version replaces the standard of the host in the compile command.
-TEST(SppcTool, CompileCommandStdVersionOverridesTheHostStandard)
+TEST(HotcTool, CompileCommandStdVersionOverridesTheHostStandard)
 {
     hot::ClangFilesOptions o;
     o.compiler = "cc";
@@ -1024,17 +1024,17 @@ TEST(SppcTool, CompileCommandStdVersionOverridesTheHostStandard)
     EXPECT_EQ(hot::compile_command(o, "/x.cpp", "/x.so")[1], "-std=c++23");
 }
 
-// sppc --compile-commands writes one entry for each generated .cpp.
-TEST(SppcTool, CompileCommandsOptionWritesTheDatabase)
+// hotc --compile-commands writes one entry for each generated .cpp.
+TEST(HotcTool, CompileCommandsOptionWritesTheDatabase)
 {
     namespace fs = std::filesystem;
     TestScratch scratch;
-    const std::string out_dir = scratch.file("sppc_cdb");
-    const std::string cdb_dir = scratch.file("sppc_cdb_json");
+    const std::string out_dir = scratch.file("hotc_cdb");
+    const std::string cdb_dir = scratch.file("hotc_cdb_json");
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/boss_v1.hot";
     const std::string engine = std::string(HOT_SOURCE_DIR) + "/tests/engine";
     const std::string inc = std::string(HOT_SOURCE_DIR) + "/include";
-    const std::string cmd = std::string("'") + SPPC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir + "' -I '"
+    const std::string cmd = std::string("'") + HOTC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir + "' -I '"
         + engine + "' -I '" + inc + "' --cxx '" + HOT_CXX + "' --cxxflag -O1 --compile-commands '" + cdb_dir + "' 2>&1";
     std::string text;
     FILE* p = popen(cmd.c_str(), "r");
@@ -1060,66 +1060,66 @@ TEST(SppcTool, CompileCommandsOptionWritesTheDatabase)
     EXPECT_EQ(read_file(cdb_dir + "/compile_commands.json"), expected);
 }
 
-// sppc --emit-cpp translates a plain C++ script (a ".cpp" file) to a generation file.
-TEST(SppcTool, EmitCppTranslatesACppScript)
+// hotc --emit-cpp translates a plain C++ script (a ".cpp" file) to a generation file.
+TEST(HotcTool, EmitCppTranslatesACppScript)
 {
     std::string text;
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/cpp_player_v1.cpp";
-    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
         0)
         << text;
     EXPECT_NE(text.find("script_register"), std::string::npos) << text;
 }
 
 // The fixture v2 uses HOT_ALIAS and onReload and has no include of "hot/script.h".
-// sppc injects the header itself, so the translation works.
-TEST(SppcTool, EmitCppInjectsTheScriptHeaderForTheAids)
+// hotc injects the header itself, so the translation works.
+TEST(HotcTool, EmitCppInjectsTheScriptHeaderForTheAids)
 {
     std::string text;
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/cpp_player_v2.cpp";
-    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
         0)
         << text;
     EXPECT_NE(text.find("script_register"), std::string::npos) << text;
 }
 
-// A pure virtual method is not supported in a ".cpp" script. sppc fails.
-TEST(SppcTool, CppScriptWithUnsupportedFormFails)
+// A pure virtual method is not supported in a ".cpp" script. hotc fails.
+TEST(HotcTool, CppScriptWithUnsupportedFormFails)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_cpp_virtual.cpp");
+    const std::string script = scratch.file("hotc_cpp_virtual.cpp");
     {
         std::ofstream f(script);
         f << "#include \"Actor.h\"\nclass Foo : public Actor\n{\npublic:\n    virtual void Run() = 0;\n};\n";
     }
     std::string text;
-    EXPECT_NE(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
+    EXPECT_NE(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
         0);
     EXPECT_NE(text.find("error"), std::string::npos) << text;
     EXPECT_NE(text.find("virtual"), std::string::npos) << text;
 }
 
-// A syntax error in a ".cpp" script makes sppc fail with an error at the script line.
-TEST(SppcTool, CppScriptWithSyntaxErrorFails)
+// A syntax error in a ".cpp" script makes hotc fail with an error at the script line.
+TEST(HotcTool, CppScriptWithSyntaxErrorFails)
 {
     TestScratch scratch;
-    const std::string script = scratch.file("sppc_cpp_syntax.cpp");
+    const std::string script = scratch.file("hotc_cpp_syntax.cpp");
     {
         std::ofstream f(script);
         f << "#include \"Actor.h\"\nclass Foo : public Actor\n{\npublic:\n    void Tick(float dt) override { int x = ; }\n};\n";
     }
     std::string text;
-    EXPECT_NE(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
+    EXPECT_NE(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
         0);
-    EXPECT_NE(text.find("sppc_cpp_syntax.cpp:5:"), std::string::npos) << text;
+    EXPECT_NE(text.find("hotc_cpp_syntax.cpp:5:"), std::string::npos) << text;
     EXPECT_NE(text.find("error"), std::string::npos) << text;
 }
 
 // The tool never writes over an input file. "-o a.so" writes "a.cpp" next to the library.
-TEST(SppcTool, OutputNeverOverwritesAnInput)
+TEST(HotcTool, OutputNeverOverwritesAnInput)
 {
     TestScratch scratch;
-    const std::string dir = scratch.file("sppc_no_overwrite");
+    const std::string dir = scratch.file("hotc_no_overwrite");
     std::filesystem::create_directories(dir);
     const std::string script = dir + "/a.cpp";
     const std::string source = "#include \"Actor.h\"\nclass Foo : public Actor\n{\npublic:\n    int x = 1;\n};\n";
@@ -1128,7 +1128,7 @@ TEST(SppcTool, OutputNeverOverwritesAnInput)
         f << source;
     }
     std::string text;
-    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "' --gen 1 -o '" + dir + "/a.so' --cxx '"
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "' --gen 1 -o '" + dir + "/a.so' --cxx '"
                       + HOT_CXX + "'" + engine_args() + " 2>&1",
                   text),
         1)
@@ -1139,8 +1139,8 @@ TEST(SppcTool, OutputNeverOverwritesAnInput)
 
     // The same file by another path (a relative path with "..") is found too.
     std::string text2;
-    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "' --gen 1 -o '" + dir
-                      + "/../sppc_no_overwrite/a.cpp'" + engine_args() + " 2>&1",
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "' --gen 1 -o '" + dir
+                      + "/../hotc_no_overwrite/a.cpp'" + engine_args() + " 2>&1",
                   text2),
         1)
         << text2;

@@ -114,15 +114,15 @@ bool next_char_is_paren(const std::string& text, size_t e)
 
 } // namespace
 
-std::vector<SemanticToken> script_tokens(const std::string& text, const sppc::AnalyzeResult& facts)
+std::vector<SemanticToken> script_tokens(const std::string& text, const hotc::AnalyzeResult& facts)
 {
     std::set<std::string> classes, methods, properties;
-    for (const sppc::AnalyzedClass& c : facts.classes)
+    for (const hotc::AnalyzedClass& c : facts.classes)
     {
         classes.insert(c.name);
         if (!c.base.empty())
             classes.insert(c.base);
-        for (const sppc::AnalyzedMember& m : c.members)
+        for (const hotc::AnalyzedMember& m : c.members)
         {
             if (m.kind == "method")
                 methods.insert(m.name);
@@ -200,7 +200,7 @@ std::vector<SemanticToken> script_tokens(const std::string& text, const sppc::An
             int type = -1;
             if (keywords().count(w))
                 type = Keyword;
-            else if (sppc::builtin_cpp_name(w))
+            else if (hotc::builtin_cpp_name(w))
                 type = TypeName;
             else if (classes.count(w))
                 type = ClassName;
@@ -239,7 +239,7 @@ const std::vector<std::string>& builtin_type_names()
     static const std::vector<std::string> n = []
     {
         std::vector<std::string> r;
-        for (const sppc::BuiltinType& b : sppc::builtin_types())
+        for (const hotc::BuiltinType& b : hotc::builtin_types())
         {
             r.push_back(b.script);
             if (b.alias)

@@ -7,7 +7,7 @@
 
 #include <vector>
 
-namespace sppc
+namespace hotc
 {
 
 // Parses the text of the span as one expression. The function reads only the span.
@@ -27,4 +27,4 @@ ast::ExprP parse_expression(ParseInput in, Span span, Diagnostics& diag);
 // list is also the result for an empty span, so look at the diagnostics.
 std::vector<ast::ExprP> parse_expression_list(ParseInput in, Span span, Diagnostics& diag);
 
-} // namespace sppc
+} // namespace hotc

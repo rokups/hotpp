@@ -1,5 +1,5 @@
 // A plain C++ script with free functions that use a module variable. A normal C++ build
-// compiles this file. The tool sppc also translates it. It has no include of the spp headers.
+// compiles this file. The tool hotc also translates it. It has no include of the hot headers.
 #include "Actor.h"
 
 // A module variable. It keeps its value across a reload.
@@ -11,7 +11,7 @@ static int twice(int a)
     return a * 2;
 }
 
-// Free functions that use the module variable. sppc edits them in their place.
+// Free functions that use the module variable. hotc edits them in their place.
 static int add_total(int a, int b = 1)
 {
     total += twice(a) + b;

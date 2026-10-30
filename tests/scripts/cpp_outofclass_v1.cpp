@@ -1,5 +1,5 @@
 // Generation 1 of a script class whose methods have their bodies in the class.
-// A normal C++ build compiles this file. The tool sppc also translates it.
+// A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
 
 int ticks = 0;

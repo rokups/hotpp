@@ -1,5 +1,5 @@
 // A script with the user names a, st and self, an expression lambda and C style casts must pass
-// the whole chain: sppc, then the compile of the generated C++ by the selected backend.
+// the whole chain: hotc, then the compile of the generated C++ by the selected backend.
 #include "hot/backend.h"
 
 #include <gtest/gtest.h>

@@ -1,7 +1,7 @@
 // Tests for the ".cpp" frontend: the structure, the body edits and the error messages.
 // The base class Actor comes from tests/engine/Actor.h.
 #include "parser/cpp_frontend.h"
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 
 #include <gtest/gtest.h>
 
@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-using namespace sppc;
+using namespace hotc;
 
 namespace
 {
@@ -730,7 +730,7 @@ TEST(CppFrontend, StaticMethodDefaultArgumentDetection)
 }
 
 // ">=" after a template close is not a default argument in C++: clang rejects "std::vector<int>={}".
-// The form with a space is a default argument. sppc keeps it.
+// The form with a space is a default argument. hotc keeps it.
 TEST(CppFrontend, StaticMethodDefaultArgumentAfterTemplateClose)
 {
     expect_error("#include <vector>\nclass C : public Actor { public: static void f(std::vector<int>={}) {} };",
@@ -766,7 +766,7 @@ TEST(CppFrontend, InstanceMethodWithStaticMemberNameIsAnError)
 // such as "C__plan". The generated code has the function "C__plan" next to the static method.
 TEST(CppFrontend, StaticMemberNamesDoNotCollide)
 {
-    sppc::TranslateOptions o;
+    hotc::TranslateOptions o;
     o.script_name = "t.cpp";
     o.script_text = R"(#include "Actor.h"
 class C : public Actor
@@ -784,7 +784,7 @@ public:
     o.generation = 1;
     o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
     o.resource_dir = HOT_RESOURCE_DIR;
-    const sppc::TranslateResult r = sppc::translate(o);
+    const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     for (const char* n : {"int C__s_plan() {", "int C__s_super_args() {", "int C__s_new_default() {",
              "const int C__s_construct_keys = 4;"})
@@ -886,7 +886,7 @@ public:
 // The prototype has the default. The definition and the thunk do not repeat it.
 TEST(CppFrontend, DefaultArgumentsEmit)
 {
-    sppc::TranslateOptions o;
+    hotc::TranslateOptions o;
     o.script_name = "t.cpp";
     o.script_text = R"(#include "Actor.h"
 int level = 3;
@@ -901,7 +901,7 @@ public:
     o.generation = 1;
     o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
     o.resource_dir = HOT_RESOURCE_DIR;
-    const sppc::TranslateResult r = sppc::translate(o);
+    const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("S__F(S_Shell* __self, int x, int y = 2, int z = hot_mod()->level);"), std::string::npos)
         << r.cpp;
@@ -916,7 +916,7 @@ public:
 // A default argument on an override is an error: the call through the base sees the base declaration.
 TEST(CppFrontend, DefaultArgumentOnOverrideFails)
 {
-    sppc::TranslateOptions o;
+    hotc::TranslateOptions o;
     o.script_name = "t.cpp";
     o.script_text = R"(#include "Actor.h"
 class S : public Actor
@@ -928,7 +928,7 @@ public:
     o.generation = 1;
     o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
     o.resource_dir = HOT_RESOURCE_DIR;
-    const sppc::TranslateResult r = sppc::translate(o);
+    const hotc::TranslateResult r = hotc::translate(o);
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("default values are not allowed on virtual or override methods"), std::string::npos)
         << r.diagnostics;
@@ -1221,7 +1221,7 @@ TEST(CppFrontend, ParentInitArgumentCount)
 // and a container need this.
 TEST(CppFrontend, BraceInitializerEmit)
 {
-    sppc::TranslateOptions o;
+    hotc::TranslateOptions o;
     o.script_name = "t.cpp";
     o.script_text = R"(#include "Actor.h"
 #include <vector>
@@ -1238,7 +1238,7 @@ public:
     o.generation = 1;
     o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
     o.resource_dir = HOT_RESOURCE_DIR;
-    const sppc::TranslateResult r = sppc::translate(o);
+    const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("using T = Point; new (f) T{1, 2};"), std::string::npos);
     EXPECT_NE(r.cpp.find("using T = std::vector<int>; new (f) T{1, 2};"), std::string::npos);
@@ -1285,13 +1285,13 @@ public:
     EXPECT_EQ(p.method("F").raw_line, 16);
     EXPECT_EQ(c.dtors.at(0).raw_line, 21);
 
-    sppc::TranslateOptions o;
+    hotc::TranslateOptions o;
     o.script_name = "t.cpp";
     o.script_text = text;
     o.generation = 1;
     o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
     o.resource_dir = HOT_RESOURCE_DIR;
-    const sppc::TranslateResult r = sppc::translate(o);
+    const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // The first line after the "#line" is the rest of the line of the "{". The statement is two lines later.
     EXPECT_NE(r.cpp.find("#line 16 \"t.cpp\"\n\n        __self->Move(Vec3());"), std::string::npos) << r.cpp;
@@ -1302,7 +1302,7 @@ public:
 // A "(...)" initializer gives "T(3, 7)". A comma expression "T((3, 7))" builds a vector of 7 zeros.
 TEST(CppFrontend, ParenInitializerEmit)
 {
-    sppc::TranslateOptions o;
+    hotc::TranslateOptions o;
     o.script_name = "t.cpp";
     o.script_text = R"(#include "Actor.h"
 #include <vector>
@@ -1316,7 +1316,7 @@ public:
     o.generation = 1;
     o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
     o.resource_dir = HOT_RESOURCE_DIR;
-    const sppc::TranslateResult r = sppc::translate(o);
+    const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     size_t n = 0;
     for (size_t at = r.cpp.find("new (f) T(3, 7);"); at != std::string::npos; at = r.cpp.find("new (f) T(3, 7);", at + 1))
@@ -1539,14 +1539,14 @@ TEST(CppFrontend, ClangError)
 
 } // namespace
 
-// ---- sppc::analyze_cpp: the errors of a ".cpp" script for an editor
+// ---- hotc::analyze_cpp: the errors of a ".cpp" script for an editor
 
 namespace
 {
 
-sppc::TranslateOptions analyze_options()
+hotc::TranslateOptions analyze_options()
 {
-    sppc::TranslateOptions o;
+    hotc::TranslateOptions o;
     o.generation = 1;
     o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
     o.resource_dir = HOT_RESOURCE_DIR;
@@ -1557,7 +1557,7 @@ sppc::TranslateOptions analyze_options()
 
 TEST(AnalyzeCpp, ValidScriptHasNoError)
 {
-    const sppc::AnalyzeResult r = sppc::analyze_cpp(
+    const hotc::AnalyzeResult r = hotc::analyze_cpp(
         "#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    void Tick(float dt) override {}\n};\n",
         "/w/t.cpp", analyze_options());
     EXPECT_TRUE(r.ok) << r.diagnostics;
@@ -1570,7 +1570,7 @@ TEST(AnalyzeCpp, VirtualMethodHasPlace)
 {
     const std::string text =
         "#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    virtual void F() = 0;\n};\n";
-    const sppc::AnalyzeResult r = sppc::analyze_cpp(text, "/w/t.cpp", analyze_options());
+    const hotc::AnalyzeResult r = hotc::analyze_cpp(text, "/w/t.cpp", analyze_options());
     EXPECT_FALSE(r.ok);
     ASSERT_EQ(r.errors.size(), 1u) << r.diagnostics;
     EXPECT_EQ(r.errors[0].message, "a pure virtual method is not supported in a .cpp script class");
@@ -1584,7 +1584,7 @@ TEST(AnalyzeCpp, VirtualMethodHasPlace)
 // An error of a later check (not of the parser) is an error too.
 TEST(AnalyzeCpp, TranslationErrorIsReported)
 {
-    const sppc::AnalyzeResult r = sppc::analyze_cpp(
+    const hotc::AnalyzeResult r = hotc::analyze_cpp(
         "#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    void TakeDamage(float a = 1.0f) override {}\n};\n",
         "/w/t.cpp", analyze_options());
     EXPECT_FALSE(r.ok);
@@ -1594,7 +1594,7 @@ TEST(AnalyzeCpp, TranslationErrorIsReported)
 
 TEST(AnalyzeCpp, PathMustBeCpp)
 {
-    const sppc::AnalyzeResult r = sppc::analyze_cpp("class S {};", "/w/t.hot", analyze_options());
+    const hotc::AnalyzeResult r = hotc::analyze_cpp("class S {};", "/w/t.hot", analyze_options());
     EXPECT_FALSE(r.ok);
     ASSERT_EQ(r.errors.size(), 1u);
     EXPECT_EQ(r.errors[0].pos.line, 1);

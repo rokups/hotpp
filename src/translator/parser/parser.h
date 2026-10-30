@@ -6,7 +6,7 @@
 
 #include <string_view>
 
-namespace sppc
+namespace hotc
 {
 
 // Parses the imports, classes, fields and methods of a script.
@@ -15,4 +15,4 @@ namespace sppc
 // The map must belong to the same text. The offsets in the errors are bytes in the text.
 ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics& diag);
 
-} // namespace sppc
+} // namespace hotc

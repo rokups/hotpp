@@ -23,7 +23,7 @@
 #include <type_traits>
 #include <vector>
 
-namespace sppc
+namespace hotc
 {
 namespace
 {
@@ -1043,4 +1043,4 @@ std::vector<ast::ExprP> parse_expression_list(ParseInput in, Span span, Diagnost
     return std::move(r.items);
 }
 
-} // namespace sppc
+} // namespace hotc

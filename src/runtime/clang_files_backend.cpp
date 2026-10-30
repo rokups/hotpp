@@ -2,7 +2,7 @@
 
 #include "hot/config.h"
 #include "hot/scratch.h"
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 
 #include <sys/wait.h>
 
@@ -98,7 +98,7 @@ ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options)
     : opt_(std::move(options))
 {
     if (!opt_.session)
-        opt_.session = std::make_shared<sppc::TranslatorSession>();
+        opt_.session = std::make_shared<hotc::TranslatorSession>();
     if (opt_.slots_file.empty())
         opt_.slots_file = opt_.work_dir + "/slots.txt";
 }
@@ -182,7 +182,7 @@ bool ClangFilesBackend::build(
     return build_impl(source, generation, LoadMode::Reload, out_so, error, nullptr, nullptr);
 }
 
-// "deferred_slots" null: write the slots file when the compile succeeds (the tool sppc).
+// "deferred_slots" null: write the slots file when the compile succeeds (the tool hotc).
 // Else give the new content of the slots file back, and leave the file as it is.
 bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generation, LoadMode mode,
     const std::string& out_so, std::string& error, std::string* deferred_slots, bool* slots_removed)
@@ -199,7 +199,7 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
         fs::path(opt_.slots_file).parent_path().empty() ? fs::path(".") : fs::path(opt_.slots_file).parent_path(), ec);
     const std::string cpp_path = fs::path(so_path).replace_extension(".cpp").string();
 
-    sppc::TranslateOptions to;
+    hotc::TranslateOptions to;
     to.script_text = source.text;
     to.modules = source.modules;
     to.script_name = source.name;
@@ -213,14 +213,14 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     // A missing file means the first generation. A fresh generation starts with no slots.
     if (mode == LoadMode::Reload)
         read_text(opt_.slots_file, to.slots_in);
-    sppc::TranslateResult tr = sppc::translate(to, *opt_.session);
+    hotc::TranslateResult tr = hotc::translate(to, *opt_.session);
     if (!tr.ok)
     {
         if (slots_removed)
             *slots_removed = tr.slots_removed;
         error = opt_.raw_diagnostics
             ? tr.diagnostics
-            : sppc::rewrite_translator_diagnostic(tr.diagnostics, sppc::script_texts(source.name, source.text, tr));
+            : hotc::rewrite_translator_diagnostic(tr.diagnostics, hotc::script_texts(source.name, source.text, tr));
         return false;
     }
     if (!write_text(cpp_path, tr.cpp))
@@ -237,7 +237,7 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     {
         if (!opt_.raw_diagnostics)
             output =
-                sppc::rewrite_diagnostic(output, {{source.name, source.text}}, {{cpp_path, tr.cpp}}, &tr.source_map);
+                hotc::rewrite_diagnostic(output, {{source.name, source.text}}, {{cpp_path, tr.cpp}}, &tr.source_map);
         error = output + "the compile of " + source.name + " failed (exit code " + std::to_string(rc) + ")\n";
         return false;
     }

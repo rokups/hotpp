@@ -25,7 +25,7 @@ Yes. The current closure design does not allow it. A new design that treats a la
 - A mismatch logs a stale call and returns `R()`. No lambda body runs.
 - The pin keeps the old library loaded while native code holds the closure.
 - The test `EscapedClosureIsStaleAfterReload` (`tests/integration/closures/generation_unload_tests.cpp:83`) checks this on purpose.
-- `spp-design.md:515` records this as a decision.
+- `hot-design.md:515` records this as a decision.
 - The runtime does not unregister or rebind native callbacks. Only `ClearTimers` drops timers.
 - A named method already reloads. Native code holds a thunk. The thunk calls through the slot table. Slot numbers do not change (`DECISIONS.md:31`).
 

@@ -118,7 +118,7 @@ LoadResult open_core_copy(const std::string& path)
     const unsigned long pid = static_cast<unsigned long>(getpid());
 #endif
     const fs::path copy = dir
-        / ("spp-core-" + std::to_string(pid) + "-" + std::to_string(sequence.fetch_add(1)) + "-"
+        / ("hot-core-" + std::to_string(pid) + "-" + std::to_string(sequence.fetch_add(1)) + "-"
             + fs::path(path).filename().string());
     if (!fs::copy_file(path, copy, fs::copy_options::overwrite_existing, ec))
     {

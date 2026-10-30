@@ -21,7 +21,7 @@ compiler (the object library `precompiled_library_cpp_scripts_plain`). This show
 
 ## How it works
 
-1. `hot_add_scripts(TARGET sample_precompiled_hot_scripts SCRIPTS script/wolf.hot ...)` runs `sppc`.
+1. `hot_add_scripts(TARGET sample_precompiled_hot_scripts SCRIPTS script/wolf.hot ...)` runs `hotc`.
    It makes the library `wolf.g1.so`. `FLAGS` pass the flags of the host build to the compile.
 2. The variable `HOT_SCRIPTS_sample_precompiled_hot_scripts_LIBRARIES` has the paths of the
    libraries. The test gives the path to the program as `argv[1]`.
@@ -35,7 +35,7 @@ Each program depends on the library target of its variant, so the library
 exists before the test runs.
 
 `module_from_library` also makes a private copy of the library in the temp folder for the core
-module (`spp-core-<pid>-<n>-<name>`). See "Core copies" in [Embedding](../../doc/embedding.md).
+module (`hot-core-<pid>-<n>-<name>`). See "Core copies" in [Embedding](../../doc/embedding.md).
 
 ## Files
 
@@ -76,7 +76,7 @@ ctest --test-dir build --output-on-failure
 ```
 
 To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample calls
-`add_subdirectory` for `HOT_ROOT` only when the target `sppc` does not exist yet.
+`add_subdirectory` for `HOT_ROOT` only when the target `hotc` does not exist yet.
 
 The test runs the program with the library path as `argv[1]`. To run the program yourself, give
 the path of a `wolf.g1.so` file. It is under `hot_scripts/sample_precompiled_hot/` or
@@ -91,7 +91,7 @@ the path of a `wolf.g1.so` file. It is under `hot_scripts/sample_precompiled_hot
 3. Take the library paths from `HOT_SCRIPTS_<name>_LIBRARIES`. Give them to the program in
    a way that suits you (an argument, a config file or a fixed folder).
 4. Call `hot::module_from_library(path)`. Check the `LoadResult`. Give the module to `Loader::load`.
-5. For a later generation, build another library with `SPPC_ARGS --gen 2` and give it to
+5. For a later generation, build another library with `HOTC_ARGS --gen 2` and give it to
    `request_reload`. See the sample [hot-reload](../hot-reload/) for the reload calls.
 
 ## Expected output

@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace sppc
+namespace hotc
 {
 
 enum class Kind
@@ -157,4 +157,4 @@ private:
     std::set<std::string> prelude_names_; // the stubs that a prelude gave
 };
 
-} // namespace sppc
+} // namespace hotc

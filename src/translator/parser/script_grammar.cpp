@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-namespace sppc
+namespace hotc
 {
 namespace
 {
@@ -1445,4 +1445,4 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
     return script;
 }
 
-} // namespace sppc
+} // namespace hotc

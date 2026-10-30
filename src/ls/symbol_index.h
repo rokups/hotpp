@@ -1,4 +1,4 @@
-// The saved symbol index of spp-ls (S28). It is like the index of clangd.
+// The saved symbol index of hot-ls (S28). It is like the index of clangd.
 //
 // There is one shard for each .hot file. All shards are in one flat directory (by default
 // ".cache/hot/index/" in the project root). The name of a shard is a hash of the file path. So
@@ -6,7 +6,7 @@
 // changes.
 //
 // A shard has a header line and a JSON body. The header line is
-// "spp-index <version> <digest> <path>". The body holds the symbols and the references.
+// "hot-index <version> <digest> <path>". The body holds the symbols and the references.
 // load() gives a shard only when the format version and the content digest match. A shard
 // with another version is deleted. prune() deletes the shard of a missing file.
 // The digest covers the text of the file and the texts of the scripts that it imports.

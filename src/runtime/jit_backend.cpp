@@ -1,7 +1,7 @@
 #include "hot/jit_backend.h"
 
 #include "hot/config.h"
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 
 #include <clang/Basic/Diagnostic.h>
 #include <clang/CodeGen/CodeGenAction.h>
@@ -34,7 +34,7 @@ namespace
 {
 
 // A path that does not exist on disk. The compile reads the file from memory.
-constexpr const char* kVirtualDir = "/spp-jit-virtual";
+constexpr const char* kVirtualDir = "/hot-jit-virtual";
 
 using Clock = std::chrono::steady_clock;
 
@@ -235,7 +235,7 @@ JitBackend::JitBackend(JitOptions options)
     : opt_(std::move(options))
 {
     if (!opt_.session)
-        opt_.session = std::make_shared<sppc::TranslatorSession>();
+        opt_.session = std::make_shared<hotc::TranslatorSession>();
 }
 
 JitBackend::~JitBackend() = default;
@@ -259,7 +259,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
 
     timings_ = {};
     Clock::time_point t0 = Clock::now();
-    sppc::TranslateOptions to;
+    hotc::TranslateOptions to;
     to.script_text = source.text;
     to.modules = source.modules;
     to.script_name = source.name;
@@ -276,13 +276,13 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         std::lock_guard<std::mutex> slock(slots_->mutex);
         to.slots_in = slots_->text;
     }
-    sppc::TranslateResult tr = sppc::translate(to, *opt_.session);
+    hotc::TranslateResult tr = hotc::translate(to, *opt_.session);
     timings_.translate_ms = ms_since(t0);
     if (!tr.ok)
     {
         r.error = opt_.raw_diagnostics
             ? tr.diagnostics
-            : sppc::rewrite_translator_diagnostic(tr.diagnostics, sppc::script_texts(source.name, source.text, tr));
+            : hotc::rewrite_translator_diagnostic(tr.diagnostics, hotc::script_texts(source.name, source.text, tr));
         r.reason = tr.slots_removed ? ReloadReason::SlotsRemoved : ReloadReason::CompileError;
         return r;
     }
@@ -293,7 +293,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     if (!c.module)
     {
         if (!opt_.raw_diagnostics)
-            c.diagnostics = sppc::rewrite_diagnostic(
+            c.diagnostics = hotc::rewrite_diagnostic(
                 c.diagnostics, {{source.name, source.text}}, {{cpp_path, tr.cpp}}, &tr.source_map);
         r.error = c.diagnostics + "the compile of " + source.name + " failed\n";
         r.reason = ReloadReason::CompileError;

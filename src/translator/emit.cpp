@@ -31,7 +31,7 @@
 
 #include <algorithm>
 
-namespace sppc::ast
+namespace hotc::ast
 {
 
 namespace
@@ -672,4 +672,4 @@ std::string print_lines(const Stmt& s, const LineMap& map, const std::string& fi
     return e.text();
 }
 
-} // namespace sppc::ast
+} // namespace hotc::ast

@@ -154,7 +154,7 @@ class Spy {
 }
 ```
 
-Limits: sppc checks only known script types. It does not check native members. sppc reports all access errors of a class, but it stops after the first class that has an error. The generated C++ has no `private:`, so a hot reload can still move the data.
+Limits: hotc checks only known script types. It does not check native members. hotc reports all access errors of a class, but it stops after the first class that has an error. The generated C++ has no `private:`, so a hot reload can still move the data.
 
 ## Renamed fields
 

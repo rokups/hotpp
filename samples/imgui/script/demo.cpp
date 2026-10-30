@@ -1,5 +1,5 @@
 // The script of the sample as a plain C++ file. Demo derives from the host class UiApp
-// and overrides Frame. A normal C++ build compiles this file. The tool sppc also translates it.
+// and overrides Frame. A normal C++ build compiles this file. The tool hotc also translates it.
 #include "UiApp.h"
 #include "imgui.h"
 

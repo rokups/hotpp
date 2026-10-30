@@ -25,16 +25,16 @@ inline std::string weapon_script(const std::string& stub, const std::string& mem
     return "using \"w.h\";\n" + stub + "class Foo : Widget {\n" + members + "}\n";
 }
 
-inline sppc::TranslateResult weapon_translate(const std::string& members, bool stub_in_prelude = false)
+inline hotc::TranslateResult weapon_translate(const std::string& members, bool stub_in_prelude = false)
 {
     static TempDir* dir = nullptr;
     if (!dir)
         dir = new TempDir();
     write_file(dir->path() / "w.h", kWeaponHeader);
-    sppc::TranslateOptions o = temp_options(*dir, weapon_script(stub_in_prelude ? "" : kWeaponStub, members));
+    hotc::TranslateOptions o = temp_options(*dir, weapon_script(stub_in_prelude ? "" : kWeaponStub, members));
     if (stub_in_prelude)
         o.preludes.push_back({"weapon.prelude", kWeaponStub});
-    return sppc::translate(o);
+    return hotc::translate(o);
 }
 
 inline bool has(const std::string& text, const std::string& part)
@@ -58,8 +58,8 @@ inline const char* kSharedStub = "[native, handle(\"std::shared_ptr<$T>\")] clas
 
 inline const std::string kIntr = "hot::Intrusive<Item, &Object::AddRef, &Object::Release>";
 
-inline sppc::TranslateResult hier_translate(const std::string& stubs, const std::string& members,
-    bool stub_in_prelude = false, sppc::TranslatorSession* session = nullptr)
+inline hotc::TranslateResult hier_translate(const std::string& stubs, const std::string& members,
+    bool stub_in_prelude = false, hotc::TranslatorSession* session = nullptr)
 {
     // Write the header once: a new mtime would make the session parse again.
     static TempDir* dir = nullptr;
@@ -68,10 +68,10 @@ inline sppc::TranslateResult hier_translate(const std::string& stubs, const std:
         dir = new TempDir();
         write_file(dir->path() / "w.h", kHierHeader);
     }
-    sppc::TranslateOptions o = temp_options(*dir, weapon_script(stub_in_prelude ? "" : stubs, members));
+    hotc::TranslateOptions o = temp_options(*dir, weapon_script(stub_in_prelude ? "" : stubs, members));
     if (stub_in_prelude)
         o.preludes.push_back({"hier.prelude", stubs});
-    return session ? sppc::translate(o, *session) : sppc::translate(o);
+    return session ? hotc::translate(o, *session) : hotc::translate(o);
 }
 
 } // namespace stub_translate_test

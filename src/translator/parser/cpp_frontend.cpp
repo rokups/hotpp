@@ -15,7 +15,7 @@
 #include <set>
 #include <utility>
 
-namespace sppc
+namespace hotc
 {
 namespace
 {
@@ -273,7 +273,7 @@ std::string ns_of(CXCursor c)
     return r;
 }
 
-// The file-scope name that sppc generates for a name in a namespace: "game::ai", "Brain" gives
+// The file-scope name that hotc generates for a name in a namespace: "game::ai", "Brain" gives
 // "game__ai__Brain". The name stays the same at file scope.
 std::string mangle_in(const std::string& ns, const std::string& name)
 {
@@ -912,7 +912,7 @@ bool Frontend::no_side_effects(CXCursor c) const
 // initializers of all module variables. So a module variable can use only the declarations of
 // the main file that come before the first module variable. A type needs its definition there.
 // A pointer or a reference needs only a declaration of the type. A template argument needs the
-// definition, because sppc cannot know if the template needs the complete type.
+// definition, because hotc cannot know if the template needs the complete type.
 void Frontend::check_late_refs(CXCursor var)
 {
     const Range own = extent_of(var);
@@ -2920,4 +2920,4 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
     return sc;
 }
 
-} // namespace sppc
+} // namespace hotc

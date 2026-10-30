@@ -1,6 +1,6 @@
 // Tests for TranslateResult::source_map: the map between generated C++ and the script.
 #include "diag.h"
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -8,7 +8,7 @@
 #include <string>
 
 using namespace translator_test;
-using sppc::SourcePos;
+using hotc::SourcePos;
 
 namespace
 {
@@ -42,18 +42,18 @@ std::string text_at(const std::string& text, SourcePos p, size_t n)
     return text.substr(off + static_cast<size_t>(p.col - 1), n);
 }
 
-sppc::TranslateResult translate_script(const std::string& script)
+hotc::TranslateResult translate_script(const std::string& script)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
-    return sppc::translate(temp_options(dir, script));
+    return hotc::translate(temp_options(dir, script));
 }
 
 } // namespace
 
 TEST(SourceMapTranslation, IdentifiersMapBothWaysWithColumns)
 {
-    const sppc::TranslateResult r = translate_script(kScript);
+    const hotc::TranslateResult r = translate_script(kScript);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const int g = line_of(r.cpp, "    int64_t total = hits + 2;");
     ASSERT_GT(g, 0) << r.cpp;
@@ -81,7 +81,7 @@ TEST(SourceMapTranslation, IdentifiersMapBothWaysWithColumns)
 
 TEST(SourceMapTranslation, RewrittenTypeMapsToTheStartOfTheOtherRange)
 {
-    const sppc::TranslateResult r = translate_script(kScript);
+    const hotc::TranslateResult r = translate_script(kScript);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const int g = line_of(r.cpp, "    int64_t total = hits + 2;");
     ASSERT_GT(g, 0);
@@ -94,7 +94,7 @@ TEST(SourceMapTranslation, RewrittenTypeMapsToTheStartOfTheOtherRange)
 
 TEST(SourceMapTranslation, TextWithoutSegmentGivesNoValue)
 {
-    const sppc::TranslateResult r = translate_script(kScript);
+    const hotc::TranslateResult r = translate_script(kScript);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const int g = line_of(r.cpp, "    int64_t total = hits + 2;");
     ASSERT_GT(g, 0);
@@ -114,15 +114,15 @@ TEST(SourceMapTranslation, TextWithoutSegmentGivesNoValue)
 
 TEST(SourceMapTranslation, EverySegmentOfEqualLengthRoundTrips)
 {
-    const sppc::TranslateResult r = translate_script(kScript);
+    const hotc::TranslateResult r = translate_script(kScript);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     ASSERT_FALSE(r.source_map.empty());
     // The segments of the two statements: int64_t, total, hits, 2, hits, total. The segments
     // of the names: the field "hits" in the state struct, the function name and "dt" in the head
     // of the member. The override has no wrapper, so the head of the member is the only head.
     EXPECT_EQ(r.source_map.segments().size(), 9u);
-    const sppc::LineMap gm(r.cpp), sm(kScript);
-    for (const sppc::SourceSegment& s : r.source_map.segments())
+    const hotc::LineMap gm(r.cpp), sm(kScript);
+    for (const hotc::SourceSegment& s : r.source_map.segments())
     {
         if (s.script_len != s.gen_len)
             continue;
@@ -134,7 +134,7 @@ TEST(SourceMapTranslation, EverySegmentOfEqualLengthRoundTrips)
             // The way back gives the first generated text of a script name. The head of the
             // member repeats the name of the head of the generation function.
             bool repeated = false;
-            for (const sppc::SourceSegment& o : r.source_map.segments())
+            for (const hotc::SourceSegment& o : r.source_map.segments())
                 repeated =
                     repeated || (o.file == s.file && o.script_begin == s.script_begin && o.gen_begin < s.gen_begin);
             if (repeated)
@@ -155,7 +155,7 @@ TEST(SourceMapTranslation, LocalNameInASecondMethodMapsToItsText)
         "    void a() { int x = 1; }\n"
         "    override void Update(float dt) { int yy = 2; yy = 3; }\n"
         "}\n";
-    const sppc::TranslateResult r = translate_script(script);
+    const hotc::TranslateResult r = translate_script(script);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // "yy" in the declaration: script line 4, col 42. "yy" in the assignment: col 50.
     const auto d = r.source_map.map_to_generated(4, 42);
@@ -183,7 +183,7 @@ TEST(SourceMapTranslation, FormatIncludeInsertDoesNotBreakTheMap)
         "        float zz = dt;\n"
         "    }\n"
         "}\n";
-    const sppc::TranslateResult r = translate_script(script);
+    const hotc::TranslateResult r = translate_script(script);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     ASSERT_NE(r.cpp.find("#include <format>"), std::string::npos);
     const auto g = r.source_map.map_to_generated(5, 15); // "zz"
@@ -194,7 +194,7 @@ TEST(SourceMapTranslation, FormatIncludeInsertDoesNotBreakTheMap)
 
 TEST(SourceMapTranslation, FailedTranslationHasEmptyMap)
 {
-    const sppc::TranslateResult r = translate_script("class Foo : Widget { void f() { x = ; } }\n");
+    const hotc::TranslateResult r = translate_script("class Foo : Widget { void f() { x = ; } }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(r.source_map.empty());
     EXPECT_FALSE(r.source_map.map_to_script(1, 1));
@@ -203,7 +203,7 @@ TEST(SourceMapTranslation, FailedTranslationHasEmptyMap)
 TEST(SourceMapType, ManualSegmentsWithUnsortedInput)
 {
     // Script: "ab cd\nef\n". Generated: "XX\nef ab cd\n".
-    sppc::SourceMap m;
+    hotc::SourceMap m;
     m.add({6, 2, 6, 2}); // "ef" at script line 2 -> generated line 2 col 1... offsets below
     m.add({0, 2, 9, 2}); // "ab"
     m.build("ab cd\nef\n", "XX\nYYY ef ab\n");
@@ -221,7 +221,7 @@ TEST(SourceMapType, ManualSegmentsWithUnsortedInput)
 
 TEST(SourceMapType, EmptyMapGivesNoValue)
 {
-    sppc::SourceMap m;
+    hotc::SourceMap m;
     m.build("", "");
     EXPECT_TRUE(m.empty());
     EXPECT_FALSE(m.map_to_script(1, 1));
@@ -230,7 +230,7 @@ TEST(SourceMapType, EmptyMapGivesNoValue)
 
 TEST(SourceMapTranslation, FunctionHeadAndStateFieldNamesMapToTheScript)
 {
-    const sppc::TranslateResult r = translate_script(kScript);
+    const hotc::TranslateResult r = translate_script(kScript);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // The field "hits" (script line 3, col 9) is a field of the state struct.
     const int f = line_of(r.cpp, "    int32_t hits;");
@@ -261,7 +261,7 @@ TEST(SourceMapTranslation, MemberNameAfterThisMapsToTheScript)
         "        this.hits = this.hits + 2;\n"
         "    }\n"
         "}\n";
-    const sppc::TranslateResult r = translate_script(script);
+    const hotc::TranslateResult r = translate_script(script);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const int g = line_of(r.cpp, "    __st->hits = __st->hits + 2;");
     ASSERT_GT(g, 0) << r.cpp;
@@ -273,7 +273,7 @@ TEST(SourceMapTranslation, MemberNameAfterThisMapsToTheScript)
 // The map keeps the real script column of an expression, also at a column other than 1.
 TEST(SourceMapTranslation, ExpressionMapsToItsRealScriptColumn)
 {
-    const sppc::TranslateResult r = translate_script(kScript);
+    const hotc::TranslateResult r = translate_script(kScript);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const int g = line_of(r.cpp, "    int64_t total = hits + 2;");
     ASSERT_GT(g, 0) << r.cpp;
@@ -309,7 +309,7 @@ void expect_last_part_maps(const std::string& stmt, const std::string& last)
         "1; } }; }\n"
         "template <class A> struct Pool { static int Get() { return 1; } };\n"
         "template <class A, class B> struct Map { static int Make() { return 1; } };\n");
-    const sppc::TranslateResult r = sppc::translate(temp_options(dir, script));
+    const hotc::TranslateResult r = hotc::translate(temp_options(dir, script));
     ASSERT_TRUE(r.ok) << r.diagnostics << "\n" << r.cpp;
     // The last occurrence of the name in the statement is the call name.
     const size_t col0 = stmt.rfind(last);

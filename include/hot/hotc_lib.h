@@ -1,4 +1,4 @@
-// sppc_lib: the translator as a library. The input and the output are strings.
+// hotc_lib: the translator as a library. The input and the output are strings.
 //
 // translate() does not write a file and does not read a script or a slot file.
 // libclang reads the headers that the script imports, from the include dirs.
@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-namespace sppc
+namespace hotc
 {
 
 struct TranslateOptions
@@ -36,7 +36,7 @@ struct TranslateOptions
     // The borrowed-storage rule of design 7.10.4 and 7.10.6: a field, a return value, a
     // collection element or a lambda capture cannot hold a native "T*", a "T&" or a "ref" of a
     // type that is not a handle. True (the default): a violation is an error. False: it is a
-    // warning (sppc --no-strict-borrowed).
+    // warning (hotc --no-strict-borrowed).
     bool strict_borrowed = true;
     // The function for string interpolation "${expr}" (DECISIONS item 10): "std" lowers to
     // std::format and adds <format>. "fmt" lowers to fmt::format and adds <fmt/format.h>. The
@@ -299,4 +299,4 @@ AnalyzeResult analyze_cpp(const std::string& text, const std::string& path, cons
 AnalyzeResult analyze_cpp(
     const std::string& text, const std::string& path, const TranslateOptions& options, TranslatorSession& session);
 
-} // namespace sppc
+} // namespace hotc

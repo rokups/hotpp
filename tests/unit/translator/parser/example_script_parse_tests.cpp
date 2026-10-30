@@ -8,7 +8,7 @@
 
 #include <string>
 
-using namespace sppc;
+using namespace hotc;
 using translator_test::read_file;
 
 TEST(ExampleScriptParse, ExampleScripts)

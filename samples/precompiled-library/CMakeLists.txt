@@ -5,7 +5,7 @@ project(hot_sample_precompiled_library CXX)
 
 # The S++ source tree. A separate build uses it. The S++ build already has the targets.
 set(HOT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The S++ source tree")
-if(NOT TARGET sppc)
+if(NOT TARGET hotc)
     add_subdirectory(${HOT_ROOT} hot)
 endif()
 
@@ -23,7 +23,7 @@ foreach(variant hot cpp)
     if(variant STREQUAL "hot")
         set(ext hot)
     endif()
-    # sppc builds wolf.g1.so at build time.
+    # hotc builds wolf.g1.so at build time.
     hot_add_scripts(TARGET sample_precompiled_${variant}_scripts SCRIPTS script/wolf.${ext}
                     OUT_DIR ${CMAKE_BINARY_DIR}/hot_scripts/sample_precompiled_${variant}
                     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} FLAGS ${host_flags} DEPENDS Creature.h)

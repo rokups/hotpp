@@ -144,7 +144,7 @@ Known gaps of the checker: a lambda that captures an iterator (`var it = xs.begi
 
 ## Escape hatch
 
-`sppc --no-strict-borrowed` makes the field, return, collection element, `&x` and lambda capture findings warnings. The backends have `strict_borrowed = false`. These stay errors: a `T*` of a script class, `&h` on a handle, `this` to a `T&` and a move-only field.
+`hotc --no-strict-borrowed` makes the field, return, collection element, `&x` and lambda capture findings warnings. The backends have `strict_borrowed = false`. These stay errors: a `T*` of a script class, `&h` on a handle, `this` to a `T&` and a move-only field.
 
 ## Quick fixes
 

@@ -1,6 +1,6 @@
-// Tests for sppc::translate with native bases that come from a class template (design risk 8,
+// Tests for hotc::translate with native bases that come from a class template (design risk 8,
 // experiment F1). The script names a plain class. The class can derive from a template instance.
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -29,11 +29,11 @@ const char* kTemplateHeader =
     "template <class T> class PartWrap : public Part<T> {};\n"
     "class CharWrap : public PartWrap<char> {};\n";
 
-sppc::TranslateResult run(const std::string& classes)
+hotc::TranslateResult run(const std::string& classes)
 {
     TempDir dir;
     write_file(dir.path() / "t.h", kTemplateHeader);
-    return sppc::translate(temp_options(dir, "using \"t.h\";\n" + classes));
+    return hotc::translate(temp_options(dir, "using \"t.h\";\n" + classes));
 }
 
 bool has(const std::string& text, const std::string& part)
@@ -46,7 +46,7 @@ bool has(const std::string& text, const std::string& part)
 // An explicit specialization is a normal class for libclang. Its virtuals get slots.
 TEST(TemplateBaseTranslation, ExplicitSpecializationBaseGivesSlots)
 {
-    const sppc::TranslateResult r = run("class Foo : FloatBase {\n    override void Step(float v) { }\n}\n");
+    const hotc::TranslateResult r = run("class Foo : FloatBase {\n    override void Step(float v) { }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "SLOT_Step = 0,")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "struct Foo_Shell final : FloatBase, hot::ShellBase {")) << r.cpp;
@@ -56,7 +56,7 @@ TEST(TemplateBaseTranslation, ExplicitSpecializationBaseGivesSlots)
 // translator walks the type declaration of the base specifier (design risk 8).
 TEST(TemplateBaseTranslation, ImplicitInstanceBaseGivesSlots)
 {
-    const sppc::TranslateResult r = run("class Foo : IntBase {\n    override void Step(int v) { }\n}\n");
+    const hotc::TranslateResult r = run("class Foo : IntBase {\n    override void Step(int v) { }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "SLOT_Step = 0,")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "struct Foo_Shell final : IntBase, hot::ShellBase {")) << r.cpp;
@@ -66,7 +66,7 @@ TEST(TemplateBaseTranslation, ImplicitInstanceBaseGivesSlots)
 // A wrong signature still gives an error: the parameter type is int, not float.
 TEST(TemplateBaseTranslation, ImplicitInstanceBaseChecksSignature)
 {
-    const sppc::TranslateResult r = run("class Foo : IntBase {\n    override void Step(float v) { }\n}\n");
+    const hotc::TranslateResult r = run("class Foo : IntBase {\n    override void Step(float v) { }\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_FALSE(has(r.cpp, "SLOT_Step")) << r.cpp;
 }
@@ -74,7 +74,7 @@ TEST(TemplateBaseTranslation, ImplicitInstanceBaseChecksSignature)
 // A script class names a template instance as its direct native base.
 TEST(TemplateBaseTranslation, DirectInstanceBaseGivesSlots)
 {
-    const sppc::TranslateResult r = run("class Foo : Tmpl<int> {\n    override void Step(int v) { }\n}\n");
+    const hotc::TranslateResult r = run("class Foo : Tmpl<int> {\n    override void Step(int v) { }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "SLOT_Step = 0,")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "struct Foo_Shell final : Tmpl<int32_t>, hot::ShellBase {")) << r.cpp;
@@ -84,7 +84,7 @@ TEST(TemplateBaseTranslation, DirectInstanceBaseGivesSlots)
 // A template that derives from another template: the argument passes through both.
 TEST(TemplateBaseTranslation, TemplateOverTemplateGivesSlots)
 {
-    const sppc::TranslateResult r =
+    const hotc::TranslateResult r =
         run("class Foo : MidBase {\n    override void Step(int v) { }\n    override void Extra(int v) { }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "SLOT_Step = 0,")) << r.cpp;
@@ -93,14 +93,14 @@ TEST(TemplateBaseTranslation, TemplateOverTemplateGivesSlots)
 
 TEST(TemplateBaseTranslation, TemplateOverTemplateChecksSignature)
 {
-    const sppc::TranslateResult r = run("class Foo : MidBase {\n    override void Step(float v) { }\n}\n");
+    const hotc::TranslateResult r = run("class Foo : MidBase {\n    override void Step(float v) { }\n}\n");
     EXPECT_FALSE(r.ok);
 }
 
 // The direct script base is a template that derives from a template.
 TEST(TemplateBaseTranslation, DirectTemplateOverTemplateGivesSlots)
 {
-    const sppc::TranslateResult r =
+    const hotc::TranslateResult r =
         run("class Foo : Mid<int> {\n    override void Step(int v) { }\n    override void Extra(int v) { }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "SLOT_Extra = 1,")) << r.cpp;
@@ -109,7 +109,7 @@ TEST(TemplateBaseTranslation, DirectTemplateOverTemplateGivesSlots)
 // A partial specialization is the pattern when the argument matches it.
 TEST(TemplateBaseTranslation, PartialSpecializationBaseGivesSlots)
 {
-    const sppc::TranslateResult r = run("class Foo : PartBase {\n    override void Ptr(int* v) { }\n}\n");
+    const hotc::TranslateResult r = run("class Foo : PartBase {\n    override void Ptr(int* v) { }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "SLOT_Ptr = 0,")) << r.cpp;
 }
@@ -117,14 +117,14 @@ TEST(TemplateBaseTranslation, PartialSpecializationBaseGivesSlots)
 // The primary template stays the pattern when no partial specialization matches.
 TEST(TemplateBaseTranslation, PrimaryTemplateStillMatchesBesidePartial)
 {
-    const sppc::TranslateResult r = run("class Foo : PlainPartBase {\n    override void Plain(int v) { }\n}\n");
+    const hotc::TranslateResult r = run("class Foo : PlainPartBase {\n    override void Plain(int v) { }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "SLOT_Plain = 0,")) << r.cpp;
 }
 
 TEST(TemplateBaseTranslation, DirectPartialSpecializationGivesSlots)
 {
-    const sppc::TranslateResult r = run("class Foo : Part<int*> {\n    override void Ptr(int* v) { }\n}\n");
+    const hotc::TranslateResult r = run("class Foo : Part<int*> {\n    override void Ptr(int* v) { }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "SLOT_Ptr = 0,")) << r.cpp;
 }
@@ -132,7 +132,7 @@ TEST(TemplateBaseTranslation, DirectPartialSpecializationGivesSlots)
 // A template that derives from a partial specialization.
 TEST(TemplateBaseTranslation, TemplateOverPartialSpecializationGivesSlots)
 {
-    const sppc::TranslateResult r = run("class Foo : PartMidBase {\n    override void Ptr(float* v) { }\n}\n");
+    const hotc::TranslateResult r = run("class Foo : PartMidBase {\n    override void Ptr(float* v) { }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "SLOT_Ptr = 0,")) << r.cpp;
 }
@@ -140,7 +140,7 @@ TEST(TemplateBaseTranslation, TemplateOverPartialSpecializationGivesSlots)
 // A template that derives from an explicit specialization.
 TEST(TemplateBaseTranslation, TemplateOverExplicitSpecializationGivesSlots)
 {
-    const sppc::TranslateResult r = run("class Foo : CharWrap {\n    override void Chr(char v) { }\n}\n");
+    const hotc::TranslateResult r = run("class Foo : CharWrap {\n    override void Chr(char v) { }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "SLOT_Chr = 0,")) << r.cpp;
 }

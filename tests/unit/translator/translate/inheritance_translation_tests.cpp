@@ -1,6 +1,6 @@
-// Tests for sppc::translate with script inheritance (S6a, design 4.5, 7.6 and 7.7): a child of a
+// Tests for hotc::translate with script inheritance (S6a, design 4.5, 7.6 and 7.7): a child of a
 // script class, script virtuals, "override" and "new" of a parent function, "base" and "is"/"as".
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -28,7 +28,7 @@ bool has(const std::string& text, const std::string& part)
 
 TEST(InheritanceTranslation, ChildShellAndStateDeriveFromTheParent)
 {
-    const sppc::TranslateResult r = translate_text(family("    int rage = 2;"));
+    const hotc::TranslateResult r = translate_text(family("    int rage = 2;"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "struct A_Shell : hot::PlainObject, hot::ShellBase {")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "struct B_Shell final : A_Shell {")) << r.cpp;
@@ -40,7 +40,7 @@ TEST(InheritanceTranslation, ChildShellAndStateDeriveFromTheParent)
 
 TEST(InheritanceTranslation, VirtualCallUsesTheSlotOfTheObject)
 {
-    const sppc::TranslateResult r = translate_text(family("    override int f() { return 2; }"));
+    const hotc::TranslateResult r = translate_text(family("    override int f() { return 2; }"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "return A__f_virt(__self) + 1;")) << r.cpp;
     // The override fills the slot of A.f in the table of B. It adds no manifest entry.
@@ -52,21 +52,21 @@ TEST(InheritanceTranslation, VirtualCallUsesTheSlotOfTheObject)
 
 TEST(InheritanceTranslation, SuperCallsTheParentImplementation)
 {
-    const sppc::TranslateResult r = translate_text(family("    override int f() { return base.f() + base.g(); }"));
+    const hotc::TranslateResult r = translate_text(family("    override int f() { return base.f() + base.g(); }"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "return A__f(__self) + A__g(__self);")) << r.cpp;
 }
 
 TEST(InheritanceTranslation, NewHidesAParentFunction)
 {
-    const sppc::TranslateResult r = translate_text(family("    new int g() { return 5; }"));
+    const hotc::TranslateResult r = translate_text(family("    new int g() { return 5; }"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.slots_out, "B::g 1")) << r.slots_out;
 }
 
 TEST(InheritanceTranslation, ParentConstructorRunsFirst)
 {
-    const sppc::TranslateResult r = translate_text(
+    const hotc::TranslateResult r = translate_text(
         family("    B(int x) : base(x + 1) { this.hp = this.hp + x; }", "    A(int v) { this.hp = v; }\n"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // The plan evaluates "x + 1" one time. The chain gives the value to the constructor of A.
@@ -101,7 +101,7 @@ TEST(InheritanceTranslation, Errors)
 
 TEST(InheritanceTranslation, IsAndAsUseTheClassRecords)
 {
-    const sppc::TranslateResult r = translate_text(
+    const hotc::TranslateResult r = translate_text(
         family("") + "class C {\n    A a = null;\n    int run() {\n        var b = this.a as B;\n"
                      "        return this.a is B ? b.hp : 0;\n    }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -115,7 +115,7 @@ TEST(InheritanceTranslation, IsAndAsOnANativeTypeUseRtti)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
-    const sppc::TranslateResult r = sppc::translate(temp_options(dir,
+    const hotc::TranslateResult r = hotc::translate(temp_options(dir,
         "using \"w.h\";\nclass Foo : Widget {\n    bool t(Widget* w) { var p = w as Panel; return w is Panel; }\n}\n"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "auto p = hot::as_native<Panel>(w);")) << r.cpp;

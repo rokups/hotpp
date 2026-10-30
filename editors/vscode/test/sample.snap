@@ -1,395 +1,395 @@
-1: "// A sample for the grammar snapshot." comment.line.double-slash.spp
-2: "using" keyword.control.import.spp
-2: "<vector>" string.quoted.other.lt-gt.include.spp
-2: ";" punctuation.terminator.statement.spp
-3: "using" keyword.control.import.spp
-3: "\"Actor.h\"" string.quoted.double.include.spp
-3: ";" punctuation.terminator.statement.spp
-5: "[" meta.attribute.spp punctuation.definition.attribute.begin.spp
-5: "native" meta.attribute.spp entity.other.attribute-name.spp
-5: "," meta.attribute.spp punctuation.separator.comma.spp
-5: "handle" meta.attribute.spp entity.other.attribute-name.spp
-5: "(" meta.attribute.spp
-5: "\"" meta.attribute.spp string.quoted.double.spp
-5: "Actor" meta.attribute.spp string.quoted.double.spp
-5: "\"" meta.attribute.spp string.quoted.double.spp
-5: ")" meta.attribute.spp
-5: "]" meta.attribute.spp punctuation.definition.attribute.end.spp
-6: "struct" storage.type.class.spp
-6: "Stats" entity.name.type.class.spp
-6: ":" punctuation.separator.inheritance.spp
-6: "Actor" entity.other.inherited-class.spp
+1: "// A sample for the grammar snapshot." comment.line.double-slash.hot
+2: "using" keyword.control.import.hot
+2: "<vector>" string.quoted.other.lt-gt.include.hot
+2: ";" punctuation.terminator.statement.hot
+3: "using" keyword.control.import.hot
+3: "\"Actor.h\"" string.quoted.double.include.hot
+3: ";" punctuation.terminator.statement.hot
+5: "[" meta.attribute.hot punctuation.definition.attribute.begin.hot
+5: "native" meta.attribute.hot entity.other.attribute-name.hot
+5: "," meta.attribute.hot punctuation.separator.comma.hot
+5: "handle" meta.attribute.hot entity.other.attribute-name.hot
+5: "(" meta.attribute.hot
+5: "\"" meta.attribute.hot string.quoted.double.hot
+5: "Actor" meta.attribute.hot string.quoted.double.hot
+5: "\"" meta.attribute.hot string.quoted.double.hot
+5: ")" meta.attribute.hot
+5: "]" meta.attribute.hot punctuation.definition.attribute.end.hot
+6: "struct" storage.type.class.hot
+6: "Stats" entity.name.type.class.hot
+6: ":" punctuation.separator.inheritance.hot
+6: "Actor" entity.other.inherited-class.hot
 6: " {" 
-7: "float" storage.type.builtin.spp
+7: "float" storage.type.builtin.hot
 7: " hp " 
-7: "=" keyword.operator.assignment.spp
-7: "1.5f" constant.numeric.float.spp
-7: ";" punctuation.terminator.statement.spp
-8: "ulong" storage.type.builtin.spp
+7: "=" keyword.operator.assignment.hot
+7: "1.5f" constant.numeric.float.hot
+7: ";" punctuation.terminator.statement.hot
+8: "ulong" storage.type.builtin.hot
 8: " big " 
-8: "=" keyword.operator.assignment.spp
-8: "0xFFul" constant.numeric.hex.spp
-8: ";" punctuation.terminator.statement.spp
-9: "int" storage.type.builtin.spp
+8: "=" keyword.operator.assignment.hot
+8: "0xFFul" constant.numeric.hex.hot
+8: ";" punctuation.terminator.statement.hot
+9: "int" storage.type.builtin.hot
 9: " Level { " 
-9: "get" storage.modifier.spp
-9: ";" punctuation.terminator.statement.spp
-9: "private" storage.modifier.spp
-9: "set" storage.modifier.spp
-9: ";" punctuation.terminator.statement.spp
+9: "get" storage.modifier.hot
+9: ";" punctuation.terminator.statement.hot
+9: "private" storage.modifier.hot
+9: "set" storage.modifier.hot
+9: ";" punctuation.terminator.statement.hot
 9: " } " 
-9: "=" keyword.operator.assignment.spp
-9: "1" constant.numeric.integer.spp
-9: ";" punctuation.terminator.statement.spp
-10: "override" storage.modifier.spp
-10: "void" storage.type.spp
-10: "Tick" entity.name.function.spp
+9: "=" keyword.operator.assignment.hot
+9: "1" constant.numeric.integer.hot
+9: ";" punctuation.terminator.statement.hot
+10: "override" storage.modifier.hot
+10: "void" storage.type.hot
+10: "Tick" entity.name.function.hot
 10: "(" 
-10: "float" storage.type.builtin.spp
+10: "float" storage.type.builtin.hot
 10: " dt) {" 
-11: "var" storage.type.spp
+11: "var" storage.type.hot
 11: " s " 
-11: "=" keyword.operator.assignment.spp
-11: "\"" string.quoted.double.spp
-11: "hp " string.quoted.double.spp
-11: "${" string.quoted.double.spp meta.interpolation.spp punctuation.section.interpolation.begin.spp
-11: "this" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp variable.language.spp
-11: "." string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp punctuation.accessor.spp
-11: "hp" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp
-11: ":.2f" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp constant.other.format-spec.spp
-11: "}" string.quoted.double.spp meta.interpolation.spp punctuation.section.interpolation.end.spp
-11: " of " string.quoted.double.spp
-11: "${" string.quoted.double.spp meta.interpolation.spp punctuation.section.interpolation.begin.spp
-11: "Max" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp entity.name.function.spp
-11: "(a" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp
-11: "," string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp punctuation.separator.comma.spp
-11: "{" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp
-11: "1" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp constant.numeric.integer.spp
-11: "}" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp
-11: "[" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp
-11: "0" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp constant.numeric.integer.spp
-11: "])" string.quoted.double.spp meta.interpolation.spp meta.embedded.expression.spp
-11: "}" string.quoted.double.spp meta.interpolation.spp punctuation.section.interpolation.end.spp
-11: "\\$" string.quoted.double.spp constant.character.escape.spp
-11: "{no} " string.quoted.double.spp
-11: "\\\"" string.quoted.double.spp constant.character.escape.spp
-11: "q" string.quoted.double.spp
-11: "\\\"" string.quoted.double.spp constant.character.escape.spp
-11: "\"" string.quoted.double.spp
-11: ";" punctuation.terminator.statement.spp
-12: "foreach" keyword.control.flow.spp
+11: "=" keyword.operator.assignment.hot
+11: "\"" string.quoted.double.hot
+11: "hp " string.quoted.double.hot
+11: "${" string.quoted.double.hot meta.interpolation.hot punctuation.section.interpolation.begin.hot
+11: "this" string.quoted.double.hot meta.interpolation.hot meta.embedded.expression.hot variable.language.hot
+11: "." string.quoted.double.hot meta.interpolation.hot meta.embedded.expression.hot punctuation.accessor.hot
+11: "hp" string.quoted.double.hot meta.interpolation.hot meta.embedded.expression.hot
+11: ":.2f" string.quoted.double.hot meta.interpolation.hot meta.embedded.expression.hot constant.other.format-spec.hot
+11: "}" string.quoted.double.hot meta.interpolation.hot punctuation.section.interpolation.end.hot
+11: " of " string.quoted.double.hot
+11: "${" string.quoted.double.hot meta.interpolation.hot punctuation.section.interpolation.begin.hot
+11: "Max" string.quoted.double.hot meta.interpolation.hot meta.embedded.expression.hot entity.name.function.hot
+11: "(a" string.quoted.double.hot meta.interpolation.hot meta.embedded.expression.hot
+11: "," string.quoted.double.hot meta.interpolation.hot meta.embedded.expression.hot punctuation.separator.comma.hot
+11: "{" string.quoted.double.hot meta.interpolation.hot meta.embedded.expression.hot
+11: "1" string.quoted.double.hot meta.interpolation.hot meta.embedded.expression.hot constant.numeric.integer.hot
+11: "}" string.quoted.double.hot meta.interpolation.hot meta.embedded.expression.hot
+11: "[" string.quoted.double.hot meta.interpolation.hot meta.embedded.expression.hot
+11: "0" string.quoted.double.hot meta.interpolation.hot meta.embedded.expression.hot constant.numeric.integer.hot
+11: "])" string.quoted.double.hot meta.interpolation.hot meta.embedded.expression.hot
+11: "}" string.quoted.double.hot meta.interpolation.hot punctuation.section.interpolation.end.hot
+11: "\\$" string.quoted.double.hot constant.character.escape.hot
+11: "{no} " string.quoted.double.hot
+11: "\\\"" string.quoted.double.hot constant.character.escape.hot
+11: "q" string.quoted.double.hot
+11: "\\\"" string.quoted.double.hot constant.character.escape.hot
+11: "\"" string.quoted.double.hot
+11: ";" punctuation.terminator.statement.hot
+12: "foreach" keyword.control.flow.hot
 12: " (" 
-12: "var" storage.type.spp
+12: "var" storage.type.hot
 12: " x " 
-12: "in" keyword.control.flow.spp
-12: "this" variable.language.spp
-12: "." punctuation.accessor.spp
+12: "in" keyword.control.flow.hot
+12: "this" variable.language.hot
+12: "." punctuation.accessor.hot
 12: "items) { x " 
-12: "+=" keyword.operator.assignment.spp
-12: "1e-3" constant.numeric.float.spp
-12: "+" keyword.operator.arithmetic.spp
-12: "2u" constant.numeric.integer.spp
-12: ";" punctuation.terminator.statement.spp
+12: "+=" keyword.operator.assignment.hot
+12: "1e-3" constant.numeric.float.hot
+12: "+" keyword.operator.arithmetic.hot
+12: "2u" constant.numeric.integer.hot
+12: ";" punctuation.terminator.statement.hot
 12: " }" 
-13: "try" keyword.control.exception.spp
+13: "try" keyword.control.exception.hot
 13: " { " 
-13: "throw" keyword.control.exception.spp
+13: "throw" keyword.control.exception.hot
 13: " std" 
-13: "." punctuation.accessor.spp
-13: "runtime_error" entity.name.function.spp
+13: "." punctuation.accessor.hot
+13: "runtime_error" entity.name.function.hot
 13: "(" 
-13: "\"" string.quoted.double.spp
-13: "e" string.quoted.double.spp
-13: "\"" string.quoted.double.spp
+13: "\"" string.quoted.double.hot
+13: "e" string.quoted.double.hot
+13: "\"" string.quoted.double.hot
 13: ")" 
-13: ";" punctuation.terminator.statement.spp
+13: ";" punctuation.terminator.statement.hot
 13: " } " 
-13: "catch" keyword.control.exception.spp
+13: "catch" keyword.control.exception.hot
 13: " (std" 
-13: "." punctuation.accessor.spp
+13: "." punctuation.accessor.hot
 13: "exception" 
-13: "&" keyword.operator.arithmetic.spp
+13: "&" keyword.operator.arithmetic.hot
 13: " e) { } " 
-13: "finally" keyword.control.exception.spp
+13: "finally" keyword.control.exception.hot
 13: " { }" 
-14: "if" keyword.control.flow.spp
+14: "if" keyword.control.flow.hot
 14: " (a " 
-14: "is" keyword.operator.word.spp
-14: "Stats" entity.name.type.spp
-14: "&&" keyword.operator.logical.spp
+14: "is" keyword.operator.word.hot
+14: "Stats" entity.name.type.hot
+14: "&&" keyword.operator.logical.hot
 14: " b " 
-14: "as" keyword.operator.word.spp
-14: "Foo" entity.name.type.spp
+14: "as" keyword.operator.word.hot
+14: "Foo" entity.name.type.hot
 14: ") { " 
-14: "return" keyword.control.flow.spp
-14: "null" constant.language.spp
-14: ";" punctuation.terminator.statement.spp
+14: "return" keyword.control.flow.hot
+14: "null" constant.language.hot
+14: ";" punctuation.terminator.statement.hot
 14: " } " 
-14: "/*" comment.block.spp
-14: " block " comment.block.spp
-14: "*/" comment.block.spp
-15: "if" keyword.control.flow.spp
+14: "/*" comment.block.hot
+14: " block " comment.block.hot
+14: "*/" comment.block.hot
+15: "if" keyword.control.flow.hot
 15: " (a " 
-15: "is" keyword.operator.word.spp
-15: "Stats" entity.name.type.spp
-15: "st" variable.other.local.spp
-15: "&&" keyword.operator.logical.spp
+15: "is" keyword.operator.word.hot
+15: "Stats" entity.name.type.hot
+15: "st" variable.other.local.hot
+15: "&&" keyword.operator.logical.hot
 15: " st" 
-15: "." punctuation.accessor.spp
+15: "." punctuation.accessor.hot
 15: "n " 
-15: ">" keyword.operator.comparison.spp
-15: "1" constant.numeric.integer.spp
+15: ">" keyword.operator.comparison.hot
+15: "1" constant.numeric.integer.hot
 15: ") { " 
-15: "var" storage.type.spp
+15: "var" storage.type.hot
 15: " q " 
-15: "=" keyword.operator.assignment.spp
+15: "=" keyword.operator.assignment.hot
 15: " a " 
-15: "??" keyword.operator.coalesce.spp
+15: "??" keyword.operator.coalesce.hot
 15: " b " 
-15: "??" keyword.operator.coalesce.spp
-15: "null" constant.language.spp
-15: ";" punctuation.terminator.statement.spp
+15: "??" keyword.operator.coalesce.hot
+15: "null" constant.language.hot
+15: ";" punctuation.terminator.statement.hot
 15: " }" 
 16: "    }" 
 17: "}" 
-18: "enum" storage.type.class.spp
-18: "Mode" entity.name.type.class.spp
+18: "enum" storage.type.class.hot
+18: "Mode" entity.name.type.class.hot
 18: " { Idle" 
-18: "," punctuation.separator.comma.spp
+18: "," punctuation.separator.comma.hot
 18: " Walk }" 
-19: "void" storage.type.spp
-19: "Each" entity.name.function.spp
+19: "void" storage.type.hot
+19: "Each" entity.name.function.hot
 19: "() { " 
-19: "foreach" keyword.control.flow.spp
+19: "foreach" keyword.control.flow.hot
 19: " (" 
-19: "const" storage.modifier.spp
-19: "var" storage.type.spp
-19: "&" keyword.operator.arithmetic.spp
+19: "const" storage.modifier.hot
+19: "var" storage.type.hot
+19: "&" keyword.operator.arithmetic.hot
 19: " y " 
-19: "in" keyword.control.flow.spp
-19: "this" variable.language.spp
-19: "." punctuation.accessor.spp
+19: "in" keyword.control.flow.hot
+19: "this" variable.language.hot
+19: "." punctuation.accessor.hot
 19: "items) { y" 
-19: ";" punctuation.terminator.statement.spp
+19: ";" punctuation.terminator.statement.hot
 19: " } }" 
-20: "// New syntax: bodies with =>, lambdas, bindings, helpers, switch on strings, literals." comment.line.double-slash.spp
-21: "class" storage.type.class.spp
-21: "Calc" entity.name.type.class.spp
-21: ":" punctuation.separator.inheritance.spp
-21: "Base" entity.other.inherited-class.spp
+20: "// New syntax: bodies with =>, lambdas, bindings, helpers, switch on strings, literals." comment.line.double-slash.hot
+21: "class" storage.type.class.hot
+21: "Calc" entity.name.type.class.hot
+21: ":" punctuation.separator.inheritance.hot
+21: "Base" entity.other.inherited-class.hot
 21: " {" 
-22: "int" storage.type.builtin.spp
-22: "Twice" entity.name.function.spp
+22: "int" storage.type.builtin.hot
+22: "Twice" entity.name.function.hot
 22: "(" 
-22: "int" storage.type.builtin.spp
+22: "int" storage.type.builtin.hot
 22: " a " 
-22: "=" keyword.operator.assignment.spp
-22: "1" constant.numeric.integer.spp
+22: "=" keyword.operator.assignment.hot
+22: "1" constant.numeric.integer.hot
 22: ") " 
-22: "=>" storage.type.function.arrow.spp
+22: "=>" storage.type.function.arrow.hot
 22: " a " 
-22: "*" keyword.operator.arithmetic.spp
-22: "2" constant.numeric.integer.spp
-22: ";" punctuation.terminator.statement.spp
-23: "int" storage.type.builtin.spp
+22: "*" keyword.operator.arithmetic.hot
+22: "2" constant.numeric.integer.hot
+22: ";" punctuation.terminator.statement.hot
+23: "int" storage.type.builtin.hot
 23: " Total " 
-23: "=>" storage.type.function.arrow.spp
-23: "this" variable.language.spp
-23: "." punctuation.accessor.spp
+23: "=>" storage.type.function.arrow.hot
+23: "this" variable.language.hot
+23: "." punctuation.accessor.hot
 23: "sum " 
-23: "+" keyword.operator.arithmetic.spp
-23: "base" variable.language.spp
-23: "." punctuation.accessor.spp
+23: "+" keyword.operator.arithmetic.hot
+23: "base" variable.language.hot
+23: "." punctuation.accessor.hot
 23: "Total" 
-23: ";" punctuation.terminator.statement.spp
-24: "protected" storage.modifier.spp
-24: "int" storage.type.builtin.spp
+23: ";" punctuation.terminator.statement.hot
+24: "protected" storage.modifier.hot
+24: "int" storage.type.builtin.hot
 24: " sum " 
-24: "=" keyword.operator.assignment.spp
-24: "0" constant.numeric.integer.spp
-24: ";" punctuation.terminator.statement.spp
+24: "=" keyword.operator.assignment.hot
+24: "0" constant.numeric.integer.hot
+24: ";" punctuation.terminator.statement.hot
 25: "    List" 
-25: "<" keyword.operator.comparison.spp
-25: "int" storage.type.builtin.spp
-25: ">" keyword.operator.comparison.spp
+25: "<" keyword.operator.comparison.hot
+25: "int" storage.type.builtin.hot
+25: ">" keyword.operator.comparison.hot
 25: " xs " 
-25: "=" keyword.operator.assignment.spp
-25: "[" meta.collection-literal.spp punctuation.definition.collection.begin.spp
-25: "1" meta.collection-literal.spp constant.numeric.integer.spp
-25: "," meta.collection-literal.spp punctuation.separator.comma.spp
-25: "2" meta.collection-literal.spp constant.numeric.integer.spp
-25: "," meta.collection-literal.spp punctuation.separator.comma.spp
-25: "3" meta.collection-literal.spp constant.numeric.integer.spp
-25: "]" meta.collection-literal.spp punctuation.definition.collection.end.spp
-25: ";" punctuation.terminator.statement.spp
+25: "=" keyword.operator.assignment.hot
+25: "[" meta.collection-literal.hot punctuation.definition.collection.begin.hot
+25: "1" meta.collection-literal.hot constant.numeric.integer.hot
+25: "," meta.collection-literal.hot punctuation.separator.comma.hot
+25: "2" meta.collection-literal.hot constant.numeric.integer.hot
+25: "," meta.collection-literal.hot punctuation.separator.comma.hot
+25: "3" meta.collection-literal.hot constant.numeric.integer.hot
+25: "]" meta.collection-literal.hot punctuation.definition.collection.end.hot
+25: ";" punctuation.terminator.statement.hot
 26: "    Map" 
-26: "<" keyword.operator.comparison.spp
+26: "<" keyword.operator.comparison.hot
 26: "string" 
-26: "," punctuation.separator.comma.spp
-26: "int" storage.type.builtin.spp
-26: ">" keyword.operator.comparison.spp
+26: "," punctuation.separator.comma.hot
+26: "int" storage.type.builtin.hot
+26: ">" keyword.operator.comparison.hot
 26: " m " 
-26: "=" keyword.operator.assignment.spp
-26: "[" meta.collection-literal.spp punctuation.definition.collection.begin.spp
-26: "\"" meta.collection-literal.spp string.quoted.double.spp
-26: "a" meta.collection-literal.spp string.quoted.double.spp
-26: "\"" meta.collection-literal.spp string.quoted.double.spp
-26: ":" meta.collection-literal.spp keyword.operator.ternary.spp
-26: "1" meta.collection-literal.spp constant.numeric.integer.spp
-26: "," meta.collection-literal.spp punctuation.separator.comma.spp
-26: "\"" meta.collection-literal.spp string.quoted.double.spp
-26: "b" meta.collection-literal.spp string.quoted.double.spp
-26: "\"" meta.collection-literal.spp string.quoted.double.spp
-26: ":" meta.collection-literal.spp keyword.operator.ternary.spp
-26: "2" meta.collection-literal.spp constant.numeric.integer.spp
-26: "]" meta.collection-literal.spp punctuation.definition.collection.end.spp
-26: ";" punctuation.terminator.statement.spp
-27: "void" storage.type.spp
-27: "Run" entity.name.function.spp
+26: "=" keyword.operator.assignment.hot
+26: "[" meta.collection-literal.hot punctuation.definition.collection.begin.hot
+26: "\"" meta.collection-literal.hot string.quoted.double.hot
+26: "a" meta.collection-literal.hot string.quoted.double.hot
+26: "\"" meta.collection-literal.hot string.quoted.double.hot
+26: ":" meta.collection-literal.hot keyword.operator.ternary.hot
+26: "1" meta.collection-literal.hot constant.numeric.integer.hot
+26: "," meta.collection-literal.hot punctuation.separator.comma.hot
+26: "\"" meta.collection-literal.hot string.quoted.double.hot
+26: "b" meta.collection-literal.hot string.quoted.double.hot
+26: "\"" meta.collection-literal.hot string.quoted.double.hot
+26: ":" meta.collection-literal.hot keyword.operator.ternary.hot
+26: "2" meta.collection-literal.hot constant.numeric.integer.hot
+26: "]" meta.collection-literal.hot punctuation.definition.collection.end.hot
+26: ";" punctuation.terminator.statement.hot
+27: "void" storage.type.hot
+27: "Run" entity.name.function.hot
 27: "(Map" 
-27: "<" keyword.operator.comparison.spp
+27: "<" keyword.operator.comparison.hot
 27: "string" 
-27: "," punctuation.separator.comma.spp
-27: "int" storage.type.builtin.spp
-27: ">" keyword.operator.comparison.spp
-27: "&" keyword.operator.arithmetic.spp
+27: "," punctuation.separator.comma.hot
+27: "int" storage.type.builtin.hot
+27: ">" keyword.operator.comparison.hot
+27: "&" keyword.operator.arithmetic.hot
 27: " m2" 
-27: "," punctuation.separator.comma.spp
+27: "," punctuation.separator.comma.hot
 27: " Shape" 
-27: "*" keyword.operator.arithmetic.spp
+27: "*" keyword.operator.arithmetic.hot
 27: " sh) {" 
-28: "var" storage.type.spp
+28: "var" storage.type.hot
 28: " f " 
-28: "=" keyword.operator.assignment.spp
+28: "=" keyword.operator.assignment.hot
 28: " (" 
-28: "int" storage.type.builtin.spp
+28: "int" storage.type.builtin.hot
 28: " x) " 
-28: "=>" storage.type.function.arrow.spp
+28: "=>" storage.type.function.arrow.hot
 28: " x " 
-28: "*" keyword.operator.arithmetic.spp
-28: "2" constant.numeric.integer.spp
-28: ";" punctuation.terminator.statement.spp
-29: "var" storage.type.spp
-29: "(" punctuation.definition.binding.begin.spp
-29: "a" variable.other.local.spp
-29: "," punctuation.separator.comma.spp
-29: "b" variable.other.local.spp
-29: ")" punctuation.definition.binding.end.spp
-29: "=" keyword.operator.assignment.spp
-29: "Pair" entity.name.function.spp
+28: "*" keyword.operator.arithmetic.hot
+28: "2" constant.numeric.integer.hot
+28: ";" punctuation.terminator.statement.hot
+29: "var" storage.type.hot
+29: "(" punctuation.definition.binding.begin.hot
+29: "a" variable.other.local.hot
+29: "," punctuation.separator.comma.hot
+29: "b" variable.other.local.hot
+29: ")" punctuation.definition.binding.end.hot
+29: "=" keyword.operator.assignment.hot
+29: "Pair" entity.name.function.hot
 29: "()" 
-29: ";" punctuation.terminator.statement.spp
-30: "var" storage.type.spp
-30: "&" storage.modifier.reference.spp
-30: "(" punctuation.definition.binding.begin.spp
-30: "c" variable.other.local.spp
-30: "," punctuation.separator.comma.spp
-30: "d" variable.other.local.spp
-30: ")" punctuation.definition.binding.end.spp
-30: "=" keyword.operator.assignment.spp
-30: "Pair" entity.name.function.spp
+29: ";" punctuation.terminator.statement.hot
+30: "var" storage.type.hot
+30: "&" storage.modifier.reference.hot
+30: "(" punctuation.definition.binding.begin.hot
+30: "c" variable.other.local.hot
+30: "," punctuation.separator.comma.hot
+30: "d" variable.other.local.hot
+30: ")" punctuation.definition.binding.end.hot
+30: "=" keyword.operator.assignment.hot
+30: "Pair" entity.name.function.hot
 30: "()" 
-30: ";" punctuation.terminator.statement.spp
-31: "foreach" keyword.control.flow.spp
+30: ";" punctuation.terminator.statement.hot
+31: "foreach" keyword.control.flow.hot
 31: " (" 
-31: "var" storage.type.spp
-31: "(" punctuation.definition.binding.begin.spp
-31: "k" variable.other.local.spp
-31: "," punctuation.separator.comma.spp
-31: "v" variable.other.local.spp
-31: ")" punctuation.definition.binding.end.spp
-31: "in" keyword.control.flow.spp
+31: "var" storage.type.hot
+31: "(" punctuation.definition.binding.begin.hot
+31: "k" variable.other.local.hot
+31: "," punctuation.separator.comma.hot
+31: "v" variable.other.local.hot
+31: ")" punctuation.definition.binding.end.hot
+31: "in" keyword.control.flow.hot
 31: " m2) { k" 
-31: ";" punctuation.terminator.statement.spp
+31: ";" punctuation.terminator.statement.hot
 31: " }" 
-32: "foreach" keyword.control.flow.spp
+32: "foreach" keyword.control.flow.hot
 32: " (" 
-32: "var" storage.type.spp
-32: "(" punctuation.definition.binding.begin.spp
-32: "i" variable.other.local.spp
-32: "," punctuation.separator.comma.spp
-32: "e" variable.other.local.spp
-32: ")" punctuation.definition.binding.end.spp
-32: "in" keyword.control.flow.spp
-32: "enumerate" support.function.builtin.spp
+32: "var" storage.type.hot
+32: "(" punctuation.definition.binding.begin.hot
+32: "i" variable.other.local.hot
+32: "," punctuation.separator.comma.hot
+32: "e" variable.other.local.hot
+32: ")" punctuation.definition.binding.end.hot
+32: "in" keyword.control.flow.hot
+32: "enumerate" support.function.builtin.hot
 32: "(" 
-32: "this" variable.language.spp
-32: "." punctuation.accessor.spp
+32: "this" variable.language.hot
+32: "." punctuation.accessor.hot
 32: "xs)) { i" 
-32: ";" punctuation.terminator.statement.spp
+32: ";" punctuation.terminator.statement.hot
 32: " }" 
-33: "for" keyword.control.flow.spp
+33: "for" keyword.control.flow.hot
 33: " (" 
-33: "var" storage.type.spp
+33: "var" storage.type.hot
 33: " i " 
-33: "in" keyword.control.flow.spp
-33: "range" support.function.builtin.spp
+33: "in" keyword.control.flow.hot
+33: "range" support.function.builtin.hot
 33: "(" 
-33: "0" constant.numeric.integer.spp
-33: "," punctuation.separator.comma.spp
-33: "3" constant.numeric.integer.spp
+33: "0" constant.numeric.integer.hot
+33: "," punctuation.separator.comma.hot
+33: "3" constant.numeric.integer.hot
 33: ")) { " 
-33: "&" keyword.operator.arithmetic.spp
+33: "&" keyword.operator.arithmetic.hot
 33: "i" 
-33: ";" punctuation.terminator.statement.spp
-33: "*" keyword.operator.arithmetic.spp
+33: ";" punctuation.terminator.statement.hot
+33: "*" keyword.operator.arithmetic.hot
 33: "sh" 
-33: ";" punctuation.terminator.statement.spp
+33: ";" punctuation.terminator.statement.hot
 33: " }" 
-34: "this" variable.language.spp
-34: "." punctuation.accessor.spp
+34: "this" variable.language.hot
+34: "." punctuation.accessor.hot
 34: "owner" 
-34: "?." punctuation.accessor.safe.spp
-34: "Tick" entity.name.function.spp
+34: "?." punctuation.accessor.safe.hot
+34: "Tick" entity.name.function.hot
 34: "(" 
-34: "1.0f" constant.numeric.float.spp
+34: "1.0f" constant.numeric.float.hot
 34: ")" 
-34: ";" punctuation.terminator.statement.spp
-35: "if" keyword.control.flow.spp
+34: ";" punctuation.terminator.statement.hot
+35: "if" keyword.control.flow.hot
 35: " (sh " 
-35: "is" keyword.operator.word.spp
-35: "Circle" entity.name.type.spp
-35: "ci" variable.other.local.spp
-35: "&&" keyword.operator.logical.spp
+35: "is" keyword.operator.word.hot
+35: "Circle" entity.name.type.hot
+35: "ci" variable.other.local.hot
+35: "&&" keyword.operator.logical.hot
 35: " ci" 
-35: "." punctuation.accessor.spp
+35: "." punctuation.accessor.hot
 35: "r " 
-35: ">" keyword.operator.comparison.spp
-35: "0" constant.numeric.integer.spp
+35: ">" keyword.operator.comparison.hot
+35: "0" constant.numeric.integer.hot
 35: ") { " 
-35: "var" storage.type.spp
+35: "var" storage.type.hot
 35: " sq " 
-35: "=" keyword.operator.assignment.spp
+35: "=" keyword.operator.assignment.hot
 35: " sh " 
-35: "as" keyword.operator.word.spp
-35: "Square" entity.name.type.spp
-35: ";" punctuation.terminator.statement.spp
+35: "as" keyword.operator.word.hot
+35: "Square" entity.name.type.hot
+35: ";" punctuation.terminator.statement.hot
 35: " }" 
-36: "switch" keyword.control.flow.spp
+36: "switch" keyword.control.flow.hot
 36: " (name) { " 
-36: "case" keyword.control.flow.spp
-36: "\"" string.quoted.double.spp
-36: "a" string.quoted.double.spp
-36: "\"" string.quoted.double.spp
-36: ":" keyword.operator.ternary.spp
-36: "case" keyword.control.flow.spp
-36: "\"" string.quoted.double.spp
-36: "b" string.quoted.double.spp
-36: "\"" string.quoted.double.spp
-36: ":" keyword.operator.ternary.spp
-36: "return" keyword.control.flow.spp
-36: ";" punctuation.terminator.statement.spp
-36: "default" keyword.control.flow.spp
-36: ":" keyword.operator.ternary.spp
-36: "break" keyword.control.flow.spp
-36: ";" punctuation.terminator.statement.spp
+36: "case" keyword.control.flow.hot
+36: "\"" string.quoted.double.hot
+36: "a" string.quoted.double.hot
+36: "\"" string.quoted.double.hot
+36: ":" keyword.operator.ternary.hot
+36: "case" keyword.control.flow.hot
+36: "\"" string.quoted.double.hot
+36: "b" string.quoted.double.hot
+36: "\"" string.quoted.double.hot
+36: ":" keyword.operator.ternary.hot
+36: "return" keyword.control.flow.hot
+36: ";" punctuation.terminator.statement.hot
+36: "default" keyword.control.flow.hot
+36: ":" keyword.operator.ternary.hot
+36: "break" keyword.control.flow.hot
+36: ";" punctuation.terminator.statement.hot
 36: " }" 
-37: "var" storage.type.spp
+37: "var" storage.type.hot
 37: " let " 
-37: "=" keyword.operator.assignment.spp
+37: "=" keyword.operator.assignment.hot
 37: " function " 
-37: "+" keyword.operator.arithmetic.spp
+37: "+" keyword.operator.arithmetic.hot
 37: " super" 
-37: ";" punctuation.terminator.statement.spp
+37: ";" punctuation.terminator.statement.hot
 38: "    }" 
 39: "}" 

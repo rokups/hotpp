@@ -14,7 +14,7 @@
 namespace stmt_test
 {
 
-using namespace sppc;
+using namespace hotc;
 
 // A parse of the text as the body of a block. The text is the part between the braces.
 struct Parsed

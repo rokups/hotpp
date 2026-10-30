@@ -1,34 +1,34 @@
-# hot_add_scripts: compile scripts with the tool sppc. There are two modes.
+# hot_add_scripts: compile scripts with the tool hotc. There are two modes.
 #
 #   hot_add_scripts(TARGET name SCRIPTS a.hot b.hot
 #                   [INCLUDES dir...] [FLAGS cxxflag...] [DEPENDS file...]
-#                   [OUT_DIR dir] [AFTER target] [SPPC_ARGS arg...])
+#                   [OUT_DIR dir] [AFTER target] [HOTC_ARGS arg...])
 #   hot_add_scripts(TARGET name SCRIPTS a.hot b.hot AOT
-#                   [INCLUDES dir...] [PRELUDES file...] [FLAGS sppc-flag...]
-#                   [DEPENDS file...] [OUT_DIR dir] [SPPC_ARGS arg...])
+#                   [INCLUDES dir...] [PRELUDES file...] [FLAGS hotc-flag...]
+#                   [DEPENDS file...] [OUT_DIR dir] [HOTC_ARGS arg...])
 #
 # The function also calls hot_script_host with the name TARGET. The host has the scripts
 # and the INCLUDES. In the default mode it has the FLAGS too. The language server uses
 # the host for completion.
 #
-# Default mode (no AOT): the function only runs sppc. It makes one custom target "name".
+# Default mode (no AOT): the function only runs hotc. It makes one custom target "name".
 # The target makes the library OUT_DIR/<script name>.g<n>.so for each script. OUT_DIR
 # defaults to ${CMAKE_BINARY_DIR}/hot_scripts. Load such a library with
 # hot::module_from_library. The variable HOT_SCRIPTS_<TARGET>_LIBRARIES gets the paths.
-# SPPC_ARGS are extra arguments for sppc, in both modes. The generation is 1; the option
-# --gen n in SPPC_ARGS sets another one (the tests build later generations this way).
+# HOTC_ARGS are extra arguments for hotc, in both modes. The generation is 1; the option
+# --gen n in HOTC_ARGS sets another one (the tests build later generations this way).
 # FLAGS are compile flags (--cxxflag). The generations of one class
 # share a slot file in OUT_DIR. Build generation 2 after generation 1: give AFTER the
 # target of generation 1.
 #
-# In both modes, the sppc call always has the include dir of S++ (HOT_INCLUDE_DIR) as the
+# In both modes, the hotc call always has the include dir of S++ (HOT_INCLUDE_DIR) as the
 # first -I. INCLUDES come after it.
 #
-# AOT mode (design M7): the function runs "sppc --aot" and makes the static library "name"
+# AOT mode (design M7): the function runs "hotc --aot" and makes the static library "name"
 # from the generated C++. The library defines hot::aot_table (include/hot/aot.h). It links
 # hot_aot (PUBLIC), so a program that links "name" has no loader, no reload and no Clang.
 # INCLUDES are the include dirs of the translator and of the compile. FLAGS are flags
-# for sppc. OUT_DIR defaults to ${CMAKE_BINARY_DIR}/hot_aot/<name>. AOT mode has no AFTER
+# for hotc. OUT_DIR defaults to ${CMAKE_BINARY_DIR}/hot_aot/<name>. AOT mode has no AFTER
 # and always uses generation 1. PRELUDES is only for AOT mode.
 #
 # String interpolation "${...}": the C++ standard picks the format library at build time
@@ -36,7 +36,7 @@
 # CXX_STANDARD of the target, else CMAKE_CXX_STANDARD, else the S++ default 20, else 17.
 # A standard less than 20 selects fmt. C++20 and later select std::format, unless the CMake
 # option HOT_USE_FMT is ON. With fmt, the function gets fmt (HOT_FMT_PROVIDER: an installed
-# package, else CPM.cmake, by default), passes --format=fmt to sppc and gives the compile the fmt include directory.
+# package, else CPM.cmake, by default), passes --format=fmt to hotc and gives the compile the fmt include directory.
 # In AOT mode the library "name" links the target hot_fmt (fmt). There is no runtime switch.
 # The include dir of S++. It is relative to this file, so it works in a consumer project.
 # It is an internal cache variable, so a project that uses add_subdirectory sees it in every scope.
@@ -44,7 +44,7 @@ get_filename_component(_hot_include_dir "${CMAKE_CURRENT_LIST_DIR}/../include" A
 set(HOT_INCLUDE_DIR "${_hot_include_dir}" CACHE INTERNAL "The include dir of S++")
 
 function(hot_add_scripts)
-    cmake_parse_arguments(A "AOT" "TARGET;OUT_DIR;AFTER" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS;SPPC_ARGS" ${ARGN})
+    cmake_parse_arguments(A "AOT" "TARGET;OUT_DIR;AFTER" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS;HOTC_ARGS" ${ARGN})
     if(A_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "hot_add_scripts: unknown arguments: ${A_UNPARSED_ARGUMENTS}")
     endif()
@@ -57,10 +57,10 @@ function(hot_add_scripts)
         endif()
     else()
         set(A_GEN 1)
-        list(FIND A_SPPC_ARGS --gen gen_at)
+        list(FIND A_HOTC_ARGS --gen gen_at)
         if(NOT gen_at EQUAL -1)
             math(EXPR gen_at "${gen_at} + 1")
-            list(GET A_SPPC_ARGS ${gen_at} A_GEN)
+            list(GET A_HOTC_ARGS ${gen_at} A_GEN)
         endif()
         if(A_PRELUDES)
             message(FATAL_ERROR "hot_add_scripts: PRELUDES works only with AOT (target ${A_TARGET})")
@@ -129,9 +129,9 @@ function(hot_add_scripts)
         add_custom_command(
             OUTPUT ${sources} ${registry}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
-            COMMAND sppc --aot ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS} ${format_args} ${A_SPPC_ARGS}
-            DEPENDS sppc ${scripts} ${A_PRELUDES} ${A_DEPENDS}
-            COMMENT "sppc --aot: ${A_SCRIPTS}"
+            COMMAND hotc --aot ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS} ${format_args} ${A_HOTC_ARGS}
+            DEPENDS hotc ${scripts} ${A_PRELUDES} ${A_DEPENDS}
+            COMMENT "hotc --aot: ${A_SCRIPTS}"
             VERBATIM)
         add_library(${A_TARGET} STATIC ${sources} ${registry})
         target_link_libraries(${A_TARGET} PUBLIC hot_aot)
@@ -158,7 +158,7 @@ function(hot_add_scripts)
         get_filename_component(stem ${s} NAME_WLE)
         list(APPEND outputs ${A_OUT_DIR}/${stem}.g${A_GEN}.so)
     endforeach()
-    # The backend of sppc adds the fmt include directory and the define to the compile.
+    # The backend of hotc adds the fmt include directory and the define to the compile.
     set(all_flags ${A_FLAGS} ${fmt_flags})
     foreach(f ${A_FLAGS})
         list(APPEND args --cxxflag ${f})
@@ -167,10 +167,10 @@ function(hot_add_scripts)
     add_custom_command(
         OUTPUT ${outputs}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
-        COMMAND sppc ${scripts} --out-dir ${A_OUT_DIR}
-                --cxx ${CMAKE_CXX_COMPILER} ${args} --gen ${A_GEN} ${A_SPPC_ARGS}
-        DEPENDS sppc ${scripts} ${A_DEPENDS}
-        COMMENT "sppc: generation ${A_GEN} of ${A_SCRIPTS}"
+        COMMAND hotc ${scripts} --out-dir ${A_OUT_DIR}
+                --cxx ${CMAKE_CXX_COMPILER} ${args} --gen ${A_GEN} ${A_HOTC_ARGS}
+        DEPENDS hotc ${scripts} ${A_DEPENDS}
+        COMMENT "hotc: generation ${A_GEN} of ${A_SCRIPTS}"
         VERBATIM)
     add_custom_target(${A_TARGET} DEPENDS ${outputs})
     if(A_AFTER)
@@ -182,7 +182,7 @@ function(hot_add_scripts)
                     INCLUDES ${A_INCLUDES} FLAGS ${all_flags})
 endfunction()
 
-# hot_script_host: describe a script host for the language server spp-ls.
+# hot_script_host: describe a script host for the language server hot-ls.
 #
 #   hot_script_host(NAME name [TARGET target] [SCRIPT_DIRS dir...] [SCRIPTS file...]
 #                   [INCLUDES dir...] [FLAGS flag...])
@@ -205,16 +205,16 @@ endfunction()
 # file names them in "definesFile", "optionsFile" and "includesFile". A line needs no escape.
 # The .includes file has the raw value of the property INCLUDE_DIRECTORIES of the target. A
 # relative entry is relative to the source directory of the target. The JSON file has this
-# directory in "sourceDir", and spp-ls resolves the relative entries with it.
+# directory in "sourceDir", and hot-ls resolves the relative entries with it.
 # The explicit INCLUDES, FLAGS, SCRIPT_DIRS and SCRIPTS go into the JSON file with a full JSON
 # escape. They must be plain values: a generator expression in them has no effect.
 #
 # Two limits remain. Both come from the line format and from the CMake lists:
-#  - A path with a newline cannot be written in a line. spp-ls reads it as two paths.
+#  - A path with a newline cannot be written in a line. hot-ls reads it as two paths.
 #  - A path with a semicolon is a CMake list separator. CMake splits such a path in two
 #    entries in INCLUDES and in the property, and the two parts are not real paths.
 set(HOT_HOSTS_DIR "${CMAKE_SOURCE_DIR}/.cache/hot/hosts" CACHE PATH
-    "Directory for the script host files that spp-ls reads")
+    "Directory for the script host files that hot-ls reads")
 
 # Make a text safe inside a JSON string. Also make it safe for file(GENERATE CONTENT): a "$"
 # would start a generator expression, so the function writes it as "$<1:$>".
@@ -270,7 +270,7 @@ function(hot_script_host)
     endif()
 
     # The array texts. The paths stay as they are. A relative path is relative to sourceDir,
-    # and spp-ls resolves it.
+    # and hot-ls resolves it.
     set(includes "${HOT_INCLUDE_DIR}")
     list(APPEND includes ${A_INCLUDES})
     _hot_host_json_array(j_dirs ${A_SCRIPT_DIRS})

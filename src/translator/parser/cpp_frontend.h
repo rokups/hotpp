@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace sppc
+namespace hotc
 {
 
 // Parses the ".cpp" script "text" with libclang. "name" is the file name for libclang.
@@ -20,4 +20,4 @@ namespace sppc
 ast::Script parse_cpp_script(const std::string& text, const std::string& name,
     const std::vector<std::string>& clang_args, const LineMap& map, Diagnostics& diag);
 
-} // namespace sppc
+} // namespace hotc

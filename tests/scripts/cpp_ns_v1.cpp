@@ -1,7 +1,7 @@
 // Generation 1 of the scripts in namespaces. Two classes have the name Unit in two namespaces.
 // The namespace game has a module variable, a function, a class and a static data member. The
 // namespace game::ai has a module variable and a class that derives from a class of game.
-// A normal C++ build compiles this file. The tool sppc also translates it.
+// A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
 #include "Math.h"
 

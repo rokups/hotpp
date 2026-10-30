@@ -22,7 +22,7 @@ compiler (the object library `aot_cpp_scripts_plain`). This shows that a `.cpp` 
 
 ## How it works
 
-1. `hot_add_scripts(TARGET sample_aot_hot_scripts AOT SCRIPTS script/wolf.hot ...)` runs `sppc --aot`
+1. `hot_add_scripts(TARGET sample_aot_hot_scripts AOT SCRIPTS script/wolf.hot ...)` runs `hotc --aot`
    at build time. It makes C++ files and a table `hot::aot_table`. It builds them as a static library.
 2. The library links `hot_aot`. This library has `hot::AotRegistry` and does not have the loader.
 3. `main.cpp` makes `hot::AotRegistry registry(hot::aot_table)`. The constructor registers
@@ -72,7 +72,7 @@ ctest --test-dir build --output-on-failure
 ```
 
 To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample calls
-`add_subdirectory` for `HOT_ROOT` only when the target `sppc` does not exist yet.
+`add_subdirectory` for `HOT_ROOT` only when the target `hotc` does not exist yet.
 
 ### With FetchContent
 

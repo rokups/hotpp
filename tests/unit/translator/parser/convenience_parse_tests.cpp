@@ -9,7 +9,7 @@
 #include <string>
 #include <variant>
 
-using namespace sppc;
+using namespace hotc;
 using namespace script_test;
 using expr_test::Parsed;
 

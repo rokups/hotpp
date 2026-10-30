@@ -26,7 +26,7 @@
 #include <string_view>
 #include <type_traits>
 
-namespace sppc::parser
+namespace hotc::parser
 {
 
 namespace dsl = lexy::dsl;
@@ -505,4 +505,4 @@ template <typename Production, typename Input> auto parse_with_diag(const Input&
     return lexy::parse<Production>(input, st, sink);
 }
 
-} // namespace sppc::parser
+} // namespace hotc::parser

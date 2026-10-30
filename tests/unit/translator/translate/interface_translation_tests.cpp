@@ -1,6 +1,6 @@
-// Tests for sppc::translate with native interface bases (S8b, design 4.4 and 5.3): the shell,
+// Tests for hotc::translate with native interface bases (S8b, design 4.4 and 5.3): the shell,
 // the slots, the forwarders, the record and the conflict errors.
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -22,11 +22,11 @@ const char* kIfaceHeader =
     "class ISealed final { public: virtual ~ISealed() {} };\n"
     "class INoDefault { public: INoDefault(int) {} virtual ~INoDefault() {} };\n";
 
-sppc::TranslateResult run(const std::string& classes)
+hotc::TranslateResult run(const std::string& classes)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kIfaceHeader);
-    return sppc::translate(temp_options(dir, "using \"w.h\";\n" + classes));
+    return hotc::translate(temp_options(dir, "using \"w.h\";\n" + classes));
 }
 
 bool has(const std::string& text, const std::string& part)
@@ -40,7 +40,7 @@ bool has(const std::string& text, const std::string& part)
 // of the primary base. A name in two bases gets a suffix of its parameter types.
 TEST(InterfaceTranslation, ShellDerivesFromAllBasesWithOneSlotForEachVirtual)
 {
-    const sppc::TranslateResult r =
+    const hotc::TranslateResult r =
         run("class Foo : Widget, IPing, IName {\n    override int Ping(int n) { return n; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "struct Foo_Shell final : Widget, IPing, IName, hot::ShellBase {")) << r.cpp;
@@ -62,7 +62,7 @@ TEST(InterfaceTranslation, ShellDerivesFromAllBasesWithOneSlotForEachVirtual)
 // virtual calls the implementation of the interface base.
 TEST(InterfaceTranslation, OverrideAndSuperCallOfAnInterfaceVirtual)
 {
-    const sppc::TranslateResult r =
+    const hotc::TranslateResult r =
         run("class Foo : Widget, IPing, IName {\n    override int Ping(int n) { return base.Id() + base.Size(); }\n"
             "    override int Id() { return 9; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -75,7 +75,7 @@ TEST(InterfaceTranslation, OverrideAndSuperCallOfAnInterfaceVirtual)
 // A child of a class with interface bases inherits the interface slots. It can override them.
 TEST(InterfaceTranslation, ChildOverridesAnInterfaceVirtualOfTheRoot)
 {
-    const sppc::TranslateResult r =
+    const hotc::TranslateResult r =
         run("class Foo : Widget, IPing {\n    override int Ping(int n) { return n; }\n}\n"
             "class Bar : Foo {\n    override int Ping(int n) { return base.Ping(n) + 1; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -87,7 +87,7 @@ TEST(InterfaceTranslation, ChildOverridesAnInterfaceVirtualOfTheRoot)
 // A pure virtual of an interface base needs an override.
 TEST(InterfaceTranslation, MissingOverrideOfAPureInterfaceVirtualIsAnError)
 {
-    const sppc::TranslateResult r = run("class Foo : Widget, IPing { }\n");
+    const hotc::TranslateResult r = run("class Foo : Widget, IPing { }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "class Foo does not override the pure virtual method 'Ping(int)' of IPing"))
         << r.diagnostics;
@@ -96,7 +96,7 @@ TEST(InterfaceTranslation, MissingOverrideOfAPureInterfaceVirtualIsAnError)
 // The same signature in two bases is an error: one shell function cannot have two slots.
 TEST(InterfaceTranslation, SameSignatureInTwoBasesIsAnError)
 {
-    const sppc::TranslateResult r = run("class Foo : Widget, ISame { }\n");
+    const hotc::TranslateResult r = run("class Foo : Widget, ISame { }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics,
         "'Update(float)' is a virtual method of Widget (base 'Widget') and of ISame "
@@ -107,9 +107,9 @@ TEST(InterfaceTranslation, SameSignatureInTwoBasesIsAnError)
 // "F()" in one base and "F() const" in another base: the script override cannot pick one.
 TEST(InterfaceTranslation, AmbiguousOverrideIsAnError)
 {
-    const sppc::TranslateResult ok = run("class Foo : Widget, IConst { }\n");
+    const hotc::TranslateResult ok = run("class Foo : Widget, IConst { }\n");
     EXPECT_TRUE(ok.ok) << ok.diagnostics; // no override: both slots forward
-    const sppc::TranslateResult r = run("class Foo : Widget, IConst {\n    override int Size() { return 4; }\n}\n");
+    const hotc::TranslateResult r = run("class Foo : Widget, IConst {\n    override int Size() { return 4; }\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(
         r.diagnostics, "the override 'Size' is ambiguous: it matches 'Size()' of Widget and 'Size() const' of IConst"))
@@ -119,13 +119,13 @@ TEST(InterfaceTranslation, AmbiguousOverrideIsAnError)
 // A final virtual of an interface base cannot be overridden. A final interface class is an error.
 TEST(InterfaceTranslation, FinalVirtualAndFinalClassAreErrors)
 {
-    const sppc::TranslateResult ok = run("class Foo : Widget, IFinal { }\n");
+    const hotc::TranslateResult ok = run("class Foo : Widget, IFinal { }\n");
     EXPECT_TRUE(ok.ok) << ok.diagnostics;
     EXPECT_FALSE(has(ok.cpp, "SLOT_Lock")) << ok.cpp; // a final method gets no slot
-    const sppc::TranslateResult r = run("class Foo : Widget, IFinal {\n    override int Lock() { return 1; }\n}\n");
+    const hotc::TranslateResult r = run("class Foo : Widget, IFinal {\n    override int Lock() { return 1; }\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "'Lock()' of IFinal is final and cannot be overridden")) << r.diagnostics;
-    const sppc::TranslateResult s = run("class Foo : Widget, ISealed { }\n");
+    const hotc::TranslateResult s = run("class Foo : Widget, ISealed { }\n");
     EXPECT_FALSE(s.ok);
     EXPECT_TRUE(has(s.diagnostics, "interface base 'ISealed' is final")) << s.diagnostics;
 }
@@ -154,7 +154,7 @@ TEST(InterfaceTranslation, BaseListErrors)
     };
     for (const Case& c : cases)
     {
-        const sppc::TranslateResult r = run(c.script);
+        const hotc::TranslateResult r = run(c.script);
         EXPECT_FALSE(r.ok) << c.script;
         EXPECT_TRUE(has(r.diagnostics, c.error)) << c.script << "\n" << r.diagnostics;
     }

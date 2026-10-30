@@ -1,5 +1,5 @@
-// Tests for sppc::translate with string interpolation: the format function and the include.
-#include "hot/sppc_lib.h"
+// Tests for hotc::translate with string interpolation: the format function and the include.
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -21,20 +21,20 @@ const char* kHeader =
     "    std::string Name;\n"
     "};\n";
 
-sppc::TranslateResult translate_with(const std::string& init, const std::string& lib)
+hotc::TranslateResult translate_with(const std::string& init, const std::string& lib)
 {
     TempDir dir;
     write_file(dir.path() / "u.h", kHeader);
-    sppc::TranslateOptions o = temp_options(dir,
+    hotc::TranslateOptions o = temp_options(dir,
         "using \"u.h\";\nusing <string>;\nclass P : Unit {\n    int hp = 3;\n"
         "    override void Update(float dt) { this.Name = "
             + init + "; }\n}\n");
     if (!lib.empty())
         o.format_lib = lib;
-    return sppc::translate(o);
+    return hotc::translate(o);
 }
 
-bool has(const sppc::TranslateResult& r, const std::string& text)
+bool has(const hotc::TranslateResult& r, const std::string& text)
 {
     return r.cpp.find(text) != std::string::npos;
 }
@@ -43,7 +43,7 @@ bool has(const sppc::TranslateResult& r, const std::string& text)
 
 TEST(StringInterpolationTranslation, StdFormatAndInclude)
 {
-    const sppc::TranslateResult r = translate_with("\"hp = ${this.hp}\"", "");
+    const hotc::TranslateResult r = translate_with("\"hp = ${this.hp}\"", "");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "std::format(\"hp = {}\", __st->hp)")) << r.cpp;
     EXPECT_TRUE(has(r, "#include <format>\n")) << r.cpp;
@@ -52,7 +52,7 @@ TEST(StringInterpolationTranslation, StdFormatAndInclude)
 
 TEST(StringInterpolationTranslation, FmtFormatAndInclude)
 {
-    const sppc::TranslateResult r = translate_with("\"hp = ${this.hp:>4}\"", "fmt");
+    const hotc::TranslateResult r = translate_with("\"hp = ${this.hp:>4}\"", "fmt");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "fmt::format(\"hp = {:>4}\", __st->hp)")) << r.cpp;
     EXPECT_TRUE(has(r, "#include <fmt/format.h>\n")) << r.cpp;
@@ -63,7 +63,7 @@ TEST(StringInterpolationTranslation, NoInterpolationNoInclude)
 {
     for (const char* lib : {"", "fmt"})
     {
-        const sppc::TranslateResult r = translate_with("\"hp {x}\"", lib);
+        const hotc::TranslateResult r = translate_with("\"hp {x}\"", lib);
         ASSERT_TRUE(r.ok) << r.diagnostics;
         EXPECT_FALSE(has(r, "format")) << r.cpp;
         EXPECT_TRUE(has(r, "= \"hp {x}\";")) << r.cpp;
@@ -72,22 +72,22 @@ TEST(StringInterpolationTranslation, NoInterpolationNoInclude)
 
 TEST(StringInterpolationTranslation, IncludeKeepsTheLineNumbers)
 {
-    const sppc::TranslateResult a = translate_with("\"hp\"", "");
-    const sppc::TranslateResult b = translate_with("\"hp ${this.hp}\"", "");
+    const hotc::TranslateResult a = translate_with("\"hp\"", "");
+    const hotc::TranslateResult b = translate_with("\"hp ${this.hp}\"", "");
     ASSERT_TRUE(a.ok && b.ok);
     EXPECT_EQ(std::count(a.cpp.begin(), a.cpp.end(), '\n'), std::count(b.cpp.begin(), b.cpp.end(), '\n'));
 }
 
 TEST(StringInterpolationTranslation, UnknownFormatLibraryIsAnError)
 {
-    const sppc::TranslateResult r = translate_with("\"hp\"", "printf");
+    const hotc::TranslateResult r = translate_with("\"hp\"", "printf");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("format library"), std::string::npos) << r.diagnostics;
 }
 
 TEST(StringInterpolationTranslation, SyntaxErrorInExpressionHasAScriptPosition)
 {
-    const sppc::TranslateResult r = translate_with("\"a ${1 +} b\"", "");
+    const hotc::TranslateResult r = translate_with("\"a ${1 +} b\"", "");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("t.hot:5:"), std::string::npos) << r.diagnostics;
 }

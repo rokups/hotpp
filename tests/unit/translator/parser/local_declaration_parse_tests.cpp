@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-using namespace sppc;
+using namespace hotc;
 using namespace stmt_test;
 
 // No initializer: the emitter value-initializes. "var" and "const" need an initializer.

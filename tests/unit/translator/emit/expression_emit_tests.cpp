@@ -6,7 +6,7 @@
 
 #include <string>
 
-using namespace sppc::ast;
+using namespace hotc::ast;
 using namespace emit_test;
 
 TEST(ExpressionEmit, Assignment)

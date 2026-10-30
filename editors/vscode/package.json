@@ -1,7 +1,7 @@
 {
   "name": "spp",
   "displayName": "S++",
-  "description": "Syntax highlighting and language server client for S++ scripts (.hot). Shows the sppc errors of .cpp scripts.",
+  "description": "Syntax highlighting and language server client for S++ scripts (.hot). Shows the hotc errors of .cpp scripts.",
   "version": "0.1.0",
   "publisher": "spp",
   "license": "UNLICENSED",
@@ -9,7 +9,7 @@
   "engines": { "vscode": "^1.80.0" },
   "categories": ["Programming Languages"],
   "main": "./src/extension.js",
-  "activationEvents": ["onLanguage:spp", "onLanguage:cpp", "onCommand:spp.showScriptPosition", "onCommand:spp.restartServer"],
+  "activationEvents": ["onLanguage:hot", "onLanguage:cpp", "onCommand:spp.showScriptPosition", "onCommand:spp.restartServer"],
   "contributes": {
     "commands": [
       {
@@ -23,19 +23,19 @@
     ],
     "languages": [
       {
-        "id": "spp",
-        "aliases": ["S++", "spp"],
+        "id": "hot",
+        "aliases": ["S++", "hot"],
         "extensions": [".hot"],
         "configuration": "./language-configuration.json"
       }
     ],
     "breakpoints": [
-      { "language": "spp" }
+      { "language": "hot" }
     ],
     "grammars": [
       {
-        "language": "spp",
-        "scopeName": "source.spp",
+        "language": "hot",
+        "scopeName": "source.hot",
         "path": "./syntaxes/spp.tmLanguage.json"
       }
     ],
@@ -44,8 +44,8 @@
       "properties": {
         "spp.server.path": {
           "type": "string",
-          "default": "spp-ls",
-          "description": "Path of the S++ language server binary. The default finds spp-ls in PATH. ${workspaceFolder} is expanded."
+          "default": "hot-ls",
+          "description": "Path of the S++ language server binary. The default finds hot-ls in PATH. ${workspaceFolder} is expanded."
         },
         "spp.server.args": {
           "type": "array",

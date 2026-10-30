@@ -73,7 +73,7 @@ int* int_field(const hot::Instance& o, const char* name)
 // must stay bounded, and each object must keep its state.
 void run_reloads(int reloads)
 {
-    const fs::path dir = fs::temp_directory_path() / ("spp-stress-" + std::to_string(getpid()));
+    const fs::path dir = fs::temp_directory_path() / ("hot-stress-" + std::to_string(getpid()));
     fs::create_directories(dir);
     int copies = 0;
     auto load_copy = [&]()
@@ -133,7 +133,7 @@ void run_reloads(int reloads)
         s.world.Tick(kDt); // the retired generation unloads at this boundary
         const hot::LoaderStats st = s.loader.stats();
         max_loaded = std::max(max_loaded, loaded_modules(st));
-        max_mapped = std::max(max_mapped, mapped_files(dir.string()) + mapped_files("spp-core-"));
+        max_mapped = std::max(max_mapped, mapped_files(dir.string()) + mapped_files("hot-core-"));
         // The core, the active generation and the pinned generations stay.
         ASSERT_LE(loaded_modules(st), 2 + pins.size()) << "reload " << i << "\n" << s.loader.stats_text();
         ASSERT_EQ(st.core_modules, 1u);
@@ -151,7 +151,7 @@ void run_reloads(int reloads)
     EXPECT_EQ(find_gen(st, first)->state, GenState::Unloaded);
     EXPECT_LE(max_loaded, 2u + 1u); // at most one pin is open at a time
     EXPECT_LE(max_mapped, max_loaded);
-    EXPECT_EQ(mapped_files(dir.string()) + mapped_files("spp-core-"), 2u);
+    EXPECT_EQ(mapped_files(dir.string()) + mapped_files("hot-core-"), 2u);
     EXPECT_EQ(st.live_objects, 1 + objs.size());
 
     // The object of generation 1 kept its state over all reloads.

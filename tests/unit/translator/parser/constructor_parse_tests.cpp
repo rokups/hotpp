@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-using namespace sppc;
+using namespace hotc;
 
 namespace
 {

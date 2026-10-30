@@ -1,4 +1,4 @@
-// The diagnostic rewriter (design 4.2, experiment F2). See rewrite_diagnostic in sppc_lib.h.
+// The diagnostic rewriter (design 4.2, experiment F2). See rewrite_diagnostic in hotc_lib.h.
 //
 // The input is the text that Clang prints for the generated C++. The rewriter works on lines.
 // A header line has the form "file:line:col: level: message". Clang writes the lines of the
@@ -8,7 +8,7 @@
 //   3. Replace or drop the snippet lines that show generated code.
 // The table of the common mistakes is kMistakes. Each row has a test in
 // tests/golden/diagnostics (one script and one expected text).
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 
 #include <algorithm>
 #include <cctype>
@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-namespace sppc
+namespace hotc
 {
 
 namespace
@@ -751,7 +751,7 @@ std::string rewrite_translator_diagnostic(const std::string& text, const ScriptT
     {
         Header h;
         const bool header = parse_header(l, h);
-        if (!header && l.rfind("sppc: error: ", 0) == 0)
+        if (!header && l.rfind("hotc: error: ", 0) == 0)
             ++errors;
         if (!header)
         {
@@ -802,4 +802,4 @@ std::string rewrite_clang_message(const std::string& message)
     return rewrite_message(message, has_script_function(message));
 }
 
-} // namespace sppc
+} // namespace hotc

@@ -19,11 +19,11 @@ Both modes work in one program. A `Loader` holds one module for each generation,
 
 ## The file compiles unchanged
 
-A normal CMake build compiles a `.cpp` script with no `sppc`. Do not write `#include "hot/script.h"` in the script. The tool `sppc` injects `hot/script.h` itself. The header gives the macro `HOT_ALIAS` and the type `hot::OldState`.
+A normal CMake build compiles a `.cpp` script with no `hotc`. Do not write `#include "hot/script.h"` in the script. The tool `hotc` injects `hot/script.h` itself. The header gives the macro `HOT_ALIAS` and the type `hot::OldState`.
 
 The aids `HOT_ALIAS`, `onReload` and `convert_*` are temporary. Use them for a reload session. Remove them after the session. Then the file is standard C++ and a normal build compiles it with no extra option. The fixture `tests/scripts/cpp_player_v1.cpp` has no aids.
 
-A normal build of a file that still has aids needs the header. Pass `-include hot/script.h` to the compiler, and add the `include` directory of spp to the include path. The fixture `tests/scripts/cpp_player_v2.cpp` has aids. Its plain target `cpp_scripts_plain2` does this.
+A normal build of a file that still has aids needs the header. Pass `-include hot/script.h` to the compiler, and add the `include` directory of Hot++ to the include path. The fixture `tests/scripts/cpp_player_v2.cpp` has aids. Its plain target `cpp_scripts_plain2` does this.
 
 In a normal build the file has plain C++ meaning. There is no state migration and there are no slots. Do not share objects between the two builds.
 
@@ -33,7 +33,7 @@ The file `tests/scripts/cpp_player_v1.cpp` is generation 1.
 
 ```cpp
 // Generation 1 of the Player class as a plain C++ script.
-// A normal C++ build compiles this file. The tool sppc also translates it.
+// A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
 #include "Math.h"
 
@@ -190,15 +190,15 @@ public:
 };
 ```
 
-## How sppc edits a body
+## How hotc edits a body
 
-`sppc` parses the `.cpp` file with libclang. It keeps each method body as text. It edits only the names that the generated code cannot resolve:
+`hotc` parses the `.cpp` file with libclang. It keeps each method body as text. It edits only the names that the generated code cannot resolve:
 
 - A bare use or a `this->` use of a native base member goes to the native owner. Examples are `Move(...)` and `this->Name`.
 - In a lambda, a field or a method of the object goes through the object. See "Lambdas".
 - `this` as an argument becomes the native owner.
 - A non-const variable at file scope or in a namespace becomes a migrated module variable.
-- A file-scope declaration can use a module variable. Examples are a free function, a function template, a `constexpr` function, a function in a namespace and a default argument. `sppc` edits the declaration like a method body: the name becomes `hot_mod()->name`. The declaration stays in its place. A declaration that uses no module variable stays as written.
+- A file-scope declaration can use a module variable. Examples are a free function, a function template, a `constexpr` function, a function in a namespace and a default argument. `hotc` edits the declaration like a method body: the name becomes `hot_mod()->name`. The declaration stays in its place. A declaration that uses no module variable stays as written.
 
 The generated file keeps the source order of the script. A block at the top declares `hot_mod()`. The module block comes at the place of the first module variable. The block of a class comes at the place of the class. So a module variable can use only the types and the functions that come before the first module variable. A variable that is not a module variable cannot use a module variable: it gets its value when the library loads, before the module state exists.
 - A static member or a nested type of the base gets the `Base::` prefix.
@@ -210,7 +210,7 @@ All other text stays as you wrote it.
 
 A lambda in a method, in a constructor or in a field initializer can use the fields, the methods and the native base members of the object. Use any capture: `[this]`, `[=]`, `[&]`, `[=, this]`, `[&, this]` or an init-capture such as `[self = this]`. A generic lambda and a nested lambda work too.
 
-A reload moves the fields of an object to a new place. So a lambda must not keep the address of the fields. `sppc` makes the lambda keep the object instead. The object keeps its address for all its life. Each use of a field in the lambda finds the fields at the time of the call. A lambda that a field holds sees the new values after a reload.
+A reload moves the fields of an object to a new place. So a lambda must not keep the address of the fields. `hotc` makes the lambda keep the object instead. The object keeps its address for all its life. Each use of a field in the lambda finds the fields at the time of the call. A lambda that a field holds sees the new values after a reload.
 
 - `[this]` becomes a capture of the object. `[=, this]` becomes `[=]`.
 - `[&]` keeps the object by copy. A lambda that you store and call after the method returns is safe if it uses only fields and methods. It still holds a reference to each local that it uses, so do not store a lambda that uses a local.
@@ -228,7 +228,7 @@ void Tick(float dt) override
 
 The lambda in a field has the code of the version that made it. A reload does not replace the body. The old version stays loaded while a live field can hold code. The next reload does not unload the old version. A lambda that you make again after the reload has the new code. To get the new code, set the field again.
 
-A lambda cannot capture `*this`. A copy of the object has no meaning in a script. `sppc` gives an error. Capture a copy of the fields, for example `[n = count]`.
+A lambda cannot capture `*this`. A copy of the object has no meaning in a script. `hotc` gives an error. Capture a copy of the fields, for example `[n = count]`.
 
 ## What a script class can have
 
@@ -243,39 +243,39 @@ A lambda cannot capture `*this`. A copy of the object has no meaning in a script
 - Methods, constructors and destructors that the file defines outside the class (see "Definitions outside the class").
 - `override` of native virtual methods, and native interface bases.
 - New `virtual` methods, and `override` of these methods in a child class (see "Script class inheritance").
-- Default arguments on a constructor and on a method. The text of a default gets the same edits as a method body, so it can name a module variable. An `override` has no default argument (sppc gives an error): the call through the base sees the base declaration. The fixture `tests/scripts/cpp_defaults.cpp` shows them.
+- Default arguments on a constructor and on a method. The text of a default gets the same edits as a method body, so it can name a module variable. An `override` has no default argument (hotc gives an error): the call through the base sees the base declaration. The fixture `tests/scripts/cpp_defaults.cpp` shows them.
 
 At file scope a `.cpp` script can have:
 
 - Module variables, with free-function `convert_<var>` hooks.
 - Namespaces that hold script classes and module variables. See "Namespaces".
 - Verbatim code: enums, structs without a base, free functions, `using`, namespaces without script code and `const` or `constexpr` variables.
-- A free function, a function template, a `constexpr` function or a function in a namespace can use a module variable (see "How sppc edits a body"). A `constexpr` function can read it only in a call at runtime.
+- A free function, a function template, a `constexpr` function or a function in a namespace can use a module variable (see "How hotc edits a body"). A `constexpr` function can read it only in a call at runtime.
 
 ## Static members
 
-A script class can have static data members and static methods. A normal C++ build compiles them as written. `sppc` moves them out of the class, because the generated class is a state struct with free functions.
+A script class can have static data members and static methods. A normal C++ build compiles them as written. `hotc` moves them out of the class, because the generated class is a state struct with free functions.
 
-A static data member is a module variable. Its name is `<Class>__s_<name>`. For `static int count;` in `Counter`, the name is `Counter__s_count`. The marker `s_` keeps the name apart from the names that `sppc` generates for the class, such as `Counter__plan`. So a static member can have the name `plan`. The module state holds the variable. It migrates by name and type, as any module variable does. The value survives a reload. A new static data member takes its initializer.
+A static data member is a module variable. Its name is `<Class>__s_<name>`. For `static int count;` in `Counter`, the name is `Counter__s_count`. The marker `s_` keeps the name apart from the names that `hotc` generates for the class, such as `Counter__plan`. So a static member can have the name `plan`. The module state holds the variable. It migrates by name and type, as any module variable does. The value survives a reload. A new static data member takes its initializer.
 
-`sppc` accepts these forms of the initializer:
+`hotc` accepts these forms of the initializer:
 
 - `static inline int count = 10;` (C++17) in the class.
-- `static int count;` in the class and `int Counter::count = 10;` at file scope. The file-scope text defines the module variable. `sppc` removes it from the output. Do not put an initializer in both places.
+- `static int count;` in the class and `int Counter::count = 10;` at file scope. The file-scope text defines the module variable. `hotc` removes it from the output. Do not put an initializer in both places.
 
-A static method is a free function with the name `<Class>__s_<name>`. It has no `__self`. `sppc` writes its prototype before the class block, so the methods of the class can call it. It writes the definition after the class block. The prototype keeps the default arguments. The definition has none. A static method has the edits of a free function: module variables and static members become `hot_mod()->...` or the mangled name. A static method that uses `this` or a member of the base class is an error of the C++ compiler (for example `call to non-static member function without an object argument`).
+A static method is a free function with the name `<Class>__s_<name>`. It has no `__self`. `hotc` writes its prototype before the class block, so the methods of the class can call it. It writes the definition after the class block. The prototype keeps the default arguments. The definition has none. A static method has the edits of a free function: module variables and static members become `hot_mod()->...` or the mangled name. A static method that uses `this` or a member of the base class is an error of the C++ compiler (for example `call to non-static member function without an object argument`).
 
-`sppc` rewrites every use of a static member in the file. These forms are valid:
+`hotc` rewrites every use of a static member in the file. These forms are valid:
 
 - The bare name in the class, in a method or in another static method.
 - `Counter::count`, `this->count`, `(*this).count` and `&Counter::count`.
-- `obj.count` and `obj->count`. `sppc` drops the object, so the object must have no side effect. Else the message is `a static member must be used by its name`.
+- `obj.count` and `obj->count`. `hotc` drops the object, so the object must have no side effect. Else the message is `a static member must be used by its name`.
 - Calls with arguments, for example `Counter::scale(3)`.
 - The uses outside the class body, for example in a free function or in the initializer of a module variable. A module variable can read a static data member. It cannot call a static method: the prototype comes after the module block. A free function can do both.
 
 The class name is also a type. See "Script classes as types".
 
-A static data member that is `const` or `constexpr` is not a module variable. It has no state. `sppc` writes it as a `const` at file scope before the class block, with the name `<Class>__s_<name>`. The uses in the class and outside it use this name. The member needs an initializer in the class. `static constexpr int kFactor = 3;` becomes `constexpr int Counter__s_kFactor = 3;`.
+A static data member that is `const` or `constexpr` is not a module variable. It has no state. `hotc` writes it as a `const` at file scope before the class block, with the name `<Class>__s_<name>`. The uses in the class and outside it use this name. The member needs an initializer in the class. `static constexpr int kFactor = 3;` becomes `constexpr int Counter__s_kFactor = 3;`.
 
 When the module block does not exist before the class, a static data member makes the module block at the class. So the types of the static data members must come before the class.
 
@@ -317,14 +317,14 @@ int Player::get() const { return hp; }
 
 The body of the definition has the same edits as a body in the class. It can use a native base member, `this`, a module variable and a field. The definition can come after other classes. The fixture `tests/scripts/cpp_outofclass_v2.cpp` shows the forms.
 
-**Limit:** the body moves into the code of the class. So the body can use only what the class can use. A body that names a type, a function or a constant that the file declares after the class and before the definition is an error of `sppc` (see "Unsupported forms"). Plain C++ allows it. Declare such a name before the class. A prototype before the class is enough for a function.
+**Limit:** the body moves into the code of the class. So the body can use only what the class can use. A body that names a type, a function or a constant that the file declares after the class and before the definition is an error of `hotc` (see "Unsupported forms"). Plain C++ allows it. Declare such a name before the class. A prototype before the class is enough for a function.
 
 These rules apply:
 
 - The class declaration gives the types, the `override`, the access and the default arguments. Do not repeat a default argument in the definition: C++ does not allow it.
 - The body uses the parameter names of the definition. They can differ from the names in the declaration.
 - A reload treats the method as a method with a body in the class. A change of the body, or a move of the body out of the class or into it, keeps the state of the objects.
-- `sppc` removes the definition from the output and puts the body in the code of the class.
+- `hotc` removes the definition from the output and puts the body in the code of the class.
 - A static method must have its body in the class (see "Static members").
 
 ## Script classes as types
@@ -350,9 +350,9 @@ These rules apply:
 - A module variable can hold the pointer. The class must come before the first module variable.
 - `dynamic_cast` to a script class works after a reload. It does not use the C++ RTTI of the script class. The test uses the name of the script class.
 - A failed `dynamic_cast` to a reference throws `std::runtime_error`, not `std::bad_cast`.
-- The script code owns an object that it makes with `new`. Delete it with `delete` through a pointer to the script class or to its native base. `sppc` does not delete it. A `.hot` script has no `delete`, because it uses handles.
+- The script code owns an object that it makes with `new`. Delete it with `delete` through a pointer to the script class or to its native base. `hotc` does not delete it. A `.hot` script has no `delete`, because it uses handles.
 
-A function template or a generic lambda (`auto` parameter) that gets a pointer to a script object can use only the native base members and the `override` methods of the object. Write `p->power` or `p->boost(2)` only in code that names the script class, for example `int power_of(Minion* p)`. `sppc` does not check the body of a template. A use of a script field or a script method there gives an error of the C++ compiler. Do not give a script field the name of a member of the native base: a template then uses the base member without an error.
+A function template or a generic lambda (`auto` parameter) that gets a pointer to a script object can use only the native base members and the `override` methods of the object. Write `p->power` or `p->boost(2)` only in code that names the script class, for example `int power_of(Minion* p)`. `hotc` does not check the body of a template. A use of a script field or a script method there gives an error of the C++ compiler. Do not give a script field the name of a member of the native base: a template then uses the base member without an error.
 
 A static method and a static data member can name their own class, for example `static Minion* spawn(int p)` and `inline static Minion* first_made = nullptr;`.
 
@@ -394,7 +394,7 @@ These rules apply:
 - A `virtual` method of a script class is a new virtual method. A child class overrides it with `override`. A call of the method from the parent code runs the override of the object.
 - `Base::Power()` in the child calls the version of the parent, without the virtual call. This also works for a native virtual method, for example `Base::Tick(dt)`.
 - `Base::` before a member that is not static works only on the object itself: `Base::Power()` or `this->Base::Power()`.
-- The constructor of the child gives the arguments to the constructor of the parent, for example `Kid(int a) : Base(a * 2)`. Give all the parameters of a constructor of the parent: `sppc` does not use the default arguments of the parent here. A child constructor without the parent entry needs a parent constructor without parameters. Other counts give the error `'base(...)' has <n> arguments; ...`.
+- The constructor of the child gives the arguments to the constructor of the parent, for example `Kid(int a) : Base(a * 2)`. Give all the parameters of a constructor of the parent: `hotc` does not use the default arguments of the parent here. A child constructor without the parent entry needs a parent constructor without parameters. Other counts give the error `'base(...)' has <n> arguments; ...`.
 - A method of the child with the name of a method of the parent hides the method of the parent, as in C++.
 - `this` in a parent method is the object of the child. `dynamic_cast<Kid*>(base_ptr)` finds the object, also after a reload.
 - A new generation can add a field to the parent or to the child, add an `override`, or add a new `virtual` method. A live object keeps the values of its fields. The calls on the object run the new code after the reload.
@@ -419,9 +419,9 @@ These rules apply:
 
 - The entries run before the body of the constructor, in the order of the field declarations, not in the order of the list. This is the rule of C++.
 - An entry can use the parameters of the constructor and the fields that the declaration order puts before it. Such a field already has its new value.
-- An entry builds the value as C++ does: `f(e)` is a direct initialization and `f{e}` is a list initialization. Then `sppc` moves the value into the field. So the type of the field must be move assignable.
+- An entry builds the value as C++ does: `f(e)` is a direct initialization and `f{e}` is a list initialization. Then `hotc` moves the value into the field. So the type of the field must be move assignable.
 - A field with a default member initializer and no entry keeps the default value.
-- A field with an entry first gets its default value, and then the entry sets it. A default member initializer cannot read a field that has an entry in the list. The default would see the default value of that field, not the value from the list. `sppc` gives an error when the initializer names the field itself. It does not find a read through a function call, so avoid `int b = calc();` when `calc` reads a field that has an entry. Add the field of the default member initializer to the list.
+- A field with an entry first gets its default value, and then the entry sets it. A default member initializer cannot read a field that has an entry in the list. The default would see the default value of that field, not the value from the list. `hotc` gives an error when the initializer names the field itself. It does not find a read through a function call, so avoid `int b = calc();` when `calc` reads a field that has an entry. Add the field of the default member initializer to the list.
 - The entry of the base class, for example `Actor(args)`, has the handling that "What a script class can have" describes.
 - The text of an entry gets the same edits as a body. It can use a native base member, a module variable and a lambda.
 - A reload does not run a constructor again for a live object. The state of the object stays. A new object runs the initializers of the new generation.
@@ -470,13 +470,13 @@ class Brain : public Player { /* ... */ };
 - A class of an inner namespace can derive from a class of an outer namespace.
 - A namespace with no script class and no module variable stays as written. It has no migration. An `extern "C"` block also stays as written, so a variable in it is not a module variable.
 - `HOT_ALIAS` is for a field only. It has no effect on a class name, so a class in a namespace has no alias. A rename of the class or of its namespace makes a new class. It is not a migration.
-- A class and a variable in different namespaces must not give the same name after the join with `__`. The class `game::Player` and a class `game__Player` give the same name, and `sppc` gives an error.
+- A class and a variable in different namespaces must not give the same name after the join with `__`. The class `game::Player` and a class `game__Player` give the same name, and `hotc` gives an error.
 
 ## Unsupported forms
 
-A class with no base is not a script class. `sppc` copies it unchanged, like a struct without a base. It has no hot reload.
+A class with no base is not a script class. `hotc` copies it unchanged, like a struct without a base. It has no hot reload.
 
-The first version gives an error for each form in this list. The text in the second column is the message of `sppc`.
+The first version gives an error for each form in this list. The text in the second column is the message of `hotc`.
 
 | Form | Message |
 |---|---|
@@ -527,11 +527,11 @@ For a `const` field or a reference field, use a default member initializer in th
 
 ## Known limits
 
-- A field of a native struct type that has a function pointer can point into the code of an old version. `sppc` finds such a struct in an included header, wherever the `#include` is. Then the old version stays loaded while a live object has the field. `sppc` does not find a struct that you define in the script file itself.
+- A field of a native struct type that has a function pointer can point into the code of an old version. `hotc` finds such a struct in an included header, wherever the `#include` is. Then the old version stays loaded while a live object has the field. `hotc` does not find a struct that you define in the script file itself.
 - An in-class brace initializer of a class-type field is not visited by libclang. A module variable inside such an initializer is not rewritten.
 - A `.cpp` translation does one more libclang parse than a `.hot` translation. A reload is slower. One parse of the engine headers takes about 400 ms.
 - In a normal build the file has plain C++ meaning. There is no state migration and there are no slots. Objects must not be shared between the two builds.
-- The language server gives only the errors of `sppc` for a `.cpp` script, and only when a host lists the file. The other editor features come from clangd. For a script with aids, clangd needs the flags `-include hot/script.h` and `-I<spp>/include`. See [Tools](tools.html#a-cpp-script-in-the-editor).
+- The language server gives only the errors of `hotc` for a `.cpp` script, and only when a host lists the file. The other editor features come from clangd. For a script with aids, clangd needs the flags `-include hot/script.h` and `-I<spp>/include`. See [Tools](tools.html#a-cpp-script-in-the-editor).
 
 ## CMake
 
@@ -539,5 +539,5 @@ For a `const` field or a reference field, use a default member initializer in th
 
 ```cmake
 hot_add_scripts(TARGET gen1 SCRIPTS cpp_player_v1.cpp)
-hot_add_scripts(TARGET gen2 SCRIPTS cpp_player_v2.cpp AFTER gen1 SPPC_ARGS --gen 2)
+hot_add_scripts(TARGET gen2 SCRIPTS cpp_player_v2.cpp AFTER gen1 HOTC_ARGS --gen 2)
 ```

@@ -112,11 +112,11 @@ std::string symbols_of(const std::string& path)
 #endif
 #ifdef HOT_TEST_SANITIZER
 const char* const kLoaderMarks[] = {"hot::Loader", "hot::module_from_library", "migrate_block", "ClangFilesBackend",
-    "FileWatcher", "removed_class_handler", "sppc::translate", "clang_createIndex", "clang_parseTranslationUnit",
+    "FileWatcher", "removed_class_handler", "hotc::translate", "clang_createIndex", "clang_parseTranslationUnit",
     "clang::"};
 #else
 const char* const kLoaderMarks[] = {"hot::Loader", "hot::module_from_library", "migrate_block", "ClangFilesBackend",
-    "FileWatcher", "removed_class_handler", "sppc::translate", "dlopen", "clang_createIndex",
+    "FileWatcher", "removed_class_handler", "hotc::translate", "dlopen", "clang_createIndex",
     "clang_parseTranslationUnit", "clang::", "LLVM", "llvm::"};
 #endif
 

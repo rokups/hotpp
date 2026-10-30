@@ -9,7 +9,7 @@
 #include <string>
 #include <variant>
 
-using namespace sppc;
+using namespace hotc;
 using namespace expr_test;
 
 TEST(StringInterpolationParse, PlainStringStaysALiteral)

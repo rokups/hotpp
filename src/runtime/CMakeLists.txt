@@ -12,7 +12,7 @@ else()
     target_compile_definitions(hot_runtime_core PUBLIC HOT_USE_FMT=0)
 endif()
 # The C++ standard of the host (include/hot/config.h). The backends use it for the compile of
-# the scripts and for the parse of the native headers. The target sppc_lib gets the same value.
+# the scripts and for the parse of the native headers. The target hotc_lib gets the same value.
 hot_effective_cxx_standard(HOT_HOST_CXX_STANDARD hot_runtime_core)
 target_compile_definitions(hot_runtime_core PUBLIC HOT_CXX_STANDARD=${HOT_HOST_CXX_STANDARD})
 add_library(hot_runtime STATIC
@@ -28,18 +28,18 @@ add_library(hot_aot STATIC aot.cpp)
 target_link_libraries(hot_aot PUBLIC hot_runtime_core Threads::Threads)
 
 # ------------------------------------------------------------ Backends
-# ClangFilesBackend: sppc_lib in memory, then an external compiler.
+# ClangFilesBackend: hotc_lib in memory, then an external compiler.
 add_library(hot_clang_backend STATIC clang_files_backend.cpp)
-target_link_libraries(hot_clang_backend PUBLIC hot_runtime sppc_lib)
+target_link_libraries(hot_clang_backend PUBLIC hot_runtime hotc_lib)
 
-# JitBackend: sppc_lib in memory, the Clang library compiles in memory, LLVM ORC loads.
+# JitBackend: hotc_lib in memory, the Clang library compiles in memory, LLVM ORC loads.
 # LLVM and Clang come from the system. CPM does not fetch them. The root file finds them.
 if(HOT_BACKEND STREQUAL "JIT")
     add_library(hot_jit_backend STATIC jit_backend.cpp)
     target_include_directories(hot_jit_backend PUBLIC ${PROJECT_SOURCE_DIR}/include)
     target_include_directories(hot_jit_backend SYSTEM PUBLIC ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
     target_compile_definitions(hot_jit_backend PRIVATE ${LLVM_DEFINITIONS})
-    target_link_libraries(hot_jit_backend PUBLIC hot_runtime sppc_lib clang-cpp LLVM)
+    target_link_libraries(hot_jit_backend PUBLIC hot_runtime hotc_lib clang-cpp LLVM)
 endif()
 
 # make_default_backend() returns the backend that HOT_BACKEND selected.

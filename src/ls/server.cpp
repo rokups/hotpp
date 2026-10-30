@@ -6,7 +6,7 @@
 #include "semantic.h"
 #include "hot/clang_files_backend.h"
 #include "hot/config.h"
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 #include "symbol_index.h"
 
 #include <nlohmann/json.hpp>
@@ -149,22 +149,22 @@ struct SymbolKey
 };
 
 // One open .hot document and its state in clangd. A ".cpp" document is also a Doc, but with "cpp"
-// set: it has no state in clangd and it gets the errors of sppc only (update_cpp).
+// set: it has no state in clangd and it gets the errors of hotc only (update_cpp).
 struct Doc
 {
     std::string uri, path;
-    // A ".cpp" document. It is a script when it has a host. The server publishes the sppc errors of
+    // A ".cpp" document. It is a script when it has a host. The server publishes the hotc errors of
     // a script. It ignores any other ".cpp" document. All the other requests get no answer.
     bool cpp = false;
     bool cpp_published = false; // the last publish of a ".cpp" document had a diagnostic list
     Text text;
-    sppc::AnalyzeResult facts;
+    hotc::AnalyzeResult facts;
     // The generated C++ that clangd has as the real text, and its map. The map belongs to the
     // script text "gen_script". After a translation error, the last good state stays. The
     // positions of the script then go through the edit between "gen_script" and "text".
     std::string gen_path, gen_uri;
     Text gen;
-    std::shared_ptr<const sppc::SourceMap> map;
+    std::shared_ptr<const hotc::SourceMap> map;
     Text gen_script;
     bool edited = false; // the text differs from gen_script
     // The edit from gen_script to text: the bytes [0, edit_prefix) are equal. The old bytes from
@@ -345,9 +345,9 @@ private:
         const auto it = docs_.find(uri);
         return it == docs_.end() ? nullptr : it->second;
     }
-    sppc::TranslateOptions translate_options(const Doc& d) const
+    hotc::TranslateOptions translate_options(const Doc& d) const
     {
-        sppc::TranslateOptions o;
+        hotc::TranslateOptions o;
         o.script_name = d.path;
         o.generation = 1;
         const Effective e = effective_options(d.path);
@@ -404,7 +404,7 @@ private:
             {"params",
                 {{"type", 3},
                     {"message",
-                        "spp-ls: " + d.path + " uses " + (host ? "host " + host->name : std::string("no host"))}}}});
+                        "hot-ls: " + d.path + " uses " + (host ? "host " + host->name : std::string("no host"))}}}});
     }
     // Checks the host files after a document event. A document whose host changed gets the new
     // compile command. "current" is the document of the event: the caller updates it.
@@ -460,7 +460,7 @@ private:
     std::optional<SymbolKey> symbol_key(const Doc& d, Pos decl, const std::string& name) const;
     std::optional<SymbolKey> key_at(const Doc& d, Pos cur);
     std::optional<Pos> key_position(const Doc& d, const SymbolKey& key) const;
-    Pos class_name_pos(const Doc& d, const sppc::AnalyzedClass& c) const;
+    Pos class_name_pos(const Doc& d, const hotc::AnalyzedClass& c) const;
     std::set<Pos> class_places(const Doc& d, const std::string& name) const;
     bool is_script_class(const Doc& d, const std::string& name) const;
     std::vector<std::string> workspace_scripts() const;
@@ -485,14 +485,14 @@ private:
     bool utf8_ = false, clangd_utf8_ = false, shutdown_ = false;
     std::set<std::string> preamble_ready_;
     // The analyze facts of the scripts on disk that are not open (script_member_location).
-    std::map<std::string, std::pair<std::string, sppc::AnalyzeResult>> disk_facts_;
+    std::map<std::string, std::pair<std::string, hotc::AnalyzeResult>> disk_facts_;
     std::string index_seed_; // the first file of compile_commands.json (start_clangd)  // the generated files with a
                              // first completion
     // The saved symbol index of the scripts on disk (S28, symbol_index.h).
     SymbolIndex index_;
-    int completion_translations_ = 0; // the translations of a completion text (spp/indexStats)
-    int closed_analyses_ = 0; // the analyze calls of for_other_scripts (spp/indexStats)
-    sppc::TranslatorSession session_;
+    int completion_translations_ = 0; // the translations of a completion text (hot/indexStats)
+    int closed_analyses_ = 0; // the analyze calls of for_other_scripts (hot/indexStats)
+    hotc::TranslatorSession session_;
 };
 
 // ------------------------------------------------------------------ setup
@@ -551,7 +551,7 @@ void Server::read_compile_commands()
 }
 
 // clangd stores its background index in "<dir of compile_commands.json>/.cache/clangd/index".
-// XDG_CACHE_HOME does not change this. The child of spp-ls gets its own directory under
+// XDG_CACHE_HOME does not change this. The child of hot-ls gets its own directory under
 // ".cache/hot/clangd" with a link to the real compile_commands.json. So its index does not mix
 // with the index of a C++ clangd on the same database (DECISIONS 18).
 std::string Server::private_cdb_dir() const
@@ -746,7 +746,7 @@ json Server::on_initialize(const json& p)
                 {"semanticTokensProvider",
                     {{"legend", {{"tokenTypes", tokens}, {"tokenModifiers", json::array()}}}, {"full", true}}},
                 {"experimental", {{"hotToScript", true}, {"clangd", clangd_ != nullptr}}}}},
-        {"serverInfo", {{"name", "spp-ls"}, {"version", "0.1"}}},
+        {"serverInfo", {{"name", "hot-ls"}, {"version", "0.1"}}},
     };
 }
 
@@ -785,7 +785,7 @@ void Server::send_generated(Doc& d, const std::string& cpp)
     }
 }
 
-// The update of a ".cpp" document. A script (a document with a host) gets the sppc errors as
+// The update of a ".cpp" document. A script (a document with a host) gets the hotc errors as
 // diagnostics. Any other ".cpp" document gets nothing. The state of clangd is not touched: clangd
 // owns the other features of the file.
 void Server::update_cpp(Doc& d)
@@ -793,7 +793,7 @@ void Server::update_cpp(Doc& d)
     if (!d.host)
     {
         std::lock_guard<std::mutex> lock(docs_mutex_);
-        d.facts = sppc::AnalyzeResult();
+        d.facts = hotc::AnalyzeResult();
         if (d.cpp_published)
         {
             d.cpp_published = false;
@@ -802,7 +802,7 @@ void Server::update_cpp(Doc& d)
         }
         return;
     }
-    sppc::AnalyzeResult facts = sppc::analyze_cpp(d.text.s, d.path, translate_options(d), session_);
+    hotc::AnalyzeResult facts = hotc::analyze_cpp(d.text.s, d.path, translate_options(d), session_);
     facts.diagnostics.clear(); // facts.errors has the errors of this file
     std::lock_guard<std::mutex> lock(docs_mutex_);
     d.facts = std::move(facts);
@@ -814,7 +814,7 @@ void Server::update(Doc& d)
 {
     if (d.cpp)
         return update_cpp(d);
-    sppc::AnalyzeResult facts = sppc::analyze(d.text.s, translate_options(d), session_);
+    hotc::AnalyzeResult facts = hotc::analyze(d.text.s, translate_options(d), session_);
     std::string cpp = facts.cpp;
     {
         std::lock_guard<std::mutex> lock(docs_mutex_);
@@ -822,7 +822,7 @@ void Server::update(Doc& d)
         if (!cpp.empty())
         {
             d.gen = Text(cpp);
-            d.map = std::make_shared<const sppc::SourceMap>(d.facts.source_map);
+            d.map = std::make_shared<const hotc::SourceMap>(d.facts.source_map);
             d.gen_script = d.text;
             d.gen_version = d.sent_version + 1;
             send_generated(d, cpp);
@@ -849,7 +849,7 @@ json Server::analyze_diagnostics(const Doc& d) const
         out.push_back(
             {{"range", script_range(d, p, end)}, {"severity", severity}, {"source", "hot"}, {"message", message}});
     };
-    for (const sppc::AnalyzeError& e : d.facts.errors)
+    for (const hotc::AnalyzeError& e : d.facts.errors)
         add({e.pos.line - 1, e.pos.col - 1}, e.message, 1);
     // The translation errors: "name:line:col: error: text", one line each.
     static const std::regex re(R"(^(.*):(\d+):(\d+): (error|warning): (.*)$)");
@@ -868,7 +868,7 @@ json Server::analyze_diagnostics(const Doc& d) const
         && !host_of(d.path))
         out.push_back(
             {{"range", {{"start", {{"line", 0}, {"character", 0}}}, {"end", {{"line", 0}, {"character", 0}}}}},
-                {"severity", 3}, {"source", "spp-ls"},
+                {"severity", 3}, {"source", "hot-ls"},
                 {"message", "No script host for this file. Add hot_script_host(...) in CMake and run CMake again."}});
     return out;
 }
@@ -965,7 +965,7 @@ json Server::imported_location(const Doc& d, const json& gen_lsp_pos, bool whole
     const auto loc = d.map->locate(g.line + 1, g.col + 1);
     if (!loc || loc->file == 0 || loc->file > d.map->files().size())
         return nullptr;
-    const sppc::SourceFile& f = d.map->files()[loc->file - 1];
+    const hotc::SourceFile& f = d.map->files()[loc->file - 1];
     const Text t(f.text);
     const Pos b{loc->pos.line - 1, loc->pos.col - 1};
     const std::string_view text = t.line(b.line);
@@ -1005,7 +1005,7 @@ void Server::map_clangd_diagnostics(Doc& d)
             {
                 from_imports[at.value("uri", std::string())].push_back(
                     {{"range", at["range"]}, {"severity", g.value("severity", 1)}, {"source", "clangd"},
-                        {"message", sppc::rewrite_clang_message(g.value("message", std::string()))}});
+                        {"message", hotc::rewrite_clang_message(g.value("message", std::string()))}});
                 continue;
             }
         }
@@ -1056,7 +1056,7 @@ void Server::map_clangd_diagnostics(Doc& d)
             }
         }
         out.push_back({{"range", script_range(d, b, e)}, {"severity", g.value("severity", 1)}, {"source", "clangd"},
-            {"message", sppc::rewrite_clang_message(g.value("message", std::string()))}});
+            {"message", hotc::rewrite_clang_message(g.value("message", std::string()))}});
     }
     d.clang_diags = std::move(out);
     d.clang_import_diags = std::move(from_imports);
@@ -1165,13 +1165,13 @@ json Server::on_completion(const Doc& d, const json& p)
         std::set<std::string> seen;
         for (std::string n = class_name; !n.empty() && seen.insert(n).second;)
         {
-            const sppc::AnalyzedClass* cls = nullptr;
-            for (const sppc::AnalyzedClass& c : d.facts.classes)
+            const hotc::AnalyzedClass* cls = nullptr;
+            for (const hotc::AnalyzedClass& c : d.facts.classes)
                 if (c.name == n)
                     cls = &c;
             if (!cls)
                 break;
-            for (const sppc::AnalyzedMember& m : cls->members)
+            for (const hotc::AnalyzedMember& m : cls->members)
             {
                 int kind = 0;
                 if (m.kind == "field")
@@ -1194,8 +1194,8 @@ json Server::on_completion(const Doc& d, const json& p)
         const std::string obj = t.substr(ob, s - 1 - ob);
         if (obj == "this")
         {
-            const sppc::AnalyzedClass* cls = nullptr;
-            for (const sppc::AnalyzedClass& c : d.facts.classes)
+            const hotc::AnalyzedClass* cls = nullptr;
+            for (const hotc::AnalyzedClass& c : d.facts.classes)
                 if (Pos{c.begin.line - 1, c.begin.col - 1} < Pos{cur.line, cur.col + 1})
                     cls = &c;
             if (cls)
@@ -1272,7 +1272,7 @@ json Server::on_completion(const Doc& d, const json& p)
                 }
             }
             const std::string patched = t.substr(0, s) + prefix + kHole + closers + (end ? "" : ";") + t.substr(e);
-            sppc::AnalyzeResult facts = sppc::analyze(patched, translate_options(d), session_);
+            hotc::AnalyzeResult facts = hotc::analyze(patched, translate_options(d), session_);
             const Pos hole = {cur.line, static_cast<int>(s - d.text.starts[static_cast<size_t>(cur.line)])};
             const auto g =
                 facts.cpp.empty() ? std::nullopt : facts.source_map.map_to_generated(hole.line + 1, hole.col + 1);
@@ -1331,11 +1331,11 @@ json Server::on_completion(const Doc& d, const json& p)
                 continue;
             // A name from a namespace comes as "std::string": the script form is "std.string".
             std::string insert = it.value("insertText", name);
-            insert = insert.find("::") != std::string::npos ? sppc::rewrite_generated_names(insert) : name;
-            json item = {{"label", sppc::rewrite_generated_names(label)}, {"kind", kind}, {"insertText", insert},
+            insert = insert.find("::") != std::string::npos ? hotc::rewrite_generated_names(insert) : name;
+            json item = {{"label", hotc::rewrite_generated_names(label)}, {"kind", kind}, {"insertText", insert},
                 {"filterText", name}, {"sortText", "2" + it.value("sortText", name)}};
             if (it.contains("detail"))
-                item["detail"] = sppc::rewrite_generated_names(it.value("detail", std::string()));
+                item["detail"] = hotc::rewrite_generated_names(it.value("detail", std::string()));
             items.push_back(std::move(item));
         }
     }
@@ -1365,9 +1365,9 @@ json Server::on_hover(const Doc& d, const json& p)
         return nullptr;
     json c = (*r)["contents"];
     if (c.is_object() && c.contains("value"))
-        c["value"] = sppc::rewrite_generated_names(c.value("value", std::string()));
+        c["value"] = hotc::rewrite_generated_names(c.value("value", std::string()));
     else if (c.is_string())
-        c = sppc::rewrite_generated_names(c.get<std::string>());
+        c = hotc::rewrite_generated_names(c.get<std::string>());
     json out = {{"contents", c}};
     if (r->contains("range"))
     {
@@ -1443,12 +1443,12 @@ json Server::on_signature_help(const Doc& d, const json& p)
     json out = *r;
     for (json& sig : out["signatures"])
     {
-        sig["label"] = sppc::rewrite_generated_names(sig.value("label", std::string()));
+        sig["label"] = hotc::rewrite_generated_names(sig.value("label", std::string()));
         sig.erase("activeParameter");
         if (sig.contains("parameters"))
             for (json& prm : sig["parameters"])
                 if (prm.contains("label") && prm["label"].is_string())
-                    prm["label"] = sppc::rewrite_generated_names(prm["label"].get<std::string>());
+                    prm["label"] = hotc::rewrite_generated_names(prm["label"].get<std::string>());
     }
     out["activeParameter"] = commas;
     return out;
@@ -1679,7 +1679,7 @@ std::set<Pos> Server::class_places(const Doc& d, const std::string& name) const
 bool Server::is_script_class(const Doc& d, const std::string& name) const
 {
     return std::any_of(
-        d.facts.classes.begin(), d.facts.classes.end(), [&](const sppc::AnalyzedClass& c) { return c.name == name; });
+        d.facts.classes.begin(), d.facts.classes.end(), [&](const hotc::AnalyzedClass& c) { return c.name == name; });
 }
 
 std::variant<std::set<Pos>, std::string> Server::symbol_places(
@@ -1688,7 +1688,7 @@ std::variant<std::set<Pos>, std::string> Server::symbol_places(
     if (is_script_class(d, old_name))
     {
         if (decl)
-            for (const sppc::AnalyzedClass& c : d.facts.classes)
+            for (const hotc::AnalyzedClass& c : d.facts.classes)
                 if (c.name == old_name)
                     *decl = class_name_pos(d, c);
         return class_places(d, old_name);
@@ -1757,8 +1757,8 @@ std::optional<SymbolKey> Server::symbol_key(const Doc& d, Pos decl, const std::s
     {
         // The declaration is in another script. Take the member of this script, if it is the only one.
         std::optional<SymbolKey> found;
-        for (const sppc::AnalyzedClass& c : d.facts.classes)
-            for (const sppc::AnalyzedMember& m : c.members)
+        for (const hotc::AnalyzedClass& c : d.facts.classes)
+            for (const hotc::AnalyzedMember& m : c.members)
                 if (m.name == name)
                 {
                     if (found)
@@ -1767,11 +1767,11 @@ std::optional<SymbolKey> Server::symbol_key(const Doc& d, Pos decl, const std::s
                 }
         return found;
     }
-    for (const sppc::AnalyzedClass& c : d.facts.classes)
+    for (const hotc::AnalyzedClass& c : d.facts.classes)
     {
         if (c.name == name && c.begin.line - 1 == decl.line)
             return SymbolKey{name, ""};
-        for (const sppc::AnalyzedMember& m : c.members)
+        for (const hotc::AnalyzedMember& m : c.members)
             if (m.name == name && m.begin.line - 1 == decl.line)
                 return SymbolKey{c.name, name};
     }
@@ -1790,7 +1790,7 @@ std::optional<SymbolKey> Server::key_at(const Doc& d, Pos cur)
     return symbol_key(d, decl, name);
 }
 
-Pos Server::class_name_pos(const Doc& d, const sppc::AnalyzedClass& c) const
+Pos Server::class_name_pos(const Doc& d, const hotc::AnalyzedClass& c) const
 {
     // The begin of a class is at the keyword "class". The name comes after it on the line.
     const Pos b = {c.begin.line - 1, c.begin.col - 1};
@@ -1805,13 +1805,13 @@ Pos Server::class_name_pos(const Doc& d, const sppc::AnalyzedClass& c) const
 
 std::optional<Pos> Server::key_position(const Doc& d, const SymbolKey& key) const
 {
-    for (const sppc::AnalyzedClass& c : d.facts.classes)
+    for (const hotc::AnalyzedClass& c : d.facts.classes)
     {
         if (c.name != key.cls)
             continue;
         if (key.member.empty())
             return class_name_pos(d, c);
-        for (const sppc::AnalyzedMember& m : c.members)
+        for (const hotc::AnalyzedMember& m : c.members)
             if (m.name == key.member)
                 return Pos{m.begin.line - 1, m.begin.col - 1};
     }
@@ -1878,7 +1878,7 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
         bool analyzed = false;
         auto analyze_tmp = [&]
         {
-            tmp.facts = sppc::analyze(tmp.text.s, translate_options(tmp), session_);
+            tmp.facts = hotc::analyze(tmp.text.s, translate_options(tmp), session_);
             analyzed = true;
             ++closed_analyses_;
         };
@@ -1925,7 +1925,7 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
                 if (!at || tmp.facts.cpp.empty())
                     continue;
                 tmp.gen = Text(tmp.facts.cpp);
-                tmp.map = std::make_shared<const sppc::SourceMap>(tmp.facts.source_map);
+                tmp.map = std::make_shared<const hotc::SourceMap>(tmp.facts.source_map);
                 tmp.gen_script = tmp.text;
                 tmp.gen_version = 1;
                 send_generated(tmp, tmp.facts.cpp);
@@ -1951,7 +1951,7 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
 IndexShard Server::shard_of_doc(const Doc& d) const
 {
     IndexShard shard;
-    for (const sppc::AnalyzedClass& c : d.facts.classes)
+    for (const hotc::AnalyzedClass& c : d.facts.classes)
     {
         IndexClass ic;
         ic.name = c.name;
@@ -1959,7 +1959,7 @@ IndexShard Server::shard_of_doc(const Doc& d) const
         ic.begin = {b.line, b.col};
         for (const Pos& q : class_places(d, c.name))
             ic.refs.push_back({q.line, q.col});
-        for (const sppc::AnalyzedMember& m : c.members)
+        for (const hotc::AnalyzedMember& m : c.members)
             ic.members.push_back({m.name, m.kind, {m.begin.line - 1, m.begin.col - 1}, std::nullopt});
         shard.classes.push_back(std::move(ic));
     }
@@ -2000,12 +2000,12 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
 json Server::on_document_symbol(const Doc& d)
 {
     json out = json::array();
-    for (const sppc::AnalyzedClass& c : d.facts.classes)
+    for (const hotc::AnalyzedClass& c : d.facts.classes)
     {
         const Pos b = {c.begin.line - 1, c.begin.col - 1};
         Pos e = {b.line, b.col + static_cast<int>(c.name.size())};
         json children = json::array();
-        for (const sppc::AnalyzedMember& m : c.members)
+        for (const hotc::AnalyzedMember& m : c.members)
         {
             int kind = 6; // Method
             if (m.kind == "field")
@@ -2049,7 +2049,7 @@ json Server::on_semantic_tokens(const Doc& d)
     return {{"data", data}};
 }
 
-// A place in a generated file on disk (from "sppc --compile-commands") as a script location.
+// A place in a generated file on disk (from "hotc --compile-commands") as a script location.
 // The "#line" directives give the script and the line.
 json disk_to_script(const std::string& cpp_path, int line)
 {
@@ -2077,7 +2077,7 @@ json Server::script_member_location(const std::string& uri, const std::string& s
     if (uri.empty() || dot == std::string::npos)
         return nullptr;
     const std::string cls = script_name.substr(0, dot), member = script_name.substr(dot + 1);
-    const sppc::AnalyzeResult* facts = nullptr;
+    const hotc::AnalyzeResult* facts = nullptr;
     Text text;
     if (const auto it = docs_.find(uri); it != docs_.end())
     {
@@ -2095,16 +2095,16 @@ json Server::script_member_location(const std::string& uri, const std::string& s
         {
             Doc tmp;
             tmp.path = path;
-            cached = {*t, sppc::analyze(*t, translate_options(tmp), session_)};
+            cached = {*t, hotc::analyze(*t, translate_options(tmp), session_)};
         }
         facts = &cached.second;
         text = Text(*t);
     }
-    for (const sppc::AnalyzedClass& c : facts->classes)
+    for (const hotc::AnalyzedClass& c : facts->classes)
     {
         if (c.name != cls)
             continue;
-        for (const sppc::AnalyzedMember& m : c.members)
+        for (const hotc::AnalyzedMember& m : c.members)
         {
             if (m.name != member)
                 continue;
@@ -2128,8 +2128,8 @@ json Server::on_workspace_symbol(const json& p)
         const std::string uri = loc.value("uri", std::string());
         const std::string name = s.value("name", std::string());
         const std::string container = s.value("containerName", std::string());
-        const std::string script_name = sppc::rewrite_generated_names(name);
-        const std::string script_container = sppc::rewrite_generated_names(container);
+        const std::string script_name = hotc::rewrite_generated_names(name);
+        const std::string script_container = hotc::rewrite_generated_names(container);
         // A symbol of a generated file is a script symbol when its name, or the name of its
         // container (a state struct), is a generated name. Else it is a part of the plumbing.
         const bool script = script_name != name || (script_container != container && name.compare(0, 5, "SLOT_") != 0);
@@ -2146,7 +2146,7 @@ json Server::on_workspace_symbol(const json& p)
             // A generated file of the workspace from the background index.
             const std::string path = uri_to_path(uri);
             const auto text = read_file(path);
-            generated = text && text->find("// Generated by sppc") == 0;
+            generated = text && text->find("// Generated by hotc") == 0;
             if (generated && script)
                 mapped = disk_to_script(path, loc.value("/range/start/line"_json_pointer, 0));
         }
@@ -2280,11 +2280,11 @@ void Server::handle(const json& msg)
         return; // initialized, $/cancelRequest and other notifications
     if (method == "workspace/symbol")
         return reply(id, on_workspace_symbol(p));
-    if (method == "spp/indexStats")
+    if (method == "hot/indexStats")
         return reply(id,
             {{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"stored", index_.stores()},
                 {"dir", index_.dir()}, {"completions", completion_translations_}});
-    if (method == "spp/toScript")
+    if (method == "hot/toScript")
         return reply(id, on_to_script(p));
 
     static const std::set<std::string> doc_methods = {"textDocument/completion", "textDocument/hover",
@@ -2297,7 +2297,7 @@ void Server::handle(const json& msg)
     if (!d)
         return reply_error(id, kInvalidParams, "the document is not open");
     if (d->cpp)
-        return reply(id, nullptr); // a ".cpp" document: clangd owns the features, spp-ls only publishes errors
+        return reply(id, nullptr); // a ".cpp" document: clangd owns the features, hot-ls only publishes errors
     if (method == "textDocument/completion")
         return reply(id, on_completion(*d, p));
     if (method == "textDocument/hover")
@@ -2392,13 +2392,13 @@ int run_server(int in_fd, int out_fd, const ServerOptions& options)
 
 const char* usage_text()
 {
-    return "usage: spp-ls [--stdio] [--clangd path] [-I dir]... [--resource-dir dir] [--cxxflag flag]...\n"
+    return "usage: hot-ls [--stdio] [--clangd path] [-I dir]... [--resource-dir dir] [--cxxflag flag]...\n"
            "              [--compile-commands-dir dir] [--index-dir dir]\n"
            "              [--hosts-dir dir] [--clangd-log file]\n"
            "  --clangd path      the clangd binary (default: clangd from PATH). \"\" turns clangd off.\n"
            "  -I dir             an include dir for the script imports and for clangd.\n"
            "  --compile-commands-dir dir\n"
-           "                     the directory of compile_commands.json from sppc --compile-commands.\n"
+           "                     the directory of compile_commands.json from hotc --compile-commands.\n"
            "                     clangd runs its background index on it.\n"
            "  --index-dir dir    the directory of the saved symbol index (default:\n"
            "                     .cache/hot/index in the first workspace folder).\n"

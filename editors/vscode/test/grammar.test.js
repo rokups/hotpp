@@ -36,7 +36,7 @@ const grammar = readJson(grammarFile);
 if (!grammar) process.exit(1);
 if (pkg) {
   const c = pkg.contributes || {};
-  if (!(c.languages || []).some((l) => l.id === 'spp' && l.extensions.includes('.hot'))) fail('language spp');
+  if (!(c.languages || []).some((l) => l.id === 'hot' && l.extensions.includes('.hot'))) fail('language hot');
   if (!(c.grammars || []).some((g) => g.scopeName === grammar.scopeName)) fail('grammar scope');
   if (!c.configuration || !c.configuration.properties['spp.server.path']) fail('setting spp.server.path');
 }

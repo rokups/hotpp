@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-using namespace sppc;
+using namespace hotc;
 using namespace stmt_test;
 
 TEST(StatementParseError, Errors)

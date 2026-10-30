@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-namespace sppc
+namespace hotc
 {
 
 // Maps a byte offset to a 1-based line and a 1-based byte column.
@@ -143,7 +143,7 @@ struct Diagnostics
             }
             else
             {
-                out += "sppc"; // no script line: the text starts with the tool name
+                out += "hotc"; // no script line: the text starts with the tool name
             }
             out += ": " + d.severity + ": " + d.msg + "\n";
         }
@@ -151,4 +151,4 @@ struct Diagnostics
     }
 };
 
-} // namespace sppc
+} // namespace hotc

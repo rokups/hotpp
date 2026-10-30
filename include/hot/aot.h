@@ -1,7 +1,7 @@
 // AOT compilation (design M7). The generated C++ of all scripts is part of the game binary.
 // There is no loader, no reload, no JIT and no Clang at run time.
 //
-// "sppc --aot" writes the C++ of each script and one registration file. The registration
+// "hotc --aot" writes the C++ of each script and one registration file. The registration
 // file defines the constant table hot::aot_table. The table lists the register function
 // of each script. A script registers its classes through the same Registry calls as a
 // generation module. The class records, the slot tables and the factories are constant data
@@ -25,7 +25,7 @@ namespace hot
 struct AotScript
 {
     const char* name; // the file name of the script without the extension
-    void (*register_fn)(Registry&); // the register function that sppc generated
+    void (*register_fn)(Registry&); // the register function that hotc generated
 };
 
 struct AotTable
@@ -34,7 +34,7 @@ struct AotTable
     size_t count;
 };
 
-// The table that the registration file of "sppc --aot" defines. A program that does not
+// The table that the registration file of "hotc --aot" defines. A program that does not
 // use AOT scripts does not refer to it.
 extern const AotTable aot_table;
 

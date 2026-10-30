@@ -1,6 +1,6 @@
 // Translation tests of script imports (S20a, design 4.5 and 4.10): "using "parent.hot";" adds the
 // classes of another script module to the generation. The child can derive from them.
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -26,10 +26,10 @@ const char* kChild =
     "    override int Power() { return 2; }\n"
     "}\n";
 
-sppc::TranslateOptions options(const TempDir& dir, const std::string& parent)
+hotc::TranslateOptions options(const TempDir& dir, const std::string& parent)
 {
     write_file(dir.path() / "w.h", kHeaderV1);
-    sppc::TranslateOptions o = temp_options(dir, kChild);
+    hotc::TranslateOptions o = temp_options(dir, kChild);
     o.modules.emplace_back("base.hot", parent);
     return o;
 }
@@ -38,7 +38,7 @@ sppc::TranslateOptions options(const TempDir& dir, const std::string& parent)
 TEST(ScriptImportTranslation, ChildDerivesFromAClassOfAnotherModule)
 {
     TempDir dir;
-    const sppc::TranslateResult r = sppc::translate(options(dir, kParent));
+    const hotc::TranslateResult r = hotc::translate(options(dir, kParent));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("struct Kid_Shell"), std::string::npos);
     EXPECT_NE(r.cpp.find("&Base_record"), std::string::npos) << "the child record points to the parent record";
@@ -52,7 +52,7 @@ TEST(ScriptImportTranslation, ChildDerivesFromAClassOfAnotherModule)
 TEST(ScriptImportTranslation, SourceMapHasSegmentsOfTheImportedScript)
 {
     TempDir dir;
-    const sppc::TranslateResult r = sppc::translate(options(dir, kParent));
+    const hotc::TranslateResult r = hotc::translate(options(dir, kParent));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const std::string child = kChild, parent = kParent;
     ASSERT_EQ(r.source_map.files().size(), 1u);
@@ -61,7 +61,7 @@ TEST(ScriptImportTranslation, SourceMapHasSegmentsOfTheImportedScript)
     ASSERT_EQ(r.imports.size(), 1u);
     EXPECT_EQ(r.imports[0].first, "base.hot");
     size_t imported = 0, main = 0;
-    for (const sppc::SourceSegment& s : r.source_map.segments())
+    for (const hotc::SourceSegment& s : r.source_map.segments())
     {
         if (s.file == 0)
         {
@@ -84,7 +84,7 @@ TEST(ScriptImportTranslation, SourceMapHasSegmentsOfTheImportedScript)
 TEST(ScriptImportTranslation, LocateGivesTheImportedFileLineAndColumn)
 {
     TempDir dir;
-    const sppc::TranslateResult r = sppc::translate(options(dir, kParent));
+    const hotc::TranslateResult r = hotc::translate(options(dir, kParent));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // kParent line 4: "    virtual int Power() { return 1; }". The name "Power" is at column 17.
     const auto gen = r.source_map.map_to_generated(1, 4, 17);
@@ -111,10 +111,10 @@ TEST(ScriptImportTranslation, TranslatorErrorHasRealFileLineColumnAndSnippet)
 {
     TempDir dir;
     const std::string bad = "using \"w.h\";\nclass Base : Widget {\n    int hp = 1;\n    int hp = 2;\n}\n";
-    const sppc::TranslateResult r = sppc::translate(options(dir, bad));
+    const hotc::TranslateResult r = hotc::translate(options(dir, bad));
     ASSERT_FALSE(r.ok);
     ASSERT_EQ(r.imports.size(), 1u) << "the imports are there also when the translation fails";
-    const std::string out = sppc::rewrite_translator_diagnostic(r.diagnostics, sppc::script_texts("t.hot", kChild, r));
+    const std::string out = hotc::rewrite_translator_diagnostic(r.diagnostics, hotc::script_texts("t.hot", kChild, r));
     EXPECT_NE(out.find("base.hot:4:9: error:"), std::string::npos) << out;
     EXPECT_NE(out.find("    4 |     int hp = 2;\n"), std::string::npos) << out;
 }
@@ -123,7 +123,7 @@ TEST(ScriptImportTranslation, TranslatorErrorHasRealFileLineColumnAndSnippet)
 TEST(ScriptImportTranslation, CompilerErrorHasRealFileLineColumnAndSnippet)
 {
     TempDir dir;
-    const sppc::TranslateResult r = sppc::translate(options(dir, kParent));
+    const hotc::TranslateResult r = hotc::translate(options(dir, kParent));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // The physical line and column of "return 1" in the generated text.
     const size_t at = r.cpp.find("return 1");
@@ -137,7 +137,7 @@ TEST(ScriptImportTranslation, CompilerErrorHasRealFileLineColumnAndSnippet)
     const std::string clang =
         "base.hot:4:" + std::to_string(col) + ": error: expected ';'\n    4 | " + shown + "\n      | ^\n";
     const std::string out =
-        sppc::rewrite_diagnostic(clang, {{"t.hot", kChild}}, {{"/w/t.hot.cpp", r.cpp}}, &r.source_map);
+        hotc::rewrite_diagnostic(clang, {{"t.hot", kChild}}, {{"/w/t.hot.cpp", r.cpp}}, &r.source_map);
     // "    virtual int Power() { return 1; }": "return" is at column 27.
     EXPECT_EQ(out, "base.hot:4:27: error: expected ';'\n    4 |     virtual int Power() { return 1; }\n");
 }
@@ -147,7 +147,7 @@ TEST(ScriptImportTranslation, ErrorInTheImportNamesItsFile)
 {
     TempDir dir;
     const std::string bad = "using \"w.h\";\nclass Base : Widget {\n    int hp = 1;\n    int hp = 2;\n}\n";
-    const sppc::TranslateResult r = sppc::translate(options(dir, bad));
+    const hotc::TranslateResult r = hotc::translate(options(dir, bad));
     ASSERT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("base.hot:4:"), std::string::npos) << r.diagnostics;
 }
@@ -158,9 +158,9 @@ TEST(ScriptImportTranslation, ImportFromDisk)
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
     write_file(dir.path() / "base.hot", kParent);
-    sppc::TranslateOptions o = temp_options(dir, kChild);
+    hotc::TranslateOptions o = temp_options(dir, kChild);
     o.script_name = (dir.path() / "t.hot").string();
-    const sppc::TranslateResult r = sppc::translate(o);
+    const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find((dir.path() / "base.hot").string() + "\""), std::string::npos);
 }
@@ -169,14 +169,14 @@ TEST(ScriptImportTranslation, ImportFromDisk)
 TEST(ScriptImportTranslation, ImportErrors)
 {
     TempDir dir;
-    sppc::TranslateOptions o = options(dir, kParent);
+    hotc::TranslateOptions o = options(dir, kParent);
     o.modules.clear();
-    EXPECT_NE(sppc::translate(o).diagnostics.find("the script 'base.hot' is not found"), std::string::npos);
-    const sppc::TranslateResult v = sppc::translate(options(dir, std::string(kParent) + "int count = 0;\n"));
+    EXPECT_NE(hotc::translate(o).diagnostics.find("the script 'base.hot' is not found"), std::string::npos);
+    const hotc::TranslateResult v = hotc::translate(options(dir, std::string(kParent) + "int count = 0;\n"));
     EXPECT_NE(v.diagnostics.find("an imported script cannot have module variables"), std::string::npos)
         << v.diagnostics;
-    const sppc::TranslateResult twice =
-        sppc::translate(options(dir, std::string(kParent) + "class Kid : Widget { }\n"));
+    const hotc::TranslateResult twice =
+        hotc::translate(options(dir, std::string(kParent) + "class Kid : Widget { }\n"));
     EXPECT_NE(twice.diagnostics.find("class 'Kid' is declared in 'base.hot' and in 't.hot'"), std::string::npos)
         << twice.diagnostics;
 }
@@ -185,10 +185,10 @@ TEST(ScriptImportTranslation, ImportErrors)
 TEST(ScriptImportTranslation, NestedImports)
 {
     TempDir dir;
-    sppc::TranslateOptions o = options(dir, "using \"root.hot\";\nclass Base : Root { }\n");
+    hotc::TranslateOptions o = options(dir, "using \"root.hot\";\nclass Base : Root { }\n");
     o.modules.emplace_back("root.hot",
         "using \"w.h\";\nusing \"base.hot\";\nclass Root : Widget {\n    virtual int Power() { return 0; }\n}\n");
-    const sppc::TranslateResult r = sppc::translate(o);
+    const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_LT(r.cpp.find("struct Root_Shell"), r.cpp.find("struct Base_Shell"));
     EXPECT_LT(r.cpp.find("struct Base_Shell"), r.cpp.find("struct Kid_Shell"));

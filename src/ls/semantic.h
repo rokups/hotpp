@@ -1,7 +1,7 @@
 // The script facts that the server makes without clangd: semantic tokens and text helpers.
 #pragma once
 
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 
 #include <map>
 #include <string>
@@ -22,7 +22,7 @@ struct SemanticToken
 
 // The tokens of a script: keywords, types, classes, methods, properties, numbers, strings and
 // comments. The names come from the facts of analyze(). A token never spans two lines.
-std::vector<SemanticToken> script_tokens(const std::string& text, const sppc::AnalyzeResult& facts);
+std::vector<SemanticToken> script_tokens(const std::string& text, const hotc::AnalyzeResult& facts);
 
 // The keywords of the script, and the names of its builtin types (with the aliases).
 const std::vector<std::string>& script_keywords();

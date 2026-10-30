@@ -1,7 +1,7 @@
-# Backend tests: scripts that sppc compiled ahead of time, the tool sppc, and the JIT backend.
+# Backend tests: scripts that hotc compiled ahead of time, the tool hotc, and the JIT backend.
 set(BACKEND_TEST_SOURCES
     precompiled_script_tests.cpp
-    sppc_tool_tests.cpp
+    hotc_tool_tests.cpp
     diagnostic_mistake_tests.cpp
     debug_info_tests.cpp
     generated_name_compile_tests.cpp)
@@ -15,11 +15,11 @@ add_executable(integration_backend_tests ${BACKEND_TEST_SOURCES}
 target_include_directories(integration_backend_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
 target_link_libraries(integration_backend_tests PRIVATE hot_backend hot_clang_backend GTest::gtest_main)
 set_target_properties(integration_backend_tests PROPERTIES ENABLE_EXPORTS ON)
-add_dependencies(integration_backend_tests pre_gen1 pre_gen2 pre_native1 pre_native2 pre_handle1 pre_handle2 pre_handle3 sppc)
+add_dependencies(integration_backend_tests pre_gen1 pre_gen2 pre_native1 pre_native2 pre_handle1 pre_handle2 pre_handle3 hotc)
 target_compile_definitions(integration_backend_tests PRIVATE
     HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
     HOT_SCRATCH_DIR="${HOT_SCRATCH_DIR}/tests"
-    SPPC_PATH="$<TARGET_FILE:sppc>"
+    HOTC_PATH="$<TARGET_FILE:hotc>"
     HOT_CXX="${CMAKE_CXX_COMPILER}"
     PRE_V1_SO="${CMAKE_BINARY_DIR}/hot_scripts/player_v1.g1.so"
     PRE_V2_SO="${CMAKE_BINARY_DIR}/hot_scripts/player_v2.g2.so"

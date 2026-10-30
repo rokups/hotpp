@@ -4,9 +4,9 @@
 const assert = require('assert');
 const { expandWorkspaceFolder, expandAll } = require('../src/expand.js');
 
-assert.strictEqual(expandWorkspaceFolder('${workspaceFolder}/spp-ls', '/w'), '/w/spp-ls');
+assert.strictEqual(expandWorkspaceFolder('${workspaceFolder}/hot-ls', '/w'), '/w/hot-ls');
 assert.strictEqual(expandWorkspaceFolder('a${workspaceFolder}b${workspaceFolder}', '/w'), 'a/wb/w');
-assert.strictEqual(expandWorkspaceFolder('spp-ls', '/w'), 'spp-ls');
+assert.strictEqual(expandWorkspaceFolder('hot-ls', '/w'), 'hot-ls');
 // No folder: the text stays.
 assert.strictEqual(expandWorkspaceFolder('${workspaceFolder}/x', undefined), '${workspaceFolder}/x');
 // A value that is not a string stays.

@@ -1,5 +1,5 @@
 // Generation 1 of a script class with a constructor member initializer list.
-// A normal C++ build compiles this file. The tool sppc also translates it.
+// A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
 
 #include <string>

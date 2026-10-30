@@ -3,7 +3,7 @@
 // old value. Player has a new field. The two classes Unit change in different ways.
 // The namespace game has a module variable, a function, a class and a static data member. The
 // namespace game::ai has a module variable and a class that derives from a class of game.
-// A normal C++ build compiles this file. The tool sppc also translates it.
+// A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
 #include "Math.h"
 

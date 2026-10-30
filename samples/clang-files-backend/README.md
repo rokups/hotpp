@@ -87,11 +87,11 @@ ctest --test-dir build --output-on-failure
 ```
 
 To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample calls
-`add_subdirectory` for `HOT_ROOT` only when the target `sppc` does not exist yet.
+`add_subdirectory` for `HOT_ROOT` only when the target `hotc` does not exist yet.
 
 ## Link
 
-- The program links `hot_clang_backend`. It brings `hot_runtime` and `sppc_lib`.
+- The program links `hot_clang_backend`. It brings `hot_runtime` and `hotc_lib`.
 - `ENABLE_EXPORTS` is ON. The generation modules resolve host and runtime symbols from the
   executable.
 

@@ -11,7 +11,7 @@
 #include <variant>
 #include <vector>
 
-using namespace sppc;
+using namespace hotc;
 using namespace expr_test;
 
 TEST(ExpressionParse, Precedence)

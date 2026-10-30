@@ -84,7 +84,7 @@ public:
     void open(const std::string& uri, const std::string& text)
     {
         notify("textDocument/didOpen",
-            {{"textDocument", {{"uri", uri}, {"languageId", "spp"}, {"version", 1}, {"text", text}}}});
+            {{"textDocument", {{"uri", uri}, {"languageId", "hot"}, {"version", 1}, {"text", text}}}});
     }
     void change(const std::string& uri, int version, const std::string& text)
     {

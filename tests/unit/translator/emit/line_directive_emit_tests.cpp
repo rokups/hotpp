@@ -6,7 +6,7 @@
 
 #include <string>
 
-using namespace sppc::ast;
+using namespace hotc::ast;
 using namespace emit_test;
 
 namespace
@@ -20,7 +20,7 @@ const char* kText = "a\nb\nc\nd\n";
 
 TEST(LineDirectiveEmit, LineDirectiveOnLineChange)
 {
-    sppc::LineMap map(kText);
+    hotc::LineMap map(kText);
     // line 2: std::printf("x", dt,
     // line 3:     self->p, hp);
     ExprP e = call(name({"std", "printf"}, 2), list(str("\"x\""), id("dt"), arrow(id("self", 4), "p"), id("hp")));
@@ -34,7 +34,7 @@ TEST(LineDirectiveEmit, LineDirectiveOnLineChange)
 
 TEST(LineDirectiveEmit, FinallyLineDirectives)
 {
-    sppc::LineMap map(kText);
+    hotc::LineMap map(kText);
     // line 2: try { f;
     // line 3: } finally {
     // line 4: g; }
@@ -59,7 +59,7 @@ TEST(LineDirectiveEmit, FinallyLineDirectives)
 
 TEST(LineDirectiveEmit, OneLineDirectivePerLine)
 {
-    sppc::LineMap map(kText);
+    hotc::LineMap map(kText);
     // line 2: if (c)
     // line 3: { x = 1;
     // line 4: }
@@ -83,14 +83,14 @@ TEST(LineDirectiveEmit, OneLineDirectivePerLine)
 
 TEST(LineDirectiveEmit, BodyKeepsLineAndDepth)
 {
-    sppc::LineMap map(kText);
+    hotc::LineMap map(kText);
     // The old emitter case: statements of a function body at depth 1 and a lambda block.
     LambdaExpr l;
     l.pos = 2;
     l.body.pos = 2;
     l.body.end_pos = 6;
     l.body.stmts = slist(es(bin("=", id("a", 4), num("1", 4))));
-    sppc::ast::Emitter e(map, "t.hot");
+    hotc::ast::Emitter e(map, "t.hot");
     emit_stmts(slist(es(call(id("f", 2), list(make_expr(std::move(l)))))), e, 1);
     e.finish();
     EXPECT_EQ(e.text(),

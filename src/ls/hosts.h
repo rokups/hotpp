@@ -1,4 +1,4 @@
-// The host files of spp-ls (step 2a).
+// The host files of hot-ls (step 2a).
 //
 // A host is a program that runs scripts. The CMake function hot_script_host writes one JSON
 // file for each host: "<hosts-dir>/<name>.json". The file tells the compiler, the include

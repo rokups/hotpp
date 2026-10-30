@@ -1,5 +1,5 @@
 // Tests for the names of the generated code, the expression body of a lambda and the C style cast.
-#include "hot/sppc_lib.h"
+#include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -11,7 +11,7 @@ using namespace translator_test;
 namespace
 {
 
-sppc::TranslateResult translate_widget(const std::string& members)
+hotc::TranslateResult translate_widget(const std::string& members)
 {
     static TempDir dir;
     static bool header = false;
@@ -20,7 +20,7 @@ sppc::TranslateResult translate_widget(const std::string& members)
         write_file(dir.path() / "w.h", kHeaderV1);
         header = true;
     }
-    return sppc::translate(
+    return hotc::translate(
         temp_options(dir, "using \"w.h\";\nclass Foo : Widget {\n    int n = 0;\n" + members + "}\n"));
 }
 
@@ -28,7 +28,7 @@ sppc::TranslateResult translate_widget(const std::string& members)
 
 TEST(GeneratedNameTranslation, GeneratedNamesHaveTheDoubleUnderscorePrefix)
 {
-    const sppc::TranslateResult r = translate_widget("    void f(int v) { n = v; }\n");
+    const hotc::TranslateResult r = translate_widget("    void f(int v) { n = v; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("Foo_Shell* __self"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("auto* __st = "), std::string::npos) << r.cpp;
@@ -39,7 +39,7 @@ TEST(GeneratedNameTranslation, GeneratedNamesHaveTheDoubleUnderscorePrefix)
 
 TEST(GeneratedNameTranslation, NamesOfTheOldGeneratedCodeAreLegal)
 {
-    const sppc::TranslateResult r = translate_widget(
+    const hotc::TranslateResult r = translate_widget(
         "    int f(int a, int st, int self) { int b = a + st + self; return b + this.n; }\n"
         "    Foo(int a) { this.n = a; }\n"
         "    void g() { int a = 1; int st = 2; int self = 3; this.n = a + st + self; }\n");
@@ -50,17 +50,17 @@ TEST(GeneratedNameTranslation, NamesOfTheOldGeneratedCodeAreLegal)
 
 TEST(GeneratedNameTranslation, DoubleUnderscoreNamesStayReserved)
 {
-    const sppc::TranslateResult r = translate_widget("    void f(int __a) { }\n");
+    const hotc::TranslateResult r = translate_widget("    void f(int __a) { }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("parameter name '__a' is reserved"), std::string::npos) << r.diagnostics;
-    const sppc::TranslateResult c = translate_widget("    Foo(int __self) { }\n");
+    const hotc::TranslateResult c = translate_widget("    Foo(int __self) { }\n");
     EXPECT_FALSE(c.ok);
     EXPECT_NE(c.diagnostics.find("parameter name '__self' is reserved"), std::string::npos) << c.diagnostics;
 }
 
 TEST(GeneratedNameTranslation, LambdaExpressionBodyReturnsTheValue)
 {
-    const sppc::TranslateResult r = translate_widget(
+    const hotc::TranslateResult r = translate_widget(
         "    void f() {\n"
         "        var twice = (int x) => x * 2;\n"
         "        var alive = () => this.n > 0;\n"
@@ -73,7 +73,7 @@ TEST(GeneratedNameTranslation, LambdaExpressionBodyReturnsTheValue)
 
 TEST(GeneratedNameTranslation, LambdaExpressionBodyAsAnArgument)
 {
-    const sppc::TranslateResult r = translate_widget(
+    const hotc::TranslateResult r = translate_widget(
         "    int apply(int v) { return v; }\n"
         "    void f() { this.apply(((int x) => x + 1)(2)); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -82,7 +82,7 @@ TEST(GeneratedNameTranslation, LambdaExpressionBodyAsAnArgument)
 
 TEST(GeneratedNameTranslation, CStyleCastOfABuiltinType)
 {
-    const sppc::TranslateResult r = translate_widget(
+    const hotc::TranslateResult r = translate_widget(
         "    void f(float v, void* q) {\n"
         "        int i = (int)v;\n"
         "        float w = (float)i * 2.0;\n"
@@ -100,7 +100,7 @@ TEST(GeneratedNameTranslation, CStyleCastOfABuiltinType)
 
 TEST(GeneratedNameTranslation, CastToANameWithoutAMarkIsAnError)
 {
-    const sppc::TranslateResult r = translate_widget("    void f(float v) { var i = (Foo)v; }\n");
+    const hotc::TranslateResult r = translate_widget("    void f(float v) { var i = (Foo)v; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("expected end of expression"), std::string::npos) << r.diagnostics;
 }

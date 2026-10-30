@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-using namespace sppc;
+using namespace hotc;
 using namespace script_test;
 
 TEST(PropertyParse, Properties)

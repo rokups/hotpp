@@ -555,7 +555,7 @@ ReloadResult Loader::request_reload(LoadResult built)
 {
     // The host checked the LoadResult of the backend itself, then it calls this overload. A
     // backend failure becomes a result here. So a host needs no own mapping of the reason: a
-    // SlotsRemoved failure (a class lost slots, see sppc_lib.h) is a FullReloadRequired result.
+    // SlotsRemoved failure (a class lost slots, see hotc_lib.h) is a FullReloadRequired result.
     if (!built.module)
     {
         const ReloadReason reason = built.reason == ReloadReason::None ? ReloadReason::CompileError : built.reason;

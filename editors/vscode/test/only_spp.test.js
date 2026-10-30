@@ -1,4 +1,4 @@
-// Test of the middleware that keeps the features of the server on the "spp" documents
+// Test of the middleware that keeps the features of the server on the "hot" documents
 // (src/only_spp.js). It needs node only.
 'use strict';
 
@@ -19,7 +19,7 @@ assert.strictEqual(m.provideDocumentSemanticTokens({ languageId: 'cpp' }, 'tok',
 assert.strictEqual(m.provideDocumentFormattingEdits({ languageId: 'cpp' }, 'opt', 'tok', next), undefined);
 assert.strictEqual(calls, 0);
 
-// A "spp" document goes to the server with the same arguments, without "next".
-assert.deepStrictEqual(m.provideHover({ languageId: 'spp' }, 'pos', 'tok', next), [{ languageId: 'spp' }, 'pos', 'tok']);
+// A "hot" document goes to the server with the same arguments, without "next".
+assert.deepStrictEqual(m.provideHover({ languageId: 'hot' }, 'pos', 'tok', next), [{ languageId: 'hot' }, 'pos', 'tok']);
 assert.strictEqual(calls, 1);
 console.log('only_spp.test.js: ok');
