@@ -50,6 +50,30 @@ The program prints three lines, one for each call of `Tick`. The first configure
 
 For a host that loads scripts, change `MODE` to `HOT_RELOAD` (the host compiles the script at run time) or to `PRECOMPILED` (the build makes a script library and the host loads it). The call is the same. See the section `hot_add_host`. The cases are in [Embedding](embedding.html).
 
+## Quick start with an installed SDK
+
+You can also use Hot++ as an installed SDK. You do not need the Hot++ source tree. See the section "Install the SDK" for how to make the SDK. The `CMakeLists.txt` of the program is shorter:
+
+```cmake
+cmake_minimum_required(VERSION 3.20)
+project(myapp CXX)
+
+find_package(Hot REQUIRED)
+
+add_executable(myapp main.cpp)
+hot_add_host(TARGET myapp MODE AOT SCRIPTS wolf.hot
+             INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS Creature.h)
+```
+
+Tell CMake where the SDK is:
+
+```
+cmake -S . -B build -G Ninja -DCMAKE_PREFIX_PATH=/opt/hot-sdk -DCMAKE_CXX_COMPILER=clang++
+cmake --build build
+```
+
+`find_package(Hot)` defines the same functions and the same targets (`hot::runtime`, `hot::aot`, `hot::backend`, `hot::hotc` and the others) as `add_subdirectory`. It sets `HOT_HOTC_EXECUTABLE` and `HOT_LS_EXECUTABLE` to the paths of the tools. If the SDK has no JIT backend, the target `hot::jit_backend` does not exist.
+
 ## Requirements
 
 | Item | Requirement |
@@ -445,6 +469,57 @@ Two notes on the fields:
 
 - `std`: with `TARGET`, the `CXX_STANDARD` property of the target, else `CMAKE_CXX_STANDARD`, else 17. Without `TARGET` it is `CMAKE_CXX_STANDARD` or 17. It does not use the default 20 of Hot++. If your project sets no standard, the host file says `c++17` and the scripts build as C++20. Set `CMAKE_CXX_STANDARD` to make them agree.
 - `resourceDir`: the value of `CLANG_RESOURCE_DIR`. A consumer project does not see this Hot++ variable, so the field can be empty. Then `hot-ls` uses its own `--resource-dir` option or its default.
+
+## Install the SDK
+
+`cmake --install` makes a prefix that holds everything a program needs: the tools, the libraries, the headers and the CMake package. A user project then calls `find_package(Hot REQUIRED)`. This is the way to give Hot++ to a team that does not build it.
+
+For a release, configure like this:
+
+```
+cmake -S . -B build-sdk -G Ninja -DHOT_PORTABLE=ON -DHOT_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++
+cmake --build build-sdk
+cmake --install build-sdk --prefix /opt/hot-sdk
+```
+
+`HOT_PORTABLE=ON` keeps the paths of the build machine out of the libraries (see "Portable binaries"). The option `HOT_INSTALL` makes the install rules. It is ON when Hot++ is the main project and OFF when you use `add_subdirectory`.
+
+| Path in the prefix | Content |
+|---|---|
+| `bin/hotc` | The translator and AOT tool. |
+| `bin/hot-ls` | The language server. |
+| `lib/` | The static libraries (`libhot_runtime.a`, `libhot_aot.a`, `libhot_backend.a` and others). |
+| `include/hot/` | The public headers. `hotc` and the host compile with this folder. |
+| `lib/cmake/Hot/` | `HotConfig.cmake`, `HotTargets.cmake`, `HotScripts.cmake`, `HotFormat.cmake` and `CPM.cmake`. |
+| `share/hot/vscode/` | The VS Code extension: the file `hotpp-<version>.vsix`, or the folder `hotpp` when `vsce` was not found at configure time. |
+
+On some systems `lib` is `lib64`. CMake uses the standard folder names (`GNUInstallDirs`).
+
+### Move the SDK
+
+The prefix is relocatable. You can copy or move it to another folder or machine. `HotConfig.cmake` finds the other files from its own location, so the user project needs only `CMAKE_PREFIX_PATH` or `Hot_DIR` to point at the new place. The `HOT_PORTABLE` libraries also find the headers at run time, as "Portable binaries" describes.
+
+### What the SDK needs on the machine of the user
+
+- **libclang.** `hotc` and the language server link `libclang`. The export holds no path of it. `HotConfig.cmake` runs `find_library` for `clang` (or `libclang`). It uses the cache variable `HOT_CLANG_C_LIBRARY` first, then the folder of the SDK build, then the standard places. Set `-DHOT_CLANG_C_LIBRARY=/path/to/libclang.so` when the library is somewhere else. If the library is missing, CMake prints a warning, and the link of `hot::hotc_lib`, `hot::clang_backend` and `hot::backend` fails with the message `HOT_CLANG_C_LIBRARY-NOTFOUND`. A program in AOT mode does not link libclang.
+- **A C++ compiler.** A user project that uses the CMake package needs a Clang C++ compiler of the same family and version as the SDK build, as for any Hot++ build.
+- **LLVM and Clang (JIT only).** An SDK built with `HOT_BACKEND=JIT` has the target `hot::jit_backend`. `HotConfig.cmake` then calls `find_package(LLVM CONFIG)` and `find_package(Clang CONFIG)`, so the user machine needs the LLVM and Clang CMake packages. Add their folders to `CMAKE_PREFIX_PATH` if CMake does not find them. An SDK built with `CLANG_FILES` does not need them.
+- **clangd (for `hot-ls`).** The language server starts a stock `clangd` as a child process. It must be in `PATH`, or you give its path with `--clangd` (see the VS Code extension). `hot-ls` also needs the Clang resource folder; pass `--resource-dir` if the server cannot find it. Without `clangd`, `--clangd ""` leaves only the analysis features.
+
+### The format library of the SDK
+
+The SDK fixes the format library of `${...}` (see "The format library"). The runtime in the SDK was built with it, so the scripts of your project must use it too.
+
+- An SDK that uses fmt (built with C++17, or with `HOT_USE_FMT=ON`) makes your project use fmt at any C++ standard. The project gets fmt like a normal build (`HOT_FMT_PROVIDER`).
+- An SDK that uses `std::format` needs C++20 in your project. With a lower `CMAKE_CXX_STANDARD`, the configure step stops with an error. Build the SDK with C++17 for such projects.
+
+### Use the SDK from the samples
+
+Each project in `samples/` works with the SDK. Set `HOT_ROOT` to an empty value:
+
+```
+cmake -S samples/hot-reload -B /tmp/hr -DHOT_ROOT= -DCMAKE_PREFIX_PATH=/opt/hot-sdk
+```
 
 ## Portable binaries
 
