@@ -544,17 +544,22 @@ struct Script
     std::vector<Method> var_hooks;
     // True when the script is a ".cpp" file. The bodies are then raw C++ text.
     bool is_cpp = false;
-    // A file-scope declaration of a ".cpp" script. The text stays as written.
-    struct RawDecl
+    // One part of the output of a ".cpp" script. The translator writes the chunks in source order.
+    struct Chunk
     {
+        enum class Kind
+        {
+            Text, // a file-scope declaration or an include, with the edits of a body
+            Class, // the generated block of the script class "name"
+            Module // the module state block, at the first module variable
+        };
+        Kind kind = Kind::Text;
         int line = 0;
         uint32_t pos = 0;
-        std::string text;
+        std::string text; // Text only
+        std::string name; // Class only
     };
-    std::vector<RawDecl> prelude; // the verbatim file-scope declarations, in source order
-    // The definitions of the free functions that use a module variable. The prelude holds
-    // their prototypes. The translator writes the definitions after the module state block.
-    std::vector<RawDecl> post_funcs;
+    std::vector<Chunk> chunks; // a ".cpp" script only
 };
 
 } // namespace sppc::ast

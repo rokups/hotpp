@@ -2714,7 +2714,8 @@ void translate_impl(
         }
         reset();
     };
-    for (const auto& im : sc.imports)
+    // A ".cpp" script writes its includes in source order, with the other text of the file.
+    for (const auto& im : sc.is_cpp ? std::vector<sppc::ast::Import>() : sc.imports)
     {
         o.w("#line " + std::to_string(im.line) + " \"" + esc(file_at(im.pos)) + "\"\n");
         o.w("#include " + im.target() + "\n");
@@ -2733,24 +2734,33 @@ void translate_impl(
     };
     reset();
     // S26: the native structs with a function pointer field. The runtime reads this as a code holder.
-    bool marked = false;
-    for (const std::string& q : query_texts)
-        if (is_code_query(q) && query_answers[q] == "1")
-        {
-            o.w("namespace spp { template <> struct native_holds_code<" + q.substr(6) + "> : std::true_type {}; }\n");
-            marked = true;
-        }
-    if (marked)
-        reset();
-    // The file-scope declarations of a ".cpp" script, as written in the script.
-    for (const auto& d : sc.prelude)
+    // A ".cpp" script writes them later: its includes come in source order (see write_marks).
+    auto write_marks = [&]()
     {
-        o.w("\n#line " + std::to_string(d.line) + " \"" + esc(file_at(d.pos)) + "\"\n");
-        o.w(d.text);
-        o.w("\n\n");
-        reset();
-    }
+        bool marked = false;
+        for (const std::string& q : query_texts)
+            if (is_code_query(q) && query_answers[q] == "1")
+            {
+                o.w("namespace spp { template <> struct native_holds_code<" + q.substr(6)
+                    + "> : std::true_type {}; }\n");
+                marked = true;
+            }
+        if (marked)
+            reset();
+    };
+    if (!sc.is_cpp)
+        write_marks();
     o.w("\nconstexpr uint32_t GEN = " + std::to_string(opt.gen) + ";\n");
+    // The forward block of a ".cpp" script. The text of the file can call spp_mod() before the
+    // module block: the static_cast of a "void*" to a pointer of an incomplete type is valid.
+    if (sc.is_cpp && has_module)
+    {
+        o.w("struct " + kModuleName + ";\n");
+        o.w("// The module state block of this generation. The loader sets the slot.\n");
+        o.w("static void* " + kModuleName + "_slot = nullptr;\n");
+        o.w("[[maybe_unused]] SPP_HIDDEN static " + kModuleName + "* spp_mod() { return static_cast<" + kModuleName
+            + "*>(" + kModuleName + "_slot); }\n");
+    }
 
     // ---- script enums. The enum is a C++ "enum class" with the underlying type of the script.
     {
@@ -2995,8 +3005,9 @@ void translate_impl(
                 r += ", " + p.type + " " + p.name + default_arg(p, ps, base_cx);
             return r;
         };
-        o.w("struct " + cn + ";\n");
-        if (is_module)
+        if (!(is_module && sc.is_cpp)) // a ".cpp" script has these lines in the forward block
+            o.w("struct " + cn + ";\n");
+        if (is_module && !sc.is_cpp)
         {
             // The module state block. The loader sets the slot of each generation (design 4.7).
             // An initializer and a function of the module read the block through spp_mod().
@@ -3257,26 +3268,72 @@ void translate_impl(
     };
     std::map<std::string, ClassInfo> infos;
 
-    for (ClassDef* cdp : order)
+    // A ".cpp" script is the text of the file in source order. The block of a class replaces the
+    // class, and the module block comes at the first module variable. "texts[i]" is the text
+    // before the block "seq[i]". The last entry of "texts" is the text after the last block.
+    std::vector<ClassDef*> seq = order;
+    std::vector<std::vector<const sppc::ast::Script::Chunk*>> texts(order.size() + 1);
+    if (sc.is_cpp)
     {
-        ClassDef& cd = *cdp;
+        using Kind = sppc::ast::Script::Chunk::Kind;
+        std::map<std::string, ClassDef*> by_name;
+        for (ClassDef* cdp : order)
+            by_name[cdp->name] = cdp;
+        seq.clear();
+        texts.assign(1, {});
+        for (const sppc::ast::Script::Chunk& ch : sc.chunks)
+        {
+            if (ch.kind == Kind::Text)
+            {
+                texts.back().push_back(&ch);
+                continue;
+            }
+            auto it = by_name.find(ch.kind == Kind::Module ? kModuleName : ch.name);
+            if (it == by_name.end() || !it->second)
+                continue;
+            seq.push_back(it->second);
+            it->second = nullptr;
+            texts.emplace_back();
+        }
+        for (ClassDef* cdp : order) // a block without a chunk comes after the text of the file
+            if (by_name.at(cdp->name))
+            {
+                seq.push_back(cdp);
+                texts.emplace_back();
+            }
+    }
+    auto write_texts = [&](size_t i)
+    {
+        auto include = [&](size_t j) { return j < texts[i].size() && texts[i][j]->text.rfind("#include", 0) == 0; };
+        for (size_t j = 0; j < texts[i].size(); ++j)
+        {
+            const sppc::ast::Script::Chunk* ch = texts[i][j];
+            if (include(j))
+            { // a run of includes has one "#line" of the generated file after it, as in a ".spp" script
+                o.w("#line " + std::to_string(ch->line) + " \"" + esc(file_at(ch->pos)) + "\"\n");
+                o.w(ch->text + "\n");
+                if (!include(j + 1))
+                    reset();
+                continue;
+            }
+            o.w("\n#line " + std::to_string(ch->line) + " \"" + esc(file_at(ch->pos)) + "\"\n");
+            o.w(ch->text);
+            o.w("\n\n");
+            reset();
+        }
+        if (sc.is_cpp && i == 0) // the first block uses them, and the includes are before it
+            write_marks();
+    };
+
+    for (size_t si = 0; si < seq.size(); ++si)
+    {
+        write_texts(si);
+        ClassDef& cd = *seq[si];
         const std::string cn = cd.name;
         emitted.insert(cn);
         if (cd.is_value)
         {
             emit_value(cd);
-            if (cn == kModuleName)
-            {
-                // The free functions that use a module variable. They call spp_mod(), so they
-                // come after the module block. The prelude holds their prototypes.
-                for (const auto& d : sc.post_funcs)
-                {
-                    o.w("\n#line " + std::to_string(d.line) + " \"" + esc(file_at(d.pos)) + "\"\n");
-                    o.w(d.text);
-                    o.w("\n\n");
-                    reset();
-                }
-            }
             continue;
         }
         const bool has_ctor = !cd.ctors.empty(), has_dtor = !cd.dtors.empty();
@@ -4721,6 +4778,7 @@ void translate_impl(
         registers.push_back({cn, true});
         infos[cn] = std::move(info);
     }
+    write_texts(seq.size());
 
     o.w("extern \"C\" void script_register(spp::Registry& reg)\n{\n");
     if (has_module)

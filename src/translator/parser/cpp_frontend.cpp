@@ -335,6 +335,9 @@ private:
     std::vector<Edit> edits_; // the edits of the walk, with absolute offsets
     std::deque<ClassInfo> infos_; // the class facts that the slices point to
     std::map<std::string, const ClassInfo*> class_infos_; // USR of a script class -> its facts
+    // The first module variable. The module block is at its place in the output.
+    uint32_t first_var_pos_ = UINT32_MAX;
+    std::string first_var_name_;
 
     void add_slice(Range extent, const ClassInfo* cls, std::function<void(std::string&&)> store);
     bool slice_at(uint32_t pos, size_t& out) const;
@@ -351,8 +354,8 @@ private:
     void check_type_refs(CXCursor c, const std::string& own_usr);
     void check_hook_refs(CXCursor c);
     bool find_module_ref(CXCursor c, const CXCursor* skip, std::string& name, uint32_t& pos);
-    std::string strip_defaults(CXCursor fn, uint32_t begin, const std::string& sig);
-    void add_module_func(CXCursor fn, Range e, const std::string& var, uint32_t var_pos);
+    void check_late_refs(CXCursor var);
+    void check_static_init(CXCursor c);
     void examine(CXCursor k, WalkState& st);
     void visit(CXCursor k, WalkState& st);
     void walk_main(WalkState& st);
@@ -364,7 +367,7 @@ private:
     CXCursor body_of(CXCursor c);
     void make_method(CXCursor c, const ClassInfo* cls, const Where<ast::Method>& where);
     void make_ctor(CXCursor c, const ClassInfo& cls, const Where<ast::Ctor>& where);
-    void add_prelude(CXCursor c, Range e);
+    void add_text(Range e, bool edit);
     void add_import(CXCursor c);
 };
 
@@ -437,88 +440,91 @@ bool Frontend::find_module_ref(CXCursor c, const CXCursor* skip, std::string& na
     return false;
 }
 
-// Gives "sig", the text of a function head from "begin", without the default arguments. A
-// definition must not repeat the defaults of the prototype. The new lines stay, so the lines
-// of the script map to the same lines.
-std::string Frontend::strip_defaults(CXCursor fn, uint32_t begin, const std::string& sig)
+// The module block is at the place of the first module variable. It holds the fields and the
+// initializers of all module variables. So a module variable can use only the declarations of
+// the main file that come before the first module variable. A type needs its definition there.
+// A pointer or a reference needs only a declaration of the type. A template argument needs the
+// definition, because sppc cannot know if the template needs the complete type.
+void Frontend::check_late_refs(CXCursor var)
 {
-    std::vector<std::pair<size_t, size_t>> cuts; // [from, to) in "sig"
-    for (CXCursor a : children(fn))
+    const Range own = extent_of(var);
+    // The type below all pointers, references and arrays of the variable type, when there is
+    // a pointer or a reference: for example "Fwd" in "Fwd* p[2]".
+    CXCursor pointee = clang_getNullCursor();
     {
-        if (clang_getCursorKind(a) != CXCursor_ParmDecl)
-            continue;
-        const Range pr = extent_of(a);
-        int depth = 0;
-        for (size_t i = pr.begin; i < pr.end && i < begin + sig.size();)
+        CXType t = clang_getCursorType(var);
+        bool indirect = false;
+        for (int i = 0; i < 64; ++i)
         {
-            const size_t k = skip_opaque(text_, i);
-            if (k != i)
+            if (t.kind == CXType_ConstantArray || t.kind == CXType_IncompleteArray)
+                t = clang_getArrayElementType(t);
+            else if (t.kind == CXType_Pointer || t.kind == CXType_LValueReference || t.kind == CXType_RValueReference)
             {
-                i = k;
-                continue;
+                t = clang_getPointeeType(t);
+                indirect = true;
             }
-            const char ch = text_[i];
-            if (ch == '(' || ch == '[' || ch == '{')
-                ++depth;
-            else if (ch == ')' || ch == ']' || ch == '}')
-                --depth;
-            else if (ch == '=' && depth == 0 && i + 1 < text_.size() && text_[i + 1] != '=' &&
-                std::strchr("=!<>", text_[i - 1]) == nullptr)
-            {
-                size_t from = i;
-                while (from > pr.begin && is_space(text_[from - 1]))
-                    --from;
-                cuts.emplace_back(from - begin, std::min<size_t>(pr.end - begin, sig.size()));
+            else
                 break;
-            }
-            ++i;
         }
+        if (indirect)
+            pointee = clang_getCanonicalCursor(clang_getTypeDeclaration(clang_getCanonicalType(t)));
     }
-    std::string out = sig;
-    for (auto it = cuts.rbegin(); it != cuts.rend(); ++it)
+    std::function<void(CXCursor)> walk = [&](CXCursor c)
     {
-        std::string keep;
-        for (size_t i = it->first; i < it->second; ++i)
-            if (sig[i] == '\n')
-                keep += '\n';
-        out.replace(it->first, it->second - it->first, keep);
-    }
-    return out;
+        for (CXCursor k : children(c))
+        {
+            const CXCursorKind kind = clang_getCursorKind(k);
+            const bool type = kind == CXCursor_TypeRef || kind == CXCursor_TemplateRef;
+            CXCursor ref = type || kind == CXCursor_DeclRefExpr ? clang_getCursorReferenced(k) : clang_getNullCursor();
+            if (!clang_Cursor_isNull(ref))
+            {
+                // The type of the declaration itself, behind a pointer or a reference: the first
+                // declaration of the type is sufficient.
+                const bool decl_only = type && clang_equalCursors(c, var) && !clang_Cursor_isNull(pointee) &&
+                    clang_equalCursors(clang_getCanonicalCursor(ref), pointee);
+                CXCursor d = type && !decl_only ? clang_getCursorDefinition(ref) : clang_getCanonicalCursor(ref);
+                if (clang_Cursor_isNull(d))
+                    d = ref;
+                const Entry* en = lookup(ref);
+                const bool module_var = en && en->kind == Kind::ModuleVar;
+                if (!module_var && from_main(d) && pos_of(d) > first_var_pos_ && !own.has(pos_of(d)))
+                {
+                    const std::string first = "the first module variable '" + first_var_name_ + "'";
+                    if (type)
+                        fail(pos_of(k),
+                            "the type '" + spelling(ref) + "' must come before " + first +
+                                ": the module block is there and needs the complete type");
+                    fail(pos_of(k),
+                        "'" + spelling(ref) + "' must come before " + first +
+                            ": the module block is there and holds the initializers");
+                }
+            }
+            walk(k);
+        }
+    };
+    walk(var);
 }
 
-// A free function that uses a module variable. The body calls spp_mod(), and the module block
-// comes after the prelude. So the prelude gets the prototype and "post_funcs" gets the
-// definition with the edited body.
-void Frontend::add_module_func(CXCursor fn, Range e, const std::string& var, uint32_t var_pos)
+// A variable that is not a module variable gets its value when the library loads. The module
+// state does not exist then. So its initializer cannot use a module variable. The function
+// examines the static variables in namespaces, in "extern" blocks and in plain classes too.
+void Frontend::check_static_init(CXCursor c)
 {
-    const CXCursor body = body_of(fn);
-    std::string name;
-    uint32_t pos = 0;
-    if (find_module_ref(fn, &body, name, pos))
-        fail(pos, "a default argument cannot use the module variable '" + name + "' in a .cpp script");
-    const Range b = extent_of(body);
-    const std::string sig = text_.substr(e.begin, b.begin - e.begin);
-    for (size_t i = 0; i < sig.size(); ++i)
-        if (word_at(sig, i, "constexpr") || word_at(sig, i, "consteval"))
-            fail(var_pos,
-                "a constexpr function cannot use the module variable '" + var +
-                    "' in a .cpp script: sppc moves the body after the module block");
-    ast::Script::RawDecl proto;
-    proto.pos = e.begin;
-    proto.line = line(e.begin);
-    proto.text = trim(sig) + ";";
-    sc_.prelude.push_back(std::move(proto));
-    ast::Script::RawDecl def;
-    def.pos = e.begin;
-    def.line = line(e.begin);
-    def.text = strip_defaults(fn, e.begin, sig);
-    const size_t index = sc_.post_funcs.size();
-    const std::string head = def.text;
-    sc_.post_funcs.push_back(std::move(def));
-    add_slice(Range{b.begin, b.end}, nullptr,
-        [this, index, head](std::string&& s) { sc_.post_funcs[index].text = head + s; });
+    const CXCursorKind kind = clang_getCursorKind(c);
+    if (kind == CXCursor_VarDecl)
+    {
+        std::string var;
+        uint32_t pos = 0;
+        if (find_module_ref(c, nullptr, var, pos))
+            fail(pos,
+                "the variable '" + spelling(c) + "' cannot use the module variable '" + var +
+                    "' in a .cpp script: it gets its value before the module state exists");
+        return;
+    }
+    if (kind == CXCursor_Namespace || kind == CXCursor_LinkageSpec || is_record(kind))
+        for (CXCursor k : children(c))
+            check_static_init(k);
 }
-
 // Records the edit of one cursor in a slice. The cases of the switch are the rules. A cursor
 // outside every slice gets no edit and no error. "st.slice" is the slice of the cursor before
 // the first error.
@@ -1038,18 +1044,24 @@ void Frontend::process_class(CXCursor c)
     }
 }
 
-// A verbatim file-scope declaration. A ";" after the extent belongs to it.
-void Frontend::add_prelude(CXCursor c, Range e)
+// A file-scope declaration of the main file. The text stays as written. With "edit", a slice
+// over the extent gives the edits of a body, so the module variables become spp_mod() reads.
+// A ";" after the extent belongs to the declaration.
+void Frontend::add_text(Range e, bool edit)
 {
-    ast::Script::RawDecl d;
-    d.pos = e.begin;
-    d.line = line(e.begin);
-    d.text = text_.substr(e.begin, e.end - e.begin);
+    ast::Script::Chunk ch;
+    ch.pos = e.begin;
+    ch.line = line(e.begin);
+    ch.text = text_.substr(e.begin, e.end - e.begin);
+    std::string semi;
     size_t i = skip_ws(text_, e.end, text_.size());
     if (i < text_.size() && text_[i] == ';')
-        d.text += ';';
-    (void)c;
-    sc_.prelude.push_back(std::move(d));
+        semi = ";";
+    ch.text += semi;
+    const size_t index = sc_.chunks.size();
+    sc_.chunks.push_back(std::move(ch));
+    if (edit)
+        add_slice(e, nullptr, [this, index, semi](std::string&& s) { sc_.chunks[index].text = s + semi; });
 }
 
 // An "#include" directive gives an import. The quote or the angle bracket after "include"
@@ -1063,6 +1075,11 @@ void Frontend::add_import(CXCursor c)
     im.path = i < text_.size() && text_[i] == '<' ? "<" + spelling(c) + ">" : spelling(c);
     im.pos = e.begin;
     im.line = line(im.pos);
+    ast::Script::Chunk ch; // the directive stays in its place in the output
+    ch.pos = im.pos;
+    ch.line = im.line;
+    ch.text = "#include " + im.target();
+    sc_.chunks.push_back(std::move(ch));
     sc_.imports.push_back(std::move(im));
 }
 
@@ -1175,9 +1192,30 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
         check_type_refs(k, script_class ? usr(k) : std::string());
         const Range e = extent_of(k);
         if (script_class)
+        {
+            ast::Script::Chunk ch;
+            ch.kind = ast::Script::Chunk::Kind::Class;
+            ch.pos = e.begin;
+            ch.line = line(e.begin);
+            ch.name = spelling(k);
+            sc_.chunks.push_back(std::move(ch));
             process_class(k);
+        }
         else if (en && en->kind == Kind::ModuleVar)
+        {
+            if (first_var_pos_ == UINT32_MAX)
+            { // the module block comes at the place of the first module variable
+                first_var_pos_ = e.begin;
+                first_var_name_ = spelling(k);
+                ast::Script::Chunk ch;
+                ch.kind = ast::Script::Chunk::Kind::Module;
+                ch.pos = e.begin;
+                ch.line = line(e.begin);
+                sc_.chunks.push_back(std::move(ch));
+            }
+            check_late_refs(k);
             make_field(k, nullptr, [this]() -> std::vector<ast::Field>& { return sc_.vars; });
+        }
         else if (kind == CXCursor_FunctionDecl && clang_isCursorDefinition(k))
         {
             const std::string n = spelling(k);
@@ -1193,31 +1231,22 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
                 check_hook_refs(k);
                 make_method(k, nullptr, [this]() -> std::vector<ast::Method>& { return sc_.var_hooks; });
             }
-            else if (find_module_ref(k, nullptr, var, var_pos))
-                add_module_func(k, e, var, var_pos);
             else
-                add_prelude(k, e);
+                add_text(e, find_module_ref(k, nullptr, var, var_pos));
         }
         else if (kind == CXCursor_MacroDefinition)
         { // the extent starts at the name: take the "#define" of the line too
             size_t b = e.begin;
             while (b > 0 && text_[b - 1] != '\n')
                 --b;
-            add_prelude(k, Range{static_cast<uint32_t>(b), e.end});
+            add_text(Range{static_cast<uint32_t>(b), e.end}, false);
         }
         else
-        {
+        { // a template, a namespace, a prototype, a plain type: the edits of a body apply to all of it
+            check_static_init(k);
             std::string var;
             uint32_t var_pos = 0;
-            if (kind == CXCursor_FunctionTemplate && find_module_ref(k, nullptr, var, var_pos))
-                fail(var_pos,
-                    "a function template cannot use the module variable '" + var +
-                        "' in a .cpp script: sppc moves the body after the module block");
-            if (kind == CXCursor_Namespace && find_module_ref(k, nullptr, var, var_pos))
-                fail(var_pos,
-                    "a function in a namespace cannot use the module variable '" + var +
-                        "' in a .cpp script: sppc moves the body after the module block");
-            add_prelude(k, e);
+            add_text(e, find_module_ref(k, nullptr, var, var_pos));
         }
     }
 }

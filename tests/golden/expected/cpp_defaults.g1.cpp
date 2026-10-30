@@ -10,29 +10,30 @@
 
 #include "spp/runtime.h"
 
-#line 3 "cpp_defaults.cpp"
-#include "Actor.h"
-#line 16 "cpp_defaults.cpp.cpp"
-
-#line 5 "cpp_defaults.cpp"
-const int kStep = 2;
-
-#line 21 "cpp_defaults.cpp.cpp"
+#line 14 "cpp_defaults.cpp.cpp"
 
 constexpr uint32_t GEN = 1;
-
-// ---------------------------------------------------------------- [value] class SppModule
 struct SppModule;
 // The module state block of this generation. The loader sets the slot.
 static void* SppModule_slot = nullptr;
 [[maybe_unused]] SPP_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+#line 3 "cpp_defaults.cpp"
+#include "Actor.h"
+#line 23 "cpp_defaults.cpp.cpp"
+
+#line 5 "cpp_defaults.cpp"
+const int kStep = 2;
+
+#line 28 "cpp_defaults.cpp.cpp"
+
+// ---------------------------------------------------------------- [value] class SppModule
 struct SppModule {
     int calls;
 };
 
 #line 8 "cpp_defaults.cpp"
 static void SppModule__init_calls(void*, void* f) { using T = int; new (f) T(0); }
-#line 36 "cpp_defaults.cpp.cpp"
+#line 37 "cpp_defaults.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static const spp::FieldInfo SppModule_fields[] = {
@@ -71,7 +72,7 @@ struct Counter_Shell final : Actor, spp::ShellBase {
     }
 #line 10 "cpp_defaults.cpp"
     ~Counter_Shell() override { spp::destroy_state(this); }
-#line 75 "cpp_defaults.cpp.cpp"
+#line 76 "cpp_defaults.cpp.cpp"
 
 #line 10 "cpp_defaults.cpp"
     void Tick(float a0) override
@@ -81,7 +82,7 @@ struct Counter_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 10 "cpp_defaults.cpp"
     }
-#line 85 "cpp_defaults.cpp.cpp"
+#line 86 "cpp_defaults.cpp.cpp"
 
 #line 10 "cpp_defaults.cpp"
     void TakeDamage(float a0) override
@@ -91,7 +92,7 @@ struct Counter_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 10 "cpp_defaults.cpp"
     }
-#line 95 "cpp_defaults.cpp.cpp"
+#line 96 "cpp_defaults.cpp.cpp"
 
 #line 10 "cpp_defaults.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -101,7 +102,7 @@ struct Counter_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 10 "cpp_defaults.cpp"
     }
-#line 105 "cpp_defaults.cpp.cpp"
+#line 106 "cpp_defaults.cpp.cpp"
 };
 
 using Counter = Counter_Shell;
@@ -125,15 +126,15 @@ struct CounterState_g1 {
         return static_cast<Counter_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
 #line 10 "cpp_defaults.cpp"
     }
-#line 129 "cpp_defaults.cpp.cpp"
+#line 130 "cpp_defaults.cpp.cpp"
 };
 
 #line 13 "cpp_defaults.cpp"
 static void Counter__init_value(void*, void* f) { using T = int; new (f) T(0); }
-#line 134 "cpp_defaults.cpp.cpp"
+#line 135 "cpp_defaults.cpp.cpp"
 #line 14 "cpp_defaults.cpp"
 static void Counter__init_last(void*, void* f) { using T = int; new (f) T(0); }
-#line 137 "cpp_defaults.cpp.cpp"
+#line 138 "cpp_defaults.cpp.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -185,7 +186,7 @@ SPP_HIDDEN static void Counter__ctor_chain(Counter_Shell* __self, [[maybe_unused
     Counter__ctor(__self, start);
 #line 17 "cpp_defaults.cpp"
 }
-#line 189 "cpp_defaults.cpp.cpp"
+#line 190 "cpp_defaults.cpp.cpp"
 using Counter_SuperArgs = decltype(Counter__plan(std::declval<int>()).first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
@@ -205,7 +206,7 @@ SPP_NODEBUG static spp::ShellBase* Counter__construct(const char* key, const voi
     return nullptr;
 #line 10 "cpp_defaults.cpp"
 }
-#line 209 "cpp_defaults.cpp.cpp"
+#line 210 "cpp_defaults.cpp.cpp"
 
 static const char* const Counter__construct_keys[] = {typeid(Counter_SuperArgs).name(), nullptr};
 
@@ -233,7 +234,7 @@ SPP_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note, in
     return __self;
 #line 17 "cpp_defaults.cpp"
 }
-#line 237 "cpp_defaults.cpp.cpp"
+#line 238 "cpp_defaults.cpp.cpp"
 #line 17 "cpp_defaults.cpp"
 [[maybe_unused]] SPP_HIDDEN static Counter_Shell* Counter__new(int start = kStep * 3)
 #line 17 "cpp_defaults.cpp"
@@ -242,7 +243,7 @@ SPP_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note, in
     return Counter__build(true, start);
 #line 17 "cpp_defaults.cpp"
 }
-#line 246 "cpp_defaults.cpp.cpp"
+#line 247 "cpp_defaults.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -254,7 +255,7 @@ SPP_NODEBUG static spp::ShellBase* Counter__new_default()
     return Counter__build(false, kStep * 3);
 #line 17 "cpp_defaults.cpp"
 }
-#line 258 "cpp_defaults.cpp.cpp"
+#line 259 "cpp_defaults.cpp.cpp"
 
 #line 17 "cpp_defaults.cpp"
 [[maybe_unused]] SPP_HIDDEN static void Counter__ctor(Counter_Shell* __self, int start)
@@ -264,7 +265,7 @@ SPP_NODEBUG static spp::ShellBase* Counter__new_default()
     return state_of(__self)->ctor(std::forward<int>(start));
 #line 17 "cpp_defaults.cpp"
 }
-#line 268 "cpp_defaults.cpp.cpp"
+#line 269 "cpp_defaults.cpp.cpp"
 #line 17 "cpp_defaults.cpp"
 void CounterState_g1::ctor(int start)
 #line 17 "cpp_defaults.cpp"
@@ -287,7 +288,7 @@ void CounterState_g1::ctor(int start)
     
 #line 20 "cpp_defaults.cpp"
 }
-#line 291 "cpp_defaults.cpp.cpp"
+#line 292 "cpp_defaults.cpp.cpp"
 
 #line 23 "cpp_defaults.cpp"
 [[maybe_unused]] SPP_HIDDEN static int Counter__Add(Counter_Shell* __self, int a, int b, int c)
@@ -297,7 +298,7 @@ void CounterState_g1::ctor(int start)
     return state_of(__self)->Add(std::forward<int>(a), std::forward<int>(b), std::forward<int>(c));
 #line 23 "cpp_defaults.cpp"
 }
-#line 301 "cpp_defaults.cpp.cpp"
+#line 302 "cpp_defaults.cpp.cpp"
 #line 23 "cpp_defaults.cpp"
 int CounterState_g1::Add(int a, int b, int c)
 #line 23 "cpp_defaults.cpp"
@@ -321,7 +322,7 @@ int CounterState_g1::Add(int a, int b, int c)
     
 #line 27 "cpp_defaults.cpp"
 }
-#line 325 "cpp_defaults.cpp.cpp"
+#line 326 "cpp_defaults.cpp.cpp"
 
 #line 29 "cpp_defaults.cpp"
 void CounterState_g1::Tick(float dt)
@@ -347,7 +348,7 @@ void CounterState_g1::Tick(float dt)
     
 #line 34 "cpp_defaults.cpp"
 }
-#line 351 "cpp_defaults.cpp.cpp"
+#line 352 "cpp_defaults.cpp.cpp"
 
 #line 37 "cpp_defaults.cpp"
 void CounterState_g1::TakeDamage_f(float amount)
@@ -371,7 +372,7 @@ void CounterState_g1::TakeDamage_f(float amount)
     
 #line 40 "cpp_defaults.cpp"
 }
-#line 375 "cpp_defaults.cpp.cpp"
+#line 376 "cpp_defaults.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -385,7 +386,7 @@ static int Counter__Add__thunk(Actor* __a, int a, int b, int c)
     return spp::call<int(Actor*, int, int, int)>(__self, SLOT_Add, a, b, c);
 #line 23 "cpp_defaults.cpp"
 }
-#line 389 "cpp_defaults.cpp.cpp"
+#line 390 "cpp_defaults.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const spp::SlotFn Counter_slots[SLOT_COUNT] = {
@@ -428,7 +429,7 @@ SPP_NODEBUG static spp::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "cpp_defaults.cpp"
 }
-#line 432 "cpp_defaults.cpp.cpp"
+#line 433 "cpp_defaults.cpp.cpp"
 
 extern "C" void script_register(spp::Registry& reg)
 {

@@ -10,6 +10,13 @@
 
 #include "spp/runtime.h"
 
+#line 14 "cpp_player_v1.cpp.cpp"
+
+constexpr uint32_t GEN = 1;
+struct SppModule;
+// The module state block of this generation. The loader sets the slot.
+static void* SppModule_slot = nullptr;
+[[maybe_unused]] SPP_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
 #line 3 "cpp_player_v1.cpp"
 #include "Actor.h"
 #line 4 "cpp_player_v1.cpp"
@@ -18,12 +25,12 @@
 #include <cstdio>
 #line 7 "cpp_player_v1.cpp"
 #include <string>
-#line 22 "cpp_player_v1.cpp.cpp"
+#line 29 "cpp_player_v1.cpp.cpp"
 
 #line 9 "cpp_player_v1.cpp"
 enum class Mode { Idle, Run };
 
-#line 27 "cpp_player_v1.cpp.cpp"
+#line 34 "cpp_player_v1.cpp.cpp"
 
 #line 11 "cpp_player_v1.cpp"
 struct Point
@@ -31,35 +38,16 @@ struct Point
     float x = 0, y = 0;
 };
 
-#line 35 "cpp_player_v1.cpp.cpp"
-
-#line 18 "cpp_player_v1.cpp"
-const float kMaxHp = 100.0f;
-
-#line 40 "cpp_player_v1.cpp.cpp"
-
-#line 20 "cpp_player_v1.cpp"
-static float clamp_hp(float v)
-{
-    return Math::Max(Math::Min(v, kMaxHp), 0.0f);
-}
-
-#line 48 "cpp_player_v1.cpp.cpp"
-
-constexpr uint32_t GEN = 1;
+#line 42 "cpp_player_v1.cpp.cpp"
 
 // ---------------------------------------------------------------- [value] class SppModule
-struct SppModule;
-// The module state block of this generation. The loader sets the slot.
-static void* SppModule_slot = nullptr;
-[[maybe_unused]] SPP_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
 struct SppModule {
     int total;
 };
 
 #line 17 "cpp_player_v1.cpp"
 static void SppModule__init_total(void*, void* f) { using T = int; new (f) T(0); }
-#line 63 "cpp_player_v1.cpp.cpp"
+#line 51 "cpp_player_v1.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static const spp::FieldInfo SppModule_fields[] = {
@@ -71,6 +59,19 @@ static const spp::StateLayout SppModule_layout = {
     "SppModule", sizeof(SppModule), alignof(SppModule), 1, SppModule_fields,
 };
 
+
+#line 18 "cpp_player_v1.cpp"
+const float kMaxHp = 100.0f;
+
+#line 67 "cpp_player_v1.cpp.cpp"
+
+#line 20 "cpp_player_v1.cpp"
+static float clamp_hp(float v)
+{
+    return Math::Max(Math::Min(v, kMaxHp), 0.0f);
+}
+
+#line 75 "cpp_player_v1.cpp.cpp"
 
 // ---------------------------------------------------------------- class Player
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -98,7 +99,7 @@ struct Player_Shell final : Actor, spp::ShellBase {
     }
 #line 25 "cpp_player_v1.cpp"
     ~Player_Shell() override { spp::destroy_state(this); }
-#line 102 "cpp_player_v1.cpp.cpp"
+#line 103 "cpp_player_v1.cpp.cpp"
 
 #line 25 "cpp_player_v1.cpp"
     void Tick(float a0) override
@@ -108,7 +109,7 @@ struct Player_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 25 "cpp_player_v1.cpp"
     }
-#line 112 "cpp_player_v1.cpp.cpp"
+#line 113 "cpp_player_v1.cpp.cpp"
 
 #line 25 "cpp_player_v1.cpp"
     void TakeDamage(float a0) override
@@ -118,7 +119,7 @@ struct Player_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 25 "cpp_player_v1.cpp"
     }
-#line 122 "cpp_player_v1.cpp.cpp"
+#line 123 "cpp_player_v1.cpp.cpp"
 
 #line 25 "cpp_player_v1.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -128,7 +129,7 @@ struct Player_Shell final : Actor, spp::ShellBase {
         return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 25 "cpp_player_v1.cpp"
     }
-#line 132 "cpp_player_v1.cpp.cpp"
+#line 133 "cpp_player_v1.cpp.cpp"
 };
 
 using Player = Player_Shell;
@@ -152,22 +153,22 @@ struct PlayerState_g1 {
 
 #line 59 "cpp_player_v1.cpp"
 static void Player__init_hp(void*, void* f) { using T = float; new (f) T(100.0f); }
-#line 156 "cpp_player_v1.cpp.cpp"
+#line 157 "cpp_player_v1.cpp.cpp"
 #line 60 "cpp_player_v1.cpp"
 static void Player__init_speed(void*, void* f) { using T = float; new (f) T(5.0f); }
-#line 159 "cpp_player_v1.cpp.cpp"
+#line 160 "cpp_player_v1.cpp.cpp"
 #line 61 "cpp_player_v1.cpp"
 static void Player__init_target(void*, void* f) { using T = std::string; new (f) T(); }
-#line 162 "cpp_player_v1.cpp.cpp"
+#line 163 "cpp_player_v1.cpp.cpp"
 #line 62 "cpp_player_v1.cpp"
 static void Player__init_p(void*, void* f) { using T = Point; new (f) T{1, 2}; }
-#line 165 "cpp_player_v1.cpp.cpp"
+#line 166 "cpp_player_v1.cpp.cpp"
 #line 63 "cpp_player_v1.cpp"
 static void Player__init_mode(void*, void* f) { using T = Mode; new (f) T(Mode::Idle); }
-#line 168 "cpp_player_v1.cpp.cpp"
+#line 169 "cpp_player_v1.cpp.cpp"
 #line 64 "cpp_player_v1.cpp"
 static void Player__init_level(void*, void* f) { using T = int; new (f) T(1); }
-#line 171 "cpp_player_v1.cpp.cpp"
+#line 172 "cpp_player_v1.cpp.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -227,7 +228,7 @@ SPP_HIDDEN static void Player__ctor_chain(Player_Shell* __self, [[maybe_unused]]
     Player__ctor(__self);
 #line 28 "cpp_player_v1.cpp"
 }
-#line 231 "cpp_player_v1.cpp.cpp"
+#line 232 "cpp_player_v1.cpp.cpp"
 using Player_SuperArgs = decltype(Player__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
@@ -247,7 +248,7 @@ SPP_NODEBUG static spp::ShellBase* Player__construct(const char* key, const void
     return nullptr;
 #line 25 "cpp_player_v1.cpp"
 }
-#line 251 "cpp_player_v1.cpp.cpp"
+#line 252 "cpp_player_v1.cpp.cpp"
 
 static const char* const Player__construct_keys[] = {typeid(Player_SuperArgs).name(), nullptr};
 
@@ -275,7 +276,7 @@ SPP_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
     return __self;
 #line 28 "cpp_player_v1.cpp"
 }
-#line 279 "cpp_player_v1.cpp.cpp"
+#line 280 "cpp_player_v1.cpp.cpp"
 #line 28 "cpp_player_v1.cpp"
 [[maybe_unused]] SPP_HIDDEN static Player_Shell* Player__new()
 #line 28 "cpp_player_v1.cpp"
@@ -284,7 +285,7 @@ SPP_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
     return Player__build(true);
 #line 28 "cpp_player_v1.cpp"
 }
-#line 288 "cpp_player_v1.cpp.cpp"
+#line 289 "cpp_player_v1.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -296,7 +297,7 @@ SPP_NODEBUG static spp::ShellBase* Player__new_default()
     return Player__build(false);
 #line 28 "cpp_player_v1.cpp"
 }
-#line 300 "cpp_player_v1.cpp.cpp"
+#line 301 "cpp_player_v1.cpp.cpp"
 
 #line 28 "cpp_player_v1.cpp"
 [[maybe_unused]] SPP_HIDDEN static void Player__ctor(Player_Shell* __self)
@@ -306,7 +307,7 @@ SPP_NODEBUG static spp::ShellBase* Player__new_default()
     return state_of(__self)->ctor();
 #line 28 "cpp_player_v1.cpp"
 }
-#line 310 "cpp_player_v1.cpp.cpp"
+#line 311 "cpp_player_v1.cpp.cpp"
 #line 28 "cpp_player_v1.cpp"
 void PlayerState_g1::ctor()
 #line 28 "cpp_player_v1.cpp"
@@ -327,7 +328,7 @@ void PlayerState_g1::ctor()
 
 #line 28 "cpp_player_v1.cpp"
 }
-#line 331 "cpp_player_v1.cpp.cpp"
+#line 332 "cpp_player_v1.cpp.cpp"
 
 #line 30 "cpp_player_v1.cpp"
 void PlayerState_g1::Tick(float dt)
@@ -356,7 +357,7 @@ void PlayerState_g1::Tick(float dt)
     
 #line 38 "cpp_player_v1.cpp"
 }
-#line 360 "cpp_player_v1.cpp.cpp"
+#line 361 "cpp_player_v1.cpp.cpp"
 
 #line 40 "cpp_player_v1.cpp"
 void PlayerState_g1::TakeDamage_f(float amount)
@@ -381,7 +382,7 @@ void PlayerState_g1::TakeDamage_f(float amount)
     
 #line 44 "cpp_player_v1.cpp"
 }
-#line 385 "cpp_player_v1.cpp.cpp"
+#line 386 "cpp_player_v1.cpp.cpp"
 
 #line 46 "cpp_player_v1.cpp"
 void PlayerState_g1::TakeDamage_Af(Actor & source, float amount)
@@ -407,7 +408,7 @@ void PlayerState_g1::TakeDamage_Af(Actor & source, float amount)
     
 #line 51 "cpp_player_v1.cpp"
 }
-#line 411 "cpp_player_v1.cpp.cpp"
+#line 412 "cpp_player_v1.cpp.cpp"
 
 #line 53 "cpp_player_v1.cpp"
 [[maybe_unused]] SPP_HIDDEN static void Player__heal(Player_Shell* __self, float a)
@@ -417,7 +418,7 @@ void PlayerState_g1::TakeDamage_Af(Actor & source, float amount)
     return state_of(__self)->heal(std::forward<float>(a));
 #line 53 "cpp_player_v1.cpp"
 }
-#line 421 "cpp_player_v1.cpp.cpp"
+#line 422 "cpp_player_v1.cpp.cpp"
 #line 53 "cpp_player_v1.cpp"
 void PlayerState_g1::heal(float a)
 #line 53 "cpp_player_v1.cpp"
@@ -441,7 +442,7 @@ void PlayerState_g1::heal(float a)
     
 #line 57 "cpp_player_v1.cpp"
 }
-#line 445 "cpp_player_v1.cpp.cpp"
+#line 446 "cpp_player_v1.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -455,7 +456,7 @@ static void Player__heal__thunk(Actor* __a, float a)
     return spp::call<void(Actor*, float)>(__self, SLOT_heal, a);
 #line 53 "cpp_player_v1.cpp"
 }
-#line 459 "cpp_player_v1.cpp.cpp"
+#line 460 "cpp_player_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const spp::SlotFn Player_slots[SLOT_COUNT] = {
@@ -498,7 +499,7 @@ SPP_NODEBUG static spp::Instance Player_create()
     return {static_cast<Actor*>(p), p};
 #line 25 "cpp_player_v1.cpp"
 }
-#line 502 "cpp_player_v1.cpp.cpp"
+#line 503 "cpp_player_v1.cpp.cpp"
 
 extern "C" void script_register(spp::Registry& reg)
 {

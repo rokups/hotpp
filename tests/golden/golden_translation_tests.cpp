@@ -112,3 +112,22 @@ TEST(GoldenTranslation, CppFreeFunction)
 {
     golden_one("cpp_freefn", ".cpp");
 }
+
+// A .cpp script with a function template that uses a module variable. The template stays in its
+// place, after the module block.
+TEST(GoldenTranslation, CppTemplateFunction)
+{
+    golden_one("cpp_template_fn", ".cpp");
+}
+
+// A .cpp script with a function in a namespace that uses a module variable.
+TEST(GoldenTranslation, CppNamespaceFunction)
+{
+    golden_one("cpp_namespace_fn", ".cpp");
+}
+
+// A .cpp script with a constexpr function that reads a module variable only at runtime.
+TEST(GoldenTranslation, CppConstexprFunction)
+{
+    golden_one("cpp_constexpr", ".cpp");
+}

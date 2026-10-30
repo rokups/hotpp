@@ -11,7 +11,7 @@ static int twice(int a)
     return a * 2;
 }
 
-// Free functions that use the module variable. The default argument is only in the prototype.
+// Free functions that use the module variable. sppc edits them in their place.
 static int add_total(int a, int b = 1)
 {
     total += twice(a) + b;

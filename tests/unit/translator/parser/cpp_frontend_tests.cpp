@@ -86,10 +86,20 @@ TEST(CppFrontend, Structure)
     EXPECT_EQ(s.imports[0].path, "Actor.h");
     EXPECT_EQ(s.imports[1].path, "<spp/script.h>");
     EXPECT_EQ(s.imports[2].line, 3);
-    ASSERT_EQ(s.prelude.size(), 2u);
-    EXPECT_EQ(s.prelude[0].text, "const int kMax = 5;");
-    EXPECT_EQ(s.prelude[0].line, 5);
-    EXPECT_EQ(s.prelude[1].text, "static int helper(int a) { return a + 1; }");
+    // The chunks keep the source order. The module block is at the first module variable.
+    using K = ast::Script::Chunk::Kind;
+    ASSERT_EQ(s.chunks.size(), 7u);
+    EXPECT_EQ(s.chunks[0].text, "#include \"Actor.h\"");
+    EXPECT_EQ(s.chunks[1].text, "#include <spp/script.h>");
+    EXPECT_EQ(s.chunks[2].line, 3);
+    EXPECT_EQ(s.chunks[3].text, "const int kMax = 5;");
+    EXPECT_EQ(s.chunks[3].line, 5);
+    EXPECT_EQ(s.chunks[4].kind, K::Module);
+    EXPECT_EQ(s.chunks[4].line, 6);
+    EXPECT_EQ(s.chunks[5].kind, K::Text);
+    EXPECT_EQ(s.chunks[5].text, "static int helper(int a) { return a + 1; }");
+    EXPECT_EQ(s.chunks[6].kind, K::Class);
+    EXPECT_EQ(s.chunks[6].name, "Player");
     ASSERT_EQ(s.vars.size(), 2u);
     EXPECT_EQ(s.vars[0].name, "total");
     EXPECT_EQ(s.vars[0].raw_init, "0");
@@ -190,37 +200,74 @@ TEST(CppFrontend, StructureErrors)
     expect_error("class S : public Actor { void F(); };", "define the method inside the class");
     expect_error("class S : public Actor { int hp = 0; S() : hp(1) {} };", "use a default member initializer");
     expect_error("class S : public Actor { int hp = 0; S() : Actor(), hp(1) {} };", "use a default member initializer");
-    expect_error("int total = 0;\ntemplate <class T> T g(T a) { return a + total; }",
-        "a function template cannot use the module variable 'total' in a .cpp script");
-    expect_error("int total = 0;\nconstexpr int g(bool b) { return b ? 1 : total; }",
-        "a constexpr function cannot use the module variable 'total' in a .cpp script");
-    expect_error("int total = 0;\nnamespace n { int g() { return total; } }",
-        "a function in a namespace cannot use the module variable 'total' in a .cpp script");
-    expect_error("int total = 0;\nint g(int a = total) { return a; }",
-        "a default argument cannot use the module variable 'total' in a .cpp script");
+    expect_error("int total = 0;\nstruct Late { int v = 0; };\nLate late;",
+        "the type 'Late' must come before the first module variable 'total': the module block is there "
+        "and needs the complete type");
+    // C++ accepts a template argument of an incomplete type here, but the module block needs it.
+    expect_error("#include <vector>\nstruct Late;\nint total = 0;\nstd::vector<Late> l;\nstruct Late {};",
+        "the type 'Late' must come before the first module variable 'total': the module block is there "
+        "and needs the complete type");
+    expect_error("int total = 0;\nint seven() { return 7; }\nint other = seven();",
+        "'seven' must come before the first module variable 'total': the module block is there and holds "
+        "the initializers");
+    expect_error("int total = 0;\nnamespace n { const int k = total; }",
+        "the variable 'k' cannot use the module variable 'total' in a .cpp script: it gets its value before "
+        "the module state exists");
     expect_error("class S : public Actor {};\nvoid g(S* s) { (void)s; }",
         "the script class 'S' cannot be named outside its body (first version)");
 }
 
-// A free function that uses a module variable: the prelude has the prototype and "post_funcs"
-// has the definition with the edited body. A function without a module variable stays as written.
+// A pointer or a reference to a type needs only a declaration before the first module variable.
+TEST(CppFrontend, ModuleVariablePointerToLaterType)
+{
+    Parsed p("struct Fwd;\nint total = 0;\nFwd* pf = nullptr;\nFwd& rf = *pf;\nstruct Fwd { int x; };\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    ASSERT_EQ(p.script.vars.size(), 3u);
+}
+
+// A variable in a namespace and a static local variable are not module variables. Their text
+// stays as written. A use of a module variable next to them gets the edit.
+TEST(CppFrontend, NamespaceAndStaticLocalVariables)
+{
+    Parsed p("namespace n { int c = 0; }\n"
+             "int total = 0;\n"
+             "int f() { static int calls = 0; return ++calls + n::c + total; }\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    const ast::Script& s = p.script;
+    ASSERT_EQ(s.vars.size(), 1u);
+    EXPECT_EQ(s.vars[0].name, "total");
+    ASSERT_EQ(s.chunks.size(), 3u);
+    EXPECT_EQ(s.chunks[0].text, "namespace n { int c = 0; }");
+    EXPECT_EQ(s.chunks[1].kind, ast::Script::Chunk::Kind::Module);
+    EXPECT_EQ(s.chunks[2].text, "int f() { static int calls = 0; return ++calls + n::c + spp_mod()->total; }");
+}
+
+// A declaration that uses a module variable stays in its place, with the edits of a body. This
+// is true for a free function, a function template, a constexpr function, a function in a
+// namespace and a default argument. A declaration without a module variable stays as written.
 TEST(CppFrontend, FreeFunctionWithModuleVariable)
 {
     Parsed p("int total = 0;\n"
              "static inline int plain(int a) { return a + 1; }\n"
              "static inline int bump(int a,\n"
-             "                       int b = 2) { total += a + b; return total; }\n");
+             "                       int b = 2) { total += a + b; return total; }\n"
+             "template <class T> T g(T a) { return a + total; }\n"
+             "constexpr int c(bool b) { return b ? 1 : total; }\n"
+             "namespace n { int h() { return total; } }\n"
+             "int d(int a = total);\n");
     ASSERT_TRUE(p.diag.items.empty()) << p.errors();
     const ast::Script& s = p.script;
-    ASSERT_EQ(s.prelude.size(), 2u);
-    EXPECT_EQ(s.prelude[0].text, "static inline int plain(int a) { return a + 1; }");
-    EXPECT_EQ(s.prelude[1].text, "static inline int bump(int a,\n                       int b = 2);");
-    EXPECT_EQ(s.prelude[1].line, 3);
-    ASSERT_EQ(s.post_funcs.size(), 1u);
-    EXPECT_EQ(s.post_funcs[0].line, 3);
-    EXPECT_EQ(s.post_funcs[0].text,
-        "static inline int bump(int a,\n                       int b)"
+    ASSERT_EQ(s.chunks.size(), 7u);
+    EXPECT_EQ(s.chunks[0].kind, ast::Script::Chunk::Kind::Module);
+    EXPECT_EQ(s.chunks[1].text, "static inline int plain(int a) { return a + 1; }");
+    EXPECT_EQ(s.chunks[2].line, 3);
+    EXPECT_EQ(s.chunks[2].text,
+        "static inline int bump(int a,\n                       int b = 2)"
         " { spp_mod()->total += a + b; return spp_mod()->total; }");
+    EXPECT_EQ(s.chunks[3].text, "template <class T> T g(T a) { return a + spp_mod()->total; }");
+    EXPECT_EQ(s.chunks[4].text, "constexpr int c(bool b) { return b ? 1 : spp_mod()->total; }");
+    EXPECT_EQ(s.chunks[5].text, "namespace n { int h() { return spp_mod()->total; } }");
+    EXPECT_EQ(s.chunks[6].text, "int d(int a = spp_mod()->total);");
 }
 
 // A default argument keeps its text. A module variable and a base member get the edits of a body.

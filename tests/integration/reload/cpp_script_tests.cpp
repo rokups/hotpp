@@ -104,6 +104,60 @@ TEST_P(BackendTests, CppScriptFreeFunctionUsesModuleVariable)
     EXPECT_EQ(*modvar<int>(s, "total"), 214);
 }
 
+// A function template uses a module variable. The method and the template share the value, also
+// after a reload.
+TEST_P(BackendTests, CppScriptTemplateUsesModuleVariable)
+{
+    spp::LoadResult v1 = backend->load(source("cpp_template_fn.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult v2 = backend->load(source("cpp_template_fn.cpp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Scaler"));
+    s.actor->Tick(kDt); // total = 2. scaled(3) = 6.
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 6);
+    ASSERT_NE(modvar<int>(s, "total"), nullptr);
+    EXPECT_EQ(*modvar<int>(s, "total"), 2);
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    const spp::ReloadResult res = s.loader.commit_pending();
+    ASSERT_TRUE(res) << res.error;
+    EXPECT_EQ(spp::active_generation, 2u);
+    ASSERT_NE(modvar<int>(s, "total"), nullptr);
+    EXPECT_EQ(*modvar<int>(s, "total"), 2); // migrated
+
+    s.actor->Tick(kDt); // total = 4. scaled(3) = 12.
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 12);
+    EXPECT_EQ(*modvar<int>(s, "total"), 4);
+}
+
+// A function in a namespace uses a module variable. The method and the function share the value,
+// also after a reload.
+TEST_P(BackendTests, CppScriptNamespaceFunctionUsesModuleVariable)
+{
+    spp::LoadResult v1 = backend->load(source("cpp_namespace_fn.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult v2 = backend->load(source("cpp_namespace_fn.cpp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Bumper"));
+    s.actor->Tick(kDt); // counter::bump(5): total = 5. The method adds 100.
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 5);
+    ASSERT_NE(modvar<int>(s, "total"), nullptr);
+    EXPECT_EQ(*modvar<int>(s, "total"), 105);
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    const spp::ReloadResult res = s.loader.commit_pending();
+    ASSERT_TRUE(res) << res.error;
+    EXPECT_EQ(spp::active_generation, 2u);
+    ASSERT_NE(modvar<int>(s, "total"), nullptr);
+    EXPECT_EQ(*modvar<int>(s, "total"), 105); // migrated
+
+    s.actor->Tick(kDt); // counter::bump(5): total = 110. The method adds 100.
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 110);
+    EXPECT_EQ(*modvar<int>(s, "total"), 210);
+}
+
 // The reload to generation 2. The alias moves hp to health. The convert hooks change level and total.
 TEST_P(BackendTests, CppScriptReloadMigratesFieldsAndModuleVariable)
 {
