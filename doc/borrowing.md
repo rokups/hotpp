@@ -140,7 +140,7 @@ class Scan : Actor {
 }
 ```
 
-Known gaps of the checker: a lambda that captures an iterator (`var it = xs.begin();`) or an `std.optional<T&>` is not found. An assignment `q = p;` into a `var q` that is not borrowed (for example `var q = (int*)null;`) is not tracked. A cast that wraps the `&` is rejected: `var c = (Actor*)&a;` gives the `a '&' value cannot be stored` error.
+Known gaps of the checker: a lambda that captures an iterator (`var it = xs.begin();`) or an `std.optional<T&>` is not found. A cast that wraps the `&` is rejected: `var c = (Actor*)&a;` gives the `a '&' value cannot be stored` error.
 
 ## Escape hatch
 

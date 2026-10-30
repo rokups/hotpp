@@ -399,3 +399,37 @@ TEST(BorrowedStorage, LambdaMayCaptureAValueCopyOfAReference)
         check_translate("", "    void Run(int& r) { var c = r; var f = () => c; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
+
+// An assignment of a borrowed pointer makes the local borrowed from that point on.
+TEST(BorrowedStorage, LambdaCapturesALocalThatReceivesABorrowedPointer)
+{
+    const sppc::TranslateResult r = check_translate(
+        "", "    std.function<int()> cb;\n"
+            "    void Run() { int x = 1; var q = (int*)null; var p = &x; q = p; this.cb = () => *q; }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'q', a borrowed pointer or reference")) << r.diagnostics;
+    const sppc::TranslateResult v = check_translate(
+        "", "    void Run(bool c) { int x = 1; int y = 2; var p = &x; var r = &y; var a = (int*)null;\n"
+            "        var b = (int*)null; var d = (int*)null; int* t = nullptr;\n"
+            "        a = c ? p : r; b = (p); d = (int*)p; t = p;\n"
+            "        var f = () => *a + *b + *d + *t; }\n");
+    EXPECT_FALSE(v.ok);
+    for (const char* n : {"'a'", "'b'", "'d'", "'t'"})
+        EXPECT_TRUE(has(v.diagnostics, std::string("the lambda captures ") + n)) << n << v.diagnostics;
+}
+
+TEST(BorrowedStorage, AssignmentOfAddressOfIsAFindingAndBorrows)
+{
+    const sppc::TranslateResult r = check_translate(
+        "", "    void Run() { int x = 1; var q = (int*)null; q = &x; var f = () => *q; }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "a '&' value cannot be stored")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'q'")) << r.diagnostics;
+}
+
+TEST(BorrowedStorage, PlainAssignmentAndValueCopyOfAReferenceStayLegal)
+{
+    const sppc::TranslateResult r = check_translate(
+        "", "    void Run(int& r) { var c = r; int q = 0; q = 5; c = r; var f = () => c + q; }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}

@@ -432,6 +432,12 @@ struct Checker {
         } else if (auto* n = std::get_if<NewExpr>(&e.v)) {
             for (const ExprP& a : n->args)
                 if (a && is_borrow_form(*a)) allowed_refs.insert(a.get());
+        } else if (auto* b = std::get_if<BinaryExpr>(&e.v)) {
+            // "q = p;": the local keeps a borrowed pointer from here on. The check never unmarks it.
+            if (b->op == "=" && b->lhs && b->rhs && (copies_borrowed_pointer(*b->rhs) || is_borrow_form(*b->rhs)))
+                if (auto* ln = std::get_if<NameExpr>(&b->lhs->v))
+                    if (ln->parts.size() == 1 && ln->template_args.empty() && locals.count(ln->parts[0]))
+                        add_borrowed(ln->parts[0], "*");
         } else if (const UnaryExpr* u = as_address_of(e)) {
             if (u->operand) {
                 const std::string h = handle_operand(*u->operand);
