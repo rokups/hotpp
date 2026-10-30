@@ -148,10 +148,15 @@ struct SymbolKey
     std::string cls, member; // member is empty for a class
 };
 
-// One open .spp document and its state in clangd.
+// One open .spp document and its state in clangd. A ".cpp" document is also a Doc, but with "cpp"
+// set: it has no state in clangd and it gets the errors of sppc only (update_cpp).
 struct Doc
 {
     std::string uri, path;
+    // A ".cpp" document. It is a script when it has a host. The server publishes the sppc errors of
+    // a script. It ignores any other ".cpp" document. All the other requests get no answer.
+    bool cpp = false;
+    bool cpp_published = false; // the last publish of a ".cpp" document had a diagnostic list
     Text text;
     sppc::AnalyzeResult facts;
     // The generated C++ that clangd has as the real text, and its map. The map belongs to the
@@ -407,6 +412,7 @@ private:
     // The notification workspace/didChangeWatchedFiles: new, changed and deleted files on disk.
     void on_watched_files(const json& p);
     void update(Doc& d);
+    void update_cpp(Doc& d);
     void send_generated(Doc& d, const std::string& cpp);
     json publish_message(const Doc& d) const;
     std::map<std::string, json> import_diagnostics(const Doc& d) const;
@@ -779,8 +785,35 @@ void Server::send_generated(Doc& d, const std::string& cpp)
     }
 }
 
+// The update of a ".cpp" document. A script (a document with a host) gets the sppc errors as
+// diagnostics. Any other ".cpp" document gets nothing. The state of clangd is not touched: clangd
+// owns the other features of the file.
+void Server::update_cpp(Doc& d)
+{
+    if (!d.host)
+    {
+        std::lock_guard<std::mutex> lock(docs_mutex_);
+        d.facts = sppc::AnalyzeResult();
+        if (d.cpp_published)
+        {
+            d.cpp_published = false;
+            send_client({{"jsonrpc", "2.0"}, {"method", "textDocument/publishDiagnostics"},
+                {"params", {{"uri", d.uri}, {"diagnostics", json::array()}}}});
+        }
+        return;
+    }
+    sppc::AnalyzeResult facts = sppc::analyze_cpp(d.text.s, d.path, translate_options(d), session_);
+    facts.diagnostics.clear(); // facts.errors has the errors of this file
+    std::lock_guard<std::mutex> lock(docs_mutex_);
+    d.facts = std::move(facts);
+    d.cpp_published = true;
+    send_client(publish_message(d));
+}
+
 void Server::update(Doc& d)
 {
+    if (d.cpp)
+        return update_cpp(d);
     sppc::AnalyzeResult facts = sppc::analyze(d.text.s, translate_options(d), session_);
     std::string cpp = facts.cpp;
     {
@@ -2182,13 +2215,18 @@ void Server::handle(const json& msg)
         auto d = std::make_shared<Doc>();
         d->uri = td.value("uri", std::string());
         d->path = uri_to_path(d->uri);
-        d->gen_path = d->path + ".cpp";
-        d->gen_uri = path_to_uri(d->gen_path);
+        d->cpp = fs::path(d->path).extension() == ".cpp";
+        if (!d->cpp)
+        {
+            d->gen_path = d->path + ".cpp";
+            d->gen_uri = path_to_uri(d->gen_path);
+        }
         d->text = Text(td.value("text", std::string()));
         {
             std::lock_guard<std::mutex> lock(docs_mutex_);
             docs_[d->uri] = d;
-            gen_docs_[d->gen_uri] = d;
+            if (!d->cpp)
+                gen_docs_[d->gen_uri] = d;
         }
         d->host = host_of(d->path);
         refresh_hosts(d.get());
@@ -2223,8 +2261,11 @@ void Server::handle(const json& msg)
         {
             std::lock_guard<std::mutex> lock(docs_mutex_);
             docs_.erase(d->uri);
-            gen_docs_.erase(d->gen_uri);
+            if (!d->cpp)
+                gen_docs_.erase(d->gen_uri);
         }
+        if (d->cpp && !d->cpp_published)
+            return; // an ignored ".cpp" document: the server never published for it
         send_client({{"jsonrpc", "2.0"}, {"method", "textDocument/publishDiagnostics"},
             {"params", {{"uri", d->uri}, {"diagnostics", json::array()}}}});
         for (const std::string& uri : d->import_uris)
@@ -2254,6 +2295,8 @@ void Server::handle(const json& msg)
     auto d = doc_of(p);
     if (!d)
         return reply_error(id, kInvalidParams, "the document is not open");
+    if (d->cpp)
+        return reply(id, nullptr); // a ".cpp" document: clangd owns the features, spp-ls only publishes errors
     if (method == "textDocument/completion")
         return reply(id, on_completion(*d, p));
     if (method == "textDocument/hover")

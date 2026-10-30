@@ -263,8 +263,7 @@ For a `[this]` lambda, use `[&]` or `[=]`. For a constructor member initializer,
 - An in-class brace initializer of a class-type field is not visited by libclang. A module variable inside such an initializer is not rewritten.
 - A `.cpp` translation does one more libclang parse than a `.spp` translation. A reload is slower. One parse of the engine headers takes about 400 ms.
 - In a normal build the file has plain C++ meaning. There is no state migration and there are no slots. Objects must not be shared between the two builds.
-- The language server and the VS Code extension serve `.spp` only. See [Tools](tools.html).
-- The errors of `sppc` for a `.cpp` script appear at build time.
+- The language server gives only the errors of `sppc` for a `.cpp` script, and only when a host lists the file. The other editor features come from clangd. For a script with aids, clangd needs the flags `-include spp/script.h` and `-I<spp>/include`. See [Tools](tools.html#a-cpp-script-in-the-editor).
 
 ## CMake
 

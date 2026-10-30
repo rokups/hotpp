@@ -7,6 +7,8 @@ if(SPP_NODE)
              COMMAND ${SPP_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/test/grammar.test.js)
     add_test(NAME VscodeExpand
              COMMAND ${SPP_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/test/expand.test.js)
+    add_test(NAME VscodeOnlySpp
+             COMMAND ${SPP_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/test/only_spp.test.js)
 else()
     message(STATUS "node not found: the test of the VS Code grammar is off")
 endif()

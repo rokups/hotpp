@@ -1,7 +1,7 @@
 {
   "name": "spp",
   "displayName": "S++",
-  "description": "Syntax highlighting and language server client for S++ scripts (.spp).",
+  "description": "Syntax highlighting and language server client for S++ scripts (.spp). Shows the sppc errors of .cpp scripts.",
   "version": "0.1.0",
   "publisher": "spp",
   "license": "UNLICENSED",
@@ -9,7 +9,7 @@
   "engines": { "vscode": "^1.80.0" },
   "categories": ["Programming Languages"],
   "main": "./src/extension.js",
-  "activationEvents": ["onLanguage:spp", "onCommand:spp.showScriptPosition", "onCommand:spp.restartServer"],
+  "activationEvents": ["onLanguage:spp", "onLanguage:cpp", "onCommand:spp.showScriptPosition", "onCommand:spp.restartServer"],
   "contributes": {
     "commands": [
       {
@@ -69,6 +69,6 @@
     "vscode-textmate": "^9.0.0"
   },
   "scripts": {
-    "test": "node test/grammar.test.js && node test/expand.test.js"
+    "test": "node test/grammar.test.js && node test/expand.test.js && node test/only_spp.test.js"
   }
 }

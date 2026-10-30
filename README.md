@@ -443,7 +443,7 @@ Editors:
 An editor uses two language servers on one project:
 
 - The official clangd extension serves the C++ files. It reads the `compile_commands.json` of the project build.
-- The `spp` extension and `spp-ls` serve only the `.spp` files. `spp-ls` is not a transparent clangd proxy. It does not answer for C++ files.
+- The `spp` extension and `spp-ls` serve all features for the `.spp` files. For a `.cpp` script that a host lists, they show only the errors of `sppc` as diagnostics. `spp-ls` is not a transparent clangd proxy. It does not answer for C++ files.
 
 Steps:
 

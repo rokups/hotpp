@@ -4,6 +4,7 @@
 
 const vscode = require('vscode');
 const { expandWorkspaceFolder, expandAll } = require('./expand.js');
+const { onlySpp } = require('./only_spp.js');
 
 let client;
 let watchers = [];  // the file watchers of the client
@@ -67,7 +68,15 @@ function startServer() {
     vscode.workspace.createFileSystemWatcher('**/.cache/spp/hosts/*'),
   ];
   const options = {
-    documentSelector: [{ scheme: 'file', language: 'spp' }],
+    // The server gets the ".cpp" documents too. It publishes the sppc errors for a ".cpp" script,
+    // which a host lists, and it ignores any other ".cpp" file. The middleware keeps all the
+    // other features (completion, hover, tokens, formatting) on the "spp" documents: clangd owns
+    // them for a ".cpp" file.
+    documentSelector: [
+      { scheme: 'file', language: 'spp' },
+      { scheme: 'file', language: 'cpp' },
+    ],
+    middleware: onlySpp(),
     // The client sends workspace/didChangeWatchedFiles for these files. The code disposes the
     // watchers in deactivate(), so a restart does not leave old watchers.
     synchronize: { fileEvents: watchers },

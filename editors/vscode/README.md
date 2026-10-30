@@ -55,7 +55,7 @@ It is the path of the first workspace folder. For example: `"-I", "${workspaceFo
 
 ## Use with the clangd extension
 
-This extension and `spp-ls` serve only `.spp` files. The official clangd extension serves the C++ files.
+This extension and `spp-ls` serve all features for `.spp` files. For a `.cpp` script that a host lists, they show only the errors of `sppc` as diagnostics. The official clangd extension serves the C++ files, with all other features.
 Install both extensions. They run side by side on one project.
 
 1. Install the clangd extension and `clangd`. Set it up for the C++ build as usual.

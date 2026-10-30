@@ -510,3 +510,64 @@ TEST(CppFrontend, ClangError)
 }
 
 } // namespace
+
+// ---- sppc::analyze_cpp: the errors of a ".cpp" script for an editor
+
+namespace
+{
+
+sppc::TranslateOptions analyze_options()
+{
+    sppc::TranslateOptions o;
+    o.generation = 1;
+    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/tests/engine", std::string(SPP_SOURCE_DIR) + "/include"};
+    o.resource_dir = SPP_RESOURCE_DIR;
+    return o;
+}
+
+} // namespace
+
+TEST(AnalyzeCpp, ValidScriptHasNoError)
+{
+    const sppc::AnalyzeResult r = sppc::analyze_cpp(
+        "#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    void Tick(float dt) override {}\n};\n",
+        "/w/t.cpp", analyze_options());
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(r.errors.empty());
+    EXPECT_TRUE(r.cpp.empty());
+}
+
+// A parse error comes with the line and the column of the script.
+TEST(AnalyzeCpp, StaticMethodHasPlace)
+{
+    const std::string text =
+        "#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    static void F() {}\n};\n";
+    const sppc::AnalyzeResult r = sppc::analyze_cpp(text, "/w/t.cpp", analyze_options());
+    EXPECT_FALSE(r.ok);
+    ASSERT_EQ(r.errors.size(), 1u) << r.diagnostics;
+    EXPECT_EQ(r.errors[0].message, "a static method is not supported in a .cpp script");
+    EXPECT_EQ(r.errors[0].pos.line, 5);
+    EXPECT_GT(r.errors[0].pos.col, 0);
+    // The offset is the place of the error in the text.
+    EXPECT_EQ(r.errors[0].offset,
+        text.find('\n', text.find("public:")) + 1 + static_cast<size_t>(r.errors[0].pos.col - 1));
+}
+
+// An error of a later check (not of the parser) is an error too.
+TEST(AnalyzeCpp, TranslationErrorIsReported)
+{
+    const sppc::AnalyzeResult r = sppc::analyze_cpp(
+        "#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    void TakeDamage(float a = 1.0f) override {}\n};\n",
+        "/w/t.cpp", analyze_options());
+    EXPECT_FALSE(r.ok);
+    ASSERT_FALSE(r.errors.empty()) << r.diagnostics;
+    EXPECT_EQ(r.errors[0].pos.line, 5);
+}
+
+TEST(AnalyzeCpp, PathMustBeCpp)
+{
+    const sppc::AnalyzeResult r = sppc::analyze_cpp("class S {};", "/w/t.spp", analyze_options());
+    EXPECT_FALSE(r.ok);
+    ASSERT_EQ(r.errors.size(), 1u);
+    EXPECT_EQ(r.errors[0].pos.line, 1);
+}

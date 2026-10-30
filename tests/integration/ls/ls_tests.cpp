@@ -1718,3 +1718,156 @@ TEST(LanguageServerHosts, InformationDiagnosticGoesWhenAHostAppears)
     client.change(c.uri, 2, c.text + "\n");
     EXPECT_FALSE(has_source(c.next_diagnostics(client)["params"]["diagnostics"], "spp-ls"));
 }
+
+// ------------------------------------------------------------------ ".cpp" scripts
+// A ".cpp" file is a script only when a host lists it (a script or a script dir). The server then
+// publishes the sppc errors as diagnostics. It gives no other answer for the file: clangd owns it.
+namespace
+{
+
+const char* const kCppValid =
+    "#include \"Actor.h\"\n"
+    "\n"
+    "class Hero : public Actor\n"
+    "{\n"
+    "public:\n"
+    "    void Tick(float dt) override {}\n"
+    "};\n";
+
+// The static method is on the 0-based line 5.
+const char* const kCppStatic =
+    "#include \"Actor.h\"\n"
+    "\n"
+    "class Hero : public Actor\n"
+    "{\n"
+    "public:\n"
+    "    static void F() {}\n"
+    "};\n";
+
+struct CppScriptCase
+{
+    TempDir dir;
+    std::string script_path, other_path, script_uri, other_uri;
+    spp::ls::ServerOptions o;
+    // "scripts/a.cpp" is in the script dir of the host. "other/b.cpp" is in no host.
+    CppScriptCase()
+    {
+        const std::filesystem::path root = dir.path();
+        for (const char* d : {"scripts", "other", "build", "hosts"})
+            std::filesystem::create_directories(root / d);
+        script_path = (root / "scripts" / "a.cpp").string();
+        other_path = (root / "other" / "b.cpp").string();
+        script_uri = uri_of(script_path);
+        other_uri = uri_of(other_path);
+        write_file((root / "build" / "CMakeCache.txt").string(), "# cache\n");
+        write_file((root / "hosts" / "h.json").string(),
+            R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string()
+                + R"(","compiler":"/usr/bin/c++","std":"c++17","resourceDir":"","scriptDirs":[")"
+                + (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" + SPP_SOURCE_DIR
+                + R"(/include",")" + SPP_SOURCE_DIR + R"(/tests/engine"],"defines":[],"flags":[]})");
+        o.hosts_dir = (root / "hosts").string();
+    }
+    static void open(LsClient& c, const std::string& uri, const std::string& text)
+    {
+        c.notify("textDocument/didOpen",
+            {{"textDocument", {{"uri", uri}, {"languageId", "cpp"}, {"version", 1}, {"text", text}}}});
+    }
+    static json diagnostics_of(LsClient& c, const std::string& uri, int timeout_ms = 120000)
+    {
+        return c.wait_notification(
+            "textDocument/publishDiagnostics", [&](const json& p) { return p.value("uri", std::string()) == uri; },
+            timeout_ms);
+    }
+};
+
+} // namespace
+
+TEST(LanguageServerCpp, ScriptWithAnUnsupportedFormGivesTheSppcMessageAtTheLine)
+{
+    CppScriptCase c;
+    LsClient client(c.o);
+    client.initialize(uri_of(c.dir.path().string()));
+    CppScriptCase::open(client, c.script_uri, kCppStatic);
+    const json n = CppScriptCase::diagnostics_of(client, c.script_uri);
+    ASSERT_FALSE(n.is_null());
+    const json& diags = n["params"]["diagnostics"];
+    ASSERT_EQ(diags.size(), 1u) << n.dump();
+    EXPECT_EQ(diags[0]["message"], "a static method is not supported in a .cpp script");
+    EXPECT_EQ(diags[0]["range"]["start"]["line"], 5);
+    EXPECT_EQ(diags[0]["severity"], 1);
+    EXPECT_EQ(diags[0]["source"], "spp");
+}
+
+TEST(LanguageServerCpp, ValidScriptGivesNoDiagnostic)
+{
+    CppScriptCase c;
+    LsClient client(c.o);
+    client.initialize(uri_of(c.dir.path().string()));
+    CppScriptCase::open(client, c.script_uri, kCppValid);
+    const json n = CppScriptCase::diagnostics_of(client, c.script_uri);
+    ASSERT_FALSE(n.is_null());
+    EXPECT_TRUE(n["params"]["diagnostics"].empty()) << n.dump();
+}
+
+TEST(LanguageServerCpp, EditOfAScriptReplacesTheDiagnostics)
+{
+    CppScriptCase c;
+    LsClient client(c.o);
+    client.initialize(uri_of(c.dir.path().string()));
+    CppScriptCase::open(client, c.script_uri, kCppStatic);
+    EXPECT_EQ(CppScriptCase::diagnostics_of(client, c.script_uri)["params"]["diagnostics"].size(), 1u);
+    client.change(c.script_uri, 2, kCppValid);
+    EXPECT_TRUE(CppScriptCase::diagnostics_of(client, c.script_uri)["params"]["diagnostics"].empty());
+}
+
+TEST(LanguageServerCpp, FileOfNoHostIsIgnored)
+{
+    CppScriptCase c;
+    LsClient client(c.o);
+    client.initialize(uri_of(c.dir.path().string()));
+    CppScriptCase::open(client, c.other_uri, kCppStatic);
+    // The server answers the requests in order. After the replies, a publish would be in the queue.
+    for (const char* method : {"textDocument/completion", "textDocument/hover", "textDocument/definition",
+             "textDocument/references", "textDocument/documentSymbol", "textDocument/semanticTokens/full"})
+    {
+        const json r = client.request(method, doc_pos(c.other_uri, 5, 10));
+        ASSERT_TRUE(r.contains("result")) << method << ": " << r.dump();
+        EXPECT_TRUE(r["result"].is_null() || r["result"].empty()) << method << ": " << r.dump();
+    }
+    EXPECT_TRUE(CppScriptCase::diagnostics_of(client, c.other_uri, 300).is_null());
+    client.change(c.other_uri, 2, kCppValid);
+    client.request("textDocument/hover", doc_pos(c.other_uri, 5, 10));
+    EXPECT_TRUE(CppScriptCase::diagnostics_of(client, c.other_uri, 300).is_null());
+}
+
+TEST(LanguageServerCpp, ScriptGetsNoCompletionHoverOrSemanticTokens)
+{
+    CppScriptCase c;
+    LsClient client(c.o);
+    client.initialize(uri_of(c.dir.path().string()));
+    CppScriptCase::open(client, c.script_uri, kCppValid);
+    ASSERT_FALSE(CppScriptCase::diagnostics_of(client, c.script_uri).is_null());
+    for (const char* method : {"textDocument/completion", "textDocument/hover", "textDocument/definition",
+             "textDocument/references", "textDocument/documentSymbol", "textDocument/semanticTokens/full",
+             "textDocument/signatureHelp", "textDocument/formatting", "textDocument/codeAction"})
+    {
+        const json r = client.request(method, doc_pos(c.script_uri, 2, 8));
+        ASSERT_TRUE(r.contains("result")) << method << ": " << r.dump();
+        EXPECT_TRUE(r["result"].is_null() || r["result"].empty()) << method << ": " << r.dump();
+    }
+    json rename = doc_pos(c.script_uri, 2, 8);
+    rename["newName"] = "Villain";
+    const json r = client.request("textDocument/rename", rename);
+    EXPECT_TRUE(r["result"].is_null() || r["result"].empty()) << r.dump();
+}
+
+TEST(LanguageServerCpp, ClosingAScriptClearsItsDiagnostics)
+{
+    CppScriptCase c;
+    LsClient client(c.o);
+    client.initialize(uri_of(c.dir.path().string()));
+    CppScriptCase::open(client, c.script_uri, kCppStatic);
+    EXPECT_EQ(CppScriptCase::diagnostics_of(client, c.script_uri)["params"]["diagnostics"].size(), 1u);
+    client.notify("textDocument/didClose", {{"textDocument", {{"uri", c.script_uri}}}});
+    EXPECT_TRUE(CppScriptCase::diagnostics_of(client, c.script_uri)["params"]["diagnostics"].empty());
+}

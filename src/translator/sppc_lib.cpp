@@ -5042,4 +5042,78 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
     return res;
 }
 
+AnalyzeResult analyze_cpp(const std::string& text, const std::string& path, const TranslateOptions& options)
+{
+    TranslatorSession session;
+    return analyze_cpp(text, path, options, session);
+}
+
+AnalyzeResult analyze_cpp(
+    const std::string& text, const std::string& path, const TranslateOptions& options, TranslatorSession& session)
+{
+    AnalyzeResult res;
+    TranslateOptions o = options;
+    o.script_name = path;
+    o.script_text = text;
+    if (path.size() < 4 || path.compare(path.size() - 4, 4, ".cpp") != 0)
+    {
+        res.errors.push_back({{1, 1}, 0, "the script '" + path + "' is not a .cpp file"});
+        res.diagnostics = path + ":1:1: error: the script is not a .cpp file\n";
+        return res;
+    }
+    const TranslateResult tr = translate(o, session);
+    res.ok = tr.ok;
+    res.diagnostics = tr.diagnostics;
+
+    // The line table of the text: the byte offset of the start of each line.
+    std::vector<uint32_t> starts{0};
+    for (size_t i = 0; i < text.size(); ++i)
+        if (text[i] == '\n')
+            starts.push_back(static_cast<uint32_t>(i + 1));
+
+    // Each line is "path:line:col: error: text", "path:line: error: text" or "sppc: error: text".
+    const std::string head = path + ":";
+    std::istringstream in(tr.diagnostics);
+    for (std::string l; std::getline(in, l);)
+    {
+        int line = 1, col = 1;
+        std::string rest;
+        if (l.compare(0, head.size(), head) == 0)
+        {
+            size_t at = head.size();
+            size_t used = 0;
+            try
+            {
+                line = std::stoi(l.substr(at), &used);
+                at += used;
+                if (at < l.size() && l[at] == ':')
+                {
+                    ++at;
+                    col = std::stoi(l.substr(at), &used);
+                    at += used;
+                }
+            }
+            catch (const std::exception&)
+            {
+                continue;
+            }
+            rest = l.substr(at);
+        }
+        else if (l.compare(0, 6, "sppc: ") == 0)
+            rest = l.substr(4); // ": error: text"
+        else
+            continue; // an error in another file (a header that libclang reads)
+        static const std::string tag = ": error: ";
+        if (rest.compare(0, tag.size(), tag) != 0)
+            continue;
+        line = std::max(line, 1);
+        col = std::max(col, 1);
+        uint32_t offset = 0;
+        if (static_cast<size_t>(line) <= starts.size())
+            offset = std::min<size_t>(starts[static_cast<size_t>(line) - 1] + static_cast<size_t>(col - 1), text.size());
+        res.errors.push_back({{line, col}, offset, rest.substr(tag.size())});
+    }
+    return res;
+}
+
 } // namespace sppc

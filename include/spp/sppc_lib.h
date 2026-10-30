@@ -285,4 +285,18 @@ TranslateResult translate(const TranslateOptions& options, TranslatorSession& se
 AnalyzeResult analyze(const std::string& text, const TranslateOptions& options);
 AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, TranslatorSession& session);
 
+// Checks a ".cpp" script (see doc/cpp-scripts.md) and returns its errors. The function runs the
+// ".cpp" front end and all the checks of translate(). It writes no file. "path" is the script
+// name: it must end in ".cpp" and it replaces options.script_name. The text replaces
+// options.script_text.
+//   - ok:          the script translates with no error.
+//   - errors:      the errors that have a place in "path", in source order. An error with no
+//                  script line gets the place 1:1. The "offset" is the byte offset of the place.
+//   - diagnostics: all the error lines of the translator, as in TranslateResult.
+// The fields classes, completion_points, source_map and cpp stay empty: the editor gets the
+// other features for a ".cpp" file from another server.
+AnalyzeResult analyze_cpp(const std::string& text, const std::string& path, const TranslateOptions& options);
+AnalyzeResult analyze_cpp(
+    const std::string& text, const std::string& path, const TranslateOptions& options, TranslatorSession& session);
+
 } // namespace sppc
