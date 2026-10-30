@@ -255,11 +255,10 @@ The exit code is 0 for success, 1 for an error and 2 for a wrong command line. T
 
 The CMake function `spp_add_scripts` (`cmake/SppScripts.cmake`) only runs `sppc`:
 
-    spp_add_scripts(TARGET pre_gen1 GEN 1 SCRIPTS example/scripts/player_v1.spp
+    spp_add_scripts(TARGET player SCRIPTS example/scripts/player_v1.spp
                     INCLUDES include example/engine FLAGS ${flags} DEPENDS ${headers})
-    spp_add_scripts(TARGET pre_gen2 GEN 2 SCRIPTS example/scripts/player_v2.spp AFTER pre_gen1 ...)
 
-`TARGET` is a custom target that makes the libraries in `OUT_DIR` (default `${CMAKE_BINARY_DIR}/spp_scripts`). `AFTER` orders a generation after the earlier one.
+`TARGET` is a custom target that makes the libraries in `OUT_DIR` (default `${CMAKE_BINARY_DIR}/spp_scripts`). The generation is 1. The tests use the internal options `GEN n` and `AFTER` to build later generations.
 
 ## AOT compilation
 

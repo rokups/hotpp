@@ -1,6 +1,6 @@
 # spp_add_scripts: compile scripts with the tool sppc. There are two modes.
 #
-#   spp_add_scripts(TARGET name SCRIPTS a.spp b.spp GEN n
+#   spp_add_scripts(TARGET name SCRIPTS a.spp b.spp
 #                   [INCLUDES dir...] [FLAGS cxxflag...] [DEPENDS file...]
 #                   [OUT_DIR dir] [AFTER target])
 #   spp_add_scripts(TARGET name SCRIPTS a.spp b.spp AOT
@@ -15,7 +15,7 @@
 # The target makes the library OUT_DIR/<script name>.g<n>.so for each script. OUT_DIR
 # defaults to ${CMAKE_BINARY_DIR}/spp_scripts. Load such a library with
 # spp::module_from_library. The variable SPP_SCRIPTS_<TARGET>_LIBRARIES gets the paths.
-# GEN is required. FLAGS are compile flags (--cxxflag). The generations of one class
+# The generation is 1. The tests set GEN n to build later generations. FLAGS are compile flags (--cxxflag). The generations of one class
 # share a slot file in OUT_DIR. Build generation 2 after generation 1: give AFTER the
 # target of generation 1.
 #
@@ -46,7 +46,7 @@ function(spp_add_scripts)
         endif()
     else()
         if(NOT A_GEN)
-            message(FATAL_ERROR "spp_add_scripts needs GEN when AOT is not set (target ${A_TARGET})")
+            set(A_GEN 1)
         endif()
         if(A_PRELUDES)
             message(FATAL_ERROR "spp_add_scripts: PRELUDES works only with AOT (target ${A_TARGET})")

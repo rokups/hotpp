@@ -100,7 +100,7 @@ Script names and class names must be unique. Do not link `spp_runtime` and `spp_
 ```cmake
 include(cmake/SppScripts.cmake)
 
-spp_add_scripts(TARGET pre_gen1 GEN 1 SCRIPTS example/scripts/player_v1.spp
+spp_add_scripts(TARGET player SCRIPTS example/scripts/player_v1.spp
                 INCLUDES include example/engine)
 
 spp_add_scripts(TARGET game_scripts SCRIPTS player.spp boss.spp AOT
