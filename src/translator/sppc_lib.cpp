@@ -2728,6 +2728,12 @@ void translate_impl(
         if (!m.raw)
             return false;
         // The text starts right after the "{", so its first line is the line of the "{".
+        for (const auto& pre : m.raw_pre)
+        {
+            o.w("#line " + std::to_string(pre.line) + " \"" + esc(file_at(m.pos)) + "\"\n");
+            o.w(pre.text);
+            o.w("\n");
+        }
         o.w("#line " + std::to_string(m.raw_line > 0 ? m.raw_line : m.line) + " \"" + esc(file_at(m.pos)) + "\"\n");
         o.w(m.raw_body);
         o.w("\n");
@@ -4630,6 +4636,7 @@ void translate_impl(
             ctor_ms[k].raw = cd.ctors[k].raw;
             ctor_ms[k].raw_body = cd.ctors[k].raw_body;
             ctor_ms[k].raw_line = cd.ctors[k].raw_line;
+            ctor_ms[k].raw_pre = cd.ctors[k].raw_pre;
             emit_body(ctor_ms[k], true, P + "ctor", "void", cn + "::" + cn, "ctor");
         }
         if (has_dtor)

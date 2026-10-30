@@ -401,6 +401,13 @@ struct Field
     bool raw_brace_init = false; // true when the initializer is "{...}"
 };
 
+// A line of raw C++ text with the script line where it starts.
+struct RawLine
+{
+    int line = 0;
+    std::string text;
+};
+
 struct Method
 {
     // True when the function overrides a base virtual method. The translator sets it after
@@ -429,6 +436,7 @@ struct Method
     bool raw = false;
     std::string raw_body; // the edited C++ text between the braces, without the braces
     int raw_line = 0; // the script line of the "{": the first line of "raw_body"
+    std::vector<RawLine> raw_pre; // statements that come before "raw_body" (the member initializers of a constructor)
 };
 
 // A constructor: "Name(T a) : base(args) { body }". The name is the name of the class.
@@ -450,6 +458,7 @@ struct Ctor
     std::string raw_body; // the edited C++ text between the braces, without the braces
     int raw_line = 0; // the script line of the "{": the first line of "raw_body"
     std::string raw_base_args; // the text between the parentheses of the native base initializer
+    std::vector<RawLine> raw_pre; // the member initializers as statements, in the order of the fields
 };
 
 // A property: "Type Name { get; set; }" or "Type Name { get { ... } set { ... } }".

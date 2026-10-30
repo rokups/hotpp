@@ -423,6 +423,8 @@ private:
     bool is_member_def(CXCursor c) const;
     void read_method_body(CXCursor c, const ClassInfo* cls, const Where<ast::Method>& where, size_t index);
     void read_ctor_body(CXCursor c, const ClassInfo& cls, const Where<ast::Ctor>& where, size_t index);
+    void read_member_inits(
+        CXCursor c, const ClassInfo& cls, const Where<ast::Ctor>& where, size_t index, uint32_t colon, Range b);
     void declare(CXCursor c, const ClassInfo* cls, size_t index, const Where<ast::Method>& m, const Where<ast::Ctor>& ct);
     void define_member(CXCursor c);
     void check_late_decls(CXCursor c, const Declared& d, uint32_t from);
@@ -590,7 +592,8 @@ void Frontend::check_type_refs(CXCursor c)
         {
             const Entry* en = lookup(clang_getCursorReferenced(k));
             // The name of the class in "Player::Player" and "Player::~Player" is not a use.
-            const bool own_name = (ck == CXCursor_Constructor || ck == CXCursor_Destructor) && is_member_def(c) &&
+            // A constructor can name its own class in a delegating initializer. read_ctor_body gives the error.
+            const bool own_name = (ck == CXCursor_Constructor || (ck == CXCursor_Destructor && is_member_def(c))) &&
                 usr(clang_getCursorReferenced(k)) == usr(clang_getCursorSemanticParent(c));
             if (en && en->kind == Kind::ScriptClass && en != alloc && !own_name)
                 check_class_use(k, c, *en, static_parent);
@@ -1591,6 +1594,155 @@ void Frontend::make_ctor(CXCursor c, const ClassInfo& cls, const Where<ast::Ctor
     read_ctor_body(c, cls, where, index);
 }
 
+// Reads the initializer list that starts at the ":" in "colon". The entry of the native base keeps
+// its handling. The entry of a field becomes a statement at the start of the body: the fields live
+// in the state, so the state cannot construct them in the list. C++ initializes the fields in the
+// order of the declarations, so the statements have this order. The statement makes the value
+// with the direct initialization of the list, and then moves it into the field.
+void Frontend::read_member_inits(
+    CXCursor c, const ClassInfo& cls, const Where<ast::Ctor>& where, size_t index, uint32_t colon, Range b)
+{
+    struct Item
+    {
+        std::string name;
+        bool brace;
+        uint32_t decl; // the offset of the declaration of the field
+        uint32_t open, close;
+    };
+    std::vector<Item> items;
+    const CXCursor owner = clang_getCursorSemanticParent(c);
+    bool has_base = false;
+    // Skips the white space and the comments between the entries.
+    auto skip = [this, &b](size_t i)
+    {
+        for (;;)
+        {
+            i = skip_ws(text_, i, b.begin);
+            const size_t k = i < b.begin ? skip_opaque(text_, i) : i;
+            if (k == i || text_[i] == '"' || text_[i] == '\'')
+                return i;
+            i = k;
+        }
+    };
+    size_t p = colon + 1;
+    for (;;)
+    {
+        p = skip(p);
+        const size_t s = p;
+        size_t n = s;
+        while (n < b.begin && (is_ident(text_[n]) || text_[n] == ':' || text_[n] == '<' || text_[n] == '>'))
+            ++n;
+        const std::string word = text_.substr(s, n - s);
+        const size_t a = skip(n);
+        const size_t a_end = a < b.begin && (text_[a] == '(' || text_[a] == '{') ? match_close(text_, a, b.begin)
+                                                                                 : std::string::npos;
+        if (word.empty() || a_end == std::string::npos)
+            fail(static_cast<uint32_t>(s), "cannot read this member initializer");
+        const size_t q = skip(a_end + 1);
+        if (text_.compare(q, 3, "...") == 0)
+            fail(static_cast<uint32_t>(q), "a pack expansion in a member initializer is not supported in a .cpp script");
+        if (q != b.begin && text_[q] != ',')
+            fail(static_cast<uint32_t>(q), "cannot read this member initializer");
+        const Range args{static_cast<uint32_t>(a + 1), static_cast<uint32_t>(a_end)};
+        if (last_name(word) == cls.name)
+            fail(static_cast<uint32_t>(s), "a delegating constructor is not supported in a .cpp script class");
+        if (!cls.base.empty() && last_name(word) == last_name(cls.base))
+        {
+            if (has_base)
+                fail(static_cast<uint32_t>(s), "the base class is initialized twice in this constructor");
+            has_base = true;
+            ast::Ctor& ct = where()[index];
+            ct.has_base_call = true;
+            ct.base_pos = static_cast<uint32_t>(s);
+            add_slice(args, &cls, [where, index](std::string&& t) { where()[index].raw_base_args = std::move(t); });
+        }
+        else
+        {
+            CXCursor field = clang_getNullCursor();
+            for (CXCursor m : children(owner))
+                if (clang_getCursorKind(m) == CXCursor_FieldDecl && spelling(m) == word)
+                    field = m;
+            const uint32_t at = static_cast<uint32_t>(s);
+            if (clang_Cursor_isNull(field))
+                fail(at,
+                    "'" + word + "' is not a field of the script class '" + cls.name +
+                        "'; only a field or the base class can be in the initializer list");
+            const CXType ft = clang_getCursorType(field);
+            if (ft.kind == CXType_LValueReference || ft.kind == CXType_RValueReference)
+                fail(at,
+                    "the reference field '" + word +
+                        "' cannot be in the initializer list: a field lives in the state; use a default member initializer");
+            if (clang_isConstQualifiedType(ft))
+                fail(at,
+                    "the const field '" + word +
+                        "' cannot be in the initializer list: a field lives in the state; use a default member initializer");
+            if (ft.kind == CXType_ConstantArray || ft.kind == CXType_IncompleteArray ||
+                ft.kind == CXType_VariableArray || ft.kind == CXType_DependentSizedArray)
+                fail(at, "the array field '" + word + "' cannot be in the initializer list; assign its elements in the body");
+            for (const Item& it : items)
+                if (it.name == word)
+                    fail(at, "the field '" + word + "' is initialized twice in this constructor");
+            items.push_back(Item{word, text_[a] == '{', pos_of(field), args.begin, args.end});
+        }
+        if (q == b.begin)
+            break;
+        p = q + 1;
+    }
+    // A default member initializer runs before the list, so it cannot read a value from the list.
+    for (CXCursor m : children(owner))
+    {
+        if (clang_getCursorKind(m) != CXCursor_FieldDecl)
+            continue;
+        bool listed = false;
+        for (const Item& it : items)
+            listed = listed || it.name == spelling(m);
+        if (listed)
+            continue; // C++ does not run the default of a field that has an entry
+        std::function<void(CXCursor)> scan = [&](CXCursor k)
+        {
+            const CXCursorKind kk = clang_getCursorKind(k);
+            if (kk == CXCursor_MemberRefExpr || kk == CXCursor_DeclRefExpr)
+            {
+                const CXCursor r = clang_getCursorReferenced(k);
+                if (clang_getCursorKind(r) == CXCursor_FieldDecl &&
+                    clang_equalCursors(clang_getCursorSemanticParent(r), owner))
+                    for (const Item& it : items)
+                        if (it.name == spelling(r))
+                            fail(pos_of(k),
+                                "the default member initializer of the field '" + spelling(m) + "' reads the field '" +
+                                    it.name + "', which this constructor sets in its initializer list; the default sees "
+                                    "the default value, not the value from the list. Add '" + spelling(m) +
+                                    "' to the initializer list");
+            }
+            for (CXCursor c2 : children(k))
+                scan(c2);
+        };
+        for (CXCursor k : children(m))
+            if (clang_isExpression(clang_getCursorKind(k)))
+                scan(k);
+    }
+    std::stable_sort(items.begin(), items.end(), [](const Item& x, const Item& y) { return x.decl < y.decl; });
+    ast::Ctor& ct = where()[index];
+    ct.raw_pre.resize(items.size());
+    for (size_t k = 0; k < items.size(); ++k)
+    {
+        const Item& it = items[k];
+        ct.raw_pre[k].line = line(it.open);
+        const std::string field = "__st->" + it.name;
+        const std::string open = it.brace ? "{" : "(", close = it.brace ? "}" : ")";
+        add_slice(Range{it.open, it.close}, &cls,
+            [where, index, k, field, open, close](std::string&& t)
+            {
+                // The value is a local, so the direct initialization of C++ builds it. An empty list
+                // value-initializes it. A line comment in the text needs a new line before the closing mark.
+                const std::string v = trim(t);
+                const std::string end = v.find("//") == std::string::npos ? close : "\n" + close;
+                where()[index].raw_pre[k].text = "{ decltype(" + field + ") __spp_mi" + (v.empty() ? "{}" : open + v + end) +
+                    "; " + field + " = std::move(__spp_mi); }";
+            });
+    }
+}
+
 // Reads the body and the base initializer of the constructor "index" from the definition "c".
 void Frontend::read_ctor_body(CXCursor c, const ClassInfo& cls, const Where<ast::Ctor>& where, size_t index)
 {
@@ -1607,26 +1759,12 @@ void Frontend::read_ctor_body(CXCursor c, const ClassInfo& cls, const Where<ast:
     size_t i = skip_ws(text_, close + 1, b.begin);
     // Skip the words before the ":" (for example "noexcept").
     while (i < b.begin && text_[i] != ':')
-        ++i;
-    if (i < b.begin)
     {
-        const uint32_t colon = static_cast<uint32_t>(i);
-        size_t s = skip_ws(text_, i + 1, b.begin);
-        size_t n = s;
-        while (n < b.begin && (is_ident(text_[n]) || text_[n] == ':' || text_[n] == '<' || text_[n] == '>'))
-            ++n;
-        const std::string word = text_.substr(s, n - s);
-        size_t a = skip_ws(text_, n, b.begin);
-        size_t a_end = a < b.begin && (text_[a] == '(' || text_[a] == '{') ? match_close(text_, a, b.begin)
-                                                                           : std::string::npos;
-        if (word.empty() || last_name(word) != last_name(cls.base) || a_end == std::string::npos ||
-            skip_ws(text_, a_end + 1, b.begin) != b.begin)
-            fail(colon, "use a default member initializer");
-        ct.has_base_call = true;
-        ct.base_pos = static_cast<uint32_t>(s);
-        add_slice(Range{static_cast<uint32_t>(a + 1), static_cast<uint32_t>(a_end)}, &cls,
-            [where, index](std::string&& s) { where()[index].raw_base_args = std::move(s); });
+        const size_t k = skip_opaque(text_, i); // a comment can hold a ":"
+        i = k > i ? k : i + 1;
     }
+    if (i < b.begin)
+        read_member_inits(c, cls, where, index, static_cast<uint32_t>(i), b);
     ct.raw_line = line(b.begin); // "raw_body" starts right after the "{"
     add_slice(Range{b.begin + 1, b.end - 1}, &cls,
         [where, index](std::string&& s) { where()[index].raw_body = std::move(s); });

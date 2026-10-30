@@ -361,6 +361,131 @@ void expect_error(const std::string& body, const std::string& msg)
     EXPECT_NE(p.errors().find(msg), std::string::npos) << "script:\n" << body << "\nerrors:\n" << p.errors();
 }
 
+// A member initializer list. The statements come in the order of the field declarations.
+TEST(CppFrontend, MemberInitializersKeepFieldOrder)
+{
+    Parsed p("#include \"Actor.h\"\n#include <string>\n#include <utility>\n"
+             "class S : public Actor\n{\npublic:\n"
+             "    S(int a, std::string n) : Actor(\"x\"), c{a + 1}, name(std::move(n)), b(a * 2), Actor_unused_marker_(0) {}\n"
+             "    int b; int c; std::string name; int d = 5; int Actor_unused_marker_;\n};\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    const ast::Ctor& c = p.script.classes.at(0).ctors.at(0);
+    EXPECT_TRUE(c.has_base_call);
+    EXPECT_EQ(c.raw_base_args, "\"x\"");
+    ASSERT_EQ(c.raw_pre.size(), 4u); // the field "d" has a default member initializer and no entry
+    EXPECT_EQ(c.raw_pre[0].text, "{ decltype(__st->b) __spp_mi(a * 2); __st->b = std::move(__spp_mi); }");
+    EXPECT_EQ(c.raw_pre[1].text, "{ decltype(__st->c) __spp_mi{a + 1}; __st->c = std::move(__spp_mi); }");
+    EXPECT_EQ(c.raw_pre[2].text, "{ decltype(__st->name) __spp_mi(std::move(n)); __st->name = std::move(__spp_mi); }");
+    EXPECT_EQ(c.raw_pre[3].text, "{ decltype(__st->Actor_unused_marker_) __spp_mi(0); __st->Actor_unused_marker_ = std::move(__spp_mi); }");
+    EXPECT_EQ(c.raw_pre[0].line, 7);
+    EXPECT_EQ(c.raw_body, "");
+}
+
+// The text of an entry gets the edits of a body, and an entry can be empty. A lambda works.
+TEST(CppFrontend, MemberInitializersEditsAndEmptyForms)
+{
+    Parsed p("#include \"Actor.h\"\nint total = 0;\n"
+             "class S : public Actor\n{\npublic:\n"
+             "    S() : a(), b{}, c(total + Name.size()), d([=] { return 3; }()) {}\n"
+             "    int a; int b; int c; int d;\n};\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    const ast::Ctor& c = p.script.classes.at(0).ctors.at(0);
+    EXPECT_FALSE(c.has_base_call);
+    ASSERT_EQ(c.raw_pre.size(), 4u);
+    EXPECT_EQ(c.raw_pre[0].text, "{ decltype(__st->a) __spp_mi{}; __st->a = std::move(__spp_mi); }");
+    EXPECT_EQ(c.raw_pre[1].text, "{ decltype(__st->b) __spp_mi{}; __st->b = std::move(__spp_mi); }");
+    EXPECT_EQ(c.raw_pre[2].text,
+        "{ decltype(__st->c) __spp_mi(spp_mod()->total + __self->Name.size()); __st->c = std::move(__spp_mi); }");
+    EXPECT_EQ(c.raw_pre[3].text, "{ decltype(__st->d) __spp_mi([=] { return 3; }()); __st->d = std::move(__spp_mi); }");
+}
+
+// An entry may name a parameter that has the name of the field. A constructor with no list has none.
+TEST(CppFrontend, MemberInitializersParameterWithFieldName)
+{
+    Parsed p("#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n"
+             "    S(int hp) : Actor(\"s\"), hp(hp) {}\n    S() : Actor(\"s\") {}\n    int hp = 1;\n};\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    const auto& cs = p.script.classes.at(0).ctors;
+    ASSERT_EQ(cs.size(), 2u);
+    ASSERT_EQ(cs[0].raw_pre.size(), 1u);
+    EXPECT_EQ(cs[0].raw_pre[0].text, "{ decltype(__st->hp) __spp_mi(hp); __st->hp = std::move(__spp_mi); }");
+    EXPECT_TRUE(cs[1].raw_pre.empty());
+}
+
+// A constructor defined after the class has the same list. The parameter names of the definition win.
+TEST(CppFrontend, MemberInitializersOutOfClass)
+{
+    Parsed p("#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n"
+             "    S(int a);\n    int x; int y = 2;\n};\n"
+             "S::S(int v) : Actor(\"s\"), y(v + 1), x(v) { y++; }\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    const ast::Ctor& c = p.script.classes.at(0).ctors.at(0);
+    EXPECT_EQ(c.raw_base_args, "\"s\"");
+    ASSERT_EQ(c.raw_pre.size(), 2u);
+    EXPECT_EQ(c.raw_pre[0].text, "{ decltype(__st->x) __spp_mi(v); __st->x = std::move(__spp_mi); }");
+    EXPECT_EQ(c.raw_pre[1].text, "{ decltype(__st->y) __spp_mi(v + 1); __st->y = std::move(__spp_mi); }");
+    EXPECT_EQ(c.raw_body, " y++; ");
+}
+
+// A line comment at the end of an entry does not hide the closing mark.
+TEST(CppFrontend, MemberInitializerEndsWithLineComment)
+{
+    Parsed p("#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n"
+             "    S() : a(1 // one\n) {}\n    int a;\n};\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    EXPECT_EQ(p.script.classes.at(0).ctors.at(0).raw_pre.at(0).text,
+        "{ decltype(__st->a) __spp_mi(1 // one\n); __st->a = std::move(__spp_mi); }");
+}
+
+TEST(CppFrontend, MemberInitializerErrors)
+{
+    expect_error("class S : public Actor { const int k = 1; S() : k(2) {} };",
+        "the const field 'k' cannot be in the initializer list");
+    expect_error("int g;\nclass S : public Actor { int& r = g; S() : r(g) {} };",
+        "the reference field 'r' cannot be in the initializer list");
+    expect_error("class S : public Actor { S(); S(int a) : S() {} int v = 0; };\nS::S() {}",
+        "a delegating constructor is not supported in a .cpp script class");
+    expect_error("class S : public Actor { S() : Name(\"x\") {} int v = 0; };",
+        "member initializer 'Name' does not name a non-static data member or base class");
+    expect_error("class S : public Actor { S() : nothing(1) {} int v = 0; };",
+        "member initializer 'nothing' does not name a non-static data member or base class");
+    expect_error("class S : public Actor { S() : a{1, 2} {} int a[2]; };",
+        "the array field 'a' cannot be in the initializer list");
+    expect_error("class S : public Actor { S() : v(1), v(2) {} int v = 0; };",
+        "multiple initializations given for non-static member 'v'");
+    // A pack needs a constructor template, and a script class has none.
+    expect_error("class S : public Actor { template <class... A> S(A... a) : v(a...) {} int v = 0; };",
+        "this declaration is not supported in a .cpp script class");
+}
+
+// Comments between the entries and before the body do not change the result.
+TEST(CppFrontend, MemberInitializersSkipComments)
+{
+    Parsed p("#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n"
+             "    S() : Actor(\"x\") // base\n        , /* one */ a(1) /* after */\n        , b{2} // two\n    /* before body: x */ {}\n"
+             "    S(int v) /* no list: a, b */ {}\n"
+             "    int a; int b;\n};\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    const auto& cs = p.script.classes.at(0).ctors;
+    ASSERT_EQ(cs.size(), 2u);
+    EXPECT_EQ(cs[0].raw_base_args, "\"x\"");
+    ASSERT_EQ(cs[0].raw_pre.size(), 2u);
+    EXPECT_EQ(cs[0].raw_pre[0].text, "{ decltype(__st->a) __spp_mi(1); __st->a = std::move(__spp_mi); }");
+    EXPECT_EQ(cs[0].raw_pre[1].text, "{ decltype(__st->b) __spp_mi{2}; __st->b = std::move(__spp_mi); }");
+    EXPECT_TRUE(cs[1].raw_pre.empty());
+}
+
+// A default member initializer runs before the list. So it cannot read a field that has an entry.
+TEST(CppFrontend, MemberInitializerDefaultReadsListedField)
+{
+    expect_error("class S : public Actor { S() : a(5) {} int a; int b = a + 1; };",
+        "the default member initializer of the field 'b' reads the field 'a', which this constructor sets in its "
+        "initializer list");
+    // No error: the default reads a field that has no entry, or the field has an entry itself.
+    Parsed ok("#include \"Actor.h\"\nclass S : public Actor { S() : a(5), b(2) {} int a; int b = a + 1; int c = 3; int d = c + 1; };\n");
+    EXPECT_TRUE(ok.diag.items.empty()) << ok.errors();
+}
+
 TEST(CppFrontend, StructureErrors)
 {
     expect_error("struct B { virtual ~B() {} };\nclass S : public B {};",
@@ -369,8 +494,6 @@ TEST(CppFrontend, StructureErrors)
         "'virtual' is not supported in a .cpp script; use 'override' of a native virtual");
     expect_error("class S : public Actor { void F(); };",
         "the method 'S::F' is declared but never defined; define it in the class or after the class");
-    expect_error("class S : public Actor { int hp = 0; S() : hp(1) {} };", "use a default member initializer");
-    expect_error("class S : public Actor { int hp = 0; S() : Actor(), hp(1) {} };", "use a default member initializer");
     expect_error("int total = 0;\nstruct Late { int v = 0; };\nLate late;",
         "the type 'Late' must come before the first module variable 'total': the module block is there "
         "and needs the complete type");

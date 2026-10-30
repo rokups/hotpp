@@ -114,6 +114,13 @@ TEST(GoldenTranslation, CppOutOfClass)
     golden_pair("cpp_outofclass", ".cpp");
 }
 
+// A .cpp script with a constructor member initializer list. Each entry of a field becomes a
+// statement at the start of the body, in the order of the field declarations.
+TEST(GoldenTranslation, CppCtorInit)
+{
+    golden_pair("cpp_ctor_init", ".cpp");
+}
+
 // A .cpp script uses a script class as a type: "new", pointers, references, field access,
 // method calls and casts on another script object.
 TEST(GoldenTranslation, CppObjects)

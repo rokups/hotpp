@@ -212,7 +212,7 @@ All other text stays as you wrote it.
 - `SPP_ALIAS("old")` on a field.
 - `convert_<field>` methods.
 - The method `onReload(const spp::OldState&)`.
-- Constructors with a base initializer, for example `Actor(args)`.
+- Constructors with a base initializer, for example `Actor(args)`, and with a member initializer list (see "Member initializer lists").
 - Destructors.
 - Static data members and static methods (see "Static members").
 - Methods, constructors and destructors that the file defines outside the class (see "Definitions outside the class").
@@ -333,6 +333,35 @@ The size of a script object can change at a reload. So a script object cannot be
 
 The `.spp` page [Statements](statements.html#is-and-as) compares these forms with `is`, `as` and `new` of a `.spp` script.
 
+## Member initializer lists
+
+A constructor can have a member initializer list, as in plain C++. Both forms work, `f(e)` and `f{e}`, in a constructor in the class and in a constructor that the file defines outside the class.
+
+```cpp
+class Player : public Actor
+{
+public:
+    Player(int hp_, std::string n) : Actor("Player"), hp(hp_ * 2), name(std::move(n)), tag{3} { stamp++; }
+    int hp;
+    std::string name;
+    int tag;
+    int stamp = 5;
+};
+```
+
+These rules apply:
+
+- The entries run before the body of the constructor, in the order of the field declarations, not in the order of the list. This is the rule of C++.
+- An entry can use the parameters of the constructor and the fields that the declaration order puts before it. Such a field already has its new value.
+- An entry builds the value as C++ does: `f(e)` is a direct initialization and `f{e}` is a list initialization. Then `sppc` moves the value into the field. So the type of the field must be move assignable.
+- A field with a default member initializer and no entry keeps the default value.
+- A field with an entry first gets its default value, and then the entry sets it. A default member initializer cannot read a field that has an entry in the list. The default would see the default value of that field, not the value from the list. `sppc` gives an error when the initializer names the field itself. It does not find a read through a function call, so avoid `int b = calc();` when `calc` reads a field that has an entry. Add the field of the default member initializer to the list.
+- The entry of the base class, for example `Actor(args)`, has the handling that "What a script class can have" describes.
+- The text of an entry gets the same edits as a body. It can use a native base member, a module variable and a lambda.
+- A reload does not run a constructor again for a live object. The state of the object stays. A new object runs the initializers of the new generation.
+
+The fixtures `tests/scripts/cpp_ctor_init_v1.cpp` and `tests/scripts/cpp_ctor_init_v2.cpp` show the forms.
+
 ## Aliases, onReload and convert hooks
 
 These features follow the rules of [Hot reload](hot-reload.html). Only the spelling is C++.
@@ -360,7 +389,11 @@ The first version gives an error for each form in this list. The text in the sec
 | A body outside the class that names a declaration which the file puts after the class | `the definition of 'Player::hit' uses 'kLate', which the file declares after the class; the body moves into the class, so declare 'kLate' before the class` |
 | A pure virtual method (`= 0`) | `a pure virtual method is not supported in a .cpp script class` |
 | A constructor, a destructor or a method that is `= default` or `= delete` | `a defaulted or deleted method is not supported in a .cpp script class` (the word `constructor` replaces `method` for a constructor) |
-| A member initializer in a constructor | `use a default member initializer` |
+| A `const` field or a reference field in the initializer list | `the const field '<name>' cannot be in the initializer list: a field lives in the state; use a default member initializer` (the words `reference field` replace `const field` for a reference) |
+| An array field in the initializer list | `the array field '<name>' cannot be in the initializer list; assign its elements in the body` |
+| A delegating constructor, for example `Player() : Player(1) {}` | `a delegating constructor is not supported in a .cpp script class` |
+| A default member initializer that reads a field which has an entry in the list | `the default member initializer of the field '<b>' reads the field '<a>', which this constructor sets in its initializer list; ...` |
+| An entry in the initializer list that is not a field of the class, or a field that has two entries | An error of the C++ parser, for example `member initializer 'x' does not name a non-static data member or base class` |
 | Any other declaration in the class | `this declaration is not supported in a .cpp script class` |
 | Properties | There is no property syntax in C++. Use two methods. |
 | Script-class handles | A script class is not a handle in a `.cpp` script. Use a pointer. See "Script classes as types". |
@@ -380,7 +413,7 @@ The first version gives an error for each form in this list. The text in the sec
 | A base member hidden by a macro | `a macro hides a member of the base class; write the member in the script text` |
 | An include of a `.spp` script | `a .cpp script cannot include a .spp script` |
 
-For a `[this]` lambda, use `[&]` or `[=]`. For a constructor member initializer, use a default member initializer in the class body.
+For a `[this]` lambda, use `[&]` or `[=]`. For a `const` field or a reference field, use a default member initializer in the class body. For a delegating constructor, write the shared code in a method.
 
 ## Known limits
 

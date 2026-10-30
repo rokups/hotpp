@@ -378,6 +378,62 @@ TEST_P(BackendTests, CppScriptObjectsSurviveReload)
     delete first;
 }
 
+// A constructor member initializer list. The fields get their values in the order of the
+// declarations, and an entry can use the parameters and the earlier fields. After a reload the
+// old object keeps its state, and a new object runs the new initializers.
+TEST_P(BackendTests, CppScriptMemberInitializersReload)
+{
+    spp::LoadResult v1 = backend->load(source("cpp_ctor_init_v1.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult v2 = backend->load(source("cpp_ctor_init_v2.cpp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Spawner"));
+    s.actor->Tick(kDt); // new Unit(4, "bob")
+    Actor** slot = modvar<Actor*>(s, "first");
+    ASSERT_NE(slot, nullptr);
+    ASSERT_NE(*slot, nullptr);
+    Actor* first = *slot;
+    auto* shell = dynamic_cast<spp::ShellBase*>(first);
+    ASSERT_NE(shell, nullptr);
+    EXPECT_EQ(*fld<int>(shell, "hp"), 8); // hp_ * 2
+    EXPECT_EQ(*fld<int>(shell, "tag"), 1); // the default argument, with the brace form
+    EXPECT_EQ(*fld<std::string>(shell, "name"), "bob");
+    EXPECT_EQ(*fld<int>(shell, "twice"), 9); // hp + tag: it sees the new hp and tag
+    EXPECT_EQ(*fld<int>(shell, "len"), 4); // the length of Name: "Unit"
+    EXPECT_EQ(*fld<int>(shell, "stamp"), 6); // the default 5, then the body
+    EXPECT_EQ(*fld<int>(shell, "kept"), 7); // a default member initializer with no entry
+
+    *fld<int>(shell, "kept") = 70;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    const spp::ReloadResult res = s.loader.commit_pending();
+    ASSERT_TRUE(res) << res.error;
+    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(*fld<int>(shell, "hp"), 8); // kept: the constructor did not run again
+    EXPECT_EQ(*fld<std::string>(shell, "name"), "bob");
+    EXPECT_EQ(*fld<int>(shell, "kept"), 70);
+    EXPECT_EQ(*fld<int>(shell, "extra"), 0); // the new field has the default value
+
+    s.actor->Tick(kDt); // new Unit(4, "bob") with the new initializers
+    Actor** slot2 = modvar<Actor*>(s, "second");
+    ASSERT_NE(slot2, nullptr);
+    ASSERT_NE(*slot2, nullptr);
+    Actor* second = *slot2;
+    auto* shell2 = dynamic_cast<spp::ShellBase*>(second);
+    ASSERT_NE(shell2, nullptr);
+    EXPECT_EQ(*fld<int>(shell2, "hp"), 12); // hp_ * 3
+    EXPECT_EQ(*fld<int>(shell2, "tag"), 10);
+    EXPECT_EQ(*fld<std::string>(shell2, "name"), "bob!");
+    EXPECT_EQ(*fld<int>(shell2, "twice"), 22);
+    EXPECT_EQ(*fld<int>(shell2, "extra"), 4);
+    EXPECT_EQ(*fld<int>(shell2, "kept"), 7);
+
+    *modvar<Actor*>(s, "first") = nullptr;
+    *modvar<Actor*>(s, "second") = nullptr;
+    delete first;
+    delete second;
+}
+
 // A .spp script and a .cpp script live in the same process. Each has its own loader and one object.
 // One loader holds one module for each generation, so the two scripts use two loaders.
 TEST_P(BackendTests, SppAndCppScriptsRunSideBySide)
