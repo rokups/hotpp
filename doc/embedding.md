@@ -22,14 +22,14 @@ Answer these questions in order. Stop at the first answer that fits.
 
 | Situation | Sample |
 |---|---|
-| AOT | [aot](https://github.com/rokups/spp/tree/main/samples/aot) |
-| Precompiled library | [precompiled-library](https://github.com/rokups/spp/tree/main/samples/precompiled-library) |
-| Compile at run time | [runtime-compile](https://github.com/rokups/spp/tree/main/samples/runtime-compile) |
-| Hot reload | [hot-reload](https://github.com/rokups/spp/tree/main/samples/hot-reload) |
-| Explicit Clang files backend | [clang-files-backend](https://github.com/rokups/spp/tree/main/samples/clang-files-backend) |
-| In-process JIT | [jit-backend](https://github.com/rokups/spp/tree/main/samples/jit-backend) |
+| AOT | [aot](https://github.com/rokups/hotpp/tree/main/samples/aot) |
+| Precompiled library | [precompiled-library](https://github.com/rokups/hotpp/tree/main/samples/precompiled-library) |
+| Compile at run time | [runtime-compile](https://github.com/rokups/hotpp/tree/main/samples/runtime-compile) |
+| Hot reload | [hot-reload](https://github.com/rokups/hotpp/tree/main/samples/hot-reload) |
+| Explicit Clang files backend | [clang-files-backend](https://github.com/rokups/hotpp/tree/main/samples/clang-files-backend) |
+| In-process JIT | [jit-backend](https://github.com/rokups/hotpp/tree/main/samples/jit-backend) |
 
-The sample [imgui](https://github.com/rokups/spp/tree/main/samples/imgui) combines hot reload with a Dear ImGui window. Copy your host from `samples/`. The folder `tests/engine` is a test host for the Hot++ tests. It is not a model for a user project.
+The sample [imgui](https://github.com/rokups/hotpp/tree/main/samples/imgui) combines hot reload with a Dear ImGui window. Copy your host from `samples/`. The folder `tests/engine` is a test host for the Hot++ tests. It is not a model for a user project.
 
 ## Hosting situations
 
@@ -37,12 +37,12 @@ Pick the row that matches your program. Each sample is a small project that buil
 
 | Situation | Links | Key API | Sample |
 |---|---|---|---|
-| Compile at run time | `hot_backend` | `make_default_backend` | [runtime-compile](https://github.com/rokups/spp/tree/main/samples/runtime-compile) |
-| Precompiled library | `hot_runtime` | `module_from_library` | [precompiled-library](https://github.com/rokups/spp/tree/main/samples/precompiled-library) |
-| Hot reload | `hot_backend` | `request_reload`, `commit_pending`, `frame_boundary` | [hot-reload](https://github.com/rokups/spp/tree/main/samples/hot-reload) |
-| In-process JIT | `hot_jit_backend` (needs `HOT_BACKEND=JIT`) | `JitBackend` | [jit-backend](https://github.com/rokups/spp/tree/main/samples/jit-backend) |
-| Explicit Clang files backend | `hot_clang_backend` | `ClangFilesBackend` | [clang-files-backend](https://github.com/rokups/spp/tree/main/samples/clang-files-backend) |
-| AOT | `hot_aot` (through the library of `hot_add_scripts`) | `AotRegistry` | [aot](https://github.com/rokups/spp/tree/main/samples/aot) |
+| Compile at run time | `hot_backend` | `make_default_backend` | [runtime-compile](https://github.com/rokups/hotpp/tree/main/samples/runtime-compile) |
+| Precompiled library | `hot_runtime` | `module_from_library` | [precompiled-library](https://github.com/rokups/hotpp/tree/main/samples/precompiled-library) |
+| Hot reload | `hot_backend` | `request_reload`, `commit_pending`, `frame_boundary` | [hot-reload](https://github.com/rokups/hotpp/tree/main/samples/hot-reload) |
+| In-process JIT | `hot_jit_backend` (needs `HOT_BACKEND=JIT`) | `JitBackend` | [jit-backend](https://github.com/rokups/hotpp/tree/main/samples/jit-backend) |
+| Explicit Clang files backend | `hot_clang_backend` | `ClangFilesBackend` | [clang-files-backend](https://github.com/rokups/hotpp/tree/main/samples/clang-files-backend) |
+| AOT | `hot_aot` (through the library of `hot_add_scripts`) | `AotRegistry` | [aot](https://github.com/rokups/hotpp/tree/main/samples/aot) |
 
 ### Comparison
 
@@ -138,7 +138,7 @@ auto backend = hot::make_default_backend(options);
 
 **Failure:** `LoadResult` has `error` (the compiler diagnostics with script names) and `reason` (`CompileError`, or `SlotsRemoved` when a class has fewer slots). `Loader::load` returns a `ReloadResult` with `Failed` and the reason `BadModule` when the module has no `script_register`, or when the loader already has a generation.
 
-**Sample:** [runtime-compile](https://github.com/rokups/spp/tree/main/samples/runtime-compile).
+**Sample:** [runtime-compile](https://github.com/rokups/hotpp/tree/main/samples/runtime-compile).
 
 ## Precompiled library
 
@@ -162,7 +162,7 @@ if (!module || !loader.load(std::move(*module.module))) { /* report */ }
 
 **Failure:** `LoadResult::error` has the text of `dlerror` (for example when a symbol is missing), or `symbol script_register not found in <path>`. `reason` stays `None`.
 
-**Sample:** [precompiled-library](https://github.com/rokups/spp/tree/main/samples/precompiled-library).
+**Sample:** [precompiled-library](https://github.com/rokups/hotpp/tree/main/samples/precompiled-library).
 
 ## Reload
 
@@ -199,7 +199,7 @@ The result converts to `true` for `Applied` and `Pending`. The reason is one of 
 
 **Failure:** read `status`, `reason` and `error`. For `Failed`, the old generation goes on. For `FullReloadRequired`, do a full reload (below).
 
-**Sample:** [hot-reload](https://github.com/rokups/spp/tree/main/samples/hot-reload). See also [Hot reload](hot-reload.html) for the changes that a reload accepts.
+**Sample:** [hot-reload](https://github.com/rokups/hotpp/tree/main/samples/hot-reload). See also [Hot reload](hot-reload.html) for the changes that a reload accepts.
 
 ### Full reload
 
@@ -236,7 +236,7 @@ hot::LoadResult built = backend.load({"player.hot", text}, 1);
 
 **Extra API:** `last_timings()` gives the time of the phases in ms. `make_pch(header_path, out_pch, error)` makes a precompiled header in the process. The PCH keeps the path of the header. `debugger_support()` and `debugger_error()` tell if the debugger plugin runs.
 
-**Sample:** [jit-backend](https://github.com/rokups/spp/tree/main/samples/jit-backend).
+**Sample:** [jit-backend](https://github.com/rokups/hotpp/tree/main/samples/jit-backend).
 
 ## Explicit Clang files backend
 
@@ -262,7 +262,7 @@ hot::LoadResult built = backend.load({"player.hot", text}, 1);
 
 **Extra API:** `build(source, generation, out_so, error)` builds a `.so` without loading it (`hotc` uses it). `slots_file()` gives the slot file path. `compile_commands_json` and `run_command` are helpers.
 
-**Sample:** [clang-files-backend](https://github.com/rokups/spp/tree/main/samples/clang-files-backend).
+**Sample:** [clang-files-backend](https://github.com/rokups/hotpp/tree/main/samples/clang-files-backend).
 
 ## AOT
 
@@ -288,7 +288,7 @@ world.Add(boss);
 
 **Failure:** the constructor throws `std::runtime_error` when two scripts have a class of the same name (`the class ... is in two AOT scripts (...)`) or when the initializer of a module variable throws. `create` throws `std::runtime_error` (`no AOT script class ...`) for an unknown class.
 
-**Sample:** [aot](https://github.com/rokups/spp/tree/main/samples/aot).
+**Sample:** [aot](https://github.com/rokups/hotpp/tree/main/samples/aot).
 
 ## The backend interface
 
@@ -379,7 +379,7 @@ Fields of `Module`:
 
 ## CMake
 
-The page [CMake](cmake.html) describes the targets, the options and the functions `hot_add_scripts` and `hot_script_host`. A complete project is the sample [aot](https://github.com/rokups/spp/tree/main/samples/aot).
+The page [CMake](cmake.html) describes the targets, the options and the functions `hot_add_scripts` and `hot_script_host`. A complete project is the sample [aot](https://github.com/rokups/hotpp/tree/main/samples/aot).
 
 ## Format library for `${}`
 

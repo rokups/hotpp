@@ -66,7 +66,7 @@ if (r.status == hot::ReloadStatus::FullReloadRequired) {
 }
 ```
 
-The sample [hot-reload](https://github.com/rokups/spp/blob/main/samples/hot-reload/main.cpp) shows `request_reload`, `commit_pending` and `frame_boundary` in a small program.
+The sample [hot-reload](https://github.com/rokups/hotpp/blob/main/samples/hot-reload/main.cpp) shows `request_reload`, `commit_pending` and `frame_boundary` in a small program.
 
 The host must drop all objects first. `reset` fails when one script object remains. The error names the classes, for example `3 live objects remain: Driver x1, G x1, S x1`. It also fails when a reload is pending or a closure pins a generation. A failed `reset` changes nothing. A module variable can hold a closure, for example in a `std.function`. The closure pins its generation, and `reset` then fails with `generation N is pinned`. Before `reset`, the host calls a script function that clears such a variable (see `tests/scripts/modclosure.hot`). `loader.load` fails with `BadModule` when the loader still has a generation: call `reset` first. Build the Fresh module before `world.Clear()` when you can: a build error then leaves the actors intact (the test host `tests/engine/Harness.cpp` does this). After a `reset`, every pointer from `find()`, `module_state()` and `thunk()` is invalid.
 

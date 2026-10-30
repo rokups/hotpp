@@ -10,7 +10,7 @@ The page [Embedding](embedding.html) describes the six hosting situations. Each 
 
 ## Quick start
 
-This quick start makes an AOT program. The C++ of the script is in the binary. The program needs no loader and no compiler at run time. Copy `Creature.h`, `script/wolf.hot` and `main.cpp` from [samples/aot](https://github.com/rokups/spp/tree/main/samples/aot).
+This quick start makes an AOT program. The C++ of the script is in the binary. The program needs no loader and no compiler at run time. Copy `Creature.h`, `script/wolf.hot` and `main.cpp` from [samples/aot](https://github.com/rokups/hotpp/tree/main/samples/aot).
 
 ```
 myapp/
@@ -402,7 +402,7 @@ Scripts and the host must use the same sanitizer runtime. The root file `CMakeLi
 
 - `make_default_backend` passes `CMAKE_CXX_FLAGS` to every script compile. A preset with `-fsanitize=address` therefore works with no more settings.
 - A backend that you build yourself needs the flags in `extra_flags`. The samples `clang-files-backend` and `jit-backend` copy `CMAKE_CXX_FLAGS` into `extra_flags`.
-- `hot_add_scripts` in the default mode does not read `CMAKE_CXX_FLAGS`. Put the host flags in `FLAGS`: `separate_arguments(host_flags NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")`, then `FLAGS ${host_flags}`. The sample [precompiled-library](https://github.com/rokups/spp/tree/main/samples/precompiled-library) does this.
+- `hot_add_scripts` in the default mode does not read `CMAKE_CXX_FLAGS`. Put the host flags in `FLAGS`: `separate_arguments(host_flags NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")`, then `FLAGS ${host_flags}`. The sample [precompiled-library](https://github.com/rokups/hotpp/tree/main/samples/precompiled-library) does this.
 - `hot_add_scripts` in AOT mode builds a normal library. It follows the flags of the project.
 - Use one build folder for each mode (plain, ASan, TSan). The presets do this.
 - The build type flags (`CMAKE_CXX_FLAGS_DEBUG` and the other ones) are not part of `CMAKE_CXX_FLAGS`. The script compile does not get them. The compile always uses `-g` and has no `-O` flag. Add `-O2` (or a flag you need) to `FLAGS`, `extra_flags` or `CMAKE_CXX_FLAGS` for optimized scripts.
@@ -495,11 +495,11 @@ Some problems have no fixed Hot++ message. The text comes from the tool that rep
 
 Each sample is a small project. It builds in the Hot++ tree and as a separate project. Each sample has a `README.md` with the sections "How it works", "Files", "Build and run" and "Adapt it to your project". The page [Embedding](embedding.html) maps each hosting situation to its sample and has the code outline.
 
-- [aot](https://github.com/rokups/spp/tree/main/samples/aot): the C++ of the scripts is in the binary.
-- [runtime-compile](https://github.com/rokups/spp/tree/main/samples/runtime-compile): the program compiles a script at run time.
-- [precompiled-library](https://github.com/rokups/spp/tree/main/samples/precompiled-library): the build makes a script library and the program loads it.
-- [hot-reload](https://github.com/rokups/spp/tree/main/samples/hot-reload): the program replaces the code of a live object.
-- [clang-files-backend](https://github.com/rokups/spp/tree/main/samples/clang-files-backend): the program builds `ClangFilesBackend` itself.
-- [jit-backend](https://github.com/rokups/spp/tree/main/samples/jit-backend): the program builds `JitBackend` itself. It needs `HOT_BACKEND=JIT`.
+- [aot](https://github.com/rokups/hotpp/tree/main/samples/aot): the C++ of the scripts is in the binary.
+- [runtime-compile](https://github.com/rokups/hotpp/tree/main/samples/runtime-compile): the program compiles a script at run time.
+- [precompiled-library](https://github.com/rokups/hotpp/tree/main/samples/precompiled-library): the build makes a script library and the program loads it.
+- [hot-reload](https://github.com/rokups/hotpp/tree/main/samples/hot-reload): the program replaces the code of a live object.
+- [clang-files-backend](https://github.com/rokups/hotpp/tree/main/samples/clang-files-backend): the program builds `ClangFilesBackend` itself.
+- [jit-backend](https://github.com/rokups/hotpp/tree/main/samples/jit-backend): the program builds `JitBackend` itself. It needs `HOT_BACKEND=JIT`.
 
 The samples use the Hot++ tree in `HOT_ROOT`. The default is the tree that holds the `samples` folder. To use a sample in your project, set `HOT_ROOT` to the Hot++ tree (or use FetchContent) and copy the `hot_add_scripts` and `target_link_libraries` lines.

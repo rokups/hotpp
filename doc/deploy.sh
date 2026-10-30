@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Deploy doc/ to the gh-pages branch of github.com/rokups/spp (https://rokups.github.io/spp).
+# Deploy doc/ to the gh-pages branch of github.com/rokups/hotpp (https://rokups.github.io/hotpp).
 # Code highlighting runs in the browser (highlight.js from cdnjs, see _layouts/default.html and assets/highlight-hot.js). Jekyll safe mode blocks custom Rouge lexers.
 # Usage: doc/deploy.sh [--build-only] [--yes]
 #   --build-only  Build the site with Jekyll and do not push.
 #   --yes         Push without a confirmation prompt.
 set -euo pipefail
 
-REPO="${HOT_PAGES_REPO:-https://github.com/rokups/spp.git}"
+REPO="${HOT_PAGES_REPO:-https://github.com/rokups/hotpp.git}"
 BRANCH="${HOT_PAGES_BRANCH:-gh-pages}"
 DOC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORK="$(mktemp -d)"
@@ -52,4 +52,4 @@ if [ "$yes" != 1 ]; then
 fi
 git commit -q -m "Update docs from $(git -C "$DOC" rev-parse --short HEAD 2>/dev/null || echo local)"
 git push origin "$BRANCH"
-echo "Deployed. Site: https://rokups.github.io/spp"
+echo "Deployed. Site: https://rokups.github.io/hotpp"
