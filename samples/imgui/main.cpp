@@ -1,6 +1,6 @@
 // sample_imgui: a Dear ImGui window whose user interface a script draws.
 // Usage: sample_imgui [script]
-// The default script is samples/imgui/demo.spp. The script class Demo
+// The default script is samples/imgui/script/demo.spp or demo.cpp. The script class Demo
 // derives from UiApp. The host calls Frame once for each frame.
 // The struct Host loads the script and reloads it when the file changes.
 #include "UiApp.h"
@@ -229,7 +229,7 @@ struct Host
 int main(int argc, char** argv)
 {
     Host host; // the host ends last: the app is deleted before the loader
-    host.path = argc > 1 ? argv[1] : IMGUI_APP_DEFAULT_SCRIPT;
+    host.path = argc > 1 ? argv[1] : SAMPLE_SCRIPT_DIR "/demo" SAMPLE_SCRIPT_EXT;
     host.first_load();
 
     if (!SDL_Init(SDL_INIT_VIDEO))

@@ -40,22 +40,38 @@ execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
 separate_arguments(cxxflags_list NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
 list(JOIN cxxflags_list "|" cxxflags_joined)
 
+# One program source, two script variants. The extension picks the script.
+#   sample_imgui_spp reads script/demo.spp.
+#   sample_imgui_cpp reads script/demo.cpp.
 # The host builds ClangFilesOptions itself. It does not use make_default_backend().
-add_executable(sample_imgui main.cpp UiApp.cpp)
-target_include_directories(sample_imgui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-# Whole archive: a script can call any ImGui function. The linker must keep all objects.
-target_link_libraries(sample_imgui PRIVATE spp_runtime spp_clang_backend "$<LINK_LIBRARY:WHOLE_ARCHIVE,imgui_sdl3>")
-# The generation modules resolve host and runtime symbols from the executable.
-set_target_properties(sample_imgui PROPERTIES ENABLE_EXPORTS ON)
-target_compile_definitions(sample_imgui PRIVATE
-    IMGUI_APP_CXX="${CMAKE_CXX_COMPILER}"
-    IMGUI_APP_CXXFLAGS="${cxxflags_joined}"
-    IMGUI_APP_INCLUDES="${SPP_INCLUDE_DIR}|${CMAKE_CURRENT_SOURCE_DIR}|${imgui_SOURCE_DIR}"
-    IMGUI_APP_RESOURCE_DIR="${resource_dir}"
-    IMGUI_APP_WORK_DIR="${CMAKE_CURRENT_BINARY_DIR}/spp_work"
-    IMGUI_APP_DEFAULT_SCRIPT="${CMAKE_CURRENT_SOURCE_DIR}/demo.spp")
+foreach(variant spp cpp)
+    set(target sample_imgui_${variant})
+    add_executable(${target} main.cpp UiApp.cpp)
+    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    # Whole archive: a script can call any ImGui function. The linker must keep all objects.
+    target_link_libraries(${target} PRIVATE spp_runtime spp_clang_backend "$<LINK_LIBRARY:WHOLE_ARCHIVE,imgui_sdl3>")
+    # The generation modules resolve host and runtime symbols from the executable.
+    set_target_properties(${target} PROPERTIES ENABLE_EXPORTS ON)
+    # SAMPLE_SCRIPT_DIR and SAMPLE_SCRIPT_EXT select the default script of the program.
+    target_compile_definitions(${target} PRIVATE
+        IMGUI_APP_CXX="${CMAKE_CXX_COMPILER}"
+        IMGUI_APP_CXXFLAGS="${cxxflags_joined}"
+        IMGUI_APP_INCLUDES="${SPP_INCLUDE_DIR}|${CMAKE_CURRENT_SOURCE_DIR}|${imgui_SOURCE_DIR}"
+        IMGUI_APP_RESOURCE_DIR="${resource_dir}"
+        IMGUI_APP_WORK_DIR="${CMAKE_CURRENT_BINARY_DIR}/spp_work"
+        SAMPLE_SCRIPT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/script"
+        SAMPLE_SCRIPT_EXT=".${variant}")
+endforeach()
+
+# The normal toolchain compiles the .cpp script too. A .cpp script must compile unchanged.
+add_library(imgui_cpp_scripts_plain OBJECT script/demo.cpp)
+target_include_directories(imgui_cpp_scripts_plain PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR} ${SPP_ROOT}/include)
+target_link_libraries(imgui_cpp_scripts_plain PRIVATE imgui_sdl3)
+target_compile_features(imgui_cpp_scripts_plain PRIVATE cxx_std_17)
 
 # The language server reads this file.
-spp_script_host(NAME sample_imgui TARGET sample_imgui SCRIPT_DIRS ${CMAKE_CURRENT_SOURCE_DIR})
+# The language server serves the .spp scripts only.
+spp_script_host(NAME sample_imgui TARGET sample_imgui_spp SCRIPT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/script)
 
 # No test: the program opens a window.

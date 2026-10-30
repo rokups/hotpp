@@ -89,8 +89,8 @@ The folder `samples/` has seven projects: `aot`, `runtime-compile`, `precompiled
 The option `SPP_BUILD_SAMPLES` is ON for the main project. The target names start with `sample_`:
 
     cmake --preset linux-clang-files
-    cmake --build --preset linux-clang-files-dbg --target sample_aot
-    ctest --preset linux-clang-files-dbg -R '^sample_aot$'
+    cmake --build --preset linux-clang-files-dbg --target sample_aot_spp sample_aot_cpp
+    ctest --preset linux-clang-files-dbg -R '^sample_aot_(spp|cpp)$'
 
 A sample also builds as a separate project. It needs `clang`, `libclang` and Ninja. The default `SPP_ROOT` is the tree that holds the sample:
 
@@ -348,16 +348,17 @@ All tests are GoogleTest cases. CMake registers them with `spp_gtest` (a wrapper
 
 ## ImGui sample
 
-`sample_imgui` (`samples/imgui/`) draws a Dear ImGui window. A script class draws the user interface. The script includes the real `imgui.h` (`using "imgui.h";`) and calls the ImGui API as it is: `ImGui.Begin("x")`, `ImGui.Text("n: %d", this.n)`, `ImGui.Checkbox("c", &this.on)`. A pointer parameter takes the address of a field. There is no wrapper layer.
+`sample_imgui_spp` and `sample_imgui_cpp` (`samples/imgui/`) draw a Dear ImGui window. A script class draws the user interface. The script includes the real `imgui.h` (`using "imgui.h";`) and calls the ImGui API as it is: `ImGui.Begin("x")`, `ImGui.Text("n: %d", this.n)`, `ImGui.Checkbox("c", &this.on)`. A pointer parameter takes the address of a field. There is no wrapper layer.
 
 Build. The target exists only when CMake finds SDL3 (`find_package(SDL3)`). Without SDL3 the configure step prints a STATUS message and the rest of the build is the same. CPM fetches Dear ImGui (v1.92.9b) and builds the static library `imgui_sdl3` with the SDL3 and SDL_Renderer backends. The executable links it as a whole archive, so a script can call every ImGui function.
 
     cmake --preset linux-clang-files
-    cmake --build --preset linux-clang-files-dbg --target sample_imgui
+    cmake --build --preset linux-clang-files-dbg --target sample_imgui_spp sample_imgui_cpp
 
-Run. The default script is `samples/imgui/demo.spp`.
+Run. The default script of `sample_imgui_spp` is `samples/imgui/script/demo.spp`. The default script of `sample_imgui_cpp` is `samples/imgui/script/demo.cpp`, the same script as plain C++.
 
-    cmake-build/linux-clang-files/bin/Debug/sample_imgui [script]
+    cmake-build/linux-clang-files/bin/Debug/sample_imgui_spp [script]
+    cmake-build/linux-clang-files/bin/Debug/sample_imgui_cpp [script]
 
 Hot reload. The host checks the modification time of the script file at each frame. When it changes, the host compiles the script as a new generation and starts a reload. The commit happens after `Frame()`, at the frame boundary. The object keeps its field values. If the compile or the reload fails, the window "Script error" shows the text and the old generation keeps running. If `Frame()` throws, the host drops the object and shows the message. The next good reload makes a new object. The host writes `reloaded gen N` and `reload failed: ...` to stderr.
 

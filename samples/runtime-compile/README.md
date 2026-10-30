@@ -4,6 +4,22 @@ This sample shows a program that compiles a script at run time and loads it.
 The program is a normal executable. It does not rebuild when the script changes.
 The host needs a C++ compiler at run time.
 
+## Two script variants
+
+The sample has one program (`main.cpp`) and two variants of the same script:
+
+- `script/wolf.spp`: the script in the S++ syntax.
+- `script/wolf.cpp`: the script as plain C++. See [C++ scripts](../../doc/cpp-scripts.md).
+
+The build makes one program for each variant from the same `main.cpp`:
+
+- `sample_runtime_compile_spp` reads the `.spp` script.
+- `sample_runtime_compile_cpp` reads the `.cpp` script.
+
+Both variants are in the folder `script`. The file extension picks the variant.
+Both programs print the same output. The build also compiles the `.cpp` script with the normal
+compiler (the object library `runtime_compile_cpp_scripts_plain`). This shows that a `.cpp` script compiles unchanged.
+
 ## How it works
 
 1. `spp::make_default_backend(options)` makes the backend. `spp::DefaultBackendOptions`
@@ -22,7 +38,7 @@ machine that runs the program.
 ## Files
 
 - `Creature.h`: the host class. It is header-only.
-- `wolf.spp`: the script. The class `Wolf` derives from `Creature` and overrides `Tick`.
+- `script/wolf.spp` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`.
 - `main.cpp`: the program. It reads the script, compiles it, loads it and calls `Tick` three times.
 - `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
 
@@ -34,11 +50,16 @@ The option `SPP_BUILD_SAMPLES` is ON for the main project.
 
 ```
 cmake --preset linux-clang-files
-cmake --build --preset linux-clang-files-dbg --target sample_runtime_compile
-ctest --preset linux-clang-files-dbg -R '^sample_runtime_compile$'
+cmake --build --preset linux-clang-files-dbg --target sample_runtime_compile_spp sample_runtime_compile_cpp
+ctest --preset linux-clang-files-dbg -R '^sample_runtime_compile_(spp|cpp)$'
 ```
 
-The test has the same name as the target.
+Each test has the same name as its target. To run a program, use the folder `bin/Debug` of the build tree:
+
+```
+cmake-build/linux-clang-files/bin/Debug/sample_runtime_compile_spp
+cmake-build/linux-clang-files/bin/Debug/sample_runtime_compile_cpp
+```
 
 ### As a separate project
 
@@ -59,7 +80,8 @@ To use another S++ tree, add `-DSPP_ROOT=/path/to/spp`. The `CMakeLists.txt` of 
 - The program links `spp_backend`. It brings `spp_runtime` and the backend library.
 - `ENABLE_EXPORTS` is ON. The generation modules resolve host and runtime symbols from the
   executable.
-- `SAMPLE_DIR` is a compile definition. It is the folder of `wolf.spp` and `Creature.h`.
+- `SAMPLE_DIR` is a compile definition. It is the folder of `Creature.h`.
+- `SAMPLE_SCRIPT_DIR` and `SAMPLE_SCRIPT_EXT` are compile definitions. `SAMPLE_SCRIPT_DIR` is the folder `script`. `SAMPLE_SCRIPT_EXT` (`.spp` or `.cpp`) picks the variant.
 
 ## Adapt it to your project
 
@@ -83,7 +105,7 @@ For reload, see [hot-reload](../hot-reload/).
 [wolf] wolf: bites=3 hp=97
 ```
 
-The test `sample_runtime_compile` passes when the program returns 0.
+Each test (`sample_runtime_compile_spp` and `sample_runtime_compile_cpp`) passes when the program returns 0.
 
 ## More information
 

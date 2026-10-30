@@ -7,6 +7,22 @@ The host needs a C++ compiler at run time.
 `SPP_BACKEND=CLANG_FILES` selects this backend for `make_default_backend`. A program that
 builds it itself sets the compiler, the flags and the work folder.
 
+## Two script variants
+
+The sample has one program (`main.cpp`) and two variants of the same script:
+
+- `script/wolf.spp`: the script in the S++ syntax.
+- `script/wolf.cpp`: the script as plain C++. See [C++ scripts](../../doc/cpp-scripts.md).
+
+The build makes one program for each variant from the same `main.cpp`:
+
+- `sample_clang_files_spp` reads the `.spp` script.
+- `sample_clang_files_cpp` reads the `.cpp` script.
+
+Both variants are in the folder `script`. The file extension picks the variant.
+Both programs print the same output. The build also compiles the `.cpp` script with the normal
+compiler (the object library `clang_files_backend_cpp_scripts_plain`). This shows that a `.cpp` script compiles unchanged.
+
 ## How it works
 
 1. The program fills `spp::ClangFilesOptions` (see the table below).
@@ -19,7 +35,7 @@ builds it itself sets the compiler, the flags and the work folder.
 ## Files
 
 - `Creature.h`: the host class. It is header-only.
-- `wolf.spp`: the script. The class `Wolf` derives from `Creature` and overrides `Tick`.
+- `script/wolf.spp` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`.
 - `main.cpp`: the program. It fills `spp::ClangFilesOptions`, compiles the script, loads it
   and calls `Tick` three times.
 - `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
@@ -32,7 +48,7 @@ builds it itself sets the compiler, the flags and the work folder.
 | `include_dirs` | the include dir of S++ and the folder of the sample |
 | `extra_flags` | `CMAKE_CXX_FLAGS` (the flags of the host, for example a sanitizer) |
 | `resource_dir` | the output of `<compiler> -print-resource-dir` |
-| `work_dir` | `spp_work` in the build folder |
+| `work_dir` | `spp_work_spp` or `spp_work_cpp` in the build folder (one for each program) |
 | `remove_work_dir_at_exit` | `true` |
 
 The sample does not use `SPP_DEFAULT_CXXFLAGS`. The compile works with the flags above.
@@ -48,11 +64,16 @@ The option `SPP_BUILD_SAMPLES` is ON for the main project.
 
 ```
 cmake --preset linux-clang-files
-cmake --build --preset linux-clang-files-dbg --target sample_clang_files
-ctest --preset linux-clang-files-dbg -R '^sample_clang_files$'
+cmake --build --preset linux-clang-files-dbg --target sample_clang_files_spp sample_clang_files_cpp
+ctest --preset linux-clang-files-dbg -R '^sample_clang_files_(spp|cpp)$'
 ```
 
-The test has the same name as the target.
+Each test has the same name as its target. To run a program, use the folder `bin/Debug` of the build tree:
+
+```
+cmake-build/linux-clang-files/bin/Debug/sample_clang_files_spp
+cmake-build/linux-clang-files/bin/Debug/sample_clang_files_cpp
+```
 
 ### As a separate project
 
@@ -91,7 +112,7 @@ To use another S++ tree, add `-DSPP_ROOT=/path/to/spp`. The `CMakeLists.txt` of 
 [wolf] wolf: bites=3 hp=97
 ```
 
-The test `sample_clang_files` passes when the program returns 0.
+Each test (`sample_clang_files_spp` and `sample_clang_files_cpp`) passes when the program returns 0.
 
 ## More information
 

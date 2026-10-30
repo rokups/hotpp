@@ -5,9 +5,26 @@ One process loads generation 1 of a script and makes an object. Then it loads ge
 The same object runs the new code and keeps its field values.
 The host needs a C++ compiler at run time.
 
+## Two script variants
+
+The sample has one program (`main.cpp`) and two variants of the same scripts:
+
+- `script/wolf_v1.spp` and `script/wolf_v2.spp`: the scripts in the S++ syntax.
+- `script/wolf_v1.cpp` and `script/wolf_v2.cpp`: the scripts as plain C++. See [C++ scripts](../../doc/cpp-scripts.md).
+
+Both variants are in the folder `script`. The file extension picks the variant.
+
+The build makes one program for each variant from the same `main.cpp`:
+
+- `sample_hot_reload_spp` reads the `.spp` scripts.
+- `sample_hot_reload_cpp` reads the `.cpp` scripts.
+
+Both programs print the same output. The build also compiles the `.cpp` scripts with the normal
+compiler (the object library `hot_reload_cpp_scripts_plain`). This shows that a `.cpp` script compiles unchanged.
+
 ## How it works
 
-1. The program loads `wolf_v1.spp` as generation 1 with `backend->load` and `loader.load`.
+1. The program loads `wolf_v1` as generation 1 with `backend->load` and `loader.load`.
    It makes a `Wolf` and ticks twice.
 2. `loader.request_reload(backend->load(source, 2))` validates generation 2. It has no effect on
    the live objects. On an error the old generation goes on. The result has a reason and an error text.
@@ -34,9 +51,11 @@ run on the main thread.
 ## Files
 
 - `Creature.h`: the host class. It is header-only.
-- `wolf_v1.spp`: generation 1. The class `Wolf` prints the tag `[v1]`, `bites` and `hp`.
-- `wolf_v2.spp`: generation 2. It adds the field `howls` and prints the tag `[v2]`, `hp` and `howls`.
+- `script/wolf_v1.spp` and `script/wolf_v1.cpp`: generation 1. The class `Wolf` prints the tag `[v1]`, `bites` and `hp`.
+- `script/wolf_v2.spp` and `script/wolf_v2.cpp`: generation 2. They add the field `howls` and print the tag `[v2]`, `hp` and `howls`.
 - `main.cpp`: the program. It ticks twice, reloads and ticks twice again.
+  The definition `SAMPLE_SCRIPT_DIR` is the folder `script`. The definition `SAMPLE_SCRIPT_EXT` (`.spp` or `.cpp`) picks the variant.
+  The definition `SAMPLE_DIR` is the folder of `Creature.h`.
 - `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
 
 ## Build and run
@@ -47,11 +66,16 @@ The option `SPP_BUILD_SAMPLES` is ON for the main project.
 
 ```
 cmake --preset linux-clang-files
-cmake --build --preset linux-clang-files-dbg --target sample_hot_reload
-ctest --preset linux-clang-files-dbg -R '^sample_hot_reload$'
+cmake --build --preset linux-clang-files-dbg --target sample_hot_reload_spp sample_hot_reload_cpp
+ctest --preset linux-clang-files-dbg -R '^sample_hot_reload_(spp|cpp)$'
 ```
 
-The test has the same name as the target.
+Each test has the same name as its target. To run a program, use the folder `bin/Debug` of the build tree:
+
+```
+cmake-build/linux-clang-files/bin/Debug/sample_hot_reload_spp
+cmake-build/linux-clang-files/bin/Debug/sample_hot_reload_cpp
+```
 
 ### As a separate project
 
@@ -86,7 +110,7 @@ To use another S++ tree, add `-DSPP_ROOT=/path/to/spp`. The `CMakeLists.txt` of 
 [v2] wolf: hp=96 howls=2
 ```
 
-The `hp` value continues from generation 1. The test `sample_hot_reload` passes when the
+The `hp` value continues from generation 1. Each test (`sample_hot_reload_spp` and `sample_hot_reload_cpp`) passes when the
 output has the lines `[v1]` then the lines `[v2]`.
 
 ## More information

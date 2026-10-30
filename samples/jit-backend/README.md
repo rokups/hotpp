@@ -8,6 +8,22 @@ The sample needs the system LLVM and Clang development packages. It builds only 
 `SPP_BACKEND=JIT`. With another backend the configure prints `sample_jit: skipped` and the
 sample adds no target and no test.
 
+## Two script variants
+
+The sample has one program (`main.cpp`) and two variants of the same script:
+
+- `script/wolf.spp`: the script in the S++ syntax.
+- `script/wolf.cpp`: the script as plain C++. See [C++ scripts](../../doc/cpp-scripts.md).
+
+The build makes one program for each variant from the same `main.cpp`:
+
+- `sample_jit_spp` reads the `.spp` script.
+- `sample_jit_cpp` reads the `.cpp` script.
+
+Both variants are in the folder `script`. The file extension picks the variant.
+Both programs print the same output. The build also compiles the `.cpp` script with the normal
+compiler (the object library `jit_backend_cpp_scripts_plain`). This shows that a `.cpp` script compiles unchanged.
+
 ## How it works
 
 1. The program fills `spp::JitOptions` (see the table below).
@@ -20,7 +36,7 @@ sample adds no target and no test.
 ## Files
 
 - `Creature.h`: the host class. It is header-only.
-- `wolf.spp`: the script. The class `Wolf` derives from `Creature` and overrides `Tick`.
+- `script/wolf.spp` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`.
 - `main.cpp`: the program. It fills `spp::JitOptions`, compiles the script, loads it
   and calls `Tick` three times.
 - `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
@@ -46,8 +62,15 @@ Configure with the preset for the JIT backend. The option `SPP_BUILD_SAMPLES` is
 
 ```
 cmake --preset linux-clang-jit
-cmake --build --preset linux-clang-jit-dbg --target sample_jit
-ctest --preset linux-clang-jit-dbg -R '^sample_jit$'
+cmake --build --preset linux-clang-jit-dbg --target sample_jit_spp sample_jit_cpp
+ctest --preset linux-clang-jit-dbg -R '^sample_jit_(spp|cpp)$'
+```
+
+Each test has the same name as its target. To run a program, use the folder `bin/Debug` of the build tree:
+
+```
+cmake-build/linux-clang-jit/bin/Debug/sample_jit_spp
+cmake-build/linux-clang-jit/bin/Debug/sample_jit_cpp
 ```
 
 ### As a separate project
@@ -88,7 +111,7 @@ To use another S++ tree, add `-DSPP_ROOT=/path/to/spp`. The `CMakeLists.txt` of 
 [wolf] wolf: bites=3 hp=97
 ```
 
-The test `sample_jit` passes when the program returns 0.
+Each test (`sample_jit_spp` and `sample_jit_cpp`) passes when the program returns 0.
 
 ## More information
 

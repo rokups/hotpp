@@ -9,12 +9,26 @@ if(NOT TARGET sppc)
     add_subdirectory(${SPP_ROOT} spp)
 endif()
 
-# sppc translates wolf.spp to C++. The library sample_aot_scripts has the result and links spp_aot.
-spp_add_scripts(TARGET sample_aot_scripts AOT SCRIPTS wolf.spp
-                INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS Creature.h)
-add_executable(sample_aot main.cpp)
-target_include_directories(sample_aot PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(sample_aot PRIVATE sample_aot_scripts)
-
+# One program source, two script variants. The extension picks the script. Both variants are
+# in the folder script. Each variant has its own AOT library and its own program.
+#   sample_aot_spp has the C++ that sppc makes from script/wolf.spp.
+#   sample_aot_cpp has the C++ that sppc makes from script/wolf.cpp.
+# A call of spp_add_scripts takes scripts with one stem only, so each variant has its own call and
+# its own OUT_DIR. The library sample_aot_<variant>_scripts has the result and links spp_aot.
 enable_testing()
-add_test(NAME sample_aot COMMAND sample_aot)
+foreach(variant spp cpp)
+    spp_add_scripts(TARGET sample_aot_${variant}_scripts AOT SCRIPTS script/wolf.${variant}
+                    OUT_DIR ${CMAKE_BINARY_DIR}/spp_aot/sample_aot_${variant}
+                    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS Creature.h)
+    set(target sample_aot_${variant})
+    add_executable(${target} main.cpp)
+    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(${target} PRIVATE sample_aot_${variant}_scripts)
+    add_test(NAME ${target} COMMAND ${target})
+endforeach()
+
+# The normal toolchain compiles the .cpp script too. A .cpp script must compile unchanged.
+add_library(aot_cpp_scripts_plain OBJECT script/wolf.cpp)
+target_include_directories(aot_cpp_scripts_plain PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR} ${SPP_ROOT}/include)
+target_compile_features(aot_cpp_scripts_plain PRIVATE cxx_std_17)

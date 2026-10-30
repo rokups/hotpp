@@ -1,4 +1,4 @@
-// The program of the sample. The C++ of wolf.spp is part of this binary. The program has no
+// The program of the sample. The C++ of the script is part of this binary. The program has no
 // loader and no compiler at run time.
 #include "Creature.h"
 #include "spp/aot.h"

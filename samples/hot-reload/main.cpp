@@ -1,6 +1,8 @@
 // The program of the sample. It loads generation 1 of wolf, ticks, reloads generation 2 and
 // ticks the same object again. The object keeps its field values.
 // The host needs a C++ compiler at run time.
+// The build makes two programs from this file. The definitions SAMPLE_SCRIPT_DIR and
+// SAMPLE_SCRIPT_EXT select the script variant (.spp or .cpp).
 #include "Creature.h"
 #include "spp/backend.h"
 #include "spp/runtime/loader.h"
@@ -27,13 +29,13 @@ bool read_file(const std::string& path, std::string& text)
 
 int main()
 {
-    const std::string path_v1 = std::string(SAMPLE_DIR) + "/wolf_v1.spp";
-    const std::string path_v2 = std::string(SAMPLE_DIR) + "/wolf_v2.spp";
+    const std::string path_v1 = std::string(SAMPLE_SCRIPT_DIR) + "/wolf_v1" + SAMPLE_SCRIPT_EXT;
+    const std::string path_v2 = std::string(SAMPLE_SCRIPT_DIR) + "/wolf_v2" + SAMPLE_SCRIPT_EXT;
     std::string text_v1;
     std::string text_v2;
     if (!read_file(path_v1, text_v1) || !read_file(path_v2, text_v2))
     {
-        std::fprintf(stderr, "sample_hot_reload: cannot read the scripts in %s\n", SAMPLE_DIR);
+        std::fprintf(stderr, "sample_hot_reload: cannot read the scripts in %s\n", SAMPLE_SCRIPT_DIR);
         return 1;
     }
 

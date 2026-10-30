@@ -24,17 +24,34 @@ endif()
 execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
                 OUTPUT_VARIABLE resource_dir OUTPUT_STRIP_TRAILING_WHITESPACE)
 
-add_executable(sample_jit main.cpp)
-target_include_directories(sample_jit PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(sample_jit PRIVATE spp_jit_backend)
-# The generation modules resolve host and runtime symbols from the executable.
-set_target_properties(sample_jit PROPERTIES ENABLE_EXPORTS ON)
-target_compile_definitions(sample_jit PRIVATE
-    SAMPLE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-    SAMPLE_SPP_INCLUDE_DIR="${SPP_INCLUDE_DIR}"
-    SAMPLE_CXX="${CMAKE_CXX_COMPILER}"
-    SAMPLE_CXXFLAGS="${CMAKE_CXX_FLAGS}"
-    SAMPLE_RESOURCE_DIR="${resource_dir}")
+# One program source, two script variants. The extension picks the script.
+#   sample_jit_spp reads script/wolf.spp.
+#   sample_jit_cpp reads script/wolf.cpp.
+foreach(variant spp cpp)
+    set(target sample_jit_${variant})
+    add_executable(${target} main.cpp)
+    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(${target} PRIVATE spp_jit_backend)
+    # The generation modules resolve host and runtime symbols from the executable.
+    set_target_properties(${target} PROPERTIES ENABLE_EXPORTS ON)
+    # SAMPLE_DIR has Creature.h. SAMPLE_SCRIPT_DIR and SAMPLE_SCRIPT_EXT select the script
+    # that the program reads at run time.
+    target_compile_definitions(${target} PRIVATE
+        SAMPLE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        SAMPLE_SCRIPT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/script"
+        SAMPLE_SCRIPT_EXT=".${variant}"
+        SAMPLE_SPP_INCLUDE_DIR="${SPP_INCLUDE_DIR}"
+        SAMPLE_CXX="${CMAKE_CXX_COMPILER}"
+        SAMPLE_CXXFLAGS="${CMAKE_CXX_FLAGS}"
+        SAMPLE_RESOURCE_DIR="${resource_dir}")
+
+    add_test(NAME ${target} COMMAND ${target})
+endforeach()
+
+# The normal toolchain compiles the .cpp script too. A .cpp script must compile unchanged.
+add_library(jit_backend_cpp_scripts_plain OBJECT script/wolf.cpp)
+target_include_directories(jit_backend_cpp_scripts_plain PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR} ${SPP_ROOT}/include)
+target_compile_features(jit_backend_cpp_scripts_plain PRIVATE cxx_std_17)
 
 enable_testing()
-add_test(NAME sample_jit COMMAND sample_jit)

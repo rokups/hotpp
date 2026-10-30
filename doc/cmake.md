@@ -10,14 +10,14 @@ The page [Embedding](embedding.html) describes the six hosting situations. Each 
 
 ## Quick start
 
-This quick start makes an AOT program. The C++ of the script is in the binary. The program needs no loader and no compiler at run time. Copy `Creature.h`, `wolf.spp` and `main.cpp` from [samples/aot](https://github.com/rokups/spp/tree/main/samples/aot).
+This quick start makes an AOT program. The C++ of the script is in the binary. The program needs no loader and no compiler at run time. Copy `Creature.h`, `script/wolf.spp` and `main.cpp` from [samples/aot](https://github.com/rokups/spp/tree/main/samples/aot).
 
 ```
 myapp/
   CMakeLists.txt
   main.cpp        (from samples/aot)
   Creature.h      (from samples/aot)
-  wolf.spp        (from samples/aot)
+  wolf.spp        (from samples/aot/script)
 ```
 
 This is the complete `CMakeLists.txt`:

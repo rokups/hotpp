@@ -15,18 +15,35 @@ endif()
 execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
                 OUTPUT_VARIABLE resource_dir OUTPUT_STRIP_TRAILING_WHITESPACE)
 
-add_executable(sample_clang_files main.cpp)
-target_include_directories(sample_clang_files PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(sample_clang_files PRIVATE spp_clang_backend)
-# The generation modules resolve host and runtime symbols from the executable.
-set_target_properties(sample_clang_files PROPERTIES ENABLE_EXPORTS ON)
-target_compile_definitions(sample_clang_files PRIVATE
-    SAMPLE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-    SAMPLE_SPP_INCLUDE_DIR="${SPP_INCLUDE_DIR}"
-    SAMPLE_CXX="${CMAKE_CXX_COMPILER}"
-    SAMPLE_CXXFLAGS="${CMAKE_CXX_FLAGS}"
-    SAMPLE_RESOURCE_DIR="${resource_dir}"
-    SAMPLE_WORK_DIR="${CMAKE_CURRENT_BINARY_DIR}/spp_work")
+# One program source, two script variants. The extension picks the script.
+#   sample_clang_files_spp reads script/wolf.spp.
+#   sample_clang_files_cpp reads script/wolf.cpp.
+foreach(variant spp cpp)
+    set(target sample_clang_files_${variant})
+    add_executable(${target} main.cpp)
+    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(${target} PRIVATE spp_clang_backend)
+    # The generation modules resolve host and runtime symbols from the executable.
+    set_target_properties(${target} PROPERTIES ENABLE_EXPORTS ON)
+    # SAMPLE_DIR has Creature.h. SAMPLE_SCRIPT_DIR and SAMPLE_SCRIPT_EXT select the script
+    # that the program reads at run time.
+    target_compile_definitions(${target} PRIVATE
+        SAMPLE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        SAMPLE_SCRIPT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/script"
+        SAMPLE_SCRIPT_EXT=".${variant}"
+        SAMPLE_SPP_INCLUDE_DIR="${SPP_INCLUDE_DIR}"
+        SAMPLE_CXX="${CMAKE_CXX_COMPILER}"
+        SAMPLE_CXXFLAGS="${CMAKE_CXX_FLAGS}"
+        SAMPLE_RESOURCE_DIR="${resource_dir}"
+        SAMPLE_WORK_DIR="${CMAKE_CURRENT_BINARY_DIR}/spp_work_${variant}")
+
+    add_test(NAME ${target} COMMAND ${target})
+endforeach()
+
+# The normal toolchain compiles the .cpp script too. A .cpp script must compile unchanged.
+add_library(clang_files_backend_cpp_scripts_plain OBJECT script/wolf.cpp)
+target_include_directories(clang_files_backend_cpp_scripts_plain PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR} ${SPP_ROOT}/include)
+target_compile_features(clang_files_backend_cpp_scripts_plain PRIVATE cxx_std_17)
 
 enable_testing()
-add_test(NAME sample_clang_files COMMAND sample_clang_files)

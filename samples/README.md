@@ -21,8 +21,8 @@ The option `SPP_BUILD_SAMPLES` is ON for the main project. The target names star
 
 ```
 cmake --preset linux-clang-files
-cmake --build --preset linux-clang-files-dbg --target sample_aot
-ctest --preset linux-clang-files-dbg -R '^sample_aot$'
+cmake --build --preset linux-clang-files-dbg --target sample_aot_spp sample_aot_cpp
+ctest --preset linux-clang-files-dbg -R '^sample_aot_(spp|cpp)$'
 ```
 
 ## Build as a separate project

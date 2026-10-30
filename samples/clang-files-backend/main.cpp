@@ -1,5 +1,7 @@
-// The program of the sample. It builds ClangFilesBackend itself, compiles wolf.spp with it and
+// The program of the sample. It builds ClangFilesBackend itself, compiles the script wolf with it and
 // calls Tick. The host needs a C++ compiler at run time.
+// The build makes two programs from this file. The definitions SAMPLE_SCRIPT_DIR and
+// SAMPLE_SCRIPT_EXT select the script variant (.spp or .cpp).
 #include "Creature.h"
 #include "spp/clang_files_backend.h"
 #include "spp/runtime/loader.h"
@@ -13,7 +15,7 @@
 
 int main()
 {
-    const std::string path = std::string(SAMPLE_DIR) + "/wolf.spp";
+    const std::string path = std::string(SAMPLE_SCRIPT_DIR) + "/wolf" + SAMPLE_SCRIPT_EXT;
     std::ifstream in(path, std::ios::binary);
     if (!in)
     {

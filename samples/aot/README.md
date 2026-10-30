@@ -1,11 +1,28 @@
 # Sample: aot
 
-This sample shows the AOT mode. The build translates the script `wolf.spp` to C++.
+This sample shows the AOT mode. The build translates the script to C++.
 The C++ is part of the program. The program has no loader and no compiler at run time.
+
+## Two script variants
+
+The sample has one program (`main.cpp`) and two variants of the same script:
+
+- `script/wolf.spp`: the script in the S++ syntax. `Tick` uses string interpolation.
+- `script/wolf.cpp`: the script as plain C++. See [C++ scripts](../../doc/cpp-scripts.md). A `.cpp` script has no string interpolation, so `Tick` uses `snprintf`.
+
+The build makes one AOT library and one program for each variant:
+
+- `sample_aot_spp_scripts` and `sample_aot_spp` use the `.spp` script.
+- `sample_aot_cpp_scripts` and `sample_aot_cpp` use the `.cpp` script.
+
+Each variant has its own `spp_add_scripts` call and its own `OUT_DIR`, so the generated files
+(`wolf.aot.cpp` and `spp_aot_registry.cpp`) do not clash.
+Both programs print the same output. The build also compiles the `.cpp` script with the normal
+compiler (the object library `aot_cpp_scripts_plain`). This shows that a `.cpp` script compiles unchanged.
 
 ## How it works
 
-1. `spp_add_scripts(TARGET sample_aot_scripts AOT SCRIPTS wolf.spp ...)` runs `sppc --aot`
+1. `spp_add_scripts(TARGET sample_aot_spp_scripts AOT SCRIPTS script/wolf.spp ...)` runs `sppc --aot`
    at build time. It makes C++ files and a table `spp::aot_table`. It builds them as a static library.
 2. The library links `spp_aot`. This library has `spp::AotRegistry` and does not have the loader.
 3. `main.cpp` makes `spp::AotRegistry registry(spp::aot_table)`. The constructor registers
@@ -18,7 +35,7 @@ The program does not call `dlopen`. It has no `ENABLE_EXPORTS`. A script change 
 ## Files
 
 - `Creature.h`: the host class. It is header-only.
-- `wolf.spp`: the script. The class `Wolf` derives from `Creature` and overrides `Tick`. `Tick` uses string interpolation (`"${...}"`), so the build checks the format library and the C++ standard of the AOT library.
+- `script/wolf.spp` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`. The `.spp` `Tick` uses string interpolation (`"${...}"`), so the build checks the format library and the C++ standard of the AOT library.
 - `main.cpp`: the program. It makes a `Wolf` with `spp::AotRegistry` and calls `Tick` three times.
 - `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
 
@@ -30,13 +47,18 @@ The option `SPP_BUILD_SAMPLES` is ON for the main project.
 
 ```
 cmake --preset linux-clang-files
-cmake --build --preset linux-clang-files-dbg --target sample_aot
-ctest --preset linux-clang-files-dbg -R '^sample_aot$'
+cmake --build --preset linux-clang-files-dbg --target sample_aot_spp sample_aot_cpp
+ctest --preset linux-clang-files-dbg -R '^sample_aot_(spp|cpp)$'
 ```
 
-The test has the same name as the target.
+Each test has the same name as its target. To run a program, use the folder `bin/Debug` of the build tree:
+
+```
+cmake-build/linux-clang-files/bin/Debug/sample_aot_spp
+cmake-build/linux-clang-files/bin/Debug/sample_aot_cpp
+```
 This sample has a test for the separate build too. Set `-DSPP_SAMPLES_STANDALONE_TEST=ON`
-when you configure the S++ tree. The test is `samples_standalone_aot`.
+when you configure the S++ tree. The test is `samples_standalone_aot`. It builds both variants and runs both tests.
 
 ### As a separate project
 
@@ -68,9 +90,9 @@ The function `spp_add_scripts` is then available.
 
 ## Link
 
-- `sample_aot_scripts` is the library from `spp_add_scripts(... AOT ...)`. It has the
-  generated C++ and the table `spp::aot_table`. It links `spp_aot` (PUBLIC).
-- The program links only `sample_aot_scripts`. It does not link `spp_runtime`.
+- `sample_aot_spp_scripts` and `sample_aot_cpp_scripts` are the libraries from `spp_add_scripts(... AOT ...)`.
+  Each has the generated C++ and the table `spp::aot_table`. It links `spp_aot` (PUBLIC).
+- Each program links only the library of its variant. It does not link `spp_runtime`.
 
 ## Adapt it to your project
 
@@ -92,7 +114,7 @@ for that build. See the section "AOT" in [Embedding](../../doc/embedding.md).
 [wolf] wolf: bites=3 hp=097
 ```
 
-The test `sample_aot` passes when the program returns 0.
+Both variants print the same lines. The tests `sample_aot_spp` and `sample_aot_cpp` pass when the program returns 0.
 
 ## More information
 

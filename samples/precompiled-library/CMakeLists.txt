@@ -9,19 +9,35 @@ if(NOT TARGET sppc)
     add_subdirectory(${SPP_ROOT} spp)
 endif()
 
-# sppc builds wolf.g1.so at build time. The compile flags of the library follow the host flags.
+# One program source, two script variants. The extension picks the script. Both variants are
+# in the folder script. Each variant has its own library target and its own program.
+#   sample_precompiled_spp loads the library of script/wolf.spp.
+#   sample_precompiled_cpp loads the library of script/wolf.cpp.
+# A call of spp_add_scripts takes scripts with one stem only, so each variant has its own call and
+# its own OUT_DIR. The compile flags of the library follow the host flags.
 separate_arguments(host_flags NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
-spp_add_scripts(TARGET sample_precompiled_scripts SCRIPTS wolf.spp
-                INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} FLAGS ${host_flags} DEPENDS Creature.h)
-
-# The program has no backend and no compiler at run time. It links only the runtime.
-add_executable(sample_precompiled main.cpp)
-target_include_directories(sample_precompiled PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(sample_precompiled PRIVATE spp_runtime)
-# The library resolves host and runtime symbols from the executable.
-set_target_properties(sample_precompiled PROPERTIES ENABLE_EXPORTS ON)
-add_dependencies(sample_precompiled sample_precompiled_scripts)
-
-# SPP_SCRIPTS_sample_precompiled_scripts_LIBRARIES has the paths of the libraries.
 enable_testing()
-add_test(NAME sample_precompiled COMMAND sample_precompiled ${SPP_SCRIPTS_sample_precompiled_scripts_LIBRARIES})
+foreach(variant spp cpp)
+    # sppc builds wolf.g1.so at build time.
+    spp_add_scripts(TARGET sample_precompiled_${variant}_scripts SCRIPTS script/wolf.${variant}
+                    OUT_DIR ${CMAKE_BINARY_DIR}/spp_scripts/sample_precompiled_${variant}
+                    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} FLAGS ${host_flags} DEPENDS Creature.h)
+
+    # The program has no backend and no compiler at run time. It links only the runtime.
+    set(target sample_precompiled_${variant})
+    add_executable(${target} main.cpp)
+    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(${target} PRIVATE spp_runtime)
+    # The library resolves host and runtime symbols from the executable.
+    set_target_properties(${target} PROPERTIES ENABLE_EXPORTS ON)
+    add_dependencies(${target} sample_precompiled_${variant}_scripts)
+
+    # SPP_SCRIPTS_<target>_LIBRARIES has the paths of the libraries.
+    add_test(NAME ${target} COMMAND ${target} ${SPP_SCRIPTS_sample_precompiled_${variant}_scripts_LIBRARIES})
+endforeach()
+
+# The normal toolchain compiles the .cpp script too. A .cpp script must compile unchanged.
+add_library(precompiled_library_cpp_scripts_plain OBJECT script/wolf.cpp)
+target_include_directories(precompiled_library_cpp_scripts_plain PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR} ${SPP_ROOT}/include)
+target_compile_features(precompiled_library_cpp_scripts_plain PRIVATE cxx_std_17)
