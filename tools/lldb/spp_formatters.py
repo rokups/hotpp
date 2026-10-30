@@ -4,7 +4,7 @@ The translator makes C++ with generated names. These formatters show the script 
   - a state block "Player_State_g2" or "PlayerState_g2" is shown as "Player"
   - a shell "Player_Shell" and a handle to it are shown as "Player"
   - a frame "Player__heal" is shown as "Player.heal at player.hot:12"
-  - the internal member "__spp_owner" of a state block is hidden from the children
+  - the internal member "__hot_owner" of a state block is hidden from the children
 
 The first part of this file is pure Python. It does not import lldb, so a plain Python test
 can run it (tests/unit/python/test_spp_formatters.py). The second part needs lldb. It runs
@@ -63,13 +63,13 @@ def script_function_name(symbol):
     return "%s.%s" % (cls, member)
 
 
-OWNER_MEMBER = "__spp_owner"
+OWNER_MEMBER = "__hot_owner"
 
 
 def visible_child_indices(names):
     """Return the real indices of the children to show.
 
-    "names" is the list of the child names of a state block. The member "__spp_owner" is
+    "names" is the list of the child names of a state block. The member "__hot_owner" is
     internal. It is the first member (index 0). The function hides it only at index 0.
     """
     return [i for i, n in enumerate(names) if not (i == 0 and n == OWNER_MEMBER)]
@@ -154,7 +154,7 @@ def handle_summary_provider(valobj, internal_dict):  # pragma: no cover
 
 
 class StateChildren:  # pragma: no cover - needs lldb
-    """Synthetic children of a state block. It hides the internal member "__spp_owner"."""
+    """Synthetic children of a state block. It hides the internal member "__hot_owner"."""
 
     def __init__(self, valobj, internal_dict):
         self.valobj = valobj

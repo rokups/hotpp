@@ -13,10 +13,10 @@
 #line 14 "cpp_player_v2.cpp.cpp"
 
 constexpr uint32_t GEN = 2;
-struct SppModule;
+struct HotModule;
 // The module state block of this generation. The loader sets the slot.
-static void* SppModule_slot = nullptr;
-[[maybe_unused]] HOT_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+static void* HotModule_slot = nullptr;
+[[maybe_unused]] HOT_HIDDEN static HotModule* hot_mod() { return static_cast<HotModule*>(HotModule_slot); }
 struct Player_Shell;
 using Player = Player_Shell;
 #line 4 "cpp_player_v2.cpp"
@@ -42,36 +42,36 @@ struct Point
 
 #line 44 "cpp_player_v2.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class SppModule
-struct SppModule {
+// ---------------------------------------------------------------- [value] class HotModule
+struct HotModule {
     float total;
 };
 
-static float SppModule__convert_total(int old);
+static float HotModule__convert_total(int old);
 #line 26 "cpp_player_v2.cpp"
-static void SppModule__convert_total_hook(void* dst, const void* src)
+static void HotModule__convert_total_hook(void* dst, const void* src)
 #line 26 "cpp_player_v2.cpp"
 {
 #line 26 "cpp_player_v2.cpp"
-    new (dst) float(SppModule__convert_total(*static_cast<const int*>(src)));
+    new (dst) float(HotModule__convert_total(*static_cast<const int*>(src)));
 #line 26 "cpp_player_v2.cpp"
 }
 #line 60 "cpp_player_v2.cpp.cpp"
 #line 17 "cpp_player_v2.cpp"
-static void SppModule__init_total(void*, void* f) { using T = float; new (f) T(0); }
+static void HotModule__init_total(void*, void* f) { using T = float; new (f) T(0); }
 #line 63 "cpp_player_v2.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static const hot::FieldInfo SppModule_fields[] = {
-    {"total", nullptr, hot::type_key<float>(), offsetof(SppModule, total), sizeof(float),
-     alignof(float), hot::field_flags<float>(), SppModule__init_total, hot::move_field<float>, hot::field_destroyer<float>(), hot::type_key<int>(), SppModule__convert_total_hook},
+static const hot::FieldInfo HotModule_fields[] = {
+    {"total", nullptr, hot::type_key<float>(), offsetof(HotModule, total), sizeof(float),
+     alignof(float), hot::field_flags<float>(), HotModule__init_total, hot::move_field<float>, hot::field_destroyer<float>(), hot::type_key<int>(), HotModule__convert_total_hook},
 };
 #pragma clang diagnostic pop
-static const hot::StateLayout SppModule_layout = {
-    "SppModule", sizeof(SppModule), alignof(SppModule), 1, SppModule_fields,
+static const hot::StateLayout HotModule_layout = {
+    "HotModule", sizeof(HotModule), alignof(HotModule), 1, HotModule_fields,
 };
 
-static float SppModule__convert_total(int old)
+static float HotModule__convert_total(int old)
 {
 #line 27 "cpp_player_v2.cpp"
 
@@ -155,7 +155,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct PlayerState_g2 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     float health;
     float speed;
     std::string target;
@@ -202,7 +202,7 @@ static void Player__convert_level_hook(void* dst, const void* src)
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(PlayerState_g2, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(PlayerState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Player_fields[] = {
     {"health", "hp", hot::type_key<float>(), offsetof(PlayerState_g2, health), sizeof(float),
      alignof(float), hot::field_flags<float>(), Player__init_health, hot::move_field<float>, hot::field_destroyer<float>()},
@@ -352,7 +352,7 @@ void PlayerState_g2::ctor()
 #line 34 "cpp_player_v2.cpp"
     }
 #line 34 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 34 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 34 "cpp_player_v2.cpp"
@@ -374,7 +374,7 @@ void PlayerState_g2::Tick(float dt)
 #line 36 "cpp_player_v2.cpp"
     }
 #line 36 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 36 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 37 "cpp_player_v2.cpp"
@@ -382,7 +382,7 @@ void PlayerState_g2::Tick(float dt)
         __self->Move(Vec3(2.0f * speed * dt, 0, 0));
         std::printf("[v2] %s: Tick dt=%.4f pos.x=%.4f health=%.1f level=%.1f\n", __self->Name.c_str(), dt,
             __self->Position.x, health, level);
-        spp_mod()->total++;
+        hot_mod()->total++;
         auto step = [&, __self] { __self->Move(Vec3(0, 1, 0)); };
         step();
     
@@ -403,7 +403,7 @@ void PlayerState_g2::TakeDamage_f(float amount)
 #line 46 "cpp_player_v2.cpp"
     }
 #line 46 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 46 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 47 "cpp_player_v2.cpp"
@@ -428,7 +428,7 @@ void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
 #line 52 "cpp_player_v2.cpp"
     }
 #line 52 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 52 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 53 "cpp_player_v2.cpp"
@@ -463,7 +463,7 @@ void PlayerState_g2::heal(float a)
 #line 59 "cpp_player_v2.cpp"
     }
 #line 59 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 59 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 60 "cpp_player_v2.cpp"
@@ -507,7 +507,7 @@ void PlayerState_g2::onReload(const hot::OldState& old)
 #line 68 "cpp_player_v2.cpp"
     }
 #line 68 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 68 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 69 "cpp_player_v2.cpp"
@@ -574,7 +574,7 @@ HOT_NODEBUG static hot::Instance Player_create()
 
 extern "C" void script_register(hot::Registry& reg)
 {
-    reg.set_module_state(&SppModule_layout, &SppModule_slot);
+    reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Player_record, &Player_create);
     Player_record.construct_keys = Player__construct_keys;
 }

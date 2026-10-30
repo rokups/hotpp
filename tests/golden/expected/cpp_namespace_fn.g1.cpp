@@ -13,33 +13,33 @@
 #line 14 "cpp_namespace_fn.cpp.cpp"
 
 constexpr uint32_t GEN = 1;
-struct SppModule;
+struct HotModule;
 // The module state block of this generation. The loader sets the slot.
-static void* SppModule_slot = nullptr;
-[[maybe_unused]] HOT_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+static void* HotModule_slot = nullptr;
+[[maybe_unused]] HOT_HIDDEN static HotModule* hot_mod() { return static_cast<HotModule*>(HotModule_slot); }
 struct Bumper_Shell;
 using Bumper = Bumper_Shell;
 #line 3 "cpp_namespace_fn.cpp"
 #include "Actor.h"
 #line 25 "cpp_namespace_fn.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class SppModule
-struct SppModule {
+// ---------------------------------------------------------------- [value] class HotModule
+struct HotModule {
     int total;
 };
 
 #line 6 "cpp_namespace_fn.cpp"
-static void SppModule__init_total(void*, void* f) { using T = int; new (f) T(0); }
+static void HotModule__init_total(void*, void* f) { using T = int; new (f) T(0); }
 #line 34 "cpp_namespace_fn.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static const hot::FieldInfo SppModule_fields[] = {
-    {"total", nullptr, hot::type_key<int>(), offsetof(SppModule, total), sizeof(int),
-     alignof(int), hot::field_flags<int>(), SppModule__init_total, hot::move_field<int>, hot::field_destroyer<int>()},
+static const hot::FieldInfo HotModule_fields[] = {
+    {"total", nullptr, hot::type_key<int>(), offsetof(HotModule, total), sizeof(int),
+     alignof(int), hot::field_flags<int>(), HotModule__init_total, hot::move_field<int>, hot::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
-static const hot::StateLayout SppModule_layout = {
-    "SppModule", sizeof(SppModule), alignof(SppModule), 1, SppModule_fields,
+static const hot::StateLayout HotModule_layout = {
+    "HotModule", sizeof(HotModule), alignof(HotModule), 1, HotModule_fields,
 };
 
 
@@ -49,8 +49,8 @@ namespace counter
 // A function in a namespace that uses the module variable. It stays in its place in the output.
 int bump(int n)
 {
-    spp_mod()->total += n;
-    return spp_mod()->total;
+    hot_mod()->total += n;
+    return hot_mod()->total;
 }
 }
 
@@ -116,7 +116,7 @@ struct Bumper_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct BumperState_g1 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     int last;
 
     void ctor();
@@ -127,7 +127,7 @@ struct BumperState_g1 {
 #line 18 "cpp_namespace_fn.cpp"
     {
 #line 18 "cpp_namespace_fn.cpp"
-        return static_cast<Bumper_Shell*>(__spp_owner)->Actor::TakeDamage(a0);
+        return static_cast<Bumper_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 18 "cpp_namespace_fn.cpp"
     }
 #line 134 "cpp_namespace_fn.cpp.cpp"
@@ -137,7 +137,7 @@ struct BumperState_g1 {
 #line 18 "cpp_namespace_fn.cpp"
     {
 #line 18 "cpp_namespace_fn.cpp"
-        return static_cast<Bumper_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Bumper_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 18 "cpp_namespace_fn.cpp"
     }
 #line 144 "cpp_namespace_fn.cpp.cpp"
@@ -149,7 +149,7 @@ static void Bumper__init_last(void*, void* f) { using T = int; new (f) T(0); }
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(BumperState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(BumperState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Bumper_fields[] = {
     {"last", nullptr, hot::type_key<int>(), offsetof(BumperState_g1, last), sizeof(int),
      alignof(int), hot::field_flags<int>(), Bumper__init_last, hot::move_field<int>, hot::field_destroyer<int>()},
@@ -287,7 +287,7 @@ void BumperState_g1::ctor()
 #line 23 "cpp_namespace_fn.cpp"
     }
 #line 23 "cpp_namespace_fn.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Bumper_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Bumper_Shell*>(this->__hot_owner);
 #line 23 "cpp_namespace_fn.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 23 "cpp_namespace_fn.cpp"
@@ -309,13 +309,13 @@ void BumperState_g1::Tick(float dt)
 #line 25 "cpp_namespace_fn.cpp"
     }
 #line 25 "cpp_namespace_fn.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Bumper_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Bumper_Shell*>(this->__hot_owner);
 #line 25 "cpp_namespace_fn.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 26 "cpp_namespace_fn.cpp"
 
         last = counter::bump(5);
-        spp_mod()->total += 100;
+        hot_mod()->total += 100;
         __self->Move(Vec3(dt, 0, 0));
     
 #line 30 "cpp_namespace_fn.cpp"
@@ -366,7 +366,7 @@ HOT_NODEBUG static hot::Instance Bumper_create()
 
 extern "C" void script_register(hot::Registry& reg)
 {
-    reg.set_module_state(&SppModule_layout, &SppModule_slot);
+    reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Bumper_record, &Bumper_create);
     Bumper_record.construct_keys = Bumper__construct_keys;
 }

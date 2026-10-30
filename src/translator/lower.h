@@ -106,7 +106,7 @@ struct RCtx
     std::string format_lib = "std";
     bool* uses_format = nullptr;
     // Module variables (design 5.3, 7.3): "Type name = init;" at file level. A bare name that is
-    // not a local becomes "spp_mod()->name", an access to the module state block. The map has the
+    // not a local becomes "hot_mod()->name", an access to the module state block. The map has the
     // names and the script types. "in_module_init" is true in the initializer of a module
     // variable. There, only the variables in "module_earlier" are allowed: the loader runs the
     // initializers in declaration order, so a variable declared earlier has its value.

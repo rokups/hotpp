@@ -96,7 +96,7 @@ std::string default_arg(const sppc::ast::Param& p, const std::vector<sppc::ast::
 }
 
 // The name of the synthetic [value] class that holds the module variables (module state block).
-const std::string kModuleName = "SppModule";
+const std::string kModuleName = "HotModule";
 
 [[noreturn]] void fail(int line, const std::string& msg)
 {
@@ -2768,19 +2768,19 @@ void translate_impl(
     if (!sc.is_cpp)
         write_marks();
     o.w("\nconstexpr uint32_t GEN = " + std::to_string(opt.gen) + ";\n");
-    // The forward block of a ".cpp" script. The text of the file can call spp_mod() before the
+    // The forward block of a ".cpp" script. The text of the file can call hot_mod() before the
     // module block: the static_cast of a "void*" to a pointer of an incomplete type is valid.
     if (sc.is_cpp && has_module)
     {
         o.w("struct " + kModuleName + ";\n");
         o.w("// The module state block of this generation. The loader sets the slot.\n");
         o.w("static void* " + kModuleName + "_slot = nullptr;\n");
-        o.w("[[maybe_unused]] HOT_HIDDEN static " + kModuleName + "* spp_mod() { return static_cast<" + kModuleName
+        o.w("[[maybe_unused]] HOT_HIDDEN static " + kModuleName + "* hot_mod() { return static_cast<" + kModuleName
             + "*>(" + kModuleName + "_slot); }\n");
     }
     // A ".cpp" script can name a script class before its class block: a static method prototype
     // or a module variable with a pointer to the class. The shell and its alias are declared here.
-    // A class in a namespace gets its names in the nested namespace "spp_gen" of the namespace
+    // A class in a namespace gets its names in the nested namespace "hot_gen" of the namespace
     // (see ast::gen_namespace). The names have the file-scope form "game__Player", so a class
     // with the same name in another namespace does not collide. A using directive makes the names
     // visible at file scope. The class name as written ("Player") is an alias in the namespace.
@@ -3067,10 +3067,10 @@ void translate_impl(
         if (is_module && !sc.is_cpp)
         {
             // The module state block. The loader sets the slot of each generation (design 4.7).
-            // An initializer and a function of the module read the block through spp_mod().
+            // An initializer and a function of the module read the block through hot_mod().
             o.w("// The module state block of this generation. The loader sets the slot.\n");
             o.w("static void* " + cn + "_slot = nullptr;\n");
-            o.w("[[maybe_unused]] HOT_HIDDEN static " + cn + "* spp_mod() { return static_cast<" + cn + "*>(" + cn
+            o.w("[[maybe_unused]] HOT_HIDDEN static " + cn + "* hot_mod() { return static_cast<" + cn + "*>(" + cn
                 + "_slot); }\n");
         }
         for (const Method& m : cd.methods)
@@ -3099,7 +3099,7 @@ void translate_impl(
         if (is_module)
         {
             // The loader builds the module block with the init functions of the field table, in
-            // declaration order. An initializer can read an earlier variable through spp_mod().
+            // declaration order. An initializer can read an earlier variable through hot_mod().
             o.w("};\n\n");
         }
         else
@@ -3418,7 +3418,7 @@ void translate_impl(
             emit_value(cd);
             continue;
         }
-        // The block of a class in a namespace is in the nested namespace "spp_gen" of the namespace,
+        // The block of a class in a namespace is in the nested namespace "hot_gen" of the namespace,
         // so the script text in the class finds the names of the namespace.
         if (!cd.ns.empty())
             o.w("namespace " + sppc::ast::gen_namespace(cd.ns) + " {\n");
@@ -4157,7 +4157,7 @@ void translate_impl(
         o.w("struct " + S + (pinfo ? " : " + pinfo->S : std::string()) + " {\n");
         // The runtime writes the owner shell into the first member of a root state struct.
         if (!pinfo)
-            o.w("    hot::ShellBase* __spp_owner;\n");
+            o.w("    hot::ShellBase* __hot_owner;\n");
         for (const Field& f : cd.fields)
         {
             const std::string decl = "    " + f.type + " " + f.name + ";\n";
@@ -4216,7 +4216,7 @@ void translate_impl(
                 }
                 o.w("    // Not overridden: call the implementation of " + nv.from + ".\n");
                 mapped("    HOT_NODEBUG " + nv.ret + " __fwd_" + sl.id + "(" + ps
-                        + ")\n    {\n        return static_cast<" + shell + "*>(__spp_owner)->" + nv.from
+                        + ")\n    {\n        return static_cast<" + shell + "*>(__hot_owner)->" + nv.from
                         + "::" + nv.name + "(" + as + ");\n    }\n",
                     cd.line, cd.pos);
             }
@@ -4250,7 +4250,7 @@ void translate_impl(
             }
             o.w("static void " + P + "init_" + f.name + (uses_self ? "(void* st, void* f) { " : "(void*, void* f) { ")
                 + (uses_self ? "[[maybe_unused]] auto* __self = static_cast<" + shell + "*>(static_cast<" + S
-                        + "*>(st)->__spp_owner); "
+                        + "*>(st)->__hot_owner); "
                              : std::string())
                 + "using T = " + f.type + "; new (f) T" + (f.raw_brace_init ? init : "(" + init + ")") + "; }\n");
             reset();
@@ -4268,7 +4268,7 @@ void translate_impl(
                 m->line, m->pos);
         }
         o.w("\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n");
-        o.w("static_assert(offsetof(" + S + ", __spp_owner) == 0, \"the owner pointer must be the first member\");\n");
+        o.w("static_assert(offsetof(" + S + ", __hot_owner) == 0, \"the owner pointer must be the first member\");\n");
         // The field table of a child has the rows of the parent first. "$S$" is the state struct.
         if (pinfo)
             info.rows = pinfo->rows;
@@ -4646,7 +4646,7 @@ void translate_impl(
             o.w("    }\n");
             // The two local names and the body forms map to the first statement.
             o.w(line_at(first_line));
-            o.w("    HOT_NODEBUG_LOCAL auto* __self = static_cast<" + shell + "*>(this->__spp_owner);\n");
+            o.w("    HOT_NODEBUG_LOCAL auto* __self = static_cast<" + shell + "*>(this->__hot_owner);\n");
             o.w(line_at(first_line));
             o.w("    HOT_NODEBUG_LOCAL auto* __st = this;\n");
             for (size_t b = 0; b < body_locals.size();)

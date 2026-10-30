@@ -86,7 +86,7 @@ struct Tracker_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct TrackerState_g1 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     std::string label;
     std::vector<int32_t> history;
     float dist;
@@ -101,7 +101,7 @@ struct TrackerState_g1 {
 #line 10 "native_std_v1.hot"
     {
 #line 10 "native_std_v1.hot"
-        return static_cast<Tracker_Shell*>(__spp_owner)->Actor::TakeDamage(a0);
+        return static_cast<Tracker_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 10 "native_std_v1.hot"
     }
 #line 108 "native_std_v1.hot.cpp"
@@ -111,7 +111,7 @@ struct TrackerState_g1 {
 #line 10 "native_std_v1.hot"
     {
 #line 10 "native_std_v1.hot"
-        return static_cast<Tracker_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Tracker_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 10 "native_std_v1.hot"
     }
 #line 118 "native_std_v1.hot.cpp"
@@ -138,7 +138,7 @@ static void Tracker__init_described(void*, void* f) { using T = std::string; new
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(TrackerState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(TrackerState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Tracker_fields[] = {
     {"label", nullptr, typeid(std::string).name(), offsetof(TrackerState_g1, label), sizeof(std::string),
      alignof(std::string), hot::field_flags<std::string>(), Tracker__init_label, hot::move_field<std::string>, hot::field_destroyer<std::string>()},
@@ -242,7 +242,7 @@ void TrackerState_g1::Tick(float dt)
 #line 18 "native_std_v1.hot"
     }
 #line 19 "native_std_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Tracker_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Tracker_Shell*>(this->__hot_owner);
 #line 19 "native_std_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 19 "native_std_v1.hot"

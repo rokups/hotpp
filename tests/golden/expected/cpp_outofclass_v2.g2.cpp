@@ -13,10 +13,10 @@
 #line 14 "cpp_outofclass_v2.cpp.cpp"
 
 constexpr uint32_t GEN = 2;
-struct SppModule;
+struct HotModule;
 // The module state block of this generation. The loader sets the slot.
-static void* SppModule_slot = nullptr;
-[[maybe_unused]] HOT_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+static void* HotModule_slot = nullptr;
+[[maybe_unused]] HOT_HIDDEN static HotModule* hot_mod() { return static_cast<HotModule*>(HotModule_slot); }
 struct Fighter_Shell;
 using Fighter = Fighter_Shell;
 struct Marker_Shell;
@@ -25,29 +25,29 @@ using Marker = Marker_Shell;
 #include "Actor.h"
 #line 27 "cpp_outofclass_v2.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class SppModule
-struct SppModule {
+// ---------------------------------------------------------------- [value] class HotModule
+struct HotModule {
     int ticks;
     int step;
 };
 
 #line 5 "cpp_outofclass_v2.cpp"
-static void SppModule__init_ticks(void*, void* f) { using T = int; new (f) T(0); }
+static void HotModule__init_ticks(void*, void* f) { using T = int; new (f) T(0); }
 #line 37 "cpp_outofclass_v2.cpp.cpp"
 #line 6 "cpp_outofclass_v2.cpp"
-static void SppModule__init_step(void*, void* f) { using T = int; new (f) T(1); }
+static void HotModule__init_step(void*, void* f) { using T = int; new (f) T(1); }
 #line 40 "cpp_outofclass_v2.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static const hot::FieldInfo SppModule_fields[] = {
-    {"ticks", nullptr, hot::type_key<int>(), offsetof(SppModule, ticks), sizeof(int),
-     alignof(int), hot::field_flags<int>(), SppModule__init_ticks, hot::move_field<int>, hot::field_destroyer<int>()},
-    {"step", nullptr, hot::type_key<int>(), offsetof(SppModule, step), sizeof(int),
-     alignof(int), hot::field_flags<int>(), SppModule__init_step, hot::move_field<int>, hot::field_destroyer<int>()},
+static const hot::FieldInfo HotModule_fields[] = {
+    {"ticks", nullptr, hot::type_key<int>(), offsetof(HotModule, ticks), sizeof(int),
+     alignof(int), hot::field_flags<int>(), HotModule__init_ticks, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"step", nullptr, hot::type_key<int>(), offsetof(HotModule, step), sizeof(int),
+     alignof(int), hot::field_flags<int>(), HotModule__init_step, hot::move_field<int>, hot::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
-static const hot::StateLayout SppModule_layout = {
-    "SppModule", sizeof(SppModule), alignof(SppModule), 2, SppModule_fields,
+static const hot::StateLayout HotModule_layout = {
+    "HotModule", sizeof(HotModule), alignof(HotModule), 2, HotModule_fields,
 };
 
 
@@ -113,14 +113,14 @@ struct Fighter_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct FighterState_g2 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     int hp;
     int last;
 
     void ctor();
     void dtor();
     void Tick(float dt);
-    int hit(int damage, int factor = spp_mod()->step);
+    int hit(int damage, int factor = hot_mod()->step);
     int get();
     // Not overridden: call the implementation of Actor.
 #line 8 "cpp_outofclass_v2.cpp"
@@ -128,7 +128,7 @@ struct FighterState_g2 {
 #line 8 "cpp_outofclass_v2.cpp"
     {
 #line 8 "cpp_outofclass_v2.cpp"
-        return static_cast<Fighter_Shell*>(__spp_owner)->Actor::TakeDamage(a0);
+        return static_cast<Fighter_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 8 "cpp_outofclass_v2.cpp"
     }
 #line 135 "cpp_outofclass_v2.cpp.cpp"
@@ -138,7 +138,7 @@ struct FighterState_g2 {
 #line 8 "cpp_outofclass_v2.cpp"
     {
 #line 8 "cpp_outofclass_v2.cpp"
-        return static_cast<Fighter_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Fighter_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 8 "cpp_outofclass_v2.cpp"
     }
 #line 145 "cpp_outofclass_v2.cpp.cpp"
@@ -153,7 +153,7 @@ static void Fighter__init_last(void*, void* f) { using T = int; new (f) T(0); }
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(FighterState_g2, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(FighterState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Fighter_fields[] = {
     {"hp", nullptr, hot::type_key<int>(), offsetof(FighterState_g2, hp), sizeof(int),
      alignof(int), hot::field_flags<int>(), Fighter__init_hp, hot::move_field<int>, hot::field_destroyer<int>()},
@@ -172,7 +172,7 @@ HOT_HIDDEN FighterState_g2* state_of(Fighter_Shell* __self)
     return static_cast<FighterState_g2*>(__self->state);
 }
 
-[[maybe_unused]] HOT_HIDDEN static int Fighter__hit(Fighter_Shell* __self, int damage, int factor = spp_mod()->step);
+[[maybe_unused]] HOT_HIDDEN static int Fighter__hit(Fighter_Shell* __self, int damage, int factor = hot_mod()->step);
 [[maybe_unused]] HOT_HIDDEN static int Fighter__get(Fighter_Shell* __self);
 
 [[maybe_unused]] HOT_HIDDEN static void Fighter__ctor(Fighter_Shell* __self);
@@ -306,12 +306,12 @@ void FighterState_g2::ctor()
 #line 11 "cpp_outofclass_v2.cpp"
     }
 #line 11 "cpp_outofclass_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__hot_owner);
 #line 11 "cpp_outofclass_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 31 "cpp_outofclass_v2.cpp"
 
-    spp_mod()->ticks += 100;
+    hot_mod()->ticks += 100;
 
 #line 33 "cpp_outofclass_v2.cpp"
 }
@@ -339,12 +339,12 @@ void FighterState_g2::dtor()
 #line 12 "cpp_outofclass_v2.cpp"
     }
 #line 12 "cpp_outofclass_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__hot_owner);
 #line 12 "cpp_outofclass_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 36 "cpp_outofclass_v2.cpp"
 
-    spp_mod()->ticks = -1;
+    hot_mod()->ticks = -1;
 
 #line 38 "cpp_outofclass_v2.cpp"
 }
@@ -363,13 +363,13 @@ void FighterState_g2::Tick(float dt)
 #line 14 "cpp_outofclass_v2.cpp"
     }
 #line 14 "cpp_outofclass_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__hot_owner);
 #line 14 "cpp_outofclass_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 41 "cpp_outofclass_v2.cpp"
 
     __self->Move(Vec3(2.0f * dt, 0, 0));
-    spp_mod()->ticks++;
+    hot_mod()->ticks++;
     hit(1);
     last = get();
 
@@ -399,7 +399,7 @@ int FighterState_g2::hit(int damage, int factor)
 #line 16 "cpp_outofclass_v2.cpp"
     }
 #line 16 "cpp_outofclass_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__hot_owner);
 #line 16 "cpp_outofclass_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 50 "cpp_outofclass_v2.cpp"
@@ -433,7 +433,7 @@ int FighterState_g2::get()
 #line 17 "cpp_outofclass_v2.cpp"
     }
 #line 17 "cpp_outofclass_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__hot_owner);
 #line 17 "cpp_outofclass_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 56 "cpp_outofclass_v2.cpp"
@@ -549,7 +549,7 @@ struct Marker_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct MarkerState_g2 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     int n;
 
     void ctor();
@@ -559,7 +559,7 @@ struct MarkerState_g2 {
 #line 23 "cpp_outofclass_v2.cpp"
     {
 #line 23 "cpp_outofclass_v2.cpp"
-        return static_cast<Marker_Shell*>(__spp_owner)->Actor::Tick(a0);
+        return static_cast<Marker_Shell*>(__hot_owner)->Actor::Tick(a0);
 #line 23 "cpp_outofclass_v2.cpp"
     }
 #line 566 "cpp_outofclass_v2.cpp.cpp"
@@ -569,7 +569,7 @@ struct MarkerState_g2 {
 #line 23 "cpp_outofclass_v2.cpp"
     {
 #line 23 "cpp_outofclass_v2.cpp"
-        return static_cast<Marker_Shell*>(__spp_owner)->Actor::TakeDamage(a0);
+        return static_cast<Marker_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 23 "cpp_outofclass_v2.cpp"
     }
 #line 576 "cpp_outofclass_v2.cpp.cpp"
@@ -579,7 +579,7 @@ struct MarkerState_g2 {
 #line 23 "cpp_outofclass_v2.cpp"
     {
 #line 23 "cpp_outofclass_v2.cpp"
-        return static_cast<Marker_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Marker_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 23 "cpp_outofclass_v2.cpp"
     }
 #line 586 "cpp_outofclass_v2.cpp.cpp"
@@ -591,7 +591,7 @@ static void Marker__init_n(void*, void* f) { using T = int; new (f) T(0); }
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(MarkerState_g2, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(MarkerState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Marker_fields[] = {
     {"n", nullptr, hot::type_key<int>(), offsetof(MarkerState_g2, n), sizeof(int),
      alignof(int), hot::field_flags<int>(), Marker__init_n, hot::move_field<int>, hot::field_destroyer<int>()},
@@ -729,7 +729,7 @@ void MarkerState_g2::ctor()
 #line 26 "cpp_outofclass_v2.cpp"
     }
 #line 26 "cpp_outofclass_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Marker_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Marker_Shell*>(this->__hot_owner);
 #line 26 "cpp_outofclass_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 26 "cpp_outofclass_v2.cpp"
@@ -782,7 +782,7 @@ HOT_NODEBUG static hot::Instance Marker_create()
 
 extern "C" void script_register(hot::Registry& reg)
 {
-    reg.set_module_state(&SppModule_layout, &SppModule_slot);
+    reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Fighter_record, &Fighter_create);
     reg.add(&Marker_record, &Marker_create);
     Fighter_record.construct_keys = Fighter__construct_keys;

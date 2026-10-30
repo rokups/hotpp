@@ -19,7 +19,7 @@ namespace sppc::ast
 // generates for the script classes of "ns". It is empty for the file scope.
 inline std::string gen_namespace(const std::string& ns)
 {
-    return ns.empty() ? ns : ns + "::spp_gen";
+    return ns.empty() ? ns : ns + "::hot_gen";
 }
 
 using sppc::Span;

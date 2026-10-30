@@ -36,7 +36,7 @@ namespace
 {
 
 // The name that the completion puts in place of the word at the cursor (see on_completion).
-const std::string kHole = "__spp_complete";
+const std::string kHole = "__hot_complete";
 
 // LSP error codes.
 constexpr int kMethodNotFound = -32601;
@@ -1105,7 +1105,8 @@ static bool is_generated_name(const std::string& n)
     for (const char* x : parts)
         if (n.find(x) != std::string::npos)
             return true;
-    return n[0] == '_' || n.compare(0, 4, "spp_") == 0 || n.compare(0, 3, "Spp") == 0 || n == "hot";
+    return n[0] == '_' || n.compare(0, 7, "hot_mod") == 0 || n.compare(0, 7, "hot_gen") == 0 ||
+           n.compare(0, 9, "HotModule") == 0 || n == "hot";
 }
 
 static bool has_prefix(const std::string& name, const std::string& prefix)

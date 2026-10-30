@@ -13,10 +13,10 @@
 #line 14 "cpp_ctor_init_v1.cpp.cpp"
 
 constexpr uint32_t GEN = 1;
-struct SppModule;
+struct HotModule;
 // The module state block of this generation. The loader sets the slot.
-static void* SppModule_slot = nullptr;
-[[maybe_unused]] HOT_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+static void* HotModule_slot = nullptr;
+[[maybe_unused]] HOT_HIDDEN static HotModule* hot_mod() { return static_cast<HotModule*>(HotModule_slot); }
 struct Unit_Shell;
 using Unit = Unit_Shell;
 struct Spawner_Shell;
@@ -89,7 +89,7 @@ struct Unit_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct UnitState_g1 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     int hp;
     int tag;
     std::string name;
@@ -106,7 +106,7 @@ struct UnitState_g1 {
 #line 8 "cpp_ctor_init_v1.cpp"
     {
 #line 8 "cpp_ctor_init_v1.cpp"
-        return static_cast<Unit_Shell*>(__spp_owner)->Actor::TakeDamage(a0);
+        return static_cast<Unit_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 8 "cpp_ctor_init_v1.cpp"
     }
 #line 113 "cpp_ctor_init_v1.cpp.cpp"
@@ -116,7 +116,7 @@ struct UnitState_g1 {
 #line 8 "cpp_ctor_init_v1.cpp"
     {
 #line 8 "cpp_ctor_init_v1.cpp"
-        return static_cast<Unit_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Unit_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 8 "cpp_ctor_init_v1.cpp"
     }
 #line 123 "cpp_ctor_init_v1.cpp.cpp"
@@ -146,7 +146,7 @@ static void Unit__init_kept(void*, void* f) { using T = int; new (f) T(7); }
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(UnitState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(UnitState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Unit_fields[] = {
     {"hp", nullptr, hot::type_key<int>(), offsetof(UnitState_g1, hp), sizeof(int),
      alignof(int), hot::field_flags<int>(), Unit__init_hp, hot::move_field<int>, hot::field_destroyer<int>()},
@@ -296,19 +296,19 @@ void UnitState_g1::ctor(int hp_, std::string n, int bonus)
 #line 12 "cpp_ctor_init_v1.cpp"
     }
 #line 12 "cpp_ctor_init_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Unit_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Unit_Shell*>(this->__hot_owner);
 #line 12 "cpp_ctor_init_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 17 "cpp_ctor_init_v1.cpp"
-{ decltype(__st->hp) __spp_mi(hp_ * 2); __st->hp = std::move(__spp_mi); }
+{ decltype(__st->hp) __hot_mi(hp_ * 2); __st->hp = std::move(__hot_mi); }
 #line 16 "cpp_ctor_init_v1.cpp"
-{ decltype(__st->tag) __spp_mi{bonus}; __st->tag = std::move(__spp_mi); }
+{ decltype(__st->tag) __hot_mi{bonus}; __st->tag = std::move(__hot_mi); }
 #line 14 "cpp_ctor_init_v1.cpp"
-{ decltype(__st->name) __spp_mi(std::move(n)); __st->name = std::move(__spp_mi); }
+{ decltype(__st->name) __hot_mi(std::move(n)); __st->name = std::move(__hot_mi); }
 #line 15 "cpp_ctor_init_v1.cpp"
-{ decltype(__st->twice) __spp_mi(hp + tag); __st->twice = std::move(__spp_mi); }
+{ decltype(__st->twice) __hot_mi(hp + tag); __st->twice = std::move(__hot_mi); }
 #line 18 "cpp_ctor_init_v1.cpp"
-{ decltype(__st->len) __spp_mi(static_cast<int>(__self->Name.size())); __st->len = std::move(__spp_mi); }
+{ decltype(__st->len) __hot_mi(static_cast<int>(__self->Name.size())); __st->len = std::move(__hot_mi); }
 #line 19 "cpp_ctor_init_v1.cpp"
 
         stamp += 1;
@@ -330,7 +330,7 @@ void UnitState_g1::Tick(float dt)
 #line 23 "cpp_ctor_init_v1.cpp"
     }
 #line 23 "cpp_ctor_init_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Unit_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Unit_Shell*>(this->__hot_owner);
 #line 23 "cpp_ctor_init_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 23 "cpp_ctor_init_v1.cpp"
@@ -382,23 +382,23 @@ HOT_NODEBUG static hot::Instance Unit_create()
 #line 383 "cpp_ctor_init_v1.cpp.cpp"
 
 
-// ---------------------------------------------------------------- [value] class SppModule
-struct SppModule {
+// ---------------------------------------------------------------- [value] class HotModule
+struct HotModule {
     Unit * first;
 };
 
 #line 34 "cpp_ctor_init_v1.cpp"
-static void SppModule__init_first(void*, void* f) { using T = Unit *; new (f) T(nullptr); }
+static void HotModule__init_first(void*, void* f) { using T = Unit *; new (f) T(nullptr); }
 #line 393 "cpp_ctor_init_v1.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static const hot::FieldInfo SppModule_fields[] = {
-    {"first", nullptr, hot::type_key<Unit *>(), offsetof(SppModule, first), sizeof(Unit *),
-     alignof(Unit *), hot::field_flags<Unit *>(), SppModule__init_first, hot::move_field<Unit *>, hot::field_destroyer<Unit *>()},
+static const hot::FieldInfo HotModule_fields[] = {
+    {"first", nullptr, hot::type_key<Unit *>(), offsetof(HotModule, first), sizeof(Unit *),
+     alignof(Unit *), hot::field_flags<Unit *>(), HotModule__init_first, hot::move_field<Unit *>, hot::field_destroyer<Unit *>()},
 };
 #pragma clang diagnostic pop
-static const hot::StateLayout SppModule_layout = {
-    "SppModule", sizeof(SppModule), alignof(SppModule), 1, SppModule_fields,
+static const hot::StateLayout HotModule_layout = {
+    "HotModule", sizeof(HotModule), alignof(HotModule), 1, HotModule_fields,
 };
 
 
@@ -462,7 +462,7 @@ struct Spawner_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct SpawnerState_g1 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
 
     void ctor();
     void Tick(float );
@@ -472,7 +472,7 @@ struct SpawnerState_g1 {
 #line 36 "cpp_ctor_init_v1.cpp"
     {
 #line 36 "cpp_ctor_init_v1.cpp"
-        return static_cast<Spawner_Shell*>(__spp_owner)->Actor::TakeDamage(a0);
+        return static_cast<Spawner_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 36 "cpp_ctor_init_v1.cpp"
     }
 #line 479 "cpp_ctor_init_v1.cpp.cpp"
@@ -482,7 +482,7 @@ struct SpawnerState_g1 {
 #line 36 "cpp_ctor_init_v1.cpp"
     {
 #line 36 "cpp_ctor_init_v1.cpp"
-        return static_cast<Spawner_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Spawner_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 36 "cpp_ctor_init_v1.cpp"
     }
 #line 489 "cpp_ctor_init_v1.cpp.cpp"
@@ -491,7 +491,7 @@ struct SpawnerState_g1 {
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(SpawnerState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(SpawnerState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo* const Spawner_fields = nullptr;
 #pragma clang diagnostic pop
 
@@ -626,7 +626,7 @@ void SpawnerState_g1::ctor()
 #line 39 "cpp_ctor_init_v1.cpp"
     }
 #line 39 "cpp_ctor_init_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Spawner_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Spawner_Shell*>(this->__hot_owner);
 #line 39 "cpp_ctor_init_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 39 "cpp_ctor_init_v1.cpp"
@@ -648,13 +648,13 @@ void SpawnerState_g1::Tick(float )
 #line 41 "cpp_ctor_init_v1.cpp"
     }
 #line 41 "cpp_ctor_init_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Spawner_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Spawner_Shell*>(this->__hot_owner);
 #line 41 "cpp_ctor_init_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 42 "cpp_ctor_init_v1.cpp"
 
-        if (!spp_mod()->first)
-            spp_mod()->first = Unit__new(4, "bob");
+        if (!hot_mod()->first)
+            hot_mod()->first = Unit__new(4, "bob");
     
 #line 45 "cpp_ctor_init_v1.cpp"
 }
@@ -704,7 +704,7 @@ HOT_NODEBUG static hot::Instance Spawner_create()
 
 extern "C" void script_register(hot::Registry& reg)
 {
-    reg.set_module_state(&SppModule_layout, &SppModule_slot);
+    reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Unit_record, &Unit_create);
     reg.add(&Spawner_record, &Spawner_create);
     Unit_record.construct_keys = Unit__construct_keys;

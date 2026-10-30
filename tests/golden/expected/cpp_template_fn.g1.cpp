@@ -13,33 +13,33 @@
 #line 14 "cpp_template_fn.cpp.cpp"
 
 constexpr uint32_t GEN = 1;
-struct SppModule;
+struct HotModule;
 // The module state block of this generation. The loader sets the slot.
-static void* SppModule_slot = nullptr;
-[[maybe_unused]] HOT_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+static void* HotModule_slot = nullptr;
+[[maybe_unused]] HOT_HIDDEN static HotModule* hot_mod() { return static_cast<HotModule*>(HotModule_slot); }
 struct Scaler_Shell;
 using Scaler = Scaler_Shell;
 #line 3 "cpp_template_fn.cpp"
 #include "Actor.h"
 #line 25 "cpp_template_fn.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class SppModule
-struct SppModule {
+// ---------------------------------------------------------------- [value] class HotModule
+struct HotModule {
     int total;
 };
 
 #line 6 "cpp_template_fn.cpp"
-static void SppModule__init_total(void*, void* f) { using T = int; new (f) T(0); }
+static void HotModule__init_total(void*, void* f) { using T = int; new (f) T(0); }
 #line 34 "cpp_template_fn.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static const hot::FieldInfo SppModule_fields[] = {
-    {"total", nullptr, hot::type_key<int>(), offsetof(SppModule, total), sizeof(int),
-     alignof(int), hot::field_flags<int>(), SppModule__init_total, hot::move_field<int>, hot::field_destroyer<int>()},
+static const hot::FieldInfo HotModule_fields[] = {
+    {"total", nullptr, hot::type_key<int>(), offsetof(HotModule, total), sizeof(int),
+     alignof(int), hot::field_flags<int>(), HotModule__init_total, hot::move_field<int>, hot::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
-static const hot::StateLayout SppModule_layout = {
-    "SppModule", sizeof(SppModule), alignof(SppModule), 1, SppModule_fields,
+static const hot::StateLayout HotModule_layout = {
+    "HotModule", sizeof(HotModule), alignof(HotModule), 1, HotModule_fields,
 };
 
 
@@ -47,7 +47,7 @@ static const hot::StateLayout SppModule_layout = {
 template <class T>
 T scaled(T k)
 {
-    return k * static_cast<T>(spp_mod()->total);
+    return k * static_cast<T>(hot_mod()->total);
 }
 
 #line 54 "cpp_template_fn.cpp.cpp"
@@ -112,7 +112,7 @@ struct Scaler_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct ScalerState_g1 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     int last;
 
     void ctor();
@@ -123,7 +123,7 @@ struct ScalerState_g1 {
 #line 15 "cpp_template_fn.cpp"
     {
 #line 15 "cpp_template_fn.cpp"
-        return static_cast<Scaler_Shell*>(__spp_owner)->Actor::TakeDamage(a0);
+        return static_cast<Scaler_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 15 "cpp_template_fn.cpp"
     }
 #line 130 "cpp_template_fn.cpp.cpp"
@@ -133,7 +133,7 @@ struct ScalerState_g1 {
 #line 15 "cpp_template_fn.cpp"
     {
 #line 15 "cpp_template_fn.cpp"
-        return static_cast<Scaler_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Scaler_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 15 "cpp_template_fn.cpp"
     }
 #line 140 "cpp_template_fn.cpp.cpp"
@@ -145,7 +145,7 @@ static void Scaler__init_last(void*, void* f) { using T = int; new (f) T(0); }
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(ScalerState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(ScalerState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Scaler_fields[] = {
     {"last", nullptr, hot::type_key<int>(), offsetof(ScalerState_g1, last), sizeof(int),
      alignof(int), hot::field_flags<int>(), Scaler__init_last, hot::move_field<int>, hot::field_destroyer<int>()},
@@ -283,7 +283,7 @@ void ScalerState_g1::ctor()
 #line 20 "cpp_template_fn.cpp"
     }
 #line 20 "cpp_template_fn.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Scaler_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Scaler_Shell*>(this->__hot_owner);
 #line 20 "cpp_template_fn.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 20 "cpp_template_fn.cpp"
@@ -305,12 +305,12 @@ void ScalerState_g1::Tick(float dt)
 #line 22 "cpp_template_fn.cpp"
     }
 #line 22 "cpp_template_fn.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Scaler_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Scaler_Shell*>(this->__hot_owner);
 #line 22 "cpp_template_fn.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 23 "cpp_template_fn.cpp"
 
-        spp_mod()->total += 2;
+        hot_mod()->total += 2;
         last = scaled(3);
         __self->Move(Vec3(dt, 0, 0));
     
@@ -362,7 +362,7 @@ HOT_NODEBUG static hot::Instance Scaler_create()
 
 extern "C" void script_register(hot::Registry& reg)
 {
-    reg.set_module_state(&SppModule_layout, &SppModule_slot);
+    reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Scaler_record, &Scaler_create);
     Scaler_record.construct_keys = Scaler__construct_keys;
 }

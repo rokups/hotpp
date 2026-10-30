@@ -682,12 +682,12 @@ TEST_P(BackendTests, CppScriptNamespaceNamesInScriptCode)
 // One loader holds one module for each generation, so the two scripts use two loaders.
 TEST_P(BackendTests, SppAndCppScriptsRunSideBySide)
 {
-    hot::LoadResult spp_mod = backend->load(source("echo_v1.hot"), 1);
-    ASSERT_TRUE(spp_mod) << spp_mod.error;
+    hot::LoadResult hot_mod = backend->load(source("echo_v1.hot"), 1);
+    ASSERT_TRUE(hot_mod) << hot_mod.error;
     hot::LoadResult cpp_mod = backend->load(source("cpp_player_v1.cpp"), 1);
     ASSERT_TRUE(cpp_mod) << cpp_mod.error;
     Session echo, player;
-    ASSERT_NO_FATAL_FAILURE(echo.start(std::move(*spp_mod.module), "Echo"));
+    ASSERT_NO_FATAL_FAILURE(echo.start(std::move(*hot_mod.module), "Echo"));
     ASSERT_NO_FATAL_FAILURE(player.start(std::move(*cpp_mod.module), "Player"));
 
     echo.world.Tick(kDt);

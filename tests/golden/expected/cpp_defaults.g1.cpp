@@ -13,10 +13,10 @@
 #line 14 "cpp_defaults.cpp.cpp"
 
 constexpr uint32_t GEN = 1;
-struct SppModule;
+struct HotModule;
 // The module state block of this generation. The loader sets the slot.
-static void* SppModule_slot = nullptr;
-[[maybe_unused]] HOT_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+static void* HotModule_slot = nullptr;
+[[maybe_unused]] HOT_HIDDEN static HotModule* hot_mod() { return static_cast<HotModule*>(HotModule_slot); }
 struct Counter_Shell;
 using Counter = Counter_Shell;
 #line 3 "cpp_defaults.cpp"
@@ -28,23 +28,23 @@ const int kStep = 2;
 
 #line 30 "cpp_defaults.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class SppModule
-struct SppModule {
+// ---------------------------------------------------------------- [value] class HotModule
+struct HotModule {
     int calls;
 };
 
 #line 8 "cpp_defaults.cpp"
-static void SppModule__init_calls(void*, void* f) { using T = int; new (f) T(0); }
+static void HotModule__init_calls(void*, void* f) { using T = int; new (f) T(0); }
 #line 39 "cpp_defaults.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static const hot::FieldInfo SppModule_fields[] = {
-    {"calls", nullptr, hot::type_key<int>(), offsetof(SppModule, calls), sizeof(int),
-     alignof(int), hot::field_flags<int>(), SppModule__init_calls, hot::move_field<int>, hot::field_destroyer<int>()},
+static const hot::FieldInfo HotModule_fields[] = {
+    {"calls", nullptr, hot::type_key<int>(), offsetof(HotModule, calls), sizeof(int),
+     alignof(int), hot::field_flags<int>(), HotModule__init_calls, hot::move_field<int>, hot::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
-static const hot::StateLayout SppModule_layout = {
-    "SppModule", sizeof(SppModule), alignof(SppModule), 1, SppModule_fields,
+static const hot::StateLayout HotModule_layout = {
+    "HotModule", sizeof(HotModule), alignof(HotModule), 1, HotModule_fields,
 };
 
 
@@ -109,12 +109,12 @@ struct Counter_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct CounterState_g1 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     int value;
     int last;
 
     void ctor(int start);
-    int Add(int a, int b = kStep, int c = spp_mod()->calls);
+    int Add(int a, int b = kStep, int c = hot_mod()->calls);
     void Tick(float dt);
     void TakeDamage_f(float amount);
     // Not overridden: call the implementation of Actor.
@@ -123,7 +123,7 @@ struct CounterState_g1 {
 #line 10 "cpp_defaults.cpp"
     {
 #line 10 "cpp_defaults.cpp"
-        return static_cast<Counter_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Counter_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 10 "cpp_defaults.cpp"
     }
 #line 130 "cpp_defaults.cpp.cpp"
@@ -138,7 +138,7 @@ static void Counter__init_last(void*, void* f) { using T = int; new (f) T(0); }
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(CounterState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(CounterState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Counter_fields[] = {
     {"value", nullptr, hot::type_key<int>(), offsetof(CounterState_g1, value), sizeof(int),
      alignof(int), hot::field_flags<int>(), Counter__init_value, hot::move_field<int>, hot::field_destroyer<int>()},
@@ -157,7 +157,7 @@ HOT_HIDDEN CounterState_g1* state_of(Counter_Shell* __self)
     return static_cast<CounterState_g1*>(__self->state);
 }
 
-[[maybe_unused]] HOT_HIDDEN static int Counter__Add(Counter_Shell* __self, int a, int b = kStep, int c = spp_mod()->calls);
+[[maybe_unused]] HOT_HIDDEN static int Counter__Add(Counter_Shell* __self, int a, int b = kStep, int c = hot_mod()->calls);
 
 [[maybe_unused]] HOT_HIDDEN static void Counter__ctor(Counter_Shell* __self, int start);
 #line 17 "cpp_defaults.cpp"
@@ -279,7 +279,7 @@ void CounterState_g1::ctor(int start)
 #line 17 "cpp_defaults.cpp"
     }
 #line 17 "cpp_defaults.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
 #line 17 "cpp_defaults.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 18 "cpp_defaults.cpp"
@@ -312,12 +312,12 @@ int CounterState_g1::Add(int a, int b, int c)
 #line 23 "cpp_defaults.cpp"
     }
 #line 23 "cpp_defaults.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
 #line 23 "cpp_defaults.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 24 "cpp_defaults.cpp"
 
-        spp_mod()->calls++;
+        hot_mod()->calls++;
         return a + b + c;
     
 #line 27 "cpp_defaults.cpp"
@@ -337,7 +337,7 @@ void CounterState_g1::Tick(float dt)
 #line 29 "cpp_defaults.cpp"
     }
 #line 29 "cpp_defaults.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
 #line 29 "cpp_defaults.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 30 "cpp_defaults.cpp"
@@ -363,7 +363,7 @@ void CounterState_g1::TakeDamage_f(float amount)
 #line 37 "cpp_defaults.cpp"
     }
 #line 37 "cpp_defaults.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
 #line 37 "cpp_defaults.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 38 "cpp_defaults.cpp"
@@ -433,7 +433,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
 
 extern "C" void script_register(hot::Registry& reg)
 {
-    reg.set_module_state(&SppModule_layout, &SppModule_slot);
+    reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Counter_record, &Counter_create);
     Counter_record.construct_keys = Counter__construct_keys;
     reg.add_thunk("Counter::Add", reinterpret_cast<void*>(&Counter__Add__thunk));

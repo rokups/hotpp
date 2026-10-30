@@ -149,8 +149,8 @@ TEST(NameResolutionLowering, ScriptMemberWinsOverAModuleVariable)
     EXPECT_EQ(f.expr("health"), "health");
     EXPECT_EQ(f.expr("target.hp"), "hot::deref(__st->target).hp");
     EXPECT_EQ(f.expr("target.hp"), f.expr("this.target.hp"));
-    EXPECT_EQ(f.expr("level"), "spp_mod()->level");
-    EXPECT_EQ(f.expr("Name"), "spp_mod()->Name");
+    EXPECT_EQ(f.expr("level"), "hot_mod()->level");
+    EXPECT_EQ(f.expr("Name"), "hot_mod()->Name");
     // A local still hides both.
     f.param("health");
     EXPECT_EQ(f.expr("health"), "health");
@@ -188,7 +188,7 @@ TEST(NameResolutionLowering, FieldInitializerKeepsModuleVariableAndOtherNames)
     Fixture f;
     f.cx.allow_this = false;
     f.cx.module_vars = {{"limit", "int"}};
-    EXPECT_EQ(f.expr("limit + 1"), "spp_mod()->limit + 1");
+    EXPECT_EQ(f.expr("limit + 1"), "hot_mod()->limit + 1");
     EXPECT_EQ(f.expr("Foo.bar"), "Foo::bar");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }

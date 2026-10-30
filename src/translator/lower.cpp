@@ -1114,7 +1114,7 @@ struct Lowerer
         return !is_module_var(n) && native_member_name(n);
     }
 
-    // The access to a module variable: "spp_mod()->name".
+    // The access to a module variable: "hot_mod()->name".
     ExprP module_ref(const std::string& n, uint32_t pos)
     {
         if (cx.in_module_init && !cx.module_earlier.count(n))
@@ -1125,7 +1125,7 @@ struct Lowerer
             error(pos,
                 "the module variable '" + n
                     + "' cannot be used in a convert hook: the new module state is not complete yet");
-        return raw("spp_mod()->" + n, pos);
+        return raw("hot_mod()->" + n, pos);
     }
 
     static constexpr const char* kDefaultBan = "a default value cannot use a field, a parameter or 'this'";

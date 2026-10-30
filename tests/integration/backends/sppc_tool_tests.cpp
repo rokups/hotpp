@@ -923,12 +923,12 @@ TEST(SppcTool, AotModeWritesTheCppAndTheRegistrationFile)
     ASSERT_TRUE(WIFEXITED(status));
     EXPECT_EQ(WEXITSTATUS(status), 0) << text;
     const std::string demo = read_file(out_dir + "/aot_demo.aot.cpp");
-    EXPECT_NE(demo.find("#define script_register spp_script_register_aot_demo"), std::string::npos);
+    EXPECT_NE(demo.find("#define script_register hot_script_register_aot_demo"), std::string::npos);
     EXPECT_NE(demo.find("extern \"C\" void script_register("), std::string::npos);
     EXPECT_FALSE(std::filesystem::exists(out_dir + "/aot_demo.g1.so"));
-    const std::string reg = read_file(out_dir + "/spp_aot_registry.cpp");
-    EXPECT_NE(reg.find("{\"aot_demo\", &spp_script_register_aot_demo}"), std::string::npos) << reg;
-    EXPECT_NE(reg.find("{\"props_v1\", &spp_script_register_props_v1}"), std::string::npos) << reg;
+    const std::string reg = read_file(out_dir + "/hot_aot_registry.cpp");
+    EXPECT_NE(reg.find("{\"aot_demo\", &hot_script_register_aot_demo}"), std::string::npos) << reg;
+    EXPECT_NE(reg.find("{\"props_v1\", &hot_script_register_props_v1}"), std::string::npos) << reg;
     EXPECT_NE(reg.find("aot_table = {kAotScripts, 2}"), std::string::npos) << reg;
 }
 
@@ -970,7 +970,7 @@ TEST(SppcTool, AotModeReportsParseErrorAtTheScriptLine)
     ASSERT_TRUE(WIFEXITED(status));
     EXPECT_EQ(WEXITSTATUS(status), 1) << text;
     EXPECT_NE(text.find("broken.hot:4:"), std::string::npos) << text;
-    EXPECT_FALSE(std::filesystem::exists(out_dir + "/spp_aot_registry.cpp"));
+    EXPECT_FALSE(std::filesystem::exists(out_dir + "/hot_aot_registry.cpp"));
 }
 
 // The text of compile_commands.json is exact, and a quote or a backslash is escaped.

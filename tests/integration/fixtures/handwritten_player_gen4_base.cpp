@@ -49,7 +49,7 @@ struct Player_Shell final
 // ---------------------------------------------------------------- state
 struct PlayerState_g4
 {
-    hot::ShellBase* __spp_owner; // the runtime writes it (has_owner)
+    hot::ShellBase* __hot_owner; // the runtime writes it (has_owner)
     float health;
     float speed;
     float shield;
@@ -107,7 +107,7 @@ void PlayerState_g4::heal(float amount)
 {
     if (HOT_UNLIKELY(hot::active_generation != GEN))
         return hot::stale_call("Player::heal");
-    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
+    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__hot_owner);
     [[maybe_unused]] auto* st = this;
     st->health = std::min(st->health + 2.0f * amount, 100.0f);
     std::printf("[gen4] %s: heal %.1f (x2) -> health=%.1f\n", self->Name.c_str(), amount, st->health);
@@ -117,7 +117,7 @@ void PlayerState_g4::Tick(float dt)
 {
     if (HOT_UNLIKELY(hot::active_generation != GEN))
         return hot::stale_call("Player::Tick");
-    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
+    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__hot_owner);
     [[maybe_unused]] auto* st = this;
     self->Move({2.0f * st->speed * dt, 0, 0});
     std::printf("[gen4] %s: Tick dt=%.4f pos.x=%.4f health=%.1f shield=%.1f\n", self->Name.c_str(), dt,
@@ -128,7 +128,7 @@ void PlayerState_g4::TakeDamage_f(float amount)
 {
     if (HOT_UNLIKELY(hot::active_generation != GEN))
         return hot::stale_call("Player::TakeDamage(float)");
-    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
+    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__hot_owner);
     [[maybe_unused]] auto* st = this;
     st->health = std::max(st->health - amount, 0.0f);
     std::printf("[gen4] %s: TakeDamage %.1f -> health=%.1f\n", self->Name.c_str(), amount, st->health);
@@ -138,7 +138,7 @@ void PlayerState_g4::TakeDamage_Af(Actor& src, float amount)
 {
     if (HOT_UNLIKELY(hot::active_generation != GEN))
         return hot::stale_call("Player::TakeDamage(Actor&, float)");
-    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
+    [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__hot_owner);
     [[maybe_unused]] auto* st = this;
     std::printf("[gen4] %s: hit by %s\n", self->Name.c_str(), src.Name.c_str());
     self->TakeDamage(amount);

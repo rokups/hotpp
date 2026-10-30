@@ -13,10 +13,10 @@
 #line 14 "cpp_objects_v2.cpp.cpp"
 
 constexpr uint32_t GEN = 2;
-struct SppModule;
+struct HotModule;
 // The module state block of this generation. The loader sets the slot.
-static void* SppModule_slot = nullptr;
-[[maybe_unused]] HOT_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+static void* HotModule_slot = nullptr;
+[[maybe_unused]] HOT_HIDDEN static HotModule* hot_mod() { return static_cast<HotModule*>(HotModule_slot); }
 struct Minion_Shell;
 using Minion = Minion_Shell;
 struct Spawner_Shell;
@@ -25,35 +25,35 @@ using Spawner = Spawner_Shell;
 #include "Actor.h"
 #line 27 "cpp_objects_v2.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class SppModule
-struct SppModule {
+// ---------------------------------------------------------------- [value] class HotModule
+struct HotModule {
     Minion * Minion__s_first_made;
     Minion * minion;
     int cast_hits;
 };
 
 #line 21 "cpp_objects_v2.cpp"
-static void SppModule__init_Minion__s_first_made(void*, void* f) { using T = Minion *; new (f) T(nullptr); }
+static void HotModule__init_Minion__s_first_made(void*, void* f) { using T = Minion *; new (f) T(nullptr); }
 #line 38 "cpp_objects_v2.cpp.cpp"
 #line 29 "cpp_objects_v2.cpp"
-static void SppModule__init_minion(void*, void* f) { using T = Minion *; new (f) T(nullptr); }
+static void HotModule__init_minion(void*, void* f) { using T = Minion *; new (f) T(nullptr); }
 #line 41 "cpp_objects_v2.cpp.cpp"
 #line 30 "cpp_objects_v2.cpp"
-static void SppModule__init_cast_hits(void*, void* f) { using T = int; new (f) T(0); }
+static void HotModule__init_cast_hits(void*, void* f) { using T = int; new (f) T(0); }
 #line 44 "cpp_objects_v2.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static const hot::FieldInfo SppModule_fields[] = {
-    {"Minion__s_first_made", nullptr, hot::type_key<Minion *>(), offsetof(SppModule, Minion__s_first_made), sizeof(Minion *),
-     alignof(Minion *), hot::field_flags<Minion *>(), SppModule__init_Minion__s_first_made, hot::move_field<Minion *>, hot::field_destroyer<Minion *>()},
-    {"minion", nullptr, hot::type_key<Minion *>(), offsetof(SppModule, minion), sizeof(Minion *),
-     alignof(Minion *), hot::field_flags<Minion *>(), SppModule__init_minion, hot::move_field<Minion *>, hot::field_destroyer<Minion *>()},
-    {"cast_hits", nullptr, hot::type_key<int>(), offsetof(SppModule, cast_hits), sizeof(int),
-     alignof(int), hot::field_flags<int>(), SppModule__init_cast_hits, hot::move_field<int>, hot::field_destroyer<int>()},
+static const hot::FieldInfo HotModule_fields[] = {
+    {"Minion__s_first_made", nullptr, hot::type_key<Minion *>(), offsetof(HotModule, Minion__s_first_made), sizeof(Minion *),
+     alignof(Minion *), hot::field_flags<Minion *>(), HotModule__init_Minion__s_first_made, hot::move_field<Minion *>, hot::field_destroyer<Minion *>()},
+    {"minion", nullptr, hot::type_key<Minion *>(), offsetof(HotModule, minion), sizeof(Minion *),
+     alignof(Minion *), hot::field_flags<Minion *>(), HotModule__init_minion, hot::move_field<Minion *>, hot::field_destroyer<Minion *>()},
+    {"cast_hits", nullptr, hot::type_key<int>(), offsetof(HotModule, cast_hits), sizeof(int),
+     alignof(int), hot::field_flags<int>(), HotModule__init_cast_hits, hot::move_field<int>, hot::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
-static const hot::StateLayout SppModule_layout = {
-    "SppModule", sizeof(SppModule), alignof(SppModule), 3, SppModule_fields,
+static const hot::StateLayout HotModule_layout = {
+    "HotModule", sizeof(HotModule), alignof(HotModule), 3, HotModule_fields,
 };
 
 
@@ -125,7 +125,7 @@ struct Minion_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct MinionState_g2 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     int power;
     int hits;
     int shield;
@@ -141,7 +141,7 @@ struct MinionState_g2 {
 #line 6 "cpp_objects_v2.cpp"
     {
 #line 6 "cpp_objects_v2.cpp"
-        return static_cast<Minion_Shell*>(__spp_owner)->Actor::TakeDamage(a0);
+        return static_cast<Minion_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 6 "cpp_objects_v2.cpp"
     }
 #line 148 "cpp_objects_v2.cpp.cpp"
@@ -151,7 +151,7 @@ struct MinionState_g2 {
 #line 6 "cpp_objects_v2.cpp"
     {
 #line 6 "cpp_objects_v2.cpp"
-        return static_cast<Minion_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Minion_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 6 "cpp_objects_v2.cpp"
     }
 #line 158 "cpp_objects_v2.cpp.cpp"
@@ -169,7 +169,7 @@ static void Minion__init_shield(void*, void* f) { using T = int; new (f) T(5); }
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(MinionState_g2, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(MinionState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Minion_fields[] = {
     {"power", nullptr, hot::type_key<int>(), offsetof(MinionState_g2, power), sizeof(int),
      alignof(int), hot::field_flags<int>(), Minion__init_power, hot::move_field<int>, hot::field_destroyer<int>()},
@@ -314,7 +314,7 @@ void MinionState_g2::ctor(int p)
 #line 9 "cpp_objects_v2.cpp"
     }
 #line 9 "cpp_objects_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Minion_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Minion_Shell*>(this->__hot_owner);
 #line 9 "cpp_objects_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 9 "cpp_objects_v2.cpp"
@@ -336,7 +336,7 @@ void MinionState_g2::Tick(float dt)
 #line 11 "cpp_objects_v2.cpp"
     }
 #line 11 "cpp_objects_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Minion_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Minion_Shell*>(this->__hot_owner);
 #line 11 "cpp_objects_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 11 "cpp_objects_v2.cpp"
@@ -367,7 +367,7 @@ void MinionState_g2::boost(int v)
 #line 13 "cpp_objects_v2.cpp"
     }
 #line 13 "cpp_objects_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Minion_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Minion_Shell*>(this->__hot_owner);
 #line 13 "cpp_objects_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "cpp_objects_v2.cpp"
@@ -398,7 +398,7 @@ int MinionState_g2::total()
 #line 14 "cpp_objects_v2.cpp"
     }
 #line 14 "cpp_objects_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Minion_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Minion_Shell*>(this->__hot_owner);
 #line 14 "cpp_objects_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 14 "cpp_objects_v2.cpp"
@@ -429,7 +429,7 @@ void MinionState_g2::copy_from(const Minion & other)
 #line 17 "cpp_objects_v2.cpp"
     }
 #line 17 "cpp_objects_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Minion_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Minion_Shell*>(this->__hot_owner);
 #line 17 "cpp_objects_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 17 "cpp_objects_v2.cpp"
@@ -557,7 +557,7 @@ struct Spawner_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct SpawnerState_g2 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     int last;
 
     void ctor();
@@ -568,7 +568,7 @@ struct SpawnerState_g2 {
 #line 38 "cpp_objects_v2.cpp"
     {
 #line 38 "cpp_objects_v2.cpp"
-        return static_cast<Spawner_Shell*>(__spp_owner)->Actor::TakeDamage(a0);
+        return static_cast<Spawner_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 38 "cpp_objects_v2.cpp"
     }
 #line 575 "cpp_objects_v2.cpp.cpp"
@@ -578,7 +578,7 @@ struct SpawnerState_g2 {
 #line 38 "cpp_objects_v2.cpp"
     {
 #line 38 "cpp_objects_v2.cpp"
-        return static_cast<Spawner_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Spawner_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 38 "cpp_objects_v2.cpp"
     }
 #line 585 "cpp_objects_v2.cpp.cpp"
@@ -590,7 +590,7 @@ static void Spawner__init_last(void*, void* f) { using T = int; new (f) T(0); }
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(SpawnerState_g2, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(SpawnerState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Spawner_fields[] = {
     {"last", nullptr, hot::type_key<int>(), offsetof(SpawnerState_g2, last), sizeof(int),
      alignof(int), hot::field_flags<int>(), Spawner__init_last, hot::move_field<int>, hot::field_destroyer<int>()},
@@ -728,7 +728,7 @@ void SpawnerState_g2::ctor()
 #line 41 "cpp_objects_v2.cpp"
     }
 #line 41 "cpp_objects_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Spawner_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Spawner_Shell*>(this->__hot_owner);
 #line 41 "cpp_objects_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 41 "cpp_objects_v2.cpp"
@@ -750,21 +750,21 @@ void SpawnerState_g2::Tick(float dt)
 #line 43 "cpp_objects_v2.cpp"
     }
 #line 43 "cpp_objects_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Spawner_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Spawner_Shell*>(this->__hot_owner);
 #line 43 "cpp_objects_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 44 "cpp_objects_v2.cpp"
 
-        if (!spp_mod()->minion)
-            spp_mod()->minion = Minion__new(3);
-        if (!spp_mod()->Minion__s_first_made)
-            spp_mod()->Minion__s_first_made = Minion__s_spawn(1);
-        Minion__boost(spp_mod()->minion, 2);
-        state_of(spp_mod()->minion)->hits += 1;
-        spp_mod()->minion->Tick(dt);
-        Actor* as_actor = spp_mod()->minion;
-        if (find_minion(as_actor) == spp_mod()->minion && hot::as_script<Minion_Shell>(static_cast<Actor*>(__self), "Minion") == nullptr)
-            spp_mod()->cast_hits++;
+        if (!hot_mod()->minion)
+            hot_mod()->minion = Minion__new(3);
+        if (!hot_mod()->Minion__s_first_made)
+            hot_mod()->Minion__s_first_made = Minion__s_spawn(1);
+        Minion__boost(hot_mod()->minion, 2);
+        state_of(hot_mod()->minion)->hits += 1;
+        hot_mod()->minion->Tick(dt);
+        Actor* as_actor = hot_mod()->minion;
+        if (find_minion(as_actor) == hot_mod()->minion && hot::as_script<Minion_Shell>(static_cast<Actor*>(__self), "Minion") == nullptr)
+            hot_mod()->cast_hits++;
         Minion_Shell& ref = (*hot::shell_of<Minion_Shell>(*as_actor, "Minion"));
         last = state_of(&(ref))->power + Minion__total(static_cast<Minion_Shell*>(as_actor)) + static_cast<int>(sizeof(Minion_Shell) > 0);
     
@@ -816,7 +816,7 @@ HOT_NODEBUG static hot::Instance Spawner_create()
 
 extern "C" void script_register(hot::Registry& reg)
 {
-    reg.set_module_state(&SppModule_layout, &SppModule_slot);
+    reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Minion_record, &Minion_create);
     reg.add(&Spawner_record, &Spawner_create);
     Minion_record.construct_keys = Minion__construct_keys;

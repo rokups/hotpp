@@ -1093,7 +1093,7 @@ void Frontend::examine(CXCursor k, WalkState& st)
             for (CXCursor c : children(k))
                 if (!no_side_effects(c))
                     fail(e.begin, "a static member must be used by its name");
-        add(e.begin, e.end - e.begin, (en->kind == Kind::ScriptStatic ? "spp_mod()->" : "") + en->mangled);
+        add(e.begin, e.end - e.begin, (en->kind == Kind::ScriptStatic ? "hot_mod()->" : "") + en->mangled);
         st.skip_end = e.end;
         return true;
     };
@@ -1382,7 +1382,7 @@ void Frontend::examine(CXCursor k, WalkState& st)
         const Entry* en = lookup(ref);
         if (en && en->kind == Kind::ModuleVar)
         {
-            add(e.begin, e.end - e.begin, "spp_mod()->" + en->name);
+            add(e.begin, e.end - e.begin, "hot_mod()->" + en->name);
             return;
         }
         if (t.find("::") == std::string::npos && !qualified(e.begin) && base_scoped(ref))
@@ -2158,8 +2158,8 @@ void Frontend::read_member_inits(
                 // value-initializes it. A line comment in the text needs a new line before the closing mark.
                 const std::string v = trim(t);
                 const std::string end = v.find("//") == std::string::npos ? close : "\n" + close;
-                where()[index].raw_pre[k].text = "{ decltype(" + field + ") __spp_mi" + (v.empty() ? "{}" : open + v + end) +
-                    "; " + field + " = std::move(__spp_mi); }";
+                where()[index].raw_pre[k].text = "{ decltype(" + field + ") __hot_mi" + (v.empty() ? "{}" : open + v + end) +
+                    "; " + field + " = std::move(__hot_mi); }";
             });
     }
 }
@@ -2540,7 +2540,7 @@ void Frontend::process_class(CXCursor c)
 }
 
 // A file-scope declaration of the main file. The text stays as written. With "edit", a slice
-// over the extent gives the edits of a body, so the module variables become spp_mod() reads.
+// over the extent gives the edits of a body, so the module variables become hot_mod() reads.
 // A ";" after the extent belongs to the declaration.
 void Frontend::add_text(Range e, bool edit)
 {

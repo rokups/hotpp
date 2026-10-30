@@ -77,16 +77,16 @@ TEST(ModuleDeclTranslation, ModuleVariableUsesTheModuleBlock)
         "[alias(\"old\")] int total = 3;\n"
         "class A : Unit { override void Update(float dt) { total = total + 1; } }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "spp_mod()->total = spp_mod()->total + 1")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot_mod()->total = hot_mod()->total + 1")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "{\"total\", \"old\",")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "reg.set_module_state(&SppModule_layout, &SppModule_slot);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "reg.set_module_state(&HotModule_layout, &HotModule_slot);")) << r.cpp;
 }
 
 TEST(ModuleDeclTranslation, NoModuleVariableMeansNoModuleBlock)
 {
     const auto r = translate_script("class A : Unit { int n; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_FALSE(has(r.cpp, "SppModule")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "HotModule")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "set_module_state")) << r.cpp;
 }
 
@@ -97,7 +97,7 @@ TEST(ModuleDeclTranslation, LocalHidesAModuleVariable)
         "class A : Unit { override void Update(float dt) { int total = 5; total = total + 1; } }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "total = total + 1")) << r.cpp;
-    EXPECT_FALSE(has(r.cpp, "spp_mod()->total = spp_mod()->total")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "hot_mod()->total = hot_mod()->total")) << r.cpp;
 }
 
 TEST(ModuleDeclTranslation, ErrorDuplicateModuleVariable)
@@ -132,9 +132,9 @@ TEST(ModuleDeclTranslation, InitializerReadsAnEarlierModuleVariable)
 {
     const sppc::TranslateResult r = translate_script("int a = 1;\nint b = a + 1;\nclass C : Unit { }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.cpp.find("new (f) T(spp_mod()->a + 1);"), std::string::npos) << r.cpp;
-    // spp_mod() comes before the init functions that use it.
-    EXPECT_LT(r.cpp.find("HOT_HIDDEN static SppModule* spp_mod()"), r.cpp.find("SppModule__init_b")) << r.cpp;
+    EXPECT_NE(r.cpp.find("new (f) T(hot_mod()->a + 1);"), std::string::npos) << r.cpp;
+    // hot_mod() comes before the init functions that use it.
+    EXPECT_LT(r.cpp.find("HOT_HIDDEN static HotModule* hot_mod()"), r.cpp.find("HotModule__init_b")) << r.cpp;
 }
 
 TEST(ModuleDeclTranslation, ErrorModuleVariableDeclaredLaterInAnInitializer)
@@ -151,8 +151,8 @@ TEST(ModuleDeclTranslation, ConvertHookOfAModuleVariable)
     const sppc::TranslateResult r = translate_script(
         "float level = 1.0;\nfloat convert_level(int old) { return old * 1.5; }\nclass C : Unit { }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.cpp.find("static float SppModule__convert_level(int32_t old)"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("typeid(int32_t).name(), SppModule__convert_level_hook}"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("static float HotModule__convert_level(int32_t old)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("typeid(int32_t).name(), HotModule__convert_level_hook}"), std::string::npos) << r.cpp;
 }
 
 TEST(ModuleDeclTranslation, ConvertHookErrors)

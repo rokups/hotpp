@@ -16,7 +16,7 @@ The build makes one AOT library and one program for each variant:
 - `sample_aot_cpp_scripts` and `sample_aot_cpp` use the `.cpp` script.
 
 Each variant has its own `spp_add_scripts` call and its own `OUT_DIR`, so the generated files
-(`wolf.aot.cpp` and `spp_aot_registry.cpp`) do not clash.
+(`wolf.aot.cpp` and `hot_aot_registry.cpp`) do not clash.
 Both programs print the same output. The build also compiles the `.cpp` script with the normal
 compiler (the object library `aot_cpp_scripts_plain`). This shows that a `.cpp` script compiles unchanged.
 

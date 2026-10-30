@@ -353,7 +353,7 @@ add_executable(game main.cpp)
 target_link_libraries(game PRIVATE game_scripts)
 ```
 
-The function runs `sppc --aot` and makes the static library `name`. The library has the files `OUT_DIR/<script name>.aot.cpp` and `OUT_DIR/spp_aot_registry.cpp`. The library defines `hot::aot_table` (`include/hot/aot.h`).
+The function runs `sppc --aot` and makes the static library `name`. The library has the files `OUT_DIR/<script name>.aot.cpp` and `OUT_DIR/hot_aot_registry.cpp`. The library defines `hot::aot_table` (`include/hot/aot.h`).
 
 The library links `spp_aot` (PUBLIC). A program that links `name` has no loader, no reload and no Clang. When the build uses fmt, the library also links `spp_fmt`. AOT mode makes only generation 1. Script names and class names must be unique across the scripts of one table.
 

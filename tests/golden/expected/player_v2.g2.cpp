@@ -79,7 +79,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct PlayerState_g2 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     float health;
     float speed;
     std::string target;
@@ -106,7 +106,7 @@ static void Player__init_shield(void*, void* f) { using T = float; new (f) T(25.
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(PlayerState_g2, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(PlayerState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Player_fields[] = {
     {"health", "hp", typeid(float).name(), offsetof(PlayerState_g2, health), sizeof(float),
      alignof(float), hot::field_flags<float>(), Player__init_health, hot::move_field<float>, hot::field_destroyer<float>()},
@@ -207,7 +207,7 @@ void PlayerState_g2::Tick(float dt)
 #line 12 "player_v2.hot"
     }
 #line 13 "player_v2.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 13 "player_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "player_v2.hot"
@@ -233,7 +233,7 @@ void PlayerState_g2::TakeDamage_f(float amount)
 #line 18 "player_v2.hot"
     }
 #line 19 "player_v2.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 19 "player_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 19 "player_v2.hot"
@@ -259,7 +259,7 @@ void PlayerState_g2::TakeDamage_Af(Actor& source, float amount)
 #line 24 "player_v2.hot"
     }
 #line 25 "player_v2.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 25 "player_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 25 "player_v2.hot"
@@ -294,7 +294,7 @@ void PlayerState_g2::heal(float amount)
 #line 30 "player_v2.hot"
     }
 #line 31 "player_v2.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 31 "player_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 31 "player_v2.hot"

@@ -54,23 +54,23 @@ class FakeValue:
 
 class Synthetic(unittest.TestCase):
     def test_visible_indices(self):
-        self.assertEqual(f.visible_child_indices(["__spp_owner", "health", "shield"]), [1, 2])
-        self.assertEqual(f.visible_child_indices(["health", "__spp_owner"]), [0, 1])
+        self.assertEqual(f.visible_child_indices(["__hot_owner", "health", "shield"]), [1, 2])
+        self.assertEqual(f.visible_child_indices(["health", "__hot_owner"]), [0, 1])
         self.assertEqual(f.visible_child_indices([]), [])
 
     def test_provider_hides_owner(self):
-        kids = [FakeValue("__spp_owner"), FakeValue("health"), FakeValue("shield")]
+        kids = [FakeValue("__hot_owner"), FakeValue("health"), FakeValue("shield")]
         p = f.StateChildren(FakeValue("state", kids), {})
         self.assertEqual(p.num_children(), 2)
         self.assertIs(p.get_child_at_index(0), kids[1])
         self.assertIs(p.get_child_at_index(1), kids[2])
         self.assertIsNone(p.get_child_at_index(2))
         self.assertEqual(p.get_child_index("shield"), 1)
-        self.assertEqual(p.get_child_index("__spp_owner"), -1)
+        self.assertEqual(p.get_child_index("__hot_owner"), -1)
         self.assertTrue(p.has_children())
 
     def test_provider_empty_state(self):
-        p = f.StateChildren(FakeValue("state", [FakeValue("__spp_owner")]), {})
+        p = f.StateChildren(FakeValue("state", [FakeValue("__hot_owner")]), {})
         self.assertEqual(p.num_children(), 0)
         self.assertFalse(p.has_children())
 

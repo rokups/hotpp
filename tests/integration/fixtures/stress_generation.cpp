@@ -53,7 +53,7 @@ struct Pulse_Shell final
 
 struct PulseState
 {
-    hot::ShellBase* __spp_owner; // the runtime writes it (has_owner)
+    hot::ShellBase* __hot_owner; // the runtime writes it (has_owner)
     int ticks;
     int hits;
 
@@ -91,12 +91,12 @@ void PulseState::Tick(float)
 
 void PulseState::__fwd_TakeDamage_f(float amount)
 {
-    static_cast<Pulse_Shell*>(__spp_owner)->Actor::TakeDamage(amount);
+    static_cast<Pulse_Shell*>(__hot_owner)->Actor::TakeDamage(amount);
 }
 
 void PulseState::__fwd_TakeDamage_Af(Actor& src, float amount)
 {
-    static_cast<Pulse_Shell*>(__spp_owner)->Actor::TakeDamage(src, amount);
+    static_cast<Pulse_Shell*>(__hot_owner)->Actor::TakeDamage(src, amount);
 }
 
 void PulseState::poke(int amount)

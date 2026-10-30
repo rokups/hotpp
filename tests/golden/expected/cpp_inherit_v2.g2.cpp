@@ -13,10 +13,10 @@
 #line 14 "cpp_inherit_v2.cpp.cpp"
 
 constexpr uint32_t GEN = 2;
-struct SppModule;
+struct HotModule;
 // The module state block of this generation. The loader sets the slot.
-static void* SppModule_slot = nullptr;
-[[maybe_unused]] HOT_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+static void* HotModule_slot = nullptr;
+[[maybe_unused]] HOT_HIDDEN static HotModule* hot_mod() { return static_cast<HotModule*>(HotModule_slot); }
 struct Base_Shell;
 using Base = Base_Shell;
 struct Kid_Shell;
@@ -99,7 +99,7 @@ struct Base_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<Base_She
 
 // ---------------------------------------------------------------- state
 struct BaseState_g2 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     float hp;
     int hits;
     int twice;
@@ -116,7 +116,7 @@ struct BaseState_g2 {
 #line 8 "cpp_inherit_v2.cpp"
     {
 #line 8 "cpp_inherit_v2.cpp"
-        return static_cast<Base_Shell*>(__spp_owner)->Actor::Tick(a0);
+        return static_cast<Base_Shell*>(__hot_owner)->Actor::Tick(a0);
 #line 8 "cpp_inherit_v2.cpp"
     }
 #line 123 "cpp_inherit_v2.cpp.cpp"
@@ -126,7 +126,7 @@ struct BaseState_g2 {
 #line 8 "cpp_inherit_v2.cpp"
     {
 #line 8 "cpp_inherit_v2.cpp"
-        return static_cast<Base_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Base_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 8 "cpp_inherit_v2.cpp"
     }
 #line 133 "cpp_inherit_v2.cpp.cpp"
@@ -147,7 +147,7 @@ static void Base__init_armor(void*, void* f) { using T = int; new (f) T(4); }
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(BaseState_g2, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(BaseState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Base_fields[] = {
     {"hp", nullptr, hot::type_key<float>(), offsetof(BaseState_g2, hp), sizeof(float),
      alignof(float), hot::field_flags<float>(), Base__init_hp, hot::move_field<float>, hot::field_destroyer<float>()},
@@ -299,11 +299,11 @@ void BaseState_g2::ctor(int start)
 #line 11 "cpp_inherit_v2.cpp"
     }
 #line 11 "cpp_inherit_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
 #line 11 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 11 "cpp_inherit_v2.cpp"
-{ decltype(__st->hits) __spp_mi(start); __st->hits = std::move(__spp_mi); }
+{ decltype(__st->hits) __hot_mi(start); __st->hits = std::move(__hot_mi); }
 #line 11 "cpp_inherit_v2.cpp"
 
 #line 11 "cpp_inherit_v2.cpp"
@@ -332,7 +332,7 @@ int BaseState_g2::Power()
 #line 13 "cpp_inherit_v2.cpp"
     }
 #line 13 "cpp_inherit_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
 #line 13 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "cpp_inherit_v2.cpp"
@@ -363,7 +363,7 @@ int BaseState_g2::Twice()
 #line 15 "cpp_inherit_v2.cpp"
     }
 #line 15 "cpp_inherit_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
 #line 15 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 15 "cpp_inherit_v2.cpp"
@@ -394,7 +394,7 @@ void BaseState_g2::Bump()
 #line 17 "cpp_inherit_v2.cpp"
     }
 #line 17 "cpp_inherit_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
 #line 17 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 17 "cpp_inherit_v2.cpp"
@@ -416,7 +416,7 @@ void BaseState_g2::TakeDamage_f(float amount)
 #line 19 "cpp_inherit_v2.cpp"
     }
 #line 19 "cpp_inherit_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
 #line 19 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 20 "cpp_inherit_v2.cpp"
@@ -489,29 +489,29 @@ HOT_NODEBUG static hot::Instance Base_create()
 #line 490 "cpp_inherit_v2.cpp.cpp"
 
 
-// ---------------------------------------------------------------- [value] class SppModule
-struct SppModule {
+// ---------------------------------------------------------------- [value] class HotModule
+struct HotModule {
     Base * last_ticked;
     int kid_casts;
 };
 
 #line 32 "cpp_inherit_v2.cpp"
-static void SppModule__init_last_ticked(void*, void* f) { using T = Base *; new (f) T(nullptr); }
+static void HotModule__init_last_ticked(void*, void* f) { using T = Base *; new (f) T(nullptr); }
 #line 501 "cpp_inherit_v2.cpp.cpp"
 #line 33 "cpp_inherit_v2.cpp"
-static void SppModule__init_kid_casts(void*, void* f) { using T = int; new (f) T(0); }
+static void HotModule__init_kid_casts(void*, void* f) { using T = int; new (f) T(0); }
 #line 504 "cpp_inherit_v2.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static const hot::FieldInfo SppModule_fields[] = {
-    {"last_ticked", nullptr, hot::type_key<Base *>(), offsetof(SppModule, last_ticked), sizeof(Base *),
-     alignof(Base *), hot::field_flags<Base *>(), SppModule__init_last_ticked, hot::move_field<Base *>, hot::field_destroyer<Base *>()},
-    {"kid_casts", nullptr, hot::type_key<int>(), offsetof(SppModule, kid_casts), sizeof(int),
-     alignof(int), hot::field_flags<int>(), SppModule__init_kid_casts, hot::move_field<int>, hot::field_destroyer<int>()},
+static const hot::FieldInfo HotModule_fields[] = {
+    {"last_ticked", nullptr, hot::type_key<Base *>(), offsetof(HotModule, last_ticked), sizeof(Base *),
+     alignof(Base *), hot::field_flags<Base *>(), HotModule__init_last_ticked, hot::move_field<Base *>, hot::field_destroyer<Base *>()},
+    {"kid_casts", nullptr, hot::type_key<int>(), offsetof(HotModule, kid_casts), sizeof(int),
+     alignof(int), hot::field_flags<int>(), HotModule__init_kid_casts, hot::move_field<int>, hot::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
-static const hot::StateLayout SppModule_layout = {
-    "SppModule", sizeof(SppModule), alignof(SppModule), 2, SppModule_fields,
+static const hot::StateLayout HotModule_layout = {
+    "HotModule", sizeof(HotModule), alignof(HotModule), 2, HotModule_fields,
 };
 
 
@@ -581,7 +581,7 @@ static void Kid__init_bonus(void*, void* f) { using T = int; new (f) T(0); }
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(KidState_g2, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(KidState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Kid_fields[] = {
     {"hp", nullptr, hot::type_key<float>(), offsetof(KidState_g2, hp), sizeof(float),
      alignof(float), hot::field_flags<float>(), Base__init_hp, hot::move_field<float>, hot::field_destroyer<float>()},
@@ -742,7 +742,7 @@ void KidState_g2::ctor(int start)
 #line 39 "cpp_inherit_v2.cpp"
     }
 #line 39 "cpp_inherit_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__hot_owner);
 #line 39 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 39 "cpp_inherit_v2.cpp"
@@ -773,7 +773,7 @@ int KidState_g2::Power()
 #line 41 "cpp_inherit_v2.cpp"
     }
 #line 41 "cpp_inherit_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__hot_owner);
 #line 41 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 41 "cpp_inherit_v2.cpp"
@@ -795,7 +795,7 @@ void KidState_g2::TakeDamage_f(float amount)
 #line 44 "cpp_inherit_v2.cpp"
     }
 #line 44 "cpp_inherit_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__hot_owner);
 #line 44 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 45 "cpp_inherit_v2.cpp"
@@ -829,7 +829,7 @@ int KidState_g2::Bonus()
 #line 51 "cpp_inherit_v2.cpp"
     }
 #line 51 "cpp_inherit_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__hot_owner);
 #line 51 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 51 "cpp_inherit_v2.cpp"
@@ -851,7 +851,7 @@ void KidState_g2::Tick(float dt)
 #line 53 "cpp_inherit_v2.cpp"
     }
 #line 53 "cpp_inherit_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__hot_owner);
 #line 53 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 54 "cpp_inherit_v2.cpp"
@@ -863,11 +863,11 @@ void KidState_g2::Tick(float dt)
         twice = Twice();
         super_power = Base__Power(__self);
         bonus = Kid__Bonus_virt(__self);
-        spp_mod()->last_ticked = __self;
-        Kid_Shell* k = hot::as_script<Kid_Shell>(spp_mod()->last_ticked, "Kid");
+        hot_mod()->last_ticked = __self;
+        Kid_Shell* k = hot::as_script<Kid_Shell>(hot_mod()->last_ticked, "Kid");
         if (k == __self)
-            spp_mod()->kid_casts++;
-        seen_hits = state_of(spp_mod()->last_ticked)->hits + state_of(k)->kid_hits + Kid__Bonus_virt(k);
+            hot_mod()->kid_casts++;
+        seen_hits = state_of(hot_mod()->last_ticked)->hits + state_of(k)->kid_hits + Kid__Bonus_virt(k);
     
 #line 67 "cpp_inherit_v2.cpp"
 }
@@ -935,7 +935,7 @@ HOT_NODEBUG static hot::Instance Kid_create()
 
 extern "C" void script_register(hot::Registry& reg)
 {
-    reg.set_module_state(&SppModule_layout, &SppModule_slot);
+    reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Base_record, &Base_create);
     reg.add(&Kid_record, &Kid_create);
     Base_record.construct_keys = Base__construct_keys;

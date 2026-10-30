@@ -1284,7 +1284,7 @@ TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
     for (const std::string& n : c.names)
     {
         for (const char* bad :
-            {"__", "_Shell", "SLOT_", "thunk", "spp_", "_slot", "_layout", "_fields", "SppModule", "_g1"})
+            {"__", "_Shell", "SLOT_", "thunk", "hot_mod", "hot_gen", "_slot", "_layout", "_fields", "HotModule", "_g1"})
             EXPECT_EQ(n.find(bad), std::string::npos) << n << " has " << bad;
         EXPECT_NE(n[0], '_') << n;
     }

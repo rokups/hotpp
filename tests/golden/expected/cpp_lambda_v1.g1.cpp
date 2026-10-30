@@ -13,10 +13,10 @@
 #line 14 "cpp_lambda_v1.cpp.cpp"
 
 constexpr uint32_t GEN = 1;
-struct SppModule;
+struct HotModule;
 // The module state block of this generation. The loader sets the slot.
-static void* SppModule_slot = nullptr;
-[[maybe_unused]] HOT_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+static void* HotModule_slot = nullptr;
+[[maybe_unused]] HOT_HIDDEN static HotModule* hot_mod() { return static_cast<HotModule*>(HotModule_slot); }
 struct Lamp_Shell;
 using Lamp = Lamp_Shell;
 #line 3 "cpp_lambda_v1.cpp"
@@ -25,23 +25,23 @@ using Lamp = Lamp_Shell;
 #include <functional>
 #line 27 "cpp_lambda_v1.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class SppModule
-struct SppModule {
+// ---------------------------------------------------------------- [value] class HotModule
+struct HotModule {
     int calls;
 };
 
 #line 7 "cpp_lambda_v1.cpp"
-static void SppModule__init_calls(void*, void* f) { using T = int; new (f) T(0); }
+static void HotModule__init_calls(void*, void* f) { using T = int; new (f) T(0); }
 #line 36 "cpp_lambda_v1.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static const hot::FieldInfo SppModule_fields[] = {
-    {"calls", nullptr, hot::type_key<int>(), offsetof(SppModule, calls), sizeof(int),
-     alignof(int), hot::field_flags<int>(), SppModule__init_calls, hot::move_field<int>, hot::field_destroyer<int>()},
+static const hot::FieldInfo HotModule_fields[] = {
+    {"calls", nullptr, hot::type_key<int>(), offsetof(HotModule, calls), sizeof(int),
+     alignof(int), hot::field_flags<int>(), HotModule__init_calls, hot::move_field<int>, hot::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
-static const hot::StateLayout SppModule_layout = {
-    "SppModule", sizeof(SppModule), alignof(SppModule), 1, SppModule_fields,
+static const hot::StateLayout HotModule_layout = {
+    "HotModule", sizeof(HotModule), alignof(HotModule), 1, HotModule_fields,
 };
 
 
@@ -107,7 +107,7 @@ struct Lamp_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct LampState_g1 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     int base_level;
     int level;
     int count;
@@ -131,7 +131,7 @@ struct LampState_g1 {
 #line 9 "cpp_lambda_v1.cpp"
     {
 #line 9 "cpp_lambda_v1.cpp"
-        return static_cast<Lamp_Shell*>(__spp_owner)->Actor::TakeDamage(a0);
+        return static_cast<Lamp_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 9 "cpp_lambda_v1.cpp"
     }
 #line 138 "cpp_lambda_v1.cpp.cpp"
@@ -141,7 +141,7 @@ struct LampState_g1 {
 #line 9 "cpp_lambda_v1.cpp"
     {
 #line 9 "cpp_lambda_v1.cpp"
-        return static_cast<Lamp_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Lamp_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 9 "cpp_lambda_v1.cpp"
     }
 #line 148 "cpp_lambda_v1.cpp.cpp"
@@ -182,12 +182,12 @@ static void Lamp__init_kept_init(void*, void* f) { using T = std::function<int (
 #line 183 "cpp_lambda_v1.cpp.cpp"
 #line 66 "cpp_lambda_v1.cpp"
 HOT_HIDDEN LampState_g1* state_of(Lamp_Shell* __self);
-static void Lamp__init_from_init(void* st, void* f) { [[maybe_unused]] auto* __self = static_cast<Lamp_Shell*>(static_cast<LampState_g1*>(st)->__spp_owner); using T = std::function<int ()>; new (f) T([__self] { return state_of(__self)->count + state_of(__self)->level; }); }
+static void Lamp__init_from_init(void* st, void* f) { [[maybe_unused]] auto* __self = static_cast<Lamp_Shell*>(static_cast<LampState_g1*>(st)->__hot_owner); using T = std::function<int ()>; new (f) T([__self] { return state_of(__self)->count + state_of(__self)->level; }); }
 #line 187 "cpp_lambda_v1.cpp.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(LampState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(LampState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Lamp_fields[] = {
     {"base_level", nullptr, hot::type_key<int>(), offsetof(LampState_g1, base_level), sizeof(int),
      alignof(int), hot::field_flags<int>(), Lamp__init_base_level, hot::move_field<int>, hot::field_destroyer<int>()},
@@ -349,7 +349,7 @@ void LampState_g1::ctor()
 #line 13 "cpp_lambda_v1.cpp"
     }
 #line 13 "cpp_lambda_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(this->__hot_owner);
 #line 13 "cpp_lambda_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 14 "cpp_lambda_v1.cpp"
@@ -374,7 +374,7 @@ void LampState_g1::Tick(float dt)
 #line 19 "cpp_lambda_v1.cpp"
     }
 #line 19 "cpp_lambda_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(this->__hot_owner);
 #line 19 "cpp_lambda_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 20 "cpp_lambda_v1.cpp"
@@ -395,7 +395,7 @@ void LampState_g1::Tick(float dt)
         auto outer = [__self] { auto inner = [__self] { return state_of(__self)->count * 2; }; return inner() + state_of(__self)->level; };
         nested = outer();
         // A lambda that uses a module variable and "this" as a value.
-        auto module_use = [__self] { spp_mod()->calls += 1; return state_of(__self)->self_is_set(__self); };
+        auto module_use = [__self] { hot_mod()->calls += 1; return state_of(__self)->self_is_set(__self); };
         flag = module_use();
         // A lambda in a field. A reload copies the field, and the old lambda stays.
         if (!stored)
@@ -434,7 +434,7 @@ void LampState_g1::bump(int n)
 #line 51 "cpp_lambda_v1.cpp"
     }
 #line 51 "cpp_lambda_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(this->__hot_owner);
 #line 51 "cpp_lambda_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 51 "cpp_lambda_v1.cpp"
@@ -465,7 +465,7 @@ bool LampState_g1::self_is_set(Actor * a)
 #line 52 "cpp_lambda_v1.cpp"
     }
 #line 52 "cpp_lambda_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(this->__hot_owner);
 #line 52 "cpp_lambda_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 52 "cpp_lambda_v1.cpp"
@@ -548,7 +548,7 @@ HOT_NODEBUG static hot::Instance Lamp_create()
 
 extern "C" void script_register(hot::Registry& reg)
 {
-    reg.set_module_state(&SppModule_layout, &SppModule_slot);
+    reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Lamp_record, &Lamp_create);
     Lamp_record.construct_keys = Lamp__construct_keys;
     reg.add_thunk("Lamp::bump", reinterpret_cast<void*>(&Lamp__bump__thunk));

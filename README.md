@@ -142,7 +142,7 @@ A script can declare enums, structs and module variables at file level (`DECISIO
 
 - `enum Name [: type] { A, B = 5, C }` becomes `enum class Name : T`. The default type is `int`. `Name.A` becomes `Name::A`. A reload migrates an enum field as an integer.
 - `struct Name { ... }` is the only way to declare a script value type. `[value] class Name { ... }` is an error: use `struct`. `[native, value] class X;` is a native stub and stays.
-- A module variable is `[alias("old")] Type name [= init];` at file level. Every class of the script reads it by its bare name. The translator puts the variables in a synthetic struct `SppModule`. The loader owns one module block. A reload migrates it like the fields of a class.
+- A module variable is `[alias("old")] Type name [= init];` at file level. Every class of the script reads it by its bare name. The translator puts the variables in a synthetic struct `HotModule`. The loader owns one module block. A reload migrates it like the fields of a class.
 - An initializer can use a module variable declared before it. The loader runs the initializers in declaration order.
 - A convert hook of a module variable is `T convert_<var>(Old old) { ... }` at file level (`DECISIONS.md` item 14). It cannot read a module variable. See `tests/scripts/modconv_v1.hot` and `modconv_v2.hot`.
 - Limits: a module variable is a native type, an enum or a struct. A script has no other free functions.
@@ -292,8 +292,8 @@ Command line (S12). The tool translates generation 1 of each script. It does not
     sppc --aot <script>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]
          [--format=std|fmt] [--resource-dir dir]
 
-- For each script `sppc` writes `DIR/<name>.aot.cpp`. The register function has the name `spp_script_register_<name>`, so many scripts link into one program.
-- `sppc` also writes `DIR/spp_aot_registry.cpp`. It defines the constant table `hot::aot_table` (`include/hot/aot.h`).
+- For each script `sppc` writes `DIR/<name>.aot.cpp`. The register function has the name `hot_script_register_<name>`, so many scripts link into one program.
+- `sppc` also writes `DIR/hot_aot_registry.cpp`. It defines the constant table `hot::aot_table` (`include/hot/aot.h`).
 - The script names must be different. The class names must be different over all the scripts of a program. An AOT script has no slot file and no later generation.
 
 The CMake function `spp_add_scripts` with the option `AOT` (`cmake/SppScripts.cmake`) runs `sppc --aot` and builds a static library. `AFTER` does not work with `AOT`. `PRELUDES` works only with `AOT`:
@@ -406,14 +406,14 @@ Debug information:
 
 - The generated C++ has `#line` directives. The JIT and `sppc` use `-gline-tables-only`, so the DWARF line table names the `.hot` file. The tests `DebugInfo.*` check this with `llvm-dwarfdump`.
 - The JIT backend registers each object with the debugger through the GDB JIT interface (`llvm::orc::enableDebuggerSupport`). `JitOptions::debugger_support` turns it off. `debugger_support()` and `debugger_error()` tell the result. The test `JitTests.DebuggerGetsObjectWithScriptLines` reads `__jit_debug_descriptor`. LLVM 23 has no `createJITLoaderGDBRegistrar`.
-- `tools/lldb/spp_formatters.py` and `tools/lldb/spp.lldbinit` show state blocks, shells and handles by script name. The command `spp-bt` prints the script frames. A synthetic child provider hides `__spp_owner` from the state blocks. `tools/natvis/spp.natvis` does the same for Visual Studio.
+- `tools/lldb/spp_formatters.py` and `tools/lldb/spp.lldbinit` show state blocks, shells and handles by script name. The command `spp-bt` prints the script frames. A synthetic child provider hides `__hot_owner` from the state blocks. `tools/natvis/spp.natvis` does the same for Visual Studio.
 - The pure Python helpers have a test (`PythonLldbFormatters`, `python3 -I`). lldb itself, a real debugger session and Visual Studio were NOT run. The F3 check (breakpoint in `heal`, step, inspect `this.health`) stays open.
 
 ### Debugging
 
 What the debugger shows:
 
-- Each script class has a state struct, for example `PlayerState_g1`. Its first member is `hot::ShellBase* __spp_owner` (offset 0, with a `static_assert`).
+- Each script class has a state struct, for example `PlayerState_g1`. Its first member is `hot::ShellBase* __hot_owner` (offset 0, with a `static_assert`).
 - Script methods are members of the state struct. A frame shows `this` (the script fields) and the parameters. The locals `__self` and `__st` have the attribute `HOT_NODEBUG_LOCAL` (`[[gnu::nodebug]]` on Clang and GCC).
 - A slot holds a pointer to the state member (`hot::SlotFn`, for example `PlayerState_g1::Tick`). `hot::call<Sig>(__self, slot, args...)` calls the member. No `Player__Tick` wrapper exists. A script function, a constructor and a destructor keep a hidden `HOT_HIDDEN` wrapper for direct script calls.
 - The member prologue has the stale-generation check. A parameter with a body type has the name `__<name>` in the member. The first body line copies it to `<name>`.
@@ -493,7 +493,7 @@ Features:
 
 - Diagnostics: the parse errors of analyze, and the clangd errors at the script position.
 - Completion works on any identifier prefix, with no trigger needed. The trigger characters are `.` and `::` (the client sends `:`, and the server ignores a single `:`). The list has: locals and parameters in scope, module variables, script enums, classes and structs, the enumerators after `Mode.`, the script members (own and inherited from script bases) after `this.` or after a variable of a script class, the native types, functions and members from clangd, and the S++ keywords and builtin types from a fixed list. All names are in script form (`std.string`). The helpers of the translator (thunks, `SLOT_`, `_Shell`, plumbing) are not shown. The list is filtered by the typed prefix.
-  - The script facts come from a token scan of the text. It works on a script with syntax errors. For clangd, the server puts the typed prefix and the placeholder `__spp_complete` in place of the word at the cursor. It closes the open brackets of an incomplete statement and translates again with the tolerant parse. Then it asks clangd at the placeholder.
+  - The script facts come from a token scan of the text. It works on a script with syntax errors. For clangd, the server puts the typed prefix and the placeholder `__hot_complete` in place of the word at the cursor. It closes the open brackets of an incomplete statement and translates again with the tolerant parse. Then it asks clangd at the placeholder.
   - If the translation fails, the list has the keywords and the script facts, without clangd.
   - `spp/indexStats` also gives `completions`, the number of completion translations. A test uses it to check the reuse.
   - The server keeps the last clangd answer. While the user types more characters of the same word, and the rest of the text does not change, it filters the answer and does not translate again. A failed translation is kept the same way.

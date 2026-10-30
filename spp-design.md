@@ -1121,7 +1121,7 @@ Status: implemented as the proxy `spp-ls` (S14b, `DECISIONS.md` 13). The fork of
 - It gives the generated C++ to clangd as the virtual file `<script>.hot.cpp`. The compile command comes from `hot::compile_command`.
 - `Emitter::put` receives the script offset of each leaf. A side table of segments (script offset, generated offset, length) gives both directions (M10). Synthesized text, for example `hot::deref(`, has no segment. A result in such text is dropped.
 - Clang Sema gives types, overloads, native base members, templates and includes. A native script front end inside clangd needs a new Sema and takes months. The proxy avoids this.
-- A translation stops at a parse error. Completion after `this.` needs the tolerant parse (M10). A bad statement is skipped to the next `;` or `}`. The server puts the placeholder `__spp_complete` in place of the word at the cursor, translates again and asks clangd at the placeholder.
+- A translation stops at a parse error. Completion after `this.` needs the tolerant parse (M10). A bad statement is skipped to the next `;` or `}`. The server puts the placeholder `__hot_complete` in place of the word at the cursor, translates again and asks clangd at the placeholder.
 - `sppc::rewrite_generated_names` and `sppc::rewrite_clang_message` change generated names to script names in hover text, diagnostics and completion labels.
 - Features: diagnostics, completion, hover, go-to-definition, references, document symbols, semantic tokens, rename across all `.hot` files of the workspace, and workspace symbols from the clangd background index (`--compile-commands-dir`, from `sppc --compile-commands`). The custom request `spp/toScript` maps a position in a generated file to the script.
 

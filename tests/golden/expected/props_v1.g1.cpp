@@ -84,7 +84,7 @@ struct Gauge_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct GaugeState_g1 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     float shield_raw;
     float __p_Hp;
     float __p_MaxHp;
@@ -106,7 +106,7 @@ struct GaugeState_g1 {
 #line 6 "props_v1.hot"
     {
 #line 6 "props_v1.hot"
-        return static_cast<Gauge_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Gauge_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 6 "props_v1.hot"
     }
 #line 113 "props_v1.hot.cpp"
@@ -127,7 +127,7 @@ static void Gauge__init___p_Level(void*, void* f) { using T = int32_t; new (f) T
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(GaugeState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(GaugeState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Gauge_fields[] = {
     {"shield_raw", nullptr, typeid(float).name(), offsetof(GaugeState_g1, shield_raw), sizeof(float),
      alignof(float), hot::field_flags<float>(), Gauge__init_shield_raw, hot::move_field<float>, hot::field_destroyer<float>()},
@@ -235,7 +235,7 @@ void GaugeState_g1::Tick(float dt)
 #line 16 "props_v1.hot"
     }
 #line 17 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
 #line 17 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 17 "props_v1.hot"
@@ -261,7 +261,7 @@ void GaugeState_g1::TakeDamage_f(float amount)
 #line 22 "props_v1.hot"
     }
 #line 23 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
 #line 23 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 23 "props_v1.hot"
@@ -294,7 +294,7 @@ float GaugeState_g1::total()
 #line 27 "props_v1.hot"
     }
 #line 28 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
 #line 28 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 28 "props_v1.hot"
@@ -325,7 +325,7 @@ float GaugeState_g1::get_Hp()
 #line 7 "props_v1.hot"
     }
 #line 7 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
 #line 7 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 7 "props_v1.hot"
@@ -356,7 +356,7 @@ void GaugeState_g1::set_Hp(float value)
 #line 7 "props_v1.hot"
     }
 #line 7 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
 #line 7 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 7 "props_v1.hot"
@@ -387,7 +387,7 @@ float GaugeState_g1::get_MaxHp()
 #line 8 "props_v1.hot"
     }
 #line 8 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
 #line 8 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 8 "props_v1.hot"
@@ -418,7 +418,7 @@ int32_t GaugeState_g1::get_Level()
 #line 9 "props_v1.hot"
     }
 #line 9 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
 #line 9 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 9 "props_v1.hot"
@@ -449,7 +449,7 @@ void GaugeState_g1::set_Level(int32_t value)
 #line 9 "props_v1.hot"
     }
 #line 9 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
 #line 9 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 9 "props_v1.hot"
@@ -480,7 +480,7 @@ float GaugeState_g1::get_Shield()
 #line 12 "props_v1.hot"
     }
 #line 12 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
 #line 12 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 12 "props_v1.hot"
@@ -511,7 +511,7 @@ void GaugeState_g1::set_Shield(float value)
 #line 13 "props_v1.hot"
     }
 #line 13 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
 #line 13 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "props_v1.hot"

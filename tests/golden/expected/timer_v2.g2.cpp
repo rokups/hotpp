@@ -77,7 +77,7 @@ struct Beeper_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct BeeperState_g2 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     int32_t ticks;
     int32_t fired;
 
@@ -89,7 +89,7 @@ struct BeeperState_g2 {
 #line 4 "timer_v2.hot"
     {
 #line 4 "timer_v2.hot"
-        return static_cast<Beeper_Shell*>(__spp_owner)->Actor::TakeDamage(a0);
+        return static_cast<Beeper_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 4 "timer_v2.hot"
     }
 #line 96 "timer_v2.hot.cpp"
@@ -99,7 +99,7 @@ struct BeeperState_g2 {
 #line 4 "timer_v2.hot"
     {
 #line 4 "timer_v2.hot"
-        return static_cast<Beeper_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Beeper_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 4 "timer_v2.hot"
     }
 #line 106 "timer_v2.hot.cpp"
@@ -114,7 +114,7 @@ static void Beeper__init_fired(void*, void* f) { using T = int32_t; new (f) T(0)
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(BeeperState_g2, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(BeeperState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Beeper_fields[] = {
     {"ticks", nullptr, typeid(int32_t).name(), offsetof(BeeperState_g2, ticks), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Beeper__init_ticks, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
@@ -211,7 +211,7 @@ void BeeperState_g2::Tick(float dt)
 #line 8 "timer_v2.hot"
     }
 #line 9 "timer_v2.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Beeper_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Beeper_Shell*>(this->__hot_owner);
 #line 9 "timer_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 9 "timer_v2.hot"
@@ -242,7 +242,7 @@ void BeeperState_g2::arm(World& w, float delay)
 #line 12 "timer_v2.hot"
     }
 #line 13 "timer_v2.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Beeper_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Beeper_Shell*>(this->__hot_owner);
 #line 13 "timer_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "timer_v2.hot"

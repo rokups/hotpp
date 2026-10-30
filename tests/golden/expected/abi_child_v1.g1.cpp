@@ -92,7 +92,7 @@ using Base = Base_Shell;
 
 // ---------------------------------------------------------------- state
 struct BaseState_g1 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     float hp;
     int32_t hits;
     int32_t twice;
@@ -107,7 +107,7 @@ struct BaseState_g1 {
 #line 7 "abi_child_v1.hot"
     {
 #line 7 "abi_child_v1.hot"
-        return static_cast<Base_Shell*>(__spp_owner)->Actor::Tick(a0);
+        return static_cast<Base_Shell*>(__hot_owner)->Actor::Tick(a0);
 #line 7 "abi_child_v1.hot"
     }
 #line 114 "abi_child_v1.hot.cpp"
@@ -117,7 +117,7 @@ struct BaseState_g1 {
 #line 7 "abi_child_v1.hot"
     {
 #line 7 "abi_child_v1.hot"
-        return static_cast<Base_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Base_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 7 "abi_child_v1.hot"
     }
 #line 124 "abi_child_v1.hot.cpp"
@@ -135,7 +135,7 @@ static void Base__init_twice(void*, void* f) { using T = int32_t; new (f) T(0); 
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(BaseState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(BaseState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Base_fields[] = {
     {"hp", nullptr, typeid(float).name(), offsetof(BaseState_g1, hp), sizeof(float),
      alignof(float), hot::field_flags<float>(), Base__init_hp, hot::move_field<float>, hot::field_destroyer<float>()},
@@ -250,7 +250,7 @@ int32_t BaseState_g1::Power()
 #line 12 "abi_child_v1.hot"
     }
 #line 12 "abi_child_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
 #line 12 "abi_child_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 12 "abi_child_v1.hot"
@@ -281,7 +281,7 @@ int32_t BaseState_g1::Twice()
 #line 14 "abi_child_v1.hot"
     }
 #line 14 "abi_child_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
 #line 14 "abi_child_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 14 "abi_child_v1.hot"
@@ -312,7 +312,7 @@ void BaseState_g1::Bump()
 #line 16 "abi_child_v1.hot"
     }
 #line 16 "abi_child_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
 #line 16 "abi_child_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 16 "abi_child_v1.hot"
@@ -334,7 +334,7 @@ void BaseState_g1::TakeDamage_f(float amount)
 #line 18 "abi_child_v1.hot"
     }
 #line 19 "abi_child_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
 #line 19 "abi_child_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 19 "abi_child_v1.hot"
@@ -487,7 +487,7 @@ static void Kid__init_super_power(void*, void* f) { using T = int32_t; new (f) T
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(KidState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(KidState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Kid_fields[] = {
     {"hp", nullptr, typeid(float).name(), offsetof(KidState_g1, hp), sizeof(float),
      alignof(float), hot::field_flags<float>(), Base__init_hp, hot::move_field<float>, hot::field_destroyer<float>()},
@@ -597,7 +597,7 @@ int32_t KidState_g1::Power()
 #line 29 "abi_child_v1.hot"
     }
 #line 29 "abi_child_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__hot_owner);
 #line 29 "abi_child_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 29 "abi_child_v1.hot"
@@ -619,7 +619,7 @@ void KidState_g1::TakeDamage_f(float amount)
 #line 31 "abi_child_v1.hot"
     }
 #line 32 "abi_child_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__hot_owner);
 #line 32 "abi_child_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 32 "abi_child_v1.hot"
@@ -643,7 +643,7 @@ void KidState_g1::Tick(float dt)
 #line 36 "abi_child_v1.hot"
     }
 #line 37 "abi_child_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__hot_owner);
 #line 37 "abi_child_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 37 "abi_child_v1.hot"

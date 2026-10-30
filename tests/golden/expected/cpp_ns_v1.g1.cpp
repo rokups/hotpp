@@ -13,22 +13,22 @@
 #line 14 "cpp_ns_v1.cpp.cpp"
 
 constexpr uint32_t GEN = 1;
-struct SppModule;
+struct HotModule;
 // The module state block of this generation. The loader sets the slot.
-static void* SppModule_slot = nullptr;
-[[maybe_unused]] HOT_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
-namespace red::spp_gen { struct red__Unit_Shell; using red__Unit = red__Unit_Shell; }
-namespace red { using Unit = ::red::spp_gen::red__Unit_Shell; }
-using namespace red::spp_gen;
-namespace blue::spp_gen { struct blue__Unit_Shell; using blue__Unit = blue__Unit_Shell; }
-namespace blue { using Unit = ::blue::spp_gen::blue__Unit_Shell; }
-using namespace blue::spp_gen;
-namespace game::spp_gen { struct game__Player_Shell; using game__Player = game__Player_Shell; }
-namespace game { using Player = ::game::spp_gen::game__Player_Shell; }
-using namespace game::spp_gen;
-namespace game::ai::spp_gen { struct game__ai__Brain_Shell; using game__ai__Brain = game__ai__Brain_Shell; }
-namespace game::ai { using Brain = ::game::ai::spp_gen::game__ai__Brain_Shell; }
-using namespace game::ai::spp_gen;
+static void* HotModule_slot = nullptr;
+[[maybe_unused]] HOT_HIDDEN static HotModule* hot_mod() { return static_cast<HotModule*>(HotModule_slot); }
+namespace red::hot_gen { struct red__Unit_Shell; using red__Unit = red__Unit_Shell; }
+namespace red { using Unit = ::red::hot_gen::red__Unit_Shell; }
+using namespace red::hot_gen;
+namespace blue::hot_gen { struct blue__Unit_Shell; using blue__Unit = blue__Unit_Shell; }
+namespace blue { using Unit = ::blue::hot_gen::blue__Unit_Shell; }
+using namespace blue::hot_gen;
+namespace game::hot_gen { struct game__Player_Shell; using game__Player = game__Player_Shell; }
+namespace game { using Player = ::game::hot_gen::game__Player_Shell; }
+using namespace game::hot_gen;
+namespace game::ai::hot_gen { struct game__ai__Brain_Shell; using game__ai__Brain = game__ai__Brain_Shell; }
+namespace game::ai { using Brain = ::game::ai::hot_gen::game__ai__Brain_Shell; }
+using namespace game::ai::hot_gen;
 struct Watcher_Shell;
 using Watcher = Watcher_Shell;
 #line 5 "cpp_ns_v1.cpp"
@@ -36,7 +36,7 @@ using Watcher = Watcher_Shell;
 #line 6 "cpp_ns_v1.cpp"
 #include "Math.h"
 #line 39 "cpp_ns_v1.cpp.cpp"
-namespace red::spp_gen {
+namespace red::hot_gen {
 
 // ---------------------------------------------------------------- class red__Unit
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -98,7 +98,7 @@ struct red__Unit_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct red__UnitState_g1 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     int hits;
 
     void ctor();
@@ -109,7 +109,7 @@ struct red__UnitState_g1 {
 #line 10 "cpp_ns_v1.cpp"
     {
 #line 10 "cpp_ns_v1.cpp"
-        return static_cast<red__Unit_Shell*>(__spp_owner)->Actor::TakeDamage(a0);
+        return static_cast<red__Unit_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 10 "cpp_ns_v1.cpp"
     }
 #line 116 "cpp_ns_v1.cpp.cpp"
@@ -119,7 +119,7 @@ struct red__UnitState_g1 {
 #line 10 "cpp_ns_v1.cpp"
     {
 #line 10 "cpp_ns_v1.cpp"
-        return static_cast<red__Unit_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<red__Unit_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 10 "cpp_ns_v1.cpp"
     }
 #line 126 "cpp_ns_v1.cpp.cpp"
@@ -131,7 +131,7 @@ static void red__Unit__init_hits(void*, void* f) { using T = int; new (f) T(0); 
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(red__UnitState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(red__UnitState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo red__Unit_fields[] = {
     {"hits", nullptr, hot::type_key<int>(), offsetof(red__UnitState_g1, hits), sizeof(int),
      alignof(int), hot::field_flags<int>(), red__Unit__init_hits, hot::move_field<int>, hot::field_destroyer<int>()},
@@ -269,7 +269,7 @@ void red__UnitState_g1::ctor()
 #line 13 "cpp_ns_v1.cpp"
     }
 #line 13 "cpp_ns_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<red__Unit_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<red__Unit_Shell*>(this->__hot_owner);
 #line 13 "cpp_ns_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "cpp_ns_v1.cpp"
@@ -291,7 +291,7 @@ void red__UnitState_g1::Tick(float )
 #line 15 "cpp_ns_v1.cpp"
     }
 #line 15 "cpp_ns_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<red__Unit_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<red__Unit_Shell*>(this->__hot_owner);
 #line 15 "cpp_ns_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 15 "cpp_ns_v1.cpp"
@@ -342,8 +342,8 @@ HOT_NODEBUG static hot::Instance red__Unit_create()
 }
 #line 344 "cpp_ns_v1.cpp.cpp"
 
-} // namespace red::spp_gen
-namespace blue::spp_gen {
+} // namespace red::hot_gen
+namespace blue::hot_gen {
 
 // ---------------------------------------------------------------- class blue__Unit
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -405,7 +405,7 @@ struct blue__Unit_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct blue__UnitState_g1 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     int hits;
     int armor;
 
@@ -417,7 +417,7 @@ struct blue__UnitState_g1 {
 #line 23 "cpp_ns_v1.cpp"
     {
 #line 23 "cpp_ns_v1.cpp"
-        return static_cast<blue__Unit_Shell*>(__spp_owner)->Actor::TakeDamage(a0);
+        return static_cast<blue__Unit_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 23 "cpp_ns_v1.cpp"
     }
 #line 424 "cpp_ns_v1.cpp.cpp"
@@ -427,7 +427,7 @@ struct blue__UnitState_g1 {
 #line 23 "cpp_ns_v1.cpp"
     {
 #line 23 "cpp_ns_v1.cpp"
-        return static_cast<blue__Unit_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<blue__Unit_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 23 "cpp_ns_v1.cpp"
     }
 #line 434 "cpp_ns_v1.cpp.cpp"
@@ -442,7 +442,7 @@ static void blue__Unit__init_armor(void*, void* f) { using T = int; new (f) T(5)
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(blue__UnitState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(blue__UnitState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo blue__Unit_fields[] = {
     {"hits", nullptr, hot::type_key<int>(), offsetof(blue__UnitState_g1, hits), sizeof(int),
      alignof(int), hot::field_flags<int>(), blue__Unit__init_hits, hot::move_field<int>, hot::field_destroyer<int>()},
@@ -582,7 +582,7 @@ void blue__UnitState_g1::ctor()
 #line 26 "cpp_ns_v1.cpp"
     }
 #line 26 "cpp_ns_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<blue__Unit_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<blue__Unit_Shell*>(this->__hot_owner);
 #line 26 "cpp_ns_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 26 "cpp_ns_v1.cpp"
@@ -604,7 +604,7 @@ void blue__UnitState_g1::Tick(float dt)
 #line 28 "cpp_ns_v1.cpp"
     }
 #line 28 "cpp_ns_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<blue__Unit_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<blue__Unit_Shell*>(this->__hot_owner);
 #line 28 "cpp_ns_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 29 "cpp_ns_v1.cpp"
@@ -658,43 +658,43 @@ HOT_NODEBUG static hot::Instance blue__Unit_create()
 }
 #line 660 "cpp_ns_v1.cpp.cpp"
 
-} // namespace blue::spp_gen
+} // namespace blue::hot_gen
 
-// ---------------------------------------------------------------- [value] class SppModule
-namespace game::spp_gen { using game__score_t = int; }
-namespace game::ai::spp_gen { using game__ai__mood_t = int; }
-struct SppModule {
-    ::game::spp_gen::game__score_t game__score;
-    ::game::ai::spp_gen::game__ai__mood_t game__ai__mood;
+// ---------------------------------------------------------------- [value] class HotModule
+namespace game::hot_gen { using game__score_t = int; }
+namespace game::ai::hot_gen { using game__ai__mood_t = int; }
+struct HotModule {
+    ::game::hot_gen::game__score_t game__score;
+    ::game::ai::hot_gen::game__ai__mood_t game__ai__mood;
     game__ai__Brain * brain;
 };
 
-namespace game::spp_gen {
+namespace game::hot_gen {
 #line 42 "cpp_ns_v1.cpp"
-static void SppModule__init_game__score(void*, void* f) { using T = ::game::spp_gen::game__score_t; new (f) T(0); }
+static void HotModule__init_game__score(void*, void* f) { using T = ::game::hot_gen::game__score_t; new (f) T(0); }
 }
 #line 677 "cpp_ns_v1.cpp.cpp"
-namespace game::ai::spp_gen {
+namespace game::ai::hot_gen {
 #line 68 "cpp_ns_v1.cpp"
-static void SppModule__init_game__ai__mood(void*, void* f) { using T = ::game::ai::spp_gen::game__ai__mood_t; new (f) T(3); }
+static void HotModule__init_game__ai__mood(void*, void* f) { using T = ::game::ai::hot_gen::game__ai__mood_t; new (f) T(3); }
 }
 #line 682 "cpp_ns_v1.cpp.cpp"
 #line 96 "cpp_ns_v1.cpp"
-static void SppModule__init_brain(void*, void* f) { using T = game__ai__Brain *; new (f) T(nullptr); }
+static void HotModule__init_brain(void*, void* f) { using T = game__ai__Brain *; new (f) T(nullptr); }
 #line 685 "cpp_ns_v1.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static const hot::FieldInfo SppModule_fields[] = {
-    {"game__score", nullptr, hot::type_key<::game::spp_gen::game__score_t>(), offsetof(SppModule, game__score), sizeof(::game::spp_gen::game__score_t),
-     alignof(::game::spp_gen::game__score_t), hot::field_flags<::game::spp_gen::game__score_t>(), SppModule__init_game__score, hot::move_field<::game::spp_gen::game__score_t>, hot::field_destroyer<::game::spp_gen::game__score_t>()},
-    {"game__ai__mood", nullptr, hot::type_key<::game::ai::spp_gen::game__ai__mood_t>(), offsetof(SppModule, game__ai__mood), sizeof(::game::ai::spp_gen::game__ai__mood_t),
-     alignof(::game::ai::spp_gen::game__ai__mood_t), hot::field_flags<::game::ai::spp_gen::game__ai__mood_t>(), SppModule__init_game__ai__mood, hot::move_field<::game::ai::spp_gen::game__ai__mood_t>, hot::field_destroyer<::game::ai::spp_gen::game__ai__mood_t>()},
-    {"brain", nullptr, hot::type_key<game__ai__Brain *>(), offsetof(SppModule, brain), sizeof(game__ai__Brain *),
-     alignof(game__ai__Brain *), hot::field_flags<game__ai__Brain *>(), SppModule__init_brain, hot::move_field<game__ai__Brain *>, hot::field_destroyer<game__ai__Brain *>()},
+static const hot::FieldInfo HotModule_fields[] = {
+    {"game__score", nullptr, hot::type_key<::game::hot_gen::game__score_t>(), offsetof(HotModule, game__score), sizeof(::game::hot_gen::game__score_t),
+     alignof(::game::hot_gen::game__score_t), hot::field_flags<::game::hot_gen::game__score_t>(), HotModule__init_game__score, hot::move_field<::game::hot_gen::game__score_t>, hot::field_destroyer<::game::hot_gen::game__score_t>()},
+    {"game__ai__mood", nullptr, hot::type_key<::game::ai::hot_gen::game__ai__mood_t>(), offsetof(HotModule, game__ai__mood), sizeof(::game::ai::hot_gen::game__ai__mood_t),
+     alignof(::game::ai::hot_gen::game__ai__mood_t), hot::field_flags<::game::ai::hot_gen::game__ai__mood_t>(), HotModule__init_game__ai__mood, hot::move_field<::game::ai::hot_gen::game__ai__mood_t>, hot::field_destroyer<::game::ai::hot_gen::game__ai__mood_t>()},
+    {"brain", nullptr, hot::type_key<game__ai__Brain *>(), offsetof(HotModule, brain), sizeof(game__ai__Brain *),
+     alignof(game__ai__Brain *), hot::field_flags<game__ai__Brain *>(), HotModule__init_brain, hot::move_field<game__ai__Brain *>, hot::field_destroyer<game__ai__Brain *>()},
 };
 #pragma clang diagnostic pop
-static const hot::StateLayout SppModule_layout = {
-    "SppModule", sizeof(SppModule), alignof(SppModule), 3, SppModule_fields,
+static const hot::StateLayout HotModule_layout = {
+    "HotModule", sizeof(HotModule), alignof(HotModule), 3, HotModule_fields,
 };
 
 
@@ -702,12 +702,12 @@ namespace game {
 #line 44 "cpp_ns_v1.cpp"
 int bonus(int x)
 {
-    return x + spp_mod()->game__score;
+    return x + hot_mod()->game__score;
 }
 }
 
 #line 710 "cpp_ns_v1.cpp.cpp"
-namespace game::spp_gen {
+namespace game::hot_gen {
 
 // ---------------------------------------------------------------- class game__Player
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -778,7 +778,7 @@ struct game__Player_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<
 
 // ---------------------------------------------------------------- state
 struct game__PlayerState_g1 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     int points;
 
     void ctor();
@@ -789,7 +789,7 @@ struct game__PlayerState_g1 {
 #line 49 "cpp_ns_v1.cpp"
     {
 #line 49 "cpp_ns_v1.cpp"
-        return static_cast<game__Player_Shell*>(__spp_owner)->Actor::TakeDamage(a0);
+        return static_cast<game__Player_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 49 "cpp_ns_v1.cpp"
     }
 #line 796 "cpp_ns_v1.cpp.cpp"
@@ -799,7 +799,7 @@ struct game__PlayerState_g1 {
 #line 49 "cpp_ns_v1.cpp"
     {
 #line 49 "cpp_ns_v1.cpp"
-        return static_cast<game__Player_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<game__Player_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 49 "cpp_ns_v1.cpp"
     }
 #line 806 "cpp_ns_v1.cpp.cpp"
@@ -811,7 +811,7 @@ static void game__Player__init_points(void*, void* f) { using T = int; new (f) T
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(game__PlayerState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(game__PlayerState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo game__Player_fields[] = {
     {"points", nullptr, hot::type_key<int>(), offsetof(game__PlayerState_g1, points), sizeof(int),
      alignof(int), hot::field_flags<int>(), game__Player__init_points, hot::move_field<int>, hot::field_destroyer<int>()},
@@ -949,7 +949,7 @@ void game__PlayerState_g1::ctor()
 #line 52 "cpp_ns_v1.cpp"
     }
 #line 52 "cpp_ns_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<game__Player_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<game__Player_Shell*>(this->__hot_owner);
 #line 52 "cpp_ns_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 52 "cpp_ns_v1.cpp"
@@ -971,12 +971,12 @@ void game__PlayerState_g1::Tick(float dt)
 #line 54 "cpp_ns_v1.cpp"
     }
 #line 54 "cpp_ns_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<game__Player_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<game__Player_Shell*>(this->__hot_owner);
 #line 54 "cpp_ns_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 55 "cpp_ns_v1.cpp"
 
-        spp_mod()->game__score += 1;
+        hot_mod()->game__score += 1;
         points = bonus(10);
         __self->Move(Vec3(dt, 0, 0));
     
@@ -1041,8 +1041,8 @@ HOT_NODEBUG static hot::Instance game__Player_create()
 }
 #line 1043 "cpp_ns_v1.cpp.cpp"
 
-} // namespace game::spp_gen
-namespace game::ai::spp_gen {
+} // namespace game::hot_gen
+namespace game::ai::hot_gen {
 
 // ---------------------------------------------------------------- class game__ai__Brain
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -1086,7 +1086,7 @@ static void game__ai__Brain__init_thought(void*, void* f) { using T = int; new (
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(game__ai__BrainState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(game__ai__BrainState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo game__ai__Brain_fields[] = {
     {"points", nullptr, hot::type_key<int>(), offsetof(game__ai__BrainState_g1, points), sizeof(int),
      alignof(int), hot::field_flags<int>(), game__Player__init_points, hot::move_field<int>, hot::field_destroyer<int>()},
@@ -1224,7 +1224,7 @@ void game__ai__BrainState_g1::ctor()
 #line 73 "cpp_ns_v1.cpp"
     }
 #line 73 "cpp_ns_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<game__ai__Brain_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<game__ai__Brain_Shell*>(this->__hot_owner);
 #line 73 "cpp_ns_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 73 "cpp_ns_v1.cpp"
@@ -1246,14 +1246,14 @@ void game__ai__BrainState_g1::Tick(float dt)
 #line 75 "cpp_ns_v1.cpp"
     }
 #line 75 "cpp_ns_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<game__ai__Brain_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<game__ai__Brain_Shell*>(this->__hot_owner);
 #line 75 "cpp_ns_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 76 "cpp_ns_v1.cpp"
 
         game__Player__base_Tick(__self, dt);
-        spp_mod()->game__ai__mood += 2;
-        thought = bonus(1) + spp_mod()->game__ai__mood;
+        hot_mod()->game__ai__mood += 2;
+        thought = bonus(1) + hot_mod()->game__ai__mood;
     
 #line 80 "cpp_ns_v1.cpp"
 }
@@ -1301,7 +1301,7 @@ HOT_NODEBUG static hot::Instance game__ai__Brain_create()
 }
 #line 1303 "cpp_ns_v1.cpp.cpp"
 
-} // namespace game::ai::spp_gen
+} // namespace game::ai::hot_gen
 
 #line 86 "cpp_ns_v1.cpp"
 namespace gai = game::ai;
@@ -1316,7 +1316,7 @@ using namespace game::ai;
 #line 90 "cpp_ns_v1.cpp"
 int mood_now()
 {
-    return spp_mod()->game__ai__mood;
+    return hot_mod()->game__ai__mood;
 }
 
 #line 1323 "cpp_ns_v1.cpp.cpp"
@@ -1381,7 +1381,7 @@ struct Watcher_Shell final : Actor, hot::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct WatcherState_g1 {
-    hot::ShellBase* __spp_owner;
+    hot::ShellBase* __hot_owner;
     int seen;
     int points_seen;
     int thought_seen;
@@ -1394,7 +1394,7 @@ struct WatcherState_g1 {
 #line 100 "cpp_ns_v1.cpp"
     {
 #line 100 "cpp_ns_v1.cpp"
-        return static_cast<Watcher_Shell*>(__spp_owner)->Actor::TakeDamage(a0);
+        return static_cast<Watcher_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 100 "cpp_ns_v1.cpp"
     }
 #line 1401 "cpp_ns_v1.cpp.cpp"
@@ -1404,7 +1404,7 @@ struct WatcherState_g1 {
 #line 100 "cpp_ns_v1.cpp"
     {
 #line 100 "cpp_ns_v1.cpp"
-        return static_cast<Watcher_Shell*>(__spp_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Watcher_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 100 "cpp_ns_v1.cpp"
     }
 #line 1411 "cpp_ns_v1.cpp.cpp"
@@ -1422,7 +1422,7 @@ static void Watcher__init_thought_seen(void*, void* f) { using T = int; new (f) 
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static_assert(offsetof(WatcherState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(WatcherState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Watcher_fields[] = {
     {"seen", nullptr, hot::type_key<int>(), offsetof(WatcherState_g1, seen), sizeof(int),
      alignof(int), hot::field_flags<int>(), Watcher__init_seen, hot::move_field<int>, hot::field_destroyer<int>()},
@@ -1564,7 +1564,7 @@ void WatcherState_g1::ctor()
 #line 103 "cpp_ns_v1.cpp"
     }
 #line 103 "cpp_ns_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Watcher_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Watcher_Shell*>(this->__hot_owner);
 #line 103 "cpp_ns_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 103 "cpp_ns_v1.cpp"
@@ -1586,15 +1586,15 @@ void WatcherState_g1::Tick(float dt)
 #line 105 "cpp_ns_v1.cpp"
     }
 #line 105 "cpp_ns_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Watcher_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Watcher_Shell*>(this->__hot_owner);
 #line 105 "cpp_ns_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 106 "cpp_ns_v1.cpp"
 
-        if (!spp_mod()->brain)
-            spp_mod()->brain = game__ai__Brain__new();
-        spp_mod()->brain->Tick(dt);
-        game__ai__Brain_Shell* same = spp_mod()->brain;
+        if (!hot_mod()->brain)
+            hot_mod()->brain = game__ai__Brain__new();
+        hot_mod()->brain->Tick(dt);
+        game__ai__Brain_Shell* same = hot_mod()->brain;
         game__Player_Shell* parent = same;
         seen = mood_now() + game::bonus(0);
         points_seen = state_of(parent)->points;
@@ -1648,7 +1648,7 @@ HOT_NODEBUG static hot::Instance Watcher_create()
 
 extern "C" void script_register(hot::Registry& reg)
 {
-    reg.set_module_state(&SppModule_layout, &SppModule_slot);
+    reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&red__Unit_record, &red__Unit_create);
     reg.add(&blue__Unit_record, &blue__Unit_create);
     reg.add(&game__Player_record, &game__Player_create);

@@ -130,10 +130,10 @@ TEST(CppFrontend, MethodBodyEdits)
     Parsed p(kMain);
     ASSERT_TRUE(p.diag.items.empty()) << p.errors();
     // A base call gets "__self", a script field and a script method stay, "this" as a value
-    // becomes "__self", a module variable goes through spp_mod().
+    // becomes "__self", a module variable goes through hot_mod().
     EXPECT_EQ(p.method("Tick").raw_body,
         " __self->Move(Vec3(1, 2, 3)); __self->Move(Vec3()); Use(__self); hp -= 1; this->hp += 1; "
-        "__self->TakeDamage(dt); Jump(); spp_mod()->total += 1; __self->Position.x = 1; ");
+        "__self->TakeDamage(dt); Jump(); hot_mod()->total += 1; __self->Position.x = 1; ");
     // A call of an override goes through the shell. A [&] lambda can use a base member.
     EXPECT_EQ(p.method("Again").raw_body,
         " __self->Tick(0.5f); __self->Tick(1); auto f = [&, __self] { __self->Move(Vec3()); }; f(); ");
@@ -153,7 +153,7 @@ TEST(CppFrontend, CtorDtorFields)
     EXPECT_EQ(c.ctors[0].raw_body, " hp = kMax; ");
     ASSERT_EQ(c.dtors.size(), 1u);
     EXPECT_EQ(c.dtors[0].name, "~Player");
-    EXPECT_EQ(c.dtors[0].raw_body, " spp_mod()->total = 0; ");
+    EXPECT_EQ(c.dtors[0].raw_body, " hot_mod()->total = 0; ");
     ASSERT_EQ(c.fields.size(), 4u);
     EXPECT_EQ(c.fields[0].name, "hp");
     EXPECT_EQ(c.fields[0].raw_init, "100");
@@ -196,7 +196,7 @@ void Player::Tick(float dt) { this->Move(Vec3(dt, 0, 0)); Use(this); }
     const ast::ClassDef& c = p.script.classes[0];
     ASSERT_EQ(c.methods.size(), 4u);
     EXPECT_EQ(p.method("hit").raw_body,
-        " hp -= dmg; spp_mod()->total += 1; __self->Move(Vec3()); return this->hp; ");
+        " hp -= dmg; hot_mod()->total += 1; __self->Move(Vec3()); return this->hp; ");
     EXPECT_EQ(p.method("hit").params.at(0).name, "dmg"); // the name of the definition
     EXPECT_EQ(p.method("hit").ret, "int");
     EXPECT_EQ(p.method("hit").line, 6); // the head maps to the declaration
@@ -234,8 +234,8 @@ int A::add(int x, int y) { return x + y + limit; }
     EXPECT_EQ(m.params[0].name, "x");
     EXPECT_EQ(m.params[1].name, "y");
     ASSERT_TRUE(m.params[1].def);
-    EXPECT_EQ(m.params[1].def->cpp, "spp_mod()->limit");
-    EXPECT_EQ(m.raw_body, " return x + y + spp_mod()->limit; ");
+    EXPECT_EQ(m.params[1].def->cpp, "hot_mod()->limit");
+    EXPECT_EQ(m.raw_body, " return x + y + hot_mod()->limit; ");
 }
 
 TEST(CppFrontend, OutOfClassCtorDtor)
@@ -257,10 +257,10 @@ Player::~Player() { total--; }
     ASSERT_EQ(c.ctors.size(), 1u);
     EXPECT_TRUE(c.ctors[0].has_base_call);
     EXPECT_EQ(c.ctors[0].raw_base_args, "\"p\"");
-    EXPECT_EQ(c.ctors[0].raw_body, " hp = a; spp_mod()->total++; ");
+    EXPECT_EQ(c.ctors[0].raw_body, " hp = a; hot_mod()->total++; ");
     EXPECT_EQ(c.ctors[0].raw_line, 10);
     ASSERT_EQ(c.dtors.size(), 1u);
-    EXPECT_EQ(c.dtors[0].raw_body, " spp_mod()->total--; ");
+    EXPECT_EQ(c.dtors[0].raw_body, " hot_mod()->total--; ");
 }
 
 TEST(CppFrontend, OutOfClassEarlierDeclarationIsValid)
@@ -373,10 +373,10 @@ TEST(CppFrontend, MemberInitializersKeepFieldOrder)
     EXPECT_TRUE(c.has_base_call);
     EXPECT_EQ(c.raw_base_args, "\"x\"");
     ASSERT_EQ(c.raw_pre.size(), 4u); // the field "d" has a default member initializer and no entry
-    EXPECT_EQ(c.raw_pre[0].text, "{ decltype(__st->b) __spp_mi(a * 2); __st->b = std::move(__spp_mi); }");
-    EXPECT_EQ(c.raw_pre[1].text, "{ decltype(__st->c) __spp_mi{a + 1}; __st->c = std::move(__spp_mi); }");
-    EXPECT_EQ(c.raw_pre[2].text, "{ decltype(__st->name) __spp_mi(std::move(n)); __st->name = std::move(__spp_mi); }");
-    EXPECT_EQ(c.raw_pre[3].text, "{ decltype(__st->Actor_unused_marker_) __spp_mi(0); __st->Actor_unused_marker_ = std::move(__spp_mi); }");
+    EXPECT_EQ(c.raw_pre[0].text, "{ decltype(__st->b) __hot_mi(a * 2); __st->b = std::move(__hot_mi); }");
+    EXPECT_EQ(c.raw_pre[1].text, "{ decltype(__st->c) __hot_mi{a + 1}; __st->c = std::move(__hot_mi); }");
+    EXPECT_EQ(c.raw_pre[2].text, "{ decltype(__st->name) __hot_mi(std::move(n)); __st->name = std::move(__hot_mi); }");
+    EXPECT_EQ(c.raw_pre[3].text, "{ decltype(__st->Actor_unused_marker_) __hot_mi(0); __st->Actor_unused_marker_ = std::move(__hot_mi); }");
     EXPECT_EQ(c.raw_pre[0].line, 7);
     EXPECT_EQ(c.raw_body, "");
 }
@@ -392,11 +392,11 @@ TEST(CppFrontend, MemberInitializersEditsAndEmptyForms)
     const ast::Ctor& c = p.script.classes.at(0).ctors.at(0);
     EXPECT_FALSE(c.has_base_call);
     ASSERT_EQ(c.raw_pre.size(), 4u);
-    EXPECT_EQ(c.raw_pre[0].text, "{ decltype(__st->a) __spp_mi{}; __st->a = std::move(__spp_mi); }");
-    EXPECT_EQ(c.raw_pre[1].text, "{ decltype(__st->b) __spp_mi{}; __st->b = std::move(__spp_mi); }");
+    EXPECT_EQ(c.raw_pre[0].text, "{ decltype(__st->a) __hot_mi{}; __st->a = std::move(__hot_mi); }");
+    EXPECT_EQ(c.raw_pre[1].text, "{ decltype(__st->b) __hot_mi{}; __st->b = std::move(__hot_mi); }");
     EXPECT_EQ(c.raw_pre[2].text,
-        "{ decltype(__st->c) __spp_mi(spp_mod()->total + __self->Name.size()); __st->c = std::move(__spp_mi); }");
-    EXPECT_EQ(c.raw_pre[3].text, "{ decltype(__st->d) __spp_mi([=] { return 3; }()); __st->d = std::move(__spp_mi); }");
+        "{ decltype(__st->c) __hot_mi(hot_mod()->total + __self->Name.size()); __st->c = std::move(__hot_mi); }");
+    EXPECT_EQ(c.raw_pre[3].text, "{ decltype(__st->d) __hot_mi([=] { return 3; }()); __st->d = std::move(__hot_mi); }");
 }
 
 // An entry may name a parameter that has the name of the field. A constructor with no list has none.
@@ -408,7 +408,7 @@ TEST(CppFrontend, MemberInitializersParameterWithFieldName)
     const auto& cs = p.script.classes.at(0).ctors;
     ASSERT_EQ(cs.size(), 2u);
     ASSERT_EQ(cs[0].raw_pre.size(), 1u);
-    EXPECT_EQ(cs[0].raw_pre[0].text, "{ decltype(__st->hp) __spp_mi(hp); __st->hp = std::move(__spp_mi); }");
+    EXPECT_EQ(cs[0].raw_pre[0].text, "{ decltype(__st->hp) __hot_mi(hp); __st->hp = std::move(__hot_mi); }");
     EXPECT_TRUE(cs[1].raw_pre.empty());
 }
 
@@ -422,8 +422,8 @@ TEST(CppFrontend, MemberInitializersOutOfClass)
     const ast::Ctor& c = p.script.classes.at(0).ctors.at(0);
     EXPECT_EQ(c.raw_base_args, "\"s\"");
     ASSERT_EQ(c.raw_pre.size(), 2u);
-    EXPECT_EQ(c.raw_pre[0].text, "{ decltype(__st->x) __spp_mi(v); __st->x = std::move(__spp_mi); }");
-    EXPECT_EQ(c.raw_pre[1].text, "{ decltype(__st->y) __spp_mi(v + 1); __st->y = std::move(__spp_mi); }");
+    EXPECT_EQ(c.raw_pre[0].text, "{ decltype(__st->x) __hot_mi(v); __st->x = std::move(__hot_mi); }");
+    EXPECT_EQ(c.raw_pre[1].text, "{ decltype(__st->y) __hot_mi(v + 1); __st->y = std::move(__hot_mi); }");
     EXPECT_EQ(c.raw_body, " y++; ");
 }
 
@@ -434,7 +434,7 @@ TEST(CppFrontend, MemberInitializerEndsWithLineComment)
              "    S() : a(1 // one\n) {}\n    int a;\n};\n");
     ASSERT_TRUE(p.diag.items.empty()) << p.errors();
     EXPECT_EQ(p.script.classes.at(0).ctors.at(0).raw_pre.at(0).text,
-        "{ decltype(__st->a) __spp_mi(1 // one\n); __st->a = std::move(__spp_mi); }");
+        "{ decltype(__st->a) __hot_mi(1 // one\n); __st->a = std::move(__hot_mi); }");
 }
 
 TEST(CppFrontend, MemberInitializerErrors)
@@ -470,8 +470,8 @@ TEST(CppFrontend, MemberInitializersSkipComments)
     ASSERT_EQ(cs.size(), 2u);
     EXPECT_EQ(cs[0].raw_base_args, "\"x\"");
     ASSERT_EQ(cs[0].raw_pre.size(), 2u);
-    EXPECT_EQ(cs[0].raw_pre[0].text, "{ decltype(__st->a) __spp_mi(1); __st->a = std::move(__spp_mi); }");
-    EXPECT_EQ(cs[0].raw_pre[1].text, "{ decltype(__st->b) __spp_mi{2}; __st->b = std::move(__spp_mi); }");
+    EXPECT_EQ(cs[0].raw_pre[0].text, "{ decltype(__st->a) __hot_mi(1); __st->a = std::move(__hot_mi); }");
+    EXPECT_EQ(cs[0].raw_pre[1].text, "{ decltype(__st->b) __hot_mi{2}; __st->b = std::move(__hot_mi); }");
     EXPECT_TRUE(cs[1].raw_pre.empty());
 }
 
@@ -573,19 +573,19 @@ TEST(CppFrontend, StaticDataMembers)
     EXPECT_EQ(s.chunks[2].text, "constexpr int S__s_k = 3;");
     EXPECT_EQ(s.chunks[3].text, "const int S__s_f = 2;");
     EXPECT_EQ(s.chunks[4].kind, K::Class);
-    EXPECT_EQ(s.chunks[5].text, "int later() { return spp_mod()->S__s_n + spp_mod()->S__s_hits + S__s_k; }");
+    EXPECT_EQ(s.chunks[5].text, "int later() { return hot_mod()->S__s_n + hot_mod()->S__s_hits + S__s_k; }");
     ASSERT_EQ(s.vars.size(), 4u);
     EXPECT_EQ(s.vars[0].name, "total");
     EXPECT_EQ(s.vars[1].name, "S__s_n");
     EXPECT_EQ(s.vars[1].type, "int");
-    EXPECT_EQ(s.vars[1].raw_init, "spp_mod()->total + 1"); // from the definition outside the class
+    EXPECT_EQ(s.vars[1].raw_init, "hot_mod()->total + 1"); // from the definition outside the class
     EXPECT_EQ(s.vars[2].name, "S__s_hits");
     EXPECT_EQ(s.vars[2].raw_init, "5");
     EXPECT_EQ(s.vars[3].name, "after");
-    EXPECT_EQ(s.vars[3].raw_init, "spp_mod()->S__s_n");
+    EXPECT_EQ(s.vars[3].raw_init, "hot_mod()->S__s_n");
     EXPECT_EQ(p.method("F").raw_body,
-        " spp_mod()->S__s_n++; spp_mod()->S__s_n += 1; spp_mod()->S__s_n += 1; spp_mod()->S__s_hits = S__s_k + S__s_k; "
-        "int* q = &spp_mod()->S__s_n; (void)q; ");
+        " hot_mod()->S__s_n++; hot_mod()->S__s_n += 1; hot_mod()->S__s_n += 1; hot_mod()->S__s_hits = S__s_k + S__s_k; "
+        "int* q = &hot_mod()->S__s_n; (void)q; ");
 }
 
 // A static data member in a class makes the module block, when no module variable comes before.
@@ -626,18 +626,18 @@ TEST(CppFrontend, StaticMethods)
     // include, module, 2 prototypes, class, 2 definitions, g, fp
     ASSERT_EQ(s.chunks.size(), 9u);
     EXPECT_EQ(s.chunks[2].text,
-        "int S__s_make(int a, int b = spp_mod()->total,\n                    int c = 2);");
+        "int S__s_make(int a, int b = hot_mod()->total,\n                    int c = 2);");
     EXPECT_EQ(s.chunks[3].text, "int S__s_helper(int a);");
     EXPECT_EQ(s.chunks[4].kind, K::Class);
     EXPECT_EQ(s.chunks[5].text,
         "int S__s_make(int a, int b,\n                    int c)"
-        " { spp_mod()->total += a; return S__s_helper(a) + b + c; }");
+        " { hot_mod()->total += a; return S__s_helper(a) + b + c; }");
     EXPECT_EQ(s.chunks[5].line, 7);
-    EXPECT_EQ(s.chunks[6].text, "int S__s_helper(int a) { return a + spp_mod()->total; }");
+    EXPECT_EQ(s.chunks[6].text, "int S__s_helper(int a) { return a + hot_mod()->total; }");
     EXPECT_EQ(s.chunks[7].text, "int g() { return S__s_make(1) + S__s_helper(2); }");
     EXPECT_EQ(s.chunks[8].text, "int (*const fp)(int) = &S__s_helper;");
     EXPECT_EQ(p.method("F").raw_body,
-        " spp_mod()->total = S__s_make(1) + S__s_make(2, 3) + S__s_make(4) + S__s_make(5); ");
+        " hot_mod()->total = S__s_make(1) + S__s_make(2, 3) + S__s_make(4) + S__s_make(5); ");
     EXPECT_TRUE(p.script.classes.at(0).methods.size() == 1u); // a static method is not a method of the class
 }
 
@@ -817,7 +817,7 @@ TEST(CppFrontend, NamespaceAndStaticLocalVariables)
     EXPECT_EQ(s.vars[0].ns, "n");
     EXPECT_EQ(s.vars[1].name, "total");
     EXPECT_EQ(s.vars[1].ns, "");
-    EXPECT_EQ(s.chunks.back().text, "int f() { static int calls = 0; return ++calls + spp_mod()->n__c + spp_mod()->total; }");
+    EXPECT_EQ(s.chunks.back().text, "int f() { static int calls = 0; return ++calls + hot_mod()->n__c + hot_mod()->total; }");
 }
 
 // A declaration that uses a module variable stays in its place, with the edits of a body. This
@@ -841,11 +841,11 @@ TEST(CppFrontend, FreeFunctionWithModuleVariable)
     EXPECT_EQ(s.chunks[2].line, 3);
     EXPECT_EQ(s.chunks[2].text,
         "static inline int bump(int a,\n                       int b = 2)"
-        " { spp_mod()->total += a + b; return spp_mod()->total; }");
-    EXPECT_EQ(s.chunks[3].text, "template <class T> T g(T a) { return a + spp_mod()->total; }");
-    EXPECT_EQ(s.chunks[4].text, "constexpr int c(bool b) { return b ? 1 : spp_mod()->total; }");
-    EXPECT_EQ(s.chunks[5].text, "namespace n { int h() { return spp_mod()->total; } }");
-    EXPECT_EQ(s.chunks[6].text, "int d(int a = spp_mod()->total);");
+        " { hot_mod()->total += a + b; return hot_mod()->total; }");
+    EXPECT_EQ(s.chunks[3].text, "template <class T> T g(T a) { return a + hot_mod()->total; }");
+    EXPECT_EQ(s.chunks[4].text, "constexpr int c(bool b) { return b ? 1 : hot_mod()->total; }");
+    EXPECT_EQ(s.chunks[5].text, "namespace n { int h() { return hot_mod()->total; } }");
+    EXPECT_EQ(s.chunks[6].text, "int d(int a = hot_mod()->total);");
 }
 
 // A default argument keeps its text. A module variable and a base member get the edits of a body.
@@ -879,7 +879,7 @@ public:
     ASSERT_NE(f, nullptr);
     EXPECT_EQ(f->params[0].def, nullptr);
     EXPECT_EQ(f->params[1].def->cpp, "kMax");
-    EXPECT_EQ(f->params[2].def->cpp, "spp_mod()->level"); // a module variable, as in a body
+    EXPECT_EQ(f->params[2].def->cpp, "hot_mod()->level"); // a module variable, as in a body
     EXPECT_EQ(f->params[3].def->cpp, "{}");
 }
 
@@ -903,11 +903,11 @@ public:
     o.resource_dir = SPP_RESOURCE_DIR;
     const sppc::TranslateResult r = sppc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.cpp.find("S__F(S_Shell* __self, int x, int y = 2, int z = spp_mod()->level);"), std::string::npos)
+    EXPECT_NE(r.cpp.find("S__F(S_Shell* __self, int x, int y = 2, int z = hot_mod()->level);"), std::string::npos)
         << r.cpp;
     EXPECT_NE(r.cpp.find("S__new(int a = 4)"), std::string::npos) << r.cpp;
     // The body calls the member directly, so the member declaration has the defaults too.
-    EXPECT_NE(r.cpp.find("    int F(int x, int y = 2, int z = spp_mod()->level);"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("    int F(int x, int y = 2, int z = hot_mod()->level);"), std::string::npos) << r.cpp;
     // The definitions have no default.
     EXPECT_NE(r.cpp.find("SState_g1::F(int x, int y, int z)"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("S__F(S_Shell* __self, int x, int y, int z)\n"), std::string::npos) << r.cpp;
@@ -990,7 +990,7 @@ public:
         " auto f = [__self] { auto g = [__self] { return state_of(__self)->n; }; return g(); }; f(); ");
     // The default "=" makes the item "this" useless, so it goes away. "[&, this]" keeps the shell by copy.
     EXPECT_EQ(p.method("F").raw_body,
-        " auto f = [=] { state_of(__self)->Use(__self); spp_mod()->total += 1; return state_of(__self)->n; }; f(); ");
+        " auto f = [=] { state_of(__self)->Use(__self); hot_mod()->total += 1; return state_of(__self)->n; }; f(); ");
     EXPECT_EQ(p.method("G").raw_body, " auto f = [&, __self] { return state_of(__self)->n; }; f(); ");
     EXPECT_EQ(p.method("H").raw_body, " auto f = [__self, x, y = state_of(__self)->n] { return x + y; }; f(); ");
     // A lambda with no capture and a field outside a lambda stay as they are.
@@ -1095,7 +1095,7 @@ TEST(CppFrontend, ScriptClassTypeEdits)
         "S__set(&(s), state_of(d)->v + state_of(&(e))->v); d->Tick(1); delete d; ");
     // A module variable and a field access edit the same place: the field access is outside.
     EXPECT_EQ(method_of(p, "T", "C").raw_body,
-        " state_of(spp_mod()->first)->v = 1; S__set(spp_mod()->first, S__get(spp_mod()->first)); ");
+        " state_of(hot_mod()->first)->v = 1; S__set(hot_mod()->first, S__get(hot_mod()->first)); ");
     // A const object: the field access keeps the C++ check of the source.
     EXPECT_EQ(method_of(p, "T", "D").raw_body,
         " const S_Shell& r = (*hot::shell_of<S_Shell>(*a, \"S\")); return state_of(const_cast<S_Shell*>(&(r)))->v; ");
@@ -1451,7 +1451,7 @@ TEST(CppFrontend, NamespaceBaseAndTypes)
 }
 
 // A module variable in a namespace is a member of the module with the namespace in its name.
-// A function of the namespace uses it through "spp_mod()".
+// A function of the namespace uses it through "hot_mod()".
 TEST(CppFrontend, NamespaceModuleVariable)
 {
     Parsed p("namespace game { int score = 0; int bonus(int x) { return x + score; } }\n"
@@ -1469,7 +1469,7 @@ TEST(CppFrontend, NamespaceModuleVariable)
         {
             found = true;
             EXPECT_EQ(ch.ns, "game");
-            EXPECT_NE(ch.text.find("return x + spp_mod()->game__score;"), std::string::npos) << ch.text;
+            EXPECT_NE(ch.text.find("return x + hot_mod()->game__score;"), std::string::npos) << ch.text;
         }
     EXPECT_TRUE(found);
 }
