@@ -293,8 +293,31 @@ private:
     const std::string& text_;
     const LineMap& map_;
     ast::Script sc_;
-    std::map<std::string, std::string> module_vars_; // USR -> name
-    std::map<std::string, std::string> script_classes_; // USR -> name
+
+    // The kinds of declaration that the index records.
+    enum class Kind
+    {
+        ScriptClass,
+        ScriptField,
+        ScriptMethod,
+        ScriptStatic,
+        ScriptStaticFn,
+        ModuleVar
+    };
+
+    // One declaration of the script. "mangled" is "<Class>__<name>" for a static member.
+    struct Entry
+    {
+        Kind kind;
+        std::string owner_usr, owner_name, name, mangled;
+        bool virt = false;
+    };
+
+    std::map<std::string, Entry> table_; // USR of the declaration -> entry
+
+    void index(const std::vector<CXCursor>& top);
+    void index_member(CXCursor k, const std::string& owner_usr, const std::string& owner_name);
+    const Entry* lookup(CXCursor ref) const;
 
     int line(uint32_t pos) const { return map_.line(pos); }
 
@@ -343,10 +366,10 @@ void Frontend::check_type_refs(CXCursor c, const std::string& own_usr)
         if (clang_getCursorKind(k) == CXCursor_TypeRef)
         {
             std::string u = usr(clang_getCursorReferenced(k));
-            auto it = script_classes_.find(u);
-            if (it != script_classes_.end() && u != own_usr)
+            const Entry* en = lookup(clang_getCursorReferenced(k));
+            if (en && en->kind == Kind::ScriptClass && u != own_usr)
                 fail(pos_of(k),
-                    "the script class '" + it->second + "' cannot be named outside its body (first version)");
+                    "the script class '" + en->name + "' cannot be named outside its body (first version)");
         }
         check_type_refs(k, own_usr);
     }
@@ -372,10 +395,10 @@ bool Frontend::find_module_ref(CXCursor c, const CXCursor* skip, std::string& na
             continue;
         if (clang_getCursorKind(k) == CXCursor_DeclRefExpr)
         {
-            auto it = module_vars_.find(usr(clang_getCursorReferenced(k)));
-            if (it != module_vars_.end())
+            const Entry* en = lookup(clang_getCursorReferenced(k));
+            if (en && en->kind == Kind::ModuleVar)
             {
-                name = it->second;
+                name = en->name;
                 pos = pos_of(k);
                 return true;
             }
@@ -560,10 +583,10 @@ void Frontend::examine(CXCursor k, EditCtx& ctx)
         CXCursor ref = clang_getCursorReferenced(k);
         if (clang_Cursor_isNull(ref))
             return;
-        auto it = module_vars_.find(usr(ref));
-        if (it != module_vars_.end())
+        const Entry* en = lookup(ref);
+        if (en && en->kind == Kind::ModuleVar)
         {
-            add(e.begin, e.end - e.begin, "spp_mod()->" + it->second);
+            add(e.begin, e.end - e.begin, "spp_mod()->" + en->name);
             return;
         }
         if (t.find("::") == std::string::npos && !qualified(e.begin) && base_scoped(ref))
@@ -573,9 +596,9 @@ void Frontend::examine(CXCursor k, EditCtx& ctx)
     case CXCursor_TypeRef:
     {
         CXCursor ref = clang_getCursorReferenced(k);
-        auto it = script_classes_.find(usr(ref));
-        if (it != script_classes_.end())
-            fail(e.begin, "the script class '" + it->second + "' cannot be named outside its body (first version)");
+        const Entry* en = lookup(ref);
+        if (en && en->kind == Kind::ScriptClass)
+            fail(e.begin, "the script class '" + en->name + "' cannot be named outside its body (first version)");
         if (!qualified(e.begin) && base_scoped(ref))
             add(e.begin, 0, ctx.cls->base + "::");
         return;
@@ -921,6 +944,63 @@ bool is_script_class(CXCursor c)
         has_child(c, CXCursor_CXXBaseSpecifier);
 }
 
+// Records a member of the script class "owner_usr". A static member is recorded, but
+// process_class still rejects it. An out-of-class method definition has the USR of its
+// declaration: the first entry stays.
+void Frontend::index_member(CXCursor k, const std::string& owner_usr, const std::string& owner_name)
+{
+    const CXCursorKind kind = clang_getCursorKind(k);
+    Entry en{Kind::ScriptField, owner_usr, owner_name, spelling(k), std::string()};
+    if (kind == CXCursor_VarDecl)
+    {
+        en.kind = Kind::ScriptStatic;
+        en.mangled = owner_name + "__" + en.name;
+    }
+    else if (kind == CXCursor_CXXMethod)
+    {
+        const bool is_static = clang_CXXMethod_isStatic(k) != 0;
+        en.kind = is_static ? Kind::ScriptStaticFn : Kind::ScriptMethod;
+        if (is_static)
+            en.mangled = owner_name + "__" + en.name;
+        en.virt = clang_CXXMethod_isVirtual(k) || has_child(k, CXCursor_CXXOverrideAttr);
+    }
+    else if (kind != CXCursor_FieldDecl)
+        return;
+    table_.emplace(usr(k), std::move(en));
+}
+
+// Index the declarations of the main file: the script classes with their members and the module
+// variables. The second loop is for out-of-class method definitions. It adds nothing yet.
+void Frontend::index(const std::vector<CXCursor>& top)
+{
+    for (CXCursor k : top)
+    {
+        if (is_script_class(k))
+        {
+            const std::string u = usr(k), n = spelling(k);
+            table_[u] = Entry{Kind::ScriptClass, u, n, n, std::string()};
+            for (CXCursor m : children(k))
+                index_member(m, u, n);
+        }
+        else if (is_module_var(k))
+            table_[usr(k)] = Entry{Kind::ModuleVar, std::string(), std::string(), spelling(k), std::string()};
+    }
+    for (CXCursor k : top)
+    {
+        if (clang_getCursorKind(k) != CXCursor_CXXMethod)
+            continue;
+        auto it = table_.find(usr(clang_getCursorSemanticParent(k)));
+        if (it != table_.end() && it->second.kind == Kind::ScriptClass)
+            index_member(k, it->first, it->second.name);
+    }
+}
+
+const Frontend::Entry* Frontend::lookup(CXCursor ref) const
+{
+    auto it = table_.find(usr(ref));
+    return it == table_.end() ? nullptr : &it->second;
+}
+
 ast::Script Frontend::run(CXTranslationUnit tu, const std::string& name)
 {
     main_ = clang_getFile(tu, name.c_str());
@@ -928,14 +1008,7 @@ ast::Script Frontend::run(CXTranslationUnit tu, const std::string& name)
     for (CXCursor k : children(clang_getTranslationUnitCursor(tu)))
         if (from_main(k))
             top.push_back(k);
-    // The first pass: the names of the script classes and of the module variables.
-    for (CXCursor k : top)
-    {
-        if (is_script_class(k))
-            script_classes_[usr(k)] = spelling(k);
-        else if (is_module_var(k))
-            module_vars_[usr(k)] = spelling(k);
-    }
+    index(top);
     for (CXCursor k : top)
     {
         const CXCursorKind kind = clang_getCursorKind(k);
@@ -946,20 +1019,23 @@ ast::Script Frontend::run(CXTranslationUnit tu, const std::string& name)
         }
         if (kind == CXCursor_MacroExpansion)
             continue;
-        const bool script_class = is_script_class(k);
+        // A declaration that is not a definition (a prototype) has the USR of its definition.
+        const Entry* en = clang_isCursorDefinition(k) ? lookup(k) : nullptr;
+        const bool script_class = en && en->kind == Kind::ScriptClass;
         check_type_refs(k, script_class ? usr(k) : std::string());
         const Range e = extent_of(k);
         if (script_class)
             process_class(k);
-        else if (is_module_var(k))
+        else if (en && en->kind == Kind::ModuleVar)
             sc_.vars.push_back(make_field(k, nullptr));
         else if (kind == CXCursor_FunctionDecl && clang_isCursorDefinition(k))
         {
             const std::string n = spelling(k);
             bool hook = false;
             if (n.rfind("convert_", 0) == 0)
-                for (const auto& v : module_vars_)
-                    hook = hook || v.second == n.substr(std::strlen("convert_"));
+                for (const auto& v : table_)
+                    hook = hook ||
+                        (v.second.kind == Kind::ModuleVar && v.second.name == n.substr(std::strlen("convert_")));
             std::string var;
             uint32_t var_pos = 0;
             if (hook)
