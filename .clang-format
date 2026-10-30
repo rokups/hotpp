@@ -158,4 +158,32 @@ UseCRLF: true
 UseTab: Never
 ...
 
+# C# (the S++ scripts, *.spp). Microsoft style plus the same choices as the C++ document.
+# Use tools/format-spp.sh. See DECISIONS.md, "C# style for scripts".
+---
+Language: CSharp
+BasedOnStyle: Microsoft
+
+AccessModifierOffset: -4
+AlignAfterOpenBracket: DontAlign
+AlignOperands: DontAlign
+AlignTrailingComments: false
+BinPackArguments: true
+BinPackParameters: true
+BreakBeforeBinaryOperators: NonAssignment
+BreakBeforeTernaryOperators: true
+ColumnLimit: 120
+ContinuationIndentWidth: 4
+DeriveLineEnding: true
+IndentWidth: 4
+KeepEmptyLinesAtTheStartOfBlocks: true
+MaxEmptyLinesToKeep: 1
+PointerAlignment: Left
+SpaceBeforeSquareBrackets: false
+SpacesBeforeTrailingComments: 1
+TabWidth: 4
+UseCRLF: true
+UseTab: Never
+...
+
 # vi: set ts=2 sw=2 expandtab:
