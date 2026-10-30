@@ -132,6 +132,10 @@ Limits of the `.` access. The translator writes `a.b` as `spp::deref(a).b`. This
 
 The slot file (`--slots`) keeps the slot order of the script methods stable between generations. A generation can add a method, but it cannot remove one.
 
+### C++ scripts
+
+A script can be a plain `.cpp` file. It compiles unchanged in a normal CMake build with no `sppc`. It includes `spp/script.h`, which `sppc` also force-includes. The extension selects the parser: `.spp` uses the custom syntax and `.cpp` uses libclang. Both modes load side by side in one program. A `.cpp` script cannot include a `.spp` script, and a `.spp` script cannot import a `.cpp` script. `sppc` keeps the method bodies as text and edits only a native base member, `this` as an argument, a module variable and a static member of the base. The fixtures are `tests/scripts/cpp_player_v1.cpp` and `tests/scripts/cpp_player_v2.cpp`. See [doc/cpp-scripts.md](doc/cpp-scripts.md) for the supported forms, the errors and the known limits. The language server and the VS Code extension serve `.spp` only. `spp_add_scripts` takes `.cpp` paths in `SCRIPTS`. A `foo.spp` and a `foo.cpp` in one call fail at configure time.
+
 ### Module declarations (S8a)
 
 A script can declare enums, structs and module variables at file level (`DECISIONS.md` item 11). See `tests/scripts/module_v1.spp` and `module_v2.spp`.
@@ -431,7 +435,7 @@ Editors:
 
 ## Language server
 
-`spp-ls` (S14b, design 10.1, M12 to M14) is a stdio LSP 3.17 server. The code is in `src/ls/`. The extension in `editors/vscode/` starts it.
+`spp-ls` (S14b, design 10.1, M12 to M14) is a stdio LSP 3.17 server. It serves `.spp` files only. A `.cpp` script is a C++ file for clangd (see [doc/cpp-scripts.md](doc/cpp-scripts.md)). The code is in `src/ls/`. The extension in `editors/vscode/` starts it.
 
 ### Editor setup: two servers (S31, DECISIONS 18)
 

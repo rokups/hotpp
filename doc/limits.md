@@ -22,3 +22,5 @@ This list shows what version 1 does not support.
 - A field of a move-only type, such as `std.unique_ptr<T>`. A reload copies each field. Use a handle.
 - Windows and macOS. They are untested.
 - MSVC, Visual Studio, and a real gdb or lldb session. They are untested.
+
+A `.cpp` script (see [C++ scripts](cpp-scripts.html)) has more limits. It has no properties, no script virtual methods without `override`, no script-class handles and no `new`, and no script inheritance.

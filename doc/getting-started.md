@@ -6,6 +6,8 @@ nav_order: 2
 
 A script is a class in a `.spp` file. It derives from a native engine class.
 
+A script can also be a plain C++ file, a `.cpp` script. It compiles unchanged in a normal build. See [C++ scripts](cpp-scripts.html).
+
 ## Write a class
 
 `using` pulls in a native header. A method with `override` replaces a native virtual method. A bare name reaches a script member or a native member of the base. Use `this.` only when a parameter has the same name.

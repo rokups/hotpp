@@ -263,7 +263,7 @@ The function runs `sppc` at build time. It has two modes. `AOT` selects the seco
 | Keyword | Default | Meaning | Path rule |
 |---|---|---|---|
 | `TARGET` | none, required | The name of the target. In the default mode it is a custom target. In AOT mode it is a static library. | none |
-| `SCRIPTS` | none, required | The script files. | A relative path is relative to the current source folder. The function makes it absolute. |
+| `SCRIPTS` | none, required | The script files. A file is a `.spp` script or a `.cpp` script (see [C++ scripts](cpp-scripts.html)). The extension selects the parser. | A relative path is relative to the current source folder. The function makes it absolute. |
 | `AOT` | off | A flag. It selects the AOT mode. | none |
 | `INCLUDES` | empty | Include folders. `sppc` gets each one as `-I`. In AOT mode the library also gets them as PUBLIC include folders. The language server host gets them too. | Use an absolute path. The function passes the text to `sppc` as it is, and the custom command runs in the current build folder. The AOT include folders and the host file read a relative path from the current source folder. |
 | `PRELUDES` | empty | Prelude files for `sppc --prelude`. They work only with `AOT`. The default mode stops with an error. | A relative path is relative to the current source folder. |
@@ -295,6 +295,8 @@ The function makes one custom target `name`. The target makes the library `OUT_D
 Each library gets the compile flags `-fPIC -shared -g -Werror=return-type` and the standard from the section above. The compiler is `CMAKE_CXX_COMPILER`. `sppc` adds no `-O` flag and does not read `CMAKE_CXX_FLAGS`. Give the flags of the host in `FLAGS`.
 
 Two scripts in one call must have different names (the file name without the extension). Else `sppc` stops with `two scripts have the name ...`.
+
+The stem rule also applies to `.cpp` scripts. A `foo.spp` and a `foo.cpp` in one call have the same stem `foo`. The configure step fails with an error that names both scripts. The `sppc` output of a `.cpp` script is named `<input>.cpp`, for example `foo.cpp.cpp`. The backends keep the stem rule, for example `foo.g1.cpp` and `foo.g1.so`.
 
 The target does not build automatically. Your host target must depend on it: `add_dependencies(app name)`.
 

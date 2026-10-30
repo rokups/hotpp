@@ -17,7 +17,7 @@ nav_order: 15
 
 ## Setup
 
-`spp-ls` serves only `.spp` files. Use the clangd extension for the C++ files. `clangd` must be in `PATH`. CMake writes the script host files, so you do not pass `-I` flags.
+`spp-ls` serves only `.spp` files. Use the clangd extension for the C++ files. A `.cpp` script is a C++ file for clangd (see [C++ scripts](cpp-scripts.html)). The errors of `sppc` for a `.cpp` script appear at build time. `clangd` must be in `PATH`. CMake writes the script host files, so you do not pass `-I` flags.
 
 ```cmake
 spp_script_host(NAME engine TARGET engine
@@ -33,7 +33,7 @@ Add `.cache/` to the ignore list of the project. Without a host, give the option
 
 ## VS Code
 
-The extension is in `editors/vscode/`. It gives highlighting, the language server client and breakpoints in `.spp` files.
+The extension is in `editors/vscode/`. It gives highlighting, the language server client and breakpoints in `.spp` files. The extension serves `.spp` only. It does not serve a `.cpp` script.
 
 | Setting | Default |
 |---|---|
