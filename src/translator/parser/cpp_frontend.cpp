@@ -306,7 +306,7 @@ private:
     std::string edit_region(CXCursor root, Range region, const ClassInfo* cls);
     void process_class(CXCursor c);
     ast::Field make_field(CXCursor c, const ClassInfo* cls);
-    void fill_params(CXCursor c, std::vector<ast::Param>& out);
+    void fill_params(CXCursor c, std::vector<ast::Param>& out, const ClassInfo* cls);
     CXCursor body_of(CXCursor c);
     ast::Method make_method(CXCursor c, const ClassInfo* cls);
     ast::Ctor make_ctor(CXCursor c, const ClassInfo& cls);
@@ -609,18 +609,26 @@ ast::Field Frontend::make_field(CXCursor c, const ClassInfo* cls)
     return f;
 }
 
-void Frontend::fill_params(CXCursor c, std::vector<ast::Param>& out)
+void Frontend::fill_params(CXCursor c, std::vector<ast::Param>& out, const ClassInfo* cls)
 {
     const int n = clang_Cursor_getNumArguments(c);
     for (int i = 0; i < n; ++i)
     {
         CXCursor a = clang_Cursor_getArgument(c, static_cast<unsigned>(i));
-        for (CXCursor k : children(a))
-            if (clang_isExpression(clang_getCursorKind(k)))
-                fail(pos_of(a), "a default argument is not supported in a .cpp script");
         ast::Param p;
         p.name = spelling(a);
         p.type = type_text(clang_getCursorType(a));
+        for (CXCursor k : children(a))
+            if (clang_isExpression(clang_getCursorKind(k)))
+            {
+                // The text is already C++. The edits are the same as in a body. The shared
+                // default is "lowered", so the .spp path ("default_arg") writes the text as is.
+                p.def = std::make_shared<ast::ParamDefault>();
+                p.def->cpp = trim(edit_region(a, extent_of(k), cls));
+                p.def->lowered = true;
+                p.def->pos = pos_of(k);
+                break;
+            }
         out.push_back(std::move(p));
     }
 }
@@ -666,7 +674,7 @@ ast::Method Frontend::make_method(CXCursor c, const ClassInfo* cls)
     }
     if (kind != CXCursor_Destructor)
         m.ret = type_text(clang_getResultType(clang_getCursorType(c)));
-    fill_params(c, m.params);
+    fill_params(c, m.params, cls);
     if (m.name == "onReload")
         for (ast::Param& p : m.params)
         {
@@ -692,7 +700,7 @@ ast::Ctor Frontend::make_ctor(CXCursor c, const ClassInfo& cls)
     ct.pos = pos_of(c);
     ct.line = line(ct.pos);
     ct.access = access_of(c);
-    fill_params(c, ct.params);
+    fill_params(c, ct.params, &cls);
     const Range b = extent_of(body_of(c));
     ct.end_pos = b.end - 1;
     ct.end_line = line(ct.end_pos);

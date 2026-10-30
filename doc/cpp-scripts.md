@@ -211,6 +211,7 @@ All other text stays as you wrote it.
 - Constructors with a base initializer, for example `Actor(args)`.
 - Destructors.
 - `override` of native virtual methods, and native interface bases.
+- Default arguments on a constructor and on a method. The text of a default gets the same edits as a method body, so it can name a module variable. An `override` has no default argument (sppc gives an error): the call through the base sees the base declaration. The fixture `tests/scripts/cpp_defaults.cpp` shows them.
 
 At file scope a `.cpp` script can have:
 
@@ -240,7 +241,6 @@ The first version gives an error for each form in this list. The text in the sec
 | A static member function | `a static method is not supported in a .cpp script` |
 | A method defined outside the class | `define the method inside the class` |
 | A member initializer in a constructor | `use a default member initializer` |
-| A default argument | `a default argument is not supported in a .cpp script` |
 | Any other declaration in the class | `this declaration is not supported in a .cpp script class` |
 | Properties | There is no property syntax in C++. Use two methods. |
 | Script-class handles and `new` | A script class is not a handle in a `.cpp` script. |

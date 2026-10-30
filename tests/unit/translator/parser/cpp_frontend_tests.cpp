@@ -187,7 +187,6 @@ TEST(CppFrontend, StructureErrors)
     expect_error("class S : public Actor { virtual void F() {} };",
         "'virtual' is not supported in a .cpp script; use 'override' of a native virtual");
     expect_error("class S : public Actor { static void F() {} };", "a static method is not supported in a .cpp script");
-    expect_error("class S : public Actor { void F(int a = 1) {} };", "a default argument is not supported in a .cpp script");
     expect_error("class S : public Actor { void F(); };", "define the method inside the class");
     expect_error("class S : public Actor { int hp = 0; S() : hp(1) {} };", "use a default member initializer");
     expect_error("class S : public Actor { int hp = 0; S() : Actor(), hp(1) {} };", "use a default member initializer");
@@ -195,6 +194,92 @@ TEST(CppFrontend, StructureErrors)
         "a free function cannot use the module variable 'total' in a .cpp script (first version)");
     expect_error("class S : public Actor {};\nvoid g(S* s) { (void)s; }",
         "the script class 'S' cannot be named outside its body (first version)");
+}
+
+// A default argument keeps its text. A module variable and a base member get the edits of a body.
+TEST(CppFrontend, DefaultArguments)
+{
+    Parsed p(std::string(kMain) + R"(
+int level = 3;
+class D : public Actor
+{
+public:
+    D(int a = 4, float b = 0.5f) : Actor("D") {}
+    int F(int x, int y = kMax, int z = level, int w = {}) { return x + y + z + w; }
+    int G(int x) { return F(x); }
+};
+)");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    const ast::ClassDef* d = nullptr;
+    for (const auto& c : p.script.classes)
+        if (c.name == "D")
+            d = &c;
+    ASSERT_NE(d, nullptr);
+    ASSERT_EQ(d->ctors.size(), 1u);
+    ASSERT_EQ(d->ctors[0].params.size(), 2u);
+    ASSERT_NE(d->ctors[0].params[0].def, nullptr);
+    EXPECT_EQ(d->ctors[0].params[0].def->cpp, "4");
+    EXPECT_EQ(d->ctors[0].params[1].def->cpp, "0.5f");
+    const ast::Method* f = nullptr;
+    for (const auto& m : d->methods)
+        if (m.name == "F")
+            f = &m;
+    ASSERT_NE(f, nullptr);
+    EXPECT_EQ(f->params[0].def, nullptr);
+    EXPECT_EQ(f->params[1].def->cpp, "kMax");
+    EXPECT_EQ(f->params[2].def->cpp, "spp_mod()->level"); // a module variable, as in a body
+    EXPECT_EQ(f->params[3].def->cpp, "{}");
+}
+
+// The prototype has the default. The definition and the thunk do not repeat it.
+TEST(CppFrontend, DefaultArgumentsEmit)
+{
+    sppc::TranslateOptions o;
+    o.script_name = "t.cpp";
+    o.script_text = R"(#include "Actor.h"
+int level = 3;
+class S : public Actor
+{
+public:
+    S(int a = 4) : Actor("S") {}
+    int F(int x, int y = 2, int z = level) { return x + y + z; }
+    void Tick(float dt) override { F(1); }
+};
+)";
+    o.generation = 1;
+    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/tests/engine", std::string(SPP_SOURCE_DIR) + "/include"};
+    o.resource_dir = SPP_RESOURCE_DIR;
+    const sppc::TranslateResult r = sppc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("S__F(S_Shell* __self, int x, int y = 2, int z = spp_mod()->level);"), std::string::npos)
+        << r.cpp;
+    EXPECT_NE(r.cpp.find("S__new(int a = 4)"), std::string::npos) << r.cpp;
+    // The body calls the member directly, so the member declaration has the defaults too.
+    EXPECT_NE(r.cpp.find("    int F(int x, int y = 2, int z = spp_mod()->level);"), std::string::npos) << r.cpp;
+    // The definitions have no default.
+    EXPECT_NE(r.cpp.find("SState_g1::F(int x, int y, int z)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("S__F(S_Shell* __self, int x, int y, int z)\n"), std::string::npos) << r.cpp;
+}
+
+// A default argument on an override is an error: the call through the base sees the base declaration.
+TEST(CppFrontend, DefaultArgumentOnOverrideFails)
+{
+    sppc::TranslateOptions o;
+    o.script_name = "t.cpp";
+    o.script_text = R"(#include "Actor.h"
+class S : public Actor
+{
+public:
+    void TakeDamage(float a = 1.0f) override {}
+};
+)";
+    o.generation = 1;
+    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/tests/engine", std::string(SPP_SOURCE_DIR) + "/include"};
+    o.resource_dir = SPP_RESOURCE_DIR;
+    const sppc::TranslateResult r = sppc::translate(o);
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("default values are not allowed on virtual or override methods"), std::string::npos)
+        << r.diagnostics;
 }
 
 TEST(CppFrontend, EditErrors)

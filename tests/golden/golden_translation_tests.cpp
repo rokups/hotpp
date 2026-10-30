@@ -99,3 +99,9 @@ TEST(GoldenTranslation, CppPlayer)
 {
     golden_pair("cpp_player", ".cpp");
 }
+
+// A .cpp script with default arguments: the prototype has them and the definition does not.
+TEST(GoldenTranslation, CppDefaults)
+{
+    golden_one("cpp_defaults", ".cpp");
+}

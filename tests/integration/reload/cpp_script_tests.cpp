@@ -60,6 +60,23 @@ TEST_P(BackendTests, CppScriptRunsThroughNativeVirtual)
     EXPECT_EQ(*fld<int>(s.inst.shell, "level"), 1);
 }
 
+// Default arguments of a .cpp script: a constructor, a constant and a module variable.
+TEST_P(BackendTests, CppScriptDefaultArguments)
+{
+    spp::LoadResult v1 = backend->load(source("cpp_defaults.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Counter"));
+    EXPECT_EQ(*fld<int>(s.inst.shell, "value"), 6); // the default "kStep * 3" of the constructor
+    s.actor->Tick(kDt); // Add(10): 10 + 2 + calls(0). Add(10, 5, 100): 115.
+    EXPECT_EQ(*fld<int>(s.inst.shell, "value"), 12);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 115);
+    EXPECT_EQ(*modvar<int>(s, "calls"), 2);
+    s.actor->Tick(kDt); // the default "calls" reads the module variable at each call: 2
+    EXPECT_EQ(*fld<int>(s.inst.shell, "value"), 14);
+    EXPECT_EQ(*modvar<int>(s, "calls"), 4);
+}
+
 // The reload to generation 2. The alias moves hp to health. The convert hooks change level and total.
 TEST_P(BackendTests, CppScriptReloadMigratesFieldsAndModuleVariable)
 {

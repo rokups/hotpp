@@ -4037,7 +4037,10 @@ void translate_impl(
                 }
                 else
                 {
-                    members += "    " + fn_ret(m) + " " + m.name + "(" + no_comma(param_decl(m)) + ");\n";
+                    // The body of a ".cpp" script calls the member directly, so the member has the
+                    // defaults. The definition of the member does not repeat them.
+                    members += "    " + fn_ret(m) + " " + m.name + "("
+                        + no_comma(m.raw ? param_decl_def(m) : param_decl(m)) + ");\n";
                 }
             }
             if (!members.empty())
