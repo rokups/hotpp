@@ -23,22 +23,22 @@ namespace
 using namespace parser; // NOLINT: the grammar uses the names of lexy_common.hpp
 
 // ---------------------------------------------------------------- error texts
-SPP_ERROR_TAG(e_top, "expected 'using', 'class', 'struct', 'enum' or a variable");
-SPP_ERROR_TAG(e_enum_name, "expected an enum name");
-SPP_ERROR_TAG(e_enumerator, "expected an enumerator name");
-SPP_ERROR_TAG(e_member, "expected a member: 'Type name;' or 'Ret name(...)'");
-SPP_ERROR_TAG(e_member_name, "expected a member name");
-SPP_ERROR_TAG(e_class_name, "expected a class name");
-SPP_ERROR_TAG(e_base_name, "expected a base class name");
-SPP_ERROR_TAG(e_field_name, "expected a field name");
-SPP_ERROR_TAG(e_param_name, "expected a parameter name");
-SPP_ERROR_TAG(e_attr_name, "expected an attribute name");
-SPP_ERROR_TAG(e_alias_string, "expected a string in [alias(...)]");
-SPP_ERROR_TAG(e_import_name, "using needs a header name");
-SPP_ERROR_TAG(e_import_arg, "using needs a string or <header>");
-SPP_ERROR_TAG(e_import_close, "using <...> needs a closing '>'");
-SPP_ERROR_TAG(e_accessor, "expected 'get' or 'set'");
-SPP_ERROR_TAG(e_base, "expected 'base(...)' after ':' of a constructor");
+HOT_ERROR_TAG(e_top, "expected 'using', 'class', 'struct', 'enum' or a variable");
+HOT_ERROR_TAG(e_enum_name, "expected an enum name");
+HOT_ERROR_TAG(e_enumerator, "expected an enumerator name");
+HOT_ERROR_TAG(e_member, "expected a member: 'Type name;' or 'Ret name(...)'");
+HOT_ERROR_TAG(e_member_name, "expected a member name");
+HOT_ERROR_TAG(e_class_name, "expected a class name");
+HOT_ERROR_TAG(e_base_name, "expected a base class name");
+HOT_ERROR_TAG(e_field_name, "expected a field name");
+HOT_ERROR_TAG(e_param_name, "expected a parameter name");
+HOT_ERROR_TAG(e_attr_name, "expected an attribute name");
+HOT_ERROR_TAG(e_alias_string, "expected a string in [alias(...)]");
+HOT_ERROR_TAG(e_import_name, "using needs a header name");
+HOT_ERROR_TAG(e_import_arg, "using needs a string or <header>");
+HOT_ERROR_TAG(e_import_close, "using <...> needs a closing '>'");
+HOT_ERROR_TAG(e_accessor, "expected 'get' or 'set'");
+HOT_ERROR_TAG(e_base, "expected 'base(...)' after ':' of a constructor");
 
 // The text of a span.
 std::string_view span_text(const ParseState& st, Span sp)

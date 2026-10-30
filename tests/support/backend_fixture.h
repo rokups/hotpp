@@ -1,4 +1,4 @@
-// The fixture of the tests that use the backend which SPP_BACKEND selected.
+// The fixture of the tests that use the backend which HOT_BACKEND selected.
 // The suite BackendTests has tests in several files. One file instantiates it.
 #pragma once
 

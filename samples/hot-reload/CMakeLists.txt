@@ -1,29 +1,29 @@
 # The sample hot-reload: a program that replaces the code of a live script object.
 # This file works in the S++ build (add_subdirectory) and as a separate project.
 cmake_minimum_required(VERSION 3.20)
-project(spp_sample_hot_reload CXX)
+project(hot_sample_hot_reload CXX)
 
 # The S++ source tree. A separate build uses it. The S++ build already has the targets.
-set(SPP_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The S++ source tree")
+set(HOT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The S++ source tree")
 if(NOT TARGET sppc)
-    add_subdirectory(${SPP_ROOT} spp)
+    add_subdirectory(${HOT_ROOT} hot)
 endif()
 
 # One program source, two script variants. The extension picks the
 # scripts. Both variants are in the folder script. The names of the script files stay wolf_v1 and wolf_v2.
-#   sample_hot_reload_spp reads script/wolf_v1.hot and wolf_v2.hot.
+#   sample_hot_reload_hot reads script/wolf_v1.hot and wolf_v2.hot.
 #   sample_hot_reload_cpp reads script/wolf_v1.cpp and wolf_v2.cpp.
-# spp_backend has make_default_backend and the loader (spp_runtime).
-foreach(variant spp cpp)
-    # The variant "spp" uses the extension ".hot".
+# hot_backend has make_default_backend and the loader (hot_runtime).
+foreach(variant hot cpp)
+    # The variant "hot" uses the extension ".hot".
     set(ext ${variant})
-    if(variant STREQUAL "spp")
+    if(variant STREQUAL "hot")
         set(ext hot)
     endif()
     set(target sample_hot_reload_${variant})
     add_executable(${target} main.cpp)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(${target} PRIVATE spp_backend)
+    target_link_libraries(${target} PRIVATE hot_backend)
     # The generation modules resolve host and runtime symbols from the executable.
     set_target_properties(${target} PROPERTIES ENABLE_EXPORTS ON)
     # SAMPLE_DIR has Creature.h (an include dir of the compile at run time).

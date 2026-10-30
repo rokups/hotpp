@@ -44,13 +44,13 @@ void run_small_stack(std::size_t bytes, const std::function<void()>& fn)
 // The stack of the deep parse. A thread sanitizer makes each frame much larger, so the stack
 // is larger there. The nesting limits of the parser stay the same.
 #if defined(__SANITIZE_THREAD__)
-    #define SPP_TEST_TSAN 1
+    #define HOT_TEST_TSAN 1
 #elif defined(__has_feature)
     #if __has_feature(thread_sanitizer)
-        #define SPP_TEST_TSAN 1
+        #define HOT_TEST_TSAN 1
     #endif
 #endif
-#ifdef SPP_TEST_TSAN
+#ifdef HOT_TEST_TSAN
 constexpr std::size_t kDeepParseStack = 16u << 20;
 #else
 constexpr std::size_t kDeepParseStack = 512u << 10;

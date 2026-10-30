@@ -9,7 +9,7 @@ You continue work on `/home/rk/src/spp`. S++ is a hot-reloadable scripting langu
 
 ## Rules from the user
 - Write all prose in ASD-STE100 Simplified Technical English. This includes code comments, documents, commit message bodies and subagent prompts. Maximum 20 words per sentence.
-- All tests are GoogleTest. Register them with `spp_gtest`.
+- All tests are GoogleTest. Register them with `hot_gtest`.
 - Fetch dependencies through CPM.cmake when they are not installed (`CPM_USE_LOCAL_PACKAGES ON`). Libclang and LLVM come from the system.
 - Commit messages: short title, terse body. No attribution lines of any kind.
 - Subagents: set `model` and `effort` on every Agent call. Use the cheapest suitable model.
@@ -27,9 +27,9 @@ All work is committed, except what `git status` shows. Slices S0 to S21 are done
 | Threads | `World::TickParallel` with a barrier. Stop-the-world commit at the barrier. A second mode, `SyncMode::EntryCounters`, blocks new entries. ASan and TSan are clean. Done. |
 | Translator | `sppc_lib` works on strings. It reads the native base with libclang. It emits `#line`. A session cache cuts a warm translate to about 1.3 ms. Tolerant parse, `source_map`, `analyze`. Done. |
 | Language | Classes, properties, constructors, inheritance, virtuals, `is`/`as`, enums, structs, module variables, native interface bases, interpolation. Done (syntax below). |
-| Backends | `SPP_BACKEND=CLANG_FILES` (default, external `clang++`) or `JIT` (in-process Clang plus ORC). Chosen at build time. Done. |
+| Backends | `HOT_BACKEND=CLANG_FILES` (default, external `clang++`) or `JIT` (in-process Clang plus ORC). Chosen at build time. Done. |
 | Tools | `sppc` (build `.so`, `--emit-cpp`, `--aot`, `--compile-commands`), `bench_backends`, `spp-ls`. Done. |
-| AOT compilation | `sppc --aot`, `spp_add_scripts` with `AOT`, library `spp_aot` with no loader. Done (generation 1 only). |
+| AOT compilation | `sppc --aot`, `hot_add_scripts` with `AOT`, library `hot_aot` with no loader. Done (generation 1 only). |
 | Diagnostics, debug | Diagnostic rewriter, `#line`, DWARF script lines, lldb formatters, natvis. gdb check done (F3, see below). lldb and Visual Studio not run. |
 | Language server | `spp-ls`: a stdio LSP proxy in front of stock clangd (`src/ls/`, `DECISIONS.md` 13). VS Code extension in `editors/vscode/`. Done. |
 
@@ -40,9 +40,9 @@ Layout:
 
 ## Build and test
 - `cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ && ninja -C build && ctest --test-dir build -j8`
-- Add `-DSPP_BACKEND=JIT` for the JIT backend. Add `-DCMAKE_CXX_FLAGS=-fsanitize=address` or `=thread` for sanitizers.
+- Add `-DHOT_BACKEND=JIT` for the JIT backend. Add `-DCMAKE_CXX_FLAGS=-fsanitize=address` or `=thread` for sanitizers.
 - Presets: `cmake --preset linux-clang-files` (or `linux-clang-jit`), then `cmake --build --preset linux-clang-files-dbg`. Add `-asan` or `-tsan` to the name.
-- Tests at S19 in `build` (CLANG_FILES): 765 tests (with the 2 new template-base tests), all pass, 2 skipped (`CoreModule.ThousandReloads` needs `SPP_STRESS=1`; one `FileWatcherTests` case skips by design in the inotify mode). The other builds (`build-asan`, `build-jit`, `build-tsan`) were not run in S19. Run them before a release.
+- Tests at S19 in `build` (CLANG_FILES): 765 tests (with the 2 new template-base tests), all pass, 2 skipped (`CoreModule.ThousandReloads` needs `HOT_STRESS=1`; one `FileWatcherTests` case skips by design in the inotify mode). The other builds (`build-asan`, `build-jit`, `build-tsan`) were not run in S19. Run them before a release.
 - `StatementParseLimits.DeepNesting` can overflow the stack in a TSan build. `FileWatcherTests.SeesWriteAndRenameButNotOtherFiles` can fail under `ctest -j8` load in a TSan build. It passes alone.
 - Known workaround: libclang does not find its builtin headers here, so the build passes `-resource-dir` from `clang++ -print-resource-dir`.
 
@@ -112,7 +112,7 @@ Other limits:
 - Nesting limits: 64 nested statements, 15 nested lambdas, 256 operators in one expression.
 - AOT compilation: generation 1 only, no slot file. A type error shows in the C++ compile of the generated file. Script type and class names must be unique over all AOT scripts. `onReload` and `convert` never run.
 - Language server index (S28): the shard of a closed `.hot` file is made at the first rename or references scan, not at startup. The shard digest covers the file text and the texts of the scripts it imports, found by a scan for `using "x.hot";` in the script dir and the include dirs. A changed import makes the shard stale. The index dir is the first workspace folder only. Code: `src/ls/symbol_index.{h,cpp}`.
-- Language server hosts (`DECISIONS.md` 19): `spp_script_host` writes `.cache/spp/hosts/<name>.json`. Code: `src/ls/hosts.{h,cpp}`. Many build dirs share one hosts dir, so the last configure wins. Symlinked workspace paths are not canonicalized in matching. Multi-Config generators are untested. The host defines, options and include dirs are in the side files `<name>.defines`, `<name>.options` and `<name>.includes` (one entry on each line), so all valid paths are safe. The JSON has `sourceDir`; `spp-ls` resolves relative paths with it and removes repeated include dirs. Unsupported: a path with a newline, and a path with `;` (CMake splits it in a list before the function sees it).
+- Language server hosts (`DECISIONS.md` 19): `hot_script_host` writes `.cache/hot/hosts/<name>.json`. Code: `src/ls/hosts.{h,cpp}`. Many build dirs share one hosts dir, so the last configure wins. Symlinked workspace paths are not canonicalized in matching. Multi-Config generators are untested. The host defines, options and include dirs are in the side files `<name>.defines`, `<name>.options` and `<name>.includes` (one entry on each line), so all valid paths are safe. The JSON has `sourceDir`; `spp-ls` resolves relative paths with it and removes repeated include dirs. Unsupported: a path with a newline, and a path with `;` (CMake splits it in a list before the function sees it).
 - Language server: after a translation error, clangd keeps the last good C++. Positions go through a prefix/suffix edit map (`Doc::set_edit`). A position inside the edit has no mapping. The `#line` fallback takes the column of the same word in the script line.
 - Language server: clangd does not publish again when a new version gives the same diagnostics. The server drops diagnostics of an old version, so the diagnostics can be missing after an edit that gives the same C++.
 - Language server: two open scripts that import the same script both publish diagnostics for it. The last publish wins. The formatter is a brace-depth indenter, not a full formatter.
@@ -122,7 +122,7 @@ Other limits:
 The grammar uses lexy. Only the files in `src/translator/parser/` include lexy headers. Keep each grammar in its own file (they compile slowly: about 3 to 6 s each in Debug).
 - `script_grammar.cpp` (structure), `expression_grammar.cpp`, `statement_grammar.cpp`. `parse_script()`, `parse_expression()` and `parse_block()` are the entry points. The design is "span, then call": a grammar stores a byte `Span`, and a later call parses it.
 - After the parse, `lower_block()` and `lower_expr()` (`lower.cpp`) change script names to C++ names. The `Emitter` (`emit.cpp`) prints the AST with `#line`.
-- To add syntax: add the node to `src/translator/ast.h`; add the rule and the value callback in a grammar file; add the printing in `emit.cpp` and the lowering in `lower.cpp`; add tests in `tests/unit/translator/` (`parser`, `emit`, `lowering`). The golden tests in `tests/golden/` must stay byte-identical. Set `SPP_UPDATE_GOLDEN` to write them again when a change is on purpose.
+- To add syntax: add the node to `src/translator/ast.h`; add the rule and the value callback in a grammar file; add the printing in `emit.cpp` and the lowering in `lower.cpp`; add tests in `tests/unit/translator/` (`parser`, `emit`, `lowering`). The golden tests in `tests/golden/` must stay byte-identical. Set `HOT_UPDATE_GOLDEN` to write them again when a change is on purpose.
 
 ## Experiments (design 8.2)
 - R0 to R6: pass (tests in `tests/integration/reload`, `closures`, `threading`; ASan and TSan clean).

@@ -1,4 +1,4 @@
-// AOT compilation (S12, design M7), part 2. This program links spp_aot and the AOT scripts.
+// AOT compilation (S12, design M7), part 2. This program links hot_aot and the AOT scripts.
 // It does not link the loader. The tests use the AotRegistry API.
 #include "Actor.h"
 #include "demo_run.h"

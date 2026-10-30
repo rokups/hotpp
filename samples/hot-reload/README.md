@@ -16,7 +16,7 @@ Both variants are in the folder `script`. The file extension picks the variant.
 
 The build makes one program for each variant from the same `main.cpp`:
 
-- `sample_hot_reload_spp` reads the `.hot` scripts.
+- `sample_hot_reload_hot` reads the `.hot` scripts.
 - `sample_hot_reload_cpp` reads the `.cpp` scripts.
 
 Both programs print the same output. The build also compiles the `.cpp` scripts with the normal
@@ -62,24 +62,24 @@ run on the main thread.
 
 ### In the S++ tree
 
-The option `SPP_BUILD_SAMPLES` is ON for the main project.
+The option `HOT_BUILD_SAMPLES` is ON for the main project.
 
 ```
 cmake --preset linux-clang-files
-cmake --build --preset linux-clang-files-dbg --target sample_hot_reload_spp sample_hot_reload_cpp
-ctest --preset linux-clang-files-dbg -R '^sample_hot_reload_(spp|cpp)$'
+cmake --build --preset linux-clang-files-dbg --target sample_hot_reload_hot sample_hot_reload_cpp
+ctest --preset linux-clang-files-dbg -R '^sample_hot_reload_(hot|cpp)$'
 ```
 
 Each test has the same name as its target. To run a program, use the folder `bin/Debug` of the build tree:
 
 ```
-cmake-build/linux-clang-files/bin/Debug/sample_hot_reload_spp
+cmake-build/linux-clang-files/bin/Debug/sample_hot_reload_hot
 cmake-build/linux-clang-files/bin/Debug/sample_hot_reload_cpp
 ```
 
 ### As a separate project
 
-Use the S++ source tree in `SPP_ROOT`. The default value is the tree that holds this folder.
+Use the S++ source tree in `HOT_ROOT`. The default value is the tree that holds this folder.
 The build fetches the S++ dependencies with CPM. It needs `clang`, `libclang` and Ninja.
 
 ```
@@ -88,12 +88,12 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-To use another S++ tree, add `-DSPP_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample calls
-`add_subdirectory` for `SPP_ROOT` only when the target `sppc` does not exist yet.
+To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample calls
+`add_subdirectory` for `HOT_ROOT` only when the target `sppc` does not exist yet.
 
 ## Adapt it to your project
 
-1. Link your program to `spp_backend` and set `ENABLE_EXPORTS ON`, as in the sample [runtime-compile](../runtime-compile/).
+1. Link your program to `hot_backend` and set `ENABLE_EXPORTS ON`, as in the sample [runtime-compile](../runtime-compile/).
 2. Load the first generation with `Loader::load`. Use the generation number 1.
 3. When a script file changes, read it and call `request_reload(backend->load({name, text, {}}, next_generation))`.
    Increase `next_generation` each time. Do not send a reload while another is pending (the reason is `Busy`).
@@ -110,10 +110,10 @@ To use another S++ tree, add `-DSPP_ROOT=/path/to/spp`. The `CMakeLists.txt` of 
 [v2] wolf: hp=96 howls=2
 ```
 
-The `hp` value continues from generation 1. Each test (`sample_hot_reload_spp` and `sample_hot_reload_cpp`) passes when the
+The `hp` value continues from generation 1. Each test (`sample_hot_reload_hot` and `sample_hot_reload_cpp`) passes when the
 output has the lines `[v1]` then the lines `[v2]`.
 
 ## More information
 
 - [Embedding](../../doc/embedding.md): the six hosting situations and the backend interface.
-- [CMake](../../doc/cmake.md): the options and the function `spp_add_scripts`.
+- [CMake](../../doc/cmake.md): the options and the function `hot_add_scripts`.

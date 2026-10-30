@@ -552,14 +552,14 @@ void Server::read_compile_commands()
 
 // clangd stores its background index in "<dir of compile_commands.json>/.cache/clangd/index".
 // XDG_CACHE_HOME does not change this. The child of spp-ls gets its own directory under
-// ".cache/spp/clangd" with a link to the real compile_commands.json. So its index does not mix
+// ".cache/hot/clangd" with a link to the real compile_commands.json. So its index does not mix
 // with the index of a C++ clangd on the same database (DECISIONS 18).
 std::string Server::private_cdb_dir() const
 {
     if (roots_.empty())
         return opt_.compile_commands_dir;
     std::error_code ec;
-    const fs::path dir = fs::path(roots_[0]) / ".cache" / "spp" / "clangd";
+    const fs::path dir = fs::path(roots_[0]) / ".cache" / "hot" / "clangd";
     fs::create_directories(dir, ec);
     if (ec)
         return opt_.compile_commands_dir;
@@ -630,7 +630,7 @@ void Server::load_hosts()
         dirs.push_back(opt_.hosts_dir);
     else
         for (const std::string& r : roots_)
-            dirs.push_back((fs::path(r) / ".cache" / "spp" / "hosts").string());
+            dirs.push_back((fs::path(r) / ".cache" / "hot" / "hosts").string());
     for (const std::string& dir : dirs)
     {
         HostSet set;
@@ -727,7 +727,7 @@ json Server::on_initialize(const json& p)
     if (!opt_.index_dir.empty())
         index_.open(opt_.index_dir);
     else if (!roots_.empty())
-        index_.open((fs::path(roots_[0]) / ".cache" / "spp" / "index").string());
+        index_.open((fs::path(roots_[0]) / ".cache" / "hot" / "index").string());
     index_.prune();
     load_hosts();
     start_clangd(p);
@@ -745,7 +745,7 @@ json Server::on_initialize(const json& p)
                 {"workspaceSymbolProvider", true},
                 {"semanticTokensProvider",
                     {{"legend", {{"tokenTypes", tokens}, {"tokenModifiers", json::array()}}}, {"full", true}}},
-                {"experimental", {{"sppToScript", true}, {"clangd", clangd_ != nullptr}}}}},
+                {"experimental", {{"hotToScript", true}, {"clangd", clangd_ != nullptr}}}}},
         {"serverInfo", {{"name", "spp-ls"}, {"version", "0.1"}}},
     };
 }
@@ -847,7 +847,7 @@ json Server::analyze_diagnostics(const Doc& d) const
         const auto [b, e] = word_at(d, p);
         const Pos end = b <= p.col && e > p.col ? Pos{p.line, e} : Pos{p.line, p.col + 1};
         out.push_back(
-            {{"range", script_range(d, p, end)}, {"severity", severity}, {"source", "spp"}, {"message", message}});
+            {{"range", script_range(d, p, end)}, {"severity", severity}, {"source", "hot"}, {"message", message}});
     };
     for (const sppc::AnalyzeError& e : d.facts.errors)
         add({e.pos.line - 1, e.pos.col - 1}, e.message, 1);
@@ -869,7 +869,7 @@ json Server::analyze_diagnostics(const Doc& d) const
         out.push_back(
             {{"range", {{"start", {{"line", 0}, {"character", 0}}}, {"end", {{"line", 0}, {"character", 0}}}}},
                 {"severity", 3}, {"source", "spp-ls"},
-                {"message", "No script host for this file. Add spp_script_host(...) in CMake and run CMake again."}});
+                {"message", "No script host for this file. Add hot_script_host(...) in CMake and run CMake again."}});
     return out;
 }
 
@@ -916,7 +916,7 @@ std::map<std::string, json> Server::import_diagnostics(const Doc& d) const
         const json range = {
             {"start", to_lsp(t->second, {line, col}, utf8_)}, {"end", to_lsp(t->second, {line, end}, utf8_)}};
         out[uri].push_back(
-            {{"range", range}, {"severity", m[4] == "error" ? 1 : 2}, {"source", "spp"}, {"message", m[5].str()}});
+            {{"range", range}, {"severity", m[4] == "error" ? 1 : 2}, {"source", "hot"}, {"message", m[5].str()}});
     }
     for (const auto& [uri, diags] : d.clang_import_diags)
     {
@@ -1591,7 +1591,7 @@ json Server::on_code_action(const Doc& d, const json& p)
         if (!range.contains("start") || !range.contains("end"))
             continue;
         const Pos b = from_lsp(d.text, range["start"], utf8_), e = from_lsp(d.text, range["end"], utf8_);
-        if (diag.value("source", "") == "spp" && message == "expected ';'")
+        if (diag.value("source", "") == "hot" && message == "expected ';'")
         {
             // The error is at the next token. The ";" goes after the last token before it.
             size_t at = d.text.offset(b.line, b.col);
@@ -2401,9 +2401,9 @@ const char* usage_text()
            "                     the directory of compile_commands.json from sppc --compile-commands.\n"
            "                     clangd runs its background index on it.\n"
            "  --index-dir dir    the directory of the saved symbol index (default:\n"
-           "                     .cache/spp/index in the first workspace folder).\n"
-           "  --hosts-dir dir    the directory of the host files from spp_script_host (default:\n"
-           "                     .cache/spp/hosts in each workspace folder).\n";
+           "                     .cache/hot/index in the first workspace folder).\n"
+           "  --hosts-dir dir    the directory of the host files from hot_script_host (default:\n"
+           "                     .cache/hot/hosts in each workspace folder).\n";
 }
 
 bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, std::string& error)

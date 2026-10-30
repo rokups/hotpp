@@ -2,7 +2,7 @@
 //
 // CMake sets HOT_USE_FMT on the runtime library. The value is 1 when string interpolation
 // "${...}" uses fmt, and 0 when it uses std::format. The build chooses the value from the C++
-// standard and from the CMake option SPP_USE_FMT. No runtime option exists.
+// standard and from the CMake option HOT_USE_FMT. No runtime option exists.
 //
 // CMake also sets HOT_CXX_STANDARD on the runtime library: 17, 20 or 23. This is the C++
 // standard of the host. The backends compile the generated code with this standard. The

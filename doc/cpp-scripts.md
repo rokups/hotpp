@@ -535,9 +535,9 @@ For a `const` field or a reference field, use a default member initializer in th
 
 ## CMake
 
-`spp_add_scripts` takes `.cpp` paths in `SCRIPTS`, as it takes `.hot` paths. A `foo.hot` and a `foo.cpp` in one call fail at configure time, because they have the same stem. See [CMake](cmake.html).
+`hot_add_scripts` takes `.cpp` paths in `SCRIPTS`, as it takes `.hot` paths. A `foo.hot` and a `foo.cpp` in one call fail at configure time, because they have the same stem. See [CMake](cmake.html).
 
 ```cmake
-spp_add_scripts(TARGET gen1 SCRIPTS cpp_player_v1.cpp)
-spp_add_scripts(TARGET gen2 SCRIPTS cpp_player_v2.cpp AFTER gen1 SPPC_ARGS --gen 2)
+hot_add_scripts(TARGET gen1 SCRIPTS cpp_player_v1.cpp)
+hot_add_scripts(TARGET gen2 SCRIPTS cpp_player_v2.cpp AFTER gen1 SPPC_ARGS --gen 2)
 ```

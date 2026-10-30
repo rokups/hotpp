@@ -1,29 +1,29 @@
 # The sample aot: a program with the C++ of a script inside the binary.
 # This file works in the S++ build (add_subdirectory) and as a separate project.
 cmake_minimum_required(VERSION 3.20)
-project(spp_sample_aot CXX)
+project(hot_sample_aot CXX)
 
 # The S++ source tree. A separate build uses it. The S++ build already has the targets.
-set(SPP_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The S++ source tree")
+set(HOT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The S++ source tree")
 if(NOT TARGET sppc)
-    add_subdirectory(${SPP_ROOT} spp)
+    add_subdirectory(${HOT_ROOT} hot)
 endif()
 
 # One program source, two script variants. The extension picks the script. Both variants are
 # in the folder script. Each variant has its own AOT library and its own program.
-#   sample_aot_spp has the C++ that sppc makes from script/wolf.hot.
+#   sample_aot_hot has the C++ that sppc makes from script/wolf.hot.
 #   sample_aot_cpp has the C++ that sppc makes from script/wolf.cpp.
-# A call of spp_add_scripts takes scripts with one stem only, so each variant has its own call and
-# its own OUT_DIR. The library sample_aot_<variant>_scripts has the result and links spp_aot.
+# A call of hot_add_scripts takes scripts with one stem only, so each variant has its own call and
+# its own OUT_DIR. The library sample_aot_<variant>_scripts has the result and links hot_aot.
 enable_testing()
-foreach(variant spp cpp)
-    # The variant "spp" uses the extension ".hot".
+foreach(variant hot cpp)
+    # The variant "hot" uses the extension ".hot".
     set(ext ${variant})
-    if(variant STREQUAL "spp")
+    if(variant STREQUAL "hot")
         set(ext hot)
     endif()
-    spp_add_scripts(TARGET sample_aot_${variant}_scripts AOT SCRIPTS script/wolf.${ext}
-                    OUT_DIR ${CMAKE_BINARY_DIR}/spp_aot/sample_aot_${variant}
+    hot_add_scripts(TARGET sample_aot_${variant}_scripts AOT SCRIPTS script/wolf.${ext}
+                    OUT_DIR ${CMAKE_BINARY_DIR}/hot_aot/sample_aot_${variant}
                     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS Creature.h)
     set(target sample_aot_${variant})
     add_executable(${target} main.cpp)

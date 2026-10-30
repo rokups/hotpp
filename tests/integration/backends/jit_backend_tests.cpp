@@ -1,9 +1,9 @@
-// Tests for the JIT backend only (SPP_BACKEND=JIT).
+// Tests for the JIT backend only (HOT_BACKEND=JIT).
 //
 // The backend must not write a file and must not start a process. These tests
 // check this, and they check that a generation can go away.
 //
-// CMake defines these macros: SPP_SOURCE_DIR, SPP_SCRATCH_DIR, SPP_CXX and SPP_RESOURCE_DIR.
+// CMake defines these macros: HOT_SOURCE_DIR, HOT_SCRATCH_DIR, HOT_CXX and HOT_RESOURCE_DIR.
 #include "hot/backend.h"
 #include "hot/jit_backend.h"
 #include "support/dwarf_lines.h"
@@ -50,7 +50,7 @@ namespace fs = std::filesystem;
 
 hot::ScriptSource source(const char* file)
 {
-    const std::string path = std::string(SPP_SOURCE_DIR) + "/tests/scripts/" + file;
+    const std::string path = std::string(HOT_SOURCE_DIR) + "/tests/scripts/" + file;
     std::ifstream f(path);
     std::stringstream ss;
     ss << f.rdbuf();
@@ -90,7 +90,7 @@ struct EmptyWorkDir
 
     EmptyWorkDir()
     {
-        dir = fs::temp_directory_path() / ("spp_jit_empty_" + std::to_string(getpid()));
+        dir = fs::temp_directory_path() / ("hot_jit_empty_" + std::to_string(getpid()));
         fs::remove_all(dir);
         fs::create_directories(dir);
         if (const char* t = std::getenv("TMPDIR"))
@@ -175,9 +175,9 @@ TEST(JitTests, PrecompiledHeaderWorks)
              "#include \"Math.h\"\n";
     }
     hot::JitOptions o;
-    o.compiler = SPP_CXX;
-    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/tests/engine", std::string(SPP_SOURCE_DIR) + "/include"};
-    o.resource_dir = SPP_RESOURCE_DIR;
+    o.compiler = HOT_CXX;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.resource_dir = HOT_RESOURCE_DIR;
     std::string error;
     {
         hot::JitBackend maker(o);
@@ -265,9 +265,9 @@ TEST(JitTests, DebuggerGetsObjectWithScriptLines)
     if (!test_support::have_dwarfdump())
         GTEST_SKIP() << "llvm-dwarfdump is not installed";
     hot::JitOptions o;
-    o.compiler = SPP_CXX;
-    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/include", std::string(SPP_SOURCE_DIR) + "/tests/engine"};
-    o.resource_dir = SPP_RESOURCE_DIR;
+    o.compiler = HOT_CXX;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/include", std::string(HOT_SOURCE_DIR) + "/tests/engine"};
+    o.resource_dir = HOT_RESOURCE_DIR;
     hot::JitBackend backend(o);
     const hot::ScriptSource src = source("player_v2.hot");
     hot::LoadResult r = backend.load(src, 1);
@@ -294,9 +294,9 @@ TEST(JitTests, DebuggerGetsObjectWithScriptLines)
 TEST(JitTests, DebuggerSupportCanBeOff)
 {
     hot::JitOptions o;
-    o.compiler = SPP_CXX;
-    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/include", std::string(SPP_SOURCE_DIR) + "/tests/engine"};
-    o.resource_dir = SPP_RESOURCE_DIR;
+    o.compiler = HOT_CXX;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/include", std::string(HOT_SOURCE_DIR) + "/tests/engine"};
+    o.resource_dir = HOT_RESOURCE_DIR;
     o.debugger_support = false;
     hot::JitBackend backend(o);
     hot::LoadResult r = backend.load(source("player_v1.hot"), 1);

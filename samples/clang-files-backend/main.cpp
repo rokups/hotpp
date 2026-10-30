@@ -28,7 +28,7 @@ int main()
     // The program sets the compiler, the include dirs, the flags and the work folder.
     hot::ClangFilesOptions options;
     options.compiler = SAMPLE_CXX;
-    options.include_dirs = {SAMPLE_SPP_INCLUDE_DIR, SAMPLE_DIR};
+    options.include_dirs = {SAMPLE_HOT_INCLUDE_DIR, SAMPLE_DIR};
     // The flags of the host build, for example a sanitizer. The modules must use the same ones.
     std::istringstream flags(SAMPLE_CXXFLAGS);
     for (std::string flag; flags >> flag;)

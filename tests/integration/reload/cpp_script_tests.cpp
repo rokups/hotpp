@@ -1,6 +1,6 @@
 // Reload tests of a plain C++ script (a ".cpp" script). The file extension selects the parser
 // of sppc. The host passes the script as a ScriptSource like any other script. The tests use
-// the backend that SPP_BACKEND selected.
+// the backend that HOT_BACKEND selected.
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"

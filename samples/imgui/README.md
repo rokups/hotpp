@@ -15,7 +15,7 @@ The sample has one program (`main.cpp`) and two variants of the same script. Bot
 
 The build makes one program for each variant from the same `main.cpp`:
 
-- `sample_imgui_spp` reads `script/demo.hot`.
+- `sample_imgui_hot` reads `script/demo.hot`.
 - `sample_imgui_cpp` reads `script/demo.cpp`.
 
 The file extension picks the variant. Both programs show the same window. The build also compiles the
@@ -52,31 +52,31 @@ The program opens a window, so the sample has no test.
 
 ```
 cmake --preset linux-clang-files
-cmake --build --preset linux-clang-files-dbg --target sample_imgui_spp sample_imgui_cpp
-cmake-build/linux-clang-files/bin/Debug/sample_imgui_spp [script]
+cmake --build --preset linux-clang-files-dbg --target sample_imgui_hot sample_imgui_cpp
+cmake-build/linux-clang-files/bin/Debug/sample_imgui_hot [script]
 cmake-build/linux-clang-files/bin/Debug/sample_imgui_cpp [script]
 ```
 
-The default script of `sample_imgui_spp` is `script/demo.hot`.
+The default script of `sample_imgui_hot` is `script/demo.hot`.
 The default script of `sample_imgui_cpp` is `script/demo.cpp`.
 
 ### As a separate project
 
 ```
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++
-cmake --build build --target sample_imgui_spp sample_imgui_cpp
+cmake --build build --target sample_imgui_hot sample_imgui_cpp
 ```
 
-To use another S++ tree, add `-DSPP_ROOT=/path/to/spp`.
+To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`.
 
 ## Adapt it to your project
 
-1. Link your program to `spp_runtime` and `spp_clang_backend`. Set `ENABLE_EXPORTS ON`.
+1. Link your program to `hot_runtime` and `hot_clang_backend`. Set `ENABLE_EXPORTS ON`.
 2. Link a library that the scripts call (here `imgui_sdl3`) as a whole archive.
    The linker then keeps all objects.
 3. Put the include folders of the script in `include_dirs`: the include folder of S++,
    the folder of the host headers and the folder of the library headers.
-4. Call `spp_script_host` so that the language server knows the script folder.
+4. Call `hot_script_host` so that the language server knows the script folder.
 5. Gap: a native array field such as `float rgb[3];` gives "expected a member name". Use `ImVec4 col`
    and `&this.col.x`, or three float fields.
 

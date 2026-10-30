@@ -21,7 +21,7 @@ nav_order: 15
 `spp-ls` serves all features for `.hot` files. For a `.cpp` script, `spp-ls` gives only the errors of `sppc`. The clangd extension serves all other features of a C++ file. `clangd` must be in `PATH`. CMake writes the script host files, so you do not pass `-I` flags.
 
 ```cmake
-spp_script_host(NAME engine TARGET engine
+hot_script_host(NAME engine TARGET engine
                 SCRIPT_DIRS ${CMAKE_SOURCE_DIR}/scripts
                 INCLUDES ${CMAKE_SOURCE_DIR}/engine)
 ```
@@ -30,9 +30,9 @@ Add `.cache/` to the ignore list of the project. Without a host, give the option
 
 ## A `.cpp` script in the editor
 
-A `.cpp` script is a C++ file (see [C++ scripts](cpp-scripts.html)). The editor shows the errors of `sppc` for it as diagnostics. The source of these diagnostics is `spp`.
+A `.cpp` script is a C++ file (see [C++ scripts](cpp-scripts.html)). The editor shows the errors of `sppc` for it as diagnostics. The source of these diagnostics is `hot`.
 
-- `spp-ls` treats a `.cpp` file as a script only when a host lists it. The host lists the file in `SCRIPTS`, or in a directory of `SCRIPT_DIRS`. See `spp_script_host` in [CMake](cmake.html). Put no other `.cpp` file in a script directory: `spp-ls` treats it as a script too.
+- `spp-ls` treats a `.cpp` file as a script only when a host lists it. The host lists the file in `SCRIPTS`, or in a directory of `SCRIPT_DIRS`. See `hot_script_host` in [CMake](cmake.html). Put no other `.cpp` file in a script directory: `spp-ls` treats it as a script too.
 - `spp-ls` ignores any other `.cpp` file. It gives no diagnostic and no answer for it.
 - The diagnostics come from the same checks as `sppc` does at build time. They appear when you open, edit or save the file.
 - For a script, `spp-ls` gives no completion, hover, definition, references, rename, symbols or semantic tokens. The answer is empty. clangd owns these features. `spp-ls` does not add the script to the index of `.hot` symbols.
@@ -61,7 +61,7 @@ Or add the same flags to the entry of the script in `compile_commands.json`:
 
 ## sppc format flag
 
-`sppc --format=std|fmt` picks the format library for `${}` in the C++ text. The default is `std`. The flag is for build systems: `spp_add_scripts` sets it. `fmt` output also compiles as C++17. In build mode (without `--emit-cpp` and `--aot`), the build of `sppc` fixes the library, and a different `--format` is an error. See [CMake](cmake.html).
+`sppc --format=std|fmt` picks the format library for `${}` in the C++ text. The default is `std`. The flag is for build systems: `hot_add_scripts` sets it. `fmt` output also compiles as C++17. In build mode (without `--emit-cpp` and `--aot`), the build of `sppc` fixes the library, and a different `--format` is an error. See [CMake](cmake.html).
 
 ## VS Code
 

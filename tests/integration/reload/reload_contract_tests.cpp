@@ -1,5 +1,5 @@
 // Reload tests of the rows of the design 5.3 table that S17 adds, with the backend that
-// SPP_BACKEND selected: a changed method signature, a native container of a [value] class,
+// HOT_BACKEND selected: a changed method signature, a native container of a [value] class,
 // the first use of "this" as a handle, and a raw function pointer in a state field (4.9).
 #include "hot/backend.h"
 #include "support/backend_fixture.h"

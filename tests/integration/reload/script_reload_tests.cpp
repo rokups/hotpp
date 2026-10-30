@@ -1,8 +1,8 @@
-// Reload tests with the backend that SPP_BACKEND selected (make_default_backend).
+// Reload tests with the backend that HOT_BACKEND selected (make_default_backend).
 // They run the F1 reload scenario, a reload with native functions and std containers,
 // and the diagnostics of a bad script.
 //
-// CMake defines these macros: SPP_SOURCE_DIR and SPP_BACKEND_NAME.
+// CMake defines these macros: HOT_SOURCE_DIR and HOT_BACKEND_NAME.
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/f1_scenario.h"
@@ -84,6 +84,6 @@ TEST_P(BackendTests, BadScriptGivesErrorAndRuntimeKeepsRunning)
     EXPECT_NE(s.field("health"), nullptr);
 }
 
-INSTANTIATE_TEST_SUITE_P(Selected, BackendTests, ::testing::Values(std::string(SPP_BACKEND_NAME)));
+INSTANTIATE_TEST_SUITE_P(Selected, BackendTests, ::testing::Values(std::string(HOT_BACKEND_NAME)));
 
 } // namespace

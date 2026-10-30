@@ -1,7 +1,7 @@
-// Tests of script language features with the backend that SPP_BACKEND selected.
+// Tests of script language features with the backend that HOT_BACKEND selected.
 // The scripts must compile and run: default values and a for-of loop over a temporary.
 //
-// CMake defines the macro SPP_SOURCE_DIR.
+// CMake defines the macro HOT_SOURCE_DIR.
 #include "Weapon.h"
 #include "hot/backend.h"
 #include "support/backend_fixture.h"

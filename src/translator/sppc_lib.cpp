@@ -1214,11 +1214,11 @@ bool is_code_query(const std::string& q)
 
 // The name of the probe section with the facts. libclang reports an error in it for a type
 // that it does not know. The translator does not treat such an error as an error of the imports.
-const char* const kFactsFile = "sppc_facts";
+const char* const kFactsFile = "hotc_facts";
 
 // The text that asks libclang for the facts of the types. The section follows the imports.
-// Each fact is one constexpr variable on its own line. The variable "sppc_f<N>" is on the
-// line N of the file "sppc_facts". The traits are in functions with "if constexpr", so a
+// Each fact is one constexpr variable on its own line. The variable "hotc_f<N>" is on the
+// line N of the file "hotc_facts". The traits are in functions with "if constexpr", so a
 // type that is not complete gives false and no error inside a standard header.
 std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<size_t, std::string>>& lines,
     const std::vector<std::string>& queries)
@@ -1227,39 +1227,39 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
         "#include <type_traits>\n"
         "#include <utility>\n"
         // The probe uses C++17 only (detection with void_t), so it parses with the standard of the host.
-        "template <class T, class = void> struct sppc_complete_s : std::false_type {};\n"
-        "template <class T> struct sppc_complete_s<T, std::void_t<decltype(sizeof(T))>> : std::true_type {};\n"
-        "template <class T> constexpr bool sppc_complete() { return sppc_complete_s<T>::value; }\n"
-        "template <class T, class = void> struct sppc_has_arrow : std::false_type {};\n"
-        "template <class T> struct sppc_has_arrow<T, std::void_t<decltype(std::declval<T&>().operator->())>> : "
+        "template <class T, class = void> struct hotc_complete_s : std::false_type {};\n"
+        "template <class T> struct hotc_complete_s<T, std::void_t<decltype(sizeof(T))>> : std::true_type {};\n"
+        "template <class T> constexpr bool hotc_complete() { return hotc_complete_s<T>::value; }\n"
+        "template <class T, class = void> struct hotc_has_arrow : std::false_type {};\n"
+        "template <class T> struct hotc_has_arrow<T, std::void_t<decltype(std::declval<T&>().operator->())>> : "
         "std::true_type {};\n"
-        "template <class T> constexpr bool sppc_copy() { if constexpr (sppc_complete<T>()) return "
+        "template <class T> constexpr bool hotc_copy() { if constexpr (hotc_complete<T>()) return "
         "std::is_copy_constructible_v<T>; else return false; }\n"
-        "template <class T> constexpr bool sppc_nothrow_move() { if constexpr (sppc_complete<T>()) return "
+        "template <class T> constexpr bool hotc_nothrow_move() { if constexpr (hotc_complete<T>()) return "
         "std::is_nothrow_move_constructible_v<T>; else return false; }\n"
-        "template <class T> constexpr bool sppc_polymorphic() { if constexpr (sppc_complete<T>()) return "
+        "template <class T> constexpr bool hotc_polymorphic() { if constexpr (hotc_complete<T>()) return "
         "std::is_polymorphic_v<T>; else return false; }\n"
-        "template <class T> constexpr bool sppc_final() { if constexpr (sppc_complete<T>()) return std::is_final_v<T>; "
+        "template <class T> constexpr bool hotc_final() { if constexpr (hotc_complete<T>()) return std::is_final_v<T>; "
         "else return false; }\n"
-        "template <class T> constexpr bool sppc_plain() { if constexpr (sppc_complete<T>()) return "
+        "template <class T> constexpr bool hotc_plain() { if constexpr (hotc_complete<T>()) return "
         "std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>; else return false; }\n"
-        "template <class T> constexpr bool sppc_small() { if constexpr (sppc_complete<T>()) return "
+        "template <class T> constexpr bool hotc_small() { if constexpr (hotc_complete<T>()) return "
         "std::is_trivially_copyable_v<T> && sizeof(T) <= 16; else return false; }\n"
-        "template <class T> constexpr bool sppc_arrow() { if constexpr (std::is_pointer_v<T>) return true; else if "
-        "constexpr (sppc_complete<T>()) return sppc_has_arrow<T>::value; else return false; }\n"
+        "template <class T> constexpr bool hotc_arrow() { if constexpr (std::is_pointer_v<T>) return true; else if "
+        "constexpr (hotc_complete<T>()) return hotc_has_arrow<T>::value; else return false; }\n"
         // The type queries (S20b): the return type of a function or of a member function, and
         // the class of an object, of a pointer or of a handle (a type with "element_type").
-        "template <class R, class... A> R sppc_ret_f(R (*)(A...));\n"
-        "template <class R, class... A> R sppc_ret_f(R (*)(A..., ...));\n"
-        "template <class R, class C, class... A> R sppc_ret_f(R (C::*)(A...));\n"
-        "template <class R, class C, class... A> R sppc_ret_f(R (C::*)(A...) const);\n"
-        "template <class R, class C, class... A> R sppc_ret_f(R (C::*)(A...) &);\n"
-        "template <class R, class C, class... A> R sppc_ret_f(R (C::*)(A...) const &);\n"
-        "template <class T, class = void> struct sppc_obj_s { using type = T; };\n"
-        "template <class T> struct sppc_obj_s<T*, void> { using type = T; };\n"
-        "template <class T> struct sppc_obj_s<T, std::void_t<typename T::element_type, "
+        "template <class R, class... A> R hotc_ret_f(R (*)(A...));\n"
+        "template <class R, class... A> R hotc_ret_f(R (*)(A..., ...));\n"
+        "template <class R, class C, class... A> R hotc_ret_f(R (C::*)(A...));\n"
+        "template <class R, class C, class... A> R hotc_ret_f(R (C::*)(A...) const);\n"
+        "template <class R, class C, class... A> R hotc_ret_f(R (C::*)(A...) &);\n"
+        "template <class R, class C, class... A> R hotc_ret_f(R (C::*)(A...) const &);\n"
+        "template <class T, class = void> struct hotc_obj_s { using type = T; };\n"
+        "template <class T> struct hotc_obj_s<T*, void> { using type = T; };\n"
+        "template <class T> struct hotc_obj_s<T, std::void_t<typename T::element_type, "
         "decltype(std::declval<T&>().operator->())>> { using type = typename T::element_type; };\n"
-        "template <class T> using sppc_obj = std::remove_cv_t<typename sppc_obj_s<"
+        "template <class T> using hotc_obj = std::remove_cv_t<typename hotc_obj_s<"
         "std::remove_cv_t<std::remove_reference_t<T>>>::type>;\n";
     std::string body;
     lines.clear();
@@ -1272,8 +1272,8 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
         {
             lines.emplace_back(i, k);
             const std::string fn = std::string(k) == "is_class" ? "std::is_class_v<" + t + ">"
-                                                                : std::string("sppc_") + k + "<" + t + ">()";
-            body += "constexpr bool sppc_f" + std::to_string(lines.size()) + " = " + fn + ";\n";
+                                                                : std::string("hotc_") + k + "<" + t + ">()";
+            body += "constexpr bool hotc_f" + std::to_string(lines.size()) + " = " + fn + ";\n";
         }
         bool const_query = false;
         for (const std::string& m : reqs[i].members)
@@ -1283,22 +1283,22 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
                 const_query = true;
                 continue;
             }
-            const std::string fn = "sppc_member" + std::to_string(member_id++);
+            const std::string fn = "hotc_member" + std::to_string(member_id++);
             head += "template <class T, class = void> struct " + fn + "_s : std::false_type {};\n";
             head += "template <class T> struct " + fn + "_s<T, std::void_t<decltype(&T::" + m
                 + ")>> : std::true_type {};\n";
             head += "template <class T> constexpr bool " + fn + "() { return " + fn + "_s<T>::value; }\n";
             lines.emplace_back(i, "member:" + m);
-            body += "constexpr bool sppc_f" + std::to_string(lines.size()) + " = " + fn + "<" + t + ">();\n";
+            body += "constexpr bool hotc_f" + std::to_string(lines.size()) + " = " + fn + "<" + t + ">();\n";
         }
         if (const_query)
-            body += "using sppc_c" + std::to_string(i) + " = " + t + ";\n";
+            body += "using hotc_c" + std::to_string(i) + " = " + t + ";\n";
     }
     for (size_t i = 0; i < queries.size(); ++i)
     {
         if (is_fn_query(queries[i]) || is_code_query(queries[i]) || is_global_query(queries[i]))
             continue; // a cursor walk answers it
-        body += "using sppc_q" + std::to_string(i) + " = " + queries[i] + ";\n";
+        body += "using hotc_q" + std::to_string(i) + " = " + queries[i] + ";\n";
     }
     return head + "#line 1 \"" + kFactsFile + "\"\n" + body;
 }
@@ -1666,7 +1666,7 @@ bool class_holds_code(CXCursor cls, int depth)
     return found;
 }
 
-// Reads the value of "sppc_f<N>" from the translation unit. Gives -1 when libclang cannot
+// Reads the value of "hotc_f<N>" from the translation unit. Gives -1 when libclang cannot
 // evaluate it (the type is not known).
 int eval_bool(CXCursor var)
 {
@@ -1696,7 +1696,7 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         {
             if (instance_aliases.empty())
                 base_probe += "#include <cstdint>\n";
-            const std::string alias = "sppc_b" + std::to_string(instance_aliases.size());
+            const std::string alias = "hotc_b" + std::to_string(instance_aliases.size());
             base_probe += "using " + alias + " = " + name + ";\nstatic_assert(sizeof(" + alias + ") > 0);\n";
             instance_aliases.emplace_back(alias, name);
         }
@@ -1707,9 +1707,9 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         cargs.push_back(a.c_str());
     ClangHandles ch;
     CXIndex idx = ch.idx = clang_createIndex(0, 0);
-    CXUnsavedFile unsaved{"sppc_probe.cpp", full_probe.c_str(), static_cast<unsigned long>(full_probe.size())};
+    CXUnsavedFile unsaved{"hotc_probe.cpp", full_probe.c_str(), static_cast<unsigned long>(full_probe.size())};
     CXTranslationUnit tu = nullptr;
-    CXErrorCode ec = clang_parseTranslationUnit2(idx, "sppc_probe.cpp", cargs.data(), static_cast<int>(cargs.size()),
+    CXErrorCode ec = clang_parseTranslationUnit2(idx, "hotc_probe.cpp", cargs.data(), static_cast<int>(cargs.size()),
         &unsaved, 1, CXTranslationUnit_SkipFunctionBodies, &tu);
     ch.tu = tu;
     if (ec != CXError_Success || !tu)
@@ -1781,14 +1781,14 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
             if (clang_getCursorKind(c) == CXCursor_VarDecl)
             {
                 const std::string n = cxs(clang_getCursorSpelling(c));
-                if (n.compare(0, 6, "sppc_f") == 0)
+                if (n.compare(0, 6, "hotc_f") == 0)
                     vars[n] = c;
             }
             return CXChildVisit_Continue;
         });
         for (size_t n = 0; n < fact_lines.size(); ++n)
         {
-            auto it = vars.find("sppc_f" + std::to_string(n + 1));
+            auto it = vars.find("hotc_f" + std::to_string(n + 1));
             const int v = it == vars.end() ? -1 : eval_bool(it->second);
             TypeFacts& f = facts[reqs[fact_lines[n].first].type];
             const std::string& k = fact_lines[n].second;
@@ -1823,14 +1823,14 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
             if (clang_getCursorKind(c) == CXCursor_TypeAliasDecl)
             {
                 const std::string n = cxs(clang_getCursorSpelling(c));
-                if (n.compare(0, 6, "sppc_q") == 0 || n.compare(0, 6, "sppc_c") == 0)
+                if (n.compare(0, 6, "hotc_q") == 0 || n.compare(0, 6, "hotc_c") == 0)
                     aliases[n] = c;
             }
             return CXChildVisit_Continue;
         });
         for (size_t i = 0; i < queries.size(); ++i)
         {
-            auto it = aliases.find("sppc_q" + std::to_string(i));
+            auto it = aliases.find("hotc_q" + std::to_string(i));
             if (!is_fn_query(queries[i]) && !is_code_query(queries[i]) && !is_global_query(queries[i]))
                 answers[queries[i]] = it == aliases.end() ? std::string() : alias_type(it->second);
         }
@@ -1842,7 +1842,7 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
             {
                 if (m.rfind("const:", 0) != 0)
                     continue;
-                auto it = aliases.find("sppc_c" + std::to_string(i));
+                auto it = aliases.find("hotc_c" + std::to_string(i));
                 CXCursor decl = clang_getNullCursor();
                 if (it != aliases.end() && !clang_isInvalidDeclaration(it->second))
                     decl = clang_getCursorDefinition(clang_getTypeDeclaration(
@@ -1861,7 +1861,7 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
             if (clang_getCursorKind(c) == CXCursor_TypeAliasDecl)
             {
                 const std::string n = cxs(clang_getCursorSpelling(c));
-                if (n.compare(0, 6, "sppc_b") == 0)
+                if (n.compare(0, 6, "hotc_b") == 0)
                     aliases[n] = c;
             }
             return CXChildVisit_Continue;
@@ -2050,9 +2050,9 @@ void translate_impl(
     opt.includes = in.include_dirs;
     opt.resource_dir = in.resource_dir;
     opt.std_version = in.std_version.empty() ? hot::cxx_std_name() : in.std_version;
-#ifdef SPP_RESOURCE_DIR
+#ifdef HOT_RESOURCE_DIR
     if (opt.resource_dir.empty())
-        opt.resource_dir = SPP_RESOURCE_DIR;
+        opt.resource_dir = HOT_RESOURCE_DIR;
 #endif
     if (opt.gen < 1)
         fail(0, "the generation must be 1 or more");
@@ -4382,7 +4382,7 @@ void translate_impl(
             for (size_t i = 0; i < m.params.size(); ++i)
             {
                 const Param& p = m.params[i];
-                const std::string v = "spp_a" + std::to_string(i);
+                const std::string v = "hot_a" + std::to_string(i);
                 // The value of the factory is the default value of the parameter, if it has one.
                 std::string init = "std::decay_t<" + p.type + ">()";
                 if (p.def)

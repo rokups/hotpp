@@ -1,6 +1,6 @@
 // Tests of the tool sppc as a child process.
 //
-// CMake defines these macros: SPP_SOURCE_DIR, SPP_SCRATCH_DIR, SPPC_PATH and SPP_CXX.
+// CMake defines these macros: HOT_SOURCE_DIR, HOT_SCRATCH_DIR, SPPC_PATH and HOT_CXX.
 #include "hot/backend.h"
 #include "hot/clang_files_backend.h"
 #include "hot/config.h"
@@ -31,9 +31,9 @@ TEST(SppcTool, SppcReportsErrorAtTheScriptLine)
 {
     TestScratch scratch;
     const std::string out_dir = scratch.file("sppc_diag");
-    const std::string script = std::string(SPP_SOURCE_DIR) + "/tests/scripts/bad.hot";
+    const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/bad.hot";
     const std::string cmd = std::string("'") + SPPC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir + "' -I '"
-        + SPP_SOURCE_DIR + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include' --cxx '" + SPP_CXX + "' 2>&1";
+        + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' --cxx '" + HOT_CXX + "' 2>&1";
     std::string text;
     FILE* p = popen(cmd.c_str(), "r");
     ASSERT_NE(p, nullptr);
@@ -52,9 +52,9 @@ TEST(SppcTool, RawDiagnosticsKeepsTheCompilerText)
 {
     TestScratch scratch;
     const std::string out_dir = scratch.file("sppc_raw_diag");
-    const std::string script = std::string(SPP_SOURCE_DIR) + "/tests/scripts/bad.hot";
+    const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/bad.hot";
     const std::string base = std::string("'") + SPPC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir
-        + "' -I '" + SPP_SOURCE_DIR + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include' --cxx '" + SPP_CXX + "' ";
+        + "' -I '" + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' --cxx '" + HOT_CXX + "' ";
     std::string script_names, raw;
     FILE* p = popen((base + "2>&1").c_str(), "r");
     ASSERT_NE(p, nullptr);
@@ -94,8 +94,8 @@ int run_command(const std::string& cmd, std::string& text)
 
 std::string player_args()
 {
-    return std::string("'") + SPP_SOURCE_DIR + "/tests/scripts/player_v1.hot' --gen 1 -I '" + SPP_SOURCE_DIR
-        + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include'";
+    return std::string("'") + HOT_SOURCE_DIR + "/tests/scripts/player_v1.hot' --gen 1 -I '" + HOT_SOURCE_DIR
+        + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include'";
 }
 
 // sppc --emit-cpp prints the C++ to the standard output, or writes it with -o.
@@ -152,7 +152,7 @@ TEST(SppcTool, OutputOptionBuildsOneLibrary)
     std::filesystem::create_directories(dir);
     std::string text;
     EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' " + player_args() + " -o '" + dir + "/x.so' --cxx '"
-                      + SPP_CXX + "' 2>&1",
+                      + HOT_CXX + "' 2>&1",
                   text),
         0)
         << text;
@@ -177,7 +177,7 @@ TEST(SppcTool, StrictBorrowedIsTheDefault)
         std::fclose(f);
     }
     const std::string args =
-        std::string("' --gen 1 -I '") + SPP_SOURCE_DIR + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include'";
+        std::string("' --gen 1 -I '") + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include'";
     std::string strict, relaxed;
     EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + args + " 2>&1", strict), 1)
         << strict;
@@ -218,7 +218,7 @@ std::string write_interp_script(const TestScratch& scratch, const std::string& n
 
 std::string engine_args()
 {
-    return std::string(" --gen 1 -I '") + SPP_SOURCE_DIR + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include'";
+    return std::string(" --gen 1 -I '") + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include'";
 }
 
 // Generated code and the runtime headers need C++17 only (DECISIONS). The flags reject each
@@ -247,8 +247,8 @@ void expect_compiles_as_cxx17(const std::string& script)
         0)
         << log;
     std::string cc;
-    EXPECT_EQ(run_command(std::string("'") + SPP_CXX + "'" + kCxx17Flags + defines + " -I '" + SPP_SOURCE_DIR
-                      + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include' '" + out + "' 2>&1",
+    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "'" + kCxx17Flags + defines + " -I '" + HOT_SOURCE_DIR
+                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
                   cc),
         0)
         << "C++17: " << script << "\n"
@@ -287,8 +287,8 @@ TEST(SppcTool, ScriptClassReferenceCompiles)
         0)
         << log;
     std::string cc;
-    EXPECT_EQ(run_command(std::string("'") + SPP_CXX + "' -std=c++20 -fsyntax-only -I '" + SPP_SOURCE_DIR
-                      + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include' '" + out + "' 2>&1",
+    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++20 -fsyntax-only -I '" + HOT_SOURCE_DIR
+                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
                   cc),
         0)
         << cc;
@@ -311,8 +311,8 @@ void expect_script_compiles(TestScratch& scratch, const char* name, const char* 
         0)
         << log;
     std::string cc;
-    EXPECT_EQ(run_command(std::string("'") + SPP_CXX + "' -std=c++20 -fsyntax-only -I '" + SPP_SOURCE_DIR
-                      + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include' '" + out + "' 2>&1",
+    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++20 -fsyntax-only -I '" + HOT_SOURCE_DIR
+                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
                   cc),
         0)
         << cc;
@@ -387,7 +387,7 @@ TEST(SppcTool, IsBindingCompilesAndRuns)
     const std::string so = scratch.file("sppc_is_bind.so");
     std::string log;
     ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
-                      + "' --cxx '" + SPP_CXX + "' 2>&1",
+                      + "' --cxx '" + HOT_CXX + "' 2>&1",
                   log),
         0)
         << log;
@@ -432,7 +432,7 @@ TEST(SppcTool, AccessWordsCompileAndRun)
     const std::string so = scratch.file("sppc_access.so");
     std::string log;
     ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
-                      + "' --cxx '" + SPP_CXX + "' 2>&1",
+                      + "' --cxx '" + HOT_CXX + "' 2>&1",
                   log),
         0)
         << log;
@@ -480,7 +480,7 @@ TEST(SppcTool, BareMemberNamesCompileAndRun)
     const std::string so = scratch.file("sppc_bare_members.so");
     std::string log;
     ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
-                      + "' --cxx '" + SPP_CXX + "' 2>&1",
+                      + "' --cxx '" + HOT_CXX + "' 2>&1",
                   log),
         0)
         << log;
@@ -538,7 +538,7 @@ TEST(SppcTool, StructuredBindingsCompileAndRun)
     const std::string so = scratch.file("sppc_bindings.so");
     std::string log;
     ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
-                      + "' --cxx '" + SPP_CXX + "' 2>&1",
+                      + "' --cxx '" + HOT_CXX + "' 2>&1",
                   log),
         0)
         << log;
@@ -594,8 +594,8 @@ TEST(SppcTool, HandleAddressOfDereferenceAndThisCompile)
         0)
         << log;
     std::string cc;
-    EXPECT_EQ(run_command(std::string("'") + SPP_CXX + "' -std=c++20 -fsyntax-only -I '" + SPP_SOURCE_DIR
-                      + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include' '" + out + "' 2>&1",
+    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++20 -fsyntax-only -I '" + HOT_SOURCE_DIR
+                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
                   cc),
         0)
         << cc;
@@ -657,8 +657,8 @@ TEST(SppcTool, FormatOptionSelectsTheFormatFunction)
         0)
         << log;
     std::string cc;
-    EXPECT_EQ(run_command(std::string("'") + SPP_CXX + "' -std=c++20 -fsyntax-only -DFMT_HEADER_ONLY -I '"
-                      + SPP_SOURCE_DIR + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include' '" + out + "' 2>&1",
+    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++20 -fsyntax-only -DFMT_HEADER_ONLY -I '"
+                      + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
                   cc),
         0)
         << cc;
@@ -678,8 +678,8 @@ TEST(SppcTool, FormatFmtOutputCompilesAsCxx17)
                   log),
         0)
         << log;
-    EXPECT_EQ(run_command(std::string("'") + SPP_CXX + "'" + kCxx17Flags + " -DFMT_HEADER_ONLY -I '" + SPP_SOURCE_DIR
-                      + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include' '" + out + "' 2>&1",
+    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "'" + kCxx17Flags + " -DFMT_HEADER_ONLY -I '" + HOT_SOURCE_DIR
+                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
                   cc),
         0)
         << cc;
@@ -699,8 +699,8 @@ TEST(SppcTool, FormatStdOutputCompilesAsCxx20)
                   log),
         0)
         << log;
-    EXPECT_EQ(run_command(std::string("'") + SPP_CXX + "' -std=c++20 -fsyntax-only -I '" + SPP_SOURCE_DIR
-                      + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include' '" + out + "' 2>&1",
+    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++20 -fsyntax-only -I '" + HOT_SOURCE_DIR
+                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
                   cc),
         0)
         << cc;
@@ -750,7 +750,7 @@ TEST(SppcTool, CoalesceRunsTheRightSideOnlyWhenNeeded)
     const std::string so = scratch.file("sppc_coalesce_run.so");
     std::string log;
     ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
-                      + "' --cxx '" + SPP_CXX + "' 2>&1",
+                      + "' --cxx '" + HOT_CXX + "' 2>&1",
                   log),
         0)
         << log;
@@ -799,7 +799,7 @@ TEST(SppcTool, CoalesceInVarKeepsTheOperandType)
     const std::string so = scratch.file("sppc_coalesce_var.so");
     std::string log;
     ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
-                      + "' --cxx '" + SPP_CXX + "' 2>&1",
+                      + "' --cxx '" + HOT_CXX + "' 2>&1",
                   log),
         0)
         << log;
@@ -819,7 +819,7 @@ TEST(SppcTool, InterpolationRunsWithStdFormat)
     const std::string so = scratch.file("sppc_interp_run.so");
     std::string log;
     ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
-                      + "' --cxx '" + SPP_CXX + "' 2>&1",
+                      + "' --cxx '" + HOT_CXX + "' 2>&1",
                   log),
         0)
         << log;
@@ -883,7 +883,7 @@ TEST(SppcTool, PublicHeadersCompileAloneAsCxx17)
     TestScratch scratch;
     std::vector<std::string> headers;
     for (const char* dir : {"/include/hot", "/include/hot/runtime"})
-        for (const auto& entry : std::filesystem::directory_iterator(std::string(SPP_SOURCE_DIR) + dir))
+        for (const auto& entry : std::filesystem::directory_iterator(std::string(HOT_SOURCE_DIR) + dir))
             if (entry.is_regular_file() && entry.path().extension() == ".h")
                 headers.push_back(entry.path().string());
     ASSERT_FALSE(headers.empty());
@@ -895,7 +895,7 @@ TEST(SppcTool, PublicHeadersCompileAloneAsCxx17)
         std::fputs(("#include \"" + h + "\"\n").c_str(), f);
         std::fclose(f);
         std::string cc;
-        EXPECT_EQ(run_command(std::string("'") + SPP_CXX + "'" + kCxx17Flags + " -I '" + SPP_SOURCE_DIR + "/include' '"
+        EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "'" + kCxx17Flags + " -I '" + HOT_SOURCE_DIR + "/include' '"
                           + tu + "' 2>&1",
                       cc),
             0)
@@ -909,10 +909,10 @@ TEST(SppcTool, AotModeWritesTheCppAndTheRegistrationFile)
 {
     TestScratch scratch;
     const std::string out_dir = scratch.file("sppc_aot");
-    const std::string scripts = std::string("'") + SPP_SOURCE_DIR + "/tests/scripts/aot_demo.hot' '" + SPP_SOURCE_DIR
+    const std::string scripts = std::string("'") + HOT_SOURCE_DIR + "/tests/scripts/aot_demo.hot' '" + HOT_SOURCE_DIR
         + "/tests/scripts/props_v1.hot'";
     const std::string cmd = std::string("'") + SPPC_PATH + "' --aot " + scripts + " --out-dir '" + out_dir + "' -I '"
-        + SPP_SOURCE_DIR + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include' 2>&1";
+        + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' 2>&1";
     FILE* p = popen(cmd.c_str(), "r");
     ASSERT_NE(p, nullptr);
     std::string text;
@@ -935,7 +935,7 @@ TEST(SppcTool, AotModeWritesTheCppAndTheRegistrationFile)
 // --aot needs an output directory and does not take the options of the other modes.
 TEST(SppcTool, AotModeRejectsBadUsage)
 {
-    const std::string script = std::string(SPP_SOURCE_DIR) + "/tests/scripts/aot_demo.hot";
+    const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/aot_demo.hot";
     for (const char* extra :
         {"", "--out-dir /tmp/x --gen 1", "--out-dir /tmp/x -o /tmp/x.so", "--emit-cpp --out-dir /tmp/x"})
     {
@@ -959,7 +959,7 @@ TEST(SppcTool, AotModeReportsParseErrorAtTheScriptLine)
         f << "using \"Actor.h\";\n\nclass Broken : Actor {\n    int x = ;\n}\n";
     }
     const std::string cmd = std::string("'") + SPPC_PATH + "' --aot '" + script + "' --out-dir '" + out_dir + "' -I '"
-        + SPP_SOURCE_DIR + "/tests/engine' -I '" + SPP_SOURCE_DIR + "/include' 2>&1";
+        + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' 2>&1";
     FILE* p = popen(cmd.c_str(), "r");
     ASSERT_NE(p, nullptr);
     std::string text;
@@ -1031,11 +1031,11 @@ TEST(SppcTool, CompileCommandsOptionWritesTheDatabase)
     TestScratch scratch;
     const std::string out_dir = scratch.file("sppc_cdb");
     const std::string cdb_dir = scratch.file("sppc_cdb_json");
-    const std::string script = std::string(SPP_SOURCE_DIR) + "/tests/scripts/boss_v1.hot";
-    const std::string engine = std::string(SPP_SOURCE_DIR) + "/tests/engine";
-    const std::string inc = std::string(SPP_SOURCE_DIR) + "/include";
+    const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/boss_v1.hot";
+    const std::string engine = std::string(HOT_SOURCE_DIR) + "/tests/engine";
+    const std::string inc = std::string(HOT_SOURCE_DIR) + "/include";
     const std::string cmd = std::string("'") + SPPC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir + "' -I '"
-        + engine + "' -I '" + inc + "' --cxx '" + SPP_CXX + "' --cxxflag -O1 --compile-commands '" + cdb_dir + "' 2>&1";
+        + engine + "' -I '" + inc + "' --cxx '" + HOT_CXX + "' --cxxflag -O1 --compile-commands '" + cdb_dir + "' 2>&1";
     std::string text;
     FILE* p = popen(cmd.c_str(), "r");
     ASSERT_NE(p, nullptr);
@@ -1048,7 +1048,7 @@ TEST(SppcTool, CompileCommandsOptionWritesTheDatabase)
 
     const std::string cpp = fs::absolute(out_dir + "/boss_v1.g1.cpp").string();
     const std::string so = fs::absolute(out_dir + "/boss_v1.g1.so").string();
-    const std::string cxx = SPP_CXX;
+    const std::string cxx = HOT_CXX;
     std::string fmt_args; // fmt build only
     for (const std::string& f : hot::format_compile_flags())
         fmt_args += "\"" + f + "\", ";
@@ -1064,7 +1064,7 @@ TEST(SppcTool, CompileCommandsOptionWritesTheDatabase)
 TEST(SppcTool, EmitCppTranslatesACppScript)
 {
     std::string text;
-    const std::string script = std::string(SPP_SOURCE_DIR) + "/tests/scripts/cpp_player_v1.cpp";
+    const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/cpp_player_v1.cpp";
     EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
         0)
         << text;
@@ -1076,7 +1076,7 @@ TEST(SppcTool, EmitCppTranslatesACppScript)
 TEST(SppcTool, EmitCppInjectsTheScriptHeaderForTheAids)
 {
     std::string text;
-    const std::string script = std::string(SPP_SOURCE_DIR) + "/tests/scripts/cpp_player_v2.cpp";
+    const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/cpp_player_v2.cpp";
     EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
         0)
         << text;
@@ -1129,7 +1129,7 @@ TEST(SppcTool, OutputNeverOverwritesAnInput)
     }
     std::string text;
     EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "' --gen 1 -o '" + dir + "/a.so' --cxx '"
-                      + SPP_CXX + "'" + engine_args() + " 2>&1",
+                      + HOT_CXX + "'" + engine_args() + " 2>&1",
                   text),
         1)
         << text;

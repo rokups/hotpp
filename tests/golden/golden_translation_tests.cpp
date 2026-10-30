@@ -1,7 +1,7 @@
 // Golden-output tests. The files in tests/golden/expected/ hold the generated C++ and the slot
 // file of each example script. A later parser port must give the same bytes.
-// Set SPP_UPDATE_GOLDEN to write the files and pass.
-// CMake defines SPP_SOURCE_DIR.
+// Set HOT_UPDATE_GOLDEN to write the files and pass.
+// CMake defines HOT_SOURCE_DIR.
 #include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
@@ -18,11 +18,11 @@ using namespace translator_test;
 namespace
 {
 
-// The expected files are in tests/golden/expected/. SPP_UPDATE_GOLDEN writes them.
+// The expected files are in tests/golden/expected/. HOT_UPDATE_GOLDEN writes them.
 void check_golden(const std::string& name, const std::string& text)
 {
-    const fs::path path = fs::path(SPP_SOURCE_DIR) / "tests" / "golden" / "expected" / name;
-    if (std::getenv("SPP_UPDATE_GOLDEN") != nullptr)
+    const fs::path path = fs::path(HOT_SOURCE_DIR) / "tests" / "golden" / "expected" / name;
+    if (std::getenv("HOT_UPDATE_GOLDEN") != nullptr)
     {
         fs::create_directories(path.parent_path());
         std::ofstream(path, std::ios::binary) << text;

@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-#ifdef SPP_TEST_CLANG_FILES
+#ifdef HOT_TEST_CLANG_FILES
     #include "hot/clang_files_backend.h"
 #endif
 
@@ -26,7 +26,7 @@ using test_support::kDt;
 using test_support::Session;
 using test_support::source;
 
-#ifdef SPP_TEST_CLANG_FILES
+#ifdef HOT_TEST_CLANG_FILES
 std::string slots_text(hot::Backend& backend)
 {
     auto* files = dynamic_cast<hot::ClangFilesBackend*>(&backend);
@@ -64,7 +64,7 @@ TEST_P(BackendTests, ParentChangeRequiresFullReload)
 // wrote the file at the end of the build before; now the commit of an accepted module writes it.
 TEST_P(BackendTests, RejectedReloadLeavesTheSlotsFileUnchanged)
 {
-#ifdef SPP_TEST_CLANG_FILES
+#ifdef HOT_TEST_CLANG_FILES
     hot::LoadResult v1 = backend->load(source("family_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     // The build alone does not write the file.
@@ -181,14 +181,14 @@ TEST_P(BackendTests, FreshLoadIgnoresTheSlotState)
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Medic"));
     s.commit_at_frame_boundary();
 
-#ifdef SPP_TEST_CLANG_FILES
+#ifdef HOT_TEST_CLANG_FILES
     const std::string before = slots_text(*backend);
     EXPECT_FALSE(before.empty());
 #endif
     hot::LoadResult fresh = backend->load(source("fnremoved_v2.hot"), 1, hot::LoadMode::Fresh);
     ASSERT_TRUE(fresh) << fresh.error;
     EXPECT_FALSE(fresh.module->origin.empty());
-#ifdef SPP_TEST_CLANG_FILES
+#ifdef HOT_TEST_CLANG_FILES
     EXPECT_EQ(slots_text(*backend), before); // the build did not write
 #endif
 }
@@ -274,7 +274,7 @@ TEST_P(BackendTests, FullReloadSequenceAfterAParentChange)
     EXPECT_EQ(*host.field<int>("top_f"), 2); // G.f: A.f(1) * 2 (G is a child of S now)
     EXPECT_EQ(*host.field<int>("leaf_a"), 3); // G() : base() calls S() : base(3), then A(3)
 
-#ifdef SPP_TEST_CLANG_FILES
+#ifdef HOT_TEST_CLANG_FILES
     // The slots file has the slots of the fresh generation only: S got its own h().
     const std::string slots = slots_text(*backend);
     EXPECT_NE(slots.find("S::h"), std::string::npos) << slots;
@@ -300,7 +300,7 @@ TEST_P(BackendTests, FullReloadSequenceAfterARemovedFunction)
     ASSERT_RELOAD_OK(host.loader.load(std::move(*v1.module)));
     ASSERT_NO_FATAL_FAILURE(host.create("Medic"));
     *host.field<int>("hp") = 42;
-#ifdef SPP_TEST_CLANG_FILES
+#ifdef HOT_TEST_CLANG_FILES
     EXPECT_NE(slots_text(*backend).find("Medic::rest"), std::string::npos);
 #endif
 
@@ -322,7 +322,7 @@ TEST_P(BackendTests, FullReloadSequenceAfterARemovedFunction)
     *host.field<int>("hp") = saved_hp;
     EXPECT_EQ(*host.field<int>("hp"), 42);
     EXPECT_EQ(hot::active_generation, 1u);
-#ifdef SPP_TEST_CLANG_FILES
+#ifdef HOT_TEST_CLANG_FILES
     const std::string slots = slots_text(*backend);
     EXPECT_EQ(slots.find("Medic::rest"), std::string::npos) << slots;
     EXPECT_NE(slots.find("Medic::heal"), std::string::npos) << slots;

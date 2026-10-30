@@ -1,5 +1,5 @@
 // Reload tests of the script constructor, the destructor and "new" of a script class (S4)
-// with the backend that SPP_BACKEND selected.
+// with the backend that HOT_BACKEND selected.
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"

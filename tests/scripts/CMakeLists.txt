@@ -1,28 +1,28 @@
 # ------------------------------------------------------------ Precompiled scripts
-spp_add_scripts(TARGET pre_gen1 SCRIPTS player_v1.hot
+hot_add_scripts(TARGET pre_gen1 SCRIPTS player_v1.hot
                 INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
-                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS})
-spp_add_scripts(TARGET pre_gen2 SPPC_ARGS --gen 2 SCRIPTS player_v2.hot AFTER pre_gen1
+                FLAGS ${HOT_CXXFLAGS_LIST} DEPENDS ${HOT_HEADERS})
+hot_add_scripts(TARGET pre_gen2 SPPC_ARGS --gen 2 SCRIPTS player_v2.hot AFTER pre_gen1
                 INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
-                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS})
-spp_add_scripts(TARGET pre_native1 SCRIPTS native_std_v1.hot AFTER pre_gen2
+                FLAGS ${HOT_CXXFLAGS_LIST} DEPENDS ${HOT_HEADERS})
+hot_add_scripts(TARGET pre_native1 SCRIPTS native_std_v1.hot AFTER pre_gen2
                 INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
-                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${PROJECT_SOURCE_DIR}/tests/engine/Util.h)
-spp_add_scripts(TARGET pre_native2 SPPC_ARGS --gen 2 SCRIPTS native_std_v2.hot AFTER pre_native1
+                FLAGS ${HOT_CXXFLAGS_LIST} DEPENDS ${HOT_HEADERS} ${PROJECT_SOURCE_DIR}/tests/engine/Util.h)
+hot_add_scripts(TARGET pre_native2 SPPC_ARGS --gen 2 SCRIPTS native_std_v2.hot AFTER pre_native1
                 INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
-                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${PROJECT_SOURCE_DIR}/tests/engine/Util.h)
-spp_add_scripts(TARGET pre_handle1 SCRIPTS handle_v1.hot AFTER pre_native2
+                FLAGS ${HOT_CXXFLAGS_LIST} DEPENDS ${HOT_HEADERS} ${PROJECT_SOURCE_DIR}/tests/engine/Util.h)
+hot_add_scripts(TARGET pre_handle1 SCRIPTS handle_v1.hot AFTER pre_native2
                 INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
-                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${PROJECT_SOURCE_DIR}/tests/engine/Weapon.h)
-spp_add_scripts(TARGET pre_handle2 SPPC_ARGS --gen 2 SCRIPTS handle_v2.hot AFTER pre_handle1
+                FLAGS ${HOT_CXXFLAGS_LIST} DEPENDS ${HOT_HEADERS} ${PROJECT_SOURCE_DIR}/tests/engine/Weapon.h)
+hot_add_scripts(TARGET pre_handle2 SPPC_ARGS --gen 2 SCRIPTS handle_v2.hot AFTER pre_handle1
                 INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
-                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${PROJECT_SOURCE_DIR}/tests/engine/Weapon.h)
-spp_add_scripts(TARGET pre_handle3 SPPC_ARGS --gen 3 SCRIPTS handle_v1.hot AFTER pre_handle2
+                FLAGS ${HOT_CXXFLAGS_LIST} DEPENDS ${HOT_HEADERS} ${PROJECT_SOURCE_DIR}/tests/engine/Weapon.h)
+hot_add_scripts(TARGET pre_handle3 SPPC_ARGS --gen 3 SCRIPTS handle_v1.hot AFTER pre_handle2
                 INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
-                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS} ${PROJECT_SOURCE_DIR}/tests/engine/Weapon.h)
-spp_add_scripts(TARGET pre_cpp1 SCRIPTS cpp_player_v1.cpp AFTER pre_handle3
+                FLAGS ${HOT_CXXFLAGS_LIST} DEPENDS ${HOT_HEADERS} ${PROJECT_SOURCE_DIR}/tests/engine/Weapon.h)
+hot_add_scripts(TARGET pre_cpp1 SCRIPTS cpp_player_v1.cpp AFTER pre_handle3
                 INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
-                FLAGS ${SPP_CXXFLAGS_LIST} DEPENDS ${SPP_HEADERS})
+                FLAGS ${HOT_CXXFLAGS_LIST} DEPENDS ${HOT_HEADERS})
 
 # The .cpp scripts are standard C++. A normal build compiles them without sppc.
 # Each generation has its own library, because both define Player and the module variable total.

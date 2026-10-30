@@ -65,7 +65,7 @@ function startServer() {
   const args = expandAll(config.get('server.args', ['--stdio']), folder);
   watchers = [
     vscode.workspace.createFileSystemWatcher('**/*.hot'),
-    vscode.workspace.createFileSystemWatcher('**/.cache/spp/hosts/*'),
+    vscode.workspace.createFileSystemWatcher('**/.cache/hot/hosts/*'),
   ];
   const options = {
     // The server gets the ".cpp" documents too. It publishes the sppc errors for a ".cpp" script,

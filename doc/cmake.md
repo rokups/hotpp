@@ -29,11 +29,11 @@ project(myapp CXX)
 # Set the standard and the flags BEFORE add_subdirectory. S++ reads them there.
 set(CMAKE_CXX_STANDARD 20)
 
-set(SPP_ROOT "/path/to/spp" CACHE PATH "The S++ source tree")
-add_subdirectory(${SPP_ROOT} spp)
+set(HOT_ROOT "/path/to/spp" CACHE PATH "The S++ source tree")
+add_subdirectory(${HOT_ROOT} hot)
 
 # sppc translates wolf.hot to C++. The library myapp_scripts has the result.
-spp_add_scripts(TARGET myapp_scripts AOT SCRIPTS wolf.hot
+hot_add_scripts(TARGET myapp_scripts AOT SCRIPTS wolf.hot
                 INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS Creature.h)
 add_executable(myapp main.cpp)
 target_link_libraries(myapp PRIVATE myapp_scripts)
@@ -61,10 +61,10 @@ For a host that loads scripts (a loader), replace the last three lines of the ex
 | C++ standard | The host can use C++17, C++20 or C++23. The tool `sppc`, the language server and the tests always build as C++20, so the compiler must support C++20. |
 | libclang | The C API (`libclang`) and the header `clang-c/Index.h`, from the system. The configure step fails if `find_library(NAMES clang REQUIRED)` or `find_path(clang-c/Index.h REQUIRED)` finds nothing. Every build needs them, also an AOT build, because `sppc` links them. |
 | Threads | `find_package(Threads REQUIRED)`. |
-| LLVM and Clang | Only for `SPP_BACKEND=JIT`. The configure step runs `find_package(LLVM REQUIRED CONFIG)` and `find_package(Clang REQUIRED CONFIG)`. The JIT backend links `clang-cpp` and `LLVM`. The root file also enables the language C for this case. |
+| LLVM and Clang | Only for `HOT_BACKEND=JIT`. The configure step runs `find_package(LLVM REQUIRED CONFIG)` and `find_package(Clang REQUIRED CONFIG)`. The JIT backend links `clang-cpp` and `LLVM`. The root file also enables the language C for this case. |
 | Platform | Linux is the tested platform. Windows and macOS are untested. See [Limits](limits.html). |
 
-A host that links only `spp_runtime` (a precompiled library) or only `spp_aot` has no libclang or Clang at run time. A host that links `spp_backend` needs the libraries of the backend at run time, and `ClangFilesBackend` also needs the compiler (see [Embedding](embedding.html)).
+A host that links only `hot_runtime` (a precompiled library) or only `hot_aot` has no libclang or Clang at run time. A host that links `hot_backend` needs the libraries of the backend at run time, and `ClangFilesBackend` also needs the compiler (see [Embedding](embedding.html)).
 
 ### What CPM fetches
 
@@ -74,8 +74,8 @@ S++ uses CPM.cmake (`cmake/CPM.cmake`, in the repository, so CPM itself needs no
 |---|---|---|
 | lexy | v2025.05.0 | Always. |
 | nlohmann_json | 3.12.0 (a release archive) | Always. The language server uses it. |
-| GoogleTest | v1.17.0 | Only when `SPP_BUILD_TESTS` is ON. |
-| fmt | 11.2.0 | Only when the build uses fmt and no fmt is installed (see `SPP_FMT_PROVIDER`). |
+| GoogleTest | v1.17.0 | Only when `HOT_BUILD_TESTS` is ON. |
+| fmt | 11.2.0 | Only when the build uses fmt and no fmt is installed (see `HOT_FMT_PROVIDER`). |
 | Dear ImGui | v1.92.9b | Only in the sample `samples/imgui`, and only when `find_package(SDL3)` succeeds (see `README.md`). |
 
 libclang, the Clang compiler, Threads, LLVM and Clang (for JIT) come from the system. CPM never fetches them.
@@ -92,23 +92,23 @@ libclang, the Clang compiler, Threads, LLVM and Clang (for JIT) come from the sy
 
 For an offline build, install lexy, nlohmann_json (and GoogleTest, if you build the tests) or fill the cache with `CPM_SOURCE_CACHE` on a machine that has network access. Then set `CPM_SOURCE_CACHE` to that folder.
 
-The fmt package has its own switch. For an offline build with fmt, set `SPP_FMT_PROVIDER` to `SYSTEM` (an installed fmt) or `NONE` (your project makes the fmt target). Both values never fetch.
+The fmt package has its own switch. For an offline build with fmt, set `HOT_FMT_PROVIDER` to `SYSTEM` (an installed fmt) or `NONE` (your project makes the fmt target). Both values never fetch.
 
 ## Consume S++
 
 Add the S++ source tree with `add_subdirectory`. The second argument is a build folder, because the tree is outside your source tree.
 
 ```cmake
-set(SPP_ROOT "/path/to/spp" CACHE PATH "The S++ source tree")
-add_subdirectory(${SPP_ROOT} spp)
+set(HOT_ROOT "/path/to/spp" CACHE PATH "The S++ source tree")
+add_subdirectory(${HOT_ROOT} hot)
 
-spp_add_scripts(TARGET app_scripts AOT SCRIPTS wolf.hot
+hot_add_scripts(TARGET app_scripts AOT SCRIPTS wolf.hot
                 INCLUDES ${CMAKE_CURRENT_SOURCE_DIR})
 add_executable(app main.cpp)
 target_link_libraries(app PRIVATE app_scripts)
 ```
 
-The call to `add_subdirectory` defines the functions `spp_add_scripts` and `spp_script_host`. It also defines the targets that the next table lists.
+The call to `add_subdirectory` defines the functions `hot_add_scripts` and `hot_script_host`. It also defines the targets that the next table lists.
 
 FetchContent gives the same result. Replace the first two lines of the example:
 
@@ -121,25 +121,25 @@ FetchContent_MakeAvailable(spp)
 Two variables are read when `add_subdirectory` runs. Set them before the call:
 
 - `CMAKE_CXX_STANDARD`. See the section "The C++ standard and the format library".
-- `CMAKE_CXX_FLAGS`. The default backend takes its compile flags from this variable at this time (`SPP_CXXFLAGS_JOINED` in the root `CMakeLists.txt`). A later change has no effect on `make_default_backend`.
+- `CMAKE_CXX_FLAGS`. The default backend takes its compile flags from this variable at this time (`HOT_CXXFLAGS_JOINED` in the root `CMakeLists.txt`). A later change has no effect on `make_default_backend`.
 
 ### Targets
 
 | Target | What a host gets |
 |---|---|
-| `spp_runtime` | The loader, the reload, the migration and `module_from_library`. It has no backend. |
-| `spp_backend` | `make_default_backend`. It links `spp_runtime` and the backend that `SPP_BACKEND` selects. |
-| `spp_clang_backend` | `ClangFilesBackend`. It runs an external `clang++`. It always exists. It links `spp_runtime` and `sppc_lib`. |
-| `spp_jit_backend` | `JitBackend`. It compiles in memory. It exists only when `SPP_BACKEND` is `JIT`. |
-| `spp_aot` | The AOT registry and the core of the runtime. It has no loader. |
-| `sppc` | The tool. `spp_add_scripts` runs it at build time. |
-| `spp_fmt` | An INTERFACE target for fmt. It exists only when the build uses fmt. |
+| `hot_runtime` | The loader, the reload, the migration and `module_from_library`. It has no backend. |
+| `hot_backend` | `make_default_backend`. It links `hot_runtime` and the backend that `HOT_BACKEND` selects. |
+| `hot_clang_backend` | `ClangFilesBackend`. It runs an external `clang++`. It always exists. It links `hot_runtime` and `sppc_lib`. |
+| `hot_jit_backend` | `JitBackend`. It compiles in memory. It exists only when `HOT_BACKEND` is `JIT`. |
+| `hot_aot` | The AOT registry and the core of the runtime. It has no loader. |
+| `sppc` | The tool. `hot_add_scripts` runs it at build time. |
+| `hot_fmt` | An INTERFACE target for fmt. It exists only when the build uses fmt. |
 
-Do not link `spp_runtime` and `spp_aot` in one program. The library from `spp_add_scripts` with `AOT` links `spp_aot` for you.
+Do not link `hot_runtime` and `hot_aot` in one program. The library from `hot_add_scripts` with `AOT` links `hot_aot` for you.
 
 ### Export the host symbols
 
-A host that loads generation modules must export its symbols. This applies to a program that links `spp_runtime`, `spp_backend` or one backend library. The modules resolve the host functions and the runtime functions from the executable.
+A host that loads generation modules must export its symbols. This applies to a program that links `hot_runtime`, `hot_backend` or one backend library. The modules resolve the host functions and the runtime functions from the executable.
 
 ```cmake
 set_target_properties(app PROPERTIES ENABLE_EXPORTS ON)
@@ -159,15 +159,15 @@ The generated code and the headers in `include/hot` need C++17 only.
 
 ## Build options and variables
 
-S++ has these options that select what the build adds. They are ON by default only when S++ is the main project (`SPP_TOP_LEVEL`). They are OFF by default when your project uses `add_subdirectory` or FetchContent.
+S++ has these options that select what the build adds. They are ON by default only when S++ is the main project (`HOT_TOP_LEVEL`). They are OFF by default when your project uses `add_subdirectory` or FetchContent.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `SPP_BUILD_TESTS` | main project: ON | Build the S++ tests. They need GoogleTest. It adds `tests/`, `editors/vscode` and `tools/bench`. It also adds the test engine dir `tests/engine` to the default include dirs of the backends. |
-| `SPP_BUILD_SAMPLES` | main project: ON | Build the samples in `samples/`. The targets start with `sample_`. |
-| `SPP_SAMPLES_STANDALONE_TEST` | `OFF` | Add the CTest test `samples_standalone_aot`. The test builds `samples/aot` as a separate project in `samples_standalone/aot` of the build tree. Only `aot` has this test. It works only when `SPP_BUILD_SAMPLES` is ON. |
+| `HOT_BUILD_TESTS` | main project: ON | Build the S++ tests. They need GoogleTest. It adds `tests/`, `editors/vscode` and `tools/bench`. It also adds the test engine dir `tests/engine` to the default include dirs of the backends. |
+| `HOT_BUILD_SAMPLES` | main project: ON | Build the samples in `samples/`. The targets start with `sample_`. |
+| `HOT_SAMPLES_STANDALONE_TEST` | `OFF` | Add the CTest test `samples_standalone_aot`. The test builds `samples/aot` as a separate project in `samples_standalone/aot` of the build tree. Only `aot` has this test. It works only when `HOT_BUILD_SAMPLES` is ON. |
 
-When S++ is a subproject, `SPP_BUILD_*` are OFF. Set one to ON in your cache only if you want S++ to build it in your tree. These options work also in a subproject. If `SPP_BUILD_TESTS` is ON, the default include dirs of the backends (`SPP_DEFAULT_INCLUDE_DIRS`) also have `tests/engine`.
+When S++ is a subproject, `HOT_BUILD_*` are OFF. Set one to ON in your cache only if you want S++ to build it in your tree. These options work also in a subproject. If `HOT_BUILD_TESTS` is ON, the default include dirs of the backends (`HOT_DEFAULT_INCLUDE_DIRS`) also have `tests/engine`.
 
 ## Options
 
@@ -175,12 +175,12 @@ Set an option with `-D` on the command line, or with `set(... CACHE ...)` before
 
 | Option | Default | Meaning and when to change it |
 |---|---|---|
-| `SPP_BACKEND` | `CLANG_FILES` | The backend of `make_default_backend`. `CLANG_FILES` runs an external `clang++`. `JIT` compiles in memory. Other values stop the configure step. Change it to `JIT` to avoid a compiler process, or when you want the JIT samples. `JIT` needs LLVM and Clang. |
-| `SPP_KEEP_TEMP` | `OFF` | `ON` keeps the scratch files of the default backend and of the tests. Change it to read the generated `.cpp` files. The environment variable `SPP_KEEP_TEMP` overrides it at run time: an empty value or `0` means OFF, any other value means ON. |
-| `SPP_USE_FMT` | `OFF` | `ON` selects fmt for string interpolation at any C++ standard. Change it when you want one format library for C++17 and C++20 builds. |
-| `SPP_FMT_PROVIDER` | `AUTO` | Where fmt comes from. See the section "The format library". Change it for an offline build, or when your project has its own fmt. |
-| `SPP_HOSTS_DIR` | `${CMAKE_SOURCE_DIR}/.cache/spp/hosts` | The folder where `spp_script_host` writes the host files. `spp-ls` reads them from `<root>/.cache/spp/hosts` (or from its `--hosts-dir` argument). Change it only if you start `spp-ls` with another folder. |
-| `SPP_CLANG_RESOURCE_DIR` | empty | Only for MSVC (untested). MSVC has no `-print-resource-dir`. Give the resource folder of a Clang install. On other compilers the root file computes `CLANG_RESOURCE_DIR` from the compiler and ignores this variable. |
+| `HOT_BACKEND` | `CLANG_FILES` | The backend of `make_default_backend`. `CLANG_FILES` runs an external `clang++`. `JIT` compiles in memory. Other values stop the configure step. Change it to `JIT` to avoid a compiler process, or when you want the JIT samples. `JIT` needs LLVM and Clang. |
+| `HOT_KEEP_TEMP` | `OFF` | `ON` keeps the scratch files of the default backend and of the tests. Change it to read the generated `.cpp` files. The environment variable `HOT_KEEP_TEMP` overrides it at run time: an empty value or `0` means OFF, any other value means ON. |
+| `HOT_USE_FMT` | `OFF` | `ON` selects fmt for string interpolation at any C++ standard. Change it when you want one format library for C++17 and C++20 builds. |
+| `HOT_FMT_PROVIDER` | `AUTO` | Where fmt comes from. See the section "The format library". Change it for an offline build, or when your project has its own fmt. |
+| `HOT_HOSTS_DIR` | `${CMAKE_SOURCE_DIR}/.cache/hot/hosts` | The folder where `hot_script_host` writes the host files. `spp-ls` reads them from `<root>/.cache/hot/hosts` (or from its `--hosts-dir` argument). Change it only if you start `spp-ls` with another folder. |
+| `HOT_CLANG_RESOURCE_DIR` | empty | Only for MSVC (untested). MSVC has no `-print-resource-dir`. Give the resource folder of a Clang install. On other compilers the root file computes `CLANG_RESOURCE_DIR` from the compiler and ignores this variable. |
 
 These variables are not options but they matter:
 
@@ -190,10 +190,10 @@ These variables are not options but they matter:
 | `CMAKE_CXX_FLAGS` | The default backend passes it to every script compile (split into arguments). Sanitizer flags go here. |
 | `CMAKE_CXX_COMPILER` | The default backend, `sppc` and the language server use this compiler for the scripts. |
 | `CPM_*` | See "Offline builds". |
-| `SPP_INCLUDE_DIR` | An INTERNAL cache variable. It is the `include` folder of S++. `spp_add_scripts` puts it first in the `-I` list. |
-| `SPP_SCRATCH_DIR` | `${CMAKE_BINARY_DIR}/tmp`. The scratch root. `SPP_KEEP_TEMP` keeps it. |
+| `HOT_INCLUDE_DIR` | An INTERNAL cache variable. It is the `include` folder of S++. `hot_add_scripts` puts it first in the `-I` list. |
+| `HOT_SCRATCH_DIR` | `${CMAKE_BINARY_DIR}/tmp`. The scratch root. `HOT_KEEP_TEMP` keeps it. |
 
-The default backend writes its files to `${SPP_SCRATCH_DIR}/spp_work/p<pid>`. It removes this folder at exit, unless `SPP_KEEP_TEMP` keeps it.
+The default backend writes its files to `${HOT_SCRATCH_DIR}/hot_work/p<pid>`. It removes this folder at exit, unless `HOT_KEEP_TEMP` keeps it.
 
 The presets `linux-clang-files` and `linux-clang-jit` select the backend in this repository. See "Presets".
 
@@ -204,14 +204,14 @@ The build chooses the standard and the format library for string interpolation `
 The standard is the first of these that has a value:
 
 1. `CMAKE_CXX_STANDARD` in the scope of the caller.
-2. The default of S++: 20. S++ sets it when you set none, and it also keeps the value in a global property so `spp_add_scripts` agrees.
+2. The default of S++: 20. S++ sets it when you set none, and it also keeps the value in a global property so `hot_add_scripts` agrees.
 3. 17 (only a fallback).
 
-The standard is then fixed to 17, 20 or 23. A value of 21 or 22 gives 20. A smaller value gives 17. A larger value gives 23. `spp_add_scripts` passes the result to `sppc` as `--std=c++<n>`. The runtime backends use the same value (`HOT_CXX_STANDARD` in `include/hot/config.h`), both for the compile and for the parse of the native headers.
+The standard is then fixed to 17, 20 or 23. A value of 21 or 22 gives 20. A smaller value gives 17. A larger value gives 23. `hot_add_scripts` passes the result to `sppc` as `--std=c++<n>`. The runtime backends use the same value (`HOT_CXX_STANDARD` in `include/hot/config.h`), both for the compile and for the parse of the native headers.
 
-The format library follows from the standard and from `SPP_USE_FMT`:
+The format library follows from the standard and from `HOT_USE_FMT`:
 
-| `CMAKE_CXX_STANDARD` in your project | `SPP_USE_FMT` | Standard of the scripts | Format library | Flag for `sppc` |
+| `CMAKE_CXX_STANDARD` in your project | `HOT_USE_FMT` | Standard of the scripts | Format library | Flag for `sppc` |
 |---|---|---|---|---|
 | not set | OFF | 20 | `std::format` | none |
 | not set | ON | 20 | fmt | `--format=fmt` |
@@ -224,17 +224,17 @@ The format library follows from the standard and from `SPP_USE_FMT`:
 | less than 17 | any | 17 | fmt | `--format=fmt` |
 | more than 23 | OFF | 23 | `std::format` | none |
 
-`std::format` needs C++20, so a standard below 20 always selects fmt. When the build uses fmt, an AOT library links `spp_fmt`. A default-mode compile gets `-DFMT_HEADER_ONLY` and, if needed, `-I<fmt include dir>`.
+`std::format` needs C++20, so a standard below 20 always selects fmt. When the build uses fmt, an AOT library links `hot_fmt`. A default-mode compile gets `-DFMT_HEADER_ONLY` and, if needed, `-I<fmt include dir>`.
 
 Your own targets keep the default of the compiler when you set no standard. Set `CMAKE_CXX_STANDARD` before `add_subdirectory`. Then your host code, the runtime and the scripts use the same standard.
 
-If you set `CMAKE_CXX_STANDARD` after `add_subdirectory`, the runtime and `sppc` are already built for the old value. Then `spp_add_scripts` can ask `sppc` for another format library. `sppc` stops with the error "this sppc is built for --format=...". See the troubleshooting table.
+If you set `CMAKE_CXX_STANDARD` after `add_subdirectory`, the runtime and `sppc` are already built for the old value. Then `hot_add_scripts` can ask `sppc` for another format library. `sppc` stops with the error "this sppc is built for --format=...". See the troubleshooting table.
 
 `sppc`, the language server and the tests always build as C++20. This does not change the standard of your host. The header `include/hot/config.h` has the macros `HOT_USE_FMT` and `HOT_CXX_STANDARD`.
 
 ### The format library
 
-The cache variable `SPP_FMT_PROVIDER` says where fmt comes from:
+The cache variable `HOT_FMT_PROVIDER` says where fmt comes from:
 
 | Value | Meaning |
 |---|---|
@@ -245,18 +245,18 @@ The cache variable `SPP_FMT_PROVIDER` says where fmt comes from:
 
 A target `fmt::fmt-header-only` or `fmt::fmt` that exists already is always used. Then the build does not search and does not fetch. The configure step prints the choice, for example `String interpolation uses: fmt`, and the source of fmt.
 
-## spp_add_scripts
+## hot_add_scripts
 
 ```
-spp_add_scripts(TARGET name SCRIPTS a.hot b.hot
+hot_add_scripts(TARGET name SCRIPTS a.hot b.hot
                 [INCLUDES dir...] [FLAGS cxxflag...] [DEPENDS file...]
                 [OUT_DIR dir] [AFTER target] [SPPC_ARGS arg...])
-spp_add_scripts(TARGET name SCRIPTS a.hot b.hot AOT
+hot_add_scripts(TARGET name SCRIPTS a.hot b.hot AOT
                 [INCLUDES dir...] [PRELUDES file...] [FLAGS sppc-flag...]
                 [DEPENDS file...] [OUT_DIR dir] [SPPC_ARGS arg...])
 ```
 
-The function runs `sppc` at build time. It has two modes. `AOT` selects the second mode. The function also calls `spp_script_host` with the name `TARGET`, so the language server knows the scripts. Call it after `add_subdirectory` of S++.
+The function runs `sppc` at build time. It has two modes. `AOT` selects the second mode. The function also calls `hot_script_host` with the name `TARGET`, so the language server knows the scripts. Call it after `add_subdirectory` of S++.
 
 ### Keywords
 
@@ -269,13 +269,13 @@ The function runs `sppc` at build time. It has two modes. `AOT` selects the seco
 | `PRELUDES` | empty | Prelude files for `sppc --prelude`. They work only with `AOT`. The default mode stops with an error. | A relative path is relative to the current source folder. |
 | `FLAGS` | empty | In the default mode: compile flags for the scripts (`--cxxflag`). In AOT mode: flags for `sppc`. | none |
 | `DEPENDS` | empty | More files that the build depends on. | A relative path is relative to the current source folder (the rule of `add_custom_command`). |
-| `OUT_DIR` | default mode: `${CMAKE_BINARY_DIR}/spp_scripts`. AOT: `${CMAKE_BINARY_DIR}/spp_aot/<name>`. | The output folder. | Use an absolute path. A relative path is relative to the current build folder, and then `SPP_SCRIPTS_<TARGET>_LIBRARIES` has relative paths. |
+| `OUT_DIR` | default mode: `${CMAKE_BINARY_DIR}/hot_scripts`. AOT: `${CMAKE_BINARY_DIR}/hot_aot/<name>`. | The output folder. | Use an absolute path. A relative path is relative to the current build folder, and then `HOT_SCRIPTS_<TARGET>_LIBRARIES` has relative paths. |
 | `AFTER` | none | A target that must build first. It works only in the default mode. AOT mode stops with an error. | none |
 | `SPPC_ARGS` | empty | More arguments for `sppc`, in both modes. | none |
 
-The `sppc` call always has the include folder of S++ (`SPP_INCLUDE_DIR`) as the first `-I`. You do not need to put it in `INCLUDES`.
+The `sppc` call always has the include folder of S++ (`HOT_INCLUDE_DIR`) as the first `-I`. You do not need to put it in `INCLUDES`.
 
-The function checks its arguments. A word that is not a keyword stops the configure step with `spp_add_scripts: unknown arguments: ...`.
+The function checks its arguments. A word that is not a keyword stops the configure step with `hot_add_scripts: unknown arguments: ...`.
 
 ### What the custom command depends on
 
@@ -310,14 +310,14 @@ The generations of one class share the slot file `OUT_DIR/slots.txt`. This file 
 
 | Variable | Scope | Mode | Value |
 |---|---|---|---|
-| `SPP_SCRIPTS_<TARGET>_LIBRARIES` | the scope of the caller (`PARENT_SCOPE`) | default | The paths of the libraries, one for each script. |
-| `SPP_INCLUDE_DIR` | the cache (INTERNAL) | both | The include folder of S++. Set when the S++ file is loaded, not by the call. |
+| `HOT_SCRIPTS_<TARGET>_LIBRARIES` | the scope of the caller (`PARENT_SCOPE`) | default | The paths of the libraries, one for each script. |
+| `HOT_INCLUDE_DIR` | the cache (INTERNAL) | both | The include folder of S++. Set when the S++ file is loaded, not by the call. |
 
-AOT mode sets no variable. The function also writes the file `${SPP_HOSTS_DIR}/<TARGET>.json` when CMake generates (see `spp_script_host`).
+AOT mode sets no variable. The function also writes the file `${HOT_HOSTS_DIR}/<TARGET>.json` when CMake generates (see `hot_script_host`).
 
 ### Multi-config generators
 
-With `Ninja Multi-Config` or another multi-config generator, the default `OUT_DIR` has no part for the configuration. All configurations write to the same files, and `FLAGS` are the same for all of them. Build one configuration at a time in one tree. The libraries of the AOT mode are normal CMake libraries, so they follow the configuration. This behavior comes from the code of `spp_add_scripts`. A build with two configurations in one tree is untested.
+With `Ninja Multi-Config` or another multi-config generator, the default `OUT_DIR` has no part for the configuration. All configurations write to the same files, and `FLAGS` are the same for all of them. Build one configuration at a time in one tree. The libraries of the AOT mode are normal CMake libraries, so they follow the configuration. This behavior comes from the code of `hot_add_scripts`. A build with two configurations in one tree is untested.
 
 ### Worked example: default mode with generations
 
@@ -325,26 +325,26 @@ With `Ninja Multi-Config` or another multi-config generator, the default `OUT_DI
 separate_arguments(host_flags NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
 set(engine ${CMAKE_SOURCE_DIR}/engine)
 
-spp_add_scripts(TARGET gen1 SCRIPTS player_v1.hot
+hot_add_scripts(TARGET gen1 SCRIPTS player_v1.hot
                 INCLUDES ${engine} FLAGS ${host_flags} DEPENDS ${engine}/Actor.h)
-spp_add_scripts(TARGET gen2 SCRIPTS player_v2.hot AFTER gen1 SPPC_ARGS --gen 2
+hot_add_scripts(TARGET gen2 SCRIPTS player_v2.hot AFTER gen1 SPPC_ARGS --gen 2
                 INCLUDES ${engine} FLAGS ${host_flags} DEPENDS ${engine}/Actor.h)
 
 add_executable(app main.cpp)
-target_link_libraries(app PRIVATE spp_runtime)
+target_link_libraries(app PRIVATE hot_runtime)
 set_target_properties(app PROPERTIES ENABLE_EXPORTS ON)
 add_dependencies(app gen2)
 
 enable_testing()
-add_test(NAME app COMMAND app ${SPP_SCRIPTS_gen1_LIBRARIES} ${SPP_SCRIPTS_gen2_LIBRARIES})
+add_test(NAME app COMMAND app ${HOT_SCRIPTS_gen1_LIBRARIES} ${HOT_SCRIPTS_gen2_LIBRARIES})
 ```
 
-The build makes these files in `${CMAKE_BINARY_DIR}/spp_scripts`: `player_v1.g1.so`, `player_v2.g2.so` and `slots.txt`. The program loads generation 1 with `load` and generation 2 with `request_reload`. See [Hot reload](hot-reload.html). The call in `tests/scripts/CMakeLists.txt` uses the same keywords.
+The build makes these files in `${CMAKE_BINARY_DIR}/hot_scripts`: `player_v1.g1.so`, `player_v2.g2.so` and `slots.txt`. The program loads generation 1 with `load` and generation 2 with `request_reload`. See [Hot reload](hot-reload.html). The call in `tests/scripts/CMakeLists.txt` uses the same keywords.
 
 ### Worked example: AOT mode
 
 ```cmake
-spp_add_scripts(TARGET game_scripts AOT SCRIPTS player.hot boss.hot
+hot_add_scripts(TARGET game_scripts AOT SCRIPTS player.hot boss.hot
                 INCLUDES ${CMAKE_SOURCE_DIR}/engine
                 PRELUDES ${CMAKE_SOURCE_DIR}/scripts/stubs.hot
                 DEPENDS ${CMAKE_SOURCE_DIR}/engine/Actor.h
@@ -355,28 +355,28 @@ target_link_libraries(game PRIVATE game_scripts)
 
 The function runs `sppc --aot` and makes the static library `name`. The library has the files `OUT_DIR/<script name>.aot.cpp` and `OUT_DIR/hot_aot_registry.cpp`. The library defines `hot::aot_table` (`include/hot/aot.h`).
 
-The library links `spp_aot` (PUBLIC). A program that links `name` has no loader, no reload and no Clang. When the build uses fmt, the library also links `spp_fmt`. AOT mode makes only generation 1. Script names and class names must be unique across the scripts of one table.
+The library links `hot_aot` (PUBLIC). A program that links `name` has no loader, no reload and no Clang. When the build uses fmt, the library also links `hot_fmt`. AOT mode makes only generation 1. Script names and class names must be unique across the scripts of one table.
 
 The library is a normal target, so it uses the compile flags of your project (`CMAKE_CXX_FLAGS` and the build type). `FLAGS` go to `sppc`, not to the compiler.
 
-## spp_script_host
+## hot_script_host
 
 ```
-spp_script_host(NAME name [TARGET target] [SCRIPT_DIRS dir...] [SCRIPTS file...]
+hot_script_host(NAME name [TARGET target] [SCRIPT_DIRS dir...] [SCRIPTS file...]
                 [INCLUDES dir...] [FLAGS flag...])
 ```
 
-The function describes a script host for the language server `spp-ls`. It does not build anything. When CMake generates the build system, it writes `${SPP_HOSTS_DIR}/<name>.json`. With `TARGET`, it also writes three side files in the same folder.
+The function describes a script host for the language server `spp-ls`. It does not build anything. When CMake generates the build system, it writes `${HOT_HOSTS_DIR}/<name>.json`. With `TARGET`, it also writes three side files in the same folder.
 
 `NAME` and one of `SCRIPT_DIRS` or `SCRIPTS` are required. `TARGET` is the CMake target of your host program. The file gets its include folders, defines and options. The include folder of S++ is always first. A relative path in `SCRIPT_DIRS`, `SCRIPTS` or `INCLUDES` is relative to the current source folder (`sourceDir` in the file). A UTILITY target (a custom target) has no such lists, so the function skips them.
 
 ```cmake
-spp_script_host(NAME engine TARGET engine
+hot_script_host(NAME engine TARGET engine
                 SCRIPT_DIRS ${CMAKE_SOURCE_DIR}/scripts
                 INCLUDES ${CMAKE_SOURCE_DIR}/engine)
 ```
 
-You do not need this call for scripts that `spp_add_scripts` builds, because that function calls it. Use it for a host that compiles its scripts at run time. See [Tools](tools.html) and the section "Automatic setup" of `README.md`.
+You do not need this call for scripts that `hot_add_scripts` builds, because that function calls it. Use it for a host that compiles its scripts at run time. See [Tools](tools.html) and the section "Automatic setup" of `README.md`.
 
 ### The files
 
@@ -387,9 +387,9 @@ You do not need this call for scripts that `spp_add_scripts` builds, because tha
 | `<name>.options` | `TARGET` is a real target | The compile options of the target, one on each line. |
 | `<name>.includes` | `TARGET` is a real target | The raw `INCLUDE_DIRECTORIES` of the target, one on each line. A relative entry is relative to `sourceDir`. |
 
-The folder is `SPP_HOSTS_DIR`. The default is `${CMAKE_SOURCE_DIR}/.cache/spp/hosts`. Add `.cache/` to the ignore list of your project. The side files exist because a quote or a backslash in a path cannot pass through a generator expression into JSON. A path with a newline, and a path with a semicolon, do not work.
+The folder is `HOT_HOSTS_DIR`. The default is `${CMAKE_SOURCE_DIR}/.cache/hot/hosts`. Add `.cache/` to the ignore list of your project. The side files exist because a quote or a backslash in a path cannot pass through a generator expression into JSON. A path with a newline, and a path with a semicolon, do not work.
 
-`spp_add_scripts` calls `spp_script_host` without `TARGET`, so it writes only the JSON file. The `includeDirs` entry has the include folder of S++, the `INCLUDES` and (with fmt) the fmt folder. In default mode `flags` has `FLAGS` and the fmt flags.
+`hot_add_scripts` calls `hot_script_host` without `TARGET`, so it writes only the JSON file. The `includeDirs` entry has the include folder of S++, the `INCLUDES` and (with fmt) the fmt folder. In default mode `flags` has `FLAGS` and the fmt flags.
 
 Two notes on the fields:
 
@@ -402,8 +402,8 @@ Scripts and the host must use the same sanitizer runtime. The root file `CMakeLi
 
 - `make_default_backend` passes `CMAKE_CXX_FLAGS` to every script compile. A preset with `-fsanitize=address` therefore works with no more settings.
 - A backend that you build yourself needs the flags in `extra_flags`. The samples `clang-files-backend` and `jit-backend` copy `CMAKE_CXX_FLAGS` into `extra_flags`.
-- `spp_add_scripts` in the default mode does not read `CMAKE_CXX_FLAGS`. Put the host flags in `FLAGS`: `separate_arguments(host_flags NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")`, then `FLAGS ${host_flags}`. The sample [precompiled-library](https://github.com/rokups/spp/tree/main/samples/precompiled-library) does this.
-- `spp_add_scripts` in AOT mode builds a normal library. It follows the flags of the project.
+- `hot_add_scripts` in the default mode does not read `CMAKE_CXX_FLAGS`. Put the host flags in `FLAGS`: `separate_arguments(host_flags NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")`, then `FLAGS ${host_flags}`. The sample [precompiled-library](https://github.com/rokups/spp/tree/main/samples/precompiled-library) does this.
+- `hot_add_scripts` in AOT mode builds a normal library. It follows the flags of the project.
 - Use one build folder for each mode (plain, ASan, TSan). The presets do this.
 - The build type flags (`CMAKE_CXX_FLAGS_DEBUG` and the other ones) are not part of `CMAKE_CXX_FLAGS`. The script compile does not get them. The compile always uses `-g` and has no `-O` flag. Add `-O2` (or a flag you need) to `FLAGS`, `extra_flags` or `CMAKE_CXX_FLAGS` for optimized scripts.
 - The JIT backend works with ThreadSanitizer.
@@ -450,17 +450,17 @@ The first column has the text as it appears in the source. A text with `...` has
 
 | Message | Cause | Fix |
 |---|---|---|
-| `sppc: error: this sppc is built for --format=std, not --format=fmt` (or the other way) | `spp_add_scripts` chose another format library than the one `sppc` has. The standard in your scope differed from the standard when S++ was configured. | Set `CMAKE_CXX_STANDARD` and `SPP_USE_FMT` before `add_subdirectory`. Do not change them later. Configure again in a new build folder. |
-| `SPP_BACKEND must be CLANG_FILES or JIT. It is: ...` | The cache variable has another value. | Use `CLANG_FILES` or `JIT`. |
-| `SPP_FMT_PROVIDER must be AUTO, SYSTEM, CPM or NONE. It is: ...` | A wrong value. | Use one of the four values. |
-| `SPP_FMT_PROVIDER is NONE, but the target fmt::fmt-header-only or fmt::fmt does not exist...` | `NONE` needs your own fmt target. | Create the target before `add_subdirectory`, or use another provider. |
-| `SPP: fmt is not available. Check SPP_FMT_PROVIDER (now ...).` | No provider gave a fmt target. | Install fmt, or use `CPM`. |
-| `spp_add_scripts needs TARGET and SCRIPTS` | A required keyword is missing. | Give both. |
-| `spp_add_scripts: unknown arguments: ...` | A word is not a keyword (for example a typo). | Check the spelling. Keywords are upper case. |
-| `spp_add_scripts: AFTER does not work with AOT (target ...)` | `AFTER` and `AOT` in one call. | Remove `AFTER`. AOT makes only generation 1. |
-| `spp_add_scripts: PRELUDES works only with AOT (target ...)` | `PRELUDES` in the default mode. | Add `AOT` or remove `PRELUDES`. |
-| `spp_script_host needs NAME and SCRIPT_DIRS or SCRIPTS` | A required keyword is missing. | Give `NAME` and one of the two lists. |
-| `spp_script_host: the target ... does not exist` | `TARGET` names a target that is not defined yet. | Call the function after `add_executable`. |
+| `sppc: error: this sppc is built for --format=std, not --format=fmt` (or the other way) | `hot_add_scripts` chose another format library than the one `sppc` has. The standard in your scope differed from the standard when S++ was configured. | Set `CMAKE_CXX_STANDARD` and `HOT_USE_FMT` before `add_subdirectory`. Do not change them later. Configure again in a new build folder. |
+| `HOT_BACKEND must be CLANG_FILES or JIT. It is: ...` | The cache variable has another value. | Use `CLANG_FILES` or `JIT`. |
+| `HOT_FMT_PROVIDER must be AUTO, SYSTEM, CPM or NONE. It is: ...` | A wrong value. | Use one of the four values. |
+| `HOT_FMT_PROVIDER is NONE, but the target fmt::fmt-header-only or fmt::fmt does not exist...` | `NONE` needs your own fmt target. | Create the target before `add_subdirectory`, or use another provider. |
+| `SPP: fmt is not available. Check HOT_FMT_PROVIDER (now ...).` | No provider gave a fmt target. | Install fmt, or use `CPM`. |
+| `hot_add_scripts needs TARGET and SCRIPTS` | A required keyword is missing. | Give both. |
+| `hot_add_scripts: unknown arguments: ...` | A word is not a keyword (for example a typo). | Check the spelling. Keywords are upper case. |
+| `hot_add_scripts: AFTER does not work with AOT (target ...)` | `AFTER` and `AOT` in one call. | Remove `AFTER`. AOT makes only generation 1. |
+| `hot_add_scripts: PRELUDES works only with AOT (target ...)` | `PRELUDES` in the default mode. | Add `AOT` or remove `PRELUDES`. |
+| `hot_script_host needs NAME and SCRIPT_DIRS or SCRIPTS` | A required keyword is missing. | Give `NAME` and one of the two lists. |
+| `hot_script_host: the target ... does not exist` | `TARGET` names a target that is not defined yet. | Call the function after `add_executable`. |
 | `sppc: error: two scripts have the name ...` | Two scripts have the same file name in one call. | Give the files different names. |
 | `sppc: error: cannot read ...` | A script file does not exist. | Check the path in `SCRIPTS`. |
 | `the compile of ... failed (exit code ...)` | The C++ compiler rejected the generated code. The text before it has the compiler diagnostics. | Read the diagnostics. Check `INCLUDES`, `FLAGS` and the standard. |
@@ -477,19 +477,19 @@ Some problems have no fixed S++ message. The text comes from the tool that repor
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| The linker reports an undefined reference to `hot::aot_table`. | A program that uses `AotRegistry` does not link the library from `spp_add_scripts(... AOT ...)`. Only that library defines the table. | Link the AOT library. |
+| The linker reports an undefined reference to `hot::aot_table`. | A program that uses `AotRegistry` does not link the library from `hot_add_scripts(... AOT ...)`. Only that library defines the table. | Link the AOT library. |
 | `Loader::load` or `module_from_library` fails and `error` has the `dlopen` text with `undefined symbol`. | The host is not linked with `ENABLE_EXPORTS`, or the host does not contain a function that the script calls. The `dlopen` text comes from the system. | Set `ENABLE_EXPORTS ON`. Link the code with the function, as a whole archive if it is a static library. |
 | The JIT backend fails with `script_register not found or not linkable: ...`. | The in-memory code needs a symbol that the executable does not export (see `README.md`, the section on the JIT backend). | Same as above. |
 | The configure step stops in `find_library` or `find_path` for libclang. | The development package of libclang is not installed. The message is from CMake. | Install it, or set `CMAKE_PREFIX_PATH`. |
-| The configure step stops in `find_package(LLVM)` or `find_package(Clang)`. | `SPP_BACKEND` is `JIT`, and the packages are missing. The message is from CMake. | Install the LLVM and Clang development packages, or use `CLANG_FILES`. |
-| The script compile cannot find compiler headers such as `stddef.h`. | The resource folder is wrong or empty. The root file takes it from `<compiler> -print-resource-dir`. The compiler must be Clang. MSVC has no such option. | Use `clang++` as `CMAKE_CXX_COMPILER`. For a backend that you build yourself, set `resource_dir`. For MSVC set `SPP_CLANG_RESOURCE_DIR`. |
-| CMake reports an unknown command `spp_add_scripts`. | The call comes before `add_subdirectory` of S++. The message is from CMake. | Move the call after `add_subdirectory`. |
+| The configure step stops in `find_package(LLVM)` or `find_package(Clang)`. | `HOT_BACKEND` is `JIT`, and the packages are missing. The message is from CMake. | Install the LLVM and Clang development packages, or use `CLANG_FILES`. |
+| The script compile cannot find compiler headers such as `stddef.h`. | The resource folder is wrong or empty. The root file takes it from `<compiler> -print-resource-dir`. The compiler must be Clang. MSVC has no such option. | Use `clang++` as `CMAKE_CXX_COMPILER`. For a backend that you build yourself, set `resource_dir`. For MSVC set `HOT_CLANG_RESOURCE_DIR`. |
+| CMake reports an unknown command `hot_add_scripts`. | The call comes before `add_subdirectory` of S++. The message is from CMake. | Move the call after `add_subdirectory`. |
 | A script change does not rebuild the library. | A changed header or an imported script is not in `DEPENDS`. | Add the file to `DEPENDS`. |
 | A program with sanitizer flags crashes when it loads a module. | The module is compiled without the same flags. | Put the flags in `FLAGS` or `extra_flags`. See "Sanitizers and the build type". |
 
-## spp_gtest
+## hot_gtest
 
-`spp_gtest(<target> [gtest_discover_tests arguments...] [PROPERTIES ...])` is an internal helper. It is in `cmake/SppTests.cmake`, and the build loads it only when `SPP_BUILD_TESTS` is ON. It registers the GoogleTest cases of a test target, requires C++20 for the target and makes each test depend on the fixture `spp_scratch`. Host projects do not call it.
+`hot_gtest(<target> [gtest_discover_tests arguments...] [PROPERTIES ...])` is an internal helper. It is in `cmake/HotTests.cmake`, and the build loads it only when `HOT_BUILD_TESTS` is ON. It registers the GoogleTest cases of a test target, requires C++20 for the target and makes each test depend on the fixture `hot_scratch`. Host projects do not call it.
 
 ## Samples
 
@@ -500,6 +500,6 @@ Each sample is a small project. It builds in the S++ tree and as a separate proj
 - [precompiled-library](https://github.com/rokups/spp/tree/main/samples/precompiled-library): the build makes a script library and the program loads it.
 - [hot-reload](https://github.com/rokups/spp/tree/main/samples/hot-reload): the program replaces the code of a live object.
 - [clang-files-backend](https://github.com/rokups/spp/tree/main/samples/clang-files-backend): the program builds `ClangFilesBackend` itself.
-- [jit-backend](https://github.com/rokups/spp/tree/main/samples/jit-backend): the program builds `JitBackend` itself. It needs `SPP_BACKEND=JIT`.
+- [jit-backend](https://github.com/rokups/spp/tree/main/samples/jit-backend): the program builds `JitBackend` itself. It needs `HOT_BACKEND=JIT`.
 
-The samples use the S++ tree in `SPP_ROOT`. The default is the tree that holds the `samples` folder. To use a sample in your project, set `SPP_ROOT` to the S++ tree (or use FetchContent) and copy the `spp_add_scripts` and `target_link_libraries` lines.
+The samples use the S++ tree in `HOT_ROOT`. The default is the tree that holds the `samples` folder. To use a sample in your project, set `HOT_ROOT` to the S++ tree (or use FetchContent) and copy the `hot_add_scripts` and `target_link_libraries` lines.

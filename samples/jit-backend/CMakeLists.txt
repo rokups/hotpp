@@ -1,22 +1,22 @@
 # The sample jit-backend: the program builds JitBackend itself. The backend compiles in memory
-# with the Clang library. It needs SPP_BACKEND=JIT and the LLVM and Clang development packages.
+# with the Clang library. It needs HOT_BACKEND=JIT and the LLVM and Clang development packages.
 # This file works in the S++ build (add_subdirectory) and as a separate project.
 cmake_minimum_required(VERSION 3.20)
-project(spp_sample_jit CXX)
+project(hot_sample_jit CXX)
 
-# The S++ build sets SPP_BACKEND. A separate project asks for the JIT backend by default.
-if(NOT DEFINED SPP_BACKEND)
-    set(SPP_BACKEND JIT CACHE STRING "S++ backend: CLANG_FILES or JIT")
+# The S++ build sets HOT_BACKEND. A separate project asks for the JIT backend by default.
+if(NOT DEFINED HOT_BACKEND)
+    set(HOT_BACKEND JIT CACHE STRING "S++ backend: CLANG_FILES or JIT")
 endif()
 
 # The S++ source tree. A separate build uses it. The S++ build already has the targets.
-set(SPP_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The S++ source tree")
+set(HOT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The S++ source tree")
 if(NOT TARGET sppc)
-    add_subdirectory(${SPP_ROOT} spp)
+    add_subdirectory(${HOT_ROOT} hot)
 endif()
 
-if(NOT SPP_BACKEND STREQUAL "JIT")
-    message(STATUS "sample_jit: skipped, SPP_BACKEND is ${SPP_BACKEND}")
+if(NOT HOT_BACKEND STREQUAL "JIT")
+    message(STATUS "sample_jit: skipped, HOT_BACKEND is ${HOT_BACKEND}")
     return()
 endif()
 
@@ -25,18 +25,18 @@ execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
                 OUTPUT_VARIABLE resource_dir OUTPUT_STRIP_TRAILING_WHITESPACE)
 
 # One program source, two script variants. The extension picks the script.
-#   sample_jit_spp reads script/wolf.hot.
+#   sample_jit_hot reads script/wolf.hot.
 #   sample_jit_cpp reads script/wolf.cpp.
-foreach(variant spp cpp)
-    # The variant "spp" uses the extension ".hot".
+foreach(variant hot cpp)
+    # The variant "hot" uses the extension ".hot".
     set(ext ${variant})
-    if(variant STREQUAL "spp")
+    if(variant STREQUAL "hot")
         set(ext hot)
     endif()
     set(target sample_jit_${variant})
     add_executable(${target} main.cpp)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(${target} PRIVATE spp_jit_backend)
+    target_link_libraries(${target} PRIVATE hot_jit_backend)
     # The generation modules resolve host and runtime symbols from the executable.
     set_target_properties(${target} PROPERTIES ENABLE_EXPORTS ON)
     # SAMPLE_DIR has Creature.h. SAMPLE_SCRIPT_DIR and SAMPLE_SCRIPT_EXT select the script
@@ -45,7 +45,7 @@ foreach(variant spp cpp)
         SAMPLE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
         SAMPLE_SCRIPT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/script"
         SAMPLE_SCRIPT_EXT=".${ext}"
-        SAMPLE_SPP_INCLUDE_DIR="${SPP_INCLUDE_DIR}"
+        SAMPLE_HOT_INCLUDE_DIR="${HOT_INCLUDE_DIR}"
         SAMPLE_CXX="${CMAKE_CXX_COMPILER}"
         SAMPLE_CXXFLAGS="${CMAKE_CXX_FLAGS}"
         SAMPLE_RESOURCE_DIR="${resource_dir}")

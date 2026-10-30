@@ -2,13 +2,13 @@
 //
 // The scripts timer_v1 and timer_v2 define the class Beeper. The method arm
 // stores an arrow lambda in a World timer. The tests use the backend that
-// SPP_BACKEND selected (make_default_backend).
+// HOT_BACKEND selected (make_default_backend).
 //
 // The class record, the factory, the thunks and the vtable of each object are in the core
 // module (design 4.9, M8). So generation 1 unloads like a later generation. The first unload
 // tests use generation 2 of a chain 1 -> 2 -> 3.
 //
-// CMake defines SPP_SOURCE_DIR.
+// CMake defines HOT_SOURCE_DIR.
 #include "hot/backend.h"
 #include "support/reload_assert.h"
 #include "support/script_files.h"

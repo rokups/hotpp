@@ -18,8 +18,8 @@ namespace
 
 std::vector<std::string> clang_args(const std::string& extra_dir)
 {
-    std::vector<std::string> a = {"-x", "c++", "-std=c++17", "-I" + std::string(SPP_SOURCE_DIR) + "/tests/engine",
-        "-I" + std::string(SPP_SOURCE_DIR) + "/include", "-resource-dir=" + std::string(SPP_RESOURCE_DIR)};
+    std::vector<std::string> a = {"-x", "c++", "-std=c++17", "-I" + std::string(HOT_SOURCE_DIR) + "/tests/engine",
+        "-I" + std::string(HOT_SOURCE_DIR) + "/include", "-resource-dir=" + std::string(HOT_RESOURCE_DIR)};
     if (!extra_dir.empty())
         a.push_back("-I" + extra_dir);
     return a;
@@ -342,7 +342,7 @@ int S::H() const && { return hp + 2; }
 TEST(CppFrontend, BaseStaticAndNestedNames)
 {
     namespace fs = std::filesystem;
-    const fs::path dir = fs::path(testing::TempDir()) / "spp_cpp_frontend";
+    const fs::path dir = fs::path(testing::TempDir()) / "hot_cpp_frontend";
     fs::create_directories(dir);
     std::ofstream(dir / "NativeBase.h") << "#pragma once\nstruct NativeBase {\n  virtual ~NativeBase() = default;\n"
                                            "  static int Count;\n  enum Kind { KA, KB };\n  struct Info { int v = 0; };\n"
@@ -782,8 +782,8 @@ public:
 };
 )";
     o.generation = 1;
-    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/tests/engine", std::string(SPP_SOURCE_DIR) + "/include"};
-    o.resource_dir = SPP_RESOURCE_DIR;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.resource_dir = HOT_RESOURCE_DIR;
     const sppc::TranslateResult r = sppc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     for (const char* n : {"int C__s_plan() {", "int C__s_super_args() {", "int C__s_new_default() {",
@@ -899,8 +899,8 @@ public:
 };
 )";
     o.generation = 1;
-    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/tests/engine", std::string(SPP_SOURCE_DIR) + "/include"};
-    o.resource_dir = SPP_RESOURCE_DIR;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.resource_dir = HOT_RESOURCE_DIR;
     const sppc::TranslateResult r = sppc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("S__F(S_Shell* __self, int x, int y = 2, int z = hot_mod()->level);"), std::string::npos)
@@ -926,8 +926,8 @@ public:
 };
 )";
     o.generation = 1;
-    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/tests/engine", std::string(SPP_SOURCE_DIR) + "/include"};
-    o.resource_dir = SPP_RESOURCE_DIR;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.resource_dir = HOT_RESOURCE_DIR;
     const sppc::TranslateResult r = sppc::translate(o);
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("default values are not allowed on virtual or override methods"), std::string::npos)
@@ -1236,8 +1236,8 @@ public:
 };
 )";
     o.generation = 1;
-    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/tests/engine", std::string(SPP_SOURCE_DIR) + "/include"};
-    o.resource_dir = SPP_RESOURCE_DIR;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.resource_dir = HOT_RESOURCE_DIR;
     const sppc::TranslateResult r = sppc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("using T = Point; new (f) T{1, 2};"), std::string::npos);
@@ -1289,8 +1289,8 @@ public:
     o.script_name = "t.cpp";
     o.script_text = text;
     o.generation = 1;
-    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/tests/engine", std::string(SPP_SOURCE_DIR) + "/include"};
-    o.resource_dir = SPP_RESOURCE_DIR;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.resource_dir = HOT_RESOURCE_DIR;
     const sppc::TranslateResult r = sppc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // The first line after the "#line" is the rest of the line of the "{". The statement is two lines later.
@@ -1314,8 +1314,8 @@ public:
 };
 )";
     o.generation = 1;
-    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/tests/engine", std::string(SPP_SOURCE_DIR) + "/include"};
-    o.resource_dir = SPP_RESOURCE_DIR;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.resource_dir = HOT_RESOURCE_DIR;
     const sppc::TranslateResult r = sppc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     size_t n = 0;
@@ -1389,7 +1389,7 @@ TEST(CppFrontend, IncludesOnlyReal)
 TEST(CppFrontend, TemplateBase)
 {
     namespace fs = std::filesystem;
-    const fs::path dir = fs::path(testing::TempDir()) / "spp_cpp_frontend_tpl";
+    const fs::path dir = fs::path(testing::TempDir()) / "hot_cpp_frontend_tpl";
     fs::create_directories(dir);
     std::ofstream(dir / "TplBase.h") << "#pragma once\ntemplate <typename T> struct Base {\n"
                                         "  virtual ~Base() = default;\n  T value{};\n  void Hit() {}\n};\n";
@@ -1548,8 +1548,8 @@ sppc::TranslateOptions analyze_options()
 {
     sppc::TranslateOptions o;
     o.generation = 1;
-    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/tests/engine", std::string(SPP_SOURCE_DIR) + "/include"};
-    o.resource_dir = SPP_RESOURCE_DIR;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.resource_dir = HOT_RESOURCE_DIR;
     return o;
 }
 

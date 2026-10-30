@@ -1,6 +1,6 @@
 // Reload tests of the kinds of script classes (S5, design 7.10.1 and 5.3): a [value] class
 // that lives inline in the state block, a class without a base that is a handle, and a class
-// with a native base that is a handle. They use the backend that SPP_BACKEND selected.
+// with a native base that is a handle. They use the backend that HOT_BACKEND selected.
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"

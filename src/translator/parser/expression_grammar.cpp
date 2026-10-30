@@ -33,11 +33,11 @@ using ast::ExprP;
 
 // ---------------------------------------------------------------- error texts
 // The script has no "::" and no "->". A "." does both jobs. The errors tell the user.
-SPP_ERROR_TAG(e_expected_expr, "expected an expression");
-SPP_ERROR_TAG(e_end_of_expr, "expected end of expression");
-SPP_ERROR_TAG(e_brace_init, "brace initialization is not supported; use parentheses");
-SPP_ERROR_TAG(e_new_paren, "expected '(' after the type of 'new'");
-SPP_ERROR_TAG(e_targs, "not a template argument list");
+HOT_ERROR_TAG(e_expected_expr, "expected an expression");
+HOT_ERROR_TAG(e_end_of_expr, "expected end of expression");
+HOT_ERROR_TAG(e_brace_init, "brace initialization is not supported; use parentheses");
+HOT_ERROR_TAG(e_new_paren, "expected '(' after the type of 'new'");
+HOT_ERROR_TAG(e_targs, "not a template argument list");
 
 // ---------------------------------------------------------------- limits
 // The nesting of the brackets in the text of template arguments.
@@ -211,11 +211,11 @@ struct IndexTag
 {
 };
 
-#define SPP_BIN(S) dsl::op<Bin<S>>(LEXY_LIT(S))
-#define SPP_BIN_NF(S, CC) dsl::op<Bin<S>>(dsl::not_followed_by(LEXY_LIT(S), CC))
-#define SPP_PRE(S) dsl::op<Pre<S>>(LEXY_LIT(S))
-#define SPP_PRE_NF(S, CC) dsl::op<Pre<S>>(dsl::not_followed_by(LEXY_LIT(S), CC))
-#define SPP_POST(S) dsl::op<Post<S>>(LEXY_LIT(S))
+#define HOT_BIN(S) dsl::op<Bin<S>>(LEXY_LIT(S))
+#define HOT_BIN_NF(S, CC) dsl::op<Bin<S>>(dsl::not_followed_by(LEXY_LIT(S), CC))
+#define HOT_PRE(S) dsl::op<Pre<S>>(LEXY_LIT(S))
+#define HOT_PRE_NF(S, CC) dsl::op<Pre<S>>(dsl::not_followed_by(LEXY_LIT(S), CC))
+#define HOT_POST(S) dsl::op<Post<S>>(LEXY_LIT(S))
 
 // The chars that an operator must not have after it.
 constexpr auto cc_eq = dsl::lit_c<'='>;
@@ -789,15 +789,15 @@ struct cond_mid
 // "(a * b)", "(x)" and "(int x) => ..." are not casts. The text "(a*)" is no expression.
 // The operand of a cast is a unary expression: "(int)a + b" is "((int)a) + b".
 constexpr auto cast_ws = dsl::whitespace(ws_rule);
-#define SPP_CAST_WORD(W) (LEXY_KEYWORD(W, id) >> cast_ws)
-constexpr auto cast_builtin = SPP_CAST_WORD("bool") | SPP_CAST_WORD("sbyte") | SPP_CAST_WORD("int8")
-    | SPP_CAST_WORD("byte") | SPP_CAST_WORD("uint8") | SPP_CAST_WORD("short") | SPP_CAST_WORD("int16")
-    | SPP_CAST_WORD("ushort") | SPP_CAST_WORD("uint16") | SPP_CAST_WORD("int") | SPP_CAST_WORD("int32")
-    | SPP_CAST_WORD("uint") | SPP_CAST_WORD("uint32") | SPP_CAST_WORD("long") | SPP_CAST_WORD("int64")
-    | SPP_CAST_WORD("ulong") | SPP_CAST_WORD("uint64") | SPP_CAST_WORD("nint") | SPP_CAST_WORD("intptr")
-    | SPP_CAST_WORD("nuint") | SPP_CAST_WORD("uintptr") | SPP_CAST_WORD("float") | SPP_CAST_WORD("double")
-    | SPP_CAST_WORD("char") | SPP_CAST_WORD("wchar") | SPP_CAST_WORD("char16");
-#undef SPP_CAST_WORD
+#define HOT_CAST_WORD(W) (LEXY_KEYWORD(W, id) >> cast_ws)
+constexpr auto cast_builtin = HOT_CAST_WORD("bool") | HOT_CAST_WORD("sbyte") | HOT_CAST_WORD("int8")
+    | HOT_CAST_WORD("byte") | HOT_CAST_WORD("uint8") | HOT_CAST_WORD("short") | HOT_CAST_WORD("int16")
+    | HOT_CAST_WORD("ushort") | HOT_CAST_WORD("uint16") | HOT_CAST_WORD("int") | HOT_CAST_WORD("int32")
+    | HOT_CAST_WORD("uint") | HOT_CAST_WORD("uint32") | HOT_CAST_WORD("long") | HOT_CAST_WORD("int64")
+    | HOT_CAST_WORD("ulong") | HOT_CAST_WORD("uint64") | HOT_CAST_WORD("nint") | HOT_CAST_WORD("intptr")
+    | HOT_CAST_WORD("nuint") | HOT_CAST_WORD("uintptr") | HOT_CAST_WORD("float") | HOT_CAST_WORD("double")
+    | HOT_CAST_WORD("char") | HOT_CAST_WORD("wchar") | HOT_CAST_WORD("char16");
+#undef HOT_CAST_WORD
 constexpr auto cast_mark = dsl::lit_c<'*'> / dsl::lit_c<'&'>;
 constexpr auto cast_const = dsl::if_(kw_const >> cast_ws);
 constexpr auto cast_marks = dsl::while_(cast_mark >> cast_ws);
@@ -849,7 +849,7 @@ template <bool Full> struct expr_g : lexy::expression_production
     // "->" and goes on, so a call or an index after it gives no second error.
     struct postfix_lvl : dsl::postfix_op
     {
-        static constexpr auto op = SPP_POST("++") / SPP_POST("--")
+        static constexpr auto op = HOT_POST("++") / HOT_POST("--")
             / dsl::op<CallTag>(LEXY_LIT("(") >> dsl::p<elems_p<')'>>)
             / dsl::op<IndexTag>(LEXY_LIT("[") >> dsl::p<index_p>)
             / dsl::op<SafeTag>(dsl::not_followed_by(LEXY_LIT("?."), dsl::ascii::digit) >> dsl::p<member_name_p>)
@@ -861,24 +861,24 @@ template <bool Full> struct expr_g : lexy::expression_production
     // - + ! ~ * & ++ --. The prefix "&" does not match "&&". A cast "(T)" is a prefix too.
     struct prefix_lvl : dsl::prefix_op
     {
-        static constexpr auto op = SPP_PRE("++") / SPP_PRE("--") / SPP_PRE_NF("-", cc_minus_only)
-            / SPP_PRE_NF("+", cc_plus_only) / SPP_PRE("!") / SPP_PRE("~") / SPP_PRE("*") / SPP_PRE_NF("&", cc_amp_only);
+        static constexpr auto op = HOT_PRE("++") / HOT_PRE("--") / HOT_PRE_NF("-", cc_minus_only)
+            / HOT_PRE_NF("+", cc_plus_only) / HOT_PRE("!") / HOT_PRE("~") / HOT_PRE("*") / HOT_PRE_NF("&", cc_amp_only);
         using operand = postfix_lvl;
     };
 
     struct mul_lvl : dsl::infix_op_left
     {
-        static constexpr auto op = SPP_BIN_NF("*", cc_eq) / SPP_BIN_NF("/", cc_eq) / SPP_BIN_NF("%", cc_eq);
+        static constexpr auto op = HOT_BIN_NF("*", cc_eq) / HOT_BIN_NF("/", cc_eq) / HOT_BIN_NF("%", cc_eq);
         using operand = prefix_lvl;
     };
     struct add_lvl : dsl::infix_op_left
     {
-        static constexpr auto op = SPP_BIN_NF("+", cc_plus) / SPP_BIN_NF("-", cc_minus);
+        static constexpr auto op = HOT_BIN_NF("+", cc_plus) / HOT_BIN_NF("-", cc_minus);
         using operand = mul_lvl;
     };
     struct shift_lvl : dsl::infix_op_left
     {
-        static constexpr auto op = SPP_BIN_NF("<<", cc_eq) / SPP_BIN_NF(">>", cc_eq);
+        static constexpr auto op = HOT_BIN_NF("<<", cc_eq) / HOT_BIN_NF(">>", cc_eq);
         using operand = add_lvl;
     };
     // "obj is T" and "obj as T". They bind tighter than "<" and looser than "<<".
@@ -891,43 +891,43 @@ template <bool Full> struct expr_g : lexy::expression_production
     };
     struct rel_lvl : dsl::infix_op_left
     {
-        static constexpr auto op = SPP_BIN_NF("<", cc_lt) / SPP_BIN("<=") / SPP_BIN_NF(">", cc_gt) / SPP_BIN(">=");
+        static constexpr auto op = HOT_BIN_NF("<", cc_lt) / HOT_BIN("<=") / HOT_BIN_NF(">", cc_gt) / HOT_BIN(">=");
         using operand = test_lvl;
     };
     struct eq_lvl : dsl::infix_op_left
     {
-        static constexpr auto op = SPP_BIN("==") / SPP_BIN("!=");
+        static constexpr auto op = HOT_BIN("==") / HOT_BIN("!=");
         using operand = rel_lvl;
     };
     struct band_lvl : dsl::infix_op_left
     {
-        static constexpr auto op = SPP_BIN_NF("&", cc_amp);
+        static constexpr auto op = HOT_BIN_NF("&", cc_amp);
         using operand = eq_lvl;
     };
     struct bxor_lvl : dsl::infix_op_left
     {
-        static constexpr auto op = SPP_BIN_NF("^", cc_eq);
+        static constexpr auto op = HOT_BIN_NF("^", cc_eq);
         using operand = band_lvl;
     };
     struct bor_lvl : dsl::infix_op_left
     {
-        static constexpr auto op = SPP_BIN_NF("|", cc_bar);
+        static constexpr auto op = HOT_BIN_NF("|", cc_bar);
         using operand = bxor_lvl;
     };
     struct land_lvl : dsl::infix_op_left
     {
-        static constexpr auto op = SPP_BIN("&&");
+        static constexpr auto op = HOT_BIN("&&");
         using operand = bor_lvl;
     };
     struct lor_lvl : dsl::infix_op_left
     {
-        static constexpr auto op = SPP_BIN("||");
+        static constexpr auto op = HOT_BIN("||");
         using operand = land_lvl;
     };
     // "x ?? y": binds looser than "||" and tighter than "?:". It is right associative.
     struct coalesce_lvl : dsl::infix_op_right
     {
-        static constexpr auto op = SPP_BIN("??");
+        static constexpr auto op = HOT_BIN("??");
         using operand = lor_lvl;
     };
     struct cond_lvl : dsl::infix_op_right
@@ -937,9 +937,9 @@ template <bool Full> struct expr_g : lexy::expression_production
     };
     struct assign_lvl : dsl::infix_op_right
     {
-        static constexpr auto op = SPP_BIN_NF("=", cc_eq) / SPP_BIN("+=") / SPP_BIN("-=") / SPP_BIN("*=")
-            / SPP_BIN("/=") / SPP_BIN("%=") / SPP_BIN("<<=") / SPP_BIN(">>=") / SPP_BIN("&=") / SPP_BIN("|=")
-            / SPP_BIN("^=");
+        static constexpr auto op = HOT_BIN_NF("=", cc_eq) / HOT_BIN("+=") / HOT_BIN("-=") / HOT_BIN("*=")
+            / HOT_BIN("/=") / HOT_BIN("%=") / HOT_BIN("<<=") / HOT_BIN(">>=") / HOT_BIN("&=") / HOT_BIN("|=")
+            / HOT_BIN("^=");
         using operand = cond_lvl;
     };
 

@@ -13,7 +13,7 @@ The sample has one program (`main.cpp`) and two variants of the same script:
 
 The build makes one program for each variant from the same `main.cpp`:
 
-- `sample_runtime_compile_spp` reads the `.hot` script.
+- `sample_runtime_compile_hot` reads the `.hot` script.
 - `sample_runtime_compile_cpp` reads the `.cpp` script.
 
 Both variants are in the folder `script`. The file extension picks the variant.
@@ -32,7 +32,7 @@ compiler (the object library `runtime_compile_cpp_scripts_plain`). This shows th
    so they are destroyed last. The object must die before the loader unloads the code.
 
 `make_default_backend` uses the compiler and the flags of the build of S++. The backend is the one
-that `SPP_BACKEND` selects (default `CLANG_FILES`). The compiler must stay available on the
+that `HOT_BACKEND` selects (default `CLANG_FILES`). The compiler must stay available on the
 machine that runs the program.
 
 ## Files
@@ -46,24 +46,24 @@ machine that runs the program.
 
 ### In the S++ tree
 
-The option `SPP_BUILD_SAMPLES` is ON for the main project.
+The option `HOT_BUILD_SAMPLES` is ON for the main project.
 
 ```
 cmake --preset linux-clang-files
-cmake --build --preset linux-clang-files-dbg --target sample_runtime_compile_spp sample_runtime_compile_cpp
-ctest --preset linux-clang-files-dbg -R '^sample_runtime_compile_(spp|cpp)$'
+cmake --build --preset linux-clang-files-dbg --target sample_runtime_compile_hot sample_runtime_compile_cpp
+ctest --preset linux-clang-files-dbg -R '^sample_runtime_compile_(hot|cpp)$'
 ```
 
 Each test has the same name as its target. To run a program, use the folder `bin/Debug` of the build tree:
 
 ```
-cmake-build/linux-clang-files/bin/Debug/sample_runtime_compile_spp
+cmake-build/linux-clang-files/bin/Debug/sample_runtime_compile_hot
 cmake-build/linux-clang-files/bin/Debug/sample_runtime_compile_cpp
 ```
 
 ### As a separate project
 
-Use the S++ source tree in `SPP_ROOT`. The default value is the tree that holds this folder.
+Use the S++ source tree in `HOT_ROOT`. The default value is the tree that holds this folder.
 The build fetches the S++ dependencies with CPM. It needs `clang`, `libclang` and Ninja.
 
 ```
@@ -72,12 +72,12 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-To use another S++ tree, add `-DSPP_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample calls
-`add_subdirectory` for `SPP_ROOT` only when the target `sppc` does not exist yet.
+To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample calls
+`add_subdirectory` for `HOT_ROOT` only when the target `sppc` does not exist yet.
 
 ## Link
 
-- The program links `spp_backend`. It brings `spp_runtime` and the backend library.
+- The program links `hot_backend`. It brings `hot_runtime` and the backend library.
 - `ENABLE_EXPORTS` is ON. The generation modules resolve host and runtime symbols from the
   executable.
 - `SAMPLE_DIR` is a compile definition. It is the folder of `Creature.h`.
@@ -85,14 +85,14 @@ To use another S++ tree, add `-DSPP_ROOT=/path/to/spp`. The `CMakeLists.txt` of 
 
 ## Adapt it to your project
 
-1. Link your program to `spp_backend` and set `ENABLE_EXPORTS ON` on it.
+1. Link your program to `hot_backend` and set `ENABLE_EXPORTS ON` on it.
 2. Fill `hot::DefaultBackendOptions`. Put the folders of your headers in `include_dirs`.
    Put extra compiler flags in `extra_flags`. They come after the build defaults.
 3. Read the script text yourself and give it to `backend->load({name, text, {}}, generation)`.
 4. Check the `LoadResult` and the `ReloadResult` of `loader.load`. Show `error` to the user.
 5. Declare the backend and the loader before your script objects. Delete the objects first.
 
-For a different `SPP_BACKEND` configure with `-DSPP_BACKEND=JIT`. The code does not change.
+For a different `HOT_BACKEND` configure with `-DHOT_BACKEND=JIT`. The code does not change.
 To set the compiler and the work folder yourself, see the samples
 [clang-files-backend](../clang-files-backend/) and [jit-backend](../jit-backend/).
 For reload, see [hot-reload](../hot-reload/).
@@ -105,9 +105,9 @@ For reload, see [hot-reload](../hot-reload/).
 [wolf] wolf: bites=3 hp=97
 ```
 
-Each test (`sample_runtime_compile_spp` and `sample_runtime_compile_cpp`) passes when the program returns 0.
+Each test (`sample_runtime_compile_hot` and `sample_runtime_compile_cpp`) passes when the program returns 0.
 
 ## More information
 
 - [Embedding](../../doc/embedding.md): the six hosting situations and the backend interface.
-- [CMake](../../doc/cmake.md): the options and the function `spp_add_scripts`.
+- [CMake](../../doc/cmake.md): the options and the function `hot_add_scripts`.

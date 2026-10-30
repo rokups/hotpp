@@ -3,12 +3,12 @@
 # It needs SDL3. Without SDL3 the configure prints a message and adds no target.
 # This file works in the S++ build (add_subdirectory) and as a separate project.
 cmake_minimum_required(VERSION 3.24)
-project(spp_sample_imgui CXX)
+project(hot_sample_imgui CXX)
 
 # The S++ source tree. A separate build uses it. The S++ build already has the targets.
-set(SPP_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The S++ source tree")
+set(HOT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The S++ source tree")
 if(NOT TARGET sppc)
-    add_subdirectory(${SPP_ROOT} spp)
+    add_subdirectory(${HOT_ROOT} hot)
 endif()
 
 find_package(SDL3 QUIET)
@@ -19,7 +19,7 @@ endif()
 
 # CPM fetches Dear ImGui. The S++ build may not load CPM, so load it here when needed.
 if(NOT COMMAND CPMAddPackage)
-    include(${SPP_ROOT}/cmake/CPM.cmake)
+    include(${HOT_ROOT}/cmake/CPM.cmake)
 endif()
 CPMAddPackage(NAME imgui GITHUB_REPOSITORY ocornut/imgui GIT_TAG v1.92.9b DOWNLOAD_ONLY YES)
 add_library(imgui_sdl3 STATIC
@@ -41,29 +41,29 @@ separate_arguments(cxxflags_list NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
 list(JOIN cxxflags_list "|" cxxflags_joined)
 
 # One program source, two script variants. The extension picks the script.
-#   sample_imgui_spp reads script/demo.hot.
+#   sample_imgui_hot reads script/demo.hot.
 #   sample_imgui_cpp reads script/demo.cpp.
 # The host builds ClangFilesOptions itself. It does not use make_default_backend().
-foreach(variant spp cpp)
-    # The variant "spp" uses the extension ".hot".
+foreach(variant hot cpp)
+    # The variant "hot" uses the extension ".hot".
     set(ext ${variant})
-    if(variant STREQUAL "spp")
+    if(variant STREQUAL "hot")
         set(ext hot)
     endif()
     set(target sample_imgui_${variant})
     add_executable(${target} main.cpp UiApp.cpp)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     # Whole archive: a script can call any ImGui function. The linker must keep all objects.
-    target_link_libraries(${target} PRIVATE spp_runtime spp_clang_backend "$<LINK_LIBRARY:WHOLE_ARCHIVE,imgui_sdl3>")
+    target_link_libraries(${target} PRIVATE hot_runtime hot_clang_backend "$<LINK_LIBRARY:WHOLE_ARCHIVE,imgui_sdl3>")
     # The generation modules resolve host and runtime symbols from the executable.
     set_target_properties(${target} PROPERTIES ENABLE_EXPORTS ON)
     # SAMPLE_SCRIPT_DIR and SAMPLE_SCRIPT_EXT select the default script of the program.
     target_compile_definitions(${target} PRIVATE
         IMGUI_APP_CXX="${CMAKE_CXX_COMPILER}"
         IMGUI_APP_CXXFLAGS="${cxxflags_joined}"
-        IMGUI_APP_INCLUDES="${SPP_INCLUDE_DIR}|${CMAKE_CURRENT_SOURCE_DIR}|${imgui_SOURCE_DIR}"
+        IMGUI_APP_INCLUDES="${HOT_INCLUDE_DIR}|${CMAKE_CURRENT_SOURCE_DIR}|${imgui_SOURCE_DIR}"
         IMGUI_APP_RESOURCE_DIR="${resource_dir}"
-        IMGUI_APP_WORK_DIR="${CMAKE_CURRENT_BINARY_DIR}/spp_work"
+        IMGUI_APP_WORK_DIR="${CMAKE_CURRENT_BINARY_DIR}/hot_work"
         SAMPLE_SCRIPT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/script"
         SAMPLE_SCRIPT_EXT=".${ext}")
 endforeach()
@@ -77,6 +77,6 @@ target_compile_features(imgui_cpp_scripts_plain PRIVATE cxx_std_17)
 
 # The language server reads this file.
 # The language server serves the .hot scripts only.
-spp_script_host(NAME sample_imgui TARGET sample_imgui_spp SCRIPT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/script)
+hot_script_host(NAME sample_imgui TARGET sample_imgui_hot SCRIPT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/script)
 
 # No test: the program opens a window.

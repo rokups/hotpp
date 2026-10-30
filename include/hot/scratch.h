@@ -6,7 +6,7 @@
 namespace hot
 {
 
-// True when the scratch files must stay. The environment variable SPP_KEEP_TEMP overrides
+// True when the scratch files must stay. The environment variable HOT_KEEP_TEMP overrides
 // the CMake option. The value "0" or an empty value means false.
 bool keep_temp();
 

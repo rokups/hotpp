@@ -22,7 +22,7 @@
       "hidden": true,
       "inherits": "base",
       "cacheVariables": {
-        "SPP_BACKEND": "CLANG_FILES"
+        "HOT_BACKEND": "CLANG_FILES"
       }
     },
     {
@@ -30,7 +30,7 @@
       "hidden": true,
       "inherits": "base",
       "cacheVariables": {
-        "SPP_BACKEND": "JIT"
+        "HOT_BACKEND": "JIT"
       }
     },
     {

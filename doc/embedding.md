@@ -6,7 +6,7 @@ nav_order: 13
 
 The host loads scripts with a `Loader`. A development build compiles them. An AOT build links them.
 
-This page has six hosting situations. Each situation has a sample project. The page [CMake](cmake.html) has the build side: the targets, the options and `spp_add_scripts`.
+This page has six hosting situations. Each situation has a sample project. The page [CMake](cmake.html) has the build side: the targets, the options and `hot_add_scripts`.
 
 ## Which situation fits?
 
@@ -18,7 +18,7 @@ Answer these questions in order. Stop at the first answer that fits.
 4. Must a live object keep its field values while its code changes? Use **hot reload**.
 5. Do you want to avoid a compiler process, and can you link LLVM and Clang? Use the **in-process JIT**.
 6. Do you want to set the compiler, the include folders, the flags and the work folder in your own code? Use the **explicit Clang files backend** (or the explicit JIT backend).
-7. Else use **compile at run time** with `make_default_backend`. The build option `SPP_BACKEND` picks the backend.
+7. Else use **compile at run time** with `make_default_backend`. The build option `HOT_BACKEND` picks the backend.
 
 | Situation | Sample |
 |---|---|
@@ -37,23 +37,23 @@ Pick the row that matches your program. Each sample is a small project that buil
 
 | Situation | Links | Key API | Sample |
 |---|---|---|---|
-| Compile at run time | `spp_backend` | `make_default_backend` | [runtime-compile](https://github.com/rokups/spp/tree/main/samples/runtime-compile) |
-| Precompiled library | `spp_runtime` | `module_from_library` | [precompiled-library](https://github.com/rokups/spp/tree/main/samples/precompiled-library) |
-| Hot reload | `spp_backend` | `request_reload`, `commit_pending`, `frame_boundary` | [hot-reload](https://github.com/rokups/spp/tree/main/samples/hot-reload) |
-| In-process JIT | `spp_jit_backend` (needs `SPP_BACKEND=JIT`) | `JitBackend` | [jit-backend](https://github.com/rokups/spp/tree/main/samples/jit-backend) |
-| Explicit Clang files backend | `spp_clang_backend` | `ClangFilesBackend` | [clang-files-backend](https://github.com/rokups/spp/tree/main/samples/clang-files-backend) |
-| AOT | `spp_aot` (through the library of `spp_add_scripts`) | `AotRegistry` | [aot](https://github.com/rokups/spp/tree/main/samples/aot) |
+| Compile at run time | `hot_backend` | `make_default_backend` | [runtime-compile](https://github.com/rokups/spp/tree/main/samples/runtime-compile) |
+| Precompiled library | `hot_runtime` | `module_from_library` | [precompiled-library](https://github.com/rokups/spp/tree/main/samples/precompiled-library) |
+| Hot reload | `hot_backend` | `request_reload`, `commit_pending`, `frame_boundary` | [hot-reload](https://github.com/rokups/spp/tree/main/samples/hot-reload) |
+| In-process JIT | `hot_jit_backend` (needs `HOT_BACKEND=JIT`) | `JitBackend` | [jit-backend](https://github.com/rokups/spp/tree/main/samples/jit-backend) |
+| Explicit Clang files backend | `hot_clang_backend` | `ClangFilesBackend` | [clang-files-backend](https://github.com/rokups/spp/tree/main/samples/clang-files-backend) |
+| AOT | `hot_aot` (through the library of `hot_add_scripts`) | `AotRegistry` | [aot](https://github.com/rokups/spp/tree/main/samples/aot) |
 
 ### Comparison
 
 | Situation | Compiler at run time | Hot reload | Cost at start | Link targets | Notes |
 |---|---|---|---|---|---|
-| AOT | No | No | None. `AotRegistry` registers the classes. | `spp_aot` through the AOT library | No loader, no Clang, no `ENABLE_EXPORTS`. |
-| Precompiled library | No | Yes, when you load a newer generation that you built ahead | `dlopen` of the library | `spp_runtime` | No libclang at run time. `ENABLE_EXPORTS`. A writable temp folder (see "Core copies"). |
-| Compile at run time | `CLANG_FILES`: yes, the compiler of the build. `JIT`: no process, but Clang libraries. | Yes | One translate and one compile for each load. | `spp_backend` | The backend is the one that `SPP_BACKEND` selects. `ENABLE_EXPORTS`. |
-| Hot reload | Same as compile at run time | Yes | Same as compile at run time | `spp_backend` | The host calls `request_reload`, `commit_pending` and `frame_boundary`. |
-| In-process JIT | No process. The program links LLVM and Clang. | Yes | No process start. About 140 ms less than `CLANG_FILES` for one load at `-O1` (see below the table). | `spp_jit_backend` | `SPP_BACKEND=JIT`. `ENABLE_EXPORTS`. |
-| Explicit Clang files backend | Yes. `ClangFilesOptions::compiler`. | Yes | One compiler process for each load. | `spp_clang_backend` | You set every option. `ENABLE_EXPORTS`. |
+| AOT | No | No | None. `AotRegistry` registers the classes. | `hot_aot` through the AOT library | No loader, no Clang, no `ENABLE_EXPORTS`. |
+| Precompiled library | No | Yes, when you load a newer generation that you built ahead | `dlopen` of the library | `hot_runtime` | No libclang at run time. `ENABLE_EXPORTS`. A writable temp folder (see "Core copies"). |
+| Compile at run time | `CLANG_FILES`: yes, the compiler of the build. `JIT`: no process, but Clang libraries. | Yes | One translate and one compile for each load. | `hot_backend` | The backend is the one that `HOT_BACKEND` selects. `ENABLE_EXPORTS`. |
+| Hot reload | Same as compile at run time | Yes | Same as compile at run time | `hot_backend` | The host calls `request_reload`, `commit_pending` and `frame_boundary`. |
+| In-process JIT | No process. The program links LLVM and Clang. | Yes | No process start. About 140 ms less than `CLANG_FILES` for one load at `-O1` (see below the table). | `hot_jit_backend` | `HOT_BACKEND=JIT`. `ENABLE_EXPORTS`. |
+| Explicit Clang files backend | Yes. `ClangFilesOptions::compiler`. | Yes | One compiler process for each load. | `hot_clang_backend` | You set every option. `ENABLE_EXPORTS`. |
 
 The numbers come from the benchmark in `README.md` (section "JIT backend"). The author measured them on one machine. A translate with a new `TranslatorSession` takes about 406 ms, because libclang parses the headers. A translate with the same session takes about 1.3 ms. A warm load with `CLANG_FILES` at `-O1` and no precompiled header takes about 1.1 s. The JIT is about 140 ms (15%) faster at the same `-O1`. The test headers are small. Measure again with your own headers.
 
@@ -103,9 +103,9 @@ The generated code, `include/hot` and the runtime library need C++17 only. A C++
 
 ## Compile at run time
 
-**Links:** `spp_backend`. It brings `spp_runtime` and the backend that `SPP_BACKEND` selects. Set `ENABLE_EXPORTS`.
+**Links:** `hot_backend`. It brings `hot_runtime` and the backend that `HOT_BACKEND` selects. Set `ENABLE_EXPORTS`.
 
-**Run time:** the backend turns script text into a `Module`. `CLANG_FILES` is the default. It runs an external `clang++` and loads a `.so`. `JIT` compiles in memory with the Clang library and LLVM ORC. Select one with the CMake option `SPP_BACKEND`.
+**Run time:** the backend turns script text into a `Module`. `CLANG_FILES` is the default. It runs an external `clang++` and loads a `.so`. `JIT` compiles in memory with the Clang library and LLVM ORC. Select one with the CMake option `HOT_BACKEND`.
 
 ```
 cmake --preset linux-clang-files
@@ -123,7 +123,7 @@ const hot::ClassEntry* entry = loader.find("Player");
 std::unique_ptr<Actor> player(static_cast<Actor*>(entry->create().native));
 ```
 
-`make_default_backend` takes the compiler, the include folders and the flags from the build. The folders are the include folder of S++ and, with `SPP_BUILD_TESTS` ON, `tests/engine`. The flags are `CMAKE_CXX_FLAGS` at the time of `add_subdirectory`. The `CLANG_FILES` work folder is `<build>/tmp/spp_work/p<pid>`, and the backend removes it at exit unless `SPP_KEEP_TEMP` keeps it. A host adds its own folders and flags with `hot::DefaultBackendOptions` (`include/hot/backend.h`):
+`make_default_backend` takes the compiler, the include folders and the flags from the build. The folders are the include folder of S++ and, with `HOT_BUILD_TESTS` ON, `tests/engine`. The flags are `CMAKE_CXX_FLAGS` at the time of `add_subdirectory`. The `CLANG_FILES` work folder is `<build>/tmp/hot_work/p<pid>`, and the backend removes it at exit unless `HOT_KEEP_TEMP` keeps it. A host adds its own folders and flags with `hot::DefaultBackendOptions` (`include/hot/backend.h`):
 
 ```cpp
 hot::DefaultBackendOptions options;
@@ -142,9 +142,9 @@ auto backend = hot::make_default_backend(options);
 
 ## Precompiled library
 
-**Links:** `spp_runtime`. No backend and no libclang. Set `ENABLE_EXPORTS`.
+**Links:** `hot_runtime`. No backend and no libclang. Set `ENABLE_EXPORTS`.
 
-`sppc` builds a script into a `.so` ahead of time. Any build can load it. In CMake use `spp_add_scripts` (default mode). On the command line:
+`sppc` builds a script into a `.so` ahead of time. Any build can load it. In CMake use `hot_add_scripts` (default mode). On the command line:
 
 ```
 sppc player_v1.hot --gen 1 -I include -I tests/engine --out-dir out/
@@ -166,7 +166,7 @@ if (!module || !loader.load(std::move(*module.module))) { /* report */ }
 
 ## Reload
 
-**Links:** `spp_backend` (or any backend), or `spp_runtime` with prebuilt generations.
+**Links:** `hot_backend` (or any backend), or `hot_runtime` with prebuilt generations.
 
 Ask for a reload at any time. Commit it at the frame boundary.
 
@@ -216,12 +216,12 @@ The host does the serialization. The script has no hook for it. `reset` returns 
 
 ## In-process JIT
 
-**Links:** `spp_jit_backend`. It brings `spp_runtime`, `sppc_lib`, `clang-cpp` and `LLVM`. Set `ENABLE_EXPORTS`. The target exists only when `SPP_BACKEND` is `JIT`.
+**Links:** `hot_jit_backend`. It brings `hot_runtime`, `sppc_lib`, `clang-cpp` and `LLVM`. Set `ENABLE_EXPORTS`. The target exists only when `HOT_BACKEND` is `JIT`.
 
 ```cpp
 hot::JitOptions options;
 options.compiler = "/usr/bin/clang++";             // the driver name; an absolute path is best
-options.include_dirs = {SPP_INCLUDE_DIR, "engine"};
+options.include_dirs = {HOT_INCLUDE_DIR, "engine"};
 options.resource_dir = RESOURCE_DIR;                // <compiler> -print-resource-dir
 hot::JitBackend backend(std::move(options));        // declare before the loader
 hot::Loader loader;
@@ -240,14 +240,14 @@ hot::LoadResult built = backend.load({"player.hot", text}, 1);
 
 ## Explicit Clang files backend
 
-**Links:** `spp_clang_backend`. It brings `spp_runtime` and `sppc_lib`. Set `ENABLE_EXPORTS`.
+**Links:** `hot_clang_backend`. It brings `hot_runtime` and `sppc_lib`. Set `ENABLE_EXPORTS`.
 
 ```cpp
 hot::ClangFilesOptions options;
 options.compiler = "clang++";
-options.include_dirs = {SPP_INCLUDE_DIR, "engine"};
+options.include_dirs = {HOT_INCLUDE_DIR, "engine"};
 options.extra_flags = {"-fsanitize=address"};
-options.work_dir = "build/spp_work";
+options.work_dir = "build/hot_work";
 options.remove_work_dir_at_exit = true;
 hot::ClangFilesBackend backend(std::move(options));   // declare before the loader
 hot::Loader loader;
@@ -266,7 +266,7 @@ hot::LoadResult built = backend.load({"player.hot", text}, 1);
 
 ## AOT
 
-**Links:** `spp_aot`, through the library of `spp_add_scripts(... AOT ...)`. `spp_aot` links `spp_runtime_core` only. It has no loader. No `ENABLE_EXPORTS`.
+**Links:** `hot_aot`, through the library of `hot_add_scripts(... AOT ...)`. `hot_aot` links `hot_runtime_core` only. It has no loader. No `ENABLE_EXPORTS`.
 
 An AOT build has no loader, no reload and no Clang. `sppc --aot` (the AOT mode) translates generation 1 of each script to C++. The code becomes part of the game.
 
@@ -340,8 +340,8 @@ Fields of `Module`:
 
 | Field | Default | Meaning |
 |---|---|---|
-| `include_dirs` | empty | Added after the build-time include folders (`SPP_DEFAULT_INCLUDES`). |
-| `extra_flags` | empty | Added after the build-time flags (`SPP_DEFAULT_CXXFLAGS`). |
+| `include_dirs` | empty | Added after the build-time include folders (`HOT_DEFAULT_INCLUDES`). |
+| `extra_flags` | empty | Added after the build-time flags (`HOT_DEFAULT_CXXFLAGS`). |
 
 `ClangFilesOptions` (`include/hot/clang_files_backend.h`):
 
@@ -353,7 +353,7 @@ Fields of `Module`:
 | `std_version` | empty | For example `"c++17"`. Empty: the standard of the host (`hot::cxx_std_name()`). |
 | `session` | empty | The translator cache. Empty: the backend makes its own. Share one to keep the cache between backends. |
 | `extra_flags` | empty | Added to the compile command. |
-| `work_dir` | `"spp_work"` | The `.cpp` and `.so` files go here. |
+| `work_dir` | `"hot_work"` | The `.cpp` and `.so` files go here. |
 | `slots_file` | empty | Empty: `<work_dir>/slots.txt`. |
 | `remove_work_dir_at_exit` | `false` | `true`: the destructor removes `work_dir`. Give a folder that no other backend uses. |
 | `strict_borrowed` | `true` | `false`: a borrowed-storage finding is a warning. |
@@ -379,8 +379,8 @@ Fields of `Module`:
 
 ## CMake
 
-The page [CMake](cmake.html) describes the targets, the options and the functions `spp_add_scripts` and `spp_script_host`. A complete project is the sample [aot](https://github.com/rokups/spp/tree/main/samples/aot).
+The page [CMake](cmake.html) describes the targets, the options and the functions `hot_add_scripts` and `hot_script_host`. A complete project is the sample [aot](https://github.com/rokups/spp/tree/main/samples/aot).
 
 ## Format library for `${}`
 
-The build chooses the format library for string interpolation. The page [CMake](cmake.html) has the rules and the table of `SPP_FMT_PROVIDER`.
+The build chooses the format library for string interpolation. The page [CMake](cmake.html) has the rules and the table of `HOT_FMT_PROVIDER`.

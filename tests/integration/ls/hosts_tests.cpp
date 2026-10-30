@@ -21,7 +21,7 @@ protected:
     void SetUp() override
     {
         root = fs::temp_directory_path()
-            / ("spp_hosts_test_" + std::to_string(getpid()) + "_"
+            / ("hot_hosts_test_" + std::to_string(getpid()) + "_"
                 + ::testing::UnitTest::GetInstance()->current_test_info()->name());
         fs::remove_all(root);
         hosts_dir = root / "hosts";

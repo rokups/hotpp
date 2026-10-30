@@ -3,9 +3,9 @@
 #include <cstdlib>
 #include <filesystem>
 
-// The CMake option SPP_KEEP_TEMP sets this define.
-#ifndef SPP_KEEP_TEMP_DEFAULT
-    #define SPP_KEEP_TEMP_DEFAULT 0
+// The CMake option HOT_KEEP_TEMP sets this define.
+#ifndef HOT_KEEP_TEMP_DEFAULT
+    #define HOT_KEEP_TEMP_DEFAULT 0
 #endif
 
 namespace hot
@@ -15,10 +15,10 @@ namespace fs = std::filesystem;
 
 bool keep_temp()
 {
-    const char* env = std::getenv("SPP_KEEP_TEMP");
+    const char* env = std::getenv("HOT_KEEP_TEMP");
     if (env)
         return env[0] != '\0' && std::string(env) != "0";
-    return SPP_KEEP_TEMP_DEFAULT != 0;
+    return HOT_KEEP_TEMP_DEFAULT != 0;
 }
 
 bool is_removable_scratch_path(const std::string& path)

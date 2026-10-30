@@ -6,8 +6,8 @@
 #   --yes         Push without a confirmation prompt.
 set -euo pipefail
 
-REPO="${SPP_PAGES_REPO:-https://github.com/rokups/spp.git}"
-BRANCH="${SPP_PAGES_BRANCH:-gh-pages}"
+REPO="${HOT_PAGES_REPO:-https://github.com/rokups/spp.git}"
+BRANCH="${HOT_PAGES_BRANCH:-gh-pages}"
 DOC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORK="$(mktemp -d)"
 # Use the gh credential helper for HTTPS pushes when gh is installed.

@@ -4,7 +4,7 @@ This sample shows a program that builds `hot::ClangFilesBackend` itself.
 The backend translates the script in memory, runs an external `clang++` and loads the `.so`.
 The host needs a C++ compiler at run time.
 
-`SPP_BACKEND=CLANG_FILES` selects this backend for `make_default_backend`. A program that
+`HOT_BACKEND=CLANG_FILES` selects this backend for `make_default_backend`. A program that
 builds it itself sets the compiler, the flags and the work folder.
 
 ## Two script variants
@@ -16,7 +16,7 @@ The sample has one program (`main.cpp`) and two variants of the same script:
 
 The build makes one program for each variant from the same `main.cpp`:
 
-- `sample_clang_files_spp` reads the `.hot` script.
+- `sample_clang_files_hot` reads the `.hot` script.
 - `sample_clang_files_cpp` reads the `.cpp` script.
 
 Both variants are in the folder `script`. The file extension picks the variant.
@@ -48,10 +48,10 @@ compiler (the object library `clang_files_backend_cpp_scripts_plain`). This show
 | `include_dirs` | the include dir of S++ and the folder of the sample |
 | `extra_flags` | `CMAKE_CXX_FLAGS` (the flags of the host, for example a sanitizer) |
 | `resource_dir` | the output of `<compiler> -print-resource-dir` |
-| `work_dir` | `spp_work_spp` or `spp_work_cpp` in the build folder (one for each program) |
+| `work_dir` | `hot_work_hot` or `hot_work_cpp` in the build folder (one for each program) |
 | `remove_work_dir_at_exit` | `true` |
 
-The sample does not use `SPP_DEFAULT_CXXFLAGS`. The compile works with the flags above.
+The sample does not use `HOT_DEFAULT_CXXFLAGS`. The compile works with the flags above.
 The C++ standard is empty in the options, so the backend uses the standard of the host.
 The other fields (`slots_file`, `session`, `strict_borrowed`, `raw_diagnostics`) keep their defaults.
 See the table of the options in [Embedding](../../doc/embedding.md).
@@ -60,24 +60,24 @@ See the table of the options in [Embedding](../../doc/embedding.md).
 
 ### In the S++ tree
 
-The option `SPP_BUILD_SAMPLES` is ON for the main project.
+The option `HOT_BUILD_SAMPLES` is ON for the main project.
 
 ```
 cmake --preset linux-clang-files
-cmake --build --preset linux-clang-files-dbg --target sample_clang_files_spp sample_clang_files_cpp
-ctest --preset linux-clang-files-dbg -R '^sample_clang_files_(spp|cpp)$'
+cmake --build --preset linux-clang-files-dbg --target sample_clang_files_hot sample_clang_files_cpp
+ctest --preset linux-clang-files-dbg -R '^sample_clang_files_(hot|cpp)$'
 ```
 
 Each test has the same name as its target. To run a program, use the folder `bin/Debug` of the build tree:
 
 ```
-cmake-build/linux-clang-files/bin/Debug/sample_clang_files_spp
+cmake-build/linux-clang-files/bin/Debug/sample_clang_files_hot
 cmake-build/linux-clang-files/bin/Debug/sample_clang_files_cpp
 ```
 
 ### As a separate project
 
-Use the S++ source tree in `SPP_ROOT`. The default value is the tree that holds this folder.
+Use the S++ source tree in `HOT_ROOT`. The default value is the tree that holds this folder.
 The build fetches the S++ dependencies with CPM. It needs `clang`, `libclang` and Ninja.
 
 ```
@@ -86,20 +86,20 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-To use another S++ tree, add `-DSPP_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample calls
-`add_subdirectory` for `SPP_ROOT` only when the target `sppc` does not exist yet.
+To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample calls
+`add_subdirectory` for `HOT_ROOT` only when the target `sppc` does not exist yet.
 
 ## Link
 
-- The program links `spp_clang_backend`. It brings `spp_runtime` and `sppc_lib`.
+- The program links `hot_clang_backend`. It brings `hot_runtime` and `sppc_lib`.
 - `ENABLE_EXPORTS` is ON. The generation modules resolve host and runtime symbols from the
   executable.
 
 ## Adapt it to your project
 
-1. Link your program to `spp_clang_backend` and set `ENABLE_EXPORTS ON`.
+1. Link your program to `hot_clang_backend` and set `ENABLE_EXPORTS ON`.
 2. Pass values from CMake as compile definitions, as `CMakeLists.txt` does: the compiler, the flags,
-   the include folders of S++ (`SPP_INCLUDE_DIR`) and of your headers, and the resource folder.
+   the include folders of S++ (`HOT_INCLUDE_DIR`) and of your headers, and the resource folder.
 3. Use a work folder that only this backend uses when you set `remove_work_dir_at_exit` to `true`.
 4. Keep the compiler flags of the host, such as a sanitizer, in `extra_flags`.
 5. The compiler must exist on the machine that runs the program.
@@ -112,9 +112,9 @@ To use another S++ tree, add `-DSPP_ROOT=/path/to/spp`. The `CMakeLists.txt` of 
 [wolf] wolf: bites=3 hp=97
 ```
 
-Each test (`sample_clang_files_spp` and `sample_clang_files_cpp`) passes when the program returns 0.
+Each test (`sample_clang_files_hot` and `sample_clang_files_cpp`) passes when the program returns 0.
 
 ## More information
 
 - [Embedding](../../doc/embedding.md): the six hosting situations and the backend interface.
-- [CMake](../../doc/cmake.md): the options and the function `spp_add_scripts`.
+- [CMake](../../doc/cmake.md): the options and the function `hot_add_scripts`.

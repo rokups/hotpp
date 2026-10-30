@@ -1,5 +1,5 @@
 // Reload tests of native interface bases (S8b, design 4.4 and 5.3) with the backend that
-// SPP_BACKEND selected. The shell of Boss derives from Actor, IDamageable and ITagged.
+// HOT_BACKEND selected. The shell of Boss derives from Actor, IDamageable and ITagged.
 #include "Damageable.h"
 #include "hot/backend.h"
 #include "support/backend_fixture.h"

@@ -108,8 +108,8 @@ ParamUse analyze_param_use(const ast::Method& m, const std::string& name, const 
 
 // The questions for libclang about native types (S20b, design 7.10.4 and 7.10.5).
 // A query is the text of a C++ type for the probe of libclang. The probe has the helpers
-// "sppc_ret_f" (the return type of a function pointer or of a member function pointer) and
-// "sppc_obj<T>" (the class of an object, of a pointer or of a handle with "element_type").
+// "hotc_ret_f" (the return type of a function pointer or of a member function pointer) and
+// "hotc_obj<T>" (the class of an object, of a pointer or of a handle with "element_type").
 //  - "vars": each "var" local whose initializer is a native call, a native member or a chain of
 //    them, with the query of the type. A chain uses the query of an earlier "var" local.
 //  - "methods": for each native type of a value parameter, the names of the member functions

@@ -1,5 +1,5 @@
 // Test that the parsers accept every method body of the example scripts.
-// CMake defines SPP_SOURCE_DIR.
+// CMake defines HOT_SOURCE_DIR.
 #include "parser/parser.h"
 #include "parser/statement.h"
 #include "support/translator_test_support.h"
@@ -19,7 +19,7 @@ TEST(ExampleScriptParse, ExampleScripts)
     size_t bodies = 0;
     for (const char* name : names)
     {
-        const std::string text = read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/" + name + ".hot");
+        const std::string text = read_file(std::string(HOT_SOURCE_DIR) + "/tests/scripts/" + name + ".hot");
         ASSERT_FALSE(text.empty()) << name;
         const LineMap map(text);
         Diagnostics sd;

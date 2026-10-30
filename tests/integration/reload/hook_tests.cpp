@@ -1,4 +1,4 @@
-// Reload tests of the hooks (design 4.7 and 6.6) with the backend that SPP_BACKEND selected:
+// Reload tests of the hooks (design 4.7 and 6.6) with the backend that HOT_BACKEND selected:
 // onReload(OldState), the convert hook, a type change without a hook and a rename without [alias].
 #include "hot/backend.h"
 #include "support/backend_fixture.h"

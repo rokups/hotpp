@@ -17,7 +17,7 @@ Each row is a milestone of `spp-design.md` section 10. "Not testable here" means
 | M5 Contract enforcement | Done | The rows of design 5.3 have tests in `tests/integration/reload/` and `tests/unit/translator/translate/`. |
 | M6 Language v1 | Done | Inheritance, virtuals, `is`/`as`, lambdas, enums, structs, module variables, interpolation, constructors. Coroutines are not in version 1. |
 | M7 AOT compilation | Done | `sppc --aot`. Generation 1 only. |
-| M8 Unloading | Done | Core module. Generation 1 unloads. 1000 reloads with `SPP_STRESS=1`. |
+| M8 Unloading | Done | Core module. Generation 1 unloads. 1000 reloads with `HOT_STRESS=1`. |
 | M9 Optional ORC backend | Partial | The JIT backend works on Linux. The debug-symbol resolver for Windows is not testable here. |
 | M10 Source map and tolerant parse | Done | `TranslateResult::source_map`, `sppc::analyze`. |
 | M11 VS Code extension | Done | Grammar snapshot test and package. A real VS Code session is not testable here. |
@@ -34,7 +34,7 @@ Not done, and not testable here: Windows and macOS, a real engine, a real lldb a
 - `tests/engine/` is the test host (`Actor`, `World`, `Harness`, `FileWatcher`). It is not a model for a user project: copy from `samples/`. `tests/scripts/` has the test scripts. `tests/integration/aot/` has the program `aot_demo`. `tests/integration/fixtures/` has the hand-written generations. `tools/bench/bench_backends.cpp` is the benchmark.
 - `samples/` has seven self-contained projects for consumers of S++ (see "Samples"): six show one way to host S++ each, and `imgui` is a Dear ImGui demo. Each one shows the `add_subdirectory` pattern.
 - `tests/` has the GoogleTest cases and the shared headers.
-- `cmake/` has `CPM.cmake`, `SppScripts.cmake` (`spp_add_scripts`, `spp_script_host`), `SppTests.cmake` (`spp_gtest`) and `SppFormat.cmake` (the format library of `${}`).
+- `cmake/` has `CPM.cmake`, `HotScripts.cmake` (`hot_add_scripts`, `hot_script_host`), `HotTests.cmake` (`hot_gtest`) and `HotFormat.cmake` (the format library of `${}`).
 
 ## Build
 
@@ -55,7 +55,7 @@ The file `CMakePresets.json` has the presets. A build goes to `cmake-build/<pres
 - `sppc`, the language server and the tests need C++20. The build forces C++20 on these targets. The default standard of the other targets is 20. Set `-DCMAKE_CXX_STANDARD=17` for a C++17 host.
 - The standard of the host (`HOT_CXX_STANDARD` in `include/hot/config.h`: 17, 20 or 23) is the standard of the script compile and of the parse of the native headers. The `sppc` flag `--std=c++17|c++20|c++23` overrides it.
 - A C++17 host needs fmt for `${}`. See DECISIONS.md.
-- String interpolation `${}` uses fmt in a C++17 build and `std::format` in a C++20 build. `-DSPP_USE_FMT=ON` selects fmt at C++20 and later. The choice is a build-time choice. `SPP_FMT_PROVIDER` says where fmt comes from: `AUTO` (default: `find_package`, then CPM.cmake), `SYSTEM` (`find_package` only), `CPM` (always fetch) or `NONE` (your project supplies the target `fmt::fmt-header-only` or `fmt::fmt`). See doc/cmake.md and doc/embedding.md.
+- String interpolation `${}` uses fmt in a C++17 build and `std::format` in a C++20 build. `-DHOT_USE_FMT=ON` selects fmt at C++20 and later. The choice is a build-time choice. `HOT_FMT_PROVIDER` says where fmt comes from: `AUTO` (default: `find_package`, then CPM.cmake), `SYSTEM` (`find_package` only), `CPM` (always fetch) or `NONE` (your project supplies the target `fmt::fmt-header-only` or `fmt::fmt`). See doc/cmake.md and doc/embedding.md.
 
 ### Build tree layout
 
@@ -63,19 +63,19 @@ The source tree has one `CMakeLists.txt` in each directory (`src/*`, `samples/*`
 
 - `bin/<CONFIG>/` has the executables.
 - `lib/<CONFIG>/` has the libraries and the fixture `.so` files.
-- `spp_scripts/` and `spp_aot/` have the precompiled scripts.
+- `hot_scripts/` and `hot_aot/` have the precompiled scripts.
 - `tmp/` has the scratch files: the work directories, the directory of each test, the ImGui work directory and `imgui.ini`. ctest and the programs remove them by default.
 - `tests/**` has the ctest discovery files.
 
 To keep the scratch files, set the CMake option or the environment variable.
 
-    cmake -DSPP_KEEP_TEMP=ON ...
-    SPP_KEEP_TEMP=1 ctest --preset linux-clang-files-dbg
+    cmake -DHOT_KEEP_TEMP=ON ...
+    HOT_KEEP_TEMP=1 ctest --preset linux-clang-files-dbg
 
 - The environment variable overrides the option. The value `0` or an empty value means off.
-- The backend then keeps `tmp/spp_work/p<pid>`.
+- The backend then keeps `tmp/hot_work/p<pid>`.
 - Each test keeps `tmp/tests/<Suite>.<Test>/p<pid>`.
-- ctest runs the fixture `spp_scratch_clean` first. It wipes `tmp/tests`, `tmp/spp_work` and `tmp/bench`, unless keep is on.
+- ctest runs the fixture `hot_scratch_clean` first. It wipes `tmp/tests`, `tmp/hot_work` and `tmp/bench`, unless keep is on.
 
 To purge an old build tree, remove the preset directory and configure again:
 
@@ -86,19 +86,19 @@ To purge an old build tree, remove the preset directory and configure again:
 
 The folder `samples/` has seven projects: `aot`, `runtime-compile`, `precompiled-library`, `hot-reload`, `clang-files-backend`, `jit-backend` and `imgui`. See `samples/README.md` for the list. `doc/cmake.md` explains how a project uses S++ with CMake.
 
-The option `SPP_BUILD_SAMPLES` is ON for the main project. The target names start with `sample_`:
+The option `HOT_BUILD_SAMPLES` is ON for the main project. The target names start with `sample_`:
 
     cmake --preset linux-clang-files
-    cmake --build --preset linux-clang-files-dbg --target sample_aot_spp sample_aot_cpp
-    ctest --preset linux-clang-files-dbg -R '^sample_aot_(spp|cpp)$'
+    cmake --build --preset linux-clang-files-dbg --target sample_aot_hot sample_aot_cpp
+    ctest --preset linux-clang-files-dbg -R '^sample_aot_(hot|cpp)$'
 
-A sample also builds as a separate project. It needs `clang`, `libclang` and Ninja. The default `SPP_ROOT` is the tree that holds the sample:
+A sample also builds as a separate project. It needs `clang`, `libclang` and Ninja. The default `HOT_ROOT` is the tree that holds the sample:
 
     cmake -S samples/aot -B /tmp/sample_aot -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++
     cmake --build /tmp/sample_aot
     ctest --test-dir /tmp/sample_aot --output-on-failure
 
-The option `SPP_SAMPLES_STANDALONE_TEST` (default OFF) adds the CTest test `samples_standalone_aot`. The test builds and runs `samples/aot` as a separate project in `samples_standalone/aot` of the build tree.
+The option `HOT_SAMPLES_STANDALONE_TEST` (default OFF) adds the CTest test `samples_standalone_aot`. The test builds and runs `samples/aot` as a separate project in `samples_standalone/aot` of the build tree.
 
 ## Run
 
@@ -134,7 +134,7 @@ The slot file (`--slots`) keeps the slot order of the script methods stable betw
 
 ### C++ scripts
 
-A script can be a plain `.cpp` file. Do not write `#include "hot/script.h"`: `sppc` injects the header itself. The hot-reload aids (`HOT_ALIAS`, `onReload`, `convert_*`) are temporary. After you remove them, the file is standard C++ and compiles in a normal CMake build with no `sppc`. A normal build of a file that still has aids needs `-include hot/script.h`. The extension selects the parser: `.hot` uses the custom syntax and `.cpp` uses libclang. Both modes load side by side in one program. A `.cpp` script cannot include a `.hot` script, and a `.hot` script cannot import a `.cpp` script. `sppc` keeps the method bodies as text and edits only a native base member, `this` as an argument, a module variable and a static member of the base. The fixtures are `tests/scripts/cpp_player_v1.cpp` and `tests/scripts/cpp_player_v2.cpp`. See [doc/cpp-scripts.md](doc/cpp-scripts.md) for the supported forms, the errors and the known limits. The language server and the VS Code extension serve `.hot` only. `spp_add_scripts` takes `.cpp` paths in `SCRIPTS`. A `foo.hot` and a `foo.cpp` in one call fail at configure time.
+A script can be a plain `.cpp` file. Do not write `#include "hot/script.h"`: `sppc` injects the header itself. The hot-reload aids (`HOT_ALIAS`, `onReload`, `convert_*`) are temporary. After you remove them, the file is standard C++ and compiles in a normal CMake build with no `sppc`. A normal build of a file that still has aids needs `-include hot/script.h`. The extension selects the parser: `.hot` uses the custom syntax and `.cpp` uses libclang. Both modes load side by side in one program. A `.cpp` script cannot include a `.hot` script, and a `.hot` script cannot import a `.cpp` script. `sppc` keeps the method bodies as text and edits only a native base member, `this` as an argument, a module variable and a static member of the base. The fixtures are `tests/scripts/cpp_player_v1.cpp` and `tests/scripts/cpp_player_v2.cpp`. See [doc/cpp-scripts.md](doc/cpp-scripts.md) for the supported forms, the errors and the known limits. The language server and the VS Code extension serve `.hot` only. `hot_add_scripts` takes `.cpp` paths in `SCRIPTS`. A `foo.hot` and a `foo.cpp` in one call fail at configure time.
 
 ### Module declarations (S8a)
 
@@ -173,7 +173,7 @@ libclang needs about 400 ms to parse the engine headers. `sppc::TranslatorSessio
 
 A backend turns script source into a loadable `Module`. A `Module` has the `script_register` function and an owner of the code memory (for a `.so`: a `dlopen` handle). The `Loader` takes a `Module` in `load` and in `request_reload`. The class `Backend` (`include/hot/backend.h`) has the method `load(source, generation)`. It returns a `Module` or an error text with the compiler diagnostics.
 
-The CMake cache option `SPP_BACKEND` selects the backend at build time. `make_default_backend()` returns it.
+The CMake cache option `HOT_BACKEND` selects the backend at build time. `make_default_backend()` returns it.
 
 - `CLANG_FILES` (default). `ClangFilesBackend` calls `sppc::translate` in the process, writes the `.cpp` in a work directory, runs an external `clang++` to make a `.so`, and loads it. The options are the compiler command, the include dirs, the resource dir, the extra flags and the work directory.
 - `JIT`. `JitBackend` calls `sppc::translate` in the process, compiles the C++ text in memory with the Clang library and loads the code with LLVM ORC. See the section "JIT backend".
@@ -276,12 +276,12 @@ Command line of the translate mode. Without `-o`, the tool prints the C++ to the
 
 The exit code is 0 for success, 1 for an error and 2 for a wrong command line. The tool prints the compiler errors at the script line. It does not need CMake.
 
-The CMake function `spp_add_scripts` (`cmake/SppScripts.cmake`) only runs `sppc`:
+The CMake function `hot_add_scripts` (`cmake/HotScripts.cmake`) only runs `sppc`:
 
-    spp_add_scripts(TARGET player SCRIPTS tests/scripts/player_v1.hot
+    hot_add_scripts(TARGET player SCRIPTS tests/scripts/player_v1.hot
                     INCLUDES include tests/engine FLAGS ${flags} DEPENDS ${headers})
 
-`TARGET` is a custom target that makes the libraries in `OUT_DIR` (default `${CMAKE_BINARY_DIR}/spp_scripts`). The generation is 1. `SPPC_ARGS` passes extra arguments to `sppc`. The tests use `SPPC_ARGS --gen n` and `AFTER` to build later generations.
+`TARGET` is a custom target that makes the libraries in `OUT_DIR` (default `${CMAKE_BINARY_DIR}/hot_scripts`). The generation is 1. `SPPC_ARGS` passes extra arguments to `sppc`. The tests use `SPPC_ARGS --gen n` and `AFTER` to build later generations.
 
 ## AOT compilation
 
@@ -296,13 +296,13 @@ Command line (S12). The tool translates generation 1 of each script. It does not
 - `sppc` also writes `DIR/hot_aot_registry.cpp`. It defines the constant table `hot::aot_table` (`include/hot/aot.h`).
 - The script names must be different. The class names must be different over all the scripts of a program. An AOT script has no slot file and no later generation.
 
-The CMake function `spp_add_scripts` with the option `AOT` (`cmake/SppScripts.cmake`) runs `sppc --aot` and builds a static library. `AFTER` does not work with `AOT`. `PRELUDES` works only with `AOT`:
+The CMake function `hot_add_scripts` with the option `AOT` (`cmake/HotScripts.cmake`) runs `sppc --aot` and builds a static library. `AFTER` does not work with `AOT`. `PRELUDES` works only with `AOT`:
 
-    spp_add_scripts(TARGET game_scripts AOT SCRIPTS player.hot boss.hot
+    hot_add_scripts(TARGET game_scripts AOT SCRIPTS player.hot boss.hot
                     INCLUDES include tests/engine [PRELUDES file...] [DEPENDS file...])
     target_link_libraries(game PRIVATE game_scripts)
 
-The library links `spp_aot`. This target holds the core of the runtime (`threads.cpp`, `registry.cpp`) and the AOT registry (`aot.cpp`). The loader, the migration and `dlopen` are in the other target `spp_runtime`. Do not link both targets in one program.
+The library links `hot_aot`. This target holds the core of the runtime (`threads.cpp`, `registry.cpp`) and the AOT registry (`aot.cpp`). The loader, the migration and `dlopen` are in the other target `hot_runtime`. Do not link both targets in one program.
 
 At start-up the program makes the registry. The registry calls the register function of each script, makes the blocks of the module variables and sets `hot::active_generation` to 1:
 
@@ -334,30 +334,30 @@ Options to force the fetch:
 
     cmake --build --preset linux-clang-files-dbg && ctest --preset linux-clang-files-dbg
 
-All tests are GoogleTest cases. CMake registers them with `spp_gtest` (a wrapper of `gtest_discover_tests`).
+All tests are GoogleTest cases. CMake registers them with `hot_gtest` (a wrapper of `gtest_discover_tests`).
 
 - `HandwrittenGeneration` (`tests/integration/reload/handwritten_generation_tests.cpp`) loads `gen1.so` and makes one `Player`. It ticks the world 3 times and calls both `TakeDamage` overloads. It checks the type name, the position and the field `hp` by reflection.
 - `ReloadMigration` (`tests/integration/reload/reload_migration_tests.cpp`) binds a delegate to `heal` through a thunk. It reloads gen 2 at the frame boundary and checks the address, the migrated state, the new `Tick` and the delegate. It then tries gen 4 and a missing library. Both must be rejected, and gen 2 must keep running.
-- `BackendTests` (`tests/integration/reload/`) use the backend that `SPP_BACKEND` selected. They run the F1 reload scenario (`tests/support/f1_scenario.h`): generation 1 then generation 2, the same address, `hp` becomes `health`, `shield` is 25 and a delegate calls the new `heal`. A bad script (`tests/scripts/bad.hot`) must give an error that names `bad.hot` and the line. The runtime must keep running after the error.
+- `BackendTests` (`tests/integration/reload/`) use the backend that `HOT_BACKEND` selected. They run the F1 reload scenario (`tests/support/f1_scenario.h`): generation 1 then generation 2, the same address, `hp` becomes `health`, `shield` is 25 and a delegate calls the new `heal`. A bad script (`tests/scripts/bad.hot`) must give an error that names `bad.hot` and the line. The runtime must keep running after the error.
 - `SessionCache` (`tests/unit/translator/session/session_cache_tests.cpp`) checks the cache: a hit gives the same output as a miss, a changed header (also a nested one) invalidates it, a second base class works in the same session, and the second translate takes less than 150 ms (the real value is about 1.3 ms).
 - `JitTests` (`tests/integration/backends/jit_backend_tests.cpp`, only in a JIT build) check that no file appears and no child process runs. They also check exceptions in JIT code, a precompiled header and the life of a generation.
 - `Closure`, `GenerationUnload` (`tests/integration/closures/`) test escaped closures and the unload of generations with `tests/scripts/timer_v1.hot` and `timer_v2.hot`. See "Closures and unload".
 - `LambdaTranslation` (`tests/unit/translator/translate/lambda_translation_tests.cpp`) checks the output for an arrow lambda.
-- The other translator tests are in `tests/unit/translator/`. Each folder is one test program: `parser`, `lowering`, `emit`, `types`, `diagnostics`, `session` and `translate`. The golden-output tests are in `tests/golden/`. The expected files are in `tests/golden/expected/`. Set `SPP_UPDATE_GOLDEN` to write them again.
-- `PrecompiledTests` load the libraries that `spp_add_scripts` made with `sppc`, through `module_from_library`. They run the same F1 scenario. They run for each `SPP_BACKEND` value. One test runs `sppc` on `bad.hot` and checks the exit code and the error line.
+- The other translator tests are in `tests/unit/translator/`. Each folder is one test program: `parser`, `lowering`, `emit`, `types`, `diagnostics`, `session` and `translate`. The golden-output tests are in `tests/golden/`. The expected files are in `tests/golden/expected/`. Set `HOT_UPDATE_GOLDEN` to write them again.
+- `PrecompiledTests` load the libraries that `hot_add_scripts` made with `sppc`, through `module_from_library`. They run the same F1 scenario. They run for each `HOT_BACKEND` value. One test runs `sppc` on `bad.hot` and checks the exit code and the error line.
 
 ## ImGui sample
 
-`sample_imgui_spp` and `sample_imgui_cpp` (`samples/imgui/`) draw a Dear ImGui window. A script class draws the user interface. The script includes the real `imgui.h` (`using "imgui.h";`) and calls the ImGui API as it is: `ImGui.Begin("x")`, `ImGui.Text("n: %d", this.n)`, `ImGui.Checkbox("c", &this.on)`. A pointer parameter takes the address of a field. There is no wrapper layer.
+`sample_imgui_hot` and `sample_imgui_cpp` (`samples/imgui/`) draw a Dear ImGui window. A script class draws the user interface. The script includes the real `imgui.h` (`using "imgui.h";`) and calls the ImGui API as it is: `ImGui.Begin("x")`, `ImGui.Text("n: %d", this.n)`, `ImGui.Checkbox("c", &this.on)`. A pointer parameter takes the address of a field. There is no wrapper layer.
 
 Build. The target exists only when CMake finds SDL3 (`find_package(SDL3)`). Without SDL3 the configure step prints a STATUS message and the rest of the build is the same. CPM fetches Dear ImGui (v1.92.9b) and builds the static library `imgui_sdl3` with the SDL3 and SDL_Renderer backends. The executable links it as a whole archive, so a script can call every ImGui function.
 
     cmake --preset linux-clang-files
-    cmake --build --preset linux-clang-files-dbg --target sample_imgui_spp sample_imgui_cpp
+    cmake --build --preset linux-clang-files-dbg --target sample_imgui_hot sample_imgui_cpp
 
-Run. The default script of `sample_imgui_spp` is `samples/imgui/script/demo.hot`. The default script of `sample_imgui_cpp` is `samples/imgui/script/demo.cpp`, the same script as plain C++.
+Run. The default script of `sample_imgui_hot` is `samples/imgui/script/demo.hot`. The default script of `sample_imgui_cpp` is `samples/imgui/script/demo.cpp`, the same script as plain C++.
 
-    cmake-build/linux-clang-files/bin/Debug/sample_imgui_spp [script]
+    cmake-build/linux-clang-files/bin/Debug/sample_imgui_hot [script]
     cmake-build/linux-clang-files/bin/Debug/sample_imgui_cpp [script]
 
 Hot reload. The host checks the modification time of the script file at each frame. When it changes, the host compiles the script as a new generation and starts a reload. The commit happens after `Frame()`, at the frame boundary. The object keeps its field values. If the compile or the reload fails, the window "Script error" shows the text and the old generation keeps running. If `Frame()` throws, the host drops the object and shows the message. The next good reload makes a new object. The host writes `reloaded gen N` and `reload failed: ...` to stderr.
@@ -455,8 +455,8 @@ Steps:
 Both servers can use the same project and the same `.cache/` directory. They do not disturb each other:
 
 - The C++ clangd stores its index in `<dir of compile_commands.json>/.cache/clangd/index/`.
-- The clangd child of `spp-ls` has its own database directory `.cache/spp/clangd/` in the first workspace folder. The directory has a link to the real `compile_commands.json`. So its index is in `.cache/spp/clangd/.cache/clangd/index/`. The extra nesting is accepted. `XDG_CACHE_HOME` does not move this index (see DECISIONS 18).
-- The symbol index of `spp-ls` is in `.cache/spp/index/`.
+- The clangd child of `spp-ls` has its own database directory `.cache/hot/clangd/` in the first workspace folder. The directory has a link to the real `compile_commands.json`. So its index is in `.cache/hot/clangd/.cache/clangd/index/`. The extra nesting is accepted. `XDG_CACHE_HOME` does not move this index (see DECISIONS 18).
+- The symbol index of `spp-ls` is in `.cache/hot/index/`.
 - The C++ clangd does not get an open `.hot` document, and `spp-ls` does not get a C++ document. A diagnostic of one server never shows in the files of the other.
 
 ### Automatic setup (script hosts)
@@ -464,16 +464,16 @@ Both servers can use the same project and the same `.cache/` directory. They do 
 A script host tells `spp-ls` how the engine compiles its scripts. CMake writes the host files. So the user does not pass `-I` flags.
 
 ```cmake
-include(cmake/SppScripts.cmake)
-# spp_add_scripts calls spp_script_host by themselves.
+include(cmake/HotScripts.cmake)
+# hot_add_scripts calls hot_script_host by themselves.
 # Call it directly for a host without these functions:
-spp_script_host(NAME engine TARGET engine
+hot_script_host(NAME engine TARGET engine
                 SCRIPT_DIRS ${CMAKE_SOURCE_DIR}/scripts
                 INCLUDES ${CMAKE_SOURCE_DIR}/engine)
 ```
 
-- At generate time, `spp_script_host` writes `${SPP_HOSTS_DIR}/<NAME>.json`. The default is `<source dir>/.cache/spp/hosts`. The file has the explicit include dirs, the script dirs and the scripts, with a full JSON escape, and `sourceDir` (the source directory of the call). The defines, options and include dirs of `TARGET` go to the side files `<NAME>.defines`, `<NAME>.options` and `<NAME>.includes`, one entry on each line. The JSON file names them in `definesFile`, `optionsFile` and `includesFile`. A relative path is relative to `sourceDir`, and `spp-ls` makes it absolute and normalizes it. `spp-ls` drops a repeated include dir. The order is the project include dir, the dirs of `TARGET`, then the explicit `INCLUDES`. Every valid include path works: spaces, quotes, backslashes, non-ASCII characters, `$`, `#`, brackets, `,`, `>`, `|`, `=`, a leading `-`, `..`, a trailing slash, relative paths, and dirs from imported targets or generator expressions. Two cases do not work. A path with a newline cannot be in a one-line-per-entry file. A path with a semicolon is a CMake list separator, so CMake splits it in two entries before `spp_script_host` sees it. The server passes each flag to clangd as one item of an argument array, so no shell escape is needed.
-- `spp-ls` reads the host files from `<root>/.cache/spp/hosts`. The argument `--hosts-dir` (init option `hostsDir`) sets another directory.
+- At generate time, `hot_script_host` writes `${HOT_HOSTS_DIR}/<NAME>.json`. The default is `<source dir>/.cache/hot/hosts`. The file has the explicit include dirs, the script dirs and the scripts, with a full JSON escape, and `sourceDir` (the source directory of the call). The defines, options and include dirs of `TARGET` go to the side files `<NAME>.defines`, `<NAME>.options` and `<NAME>.includes`, one entry on each line. The JSON file names them in `definesFile`, `optionsFile` and `includesFile`. A relative path is relative to `sourceDir`, and `spp-ls` makes it absolute and normalizes it. `spp-ls` drops a repeated include dir. The order is the project include dir, the dirs of `TARGET`, then the explicit `INCLUDES`. Every valid include path works: spaces, quotes, backslashes, non-ASCII characters, `$`, `#`, brackets, `,`, `>`, `|`, `=`, a leading `-`, `..`, a trailing slash, relative paths, and dirs from imported targets or generator expressions. Two cases do not work. A path with a newline cannot be in a one-line-per-entry file. A path with a semicolon is a CMake list separator, so CMake splits it in two entries before `hot_script_host` sees it. The server passes each flag to clangd as one item of an argument array, so no shell escape is needed.
+- `spp-ls` reads the host files from `<root>/.cache/hot/hosts`. The argument `--hosts-dir` (init option `hostsDir`) sets another directory.
 - A script matches the host with the exact `scripts` entry. Else it matches the host with the longest `scriptDirs` prefix. A tie goes to the lower name.
 - The effective options are the host values, then the explicit `-I` and `--cxxflag` values. So the flags override the host.
 - A host is skipped when its `binaryDir/CMakeCache.txt` is missing. The server checks it again later.
@@ -504,7 +504,7 @@ Features:
 - Hover, go-to-definition and references. A script symbol goes to the script. A native symbol goes to the native header.
 - Document symbols come from analyze. Semantic tokens come from a small lexer and the facts.
 - Rename changes the script symbols (class, member, field) in all `.hot` files of the workspace. The server scans the workspace folders from `initialize` (it skips hidden folders and `node_modules`). A class or a member with the same name in another script (for example the versions of a script) gets the new name there too. An open document uses its editor text. A file on disk goes to clangd only for the request. A class name has no segment in the source map, so the semantic tokens find its places. References also look in the other `.hot` files. Rename of a native symbol gives the error `cannot rename a native symbol: X`.
-- The shard digest covers the text of the file and the texts of the scripts that it imports (also the imports of the imports). A changed import makes the shard stale. The saved symbol index speeds up rename and references on closed `.hot` files. There is no limit on the number of files. It has one shard for each `.hot` file. All shards are flat in `.cache/spp/index/` in the first workspace folder. `--index-dir dir` sets another directory. The shard name is a hash of the file path, so a new shard replaces the old shard and the index does not grow when a file changes. A shard holds a format version, the content digest, the classes and members, and the places of each class. The places of a member come from clangd. The server adds them to the shard at the first rename. The server loads a shard only if the version and the digest match. Else it analyzes the file again and writes the shard again. A write goes to a temporary file, then a rename puts it in place. At `initialize` and at each scan the server deletes the shards of missing files. The index is filled when a rename or a references request scans a closed file. It is not filled at startup. Add `.cache/` to the ignore list of the project. The request `spp/indexStats` gives the counts (`analyzed`, `loaded`, `stored`).
+- The shard digest covers the text of the file and the texts of the scripts that it imports (also the imports of the imports). A changed import makes the shard stale. The saved symbol index speeds up rename and references on closed `.hot` files. There is no limit on the number of files. It has one shard for each `.hot` file. All shards are flat in `.cache/hot/index/` in the first workspace folder. `--index-dir dir` sets another directory. The shard name is a hash of the file path, so a new shard replaces the old shard and the index does not grow when a file changes. A shard holds a format version, the content digest, the classes and members, and the places of each class. The places of a member come from clangd. The server adds them to the shard at the first rename. The server loads a shard only if the version and the digest match. Else it analyzes the file again and writes the shard again. A write goes to a temporary file, then a rename puts it in place. At `initialize` and at each scan the server deletes the shards of missing files. The index is filled when a rename or a references request scans a closed file. It is not filled at startup. Add `.cache/` to the ignore list of the project. The request `spp/indexStats` gives the counts (`analyzed`, `loaded`, `stored`).
 - Workspace symbols come from the clangd index. Give `--compile-commands-dir` with the output dir of `sppc --compile-commands`. Then clangd runs its background index on the generated files. A symbol of a generated file maps to its script member. The helpers of the translator (thunks, slot functions) are not shown.
 
 The `#line` check: clangd reports the real line of the generated file, not the `#line` line. So the generated C++ keeps its `#line` directives. No translator option is necessary.
@@ -522,7 +522,7 @@ Limits:
 - A `#line` fallback has the line only. The column is the column of the same word in the script line, or the first non-blank column.
 - Two open scripts that import the same script publish diagnostics for it. The last publish wins.
 
-The tests are in `tests/integration/ls/` (`LanguageServer.*`). They run the server on a thread with an LSP client over pipes. The clangd tests are skipped when `clangd` is missing. Set `SPP_LS_CLANGD_LOG=file` to get the clangd log of a test.
+The tests are in `tests/integration/ls/` (`LanguageServer.*`). They run the server on a thread with an LSP client over pipes. The clangd tests are skipped when `clangd` is missing. Set `HOT_LS_CLANGD_LOG=file` to get the clangd log of a test.
 
 ## Threads and the safe point
 

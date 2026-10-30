@@ -26,7 +26,7 @@ struct ClangFilesOptions
     // cache between backends.
     std::shared_ptr<sppc::TranslatorSession> session;
     std::vector<std::string> extra_flags; // added to the compile command
-    std::string work_dir = "spp_work"; // the .cpp and .so files go here
+    std::string work_dir = "hot_work"; // the .cpp and .so files go here
     std::string slots_file; // empty: <work_dir>/slots.txt
     // True: the destructor of the backend removes work_dir (remove_scratch). The owner must give
     // a directory that no other backend uses.

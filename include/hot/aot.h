@@ -7,8 +7,8 @@
 // generation module. The class records, the slot tables and the factories are constant data
 // of the binary.
 //
-// A program with AOT scripts links spp_aot (the core of the runtime) and the static
-// library of the scripts. It must not link spp_runtime (loader, migration, dlopen).
+// A program with AOT scripts links hot_aot (the core of the runtime) and the static
+// library of the scripts. It must not link hot_runtime (loader, migration, dlopen).
 #pragma once
 #include "hot/runtime/migration.h"
 #include "hot/runtime/records.h"

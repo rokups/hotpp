@@ -1,7 +1,7 @@
 // The saved symbol index of spp-ls (S28). It is like the index of clangd.
 //
 // There is one shard for each .hot file. All shards are in one flat directory (by default
-// ".cache/spp/index/" in the project root). The name of a shard is a hash of the file path. So
+// ".cache/hot/index/" in the project root). The name of a shard is a hash of the file path. So
 // a new shard replaces the old shard of the same file, and the index does not grow when a file
 // changes.
 //

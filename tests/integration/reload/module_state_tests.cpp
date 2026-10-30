@@ -1,5 +1,5 @@
 // Reload tests of the module-level declarations (S8a, design 5.3): a module variable, a script
-// enum and a script struct. They use the backend that SPP_BACKEND selected.
+// enum and a script struct. They use the backend that HOT_BACKEND selected.
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"

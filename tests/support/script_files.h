@@ -22,7 +22,7 @@ inline std::string read_file(const std::string& path)
 
 inline hot::ScriptSource source(const char* file)
 {
-    const std::string path = std::string(SPP_SOURCE_DIR) + "/tests/scripts/" + file;
+    const std::string path = std::string(HOT_SOURCE_DIR) + "/tests/scripts/" + file;
     return {path, read_file(path), {}};
 }
 

@@ -1,4 +1,4 @@
-// Tests of the string switch and the collection literal with the backend that SPP_BACKEND selected.
+// Tests of the string switch and the collection literal with the backend that HOT_BACKEND selected.
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/script_files.h"

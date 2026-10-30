@@ -57,11 +57,11 @@ constexpr std::size_t max_depth = 64;
 constexpr int max_block_nesting = 16;
 
 // ---------------------------------------------------------------- error texts
-SPP_ERROR_TAG(e_stmt, "expected a statement");
-SPP_ERROR_TAG(e_while, "expected 'while'");
-SPP_ERROR_TAG(e_name, "expected a name");
-SPP_ERROR_TAG(e_catch, "expected 'catch' or 'finally'");
-SPP_ERROR_TAG(e_const_form, "expected 'var' or a type after 'const'");
+HOT_ERROR_TAG(e_stmt, "expected a statement");
+HOT_ERROR_TAG(e_while, "expected 'while'");
+HOT_ERROR_TAG(e_name, "expected a name");
+HOT_ERROR_TAG(e_catch, "expected 'catch' or 'finally'");
+HOT_ERROR_TAG(e_const_form, "expected 'var' or a type after 'const'");
 
 // ---------------------------------------------------------------- words
 constexpr auto kw_const = LEXY_KEYWORD("const", id);
@@ -578,7 +578,7 @@ struct probe_decl_foreach
         return find_decl_type<DeclEnd::ForEach>(DeclCursor<Reader>(r), name);
     }
 };
-SPP_ERROR_TAG(e_decl_type, "expected a declaration");
+HOT_ERROR_TAG(e_decl_type, "expected a declaration");
 
 // A branch rule over a plain C++ look-ahead. Probe::run decides the branch.
 // Consume false: the rule is a peek. It consumes no text and produces no value.

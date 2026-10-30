@@ -49,7 +49,7 @@ const char* const kScript =
 
 bool have_clangd()
 {
-    return std::string(SPP_CLANGD_PATH).size() > 0;
+    return std::string(HOT_CLANGD_PATH).size() > 0;
 }
 
 #define REQUIRE_CLANGD() \
@@ -62,10 +62,10 @@ bool have_clangd()
 hot::ls::ServerOptions options(const TempDir& dir, bool clangd)
 {
     hot::ls::ServerOptions o;
-    o.clangd = clangd ? SPP_CLANGD_PATH : "";
-    o.include_dirs = {SPP_SOURCE_DIR "/include", SPP_SOURCE_DIR "/tests/engine"};
-    // SPP_LS_CLANGD_LOG keeps the clangd log after the test (the temporary dir goes away).
-    const char* log = std::getenv("SPP_LS_CLANGD_LOG");
+    o.clangd = clangd ? HOT_CLANGD_PATH : "";
+    o.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine"};
+    // HOT_LS_CLANGD_LOG keeps the clangd log after the test (the temporary dir goes away).
+    const char* log = std::getenv("HOT_LS_CLANGD_LOG");
     o.clangd_log = log ? log : (dir.path() / "clangd.log").string();
     return o;
 }
@@ -122,7 +122,7 @@ TEST(LanguageServer, ParseErrorIsAtTheScriptPosition)
     std::string text = kScript;
     text.replace(text.find("this.hp = this.hp + amount;"), 27, "this.hp = ;");
     Session s(false, text);
-    const json n = s.diagnostics([](const json& d) { return has_source(d, "spp"); });
+    const json n = s.diagnostics([](const json& d) { return has_source(d, "hot"); });
     ASSERT_FALSE(n.is_null());
     const json& d = n["params"]["diagnostics"][0];
     EXPECT_EQ(d["range"]["start"]["line"], 11) << n.dump();
@@ -246,7 +246,7 @@ TEST(LanguageServer, DefinitionAfterATranslationErrorUsesTheShiftedPositions)
     std::string text = kScript;
     text.replace(text.find("\nclass Player"), 0, "using \"missing.hot\";\n\n");
     s.client->change(s.uri, 2, text);
-    const json n = s.diagnostics([](const json& d) { return has_source(d, "spp"); });
+    const json n = s.diagnostics([](const json& d) { return has_source(d, "hot"); });
     ASSERT_FALSE(n.is_null()) << "the translation must fail";
     const json r = s.client->request("textDocument/definition", doc_pos(s.uri, 9, 14));
     ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
@@ -311,7 +311,7 @@ TEST(LanguageServer, TranslatorErrorInAnImportedScriptIsPublishedForThatScript)
     const json& d = n["params"]["diagnostics"][0];
     EXPECT_EQ(d["range"]["start"]["line"], 3) << n.dump();
     EXPECT_EQ(d["range"]["start"]["character"], 10) << n.dump();
-    EXPECT_EQ(d["source"], "spp");
+    EXPECT_EQ(d["source"], "hot");
 }
 
 // S30 (c): a clangd error in imported code is published for the imported script, at its own line
@@ -588,7 +588,7 @@ TEST(LanguageServer, GeneratedFileOnDiskMapsBackToTheScript)
     o.script_text = kScript;
     o.script_name = s.path;
     o.generation = 1;
-    o.include_dirs = {SPP_SOURCE_DIR "/include", SPP_SOURCE_DIR "/tests/engine"};
+    o.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine"};
     const sppc::TranslateResult t = sppc::translate(o);
     ASSERT_TRUE(t.ok) << t.diagnostics;
     const std::string cpp = (s.dir.path() / "player.g1.cpp").string();
@@ -739,7 +739,7 @@ TEST(LanguageServer, BackgroundIndexFindsAScriptSymbolInAGeneratedFile)
     o.script_text = kScript;
     o.script_name = script;
     o.generation = 1;
-    o.include_dirs = {SPP_SOURCE_DIR "/include", SPP_SOURCE_DIR "/tests/engine"};
+    o.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine"};
     const sppc::TranslateResult t = sppc::translate(o);
     ASSERT_TRUE(t.ok) << t.diagnostics;
     const std::string cpp = (dir.path() / "player.g1.cpp").string();
@@ -772,7 +772,7 @@ TEST(LanguageServer, BackgroundIndexFindsAScriptSymbolInAGeneratedFile)
 
 // S31 (DECISIONS 18): a C++ clangd (the editor extension) and spp-ls run on one project. The
 // project has one compile_commands.json and one ".cache" directory. The clangd child of spp-ls
-// keeps its index in ".cache/spp/clangd", so it does not mix with the index of the C++ clangd.
+// keeps its index in ".cache/hot/clangd", so it does not mix with the index of the C++ clangd.
 TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOther)
 {
     REQUIRE_CLANGD();
@@ -785,7 +785,7 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
     o.script_text = kScript;
     o.script_name = script;
     o.generation = 1;
-    o.include_dirs = {SPP_SOURCE_DIR "/include", SPP_SOURCE_DIR "/tests/engine"};
+    o.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine"};
     const sppc::TranslateResult t = sppc::translate(o);
     ASSERT_TRUE(t.ok) << t.diagnostics;
     const std::string gen = (root / "player.g1.cpp").string();
@@ -803,7 +803,7 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
     std::mutex mu;
     std::vector<json> published;
     hot::ls::ClangdProcess cpp_clangd;
-    ASSERT_TRUE(cpp_clangd.start(SPP_CLANGD_PATH,
+    ASSERT_TRUE(cpp_clangd.start(HOT_CLANGD_PATH,
         {"--log=error", "--background-index", "--compile-commands-dir=" + root.string()}, "", [&](const json& m)
     {
         if (m.value("method", std::string()) != "textDocument/publishDiagnostics")
@@ -830,9 +830,9 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
     client.open(uri_of(script), bad);
 
     // Both servers give their own diagnostics.
-    const json spp_diag = client.wait_notification("textDocument/publishDiagnostics", [&](const json& p)
+    const json hot_diag = client.wait_notification("textDocument/publishDiagnostics", [&](const json& p)
     { return p.value("uri", std::string()) == uri_of(script) && has_source(p["diagnostics"], "clangd"); });
-    EXPECT_FALSE(spp_diag.is_null()) << "spp-ls has no clangd diagnostic";
+    EXPECT_FALSE(hot_diag.is_null()) << "spp-ls has no clangd diagnostic";
     bool cpp_diag = false;
     for (int i = 0; i < 100 && !cpp_diag; ++i)
     {
@@ -855,7 +855,7 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
 
     // Both background indexes run. The shards of the two clangd processes are in two directories.
     const fs::path cpp_index = root / ".cache" / "clangd" / "index";
-    const fs::path spp_index = root / ".cache" / "spp" / "clangd" / ".cache" / "clangd" / "index";
+    const fs::path hot_index = root / ".cache" / "hot" / "clangd" / ".cache" / "clangd" / "index";
     auto has_shard = [](const fs::path& dir_, const std::string& stem)
     {
         std::error_code ec;
@@ -867,12 +867,12 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
     bool ready = false;
     for (int i = 0; i < 120 && !ready; ++i)
     {
-        ready = has_shard(cpp_index, "main.cpp.") && has_shard(spp_index, "main.cpp.");
+        ready = has_shard(cpp_index, "main.cpp.") && has_shard(hot_index, "main.cpp.");
         if (!ready)
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
     EXPECT_TRUE(ready) << "a background index is missing";
-    EXPECT_TRUE(fs::exists(root / ".cache" / "spp" / "clangd" / "compile_commands.json"));
+    EXPECT_TRUE(fs::exists(root / ".cache" / "hot" / "clangd" / "compile_commands.json"));
 
     // The C++ clangd still answers for C++, and spp-ls still answers for the script.
     const json sym = cpp_clangd.request("workspace/symbol", {{"query", "cpp_function"}}, 30000);
@@ -1060,7 +1060,7 @@ TEST(LanguageServer, RenameOnAClosedFileAfterARestartUsesTheIndex)
     ASSERT_TRUE(r["result"]["changes"].contains(uri_of(other_path))) << r.dump();
     const json first = r["result"]["changes"][uri_of(other_path)];
     EXPECT_EQ(analyzed_files(*s.client), 1);
-    EXPECT_TRUE(std::filesystem::exists(s.dir.path() / ".cache" / "spp" / "index"));
+    EXPECT_TRUE(std::filesystem::exists(s.dir.path() / ".cache" / "hot" / "index"));
     s.client.reset(); // the restart
     s.client = std::make_unique<LsClient>(options(s.dir, false));
     s.client->initialize(uri_of(s.dir.path().string()));
@@ -1070,14 +1070,14 @@ TEST(LanguageServer, RenameOnAClosedFileAfterARestartUsesTheIndex)
     EXPECT_EQ(r["result"]["changes"][uri_of(other_path)], first) << r.dump();
     EXPECT_EQ(analyzed_files(*s.client), 0);
     // A changed file is analyzed again. The shard count stays the same.
-    const size_t shards = file_count(s.dir.path() / ".cache" / "spp" / "index");
+    const size_t shards = file_count(s.dir.path() / ".cache" / "hot" / "index");
     std::string changed = kScript;
     changed += "\n";
     write_file(other_path, changed);
     r = s.client->request("textDocument/rename", p);
     ASSERT_TRUE(r.contains("result")) << r.dump();
     EXPECT_EQ(analyzed_files(*s.client), 1);
-    EXPECT_EQ(file_count(s.dir.path() / ".cache" / "spp" / "index"), shards);
+    EXPECT_EQ(file_count(s.dir.path() / ".cache" / "hot" / "index"), shards);
 }
 
 // The same for a member. The references of a member come from clangd. The shard keeps them.
@@ -1402,7 +1402,7 @@ TEST(LanguageServer, CodeActionInsertsAMissingSemicolon)
     std::string text = kScript;
     text.replace(text.find("this.hp = this.hp + amount;"), 27, "this.hp = this.hp + amount");
     Session s(false, text);
-    const json n = s.diagnostics([](const json& d) { return has_source(d, "spp"); });
+    const json n = s.diagnostics([](const json& d) { return has_source(d, "hot"); });
     ASSERT_FALSE(n.is_null());
     const json diag = n["params"]["diagnostics"][0];
     ASSERT_EQ(diag["message"], "expected ';'") << diag.dump();
@@ -1477,18 +1477,18 @@ std::vector<std::string> host_completion_labels(
             R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string()
                 + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")"
                 + (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" + (root / "inc").string()
-                + R"(",")" + SPP_SOURCE_DIR + R"(/include"],"defines":[],)"
+                + R"(",")" + HOT_SOURCE_DIR + R"(/include"],"defines":[],)"
                 + (defines_file.empty() ? "" : R"("definesFile":"h.defines",)") + R"("flags":[]})");
     };
     if (host && !change_host_later)
         write_host();
     hot::ls::ServerOptions o;
-    o.clangd = SPP_CLANGD_PATH;
+    o.clangd = HOT_CLANGD_PATH;
     o.hosts_dir = (root / "hosts").string();
     o.clangd_log = (root / "clangd.log").string();
     // The runtime headers are needed to translate. Without a host, they come from -I.
     if (!host)
-        o.include_dirs = {SPP_SOURCE_DIR "/include"};
+        o.include_dirs = {HOT_SOURCE_DIR "/include"};
     LsClient client(o);
     client.initialize(uri_of(root.string()));
     const std::string uri = uri_of(path);
@@ -1553,13 +1553,13 @@ TEST(LanguageServerHosts, IncludeDirWithSpecialCharactersFromAnIncludesFileAppli
     write_file((root / "hosts" / "h.json").string(),
         R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string() + R"(","sourceDir":")" + root.string()
             + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":["scripts"],)"
-            + R"("scripts":[],"includeDirs":[")" + SPP_SOURCE_DIR + R"(/include"],"defines":[],)"
+            + R"("scripts":[],"includeDirs":[")" + HOT_SOURCE_DIR + R"(/include"],"defines":[],)"
             + R"("includesFile":"h.includes","flags":[]})");
     const std::string text = "using \"thing.h\";\n\nclass A {\n    void f() {\n        Thing.\n    }\n}\n";
     const std::string path = (root / "scripts" / "a.hot").string();
     write_file(path, text);
     hot::ls::ServerOptions o;
-    o.clangd = SPP_CLANGD_PATH;
+    o.clangd = HOT_CLANGD_PATH;
     o.hosts_dir = (root / "hosts").string();
     o.clangd_log = (root / "clangd.log").string();
     LsClient client(o);
@@ -1611,7 +1611,7 @@ TEST(LanguageServerHosts, NewScriptFileIsFoundAfterAWatchedFilesEvent)
     write_file(path, text);
     hot::ls::ServerOptions o;
     o.hosts_dir = (root / "hosts").string();
-    o.include_dirs = {SPP_SOURCE_DIR "/include"};
+    o.include_dirs = {HOT_SOURCE_DIR "/include"};
     LsClient client(o);
     client.initialize(uri_of(root.string()));
     client.open(uri_of(path), text);
@@ -1667,7 +1667,7 @@ struct HostDiagCase
         write_file((root / "hosts" / "h.json").string(),
             R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string()
                 + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")"
-                + (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" + SPP_SOURCE_DIR
+                + (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" + HOT_SOURCE_DIR
                 + R"(/include"],"defines":[],"flags":[]})");
     }
     json next_diagnostics(LsClient& c) const
@@ -1763,8 +1763,8 @@ struct CppScriptCase
         write_file((root / "hosts" / "h.json").string(),
             R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string()
                 + R"(","compiler":"/usr/bin/c++","std":"c++17","resourceDir":"","scriptDirs":[")"
-                + (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" + SPP_SOURCE_DIR
-                + R"(/include",")" + SPP_SOURCE_DIR + R"(/tests/engine"],"defines":[],"flags":[]})");
+                + (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" + HOT_SOURCE_DIR
+                + R"(/include",")" + HOT_SOURCE_DIR + R"(/tests/engine"],"defines":[],"flags":[]})");
         o.hosts_dir = (root / "hosts").string();
     }
     static void open(LsClient& c, const std::string& uri, const std::string& text)
@@ -1795,7 +1795,7 @@ TEST(LanguageServerCpp, ScriptWithAnUnsupportedFormGivesTheSppcMessageAtTheLine)
     EXPECT_EQ(diags[0]["message"], "a pure virtual method is not supported in a .cpp script class");
     EXPECT_EQ(diags[0]["range"]["start"]["line"], 5);
     EXPECT_EQ(diags[0]["severity"], 1);
-    EXPECT_EQ(diags[0]["source"], "spp");
+    EXPECT_EQ(diags[0]["source"], "hot");
 }
 
 TEST(LanguageServerCpp, ValidScriptGivesNoDiagnostic)

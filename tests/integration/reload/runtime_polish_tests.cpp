@@ -180,7 +180,7 @@ struct TempScript
     explicit TempScript(const char* name)
     {
         dir = std::filesystem::temp_directory_path()
-            / ("spp_harness_" + std::to_string(reinterpret_cast<uintptr_t>(this)));
+            / ("hot_harness_" + std::to_string(reinterpret_cast<uintptr_t>(this)));
         std::filesystem::create_directories(dir);
         file = dir / "watched.hot";
         write(name);
@@ -189,7 +189,7 @@ struct TempScript
     void write(const char* name) const
     {
         std::ofstream f(file, std::ios::trunc);
-        f << read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/" + name);
+        f << read_file(std::string(HOT_SOURCE_DIR) + "/tests/scripts/" + name);
     }
 };
 
@@ -263,7 +263,7 @@ TEST(HarnessTests, FullReloadBuildErrorKeepsTheActors)
 
     {
         std::ofstream f(script.file, std::ios::trunc);
-        f << read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/fnremoved_v2.hot");
+        f << read_file(std::string(HOT_SOURCE_DIR) + "/tests/scripts/fnremoved_v2.hot");
         f << "\nclass Broken : Actor {\n    void f() { int x = \"text\"; }\n}\n";
     }
     testing::internal::CaptureStderr();

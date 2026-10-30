@@ -28,7 +28,7 @@ int main()
     // The program sets the compiler name, the include dirs, the resource dir and the flags.
     hot::JitOptions options;
     options.compiler = SAMPLE_CXX;
-    options.include_dirs = {SAMPLE_SPP_INCLUDE_DIR, SAMPLE_DIR};
+    options.include_dirs = {SAMPLE_HOT_INCLUDE_DIR, SAMPLE_DIR};
     options.resource_dir = SAMPLE_RESOURCE_DIR;
     // The flags of the host, for example a sanitizer. The JIT code must use the same ones.
     std::istringstream flags(SAMPLE_CXXFLAGS);

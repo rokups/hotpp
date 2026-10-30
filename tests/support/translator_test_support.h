@@ -1,4 +1,4 @@
-// Helpers for the tests that call sppc::translate. CMake defines SPP_SOURCE_DIR.
+// Helpers for the tests that call sppc::translate. CMake defines HOT_SOURCE_DIR.
 #pragma once
 
 #include "hot/sppc_lib.h"
@@ -56,7 +56,7 @@ private:
 
 inline sppc::TranslateOptions engine_options(const char* script_file, int generation)
 {
-    const std::string root = SPP_SOURCE_DIR;
+    const std::string root = HOT_SOURCE_DIR;
     sppc::TranslateOptions o;
     o.script_name = root + "/tests/scripts/" + script_file;
     o.script_text = read_file(o.script_name);

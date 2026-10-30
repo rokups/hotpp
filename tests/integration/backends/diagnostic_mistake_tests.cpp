@@ -2,10 +2,10 @@
 // speaks script names and points to the script line.
 //
 // Each case is a pair of files in tests/golden/diagnostics: NN_name.hot and NN_name.expected.
-// The test loads the script with the backend that SPP_BACKEND selected. The text of the error
+// The test loads the script with the backend that HOT_BACKEND selected. The text of the error
 // must equal the expected file. The source directory shows as "<src>". The last line of the
 // error ("the compile of ... failed") is not part of the expected text.
-// To change a golden file, set SPP_UPDATE_GOLDEN: the test writes the error text of the run
+// To change a golden file, set HOT_UPDATE_GOLDEN: the test writes the error text of the run
 // (without the "the compile of" line) and still compares. Look at the diff before you commit.
 #include "hot/backend.h"
 #include "support/script_files.h"
@@ -25,7 +25,7 @@ namespace
 
 namespace fs = std::filesystem;
 
-const std::string kDir = std::string(SPP_SOURCE_DIR) + "/tests/golden/diagnostics/";
+const std::string kDir = std::string(HOT_SOURCE_DIR) + "/tests/golden/diagnostics/";
 
 std::vector<std::string> case_names()
 {
@@ -41,8 +41,8 @@ std::vector<std::string> case_names()
 // "N error generated.") and with "<src>" for the source dir.
 std::string normalize(std::string text)
 {
-    for (size_t p = text.find(SPP_SOURCE_DIR); p != std::string::npos; p = text.find(SPP_SOURCE_DIR, p))
-        text.replace(p, std::string(SPP_SOURCE_DIR).size(), "<src>");
+    for (size_t p = text.find(HOT_SOURCE_DIR); p != std::string::npos; p = text.find(HOT_SOURCE_DIR, p))
+        text.replace(p, std::string(HOT_SOURCE_DIR).size(), "<src>");
     std::istringstream in(text);
     std::string out;
     for (std::string l; std::getline(in, l);)
@@ -65,11 +65,11 @@ TEST_P(DiagnosticMistakes, ErrorSpeaksScriptNames)
     const hot::LoadResult r = backend->load(source, 1);
     ASSERT_FALSE(r) << "the script must not compile";
     const std::string actual = normalize(r.error);
-    if (std::getenv("SPP_UPDATE_GOLDEN"))
+    if (std::getenv("HOT_UPDATE_GOLDEN"))
     {
         std::string text = r.error;
-        for (size_t p = text.find(SPP_SOURCE_DIR); p != std::string::npos; p = text.find(SPP_SOURCE_DIR, p))
-            text.replace(p, std::string(SPP_SOURCE_DIR).size(), "<src>");
+        for (size_t p = text.find(HOT_SOURCE_DIR); p != std::string::npos; p = text.find(HOT_SOURCE_DIR, p))
+            text.replace(p, std::string(HOT_SOURCE_DIR).size(), "<src>");
         std::istringstream in(text);
         std::string out;
         for (std::string l; std::getline(in, l);)

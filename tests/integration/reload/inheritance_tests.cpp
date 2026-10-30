@@ -1,5 +1,5 @@
 // Reload tests of script inheritance (S6a, design 4.5, 7.6 and 7.7) with the backend that
-// SPP_BACKEND selected: a child of a script class, script virtuals, "base" calls, "is" and "as".
+// HOT_BACKEND selected: a child of a script class, script virtuals, "base" calls, "is" and "as".
 #include "Util.h"
 #include "hot/backend.h"
 #include "support/backend_fixture.h"

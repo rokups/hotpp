@@ -12,19 +12,19 @@ The sample has one program (`main.cpp`) and two variants of the same script:
 
 The build makes one AOT library and one program for each variant:
 
-- `sample_aot_spp_scripts` and `sample_aot_spp` use the `.hot` script.
+- `sample_aot_hot_scripts` and `sample_aot_hot` use the `.hot` script.
 - `sample_aot_cpp_scripts` and `sample_aot_cpp` use the `.cpp` script.
 
-Each variant has its own `spp_add_scripts` call and its own `OUT_DIR`, so the generated files
+Each variant has its own `hot_add_scripts` call and its own `OUT_DIR`, so the generated files
 (`wolf.aot.cpp` and `hot_aot_registry.cpp`) do not clash.
 Both programs print the same output. The build also compiles the `.cpp` script with the normal
 compiler (the object library `aot_cpp_scripts_plain`). This shows that a `.cpp` script compiles unchanged.
 
 ## How it works
 
-1. `spp_add_scripts(TARGET sample_aot_spp_scripts AOT SCRIPTS script/wolf.hot ...)` runs `sppc --aot`
+1. `hot_add_scripts(TARGET sample_aot_hot_scripts AOT SCRIPTS script/wolf.hot ...)` runs `sppc --aot`
    at build time. It makes C++ files and a table `hot::aot_table`. It builds them as a static library.
-2. The library links `spp_aot`. This library has `hot::AotRegistry` and does not have the loader.
+2. The library links `hot_aot`. This library has `hot::AotRegistry` and does not have the loader.
 3. `main.cpp` makes `hot::AotRegistry registry(hot::aot_table)`. The constructor registers
    the classes of all scripts.
 4. `registry.create_as<Creature>("Wolf")` makes an object and returns the native pointer.
@@ -43,26 +43,26 @@ The program does not call `dlopen`. It has no `ENABLE_EXPORTS`. A script change 
 
 ### In the S++ tree
 
-The option `SPP_BUILD_SAMPLES` is ON for the main project.
+The option `HOT_BUILD_SAMPLES` is ON for the main project.
 
 ```
 cmake --preset linux-clang-files
-cmake --build --preset linux-clang-files-dbg --target sample_aot_spp sample_aot_cpp
-ctest --preset linux-clang-files-dbg -R '^sample_aot_(spp|cpp)$'
+cmake --build --preset linux-clang-files-dbg --target sample_aot_hot sample_aot_cpp
+ctest --preset linux-clang-files-dbg -R '^sample_aot_(hot|cpp)$'
 ```
 
 Each test has the same name as its target. To run a program, use the folder `bin/Debug` of the build tree:
 
 ```
-cmake-build/linux-clang-files/bin/Debug/sample_aot_spp
+cmake-build/linux-clang-files/bin/Debug/sample_aot_hot
 cmake-build/linux-clang-files/bin/Debug/sample_aot_cpp
 ```
-This sample has a test for the separate build too. Set `-DSPP_SAMPLES_STANDALONE_TEST=ON`
+This sample has a test for the separate build too. Set `-DHOT_SAMPLES_STANDALONE_TEST=ON`
 when you configure the S++ tree. The test is `samples_standalone_aot`. It builds both variants and runs both tests.
 
 ### As a separate project
 
-Use the S++ source tree in `SPP_ROOT`. The default value is the tree that holds this folder.
+Use the S++ source tree in `HOT_ROOT`. The default value is the tree that holds this folder.
 The build fetches the S++ dependencies with CPM. It needs `clang`, `libclang` and Ninja.
 
 ```
@@ -71,12 +71,12 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-To use another S++ tree, add `-DSPP_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample calls
-`add_subdirectory` for `SPP_ROOT` only when the target `sppc` does not exist yet.
+To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample calls
+`add_subdirectory` for `HOT_ROOT` only when the target `sppc` does not exist yet.
 
 ### With FetchContent
 
-Replace the `SPP_ROOT` and `add_subdirectory` lines of `CMakeLists.txt` with this text.
+Replace the `HOT_ROOT` and `add_subdirectory` lines of `CMakeLists.txt` with this text.
 The rest of the file stays the same.
 
 ```cmake
@@ -86,18 +86,18 @@ FetchContent_MakeAvailable(spp)
 ```
 
 S++ is not the main project in this case. Its tests and samples are OFF.
-The function `spp_add_scripts` is then available.
+The function `hot_add_scripts` is then available.
 
 ## Link
 
-- `sample_aot_spp_scripts` and `sample_aot_cpp_scripts` are the libraries from `spp_add_scripts(... AOT ...)`.
-  Each has the generated C++ and the table `hot::aot_table`. It links `spp_aot` (PUBLIC).
-- Each program links only the library of its variant. It does not link `spp_runtime`.
+- `sample_aot_hot_scripts` and `sample_aot_cpp_scripts` are the libraries from `hot_add_scripts(... AOT ...)`.
+  Each has the generated C++ and the table `hot::aot_table`. It links `hot_aot` (PUBLIC).
+- Each program links only the library of its variant. It does not link `hot_runtime`.
 
 ## Adapt it to your project
 
 1. Add S++ to your project with `add_subdirectory` or FetchContent (see above).
-2. Call `spp_add_scripts(TARGET <name> AOT SCRIPTS <your .hot files> INCLUDES <absolute folders of your headers> DEPENDS <your headers>)`.
+2. Call `hot_add_scripts(TARGET <name> AOT SCRIPTS <your .hot files> INCLUDES <absolute folders of your headers> DEPENDS <your headers>)`.
    The build does not track the headers by itself, so list them in `DEPENDS`.
 3. Link your program to `<name>`.
 4. Include `hot/aot.h`. Make one `hot::AotRegistry` on the main thread. It must live as long as the objects.
@@ -114,9 +114,9 @@ for that build. See the section "AOT" in [Embedding](../../doc/embedding.md).
 [wolf] wolf: bites=3 hp=097
 ```
 
-Both variants print the same lines. The tests `sample_aot_spp` and `sample_aot_cpp` pass when the program returns 0.
+Both variants print the same lines. The tests `sample_aot_hot` and `sample_aot_cpp` pass when the program returns 0.
 
 ## More information
 
 - [Embedding](../../doc/embedding.md): the six hosting situations and the backend interface.
-- [CMake](../../doc/cmake.md): the options and the function `spp_add_scripts`.
+- [CMake](../../doc/cmake.md): the options and the function `hot_add_scripts`.

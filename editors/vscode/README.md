@@ -37,7 +37,7 @@ Put the server arguments in `spp.server.args`. For example:
 
 ```json
 "spp.server.args": ["--stdio", "-I", "/home/me/game/include",
-                    "--compile-commands-dir", "/home/me/game/build/spp_cdb"]
+                    "--compile-commands-dir", "/home/me/game/build/hot_cdb"]
 ```
 
 | Argument | Meaning |
@@ -66,17 +66,17 @@ Install both extensions. They run side by side on one project.
 
 The two servers can share the `.cache/` directory. The index of the clangd extension is in
 `.cache/clangd/index/` next to its `compile_commands.json`. The clangd child of `spp-ls` has its own
-index in `.cache/spp/clangd/.cache/clangd/index/`. The index of `spp-ls` is in `.cache/spp/index/`.
+index in `.cache/hot/clangd/.cache/clangd/index/`. The index of `spp-ls` is in `.cache/hot/index/`.
 See "Language server" in the top `README.md`.
 
 ## Host files and file watchers
 
-The CMake function `spp_script_host` writes the host files to `.cache/spp/hosts/*.json`, and the side files `*.defines`, `*.options` and `*.includes`. They tell
+The CMake function `hot_script_host` writes the host files to `.cache/hot/hosts/*.json`, and the side files `*.defines`, `*.options` and `*.includes`. They tell
 `spp-ls` the include directories and flags of each script. The extension watches `**/*.hot` and
-`.cache/spp/hosts/*` and sends the events to the server. A new, changed or deleted script, or a
+`.cache/hot/hosts/*` and sends the events to the server. A new, changed or deleted script, or a
 new or changed host file, takes effect without a restart of the server.
 
-Every valid include path works: spaces, quotes, backslashes, non-ASCII characters, `$`, `#`, brackets, relative paths and paths from imported targets. Two cases do not work. A path with a newline cannot be in a side file. A path with a semicolon is a CMake list separator, so CMake splits it before `spp_script_host` sees it.
+Every valid include path works: spaces, quotes, backslashes, non-ASCII characters, `$`, `#`, brackets, relative paths and paths from imported targets. Two cases do not work. A path with a newline cannot be in a side file. A path with a semicolon is a CMake list separator, so CMake splits it before `hot_script_host` sees it.
 
 ## Install for development
 

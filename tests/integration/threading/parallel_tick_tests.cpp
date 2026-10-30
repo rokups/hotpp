@@ -12,7 +12,7 @@
 //   - a rejected reload from the third thread changes nothing.
 //
 // The scripts are in this file and they do not print, so the output stays small.
-// The tests use the backend that SPP_BACKEND selected (make_default_backend).
+// The tests use the backend that HOT_BACKEND selected (make_default_backend).
 // CMake defines the macros GEN4_BASE_SO and GEN3_MISSING_SO.
 #include "hot/backend.h"
 #include "support/reload_assert.h"

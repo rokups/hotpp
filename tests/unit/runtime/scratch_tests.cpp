@@ -1,4 +1,4 @@
-// The scratch directory helpers: removal at exit, SPP_KEEP_TEMP and the safe remove.
+// The scratch directory helpers: removal at exit, HOT_KEEP_TEMP and the safe remove.
 #include "hot/scratch.h"
 
 #include <gtest/gtest.h>
@@ -16,7 +16,7 @@ namespace fs = std::filesystem;
 
 std::string test_dir(const char* tag)
 {
-    return (fs::temp_directory_path() / ("spp_scratch_test_" + std::string(tag) + std::to_string(getpid()))).string();
+    return (fs::temp_directory_path() / ("hot_scratch_test_" + std::string(tag) + std::to_string(getpid()))).string();
 }
 
 // Each test sets the variable itself. The fixture sets it to "0" before the test, so the CMake
@@ -25,18 +25,18 @@ struct Scratch : ::testing::Test
 {
     void SetUp() override
     {
-        const char* old = getenv("SPP_KEEP_TEMP");
+        const char* old = getenv("HOT_KEEP_TEMP");
         had_old_ = old != nullptr;
         if (old)
             old_ = old;
-        setenv("SPP_KEEP_TEMP", "0", 1);
+        setenv("HOT_KEEP_TEMP", "0", 1);
     }
     void TearDown() override
     {
         if (had_old_)
-            setenv("SPP_KEEP_TEMP", old_.c_str(), 1);
+            setenv("HOT_KEEP_TEMP", old_.c_str(), 1);
         else
-            unsetenv("SPP_KEEP_TEMP");
+            unsetenv("HOT_KEEP_TEMP");
     }
 
     bool had_old_ = false;
@@ -70,7 +70,7 @@ TEST_F(Scratch, ConstructorRemovesOldContent)
 TEST_F(Scratch, KeepTempKeepsTheDirectory)
 {
     const std::string path = test_dir("keep");
-    setenv("SPP_KEEP_TEMP", "1", 1);
+    setenv("HOT_KEEP_TEMP", "1", 1);
     EXPECT_TRUE(hot::keep_temp());
     {
         hot::ScratchDir dir(path);
@@ -82,9 +82,9 @@ TEST_F(Scratch, KeepTempKeepsTheDirectory)
 
 TEST_F(Scratch, ZeroOrEmptyMeansFalse)
 {
-    setenv("SPP_KEEP_TEMP", "0", 1);
+    setenv("HOT_KEEP_TEMP", "0", 1);
     EXPECT_FALSE(hot::keep_temp());
-    setenv("SPP_KEEP_TEMP", "", 1);
+    setenv("HOT_KEEP_TEMP", "", 1);
     EXPECT_FALSE(hot::keep_temp());
 }
 
@@ -103,7 +103,7 @@ TEST_F(Scratch, PredicateAcceptsOnlySafePaths)
 TEST_F(Scratch, RemoveIgnoresRelativePaths)
 {
     // The sentinel is a relative path. The call must not remove it.
-    const std::string rel = "spp_scratch_relative_" + std::to_string(getpid());
+    const std::string rel = "hot_scratch_relative_" + std::to_string(getpid());
     fs::create_directories(rel);
     hot::remove_scratch(rel);
     EXPECT_TRUE(fs::is_directory(rel));

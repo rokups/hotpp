@@ -32,8 +32,8 @@
 // For each file the tool writes DIR/<name>.aot.cpp (generation 1). It also writes
 // DIR/hot_aot_registry.cpp, which defines the constant table hot::aot_table
 // (include/hot/aot.h). The tool does not compile. The CMake function
-// spp_add_scripts with AOT builds a static library from these files. The program links the
-// library and spp_aot. It has no loader.
+// hot_add_scripts with AOT builds a static library from these files. The program links the
+// library and hot_aot. It has no loader.
 //
 // The flag --format=std|fmt is a flag for build systems. In build mode the build of sppc fixes
 // the format library (include/hot/config.h), and a different --format is an error (exit code 2).

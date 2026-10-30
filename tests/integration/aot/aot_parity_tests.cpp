@@ -104,13 +104,13 @@ std::string symbols_of(const std::string& path)
 // The sanitizer runtime of the compiler has dlopen and the LLVM symbolizer. A sanitizer build
 // does not check these two names.
 #if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
-    #define SPP_TEST_SANITIZER 1
+    #define HOT_TEST_SANITIZER 1
 #elif defined(__has_feature)
     #if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer)
-        #define SPP_TEST_SANITIZER 1
+        #define HOT_TEST_SANITIZER 1
     #endif
 #endif
-#ifdef SPP_TEST_SANITIZER
+#ifdef HOT_TEST_SANITIZER
 const char* const kLoaderMarks[] = {"hot::Loader", "hot::module_from_library", "migrate_block", "ClangFilesBackend",
     "FileWatcher", "removed_class_handler", "sppc::translate", "clang_createIndex", "clang_parseTranslationUnit",
     "clang::"};

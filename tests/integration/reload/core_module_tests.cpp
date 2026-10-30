@@ -3,9 +3,9 @@
 //
 // The stress tests load copies of the library stress_generation (tests/integration/fixtures) as
 // generation 1, 2, 3 and so on. They count the loaded modules in the loader stats and in
-// /proc/self/maps. The backend tests use the backend that SPP_BACKEND selected.
+// /proc/self/maps. The backend tests use the backend that HOT_BACKEND selected.
 //
-// CMake defines STRESS_SO and SPP_SOURCE_DIR.
+// CMake defines STRESS_SO and HOT_SOURCE_DIR.
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
@@ -170,7 +170,7 @@ void run_reloads(int reloads)
 
 int reload_count(int fallback)
 {
-    const char* v = std::getenv("SPP_STRESS_RELOADS");
+    const char* v = std::getenv("HOT_STRESS_RELOADS");
     return v && std::atoi(v) > 0 ? std::atoi(v) : fallback;
 }
 
@@ -180,11 +180,11 @@ TEST(CoreModule, ManyReloadsKeepTheModuleCountBounded)
     run_reloads(reload_count(200));
 }
 
-// The full variant (design M8: 1000 reloads). Set SPP_STRESS=1 to run it.
+// The full variant (design M8: 1000 reloads). Set HOT_STRESS=1 to run it.
 TEST(CoreModule, ThousandReloads)
 {
-    if (!std::getenv("SPP_STRESS"))
-        GTEST_SKIP() << "set SPP_STRESS=1 to run 1000 reloads";
+    if (!std::getenv("HOT_STRESS"))
+        GTEST_SKIP() << "set HOT_STRESS=1 to run 1000 reloads";
     run_reloads(1000);
 }
 

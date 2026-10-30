@@ -1,4 +1,4 @@
-// Scratch directories for the tests. CMake defines the macro SPP_SCRATCH_DIR for the test target.
+// Scratch directories for the tests. CMake defines the macro HOT_SCRATCH_DIR for the test target.
 //
 // CTest starts the tests as separate processes, and it can run them in parallel. A directory
 // for each test and each process stops two tests from writing the same files.
@@ -17,11 +17,11 @@
 namespace test_support
 {
 
-// The path SPP_SCRATCH_DIR/<name>/p<pid>. The character '/' in the name becomes '_'.
+// The path HOT_SCRATCH_DIR/<name>/p<pid>. The character '/' in the name becomes '_'.
 inline std::string scratch_path(std::string name)
 {
     std::replace(name.begin(), name.end(), '/', '_');
-    return std::string(SPP_SCRATCH_DIR) + "/" + name + "/p" + std::to_string(getpid());
+    return std::string(HOT_SCRATCH_DIR) + "/" + name + "/p" + std::to_string(getpid());
 }
 
 // The scratch directory of the running test. The directory is empty at the start. The

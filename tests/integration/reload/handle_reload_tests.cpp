@@ -1,7 +1,7 @@
-// Reload tests for handle fields with the backend that SPP_BACKEND selected.
+// Reload tests for handle fields with the backend that HOT_BACKEND selected.
 // A shared_ptr handle and an intrusive handle keep their object across reloads.
 //
-// CMake defines the macro SPP_SOURCE_DIR.
+// CMake defines the macro HOT_SOURCE_DIR.
 #include "Object.h"
 #include "Weapon.h"
 #include "hot/backend.h"

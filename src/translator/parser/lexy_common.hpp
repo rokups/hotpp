@@ -51,17 +51,17 @@ constexpr auto any_unit = -dsl::lit_b<0xFF> / dsl::lit_b<0xFF>;
 
 // ---------------------------------------------------------------- error tags
 // The name member is the text of the error.
-#define SPP_ERROR_TAG(NAME, TEXT) \
+#define HOT_ERROR_TAG(NAME, TEXT) \
     struct NAME \
     { \
         static constexpr auto name = TEXT; \
     }
 
-SPP_ERROR_TAG(e_unterminated_comment, "unterminated comment");
-SPP_ERROR_TAG(e_unterminated_literal, "unterminated string or character literal");
-SPP_ERROR_TAG(e_unexpected_eof, "unexpected end of file");
-SPP_ERROR_TAG(e_interpolation, "string interpolation is not supported");
-SPP_ERROR_TAG(e_use_dot_colons, "use '.' instead of '::'");
+HOT_ERROR_TAG(e_unterminated_comment, "unterminated comment");
+HOT_ERROR_TAG(e_unterminated_literal, "unterminated string or character literal");
+HOT_ERROR_TAG(e_unexpected_eof, "unexpected end of file");
+HOT_ERROR_TAG(e_interpolation, "string interpolation is not supported");
+HOT_ERROR_TAG(e_use_dot_colons, "use '.' instead of '::'");
 // The parse reads the "->" token before it raises this error. "rewind" is the size of the token:
 // the report of the error (detail::report) moves back to the start of the token.
 struct e_use_dot_arrow

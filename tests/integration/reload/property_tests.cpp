@@ -1,6 +1,6 @@
-// Tests of script properties with the backend that SPP_BACKEND selected.
+// Tests of script properties with the backend that HOT_BACKEND selected.
 //
-// CMake defines the macro SPP_SOURCE_DIR.
+// CMake defines the macro HOT_SOURCE_DIR.
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/script_files.h"

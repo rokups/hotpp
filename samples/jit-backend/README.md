@@ -5,7 +5,7 @@ The backend translates the script in memory, compiles it in memory with the Clan
 and loads the code with LLVM ORC. No process starts. The backend writes no file.
 
 The sample needs the system LLVM and Clang development packages. It builds only when
-`SPP_BACKEND=JIT`. With another backend the configure prints `sample_jit: skipped` and the
+`HOT_BACKEND=JIT`. With another backend the configure prints `sample_jit: skipped` and the
 sample adds no target and no test.
 
 ## Two script variants
@@ -17,7 +17,7 @@ The sample has one program (`main.cpp`) and two variants of the same script:
 
 The build makes one program for each variant from the same `main.cpp`:
 
-- `sample_jit_spp` reads the `.hot` script.
+- `sample_jit_hot` reads the `.hot` script.
 - `sample_jit_cpp` reads the `.cpp` script.
 
 Both variants are in the folder `script`. The file extension picks the variant.
@@ -58,45 +58,45 @@ The other fields (`session`, `pch_path`, `strict_borrowed`, `raw_diagnostics`, `
 
 ### In the S++ tree
 
-Configure with the preset for the JIT backend. The option `SPP_BUILD_SAMPLES` is ON for the main project.
+Configure with the preset for the JIT backend. The option `HOT_BUILD_SAMPLES` is ON for the main project.
 
 ```
 cmake --preset linux-clang-jit
-cmake --build --preset linux-clang-jit-dbg --target sample_jit_spp sample_jit_cpp
-ctest --preset linux-clang-jit-dbg -R '^sample_jit_(spp|cpp)$'
+cmake --build --preset linux-clang-jit-dbg --target sample_jit_hot sample_jit_cpp
+ctest --preset linux-clang-jit-dbg -R '^sample_jit_(hot|cpp)$'
 ```
 
 Each test has the same name as its target. To run a program, use the folder `bin/Debug` of the build tree:
 
 ```
-cmake-build/linux-clang-jit/bin/Debug/sample_jit_spp
+cmake-build/linux-clang-jit/bin/Debug/sample_jit_hot
 cmake-build/linux-clang-jit/bin/Debug/sample_jit_cpp
 ```
 
 ### As a separate project
 
-Use the S++ source tree in `SPP_ROOT`. The default value is the tree that holds this folder.
+Use the S++ source tree in `HOT_ROOT`. The default value is the tree that holds this folder.
 The build fetches the S++ dependencies with CPM. It needs `clang`, `libclang`, the LLVM and
 Clang development packages, and Ninja.
 
 ```
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++ -DSPP_BACKEND=JIT
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++ -DHOT_BACKEND=JIT
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-To use another S++ tree, add `-DSPP_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample sets
-`SPP_BACKEND` to `JIT` when it is not defined.
+To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample sets
+`HOT_BACKEND` to `JIT` when it is not defined.
 
 ## Link
 
-- The program links `spp_jit_backend`. It brings `spp_runtime`, `sppc_lib`, `clang-cpp` and `LLVM`.
+- The program links `hot_jit_backend`. It brings `hot_runtime`, `sppc_lib`, `clang-cpp` and `LLVM`.
 - `ENABLE_EXPORTS` is ON. The JIT code resolves host and runtime symbols from the executable.
 
 ## Adapt it to your project
 
-1. Configure S++ with `SPP_BACKEND=JIT`. LLVM and Clang must be installed. CPM does not fetch them.
-2. Link your program to `spp_jit_backend` and set `ENABLE_EXPORTS ON`.
+1. Configure S++ with `HOT_BACKEND=JIT`. LLVM and Clang must be installed. CPM does not fetch them.
+2. Link your program to `hot_jit_backend` and set `ENABLE_EXPORTS ON`.
 3. Give `compiler` as a full path when you can. The backend uses it to find the toolchain.
    Set `resource_dir` from `<compiler> -print-resource-dir`.
 4. Keep the compiler flags of the host, such as a sanitizer, in `extra_flags`.
@@ -111,9 +111,9 @@ To use another S++ tree, add `-DSPP_ROOT=/path/to/spp`. The `CMakeLists.txt` of 
 [wolf] wolf: bites=3 hp=97
 ```
 
-Each test (`sample_jit_spp` and `sample_jit_cpp`) passes when the program returns 0.
+Each test (`sample_jit_hot` and `sample_jit_cpp`) passes when the program returns 0.
 
 ## More information
 
 - [Embedding](../../doc/embedding.md): the six hosting situations and the backend interface.
-- [CMake](../../doc/cmake.md): the options and the function `spp_add_scripts`.
+- [CMake](../../doc/cmake.md): the options and the function `hot_add_scripts`.

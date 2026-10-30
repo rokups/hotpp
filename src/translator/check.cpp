@@ -1390,7 +1390,7 @@ struct QueryCollector
         }
         if (obj.cpp.empty())
             return {};
-        return QType{"decltype(std::declval<sppc_obj<" + obj.cpp + ">&>()." + name + ")"};
+        return QType{"decltype(std::declval<hotc_obj<" + obj.cpp + ">&>()." + name + ")"};
     }
 
     // The result of a call of the member function "name" of an object of the type "obj".
@@ -1404,11 +1404,11 @@ struct QueryCollector
                     if (m.name == name && !m.overrides_virtual)
                         return of_text(m.script_ret.empty() ? m.ret : m.script_ret);
             const std::string nb = native_root(*obj.script);
-            return nb.empty() ? QType{} : QType{"decltype(sppc_ret_f(&" + nb + "::" + name + "))"};
+            return nb.empty() ? QType{} : QType{"decltype(hotc_ret_f(&" + nb + "::" + name + "))"};
         }
         if (obj.cpp.empty())
             return {};
-        return QType{"decltype(sppc_ret_f(&sppc_obj<" + obj.cpp + ">::" + name + "))"};
+        return QType{"decltype(hotc_ret_f(&hotc_obj<" + obj.cpp + ">::" + name + "))"};
     }
 
     // The type of a bare name: a local, a field of the class or a module variable.
@@ -1499,7 +1499,7 @@ struct QueryCollector
                                 if (m.name == f && !m.overrides_virtual)
                                     return method(self, f);
                     }
-                    return script_names.count(f) ? QType{} : QType{"decltype(sppc_ret_f(&" + f + "))"};
+                    return script_names.count(f) ? QType{} : QType{"decltype(hotc_ret_f(&" + f + "))"};
                 }
                 if (is_head_value(n->parts[0]))
                 {
@@ -1509,7 +1509,7 @@ struct QueryCollector
                     return q.known() ? method(q, n->parts.back()) : QType{};
                 }
                 const std::string s = scope_text(n->parts, n->parts.size());
-                return s.empty() ? QType{} : QType{"decltype(sppc_ret_f(&" + s + "))"};
+                return s.empty() ? QType{} : QType{"decltype(hotc_ret_f(&" + s + "))"};
             }
             if (auto* m = std::get_if<MemberExpr>(&c->callee->v))
             {

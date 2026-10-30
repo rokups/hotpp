@@ -4,7 +4,7 @@
 // tests read the table with llvm-dwarfdump. They skip when the tool is not installed.
 // The debugger itself (lldb, gdb) is not started here.
 //
-// CMake defines these macros: SPP_SOURCE_DIR, SPP_SCRATCH_DIR, SPP_CXX and PRE_V2_SO.
+// CMake defines these macros: HOT_SOURCE_DIR, HOT_SCRATCH_DIR, HOT_CXX and PRE_V2_SO.
 #include "hot/sppc_lib.h"
 #include "support/dwarf_lines.h"
 #include "support/scratch_dir.h"
@@ -29,7 +29,7 @@ using test_support::have_dwarfdump;
 int heal_line()
 {
     return test_support::line_with(
-        test_support::read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/player_v2.hot"), "Math.Min");
+        test_support::read_file(std::string(HOT_SOURCE_DIR) + "/tests/scripts/player_v2.hot"), "Math.Min");
 }
 
 // A script that the test translated and compiled with "-g" and a given optimization flag.
@@ -56,10 +56,10 @@ const Compiled& compile_with_debug_info(const std::string& script, const std::st
     const std::string dir = test_support::process_scratch("debug_info").path();
     sppc::TranslateOptions to;
     to.script_name = script + ".hot";
-    to.script_text = test_support::read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/" + script + ".hot");
+    to.script_text = test_support::read_file(std::string(HOT_SOURCE_DIR) + "/tests/scripts/" + script + ".hot");
     to.output_name = dir + "/" + script + ".cpp";
     to.generation = 1;
-    to.include_dirs = {std::string(SPP_SOURCE_DIR) + "/include", std::string(SPP_SOURCE_DIR) + "/tests/engine"};
+    to.include_dirs = {std::string(HOT_SOURCE_DIR) + "/include", std::string(HOT_SOURCE_DIR) + "/tests/engine"};
     const sppc::TranslateResult tr = sppc::translate(to);
     Compiled c;
     c.script_file = to.script_name;
@@ -71,8 +71,8 @@ const Compiled& compile_with_debug_info(const std::string& script, const std::st
     }
     const std::string library = dir + "/" + script + opt + ".so";
     fs::remove(library);
-    const std::string cmd = std::string("'") + SPP_CXX + "' -std=c++20 " + opt + " -fPIC -shared -g -I '"
-        + SPP_SOURCE_DIR + "/include' -I '" + SPP_SOURCE_DIR + "/tests/engine' '" + to.output_name + "' -o '"
+    const std::string cmd = std::string("'") + HOT_CXX + "' -std=c++20 " + opt + " -fPIC -shared -g -I '"
+        + HOT_SOURCE_DIR + "/include' -I '" + HOT_SOURCE_DIR + "/tests/engine' '" + to.output_name + "' -o '"
         + library + "'";
     const std::string compile_output = test_support::run_capture(cmd);
     EXPECT_TRUE(fs::exists(library)) << compile_output;
@@ -131,18 +131,18 @@ TEST(DebugInfo, LineTablesOnlyKeepsTheScriptLines)
     const std::string dir = scratch.path();
     sppc::TranslateOptions to;
     to.script_name = "player_v2.hot";
-    to.script_text = test_support::read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/player_v2.hot");
+    to.script_text = test_support::read_file(std::string(HOT_SOURCE_DIR) + "/tests/scripts/player_v2.hot");
     to.output_name = dir + "/player_v2.cpp";
     to.generation = 1;
-    to.include_dirs = {std::string(SPP_SOURCE_DIR) + "/include", std::string(SPP_SOURCE_DIR) + "/tests/engine"};
+    to.include_dirs = {std::string(HOT_SOURCE_DIR) + "/include", std::string(HOT_SOURCE_DIR) + "/tests/engine"};
     const sppc::TranslateResult tr = sppc::translate(to);
     ASSERT_TRUE(tr.ok) << tr.diagnostics;
     {
         std::ofstream(to.output_name) << tr.cpp;
     }
     const std::string object = dir + "/player_v2.o";
-    const std::string cmd = std::string("'") + SPP_CXX + "' -std=c++20 -O1 -fPIC -gline-tables-only -I '"
-        + SPP_SOURCE_DIR + "/include' -I '" + SPP_SOURCE_DIR + "/tests/engine' -c '" + to.output_name + "' -o '"
+    const std::string cmd = std::string("'") + HOT_CXX + "' -std=c++20 -O1 -fPIC -gline-tables-only -I '"
+        + HOT_SOURCE_DIR + "/include' -I '" + HOT_SOURCE_DIR + "/tests/engine' -c '" + to.output_name + "' -o '"
         + object + "'";
     const std::string compile_output = test_support::run_capture(cmd);
     ASSERT_TRUE(fs::exists(object)) << compile_output;
@@ -202,7 +202,7 @@ TEST(DebugInfo, MemberLineTableHasFirstBodyLineAfterFnLine)
 {
     if (!have_dwarfdump())
         GTEST_SKIP() << "llvm-dwarfdump is not installed";
-    const std::string text = test_support::read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/player_v1.hot");
+    const std::string text = test_support::read_file(std::string(HOT_SOURCE_DIR) + "/tests/scripts/player_v1.hot");
     const int fn_line = test_support::line_with(text, "override void Tick");
     const int body_line = test_support::line_with(text, "this.Move");
     ASSERT_EQ(body_line, fn_line + 1);

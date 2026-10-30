@@ -1,5 +1,5 @@
 # Reload tests. The first group loads hand-written libraries. The second group
-# uses the backend that SPP_BACKEND selected. The file gen3_missing.so does not exist on purpose.
+# uses the backend that HOT_BACKEND selected. The file gen3_missing.so does not exist on purpose.
 add_executable(integration_reload_tests
     handwritten_generation_tests.cpp
     reload_migration_tests.cpp
@@ -26,18 +26,18 @@ add_executable(integration_reload_tests
     ${PROJECT_SOURCE_DIR}/tests/engine/Object.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
 target_include_directories(integration_reload_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
-target_link_libraries(integration_reload_tests PRIVATE spp_backend engine_harness GTest::gtest_main)
+target_link_libraries(integration_reload_tests PRIVATE hot_backend engine_harness GTest::gtest_main)
 set_target_properties(integration_reload_tests PROPERTIES ENABLE_EXPORTS ON)
 add_dependencies(integration_reload_tests gen1 gen2 gen4_base stress_generation)
 target_compile_definitions(integration_reload_tests PRIVATE
-    SPP_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-    SPP_BACKEND_NAME="${SPP_BACKEND}"
+    HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+    HOT_BACKEND_NAME="${HOT_BACKEND}"
     GEN1_SO="$<TARGET_FILE:gen1>"
     GEN2_SO="$<TARGET_FILE:gen2>"
     GEN4_BASE_SO="$<TARGET_FILE:gen4_base>"
     STRESS_SO="$<TARGET_FILE:stress_generation>"
     GEN3_MISSING_SO="${CMAKE_BINARY_DIR}/gen3_missing.so")
-if(SPP_BACKEND STREQUAL "CLANG_FILES")
-    target_compile_definitions(integration_reload_tests PRIVATE SPP_TEST_CLANG_FILES=1)
+if(HOT_BACKEND STREQUAL "CLANG_FILES")
+    target_compile_definitions(integration_reload_tests PRIVATE HOT_TEST_CLANG_FILES=1)
 endif()
-spp_gtest(integration_reload_tests)
+hot_gtest(integration_reload_tests)

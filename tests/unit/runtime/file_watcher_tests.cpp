@@ -20,7 +20,7 @@ protected:
     void SetUp() override
     {
         dir = fs::temp_directory_path()
-            / ("spp_watch_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) + "_"
+            / ("hot_watch_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) + "_"
                 + std::to_string(reinterpret_cast<uintptr_t>(this)));
         fs::create_directories(dir);
         file = (dir / "a.hot").string();

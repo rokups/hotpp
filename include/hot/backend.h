@@ -2,7 +2,7 @@
 //
 // The Loader does not know how a Module is made. A backend can run an external
 // compiler (ClangFilesBackend) or compile in the process (JitBackend).
-// CMake selects the default backend with the cache option SPP_BACKEND.
+// CMake selects the default backend with the cache option HOT_BACKEND.
 // A library that the tool sppc made ahead of time needs no backend: call
 // module_from_library (module.h) and give the Module to the Loader.
 #pragma once
@@ -50,14 +50,14 @@ public:
     virtual const char* name() const = 0;
 };
 
-// The backend that SPP_BACKEND selected at build time.
+// The backend that HOT_BACKEND selected at build time.
 std::unique_ptr<Backend> make_default_backend();
 
 // Additions to the build-time defaults of make_default_backend.
 struct DefaultBackendOptions
 {
-    std::vector<std::string> include_dirs; // after SPP_DEFAULT_INCLUDES
-    std::vector<std::string> extra_flags;  // after SPP_DEFAULT_CXXFLAGS
+    std::vector<std::string> include_dirs; // after HOT_DEFAULT_INCLUDES
+    std::vector<std::string> extra_flags;  // after HOT_DEFAULT_CXXFLAGS
 };
 std::unique_ptr<Backend> make_default_backend(const DefaultBackendOptions& options);
 
