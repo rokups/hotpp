@@ -434,6 +434,109 @@ TEST_P(BackendTests, CppScriptMemberInitializersReload)
     delete second;
 }
 
+// A script class derives from a script class. Kid inherits the fields and the methods of Base,
+// overrides the virtual Power of Base, and calls the versions of Base with "Base::". The object
+// of generation 1 survives the reload. Generation 2 adds an override of TakeDamage and the new
+// virtual Bonus. The cast from Base* to Kid* finds the object in both generations.
+TEST_P(BackendTests, CppScriptChildClassReload)
+{
+    spp::LoadResult v1 = backend->load(source("cpp_inherit_v1.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult v2 = backend->load(source("cpp_inherit_v2.cpp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Kid"));
+    spp::ShellBase* shell = s.inst.shell;
+    ASSERT_NE(shell->cls->super, nullptr);
+    EXPECT_STREQ(shell->cls->super->name, "Base");
+    EXPECT_EQ(*fld<int>(shell, "hits"), 6); // Kid(3) gives Base(6)
+    EXPECT_EQ(*fld<int>(shell, "kid_hits"), 3);
+
+    s.actor->Tick(kDt);
+    EXPECT_FLOAT_EQ(*fld<float>(shell, "moved"), 1.0f); // the native Move through the child
+    EXPECT_EQ(*fld<int>(shell, "hits"), 16); // the inherited Bump
+    EXPECT_EQ(*fld<int>(shell, "twice"), 10); // the inherited Twice calls the virtual Kid::Power (5)
+    EXPECT_EQ(*fld<int>(shell, "super_power"), 1); // Base::Power() is the version of Base
+    EXPECT_EQ(*fld<int>(shell, "seen_hits"), 19); // the fields of the object through the cast
+    EXPECT_EQ(*modvar<int>(s, "kid_casts"), 1);
+    ASSERT_NE(modvar<Actor*>(s, "last_ticked"), nullptr);
+    EXPECT_EQ(*modvar<Actor*>(s, "last_ticked"), s.actor); // "this" is the object
+
+    s.actor->TakeDamage(3.0f); // Kid has no override yet: the override of Base runs
+    EXPECT_FLOAT_EQ(*fld<float>(shell, "hp"), 97.0f);
+    EXPECT_EQ(*fld<int>(shell, "hits"), 17);
+    s.actor->Tick(kDt);
+    EXPECT_EQ(*fld<int>(shell, "hits"), 27);
+    EXPECT_EQ(*modvar<int>(s, "kid_casts"), 2);
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    const spp::ReloadResult res = s.loader.commit_pending();
+    ASSERT_TRUE(res) << res.error;
+    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(s.inst.shell, shell); // the same object
+    EXPECT_EQ(shell->cls->super->generation, 2u);
+    EXPECT_EQ(*fld<int>(shell, "hits"), 27); // the parent state stays
+    EXPECT_FLOAT_EQ(*fld<float>(shell, "hp"), 97.0f);
+    EXPECT_EQ(*fld<int>(shell, "kid_hits"), 3); // the child state stays
+    EXPECT_EQ(*fld<int>(shell, "armor"), 4); // the new parent field has its initializer
+    EXPECT_EQ(*fld<int>(shell, "gen"), 2); // the new child field
+
+    s.actor->Tick(kDt);
+    EXPECT_FLOAT_EQ(*fld<float>(shell, "moved"), 3.0f);
+    EXPECT_EQ(*fld<int>(shell, "hits"), 37);
+    EXPECT_EQ(*fld<int>(shell, "twice"), 14); // Twice of Base now calls Kid::Power (7)
+    EXPECT_EQ(*fld<int>(shell, "super_power"), 1);
+    EXPECT_EQ(*fld<int>(shell, "bonus"), 20); // the new virtual
+    EXPECT_EQ(*fld<int>(shell, "seen_hits"), 37 + 3 + 20);
+    EXPECT_EQ(*modvar<int>(s, "kid_casts"), 3); // the cast of generation 2 finds the old object
+
+    s.actor->TakeDamage(2.0f); // the new override: Base::TakeDamage(6)
+    EXPECT_FLOAT_EQ(*fld<float>(shell, "hp"), 91.0f);
+    EXPECT_EQ(*fld<int>(shell, "hits"), 38);
+    EXPECT_EQ(*fld<int>(shell, "kid_hits"), 4);
+}
+
+// A chain of three script classes: Leaf derives from Mid, and Mid derives from Base. The object
+// of generation 1 survives the reload with the state of the three classes. Generation 2 adds the
+// virtual method Extra to Base. Mid and Leaf override it, and Base calls it.
+TEST_P(BackendTests, CppScriptChainReload)
+{
+    spp::LoadResult v1 = backend->load(source("cpp_chain_v1.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult v2 = backend->load(source("cpp_chain_v2.cpp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Leaf"));
+    spp::ShellBase* shell = s.inst.shell;
+    ASSERT_NE(shell->cls->super, nullptr);
+    ASSERT_NE(shell->cls->super->super, nullptr);
+    EXPECT_STREQ(shell->cls->super->name, "Mid");
+    EXPECT_STREQ(shell->cls->super->super->name, "Base");
+
+    s.actor->Tick(kDt); // Leaf::Step is Mid::Step (10) + 100
+    s.actor->Tick(kDt);
+    EXPECT_EQ(*fld<int>(shell, "total"), 220);
+    EXPECT_EQ(*fld<int>(shell, "mid"), 5);
+    EXPECT_EQ(*fld<int>(shell, "leaf"), 8);
+    EXPECT_EQ(*modvar<int>(s, "mids"), 2); // the cast to Mid finds the Leaf object
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    const spp::ReloadResult res = s.loader.commit_pending();
+    ASSERT_TRUE(res) << res.error;
+    EXPECT_EQ(s.inst.shell, shell);
+    EXPECT_EQ(shell->cls->super->super->generation, 2u);
+    EXPECT_EQ(*fld<int>(shell, "total"), 220); // the state of each class stays
+    EXPECT_EQ(*fld<int>(shell, "mid"), 5);
+    EXPECT_EQ(*fld<int>(shell, "leaf"), 8);
+    EXPECT_EQ(*fld<int>(shell, "armor"), 4); // the new fields have their initializers
+    EXPECT_EQ(*fld<int>(shell, "leaf2"), 7);
+
+    s.actor->Tick(kDt); // Step: 10 + 200. Extra: the override of Mid (1000) + 1.
+    EXPECT_EQ(*fld<int>(shell, "total"), 220 + 210 + 1001);
+    EXPECT_EQ(*fld<int>(shell, "leaf"), 9);
+    EXPECT_EQ(*modvar<int>(s, "mids"), 3);
+}
+
 // A .spp script and a .cpp script live in the same process. Each has its own loader and one object.
 // One loader holds one module for each generation, so the two scripts use two loaders.
 TEST_P(BackendTests, SppAndCppScriptsRunSideBySide)

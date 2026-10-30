@@ -3452,7 +3452,7 @@ void translate_impl(
             for (size_t k = 0; k < std::max<size_t>(cd.ctors.size(), 1); ++k)
             {
                 const bool sup = has_ctor && cd.ctors[k].has_base_call;
-                const size_t n = sup ? cd.ctors[k].base_args.size() : 0;
+                const size_t n = !sup ? 0 : cd.ctors[k].raw ? cd.ctors[k].raw_base_argc : cd.ctors[k].base_args.size();
                 if (!sup && !ar.count(0))
                     fail_at(map, has_ctor ? cd.ctors[k].pos : cd.pos,
                         "class '" + cn + "' must call 'base(...)': the constructor of '" + par->name

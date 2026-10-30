@@ -1083,14 +1083,14 @@ TEST(SppcTool, EmitCppInjectsTheScriptHeaderForTheAids)
     EXPECT_NE(text.find("script_register"), std::string::npos) << text;
 }
 
-// A virtual method without "override" is not supported in a ".cpp" script. sppc fails.
+// A pure virtual method is not supported in a ".cpp" script. sppc fails.
 TEST(SppcTool, CppScriptWithUnsupportedFormFails)
 {
     TestScratch scratch;
     const std::string script = scratch.file("sppc_cpp_virtual.cpp");
     {
         std::ofstream f(script);
-        f << "#include \"Actor.h\"\nclass Foo : public Actor\n{\npublic:\n    virtual void Run() {}\n};\n";
+        f << "#include \"Actor.h\"\nclass Foo : public Actor\n{\npublic:\n    virtual void Run() = 0;\n};\n";
     }
     std::string text;
     EXPECT_NE(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),

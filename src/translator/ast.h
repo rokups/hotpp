@@ -457,7 +457,8 @@ struct Ctor
     bool raw = false;
     std::string raw_body; // the edited C++ text between the braces, without the braces
     int raw_line = 0; // the script line of the "{": the first line of "raw_body"
-    std::string raw_base_args; // the text between the parentheses of the native base initializer
+    std::string raw_base_args; // the text between the parentheses of the base initializer
+    size_t raw_base_argc = 0; // the number of arguments in "raw_base_args"
     std::vector<RawLine> raw_pre; // the member initializers as statements, in the order of the fields
 };
 

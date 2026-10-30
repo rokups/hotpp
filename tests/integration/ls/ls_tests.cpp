@@ -1741,7 +1741,7 @@ const char* const kCppStatic =
     "class Hero : public Actor\n"
     "{\n"
     "public:\n"
-    "    virtual void F() {}\n"
+    "    virtual void F() = 0;\n"
     "};\n";
 
 struct CppScriptCase
@@ -1792,7 +1792,7 @@ TEST(LanguageServerCpp, ScriptWithAnUnsupportedFormGivesTheSppcMessageAtTheLine)
     ASSERT_FALSE(n.is_null());
     const json& diags = n["params"]["diagnostics"];
     ASSERT_EQ(diags.size(), 1u) << n.dump();
-    EXPECT_EQ(diags[0]["message"], "'virtual' is not supported in a .cpp script; use 'override' of a native virtual");
+    EXPECT_EQ(diags[0]["message"], "a pure virtual method is not supported in a .cpp script class");
     EXPECT_EQ(diags[0]["range"]["start"]["line"], 5);
     EXPECT_EQ(diags[0]["severity"], 1);
     EXPECT_EQ(diags[0]["source"], "spp");

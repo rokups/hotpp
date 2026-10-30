@@ -489,9 +489,7 @@ TEST(CppFrontend, MemberInitializerDefaultReadsListedField)
 TEST(CppFrontend, StructureErrors)
 {
     expect_error("struct B { virtual ~B() {} };\nclass S : public B {};",
-        "a .cpp script class cannot derive from a class of the same file (first version)");
-    expect_error("class S : public Actor { virtual void F() {} };",
-        "'virtual' is not supported in a .cpp script; use 'override' of a native virtual");
+        "a .cpp script class cannot derive from 'B': it is a plain class of the script");
     expect_error("class S : public Actor { void F(); };",
         "the method 'S::F' is declared but never defined; define it in the class or after the class");
     expect_error("int total = 0;\nstruct Late { int v = 0; };\nLate late;",
@@ -529,7 +527,8 @@ TEST(CppFrontend, OutOfClassErrors)
     expect_error("class S : public Actor { ~S() = default; };", "a defaulted or deleted method is not supported");
     expect_error("class S : public Actor { void Tick(float dt) override = 0; };",
         "a pure virtual method is not supported in a .cpp script class");
-    expect_error("class S : public Actor { virtual void F() = 0; };", "'virtual' is not supported in a .cpp script");
+    expect_error("class S : public Actor { virtual void F() = 0; };",
+        "a pure virtual method is not supported in a .cpp script class");
     // A method that is defined twice is an error of the C++ parser.
     expect_error("class S : public Actor { void F(); };\nvoid S::F() {}\nvoid S::F() {}", "redefinition of 'F'");
     // A definition before the class cannot name the class.
@@ -917,16 +916,16 @@ TEST(CppFrontend, EditErrors)
 TEST(CppFrontend, FirstErrorInSourceOrder)
 {
     const std::string lambda_msg = "a lambda that uses a base member must capture with [&] or [=]";
-    const std::string static_msg = "'virtual' is not supported in a .cpp script";
+    const std::string static_msg = "a pure virtual method is not supported in a .cpp script class";
     const std::string type_msg = "the script class 'S' by value is not supported in a .cpp script; use a pointer or a reference";
     {
         Parsed p("#include \"Actor.h\"\nclass S : public Actor { void F() { auto f = [this] { Move(Vec3()); }; f(); } };\n"
-                 "class T : public Actor { virtual void G() {} };");
+                 "class T : public Actor { virtual void G() = 0; };");
         EXPECT_NE(p.errors().find(lambda_msg), std::string::npos) << p.errors();
         EXPECT_EQ(p.errors().find(static_msg), std::string::npos) << p.errors();
     }
     {
-        Parsed p("#include \"Actor.h\"\nclass T : public Actor { virtual void G() {} void F() { auto f = [this] { "
+        Parsed p("#include \"Actor.h\"\nclass T : public Actor { virtual void G() = 0; void F() { auto f = [this] { "
                  "Move(Vec3()); }; f(); } };");
         EXPECT_NE(p.errors().find(static_msg), std::string::npos) << p.errors();
         EXPECT_EQ(p.errors().find(lambda_msg), std::string::npos) << p.errors();
@@ -1016,10 +1015,102 @@ TEST(CppFrontend, ScriptClassTypeErrors)
     expect_error(cls + "void g() { (void)new S[2]; }",
         "an array 'new' of the script class 'S' is not supported in a .cpp script; use an array of pointers");
     expect_error(cls + "void g(S* p) { p->S::set(1); }",
-        "the script class 'S' can qualify only a static member in a .cpp script");
+        "the script class 'S' can qualify only a static member");
     expect_error("class S;\nclass S : public Actor {};",
         "a forward declaration of the script class 'S' is not supported in a .cpp script; define the class "
         "before its first use");
+}
+
+const char* const kChild = R"(#include "Actor.h"
+int f(int a, int b) { return a + b; }
+class Base : public Actor
+{
+public:
+    Base(int a, int b = 0) : Actor("Base"), hits(a + b) {}
+    virtual int Power() { return 1; }
+    int Twice() { return Power() * 2; }
+    void Bump() { hits += 1; }
+    int hits = 0;
+};
+class Kid : public Base
+{
+public:
+    Kid(int s = 3) : Base(f(s, 1), s) { kid = s; }
+    int Power() override { return 5; }
+    void Bump() { Base::Bump(); }
+    void Tick(float dt) override { Base::Tick(dt); Bump(); hits = Base::Power() + Power() + kid; Kid* k = dynamic_cast<Kid*>(this); (void)k; }
+    int kid = 0;
+};
+)";
+
+// A script class derives from a script class. The model has the script parent as the base. A
+// "virtual" method of a script class has a slot. A call of a virtual goes through the slot, and a
+// qualified call of the parent goes to the version of the parent.
+TEST(CppFrontend, ScriptChildClass)
+{
+    Parsed p(kChild);
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    ASSERT_EQ(p.script.classes.size(), 2u);
+    EXPECT_EQ(p.script.classes[0].base, "Actor");
+    EXPECT_EQ(p.script.classes[1].base, "Base");
+    EXPECT_TRUE(method_of(p, "Base", "Power").is_virtual);
+    EXPECT_FALSE(method_of(p, "Base", "Power").is_override);
+    EXPECT_TRUE(method_of(p, "Kid", "Power").is_override);
+    EXPECT_TRUE(method_of(p, "Kid", "Bump").is_new); // C++ hides Base::Bump
+    const ast::Ctor& c = p.script.classes[1].ctors.at(0);
+    EXPECT_EQ(c.raw_base_args, "f(s, 1), s");
+    EXPECT_EQ(c.raw_base_argc, 2u);
+    EXPECT_EQ(method_of(p, "Base", "Twice").raw_body, " return Base__Power_virt(__self) * 2; ");
+    EXPECT_EQ(method_of(p, "Kid", "Bump").raw_body, " Base__Bump(__self); ");
+    const std::string tick = method_of(p, "Kid", "Tick").raw_body;
+    EXPECT_NE(tick.find("Base__base_Tick(__self, dt);"), std::string::npos) << tick;
+    EXPECT_NE(tick.find("hits = Base__Power(__self) + Base__Power_virt(__self) + kid;"), std::string::npos) << tick;
+    EXPECT_NE(tick.find("spp::as_script<Kid_Shell>("), std::string::npos) << tick;
+}
+
+TEST(CppFrontend, ScriptChildClassErrors)
+{
+    const std::string base = "class B : public Actor { public: virtual int P() { return 1; } int v = 0; };\n";
+    expect_error(base + "struct I { virtual ~I() {} };\nclass K : public B, public I {};",
+        "a .cpp script class with the base the script class 'B' cannot have another base class");
+    expect_error(base + "class K : public virtual B {};",
+        "a .cpp script class cannot derive from the script class 'B' with 'virtual'");
+    expect_error(base + "class K : protected B {};",
+        "a .cpp script class must derive from the script class 'B' with 'public'");
+    expect_error(base + "class K : public B { virtual int P() { return 2; } };",
+        "the method 'P' overrides a virtual method; write 'override'");
+    expect_error(base + "class K : public B { int Q(B* o) { return o->B::P(); } };",
+        "the script class 'B' can qualify only a static member, or a member that a child class uses on itself");
+    expect_error(base + "class K : public B { virtual int Q() = 0; };",
+        "a pure virtual method is not supported in a .cpp script class");
+    // Only a class at file scope is a script class.
+    expect_error(base + "void g() { struct L : B {}; }",
+        "the class 'L' cannot derive from the script class 'B': only a class at file scope can derive from a "
+        "script class in a .cpp script");
+    expect_error(base + "class K : public Actor { void F() { struct L : public B {}; } };",
+        "the class 'L' cannot derive from the script class 'B'");
+    expect_error(base + "struct O { struct L : B {}; };", "the class 'L' cannot derive from the script class 'B'");
+}
+
+// A script class as a template argument after the member name is not a qualifier.
+TEST(CppFrontend, TemplateArgumentIsNotQualifier)
+{
+    Parsed p("#include \"Actor.h\"\nstruct Box { template <class T> T Get() { return nullptr; } };\n"
+             "class S : public Actor { public: void F(Box* b) { S* s = b->Get<S*>(); (void)s; } };\n");
+    EXPECT_TRUE(p.diag.items.empty()) << p.errors();
+}
+
+// The argument count of the parent initializer comes from the AST: the comma of a template
+// argument list does not separate two arguments.
+TEST(CppFrontend, ParentInitArgumentCount)
+{
+    Parsed p("#include \"Actor.h\"\ntemplate <int A, int B> struct T { static const int v = A + B; };\n"
+             "class B : public Actor { public: B(int a, int b = 0) : Actor(\"B\") { (void)a; (void)b; } };\n"
+             "class K : public B { public: K() : B(T<1, 2>::v) {} };\n"
+             "class M : public B { public: M() : B(T<1, 2>::v, (3, 4)) {} };\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    EXPECT_EQ(p.script.classes.at(1).ctors.at(0).raw_base_argc, 1u);
+    EXPECT_EQ(p.script.classes.at(2).ctors.at(0).raw_base_argc, 2u);
 }
 
 // A brace initializer goes to the generated code once: "T{1, 2}", not "T{{1, 2}}". An aggregate
@@ -1244,11 +1335,11 @@ TEST(AnalyzeCpp, ValidScriptHasNoError)
 TEST(AnalyzeCpp, VirtualMethodHasPlace)
 {
     const std::string text =
-        "#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    virtual void F() {}\n};\n";
+        "#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    virtual void F() = 0;\n};\n";
     const sppc::AnalyzeResult r = sppc::analyze_cpp(text, "/w/t.cpp", analyze_options());
     EXPECT_FALSE(r.ok);
     ASSERT_EQ(r.errors.size(), 1u) << r.diagnostics;
-    EXPECT_EQ(r.errors[0].message, "'virtual' is not supported in a .cpp script; use 'override' of a native virtual");
+    EXPECT_EQ(r.errors[0].message, "a pure virtual method is not supported in a .cpp script class");
     EXPECT_EQ(r.errors[0].pos.line, 5);
     EXPECT_GT(r.errors[0].pos.col, 0);
     // The offset is the place of the error in the text.

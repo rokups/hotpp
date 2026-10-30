@@ -128,6 +128,13 @@ TEST(GoldenTranslation, CppObjects)
     golden_pair("cpp_objects", ".cpp");
 }
 
+// A .cpp script class derives from a script class. The parent declares a virtual method.
+// Generation 2 adds an override of a native virtual and a new virtual method in the child.
+TEST(GoldenTranslation, CppInherit)
+{
+    golden_pair("cpp_inherit", ".cpp");
+}
+
 // A .cpp script with default arguments: the prototype has them and the definition does not.
 TEST(GoldenTranslation, CppDefaults)
 {

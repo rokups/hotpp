@@ -207,7 +207,7 @@ All other text stays as you wrote it.
 
 ## What a script class can have
 
-- A class that derives from a native class.
+- A class that derives from a native class, or from a script class of the same file (see "Script class inheritance").
 - Fields with initializers and migration.
 - `SPP_ALIAS("old")` on a field.
 - `convert_<field>` methods.
@@ -217,6 +217,7 @@ All other text stays as you wrote it.
 - Static data members and static methods (see "Static members").
 - Methods, constructors and destructors that the file defines outside the class (see "Definitions outside the class").
 - `override` of native virtual methods, and native interface bases.
+- New `virtual` methods, and `override` of these methods in a child class (see "Script class inheritance").
 - Default arguments on a constructor and on a method. The text of a default gets the same edits as a method body, so it can name a module variable. An `override` has no default argument (sppc gives an error): the call through the base sees the base declaration. The fixture `tests/scripts/cpp_defaults.cpp` shows them.
 
 At file scope a `.cpp` script can have:
@@ -333,6 +334,45 @@ The size of a script object can change at a reload. So a script object cannot be
 
 The `.spp` page [Statements](statements.html#is-and-as) compares these forms with `is`, `as` and `new` of a `.spp` script.
 
+## Script class inheritance
+
+A script class can derive from another script class of the same file. The child class gets the fields and the methods of the parent. The fixtures `tests/scripts/cpp_inherit_v1.cpp` and `tests/scripts/cpp_inherit_v2.cpp` show the forms.
+
+```cpp
+class Base : public Actor
+{
+public:
+    Base(int start = 0) : Actor("Base"), hits(start) {}
+    virtual int Power() { return 1; }
+    int Twice() { return Power() * 2; }
+    int hits = 0;
+};
+
+class Kid : public Base
+{
+public:
+    Kid(int start = 3) : Base(start * 2) {}
+    int Power() override { return 5; }
+    void Tick(float dt) override
+    {
+        Base::Tick(dt);
+        hits += Twice() + Base::Power();
+    }
+};
+```
+
+These rules apply:
+
+- The child derives from the parent with `public`. The parent is the only base of the child. The parent derives from a native class, or from a script class.
+- The child code reads and writes the fields of the parent, and calls the methods of the parent, as in C++.
+- A `virtual` method of a script class is a new virtual method. A child class overrides it with `override`. A call of the method from the parent code runs the override of the object.
+- `Base::Power()` in the child calls the version of the parent, without the virtual call. This also works for a native virtual method, for example `Base::Tick(dt)`.
+- `Base::` before a member that is not static works only on the object itself: `Base::Power()` or `this->Base::Power()`.
+- The constructor of the child gives the arguments to the constructor of the parent, for example `Kid(int a) : Base(a * 2)`. Give all the parameters of a constructor of the parent: `sppc` does not use the default arguments of the parent here. A child constructor without the parent entry needs a parent constructor without parameters. Other counts give the error `'base(...)' has <n> arguments; ...`.
+- A method of the child with the name of a method of the parent hides the method of the parent, as in C++.
+- `this` in a parent method is the object of the child. `dynamic_cast<Kid*>(base_ptr)` finds the object, also after a reload.
+- A new generation can add a field to the parent or to the child, add an `override`, or add a new `virtual` method. A live object keeps the values of its fields. The calls on the object run the new code after the reload.
+
 ## Member initializer lists
 
 A constructor can have a member initializer list, as in plain C++. Both forms work, `f(e)` and `f{e}`, in a constructor in the class and in a constructor that the file defines outside the class.
@@ -379,8 +419,13 @@ The first version gives an error for each form in this list. The text in the sec
 
 | Form | Message |
 |---|---|
-| A class that derives from another class of the same file | `a .cpp script class cannot derive from a class of the same file (first version)` |
-| `virtual` without `override` | `'virtual' is not supported in a .cpp script; use 'override' of a native virtual` |
+| A script class that derives from a class of the file that is not a script class | `a .cpp script class cannot derive from '<name>': it is a plain class of the script; derive from a script class or from a native class` |
+| A script class that derives from a script class of another `.cpp` file | `a .cpp script class cannot derive from '<name>' of another .cpp file; a script class can derive only from a script class of the same file` |
+| A class in a function, in another class or in a namespace that derives from a script class | `the class '<name>' cannot derive from the script class '<parent>': only a class at file scope can derive from a script class in a .cpp script` |
+| A script class with a script parent and one more base class | `a .cpp script class with the base the script class '<name>' cannot have another base class` |
+| A script parent with `virtual`, for example `class Kid : public virtual Base` | `a .cpp script class cannot derive from the script class '<name>' with 'virtual'` |
+| A script parent with `protected` or `private` | `a .cpp script class must derive from the script class '<name>' with 'public'` |
+| `virtual` without `override` on a method that overrides a virtual method | `the method '<name>' overrides a virtual method; write 'override'` |
 | A static member used through an object that has a side effect, for example `f().count` | `a static member must be used by its name` |
 | A static const member without an initializer in the class | `a static const member needs an initializer in the class` |
 | A method, a constructor or a destructor that the class declares and the file never defines | `the method 'Player::hit' is declared but never defined; define it in the class or after the class` (the words `constructor` and `destructor` replace `method` for those members) |
@@ -397,14 +442,13 @@ The first version gives an error for each form in this list. The text in the sec
 | Any other declaration in the class | `this declaration is not supported in a .cpp script class` |
 | Properties | There is no property syntax in C++. Use two methods. |
 | Script-class handles | A script class is not a handle in a `.cpp` script. Use a pointer. See "Script classes as types". |
-| Script inheritance | See "A class that derives from another class of the same file". |
 | A script class by value, for example `Minion m;` or a parameter `Minion m` | `the script class '<name>' by value is not supported in a .cpp script; use a pointer or a reference` |
 | An array of a script class, for example `Minion a[2];` | `an array of the script class '<name>' is not supported in a .cpp script; use a pointer or a reference` |
 | A script class as a template argument, for example `std::vector<Minion>` | `the script class '<name>' as a template argument is not supported in a .cpp script; use a pointer or a reference` |
 | `typeid` of a script class or of a script object | `'typeid' of the script class '<name>' is not supported in a .cpp script: a script class has no C++ RTTI; use dynamic_cast` |
 | A placement `new` of a script class | `a placement 'new' of the script class '<name>' is not supported in a .cpp script` |
 | An array `new` of a script class, for example `new Minion[2]` | `an array 'new' of the script class '<name>' is not supported in a .cpp script; use an array of pointers` |
-| `Minion::` before a member that is not static, for example `p->Minion::boost(1)` | `the script class '<name>' can qualify only a static member in a .cpp script` |
+| `Minion::` before a member that is not static, on another object or outside a child class, for example `p->Minion::boost(1)` | `the script class '<name>' can qualify only a static member, or a member that a child class uses on itself, in a .cpp script` (outside a script class the end of the message is `can qualify only a static member in a .cpp script`) |
 | A forward declaration of a script class | `a forward declaration of the script class '<name>' is not supported in a .cpp script; define the class before its first use` |
 | A `[this]` lambda that uses a base member | `a lambda that uses a base member must capture with [&] or [=]` |
 | A module variable that uses a type of the file that comes after the first module variable | `the type '<type>' must come before the first module variable '<name>': the module block is there and needs the complete type` |

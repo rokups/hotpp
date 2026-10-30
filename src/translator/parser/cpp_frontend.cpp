@@ -260,9 +260,12 @@ std::string last_name(const std::string& s)
 // The facts of a script class that the body edits need.
 struct ClassInfo
 {
-    std::string name, usr, base;
+    std::string name, usr;
+    std::string base; // the direct base: a native class, or the script parent of a child class
+    std::string native; // the native base of the root script class of the chain
     uint32_t end = 0; // the end of the class in the text
     std::set<std::string> base_usrs; // the native base and all its ancestors
+    std::set<std::string> script_bases; // the USRs of the script parent and of its script ancestors
 };
 
 struct Edit
@@ -315,12 +318,15 @@ private:
 
     // One declaration of the script. "mangled" is "<Class>__s_<name>" for a static member.
     // "cpos" is the start of the class of a member.
+    // "vowner" is the script class with the "virtual" declaration of a script virtual method. It is
+    // empty for an override of a native virtual and for a method that is not virtual.
     struct Entry
     {
         Kind kind;
         std::string owner_usr, owner_name, name, mangled;
         bool virt = false;
         uint32_t cpos = 0;
+        std::string vowner;
     };
 
     // The output of a static method: a prototype before the class block and the definition after
@@ -384,6 +390,8 @@ private:
     int line(uint32_t pos) const { return map_.line(pos); }
 
     void collect_bases(CXCursor rec, std::set<std::string>& out);
+    std::string slot_owner(CXCursor m) const;
+    const Entry* script_base_of(CXCursor rec) const;
     const Entry* class_entry(CXType t) const;
     bool names_script_class(CXCursor c) const;
     void check_class_use(CXCursor k, CXCursor parent, const Entry& en, bool static_parent);
@@ -451,6 +459,42 @@ void Frontend::collect_bases(CXCursor rec, std::set<std::string>& out)
         if (out.insert(usr(decl)).second)
             collect_bases(decl, out);
     }
+}
+
+// The name of the script class that declares the slot of the virtual method "m": the class with
+// the first "virtual" declaration. An override of a native virtual and a method that is not
+// virtual give an empty string. The index records the classes in the order of the text, so the
+// table already holds the classes of the chain.
+std::string Frontend::slot_owner(CXCursor m) const
+{
+    if (clang_getCursorKind(m) != CXCursor_CXXMethod || !clang_CXXMethod_isVirtual(m))
+        return {};
+    CXCursor* over = nullptr;
+    unsigned n = 0;
+    clang_getOverriddenCursors(m, &over, &n);
+    std::string owner;
+    for (unsigned i = 0; i < n && owner.empty(); ++i)
+        owner = slot_owner(over[i]);
+    const bool root = n == 0;
+    clang_disposeOverriddenCursors(over);
+    if (!root)
+        return owner;
+    auto it = table_.find(usr(clang_getCursorSemanticParent(m)));
+    return it != table_.end() && it->second.kind == Kind::ScriptClass ? it->second.name : std::string();
+}
+
+// The entry of the script class that is a base of the record "rec", or null.
+const Frontend::Entry* Frontend::script_base_of(CXCursor rec) const
+{
+    for (CXCursor k : children(rec))
+    {
+        if (clang_getCursorKind(k) != CXCursor_CXXBaseSpecifier)
+            continue;
+        const Entry* en = class_entry(clang_getCursorType(k));
+        if (en)
+            return en;
+    }
+    return nullptr;
 }
 
 // The entry of the script class that the type "t" names, or null. A pointer or a reference is
@@ -534,6 +578,19 @@ void Frontend::check_class_use(CXCursor k, CXCursor parent, const Entry& en, boo
 void Frontend::check_type_refs(CXCursor c)
 {
     const CXCursorKind ck = clang_getCursorKind(c);
+    // Only a class at file scope is a script class. A local class, a nested class or a class in a
+    // namespace has no shell, so it cannot derive from a script class.
+    if ((ck == CXCursor_ClassDecl || ck == CXCursor_StructDecl) && clang_isCursorDefinition(c))
+    {
+        const Entry* self = lookup(c);
+        if (!self || self->kind != Kind::ScriptClass)
+            for (CXCursor k : children(c))
+                if (clang_getCursorKind(k) == CXCursor_CXXBaseSpecifier)
+                    if (const Entry* b = class_entry(clang_getCursorType(k)))
+                        fail(pos_of(k),
+                            "the class '" + spelling(c) + "' cannot derive from the script class '" + b->name +
+                                "': only a class at file scope can derive from a script class in a .cpp script");
+    }
     // A script class has no C++ RTTI that works after a reload: each generation has its own
     // type info. So "typeid" of a script class fails. dynamic_cast uses the class records.
     if (ck == CXCursor_CXXTypeidExpr)
@@ -584,7 +641,11 @@ void Frontend::check_type_refs(CXCursor c)
             }
     }
     // The class name in "Player::count" is the qualifier of a static member: it is allowed.
+    // The class name in "Player::m(a)" qualifies a member of a parent class. The body edits check
+    // that the class is a script parent and that the object is "this". Only a name before the
+    // member name is a qualifier: a template argument comes after it, as in "p->Get<Kid*>()".
     const bool static_parent = qualifies_static(c);
+    const uint32_t member_at = ck == CXCursor_MemberRefExpr ? pos_of(c) : 0;
     for (CXCursor k : children(c))
     {
         // A base specifier of a script class is an error of process_class.
@@ -595,8 +656,11 @@ void Frontend::check_type_refs(CXCursor c)
             // A constructor can name its own class in a delegating initializer. read_ctor_body gives the error.
             const bool own_name = (ck == CXCursor_Constructor || (ck == CXCursor_Destructor && is_member_def(c))) &&
                 usr(clang_getCursorReferenced(k)) == usr(clang_getCursorSemanticParent(c));
-            if (en && en->kind == Kind::ScriptClass && en != alloc && !own_name)
-                check_class_use(k, c, *en, static_parent);
+            // The initializer "Player(args)" of the script parent in the constructor of a child.
+            const bool parent_init = ck == CXCursor_Constructor && en &&
+                script_base_of(clang_getCursorSemanticParent(c)) == en;
+            if (en && en->kind == Kind::ScriptClass && en != alloc && !own_name && !parent_init)
+                check_class_use(k, c, *en, static_parent || pos_of(k) < member_at);
         }
         check_type_refs(k);
     }
@@ -911,12 +975,33 @@ void Frontend::examine(CXCursor k, WalkState& st)
     // object is a pointer or a reference to the shell. A field is in the state of the object:
     // "p->f" becomes "state_of(p)->f". A method call becomes the call of the generated
     // function: "p->m(a)" becomes "C__m(p, a)". A reference object gives its address.
-    auto rewrite_member = [&](const Entry& en)
+    // The object of the member access "k", or null for an implicit "this". A qualifier, for
+    // example the "Player" of "Player::m", is not the object.
+    auto object_of = [&]()
     {
-        const std::vector<CXCursor> ks = children(k);
-        if (ks.empty() || is_this(ks[0]))
+        for (CXCursor c : children(k))
+            if (clang_isExpression(clang_getCursorKind(c)))
+                return c;
+        return clang_getNullCursor();
+    };
+    // A call "m(a)", "this->m(a)" or "Player::m(a)" on the object itself becomes "callee(__self, a)".
+    auto rewrite_self_call = [&](const std::string& callee)
+    {
+        const size_t paren = skip_ws(text_, e.end, text_.size());
+        if (paren >= text_.size() || text_[paren] != '(')
+            fail(pos_of(k), "the method '" + spelling(k) + "' of a script class must be called");
+        const size_t first = skip_ws(text_, paren + 1, text_.size());
+        const bool no_args = first < text_.size() && text_[first] == ')';
+        add(e.begin, static_cast<uint32_t>(paren + 1 - e.begin), callee + "(__self" + (no_args ? "" : ", "));
+        st.skip_end = std::max(st.skip_end, e.end);
+    };
+    // "callee" is the generated function of a method call. Empty: "<Owner>__<name>".
+    auto rewrite_member = [&](const Entry& en, const std::string& callee = std::string())
+    {
+        const CXCursor first_obj = object_of();
+        if (clang_Cursor_isNull(first_obj) || is_this(first_obj))
             return false;
-        const Range o = extent_of(ks[0]);
+        const Range o = extent_of(first_obj);
         const uint32_t name = pos_of(k);
         const std::string op = name > o.end ? trim(text_.substr(o.end, name - o.end)) : std::string();
         if (op != "->" && op != ".")
@@ -924,7 +1009,7 @@ void Frontend::examine(CXCursor k, WalkState& st)
         const bool arrow = op == "->";
         // A call of a const method adds an implicit const conversion of the object. The type
         // of the object is the type under that conversion.
-        CXCursor obj = ks[0];
+        CXCursor obj = first_obj;
         for (;;)
         {
             if (clang_getCursorKind(obj) != CXCursor_UnexposedExpr)
@@ -939,8 +1024,9 @@ void Frontend::examine(CXCursor k, WalkState& st)
             ot = clang_getPointeeType(ot);
         std::string open = arrow ? "" : "&(", close = arrow ? "" : ")";
         if (clang_isConstQualifiedType(ot)) // the source compiles, so the access does not write
-        {
-            open = "const_cast<" + en.owner_name + "_Shell*>(" + open;
+        { // the shell of the object: the class of a child object can differ from the owner of the member
+            const Entry* oc = class_entry(ot);
+            open = "const_cast<" + (oc ? oc->name : en.owner_name) + "_Shell*>(" + open;
             close += ")";
         }
         if (en.kind == Kind::ScriptField)
@@ -954,7 +1040,7 @@ void Frontend::examine(CXCursor k, WalkState& st)
             fail(name, "the method '" + en.owner_name + "::" + en.name + "' of a script class must be called");
         const size_t first = skip_ws(text_, paren + 1, text_.size());
         const bool no_args = first < text_.size() && text_[first] == ')';
-        add(o.begin, 0, en.owner_name + "__" + en.name + "(" + open, true);
+        add(o.begin, 0, (callee.empty() ? en.owner_name + "__" + en.name : callee) + "(" + open, true);
         add(o.end, static_cast<uint32_t>(paren + 1 - o.end), close + (no_args ? "" : ", "), true);
         return true;
     };
@@ -969,15 +1055,57 @@ void Frontend::examine(CXCursor k, WalkState& st)
         if (rewrite_static(ref))
             return;
         const Entry* men = lookup(ref);
+        const std::string parent = usr(clang_getCursorSemanticParent(ref));
+        // "Player::m(a)" in a child of Player: the implementation that Player sees, with no
+        // virtual dispatch. This is "base.m(a)" of a .spp child.
+        const Entry* qual = nullptr;
+        for (CXCursor c : children(k))
+            if (clang_getCursorKind(c) == CXCursor_TypeRef && pos_of(c) < pos_of(k))
+            {
+                const Entry* en = lookup(clang_getCursorReferenced(c));
+                qual = en && en->kind == Kind::ScriptClass ? en : qual;
+            }
+        if (qual)
+        {
+            const CXCursor obj = object_of();
+            if (!st.cls || !st.cls->script_bases.count(qual->owner_usr) || (!clang_Cursor_isNull(obj) && !is_this(obj)))
+                fail(pos_of(k),
+                    "the script class '" + qual->name +
+                        "' can qualify only a static member, or a member that a child class uses on itself, in a "
+                        ".cpp script");
+            const uint32_t name = pos_of(k);
+            const bool method = clang_getCursorKind(ref) == CXCursor_CXXMethod;
+            if (men && men->kind == Kind::ScriptMethod && !(men->virt && men->vowner.empty()))
+                rewrite_self_call(men->owner_name + "__" + men->name);
+            else if (method && clang_CXXMethod_isVirtual(ref)) // a native virtual, or an override of one
+                rewrite_self_call(qual->name + "__base_" + spelling(ref));
+            else
+            { // a field of the state, or a member of the native base
+                add(e.begin, name - e.begin, men && men->kind == Kind::ScriptField ? "this->" : "__self->");
+                st.skip_end = std::max(st.skip_end, name);
+            }
+            return;
+        }
+        if (men && men->kind == Kind::ScriptMethod && !men->vowner.empty())
+        { // a script virtual: the call reads the slot of the class with the "virtual" declaration
+            const std::string callee = men->vowner + "__" + men->name + "_virt";
+            const CXCursor obj = object_of();
+            if (clang_Cursor_isNull(obj) || is_this(obj))
+                rewrite_self_call(callee);
+            else
+                rewrite_member(*men, callee);
+            return;
+        }
         if (men && (men->kind == Kind::ScriptField || (men->kind == Kind::ScriptMethod && !men->virt)) &&
             rewrite_member(*men))
             return;
         if (!st.cls)
             return;
-        const std::string parent = usr(clang_getCursorSemanticParent(ref));
-        const bool need = st.cls->base_usrs.count(parent) != 0 ||
-            (parent == st.cls->usr && clang_getCursorKind(ref) == CXCursor_CXXMethod &&
-                has_child(ref, CXCursor_CXXOverrideAttr));
+        // An override of a native virtual in this class or in a script parent: the native call
+        // on the shell reads the slot.
+        const bool native_override = men && men->kind == Kind::ScriptMethod && men->virt &&
+            (men->owner_usr == st.cls->usr || st.cls->script_bases.count(men->owner_usr) != 0);
+        const bool need = st.cls->base_usrs.count(parent) != 0 || native_override;
         if (need && macro)
             fail(e.begin, kMacroMsg);
         // The object: an explicit "this ->", an implicit "this", or another object.
@@ -1029,7 +1157,7 @@ void Frontend::examine(CXCursor k, WalkState& st)
             return;
         }
         if (t.find("::") == std::string::npos && !qualified(e.begin) && base_scoped(ref))
-            add(e.begin, 0, st.cls->base + "::");
+            add(e.begin, 0, st.cls->native + "::");
         return;
     }
     case CXCursor_TypeRef:
@@ -1043,7 +1171,7 @@ void Frontend::examine(CXCursor k, WalkState& st)
             return;
         }
         if (!qualified(e.begin) && base_scoped(ref))
-            add(e.begin, 0, st.cls->base + "::");
+            add(e.begin, 0, st.cls->native + "::");
         return;
     }
     case CXCursor_CXXNewExpr:
@@ -1530,7 +1658,22 @@ void Frontend::make_method(CXCursor c, const ClassInfo* cls, const Where<ast::Me
     {
         m.is_override = has_child(c, CXCursor_CXXOverrideAttr);
         if (clang_CXXMethod_isVirtual(c) && !m.is_override)
-            fail(m.pos, "'virtual' is not supported in a .cpp script; use 'override' of a native virtual");
+        { // a new script virtual method: it has a slot, as a "virtual" method of a .spp class
+            CXCursor* over = nullptr;
+            unsigned n = 0;
+            clang_getOverriddenCursors(c, &over, &n);
+            clang_disposeOverriddenCursors(over);
+            if (n != 0)
+                fail(m.pos, "the method '" + m.name + "' overrides a virtual method; write 'override'");
+            m.is_virtual = true;
+        }
+        // A method of a child hides the method of the parent with the same name, as in C++.
+        // The .spp spelling of this is "new".
+        if (cls && !clang_CXXMethod_isVirtual(c))
+            for (const auto& v : table_)
+                if (v.second.kind == Kind::ScriptMethod && v.second.name == m.name &&
+                    cls->script_bases.count(v.second.owner_usr))
+                    m.is_new = true;
     }
     if (kind != CXCursor_Destructor)
         m.ret = type_text(clang_getResultType(clang_getCursorType(c)));
@@ -1654,6 +1797,50 @@ void Frontend::read_member_inits(
             ast::Ctor& ct = where()[index];
             ct.has_base_call = true;
             ct.base_pos = static_cast<uint32_t>(s);
+            // The number of arguments. The translator selects the constructor of a script parent by
+            // this number. The construct expression of the initializer has the arguments as children:
+            // a comma in a template argument list, as in "T<a, b>::v", is not a separator. A default
+            // argument of the parent has no place in "args", so it does not count.
+            bool from_ast = false;
+            for (CXCursor x : children(c))
+            {
+                const Range xr = extent_of(x);
+                if (!clang_isExpression(clang_getCursorKind(x)) || xr.begin >= args.begin || xr.end < args.end)
+                    continue;
+                from_ast = true;
+                for (CXCursor y : children(x))
+                {
+                    const Range yr = extent_of(y);
+                    if (yr.begin >= args.begin && yr.end <= args.end && yr.end > yr.begin)
+                        ++ct.raw_base_argc;
+                }
+                break;
+            }
+            // Without the expression (for example in a template), count the commas outside brackets,
+            // strings and comments.
+            int depth = 0;
+            bool any = false;
+            for (size_t i = args.begin; !from_ast && i < args.end;)
+            {
+                const size_t k = skip_opaque(text_, i);
+                if (k > i)
+                {
+                    any = any || (text_[i] != '/');
+                    i = k;
+                    continue;
+                }
+                const char ch = text_[i++];
+                if (is_space(ch))
+                    continue;
+                any = true;
+                if (ch == '(' || ch == '[' || ch == '{')
+                    ++depth;
+                else if (ch == ')' || ch == ']' || ch == '}')
+                    --depth;
+                else if (ch == ',' && depth == 0)
+                    ++ct.raw_base_argc;
+            }
+            ct.raw_base_argc += !from_ast && any ? 1 : 0;
             add_slice(args, &cls, [where, index](std::string&& t) { where()[index].raw_base_args = std::move(t); });
         }
         else
@@ -1983,21 +2170,65 @@ void Frontend::process_class(CXCursor c)
     info.usr = usr(c);
     info.end = extent_of(c).end;
     class_infos_[info.usr] = &info; // a deque does not move its elements
+    // A child of a script class (the same design as a .spp child): the shell of the child derives
+    // from the shell of the parent, and the state of the child holds the fields of the chain.
+    const ClassInfo* parent = nullptr;
+    size_t n_bases = 0;
+    for (CXCursor k : children(c))
+        n_bases += clang_getCursorKind(k) == CXCursor_CXXBaseSpecifier;
     for (CXCursor k : children(c))
     {
         if (clang_getCursorKind(k) != CXCursor_CXXBaseSpecifier)
             continue;
         CXCursor decl = clang_getTypeDeclaration(clang_getCursorType(k));
-        if (!clang_Cursor_isNull(decl) && from_main(decl))
-            fail(pos_of(k), "a .cpp script class cannot derive from a class of the same file (first version)");
-        std::string b = type_text(clang_getCursorType(k));
+        const Entry* sb = class_entry(clang_getCursorType(k));
+        if (sb)
+        {
+            const std::string what = "the script class '" + sb->name + "'";
+            if (n_bases > 1)
+                fail(pos_of(k), "a .cpp script class with the base " + what + " cannot have another base class");
+            if (clang_isVirtualBase(k))
+                fail(pos_of(k), "a .cpp script class cannot derive from " + what + " with 'virtual'");
+            if (clang_getCXXAccessSpecifier(k) != CX_CXXPublic)
+                fail(pos_of(k), "a .cpp script class must derive from " + what + " with 'public'");
+            auto it = class_infos_.find(sb->owner_usr);
+            if (it == class_infos_.end())
+                fail(pos_of(k), "internal error: the parent class '" + sb->name + "' has no record");
+            parent = it->second;
+        }
+        else if (!clang_Cursor_isNull(decl) && from_main(decl))
+            fail(pos_of(k),
+                "a .cpp script class cannot derive from '" + spelling(decl) +
+                    "': it is a plain class of the script; derive from a script class or from a native class");
+        else if (!clang_Cursor_isNull(decl))
+        {
+            CXFile f = nullptr;
+            clang_getExpansionLocation(clang_getCursorLocation(decl), &f, nullptr, nullptr, nullptr);
+            const std::string fn = f ? cxs(clang_getFileName(f)) : std::string();
+            if (fn.size() > 4 && fn.compare(fn.size() - 4, 4, ".cpp") == 0)
+                fail(pos_of(k),
+                    "a .cpp script class cannot derive from '" + spelling(decl) +
+                        "' of another .cpp file; a script class can derive only from a script class of the same file");
+        }
+        std::string b = sb ? sb->name : type_text(clang_getCursorType(k));
         if (cd.base.empty())
             cd.base = b;
         else
             cd.interfaces.push_back(b);
     }
     info.base = cd.base;
-    collect_bases(c, info.base_usrs);
+    if (parent)
+    {
+        info.native = parent->native;
+        info.base_usrs = parent->base_usrs;
+        info.script_bases = parent->script_bases;
+        info.script_bases.insert(parent->usr);
+    }
+    else
+    {
+        info.native = cd.base;
+        collect_bases(c, info.base_usrs);
+    }
     pre_class(c);
     const Range ce = extent_of(c);
     ast::Script::Chunk block;
@@ -2127,6 +2358,8 @@ void Frontend::index_member(CXCursor k, const std::string& owner_usr, const std:
         if (is_static)
             en.mangled = owner_name + "__s_" + en.name;
         en.virt = clang_CXXMethod_isVirtual(k) || has_child(k, CXCursor_CXXOverrideAttr);
+        if (!is_static)
+            en.vowner = slot_owner(k);
     }
     else if (kind != CXCursor_FieldDecl)
         return;
@@ -2143,6 +2376,7 @@ void Frontend::index(const std::vector<CXCursor>& top)
         {
             const std::string u = usr(k), n = spelling(k);
             table_[u] = Entry{Kind::ScriptClass, u, n, n, std::string()};
+            // A child class needs the table entry of its parent: the parent comes first in the text.
             const uint32_t cpos = extent_of(k).begin;
             for (CXCursor m : children(k))
                 index_member(m, u, n, cpos);

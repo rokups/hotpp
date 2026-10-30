@@ -852,7 +852,7 @@ void check_base_ctor_access(const ClassDef& cd, const ClassDef& parent, const Li
     for (const Ctor& c : cd.ctors)
     {
         if (c.has_base_call)
-            check(c.base_args.size(), c.base_pos);
+            check(c.raw ? c.raw_base_argc : c.base_args.size(), c.base_pos);
         else
             check(0, c.pos);
     }
