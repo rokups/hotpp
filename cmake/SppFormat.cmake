@@ -31,6 +31,29 @@ function(spp_format_library out std)
     endif()
 endfunction()
 
+# spp_effective_cxx_standard(<out> <target>): set <out> to the C++ standard of the host: 17, 20
+# or 23. The value is the property CXX_STANDARD of the target, else CMAKE_CXX_STANDARD, else 17.
+# A value less than 17 gives 17. A value above 23 gives 23. The value 21 or 22 gives 20.
+# The runtime library and the backends compile the generated code with this standard
+# (SPP_CXX_STANDARD in include/spp/config.h).
+function(spp_effective_cxx_standard out target)
+    set(std "")
+    if(TARGET ${target})
+        get_target_property(std ${target} CXX_STANDARD)
+    endif()
+    if(NOT std OR std MATCHES "NOTFOUND")
+        set(std "${CMAKE_CXX_STANDARD}")
+    endif()
+    if(std STREQUAL "" OR std MATCHES "[^0-9]" OR std LESS 17)
+        set(std 17)
+    elseif(std GREATER 23)
+        set(std 23)
+    elseif(std EQUAL 21 OR std EQUAL 22)
+        set(std 20)
+    endif()
+    set(${out} ${std} PARENT_SCOPE)
+endfunction()
+
 # spp_provide_fmt(): make the target spp_fmt. It links to the fmt target that the provider gives.
 # The function does the work one time. The global property SPP_FMT_INCLUDE_DIR has the include
 # directory of fmt, or an empty text when the compiler finds the directory by itself.

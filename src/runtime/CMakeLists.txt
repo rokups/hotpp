@@ -11,6 +11,10 @@ if(SPP_FORMAT_LIB STREQUAL "fmt")
 else()
     target_compile_definitions(spp_runtime_core PUBLIC SPP_USE_FMT=0)
 endif()
+# The C++ standard of the host (include/spp/config.h). The backends use it for the compile of
+# the scripts and for the parse of the native headers. The target sppc_lib gets the same value.
+spp_effective_cxx_standard(SPP_HOST_CXX_STANDARD spp_runtime_core)
+target_compile_definitions(spp_runtime_core PUBLIC SPP_CXX_STANDARD=${SPP_HOST_CXX_STANDARD})
 add_library(spp_runtime STATIC
     state.cpp migration.cpp loader.cpp module.cpp
     scratch.cpp)

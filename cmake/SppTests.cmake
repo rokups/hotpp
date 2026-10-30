@@ -10,6 +10,8 @@ include(GoogleTest)
 
 function(spp_gtest target)
     cmake_parse_arguments(PARSE_ARGV 1 A "" "" "PROPERTIES")
+    # The tests need C++20, also when the host standard (CMAKE_CXX_STANDARD) is 17.
+    target_compile_features(${target} PRIVATE cxx_std_20)
     gtest_discover_tests(${target}
         ${A_UNPARSED_ARGUMENTS}
         PROPERTIES FIXTURES_REQUIRED spp_scratch ${A_PROPERTIES})

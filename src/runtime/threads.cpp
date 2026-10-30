@@ -3,6 +3,7 @@
 #include "runtime_internal.h"
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdio>
 #include <mutex>
 
@@ -51,6 +52,30 @@ bool g_entry_counters = false;
 
 namespace
 {
+// The wait and the wake of the counters. C++17 has no std::atomic::wait and notify_all, so the
+// slow path uses one mutex and one condition variable. The fast path uses only the atomics.
+// A waiter checks the value under the mutex. A waker changes the value first, then takes the
+// mutex, then wakes. So a waiter cannot miss a wake.
+// Both objects are never destroyed. So process exit cannot block on a waiting thread.
+std::mutex& g_wait_mutex = *new std::mutex;
+std::condition_variable& g_wait_cv = *new std::condition_variable;
+
+// Blocks while the atomic has the value "old". It can return early. The caller checks again.
+void wait_while_equal(const std::atomic<uint32_t>& a, uint32_t old)
+{
+    std::unique_lock<std::mutex> lock(g_wait_mutex);
+    g_wait_cv.wait(lock, [&] { return a.load() != old; });
+}
+
+// Wakes all the threads that wait. The caller changed the atomic before the call.
+void wake_all()
+{
+    {
+        std::lock_guard<std::mutex> lock(g_wait_mutex);
+    }
+    g_wait_cv.notify_all();
+}
+
 alignas(64) std::atomic<uint32_t> g_active{0}; // threads in a counted entry
 alignas(64) std::atomic<uint32_t> g_gate{0}; // 1: a commit window is closed
 std::atomic<uint64_t> g_windows{0};
@@ -62,7 +87,7 @@ void leave_outermost()
 {
     // The last thread out wakes a commit that waits.
     if (g_active.fetch_sub(1) == 1 && g_gate.load() != 0)
-        g_active.notify_all();
+        wake_all();
 }
 } // namespace
 
@@ -77,7 +102,7 @@ void detail::enter_script()
             return;
         leave_outermost(); // a commit runs: back off, wait, and try again
         g_blocked.fetch_add(1, std::memory_order_relaxed);
-        g_gate.wait(1);
+        wait_while_equal(g_gate, 1);
     }
 }
 
@@ -114,7 +139,7 @@ CommitWindow::CommitWindow()
     g_window_mutex.lock();
     g_gate.store(1);
     for (uint32_t n; (n = g_active.load()) != 0;)
-        g_active.wait(n);
+        wait_while_equal(g_active, n);
     ++t_depth; // the commit thread may run script code, for example a hook
 }
 
@@ -123,7 +148,7 @@ CommitWindow::~CommitWindow()
     --t_depth;
     g_windows.fetch_add(1, std::memory_order_relaxed);
     g_gate.store(0);
-    g_gate.notify_all();
+    wake_all();
     g_window_mutex.unlock();
 }
 

@@ -1004,13 +1004,24 @@ TEST(SppcTool, CompileCommandUsesTheBackendFlags)
     o.include_dirs = {"/i1", "/i2"};
     o.extra_flags = {"-O2"};
     o.resource_dir = "/res";
-    std::vector<std::string> expected = {"cc", "-std=c++20", "-fPIC", "-shared", "-g", "-Werror=return-type",
-        "-resource-dir=/res", "-O2", "-I/i1", "-I/i2"};
+    std::vector<std::string> expected = {"cc", std::string("-std=") + spp::cxx_std_name(), "-fPIC", "-shared", "-g",
+        "-Werror=return-type", "-resource-dir=/res", "-O2", "-I/i1", "-I/i2"};
     for (const std::string& f : spp::format_compile_flags())
         expected.push_back(f); // fmt build only
     for (const char* f : {"/x.cpp", "-o", "/x.so"})
         expected.push_back(f);
     EXPECT_EQ(spp::compile_command(o, "/x.cpp", "/x.so"), expected);
+}
+
+// The option std_version replaces the standard of the host in the compile command.
+TEST(SppcTool, CompileCommandStdVersionOverridesTheHostStandard)
+{
+    spp::ClangFilesOptions o;
+    o.compiler = "cc";
+    o.std_version = "c++17";
+    EXPECT_EQ(spp::compile_command(o, "/x.cpp", "/x.so")[1], "-std=c++17");
+    o.std_version = "c++23";
+    EXPECT_EQ(spp::compile_command(o, "/x.cpp", "/x.so")[1], "-std=c++23");
 }
 
 // sppc --compile-commands writes one entry for each generated .cpp.
@@ -1043,7 +1054,7 @@ TEST(SppcTool, CompileCommandsOptionWritesTheDatabase)
         fmt_args += "\"" + f + "\", ";
     const std::string expected =
         "[\n  {\n    \"directory\": \"" + fs::current_path().string() + "\",\n    \"file\": \"" + cpp +
-        "\",\n    \"arguments\": [\"" + cxx + "\", \"-std=c++20\", \"-fPIC\", \"-shared\", \"-g\", "
+        "\",\n    \"arguments\": [\"" + cxx + "\", \"-std=" + std::string(spp::cxx_std_name()) + "\", \"-fPIC\", \"-shared\", \"-g\", "
         "\"-Werror=return-type\", \"-O1\", \"-I" + engine + "\", \"-I" + inc + "\", " + fmt_args + "\"" + cpp +
         "\", \"-o\", \"" + so + "\"],\n    \"output\": \"" + so + "\"\n  }\n]\n";
     EXPECT_EQ(read_file(cdb_dir + "/compile_commands.json"), expected);

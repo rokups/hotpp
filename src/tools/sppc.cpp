@@ -38,6 +38,10 @@
 // The flag --format=std|fmt is a flag for build systems. In build mode the build of sppc fixes
 // the format library (include/spp/config.h), and a different --format is an error (exit code 2).
 //
+// The flag --std=c++17|c++20|c++23 sets the C++ standard of the parse of the native headers and
+// of the compile of the generated code. The default is the C++ standard of the host (SPP_CXX_STANDARD
+// in include/spp/config.h). The flag is useful when sppc is built apart from the host.
+//
 // Exit code: 0 success, 1 error, 2 bad usage.
 #include "spp/clang_files_backend.h"
 #include "spp/config.h"
@@ -63,12 +67,12 @@ namespace
     std::fprintf(stderr,
         "usage: sppc <file.spp>... --gen N (--out-dir DIR | -o x.so) [-I dir]... [--resource-dir dir]\n"
         "            [--cxx command] [--cxxflag flag]... [--slots file] [--no-strict-borrowed] [--format=std|fmt]\n"
-        "            [--raw-diagnostics] [--compile-commands dir]\n"
+        "            [--raw-diagnostics] [--compile-commands dir] [--std=c++17|c++20|c++23]\n"
         "       sppc --emit-cpp <file.spp> --gen N [-o out.cpp] [-I dir]... [--prelude file]... [--no-strict-borrowed] "
         "[--format=std|fmt]\n"
-        "            [--slots file] [--resource-dir dir]\n"
+        "            [--slots file] [--resource-dir dir] [--std=c++17|c++20|c++23]\n"
         "       sppc --aot <file.spp>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]\n"
-        "            [--format=std|fmt] [--resource-dir dir]\n");
+        "            [--format=std|fmt] [--resource-dir dir] [--std=c++17|c++20|c++23]\n");
     std::exit(2);
 }
 
@@ -90,6 +94,7 @@ struct Args
     bool has_compiler_option = false; // --cxx, --cxxflag, --slots, --gen, -o
     std::vector<std::string> inputs;
     std::string out_dir, output, slots, resource_dir;
+    std::string std_version; // --std=: empty means the standard of the host
     std::vector<std::string> include_dirs, preludes, cxxflags;
     std::string cxx;
     int gen = 0;
@@ -179,6 +184,8 @@ Args parse_args(int argc, char** argv)
             r.format_lib = "fmt";
             r.format_given = true;
         }
+        else if (a == "--std=c++17" || a == "--std=c++20" || a == "--std=c++23")
+            r.std_version = a.substr(6);
         else if (a == "-I")
             r.include_dirs.push_back(next());
         else if (a.rfind("-I", 0) == 0)
@@ -234,6 +241,7 @@ int run_aot(const Args& args)
     base.strict_borrowed = args.strict_borrowed;
     base.format_lib = args.format_lib;
     base.resource_dir = args.resource_dir;
+    base.std_version = args.std_version;
     base.include_dirs = args.include_dirs;
     for (const std::string& file : args.preludes)
     {
@@ -316,6 +324,7 @@ int run_emit(const Args& args)
     opt.strict_borrowed = args.strict_borrowed;
     opt.format_lib = args.format_lib;
     opt.resource_dir = args.resource_dir;
+    opt.std_version = args.std_version;
     opt.include_dirs = args.include_dirs;
     for (const std::string& file : args.preludes)
     {
@@ -392,6 +401,7 @@ int run_build(const Args& args)
     spp::ClangFilesOptions opt;
     opt.slots_file = args.slots;
     opt.resource_dir = args.resource_dir;
+    opt.std_version = args.std_version;
     if (!args.cxx.empty())
         opt.compiler = args.cxx;
     opt.extra_flags = args.cxxflags;

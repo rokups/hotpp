@@ -19,6 +19,9 @@ struct ClangFilesOptions
     std::string compiler = "clang++"; // the compiler command
     std::vector<std::string> include_dirs; // for the script imports and for the compile
     std::string resource_dir; // the Clang resource dir (empty: the default)
+    // The C++ standard of the compile and of the import parse, for example "c++17". Empty: the
+    // standard of the host (spp::cxx_std_name() in spp/config.h).
+    std::string std_version;
     // The translator cache. Empty: the backend makes its own. Share one to keep the
     // cache between backends.
     std::shared_ptr<sppc::TranslatorSession> session;

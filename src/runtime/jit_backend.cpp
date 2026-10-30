@@ -119,7 +119,8 @@ CompileSetup make_invocation(
     s.vfs->pushOverlay(memory);
 
     std::vector<std::string>& args = s.args;
-    args = {opt.compiler, "-std=c++20", "-O1", "-fPIC", "-Werror=return-type"};
+    args = {opt.compiler, "-std=" + (opt.std_version.empty() ? std::string(cxx_std_name()) : opt.std_version), "-O1",
+        "-fPIC", "-Werror=return-type"};
     if (!opt.debug_flag.empty())
         args.push_back(opt.debug_flag);
     if (!opt.resource_dir.empty())
@@ -266,6 +267,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     to.generation = static_cast<int>(generation);
     to.include_dirs = opt_.include_dirs;
     to.resource_dir = opt_.resource_dir;
+    to.std_version = opt_.std_version.empty() ? cxx_std_name() : opt_.std_version;
     to.strict_borrowed = opt_.strict_borrowed;
     to.format_lib = format_lib_name();
     // A fresh load ignores the slot state of the earlier generations.

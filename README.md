@@ -50,7 +50,10 @@ The file `CMakePresets.json` has the presets. A build goes to `cmake-build/<pres
 - `.clang-format` has a second document, `Language: CSharp`, for the S++ scripts. It uses the Microsoft style with the C++ choices on top (4 spaces, 120 columns, Allman braces).
 - `tools/format-spp.sh [--check] files...` formats `.spp` files in place. `--check` changes nothing and lists the files that need formatting. clang-format has no `.spp` mapping, so the script uses `--assume-filename=<file>.cs`.
 - Known limits: the formatter writes `using<map>;`, `std.string && s` (a qualified rvalue reference parameter) and `["a" : 1]`. It puts a lambda body on its own lines after `=>`. These are spaces only. Meaning stays the same. See DECISIONS.md.
-- Generated code and the runtime headers need C++17 only. The tool `sppc` itself needs C++20. See DECISIONS.md.
+- S++ supports C++17 and later. The generated code, `include/spp`, the runtime library and the backends build as C++17 or later.
+- `sppc`, the language server and the tests need C++20. The build forces C++20 on these targets. The default standard of the other targets is 20. Set `-DCMAKE_CXX_STANDARD=17` for a C++17 host.
+- The standard of the host (`SPP_CXX_STANDARD` in `include/spp/config.h`: 17, 20 or 23) is the standard of the script compile and of the parse of the native headers. The `sppc` flag `--std=c++17|c++20|c++23` overrides it.
+- A C++17 host needs fmt for `${}`. See DECISIONS.md.
 - String interpolation `${}` uses fmt in a C++17 build and `std::format` in a C++20 build. `-DSPP_USE_FMT=ON` selects fmt at C++20 and later. The choice is a build-time choice. `SPP_FMT_PROVIDER` says where fmt comes from: `AUTO` (default: `find_package`, then CPM.cmake), `SYSTEM` (`find_package` only), `CPM` (always fetch) or `NONE` (your project supplies the target `fmt::fmt-header-only` or `fmt::fmt`). See doc/embedding.md.
 
 ### Build tree layout

@@ -29,6 +29,7 @@
 #include "emit.h"
 #include "lower.h"
 #include "parser/parser.h"
+#include "spp/config.h"
 #include "types.h"
 
 #include <clang-c/Index.h>
@@ -1013,6 +1014,7 @@ struct Options
     int gen = 0;
     std::vector<std::string> includes;
     std::string resource_dir; // the Clang resource directory (builtin headers)
+    std::string std_version; // the C++ standard of the parse, for example "c++17"
 };
 
 struct ManifestEntry
@@ -1216,7 +1218,13 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
     std::string head =
         "#include <type_traits>\n"
         "#include <utility>\n"
-        "template <class T> constexpr bool sppc_complete() { return requires { sizeof(T); }; }\n"
+        // The probe uses C++17 only (detection with void_t), so it parses with the standard of the host.
+        "template <class T, class = void> struct sppc_complete_s : std::false_type {};\n"
+        "template <class T> struct sppc_complete_s<T, std::void_t<decltype(sizeof(T))>> : std::true_type {};\n"
+        "template <class T> constexpr bool sppc_complete() { return sppc_complete_s<T>::value; }\n"
+        "template <class T, class = void> struct sppc_has_arrow : std::false_type {};\n"
+        "template <class T> struct sppc_has_arrow<T, std::void_t<decltype(std::declval<T&>().operator->())>> : "
+        "std::true_type {};\n"
         "template <class T> constexpr bool sppc_copy() { if constexpr (sppc_complete<T>()) return "
         "std::is_copy_constructible_v<T>; else return false; }\n"
         "template <class T> constexpr bool sppc_nothrow_move() { if constexpr (sppc_complete<T>()) return "
@@ -1230,7 +1238,7 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
         "template <class T> constexpr bool sppc_small() { if constexpr (sppc_complete<T>()) return "
         "std::is_trivially_copyable_v<T> && sizeof(T) <= 16; else return false; }\n"
         "template <class T> constexpr bool sppc_arrow() { if constexpr (std::is_pointer_v<T>) return true; else if "
-        "constexpr (sppc_complete<T>()) return requires(T& h) { h.operator->(); }; else return false; }\n"
+        "constexpr (sppc_complete<T>()) return sppc_has_arrow<T>::value; else return false; }\n"
         // The type queries (S20b): the return type of a function or of a member function, and
         // the class of an object, of a pointer or of a handle (a type with "element_type").
         "template <class R, class... A> R sppc_ret_f(R (*)(A...));\n"
@@ -1239,11 +1247,12 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
         "template <class R, class C, class... A> R sppc_ret_f(R (C::*)(A...) const);\n"
         "template <class R, class C, class... A> R sppc_ret_f(R (C::*)(A...) &);\n"
         "template <class R, class C, class... A> R sppc_ret_f(R (C::*)(A...) const &);\n"
-        "template <class T> struct sppc_obj_s { using type = T; };\n"
-        "template <class T> struct sppc_obj_s<T*> { using type = T; };\n"
-        "template <class T> requires requires(T& h) { typename T::element_type; h.operator->(); } struct sppc_obj_s<T> "
-        "{ using type = typename T::element_type; };\n"
-        "template <class T> using sppc_obj = std::remove_cv_t<typename sppc_obj_s<std::remove_cvref_t<T>>::type>;\n";
+        "template <class T, class = void> struct sppc_obj_s { using type = T; };\n"
+        "template <class T> struct sppc_obj_s<T*, void> { using type = T; };\n"
+        "template <class T> struct sppc_obj_s<T, std::void_t<typename T::element_type, "
+        "decltype(std::declval<T&>().operator->())>> { using type = typename T::element_type; };\n"
+        "template <class T> using sppc_obj = std::remove_cv_t<typename sppc_obj_s<"
+        "std::remove_cv_t<std::remove_reference_t<T>>>::type>;\n";
     std::string body;
     lines.clear();
     size_t member_id = 0;
@@ -1267,7 +1276,10 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
                 continue;
             }
             const std::string fn = "sppc_member" + std::to_string(member_id++);
-            head += "template <class T> constexpr bool " + fn + "() { return requires { &T::" + m + "; }; }\n";
+            head += "template <class T, class = void> struct " + fn + "_s : std::false_type {};\n";
+            head += "template <class T> struct " + fn + "_s<T, std::void_t<decltype(&T::" + m
+                + ")>> : std::true_type {};\n";
+            head += "template <class T> constexpr bool " + fn + "() { return " + fn + "_s<T>::value; }\n";
             lines.emplace_back(i, "member:" + m);
             body += "constexpr bool sppc_f" + std::to_string(lines.size()) + " = " + fn + "<" + t + ">();\n";
         }
@@ -2005,6 +2017,7 @@ void translate_impl(
     opt.gen = in.generation;
     opt.includes = in.include_dirs;
     opt.resource_dir = in.resource_dir;
+    opt.std_version = in.std_version.empty() ? spp::cxx_std_name() : in.std_version;
 #ifdef SPP_RESOURCE_DIR
     if (opt.resource_dir.empty())
         opt.resource_dir = SPP_RESOURCE_DIR;
@@ -2492,7 +2505,7 @@ void translate_impl(
             "#line " + std::to_string(im.line) + " \"" + esc(file_at(im.pos)) + "\"\n#include " + im.target() + "\n";
     // No error limit. The facts file can have many errors (one for each unknown type). The default
     // limit of 20 gives a "too many errors" fatal error, and this is not an error of the imports.
-    std::vector<std::string> args = {"-x", "c++", "-std=c++20", "-ferror-limit=0"};
+    std::vector<std::string> args = {"-x", "c++", "-std=" + opt.std_version, "-ferror-limit=0"};
     size_t slash = opt.input.rfind('/');
     args.push_back("-I" + (slash == std::string::npos ? std::string(".") : opt.input.substr(0, slash)));
     for (const auto& d : opt.includes)

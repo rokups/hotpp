@@ -25,6 +25,9 @@ struct TranslateOptions
     std::string slots_in; // the content of the slot file (empty: no earlier generation)
     std::vector<std::string> include_dirs; // for the imports of the script
     std::string resource_dir; // the Clang resource directory (empty: the built-in default)
+    // The C++ standard for the parse of the native headers, for example "c++17". Empty: the
+    // standard of the host (SPP_CXX_STANDARD in spp/config.h).
+    std::string std_version;
     std::vector<std::pair<std::string, std::string>> preludes; // name, text
     // The texts of the imported scripts ("using "parent.spp";"), as name and text. The name is
     // the path in the "using" line. A name that is not here is read from the directory of the

@@ -112,7 +112,9 @@ ClangFilesBackend::~ClangFilesBackend()
 std::vector<std::string> compile_command(
     const ClangFilesOptions& opt, const std::string& cpp_path, const std::string& out_so)
 {
-    std::vector<std::string> cmd = {opt.compiler, "-std=c++20", "-fPIC", "-shared", "-g", "-Werror=return-type"};
+    std::vector<std::string> cmd = {opt.compiler,
+        "-std=" + (opt.std_version.empty() ? std::string(cxx_std_name()) : opt.std_version), "-fPIC", "-shared", "-g",
+        "-Werror=return-type"};
     if (!opt.resource_dir.empty())
         cmd.push_back("-resource-dir=" + opt.resource_dir);
     for (const std::string& f : opt.extra_flags)
@@ -205,6 +207,7 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     to.generation = static_cast<int>(generation);
     to.include_dirs = opt_.include_dirs;
     to.resource_dir = opt_.resource_dir;
+    to.std_version = opt_.std_version.empty() ? cxx_std_name() : opt_.std_version;
     to.strict_borrowed = opt_.strict_borrowed;
     to.format_lib = format_lib_name();
     // A missing file means the first generation. A fresh generation starts with no slots.

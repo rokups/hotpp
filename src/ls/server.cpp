@@ -5,6 +5,7 @@
 #include "jsonrpc.h"
 #include "semantic.h"
 #include "spp/clang_files_backend.h"
+#include "spp/config.h"
 #include "spp/sppc_lib.h"
 #include "symbol_index.h"
 
@@ -347,6 +348,8 @@ private:
         const Effective e = effective_options(d.path);
         o.include_dirs = e.include_dirs;
         o.resource_dir = e.resource_dir;
+        o.std_version = e.std_version;
+        o.format_lib = spp::format_lib_name();
         return o;
     }
     // ---- hosts
@@ -355,6 +358,7 @@ private:
     {
         std::vector<std::string> include_dirs, extra_flags;
         std::string resource_dir;
+        std::string std_version; // the "std" of the host file (empty: the standard of the build)
     };
     std::shared_ptr<const Host> host_of(const std::string& path) const
     {
@@ -371,6 +375,7 @@ private:
         {
             e.include_dirs = host->include_dirs;
             e.extra_flags = host->cxx_flags();
+            e.std_version = host->std_version;
         }
         e.include_dirs.insert(e.include_dirs.end(), opt_.include_dirs.begin(), opt_.include_dirs.end());
         e.extra_flags.insert(e.extra_flags.end(), opt_.extra_flags.begin(), opt_.extra_flags.end());
@@ -383,8 +388,8 @@ private:
             return true;
         if (!a || !b)
             return false;
-        return a->name == b->name && a->resource_dir == b->resource_dir && a->include_dirs == b->include_dirs
-            && a->cxx_flags() == b->cxx_flags();
+        return a->name == b->name && a->resource_dir == b->resource_dir && a->std_version == b->std_version
+            && a->include_dirs == b->include_dirs && a->cxx_flags() == b->cxx_flags();
     }
     void load_hosts();
     // Tells the client which host a document uses (window/logMessage, type Info).
@@ -753,6 +758,7 @@ void Server::send_generated(Doc& d, const std::string& cpp)
         const Effective e = effective_options(d.path);
         co.include_dirs = e.include_dirs;
         co.resource_dir = e.resource_dir;
+        co.std_version = e.std_version;
         co.extra_flags = e.extra_flags;
         const std::vector<std::string> cmd = spp::compile_command(co, d.gen_path, d.gen_path + ".so");
         clangd_->notify("workspace/didChangeConfiguration",
