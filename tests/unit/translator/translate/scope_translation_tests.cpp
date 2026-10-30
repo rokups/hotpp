@@ -1,21 +1,22 @@
 // Tests for sppc::translate with scopes. The script writes "." for a scope.
 // The generated C++ uses "::".
+#include "spp/sppc_lib.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "spp/sppc_lib.h"
-#include "support/translator_test_support.h"
-
 using namespace translator_test;
 
-namespace {
+namespace
+{
 
 const char* kScopeHeader =
     "#include <string>\n#include <vector>\n"
     "namespace Engine { class Actor { public: virtual ~Actor() {} virtual void Tick(float dt) {} }; }\n";
 
-}  // namespace
+} // namespace
 
 TEST(ScopeTranslation, FieldTypesAndBaseClassUseDoubleColons)
 {
@@ -64,8 +65,7 @@ TEST(ScopeTranslation, ArrowInABodyIsAnError)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
-    const sppc::TranslateResult r =
-        sppc::translate(temp_options(dir, lambda_script("        p->foo();")));
+    const sppc::TranslateResult r = sppc::translate(temp_options(dir, lambda_script("        p->foo();")));
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("use '.' instead of '->'"), std::string::npos) << r.diagnostics;
     EXPECT_NE(r.diagnostics.find("t.spp:5:"), std::string::npos) << r.diagnostics;

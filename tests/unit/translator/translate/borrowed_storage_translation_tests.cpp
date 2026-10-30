@@ -1,14 +1,15 @@
 // Tests for the borrowed-storage rule (design 7.10.4, 7.10.6) and the ERROR rows of design 5.3.
+#include "spp/sppc_lib.h"
+#include "support/check_translate_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "spp/sppc_lib.h"
-#include "support/check_translate_test_support.h"
-
 using namespace check_translate_test;
 
-namespace {
+namespace
+{
 const char* kHandleStubs = "[native, handle(\"Arrow<$T>\")] class Handled;\n";
 }
 
@@ -16,7 +17,8 @@ TEST(BorrowedStorage, RawPointerFieldIsAnErrorInStrictMode)
 {
     const sppc::TranslateResult r = check_translate("", "    Weapon* w;\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "t.spp:3:13: error: a field cannot hold a borrowed pointer or reference to 'Weapon'"))
+    EXPECT_TRUE(
+        has(r.diagnostics, "t.spp:3:13: error: a field cannot hold a borrowed pointer or reference to 'Weapon'"))
         << r.diagnostics;
     EXPECT_TRUE(has(r.diagnostics, "Declare a stub with 'handle' or 'intrusive'")) << r.diagnostics;
 }
@@ -66,8 +68,8 @@ TEST(BorrowedStorage, ReturnValueIsAnError)
 
 TEST(BorrowedStorage, HandleAndConstCharAreAllowed)
 {
-    const sppc::TranslateResult r = check_translate(
-        kHandleStubs, "    Handled h;\n    const char* name;\n    Handled Get() { return null; }\n");
+    const sppc::TranslateResult r =
+        check_translate(kHandleStubs, "    Handled h;\n    const char* name;\n    Handled Get() { return null; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(r.warnings.empty()) << r.warnings;
 }
@@ -94,25 +96,25 @@ TEST(BorrowedStorage, ValueAndStdTypesAreAllowed)
 
 TEST(BorrowedStorage, LambdaCapturesARefParameter)
 {
-    const sppc::TranslateResult r = check_translate(
-        "[native, value] class Plain;\n",
-        "    void Run(Plain& q1) { var f = () => { q1.x = 1; }; }\n");
+    const sppc::TranslateResult r =
+        check_translate("[native, value] class Plain;\n", "    void Run(Plain& q1) { var f = () => { q1.x = 1; }; }\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "error: the lambda captures 'q1', a borrowed pointer or reference")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "error: the lambda captures 'q1', a borrowed pointer or reference"))
+        << r.diagnostics;
 }
 
 TEST(BorrowedStorage, LambdaCapturesARawPointerParameter)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    void Run(Weapon* q1) { var f = () => { q1.dmg = 1; }; }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    void Run(Weapon* q1) { var f = () => { q1.dmg = 1; }; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'q1'")) << r.diagnostics;
 }
 
 TEST(BorrowedStorage, LambdaMayUseItsOwnParameterAndAValue)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    int n;\n    void Run(int& q1) { var f = (int b) => { this.n = b; }; }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    int n;\n    void Run(int& q1) { var f = (int b) => { this.n = b; }; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
@@ -125,47 +127,45 @@ TEST(BorrowedStorage, RefParameterWithoutALambdaIsAllowed)
 
 TEST(BorrowedStorage, RefLocalOfAFieldIsALocalReference)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    void Move() { Vec3& r = this.pos; r.x = 1; }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    Vec3 pos;\n    void Move() { Vec3& r = this.pos; r.x = 1; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "Vec3& r = __st->pos;")) << r.cpp;
 }
 
 TEST(BorrowedStorage, RefInACallArgumentIsAllowed)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    void Take(Vec3& q1) { }\n    void Move() { this.Take(this.pos); }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    Vec3 pos;\n    void Take(Vec3& q1) { }\n    void Move() { this.Take(this.pos); }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
 TEST(ErrorRows, StoredRefInAnAssignmentIsAnError)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    int* p;\n    void Move() { this.p = &this.pos; }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    Vec3 pos;\n    int* p;\n    void Move() { this.p = &this.pos; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "error: a '&' value cannot be stored in an assignment")) << r.diagnostics;
 }
 
 TEST(ErrorRows, StoredRefInAReturnIsAnError)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    int Move() { return &this.pos; }\n");
+    const sppc::TranslateResult r = check_translate("", "    Vec3 pos;\n    int Move() { return &this.pos; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "a '&' value cannot be stored")) << r.diagnostics;
 }
 
 TEST(ErrorRows, StoredRefIsAWarningByDefault)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    int* p;\n    void Move() { this.p = &this.pos; }\n", {}, false);
+    const sppc::TranslateResult r =
+        check_translate("", "    Vec3 pos;\n    int* p;\n    void Move() { this.p = &this.pos; }\n", {}, false);
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.warnings, "warning: a '&' value cannot be stored")) << r.warnings;
 }
 
 TEST(ErrorRows, AddressOfAScriptFunctionIsAnError)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    void G() { }\n    void Run() { var f = G; }\n");
+    const sppc::TranslateResult r = check_translate("", "    void G() { }\n    void Run() { var f = G; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "error: script function 'G' must be called")) << r.diagnostics;
     EXPECT_TRUE(has(r.diagnostics, "A script function has no address")) << r.diagnostics;
@@ -173,31 +173,28 @@ TEST(ErrorRows, AddressOfAScriptFunctionIsAnError)
 
 TEST(ErrorRows, AddressOfAScriptFunctionIsAnErrorEvenWithoutStrictMode)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    void G() { }\n    void Run() { var f = G; }\n", {}, false);
+    const sppc::TranslateResult r = check_translate("", "    void G() { }\n    void Run() { var f = G; }\n", {}, false);
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "script function 'G' must be called")) << r.diagnostics;
 }
 
 TEST(ErrorRows, AScriptFunctionPassedAsAnArgumentIsAnError)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    void G() { }\n    void Use(int q1) { }\n    void Run() { this.Use(G); }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    void G() { }\n    void Use(int q1) { }\n    void Run() { this.Use(G); }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "script function 'G' must be called")) << r.diagnostics;
 }
 
 TEST(ErrorRows, CallingAScriptFunctionIsAllowed)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    void G() { }\n    void Run() { G(); this.G(); }\n");
+    const sppc::TranslateResult r = check_translate("", "    void G() { }\n    void Run() { G(); this.G(); }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
 TEST(ErrorRows, ALocalWithTheNameOfAFunctionIsNotAnAddress)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    void G() { }\n    int Run() { int G = 1; return G; }\n");
+    const sppc::TranslateResult r = check_translate("", "    void G() { }\n    int Run() { int G = 1; return G; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
@@ -205,16 +202,16 @@ TEST(ErrorRows, ALocalWithTheNameOfAFunctionIsNotAnAddress)
 
 TEST(RefLocal, ALambdaCannotCaptureAVarRefLocal)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    void Move() { var r = &this.pos; var f = () => { r.x = 1; }; }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    Vec3 pos;\n    void Move() { var r = &this.pos; var f = () => { r.x = 1; }; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'r'")) << r.diagnostics;
 }
 
 TEST(RefLocal, ALambdaCannotCaptureATypedRefLocal)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    void Move() { Vec3& r = this.pos; var f = () => { r.x = 1; }; }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    Vec3 pos;\n    void Move() { Vec3& r = this.pos; var f = () => { r.x = 1; }; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'r'")) << r.diagnostics;
 }
@@ -228,8 +225,8 @@ TEST(RefLocal, ALaterRefLocalDoesNotHideAnEarlierCapture)
 
 TEST(RefLocal, AVarRefLocalCannotBeReturned)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    Vec3* Get() { Vec3& r = this.pos; return r; }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    Vec3 pos;\n    Vec3* Get() { Vec3& r = this.pos; return r; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "a return value cannot hold a borrowed pointer")) << r.diagnostics;
 }
@@ -250,16 +247,16 @@ TEST(RefLocal, AssigningAVarRefLocalToAValueFieldCopiesTheValue)
 
 TEST(RefLocal, ARefLocalCannotBeStoredInAPointerField)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    Vec3* p;\n    void Move() { Vec3& r = this.pos; this.p = r; }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    Vec3 pos;\n    Vec3* p;\n    void Move() { Vec3& r = this.pos; this.p = r; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "a field cannot hold a borrowed pointer")) << r.diagnostics;
 }
 
 TEST(RefLocal, AVarRefLocalInAConditionalIsAnError)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    void Move(bool c) { var r = c ? &this.pos : &this.pos; }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    Vec3 pos;\n    void Move(bool c) { var r = c ? &this.pos : &this.pos; }\n");
     EXPECT_FALSE(r.ok);
 }
 
@@ -289,9 +286,9 @@ TEST(BorrowedStorage, VarFromANativeMethodIsBorrowed)
 
 TEST(BorrowedStorage, VarFromANativeFieldOrFunctionIsBorrowed)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    void Run(Owner* o) { var a = o.weapon; var b = FindWeapon(); var c = Owner.Get().weapon;\n"
-            "        var f = () => { int d = a.dmg + b.dmg + c.dmg; }; }\n");
+    const sppc::TranslateResult r = check_translate("",
+        "    void Run(Owner* o) { var a = o.weapon; var b = FindWeapon(); var c = Owner.Get().weapon;\n"
+        "        var f = () => { int d = a.dmg + b.dmg + c.dmg; }; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'a'")) << r.diagnostics;
     EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'b'")) << r.diagnostics;
@@ -300,9 +297,8 @@ TEST(BorrowedStorage, VarFromANativeFieldOrFunctionIsBorrowed)
 
 TEST(BorrowedStorage, VarOfAPointerToAHandleTypeIsNotBorrowed)
 {
-    const sppc::TranslateResult r =
-        check_translate("[native, handle(\"Arrow<$T>\")] class Weapon;\n",
-                        "    void Run(Owner& o) { var w = o.GetWeapon(); var f = () => { int d = w.dmg; }; }\n");
+    const sppc::TranslateResult r = check_translate("[native, handle(\"Arrow<$T>\")] class Weapon;\n",
+        "    void Run(Owner& o) { var w = o.GetWeapon(); var f = () => { int d = w.dmg; }; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
@@ -322,37 +318,36 @@ TEST(BorrowedStorage, VarFromAChainOfLocalsIsTyped)
     EXPECT_TRUE(has(r.cpp, "auto n = spp::deref(a).dmg;")) << r.cpp;
 }
 
-
 TEST(AddressOf, AddressOfALocalIsABorrowedLocal)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    void Move() { var p = &this.pos; p.x = 1; }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    Vec3 pos;\n    void Move() { var p = &this.pos; p.x = 1; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "auto p = &__st->pos;")) << r.cpp;
 }
 
 TEST(AddressOf, ABorrowedAddressCannotBeCapturedByALambda)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    void Move() { var p = &this.pos; var f = () => { p.x = 1; }; }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    Vec3 pos;\n    void Move() { var p = &this.pos; var f = () => { p.x = 1; }; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'p'")) << r.diagnostics;
 }
 
 TEST(AddressOf, AddressInACallArgumentIsAllowed)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    void Take(Vec3* q) { }\n    void Move() { this.Take(&this.pos); }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    Vec3 pos;\n    void Take(Vec3* q) { }\n    void Move() { this.Take(&this.pos); }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
 TEST(AddressOf, AddressCannotBeStoredInAField)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    void Move() { var p = &this.pos; this.pos = *p; }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    Vec3 pos;\n    void Move() { var p = &this.pos; this.pos = *p; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
-    const sppc::TranslateResult s = check_translate(
-        "", "    Vec3 pos;\n    Vec3* keep;\n    void Move() { this.keep = &this.pos; }\n");
+    const sppc::TranslateResult s =
+        check_translate("", "    Vec3 pos;\n    Vec3* keep;\n    void Move() { this.keep = &this.pos; }\n");
     EXPECT_FALSE(s.ok);
     EXPECT_TRUE(has(s.diagnostics, "a '&' value cannot be stored")) << s.diagnostics;
 }
@@ -362,16 +357,15 @@ TEST(AddressOf, AddressAsAStatementOrReturnIsAFinding)
     const sppc::TranslateResult r = check_translate("", "    Vec3 pos;\n    void Move() { &this.pos; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "a '&' value cannot be stored")) << r.diagnostics;
-    const sppc::TranslateResult s =
-        check_translate("", "    Vec3 pos;\n    int Get() { return &this.pos; }\n");
+    const sppc::TranslateResult s = check_translate("", "    Vec3 pos;\n    int Get() { return &this.pos; }\n");
     EXPECT_FALSE(s.ok);
     EXPECT_TRUE(has(s.diagnostics, "a '&' value cannot be stored")) << s.diagnostics;
 }
 
 TEST(AddressOf, AddressInANewArgumentAndAFieldInitializer)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    void Move() { var w = new Weapon(&this.pos); }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    Vec3 pos;\n    void Move() { var w = new Weapon(&this.pos); }\n");
     EXPECT_TRUE(has(r.diagnostics, "a '&' value cannot be stored") == false) << r.diagnostics;
     const sppc::TranslateResult s = check_translate("", "    Vec3 pos;\n    Vec3* copy = &this.pos;\n");
     EXPECT_FALSE(s.ok);
@@ -381,13 +375,13 @@ TEST(AddressOf, AddressInANewArgumentAndAFieldInitializer)
 // expression and a cast. A typed "T*" local is borrowed by its type.
 TEST(BorrowedStorage, LambdaCapturesACopyOfABorrowedPointer)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    void Run(bool c) { int x = 1; var p = &x; var q = p; var f = () => *q; }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    void Run(bool c) { int x = 1; var p = &x; var q = p; var f = () => *q; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'q', a borrowed pointer or reference")) << r.diagnostics;
-    const sppc::TranslateResult v = check_translate(
-        "", "    void Run(bool c) { int x = 1; var p = &x; var a = (p); var b = c ? p : p; var d = (int*)p;\n"
-            "        int* t = p; var f = () => *a + *b + *d + *t; }\n");
+    const sppc::TranslateResult v = check_translate("",
+        "    void Run(bool c) { int x = 1; var p = &x; var a = (p); var b = c ? p : p; var d = (int*)p;\n"
+        "        int* t = p; var f = () => *a + *b + *d + *t; }\n");
     EXPECT_FALSE(v.ok);
     for (const char* n : {"'a'", "'b'", "'d'", "'t'"})
         EXPECT_TRUE(has(v.diagnostics, std::string("the lambda captures ") + n)) << n << v.diagnostics;
@@ -395,24 +389,23 @@ TEST(BorrowedStorage, LambdaCapturesACopyOfABorrowedPointer)
 
 TEST(BorrowedStorage, LambdaMayCaptureAValueCopyOfAReference)
 {
-    const sppc::TranslateResult r =
-        check_translate("", "    void Run(int& r) { var c = r; var f = () => c; }\n");
+    const sppc::TranslateResult r = check_translate("", "    void Run(int& r) { var c = r; var f = () => c; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
 // An assignment of a borrowed pointer makes the local borrowed from that point on.
 TEST(BorrowedStorage, LambdaCapturesALocalThatReceivesABorrowedPointer)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    std.function<int()> cb;\n"
-            "    void Run() { int x = 1; var q = (int*)null; var p = &x; q = p; this.cb = () => *q; }\n");
+    const sppc::TranslateResult r = check_translate("",
+        "    std.function<int()> cb;\n"
+        "    void Run() { int x = 1; var q = (int*)null; var p = &x; q = p; this.cb = () => *q; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'q', a borrowed pointer or reference")) << r.diagnostics;
-    const sppc::TranslateResult v = check_translate(
-        "", "    void Run(bool c) { int x = 1; int y = 2; var p = &x; var r = &y; var a = (int*)null;\n"
-            "        var b = (int*)null; var d = (int*)null; int* t = nullptr;\n"
-            "        a = c ? p : r; b = (p); d = (int*)p; t = p;\n"
-            "        var f = () => *a + *b + *d + *t; }\n");
+    const sppc::TranslateResult v = check_translate("",
+        "    void Run(bool c) { int x = 1; int y = 2; var p = &x; var r = &y; var a = (int*)null;\n"
+        "        var b = (int*)null; var d = (int*)null; int* t = nullptr;\n"
+        "        a = c ? p : r; b = (p); d = (int*)p; t = p;\n"
+        "        var f = () => *a + *b + *d + *t; }\n");
     EXPECT_FALSE(v.ok);
     for (const char* n : {"'a'", "'b'", "'d'", "'t'"})
         EXPECT_TRUE(has(v.diagnostics, std::string("the lambda captures ") + n)) << n << v.diagnostics;
@@ -420,8 +413,8 @@ TEST(BorrowedStorage, LambdaCapturesALocalThatReceivesABorrowedPointer)
 
 TEST(BorrowedStorage, AssignmentOfAddressOfIsAFindingAndBorrows)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    void Run() { int x = 1; var q = (int*)null; q = &x; var f = () => *q; }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    void Run() { int x = 1; var q = (int*)null; q = &x; var f = () => *q; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "a '&' value cannot be stored")) << r.diagnostics;
     EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'q'")) << r.diagnostics;
@@ -429,7 +422,7 @@ TEST(BorrowedStorage, AssignmentOfAddressOfIsAFindingAndBorrows)
 
 TEST(BorrowedStorage, PlainAssignmentAndValueCopyOfAReferenceStayLegal)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    void Run(int& r) { var c = r; int q = 0; q = 5; c = r; var f = () => c + q; }\n");
+    const sppc::TranslateResult r =
+        check_translate("", "    void Run(int& r) { var c = r; int q = 0; q = 5; c = r; var f = () => c + q; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }

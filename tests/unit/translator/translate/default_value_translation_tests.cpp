@@ -1,11 +1,11 @@
 // Tests for sppc::translate with fields and locals that have no initializer.
-#include <gtest/gtest.h>
-
-#include <string>
-
 #include "spp/sppc_lib.h"
 #include "support/stub_translate_test_support.h"
 #include "support/translator_test_support.h"
+
+#include <gtest/gtest.h>
+
+#include <string>
 
 using namespace translator_test;
 using namespace stub_translate_test;

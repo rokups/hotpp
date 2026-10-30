@@ -1,15 +1,15 @@
 // Tests for the lowering of the properties: reads, writes and the accessors of other objects.
-#include <gtest/gtest.h>
-
-#include <string>
-#include <vector>
-
 #include "emit.h"
 #include "lower.h"
 #include "parser/expression.h"
 #include "parser/parser.h"
 #include "parser/statement.h"
 #include "support/lowering_test_support.h"
+
+#include <gtest/gtest.h>
+
+#include <string>
+#include <vector>
 
 using namespace sppc;
 using namespace lowering_test;
@@ -26,8 +26,7 @@ TEST(PropertyLowering, PropertyReadAndWrite)
     EXPECT_EQ(f.body("Hp <<= 1;"), "Player__set_Hp(__self, Player__get_Hp(__self) << (1));");
     EXPECT_EQ(f.body("--Hp;"), "Player__set_Hp(__self, Player__get_Hp(__self) - 1);");
     EXPECT_EQ(f.body("this.Hp++;"), "Player__set_Hp(__self, Player__get_Hp(__self) + 1);");
-    EXPECT_EQ(f.body("Sink = Hp == 1 ? 2 : 3;"),
-              "Player__set_Sink(__self, Player__get_Hp(__self) == 1 ? 2 : 3);");
+    EXPECT_EQ(f.body("Sink = Hp == 1 ? 2 : 3;"), "Player__set_Sink(__self, Player__get_Hp(__self) == 1 ? 2 : 3);");
     // A comparison is not a write.
     EXPECT_EQ(f.expr("Hp <= 2"), "Player__get_Hp(__self) <= 2");
     EXPECT_EQ(f.diag.items.size(), 0u) << f.errors()[0];
@@ -42,10 +41,8 @@ TEST(PropertyLowering, PropertyOfOtherObjectRead)
     const std::string sh = "spp::shell_of<Player_Shell>(p, \"Player\")";
     EXPECT_EQ(f.expr("p.Hp"), "Player__get_Hp(" + sh + ")");
     EXPECT_EQ(f.expr("p.Hp + p.Max"), "Player__get_Hp(" + sh + ") + Player__get_Max(" + sh + ")");
-    EXPECT_EQ(f.expr("this.target.Hp"),
-              "Player__get_Hp(spp::shell_of<Player_Shell>(__st->target, \"Player\"))");
-    EXPECT_EQ(f.expr("p.target.Hp"),
-              "Player__get_Hp(spp::shell_of<Player_Shell>(spp::deref(p).target, \"Player\"))");
+    EXPECT_EQ(f.expr("this.target.Hp"), "Player__get_Hp(spp::shell_of<Player_Shell>(__st->target, \"Player\"))");
+    EXPECT_EQ(f.expr("p.target.Hp"), "Player__get_Hp(spp::shell_of<Player_Shell>(spp::deref(p).target, \"Player\"))");
     EXPECT_EQ(f.expr("f(p).Hp"), "Player__get_Hp(spp::shell_of<Player_Shell>(f(p), \"Player\"))");
     EXPECT_EQ(f.diag.items.size(), 0u) << f.errors()[0];
 }
@@ -58,8 +55,8 @@ TEST(PropertyLowering, PropertyOfOtherObjectWrite)
     const std::string sh = "spp::shell_of<Player_Shell>(p, \"Player\")";
     EXPECT_EQ(f.body("p.Hp = 1;"), "Player__set_Hp(" + sh + ", 1);");
     EXPECT_EQ(f.body("p.Sink = p.Hp;"), "Player__set_Sink(" + sh + ", Player__get_Hp(" + sh + "));");
-    EXPECT_EQ(f.body("this.target.Hp = 2;"),
-              "Player__set_Hp(spp::shell_of<Player_Shell>(__st->target, \"Player\"), 2);");
+    EXPECT_EQ(
+        f.body("this.target.Hp = 2;"), "Player__set_Hp(spp::shell_of<Player_Shell>(__st->target, \"Player\"), 2);");
     EXPECT_EQ(f.diag.items.size(), 0u) << f.errors()[0];
 }
 
@@ -70,10 +67,9 @@ TEST(PropertyLowering, PropertyOfOtherObjectCompoundWrite)
     add_props(f);
     f.param("p");
     const std::string sh = "spp::shell_of<Player_Shell>(p, \"Player\")";
-    EXPECT_EQ(f.body("p.Hp += 2;"),
-              "spp::prop_update<spp::op_add>(Player__get_Hp, Player__set_Hp, " + sh + ", 2);");
-    EXPECT_EQ(f.body("p.Hp <<= 1 + 1;"),
-              "spp::prop_update<spp::op_shl>(Player__get_Hp, Player__set_Hp, " + sh + ", 1 + 1);");
+    EXPECT_EQ(f.body("p.Hp += 2;"), "spp::prop_update<spp::op_add>(Player__get_Hp, Player__set_Hp, " + sh + ", 2);");
+    EXPECT_EQ(
+        f.body("p.Hp <<= 1 + 1;"), "spp::prop_update<spp::op_shl>(Player__get_Hp, Player__set_Hp, " + sh + ", 1 + 1);");
     EXPECT_EQ(f.diag.items.size(), 0u) << f.errors()[0];
 }
 
@@ -103,10 +99,8 @@ TEST(PropertyLowering, PropertyWriteAsExpression)
     const std::string sh = "spp::shell_of<Player_Shell>(p, \"Player\")";
     EXPECT_EQ(f.body("a = this.Hp = 1;"), "a = spp::prop_set(Player__set_Hp, __self, 1);");
     EXPECT_EQ(f.body("a = (p.Hp = 2);"), "a = (spp::prop_set(Player__set_Hp, " + sh + ", 2));");
-    EXPECT_EQ(f.body("Hp = Sink = 3;"),
-              "Player__set_Hp(__self, spp::prop_set(Player__set_Sink, __self, 3));");
-    EXPECT_EQ(f.body("a = Hp *= 2;"),
-              "a = spp::prop_update<spp::op_mul>(Player__get_Hp, Player__set_Hp, __self, 2);");
+    EXPECT_EQ(f.body("Hp = Sink = 3;"), "Player__set_Hp(__self, spp::prop_set(Player__set_Sink, __self, 3));");
+    EXPECT_EQ(f.body("a = Hp *= 2;"), "a = spp::prop_update<spp::op_mul>(Player__get_Hp, Player__set_Hp, __self, 2);");
     EXPECT_EQ(f.diag.items.size(), 0u) << f.errors()[0];
 }
 
@@ -133,12 +127,13 @@ TEST(PropertyLowering, PropertyOfOtherObjectMissingAccessor)
     f.body("p.Max += 1;");
     f.body("p.Max++;");
     f.expr("p.Sink");
-    EXPECT_EQ(f.errors(), (std::vector<std::string>{
-                              "1:1: property 'Max' has no 'set' accessor",
-                              "1:1: property 'Max' has no 'set' accessor",
-                              "1:1: property 'Max' has no 'set' accessor",
-                              "1:1: property 'Sink' has no 'get' accessor",
-                          }));
+    EXPECT_EQ(f.errors(),
+        (std::vector<std::string>{
+            "1:1: property 'Max' has no 'set' accessor",
+            "1:1: property 'Max' has no 'set' accessor",
+            "1:1: property 'Max' has no 'set' accessor",
+            "1:1: property 'Sink' has no 'get' accessor",
+        }));
 }
 
 TEST(PropertyLowering, PropertyLocalHidesProperty)
@@ -159,12 +154,13 @@ TEST(PropertyLowering, PropertyMissingAccessor)
     f.body("this.Max += 1;");
     f.body("Max++;");
     f.expr("this.Sink + 1");
-    EXPECT_EQ(f.errors(), (std::vector<std::string>{
-                              "1:1: property 'Max' has no 'set' accessor",
-                              "1:1: property 'Max' has no 'set' accessor",
-                              "1:1: property 'Max' has no 'set' accessor",
-                              "1:1: property 'Sink' has no 'get' accessor",
-                          }));
+    EXPECT_EQ(f.errors(),
+        (std::vector<std::string>{
+            "1:1: property 'Max' has no 'set' accessor",
+            "1:1: property 'Max' has no 'set' accessor",
+            "1:1: property 'Max' has no 'set' accessor",
+            "1:1: property 'Sink' has no 'get' accessor",
+        }));
 }
 
 TEST(PropertyLowering, PropertyInFieldInitializerIsAnError)

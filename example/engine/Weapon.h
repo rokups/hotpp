@@ -3,8 +3,13 @@
 #include <string>
 #include <utility>
 
-struct Weapon {
+struct Weapon
+{
     int dmg = 0;
     std::string name;
-    Weapon(int d, std::string n) : dmg(d), name(std::move(n)) {}
+    Weapon(int d, std::string n)
+        : dmg(d)
+        , name(std::move(n))
+    {
+    }
 };

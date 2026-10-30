@@ -1,6 +1,7 @@
 // A clangd child process with an LSP connection over two pipes.
 #pragma once
 
+#include <nlohmann/json.hpp>
 #include <sys/types.h>
 
 #include <atomic>
@@ -12,11 +13,11 @@
 #include <thread>
 #include <vector>
 
-#include <nlohmann/json.hpp>
+namespace spp::ls
+{
 
-namespace spp::ls {
-
-class ClangdProcess {
+class ClangdProcess
+{
 public:
     // Gets each notification from clangd. It runs on the reader thread.
     using Handler = std::function<void(const nlohmann::json&)>;
@@ -27,8 +28,8 @@ public:
     ClangdProcess& operator=(const ClangdProcess&) = delete;
 
     // Starts "path" with "args". The stderr of clangd goes to "log" (empty: /dev/null).
-    bool start(const std::string& path, const std::vector<std::string>& args, const std::string& log,
-               Handler on_notification);
+    bool start(
+        const std::string& path, const std::vector<std::string>& args, const std::string& log, Handler on_notification);
     bool running() const { return pid_ > 0 && !closed_; }
 
     // Sends a request and waits for the response. The result is the full response message
@@ -54,4 +55,4 @@ private:
     Handler on_notification_;
 };
 
-}  // namespace spp::ls
+} // namespace spp::ls

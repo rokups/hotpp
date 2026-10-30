@@ -9,6 +9,11 @@
 // tests use generation 2 of a chain 1 -> 2 -> 3.
 //
 // CMake defines SPP_SOURCE_DIR.
+#include "spp/backend.h"
+#include "support/reload_assert.h"
+#include "support/script_files.h"
+#include "support/test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <memory>
@@ -16,12 +21,8 @@
 #include <string>
 #include <vector>
 
-#include "spp/backend.h"
-#include "support/reload_assert.h"
-#include "support/script_files.h"
-#include "support/test_support.h"
-
-namespace {
+namespace
+{
 
 using spp::GenerationInfo;
 using spp::GenState;
@@ -32,7 +33,8 @@ using test_support::source;
 const GenerationInfo* find_gen(const spp::LoaderStats& st, uint32_t generation)
 {
     for (const GenerationInfo& g : st.generations)
-        if (g.generation == generation) return &g;
+        if (g.generation == generation)
+            return &g;
     return nullptr;
 }
 
@@ -41,18 +43,21 @@ int count_lines(const std::string& text, const std::string& needle)
     int n = 0;
     std::istringstream in(text);
     for (std::string l; std::getline(in, l);)
-        if (l.find(needle) != std::string::npos) ++n;
+        if (l.find(needle) != std::string::npos)
+            ++n;
     return n;
 }
 
-class GenerationUnload : public ::testing::Test {
+class GenerationUnload : public ::testing::Test
+{
 public:
     void SetUp() override { backend = spp::make_default_backend(); }
 
     spp::Module build(const char* file, uint32_t generation)
     {
         spp::LoadResult r = backend->load(source(file), generation);
-        if (!r) throw std::runtime_error(r.error);
+        if (!r)
+            throw std::runtime_error(r.error);
         return std::move(*r.module);
     }
 
@@ -92,7 +97,7 @@ TEST_F(GenerationUnload, EscapedClosureIsStaleAfterReload)
 
     ASSERT_NO_FATAL_FAILURE(arm(s, 1.0f));
     EXPECT_EQ(s.world.TimerCount(), 1u);
-    EXPECT_EQ(spp::pin_count(1), 1u);  // the closure in the timer
+    EXPECT_EQ(spp::pin_count(1), 1u); // the closure in the timer
 
     ASSERT_NO_FATAL_FAILURE(reload(s, std::move(m2)));
     EXPECT_EQ(spp::active_generation, 2u);
@@ -108,17 +113,17 @@ TEST_F(GenerationUnload, EscapedClosureIsStaleAfterReload)
     const uint64_t stale0 = spp::stale_call_count();
     testing::internal::CaptureStdout();
     testing::internal::CaptureStderr();
-    s.world.Tick(1.0f);  // the timer fires here
+    s.world.Tick(1.0f); // the timer fires here
     const std::string log = testing::internal::GetCapturedStderr();
     const std::string out = testing::internal::GetCapturedStdout();
 
     EXPECT_EQ(spp::stale_call_count(), stale0 + 1);
     EXPECT_EQ(count_lines(log, "stale call ignored: Beeper::arm lambda"), 1) << log;
-    EXPECT_EQ(count_lines(out, "[timer"), 0) << out;  // no body ran
+    EXPECT_EQ(count_lines(out, "[timer"), 0) << out; // no body ran
     ASSERT_NE(int_field(s, "fired"), nullptr);
-    EXPECT_EQ(*int_field(s, "fired"), 0);  // the state is untouched
+    EXPECT_EQ(*int_field(s, "fired"), 0); // the state is untouched
     EXPECT_EQ(s.world.TimerCount(), 0u);
-    EXPECT_EQ(spp::pin_count(1), 0u);  // the timer dropped the closure
+    EXPECT_EQ(spp::pin_count(1), 0u); // the timer dropped the closure
     EXPECT_EQ(s.world.Actors()[0], addr);
 }
 
@@ -137,12 +142,13 @@ TEST_F(GenerationUnload, ClosureOfTheLiveGenerationRuns)
 
 // The closure of generation 2 fires after generation 3 is live.
 // A chain keeps the test free of the first-generation anchor.
-struct Chain {
+struct Chain
+{
     explicit Chain(GenerationUnload& t)
     {
         m1 = t.build("timer_v1.spp", 1);
         m2 = t.build("timer_v2.spp", 2);
-        m3 = t.build("timer_v2.spp", 3);  // the same text, a new generation
+        m3 = t.build("timer_v2.spp", 3); // the same text, a new generation
     }
     spp::Module m1, m2, m3;
 };
@@ -158,7 +164,7 @@ TEST_F(GenerationUnload, GenerationUnloadsAfterTheClosureIsDropped)
     Actor* const addr = s.actor;
 
     ASSERT_NO_FATAL_FAILURE(reload(s, std::move(c.m2)));
-    ASSERT_NO_FATAL_FAILURE(arm(s, 1.0f));  // the closure belongs to generation 2
+    ASSERT_NO_FATAL_FAILURE(arm(s, 1.0f)); // the closure belongs to generation 2
     EXPECT_EQ(spp::pin_count(2), 1u);
     ASSERT_NO_FATAL_FAILURE(reload(s, std::move(c.m3)));
     EXPECT_EQ(spp::active_generation, 3u);
@@ -166,15 +172,15 @@ TEST_F(GenerationUnload, GenerationUnloadsAfterTheClosureIsDropped)
     {
         const spp::LoaderStats st = s.loader.stats();
         ASSERT_NE(find_gen(st, 2), nullptr);
-        EXPECT_EQ(find_gen(st, 2)->state, GenState::Retired);  // the pin holds it
+        EXPECT_EQ(find_gen(st, 2)->state, GenState::Retired); // the pin holds it
         EXPECT_EQ(find_gen(st, 2)->pins, 1u);
     }
 
     testing::internal::CaptureStderr();
-    s.world.Tick(1.0f);  // fires (stale), drops the closure, then the boundary unloads
+    s.world.Tick(1.0f); // fires (stale), drops the closure, then the boundary unloads
     const std::string log = testing::internal::GetCapturedStderr();
     EXPECT_EQ(count_lines(log, "stale call ignored: Beeper::arm lambda"), 1) << log;
-    s.world.Tick(kDt);  // one more frame
+    s.world.Tick(kDt); // one more frame
 
     const spp::LoaderStats st = s.loader.stats();
     ASSERT_NE(find_gen(st, 2), nullptr);
@@ -186,7 +192,8 @@ TEST_F(GenerationUnload, GenerationUnloadsAfterTheClosureIsDropped)
 
     // Later ticks are clean, the object is the same, and a new closure works.
     const int ticks0 = *int_field(s, "ticks");
-    for (int i = 0; i < 5; ++i) s.world.Tick(kDt);
+    for (int i = 0; i < 5; ++i)
+        s.world.Tick(kDt);
     EXPECT_EQ(*int_field(s, "ticks"), ticks0 + 5);
     EXPECT_EQ(s.world.Actors()[0], addr);
     ASSERT_NO_FATAL_FAILURE(arm(s, 0.5f));
@@ -205,9 +212,10 @@ TEST_F(GenerationUnload, AliveClosureKeepsTheGenerationLoaded)
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(c.m1), "Beeper"));
     s.commit_at_frame_boundary();
     ASSERT_NO_FATAL_FAILURE(reload(s, std::move(c.m2)));
-    ASSERT_NO_FATAL_FAILURE(arm(s, 1000.0f));  // does not fire in this test
+    ASSERT_NO_FATAL_FAILURE(arm(s, 1000.0f)); // does not fire in this test
     ASSERT_NO_FATAL_FAILURE(reload(s, std::move(c.m3)));
-    for (int i = 0; i < 5; ++i) s.world.Tick(kDt);
+    for (int i = 0; i < 5; ++i)
+        s.world.Tick(kDt);
 
     spp::LoaderStats st = s.loader.stats();
     ASSERT_NE(find_gen(st, 2), nullptr);
@@ -252,7 +260,8 @@ TEST_F(GenerationUnload, FirstGenerationUnloadsWhileItsObjectLives)
     testing::internal::CaptureStderr();
     s.world.Tick(1.0f);
     testing::internal::GetCapturedStderr();
-    for (int i = 0; i < 3; ++i) s.world.Tick(kDt);
+    for (int i = 0; i < 3; ++i)
+        s.world.Tick(kDt);
 
     const spp::LoaderStats st = s.loader.stats();
     const GenerationInfo* g1 = find_gen(st, 1);
@@ -289,34 +298,40 @@ TEST_F(GenerationUnload, LoadedModulesStayBoundedOverReloads)
 {
     constexpr uint32_t kLast = 6;
     std::vector<spp::Module> mods;
-    for (uint32_t g = 2; g <= kLast; ++g) mods.push_back(build("timer_v2.spp", g));
+    for (uint32_t g = 2; g <= kLast; ++g)
+        mods.push_back(build("timer_v2.spp", g));
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(build("timer_v1.spp", 1), "Beeper"));
     s.commit_at_frame_boundary();
     std::vector<spp::Instance> objs{s.inst};
     testing::internal::CaptureStderr();
-    for (uint32_t g = 2; g <= kLast; ++g) {
+    for (uint32_t g = 2; g <= kLast; ++g)
+    {
         ASSERT_NO_FATAL_FAILURE(reload(s, std::move(mods[g - 2])));
-        ASSERT_NO_FATAL_FAILURE(arm(s, 0.0f));  // a closure of this generation; it fires next frame
-        spp::Instance o = s.loader.find("Beeper")->create();  // an object of this generation
+        ASSERT_NO_FATAL_FAILURE(arm(s, 0.0f)); // a closure of this generation; it fires next frame
+        spp::Instance o = s.loader.find("Beeper")->create(); // an object of this generation
         s.world.Add(static_cast<Actor*>(o.native));
         objs.push_back(o);
         s.world.Tick(kDt);
         s.world.Tick(kDt);
         const spp::LoaderStats st = s.loader.stats();
         size_t loaded = st.core_modules;
-        for (const GenerationInfo& gi : st.generations) loaded += gi.state != GenState::Unloaded;
+        for (const GenerationInfo& gi : st.generations)
+            loaded += gi.state != GenState::Unloaded;
         EXPECT_LE(loaded, 2u) << "generation " << g << "\n" << s.loader.stats_text();
     }
     testing::internal::GetCapturedStderr();
     const spp::LoaderStats st = s.loader.stats();
-    for (uint32_t g = 1; g < kLast; ++g) EXPECT_EQ(find_gen(st, g)->state, GenState::Unloaded) << g;
+    for (uint32_t g = 1; g < kLast; ++g)
+        EXPECT_EQ(find_gen(st, g)->state, GenState::Unloaded) << g;
     EXPECT_EQ(st.live_objects, objs.size());
     // All objects tick in the last generation.
     std::vector<int> before;
-    for (const spp::Instance& o : objs) before.push_back(*spp::field_ptr<int>(o.shell, "ticks"));
+    for (const spp::Instance& o : objs)
+        before.push_back(*spp::field_ptr<int>(o.shell, "ticks"));
     s.world.Tick(kDt);
-    for (size_t i = 0; i < objs.size(); ++i) EXPECT_EQ(*spp::field_ptr<int>(objs[i].shell, "ticks"), before[i] + 1);
+    for (size_t i = 0; i < objs.size(); ++i)
+        EXPECT_EQ(*spp::field_ptr<int>(objs[i].shell, "ticks"), before[i] + 1);
 }
 
 // The stats report the active generation, all generations and the live objects.
@@ -339,5 +354,4 @@ TEST_F(GenerationUnload, StatsListGenerationsInOrder)
     EXPECT_EQ(st.active_generation, 2u);
 }
 
-}  // namespace
-
+} // namespace

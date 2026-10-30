@@ -1,15 +1,15 @@
 // Tests for the lowering of a "T&" parameter, a "T&" local and a "&e" argument.
-#include <gtest/gtest.h>
-
-#include <string>
-#include <vector>
-
 #include "emit.h"
 #include "lower.h"
 #include "parser/expression.h"
 #include "parser/parser.h"
 #include "parser/statement.h"
 #include "support/lowering_test_support.h"
+
+#include <gtest/gtest.h>
+
+#include <string>
+#include <vector>
 
 using namespace sppc;
 using namespace lowering_test;
@@ -27,8 +27,7 @@ TEST(RefOutLowering, ReferenceArgumentAndReferenceLocal)
 TEST(RefOutLowering, ReferenceLambdaParameterKeepsItsReferenceType)
 {
     Fixture f;
-    EXPECT_NE(f.expr("(Vec3& a, int& b) => { }").find("[=](Vec3& a, int32_t& b)"),
-              std::string::npos);
+    EXPECT_NE(f.expr("(Vec3& a, int& b) => { }").find("[=](Vec3& a, int32_t& b)"), std::string::npos);
 }
 
 TEST(RefOutLowering, PrefixAmpersandIsNotAnError)

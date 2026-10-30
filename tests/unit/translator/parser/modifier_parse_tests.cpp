@@ -1,11 +1,11 @@
 // Tests for the parser of the member modifiers: override, virtual, new and access.
+#include "parser/parser.h"
+#include "support/script_parse_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 #include <vector>
-
-#include "parser/parser.h"
-#include "support/script_parse_test_support.h"
 
 using namespace sppc;
 using namespace script_test;
@@ -126,42 +126,34 @@ TEST(ModifierParse, Errors)
     }
     {
         ModParsed p(member_class("public void f() { }\n    public private void g() { }"));
-        EXPECT_EQ(p.errors(),
-                  (std::vector<std::string>{"3:12: 'public' and 'private' cannot combine"}));
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"3:12: 'public' and 'private' cannot combine"}));
     }
     {
         ModParsed p(member_class("protected public int x;"));
-        EXPECT_EQ(p.errors(),
-                  (std::vector<std::string>{"2:15: 'protected' and 'public' cannot combine"}));
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:15: 'protected' and 'public' cannot combine"}));
     }
     {
         ModParsed p(member_class("override virtual void f() { }"));
-        EXPECT_EQ(p.errors(),
-                  (std::vector<std::string>{"2:14: 'override' and 'virtual' cannot combine"}));
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:14: 'override' and 'virtual' cannot combine"}));
     }
     {
         ModParsed p(member_class("virtual new void f() { }"));
-        EXPECT_EQ(p.errors(),
-                  (std::vector<std::string>{"2:13: 'virtual' and 'new' cannot combine"}));
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:13: 'virtual' and 'new' cannot combine"}));
     }
     {
         ModParsed p(member_class("new override void f() { }"));
-        EXPECT_EQ(p.errors(),
-                  (std::vector<std::string>{"2:9: 'new' and 'override' cannot combine"}));
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:9: 'new' and 'override' cannot combine"}));
     }
     {
         ModParsed p(member_class("override int x;"));
-        EXPECT_EQ(p.errors(),
-                  (std::vector<std::string>{"2:5: 'override' is only valid on a method"}));
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:5: 'override' is only valid on a method"}));
     }
     {
         ModParsed p(member_class("public virtual int x;"));
-        EXPECT_EQ(p.errors(),
-                  (std::vector<std::string>{"2:12: 'virtual' is only valid on a method"}));
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:12: 'virtual' is only valid on a method"}));
     }
     {
         ModParsed p(member_class("new int x = 1;"));
-        EXPECT_EQ(p.errors(),
-                  (std::vector<std::string>{"2:5: 'new' is only valid on a method"}));
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:5: 'new' is only valid on a method"}));
     }
 }

@@ -1,10 +1,10 @@
 // Tests for the parser of the module-level declarations: struct, enum and module variables.
+#include "parser/parser.h"
+#include "support/script_parse_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
-
-#include "parser/parser.h"
-#include "support/script_parse_test_support.h"
 
 using namespace sppc;
 using namespace script_test;

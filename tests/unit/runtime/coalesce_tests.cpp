@@ -1,14 +1,16 @@
 // Tests for spp::coalesce. The translator writes "x ?? y" as a call with a lambda for "y".
+#include "spp/runtime.h"
+
 #include <gtest/gtest.h>
 
 #include <memory>
 #include <optional>
 
-#include "spp/runtime.h"
+namespace
+{
 
-namespace {
-
-struct Foo {
+struct Foo
+{
     int v = 0;
 };
 
@@ -67,7 +69,8 @@ TEST(Coalesce, OptionalOnBothSidesKeepsTheOptional)
 
 TEST(Coalesce, PrvalueMemberOnTheRightSideDoesNotDangle)
 {
-    struct Holder {
+    struct Holder
+    {
         std::shared_ptr<Foo> h = std::make_shared<Foo>();
     };
     std::shared_ptr<Foo> a;
@@ -76,4 +79,4 @@ TEST(Coalesce, PrvalueMemberOnTheRightSideDoesNotDangle)
     EXPECT_EQ(r->v, 0);
 }
 
-}  // namespace
+} // namespace

@@ -1,17 +1,17 @@
 // Tests for the lowering of member access: fields, "this", "base", scopes and template arguments.
 // Parse the text, lower it, print it and compare the C++ text.
 // The golden tests in tests/golden/ check the lowering of the example scripts.
-#include <gtest/gtest.h>
-
-#include <string>
-#include <vector>
-
 #include "emit.h"
 #include "lower.h"
 #include "parser/expression.h"
 #include "parser/parser.h"
 #include "parser/statement.h"
 #include "support/lowering_test_support.h"
+
+#include <gtest/gtest.h>
+
+#include <string>
+#include <vector>
 
 using namespace sppc;
 using namespace lowering_test;
@@ -29,8 +29,7 @@ TEST(MemberAccessLowering, PointerFieldUsesDeref)
 {
     Fixture f;
     // The field target has the type Actor*.
-    EXPECT_EQ(f.expr("this.target.Name.c_str()"),
-              "spp::deref(spp::deref(__st->target).Name).c_str()");
+    EXPECT_EQ(f.expr("this.target.Name.c_str()"), "spp::deref(spp::deref(__st->target).Name).c_str()");
     EXPECT_EQ(f.expr("this.target"), "__st->target");
     EXPECT_EQ(f.expr("this.target.m"), "spp::deref(__st->target).m");
     EXPECT_EQ(f.diag.items.size(), 0u);
@@ -44,8 +43,7 @@ TEST(MemberAccessLowering, MemberChainOfAParameter)
     EXPECT_EQ(f.body("q.foo();"), "spp::deref(q).foo();");
     EXPECT_EQ(f.body("v.begin();"), "spp::deref(v).begin();");
     EXPECT_EQ(f.body("v.begin().x;"), "spp::deref(spp::deref(v).begin()).x;");
-    EXPECT_EQ(f.body("q.a.b.c = 1;"),
-              "spp::deref(spp::deref(spp::deref(q).a).b).c = 1;");
+    EXPECT_EQ(f.body("q.a.b.c = 1;"), "spp::deref(spp::deref(spp::deref(q).a).b).c = 1;");
     EXPECT_EQ(f.body("q.m = 1;"), "spp::deref(q).m = 1;");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }

@@ -14,6 +14,11 @@
 //   - the default mode counts nothing.
 //
 // The odd generations have the field "spare", the even generations have "shield".
+#include "Util.h"
+#include "spp/backend.h"
+#include "support/reload_assert.h"
+#include "support/test_support.h"
+
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -25,18 +30,14 @@
 #include <thread>
 #include <vector>
 
-#include "Util.h"
-#include "spp/backend.h"
-#include "support/reload_assert.h"
-#include "support/test_support.h"
-
-namespace {
+namespace
+{
 
 using namespace std::chrono_literals;
 using test_support::kDt;
 using test_support::Session;
 
-constexpr uint32_t kGenerations = 9;  // generation 1 and 8 reloads
+constexpr uint32_t kGenerations = 9; // generation 1 and 8 reloads
 constexpr int kActors = 64;
 constexpr int kWorkers = 4;
 
@@ -51,9 +52,9 @@ using "Util.h";
 class Player : Actor {
     int calls = 0;
     int hits = 0;
-)") + (even ? "    float shield = 25.0;\n" : "    int spare = 7;\n") +
-           (creator ? "    Player() { Util.Probe(this, 1.0); }\n" : "") +
-           R"(
+)") + (even ? "    float shield = 25.0;\n" : "    int spare = 7;\n")
+        + (creator ? "    Player() { Util.Probe(this, 1.0); }\n" : "") +
+        R"(
     override void Tick(float dt) {
         this.calls = this.calls + 1;
         Util.Probe(this, 1.0);
@@ -79,14 +80,18 @@ spp::Module module_of(uint32_t generation, bool creator = false)
     static std::vector<std::string> paths(kGenerations + 1);
     static std::vector<std::string> creator_paths(kGenerations + 1);
     std::string& path = (creator ? creator_paths : paths).at(generation);
-    if (!path.empty()) {
+    if (!path.empty())
+    {
         spp::LoadResult again = spp::module_from_library(path);
-        if (again) return std::move(*again.module);
+        if (again)
+            return std::move(*again.module);
     }
     spp::ScriptSource src{creator ? "s27_player.spp" : "s21_player.spp", script_text(generation, creator)};
     spp::LoadResult r = backend().load(src, generation);
-    if (!r) throw std::runtime_error(r.error);
-    if (std::filesystem::exists(r.module->origin)) path = r.module->origin;
+    if (!r)
+        throw std::runtime_error(r.error);
+    if (std::filesystem::exists(r.module->origin))
+        path = r.module->origin;
     return std::move(*r.module);
 }
 
@@ -105,10 +110,11 @@ void check_object(Actor* a)
     g_probes.fetch_add(1, std::memory_order_relaxed);
     auto* sh = dynamic_cast<spp::ShellBase*>(a);
     bool ok = sh && spp::entry_depth() == 1 && spp::active_entries() >= 1;
-    if (ok) {
+    if (ok)
+    {
         const uint32_t gen = sh->cls->generation;
-        ok = gen == spp::active_generation && spp::field_ptr<int32_t>(sh, "calls") &&
-             spp::field_ptr<int32_t>(sh, "hits");
+        ok = gen == spp::active_generation && spp::field_ptr<int32_t>(sh, "calls")
+            && spp::field_ptr<int32_t>(sh, "hits");
         const float* shield = spp::field_ptr<float>(sh, "shield");
         const int32_t* spare = spp::field_ptr<int32_t>(sh, "spare");
         if (gen % 2 == 0)
@@ -116,23 +122,28 @@ void check_object(Actor* a)
         else
             ok = ok && spare && *spare == 7 && !shield;
     }
-    if (!ok) g_violations.fetch_add(1, std::memory_order_relaxed);
+    if (!ok)
+        g_violations.fetch_add(1, std::memory_order_relaxed);
 }
 
 // Aborts the program when a test does not end in time: a deadlock must not hang ctest.
-class Watchdog {
+class Watchdog
+{
 public:
     explicit Watchdog(std::chrono::seconds limit)
-        : thread_([this, limit] {
-              const auto end = std::chrono::steady_clock::now() + limit;
-              while (!done_.load()) {
-                  if (std::chrono::steady_clock::now() > end) {
-                      std::fprintf(stderr, "watchdog: the test did not end; deadlock\n");
-                      std::abort();
-                  }
-                  std::this_thread::sleep_for(10ms);
-              }
-          })
+        : thread_([this, limit]
+    {
+        const auto end = std::chrono::steady_clock::now() + limit;
+        while (!done_.load())
+        {
+            if (std::chrono::steady_clock::now() > end)
+            {
+                std::fprintf(stderr, "watchdog: the test did not end; deadlock\n");
+                std::abort();
+            }
+            std::this_thread::sleep_for(10ms);
+        }
+    })
     {
     }
     ~Watchdog()
@@ -146,7 +157,8 @@ private:
     std::thread thread_;
 };
 
-struct Rig {
+struct Rig
+{
     Session s;
     std::vector<spp::Instance> actors;
 
@@ -155,7 +167,8 @@ struct Rig {
         ASSERT_NO_FATAL_FAILURE(s.start(module_of(1)));
         actors.push_back(s.inst);
         const spp::ClassEntry* entry = s.loader.find("Player");
-        for (int i = 1; i < kActors; ++i) {
+        for (int i = 1; i < kActors; ++i)
+        {
             spp::Instance inst = entry->create();
             actors.push_back(inst);
             s.world.Add(static_cast<Actor*>(inst.native));
@@ -167,7 +180,8 @@ TEST(EntryCounters, WorkersCallWhileOtherThreadCommits)
 {
     // Build all generations first: the build is not part of the test.
     std::vector<spp::Module> mods;
-    for (uint32_t g = 2; g <= kGenerations; ++g) mods.push_back(module_of(g));
+    for (uint32_t g = 2; g <= kGenerations; ++g)
+        mods.push_back(module_of(g));
     Rig rig;
     ASSERT_NO_FATAL_FAILURE(rig.start());
     Session& s = rig.s;
@@ -179,12 +193,14 @@ TEST(EntryCounters, WorkersCallWhileOtherThreadCommits)
     Watchdog watchdog(240s);
 
     std::atomic<bool> stop{false};
-    std::vector<long> calls(kActors, 0);  // worker w writes the elements i % kWorkers == w
+    std::vector<long> calls(kActors, 0); // worker w writes the elements i % kWorkers == w
     std::vector<std::thread> workers;
     for (int w = 0; w < kWorkers; ++w)
-        workers.emplace_back([&, w] {
+        workers.emplace_back([&, w]
+        {
             while (!stop.load(std::memory_order_relaxed))
-                for (int i = w; i < kActors; i += kWorkers) {
+                for (int i = w; i < kActors; i += kWorkers)
+                {
                     static_cast<Actor*>(rig.actors[i].native)->Tick(kDt);
                     ++calls[i];
                 }
@@ -194,12 +210,16 @@ TEST(EntryCounters, WorkersCallWhileOtherThreadCommits)
     std::string errors;
     const uint64_t windows0 = spp::commit_window_count();
     const uint64_t blocked0 = spp::blocked_entry_count();
-    std::thread committer([&] {
-        for (spp::Module& m : mods) {
+    std::thread committer([&]
+    {
+        for (spp::Module& m : mods)
+        {
             // Let the workers run between two commits.
             const long seen = g_probes.load();
-            while (g_probes.load() < seen + 4 * kActors) std::this_thread::yield();
-            if (const spp::ReloadResult req = s.loader.request_reload(std::move(m)); !req) {
+            while (g_probes.load() < seen + 4 * kActors)
+                std::this_thread::yield();
+            if (const spp::ReloadResult req = s.loader.request_reload(std::move(m)); !req)
+            {
                 errors += "request: " + req.error + "\n";
                 continue;
             }
@@ -210,42 +230,47 @@ TEST(EntryCounters, WorkersCallWhileOtherThreadCommits)
             s.loader.frame_boundary();
         }
         const long seen = g_probes.load();
-        while (g_probes.load() < seen + 4 * kActors) std::this_thread::yield();
+        while (g_probes.load() < seen + 4 * kActors)
+            std::this_thread::yield();
     });
     committer.join();
     stop.store(true);
-    for (std::thread& t : workers) t.join();
+    for (std::thread& t : workers)
+        t.join();
     Util::SetProbe(nullptr);
 
     EXPECT_TRUE(errors.empty()) << errors;
     EXPECT_EQ(committed, static_cast<int>(kGenerations) - 1);
     EXPECT_EQ(spp::commit_window_count() - windows0, kGenerations - 1);
-    EXPECT_GT(spp::blocked_entry_count(), blocked0);  // the workers ran into the commits
+    EXPECT_GT(spp::blocked_entry_count(), blocked0); // the workers ran into the commits
     EXPECT_EQ(spp::active_generation, kGenerations);
     EXPECT_EQ(g_violations.load(), 0);
     EXPECT_EQ(spp::active_entries(), 0u);
     long total = 0;
     int wrong = 0;
-    for (int i = 0; i < kActors; ++i) {
+    for (int i = 0; i < kActors; ++i)
+    {
         spp::ShellBase* sh = rig.actors[i].shell;
         total += calls[i];
-        const bool good = sh->cls->generation == kGenerations && int_field(sh, "calls") == calls[i] &&
-                          int_field(sh, "hits") == calls[i];
-        if (!good) ++wrong;
+        const bool good = sh->cls->generation == kGenerations && int_field(sh, "calls") == calls[i]
+            && int_field(sh, "hits") == calls[i];
+        if (!good)
+            ++wrong;
     }
     EXPECT_EQ(wrong, 0);
     EXPECT_EQ(g_probes.load(), total);
     // The retired generations unload: each frame_boundary of the committer counted a frame.
     s.loader.frame_boundary();
     int retired = 0;
-    for (const spp::GenerationInfo& g : s.loader.stats().generations) retired += g.state == spp::GenState::Retired;
+    for (const spp::GenerationInfo& g : s.loader.stats().generations)
+        retired += g.state == spp::GenState::Retired;
     EXPECT_EQ(retired, 0) << s.loader.stats_text();
 }
 
 // The commit thread for the next tests: it starts while the main thread is in script code.
 spp::Loader* g_loader = nullptr;
 std::thread* g_commit_thread = nullptr;
-spp::ReloadResult g_commit;  // the result of the commit that the test starts
+spp::ReloadResult g_commit; // the result of the commit that the test starts
 uint32_t g_depth_in_probe = 0;
 uint32_t g_active_in_probe = 0;
 
@@ -253,11 +278,13 @@ uint32_t g_active_in_probe = 0;
 // The probe returns, and Util::Probe calls TakeDamage: a nested entry while the gate is closed.
 void start_commit_and_wait(Actor*)
 {
-    if (g_commit_thread) return;
+    if (g_commit_thread)
+        return;
     g_depth_in_probe = spp::entry_depth();
     g_active_in_probe = spp::active_entries();
     g_commit_thread = new std::thread([] { g_commit = g_loader->commit_pending(); });
-    while (!spp::commit_window_closed()) std::this_thread::yield();
+    while (!spp::commit_window_closed())
+        std::this_thread::yield();
 }
 
 TEST(EntryCounters, ReentrantCallDuringCommitDoesNotDeadlock)
@@ -272,7 +299,7 @@ TEST(EntryCounters, ReentrantCallDuringCommitDoesNotDeadlock)
     Util::SetProbe(&start_commit_and_wait);
     Watchdog watchdog(120s);
 
-    s.actor->Tick(kDt);  // native -> script Tick -> native probe -> script TakeDamage
+    s.actor->Tick(kDt); // native -> script Tick -> native probe -> script TakeDamage
     ASSERT_NE(g_commit_thread, nullptr);
     g_commit_thread->join();
     delete g_commit_thread;
@@ -285,8 +312,8 @@ TEST(EntryCounters, ReentrantCallDuringCommitDoesNotDeadlock)
     EXPECT_EQ(spp::active_generation, 2u);
     EXPECT_EQ(s.inst.shell->cls->generation, 2u);
     EXPECT_EQ(int_field(s.inst.shell, "calls"), 1);
-    EXPECT_EQ(int_field(s.inst.shell, "hits"), 1);  // the nested call ran before the commit
-    s.actor->Tick(kDt);  // the next call runs the new generation
+    EXPECT_EQ(int_field(s.inst.shell, "hits"), 1); // the nested call ran before the commit
+    s.actor->Tick(kDt); // the next call runs the new generation
     EXPECT_EQ(int_field(s.inst.shell, "calls"), 2);
     EXPECT_NE(spp::field_ptr<float>(s.inst.shell, "shield"), nullptr);
 }
@@ -357,7 +384,8 @@ TEST(EntryCounters, CreationThroughTheFactoryIsAnEntry)
 {
     constexpr uint32_t kCreatorGenerations = 5;
     std::vector<spp::Module> mods;
-    for (uint32_t g = 2; g <= kCreatorGenerations; ++g) mods.push_back(module_of(g, true));
+    for (uint32_t g = 2; g <= kCreatorGenerations; ++g)
+        mods.push_back(module_of(g, true));
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(module_of(1, true)));
     s.loader.set_sync_mode(spp::SyncMode::EntryCounters);
@@ -370,12 +398,14 @@ TEST(EntryCounters, CreationThroughTheFactoryIsAnEntry)
     std::atomic<bool> stop{false};
     std::atomic<long> created{0};
     std::atomic<int> bad{0};
-    std::thread creator([&] {
+    std::thread creator([&]
+    {
         std::deque<spp::Instance> live;
-        while (!stop.load(std::memory_order_relaxed)) {
+        while (!stop.load(std::memory_order_relaxed))
+        {
             spp::Instance inst = entry->create();
             {
-                spp::ScriptEntry hold;  // a commit cannot run now
+                spp::ScriptEntry hold; // a commit cannot run now
                 const uint32_t gen = inst.shell->cls->generation;
                 const int32_t* hits = spp::field_ptr<int32_t>(inst.shell, "hits");
                 const bool spare = spp::field_ptr<int32_t>(inst.shell, "spare") != nullptr;
@@ -385,23 +415,29 @@ TEST(EntryCounters, CreationThroughTheFactoryIsAnEntry)
                     bad.fetch_add(1, std::memory_order_relaxed);
             }
             live.push_back(inst);
-            if (live.size() > 32) {
+            if (live.size() > 32)
+            {
                 delete static_cast<Actor*>(live.front().native);
                 live.pop_front();
             }
             created.fetch_add(1, std::memory_order_relaxed);
         }
-        for (spp::Instance& i : live) delete static_cast<Actor*>(i.native);
+        for (spp::Instance& i : live)
+            delete static_cast<Actor*>(i.native);
     });
 
     int committed = 0;
     std::string errors;
     const uint64_t windows0 = spp::commit_window_count();
-    std::thread committer([&] {
-        for (spp::Module& m : mods) {
+    std::thread committer([&]
+    {
+        for (spp::Module& m : mods)
+        {
             const long seen = created.load();
-            while (created.load() < seen + 200) std::this_thread::yield();
-            if (const spp::ReloadResult req = s.loader.request_reload(std::move(m)); !req) {
+            while (created.load() < seen + 200)
+                std::this_thread::yield();
+            if (const spp::ReloadResult req = s.loader.request_reload(std::move(m)); !req)
+            {
                 errors += "request: " + req.error + "\n";
                 continue;
             }
@@ -412,7 +448,8 @@ TEST(EntryCounters, CreationThroughTheFactoryIsAnEntry)
             // No frame_boundary here: it walks the live object table, which the creator changes.
         }
         const long seen = created.load();
-        while (created.load() < seen + 200) std::this_thread::yield();
+        while (created.load() < seen + 200)
+            std::this_thread::yield();
     });
     committer.join();
     stop.store(true);
@@ -423,10 +460,10 @@ TEST(EntryCounters, CreationThroughTheFactoryIsAnEntry)
     EXPECT_EQ(committed, static_cast<int>(kCreatorGenerations) - 1);
     EXPECT_EQ(spp::commit_window_count() - windows0, kCreatorGenerations - 1);
     EXPECT_EQ(spp::active_generation, kCreatorGenerations);
-    EXPECT_EQ(g_unguarded.load(), 0);  // each constructor ran inside an entry of depth 1
+    EXPECT_EQ(g_unguarded.load(), 0); // each constructor ran inside an entry of depth 1
     EXPECT_GE(g_probes.load(), created.load());
     EXPECT_EQ(bad.load(), 0);
     EXPECT_EQ(spp::active_entries(), 0u);
 }
 
-}  // namespace
+} // namespace

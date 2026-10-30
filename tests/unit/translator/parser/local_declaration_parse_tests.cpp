@@ -1,14 +1,14 @@
 // Tests for the parser of the local declarations: type first, "var", "const" and scoped types.
-#include <gtest/gtest.h>
-
-#include <string>
-#include <vector>
-
 #include "emit.h"
 #include "parser/expression.h"
 #include "parser/parser.h"
 #include "parser/statement.h"
 #include "support/statement_parse_test_support.h"
+
+#include <gtest/gtest.h>
+
+#include <string>
+#include <vector>
 
 using namespace sppc;
 using namespace stmt_test;
@@ -19,16 +19,12 @@ TEST(LocalDeclarationParse, DeclarationWithoutInitializer)
     EXPECT_EQ(round_trip("int x;"), "int32_t x = int32_t();");
     EXPECT_EQ(round_trip("Vec3 v;"), "Vec3 v = Vec3();");
     EXPECT_EQ(round_trip("Actor* p;"), "Actor* p = std::type_identity_t<Actor*>();");
-    EXPECT_EQ(round_trip("for (int i; i < 3; i++) f(i);"),
-              "for (int32_t i = int32_t(); i < 3; i++) f(i);");
-    EXPECT_EQ(errors_of(Parsed("var x;")),
-              (std::vector<std::string>{"1:1: var needs an initializer"}));
-    EXPECT_EQ(errors_of(Parsed("const int X;")),
-              (std::vector<std::string>{"1:1: a const needs an initializer"}));
-    EXPECT_EQ(errors_of(Parsed("const var X;")),
-              (std::vector<std::string>{"1:1: var needs an initializer"}));
+    EXPECT_EQ(round_trip("for (int i; i < 3; i++) f(i);"), "for (int32_t i = int32_t(); i < 3; i++) f(i);");
+    EXPECT_EQ(errors_of(Parsed("var x;")), (std::vector<std::string>{"1:1: var needs an initializer"}));
+    EXPECT_EQ(errors_of(Parsed("const int X;")), (std::vector<std::string>{"1:1: a const needs an initializer"}));
+    EXPECT_EQ(errors_of(Parsed("const var X;")), (std::vector<std::string>{"1:1: var needs an initializer"}));
     EXPECT_EQ(errors_of(Parsed("for (var i; i < 3; i++) f(i);")),
-              (std::vector<std::string>{"1:6: var needs an initializer"}));
+        (std::vector<std::string>{"1:6: var needs an initializer"}));
 }
 
 TEST(LocalDeclarationParse, Declarations)
@@ -39,9 +35,8 @@ TEST(LocalDeclarationParse, Declarations)
     EXPECT_EQ(round_trip("std.vector<int> v = f(1, 2);"), "std::vector<int32_t> v = f(1, 2);");
     EXPECT_EQ(round_trip("const Actor* p = null;"), "const Actor* p = nullptr;");
     EXPECT_EQ(round_trip("std.map<int, std.vector<int>> m;"),
-              "std::map<int32_t, std::vector<int32_t>> m = std::map<int32_t, std::vector<int32_t>>();");
-    EXPECT_EQ(round_trip("var f = (int a) => { return a; };"),
-              "auto f = [=](int32_t a) { return a; };");
+        "std::map<int32_t, std::vector<int32_t>> m = std::map<int32_t, std::vector<int32_t>>();");
+    EXPECT_EQ(round_trip("var f = (int a) => { return a; };"), "auto f = [=](int32_t a) { return a; };");
 }
 
 // Type-first declarations, "var" and "const". The look-ahead rule is in statement_grammar.cpp.
@@ -60,12 +55,14 @@ TEST(LocalDeclarationParse, TypeFirstDeclarations)
     EXPECT_EQ(round_trip("/* c */ int // d\n x = 1;"), "int32_t x = 1;");
 
     // The kind of each statement: a declaration or an expression.
-    const auto decl = [](const std::string& text) -> const ast::VarDeclStmt* {
+    const auto decl = [](const std::string& text) -> const ast::VarDeclStmt*
+    {
         static std::vector<std::unique_ptr<Parsed>> keep;
         keep.push_back(std::make_unique<Parsed>(text));
         const Parsed& p = *keep.back();
         EXPECT_EQ(p.diag.items.size(), 0u) << text << "\n" << p.diag.format("t");
-        if (p.block.stmts.size() != 1) return nullptr;
+        if (p.block.stmts.size() != 1)
+            return nullptr;
         return std::get_if<ast::VarDeclStmt>(&p.block.stmts[0]->v);
     };
     // The C++ rule: "a * b" is a declaration of b.
@@ -100,16 +97,14 @@ TEST(LocalDeclarationParse, TypeFirstDeclarations)
     EXPECT_FALSE(decl("a *= b;"));
 
     // A "const" needs "var" or a type.
-    EXPECT_EQ(errors_of(Parsed("const x = 1;")),
-              (std::vector<std::string>{"1:7: expected 'var' or a type after 'const'"}));
+    EXPECT_EQ(
+        errors_of(Parsed("const x = 1;")), (std::vector<std::string>{"1:7: expected 'var' or a type after 'const'"}));
 
     // A declaration in the init of a for statement.
-    EXPECT_EQ(round_trip("for (std.size_t i = 0; i < n; i++) f(i);"),
-              "for (std::size_t i = 0; i < n; i++) f(i);");
-    EXPECT_EQ(round_trip("for (Actor* p = first; p; p = next(p)) f(p);"),
-              "for (Actor* p = first; p; p = next(p)) f(p);");
-    EXPECT_EQ(round_trip("for (const int k = 3; i < k; i++) f(i);"),
-              "for (const int32_t k = 3; i < k; i++) f(i);");
+    EXPECT_EQ(round_trip("for (std.size_t i = 0; i < n; i++) f(i);"), "for (std::size_t i = 0; i < n; i++) f(i);");
+    EXPECT_EQ(
+        round_trip("for (Actor* p = first; p; p = next(p)) f(p);"), "for (Actor* p = first; p; p = next(p)) f(p);");
+    EXPECT_EQ(round_trip("for (const int k = 3; i < k; i++) f(i);"), "for (const int32_t k = 3; i < k; i++) f(i);");
     EXPECT_EQ(round_trip("for (i = 0; i < n; i++) f(i);"), "for (i = 0; i < n; i++) f(i);");
     // foreach with the new declaration forms.
     EXPECT_EQ(round_trip("foreach (const Actor* a in xs) f(a);"), "for (const Actor* a : xs) f(a);");
@@ -119,10 +114,10 @@ TEST(LocalDeclarationParse, TypeFirstDeclarations)
 TEST(LocalDeclarationParse, TypeScope)
 {
     EXPECT_EQ(round_trip("std.string a = x; std.vector<std.string> b;"),
-              "std::string a = x; std::vector<std::string> b = std::vector<std::string>();");
+        "std::string a = x; std::vector<std::string> b = std::vector<std::string>();");
     EXPECT_EQ(round_trip("A.B.C* c; std.array<int, 3> d; float e;"),
-              "A::B::C* c = std::type_identity_t<A::B::C*>(); "
-              "std::array<int32_t, 3> d = std::array<int32_t, 3>(); float e = float();");
+        "A::B::C* c = std::type_identity_t<A::B::C*>(); "
+        "std::array<int32_t, 3> d = std::array<int32_t, 3>(); float e = float();");
     Parsed p("int a;\nstd::string b = x;");
     EXPECT_EQ(errors_of(p), (std::vector<std::string>{"2:4: use '.' instead of '::'"}));
     Parsed q("foreach (std::string s in xs) f(s);");
@@ -133,6 +128,6 @@ TEST(LocalDeclarationParse, CollectionLiteralInitializer)
 {
     EXPECT_EQ(round_trip("std.vector<int> xs = [1, 2, 3];"), "std::vector<int32_t> xs = {1, 2, 3};");
     EXPECT_EQ(round_trip("std.map<std.string, int> m = [\"a\": 1, \"b\": 2];"),
-              "std::map<std::string, int32_t> m = {{\"a\", 1}, {\"b\", 2}};");
+        "std::map<std::string, int32_t> m = {{\"a\", 1}, {\"b\", 2}};");
     EXPECT_EQ(round_trip("const std.vector<int> e = [];"), "const std::vector<int32_t> e = {};");
 }

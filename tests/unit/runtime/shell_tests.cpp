@@ -1,18 +1,29 @@
 // Tests of the shell helpers: a checked access to a shell and a handle from "this".
+#include "spp/runtime/shell.h"
+
 #include <gtest/gtest.h>
 
 #include <memory>
 #include <stdexcept>
 
-#include "spp/runtime/shell.h"
+namespace
+{
 
-namespace {
-
-struct Base {
+struct Base
+{
     virtual ~Base() = default;
 };
-struct Cell_Shell final : Base, spp::ShellBase, std::enable_shared_from_this<Cell_Shell> {};
-struct Plain_Shell final : spp::PlainObject, spp::ShellBase {};
+struct Cell_Shell final
+    : Base
+    , spp::ShellBase
+    , std::enable_shared_from_this<Cell_Shell>
+{
+};
+struct Plain_Shell final
+    : spp::PlainObject
+    , spp::ShellBase
+{
+};
 
 TEST(ShellOf, NullHandleThrows)
 {
@@ -44,8 +55,14 @@ TEST(HandleFromThis, ObjectWithoutAnOwnerThrows)
 }
 
 // A child record names its parent in "super" (design 4.5). "is" and "as" walk the chain (design 7.7).
-struct Parent_Shell : Base, spp::ShellBase {};
-struct Child_Shell final : Parent_Shell {};
+struct Parent_Shell
+    : Base
+    , spp::ShellBase
+{
+};
+struct Child_Shell final : Parent_Shell
+{
+};
 
 TEST(IsAs, ScriptClassesWalkTheParentRecords)
 {
@@ -84,14 +101,14 @@ TEST(IsAs, NativeTypesUseRtti)
 
 // ---- signature keys of the slots (design 5.3, S17)
 // A script state: the first field is the owner pointer. The slots are members of it.
-struct TestState {
+struct TestState
+{
     spp::ShellBase* owner = nullptr;
     int add_one(int x) { return x + 1; }
     void touch(int* hits) { ++*hits; }
 };
 
-template <class Pmf>
-spp::SlotFn slot_of(Pmf p)
+template <class Pmf> spp::SlotFn slot_of(Pmf p)
 {
     return reinterpret_cast<spp::SlotFn>(p);
 }
@@ -136,8 +153,9 @@ TEST(SlotKeys, OtherSignatureDetaches)
     EXPECT_EQ(spp::detached_call_count(), before + 3);
     // One line for each slot: the second call of slot 0 logs nothing.
     size_t lines = 0;
-    for (size_t p = log.find("old signature"); p != std::string::npos; p = log.find("old signature", p + 1)) ++lines;
+    for (size_t p = log.find("old signature"); p != std::string::npos; p = log.find("old signature", p + 1))
+        ++lines;
     EXPECT_EQ(lines, 2u) << log;
 }
 
-}  // namespace
+} // namespace

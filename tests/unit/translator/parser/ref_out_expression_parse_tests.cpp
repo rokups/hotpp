@@ -1,13 +1,13 @@
 // Tests for the removed words "ref" and "out", the "T&" lambda parameter and the prefix "&".
+#include "emit.h"
+#include "parser/expression.h"
+#include "support/expression_parse_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 #include <variant>
 #include <vector>
-
-#include "emit.h"
-#include "parser/expression.h"
-#include "support/expression_parse_test_support.h"
 
 using namespace sppc;
 using namespace expr_test;
@@ -21,7 +21,8 @@ TEST(RefOutExpressionParse, ReferenceArgumentHasNoMarker)
 TEST(RefOutExpressionParse, RefAndOutAreRemoved)
 {
     // The words are plain names now. The old forms are parse errors.
-    for (const char* text : {"ref x", "f(ref a)", "f(out b.c)", "this.target = ref source", "ref a[1]"}) {
+    for (const char* text : {"ref x", "f(ref a)", "f(out b.c)", "this.target = ref source", "ref a[1]"})
+    {
         Parsed p(text);
         EXPECT_TRUE(p.expr == nullptr || !p.diag.items.empty()) << text;
     }

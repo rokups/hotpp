@@ -3,18 +3,6 @@
 // The default script is example/imgui/demo.spp. The script class Demo
 // derives from UiApp. The host calls Frame once for each frame.
 // The struct Host loads the script and reloads it when the file changes.
-#include <SDL3/SDL.h>
-#include <unistd.h>
-
-#include <cstdio>
-#include <exception>
-#include <filesystem>
-#include <fstream>
-#include <memory>
-#include <sstream>
-#include <string>
-#include <vector>
-
 #include "UiApp.h"
 #include "backends/imgui_impl_sdl3.h"
 #include "backends/imgui_impl_sdlrenderer3.h"
@@ -23,14 +11,28 @@
 #include "spp/runtime.h"
 #include "spp/scratch.h"
 
-namespace {
+#include <SDL3/SDL.h>
+
+#include <cstdio>
+#include <exception>
+#include <filesystem>
+#include <fstream>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <unistd.h>
+#include <vector>
+
+namespace
+{
 
 std::vector<std::string> split_list(const std::string& s)
 {
     std::vector<std::string> v;
     std::stringstream ss(s);
     for (std::string item; std::getline(ss, item, '|');)
-        if (!item.empty()) v.push_back(item);
+        if (!item.empty())
+            v.push_back(item);
     return v;
 }
 
@@ -53,7 +55,8 @@ std::unique_ptr<spp::Backend> make_backend()
 bool read_file(const std::string& path, std::string& text)
 {
     std::ifstream in(path, std::ios::binary);
-    if (!in) return false;
+    if (!in)
+        return false;
     std::ostringstream ss;
     ss << in.rdbuf();
     text = ss.str();
@@ -61,16 +64,18 @@ bool read_file(const std::string& path, std::string& text)
 }
 
 // Reads and compiles the script. Returns false and sets "error" on failure.
-bool compile_script(spp::Backend& backend, const std::string& path, uint32_t generation,
-                    spp::Module& out, std::string& error)
+bool compile_script(
+    spp::Backend& backend, const std::string& path, uint32_t generation, spp::Module& out, std::string& error)
 {
     std::string text;
-    if (!read_file(path, text)) {
+    if (!read_file(path, text))
+    {
         error = "cannot read " + path;
         return false;
     }
     spp::LoadResult r = backend.load({path, text}, generation);
-    if (!r) {
+    if (!r)
+    {
         error = r.error;
         return false;
     }
@@ -82,7 +87,8 @@ bool compile_script(spp::Backend& backend, const std::string& path, uint32_t gen
 UiApp* create_app(spp::Loader& loader, std::string& error)
 {
     const spp::ClassEntry* entry = loader.find("Demo");
-    if (!entry) {
+    if (!entry)
+    {
         error = "class Demo is not registered";
         return nullptr;
     }
@@ -90,14 +96,15 @@ UiApp* create_app(spp::Loader& loader, std::string& error)
 }
 
 // The host state of one run. The loader is the first member: it ends last.
-struct Host {
+struct Host
+{
     spp::Loader loader;
     std::unique_ptr<spp::Backend> backend = make_backend();
     std::string path;
-    uint32_t generation = 0;   // the number of the last compile
-    bool loaded = false;       // the loader has a first module
+    uint32_t generation = 0; // the number of the last compile
+    bool loaded = false; // the loader has a first module
     UiApp* app = nullptr;
-    std::string last_error;    // shown in the "Script error" window
+    std::string last_error; // shown in the "Script error" window
     std::filesystem::file_time_type last_seen{};
 
     // The first load. It sets last_error on failure.
@@ -106,19 +113,22 @@ struct Host {
         std::error_code ec;
         last_seen = std::filesystem::last_write_time(path, ec);
         spp::Module m;
-        if (!compile_script(*backend, path, ++generation, m, last_error)) {
+        if (!compile_script(*backend, path, ++generation, m, last_error))
+        {
             std::fprintf(stderr, "load failed: %s\n", last_error.c_str());
             return;
         }
         loaded = true;
-        if (const spp::ReloadResult res = loader.load(std::move(m)); !res) {
+        if (const spp::ReloadResult res = loader.load(std::move(m)); !res)
+        {
             last_error = res.error;
             loaded = false;
             std::fprintf(stderr, "load failed: %s\n", last_error.c_str());
             return;
         }
         app = create_app(loader, last_error);
-        if (app) std::fprintf(stderr, "loaded gen %u\n", generation);
+        if (app)
+            std::fprintf(stderr, "loaded gen %u\n", generation);
     }
 
     // Call it once for each frame, before the script runs. It starts a reload when
@@ -127,17 +137,21 @@ struct Host {
     {
         std::error_code ec;
         auto t = std::filesystem::last_write_time(path, ec);
-        if (ec || t == last_seen) return;
+        if (ec || t == last_seen)
+            return;
         last_seen = t;
         spp::Module m;
         std::string err;
-        if (!compile_script(*backend, path, ++generation, m, err)) {
+        if (!compile_script(*backend, path, ++generation, m, err))
+        {
             last_error = err;
             std::fprintf(stderr, "reload failed: %s\n", err.c_str());
             return;
         }
-        if (!loaded) {  // the first load failed: this module is the first one
-            if (const spp::ReloadResult res = loader.load(std::move(m)); !res) {
+        if (!loaded)
+        { // the first load failed: this module is the first one
+            if (const spp::ReloadResult res = loader.load(std::move(m)); !res)
+            {
                 last_error = res.error;
                 std::fprintf(stderr, "reload failed: %s\n", res.error.c_str());
                 return;
@@ -146,7 +160,8 @@ struct Host {
             recreate_app();
             return;
         }
-        if (const spp::ReloadResult res = loader.request_reload(std::move(m)); !res) {
+        if (const spp::ReloadResult res = loader.request_reload(std::move(m)); !res)
+        {
             last_error = res.error;
             std::fprintf(stderr, "reload failed: %s\n", res.error.c_str());
         }
@@ -156,13 +171,18 @@ struct Host {
     // Call it after app->Frame() and before Render. It is the frame boundary.
     void frame_end()
     {
-        if (loader.reload_pending()) {
+        if (loader.reload_pending())
+        {
             const spp::ReloadResult res = loader.commit_pending();
-            if (res) {
+            if (res)
+            {
                 last_error.clear();
                 std::fprintf(stderr, "reloaded gen %u\n", generation);
-                if (!app) recreate_app();
-            } else {
+                if (!app)
+                    recreate_app();
+            }
+            else
+            {
                 last_error = res.error;
                 std::fprintf(stderr, "reload failed: %s\n", res.error.c_str());
             }
@@ -174,10 +194,13 @@ struct Host {
     {
         std::string err;
         app = create_app(loader, err);
-        if (app) {
+        if (app)
+        {
             last_error.clear();
             std::fprintf(stderr, "reloaded gen %u (new object)\n", generation);
-        } else {
+        }
+        else
+        {
             last_error = err;
         }
     }
@@ -185,10 +208,14 @@ struct Host {
     // Calls Frame. A throw drops the object until a good reload.
     void run_frame()
     {
-        if (!app) return;
-        try {
+        if (!app)
+            return;
+        try
+        {
             app->Frame();
-        } catch (const std::exception& e) {
+        }
+        catch (const std::exception& e)
+        {
             last_error = e.what();
             std::fprintf(stderr, "script error: %s\n", e.what());
             delete app;
@@ -197,22 +224,24 @@ struct Host {
     }
 };
 
-}  // namespace
+} // namespace
 
 int main(int argc, char** argv)
 {
-    Host host;  // the host ends last: the app is deleted before the loader
+    Host host; // the host ends last: the app is deleted before the loader
     host.path = argc > 1 ? argv[1] : IMGUI_APP_DEFAULT_SCRIPT;
     host.first_load();
 
-    if (!SDL_Init(SDL_INIT_VIDEO)) {
+    if (!SDL_Init(SDL_INIT_VIDEO))
+    {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         delete host.app;
         return 1;
     }
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
-    if (!SDL_CreateWindowAndRenderer("imgui_app", 800, 600, SDL_WINDOW_RESIZABLE, &window, &renderer)) {
+    if (!SDL_CreateWindowAndRenderer("imgui_app", 800, 600, SDL_WINDOW_RESIZABLE, &window, &renderer))
+    {
         std::fprintf(stderr, "SDL window failed: %s\n", SDL_GetError());
         delete host.app;
         SDL_Quit();
@@ -231,11 +260,14 @@ int main(int argc, char** argv)
     ImGui_ImplSDLRenderer3_Init(renderer);
 
     bool running = true;
-    while (running) {
+    while (running)
+    {
         SDL_Event event;
-        while (SDL_PollEvent(&event)) {
+        while (SDL_PollEvent(&event))
+        {
             ImGui_ImplSDL3_ProcessEvent(&event);
-            if (event.type == SDL_EVENT_QUIT) running = false;
+            if (event.type == SDL_EVENT_QUIT)
+                running = false;
         }
         host.poll_reload();
         ImGui_ImplSDLRenderer3_NewFrame();
@@ -244,7 +276,8 @@ int main(int argc, char** argv)
 
         host.run_frame();
         host.frame_end();
-        if (!host.last_error.empty()) {
+        if (!host.last_error.empty())
+        {
             ImGui::Begin("Script error");
             ImGui::TextWrapped("%s", host.last_error.c_str());
             ImGui::End();
@@ -257,7 +290,7 @@ int main(int argc, char** argv)
         SDL_RenderPresent(renderer);
     }
 
-    delete host.app;  // before the loader ends: the destructor code lives in the module
+    delete host.app; // before the loader ends: the destructor code lives in the module
     host.app = nullptr;
     ImGui_ImplSDLRenderer3_Shutdown();
     ImGui_ImplSDL3_Shutdown();

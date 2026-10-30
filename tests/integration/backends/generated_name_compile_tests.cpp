@@ -1,12 +1,13 @@
 // A script with the user names a, st and self, an expression lambda and C style casts must pass
 // the whole chain: sppc, then the compile of the generated C++ by the selected backend.
+#include "spp/backend.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "spp/backend.h"
-
-namespace {
+namespace
+{
 
 const char* kScript = R"(using "Actor.h";
 using <functional>;
@@ -42,4 +43,4 @@ TEST(GeneratedNameCompile, UserNamesLambdaExpressionAndCastCompile)
     ASSERT_TRUE(r) << r.error;
 }
 
-}  // namespace
+} // namespace

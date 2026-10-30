@@ -1,18 +1,19 @@
 // Tests of script properties with the backend that SPP_BACKEND selected.
 //
 // CMake defines the macro SPP_SOURCE_DIR.
+#include "spp/backend.h"
+#include "support/backend_fixture.h"
+#include "support/script_files.h"
+#include "support/test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <memory>
 #include <stdexcept>
 #include <string>
 
-#include "spp/backend.h"
-#include "support/backend_fixture.h"
-#include "support/script_files.h"
-#include "support/test_support.h"
-
-namespace {
+namespace
+{
 
 using test_support::kDt;
 using test_support::Session;
@@ -29,11 +30,11 @@ TEST_P(BackendTests, PropertiesReadAndWrite)
     ASSERT_NE(s.field("__p_Hp"), nullptr);
     ASSERT_NE(s.field("__p_MaxHp"), nullptr);
     ASSERT_NE(s.field("shield_raw"), nullptr);
-    EXPECT_EQ(s.field("__p_Shield"), nullptr);  // a custom property has no hidden field
+    EXPECT_EQ(s.field("__p_Shield"), nullptr); // a custom property has no hidden field
     EXPECT_EQ(*s.field("__p_Hp"), 50.0f);
     EXPECT_EQ(*s.field("__p_MaxHp"), 100.0f);
 
-    s.world.Tick(kDt);  // Hp += 1, Shield = Shield + 2, Level++
+    s.world.Tick(kDt); // Hp += 1, Shield = Shield + 2, Level++
     EXPECT_EQ(*s.field("__p_Hp"), 51.0f);
     EXPECT_EQ(*s.field("shield_raw"), 2.0f);
     const int* level = spp::field_ptr<int>(s.inst.shell, "__p_Level");
@@ -92,12 +93,12 @@ class Gauge : Actor {
 
     s.actor->TakeDamage(*source, 5.0f);
     auto f = [](spp::ShellBase* sh, const char* name) { return *spp::field_ptr<float>(sh, name); };
-    EXPECT_EQ(f(s.inst.shell, "seen"), 150.0f);  // 50 + 100, read on the other object
+    EXPECT_EQ(f(s.inst.shell, "seen"), 150.0f); // 50 + 100, read on the other object
     EXPECT_EQ(f(s.inst.shell, "__p_Hp"), 30.0f);
     EXPECT_EQ(f(s.inst.shell, "chained"), 30.0f);
-    EXPECT_EQ(f(s.inst.shell, "old_hits"), 1.0f);  // "Hits++" gives the old value
-    EXPECT_EQ(f(other.shell, "__p_Hp"), 30.0f);     // 50 - 5, then 30
-    EXPECT_EQ(f(other.shell, "raw"), 3.0f);         // the setter clamps -5 to 0, then 0 + 3
+    EXPECT_EQ(f(s.inst.shell, "old_hits"), 1.0f); // "Hits++" gives the old value
+    EXPECT_EQ(f(other.shell, "__p_Hp"), 30.0f); // 50 - 5, then 30
+    EXPECT_EQ(f(other.shell, "raw"), 3.0f); // the setter clamps -5 to 0, then 0 + 3
     EXPECT_EQ(*spp::field_ptr<int>(other.shell, "__p_Hits"), 2);
     // The accessors did not touch the state of the caller.
     EXPECT_EQ(*spp::field_ptr<int>(s.inst.shell, "__p_Hits"), 0);
@@ -109,4 +110,4 @@ class Gauge : Actor {
     EXPECT_EQ(f(other.shell, "__p_Hp"), 30.0f);
 }
 
-}  // namespace
+} // namespace

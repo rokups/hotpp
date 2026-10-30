@@ -1,13 +1,14 @@
 // Tests for the type model: the stub "class *;", "default_handle" and the rules of design 7.10.3.
+#include "support/type_model_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "support/type_model_test_support.h"
-
 using namespace type_model_test;
 
-namespace {
+namespace
+{
 
 ast::Stub star(const std::string& default_handle = kShared)
 {
@@ -19,7 +20,8 @@ ast::Stub star(const std::string& default_handle = kShared)
 // A model whose headers have: Mesh (a class), Vec3 (plain data), Weapon (a class).
 void with_classes(Fixture& f)
 {
-    f.model.set_classes([](const std::string& n) {
+    f.model.set_classes([](const std::string& n)
+    {
         TypeModel::ClassFacts c;
         c.known = n == "Mesh" || n == "Vec3" || n == "Weapon" || n == "std::string";
         c.plain = n == "Vec3";
@@ -27,7 +29,7 @@ void with_classes(Fixture& f)
     });
 }
 
-}  // namespace
+} // namespace
 
 TEST(DefaultHandle, FallbackGivesTheDefaultHandleToAClass)
 {
@@ -77,7 +79,7 @@ TEST(DefaultHandle, WithoutTheStubAClassHasNoHandle)
     Fixture f;
     with_classes(f);
     EXPECT_EQ(f.model.lookup("Mesh").kind, Kind::Raw);
-    EXPECT_TRUE(f.model.wants_facts("Mesh"));  // the facts can still make it a value
+    EXPECT_TRUE(f.model.wants_facts("Mesh")); // the facts can still make it a value
 }
 
 // Design 7.10.2 rule 4: plain data is a value with no stub and no "class *;".
@@ -127,8 +129,7 @@ TEST(DefaultHandle, ScriptStubThatOverridesAPreludeStubIsAWarning)
 {
     Fixture f;
     f.add({stub("Weapon", kShared)});
-    f.model.add_stubs({stub("Weapon", "", true), stub("Other", kShared)}, f.diags, f.map,
-                      TypeModel::Source::Script);
+    f.model.add_stubs({stub("Weapon", "", true), stub("Other", kShared)}, f.diags, f.map, TypeModel::Source::Script);
     EXPECT_TRUE(f.diags.items.empty());
     ASSERT_EQ(f.diags.warnings.size(), 1u);
     EXPECT_NE(f.diags.warnings[0].msg.find("'Weapon'"), std::string::npos);

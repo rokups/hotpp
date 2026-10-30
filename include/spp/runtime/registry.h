@@ -1,36 +1,40 @@
 // The registry that a generation module fills in script_register.
 #pragma once
-#include <cstdint>
-#include <string>
-#include <unordered_map>
-
 #include "spp/runtime/hidden.h"
 #include "spp/runtime/migration.h"
 #include "spp/runtime/records.h"
 
-namespace spp {
+#include <cstdint>
+#include <string>
+#include <unordered_map>
+
+namespace spp
+{
 
 // The module state block of a generation (design 5.3, 4.7): the module-level script variables.
 // "layout" is the field table. "slot" is the pointer variable inside the generation module. The
 // loader writes the address of the live block there. The code of the generation reads it.
-struct ModuleStateInfo {
+struct ModuleStateInfo
+{
     const StateLayout* layout = nullptr;
     void** slot = nullptr;
 };
 
 // A thunk in the registry (section 4.11, design 5.3). The key of a thunk is its name for the
 // first signature of a function. A thunk for a changed signature has the key "name#sig".
-struct ThunkEntry {
+struct ThunkEntry
+{
     void* fn = nullptr;
-    std::string name;  // "Cls::fn"
+    std::string name; // "Cls::fn"
     // The signature key: typeid(Sig).name() of the slot signature. Empty: the first signature
     // of the function. Then the slot has no key and the thunk is not checked.
     std::string sig;
-    unsigned slot = 0;  // the slot that the thunk calls (only with a signature key)
+    unsigned slot = 0; // the slot that the thunk calls (only with a signature key)
 };
 
 // A generation module fills the registry in script_register.
-class Registry {
+class Registry
+{
 public:
     // A module with module variables calls it once. Without a call the module has no block.
     void set_module_state(const StateLayout* layout, void** slot) { module_state_ = {layout, slot}; }
@@ -62,10 +66,10 @@ public:
 
 private:
     std::unordered_map<std::string, ClassEntry> entries_;
-    std::unordered_map<std::string, ThunkEntry> thunks_;   // by key
-    std::unordered_map<std::string, std::string> current_;  // the name to the latest key
+    std::unordered_map<std::string, ThunkEntry> thunks_; // by key
+    std::unordered_map<std::string, std::string> current_; // the name to the latest key
     uint32_t max_generation_ = 0;
     ModuleStateInfo module_state_;
 };
 
-}  // namespace spp
+} // namespace spp

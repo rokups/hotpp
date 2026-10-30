@@ -1,10 +1,10 @@
 // Tests for sppc::translate with the override rules of the native virtual methods.
+#include "spp/sppc_lib.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
-
-#include "spp/sppc_lib.h"
-#include "support/translator_test_support.h"
 
 using namespace translator_test;
 
@@ -12,8 +12,7 @@ TEST(OverrideTranslation, ExplicitOverrideUsesTheVirtualSlot)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
-    const sppc::TranslateResult r =
-        sppc::translate(temp_options(dir, widget_script("Update(float dt)", "override ")));
+    const sppc::TranslateResult r = sppc::translate(temp_options(dir, widget_script("Update(float dt)", "override ")));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // An override gets no entry in the slot file. A plain function gets one.
     EXPECT_EQ(r.slots_out.find("Foo::Update"), std::string::npos) << r.slots_out;
@@ -29,8 +28,8 @@ TEST(OverrideTranslation, MissingOverrideIsAnError)
     write_file(dir.path() / "w.h", kHeaderV1);
     const sppc::TranslateResult r = sppc::translate(temp_options(dir, widget_script("Update(float dt)")));
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("method 'Update' overrides a virtual method of Widget; write 'override'"),
-              std::string::npos)
+    EXPECT_NE(
+        r.diagnostics.find("method 'Update' overrides a virtual method of Widget; write 'override'"), std::string::npos)
         << r.diagnostics;
 }
 
@@ -40,8 +39,7 @@ TEST(OverrideTranslation, OverrideWithoutBaseMethodIsAnError)
     write_file(dir.path() / "w.h", kHeaderV1);
     const sppc::TranslateResult r = sppc::translate(temp_options(dir, widget_script("Nothing()", "override ")));
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("'override' has no virtual method to override"), std::string::npos)
-        << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("'override' has no virtual method to override"), std::string::npos) << r.diagnostics;
 }
 
 TEST(OverrideTranslation, NewOnAVirtualMethodIsAnError)
@@ -66,24 +64,21 @@ TEST(OverrideTranslation, SameNameWithOtherParametersHidesTheVirtualMethod)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
-    const sppc::TranslateResult r =
-        sppc::translate(temp_options(dir, widget_script("Update(int n)")));
+    const sppc::TranslateResult r = sppc::translate(temp_options(dir, widget_script("Update(int n)")));
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("function 'Update' hides the virtual method of Widget. "
                                  "Candidates: "),
-              std::string::npos)
+        std::string::npos)
         << r.diagnostics;
 }
 
 TEST(OverrideTranslation, FinalMethodStaysAnError)
 {
     TempDir dir;
-    write_file(dir.path() / "w.h",
-               "class Widget { public: virtual ~Widget() {} virtual void Lock() final {} };\n");
+    write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} virtual void Lock() final {} };\n");
     const sppc::TranslateResult r = sppc::translate(temp_options(dir, widget_script("Lock()", "override ")));
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("is final and cannot be overridden"), std::string::npos)
-        << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("is final and cannot be overridden"), std::string::npos) << r.diagnostics;
 }
 
 TEST(OverrideTranslation, FunctionChecksUseTheWordFunction)
@@ -91,14 +86,11 @@ TEST(OverrideTranslation, FunctionChecksUseTheWordFunction)
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
     const std::string head = "using \"w.h\";\nclass Foo : Widget {\n";
-    sppc::TranslateResult r = sppc::translate(
-        temp_options(dir, head + "    void f() { }\n    void f() { }\n}\n"));
+    sppc::TranslateResult r = sppc::translate(temp_options(dir, head + "    void f() { }\n    void f() { }\n}\n"));
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("function 'f' is declared twice (overloads are not supported)"),
-              std::string::npos)
+    EXPECT_NE(r.diagnostics.find("function 'f' is declared twice (overloads are not supported)"), std::string::npos)
         << r.diagnostics;
     r = sppc::translate(temp_options(dir, head + "    int f;\n    void f() { }\n}\n"));
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("'f' is a field and a function"), std::string::npos)
-        << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("'f' is a field and a function"), std::string::npos) << r.diagnostics;
 }

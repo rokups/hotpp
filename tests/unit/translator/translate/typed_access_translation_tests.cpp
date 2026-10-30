@@ -1,20 +1,22 @@
 // Tests for the type-directed member access on script handles, "return this" as a handle and
 // the parameter analysis of value parameters (design 7.10.1, 7.10.5).
+#include "spp/sppc_lib.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "spp/sppc_lib.h"
-#include "support/translator_test_support.h"
-
 using namespace translator_test;
 
-namespace {
+namespace
+{
 
 const char* kHeader =
     "#include <string>\n"
     "struct Vec3 { float x, y, z; };\n"
-    "struct Blob { std::string s; Blob() {} Blob(const Blob&) {} Blob(Blob&&) noexcept {} void Add(int) {} int Get() const { return 0; } };\n"
+    "struct Blob { std::string s; Blob() {} Blob(const Blob&) {} Blob(Blob&&) noexcept {} void Add(int) {} int Get() "
+    "const { return 0; } };\n"
     "struct Rec { int N = 0; static Rec* Get() { return nullptr; } };\n"
     "void ReadBlob(const Blob&);\n"
     "void TakeBlob(Blob);\n"
@@ -51,7 +53,7 @@ const char* kTwoClasses =
     "    void Grow(int n) { this.size = this.size + n; }\n"
     "}\n";
 
-}  // namespace
+} // namespace
 
 TEST(TypedAccess, FieldOfAScriptHandleUsesTheState)
 {
@@ -63,9 +65,8 @@ TEST(TypedAccess, FieldOfAScriptHandleUsesTheState)
 
 TEST(TypedAccess, MethodOfAScriptHandleIsADirectCall)
 {
-    const sppc::TranslateResult r = translate_script(
-        std::string(kTwoClasses) +
-        "class Boss : Unit {\n    Squad s;\n    int Run(Squad other) { other.Grow(2); return this.s.Count(); }\n}\n");
+    const sppc::TranslateResult r = translate_script(std::string(kTwoClasses)
+        + "class Boss : Unit {\n    Squad s;\n    int Run(Squad other) { other.Grow(2); return this.s.Count(); }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "Squad__Grow(spp::shell_of<Squad_Shell>(other, \"Squad\"), 2)")) << r.cpp;
     EXPECT_TRUE(has(r, "Squad__Count(spp::shell_of<Squad_Shell>(__st->s, \"Squad\"))")) << r.cpp;
@@ -73,9 +74,8 @@ TEST(TypedAccess, MethodOfAScriptHandleIsADirectCall)
 
 TEST(TypedAccess, PropertyOfAScriptHandleUsesItsAccessors)
 {
-    const sppc::TranslateResult r = translate_script(
-        std::string(kTwoClasses) +
-        "class Boss : Unit {\n    Squad s;\n    int Run() { this.s.Power = 4; return this.s.Power; }\n}\n");
+    const sppc::TranslateResult r = translate_script(std::string(kTwoClasses)
+        + "class Boss : Unit {\n    Squad s;\n    int Run() { this.s.Power = 4; return this.s.Power; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "Squad__set_Power(spp::shell_of<Squad_Shell>(__st->s, \"Squad\"), 4)")) << r.cpp;
     EXPECT_TRUE(has(r, "Squad__get_Power(spp::shell_of<Squad_Shell>(__st->s, \"Squad\"))")) << r.cpp;
@@ -91,8 +91,8 @@ TEST(TypedAccess, LocalFromNewHasTheTypeOfTheClass)
 
 TEST(TypedAccess, ScriptFunctionUsedAsAValueIsAnError)
 {
-    const sppc::TranslateResult r = translate_script(
-        std::string(kTwoClasses) + "class Boss : Unit {\n    Squad s;\n    int Run() { var f = this.s.Count; return 0; }\n}\n");
+    const sppc::TranslateResult r = translate_script(std::string(kTwoClasses)
+        + "class Boss : Unit {\n    Squad s;\n    int Run() { var f = this.s.Count; return 0; }\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("script function 'Count' must be called"), std::string::npos) << r.diagnostics;
 }
@@ -110,8 +110,8 @@ TEST(TypedAccess, ReturnThisAsAHandleUsesSharedFromThis)
 
 TEST(TypedAccess, BareThisAsAPointerNeedsNoSharedFromThis)
 {
-    const sppc::TranslateResult r =
-        translate_script("class Node : Unit {\n    int Id() { return this.Hash(); }\n    int Hash() { return 1; }\n}\n");
+    const sppc::TranslateResult r = translate_script(
+        "class Node : Unit {\n    int Id() { return this.Hash(); }\n    int Hash() { return 1; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_FALSE(has(r, "enable_shared_from_this")) << r.cpp;
 }
@@ -120,7 +120,8 @@ TEST(TypedAccess, BareThisAsAPointerNeedsNoSharedFromThis)
 TEST(ParamAnalysis, ReadOnlyValueParamIsAConstReference)
 {
     const sppc::TranslateResult r = translate_script(
-        "[native, value] class Blob;\nclass Box : Unit {\n    int Size(Blob b) { return b.Get(); }\n    int Peek(Blob b) { return 1; }\n"
+        "[native, value] class Blob;\nclass Box : Unit {\n    int Size(Blob b) { return b.Get(); }\n    int Peek(Blob "
+        "b) { return 1; }\n"
         "    void Grow(Blob b) { b.Add(1); }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // A call of a const native member function is not a change (S20b). Libclang gives the constness.
@@ -143,7 +144,8 @@ TEST(ParamAnalysis, VarReferenceToAParamMarksItMutated)
 TEST(ParamAnalysis, StoredValueParamIsACopy)
 {
     const sppc::TranslateResult r = translate_script(
-        "[native, value] class Blob;\nclass Box : Unit {\n    Blob kept;\n    void Keep(Blob b) { this.kept = b; }\n}\n");
+        "[native, value] class Blob;\nclass Box : Unit {\n    Blob kept;\n    void Keep(Blob b) { this.kept = b; "
+        "}\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "static void Box__Keep(Box_Shell* __self, Blob b)")) << r.cpp;
 }
@@ -158,8 +160,8 @@ TEST(ParamAnalysis, SmallPlainValueIsPassedByValue)
 
 TEST(ParamAnalysis, SlotAdapterKeepsTheCanonicalForm)
 {
-    const sppc::TranslateResult r = translate_script(
-        "[native, value] class Blob;\nclass Box : Unit {\n    int Peek(Blob b) { return 1; }\n}\n");
+    const sppc::TranslateResult r =
+        translate_script("[native, value] class Blob;\nclass Box : Unit {\n    int Peek(Blob b) { return 1; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // The slot is the state member. It has the canonical form of the parameter.
     EXPECT_TRUE(has(r, "int32_t BoxState_g1::Peek(Blob __b)")) << r.cpp;
@@ -206,7 +208,8 @@ TEST(ParamAnalysis, HandleParamThatCanAliasAWrittenFieldIsACopy)
 {
     const sppc::TranslateResult r = translate_script(
         "class Squad : Unit {\n    int size = 3;\n}\nclass Box : Unit {\n    Squad lead;\n"
-        "    int Set(Squad s) { this.lead = new Squad(); return s.size; }\n    int Get(Squad s) { return s.size; }\n}\n");
+        "    int Set(Squad s) { this.lead = new Squad(); return s.size; }\n    int Get(Squad s) { return s.size; "
+        "}\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "static int32_t Box__Set(Box_Shell* __self, std::shared_ptr<Squad> s)")) << r.cpp;
     EXPECT_TRUE(has(r, "static int32_t Box__Get(Box_Shell* __self, const std::shared_ptr<Squad>& s)")) << r.cpp;
@@ -279,7 +282,8 @@ TEST(ParamAnalysis, ParamPassedToAMethodOfAScriptHandleFollowsTheMethod)
         "    int E(Blob b) { return this.lead.Look(b); }\n    void F(Blob b) { this.lead.Take(b); }\n"
         "    int G(Squad s, Squad t) { return s.Count(t); }\n    void H(Squad s, Squad t) { s.Link(t); }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "static int32_t Box__A(Box_Shell* __self, const std::shared_ptr<Squad>& s, const Blob& b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__A(Box_Shell* __self, const std::shared_ptr<Squad>& s, const Blob& b)"))
+        << r.cpp;
     EXPECT_TRUE(has(r, "static void Box__B(Box_Shell* __self, const std::shared_ptr<Squad>& s, Blob b)")) << r.cpp;
     EXPECT_TRUE(has(r, "static void Box__C(Box_Shell* __self, const std::shared_ptr<Squad>& s, Blob b)")) << r.cpp;
     // A virtual method can have an override that does more: a copy.
@@ -287,9 +291,11 @@ TEST(ParamAnalysis, ParamPassedToAMethodOfAScriptHandleFollowsTheMethod)
     EXPECT_TRUE(has(r, "static int32_t Box__E(Box_Shell* __self, const Blob& b)")) << r.cpp;
     EXPECT_TRUE(has(r, "static void Box__F(Box_Shell* __self, Blob b)")) << r.cpp;
     // A handle argument: a read keeps "const Handle&", a store takes a copy.
-    EXPECT_TRUE(has(r, "static int32_t Box__G(Box_Shell* __self, const std::shared_ptr<Squad>& s, const std::shared_ptr<Squad>& t)"))
+    EXPECT_TRUE(has(r,
+        "static int32_t Box__G(Box_Shell* __self, const std::shared_ptr<Squad>& s, const std::shared_ptr<Squad>& t)"))
         << r.cpp;
-    EXPECT_TRUE(has(r, "static void Box__H(Box_Shell* __self, const std::shared_ptr<Squad>& s, std::shared_ptr<Squad> t)"))
+    EXPECT_TRUE(
+        has(r, "static void Box__H(Box_Shell* __self, const std::shared_ptr<Squad>& s, std::shared_ptr<Squad> t)"))
         << r.cpp;
 }
 

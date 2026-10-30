@@ -1,15 +1,16 @@
 // Helpers that read the example scripts and check the diagnostics of a bad script.
 #pragma once
 
+#include "spp/backend.h"
+
 #include <gtest/gtest.h>
 
 #include <fstream>
 #include <sstream>
 #include <string>
 
-#include "spp/backend.h"
-
-namespace test_support {
+namespace test_support
+{
 
 inline std::string read_file(const std::string& path)
 {
@@ -31,7 +32,8 @@ inline int line_with(const std::string& text, const std::string& needle)
     int n = 0;
     std::istringstream src(text);
     for (std::string l; std::getline(src, l);)
-        if (++n, l.find(needle) != std::string::npos) return n;
+        if (++n, l.find(needle) != std::string::npos)
+            return n;
     return 0;
 }
 
@@ -42,8 +44,10 @@ inline void expect_errors_at_script(const std::string& text, int bad_line)
     EXPECT_NE(text.find(expect), std::string::npos) << "no '" << expect << "' in:\n" << text;
     std::istringstream ls(text);
     int errors = 0;
-    for (std::string l; std::getline(ls, l);) {
-        if (l.find(" error:") == std::string::npos) continue;
+    for (std::string l; std::getline(ls, l);)
+    {
+        if (l.find(" error:") == std::string::npos)
+            continue;
         ++errors;
         EXPECT_NE(l.find("bad.spp:"), std::string::npos) << "error not at the script: " << l;
         EXPECT_EQ(l.find(".cpp"), std::string::npos) << l;
@@ -51,4 +55,4 @@ inline void expect_errors_at_script(const std::string& text, int bad_line)
     EXPECT_GT(errors, 0) << text;
 }
 
-}  // namespace test_support
+} // namespace test_support

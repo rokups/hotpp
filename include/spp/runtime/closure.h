@@ -1,22 +1,23 @@
 // The closure that leaves script code and the guard of a script "finally" block.
 #pragma once
-#include <cstdint>
-#include <functional>
-#include <utility>
-
 #include "spp/runtime/compat.h"
 #include "spp/runtime/hidden.h"
 #include "spp/runtime/threads.h"
 
+#include <cstdint>
+#include <functional>
+#include <utility>
+
 // A hint that a condition is rarely true.
 #if defined(__clang__) || defined(__GNUC__)
-#define SPP_UNLIKELY(x) __builtin_expect(!!(x), 0)
+    #define SPP_UNLIKELY(x) __builtin_expect(!!(x), 0)
 #else
 // unverified: not built on MSVC. The MSVC form is the plain condition.
-#define SPP_UNLIKELY(x) (x)
+    #define SPP_UNLIKELY(x) (x)
 #endif
 
-namespace spp {
+namespace spp
+{
 
 // A closure that leaves script code (section 4.11). It holds one pin of its
 // generation for its whole life. Each call checks the generation guard: when the
@@ -27,11 +28,10 @@ namespace spp {
 // any callable) and to an engine delegate type D that has Bind(std::function<Sig>).
 // The closure code lives in the generation module. Destroy the last copy on the
 // main thread, before the frame boundary at which the generation can unload.
-template <class Sig>
-class Closure;
+template <class Sig> class Closure;
 
-template <class R, class... A>
-class Closure<R(A...)> {
+template <class R, class... A> class Closure<R(A...)>
+{
 public:
     using Function = std::function<R(A...)>;
 
@@ -39,17 +39,26 @@ public:
 
     template <class F>
     SPP_HIDDEN Closure(uint32_t generation, const char* what, F fn)
-        : fn_(std::move(fn)), gen_(generation), what_(what)
+        : fn_(std::move(fn))
+        , gen_(generation)
+        , what_(what)
     {
         pin(gen_);
     }
 
-    SPP_HIDDEN Closure(const Closure& o) : fn_(o.fn_), gen_(o.gen_), what_(o.what_)
+    SPP_HIDDEN Closure(const Closure& o)
+        : fn_(o.fn_)
+        , gen_(o.gen_)
+        , what_(o.what_)
     {
-        if (gen_) pin(gen_);
+        if (gen_)
+            pin(gen_);
     }
 
-    SPP_HIDDEN Closure(Closure&& o) noexcept : fn_(std::move(o.fn_)), gen_(o.gen_), what_(o.what_)
+    SPP_HIDDEN Closure(Closure&& o) noexcept
+        : fn_(std::move(o.fn_))
+        , gen_(o.gen_)
+        , what_(o.what_)
     {
         o.fn_ = nullptr;
         o.gen_ = 0;
@@ -67,13 +76,15 @@ public:
     SPP_HIDDEN ~Closure()
     {
         fn_ = nullptr;
-        if (gen_) unpin(gen_);
+        if (gen_)
+            unpin(gen_);
     }
 
     SPP_HIDDEN R operator()(A... a) const
     {
-        ScriptEntry entry;  // design 6.3: the guard reads active_generation
-        if (SPP_UNLIKELY(!fn_ || gen_ != active_generation)) {
+        ScriptEntry entry; // design 6.3: the guard reads active_generation
+        if (SPP_UNLIKELY(!fn_ || gen_ != active_generation))
+        {
             stale_call(what_ ? what_ : "closure");
             return R();
         }
@@ -91,8 +102,7 @@ public:
     }
 
     // Conversion to an engine delegate type that binds a std::function.
-    template <class D, std::enable_if_t<detail::has_bind<D, Function>::value, int> = 0>
-    SPP_HIDDEN operator D() const
+    template <class D, std::enable_if_t<detail::has_bind<D, Function>::value, int> = 0> SPP_HIDDEN operator D() const
     {
         D d;
         d.Bind(to_function());
@@ -113,17 +123,23 @@ private:
 // Rule: the body must not let an exception out of the destructor. During unwinding, such
 // an exception calls std::terminate. So the destructor catches and drops each exception
 // from the body. The exception from the try block (if any) continues.
-template <class F>
-class Finally {
+template <class F> class Finally
+{
 public:
-    SPP_HIDDEN explicit Finally(F f) : f_(std::move(f)) {}
+    SPP_HIDDEN explicit Finally(F f)
+        : f_(std::move(f))
+    {
+    }
     Finally(const Finally&) = delete;
     Finally& operator=(const Finally&) = delete;
     SPP_HIDDEN ~Finally()
     {
-        try {
+        try
+        {
             f_();
-        } catch (...) {
+        }
+        catch (...)
+        {
             // Dropped. See the rule above.
         }
     }
@@ -132,26 +148,25 @@ private:
     F f_;
 };
 
-namespace detail {
-template <class M>
-struct SigOf;
-template <class C, class R, class... A>
-struct SigOf<R (C::*)(A...) const> {
+namespace detail
+{
+template <class M> struct SigOf;
+template <class C, class R, class... A> struct SigOf<R (C::*)(A...) const>
+{
     using type = R(A...);
 };
-template <class C, class R, class... A>
-struct SigOf<R (C::*)(A...)> {
+template <class C, class R, class... A> struct SigOf<R (C::*)(A...)>
+{
     using type = R(A...);
 };
-}  // namespace detail
+} // namespace detail
 
 // The translator wraps each arrow lambda in this call. "what" names the lambda
 // in the stale call log.
-template <class F>
-SPP_HIDDEN auto make_closure(uint32_t generation, const char* what, F fn)
+template <class F> SPP_HIDDEN auto make_closure(uint32_t generation, const char* what, F fn)
 {
     using Sig = typename detail::SigOf<decltype(&F::operator())>::type;
     return Closure<Sig>(generation, what, std::move(fn));
 }
 
-}  // namespace spp
+} // namespace spp

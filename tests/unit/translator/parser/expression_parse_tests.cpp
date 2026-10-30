@@ -1,15 +1,15 @@
 // Tests for the parser of the expressions: operators, calls, names, literals and lists.
 // Most tests are round trips: parse the text, print the tree and compare the C++ text.
 // The printer writes a fixed layout, so the expected text can differ in spacing.
+#include "emit.h"
+#include "parser/expression.h"
+#include "support/expression_parse_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 #include <variant>
 #include <vector>
-
-#include "emit.h"
-#include "parser/expression.h"
-#include "support/expression_parse_test_support.h"
 
 using namespace sppc;
 using namespace expr_test;
@@ -25,8 +25,7 @@ TEST(ExpressionParse, Precedence)
     EXPECT_EQ(round_trip("a < b"), "a < b");
     EXPECT_EQ(round_trip("a || b && c | d ^ e & f"), "a || b && c | d ^ e & f");
     EXPECT_EQ(round_trip("a <<= b >>= c"), "a <<= b >>= c");
-    EXPECT_EQ(round_trip("a += b -= c *= d /= e %= f &= g |= h ^= i"),
-              "a += b -= c *= d /= e %= f &= g |= h ^= i");
+    EXPECT_EQ(round_trip("a += b -= c *= d /= e %= f &= g |= h ^= i"), "a += b -= c *= d /= e %= f &= g |= h ^= i");
     EXPECT_EQ(round_trip("x == y != z <= w >= v"), "x == y != z <= w >= v");
 }
 
@@ -58,12 +57,12 @@ TEST(ExpressionParse, Tree)
     ASSERT_TRUE(q.expr);
     const auto* asg = std::get_if<ast::BinaryExpr>(&q.expr->v);
     ASSERT_TRUE(asg);
-    EXPECT_TRUE(std::get_if<ast::BinaryExpr>(&asg->rhs->v));  // right associative
+    EXPECT_TRUE(std::get_if<ast::BinaryExpr>(&asg->rhs->v)); // right associative
     Parsed r("a - b - c");
     ASSERT_TRUE(r.expr);
     const auto* sub = std::get_if<ast::BinaryExpr>(&r.expr->v);
     ASSERT_TRUE(sub);
-    EXPECT_TRUE(std::get_if<ast::BinaryExpr>(&sub->lhs->v));  // left associative
+    EXPECT_TRUE(std::get_if<ast::BinaryExpr>(&sub->lhs->v)); // left associative
 }
 
 TEST(ExpressionParse, PrefixAndPostfix)
@@ -80,11 +79,10 @@ TEST(ExpressionParse, PrefixAndPostfix)
 
 TEST(ExpressionParse, CallsAndMembers)
 {
-    EXPECT_EQ(round_trip("this.Move(Vec3(2.0 * this.speed * dt, 0, 0))"),
-              "this.Move(Vec3(2.0 * this.speed * dt, 0, 0))");
+    EXPECT_EQ(
+        round_trip("this.Move(Vec3(2.0 * this.speed * dt, 0, 0))"), "this.Move(Vec3(2.0 * this.speed * dt, 0, 0))");
     // The printer joins the parts of a name with "::". The lowering pass chooses the form.
-    EXPECT_EQ(round_trip("Math.Max(this.health - amount, 0.0)"),
-              "Math::Max(this.health - amount, 0.0)");
+    EXPECT_EQ(round_trip("Math.Max(this.health - amount, 0.0)"), "Math::Max(this.health - amount, 0.0)");
     EXPECT_EQ(round_trip("std.printf(\"x\", a)"), "std::printf(\"x\", a)");
     EXPECT_EQ(round_trip("v.size() < n"), "v::size() < n");
     EXPECT_EQ(round_trip("x[i + 1].y.z"), "x[i + 1].y.z");
@@ -133,7 +131,7 @@ TEST(ExpressionParse, Literals)
 {
     EXPECT_EQ(round_trip(".5 + x"), ".5 + x");
     EXPECT_EQ(round_trip("1e+5 - 2.5E-3f"), "1e+5 - 2.5E-3f");
-    EXPECT_EQ(round_trip("0x1e+5"), "0x1e + 5");  // no sign in a hex number
+    EXPECT_EQ(round_trip("0x1e+5"), "0x1e + 5"); // no sign in a hex number
     EXPECT_EQ(round_trip("0XFFu + 10ull"), "0XFFu + 10ull");
     EXPECT_EQ(round_trip("\"a\\\"b\" + 'c' + '\\''"), "\"a\\\"b\" + 'c' + '\\''");
     EXPECT_EQ(round_trip("  a /* c */ + b // x"), "a + b");
@@ -141,10 +139,10 @@ TEST(ExpressionParse, Literals)
 
 TEST(ExpressionParse, List)
 {
-    auto items = [](const std::string& text, Diagnostics& diag) {
+    auto items = [](const std::string& text, Diagnostics& diag)
+    {
         const LineMap map(text);
-        return parse_expression_list({text, &map}, {0, static_cast<uint32_t>(text.size())},
-                                     diag);
+        return parse_expression_list({text, &map}, {0, static_cast<uint32_t>(text.size())}, diag);
     };
     Diagnostics d1;
     auto v = items("a, f(b, c), g(1, 2), x ? y : z", d1);
@@ -207,7 +205,7 @@ TEST(ExpressionParse, Offsets)
 
     // An error in the span has the absolute line and column.
     Diagnostics d2;
-    EXPECT_TRUE(parse_expression({text, &map}, {b, b + 3}, d2) == nullptr);  // "a +"
+    EXPECT_TRUE(parse_expression({text, &map}, {b, b + 3}, d2) == nullptr); // "a +"
     ASSERT_EQ(d2.items.size(), 1u);
     EXPECT_EQ(d2.items[0].line, 2);
     EXPECT_EQ(d2.items[0].col, 12);
@@ -222,9 +220,9 @@ TEST(ExpressionParse, Offsets)
 
     // Text after the expression in the span.
     Diagnostics d4;
-    EXPECT_TRUE(parse_expression({text, &map}, {b, b + 3 + 4}, d4) != nullptr);  // "a + foo"
+    EXPECT_TRUE(parse_expression({text, &map}, {b, b + 3 + 4}, d4) != nullptr); // "a + foo"
     Diagnostics d5;
-    EXPECT_TRUE(parse_expression({text, &map}, {b - 2, b + 1}, d5) == nullptr);  // "= a"
+    EXPECT_TRUE(parse_expression({text, &map}, {b - 2, b + 1}, d5) == nullptr); // "= a"
     EXPECT_EQ(d5.items.size(), 1u);
 }
 

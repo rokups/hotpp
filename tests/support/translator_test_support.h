@@ -1,17 +1,19 @@
 // Helpers for the tests that call sppc::translate. CMake defines SPP_SOURCE_DIR.
 #pragma once
 
+#include "spp/sppc_lib.h"
+
 #include <gtest/gtest.h>
-#include <unistd.h>
+
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <unistd.h>
 
-#include "spp/sppc_lib.h"
-
-namespace translator_test {
+namespace translator_test
+{
 
 namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
@@ -30,13 +32,14 @@ inline void write_file(const fs::path& path, const std::string& text)
 }
 
 // A new empty directory for the headers of one test.
-class TempDir {
+class TempDir
+{
 public:
     TempDir()
     {
         static int n = 0;
-        path_ = fs::temp_directory_path() /
-                ("sppc_session_test_" + std::to_string(::getpid()) + "_" + std::to_string(n++));
+        path_ =
+            fs::temp_directory_path() / ("sppc_session_test_" + std::to_string(::getpid()) + "_" + std::to_string(n++));
         fs::remove_all(path_);
         fs::create_directories(path_);
     }
@@ -85,7 +88,8 @@ inline std::string widget_script(const std::string& method, const std::string& m
 inline int count_errors(const std::string& text)
 {
     int n = 0;
-    for (size_t p = text.find("error:"); p != std::string::npos; p = text.find("error:", p + 1)) ++n;
+    for (size_t p = text.find("error:"); p != std::string::npos; p = text.find("error:", p + 1))
+        ++n;
     return n;
 }
 
@@ -106,8 +110,7 @@ inline std::string diag_of(const std::string& script)
 
 inline std::string lambda_script(const std::string& body)
 {
-    return "using \"w.h\";\nclass Foo : Widget {\n    int n = 0;\n    void run(int* p) {\n" + body +
-           "\n    }\n}\n";
+    return "using \"w.h\";\nclass Foo : Widget {\n    int n = 0;\n    void run(int* p) {\n" + body + "\n    }\n}\n";
 }
 
-}  // namespace translator_test
+} // namespace translator_test

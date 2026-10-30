@@ -32,34 +32,37 @@
 //    expected: a "return", an initializer, an assignment and an argument of a script function.
 #pragma once
 
+#include "ast.h"
+#include "diag.h"
+#include "types.h"
+
 #include <map>
 #include <set>
 #include <string>
 #include <vector>
 
-#include "ast.h"
-#include "diag.h"
-#include "types.h"
-
-namespace sppc {
+namespace sppc
+{
 
 // What the lowering pass knows about the class that it works on.
-struct RCtx {
+struct RCtx
+{
     const ast::ClassDef* cls = nullptr;
     std::map<std::string, std::string> field_type;
     std::set<std::string> fns;
     // The properties of the class. A read becomes a call of get_Name. A write becomes a
     // call of set_Name. The translator makes the accessor fns before the lowering pass.
-    struct PropInfo {
+    struct PropInfo
+    {
         bool has_get = false, has_set = false;
     };
     std::map<std::string, PropInfo> props;
-    std::set<std::string> locals;     // parameters and declared locals
+    std::set<std::string> locals; // parameters and declared locals
     bool allow_this = true;
     // True in the default value of a parameter. The value is in a C++ declaration, so it cannot
     // use a field, a parameter, a script function or "this".
     bool in_default = false;
-    std::string where;  // the name of the function, for the stale call log of a lambda
+    std::string where; // the name of the function, for the stale call log of a lambda
     // The map gives the line and column of an error. Without a map an error has no line.
     const LineMap* map = nullptr;
     // The type model. With null, the pass keeps the types as the script writes them.
@@ -133,4 +136,4 @@ void lower_block(ast::BlockStmt& b, RCtx& cx, Diagnostics& diag);
 // Lowers one expression. The pass can replace the node.
 void lower_expr(ast::ExprP& e, RCtx& cx, Diagnostics& diag);
 
-}  // namespace sppc
+} // namespace sppc

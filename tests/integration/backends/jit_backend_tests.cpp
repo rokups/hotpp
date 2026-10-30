@@ -4,10 +4,15 @@
 // check this, and they check that a generation can go away.
 //
 // CMake defines these macros: SPP_SOURCE_DIR, SPP_SCRATCH_DIR, SPP_CXX and SPP_RESOURCE_DIR.
-#include <gtest/gtest.h>
+#include "spp/backend.h"
+#include "spp/jit_backend.h"
+#include "support/dwarf_lines.h"
+#include "support/f1_scenario.h"
+#include "support/scratch_dir.h"
+#include "support/script_files.h"
 
+#include <gtest/gtest.h>
 #include <sys/resource.h>
-#include <unistd.h>
 
 #include <cstdlib>
 #include <filesystem>
@@ -16,32 +21,30 @@
 #include <memory>
 #include <sstream>
 #include <string>
-
-#include "spp/backend.h"
-#include "spp/jit_backend.h"
-#include "support/dwarf_lines.h"
-#include "support/f1_scenario.h"
-#include "support/script_files.h"
-#include "support/scratch_dir.h"
+#include <unistd.h>
 
 // The GDB JIT interface (the layout is fixed by the GDB manual). LLVM defines the descriptor.
-extern "C" {
-struct jit_code_entry {
-    jit_code_entry* next_entry;
-    jit_code_entry* prev_entry;
-    const char* symfile_addr;
-    uint64_t symfile_size;
-};
-struct jit_descriptor {
-    uint32_t version;
-    uint32_t action_flag;
-    jit_code_entry* relevant_entry;
-    jit_code_entry* first_entry;
-};
-extern jit_descriptor __jit_debug_descriptor;
+extern "C"
+{
+    struct jit_code_entry
+    {
+        jit_code_entry* next_entry;
+        jit_code_entry* prev_entry;
+        const char* symfile_addr;
+        uint64_t symfile_size;
+    };
+    struct jit_descriptor
+    {
+        uint32_t version;
+        uint32_t action_flag;
+        jit_code_entry* relevant_entry;
+        jit_code_entry* first_entry;
+    };
+    extern jit_descriptor __jit_debug_descriptor;
 }
 
-namespace {
+namespace
+{
 
 namespace fs = std::filesystem;
 
@@ -67,16 +70,19 @@ long child_faults()
 int live_children()
 {
     int n = 0;
-    for (const auto& task : fs::directory_iterator("/proc/self/task")) {
+    for (const auto& task : fs::directory_iterator("/proc/self/task"))
+    {
         std::ifstream f(task.path() / "children");
-        for (std::string pid; f >> pid;) ++n;
+        for (std::string pid; f >> pid;)
+            ++n;
     }
     return n;
 }
 
 // Sets the current directory and TMPDIR to a new empty directory. The
 // destructor restores both and removes the directory.
-struct EmptyWorkDir {
+struct EmptyWorkDir
+{
     fs::path dir;
     fs::path old_cwd = fs::current_path();
     std::string old_tmp;
@@ -87,7 +93,8 @@ struct EmptyWorkDir {
         dir = fs::temp_directory_path() / ("spp_jit_empty_" + std::to_string(getpid()));
         fs::remove_all(dir);
         fs::create_directories(dir);
-        if (const char* t = std::getenv("TMPDIR")) {
+        if (const char* t = std::getenv("TMPDIR"))
+        {
             had_tmp = true;
             old_tmp = t;
         }
@@ -97,14 +104,17 @@ struct EmptyWorkDir {
     ~EmptyWorkDir()
     {
         fs::current_path(old_cwd);
-        if (had_tmp) setenv("TMPDIR", old_tmp.c_str(), 1);
-        else unsetenv("TMPDIR");
+        if (had_tmp)
+            setenv("TMPDIR", old_tmp.c_str(), 1);
+        else
+            unsetenv("TMPDIR");
         fs::remove_all(dir);
     }
     size_t entries() const
     {
         size_t n = 0;
-        for (const auto& e : fs::directory_iterator(dir)) {
+        for (const auto& e : fs::directory_iterator(dir))
+        {
             (void)e;
             ++n;
         }
@@ -204,19 +214,23 @@ class Player : Actor {
 
     override void TakeDamage(Actor& source, float amount) {}
 }
-)", {}};
+)",
+        {}};
     std::unique_ptr<spp::Backend> backend = spp::make_default_backend();
     spp::LoadResult r = backend->load(src, 1);
     ASSERT_TRUE(r) << r.error;
     test_support::Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
-    s.world.Tick(test_support::kDt);  // the throw and the catch are both in the JIT code
+    s.world.Tick(test_support::kDt); // the throw and the catch are both in the JIT code
     ASSERT_NE(s.field("speed"), nullptr);
     EXPECT_EQ(*s.field("speed"), 9.0f);
     int caught = 0;
-    try {
-        s.actor->TakeDamage(1.0f);  // the throw goes through JIT frames to this frame
-    } catch (int e) {
+    try
+    {
+        s.actor->TakeDamage(1.0f); // the throw goes through JIT frames to this frame
+    }
+    catch (int e)
+    {
         caught = e;
     }
     EXPECT_EQ(caught, 42);
@@ -229,11 +243,13 @@ TEST(JitTests, ModuleOutlivesBackendAndGenerationsCanBeRemoved)
     spp::Module kept;
     {
         std::unique_ptr<spp::Backend> backend = spp::make_default_backend();
-        for (int i = 0; i < 3; ++i) {
+        for (int i = 0; i < 3; ++i)
+        {
             spp::LoadResult r = backend->load(source("player_v1.spp"), 1);
             ASSERT_TRUE(r) << r.error;
             // The same generation loads again and again: each time a new JITDylib.
-            if (i == 2) kept = std::move(*r.module);
+            if (i == 2)
+                kept = std::move(*r.module);
         }
     }
     ASSERT_NE(kept.register_fn, nullptr);
@@ -246,7 +262,8 @@ TEST(JitTests, ModuleOutlivesBackendAndGenerationsCanBeRemoved)
 // in memory. Its line table names the .spp file and the lines of the script.
 TEST(JitTests, DebuggerGetsObjectWithScriptLines)
 {
-    if (!test_support::have_dwarfdump()) GTEST_SKIP() << "llvm-dwarfdump is not installed";
+    if (!test_support::have_dwarfdump())
+        GTEST_SKIP() << "llvm-dwarfdump is not installed";
     spp::JitOptions o;
     o.compiler = SPP_CXX;
     o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/include", std::string(SPP_SOURCE_DIR) + "/example/engine"};
@@ -260,7 +277,8 @@ TEST(JitTests, DebuggerGetsObjectWithScriptLines)
     // The newest entry is the last in the list.
     const jit_code_entry* last = __jit_debug_descriptor.first_entry;
     ASSERT_NE(last, nullptr) << "no object was registered";
-    while (last->next_entry) last = last->next_entry;
+    while (last->next_entry)
+        last = last->next_entry;
     ASSERT_GT(last->symfile_size, 0u);
     test_support::TestScratch scratch;
     const std::string image = scratch.file("jit_debug_object.o");
@@ -286,4 +304,4 @@ TEST(JitTests, DebuggerSupportCanBeOff)
     EXPECT_FALSE(backend.debugger_support());
 }
 
-}  // namespace
+} // namespace

@@ -19,9 +19,11 @@
 #include <string>
 #include <vector>
 
-namespace spp::ls {
+namespace spp::ls
+{
 
-struct Host {
+struct Host
+{
     std::string name, binary_dir, compiler, std_version, resource_dir;
     std::vector<std::string> script_dirs, scripts, include_dirs, defines, flags;
 
@@ -29,7 +31,8 @@ struct Host {
     std::vector<std::string> cxx_flags() const;
 };
 
-class HostSet {
+class HostSet
+{
 public:
     // Loads each "*.json" file in dir. It replaces the previous set. It skips a file with
     // invalid JSON or a version that is not 1. When require_cache is true, it also skips a host
@@ -43,9 +46,9 @@ public:
     // is dropped (and kept as skipped). It returns true when the set of hosts changed.
     bool refresh();
 
-    // Marks the set for a full reload at the next refresh(), when file is a "*.json", "*.defines", "*.options" or "*.includes" file in the
-    // directory of the set. The modification time of the directory does not change when a
-    // host file changes in place. Returns true when the file belongs to the set.
+    // Marks the set for a full reload at the next refresh(), when file is a "*.json", "*.defines", "*.options" or
+    // "*.includes" file in the directory of the set. The modification time of the directory does not change when a host
+    // file changes in place. Returns true when the file belongs to the set.
     bool force_reload_for(const std::string& file);
 
     // Gives the best host for an absolute script path, or nullptr. An exact entry in "scripts"
@@ -60,10 +63,10 @@ private:
     std::string dir_;
     bool require_cache_ = true;
     bool loaded_ = false;
-    bool forced_ = false;  // reload at the next refresh()
+    bool forced_ = false; // reload at the next refresh()
     std::filesystem::file_time_type mtime_{};
-    std::vector<std::shared_ptr<const Host>> hosts_;  // sorted by name
-    std::vector<std::shared_ptr<const Host>> skipped_;  // valid, but no CMakeCache.txt
+    std::vector<std::shared_ptr<const Host>> hosts_; // sorted by name
+    std::vector<std::shared_ptr<const Host>> skipped_; // valid, but no CMakeCache.txt
 };
 
-}  // namespace spp::ls
+} // namespace spp::ls

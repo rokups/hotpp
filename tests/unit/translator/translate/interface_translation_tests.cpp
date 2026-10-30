@@ -1,15 +1,16 @@
 // Tests for sppc::translate with native interface bases (S8b, design 4.4 and 5.3): the shell,
 // the slots, the forwarders, the record and the conflict errors.
+#include "spp/sppc_lib.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "spp/sppc_lib.h"
-#include "support/translator_test_support.h"
-
 using namespace translator_test;
 
-namespace {
+namespace
+{
 
 const char* kIfaceHeader =
     "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} virtual int Size() { return 1; } };\n"
@@ -28,9 +29,12 @@ sppc::TranslateResult run(const std::string& classes)
     return sppc::translate(temp_options(dir, "using \"w.h\";\n" + classes));
 }
 
-bool has(const std::string& text, const std::string& part) { return text.find(part) != std::string::npos; }
+bool has(const std::string& text, const std::string& part)
+{
+    return text.find(part) != std::string::npos;
+}
 
-}  // namespace
+} // namespace
 
 // The shell derives from all bases. The virtuals of the interfaces get slots after the virtuals
 // of the primary base. A name in two bases gets a suffix of its parameter types.
@@ -40,8 +44,9 @@ TEST(InterfaceTranslation, ShellDerivesFromAllBasesWithOneSlotForEachVirtual)
         run("class Foo : Widget, IPing, IName {\n    override int Ping(int n) { return n; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "struct Foo_Shell final : Widget, IPing, IName, spp::ShellBase {")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "SLOT_Update = 0,\n    SLOT_Size_v = 1,\n    SLOT_Ping = 2,\n    SLOT_Size_i = 3,\n"
-                           "    SLOT_Id = 4,\n    SLOT_COUNT = 5,"))
+    EXPECT_TRUE(has(r.cpp,
+        "SLOT_Update = 0,\n    SLOT_Size_v = 1,\n    SLOT_Ping = 2,\n    SLOT_Size_i = 3,\n"
+        "    SLOT_Id = 4,\n    SLOT_COUNT = 5,"))
         << r.cpp;
     EXPECT_TRUE(has(r.cpp, "int Ping(int a0) override")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "int Id() const override")) << r.cpp;
@@ -57,9 +62,9 @@ TEST(InterfaceTranslation, ShellDerivesFromAllBasesWithOneSlotForEachVirtual)
 // virtual calls the implementation of the interface base.
 TEST(InterfaceTranslation, OverrideAndSuperCallOfAnInterfaceVirtual)
 {
-    const sppc::TranslateResult r = run(
-        "class Foo : Widget, IPing, IName {\n    override int Ping(int n) { return base.Id() + base.Size(); }\n"
-        "    override int Id() { return 9; }\n}\n");
+    const sppc::TranslateResult r =
+        run("class Foo : Widget, IPing, IName {\n    override int Ping(int n) { return base.Id() + base.Size(); }\n"
+            "    override int Id() { return 9; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "__self->IName::Id()")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "__self->Widget::Size()")) << r.cpp;
@@ -70,9 +75,9 @@ TEST(InterfaceTranslation, OverrideAndSuperCallOfAnInterfaceVirtual)
 // A child of a class with interface bases inherits the interface slots. It can override them.
 TEST(InterfaceTranslation, ChildOverridesAnInterfaceVirtualOfTheRoot)
 {
-    const sppc::TranslateResult r = run(
-        "class Foo : Widget, IPing {\n    override int Ping(int n) { return n; }\n}\n"
-        "class Bar : Foo {\n    override int Ping(int n) { return base.Ping(n) + 1; }\n}\n");
+    const sppc::TranslateResult r =
+        run("class Foo : Widget, IPing {\n    override int Ping(int n) { return n; }\n}\n"
+            "class Bar : Foo {\n    override int Ping(int n) { return base.Ping(n) + 1; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "struct Foo_Shell : Widget, IPing, spp::ShellBase")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "struct Bar_Shell final : Foo_Shell {")) << r.cpp;
@@ -93,8 +98,9 @@ TEST(InterfaceTranslation, SameSignatureInTwoBasesIsAnError)
 {
     const sppc::TranslateResult r = run("class Foo : Widget, ISame { }\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "'Update(float)' is a virtual method of Widget (base 'Widget') and of ISame "
-                                   "(base 'ISame'). One method cannot override a virtual of two bases"))
+    EXPECT_TRUE(has(r.diagnostics,
+        "'Update(float)' is a virtual method of Widget (base 'Widget') and of ISame "
+        "(base 'ISame'). One method cannot override a virtual of two bases"))
         << r.diagnostics;
 }
 
@@ -102,11 +108,11 @@ TEST(InterfaceTranslation, SameSignatureInTwoBasesIsAnError)
 TEST(InterfaceTranslation, AmbiguousOverrideIsAnError)
 {
     const sppc::TranslateResult ok = run("class Foo : Widget, IConst { }\n");
-    EXPECT_TRUE(ok.ok) << ok.diagnostics;  // no override: both slots forward
+    EXPECT_TRUE(ok.ok) << ok.diagnostics; // no override: both slots forward
     const sppc::TranslateResult r = run("class Foo : Widget, IConst {\n    override int Size() { return 4; }\n}\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics,
-                    "the override 'Size' is ambiguous: it matches 'Size()' of Widget and 'Size() const' of IConst"))
+    EXPECT_TRUE(has(
+        r.diagnostics, "the override 'Size' is ambiguous: it matches 'Size()' of Widget and 'Size() const' of IConst"))
         << r.diagnostics;
 }
 
@@ -115,7 +121,7 @@ TEST(InterfaceTranslation, FinalVirtualAndFinalClassAreErrors)
 {
     const sppc::TranslateResult ok = run("class Foo : Widget, IFinal { }\n");
     EXPECT_TRUE(ok.ok) << ok.diagnostics;
-    EXPECT_FALSE(has(ok.cpp, "SLOT_Lock")) << ok.cpp;  // a final method gets no slot
+    EXPECT_FALSE(has(ok.cpp, "SLOT_Lock")) << ok.cpp; // a final method gets no slot
     const sppc::TranslateResult r = run("class Foo : Widget, IFinal {\n    override int Lock() { return 1; }\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "'Lock()' of IFinal is final and cannot be overridden")) << r.diagnostics;
@@ -127,7 +133,8 @@ TEST(InterfaceTranslation, FinalVirtualAndFinalClassAreErrors)
 // The other rules of the base list.
 TEST(InterfaceTranslation, BaseListErrors)
 {
-    struct Case {
+    struct Case
+    {
         const char* script;
         const char* error;
     };
@@ -137,15 +144,16 @@ TEST(InterfaceTranslation, BaseListErrors)
         {"class Foo : Widget, IName, IName { }\n", "class 'Foo' names the base 'IName' two times"},
         {"class Foo : Widget, Widget { }\n", "class 'Foo' names the base 'Widget' two times"},
         {"class Foo : Widget { }\nclass Bar : Foo, IName { }\n",
-         "class 'Bar' has the script parent 'Foo'. Only a class with a native base can have interface bases: the "
-         "shell of a child adds no overrides (design 4.5). Add 'IName' to the bases of the root class 'Foo'"},
+            "class 'Bar' has the script parent 'Foo'. Only a class with a native base can have interface bases: the "
+            "shell of a child adds no overrides (design 4.5). Add 'IName' to the bases of the root class 'Foo'"},
         {"class Foo : Widget { }\nclass Mid : Foo { }\nclass Bar : Mid, IName { }\n",
-         "Add 'IName' to the bases of the root class 'Foo'"},
+            "Add 'IName' to the bases of the root class 'Foo'"},
         {"class Foo : Widget { }\nclass Bar : Widget, Foo { }\n",
-         "the interface base 'Foo' of class 'Bar' is a script class. An interface base must be a native class"},
+            "the interface base 'Foo' of class 'Bar' is a script class. An interface base must be a native class"},
         {"struct V : Widget, IName { }\n", "a struct 'V' has no base class"},
     };
-    for (const Case& c : cases) {
+    for (const Case& c : cases)
+    {
         const sppc::TranslateResult r = run(c.script);
         EXPECT_FALSE(r.ok) << c.script;
         EXPECT_TRUE(has(r.diagnostics, c.error)) << c.script << "\n" << r.diagnostics;

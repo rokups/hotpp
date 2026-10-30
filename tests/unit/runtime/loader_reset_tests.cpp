@@ -1,28 +1,32 @@
 // Unit tests of Loader::reset (full reload) with hand-written records and no backend.
+#include "spp/runtime.h"
+#include "support/reload_assert.h"
+
 #include <gtest/gtest.h>
 
 #include <cstddef>
 #include <string>
 
-#include "spp/runtime.h"
-#include "support/reload_assert.h"
+namespace
+{
 
-namespace {
-
-struct Fake : spp::ShellBase {
+struct Fake : spp::ShellBase
+{
     virtual ~Fake() { spp::destroy_state(this); }
 };
-struct Other : spp::ShellBase {
+struct Other : spp::ShellBase
+{
     virtual ~Other() { spp::destroy_state(this); }
 };
 
-struct State1 {
+struct State1
+{
     int value;
 };
 spp::FieldInfo fields1[] = {
     {"value", nullptr, spp::type_key<int>(), offsetof(State1, value), sizeof(int), alignof(int),
-     spp::field_flags<int>(), [](void*, void* f) { new (f) int(1); }, spp::move_field<int>,
-     spp::field_destroyer<int>()},
+        spp::field_flags<int>(), [](void*, void* f) { new (f) int(1); }, spp::move_field<int>,
+        spp::field_destroyer<int>()},
 };
 spp::StateLayout layout1{"State1", sizeof(State1), alignof(State1), 1, fields1};
 
@@ -34,17 +38,28 @@ spp::ClassRecord fake2{"Fake", 2, slots, 1, &layout1, nullptr, "Base", kHash};
 spp::ClassRecord other1{"Other", 1, slots, 1, &layout1, nullptr, "Base", kHash};
 spp::ClassRecord other2{"Other", 2, slots, 1, &layout1, nullptr, "Base", kHash};
 
-template <class T>
-spp::Instance make(spp::ClassRecord* rec)
+template <class T> spp::Instance make(spp::ClassRecord* rec)
 {
     auto* s = new T;
     spp::init_state(s, rec);
     return {s, s};
 }
-spp::Instance create_fake1() { return make<Fake>(&fake1); }
-spp::Instance create_fake2() { return make<Fake>(&fake2); }
-spp::Instance create_other1() { return make<Other>(&other1); }
-spp::Instance create_other2() { return make<Other>(&other2); }
+spp::Instance create_fake1()
+{
+    return make<Fake>(&fake1);
+}
+spp::Instance create_fake2()
+{
+    return make<Fake>(&fake2);
+}
+spp::Instance create_other1()
+{
+    return make<Other>(&other1);
+}
+spp::Instance create_other2()
+{
+    return make<Other>(&other2);
+}
 
 void register1(spp::Registry& reg)
 {
@@ -65,7 +80,8 @@ spp::Module module_of(spp::Module::RegisterFn fn, const char* name)
     return m;
 }
 
-struct Reset : ::testing::Test {
+struct Reset : ::testing::Test
+{
     // The records change in a commit. Each test starts from new ones.
     Reset()
     {
@@ -87,7 +103,7 @@ TEST_F(Reset, LiveObjectBlocksResetAndTheErrorNamesTheClassAndTheCount)
     std::string error;
     EXPECT_FALSE(loader.reset(error));
     EXPECT_EQ(error, "4 live objects remain: Fake x3, Other x1");
-    EXPECT_EQ(loader.stats().live_objects, 4u);  // nothing changed
+    EXPECT_EQ(loader.stats().live_objects, 4u); // nothing changed
     EXPECT_EQ(loader.stats().active_generation, 1u);
     delete static_cast<Fake*>(a.shell);
     delete static_cast<Fake*>(b.shell);
@@ -136,7 +152,7 @@ TEST_F(Reset, PendingReloadBlocksReset)
     std::string error;
     EXPECT_FALSE(loader.reset(error));
     EXPECT_EQ(error, "a reload is pending");
-    EXPECT_TRUE(loader.reload_pending());  // the reload stays
+    EXPECT_TRUE(loader.reload_pending()); // the reload stays
     ASSERT_RELOAD_OK(loader.commit_pending());
     EXPECT_TRUE(loader.reset(error)) << error;
     EXPECT_EQ(loader.stats().active_generation, 0u);
@@ -161,4 +177,4 @@ TEST_F(Reset, ResetOfAnEmptyLoaderWorks)
     ASSERT_RELOAD_OK(loader.load(module_of(register1, "gen1")));
 }
 
-}  // namespace
+} // namespace

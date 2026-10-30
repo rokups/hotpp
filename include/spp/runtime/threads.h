@@ -4,14 +4,15 @@
 #include <cstdint>
 
 #if defined(_MSC_VER) && !defined(__clang__)
-// unverified: not built on MSVC. This header declares the intrinsics of the atomic helpers.
-#include <intrin.h>
+    // unverified: not built on MSVC. This header declares the intrinsics of the atomic helpers.
+    #include <intrin.h>
 #endif
 
 #include "spp/runtime/compat.h"
 #include "spp/runtime/hidden.h"
 
-namespace spp {
+namespace spp
+{
 
 // The generation that is live now. A generation function checks it.
 extern uint32_t active_generation;
@@ -42,7 +43,8 @@ extern uint32_t active_generation;
 //     destruction stay on one thread at a time (the rule of the live object table).
 //
 // Define SPP_NO_ENTRY_COUNTERS to remove the mode at compile time. Then a ScriptEntry is empty.
-enum class SyncMode : uint8_t {
+enum class SyncMode : uint8_t
+{
     StopTheWorld,
     EntryCounters,
 };
@@ -53,7 +55,8 @@ inline constexpr bool kEntryCounters = false;
 inline constexpr bool kEntryCounters = true;
 #endif
 
-namespace detail {
+namespace detail
+{
 // True in EntryCounters mode. Loader::set_sync_mode writes it.
 // A plain bool: the accessors below use atomic builtins, so no std frame appears in the debugger.
 extern bool g_entry_counters;
@@ -77,9 +80,9 @@ SPP_HIDDEN void store_entry_counters(bool value)
     __atomic_store_n(&g_entry_counters, value, __ATOMIC_SEQ_CST);
 #endif
 }
-SPP_NODEBUG void enter_script();  // the slow path of ScriptEntry (threads.cpp)
+SPP_NODEBUG void enter_script(); // the slow path of ScriptEntry (threads.cpp)
 SPP_NODEBUG void leave_script();
-}  // namespace detail
+} // namespace detail
 
 // True when the process uses the EntryCounters mode.
 SPP_HIDDEN bool entry_counters_enabled()
@@ -92,9 +95,11 @@ SPP_HIDDEN bool entry_counters_enabled()
 
 // RAII: one script entry. In StopTheWorld mode it does nothing after the flag check.
 // The constructor can block while a commit runs (EntryCounters mode).
-class ScriptEntry {
+class ScriptEntry
+{
 public:
-    SPP_HIDDEN ScriptEntry() : counted_(entry_counters_enabled())
+    SPP_HIDDEN ScriptEntry()
+        : counted_(entry_counters_enabled())
     {
         if (SPP_UNLIKELY(counted_))
             detail::enter_script();
@@ -128,7 +133,8 @@ uint64_t blocked_entry_count();
 // The destructor opens the gate. Only one window is open at a time; a second one waits.
 // The caller must not be in a counted script entry (entry_depth() == 0), else it waits for ever.
 // Loader::commit_pending uses it. An engine needs it only for its own changes of script state.
-class CommitWindow {
+class CommitWindow
+{
 public:
     CommitWindow();
     ~CommitWindow();
@@ -168,9 +174,16 @@ public:
 // gate inside a ScriptTickScope.
 #ifdef NDEBUG
 inline constexpr bool kTickChecks = false;
-inline int in_script_tick() { return 0; }
-inline uint64_t unsafe_commit_count() { return 0; }
-class ScriptTickScope {
+inline int in_script_tick()
+{
+    return 0;
+}
+inline uint64_t unsafe_commit_count()
+{
+    return 0;
+}
+class ScriptTickScope
+{
 public:
     ScriptTickScope() = default;
     ScriptTickScope(const ScriptTickScope&) = delete;
@@ -182,7 +195,8 @@ int in_script_tick();
 uint64_t unsafe_commit_count();
 
 // RAII: the thread is inside script code while the object lives.
-class ScriptTickScope {
+class ScriptTickScope
+{
 public:
     ScriptTickScope();
     ~ScriptTickScope();
@@ -206,4 +220,4 @@ SPP_NODEBUG void pin(uint32_t generation);
 SPP_NODEBUG void unpin(uint32_t generation);
 uint32_t pin_count(uint32_t generation);
 
-}  // namespace spp
+} // namespace spp

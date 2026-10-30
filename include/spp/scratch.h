@@ -3,7 +3,8 @@
 
 #include <string>
 
-namespace spp {
+namespace spp
+{
 
 // True when the scratch files must stay. The environment variable SPP_KEEP_TEMP overrides
 // the CMake option. The value "0" or an empty value means false.
@@ -11,7 +12,8 @@ bool keep_temp();
 
 // A scratch directory. The constructor removes the old content and creates the directory.
 // The destructor removes the directory, unless keep_temp() is true.
-class ScratchDir {
+class ScratchDir
+{
 public:
     explicit ScratchDir(std::string path);
     ~ScratchDir();
@@ -34,4 +36,4 @@ bool is_removable_scratch_path(const std::string& path);
 // A safe recursive remove. It does nothing when is_removable_scratch_path() is false.
 void remove_scratch(const std::string& path);
 
-}  // namespace spp
+} // namespace spp

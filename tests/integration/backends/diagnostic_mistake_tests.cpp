@@ -7,6 +7,9 @@
 // error ("the compile of ... failed") is not part of the expected text.
 // To change a golden file, set SPP_UPDATE_GOLDEN: the test writes the error text of the run
 // (without the "the compile of" line) and still compares. Look at the diff before you commit.
+#include "spp/backend.h"
+#include "support/script_files.h"
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -17,10 +20,8 @@
 #include <string>
 #include <vector>
 
-#include "spp/backend.h"
-#include "support/script_files.h"
-
-namespace {
+namespace
+{
 
 namespace fs = std::filesystem;
 
@@ -30,7 +31,8 @@ std::vector<std::string> case_names()
 {
     std::vector<std::string> names;
     for (const auto& e : fs::directory_iterator(kDir))
-        if (e.path().extension() == ".expected") names.push_back(e.path().stem().string());
+        if (e.path().extension() == ".expected")
+            names.push_back(e.path().stem().string());
     std::sort(names.begin(), names.end());
     return names;
 }
@@ -44,11 +46,14 @@ std::string normalize(std::string text)
     std::istringstream in(text);
     std::string out;
     for (std::string l; std::getline(in, l);)
-        if (l.rfind("the compile of ", 0) != 0 && l.find(" generated.") == std::string::npos) out += l + "\n";
+        if (l.rfind("the compile of ", 0) != 0 && l.find(" generated.") == std::string::npos)
+            out += l + "\n";
     return out;
 }
 
-class DiagnosticMistakes : public ::testing::TestWithParam<std::string> {};
+class DiagnosticMistakes : public ::testing::TestWithParam<std::string>
+{
+};
 
 TEST_P(DiagnosticMistakes, ErrorSpeaksScriptNames)
 {
@@ -60,34 +65,42 @@ TEST_P(DiagnosticMistakes, ErrorSpeaksScriptNames)
     const spp::LoadResult r = backend->load(source, 1);
     ASSERT_FALSE(r) << "the script must not compile";
     const std::string actual = normalize(r.error);
-    if (std::getenv("SPP_UPDATE_GOLDEN")) {
+    if (std::getenv("SPP_UPDATE_GOLDEN"))
+    {
         std::string text = r.error;
         for (size_t p = text.find(SPP_SOURCE_DIR); p != std::string::npos; p = text.find(SPP_SOURCE_DIR, p))
             text.replace(p, std::string(SPP_SOURCE_DIR).size(), "<src>");
         std::istringstream in(text);
         std::string out;
         for (std::string l; std::getline(in, l);)
-            if (l.rfind("the compile of ", 0) != 0) out += l + "\n";
+            if (l.rfind("the compile of ", 0) != 0)
+                out += l + "\n";
         std::ofstream(kDir + name + ".expected") << out;
     }
     EXPECT_EQ(actual, normalize(test_support::read_file(kDir + name + ".expected")));
     // No generated name is left in the lines that name the script.
     // A script that uses "__" in a name of its own can see that name in the error.
     const bool script_has_dunder = source.text.find("__") != std::string::npos;
-    for (const char* generated : {"_Shell", "State_g", "__", "self->", "spp::deref", ".cpp"}) {
-        if (script_has_dunder && std::string(generated) == "__") continue;
+    for (const char* generated : {"_Shell", "State_g", "__", "self->", "spp::deref", ".cpp"})
+    {
+        if (script_has_dunder && std::string(generated) == "__")
+            continue;
         EXPECT_EQ(actual.find(generated), std::string::npos) << generated << " in:\n" << actual;
     }
 }
 
 INSTANTIATE_TEST_SUITE_P(Mistakes, DiagnosticMistakes, ::testing::ValuesIn(case_names()),
-                         [](const ::testing::TestParamInfo<std::string>& i) {
-                             std::string s = i.param;
-                             std::replace_if(s.begin(), s.end(), [](char c) { return !std::isalnum(static_cast<unsigned char>(c)); }, '_');
-                             return s;
-                         });
+    [](const ::testing::TestParamInfo<std::string>& i)
+{
+    std::string s = i.param;
+    std::replace_if(s.begin(), s.end(), [](char c) { return !std::isalnum(static_cast<unsigned char>(c)); }, '_');
+    return s;
+});
 
 // The table has at least ten different mistakes (design F2).
-TEST(DiagnosticMistakesTable, HasTenCases) { EXPECT_GE(case_names().size(), 10u); }
+TEST(DiagnosticMistakesTable, HasTenCases)
+{
+    EXPECT_GE(case_names().size(), 10u);
+}
 
-}  // namespace
+} // namespace

@@ -1,37 +1,38 @@
 #include "server.h"
 
-#include <signal.h>
-#include <unistd.h>
+#include "clangd_process.h"
+#include "hosts.h"
+#include "jsonrpc.h"
+#include "semantic.h"
+#include "spp/clang_files_backend.h"
+#include "spp/sppc_lib.h"
+#include "symbol_index.h"
+
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <filesystem>
-#include <functional>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <regex>
 #include <set>
+#include <signal.h>
 #include <sstream>
+#include <unistd.h>
 #include <variant>
-
-#include <nlohmann/json.hpp>
-
-#include "clangd_process.h"
-#include "hosts.h"
-#include "jsonrpc.h"
-#include "semantic.h"
-#include "symbol_index.h"
-#include "spp/clang_files_backend.h"
-#include "spp/sppc_lib.h"
 
 namespace fs = std::filesystem;
 
-namespace spp::ls {
+namespace spp::ls
+{
 
 using json = nlohmann::json;
 
-namespace {
+namespace
+{
 
 // The name that the completion puts in place of the word at the cursor (see on_completion).
 const std::string kHole = "__spp_complete";
@@ -43,9 +44,12 @@ constexpr int kRequestFailed = -32803;
 
 int hex(char c)
 {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
     return -1;
 }
 
@@ -53,11 +57,15 @@ std::string uri_to_path(const std::string& uri)
 {
     std::string s = uri.compare(0, 7, "file://") == 0 ? uri.substr(7) : uri;
     std::string r;
-    for (size_t i = 0; i < s.size(); ++i) {
-        if (s[i] == '%' && i + 2 < s.size() && hex(s[i + 1]) >= 0 && hex(s[i + 2]) >= 0) {
+    for (size_t i = 0; i < s.size(); ++i)
+    {
+        if (s[i] == '%' && i + 2 < s.size() && hex(s[i + 1]) >= 0 && hex(s[i + 2]) >= 0)
+        {
             r += static_cast<char>(hex(s[i + 1]) * 16 + hex(s[i + 2]));
             i += 2;
-        } else {
+        }
+        else
+        {
             r += s[i];
         }
     }
@@ -68,11 +76,15 @@ std::string path_to_uri(const std::string& path)
 {
     static const char* digits = "0123456789ABCDEF";
     std::string r = "file://";
-    for (char ch : path) {
+    for (char ch : path)
+    {
         const unsigned char c = static_cast<unsigned char>(ch);
-        if (is_id_char(ch) || c == '/' || c == '-' || c == '.' || c == '~') {
+        if (is_id_char(ch) || c == '/' || c == '-' || c == '.' || c == '~')
+        {
             r += ch;
-        } else {
+        }
+        else
+        {
             r += '%';
             r += digits[c >> 4];
             r += digits[c & 15];
@@ -84,23 +96,34 @@ std::string path_to_uri(const std::string& path)
 std::optional<std::string> read_file(const std::string& path)
 {
     std::ifstream in(path, std::ios::binary);
-    if (!in) return std::nullopt;
+    if (!in)
+        return std::nullopt;
     std::stringstream ss;
     ss << in.rdbuf();
     return ss.str();
 }
 
 // A text with its line table. Positions are 0-based lines and byte columns.
-struct Text {
+struct Text
+{
     std::string s;
     std::vector<size_t> starts;
-    Text() : starts{0} {}
-    explicit Text(std::string t) : s(std::move(t)), starts(line_starts(s)) {}
+    Text()
+        : starts{0}
+    {
+    }
+    explicit Text(std::string t)
+        : s(std::move(t))
+        , starts(line_starts(s))
+    {
+    }
     std::string_view line(int l) const { return line_text(s, starts, l); }
     size_t offset(int l, int c) const
     {
-        if (l < 0) return 0;
-        if (static_cast<size_t>(l) >= starts.size()) return s.size();
+        if (l < 0)
+            return 0;
+        if (static_cast<size_t>(l) >= starts.size())
+            return s.size();
         return std::min(starts[static_cast<size_t>(l)] + static_cast<size_t>(std::max(c, 0)), s.size());
     }
     std::pair<int, int> pos(size_t off) const
@@ -111,19 +134,22 @@ struct Text {
     }
 };
 
-struct Pos {
-    int line = 0, col = 0;  // 0-based line, byte column
+struct Pos
+{
+    int line = 0, col = 0; // 0-based line, byte column
     bool operator<(const Pos& o) const { return std::tie(line, col) < std::tie(o.line, o.col); }
     bool operator==(const Pos& o) const { return line == o.line && col == o.col; }
 };
 
 // A script symbol that other scripts can have too: a class, or a member of a class.
-struct SymbolKey {
-    std::string cls, member;  // member is empty for a class
+struct SymbolKey
+{
+    std::string cls, member; // member is empty for a class
 };
 
 // One open .spp document and its state in clangd.
-struct Doc {
+struct Doc
+{
     std::string uri, path;
     Text text;
     sppc::AnalyzeResult facts;
@@ -134,7 +160,7 @@ struct Doc {
     Text gen;
     std::shared_ptr<const sppc::SourceMap> map;
     Text gen_script;
-    bool edited = false;  // the text differs from gen_script
+    bool edited = false; // the text differs from gen_script
     // The edit from gen_script to text: the bytes [0, edit_prefix) are equal. The old bytes from
     // edit_old_end and the new bytes from edit_new_end are equal to the end.
     size_t edit_prefix = 0, edit_old_end = 0, edit_new_end = 0;
@@ -144,9 +170,11 @@ struct Doc {
         edited = a != b;
         size_t p = 0;
         const size_t n = std::min(a.size(), b.size());
-        while (p < n && a[p] == b[p]) ++p;
+        while (p < n && a[p] == b[p])
+            ++p;
         size_t q = 0;
-        while (q < n - p && a[a.size() - 1 - q] == b[b.size() - 1 - q]) ++q;
+        while (q < n - p && a[a.size() - 1 - q] == b[b.size() - 1 - q])
+            ++q;
         edit_prefix = p;
         edit_old_end = a.size() - q;
         edit_new_end = b.size() - q;
@@ -154,12 +182,12 @@ struct Doc {
     // A position of the text as a position of gen_script, and back. No value inside the edit.
     std::optional<Pos> text_to_gen_script(Pos p) const;
     std::optional<Pos> gen_script_to_text(Pos p) const;
-    int gen_version = 0;   // the clangd version of the real text
-    int sent_version = 0;  // the last clangd version
+    int gen_version = 0; // the clangd version of the real text
+    int sent_version = 0; // the last clangd version
     bool in_clangd = false;
     // The host of the script at the last update. Null: no host.
     std::shared_ptr<const Host> host;
-    json clang_diags = json::array();  // the mapped clangd diagnostics of gen_version
+    json clang_diags = json::array(); // the mapped clangd diagnostics of gen_version
     // The last diagnostics of clangd as clangd sent them. clangd does not send them again when a
     // new version has the same diagnostics. So update() maps them again to the new text.
     json raw_clang_diags = json::array();
@@ -169,7 +197,8 @@ struct Doc {
     std::set<std::string> import_uris;
     // The last clangd answer of a completion. "rest" is the script text without the word at the
     // cursor. The answer holds the names that start with "prefix".
-    struct CompletionCache {
+    struct CompletionCache
+    {
         std::string rest, prefix;
         bool valid = false, complete = false;
         json list = json::array();
@@ -179,34 +208,50 @@ struct Doc {
 
 std::optional<Pos> Doc::text_to_gen_script(Pos p) const
 {
-    if (!edited) return p;
+    if (!edited)
+        return p;
     const size_t off = text.offset(p.line, p.col);
     size_t old;
-    if (off < edit_prefix) old = off;
-    else if (off >= edit_new_end) old = off - edit_new_end + edit_old_end;
-    else return std::nullopt;
+    if (off < edit_prefix)
+        old = off;
+    else if (off >= edit_new_end)
+        old = off - edit_new_end + edit_old_end;
+    else
+        return std::nullopt;
     const auto [l, c] = gen_script.pos(old);
     return Pos{l, c};
 }
 
 std::optional<Pos> Doc::gen_script_to_text(Pos p) const
 {
-    if (!edited) return p;
+    if (!edited)
+        return p;
     const size_t old = gen_script.offset(p.line, p.col);
     size_t off;
-    if (old < edit_prefix) off = old;
-    else if (old >= edit_old_end) off = old - edit_old_end + edit_new_end;
-    else return std::nullopt;
+    if (old < edit_prefix)
+        off = old;
+    else if (old >= edit_old_end)
+        off = old - edit_old_end + edit_new_end;
+    else
+        return std::nullopt;
     const auto [l, c] = text.pos(off);
     return Pos{l, c};
 }
 
-class Server {
+class Server
+{
 public:
-    Server(int in, int out, ServerOptions o) : in_(in), out_(out), opt_(std::move(o)) { read_compile_commands(); }
+    Server(int in, int out, ServerOptions o)
+        : in_(in)
+        , out_(out)
+        , opt_(std::move(o))
+    {
+        read_compile_commands();
+    }
     ~Server()
     {
-        if (clangd_) clangd_->stop();
+        if (clangd_)
+            clangd_->stop();
     }
     int run();
 
@@ -217,7 +262,10 @@ private:
         std::lock_guard<std::mutex> lock(out_mutex_);
         write_message(out_, msg.dump(-1, ' ', false, json::error_handler_t::replace));
     }
-    void reply(const json& id, json result) { send_client({{"jsonrpc", "2.0"}, {"id", id}, {"result", std::move(result)}}); }
+    void reply(const json& id, json result)
+    {
+        send_client({{"jsonrpc", "2.0"}, {"id", id}, {"result", std::move(result)}});
+    }
     void reply_error(const json& id, int code, const std::string& message)
     {
         send_client({{"jsonrpc", "2.0"}, {"id", id}, {"error", {{"code", code}, {"message", message}}}});
@@ -241,19 +289,24 @@ private:
     json gen_pos(const Doc& d, Pos p) const { return to_lsp(d.gen, p, clangd_utf8_); }
     std::optional<Pos> to_gen(const Doc& d, Pos p) const
     {
-        if (!d.map) return std::nullopt;
+        if (!d.map)
+            return std::nullopt;
         const auto old = d.text_to_gen_script(p);
-        if (!old) return std::nullopt;
+        if (!old)
+            return std::nullopt;
         const auto g = d.map->map_to_generated(old->line + 1, old->col + 1);
-        if (!g) return std::nullopt;
+        if (!g)
+            return std::nullopt;
         return Pos{g->line - 1, g->col - 1};
     }
     std::optional<Pos> to_script(const Doc& d, const json& lsp_pos) const
     {
-        if (!d.map) return std::nullopt;
+        if (!d.map)
+            return std::nullopt;
         const Pos g = from_lsp(d.gen, lsp_pos, clangd_utf8_);
         const auto s = d.map->map_to_script(g.line + 1, g.col + 1);
-        if (!s) return std::nullopt;
+        if (!s)
+            return std::nullopt;
         return d.gen_script_to_text(Pos{s->line - 1, s->col - 1});
     }
     // The word at a script position, or the word that ends there. Gives [begin, end) columns.
@@ -261,12 +314,14 @@ private:
     {
         const std::string_view l = d.text.line(p.line);
         int b = std::min<int>(p.col, static_cast<int>(l.size()));
-        if ((b >= static_cast<int>(l.size()) || !is_id_char(l[static_cast<size_t>(b)])) && b > 0 &&
-            is_id_char(l[static_cast<size_t>(b - 1)]))
+        if ((b >= static_cast<int>(l.size()) || !is_id_char(l[static_cast<size_t>(b)])) && b > 0
+            && is_id_char(l[static_cast<size_t>(b - 1)]))
             --b;
         int e = b;
-        while (b > 0 && is_id_char(l[static_cast<size_t>(b - 1)])) --b;
-        while (e < static_cast<int>(l.size()) && is_id_char(l[static_cast<size_t>(e)])) ++e;
+        while (b > 0 && is_id_char(l[static_cast<size_t>(b - 1)]))
+            --b;
+        while (e < static_cast<int>(l.size()) && is_id_char(l[static_cast<size_t>(e)]))
+            ++e;
         return {b, e};
     }
     std::string word(const Doc& d, Pos p) const
@@ -296,21 +351,24 @@ private:
     }
     // ---- hosts
     // The options for one script: the host first, then the options of the command line.
-    struct Effective {
+    struct Effective
+    {
         std::vector<std::string> include_dirs, extra_flags;
         std::string resource_dir;
     };
     std::shared_ptr<const Host> host_of(const std::string& path) const
     {
         for (const HostSet& h : hosts_)
-            if (auto m = h.match(path)) return m;
+            if (auto m = h.match(path))
+                return m;
         return nullptr;
     }
     Effective effective_options(const std::string& path) const
     {
         Effective e;
         const auto host = host_of(path);
-        if (host) {
+        if (host)
+        {
             e.include_dirs = host->include_dirs;
             e.extra_flags = host->cxx_flags();
         }
@@ -321,19 +379,22 @@ private:
     }
     static bool same_host(const std::shared_ptr<const Host>& a, const std::shared_ptr<const Host>& b)
     {
-        if (a == b) return true;
-        if (!a || !b) return false;
-        return a->name == b->name && a->resource_dir == b->resource_dir && a->include_dirs == b->include_dirs &&
-               a->cxx_flags() == b->cxx_flags();
+        if (a == b)
+            return true;
+        if (!a || !b)
+            return false;
+        return a->name == b->name && a->resource_dir == b->resource_dir && a->include_dirs == b->include_dirs
+            && a->cxx_flags() == b->cxx_flags();
     }
     void load_hosts();
     // Tells the client which host a document uses (window/logMessage, type Info).
     void log_host(const Doc& d, const std::shared_ptr<const Host>& host)
     {
-        send_client({{"jsonrpc", "2.0"},
-                     {"method", "window/logMessage"},
-                     {"params", {{"type", 3},
-                                 {"message", "spp-ls: " + d.path + " uses " + (host ? "host " + host->name : std::string("no host"))}}}});
+        send_client({{"jsonrpc", "2.0"}, {"method", "window/logMessage"},
+            {"params",
+                {{"type", 3},
+                    {"message",
+                        "spp-ls: " + d.path + " uses " + (host ? "host " + host->name : std::string("no host"))}}}});
     }
     // Checks the host files after a document event. A document whose host changed gets the new
     // compile command. "current" is the document of the event: the caller updates it.
@@ -356,9 +417,11 @@ private:
     void map_clangd_diagnostics(Doc& d);
     std::optional<json> clangd_result(const std::string& method, json params, int timeout_ms = 60000)
     {
-        if (!clangd_ || !clangd_->running()) return std::nullopt;
+        if (!clangd_ || !clangd_->running())
+            return std::nullopt;
         json r = clangd_->request(method, std::move(params), timeout_ms);
-        if (!r.is_object() || !r.contains("result") || r["result"].is_null()) return std::nullopt;
+        if (!r.is_object() || !r.contains("result") || r["result"].is_null())
+            return std::nullopt;
         return r["result"];
     }
 
@@ -395,7 +458,7 @@ private:
     // "places" are the places of the symbol in that file. An open document is used as it is.
     // A file on disk goes to clangd only for the call.
     void for_other_scripts(const Doc& origin, const SymbolKey& key, const std::string& name,
-                           const std::function<void(const Doc&, const std::set<Pos>&)>& fn);
+        const std::function<void(const Doc&, const std::set<Pos>&)>& fn);
 
     int in_, out_;
     ServerOptions opt_;
@@ -403,20 +466,21 @@ private:
     // docs_mutex_ guards the fields of the documents that the clangd reader thread reads. Only
     // the main thread changes a document. It never holds the lock during a clangd request.
     std::mutex docs_mutex_;
-    std::map<std::string, std::shared_ptr<Doc>> docs_;      // by the script uri
-    std::map<std::string, std::shared_ptr<Doc>> gen_docs_;  // by the generated uri
+    std::map<std::string, std::shared_ptr<Doc>> docs_; // by the script uri
+    std::map<std::string, std::shared_ptr<Doc>> gen_docs_; // by the generated uri
     std::unique_ptr<ClangdProcess> clangd_;
-    std::vector<std::string> roots_;  // the workspace folders (paths), from initialize
-    std::vector<HostSet> hosts_;      // the host files: one set for each hosts dir
+    std::vector<std::string> roots_; // the workspace folders (paths), from initialize
+    std::vector<HostSet> hosts_; // the host files: one set for each hosts dir
     bool utf8_ = false, clangd_utf8_ = false, shutdown_ = false;
     std::set<std::string> preamble_ready_;
     // The analyze facts of the scripts on disk that are not open (script_member_location).
     std::map<std::string, std::pair<std::string, sppc::AnalyzeResult>> disk_facts_;
-    std::string index_seed_;  // the first file of compile_commands.json (start_clangd)  // the generated files with a first completion
+    std::string index_seed_; // the first file of compile_commands.json (start_clangd)  // the generated files with a
+                             // first completion
     // The saved symbol index of the scripts on disk (S28, symbol_index.h).
     SymbolIndex index_;
-    int completion_translations_ = 0;  // the translations of a completion text (spp/indexStats)
-    int closed_analyses_ = 0;  // the analyze calls of for_other_scripts (spp/indexStats)
+    int completion_translations_ = 0; // the translations of a completion text (spp/indexStats)
+    int closed_analyses_ = 0; // the analyze calls of for_other_scripts (spp/indexStats)
     sppc::TranslatorSession session_;
 };
 
@@ -424,37 +488,54 @@ private:
 
 void Server::read_compile_commands()
 {
-    if (opt_.compile_commands_dir.empty()) return;
+    if (opt_.compile_commands_dir.empty())
+        return;
     const auto text = read_file(opt_.compile_commands_dir + "/compile_commands.json");
-    if (!text) return;
+    if (!text)
+        return;
     const json db = json::parse(*text, nullptr, false);
-    if (!db.is_array() || db.empty()) return;
+    if (!db.is_array() || db.empty())
+        return;
     std::vector<std::string> args;
-    if (db[0].contains("arguments")) {
+    if (db[0].contains("arguments"))
+    {
         for (const json& a : db[0]["arguments"])
-            if (a.is_string()) args.push_back(a.get<std::string>());
-    } else if (db[0].contains("command")) {
+            if (a.is_string())
+                args.push_back(a.get<std::string>());
+    }
+    else if (db[0].contains("command"))
+    {
         std::istringstream ss(db[0].value("command", std::string()));
-        for (std::string a; ss >> a;) args.push_back(a);
+        for (std::string a; ss >> a;)
+            args.push_back(a);
     }
     const std::string dir = db[0].value("directory", std::string("."));
     index_seed_ = db[0].value("file", std::string());
     if (!index_seed_.empty() && fs::path(index_seed_).is_relative())
         index_seed_ = (fs::path(dir) / index_seed_).lexically_normal().string();
-    auto add_dir = [&](std::string d) {
-        if (fs::path(d).is_relative()) d = (fs::path(dir) / d).lexically_normal().string();
+    auto add_dir = [&](std::string d)
+    {
+        if (fs::path(d).is_relative())
+            d = (fs::path(dir) / d).lexically_normal().string();
         for (const std::string& x : opt_.include_dirs)
-            if (x == d) return;
+            if (x == d)
+                return;
         opt_.include_dirs.push_back(d);
     };
-    for (size_t i = 0; i < args.size(); ++i) {
+    for (size_t i = 0; i < args.size(); ++i)
+    {
         const std::string& a = args[i];
-        if (a == "-I" && i + 1 < args.size()) add_dir(args[++i]);
-        else if (a.compare(0, 2, "-I") == 0) add_dir(a.substr(2));
-        else if ((a == "-isystem" || a == "-D") && i + 1 < args.size()) {
+        if (a == "-I" && i + 1 < args.size())
+            add_dir(args[++i]);
+        else if (a.compare(0, 2, "-I") == 0)
+            add_dir(a.substr(2));
+        else if ((a == "-isystem" || a == "-D") && i + 1 < args.size())
+        {
             opt_.extra_flags.push_back(a);
             opt_.extra_flags.push_back(args[++i]);
-        } else if (a.compare(0, 2, "-D") == 0) opt_.extra_flags.push_back(a);
+        }
+        else if (a.compare(0, 2, "-D") == 0)
+            opt_.extra_flags.push_back(a);
     }
 }
 
@@ -464,14 +545,17 @@ void Server::read_compile_commands()
 // with the index of a C++ clangd on the same database (DECISIONS 18).
 std::string Server::private_cdb_dir() const
 {
-    if (roots_.empty()) return opt_.compile_commands_dir;
+    if (roots_.empty())
+        return opt_.compile_commands_dir;
     std::error_code ec;
     const fs::path dir = fs::path(roots_[0]) / ".cache" / "spp" / "clangd";
     fs::create_directories(dir, ec);
-    if (ec) return opt_.compile_commands_dir;
+    if (ec)
+        return opt_.compile_commands_dir;
     const fs::path link = dir / "compile_commands.json";
     const fs::path target = fs::absolute(fs::path(opt_.compile_commands_dir) / "compile_commands.json", ec);
-    if (ec || !fs::exists(target)) return opt_.compile_commands_dir;
+    if (ec || !fs::exists(target))
+        return opt_.compile_commands_dir;
     fs::remove(link, ec);
     fs::create_symlink(target, link, ec);
     return ec ? opt_.compile_commands_dir : dir.string();
@@ -479,29 +563,37 @@ std::string Server::private_cdb_dir() const
 
 void Server::start_clangd(const json& init)
 {
-    if (opt_.clangd.empty()) return;
-    std::vector<std::string> args = {opt_.clangd_log.empty() ? "--log=error" : "--log=info", "--header-insertion=never", "-j=2"};
-    if (!opt_.compile_commands_dir.empty()) {
+    if (opt_.clangd.empty())
+        return;
+    std::vector<std::string> args = {
+        opt_.clangd_log.empty() ? "--log=error" : "--log=info", "--header-insertion=never", "-j=2"};
+    if (!opt_.compile_commands_dir.empty())
+    {
         args.push_back("--compile-commands-dir=" + private_cdb_dir());
         args.push_back("--background-index");
-    } else {
+    }
+    else
+    {
         args.push_back("--background-index=false");
     }
     auto c = std::make_unique<ClangdProcess>();
-    if (!c->start(opt_.clangd, args, opt_.clangd_log, [this](const json& m) { on_clangd_notification(m); })) return;
+    if (!c->start(opt_.clangd, args, opt_.clangd_log, [this](const json& m) { on_clangd_notification(m); }))
+        return;
     json params = {
         {"processId", static_cast<int>(getpid())},
         {"capabilities",
-         {{"general", {{"positionEncodings", {"utf-8", "utf-16"}}}},
-          {"textDocument",
-           {{"completion", {{"completionItem", {{"snippetSupport", false}}}}},
-            {"hover", {{"contentFormat", {"markdown", "plaintext"}}}},
-            {"publishDiagnostics", {{"versionSupport", true}}}}}}},
+            {{"general", {{"positionEncodings", {"utf-8", "utf-16"}}}},
+                {"textDocument",
+                    {{"completion", {{"completionItem", {{"snippetSupport", false}}}}},
+                        {"hover", {{"contentFormat", {"markdown", "plaintext"}}}},
+                        {"publishDiagnostics", {{"versionSupport", true}}}}}}},
     };
     for (const char* k : {"rootUri", "rootPath", "workspaceFolders"})
-        if (init.contains(k)) params[k] = init[k];
+        if (init.contains(k))
+            params[k] = init[k];
     json r = c->request("initialize", params, 30000);
-    if (!r.is_object() || !r.contains("result")) {
+    if (!r.is_object() || !r.contains("result"))
+    {
         c->stop();
         return;
     }
@@ -509,10 +601,11 @@ void Server::start_clangd(const json& init)
     c->notify("initialized", json::object());
     // clangd loads the compile_commands.json, and starts the background index, at the first
     // file that it opens. The server opens and closes one entry of the database for this.
-    if (const auto seed = index_seed_.empty() ? std::nullopt : read_file(index_seed_)) {
+    if (const auto seed = index_seed_.empty() ? std::nullopt : read_file(index_seed_))
+    {
         const std::string uri = path_to_uri(index_seed_);
         c->notify("textDocument/didOpen",
-                  {{"textDocument", {{"uri", uri}, {"languageId", "cpp"}, {"version", 1}, {"text", *seed}}}});
+            {{"textDocument", {{"uri", uri}, {"languageId", "cpp"}, {"version", 1}, {"text", *seed}}}});
         c->notify("textDocument/didClose", {{"textDocument", {{"uri", uri}}}});
     }
     clangd_ = std::move(c);
@@ -522,10 +615,13 @@ void Server::load_hosts()
 {
     hosts_.clear();
     std::vector<std::string> dirs;
-    if (!opt_.hosts_dir.empty()) dirs.push_back(opt_.hosts_dir);
+    if (!opt_.hosts_dir.empty())
+        dirs.push_back(opt_.hosts_dir);
     else
-        for (const std::string& r : roots_) dirs.push_back((fs::path(r) / ".cache" / "spp" / "hosts").string());
-    for (const std::string& dir : dirs) {
+        for (const std::string& r : roots_)
+            dirs.push_back((fs::path(r) / ".cache" / "spp" / "hosts").string());
+    for (const std::string& dir : dirs)
+    {
         HostSet set;
         set.load(dir, true);
         hosts_.push_back(std::move(set));
@@ -535,87 +631,110 @@ void Server::load_hosts()
 void Server::refresh_hosts(Doc* current)
 {
     bool changed = false;
-    for (HostSet& h : hosts_) changed = h.refresh() || changed;
-    if (!changed) return;
+    for (HostSet& h : hosts_)
+        changed = h.refresh() || changed;
+    if (!changed)
+        return;
     disk_facts_.clear();
     std::vector<std::shared_ptr<Doc>> redo;
-    for (const auto& [uri, d] : docs_) {
+    for (const auto& [uri, d] : docs_)
+    {
         const auto now = host_of(d->path);
-        if (same_host(now, d->host)) continue;
+        if (same_host(now, d->host))
+            continue;
         d->host = now;
-        if (d.get() != current) log_host(*d, now);  // the caller logs the current document
+        if (d.get() != current)
+            log_host(*d, now); // the caller logs the current document
         // clangd gets the new compile command at the next send_generated.
-        if (clangd_ && d->in_clangd) clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", d->gen_uri}}}});
+        if (clangd_ && d->in_clangd)
+            clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", d->gen_uri}}}});
         d->in_clangd = false;
         preamble_ready_.erase(d->gen_uri);
-        if (d.get() != current) redo.push_back(d);
+        if (d.get() != current)
+            redo.push_back(d);
     }
-    for (const auto& d : redo) update(*d);
+    for (const auto& d : redo)
+        update(*d);
 }
 
 void Server::on_watched_files(const json& p)
 {
     bool host_file = false;
-    for (const json& c : p.value("changes", json::array())) {
-        if (!c.is_object() || !c.value("uri", json()).is_string()) continue;
+    for (const json& c : p.value("changes", json::array()))
+    {
+        if (!c.is_object() || !c.value("uri", json()).is_string())
+            continue;
         const std::string path = uri_to_path(c["uri"].get<std::string>());
         const std::string ext = fs::path(path).extension().string();
-        if (ext == ".json" || ext == ".defines" || ext == ".options" || ext == ".includes") {
-            for (HostSet& h : hosts_) host_file = h.force_reload_for(path) || host_file;
-        } else if (ext == ".spp") {
+        if (ext == ".json" || ext == ".defines" || ext == ".options" || ext == ".includes")
+        {
+            for (HostSet& h : hosts_)
+                host_file = h.force_reload_for(path) || host_file;
+        }
+        else if (ext == ".spp")
+        {
             // An open document owns its text. For a closed file, the cache of the analysis goes.
             // A shard of a deleted file goes at the next index_.prune().
             disk_facts_.erase(path);
         }
     }
-    if (host_file) refresh_hosts(nullptr);
+    if (host_file)
+        refresh_hosts(nullptr);
 }
 
 json Server::on_initialize(const json& p)
 {
     const json encodings = p.value("/capabilities/general/positionEncodings"_json_pointer, json::array());
     for (const json& e : encodings)
-        if (e == "utf-8") utf8_ = true;
-    if (const json o = p.value("initializationOptions", json::object()); o.is_object()) {
-        for (const json& d : o.value("includeDirs", json::array())) opt_.include_dirs.push_back(d.get<std::string>());
-        if (o.contains("clangd")) opt_.clangd = o.value("clangd", opt_.clangd);
-        if (o.contains("hostsDir")) opt_.hosts_dir = o.value("hostsDir", std::string());
-        if (o.contains("compileCommandsDir")) {
+        if (e == "utf-8")
+            utf8_ = true;
+    if (const json o = p.value("initializationOptions", json::object()); o.is_object())
+    {
+        for (const json& d : o.value("includeDirs", json::array()))
+            opt_.include_dirs.push_back(d.get<std::string>());
+        if (o.contains("clangd"))
+            opt_.clangd = o.value("clangd", opt_.clangd);
+        if (o.contains("hostsDir"))
+            opt_.hosts_dir = o.value("hostsDir", std::string());
+        if (o.contains("compileCommandsDir"))
+        {
             opt_.compile_commands_dir = o.value("compileCommandsDir", std::string());
             read_compile_commands();
         }
     }
     roots_.clear();
-    if (p.contains("workspaceFolders") && p["workspaceFolders"].is_array()) {
+    if (p.contains("workspaceFolders") && p["workspaceFolders"].is_array())
+    {
         for (const json& f : p["workspaceFolders"])
-            if (f.is_object() && f.value("uri", std::string()).size()) roots_.push_back(uri_to_path(f.value("uri", std::string())));
+            if (f.is_object() && f.value("uri", std::string()).size())
+                roots_.push_back(uri_to_path(f.value("uri", std::string())));
     }
-    if (roots_.empty() && p.value("rootUri", json()).is_string()) roots_.push_back(uri_to_path(p["rootUri"].get<std::string>()));
-    if (roots_.empty() && p.value("rootPath", json()).is_string()) roots_.push_back(p["rootPath"].get<std::string>());
-    if (!opt_.index_dir.empty()) index_.open(opt_.index_dir);
-    else if (!roots_.empty()) index_.open((fs::path(roots_[0]) / ".cache" / "spp" / "index").string());
+    if (roots_.empty() && p.value("rootUri", json()).is_string())
+        roots_.push_back(uri_to_path(p["rootUri"].get<std::string>()));
+    if (roots_.empty() && p.value("rootPath", json()).is_string())
+        roots_.push_back(p["rootPath"].get<std::string>());
+    if (!opt_.index_dir.empty())
+        index_.open(opt_.index_dir);
+    else if (!roots_.empty())
+        index_.open((fs::path(roots_[0]) / ".cache" / "spp" / "index").string());
     index_.prune();
     load_hosts();
     start_clangd(p);
     json tokens = json::array();
-    for (const std::string& t : semantic_token_types()) tokens.push_back(t);
+    for (const std::string& t : semantic_token_types())
+        tokens.push_back(t);
     return {
         {"capabilities",
-         {{"positionEncoding", utf8_ ? "utf-8" : "utf-16"},
-          {"textDocumentSync", {{"openClose", true}, {"change", 1}}},
-          {"completionProvider", {{"triggerCharacters", {".", ":"}}}},
-          {"hoverProvider", true},
-          {"signatureHelpProvider", {{"triggerCharacters", {"(", ","}}}},
-          {"documentFormattingProvider", true},
-          {"codeActionProvider", {{"codeActionKinds", {"quickfix"}}}},
-          {"definitionProvider", true},
-          {"referencesProvider", true},
-          {"documentSymbolProvider", true},
-          {"renameProvider", true},
-          {"workspaceSymbolProvider", true},
-          {"semanticTokensProvider",
-           {{"legend", {{"tokenTypes", tokens}, {"tokenModifiers", json::array()}}}, {"full", true}}},
-          {"experimental", {{"sppToScript", true}, {"clangd", clangd_ != nullptr}}}}},
+            {{"positionEncoding", utf8_ ? "utf-8" : "utf-16"},
+                {"textDocumentSync", {{"openClose", true}, {"change", 1}}},
+                {"completionProvider", {{"triggerCharacters", {".", ":"}}}}, {"hoverProvider", true},
+                {"signatureHelpProvider", {{"triggerCharacters", {"(", ","}}}}, {"documentFormattingProvider", true},
+                {"codeActionProvider", {{"codeActionKinds", {"quickfix"}}}}, {"definitionProvider", true},
+                {"referencesProvider", true}, {"documentSymbolProvider", true}, {"renameProvider", true},
+                {"workspaceSymbolProvider", true},
+                {"semanticTokensProvider",
+                    {{"legend", {{"tokenTypes", tokens}, {"tokenModifiers", json::array()}}}, {"full", true}}},
+                {"experimental", {{"sppToScript", true}, {"clangd", clangd_ != nullptr}}}}},
         {"serverInfo", {{"name", "spp-ls"}, {"version", "0.1"}}},
     };
 }
@@ -624,9 +743,11 @@ json Server::on_initialize(const json& p)
 
 void Server::send_generated(Doc& d, const std::string& cpp)
 {
-    if (!clangd_ || !clangd_->running()) return;
+    if (!clangd_ || !clangd_->running())
+        return;
     const int v = ++d.sent_version;
-    if (!d.in_clangd) {
+    if (!d.in_clangd)
+    {
         // The compile command of the backend for the virtual file (design 10.1).
         spp::ClangFilesOptions co;
         const Effective e = effective_options(d.path);
@@ -635,17 +756,20 @@ void Server::send_generated(Doc& d, const std::string& cpp)
         co.extra_flags = e.extra_flags;
         const std::vector<std::string> cmd = spp::compile_command(co, d.gen_path, d.gen_path + ".so");
         clangd_->notify("workspace/didChangeConfiguration",
-                        {{"settings",
-                          {{"compilationDatabaseChanges",
-                            {{d.gen_path,
-                              {{"workingDirectory", fs::path(d.gen_path).parent_path().string()},
-                               {"compilationCommand", cmd}}}}}}}});
+            {{"settings",
+                {{"compilationDatabaseChanges",
+                    {{d.gen_path,
+                        {{"workingDirectory", fs::path(d.gen_path).parent_path().string()},
+                            {"compilationCommand", cmd}}}}}}}});
         clangd_->notify("textDocument/didOpen",
-                        {{"textDocument", {{"uri", d.gen_uri}, {"languageId", "cpp"}, {"version", v}, {"text", cpp}}}});
+            {{"textDocument", {{"uri", d.gen_uri}, {"languageId", "cpp"}, {"version", v}, {"text", cpp}}}});
         d.in_clangd = true;
-    } else {
-        clangd_->notify("textDocument/didChange", {{"textDocument", {{"uri", d.gen_uri}, {"version", v}}},
-                                                   {"contentChanges", json::array({{{"text", cpp}}})}});
+    }
+    else
+    {
+        clangd_->notify("textDocument/didChange",
+            {{"textDocument", {{"uri", d.gen_uri}, {"version", v}}},
+                {"contentChanges", json::array({{{"text", cpp}}})}});
     }
 }
 
@@ -656,7 +780,8 @@ void Server::update(Doc& d)
     {
         std::lock_guard<std::mutex> lock(docs_mutex_);
         d.facts = std::move(facts);
-        if (!cpp.empty()) {
+        if (!cpp.empty())
+        {
             d.gen = Text(cpp);
             d.map = std::make_shared<const sppc::SourceMap>(d.facts.source_map);
             d.gen_script = d.text;
@@ -668,7 +793,8 @@ void Server::update(Doc& d)
         d.set_edit();
         // clangd sends no new diagnostics when the new version has the same ones. So the last
         // ones go to the new text. A new publish of clangd replaces them.
-        if (!cpp.empty()) map_clangd_diagnostics(d);
+        if (!cpp.empty())
+            map_clangd_diagnostics(d);
         send_client(publish_message(d));
         publish_imports(d);
     }
@@ -677,28 +803,34 @@ void Server::update(Doc& d)
 json Server::analyze_diagnostics(const Doc& d) const
 {
     json out = json::array();
-    auto add = [&](Pos p, const std::string& message, int severity) {
+    auto add = [&](Pos p, const std::string& message, int severity)
+    {
         const auto [b, e] = word_at(d, p);
         const Pos end = b <= p.col && e > p.col ? Pos{p.line, e} : Pos{p.line, p.col + 1};
-        out.push_back({{"range", script_range(d, p, end)}, {"severity", severity}, {"source", "spp"},
-                       {"message", message}});
+        out.push_back(
+            {{"range", script_range(d, p, end)}, {"severity", severity}, {"source", "spp"}, {"message", message}});
     };
-    for (const sppc::AnalyzeError& e : d.facts.errors) add({e.pos.line - 1, e.pos.col - 1}, e.message, 1);
+    for (const sppc::AnalyzeError& e : d.facts.errors)
+        add({e.pos.line - 1, e.pos.col - 1}, e.message, 1);
     // The translation errors: "name:line:col: error: text", one line each.
     static const std::regex re(R"(^(.*):(\d+):(\d+): (error|warning): (.*)$)");
     std::istringstream ss(d.facts.diagnostics);
-    for (std::string l; std::getline(ss, l);) {
+    for (std::string l; std::getline(ss, l);)
+    {
         std::smatch m;
-        if (!std::regex_match(l, m, re)) continue;
-        if (m[1] != d.path) continue;  // an imported script: import_diagnostics() has it
+        if (!std::regex_match(l, m, re))
+            continue;
+        if (m[1] != d.path)
+            continue; // an imported script: import_diagnostics() has it
         add({std::stoi(m[2]) - 1, std::stoi(m[3]) - 1}, m[5], m[4] == "error" ? 1 : 2);
     }
     // A script without a host and without -I options has no include directories.
-    if (opt_.include_dirs.empty() && opt_.compile_commands_dir.empty() && fs::path(d.path).extension() == ".spp" && !host_of(d.path))
-        out.push_back({{"range", {{"start", {{"line", 0}, {"character", 0}}}, {"end", {{"line", 0}, {"character", 0}}}}},
-                       {"severity", 3},
-                       {"source", "spp-ls"},
-                       {"message", "No script host for this file. Add spp_script_host(...) in CMake and run CMake again."}});
+    if (opt_.include_dirs.empty() && opt_.compile_commands_dir.empty() && fs::path(d.path).extension() == ".spp"
+        && !host_of(d.path))
+        out.push_back(
+            {{"range", {{"start", {{"line", 0}, {"character", 0}}}, {"end", {{"line", 0}, {"character", 0}}}}},
+                {"severity", 3}, {"source", "spp-ls"},
+                {"message", "No script host for this file. Add spp_script_host(...) in CMake and run CMake again."}});
     return out;
 }
 
@@ -706,7 +838,8 @@ json Server::analyze_diagnostics(const Doc& d) const
 static std::string script_file_path(const Doc& d, const std::string& name)
 {
     fs::path f(name);
-    if (f.is_relative()) {
+    if (f.is_relative())
+    {
         const fs::path near = fs::path(d.path).parent_path() / f;
         std::error_code ec;
         f = fs::exists(near, ec) ? near : fs::absolute(f);
@@ -722,25 +855,36 @@ std::map<std::string, json> Server::import_diagnostics(const Doc& d) const
     static const std::regex re(R"(^(.*):(\d+):(\d+): (error|warning): (.*)$)");
     std::istringstream ss(d.facts.diagnostics);
     std::map<std::string, Text> texts;
-    for (std::string l; std::getline(ss, l);) {
+    for (std::string l; std::getline(ss, l);)
+    {
         std::smatch m;
-        if (!std::regex_match(l, m, re) || m[1] == d.path || m[1].length() == 0) continue;
+        if (!std::regex_match(l, m, re) || m[1] == d.path || m[1].length() == 0)
+            continue;
         const std::string path = script_file_path(d, m[1]);
         const std::string uri = path_to_uri(path);
-        if (uri == d.uri) continue;
+        if (uri == d.uri)
+            continue;
         auto t = texts.find(path);
-        if (t == texts.end()) t = texts.emplace(path, Text(read_file(path).value_or(std::string()))).first;
+        if (t == texts.end())
+            t = texts.emplace(path, Text(read_file(path).value_or(std::string()))).first;
         const int line = std::stoi(m[2]) - 1, col = std::stoi(m[3]) - 1;
         const std::string_view text = t->second.line(line);
         int end = std::min<int>(col, static_cast<int>(text.size()));
-        while (end < static_cast<int>(text.size()) && is_id_char(text[static_cast<size_t>(end)])) ++end;
-        if (end <= col) end = col + 1;
-        const json range = {{"start", to_lsp(t->second, {line, col}, utf8_)}, {"end", to_lsp(t->second, {line, end}, utf8_)}};
-        out[uri].push_back({{"range", range}, {"severity", m[4] == "error" ? 1 : 2}, {"source", "spp"}, {"message", m[5].str()}});
+        while (end < static_cast<int>(text.size()) && is_id_char(text[static_cast<size_t>(end)]))
+            ++end;
+        if (end <= col)
+            end = col + 1;
+        const json range = {
+            {"start", to_lsp(t->second, {line, col}, utf8_)}, {"end", to_lsp(t->second, {line, end}, utf8_)}};
+        out[uri].push_back(
+            {{"range", range}, {"severity", m[4] == "error" ? 1 : 2}, {"source", "spp"}, {"message", m[5].str()}});
     }
-    for (const auto& [uri, diags] : d.clang_import_diags) {
-        if (uri == d.uri) continue;
-        for (const json& x : diags) out[uri].push_back(x);
+    for (const auto& [uri, diags] : d.clang_import_diags)
+    {
+        if (uri == d.uri)
+            continue;
+        for (const json& x : diags)
+            out[uri].push_back(x);
     }
     return out;
 }
@@ -750,48 +894,58 @@ std::map<std::string, json> Server::import_diagnostics(const Doc& d) const
 void Server::publish_imports(Doc& d)
 {
     std::map<std::string, json> now = import_diagnostics(d);
-    for (auto it = now.begin(); it != now.end();) {
-        if (docs_.count(it->first)) it = now.erase(it);
-        else ++it;
+    for (auto it = now.begin(); it != now.end();)
+    {
+        if (docs_.count(it->first))
+            it = now.erase(it);
+        else
+            ++it;
     }
-    auto send = [&](const std::string& uri, const json& diags) {
-        send_client({{"jsonrpc", "2.0"},
-                     {"method", "textDocument/publishDiagnostics"},
-                     {"params", {{"uri", uri}, {"diagnostics", diags}}}});
+    auto send = [&](const std::string& uri, const json& diags)
+    {
+        send_client({{"jsonrpc", "2.0"}, {"method", "textDocument/publishDiagnostics"},
+            {"params", {{"uri", uri}, {"diagnostics", diags}}}});
     };
-    for (const auto& [uri, diags] : now) send(uri, diags);
+    for (const auto& [uri, diags] : now)
+        send(uri, diags);
     for (const std::string& uri : d.import_uris)
-        if (!now.count(uri)) send(uri, json::array());
+        if (!now.count(uri))
+            send(uri, json::array());
     d.import_uris.clear();
-    for (const auto& [uri, diags] : now) d.import_uris.insert(uri);
+    for (const auto& [uri, diags] : now)
+        d.import_uris.insert(uri);
 }
 
 // A place in the generated text that comes from an imported script, as an LSP location in that
 // script, or null. The range is the word at the place if "whole_word" is true.
 json Server::imported_location(const Doc& d, const json& gen_lsp_pos, bool whole_word) const
 {
-    if (!d.map) return nullptr;
+    if (!d.map)
+        return nullptr;
     const Pos g = from_lsp(d.gen, gen_lsp_pos, clangd_utf8_);
     const auto loc = d.map->locate(g.line + 1, g.col + 1);
-    if (!loc || loc->file == 0 || loc->file > d.map->files().size()) return nullptr;
+    if (!loc || loc->file == 0 || loc->file > d.map->files().size())
+        return nullptr;
     const sppc::SourceFile& f = d.map->files()[loc->file - 1];
     const Text t(f.text);
     const Pos b{loc->pos.line - 1, loc->pos.col - 1};
     const std::string_view text = t.line(b.line);
     int end = std::min<int>(b.col, static_cast<int>(text.size()));
     if (whole_word)
-        while (end < static_cast<int>(text.size()) && is_id_char(text[static_cast<size_t>(end)])) ++end;
+        while (end < static_cast<int>(text.size()) && is_id_char(text[static_cast<size_t>(end)]))
+            ++end;
     const std::string path = script_file_path(d, f.name);
-    return {{"uri", path_to_uri(path)}, {"range", {{"start", to_lsp(t, b, utf8_)}, {"end", to_lsp(t, {b.line, std::max(end, b.col)}, utf8_)}}}};
+    return {{"uri", path_to_uri(path)},
+        {"range", {{"start", to_lsp(t, b, utf8_)}, {"end", to_lsp(t, {b.line, std::max(end, b.col)}, utf8_)}}}};
 }
 
 json Server::publish_message(const Doc& d) const
 {
     json diags = analyze_diagnostics(d);
-    for (const json& x : d.clang_diags) diags.push_back(x);
-    return {{"jsonrpc", "2.0"},
-            {"method", "textDocument/publishDiagnostics"},
-            {"params", {{"uri", d.uri}, {"diagnostics", diags}}}};
+    for (const json& x : d.clang_diags)
+        diags.push_back(x);
+    return {{"jsonrpc", "2.0"}, {"method", "textDocument/publishDiagnostics"},
+        {"params", {{"uri", d.uri}, {"diagnostics", diags}}}};
 }
 
 // Maps the raw clangd diagnostics of the document to the script text. The caller holds docs_mutex_.
@@ -800,58 +954,70 @@ void Server::map_clangd_diagnostics(Doc& d)
     const json raw = d.raw_clang_diags;
     json out = json::array();
     std::map<std::string, json> from_imports;
-    for (const json& g : raw) {
+    for (const json& g : raw)
+    {
         Pos b, e;
         const auto s = to_script(d, g["range"]["start"]);
-        if (!s) {
+        if (!s)
+        {
             // The place can be in an imported script: the diagnostic goes to that script.
             const json at = imported_location(d, g["range"]["start"], true);
-            if (!at.is_null()) {
+            if (!at.is_null())
+            {
                 from_imports[at.value("uri", std::string())].push_back(
-                    {{"range", at["range"]},
-                     {"severity", g.value("severity", 1)},
-                     {"source", "clangd"},
-                     {"message", sppc::rewrite_clang_message(g.value("message", std::string()))}});
+                    {{"range", at["range"]}, {"severity", g.value("severity", 1)}, {"source", "clangd"},
+                        {"message", sppc::rewrite_clang_message(g.value("message", std::string()))}});
                 continue;
             }
         }
-        if (s) {
+        if (s)
+        {
             b = *s;
             const auto se = to_script(d, g["range"]["end"]);
             e = se && se->line == b.line && b.col < se->col ? *se : Pos{b.line, word_at(d, b).second};
-            if (e.col <= b.col) e.col = b.col + 1;
-        } else {
+            if (e.col <= b.col)
+                e.col = b.col + 1;
+        }
+        else
+        {
             // No segment: the "#line" directives give the script line only. The column is the
             // column of the same word in the script line. Else it is the text of the line.
             const Pos gs = from_lsp(d.gen, g["range"]["start"], clangd_utf8_);
             const auto t = line_directive_target(d.gen.s, gs.line);
-            if (!t || t->file != d.path) continue;
+            if (!t || t->file != d.path)
+                continue;
             const auto at = d.gen_script_to_text({t->line, 0});
             const int line = at ? at->line : t->line;
             const std::string_view sl = d.text.line(line), gl = d.gen.line(gs.line);
             int wb = std::min<int>(gs.col, static_cast<int>(gl.size())), we = wb;
-            while (we < static_cast<int>(gl.size()) && is_id_char(gl[static_cast<size_t>(we)])) ++we;
+            while (we < static_cast<int>(gl.size()) && is_id_char(gl[static_cast<size_t>(we)]))
+                ++we;
             const std::string_view w = gl.substr(static_cast<size_t>(wb), static_cast<size_t>(we - wb));
             size_t found = std::string_view::npos;
-            for (size_t from = 0; !w.empty() && (found = sl.find(w, from)) != std::string_view::npos; from = found + 1) {
+            for (size_t from = 0; !w.empty() && (found = sl.find(w, from)) != std::string_view::npos; from = found + 1)
+            {
                 const bool left = found == 0 || !is_id_char(sl[found - 1]);
                 const bool right = found + w.size() >= sl.size() || !is_id_char(sl[found + w.size()]);
-                if (left && right) break;
+                if (left && right)
+                    break;
             }
-            if (found != std::string_view::npos && !w.empty()) {
+            if (found != std::string_view::npos && !w.empty())
+            {
                 b = {line, static_cast<int>(found)};
                 e = {line, static_cast<int>(found + w.size())};
-            } else {
+            }
+            else
+            {
                 int first = 0;
-                while (first < static_cast<int>(sl.size()) && (sl[static_cast<size_t>(first)] == ' ' || sl[static_cast<size_t>(first)] == '\t')) ++first;
+                while (first < static_cast<int>(sl.size())
+                    && (sl[static_cast<size_t>(first)] == ' ' || sl[static_cast<size_t>(first)] == '\t'))
+                    ++first;
                 b = {line, first};
                 e = {line, std::max(first + 1, static_cast<int>(sl.size()))};
             }
         }
-        out.push_back({{"range", script_range(d, b, e)},
-                       {"severity", g.value("severity", 1)},
-                       {"source", "clangd"},
-                       {"message", sppc::rewrite_clang_message(g.value("message", std::string()))}});
+        out.push_back({{"range", script_range(d, b, e)}, {"severity", g.value("severity", 1)}, {"source", "clangd"},
+            {"message", sppc::rewrite_clang_message(g.value("message", std::string()))}});
     }
     d.clang_diags = std::move(out);
     d.clang_import_diags = std::move(from_imports);
@@ -859,14 +1025,17 @@ void Server::map_clangd_diagnostics(Doc& d)
 
 void Server::on_clangd_notification(const json& msg)
 {
-    if (msg.value("method", std::string()) != "textDocument/publishDiagnostics") return;
+    if (msg.value("method", std::string()) != "textDocument/publishDiagnostics")
+        return;
     const json& p = msg["params"];
     std::lock_guard<std::mutex> lock(docs_mutex_);
     const auto it = gen_docs_.find(p.value("uri", std::string()));
-    if (it == gen_docs_.end()) return;
+    if (it == gen_docs_.end())
+        return;
     Doc& d = *it->second;
     // A diagnostic of a completion text (or of an old text) is not shown.
-    if (p.contains("version") && p["version"].is_number_integer() && p["version"].get<int>() != d.gen_version) return;
+    if (p.contains("version") && p["version"].is_number_integer() && p["version"].get<int>() != d.gen_version)
+        return;
     d.raw_clang_diags = p.value("diagnostics", json::array());
     map_clangd_diagnostics(d);
     send_client(publish_message(d));
@@ -877,11 +1046,14 @@ void Server::on_clangd_notification(const json& msg)
 
 json Server::map_location(const Doc& d, const json& loc) const
 {
-    const std::string uri = loc.contains("targetUri") ? loc.value("targetUri", std::string()) : loc.value("uri", std::string());
+    const std::string uri =
+        loc.contains("targetUri") ? loc.value("targetUri", std::string()) : loc.value("uri", std::string());
     const json range = loc.contains("targetSelectionRange") ? loc["targetSelectionRange"] : loc.value("range", json());
-    if (uri != d.gen_uri) return {{"uri", uri}, {"range", range}};  // a native place: no change
+    if (uri != d.gen_uri)
+        return {{"uri", uri}, {"range", range}}; // a native place: no change
     const auto s = to_script(d, range["start"]);
-    if (!s) return imported_location(d, range["start"], true);  // null when not in an import
+    if (!s)
+        return imported_location(d, range["start"], true); // null when not in an import
     const auto [b, e] = word_at(d, *s);
     return {{"uri", d.uri}, {"range", script_range(d, {s->line, b}, {s->line, std::max(e, b)})}};
 }
@@ -889,17 +1061,21 @@ json Server::map_location(const Doc& d, const json& loc) const
 // A word that the translator or the shell makes. It is not a script name (see design 4.2).
 static bool is_generated_name(const std::string& n)
 {
-    static const char* const parts[] = {"__", "_Shell", "_SLOT_", "_thunk", "_slot", "_layout", "_fields", "_g1", "_vtable"};
+    static const char* const parts[] = {
+        "__", "_Shell", "_SLOT_", "_thunk", "_slot", "_layout", "_fields", "_g1", "_vtable"};
     for (const char* x : parts)
-        if (n.find(x) != std::string::npos) return true;
+        if (n.find(x) != std::string::npos)
+            return true;
     return n[0] == '_' || n.compare(0, 4, "spp_") == 0 || n.compare(0, 3, "Spp") == 0 || n == "spp";
 }
 
 static bool has_prefix(const std::string& name, const std::string& prefix)
 {
-    if (name.size() < prefix.size()) return false;
+    if (name.size() < prefix.size())
+        return false;
     for (size_t i = 0; i < prefix.size(); ++i)
-        if (std::tolower(static_cast<unsigned char>(name[i])) != std::tolower(static_cast<unsigned char>(prefix[i]))) return false;
+        if (std::tolower(static_cast<unsigned char>(name[i])) != std::tolower(static_cast<unsigned char>(prefix[i])))
+            return false;
     return true;
 }
 
@@ -910,75 +1086,111 @@ json Server::on_completion(const Doc& d, const json& p)
     const size_t off = d.text.offset(cur.line, cur.col);
     // The word at the cursor is [s, e). The typed prefix is [s, off).
     size_t s = off, e = off;
-    while (s > 0 && is_id_char(t[s - 1])) --s;
-    while (e < t.size() && is_id_char(t[e])) ++e;
+    while (s > 0 && is_id_char(t[s - 1]))
+        --s;
+    while (e < t.size() && is_id_char(t[e]))
+        ++e;
     const std::string prefix = t.substr(s, off - s);
     const bool after_dot = s > 0 && t[s - 1] == '.';
     const bool after_scope = s >= 2 && t[s - 1] == ':' && t[s - 2] == ':';
     const json empty = {{"isIncomplete", false}, {"items", json::array()}};
     // A single ":" is a trigger character only for "::".
-    if (p.value("/context/triggerCharacter"_json_pointer, std::string()) == ":" && !after_scope) return empty;
+    if (p.value("/context/triggerCharacter"_json_pointer, std::string()) == ":" && !after_scope)
+        return empty;
     // No completion in a line comment.
     const size_t line_begin = d.text.starts[static_cast<size_t>(cur.line)];
-    if (t.substr(line_begin, off - line_begin).find("//") != std::string::npos) return empty;
+    if (t.substr(line_begin, off - line_begin).find("//") != std::string::npos)
+        return empty;
 
     const bool member = after_dot || after_scope;
     json items = json::array();
     std::set<std::string> names;
     auto add = [&](const std::string& name, int kind, const std::string& detail, const std::string& sort,
-                   const std::string& label = std::string()) {
-        if (name.empty() || !has_prefix(name, prefix) || !names.insert(name).second) return;
+                   const std::string& label = std::string())
+    {
+        if (name.empty() || !has_prefix(name, prefix) || !names.insert(name).second)
+            return;
         json item = {{"label", label.empty() ? name : label}, {"kind", kind}, {"insertText", name},
-                     {"filterText", name}, {"sortText", sort + name}};
-        if (!detail.empty()) item["detail"] = detail;
+            {"filterText", name}, {"sortText", sort + name}};
+        if (!detail.empty())
+            item["detail"] = detail;
         items.push_back(std::move(item));
     };
 
     // ---- the script facts (they work without clangd)
     const ScriptScope scope = scan_scope(t, s, s);
     // The members of a script class and of its script bases. clangd does not see them on the shell.
-    auto add_members = [&](const std::string& class_name) {
+    auto add_members = [&](const std::string& class_name)
+    {
         std::set<std::string> seen;
-        for (std::string n = class_name; !n.empty() && seen.insert(n).second;) {
+        for (std::string n = class_name; !n.empty() && seen.insert(n).second;)
+        {
             const sppc::AnalyzedClass* cls = nullptr;
             for (const sppc::AnalyzedClass& c : d.facts.classes)
-                if (c.name == n) cls = &c;
-            if (!cls) break;
-            for (const sppc::AnalyzedMember& m : cls->members) {
+                if (c.name == n)
+                    cls = &c;
+            if (!cls)
+                break;
+            for (const sppc::AnalyzedMember& m : cls->members)
+            {
                 int kind = 0;
-                if (m.kind == "field") kind = 5;
-                else if (m.kind == "method") kind = 2;
-                else if (m.kind == "property") kind = 10;
-                if (kind) add(m.name, kind, "script " + m.kind + " of " + cls->name, "0");
+                if (m.kind == "field")
+                    kind = 5;
+                else if (m.kind == "method")
+                    kind = 2;
+                else if (m.kind == "property")
+                    kind = 10;
+                if (kind)
+                    add(m.name, kind, "script " + m.kind + " of " + cls->name, "0");
             }
             n = cls->base;
         }
     };
-    if (after_dot) {
+    if (after_dot)
+    {
         size_t ob = s - 1;
-        while (ob > 0 && is_id_char(t[ob - 1])) --ob;
+        while (ob > 0 && is_id_char(t[ob - 1]))
+            --ob;
         const std::string obj = t.substr(ob, s - 1 - ob);
-        if (obj == "this") {
+        if (obj == "this")
+        {
             const sppc::AnalyzedClass* cls = nullptr;
             for (const sppc::AnalyzedClass& c : d.facts.classes)
-                if (Pos{c.begin.line - 1, c.begin.col - 1} < Pos{cur.line, cur.col + 1}) cls = &c;
-            if (cls) add_members(cls->name);
-        } else if (const auto en = scope.enum_members.find(obj); en != scope.enum_members.end()) {
-            for (const std::string& m : en->second) add(m, 20, "enumerator of " + obj, "0");
-        } else {
+                if (Pos{c.begin.line - 1, c.begin.col - 1} < Pos{cur.line, cur.col + 1})
+                    cls = &c;
+            if (cls)
+                add_members(cls->name);
+        }
+        else if (const auto en = scope.enum_members.find(obj); en != scope.enum_members.end())
+        {
+            for (const std::string& m : en->second)
+                add(m, 20, "enumerator of " + obj, "0");
+        }
+        else
+        {
             std::string type;
             for (const ScopeName& n : scope.locals)
-                if (n.name == obj) type = n.type;
+                if (n.name == obj)
+                    type = n.type;
             for (const ScopeName& n : scope.module_vars)
-                if (n.name == obj && type.empty()) type = n.type;
-            if (!type.empty()) add_members(type);
+                if (n.name == obj && type.empty())
+                    type = n.type;
+            if (!type.empty())
+                add_members(type);
         }
-    } else if (!member) {
-        for (const ScopeName& n : scope.locals) add(n.name, 6, n.detail + (n.type.empty() ? "" : ": " + n.type), "0");
-        for (const ScopeName& n : scope.module_vars) add(n.name, 6, n.detail + (n.type.empty() ? "" : ": " + n.type), "0");
-        for (const std::string& n : scope.enums) add(n, 13, "script enum", "1");
-        for (const std::string& n : scope.classes) add(n, 7, "script class", "1");
-        for (const std::string& n : scope.structs) add(n, 22, "script struct", "1");
+    }
+    else if (!member)
+    {
+        for (const ScopeName& n : scope.locals)
+            add(n.name, 6, n.detail + (n.type.empty() ? "" : ": " + n.type), "0");
+        for (const ScopeName& n : scope.module_vars)
+            add(n.name, 6, n.detail + (n.type.empty() ? "" : ": " + n.type), "0");
+        for (const std::string& n : scope.enums)
+            add(n, 13, "script enum", "1");
+        for (const std::string& n : scope.classes)
+            add(n, 7, "script class", "1");
+        for (const std::string& n : scope.structs)
+            add(n, 22, "script struct", "1");
     }
 
     // ---- the clangd part. The word at the cursor is replaced by the typed prefix and a placeholder
@@ -986,34 +1198,47 @@ json Server::on_completion(const Doc& d, const json& p)
     // comes back after. The last answer is reused while only the prefix grows: clangd filters by
     // the prefix, so an answer that was not cut by the limit holds the longer prefix too.
     bool incomplete = false;
-    if (clangd_ && clangd_->running()) {
+    if (clangd_ && clangd_->running())
+    {
         Doc::CompletionCache& cc = d.completion;
         const std::string rest = t.substr(0, s) + '\x01' + t.substr(e);
-        const bool hit = cc.valid && cc.complete && cc.rest == rest && prefix.compare(0, cc.prefix.size(), cc.prefix) == 0;
-        if (!hit) {
+        const bool hit =
+            cc.valid && cc.complete && cc.rest == rest && prefix.compare(0, cc.prefix.size(), cc.prefix) == 0;
+        if (!hit)
+        {
             ++completion_translations_;
             size_t n = e;
-            while (n < t.size() && (t[n] == ' ' || t[n] == '\t' || t[n] == '\r' || t[n] == '\n')) ++n;
-            const bool end = n < t.size() && std::string_view(";),]([+-*/%=<>!&|^?:.").find(t[n]) != std::string_view::npos;
+            while (n < t.size() && (t[n] == ' ' || t[n] == '\t' || t[n] == '\r' || t[n] == '\n'))
+                ++n;
+            const bool end =
+                n < t.size() && std::string_view(";),]([+-*/%=<>!&|^?:.").find(t[n]) != std::string_view::npos;
             // The brackets that the statement before the word leaves open.
             std::string closers;
-            if (!end) {
+            if (!end)
+            {
                 std::vector<char> open;
-                for (size_t i = s; i > 0 && t[i - 1] != ';' && t[i - 1] != '{' && t[i - 1] != '}'; --i) {
+                for (size_t i = s; i > 0 && t[i - 1] != ';' && t[i - 1] != '{' && t[i - 1] != '}'; --i)
+                {
                     const char c = t[i - 1];
-                    if (c == ')' || c == ']') open.push_back(c == ')' ? '(' : '[');
-                    else if (c == '(' || c == '[') {
-                        if (!open.empty() && open.back() == c) open.pop_back();
-                        else closers += c == '(' ? ')' : ']';
+                    if (c == ')' || c == ']')
+                        open.push_back(c == ')' ? '(' : '[');
+                    else if (c == '(' || c == '[')
+                    {
+                        if (!open.empty() && open.back() == c)
+                            open.pop_back();
+                        else
+                            closers += c == '(' ? ')' : ']';
                     }
                 }
             }
             const std::string patched = t.substr(0, s) + prefix + kHole + closers + (end ? "" : ";") + t.substr(e);
             sppc::AnalyzeResult facts = sppc::analyze(patched, translate_options(d), session_);
             const Pos hole = {cur.line, static_cast<int>(s - d.text.starts[static_cast<size_t>(cur.line)])};
-            const auto g = facts.cpp.empty() ? std::nullopt : facts.source_map.map_to_generated(hole.line + 1, hole.col + 1);
+            const auto g =
+                facts.cpp.empty() ? std::nullopt : facts.source_map.map_to_generated(hole.line + 1, hole.col + 1);
             std::optional<json> r;
-            if (g) {
+            if (g)
+            {
                 Doc& md = const_cast<Doc&>(d);
                 const Text gen(facts.cpp);
                 send_generated(md, facts.cpp);
@@ -1022,10 +1247,11 @@ json Server::on_completion(const Doc& d, const json& p)
                 if (preamble_ready_.insert(d.gen_uri).second)
                     clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}});
                 r = clangd_result("textDocument/completion",
-                                  {{"textDocument", {{"uri", d.gen_uri}}},
-                                   {"position", to_lsp(gen, {g->line - 1, g->col - 1 + static_cast<int>(prefix.size())}, clangd_utf8_)}});
+                    {{"textDocument", {{"uri", d.gen_uri}}},
+                        {"position",
+                            to_lsp(gen, {g->line - 1, g->col - 1 + static_cast<int>(prefix.size())}, clangd_utf8_)}});
                 std::lock_guard<std::mutex> lock(docs_mutex_);
-                md.gen_version = md.sent_version + 1;  // before the send: the diagnostics can come at once
+                md.gen_version = md.sent_version + 1; // before the send: the diagnostics can come at once
                 send_generated(md, d.gen.s);
             }
             cc.rest = rest;
@@ -1036,38 +1262,51 @@ json Server::on_completion(const Doc& d, const json& p)
             cc.list = r ? (r->is_array() ? *r : r->value("items", json::array())) : json::array();
         }
         incomplete = !cc.complete;
-        for (const json& it : cc.list) {
+        for (const json& it : cc.list)
+        {
             std::string name = it.value("filterText", std::string());
-            if (name.empty()) name = it.value("insertText", it.value("label", std::string()));
+            if (name.empty())
+                name = it.value("insertText", it.value("label", std::string()));
             const int kind = it.value("kind", 1);
             // The names of the generated code and of the shell are not script names.
-            if (name.empty() || name.find(kHole) != std::string::npos || is_generated_name(name) ||
-                name.compare(0, 8, "operator") == 0 || name[0] == '~' || kind == 4 || name.find("::") != std::string::npos)
+            if (name.empty() || name.find(kHole) != std::string::npos || is_generated_name(name)
+                || name.compare(0, 8, "operator") == 0 || name[0] == '~' || kind == 4
+                || name.find("::") != std::string::npos)
                 continue;
-            if (after_dot && (name == "cls" || name == "state")) continue;  // spp::ShellBase (runtime/shell.h)
-            if (!member) {
+            if (after_dot && (name == "cls" || name == "state"))
+                continue; // spp::ShellBase (runtime/shell.h)
+            if (!member)
+            {
                 // A name in scope: a variable, a function, a type, an enumerator, a namespace.
                 static const std::set<int> kinds = {3, 6, 7, 9, 13, 20, 21, 22};
-                if (!kinds.count(kind) || name.compare(0, 2, "__") == 0) continue;
+                if (!kinds.count(kind) || name.compare(0, 2, "__") == 0)
+                    continue;
             }
             std::string label = it.value("label", name);
-            while (!label.empty() && (label[0] == ' ')) label.erase(0, 1);
-            if (label.compare(0, 3, "\xE2\x80\xA2") == 0) label.erase(0, 3);  // the include bullet
-            if (!has_prefix(name, prefix) || !names.insert(name).second) continue;
+            while (!label.empty() && (label[0] == ' '))
+                label.erase(0, 1);
+            if (label.compare(0, 3, "\xE2\x80\xA2") == 0)
+                label.erase(0, 3); // the include bullet
+            if (!has_prefix(name, prefix) || !names.insert(name).second)
+                continue;
             // A name from a namespace comes as "std::string": the script form is "std.string".
             std::string insert = it.value("insertText", name);
             insert = insert.find("::") != std::string::npos ? sppc::rewrite_generated_names(insert) : name;
             json item = {{"label", sppc::rewrite_generated_names(label)}, {"kind", kind}, {"insertText", insert},
-                         {"filterText", name}, {"sortText", "2" + it.value("sortText", name)}};
-            if (it.contains("detail")) item["detail"] = sppc::rewrite_generated_names(it.value("detail", std::string()));
+                {"filterText", name}, {"sortText", "2" + it.value("sortText", name)}};
+            if (it.contains("detail"))
+                item["detail"] = sppc::rewrite_generated_names(it.value("detail", std::string()));
             items.push_back(std::move(item));
         }
     }
 
     // ---- the keywords and the builtin types
-    if (!member) {
-        for (const std::string& k : script_keywords()) add(k, 14, "keyword", "3");
-        for (const std::string& k : builtin_type_names()) add(k, 25, "builtin type", "3");
+    if (!member)
+    {
+        for (const std::string& k : script_keywords())
+            add(k, 14, "keyword", "3");
+        for (const std::string& k : builtin_type_names())
+            add(k, 25, "builtin type", "3");
     }
     return {{"isIncomplete", incomplete}, {"items", items}};
 }
@@ -1075,16 +1314,23 @@ json Server::on_completion(const Doc& d, const json& p)
 json Server::on_hover(const Doc& d, const json& p)
 {
     const auto g = to_gen(d, from_lsp(d.text, p["position"], utf8_));
-    if (!g) return nullptr;
-    auto r = clangd_result("textDocument/hover", {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}});
-    if (!r || !r->contains("contents")) return nullptr;
+    if (!g)
+        return nullptr;
+    auto r =
+        clangd_result("textDocument/hover", {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}});
+    if (!r || !r->contains("contents"))
+        return nullptr;
     json c = (*r)["contents"];
-    if (c.is_object() && c.contains("value")) c["value"] = sppc::rewrite_generated_names(c.value("value", std::string()));
-    else if (c.is_string()) c = sppc::rewrite_generated_names(c.get<std::string>());
+    if (c.is_object() && c.contains("value"))
+        c["value"] = sppc::rewrite_generated_names(c.value("value", std::string()));
+    else if (c.is_string())
+        c = sppc::rewrite_generated_names(c.get<std::string>());
     json out = {{"contents", c}};
-    if (r->contains("range")) {
+    if (r->contains("range"))
+    {
         const auto b = to_script(d, (*r)["range"]["start"]);
-        if (b) {
+        if (b)
+        {
             const auto [wb, we] = word_at(d, *b);
             out["range"] = script_range(d, {b->line, wb}, {b->line, we});
         }
@@ -1101,42 +1347,59 @@ json Server::on_signature_help(const Doc& d, const json& p)
     const Pos cur = from_lsp(d.text, p["position"], utf8_);
     size_t i = d.text.offset(cur.line, cur.col), open = std::string::npos;
     int depth = 0, commas = 0;
-    while (i > 0) {
+    while (i > 0)
+    {
         const char c = t[--i];
-        if (c == ')' || c == ']' || c == '}') {
+        if (c == ')' || c == ']' || c == '}')
+        {
             ++depth;
-        } else if (c == '(' || c == '[' || c == '{') {
-            if (depth == 0) {
-                if (c == '(') open = i;
+        }
+        else if (c == '(' || c == '[' || c == '{')
+        {
+            if (depth == 0)
+            {
+                if (c == '(')
+                    open = i;
                 break;
             }
             --depth;
-        } else if (depth == 0 && c == ',') {
+        }
+        else if (depth == 0 && c == ',')
+        {
             ++commas;
-        } else if (depth == 0 && c == ';') {
+        }
+        else if (depth == 0 && c == ';')
+        {
             break;
         }
     }
-    if (open == std::string::npos) return nullptr;
+    if (open == std::string::npos)
+        return nullptr;
     // The name of the function is before the "(".
     size_t name_end = open;
-    while (name_end > 0 && (t[name_end - 1] == ' ' || t[name_end - 1] == '\t')) --name_end;
+    while (name_end > 0 && (t[name_end - 1] == ' ' || t[name_end - 1] == '\t'))
+        --name_end;
     size_t name_begin = name_end;
-    while (name_begin > 0 && is_id_char(t[name_begin - 1])) --name_begin;
-    if (name_begin == name_end) return nullptr;
+    while (name_begin > 0 && is_id_char(t[name_begin - 1]))
+        --name_begin;
+    if (name_begin == name_end)
+        return nullptr;
     const auto [nl, nc] = d.text.pos(name_begin);
     const auto g = to_gen(d, {nl, nc});
-    if (!g) return nullptr;
+    if (!g)
+        return nullptr;
     // The "(" of the generated call is the first one after the name.
     const std::string_view gl = d.gen.line(g->line);
     const size_t paren = gl.find('(', static_cast<size_t>(g->col));
-    if (paren == std::string_view::npos) return nullptr;
+    if (paren == std::string_view::npos)
+        return nullptr;
     auto r = clangd_result("textDocument/signatureHelp",
-                           {{"textDocument", {{"uri", d.gen_uri}}},
-                            {"position", gen_pos(d, {g->line, static_cast<int>(paren) + 1})}});
-    if (!r || !r->contains("signatures") || (*r)["signatures"].empty()) return nullptr;
+        {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, {g->line, static_cast<int>(paren) + 1})}});
+    if (!r || !r->contains("signatures") || (*r)["signatures"].empty())
+        return nullptr;
     json out = *r;
-    for (json& sig : out["signatures"]) {
+    for (json& sig : out["signatures"])
+    {
         sig["label"] = sppc::rewrite_generated_names(sig.value("label", std::string()));
         sig.erase("activeParameter");
         if (sig.contains("parameters"))
@@ -1158,62 +1421,98 @@ static std::string format_script(const std::string& text, int tab_size, bool use
     int braces = 0, parens = 0;
     bool in_block = false;
     size_t pos = 0;
-    while (pos < text.size()) {
+    while (pos < text.size())
+    {
         size_t end = text.find('\n', pos);
         const bool last = end == std::string::npos;
-        if (last) end = text.size();
+        if (last)
+            end = text.size();
         std::string line = text.substr(pos, end - pos);
         const bool cr = !line.empty() && line.back() == '\r';
-        if (cr) line.pop_back();
-        while (!line.empty() && (line.back() == ' ' || line.back() == '\t')) line.pop_back();
+        if (cr)
+            line.pop_back();
+        while (!line.empty() && (line.back() == ' ' || line.back() == '\t'))
+            line.pop_back();
         size_t first = 0;
-        while (first < line.size() && (line[first] == ' ' || line[first] == '\t')) ++first;
+        while (first < line.size() && (line[first] == ' ' || line[first] == '\t'))
+            ++first;
         std::string body = line.substr(first);
-        if (in_block) {
+        if (in_block)
+        {
             // The inside of a block comment keeps its own indent.
-        } else if (!body.empty()) {
+        }
+        else if (!body.empty())
+        {
             int b = braces, q = parens;
-            if (body[0] == '}') b = std::max(b - 1, 0);
-            if (body[0] == ')' || body[0] == ']') q = std::max(q - 1, 0);
+            if (body[0] == '}')
+                b = std::max(b - 1, 0);
+            if (body[0] == ')' || body[0] == ']')
+                q = std::max(q - 1, 0);
             int level = b + (q > 0 ? 1 : 0);
             std::string indent;
-            for (int k = 0; k < level; ++k) indent += unit;
+            for (int k = 0; k < level; ++k)
+                indent += unit;
             line = indent + body;
-        } else {
+        }
+        else
+        {
             line.clear();
         }
         // Scan the line for the brackets.
         char quote = 0;
-        for (size_t k = 0; k < body.size(); ++k) {
+        for (size_t k = 0; k < body.size(); ++k)
+        {
             const char c = body[k];
-            if (in_block) {
-                if (c == '*' && k + 1 < body.size() && body[k + 1] == '/') {
+            if (in_block)
+            {
+                if (c == '*' && k + 1 < body.size() && body[k + 1] == '/')
+                {
                     in_block = false;
                     ++k;
                 }
-            } else if (quote) {
-                if (c == '\\') ++k;
-                else if (c == quote) quote = 0;
-            } else if (c == '"' || c == '\'') {
+            }
+            else if (quote)
+            {
+                if (c == '\\')
+                    ++k;
+                else if (c == quote)
+                    quote = 0;
+            }
+            else if (c == '"' || c == '\'')
+            {
                 quote = c;
-            } else if (c == '/' && k + 1 < body.size() && body[k + 1] == '/') {
+            }
+            else if (c == '/' && k + 1 < body.size() && body[k + 1] == '/')
+            {
                 break;
-            } else if (c == '/' && k + 1 < body.size() && body[k + 1] == '*') {
+            }
+            else if (c == '/' && k + 1 < body.size() && body[k + 1] == '*')
+            {
                 in_block = true;
                 ++k;
-            } else if (c == '{') {
+            }
+            else if (c == '{')
+            {
                 ++braces;
-            } else if (c == '}') {
+            }
+            else if (c == '}')
+            {
                 braces = std::max(braces - 1, 0);
-            } else if (c == '(' || c == '[') {
+            }
+            else if (c == '(' || c == '[')
+            {
                 ++parens;
-            } else if (c == ')' || c == ']') {
+            }
+            else if (c == ')' || c == ']')
+            {
                 parens = std::max(parens - 1, 0);
             }
         }
         out += line;
-        if (!last) out += cr ? "\r\n" : "\n";
-        else if (!line.empty() || !out.empty()) out += cr ? "\r\n" : "\n";
+        if (!last)
+            out += cr ? "\r\n" : "\n";
+        else if (!line.empty() || !out.empty())
+            out += cr ? "\r\n" : "\n";
         pos = end + 1;
     }
     return out;
@@ -1223,7 +1522,8 @@ json Server::on_formatting(const Doc& d, const json& p)
 {
     const json o = p.value("options", json::object());
     const std::string formatted = format_script(d.text.s, o.value("tabSize", 4), o.value("insertSpaces", true));
-    if (formatted == d.text.s) return json::array();
+    if (formatted == d.text.s)
+        return json::array();
     const int last = static_cast<int>(d.text.starts.size()) - 1;
     const Pos end = {last, static_cast<int>(d.text.line(last).size())};
     return json::array({{{"range", script_range(d, {0, 0}, end)}, {"newText", formatted}}});
@@ -1235,29 +1535,33 @@ json Server::on_code_action(const Doc& d, const json& p)
 {
     json actions = json::array();
     const std::string& t = d.text.s;
-    auto add = [&](const std::string& title, const json& diag, const json& edit) {
-        actions.push_back({{"title", title},
-                           {"kind", "quickfix"},
-                           {"diagnostics", json::array({diag})},
-                           {"edit", {{"changes", {{d.uri, json::array({edit})}}}}}});
+    auto add = [&](const std::string& title, const json& diag, const json& edit)
+    {
+        actions.push_back({{"title", title}, {"kind", "quickfix"}, {"diagnostics", json::array({diag})},
+            {"edit", {{"changes", {{d.uri, json::array({edit})}}}}}});
     };
     static const std::regex suggestion(R"(did you mean '([^']+)')");
-    for (const json& diag : p.value("/context/diagnostics"_json_pointer, json::array())) {
+    for (const json& diag : p.value("/context/diagnostics"_json_pointer, json::array()))
+    {
         const std::string message = diag.value("message", std::string());
         const json range = diag.value("range", json::object());
-        if (!range.contains("start") || !range.contains("end")) continue;
+        if (!range.contains("start") || !range.contains("end"))
+            continue;
         const Pos b = from_lsp(d.text, range["start"], utf8_), e = from_lsp(d.text, range["end"], utf8_);
-        if (diag.value("source", "") == "spp" && message == "expected ';'") {
+        if (diag.value("source", "") == "spp" && message == "expected ';'")
+        {
             // The error is at the next token. The ";" goes after the last token before it.
             size_t at = d.text.offset(b.line, b.col);
-            while (at > 0 && std::isspace(static_cast<unsigned char>(t[at - 1]))) --at;
+            while (at > 0 && std::isspace(static_cast<unsigned char>(t[at - 1])))
+                --at;
             const auto [l, c] = d.text.pos(at);
             const json pt = to_lsp(d.text, {l, c}, utf8_);
             add("Insert ';'", diag, {{"range", {{"start", pt}, {"end", pt}}}, {"newText", ";"}});
             continue;
         }
         std::smatch m;
-        if (diag.value("source", "") == "clangd" && std::regex_search(message, m, suggestion) && b.line == e.line && b < e)
+        if (diag.value("source", "") == "clangd" && std::regex_search(message, m, suggestion) && b.line == e.line
+            && b < e)
             add("Replace with '" + m[1].str() + "'", diag, {{"range", range}, {"newText", m[1].str()}});
     }
     return actions;
@@ -1269,38 +1573,48 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
     const Pos here = from_lsp(d.text, p["position"], utf8_);
     const bool is_ref = method == "textDocument/references";
     const std::string here_word = word(d, here);
-    if (is_ref && !here_word.empty() && is_script_class(d, here_word)) {
+    if (is_ref && !here_word.empty() && is_script_class(d, here_word))
+    {
         // A script class: the places come from the tokens (see class_places).
-        auto add = [&](const Doc& doc, const std::set<Pos>& places) {
+        auto add = [&](const Doc& doc, const std::set<Pos>& places)
+        {
             for (const Pos& s : places)
                 out.push_back({{"uri", doc.uri},
-                               {"range", script_range(doc, s, {s.line, s.col + static_cast<int>(here_word.size())})}});
+                    {"range", script_range(doc, s, {s.line, s.col + static_cast<int>(here_word.size())})}});
         };
         add(d, class_places(d, here_word));
-        if (roots_.size()) for_other_scripts(d, {here_word, ""}, here_word, add);
+        if (roots_.size())
+            for_other_scripts(d, {here_word, ""}, here_word, add);
         return out;
     }
     const auto g = to_gen(d, here);
-    if (!g) return out;
+    if (!g)
+        return out;
     json params = {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}};
-    if (method == "textDocument/references") params["context"] = {{"includeDeclaration", true}};
+    if (method == "textDocument/references")
+        params["context"] = {{"includeDeclaration", true}};
     auto r = clangd_result(method, params);
-    if (!r) return out;
+    if (!r)
+        return out;
     json list = r->is_array() ? *r : json::array({*r});
     std::set<std::string> seen;
-    for (const json& loc : list) {
+    for (const json& loc : list)
+    {
         json m = map_location(d, loc);
-        if (m.is_null() || !seen.insert(m.dump()).second) continue;
+        if (m.is_null() || !seen.insert(m.dump()).second)
+            continue;
         out.push_back(std::move(m));
     }
-    if (method == "textDocument/references" && roots_.size()) {
+    if (method == "textDocument/references" && roots_.size())
+    {
         const Pos cur = from_lsp(d.text, p["position"], utf8_);
         const std::string name = word(d, cur);
         if (const auto key = name.empty() ? std::nullopt : key_at(d, cur))
-            for_other_scripts(d, *key, name, [&](const Doc& doc, const std::set<Pos>& places) {
+            for_other_scripts(d, *key, name, [&](const Doc& doc, const std::set<Pos>& places)
+            {
                 for (const Pos& s : places)
                     out.push_back({{"uri", doc.uri},
-                                   {"range", script_range(doc, s, {s.line, s.col + static_cast<int>(name.size())})}});
+                        {"range", script_range(doc, s, {s.line, s.col + static_cast<int>(name.size())})}});
             });
     }
     return out;
@@ -1310,45 +1624,57 @@ std::set<Pos> Server::class_places(const Doc& d, const std::string& name) const
 {
     // The class name has no segment in the source map, so clangd cannot find it. The semantic
     // tokens of the facts mark each word that is the name of a script class.
-    constexpr int kClassToken = 2;  // the index of "class" in semantic_token_types()
+    constexpr int kClassToken = 2; // the index of "class" in semantic_token_types()
     std::set<Pos> out;
     for (const SemanticToken& t : script_tokens(d.text.s, d.facts))
-        if (t.type == kClassToken && d.text.line(t.line).substr(static_cast<size_t>(t.col), static_cast<size_t>(t.len)) == name)
+        if (t.type == kClassToken
+            && d.text.line(t.line).substr(static_cast<size_t>(t.col), static_cast<size_t>(t.len)) == name)
             out.insert({t.line, t.col});
     return out;
 }
 
 bool Server::is_script_class(const Doc& d, const std::string& name) const
 {
-    return std::any_of(d.facts.classes.begin(), d.facts.classes.end(),
-                       [&](const sppc::AnalyzedClass& c) { return c.name == name; });
+    return std::any_of(
+        d.facts.classes.begin(), d.facts.classes.end(), [&](const sppc::AnalyzedClass& c) { return c.name == name; });
 }
 
-std::variant<std::set<Pos>, std::string> Server::symbol_places(const Doc& d, Pos cur, const std::string& old_name, Pos* decl)
+std::variant<std::set<Pos>, std::string> Server::symbol_places(
+    const Doc& d, Pos cur, const std::string& old_name, Pos* decl)
 {
-    if (is_script_class(d, old_name)) {
+    if (is_script_class(d, old_name))
+    {
         if (decl)
             for (const sppc::AnalyzedClass& c : d.facts.classes)
-                if (c.name == old_name) *decl = class_name_pos(d, c);
+                if (c.name == old_name)
+                    *decl = class_name_pos(d, c);
         return class_places(d, old_name);
     }
     const auto g = to_gen(d, {cur.line, word_at(d, cur).first});
-    if (!g || !clangd_) return std::string("no script symbol at the position");
+    if (!g || !clangd_)
+        return std::string("no script symbol at the position");
     const json tdp = {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}};
     const auto defs = clangd_result("textDocument/definition", tdp);
     const json def_list = defs ? (defs->is_array() ? *defs : json::array({*defs})) : json::array();
-    if (def_list.empty()) return std::string("no script symbol at the position");
-    for (const json& loc : def_list) {
-        const std::string uri = loc.contains("targetUri") ? loc.value("targetUri", std::string()) : loc.value("uri", std::string());
+    if (def_list.empty())
+        return std::string("no script symbol at the position");
+    for (const json& loc : def_list)
+    {
+        const std::string uri =
+            loc.contains("targetUri") ? loc.value("targetUri", std::string()) : loc.value("uri", std::string());
         // clangd can answer with the same symbol in the generated file of another script.
-        if (uri != d.gen_uri && !gen_docs_.count(uri)) return std::string("cannot rename a native symbol: " + old_name);
-        if (uri == d.gen_uri && map_location(d, loc).is_null()) return std::string("cannot rename a generated name: " + old_name);
+        if (uri != d.gen_uri && !gen_docs_.count(uri))
+            return std::string("cannot rename a native symbol: " + old_name);
+        if (uri == d.gen_uri && map_location(d, loc).is_null())
+            return std::string("cannot rename a generated name: " + old_name);
     }
-    if (decl) {
+    if (decl)
+    {
         *decl = {-1, -1};
         const std::string uri = def_list[0].contains("targetUri") ? def_list[0].value("targetUri", std::string())
-                                                                   : def_list[0].value("uri", std::string());
-        if (uri == d.gen_uri) {
+                                                                  : def_list[0].value("uri", std::string());
+        if (uri == d.gen_uri)
+        {
             const json m = map_location(d, def_list[0]);
             *decl = from_lsp(d.text, m["range"]["start"], utf8_);
         }
@@ -1357,18 +1683,23 @@ std::variant<std::set<Pos>, std::string> Server::symbol_places(const Doc& d, Pos
     params["context"] = {{"includeDeclaration", true}};
     const auto refs = clangd_result("textDocument/references", params);
     std::set<Pos> starts;
-    for (const json& loc : refs ? *refs : json::array()) {
-        if (loc.value("uri", std::string()) != d.gen_uri) continue;
+    for (const json& loc : refs ? *refs : json::array())
+    {
+        if (loc.value("uri", std::string()) != d.gen_uri)
+            continue;
         const auto s = to_script(d, loc["range"]["start"]);
-        if (!s) continue;
+        if (!s)
+            continue;
         // The mapped start can be the start of the expression ("this" of "this.heal"). Take the
         // first whole word "old_name" on the line from there.
         const std::string_view l = d.text.line(s->line);
         for (size_t at = l.find(old_name, static_cast<size_t>(s->col)); at != std::string_view::npos;
-             at = l.find(old_name, at + 1)) {
+            at = l.find(old_name, at + 1))
+        {
             const bool left = at == 0 || !is_id_char(l[at - 1]);
             const bool right = at + old_name.size() >= l.size() || !is_id_char(l[at + old_name.size()]);
-            if (left && right) {
+            if (left && right)
+            {
                 starts.insert({s->line, static_cast<int>(at)});
                 break;
             }
@@ -1379,21 +1710,27 @@ std::variant<std::set<Pos>, std::string> Server::symbol_places(const Doc& d, Pos
 
 std::optional<SymbolKey> Server::symbol_key(const Doc& d, Pos decl, const std::string& name) const
 {
-    if (decl.line < 0) {
+    if (decl.line < 0)
+    {
         // The declaration is in another script. Take the member of this script, if it is the only one.
         std::optional<SymbolKey> found;
         for (const sppc::AnalyzedClass& c : d.facts.classes)
             for (const sppc::AnalyzedMember& m : c.members)
-                if (m.name == name) {
-                    if (found) return std::nullopt;
+                if (m.name == name)
+                {
+                    if (found)
+                        return std::nullopt;
                     found = SymbolKey{c.name, name};
                 }
         return found;
     }
-    for (const sppc::AnalyzedClass& c : d.facts.classes) {
-        if (c.name == name && c.begin.line - 1 == decl.line) return SymbolKey{name, ""};
+    for (const sppc::AnalyzedClass& c : d.facts.classes)
+    {
+        if (c.name == name && c.begin.line - 1 == decl.line)
+            return SymbolKey{name, ""};
         for (const sppc::AnalyzedMember& m : c.members)
-            if (m.name == name && m.begin.line - 1 == decl.line) return SymbolKey{c.name, name};
+            if (m.name == name && m.begin.line - 1 == decl.line)
+                return SymbolKey{c.name, name};
     }
     return std::nullopt;
 }
@@ -1401,10 +1738,12 @@ std::optional<SymbolKey> Server::symbol_key(const Doc& d, Pos decl, const std::s
 std::optional<SymbolKey> Server::key_at(const Doc& d, Pos cur)
 {
     const std::string name = word(d, cur);
-    if (name.empty()) return std::nullopt;
+    if (name.empty())
+        return std::nullopt;
     Pos decl;
     const auto r = symbol_places(d, cur, name, &decl);
-    if (std::holds_alternative<std::string>(r)) return std::nullopt;
+    if (std::holds_alternative<std::string>(r))
+        return std::nullopt;
     return symbol_key(d, decl, name);
 }
 
@@ -1413,19 +1752,25 @@ Pos Server::class_name_pos(const Doc& d, const sppc::AnalyzedClass& c) const
     // The begin of a class is at the keyword "class". The name comes after it on the line.
     const Pos b = {c.begin.line - 1, c.begin.col - 1};
     const std::string_view l = d.text.line(b.line);
-    for (size_t at = l.find(c.name, static_cast<size_t>(b.col)); at != std::string_view::npos; at = l.find(c.name, at + 1))
-        if ((at == 0 || !is_id_char(l[at - 1])) && (at + c.name.size() >= l.size() || !is_id_char(l[at + c.name.size()])))
+    for (size_t at = l.find(c.name, static_cast<size_t>(b.col)); at != std::string_view::npos;
+        at = l.find(c.name, at + 1))
+        if ((at == 0 || !is_id_char(l[at - 1]))
+            && (at + c.name.size() >= l.size() || !is_id_char(l[at + c.name.size()])))
             return {b.line, static_cast<int>(at)};
     return b;
 }
 
 std::optional<Pos> Server::key_position(const Doc& d, const SymbolKey& key) const
 {
-    for (const sppc::AnalyzedClass& c : d.facts.classes) {
-        if (c.name != key.cls) continue;
-        if (key.member.empty()) return class_name_pos(d, c);
+    for (const sppc::AnalyzedClass& c : d.facts.classes)
+    {
+        if (c.name != key.cls)
+            continue;
+        if (key.member.empty())
+            return class_name_pos(d, c);
         for (const sppc::AnalyzedMember& m : c.members)
-            if (m.name == key.member) return Pos{m.begin.line - 1, m.begin.col - 1};
+            if (m.name == key.member)
+                return Pos{m.begin.line - 1, m.begin.col - 1};
     }
     return std::nullopt;
 }
@@ -1433,17 +1778,22 @@ std::optional<Pos> Server::key_position(const Doc& d, const SymbolKey& key) cons
 std::vector<std::string> Server::workspace_scripts() const
 {
     std::vector<std::string> out;
-    for (const std::string& root : roots_) {
+    for (const std::string& root : roots_)
+    {
         std::error_code ec;
         fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
-        for (; !ec && it != end; it.increment(ec)) {
+        for (; !ec && it != end; it.increment(ec))
+        {
             const std::string name = it->path().filename().string();
             std::error_code ec2;
-            if (it->is_directory(ec2)) {
-                if ((!name.empty() && name[0] == '.') || name == "node_modules") it.disable_recursion_pending();
+            if (it->is_directory(ec2))
+            {
+                if ((!name.empty() && name[0] == '.') || name == "node_modules")
+                    it.disable_recursion_pending();
                 continue;
             }
-            if (it->path().extension() == ".spp" && it->is_regular_file(ec2)) out.push_back(it->path().lexically_normal().string());
+            if (it->path().extension() == ".spp" && it->is_regular_file(ec2))
+                out.push_back(it->path().lexically_normal().string());
         }
     }
     std::sort(out.begin(), out.end());
@@ -1452,23 +1802,30 @@ std::vector<std::string> Server::workspace_scripts() const
 }
 
 void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const std::string& name,
-                               const std::function<void(const Doc&, const std::set<Pos>&)>& fn)
+    const std::function<void(const Doc&, const std::set<Pos>&)>& fn)
 {
-    index_.prune();  // the shard of a file that is gone
-    for (const std::string& path : workspace_scripts()) {
-        if (path == origin.path) continue;
+    index_.prune(); // the shard of a file that is gone
+    for (const std::string& path : workspace_scripts())
+    {
+        if (path == origin.path)
+            continue;
         std::shared_ptr<Doc> open;
         for (const auto& [uri, doc] : docs_)
-            if (doc->path == path) open = doc;
-        if (open) {
+            if (doc->path == path)
+                open = doc;
+        if (open)
+        {
             const auto at = key_position(*open, key);
-            if (!at || word(*open, *at) != name) continue;
+            if (!at || word(*open, *at) != name)
+                continue;
             const auto r = symbol_places(*open, *at, name, nullptr);
-            if (const auto* places = std::get_if<std::set<Pos>>(&r); places && !places->empty()) fn(*open, *places);
+            if (const auto* places = std::get_if<std::set<Pos>>(&r); places && !places->empty())
+                fn(*open, *places);
             continue;
         }
         const auto text = read_file(path);
-        if (!text) continue;
+        if (!text)
+            continue;
         Doc tmp;
         tmp.uri = path_to_uri(path);
         tmp.path = path;
@@ -1476,7 +1833,8 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
         tmp.gen_uri = path_to_uri(tmp.gen_path);
         tmp.text = Text(*text);
         bool analyzed = false;
-        auto analyze_tmp = [&] {
+        auto analyze_tmp = [&]
+        {
             tmp.facts = sppc::analyze(tmp.text.s, translate_options(tmp), session_);
             analyzed = true;
             ++closed_analyses_;
@@ -1485,58 +1843,81 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
         // The digest holds the import files. The flags of the host also go in, as the one-argument digest.
         const Effective eff = effective_options(path);
         std::string flags_text;
-        for (const std::string& f : eff.extra_flags) flags_text += f + '\n';
+        for (const std::string& f : eff.extra_flags)
+            flags_text += f + '\n';
         const std::string digest = SymbolIndex::digest(SymbolIndex::digest(path, *text, eff.include_dirs) + flags_text);
         auto shard = index_.load(path, digest);
-        if (!shard) {
-            if (text->find(name) == std::string::npos) continue;
+        if (!shard)
+        {
+            if (text->find(name) == std::string::npos)
+                continue;
             analyze_tmp();
             shard = shard_of_doc(tmp);
             index_.store(path, digest, *shard);
         }
         IndexClass* cls = shard->find_class(key.cls);
-        if (!cls) continue;
+        if (!cls)
+            continue;
         std::set<Pos> places;
-        if (key.member.empty()) {
-            for (const IndexPos& r : cls->refs) places.insert({r.line, r.col});
-        } else {
+        if (key.member.empty())
+        {
+            for (const IndexPos& r : cls->refs)
+                places.insert({r.line, r.col});
+        }
+        else
+        {
             IndexMember* m = cls->find_member(key.member);
-            if (!m) continue;
-            if (m->refs) {
-                for (const IndexPos& r : *m->refs) places.insert({r.line, r.col});
-            } else {  // a member needs clangd. The result goes into the shard.
-                if (!analyzed) analyze_tmp();
+            if (!m)
+                continue;
+            if (m->refs)
+            {
+                for (const IndexPos& r : *m->refs)
+                    places.insert({r.line, r.col});
+            }
+            else
+            { // a member needs clangd. The result goes into the shard.
+                if (!analyzed)
+                    analyze_tmp();
                 const auto at = key_position(tmp, key);
-                if (!at || tmp.facts.cpp.empty()) continue;
+                if (!at || tmp.facts.cpp.empty())
+                    continue;
                 tmp.gen = Text(tmp.facts.cpp);
                 tmp.map = std::make_shared<const sppc::SourceMap>(tmp.facts.source_map);
                 tmp.gen_script = tmp.text;
                 tmp.gen_version = 1;
                 send_generated(tmp, tmp.facts.cpp);
                 const auto r = symbol_places(tmp, *at, name, nullptr);
-                if (const auto* found = std::get_if<std::set<Pos>>(&r)) places = *found;
-                if (clangd_ && tmp.in_clangd) clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", tmp.gen_uri}}}});
-                if (!places.empty()) {
+                if (const auto* found = std::get_if<std::set<Pos>>(&r))
+                    places = *found;
+                if (clangd_ && tmp.in_clangd)
+                    clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", tmp.gen_uri}}}});
+                if (!places.empty())
+                {
                     m->refs = std::vector<IndexPos>();
-                    for (const Pos& q : places) m->refs->push_back({q.line, q.col});
+                    for (const Pos& q : places)
+                        m->refs->push_back({q.line, q.col});
                     index_.store(path, digest, *shard);
                 }
             }
         }
-        if (!places.empty()) fn(tmp, places);
+        if (!places.empty())
+            fn(tmp, places);
     }
 }
 
 IndexShard Server::shard_of_doc(const Doc& d) const
 {
     IndexShard shard;
-    for (const sppc::AnalyzedClass& c : d.facts.classes) {
+    for (const sppc::AnalyzedClass& c : d.facts.classes)
+    {
         IndexClass ic;
         ic.name = c.name;
         const Pos b = class_name_pos(d, c);
         ic.begin = {b.line, b.col};
-        for (const Pos& q : class_places(d, c.name)) ic.refs.push_back({q.line, q.col});
-        for (const sppc::AnalyzedMember& m : c.members) ic.members.push_back({m.name, m.kind, {m.begin.line - 1, m.begin.col - 1}, std::nullopt});
+        for (const Pos& q : class_places(d, c.name))
+            ic.refs.push_back({q.line, q.col});
+        for (const sppc::AnalyzedMember& m : c.members)
+            ic.members.push_back({m.name, m.kind, {m.begin.line - 1, m.begin.col - 1}, std::nullopt});
         shard.classes.push_back(std::move(ic));
     }
     return shard;
@@ -1547,53 +1928,60 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
     const Pos cur = from_lsp(d.text, p["position"], utf8_);
     const std::string old_name = word(d, cur);
     const std::string new_name = p.value("newName", std::string());
-    if (old_name.empty()) return std::string("no symbol at the position");
-    if (new_name.empty() || !std::all_of(new_name.begin(), new_name.end(), is_id_char) ||
-        (new_name[0] >= '0' && new_name[0] <= '9'))
+    if (old_name.empty())
+        return std::string("no symbol at the position");
+    if (new_name.empty() || !std::all_of(new_name.begin(), new_name.end(), is_id_char)
+        || (new_name[0] >= '0' && new_name[0] <= '9'))
         return std::string("the new name is not an identifier: " + new_name);
     Pos decl;
     const auto r = symbol_places(d, cur, old_name, &decl);
-    if (const auto* e = std::get_if<std::string>(&r)) return *e;
-    auto edits_of = [&](const Doc& doc, const std::set<Pos>& places) {
+    if (const auto* e = std::get_if<std::string>(&r))
+        return *e;
+    auto edits_of = [&](const Doc& doc, const std::set<Pos>& places)
+    {
         json edits = json::array();
         for (const Pos& s : places)
             edits.push_back({{"range", script_range(doc, s, {s.line, s.col + static_cast<int>(old_name.size())})},
-                             {"newText", new_name}});
+                {"newText", new_name}});
         return edits;
     };
     json changes = {{d.uri, edits_of(d, std::get<std::set<Pos>>(r))}};
     // A class or a member that other scripts of the workspace declare too (the versions of a
     // script) gets the new name there as well.
     if (const auto key = symbol_key(d, decl, old_name))
-        for_other_scripts(d, *key, old_name, [&](const Doc& doc, const std::set<Pos>& places) {
-            changes[doc.uri] = edits_of(doc, places);
-        });
+        for_other_scripts(d, *key, old_name,
+            [&](const Doc& doc, const std::set<Pos>& places) { changes[doc.uri] = edits_of(doc, places); });
     return json{{"changes", changes}};
 }
 
 json Server::on_document_symbol(const Doc& d)
 {
     json out = json::array();
-    for (const sppc::AnalyzedClass& c : d.facts.classes) {
+    for (const sppc::AnalyzedClass& c : d.facts.classes)
+    {
         const Pos b = {c.begin.line - 1, c.begin.col - 1};
         Pos e = {b.line, b.col + static_cast<int>(c.name.size())};
         json children = json::array();
-        for (const sppc::AnalyzedMember& m : c.members) {
-            int kind = 6;  // Method
-            if (m.kind == "field") kind = 8;
-            else if (m.kind == "constructor") kind = 9;
-            else if (m.kind == "property") kind = 7;
+        for (const sppc::AnalyzedMember& m : c.members)
+        {
+            int kind = 6; // Method
+            if (m.kind == "field")
+                kind = 8;
+            else if (m.kind == "constructor")
+                kind = 9;
+            else if (m.kind == "property")
+                kind = 7;
             const Pos mb = {m.begin.line - 1, m.begin.col - 1}, me = {m.end.line - 1, m.end.col - 1};
-            if (e < me) e = me;
+            if (e < me)
+                e = me;
             const std::string shown = m.kind == "destructor" && m.name[0] != '~' ? "~" + m.name : m.name;
-            children.push_back({{"name", shown}, {"kind", kind}, {"detail", m.kind},
-                                {"range", script_range(d, mb, me)},
-                                {"selectionRange", script_range(d, mb, {mb.line, mb.col + static_cast<int>(m.name.size())})}});
+            children.push_back({{"name", shown}, {"kind", kind}, {"detail", m.kind}, {"range", script_range(d, mb, me)},
+                {"selectionRange", script_range(d, mb, {mb.line, mb.col + static_cast<int>(m.name.size())})}});
         }
         out.push_back({{"name", c.name}, {"kind", 5}, {"detail", c.base.empty() ? "class" : "class : " + c.base},
-                       {"range", script_range(d, b, e)},
-                       {"selectionRange", script_range(d, b, {b.line, b.col + static_cast<int>(c.name.size())})},
-                       {"children", children}});
+            {"range", script_range(d, b, e)},
+            {"selectionRange", script_range(d, b, {b.line, b.col + static_cast<int>(c.name.size())})},
+            {"children", children}});
     }
     return out;
 }
@@ -1602,7 +1990,8 @@ json Server::on_semantic_tokens(const Doc& d)
 {
     json data = json::array();
     int pl = 0, pc = 0;
-    for (const SemanticToken& t : script_tokens(d.text.s, d.facts)) {
+    for (const SemanticToken& t : script_tokens(d.text.s, d.facts))
+    {
         const std::string_view l = d.text.line(t.line);
         const int c = utf8_ ? t.col : byte_to_utf16(l, t.col);
         const int len = utf8_ ? t.len : byte_to_utf16(l, t.col + t.len) - c;
@@ -1622,11 +2011,14 @@ json Server::on_semantic_tokens(const Doc& d)
 json disk_to_script(const std::string& cpp_path, int line)
 {
     const auto text = read_file(cpp_path);
-    if (!text) return nullptr;
+    if (!text)
+        return nullptr;
     const auto t = line_directive_target(*text, line);
-    if (!t) return nullptr;
+    if (!t)
+        return nullptr;
     fs::path f = t->file;
-    if (f.is_relative()) {
+    if (f.is_relative())
+    {
         const fs::path near = fs::path(cpp_path).parent_path() / f;
         f = fs::exists(near) ? near : fs::absolute(f);
     }
@@ -1639,19 +2031,25 @@ json Server::script_member_location(const std::string& uri, const std::string& s
     // The script name is "Class.member". A helper of the translator (a thunk, a slot function,
     // a field init) has a name that is not a member of the class: it gets no location.
     const size_t dot = script_name.find('.');
-    if (uri.empty() || dot == std::string::npos) return nullptr;
+    if (uri.empty() || dot == std::string::npos)
+        return nullptr;
     const std::string cls = script_name.substr(0, dot), member = script_name.substr(dot + 1);
     const sppc::AnalyzeResult* facts = nullptr;
     Text text;
-    if (const auto it = docs_.find(uri); it != docs_.end()) {
+    if (const auto it = docs_.find(uri); it != docs_.end())
+    {
         facts = &it->second->facts;
         text = it->second->text;
-    } else {
+    }
+    else
+    {
         const std::string path = uri_to_path(uri);
         const auto t = read_file(path);
-        if (!t) return nullptr;
+        if (!t)
+            return nullptr;
         auto& cached = disk_facts_[path];
-        if (cached.first != *t) {
+        if (cached.first != *t)
+        {
             Doc tmp;
             tmp.path = path;
             cached = {*t, sppc::analyze(*t, translate_options(tmp), session_)};
@@ -1659,10 +2057,14 @@ json Server::script_member_location(const std::string& uri, const std::string& s
         facts = &cached.second;
         text = Text(*t);
     }
-    for (const sppc::AnalyzedClass& c : facts->classes) {
-        if (c.name != cls) continue;
-        for (const sppc::AnalyzedMember& m : c.members) {
-            if (m.name != member) continue;
+    for (const sppc::AnalyzedClass& c : facts->classes)
+    {
+        if (c.name != cls)
+            continue;
+        for (const sppc::AnalyzedMember& m : c.members)
+        {
+            if (m.name != member)
+                continue;
             const Pos b = {m.begin.line - 1, m.begin.col - 1};
             const Pos e = {b.line, b.col + static_cast<int>(member.size())};
             return {{"uri", uri}, {"range", {{"start", to_lsp(text, b, utf8_)}, {"end", to_lsp(text, e, utf8_)}}}};
@@ -1675,8 +2077,10 @@ json Server::on_workspace_symbol(const json& p)
 {
     json out = json::array();
     auto r = clangd_result("workspace/symbol", {{"query", p.value("query", std::string())}});
-    if (!r || !r->is_array()) return out;
-    for (const json& s : *r) {
+    if (!r || !r->is_array())
+        return out;
+    for (const json& s : *r)
+    {
         json loc = s.value("location", json());
         const std::string uri = loc.value("uri", std::string());
         const std::string name = s.value("name", std::string());
@@ -1688,27 +2092,36 @@ json Server::on_workspace_symbol(const json& p)
         const bool script = script_name != name || (script_container != container && name.compare(0, 5, "SLOT_") != 0);
         json mapped;
         bool generated = false;
-        if (const auto it = gen_docs_.find(uri); it != gen_docs_.end()) {
+        if (const auto it = gen_docs_.find(uri); it != gen_docs_.end())
+        {
             generated = true;
-            if (script) mapped = map_location(*it->second, loc);
-        } else if (uri.size() > 4 && uri.compare(uri.size() - 4, 4, ".cpp") == 0) {
+            if (script)
+                mapped = map_location(*it->second, loc);
+        }
+        else if (uri.size() > 4 && uri.compare(uri.size() - 4, 4, ".cpp") == 0)
+        {
             // A generated file of the workspace from the background index.
             const std::string path = uri_to_path(uri);
             const auto text = read_file(path);
             generated = text && text->find("// Generated by sppc") == 0;
-            if (generated && script) mapped = disk_to_script(path, loc.value("/range/start/line"_json_pointer, 0));
+            if (generated && script)
+                mapped = disk_to_script(path, loc.value("/range/start/line"_json_pointer, 0));
         }
-        if (generated && !mapped.is_null()) {
+        if (generated && !mapped.is_null())
+        {
             // A field of a state struct: the container gives the class.
             const bool field = script_name.find('.') == std::string::npos && script_container != container;
-            mapped = script_member_location(mapped.value("uri", std::string()),
-                                            field ? script_container + "." + script_name : script_name);
+            mapped = script_member_location(
+                mapped.value("uri", std::string()), field ? script_container + "." + script_name : script_name);
         }
-        if (generated && mapped.is_null()) continue;
-        if (mapped.is_null()) mapped = loc;  // a native symbol
+        if (generated && mapped.is_null())
+            continue;
+        if (mapped.is_null())
+            mapped = loc; // a native symbol
         json item = s;
         item["name"] = script_name;
-        if (s.contains("containerName")) item["containerName"] = script_container;
+        if (s.contains("containerName"))
+            item["containerName"] = script_container;
         item["location"] = mapped;
         out.push_back(std::move(item));
     }
@@ -1719,12 +2132,16 @@ json Server::on_to_script(const json& p)
 {
     const std::string uri = p.value("/textDocument/uri"_json_pointer, std::string());
     const json pos = p.value("position", json::object());
-    if (const auto it = gen_docs_.find(uri); it != gen_docs_.end()) {
+    if (const auto it = gen_docs_.find(uri); it != gen_docs_.end())
+    {
         const Doc& d = *it->second;
-        if (const auto s = to_script(d, pos)) return {{"uri", d.uri}, {"range", script_range(d, *s, *s)}};
-        if (json imp = imported_location(d, pos, false); !imp.is_null()) return imp;
+        if (const auto s = to_script(d, pos))
+            return {{"uri", d.uri}, {"range", script_range(d, *s, *s)}};
+        if (json imp = imported_location(d, pos, false); !imp.is_null())
+            return imp;
         const auto t = line_directive_target(d.gen.s, pos.value("line", 0));
-        if (!t || t->file != d.path) return nullptr;
+        if (!t || t->file != d.path)
+            return nullptr;
         return {{"uri", d.uri}, {"range", script_range(d, {t->line, 0}, {t->line, 0})}};
     }
     return disk_to_script(uri_to_path(uri), pos.value("line", 0));
@@ -1738,15 +2155,20 @@ void Server::handle(const json& msg)
     const bool is_request = msg.contains("id");
     const json id = is_request ? msg["id"] : json();
     const json p = msg.value("params", json::object());
-    if (method.empty()) return;  // a response to a request that the server did not send
+    if (method.empty())
+        return; // a response to a request that the server did not send
 
-    if (method == "initialize") return reply(id, on_initialize(p));
-    if (method == "shutdown") {
+    if (method == "initialize")
+        return reply(id, on_initialize(p));
+    if (method == "shutdown")
+    {
         shutdown_ = true;
-        if (clangd_) clangd_->stop();
+        if (clangd_)
+            clangd_->stop();
         return reply(id, nullptr);
     }
-    if (method == "textDocument/didOpen") {
+    if (method == "textDocument/didOpen")
+    {
         const json& td = p["textDocument"];
         auto d = std::make_shared<Doc>();
         d->uri = td.value("uri", std::string());
@@ -1764,63 +2186,84 @@ void Server::handle(const json& msg)
         log_host(*d, d->host);
         return update(*d);
     }
-    if (method == "textDocument/didChange") {
+    if (method == "textDocument/didChange")
+    {
         auto d = doc_of(p);
-        if (!d) return;
+        if (!d)
+            return;
         const json changes = p.value("contentChanges", json::array());
-        if (changes.empty()) return;
+        if (changes.empty())
+            return;
         {
             std::lock_guard<std::mutex> lock(docs_mutex_);
             d->text = Text(changes.back().value("text", std::string()));
         }
         const auto host_before = d->host;
         refresh_hosts(d.get());
-        if (!same_host(host_before, d->host)) log_host(*d, d->host);
+        if (!same_host(host_before, d->host))
+            log_host(*d, d->host);
         return update(*d);
     }
-    if (method == "textDocument/didClose") {
+    if (method == "textDocument/didClose")
+    {
         auto d = doc_of(p);
-        if (!d) return;
-        if (clangd_ && d->in_clangd) clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", d->gen_uri}}}});
+        if (!d)
+            return;
+        if (clangd_ && d->in_clangd)
+            clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", d->gen_uri}}}});
         {
             std::lock_guard<std::mutex> lock(docs_mutex_);
             docs_.erase(d->uri);
             gen_docs_.erase(d->gen_uri);
         }
-        send_client({{"jsonrpc", "2.0"},
-                     {"method", "textDocument/publishDiagnostics"},
-                     {"params", {{"uri", d->uri}, {"diagnostics", json::array()}}}});
+        send_client({{"jsonrpc", "2.0"}, {"method", "textDocument/publishDiagnostics"},
+            {"params", {{"uri", d->uri}, {"diagnostics", json::array()}}}});
         for (const std::string& uri : d->import_uris)
-            send_client({{"jsonrpc", "2.0"},
-                         {"method", "textDocument/publishDiagnostics"},
-                         {"params", {{"uri", uri}, {"diagnostics", json::array()}}}});
+            send_client({{"jsonrpc", "2.0"}, {"method", "textDocument/publishDiagnostics"},
+                {"params", {{"uri", uri}, {"diagnostics", json::array()}}}});
         return;
     }
-    if (method == "workspace/didChangeWatchedFiles") return on_watched_files(p);
-    if (!is_request) return;  // initialized, $/cancelRequest and other notifications
-    if (method == "workspace/symbol") return reply(id, on_workspace_symbol(p));
+    if (method == "workspace/didChangeWatchedFiles")
+        return on_watched_files(p);
+    if (!is_request)
+        return; // initialized, $/cancelRequest and other notifications
+    if (method == "workspace/symbol")
+        return reply(id, on_workspace_symbol(p));
     if (method == "spp/indexStats")
-        return reply(id, {{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"stored", index_.stores()}, {"dir", index_.dir()}, {"completions", completion_translations_}});
-    if (method == "spp/toScript") return reply(id, on_to_script(p));
+        return reply(id,
+            {{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"stored", index_.stores()},
+                {"dir", index_.dir()}, {"completions", completion_translations_}});
+    if (method == "spp/toScript")
+        return reply(id, on_to_script(p));
 
-    static const std::set<std::string> doc_methods = {
-        "textDocument/completion", "textDocument/hover", "textDocument/definition", "textDocument/references",
-        "textDocument/documentSymbol", "textDocument/semanticTokens/full", "textDocument/rename",
-        "textDocument/signatureHelp", "textDocument/formatting", "textDocument/codeAction"};
-    if (!doc_methods.count(method)) return reply_error(id, kMethodNotFound, "unknown method: " + method);
+    static const std::set<std::string> doc_methods = {"textDocument/completion", "textDocument/hover",
+        "textDocument/definition", "textDocument/references", "textDocument/documentSymbol",
+        "textDocument/semanticTokens/full", "textDocument/rename", "textDocument/signatureHelp",
+        "textDocument/formatting", "textDocument/codeAction"};
+    if (!doc_methods.count(method))
+        return reply_error(id, kMethodNotFound, "unknown method: " + method);
     auto d = doc_of(p);
-    if (!d) return reply_error(id, kInvalidParams, "the document is not open");
-    if (method == "textDocument/completion") return reply(id, on_completion(*d, p));
-    if (method == "textDocument/hover") return reply(id, on_hover(*d, p));
-    if (method == "textDocument/signatureHelp") return reply(id, on_signature_help(*d, p));
-    if (method == "textDocument/formatting") return reply(id, on_formatting(*d, p));
-    if (method == "textDocument/codeAction") return reply(id, on_code_action(*d, p));
+    if (!d)
+        return reply_error(id, kInvalidParams, "the document is not open");
+    if (method == "textDocument/completion")
+        return reply(id, on_completion(*d, p));
+    if (method == "textDocument/hover")
+        return reply(id, on_hover(*d, p));
+    if (method == "textDocument/signatureHelp")
+        return reply(id, on_signature_help(*d, p));
+    if (method == "textDocument/formatting")
+        return reply(id, on_formatting(*d, p));
+    if (method == "textDocument/codeAction")
+        return reply(id, on_code_action(*d, p));
     if (method == "textDocument/definition" || method == "textDocument/references")
         return reply(id, on_locations(*d, p, method));
-    if (method == "textDocument/documentSymbol") return reply(id, on_document_symbol(*d));
-    if (method == "textDocument/semanticTokens/full") return reply(id, on_semantic_tokens(*d));
+    if (method == "textDocument/documentSymbol")
+        return reply(id, on_document_symbol(*d));
+    if (method == "textDocument/semanticTokens/full")
+        return reply(id, on_semantic_tokens(*d));
     auto r = on_rename(*d, p);
-    if (auto* e = std::get_if<std::string>(&r)) return reply_error(id, kRequestFailed, *e);
+    if (auto* e = std::get_if<std::string>(&r))
+        return reply_error(id, kRequestFailed, *e);
     return reply(id, std::get<json>(r));
 }
 
@@ -1828,21 +2271,29 @@ int Server::run()
 {
     MessageReader reader(in_);
     std::string body;
-    while (reader.read(body)) {
+    while (reader.read(body))
+    {
         const json msg = json::parse(body, nullptr, false);
-        if (msg.is_discarded() || !msg.is_object()) continue;
-        if (msg.value("method", std::string()) == "exit") break;
-        try {
+        if (msg.is_discarded() || !msg.is_object())
+            continue;
+        if (msg.value("method", std::string()) == "exit")
+            break;
+        try
+        {
             handle(msg);
-        } catch (const std::exception& e) {
-            if (msg.contains("id")) reply_error(msg["id"], kRequestFailed, std::string("internal error: ") + e.what());
+        }
+        catch (const std::exception& e)
+        {
+            if (msg.contains("id"))
+                reply_error(msg["id"], kRequestFailed, std::string("internal error: ") + e.what());
         }
     }
-    if (clangd_) clangd_->stop();
+    if (clangd_)
+        clangd_->stop();
     return shutdown_ ? 0 : 1;
 }
 
-}  // namespace
+} // namespace
 
 std::optional<ScriptLine> line_directive_target(const std::string& cpp, int line)
 {
@@ -1851,19 +2302,25 @@ std::optional<ScriptLine> line_directive_target(const std::string& cpp, int line
     // Walk back to the nearest directive. A directive that names the .cpp file itself marks
     // translator text: the last script directive before it gives the line then.
     bool in_cpp_text = false;
-    for (int l = std::min(line, static_cast<int>(starts.size()) - 1); l >= 0; --l) {
+    for (int l = std::min(line, static_cast<int>(starts.size()) - 1); l >= 0; --l)
+    {
         const std::string_view t = line_text(cpp, starts, l);
-        if (t.find("#") == std::string_view::npos || t.find("line") == std::string_view::npos) continue;
+        if (t.find("#") == std::string_view::npos || t.find("line") == std::string_view::npos)
+            continue;
         std::cmatch m;
-        if (!std::regex_search(t.data(), t.data() + t.size(), m, re)) continue;
+        if (!std::regex_search(t.data(), t.data() + t.size(), m, re))
+            continue;
         std::string file;
-        for (size_t i = 0; i < static_cast<size_t>(m[2].length()); ++i) {
+        for (size_t i = 0; i < static_cast<size_t>(m[2].length()); ++i)
+        {
             const char c = m[2].first[i];
-            if (c == '\\' && i + 1 < static_cast<size_t>(m[2].length())) ++i;
+            if (c == '\\' && i + 1 < static_cast<size_t>(m[2].length()))
+                ++i;
             file += m[2].first[i];
         }
         const bool is_cpp = file.size() > 4 && file.compare(file.size() - 4, 4, ".cpp") == 0;
-        if (is_cpp) {
+        if (is_cpp)
+        {
             in_cpp_text = true;
             continue;
         }
@@ -1875,7 +2332,7 @@ std::optional<ScriptLine> line_directive_target(const std::string& cpp, int line
 
 int run_server(int in_fd, int out_fd, const ServerOptions& options)
 {
-    signal(SIGPIPE, SIG_IGN);  // a write to a clangd that stopped gives an error, not a signal
+    signal(SIGPIPE, SIG_IGN); // a write to a clangd that stopped gives an error, not a signal
     Server server(in_fd, out_fd, options);
     return server.run();
 }
@@ -1898,10 +2355,13 @@ const char* usage_text()
 
 bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, std::string& error)
 {
-    for (size_t i = 0; i < args.size(); ++i) {
+    for (size_t i = 0; i < args.size(); ++i)
+    {
         const std::string& a = args[i];
-        auto next = [&](std::string& v) {
-            if (i + 1 >= args.size()) {
+        auto next = [&](std::string& v)
+        {
+            if (i + 1 >= args.size())
+            {
                 error = "missing value after " + a;
                 return false;
             }
@@ -1909,28 +2369,56 @@ bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, s
             return true;
         };
         std::string v;
-        if (a == "--stdio") continue;
-        if (a == "--clangd") {
-            if (!next(out.clangd)) return false;
-        } else if (a == "-I") {
-            if (!next(v)) return false;
+        if (a == "--stdio")
+            continue;
+        if (a == "--clangd")
+        {
+            if (!next(out.clangd))
+                return false;
+        }
+        else if (a == "-I")
+        {
+            if (!next(v))
+                return false;
             out.include_dirs.push_back(v);
-        } else if (a.compare(0, 2, "-I") == 0) {
+        }
+        else if (a.compare(0, 2, "-I") == 0)
+        {
             out.include_dirs.push_back(a.substr(2));
-        } else if (a == "--resource-dir") {
-            if (!next(out.resource_dir)) return false;
-        } else if (a == "--cxxflag") {
-            if (!next(v)) return false;
+        }
+        else if (a == "--resource-dir")
+        {
+            if (!next(out.resource_dir))
+                return false;
+        }
+        else if (a == "--cxxflag")
+        {
+            if (!next(v))
+                return false;
             out.extra_flags.push_back(v);
-        } else if (a == "--compile-commands-dir") {
-            if (!next(out.compile_commands_dir)) return false;
-        } else if (a == "--index-dir") {
-            if (!next(out.index_dir)) return false;
-        } else if (a == "--hosts-dir") {
-            if (!next(out.hosts_dir)) return false;
-        } else if (a == "--clangd-log") {
-            if (!next(out.clangd_log)) return false;
-        } else {
+        }
+        else if (a == "--compile-commands-dir")
+        {
+            if (!next(out.compile_commands_dir))
+                return false;
+        }
+        else if (a == "--index-dir")
+        {
+            if (!next(out.index_dir))
+                return false;
+        }
+        else if (a == "--hosts-dir")
+        {
+            if (!next(out.hosts_dir))
+                return false;
+        }
+        else if (a == "--clangd-log")
+        {
+            if (!next(out.clangd_log))
+                return false;
+        }
+        else
+        {
             error = "unknown argument: " + a;
             return false;
         }
@@ -1938,4 +2426,4 @@ bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, s
     return true;
 }
 
-}  // namespace spp::ls
+} // namespace spp::ls

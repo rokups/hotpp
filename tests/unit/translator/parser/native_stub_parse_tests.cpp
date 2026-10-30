@@ -1,11 +1,11 @@
 // Tests for the parser of the class stubs: [native], handle, value, intrusive and patterns.
+#include "parser/parser.h"
+#include "support/script_parse_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 #include <vector>
-
-#include "parser/parser.h"
-#include "support/script_parse_test_support.h"
 
 using namespace sppc;
 using namespace script_test;
@@ -115,7 +115,8 @@ TEST(NativeStubParse, AttributeErrors)
 TEST(NativeStubParse, NonStringAttributeArgumentGivesOneError)
 {
     for (const char* text : {"[native, handle(x)] class A;\n", "[native, handle(1)] class A;\n",
-                             "[native, intrusive(\"AddRef\", x)] class A;\n"}) {
+             "[native, intrusive(\"AddRef\", x)] class A;\n"})
+    {
         StubParsed p(text);
         ASSERT_EQ(p.diag.items.size(), 1u) << text << p.diag.format("t");
         EXPECT_EQ(p.diag.items[0].msg, "expected a string in [alias(...)]");

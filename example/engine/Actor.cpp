@@ -2,16 +2,22 @@
 // executable only. A shared library then uses the executable symbols.
 #include "Actor.h"
 
+#include "spp/runtime.h"
+
 #include <condition_variable>
 #include <cstdio>
 #include <mutex>
 #include <sstream>
 #include <thread>
 
-#include "spp/runtime.h"
-
-Actor::Actor() : Name("Actor") {}
-Actor::Actor(std::string name) : Name(std::move(name)) {}
+Actor::Actor()
+    : Name("Actor")
+{
+}
+Actor::Actor(std::string name)
+    : Name(std::move(name))
+{
+}
 Actor::~Actor() = default;
 
 void Actor::Tick(float dt)
@@ -26,8 +32,7 @@ void Actor::TakeDamage(float amount)
 
 void Actor::TakeDamage(Actor& source, float amount)
 {
-    std::printf("[engine] %s: Actor::TakeDamage %.1f from %s\n", Name.c_str(), amount,
-                source.Name.c_str());
+    std::printf("[engine] %s: Actor::TakeDamage %.1f from %s\n", Name.c_str(), amount, source.Name.c_str());
 }
 
 void Actor::Move(Vec3 delta)
@@ -41,8 +46,9 @@ World::World() = default;
 
 World::~World()
 {
-    pool_.reset();  // join the workers before the actors go
-    for (Actor* a : actors_) delete a;
+    pool_.reset(); // join the workers before the actors go
+    for (Actor* a : actors_)
+        delete a;
 }
 
 // The worker threads of TickParallel.
@@ -51,19 +57,22 @@ World::~World()
 // The mutex orders the memory. After run(), the caller sees all writes of the workers.
 // In the next frame, the workers see all writes of the caller.
 // A worker is outside script code while it waits.
-struct World::Pool {
+struct World::Pool
+{
     World* world;
     std::mutex mutex;
     std::condition_variable start_cv, done_cv;
     std::vector<std::thread> threads;
     uint64_t epoch = 0;
-    unsigned running = 0;  // workers that did not report in this frame
+    unsigned running = 0; // workers that did not report in this frame
     bool stop = false;
     float dt = 0;
 
-    Pool(World* w, unsigned count) : world(w)
+    Pool(World* w, unsigned count)
+        : world(w)
     {
-        for (unsigned i = 0; i < count; ++i) threads.emplace_back([this, i, count] { work(i, count); });
+        for (unsigned i = 0; i < count; ++i)
+            threads.emplace_back([this, i, count] { work(i, count); });
     }
 
     ~Pool()
@@ -73,18 +82,21 @@ struct World::Pool {
             stop = true;
         }
         start_cv.notify_all();
-        for (std::thread& t : threads) t.join();
+        for (std::thread& t : threads)
+            t.join();
     }
 
     void work(unsigned index, unsigned count)
     {
         uint64_t seen = 0;
-        for (;;) {
+        for (;;)
+        {
             float frame_dt;
             {
                 std::unique_lock<std::mutex> lock(mutex);
                 start_cv.wait(lock, [&] { return stop || epoch != seen; });
-                if (stop) return;
+                if (stop)
+                    return;
                 seen = epoch;
                 frame_dt = dt;
             }
@@ -92,7 +104,8 @@ struct World::Pool {
             for (size_t i = n * index / count; i < n * (index + 1) / count; ++i)
                 world->TickActor(world->actors_[i], frame_dt);
             std::lock_guard<std::mutex> lock(mutex);
-            if (--running == 0) done_cv.notify_one();
+            if (--running == 0)
+                done_cv.notify_one();
         }
     }
 
@@ -120,7 +133,8 @@ std::string World::Save() const
 {
     std::string text;
     char buf[128];
-    for (const Actor* a : actors_) {
+    for (const Actor* a : actors_)
+    {
         std::snprintf(buf, sizeof buf, "%.9g %.9g %.9g ", a->Position.x, a->Position.y, a->Position.z);
         text += buf;
         text += a->Name;
@@ -131,8 +145,9 @@ std::string World::Save() const
 
 void World::Clear()
 {
-    pool_.reset();  // no worker holds an actor
-    for (Actor* a : actors_) delete a;
+    pool_.reset(); // no worker holds an actor
+    for (Actor* a : actors_)
+        delete a;
     actors_.clear();
     timers_.clear();
     observer_ = nullptr;
@@ -142,12 +157,15 @@ void World::Restore(const std::string& text, const std::function<Actor*()>& make
 {
     std::istringstream in(text);
     std::string line;
-    while (std::getline(in, line)) {
+    while (std::getline(in, line))
+    {
         Vec3 pos;
         int used = 0;
-        if (std::sscanf(line.c_str(), "%f %f %f %n", &pos.x, &pos.y, &pos.z, &used) != 3) continue;
+        if (std::sscanf(line.c_str(), "%f %f %f %n", &pos.x, &pos.y, &pos.z, &used) != 3)
+            continue;
         Actor* actor = make();
-        if (!actor) continue;
+        if (!actor)
+            continue;
         actor->Name = line.substr(static_cast<size_t>(used));
         actor->Position = pos;
         Add(actor);
@@ -161,40 +179,51 @@ void World::AddTimer(float seconds, std::function<void()> fn)
 
 void World::TickActor(Actor* actor, float dt)
 {
-    spp::ScriptTickScope scope;  // the debug check of the safe point
+    spp::ScriptTickScope scope; // the debug check of the safe point
     actor->Tick(dt);
-    if (observer_) observer_(actor);
+    if (observer_)
+        observer_(actor);
 }
 
 void World::Tick(float dt)
 {
-    for (Actor* a : actors_) TickActor(a, dt);
+    for (Actor* a : actors_)
+        TickActor(a, dt);
     EndFrame(dt);
 }
 
 void World::TickParallel(float dt, unsigned threads)
 {
-    if (threads == 0) threads = 1;
-    if (!pool_ || pool_->threads.size() != threads) pool_ = std::make_unique<Pool>(this, threads);
+    if (threads == 0)
+        threads = 1;
+    if (!pool_ || pool_->threads.size() != threads)
+        pool_ = std::make_unique<Pool>(this, threads);
     pool_->run(dt);
     EndFrame(dt);
 }
 
 void World::EndFrame(float dt)
-{    // Move the due timers out first: a callable can add a timer.
+{ // Move the due timers out first: a callable can add a timer.
     std::vector<Timer> due;
-    for (size_t i = 0; i < timers_.size();) {
+    for (size_t i = 0; i < timers_.size();)
+    {
         timers_[i].remaining -= dt;
-        if (timers_[i].remaining <= 0.0f) {
+        if (timers_[i].remaining <= 0.0f)
+        {
             due.push_back(std::move(timers_[i]));
             timers_.erase(timers_.begin() + static_cast<std::ptrdiff_t>(i));
-        } else {
+        }
+        else
+        {
             ++i;
         }
     }
-    for (Timer& t : due) {
-        if (t.fn) t.fn();
-        t.fn = nullptr;  // the callable ends here, before the hook
+    for (Timer& t : due)
+    {
+        if (t.fn)
+            t.fn();
+        t.fn = nullptr; // the callable ends here, before the hook
     }
-    if (hook_) hook_();  // frame boundary
+    if (hook_)
+        hook_(); // frame boundary
 }

@@ -4,17 +4,18 @@
 // again (example/scripts). It checks that a shared_ptr field keeps its object.
 #pragma once
 
+#include "Weapon.h"
+#include "support/reload_assert.h"
+#include "support/test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <memory>
 #include <string>
 #include <utility>
 
-#include "Weapon.h"
-#include "support/reload_assert.h"
-#include "support/test_support.h"
-
-namespace handlereload {
+namespace handlereload
+{
 
 using test_support::kDt;
 using test_support::Session;
@@ -63,4 +64,4 @@ inline void run_handle_reload(spp::Module v1, spp::Module v2, spp::Module v1_aga
     EXPECT_EQ((*handle())->dmg, 9);
 }
 
-}  // namespace handlereload
+} // namespace handlereload

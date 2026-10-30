@@ -1,27 +1,32 @@
 // Helpers for the tests of the statement parser. The tests parse a block and print it.
 #pragma once
 
-#include <gtest/gtest.h>
-#include <string>
-#include <vector>
-
 #include "emit.h"
 #include "parser/expression.h"
 #include "parser/parser.h"
 #include "parser/statement.h"
 
-namespace stmt_test {
+#include <gtest/gtest.h>
+
+#include <string>
+#include <vector>
+
+namespace stmt_test
+{
 
 using namespace sppc;
 
 // A parse of the text as the body of a block. The text is the part between the braces.
-struct Parsed {
+struct Parsed
+{
     std::string text;
     LineMap map;
     Diagnostics diag;
     ast::BlockStmt block;
 
-    explicit Parsed(std::string t) : text(std::move(t)), map(text)
+    explicit Parsed(std::string t)
+        : text(std::move(t))
+        , map(text)
     {
         block = parse_block({text, &map}, {0, static_cast<uint32_t>(text.size())}, diag);
     }
@@ -30,7 +35,8 @@ struct Parsed {
     std::string printed() const
     {
         std::string r;
-        for (const ast::StmtP& s : block.stmts) r += (r.empty() ? "" : " ") + ast::print(*s);
+        for (const ast::StmtP& s : block.stmts)
+            r += (r.empty() ? "" : " ") + ast::print(*s);
         return r;
     }
 };
@@ -51,4 +57,4 @@ inline std::vector<std::string> errors_of(const Parsed& p)
     return r;
 }
 
-}  // namespace stmt_test
+} // namespace stmt_test

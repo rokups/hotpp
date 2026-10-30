@@ -1,11 +1,11 @@
 // Tests for sppc::translate with handle types: fields, parameters, "T&", "&x", "new" and preludes.
+#include "spp/sppc_lib.h"
+#include "support/stub_translate_test_support.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
-
-#include "spp/sppc_lib.h"
-#include "support/translator_test_support.h"
-#include "support/stub_translate_test_support.h"
 
 using namespace translator_test;
 using namespace stub_translate_test;
@@ -22,8 +22,7 @@ TEST(HandleTranslation, FieldStorage)
 TEST(HandleTranslation, ParamIsConstRef)
 {
     // The handle is only read: the generation function keeps the const reference.
-    const sppc::TranslateResult r =
-        weapon_translate("    Weapon w = null;\n    void Hit(Weapon src) { src.Use(); }\n");
+    const sppc::TranslateResult r = weapon_translate("    Weapon w = null;\n    void Hit(Weapon src) { src.Use(); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const std::string p = "const std::shared_ptr<Weapon>& src";
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit(Foo_Shell* __self, " + p + ");")) << r.cpp;
@@ -45,15 +44,16 @@ TEST(HandleTranslation, StoredParamTakesACopyInTheBody)
     const std::string p = "const std::shared_ptr<Weapon>& src";
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit(Foo_Shell* __self, std::shared_ptr<Weapon> src);")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "void FooState_g1::Hit(" + p.substr(0, p.size() - 3) + "__src)")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Weapon> src = std::forward<" + p.substr(0, p.size() - 4) + ">(__src);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Weapon> src = std::forward<" + p.substr(0, p.size() - 4) + ">(__src);"))
+        << r.cpp;
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit__thunk(Widget* __a, " + p + ")")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "__st->w = src;")) << r.cpp;
 }
 
 TEST(HandleTranslation, ReferenceParamIsNotRewritten)
 {
-    const sppc::TranslateResult r = weapon_translate(
-        "    Weapon w = null;\n    void Swap(Weapon& wp, Vec3& v) { this.w = wp; Vec3& r = v; }\n");
+    const sppc::TranslateResult r =
+        weapon_translate("    Weapon w = null;\n    void Swap(Weapon& wp, Vec3& v) { this.w = wp; Vec3& r = v; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const std::string p = "Weapon& wp, Vec3& v";
     EXPECT_TRUE(has(r.cpp, "static void Foo__Swap(Foo_Shell* __self, " + p + ");")) << r.cpp;
@@ -64,8 +64,8 @@ TEST(HandleTranslation, ReferenceParamIsNotRewritten)
 
 TEST(HandleTranslation, ReferenceArgumentInACall)
 {
-    const sppc::TranslateResult r = weapon_translate(
-        "    void Fill(Vec3& v) { }\n    void Run() { Vec3 p; this.Fill(p); }\n");
+    const sppc::TranslateResult r =
+        weapon_translate("    void Fill(Vec3& v) { }\n    void Run() { Vec3 p; this.Fill(p); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "Foo__Fill(__self, p);")) << r.cpp;
 }
@@ -79,23 +79,23 @@ TEST(HandleTranslation, ParamPassedToAReferenceParamTakesACopyInTheBody)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Weapon> p = std::forward<")) << r.cpp;
     EXPECT_EQ(r.cpp.find("std::shared_ptr<Weapon> p = std::forward<"),
-              r.cpp.rfind("std::shared_ptr<Weapon> p = std::forward<"))
+        r.cpp.rfind("std::shared_ptr<Weapon> p = std::forward<"))
         << r.cpp;
 }
 
 TEST(HandleTranslation, AddressOfAPointerLocalGivesANativeOutParameter)
 {
     // "Find(&w)" fills a "Weapon*": the parameter is a "Weapon**".
-    const sppc::TranslateResult r = weapon_translate(
-        "    void Find(Weapon** out) { }\n    void Run() { Weapon* w = null; this.Find(&w); }\n");
+    const sppc::TranslateResult r =
+        weapon_translate("    void Find(Weapon** out) { }\n    void Run() { Weapon* w = null; this.Find(&w); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "Foo__Find(__self, &w);")) << r.cpp;
 }
 
 TEST(HandleTranslation, AddressOfAValueLocalIsAPointer)
 {
-    const sppc::TranslateResult r = weapon_translate(
-        "    void Take(Vec3* q) { }\n    void Run() { Vec3 p; var q = &p; this.Take(&p); }\n");
+    const sppc::TranslateResult r =
+        weapon_translate("    void Take(Vec3* q) { }\n    void Run() { Vec3 p; var q = &p; this.Take(&p); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "auto q = &p;")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "Foo__Take(__self, &p);")) << r.cpp;
@@ -103,12 +103,11 @@ TEST(HandleTranslation, AddressOfAValueLocalIsAPointer)
 
 TEST(HandleTranslation, AddressOfAHandleLocalIsAnError)
 {
-    const sppc::TranslateResult r =
-        weapon_translate("    void Run() { Weapon h = null; var q = &h; }\n");
+    const sppc::TranslateResult r = weapon_translate("    void Run() { Weapon h = null; var q = &h; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics,
-                    "'&' on the handle 'h' is not allowed. Pass 'h' for a handle parameter, "
-                    "'&*h' for a 'T*' parameter, or '*h' for a 'T&' parameter"))
+        "'&' on the handle 'h' is not allowed. Pass 'h' for a handle parameter, "
+        "'&*h' for a 'T*' parameter, or '*h' for a 'T&' parameter"))
         << r.diagnostics;
 }
 
@@ -139,16 +138,16 @@ TEST(HandleTranslation, AddressOfThisIsAnError)
 
 TEST(HandleTranslation, AddressOfADereferencedHandleIsAllowed)
 {
-    const sppc::TranslateResult r = weapon_translate(
-        "    void Take(Weapon* q) { }\n    void Run() { Weapon h = null; this.Take(&*h); }\n");
+    const sppc::TranslateResult r =
+        weapon_translate("    void Take(Weapon* q) { }\n    void Run() { Weapon h = null; this.Take(&*h); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "&*h")) << r.cpp;
 }
 
 TEST(HandleTranslation, AddressOfAMemberOfAHandleIsAllowed)
 {
-    const sppc::TranslateResult r = weapon_translate(
-        "    void Take(int* q) { }\n    void Run() { Weapon h = null; this.Take(&h.dmg); }\n");
+    const sppc::TranslateResult r =
+        weapon_translate("    void Take(int* q) { }\n    void Run() { Weapon h = null; this.Take(&h.dmg); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
 }
 
@@ -182,8 +181,7 @@ TEST(HandleTranslation, AmpersandAndAndAreUnchanged)
     EXPECT_TRUE(has(r.cpp, "x && y")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "c = c & 3;")) << r.cpp;
     // A "&" after a binary "&" is the prefix operator. The checker allows it only for a call argument.
-    const sppc::TranslateResult q = weapon_translate(
-        "    int Run(int m, int n) { int c = m & &n; return c; }\n");
+    const sppc::TranslateResult q = weapon_translate("    int Run(int m, int n) { int c = m & &n; return c; }\n");
     EXPECT_FALSE(q.ok);
     EXPECT_TRUE(has(q.diagnostics, "a '&' value cannot be stored")) << q.diagnostics;
 }
@@ -256,7 +254,8 @@ TEST(HandleTranslation, GetOnAHandleIsAMemberOfThePointee)
 TEST(HandleTranslation, ThisIsAHandleArgumentForAScriptHandleParameter)
 {
     const sppc::TranslateResult r = weapon_translate(
-        "    void Hurt(Foo h, float d) { }\n    void Run(Foo other) { other.Hurt(this, 2.0); this.Hurt(this, 1.0); }\n");
+        "    void Hurt(Foo h, float d) { }\n    void Run(Foo other) { other.Hurt(this, 2.0); this.Hurt(this, 1.0); "
+        "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "spp::handle_from_this<std::shared_ptr<Foo>>(__self), 2.0f")) << r.cpp;
 }
@@ -276,13 +275,13 @@ TEST(HandleTranslation, VarOfThisIsAHandle)
 // "T&" of a script class is a reference to a handle. "this" is not a variable: sppc says so.
 TEST(HandleTranslation, ThisCannotBindToAScriptClassReferenceParameter)
 {
-    const sppc::TranslateResult r = weapon_translate(
-        "    void Take(Foo& h) { }\n    void Run(Foo other) { other.Take(this); }\n");
+    const sppc::TranslateResult r =
+        weapon_translate("    void Take(Foo& h) { }\n    void Run(Foo other) { other.Take(this); }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "'this' cannot bind to the reference parameter 'h' of the script class 'Foo'"))
         << r.diagnostics;
-    const sppc::TranslateResult ok = weapon_translate(
-        "    void Take(Foo& h) { }\n    void Run(Foo other) { Foo me = this; other.Take(me); }\n");
+    const sppc::TranslateResult ok =
+        weapon_translate("    void Take(Foo& h) { }\n    void Run(Foo other) { Foo me = this; other.Take(me); }\n");
     EXPECT_TRUE(ok.ok) << ok.diagnostics;
 }
 
@@ -312,9 +311,10 @@ TEST(HandleTranslation, LambdaParameterDoesNotLeakItsType)
 TEST(HandleTranslation, CastToAHandleReferenceOrPointerIsAnError)
 {
     const char* hint = "use 'as' or static_cast<";
-    for (const char* cast : {"(Weapon&)h", "(Weapon*)h", "(Weapon**)h", "(const Weapon&)h", "(Foo&)f", "(Foo*)f"}) {
-        const sppc::TranslateResult r = weapon_translate(
-            std::string("    void Run(Weapon h, Foo f) { var x = ") + cast + "; }\n");
+    for (const char* cast : {"(Weapon&)h", "(Weapon*)h", "(Weapon**)h", "(const Weapon&)h", "(Foo&)f", "(Foo*)f"})
+    {
+        const sppc::TranslateResult r =
+            weapon_translate(std::string("    void Run(Weapon h, Foo f) { var x = ") + cast + "; }\n");
         EXPECT_FALSE(r.ok) << cast;
         EXPECT_TRUE(has(r.diagnostics, hint)) << cast << "\n" << r.diagnostics;
     }
@@ -323,15 +323,16 @@ TEST(HandleTranslation, CastToAHandleReferenceOrPointerIsAnError)
 TEST(HandleTranslation, CastToABuiltinOrNativeValueTypeIsAllowed)
 {
     const sppc::TranslateResult r = weapon_translate(
-        "    void Run(Vec3* v, float f, int* n) { var a = (Vec3*)v; var b = (float&)f; var c = (int*)n; var d = (int)f; }\n");
+        "    void Run(Vec3* v, float f, int* n) { var a = (Vec3*)v; var b = (float&)f; var c = (int*)n; var d = "
+        "(int)f; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
 // "T*&" of a script class is a reference to a handle too: "this" cannot bind to it.
 TEST(HandleTranslation, ThisCannotBindToAPointerReferenceParameter)
 {
-    const sppc::TranslateResult r = weapon_translate(
-        "    void Take(Foo*& h) { }\n    void Run(Foo other) { other.Take(this); }\n");
+    const sppc::TranslateResult r =
+        weapon_translate("    void Take(Foo*& h) { }\n    void Run(Foo other) { other.Take(this); }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "'this' cannot bind to the reference parameter 'h' of the script class 'Foo'"))
         << r.diagnostics;

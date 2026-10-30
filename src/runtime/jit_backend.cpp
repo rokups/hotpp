@@ -1,5 +1,8 @@
 #include "spp/jit_backend.h"
 
+#include "spp/config.h"
+#include "spp/sppc_lib.h"
+
 #include <clang/Basic/Diagnostic.h>
 #include <clang/CodeGen/CodeGenAction.h>
 #include <clang/Driver/CreateInvocationFromArgs.h>
@@ -24,43 +27,52 @@
 #include <filesystem>
 #include <mutex>
 
-#include "spp/config.h"
-#include "spp/sppc_lib.h"
+namespace spp
+{
 
-namespace spp {
-
-namespace {
+namespace
+{
 
 // A path that does not exist on disk. The compile reads the file from memory.
 constexpr const char* kVirtualDir = "/spp-jit-virtual";
 
 using Clock = std::chrono::steady_clock;
 
-double ms_since(Clock::time_point t) { return std::chrono::duration<double, std::milli>(Clock::now() - t).count(); }
+double ms_since(Clock::time_point t)
+{
+    return std::chrono::duration<double, std::milli>(Clock::now() - t).count();
+}
 
-std::string error_text(llvm::Error e) { return llvm::toString(std::move(e)); }
+std::string error_text(llvm::Error e)
+{
+    return llvm::toString(std::move(e));
+}
 
 void init_llvm_once()
 {
     static std::once_flag flag;
-    std::call_once(flag, [] {
+    std::call_once(flag, []
+    {
         llvm::InitializeNativeTarget();
         llvm::InitializeNativeTargetAsmPrinter();
     });
 }
 
-}  // namespace
+} // namespace
 
 // The LLJIT of the session. The Modules keep a copy of the pointer to this object.
-struct JitState {
+struct JitState
+{
     std::unique_ptr<llvm::orc::LLJIT> jit;
 };
 
-namespace {
+namespace
+{
 
 // What one generation owns in the JIT. The destructor runs the static
 // destructors and removes the code (ResourceTracker::remove).
-struct Generation {
+struct Generation
+{
     std::shared_ptr<JitState> impl;
     llvm::orc::JITDylib* dylib = nullptr;
     llvm::orc::ResourceTrackerSP tracker;
@@ -68,13 +80,17 @@ struct Generation {
 
     ~Generation()
     {
-        if (initialized) llvm::consumeError(impl->jit->deinitialize(*dylib));
-        if (tracker) llvm::consumeError(tracker->remove());
-        if (dylib) llvm::consumeError(impl->jit->getExecutionSession().removeJITDylib(*dylib));
+        if (initialized)
+            llvm::consumeError(impl->jit->deinitialize(*dylib));
+        if (tracker)
+            llvm::consumeError(tracker->remove());
+        if (dylib)
+            llvm::consumeError(impl->jit->getExecutionSession().removeJITDylib(*dylib));
     }
 };
 
-struct Compiled {
+struct Compiled
+{
     std::unique_ptr<llvm::Module> module;
     std::unique_ptr<llvm::LLVMContext> context;
     std::string diagnostics;
@@ -83,7 +99,8 @@ struct Compiled {
 // Builds the compile command like the driver does and parses it into a
 // CompilerInvocation. "path" is the only input file. With a non-null "text" the
 // file exists only in memory.
-struct CompileSetup {
+struct CompileSetup
+{
     // The invocation keeps pointers into the arguments (for example for the
     // debug flags), so the strings must live as long as the invocation.
     std::vector<std::string> args;
@@ -91,29 +108,37 @@ struct CompileSetup {
     std::unique_ptr<clang::CompilerInvocation> invocation;
 };
 
-CompileSetup make_invocation(const JitOptions& opt, const std::string& path, const std::string* text,
-                             bool as_pch, std::string& diagnostics)
+CompileSetup make_invocation(
+    const JitOptions& opt, const std::string& path, const std::string* text, bool as_pch, std::string& diagnostics)
 {
     CompileSetup s;
     auto memory = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
-    if (text) memory->addFile(path, 0, llvm::MemoryBuffer::getMemBufferCopy(*text, path));
+    if (text)
+        memory->addFile(path, 0, llvm::MemoryBuffer::getMemBufferCopy(*text, path));
     s.vfs = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
     s.vfs->pushOverlay(memory);
 
     std::vector<std::string>& args = s.args;
     args = {opt.compiler, "-std=c++20", "-O1", "-fPIC", "-Werror=return-type"};
-    if (!opt.debug_flag.empty()) args.push_back(opt.debug_flag);
-    if (!opt.resource_dir.empty()) args.push_back("-resource-dir=" + opt.resource_dir);
-    for (const std::string& f : opt.extra_flags) args.push_back(f);
-    for (const std::string& d : opt.include_dirs) args.push_back("-I" + d);
-    for (const std::string& f : format_compile_flags()) args.push_back(f);
-    if (!as_pch && !opt.pch_path.empty()) {
+    if (!opt.debug_flag.empty())
+        args.push_back(opt.debug_flag);
+    if (!opt.resource_dir.empty())
+        args.push_back("-resource-dir=" + opt.resource_dir);
+    for (const std::string& f : opt.extra_flags)
+        args.push_back(f);
+    for (const std::string& d : opt.include_dirs)
+        args.push_back("-I" + d);
+    for (const std::string& f : format_compile_flags())
+        args.push_back(f);
+    if (!as_pch && !opt.pch_path.empty())
+    {
         args.push_back("-include-pch");
         args.push_back(opt.pch_path);
     }
     args.push_back(path);
     std::vector<const char*> cargs;
-    for (const std::string& a : args) cargs.push_back(a.c_str());
+    for (const std::string& a : args)
+        cargs.push_back(a.c_str());
 
     llvm::raw_string_ostream os(diagnostics);
     clang::DiagnosticOptions diag_opts;
@@ -131,7 +156,8 @@ Compiled compile(const JitOptions& opt, const std::string& path, const std::stri
 {
     Compiled out;
     CompileSetup s = make_invocation(opt, path, &text, false, out.diagnostics);
-    if (!s.invocation) {
+    if (!s.invocation)
+    {
         out.diagnostics += "cannot build the compile command\n";
         return out;
     }
@@ -146,16 +172,19 @@ Compiled compile(const JitOptions& opt, const std::string& path, const std::stri
     clang::EmitLLVMOnlyAction action;
     const bool ok = ci.ExecuteAction(action);
     os.flush();
-    if (!ok || ci.getDiagnostics().hasErrorOccurred()) return out;
+    if (!ok || ci.getDiagnostics().hasErrorOccurred())
+        return out;
     out.module = action.takeModule();
     out.context.reset(action.takeLLVMContext());
-    if (!out.module) out.diagnostics += "the compile made no module\n";
+    if (!out.module)
+        out.diagnostics += "the compile made no module\n";
     return out;
 }
 
-}  // namespace
+} // namespace
 
-namespace {
+namespace
+{
 
 // Adds the module to a new JITDylib "id", runs the static initializers and finds
 // script_register. The Module owns the JITDylib.
@@ -166,24 +195,28 @@ LoadResult add_to_jit(const std::shared_ptr<JitState>& impl, const std::string& 
     holder->impl = impl;
     llvm::orc::LLJIT& jit = *impl->jit;
     auto dylib = jit.createJITDylib(id);
-    if (!dylib) {
+    if (!dylib)
+    {
         r.error = "cannot make a JITDylib: " + error_text(dylib.takeError()) + "\n";
         return r;
     }
     holder->dylib = &*dylib;
     holder->tracker = holder->dylib->createResourceTracker();
-    if (llvm::Error e = jit.addIRModule(holder->tracker, std::move(tsm))) {
+    if (llvm::Error e = jit.addIRModule(holder->tracker, std::move(tsm)))
+    {
         r.error = "cannot add the module: " + error_text(std::move(e)) + "\n";
-        return r;  // "holder" removes the dylib
+        return r; // "holder" removes the dylib
     }
     // Static initializers run here: for example the dynamic initializer of the class record.
-    if (llvm::Error e = jit.initialize(*holder->dylib)) {
+    if (llvm::Error e = jit.initialize(*holder->dylib))
+    {
         r.error = "cannot run the static initializers: " + error_text(std::move(e)) + "\n";
         return r;
     }
     holder->initialized = true;
     auto addr = jit.lookup(*holder->dylib, "script_register");
-    if (!addr) {
+    if (!addr)
+    {
         r.error = "script_register not found or not linkable: " + error_text(addr.takeError()) + "\n";
         return r;
     }
@@ -195,11 +228,13 @@ LoadResult add_to_jit(const std::shared_ptr<JitState>& impl, const std::string& 
     return r;
 }
 
-}  // namespace
+} // namespace
 
-JitBackend::JitBackend(JitOptions options) : opt_(std::move(options))
+JitBackend::JitBackend(JitOptions options)
+    : opt_(std::move(options))
 {
-    if (!opt_.session) opt_.session = std::make_shared<sppc::TranslatorSession>();
+    if (!opt_.session)
+        opt_.session = std::make_shared<sppc::TranslatorSession>();
 }
 
 JitBackend::~JitBackend() = default;
@@ -211,12 +246,14 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     init_llvm_once();
     namespace fs = std::filesystem;
     std::string stem = fs::path(source.name).stem().string();
-    if (stem.empty()) stem = "script";
+    if (stem.empty())
+        stem = "script";
     // A fresh load starts a new epoch. The epoch is in the name of the JITDylib, so a fresh
     // generation never has the name of a JITDylib that the process still uses.
-    if (mode == LoadMode::Fresh) ++epoch_;
-    const std::string id = stem + ".g" + std::to_string(generation) + ".e" + std::to_string(epoch_) + "." +
-                           std::to_string(sequence_++);
+    if (mode == LoadMode::Fresh)
+        ++epoch_;
+    const std::string id =
+        stem + ".g" + std::to_string(generation) + ".e" + std::to_string(epoch_) + "." + std::to_string(sequence_++);
     const std::string cpp_path = std::string(kVirtualDir) + "/" + id + ".cpp";
 
     timings_ = {};
@@ -232,15 +269,18 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     to.strict_borrowed = opt_.strict_borrowed;
     to.format_lib = format_lib_name();
     // A fresh load ignores the slot state of the earlier generations.
-    if (mode == LoadMode::Reload) {
+    if (mode == LoadMode::Reload)
+    {
         std::lock_guard<std::mutex> slock(slots_->mutex);
         to.slots_in = slots_->text;
     }
     sppc::TranslateResult tr = sppc::translate(to, *opt_.session);
     timings_.translate_ms = ms_since(t0);
-    if (!tr.ok) {
-        r.error = opt_.raw_diagnostics ? tr.diagnostics
-                                       : sppc::rewrite_translator_diagnostic(tr.diagnostics, sppc::script_texts(source.name, source.text, tr));
+    if (!tr.ok)
+    {
+        r.error = opt_.raw_diagnostics
+            ? tr.diagnostics
+            : sppc::rewrite_translator_diagnostic(tr.diagnostics, sppc::script_texts(source.name, source.text, tr));
         r.reason = tr.slots_removed ? ReloadReason::SlotsRemoved : ReloadReason::CompileError;
         return r;
     }
@@ -248,20 +288,23 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     t0 = Clock::now();
     Compiled c = compile(opt_, cpp_path, tr.cpp);
     timings_.compile_ms = ms_since(t0);
-    if (!c.module) {
+    if (!c.module)
+    {
         if (!opt_.raw_diagnostics)
-            c.diagnostics = sppc::rewrite_diagnostic(c.diagnostics, {{source.name, source.text}}, {{cpp_path, tr.cpp}},
-                                                  &tr.source_map);
+            c.diagnostics = sppc::rewrite_diagnostic(
+                c.diagnostics, {{source.name, source.text}}, {{cpp_path, tr.cpp}}, &tr.source_map);
         r.error = c.diagnostics + "the compile of " + source.name + " failed\n";
         r.reason = ReloadReason::CompileError;
         return r;
     }
 
     t0 = Clock::now();
-    if (!impl_) {
+    if (!impl_)
+    {
         auto impl = std::make_shared<JitState>();
         auto jit = llvm::orc::LLJITBuilder().create();
-        if (!jit) {
+        if (!jit)
+        {
             r.error = "cannot make the JIT: " + error_text(jit.takeError()) + "\n";
             return r;
         }
@@ -270,7 +313,8 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         // GDB JIT interface (__jit_debug_descriptor). GDB and LLDB read it. The object has the
         // line table of "-gline-tables-only", so the debugger shows the .spp files and lines.
         // A failure is not fatal: the code runs, only without debugger support.
-        if (opt_.debugger_support) {
+        if (opt_.debugger_support)
+        {
             if (llvm::Error e = llvm::orc::enableDebuggerSupport(*impl->jit))
                 debugger_error_ = error_text(std::move(e));
             else
@@ -279,7 +323,8 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         // The executable links with -rdynamic: the engine, the runtime and libstdc++ resolve here.
         auto gen = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
             impl->jit->getDataLayout().getGlobalPrefix());
-        if (!gen) {
+        if (!gen)
+        {
             r.error = "cannot search the process symbols: " + error_text(gen.takeError()) + "\n";
             return r;
         }
@@ -291,7 +336,8 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     auto tsc = llvm::orc::ThreadSafeContext(std::move(c.context));
     auto core_ir = std::make_shared<llvm::orc::ThreadSafeModule>(llvm::CloneModule(*c.module), tsc);
     LoadResult added = add_to_jit(impl_, id, llvm::orc::ThreadSafeModule(std::move(c.module), tsc));
-    if (!added) {
+    if (!added)
+    {
         r.error = added.error;
         r.reason = ReloadReason::BadModule;
         return r;
@@ -299,14 +345,17 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     timings_.jit_ms = ms_since(t0);
     // The slot order changes only when the Loader accepts the module. The callback holds the
     // shared slot state, not the backend: the module can outlive the backend.
-    added.module->on_accept = [state = slots_, text = tr.slots_out + tr.sigs_out] {
+    added.module->on_accept = [state = slots_, text = tr.slots_out + tr.sigs_out]
+    {
         std::lock_guard<std::mutex> slock(state->mutex);
         state->text = text;
     };
     // The core gets its own JITDylib. The loader calls make_core at most one time.
     std::shared_ptr<JitState> impl = impl_;
-    added.module->make_core = [impl, id, core_ir]() {
-        if (!*core_ir) {
+    added.module->make_core = [impl, id, core_ir]()
+    {
+        if (!*core_ir)
+        {
             LoadResult e;
             e.error = "the core instance of jit:" + id + " is made already";
             return e;
@@ -316,14 +365,14 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     return added;
 }
 
-bool JitBackend::make_pch(const std::string& header_path, const std::string& out_pch,
-                          std::string& error)
+bool JitBackend::make_pch(const std::string& header_path, const std::string& out_pch, std::string& error)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     init_llvm_once();
     error.clear();
     CompileSetup s = make_invocation(opt_, header_path, nullptr, true, error);
-    if (!s.invocation) {
+    if (!s.invocation)
+    {
         error += "cannot build the compile command\n";
         return false;
     }
@@ -341,4 +390,4 @@ bool JitBackend::make_pch(const std::string& header_path, const std::string& out
     return ok && !ci.getDiagnostics().hasErrorOccurred();
 }
 
-}  // namespace spp
+} // namespace spp

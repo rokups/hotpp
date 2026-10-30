@@ -19,8 +19,11 @@
 //
 // CMake defines: BENCH_SOURCE_DIR, BENCH_CXX, BENCH_INCLUDES (items split by
 // "|"), BENCH_RESOURCE_DIR, BENCH_WORK_DIR and BENCH_JIT or BENCH_CLANG_FILES.
+#include "spp/runtime.h"
+#include "spp/scratch.h"
+#include "spp/sppc_lib.h"
+
 #include <sys/resource.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <chrono>
@@ -31,19 +34,17 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
-#include "spp/runtime.h"
-#include "spp/scratch.h"
-#include "spp/sppc_lib.h"
-
 #if defined(BENCH_JIT)
-#include "spp/jit_backend.h"
+    #include "spp/jit_backend.h"
 #else
-#include "spp/clang_files_backend.h"
+    #include "spp/clang_files_backend.h"
 #endif
 
-namespace {
+namespace
+{
 
 using Clock = std::chrono::steady_clock;
 
@@ -57,7 +58,8 @@ std::vector<std::string> split(const std::string& s)
     std::vector<std::string> v;
     std::stringstream ss(s);
     for (std::string item; std::getline(ss, item, '|');)
-        if (!item.empty()) v.push_back(item);
+        if (!item.empty())
+            v.push_back(item);
     return v;
 }
 
@@ -76,7 +78,8 @@ double timed_load(spp::Backend& b, const spp::ScriptSource& s, uint32_t gen)
     const Clock::time_point t = Clock::now();
     spp::LoadResult r = b.load(s, gen);
     const double ms = ms_since(t);
-    if (!r) {
+    if (!r)
+    {
         std::fprintf(stderr, "load failed: %s\n", r.error.c_str());
         return -1;
     }
@@ -84,7 +87,8 @@ double timed_load(spp::Backend& b, const spp::ScriptSource& s, uint32_t gen)
     // and it links the runtime into this executable (the JIT code needs it).
     spp::Loader loader;
     const spp::ReloadResult loaded = loader.load(std::move(*r.module));
-    if (!loaded) {
+    if (!loaded)
+    {
         std::fprintf(stderr, "register failed: %s\n", loaded.error.c_str());
         return -1;
     }
@@ -93,12 +97,13 @@ double timed_load(spp::Backend& b, const spp::ScriptSource& s, uint32_t gen)
 
 double median(std::vector<double> v)
 {
-    if (v.empty()) return 0;
+    if (v.empty())
+        return 0;
     std::sort(v.begin(), v.end());
     return v[v.size() / 2];
 }
 
-}  // namespace
+} // namespace
 
 int main(int argc, char** argv)
 {
@@ -106,23 +111,32 @@ int main(int argc, char** argv)
     std::vector<std::string> flags;
     std::string pch, make_pch;
     bool no_cache = false;
-    for (int i = 1; i < argc; ++i) {
+    for (int i = 1; i < argc; ++i)
+    {
         const std::string a = argv[i];
-        if (a == "--warm" && i + 1 < argc) warm = std::atoi(argv[++i]);
-        else if (a == "--cxxflag" && i + 1 < argc) flags.push_back(argv[++i]);
-        else if (a == "--no-cache") no_cache = true;
-        else if (a == "--pch" && i + 1 < argc) pch = argv[++i];
-        else if (a == "--make-pch" && i + 1 < argc) make_pch = argv[++i];
-        else {
-            std::fprintf(stderr, "usage: bench_backends [--warm N] [--cxxflag F]... [--pch FILE] "
-                                 "[--make-pch FILE] [--no-cache]\n");
+        if (a == "--warm" && i + 1 < argc)
+            warm = std::atoi(argv[++i]);
+        else if (a == "--cxxflag" && i + 1 < argc)
+            flags.push_back(argv[++i]);
+        else if (a == "--no-cache")
+            no_cache = true;
+        else if (a == "--pch" && i + 1 < argc)
+            pch = argv[++i];
+        else if (a == "--make-pch" && i + 1 < argc)
+            make_pch = argv[++i];
+        else
+        {
+            std::fprintf(stderr,
+                "usage: bench_backends [--warm N] [--cxxflag F]... [--pch FILE] "
+                "[--make-pch FILE] [--no-cache]\n");
             return 2;
         }
     }
     const std::vector<std::string> includes = split(BENCH_INCLUDES);
 
     auto session = std::make_shared<sppc::TranslatorSession>();
-    auto make = [&](bool share) -> std::unique_ptr<spp::Backend> {
+    auto make = [&](bool share) -> std::unique_ptr<spp::Backend>
+    {
 #if defined(BENCH_JIT)
         spp::JitOptions o;
         o.compiler = BENCH_CXX;
@@ -130,7 +144,8 @@ int main(int argc, char** argv)
         o.resource_dir = BENCH_RESOURCE_DIR;
         o.extra_flags = flags;
         o.pch_path = pch;
-        if (share) o.session = session;
+        if (share)
+            o.session = session;
         return std::make_unique<spp::JitBackend>(std::move(o));
 #else
         spp::ClangFilesOptions o;
@@ -142,13 +157,15 @@ int main(int argc, char** argv)
         std::error_code ec;
         std::filesystem::remove_all(o.work_dir, ec);
         o.remove_work_dir_at_exit = !spp::keep_temp();
-        if (share) o.session = session;
+        if (share)
+            o.session = session;
         return std::make_unique<spp::ClangFilesBackend>(std::move(o));
 #endif
     };
 
 #if defined(BENCH_JIT)
-    if (!make_pch.empty()) {
+    if (!make_pch.empty())
+    {
         spp::JitOptions o;
         o.compiler = BENCH_CXX;
         o.include_dirs = includes;
@@ -169,7 +186,8 @@ int main(int argc, char** argv)
         return ok ? 0 : 1;
     }
 #else
-    if (!make_pch.empty() || !pch.empty()) {
+    if (!make_pch.empty() || !pch.empty())
+    {
         std::fprintf(stderr, "--pch and --make-pch need the JIT backend\n");
         return 2;
     }
@@ -180,17 +198,20 @@ int main(int argc, char** argv)
     std::unique_ptr<spp::Backend> backend = make(false);
     const double cold1 = timed_load(*backend, v1, 1);
     const double cold2 = timed_load(*backend, v2, 2);
-    if (cold1 < 0 || cold2 < 0) return 1;
+    if (cold1 < 0 || cold2 < 0)
+        return 1;
 
     // Warm: each round has a new backend, so the slot file starts clean.
     // The process keeps its LLVM state, its page cache and its file cache.
     std::vector<double> w1, w2;
     double tr = 0, co = 0, ji = 0;
-    for (int i = 0; i < warm; ++i) {
+    for (int i = 0; i < warm; ++i)
+    {
         std::unique_ptr<spp::Backend> b = make(!no_cache);
         const double a = timed_load(*b, v1, 1);
         const double c = timed_load(*b, v2, 2);
-        if (a < 0 || c < 0) return 1;
+        if (a < 0 || c < 0)
+            return 1;
         w1.push_back(a);
         w2.push_back(c);
 #if defined(BENCH_JIT)
@@ -214,12 +235,14 @@ int main(int argc, char** argv)
         t = Clock::now();
         const bool ok2 = sppc::translate(to, ts).ok;
         hit = ms_since(t);
-        if (!ok1 || !ok2) return 1;
+        if (!ok1 || !ok2)
+            return 1;
     }
     std::printf("translate_miss=%.1f translate_hit=%.1f\n", miss, hit);
-    std::printf("backend=%s cold_v1=%.1f cold_v2=%.1f warm_v1=%.1f warm_v2=%.1f", backend->name(),
-                cold1, cold2, median(w1), median(w2));
-    if (tr > 0) std::printf(" (last v2: translate=%.1f compile=%.1f jit=%.1f)", tr, co, ji);
+    std::printf("backend=%s cold_v1=%.1f cold_v2=%.1f warm_v1=%.1f warm_v2=%.1f", backend->name(), cold1, cold2,
+        median(w1), median(w2));
+    if (tr > 0)
+        std::printf(" (last v2: translate=%.1f compile=%.1f jit=%.1f)", tr, co, ji);
     rusage ru{};
     getrusage(RUSAGE_SELF, &ru);
     std::printf(" peak_rss_mb=%.0f\n", static_cast<double>(ru.ru_maxrss) / 1024.0);

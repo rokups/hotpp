@@ -1,21 +1,21 @@
 // Tests for sppc::translate with the reload hooks: onReload(OldState) and convert_<field>.
+#include "spp/sppc_lib.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "spp/sppc_lib.h"
-#include "support/translator_test_support.h"
-
 using namespace translator_test;
 
-namespace {
+namespace
+{
 
 sppc::TranslateResult translate_class(const std::string& members)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
-    return sppc::translate(
-        temp_options(dir, "using \"w.h\";\nclass Foo : Widget {\n" + members + "\n}\n"));
+    return sppc::translate(temp_options(dir, "using \"w.h\";\nclass Foo : Widget {\n" + members + "\n}\n"));
 }
 
 void expect_error(const std::string& members, const std::string& msg)
@@ -25,7 +25,7 @@ void expect_error(const std::string& members, const std::string& msg)
     EXPECT_NE(r.diagnostics.find(msg), std::string::npos) << members << "\n" << r.diagnostics;
 }
 
-}  // namespace
+} // namespace
 
 TEST(ReloadHookTranslation, OnReloadGetsNoSlotAndGoesToTheRecord)
 {
@@ -33,8 +33,8 @@ TEST(ReloadHookTranslation, OnReloadGetsNoSlotAndGoesToTheRecord)
         "    float hp = 1.0;\n"
         "    void onReload(OldState old) { if (old.has(\"x\")) this.hp = old.get<float>(\"x\"); }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.cpp.find("static void Foo__onReload(Foo_Shell* __self, const spp::OldState& old)"),
-              std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("static void Foo__onReload(Foo_Shell* __self, const spp::OldState& old)"), std::string::npos)
+        << r.cpp;
     EXPECT_NE(r.cpp.find("spp::deref(old).has(\"x\")"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("spp::deref(old).get<float>(\"x\")"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("    Foo__onReload_hook,\n    &Foo__construct"), std::string::npos) << r.cpp;
@@ -78,19 +78,18 @@ TEST(ReloadHookTranslation, ConvertHookGoesToTheFieldRow)
 TEST(ReloadHookTranslation, ConvertHookChecks)
 {
     expect_error("    float level = 1.0;\n    int convert_level(int old) { return 1; }",
-                 "'convert_level' must return the type of the field");
+        "'convert_level' must return the type of the field");
     expect_error("    float level = 1.0;\n    float convert_level() { return 1.0; }",
-                 "'convert_level' is a convert hook. It takes one parameter");
-    expect_error("    float level = 1.0;\n    void convert_level(int old) { }",
-                 "It must return the new field type");
-    expect_error("    float level = 1.0;\n    float convert_level(int old) { return this.level; }",
-                 "'this' is not allowed");
+        "'convert_level' is a convert hook. It takes one parameter");
+    expect_error("    float level = 1.0;\n    void convert_level(int old) { }", "It must return the new field type");
+    expect_error(
+        "    float level = 1.0;\n    float convert_level(int old) { return this.level; }", "'this' is not allowed");
 }
 
 TEST(ReloadHookTranslation, AFunctionWithAConvertNameButNoFieldIsAnOrdinaryFunction)
 {
-    const sppc::TranslateResult r = translate_class(
-        "    float level = 1.0;\n    float convert_other(int old) { return 1.0; }");
+    const sppc::TranslateResult r =
+        translate_class("    float level = 1.0;\n    float convert_other(int old) { return 1.0; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("SLOT_convert_other"), std::string::npos) << r.cpp;
 }

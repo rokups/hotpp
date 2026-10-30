@@ -1,23 +1,23 @@
 // Reload tests of a script family over two modules (S20a, design 4.5 and 4.10). The child module
 // imports the parent module with "using "xmod_parent.spp";". One generation holds both modules.
 // A reload of either module builds a new generation from the current text of both modules.
-#include <gtest/gtest.h>
-
-#include <string>
-
 #include "spp/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 
-namespace {
+#include <gtest/gtest.h>
+
+#include <string>
+
+namespace
+{
 
 using test_support::kDt;
 using test_support::Session;
 
-template <class T>
-T* fld(Session& s, const char* name)
+template <class T> T* fld(Session& s, const char* name)
 {
     return spp::field_ptr<T>(s.inst.shell, name);
 }
@@ -35,7 +35,7 @@ void reload(Session& s, spp::LoadResult& r, uint32_t gen)
     ASSERT_TRUE(r) << r.error;
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*r.module)));
-    s.world.Tick(kDt);  // the commit happens at the end of this frame
+    s.world.Tick(kDt); // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, gen);
 }
@@ -51,12 +51,12 @@ TEST_P(BackendTests, FamilyOverTwoModulesReloadsEachModule)
     s.commit_at_frame_boundary();
     ASSERT_NE(s.inst.shell->cls->super, nullptr);
     EXPECT_STREQ(s.inst.shell->cls->super->name, "Unit");
-    EXPECT_EQ(*fld<int>(s, "ctor_log"), 12);  // Unit(int) of the parent module first, then Grunt(int)
+    EXPECT_EQ(*fld<int>(s, "ctor_log"), 12); // Unit(int) of the parent module first, then Grunt(int)
     EXPECT_EQ(*fld<int>(s, "hp"), 1);
     *fld<int>(s, "rage") = 7;
     s.world.Tick(kDt);
     EXPECT_EQ(*fld<int>(s, "ticks"), 1);
-    EXPECT_EQ(*fld<int>(s, "power"), 7);  // the parent Tick calls the child override
+    EXPECT_EQ(*fld<int>(s, "power"), 7); // the parent Tick calls the child override
     void* const shell = s.inst.shell;
 
     // Reload the parent module: a new field and a new virtual function before "Power".
@@ -64,9 +64,9 @@ TEST_P(BackendTests, FamilyOverTwoModulesReloadsEachModule)
     ASSERT_NO_FATAL_FAILURE(reload(s, g2, 2));
     s.world.Tick(kDt);
     EXPECT_EQ(s.inst.shell, shell);
-    EXPECT_EQ(*fld<int>(s, "power"), 107);  // the Tick of parent v2 and the Power of child v1
-    EXPECT_EQ(*fld<int>(s, "bonus"), 5);    // the new parent virtual
-    EXPECT_EQ(*fld<int>(s, "armor"), 9);    // the new parent field of the old child object
+    EXPECT_EQ(*fld<int>(s, "power"), 107); // the Tick of parent v2 and the Power of child v1
+    EXPECT_EQ(*fld<int>(s, "bonus"), 5); // the new parent virtual
+    EXPECT_EQ(*fld<int>(s, "armor"), 9); // the new parent field of the old child object
     EXPECT_EQ(*fld<int>(s, "hp"), 1);
     EXPECT_EQ(*fld<int>(s, "rage"), 7);
     EXPECT_EQ(s.inst.shell->cls->super->generation, 2u);
@@ -76,11 +76,11 @@ TEST_P(BackendTests, FamilyOverTwoModulesReloadsEachModule)
     ASSERT_NO_FATAL_FAILURE(reload(s, g3, 3));
     s.world.Tick(kDt);
     EXPECT_EQ(s.inst.shell, shell);
-    EXPECT_EQ(*fld<int>(s, "power"), 114);  // rage * 2 + 100
+    EXPECT_EQ(*fld<int>(s, "power"), 114); // rage * 2 + 100
     EXPECT_EQ(s.inst.shell->cls->slot_count, 5u);
-    EXPECT_EQ(*fld<int>(s, "bonus"), 4);    // the child override of Bonus reads the new field
+    EXPECT_EQ(*fld<int>(s, "bonus"), 4); // the child override of Bonus reads the new field
     EXPECT_EQ(*fld<int>(s, "armor"), 9);
-    EXPECT_EQ(*fld<int>(s, "ticks"), 5);  // one tick in each frame, also in the two commit frames
+    EXPECT_EQ(*fld<int>(s, "ticks"), 5); // one tick in each frame, also in the two commit frames
 }
 
 // The child module builds a child object with "new" and uses it through a parent handle.
@@ -123,7 +123,7 @@ TEST_P(BackendTests, ConstructorOverloadsAndALaterNew)
     EXPECT_EQ(*fld<int>(s, "k2"), 3);
     EXPECT_EQ(*fld<int>(s, "k3"), 4);
     EXPECT_EQ(*fld<int>(s, "seen"), 8);
-    EXPECT_EQ(*fld<int>(s, "elite"), 309);  // Elite() selects Unit(float), Elite(8) selects Unit(int)
+    EXPECT_EQ(*fld<int>(s, "elite"), 309); // Elite() selects Unit(float), Elite(8) selects Unit(int)
     spp::LoadResult g2 = backend->load(test_support::source("ctor_overload_v2.spp"), 2);
     ASSERT_NO_FATAL_FAILURE(reload(s, g2, 2));
     s.world.Tick(kDt);
@@ -141,10 +141,10 @@ TEST_P(BackendTests, SuperArgumentBindsToARefParameter)
     s.commit_at_frame_boundary();
     s.world.Tick(kDt);
     EXPECT_EQ(*fld<int>(s, "mid_hp"), 5);
-    EXPECT_EQ(*fld<int>(s, "seen"), 10);  // Base wrote 5 * 2 into the "ref" of Mid
+    EXPECT_EQ(*fld<int>(s, "seen"), 10); // Base wrote 5 * 2 into the "ref" of Mid
     EXPECT_EQ(*fld<int>(s, "leaf_hp"), 12);
     EXPECT_EQ(*fld<int>(s, "leaf_seen"), 24);
-    EXPECT_EQ(*fld<int>(s, "made"), 100);  // "out" through Wrap
+    EXPECT_EQ(*fld<int>(s, "made"), 100); // "out" through Wrap
     EXPECT_EQ(*fld<std::string>(s, "named"), "abc");
 }
 
@@ -167,7 +167,7 @@ TEST_P(BackendTests, ConstructorOverloadWithANewKeyTypeInALaterGeneration)
     ASSERT_NO_FATAL_FAILURE(reload(s, g2, 2));
     s.world.Tick(kDt);
     EXPECT_EQ(*fld<int>(s, "hp_int"), 3);
-    EXPECT_EQ(*fld<int>(s, "hp_float"), 40);  // the new overload ran
+    EXPECT_EQ(*fld<int>(s, "hp_float"), 40); // the new overload ran
     EXPECT_EQ(*fld<int>(s, "kind_float"), 2);
     EXPECT_EQ(s.loader.stats().core_modules, cores1 + 1);
     // The object of the new key uses the canonical record: a later reload reaches it.
@@ -182,4 +182,4 @@ TEST_P(BackendTests, ConstructorOverloadWithANewKeyTypeInALaterGeneration)
     EXPECT_EQ(s.loader.stats().core_modules, cores1 + 1);
 }
 
-}  // namespace
+} // namespace

@@ -14,6 +14,10 @@
 // gets its type from libclang (VarDeclStmt::native_type, S20b). See HANDOFF.md for the gaps.
 #pragma once
 
+#include "ast.h"
+#include "diag.h"
+#include "types.h"
+
 #include <functional>
 #include <map>
 #include <set>
@@ -21,17 +25,14 @@
 #include <utility>
 #include <vector>
 
-#include "ast.h"
-#include "diag.h"
-#include "types.h"
-
-namespace sppc {
+namespace sppc
+{
 
 // Checks one class. Each error goes to the diagnostics. The pass continues after an error.
 // The findings of the borrowed-storage rule are errors with "strict_borrowed". Otherwise they
 // are warnings. The rule on the address of a script function is always an error.
-void check_class(const ast::ClassDef& cd, const TypeModel& types, const LineMap& map, Diagnostics& diag,
-                 bool strict_borrowed);
+void check_class(
+    const ast::ClassDef& cd, const TypeModel& types, const LineMap& map, Diagnostics& diag, bool strict_borrowed);
 
 // Checks the constructors of a class: no two overloads with the same parameter types, and the
 // arguments of "base(...)" use the constructor parameters only (design 7.3). Each error goes
@@ -39,8 +40,8 @@ void check_class(const ast::ClassDef& cd, const TypeModel& types, const LineMap&
 void check_ctors(const ast::ClassDef& cd, const LineMap& map, Diagnostics& diag);
 // A subclass calls a constructor of its script parent with "base(...)", or implicitly. A private
 // constructor of the parent is an error. A protected one is allowed.
-void check_base_ctor_access(const ast::ClassDef& cd, const ast::ClassDef& parent, const LineMap& map,
-                            Diagnostics& diag);
+void check_base_ctor_access(
+    const ast::ClassDef& cd, const ast::ClassDef& parent, const LineMap& map, Diagnostics& diag);
 
 // The type names that a "new" expression names, in all classes of the script. The translator
 // emits a "new" function for each script class in the set.
@@ -71,7 +72,8 @@ std::set<std::string> used_type_names(const ast::ClassDef& cd);
 //    parameter is "aliased": the generation function takes a copy (a value and a handle).
 //  - "const_method" is true when each member function of the name on the native type is const.
 //    A call "p.M()" of such a function does not count as a change.
-struct ParamUse {
+struct ParamUse
+{
     bool mutated = false, rebound = false, stored = false, aliased = false;
 };
 // More parts of the context (S25). The analysis follows a parameter that a call gets:
@@ -83,14 +85,16 @@ struct ParamUse {
 //    value or any other form (may store). 's' also means: not known (the conservative answer).
 //  - "for_class" gives the context of another script class. A call on a handle uses it, so a
 //    bare call in the body of the callee finds the functions of the callee class.
-struct CallTarget {
-    const ast::ClassDef* script = nullptr;  // the static class of the receiver, with "name"
-    std::string name;                       // the method name for "script"
-    std::string native;                     // the key of the native function, e.g. "ns::f"
+struct CallTarget
+{
+    const ast::ClassDef* script = nullptr; // the static class of the receiver, with "name"
+    std::string name; // the method name for "script"
+    std::string native; // the key of the native function, e.g. "ns::f"
 };
 // The finished results by method and parameter name. The context shares one memo for the script.
 using ParamMemo = std::map<std::pair<const ast::Method*, std::string>, ParamUse>;
-struct ParamContext {
+struct ParamContext
+{
     ParamMemo* memo = nullptr;
     std::function<const ast::Method*(const std::string&)> script_fn;
     std::map<std::string, std::string> fields;
@@ -113,7 +117,8 @@ ParamUse analyze_param_use(const ast::Method& m, const std::string& name, const 
 //  - "calls": for each call that has a parameter of the function as an argument, what it calls
 //    (S25). "fn_keys" has the keys of the native functions. The translator asks libclang for
 //    their parameters.
-struct NativeQueries {
+struct NativeQueries
+{
     std::vector<std::pair<ast::VarDeclStmt*, std::string>> vars;
     std::map<std::string, std::set<std::string>> methods;
     std::map<const ast::CallExpr*, CallTarget> calls;
@@ -126,4 +131,4 @@ NativeQueries collect_native_queries(ast::Script& sc);
 // std::enable_shared_from_this.
 bool uses_bare_this(const ast::ClassDef& cd);
 
-}  // namespace sppc
+} // namespace sppc

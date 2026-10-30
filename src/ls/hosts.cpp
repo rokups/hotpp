@@ -1,19 +1,21 @@
 #include "hosts.h"
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <system_error>
 
-#include <nlohmann/json.hpp>
-
 namespace fs = std::filesystem;
 
-namespace spp::ls {
+namespace spp::ls
+{
 
 using json = nlohmann::json;
 
-namespace {
+namespace
+{
 
 constexpr long kExactScore = 1000000;
 
@@ -27,9 +29,11 @@ std::vector<std::string> get_strings(const json& j, const char* key)
 {
     std::vector<std::string> out;
     const auto it = j.find(key);
-    if (it == j.end() || !it->is_array()) return out;
+    if (it == j.end() || !it->is_array())
+        return out;
     for (const json& v : *it)
-        if (v.is_string()) out.push_back(v.get<std::string>());
+        if (v.is_string())
+            out.push_back(v.get<std::string>());
     return out;
 }
 
@@ -38,12 +42,16 @@ std::vector<std::string> get_strings(const json& j, const char* key)
 std::vector<std::string> read_lines(const fs::path& dir, const std::string& name)
 {
     std::vector<std::string> out;
-    if (name.empty()) return out;
+    if (name.empty())
+        return out;
     std::ifstream in(dir / name);
     std::string line;
-    while (std::getline(in, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (!line.empty()) out.push_back(std::move(line));
+    while (std::getline(in, line))
+    {
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+        if (!line.empty())
+            out.push_back(std::move(line));
     }
     return out;
 }
@@ -59,23 +67,28 @@ bool is_host_file(const fs::path& p)
 // access to the file system. The result has no trailing slash. An empty path stays empty.
 std::string resolve_path(const std::string& base, const std::string& path)
 {
-    if (path.empty()) return path;
+    if (path.empty())
+        return path;
     fs::path p(path);
-    if (p.is_relative() && !base.empty()) p = fs::path(base) / p;
+    if (p.is_relative() && !base.empty())
+        p = fs::path(base) / p;
     std::string out = p.lexically_normal().string();
-    while (out.size() > 1 && out.back() == '/') out.pop_back();
+    while (out.size() > 1 && out.back() == '/')
+        out.pop_back();
     return out;
 }
 
 // Resolves all paths against base. With unique, a repeated path is dropped (the first stays).
-std::vector<std::string> resolve_paths(const std::string& base, const std::vector<std::string>& in,
-                                       bool unique)
+std::vector<std::string> resolve_paths(const std::string& base, const std::vector<std::string>& in, bool unique)
 {
     std::vector<std::string> out;
-    for (const std::string& s : in) {
+    for (const std::string& s : in)
+    {
         std::string r = resolve_path(base, s);
-        if (r.empty()) continue;
-        if (unique && std::find(out.begin(), out.end(), r) != out.end()) continue;
+        if (r.empty())
+            continue;
+        if (unique && std::find(out.begin(), out.end(), r) != out.end())
+            continue;
         out.push_back(std::move(r));
     }
     return out;
@@ -84,14 +97,16 @@ std::vector<std::string> resolve_paths(const std::string& base, const std::vecto
 // Removes the trailing slashes. The root directory stays "/".
 std::string strip_slash(std::string s)
 {
-    while (s.size() > 1 && s.back() == '/') s.pop_back();
+    while (s.size() > 1 && s.back() == '/')
+        s.pop_back();
     return s;
 }
 
 // True when dir contains path: the path starts with dir and the next character is a "/".
 bool contains(const std::string& dir, const std::string& path)
 {
-    if (dir.empty() || path.compare(0, dir.size(), dir) != 0) return false;
+    if (dir.empty() || path.compare(0, dir.size(), dir) != 0)
+        return false;
     return dir == "/" || path.size() == dir.size() || path[dir.size()] == '/';
 }
 
@@ -102,12 +117,13 @@ bool has_cache(const Host& h)
     return fs::exists(fs::path(h.binary_dir) / "CMakeCache.txt", ec);
 }
 
-}  // namespace
+} // namespace
 
 std::vector<std::string> Host::cxx_flags() const
 {
     std::vector<std::string> out = flags;
-    for (const std::string& d : defines) out.push_back("-D" + d);
+    for (const std::string& d : defines)
+        out.push_back("-D" + d);
     return out;
 }
 
@@ -120,17 +136,22 @@ void HostSet::load(const std::string& dir, bool require_cache)
     skipped_.clear();
     std::error_code ec;
     mtime_ = fs::last_write_time(dir, ec);
-    if (ec) return;
-    for (const fs::directory_entry& e : fs::directory_iterator(dir, ec)) {
-        if (!e.is_regular_file(ec) || e.path().extension() != ".json") continue;
+    if (ec)
+        return;
+    for (const fs::directory_entry& e : fs::directory_iterator(dir, ec))
+    {
+        if (!e.is_regular_file(ec) || e.path().extension() != ".json")
+            continue;
         std::ifstream in(e.path());
         std::ostringstream ss;
         ss << in.rdbuf();
         const json j = json::parse(ss.str(), nullptr, false);
-        if (!j.is_object() || !j.contains("version") || j["version"] != 1) continue;
+        if (!j.is_object() || !j.contains("version") || j["version"] != 1)
+            continue;
         auto host = std::make_shared<Host>();
         host->name = get_string(j, "name");
-        if (host->name.empty()) host->name = e.path().stem().string();
+        if (host->name.empty())
+            host->name = e.path().stem().string();
         host->binary_dir = get_string(j, "binaryDir");
         host->compiler = get_string(j, "compiler");
         host->std_version = get_string(j, "std");
@@ -143,69 +164,84 @@ void HostSet::load(const std::string& dir, bool require_cache)
         // "sourceDir". A repeated dir is dropped; the first one stays.
         std::vector<std::string> inc = get_strings(j, "includeDirs");
         std::vector<std::string> ordered;
-        if (!inc.empty()) ordered.push_back(inc.front());
+        if (!inc.empty())
+            ordered.push_back(inc.front());
         for (std::string& d : read_lines(e.path().parent_path(), get_string(j, "includesFile")))
             ordered.push_back(std::move(d));
-        if (inc.size() > 1) ordered.insert(ordered.end(), inc.begin() + 1, inc.end());
+        if (inc.size() > 1)
+            ordered.insert(ordered.end(), inc.begin() + 1, inc.end());
         host->include_dirs = resolve_paths(source_dir, ordered, true);
         // The options of the target come first, then the explicit flags (the last flag wins).
         host->flags = read_lines(e.path().parent_path(), get_string(j, "optionsFile"));
-        for (std::string& f : get_strings(j, "flags")) host->flags.push_back(std::move(f));
+        for (std::string& f : get_strings(j, "flags"))
+            host->flags.push_back(std::move(f));
         host->defines = get_strings(j, "defines");
         for (std::string& d : read_lines(e.path().parent_path(), get_string(j, "definesFile")))
             host->defines.push_back(std::move(d));
-        if (require_cache && !has_cache(*host)) {
-            skipped_.push_back(host);  // refresh() checks it again
+        if (require_cache && !has_cache(*host))
+        {
+            skipped_.push_back(host); // refresh() checks it again
             continue;
         }
         hosts_.push_back(std::move(host));
     }
-    std::sort(hosts_.begin(), hosts_.end(),
-        [](const auto& a, const auto& b) { return a->name < b->name; });
+    std::sort(hosts_.begin(), hosts_.end(), [](const auto& a, const auto& b) { return a->name < b->name; });
 }
 
 bool HostSet::refresh()
 {
-    if (!loaded_) return false;
+    if (!loaded_)
+        return false;
     std::error_code ec;
     const auto now = fs::last_write_time(dir_, ec);
-    if (forced_ || !(ec ? mtime_ == fs::file_time_type{} : now == mtime_)) {
+    if (forced_ || !(ec ? mtime_ == fs::file_time_type{} : now == mtime_))
+    {
         forced_ = false;
         load(dir_, require_cache_);
         return true;
     }
-    if (!require_cache_) return false;
+    if (!require_cache_)
+        return false;
     // The directory is the same. A build directory can still appear or vanish.
     bool changed = false;
-    for (auto it = skipped_.begin(); it != skipped_.end();) {
-        if (has_cache(**it)) {
+    for (auto it = skipped_.begin(); it != skipped_.end();)
+    {
+        if (has_cache(**it))
+        {
             hosts_.push_back(*it);
             it = skipped_.erase(it);
             changed = true;
-        } else {
+        }
+        else
+        {
             ++it;
         }
     }
-    for (auto it = hosts_.begin(); it != hosts_.end();) {
-        if (has_cache(**it)) {
+    for (auto it = hosts_.begin(); it != hosts_.end();)
+    {
+        if (has_cache(**it))
+        {
             ++it;
-        } else {
+        }
+        else
+        {
             skipped_.push_back(*it);
             it = hosts_.erase(it);
             changed = true;
         }
     }
     if (changed)
-        std::sort(hosts_.begin(), hosts_.end(),
-            [](const auto& a, const auto& b) { return a->name < b->name; });
+        std::sort(hosts_.begin(), hosts_.end(), [](const auto& a, const auto& b) { return a->name < b->name; });
     return changed;
 }
 
 bool HostSet::force_reload_for(const std::string& file)
 {
     const fs::path f(file);
-    if (!loaded_ || !is_host_file(f)) return false;
-    if (f.parent_path().lexically_normal() != fs::path(dir_).lexically_normal()) return false;
+    if (!loaded_ || !is_host_file(f))
+        return false;
+    if (f.parent_path().lexically_normal() != fs::path(dir_).lexically_normal())
+        return false;
     forced_ = true;
     return true;
 }
@@ -214,18 +250,23 @@ std::shared_ptr<const Host> HostSet::match(const std::string& script_path) const
 {
     std::shared_ptr<const Host> best;
     long best_score = 0;
-    for (const auto& h : hosts_) {  // sorted: the first host wins a tie
+    for (const auto& h : hosts_)
+    { // sorted: the first host wins a tie
         long score = 0;
         for (const std::string& s : h->scripts)
-            if (s == script_path) score = kExactScore;
-        if (score == 0) {
-            for (const std::string& d : h->script_dirs) {
+            if (s == script_path)
+                score = kExactScore;
+        if (score == 0)
+        {
+            for (const std::string& d : h->script_dirs)
+            {
                 const std::string dir = strip_slash(d);
                 if (contains(dir, script_path))
                     score = std::max(score, static_cast<long>(dir.size()));
             }
         }
-        if (score > best_score) {
+        if (score > best_score)
+        {
             best_score = score;
             best = h;
         }
@@ -233,4 +274,4 @@ std::shared_ptr<const Host> HostSet::match(const std::string& script_path) const
     return best;
 }
 
-}  // namespace spp::ls
+} // namespace spp::ls

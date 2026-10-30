@@ -2,22 +2,23 @@
 // A shared_ptr handle and an intrusive handle keep their object across reloads.
 //
 // CMake defines the macro SPP_SOURCE_DIR.
+#include "Object.h"
+#include "Weapon.h"
+#include "spp/backend.h"
+#include "support/backend_fixture.h"
+#include "support/handle_reload_scenario.h"
+#include "support/reload_assert.h"
+#include "support/script_files.h"
+#include "support/test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <memory>
 #include <stdexcept>
 #include <string>
 
-#include "spp/backend.h"
-#include "support/backend_fixture.h"
-#include "support/reload_assert.h"
-#include "support/script_files.h"
-#include "support/test_support.h"
-#include "Object.h"
-#include "Weapon.h"
-#include "support/handle_reload_scenario.h"
-
-namespace {
+namespace
+{
 
 using test_support::kDt;
 using test_support::Session;
@@ -65,7 +66,7 @@ TEST_P(BackendTests, HandleTypeChangeUsesTheDefaultAndWarns)
     EXPECT_EQ(*weapon, 0);
     swings = spp::field_ptr<int>(s.inst.shell, "swings");
     ASSERT_NE(swings, nullptr);
-    EXPECT_EQ(*swings, 3);  // the migrated value plus the Tick of generation 3
+    EXPECT_EQ(*swings, 3); // the migrated value plus the Tick of generation 3
 }
 
 // An intrusive handle in a field of a subclass type survives reloads. The count is right:
@@ -135,4 +136,4 @@ TEST_P(BackendTests, IntrusiveMissingMethodIsAnError)
     EXPECT_NE(r.error.find("Object"), std::string::npos) << r.error;
 }
 
-}  // namespace
+} // namespace

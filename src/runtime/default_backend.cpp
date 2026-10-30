@@ -2,36 +2,38 @@
 //
 // CMake defines SPP_BACKEND_CLANG_FILES or SPP_BACKEND_JIT.
 // A list value uses "|" between the items.
-#include <unistd.h>
+#include "spp/backend.h"
+#include "spp/scratch.h"
 
 #include <filesystem>
 #include <sstream>
 #include <string>
+#include <unistd.h>
 #include <vector>
-
-#include "spp/backend.h"
-#include "spp/scratch.h"
 #if defined(SPP_BACKEND_CLANG_FILES)
-#include "spp/clang_files_backend.h"
+    #include "spp/clang_files_backend.h"
 #elif defined(SPP_BACKEND_JIT)
-#include "spp/jit_backend.h"
+    #include "spp/jit_backend.h"
 #else
-#error "Define SPP_BACKEND_CLANG_FILES or SPP_BACKEND_JIT."
+    #error "Define SPP_BACKEND_CLANG_FILES or SPP_BACKEND_JIT."
 #endif
 
-namespace spp {
+namespace spp
+{
 
 #if defined(SPP_BACKEND_CLANG_FILES) || defined(SPP_BACKEND_JIT)
-namespace {
+namespace
+{
 std::vector<std::string> split_list(const std::string& s)
 {
     std::vector<std::string> v;
     std::stringstream ss(s);
     for (std::string item; std::getline(ss, item, '|');)
-        if (!item.empty()) v.push_back(item);
+        if (!item.empty())
+            v.push_back(item);
     return v;
 }
-}  // namespace
+} // namespace
 #endif
 
 std::unique_ptr<Backend> make_default_backend()
@@ -59,4 +61,4 @@ std::unique_ptr<Backend> make_default_backend()
 #endif
 }
 
-}  // namespace spp
+} // namespace spp

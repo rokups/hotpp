@@ -3,6 +3,8 @@
 // A ScriptEntry stands for a call into script code. A CommitWindow stands for a commit.
 // A plain struct stands for the script state: the window changes it, the entries read it.
 // TSan sees a data race when the protocol does not order the accesses.
+#include "spp/runtime.h"
+
 #include <gtest/gtest.h>
 
 #include <atomic>
@@ -10,14 +12,14 @@
 #include <thread>
 #include <vector>
 
-#include "spp/runtime.h"
-
-namespace {
+namespace
+{
 
 using namespace std::chrono_literals;
 
 // The mode is global. Each test sets it with a Loader. The Loader destructor resets it.
-struct EntryCounters : ::testing::Test {
+struct EntryCounters : ::testing::Test
+{
     spp::Loader loader;
     void SetUp() override { loader.set_sync_mode(spp::SyncMode::EntryCounters); }
 };
@@ -49,7 +51,7 @@ TEST_F(EntryCounters, NestedEntryCountsOnce)
         EXPECT_EQ(spp::active_entries(), 1u);
         EXPECT_EQ(spp::entry_depth(), 1u);
         {
-            spp::ScriptEntry inner;  // script -> native -> script on the same thread
+            spp::ScriptEntry inner; // script -> native -> script on the same thread
             EXPECT_EQ(spp::active_entries(), 1u);
             EXPECT_EQ(spp::entry_depth(), 2u);
         }
@@ -61,10 +63,13 @@ TEST_F(EntryCounters, NestedEntryCountsOnce)
 
 TEST_F(EntryCounters, ExceptionLeavesTheEntry)
 {
-    try {
+    try
+    {
         spp::ScriptEntry entry;
         throw 1;
-    } catch (int) {
+    }
+    catch (int)
+    {
     }
     EXPECT_EQ(spp::active_entries(), 0u);
     EXPECT_EQ(spp::entry_depth(), 0u);
@@ -76,7 +81,7 @@ TEST_F(EntryCounters, WindowThreadCanRunScriptCode)
     EXPECT_TRUE(spp::commit_window_closed());
     EXPECT_EQ(spp::entry_depth(), 1u);
     {
-        spp::ScriptEntry hook;  // for example an onReload hook; it must not block
+        spp::ScriptEntry hook; // for example an onReload hook; it must not block
         EXPECT_EQ(spp::entry_depth(), 2u);
     }
     EXPECT_EQ(spp::active_entries(), 0u);
@@ -87,36 +92,42 @@ TEST_F(EntryCounters, CommitWaitsForEntryAndBlocksNewEntries)
 {
     std::atomic<bool> release_a{false}, a_in{false}, committed{false}, c_in{false};
     std::atomic<bool> c_saw_commit{false};
-    int state = 0;  // the "script state"; not atomic on purpose
+    int state = 0; // the "script state"; not atomic on purpose
 
-    std::thread a([&] {
+    std::thread a([&]
+    {
         spp::ScriptEntry entry;
         state = 1;
         a_in.store(true);
-        while (!release_a.load()) std::this_thread::yield();
-        state = 2;  // still inside: the commit must not run yet
+        while (!release_a.load())
+            std::this_thread::yield();
+        state = 2; // still inside: the commit must not run yet
     });
-    while (!a_in.load()) std::this_thread::yield();
+    while (!a_in.load())
+        std::this_thread::yield();
 
-    std::thread b([&] {
+    std::thread b([&]
+    {
         spp::CommitWindow window;
-        EXPECT_EQ(state, 2);  // "a" left before the window started
+        EXPECT_EQ(state, 2); // "a" left before the window started
         std::this_thread::sleep_for(20ms);
         state = 3;
         committed.store(true);
     });
-    while (!spp::commit_window_closed()) std::this_thread::yield();
+    while (!spp::commit_window_closed())
+        std::this_thread::yield();
 
-    std::thread c([&] {
-        spp::ScriptEntry entry;  // blocks until the window ends
+    std::thread c([&]
+    {
+        spp::ScriptEntry entry; // blocks until the window ends
         c_saw_commit.store(committed.load());
         EXPECT_EQ(state, 3);
         c_in.store(true);
     });
 
     std::this_thread::sleep_for(30ms);
-    EXPECT_FALSE(committed.load());  // "b" waits for "a"
-    EXPECT_FALSE(c_in.load());       // "c" waits at the gate
+    EXPECT_FALSE(committed.load()); // "b" waits for "a"
+    EXPECT_FALSE(c_in.load()); // "c" waits at the gate
     release_a.store(true);
     a.join();
     b.join();
@@ -133,7 +144,8 @@ TEST_F(EntryCounters, ManyWindowsWhileThreadsEnter)
 {
     constexpr int kThreads = 4;
     constexpr int kWindows = 2000;
-    struct {
+    struct
+    {
         long x = 0;
         long y = 0;
     } shared;
@@ -142,25 +154,30 @@ TEST_F(EntryCounters, ManyWindowsWhileThreadsEnter)
     std::atomic<long> entries{0};
     std::vector<std::thread> workers;
     for (int t = 0; t < kThreads; ++t)
-        workers.emplace_back([&] {
-            while (!stop.load(std::memory_order_relaxed)) {
+        workers.emplace_back([&]
+        {
+            while (!stop.load(std::memory_order_relaxed))
+            {
                 spp::ScriptEntry outer;
                 const long x = shared.x;
                 {
                     spp::ScriptEntry inner;
-                    if (shared.y != x) torn.fetch_add(1);
+                    if (shared.y != x)
+                        torn.fetch_add(1);
                 }
                 entries.fetch_add(1, std::memory_order_relaxed);
             }
         });
     const uint64_t windows0 = spp::commit_window_count();
-    for (int i = 0; i < kWindows; ++i) {
+    for (int i = 0; i < kWindows; ++i)
+    {
         spp::CommitWindow window;
         ++shared.x;
         ++shared.y;
     }
     stop.store(true);
-    for (std::thread& w : workers) w.join();
+    for (std::thread& w : workers)
+        w.join();
     EXPECT_EQ(torn.load(), 0);
     EXPECT_GT(entries.load(), 0);
     EXPECT_EQ(shared.x, kWindows);
@@ -168,4 +185,4 @@ TEST_F(EntryCounters, ManyWindowsWhileThreadsEnter)
     EXPECT_EQ(spp::active_entries(), 0u);
 }
 
-}  // namespace
+} // namespace

@@ -2,6 +2,12 @@
 // the status, the reason and the classes of a ReloadResult, and the deferred write of the
 // slot state. The slot state changes only when the Loader accepts the module. The last tests
 // run the full sequence: reset of the Loader, a fresh load and a later hot reload.
+#include "spp/backend.h"
+#include "support/backend_fixture.h"
+#include "support/reload_assert.h"
+#include "support/script_files.h"
+#include "support/test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <fstream>
@@ -9,17 +15,12 @@
 #include <string>
 #include <vector>
 
-#include "spp/backend.h"
-#include "support/backend_fixture.h"
-#include "support/reload_assert.h"
-#include "support/script_files.h"
-#include "support/test_support.h"
-
 #ifdef SPP_TEST_CLANG_FILES
-#include "spp/clang_files_backend.h"
+    #include "spp/clang_files_backend.h"
 #endif
 
-namespace {
+namespace
+{
 
 using test_support::kDt;
 using test_support::Session;
@@ -29,7 +30,8 @@ using test_support::source;
 std::string slots_text(spp::Backend& backend)
 {
     auto* files = dynamic_cast<spp::ClangFilesBackend*>(&backend);
-    if (!files) return "<not the file backend>";
+    if (!files)
+        return "<not the file backend>";
     std::ifstream f(files->slots_file());
     std::stringstream ss;
     ss << f.rdbuf();
@@ -71,22 +73,22 @@ TEST_P(BackendTests, RejectedReloadLeavesTheSlotsFileUnchanged)
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Driver"));
     s.commit_at_frame_boundary();
     const std::string after_v1 = slots_text(*backend);
-    EXPECT_FALSE(after_v1.empty());  // the Loader accepted generation 1
+    EXPECT_FALSE(after_v1.empty()); // the Loader accepted generation 1
 
     spp::LoadResult bad = backend->load(source("family_reparent.spp"), 2);
     ASSERT_TRUE(bad) << bad.error;
-    EXPECT_EQ(slots_text(*backend), after_v1);  // the build did not write
+    EXPECT_EQ(slots_text(*backend), after_v1); // the build did not write
     const spp::ReloadResult res = s.loader.request_reload(std::move(*bad.module));
     EXPECT_EQ(res.status, spp::ReloadStatus::FullReloadRequired);
-    EXPECT_EQ(slots_text(*backend), after_v1);  // the reject did not write
+    EXPECT_EQ(slots_text(*backend), after_v1); // the reject did not write
 
     // An accepted reload writes the file.
     spp::LoadResult v2 = backend->load(source("family_v2.spp"), 2);
     ASSERT_TRUE(v2) << v2.error;
     EXPECT_EQ(slots_text(*backend), after_v1);
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    EXPECT_EQ(slots_text(*backend), after_v1);  // a pending reload did not write yet
-    s.world.Tick(kDt);                          // the frame boundary commits: the generation is live
+    EXPECT_EQ(slots_text(*backend), after_v1); // a pending reload did not write yet
+    s.world.Tick(kDt); // the frame boundary commits: the generation is live
     EXPECT_NE(slots_text(*backend), after_v1);
 #else
     GTEST_SKIP() << "only the file backend has a slots file";
@@ -187,13 +189,14 @@ TEST_P(BackendTests, FreshLoadIgnoresTheSlotState)
     ASSERT_TRUE(fresh) << fresh.error;
     EXPECT_FALSE(fresh.module->origin.empty());
 #ifdef SPP_TEST_CLANG_FILES
-    EXPECT_EQ(slots_text(*backend), before);  // the build did not write
+    EXPECT_EQ(slots_text(*backend), before); // the build did not write
 #endif
 }
 
 // A host with a Loader and one script object that it owns. The host frees the object before the
 // Loader goes. "drop" is the step "drop all script handles" of a full reload.
-struct FullReloadHost {
+struct FullReloadHost
+{
     spp::Loader loader;
     Actor* actor = nullptr;
     spp::ShellBase* shell = nullptr;
@@ -206,11 +209,7 @@ struct FullReloadHost {
         actor = static_cast<Actor*>(inst.native);
         shell = inst.shell;
     }
-    template <class T>
-    T* field(const char* name)
-    {
-        return spp::field_ptr<T>(shell, name);
-    }
+    template <class T> T* field(const char* name) { return spp::field_ptr<T>(shell, name); }
     void drop()
     {
         delete actor;
@@ -247,7 +246,7 @@ TEST_P(BackendTests, FullReloadSequenceAfterAParentChange)
     std::string error;
     EXPECT_FALSE(host.loader.reset(error));
     EXPECT_EQ(error, "3 live objects remain: Driver x1, G x1, S x1");
-    EXPECT_EQ(host.loader.stats().active_generation, 1u);  // the failed reset changed nothing
+    EXPECT_EQ(host.loader.stats().active_generation, 1u); // the failed reset changed nothing
 
     // (b) The host drops the handles. (c) The reset works now.
     host.drop();
@@ -272,8 +271,8 @@ TEST_P(BackendTests, FullReloadSequenceAfterAParentChange)
     EXPECT_EQ(*host.field<int>("ticks"), saved_ticks + 1);
     EXPECT_EQ(*host.field<int>("leaf_score"), 21);
     EXPECT_EQ(*host.field<int>("sib_score"), 7);
-    EXPECT_EQ(*host.field<int>("top_f"), 2);  // G.f: A.f(1) * 2 (G is a child of S now)
-    EXPECT_EQ(*host.field<int>("leaf_a"), 3);  // G() : base() calls S() : base(3), then A(3)
+    EXPECT_EQ(*host.field<int>("top_f"), 2); // G.f: A.f(1) * 2 (G is a child of S now)
+    EXPECT_EQ(*host.field<int>("leaf_a"), 3); // G() : base() calls S() : base(3), then A(3)
 
 #ifdef SPP_TEST_CLANG_FILES
     // The slots file has the slots of the fresh generation only: S got its own h().
@@ -288,7 +287,7 @@ TEST_P(BackendTests, FullReloadSequenceAfterAParentChange)
     ASSERT_RELOAD_OK(host.loader.commit_pending());
     EXPECT_EQ(spp::active_generation, 2u);
     host.actor->Tick(kDt);
-    EXPECT_EQ(*host.field<int>("leaf_rank"), 6);  // the new property Rank: 3 for the child and the sibling
+    EXPECT_EQ(*host.field<int>("leaf_rank"), 6); // the new property Rank: 3 for the child and the sibling
     EXPECT_EQ(*host.field<int>("ticks"), saved_ticks + 2);
 }
 
@@ -311,7 +310,7 @@ TEST_P(BackendTests, FullReloadSequenceAfterARemovedFunction)
 
     const int saved_hp = *host.field<int>("hp");
     std::string error;
-    EXPECT_FALSE(host.loader.reset(error));  // the object is still held
+    EXPECT_FALSE(host.loader.reset(error)); // the object is still held
     EXPECT_EQ(error, "1 live objects remain: Medic x1");
     host.drop();
     ASSERT_TRUE(host.loader.reset(error)) << error;
@@ -334,9 +333,11 @@ TEST_P(BackendTests, FullReloadSequenceAfterARemovedFunction)
 // block. The module state is valid and has the initial values again (design 5.3).
 TEST_P(BackendTests, ResetAndFreshLoadMakeANewModuleBlock)
 {
-    auto total = [](spp::Loader& loader) -> int* {
+    auto total = [](spp::Loader& loader) -> int*
+    {
         const spp::ModuleStateInfo ms = loader.module_state();
-        if (!ms.layout || !ms.slot || !*ms.slot) return nullptr;
+        if (!ms.layout || !ms.slot || !*ms.slot)
+            return nullptr;
         for (uint32_t i = 0; i < ms.layout->field_count; ++i)
             if (std::string(ms.layout->fields[i].name) == "total")
                 return reinterpret_cast<int*>(static_cast<char*>(*ms.slot) + ms.layout->fields[i].offset);
@@ -349,18 +350,18 @@ TEST_P(BackendTests, ResetAndFreshLoadMakeANewModuleBlock)
     ASSERT_NO_FATAL_FAILURE(host.create("Hero"));
     ASSERT_NE(total(host.loader), nullptr);
     host.actor->Tick(kDt);
-    EXPECT_EQ(*total(host.loader), 1);  // Hero adds the weight of Walk
+    EXPECT_EQ(*total(host.loader), 1); // Hero adds the weight of Walk
     host.drop();
 
     std::string error;
     ASSERT_TRUE(host.loader.reset(error)) << error;
-    EXPECT_EQ(host.loader.module_state().layout, nullptr);  // no block after the reset
+    EXPECT_EQ(host.loader.module_state().layout, nullptr); // no block after the reset
 
     spp::LoadResult fresh = backend->load(source("module_v1.spp"), 1, spp::LoadMode::Fresh);
     ASSERT_TRUE(fresh) << fresh.error;
     ASSERT_RELOAD_OK(host.loader.load(std::move(*fresh.module)));
-    ASSERT_NE(total(host.loader), nullptr);  // the new block is valid
-    EXPECT_EQ(*total(host.loader), 0);       // with the initial value
+    ASSERT_NE(total(host.loader), nullptr); // the new block is valid
+    EXPECT_EQ(*total(host.loader), 0); // with the initial value
     ASSERT_NO_FATAL_FAILURE(host.create("Hero"));
     host.actor->Tick(kDt);
     EXPECT_EQ(*total(host.loader), 1);
@@ -401,9 +402,9 @@ TEST_P(BackendTests, ModuleVariableWithAClosurePinsTheGeneration)
     EXPECT_FALSE(host.loader.reset(error));
     EXPECT_EQ(error, "generation 1 is pinned");
     ASSERT_NO_FATAL_FAILURE(host.create("Holder"));
-    clear(host.actor);  // the script function releases the closure
+    clear(host.actor); // the script function releases the closure
     host.drop();
     EXPECT_TRUE(host.loader.reset(error)) << error;
 }
 
-}  // namespace
+} // namespace

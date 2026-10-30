@@ -1,12 +1,13 @@
 #include "spp/runtime/threads.h"
 
+#include "runtime_internal.h"
+
 #include <atomic>
 #include <cstdio>
 #include <mutex>
 
-#include "runtime_internal.h"
-
-namespace spp {
+namespace spp
+{
 
 uint32_t active_generation = 0;
 
@@ -15,10 +16,22 @@ static std::atomic<int> g_in_script_tick{0};
 std::atomic<uint64_t> g_unsafe_commits{0};
 
 #ifndef NDEBUG
-int in_script_tick() { return g_in_script_tick.load(); }
-uint64_t unsafe_commit_count() { return g_unsafe_commits.load(); }
-ScriptTickScope::ScriptTickScope() { g_in_script_tick.fetch_add(1); }
-ScriptTickScope::~ScriptTickScope() { g_in_script_tick.fetch_sub(1); }
+int in_script_tick()
+{
+    return g_in_script_tick.load();
+}
+uint64_t unsafe_commit_count()
+{
+    return g_unsafe_commits.load();
+}
+ScriptTickScope::ScriptTickScope()
+{
+    g_in_script_tick.fetch_add(1);
+}
+ScriptTickScope::~ScriptTickScope()
+{
+    g_in_script_tick.fetch_sub(1);
+}
 #endif
 
 // ---------------------------------------------------------------- entry counters (design 6.3)
@@ -31,32 +44,38 @@ ScriptTickScope::~ScriptTickScope() { g_in_script_tick.fetch_sub(1); }
 // The commit reads zero with acquire, so all script accesses happen before the commit.
 // The entry reads the open gate with acquire after the release of the commit end, so the
 // commit happens before the entry.
-namespace detail {
+namespace detail
+{
 bool g_entry_counters = false;
 }
 
-namespace {
-alignas(64) std::atomic<uint32_t> g_active{0};  // threads in a counted entry
-alignas(64) std::atomic<uint32_t> g_gate{0};    // 1: a commit window is closed
+namespace
+{
+alignas(64) std::atomic<uint32_t> g_active{0}; // threads in a counted entry
+alignas(64) std::atomic<uint32_t> g_gate{0}; // 1: a commit window is closed
 std::atomic<uint64_t> g_windows{0};
-std::atomic<uint64_t> g_blocked{0};  // entries that waited at a closed gate
-std::mutex g_window_mutex;  // one commit window at a time
+std::atomic<uint64_t> g_blocked{0}; // entries that waited at a closed gate
+std::mutex g_window_mutex; // one commit window at a time
 thread_local uint32_t t_depth = 0;
 
 void leave_outermost()
 {
     // The last thread out wakes a commit that waits.
-    if (g_active.fetch_sub(1) == 1 && g_gate.load() != 0) g_active.notify_all();
+    if (g_active.fetch_sub(1) == 1 && g_gate.load() != 0)
+        g_active.notify_all();
 }
-}  // namespace
+} // namespace
 
 void detail::enter_script()
 {
-    if (t_depth++ != 0) return;  // a nested entry: the thread is in already
-    for (;;) {
+    if (t_depth++ != 0)
+        return; // a nested entry: the thread is in already
+    for (;;)
+    {
         g_active.fetch_add(1);
-        if (g_gate.load() == 0) return;
-        leave_outermost();  // a commit runs: back off, wait, and try again
+        if (g_gate.load() == 0)
+            return;
+        leave_outermost(); // a commit runs: back off, wait, and try again
         g_blocked.fetch_add(1, std::memory_order_relaxed);
         g_gate.wait(1);
     }
@@ -64,22 +83,39 @@ void detail::enter_script()
 
 void detail::leave_script()
 {
-    if (--t_depth != 0) return;
+    if (--t_depth != 0)
+        return;
     leave_outermost();
 }
 
-uint32_t active_entries() { return g_active.load(); }
-uint32_t entry_depth() { return t_depth; }
-bool commit_window_closed() { return g_gate.load() != 0; }
-uint64_t commit_window_count() { return g_windows.load(std::memory_order_relaxed); }
-uint64_t blocked_entry_count() { return g_blocked.load(std::memory_order_relaxed); }
+uint32_t active_entries()
+{
+    return g_active.load();
+}
+uint32_t entry_depth()
+{
+    return t_depth;
+}
+bool commit_window_closed()
+{
+    return g_gate.load() != 0;
+}
+uint64_t commit_window_count()
+{
+    return g_windows.load(std::memory_order_relaxed);
+}
+uint64_t blocked_entry_count()
+{
+    return g_blocked.load(std::memory_order_relaxed);
+}
 
 CommitWindow::CommitWindow()
 {
     g_window_mutex.lock();
     g_gate.store(1);
-    for (uint32_t n; (n = g_active.load()) != 0;) g_active.wait(n);
-    ++t_depth;  // the commit thread may run script code, for example a hook
+    for (uint32_t n; (n = g_active.load()) != 0;)
+        g_active.wait(n);
+    ++t_depth; // the commit thread may run script code, for example a hook
 }
 
 CommitWindow::~CommitWindow()
@@ -93,13 +129,15 @@ CommitWindow::~CommitWindow()
 
 static std::atomic<uint64_t> g_stale_calls{0};
 
-uint64_t stale_call_count() { return g_stale_calls.load(std::memory_order_relaxed); }
+uint64_t stale_call_count()
+{
+    return g_stale_calls.load(std::memory_order_relaxed);
+}
 
 void stale_call(const char* what)
 {
     g_stale_calls.fetch_add(1, std::memory_order_relaxed);
-    std::fprintf(stderr, "[script] stale call ignored: %s (active generation %u)\n", what,
-                 active_generation);
+    std::fprintf(stderr, "[script] stale call ignored: %s (active generation %u)\n", what, active_generation);
 }
 
 // ---------------------------------------------------------------- pins
@@ -122,4 +160,4 @@ uint32_t pin_count(uint32_t generation)
     return g_pins[generation % kPinSlots].load(std::memory_order_acquire);
 }
 
-}  // namespace spp
+} // namespace spp

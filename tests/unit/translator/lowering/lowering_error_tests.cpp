@@ -1,15 +1,15 @@
 // Tests for the errors of the lowering pass: the line, the text and the recovery.
-#include <gtest/gtest.h>
-
-#include <string>
-#include <vector>
-
 #include "emit.h"
 #include "lower.h"
 #include "parser/expression.h"
 #include "parser/parser.h"
 #include "parser/statement.h"
 #include "support/lowering_test_support.h"
+
+#include <gtest/gtest.h>
+
+#include <string>
+#include <vector>
 
 using namespace sppc;
 using namespace lowering_test;

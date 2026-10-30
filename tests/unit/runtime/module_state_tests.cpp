@@ -1,33 +1,35 @@
 // Unit tests of the module state block (design 5.3, 4.7) with hand-written records and no backend.
 // The block migrates like the fields of a class: by name, by alias, with a convert hook.
+#include "spp/runtime.h"
+#include "support/reload_assert.h"
+
 #include <gtest/gtest.h>
 
 #include <cstddef>
 #include <string>
 
-#include "spp/runtime.h"
-#include "support/reload_assert.h"
+namespace
+{
 
-namespace {
-
-struct Mod1 {
+struct Mod1
+{
     int count;
     float speed;
     int tag;
     int gone;
 };
-struct Mod2 {
-    int total;  // the alias of "count"
+struct Mod2
+{
+    int total; // the alias of "count"
     float speed;
-    float tag;  // the type changes: the convert hook runs
-    int extra;  // new
+    float tag; // the type changes: the convert hook runs
+    int extra; // new
 };
 
-template <class T>
-spp::FieldInfo mk(const char* name, const char* alias, uint32_t off, void (*init)(void*, void*))
+template <class T> spp::FieldInfo mk(const char* name, const char* alias, uint32_t off, void (*init)(void*, void*))
 {
-    return {name, alias, spp::type_key<T>(), off, sizeof(T), alignof(T), spp::field_flags<T>(),
-            init, spp::move_field<T>, spp::field_destroyer<T>()};
+    return {name, alias, spp::type_key<T>(), off, sizeof(T), alignof(T), spp::field_flags<T>(), init,
+        spp::move_field<T>, spp::field_destroyer<T>()};
 }
 
 spp::FieldInfo mfields1[] = {
@@ -56,7 +58,10 @@ spp::SlotFn cslots[1] = {nullptr};
 constexpr uint64_t kHash = spp::shell_layout_hash("Base", 1, 1, 0);
 spp::ClassRecord crec1{"Empty", 1, cslots, 1, &empty_layout, nullptr, "Base", kHash};
 spp::ClassRecord crec2{"Empty", 2, cslots, 1, &empty_layout, nullptr, "Base", kHash};
-spp::Instance make_none() { return {nullptr, nullptr}; }
+spp::Instance make_none()
+{
+    return {nullptr, nullptr};
+}
 
 void register1(spp::Registry& reg)
 {
@@ -68,8 +73,14 @@ void register2(spp::Registry& reg)
     reg.add(&crec2, &make_none);
     reg.set_module_state(&mlayout2, &slot2);
 }
-void register_without(spp::Registry& reg) { reg.add(&crec2, &make_none); }
-void register_without1(spp::Registry& reg) { reg.add(&crec1, &make_none); }
+void register_without(spp::Registry& reg)
+{
+    reg.add(&crec2, &make_none);
+}
+void register_without1(spp::Registry& reg)
+{
+    reg.add(&crec1, &make_none);
+}
 
 spp::Module module_of(spp::Module::RegisterFn fn, const char* name)
 {
@@ -79,7 +90,8 @@ spp::Module module_of(spp::Module::RegisterFn fn, const char* name)
     return m;
 }
 
-struct Scenario {
+struct Scenario
+{
     spp::Loader loader;
     Scenario()
     {
@@ -95,7 +107,7 @@ struct Scenario {
     }
 };
 
-}  // namespace
+} // namespace
 
 TEST(ModuleState, LoadMakesTheBlockWithTheInitializers)
 {
@@ -117,9 +129,8 @@ TEST(ModuleState, ReloadMigratesByNameAliasAndConvertHook)
     m1->count = 40;
     m1->speed = 7.5f;
     m1->tag = 6;
-    mfields2[2].convert = [](void* dst, const void* src) {
-        new (dst) float(static_cast<float>(*static_cast<const int*>(src)) * 10.0f);
-    };
+    mfields2[2].convert = [](void* dst, const void* src)
+    { new (dst) float(static_cast<float>(*static_cast<const int*>(src)) * 10.0f); };
     mfields2[2].convert_from = spp::type_key<int>();
 
     std::string error;
@@ -128,13 +139,13 @@ TEST(ModuleState, ReloadMigratesByNameAliasAndConvertHook)
     ASSERT_RELOAD_OK(s.loader.commit_pending());
     testing::internal::GetCapturedStderr();
 
-    EXPECT_EQ(slot1, nullptr);  // the old generation has no block now
+    EXPECT_EQ(slot1, nullptr); // the old generation has no block now
     ASSERT_NE(slot2, nullptr);
     const auto* m2 = static_cast<Mod2*>(slot2);
-    EXPECT_EQ(m2->total, 40);       // alias
-    EXPECT_EQ(m2->speed, 7.5f);     // name
-    EXPECT_EQ(m2->tag, 60.0f);      // convert hook
-    EXPECT_EQ(m2->extra, 9);        // new variable: the initializer
+    EXPECT_EQ(m2->total, 40); // alias
+    EXPECT_EQ(m2->speed, 7.5f); // name
+    EXPECT_EQ(m2->tag, 60.0f); // convert hook
+    EXPECT_EQ(m2->extra, 9); // new variable: the initializer
     EXPECT_EQ(s.loader.module_state().layout, &mlayout2);
 }
 

@@ -1,16 +1,17 @@
 // Tests for sppc::translate with the builtin type names: fixed-width names, reload keys and errors.
-#include <gtest/gtest.h>
-
-#include <string>
-
 #include "spp/sppc_lib.h"
 #include "support/stub_translate_test_support.h"
 #include "support/translator_test_support.h"
 
+#include <gtest/gtest.h>
+
+#include <string>
+
 using namespace translator_test;
 using namespace stub_translate_test;
 
-namespace {
+namespace
+{
 
 // A native base with virtual methods that have fixed-width and C++ spelled parameters.
 const char* kWidthHeader =
@@ -24,27 +25,38 @@ const char* kWidthHeader =
 sppc::TranslateResult wide_translate(const std::string& members)
 {
     static TempDir* dir = nullptr;
-    if (!dir) dir = new TempDir();
+    if (!dir)
+        dir = new TempDir();
     write_file(dir->path() / "w.h", kWidthHeader);
     return sppc::translate(temp_options(*dir, "using \"w.h\";\nclass Foo : Wide {\n" + members + "}\n"));
 }
 
-}  // namespace
+} // namespace
 
 TEST(BuiltinTypeTranslation, FieldsEmitTheFixedWidthName)
 {
-    const struct {
+    const struct
+    {
         const char* script;
         const char* alias;
         const char* cpp;
     } rows[] = {
-        {"sbyte", "int8", "int8_t"},     {"byte", "uint8", "uint8_t"},     {"short", "int16", "int16_t"},
-        {"ushort", "uint16", "uint16_t"}, {"int", "int32", "int32_t"},     {"uint", "uint32", "uint32_t"},
-        {"long", "int64", "int64_t"},    {"ulong", "uint64", "uint64_t"},  {"nint", "intptr", "intptr_t"},
-        {"nuint", "uintptr", "uintptr_t"}, {"wchar", "char16", "char16_t"},
+        {"sbyte", "int8", "int8_t"},
+        {"byte", "uint8", "uint8_t"},
+        {"short", "int16", "int16_t"},
+        {"ushort", "uint16", "uint16_t"},
+        {"int", "int32", "int32_t"},
+        {"uint", "uint32", "uint32_t"},
+        {"long", "int64", "int64_t"},
+        {"ulong", "uint64", "uint64_t"},
+        {"nint", "intptr", "intptr_t"},
+        {"nuint", "uintptr", "uintptr_t"},
+        {"wchar", "char16", "char16_t"},
     };
-    for (const auto& r : rows) {
-        for (const char* name : {r.script, r.alias}) {
+    for (const auto& r : rows)
+    {
+        for (const char* name : {r.script, r.alias})
+        {
             const sppc::TranslateResult t = wide_translate(std::string("    ") + name + " f;\n");
             ASSERT_TRUE(t.ok) << name << ": " << t.diagnostics;
             EXPECT_TRUE(has(t.cpp, std::string("    ") + r.cpp + " f;")) << name << "\n" << t.cpp;
@@ -87,16 +99,22 @@ TEST(BuiltinTypeTranslation, OverrideKeyMatchesTheNativeParameters)
 
 TEST(BuiltinTypeTranslation, CppSpellingsAreErrorsWithAHint)
 {
-    const struct {
+    const struct
+    {
         const char* type;
         const char* hint;
     } cases[] = {
-        {"unsigned", "use 'uint'"},           {"unsigned int", "use 'uint'"},
-        {"long long", "use 'long'"},          {"unsigned long", "use 'ulong'"},
-        {"unsigned long long", "use 'ulong'"}, {"unsigned char", "use 'byte'"},
-        {"unsigned short", "use 'ushort'"},   {"signed char", "use 'sbyte'"},
+        {"unsigned", "use 'uint'"},
+        {"unsigned int", "use 'uint'"},
+        {"long long", "use 'long'"},
+        {"unsigned long", "use 'ulong'"},
+        {"unsigned long long", "use 'ulong'"},
+        {"unsigned char", "use 'byte'"},
+        {"unsigned short", "use 'ushort'"},
+        {"signed char", "use 'sbyte'"},
     };
-    for (const auto& c : cases) {
+    for (const auto& c : cases)
+    {
         const sppc::TranslateResult r = wide_translate(std::string("    ") + c.type + " f;\n");
         EXPECT_FALSE(r.ok) << c.type;
         EXPECT_TRUE(has(r.diagnostics, c.hint)) << c.type << ": " << r.diagnostics;

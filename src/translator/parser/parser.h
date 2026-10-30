@@ -1,12 +1,13 @@
 // The parser of the script structure. This header has no parser-library include.
 #pragma once
 
-#include <string_view>
-
 #include "../ast.h"
 #include "../diag.h"
 
-namespace sppc {
+#include <string_view>
+
+namespace sppc
+{
 
 // Parses the imports, classes, fields and methods of a script.
 // The bodies of the methods and the initializers of the fields stay raw spans.
@@ -14,4 +15,4 @@ namespace sppc {
 // The map must belong to the same text. The offsets in the errors are bytes in the text.
 ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics& diag);
 
-}  // namespace sppc
+} // namespace sppc

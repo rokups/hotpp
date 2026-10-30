@@ -1,22 +1,24 @@
 // Tests for TranslateResult::source_map: the map between generated C++ and the script.
-#include <gtest/gtest.h>
-
-#include <string>
-
 #include "diag.h"
 #include "spp/sppc_lib.h"
 #include "support/translator_test_support.h"
 
+#include <gtest/gtest.h>
+
+#include <string>
+
 using namespace translator_test;
 using sppc::SourcePos;
 
-namespace {
+namespace
+{
 
 // The 1-based line of the first line that holds the text, or 0.
 int line_of(const std::string& text, const std::string& needle)
 {
     const size_t at = text.find(needle);
-    if (at == std::string::npos) return 0;
+    if (at == std::string::npos)
+        return 0;
     return 1 + static_cast<int>(std::count(text.begin(), text.begin() + static_cast<std::ptrdiff_t>(at), '\n'));
 }
 
@@ -35,19 +37,19 @@ const char* const kScript =
 std::string text_at(const std::string& text, SourcePos p, size_t n)
 {
     size_t off = 0;
-    for (int l = 1; l < p.line; ++l) off = text.find('\n', off) + 1;
+    for (int l = 1; l < p.line; ++l)
+        off = text.find('\n', off) + 1;
     return text.substr(off + static_cast<size_t>(p.col - 1), n);
 }
 
 sppc::TranslateResult translate_script(const std::string& script)
 {
     TempDir dir;
-    write_file(dir.path() / "w.h",
-               "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
+    write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
     return sppc::translate(temp_options(dir, script));
 }
 
-}  // namespace
+} // namespace
 
 TEST(SourceMapTranslation, IdentifiersMapBothWaysWithColumns)
 {
@@ -100,12 +102,12 @@ TEST(SourceMapTranslation, TextWithoutSegmentGivesNoValue)
     EXPECT_FALSE(r.source_map.map_to_script(g, 26));
     EXPECT_FALSE(r.source_map.map_to_script(g, 4));
     EXPECT_FALSE(r.source_map.map_to_script(g, 100));
-    EXPECT_FALSE(r.source_map.map_to_script(1, 1));  // the header comment
+    EXPECT_FALSE(r.source_map.map_to_script(1, 1)); // the header comment
     EXPECT_FALSE(r.source_map.map_to_script(100000, 1));
     EXPECT_FALSE(r.source_map.map_to_script(0, 0));
     // The class header and the field are in the script but not in a body.
     EXPECT_FALSE(r.source_map.map_to_generated(2, 1));
-    EXPECT_FALSE(r.source_map.map_to_generated(5, 20));  // the "="
+    EXPECT_FALSE(r.source_map.map_to_generated(5, 20)); // the "="
     EXPECT_FALSE(r.source_map.map_to_generated(100, 1));
     EXPECT_FALSE(r.source_map.map_to_generated(5, 0));
 }
@@ -120,9 +122,12 @@ TEST(SourceMapTranslation, EverySegmentOfEqualLengthRoundTrips)
     // of the member. The override has no wrapper, so the head of the member is the only head.
     EXPECT_EQ(r.source_map.segments().size(), 9u);
     const sppc::LineMap gm(r.cpp), sm(kScript);
-    for (const sppc::SourceSegment& s : r.source_map.segments()) {
-        if (s.script_len != s.gen_len) continue;
-        for (uint32_t d = 0; d < s.gen_len; ++d) {
+    for (const sppc::SourceSegment& s : r.source_map.segments())
+    {
+        if (s.script_len != s.gen_len)
+            continue;
+        for (uint32_t d = 0; d < s.gen_len; ++d)
+        {
             const auto sp = r.source_map.map_to_script(gm.line(s.gen_begin + d), gm.col(s.gen_begin + d));
             ASSERT_TRUE(sp);
             EXPECT_EQ(*sp, (SourcePos{sm.line(s.script_begin + d), sm.col(s.script_begin + d)}));
@@ -130,8 +135,10 @@ TEST(SourceMapTranslation, EverySegmentOfEqualLengthRoundTrips)
             // member repeats the name of the head of the generation function.
             bool repeated = false;
             for (const sppc::SourceSegment& o : r.source_map.segments())
-                repeated = repeated || (o.file == s.file && o.script_begin == s.script_begin && o.gen_begin < s.gen_begin);
-            if (repeated) continue;
+                repeated =
+                    repeated || (o.file == s.file && o.script_begin == s.script_begin && o.gen_begin < s.gen_begin);
+            if (repeated)
+                continue;
             const auto gp = r.source_map.map_to_generated(sp->line, sp->col);
             ASSERT_TRUE(gp);
             EXPECT_EQ(*gp, (SourcePos{gm.line(s.gen_begin + d), gm.col(s.gen_begin + d)}));
@@ -179,7 +186,7 @@ TEST(SourceMapTranslation, FormatIncludeInsertDoesNotBreakTheMap)
     const sppc::TranslateResult r = translate_script(script);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     ASSERT_NE(r.cpp.find("#include <format>"), std::string::npos);
-    const auto g = r.source_map.map_to_generated(5, 15);  // "zz"
+    const auto g = r.source_map.map_to_generated(5, 15); // "zz"
     ASSERT_TRUE(g);
     EXPECT_EQ(text_at(r.cpp, *g, 7), "zz = dt");
     EXPECT_EQ(r.source_map.map_to_script(g->line, g->col), (SourcePos{5, 15}));
@@ -197,8 +204,8 @@ TEST(SourceMapType, ManualSegmentsWithUnsortedInput)
 {
     // Script: "ab cd\nef\n". Generated: "XX\nef ab cd\n".
     sppc::SourceMap m;
-    m.add({6, 2, 6, 2});  // "ef" at script line 2 -> generated line 2 col 1... offsets below
-    m.add({0, 2, 9, 2});  // "ab"
+    m.add({6, 2, 6, 2}); // "ef" at script line 2 -> generated line 2 col 1... offsets below
+    m.add({0, 2, 9, 2}); // "ab"
     m.build("ab cd\nef\n", "XX\nYYY ef ab\n");
     // "ab": script offset 0 to 2 is generated offset 9 to 11: line 2, col 7.
     EXPECT_EQ(m.map_to_generated(1, 1), (SourcePos{2, 7}));
@@ -280,7 +287,8 @@ TEST(SourceMapTranslation, ExpressionMapsToItsRealScriptColumn)
     EXPECT_EQ(*back, (SourcePos{g, 21}));
 }
 
-namespace {
+namespace
+{
 
 // Translates a script with one statement in Update (script line 5). Then checks that the
 // last name in the script maps to the last name in the generated text, and back.
@@ -295,11 +303,12 @@ void expect_last_part_maps(const std::string& stmt, const std::string& last)
                                "}\n";
     TempDir dir;
     write_file(dir.path() / "w.h",
-               "#include <cstdint>\n"
-               "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n"
-               "namespace Ns { struct T {}; int Get() { return 1; } template <class A> struct L { static int Make() { return 1; } }; }\n"
-               "template <class A> struct Pool { static int Get() { return 1; } };\n"
-               "template <class A, class B> struct Map { static int Make() { return 1; } };\n");
+        "#include <cstdint>\n"
+        "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n"
+        "namespace Ns { struct T {}; int Get() { return 1; } template <class A> struct L { static int Make() { return "
+        "1; } }; }\n"
+        "template <class A> struct Pool { static int Get() { return 1; } };\n"
+        "template <class A, class B> struct Map { static int Make() { return 1; } };\n");
     const sppc::TranslateResult r = sppc::translate(temp_options(dir, script));
     ASSERT_TRUE(r.ok) << r.diagnostics << "\n" << r.cpp;
     // The last occurrence of the name in the statement is the call name.
@@ -314,7 +323,7 @@ void expect_last_part_maps(const std::string& stmt, const std::string& last)
     EXPECT_EQ(*s, (SourcePos{5, script_col}));
 }
 
-}  // namespace
+} // namespace
 
 TEST(SourceMapTranslation, LastPartOfScopeNameMaps)
 {

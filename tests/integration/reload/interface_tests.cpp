@@ -1,9 +1,5 @@
 // Reload tests of native interface bases (S8b, design 4.4 and 5.3) with the backend that
 // SPP_BACKEND selected. The shell of Boss derives from Actor, IDamageable and ITagged.
-#include <gtest/gtest.h>
-
-#include <string>
-
 #include "Damageable.h"
 #include "spp/backend.h"
 #include "support/backend_fixture.h"
@@ -11,14 +7,18 @@
 #include "support/script_files.h"
 #include "support/test_support.h"
 
-namespace {
+#include <gtest/gtest.h>
+
+#include <string>
+
+namespace
+{
 
 using test_support::kDt;
 using test_support::Session;
 using test_support::source;
 
-template <class T>
-T* fld(Session& s, const char* name)
+template <class T> T* fld(Session& s, const char* name)
 {
     return spp::field_ptr<T>(s.inst.shell, name);
 }
@@ -37,13 +37,13 @@ TEST_P(BackendTests, InterfaceVirtualsDispatchThroughTheShell)
     auto* tag = dynamic_cast<ITagged*>(s.actor);
     ASSERT_NE(dmg, nullptr);
     ASSERT_NE(tag, nullptr);
-    EXPECT_EQ(dmg->Absorb(5), 45);          // the script override
-    EXPECT_EQ(dmg->Armor(), 2);             // no override: IDamageable::Armor
-    EXPECT_EQ(tag->Tag(), 7);               // no override: ITagged::Tag
-    EXPECT_EQ(HitThrough(*dmg, 10), 35 + 2);  // native code with an interface reference
+    EXPECT_EQ(dmg->Absorb(5), 45); // the script override
+    EXPECT_EQ(dmg->Armor(), 2); // no override: IDamageable::Armor
+    EXPECT_EQ(tag->Tag(), 7); // no override: ITagged::Tag
+    EXPECT_EQ(HitThrough(*dmg, 10), 35 + 2); // native code with an interface reference
     s.world.Tick(kDt);
-    EXPECT_EQ(*fld<int>(s, "ticks"), 1);       // the virtual of the primary base
-    EXPECT_EQ(*fld<int>(s, "base_armor"), 2);  // "base.Armor()" calls IDamageable::Armor
+    EXPECT_EQ(*fld<int>(s, "ticks"), 1); // the virtual of the primary base
+    EXPECT_EQ(*fld<int>(s, "base_armor"), 2); // "base.Armor()" calls IDamageable::Armor
     EXPECT_EQ(*fld<int>(s, "absorbed"), 2);
 }
 
@@ -66,15 +66,15 @@ TEST_P(BackendTests, ReloadAddsOverridesOfInterfaceVirtuals)
 
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    s.world.Tick(kDt);  // the commit happens at the end of this frame
+    s.world.Tick(kDt); // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);
     EXPECT_EQ(dynamic_cast<IDamageable*>(s.actor), dmg);
-    EXPECT_EQ(dmg->Absorb(5), 35);  // the body of generation 2: amount * 2, hp kept 45
-    EXPECT_EQ(dmg->Armor(), 5);     // the new override
-    EXPECT_EQ(tag->Tag(), 70);      // the new override
+    EXPECT_EQ(dmg->Absorb(5), 35); // the body of generation 2: amount * 2, hp kept 45
+    EXPECT_EQ(dmg->Armor(), 5); // the new override
+    EXPECT_EQ(tag->Tag(), 70); // the new override
     s.world.Tick(kDt);
-    EXPECT_EQ(*fld<int>(s, "base_armor"), 2);  // "base.Armor()" still calls the native code
+    EXPECT_EQ(*fld<int>(s, "base_armor"), 2); // "base.Armor()" still calls the native code
     EXPECT_EQ(*fld<int>(s, "absorbed"), 2);
 }
 
@@ -97,7 +97,7 @@ TEST_P(BackendTests, ReloadThatRemovesAnInterfaceBaseIsRejected)
     EXPECT_EQ(rejected.classes, std::vector<std::string>{"Boss"});
     EXPECT_NE(error.find("class Boss: native interface bases changed (Actor, IDamageable, ITagged -> "
                          "Actor, IDamageable; RECONSTRUCT change)"),
-              std::string::npos)
+        std::string::npos)
         << error;
     EXPECT_FALSE(s.loader.reload_pending());
     s.world.Tick(kDt);
@@ -121,10 +121,10 @@ TEST_P(BackendTests, ReloadThatAddsAnInterfaceBaseIsRejected)
     EXPECT_EQ(rejected.status, spp::ReloadStatus::FullReloadRequired);
     EXPECT_EQ(rejected.reason, spp::ReloadReason::InterfaceBasesChanged);
     EXPECT_NE(error.find("native interface bases changed (Actor, IDamageable -> Actor, IDamageable, ITagged"),
-              std::string::npos)
+        std::string::npos)
         << error;
     EXPECT_FALSE(s.loader.reload_pending());
     EXPECT_EQ(spp::active_generation, 1u);
 }
 
-}  // namespace
+} // namespace

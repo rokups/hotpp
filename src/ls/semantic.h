@@ -1,20 +1,22 @@
 // The script facts that the server makes without clangd: semantic tokens and text helpers.
 #pragma once
 
+#include "spp/sppc_lib.h"
+
 #include <map>
 #include <string>
 #include <string_view>
 #include <vector>
 
-#include "spp/sppc_lib.h"
-
-namespace spp::ls {
+namespace spp::ls
+{
 
 // The token types of the semantic token legend, in the order of their index.
 const std::vector<std::string>& semantic_token_types();
 
 // One token on one line. "line" is 0-based. "col" and "len" are bytes.
-struct SemanticToken {
+struct SemanticToken
+{
     int line = 0, col = 0, len = 0, type = 0;
 };
 
@@ -27,20 +29,22 @@ const std::vector<std::string>& script_keywords();
 const std::vector<std::string>& builtin_type_names();
 
 // A name that the script declares, for a completion list.
-struct ScopeName {
+struct ScopeName
+{
     std::string name;
-    std::string type;    // the declared type as written, or empty
-    std::string detail;  // "local", "parameter" or "module variable"
+    std::string type; // the declared type as written, or empty
+    std::string detail; // "local", "parameter" or "module variable"
 };
 
 // The script names that a completion at one place can use. The scan reads the tokens only: it
 // works on a script with syntax errors.
-struct ScriptScope {
-    std::vector<ScopeName> locals;                                   // locals and parameters in scope
-    std::vector<ScopeName> module_vars;                              // the variables at module level
-    std::vector<std::string> enums;                                  // the script enums
-    std::map<std::string, std::vector<std::string>> enum_members;    // the enumerators of each enum
-    std::vector<std::string> classes, structs;                       // the script classes and structs
+struct ScriptScope
+{
+    std::vector<ScopeName> locals; // locals and parameters in scope
+    std::vector<ScopeName> module_vars; // the variables at module level
+    std::vector<std::string> enums; // the script enums
+    std::map<std::string, std::vector<std::string>> enum_members; // the enumerators of each enum
+    std::vector<std::string> classes, structs; // the script classes and structs
 };
 
 // Scans "text". The locals are the ones in scope at the byte offset "at". The word that starts at
@@ -60,4 +64,4 @@ inline bool is_id_char(char c)
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
 }
 
-}  // namespace spp::ls
+} // namespace spp::ls

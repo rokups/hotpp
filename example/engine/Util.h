@@ -2,9 +2,9 @@
 // They are not inline and not templates, so the host executable must export them.
 // Exception: the inline function pointer helpers at the end of the file (S17).
 #pragma once
-#include <string>
-
 #include "Actor.h"
+
+#include <string>
 
 // The distance between two points.
 float Distance(const Vec3& a, const Vec3& b);
@@ -12,7 +12,8 @@ float Distance(const Vec3& a, const Vec3& b);
 // A text such as "(1.5, 2, 3)".
 std::string FormatVec(const Vec3& v);
 
-struct Util {
+struct Util
+{
     // The sum of the three components.
     static float Sum(const Vec3& v);
     // The text "<name>@<x>" for an actor.
@@ -32,15 +33,31 @@ struct Util {
 // A raw function pointer for a script state field (design 4.9). The inline functions compile
 // into each generation module, so the pointer can point into the code of a generation.
 using IntFn = int (*)(int);
-inline int TwiceInt(int x) { return 2 * x; }
-inline IntFn PickDoubler() { return &TwiceInt; }
-inline int CallIntFn(IntFn f, int x) { return f ? f(x) : 0; }
+inline int TwiceInt(int x)
+{
+    return 2 * x;
+}
+inline IntFn PickDoubler()
+{
+    return &TwiceInt;
+}
+inline int CallIntFn(IntFn f, int x)
+{
+    return f ? f(x) : 0;
+}
 
 // A trivially copyable struct with a function pointer field (S26). It holds code, but the type
 // is plain data. The translator marks it, so a script field of this type blocks the unload.
-struct IntCallback {
+struct IntCallback
+{
     IntFn fn;
     int tag;
 };
-inline IntCallback MakeIntCallback() { return IntCallback{&TwiceInt, 1}; }
-inline int CallIntCallback(const IntCallback& c, int x) { return c.fn ? c.fn(x) : 0; }
+inline IntCallback MakeIntCallback()
+{
+    return IntCallback{&TwiceInt, 1};
+}
+inline int CallIntCallback(const IntCallback& c, int x)
+{
+    return c.fn ? c.fn(x) : 0;
+}

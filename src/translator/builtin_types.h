@@ -10,22 +10,34 @@
 #include <string_view>
 #include <vector>
 
-namespace sppc {
+namespace sppc
+{
 
-struct BuiltinType {
+struct BuiltinType
+{
     const char* script;
-    const char* alias;  // nullptr when there is no alias
+    const char* alias; // nullptr when there is no alias
     const char* cpp;
 };
 
 inline const std::vector<BuiltinType>& builtin_types()
 {
     static const std::vector<BuiltinType> table = {
-        {"bool", nullptr, "bool"},        {"sbyte", "int8", "int8_t"},        {"byte", "uint8", "uint8_t"},
-        {"short", "int16", "int16_t"},    {"ushort", "uint16", "uint16_t"},   {"int", "int32", "int32_t"},
-        {"uint", "uint32", "uint32_t"},   {"long", "int64", "int64_t"},       {"ulong", "uint64", "uint64_t"},
-        {"nint", "intptr", "intptr_t"},   {"nuint", "uintptr", "uintptr_t"},  {"float", nullptr, "float"},
-        {"double", nullptr, "double"},    {"char", nullptr, "char"},          {"wchar", "char16", "char16_t"},
+        {"bool", nullptr, "bool"},
+        {"sbyte", "int8", "int8_t"},
+        {"byte", "uint8", "uint8_t"},
+        {"short", "int16", "int16_t"},
+        {"ushort", "uint16", "uint16_t"},
+        {"int", "int32", "int32_t"},
+        {"uint", "uint32", "uint32_t"},
+        {"long", "int64", "int64_t"},
+        {"ulong", "uint64", "uint64_t"},
+        {"nint", "intptr", "intptr_t"},
+        {"nuint", "uintptr", "uintptr_t"},
+        {"float", nullptr, "float"},
+        {"double", nullptr, "double"},
+        {"char", nullptr, "char"},
+        {"wchar", "char16", "char16_t"},
     };
     return table;
 }
@@ -34,20 +46,28 @@ inline const std::vector<BuiltinType>& builtin_types()
 inline const char* builtin_cpp_name(std::string_view word)
 {
     for (const BuiltinType& b : builtin_types())
-        if (word == b.script || (b.alias && word == b.alias)) return b.cpp;
+        if (word == b.script || (b.alias && word == b.alias))
+            return b.cpp;
     return nullptr;
 }
 
-namespace builtin_detail {
+namespace builtin_detail
+{
 
-inline bool is_id_start(char c) { return std::isalpha(static_cast<unsigned char>(c)) || c == '_'; }
-inline bool is_id_char(char c) { return is_id_start(c) || std::isdigit(static_cast<unsigned char>(c)); }
+inline bool is_id_start(char c)
+{
+    return std::isalpha(static_cast<unsigned char>(c)) || c == '_';
+}
+inline bool is_id_char(char c)
+{
+    return is_id_start(c) || std::isdigit(static_cast<unsigned char>(c));
+}
 
 // A C++ word that makes a multi-word integer type.
 inline bool is_cpp_int_word(std::string_view w)
 {
-    return w == "unsigned" || w == "signed" || w == "int" || w == "long" || w == "short" || w == "char" ||
-           w == "double";
+    return w == "unsigned" || w == "signed" || w == "int" || w == "long" || w == "short" || w == "char"
+        || w == "double";
 }
 
 // The script name for a run of C++ integer words, for the hint of an error.
@@ -55,19 +75,30 @@ inline std::string script_name_for_run(const std::vector<std::string>& run)
 {
     bool u = false, s = false, ch = false, sh = false, dbl = false;
     int longs = 0;
-    for (const std::string& w : run) {
-        if (w == "unsigned") u = true;
-        if (w == "signed") s = true;
-        if (w == "char") ch = true;
-        if (w == "short") sh = true;
-        if (w == "double") dbl = true;
-        if (w == "long") ++longs;
+    for (const std::string& w : run)
+    {
+        if (w == "unsigned")
+            u = true;
+        if (w == "signed")
+            s = true;
+        if (w == "char")
+            ch = true;
+        if (w == "short")
+            sh = true;
+        if (w == "double")
+            dbl = true;
+        if (w == "long")
+            ++longs;
     }
     (void)s;
-    if (dbl) return "double";
-    if (ch) return u ? "byte" : "sbyte";
-    if (sh) return u ? "ushort" : "short";
-    if (longs) return u ? "ulong" : "long";
+    if (dbl)
+        return "double";
+    if (ch)
+        return u ? "byte" : "sbyte";
+    if (sh)
+        return u ? "ushort" : "short";
+    if (longs)
+        return u ? "ulong" : "long";
     return u ? "uint" : "int";
 }
 
@@ -76,21 +107,31 @@ inline std::string native_name_for_run(const std::vector<std::string>& run, cons
 {
     bool u = false, ch = false, sh = false, dbl = false;
     int longs = 0;
-    for (const std::string& w : run) {
-        if (w == "unsigned") u = true;
-        if (w == "char") ch = true;
-        if (w == "short") sh = true;
-        if (w == "double") dbl = true;
-        if (w == "long") ++longs;
+    for (const std::string& w : run)
+    {
+        if (w == "unsigned")
+            u = true;
+        if (w == "char")
+            ch = true;
+        if (w == "short")
+            sh = true;
+        if (w == "double")
+            dbl = true;
+        if (w == "long")
+            ++longs;
     }
-    if (dbl) return raw;
-    if (ch) return run.size() == 1 ? "char" : (u ? "uint8_t" : "int8_t");
-    if (sh) return u ? "uint16_t" : "int16_t";
-    if (longs >= 2 || (longs == 1 && sizeof(long) == 8)) return u ? "uint64_t" : "int64_t";
+    if (dbl)
+        return raw;
+    if (ch)
+        return run.size() == 1 ? "char" : (u ? "uint8_t" : "int8_t");
+    if (sh)
+        return u ? "uint16_t" : "int16_t";
+    if (longs >= 2 || (longs == 1 && sizeof(long) == 8))
+        return u ? "uint64_t" : "int64_t";
     return u ? "uint32_t" : "int32_t";
 }
 
-}  // namespace builtin_detail
+} // namespace builtin_detail
 
 // Rewrites the builtin words of a type text to the canonical C++ names. A word after "::" is
 // a member name and stays. The multi-word C++ spellings (`unsigned`, `unsigned int`,
@@ -105,26 +146,35 @@ inline std::string canonical_type(std::string_view text, std::string* error = nu
     std::string out;
     const size_t n = text.size();
     size_t i = 0;
-    while (i < n) {
+    while (i < n)
+    {
         const char c = text[i];
-        if (std::isdigit(static_cast<unsigned char>(c))) {
-            while (i < n && (builtin_detail::is_id_char(text[i]) || text[i] == '.')) out += text[i++];
+        if (std::isdigit(static_cast<unsigned char>(c)))
+        {
+            while (i < n && (builtin_detail::is_id_char(text[i]) || text[i] == '.'))
+                out += text[i++];
             continue;
         }
-        if (!builtin_detail::is_id_start(c)) {
+        if (!builtin_detail::is_id_start(c))
+        {
             out += c;
             ++i;
             continue;
         }
         const size_t b = i;
-        while (i < n && builtin_detail::is_id_char(text[i])) ++i;
+        while (i < n && builtin_detail::is_id_char(text[i]))
+            ++i;
         const std::string_view word = text.substr(b, i - b);
         const bool scoped = out.size() >= 2 && out.compare(out.size() - 2, 2, "::") == 0;
-        if (scoped || !builtin_detail::is_cpp_int_word(word)) {
-            if (!scoped) {
+        if (scoped || !builtin_detail::is_cpp_int_word(word))
+        {
+            if (!scoped)
+            {
                 const char* cpp = builtin_cpp_name(word);
                 out += cpp ? cpp : std::string(word);
-            } else {
+            }
+            else
+            {
                 out += word;
             }
             continue;
@@ -133,25 +183,35 @@ inline std::string canonical_type(std::string_view text, std::string* error = nu
         std::vector<std::string> run{std::string(word)};
         std::string raw(word);
         size_t j = i;
-        for (;;) {
+        for (;;)
+        {
             size_t k = j;
-            while (k < n && std::isspace(static_cast<unsigned char>(text[k]))) ++k;
-            if (k == j || k >= n || !builtin_detail::is_id_start(text[k])) break;
+            while (k < n && std::isspace(static_cast<unsigned char>(text[k])))
+                ++k;
+            if (k == j || k >= n || !builtin_detail::is_id_start(text[k]))
+                break;
             size_t e = k;
-            while (e < n && builtin_detail::is_id_char(text[e])) ++e;
-            if (!builtin_detail::is_cpp_int_word(text.substr(k, e - k))) break;
+            while (e < n && builtin_detail::is_id_char(text[e]))
+                ++e;
+            if (!builtin_detail::is_cpp_int_word(text.substr(k, e - k)))
+                break;
             run.emplace_back(text.substr(k, e - k));
             raw += ' ';
             raw += run.back();
             j = e;
         }
-        if (native) {
+        if (native)
+        {
             out += builtin_detail::native_name_for_run(run, raw);
-        } else if (run.size() >= 2 || run[0] == "unsigned" || run[0] == "signed") {
+        }
+        else if (run.size() >= 2 || run[0] == "unsigned" || run[0] == "signed")
+        {
             if (error && error->empty())
                 *error = "'" + raw + "' is not a script type; use '" + builtin_detail::script_name_for_run(run) + "'";
             out += raw;
-        } else {
+        }
+        else
+        {
             const char* cpp = builtin_cpp_name(run[0]);
             out += cpp ? cpp : run[0];
         }
@@ -167,22 +227,26 @@ inline std::string script_type_text(std::string_view text)
     std::string out;
     const size_t n = text.size();
     size_t i = 0;
-    while (i < n) {
-        if (!builtin_detail::is_id_start(text[i])) {
+    while (i < n)
+    {
+        if (!builtin_detail::is_id_start(text[i]))
+        {
             out += text[i++];
             continue;
         }
         const size_t b = i;
-        while (i < n && builtin_detail::is_id_char(text[i])) ++i;
+        while (i < n && builtin_detail::is_id_char(text[i]))
+            ++i;
         const std::string_view word = text.substr(b, i - b);
         const bool scoped = out.size() >= 2 && out.compare(out.size() - 2, 2, "::") == 0;
         const BuiltinType* hit = nullptr;
         if (!scoped)
             for (const BuiltinType& t : builtin_types())
-                if (word == t.cpp) hit = &t;
+                if (word == t.cpp)
+                    hit = &t;
         out += hit ? std::string(hit->script) : std::string(word);
     }
     return out;
 }
 
-}  // namespace sppc
+} // namespace sppc

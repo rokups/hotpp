@@ -1,6 +1,9 @@
 // Unit tests of the migration (design 4.7 and 6.6) with hand-written records and no backend.
 // The tests cover the plan, the convert hook, the onReload hook with OldState,
 // the warnings, the rejections that stay and the restart request.
+#include "spp/runtime.h"
+#include "support/reload_assert.h"
+
 #include <gtest/gtest.h>
 
 #include <array>
@@ -11,23 +14,24 @@
 #include <string>
 #include <vector>
 
-#include "spp/runtime.h"
-#include "support/reload_assert.h"
-
-namespace {
+namespace
+{
 
 // ---- the fake script class "Fake": one generation 1 and one generation 2 in the same test file
-struct Fake : spp::ShellBase {
+struct Fake : spp::ShellBase
+{
     virtual ~Fake() { spp::destroy_state(this); }
 };
 
-struct State1 {
+struct State1
+{
     float hp;
     int level;
     float mana;
     int tag;
 };
-struct State2 {
+struct State2
+{
     float health;
     float level;
     float energy;
@@ -35,11 +39,10 @@ struct State2 {
     int extra;
 };
 
-template <class T>
-spp::FieldInfo mk(const char* name, const char* alias, uint32_t off, void (*init)(void*, void*))
+template <class T> spp::FieldInfo mk(const char* name, const char* alias, uint32_t off, void (*init)(void*, void*))
 {
-    return {name,         alias, spp::type_key<T>(), off, sizeof(T), alignof(T), spp::field_flags<T>(),
-            init,         spp::move_field<T>,        spp::field_destroyer<T>()};
+    return {name, alias, spp::type_key<T>(), off, sizeof(T), alignof(T), spp::field_flags<T>(), init,
+        spp::move_field<T>, spp::field_destroyer<T>()};
 }
 
 spp::FieldInfo fields1[] = {
@@ -50,7 +53,10 @@ spp::FieldInfo fields1[] = {
 };
 spp::StateLayout layout1{"State1", sizeof(State1), alignof(State1), 4, fields1};
 
-float convert_level(int old) { return static_cast<float>(old) * 10.0f; }
+float convert_level(int old)
+{
+    return static_cast<float>(old) * 10.0f;
+}
 
 spp::FieldInfo fields2[] = {
     mk<float>("health", "hp", offsetof(State2, health), [](void*, void* f) { new (f) float(50.0f); }),
@@ -79,11 +85,18 @@ spp::Instance create2()
     spp::init_state(s, &record2);
     return {s, s};
 }
-void register1(spp::Registry& reg) { reg.add(&record1, &create1); }
-void register2(spp::Registry& reg) { reg.add(&record2, &create2); }
+void register1(spp::Registry& reg)
+{
+    reg.add(&record1, &create1);
+}
+void register2(spp::Registry& reg)
+{
+    reg.add(&record2, &create2);
+}
 
 // What the onReload hook saw.
-struct HookLog {
+struct HookLog
+{
     int calls = 0;
     float old_hp = 0;
     bool has_hp = false, has_mana = false, has_nope = false, hp_is_float = false, hp_is_int = true;
@@ -103,19 +116,26 @@ void on_reload(spp::ShellBase* self, const spp::OldState& old)
     g_hook.hp_is_int = old.has<int>("hp");
     g_hook.old_hp = old.get<float>("hp");
     g_hook.old_level = old.get<int>("level");
-    try {
+    try
+    {
         old.get<int>("hp");
-    } catch (const std::runtime_error&) {
+    }
+    catch (const std::runtime_error&)
+    {
         g_hook.get_wrong_type_threw = true;
     }
-    try {
+    try
+    {
         old.get<int>("nope");
-    } catch (const std::runtime_error&) {
+    }
+    catch (const std::runtime_error&)
+    {
         g_hook.get_missing_threw = true;
     }
     // The structural migration is done: the new fields are valid.
     *spp::field_ptr<float>(self, "energy") += 1.0f;
-    if (g_hook_throws) throw std::runtime_error("boom");
+    if (g_hook_throws)
+        throw std::runtime_error("boom");
 }
 
 spp::Module module_of(spp::Module::RegisterFn fn, const char* name)
@@ -127,7 +147,8 @@ spp::Module module_of(spp::Module::RegisterFn fn, const char* name)
 }
 
 // The loader is the first member, so it is the last to go.
-struct Scenario {
+struct Scenario
+{
     spp::Loader loader;
     Fake* obj = nullptr;
     Scenario()
@@ -164,16 +185,15 @@ TEST(MigrationPlan, ConvertHookIsChosenOnlyForTheMatchingOldType)
     spp::FieldInfo nf[] = {mk<float>("level", nullptr, 0, nullptr)};
     spp::StateLayout o{"S", 4, 4, 1, of};
     spp::StateLayout n{"S", 4, 4, 1, nf};
-    nf[0].convert = [](void* dst, const void* src) {
-        new (dst) float(static_cast<float>(*static_cast<const int*>(src)));
-    };
+    nf[0].convert = [](void* dst, const void* src)
+    { new (dst) float(static_cast<float>(*static_cast<const int*>(src))); };
     nf[0].convert_from = spp::type_key<int>();
     spp::MigrationPlan p = spp::build_plan(o, n);
     EXPECT_EQ(p.steps[0].action, spp::FieldAction::Convert);
     EXPECT_TRUE(p.warnings.empty());
     EXPECT_EQ(p.changed, std::vector<uint32_t>{0});
 
-    nf[0].convert_from = spp::type_key<double>();  // the hook takes another old type
+    nf[0].convert_from = spp::type_key<double>(); // the hook takes another old type
     p = spp::build_plan(o, n);
     EXPECT_EQ(p.steps[0].action, spp::FieldAction::Init);
     EXPECT_EQ(p.warnings.size(), 1u);
@@ -189,8 +209,7 @@ TEST(MigrationPlan, RenameWithoutAliasWarnsAndAliasDoesNot)
     EXPECT_EQ(p.steps[0].action, spp::FieldAction::Init);
     EXPECT_EQ(p.removed, std::vector<uint32_t>{0});
     ASSERT_EQ(p.warnings.size(), 1u);
-    EXPECT_NE(p.warnings[0].find("hp is removed and field health is added"), std::string::npos)
-        << p.warnings[0];
+    EXPECT_NE(p.warnings[0].find("hp is removed and field health is added"), std::string::npos) << p.warnings[0];
     EXPECT_NE(p.warnings[0].find("[alias(\"hp\")]"), std::string::npos) << p.warnings[0];
 
     nf[0].alias = "hp";
@@ -201,14 +220,16 @@ TEST(MigrationPlan, RenameWithoutAliasWarnsAndAliasDoesNot)
 }
 
 // ---- a [value] script class stored inline (design 5.3): the migration recurses into it
-struct InnerOld {
+struct InnerOld
+{
     float hp;
     float armor;
 };
-struct InnerNew {
+struct InnerNew
+{
     float mana;
     float hp;
-    int armor;  // the type changes
+    int armor; // the type changes
 };
 spp::FieldInfo inner_old_fields[] = {
     mk<float>("hp", nullptr, offsetof(InnerOld, hp), nullptr),
@@ -244,7 +265,7 @@ TEST(MigrationPlan, ValueFieldsOfTheSameTypeAreMigratedRecursively)
     ASSERT_EQ(sub.steps.size(), 3u);
     EXPECT_EQ(sub.steps[0].action, spp::FieldAction::Init);
     EXPECT_EQ(sub.steps[1].action, spp::FieldAction::Move);
-    EXPECT_EQ(sub.steps[2].action, spp::FieldAction::Init);  // the type changed
+    EXPECT_EQ(sub.steps[2].action, spp::FieldAction::Init); // the type changed
     ASSERT_EQ(p.warnings.size(), 1u);
     EXPECT_NE(p.warnings[0].find("Hero.stats: "), std::string::npos) << p.warnings[0];
     EXPECT_NE(p.warnings[0].find("armor"), std::string::npos) << p.warnings[0];
@@ -262,7 +283,7 @@ TEST(MigrationPlan, ValueFieldWithoutLayoutIsAPlainMove)
 TEST(MigrationPlan, PlainRemoveAndPlainAddGiveNoWarning)
 {
     spp::FieldInfo of[] = {mk<float>("hp", nullptr, 0, nullptr)};
-    spp::FieldInfo nf[] = {mk<int>("count", nullptr, 0, nullptr)};  // another type: not a rename
+    spp::FieldInfo nf[] = {mk<int>("count", nullptr, 0, nullptr)}; // another type: not a rename
     spp::StateLayout o{"Player", 4, 4, 1, of};
     spp::StateLayout n{"Player", 4, 4, 1, nf};
     EXPECT_TRUE(spp::build_plan(o, n).warnings.empty());
@@ -273,9 +294,8 @@ TEST(Migration, ConvertDefaultRenameAndOnReloadHook)
     Scenario s;
     ASSERT_NO_FATAL_FAILURE(s.start());
     spp::ShellBase* before = s.obj;
-    fields2[1].convert = [](void* dst, const void* src) {
-        new (dst) float(convert_level(*static_cast<const int*>(src)));
-    };
+    fields2[1].convert = [](void* dst, const void* src)
+    { new (dst) float(convert_level(*static_cast<const int*>(src))); };
     fields2[1].convert_from = spp::type_key<int>();
     record2.on_reload = on_reload;
 
@@ -286,10 +306,10 @@ TEST(Migration, ConvertDefaultRenameAndOnReloadHook)
     const std::string log = testing::internal::GetCapturedStderr();
 
     EXPECT_EQ(static_cast<spp::ShellBase*>(s.obj), before);
-    EXPECT_EQ(*spp::field_ptr<float>(s.obj, "health"), 120.0f);  // alias: moved
-    EXPECT_EQ(*spp::field_ptr<float>(s.obj, "level"), 30.0f);    // convert hook
-    EXPECT_EQ(*spp::field_ptr<float>(s.obj, "tag"), 2.5f);       // no hook: default
-    EXPECT_EQ(*spp::field_ptr<int>(s.obj, "extra"), 7);          // new field
+    EXPECT_EQ(*spp::field_ptr<float>(s.obj, "health"), 120.0f); // alias: moved
+    EXPECT_EQ(*spp::field_ptr<float>(s.obj, "level"), 30.0f); // convert hook
+    EXPECT_EQ(*spp::field_ptr<float>(s.obj, "tag"), 2.5f); // no hook: default
+    EXPECT_EQ(*spp::field_ptr<int>(s.obj, "extra"), 7); // new field
     // The rename without alias: the value 33 is lost. The hook added 1 to the default.
     EXPECT_EQ(*spp::field_ptr<float>(s.obj, "energy"), 6.0f);
 
@@ -298,7 +318,7 @@ TEST(Migration, ConvertDefaultRenameAndOnReloadHook)
     EXPECT_EQ(log.find("field level changed"), std::string::npos) << log;
 
     EXPECT_EQ(g_hook.calls, 1);
-    EXPECT_TRUE(g_hook.has_hp);  // also a field that the migration moved
+    EXPECT_TRUE(g_hook.has_hp); // also a field that the migration moved
     EXPECT_TRUE(g_hook.has_mana);
     EXPECT_FALSE(g_hook.has_nope);
     EXPECT_TRUE(g_hook.hp_is_float);
@@ -361,16 +381,23 @@ TEST(Migration, ABaseClassChangeIsStillRejected)
 }
 
 // ---- 6.6: a native move constructor that throws during the migration is fatal.
-struct Thrower {
+struct Thrower
+{
     int v;
-    explicit Thrower(int x) : v(x) {}
-    Thrower(const Thrower& o) : v(o.v)
+    explicit Thrower(int x)
+        : v(x)
     {
-        if (armed) throw std::runtime_error("native move failed");
+    }
+    Thrower(const Thrower& o)
+        : v(o.v)
+    {
+        if (armed)
+            throw std::runtime_error("native move failed");
     }
     static inline bool armed = false;
 };
-struct TState {
+struct TState
+{
     Thrower t;
 };
 spp::FieldInfo tfields[] = {
@@ -385,11 +412,20 @@ spp::Instance tcreate()
     spp::init_state(s, &trecord1);
     return {s, s};
 }
-void tregister1(spp::Registry& reg) { reg.add(&trecord1, &tcreate); }
-void tregister2(spp::Registry& reg) { reg.add(&trecord2, &tcreate); }
+void tregister1(spp::Registry& reg)
+{
+    reg.add(&trecord1, &tcreate);
+}
+void tregister2(spp::Registry& reg)
+{
+    reg.add(&trecord2, &tcreate);
+}
 
 std::string g_restart_reason;
-void test_handler(const char* reason) { g_restart_reason = reason; }
+void test_handler(const char* reason)
+{
+    g_restart_reason = reason;
+}
 
 TEST(Migration, AThrowingNativeMoveRequestsARestart)
 {
@@ -434,12 +470,13 @@ TEST(ContainerOfValueType, SameLayoutMovesOtherLayoutResets)
     const char* k1 = spp::layout_keyed(typeid(V).name(), "aaaa");
     const char* k1b = spp::layout_keyed(typeid(V).name(), "aaaa");
     const char* k2 = spp::layout_keyed(typeid(V).name(), "bbbb");
-    EXPECT_EQ(k1, k1b);  // one text for each key
+    EXPECT_EQ(k1, k1b); // one text for each key
     EXPECT_TRUE(spp::type_key_matches(k1, typeid(V).name()));
     EXPECT_FALSE(spp::type_key_matches(k1, typeid(int).name()));
-    auto row = [](const char* key) {
-        return spp::FieldInfo{"items", nullptr, key, 0, sizeof(V), alignof(V), spp::field_flags<V>(),
-                              nullptr, spp::move_field<V>, spp::field_destroyer<V>()};
+    auto row = [](const char* key)
+    {
+        return spp::FieldInfo{"items", nullptr, key, 0, sizeof(V), alignof(V), spp::field_flags<V>(), nullptr,
+            spp::move_field<V>, spp::field_destroyer<V>()};
     };
     const spp::FieldInfo f1[] = {row(k1)}, f1b[] = {row(k1b)}, f2[] = {row(k2)};
     const spp::StateLayout l1{"BagState_g1", sizeof(V), alignof(V), 1, f1};
@@ -456,11 +493,13 @@ TEST(ContainerOfValueType, SameLayoutMovesOtherLayoutResets)
 }
 
 // ---- code pointers in a state field (design 4.9, S17)
-struct PlainData {
+struct PlainData
+{
     int a;
     float b;
 };
-struct Obj {
+struct Obj
+{
     int f(int x) { return x; }
 };
 TEST(MayHoldCode, FunctionPointersAndStdFunctionHoldCode)
@@ -477,11 +516,12 @@ TEST(MayHoldCode, FunctionPointersAndStdFunctionHoldCode)
     EXPECT_FALSE(spp::field_flags<int>() & spp::kMayHoldCode);
     EXPECT_FALSE(spp::field_flags<int*>() & spp::kMayHoldCode);
     EXPECT_FALSE(spp::field_flags<PlainData>() & spp::kMayHoldCode);
-    EXPECT_FALSE(spp::field_flags<int Obj::*>() & spp::kMayHoldCode);  // a data member pointer
+    EXPECT_FALSE(spp::field_flags<int Obj::*>() & spp::kMayHoldCode); // a data member pointer
 }
 
 // ---- the owner slot (has_owner)
-struct OwnedState {
+struct OwnedState
+{
     spp::ShellBase* owner;
     int value;
 };
@@ -490,7 +530,8 @@ spp::FieldInfo owned_fields[] = {
 };
 spp::StateLayout owned_layout{"Owned", sizeof(OwnedState), alignof(OwnedState), 1, owned_fields, true};
 
-struct PlainState {
+struct PlainState
+{
     int first;
 };
 spp::FieldInfo plain_fields[] = {
@@ -524,4 +565,4 @@ TEST(OwnerSlot, InitStateKeepsTheFirstFieldWithoutAnOwner)
     spp::destroy_state(obj.get());
 }
 
-}  // namespace
+} // namespace

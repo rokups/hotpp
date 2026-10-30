@@ -1,14 +1,15 @@
 // Tests for sppc::translate with a script constructor, a destructor and "new" of a script class.
+#include "spp/sppc_lib.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "spp/sppc_lib.h"
-#include "support/translator_test_support.h"
-
 using namespace translator_test;
 
-namespace {
+namespace
+{
 
 const char* kHeader =
     "#include <string>\n"
@@ -40,7 +41,7 @@ bool has(const sppc::TranslateResult& r, const std::string& text)
     return r.cpp.find(text) != std::string::npos;
 }
 
-}  // namespace
+} // namespace
 
 TEST(ConstructorTranslation, ConstructorEmitsTheEntryPoints)
 {
@@ -172,18 +173,22 @@ TEST(ConstructorTranslation, RvalueReferenceParameter)
 TEST(ConstructorTranslation, SuperArgumentsMayUseParametersOnly)
 {
     const std::string tail = "the arguments of 'base(...)' may use the constructor parameters only";
-    expect_error("class S : Unit {\n    std.string tag = \"x\";\n"
-                 "    S(int a) : base(this.tag) { }\n}\n", tail);
-    expect_error("class S : Unit {\n    std.string tag = \"x\";\n"
-                 "    S(int a) : base(tag) { }\n}\n", tail);
+    expect_error(
+        "class S : Unit {\n    std.string tag = \"x\";\n"
+        "    S(int a) : base(this.tag) { }\n}\n",
+        tail);
+    expect_error(
+        "class S : Unit {\n    std.string tag = \"x\";\n"
+        "    S(int a) : base(tag) { }\n}\n",
+        tail);
 }
 
 TEST(ConstructorTranslation, ConstructorErrors)
 {
     expect_error("class S : Unit {\n    S(int v) { }\n    S(int& w) { }\n}\n",
-                 "class 'S' has two constructors with the same parameter types");
+        "class 'S' has two constructors with the same parameter types");
     expect_error("class Bar : Unit { }\nclass S : Unit {\n    S(Bar b) { }\n    S(const Bar& c) { }\n}\n",
-                 "class 'S' has two constructors with the same parameter types");
+        "class 'S' has two constructors with the same parameter types");
     expect_error("class S : Unit {\n    ~S() { }\n    ~S() { }\n}\n", "one destructor");
     expect_error("class S : Unit {\n    S(int v, int v) { }\n}\n", "is declared twice");
     expect_error("class S : Unit {\n    S(int __a) { }\n}\n", "parameter name '__a' is reserved");
@@ -192,8 +197,7 @@ TEST(ConstructorTranslation, ConstructorErrors)
 TEST(ConstructorTranslation, BaseWithoutDefaultConstructorNeedsSuper)
 {
     expect_error("class S : Plain {\n    S(int v) { }\n}\n", "Plain");
-    const sppc::TranslateResult r = translate_script(
-        "class S : Plain {\n    S(int v) : base(v) { }\n}\n");
+    const sppc::TranslateResult r = translate_script("class S : Plain {\n    S(int v) : base(v) { }\n}\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 

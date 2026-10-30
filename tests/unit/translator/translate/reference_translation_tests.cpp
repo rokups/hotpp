@@ -1,16 +1,17 @@
 // Tests for the reference types of the script: "T&" of a script class, reference locals
 // ("var&"), the foreach with "var&", the hole of the borrowed field and the script text of
 // the messages.
-#include <gtest/gtest.h>
-
-#include <string>
-
 #include "builtin_types.h"
 #include "spp/sppc_lib.h"
 #include "support/check_translate_test_support.h"
 #include "support/translator_test_support.h"
 
-namespace {
+#include <gtest/gtest.h>
+
+#include <string>
+
+namespace
+{
 
 using translator_test::translate_text;
 
@@ -25,7 +26,7 @@ std::string hero(const std::string& members)
     return "class Weapon {\n    int dmg = 1;\n}\nclass Hero {\n    Weapon wp;\n    int n = 0;\n" + members + "}\n";
 }
 
-}  // namespace
+} // namespace
 
 TEST(ReferenceTranslation, ScriptClassRefParameterIsAReferenceToTheHandle)
 {
@@ -61,8 +62,7 @@ TEST(ReferenceTranslation, MemberAccessThroughAScriptClassReferenceUsesTheClass)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // The three forms lower the access in the same way.
     EXPECT_FALSE(has(r.cpp, "w.dmg")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "return spp::deref(w).dmg;") ||
-                has(r.cpp, "spp::shell_of<Weapon_Shell>(w, \"Weapon\")"))
+    EXPECT_TRUE(has(r.cpp, "return spp::deref(w).dmg;") || has(r.cpp, "spp::shell_of<Weapon_Shell>(w, \"Weapon\")"))
         << r.cpp;
 }
 
@@ -75,11 +75,13 @@ TEST(ReferenceTranslation, ScriptClassRefLocalIsAReferenceToTheHandle)
 
 TEST(ReferenceTranslation, PointerToAScriptClassIsAnError)
 {
-    for (const char* members : {"    Weapon* p;\n", "    void Run(Weapon* p) { }\n", "    void Run() { Weapon* p = null; }\n",
-                                "    Weapon* Get() { return null; }\n"}) {
+    for (const char* members : {"    Weapon* p;\n", "    void Run(Weapon* p) { }\n",
+             "    void Run() { Weapon* p = null; }\n", "    Weapon* Get() { return null; }\n"})
+    {
         const sppc::TranslateResult r = translate_text(hero(members));
         EXPECT_FALSE(r.ok) << members;
-        EXPECT_TRUE(has(r.diagnostics, "a pointer to the script class 'Weapon' is not allowed: use 'Weapon' (a handle)"))
+        EXPECT_TRUE(
+            has(r.diagnostics, "a pointer to the script class 'Weapon' is not allowed: use 'Weapon' (a handle)"))
             << members << r.diagnostics;
     }
 }
@@ -108,27 +110,27 @@ TEST(ReferenceTranslation, PlainVarStillCopies)
 
 TEST(ReferenceTranslation, ForeachVarRefEmitsAutoRef)
 {
-    const sppc::TranslateResult r =
-        translate_text("using <vector>;\nclass A {\n    std.vector<int> xs;\n"
-                       "    void Run() { foreach (var& x in this.xs) { x = 1; } }\n}\n");
+    const sppc::TranslateResult r = translate_text(
+        "using <vector>;\nclass A {\n    std.vector<int> xs;\n"
+        "    void Run() { foreach (var& x in this.xs) { x = 1; } }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "for (auto& x : ")) << r.cpp;
 }
 
 TEST(ReferenceTranslation, ForeachConstVarRefEmitsConstAutoRef)
 {
-    const sppc::TranslateResult r =
-        translate_text("using <vector>;\nclass A {\n    std.vector<int> xs;\n    int n = 0;\n"
-                       "    void Run() { foreach (const var& x in this.xs) { this.n = x; } }\n}\n");
+    const sppc::TranslateResult r = translate_text(
+        "using <vector>;\nclass A {\n    std.vector<int> xs;\n    int n = 0;\n"
+        "    void Run() { foreach (const var& x in this.xs) { this.n = x; } }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "for (const auto& x : ")) << r.cpp;
 }
 
 TEST(ReferenceTranslation, ForeachPlainVarCopies)
 {
-    const sppc::TranslateResult r =
-        translate_text("using <vector>;\nclass A {\n    std.vector<int> xs;\n"
-                       "    void Run() { foreach (var x in this.xs) { } }\n}\n");
+    const sppc::TranslateResult r = translate_text(
+        "using <vector>;\nclass A {\n    std.vector<int> xs;\n"
+        "    void Run() { foreach (var x in this.xs) { } }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "for (auto x : ")) << r.cpp;
 }

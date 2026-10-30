@@ -2,13 +2,15 @@
 // and a function that translates a script with stubs, members and preludes.
 #pragma once
 
+#include "translator_test_support.h"
+
 #include <gtest/gtest.h>
+
 #include <string>
 #include <vector>
 
-#include "translator_test_support.h"
-
-namespace check_translate_test {
+namespace check_translate_test
+{
 
 using namespace translator_test;
 
@@ -31,22 +33,24 @@ inline const char* kCheckHeader =
     "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n"
     "template <class T> struct Box { Box() {} Box(const Box&) = delete; };\n"
     "struct Owner { Weapon* weapon = nullptr; int N = 0; Weapon* GetWeapon() { return weapon; }\n"
-    "    Weapon* Pick() { return weapon; } Weapon* Pick(int) { return weapon; } static Owner* Get() { return nullptr; } };\n"
+    "    Weapon* Pick() { return weapon; } Weapon* Pick(int) { return weapon; } static Owner* Get() { return nullptr; "
+    "} };\n"
     "inline Weapon* FindWeapon() { return nullptr; }\n";
 
 // Translates "using \"c.h\"; <stubs> class Foo : Widget { <members> }".
 // "preludes" are (name, text) pairs. "strict" sets strict_borrowed.
 inline sppc::TranslateResult check_translate(const std::string& stubs, const std::string& members,
-                                             const std::vector<std::pair<std::string, std::string>>& preludes = {},
-                                             bool strict = true, sppc::TranslatorSession* session = nullptr)
+    const std::vector<std::pair<std::string, std::string>>& preludes = {}, bool strict = true,
+    sppc::TranslatorSession* session = nullptr)
 {
     static TempDir* dir = nullptr;
-    if (!dir) {
+    if (!dir)
+    {
         dir = new TempDir();
-        write_file(dir->path() / "c.h", kCheckHeader);  // once: a new time would make the session parse again
+        write_file(dir->path() / "c.h", kCheckHeader); // once: a new time would make the session parse again
     }
-    sppc::TranslateOptions o = temp_options(
-        *dir, "using \"c.h\";\n" + stubs + "class Foo : Widget {\n" + members + "}\n");
+    sppc::TranslateOptions o =
+        temp_options(*dir, "using \"c.h\";\n" + stubs + "class Foo : Widget {\n" + members + "}\n");
     o.preludes = preludes;
     o.strict_borrowed = strict;
     return session ? sppc::translate(o, *session) : sppc::translate(o);
@@ -59,4 +63,4 @@ inline bool has(const std::string& text, const std::string& part)
 
 inline const char* kDefaultShared = "[native, default_handle(\"std::shared_ptr<$T>\")] class *;\n";
 
-}  // namespace check_translate_test
+} // namespace check_translate_test

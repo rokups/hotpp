@@ -1,12 +1,12 @@
 // Tests for the type model: a handle stub on a base class gives a handle to the subclasses.
+#include "support/type_model_test_support.h"
+#include "types.h"
+
 #include <gtest/gtest.h>
 
 #include <map>
 #include <string>
 #include <vector>
-
-#include "types.h"
-#include "support/type_model_test_support.h"
 
 using namespace sppc;
 using namespace type_model_test;

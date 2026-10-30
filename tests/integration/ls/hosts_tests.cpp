@@ -1,26 +1,28 @@
 // Tests of HostSet (step 2a): load, match and refresh.
-#include <gtest/gtest.h>
+#include "hosts.h"
 
-#include <unistd.h>
+#include <gtest/gtest.h>
 
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
-
-#include "hosts.h"
+#include <unistd.h>
 
 namespace fs = std::filesystem;
 using spp::ls::HostSet;
 
-namespace {
+namespace
+{
 
-class HostsTest : public ::testing::Test {
+class HostsTest : public ::testing::Test
+{
 protected:
     void SetUp() override
     {
-        root = fs::temp_directory_path() / ("spp_hosts_test_" + std::to_string(getpid()) + "_" +
-                   ::testing::UnitTest::GetInstance()->current_test_info()->name());
+        root = fs::temp_directory_path()
+            / ("spp_hosts_test_" + std::to_string(getpid()) + "_"
+                + ::testing::UnitTest::GetInstance()->current_test_info()->name());
         fs::remove_all(root);
         hosts_dir = root / "hosts";
         fs::create_directories(hosts_dir);
@@ -32,12 +34,13 @@ protected:
     {
         const fs::path b = root / "build" / name;
         fs::create_directories(b);
-        if (cache) std::ofstream(b / "CMakeCache.txt") << "# cache\n";
+        if (cache)
+            std::ofstream(b / "CMakeCache.txt") << "# cache\n";
         return b.string();
     }
 
-    void write_host(const std::string& name, const std::string& build, const std::string& dirs,
-        const std::string& scripts = "")
+    void write_host(
+        const std::string& name, const std::string& build, const std::string& dirs, const std::string& scripts = "")
     {
         std::ofstream(hosts_dir / (name + ".json"))
             << R"({"version":1,"name":")" << name << R"(","binaryDir":")" << build
@@ -47,10 +50,7 @@ protected:
     }
 
     // Moves the modification time of the directory forward. A coarse clock cannot hide a change.
-    void bump_dir()
-    {
-        fs::last_write_time(hosts_dir, fs::last_write_time(hosts_dir) + std::chrono::seconds(5));
-    }
+    void bump_dir() { fs::last_write_time(hosts_dir, fs::last_write_time(hosts_dir) + std::chrono::seconds(5)); }
 
     fs::path root, hosts_dir;
 };
@@ -87,12 +87,11 @@ TEST_F(HostsTest, SideFilesGiveDefinesAndOptions)
     std::ofstream(hosts_dir / "a.json")
         << R"({"version":1,"name":"a","binaryDir":")" << build << R"(","scriptDirs":["/src/a"],)"
         << R"("defines":["X=1"],"definesFile":"a.defines","optionsFile":"a.options","flags":["-Wall"]})";
-    std::ofstream(hosts_dir / "a.defines", std::ios::binary)
-        << "Q=\"a b\"\r\n\nP=\"C:\\dir\"\nPIPE=\"x|y\"\n";
+    std::ofstream(hosts_dir / "a.defines", std::ios::binary) << "Q=\"a b\"\r\n\nP=\"C:\\dir\"\nPIPE=\"x|y\"\n";
     std::ofstream(hosts_dir / "a.options") << "-Wextra\n-DR=\"1\"\n";
     HostSet set;
     set.load(hosts_dir.string());
-    EXPECT_EQ(set.size(), 1u);  // the side files are not hosts
+    EXPECT_EQ(set.size(), 1u); // the side files are not hosts
     const auto h = set.match("/src/a/x.spp");
     ASSERT_TRUE(h);
     const std::vector<std::string> defines{"X=1", "Q=\"a b\"", "P=\"C:\\dir\"", "PIPE=\"x|y\""};
@@ -105,9 +104,9 @@ TEST_F(HostsTest, SideFilesGiveDefinesAndOptions)
 TEST_F(HostsTest, MissingSideFileIsEmpty)
 {
     const std::string build = make_build("a");
-    std::ofstream(hosts_dir / "a.json")
-        << R"({"version":1,"name":"a","binaryDir":")" << build << R"(","scriptDirs":["/src/a"],)"
-        << R"("definesFile":"none.defines","optionsFile":"none.options","flags":[]})";
+    std::ofstream(hosts_dir / "a.json") << R"({"version":1,"name":"a","binaryDir":")" << build
+                                        << R"(","scriptDirs":["/src/a"],)"
+                                        << R"("definesFile":"none.defines","optionsFile":"none.options","flags":[]})";
     HostSet set;
     set.load(hosts_dir.string());
     ASSERT_EQ(set.size(), 1u);
@@ -120,15 +119,15 @@ TEST_F(HostsTest, MissingSideFileIsEmpty)
 TEST_F(HostsTest, SideFileChangeForcesReload)
 {
     const std::string build = make_build("a");
-    std::ofstream(hosts_dir / "a.json")
-        << R"({"version":1,"name":"a","binaryDir":")" << build << R"(","scriptDirs":["/src/a"],)"
-        << R"("definesFile":"a.defines","flags":[]})";
+    std::ofstream(hosts_dir / "a.json") << R"({"version":1,"name":"a","binaryDir":")" << build
+                                        << R"(","scriptDirs":["/src/a"],)"
+                                        << R"("definesFile":"a.defines","flags":[]})";
     std::ofstream(hosts_dir / "a.defines") << "A=1\n";
     HostSet set;
     set.load(hosts_dir.string());
     EXPECT_EQ(set.match("/src/a/x.spp")->defines, std::vector<std::string>{"A=1"});
     std::ofstream(hosts_dir / "a.defines") << "B=\"2\"\n";
-    EXPECT_FALSE(set.refresh());  // the modification time of the directory is the same
+    EXPECT_FALSE(set.refresh()); // the modification time of the directory is the same
     EXPECT_TRUE(set.force_reload_for((hosts_dir / "a.defines").string()));
     EXPECT_TRUE(set.refresh());
     EXPECT_EQ(set.match("/src/a/x.spp")->defines, std::vector<std::string>{"B=\"2\""});
@@ -145,26 +144,25 @@ TEST_F(HostsTest, IncludesFileGivesResolvedUniqueIncludeDirs)
         << R"({"version":1,"name":"a","binaryDir":")" << build << R"(","sourceDir":"/proj/sub",)"
         << R"("scriptDirs":["/src/a"],"includeDirs":["/proj/include","/ex/q\"uote","rel/ex","/proj/include/"],)"
         << R"("includesFile":"a.includes","flags":[]})";
-    std::ofstream(hosts_dir / "a.includes", std::ios::binary)
-        << "/abs/sp ace\n"
-        << "/abs/q\"uote\\back\n"
-        << "/abs/\xC3\xA5\xC5\xBE\xE2\x82\xAC\n"  // UTF-8
-        << "/abs/[br,ack]$HOME#=|>-x\n"
-        << "-lead\n"
-        << "rel/inc\n"
-        << "rel/../other/\n"
-        << "/abs/trail/\n"
-        << "/abs/dot/./sub/../x\n"
-        << "/ex/q\"uote\r\n"  // repeated from "includeDirs"
-        << "\n"
-        << "/abs/sp ace\n";  // repeated
+    std::ofstream(hosts_dir / "a.includes", std::ios::binary) << "/abs/sp ace\n"
+                                                              << "/abs/q\"uote\\back\n"
+                                                              << "/abs/\xC3\xA5\xC5\xBE\xE2\x82\xAC\n" // UTF-8
+                                                              << "/abs/[br,ack]$HOME#=|>-x\n"
+                                                              << "-lead\n"
+                                                              << "rel/inc\n"
+                                                              << "rel/../other/\n"
+                                                              << "/abs/trail/\n"
+                                                              << "/abs/dot/./sub/../x\n"
+                                                              << "/ex/q\"uote\r\n" // repeated from "includeDirs"
+                                                              << "\n"
+                                                              << "/abs/sp ace\n"; // repeated
     HostSet set;
     set.load(hosts_dir.string());
     ASSERT_EQ(set.size(), 1u);
     const auto h = set.match("/src/a/x.spp");
     ASSERT_TRUE(h);
     const std::vector<std::string> want{
-        "/proj/include",  // the first entry of "includeDirs" stays first
+        "/proj/include", // the first entry of "includeDirs" stays first
         "/abs/sp ace",
         "/abs/q\"uote\\back",
         "/abs/\xC3\xA5\xC5\xBE\xE2\x82\xAC",
@@ -183,9 +181,9 @@ TEST_F(HostsTest, IncludesFileGivesResolvedUniqueIncludeDirs)
 TEST_F(HostsTest, RelativeScriptPathsUseSourceDir)
 {
     const std::string build = make_build("a");
-    std::ofstream(hosts_dir / "a.json")
-        << R"({"version":1,"name":"a","binaryDir":")" << build << R"(","sourceDir":"/proj/sub",)"
-        << R"("scriptDirs":["scripts/","../other"],"scripts":["one.spp"],"flags":[]})";
+    std::ofstream(hosts_dir / "a.json") << R"({"version":1,"name":"a","binaryDir":")" << build
+                                        << R"(","sourceDir":"/proj/sub",)"
+                                        << R"("scriptDirs":["scripts/","../other"],"scripts":["one.spp"],"flags":[]})";
     HostSet set;
     set.load(hosts_dir.string());
     ASSERT_EQ(set.size(), 1u);
@@ -198,12 +196,12 @@ TEST_F(HostsTest, RelativeScriptPathsUseSourceDir)
 TEST_F(HostsTest, IncludesFileChangeForcesReload)
 {
     const std::string build = make_build("a");
-    std::ofstream(hosts_dir / "a.json")
-        << R"({"version":1,"name":"a","binaryDir":")" << build << R"(","scriptDirs":["/src/a"],)"
-        << R"("includesFile":"a.includes","flags":[]})";
+    std::ofstream(hosts_dir / "a.json") << R"({"version":1,"name":"a","binaryDir":")" << build
+                                        << R"(","scriptDirs":["/src/a"],)"
+                                        << R"("includesFile":"a.includes","flags":[]})";
     HostSet set;
     set.load(hosts_dir.string());
-    EXPECT_TRUE(set.match("/src/a/x.spp")->include_dirs.empty());  // a missing file is empty
+    EXPECT_TRUE(set.match("/src/a/x.spp")->include_dirs.empty()); // a missing file is empty
     std::ofstream(hosts_dir / "a.includes") << "/i/one\n";
     EXPECT_TRUE(set.force_reload_for((hosts_dir / "a.includes").string()));
     EXPECT_TRUE(set.refresh());
@@ -262,8 +260,8 @@ TEST_F(HostsTest, SkipsInvalidJsonAndWrongVersion)
 {
     write_host("good", make_build("g"), R"("/src")");
     std::ofstream(hosts_dir / "bad.json") << "{ not json";
-    std::ofstream(hosts_dir / "v2.json")
-        << R"({"version":2,"name":"v2","binaryDir":")" << make_build("v2") << R"(","scriptDirs":["/src"]})";
+    std::ofstream(hosts_dir / "v2.json") << R"({"version":2,"name":"v2","binaryDir":")" << make_build("v2")
+                                         << R"(","scriptDirs":["/src"]})";
     std::ofstream(hosts_dir / "note.txt") << "ignored";
     HostSet set;
     set.load(hosts_dir.string());
@@ -329,4 +327,4 @@ TEST_F(HostsTest, RefreshDropsHostWhenCacheVanishes)
     EXPECT_EQ(set.size(), 1u);
 }
 
-}  // namespace
+} // namespace

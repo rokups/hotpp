@@ -1,15 +1,15 @@
 // Tests for the lowering of the handle types: storage types and "new".
-#include <gtest/gtest.h>
-
-#include <string>
-#include <vector>
-
 #include "emit.h"
 #include "lower.h"
 #include "parser/expression.h"
 #include "parser/parser.h"
 #include "parser/statement.h"
 #include "support/lowering_test_support.h"
+
+#include <gtest/gtest.h>
+
+#include <string>
+#include <vector>
 
 using namespace sppc;
 using namespace lowering_test;
@@ -29,7 +29,7 @@ TEST(HandleLowering, HandleLocalUsesStorageType)
     Fixture f;
     f.cx.types = &types;
     EXPECT_EQ(f.body("Weapon x = null; var y = null; int k;"),
-              "std::shared_ptr<Weapon> x = nullptr; auto y = nullptr; int32_t k = int32_t();");
+        "std::shared_ptr<Weapon> x = nullptr; auto y = nullptr; int32_t k = int32_t();");
     EXPECT_EQ(f.body("foreach (Weapon w in ws) { }"), "for (std::shared_ptr<Weapon> w : ws) {}");
 
     // Without a type model the output does not change.
@@ -82,6 +82,5 @@ TEST(HandleLowering, NewScriptClassBeforeItsDefinitionIsAnError)
     f.cx.script_classes.insert("Player");
     f.expr("new Player()");
     ASSERT_EQ(f.errors().size(), 1u);
-    EXPECT_NE(f.errors()[0].find("must come before the class that builds it with 'new'"),
-              std::string::npos);
+    EXPECT_NE(f.errors()[0].find("must come before the class that builds it with 'new'"), std::string::npos);
 }

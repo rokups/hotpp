@@ -4,18 +4,18 @@
 // for each test and each process stops two tests from writing the same files.
 #pragma once
 
-#include <gtest/gtest.h>
+#include "spp/scratch.h"
 
-#include <unistd.h>
+#include <gtest/gtest.h>
 
 #include <algorithm>
 #include <map>
 #include <memory>
 #include <string>
+#include <unistd.h>
 
-#include "spp/scratch.h"
-
-namespace test_support {
+namespace test_support
+{
 
 // The path SPP_SCRATCH_DIR/<name>/p<pid>. The character '/' in the name becomes '_'.
 inline std::string scratch_path(std::string name)
@@ -26,15 +26,20 @@ inline std::string scratch_path(std::string name)
 
 // The scratch directory of the running test. The directory is empty at the start. The
 // destructor removes it, unless spp::keep_temp() is true.
-class TestScratch : public spp::ScratchDir {
+class TestScratch : public spp::ScratchDir
+{
 public:
-    TestScratch() : spp::ScratchDir(scratch_path(current_test_name())) {}
+    TestScratch()
+        : spp::ScratchDir(scratch_path(current_test_name()))
+    {
+    }
 
 private:
     static std::string current_test_name()
     {
         const ::testing::TestInfo* info = ::testing::UnitTest::GetInstance()->current_test_info();
-        if (!info) return "no_test";
+        if (!info)
+            return "no_test";
         return std::string(info->test_suite_name()) + "." + info->name();
     }
 };
@@ -45,8 +50,9 @@ inline spp::ScratchDir& process_scratch(const char* name)
 {
     static std::map<std::string, std::unique_ptr<spp::ScratchDir>> dirs;
     std::unique_ptr<spp::ScratchDir>& dir = dirs[name];
-    if (!dir) dir = std::make_unique<spp::ScratchDir>(scratch_path(name));
+    if (!dir)
+        dir = std::make_unique<spp::ScratchDir>(scratch_path(name));
     return *dir;
 }
 
-}  // namespace test_support
+} // namespace test_support

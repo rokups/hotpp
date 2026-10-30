@@ -10,22 +10,23 @@
 //   }
 //
 // The file has three parts: the shell, the state and the generation functions.
-#include <algorithm>
-#include <cstdio>
-#include <cstddef>
-#include <new>
-
 #include "Actor.h"
 #include "spp/runtime.h"
+
+#include <algorithm>
+#include <cstddef>
+#include <cstdio>
+#include <new>
 
 constexpr uint32_t GEN = 1;
 
 // Slot numbers. Native virtuals come first, in the order of the Actor class.
-enum : unsigned {
+enum : unsigned
+{
     SLOT_Tick = 0,
     SLOT_TakeDamage_f = 1,
     SLOT_TakeDamage_Af = 2,
-    SLOT_heal = 3,  // a bindable method has a slot, so that a thunk reaches the live body
+    SLOT_heal = 3, // a bindable method has a slot, so that a thunk reaches the live body
     SLOT_COUNT = 4,
 };
 
@@ -33,22 +34,20 @@ extern spp::ClassRecord Player_record;
 
 // ---------------------------------------------------------------- shell
 // The shell overrides every virtual of Actor. Each stub reads one slot.
-struct Player_Shell final : Actor, spp::ShellBase {
+struct Player_Shell final
+    : Actor
+    , spp::ShellBase
+{
     template <class... A>
-    explicit Player_Shell(spp::Construct, A&&... a) : Actor(std::forward<A>(a)...)
+    explicit Player_Shell(spp::Construct, A&&... a)
+        : Actor(std::forward<A>(a)...)
     {
         spp::init_state(this, &Player_record);
     }
     ~Player_Shell() override { spp::destroy_state(this); }
 
-    void Tick(float dt) override
-    {
-        return spp::call<void(Actor*, float)>(this, SLOT_Tick, dt);
-    }
-    void TakeDamage(float a) override
-    {
-        return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a);
-    }
+    void Tick(float dt) override { return spp::call<void(Actor*, float)>(this, SLOT_Tick, dt); }
+    void TakeDamage(float a) override { return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a); }
     void TakeDamage(Actor& src, float a) override
     {
         return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, src, a);
@@ -56,8 +55,9 @@ struct Player_Shell final : Actor, spp::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct PlayerState_g1 {
-    spp::ShellBase* __spp_owner;  // the runtime writes it (has_owner)
+struct PlayerState_g1
+{
+    spp::ShellBase* __spp_owner; // the runtime writes it (has_owner)
     float hp;
     float speed;
 
@@ -67,24 +67,33 @@ struct PlayerState_g1 {
     void heal(float amount);
 };
 
-static void init_hp(void*, void* f) { new (f) float(100.0f); }
-static void init_speed(void*, void* f) { new (f) float(5.0f); }
+static void init_hp(void*, void* f)
+{
+    new (f) float(100.0f);
+}
+static void init_speed(void*, void* f)
+{
+    new (f) float(5.0f);
+}
 static void move_float(void* dst, const void* src)
 {
     new (dst) float(*static_cast<const float*>(src));
 }
 
 static const spp::FieldInfo Player_fields[] = {
-    {"hp", nullptr, typeid(float).name(), offsetof(PlayerState_g1, hp), sizeof(float),
-     alignof(float), spp::kTriviallyCopyable | spp::kNothrowMove, init_hp, move_float,
-     nullptr},
-    {"speed", nullptr, typeid(float).name(), offsetof(PlayerState_g1, speed), sizeof(float),
-     alignof(float), spp::kTriviallyCopyable | spp::kNothrowMove, init_speed, move_float,
-     nullptr},
+    {"hp", nullptr, typeid(float).name(), offsetof(PlayerState_g1, hp), sizeof(float), alignof(float),
+        spp::kTriviallyCopyable | spp::kNothrowMove, init_hp, move_float, nullptr},
+    {"speed", nullptr, typeid(float).name(), offsetof(PlayerState_g1, speed), sizeof(float), alignof(float),
+        spp::kTriviallyCopyable | spp::kNothrowMove, init_speed, move_float, nullptr},
 };
 
 static const spp::StateLayout Player_layout = {
-    "PlayerState_g1", sizeof(PlayerState_g1), alignof(PlayerState_g1), 2, Player_fields, true,
+    "PlayerState_g1",
+    sizeof(PlayerState_g1),
+    alignof(PlayerState_g1),
+    2,
+    Player_fields,
+    true,
 };
 
 // ------------------------------------------------- generation functions
@@ -96,7 +105,8 @@ static inline PlayerState_g1* state_of(Player_Shell* self)
 
 void PlayerState_g1::heal(float amount)
 {
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) return spp::stale_call("Player::heal");
+    if (SPP_UNLIKELY(spp::active_generation != GEN))
+        return spp::stale_call("Player::heal");
     [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
     [[maybe_unused]] auto* st = this;
     st->hp = std::min(st->hp + amount, 100.0f);
@@ -111,18 +121,19 @@ static void Player__heal(Player_Shell* self, float amount)
 
 void PlayerState_g1::Tick(float dt)
 {
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) return spp::stale_call("Player::Tick");
+    if (SPP_UNLIKELY(spp::active_generation != GEN))
+        return spp::stale_call("Player::Tick");
     [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
     [[maybe_unused]] auto* st = this;
-    self->Move({st->speed * dt, 0, 0});  // direct call of a native method
-    std::printf("[gen1] %s: Tick dt=%.4f pos.x=%.4f hp=%.1f\n", self->Name.c_str(), dt,
-                self->Position.x, st->hp);
-    Player__heal(self, 1.0f);  // non-virtual script method: direct call
+    self->Move({st->speed * dt, 0, 0}); // direct call of a native method
+    std::printf("[gen1] %s: Tick dt=%.4f pos.x=%.4f hp=%.1f\n", self->Name.c_str(), dt, self->Position.x, st->hp);
+    Player__heal(self, 1.0f); // non-virtual script method: direct call
 }
 
 void PlayerState_g1::TakeDamage_f(float amount)
 {
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) return spp::stale_call("Player::TakeDamage(float)");
+    if (SPP_UNLIKELY(spp::active_generation != GEN))
+        return spp::stale_call("Player::TakeDamage(float)");
     [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
     [[maybe_unused]] auto* st = this;
     st->hp = std::max(st->hp - amount, 0.0f);
@@ -131,11 +142,12 @@ void PlayerState_g1::TakeDamage_f(float amount)
 
 void PlayerState_g1::TakeDamage_Af(Actor& src, float amount)
 {
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) return spp::stale_call("Player::TakeDamage(Actor&, float)");
+    if (SPP_UNLIKELY(spp::active_generation != GEN))
+        return spp::stale_call("Player::TakeDamage(Actor&, float)");
     [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
     [[maybe_unused]] auto* st = this;
     std::printf("[gen1] %s: hit by %s\n", self->Name.c_str(), src.Name.c_str());
-    self->TakeDamage(amount);  // script virtual method: goes through the slot
+    self->TakeDamage(amount); // script virtual method: goes through the slot
 }
 
 // ------------------------------------------------------------- thunk
@@ -156,8 +168,14 @@ static const spp::SlotFn Player_slots[SLOT_COUNT] = {
 };
 
 spp::ClassRecord Player_record = {
-    "Player", GEN, Player_slots, SLOT_COUNT, &Player_layout, nullptr,
-    "Actor", spp::shell_layout_hash("Actor", sizeof(Player_Shell), alignof(Player_Shell), 3),
+    "Player",
+    GEN,
+    Player_slots,
+    SLOT_COUNT,
+    &Player_layout,
+    nullptr,
+    "Actor",
+    spp::shell_layout_hash("Actor", sizeof(Player_Shell), alignof(Player_Shell), 3),
 };
 
 static spp::Instance Player_create()

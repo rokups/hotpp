@@ -1,12 +1,14 @@
 // Helpers for the tests of the handle types: a native class with a stub, translated in a temporary directory.
 #pragma once
 
-#include <gtest/gtest.h>
-#include <string>
-
 #include "translator_test_support.h"
 
-namespace stub_translate_test {
+#include <gtest/gtest.h>
+
+#include <string>
+
+namespace stub_translate_test
+{
 
 using namespace translator_test;
 
@@ -26,11 +28,12 @@ inline std::string weapon_script(const std::string& stub, const std::string& mem
 inline sppc::TranslateResult weapon_translate(const std::string& members, bool stub_in_prelude = false)
 {
     static TempDir* dir = nullptr;
-    if (!dir) dir = new TempDir();
+    if (!dir)
+        dir = new TempDir();
     write_file(dir->path() / "w.h", kWeaponHeader);
-    sppc::TranslateOptions o =
-        temp_options(*dir, weapon_script(stub_in_prelude ? "" : kWeaponStub, members));
-    if (stub_in_prelude) o.preludes.push_back({"weapon.prelude", kWeaponStub});
+    sppc::TranslateOptions o = temp_options(*dir, weapon_script(stub_in_prelude ? "" : kWeaponStub, members));
+    if (stub_in_prelude)
+        o.preludes.push_back({"weapon.prelude", kWeaponStub});
     return sppc::translate(o);
 }
 
@@ -49,26 +52,26 @@ inline const char* kHierHeader =
     "struct Flat { int a = 0; };\n"
     "struct FlatKid : Flat { int b = 0; };\n";
 
-inline const char* kIntrusiveStub =
-    "[native, handle(\"$T*\"), intrusive(\"AddRef\", \"Release\")] class Object;\n";
+inline const char* kIntrusiveStub = "[native, handle(\"$T*\"), intrusive(\"AddRef\", \"Release\")] class Object;\n";
 
 inline const char* kSharedStub = "[native, handle(\"std::shared_ptr<$T>\")] class Object;\n";
 
 inline const std::string kIntr = "spp::Intrusive<Item, &Object::AddRef, &Object::Release>";
 
 inline sppc::TranslateResult hier_translate(const std::string& stubs, const std::string& members,
-                                    bool stub_in_prelude = false, sppc::TranslatorSession* session = nullptr)
+    bool stub_in_prelude = false, sppc::TranslatorSession* session = nullptr)
 {
     // Write the header once: a new mtime would make the session parse again.
     static TempDir* dir = nullptr;
-    if (!dir) {
+    if (!dir)
+    {
         dir = new TempDir();
         write_file(dir->path() / "w.h", kHierHeader);
     }
-    sppc::TranslateOptions o =
-        temp_options(*dir, weapon_script(stub_in_prelude ? "" : stubs, members));
-    if (stub_in_prelude) o.preludes.push_back({"hier.prelude", stubs});
+    sppc::TranslateOptions o = temp_options(*dir, weapon_script(stub_in_prelude ? "" : stubs, members));
+    if (stub_in_prelude)
+        o.preludes.push_back({"hier.prelude", stubs});
     return session ? sppc::translate(o, *session) : sppc::translate(o);
 }
 
-}  // namespace stub_translate_test
+} // namespace stub_translate_test

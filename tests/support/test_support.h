@@ -1,17 +1,18 @@
 // Shared helpers for the GoogleTest files.
 #pragma once
 
+#include "Actor.h"
+#include "spp/runtime.h"
+#include "support/reload_assert.h"
+
 #include <gtest/gtest.h>
 
 #include <stdexcept>
 #include <string>
 #include <utility>
 
-#include "Actor.h"
-#include "spp/runtime.h"
-#include "support/reload_assert.h"
-
-namespace test_support {
+namespace test_support
+{
 
 constexpr float kDt = 1.0f / 60.0f;
 
@@ -22,11 +23,13 @@ constexpr float kDt = 1.0f / 60.0f;
 inline spp::Module library(const char* path)
 {
     spp::LoadResult r = spp::module_from_library(path);
-    if (!r) throw std::runtime_error(r.error);
+    if (!r)
+        throw std::runtime_error(r.error);
     return std::move(*r.module);
 }
 
-struct Session {
+struct Session
+{
     spp::Loader loader;
     World world;
     spp::Instance inst{};
@@ -57,9 +60,12 @@ struct Session {
     // the retired generations that may unload.
     void commit_at_frame_boundary()
     {
-        world.SetFrameBoundaryHook([this] {
-            if (loader.reload_pending()) {
-                if (const spp::ReloadResult res = loader.commit_pending(); !res) {
+        world.SetFrameBoundaryHook([this]
+        {
+            if (loader.reload_pending())
+            {
+                if (const spp::ReloadResult res = loader.commit_pending(); !res)
+                {
                     ADD_FAILURE() << "commit failed: " << res.error;
                     commit_failed = true;
                 }
@@ -71,4 +77,4 @@ struct Session {
     float* field(const char* name) { return spp::field_ptr<float>(inst.shell, name); }
 };
 
-}  // namespace test_support
+} // namespace test_support

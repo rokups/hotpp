@@ -3,9 +3,10 @@
 // has the only copy of the counter "live".
 #pragma once
 
-struct Object {
+struct Object
+{
     int refs = 0;
-    static int live;  // The number of Object instances that exist.
+    static int live; // The number of Object instances that exist.
 
     Object();
     virtual ~Object();
@@ -13,7 +14,11 @@ struct Object {
     void Release();
 };
 
-struct Item : Object {
+struct Item : Object
+{
     int value = 0;
-    explicit Item(int v) : value(v) {}
+    explicit Item(int v)
+        : value(v)
+    {
+    }
 };

@@ -7,19 +7,21 @@
 // module_from_library (module.h) and give the Module to the Loader.
 #pragma once
 
+#include "spp/module.h"
+
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "spp/module.h"
+namespace spp
+{
 
-namespace spp {
-
-struct ScriptSource {
-    std::string name;  // the script name or path; the diagnostics and "#line" use it
-    std::string text;  // the content of the script
+struct ScriptSource
+{
+    std::string name; // the script name or path; the diagnostics and "#line" use it
+    std::string text; // the content of the script
     // The imported scripts ("using "parent.spp";"), as the path in the "using" line and the text.
     // One generation holds them all (design 4.10). A path that is not here is read from disk.
     std::vector<std::pair<std::string, std::string>> modules;
@@ -30,9 +32,14 @@ struct ScriptSource {
 // the slots file, and the slot numbering starts empty). It builds a new library with a new name,
 // so it never overwrites a library that the process still maps. A full reload uses it
 // (the host calls Loader::reset first).
-enum class LoadMode { Reload, Fresh };
+enum class LoadMode
+{
+    Reload,
+    Fresh
+};
 
-class Backend {
+class Backend
+{
 public:
     virtual ~Backend() = default;
     // Makes the Module of one script for one generation. On failure the result has
@@ -46,4 +53,4 @@ public:
 // The backend that SPP_BACKEND selected at build time.
 std::unique_ptr<Backend> make_default_backend();
 
-}  // namespace spp
+} // namespace spp

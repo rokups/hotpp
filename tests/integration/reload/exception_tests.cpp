@@ -1,18 +1,19 @@
 // Tests of the statements throw, try, catch and finally with the backend that SPP_BACKEND selected.
 //
 // CMake defines the macro SPP_SOURCE_DIR.
+#include "spp/backend.h"
+#include "support/backend_fixture.h"
+#include "support/script_files.h"
+#include "support/test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <memory>
 #include <stdexcept>
 #include <string>
 
-#include "spp/backend.h"
-#include "support/backend_fixture.h"
-#include "support/script_files.h"
-#include "support/test_support.h"
-
-namespace {
+namespace
+{
 
 using test_support::kDt;
 using test_support::Session;
@@ -120,4 +121,4 @@ class Player : Actor {
     EXPECT_EQ(*s.field("total"), 2236.0f);
 }
 
-}  // namespace
+} // namespace

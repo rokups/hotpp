@@ -1,25 +1,26 @@
 // Tests for the parser of three conveniences: "=>" bodies, default values and "??".
-#include <gtest/gtest.h>
-
-#include <string>
-#include <variant>
-
 #include "emit.h"
 #include "parser/parser.h"
 #include "support/expression_parse_test_support.h"
 #include "support/script_parse_test_support.h"
 
+#include <gtest/gtest.h>
+
+#include <string>
+#include <variant>
+
 using namespace sppc;
 using namespace script_test;
 using expr_test::Parsed;
 
-namespace {
+namespace
+{
 ast::Script parse(const std::string& text, Diagnostics& sd)
 {
     const LineMap map(text);
     return parse_script(text, map, sd);
 }
-}  // namespace
+} // namespace
 
 TEST(ExpressionBodyParse, ValueMethodReturnsTheExpression)
 {
@@ -49,7 +50,7 @@ TEST(ExpressionBodyParse, NextMemberStillParses)
 {
     Diagnostics sd;
     EXPECT_EQ(members_of("class W : B {\n    int A() => 1;\n    int n;\n    void B() { }\n}\n", sd),
-              (std::vector<std::string>{"field int32_t|n|-|", "method int32_t|A", "method |B"}));
+        (std::vector<std::string>{"field int32_t|n|-|", "method int32_t|A", "method |B"}));
     EXPECT_EQ(sd.items.size(), 0u) << sd.format("t");
 }
 
@@ -82,8 +83,8 @@ TEST(ExpressionBodyParse, Errors)
 TEST(DefaultValueParse, ParametersKeepTheirDefaultExpressions)
 {
     Diagnostics sd;
-    const ast::Script s = parse(
-        "class W : B {\n    void Heal(float amount = 1.0, int n = f(1, 2), std.string s) { }\n}\n", sd);
+    const ast::Script s =
+        parse("class W : B {\n    void Heal(float amount = 1.0, int n = f(1, 2), std.string s) { }\n}\n", sd);
     ASSERT_EQ(sd.items.size(), 0u) << sd.format("t");
     const auto& ps = s.classes[0].methods[0].params;
     ASSERT_EQ(ps.size(), 3u);
@@ -181,7 +182,9 @@ TEST(IsBindingParse, BindingNameAfterTheType)
 
 TEST(IsBindingParse, PlainTestHasNoBinding)
 {
-    for (const char* text : {"x is Grunt", "x is Grunt && y", "x is Grunt || y", "x is Grunt ? 1 : 2", "x is Grunt as Foo"}) {
+    for (const char* text :
+        {"x is Grunt", "x is Grunt && y", "x is Grunt || y", "x is Grunt ? 1 : 2", "x is Grunt as Foo"})
+    {
         Parsed a(text);
         ASSERT_TRUE(a.expr) << text;
         EXPECT_TRUE(a.diag.items.empty()) << text;

@@ -4,20 +4,29 @@
 //
 // Commands: "reload" (compile the file now), "stats" (the script_stats text), "quit".
 #pragma once
-#include <memory>
-#include <string>
-
 #include "Actor.h"
 #include "FileWatcher.h"
 #include "spp/backend.h"
 #include "spp/runtime.h"
 
-namespace harness {
+#include <memory>
+#include <string>
 
-enum class Command { Empty, Reload, Stats, Quit, Unknown };
+namespace harness
+{
+
+enum class Command
+{
+    Empty,
+    Reload,
+    Stats,
+    Quit,
+    Unknown
+};
 Command parse_command(const std::string& line);
 
-class Harness {
+class Harness
+{
 public:
     // "script" is a .spp file. "class_name" is the class of the first object.
     Harness(std::string script, std::string class_name = "Player");
@@ -45,18 +54,18 @@ public:
     unsigned reloads_started() const { return reloads_; }
 
 private:
-    Actor* make_actor();  // a new script object of class_name_, or null
+    Actor* make_actor(); // a new script object of class_name_, or null
     spp::ReloadResult full_reload(const spp::ScriptSource& source, const spp::ReloadResult& needed);
     std::string script_, class_name_;
     std::unique_ptr<spp::Backend> backend_;
-    spp::Loader loader_;  // before the world: it is destroyed after the world
+    spp::Loader loader_; // before the world: it is destroyed after the world
     World world_;
     FileWatcher watcher_;
     uint32_t next_generation_ = 1;
     unsigned reloads_ = 0;
-    std::string saved_;           // the actors of a full reload that failed after the reset
-    bool restore_pending_ = false;  // true: the Loader has no script and "saved_" holds the actors
+    std::string saved_; // the actors of a full reload that failed after the reset
+    bool restore_pending_ = false; // true: the Loader has no script and "saved_" holds the actors
     bool quit_ = false;
 };
 
-}  // namespace harness
+} // namespace harness

@@ -1,14 +1,15 @@
 // Tests for the type model with script classes: handle by default, [value] inline (design 7.10.1).
+#include "support/type_model_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 #include <vector>
 
-#include "support/type_model_test_support.h"
-
 using namespace type_model_test;
 
-namespace {
+namespace
+{
 
 ast::ClassDef script_class(const std::string& name, const std::string& base, bool is_value = false)
 {
@@ -26,7 +27,7 @@ std::vector<ast::ClassDef> one(const std::string& name, const std::string& base,
     return v;
 }
 
-}  // namespace
+} // namespace
 
 TEST(ScriptClassType, ShellClassUsesTheDefaultHandle)
 {

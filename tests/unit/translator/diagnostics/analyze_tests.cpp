@@ -1,25 +1,25 @@
 // Tests for sppc::analyze: the facts of a script that has syntax errors.
+#include "spp/sppc_lib.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "spp/sppc_lib.h"
-#include "support/translator_test_support.h"
-
 using namespace translator_test;
 using sppc::SourcePos;
 
-namespace {
+namespace
+{
 
 sppc::AnalyzeResult analyze_text(const std::string& text)
 {
     TempDir dir;
-    write_file(dir.path() / "w.h",
-               "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
+    write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
     return sppc::analyze(text, temp_options(dir, ""));
 }
 
-}  // namespace
+} // namespace
 
 TEST(Analyze, ValidScriptHasNoErrorAndAMap)
 {
@@ -44,7 +44,7 @@ TEST(Analyze, ValidScriptHasNoErrorAndAMap)
     EXPECT_EQ(r.classes[0].members[1].begin, (SourcePos{4, 19}));
     EXPECT_EQ(r.classes[0].members[1].end, (SourcePos{4, 56}));
     EXPECT_FALSE(r.source_map.empty());
-    EXPECT_TRUE(r.source_map.map_to_generated(4, 38));  // the first "hits" in the body
+    EXPECT_TRUE(r.source_map.map_to_generated(4, 38)); // the first "hits" in the body
 }
 
 TEST(Analyze, ErrorsInTwoMethodsKeepTheValidMethod)
@@ -70,7 +70,7 @@ TEST(Analyze, ErrorsInTwoMethodsKeepTheValidMethod)
     EXPECT_EQ(r.classes[0].members[3].name, "b");
     // The map has the valid method "Update". The text is at the original position.
     ASSERT_FALSE(r.source_map.empty());
-    EXPECT_TRUE(r.source_map.map_to_generated(5, 38));  // the first "n" in the body
+    EXPECT_TRUE(r.source_map.map_to_generated(5, 38)); // the first "n" in the body
     // The broken methods are not in the map.
     EXPECT_FALSE(r.source_map.map_to_generated(4, 16));
     EXPECT_FALSE(r.source_map.map_to_generated(6, 16));
@@ -129,8 +129,7 @@ TEST(Analyze, MissingSemicolonIsOneErrorAndTheOtherMembersStay)
 
 TEST(Analyze, TranslateStillFailsForTheSameText)
 {
-    const std::string text =
-        "using \"w.h\";\nclass Foo : Widget {\n    void a() { x = ; }\n}\n";
+    const std::string text = "using \"w.h\";\nclass Foo : Widget {\n    void a() { x = ; }\n}\n";
     TempDir dir;
     write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} };\n");
     sppc::TranslateOptions o = temp_options(dir, text);

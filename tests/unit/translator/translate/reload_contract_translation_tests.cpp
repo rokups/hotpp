@@ -1,18 +1,22 @@
 // Translation tests of the reload contract rows that S17 adds (design 5.3): the signature lines
 // and the keyed thunk, the layout key of a native container of a [value] class, and the record
 // flag of a shell with std::enable_shared_from_this.
+#include "spp/sppc_lib.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "spp/sppc_lib.h"
-#include "support/translator_test_support.h"
-
 using namespace translator_test;
 
-namespace {
+namespace
+{
 
-bool has(const std::string& text, const std::string& part) { return text.find(part) != std::string::npos; }
+bool has(const std::string& text, const std::string& part)
+{
+    return text.find(part) != std::string::npos;
+}
 
 sppc::TranslateResult gen(const std::string& script, int generation, const std::string& slots_in)
 {
@@ -54,10 +58,11 @@ TEST(SignatureLines, ChangedSignatureEmitsAKeyedThunk)
     sppc::TranslateResult changed = gen(counter("int x1, int x2", "this.n = this.n + x1 + x2;"), 2, slots);
     ASSERT_TRUE(changed.ok) << changed.diagnostics;
     EXPECT_TRUE(has(changed.cpp, "add__thunk(")) << changed.cpp;
-    EXPECT_TRUE(has(changed.cpp, "reg.add_thunk(\"Counter::add\", reinterpret_cast<void*>(&Counter__add__thunk), typeid("))
+    EXPECT_TRUE(
+        has(changed.cpp, "reg.add_thunk(\"Counter::add\", reinterpret_cast<void*>(&Counter__add__thunk), typeid("))
         << changed.cpp;
     EXPECT_TRUE(has(changed.cpp, "int32_t, int32_t)).name(), SLOT_add);")) << changed.cpp;
-    EXPECT_EQ(changed.slots_out, g1.slots_out);  // the function keeps its slot
+    EXPECT_EQ(changed.slots_out, g1.slots_out); // the function keeps its slot
 
     // A slot file without signature lines (an older file) gives no keyed thunk.
     sppc::TranslateResult old_file = gen(counter("int x1, int x2", "this.n = this.n + x1 + x2;"), 2, g1.slots_out);
@@ -67,7 +72,8 @@ TEST(SignatureLines, ChangedSignatureEmitsAKeyedThunk)
 
 std::string bag(const std::string& item_fields)
 {
-    return "using <vector>;\nstruct Item {\n" + item_fields + "}\nclass Bag {\n    std.vector<Item> items;\n    Item one;\n}\n";
+    return "using <vector>;\nstruct Item {\n" + item_fields
+        + "}\nclass Bag {\n    std.vector<Item> items;\n    Item one;\n}\n";
 }
 
 std::string key_of(const std::string& cpp)
@@ -132,20 +138,22 @@ TEST(NativeHoldsCode, FunctionPointerFieldsMarkTheStruct)
     const std::string head = "using \"w.h\";\nclass Foo : Widget {\n";
     const std::string tail = "    void f() { }\n}\n";
     const auto mark = [](const char* t) { return std::string("native_holds_code<") + t + "> : std::true_type"; };
-    for (const char* t : {"RawCb", "MemCb", "ArrCb", "Nested", "Derived"}) {
+    for (const char* t : {"RawCb", "MemCb", "ArrCb", "Nested", "Derived"})
+    {
         sppc::TranslateResult r = sppc::translate(temp_options(dir, head + "    " + t + " v;\n" + tail));
         ASSERT_TRUE(r.ok) << t << ": " << r.diagnostics;
         EXPECT_TRUE(has(r.cpp, mark(t))) << t << "\n" << r.cpp;
     }
-    for (const char* t : {"Plain", "DataPtr"}) {
+    for (const char* t : {"Plain", "DataPtr"})
+    {
         sppc::TranslateResult r = sppc::translate(temp_options(dir, head + "    " + t + " v;\n" + tail));
         ASSERT_TRUE(r.ok) << t << ": " << r.diagnostics;
         EXPECT_FALSE(has(r.cpp, "native_holds_code<")) << t << "\n" << r.cpp;
     }
-    sppc::TranslateResult v = sppc::translate(
-        temp_options(dir, "using <vector>;\n" + head + "    std.vector<RawCb> v;\n" + tail));
+    sppc::TranslateResult v =
+        sppc::translate(temp_options(dir, "using <vector>;\n" + head + "    std.vector<RawCb> v;\n" + tail));
     ASSERT_TRUE(v.ok) << v.diagnostics;
     EXPECT_TRUE(has(v.cpp, mark("RawCb"))) << v.cpp;
 }
 
-}  // namespace
+} // namespace

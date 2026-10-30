@@ -14,6 +14,10 @@
 // The scripts are in this file and they do not print, so the output stays small.
 // The tests use the backend that SPP_BACKEND selected (make_default_backend).
 // CMake defines the macros GEN4_BASE_SO and GEN3_MISSING_SO.
+#include "spp/backend.h"
+#include "support/reload_assert.h"
+#include "support/test_support.h"
+
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -25,11 +29,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "spp/backend.h"
-#include "support/reload_assert.h"
-#include "support/test_support.h"
-
-namespace {
+namespace
+{
 
 using test_support::kDt;
 using test_support::Session;
@@ -79,23 +80,28 @@ spp::Backend& backend()
 // A library file is loaded again from its path.
 // The loader of the last run is gone, so the old copy is closed.
 // The new copy has fresh data. A backend without a file (JIT) builds again.
-class ModuleSupplier {
+class ModuleSupplier
+{
 public:
     ModuleSupplier(const char* text, uint32_t generation)
-        : source_{std::string("r5_player_v") + std::to_string(generation) + ".spp", text},
-          generation_(generation)
+        : source_{std::string("r5_player_v") + std::to_string(generation) + ".spp", text}
+        , generation_(generation)
     {
     }
 
     spp::Module get()
     {
-        if (!path_.empty()) {
+        if (!path_.empty())
+        {
             spp::LoadResult again = spp::module_from_library(path_);
-            if (again) return std::move(*again.module);
+            if (again)
+                return std::move(*again.module);
         }
         spp::LoadResult r = backend().load(source_, generation_);
-        if (!r) throw std::runtime_error(r.error);
-        if (std::filesystem::exists(r.module->origin)) path_ = r.module->origin;
+        if (!r)
+            throw std::runtime_error(r.error);
+        if (std::filesystem::exists(r.module->origin))
+            path_ = r.module->origin;
         return std::move(*r.module);
     }
 
@@ -119,10 +125,11 @@ ModuleSupplier& v2_supplier()
 
 // The world with its actors. The checker runs on the worker threads.
 // It runs after each actor tick. It reads only data that does not change during a frame.
-struct Rig {
+struct Rig
+{
     Session s;
     std::vector<spp::Instance> actors;
-    std::unordered_map<Actor*, spp::ShellBase*> shell_of;  // read only while ticking
+    std::unordered_map<Actor*, spp::ShellBase*> shell_of; // read only while ticking
     std::atomic<int> violations{0};
     std::atomic<int> ticks_checked{0};
 
@@ -131,7 +138,8 @@ struct Rig {
         ASSERT_NO_FATAL_FAILURE(s.start(std::move(v1)));
         actors.push_back(s.inst);
         const spp::ClassEntry* entry = s.loader.find("Player");
-        for (int i = 1; i < kActors; ++i) {
+        for (int i = 1; i < kActors; ++i)
+        {
             spp::Instance inst = entry->create();
             actors.push_back(inst);
             s.world.Add(static_cast<Actor*>(inst.native));
@@ -148,21 +156,26 @@ struct Rig {
     {
         spp::ShellBase* sh = shell_of.find(a)->second;
         ticks_checked.fetch_add(1, std::memory_order_relaxed);
-        bool ok = !spp::kTickChecks || spp::in_script_tick() >= 1;  // the counter exists in debug builds
+        bool ok = !spp::kTickChecks || spp::in_script_tick() >= 1; // the counter exists in debug builds
         const uint32_t gen = sh->cls->generation;
         ok = ok && gen == spp::active_generation;
         const float* hp = spp::field_ptr<float>(sh, "hp");
         const float* health = spp::field_ptr<float>(sh, "health");
         const float* shield = spp::field_ptr<float>(sh, "shield");
-        if (gen == 1) {
+        if (gen == 1)
+        {
             ok = ok && hp && !health && !shield && !std::isnan(*hp) && *hp >= kStartHealth;
-        } else if (gen == 2) {
-            ok = ok && !hp && health && shield && !std::isnan(*health) &&
-                 *health >= kStartHealth && *shield == 25.0f;
-        } else {
+        }
+        else if (gen == 2)
+        {
+            ok = ok && !hp && health && shield && !std::isnan(*health) && *health >= kStartHealth && *shield == 25.0f;
+        }
+        else
+        {
             ok = false;
         }
-        if (!ok) violations.fetch_add(1, std::memory_order_relaxed);
+        if (!ok)
+            violations.fetch_add(1, std::memory_order_relaxed);
     }
 };
 
@@ -173,17 +186,21 @@ void run_commit_only_at_barrier(unsigned seed)
     Session& s = rig.s;
     std::vector<Actor*> addr = s.world.Actors();
     std::vector<void*> old_state;
-    for (const spp::Instance& i : rig.actors) old_state.push_back(i.shell->state);
+    for (const spp::Instance& i : rig.actors)
+        old_state.push_back(i.shell->state);
 
     // The hook is the frame boundary: it runs on the main thread, at the barrier.
-    int frame = 0;         // the number of frames that started
-    int commit_frame = 0;  // the frame whose boundary committed (0: none yet)
+    int frame = 0; // the number of frames that started
+    int commit_frame = 0; // the frame whose boundary committed (0: none yet)
     int busy_at_commit = 0;
     const uint64_t unsafe0 = spp::unsafe_commit_count();
-    s.world.SetFrameBoundaryHook([&] {
-        if (s.loader.reload_pending()) {
+    s.world.SetFrameBoundaryHook([&]
+    {
+        if (s.loader.reload_pending())
+        {
             busy_at_commit += spp::in_script_tick();
-            if (const spp::ReloadResult res = s.loader.commit_pending(); !res) {
+            if (const spp::ReloadResult res = s.loader.commit_pending(); !res)
+            {
                 ADD_FAILURE() << "commit failed: " << res.error;
                 s.commit_failed = true;
             }
@@ -195,13 +212,14 @@ void run_commit_only_at_barrier(unsigned seed)
     // The compile thread: it waits for a random time and then requests the reload.
     std::mt19937 rng(seed);
     const auto delay = std::chrono::microseconds(std::uniform_int_distribution<int>(0, 20000)(rng));
-    spp::Module v2 = v2_supplier().get();  // built on the main thread, before the threads run
+    spp::Module v2 = v2_supplier().get(); // built on the main thread, before the threads run
     std::atomic<bool> requested{false};
     std::atomic<bool> stop{false};
     std::atomic<int> unexpected{0};
     bool request_ok = false;
     std::string request_error;
-    std::thread compile_thread([&] {
+    std::thread compile_thread([&]
+    {
         std::this_thread::sleep_for(delay);
         const spp::ReloadResult req = s.loader.request_reload(std::move(v2));
         request_ok = static_cast<bool>(req);
@@ -209,19 +227,23 @@ void run_commit_only_at_barrier(unsigned seed)
         requested.store(true);
         // Then it requests a bad reload again and again.
         // So a validation can run at the same time as the commit. Each one must fail.
-        while (!stop.load()) {
+        while (!stop.load())
+        {
             spp::LoadResult other = spp::module_from_library(GEN4_BASE_SO);
-            if (other && s.loader.request_reload(std::move(*other.module))) ++unexpected;
+            if (other && s.loader.request_reload(std::move(*other.module)))
+                ++unexpected;
             (void)s.loader.reload_pending();
             std::this_thread::sleep_for(std::chrono::microseconds(20));
         }
     });
 
     // At least kFrames frames, then more until the commit happened.
-    while (frame < kFrames || (commit_frame == 0 && frame < 100 * kFrames)) {
+    while (frame < kFrames || (commit_frame == 0 && frame < 100 * kFrames))
+    {
         ++frame;
         s.world.TickParallel(kDt, kWorkers);
-        if (frame >= kFrames && !requested.load()) std::this_thread::yield();
+        if (frame >= kFrames && !requested.load())
+            std::this_thread::yield();
     }
     stop.store(true);
     compile_thread.join();
@@ -241,29 +263,32 @@ void run_commit_only_at_barrier(unsigned seed)
     // The last frames: the same behavior for each actor, the same address.
     ASSERT_EQ(s.world.Actors(), addr);
     std::vector<float> x0;
-    for (Actor* a : addr) x0.push_back(a->Position.x);
+    for (Actor* a : addr)
+        x0.push_back(a->Position.x);
     s.world.TickParallel(kDt, kWorkers);
     ++frame;
     EXPECT_EQ(rig.violations.load(), 0);
     int wrong = 0;
-    for (size_t i = 0; i < rig.actors.size(); ++i) {
+    for (size_t i = 0; i < rig.actors.size(); ++i)
+    {
         spp::ShellBase* sh = rig.actors[i].shell;
         const float* health = spp::field_ptr<float>(sh, "health");
         const float* shield = spp::field_ptr<float>(sh, "shield");
         const float* hp = spp::field_ptr<float>(sh, "hp");
         // The generation 1 Tick ran commit_frame times and added 1 each time.
-        const bool good = sh->cls->generation == 2 && sh->state != old_state[i] && !hp &&
-                          health && *health == kStartHealth + static_cast<float>(commit_frame) &&
-                          shield && *shield == 25.0f &&
-                          std::fabs((addr[i]->Position.x - x0[i]) - 2.0f * 5.0f * kDt) < 1e-5f;
-        if (!good) ++wrong;
+        const bool good = sh->cls->generation == 2 && sh->state != old_state[i] && !hp && health
+            && *health == kStartHealth + static_cast<float>(commit_frame) && shield && *shield == 25.0f
+            && std::fabs((addr[i]->Position.x - x0[i]) - 2.0f * 5.0f * kDt) < 1e-5f;
+        if (!good)
+            ++wrong;
     }
     EXPECT_EQ(wrong, 0);
 }
 
 TEST(ParallelTick, CommitOnlyAtBarrier)
 {
-    for (unsigned seed = 1; seed <= 20; ++seed) {
+    for (unsigned seed = 1; seed <= 20; ++seed)
+    {
         SCOPED_TRACE("seed " + std::to_string(seed));
         ASSERT_NO_FATAL_FAILURE(run_commit_only_at_barrier(seed));
     }
@@ -276,14 +301,16 @@ void run_rejected_reload(unsigned seed)
     Session& s = rig.s;
     s.commit_at_frame_boundary();
     std::vector<void*> old_state;
-    for (const spp::Instance& i : rig.actors) old_state.push_back(i.shell->state);
+    for (const spp::Instance& i : rig.actors)
+        old_state.push_back(i.shell->state);
 
     std::mt19937 rng(seed);
     const auto delay = std::chrono::microseconds(std::uniform_int_distribution<int>(0, 20000)(rng));
     std::atomic<bool> requested{false};
     std::string missing_error, base_error, null_error;
     bool missing_ok = true, base_ok = true, null_ok = true, pending_after = true;
-    std::thread compile_thread([&] {
+    std::thread compile_thread([&]
+    {
         std::this_thread::sleep_for(delay);
         // 1. A library that is not there: there is no Module to give.
         spp::LoadResult missing = spp::module_from_library(GEN3_MISSING_SO);
@@ -291,7 +318,8 @@ void run_rejected_reload(unsigned seed)
         missing_error = missing.error;
         // 2. A library with another shell layout: the validation rejects it.
         spp::LoadResult other = spp::module_from_library(GEN4_BASE_SO);
-        if (other) {
+        if (other)
+        {
             const spp::ReloadResult res = s.loader.request_reload(std::move(*other.module));
             base_ok = static_cast<bool>(res);
             base_error = res.error;
@@ -305,7 +333,8 @@ void run_rejected_reload(unsigned seed)
     });
 
     int frame = 0;
-    while (frame < kFrames || !requested.load()) {
+    while (frame < kFrames || !requested.load())
+    {
         ++frame;
         s.world.TickParallel(kDt, kWorkers);
     }
@@ -325,12 +354,14 @@ void run_rejected_reload(unsigned seed)
 
     // Nothing changed: same blocks, same generation, and the actors kept ticking.
     int wrong = 0;
-    for (size_t i = 0; i < rig.actors.size(); ++i) {
+    for (size_t i = 0; i < rig.actors.size(); ++i)
+    {
         spp::ShellBase* sh = rig.actors[i].shell;
         const float* hp = spp::field_ptr<float>(sh, "hp");
-        const bool good = sh->cls->generation == 1 && sh->state == old_state[i] && hp &&
-                          *hp == kStartHealth + static_cast<float>(frame);
-        if (!good) ++wrong;
+        const bool good = sh->cls->generation == 1 && sh->state == old_state[i] && hp
+            && *hp == kStartHealth + static_cast<float>(frame);
+        if (!good)
+            ++wrong;
     }
     EXPECT_EQ(wrong, 0);
 
@@ -345,10 +376,11 @@ void run_rejected_reload(unsigned seed)
 
 TEST(ParallelTick, RejectedReloadFromOtherThread)
 {
-    for (unsigned seed = 1; seed <= 5; ++seed) {
+    for (unsigned seed = 1; seed <= 5; ++seed)
+    {
         SCOPED_TRACE("seed " + std::to_string(seed));
         ASSERT_NO_FATAL_FAILURE(run_rejected_reload(seed));
     }
 }
 
-}  // namespace
+} // namespace

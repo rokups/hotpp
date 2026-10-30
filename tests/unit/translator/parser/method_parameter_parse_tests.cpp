@@ -1,11 +1,11 @@
 // Tests for the parser of the method parameters: type first, "ref", "out" and errors.
+#include "parser/parser.h"
+#include "support/script_parse_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 #include <vector>
-
-#include "parser/parser.h"
-#include "support/script_parse_test_support.h"
 
 using namespace sppc;
 using namespace script_test;
@@ -17,9 +17,9 @@ TEST(MethodParameterParse, TypeFirstParameters)
                             "    void f(Actor* a, std.string s, const T& r,\n"
                             "               std.map<int, std.vector<float>> m) { }\n"
                             "}\n",
-                            sd),
-              (std::vector<std::string>{"Actor*|a", "std::string|s", "const T&|r",
-                                        "std::map<int32_t, std::vector<float>>|m"}));
+                  sd),
+        (std::vector<std::string>{
+            "Actor*|a", "std::string|s", "const T&|r", "std::map<int32_t, std::vector<float>>|m"}));
     EXPECT_EQ(sd.items.size(), 0u) << sd.format("t");
 }
 
@@ -50,8 +50,7 @@ TEST(MethodParameterParse, ParameterErrors)
         // A method parameter needs a type.
         Diagnostics sd;
         method_params("class W : B {\n    void f(dt) { }\n}\n", sd);
-        EXPECT_NE(sd.format("t").find("a parameter needs a type; write 'Type name'"),
-                  std::string::npos)
+        EXPECT_NE(sd.format("t").find("a parameter needs a type; write 'Type name'"), std::string::npos)
             << sd.format("t");
     }
 }

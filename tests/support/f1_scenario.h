@@ -6,16 +6,17 @@
 // delegate that was bound before the reload calls the new heal.
 #pragma once
 
+#include "support/reload_assert.h"
+#include "support/test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <cmath>
 #include <string>
 #include <utility>
 
-#include "support/reload_assert.h"
-#include "support/test_support.h"
-
-namespace f1 {
+namespace f1
+{
 
 using test_support::kDt;
 using test_support::Session;
@@ -38,12 +39,13 @@ inline void run_f1_reload(spp::Module v1, spp::Module v2)
     auto field = [&](const char* name) { return s.field(name); };
 
     // Generation 1: change the state, then bind a delegate through the thunk.
-    a->TakeDamage(30.0f);                        // hp 70
-    for (int i = 0; i < 3; ++i) world.Tick(dt);  // each Tick heals 1: hp 73
+    a->TakeDamage(30.0f); // hp 70
+    for (int i = 0; i < 3; ++i)
+        world.Tick(dt); // each Tick heals 1: hp 73
     ASSERT_NE(field("hp"), nullptr);
     EXPECT_EQ(*field("hp"), 73.0f);
 
-    a->TakeDamage(*source, 5.0f);  // hp 68, and target is set
+    a->TakeDamage(*source, 5.0f); // hp 68, and target is set
     EXPECT_EQ(*field("hp"), 68.0f);
     std::string* target = spp::field_ptr<std::string>(inst.shell, "target");
     ASSERT_NE(target, nullptr);
@@ -54,7 +56,7 @@ inline void run_f1_reload(spp::Module v1, spp::Module v2)
     ASSERT_NE(thunk, nullptr);
     Delegate<void(float)> heal;
     heal.Bind(a, reinterpret_cast<HealFn>(thunk));
-    heal(5.0f);  // generation 1 body: hp 73
+    heal(5.0f); // generation 1 body: hp 73
     EXPECT_EQ(*field("hp"), 73.0f);
 
     // Validation phase: no side effect.
@@ -68,17 +70,17 @@ inline void run_f1_reload(spp::Module v1, spp::Module v2)
     EXPECT_EQ(field("health"), nullptr);
 
     // The commit runs at the frame boundary, after the actors ticked.
-    world.Tick(dt);  // generation 1 Tick heals 1: hp 74; then the commit
+    world.Tick(dt); // generation 1 Tick heals 1: hp 74; then the commit
     ASSERT_FALSE(s.commit_failed);
     EXPECT_FALSE(loader.reload_pending());
     EXPECT_EQ(spp::active_generation, 2u);
     ASSERT_EQ(world.Actors().size(), 2u);
-    EXPECT_EQ(world.Actors()[0], addr);  // the same address
+    EXPECT_EQ(world.Actors()[0], addr); // the same address
     EXPECT_NE(shell->state, old_state);
     EXPECT_EQ(shell->cls->generation, 2u);
     EXPECT_EQ(field("hp"), nullptr);
     ASSERT_NE(field("health"), nullptr);
-    EXPECT_EQ(*field("health"), 74.0f);  // health carries hp
+    EXPECT_EQ(*field("health"), 74.0f); // health carries hp
     ASSERT_NE(field("shield"), nullptr);
     EXPECT_EQ(*field("shield"), 25.0f);
     EXPECT_EQ(*field("speed"), 5.0f);
@@ -104,4 +106,4 @@ inline void run_f1_reload(spp::Module v1, spp::Module v2)
     EXPECT_EQ(*field("health"), 70.0f);
 }
 
-}  // namespace f1
+} // namespace f1

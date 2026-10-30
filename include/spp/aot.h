@@ -10,23 +10,26 @@
 // A program with AOT scripts links spp_aot (the core of the runtime) and the static
 // library of the scripts. It must not link spp_runtime (loader, migration, dlopen).
 #pragma once
-#include <cstddef>
-#include <string>
-#include <vector>
-
 #include "spp/runtime/migration.h"
 #include "spp/runtime/records.h"
 #include "spp/runtime/registry.h"
 
-namespace spp {
+#include <cstddef>
+#include <string>
+#include <vector>
+
+namespace spp
+{
 
 // One script of the AOT table.
-struct AotScript {
-    const char* name;                 // the file name of the script without the extension
-    void (*register_fn)(Registry&);  // the register function that sppc generated
+struct AotScript
+{
+    const char* name; // the file name of the script without the extension
+    void (*register_fn)(Registry&); // the register function that sppc generated
 };
 
-struct AotTable {
+struct AotTable
+{
     const AotScript* scripts;
     size_t count;
 };
@@ -37,7 +40,8 @@ extern const AotTable aot_table;
 
 // Registers the classes of all scripts of a table at start-up. The registry lives as long as
 // the program uses script objects. The constructor and the destructor run on the main thread.
-class AotRegistry {
+class AotRegistry
+{
 public:
     // Calls the register function of each script. It makes the module variable blocks.
     // It throws std::runtime_error when two scripts have a class of the same name or
@@ -59,8 +63,7 @@ public:
 
     // Like create. "Native" is the native base of the class, for example Actor. The object
     // must have that base.
-    template <class Native>
-    Native* create_as(const std::string& class_name) const
+    template <class Native> Native* create_as(const std::string& class_name) const
     {
         return static_cast<Native*>(create(class_name).native);
     }
@@ -77,4 +80,4 @@ private:
     size_t script_count_ = 0;
 };
 
-}  // namespace spp
+} // namespace spp

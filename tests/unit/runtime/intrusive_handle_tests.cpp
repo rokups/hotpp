@@ -1,15 +1,17 @@
 // Tests for spp::Intrusive. A new object starts with zero references.
+#include "spp/runtime.h"
+
 #include <gtest/gtest.h>
 
 #include <memory>
 #include <type_traits>
 #include <utility>
 
-#include "spp/runtime.h"
+namespace
+{
 
-namespace {
-
-struct RcBase {
+struct RcBase
+{
     static inline int live = 0;
     int refs = 0;
     int x = 0;
@@ -22,7 +24,8 @@ struct RcBase {
             delete this;
     }
 };
-struct RcDerived : RcBase {
+struct RcDerived : RcBase
+{
     int y = 0;
 };
 
@@ -36,7 +39,8 @@ static_assert(spp::is_handle_v<const BaseH&>);
 static_assert(std::is_convertible_v<DerivedH, BaseH>);
 static_assert(!std::is_convertible_v<BaseH, DerivedH>);
 
-struct IntrusiveFixture : ::testing::Test {
+struct IntrusiveFixture : ::testing::Test
+{
     void SetUp() override { RcBase::live = 0; }
     void TearDown() override { EXPECT_EQ(RcBase::live, 0); }
 };
@@ -83,7 +87,7 @@ TEST_F(IntrusiveFixture, Assignment)
     BaseH b(new RcBase);
     RcBase* pa = a.get();
     RcBase* pb = b.get();
-    a = b;  // The first object dies. The second has two references.
+    a = b; // The first object dies. The second has two references.
     EXPECT_EQ(RcBase::live, 1);
     EXPECT_EQ(pb->refs, 2);
     EXPECT_EQ(a.get(), pb);
@@ -148,7 +152,7 @@ TEST_F(IntrusiveFixture, DerefReadWrite)
     EXPECT_EQ(spp::deref(ch).x, 5);
     EXPECT_EQ(spp::deref(BaseH(h)).x, 5);
     EXPECT_EQ(h->refs, 1);
-    RcBase* raw = h;  // The implicit conversion gives the raw pointer.
+    RcBase* raw = h; // The implicit conversion gives the raw pointer.
     EXPECT_EQ(raw, h.get());
 }
 
@@ -158,12 +162,12 @@ TEST_F(IntrusiveFixture, BaseConversion)
     d->y = 3;
     RcBase* raw = d.get();
     {
-        BaseH b = d;  // Copy form.
+        BaseH b = d; // Copy form.
         EXPECT_EQ(raw->refs, 2);
         EXPECT_EQ(b.get(), raw);
         spp::deref(b).x = 9;
         EXPECT_EQ(d->x, 9);
-        BaseH c = std::move(d);  // Move form.
+        BaseH c = std::move(d); // Move form.
         EXPECT_TRUE(d == nullptr);
         EXPECT_EQ(raw->refs, 2);
         EXPECT_TRUE(c == b);
@@ -189,7 +193,7 @@ TEST_F(IntrusiveFixture, CompareWithRawPointer)
         const RcBase* craw = raw;
         EXPECT_TRUE(a == craw);
         EXPECT_EQ(raw->refs, 1);
-        EXPECT_EQ(other->refs, 0);  // no temporary wrapper took and released a reference
+        EXPECT_EQ(other->refs, 0); // no temporary wrapper took and released a reference
         BaseH n;
         RcBase* null_raw = nullptr;
         EXPECT_TRUE(n == null_raw);
@@ -219,4 +223,4 @@ TEST_F(IntrusiveFixture, AddressOfTheDereferenceIsTheRawPointer)
     EXPECT_EQ(&*s, s.get());
 }
 
-}  // namespace
+} // namespace

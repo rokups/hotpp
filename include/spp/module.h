@@ -1,14 +1,15 @@
 // A loadable generation: the register function and the owner of the code memory.
 #pragma once
 
+#include "spp/runtime/reload_result.h"
+
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 
-#include "spp/runtime/reload_result.h"
-
-namespace spp {
+namespace spp
+{
 
 class Registry;
 
@@ -24,12 +25,13 @@ struct LoadResult;
 // factories, the shell constructors, the vtables and the thunks. So the generation itself
 // can unload later. Without "make_core" the generation holds these parts and does not
 // unload while they are in use.
-struct Module {
+struct Module
+{
     using RegisterFn = void (*)(Registry&);
     RegisterFn register_fn = nullptr;
     std::shared_ptr<void> keep_alive;
-    std::string origin;  // a name for the messages, for example the path of the library
-    std::function<LoadResult()> make_core;  // empty: the module cannot make a core instance
+    std::string origin; // a name for the messages, for example the path of the library
+    std::function<LoadResult()> make_core; // empty: the module cannot make a core instance
     // The Loader calls it when the module is live: at the end of a successful load, and at the end
     // of a successful commit of a reload. A backend uses it to write the slots file only for a
     // live module. A rejected module, and a reload that does not commit, never call it.
@@ -37,7 +39,8 @@ struct Module {
 };
 
 // The result of a build or a load: a Module, or an error text with the diagnostics.
-struct LoadResult {
+struct LoadResult
+{
     std::optional<Module> module;
     std::string error;
     // Why the build failed. A backend failure is CompileError. SlotsRemoved means that a class has
@@ -50,4 +53,4 @@ struct LoadResult {
 // GetProcAddress on Windows; unverified: not built on MSVC).
 LoadResult module_from_library(const std::string& path);
 
-}  // namespace spp
+} // namespace spp

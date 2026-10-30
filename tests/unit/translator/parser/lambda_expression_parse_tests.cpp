@@ -1,13 +1,13 @@
 // Tests for the parser of the arrow lambda in an expression.
+#include "emit.h"
+#include "parser/expression.h"
+#include "support/expression_parse_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 #include <variant>
 #include <vector>
-
-#include "emit.h"
-#include "parser/expression.h"
-#include "support/expression_parse_test_support.h"
 
 using namespace sppc;
 using namespace expr_test;
@@ -20,8 +20,8 @@ TEST(LambdaExpressionParse, Lambda)
     EXPECT_EQ(p.diag.items.size(), 0u);
     const auto* l = std::get_if<ast::LambdaExpr>(&p.expr->v);
     ASSERT_TRUE(l);
-    EXPECT_EQ(l->body.pos, 21u);  // the "{"
-    EXPECT_EQ(l->body.end_pos, 23u);  // the "}"
+    EXPECT_EQ(l->body.pos, 21u); // the "{"
+    EXPECT_EQ(l->body.end_pos, 23u); // the "}"
 
     Parsed e("() => { x; }");
     ASSERT_TRUE(e.expr);
@@ -45,9 +45,8 @@ TEST(LambdaExpressionParse, Lambda)
 
     // Qualified, const reference and template types.
     EXPECT_EQ(round_trip("(const std.string& s, std.map<int, float> m) => { }"),
-              "[=](const std::string& s, std::map<int32_t, float> m) {}");
-    EXPECT_EQ(round_trip("(std.function<void(int)> f) => { }"),
-              "[=](std::function<void(int32_t)> f) {}");
+        "[=](const std::string& s, std::map<int32_t, float> m) {}");
+    EXPECT_EQ(round_trip("(std.function<void(int)> f) => { }"), "[=](std::function<void(int32_t)> f) {}");
     // A paren expression is still a paren expression.
     EXPECT_EQ(round_trip("(a)"), "(a)");
 }
@@ -70,8 +69,7 @@ TEST(LambdaExpressionParse, ExpressionBodyIsAReturnBlock)
     EXPECT_EQ(round_trip("f(() => g(1))"), "f([=]() { return g(1); })");
     // A conditional is part of the body. A nested lambda is the body.
     EXPECT_EQ(round_trip("(int x) => x ? 1 : 2"), "[=](int32_t x) { return x ? 1 : 2; }");
-    EXPECT_EQ(round_trip("(int x) => (int y) => x + y"),
-              "[=](int32_t x) { return [=](int32_t y) { return x + y; }; }");
+    EXPECT_EQ(round_trip("(int x) => (int y) => x + y"), "[=](int32_t x) { return [=](int32_t y) { return x + y; }; }");
     // A block body is still a block.
     EXPECT_EQ(round_trip("() => { return 1; }"), "[=]() { return 1; }");
 }

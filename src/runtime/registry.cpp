@@ -1,21 +1,23 @@
 #include "spp/runtime/registry.h"
 
+#include "spp/runtime/shell.h"
+#include "spp/runtime/state.h"
+
 #include <atomic>
 #include <cstdio>
 #include <mutex>
 #include <set>
 #include <utility>
 
-#include "spp/runtime/shell.h"
-#include "spp/runtime/state.h"
+namespace spp
+{
 
-namespace spp {
-
-namespace {
+namespace
+{
 std::atomic<uint64_t> g_detached_calls{0};
 std::mutex g_detached_mutex;
 std::set<std::pair<std::string, unsigned>> g_detached_logged;
-}  // namespace
+} // namespace
 
 void detached_call(const ClassRecord* cls, unsigned slot)
 {
@@ -23,15 +25,15 @@ void detached_call(const ClassRecord* cls, unsigned slot)
     std::lock_guard<std::mutex> lock(g_detached_mutex);
     if (g_detached_logged.emplace(cls->name, slot).second)
         std::fprintf(stderr,
-                     "[script] WARNING: a native delegate calls slot %u of %s with an old signature; the "
-                     "delegate is detached and the call does not run\n",
-                     slot, cls->name);
+            "[script] WARNING: a native delegate calls slot %u of %s with an old signature; the "
+            "delegate is detached and the call does not run\n",
+            slot, cls->name);
 }
 
 const char* layout_keyed(const char* type, const char* hash)
 {
     static std::mutex m;
-    static std::set<std::string> text;  // node addresses are stable
+    static std::set<std::string> text; // node addresses are stable
     std::lock_guard<std::mutex> lock(m);
     return text.insert(std::string(type) + "#" + hash).first->c_str();
 }
@@ -41,11 +43,11 @@ uint64_t detached_call_count()
     return g_detached_calls.load(std::memory_order_relaxed);
 }
 
-
 void Registry::add(ClassRecord* record, Factory create)
 {
     entries_[record->name] = ClassEntry{record, create};
-    if (record->generation > max_generation_) max_generation_ = record->generation;
+    if (record->generation > max_generation_)
+        max_generation_ = record->generation;
 }
 
 void Registry::add_thunk(const std::string& name, void* fn)
@@ -61,7 +63,7 @@ void Registry::add_thunk(const std::string& name, void* fn, const char* sig, uns
 void Registry::add_thunk(const ThunkEntry& entry)
 {
     const std::string key = thunk_key(entry.name, entry.sig);
-    thunks_.emplace(key, entry);  // the first address stays
+    thunks_.emplace(key, entry); // the first address stays
     current_[entry.name] = key;
 }
 
@@ -90,4 +92,4 @@ void* Registry::thunk(const std::string& name) const
     return it == thunks_.end() ? nullptr : it->second.fn;
 }
 
-}  // namespace spp
+} // namespace spp

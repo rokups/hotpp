@@ -1,14 +1,14 @@
 // Tests for the parser of throw, try, catch and finally.
-#include <gtest/gtest.h>
-
-#include <string>
-#include <vector>
-
 #include "emit.h"
 #include "parser/expression.h"
 #include "parser/parser.h"
 #include "parser/statement.h"
 #include "support/statement_parse_test_support.h"
+
+#include <gtest/gtest.h>
+
+#include <string>
+#include <vector>
 
 using namespace sppc;
 using namespace stmt_test;
@@ -18,19 +18,19 @@ TEST(TryCatchFinallyParse, Exceptions)
     EXPECT_EQ(round_trip("throw 42;"), "throw 42;");
     EXPECT_EQ(round_trip("throw;"), "throw;");
     EXPECT_EQ(round_trip("throw std.runtime_error(\"x\");"), "throw std::runtime_error(\"x\");");
-    EXPECT_EQ(round_trip("try { f(); } catch (int e) { g(e); }"),
-              "try { f(); } catch (int32_t e) { g(e); }");
+    EXPECT_EQ(round_trip("try { f(); } catch (int e) { g(e); }"), "try { f(); } catch (int32_t e) { g(e); }");
     EXPECT_EQ(round_trip("try { f(); } catch (std.exception& e) { g(); }\n"
                          "catch (const std.string& m) { throw; } catch (...) { }"),
-              "try { f(); } catch (std::exception& e) { g(); } "
-              "catch (const std::string& m) { throw; } catch (...) {}");
+        "try { f(); } catch (std::exception& e) { g(); } "
+        "catch (const std::string& m) { throw; } catch (...) {}");
     EXPECT_EQ(round_trip("try { try { throw 1; } catch (...) { throw; } } catch (int e) { }"),
-              "try { try { throw 1; } catch (...) { throw; } } catch (int32_t e) {}");
+        "try { try { throw 1; } catch (...) { throw; } } catch (int32_t e) {}");
     // The words are keywords only as whole words.
     Parsed p("tryit = 1; thrown = 2; catcher(3);");
     EXPECT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
     EXPECT_EQ(p.block.stmts.size(), 3u);
-    for (const auto& s : p.block.stmts) EXPECT_TRUE(std::holds_alternative<ast::ExprStmt>(s->v));
+    for (const auto& s : p.block.stmts)
+        EXPECT_TRUE(std::holds_alternative<ast::ExprStmt>(s->v));
     {
         Parsed q("try { f(); } catch (int e) { }\nthrow;");
         ASSERT_EQ(q.block.stmts.size(), 2u);
@@ -78,9 +78,8 @@ TEST(TryCatchFinallyParse, Finally)
         EXPECT_FALSE(t->finally_block.has_value());
     }
     EXPECT_EQ(round_trip("try { f(); } catch (int e) { } finally { g(); }"),
-              "{ spp::Finally __fin_0([&] { g(); }); try { f(); } catch (int32_t e) {} }");
-    EXPECT_EQ(round_trip("try { f(); } finally { }"),
-              "{ spp::Finally __fin_0([&] {}); { f(); } }");
+        "{ spp::Finally __fin_0([&] { g(); }); try { f(); } catch (int32_t e) {} }");
+    EXPECT_EQ(round_trip("try { f(); } finally { }"), "{ spp::Finally __fin_0([&] {}); { f(); } }");
     {
         // "finally" is a reserved word, so a name cannot be "finally".
         Parsed p("try { f(); } finally;");
@@ -92,30 +91,26 @@ TEST(TryCatchFinallyParse, ExceptionErrors)
 {
     {
         Parsed p("try { f(); }\nb = 1;");
-        EXPECT_EQ(errors_of(p), (std::vector<std::string>{"2:1: expected 'catch' or 'finally'"}))
-            << p.diag.format("t");
+        EXPECT_EQ(errors_of(p), (std::vector<std::string>{"2:1: expected 'catch' or 'finally'"})) << p.diag.format("t");
     }
     {
         // A type without a name is not supported.
         Parsed p("a = 1;\ntry { f(); } catch (int) { }\nc = 2;");
-        EXPECT_EQ(errors_of(p), (std::vector<std::string>{"2:21: expected a name"}))
-            << p.diag.format("t");
+        EXPECT_EQ(errors_of(p), (std::vector<std::string>{"2:21: expected a name"})) << p.diag.format("t");
         EXPECT_EQ(p.printed(), "a = 1; c = 2;");
     }
     {
         Parsed p("try { } catch (std::exception& e) { }");
-        EXPECT_EQ(errors_of(p), (std::vector<std::string>{"1:19: use '.' instead of '::'"}))
-            << p.diag.format("t");
+        EXPECT_EQ(errors_of(p), (std::vector<std::string>{"1:19: use '.' instead of '::'"})) << p.diag.format("t");
     }
     {
         Parsed p("try { } catch () { }");
-        EXPECT_EQ(errors_of(p), (std::vector<std::string>{"1:16: expected a type"}))
-            << p.diag.format("t");
+        EXPECT_EQ(errors_of(p), (std::vector<std::string>{"1:16: expected a type"})) << p.diag.format("t");
     }
     {
         // A pointer type and a qualified type.
         EXPECT_EQ(round_trip("try { f(); } catch (Actor* a) { } catch (std.runtime_error e) { }"),
-                  "try { f(); } catch (Actor* a) {} catch (std::runtime_error e) {}");
+            "try { f(); } catch (Actor* a) {} catch (std::runtime_error e) {}");
     }
     {
         // The statements after a broken throw stay.

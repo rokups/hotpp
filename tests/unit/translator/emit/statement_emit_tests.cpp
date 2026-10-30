@@ -1,10 +1,10 @@
 // Tests for the printer of the statements: declarations, if, loops, switch, try and finally.
+#include "emit.h"
+#include "support/emit_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
-
-#include "emit.h"
-#include "support/emit_test_support.h"
 
 using namespace sppc::ast;
 using namespace emit_test;
@@ -45,8 +45,7 @@ TEST(StatementEmit, TryCatchThrow)
     c2.block = BlockStmt{slist(make_stmt(ThrowStmt{})), 0, 0};
     t.catches.push_back(std::move(c1));
     t.catches.push_back(std::move(c2));
-    EXPECT_EQ(print(*make_stmt(std::move(t))),
-              "try { throw 1; } catch (int e) { f; } catch (...) { throw; }");
+    EXPECT_EQ(print(*make_stmt(std::move(t))), "try { throw 1; } catch (int e) { f; } catch (...) { throw; }");
 }
 
 TEST(StatementEmit, TryFinally)
@@ -59,8 +58,8 @@ TEST(StatementEmit, TryFinally)
     c.block = BlockStmt{slist(make_stmt(ThrowStmt{})), 0, 0};
     t.catches.push_back(std::move(c));
     t.finally_block = BlockStmt{slist(es(id("g"))), 0, 0};
-    EXPECT_EQ(print(*make_stmt(std::move(t))),
-              "{ spp::Finally __fin_0([&] { g; }); try { f; } catch (...) { throw; } }");
+    EXPECT_EQ(
+        print(*make_stmt(std::move(t))), "{ spp::Finally __fin_0([&] { g; }); try { f; } catch (...) { throw; } }");
 
     // Without a catch clause: the body is a plain block. A nested try gets the next name.
     TryStmt inner;
@@ -70,8 +69,8 @@ TEST(StatementEmit, TryFinally)
     outer.block = BlockStmt{slist(make_stmt(std::move(inner))), 0, 0};
     outer.finally_block = BlockStmt{slist(es(id("c"))), 0, 0};
     EXPECT_EQ(print(*make_stmt(std::move(outer))),
-              "{ spp::Finally __fin_0([&] { c; }); "
-              "{ { spp::Finally __fin_1([&] { b; }); { a; } } } }");
+        "{ spp::Finally __fin_0([&] { c; }); "
+        "{ { spp::Finally __fin_1([&] { b; }); { a; } } } }");
 }
 
 TEST(StatementEmit, ElseIfAndWhile)
@@ -139,6 +138,5 @@ TEST(StatementEmit, Switch)
     d.stmts = slist(make_stmt(ReturnStmt{num("0")}));
     s.cases.push_back(std::move(a));
     s.cases.push_back(std::move(d));
-    EXPECT_EQ(print(*make_stmt(std::move(s))),
-              "switch (k) { case 1: case 2: x = 1; break; default: return 0; }");
+    EXPECT_EQ(print(*make_stmt(std::move(s))), "switch (k) { case 1: case 2: x = 1; break; default: return 0; }");
 }

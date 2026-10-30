@@ -2,26 +2,33 @@
 #pragma once
 #include <cstdint>
 
-namespace spp {
+namespace spp
+{
 
 struct ShellBase;
 struct StateLayout;
 
 // An opaque state type. A slot holds a pointer to a member function of the script state. The
 // runtime stores it as a member of this type and casts it back at the call (shell.h).
-struct StateBase {
-    void* __removed();  // the slot of a removed class (loader.cpp)
+struct StateBase
+{
+    void* __removed(); // the slot of a removed class (loader.cpp)
 };
 using SlotFn = void (StateBase::*)();
 class OldState;
 
 // Tag type. It marks the constructor of a shell that the script runtime makes.
-struct Construct {};
+struct Construct
+{
+};
 // Tag type. A derived shell (design 4.5) gives it to the shell of its script parent. That
 // constructor builds the native base only. The derived shell makes the state block.
-struct ConstructChild {};
+struct ConstructChild
+{
+};
 
-enum FieldFlags : uint8_t {
+enum FieldFlags : uint8_t
+{
     kTriviallyCopyable = 1,
     kNothrowMove = 2,
     kScriptStruct = 4,
@@ -32,15 +39,16 @@ enum FieldFlags : uint8_t {
 };
 
 // One row of the reflection table of a state struct (section 4.7).
-struct FieldInfo {
-    const char* name;      // stable field identifier
-    const char* alias;     // previous name from [alias("...")], or null
-    const char* type_key;  // mangled C++ type name of the field
+struct FieldInfo
+{
+    const char* name; // stable field identifier
+    const char* alias; // previous name from [alias("...")], or null
+    const char* type_key; // mangled C++ type name of the field
     uint32_t offset, size, align;
     uint8_t flags;
-    void (*init)(void* self, void* field);     // runs the field initializer
-    void (*move)(void* dst, const void* src);  // move-construct
-    void (*destroy)(void* field);              // null for a trivial type
+    void (*init)(void* self, void* field); // runs the field initializer
+    void (*move)(void* dst, const void* src); // move-construct
+    void (*destroy)(void* field); // null for a trivial type
     // Optional convert hook for a change of the field type. "convert_from" is the type key
     // of the parameter. The hook runs when the old field has that type key. "dst" is raw
     // memory. The hook constructs the new field there. Both members are null without a hook.
@@ -52,7 +60,8 @@ struct FieldInfo {
 };
 
 // Size, alignment and fields of the state struct of one generation.
-struct StateLayout {
+struct StateLayout
+{
     const char* name;
     uint32_t size, align;
     uint32_t field_count;
@@ -62,17 +71,18 @@ struct StateLayout {
 };
 
 // Runtime record of a script class. It lives as long as the session.
-struct ClassRecord {
+struct ClassRecord
+{
     const char* name;
     uint32_t generation;
-    const SlotFn* slots;  // dispatch table: one entry for each slot
+    const SlotFn* slots; // dispatch table: one entry for each slot
     uint32_t slot_count;
     const StateLayout* layout;
     ClassRecord* super;
     // The names of the native bases: the primary base, then the interface bases, with ", "
     // between them (design 4.4). For example "Actor, IDamageable".
     const char* base_name;
-    uint64_t shell_hash;    // hash of the shell layout (see shell_layout_hash)
+    uint64_t shell_hash; // hash of the shell layout (see shell_layout_hash)
     // The onReload hook of the script class, or null. The commit calls it after the migration.
     void (*on_reload)(ShellBase* self, const OldState& old) = nullptr;
     // Script constructors (design 7.3). The canonical record of a class keeps "construct" and
@@ -113,4 +123,4 @@ struct ClassRecord {
     const char* const* construct_keys = nullptr;
 };
 
-}  // namespace spp
+} // namespace spp

@@ -1,10 +1,10 @@
 // Tests for the printer of the expressions. The tests build the nodes by hand.
+#include "emit.h"
+#include "support/emit_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
-
-#include "emit.h"
-#include "support/emit_test_support.h"
 
 using namespace sppc::ast;
 using namespace emit_test;
@@ -29,7 +29,9 @@ TEST(ExpressionEmit, NestedCalls)
 {
     ExprP inner = call(arrow(id("self"), "Name"), {});
     ExprP e = call(name({"std", "printf"}), list(str("\"%s\""), call(dot(std::move(inner), "c_str"), {})));
-    EXPECT_EQ(print(*e), "std::printf(\"%s\", self->Name()." "c_str())");
+    EXPECT_EQ(print(*e),
+        "std::printf(\"%s\", self->Name()."
+        "c_str())");
 }
 
 TEST(ExpressionEmit, New)

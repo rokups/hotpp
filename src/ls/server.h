@@ -11,13 +11,15 @@
 #include <string>
 #include <vector>
 
-namespace spp::ls {
+namespace spp::ls
+{
 
-struct ServerOptions {
-    std::string clangd = "clangd";          // the clangd binary. Empty: no clangd.
-    std::vector<std::string> include_dirs;  // for the script imports and for the compile
-    std::string resource_dir;               // the Clang resource dir (empty: the default)
-    std::vector<std::string> extra_flags;   // added to the compile command
+struct ServerOptions
+{
+    std::string clangd = "clangd"; // the clangd binary. Empty: no clangd.
+    std::vector<std::string> include_dirs; // for the script imports and for the compile
+    std::string resource_dir; // the Clang resource dir (empty: the default)
+    std::vector<std::string> extra_flags; // added to the compile command
     // The directory of a compile_commands.json from "sppc --compile-commands". clangd gets it
     // (--compile-commands-dir) and runs its background index on the generated files. The
     // server also reads the -I, -isystem and -D flags of the first entry.
@@ -27,7 +29,7 @@ struct ServerOptions {
     std::string index_dir;
     // The directory of the host files (hosts.h). Empty: ".cache/spp/hosts" in each workspace folder.
     std::string hosts_dir;
-    std::string clangd_log;  // the stderr of clangd. Empty: /dev/null.
+    std::string clangd_log; // the stderr of clangd. Empty: /dev/null.
 };
 
 // Runs the server on two file descriptors until "exit" or the end of the input.
@@ -38,7 +40,8 @@ int run_server(int in_fd, int out_fd, const ServerOptions& options);
 // "file" is the name in the directive. "line" is 0-based. Gives no value when no script
 // directive comes before the line. A line in text that the translator writes by itself (after
 // a directive that names the .cpp file) gets the line of the last script directive.
-struct ScriptLine {
+struct ScriptLine
+{
     std::string file;
     int line = 0;
 };
@@ -50,4 +53,4 @@ bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, s
 // The text of the usage message.
 const char* usage_text();
 
-}  // namespace spp::ls
+} // namespace spp::ls

@@ -1,13 +1,13 @@
 // Tests for the errors of the expression parser. Each error has a line, a column and a text.
+#include "emit.h"
+#include "parser/expression.h"
+#include "support/expression_parse_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 #include <variant>
 #include <vector>
-
-#include "emit.h"
-#include "parser/expression.h"
-#include "support/expression_parse_test_support.h"
 
 using namespace sppc;
 using namespace expr_test;

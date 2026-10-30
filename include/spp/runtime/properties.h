@@ -1,21 +1,22 @@
 // Helpers for the property access of the script (lower.h).
 #pragma once
-#include <type_traits>
-#include <utility>
-
 #include "spp/runtime/compat.h"
 #include "spp/runtime/hidden.h"
 
-namespace spp {
+#include <type_traits>
+#include <utility>
+
+namespace spp
+{
 
 // The operators of a compound property write: "o.P += e" uses op_add.
-#define SPP_PROP_OP(name, op)                         \
-    struct name {                                        \
-        template <class A, class B>                      \
-        SPP_HIDDEN auto operator()(A&& a, B&& b) const   \
-        {                                                \
+#define SPP_PROP_OP(name, op) \
+    struct name \
+    { \
+        template <class A, class B> SPP_HIDDEN auto operator()(A&& a, B&& b) const \
+        { \
             return std::forward<A>(a) op std::forward<B>(b); \
-        }                                                \
+        } \
     };
 SPP_PROP_OP(op_add, +)
 SPP_PROP_OP(op_sub, -)
@@ -52,4 +53,4 @@ SPP_HIDDEN T prop_post(T (*get)(O*), void (*set)(O*, T), detail::type_identity_t
     return old;
 }
 
-}  // namespace spp
+} // namespace spp

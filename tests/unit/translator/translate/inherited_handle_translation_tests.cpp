@@ -1,11 +1,11 @@
 // Tests for sppc::translate with a handle stub on a base class: intrusive and shared handles.
+#include "spp/sppc_lib.h"
+#include "support/stub_translate_test_support.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
-
-#include "spp/sppc_lib.h"
-#include "support/translator_test_support.h"
-#include "support/stub_translate_test_support.h"
 
 using namespace translator_test;
 using namespace stub_translate_test;
@@ -21,18 +21,15 @@ TEST(InheritedHandleTranslation, IntrusiveField)
 
 TEST(InheritedHandleTranslation, OwnerIsTheStubClass)
 {
-    const sppc::TranslateResult r =
-        hier_translate(kIntrusiveStub, "    Gadget g;\n    eng.Thing t;\n");
+    const sppc::TranslateResult r = hier_translate(kIntrusiveStub, "    Gadget g;\n    eng.Thing t;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "    spp::Intrusive<Gadget, &Object::AddRef, &Object::Release> g;\n")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "    spp::Intrusive<eng::Thing, &Object::AddRef, &Object::Release> t;\n"))
-        << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "    spp::Intrusive<eng::Thing, &Object::AddRef, &Object::Release> t;\n")) << r.cpp;
 }
 
 TEST(InheritedHandleTranslation, ParamReturnLocalAndNew)
 {
-    const sppc::TranslateResult r = hier_translate(
-        kIntrusiveStub,
+    const sppc::TranslateResult r = hier_translate(kIntrusiveStub,
         "    Item item;\n"
         "    void Put(Item i) { this.item = i; }\n"
         "    Item Get() { Item x = this.item; return x; }\n"
@@ -53,8 +50,7 @@ TEST(InheritedHandleTranslation, SharedPtrBase)
 
 TEST(InheritedHandleTranslation, ExactStubWins)
 {
-    const std::string stubs =
-        std::string(kIntrusiveStub) + "[native, handle(\"std::shared_ptr<$T>\")] class Item;\n";
+    const std::string stubs = std::string(kIntrusiveStub) + "[native, handle(\"std::shared_ptr<$T>\")] class Item;\n";
     const sppc::TranslateResult r = hier_translate(stubs, "    Item item;\n    Gadget g;\n    Object o;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "    std::shared_ptr<Item> item;\n")) << r.cpp;
@@ -64,8 +60,7 @@ TEST(InheritedHandleTranslation, ExactStubWins)
 
 TEST(InheritedHandleTranslation, ValueBaseIsNotInherited)
 {
-    const sppc::TranslateResult r =
-        hier_translate("[native, value] class Flat;\n", "    FlatKid kid;\n");
+    const sppc::TranslateResult r = hier_translate("[native, value] class Flat;\n", "    FlatKid kid;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "    FlatKid kid;\n")) << r.cpp;
 }

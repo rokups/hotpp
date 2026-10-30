@@ -3,10 +3,20 @@
 
 int Object::live = 0;
 
-Object::Object() { ++live; }
-Object::~Object() { --live; }
-void Object::AddRef() { ++refs; }
+Object::Object()
+{
+    ++live;
+}
+Object::~Object()
+{
+    --live;
+}
+void Object::AddRef()
+{
+    ++refs;
+}
 void Object::Release()
 {
-    if (--refs == 0) delete this;
+    if (--refs == 0)
+        delete this;
 }

@@ -1,14 +1,14 @@
 // Tests for the errors and the positions of the statement parser.
-#include <gtest/gtest.h>
-
-#include <string>
-#include <vector>
-
 #include "emit.h"
 #include "parser/expression.h"
 #include "parser/parser.h"
 #include "parser/statement.h"
 #include "support/statement_parse_test_support.h"
+
+#include <gtest/gtest.h>
+
+#include <string>
+#include <vector>
 
 using namespace sppc;
 using namespace stmt_test;
@@ -18,8 +18,7 @@ TEST(StatementParseError, Errors)
     {
         // Two broken statements give two errors; the good statements stay.
         Parsed p("a = 1;\nb = ;\nc = 2;\nvar = 3;\nd = 4;");
-        EXPECT_EQ(errors_of(p), (std::vector<std::string>{"2:5: expected an expression",
-                                                          "4:5: expected a name"}))
+        EXPECT_EQ(errors_of(p), (std::vector<std::string>{"2:5: expected an expression", "4:5: expected a name"}))
             << p.diag.format("t");
         EXPECT_EQ(p.printed(), "a = 1; c = 2; d = 4;");
     }
@@ -63,8 +62,7 @@ TEST(StatementParseError, Errors)
     }
     {
         Parsed p("a = (1;");
-        EXPECT_EQ(errors_of(p).back().substr(errors_of(p).back().find(' ') + 1),
-                  "unexpected end of file");
+        EXPECT_EQ(errors_of(p).back().substr(errors_of(p).back().find(' ') + 1), "unexpected end of file");
     }
     {
         Parsed p("switch (x) { a(); case 1: b(); }");
@@ -115,7 +113,7 @@ TEST(StatementParseError, OffsetsInBuffer)
     EXPECT_EQ(diag.items[0].msg, "expected an expression");
     // The parser reads only the span.
     Diagnostics d2;
-    ast::BlockStmt part = parse_block({text, &map}, {b, b + 15}, d2);  // up to "x = 1;"
+    ast::BlockStmt part = parse_block({text, &map}, {b, b + 15}, d2); // up to "x = 1;"
     EXPECT_EQ(d2.items.size(), 0u) << d2.format("t");
     EXPECT_EQ(part.stmts.size(), 1u);
 }

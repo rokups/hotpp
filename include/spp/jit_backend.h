@@ -2,26 +2,28 @@
 // load the code with LLVM ORC. No file is written and no process starts.
 #pragma once
 
+#include "spp/backend.h"
+#include "spp/sppc_lib.h"
+
 #include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
 
-#include "spp/backend.h"
-#include "spp/sppc_lib.h"
+namespace spp
+{
 
-namespace spp {
-
-struct JitOptions {
-    std::string compiler = "clang++";       // the driver name; an absolute path finds the toolchain best
-    std::vector<std::string> include_dirs;  // for the script imports and for the compile
-    std::string resource_dir;               // the Clang resource dir (empty: the default)
+struct JitOptions
+{
+    std::string compiler = "clang++"; // the driver name; an absolute path finds the toolchain best
+    std::vector<std::string> include_dirs; // for the script imports and for the compile
+    std::string resource_dir; // the Clang resource dir (empty: the default)
     // The translator cache. Empty: the backend makes its own. Share one to keep the
     // cache between backends.
     std::shared_ptr<sppc::TranslatorSession> session;
-    std::vector<std::string> extra_flags;   // added to the compile command
-    std::string pch_path;                   // optional: a precompiled header for -include-pch
-    bool strict_borrowed = true;            // false: a borrowed-storage finding is a warning
+    std::vector<std::string> extra_flags; // added to the compile command
+    std::string pch_path; // optional: a precompiled header for -include-pch
+    bool strict_borrowed = true; // false: a borrowed-storage finding is a warning
     // True: the error text is the raw output of the compiler. False (the default): it speaks
     // script names (sppc::rewrite_diagnostic).
     bool raw_diagnostics = false;
@@ -34,16 +36,18 @@ struct JitOptions {
     bool debugger_support = true;
 };
 
-struct JitState;  // the LLJIT of the session
+struct JitState; // the LLJIT of the session
 
 // The time of the phases of the last successful or failed load, in milliseconds.
-struct JitTimings {
-    double translate_ms = 0;  // sppc::translate (libclang parses the headers)
-    double compile_ms = 0;    // Clang: parse, Sema, IR generation, IR optimization
-    double jit_ms = 0;        // ORC: code generation, link, static initializers, lookup
+struct JitTimings
+{
+    double translate_ms = 0; // sppc::translate (libclang parses the headers)
+    double compile_ms = 0; // Clang: parse, Sema, IR generation, IR optimization
+    double jit_ms = 0; // ORC: code generation, link, static initializers, lookup
 };
 
-class JitBackend : public Backend {
+class JitBackend : public Backend
+{
 public:
     explicit JitBackend(JitOptions options);
     ~JitBackend() override;
@@ -69,20 +73,21 @@ public:
     bool make_pch(const std::string& header_path, const std::string& out_pch, std::string& error);
 
 private:
-    std::shared_ptr<JitState> impl_;  // a Module keeps a copy: the JIT must outlive the code
+    std::shared_ptr<JitState> impl_; // a Module keeps a copy: the JIT must outlive the code
     JitOptions opt_;
-    std::mutex mutex_;  // one build at a time: the slot text is shared
+    std::mutex mutex_; // one build at a time: the slot text is shared
     // The slot text. A Module keeps a copy of the pointer, so the callback is safe after the backend.
-    struct SlotState {
+    struct SlotState
+    {
         std::mutex mutex;
         std::string text;
     };
     std::shared_ptr<SlotState> slots_ = std::make_shared<SlotState>();
     unsigned sequence_ = 0;
-    unsigned epoch_ = 0;  // counts the fresh loads; it is in the name of the JITDylib
+    unsigned epoch_ = 0; // counts the fresh loads; it is in the name of the JITDylib
     JitTimings timings_;
     bool debugger_support_ = false;
     std::string debugger_error_;
 };
 
-}  // namespace spp
+} // namespace spp

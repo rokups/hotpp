@@ -1,10 +1,6 @@
 // Helpers for the tests of the lowering pass. The fixture is the class "Player : Actor".
 #pragma once
 
-#include <gtest/gtest.h>
-#include <string>
-#include <vector>
-
 #include "emit.h"
 #include "lower.h"
 #include "parser/expression.h"
@@ -12,14 +8,21 @@
 #include "parser/statement.h"
 #include "types.h"
 
-namespace lowering_test {
+#include <gtest/gtest.h>
+
+#include <string>
+#include <vector>
+
+namespace lowering_test
+{
 
 using namespace sppc;
 
 // The class "Player : Actor" with these members.
 //   fields: health float, fired int, n int, target Actor*
 //   fns:    heal
-struct Fixture {
+struct Fixture
+{
     ast::ClassDef cd;
     RCtx cx;
     Diagnostics diag;
@@ -28,7 +31,8 @@ struct Fixture {
     {
         cd.name = "Player";
         cd.base = "Actor";
-        auto field = [&](const char* name, const char* type) {
+        auto field = [&](const char* name, const char* type)
+        {
             ast::Field f;
             f.name = name;
             f.type = type;
@@ -63,7 +67,8 @@ struct Fixture {
         lower_block(b, cx, diag);
         cx.map = nullptr;
         std::string r;
-        for (const ast::StmtP& s : b.stmts) r += (r.empty() ? "" : " ") + ast::print(*s);
+        for (const ast::StmtP& s : b.stmts)
+            r += (r.empty() ? "" : " ") + ast::print(*s);
         return r;
     }
 
@@ -73,7 +78,8 @@ struct Fixture {
         cx.map = &map;
         ast::ExprP e = parse_expression({text, &map}, {0, static_cast<uint32_t>(text.size())}, diag);
         EXPECT_TRUE(e) << text;
-        if (!e) return "";
+        if (!e)
+            return "";
         lower_expr(e, cx, diag);
         cx.map = nullptr;
         return ast::print(*e);
@@ -101,7 +107,8 @@ inline TypeModel stub_model(const char* name, const char* handle, bool is_value 
 // The fixture class with the properties Hp (get and set), Max (get only) and Sink (set only).
 inline void add_props(Fixture& f)
 {
-    auto prop = [&](const char* name, bool get, bool set) {
+    auto prop = [&](const char* name, bool get, bool set)
+    {
         ast::Property p;
         p.name = name;
         p.type = "float";
@@ -115,4 +122,4 @@ inline void add_props(Fixture& f)
     f.cx = make_class_ctx(f.cd);
 }
 
-}  // namespace lowering_test
+} // namespace lowering_test

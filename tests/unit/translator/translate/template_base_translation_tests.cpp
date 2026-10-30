@@ -1,15 +1,16 @@
 // Tests for sppc::translate with native bases that come from a class template (design risk 8,
 // experiment F1). The script names a plain class. The class can derive from a template instance.
+#include "spp/sppc_lib.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "spp/sppc_lib.h"
-#include "support/translator_test_support.h"
-
 using namespace translator_test;
 
-namespace {
+namespace
+{
 
 const char* kTemplateHeader =
     "template <class T> class Tmpl { public: virtual ~Tmpl() {} virtual void Step(T v) {} };\n"
@@ -35,9 +36,12 @@ sppc::TranslateResult run(const std::string& classes)
     return sppc::translate(temp_options(dir, "using \"t.h\";\n" + classes));
 }
 
-bool has(const std::string& text, const std::string& part) { return text.find(part) != std::string::npos; }
+bool has(const std::string& text, const std::string& part)
+{
+    return text.find(part) != std::string::npos;
+}
 
-}  // namespace
+} // namespace
 
 // An explicit specialization is a normal class for libclang. Its virtuals get slots.
 TEST(TemplateBaseTranslation, ExplicitSpecializationBaseGivesSlots)
@@ -58,7 +62,6 @@ TEST(TemplateBaseTranslation, ImplicitInstanceBaseGivesSlots)
     EXPECT_TRUE(has(r.cpp, "struct Foo_Shell final : IntBase, spp::ShellBase {")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "void Step(int a0) override")) << r.cpp;
 }
-
 
 // A wrong signature still gives an error: the parameter type is int, not float.
 TEST(TemplateBaseTranslation, ImplicitInstanceBaseChecksSignature)

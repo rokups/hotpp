@@ -6,24 +6,31 @@
 //    a new output line with a "#line" directive and the indentation.
 #pragma once
 
+#include "ast.h"
+#include "diag.h"
+
 #include <string>
 #include <string_view>
 #include <vector>
 
-#include "ast.h"
-#include "diag.h"
+namespace sppc::ast
+{
 
-namespace sppc::ast {
-
-class Emitter {
+class Emitter
+{
 public:
-    Emitter() = default;  // plain mode
+    Emitter() = default; // plain mode
     // Line mode. The map must live as long as the Emitter.
-    Emitter(const LineMap& map, std::string file) : map_(&map), file_(std::move(file)) {}
+    Emitter(const LineMap& map, std::string file)
+        : map_(&map)
+        , file_(std::move(file))
+    {
+    }
 
     // A leaf with a script position: the script byte offset, and the byte range that the leaf
     // fills in text(). Line mode records one for each leaf with a pos. Plain mode records none.
-    struct Segment {
+    struct Segment
+    {
         uint32_t pos = 0, gen_begin = 0, gen_len = 0;
     };
     const std::vector<Segment>& segments() const { return segments_; }
@@ -49,13 +56,13 @@ public:
     const std::string& text() const { return out_; }
     int source_line() const { return line_; }
 
-    int depth = 0;  // the indentation level; each "{" adds 1 and each "}" removes 1
+    int depth = 0; // the indentation level; each "{" adds 1 and each "}" removes 1
 
 private:
     const LineMap* map_ = nullptr;
     std::string file_;
     std::string out_;
-    int line_ = 0;  // the script line of the last "#line"; 0: none yet
+    int line_ = 0; // the script line of the last "#line"; 0: none yet
     bool space_ = false;
     int finally_count_ = 0;
     std::vector<Segment> segments_;
@@ -75,4 +82,4 @@ std::string print(const Stmt& s);
 // Line mode text of one statement, with the last line end.
 std::string print_lines(const Stmt& s, const LineMap& map, const std::string& file, int depth);
 
-}  // namespace sppc::ast
+} // namespace sppc::ast

@@ -2,19 +2,20 @@
 // The scripts must compile and run: default values and a for-of loop over a temporary.
 //
 // CMake defines the macro SPP_SOURCE_DIR.
+#include "Weapon.h"
+#include "spp/backend.h"
+#include "support/backend_fixture.h"
+#include "support/script_files.h"
+#include "support/test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <memory>
 #include <stdexcept>
 #include <string>
 
-#include "spp/backend.h"
-#include "support/backend_fixture.h"
-#include "support/script_files.h"
-#include "support/test_support.h"
-#include "Weapon.h"
-
-namespace {
+namespace
+{
 
 using test_support::kDt;
 using test_support::Session;
@@ -75,4 +76,4 @@ class Player : Actor {
     EXPECT_EQ(*s.field("total"), 6.0f);
 }
 
-}  // namespace
+} // namespace

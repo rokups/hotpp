@@ -1,20 +1,21 @@
 // Tests for the parser of a string with "${expr}" (design 7.3, DECISIONS item 10).
 // The printer writes the script form of the unlowered node.
+#include "emit.h"
+#include "parser/expression.h"
+#include "support/expression_parse_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 #include <variant>
-
-#include "emit.h"
-#include "parser/expression.h"
-#include "support/expression_parse_test_support.h"
 
 using namespace sppc;
 using namespace expr_test;
 
 TEST(StringInterpolationParse, PlainStringStaysALiteral)
 {
-    for (const char* t : {"\"hp\"", "\"a {b} c\"", "\"price $5\"", "\"\""}) {
+    for (const char* t : {"\"hp\"", "\"a {b} c\"", "\"price $5\"", "\"\""})
+    {
         Parsed p(t);
         ASSERT_TRUE(p.expr != nullptr) << t;
         EXPECT_TRUE(std::holds_alternative<ast::StringExpr>(p.expr->v)) << t;
@@ -35,7 +36,8 @@ TEST(StringInterpolationParse, ExpressionParts)
     EXPECT_EQ(ip->lits[2], "!");
     EXPECT_TRUE(std::holds_alternative<ast::NameExpr>(ip->args[0]->v));
     EXPECT_TRUE(std::holds_alternative<ast::CallExpr>(ip->args[1]->v));
-    EXPECT_EQ(round_trip("\"hp = ${hp}, name ${p.Name()}!\""), "\"hp = ${hp}, name ${p::Name()}!\"");  // the printer writes C++ scope
+    EXPECT_EQ(round_trip("\"hp = ${hp}, name ${p.Name()}!\""),
+        "\"hp = ${hp}, name ${p::Name()}!\""); // the printer writes C++ scope
 }
 
 TEST(StringInterpolationParse, FormatSpec)

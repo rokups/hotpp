@@ -1,23 +1,23 @@
 // Reload tests of the script constructor, the destructor and "new" of a script class (S4)
 // with the backend that SPP_BACKEND selected.
-#include <gtest/gtest.h>
-
-#include <string>
-
 #include "spp/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 
-namespace {
+#include <gtest/gtest.h>
+
+#include <string>
+
+namespace
+{
 
 using test_support::kDt;
 using test_support::Session;
 using test_support::source;
 
-template <class T>
-T* fld(Session& s, const char* name)
+template <class T> T* fld(Session& s, const char* name)
 {
     return spp::field_ptr<T>(s.inst.shell, name);
 }
@@ -35,8 +35,8 @@ TEST_P(BackendTests, NewBuildsAScriptObjectAndRunsTheConstructor)
     s.world.Tick(kDt);
     const std::string log = testing::internal::GetCapturedStdout();
     EXPECT_EQ(*fld<int>(s, "spawned"), 2);
-    EXPECT_EQ(*fld<std::string>(s, "last"), "unit");  // base(label) reached the base
-    EXPECT_EQ(*fld<float>(s, "seen_x"), 2.0f);        // the constructor body ran
+    EXPECT_EQ(*fld<std::string>(s, "last"), "unit"); // base(label) reached the base
+    EXPECT_EQ(*fld<float>(s, "seen_x"), 2.0f); // the constructor body ran
     // The second "new" replaced the first Squad. Its destructor ran once.
     EXPECT_NE(log.find("[ctor_v1] unit gone"), std::string::npos) << log;
 }
@@ -69,16 +69,16 @@ TEST_P(BackendTests, ReloadDoesNotRerunTheConstructor)
 
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    s.world.Tick(kDt);  // the commit happens at the end of this frame
+    s.world.Tick(kDt); // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);
     testing::internal::CaptureStdout();
-    s.world.Tick(kDt);  // the first Tick of generation 2
+    s.world.Tick(kDt); // the first Tick of generation 2
     const std::string log = testing::internal::GetCapturedStdout();
     // The Squad of the frame before was built by generation 1. The destructor of generation 2 runs.
     EXPECT_NE(log.find("[ctor_v2] unit gone"), std::string::npos) << log;
     EXPECT_EQ(*fld<int>(s, "spawned"), 3);
-    EXPECT_EQ(*fld<float>(s, "seen_x"), 20.0f);  // the new Squad uses the constructor of generation 2
+    EXPECT_EQ(*fld<float>(s, "seen_x"), 20.0f); // the new Squad uses the constructor of generation 2
 }
 
 // A Squad that exists before the reload keeps its state. The constructor does not run again.
@@ -100,4 +100,4 @@ TEST_P(BackendTests, OldObjectKeepsItsConstructorState)
     EXPECT_EQ(*fld<int>(s, "size"), 5);
 }
 
-}  // namespace
+} // namespace

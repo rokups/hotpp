@@ -1,24 +1,27 @@
 // Tests for the parser of the constructor, the base call and the destructor of a script class.
+#include "parser/parser.h"
+#include "parser/statement.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "parser/parser.h"
-#include "parser/statement.h"
-
 using namespace sppc;
 
-namespace {
+namespace
+{
 
-struct Parsed {
+struct Parsed
+{
     std::string text;
     LineMap map;
     Diagnostics diag;
     ast::Script script;
     explicit Parsed(std::string body)
-        : text("class A : B {\n" + std::move(body) + "\n}\n"), map(text)
+        : text("class A : B {\n" + std::move(body) + "\n}\n")
+        , map(text)
     {
         script = parse_script(text, map, diag);
     }
@@ -26,7 +29,7 @@ struct Parsed {
     const ast::ClassDef& cls() const { return script.classes.at(0); }
 };
 
-}  // namespace
+} // namespace
 
 TEST(ConstructorParse, ConstructorWithSuperCall)
 {
@@ -90,7 +93,8 @@ TEST(ConstructorParse, Errors)
              {"A() : other() { }", "expected 'base(...)' after ':' of a constructor"},
              {"override A() { }", "'override' is not valid on a constructor"},
              {"virtual ~A() { }", "'virtual' is not valid on a destructor"},
-         }) {
+         })
+    {
         Parsed p("    " + text);
         ASSERT_FALSE(p.diag.items.empty()) << text;
         EXPECT_NE(p.errors().find(msg), std::string::npos) << text << ": " << p.errors();
@@ -160,7 +164,8 @@ TEST(ClassKindParse, OneBaseHasNoInterfaces)
 TEST(ClassKindParse, BadBaseListIsAnError)
 {
     for (const char* text : {"class Boss : Actor, { }\n", "class Boss : Actor IDamageable { }\n",
-                             "class Boss : , Actor { }\n", "class Boss : Actor, game::I { }\n"}) {
+             "class Boss : , Actor { }\n", "class Boss : Actor, game::I { }\n"})
+    {
         const LineMap map(text);
         Diagnostics diag;
         (void)parse_script(text, map, diag);

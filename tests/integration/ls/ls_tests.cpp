@@ -1,5 +1,12 @@
 // Tests for spp-ls (S14b, design M12 to M14). One test for each feature. The tests that need
 // clangd are skipped when CMake did not find clangd.
+#include "clangd_process.h"
+#include "integration/ls/ls_client.h"
+#include "spp/clang_files_backend.h"
+#include "spp/sppc_lib.h"
+#include "support/translator_test_support.h"
+#include "symbol_index.h"
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -11,19 +18,13 @@
 #include <string>
 #include <vector>
 
-#include "clangd_process.h"
-#include "integration/ls/ls_client.h"
-#include "spp/clang_files_backend.h"
-#include "spp/sppc_lib.h"
-#include "symbol_index.h"
-#include "support/translator_test_support.h"
-
 using ls_test::json;
 using ls_test::LsClient;
 using translator_test::TempDir;
 using translator_test::write_file;
 
-namespace {
+namespace
+{
 
 // The 0-based lines: 0 using, 2 class, 3 hp, 5 Tick, 6 Move, 7 heal call, 10 heal, 11 hp.
 const char* const kScript =
@@ -42,11 +43,16 @@ const char* const kScript =
     "    }\n"
     "}\n";
 
-bool have_clangd() { return std::string(SPP_CLANGD_PATH).size() > 0; }
+bool have_clangd()
+{
+    return std::string(SPP_CLANGD_PATH).size() > 0;
+}
 
-#define REQUIRE_CLANGD()                                              \
-    do {                                                              \
-        if (!have_clangd()) GTEST_SKIP() << "clangd is not installed"; \
+#define REQUIRE_CLANGD() \
+    do \
+    { \
+        if (!have_clangd()) \
+            GTEST_SKIP() << "clangd is not installed"; \
     } while (0)
 
 spp::ls::ServerOptions options(const TempDir& dir, bool clangd)
@@ -60,9 +66,15 @@ spp::ls::ServerOptions options(const TempDir& dir, bool clangd)
     return o;
 }
 
-std::string uri_of(const std::string& path) { return "file://" + path; }
+std::string uri_of(const std::string& path)
+{
+    return "file://" + path;
+}
 
-json pos(int line, int character) { return {{"line", line}, {"character", character}}; }
+json pos(int line, int character)
+{
+    return {{"line", line}, {"character", character}};
+}
 
 json doc_pos(const std::string& uri, int line, int character)
 {
@@ -70,7 +82,8 @@ json doc_pos(const std::string& uri, int line, int character)
 }
 
 // A server with the script open. The script file is on disk too.
-struct Session {
+struct Session
+{
     TempDir dir;
     std::string path, uri;
     std::unique_ptr<LsClient> client;
@@ -86,9 +99,8 @@ struct Session {
     // Waits for the diagnostics of the script that "match" accepts.
     json diagnostics(const std::function<bool(const json&)>& match)
     {
-        return client->wait_notification("textDocument/publishDiagnostics", [&](const json& p) {
-            return p.value("uri", std::string()) == uri && match(p["diagnostics"]);
-        });
+        return client->wait_notification("textDocument/publishDiagnostics",
+            [&](const json& p) { return p.value("uri", std::string()) == uri && match(p["diagnostics"]); });
     }
 };
 
@@ -97,7 +109,7 @@ bool has_source(const json& diags, const std::string& source)
     return std::any_of(diags.begin(), diags.end(), [&](const json& d) { return d.value("source", "") == source; });
 }
 
-}  // namespace
+} // namespace
 
 // ------------------------------------------------------------------ M12: diagnostics
 
@@ -124,10 +136,13 @@ TEST(LanguageServer, ClangdTypeErrorIsAtTheScriptLine)
     const json n = s.diagnostics([](const json& d) { return has_source(d, "clangd"); });
     ASSERT_FALSE(n.is_null()) << "no clangd diagnostics";
     bool found = false;
-    for (const json& d : n["params"]["diagnostics"]) {
-        if (d.value("source", "") != "clangd") continue;
+    for (const json& d : n["params"]["diagnostics"])
+    {
+        if (d.value("source", "") != "clangd")
+            continue;
         const std::string msg = d.value("message", "");
-        if (msg.find("initialize") == std::string::npos) continue;
+        if (msg.find("initialize") == std::string::npos)
+            continue;
         found = true;
         // clangd puts the error on the variable "x" (character 12).
         EXPECT_EQ(d["range"]["start"]["line"], 11) << d.dump();
@@ -154,16 +169,19 @@ TEST(LanguageServer, ClangdDiagnosticStaysAfterAnEditThatGivesTheSameCpp)
     s.client->change(s.uri, 2, t2);
     // The last publish of the script must still have the diagnostic.
     json last;
-    for (;;) {
+    for (;;)
+    {
         const json n = s.client->wait_notification("textDocument/publishDiagnostics",
-                                                   [&](const json& p) { return p.value("uri", std::string()) == s.uri; }, 5000);
-        if (n.is_null()) break;
+            [&](const json& p) { return p.value("uri", std::string()) == s.uri; }, 5000);
+        if (n.is_null())
+            break;
         last = n;
     }
     ASSERT_FALSE(last.is_null());
     bool found = false;
     for (const json& d : last["params"]["diagnostics"])
-        if (d.value("source", "") == "clangd" && d["range"]["start"]["line"] == 11) found = true;
+        if (d.value("source", "") == "clangd" && d["range"]["start"]["line"] == 11)
+            found = true;
     EXPECT_TRUE(found) << last.dump();
 }
 
@@ -178,13 +196,14 @@ TEST(LanguageServer, CompletionAfterThisListsNativeAndScriptMembers)
     const json r = s.client->request("textDocument/completion", doc_pos(s.uri, 11, 13));
     ASSERT_TRUE(r.contains("result")) << r.dump();
     std::vector<std::string> labels;
-    for (const json& i : r["result"]["items"]) labels.push_back(i.value("insertText", i.value("label", "")));
+    for (const json& i : r["result"]["items"])
+        labels.push_back(i.value("insertText", i.value("label", "")));
     auto has = [&](const char* n) { return std::find(labels.begin(), labels.end(), n) != labels.end(); };
-    EXPECT_TRUE(has("Move")) << r.dump();      // a native member of Actor
-    EXPECT_TRUE(has("Position")) << r.dump();  // a native field of Actor
-    EXPECT_TRUE(has("hp"));                    // a script field
-    EXPECT_TRUE(has("heal"));                  // a script method
-    EXPECT_FALSE(has("cls"));                  // spp::ShellBase is hidden
+    EXPECT_TRUE(has("Move")) << r.dump(); // a native member of Actor
+    EXPECT_TRUE(has("Position")) << r.dump(); // a native field of Actor
+    EXPECT_TRUE(has("hp")); // a script field
+    EXPECT_TRUE(has("heal")); // a script method
+    EXPECT_FALSE(has("cls")); // spp::ShellBase is hidden
     EXPECT_FALSE(has("state"));
 }
 
@@ -213,7 +232,8 @@ TEST(LanguageServer, DefinitionOfAScriptMethodIsInTheScript)
 }
 
 // S30 (a): the translation fails, so clangd keeps the last good C++. The positions go through
-// the edit. The call of heal moves two lines down. A missing import makes the translation fail. The definition is still found.
+// the edit. The call of heal moves two lines down. A missing import makes the translation fail. The definition is still
+// found.
 TEST(LanguageServer, DefinitionAfterATranslationErrorUsesTheShiftedPositions)
 {
     REQUIRE_CLANGD();
@@ -242,13 +262,17 @@ TEST(LanguageServer, DiagnosticWithoutASegmentGetsTheColumnOfTheWord)
     std::string text = kScript;
     text.replace(text.find("this.hp = this.hp + amount;"), 27, "this.heal(\"a\", 2);");
     Session s(true, text);
-    const json n = s.diagnostics([](const json& d) {
-        return std::any_of(d.begin(), d.end(), [](const json& x) { return x.value("message", "").find("not viable") != std::string::npos; });
+    const json n = s.diagnostics([](const json& d)
+    {
+        return std::any_of(d.begin(), d.end(),
+            [](const json& x) { return x.value("message", "").find("not viable") != std::string::npos; });
     });
     ASSERT_FALSE(n.is_null());
-    for (const json& d : n["params"]["diagnostics"]) {
-        if (d.value("message", "").find("not viable") == std::string::npos) continue;
-        EXPECT_EQ(d["range"]["start"], pos(10, 9)) << d.dump();  // the name "heal" in the definition line
+    for (const json& d : n["params"]["diagnostics"])
+    {
+        if (d.value("message", "").find("not viable") == std::string::npos)
+            continue;
+        EXPECT_EQ(d["range"]["start"], pos(10, 9)) << d.dump(); // the name "heal" in the definition line
         EXPECT_EQ(d["range"]["end"], pos(10, 13)) << d.dump();
     }
 }
@@ -277,9 +301,8 @@ TEST(LanguageServer, TranslatorErrorInAnImportedScriptIsPublishedForThatScript)
     write_file(s.dir.path() / "base.spp", kImported);
     s.client->change(s.uri, 2, kImporter);
     const std::string base_uri = uri_of((s.dir.path() / "base.spp").lexically_normal().string());
-    const json n = s.client->wait_notification("textDocument/publishDiagnostics", [&](const json& p) {
-        return p.value("uri", std::string()) == base_uri && !p["diagnostics"].empty();
-    });
+    const json n = s.client->wait_notification("textDocument/publishDiagnostics",
+        [&](const json& p) { return p.value("uri", std::string()) == base_uri && !p["diagnostics"].empty(); });
     ASSERT_FALSE(n.is_null()) << "no diagnostics for the imported script";
     const json& d = n["params"]["diagnostics"][0];
     EXPECT_EQ(d["range"]["start"]["line"], 3) << n.dump();
@@ -295,13 +318,12 @@ TEST(LanguageServer, ClangdErrorInAnImportedScriptIsPublishedForThatScript)
     std::string imported = kImported;
     imported.replace(imported.find("    float hp = 2.0;\n"), 20, "");
     imported.replace(imported.find("void Boost() { }"), 16, "void Boost() { int x = \"abc\"; }");
-    Session s(true);  // the importer comes after the imported script is on disk
+    Session s(true); // the importer comes after the imported script is on disk
     write_file(s.dir.path() / "base.spp", imported);
     s.client->change(s.uri, 2, kImporter);
     const std::string base_uri = uri_of((s.dir.path() / "base.spp").lexically_normal().string());
-    const json n = s.client->wait_notification("textDocument/publishDiagnostics", [&](const json& p) {
-        return p.value("uri", std::string()) == base_uri && has_source(p["diagnostics"], "clangd");
-    });
+    const json n = s.client->wait_notification("textDocument/publishDiagnostics", [&](const json& p)
+    { return p.value("uri", std::string()) == base_uri && has_source(p["diagnostics"], "clangd"); });
     ASSERT_FALSE(n.is_null()) << "no clangd diagnostics for the imported script";
     const json& d = n["params"]["diagnostics"][0];
     EXPECT_EQ(d["range"]["start"]["line"], 4) << n.dump();
@@ -341,11 +363,11 @@ TEST(LanguageServer, ReferencesOfAScriptFieldAreInTheScript)
     REQUIRE_CLANGD();
     Session s(true);
     const json r = s.client->request("textDocument/references",
-                                     {{"textDocument", {{"uri", s.uri}}}, {"position", pos(11, 14)},
-                                      {"context", {{"includeDeclaration", true}}}});
+        {{"textDocument", {{"uri", s.uri}}}, {"position", pos(11, 14)}, {"context", {{"includeDeclaration", true}}}});
     ASSERT_TRUE(r.contains("result") && r["result"].is_array()) << r.dump();
     std::vector<std::pair<int, int>> at;
-    for (const json& l : r["result"]) {
+    for (const json& l : r["result"])
+    {
         EXPECT_EQ(l["uri"], s.uri);
         at.emplace_back(l["range"]["start"]["line"], l["range"]["start"]["character"]);
     }
@@ -364,10 +386,11 @@ TEST(LanguageServer, DocumentSymbolsComeFromAnalyze)
     EXPECT_EQ(c["kind"], 5);
     EXPECT_EQ(c["selectionRange"]["start"]["line"], 2);
     std::vector<std::string> names;
-    for (const json& m : c["children"]) names.push_back(m["name"]);
+    for (const json& m : c["children"])
+        names.push_back(m["name"]);
     EXPECT_EQ(names, (std::vector<std::string>{"hp", "Tick", "heal"}));
-    EXPECT_EQ(c["children"][0]["kind"], 8);  // Field
-    EXPECT_EQ(c["children"][2]["kind"], 6);  // Method
+    EXPECT_EQ(c["children"][0]["kind"], 8); // Field
+    EXPECT_EQ(c["children"][2]["kind"], 6); // Method
     EXPECT_EQ(c["children"][2]["selectionRange"]["start"]["line"], 10);
 }
 
@@ -382,22 +405,22 @@ TEST(LanguageServer, SemanticTokensMarkKeywordsTypesAndMembers)
     // Decode to (line, col, len, type name).
     std::vector<std::tuple<int, int, int, std::string>> tokens;
     int line = 0, col = 0;
-    for (size_t i = 0; i < data.size(); i += 5) {
+    for (size_t i = 0; i < data.size(); i += 5)
+    {
         line += data[i].get<int>();
         col = data[i].get<int>() == 0 ? col + data[i + 1].get<int>() : data[i + 1].get<int>();
         tokens.emplace_back(line, col, data[i + 2].get<int>(), init_types[data[i + 3].get<int>()]);
     }
-    auto has = [&](int l, int c, int n, const char* t) {
-        return std::find(tokens.begin(), tokens.end(), std::make_tuple(l, c, n, std::string(t))) != tokens.end();
-    };
-    EXPECT_TRUE(has(0, 0, 5, "keyword"));   // using
-    EXPECT_TRUE(has(0, 6, 9, "string"));    // "Actor.h"
-    EXPECT_TRUE(has(2, 6, 6, "class"));     // Player
-    EXPECT_TRUE(has(2, 15, 5, "class"));    // Actor
-    EXPECT_TRUE(has(3, 4, 5, "type"));      // float
+    auto has = [&](int l, int c, int n, const char* t)
+    { return std::find(tokens.begin(), tokens.end(), std::make_tuple(l, c, n, std::string(t))) != tokens.end(); };
+    EXPECT_TRUE(has(0, 0, 5, "keyword")); // using
+    EXPECT_TRUE(has(0, 6, 9, "string")); // "Actor.h"
+    EXPECT_TRUE(has(2, 6, 6, "class")); // Player
+    EXPECT_TRUE(has(2, 15, 5, "class")); // Actor
+    EXPECT_TRUE(has(3, 4, 5, "type")); // float
     EXPECT_TRUE(has(3, 10, 2, "property")); // hp
-    EXPECT_TRUE(has(3, 15, 5, "number"));   // 100.0
-    EXPECT_TRUE(has(7, 13, 4, "method"));   // heal
+    EXPECT_TRUE(has(3, 15, 5, "number")); // 100.0
+    EXPECT_TRUE(has(7, 13, 4, "method")); // heal
 }
 
 // ------------------------------------------------------------------ M14: index, C++ to script, rename
@@ -444,7 +467,8 @@ TEST(LanguageServer, RenameOfAScriptFieldChangesEveryUse)
     ASSERT_TRUE(r.contains("result")) << r.dump();
     const json& edits = r["result"]["changes"][s.uri];
     std::vector<std::pair<int, int>> at;
-    for (const json& e : edits) {
+    for (const json& e : edits)
+    {
         EXPECT_EQ(e["newText"], "health");
         EXPECT_EQ(e["range"]["end"]["character"].get<int>() - e["range"]["start"]["character"].get<int>(), 2);
         at.emplace_back(e["range"]["start"]["line"], e["range"]["start"]["character"]);
@@ -485,7 +509,8 @@ TEST(LanguageServer, RenameChangesTheSameSymbolInOtherScriptsOfTheWorkspace)
     ASSERT_TRUE(changes.contains(s.uri)) << r.dump();
     ASSERT_TRUE(changes.contains(uri_of(other_path))) << r.dump();
     std::vector<std::pair<int, int>> at;
-    for (const json& e : changes[uri_of(other_path)]) {
+    for (const json& e : changes[uri_of(other_path)])
+    {
         EXPECT_EQ(e["newText"], "health");
         at.emplace_back(e["range"]["start"]["line"], e["range"]["start"]["character"]);
     }
@@ -502,7 +527,8 @@ TEST(LanguageServer, RenameWorksWhenTheOtherScriptIsOpenToo)
     const std::string other_path = (s.dir.path() / "player_v2.spp").string();
     write_file(other_path, kScript);
     s.client->open(uri_of(other_path), kScript);
-    for (const std::string& uri : {uri_of(other_path), s.uri}) {
+    for (const std::string& uri : {uri_of(other_path), s.uri})
+    {
         json p = doc_pos(uri, 3, 11);
         p["newName"] = "health";
         const json r = s.client->request("textDocument/rename", p);
@@ -536,13 +562,15 @@ TEST(LanguageServer, ReferencesIncludeTheOtherScriptsOfTheWorkspace)
     const std::string other_path = (s.dir.path() / "player_v2.spp").string();
     write_file(other_path, kScript);
     const json r = s.client->request("textDocument/references",
-                                     {{"textDocument", {{"uri", s.uri}}}, {"position", pos(11, 14)},
-                                      {"context", {{"includeDeclaration", true}}}});
+        {{"textDocument", {{"uri", s.uri}}}, {"position", pos(11, 14)}, {"context", {{"includeDeclaration", true}}}});
     ASSERT_TRUE(r.contains("result") && r["result"].is_array()) << r.dump();
     int here = 0, there = 0;
-    for (const json& l : r["result"]) {
-        if (l["uri"] == s.uri) ++here;
-        if (l["uri"] == uri_of(other_path)) ++there;
+    for (const json& l : r["result"])
+    {
+        if (l["uri"] == s.uri)
+            ++here;
+        if (l["uri"] == uri_of(other_path))
+            ++there;
     }
     EXPECT_EQ(here, 3) << r.dump();
     EXPECT_EQ(there, 3) << r.dump();
@@ -569,19 +597,22 @@ TEST(LanguageServer, BackgroundIndexFindsAScriptSymbolInAGeneratedFile)
     co.include_dirs = o.include_dirs;
     const std::string so = (dir.path() / "player.g1.so").string();
     write_file(dir.path() / "compile_commands.json",
-               spp::compile_commands_json({{dir.path().string(), cpp, spp::compile_command(co, cpp, so), so}}));
+        spp::compile_commands_json({{dir.path().string(), cpp, spp::compile_command(co, cpp, so), so}}));
 
     spp::ls::ServerOptions opt = options(dir, true);
-    opt.include_dirs.clear();  // the server reads them from compile_commands.json
+    opt.include_dirs.clear(); // the server reads them from compile_commands.json
     opt.compile_commands_dir = dir.path().string();
     LsClient client(opt);
     client.initialize(uri_of(dir.path().string()));
     json found;
-    for (int i = 0; i < 120 && found.is_null(); ++i) {
+    for (int i = 0; i < 120 && found.is_null(); ++i)
+    {
         const json r = client.request("workspace/symbol", {{"query", "heal"}});
         for (const json& sym : r.value("result", json::array()))
-            if (sym["location"].value("uri", "") == uri_of(script)) found = sym;
-        if (found.is_null()) std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            if (sym["location"].value("uri", "") == uri_of(script))
+                found = sym;
+        if (found.is_null())
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
     ASSERT_FALSE(found.is_null()) << "the index has no script symbol";
     EXPECT_EQ(found["name"], "Player.heal");
@@ -614,23 +645,27 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
     spp::ClangFilesOptions co;
     co.include_dirs = o.include_dirs;
     write_file(root / "compile_commands.json",
-               spp::compile_commands_json({{root.string(), gen, spp::compile_command(co, gen, gen + ".so"), gen + ".so"},
-                                           {root.string(), cpp, spp::compile_command(co, cpp, cpp + ".so"), cpp + ".so"}}));
+        spp::compile_commands_json({{root.string(), gen, spp::compile_command(co, gen, gen + ".so"), gen + ".so"},
+            {root.string(), cpp, spp::compile_command(co, cpp, cpp + ".so"), cpp + ".so"}}));
 
     // The C++ clangd, as the clangd extension starts it.
     std::mutex mu;
     std::vector<json> published;
     spp::ls::ClangdProcess cpp_clangd;
-    ASSERT_TRUE(cpp_clangd.start(SPP_CLANGD_PATH, {"--log=error", "--background-index", "--compile-commands-dir=" + root.string()}, "",
-                                 [&](const json& m) {
-                                     if (m.value("method", std::string()) != "textDocument/publishDiagnostics") return;
-                                     std::lock_guard<std::mutex> lock(mu);
-                                     published.push_back(m["params"]);
-                                 }));
-    const json init = cpp_clangd.request("initialize", {{"processId", nullptr}, {"rootUri", uri_of(root.string())}, {"capabilities", json::object()}}, 30000);
+    ASSERT_TRUE(cpp_clangd.start(SPP_CLANGD_PATH,
+        {"--log=error", "--background-index", "--compile-commands-dir=" + root.string()}, "", [&](const json& m)
+    {
+        if (m.value("method", std::string()) != "textDocument/publishDiagnostics")
+            return;
+        std::lock_guard<std::mutex> lock(mu);
+        published.push_back(m["params"]);
+    }));
+    const json init = cpp_clangd.request("initialize",
+        {{"processId", nullptr}, {"rootUri", uri_of(root.string())}, {"capabilities", json::object()}}, 30000);
     ASSERT_TRUE(init.contains("result")) << init.dump();
     cpp_clangd.notify("initialized", json::object());
-    cpp_clangd.notify("textDocument/didOpen", {{"textDocument", {{"uri", uri_of(cpp)}, {"languageId", "cpp"}, {"version", 1}, {"text", cpp_text}}}});
+    cpp_clangd.notify("textDocument/didOpen",
+        {{"textDocument", {{"uri", uri_of(cpp)}, {"languageId", "cpp"}, {"version", 1}, {"text", cpp_text}}}});
 
     // spp-ls on the same project.
     spp::ls::ServerOptions opt = options(dir, true);
@@ -644,39 +679,46 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
     client.open(uri_of(script), bad);
 
     // Both servers give their own diagnostics.
-    const json spp_diag = client.wait_notification("textDocument/publishDiagnostics", [&](const json& p) {
-        return p.value("uri", std::string()) == uri_of(script) && has_source(p["diagnostics"], "clangd");
-    });
+    const json spp_diag = client.wait_notification("textDocument/publishDiagnostics", [&](const json& p)
+    { return p.value("uri", std::string()) == uri_of(script) && has_source(p["diagnostics"], "clangd"); });
     EXPECT_FALSE(spp_diag.is_null()) << "spp-ls has no clangd diagnostic";
     bool cpp_diag = false;
-    for (int i = 0; i < 100 && !cpp_diag; ++i) {
+    for (int i = 0; i < 100 && !cpp_diag; ++i)
+    {
         {
             std::lock_guard<std::mutex> lock(mu);
             for (const json& p : published)
-                if (p.value("uri", std::string()) == uri_of(cpp) && !p["diagnostics"].empty()) cpp_diag = true;
+                if (p.value("uri", std::string()) == uri_of(cpp) && !p["diagnostics"].empty())
+                    cpp_diag = true;
         }
-        if (!cpp_diag) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if (!cpp_diag)
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     EXPECT_TRUE(cpp_diag) << "the C++ clangd has no diagnostic";
     {
         // The C++ clangd never gets a diagnostic for the script, and spp-ls never for main.cpp.
         std::lock_guard<std::mutex> lock(mu);
-        for (const json& p : published) EXPECT_EQ(p.value("uri", std::string()).find(".spp"), std::string::npos) << p.dump();
+        for (const json& p : published)
+            EXPECT_EQ(p.value("uri", std::string()).find(".spp"), std::string::npos) << p.dump();
     }
 
     // Both background indexes run. The shards of the two clangd processes are in two directories.
     const fs::path cpp_index = root / ".cache" / "clangd" / "index";
     const fs::path spp_index = root / ".cache" / "spp" / "clangd" / ".cache" / "clangd" / "index";
-    auto has_shard = [](const fs::path& dir_, const std::string& stem) {
+    auto has_shard = [](const fs::path& dir_, const std::string& stem)
+    {
         std::error_code ec;
         for (const auto& e : fs::directory_iterator(dir_, ec))
-            if (e.path().filename().string().rfind(stem, 0) == 0) return true;
+            if (e.path().filename().string().rfind(stem, 0) == 0)
+                return true;
         return false;
     };
     bool ready = false;
-    for (int i = 0; i < 120 && !ready; ++i) {
+    for (int i = 0; i < 120 && !ready; ++i)
+    {
         ready = has_shard(cpp_index, "main.cpp.") && has_shard(spp_index, "main.cpp.");
-        if (!ready) std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        if (!ready)
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
     EXPECT_TRUE(ready) << "a background index is missing";
     EXPECT_TRUE(fs::exists(root / ".cache" / "spp" / "clangd" / "compile_commands.json"));
@@ -692,7 +734,8 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
 
 // ------------------------------------------------------------------ S28: saved symbol index
 
-namespace {
+namespace
+{
 
 spp::ls::IndexShard sample_shard()
 {
@@ -711,7 +754,8 @@ spp::ls::IndexShard sample_shard()
 size_t file_count(const std::filesystem::path& dir)
 {
     size_t n = 0;
-    for (const auto& e : std::filesystem::directory_iterator(dir)) {
+    for (const auto& e : std::filesystem::directory_iterator(dir))
+    {
         (void)e;
         ++n;
     }
@@ -724,7 +768,7 @@ int analyzed_files(LsClient& client)
     return r["result"].value("analyzed", -1);
 }
 
-}  // namespace
+} // namespace
 
 TEST(SymbolIndex, DigestCoversTheImportedScripts)
 {
@@ -741,10 +785,10 @@ TEST(SymbolIndex, DigestCoversTheImportedScripts)
     const auto digest = [&] { return spp::ls::SymbolIndex::digest(main, text, {inc}); };
     const std::string before = digest();
     EXPECT_EQ(before, digest());
-    write_file(deep, "class Deep { int x = 1; }\n");  // an import
+    write_file(deep, "class Deep { int x = 1; }\n"); // an import
     const std::string after_deep = digest();
     EXPECT_NE(before, after_deep);
-    write_file(inc + "/far.spp", "class Far { int y = 1; }\n");  // an import of an import
+    write_file(inc + "/far.spp", "class Far { int y = 1; }\n"); // an import of an import
     EXPECT_NE(after_deep, digest());
     // A script with no import has the digest of its text, plus nothing else.
     EXPECT_EQ(spp::ls::SymbolIndex::digest(main, "class A {}\n", {}), spp::ls::SymbolIndex::digest("class A {}\n"));
@@ -816,7 +860,8 @@ TEST(SymbolIndex, ADifferentFormatVersionIsDropped)
     write_file(script, "x");
     ASSERT_TRUE(index.store(script, "d", sample_shard()));
     const std::string file = index.shard_path(script);
-    std::string text = *[&] {
+    std::string text = *[&]
+    {
         std::ifstream in(file, std::ios::binary);
         std::stringstream ss;
         ss << in.rdbuf();
@@ -838,12 +883,14 @@ TEST(SymbolIndex, TheIndexDoesNotGrowAfter1000EditsOfOneFile)
     const std::string script = (dir.path() / "a.spp").string();
     write_file(script, "x");
     std::uintmax_t first_size = 0;
-    for (int i = 0; i < 1000; ++i) {
+    for (int i = 0; i < 1000; ++i)
+    {
         const std::string digest = spp::ls::SymbolIndex::digest("version " + std::to_string(i));
         ASSERT_TRUE(index.store(script, digest, sample_shard()));
-        if (i == 0) first_size = std::filesystem::file_size(index.shard_path(script));
+        if (i == 0)
+            first_size = std::filesystem::file_size(index.shard_path(script));
     }
-    EXPECT_EQ(file_count(dir.path() / "index"), 1u);  // no old shard and no temporary file
+    EXPECT_EQ(file_count(dir.path() / "index"), 1u); // no old shard and no temporary file
     EXPECT_LE(std::filesystem::file_size(index.shard_path(script)), first_size + 16);
 }
 
@@ -863,7 +910,7 @@ TEST(LanguageServer, RenameOnAClosedFileAfterARestartUsesTheIndex)
     const json first = r["result"]["changes"][uri_of(other_path)];
     EXPECT_EQ(analyzed_files(*s.client), 1);
     EXPECT_TRUE(std::filesystem::exists(s.dir.path() / ".cache" / "spp" / "index"));
-    s.client.reset();  // the restart
+    s.client.reset(); // the restart
     s.client = std::make_unique<LsClient>(options(s.dir, false));
     s.client->initialize(uri_of(s.dir.path().string()));
     s.client->open(s.uri, kScript);
@@ -902,7 +949,7 @@ TEST(LanguageServer, MemberRenameOnAClosedFileAfterARestartUsesTheIndex)
     ASSERT_TRUE(r["result"]["changes"].contains(uri_of(other_path))) << r.dump();
     EXPECT_EQ(r["result"]["changes"][uri_of(other_path)].size(), 3u) << r.dump();
     EXPECT_EQ(analyzed_files(*s.client), 1);
-    EXPECT_FALSE(std::filesystem::exists(s.dir.path() / ".cache"));  // --index-dir is used
+    EXPECT_FALSE(std::filesystem::exists(s.dir.path() / ".cache")); // --index-dir is used
     s.client.reset();
     s.client = std::make_unique<LsClient>(o);
     s.client->initialize(uri_of(s.dir.path().string()));
@@ -915,7 +962,8 @@ TEST(LanguageServer, MemberRenameOnAClosedFileAfterARestartUsesTheIndex)
 
 // ------------------------------------------------------------------ S29: completion of all symbols
 
-namespace {
+namespace
+{
 
 // A script with one of each kind of symbol. "@" marks the cursor.
 const char* const kCompleteScript =
@@ -942,7 +990,8 @@ const char* const kCompleteScript =
     "    }\n"
     "}\n";
 
-struct Completion {
+struct Completion
+{
     json result;
     std::vector<std::string> names;
     bool has(const std::string& n) const { return std::find(names.begin(), names.end(), n) != names.end(); }
@@ -954,11 +1003,15 @@ Completion complete_at(bool clangd, std::string text, const std::string& replace
     const size_t at = text.find('@');
     text.replace(at, 1, replace);
     int line = 0, col = 0;
-    for (size_t i = 0; i < at; ++i) {
-        if (text[i] == '\n') {
+    for (size_t i = 0; i < at; ++i)
+    {
+        if (text[i] == '\n')
+        {
             ++line;
             col = 0;
-        } else {
+        }
+        else
+        {
             ++col;
         }
     }
@@ -967,20 +1020,21 @@ Completion complete_at(bool clangd, std::string text, const std::string& replace
     Completion c;
     json r = s.client->request("textDocument/completion", doc_pos(s.uri, line, col));
     c.result = r.contains("result") ? r["result"] : json::object();
-    for (const json& i : c.result.value("items", json::array())) c.names.push_back(i.value("insertText", i.value("label", "")));
+    for (const json& i : c.result.value("items", json::array()))
+        c.names.push_back(i.value("insertText", i.value("label", "")));
     return c;
 }
 
-}  // namespace
+} // namespace
 
 TEST(LanguageServer, CompletionListsLocalsParametersAndModuleVariables)
 {
     REQUIRE_CLANGD();
     const Completion c = complete_at(true, kCompleteScript);
-    EXPECT_TRUE(c.has("counter")) << c.result.dump();  // a local
+    EXPECT_TRUE(c.has("counter")) << c.result.dump(); // a local
     EXPECT_TRUE(c.has("current")) << c.result.dump();
-    EXPECT_TRUE(c.has("speed")) << c.result.dump();    // a parameter
-    EXPECT_TRUE(c.has("total")) << c.result.dump();    // a module variable
+    EXPECT_TRUE(c.has("speed")) << c.result.dump(); // a parameter
+    EXPECT_TRUE(c.has("total")) << c.result.dump(); // a module variable
 }
 
 TEST(LanguageServer, CompletionListsEnumsAndEnumMembers)
@@ -1002,23 +1056,24 @@ TEST(LanguageServer, CompletionListsScriptClassesAndTheirOwnAndInheritedMembers)
     EXPECT_TRUE(c.has("Base"));
     EXPECT_TRUE(c.has("Point"));
     const Completion m = complete_at(true, kCompleteScript, "this.");
-    EXPECT_TRUE(m.has("ticks")) << m.result.dump();        // own
+    EXPECT_TRUE(m.has("ticks")) << m.result.dump(); // own
     EXPECT_TRUE(m.has("run"));
-    EXPECT_TRUE(m.has("baseField")) << m.result.dump();    // from the script base
+    EXPECT_TRUE(m.has("baseField")) << m.result.dump(); // from the script base
     EXPECT_TRUE(m.has("baseMethod"));
-    EXPECT_TRUE(m.has("Move")) << m.result.dump();         // from the native base
+    EXPECT_TRUE(m.has("Move")) << m.result.dump(); // from the native base
 }
 
 TEST(LanguageServer, CompletionListsNativeTypesAndFreeFunctions)
 {
     REQUIRE_CLANGD();
     const Completion c = complete_at(true, kCompleteScript, "Vec");
-    EXPECT_TRUE(c.has("Vec3")) << c.result.dump();  // a native type of Math.h
+    EXPECT_TRUE(c.has("Vec3")) << c.result.dump(); // a native type of Math.h
     const Completion f = complete_at(true, kCompleteScript, "Hit");
     bool function = false;
     for (const json& i : f.result.value("items", json::array()))
-        if (i.value("kind", 0) == 3) function = true;
-    EXPECT_TRUE(function) << f.result.dump();  // a native free function
+        if (i.value("kind", 0) == 3)
+            function = true;
+    EXPECT_TRUE(function) << f.result.dump(); // a native free function
 }
 
 TEST(LanguageServer, CompletionListsKeywordsAndBuiltinTypes)
@@ -1027,7 +1082,7 @@ TEST(LanguageServer, CompletionListsKeywordsAndBuiltinTypes)
     EXPECT_TRUE(c.has("while")) << c.result.dump();
     EXPECT_TRUE(c.has("return"));
     EXPECT_TRUE(c.has("float"));
-    EXPECT_TRUE(c.has("int32"));  // an alias of a builtin type
+    EXPECT_TRUE(c.has("int32")); // an alias of a builtin type
 }
 
 TEST(LanguageServer, CompletionFiltersByThePrefix)
@@ -1039,9 +1094,11 @@ TEST(LanguageServer, CompletionFiltersByThePrefix)
     EXPECT_TRUE(c.has("continue"));
     EXPECT_FALSE(c.has("total"));
     EXPECT_FALSE(c.has("while"));
-    for (const json& i : c.result["items"]) {  // the filter text is the name without the namespace
+    for (const json& i : c.result["items"])
+    { // the filter text is the name without the namespace
         std::string n = i.value("filterText", i.value("label", ""));
-        for (char& ch : n) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        for (char& ch : n)
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
         EXPECT_EQ(n.substr(0, 2), "co") << i.dump();
     }
 }
@@ -1063,9 +1120,9 @@ TEST(LanguageServer, CompletionFallsBackToTheScriptFactsWhenTheTranslationFails)
     std::string text = kCompleteScript;
     text.replace(text.find("@"), 1, "Missing broken = ;\n        @");
     const Completion c = complete_at(true, text, "cou");
-    EXPECT_TRUE(c.has("counter")) << c.result.dump();  // a script fact
+    EXPECT_TRUE(c.has("counter")) << c.result.dump(); // a script fact
     const Completion k = complete_at(true, text, "whi");
-    EXPECT_TRUE(k.has("while")) << k.result.dump();     // a keyword
+    EXPECT_TRUE(k.has("while")) << k.result.dump(); // a keyword
 }
 
 TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
@@ -1073,12 +1130,15 @@ TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
     REQUIRE_CLANGD();
     const Completion c = complete_at(true, kCompleteScript);
     ASSERT_FALSE(c.names.empty());
-    for (const std::string& n : c.names) {
-        for (const char* bad : {"__", "_Shell", "SLOT_", "thunk", "spp_", "_slot", "_layout", "_fields", "SppModule", "_g1"})
+    for (const std::string& n : c.names)
+    {
+        for (const char* bad :
+            {"__", "_Shell", "SLOT_", "thunk", "spp_", "_slot", "_layout", "_fields", "SppModule", "_g1"})
             EXPECT_EQ(n.find(bad), std::string::npos) << n << " has " << bad;
         EXPECT_NE(n[0], '_') << n;
     }
-    for (const char* n : {"self", "st", "a"}) EXPECT_FALSE(c.has(n)) << n;
+    for (const char* n : {"self", "st", "a"})
+        EXPECT_FALSE(c.has(n)) << n;
 }
 
 int completion_translations(LsClient& client)
@@ -1090,7 +1150,8 @@ TEST(LanguageServer, CompletionReusesTheAnswerWhileThePrefixGrows)
 {
     REQUIRE_CLANGD();
     std::string text = kCompleteScript;
-    auto with_word = [&](const std::string& word) {
+    auto with_word = [&](const std::string& word)
+    {
         std::string t = text;
         t.replace(t.find('@'), 1, word);
         return t;
@@ -1104,11 +1165,13 @@ TEST(LanguageServer, CompletionReusesTheAnswerWhileThePrefixGrows)
     s.client->change(s.uri, 2, with_word("coun"));
     const json b = s.client->request("textDocument/completion", doc_pos(s.uri, 19, 12));
     ASSERT_TRUE(b.contains("result")) << b.dump();
-    EXPECT_EQ(completion_translations(*s.client), 1);  // the longer prefix reuses the answer
+    EXPECT_EQ(completion_translations(*s.client), 1); // the longer prefix reuses the answer
     bool counter = false;
-    for (const json& i : b["result"]["items"]) counter = counter || i.value("insertText", "") == "counter";
+    for (const json& i : b["result"]["items"])
+        counter = counter || i.value("insertText", "") == "counter";
     EXPECT_TRUE(counter) << b.dump();
-    for (const json& i : b["result"]["items"]) EXPECT_EQ(i.value("filterText", "coun").compare(0, 4, "coun"), 0) << i.dump();
+    for (const json& i : b["result"]["items"])
+        EXPECT_EQ(i.value("filterText", "coun").compare(0, 4, "coun"), 0) << i.dump();
     // A change of the text around the word needs a new translation.
     std::string other = with_word("coun");
     other.replace(other.find("int counter = 1;"), 16, "int counter = 2;");
@@ -1177,7 +1240,8 @@ TEST(LanguageServer, FormattingFixesTheIndentAndKeepsStringsAndComments)
     EXPECT_EQ(r["result"][0]["range"]["start"], pos(0, 0));
     // The formatted text has no edit.
     s.client->change(s.uri, 2, good);
-    const json again = s.client->request("textDocument/formatting", {{"textDocument", {{"uri", s.uri}}}, {"options", o}});
+    const json again =
+        s.client->request("textDocument/formatting", {{"textDocument", {{"uri", s.uri}}}, {"options", o}});
     ASSERT_TRUE(again.contains("result")) << again.dump();
     EXPECT_TRUE(again["result"].empty()) << again.dump();
 }
@@ -1192,13 +1256,13 @@ TEST(LanguageServer, CodeActionInsertsAMissingSemicolon)
     const json diag = n["params"]["diagnostics"][0];
     ASSERT_EQ(diag["message"], "expected ';'") << diag.dump();
     const json r = s.client->request("textDocument/codeAction",
-                                     {{"textDocument", {{"uri", s.uri}}}, {"range", diag["range"]},
-                                      {"context", {{"diagnostics", json::array({diag})}}}});
+        {{"textDocument", {{"uri", s.uri}}}, {"range", diag["range"]},
+            {"context", {{"diagnostics", json::array({diag})}}}});
     ASSERT_TRUE(r.contains("result") && r["result"].size() == 1) << r.dump();
     const json& edit = r["result"][0]["edit"]["changes"][s.uri][0];
     EXPECT_EQ(r["result"][0]["kind"], "quickfix");
     EXPECT_EQ(edit["newText"], ";");
-    EXPECT_EQ(edit["range"]["start"], pos(11, 34)) << r.dump();  // after "amount"
+    EXPECT_EQ(edit["range"]["start"], pos(11, 34)) << r.dump(); // after "amount"
     EXPECT_EQ(edit["range"]["end"], pos(11, 34)) << r.dump();
 }
 
@@ -1208,16 +1272,19 @@ TEST(LanguageServer, CodeActionAppliesTheNameThatClangdSuggests)
     std::string text = kScript;
     text.replace(text.find("this.hp = this.hp + amount;"), 27, "this.hp = amoun;");
     Session s(true, text);
-    const json n = s.diagnostics([](const json& d) {
-        return std::any_of(d.begin(), d.end(), [](const json& x) { return x.value("message", "").find("did you mean") != std::string::npos; });
+    const json n = s.diagnostics([](const json& d)
+    {
+        return std::any_of(d.begin(), d.end(),
+            [](const json& x) { return x.value("message", "").find("did you mean") != std::string::npos; });
     });
     ASSERT_FALSE(n.is_null());
     json diag;
     for (const json& x : n["params"]["diagnostics"])
-        if (x.value("message", "").find("did you mean") != std::string::npos) diag = x;
+        if (x.value("message", "").find("did you mean") != std::string::npos)
+            diag = x;
     const json r = s.client->request("textDocument/codeAction",
-                                     {{"textDocument", {{"uri", s.uri}}}, {"range", diag["range"]},
-                                      {"context", {{"diagnostics", json::array({diag})}}}});
+        {{"textDocument", {{"uri", s.uri}}}, {"range", diag["range"]},
+            {"context", {{"diagnostics", json::array({diag})}}}});
     ASSERT_TRUE(r.contains("result") && r["result"].size() == 1) << r.dump();
     const json& edit = r["result"][0]["edit"]["changes"][s.uri][0];
     EXPECT_EQ(edit["newText"], "amount") << r.dump();
@@ -1225,7 +1292,8 @@ TEST(LanguageServer, CodeActionAppliesTheNameThatClangdSuggests)
 }
 
 // ------------------------------------------------------------------ hosts (step 2b)
-namespace {
+namespace
+{
 
 // A workspace with a header in "inc" and a script in "scripts". The script uses the header.
 // With "host" the hosts dir holds a host file for the scripts dir, with "inc" as include dir.
@@ -1234,8 +1302,8 @@ namespace {
 // script gets no further change.
 // With "defines_file" the header needs the define HOST_NAME. The host file names "h.defines" in
 // "definesFile". The file holds the text of the argument, or no file when the text is "-".
-std::vector<std::string> host_completion_labels(bool host, bool change_host_later = false, bool watched = false,
-                                                const std::string& defines_file = "")
+std::vector<std::string> host_completion_labels(
+    bool host, bool change_host_later = false, bool watched = false, const std::string& defines_file = "")
 {
     TempDir dir;
     const std::filesystem::path root = dir.path();
@@ -1245,44 +1313,50 @@ std::vector<std::string> host_completion_labels(bool host, bool change_host_late
     std::filesystem::create_directories(root / "hosts");
     const std::string body = "namespace Thing { int Value(); }\n";
     write_file((root / "inc" / "thing.h").string(),
-               "#pragma once\n" + (defines_file.empty() ? body : "#ifdef HOST_NAME\n" + body + "#endif\n"));
-    if (!defines_file.empty() && defines_file != "-") write_file((root / "hosts" / "h.defines").string(), defines_file);
+        "#pragma once\n" + (defines_file.empty() ? body : "#ifdef HOST_NAME\n" + body + "#endif\n"));
+    if (!defines_file.empty() && defines_file != "-")
+        write_file((root / "hosts" / "h.defines").string(), defines_file);
     const std::string text = "using \"thing.h\";\n\nclass A {\n    void f() {\n        Thing.\n    }\n}\n";
     const std::string path = (root / "scripts" / "a.spp").string();
     write_file(path, text);
     write_file((root / "build" / "CMakeCache.txt").string(), "# cache\n");
-    auto write_host = [&] {
+    auto write_host = [&]
+    {
         write_file((root / "hosts" / "h.json").string(),
-                   R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string() +
-                       R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")" +
-                       (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" +
-                       (root / "inc").string() + R"(",")" + SPP_SOURCE_DIR + R"(/include"],"defines":[],)" +
-                       (defines_file.empty() ? "" : R"("definesFile":"h.defines",)") + R"("flags":[]})");
+            R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string()
+                + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")"
+                + (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" + (root / "inc").string()
+                + R"(",")" + SPP_SOURCE_DIR + R"(/include"],"defines":[],)"
+                + (defines_file.empty() ? "" : R"("definesFile":"h.defines",)") + R"("flags":[]})");
     };
-    if (host && !change_host_later) write_host();
+    if (host && !change_host_later)
+        write_host();
     spp::ls::ServerOptions o;
     o.clangd = SPP_CLANGD_PATH;
     o.hosts_dir = (root / "hosts").string();
     o.clangd_log = (root / "clangd.log").string();
     // The runtime headers are needed to translate. Without a host, they come from -I.
-    if (!host) o.include_dirs = {SPP_SOURCE_DIR "/include"};
+    if (!host)
+        o.include_dirs = {SPP_SOURCE_DIR "/include"};
     LsClient client(o);
     client.initialize(uri_of(root.string()));
     const std::string uri = uri_of(path);
     client.open(uri, text);
-    if (host && change_host_later) {
+    if (host && change_host_later)
+    {
         // The host file appears after the open. The next change must pick it up.
         write_host();
         if (watched)
             client.notify("workspace/didChangeWatchedFiles",
-                          {{"changes", json::array({{{"uri", uri_of((root / "hosts" / "h.json").string())}, {"type", 1}}})}});
+                {{"changes", json::array({{{"uri", uri_of((root / "hosts" / "h.json").string())}, {"type", 1}}})}});
         else
             client.change(uri, 2, text + "\n");
     }
     const json r = client.request("textDocument/completion", doc_pos(uri, 4, 14));
     std::vector<std::string> labels;
     if (r.contains("result") && r["result"].is_object())
-        for (const json& i : r["result"]["items"]) labels.push_back(i.value("insertText", i.value("label", "")));
+        for (const json& i : r["result"]["items"])
+            labels.push_back(i.value("insertText", i.value("label", "")));
     return labels;
 }
 
@@ -1291,7 +1365,7 @@ bool has_label(const std::vector<std::string>& labels, const char* n)
     return std::find(labels.begin(), labels.end(), n) != labels.end();
 }
 
-}  // namespace
+} // namespace
 
 TEST(LanguageServerHosts, ScriptUsesTheIncludeDirsOfItsHost)
 {
@@ -1303,7 +1377,8 @@ TEST(LanguageServerHosts, DefineWithQuotesFromADefinesFileApplies)
 {
     REQUIRE_CLANGD();
     // The lines hold quotes and a backslash. The server passes them to clangd as they are.
-    EXPECT_TRUE(has_label(host_completion_labels(true, false, false, "HOST_NAME=\"a b\"\nOTHER=\"C:\\dir\"\n"), "Value"));
+    EXPECT_TRUE(
+        has_label(host_completion_labels(true, false, false, "HOST_NAME=\"a b\"\nOTHER=\"C:\\dir\"\n"), "Value"));
 }
 
 // The include dir is in an includes side file. Its name has a space, a quote, a backslash and
@@ -1316,7 +1391,8 @@ TEST(LanguageServerHosts, IncludeDirWithSpecialCharactersFromAnIncludesFileAppli
     const std::filesystem::path weird = root / "we\"ird \\x d\xC3\xADr";
     std::error_code ec;
     std::filesystem::create_directories(weird, ec);
-    if (ec) GTEST_SKIP() << "the file system does not allow the directory name";
+    if (ec)
+        GTEST_SKIP() << "the file system does not allow the directory name";
     std::filesystem::create_directories(root / "scripts");
     std::filesystem::create_directories(root / "build");
     std::filesystem::create_directories(root / "hosts");
@@ -1324,11 +1400,10 @@ TEST(LanguageServerHosts, IncludeDirWithSpecialCharactersFromAnIncludesFileAppli
     write_file((root / "hosts" / "h.includes").string(), weird.string() + "\n");
     write_file((root / "build" / "CMakeCache.txt").string(), "# cache\n");
     write_file((root / "hosts" / "h.json").string(),
-               R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string() +
-                   R"(","sourceDir":")" + root.string() +
-                   R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":["scripts"],)" +
-                   R"("scripts":[],"includeDirs":[")" + SPP_SOURCE_DIR + R"(/include"],"defines":[],)" +
-                   R"("includesFile":"h.includes","flags":[]})");
+        R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string() + R"(","sourceDir":")" + root.string()
+            + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":["scripts"],)"
+            + R"("scripts":[],"includeDirs":[")" + SPP_SOURCE_DIR + R"(/include"],"defines":[],)"
+            + R"("includesFile":"h.includes","flags":[]})");
     const std::string text = "using \"thing.h\";\n\nclass A {\n    void f() {\n        Thing.\n    }\n}\n";
     const std::string path = (root / "scripts" / "a.spp").string();
     write_file(path, text);
@@ -1343,7 +1418,8 @@ TEST(LanguageServerHosts, IncludeDirWithSpecialCharactersFromAnIncludesFileAppli
     const json r = client.request("textDocument/completion", doc_pos(uri, 4, 14));
     std::vector<std::string> labels;
     if (r.contains("result") && r["result"].is_object())
-        for (const json& i : r["result"]["items"]) labels.push_back(i.value("insertText", i.value("label", "")));
+        for (const json& i : r["result"]["items"])
+            labels.push_back(i.value("insertText", i.value("label", "")));
     EXPECT_TRUE(has_label(labels, "Value"));
 }
 
@@ -1388,31 +1464,37 @@ TEST(LanguageServerHosts, NewScriptFileIsFoundAfterAWatchedFilesEvent)
     LsClient client(o);
     client.initialize(uri_of(root.string()));
     client.open(uri_of(path), text);
-    auto count_other = [&](const std::string& other_uri) {
+    auto count_other = [&](const std::string& other_uri)
+    {
         const json r = client.request("textDocument/references",
-                                      {{"textDocument", {{"uri", uri_of(path)}}}, {"position", {{"line", 1}, {"character", 11}}},
-                                       {"context", {{"includeDeclaration", true}}}});
+            {{"textDocument", {{"uri", uri_of(path)}}}, {"position", {{"line", 1}, {"character", 11}}},
+                {"context", {{"includeDeclaration", true}}}});
         int n = 0;
         if (r.contains("result") && r["result"].is_array())
             for (const json& l : r["result"])
-                if (l["uri"] == other_uri) ++n;
+                if (l["uri"] == other_uri)
+                    ++n;
         return n;
     };
     const std::string other = (root / "b.spp").string();
     EXPECT_EQ(count_other(uri_of(other)), 0);
     write_file(other, text);
-    client.notify("workspace/didChangeWatchedFiles", {{"changes", json::array({{{"uri", uri_of(other)}, {"type", 1}}})}});
+    client.notify(
+        "workspace/didChangeWatchedFiles", {{"changes", json::array({{{"uri", uri_of(other)}, {"type", 1}}})}});
     EXPECT_EQ(count_other(uri_of(other)), 1);
     std::filesystem::remove(other);
-    client.notify("workspace/didChangeWatchedFiles", {{"changes", json::array({{{"uri", uri_of(other)}, {"type", 3}}})}});
+    client.notify(
+        "workspace/didChangeWatchedFiles", {{"changes", json::array({{{"uri", uri_of(other)}, {"type", 3}}})}});
     EXPECT_EQ(count_other(uri_of(other)), 0);
 }
 
 // The information diagnostic "No script host". Rule: a .spp script has no host and the server
 // has no -I option.
-namespace {
+namespace
+{
 
-struct HostDiagCase {
+struct HostDiagCase
+{
     TempDir dir;
     std::string path, uri, text = "class A {\n}\n";
     spp::ls::ServerOptions o;
@@ -1432,19 +1514,19 @@ struct HostDiagCase {
     {
         const std::filesystem::path root = dir.path();
         write_file((root / "hosts" / "h.json").string(),
-                   R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string() +
-                       R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")" +
-                       (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" + SPP_SOURCE_DIR +
-                       R"(/include"],"defines":[],"flags":[]})");
+            R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string()
+                + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")"
+                + (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" + SPP_SOURCE_DIR
+                + R"(/include"],"defines":[],"flags":[]})");
     }
     json next_diagnostics(LsClient& c) const
     {
-        return c.wait_notification("textDocument/publishDiagnostics",
-                                   [&](const json& p) { return p.value("uri", std::string()) == uri; });
+        return c.wait_notification(
+            "textDocument/publishDiagnostics", [&](const json& p) { return p.value("uri", std::string()) == uri; });
     }
 };
 
-}  // namespace
+} // namespace
 
 TEST(LanguageServerHosts, NoHostGivesAnInformationDiagnostic)
 {
@@ -1455,7 +1537,8 @@ TEST(LanguageServerHosts, NoHostGivesAnInformationDiagnostic)
     const json n = c.next_diagnostics(client);
     ASSERT_TRUE(has_source(n["params"]["diagnostics"], "spp-ls")) << n.dump();
     for (const json& d : n["params"]["diagnostics"])
-        if (d.value("source", "") == "spp-ls") {
+        if (d.value("source", "") == "spp-ls")
+        {
             EXPECT_EQ(d["severity"], 3);
             EXPECT_EQ(d["range"]["start"], pos(0, 0));
             EXPECT_NE(d.value("message", "").find("No script host"), std::string::npos);

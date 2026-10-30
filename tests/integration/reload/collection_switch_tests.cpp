@@ -1,15 +1,16 @@
 // Tests of the string switch and the collection literal with the backend that SPP_BACKEND selected.
-#include <gtest/gtest.h>
-
-#include <memory>
-#include <string>
-
 #include "spp/backend.h"
 #include "support/backend_fixture.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 
-namespace {
+#include <gtest/gtest.h>
+
+#include <memory>
+#include <string>
+
+namespace
+{
 
 using test_support::kDt;
 using test_support::Session;
@@ -131,4 +132,4 @@ class Player : Actor {
     EXPECT_EQ(*s.field("total"), 42.0f);
 }
 
-}  // namespace
+} // namespace

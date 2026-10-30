@@ -1,14 +1,14 @@
 // Tests for the "T&" local, the call statement without a marker, and the removed "ref" and "out".
-#include <gtest/gtest.h>
-
-#include <string>
-#include <vector>
-
 #include "emit.h"
 #include "parser/expression.h"
 #include "parser/parser.h"
 #include "parser/statement.h"
 #include "support/statement_parse_test_support.h"
+
+#include <gtest/gtest.h>
+
+#include <string>
+#include <vector>
 
 using namespace sppc;
 using namespace stmt_test;
@@ -23,8 +23,9 @@ TEST(RefOutStatementParse, ReferenceLocalAndArguments)
 
 TEST(RefOutStatementParse, RefAndOutAreRemoved)
 {
-    for (const char* text : {"var r = ref this.pos;", "Fill(out v);", "Swap(ref a, ref b);",
-                             "this.target = ref source;"}) {
+    for (const char* text :
+        {"var r = ref this.pos;", "Fill(out v);", "Swap(ref a, ref b);", "this.target = ref source;"})
+    {
         Parsed p(text);
         EXPECT_FALSE(p.diag.items.empty()) << text;
     }

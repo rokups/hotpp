@@ -1,11 +1,11 @@
 // Tests for the parser of the properties: auto accessors, bodies, access letters and errors.
+#include "parser/parser.h"
+#include "support/script_parse_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 #include <vector>
-
-#include "parser/parser.h"
-#include "support/script_parse_test_support.h"
 
 using namespace sppc;
 using namespace script_test;
@@ -23,13 +23,13 @@ TEST(PropertyParse, Properties)
                        "    }\n"
                        "    int value = 0;\n"
                        "}\n",
-                       sd),
-              (std::vector<std::string>{
-                  "int32_t|A1|u|get:u:auto|set:u:auto|-",
-                  "std::string|A2|u|get:u:auto|-|init",
-                  "float|A3|r|get:r:auto|set:o:auto|init",
-                  "int32_t|A4|u|get:u:body|set:r:body|-|g1|s2",
-              }));
+                  sd),
+        (std::vector<std::string>{
+            "int32_t|A1|u|get:u:auto|set:u:auto|-",
+            "std::string|A2|u|get:u:auto|-|init",
+            "float|A3|r|get:r:auto|set:o:auto|init",
+            "int32_t|A4|u|get:u:body|set:r:body|-|g1|s2",
+        }));
     EXPECT_EQ(sd.items.size(), 0u) << sd.format("t");
 }
 
@@ -46,7 +46,8 @@ TEST(PropertyParse, PropertyErrors)
              {"int set = 1;", "'set' is a reserved word"},
              {"void get() { }", "'get' is a reserved word"},
              {"void f(int set) { }", "'set' is a reserved word"},
-         }) {
+         })
+    {
         Diagnostics sd;
         (void)props_of("class A : B {\n    " + text + "\n}\n", sd);
         ASSERT_FALSE(sd.items.empty()) << text;

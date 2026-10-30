@@ -1,14 +1,16 @@
 // Helpers for the tests of the type model: a stub builder and a fixture with a type model.
 #pragma once
 
+#include "types.h"
+
 #include <gtest/gtest.h>
+
 #include <map>
 #include <string>
 #include <vector>
 
-#include "types.h"
-
-namespace type_model_test {
+namespace type_model_test
+{
 
 using namespace sppc;
 
@@ -22,7 +24,8 @@ inline ast::Stub stub(const std::string& name, const std::string& handle = "", b
     return s;
 }
 
-struct Fixture {
+struct Fixture
+{
     TypeModel model;
     Diagnostics diags;
     LineMap map{""};
@@ -34,10 +37,11 @@ inline const char* kShared = "std::shared_ptr<$T>";
 // Builds a base callback from a table of class name to direct bases.
 inline TypeModel::BaseFn bases_of(std::map<std::string, std::vector<std::string>> table)
 {
-    return [table](const std::string& name) {
+    return [table](const std::string& name)
+    {
         auto it = table.find(name);
         return it == table.end() ? std::vector<std::string>{} : it->second;
     };
 }
 
-}  // namespace type_model_test
+} // namespace type_model_test

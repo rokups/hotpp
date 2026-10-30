@@ -2,7 +2,8 @@
 // The host calls Frame once for each frame. A script class overrides it.
 #pragma once
 
-class UiApp {
+class UiApp
+{
 public:
     UiApp();
     virtual ~UiApp();

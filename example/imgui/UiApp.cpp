@@ -3,4 +3,6 @@
 UiApp::UiApp() = default;
 UiApp::~UiApp() = default;
 
-void UiApp::Frame() {}
+void UiApp::Frame()
+{
+}

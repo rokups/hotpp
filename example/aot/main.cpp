@@ -2,20 +2,23 @@
 // example/scripts/aot_demo.spp is part of this binary. The program has no loader, no file
 // watcher and no compiler. It prints the state of the objects after each frame.
 // Usage: aot_demo
-#include <cstdio>
-#include <exception>
-
 #include "demo_run.h"
 #include "spp/aot.h"
 
+#include <cstdio>
+#include <exception>
+
 int main()
 {
-    try {
+    try
+    {
         spp::AotRegistry registry(spp::aot_table);
         const std::string log = aot_demo::run([&](const char* name) { return registry.create(name); });
         std::fputs(log.c_str(), stdout);
         std::fflush(stdout);
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception& e)
+    {
         std::fprintf(stderr, "aot_demo: %s\n", e.what());
         return 1;
     }

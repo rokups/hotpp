@@ -1,10 +1,10 @@
 // Tests for the printer of the lambda.
+#include "emit.h"
+#include "support/emit_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
-
-#include "emit.h"
-#include "support/emit_test_support.h"
 
 using namespace sppc::ast;
 using namespace emit_test;

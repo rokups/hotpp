@@ -13,17 +13,19 @@
 #include <utility>
 #include <vector>
 
-namespace sppc {
+namespace sppc
+{
 
-struct TranslateOptions {
-    std::string script_text;   // the content of the script
-    std::string script_name;   // the name for "#line" and for the diagnostics
-    std::string output_name;   // the name of the generated .cpp for "#line" (default: script_name + ".cpp")
-    int generation = 0;        // 1 or more
-    std::string slots_in;      // the content of the slot file (empty: no earlier generation)
-    std::vector<std::string> include_dirs;  // for the imports of the script
-    std::string resource_dir;  // the Clang resource directory (empty: the built-in default)
-    std::vector<std::pair<std::string, std::string>> preludes;  // name, text
+struct TranslateOptions
+{
+    std::string script_text; // the content of the script
+    std::string script_name; // the name for "#line" and for the diagnostics
+    std::string output_name; // the name of the generated .cpp for "#line" (default: script_name + ".cpp")
+    int generation = 0; // 1 or more
+    std::string slots_in; // the content of the slot file (empty: no earlier generation)
+    std::vector<std::string> include_dirs; // for the imports of the script
+    std::string resource_dir; // the Clang resource directory (empty: the built-in default)
+    std::vector<std::pair<std::string, std::string>> preludes; // name, text
     // The texts of the imported scripts ("using "parent.spp";"), as name and text. The name is
     // the path in the "using" line. A name that is not here is read from the directory of the
     // script, then from the include directories.
@@ -43,7 +45,8 @@ struct TranslateOptions {
 using ScriptTexts = std::vector<std::pair<std::string, std::string>>;
 
 // A position in a text: a 1-based line and a 1-based byte column.
-struct SourcePos {
+struct SourcePos
+{
     int line = 0, col = 0;
     bool operator==(const SourcePos& o) const { return line == o.line && col == o.col; }
 };
@@ -56,7 +59,8 @@ struct SourcePos {
 // The "file" is 0 for the main script. For an imported script ("using "x.spp";") it is the number
 // of the file in SourceMap::files() (the first file is 1). The script offsets are then offsets in
 // the text of that file.
-struct SourceSegment {
+struct SourceSegment
+{
     uint32_t script_begin = 0, script_len = 0;
     uint32_t gen_begin = 0, gen_len = 0;
     uint32_t file = 0;
@@ -64,13 +68,15 @@ struct SourceSegment {
 
 // A place in the main script or in an imported script. The "file" has the same meaning as in
 // SourceSegment: 0 is the main script.
-struct SourceLocation {
+struct SourceLocation
+{
     uint32_t file = 0;
     SourcePos pos;
 };
 
 // An imported script that the source map knows: the name that "#line" uses and the text.
-struct SourceFile {
+struct SourceFile
+{
     std::string name, text;
 };
 
@@ -80,7 +86,8 @@ struct SourceFile {
 // names) and the field names in the state struct.
 // Text that the translator writes by itself (for example "spp::deref(" or the class shell)
 // has no segment: the functions return no value for it.
-class SourceMap {
+class SourceMap
+{
 public:
     // The sorted tables are built here. Call it after the last add() and add_file().
     void build(std::string_view script, std::string_view generated);
@@ -106,27 +113,28 @@ public:
     // The imported scripts. The file number n is files()[n - 1].
     const std::vector<SourceFile>& files() const { return files_; }
 
-    const std::vector<SourceSegment>& segments() const { return segments_; }  // in generated order
+    const std::vector<SourceSegment>& segments() const { return segments_; } // in generated order
     bool empty() const { return segments_.empty(); }
 
 private:
     std::vector<SourceSegment> segments_;
     std::vector<SourceFile> files_;
-    std::vector<uint32_t> by_script_;  // indexes into segments_, sorted by file and script_begin
+    std::vector<uint32_t> by_script_; // indexes into segments_, sorted by file and script_begin
     // The byte offset of each line start: for the main script and for each imported script.
     std::vector<std::vector<uint32_t>> script_lines_;
     std::vector<uint32_t> gen_lines_;
 };
 
-struct TranslateResult {
+struct TranslateResult
+{
     bool ok = false;
-    std::string cpp;          // the generated C++ text (valid when ok)
-    std::string slots_out;    // the new slot file content (valid when ok)
+    std::string cpp; // the generated C++ text (valid when ok)
+    std::string slots_out; // the new slot file content (valid when ok)
     // The signature lines of the slot file (design 5.3): "sig Cls::fn Sig", one for each script
     // function. A backend writes them after "slots_out" and gives both back in "slots_in". A
     // reload that changes a signature then gets a new thunk with a signature key.
     std::string sigs_out;
-    std::string diagnostics;  // the errors, one line each: "name:line:col: error: text"
+    std::string diagnostics; // the errors, one line each: "name:line:col: error: text"
     // True when the translation failed because a function of an earlier generation is removed
     // ("the slot count must not shrink"). Hot reload cannot apply this change: only a full
     // reload can. A backend maps it to ReloadReason::SlotsRemoved.
@@ -154,30 +162,34 @@ inline ScriptTexts script_texts(const std::string& name, const std::string& text
 //
 // The parser is tolerant. A broken statement or member is skipped to the next ";" or "}" and the
 // parse goes on, so one error does not hide the others. The facts hold what the parser read.
-struct AnalyzedMember {
-    std::string kind;  // "field", "method", "constructor", "destructor" or "property"
+struct AnalyzedMember
+{
+    std::string kind; // "field", "method", "constructor", "destructor" or "property"
     std::string name;
     // The begin is the start of the name. The end is after the closing brace of a body, after
     // the initializer of a field or a property, or else after the name.
     SourcePos begin, end;
 };
 
-struct AnalyzedClass {
+struct AnalyzedClass
+{
     std::string name, base;
     SourcePos begin;
-    std::vector<AnalyzedMember> members;  // in source order
+    std::vector<AnalyzedMember> members; // in source order
 };
 
-struct AnalyzeError {
+struct AnalyzeError
+{
     SourcePos pos;
-    uint32_t offset = 0;  // the byte offset in the script
+    uint32_t offset = 0; // the byte offset in the script
     std::string message;
 };
 
-struct AnalyzeResult {
-    bool ok = false;  // no syntax error, and the translation is ok
-    std::vector<AnalyzedClass> classes;  // the classes that the parser read
-    std::vector<AnalyzeError> errors;    // the syntax errors, in source order
+struct AnalyzeResult
+{
+    bool ok = false; // no syntax error, and the translation is ok
+    std::vector<AnalyzedClass> classes; // the classes that the parser read
+    std::vector<AnalyzeError> errors; // the syntax errors, in source order
     // A "." with no member name after it ("player." at the end of a line). The position is
     // right after the ".". A completion request there lists the members of the object.
     std::vector<SourcePos> completion_points;
@@ -199,15 +211,16 @@ struct AnalyzeResult {
 // path, the change time and the size of each file that the parse included. A call
 // checks them again. If one differs, the session parses again. A session is thread
 // safe. The calls that use the same session wait for each other during a parse.
-class TranslatorSession {
+class TranslatorSession
+{
 public:
     TranslatorSession();
     ~TranslatorSession();
     TranslatorSession(const TranslatorSession&) = delete;
     TranslatorSession& operator=(const TranslatorSession&) = delete;
 
-    int parse_count() const;  // the number of libclang parses until now
-    void clear();             // drops the cache
+    int parse_count() const; // the number of libclang parses until now
+    void clear(); // drops the cache
 
     struct Impl;
 
@@ -215,7 +228,6 @@ private:
     friend TranslateResult translate(const TranslateOptions&, TranslatorSession&);
     std::unique_ptr<Impl> impl_;
 };
-
 
 // Rewrites the text that Clang prints for the generated C++ so that it speaks script names
 // (design 4.2, experiment F2). The function is pure: it has no state and no I/O.
@@ -238,7 +250,7 @@ private:
 // A line that is not part of a Clang diagnostic stays as it is. Pass the raw text on when the
 // user asks for it (--raw-diagnostics).
 std::string rewrite_diagnostic(const std::string& text, const ScriptTexts& scripts = {},
-                               const ScriptTexts& generated = {}, const SourceMap* map = nullptr);
+    const ScriptTexts& generated = {}, const SourceMap* map = nullptr);
 
 // Gives the text of the translator diagnostics (TranslateResult::diagnostics or ::warnings) the
 // same final form as rewrite_diagnostic(): the header line "script:line:col: level: message",
@@ -270,4 +282,4 @@ TranslateResult translate(const TranslateOptions& options, TranslatorSession& se
 AnalyzeResult analyze(const std::string& text, const TranslateOptions& options);
 AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, TranslatorSession& session);
 
-}  // namespace sppc
+} // namespace sppc

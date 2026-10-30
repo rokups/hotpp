@@ -1,12 +1,12 @@
 // Tests for the type model (src/translator/types.h): stubs, patterns and "make".
+#include "support/type_model_test_support.h"
+#include "types.h"
+
 #include <gtest/gtest.h>
 
 #include <map>
 #include <string>
 #include <vector>
-
-#include "types.h"
-#include "support/type_model_test_support.h"
 
 using namespace sppc;
 using namespace type_model_test;
@@ -89,4 +89,3 @@ TEST(TypeModel, DuplicateStubIsOneError)
     f.add({stub("Weapon", kShared), stub("Weapon", "", true)});
     EXPECT_EQ(f.diags.items.size(), 1u);
 }
-

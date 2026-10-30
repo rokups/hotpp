@@ -1,41 +1,38 @@
 // Tests for the safe call "?." at the start of an expression statement.
+#include "spp/sppc_lib.h"
+#include "support/check_translate_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
-
-#include "spp/sppc_lib.h"
-#include "support/check_translate_test_support.h"
 
 using namespace check_translate_test;
 
 TEST(SafeCallTranslation, CallOnAHandleChecksTheHandle)
 {
-    const sppc::TranslateResult r = check_translate(
-        kDefaultShared, "    void Run(Weapon m) { m?.Draw(1); }\n");
+    const sppc::TranslateResult r = check_translate(kDefaultShared, "    void Run(Weapon m) { m?.Draw(1); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "{ if (m) spp::deref(m).Draw(1); }")) << r.cpp;
 }
 
 TEST(SafeCallTranslation, AssignmentToAFieldChecksTheHandle)
 {
-    const sppc::TranslateResult r = check_translate(
-        kDefaultShared, "    void Run(Weapon m) { m?.dmg = 3; }\n");
+    const sppc::TranslateResult r = check_translate(kDefaultShared, "    void Run(Weapon m) { m?.dmg = 3; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "{ if (m) spp::deref(m).dmg = 3; }")) << r.cpp;
 }
 
 TEST(SafeCallTranslation, PointerReceiverChecksThePointer)
 {
-    const sppc::TranslateResult r = check_translate(
-        "", "    void Run(Weapon* p) { p?.Draw(); }\n");
+    const sppc::TranslateResult r = check_translate("", "    void Run(Weapon* p) { p?.Draw(); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "{ if (p) spp::deref(p).Draw(); }")) << r.cpp;
 }
 
 TEST(SafeCallTranslation, ReceiverThatIsNotAnameRunsOnce)
 {
-    const sppc::TranslateResult r = check_translate(
-        kDefaultShared, "    Weapon Get() { return null; }\n    void Run() { this.Get()?.Draw(); }\n");
+    const sppc::TranslateResult r =
+        check_translate(kDefaultShared, "    Weapon Get() { return null; }\n    void Run() { this.Get()?.Draw(); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "auto __safe0 = ")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "if (__safe0) spp::deref(__safe0).Draw();")) << r.cpp;
@@ -44,7 +41,8 @@ TEST(SafeCallTranslation, ReceiverThatIsNotAnameRunsOnce)
 TEST(SafeCallTranslation, SafeCallInsideAnotherExpressionIsAnError)
 {
     for (const char* body : {"    void Run(Weapon m) { var x = m?.dmg; }\n", "    void Run(Weapon m) { f(m?.dmg); }\n",
-                             "    void Run(Weapon m) { return m?.dmg + 1; }\n"}) {
+             "    void Run(Weapon m) { return m?.dmg + 1; }\n"})
+    {
         const sppc::TranslateResult r = check_translate(kDefaultShared, body);
         EXPECT_FALSE(r.ok) << body;
         EXPECT_TRUE(has(r.diagnostics, "'?.' is allowed only at the start of an expression statement"))
@@ -60,8 +58,8 @@ TEST(SafeCallTranslation, TernaryWithADotNumberIsNotASafeCall)
 
 TEST(SafeCallTranslation, PropertyReceiverRunsTheGetterOnce)
 {
-    const sppc::TranslateResult r = check_translate(
-        kDefaultShared, "    Weapon W { get; set; }\n    void Run() { W?.Draw(1); }\n");
+    const sppc::TranslateResult r =
+        check_translate(kDefaultShared, "    Weapon W { get; set; }\n    void Run() { W?.Draw(1); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "auto __safe0 = ")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "if (__safe0) spp::deref(__safe0).Draw(1);")) << r.cpp;

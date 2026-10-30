@@ -1,4 +1,6 @@
 // Tests for spp::deref. The translator writes "a.b" as "spp::deref(a).b".
+#include "spp/runtime.h"
+
 #include <gtest/gtest.h>
 
 #include <memory>
@@ -6,17 +8,23 @@
 #include <utility>
 #include <vector>
 
-#include "spp/runtime.h"
+namespace
+{
 
-namespace {
-
-struct Item {
+struct Item
+{
     int m = 0;
     int get() const { return m; }
 };
 
-Item* make_ptr(Item& i) { return &i; }
-Item make_value() { return Item{7}; }
+Item* make_ptr(Item& i)
+{
+    return &i;
+}
+Item make_value()
+{
+    return Item{7};
+}
 
 TEST(Deref, PointerGivesTheObject)
 {
@@ -85,24 +93,39 @@ TEST(Deref, ValueKeepsItsCategory)
 }
 
 // A type that counts its live objects. It shows the lifetime of a temporary.
-struct Counted {
+struct Counted
+{
     static inline int live = 0;
     std::vector<int> list{1, 2, 3};
     int n = 9;
     Counted() { ++live; }
-    Counted(const Counted& o) : list(o.list), n(o.n) { ++live; }
-    Counted(Counted&& o) noexcept : list(std::move(o.list)), n(o.n) { ++live; }
+    Counted(const Counted& o)
+        : list(o.list)
+        , n(o.n)
+    {
+        ++live;
+    }
+    Counted(Counted&& o) noexcept
+        : list(std::move(o.list))
+        , n(o.n)
+    {
+        ++live;
+    }
     ~Counted() { --live; }
 };
 
-Counted make_counted() { return Counted{}; }
+Counted make_counted()
+{
+    return Counted{};
+}
 
 TEST(Deref, ForOverAMemberOfATemporaryKeepsTheTemporaryAlive)
 {
     Counted::live = 0;
     int sum = 0;
     int live_in_body = 0;
-    for (int a : spp::deref(make_counted()).list) {
+    for (int a : spp::deref(make_counted()).list)
+    {
         sum += a;
         live_in_body = Counted::live;
     }
@@ -155,9 +178,11 @@ TEST(Deref, AssignmentThroughASharedPtr)
 
 // An array has no overload that works:"spp::deref(arr)" is deleted. The compiler
 // rejects the call, so a test cannot show it. This check shows the same by SFINAE.
-template <class T>
-concept CanDeref = requires(T& t) { spp::deref(t); };
+template <class T> concept CanDeref = requires(T & t)
+{
+    spp::deref(t);
+};
 static_assert(!CanDeref<Item[2]>);
 static_assert(CanDeref<Item>);
 
-}  // namespace
+} // namespace

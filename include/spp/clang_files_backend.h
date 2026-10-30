@@ -2,37 +2,40 @@
 // compiler to make a .so, then dlopen it.
 #pragma once
 
+#include "spp/backend.h"
+#include "spp/sppc_lib.h"
+
 #include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
 
-#include "spp/backend.h"
-#include "spp/sppc_lib.h"
+namespace spp
+{
 
-namespace spp {
-
-struct ClangFilesOptions {
-    std::string compiler = "clang++";         // the compiler command
-    std::vector<std::string> include_dirs;    // for the script imports and for the compile
-    std::string resource_dir;                 // the Clang resource dir (empty: the default)
+struct ClangFilesOptions
+{
+    std::string compiler = "clang++"; // the compiler command
+    std::vector<std::string> include_dirs; // for the script imports and for the compile
+    std::string resource_dir; // the Clang resource dir (empty: the default)
     // The translator cache. Empty: the backend makes its own. Share one to keep the
     // cache between backends.
     std::shared_ptr<sppc::TranslatorSession> session;
-    std::vector<std::string> extra_flags;     // added to the compile command
-    std::string work_dir = "spp_work";        // the .cpp and .so files go here
-    std::string slots_file;                   // empty: <work_dir>/slots.txt
+    std::vector<std::string> extra_flags; // added to the compile command
+    std::string work_dir = "spp_work"; // the .cpp and .so files go here
+    std::string slots_file; // empty: <work_dir>/slots.txt
     // True: the destructor of the backend removes work_dir (remove_scratch). The owner must give
     // a directory that no other backend uses.
     bool remove_work_dir_at_exit = false;
-    bool strict_borrowed = true;              // false: a borrowed-storage finding is a warning
+    bool strict_borrowed = true; // false: a borrowed-storage finding is a warning
     // True: the error text is the raw output of the compiler. False (the default): it speaks
     // script names (sppc::rewrite_diagnostic).
     bool raw_diagnostics = false;
 };
 
-class ClangFilesBackend : public Backend {
+class ClangFilesBackend : public Backend
+{
 public:
     explicit ClangFilesBackend(ClangFilesOptions options);
     ~ClangFilesBackend() override;
@@ -49,28 +52,28 @@ public:
     // Translates and compiles one script into "out_so". It writes the .cpp
     // next to the .so. It does not load the library. The slot file changes only
     // when the compile succeeds. On failure, "error" has the diagnostics.
-    bool build(const ScriptSource& source, uint32_t generation, const std::string& out_so,
-               std::string& error);
+    bool build(const ScriptSource& source, uint32_t generation, const std::string& out_so, std::string& error);
 
 private:
     bool build_impl(const ScriptSource& source, uint32_t generation, LoadMode mode, const std::string& out_so,
-                    std::string& error, std::string* deferred_slots, bool* slots_removed);
+        std::string& error, std::string* deferred_slots, bool* slots_removed);
 
     ClangFilesOptions opt_;
-    std::mutex mutex_;  // one build at a time: the slot file is shared
+    std::mutex mutex_; // one build at a time: the slot file is shared
     std::atomic<unsigned> sequence_{0};
-    std::atomic<unsigned> epoch_{0};  // counts the fresh loads; it is in the name of the library
+    std::atomic<unsigned> epoch_{0}; // counts the fresh loads; it is in the name of the library
 };
 
 // The compile command of the backend for one generated .cpp and its .so. The backend and
 // the compile database (sppc --compile-commands) both use it, so the flags are the same.
-std::vector<std::string> compile_command(const ClangFilesOptions& options, const std::string& cpp_path,
-                                         const std::string& out_so);
+std::vector<std::string> compile_command(
+    const ClangFilesOptions& options, const std::string& cpp_path, const std::string& out_so);
 
 // One entry of a compile database (the format of clangd and CMake's compile_commands.json).
-struct CompileCommandEntry {
-    std::string directory;  // the working directory of the command
-    std::string file;       // the source file
+struct CompileCommandEntry
+{
+    std::string directory; // the working directory of the command
+    std::string file; // the source file
     std::vector<std::string> arguments;
     std::string output;
 };
@@ -82,4 +85,4 @@ std::string compile_commands_json(const std::vector<CompileCommandEntry>& entrie
 // Returns the exit code, or -1 when the command did not run.
 int run_command(const std::vector<std::string>& argv, std::string& output);
 
-}  // namespace spp
+} // namespace spp

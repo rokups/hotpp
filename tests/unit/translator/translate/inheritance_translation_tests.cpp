@@ -1,21 +1,22 @@
 // Tests for sppc::translate with script inheritance (S6a, design 4.5, 7.6 and 7.7): a child of a
 // script class, script virtuals, "override" and "new" of a parent function, "base" and "is"/"as".
+#include "spp/sppc_lib.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "spp/sppc_lib.h"
-#include "support/translator_test_support.h"
-
 using namespace translator_test;
 
-namespace {
+namespace
+{
 
 // A plain parent A with a virtual f and a child B. "members" is the body of B.
 std::string family(const std::string& members, const std::string& parent = "")
 {
-    return "class A {\n    int hp = 1;\n    virtual int f() { return 1; }\n    int g() { return f() + 1; }\n" + parent +
-           "}\nclass B : A {\n" + members + "\n}\n";
+    return "class A {\n    int hp = 1;\n    virtual int f() { return 1; }\n    int g() { return f() + 1; }\n" + parent
+        + "}\nclass B : A {\n" + members + "\n}\n";
 }
 
 bool has(const std::string& text, const std::string& part)
@@ -23,7 +24,7 @@ bool has(const std::string& text, const std::string& part)
     return text.find(part) != std::string::npos;
 }
 
-}  // namespace
+} // namespace
 
 TEST(InheritanceTranslation, ChildShellAndStateDeriveFromTheParent)
 {
@@ -65,14 +66,15 @@ TEST(InheritanceTranslation, NewHidesAParentFunction)
 
 TEST(InheritanceTranslation, ParentConstructorRunsFirst)
 {
-    const sppc::TranslateResult r = translate_text(family("    B(int x) : base(x + 1) { this.hp = this.hp + x; }",
-                                                          "    A(int v) { this.hp = v; }\n"));
+    const sppc::TranslateResult r = translate_text(
+        family("    B(int x) : base(x + 1) { this.hp = this.hp + x; }", "    A(int v) { this.hp = v; }\n"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // The plan evaluates "x + 1" one time. The chain gives the value to the constructor of A.
     EXPECT_TRUE(has(r.cpp, "auto __up = std::make_tuple(x + 1);")) << r.cpp;
     EXPECT_EQ(r.cpp.find("x + 1"), r.cpp.rfind("x + 1")) << r.cpp;
     // A "#line" directive precedes each line of the chain. The parent runs before the own constructor.
-    const size_t parent_first = r.cpp.find("A__ctor_chain(__self, __chain.second, std::forward<decltype(x)>(x)...); }, std::move(__chain.first));\n");
+    const size_t parent_first = r.cpp.find(
+        "A__ctor_chain(__self, __chain.second, std::forward<decltype(x)>(x)...); }, std::move(__chain.first));\n");
     ASSERT_NE(parent_first, std::string::npos) << r.cpp;
     EXPECT_LT(parent_first, r.cpp.find("    B__ctor(__self, x);\n", parent_first)) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "B__ctor_chain(__self, __plan.second, x);")) << r.cpp;
@@ -83,17 +85,18 @@ TEST(InheritanceTranslation, Errors)
 {
     EXPECT_TRUE(has(diag_of(family("    int g() { return 5; }")), "function 'g' hides the function of A; write 'new'"));
     EXPECT_TRUE(has(diag_of(family("    int f() { return 5; }")),
-                    "function 'f' hides the virtual function of A; write 'override' or 'new'"));
-    EXPECT_TRUE(has(diag_of(family("    override int g() { return 5; }")), "'override' has no virtual method to override"));
+        "function 'f' hides the virtual function of A; write 'override' or 'new'"));
+    EXPECT_TRUE(
+        has(diag_of(family("    override int g() { return 5; }")), "'override' has no virtual method to override"));
     EXPECT_TRUE(has(diag_of(family("    override int f(int k) { return k; }")), "has other parameter types"));
     EXPECT_TRUE(has(diag_of(family("    override float f() { return 1.0; }")), "return type 'float' differs from"));
     EXPECT_TRUE(has(diag_of(family("    int hp = 3;")), "field 'hp' hides a field of the script parent 'A'"));
     EXPECT_TRUE(has(diag_of(family("    B() { }", "    A(int v) { this.hp = v; }\n")),
-                    "class 'B' must call 'base(...)': the constructor of 'A' has parameters"));
+        "class 'B' must call 'base(...)': the constructor of 'A' has parameters"));
     EXPECT_TRUE(has(diag_of(family("    B() : base(1, 2) { }", "    A(int v) { this.hp = v; }\n")),
-                    "'base(...)' has 2 arguments; the constructor of 'A' takes 1"));
-    EXPECT_TRUE(has(diag_of("struct V { int x = 0; }\nclass W : V { }\n"),
-                    "class 'W' cannot derive from the struct 'V'"));
+        "'base(...)' has 2 arguments; the constructor of 'A' takes 1"));
+    EXPECT_TRUE(
+        has(diag_of("struct V { int x = 0; }\nclass W : V { }\n"), "class 'W' cannot derive from the struct 'V'"));
 }
 
 TEST(InheritanceTranslation, IsAndAsUseTheClassRecords)
@@ -105,15 +108,15 @@ TEST(InheritanceTranslation, IsAndAsUseTheClassRecords)
     EXPECT_TRUE(has(r.cpp, "auto b = spp::as_script<B_Shell>(__st->a, \"B\");")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "spp::is_script(__st->a, \"B\")")) << r.cpp;
     EXPECT_TRUE(has(diag_of("struct V { int x = 0; }\nclass C {\n    bool t(V v) { return v is V; }\n}\n"),
-                    "'is' needs a class with a handle: 'V' is a struct"));
+        "'is' needs a class with a handle: 'V' is a struct"));
 }
 
 TEST(InheritanceTranslation, IsAndAsOnANativeTypeUseRtti)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
-    const sppc::TranslateResult r = sppc::translate(temp_options(
-        dir, "using \"w.h\";\nclass Foo : Widget {\n    bool t(Widget* w) { var p = w as Panel; return w is Panel; }\n}\n"));
+    const sppc::TranslateResult r = sppc::translate(temp_options(dir,
+        "using \"w.h\";\nclass Foo : Widget {\n    bool t(Widget* w) { var p = w as Panel; return w is Panel; }\n}\n"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "auto p = spp::as_native<Panel>(w);")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "return spp::is_native<Panel>(w);")) << r.cpp;

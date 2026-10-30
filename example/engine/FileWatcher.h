@@ -8,11 +8,17 @@
 #include <ctime>
 #include <string>
 
-namespace harness {
+namespace harness
+{
 
-class FileWatcher {
+class FileWatcher
+{
 public:
-    enum class Mode { Auto, Polling };  // Polling forces the fallback (used by the tests)
+    enum class Mode
+    {
+        Auto,
+        Polling
+    }; // Polling forces the fallback (used by the tests)
 
     explicit FileWatcher(std::string path, Mode mode = Mode::Auto);
     ~FileWatcher();
@@ -26,15 +32,15 @@ public:
     bool wait_changed(int timeout_ms);
 
 private:
-    bool poll_stamp();  // true when the stamp of the file differs from the last stamp
+    bool poll_stamp(); // true when the stamp of the file differs from the last stamp
 
     std::string path_, name_;
-    int fd_ = -1;  // the inotify descriptor, or -1
+    int fd_ = -1; // the inotify descriptor, or -1
     long long stamp_ns_ = -1;
     long long size_ = -1;
     long long ctime_ns_ = -1;
     unsigned long long ino_ = 0;
-    unsigned long long hash_ = 0;  // the hash of the content at the last stamp
+    unsigned long long hash_ = 0; // the hash of the content at the last stamp
 };
 
-}  // namespace harness
+} // namespace harness

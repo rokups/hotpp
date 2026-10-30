@@ -1,14 +1,15 @@
 // Tests for sppc::translate with the kinds of script classes: shell class, plain class, [value] class.
+#include "spp/sppc_lib.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "spp/sppc_lib.h"
-#include "support/translator_test_support.h"
-
 using namespace translator_test;
 
-namespace {
+namespace
+{
 
 const char* kHeader =
     "#include <string>\n"
@@ -44,7 +45,7 @@ const char* kStats =
     "    float Twice() { return this.hp * 2.0; }\n"
     "}\n";
 
-}  // namespace
+} // namespace
 
 TEST(ScriptKindsTranslation, NewOfAShellClassGivesAHandle)
 {
@@ -104,8 +105,7 @@ TEST(ScriptKindsTranslation, SuperNeedsABase)
 TEST(ScriptKindsTranslation, ClassOrderIsChecked)
 {
     // A [value] class is emitted first, so a later [value] class is fine.
-    const sppc::TranslateResult r =
-        translate_script("class Boss : Unit { Stats s; }\nstruct Stats { int a = 0; }\n");
+    const sppc::TranslateResult r = translate_script("class Boss : Unit { Stats s; }\nstruct Stats { int a = 0; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
@@ -120,12 +120,11 @@ TEST(ScriptKindsTranslation, HandleClassCanBeUsedBeforeItsDeclaration)
 
 TEST(ScriptKindsTranslation, ClassesThatUseEachOtherInACycleAreAnError)
 {
-    expect_error("class A : Unit { B b; }\nclass B : Unit { A a; }\n",
-                 "the classes use each other in a cycle");
+    expect_error("class A : Unit { B b; }\nclass B : Unit { A a; }\n", "the classes use each other in a cycle");
 }
 
 TEST(ScriptKindsTranslation, ValueClassCannotUseAHandleClass)
 {
-    expect_error("struct V { Squad s; }\nclass Squad : Unit { int a = 0; }\n",
-                 "a struct can use only native types and structs");
+    expect_error(
+        "struct V { Squad s; }\nclass Squad : Unit { int a = 0; }\n", "a struct can use only native types and structs");
 }

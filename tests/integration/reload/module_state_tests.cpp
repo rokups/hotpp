@@ -1,33 +1,33 @@
 // Reload tests of the module-level declarations (S8a, design 5.3): a module variable, a script
 // enum and a script struct. They use the backend that SPP_BACKEND selected.
-#include <gtest/gtest.h>
-
-#include <string>
-
 #include "spp/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 
-namespace {
+#include <gtest/gtest.h>
+
+#include <string>
+
+namespace
+{
 
 using test_support::kDt;
 using test_support::Session;
 using test_support::source;
 
-template <class T>
-T* fld(spp::ShellBase* shell, const char* name)
+template <class T> T* fld(spp::ShellBase* shell, const char* name)
 {
     return spp::field_ptr<T>(shell, name);
 }
 
 // The module state block of the loader. The test reads a variable by its name.
-template <class T>
-T* modvar(Session& s, const char* name)
+template <class T> T* modvar(Session& s, const char* name)
 {
     const spp::ModuleStateInfo ms = s.loader.module_state();
-    if (!ms.layout || !*ms.slot) return nullptr;
+    if (!ms.layout || !*ms.slot)
+        return nullptr;
     for (uint32_t i = 0; i < ms.layout->field_count; ++i)
         if (std::string(ms.layout->fields[i].name) == name)
             return reinterpret_cast<T*>(static_cast<char*>(*ms.slot) + ms.layout->fields[i].offset);
@@ -53,7 +53,7 @@ TEST_P(BackendTests, ModuleVariableIsSharedByAllClasses)
     EXPECT_EQ(*fld<int>(helper.shell, "seen"), 101);
     // Hero: mode is Run (10) and the local is Walk (1).
     EXPECT_EQ(*fld<int>(s.inst.shell, "score"), 11);
-    EXPECT_EQ(*modvar<float>(s, "last"), 1.0f);  // the struct begins with x
+    EXPECT_EQ(*modvar<float>(s, "last"), 1.0f); // the struct begins with x
     s.world.Tick(kDt);
     EXPECT_EQ(*modvar<int>(s, "total"), 202);
 }
@@ -74,40 +74,44 @@ TEST_P(BackendTests, ReloadKeepsModuleVariables)
     s.world.Tick(kDt);
     s.world.Tick(kDt);
     ASSERT_EQ(*modvar<int>(s, "total"), 202);
-    ASSERT_EQ(*modvar<int>(s, "mode"), 2);  // Mode.Run
+    ASSERT_EQ(*modvar<int>(s, "mode"), 2); // Mode.Run
 
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    s.world.Tick(kDt);  // the commit happens at the end of this frame
+    s.world.Tick(kDt); // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     ASSERT_EQ(spp::active_generation, 2u);
     // The Tick of the commit frame ran with generation 1: total is 303.
-    EXPECT_EQ(modvar<int>(s, "total"), nullptr);  // the name is "sum" now
+    EXPECT_EQ(modvar<int>(s, "total"), nullptr); // the name is "sum" now
     ASSERT_NE(modvar<int>(s, "sum"), nullptr);
     EXPECT_EQ(*modvar<int>(s, "sum"), 303);
-    EXPECT_EQ(*modvar<int>(s, "mode"), 2);   // the enum value migrates as an integer
-    EXPECT_EQ(*modvar<int>(s, "bonus"), 7);  // new variable: the initializer
+    EXPECT_EQ(*modvar<int>(s, "mode"), 2); // the enum value migrates as an integer
+    EXPECT_EQ(*modvar<int>(s, "bonus"), 7); // new variable: the initializer
     // The struct kept x and y. The new field z has its initializer.
     const spp::ModuleStateInfo ms = s.loader.module_state();
     const spp::FieldInfo* last = nullptr;
     for (uint32_t i = 0; i < ms.layout->field_count; ++i)
-        if (std::string(ms.layout->fields[i].name) == "last") last = &ms.layout->fields[i];
+        if (std::string(ms.layout->fields[i].name) == "last")
+            last = &ms.layout->fields[i];
     ASSERT_NE(last, nullptr);
     ASSERT_NE(last->sub, nullptr);
     float x = -1.0f, z = -1.0f;
-    for (uint32_t i = 0; i < last->sub->field_count; ++i) {
+    for (uint32_t i = 0; i < last->sub->field_count; ++i)
+    {
         const spp::FieldInfo& f = last->sub->fields[i];
         const float* p = reinterpret_cast<const float*>(static_cast<char*>(*ms.slot) + last->offset + f.offset);
-        if (std::string(f.name) == "x") x = *p;
-        if (std::string(f.name) == "z") z = *p;
+        if (std::string(f.name) == "x")
+            x = *p;
+        if (std::string(f.name) == "z")
+            z = *p;
     }
     EXPECT_EQ(x, 3.0f);
     EXPECT_EQ(z, 5.0f);
 
-    s.world.Tick(kDt);  // the first Tick of generation 2
+    s.world.Tick(kDt); // the first Tick of generation 2
     // Hero: Walk (1) + bonus (7). Helper: 100.
     EXPECT_EQ(*modvar<int>(s, "sum"), 303 + 8 + 100);
-    EXPECT_EQ(*fld<int>(s.inst.shell, "score"), 10);  // Weight(Run) in generation 2
+    EXPECT_EQ(*fld<int>(s.inst.shell, "score"), 10); // Weight(Run) in generation 2
 }
 
 // An initializer of a module variable reads an earlier variable (S16). A convert hook keeps the
@@ -122,21 +126,21 @@ TEST_P(BackendTests, ModuleVariableOrderAndConvertHook)
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Probe"));
     s.commit_at_frame_boundary();
     ASSERT_NE(modvar<int>(s, "doubled"), nullptr);
-    EXPECT_EQ(*modvar<int>(s, "doubled"), 10);  // seed * 2
+    EXPECT_EQ(*modvar<int>(s, "doubled"), 10); // seed * 2
     s.world.Tick(kDt);
     EXPECT_EQ(*modvar<int>(s, "doubled"), 11);
 
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    s.world.Tick(kDt);  // doubled is 12; the commit happens at the end of this frame
+    s.world.Tick(kDt); // doubled is 12; the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);
     ASSERT_NE(modvar<float>(s, "level"), nullptr);
-    EXPECT_FLOAT_EQ(*modvar<float>(s, "level"), 4.5f);  // convert_level(3)
+    EXPECT_FLOAT_EQ(*modvar<float>(s, "level"), 4.5f); // convert_level(3)
     ASSERT_NE(modvar<int>(s, "bonus"), nullptr);
-    EXPECT_EQ(*modvar<int>(s, "bonus"), 112);  // the migrated doubled + 100
+    EXPECT_EQ(*modvar<int>(s, "bonus"), 112); // the migrated doubled + 100
     s.world.Tick(kDt);
     EXPECT_EQ(*fld<int>(s.inst.shell, "seen"), 12);
 }
 
-}  // namespace
+} // namespace

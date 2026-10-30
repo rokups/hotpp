@@ -1,15 +1,16 @@
 // Tests for sppc::translate with string interpolation: the format function and the include.
+#include "spp/sppc_lib.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <string>
 
-#include "spp/sppc_lib.h"
-#include "support/translator_test_support.h"
-
 using namespace translator_test;
 
-namespace {
+namespace
+{
 
 const char* kHeader =
     "#include <string>\n"
@@ -24,10 +25,12 @@ sppc::TranslateResult translate_with(const std::string& init, const std::string&
 {
     TempDir dir;
     write_file(dir.path() / "u.h", kHeader);
-    sppc::TranslateOptions o = temp_options(
-        dir, "using \"u.h\";\nusing <string>;\nclass P : Unit {\n    int hp = 3;\n"
-             "    override void Update(float dt) { this.Name = " + init + "; }\n}\n");
-    if (!lib.empty()) o.format_lib = lib;
+    sppc::TranslateOptions o = temp_options(dir,
+        "using \"u.h\";\nusing <string>;\nclass P : Unit {\n    int hp = 3;\n"
+        "    override void Update(float dt) { this.Name = "
+            + init + "; }\n}\n");
+    if (!lib.empty())
+        o.format_lib = lib;
     return sppc::translate(o);
 }
 
@@ -36,7 +39,7 @@ bool has(const sppc::TranslateResult& r, const std::string& text)
     return r.cpp.find(text) != std::string::npos;
 }
 
-}  // namespace
+} // namespace
 
 TEST(StringInterpolationTranslation, StdFormatAndInclude)
 {
@@ -58,7 +61,8 @@ TEST(StringInterpolationTranslation, FmtFormatAndInclude)
 
 TEST(StringInterpolationTranslation, NoInterpolationNoInclude)
 {
-    for (const char* lib : {"", "fmt"}) {
+    for (const char* lib : {"", "fmt"})
+    {
         const sppc::TranslateResult r = translate_with("\"hp {x}\"", lib);
         ASSERT_TRUE(r.ok) << r.diagnostics;
         EXPECT_FALSE(has(r, "format")) << r.cpp;

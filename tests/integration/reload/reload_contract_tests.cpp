@@ -1,30 +1,35 @@
 // Reload tests of the rows of the design 5.3 table that S17 adds, with the backend that
 // SPP_BACKEND selected: a changed method signature, a native container of a [value] class,
 // the first use of "this" as a handle, and a raw function pointer in a state field (4.9).
+#include "spp/backend.h"
+#include "support/backend_fixture.h"
+#include "support/script_files.h"
+#include "support/test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <cstdint>
 #include <cstring>
 #include <string>
 
-#include "spp/backend.h"
-#include "support/backend_fixture.h"
-#include "support/script_files.h"
-#include "support/test_support.h"
-
-namespace {
+namespace
+{
 
 using spp::GenState;
 using test_support::kDt;
 using test_support::Session;
 using test_support::source;
 
-int* int_field(Session& s, const char* name) { return spp::field_ptr<int>(s.inst.shell, name); }
+int* int_field(Session& s, const char* name)
+{
+    return spp::field_ptr<int>(s.inst.shell, name);
+}
 
 const spp::GenerationInfo* find_gen(const spp::LoaderStats& st, uint32_t generation)
 {
     for (const auto& g : st.generations)
-        if (g.generation == generation) return &g;
+        if (g.generation == generation)
+            return &g;
     return nullptr;
 }
 
@@ -67,13 +72,13 @@ TEST_P(BackendTests, SignatureChangeDetachesTheOldDelegate)
     EXPECT_NE(reinterpret_cast<void*>(new_heal), reinterpret_cast<void*>(old_heal));
     const uint64_t before = spp::detached_call_count();
     testing::internal::CaptureStderr();
-    old_heal(s.actor, 5);  // detached: no call of heal(int, int) with a missing argument
+    old_heal(s.actor, 5); // detached: no call of heal(int, int) with a missing argument
     old_heal(s.actor, 5);
     const std::string log_calls = testing::internal::GetCapturedStderr();
     EXPECT_EQ(*int_field(s, "hp"), 15);
     EXPECT_EQ(spp::detached_call_count(), before + 2);
     EXPECT_NE(log_calls.find("old signature"), std::string::npos) << log_calls;
-    EXPECT_EQ(log_calls.find("old signature"), log_calls.rfind("old signature")) << log_calls;  // logs once
+    EXPECT_EQ(log_calls.find("old signature"), log_calls.rfind("old signature")) << log_calls; // logs once
     new_heal(s.actor, 5, 1);
     EXPECT_EQ(*int_field(s, "hp"), 21);
 
@@ -166,9 +171,10 @@ TEST_P(BackendTests, FunctionPointerFieldBlocksTheUnload)
     s.world.Tick(kDt);
     EXPECT_EQ(*int_field(s, "result"), 2);
     reload(s, v2);
-    for (int i = 0; i < 4; ++i) s.world.Tick(kDt);
+    for (int i = 0; i < 4; ++i)
+        s.world.Tick(kDt);
     ASSERT_FALSE(s.commit_failed);
-    EXPECT_EQ(*int_field(s, "result"), 4);  // the pointer of generation 1 still runs
+    EXPECT_EQ(*int_field(s, "result"), 4); // the pointer of generation 1 still runs
     const spp::LoaderStats st = s.loader.stats();
     EXPECT_TRUE(st.state_holds_code);
     ASSERT_NE(find_gen(st, 1), nullptr);
@@ -192,7 +198,8 @@ TEST_P(BackendTests, StructWithFunctionPointerFieldBlocksTheUnload)
     s.world.Tick(kDt);
     EXPECT_EQ(*int_field(s, "result"), 2);
     reload(s, v2);
-    for (int i = 0; i < 4; ++i) s.world.Tick(kDt);
+    for (int i = 0; i < 4; ++i)
+        s.world.Tick(kDt);
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(*int_field(s, "result"), 4);
     const spp::LoaderStats st = s.loader.stats();
@@ -201,4 +208,4 @@ TEST_P(BackendTests, StructWithFunctionPointerFieldBlocksTheUnload)
     EXPECT_EQ(find_gen(st, 1)->state, GenState::Retired);
 }
 
-}  // namespace
+} // namespace

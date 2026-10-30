@@ -1,10 +1,10 @@
 // Tests for sppc::translate with the arrow lambda.
+#include "spp/sppc_lib.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
-
-#include "spp/sppc_lib.h"
-#include "support/translator_test_support.h"
 
 using namespace translator_test;
 
@@ -13,9 +13,7 @@ TEST(LambdaTranslation, ArrowLambdaBecomesAClosureThatCapturesByValue)
     const sppc::TranslateOptions o = engine_options("timer_v1.spp", 1);
     const sppc::TranslateResult r = sppc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.cpp.find("spp::make_closure(GEN, \"Beeper::arm lambda\", [=]()"),
-              std::string::npos)
-        << r.cpp;
+    EXPECT_NE(r.cpp.find("spp::make_closure(GEN, \"Beeper::arm lambda\", [=]()"), std::string::npos) << r.cpp;
     // The body uses self and a new state pointer, not the pointer of the outer function.
     EXPECT_NE(r.cpp.find("auto* __st = state_of(__self);\n#line 15"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("__st->fired = __st->fired + 1;"), std::string::npos) << r.cpp;
@@ -43,4 +41,3 @@ TEST(LambdaTranslation, ParameterWithoutTypeIsAuto)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("[=](auto x, int32_t y)"), std::string::npos) << r.cpp;
 }
-

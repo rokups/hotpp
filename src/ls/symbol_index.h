@@ -17,33 +17,39 @@
 #include <string>
 #include <vector>
 
-namespace spp::ls {
+namespace spp::ls
+{
 
-struct IndexPos {
-    int line = 0, col = 0;  // 0-based, in bytes
+struct IndexPos
+{
+    int line = 0, col = 0; // 0-based, in bytes
 };
 
-struct IndexMember {
+struct IndexMember
+{
     std::string name, kind;
     IndexPos begin;
     // The places of the member in this file. No value: not computed yet (this needs clangd).
     std::optional<std::vector<IndexPos>> refs;
 };
 
-struct IndexClass {
+struct IndexClass
+{
     std::string name;
-    IndexPos begin;  // the place of the class name
+    IndexPos begin; // the place of the class name
     std::vector<IndexPos> refs;
     std::vector<IndexMember> members;
     IndexMember* find_member(const std::string& member);
 };
 
-struct IndexShard {
+struct IndexShard
+{
     std::vector<IndexClass> classes;
     IndexClass* find_class(const std::string& name);
 };
 
-class SymbolIndex {
+class SymbolIndex
+{
 public:
     static constexpr int kFormatVersion = 1;
 
@@ -57,8 +63,8 @@ public:
     // The digest of a script and of the scripts that it imports ("using "x.spp";"), also the
     // imports of the imports. A script import is read from the directory of the script, then from
     // the include dirs. When an imported script changes, the digest changes.
-    static std::string digest(const std::string& script_path, const std::string& content,
-                              const std::vector<std::string>& include_dirs);
+    static std::string digest(
+        const std::string& script_path, const std::string& content, const std::vector<std::string>& include_dirs);
     // The path of the shard file of a script path.
     std::string shard_path(const std::string& script_path) const;
 
@@ -78,4 +84,4 @@ private:
     int loads_ = 0, stores_ = 0;
 };
 
-}  // namespace spp::ls
+} // namespace spp::ls

@@ -6,6 +6,9 @@
 // the std::string and the std::vector (the non-trivial move path).
 #pragma once
 
+#include "support/reload_assert.h"
+#include "support/test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <cmath>
@@ -13,10 +16,8 @@
 #include <utility>
 #include <vector>
 
-#include "support/reload_assert.h"
-#include "support/test_support.h"
-
-namespace nativestd {
+namespace nativestd
+{
 
 using test_support::kDt;
 using test_support::Session;
@@ -38,12 +39,12 @@ inline void run_native_std_reload(spp::Module v1, spp::Module v2)
     s.world.Tick(kDt);
     s.world.Tick(kDt);
     ASSERT_NE(s.field("dist"), nullptr);
-    EXPECT_FLOAT_EQ(*s.field("dist"), 5.0f);    // Distance
-    EXPECT_FLOAT_EQ(*s.field("lowest"), 1.5f);  // std::sort, then Math.Min
-    EXPECT_FLOAT_EQ(*s.field("sum"), 7.0f);     // Util::Sum
-    EXPECT_EQ(s.actor->Name, "(3, 4, 0)");      // FormatVec
+    EXPECT_FLOAT_EQ(*s.field("dist"), 5.0f); // Distance
+    EXPECT_FLOAT_EQ(*s.field("lowest"), 1.5f); // std::sort, then Math.Min
+    EXPECT_FLOAT_EQ(*s.field("sum"), 7.0f); // Util::Sum
+    EXPECT_EQ(s.actor->Name, "(3, 4, 0)"); // FormatVec
     ASSERT_NE(str("described"), nullptr);
-    EXPECT_EQ(*str("described"), "(3, 4, 0)@(3, 4, 0)");  // Util::Describe
+    EXPECT_EQ(*str("described"), "(3, 4, 0)@(3, 4, 0)"); // Util::Describe
     ASSERT_NE(vec(), nullptr);
     EXPECT_EQ(*vec(), (std::vector<int>{0, 10}));
 
@@ -74,4 +75,4 @@ inline void run_native_std_reload(spp::Module v1, spp::Module v2)
     EXPECT_EQ(*str("title"), label);
 }
 
-}  // namespace nativestd
+} // namespace nativestd

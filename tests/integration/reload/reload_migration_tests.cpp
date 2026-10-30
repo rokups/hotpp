@@ -1,13 +1,14 @@
 // Reload with migration, a thunk and two rejected reloads.
 // CMake defines the macros GEN1_SO, GEN2_SO, GEN4_BASE_SO and GEN3_MISSING_SO.
 // The file GEN3_MISSING_SO does not exist on purpose.
-#include <cmath>
-#include <string>
-
 #include "support/reload_assert.h"
 #include "support/test_support.h"
 
-namespace {
+#include <cmath>
+#include <string>
+
+namespace
+{
 
 using test_support::kDt;
 using test_support::Session;
@@ -23,8 +24,9 @@ TEST(ReloadMigration, ReloadMigratesAndRejectedReloadsKeepGeneration2)
     std::string error;
 
     // Generation 1: change the state, then bind a delegate through the thunk.
-    a->TakeDamage(30.0f);                          // hp 70
-    for (int i = 0; i < 3; ++i) world.Tick(kDt);   // each Tick heals 1: hp 73
+    a->TakeDamage(30.0f); // hp 70
+    for (int i = 0; i < 3; ++i)
+        world.Tick(kDt); // each Tick heals 1: hp 73
     ASSERT_NE(field("hp"), nullptr);
     EXPECT_EQ(*field("hp"), 73.0f);
 
@@ -33,7 +35,7 @@ TEST(ReloadMigration, ReloadMigratesAndRejectedReloadsKeepGeneration2)
     ASSERT_NE(thunk, nullptr);
     Delegate<void(float)> heal;
     heal.Bind(a, reinterpret_cast<HealFn>(thunk));
-    heal(5.0f);  // generation 1 body: hp 78
+    heal(5.0f); // generation 1 body: hp 78
     EXPECT_EQ(*field("hp"), 78.0f);
 
     // Validation phase: no side effect.
@@ -50,17 +52,17 @@ TEST(ReloadMigration, ReloadMigratesAndRejectedReloadsKeepGeneration2)
     EXPECT_EQ(field("shield"), nullptr);
 
     // The commit runs at the frame boundary, after the actors ticked.
-    world.Tick(kDt);  // generation 1 Tick heals 1: hp 79; then the commit
+    world.Tick(kDt); // generation 1 Tick heals 1: hp 79; then the commit
     ASSERT_FALSE(s.commit_failed);
     EXPECT_FALSE(s.loader.reload_pending());
     EXPECT_EQ(spp::active_generation, 2u);
     ASSERT_EQ(world.Actors().size(), 1u);
-    EXPECT_EQ(world.Actors()[0], addr);  // the same address
+    EXPECT_EQ(world.Actors()[0], addr); // the same address
     EXPECT_NE(shell->state, old_state);
     EXPECT_EQ(shell->cls->generation, 2u);
     EXPECT_EQ(field("hp"), nullptr);
     ASSERT_NE(field("health"), nullptr);
-    EXPECT_EQ(*field("health"), 79.0f);  // health carries hp
+    EXPECT_EQ(*field("health"), 79.0f); // health carries hp
     ASSERT_NE(field("shield"), nullptr);
     EXPECT_EQ(*field("shield"), 25.0f);
     ASSERT_NE(field("speed"), nullptr);
@@ -124,8 +126,8 @@ TEST(ReloadMigration, CommitWritesTheOwnerOfTheNewBlock)
     ASSERT_FALSE(s.commit_failed);
     ASSERT_EQ(shell->cls->generation, 2u);
     EXPECT_EQ(*reinterpret_cast<spp::ShellBase**>(shell->state), shell);
-    ASSERT_NE(s.field("health"), nullptr);  // the fields still migrate after the owner slot
+    ASSERT_NE(s.field("health"), nullptr); // the fields still migrate after the owner slot
     EXPECT_EQ(*s.field("shield"), 25.0f);
 }
 
-}  // namespace
+} // namespace

@@ -2,6 +2,9 @@
 // file of each example script. A later parser port must give the same bytes.
 // Set SPP_UPDATE_GOLDEN to write the files and pass.
 // CMake defines SPP_SOURCE_DIR.
+#include "spp/sppc_lib.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <cstdlib>
@@ -10,18 +13,17 @@
 #include <sstream>
 #include <string>
 
-#include "spp/sppc_lib.h"
-#include "support/translator_test_support.h"
-
 using namespace translator_test;
 
-namespace {
+namespace
+{
 
 // The expected files are in tests/golden/expected/. SPP_UPDATE_GOLDEN writes them.
 void check_golden(const std::string& name, const std::string& text)
 {
     const fs::path path = fs::path(SPP_SOURCE_DIR) / "tests" / "golden" / "expected" / name;
-    if (std::getenv("SPP_UPDATE_GOLDEN") != nullptr) {
+    if (std::getenv("SPP_UPDATE_GOLDEN") != nullptr)
+    {
         fs::create_directories(path.parent_path());
         std::ofstream(path, std::ios::binary) << text;
         return;
@@ -38,10 +40,11 @@ void check_golden(const std::string& name, const std::string& text)
 void golden_pair(const std::string& base)
 {
     std::string slots;
-    for (int gen = 1; gen <= 2; ++gen) {
+    for (int gen = 1; gen <= 2; ++gen)
+    {
         const std::string file = base + "_v" + std::to_string(gen) + ".spp";
         sppc::TranslateOptions o = engine_options(file.c_str(), gen);
-        o.script_name = file;  // the file name only, so the output has no absolute path
+        o.script_name = file; // the file name only, so the output has no absolute path
         o.slots_in = slots;
         const sppc::TranslateResult r = sppc::translate(o);
         ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -64,14 +67,29 @@ void golden_one(const std::string& base)
     check_golden(base + ".g1.slots", r.slots_out);
 }
 
-}  // namespace
+} // namespace
 
-TEST(GoldenTranslation, Player) { golden_pair("player"); }
+TEST(GoldenTranslation, Player)
+{
+    golden_pair("player");
+}
 
-TEST(GoldenTranslation, NativeStd) { golden_pair("native_std"); }
+TEST(GoldenTranslation, NativeStd)
+{
+    golden_pair("native_std");
+}
 
-TEST(GoldenTranslation, Timer) { golden_pair("timer"); }
+TEST(GoldenTranslation, Timer)
+{
+    golden_pair("timer");
+}
 
-TEST(GoldenTranslation, Props) { golden_one("props_v1"); }
+TEST(GoldenTranslation, Props)
+{
+    golden_one("props_v1");
+}
 
-TEST(GoldenTranslation, AbiChild) { golden_pair("abi_child"); }
+TEST(GoldenTranslation, AbiChild)
+{
+    golden_pair("abi_child");
+}

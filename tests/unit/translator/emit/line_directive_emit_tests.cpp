@@ -1,35 +1,35 @@
 // Tests for the #line directives that the printer writes.
+#include "emit.h"
+#include "support/emit_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "emit.h"
-#include "support/emit_test_support.h"
-
 using namespace sppc::ast;
 using namespace emit_test;
 
-namespace {
+namespace
+{
 
 // The script text has four lines. The first byte of line 2 is 2, of line 3 is 4
 // and of line 4 is 6. A pos of 0 means: no position.
 const char* kText = "a\nb\nc\nd\n";
 
-}  // namespace
+} // namespace
 
 TEST(LineDirectiveEmit, LineDirectiveOnLineChange)
 {
     sppc::LineMap map(kText);
     // line 2: std::printf("x", dt,
     // line 3:     self->p, hp);
-    ExprP e = call(name({"std", "printf"}, 2),
-                   list(str("\"x\""), id("dt"), arrow(id("self", 4), "p"), id("hp")));
+    ExprP e = call(name({"std", "printf"}, 2), list(str("\"x\""), id("dt"), arrow(id("self", 4), "p"), id("hp")));
     StmtP s = es(std::move(e));
     EXPECT_EQ(print_lines(*s, map, "t.spp", 1),
-              "#line 2 \"t.spp\"\n"
-              "    std::printf(\"x\", dt,\n"
-              "#line 3 \"t.spp\"\n"
-              "    self->p, hp);\n");
+        "#line 2 \"t.spp\"\n"
+        "    std::printf(\"x\", dt,\n"
+        "#line 3 \"t.spp\"\n"
+        "    self->p, hp);\n");
 }
 
 TEST(LineDirectiveEmit, FinallyLineDirectives)
@@ -45,16 +45,16 @@ TEST(LineDirectiveEmit, FinallyLineDirectives)
     t.finally_block = BlockStmt{slist(es(id("g", 6))), 4, 6};
     StmtP s = make_stmt(std::move(t));
     EXPECT_EQ(print_lines(*s, map, "t.spp", 1),
-              "#line 2 \"t.spp\"\n"
-              "    { spp::Finally __fin_0([&]\n"
-              "#line 3 \"t.spp\"\n"
-              "        {\n"
-              "#line 4 \"t.spp\"\n"
-              "            g; });\n"
-              "#line 2 \"t.spp\"\n"
-              "        { f;\n"
-              "#line 3 \"t.spp\"\n"
-              "        } }\n");
+        "#line 2 \"t.spp\"\n"
+        "    { spp::Finally __fin_0([&]\n"
+        "#line 3 \"t.spp\"\n"
+        "        {\n"
+        "#line 4 \"t.spp\"\n"
+        "            g; });\n"
+        "#line 2 \"t.spp\"\n"
+        "        { f;\n"
+        "#line 3 \"t.spp\"\n"
+        "        } }\n");
 }
 
 TEST(LineDirectiveEmit, OneLineDirectivePerLine)
@@ -73,12 +73,12 @@ TEST(LineDirectiveEmit, OneLineDirectivePerLine)
     i.then = make_stmt(std::move(b));
     StmtP s = make_stmt(std::move(i));
     EXPECT_EQ(print_lines(*s, map, "t.spp", 1),
-              "#line 2 \"t.spp\"\n"
-              "    if (c)\n"
-              "#line 3 \"t.spp\"\n"
-              "    { x = 1;\n"
-              "#line 4 \"t.spp\"\n"
-              "    }\n");
+        "#line 2 \"t.spp\"\n"
+        "    if (c)\n"
+        "#line 3 \"t.spp\"\n"
+        "    { x = 1;\n"
+        "#line 4 \"t.spp\"\n"
+        "    }\n");
 }
 
 TEST(LineDirectiveEmit, BodyKeepsLineAndDepth)
@@ -94,10 +94,10 @@ TEST(LineDirectiveEmit, BodyKeepsLineAndDepth)
     emit_stmts(slist(es(call(id("f", 2), list(make_expr(std::move(l)))))), e, 1);
     e.finish();
     EXPECT_EQ(e.text(),
-              "#line 2 \"t.spp\"\n"
-              "    f([=]() {\n"
-              "#line 3 \"t.spp\"\n"
-              "        a = 1;\n"
-              "#line 4 \"t.spp\"\n"
-              "    });\n");
+        "#line 2 \"t.spp\"\n"
+        "    f([=]() {\n"
+        "#line 3 \"t.spp\"\n"
+        "        a = 1;\n"
+        "#line 4 \"t.spp\"\n"
+        "    });\n");
 }

@@ -1,39 +1,42 @@
 // The scratch directory helpers: removal at exit, SPP_KEEP_TEMP and the safe remove.
-#include <gtest/gtest.h>
+#include "spp/scratch.h"
 
-#include <stdlib.h>
-#include <unistd.h>
+#include <gtest/gtest.h>
 
 #include <filesystem>
 #include <fstream>
+#include <stdlib.h>
 #include <string>
+#include <unistd.h>
 
-#include "spp/scratch.h"
-
-namespace {
+namespace
+{
 
 namespace fs = std::filesystem;
 
 std::string test_dir(const char* tag)
 {
-    return (fs::temp_directory_path() / ("spp_scratch_test_" + std::string(tag) + std::to_string(getpid())))
-        .string();
+    return (fs::temp_directory_path() / ("spp_scratch_test_" + std::string(tag) + std::to_string(getpid()))).string();
 }
 
 // Each test sets the variable itself. The fixture sets it to "0" before the test, so the CMake
 // option has no effect. It restores the old value after the test.
-struct Scratch : ::testing::Test {
+struct Scratch : ::testing::Test
+{
     void SetUp() override
     {
         const char* old = getenv("SPP_KEEP_TEMP");
         had_old_ = old != nullptr;
-        if (old) old_ = old;
+        if (old)
+            old_ = old;
         setenv("SPP_KEEP_TEMP", "0", 1);
     }
     void TearDown() override
     {
-        if (had_old_) setenv("SPP_KEEP_TEMP", old_.c_str(), 1);
-        else unsetenv("SPP_KEEP_TEMP");
+        if (had_old_)
+            setenv("SPP_KEEP_TEMP", old_.c_str(), 1);
+        else
+            unsetenv("SPP_KEEP_TEMP");
     }
 
     bool had_old_ = false;
@@ -108,4 +111,4 @@ TEST_F(Scratch, RemoveIgnoresRelativePaths)
     fs::remove_all(rel, ec);
 }
 
-}  // namespace
+} // namespace

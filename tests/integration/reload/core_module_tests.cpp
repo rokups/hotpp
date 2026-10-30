@@ -6,8 +6,13 @@
 // /proc/self/maps. The backend tests use the backend that SPP_BACKEND selected.
 //
 // CMake defines STRESS_SO and SPP_SOURCE_DIR.
+#include "spp/backend.h"
+#include "support/backend_fixture.h"
+#include "support/reload_assert.h"
+#include "support/script_files.h"
+#include "support/test_support.h"
+
 #include <gtest/gtest.h>
-#include <unistd.h>
 
 #include <cstdlib>
 #include <deque>
@@ -15,14 +20,10 @@
 #include <fstream>
 #include <set>
 #include <string>
+#include <unistd.h>
 
-#include "spp/backend.h"
-#include "support/backend_fixture.h"
-#include "support/reload_assert.h"
-#include "support/script_files.h"
-#include "support/test_support.h"
-
-namespace {
+namespace
+{
 
 namespace fs = std::filesystem;
 using spp::GenerationInfo;
@@ -34,7 +35,8 @@ using test_support::source;
 const GenerationInfo* find_gen(const spp::LoaderStats& st, uint32_t generation)
 {
     for (const GenerationInfo& g : st.generations)
-        if (g.generation == generation) return &g;
+        if (g.generation == generation)
+            return &g;
     return nullptr;
 }
 
@@ -42,7 +44,8 @@ const GenerationInfo* find_gen(const spp::LoaderStats& st, uint32_t generation)
 size_t loaded_modules(const spp::LoaderStats& st)
 {
     size_t n = st.core_modules;
-    for (const GenerationInfo& g : st.generations) n += g.state != GenState::Unloaded;
+    for (const GenerationInfo& g : st.generations)
+        n += g.state != GenState::Unloaded;
     return n;
 }
 
@@ -51,14 +54,19 @@ size_t mapped_files(const std::string& needle)
 {
     std::ifstream maps("/proc/self/maps");
     std::set<std::string> paths;
-    for (std::string line; std::getline(maps, line);) {
+    for (std::string line; std::getline(maps, line);)
+    {
         const size_t slash = line.find('/');
-        if (slash != std::string::npos && line.find(needle) != std::string::npos) paths.insert(line.substr(slash));
+        if (slash != std::string::npos && line.find(needle) != std::string::npos)
+            paths.insert(line.substr(slash));
     }
     return paths.size();
 }
 
-int* int_field(const spp::Instance& o, const char* name) { return spp::field_ptr<int>(o.shell, name); }
+int* int_field(const spp::Instance& o, const char* name)
+{
+    return spp::field_ptr<int>(o.shell, name);
+}
 
 // Reloads the stress library "reloads" times. Objects of many generations stay alive, some
 // objects die, and some generations have a pin for three reloads. The count of loaded modules
@@ -68,11 +76,13 @@ void run_reloads(int reloads)
     const fs::path dir = fs::temp_directory_path() / ("spp-stress-" + std::to_string(getpid()));
     fs::create_directories(dir);
     int copies = 0;
-    auto load_copy = [&]() {
+    auto load_copy = [&]()
+    {
         const fs::path p = dir / ("stress." + std::to_string(++copies) + ".so");
         fs::copy_file(STRESS_SO, p, fs::copy_options::overwrite_existing);
         spp::LoadResult r = spp::module_from_library(p.string());
-        if (!r) throw std::runtime_error(r.error);
+        if (!r)
+            throw std::runtime_error(r.error);
         return std::make_pair(std::move(*r.module), p);
     };
     using PokeFn = void (*)(Actor*, int);
@@ -80,18 +90,20 @@ void run_reloads(int reloads)
     Session s;
     auto [m1, p1] = load_copy();
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(m1), "Pulse"));
-    fs::remove(p1);  // the mapping stays; the core has its own copy
+    fs::remove(p1); // the mapping stays; the core has its own copy
     s.commit_at_frame_boundary();
     const uint32_t first = spp::active_generation;
-    std::deque<spp::Instance> objs;          // objects outside the world; the test deletes them
-    std::deque<std::pair<uint32_t, int>> pins;  // pinned generation, reload of the unpin
+    std::deque<spp::Instance> objs; // objects outside the world; the test deletes them
+    std::deque<std::pair<uint32_t, int>> pins; // pinned generation, reload of the unpin
     int pokes = 0;
     size_t max_loaded = 0;
     size_t max_mapped = 0;
 
-    testing::internal::CaptureStderr();  // one commit line and one unload line for each reload
-    for (int i = 1; i <= reloads; ++i) {
-        if (i % 7 == 0) {
+    testing::internal::CaptureStderr(); // one commit line and one unload line for each reload
+    for (int i = 1; i <= reloads; ++i)
+    {
+        if (i % 7 == 0)
+        {
             spp::pin(spp::active_generation);
             pins.emplace_back(spp::active_generation, i + 3);
         }
@@ -99,22 +111,26 @@ void run_reloads(int reloads)
         std::string error;
         ASSERT_RELOAD_OK(s.loader.request_reload(std::move(m)));
         fs::remove(p);
-        s.world.Tick(kDt);  // the commit runs at the frame boundary
+        s.world.Tick(kDt); // the commit runs at the frame boundary
         ASSERT_FALSE(s.commit_failed);
         ASSERT_EQ(spp::active_generation, first + static_cast<uint32_t>(i));
-        while (!pins.empty() && pins.front().second <= i) {
+        while (!pins.empty() && pins.front().second <= i)
+        {
             spp::unpin(pins.front().first);
             pins.pop_front();
         }
         reinterpret_cast<PokeFn>(s.loader.thunk("Pulse::poke"))(s.actor, 1);
         ++pokes;
-        if (i % 10 == 0) objs.push_back(s.loader.find("Pulse")->create());
-        if (i % 25 == 0 && objs.size() > 2) {
+        if (i % 10 == 0)
+            objs.push_back(s.loader.find("Pulse")->create());
+        if (i % 25 == 0 && objs.size() > 2)
+        {
             delete static_cast<Actor*>(objs.front().native);
             objs.pop_front();
         }
-        for (const spp::Instance& o : objs) static_cast<Actor*>(o.native)->Tick(kDt);
-        s.world.Tick(kDt);  // the retired generation unloads at this boundary
+        for (const spp::Instance& o : objs)
+            static_cast<Actor*>(o.native)->Tick(kDt);
+        s.world.Tick(kDt); // the retired generation unloads at this boundary
         const spp::LoaderStats st = s.loader.stats();
         max_loaded = std::max(max_loaded, loaded_modules(st));
         max_mapped = std::max(max_mapped, mapped_files(dir.string()) + mapped_files("spp-core-"));
@@ -123,7 +139,8 @@ void run_reloads(int reloads)
         ASSERT_EQ(st.core_modules, 1u);
     }
     testing::internal::GetCapturedStderr();
-    while (!pins.empty()) {
+    while (!pins.empty())
+    {
         spp::unpin(pins.front().first);
         pins.pop_front();
     }
@@ -132,7 +149,7 @@ void run_reloads(int reloads)
     const spp::LoaderStats st = s.loader.stats();
     EXPECT_EQ(loaded_modules(st), 2u) << s.loader.stats_text();
     EXPECT_EQ(find_gen(st, first)->state, GenState::Unloaded);
-    EXPECT_LE(max_loaded, 2u + 1u);  // at most one pin is open at a time
+    EXPECT_LE(max_loaded, 2u + 1u); // at most one pin is open at a time
     EXPECT_LE(max_mapped, max_loaded);
     EXPECT_EQ(mapped_files(dir.string()) + mapped_files("spp-core-"), 2u);
     EXPECT_EQ(st.live_objects, 1 + objs.size());
@@ -140,7 +157,8 @@ void run_reloads(int reloads)
     // The object of generation 1 kept its state over all reloads.
     EXPECT_EQ(*int_field(s.inst, "hits"), pokes);
     EXPECT_EQ(*int_field(s.inst, "ticks"), 2 * reloads + 2);
-    for (const spp::Instance& o : objs) {
+    for (const spp::Instance& o : objs)
+    {
         const int t = *int_field(o, "ticks");
         static_cast<Actor*>(o.native)->Tick(kDt);
         EXPECT_EQ(*int_field(o, "ticks"), t + 1);
@@ -157,12 +175,16 @@ int reload_count(int fallback)
 }
 
 // The fast variant of the stress test is in the normal suite.
-TEST(CoreModule, ManyReloadsKeepTheModuleCountBounded) { run_reloads(reload_count(200)); }
+TEST(CoreModule, ManyReloadsKeepTheModuleCountBounded)
+{
+    run_reloads(reload_count(200));
+}
 
 // The full variant (design M8: 1000 reloads). Set SPP_STRESS=1 to run it.
 TEST(CoreModule, ThousandReloads)
 {
-    if (!std::getenv("SPP_STRESS")) GTEST_SKIP() << "set SPP_STRESS=1 to run 1000 reloads";
+    if (!std::getenv("SPP_STRESS"))
+        GTEST_SKIP() << "set SPP_STRESS=1 to run 1000 reloads";
     run_reloads(1000);
 }
 
@@ -186,7 +208,8 @@ TEST_P(BackendTests, RemovedClassHoldsOnlyTheGenerationOfItsLayout)
 
     std::string error;
     testing::internal::CaptureStderr();
-    for (spp::LoadResult* r : {&v2, &v3}) {
+    for (spp::LoadResult* r : {&v2, &v3})
+    {
         ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*r->module)));
         s.world.Tick(kDt);
         s.world.Tick(kDt);
@@ -194,7 +217,7 @@ TEST_P(BackendTests, RemovedClassHoldsOnlyTheGenerationOfItsLayout)
     }
     s.world.Tick(kDt);
     spp::LoaderStats st = s.loader.stats();
-    EXPECT_EQ(find_gen(st, 1)->state, GenState::Retired);  // the layout of Ghost
+    EXPECT_EQ(find_gen(st, 1)->state, GenState::Retired); // the layout of Ghost
     EXPECT_EQ(find_gen(st, 2)->state, GenState::Unloaded);
     EXPECT_EQ(st.core_modules, 1u);
     // The Ghost methods go to the handler. The state stays.
@@ -232,7 +255,8 @@ TEST_P(BackendTests, CodeHoldingFieldBlocksTheUnload)
     std::string error;
     testing::internal::CaptureStderr();
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    for (int i = 0; i < 4; ++i) s.world.Tick(kDt);
+    for (int i = 0; i < 4; ++i)
+        s.world.Tick(kDt);
     testing::internal::GetCapturedStderr();
     ASSERT_FALSE(s.commit_failed);
     const spp::LoaderStats st = s.loader.stats();
@@ -241,4 +265,4 @@ TEST_P(BackendTests, CodeHoldingFieldBlocksTheUnload)
     EXPECT_NE(s.loader.stats_text().find("unload blocked"), std::string::npos);
 }
 
-}  // namespace
+} // namespace

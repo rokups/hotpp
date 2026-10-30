@@ -1,5 +1,11 @@
 // The loader of generation modules: validation, commit and unload.
 #pragma once
+#include "spp/module.h"
+#include "spp/runtime/records.h"
+#include "spp/runtime/registry.h"
+#include "spp/runtime/reload_result.h"
+#include "spp/runtime/threads.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -9,47 +15,46 @@
 #include <unordered_map>
 #include <vector>
 
-#include "spp/module.h"
-#include "spp/runtime/records.h"
-#include "spp/runtime/reload_result.h"
-#include "spp/runtime/registry.h"
-#include "spp/runtime/threads.h"
-
-namespace spp {
+namespace spp
+{
 
 // The state of a generation module in the loader (section 4.9).
-enum class GenState : uint8_t {
-    Active,    // the live generation
-    Retired,   // a reload replaced it; the code stays loaded
-    Unloaded,  // the loader released the code (dlclose or ORC tracker removal)
+enum class GenState : uint8_t
+{
+    Active, // the live generation
+    Retired, // a reload replaced it; the code stays loaded
+    Unloaded, // the loader released the code (dlclose or ORC tracker removal)
 };
 
-struct GenerationInfo {
+struct GenerationInfo
+{
     uint32_t generation;
     GenState state;
-    uint32_t pins;       // pin_count(generation)
-    uint32_t code_refs;  // registry entries, thunks and live objects that use the module code
+    uint32_t pins; // pin_count(generation)
+    uint32_t code_refs; // registry entries, thunks and live objects that use the module code
     std::string origin;
 };
 
 // One script class in the stats (design 8.4).
-struct ClassInfo {
+struct ClassInfo
+{
     std::string name;
-    uint32_t generation;  // the generation of the dispatch table
-    uint32_t slots;       // the number of slots in the dispatch table
+    uint32_t generation; // the generation of the dispatch table
+    uint32_t slots; // the number of slots in the dispatch table
     size_t live_objects;
-    bool removed;         // the source dropped the class; the slots point to the removed class handler
+    bool removed; // the source dropped the class; the slots point to the removed class handler
 };
 
-struct LoaderStats {
+struct LoaderStats
+{
     uint32_t active_generation = 0;
-    std::vector<GenerationInfo> generations;  // in load order
+    std::vector<GenerationInfo> generations; // in load order
     size_t live_objects = 0;
-    size_t core_modules = 0;                  // loaded core modules (module.h); they never unload
-    bool state_holds_code = false;            // a live state block blocks each unload (kMayHoldCode)
-    std::vector<ClassInfo> classes;           // sorted by name
-    size_t slots = 0;                         // the sum of the slots of all classes
-    uint64_t removed_class_calls = 0;         // calls that the removed class handler ignored
+    size_t core_modules = 0; // loaded core modules (module.h); they never unload
+    bool state_holds_code = false; // a live state block blocks each unload (kMayHoldCode)
+    std::vector<ClassInfo> classes; // sorted by name
+    size_t slots = 0; // the sum of the slots of all classes
+    uint64_t removed_class_calls = 0; // calls that the removed class handler ignored
 };
 
 // The text of the stats for a log or a command channel ("script_stats", design 8.4).
@@ -67,7 +72,7 @@ uint64_t removed_class_call_count();
 // When the handler returns, the failed commit returns false, the old generation stays
 // active and restart_requested() is true.
 using RestartHandler = void (*)(const char* reason);
-void set_restart_handler(RestartHandler handler);  // null: abort
+void set_restart_handler(RestartHandler handler); // null: abort
 bool restart_requested();
 void clear_restart_request();
 void request_restart(const char* reason);
@@ -119,7 +124,8 @@ void request_restart(const char* reason);
 // No retired generation unloads while a live state block has a field with kMayHoldCode
 // (records.h), for example a std::shared_ptr. Its control block can have the vtable of
 // any generation that ran. A value that native code keeps is not seen (design 4.9).
-class Loader {
+class Loader
+{
 public:
     Loader();
     ~Loader();
@@ -198,12 +204,13 @@ public:
 
 private:
     struct Pending;
-    struct Gen {
+    struct Gen
+    {
         uint32_t generation = 0;
         GenState state = GenState::Active;
-        Module module;               // empty after the unload
-        uint64_t retired_frame = 0;  // the frame counter at the retirement
-        uint32_t registry_refs = 0;  // classes and thunks that this module registered
+        Module module; // empty after the unload
+        uint64_t retired_frame = 0; // the frame counter at the retirement
+        uint32_t registry_refs = 0; // classes and thunks that this module registered
     };
     void add_generation(Module module, uint32_t generation);
     void note_records(const Registry& reg, uint32_t generation);
@@ -219,11 +226,11 @@ private:
     // The commit itself, after the synchronization of the mode.
     ReloadResult commit_locked();
 
-    mutable std::mutex mutex_;  // see "Threads" above
+    mutable std::mutex mutex_; // see "Threads" above
     Registry registry_;
-    std::vector<Module> cores_;  // the core modules; the destructor removes them after "gens_"
-    std::vector<Gen> gens_;  // the loader owns all modules; a retired one stays until it unloads
-    std::unordered_map<const ClassRecord*, uint32_t> record_gen_;  // the module that holds a record
+    std::vector<Module> cores_; // the core modules; the destructor removes them after "gens_"
+    std::vector<Gen> gens_; // the loader owns all modules; a retired one stays until it unloads
+    std::unordered_map<const ClassRecord*, uint32_t> record_gen_; // the module that holds a record
     uint64_t frame_ = 0;
     std::unique_ptr<Pending> pending_;
     // The dispatch tables of the removed classes (design 6.1), by class name. The record of a
@@ -237,7 +244,7 @@ private:
     // The signature keys of the slots (ClassRecord::slot_keys), by class name. A class gets a
     // table when a reload changes the signature of one of its script functions (design 5.3).
     std::unordered_map<std::string, std::vector<const char*>> slot_keys_;
-    std::set<std::string> key_text_;  // the text of the keys; a module can unload
+    std::set<std::string> key_text_; // the text of the keys; a module can unload
 };
 
-}  // namespace spp
+} // namespace spp

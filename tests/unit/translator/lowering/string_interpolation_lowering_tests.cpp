@@ -1,9 +1,9 @@
 // Tests for the lowering of a string with "${expr}" to std::format or fmt::format.
+#include "support/lowering_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
-
-#include "support/lowering_test_support.h"
 
 using namespace sppc;
 using namespace lowering_test;
@@ -13,8 +13,7 @@ TEST(StringInterpolationLowering, StdFormatByDefault)
     Fixture f;
     bool used = false;
     f.cx.uses_format = &used;
-    EXPECT_EQ(f.expr("\"hp = ${this.n}, h ${this.health}\""),
-              "std::format(\"hp = {}, h {}\", __st->n, __st->health)");
+    EXPECT_EQ(f.expr("\"hp = ${this.n}, h ${this.health}\""), "std::format(\"hp = {}, h {}\", __st->n, __st->health)");
     EXPECT_TRUE(used);
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
@@ -57,6 +56,6 @@ TEST(StringInterpolationLowering, PlainStringIsUnchanged)
 TEST(StringInterpolationLowering, ArgumentIsLowered)
 {
     Fixture f;
-    EXPECT_EQ(f.expr("\"${this.health > 1 ? \"hi\" : \"lo\"}\""),
-              "std::format(\"{}\", __st->health > 1 ? \"hi\" : \"lo\")");
+    EXPECT_EQ(
+        f.expr("\"${this.health > 1 ? \"hi\" : \"lo\"}\""), "std::format(\"{}\", __st->health > 1 ? \"hi\" : \"lo\")");
 }

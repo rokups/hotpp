@@ -1,13 +1,13 @@
 // Tests for the diagnostics of sppc::translate: the count, the order, the position and the recovery.
-#include <gtest/gtest.h>
-
-#include <chrono>
-#include <string>
-
 #include "diag.h"
 #include "parser/parser.h"
 #include "spp/sppc_lib.h"
 #include "support/translator_test_support.h"
+
+#include <gtest/gtest.h>
+
+#include <chrono>
+#include <string>
 
 using namespace translator_test;
 
@@ -42,13 +42,13 @@ TEST(TranslateDiagnostics, BodyErrorsAndAnnotationErrorsComeInSourceOrder)
     EXPECT_TRUE(r.cpp.empty());
     std::vector<std::string> prefixes;
     std::istringstream in(r.diagnostics);
-    for (std::string line; std::getline(in, line);) {
+    for (std::string line; std::getline(in, line);)
+    {
         const size_t e = line.find(": error:");
         ASSERT_NE(e, std::string::npos) << r.diagnostics;
         prefixes.push_back(line.substr(0, e));
     }
-    EXPECT_EQ(prefixes, (std::vector<std::string>{"t.spp:2:24", "t.spp:3:28", "t.spp:6:6",
-                                                  "t.spp:7:24"}))
+    EXPECT_EQ(prefixes, (std::vector<std::string>{"t.spp:2:24", "t.spp:3:28", "t.spp:6:6", "t.spp:7:24"}))
         << r.diagnostics;
     EXPECT_NE(r.diagnostics.find("unknown attribute 'foo'"), std::string::npos) << r.diagnostics;
 }
@@ -64,7 +64,8 @@ TEST(TranslateDiagnostics, OneFaultGivesOneError)
         "foo bar baz\n",
         "class A : B {\n    string x = \"abc;\n}\n",
     };
-    for (const char* text : scripts) {
+    for (const char* text : scripts)
+    {
         const sppc::TranslateResult r = translate_text(text);
         EXPECT_FALSE(r.ok) << text;
         EXPECT_EQ(count_errors(r.diagnostics), 1) << text << "\n" << r.diagnostics;
@@ -75,18 +76,18 @@ TEST(TranslateDiagnostics, StrayControlByteHasNoFoundText)
 {
     const sppc::TranslateResult r = translate_text(std::string("\0abc\n", 5));
     EXPECT_FALSE(r.ok);
-    EXPECT_EQ(r.diagnostics, "t.spp:1:1: error: expected 'using', 'class', 'struct', 'enum' or a variable\n") << r.diagnostics;
+    EXPECT_EQ(r.diagnostics, "t.spp:1:1: error: expected 'using', 'class', 'struct', 'enum' or a variable\n")
+        << r.diagnostics;
 }
 
 TEST(TranslateDiagnostics, DeepNestingGivesOneError)
 {
     const std::string deep(300, '{');
-    const sppc::TranslateResult r = translate_text("class A : B {\n    void f() " + deep +
-                                                  std::string(300, '}') + "\n}\n");
+    const sppc::TranslateResult r =
+        translate_text("class A : B {\n    void f() " + deep + std::string(300, '}') + "\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_EQ(count_errors(r.diagnostics), 1) << r.diagnostics;
-    EXPECT_NE(r.diagnostics.find("maximum recursion depth exceeded"), std::string::npos)
-        << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("maximum recursion depth exceeded"), std::string::npos) << r.diagnostics;
 }
 
 TEST(TranslateDiagnostics, BadImportKeepsItsText)
@@ -131,17 +132,14 @@ TEST(TranslateDiagnostics, DoubleColonIsNotAField)
 {
     const sppc::TranslateResult r = translate_text("class A : B {\n    x::y : int;\n}\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("t.spp:2:6: error: use '.' instead of '::'"),
-              std::string::npos)
-        << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("t.spp:2:6: error: use '.' instead of '::'"), std::string::npos) << r.diagnostics;
 }
 
 TEST(TranslateDiagnostics, BacktickInATypeIsAnError)
 {
     const sppc::TranslateResult r = translate_text("class A : B {\n    Foo`a` x;\n}\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("string interpolation is not supported"), std::string::npos)
-        << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("string interpolation is not supported"), std::string::npos) << r.diagnostics;
 }
 
 // A script cut at any byte must end with a result and not hang. A failure has a text.
@@ -151,21 +149,26 @@ TEST(TranslateDiagnostics, TruncatedInputsTerminate)
     // translator and libclang (about 15 ms), so the full translation uses each 16th cut only.
     const auto start = Clock::now();
     size_t first = 0;
-    for (const char* base : {"player", "native_std", "timer"}) {
-        for (int gen = 1; gen <= 2; ++gen, ++first) {
+    for (const char* base : {"player", "native_std", "timer"})
+    {
+        for (int gen = 1; gen <= 2; ++gen, ++first)
+        {
             const std::string file = std::string(base) + "_v" + std::to_string(gen) + ".spp";
             const sppc::TranslateOptions full = engine_options(file.c_str(), gen);
-            sppc::TranslatorSession session;  // the header parse is cached
-            for (size_t cut = 0; cut <= full.script_text.size(); ++cut) {
+            sppc::TranslatorSession session; // the header parse is cached
+            for (size_t cut = 0; cut <= full.script_text.size(); ++cut)
+            {
                 const std::string text = full.script_text.substr(0, cut);
                 const sppc::LineMap map(text);
                 sppc::Diagnostics diag;
                 (void)sppc::parse_script(text, map, diag);
-                if (cut % 16 != first * 3 % 16) continue;
+                if (cut % 16 != first * 3 % 16)
+                    continue;
                 sppc::TranslateOptions o = full;
                 o.script_text = text;
                 const sppc::TranslateResult r = sppc::translate(o, session);
-                if (!r.ok) {
+                if (!r.ok)
+                {
                     ASSERT_FALSE(r.diagnostics.empty()) << file << " cut at " << cut;
                 }
             }
@@ -181,10 +184,10 @@ TEST(TranslateDiagnostics, TruncatedInputsTerminate)
 TEST(TranslateDiagnostics, NonStringStubAttributeArgumentGivesOneError)
 {
     for (const char* stub : {"[native, handle(x)] class Weapon;\n", "[native, handle(1)] class Weapon;\n",
-                             "[native, handle(\"std::shared_ptr<$T>\"), intrusive(x, \"R\")] class Weapon;\n",
-                             "[native, intrusive(\"A\", 2)] class Weapon;\n"}) {
-        const sppc::TranslateResult r =
-            translate_text(std::string(stub) + "class A : B {\n    void f() { }\n}\n");
+             "[native, handle(\"std::shared_ptr<$T>\"), intrusive(x, \"R\")] class Weapon;\n",
+             "[native, intrusive(\"A\", 2)] class Weapon;\n"})
+    {
+        const sppc::TranslateResult r = translate_text(std::string(stub) + "class A : B {\n    void f() { }\n}\n");
         EXPECT_FALSE(r.ok);
         EXPECT_EQ(count_errors(r.diagnostics), 1) << stub << r.diagnostics;
     }

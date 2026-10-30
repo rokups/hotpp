@@ -1,10 +1,10 @@
 // Tests for the checks of a stub (design 7.10.7). Libclang answers the questions about the type.
+#include "spp/sppc_lib.h"
+#include "support/check_translate_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
-
-#include "spp/sppc_lib.h"
-#include "support/check_translate_test_support.h"
 
 using namespace check_translate_test;
 
@@ -61,17 +61,17 @@ TEST(StubChecks, HandleNeedsOperatorArrow)
 
 TEST(StubChecks, HandleWithArrowSharedPtrAndRawPointerAreOk)
 {
-    for (const char* tpl : {"Arrow<$T>", "std::shared_ptr<$T>", "$T*"}) {
-        const sppc::TranslateResult r = check_translate(
-            std::string("[native, handle(\"") + tpl + "\")] class Weapon;\n", "");
+    for (const char* tpl : {"Arrow<$T>", "std::shared_ptr<$T>", "$T*"})
+    {
+        const sppc::TranslateResult r =
+            check_translate(std::string("[native, handle(\"") + tpl + "\")] class Weapon;\n", "");
         EXPECT_TRUE(r.ok) << tpl << ": " << r.diagnostics;
     }
 }
 
 TEST(StubChecks, IntrusiveNeedsBothMethods)
 {
-    const sppc::TranslateResult r =
-        check_translate("[native, intrusive(\"AddRef\", \"Grab\")] class Counted;\n", "");
+    const sppc::TranslateResult r = check_translate("[native, intrusive(\"AddRef\", \"Grab\")] class Counted;\n", "");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "t.spp:2:1: error: 'intrusive' method 'Grab' is not a usable member of 'Counted'"))
         << r.diagnostics;
@@ -102,8 +102,7 @@ TEST(StubChecks, ATypeThatTheHeadersDoNotHaveIsSkipped)
 
 TEST(StubChecks, AnErrorInAPreludeNamesThePreludeFile)
 {
-    const sppc::TranslateResult r =
-        check_translate("", "", {{"engine.prelude", "\n[native, value] class NoCopy;\n"}});
+    const sppc::TranslateResult r = check_translate("", "", {{"engine.prelude", "\n[native, value] class NoCopy;\n"}});
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "engine.prelude:2:1: error: 'value' needs a copy constructor")) << r.diagnostics;
 }
@@ -139,8 +138,7 @@ TEST(StubChecks, UsedPatternInstantiationIsChecked)
 
 TEST(StubChecks, UsedStandardPatternInstantiationIsOk)
 {
-    const sppc::TranslateResult r =
-        check_translate("[native, value] class std.vector<*>;\n[native, value] class Plain;\n", "    std.vector<Plain> v;\n");
+    const sppc::TranslateResult r = check_translate(
+        "[native, value] class std.vector<*>;\n[native, value] class Plain;\n", "    std.vector<Plain> v;\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
-

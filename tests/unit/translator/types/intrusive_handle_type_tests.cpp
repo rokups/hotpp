@@ -1,17 +1,18 @@
 // Tests for the type model: the intrusive handles.
+#include "support/type_model_test_support.h"
+#include "types.h"
+
 #include <gtest/gtest.h>
 
 #include <map>
 #include <string>
 #include <vector>
 
-#include "types.h"
-#include "support/type_model_test_support.h"
-
 using namespace sppc;
 using namespace type_model_test;
 
-namespace {
+namespace
+{
 
 ast::Stub intrusive_stub(const std::string& name, const std::string& handle = "")
 {
@@ -21,7 +22,7 @@ ast::Stub intrusive_stub(const std::string& name, const std::string& handle = ""
     return s;
 }
 
-}  // namespace
+} // namespace
 
 TEST(IntrusiveHandleType, IntrusiveExact)
 {

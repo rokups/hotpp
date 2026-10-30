@@ -1,24 +1,24 @@
 // Reload tests of script inheritance (S6a, design 4.5, 7.6 and 7.7) with the backend that
 // SPP_BACKEND selected: a child of a script class, script virtuals, "base" calls, "is" and "as".
-#include <gtest/gtest.h>
-
-#include <string>
-
+#include "Util.h"
 #include "spp/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
-#include "Util.h"
 
-namespace {
+#include <gtest/gtest.h>
+
+#include <string>
+
+namespace
+{
 
 using test_support::kDt;
 using test_support::Session;
 using test_support::source;
 
-template <class T>
-T* fld(Session& s, const char* name)
+template <class T> T* fld(Session& s, const char* name)
 {
     return spp::field_ptr<T>(s.inst.shell, name);
 }
@@ -34,12 +34,12 @@ TEST_P(BackendTests, ChildRunsTheParentConstructorAndSuperCalls)
     s.commit_at_frame_boundary();
     ASSERT_NE(s.inst.shell->cls->super, nullptr);
     EXPECT_STREQ(s.inst.shell->cls->super->name, "Unit");
-    EXPECT_EQ(*fld<int>(s, "ctor_log"), 12);  // Unit(int) first, then Grunt(int, int)
-    EXPECT_EQ(*fld<int>(s, "hp"), 1);         // base(start + 1) with the default 0
+    EXPECT_EQ(*fld<int>(s, "ctor_log"), 12); // Unit(int) first, then Grunt(int, int)
+    EXPECT_EQ(*fld<int>(s, "hp"), 1); // base(start + 1) with the default 0
     s.world.Tick(kDt);
-    EXPECT_EQ(*fld<int>(s, "ticks"), 1);       // base.Tick() ran the parent Tick
+    EXPECT_EQ(*fld<int>(s, "ticks"), 1); // base.Tick() ran the parent Tick
     EXPECT_EQ(*fld<int>(s, "super_ticks"), 1);
-    EXPECT_EQ(*fld<int>(s, "unit_power"), 1);  // base.Power() is the parent implementation
+    EXPECT_EQ(*fld<int>(s, "unit_power"), 1); // base.Power() is the parent implementation
 }
 
 // The destructor of the child runs first, then the destructor of the parent.
@@ -72,23 +72,23 @@ TEST_P(BackendTests, VirtualCallThroughAParentHandleFollowsTheReload)
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Spotter"));
     s.commit_at_frame_boundary();
     s.world.Tick(kDt);
-    EXPECT_EQ(*fld<int>(s, "seen_power"), 7);  // Grunt.Power through a Unit handle
-    EXPECT_EQ(*fld<int>(s, "attack"), 70);     // Unit.Attack calls the virtual Power
+    EXPECT_EQ(*fld<int>(s, "seen_power"), 7); // Grunt.Power through a Unit handle
+    EXPECT_EQ(*fld<int>(s, "attack"), 70); // Unit.Attack calls the virtual Power
     EXPECT_TRUE(*fld<bool>(s, "saw_grunt"));
     EXPECT_TRUE(*fld<bool>(s, "saw_unit"));
-    EXPECT_EQ(*fld<int>(s, "grunt_rage"), 7);  // "as Grunt" gives the child
+    EXPECT_EQ(*fld<int>(s, "grunt_rage"), 7); // "as Grunt" gives the child
 
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    s.world.Tick(kDt);  // the commit happens at the end of this frame
+    s.world.Tick(kDt); // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);
     s.world.Tick(kDt);
-    EXPECT_EQ(*fld<int>(s, "seen_power"), 14);  // the Grunt.Power of generation 2
+    EXPECT_EQ(*fld<int>(s, "seen_power"), 14); // the Grunt.Power of generation 2
     EXPECT_EQ(*fld<int>(s, "attack"), 140);
-    EXPECT_EQ(*fld<int>(s, "seen_armor"), 9);  // the new parent field of the old child object
-    EXPECT_EQ(*fld<int>(s, "seen_hp"), 6);     // the parent part kept its value
-    EXPECT_EQ(*fld<int>(s, "grunt_rage"), 7);  // the child part kept its value
+    EXPECT_EQ(*fld<int>(s, "seen_armor"), 9); // the new parent field of the old child object
+    EXPECT_EQ(*fld<int>(s, "seen_hp"), 6); // the parent part kept its value
+    EXPECT_EQ(*fld<int>(s, "grunt_rage"), 7); // the child part kept its value
 }
 
 // A reload migrates the parent part and the child part of the state. The new parent function
@@ -111,7 +111,7 @@ TEST_P(BackendTests, ReloadMigratesTheParentAndTheChildPart)
     EXPECT_EQ(*fld<int>(s, "ctor_log"), 12);
     EXPECT_EQ(*fld<int>(s, "ticks"), 3);
     EXPECT_EQ(*fld<int>(s, "child_armor"), 9);
-    EXPECT_EQ(*fld<int>(s, "bonus"), 10);  // Unit.Bonus of generation 2
+    EXPECT_EQ(*fld<int>(s, "bonus"), 10); // Unit.Bonus of generation 2
     ASSERT_NE(s.inst.shell->cls->super, nullptr);
     EXPECT_EQ(s.inst.shell->cls->super->generation, 2u);
 }
@@ -127,13 +127,13 @@ TEST_P(BackendTests, FamilyOfThreeLevelsWithInheritedProperties)
     s.commit_at_frame_boundary();
     s.world.Tick(kDt);
     // G: Score = 20 (written through the child handle), then h(): b = 2 + 20, Score += 1, Bonus = 44 + 1 (b = 45).
-    EXPECT_EQ(*fld<int>(s, "top_score"), 21);  // the same object through the parent handle
+    EXPECT_EQ(*fld<int>(s, "top_score"), 21); // the same object through the parent handle
     EXPECT_EQ(*fld<int>(s, "leaf_score"), 21);
-    EXPECT_EQ(*fld<int>(s, "sib_score"), 7);   // the sibling has its own value
-    EXPECT_EQ(*fld<int>(s, "sib_only"), 107);  // a bare "Score" in a child of A
-    EXPECT_EQ(*fld<int>(s, "top_f"), 92);      // G.f: (B.f(1) = 1 + 45) * 2
+    EXPECT_EQ(*fld<int>(s, "sib_score"), 7); // the sibling has its own value
+    EXPECT_EQ(*fld<int>(s, "sib_only"), 107); // a bare "Score" in a child of A
+    EXPECT_EQ(*fld<int>(s, "top_f"), 92); // G.f: (B.f(1) = 1 + 45) * 2
     EXPECT_EQ(*fld<int>(s, "leaf_bonus"), 90); // B.Bonus getter: b * 2 with b = 45
-    EXPECT_EQ(*fld<int>(s, "leaf_a"), 8);      // A(int) got 4 * 2
+    EXPECT_EQ(*fld<int>(s, "leaf_a"), 8); // A(int) got 4 * 2
 }
 
 // A reload of the family. The new property of the root gets its initializer in an old object.
@@ -152,7 +152,7 @@ TEST_P(BackendTests, FamilyReloadKeepsInheritedPropertyValues)
 
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    s.world.Tick(kDt);  // the commit happens at the end of this frame
+    s.world.Tick(kDt); // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);
     s.world.Tick(kDt);
@@ -160,8 +160,8 @@ TEST_P(BackendTests, FamilyReloadKeepsInheritedPropertyValues)
     EXPECT_EQ(*fld<int>(s, "sib_score"), 7);
     EXPECT_EQ(*fld<int>(s, "sib_only"), 107);
     EXPECT_EQ(*fld<int>(s, "top_f"), 92);
-    EXPECT_EQ(*fld<int>(s, "leaf_bonus"), 135);  // the getter of generation 2: b * 3
-    EXPECT_EQ(*fld<int>(s, "leaf_rank"), 6);    // the new property Rank: 3 for the child and the sibling
+    EXPECT_EQ(*fld<int>(s, "leaf_bonus"), 135); // the getter of generation 2: b * 3
+    EXPECT_EQ(*fld<int>(s, "leaf_rank"), 6); // the new property Rank: 3 for the child and the sibling
 }
 
 // A reload that changes the script parent of a class is rejected. The old generation stays.
@@ -200,10 +200,11 @@ TEST_P(BackendTests, SuperArgumentsOfAChainEvaluateOneTime)
     int calls = Util::Calls();
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Maker"));
     s.commit_at_frame_boundary();
-    EXPECT_EQ(Util::Calls(), calls);  // Maker has no "base(...)" argument
+    EXPECT_EQ(Util::Calls(), calls); // Maker has no "base(...)" argument
 
     // The factory: Leaf(0) gives Mid(10) and Root(11).
-    auto make_leaf = [&](int want_got, int want_mid) {
+    auto make_leaf = [&](int want_got, int want_mid)
+    {
         const int before = Util::Calls();
         const spp::ClassEntry* entry = s.loader.find("Leaf");
         ASSERT_NE(entry, nullptr);
@@ -227,7 +228,7 @@ TEST_P(BackendTests, SuperArgumentsOfAChainEvaluateOneTime)
 
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    s.world.Tick(kDt);  // the commit happens at the end of this frame
+    s.world.Tick(kDt); // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);
 
@@ -258,11 +259,11 @@ TEST_P(BackendTests, ChildUsesInheritedMethodsNativeBaseAndSuperUnderTheSlotAbi)
     EXPECT_STREQ(s.inst.shell->cls->super->name, "Base");
 
     s.world.Tick(kDt);
-    EXPECT_FLOAT_EQ(*fld<float>(s, "moved"), 1.0f);  // the native Move through the child
+    EXPECT_FLOAT_EQ(*fld<float>(s, "moved"), 1.0f); // the native Move through the child
     EXPECT_FLOAT_EQ(s.actor->Position.x, 1.0f);
-    EXPECT_EQ(*fld<int>(s, "hits"), 10);         // the inherited Bump
-    EXPECT_EQ(*fld<int>(s, "twice"), 10);        // the inherited Twice calls the virtual Kid.Power (5)
-    EXPECT_EQ(*fld<int>(s, "super_power"), 1);   // base.Power() is Base.Power
+    EXPECT_EQ(*fld<int>(s, "hits"), 10); // the inherited Bump
+    EXPECT_EQ(*fld<int>(s, "twice"), 10); // the inherited Twice calls the virtual Kid.Power (5)
+    EXPECT_EQ(*fld<int>(s, "super_power"), 1); // base.Power() is Base.Power
 
     // A native virtual call: native code to the shell, the slot and the Kid override.
     // Kid.TakeDamage calls Base.TakeDamage with twice the amount.
@@ -276,21 +277,21 @@ TEST_P(BackendTests, ChildUsesInheritedMethodsNativeBaseAndSuperUnderTheSlotAbi)
 
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    s.world.Tick(kDt);  // the commit happens at the end of this frame
+    s.world.Tick(kDt); // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);
-    EXPECT_EQ(*fld<int>(s, "twice"), 10);  // the old value stays until the next Tick
+    EXPECT_EQ(*fld<int>(s, "twice"), 10); // the old value stays until the next Tick
     s.world.Tick(kDt);
-    EXPECT_EQ(*fld<int>(s, "twice"), 14);  // Twice of Base now calls Kid.Power (7)
+    EXPECT_EQ(*fld<int>(s, "twice"), 14); // Twice of Base now calls Kid.Power (7)
     EXPECT_EQ(*fld<int>(s, "super_power"), 1);
-    EXPECT_EQ(*fld<int>(s, "armor"), 4);   // the new parent field has its initializer
-    EXPECT_EQ(*fld<int>(s, "gen"), 2);     // the new child field
+    EXPECT_EQ(*fld<int>(s, "armor"), 4); // the new parent field has its initializer
+    EXPECT_EQ(*fld<int>(s, "gen"), 2); // the new child field
     EXPECT_FLOAT_EQ(*fld<float>(s, "moved"), 4.0f);
-    s.actor->TakeDamage(2.0f);             // the new override: Base.TakeDamage(6)
+    s.actor->TakeDamage(2.0f); // the new override: Base.TakeDamage(6)
     EXPECT_FLOAT_EQ(*fld<float>(s, "hp"), 88.0f);
-    EXPECT_EQ(*fld<int>(s, "hits"), 42);  // 21 + 10 + 10 + 1
+    EXPECT_EQ(*fld<int>(s, "hits"), 42); // 21 + 10 + 10 + 1
     EXPECT_EQ(*fld<int>(s, "kid_hits"), 2);
     EXPECT_EQ(s.inst.shell->cls->super->generation, 2u);
 }
 
-}  // namespace
+} // namespace

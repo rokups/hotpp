@@ -3,15 +3,15 @@
 // The cache keeps the virtual methods of the native base classes. A hit must give
 // the same output as a miss. A change of a header must invalidate the cache.
 // CMake defines SPP_SOURCE_DIR.
+#include "spp/sppc_lib.h"
+#include "support/stub_translate_test_support.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <chrono>
 #include <iostream>
 #include <string>
-
-#include "spp/sppc_lib.h"
-#include "support/stub_translate_test_support.h"
-#include "support/translator_test_support.h"
 
 using namespace translator_test;
 using namespace stub_translate_test;
@@ -19,7 +19,7 @@ using namespace stub_translate_test;
 TEST(SessionCache, HitGivesTheSameOutputAsMiss)
 {
     sppc::TranslateOptions o = engine_options("player_v1.spp", 1);
-    const sppc::TranslateResult alone = sppc::translate(o);  // a temporary session
+    const sppc::TranslateResult alone = sppc::translate(o); // a temporary session
     ASSERT_TRUE(alone.ok) << alone.diagnostics;
 
     sppc::TranslatorSession session;
@@ -59,14 +59,14 @@ TEST(SessionCache, ChangedHeaderInvalidatesTheCache)
 
     // The header gets a new virtual method. The new size shows the change.
     write_file(dir.path() / "w.h",
-               "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} "
-               "virtual void Draw() {} };\n"
-               "class Panel { public: virtual ~Panel() {} virtual void Layout(int w) {} };\n");
+        "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} "
+        "virtual void Draw() {} };\n"
+        "class Panel { public: virtual ~Panel() {} virtual void Layout(int w) {} };\n");
     r = sppc::translate(temp_options(dir, widget_script("Draw()", "override ")), session);
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_EQ(session.parse_count(), 2);
     EXPECT_NE(r.cpp.find("Draw"), std::string::npos);
-    EXPECT_EQ(r.slots_out.find("Foo::Draw"), std::string::npos) << r.slots_out;  // an override
+    EXPECT_EQ(r.slots_out.find("Foo::Draw"), std::string::npos) << r.slots_out; // an override
 
     // A change with the same size and a new time also invalidates the cache.
     const std::string same_size = read_file((dir.path() / "w.h").string());
@@ -76,11 +76,11 @@ TEST(SessionCache, ChangedHeaderInvalidatesTheCache)
     fs::last_write_time(dir.path() / "w.h", fs::last_write_time(dir.path() / "w.h") + std::chrono::seconds(5));
     r = sppc::translate(temp_options(dir, widget_script("Draw()")), session);
     EXPECT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.slots_out.find("Foo::Draw"), std::string::npos) << r.slots_out;  // not an override
+    EXPECT_NE(r.slots_out.find("Foo::Draw"), std::string::npos) << r.slots_out; // not an override
     EXPECT_EQ(session.parse_count(), 3);
     r = sppc::translate(temp_options(dir, widget_script("Dram()", "override ")), session);
     EXPECT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_EQ(r.slots_out.find("Foo::Dram"), std::string::npos) << r.slots_out;  // an override
+    EXPECT_EQ(r.slots_out.find("Foo::Dram"), std::string::npos) << r.slots_out; // an override
     EXPECT_EQ(session.parse_count(), 3);
 }
 
@@ -89,17 +89,18 @@ TEST(SessionCache, ChangedNestedHeaderInvalidatesTheCache)
     TempDir dir;
     write_file(dir.path() / "inner.h", "#define EXTRA\n");
     write_file(dir.path() / "w.h",
-               "#include \"inner.h\"\n"
-               "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {}\n"
-               "#ifdef EXTRA\n virtual void Draw() {}\n#endif\n};\n");
+        "#include \"inner.h\"\n"
+        "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {}\n"
+        "#ifdef EXTRA\n virtual void Draw() {}\n#endif\n};\n");
     sppc::TranslatorSession session;
-    const sppc::TranslateResult first = sppc::translate(temp_options(dir, widget_script("Draw()", "override ")), session);
+    const sppc::TranslateResult first =
+        sppc::translate(temp_options(dir, widget_script("Draw()", "override ")), session);
     EXPECT_TRUE(first.ok) << first.diagnostics;
-    EXPECT_EQ(first.slots_out.find("Foo::Draw"), std::string::npos) << first.slots_out;  // an override
+    EXPECT_EQ(first.slots_out.find("Foo::Draw"), std::string::npos) << first.slots_out; // an override
     write_file(dir.path() / "inner.h", "// no macro now\n");
     const sppc::TranslateResult r = sppc::translate(temp_options(dir, widget_script("Draw()")), session);
     EXPECT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.slots_out.find("Foo::Draw"), std::string::npos) << r.slots_out;  // not an override
+    EXPECT_NE(r.slots_out.find("Foo::Draw"), std::string::npos) << r.slots_out; // not an override
     EXPECT_EQ(session.parse_count(), 2);
 }
 
@@ -109,16 +110,17 @@ TEST(SessionCache, OtherBaseClassWorksInTheSameSession)
     write_file(dir.path() / "w.h", kHeaderV1);
     sppc::TranslatorSession session;
 
-    const sppc::TranslateResult a = sppc::translate(temp_options(dir, widget_script("Update(float dt)", "override ")), session);
+    const sppc::TranslateResult a =
+        sppc::translate(temp_options(dir, widget_script("Update(float dt)", "override ")), session);
     ASSERT_TRUE(a.ok) << a.diagnostics;
-    const std::string panel_script =
-        "using \"w.h\";\nclass Bar : Panel {\n    override void Layout(int w) { }\n}\n";
+    const std::string panel_script = "using \"w.h\";\nclass Bar : Panel {\n    override void Layout(int w) { }\n}\n";
     const sppc::TranslateResult b = sppc::translate(temp_options(dir, panel_script), session);
     ASSERT_TRUE(b.ok) << b.diagnostics;
     EXPECT_NE(b.cpp.find("Layout"), std::string::npos);
     // Both bases are in the cache now. The next calls do not parse.
     const int parses = session.parse_count();
-    const sppc::TranslateResult a2 = sppc::translate(temp_options(dir, widget_script("Update(float dt)", "override ")), session);
+    const sppc::TranslateResult a2 =
+        sppc::translate(temp_options(dir, widget_script("Update(float dt)", "override ")), session);
     const sppc::TranslateResult b2 = sppc::translate(temp_options(dir, panel_script), session);
     EXPECT_EQ(session.parse_count(), parses);
     EXPECT_EQ(a2.cpp, a.cpp);
@@ -135,8 +137,8 @@ TEST(SessionCache, UnknownBaseAndBadImportsFail)
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
     sppc::TranslatorSession session;
-    sppc::TranslateResult r = sppc::translate(
-        temp_options(dir, "using \"w.h\";\nclass Foo : Nothing {\n    void f() { }\n}\n"), session);
+    sppc::TranslateResult r =
+        sppc::translate(temp_options(dir, "using \"w.h\";\nclass Foo : Nothing {\n    void f() { }\n}\n"), session);
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("not found"), std::string::npos) << r.diagnostics;
     r = sppc::translate(
@@ -159,18 +161,16 @@ TEST(SessionCache, SecondTranslateIsFast)
     std::cout << "translate first=" << first << " ms, second=" << second << " ms\n";
     RecordProperty("first_ms", static_cast<int>(first));
     RecordProperty("second_ms", static_cast<int>(second));
-    EXPECT_LT(second, 150.0);  // the target is 50 ms; the bound is wide to avoid a flaky test
+    EXPECT_LT(second, 150.0); // the target is 50 ms; the bound is wide to avoid a flaky test
 }
 
 TEST(SessionCache, SessionKeepsTheHierarchy)
 {
     sppc::TranslatorSession session;
-    const sppc::TranslateResult a =
-        hier_translate(kIntrusiveStub, "    Item item;\n", false, &session);
+    const sppc::TranslateResult a = hier_translate(kIntrusiveStub, "    Item item;\n", false, &session);
     ASSERT_TRUE(a.ok) << a.diagnostics;
     EXPECT_EQ(session.parse_count(), 1);
-    const sppc::TranslateResult b =
-        hier_translate(kIntrusiveStub, "    Item item;\n", false, &session);
+    const sppc::TranslateResult b = hier_translate(kIntrusiveStub, "    Item item;\n", false, &session);
     ASSERT_TRUE(b.ok) << b.diagnostics;
     EXPECT_EQ(session.parse_count(), 1);
     EXPECT_EQ(a.cpp, b.cpp);
@@ -191,25 +191,26 @@ TEST(SessionCache, EditWithEqualSizeAndTimeInvalidatesTheCache)
     std::string edited = read_file(header.string());
     edited.replace(edited.find("Update"), 6, "Updatf");
     write_file(header, edited);
-    fs::last_write_time(header, old_time);  // the same time and the same size as before
+    fs::last_write_time(header, old_time); // the same time and the same size as before
 
     // Updatf is a new virtual method. Update is a plain script function now.
     const sppc::TranslateResult r = sppc::translate(temp_options(dir, widget_script("Update(float dt)")), session);
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_EQ(session.parse_count(), 2);
-    EXPECT_NE(r.slots_out.find("Foo::Update"), std::string::npos) << r.slots_out;  // not an override
+    EXPECT_NE(r.slots_out.find("Foo::Update"), std::string::npos) << r.slots_out; // not an override
 }
 
 // An old header (not recent) gets an edit that resets the time and keeps the size. The ctime or
 // the inode shows the edit, and the hash of the content confirms it.
 TEST(SessionCache, EditOfAnOldHeaderWithEqualSizeAndTimeInvalidatesTheCache)
 {
-    for (const bool replace_file : {false, true}) {
+    for (const bool replace_file : {false, true})
+    {
         TempDir dir;
         const fs::path header = dir.path() / "w.h";
         write_file(header, kHeaderV1);
         const auto old_time = fs::file_time_type::clock::now() - std::chrono::hours(2);
-        fs::last_write_time(header, old_time);  // not recent: no hash of the time window
+        fs::last_write_time(header, old_time); // not recent: no hash of the time window
         sppc::TranslatorSession session;
         ASSERT_TRUE(sppc::translate(temp_options(dir, widget_script("Update(float dt)", "override ")), session).ok);
         EXPECT_EQ(session.parse_count(), 1);
@@ -219,10 +220,13 @@ TEST(SessionCache, EditOfAnOldHeaderWithEqualSizeAndTimeInvalidatesTheCache)
 
         std::string edited = read_file(header.string());
         edited.replace(edited.find("Update"), 6, "Updatf");
-        if (replace_file) {  // a new inode, as an editor or a restore tool makes it
+        if (replace_file)
+        { // a new inode, as an editor or a restore tool makes it
             write_file(dir.path() / "w.tmp", edited);
             fs::rename(dir.path() / "w.tmp", header);
-        } else {
+        }
+        else
+        {
             write_file(header, edited);
         }
         fs::last_write_time(header, old_time);
@@ -256,7 +260,8 @@ TEST(SessionCache, NewHeaderEarlierInTheIncludePathInvalidatesTheCache)
     TempDir first, second;
     write_file(second.path() / "w.h", kHeaderV1);
     sppc::TranslatorSession session;
-    auto options = [&](const std::string& script) {
+    auto options = [&](const std::string& script)
+    {
         sppc::TranslateOptions o = temp_options(first, script);
         o.include_dirs = {first.path().string(), second.path().string()};
         return o;
@@ -268,10 +273,9 @@ TEST(SessionCache, NewHeaderEarlierInTheIncludePathInvalidatesTheCache)
 
     // The new header has no Update. The method Update is not an override any more.
     write_file(first.path() / "w.h",
-               "class Widget { public: virtual ~Widget() {} virtual void Draw() {} };\n"
-               "class Panel { public: virtual ~Panel() {} virtual void Layout(int w) {} };\n");
-    const sppc::TranslateResult r =
-        sppc::translate(options(widget_script("Update(float dt)")), session);
+        "class Widget { public: virtual ~Widget() {} virtual void Draw() {} };\n"
+        "class Panel { public: virtual ~Panel() {} virtual void Layout(int w) {} };\n");
+    const sppc::TranslateResult r = sppc::translate(options(widget_script("Update(float dt)")), session);
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_EQ(session.parse_count(), 2);
     EXPECT_NE(r.slots_out.find("Foo::Update"), std::string::npos) << r.slots_out;

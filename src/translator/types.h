@@ -2,27 +2,35 @@
 // This file has no libclang and no lexy.
 #pragma once
 
+#include "ast.h"
+#include "diag.h"
+
 #include <functional>
 #include <map>
 #include <set>
 #include <string>
 #include <vector>
 
-#include "ast.h"
-#include "diag.h"
+namespace sppc
+{
 
-namespace sppc {
-
-enum class Kind { Raw, Value, Handle };
-
-struct TypeRule {
-    Kind kind = Kind::Raw;
-    std::string handle_tpl;  // the handle template, "$T" is the class (Kind::Handle only)
-    std::string owner;       // the name of the stub that matched (empty for Raw)
-    std::string intrusive_add, intrusive_release;  // the member names of an intrusive handle, else empty
+enum class Kind
+{
+    Raw,
+    Value,
+    Handle
 };
 
-class TypeModel {
+struct TypeRule
+{
+    Kind kind = Kind::Raw;
+    std::string handle_tpl; // the handle template, "$T" is the class (Kind::Handle only)
+    std::string owner; // the name of the stub that matched (empty for Raw)
+    std::string intrusive_add, intrusive_release; // the member names of an intrusive handle, else empty
+};
+
+class TypeModel
+{
 public:
     // Adds the stubs of one list (a prelude or a script).
     // A later list overrides an earlier entry. A prelude gives no message.
@@ -30,9 +38,13 @@ public:
     // The map gives the line and the column for an error at the stub.
     // These are errors: two stubs of one name in one list, "value" together with "handle",
     // "default_handle" on a class other than "*", and any other attribute on "class *".
-    enum class Source { Prelude, Script };
-    void add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diags, const LineMap& map,
-                   Source source = Source::Prelude);
+    enum class Source
+    {
+        Prelude,
+        Script
+    };
+    void add_stubs(
+        const std::vector<ast::Stub>& stubs, Diagnostics& diags, const LineMap& map, Source source = Source::Prelude);
 
     // The handle template of the stub "class *;" (empty: there is none).
     const std::string& default_handle() const { return default_handle_; }
@@ -40,7 +52,8 @@ public:
     // What the headers say about a class. "known" is true for a class type that libclang found.
     // "plain" is true for a trivially copyable, standard-layout type.
     // "small" is true for a trivially copyable type of 16 bytes or less (design 7.10.5).
-    struct ClassFacts {
+    struct ClassFacts
+    {
         bool known = false, plain = false, small = false;
     };
     using ClassFn = std::function<ClassFacts(const std::string&)>;
@@ -112,7 +125,8 @@ public:
 
     // How to build "new T(args)". The callee is the text before "(args)".
     // With wrap_new the result is "H(new T(args))", where H is the callee.
-    struct Callee {
+    struct Callee
+    {
         std::string text;
         bool wrap_new = false;
     };
@@ -125,17 +139,18 @@ private:
     TypeRule lookup_stub(const std::string& cpp_type) const;
 
     std::map<std::string, TypeRule> exact_;
-    std::vector<std::pair<std::string, TypeRule>> patterns_;  // the prefix and the rule
+    std::vector<std::pair<std::string, TypeRule>> patterns_; // the prefix and the rule
     BaseFn bases_;
     ClassFn classes_;
     std::string default_handle_;
-    struct ScriptClass {
+    struct ScriptClass
+    {
         std::string base;
         bool is_value = false;
     };
     std::map<std::string, ScriptClass> script_;
     std::set<std::string> native_globals_;
-    std::set<std::string> prelude_names_;  // the stubs that a prelude gave
+    std::set<std::string> prelude_names_; // the stubs that a prelude gave
 };
 
-}  // namespace sppc
+} // namespace sppc

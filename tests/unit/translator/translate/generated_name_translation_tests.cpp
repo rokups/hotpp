@@ -1,27 +1,30 @@
 // Tests for the names of the generated code, the expression body of a lambda and the C style cast.
+#include "spp/sppc_lib.h"
+#include "support/translator_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "spp/sppc_lib.h"
-#include "support/translator_test_support.h"
-
 using namespace translator_test;
 
-namespace {
+namespace
+{
 
 sppc::TranslateResult translate_widget(const std::string& members)
 {
     static TempDir dir;
     static bool header = false;
-    if (!header) {
+    if (!header)
+    {
         write_file(dir.path() / "w.h", kHeaderV1);
         header = true;
     }
-    return sppc::translate(temp_options(dir, "using \"w.h\";\nclass Foo : Widget {\n    int n = 0;\n" + members + "}\n"));
+    return sppc::translate(
+        temp_options(dir, "using \"w.h\";\nclass Foo : Widget {\n    int n = 0;\n" + members + "}\n"));
 }
 
-}  // namespace
+} // namespace
 
 TEST(GeneratedNameTranslation, GeneratedNamesHaveTheDoubleUnderscorePrefix)
 {

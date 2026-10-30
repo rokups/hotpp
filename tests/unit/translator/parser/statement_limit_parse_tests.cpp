@@ -1,41 +1,42 @@
 // Tests for the limits of the statement parser: truncated input and deep nesting.
-#include <gtest/gtest.h>
-
-#include <string>
-#include <vector>
-#include <pthread.h>
-#include <cstddef>
-#include <functional>
-
 #include "emit.h"
 #include "parser/expression.h"
 #include "parser/parser.h"
 #include "parser/statement.h"
 #include "support/statement_parse_test_support.h"
 
+#include <gtest/gtest.h>
+
+#include <cstddef>
+#include <functional>
+#include <pthread.h>
+#include <string>
+#include <vector>
+
 using namespace sppc;
 using namespace stmt_test;
 
-namespace {
+namespace
+{
 
 // Runs the function in a thread with a small stack. The parse must not use more.
 void run_small_stack(std::size_t bytes, const std::function<void()>& fn)
 {
-    struct Ctx {
+    struct Ctx
+    {
         const std::function<void()>* fn;
     } ctx{&fn};
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, bytes);
     pthread_t th;
-    ASSERT_EQ(pthread_create(
-                  &th, &attr,
-                  [](void* p) -> void* {
-                      (*static_cast<Ctx*>(p)->fn)();
-                      return nullptr;
-                  },
-                  &ctx),
-              0);
+    ASSERT_EQ(pthread_create(&th, &attr,
+                  [](void* p) -> void*
+    {
+        (*static_cast<Ctx*>(p)->fn)();
+        return nullptr;
+    }, &ctx),
+        0);
     pthread_join(th, nullptr);
     pthread_attr_destroy(&attr);
 }
@@ -43,11 +44,11 @@ void run_small_stack(std::size_t bytes, const std::function<void()>& fn)
 // The stack of the deep parse. A thread sanitizer makes each frame much larger, so the stack
 // is larger there. The nesting limits of the parser stay the same.
 #if defined(__SANITIZE_THREAD__)
-#define SPP_TEST_TSAN 1
+    #define SPP_TEST_TSAN 1
 #elif defined(__has_feature)
-#if __has_feature(thread_sanitizer)
-#define SPP_TEST_TSAN 1
-#endif
+    #if __has_feature(thread_sanitizer)
+        #define SPP_TEST_TSAN 1
+    #endif
 #endif
 #ifdef SPP_TEST_TSAN
 constexpr std::size_t kDeepParseStack = 16u << 20;
@@ -55,7 +56,7 @@ constexpr std::size_t kDeepParseStack = 16u << 20;
 constexpr std::size_t kDeepParseStack = 512u << 10;
 #endif
 
-}  // namespace
+} // namespace
 
 TEST(StatementParseLimits, Truncation)
 {
@@ -74,60 +75,74 @@ TEST(StatementParseLimits, Truncation)
         "switch (a) {\n  case 1:\n    f();\n  default:\n    g();\n}\nint z;\nz = 1;\nz = 2;\nz = 3;\n"
         "try {\n  f();\n} catch (const std.exception& e) {\n  throw;\n} catch (...) {\n  throw 1;\n}\n";
     size_t lines = 0;
-    for (char c : full) lines += c == '\n';
+    for (char c : full)
+        lines += c == '\n';
     EXPECT_GE(lines, 60u);
     {
         Parsed whole(full);
         EXPECT_EQ(whole.diag.items.size(), 0u) << whole.diag.format("t");
     }
-    for (size_t n = 0; n <= full.size(); ++n) {
+    for (size_t n = 0; n <= full.size(); ++n)
+    {
         Parsed p(full.substr(0, n));
         // Every cut gives a block, and a cut in a statement gives an error.
-        if (p.diag.items.empty()) continue;
+        if (p.diag.items.empty())
+            continue;
         EXPECT_FALSE(p.diag.items[0].msg.empty());
     }
 }
 
 TEST(StatementParseLimits, DeepNesting)
 {
-    auto fails = [](const std::string& text, const char* msg) {
+    auto fails = [](const std::string& text, const char* msg)
+    {
         Parsed p(text);
         ASSERT_GE(p.diag.items.size(), 1u);
         bool found = false;
-        for (const Diag& d : p.diag.items) found |= d.msg.rfind(msg, 0) == 0;
+        for (const Diag& d : p.diag.items)
+            found |= d.msg.rfind(msg, 0) == 0;
         EXPECT_TRUE(found) << p.diag.items[0].msg;
     };
     const std::size_t n = 100000;
-    run_small_stack(kDeepParseStack, [&] {
+    run_small_stack(kDeepParseStack, [&]
+    {
         fails(std::string(n, '{'), "maximum recursion depth exceeded");
         std::string t;
-        for (std::size_t i = 0; i < n; ++i) t += "if (a) ";
+        for (std::size_t i = 0; i < n; ++i)
+            t += "if (a) ";
         fails(t, "maximum recursion depth exceeded");
         t.clear();
-        for (std::size_t i = 0; i < n; ++i) t += "try { ";
+        for (std::size_t i = 0; i < n; ++i)
+            t += "try { ";
         fails(t, "maximum recursion depth exceeded");
         t.clear();
-        for (std::size_t i = 0; i < n; ++i) t += "{ while (a) ";
+        for (std::size_t i = 0; i < n; ++i)
+            t += "{ while (a) ";
         fails(t, "maximum recursion depth exceeded");
         // A lambda in a lambda crosses the expression grammar each time.
         t.clear();
-        for (std::size_t i = 0; i < n; ++i) t += "f(() => { ";
+        for (std::size_t i = 0; i < n; ++i)
+            t += "f(() => { ";
         fails(t, "maximum");
         t.clear();
-        for (std::size_t i = 0; i < 20; ++i) t += "f(() => { ";
+        for (std::size_t i = 0; i < 20; ++i)
+            t += "f(() => { ";
         t += "x;";
-        for (std::size_t i = 0; i < 20; ++i) t += " });";
+        for (std::size_t i = 0; i < 20; ++i)
+            t += " });";
         fails(t, "maximum nesting depth exceeded");
     });
     // A moderate depth works (the limit counts a block and an if as two levels).
     std::string ok, close;
-    for (int i = 0; i < 20; ++i) {
+    for (int i = 0; i < 20; ++i)
+    {
         ok += "{ if (a) ";
         close += " }";
     }
     EXPECT_EQ(round_trip(ok + "x;" + close).empty(), false);
     std::string lam, lclose;
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 8; ++i)
+    {
         lam += "f(() => { ";
         lclose += " });";
     }

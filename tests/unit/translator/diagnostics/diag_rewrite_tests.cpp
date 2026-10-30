@@ -1,11 +1,11 @@
 // Tests of the pure function sppc::rewrite_diagnostic (design 4.2, experiment F2).
 // The input is Clang text that the tests write by hand. The golden tests with a real
 // compile are in tests/integration/backends/diagnostic_mistake_tests.cpp.
+#include "spp/sppc_lib.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
-
-#include "spp/sppc_lib.h"
 
 using sppc::rewrite_diagnostic;
 
@@ -22,11 +22,12 @@ TEST(DiagRewrite, TextWithoutDiagnosticStaysAsItIs)
 
 TEST(DiagRewrite, ShellAndStateNamesBecomeScriptNames)
 {
-    const std::string in = "a.spp:3:5: error: no member named 'x' in 'Boss_Shell'\n"
-                           "a.spp:4:5: error: no member named 'y' in 'BossState_g12'\n";
+    const std::string in =
+        "a.spp:3:5: error: no member named 'x' in 'Boss_Shell'\n"
+        "a.spp:4:5: error: no member named 'y' in 'BossState_g12'\n";
     EXPECT_EQ(rewrite_diagnostic(in),
-              "a.spp:3:1: error: script class 'Boss' has no member 'x'\n"
-              "a.spp:4:1: error: script class 'Boss' has no member 'y'\n");
+        "a.spp:3:1: error: script class 'Boss' has no member 'x'\n"
+        "a.spp:4:1: error: script class 'Boss' has no member 'y'\n");
 }
 
 TEST(DiagRewrite, TypoSuggestionStaysInTheMessage)
@@ -37,11 +38,12 @@ TEST(DiagRewrite, TypoSuggestionStaysInTheMessage)
 
 TEST(DiagRewrite, FunctionNameUsesDotAndKeepsOtherNames)
 {
-    const std::string in = "a.spp:3:5: error: use of undeclared identifier 'Boss__roar'\n"
-                           "a.spp:4:5: error: no member named '__x' in 'std::__cxx11::list'\n";
+    const std::string in =
+        "a.spp:3:5: error: use of undeclared identifier 'Boss__roar'\n"
+        "a.spp:4:5: error: no member named '__x' in 'std::__cxx11::list'\n";
     EXPECT_EQ(rewrite_diagnostic(in),
-              "a.spp:3:1: error: script class 'Boss' has no method 'roar'\n"
-              "a.spp:4:1: error: 'std.__cxx11.list' has no member '__x'\n");
+        "a.spp:3:1: error: script class 'Boss' has no method 'roar'\n"
+        "a.spp:4:1: error: 'std.__cxx11.list' has no member '__x'\n");
 }
 
 TEST(DiagRewrite, VirtualWrapperNameLosesItsSuffix)
@@ -52,100 +54,110 @@ TEST(DiagRewrite, VirtualWrapperNameLosesItsSuffix)
 
 TEST(DiagRewrite, BuiltinTypesAndStdScopeUseScriptSpelling)
 {
-    const std::string in = "a.spp:3:5: error: cannot initialize a variable of type 'uint64_t' (aka 'unsigned long') "
-                           "with an lvalue of type 'std::string' (aka 'basic_string<char>')\n";
+    const std::string in =
+        "a.spp:3:5: error: cannot initialize a variable of type 'uint64_t' (aka 'unsigned long') "
+        "with an lvalue of type 'std::string' (aka 'basic_string<char>')\n";
     EXPECT_EQ(rewrite_diagnostic(in),
-              "a.spp:3:1: error: cannot initialize a variable of type 'ulong' with a value of type 'std.string'\n");
+        "a.spp:3:1: error: cannot initialize a variable of type 'ulong' with a value of type 'std.string'\n");
 }
 
 TEST(DiagRewrite, ArgumentCountOfScriptFunctionDoesNotCountSelf)
 {
-    const std::string in = "a.spp:3:5: error: too few arguments to function call, expected 3, have 1\n"
-                           "a.spp:9:6: note: 'Boss__roar' declared here\n";
+    const std::string in =
+        "a.spp:3:5: error: too few arguments to function call, expected 3, have 1\n"
+        "a.spp:9:6: note: 'Boss__roar' declared here\n";
     EXPECT_EQ(rewrite_diagnostic(in),
-              "a.spp:3:1: error: too few arguments: expected 2, got 0\n"
-              "a.spp:9:1: note: 'Boss.roar' declared here\n");
+        "a.spp:3:1: error: too few arguments: expected 2, got 0\n"
+        "a.spp:9:1: note: 'Boss.roar' declared here\n");
 }
 
 TEST(DiagRewrite, ArgumentCountOfNativeFunctionStays)
 {
-    const std::string in = "a.spp:3:5: error: too many arguments to function call, expected 1, have 2\n"
-                           "Actor.h:24:10: note: 'Move' declared here\n";
+    const std::string in =
+        "a.spp:3:5: error: too many arguments to function call, expected 1, have 2\n"
+        "Actor.h:24:10: note: 'Move' declared here\n";
     EXPECT_EQ(rewrite_diagnostic(in),
-              "a.spp:3:1: error: too many arguments: expected 1, got 2\n"
-              "Actor.h:24:10: note: 'Move' declared here\n");
+        "a.spp:3:1: error: too many arguments: expected 1, got 2\n"
+        "Actor.h:24:10: note: 'Move' declared here\n");
 }
 
 TEST(DiagRewrite, ArgumentPositionOfScriptFunctionDoesNotCountSelf)
 {
-    const std::string in = "a.spp:3:5: error: no matching function for call to 'Boss__roar'\n"
-                           "a.spp:9:13: note: candidate function not viable: no known conversion from 'int' to 'float' for 3rd argument\n"
-                           "a.spp:9:13: note: candidate function not viable: no known conversion from 'int' to 'Boss_Shell *' for 1st argument\n";
+    const std::string in =
+        "a.spp:3:5: error: no matching function for call to 'Boss__roar'\n"
+        "a.spp:9:13: note: candidate function not viable: no known conversion from 'int' to 'float' for 3rd argument\n"
+        "a.spp:9:13: note: candidate function not viable: no known conversion from 'int' to 'Boss_Shell *' for 1st "
+        "argument\n";
     EXPECT_EQ(rewrite_diagnostic(in),
-              "a.spp:3:1: error: no method or function 'Boss.roar' fits these arguments\n"
-              "a.spp:9:1: note: candidate does not fit: the 2nd argument needs 'float', but it has type 'int'\n"
-              "a.spp:9:1: note: candidate does not fit: no known conversion from 'int' to 'Boss *' for the object\n");
+        "a.spp:3:1: error: no method or function 'Boss.roar' fits these arguments\n"
+        "a.spp:9:1: note: candidate does not fit: the 2nd argument needs 'float', but it has type 'int'\n"
+        "a.spp:9:1: note: candidate does not fit: no known conversion from 'int' to 'Boss *' for the object\n");
 }
 
 TEST(DiagRewrite, CountsInTheNoteGetPluralWords)
 {
-    const std::string in = "a.spp:3:5: error: no matching function for call to 'Boss__roar'\n"
-                           "a.spp:9:13: note: candidate function not viable: requires 3 arguments, but 1 was provided\n";
+    const std::string in =
+        "a.spp:3:5: error: no matching function for call to 'Boss__roar'\n"
+        "a.spp:9:13: note: candidate function not viable: requires 3 arguments, but 1 was provided\n";
     EXPECT_EQ(rewrite_diagnostic(in),
-              "a.spp:3:1: error: no method or function 'Boss.roar' fits these arguments\n"
-              "a.spp:9:1: note: candidate does not fit: takes 2 arguments, but 0 were given\n");
+        "a.spp:3:1: error: no method or function 'Boss.roar' fits these arguments\n"
+        "a.spp:9:1: note: candidate does not fit: takes 2 arguments, but 0 were given\n");
 }
 
 TEST(DiagRewrite, SnippetOfGeneratedCodeIsDroppedWithoutScriptText)
 {
-    const std::string in = "a.spp:3:5: error: no member named 'x' in 'Boss_Shell'\n"
-                           "    3 |     __self->x = 1;\n"
-                           "      |     ~~~~  ^\n"
-                           "1 error generated.\n";
-    EXPECT_EQ(rewrite_diagnostic(in),
-              "a.spp:3:1: error: script class 'Boss' has no member 'x'\n1 error generated.\n");
+    const std::string in =
+        "a.spp:3:5: error: no member named 'x' in 'Boss_Shell'\n"
+        "    3 |     __self->x = 1;\n"
+        "      |     ~~~~  ^\n"
+        "1 error generated.\n";
+    EXPECT_EQ(rewrite_diagnostic(in), "a.spp:3:1: error: script class 'Boss' has no member 'x'\n1 error generated.\n");
 }
 
 TEST(DiagRewrite, SnippetIsTheScriptLineWhenTheTextIsKnown)
 {
-    const std::string in = "a.spp:2:5: error: no member named 'x' in 'Boss_Shell'\n"
-                           "    2 |     __self->x = 1;\n"
-                           "      |     ~~~~  ^\n"
-                           "1 error generated.\n";
+    const std::string in =
+        "a.spp:2:5: error: no member named 'x' in 'Boss_Shell'\n"
+        "    2 |     __self->x = 1;\n"
+        "      |     ~~~~  ^\n"
+        "1 error generated.\n";
     const sppc::ScriptTexts scripts = {{"a.spp", "class Boss {\n    this.x = 1;\n}\n"}};
     EXPECT_EQ(rewrite_diagnostic(in, scripts),
-              "a.spp:2:1: error: script class 'Boss' has no member 'x'\n"
-              "    2 |     this.x = 1;\n"
-              "1 error generated.\n");
+        "a.spp:2:1: error: script class 'Boss' has no member 'x'\n"
+        "    2 |     this.x = 1;\n"
+        "1 error generated.\n");
 }
 
 TEST(DiagRewrite, SnippetOfNativeHeaderStays)
 {
-    const std::string in = "Actor.h:24:10: error: something is wrong\n"
-                           "   24 |     void Move(Vec3 delta);\n"
-                           "      |          ^\n";
+    const std::string in =
+        "Actor.h:24:10: error: something is wrong\n"
+        "   24 |     void Move(Vec3 delta);\n"
+        "      |          ^\n";
     EXPECT_EQ(rewrite_diagnostic(in), in);
 }
 
 TEST(DiagRewrite, NoteInGeneratedFileGetsTheLocationOfItsError)
 {
-    const std::string in = "a.spp:3:5: error: no matching function for call to 'Boss__roar'\n"
-                           "/w/a.g1.cpp:91:13: note: candidate function not viable: requires 2 arguments, but 1 was provided\n"
-                           "   91 | static void Boss__roar(Boss_Shell* __self, float a)\n"
-                           "      |             ^\n";
+    const std::string in =
+        "a.spp:3:5: error: no matching function for call to 'Boss__roar'\n"
+        "/w/a.g1.cpp:91:13: note: candidate function not viable: requires 2 arguments, but 1 was provided\n"
+        "   91 | static void Boss__roar(Boss_Shell* __self, float a)\n"
+        "      |             ^\n";
     EXPECT_EQ(rewrite_diagnostic(in),
-              "a.spp:3:1: error: no method or function 'Boss.roar' fits these arguments\n"
-              "a.spp:3:1: note: candidate does not fit: takes 1 argument, but 0 were given\n");
+        "a.spp:3:1: error: no method or function 'Boss.roar' fits these arguments\n"
+        "a.spp:3:1: note: candidate does not fit: takes 1 argument, but 0 were given\n");
 }
 
 TEST(DiagRewrite, ErrorInGeneratedFileUsesTheLastScriptLineBeforeIt)
 {
     const std::string cpp = "#line 1 \"a.spp\"\nint a;\n#line 7 \"a.spp\"\nint b;\n#line 9 \"/w/a.g1.cpp\"\n}\n";
-    const std::string in = "/w/a.g1.cpp:6:1: error: non-void function does not return a value [-Werror,-Wreturn-type]\n"
-                           "    6 | }\n"
-                           "      | ^\n";
+    const std::string in =
+        "/w/a.g1.cpp:6:1: error: non-void function does not return a value [-Werror,-Wreturn-type]\n"
+        "    6 | }\n"
+        "      | ^\n";
     EXPECT_EQ(rewrite_diagnostic(in, {{"a.spp", "x\n"}}, {{"/w/a.g1.cpp", cpp}}),
-              "a.spp:7:1: error: the method does not return a value on every path\n");
+        "a.spp:7:1: error: the method does not return a value on every path\n");
 }
 
 TEST(DiagRewrite, ErrorInGeneratedFileStaysWithoutTheGeneratedText)
@@ -156,16 +168,17 @@ TEST(DiagRewrite, ErrorInGeneratedFileStaysWithoutTheGeneratedText)
 
 TEST(DiagRewrite, NotesInSystemHeadersAreHiddenAndCounted)
 {
-    const std::string in = "a.spp:3:5: error: invalid operands to binary expression ('float' and 'int *')\n"
-                           "/usr/include/c++/16/bits/x.h:10:5: note: candidate template ignored\n"
-                           "   10 |   operator+()\n"
-                           "      |   ^\n"
-                           "/usr/lib64/gcc/x/16/include/c++/y.h:11:5: note: candidate template ignored\n"
-                           "1 error generated.\n";
+    const std::string in =
+        "a.spp:3:5: error: invalid operands to binary expression ('float' and 'int *')\n"
+        "/usr/include/c++/16/bits/x.h:10:5: note: candidate template ignored\n"
+        "   10 |   operator+()\n"
+        "      |   ^\n"
+        "/usr/lib64/gcc/x/16/include/c++/y.h:11:5: note: candidate template ignored\n"
+        "1 error generated.\n";
     EXPECT_EQ(rewrite_diagnostic(in),
-              "a.spp:3:1: error: the operator does not fit these operand types ('float' and 'int *')\n"
-              "a.spp:3:1: note: 2 notes in system headers hidden (use --raw-diagnostics to see them)\n"
-              "1 error generated.\n");
+        "a.spp:3:1: error: the operator does not fit these operand types ('float' and 'int *')\n"
+        "a.spp:3:1: note: 2 notes in system headers hidden (use --raw-diagnostics to see them)\n"
+        "1 error generated.\n");
 }
 
 TEST(DiagRewrite, WarningFlagIsRemoved)
@@ -177,7 +190,8 @@ TEST(DiagRewrite, WarningFlagIsRemoved)
 TEST(DiagRewrite, MessageWithColonsInTextStillParses)
 {
     const std::string in = "a.spp:3:5: error: unknown type name 'a: b: error: c'\n";
-    EXPECT_EQ(rewrite_diagnostic(in), "a.spp:3:1: error: unknown type 'a: b: error: c': add a 'using' line or a native stub\n");
+    EXPECT_EQ(rewrite_diagnostic(in),
+        "a.spp:3:1: error: unknown type 'a: b: error: c': add a 'using' line or a native stub\n");
 }
 
 TEST(DiagRewrite, WindowsPathKeepsItsDrive)
@@ -197,7 +211,7 @@ TEST(DiagRewrite, VeryLongMessageDoesNotUseTheRegexTable)
 TEST(DiagRewrite, TextWithoutFinalNewlineKeepsThat)
 {
     EXPECT_EQ(rewrite_diagnostic("a.spp:3:5: error: redefinition of 'x'"),
-              "a.spp:3:1: error: 'x' is already declared in this scope");
+        "a.spp:3:1: error: 'x' is already declared in this scope");
 }
 
 TEST(DiagRewrite, RewriteTwiceGivesTheSameText)
@@ -219,7 +233,7 @@ TEST(DiagRewrite, SourceMapGivesTheScriptColumn)
     // Clang reports the generated column: "total" is at column 8 of the physical line 2.
     const std::string in = "a.spp:2:8: error: use of undeclared identifier 'total'\n";
     EXPECT_EQ(rewrite_diagnostic(in, {{"a.spp", script}}, {{"a.cpp", gen}}, &map),
-              "a.spp:2:6: error: unknown name 'total': it is not a local, a parameter, a field or a type\n");
+        "a.spp:2:6: error: unknown name 'total': it is not a local, a parameter, a field or a type\n");
 }
 
 TEST(DiagRewrite, WithoutSegmentTheColumnStaysOne)
@@ -234,7 +248,7 @@ TEST(DiagRewrite, WithoutSegmentTheColumnStaysOne)
     EXPECT_EQ(rewrite_diagnostic(in, {{"a.spp", script}}, {{"a.cpp", gen}}, &map), "a.spp:2:1: error: expected ';'\n");
     // No map: the column is 1.
     EXPECT_EQ(rewrite_diagnostic("a.spp:2:8: error: expected ';'\n", {{"a.spp", script}}, {{"a.cpp", gen}}),
-              "a.spp:2:1: error: expected ';'\n");
+        "a.spp:2:1: error: expected ';'\n");
 }
 
 // A segment of an imported script gives the real column in that script. The map holds the text
@@ -249,33 +263,34 @@ TEST(DiagRewrite, SourceMapGivesTheColumnInAnImportedScript)
     map.add({static_cast<uint32_t>(imported.find("total")), 5, static_cast<uint32_t>(gen.find("total")), 5, id});
     map.build(script, gen);
     const std::string in = "b.spp:2:" + std::to_string(gen.find("total") - gen.rfind('\n', gen.find("total")))
-                           + ": error: use of undeclared identifier 'total'\n    2 | generated\n      | ^\n";
+        + ": error: use of undeclared identifier 'total'\n    2 | generated\n      | ^\n";
     EXPECT_EQ(rewrite_diagnostic(in, {{"a.spp", script}}, {{"a.cpp", gen}}, &map),
-              "b.spp:2:20: error: unknown name 'total': it is not a local, a parameter, a field or a type\n"
-              "    2 |   int f() { return total; }\n");
+        "b.spp:2:20: error: unknown name 'total': it is not a local, a parameter, a field or a type\n"
+        "    2 |   int f() { return total; }\n");
 }
 
 TEST(DiagRewrite, TranslatorDiagnosticGetsSnippetAndCount)
 {
     const std::string script = "class A {\n  int x = ;\n}\n";
     EXPECT_EQ(sppc::rewrite_translator_diagnostic("a.spp:2:11: error: expected an expression\n", {{"a.spp", script}}),
-              "a.spp:2:11: error: expected an expression\n"
-              "    2 |   int x = ;\n"
-              "1 error generated.\n");
+        "a.spp:2:11: error: expected an expression\n"
+        "    2 |   int x = ;\n"
+        "1 error generated.\n");
 }
 
 TEST(DiagRewrite, TranslatorDiagnosticKeepsOtherLinesAndCountsAll)
 {
     const std::string script = "class A {\n  int x = ;\n}\n";
-    const std::string in = "a.spp:2:11: error: one\nsppc: error: two\nh.h:3:1: error: three\n"
-                           "a.spp:1:1: warning: four\n";
+    const std::string in =
+        "a.spp:2:11: error: one\nsppc: error: two\nh.h:3:1: error: three\n"
+        "a.spp:1:1: warning: four\n";
     EXPECT_EQ(sppc::rewrite_translator_diagnostic(in, {{"a.spp", script}}),
-              "a.spp:2:11: error: one\n"
-              "    2 |   int x = ;\n"
-              "sppc: error: two\n"
-              "h.h:3:1: error: three\n"
-              "a.spp:1:1: warning: four\n"
-              "    1 | class A {\n"
-              "1 warning and 3 errors generated.\n");
+        "a.spp:2:11: error: one\n"
+        "    2 |   int x = ;\n"
+        "sppc: error: two\n"
+        "h.h:3:1: error: three\n"
+        "a.spp:1:1: warning: four\n"
+        "    1 | class A {\n"
+        "1 warning and 3 errors generated.\n");
     EXPECT_EQ(sppc::rewrite_translator_diagnostic("", {{"a.spp", script}}), "");
 }

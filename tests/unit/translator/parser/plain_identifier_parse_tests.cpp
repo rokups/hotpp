@@ -1,13 +1,14 @@
 // Tests that the old words are plain identifiers, and that "[value] class" is an error.
+#include "parser/parser.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 
-#include "parser/parser.h"
-
 using namespace sppc;
 
-namespace {
+namespace
+{
 
 // Parses the script and gives the text of the errors.
 std::string errors_of_script(const std::string& text)
@@ -18,7 +19,7 @@ std::string errors_of_script(const std::string& text)
     return diag.format("t");
 }
 
-}  // namespace
+} // namespace
 
 TEST(PlainIdentifierParse, OldWordsAreFieldNames)
 {
@@ -29,7 +30,7 @@ TEST(PlainIdentifierParse, OldWordsAreFieldNames)
                                "    float super = 2.0;\n"
                                "    int of;\n"
                                "}\n"),
-              "");
+        "");
 }
 
 TEST(PlainIdentifierParse, OldWordsAreMethodsAndParameters)
@@ -38,7 +39,7 @@ TEST(PlainIdentifierParse, OldWordsAreMethodsAndParameters)
                                "    void import(int let, int function) { }\n"
                                "    int super(int of) { return of; }\n"
                                "}\n"),
-              "");
+        "");
 }
 
 TEST(PlainIdentifierParse, OldWordsAreLocalsAndExpressions)
@@ -55,7 +56,7 @@ TEST(PlainIdentifierParse, OldWordsAreLocalsAndExpressions)
                                "    }\n"
                                "    std.vector<int> items;\n"
                                "}\n"),
-              "");
+        "");
 }
 
 TEST(PlainIdentifierParse, OldWordsAreClassNames)
@@ -66,9 +67,7 @@ TEST(PlainIdentifierParse, OldWordsAreClassNames)
 TEST(PlainIdentifierParse, ValueAttributeOnAScriptClassIsAnError)
 {
     const std::string d = errors_of_script("[value] class Foo { }\n");
-    EXPECT_NE(d.find("t:1:2: error: '[value]' is not allowed on a script class: use 'struct'"),
-              std::string::npos)
-        << d;
+    EXPECT_NE(d.find("t:1:2: error: '[value]' is not allowed on a script class: use 'struct'"), std::string::npos) << d;
     // A native stub still takes the attribute.
     EXPECT_EQ(errors_of_script("[native, value] class std.string;\n"), "");
     // A struct is the way to make a value type.

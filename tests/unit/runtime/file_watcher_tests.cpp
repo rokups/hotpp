@@ -1,5 +1,7 @@
 // The file watcher of the harness (design 8.1), with a temporary directory. Both the inotify
 // mode and the polling fallback must see a change of the watched file and nothing else.
+#include "FileWatcher.h"
+
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -7,19 +9,19 @@
 #include <fstream>
 #include <thread>
 
-#include "FileWatcher.h"
-
-namespace {
+namespace
+{
 
 namespace fs = std::filesystem;
 
-class FileWatcherTests : public ::testing::TestWithParam<harness::FileWatcher::Mode> {
+class FileWatcherTests : public ::testing::TestWithParam<harness::FileWatcher::Mode>
+{
 protected:
     void SetUp() override
     {
-        dir = fs::temp_directory_path() /
-              ("spp_watch_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) + "_" +
-               std::to_string(reinterpret_cast<uintptr_t>(this)));
+        dir = fs::temp_directory_path()
+            / ("spp_watch_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) + "_"
+                + std::to_string(reinterpret_cast<uintptr_t>(this)));
         fs::create_directories(dir);
         file = (dir / "a.spp").string();
         write(file, "one");
@@ -38,8 +40,10 @@ protected:
 bool changed_within(harness::FileWatcher& w, int timeout_ms)
 {
     const auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-    do {
-        if (w.wait_changed(100)) return true;
+    do
+    {
+        if (w.wait_changed(100))
+            return true;
     } while (std::chrono::steady_clock::now() < end);
     return false;
 }
@@ -48,14 +52,14 @@ TEST_P(FileWatcherTests, SeesWriteAndRenameButNotOtherFiles)
 {
     harness::FileWatcher w(file, GetParam());
     EXPECT_EQ(w.uses_inotify(), GetParam() == harness::FileWatcher::Mode::Auto);
-    EXPECT_FALSE(w.wait_changed(0));  // nothing changed yet
+    EXPECT_FALSE(w.wait_changed(0)); // nothing changed yet
 
-    write((dir / "other.txt").string(), "x");  // another file in the same directory
+    write((dir / "other.txt").string(), "x"); // another file in the same directory
     EXPECT_FALSE(w.wait_changed(50));
 
     write(file, "two words");
     EXPECT_TRUE(changed_within(w, 15000));
-    EXPECT_FALSE(w.wait_changed(0));  // the change is consumed
+    EXPECT_FALSE(w.wait_changed(0)); // the change is consumed
 
     // An editor writes a new file and renames it over the old one.
     write((dir / "a.tmp").string(), "three");
@@ -68,7 +72,8 @@ TEST_P(FileWatcherTests, SeesWriteAndRenameButNotOtherFiles)
 // through the ctime and the hash of the content.
 TEST_P(FileWatcherTests, PollingSeesAnEditThatRestoresTheTimeAndTheSize)
 {
-    if (GetParam() != harness::FileWatcher::Mode::Polling) GTEST_SKIP() << "inotify sees every write";
+    if (GetParam() != harness::FileWatcher::Mode::Polling)
+        GTEST_SKIP() << "inotify sees every write";
     write(file, "aaaa");
     const auto old_time = fs::file_time_type::clock::now() - std::chrono::hours(2);
     fs::last_write_time(file, old_time);
@@ -92,8 +97,7 @@ TEST_P(FileWatcherTests, PollingSeesAnEditThatRestoresTheTimeAndTheSize)
     EXPECT_TRUE(w.wait_changed(1000));
 }
 
-INSTANTIATE_TEST_SUITE_P(Modes, FileWatcherTests,
-                         ::testing::Values(harness::FileWatcher::Mode::Auto,
-                                           harness::FileWatcher::Mode::Polling));
+INSTANTIATE_TEST_SUITE_P(
+    Modes, FileWatcherTests, ::testing::Values(harness::FileWatcher::Mode::Auto, harness::FileWatcher::Mode::Polling));
 
-}  // namespace
+} // namespace

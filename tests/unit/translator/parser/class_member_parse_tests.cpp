@@ -1,11 +1,11 @@
 // Tests for the parser of the fields and the methods of a class, and of the [alias] attribute.
+#include "parser/parser.h"
+#include "support/script_parse_test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 #include <vector>
-
-#include "parser/parser.h"
-#include "support/script_parse_test_support.h"
 
 using namespace sppc;
 using namespace script_test;
@@ -22,11 +22,9 @@ TEST(ClassMemberParse, TypeFirstMembers)
                          "    int* pick(int* p) { return p; }\n"
                          "    std.string name() { return this.s; }\n"
                          "}\n",
-                         sd),
-              (std::vector<std::string>{
-                  "field std::string|s|-|", "field float|hp|init|", "field int32_t|n|init|old",
-                  "field std::vector<std::string>|v|-|", "method |tick", "method int32_t*|pick",
-                  "method std::string|name"}));
+                  sd),
+        (std::vector<std::string>{"field std::string|s|-|", "field float|hp|init|", "field int32_t|n|init|old",
+            "field std::vector<std::string>|v|-|", "method |tick", "method int32_t*|pick", "method std::string|name"}));
     EXPECT_EQ(sd.items.size(), 0u) << sd.format("t");
 }
 

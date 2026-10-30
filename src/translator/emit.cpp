@@ -31,29 +31,36 @@
 
 #include <algorithm>
 
-namespace sppc::ast {
+namespace sppc::ast
+{
 
-namespace {
+namespace
+{
 
 std::string escape(const std::string& f)
 {
     std::string r;
-    for (char c : f) {
-        if (c == '\\' || c == '"') r += '\\';
+    for (char c : f)
+    {
+        if (c == '\\' || c == '"')
+            r += '\\';
         r += c;
     }
     return r;
 }
 
-}  // namespace
+} // namespace
 
 void Emitter::put(std::string_view t, uint32_t pos)
 {
     bool broke = false;
-    if (map_ && pos != 0) {
+    if (map_ && pos != 0)
+    {
         int line = map_->line(pos);
-        if (line > line_) {
-            if (!out_.empty()) out_ += '\n';
+        if (line > line_)
+        {
+            if (!out_.empty())
+                out_ += '\n';
             // A position in an imported script names the file of that script (LineMap::add_file).
             const std::string& f = map_->file(pos);
             out_ += "#line " + std::to_string(line) + " \"" + escape(f.empty() ? file_ : f) + "\"\n";
@@ -63,18 +70,22 @@ void Emitter::put(std::string_view t, uint32_t pos)
             broke = true;
         }
     }
-    if (!broke && space_ && !out_.empty()) out_ += ' ';
+    if (!broke && space_ && !out_.empty())
+        out_ += ' ';
     space_ = false;
     if (map_ && pos != 0 && !t.empty())
         segments_.push_back({pos, static_cast<uint32_t>(out_.size()), static_cast<uint32_t>(t.size())});
     out_ += t;
-    if (t == "{") ++depth;
-    if (t == "}") --depth;
+    if (t == "{")
+        ++depth;
+    if (t == "}")
+        --depth;
 }
 
 void Emitter::put_named(std::string_view t, uint32_t pos, size_t name_at, uint32_t name_pos)
 {
-    if (!map_ || name_pos == 0 || name_at >= t.size()) return put(t, pos);
+    if (!map_ || name_pos == 0 || name_at >= t.size())
+        return put(t, pos);
     // The prefix gets the line logic and the space. The name follows with no space.
     put(t.substr(0, name_at), pos);
     segments_.push_back({name_pos, static_cast<uint32_t>(out_.size()), static_cast<uint32_t>(t.size() - name_at)});
@@ -83,9 +94,12 @@ void Emitter::put_named(std::string_view t, uint32_t pos, size_t name_at, uint32
 
 void Emitter::put_mapped(std::string_view t, uint32_t pos)
 {
-    if (!t.empty() && pos != 0) {
-        if (map_) {
-            if (space_ && !out_.empty()) out_ += ' ';
+    if (!t.empty() && pos != 0)
+    {
+        if (map_)
+        {
+            if (space_ && !out_.empty())
+                out_ += ' ';
             space_ = false;
             segments_.push_back({pos, static_cast<uint32_t>(out_.size()), static_cast<uint32_t>(t.size())});
             out_ += t;
@@ -97,25 +111,31 @@ void Emitter::put_mapped(std::string_view t, uint32_t pos)
 
 void Emitter::finish()
 {
-    if (map_ && line_ != 0) out_ += '\n';
+    if (map_ && line_ != 0)
+        out_ += '\n';
 }
 
 void Emitter::rewind(uint32_t pos)
 {
-    if (!map_ || pos == 0) return;
+    if (!map_ || pos == 0)
+        return;
     const int line = map_->line(pos);
-    if (line_ > line) line_ = line - 1;
+    if (line_ > line)
+        line_ = line - 1;
 }
 
-namespace {
+namespace
+{
 
 void block(const BlockStmt& b, Emitter& e);
 void stmt_list(const std::vector<StmtP>& v, Emitter& e);
 
 void expr_list(const std::vector<ExprP>& v, Emitter& e)
 {
-    for (size_t i = 0; i < v.size(); ++i) {
-        if (i) {
+    for (size_t i = 0; i < v.size(); ++i)
+    {
+        if (i)
+        {
             e.put(",");
             e.space();
         }
@@ -123,19 +143,23 @@ void expr_list(const std::vector<ExprP>& v, Emitter& e)
     }
 }
 
-struct ExprPrinter {
+struct ExprPrinter
+{
     Emitter& e;
 
     void operator()(const NameExpr& n) const
     {
         std::string t;
-        for (size_t i = 0; i < n.parts.size(); ++i) t += (i ? "::" : "") + n.parts[i];
-        if (n.parts.size() >= 2 && n.pos != 0 && n.last_pos != 0) {
+        for (size_t i = 0; i < n.parts.size(); ++i)
+            t += (i ? "::" : "") + n.parts[i];
+        if (n.parts.size() >= 2 && n.pos != 0 && n.last_pos != 0)
+        {
             // The last part gets its own segment, so the language server maps a position in it.
             // The generated text has "::" between the parts. A part holds the template
             // arguments of its own, in the form the lowering wrote.
             size_t name_at = 0;
-            for (size_t i = 0; i + 1 < n.parts.size(); ++i) name_at += n.parts[i].size() + 2;
+            for (size_t i = 0; i + 1 < n.parts.size(); ++i)
+                name_at += n.parts[i].size() + 2;
             e.put_named(t + n.template_args, n.pos, name_at, n.last_pos);
             return;
         }
@@ -152,11 +176,14 @@ struct ExprPrinter {
     void operator()(const InterpExpr& n) const
     {
         std::string t = "\"";
-        for (size_t i = 0; i < n.lits.size(); ++i) {
+        for (size_t i = 0; i < n.lits.size(); ++i)
+        {
             t += n.lits[i];
-            if (i < n.args.size()) {
+            if (i < n.args.size())
+            {
                 t += "${" + print(*n.args[i]);
-                if (!n.specs[i].empty()) t += ":" + n.specs[i];
+                if (!n.specs[i].empty())
+                    t += ":" + n.specs[i];
                 t += "}";
             }
         }
@@ -166,14 +193,18 @@ struct ExprPrinter {
     void operator()(const CollectionExpr& n) const
     {
         e.put("{", n.pos);
-        for (size_t i = 0; i < n.elems.size(); ++i) {
-            if (i) {
+        for (size_t i = 0; i < n.elems.size(); ++i)
+        {
+            if (i)
+            {
                 e.put(",");
                 e.space();
             }
-            if (n.is_map) e.put("{");
+            if (n.is_map)
+                e.put("{");
             emit_expr(*n.elems[i], e);
-            if (n.is_map) {
+            if (n.is_map)
+            {
                 e.put(",");
                 e.space();
                 emit_expr(*n.values[i], e);
@@ -204,7 +235,8 @@ struct ExprPrinter {
     }
     void operator()(const UnaryExpr& n) const
     {
-        if (n.postfix) {
+        if (n.postfix)
+        {
             emit_expr(*n.operand, e);
             e.put(n.op);
             return;
@@ -212,8 +244,8 @@ struct ExprPrinter {
         e.put(n.op, n.pos);
         // "- -x" must not become "--x".
         const auto* inner = std::get_if<UnaryExpr>(&n.operand->v);
-        if (inner && !inner->postfix && !n.op.empty() && !inner->op.empty() && inner->op[0] == n.op.back() &&
-            (n.op.back() == '-' || n.op.back() == '+' || n.op.back() == '&'))
+        if (inner && !inner->postfix && !n.op.empty() && !inner->op.empty() && inner->op[0] == n.op.back()
+            && (n.op.back() == '-' || n.op.back() == '+' || n.op.back() == '&'))
             e.space();
         emit_expr(*n.operand, e);
     }
@@ -260,7 +292,8 @@ struct ExprPrinter {
         e.put(n.is_as ? "as" : "is");
         e.space();
         e.put(n.type);
-        if (!n.bind.empty()) {
+        if (!n.bind.empty())
+        {
             e.space();
             e.put(n.bind);
         }
@@ -269,8 +302,10 @@ struct ExprPrinter {
     {
         e.put("[=" + n.captures + "]", n.pos);
         e.put("(");
-        for (size_t i = 0; i < n.params.size(); ++i) {
-            if (i) {
+        for (size_t i = 0; i < n.params.size(); ++i)
+        {
+            if (i)
+            {
                 e.put(",");
                 e.space();
             }
@@ -291,10 +326,14 @@ void simple(const Stmt& s, Emitter& e);
 bool plain_type(const std::string& t)
 {
     int depth = 0;
-    for (char c : t) {
-        if (c == '<') ++depth;
-        if (c == '>') --depth;
-        if (depth == 0 && (c == '*' || c == '&' || c == '[' || c == '(' || c == ' ')) return false;
+    for (char c : t)
+    {
+        if (c == '<')
+            ++depth;
+        if (c == '>')
+            --depth;
+        if (depth == 0 && (c == '*' || c == '&' || c == '[' || c == '(' || c == ' '))
+            return false;
     }
     return true;
 }
@@ -305,8 +344,10 @@ bool plain_type(const std::string& t)
 void binding_names(const std::vector<std::string>& names, const std::vector<uint32_t>& poss, Emitter& e)
 {
     e.put("[");
-    for (size_t i = 0; i < names.size(); ++i) {
-        if (i) {
+    for (size_t i = 0; i < names.size(); ++i)
+    {
+        if (i)
+        {
             e.put(",");
             e.space();
         }
@@ -319,14 +360,19 @@ void decl(const VarDeclStmt& d, Emitter& e)
 {
     e.put(std::string(d.is_const ? "const " : "") + (d.type.empty() ? (d.is_ref ? "auto&" : "auto") : d.type), d.pos);
     e.space();
-    if (!d.names.empty()) binding_names(d.names, d.name_poss, e);
-    else e.put_mapped(d.name, d.name_pos);
-    if (d.init) {
+    if (!d.names.empty())
+        binding_names(d.names, d.name_poss, e);
+    else
+        e.put_mapped(d.name, d.name_pos);
+    if (d.init)
+    {
         e.space();
         e.put("=");
         e.space();
         emit_expr(*d.init, e);
-    } else if (!d.type.empty() && !d.is_const) {
+    }
+    else if (!d.type.empty() && !d.is_const)
+    {
         e.space();
         e.put("=");
         e.space();
@@ -346,7 +392,8 @@ void close_paren(Emitter& e)
     e.space();
 }
 
-struct StmtPrinter {
+struct StmtPrinter
+{
     Emitter& e;
 
     void operator()(const BlockStmt& n) const { block(n, e); }
@@ -367,7 +414,8 @@ struct StmtPrinter {
         emit_expr(*n.cond, e);
         close_paren(e);
         emit_stmt(*n.then, e);
-        if (n.otherwise) {
+        if (n.otherwise)
+        {
             e.space();
             e.put("else", n.else_pos);
             e.space();
@@ -398,20 +446,24 @@ struct StmtPrinter {
     {
         e.put("for", n.pos);
         open_paren(e);
-        for (size_t i = 0; i < n.init.size(); ++i) {
-            if (i) {
+        for (size_t i = 0; i < n.init.size(); ++i)
+        {
+            if (i)
+            {
                 e.put(",");
                 e.space();
             }
             simple(*n.init[i], e);
         }
         e.put(";");
-        if (n.cond) {
+        if (n.cond)
+        {
             e.space();
             emit_expr(*n.cond, e);
         }
         e.put(";");
-        if (!n.step.empty()) {
+        if (!n.step.empty())
+        {
             e.space();
             expr_list(n.step, e);
         }
@@ -424,8 +476,10 @@ struct StmtPrinter {
         open_paren(e);
         e.put(std::string(n.is_const ? "const " : "") + (n.type.empty() ? (n.is_ref ? "auto&" : "auto") : n.type));
         e.space();
-        if (!n.names.empty()) binding_names(n.names, n.name_poss, e);
-        else e.put_mapped(n.name, n.name_pos);
+        if (!n.names.empty())
+            binding_names(n.names, n.name_poss, e);
+        else
+            e.put_mapped(n.name, n.name_pos);
         e.space();
         e.put(":");
         e.space();
@@ -436,7 +490,8 @@ struct StmtPrinter {
     void operator()(const ReturnStmt& n) const
     {
         e.put("return", n.pos);
-        if (n.expr) {
+        if (n.expr)
+        {
             e.space();
             emit_expr(*n.expr, e);
         }
@@ -459,9 +514,11 @@ struct StmtPrinter {
         emit_expr(*n.subject, e);
         close_paren(e);
         e.put("{");
-        for (const SwitchCase& c : n.cases) {
+        for (const SwitchCase& c : n.cases)
+        {
             bool first = true;
-            for (size_t i = 0; i < c.labels.size(); ++i) {
+            for (size_t i = 0; i < c.labels.size(); ++i)
+            {
                 e.space();
                 e.put("case", i < c.label_pos.size() ? c.label_pos[i] : first ? c.pos : 0);
                 first = false;
@@ -469,7 +526,8 @@ struct StmtPrinter {
                 emit_expr(*c.labels[i], e);
                 e.put(":");
             }
-            if (c.is_default) {
+            if (c.is_default)
+            {
                 e.space();
                 e.put("default", c.default_pos != 0 ? c.default_pos : first ? c.pos : 0);
                 e.put(":");
@@ -482,7 +540,8 @@ struct StmtPrinter {
     void operator()(const ThrowStmt& n) const
     {
         e.put("throw", n.pos);
-        if (n.expr) {
+        if (n.expr)
+        {
             e.space();
             emit_expr(*n.expr, e);
         }
@@ -494,7 +553,8 @@ struct StmtPrinter {
     // N is unique in the Emitter, so a nested try gets a different name.
     void operator()(const TryStmt& n) const
     {
-        if (n.finally_block) {
+        if (n.finally_block)
+        {
             e.put("{", n.pos);
             e.space();
             e.put("spp::Finally __fin_" + std::to_string(e.next_finally()) + "([&" + n.finally_captures + "]");
@@ -505,15 +565,20 @@ struct StmtPrinter {
             e.rewind(n.pos);
         }
         // A try without a catch clause has no use in C++. The body is a plain block.
-        if (!n.catches.empty()) e.put("try", n.pos);
+        if (!n.catches.empty())
+            e.put("try", n.pos);
         block(n.block, e);
-        for (const CatchClause& c : n.catches) {
+        for (const CatchClause& c : n.catches)
+        {
             e.space();
             e.put("catch", c.pos);
             open_paren(e);
-            if (c.is_all) {
+            if (c.is_all)
+            {
                 e.put("...");
-            } else {
+            }
+            else
+            {
                 e.put(c.type);
                 e.space();
                 e.put(c.name);
@@ -521,7 +586,8 @@ struct StmtPrinter {
             e.put(")");
             block(c.block, e);
         }
-        if (n.finally_block) {
+        if (n.finally_block)
+        {
             e.space();
             e.put("}");
         }
@@ -532,14 +598,18 @@ struct StmtPrinter {
 
 void simple(const Stmt& s, Emitter& e)
 {
-    if (const auto* d = std::get_if<VarDeclStmt>(&s.v)) decl(*d, e);
-    else if (const auto* x = std::get_if<ExprStmt>(&s.v)) emit_expr(*x->expr, e);
-    else emit_stmt(s, e);
+    if (const auto* d = std::get_if<VarDeclStmt>(&s.v))
+        decl(*d, e);
+    else if (const auto* x = std::get_if<ExprStmt>(&s.v))
+        emit_expr(*x->expr, e);
+    else
+        emit_stmt(s, e);
 }
 
 void stmt_list(const std::vector<StmtP>& v, Emitter& e)
 {
-    for (const StmtP& s : v) {
+    for (const StmtP& s : v)
+    {
         e.space();
         emit_stmt(*s, e);
     }
@@ -551,14 +621,21 @@ void block(const BlockStmt& b, Emitter& e)
     e.space();
     e.put("{", b.pos);
     stmt_list(b.stmts, e);
-    if (!b.stmts.empty()) e.space();
+    if (!b.stmts.empty())
+        e.space();
     e.put("}", b.end_pos);
 }
 
-}  // namespace
+} // namespace
 
-void emit_expr(const Expr& x, Emitter& out) { std::visit(ExprPrinter{out}, x.v); }
-void emit_stmt(const Stmt& s, Emitter& out) { std::visit(StmtPrinter{out}, s.v); }
+void emit_expr(const Expr& x, Emitter& out)
+{
+    std::visit(ExprPrinter{out}, x.v);
+}
+void emit_stmt(const Stmt& s, Emitter& out)
+{
+    std::visit(StmtPrinter{out}, s.v);
+}
 
 void emit_block(const BlockStmt& b, Emitter& out, int depth)
 {
@@ -595,4 +672,4 @@ std::string print_lines(const Stmt& s, const LineMap& map, const std::string& fi
     return e.text();
 }
 
-}  // namespace sppc::ast
+} // namespace sppc::ast

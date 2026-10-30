@@ -8,13 +8,20 @@
 #include <vector>
 
 // The constructors let a script write "Vec3(x, y, z)" in C++17. C++17 has no "()" form for an aggregate.
-struct Vec3 {
+struct Vec3
+{
     Vec3() = default;
-    Vec3(float x_, float y_, float z_) : x(x_), y(y_), z(z_) {}
+    Vec3(float x_, float y_, float z_)
+        : x(x_)
+        , y(y_)
+        , z(z_)
+    {
+    }
     float x = 0, y = 0, z = 0;
 };
 
-class Actor {
+class Actor
+{
 public:
     Actor();
     explicit Actor(std::string name);
@@ -32,11 +39,10 @@ public:
 
 // A native delegate: an object and a function address. A script method is
 // bound through a thunk, which keeps its address across reloads.
-template <class Sig>
-class Delegate;
+template <class Sig> class Delegate;
 
-template <class R, class... A>
-class Delegate<R(A...)> {
+template <class R, class... A> class Delegate<R(A...)>
+{
 public:
     using Fn = R (*)(Actor*, A...);
 
@@ -56,7 +62,8 @@ public:
     bool IsBound() const { return fn_ != nullptr || static_cast<bool>(callable_); }
     R operator()(A... a) const
     {
-        if (callable_) return callable_(std::forward<A>(a)...);
+        if (callable_)
+            return callable_(std::forward<A>(a)...);
         return fn_(object_, std::forward<A>(a)...);
     }
 
@@ -67,7 +74,8 @@ private:
 };
 
 // The world owns the actors that it holds. It deletes them in the destructor.
-class World {
+class World
+{
 public:
     World();
     World(const World&) = delete;
@@ -109,11 +117,12 @@ public:
     void Restore(const std::string& text, const std::function<Actor*()>& make);
 
 private:
-    struct Pool;  // the worker threads and the barrier
+    struct Pool; // the worker threads and the barrier
     void TickActor(Actor* actor, float dt);
-    void EndFrame(float dt);  // timers, then the frame boundary hook
+    void EndFrame(float dt); // timers, then the frame boundary hook
 
-    struct Timer {
+    struct Timer
+    {
         float remaining;
         std::function<void()> fn;
     };

@@ -3,27 +3,28 @@
 // and the diagnostics of a bad script.
 //
 // CMake defines these macros: SPP_SOURCE_DIR and SPP_BACKEND_NAME.
+#include "spp/backend.h"
+#include "support/backend_fixture.h"
+#include "support/f1_scenario.h"
+#include "support/native_std_scenario.h"
+#include "support/reload_assert.h"
+#include "support/script_files.h"
+#include "support/test_support.h"
+
 #include <gtest/gtest.h>
 
 #include <memory>
 #include <stdexcept>
 #include <string>
 
-#include "spp/backend.h"
-#include "support/backend_fixture.h"
-#include "support/reload_assert.h"
-#include "support/script_files.h"
-#include "support/test_support.h"
-#include "support/f1_scenario.h"
-#include "support/native_std_scenario.h"
+namespace
+{
 
-namespace {
-
+using test_support::expect_errors_at_script;
 using test_support::kDt;
+using test_support::line_with;
 using test_support::Session;
 using test_support::source;
-using test_support::expect_errors_at_script;
-using test_support::line_with;
 
 TEST_P(BackendTests, DefaultBackendIsTheSelectedOne)
 {
@@ -69,7 +70,7 @@ TEST_P(BackendTests, BadScriptGivesErrorAndRuntimeKeepsRunning)
     s.actor->TakeDamage(30.0f);
     s.world.Tick(kDt);
     ASSERT_NE(s.field("hp"), nullptr);
-    EXPECT_EQ(*s.field("hp"), 71.0f);  // 100 - 30 + 1 (Tick heals 1)
+    EXPECT_EQ(*s.field("hp"), 71.0f); // 100 - 30 + 1 (Tick heals 1)
     EXPECT_EQ(spp::active_generation, 1u);
 
     // The failed build did not damage the slot file: generation 2 still reloads.
@@ -85,4 +86,4 @@ TEST_P(BackendTests, BadScriptGivesErrorAndRuntimeKeepsRunning)
 
 INSTANTIATE_TEST_SUITE_P(Selected, BackendTests, ::testing::Values(std::string(SPP_BACKEND_NAME)));
 
-}  // namespace
+} // namespace
