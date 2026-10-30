@@ -21,7 +21,10 @@ endif()
 option(SPP_KEEP_TEMP "Keep the scratch files under tmp/ for debugging" OFF)
 set(SPP_SCRATCH_DIR ${CMAKE_BINARY_DIR}/tmp)
 
-set(CMAKE_CXX_STANDARD 20)
+# The default standard is C++20. A parent project can set CMAKE_CXX_STANDARD to 17.
+if(NOT CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 20)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -103,6 +106,14 @@ file(GLOB SPP_RUNTIME_HEADERS ${CMAKE_SOURCE_DIR}/include/spp/runtime/*.h)
 set(SPP_HEADERS ${CMAKE_SOURCE_DIR}/example/engine/Actor.h ${CMAKE_SOURCE_DIR}/example/engine/Math.h
                 ${CMAKE_SOURCE_DIR}/include/spp/runtime.h ${CMAKE_SOURCE_DIR}/include/spp/module.h
                 ${SPP_RUNTIME_HEADERS})
+
+# The format library of the string interpolation: std::format or fmt (cmake/SppFormat.cmake).
+include(cmake/SppFormat.cmake)
+spp_format_library(SPP_FORMAT_LIB ${CMAKE_CXX_STANDARD})
+if(SPP_FORMAT_LIB STREQUAL "fmt")
+    spp_provide_fmt()
+endif()
+message(STATUS "String interpolation uses: ${SPP_FORMAT_LIB}")
 
 include(cmake/SppScripts.cmake)
 

@@ -11,6 +11,7 @@
 #include <fstream>
 #include <sstream>
 
+#include "spp/config.h"
 #include "spp/scratch.h"
 #include "spp/sppc_lib.h"
 
@@ -97,6 +98,7 @@ std::vector<std::string> compile_command(const ClangFilesOptions& opt, const std
     if (!opt.resource_dir.empty()) cmd.push_back("-resource-dir=" + opt.resource_dir);
     for (const std::string& f : opt.extra_flags) cmd.push_back(f);
     for (const std::string& d : opt.include_dirs) cmd.push_back("-I" + d);
+    for (const std::string& f : format_compile_flags()) cmd.push_back(f);
     cmd.push_back(cpp_path);
     cmd.push_back("-o");
     cmd.push_back(out_so);
@@ -166,7 +168,7 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation,
     to.include_dirs = opt_.include_dirs;
     to.resource_dir = opt_.resource_dir;
     to.strict_borrowed = opt_.strict_borrowed;
-    to.format_lib = opt_.format_lib;
+    to.format_lib = format_lib_name();
     read_text(opt_.slots_file, to.slots_in);  // a missing file means the first generation
     sppc::TranslateResult tr = sppc::translate(to, *opt_.session);
     if (!tr.ok) {

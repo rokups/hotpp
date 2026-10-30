@@ -92,3 +92,23 @@ spp_script_host(NAME game TARGET game_engine
 ```
 
 The example is `example/aot/main.cpp`.
+
+### Format library for `${}`
+
+The build chooses the format library for string interpolation. No runtime switch exists.
+
+- C++17 (the standard is less than 20): fmt. `std::format` needs C++20.
+- C++20 and later: `std::format`. Set `-DSPP_USE_FMT=ON` to use fmt at any standard.
+
+The standard is the `CXX_STANDARD` argument of `spp_add_scripts`, else `CMAKE_CXX_STANDARD`, else 17. The runtime backends use the standard of the spp build. The header `include/spp/config.h` has the choice (`SPP_USE_FMT`). When the build uses fmt, `spp_add_scripts` passes `--format=fmt` to `sppc`, and an AOT library links the target `spp_fmt`.
+
+The cache variable `SPP_FMT_PROVIDER` says where fmt comes from:
+
+| Value | Meaning |
+|---|---|
+| `AUTO` (default) | `find_package(fmt)`. If fmt is not installed, CPM.cmake fetches it. |
+| `SYSTEM` | `find_package(fmt REQUIRED)`. The build never fetches. |
+| `CPM` | CPM.cmake always fetches fmt. |
+| `NONE` | Your project makes the target `fmt::fmt-header-only` or `fmt::fmt`. spp only links to it. The configure step fails if the target does not exist. |
+
+A target `fmt::fmt-header-only` or `fmt::fmt` that exists already is always used. Then the build does not search and does not fetch.

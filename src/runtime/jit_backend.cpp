@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <mutex>
 
+#include "spp/config.h"
 #include "spp/sppc_lib.h"
 
 namespace spp {
@@ -105,6 +106,7 @@ CompileSetup make_invocation(const JitOptions& opt, const std::string& path, con
     if (!opt.resource_dir.empty()) args.push_back("-resource-dir=" + opt.resource_dir);
     for (const std::string& f : opt.extra_flags) args.push_back(f);
     for (const std::string& d : opt.include_dirs) args.push_back("-I" + d);
+    for (const std::string& f : format_compile_flags()) args.push_back(f);
     if (!as_pch && !opt.pch_path.empty()) {
         args.push_back("-include-pch");
         args.push_back(opt.pch_path);
@@ -224,7 +226,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
     to.include_dirs = opt_.include_dirs;
     to.resource_dir = opt_.resource_dir;
     to.strict_borrowed = opt_.strict_borrowed;
-    to.format_lib = opt_.format_lib;
+    to.format_lib = format_lib_name();
     to.slots_in = slots_;
     sppc::TranslateResult tr = sppc::translate(to, *opt_.session);
     timings_.translate_ms = ms_since(t0);

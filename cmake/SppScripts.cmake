@@ -25,8 +25,15 @@
 # INCLUDES are the include dirs of the translator and of the compile. FLAGS are flags
 # for sppc. OUT_DIR defaults to ${CMAKE_BINARY_DIR}/spp_aot/<name>. AOT mode has no GEN
 # and no AFTER. PRELUDES is only for AOT mode.
+#
+# String interpolation "${...}": the C++ standard picks the format library at build time
+# (cmake/SppFormat.cmake). The standard is CXX_STANDARD, else CMAKE_CXX_STANDARD, else 17.
+# A standard less than 20 selects fmt. C++20 and later select std::format, unless the CMake
+# option SPP_USE_FMT is ON. With fmt, the function gets fmt (SPP_FMT_PROVIDER: an installed
+# package, else CPM.cmake, by default), passes --format=fmt to sppc and gives the compile the fmt include directory.
+# In AOT mode the library "name" links the target spp_fmt (fmt). There is no runtime switch.
 function(spp_add_scripts)
-    cmake_parse_arguments(A "AOT" "TARGET;GEN;OUT_DIR;AFTER" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS" ${ARGN})
+    cmake_parse_arguments(A "AOT" "TARGET;GEN;OUT_DIR;AFTER;CXX_STANDARD" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS" ${ARGN})
     if(A_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "spp_add_scripts: unknown arguments: ${A_UNPARSED_ARGUMENTS}")
     endif()
@@ -46,6 +53,26 @@ function(spp_add_scripts)
         endif()
     endif()
 
+    # The format library of "${...}".
+    set(std_num 17)
+    if(A_CXX_STANDARD)
+        set(std_num ${A_CXX_STANDARD})
+    elseif(CMAKE_CXX_STANDARD)
+        set(std_num ${CMAKE_CXX_STANDARD})
+    endif()
+    spp_format_library(format_lib ${std_num})
+    set(fmt_flags "")
+    set(fmt_includes "")
+    if(format_lib STREQUAL "fmt")
+        spp_provide_fmt()
+        get_property(fmt_dir GLOBAL PROPERTY SPP_FMT_INCLUDE_DIR)
+        set(fmt_flags -DFMT_HEADER_ONLY)
+        if(fmt_dir)
+            list(APPEND fmt_flags -I${fmt_dir})
+            set(fmt_includes ${fmt_dir})
+        endif()
+    endif()
+
     set(scripts "")
     foreach(s ${A_SCRIPTS})
         get_filename_component(abs ${s} ABSOLUTE)
@@ -55,6 +82,11 @@ function(spp_add_scripts)
     foreach(i ${A_INCLUDES})
         list(APPEND args -I ${i})
     endforeach()
+
+    set(format_args "")
+    if(format_lib STREQUAL "fmt")
+        set(format_args --format=fmt)
+    endif()
 
     if(A_AOT)
         if(NOT A_OUT_DIR)
@@ -73,17 +105,20 @@ function(spp_add_scripts)
         add_custom_command(
             OUTPUT ${sources} ${registry}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
-            COMMAND sppc --aot ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS}
+            COMMAND sppc --aot ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS} ${format_args}
             DEPENDS sppc ${scripts} ${A_PRELUDES} ${A_DEPENDS}
             COMMENT "sppc --aot: ${A_SCRIPTS}"
             VERBATIM)
         add_library(${A_TARGET} STATIC ${sources} ${registry})
         target_link_libraries(${A_TARGET} PUBLIC spp_aot)
+        if(format_lib STREQUAL "fmt")
+            target_link_libraries(${A_TARGET} PUBLIC spp_fmt)
+        endif()
         # The generated code has parameters that a script does not use.
         target_compile_options(${A_TARGET} PRIVATE -Wno-unused-parameter)
         target_include_directories(${A_TARGET} PUBLIC ${A_INCLUDES})
         # The language server gets a script host with the same scripts and includes.
-        spp_script_host(NAME ${A_TARGET} SCRIPTS ${scripts} INCLUDES ${A_INCLUDES})
+        spp_script_host(NAME ${A_TARGET} SCRIPTS ${scripts} INCLUDES ${A_INCLUDES} ${fmt_includes})
         return()
     endif()
 
@@ -95,9 +130,12 @@ function(spp_add_scripts)
         get_filename_component(stem ${s} NAME_WLE)
         list(APPEND outputs ${A_OUT_DIR}/${stem}.g${A_GEN}.so)
     endforeach()
+    # The backend of sppc adds the fmt include directory and the define to the compile.
+    set(all_flags ${A_FLAGS} ${fmt_flags})
     foreach(f ${A_FLAGS})
         list(APPEND args --cxxflag ${f})
     endforeach()
+    list(APPEND args ${format_args})
     add_custom_command(
         OUTPUT ${outputs}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
@@ -113,7 +151,7 @@ function(spp_add_scripts)
     set(SPP_SCRIPTS_${A_TARGET}_LIBRARIES ${outputs} PARENT_SCOPE)
     # The language server gets a script host with the same scripts, includes and flags.
     spp_script_host(NAME ${A_TARGET} SCRIPTS ${scripts}
-                    INCLUDES ${A_INCLUDES} FLAGS ${A_FLAGS})
+                    INCLUDES ${A_INCLUDES} FLAGS ${all_flags})
 endfunction()
 
 # spp_script_host: describe a script host for the language server spp-ls.

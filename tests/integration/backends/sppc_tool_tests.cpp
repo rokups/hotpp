@@ -14,6 +14,7 @@
 
 #include "spp/backend.h"
 #include "spp/clang_files_backend.h"
+#include "spp/config.h"
 #include "support/script_files.h"
 #include "support/scratch_dir.h"
 #include "support/test_support.h"
@@ -662,6 +663,65 @@ TEST(SppcTool, FormatOptionSelectsTheFormatFunction)
 #endif
 }
 
+#if __has_include(<fmt/format.h>)
+// The text of --format=fmt compiles as C++17. This is the format of a C++17 build.
+TEST(SppcTool, FormatFmtOutputCompilesAsCxx17)
+{
+    TestScratch scratch;
+    const std::string script = write_interp_script(scratch, "sppc_interp_fmt17.spp");
+    const std::string out = scratch.file("sppc_interp_fmt17.cpp");
+    std::string log, cc;
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp --format=fmt -o '" + out + "' '" + script +
+                              "'" + engine_args() + " 2>&1",
+                          log),
+              0)
+        << log;
+    EXPECT_EQ(run_command(std::string("'") + SPP_CXX + "'" + kCxx17Flags + " -DFMT_HEADER_ONLY -I '" +
+                              SPP_SOURCE_DIR + "/example/engine' -I '" + SPP_SOURCE_DIR + "/include' '" + out +
+                              "' 2>&1",
+                          cc),
+              0)
+        << cc;
+}
+#endif
+
+#if __has_include(<format>)
+// The text of --format=std compiles as C++20. This is the format of a C++20 build.
+TEST(SppcTool, FormatStdOutputCompilesAsCxx20)
+{
+    TestScratch scratch;
+    const std::string script = write_interp_script(scratch, "sppc_interp_std20.spp");
+    const std::string out = scratch.file("sppc_interp_std20.cpp");
+    std::string log, cc;
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp --format=std -o '" + out + "' '" + script +
+                              "'" + engine_args() + " 2>&1",
+                          log),
+              0)
+        << log;
+    EXPECT_EQ(run_command(std::string("'") + SPP_CXX + "' -std=c++20 -fsyntax-only -I '" + SPP_SOURCE_DIR +
+                              "/example/engine' -I '" + SPP_SOURCE_DIR + "/include' '" + out + "' 2>&1",
+                          cc),
+              0)
+        << cc;
+}
+#endif
+
+// The build of sppc fixes the format library (include/spp/config.h). In build mode, a
+// different --format is an error.
+TEST(SppcTool, BuildModeRejectsAFormatThatTheBuildDoesNotUse)
+{
+    TestScratch scratch;
+    const std::string script = write_interp_script(scratch, "sppc_interp_mismatch.spp");
+    const std::string other = SPP_USE_FMT ? "std" : "fmt";
+    std::string log;
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" +
+                              scratch.file("sppc_interp_mismatch.so") + "' --format=" + other + " 2>&1",
+                          log),
+              2)
+        << log;
+    EXPECT_NE(log.find("this sppc is built for --format="), std::string::npos) << log;
+}
+
 // "x ?? y" runs y only when x is false.
 TEST(SppcTool, CoalesceRunsTheRightSideOnlyWhenNeeded)
 {
@@ -936,9 +996,11 @@ TEST(SppcTool, CompileCommandUsesTheBackendFlags)
     o.include_dirs = {"/i1", "/i2"};
     o.extra_flags = {"-O2"};
     o.resource_dir = "/res";
-    EXPECT_EQ(spp::compile_command(o, "/x.cpp", "/x.so"),
-              (std::vector<std::string>{"cc", "-std=c++20", "-fPIC", "-shared", "-g", "-Werror=return-type",
-                                        "-resource-dir=/res", "-O2", "-I/i1", "-I/i2", "/x.cpp", "-o", "/x.so"}));
+    std::vector<std::string> expected = {"cc", "-std=c++20", "-fPIC", "-shared", "-g", "-Werror=return-type",
+                                         "-resource-dir=/res", "-O2", "-I/i1", "-I/i2"};
+    for (const std::string& f : spp::format_compile_flags()) expected.push_back(f);  // fmt build only
+    for (const char* f : {"/x.cpp", "-o", "/x.so"}) expected.push_back(f);
+    EXPECT_EQ(spp::compile_command(o, "/x.cpp", "/x.so"), expected);
 }
 
 // sppc --compile-commands writes one entry for each generated .cpp.
@@ -966,10 +1028,12 @@ TEST(SppcTool, CompileCommandsOptionWritesTheDatabase)
     const std::string cpp = fs::absolute(out_dir + "/boss_v1.g1.cpp").string();
     const std::string so = fs::absolute(out_dir + "/boss_v1.g1.so").string();
     const std::string cxx = SPP_CXX;
+    std::string fmt_args;  // fmt build only
+    for (const std::string& f : spp::format_compile_flags()) fmt_args += "\"" + f + "\", ";
     const std::string expected =
         "[\n  {\n    \"directory\": \"" + fs::current_path().string() + "\",\n    \"file\": \"" + cpp +
         "\",\n    \"arguments\": [\"" + cxx + "\", \"-std=c++20\", \"-fPIC\", \"-shared\", \"-g\", "
-        "\"-Werror=return-type\", \"-O1\", \"-I" + engine + "\", \"-I" + inc + "\", \"" + cpp +
+        "\"-Werror=return-type\", \"-O1\", \"-I" + engine + "\", \"-I" + inc + "\", " + fmt_args + "\"" + cpp +
         "\", \"-o\", \"" + so + "\"],\n    \"output\": \"" + so + "\"\n  }\n]\n";
     EXPECT_EQ(read_file(cdb_dir + "/compile_commands.json"), expected);
 }

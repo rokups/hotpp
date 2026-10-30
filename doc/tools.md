@@ -27,6 +27,10 @@ spp_script_host(NAME game TARGET game_engine
 
 Add `.cache/` to the ignore list of the project. Without a host, give the options in `spp.server.args`.
 
+## sppc format flag
+
+`sppc --format=std|fmt` picks the format library for `${}` in the C++ text. The default is `std`. The flag is for build systems: `spp_add_scripts` sets it. `fmt` output also compiles as C++17. In build mode (without `--emit-cpp` and `--aot`), the build of `sppc` fixes the library, and a different `--format` is an error. See doc/embedding.md.
+
 ## VS Code
 
 The extension is in `editors/vscode/`. It gives highlighting, the language server client and breakpoints in `.spp` files.

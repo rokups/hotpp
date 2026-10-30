@@ -47,7 +47,8 @@ The file `CMakePresets.json` has the presets. A build goes to `cmake-build/<pres
 - Add `-asan` or `-tsan` to the preset name for a sanitizer build, for example `linux-clang-files-asan`.
 - The build presets end with `-dbg` or `-rel`.
 - The JIT backend also works with ThreadSanitizer. ORC and ThreadSanitizer do not conflict.
-- Generated code and the runtime headers need C++17 only. The tool `sppc` itself needs C++20. For string interpolation in C++17, use `--format=fmt`. See DECISIONS.md.
+- Generated code and the runtime headers need C++17 only. The tool `sppc` itself needs C++20. See DECISIONS.md.
+- String interpolation `${}` uses fmt in a C++17 build and `std::format` in a C++20 build. `-DSPP_USE_FMT=ON` selects fmt at C++20 and later. The choice is a build-time choice. `SPP_FMT_PROVIDER` says where fmt comes from: `AUTO` (default: `find_package`, then CPM.cmake), `SYSTEM` (`find_package` only), `CPM` (always fetch) or `NONE` (your project supplies the target `fmt::fmt-header-only` or `fmt::fmt`). See doc/embedding.md.
 
 ### Build tree layout
 

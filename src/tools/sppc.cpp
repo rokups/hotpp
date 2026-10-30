@@ -35,6 +35,9 @@
 // spp_add_scripts with AOT builds a static library from these files. The program links the
 // library and spp_aot. It has no loader.
 //
+// The flag --format=std|fmt is a flag for build systems. In build mode the build of sppc fixes
+// the format library (include/spp/config.h), and a different --format is an error (exit code 2).
+//
 // Exit code: 0 success, 1 error, 2 bad usage.
 #include <cctype>
 #include <cstdio>
@@ -46,6 +49,7 @@
 #include <string>
 #include <vector>
 
+#include "spp/config.h"
 #include "spp/clang_files_backend.h"
 #include "spp/sppc_lib.h"
 
@@ -89,6 +93,7 @@ struct Args {
     bool has_build_only = false;  // --out-dir, --cxx, --cxxflag
     bool has_emit_only = false;   // --prelude
     std::string format_lib = "std";  // --format=std|fmt
+    bool format_given = false;       // the flag --format is present
     bool strict_borrowed = true;  // --no-strict-borrowed turns it off
     bool raw_diagnostics = false;  // --raw-diagnostics: the compiler text as it is
     std::string compile_commands;  // --compile-commands: the directory of compile_commands.json
@@ -117,8 +122,8 @@ Args parse_args(int argc, char** argv)
         else if (a == "--no-strict-borrowed") r.strict_borrowed = false;
         else if (a == "--raw-diagnostics") r.raw_diagnostics = true;
         else if (a == "--compile-commands") { r.compile_commands = next(); r.has_build_only = true; }
-        else if (a == "--format=std") r.format_lib = "std";
-        else if (a == "--format=fmt") r.format_lib = "fmt";
+        else if (a == "--format=std") { r.format_lib = "std"; r.format_given = true; }
+        else if (a == "--format=fmt") { r.format_lib = "fmt"; r.format_given = true; }
         else if (a == "-I") r.include_dirs.push_back(next());
         else if (a.rfind("-I", 0) == 0) r.include_dirs.push_back(a.substr(2));
         else if (!a.empty() && a[0] == '-') usage();
@@ -288,6 +293,14 @@ int run_build(const Args& args)
     if (single_so == !args.out_dir.empty()) usage();  // exactly one of -o and --out-dir
     if (single_so && args.inputs.size() != 1) usage();
 
+    // Build mode uses the format library that the build of sppc selected (include/spp/config.h).
+    // The flag --format must agree with it. This catches a build system that mixes two choices.
+    if (args.format_given && args.format_lib != spp::format_lib_name()) {
+        std::fprintf(stderr, "sppc: error: this sppc is built for --format=%s, not --format=%s\n",
+                     spp::format_lib_name(), args.format_lib.c_str());
+        return 2;
+    }
+
     spp::ClangFilesOptions opt;
     opt.slots_file = args.slots;
     opt.resource_dir = args.resource_dir;
@@ -295,7 +308,6 @@ int run_build(const Args& args)
     opt.extra_flags = args.cxxflags;
     opt.include_dirs = args.include_dirs;
     opt.strict_borrowed = args.strict_borrowed;
-    opt.format_lib = args.format_lib;
     opt.raw_diagnostics = args.raw_diagnostics;
     std::string out_dir = args.out_dir;
     if (single_so) {

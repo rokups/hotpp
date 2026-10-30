@@ -22,7 +22,6 @@ struct JitOptions {
     std::vector<std::string> extra_flags;   // added to the compile command
     std::string pch_path;                   // optional: a precompiled header for -include-pch
     bool strict_borrowed = true;            // false: a borrowed-storage finding is a warning
-    std::string format_lib = "std";         // string interpolation: "std" or "fmt"
     // True: the error text is the raw output of the compiler. False (the default): it speaks
     // script names (sppc::rewrite_diagnostic).
     bool raw_diagnostics = false;
