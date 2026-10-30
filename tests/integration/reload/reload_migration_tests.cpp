@@ -40,11 +40,11 @@ TEST(ReloadMigration, ReloadMigratesAndRejectedReloadsKeepGeneration2)
 
     // Validation phase: no side effect.
     Actor* const addr = a;
-    spp::ShellBase* const shell = s.inst.shell;
+    hot::ShellBase* const shell = s.inst.shell;
     void* const old_state = shell->state;
     ASSERT_RELOAD_OK(s.loader.request_reload(test_support::library(GEN2_SO)));
     EXPECT_TRUE(s.loader.reload_pending());
-    EXPECT_EQ(spp::active_generation, 1u);
+    EXPECT_EQ(hot::active_generation, 1u);
     EXPECT_EQ(shell->state, old_state);
     ASSERT_NE(field("hp"), nullptr);
     EXPECT_EQ(*field("hp"), 78.0f);
@@ -55,7 +55,7 @@ TEST(ReloadMigration, ReloadMigratesAndRejectedReloadsKeepGeneration2)
     world.Tick(kDt); // generation 1 Tick heals 1: hp 79; then the commit
     ASSERT_FALSE(s.commit_failed);
     EXPECT_FALSE(s.loader.reload_pending());
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     ASSERT_EQ(world.Actors().size(), 1u);
     EXPECT_EQ(world.Actors()[0], addr); // the same address
     EXPECT_NE(shell->state, old_state);
@@ -82,18 +82,18 @@ TEST(ReloadMigration, ReloadMigratesAndRejectedReloadsKeepGeneration2)
     // Rejected reloads: other shell layout, and a library that is not there.
     void* const state2 = shell->state;
     const float pos2 = a->Position.x;
-    const spp::ReloadResult rejected = s.loader.request_reload(test_support::library(GEN4_BASE_SO));
+    const hot::ReloadResult rejected = s.loader.request_reload(test_support::library(GEN4_BASE_SO));
     EXPECT_FALSE(rejected);
-    EXPECT_EQ(rejected.status, spp::ReloadStatus::FullReloadRequired);
+    EXPECT_EQ(rejected.status, hot::ReloadStatus::FullReloadRequired);
     EXPECT_FALSE(rejected.error.empty());
     EXPECT_FALSE(s.loader.reload_pending());
     error.clear();
-    spp::LoadResult missing = spp::module_from_library(GEN3_MISSING_SO);
+    hot::LoadResult missing = hot::module_from_library(GEN3_MISSING_SO);
     EXPECT_FALSE(missing);
     EXPECT_FALSE(missing.error.empty());
     EXPECT_FALSE(s.loader.reload_pending());
 
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     ASSERT_EQ(world.Actors().size(), 1u);
     EXPECT_EQ(world.Actors()[0], addr);
     EXPECT_EQ(shell->state, state2);
@@ -119,13 +119,13 @@ TEST(ReloadMigration, CommitWritesTheOwnerOfTheNewBlock)
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(GEN1_SO));
     s.commit_at_frame_boundary();
-    spp::ShellBase* const shell = s.inst.shell;
+    hot::ShellBase* const shell = s.inst.shell;
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(test_support::library(GEN2_SO)));
     s.world.Tick(kDt);
     ASSERT_FALSE(s.commit_failed);
     ASSERT_EQ(shell->cls->generation, 2u);
-    EXPECT_EQ(*reinterpret_cast<spp::ShellBase**>(shell->state), shell);
+    EXPECT_EQ(*reinterpret_cast<hot::ShellBase**>(shell->state), shell);
     ASSERT_NE(s.field("health"), nullptr); // the fields still migrate after the owner slot
     EXPECT_EQ(*s.field("shield"), 25.0f);
 }

@@ -1,7 +1,7 @@
 // Tests for the diagnostics of sppc::translate: the count, the order, the position and the recovery.
 #include "diag.h"
 #include "parser/parser.h"
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>

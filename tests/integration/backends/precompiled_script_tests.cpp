@@ -5,7 +5,7 @@
 //
 // CMake defines these macros: SPP_SCRATCH_DIR, PRE_V1_SO, PRE_V2_SO, PRE_NATIVE_V1_SO,
 // PRE_NATIVE_V2_SO, PRE_HANDLE_V1_SO, PRE_HANDLE_V2_SO and PRE_HANDLE_V1B_SO.
-#include "spp/backend.h"
+#include "hot/backend.h"
 #include "support/f1_scenario.h"
 #include "support/handle_reload_scenario.h"
 #include "support/native_std_scenario.h"
@@ -37,7 +37,7 @@ TEST(PrecompiledTests, HandleFieldSurvivesReloadWithLibraries)
 
 TEST(PrecompiledTests, MissingLibraryGivesErrorString)
 {
-    spp::LoadResult r = spp::module_from_library(std::string(SPP_SCRATCH_DIR) + "/none.so");
+    hot::LoadResult r = hot::module_from_library(std::string(SPP_SCRATCH_DIR) + "/none.so");
     EXPECT_FALSE(r);
     EXPECT_FALSE(r.error.empty());
 }

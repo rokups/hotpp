@@ -1,5 +1,5 @@
 // Tests for sppc::translate with a script constructor, a destructor and "new" of a script class.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -54,7 +54,7 @@ TEST(ConstructorTranslation, ConstructorEmitsTheEntryPoints)
     EXPECT_TRUE(has(r, "static void Squad__ctor(Squad_Shell* __self, std::string label, int32_t extra)")) << r.cpp;
     EXPECT_TRUE(has(r, "Squad__super_args(std::string label, int32_t extra)")) << r.cpp;
     EXPECT_TRUE(has(r, "static Squad_Shell* Squad__new(std::string label, int32_t extra)")) << r.cpp;
-    EXPECT_TRUE(has(r, "spp::construct_shell(&Squad_record")) << r.cpp;
+    EXPECT_TRUE(has(r, "hot::construct_shell(&Squad_record")) << r.cpp;
     EXPECT_TRUE(has(r, "&Squad__construct")) << r.cpp;
     EXPECT_TRUE(has(r, "&Squad__new_default")) << r.cpp;
     // A constructor gets no slot: the table does not call it.
@@ -139,7 +139,7 @@ TEST(ConstructorTranslation, OverloadsAndRefParameters)
     EXPECT_TRUE(has(r, "static void Squad__ctor(Squad_Shell* __self);")) << r.cpp;
     EXPECT_TRUE(has(r, "static void Squad__ctor(Squad_Shell* __self, int32_t n, int32_t& seen);")) << r.cpp;
     EXPECT_TRUE(has(r, "using Squad_SuperArgs_1 = ")) << r.cpp;
-    EXPECT_TRUE(has(r, "static spp::ShellBase* Squad__construct(const char* key, const void* args)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static hot::ShellBase* Squad__construct(const char* key, const void* args)")) << r.cpp;
     EXPECT_TRUE(has(r, "static Squad_Shell* Squad__new(int32_t n, int32_t& seen)")) << r.cpp;
     // The factory uses the overload with the fewest parameters.
     EXPECT_TRUE(has(r, "return Squad__build(false);")) << r.cpp;

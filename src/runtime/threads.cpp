@@ -1,4 +1,4 @@
-#include "spp/runtime/threads.h"
+#include "hot/runtime/threads.h"
 
 #include "runtime_internal.h"
 
@@ -7,7 +7,7 @@
 #include <cstdio>
 #include <mutex>
 
-namespace spp
+namespace hot
 {
 
 uint32_t active_generation = 0;
@@ -185,4 +185,4 @@ uint32_t pin_count(uint32_t generation)
     return g_pins[generation % kPinSlots].load(std::memory_order_acquire);
 }
 
-} // namespace spp
+} // namespace hot

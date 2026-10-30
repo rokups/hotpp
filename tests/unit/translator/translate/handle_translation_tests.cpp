@@ -1,5 +1,5 @@
 // Tests for sppc::translate with handle types: fields, parameters, "T&", "&x", "new" and preludes.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/stub_translate_test_support.h"
 #include "support/translator_test_support.h"
 
@@ -29,7 +29,7 @@ TEST(HandleTranslation, ParamIsConstRef)
     // A "#line" directive maps the brace of the state member to the script line.
     EXPECT_TRUE(has(r.cpp, "void FooState_g1::Hit(" + p + ")\n#line 5 \"t.hot\"\n{")) << r.cpp;
     // The slot is the state member. No slot adapter exists.
-    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<spp::SlotFn>(&FooState_g1::Hit)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<hot::SlotFn>(&FooState_g1::Hit)")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "Foo__Hit_slot")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit__thunk(Widget* __a, " + p + ")")) << r.cpp;
 }
@@ -57,7 +57,7 @@ TEST(HandleTranslation, ReferenceParamIsNotRewritten)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const std::string p = "Weapon& wp, Vec3& v";
     EXPECT_TRUE(has(r.cpp, "static void Foo__Swap(Foo_Shell* __self, " + p + ");")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<spp::SlotFn>(&FooState_g1::Swap)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<hot::SlotFn>(&FooState_g1::Swap)")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "const std::shared_ptr<Weapon>& wp")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "Vec3& r = v;")) << r.cpp;
 }
@@ -203,7 +203,7 @@ TEST(HandleTranslation, LocalAndReturn)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "static std::shared_ptr<Weapon> Foo__Get(Foo_Shell* __self);")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Weapon> x = __st->w;")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "spp::deref(__st->w).dmg")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::deref(__st->w).dmg")) << r.cpp;
 }
 
 TEST(HandleTranslation, PreludeStub)
@@ -247,7 +247,7 @@ TEST(HandleTranslation, GetOnAHandleIsAMemberOfThePointee)
 {
     const sppc::TranslateResult r = weapon_translate("    void Run() { Weapon h = null; h.get(); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "spp::deref(h).get()")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::deref(h).get()")) << r.cpp;
 }
 
 // "this" is a handle where a script handle parameter is expected.
@@ -257,7 +257,7 @@ TEST(HandleTranslation, ThisIsAHandleArgumentForAScriptHandleParameter)
         "    void Hurt(Foo h, float d) { }\n    void Run(Foo other) { other.Hurt(this, 2.0); this.Hurt(this, 1.0); "
         "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "spp::handle_from_this<std::shared_ptr<Foo>>(__self), 2.0f")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::handle_from_this<std::shared_ptr<Foo>>(__self), 2.0f")) << r.cpp;
 }
 
 // "var me = this;" is a handle. "this" for a native pointer parameter stays the pointer.
@@ -267,8 +267,8 @@ TEST(HandleTranslation, VarOfThisIsAHandle)
         "    void Join(Foo h) { }\n    void Nat(Actor* a) { }\n"
         "    void Run() { var me = this; Join(me); Join(this); Nat(this); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "auto me = spp::handle_from_this<std::shared_ptr<Foo>>(__self);")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "Foo__Join(__self, spp::handle_from_this<std::shared_ptr<Foo>>(__self));")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "auto me = hot::handle_from_this<std::shared_ptr<Foo>>(__self);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Foo__Join(__self, hot::handle_from_this<std::shared_ptr<Foo>>(__self));")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "Foo__Nat(__self, __self);")) << r.cpp;
 }
 

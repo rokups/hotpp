@@ -7,9 +7,9 @@
 #include "backends/imgui_impl_sdl3.h"
 #include "backends/imgui_impl_sdlrenderer3.h"
 #include "imgui.h"
-#include "spp/clang_files_backend.h"
-#include "spp/runtime.h"
-#include "spp/scratch.h"
+#include "hot/clang_files_backend.h"
+#include "hot/runtime.h"
+#include "hot/scratch.h"
 
 #include <SDL3/SDL.h>
 
@@ -36,9 +36,9 @@ std::vector<std::string> split_list(const std::string& s)
     return v;
 }
 
-std::unique_ptr<spp::Backend> make_backend()
+std::unique_ptr<hot::Backend> make_backend()
 {
-    spp::ClangFilesOptions o;
+    hot::ClangFilesOptions o;
     o.compiler = IMGUI_APP_CXX;
     o.include_dirs = split_list(IMGUI_APP_INCLUDES);
     o.extra_flags = split_list(IMGUI_APP_CXXFLAGS);
@@ -48,8 +48,8 @@ std::unique_ptr<spp::Backend> make_backend()
     std::filesystem::remove_all(o.work_dir, ec);
     std::filesystem::create_directories(IMGUI_APP_WORK_DIR, ec);
     // Only the p<pid> directory goes. The ini file in IMGUI_APP_WORK_DIR stays.
-    o.remove_work_dir_at_exit = !spp::keep_temp();
-    return std::make_unique<spp::ClangFilesBackend>(std::move(o));
+    o.remove_work_dir_at_exit = !hot::keep_temp();
+    return std::make_unique<hot::ClangFilesBackend>(std::move(o));
 }
 
 bool read_file(const std::string& path, std::string& text)
@@ -65,7 +65,7 @@ bool read_file(const std::string& path, std::string& text)
 
 // Reads and compiles the script. Returns false and sets "error" on failure.
 bool compile_script(
-    spp::Backend& backend, const std::string& path, uint32_t generation, spp::Module& out, std::string& error)
+    hot::Backend& backend, const std::string& path, uint32_t generation, hot::Module& out, std::string& error)
 {
     std::string text;
     if (!read_file(path, text))
@@ -73,7 +73,7 @@ bool compile_script(
         error = "cannot read " + path;
         return false;
     }
-    spp::LoadResult r = backend.load({path, text}, generation);
+    hot::LoadResult r = backend.load({path, text}, generation);
     if (!r)
     {
         error = r.error;
@@ -84,9 +84,9 @@ bool compile_script(
 }
 
 // Makes the object of class Demo. Returns null and sets "error" on failure.
-UiApp* create_app(spp::Loader& loader, std::string& error)
+UiApp* create_app(hot::Loader& loader, std::string& error)
 {
-    const spp::ClassEntry* entry = loader.find("Demo");
+    const hot::ClassEntry* entry = loader.find("Demo");
     if (!entry)
     {
         error = "class Demo is not registered";
@@ -98,8 +98,8 @@ UiApp* create_app(spp::Loader& loader, std::string& error)
 // The host state of one run. The loader is the first member: it ends last.
 struct Host
 {
-    spp::Loader loader;
-    std::unique_ptr<spp::Backend> backend = make_backend();
+    hot::Loader loader;
+    std::unique_ptr<hot::Backend> backend = make_backend();
     std::string path;
     uint32_t generation = 0; // the number of the last compile
     bool loaded = false; // the loader has a first module
@@ -112,14 +112,14 @@ struct Host
     {
         std::error_code ec;
         last_seen = std::filesystem::last_write_time(path, ec);
-        spp::Module m;
+        hot::Module m;
         if (!compile_script(*backend, path, ++generation, m, last_error))
         {
             std::fprintf(stderr, "load failed: %s\n", last_error.c_str());
             return;
         }
         loaded = true;
-        if (const spp::ReloadResult res = loader.load(std::move(m)); !res)
+        if (const hot::ReloadResult res = loader.load(std::move(m)); !res)
         {
             last_error = res.error;
             loaded = false;
@@ -140,7 +140,7 @@ struct Host
         if (ec || t == last_seen)
             return;
         last_seen = t;
-        spp::Module m;
+        hot::Module m;
         std::string err;
         if (!compile_script(*backend, path, ++generation, m, err))
         {
@@ -150,7 +150,7 @@ struct Host
         }
         if (!loaded)
         { // the first load failed: this module is the first one
-            if (const spp::ReloadResult res = loader.load(std::move(m)); !res)
+            if (const hot::ReloadResult res = loader.load(std::move(m)); !res)
             {
                 last_error = res.error;
                 std::fprintf(stderr, "reload failed: %s\n", res.error.c_str());
@@ -160,7 +160,7 @@ struct Host
             recreate_app();
             return;
         }
-        if (const spp::ReloadResult res = loader.request_reload(std::move(m)); !res)
+        if (const hot::ReloadResult res = loader.request_reload(std::move(m)); !res)
         {
             last_error = res.error;
             std::fprintf(stderr, "reload failed: %s\n", res.error.c_str());
@@ -173,7 +173,7 @@ struct Host
     {
         if (loader.reload_pending())
         {
-            const spp::ReloadResult res = loader.commit_pending();
+            const hot::ReloadResult res = loader.commit_pending();
             if (res)
             {
                 last_error.clear();

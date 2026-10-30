@@ -1,7 +1,7 @@
 // Translation tests of the reload contract rows that S17 adds (design 5.3): the signature lines
 // and the keyed thunk, the layout key of a native container of a [value] class, and the record
 // flag of a shell with std::enable_shared_from_this.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -78,7 +78,7 @@ std::string bag(const std::string& item_fields)
 
 std::string key_of(const std::string& cpp)
 {
-    const std::string head = "spp::layout_keyed(typeid(std::vector<Item>).name(), \"";
+    const std::string head = "hot::layout_keyed(typeid(std::vector<Item>).name(), \"";
     const size_t at = cpp.find(head);
     return at == std::string::npos ? std::string() : cpp.substr(at + head.size(), 16);
 }
@@ -91,7 +91,7 @@ TEST(ContainerLayoutKey, FollowsTheLayoutOfTheValueClass)
     ASSERT_TRUE(a.ok) << a.diagnostics;
     const std::string ka = key_of(a.cpp);
     ASSERT_EQ(ka.size(), 16u) << a.cpp;
-    EXPECT_FALSE(has(a.cpp, "spp::layout_keyed(typeid(Item)")) << a.cpp;
+    EXPECT_FALSE(has(a.cpp, "hot::layout_keyed(typeid(Item)")) << a.cpp;
     sppc::TranslateResult b = translate_text(bag("    int weight = 5;\n"));
     ASSERT_TRUE(b.ok) << b.diagnostics;
     EXPECT_EQ(key_of(b.cpp), ka);

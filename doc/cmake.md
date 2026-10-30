@@ -155,7 +155,7 @@ target_link_libraries(app PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,my_native_lib>")
 
 `LINK_LIBRARY` needs CMake 3.24. The S++ libraries need no whole-archive link in the samples.
 
-The generated code and the headers in `include/spp` need C++17 only.
+The generated code and the headers in `include/hot` need C++17 only.
 
 ## Build options and variables
 
@@ -207,7 +207,7 @@ The standard is the first of these that has a value:
 2. The default of S++: 20. S++ sets it when you set none, and it also keeps the value in a global property so `spp_add_scripts` agrees.
 3. 17 (only a fallback).
 
-The standard is then fixed to 17, 20 or 23. A value of 21 or 22 gives 20. A smaller value gives 17. A larger value gives 23. `spp_add_scripts` passes the result to `sppc` as `--std=c++<n>`. The runtime backends use the same value (`SPP_CXX_STANDARD` in `include/spp/config.h`), both for the compile and for the parse of the native headers.
+The standard is then fixed to 17, 20 or 23. A value of 21 or 22 gives 20. A smaller value gives 17. A larger value gives 23. `spp_add_scripts` passes the result to `sppc` as `--std=c++<n>`. The runtime backends use the same value (`HOT_CXX_STANDARD` in `include/hot/config.h`), both for the compile and for the parse of the native headers.
 
 The format library follows from the standard and from `SPP_USE_FMT`:
 
@@ -230,7 +230,7 @@ Your own targets keep the default of the compiler when you set no standard. Set 
 
 If you set `CMAKE_CXX_STANDARD` after `add_subdirectory`, the runtime and `sppc` are already built for the old value. Then `spp_add_scripts` can ask `sppc` for another format library. `sppc` stops with the error "this sppc is built for --format=...". See the troubleshooting table.
 
-`sppc`, the language server and the tests always build as C++20. This does not change the standard of your host. The header `include/spp/config.h` has the macros `SPP_USE_FMT` and `SPP_CXX_STANDARD`.
+`sppc`, the language server and the tests always build as C++20. This does not change the standard of your host. The header `include/hot/config.h` has the macros `HOT_USE_FMT` and `HOT_CXX_STANDARD`.
 
 ### The format library
 
@@ -290,7 +290,7 @@ The command does not read the headers of the script. The native headers that a s
 
 ### Default mode
 
-The function makes one custom target `name`. The target makes the library `OUT_DIR/<script name>.g<n>.so` for each script. The script name is the file name without the last extension. `wolf.hot` gives `wolf.g1.so`. The command also writes the generated `.cpp` files and the slot file `OUT_DIR/slots.txt` there. Load a library with `spp::module_from_library`.
+The function makes one custom target `name`. The target makes the library `OUT_DIR/<script name>.g<n>.so` for each script. The script name is the file name without the last extension. `wolf.hot` gives `wolf.g1.so`. The command also writes the generated `.cpp` files and the slot file `OUT_DIR/slots.txt` there. Load a library with `hot::module_from_library`.
 
 Each library gets the compile flags `-fPIC -shared -g -Werror=return-type` and the standard from the section above. The compiler is `CMAKE_CXX_COMPILER`. `sppc` adds no `-O` flag and does not read `CMAKE_CXX_FLAGS`. Give the flags of the host in `FLAGS`.
 
@@ -353,7 +353,7 @@ add_executable(game main.cpp)
 target_link_libraries(game PRIVATE game_scripts)
 ```
 
-The function runs `sppc --aot` and makes the static library `name`. The library has the files `OUT_DIR/<script name>.aot.cpp` and `OUT_DIR/spp_aot_registry.cpp`. The library defines `spp::aot_table` (`include/spp/aot.h`).
+The function runs `sppc --aot` and makes the static library `name`. The library has the files `OUT_DIR/<script name>.aot.cpp` and `OUT_DIR/spp_aot_registry.cpp`. The library defines `hot::aot_table` (`include/hot/aot.h`).
 
 The library links `spp_aot` (PUBLIC). A program that links `name` has no loader, no reload and no Clang. When the build uses fmt, the library also links `spp_fmt`. AOT mode makes only generation 1. Script names and class names must be unique across the scripts of one table.
 
@@ -477,7 +477,7 @@ Some problems have no fixed S++ message. The text comes from the tool that repor
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| The linker reports an undefined reference to `spp::aot_table`. | A program that uses `AotRegistry` does not link the library from `spp_add_scripts(... AOT ...)`. Only that library defines the table. | Link the AOT library. |
+| The linker reports an undefined reference to `hot::aot_table`. | A program that uses `AotRegistry` does not link the library from `spp_add_scripts(... AOT ...)`. Only that library defines the table. | Link the AOT library. |
 | `Loader::load` or `module_from_library` fails and `error` has the `dlopen` text with `undefined symbol`. | The host is not linked with `ENABLE_EXPORTS`, or the host does not contain a function that the script calls. The `dlopen` text comes from the system. | Set `ENABLE_EXPORTS ON`. Link the code with the function, as a whole archive if it is a static library. |
 | The JIT backend fails with `script_register not found or not linkable: ...`. | The in-memory code needs a symbol that the executable does not export (see `README.md`, the section on the JIT backend). | Same as above. |
 | The configure step stops in `find_library` or `find_path` for libclang. | The development package of libclang is not installed. The message is from CMake. | Install it, or set `CMAKE_PREFIX_PATH`. |

@@ -1,15 +1,15 @@
 // The AOT runtime (design M7): the AOT registry and the object tracking of a
 // program that has no loader. It does not include loader.h.
-#include "spp/aot.h"
+#include "hot/aot.h"
 
-#include "spp/runtime/shell.h"
-#include "spp/runtime/state.h"
-#include "spp/runtime/threads.h"
+#include "hot/runtime/shell.h"
+#include "hot/runtime/state.h"
+#include "hot/runtime/threads.h"
 
 #include <algorithm>
 #include <stdexcept>
 
-namespace spp
+namespace hot
 {
 
 // An AOT program never reloads. Nobody reads the list of live objects, so the calls do nothing.
@@ -124,4 +124,4 @@ Instance AotRegistry::create(const std::string& class_name) const
     return e->create();
 }
 
-} // namespace spp
+} // namespace hot

@@ -2,19 +2,19 @@
 // result is Applied or Pending. A failure prints the status, the reason and the error text.
 #pragma once
 
-#include "spp/runtime/reload_result.h"
+#include "hot/runtime/reload_result.h"
 
 #include <gtest/gtest.h>
 
 namespace test_support
 {
 
-inline ::testing::AssertionResult reload_ok(const char* expr, const spp::ReloadResult& r)
+inline ::testing::AssertionResult reload_ok(const char* expr, const hot::ReloadResult& r)
 {
     if (r)
         return ::testing::AssertionSuccess();
-    return ::testing::AssertionFailure() << expr << " gave " << spp::to_string(r.status) << " ("
-                                         << spp::to_string(r.reason) << "): " << r.error;
+    return ::testing::AssertionFailure() << expr << " gave " << hot::to_string(r.status) << " ("
+                                         << hot::to_string(r.reason) << "): " << r.error;
 }
 
 } // namespace test_support

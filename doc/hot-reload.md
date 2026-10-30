@@ -41,13 +41,13 @@ The host sequence:
 1. Save the host state, for example the position and the name of each actor.
 2. Drop all script objects, handles, closures and thunk pointers.
 3. Call `loader.reset(error)`.
-4. Compile the script with `backend->load(source, 1, spp::LoadMode::Fresh)`.
+4. Compile the script with `backend->load(source, 1, hot::LoadMode::Fresh)`.
 5. Call `loader.load(std::move(*fresh.module))`. The generation is 1 again.
 6. Restore the host state with the new scripts.
 
 ```cpp
-spp::ReloadResult r = loader.request_reload(backend->load(source, next_generation++));
-if (r.status == spp::ReloadStatus::FullReloadRequired) {
+hot::ReloadResult r = loader.request_reload(backend->load(source, next_generation++));
+if (r.status == hot::ReloadStatus::FullReloadRequired) {
     std::printf("[host] full reload: %s\n", r.error.c_str());
     std::string saved = world.Save();                 // 1
     world.Clear();                                    // 2
@@ -57,8 +57,8 @@ if (r.status == spp::ReloadStatus::FullReloadRequired) {
         world.Restore(saved, make_actor);             // the old scripts go on
         return;
     }
-    spp::LoadResult fresh =
-        backend->load(source, 1, spp::LoadMode::Fresh);  // 4
+    hot::LoadResult fresh =
+        backend->load(source, 1, hot::LoadMode::Fresh);  // 4
     if (fresh && loader.load(std::move(*fresh.module))) {
         next_generation = 2;
         world.Restore(saved, make_actor);             // 6

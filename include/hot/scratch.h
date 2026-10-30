@@ -3,7 +3,7 @@
 
 #include <string>
 
-namespace spp
+namespace hot
 {
 
 // True when the scratch files must stay. The environment variable SPP_KEEP_TEMP overrides
@@ -36,4 +36,4 @@ bool is_removable_scratch_path(const std::string& path);
 // A safe recursive remove. It does nothing when is_removable_scratch_path() is false.
 void remove_scratch(const std::string& path);
 
-} // namespace spp
+} // namespace hot

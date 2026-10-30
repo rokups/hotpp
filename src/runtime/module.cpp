@@ -1,4 +1,4 @@
-#include "spp/module.h"
+#include "hot/module.h"
 
 #ifdef _WIN32
     // unverified: not built on MSVC. The Windows branch uses LoadLibraryA and GetProcAddress.
@@ -19,7 +19,7 @@
 #include <filesystem>
 #include <system_error>
 
-namespace spp
+namespace hot
 {
 
 namespace
@@ -138,4 +138,4 @@ LoadResult module_from_library(const std::string& path)
     return r;
 }
 
-} // namespace spp
+} // namespace hot

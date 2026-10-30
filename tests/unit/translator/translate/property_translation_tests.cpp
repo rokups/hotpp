@@ -1,5 +1,5 @@
 // Tests for sppc::translate with properties: auto accessors, custom accessors and errors.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -74,7 +74,7 @@ TEST(PropertyTranslation, LocalHidesProperty)
     EXPECT_EQ(r.cpp.find("Foo__set_N(__self, 3)"), std::string::npos) << r.cpp;
 }
 
-// "w.N" on another object of the class calls the accessors through spp::shell_of.
+// "w.N" on another object of the class calls the accessors through hot::shell_of.
 TEST(PropertyTranslation, OtherObjectUsesAccessors)
 {
     const sppc::TranslateResult r = translate_props(
@@ -89,17 +89,17 @@ TEST(PropertyTranslation, OtherObjectUsesAccessors)
         "        return w.N + q.N;\n"
         "    }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    const std::string w = "spp::shell_of<Foo_Shell>(w, \"Foo\")";
-    const std::string q = "spp::shell_of<Foo_Shell>(q, \"Foo\")";
+    const std::string w = "hot::shell_of<Foo_Shell>(w, \"Foo\")";
+    const std::string q = "hot::shell_of<Foo_Shell>(q, \"Foo\")";
     EXPECT_NE(r.cpp.find("Foo__set_N(" + w + ", 1);"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("spp::prop_update<spp::op_add>(Foo__get_N, Foo__set_N, " + q + ", 2);"), std::string::npos)
+    EXPECT_NE(r.cpp.find("hot::prop_update<hot::op_add>(Foo__get_N, Foo__set_N, " + q + ", 2);"), std::string::npos)
         << r.cpp;
-    EXPECT_NE(r.cpp.find("spp::prop_update<spp::op_add>(Foo__get_N, Foo__set_N, " + w + ", 1);"), std::string::npos)
+    EXPECT_NE(r.cpp.find("hot::prop_update<hot::op_add>(Foo__get_N, Foo__set_N, " + w + ", 1);"), std::string::npos)
         << r.cpp;
-    EXPECT_NE(r.cpp.find("int32_t a = spp::prop_set(Foo__set_N, __self, spp::prop_set(Foo__set_N, " + q + ", 4));"),
+    EXPECT_NE(r.cpp.find("int32_t a = hot::prop_set(Foo__set_N, __self, hot::prop_set(Foo__set_N, " + q + ", 4));"),
         std::string::npos)
         << r.cpp;
-    EXPECT_NE(r.cpp.find("int32_t b = (spp::prop_set(Foo__set_N, " + w + ", 5));"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("int32_t b = (hot::prop_set(Foo__set_N, " + w + ", 5));"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("return Foo__get_N(" + w + ") + Foo__get_N(" + q + ");"), std::string::npos) << r.cpp;
 }
 
@@ -110,8 +110,8 @@ TEST(PropertyTranslation, OtherObjectPlainMemberIsNotRewritten)
         "    int N { get; set; }\n"
         "    void run(Foo2& p) { p.hp = 1; p.hp += p.n; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.cpp.find("spp::deref(p).hp = 1;"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("spp::deref(p).hp += spp::deref(p).n;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("hot::deref(p).hp = 1;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("hot::deref(p).hp += hot::deref(p).n;"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("Foo__set_hp"), std::string::npos) << r.cpp;
 }
 

@@ -22,11 +22,11 @@
     #include <malloc.h>
 #endif
 
-#include "spp/runtime/hidden.h"
-#include "spp/runtime/records.h"
-#include "spp/runtime/shell.h"
+#include "hot/runtime/hidden.h"
+#include "hot/runtime/records.h"
+#include "hot/runtime/shell.h"
 
-namespace spp
+namespace hot
 {
 
 // The runtime keeps a list of the live objects. The reload commit uses it.
@@ -35,7 +35,7 @@ void untrack_object(ShellBase* self);
 
 // An aligned block and its free function. A block from aligned_alloc must go to aligned_free.
 // The "size" must be a multiple of "align" for std::aligned_alloc.
-SPP_HIDDEN void* aligned_alloc(size_t align, size_t size)
+HOT_HIDDEN void* aligned_alloc(size_t align, size_t size)
 {
 #ifdef _MSC_VER
     // unverified: not built on MSVC. MSVC has no std::aligned_alloc.
@@ -45,7 +45,7 @@ SPP_HIDDEN void* aligned_alloc(size_t align, size_t size)
 #endif
 }
 
-SPP_HIDDEN void aligned_free(void* p)
+HOT_HIDDEN void aligned_free(void* p)
 {
 #ifdef _MSC_VER
     // unverified: not built on MSVC. A block from _aligned_malloc goes to _aligned_free.
@@ -56,17 +56,17 @@ SPP_HIDDEN void aligned_free(void* p)
 }
 
 // Allocates a state block for a layout. Returns null when memory is out.
-SPP_HIDDEN char* alloc_state(const StateLayout* l)
+HOT_HIDDEN char* alloc_state(const StateLayout* l)
 {
     size_t align = l->align;
     size_t size = (l->size + align - 1) / align * align;
     if (size == 0)
         size = align;
-    return static_cast<char*>(spp::aligned_alloc(align, size));
+    return static_cast<char*>(hot::aligned_alloc(align, size));
 }
 
 // Destroys the fields in reverse order. It does not free the block.
-SPP_HIDDEN void destroy_fields(const StateLayout* l, char* mem)
+HOT_HIDDEN void destroy_fields(const StateLayout* l, char* mem)
 {
     for (uint32_t i = l->field_count; i-- > 0;)
     {
@@ -77,14 +77,14 @@ SPP_HIDDEN void destroy_fields(const StateLayout* l, char* mem)
 }
 
 // Writes the owner shell into the first slot of a block. The layout must say has_owner.
-SPP_HIDDEN void set_owner(const StateLayout* l, char* mem, ShellBase* self)
+HOT_HIDDEN void set_owner(const StateLayout* l, char* mem, ShellBase* self)
 {
     if (l->has_owner)
         *reinterpret_cast<ShellBase**>(mem) = self;
 }
 
 // Makes the state block of a new object and runs the field initializers.
-SPP_NODEBUG inline void init_state(ShellBase* self, ClassRecord* cls)
+HOT_NODEBUG inline void init_state(ShellBase* self, ClassRecord* cls)
 {
     // A record of a later core module can make the shell (S27). The object uses the canonical record.
     if (cls->canonical)
@@ -106,7 +106,7 @@ SPP_NODEBUG inline void init_state(ShellBase* self, ClassRecord* cls)
 }
 
 // Destroys the fields in reverse order and frees the state block.
-SPP_NODEBUG inline void destroy_state(ShellBase* self)
+HOT_NODEBUG inline void destroy_state(ShellBase* self)
 {
     if (!self->state)
         return;
@@ -125,7 +125,7 @@ SPP_NODEBUG inline void destroy_state(ShellBase* self)
     untrack_object(self);
     char* mem = static_cast<char*>(self->state);
     destroy_fields(self->cls->layout, mem);
-    spp::aligned_free(mem);
+    hot::aligned_free(mem);
     self->state = nullptr;
 }
 
@@ -188,7 +188,7 @@ template <class T> struct holds_no_code<const T> : holds_no_code<T>
 };
 
 // Helpers for the reflection table of generated code. T is the field type.
-template <class T> SPP_HIDDEN constexpr uint8_t field_flags()
+template <class T> HOT_HIDDEN constexpr uint8_t field_flags()
 {
     return static_cast<uint8_t>((std::is_trivially_copyable_v<T> ? kTriviallyCopyable : 0)
         | (std::is_nothrow_move_constructible_v<T> ? kNothrowMove : 0) | (holds_no_code<T>::value ? 0 : kMayHoldCode));
@@ -196,22 +196,22 @@ template <class T> SPP_HIDDEN constexpr uint8_t field_flags()
 
 // The flags of a field that holds a [value] script class (design 5.3). The loader looks at the
 // fields of the sub layout for kMayHoldCode, so the flag of the struct itself is not set.
-template <class T> SPP_HIDDEN constexpr uint8_t value_field_flags()
+template <class T> HOT_HIDDEN constexpr uint8_t value_field_flags()
 {
     return static_cast<uint8_t>((field_flags<T>() & ~kMayHoldCode) | kScriptStruct);
 }
 
-template <class T> SPP_NODEBUG inline void move_field(void* dst, const void* src)
+template <class T> HOT_NODEBUG inline void move_field(void* dst, const void* src)
 {
     new (dst) T(*static_cast<const T*>(src));
 }
 
-template <class T> SPP_NODEBUG inline void destroy_field(void* field)
+template <class T> HOT_NODEBUG inline void destroy_field(void* field)
 {
     static_cast<T*>(field)->~T();
 }
 
-template <class T> SPP_HIDDEN constexpr void (*field_destroyer())(void*)
+template <class T> HOT_HIDDEN constexpr void (*field_destroyer())(void*)
 {
     if constexpr (std::is_trivially_destructible_v<T>)
         return nullptr;
@@ -236,7 +236,7 @@ template <class T> inline const char* type_key()
 // The type key of a native container of a [value] script class (design 5.3): "type#hash".
 // "hash" is the hash of the layout of the [value] classes in the type. The text stays valid
 // after the module unloads. A different hash with the same type resets the container.
-SPP_NODEBUG const char* layout_keyed(const char* type, const char* hash);
+HOT_NODEBUG const char* layout_keyed(const char* type, const char* hash);
 
 // True when the type key of a field is the typeid name, with or without a layout hash.
 inline bool type_key_matches(const char* key, const char* name)
@@ -254,4 +254,4 @@ template <class T> inline T* field_ptr(ShellBase* s, const char* name)
     return reinterpret_cast<T*>(static_cast<char*>(s->state) + f->offset);
 }
 
-} // namespace spp
+} // namespace hot

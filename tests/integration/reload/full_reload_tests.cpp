@@ -2,7 +2,7 @@
 // the status, the reason and the classes of a ReloadResult, and the deferred write of the
 // slot state. The slot state changes only when the Loader accepts the module. The last tests
 // run the full sequence: reset of the Loader, a fresh load and a later hot reload.
-#include "spp/backend.h"
+#include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
 #include "support/script_files.h"
@@ -16,7 +16,7 @@
 #include <vector>
 
 #ifdef SPP_TEST_CLANG_FILES
-    #include "spp/clang_files_backend.h"
+    #include "hot/clang_files_backend.h"
 #endif
 
 namespace
@@ -27,9 +27,9 @@ using test_support::Session;
 using test_support::source;
 
 #ifdef SPP_TEST_CLANG_FILES
-std::string slots_text(spp::Backend& backend)
+std::string slots_text(hot::Backend& backend)
 {
-    auto* files = dynamic_cast<spp::ClangFilesBackend*>(&backend);
+    auto* files = dynamic_cast<hot::ClangFilesBackend*>(&backend);
     if (!files)
         return "<not the file backend>";
     std::ifstream f(files->slots_file());
@@ -42,22 +42,22 @@ std::string slots_text(spp::Backend& backend)
 // A change of the script parent needs a full reload. The result names the class.
 TEST_P(BackendTests, ParentChangeRequiresFullReload)
 {
-    spp::LoadResult v1 = backend->load(source("family_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("family_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Driver"));
     s.commit_at_frame_boundary();
-    spp::LoadResult bad = backend->load(source("family_reparent.hot"), 2);
+    hot::LoadResult bad = backend->load(source("family_reparent.hot"), 2);
     ASSERT_TRUE(bad) << bad.error;
 
-    const spp::ReloadResult res = s.loader.request_reload(std::move(*bad.module));
+    const hot::ReloadResult res = s.loader.request_reload(std::move(*bad.module));
     EXPECT_FALSE(res);
-    EXPECT_EQ(res.status, spp::ReloadStatus::FullReloadRequired);
-    EXPECT_EQ(res.reason, spp::ReloadReason::ScriptParentChanged);
+    EXPECT_EQ(res.status, hot::ReloadStatus::FullReloadRequired);
+    EXPECT_EQ(res.reason, hot::ReloadReason::ScriptParentChanged);
     EXPECT_EQ(res.classes, std::vector<std::string>{"G"});
     EXPECT_NE(res.error.find("script parent class changed"), std::string::npos) << res.error;
     EXPECT_FALSE(s.loader.reload_pending());
-    EXPECT_EQ(spp::active_generation, 1u);
+    EXPECT_EQ(hot::active_generation, 1u);
 }
 
 // A reload that the Loader rejects at run time leaves the slots file as it was. The backend
@@ -65,7 +65,7 @@ TEST_P(BackendTests, ParentChangeRequiresFullReload)
 TEST_P(BackendTests, RejectedReloadLeavesTheSlotsFileUnchanged)
 {
 #ifdef SPP_TEST_CLANG_FILES
-    spp::LoadResult v1 = backend->load(source("family_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("family_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     // The build alone does not write the file.
     EXPECT_TRUE(slots_text(*backend).empty());
@@ -75,15 +75,15 @@ TEST_P(BackendTests, RejectedReloadLeavesTheSlotsFileUnchanged)
     const std::string after_v1 = slots_text(*backend);
     EXPECT_FALSE(after_v1.empty()); // the Loader accepted generation 1
 
-    spp::LoadResult bad = backend->load(source("family_reparent.hot"), 2);
+    hot::LoadResult bad = backend->load(source("family_reparent.hot"), 2);
     ASSERT_TRUE(bad) << bad.error;
     EXPECT_EQ(slots_text(*backend), after_v1); // the build did not write
-    const spp::ReloadResult res = s.loader.request_reload(std::move(*bad.module));
-    EXPECT_EQ(res.status, spp::ReloadStatus::FullReloadRequired);
+    const hot::ReloadResult res = s.loader.request_reload(std::move(*bad.module));
+    EXPECT_EQ(res.status, hot::ReloadStatus::FullReloadRequired);
     EXPECT_EQ(slots_text(*backend), after_v1); // the reject did not write
 
     // An accepted reload writes the file.
-    spp::LoadResult v2 = backend->load(source("family_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("family_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     EXPECT_EQ(slots_text(*backend), after_v1);
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
@@ -99,24 +99,24 @@ TEST_P(BackendTests, RejectedReloadLeavesTheSlotsFileUnchanged)
 // The Loader overload for a LoadResult gives FullReloadRequired.
 TEST_P(BackendTests, SlotsRemovalRequiresFullReload)
 {
-    spp::LoadResult v1 = backend->load(source("fnremoved_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("fnremoved_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Medic"));
     s.commit_at_frame_boundary();
 
-    spp::LoadResult v2 = backend->load(source("fnremoved_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("fnremoved_v2.hot"), 2);
     ASSERT_FALSE(v2);
-    EXPECT_EQ(v2.reason, spp::ReloadReason::SlotsRemoved);
+    EXPECT_EQ(v2.reason, hot::ReloadReason::SlotsRemoved);
     EXPECT_NE(v2.error.find("slot count must not shrink"), std::string::npos) << v2.error;
 
-    const spp::ReloadResult res = s.loader.request_reload(std::move(v2));
+    const hot::ReloadResult res = s.loader.request_reload(std::move(v2));
     EXPECT_FALSE(res);
-    EXPECT_EQ(res.status, spp::ReloadStatus::FullReloadRequired);
-    EXPECT_EQ(res.reason, spp::ReloadReason::SlotsRemoved);
+    EXPECT_EQ(res.status, hot::ReloadStatus::FullReloadRequired);
+    EXPECT_EQ(res.reason, hot::ReloadReason::SlotsRemoved);
     EXPECT_FALSE(res.error.empty());
     EXPECT_FALSE(s.loader.reload_pending());
-    EXPECT_EQ(spp::active_generation, 1u);
+    EXPECT_EQ(hot::active_generation, 1u);
 }
 
 // A script with a compile error is a failed reload, not a full reload.
@@ -124,20 +124,20 @@ TEST_P(BackendTests, CompileErrorIsAFailedReload)
 {
     // Build the bad script first: with the slot state of player_v1 it would fail for the removed
     // functions (SlotsRemoved) before it reaches the type error.
-    spp::LoadResult bad = backend->load(source("bad.hot"), 1);
+    hot::LoadResult bad = backend->load(source("bad.hot"), 1);
     ASSERT_FALSE(bad);
-    EXPECT_EQ(bad.reason, spp::ReloadReason::CompileError);
+    EXPECT_EQ(bad.reason, hot::ReloadReason::CompileError);
 
-    spp::LoadResult v1 = backend->load(source("player_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("player_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module)));
     s.commit_at_frame_boundary();
 
-    const spp::ReloadResult res = s.loader.request_reload(std::move(bad));
+    const hot::ReloadResult res = s.loader.request_reload(std::move(bad));
     EXPECT_FALSE(res);
-    EXPECT_EQ(res.status, spp::ReloadStatus::Failed);
-    EXPECT_EQ(res.reason, spp::ReloadReason::CompileError);
+    EXPECT_EQ(res.status, hot::ReloadStatus::Failed);
+    EXPECT_EQ(res.reason, hot::ReloadReason::CompileError);
     EXPECT_FALSE(res.error.empty());
     EXPECT_FALSE(s.loader.reload_pending());
 }
@@ -145,37 +145,37 @@ TEST_P(BackendTests, CompileErrorIsAFailedReload)
 // A second request while one is pending is Busy. A first load that works is Applied.
 TEST_P(BackendTests, BusyAndAppliedResults)
 {
-    spp::LoadResult v1 = backend->load(source("player_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("player_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module)));
-    spp::LoadResult v2 = backend->load(source("player_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("player_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
-    const spp::ReloadResult first = s.loader.request_reload(std::move(*v2.module));
-    EXPECT_EQ(first.status, spp::ReloadStatus::Pending);
+    const hot::ReloadResult first = s.loader.request_reload(std::move(*v2.module));
+    EXPECT_EQ(first.status, hot::ReloadStatus::Pending);
     EXPECT_TRUE(first);
 
-    spp::LoadResult v3 = backend->load(source("player_v2.hot"), 3);
+    hot::LoadResult v3 = backend->load(source("player_v2.hot"), 3);
     ASSERT_TRUE(v3) << v3.error;
-    const spp::ReloadResult second = s.loader.request_reload(std::move(*v3.module));
+    const hot::ReloadResult second = s.loader.request_reload(std::move(*v3.module));
     EXPECT_FALSE(second);
-    EXPECT_EQ(second.status, spp::ReloadStatus::Failed);
-    EXPECT_EQ(second.reason, spp::ReloadReason::Busy);
+    EXPECT_EQ(second.status, hot::ReloadStatus::Failed);
+    EXPECT_EQ(second.reason, hot::ReloadReason::Busy);
 
-    const spp::ReloadResult committed = s.loader.commit_pending();
-    EXPECT_EQ(committed.status, spp::ReloadStatus::Applied);
+    const hot::ReloadResult committed = s.loader.commit_pending();
+    EXPECT_EQ(committed.status, hot::ReloadStatus::Applied);
     EXPECT_TRUE(committed);
     // Nothing is pending now.
-    const spp::ReloadResult none = s.loader.commit_pending();
+    const hot::ReloadResult none = s.loader.commit_pending();
     EXPECT_FALSE(none);
-    EXPECT_EQ(none.reason, spp::ReloadReason::None);
+    EXPECT_EQ(none.reason, hot::ReloadReason::None);
 }
 
 // A fresh load ignores the slot state of the earlier generations: the removed function is no
 // error. It builds a new library, so it never overwrites a mapped one.
 TEST_P(BackendTests, FreshLoadIgnoresTheSlotState)
 {
-    spp::LoadResult v1 = backend->load(source("fnremoved_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("fnremoved_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Medic"));
@@ -185,7 +185,7 @@ TEST_P(BackendTests, FreshLoadIgnoresTheSlotState)
     const std::string before = slots_text(*backend);
     EXPECT_FALSE(before.empty());
 #endif
-    spp::LoadResult fresh = backend->load(source("fnremoved_v2.hot"), 1, spp::LoadMode::Fresh);
+    hot::LoadResult fresh = backend->load(source("fnremoved_v2.hot"), 1, hot::LoadMode::Fresh);
     ASSERT_TRUE(fresh) << fresh.error;
     EXPECT_FALSE(fresh.module->origin.empty());
 #ifdef SPP_TEST_CLANG_FILES
@@ -197,19 +197,19 @@ TEST_P(BackendTests, FreshLoadIgnoresTheSlotState)
 // Loader goes. "drop" is the step "drop all script handles" of a full reload.
 struct FullReloadHost
 {
-    spp::Loader loader;
+    hot::Loader loader;
     Actor* actor = nullptr;
-    spp::ShellBase* shell = nullptr;
+    hot::ShellBase* shell = nullptr;
 
     void create(const char* class_name)
     {
-        const spp::ClassEntry* entry = loader.find(class_name);
+        const hot::ClassEntry* entry = loader.find(class_name);
         ASSERT_NE(entry, nullptr) << class_name;
-        const spp::Instance inst = entry->create();
+        const hot::Instance inst = entry->create();
         actor = static_cast<Actor*>(inst.native);
         shell = inst.shell;
     }
-    template <class T> T* field(const char* name) { return spp::field_ptr<T>(shell, name); }
+    template <class T> T* field(const char* name) { return hot::field_ptr<T>(shell, name); }
     void drop()
     {
         delete actor;
@@ -223,7 +223,7 @@ struct FullReloadHost
 // load the fresh module as generation 1, restore the value. Then a hot reload works again.
 TEST_P(BackendTests, FullReloadSequenceAfterAParentChange)
 {
-    spp::LoadResult v1 = backend->load(source("family_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("family_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     FullReloadHost host;
     ASSERT_RELOAD_OK(host.loader.load(std::move(*v1.module)));
@@ -233,11 +233,11 @@ TEST_P(BackendTests, FullReloadSequenceAfterAParentChange)
     ASSERT_EQ(*host.field<int>("ticks"), 2);
     ASSERT_EQ(*host.field<int>("leaf_score"), 21);
 
-    spp::LoadResult v2 = backend->load(source("family_reparent.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("family_reparent.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
-    const spp::ReloadResult res = host.loader.request_reload(std::move(*v2.module));
-    ASSERT_EQ(res.status, spp::ReloadStatus::FullReloadRequired) << res.error;
-    EXPECT_EQ(res.reason, spp::ReloadReason::ScriptParentChanged);
+    const hot::ReloadResult res = host.loader.request_reload(std::move(*v2.module));
+    ASSERT_EQ(res.status, hot::ReloadStatus::FullReloadRequired) << res.error;
+    EXPECT_EQ(res.reason, hot::ReloadReason::ScriptParentChanged);
 
     // (a) The host saves its own state.
     const int saved_ticks = *host.field<int>("ticks");
@@ -251,17 +251,17 @@ TEST_P(BackendTests, FullReloadSequenceAfterAParentChange)
     // (b) The host drops the handles. (c) The reset works now.
     host.drop();
     ASSERT_TRUE(host.loader.reset(error)) << error;
-    const spp::LoaderStats cleared = host.loader.stats();
+    const hot::LoaderStats cleared = host.loader.stats();
     EXPECT_EQ(cleared.active_generation, 0u);
     EXPECT_TRUE(cleared.generations.empty());
     EXPECT_TRUE(cleared.classes.empty());
-    EXPECT_EQ(spp::active_generation, 0u);
+    EXPECT_EQ(hot::active_generation, 0u);
 
     // (d) The fresh load. (e) The Loader takes it as generation 1.
-    spp::LoadResult fresh = backend->load(source("family_reparent.hot"), 1, spp::LoadMode::Fresh);
+    hot::LoadResult fresh = backend->load(source("family_reparent.hot"), 1, hot::LoadMode::Fresh);
     ASSERT_TRUE(fresh) << fresh.error;
     ASSERT_RELOAD_OK(host.loader.load(std::move(*fresh.module)));
-    EXPECT_EQ(spp::active_generation, 1u);
+    EXPECT_EQ(hot::active_generation, 1u);
     ASSERT_EQ(host.loader.stats().generations.size(), 1u);
 
     // (f) The host restores its state. The new classes work.
@@ -281,11 +281,11 @@ TEST_P(BackendTests, FullReloadSequenceAfterAParentChange)
 #endif
 
     // A later hot reload works after the full reload. Generation 2 is compatible with generation 1.
-    spp::LoadResult v3 = backend->load(source("family_reparent_v2.hot"), 2);
+    hot::LoadResult v3 = backend->load(source("family_reparent_v2.hot"), 2);
     ASSERT_TRUE(v3) << v3.error;
     ASSERT_RELOAD_OK(host.loader.request_reload(std::move(*v3.module)));
     ASSERT_RELOAD_OK(host.loader.commit_pending());
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     host.actor->Tick(kDt);
     EXPECT_EQ(*host.field<int>("leaf_rank"), 6); // the new property Rank: 3 for the child and the sibling
     EXPECT_EQ(*host.field<int>("ticks"), saved_ticks + 2);
@@ -294,7 +294,7 @@ TEST_P(BackendTests, FullReloadSequenceAfterAParentChange)
 // A removed function needs a full reload. The fresh slots file has no entry of the old function.
 TEST_P(BackendTests, FullReloadSequenceAfterARemovedFunction)
 {
-    spp::LoadResult v1 = backend->load(source("fnremoved_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("fnremoved_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     FullReloadHost host;
     ASSERT_RELOAD_OK(host.loader.load(std::move(*v1.module)));
@@ -304,9 +304,9 @@ TEST_P(BackendTests, FullReloadSequenceAfterARemovedFunction)
     EXPECT_NE(slots_text(*backend).find("Medic::rest"), std::string::npos);
 #endif
 
-    spp::LoadResult v2 = backend->load(source("fnremoved_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("fnremoved_v2.hot"), 2);
     ASSERT_FALSE(v2);
-    ASSERT_EQ(host.loader.request_reload(std::move(v2)).status, spp::ReloadStatus::FullReloadRequired);
+    ASSERT_EQ(host.loader.request_reload(std::move(v2)).status, hot::ReloadStatus::FullReloadRequired);
 
     const int saved_hp = *host.field<int>("hp");
     std::string error;
@@ -315,13 +315,13 @@ TEST_P(BackendTests, FullReloadSequenceAfterARemovedFunction)
     host.drop();
     ASSERT_TRUE(host.loader.reset(error)) << error;
 
-    spp::LoadResult fresh = backend->load(source("fnremoved_v2.hot"), 1, spp::LoadMode::Fresh);
+    hot::LoadResult fresh = backend->load(source("fnremoved_v2.hot"), 1, hot::LoadMode::Fresh);
     ASSERT_TRUE(fresh) << fresh.error;
     ASSERT_RELOAD_OK(host.loader.load(std::move(*fresh.module)));
     ASSERT_NO_FATAL_FAILURE(host.create("Medic"));
     *host.field<int>("hp") = saved_hp;
     EXPECT_EQ(*host.field<int>("hp"), 42);
-    EXPECT_EQ(spp::active_generation, 1u);
+    EXPECT_EQ(hot::active_generation, 1u);
 #ifdef SPP_TEST_CLANG_FILES
     const std::string slots = slots_text(*backend);
     EXPECT_EQ(slots.find("Medic::rest"), std::string::npos) << slots;
@@ -333,9 +333,9 @@ TEST_P(BackendTests, FullReloadSequenceAfterARemovedFunction)
 // block. The module state is valid and has the initial values again (design 5.3).
 TEST_P(BackendTests, ResetAndFreshLoadMakeANewModuleBlock)
 {
-    auto total = [](spp::Loader& loader) -> int*
+    auto total = [](hot::Loader& loader) -> int*
     {
-        const spp::ModuleStateInfo ms = loader.module_state();
+        const hot::ModuleStateInfo ms = loader.module_state();
         if (!ms.layout || !ms.slot || !*ms.slot)
             return nullptr;
         for (uint32_t i = 0; i < ms.layout->field_count; ++i)
@@ -343,7 +343,7 @@ TEST_P(BackendTests, ResetAndFreshLoadMakeANewModuleBlock)
                 return reinterpret_cast<int*>(static_cast<char*>(*ms.slot) + ms.layout->fields[i].offset);
         return nullptr;
     };
-    spp::LoadResult v1 = backend->load(source("module_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("module_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     FullReloadHost host;
     ASSERT_RELOAD_OK(host.loader.load(std::move(*v1.module)));
@@ -357,7 +357,7 @@ TEST_P(BackendTests, ResetAndFreshLoadMakeANewModuleBlock)
     ASSERT_TRUE(host.loader.reset(error)) << error;
     EXPECT_EQ(host.loader.module_state().layout, nullptr); // no block after the reset
 
-    spp::LoadResult fresh = backend->load(source("module_v1.hot"), 1, spp::LoadMode::Fresh);
+    hot::LoadResult fresh = backend->load(source("module_v1.hot"), 1, hot::LoadMode::Fresh);
     ASSERT_TRUE(fresh) << fresh.error;
     ASSERT_RELOAD_OK(host.loader.load(std::move(*fresh.module)));
     ASSERT_NE(total(host.loader), nullptr); // the new block is valid
@@ -370,15 +370,15 @@ TEST_P(BackendTests, ResetAndFreshLoadMakeANewModuleBlock)
 // The loader keeps one first generation: a second load needs a reset before it.
 TEST_P(BackendTests, LoadFailsWhenTheLoaderHasAGeneration)
 {
-    spp::LoadResult v1 = backend->load(source("fnremoved_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("fnremoved_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult again = backend->load(source("fnremoved_v2.hot"), 1, spp::LoadMode::Fresh);
+    hot::LoadResult again = backend->load(source("fnremoved_v2.hot"), 1, hot::LoadMode::Fresh);
     ASSERT_TRUE(again) << again.error;
     FullReloadHost host;
     ASSERT_RELOAD_OK(host.loader.load(std::move(*v1.module)));
-    const spp::ReloadResult r = host.loader.load(std::move(*again.module));
-    EXPECT_EQ(r.status, spp::ReloadStatus::Failed);
-    EXPECT_EQ(r.reason, spp::ReloadReason::BadModule);
+    const hot::ReloadResult r = host.loader.load(std::move(*again.module));
+    EXPECT_EQ(r.status, hot::ReloadStatus::Failed);
+    EXPECT_EQ(r.reason, hot::ReloadReason::BadModule);
     EXPECT_EQ(r.error, "the loader already has a generation: call reset first");
 }
 
@@ -387,7 +387,7 @@ TEST_P(BackendTests, LoadFailsWhenTheLoaderHasAGeneration)
 // The host must call such a function before reset (doc/hot-reload.md).
 TEST_P(BackendTests, ModuleVariableWithAClosurePinsTheGeneration)
 {
-    spp::LoadResult v1 = backend->load(source("modclosure.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("modclosure.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     FullReloadHost host;
     ASSERT_RELOAD_OK(host.loader.load(std::move(*v1.module)));

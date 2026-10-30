@@ -3,8 +3,8 @@
 // The build makes two programs from this file. The definitions SAMPLE_SCRIPT_DIR and
 // SAMPLE_SCRIPT_EXT select the script variant (.hot or .cpp).
 #include "Creature.h"
-#include "spp/clang_files_backend.h"
-#include "spp/runtime/loader.h"
+#include "hot/clang_files_backend.h"
+#include "hot/runtime/loader.h"
 
 #include <cstdio>
 #include <fstream>
@@ -26,7 +26,7 @@ int main()
     text << in.rdbuf();
 
     // The program sets the compiler, the include dirs, the flags and the work folder.
-    spp::ClangFilesOptions options;
+    hot::ClangFilesOptions options;
     options.compiler = SAMPLE_CXX;
     options.include_dirs = {SAMPLE_SPP_INCLUDE_DIR, SAMPLE_DIR};
     // The flags of the host build, for example a sanitizer. The modules must use the same ones.
@@ -36,24 +36,24 @@ int main()
     options.resource_dir = SAMPLE_RESOURCE_DIR;
     options.work_dir = SAMPLE_WORK_DIR;
     options.remove_work_dir_at_exit = true;
-    spp::ClangFilesBackend backend(std::move(options));
+    hot::ClangFilesBackend backend(std::move(options));
 
     // The loader is after the backend, so it is destroyed first. The script object dies before it.
-    spp::Loader loader;
-    const spp::ScriptSource source{path, text.str(), {}};
-    spp::LoadResult built = backend.load(source, 1);
+    hot::Loader loader;
+    const hot::ScriptSource source{path, text.str(), {}};
+    hot::LoadResult built = backend.load(source, 1);
     if (!built)
     {
         std::fprintf(stderr, "sample_clang_files: compile failed: %s\n", built.error.c_str());
         return 1;
     }
-    const spp::ReloadResult loaded = loader.load(std::move(*built.module));
+    const hot::ReloadResult loaded = loader.load(std::move(*built.module));
     if (!loaded)
     {
         std::fprintf(stderr, "sample_clang_files: load failed: %s\n", loaded.error.c_str());
         return 1;
     }
-    const spp::ClassEntry* entry = loader.find("Wolf");
+    const hot::ClassEntry* entry = loader.find("Wolf");
     if (!entry)
     {
         std::fprintf(stderr, "sample_clang_files: the class Wolf is not available\n");

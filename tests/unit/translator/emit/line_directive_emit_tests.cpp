@@ -46,7 +46,7 @@ TEST(LineDirectiveEmit, FinallyLineDirectives)
     StmtP s = make_stmt(std::move(t));
     EXPECT_EQ(print_lines(*s, map, "t.hot", 1),
         "#line 2 \"t.hot\"\n"
-        "    { spp::Finally __fin_0([&]\n"
+        "    { hot::Finally __fin_0([&]\n"
         "#line 3 \"t.hot\"\n"
         "        {\n"
         "#line 4 \"t.hot\"\n"

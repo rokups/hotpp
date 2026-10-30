@@ -1,5 +1,5 @@
 // Tests for the stub "class *;", "default_handle", the warnings and the preludes (design 7.10.2, 7.10.3).
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/check_translate_test_support.h"
 
 #include <gtest/gtest.h>

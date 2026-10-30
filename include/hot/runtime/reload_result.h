@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace spp
+namespace hot
 {
 
 enum class ReloadStatus
@@ -75,4 +75,4 @@ struct ReloadResult
     explicit operator bool() const { return status == ReloadStatus::Applied || status == ReloadStatus::Pending; }
 };
 
-} // namespace spp
+} // namespace hot

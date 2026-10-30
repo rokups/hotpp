@@ -4,8 +4,8 @@
 // The build makes two programs from this file. The definitions SAMPLE_SCRIPT_DIR and
 // SAMPLE_SCRIPT_EXT select the script variant (.hot or .cpp).
 #include "Creature.h"
-#include "spp/backend.h"
-#include "spp/runtime/loader.h"
+#include "hot/backend.h"
+#include "hot/runtime/loader.h"
 
 #include <cstdio>
 #include <fstream>
@@ -40,27 +40,27 @@ int main()
     }
 
     // The backend runs the compiler. The folder of Creature.h is an include dir of the compile.
-    spp::DefaultBackendOptions options;
+    hot::DefaultBackendOptions options;
     options.include_dirs = {SAMPLE_DIR};
-    std::unique_ptr<spp::Backend> backend = spp::make_default_backend(options);
+    std::unique_ptr<hot::Backend> backend = hot::make_default_backend(options);
 
     // The loader is first, so it is destroyed last. The script object dies before it.
-    spp::Loader loader;
+    hot::Loader loader;
 
     // Generation 1. The first module goes through load().
-    spp::LoadResult first = backend->load({path_v1, text_v1, {}}, 1);
+    hot::LoadResult first = backend->load({path_v1, text_v1, {}}, 1);
     if (!first)
     {
         std::fprintf(stderr, "sample_hot_reload: compile failed: %s\n", first.error.c_str());
         return 1;
     }
-    const spp::ReloadResult loaded = loader.load(std::move(*first.module));
+    const hot::ReloadResult loaded = loader.load(std::move(*first.module));
     if (!loaded)
     {
         std::fprintf(stderr, "sample_hot_reload: load failed: %s\n", loaded.error.c_str());
         return 1;
     }
-    const spp::ClassEntry* entry = loader.find("Wolf");
+    const hot::ClassEntry* entry = loader.find("Wolf");
     if (!entry)
     {
         std::fprintf(stderr, "sample_hot_reload: the class Wolf is not available\n");
@@ -72,7 +72,7 @@ int main()
 
     // Phase 1, validate. Compile generation 2 and check it. The live objects do not change.
     // On an error the old generation goes on.
-    const spp::ReloadResult requested = loader.request_reload(backend->load({path_v2, text_v2, {}}, 2));
+    const hot::ReloadResult requested = loader.request_reload(backend->load({path_v2, text_v2, {}}, 2));
     if (!requested)
     {
         std::fprintf(stderr, "sample_hot_reload: reload failed: %s\n", requested.error.c_str());
@@ -81,7 +81,7 @@ int main()
 
     // Phase 2, commit. The new code goes live. The host calls this at a safe point, when no
     // script code runs. The live objects keep their fields and get the new fields.
-    const spp::ReloadResult committed = loader.commit_pending();
+    const hot::ReloadResult committed = loader.commit_pending();
     if (!committed)
     {
         std::fprintf(stderr, "sample_hot_reload: commit failed: %s\n", committed.error.c_str());

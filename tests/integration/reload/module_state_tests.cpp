@@ -1,6 +1,6 @@
 // Reload tests of the module-level declarations (S8a, design 5.3): a module variable, a script
 // enum and a script struct. They use the backend that SPP_BACKEND selected.
-#include "spp/backend.h"
+#include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
 #include "support/script_files.h"
@@ -17,15 +17,15 @@ using test_support::kDt;
 using test_support::Session;
 using test_support::source;
 
-template <class T> T* fld(spp::ShellBase* shell, const char* name)
+template <class T> T* fld(hot::ShellBase* shell, const char* name)
 {
-    return spp::field_ptr<T>(shell, name);
+    return hot::field_ptr<T>(shell, name);
 }
 
 // The module state block of the loader. The test reads a variable by its name.
 template <class T> T* modvar(Session& s, const char* name)
 {
-    const spp::ModuleStateInfo ms = s.loader.module_state();
+    const hot::ModuleStateInfo ms = s.loader.module_state();
     if (!ms.layout || !*ms.slot)
         return nullptr;
     for (uint32_t i = 0; i < ms.layout->field_count; ++i)
@@ -38,11 +38,11 @@ template <class T> T* modvar(Session& s, const char* name)
 // a local, a parameter, a switch and a compare.
 TEST_P(BackendTests, ModuleVariableIsSharedByAllClasses)
 {
-    spp::LoadResult v1 = backend->load(source("module_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("module_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
-    spp::Instance helper = s.loader.find("Helper")->create();
+    hot::Instance helper = s.loader.find("Helper")->create();
     s.world.Add(static_cast<Actor*>(helper.native));
     s.commit_at_frame_boundary();
     ASSERT_NE(modvar<int>(s, "total"), nullptr);
@@ -62,13 +62,13 @@ TEST_P(BackendTests, ModuleVariableIsSharedByAllClasses)
 // new variable "bonus" has its initializer. The struct and the enum change.
 TEST_P(BackendTests, ReloadKeepsModuleVariables)
 {
-    spp::LoadResult v1 = backend->load(source("module_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("module_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("module_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("module_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
-    spp::Instance helper = s.loader.find("Helper")->create();
+    hot::Instance helper = s.loader.find("Helper")->create();
     s.world.Add(static_cast<Actor*>(helper.native));
     s.commit_at_frame_boundary();
     s.world.Tick(kDt);
@@ -80,7 +80,7 @@ TEST_P(BackendTests, ReloadKeepsModuleVariables)
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt); // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
-    ASSERT_EQ(spp::active_generation, 2u);
+    ASSERT_EQ(hot::active_generation, 2u);
     // The Tick of the commit frame ran with generation 1: total is 303.
     EXPECT_EQ(modvar<int>(s, "total"), nullptr); // the name is "sum" now
     ASSERT_NE(modvar<int>(s, "sum"), nullptr);
@@ -88,8 +88,8 @@ TEST_P(BackendTests, ReloadKeepsModuleVariables)
     EXPECT_EQ(*modvar<int>(s, "mode"), 2); // the enum value migrates as an integer
     EXPECT_EQ(*modvar<int>(s, "bonus"), 7); // new variable: the initializer
     // The struct kept x and y. The new field z has its initializer.
-    const spp::ModuleStateInfo ms = s.loader.module_state();
-    const spp::FieldInfo* last = nullptr;
+    const hot::ModuleStateInfo ms = s.loader.module_state();
+    const hot::FieldInfo* last = nullptr;
     for (uint32_t i = 0; i < ms.layout->field_count; ++i)
         if (std::string(ms.layout->fields[i].name) == "last")
             last = &ms.layout->fields[i];
@@ -98,7 +98,7 @@ TEST_P(BackendTests, ReloadKeepsModuleVariables)
     float x = -1.0f, z = -1.0f;
     for (uint32_t i = 0; i < last->sub->field_count; ++i)
     {
-        const spp::FieldInfo& f = last->sub->fields[i];
+        const hot::FieldInfo& f = last->sub->fields[i];
         const float* p = reinterpret_cast<const float*>(static_cast<char*>(*ms.slot) + last->offset + f.offset);
         if (std::string(f.name) == "x")
             x = *p;
@@ -118,9 +118,9 @@ TEST_P(BackendTests, ReloadKeepsModuleVariables)
 // value of a variable whose type changes. A new variable reads the migrated earlier variable.
 TEST_P(BackendTests, ModuleVariableOrderAndConvertHook)
 {
-    spp::LoadResult v1 = backend->load(source("modconv_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("modconv_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("modconv_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("modconv_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Probe"));
@@ -134,7 +134,7 @@ TEST_P(BackendTests, ModuleVariableOrderAndConvertHook)
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt); // doubled is 12; the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     ASSERT_NE(modvar<float>(s, "level"), nullptr);
     EXPECT_FLOAT_EQ(*modvar<float>(s, "level"), 4.5f); // convert_level(3)
     ASSERT_NE(modvar<int>(s, "bonus"), nullptr);

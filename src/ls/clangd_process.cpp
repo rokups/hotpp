@@ -12,7 +12,7 @@
 
 extern char** environ;
 
-namespace spp::ls
+namespace hot::ls
 {
 
 using json = nlohmann::json;
@@ -183,4 +183,4 @@ void ClangdProcess::stop()
     from_ = -1;
 }
 
-} // namespace spp::ls
+} // namespace hot::ls

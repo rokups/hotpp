@@ -5,7 +5,7 @@
 // The debugger itself (lldb, gdb) is not started here.
 //
 // CMake defines these macros: SPP_SOURCE_DIR, SPP_SCRATCH_DIR, SPP_CXX and PRE_V2_SO.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/dwarf_lines.h"
 #include "support/scratch_dir.h"
 #include "support/script_files.h"

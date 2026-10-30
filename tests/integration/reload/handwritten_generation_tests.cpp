@@ -35,21 +35,21 @@ TEST(HandwrittenGeneration, PlayerShellTicksTakesDamageAndReflects)
 }
 
 // Builds a one-field layout. Only the name, the type key and the init function matter here.
-spp::FieldInfo make_field(const char* name, const char* type_key)
+hot::FieldInfo make_field(const char* name, const char* type_key)
 {
-    return spp::FieldInfo{name, nullptr, type_key, 0, 4, 4, 0, nullptr, nullptr, nullptr};
+    return hot::FieldInfo{name, nullptr, type_key, 0, 4, 4, 0, nullptr, nullptr, nullptr};
 }
 
 // A type change no longer rejects the reload (design 4.7). Without a hook the field gets its default.
 TEST(HandwrittenGeneration, PlanAcceptsATypeChangeWithAWarning)
 {
-    spp::FieldInfo of[] = {make_field("hp", spp::type_key<float>())};
-    spp::FieldInfo nf[] = {make_field("hp", spp::type_key<int>())};
-    spp::StateLayout o{"Player", 4, 4, 1, of};
-    spp::StateLayout n{"Player", 4, 4, 1, nf};
-    spp::MigrationPlan plan = spp::build_plan(o, n);
+    hot::FieldInfo of[] = {make_field("hp", hot::type_key<float>())};
+    hot::FieldInfo nf[] = {make_field("hp", hot::type_key<int>())};
+    hot::StateLayout o{"Player", 4, 4, 1, of};
+    hot::StateLayout n{"Player", 4, 4, 1, nf};
+    hot::MigrationPlan plan = hot::build_plan(o, n);
     ASSERT_EQ(plan.steps.size(), 1u);
-    EXPECT_EQ(plan.steps[0].action, spp::FieldAction::Init);
+    EXPECT_EQ(plan.steps[0].action, hot::FieldAction::Init);
     ASSERT_EQ(plan.warnings.size(), 1u);
     EXPECT_NE(plan.warnings[0].find("Player: field hp changed its type"), std::string::npos) << plan.warnings[0];
     EXPECT_EQ(plan.changed, std::vector<uint32_t>{0});
@@ -57,14 +57,14 @@ TEST(HandwrittenGeneration, PlanAcceptsATypeChangeWithAWarning)
 
 TEST(HandwrittenGeneration, PlanMovesASameTypeField)
 {
-    spp::FieldInfo of[] = {make_field("hp", spp::type_key<float>())};
-    spp::FieldInfo nf[] = {make_field("hp", spp::type_key<float>())};
-    spp::StateLayout o{"Player", 4, 4, 1, of};
-    spp::StateLayout n{"Player", 4, 4, 1, nf};
-    spp::MigrationPlan plan = spp::build_plan(o, n);
+    hot::FieldInfo of[] = {make_field("hp", hot::type_key<float>())};
+    hot::FieldInfo nf[] = {make_field("hp", hot::type_key<float>())};
+    hot::StateLayout o{"Player", 4, 4, 1, of};
+    hot::StateLayout n{"Player", 4, 4, 1, nf};
+    hot::MigrationPlan plan = hot::build_plan(o, n);
     EXPECT_TRUE(plan.warnings.empty());
     ASSERT_EQ(plan.steps.size(), 1u);
-    EXPECT_EQ(plan.steps[0].action, spp::FieldAction::Move);
+    EXPECT_EQ(plan.steps[0].action, hot::FieldAction::Move);
     EXPECT_EQ(plan.steps[0].old_index, 0u);
 }
 

@@ -1,8 +1,8 @@
-#include "spp/clang_files_backend.h"
+#include "hot/clang_files_backend.h"
 
-#include "spp/config.h"
-#include "spp/scratch.h"
-#include "spp/sppc_lib.h"
+#include "hot/config.h"
+#include "hot/scratch.h"
+#include "hot/sppc_lib.h"
 
 #include <sys/wait.h>
 
@@ -17,7 +17,7 @@
 
 extern char** environ;
 
-namespace spp
+namespace hot
 {
 
 namespace fs = std::filesystem;
@@ -308,4 +308,4 @@ LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generati
     return r;
 }
 
-} // namespace spp
+} // namespace hot

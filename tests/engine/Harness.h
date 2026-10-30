@@ -7,8 +7,8 @@
 #pragma once
 #include "Actor.h"
 #include "FileWatcher.h"
-#include "spp/backend.h"
-#include "spp/runtime.h"
+#include "hot/backend.h"
+#include "hot/runtime.h"
 
 #include <memory>
 #include <string>
@@ -40,7 +40,7 @@ public:
     // change (FullReloadRequired), the harness does a full reload at once and the result is
     // Applied. A full reload restarts the generation at 1 and makes the actors again from
     // their saved position and name.
-    spp::ReloadResult reload();
+    hot::ReloadResult reload();
 
     // Runs one command line. The result is the text for the user.
     std::string command(const std::string& line);
@@ -50,16 +50,16 @@ public:
     void frame(float dt, int wait_ms = 0);
 
     bool quit_requested() const { return quit_; }
-    spp::Loader& loader() { return loader_; }
+    hot::Loader& loader() { return loader_; }
     World& world() { return world_; }
     unsigned reloads_started() const { return reloads_; }
 
 private:
     Actor* make_actor(); // a new script object of class_name_, or null
-    spp::ReloadResult full_reload(const spp::ScriptSource& source, const spp::ReloadResult& needed);
+    hot::ReloadResult full_reload(const hot::ScriptSource& source, const hot::ReloadResult& needed);
     std::string script_, class_name_;
-    std::unique_ptr<spp::Backend> backend_;
-    spp::Loader loader_; // before the world: it is destroyed after the world
+    std::unique_ptr<hot::Backend> backend_;
+    hot::Loader loader_; // before the world: it is destroyed after the world
     World world_;
     FileWatcher watcher_;
     uint32_t next_generation_ = 1;

@@ -1,8 +1,8 @@
-#include "spp/runtime/state.h"
+#include "hot/runtime/state.h"
 
 #include "runtime_internal.h"
 
-namespace spp
+namespace hot
 {
 
 std::unordered_map<ShellBase*, uint32_t> g_live;
@@ -23,4 +23,4 @@ void note_creator(ShellBase* self, uint32_t generation)
         it->second = generation;
 }
 
-} // namespace spp
+} // namespace hot

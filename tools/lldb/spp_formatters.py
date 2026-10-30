@@ -22,7 +22,7 @@ _STATE = re.compile(r"^(\w+?)State_g(\d+)$")
 # "Cls__f", "Cls__f_virt", "Cls__get_P", "Cls__set_P". The class name has no "__".
 _METHOD = re.compile(r"^(\w+?)__(\w+?)(?:_virt)?$")
 _ACCESSOR = re.compile(r"^(get|set)_(\w+)$")
-_HANDLE = re.compile(r"^(?:std::(?:__1::)?shared_ptr|spp::Intrusive)<(?:\w+::)*(\w+?)_Shell\b")
+_HANDLE = re.compile(r"^(?:std::(?:__1::)?shared_ptr|hot::Intrusive)<(?:\w+::)*(\w+?)_Shell\b")
 
 
 def class_of_type(type_name):
@@ -199,7 +199,7 @@ def __lldb_init_module(debugger, internal_dict):  # pragma: no cover
     debugger.HandleCommand(add % ("state_summary_provider", r"^(\w+::)*\w+State_g[0-9]+$"))
     debugger.HandleCommand(add % ("shell_summary_provider", r"^(\w+::)*\w+_Shell$"))
     debugger.HandleCommand(add % ("handle_summary_provider",
-                                  r"^(std::(__1::)?shared_ptr|spp::Intrusive)<(\w+::)*\w+_Shell.*>$"))
+                                  r"^(std::(__1::)?shared_ptr|hot::Intrusive)<(\w+::)*\w+_Shell.*>$"))
     debugger.HandleCommand("type synthetic add --regex --python-class %s.StateChildren \"%s\""
                            % (module, r"^(\w+::)*\w+State_g[0-9]+$"))
     debugger.HandleCommand("command script add -f %s.script_backtrace spp-bt" % module)

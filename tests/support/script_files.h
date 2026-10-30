@@ -1,7 +1,7 @@
 // Helpers that read the example scripts and check the diagnostics of a bad script.
 #pragma once
 
-#include "spp/backend.h"
+#include "hot/backend.h"
 
 #include <gtest/gtest.h>
 
@@ -20,7 +20,7 @@ inline std::string read_file(const std::string& path)
     return ss.str();
 }
 
-inline spp::ScriptSource source(const char* file)
+inline hot::ScriptSource source(const char* file)
 {
     const std::string path = std::string(SPP_SOURCE_DIR) + "/tests/scripts/" + file;
     return {path, read_file(path), {}};

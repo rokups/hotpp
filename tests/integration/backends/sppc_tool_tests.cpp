@@ -1,9 +1,9 @@
 // Tests of the tool sppc as a child process.
 //
 // CMake defines these macros: SPP_SOURCE_DIR, SPP_SCRATCH_DIR, SPPC_PATH and SPP_CXX.
-#include "spp/backend.h"
-#include "spp/clang_files_backend.h"
-#include "spp/config.h"
+#include "hot/backend.h"
+#include "hot/clang_files_backend.h"
+#include "hot/config.h"
 #include "support/scratch_dir.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
@@ -103,7 +103,7 @@ TEST(SppcTool, EmitCppModeTranslatesWithoutCompiling)
 {
     std::string text;
     EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp " + player_args() + " 2>&1", text), 0) << text;
-    EXPECT_NE(text.find("spp::deref"), std::string::npos);
+    EXPECT_NE(text.find("hot::deref"), std::string::npos);
 
     TestScratch scratch;
     const std::string out = scratch.file("sppc_emit.cpp");
@@ -112,7 +112,7 @@ TEST(SppcTool, EmitCppModeTranslatesWithoutCompiling)
         run_command(std::string("'") + SPPC_PATH + "' --emit-cpp " + player_args() + " -o '" + out + "' 2>&1", text2),
         0)
         << text2;
-    EXPECT_NE(read_file(out).find("spp::deref"), std::string::npos); // the #line names differ
+    EXPECT_NE(read_file(out).find("hot::deref"), std::string::npos); // the #line names differ
 }
 
 // A translator error (here a parse error) has the final form of a rewritten compiler error:
@@ -707,13 +707,13 @@ TEST(SppcTool, FormatStdOutputCompilesAsCxx20)
 }
 #endif
 
-// The build of sppc fixes the format library (include/spp/config.h). In build mode, a
+// The build of sppc fixes the format library (include/hot/config.h). In build mode, a
 // different --format is an error.
 TEST(SppcTool, BuildModeRejectsAFormatThatTheBuildDoesNotUse)
 {
     TestScratch scratch;
     const std::string script = write_interp_script(scratch, "sppc_interp_mismatch.hot");
-    const std::string other = SPP_USE_FMT ? "std" : "fmt";
+    const std::string other = HOT_USE_FMT ? "std" : "fmt";
     std::string log;
     EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '"
                       + scratch.file("sppc_interp_mismatch.so") + "' --format=" + other + " 2>&1",
@@ -882,7 +882,7 @@ TEST(SppcTool, PublicHeadersCompileAloneAsCxx17)
 {
     TestScratch scratch;
     std::vector<std::string> headers;
-    for (const char* dir : {"/include/spp", "/include/spp/runtime"})
+    for (const char* dir : {"/include/hot", "/include/hot/runtime"})
         for (const auto& entry : std::filesystem::directory_iterator(std::string(SPP_SOURCE_DIR) + dir))
             if (entry.is_regular_file() && entry.path().extension() == ".h")
                 headers.push_back(entry.path().string());
@@ -976,10 +976,10 @@ TEST(SppcTool, AotModeReportsParseErrorAtTheScriptLine)
 // The text of compile_commands.json is exact, and a quote or a backslash is escaped.
 TEST(SppcTool, CompileCommandsJsonText)
 {
-    spp::CompileCommandEntry a{"/work", "/work/a.cpp", {"clang++", "-I/inc dir", "/work/a.cpp"}, "/work/a.so"};
-    spp::CompileCommandEntry b{"/w\"x", "/w\"x/b.cpp", {"c\\d"}, "/w\"x/b.so"};
-    EXPECT_EQ(spp::compile_commands_json({}), "[\n]\n");
-    EXPECT_EQ(spp::compile_commands_json({a, b}),
+    hot::CompileCommandEntry a{"/work", "/work/a.cpp", {"clang++", "-I/inc dir", "/work/a.cpp"}, "/work/a.so"};
+    hot::CompileCommandEntry b{"/w\"x", "/w\"x/b.cpp", {"c\\d"}, "/w\"x/b.so"};
+    EXPECT_EQ(hot::compile_commands_json({}), "[\n]\n");
+    EXPECT_EQ(hot::compile_commands_json({a, b}),
         "[\n"
         "  {\n"
         "    \"directory\": \"/work\",\n"
@@ -999,29 +999,29 @@ TEST(SppcTool, CompileCommandsJsonText)
 // The compile command is the command of the backend.
 TEST(SppcTool, CompileCommandUsesTheBackendFlags)
 {
-    spp::ClangFilesOptions o;
+    hot::ClangFilesOptions o;
     o.compiler = "cc";
     o.include_dirs = {"/i1", "/i2"};
     o.extra_flags = {"-O2"};
     o.resource_dir = "/res";
-    std::vector<std::string> expected = {"cc", std::string("-std=") + spp::cxx_std_name(), "-fPIC", "-shared", "-g",
+    std::vector<std::string> expected = {"cc", std::string("-std=") + hot::cxx_std_name(), "-fPIC", "-shared", "-g",
         "-Werror=return-type", "-resource-dir=/res", "-O2", "-I/i1", "-I/i2"};
-    for (const std::string& f : spp::format_compile_flags())
+    for (const std::string& f : hot::format_compile_flags())
         expected.push_back(f); // fmt build only
     for (const char* f : {"/x.cpp", "-o", "/x.so"})
         expected.push_back(f);
-    EXPECT_EQ(spp::compile_command(o, "/x.cpp", "/x.so"), expected);
+    EXPECT_EQ(hot::compile_command(o, "/x.cpp", "/x.so"), expected);
 }
 
 // The option std_version replaces the standard of the host in the compile command.
 TEST(SppcTool, CompileCommandStdVersionOverridesTheHostStandard)
 {
-    spp::ClangFilesOptions o;
+    hot::ClangFilesOptions o;
     o.compiler = "cc";
     o.std_version = "c++17";
-    EXPECT_EQ(spp::compile_command(o, "/x.cpp", "/x.so")[1], "-std=c++17");
+    EXPECT_EQ(hot::compile_command(o, "/x.cpp", "/x.so")[1], "-std=c++17");
     o.std_version = "c++23";
-    EXPECT_EQ(spp::compile_command(o, "/x.cpp", "/x.so")[1], "-std=c++23");
+    EXPECT_EQ(hot::compile_command(o, "/x.cpp", "/x.so")[1], "-std=c++23");
 }
 
 // sppc --compile-commands writes one entry for each generated .cpp.
@@ -1050,11 +1050,11 @@ TEST(SppcTool, CompileCommandsOptionWritesTheDatabase)
     const std::string so = fs::absolute(out_dir + "/boss_v1.g1.so").string();
     const std::string cxx = SPP_CXX;
     std::string fmt_args; // fmt build only
-    for (const std::string& f : spp::format_compile_flags())
+    for (const std::string& f : hot::format_compile_flags())
         fmt_args += "\"" + f + "\", ";
     const std::string expected =
         "[\n  {\n    \"directory\": \"" + fs::current_path().string() + "\",\n    \"file\": \"" + cpp +
-        "\",\n    \"arguments\": [\"" + cxx + "\", \"-std=" + std::string(spp::cxx_std_name()) + "\", \"-fPIC\", \"-shared\", \"-g\", "
+        "\",\n    \"arguments\": [\"" + cxx + "\", \"-std=" + std::string(hot::cxx_std_name()) + "\", \"-fPIC\", \"-shared\", \"-g\", "
         "\"-Werror=return-type\", \"-O1\", \"-I" + engine + "\", \"-I" + inc + "\", " + fmt_args + "\"" + cpp +
         "\", \"-o\", \"" + so + "\"],\n    \"output\": \"" + so + "\"\n  }\n]\n";
     EXPECT_EQ(read_file(cdb_dir + "/compile_commands.json"), expected);
@@ -1071,7 +1071,7 @@ TEST(SppcTool, EmitCppTranslatesACppScript)
     EXPECT_NE(text.find("script_register"), std::string::npos) << text;
 }
 
-// The fixture v2 uses SPP_ALIAS and onReload and has no include of "spp/script.h".
+// The fixture v2 uses HOT_ALIAS and onReload and has no include of "hot/script.h".
 // sppc injects the header itself, so the translation works.
 TEST(SppcTool, EmitCppInjectsTheScriptHeaderForTheAids)
 {

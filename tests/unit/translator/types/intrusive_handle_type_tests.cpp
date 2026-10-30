@@ -28,7 +28,7 @@ TEST(IntrusiveHandleType, IntrusiveExact)
 {
     Fixture f;
     f.add({intrusive_stub("Object", "$T*")});
-    const std::string st = "spp::Intrusive<Object, &Object::AddRef, &Object::Release>";
+    const std::string st = "hot::Intrusive<Object, &Object::AddRef, &Object::Release>";
     EXPECT_EQ(f.model.storage("Object"), st);
     EXPECT_EQ(f.model.param("Object"), "const " + st + "&");
     EXPECT_EQ(f.model.make("Object", "1, 2"), st + "(new Object(1, 2))");
@@ -46,7 +46,7 @@ TEST(IntrusiveHandleType, IntrusiveWithoutHandle)
 {
     Fixture f;
     f.add({intrusive_stub("Object")});
-    EXPECT_EQ(f.model.storage("Object"), "spp::Intrusive<Object, &Object::AddRef, &Object::Release>");
+    EXPECT_EQ(f.model.storage("Object"), "hot::Intrusive<Object, &Object::AddRef, &Object::Release>");
     EXPECT_TRUE(f.diags.items.empty());
 }
 
@@ -55,7 +55,7 @@ TEST(IntrusiveHandleType, IntrusiveInherited)
     Fixture f;
     f.add({intrusive_stub("Object")});
     f.model.set_bases(bases_of({{"Item", {"Object"}}}));
-    const std::string st = "spp::Intrusive<Item, &Object::AddRef, &Object::Release>";
+    const std::string st = "hot::Intrusive<Item, &Object::AddRef, &Object::Release>";
     EXPECT_EQ(f.model.storage("Item"), st);
     EXPECT_EQ(f.model.make("Item", ""), st + "(new Item())");
     EXPECT_EQ(f.model.lookup("Item").intrusive_add, "AddRef");

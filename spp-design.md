@@ -284,26 +284,26 @@ A script class `Player : Actor` becomes three C++ entities.
 
 The shell is a real C++ subclass of `Actor`. The engine sees a normal object. `dynamic_cast<Actor*>`, `typeid`, and every native registration work on the shell.
 
-The shell overrides every virtual method of the base, not only the overridden ones. Each override reads one slot of the current dispatch table. A slot holds a pointer to a member function of the state struct (`spp::SlotFn`). A slot that the script does not override points to a forwarding member `__fwd_<id>` of the state struct. The forwarding member calls the base implementation. This choice makes the shell independent of the set of overrides. The script can add or remove an override without a new shell.
+The shell overrides every virtual method of the base, not only the overridden ones. Each override reads one slot of the current dispatch table. A slot holds a pointer to a member function of the state struct (`hot::SlotFn`). A slot that the script does not override points to a forwarding member `__fwd_<id>` of the state struct. The forwarding member calls the base implementation. This choice makes the shell independent of the set of overrides. The script can add or remove an override without a new shell.
 
 ```cpp
 // Generated shell (compiled once)
-struct Player_Shell final : Actor, spp::ShellBase {
-    template <class... A> explicit Player_Shell(spp::Construct, A&&... a)
-        : Actor(std::forward<A>(a)...) { spp::init_state(this, &Player_record); }
-    ~Player_Shell() override { spp::destroy_state(this); }
+struct Player_Shell final : Actor, hot::ShellBase {
+    template <class... A> explicit Player_Shell(hot::Construct, A&&... a)
+        : Actor(std::forward<A>(a)...) { hot::init_state(this, &Player_record); }
+    ~Player_Shell() override { hot::destroy_state(this); }
 
     void Tick(float dt) override
-    { return spp::call<void(Actor*, float)>(this, SLOT_Tick, dt); }
+    { return hot::call<void(Actor*, float)>(this, SLOT_Tick, dt); }
     void TakeDamage(float a) override
-    { return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a); }
+    { return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a); }
     void TakeDamage(Actor& src, float a) override
-    { return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, src, a); }
+    { return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, src, a); }
     // one slot for each virtual of Actor and of each interface base
 };
 ```
 
-`spp::call<Sig>(__self, slot, args...)` reads `__self->cls` and `__self->state`. It calls the member in the slot on the state. There is no wrapper function between the shell and the member. The debug line of the shell override maps to the line of the class.
+`hot::call<Sig>(__self, slot, args...)` reads `__self->cls` and `__self->state`. It calls the member in the slot on the state. There is no wrapper function between the shell and the member. The debug line of the shell override maps to the line of the class.
 
 Pure virtual functions in the base have no forwarding target. The translator reports an error when the script does not override them.
 
@@ -319,16 +319,16 @@ A script class can derive from a script class. `Enemy : Player` produces `Enemy_
 |---|---|---|
 | Native code calls a native virtual on a script object | vtable → shell stub → table slot → state member | one extra indirect call |
 | Script calls a native method | direct C++ call, resolved by Clang | none |
-| Script calls a non-virtual script method in the same generation | direct call to the hidden wrapper (`SPP_HIDDEN`) of the state member | none |
+| Script calls a non-virtual script method in the same generation | direct call to the hidden wrapper (`HOT_HIDDEN`) of the state member | none |
 | Script calls a script virtual method | table slot | one indirect call |
 | Script reads a script field | `state->field` through the state pointer | one load |
 | Native delegate calls a script method | thunk → table slot → state member | one extra indirect call |
 
-Each script method is a member of the state struct of its generation. The member starts with a generation guard. This is the stale-generation check in the member prologue. A script function, a constructor and a destructor also have a hidden wrapper (`SPP_HIDDEN`) for direct script-to-script calls.
+Each script method is a member of the state struct of its generation. The member starts with a generation guard. This is the stale-generation check in the member prologue. A script function, a constructor and a destructor also have a hidden wrapper (`HOT_HIDDEN`) for direct script-to-script calls.
 
 ```cpp
 void PlayerState_g42::heal(float amount) {
-    if (SPP_UNLIKELY(spp::active_generation != 42)) return spp::stale_call("Player::heal");
+    if (HOT_UNLIKELY(hot::active_generation != 42)) return hot::stale_call("Player::heal");
     auto* __st = this;
     __st->health = std::min(__st->health + amount, 100.0f);
 }
@@ -408,7 +408,7 @@ Raw function pointers to script code do not exist in the language. Only thunks a
 
 The core module (M8, S10). The canonical class record, the factory, the shell constructor (and so the vtables) and the thunks must stay valid for ever. So the loader loads a second instance of a generation that adds a class or a thunk: the core module (`Module::make_core`). The core never unloads. The code module of the generation gives the slots, the layout and the constructor bodies. So every retired generation can unload, generation 1 too. CLANG_FILES loads a private copy of the library. JIT adds an IR clone to a separate JITDylib. The cost is one more loaded copy for each generation that adds a class or a thunk. The tests in `tests/integration/reload/core_module_tests.cpp` run 1000 reloads with `SPP_STRESS=1`.
 
-A live object keeps three generations loaded: the generation of its layout, the generation of its record when no core exists, and the generation that ran `new` for it. A state field of a type that can hold code (`kMayHoldCode`) blocks each unload while it lives. S17 sets the flag for `std::shared_ptr` (with its control block), a raw function pointer, a member function pointer and `std::function`. Limits: the runtime does not see a code pointer that native code keeps, for example a `std::function` from a generation in an engine container. S26 gives the flag to a trivially copyable native struct that has a function pointer field: the translator finds it and sets `spp::native_holds_code<T>`. It does not find a template instance, for example `Cb<int>`.
+A live object keeps three generations loaded: the generation of its layout, the generation of its record when no core exists, and the generation that ran `new` for it. A state field of a type that can hold code (`kMayHoldCode`) blocks each unload while it lives. S17 sets the flag for `std::shared_ptr` (with its control block), a raw function pointer, a member function pointer and `std::function`. Limits: the runtime does not see a code pointer that native code keeps, for example a `std::function` from a generation in an engine container. S26 gives the flag to a trivially copyable native struct that has a function pointer field: the translator finds it and sets `hot::native_holds_code<T>`. It does not find a template instance, for example `Cb<int>`.
 
 ### 4.10 Compile and load of a generation
 
@@ -425,10 +425,10 @@ A native delegate needs a function address that stays valid across reloads. The 
 ```cpp
 // Player.thunks_3.cpp (append-only, compiled when a new bindable method appears)
 void Player__onHit__thunk(Player_Shell* self, Actor& src, float a)
-{ return spp::call<void(Player_Shell*, Actor&, float)>(self, SLOT_onHit, src, a); }
+{ return hot::call<void(Player_Shell*, Actor&, float)>(self, SLOT_onHit, src, a); }
 ```
 
-A closure that leaves script code becomes a `spp::Closure<Sig>` object. The object holds a generation pin. Its call operator checks the guard and calls the lambda. The object converts to `std::function` and to engine delegate types. The translator applies this conversion when a lambda converts to a non-script type.
+A closure that leaves script code becomes a `hot::Closure<Sig>` object. The object holds a generation pin. Its call operator checks the guard and calls the lambda. The object converts to `std::function` and to engine delegate types. The translator applies this conversion when a lambda converts to a non-script type.
 
 ### 4.12 Component inventory
 
@@ -594,7 +594,7 @@ A rejected generation ran only `script_register`. That function allocates descri
 
 ### 6.2 Safe point
 
-The runtime commits a reload at one point in the frame. The engine calls `spp::Runtime::Commit()` at that point. The requirements for that point are:
+The runtime commits a reload at one point in the frame. The engine calls `hot::Runtime::Commit()` at that point. The requirements for that point are:
 
 1. The main thread is not inside any script function.
 2. Every worker thread that can run script code is idle or blocked outside script code.
@@ -621,7 +621,7 @@ The second mode is for an engine with no frame boundary (risk 9, open question 3
 4. The commit (`CommitWindow`) closes the gate. Then it waits until the active count is zero. The commit thread gets depth one, so it can run hooks. At the end, the gate opens.
 5. All operations on the count and the gate are sequentially consistent. So an entry sees the closed gate, or the commit sees the entry. The last decrement before the commit is a release, and the commit reads zero with acquire. So the commit sees all writes of the script code before it. The entry reads the open gate with acquire, so it sees all writes of the commit.
 
-The second mode does not count object creation. Native code that creates a script object or reads its fields holds a `ScriptEntry`. A commit on a thread that is in script code fails with an error and does not wait. A script frame that waits for the commit, or for a thread at the gate, deadlocks. Change the mode only when no thread is in script code. `SPP_NO_ENTRY_COUNTERS` removes the mode at compile time.
+The second mode does not count object creation. Native code that creates a script object or reads its fields holds a `ScriptEntry`. A commit on a thread that is in script code fails with an error and does not wait. A script frame that waits for the commit, or for a thread at the gate, deadlocks. Change the mode only when no thread is in script code. `HOT_NO_ENTRY_COUNTERS` removes the mode at compile time.
 
 ### 6.4 In-flight call tracking
 
@@ -745,7 +745,7 @@ class Player : Actor {
 | `class Player : Actor { ... }` | `Player_Shell` (once) plus `PlayerState_gN`, free functions and a reflection table | runtime model |
 | `float health = 100.0;` | `float health;` in the state struct plus `init_health(self, field)` that runs `100.0f` | runtime model |
 | `[alias("hp")]` | `alias = "hp"` in the FieldInfo | runtime model |
-| `Player(FString name) : base(name)` | Done (S4). The canonical record of generation 1 builds the shell from the `base` arguments (`spp::construct_shell`). Then `Player__ctor(self, name)` runs. The `base` arguments can use parameters only. | runtime model |
+| `Player(FString name) : base(name)` | Done (S4). The canonical record of generation 1 builds the shell from the `base` arguments (`hot::construct_shell`). Then `Player__ctor(self, name)` runs. The `base` arguments can use parameters only. | runtime model |
 | `override void Tick(float dt)` | `void PlayerState_gN::Tick(float dt)`. A pointer to this member is installed in `SLOT_Tick`. No `Player__Tick` wrapper exists. The translator matches the name and the parameter types against the libclang list. A match makes the function an override, and `override` is required. | runtime model |
 | `public`, `private`, `protected` | The parser reads and stores the access word. The translator does not enforce it. | none |
 | `virtual`, `new` | `virtual` adds a slot (S6a). A call goes through `Owner__f_virt(self, args)`. `override` in a child fills the slot. A function that hides a parent function needs `new`. | runtime model |
@@ -772,7 +772,7 @@ The parser reports a clear error for each removed form: `function`, `let`, `impo
 ```spp
 class Level : Actor {
     Player* spawn(World& world) {
-        var p = new Player("Bob");            // spp::construct<Player_Shell>(FString("Bob"))
+        var p = new Player("Bob");            // hot::construct<Player_Shell>(FString("Bob"))
         world.Register(p);                    // engine owns p from here
         return p;
     }
@@ -803,7 +803,7 @@ class Level : Actor {
 }
 ```
 
-A lambda is `(T a) => ...` or `(a) => ...`. A lambda parameter without a type is `auto`. A lambda captures by value and captures `this` as a pointer. This is a semantic choice. JavaScript captures variables by reference with a garbage collector. C++ cannot give that safely. When the lambda converts to a native callable type, the translator wraps it in `spp::Closure`. The closure pins the generation and checks the guard. The lambda body is a C++ lambda inside the generation function.
+A lambda is `(T a) => ...` or `(a) => ...`. A lambda parameter without a type is `auto`. A lambda captures by value and captures `this` as a pointer. This is a semantic choice. JavaScript captures variables by reference with a garbage collector. C++ cannot give that safely. When the lambda converts to a native callable type, the translator wraps it in `hot::Closure`. The closure pins the generation and checks the guard. The lambda body is a C++ lambda inside the generation function.
 
 ### 7.6 Script-to-script inheritance and script virtual methods
 
@@ -1118,8 +1118,8 @@ Status: implemented as the proxy `spp-ls` (S14b, `DECISIONS.md` 13). The fork of
 
 **Server.** `spp-ls` is a stdio LSP 3.17 server. The code is in `src/ls/`. It runs stock `clangd` as a child process.
 - On each change `spp-ls` runs `sppc::analyze()` on the `.hot` document. It gets the parse errors, the facts (classes, members), the generated C++ and the source map.
-- It gives the generated C++ to clangd as the virtual file `<script>.hot.cpp`. The compile command comes from `spp::compile_command`.
-- `Emitter::put` receives the script offset of each leaf. A side table of segments (script offset, generated offset, length) gives both directions (M10). Synthesized text, for example `spp::deref(`, has no segment. A result in such text is dropped.
+- It gives the generated C++ to clangd as the virtual file `<script>.hot.cpp`. The compile command comes from `hot::compile_command`.
+- `Emitter::put` receives the script offset of each leaf. A side table of segments (script offset, generated offset, length) gives both directions (M10). Synthesized text, for example `hot::deref(`, has no segment. A result in such text is dropped.
 - Clang Sema gives types, overloads, native base members, templates and includes. A native script front end inside clangd needs a new Sema and takes months. The proxy avoids this.
 - A translation stops at a parse error. Completion after `this.` needs the tolerant parse (M10). A bad statement is skipped to the next `;` or `}`. The server puts the placeholder `__spp_complete` in place of the word at the cursor, translates again and asks clangd at the placeholder.
 - `sppc::rewrite_generated_names` and `sppc::rewrite_clang_message` change generated names to script names in hover text, diagnostics and completion labels.

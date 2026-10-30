@@ -1,6 +1,6 @@
 // Tests for sppc::translate with native bases that come from a class template (design risk 8,
 // experiment F1). The script names a plain class. The class can derive from a template instance.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -49,7 +49,7 @@ TEST(TemplateBaseTranslation, ExplicitSpecializationBaseGivesSlots)
     const sppc::TranslateResult r = run("class Foo : FloatBase {\n    override void Step(float v) { }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "SLOT_Step = 0,")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "struct Foo_Shell final : FloatBase, spp::ShellBase {")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "struct Foo_Shell final : FloatBase, hot::ShellBase {")) << r.cpp;
 }
 
 // A base that derives from an implicit instance of a class template gives its virtuals. The
@@ -59,7 +59,7 @@ TEST(TemplateBaseTranslation, ImplicitInstanceBaseGivesSlots)
     const sppc::TranslateResult r = run("class Foo : IntBase {\n    override void Step(int v) { }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "SLOT_Step = 0,")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "struct Foo_Shell final : IntBase, spp::ShellBase {")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "struct Foo_Shell final : IntBase, hot::ShellBase {")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "void Step(int a0) override")) << r.cpp;
 }
 
@@ -77,7 +77,7 @@ TEST(TemplateBaseTranslation, DirectInstanceBaseGivesSlots)
     const sppc::TranslateResult r = run("class Foo : Tmpl<int> {\n    override void Step(int v) { }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "SLOT_Step = 0,")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "struct Foo_Shell final : Tmpl<int32_t>, spp::ShellBase {")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "struct Foo_Shell final : Tmpl<int32_t>, hot::ShellBase {")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "void Step(int a0) override")) << r.cpp;
 }
 

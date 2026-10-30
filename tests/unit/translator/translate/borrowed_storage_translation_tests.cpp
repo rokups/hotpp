@@ -1,5 +1,5 @@
 // Tests for the borrowed-storage rule (design 7.10.4, 7.10.6) and the ERROR rows of design 5.3.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/check_translate_test_support.h"
 
 #include <gtest/gtest.h>
@@ -315,7 +315,7 @@ TEST(BorrowedStorage, VarFromAChainOfLocalsIsTyped)
     const sppc::TranslateResult r = check_translate(
         "", "    void Run(Owner& o) { var a = o.GetWeapon(); var n = a.dmg; var f = () => { int d = n; }; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "auto n = spp::deref(a).dmg;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "auto n = hot::deref(a).dmg;")) << r.cpp;
 }
 
 TEST(AddressOf, AddressOfALocalIsABorrowedLocal)

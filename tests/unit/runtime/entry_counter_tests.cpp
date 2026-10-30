@@ -3,7 +3,7 @@
 // A ScriptEntry stands for a call into script code. A CommitWindow stands for a commit.
 // A plain struct stands for the script state: the window changes it, the entries read it.
 // TSan sees a data race when the protocol does not order the accesses.
-#include "spp/runtime.h"
+#include "hot/runtime.h"
 
 #include <gtest/gtest.h>
 
@@ -20,71 +20,71 @@ using namespace std::chrono_literals;
 // The mode is global. Each test sets it with a Loader. The Loader destructor resets it.
 struct EntryCounters : ::testing::Test
 {
-    spp::Loader loader;
-    void SetUp() override { loader.set_sync_mode(spp::SyncMode::EntryCounters); }
+    hot::Loader loader;
+    void SetUp() override { loader.set_sync_mode(hot::SyncMode::EntryCounters); }
 };
 
 TEST(EntryCountersDefault, StopTheWorldCountsNothing)
 {
-    spp::Loader loader;
-    EXPECT_EQ(loader.sync_mode(), spp::SyncMode::StopTheWorld);
-    spp::ScriptEntry entry;
-    EXPECT_EQ(spp::active_entries(), 0u);
-    EXPECT_EQ(spp::entry_depth(), 0u);
+    hot::Loader loader;
+    EXPECT_EQ(loader.sync_mode(), hot::SyncMode::StopTheWorld);
+    hot::ScriptEntry entry;
+    EXPECT_EQ(hot::active_entries(), 0u);
+    EXPECT_EQ(hot::entry_depth(), 0u);
 }
 
 TEST(EntryCountersDefault, LoaderDestructorResetsTheMode)
 {
     {
-        spp::Loader loader;
-        loader.set_sync_mode(spp::SyncMode::EntryCounters);
-        EXPECT_EQ(loader.sync_mode(), spp::SyncMode::EntryCounters);
-        EXPECT_TRUE(spp::entry_counters_enabled());
+        hot::Loader loader;
+        loader.set_sync_mode(hot::SyncMode::EntryCounters);
+        EXPECT_EQ(loader.sync_mode(), hot::SyncMode::EntryCounters);
+        EXPECT_TRUE(hot::entry_counters_enabled());
     }
-    EXPECT_FALSE(spp::entry_counters_enabled());
+    EXPECT_FALSE(hot::entry_counters_enabled());
 }
 
 TEST_F(EntryCounters, NestedEntryCountsOnce)
 {
     {
-        spp::ScriptEntry outer;
-        EXPECT_EQ(spp::active_entries(), 1u);
-        EXPECT_EQ(spp::entry_depth(), 1u);
+        hot::ScriptEntry outer;
+        EXPECT_EQ(hot::active_entries(), 1u);
+        EXPECT_EQ(hot::entry_depth(), 1u);
         {
-            spp::ScriptEntry inner; // script -> native -> script on the same thread
-            EXPECT_EQ(spp::active_entries(), 1u);
-            EXPECT_EQ(spp::entry_depth(), 2u);
+            hot::ScriptEntry inner; // script -> native -> script on the same thread
+            EXPECT_EQ(hot::active_entries(), 1u);
+            EXPECT_EQ(hot::entry_depth(), 2u);
         }
-        EXPECT_EQ(spp::entry_depth(), 1u);
+        EXPECT_EQ(hot::entry_depth(), 1u);
     }
-    EXPECT_EQ(spp::active_entries(), 0u);
-    EXPECT_EQ(spp::entry_depth(), 0u);
+    EXPECT_EQ(hot::active_entries(), 0u);
+    EXPECT_EQ(hot::entry_depth(), 0u);
 }
 
 TEST_F(EntryCounters, ExceptionLeavesTheEntry)
 {
     try
     {
-        spp::ScriptEntry entry;
+        hot::ScriptEntry entry;
         throw 1;
     }
     catch (int)
     {
     }
-    EXPECT_EQ(spp::active_entries(), 0u);
-    EXPECT_EQ(spp::entry_depth(), 0u);
+    EXPECT_EQ(hot::active_entries(), 0u);
+    EXPECT_EQ(hot::entry_depth(), 0u);
 }
 
 TEST_F(EntryCounters, WindowThreadCanRunScriptCode)
 {
-    spp::CommitWindow window;
-    EXPECT_TRUE(spp::commit_window_closed());
-    EXPECT_EQ(spp::entry_depth(), 1u);
+    hot::CommitWindow window;
+    EXPECT_TRUE(hot::commit_window_closed());
+    EXPECT_EQ(hot::entry_depth(), 1u);
     {
-        spp::ScriptEntry hook; // for example an onReload hook; it must not block
-        EXPECT_EQ(spp::entry_depth(), 2u);
+        hot::ScriptEntry hook; // for example an onReload hook; it must not block
+        EXPECT_EQ(hot::entry_depth(), 2u);
     }
-    EXPECT_EQ(spp::active_entries(), 0u);
+    EXPECT_EQ(hot::active_entries(), 0u);
 }
 
 // The window waits for an entry that is in. A new entry waits for the window.
@@ -96,7 +96,7 @@ TEST_F(EntryCounters, CommitWaitsForEntryAndBlocksNewEntries)
 
     std::thread a([&]
     {
-        spp::ScriptEntry entry;
+        hot::ScriptEntry entry;
         state = 1;
         a_in.store(true);
         while (!release_a.load())
@@ -108,18 +108,18 @@ TEST_F(EntryCounters, CommitWaitsForEntryAndBlocksNewEntries)
 
     std::thread b([&]
     {
-        spp::CommitWindow window;
+        hot::CommitWindow window;
         EXPECT_EQ(state, 2); // "a" left before the window started
         std::this_thread::sleep_for(20ms);
         state = 3;
         committed.store(true);
     });
-    while (!spp::commit_window_closed())
+    while (!hot::commit_window_closed())
         std::this_thread::yield();
 
     std::thread c([&]
     {
-        spp::ScriptEntry entry; // blocks until the window ends
+        hot::ScriptEntry entry; // blocks until the window ends
         c_saw_commit.store(committed.load());
         EXPECT_EQ(state, 3);
         c_in.store(true);
@@ -134,8 +134,8 @@ TEST_F(EntryCounters, CommitWaitsForEntryAndBlocksNewEntries)
     c.join();
     EXPECT_TRUE(committed.load());
     EXPECT_TRUE(c_saw_commit.load());
-    EXPECT_EQ(spp::active_entries(), 0u);
-    EXPECT_FALSE(spp::commit_window_closed());
+    EXPECT_EQ(hot::active_entries(), 0u);
+    EXPECT_FALSE(hot::commit_window_closed());
 }
 
 // Many threads enter in a loop while another thread opens many windows.
@@ -158,20 +158,20 @@ TEST_F(EntryCounters, ManyWindowsWhileThreadsEnter)
         {
             while (!stop.load(std::memory_order_relaxed))
             {
-                spp::ScriptEntry outer;
+                hot::ScriptEntry outer;
                 const long x = shared.x;
                 {
-                    spp::ScriptEntry inner;
+                    hot::ScriptEntry inner;
                     if (shared.y != x)
                         torn.fetch_add(1);
                 }
                 entries.fetch_add(1, std::memory_order_relaxed);
             }
         });
-    const uint64_t windows0 = spp::commit_window_count();
+    const uint64_t windows0 = hot::commit_window_count();
     for (int i = 0; i < kWindows; ++i)
     {
-        spp::CommitWindow window;
+        hot::CommitWindow window;
         ++shared.x;
         ++shared.y;
     }
@@ -181,8 +181,8 @@ TEST_F(EntryCounters, ManyWindowsWhileThreadsEnter)
     EXPECT_EQ(torn.load(), 0);
     EXPECT_GT(entries.load(), 0);
     EXPECT_EQ(shared.x, kWindows);
-    EXPECT_EQ(spp::commit_window_count() - windows0, static_cast<uint64_t>(kWindows));
-    EXPECT_EQ(spp::active_entries(), 0u);
+    EXPECT_EQ(hot::commit_window_count() - windows0, static_cast<uint64_t>(kWindows));
+    EXPECT_EQ(hot::active_entries(), 0u);
 }
 
 } // namespace

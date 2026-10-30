@@ -3,8 +3,8 @@
 // The build makes two programs from this file. The definitions SAMPLE_SCRIPT_DIR and
 // SAMPLE_SCRIPT_EXT select the script variant (.hot or .cpp).
 #include "Creature.h"
-#include "spp/jit_backend.h"
-#include "spp/runtime/loader.h"
+#include "hot/jit_backend.h"
+#include "hot/runtime/loader.h"
 
 #include <cstdio>
 #include <fstream>
@@ -26,7 +26,7 @@ int main()
     text << in.rdbuf();
 
     // The program sets the compiler name, the include dirs, the resource dir and the flags.
-    spp::JitOptions options;
+    hot::JitOptions options;
     options.compiler = SAMPLE_CXX;
     options.include_dirs = {SAMPLE_SPP_INCLUDE_DIR, SAMPLE_DIR};
     options.resource_dir = SAMPLE_RESOURCE_DIR;
@@ -34,24 +34,24 @@ int main()
     std::istringstream flags(SAMPLE_CXXFLAGS);
     for (std::string flag; flags >> flag;)
         options.extra_flags.push_back(flag);
-    spp::JitBackend backend(std::move(options));
+    hot::JitBackend backend(std::move(options));
 
     // The loader is after the backend, so it is destroyed first. The script object dies before it.
-    spp::Loader loader;
-    const spp::ScriptSource source{path, text.str(), {}};
-    spp::LoadResult built = backend.load(source, 1);
+    hot::Loader loader;
+    const hot::ScriptSource source{path, text.str(), {}};
+    hot::LoadResult built = backend.load(source, 1);
     if (!built)
     {
         std::fprintf(stderr, "sample_jit: compile failed: %s\n", built.error.c_str());
         return 1;
     }
-    const spp::ReloadResult loaded = loader.load(std::move(*built.module));
+    const hot::ReloadResult loaded = loader.load(std::move(*built.module));
     if (!loaded)
     {
         std::fprintf(stderr, "sample_jit: load failed: %s\n", loaded.error.c_str());
         return 1;
     }
-    const spp::ClassEntry* entry = loader.find("Wolf");
+    const hot::ClassEntry* entry = loader.find("Wolf");
     if (!entry)
     {
         std::fprintf(stderr, "sample_jit: the class Wolf is not available\n");

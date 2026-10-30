@@ -1,4 +1,4 @@
-// A small LSP test client. It runs spp::ls::run_server() on a thread of the test process and
+// A small LSP test client. It runs hot::ls::run_server() on a thread of the test process and
 // talks to it over two pipes.
 #pragma once
 
@@ -25,19 +25,19 @@ using json = nlohmann::json;
 class LsClient
 {
 public:
-    explicit LsClient(const spp::ls::ServerOptions& options)
+    explicit LsClient(const hot::ls::ServerOptions& options)
     {
         // O_CLOEXEC: clangd must not get a copy of an end. Else the end of the input never comes.
         if (pipe2(to_server_, O_CLOEXEC) != 0 || pipe2(from_server_, O_CLOEXEC) != 0)
             std::abort();
         server_ = std::thread([this, options]
         {
-            exit_code_ = spp::ls::run_server(to_server_[0], from_server_[1], options);
+            exit_code_ = hot::ls::run_server(to_server_[0], from_server_[1], options);
             close(from_server_[1]);
         });
         reader_ = std::thread([this]
         {
-            spp::ls::MessageReader r(from_server_[0]);
+            hot::ls::MessageReader r(from_server_[0]);
             std::string body;
             while (r.read(body))
             {
@@ -113,7 +113,7 @@ private:
     void send(const json& m)
     {
         std::lock_guard<std::mutex> lock(write_mutex_);
-        spp::ls::write_message(to_server_[1], m.dump());
+        hot::ls::write_message(to_server_[1], m.dump());
     }
     json wait(const std::function<bool(const json&)>& match, int timeout_ms)
     {

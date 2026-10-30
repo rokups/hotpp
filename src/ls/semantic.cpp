@@ -6,7 +6,7 @@
 #include <map>
 #include <set>
 
-namespace spp::ls
+namespace hot::ls
 {
 
 namespace
@@ -535,4 +535,4 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
     return r;
 }
 
-} // namespace spp::ls
+} // namespace hot::ls

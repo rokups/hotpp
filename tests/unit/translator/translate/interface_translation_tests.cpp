@@ -1,6 +1,6 @@
 // Tests for sppc::translate with native interface bases (S8b, design 4.4 and 5.3): the shell,
 // the slots, the forwarders, the record and the conflict errors.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -43,7 +43,7 @@ TEST(InterfaceTranslation, ShellDerivesFromAllBasesWithOneSlotForEachVirtual)
     const sppc::TranslateResult r =
         run("class Foo : Widget, IPing, IName {\n    override int Ping(int n) { return n; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "struct Foo_Shell final : Widget, IPing, IName, spp::ShellBase {")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "struct Foo_Shell final : Widget, IPing, IName, hot::ShellBase {")) << r.cpp;
     EXPECT_TRUE(has(r.cpp,
         "SLOT_Update = 0,\n    SLOT_Size_v = 1,\n    SLOT_Ping = 2,\n    SLOT_Size_i = 3,\n"
         "    SLOT_Id = 4,\n    SLOT_COUNT = 5,"))
@@ -55,7 +55,7 @@ TEST(InterfaceTranslation, ShellDerivesFromAllBasesWithOneSlotForEachVirtual)
     EXPECT_TRUE(has(r.cpp, "static_cast<Foo_Shell*>(__spp_owner)->IName::Id();")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "static_cast<Foo_Shell*>(__spp_owner)->Widget::Size();")) << r.cpp;
     // The record lists all bases. The reload check compares the list (design 5.3).
-    EXPECT_TRUE(has(r.cpp, "\"Widget, IPing, IName\", spp::shell_layout_hash(\"Widget, IPing, IName\"")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "\"Widget, IPing, IName\", hot::shell_layout_hash(\"Widget, IPing, IName\"")) << r.cpp;
 }
 
 // An override of a const interface virtual keeps the const stub. "base.F()" of an interface
@@ -68,7 +68,7 @@ TEST(InterfaceTranslation, OverrideAndSuperCallOfAnInterfaceVirtual)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "__self->IName::Id()")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "__self->Widget::Size()")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<spp::SlotFn>(&FooState_g1::Id)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<hot::SlotFn>(&FooState_g1::Id)")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "__fwd_Id")) << r.cpp;
 }
 
@@ -79,7 +79,7 @@ TEST(InterfaceTranslation, ChildOverridesAnInterfaceVirtualOfTheRoot)
         run("class Foo : Widget, IPing {\n    override int Ping(int n) { return n; }\n}\n"
             "class Bar : Foo {\n    override int Ping(int n) { return base.Ping(n) + 1; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "struct Foo_Shell : Widget, IPing, spp::ShellBase")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "struct Foo_Shell : Widget, IPing, hot::ShellBase")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "struct Bar_Shell final : Foo_Shell {")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "Foo__base_Ping(__self, n)")) << r.cpp;
 }

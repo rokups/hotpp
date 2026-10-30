@@ -2,7 +2,7 @@
 // file of each example script. A later parser port must give the same bytes.
 // Set SPP_UPDATE_GOLDEN to write the files and pass.
 // CMake defines SPP_SOURCE_DIR.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>

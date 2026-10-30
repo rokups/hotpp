@@ -7,7 +7,7 @@
 // The class Pulse : Actor has the fields "ticks" (int) and "hits" (int), the slot "poke" and
 // the thunk "Pulse::poke". Tick adds one to "ticks". poke adds the amount to "hits".
 #include "Actor.h"
-#include "spp/runtime.h"
+#include "hot/runtime.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -29,31 +29,31 @@ enum : unsigned
     SLOT_COUNT = 4,
 };
 
-extern spp::ClassRecord Pulse_record;
+extern hot::ClassRecord Pulse_record;
 
 struct Pulse_Shell final
     : Actor
-    , spp::ShellBase
+    , hot::ShellBase
 {
     template <class... A>
-    explicit Pulse_Shell(spp::Construct, A&&... a)
+    explicit Pulse_Shell(hot::Construct, A&&... a)
         : Actor(std::forward<A>(a)...)
     {
-        spp::init_state(this, &Pulse_record);
+        hot::init_state(this, &Pulse_record);
     }
-    ~Pulse_Shell() override { spp::destroy_state(this); }
+    ~Pulse_Shell() override { hot::destroy_state(this); }
 
-    void Tick(float dt) override { return spp::call<void(Actor*, float)>(this, SLOT_Tick, dt); }
-    void TakeDamage(float a) override { return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a); }
+    void Tick(float dt) override { return hot::call<void(Actor*, float)>(this, SLOT_Tick, dt); }
+    void TakeDamage(float a) override { return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a); }
     void TakeDamage(Actor& src, float a) override
     {
-        return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, src, a);
+        return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, src, a);
     }
 };
 
 struct PulseState
 {
-    spp::ShellBase* __spp_owner; // the runtime writes it (has_owner)
+    hot::ShellBase* __spp_owner; // the runtime writes it (has_owner)
     int ticks;
     int hits;
 
@@ -72,20 +72,20 @@ static void move_int(void* dst, const void* src)
     new (dst) int(*static_cast<const int*>(src));
 }
 
-static const spp::FieldInfo Pulse_fields[] = {
+static const hot::FieldInfo Pulse_fields[] = {
     {"ticks", nullptr, typeid(int).name(), offsetof(PulseState, ticks), sizeof(int), alignof(int),
-        spp::field_flags<int>(), init_zero, move_int, nullptr},
+        hot::field_flags<int>(), init_zero, move_int, nullptr},
     {"hits", nullptr, typeid(int).name(), offsetof(PulseState, hits), sizeof(int), alignof(int),
-        spp::field_flags<int>(), init_zero, move_int, nullptr},
+        hot::field_flags<int>(), init_zero, move_int, nullptr},
 };
 
-static const spp::StateLayout Pulse_layout = {
+static const hot::StateLayout Pulse_layout = {
     "PulseState", sizeof(PulseState), alignof(PulseState), 2, Pulse_fields, true};
 
 void PulseState::Tick(float)
 {
-    if (SPP_UNLIKELY(spp::active_generation != g_gen))
-        return spp::stale_call("Pulse::Tick");
+    if (HOT_UNLIKELY(hot::active_generation != g_gen))
+        return hot::stale_call("Pulse::Tick");
     ticks += 1;
 }
 
@@ -101,25 +101,25 @@ void PulseState::__fwd_TakeDamage_Af(Actor& src, float amount)
 
 void PulseState::poke(int amount)
 {
-    if (SPP_UNLIKELY(spp::active_generation != g_gen))
-        return spp::stale_call("Pulse::poke");
+    if (HOT_UNLIKELY(hot::active_generation != g_gen))
+        return hot::stale_call("Pulse::poke");
     hits += amount;
 }
 
 static void Pulse__poke__thunk(Actor* a, int amount)
 {
     auto* self = static_cast<Pulse_Shell*>(a);
-    return spp::call<void(Actor*, int)>(self, SLOT_poke, amount);
+    return hot::call<void(Actor*, int)>(self, SLOT_poke, amount);
 }
 
-static const spp::SlotFn Pulse_slots[SLOT_COUNT] = {
-    reinterpret_cast<spp::SlotFn>(&PulseState::Tick),
-    reinterpret_cast<spp::SlotFn>(&PulseState::__fwd_TakeDamage_f),
-    reinterpret_cast<spp::SlotFn>(&PulseState::__fwd_TakeDamage_Af),
-    reinterpret_cast<spp::SlotFn>(&PulseState::poke),
+static const hot::SlotFn Pulse_slots[SLOT_COUNT] = {
+    reinterpret_cast<hot::SlotFn>(&PulseState::Tick),
+    reinterpret_cast<hot::SlotFn>(&PulseState::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&PulseState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&PulseState::poke),
 };
 
-spp::ClassRecord Pulse_record = {
+hot::ClassRecord Pulse_record = {
     "Pulse",
     0,
     Pulse_slots,
@@ -127,18 +127,18 @@ spp::ClassRecord Pulse_record = {
     &Pulse_layout,
     nullptr,
     "Actor",
-    spp::shell_layout_hash("Actor", sizeof(Pulse_Shell), alignof(Pulse_Shell), 3),
+    hot::shell_layout_hash("Actor", sizeof(Pulse_Shell), alignof(Pulse_Shell), 3),
 };
 
-static spp::Instance Pulse_create()
+static hot::Instance Pulse_create()
 {
-    auto* p = new Pulse_Shell(spp::Construct{}, std::string("Pulse"));
+    auto* p = new Pulse_Shell(hot::Construct{}, std::string("Pulse"));
     return {static_cast<Actor*>(p), p};
 }
 
-extern "C" void script_register(spp::Registry& reg)
+extern "C" void script_register(hot::Registry& reg)
 {
-    g_gen = spp::active_generation + 1;
+    g_gen = hot::active_generation + 1;
     Pulse_record.generation = g_gen;
     reg.add(&Pulse_record, &Pulse_create);
     reg.add_thunk("Pulse::poke", reinterpret_cast<void*>(&Pulse__poke__thunk));

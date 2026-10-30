@@ -1,7 +1,7 @@
 // Tests of the statements throw, try, catch and finally with the backend that SPP_BACKEND selected.
 //
 // CMake defines the macro SPP_SOURCE_DIR.
-#include "spp/backend.h"
+#include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
@@ -22,7 +22,7 @@ using test_support::source;
 // The statements throw, try and catch translate to C++ that compiles and runs.
 TEST_P(BackendTests, TryCatchThrowRun)
 {
-    const spp::ScriptSource src = {"exc.hot", R"(
+    const hot::ScriptSource src = {"exc.hot", R"(
 using "Actor.h";
 using <stdexcept>;
 
@@ -55,7 +55,7 @@ class Player : Actor {
     override void TakeDamage(Actor& source, float amount) {}
 }
 )"};
-    spp::LoadResult r = backend->load(src, 1);
+    hot::LoadResult r = backend->load(src, 1);
     ASSERT_TRUE(r) << r.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
@@ -68,7 +68,7 @@ class Player : Actor {
 // a finally body is dropped. Nested finally blocks run from the inside out.
 TEST_P(BackendTests, TryFinallyRun)
 {
-    const spp::ScriptSource src = {"fin.hot", R"(
+    const hot::ScriptSource src = {"fin.hot", R"(
 using "Actor.h";
 
 class Player : Actor {
@@ -111,7 +111,7 @@ class Player : Actor {
     override void TakeDamage(Actor& source, float amount) {}
 }
 )"};
-    spp::LoadResult r = backend->load(src, 1);
+    hot::LoadResult r = backend->load(src, 1);
     ASSERT_TRUE(r) << r.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));

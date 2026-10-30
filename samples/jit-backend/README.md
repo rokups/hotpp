@@ -1,6 +1,6 @@
 # Sample: jit-backend
 
-This sample shows a program that builds `spp::JitBackend` itself.
+This sample shows a program that builds `hot::JitBackend` itself.
 The backend translates the script in memory, compiles it in memory with the Clang library
 and loads the code with LLVM ORC. No process starts. The backend writes no file.
 
@@ -26,18 +26,18 @@ compiler (the object library `jit_backend_cpp_scripts_plain`). This shows that a
 
 ## How it works
 
-1. The program fills `spp::JitOptions` (see the table below).
-2. `spp::JitBackend backend(options)` makes the backend. It is declared before the loader.
+1. The program fills `hot::JitOptions` (see the table below).
+2. `hot::JitBackend backend(options)` makes the backend. It is declared before the loader.
 3. `backend.load(source, 1)` translates the script, compiles it in memory and loads the code with
-   LLVM ORC. Each call makes a new JITDylib. It returns a `spp::LoadResult`.
-4. `spp::Loader::load` takes the module. The program makes a `Wolf` and calls `Tick` three times.
+   LLVM ORC. Each call makes a new JITDylib. It returns a `hot::LoadResult`.
+4. `hot::Loader::load` takes the module. The program makes a `Wolf` and calls `Tick` three times.
 5. The module keeps the JIT alive, so the code stays valid until the module goes.
 
 ## Files
 
 - `Creature.h`: the host class. It is header-only.
 - `script/wolf.hot` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`.
-- `main.cpp`: the program. It fills `spp::JitOptions`, compiles the script, loads it
+- `main.cpp`: the program. It fills `hot::JitOptions`, compiles the script, loads it
   and calls `Tick` three times.
 - `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
 

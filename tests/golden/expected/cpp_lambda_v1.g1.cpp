@@ -8,7 +8,7 @@
 #include <typeinfo>
 #include <utility>
 
-#include "spp/runtime.h"
+#include "hot/runtime.h"
 
 #line 14 "cpp_lambda_v1.cpp.cpp"
 
@@ -16,7 +16,7 @@ constexpr uint32_t GEN = 1;
 struct SppModule;
 // The module state block of this generation. The loader sets the slot.
 static void* SppModule_slot = nullptr;
-[[maybe_unused]] SPP_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+[[maybe_unused]] HOT_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
 struct Lamp_Shell;
 using Lamp = Lamp_Shell;
 #line 3 "cpp_lambda_v1.cpp"
@@ -35,12 +35,12 @@ static void SppModule__init_calls(void*, void* f) { using T = int; new (f) T(0);
 #line 36 "cpp_lambda_v1.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static const spp::FieldInfo SppModule_fields[] = {
-    {"calls", nullptr, spp::type_key<int>(), offsetof(SppModule, calls), sizeof(int),
-     alignof(int), spp::field_flags<int>(), SppModule__init_calls, spp::move_field<int>, spp::field_destroyer<int>()},
+static const hot::FieldInfo SppModule_fields[] = {
+    {"calls", nullptr, hot::type_key<int>(), offsetof(SppModule, calls), sizeof(int),
+     alignof(int), hot::field_flags<int>(), SppModule__init_calls, hot::move_field<int>, hot::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
-static const spp::StateLayout SppModule_layout = {
+static const hot::StateLayout SppModule_layout = {
     "SppModule", sizeof(SppModule), alignof(SppModule), 1, SppModule_fields,
 };
 
@@ -56,22 +56,22 @@ enum : unsigned {
     SLOT_COUNT = 5,
 };
 
-extern spp::ClassRecord Lamp_record;
+extern hot::ClassRecord Lamp_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
-struct Lamp_Shell final : Actor, spp::ShellBase {
+struct Lamp_Shell final : Actor, hot::ShellBase {
 #line 9 "cpp_lambda_v1.cpp"
     template <class... A>
 #line 9 "cpp_lambda_v1.cpp"
-    explicit Lamp_Shell(spp::Construct, A&&... a) : Actor(std::forward<A>(a)...)
+    explicit Lamp_Shell(hot::Construct, A&&... a) : Actor(std::forward<A>(a)...)
 #line 9 "cpp_lambda_v1.cpp"
     {
 #line 9 "cpp_lambda_v1.cpp"
-        spp::init_state(this, &Lamp_record);
+        hot::init_state(this, &Lamp_record);
 #line 9 "cpp_lambda_v1.cpp"
     }
 #line 9 "cpp_lambda_v1.cpp"
-    ~Lamp_Shell() override { spp::destroy_state(this); }
+    ~Lamp_Shell() override { hot::destroy_state(this); }
 #line 76 "cpp_lambda_v1.cpp.cpp"
 
 #line 9 "cpp_lambda_v1.cpp"
@@ -79,7 +79,7 @@ struct Lamp_Shell final : Actor, spp::ShellBase {
 #line 9 "cpp_lambda_v1.cpp"
     {
 #line 9 "cpp_lambda_v1.cpp"
-        return spp::call<void(Actor*, float)>(this, SLOT_Tick, a0);
+        return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 9 "cpp_lambda_v1.cpp"
     }
 #line 86 "cpp_lambda_v1.cpp.cpp"
@@ -89,7 +89,7 @@ struct Lamp_Shell final : Actor, spp::ShellBase {
 #line 9 "cpp_lambda_v1.cpp"
     {
 #line 9 "cpp_lambda_v1.cpp"
-        return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
+        return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 9 "cpp_lambda_v1.cpp"
     }
 #line 96 "cpp_lambda_v1.cpp.cpp"
@@ -99,7 +99,7 @@ struct Lamp_Shell final : Actor, spp::ShellBase {
 #line 9 "cpp_lambda_v1.cpp"
     {
 #line 9 "cpp_lambda_v1.cpp"
-        return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
+        return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 9 "cpp_lambda_v1.cpp"
     }
 #line 106 "cpp_lambda_v1.cpp.cpp"
@@ -107,7 +107,7 @@ struct Lamp_Shell final : Actor, spp::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct LampState_g1 {
-    spp::ShellBase* __spp_owner;
+    hot::ShellBase* __spp_owner;
     int base_level;
     int level;
     int count;
@@ -127,7 +127,7 @@ struct LampState_g1 {
     bool self_is_set(Actor * a);
     // Not overridden: call the implementation of Actor.
 #line 9 "cpp_lambda_v1.cpp"
-    SPP_NODEBUG void __fwd_TakeDamage_f(float a0)
+    HOT_NODEBUG void __fwd_TakeDamage_f(float a0)
 #line 9 "cpp_lambda_v1.cpp"
     {
 #line 9 "cpp_lambda_v1.cpp"
@@ -137,7 +137,7 @@ struct LampState_g1 {
 #line 138 "cpp_lambda_v1.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 9 "cpp_lambda_v1.cpp"
-    SPP_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
+    HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
 #line 9 "cpp_lambda_v1.cpp"
     {
 #line 9 "cpp_lambda_v1.cpp"
@@ -181,57 +181,57 @@ static void Lamp__init_kept_ref(void*, void* f) { using T = std::function<int ()
 static void Lamp__init_kept_init(void*, void* f) { using T = std::function<int ()>; new (f) T(); }
 #line 183 "cpp_lambda_v1.cpp.cpp"
 #line 66 "cpp_lambda_v1.cpp"
-SPP_HIDDEN LampState_g1* state_of(Lamp_Shell* __self);
+HOT_HIDDEN LampState_g1* state_of(Lamp_Shell* __self);
 static void Lamp__init_from_init(void* st, void* f) { [[maybe_unused]] auto* __self = static_cast<Lamp_Shell*>(static_cast<LampState_g1*>(st)->__spp_owner); using T = std::function<int ()>; new (f) T([__self] { return state_of(__self)->count + state_of(__self)->level; }); }
 #line 187 "cpp_lambda_v1.cpp.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static_assert(offsetof(LampState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
-static const spp::FieldInfo Lamp_fields[] = {
-    {"base_level", nullptr, spp::type_key<int>(), offsetof(LampState_g1, base_level), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Lamp__init_base_level, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"level", nullptr, spp::type_key<int>(), offsetof(LampState_g1, level), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Lamp__init_level, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"count", nullptr, spp::type_key<int>(), offsetof(LampState_g1, count), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Lamp__init_count, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"sum", nullptr, spp::type_key<int>(), offsetof(LampState_g1, sum), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Lamp__init_sum, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"gen", nullptr, spp::type_key<int>(), offsetof(LampState_g1, gen), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Lamp__init_gen, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"nested", nullptr, spp::type_key<int>(), offsetof(LampState_g1, nested), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Lamp__init_nested, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"flag", nullptr, spp::type_key<bool>(), offsetof(LampState_g1, flag), sizeof(bool),
-     alignof(bool), spp::field_flags<bool>(), Lamp__init_flag, spp::move_field<bool>, spp::field_destroyer<bool>()},
-    {"stored_result", nullptr, spp::type_key<int>(), offsetof(LampState_g1, stored_result), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Lamp__init_stored_result, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"stored", nullptr, spp::type_key<std::function<int ()>>(), offsetof(LampState_g1, stored), sizeof(std::function<int ()>),
-     alignof(std::function<int ()>), spp::field_flags<std::function<int ()>>(), Lamp__init_stored, spp::move_field<std::function<int ()>>, spp::field_destroyer<std::function<int ()>>()},
-    {"kept_ref", nullptr, spp::type_key<std::function<int ()>>(), offsetof(LampState_g1, kept_ref), sizeof(std::function<int ()>),
-     alignof(std::function<int ()>), spp::field_flags<std::function<int ()>>(), Lamp__init_kept_ref, spp::move_field<std::function<int ()>>, spp::field_destroyer<std::function<int ()>>()},
-    {"kept_init", nullptr, spp::type_key<std::function<int ()>>(), offsetof(LampState_g1, kept_init), sizeof(std::function<int ()>),
-     alignof(std::function<int ()>), spp::field_flags<std::function<int ()>>(), Lamp__init_kept_init, spp::move_field<std::function<int ()>>, spp::field_destroyer<std::function<int ()>>()},
-    {"from_init", nullptr, spp::type_key<std::function<int ()>>(), offsetof(LampState_g1, from_init), sizeof(std::function<int ()>),
-     alignof(std::function<int ()>), spp::field_flags<std::function<int ()>>(), Lamp__init_from_init, spp::move_field<std::function<int ()>>, spp::field_destroyer<std::function<int ()>>()},
+static const hot::FieldInfo Lamp_fields[] = {
+    {"base_level", nullptr, hot::type_key<int>(), offsetof(LampState_g1, base_level), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Lamp__init_base_level, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"level", nullptr, hot::type_key<int>(), offsetof(LampState_g1, level), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Lamp__init_level, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"count", nullptr, hot::type_key<int>(), offsetof(LampState_g1, count), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Lamp__init_count, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"sum", nullptr, hot::type_key<int>(), offsetof(LampState_g1, sum), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Lamp__init_sum, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"gen", nullptr, hot::type_key<int>(), offsetof(LampState_g1, gen), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Lamp__init_gen, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"nested", nullptr, hot::type_key<int>(), offsetof(LampState_g1, nested), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Lamp__init_nested, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"flag", nullptr, hot::type_key<bool>(), offsetof(LampState_g1, flag), sizeof(bool),
+     alignof(bool), hot::field_flags<bool>(), Lamp__init_flag, hot::move_field<bool>, hot::field_destroyer<bool>()},
+    {"stored_result", nullptr, hot::type_key<int>(), offsetof(LampState_g1, stored_result), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Lamp__init_stored_result, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"stored", nullptr, hot::type_key<std::function<int ()>>(), offsetof(LampState_g1, stored), sizeof(std::function<int ()>),
+     alignof(std::function<int ()>), hot::field_flags<std::function<int ()>>(), Lamp__init_stored, hot::move_field<std::function<int ()>>, hot::field_destroyer<std::function<int ()>>()},
+    {"kept_ref", nullptr, hot::type_key<std::function<int ()>>(), offsetof(LampState_g1, kept_ref), sizeof(std::function<int ()>),
+     alignof(std::function<int ()>), hot::field_flags<std::function<int ()>>(), Lamp__init_kept_ref, hot::move_field<std::function<int ()>>, hot::field_destroyer<std::function<int ()>>()},
+    {"kept_init", nullptr, hot::type_key<std::function<int ()>>(), offsetof(LampState_g1, kept_init), sizeof(std::function<int ()>),
+     alignof(std::function<int ()>), hot::field_flags<std::function<int ()>>(), Lamp__init_kept_init, hot::move_field<std::function<int ()>>, hot::field_destroyer<std::function<int ()>>()},
+    {"from_init", nullptr, hot::type_key<std::function<int ()>>(), offsetof(LampState_g1, from_init), sizeof(std::function<int ()>),
+     alignof(std::function<int ()>), hot::field_flags<std::function<int ()>>(), Lamp__init_from_init, hot::move_field<std::function<int ()>>, hot::field_destroyer<std::function<int ()>>()},
 };
 #pragma clang diagnostic pop
 
-static const spp::StateLayout Lamp_layout = {
+static const hot::StateLayout Lamp_layout = {
     "LampState_g1", sizeof(LampState_g1), alignof(LampState_g1), 12, Lamp_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-SPP_HIDDEN LampState_g1* state_of(Lamp_Shell* __self)
+HOT_HIDDEN LampState_g1* state_of(Lamp_Shell* __self)
 {
     return static_cast<LampState_g1*>(__self->state);
 }
 
-[[maybe_unused]] SPP_HIDDEN static void Lamp__bump(Lamp_Shell* __self, int n);
-[[maybe_unused]] SPP_HIDDEN static bool Lamp__self_is_set(Lamp_Shell* __self, Actor * a);
+[[maybe_unused]] HOT_HIDDEN static void Lamp__bump(Lamp_Shell* __self, int n);
+[[maybe_unused]] HOT_HIDDEN static bool Lamp__self_is_set(Lamp_Shell* __self, Actor * a);
 
-[[maybe_unused]] SPP_HIDDEN static void Lamp__ctor(Lamp_Shell* __self);
+[[maybe_unused]] HOT_HIDDEN static void Lamp__ctor(Lamp_Shell* __self);
 #line 13 "cpp_lambda_v1.cpp"
-[[maybe_unused]] SPP_HIDDEN static auto Lamp__super_args()
+[[maybe_unused]] HOT_HIDDEN static auto Lamp__super_args()
 #line 13 "cpp_lambda_v1.cpp"
 {
 #line 13 "cpp_lambda_v1.cpp"
@@ -239,7 +239,7 @@ SPP_HIDDEN LampState_g1* state_of(Lamp_Shell* __self)
 #line 13 "cpp_lambda_v1.cpp"
 }
 #line 13 "cpp_lambda_v1.cpp"
-SPP_HIDDEN static auto Lamp__plan()
+HOT_HIDDEN static auto Lamp__plan()
 #line 13 "cpp_lambda_v1.cpp"
 {
 #line 13 "cpp_lambda_v1.cpp"
@@ -249,7 +249,7 @@ SPP_HIDDEN static auto Lamp__plan()
 #line 13 "cpp_lambda_v1.cpp"
 template <class Chain>
 #line 13 "cpp_lambda_v1.cpp"
-SPP_HIDDEN static void Lamp__ctor_chain(Lamp_Shell* __self, [[maybe_unused]] Chain& __chain)
+HOT_HIDDEN static void Lamp__ctor_chain(Lamp_Shell* __self, [[maybe_unused]] Chain& __chain)
 #line 13 "cpp_lambda_v1.cpp"
 {
 #line 13 "cpp_lambda_v1.cpp"
@@ -261,7 +261,7 @@ using Lamp_SuperArgs = decltype(Lamp__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
 #line 9 "cpp_lambda_v1.cpp"
-SPP_NODEBUG static spp::ShellBase* Lamp__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Lamp__construct(const char* key, const void* args)
 #line 9 "cpp_lambda_v1.cpp"
 {
 #line 9 "cpp_lambda_v1.cpp"
@@ -269,7 +269,7 @@ SPP_NODEBUG static spp::ShellBase* Lamp__construct(const char* key, const void* 
 #line 9 "cpp_lambda_v1.cpp"
         const auto& t = *static_cast<const Lamp_SuperArgs*>(args);
 #line 9 "cpp_lambda_v1.cpp"
-        return std::apply([](auto&... x) -> spp::ShellBase* { return new Lamp_Shell(spp::Construct{}, x...); }, t);
+        return std::apply([](auto&... x) -> hot::ShellBase* { return new Lamp_Shell(hot::Construct{}, x...); }, t);
 #line 9 "cpp_lambda_v1.cpp"
     }
 #line 9 "cpp_lambda_v1.cpp"
@@ -281,13 +281,13 @@ SPP_NODEBUG static spp::ShellBase* Lamp__construct(const char* key, const void* 
 static const char* const Lamp__construct_keys[] = {typeid(Lamp_SuperArgs).name(), nullptr};
 
 #line 13 "cpp_lambda_v1.cpp"
-SPP_HIDDEN static Lamp_Shell* Lamp__build([[maybe_unused]] bool __note)
+HOT_HIDDEN static Lamp_Shell* Lamp__build([[maybe_unused]] bool __note)
 #line 13 "cpp_lambda_v1.cpp"
 {
 #line 13 "cpp_lambda_v1.cpp"
     auto __plan = Lamp__plan();
 #line 13 "cpp_lambda_v1.cpp"
-    auto* __self = static_cast<Lamp_Shell*>(spp::construct_shell(&Lamp_record, typeid(Lamp_SuperArgs).name(), &__plan.first, __note));
+    auto* __self = static_cast<Lamp_Shell*>(hot::construct_shell(&Lamp_record, typeid(Lamp_SuperArgs).name(), &__plan.first, __note));
 #line 13 "cpp_lambda_v1.cpp"
     try {
 #line 13 "cpp_lambda_v1.cpp"
@@ -306,7 +306,7 @@ SPP_HIDDEN static Lamp_Shell* Lamp__build([[maybe_unused]] bool __note)
 }
 #line 308 "cpp_lambda_v1.cpp.cpp"
 #line 13 "cpp_lambda_v1.cpp"
-[[maybe_unused]] SPP_HIDDEN static Lamp_Shell* Lamp__new()
+[[maybe_unused]] HOT_HIDDEN static Lamp_Shell* Lamp__new()
 #line 13 "cpp_lambda_v1.cpp"
 {
 #line 13 "cpp_lambda_v1.cpp"
@@ -318,7 +318,7 @@ SPP_HIDDEN static Lamp_Shell* Lamp__build([[maybe_unused]] bool __note)
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 13 "cpp_lambda_v1.cpp"
-SPP_NODEBUG static spp::ShellBase* Lamp__new_default()
+HOT_NODEBUG static hot::ShellBase* Lamp__new_default()
 #line 13 "cpp_lambda_v1.cpp"
 {
 #line 13 "cpp_lambda_v1.cpp"
@@ -328,7 +328,7 @@ SPP_NODEBUG static spp::ShellBase* Lamp__new_default()
 #line 329 "cpp_lambda_v1.cpp.cpp"
 
 #line 13 "cpp_lambda_v1.cpp"
-[[maybe_unused]] SPP_HIDDEN static void Lamp__ctor(Lamp_Shell* __self)
+[[maybe_unused]] HOT_HIDDEN static void Lamp__ctor(Lamp_Shell* __self)
 #line 13 "cpp_lambda_v1.cpp"
 {
 #line 13 "cpp_lambda_v1.cpp"
@@ -341,17 +341,17 @@ void LampState_g1::ctor()
 #line 13 "cpp_lambda_v1.cpp"
 {
 #line 13 "cpp_lambda_v1.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 13 "cpp_lambda_v1.cpp"
-        spp::stale_call("Lamp::Lamp");
+        hot::stale_call("Lamp::Lamp");
 #line 13 "cpp_lambda_v1.cpp"
         return;
 #line 13 "cpp_lambda_v1.cpp"
     }
 #line 13 "cpp_lambda_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(this->__spp_owner);
 #line 13 "cpp_lambda_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 14 "cpp_lambda_v1.cpp"
 
         auto init = [=] { return state_of(__self)->base_level * 2; };
@@ -366,17 +366,17 @@ void LampState_g1::Tick(float dt)
 #line 19 "cpp_lambda_v1.cpp"
 {
 #line 19 "cpp_lambda_v1.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 19 "cpp_lambda_v1.cpp"
-        spp::stale_call("Lamp::Tick(float)");
+        hot::stale_call("Lamp::Tick(float)");
 #line 19 "cpp_lambda_v1.cpp"
         return;
 #line 19 "cpp_lambda_v1.cpp"
     }
 #line 19 "cpp_lambda_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(this->__spp_owner);
 #line 19 "cpp_lambda_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 20 "cpp_lambda_v1.cpp"
 
         // The capture [this] with a field, a script method and a native base member.
@@ -413,7 +413,7 @@ void LampState_g1::Tick(float dt)
 #line 414 "cpp_lambda_v1.cpp.cpp"
 
 #line 51 "cpp_lambda_v1.cpp"
-[[maybe_unused]] SPP_HIDDEN static void Lamp__bump(Lamp_Shell* __self, int n)
+[[maybe_unused]] HOT_HIDDEN static void Lamp__bump(Lamp_Shell* __self, int n)
 #line 51 "cpp_lambda_v1.cpp"
 {
 #line 51 "cpp_lambda_v1.cpp"
@@ -426,17 +426,17 @@ void LampState_g1::bump(int n)
 #line 51 "cpp_lambda_v1.cpp"
 {
 #line 51 "cpp_lambda_v1.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 51 "cpp_lambda_v1.cpp"
-        spp::stale_call("Lamp::bump");
+        hot::stale_call("Lamp::bump");
 #line 51 "cpp_lambda_v1.cpp"
         return;
 #line 51 "cpp_lambda_v1.cpp"
     }
 #line 51 "cpp_lambda_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(this->__spp_owner);
 #line 51 "cpp_lambda_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 51 "cpp_lambda_v1.cpp"
  count += n; 
 #line 51 "cpp_lambda_v1.cpp"
@@ -444,7 +444,7 @@ void LampState_g1::bump(int n)
 #line 445 "cpp_lambda_v1.cpp.cpp"
 
 #line 52 "cpp_lambda_v1.cpp"
-[[maybe_unused]] SPP_HIDDEN static bool Lamp__self_is_set(Lamp_Shell* __self, Actor * a)
+[[maybe_unused]] HOT_HIDDEN static bool Lamp__self_is_set(Lamp_Shell* __self, Actor * a)
 #line 52 "cpp_lambda_v1.cpp"
 {
 #line 52 "cpp_lambda_v1.cpp"
@@ -457,17 +457,17 @@ bool LampState_g1::self_is_set(Actor * a)
 #line 52 "cpp_lambda_v1.cpp"
 {
 #line 52 "cpp_lambda_v1.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 52 "cpp_lambda_v1.cpp"
-        spp::stale_call("Lamp::self_is_set");
+        hot::stale_call("Lamp::self_is_set");
 #line 52 "cpp_lambda_v1.cpp"
         return bool();
 #line 52 "cpp_lambda_v1.cpp"
     }
 #line 52 "cpp_lambda_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(this->__spp_owner);
 #line 52 "cpp_lambda_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 52 "cpp_lambda_v1.cpp"
  return a != nullptr; 
 #line 52 "cpp_lambda_v1.cpp"
@@ -481,9 +481,9 @@ static void Lamp__bump__thunk(Actor* __a, int n)
 #line 51 "cpp_lambda_v1.cpp"
 {
 #line 51 "cpp_lambda_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(__a);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(__a);
 #line 51 "cpp_lambda_v1.cpp"
-    return spp::call<void(Actor*, int)>(__self, SLOT_bump, n);
+    return hot::call<void(Actor*, int)>(__self, SLOT_bump, n);
 #line 51 "cpp_lambda_v1.cpp"
 }
 #line 490 "cpp_lambda_v1.cpp.cpp"
@@ -495,37 +495,37 @@ static bool Lamp__self_is_set__thunk(Actor* __a, Actor * a)
 #line 52 "cpp_lambda_v1.cpp"
 {
 #line 52 "cpp_lambda_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(__a);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(__a);
 #line 52 "cpp_lambda_v1.cpp"
-    return spp::call<bool(Actor*, Actor *)>(__self, SLOT_self_is_set, a);
+    return hot::call<bool(Actor*, Actor *)>(__self, SLOT_self_is_set, a);
 #line 52 "cpp_lambda_v1.cpp"
 }
 #line 504 "cpp_lambda_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
-static const spp::SlotFn Lamp_slots[SLOT_COUNT] = {
-    reinterpret_cast<spp::SlotFn>(&LampState_g1::Tick),
-    reinterpret_cast<spp::SlotFn>(&LampState_g1::__fwd_TakeDamage_f),
-    reinterpret_cast<spp::SlotFn>(&LampState_g1::__fwd_TakeDamage_Af),
-    reinterpret_cast<spp::SlotFn>(&LampState_g1::bump),
-    reinterpret_cast<spp::SlotFn>(&LampState_g1::self_is_set),
+static const hot::SlotFn Lamp_slots[SLOT_COUNT] = {
+    reinterpret_cast<hot::SlotFn>(&LampState_g1::Tick),
+    reinterpret_cast<hot::SlotFn>(&LampState_g1::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&LampState_g1::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&LampState_g1::bump),
+    reinterpret_cast<hot::SlotFn>(&LampState_g1::self_is_set),
 };
 
-spp::ClassRecord Lamp_record = {
+hot::ClassRecord Lamp_record = {
     "Lamp", GEN, Lamp_slots, SLOT_COUNT, &Lamp_layout, nullptr,
-    "Actor", spp::shell_layout_hash("Actor", sizeof(Lamp_Shell), alignof(Lamp_Shell), 3),
+    "Actor", hot::shell_layout_hash("Actor", sizeof(Lamp_Shell), alignof(Lamp_Shell), 3),
     nullptr,
     &Lamp__construct, typeid(Lamp_SuperArgs).name(), &Lamp__new_default, nullptr, nullptr,
 };
 
 #line 9 "cpp_lambda_v1.cpp"
-SPP_NODEBUG static spp::Instance Lamp_create()
+HOT_NODEBUG static hot::Instance Lamp_create()
 #line 9 "cpp_lambda_v1.cpp"
 {
 #line 9 "cpp_lambda_v1.cpp"
-    spp::ScriptEntry entry;  // the creation is an entry (S27)
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 9 "cpp_lambda_v1.cpp"
-    spp::ShellBase* s = nullptr;
+    hot::ShellBase* s = nullptr;
 #line 9 "cpp_lambda_v1.cpp"
     if (Lamp_record.new_default) {
 #line 9 "cpp_lambda_v1.cpp"
@@ -546,7 +546,7 @@ SPP_NODEBUG static spp::Instance Lamp_create()
 }
 #line 548 "cpp_lambda_v1.cpp.cpp"
 
-extern "C" void script_register(spp::Registry& reg)
+extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_module_state(&SppModule_layout, &SppModule_slot);
     reg.add(&Lamp_record, &Lamp_create);

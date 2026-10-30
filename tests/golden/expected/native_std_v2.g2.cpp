@@ -8,7 +8,7 @@
 #include <typeinfo>
 #include <utility>
 
-#include "spp/runtime.h"
+#include "hot/runtime.h"
 
 #line 3 "native_std_v2.hot"
 #include <vector>
@@ -35,22 +35,22 @@ enum : unsigned {
     SLOT_COUNT = 3,
 };
 
-extern spp::ClassRecord Tracker_record;
+extern hot::ClassRecord Tracker_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
-struct Tracker_Shell final : Actor, spp::ShellBase {
+struct Tracker_Shell final : Actor, hot::ShellBase {
 #line 10 "native_std_v2.hot"
     template <class... A>
 #line 10 "native_std_v2.hot"
-    explicit Tracker_Shell(spp::Construct, A&&... a) : Actor(std::forward<A>(a)...)
+    explicit Tracker_Shell(hot::Construct, A&&... a) : Actor(std::forward<A>(a)...)
 #line 10 "native_std_v2.hot"
     {
 #line 10 "native_std_v2.hot"
-        spp::init_state(this, &Tracker_record);
+        hot::init_state(this, &Tracker_record);
 #line 10 "native_std_v2.hot"
     }
 #line 10 "native_std_v2.hot"
-    ~Tracker_Shell() override { spp::destroy_state(this); }
+    ~Tracker_Shell() override { hot::destroy_state(this); }
 #line 55 "native_std_v2.hot.cpp"
 
 #line 10 "native_std_v2.hot"
@@ -58,7 +58,7 @@ struct Tracker_Shell final : Actor, spp::ShellBase {
 #line 10 "native_std_v2.hot"
     {
 #line 10 "native_std_v2.hot"
-        return spp::call<void(Actor*, float)>(this, SLOT_Tick, a0);
+        return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 10 "native_std_v2.hot"
     }
 #line 65 "native_std_v2.hot.cpp"
@@ -68,7 +68,7 @@ struct Tracker_Shell final : Actor, spp::ShellBase {
 #line 10 "native_std_v2.hot"
     {
 #line 10 "native_std_v2.hot"
-        return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
+        return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 10 "native_std_v2.hot"
     }
 #line 75 "native_std_v2.hot.cpp"
@@ -78,7 +78,7 @@ struct Tracker_Shell final : Actor, spp::ShellBase {
 #line 10 "native_std_v2.hot"
     {
 #line 10 "native_std_v2.hot"
-        return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
+        return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 10 "native_std_v2.hot"
     }
 #line 85 "native_std_v2.hot.cpp"
@@ -86,7 +86,7 @@ struct Tracker_Shell final : Actor, spp::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct TrackerState_g2 {
-    spp::ShellBase* __spp_owner;
+    hot::ShellBase* __spp_owner;
     std::string title;
     std::vector<int32_t> history;
     float dist;
@@ -98,7 +98,7 @@ struct TrackerState_g2 {
     void Tick(float dt);
     // Not overridden: call the implementation of Actor.
 #line 10 "native_std_v2.hot"
-    SPP_NODEBUG void __fwd_TakeDamage_f(float a0)
+    HOT_NODEBUG void __fwd_TakeDamage_f(float a0)
 #line 10 "native_std_v2.hot"
     {
 #line 10 "native_std_v2.hot"
@@ -108,7 +108,7 @@ struct TrackerState_g2 {
 #line 109 "native_std_v2.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 10 "native_std_v2.hot"
-    SPP_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
+    HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
 #line 10 "native_std_v2.hot"
     {
 #line 10 "native_std_v2.hot"
@@ -143,37 +143,37 @@ static void Tracker__init_note(void*, void* f) { using T = std::string; new (f) 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static_assert(offsetof(TrackerState_g2, __spp_owner) == 0, "the owner pointer must be the first member");
-static const spp::FieldInfo Tracker_fields[] = {
+static const hot::FieldInfo Tracker_fields[] = {
     {"title", "label", typeid(std::string).name(), offsetof(TrackerState_g2, title), sizeof(std::string),
-     alignof(std::string), spp::field_flags<std::string>(), Tracker__init_title, spp::move_field<std::string>, spp::field_destroyer<std::string>()},
+     alignof(std::string), hot::field_flags<std::string>(), Tracker__init_title, hot::move_field<std::string>, hot::field_destroyer<std::string>()},
     {"history", nullptr, typeid(std::vector<int32_t>).name(), offsetof(TrackerState_g2, history), sizeof(std::vector<int32_t>),
-     alignof(std::vector<int32_t>), spp::field_flags<std::vector<int32_t>>(), Tracker__init_history, spp::move_field<std::vector<int32_t>>, spp::field_destroyer<std::vector<int32_t>>()},
+     alignof(std::vector<int32_t>), hot::field_flags<std::vector<int32_t>>(), Tracker__init_history, hot::move_field<std::vector<int32_t>>, hot::field_destroyer<std::vector<int32_t>>()},
     {"dist", nullptr, typeid(float).name(), offsetof(TrackerState_g2, dist), sizeof(float),
-     alignof(float), spp::field_flags<float>(), Tracker__init_dist, spp::move_field<float>, spp::field_destroyer<float>()},
+     alignof(float), hot::field_flags<float>(), Tracker__init_dist, hot::move_field<float>, hot::field_destroyer<float>()},
     {"lowest", nullptr, typeid(float).name(), offsetof(TrackerState_g2, lowest), sizeof(float),
-     alignof(float), spp::field_flags<float>(), Tracker__init_lowest, spp::move_field<float>, spp::field_destroyer<float>()},
+     alignof(float), hot::field_flags<float>(), Tracker__init_lowest, hot::move_field<float>, hot::field_destroyer<float>()},
     {"sum", nullptr, typeid(float).name(), offsetof(TrackerState_g2, sum), sizeof(float),
-     alignof(float), spp::field_flags<float>(), Tracker__init_sum, spp::move_field<float>, spp::field_destroyer<float>()},
+     alignof(float), hot::field_flags<float>(), Tracker__init_sum, hot::move_field<float>, hot::field_destroyer<float>()},
     {"described", nullptr, typeid(std::string).name(), offsetof(TrackerState_g2, described), sizeof(std::string),
-     alignof(std::string), spp::field_flags<std::string>(), Tracker__init_described, spp::move_field<std::string>, spp::field_destroyer<std::string>()},
+     alignof(std::string), hot::field_flags<std::string>(), Tracker__init_described, hot::move_field<std::string>, hot::field_destroyer<std::string>()},
     {"note", nullptr, typeid(std::string).name(), offsetof(TrackerState_g2, note), sizeof(std::string),
-     alignof(std::string), spp::field_flags<std::string>(), Tracker__init_note, spp::move_field<std::string>, spp::field_destroyer<std::string>()},
+     alignof(std::string), hot::field_flags<std::string>(), Tracker__init_note, hot::move_field<std::string>, hot::field_destroyer<std::string>()},
 };
 #pragma clang diagnostic pop
 
-static const spp::StateLayout Tracker_layout = {
+static const hot::StateLayout Tracker_layout = {
     "TrackerState_g2", sizeof(TrackerState_g2), alignof(TrackerState_g2), 7, Tracker_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-SPP_HIDDEN TrackerState_g2* state_of(Tracker_Shell* __self)
+HOT_HIDDEN TrackerState_g2* state_of(Tracker_Shell* __self)
 {
     return static_cast<TrackerState_g2*>(__self->state);
 }
 
 
 #line 10 "native_std_v2.hot"
-[[maybe_unused]] SPP_HIDDEN static auto Tracker__super_args()
+[[maybe_unused]] HOT_HIDDEN static auto Tracker__super_args()
 #line 10 "native_std_v2.hot"
 {
 #line 10 "native_std_v2.hot"
@@ -181,7 +181,7 @@ SPP_HIDDEN TrackerState_g2* state_of(Tracker_Shell* __self)
 #line 10 "native_std_v2.hot"
 }
 #line 10 "native_std_v2.hot"
-SPP_HIDDEN static auto Tracker__plan()
+HOT_HIDDEN static auto Tracker__plan()
 #line 10 "native_std_v2.hot"
 {
 #line 10 "native_std_v2.hot"
@@ -193,7 +193,7 @@ using Tracker_SuperArgs = decltype(Tracker__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
 #line 10 "native_std_v2.hot"
-SPP_NODEBUG static spp::ShellBase* Tracker__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Tracker__construct(const char* key, const void* args)
 #line 10 "native_std_v2.hot"
 {
 #line 10 "native_std_v2.hot"
@@ -201,7 +201,7 @@ SPP_NODEBUG static spp::ShellBase* Tracker__construct(const char* key, const voi
 #line 10 "native_std_v2.hot"
         const auto& t = *static_cast<const Tracker_SuperArgs*>(args);
 #line 10 "native_std_v2.hot"
-        return std::apply([](auto&... x) -> spp::ShellBase* { return new Tracker_Shell(spp::Construct{}, x...); }, t);
+        return std::apply([](auto&... x) -> hot::ShellBase* { return new Tracker_Shell(hot::Construct{}, x...); }, t);
 #line 10 "native_std_v2.hot"
     }
 #line 10 "native_std_v2.hot"
@@ -213,20 +213,20 @@ SPP_NODEBUG static spp::ShellBase* Tracker__construct(const char* key, const voi
 static const char* const Tracker__construct_keys[] = {typeid(Tracker_SuperArgs).name(), nullptr};
 
 #line 10 "native_std_v2.hot"
-SPP_HIDDEN static Tracker_Shell* Tracker__build([[maybe_unused]] bool __note)
+HOT_HIDDEN static Tracker_Shell* Tracker__build([[maybe_unused]] bool __note)
 #line 10 "native_std_v2.hot"
 {
 #line 10 "native_std_v2.hot"
     auto __plan = Tracker__plan();
 #line 10 "native_std_v2.hot"
-    auto* __self = static_cast<Tracker_Shell*>(spp::construct_shell(&Tracker_record, typeid(Tracker_SuperArgs).name(), &__plan.first, __note));
+    auto* __self = static_cast<Tracker_Shell*>(hot::construct_shell(&Tracker_record, typeid(Tracker_SuperArgs).name(), &__plan.first, __note));
 #line 10 "native_std_v2.hot"
     return __self;
 #line 10 "native_std_v2.hot"
 }
 #line 228 "native_std_v2.hot.cpp"
 #line 10 "native_std_v2.hot"
-[[maybe_unused]] SPP_HIDDEN static Tracker_Shell* Tracker__new()
+[[maybe_unused]] HOT_HIDDEN static Tracker_Shell* Tracker__new()
 #line 10 "native_std_v2.hot"
 {
 #line 10 "native_std_v2.hot"
@@ -240,27 +240,27 @@ void TrackerState_g2::Tick(float dt)
 #line 19 "native_std_v2.hot"
 {
 #line 19 "native_std_v2.hot"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 19 "native_std_v2.hot"
-        spp::stale_call("Tracker::Tick(float)");
+        hot::stale_call("Tracker::Tick(float)");
 #line 19 "native_std_v2.hot"
         return;
 #line 19 "native_std_v2.hot"
     }
 #line 20 "native_std_v2.hot"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Tracker_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Tracker_Shell*>(this->__spp_owner);
 #line 20 "native_std_v2.hot"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 20 "native_std_v2.hot"
     auto v = std::vector<float>();
 #line 21 "native_std_v2.hot"
-    spp::deref(v).push_back(9.0f);
+    hot::deref(v).push_back(9.0f);
 #line 22 "native_std_v2.hot"
-    spp::deref(v).push_back(8.0f);
+    hot::deref(v).push_back(8.0f);
 #line 23 "native_std_v2.hot"
-    spp::deref(v).push_back(7.0f);
+    hot::deref(v).push_back(7.0f);
 #line 24 "native_std_v2.hot"
-    std::sort(spp::deref(v).begin(), spp::deref(v).end(), std::greater<float>());
+    std::sort(hot::deref(v).begin(), hot::deref(v).end(), std::greater<float>());
 #line 25 "native_std_v2.hot"
     __st->lowest = Math::Min(v[0], v[2]);
 #line 26 "native_std_v2.hot"
@@ -272,40 +272,40 @@ void TrackerState_g2::Tick(float dt)
 #line 29 "native_std_v2.hot"
     __self->Name = FormatVec(__self->Position);
 #line 30 "native_std_v2.hot"
-    spp::deref(__st->history).push_back(static_cast<int32_t>(spp::deref(__st->history).size()) * 10);
+    hot::deref(__st->history).push_back(static_cast<int32_t>(hot::deref(__st->history).size()) * 10);
 #line 31 "native_std_v2.hot"
 }
 #line 279 "native_std_v2.hot.cpp"
 
 // ------------------------------------------------------ record and entry
-static const spp::SlotFn Tracker_slots[SLOT_COUNT] = {
-    reinterpret_cast<spp::SlotFn>(&TrackerState_g2::Tick),
-    reinterpret_cast<spp::SlotFn>(&TrackerState_g2::__fwd_TakeDamage_f),
-    reinterpret_cast<spp::SlotFn>(&TrackerState_g2::__fwd_TakeDamage_Af),
+static const hot::SlotFn Tracker_slots[SLOT_COUNT] = {
+    reinterpret_cast<hot::SlotFn>(&TrackerState_g2::Tick),
+    reinterpret_cast<hot::SlotFn>(&TrackerState_g2::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&TrackerState_g2::__fwd_TakeDamage_Af),
 };
 
-spp::ClassRecord Tracker_record = {
+hot::ClassRecord Tracker_record = {
     "Tracker", GEN, Tracker_slots, SLOT_COUNT, &Tracker_layout, nullptr,
-    "Actor", spp::shell_layout_hash("Actor", sizeof(Tracker_Shell), alignof(Tracker_Shell), 3),
+    "Actor", hot::shell_layout_hash("Actor", sizeof(Tracker_Shell), alignof(Tracker_Shell), 3),
     nullptr,
     &Tracker__construct, typeid(Tracker_SuperArgs).name(), nullptr, nullptr, nullptr,
 };
 
 #line 10 "native_std_v2.hot"
-SPP_NODEBUG static spp::Instance Tracker_create()
+HOT_NODEBUG static hot::Instance Tracker_create()
 #line 10 "native_std_v2.hot"
 {
 #line 10 "native_std_v2.hot"
-    spp::ScriptEntry entry;  // the creation is an entry (S27)
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 10 "native_std_v2.hot"
-    auto* p = new Tracker_Shell(spp::Construct{}, std::string("Tracker"));
+    auto* p = new Tracker_Shell(hot::Construct{}, std::string("Tracker"));
 #line 10 "native_std_v2.hot"
     return {static_cast<Actor*>(p), p};
 #line 10 "native_std_v2.hot"
 }
 #line 307 "native_std_v2.hot.cpp"
 
-extern "C" void script_register(spp::Registry& reg)
+extern "C" void script_register(hot::Registry& reg)
 {
     reg.add(&Tracker_record, &Tracker_create);
     Tracker_record.construct_keys = Tracker__construct_keys;

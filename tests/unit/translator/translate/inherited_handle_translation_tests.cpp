@@ -1,5 +1,5 @@
 // Tests for sppc::translate with a handle stub on a base class: intrusive and shared handles.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/stub_translate_test_support.h"
 #include "support/translator_test_support.h"
 
@@ -23,8 +23,8 @@ TEST(InheritedHandleTranslation, OwnerIsTheStubClass)
 {
     const sppc::TranslateResult r = hier_translate(kIntrusiveStub, "    Gadget g;\n    eng.Thing t;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "    spp::Intrusive<Gadget, &Object::AddRef, &Object::Release> g;\n")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "    spp::Intrusive<eng::Thing, &Object::AddRef, &Object::Release> t;\n")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "    hot::Intrusive<Gadget, &Object::AddRef, &Object::Release> g;\n")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "    hot::Intrusive<eng::Thing, &Object::AddRef, &Object::Release> t;\n")) << r.cpp;
 }
 
 TEST(InheritedHandleTranslation, ParamReturnLocalAndNew)
@@ -73,6 +73,6 @@ TEST(InheritedHandleTranslation, PreludeGivesTheSameOutput)
     ASSERT_TRUE(a.ok) << a.diagnostics;
     ASSERT_TRUE(b.ok) << b.diagnostics;
     EXPECT_TRUE(has(b.cpp, "    " + kIntr + " item;\n")) << b.cpp;
-    EXPECT_TRUE(has(b.cpp, "spp::Intrusive<eng::Thing, &Object::AddRef, &Object::Release> t;")) << b.cpp;
+    EXPECT_TRUE(has(b.cpp, "hot::Intrusive<eng::Thing, &Object::AddRef, &Object::Release> t;")) << b.cpp;
     EXPECT_TRUE(has(b.cpp, "const " + kIntr + "& i")) << b.cpp;
 }

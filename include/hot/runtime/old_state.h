@@ -1,6 +1,6 @@
 // The view of the old state block that the onReload hook gets (design 4.7 and 7.8).
 #pragma once
-#include "spp/runtime/records.h"
+#include "hot/runtime/records.h"
 
 #include <cstring>
 #include <stdexcept>
@@ -8,7 +8,7 @@
 #include <string_view>
 #include <typeinfo>
 
-namespace spp
+namespace hot
 {
 
 // A read-only view of the old block of one object. It shows each field of the old
@@ -57,4 +57,4 @@ private:
     const char* block_;
 };
 
-} // namespace spp
+} // namespace hot

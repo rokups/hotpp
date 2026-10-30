@@ -1,6 +1,6 @@
 // Tests for sppc::translate with script inheritance (S6a, design 4.5, 7.6 and 7.7): a child of a
 // script class, script virtuals, "override" and "new" of a parent function, "base" and "is"/"as".
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -30,7 +30,7 @@ TEST(InheritanceTranslation, ChildShellAndStateDeriveFromTheParent)
 {
     const sppc::TranslateResult r = translate_text(family("    int rage = 2;"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "struct A_Shell : spp::PlainObject, spp::ShellBase {")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "struct A_Shell : hot::PlainObject, hot::ShellBase {")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "struct B_Shell final : A_Shell {")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "struct BState_g1 : AState_g1 {")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "&B_layout, &A_record,")) << r.cpp;
@@ -44,10 +44,10 @@ TEST(InheritanceTranslation, VirtualCallUsesTheSlotOfTheObject)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "return A__f_virt(__self) + 1;")) << r.cpp;
     // The override fills the slot of A.f in the table of B. It adds no manifest entry.
-    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<spp::SlotFn>(&BState_g1::f),")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<hot::SlotFn>(&BState_g1::f),")) << r.cpp;
     EXPECT_FALSE(has(r.slots_out, "B::f")) << r.slots_out;
     // B inherits A.g: the slot of A.g in the table of B is the one of A.
-    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<spp::SlotFn>(&AState_g1::g),")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<hot::SlotFn>(&AState_g1::g),")) << r.cpp;
 }
 
 TEST(InheritanceTranslation, SuperCallsTheParentImplementation)
@@ -105,8 +105,8 @@ TEST(InheritanceTranslation, IsAndAsUseTheClassRecords)
         family("") + "class C {\n    A a = null;\n    int run() {\n        var b = this.a as B;\n"
                      "        return this.a is B ? b.hp : 0;\n    }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "auto b = spp::as_script<B_Shell>(__st->a, \"B\");")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "spp::is_script(__st->a, \"B\")")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "auto b = hot::as_script<B_Shell>(__st->a, \"B\");")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::is_script(__st->a, \"B\")")) << r.cpp;
     EXPECT_TRUE(has(diag_of("struct V { int x = 0; }\nclass C {\n    bool t(V v) { return v is V; }\n}\n"),
         "'is' needs a class with a handle: 'V' is a struct"));
 }
@@ -118,6 +118,6 @@ TEST(InheritanceTranslation, IsAndAsOnANativeTypeUseRtti)
     const sppc::TranslateResult r = sppc::translate(temp_options(dir,
         "using \"w.h\";\nclass Foo : Widget {\n    bool t(Widget* w) { var p = w as Panel; return w is Panel; }\n}\n"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "auto p = spp::as_native<Panel>(w);")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "return spp::is_native<Panel>(w);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "auto p = hot::as_native<Panel>(w);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "return hot::is_native<Panel>(w);")) << r.cpp;
 }

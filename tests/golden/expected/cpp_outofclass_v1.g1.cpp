@@ -8,7 +8,7 @@
 #include <typeinfo>
 #include <utility>
 
-#include "spp/runtime.h"
+#include "hot/runtime.h"
 
 #line 14 "cpp_outofclass_v1.cpp.cpp"
 
@@ -16,7 +16,7 @@ constexpr uint32_t GEN = 1;
 struct SppModule;
 // The module state block of this generation. The loader sets the slot.
 static void* SppModule_slot = nullptr;
-[[maybe_unused]] SPP_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+[[maybe_unused]] HOT_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
 struct Fighter_Shell;
 using Fighter = Fighter_Shell;
 #line 3 "cpp_outofclass_v1.cpp"
@@ -37,14 +37,14 @@ static void SppModule__init_step(void*, void* f) { using T = int; new (f) T(1); 
 #line 38 "cpp_outofclass_v1.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static const spp::FieldInfo SppModule_fields[] = {
-    {"ticks", nullptr, spp::type_key<int>(), offsetof(SppModule, ticks), sizeof(int),
-     alignof(int), spp::field_flags<int>(), SppModule__init_ticks, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"step", nullptr, spp::type_key<int>(), offsetof(SppModule, step), sizeof(int),
-     alignof(int), spp::field_flags<int>(), SppModule__init_step, spp::move_field<int>, spp::field_destroyer<int>()},
+static const hot::FieldInfo SppModule_fields[] = {
+    {"ticks", nullptr, hot::type_key<int>(), offsetof(SppModule, ticks), sizeof(int),
+     alignof(int), hot::field_flags<int>(), SppModule__init_ticks, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"step", nullptr, hot::type_key<int>(), offsetof(SppModule, step), sizeof(int),
+     alignof(int), hot::field_flags<int>(), SppModule__init_step, hot::move_field<int>, hot::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
-static const spp::StateLayout SppModule_layout = {
+static const hot::StateLayout SppModule_layout = {
     "SppModule", sizeof(SppModule), alignof(SppModule), 2, SppModule_fields,
 };
 
@@ -60,22 +60,22 @@ enum : unsigned {
     SLOT_COUNT = 5,
 };
 
-extern spp::ClassRecord Fighter_record;
+extern hot::ClassRecord Fighter_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
-struct Fighter_Shell final : Actor, spp::ShellBase {
+struct Fighter_Shell final : Actor, hot::ShellBase {
 #line 8 "cpp_outofclass_v1.cpp"
     template <class... A>
 #line 8 "cpp_outofclass_v1.cpp"
-    explicit Fighter_Shell(spp::Construct, A&&... a) : Actor(std::forward<A>(a)...)
+    explicit Fighter_Shell(hot::Construct, A&&... a) : Actor(std::forward<A>(a)...)
 #line 8 "cpp_outofclass_v1.cpp"
     {
 #line 8 "cpp_outofclass_v1.cpp"
-        spp::init_state(this, &Fighter_record);
+        hot::init_state(this, &Fighter_record);
 #line 8 "cpp_outofclass_v1.cpp"
     }
 #line 8 "cpp_outofclass_v1.cpp"
-    ~Fighter_Shell() override { spp::destroy_state(this); }
+    ~Fighter_Shell() override { hot::destroy_state(this); }
 #line 80 "cpp_outofclass_v1.cpp.cpp"
 
 #line 8 "cpp_outofclass_v1.cpp"
@@ -83,7 +83,7 @@ struct Fighter_Shell final : Actor, spp::ShellBase {
 #line 8 "cpp_outofclass_v1.cpp"
     {
 #line 8 "cpp_outofclass_v1.cpp"
-        return spp::call<void(Actor*, float)>(this, SLOT_Tick, a0);
+        return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 8 "cpp_outofclass_v1.cpp"
     }
 #line 90 "cpp_outofclass_v1.cpp.cpp"
@@ -93,7 +93,7 @@ struct Fighter_Shell final : Actor, spp::ShellBase {
 #line 8 "cpp_outofclass_v1.cpp"
     {
 #line 8 "cpp_outofclass_v1.cpp"
-        return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
+        return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 8 "cpp_outofclass_v1.cpp"
     }
 #line 100 "cpp_outofclass_v1.cpp.cpp"
@@ -103,7 +103,7 @@ struct Fighter_Shell final : Actor, spp::ShellBase {
 #line 8 "cpp_outofclass_v1.cpp"
     {
 #line 8 "cpp_outofclass_v1.cpp"
-        return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
+        return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 8 "cpp_outofclass_v1.cpp"
     }
 #line 110 "cpp_outofclass_v1.cpp.cpp"
@@ -111,7 +111,7 @@ struct Fighter_Shell final : Actor, spp::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct FighterState_g1 {
-    spp::ShellBase* __spp_owner;
+    hot::ShellBase* __spp_owner;
     int hp;
     int last;
 
@@ -121,7 +121,7 @@ struct FighterState_g1 {
     int get();
     // Not overridden: call the implementation of Actor.
 #line 8 "cpp_outofclass_v1.cpp"
-    SPP_NODEBUG void __fwd_TakeDamage_f(float a0)
+    HOT_NODEBUG void __fwd_TakeDamage_f(float a0)
 #line 8 "cpp_outofclass_v1.cpp"
     {
 #line 8 "cpp_outofclass_v1.cpp"
@@ -131,7 +131,7 @@ struct FighterState_g1 {
 #line 132 "cpp_outofclass_v1.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 8 "cpp_outofclass_v1.cpp"
-    SPP_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
+    HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
 #line 8 "cpp_outofclass_v1.cpp"
     {
 #line 8 "cpp_outofclass_v1.cpp"
@@ -151,30 +151,30 @@ static void Fighter__init_last(void*, void* f) { using T = int; new (f) T(0); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static_assert(offsetof(FighterState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
-static const spp::FieldInfo Fighter_fields[] = {
-    {"hp", nullptr, spp::type_key<int>(), offsetof(FighterState_g1, hp), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Fighter__init_hp, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"last", nullptr, spp::type_key<int>(), offsetof(FighterState_g1, last), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Fighter__init_last, spp::move_field<int>, spp::field_destroyer<int>()},
+static const hot::FieldInfo Fighter_fields[] = {
+    {"hp", nullptr, hot::type_key<int>(), offsetof(FighterState_g1, hp), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Fighter__init_hp, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"last", nullptr, hot::type_key<int>(), offsetof(FighterState_g1, last), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Fighter__init_last, hot::move_field<int>, hot::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
 
-static const spp::StateLayout Fighter_layout = {
+static const hot::StateLayout Fighter_layout = {
     "FighterState_g1", sizeof(FighterState_g1), alignof(FighterState_g1), 2, Fighter_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-SPP_HIDDEN FighterState_g1* state_of(Fighter_Shell* __self)
+HOT_HIDDEN FighterState_g1* state_of(Fighter_Shell* __self)
 {
     return static_cast<FighterState_g1*>(__self->state);
 }
 
-[[maybe_unused]] SPP_HIDDEN static int Fighter__hit(Fighter_Shell* __self, int d, int scale = spp_mod()->step);
-[[maybe_unused]] SPP_HIDDEN static int Fighter__get(Fighter_Shell* __self);
+[[maybe_unused]] HOT_HIDDEN static int Fighter__hit(Fighter_Shell* __self, int d, int scale = spp_mod()->step);
+[[maybe_unused]] HOT_HIDDEN static int Fighter__get(Fighter_Shell* __self);
 
-[[maybe_unused]] SPP_HIDDEN static void Fighter__ctor(Fighter_Shell* __self);
+[[maybe_unused]] HOT_HIDDEN static void Fighter__ctor(Fighter_Shell* __self);
 #line 11 "cpp_outofclass_v1.cpp"
-[[maybe_unused]] SPP_HIDDEN static auto Fighter__super_args()
+[[maybe_unused]] HOT_HIDDEN static auto Fighter__super_args()
 #line 11 "cpp_outofclass_v1.cpp"
 {
 #line 11 "cpp_outofclass_v1.cpp"
@@ -182,7 +182,7 @@ SPP_HIDDEN FighterState_g1* state_of(Fighter_Shell* __self)
 #line 11 "cpp_outofclass_v1.cpp"
 }
 #line 11 "cpp_outofclass_v1.cpp"
-SPP_HIDDEN static auto Fighter__plan()
+HOT_HIDDEN static auto Fighter__plan()
 #line 11 "cpp_outofclass_v1.cpp"
 {
 #line 11 "cpp_outofclass_v1.cpp"
@@ -192,7 +192,7 @@ SPP_HIDDEN static auto Fighter__plan()
 #line 11 "cpp_outofclass_v1.cpp"
 template <class Chain>
 #line 11 "cpp_outofclass_v1.cpp"
-SPP_HIDDEN static void Fighter__ctor_chain(Fighter_Shell* __self, [[maybe_unused]] Chain& __chain)
+HOT_HIDDEN static void Fighter__ctor_chain(Fighter_Shell* __self, [[maybe_unused]] Chain& __chain)
 #line 11 "cpp_outofclass_v1.cpp"
 {
 #line 11 "cpp_outofclass_v1.cpp"
@@ -204,7 +204,7 @@ using Fighter_SuperArgs = decltype(Fighter__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
 #line 8 "cpp_outofclass_v1.cpp"
-SPP_NODEBUG static spp::ShellBase* Fighter__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Fighter__construct(const char* key, const void* args)
 #line 8 "cpp_outofclass_v1.cpp"
 {
 #line 8 "cpp_outofclass_v1.cpp"
@@ -212,7 +212,7 @@ SPP_NODEBUG static spp::ShellBase* Fighter__construct(const char* key, const voi
 #line 8 "cpp_outofclass_v1.cpp"
         const auto& t = *static_cast<const Fighter_SuperArgs*>(args);
 #line 8 "cpp_outofclass_v1.cpp"
-        return std::apply([](auto&... x) -> spp::ShellBase* { return new Fighter_Shell(spp::Construct{}, x...); }, t);
+        return std::apply([](auto&... x) -> hot::ShellBase* { return new Fighter_Shell(hot::Construct{}, x...); }, t);
 #line 8 "cpp_outofclass_v1.cpp"
     }
 #line 8 "cpp_outofclass_v1.cpp"
@@ -224,13 +224,13 @@ SPP_NODEBUG static spp::ShellBase* Fighter__construct(const char* key, const voi
 static const char* const Fighter__construct_keys[] = {typeid(Fighter_SuperArgs).name(), nullptr};
 
 #line 11 "cpp_outofclass_v1.cpp"
-SPP_HIDDEN static Fighter_Shell* Fighter__build([[maybe_unused]] bool __note)
+HOT_HIDDEN static Fighter_Shell* Fighter__build([[maybe_unused]] bool __note)
 #line 11 "cpp_outofclass_v1.cpp"
 {
 #line 11 "cpp_outofclass_v1.cpp"
     auto __plan = Fighter__plan();
 #line 11 "cpp_outofclass_v1.cpp"
-    auto* __self = static_cast<Fighter_Shell*>(spp::construct_shell(&Fighter_record, typeid(Fighter_SuperArgs).name(), &__plan.first, __note));
+    auto* __self = static_cast<Fighter_Shell*>(hot::construct_shell(&Fighter_record, typeid(Fighter_SuperArgs).name(), &__plan.first, __note));
 #line 11 "cpp_outofclass_v1.cpp"
     try {
 #line 11 "cpp_outofclass_v1.cpp"
@@ -249,7 +249,7 @@ SPP_HIDDEN static Fighter_Shell* Fighter__build([[maybe_unused]] bool __note)
 }
 #line 251 "cpp_outofclass_v1.cpp.cpp"
 #line 11 "cpp_outofclass_v1.cpp"
-[[maybe_unused]] SPP_HIDDEN static Fighter_Shell* Fighter__new()
+[[maybe_unused]] HOT_HIDDEN static Fighter_Shell* Fighter__new()
 #line 11 "cpp_outofclass_v1.cpp"
 {
 #line 11 "cpp_outofclass_v1.cpp"
@@ -261,7 +261,7 @@ SPP_HIDDEN static Fighter_Shell* Fighter__build([[maybe_unused]] bool __note)
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 11 "cpp_outofclass_v1.cpp"
-SPP_NODEBUG static spp::ShellBase* Fighter__new_default()
+HOT_NODEBUG static hot::ShellBase* Fighter__new_default()
 #line 11 "cpp_outofclass_v1.cpp"
 {
 #line 11 "cpp_outofclass_v1.cpp"
@@ -271,7 +271,7 @@ SPP_NODEBUG static spp::ShellBase* Fighter__new_default()
 #line 272 "cpp_outofclass_v1.cpp.cpp"
 
 #line 11 "cpp_outofclass_v1.cpp"
-[[maybe_unused]] SPP_HIDDEN static void Fighter__ctor(Fighter_Shell* __self)
+[[maybe_unused]] HOT_HIDDEN static void Fighter__ctor(Fighter_Shell* __self)
 #line 11 "cpp_outofclass_v1.cpp"
 {
 #line 11 "cpp_outofclass_v1.cpp"
@@ -284,17 +284,17 @@ void FighterState_g1::ctor()
 #line 11 "cpp_outofclass_v1.cpp"
 {
 #line 11 "cpp_outofclass_v1.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 11 "cpp_outofclass_v1.cpp"
-        spp::stale_call("Fighter::Fighter");
+        hot::stale_call("Fighter::Fighter");
 #line 11 "cpp_outofclass_v1.cpp"
         return;
 #line 11 "cpp_outofclass_v1.cpp"
     }
 #line 11 "cpp_outofclass_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__spp_owner);
 #line 11 "cpp_outofclass_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 11 "cpp_outofclass_v1.cpp"
 
 #line 11 "cpp_outofclass_v1.cpp"
@@ -306,17 +306,17 @@ void FighterState_g1::Tick(float dt)
 #line 13 "cpp_outofclass_v1.cpp"
 {
 #line 13 "cpp_outofclass_v1.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 13 "cpp_outofclass_v1.cpp"
-        spp::stale_call("Fighter::Tick(float)");
+        hot::stale_call("Fighter::Tick(float)");
 #line 13 "cpp_outofclass_v1.cpp"
         return;
 #line 13 "cpp_outofclass_v1.cpp"
     }
 #line 13 "cpp_outofclass_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__spp_owner);
 #line 13 "cpp_outofclass_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 14 "cpp_outofclass_v1.cpp"
 
         __self->Move(Vec3(dt, 0, 0));
@@ -329,7 +329,7 @@ void FighterState_g1::Tick(float dt)
 #line 330 "cpp_outofclass_v1.cpp.cpp"
 
 #line 21 "cpp_outofclass_v1.cpp"
-[[maybe_unused]] SPP_HIDDEN static int Fighter__hit(Fighter_Shell* __self, int d, int scale)
+[[maybe_unused]] HOT_HIDDEN static int Fighter__hit(Fighter_Shell* __self, int d, int scale)
 #line 21 "cpp_outofclass_v1.cpp"
 {
 #line 21 "cpp_outofclass_v1.cpp"
@@ -342,17 +342,17 @@ int FighterState_g1::hit(int d, int scale)
 #line 21 "cpp_outofclass_v1.cpp"
 {
 #line 21 "cpp_outofclass_v1.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 21 "cpp_outofclass_v1.cpp"
-        spp::stale_call("Fighter::hit");
+        hot::stale_call("Fighter::hit");
 #line 21 "cpp_outofclass_v1.cpp"
         return int();
 #line 21 "cpp_outofclass_v1.cpp"
     }
 #line 21 "cpp_outofclass_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__spp_owner);
 #line 21 "cpp_outofclass_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 22 "cpp_outofclass_v1.cpp"
 
         hp -= d * scale;
@@ -363,7 +363,7 @@ int FighterState_g1::hit(int d, int scale)
 #line 364 "cpp_outofclass_v1.cpp.cpp"
 
 #line 27 "cpp_outofclass_v1.cpp"
-[[maybe_unused]] SPP_HIDDEN static int Fighter__get(Fighter_Shell* __self)
+[[maybe_unused]] HOT_HIDDEN static int Fighter__get(Fighter_Shell* __self)
 #line 27 "cpp_outofclass_v1.cpp"
 {
 #line 27 "cpp_outofclass_v1.cpp"
@@ -376,17 +376,17 @@ int FighterState_g1::get()
 #line 27 "cpp_outofclass_v1.cpp"
 {
 #line 27 "cpp_outofclass_v1.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 27 "cpp_outofclass_v1.cpp"
-        spp::stale_call("Fighter::get");
+        hot::stale_call("Fighter::get");
 #line 27 "cpp_outofclass_v1.cpp"
         return int();
 #line 27 "cpp_outofclass_v1.cpp"
     }
 #line 27 "cpp_outofclass_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__spp_owner);
 #line 27 "cpp_outofclass_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 27 "cpp_outofclass_v1.cpp"
  return hp; 
 #line 27 "cpp_outofclass_v1.cpp"
@@ -400,9 +400,9 @@ static int Fighter__hit__thunk(Actor* __a, int d, int scale)
 #line 21 "cpp_outofclass_v1.cpp"
 {
 #line 21 "cpp_outofclass_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(__a);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(__a);
 #line 21 "cpp_outofclass_v1.cpp"
-    return spp::call<int(Actor*, int, int)>(__self, SLOT_hit, d, scale);
+    return hot::call<int(Actor*, int, int)>(__self, SLOT_hit, d, scale);
 #line 21 "cpp_outofclass_v1.cpp"
 }
 #line 409 "cpp_outofclass_v1.cpp.cpp"
@@ -414,37 +414,37 @@ static int Fighter__get__thunk(Actor* __a)
 #line 27 "cpp_outofclass_v1.cpp"
 {
 #line 27 "cpp_outofclass_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(__a);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(__a);
 #line 27 "cpp_outofclass_v1.cpp"
-    return spp::call<int(Actor*)>(__self, SLOT_get);
+    return hot::call<int(Actor*)>(__self, SLOT_get);
 #line 27 "cpp_outofclass_v1.cpp"
 }
 #line 423 "cpp_outofclass_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
-static const spp::SlotFn Fighter_slots[SLOT_COUNT] = {
-    reinterpret_cast<spp::SlotFn>(&FighterState_g1::Tick),
-    reinterpret_cast<spp::SlotFn>(&FighterState_g1::__fwd_TakeDamage_f),
-    reinterpret_cast<spp::SlotFn>(&FighterState_g1::__fwd_TakeDamage_Af),
-    reinterpret_cast<spp::SlotFn>(&FighterState_g1::hit),
-    reinterpret_cast<spp::SlotFn>(&FighterState_g1::get),
+static const hot::SlotFn Fighter_slots[SLOT_COUNT] = {
+    reinterpret_cast<hot::SlotFn>(&FighterState_g1::Tick),
+    reinterpret_cast<hot::SlotFn>(&FighterState_g1::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&FighterState_g1::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&FighterState_g1::hit),
+    reinterpret_cast<hot::SlotFn>(&FighterState_g1::get),
 };
 
-spp::ClassRecord Fighter_record = {
+hot::ClassRecord Fighter_record = {
     "Fighter", GEN, Fighter_slots, SLOT_COUNT, &Fighter_layout, nullptr,
-    "Actor", spp::shell_layout_hash("Actor", sizeof(Fighter_Shell), alignof(Fighter_Shell), 3),
+    "Actor", hot::shell_layout_hash("Actor", sizeof(Fighter_Shell), alignof(Fighter_Shell), 3),
     nullptr,
     &Fighter__construct, typeid(Fighter_SuperArgs).name(), &Fighter__new_default, nullptr, nullptr,
 };
 
 #line 8 "cpp_outofclass_v1.cpp"
-SPP_NODEBUG static spp::Instance Fighter_create()
+HOT_NODEBUG static hot::Instance Fighter_create()
 #line 8 "cpp_outofclass_v1.cpp"
 {
 #line 8 "cpp_outofclass_v1.cpp"
-    spp::ScriptEntry entry;  // the creation is an entry (S27)
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 8 "cpp_outofclass_v1.cpp"
-    spp::ShellBase* s = nullptr;
+    hot::ShellBase* s = nullptr;
 #line 8 "cpp_outofclass_v1.cpp"
     if (Fighter_record.new_default) {
 #line 8 "cpp_outofclass_v1.cpp"
@@ -465,7 +465,7 @@ SPP_NODEBUG static spp::Instance Fighter_create()
 }
 #line 467 "cpp_outofclass_v1.cpp.cpp"
 
-extern "C" void script_register(spp::Registry& reg)
+extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_module_state(&SppModule_layout, &SppModule_slot);
     reg.add(&Fighter_record, &Fighter_create);

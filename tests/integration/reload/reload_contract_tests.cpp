@@ -1,7 +1,7 @@
 // Reload tests of the rows of the design 5.3 table that S17 adds, with the backend that
 // SPP_BACKEND selected: a changed method signature, a native container of a [value] class,
 // the first use of "this" as a handle, and a raw function pointer in a state field (4.9).
-#include "spp/backend.h"
+#include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
@@ -15,17 +15,17 @@
 namespace
 {
 
-using spp::GenState;
+using hot::GenState;
 using test_support::kDt;
 using test_support::Session;
 using test_support::source;
 
 int* int_field(Session& s, const char* name)
 {
-    return spp::field_ptr<int>(s.inst.shell, name);
+    return hot::field_ptr<int>(s.inst.shell, name);
 }
 
-const spp::GenerationInfo* find_gen(const spp::LoaderStats& st, uint32_t generation)
+const hot::GenerationInfo* find_gen(const hot::LoaderStats& st, uint32_t generation)
 {
     for (const auto& g : st.generations)
         if (g.generation == generation)
@@ -34,10 +34,10 @@ const spp::GenerationInfo* find_gen(const spp::LoaderStats& st, uint32_t generat
 }
 
 // Validates and commits one module at the next frame boundary. Returns the captured stderr.
-std::string reload(Session& s, spp::LoadResult& r)
+std::string reload(Session& s, hot::LoadResult& r)
 {
     testing::internal::CaptureStderr();
-    const spp::ReloadResult res = s.loader.request_reload(std::move(*r.module));
+    const hot::ReloadResult res = s.loader.request_reload(std::move(*r.module));
     s.world.Tick(kDt);
     const std::string log = testing::internal::GetCapturedStderr();
     EXPECT_RELOAD_OK(res);
@@ -53,12 +53,12 @@ TEST_P(BackendTests, SignatureChangeDetachesTheOldDelegate)
 {
     // The slot state changes when the Loader accepts a module. So build each generation after the
     // Loader accepted the one before it.
-    spp::LoadResult v1 = backend->load(source("sigchange_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("sigchange_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Medic"));
     s.commit_at_frame_boundary();
-    spp::LoadResult v2 = backend->load(source("sigchange_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("sigchange_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     auto old_heal = reinterpret_cast<Heal1>(s.loader.thunk("Medic::heal"));
     ASSERT_NE(old_heal, nullptr);
@@ -70,20 +70,20 @@ TEST_P(BackendTests, SignatureChangeDetachesTheOldDelegate)
     auto new_heal = reinterpret_cast<Heal2>(s.loader.thunk("Medic::heal"));
     ASSERT_NE(new_heal, nullptr);
     EXPECT_NE(reinterpret_cast<void*>(new_heal), reinterpret_cast<void*>(old_heal));
-    const uint64_t before = spp::detached_call_count();
+    const uint64_t before = hot::detached_call_count();
     testing::internal::CaptureStderr();
     old_heal(s.actor, 5); // detached: no call of heal(int, int) with a missing argument
     old_heal(s.actor, 5);
     const std::string log_calls = testing::internal::GetCapturedStderr();
     EXPECT_EQ(*int_field(s, "hp"), 15);
-    EXPECT_EQ(spp::detached_call_count(), before + 2);
+    EXPECT_EQ(hot::detached_call_count(), before + 2);
     EXPECT_NE(log_calls.find("old signature"), std::string::npos) << log_calls;
     EXPECT_EQ(log_calls.find("old signature"), log_calls.rfind("old signature")) << log_calls; // logs once
     new_heal(s.actor, 5, 1);
     EXPECT_EQ(*int_field(s, "hp"), 21);
 
     // The same signature: no new thunk, no warning. The new body runs through the same thunk.
-    spp::LoadResult v3 = backend->load(source("sigchange_v3.hot"), 3);
+    hot::LoadResult v3 = backend->load(source("sigchange_v3.hot"), 3);
     ASSERT_TRUE(v3) << v3.error;
     const std::string log3 = reload(s, v3);
     EXPECT_EQ(log3.find("signature"), std::string::npos) << log3;
@@ -99,11 +99,11 @@ TEST_P(BackendTests, SignatureChangeDetachesTheOldDelegate)
 // the value class stays. A changed layout resets the container with a warning.
 TEST_P(BackendTests, ContainerOfValueTypeResetsOnLayoutChange)
 {
-    spp::LoadResult v1 = backend->load(source("bag_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("bag_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("bag_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("bag_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
-    spp::LoadResult v3 = backend->load(source("bag_v3.hot"), 3);
+    hot::LoadResult v3 = backend->load(source("bag_v3.hot"), 3);
     ASSERT_TRUE(v3) << v3.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Bag"));
@@ -111,7 +111,7 @@ TEST_P(BackendTests, ContainerOfValueTypeResetsOnLayoutChange)
     s.world.Tick(kDt);
     s.world.Tick(kDt);
     EXPECT_EQ(*int_field(s, "count"), 2);
-    const spp::FieldInfo* items = spp::find_field(s.inst.shell->cls, "items");
+    const hot::FieldInfo* items = hot::find_field(s.inst.shell->cls, "items");
     ASSERT_NE(items, nullptr);
     EXPECT_NE(std::strchr(items->type_key, '#'), nullptr) << items->type_key;
 
@@ -134,19 +134,19 @@ TEST_P(BackendTests, ContainerOfValueTypeResetsOnLayoutChange)
 // loader rejects the reload with a message that names the cause. The old generation stays.
 TEST_P(BackendTests, FirstHandleUseOfThisIsRejected)
 {
-    spp::LoadResult v1 = backend->load(source("echo_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("echo_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("echo_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("echo_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Echo"));
     s.commit_at_frame_boundary();
     EXPECT_FALSE(s.inst.shell->cls->shares_this);
-    const spp::ReloadResult rejected = s.loader.request_reload(std::move(*v2.module));
+    const hot::ReloadResult rejected = s.loader.request_reload(std::move(*v2.module));
     const std::string& error = rejected.error;
     EXPECT_FALSE(rejected);
-    EXPECT_EQ(rejected.status, spp::ReloadStatus::FullReloadRequired);
-    EXPECT_EQ(rejected.reason, spp::ReloadReason::ShellLayoutChanged);
+    EXPECT_EQ(rejected.status, hot::ReloadStatus::FullReloadRequired);
+    EXPECT_EQ(rejected.reason, hot::ReloadReason::ShellLayoutChanged);
     EXPECT_NE(error.find("uses 'this' as a handle"), std::string::npos) << error;
     EXPECT_NE(error.find("enable_shared_from_this"), std::string::npos) << error;
     s.world.Tick(kDt);
@@ -158,16 +158,16 @@ TEST_P(BackendTests, FirstHandleUseOfThisIsRejected)
 // retired generation unloads while the object lives.
 TEST_P(BackendTests, FunctionPointerFieldBlocksTheUnload)
 {
-    spp::LoadResult v1 = backend->load(source("codeptr_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("codeptr_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("codeptr_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("codeptr_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Relay"));
     s.commit_at_frame_boundary();
-    const spp::FieldInfo* op = spp::find_field(s.inst.shell->cls, "op");
+    const hot::FieldInfo* op = hot::find_field(s.inst.shell->cls, "op");
     ASSERT_NE(op, nullptr);
-    EXPECT_TRUE(op->flags & spp::kMayHoldCode);
+    EXPECT_TRUE(op->flags & hot::kMayHoldCode);
     s.world.Tick(kDt);
     EXPECT_EQ(*int_field(s, "result"), 2);
     reload(s, v2);
@@ -175,7 +175,7 @@ TEST_P(BackendTests, FunctionPointerFieldBlocksTheUnload)
         s.world.Tick(kDt);
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(*int_field(s, "result"), 4); // the pointer of generation 1 still runs
-    const spp::LoaderStats st = s.loader.stats();
+    const hot::LoaderStats st = s.loader.stats();
     EXPECT_TRUE(st.state_holds_code);
     ASSERT_NE(find_gen(st, 1), nullptr);
     EXPECT_EQ(find_gen(st, 1)->state, GenState::Retired);
@@ -185,16 +185,16 @@ TEST_P(BackendTests, FunctionPointerFieldBlocksTheUnload)
 // the type as a code holder. The field has kMayHoldCode, so no retired generation unloads.
 TEST_P(BackendTests, StructWithFunctionPointerFieldBlocksTheUnload)
 {
-    spp::LoadResult v1 = backend->load(source("codestruct_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("codestruct_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("codestruct_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("codestruct_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Holder"));
     s.commit_at_frame_boundary();
-    const spp::FieldInfo* cb = spp::find_field(s.inst.shell->cls, "cb");
+    const hot::FieldInfo* cb = hot::find_field(s.inst.shell->cls, "cb");
     ASSERT_NE(cb, nullptr);
-    EXPECT_TRUE(cb->flags & spp::kMayHoldCode);
+    EXPECT_TRUE(cb->flags & hot::kMayHoldCode);
     s.world.Tick(kDt);
     EXPECT_EQ(*int_field(s, "result"), 2);
     reload(s, v2);
@@ -202,7 +202,7 @@ TEST_P(BackendTests, StructWithFunctionPointerFieldBlocksTheUnload)
         s.world.Tick(kDt);
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(*int_field(s, "result"), 4);
-    const spp::LoaderStats st = s.loader.stats();
+    const hot::LoaderStats st = s.loader.stats();
     EXPECT_TRUE(st.state_holds_code);
     ASSERT_NE(find_gen(st, 1), nullptr);
     EXPECT_EQ(find_gen(st, 1)->state, GenState::Retired);

@@ -1,4 +1,4 @@
-#include "spp/runtime/loader.h"
+#include "hot/runtime/loader.h"
 
 #include "runtime_internal.h"
 
@@ -13,7 +13,7 @@
 #include <set>
 #include <utility>
 
-namespace spp
+namespace hot
 {
 
 struct PendingClass
@@ -976,4 +976,4 @@ ReloadResult Loader::commit_locked()
     return make_result(ReloadStatus::Applied, ReloadReason::None);
 }
 
-} // namespace spp
+} // namespace hot

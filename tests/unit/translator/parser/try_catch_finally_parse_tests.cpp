@@ -78,8 +78,8 @@ TEST(TryCatchFinallyParse, Finally)
         EXPECT_FALSE(t->finally_block.has_value());
     }
     EXPECT_EQ(round_trip("try { f(); } catch (int e) { } finally { g(); }"),
-        "{ spp::Finally __fin_0([&] { g(); }); try { f(); } catch (int32_t e) {} }");
-    EXPECT_EQ(round_trip("try { f(); } finally { }"), "{ spp::Finally __fin_0([&] {}); { f(); } }");
+        "{ hot::Finally __fin_0([&] { g(); }); try { f(); } catch (int32_t e) {} }");
+    EXPECT_EQ(round_trip("try { f(); } finally { }"), "{ hot::Finally __fin_0([&] {}); { f(); } }");
     {
         // "finally" is a reserved word, so a name cannot be "finally".
         Parsed p("try { f(); } finally;");

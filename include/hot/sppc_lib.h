@@ -26,7 +26,7 @@ struct TranslateOptions
     std::vector<std::string> include_dirs; // for the imports of the script
     std::string resource_dir; // the Clang resource directory (empty: the built-in default)
     // The C++ standard for the parse of the native headers, for example "c++17". Empty: the
-    // standard of the host (SPP_CXX_STANDARD in spp/config.h).
+    // standard of the host (HOT_CXX_STANDARD in hot/config.h).
     std::string std_version;
     std::vector<std::pair<std::string, std::string>> preludes; // name, text
     // The texts of the imported scripts ("using "parent.hot";"), as name and text. The name is
@@ -87,7 +87,7 @@ struct SourceFile
 // the bodies of the methods, the constructors, the destructors and the property accessors. It
 // also covers the names in the head of a script function (the function name and the parameter
 // names) and the field names in the state struct.
-// Text that the translator writes by itself (for example "spp::deref(" or the class shell)
+// Text that the translator writes by itself (for example "hot::deref(" or the class shell)
 // has no segment: the functions return no value for it.
 class SourceMap
 {

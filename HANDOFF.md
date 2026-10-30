@@ -22,7 +22,7 @@ All work is committed, except what `git status` shows. Slices S0 to S21 are done
 |---|---|
 | Runtime | The test host `tests/engine` with `Actor` and `World`. The script class is a real C++ subclass (shell) of the native base. State lives in a replaceable block. Done. |
 | Reload | Same object address. Migration by field name, `[alias(...)]`, type key and nested value classes. Validation has no side effects. A rejected reload keeps the old generation. Done. |
-| Thunks, closures | Delegates survive a reload. `spp::Closure` pins a generation. A stale closure logs one stale call and does not run. A signature change detaches a delegate with a warning. Done. |
+| Thunks, closures | Delegates survive a reload. `hot::Closure` pins a generation. A stale closure logs one stale call and does not run. A signature change detaches a delegate with a warning. Done. |
 | Unload | A retired generation unloads when the pin count is zero, a frame passed and no live object uses its code. Generation 1 unloads too (core module). Done. |
 | Threads | `World::TickParallel` with a barrier. Stop-the-world commit at the barrier. A second mode, `SyncMode::EntryCounters`, blocks new entries. ASan and TSan are clean. Done. |
 | Translator | `sppc_lib` works on strings. It reads the native base with libclang. It emits `#line`. A session cache cuts a warm translate to about 1.3 ms. Tolerant parse, `source_map`, `analyze`. Done. |
@@ -34,7 +34,7 @@ All work is committed, except what `git status` shows. Slices S0 to S21 are done
 | Language server | `spp-ls`: a stdio LSP proxy in front of stock clangd (`src/ls/`, `DECISIONS.md` 13). VS Code extension in `editors/vscode/`. Done. |
 
 Layout:
-- `include/spp/` public headers. `src/runtime/` runtime and backends. `src/translator/` translator (`sppc_lib`). `src/translator/parser/` lexy grammars. `src/tools/` the tool `sppc`. `src/ls/` the language server.
+- `include/hot/` public headers. `src/runtime/` runtime and backends. `src/translator/` translator (`sppc_lib`). `src/translator/parser/` lexy grammars. `src/tools/` the tool `sppc`. `src/ls/` the language server.
 - `tests/engine/` is the test host (not a model for users), `tests/scripts/` the test scripts, `tests/integration/aot/` the `aot_demo` program, `samples/` the seven self-contained sample projects (incl. `imgui`), `tools/bench/bench_backends.cpp` the benchmark. `editors/vscode/` the extension. `tools/` has the lldb and natvis files.
 - `tests/unit/translator/` (`parser`, `emit`, `lowering`, `translate`, `types`, `session`, `diagnostics`), `tests/unit/runtime/`, `tests/unit/python/`, `tests/integration/` (`backends`, `closures`, `reload`, `threading`, `aot`, `ls`), `tests/golden/`, `tests/support/`.
 
@@ -67,12 +67,12 @@ The full list is in `README.md` and `spp-design.md` section 7.
 
 ## How it works (limits that matter)
 Kinds of class:
-- A class with a native base is a handle (`new Name(args)` gives the handle of the base stub). A class without a base is a plain script class and a `std::shared_ptr` handle (`spp::PlainObject`). `[value] class` lives inline in the state block, has no base, no destructor, no virtual and no lambda, and uses native types and other `[value]` classes only.
+- A class with a native base is a handle (`new Name(args)` gives the handle of the base stub). A class without a base is a plain script class and a `std::shared_ptr` handle (`hot::PlainObject`). `[value] class` lives inline in the state block, has no base, no destructor, no virtual and no lambda, and uses native types and other `[value]` classes only.
 - The order of the classes does not matter. The translator sorts them by use. A cycle is an error.
 - A script function used as a value (`var f = G;`) is always an error.
 
 Constructors (S4, S16, S20a):
-- The shell and the vtable live in the core module of generation 1. The canonical `ClassRecord` has a type-erased `construct`. A later generation calls it through `spp::construct_shell` and then runs its own constructor body. An unknown key throws `std::runtime_error`; a new key of a later generation gets a new core first (S27).
+- The shell and the vtable live in the core module of generation 1. The canonical `ClassRecord` has a type-erased `construct`. A later generation calls it through `hot::construct_shell` and then runs its own constructor body. An unknown key throws `std::runtime_error`; a new key of a later generation gets a new core first (S27).
 - A constructor is not in the slot table. A reload does not run it again. A changed body applies to new objects only.
 - One plan for each construction: `Name__plan(args)` evaluates each `base(...)` argument of the chain one time. `new` and the factory both call `Name__build`. Each overload gets C++ overloads of the generated functions, keyed by `Name_SuperArgs_k`.
 - Limits: one destructor for each class. Two overloads cannot differ only in the pass mode. A `base(...)` argument for a `T&` parameter of a script parent is a plain variable (S23); the plan keeps the reference and evaluates `e` one time. A `&&` constructor parameter works: the plan reads it as a const reference. A new overload in a later generation can have a new key type (S27): the loader makes a new core module, and its `construct` becomes canonical. The key list is `ClassRecord::construct_keys`. The old key types stay valid only while the new generation keeps the overload. If a constructor body throws, the shell is deleted and the script destructor still runs.
@@ -80,8 +80,8 @@ Constructors (S4, S16, S20a):
 Typed access (S5b, S20b):
 - The lowering knows the script class of a local, a parameter, a field and a `new` result. Then `obj.field`, `obj.Method(args)` and `obj.P` use the class directly.
 - A `var` from a native call gets its type from libclang. An overloaded or template function gives no type. The native base of the family keeps the name rule: `N` must be a property of the current class.
-- Limit of the `.` access: it lowers to `spp::deref(a).b`. A smart pointer, an iterator and `std::optional` have `operator->` and are not handles, so write `(*p).x`. `.` on a handle always means a member of the pointee, so `h.get()` is not the raw pointer: write `&*h`. A native static data member (`Vec3.Zero.x`) needs a typed local. A null handle in `obj.field` throws `std::runtime_error`.
-- `return this` as a handle becomes `spp::handle_from_this<H>(self)`. It needs `std::enable_shared_from_this` in the shell. A reload that adds the first such use (or the first script child) changes the shell layout, and the loader rejects it with a message. Use it in generation 1. A lambda does not convert `this`.
+- Limit of the `.` access: it lowers to `hot::deref(a).b`. A smart pointer, an iterator and `std::optional` have `operator->` and are not handles, so write `(*p).x`. `.` on a handle always means a member of the pointee, so `h.get()` is not the raw pointer: write `&*h`. A native static data member (`Vec3.Zero.x`) needs a typed local. A null handle in `obj.field` throws `std::runtime_error`.
+- `return this` as a handle becomes `hot::handle_from_this<H>(self)`. It needs `std::enable_shared_from_this` in the shell. A reload that adds the first such use (or the first script child) changes the shell layout, and the loader rejects it with a message. Use it in generation 1. A lambda does not convert `this`.
 - Parameter analysis (7.10.5): a value or handle parameter is `const T&`, unless the body changes, stores or rebinds it, or the type is small. The analysis follows these calls with a parameter as an argument (S25):
   - a script function of the class and its script parents;
   - a method of a script handle (a parameter, a field or a typed local): the declared method gives the mode and the body. A `virtual` or `override` method counts as a store;
@@ -97,11 +97,11 @@ Inheritance (S6, S20a):
 
 Native interface bases (S8b): the first base is primary. Each virtual of each base gets one slot (primary first). The same signature in two bases is an error. `F()` and `F() const` ambiguity, `final`, a duplicate base, a script class as interface, and an interface without a default constructor are errors. A changed list of bases is rejected.
 
-Reload hooks and module state (S3, S8a, S16, S17): `onReload` and `convert_<field>` get no slot. `OldState` shows old fields by old name. A type change never rejects a reload; the field resets or converts. Module variables live in the synthetic `[value]` class `SppModule`. The loader owns one module block and migrates it first. A native container of a `[value]` class resets with a warning when the layout hash changes. A native move failure calls `spp::request_restart`.
+Reload hooks and module state (S3, S8a, S16, S17): `onReload` and `convert_<field>` get no slot. `OldState` shows old fields by old name. A type change never rejects a reload; the field resets or converts. Module variables live in the synthetic `[value]` class `SppModule`. The loader owns one module block and migrates it first. A native container of a `[value]` class resets with a warning when the layout hash changes. A native move failure calls `hot::request_restart`.
 
 Unload limits (core module): the loader does not see a code pointer that native code keeps. `kMayHoldCode` is set for `std::shared_ptr`, a raw function pointer, a member function pointer and `std::function`. S26: the translator marks a trivially copyable native struct that has a function pointer field, so it counts as a holder too. The translator finds the struct by its class or alias name. It does not find a template instance such as `Cb<int>`, and it does not find a type that no script field or local names. Each generation that adds a class or a thunk loads one more copy of its module as a core. The JIT keeps an IR clone of each module until the loader takes it.
 
-Stubs and checks (S2, S20b): order of the rules: exact stub, base stub, pattern stub, plain data (value), `class *`, raw. The checks of 7.10.7 use libclang constexpr probes, cached by the session. A borrowed pointer or reference (`&x`, `T&`) in a field, return, collection or lambda capture is an error (`--no-strict-borrowed` makes it a warning). A `&x` passed to a native function that keeps it is not detectable (the S25 signature query serves the value/handle parameter form only, not this error: a `T*` parameter is too common to be an error). A custom `spp::is_handle` is checked for `operator->` only. `intrusive` needs non-overloaded Add and Release members.
+Stubs and checks (S2, S20b): order of the rules: exact stub, base stub, pattern stub, plain data (value), `class *`, raw. The checks of 7.10.7 use libclang constexpr probes, cached by the session. A borrowed pointer or reference (`&x`, `T&`) in a field, return, collection or lambda capture is an error (`--no-strict-borrowed` makes it a warning). A `&x` passed to a native function that keeps it is not detectable (the S25 signature query serves the value/handle parameter form only, not this error: a `T*` parameter is too common to be an error). A custom `hot::is_handle` is checked for `operator->` only. `intrusive` needs non-overloaded Add and Release members.
 
 Translator cache: it hashes a header that changed in the last 2 seconds. It checks paths that hide a header earlier in the include path. The stamp has the inode, the ctime and a content hash. The prelude is not in the cache key.
 
@@ -116,7 +116,7 @@ Other limits:
 - Language server: after a translation error, clangd keeps the last good C++. Positions go through a prefix/suffix edit map (`Doc::set_edit`). A position inside the edit has no mapping. The `#line` fallback takes the column of the same word in the script line.
 - Language server: clangd does not publish again when a new version gives the same diagnostics. The server drops diagnostics of an old version, so the diagnostics can be missing after an edit that gives the same C++.
 - Language server: two open scripts that import the same script both publish diagnostics for it. The last publish wins. The formatter is a brace-depth indenter, not a full formatter.
-- Diagnostic columns: the rewriter uses the source map for the script column. A column in text that the translator writes by itself (for example `spp::deref(`) has no segment: the rewriter then takes the next mapped column of the same line, or 1.
+- Diagnostic columns: the rewriter uses the source map for the script column. A column in text that the translator writes by itself (for example `hot::deref(`) has no segment: the rewriter then takes the next mapped column of the same line, or 1.
 
 ## Parser
 The grammar uses lexy. Only the files in `src/translator/parser/` include lexy headers. Keep each grammar in its own file (they compile slowly: about 3 to 6 s each in Debug).

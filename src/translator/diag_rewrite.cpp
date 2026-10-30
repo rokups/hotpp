@@ -8,7 +8,7 @@
 //   3. Replace or drop the snippet lines that show generated code.
 // The table of the common mistakes is kMistakes. Each row has a test in
 // tests/golden/diagnostics (one script and one expected text).
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 
 #include <algorithm>
 #include <cctype>
@@ -514,7 +514,7 @@ LineIndex index_generated(const std::vector<std::string>& gen)
 }
 
 // The script column of a generated column on the script line "line". Zero: not known. The
-// column of a text that the translator writes by itself (for example "spp::deref(") has no
+// column of a text that the translator writes by itself (for example "hot::deref(") has no
 // segment, so the function looks at the next columns of the same generated line. Several
 // generated lines can have the same script line (a generation function, a member head, a
 // body). "snippet" is the generated line that the compiler shows. It selects the right one.

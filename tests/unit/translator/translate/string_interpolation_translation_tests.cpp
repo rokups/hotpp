@@ -1,5 +1,5 @@
 // Tests for sppc::translate with string interpolation: the format function and the include.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>

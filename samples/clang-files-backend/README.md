@@ -1,6 +1,6 @@
 # Sample: clang-files-backend
 
-This sample shows a program that builds `spp::ClangFilesBackend` itself.
+This sample shows a program that builds `hot::ClangFilesBackend` itself.
 The backend translates the script in memory, runs an external `clang++` and loads the `.so`.
 The host needs a C++ compiler at run time.
 
@@ -25,18 +25,18 @@ compiler (the object library `clang_files_backend_cpp_scripts_plain`). This show
 
 ## How it works
 
-1. The program fills `spp::ClangFilesOptions` (see the table below).
-2. `spp::ClangFilesBackend backend(options)` makes the backend. It is declared before the loader.
+1. The program fills `hot::ClangFilesOptions` (see the table below).
+2. `hot::ClangFilesBackend backend(options)` makes the backend. It is declared before the loader.
 3. `backend.load(source, 1)` translates the script, writes a `.cpp` in `work_dir`, runs the compiler
-   to make a `.so`, and loads it. It returns a `spp::LoadResult`.
-4. `spp::Loader::load` takes the module. The program makes a `Wolf` and calls `Tick` three times.
+   to make a `.so`, and loads it. It returns a `hot::LoadResult`.
+4. `hot::Loader::load` takes the module. The program makes a `Wolf` and calls `Tick` three times.
 5. At exit, `remove_work_dir_at_exit` removes the work folder.
 
 ## Files
 
 - `Creature.h`: the host class. It is header-only.
 - `script/wolf.hot` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`.
-- `main.cpp`: the program. It fills `spp::ClangFilesOptions`, compiles the script, loads it
+- `main.cpp`: the program. It fills `hot::ClangFilesOptions`, compiles the script, loads it
   and calls `Tick` three times.
 - `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
 

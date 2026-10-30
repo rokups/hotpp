@@ -20,7 +20,7 @@
 // The slot file keeps the slot order of the script functions stable between the
 // generations. Native virtuals come first, in the order of the base class.
 // The script functions follow. A function keeps its slot in all later generations.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 
 #include "ast.h"
 #include "builtin_types.h"
@@ -30,7 +30,7 @@
 #include "lower.h"
 #include "parser/cpp_frontend.h"
 #include "parser/parser.h"
-#include "spp/config.h"
+#include "hot/config.h"
 #include "types.h"
 
 #include <clang-c/Index.h>
@@ -2017,7 +2017,7 @@ std::map<std::string, BaseInfo> session_bases(sppc::TranslatorSession::Impl& S, 
 }
 
 // The libclang arguments for the script and for the probe of the imports. The header
-// "spp/script.h" is a forced include when an include dir has it. A script can include it too.
+// "hot/script.h" is a forced include when an include dir has it. A script can include it too.
 std::vector<std::string> clang_args(const Options& opt)
 {
     std::vector<std::string> args = {"-x", "c++", "-std=" + opt.std_version, "-ferror-limit=0"};
@@ -2029,7 +2029,7 @@ std::vector<std::string> clang_args(const Options& opt)
         args.push_back("-resource-dir=" + opt.resource_dir);
     for (const auto& d : opt.includes)
     {
-        const std::string header = d + "/spp/script.h";
+        const std::string header = d + "/hot/script.h";
         if (std::filesystem::exists(header))
         {
             args.push_back("-include");
@@ -2049,7 +2049,7 @@ void translate_impl(
     opt.gen = in.generation;
     opt.includes = in.include_dirs;
     opt.resource_dir = in.resource_dir;
-    opt.std_version = in.std_version.empty() ? spp::cxx_std_name() : in.std_version;
+    opt.std_version = in.std_version.empty() ? hot::cxx_std_name() : in.std_version;
 #ifdef SPP_RESOURCE_DIR
     if (opt.resource_dir.empty())
         opt.resource_dir = SPP_RESOURCE_DIR;
@@ -2703,7 +2703,7 @@ void translate_impl(
     // The blank line below is a place for the include of the format library. A line stays a line,
     // so the line numbers do not change.
     const size_t format_include_pos = o.s.size();
-    o.w("\n#include \"spp/runtime.h\"\n\n");
+    o.w("\n#include \"hot/runtime.h\"\n\n");
     auto reset = [&] { o.w("#line " + std::to_string(o.lines + 2) + " \"" + esc(opt.output) + "\"\n"); };
     // Writes generated code that can run at runtime. A "#line" directive names the script line
     // before each line of the text, so the line table has no row in the generated file. Then the
@@ -2758,7 +2758,7 @@ void translate_impl(
             if (is_code_query(q) && query_answers[q] == "1" && (!only || only->count(q.substr(6)))
                 && marked_types.insert(q).second)
             {
-                o.w("namespace spp { template <> struct native_holds_code<" + q.substr(6)
+                o.w("namespace hot { template <> struct native_holds_code<" + q.substr(6)
                     + "> : std::true_type {}; }\n");
                 marked = true;
             }
@@ -2775,7 +2775,7 @@ void translate_impl(
         o.w("struct " + kModuleName + ";\n");
         o.w("// The module state block of this generation. The loader sets the slot.\n");
         o.w("static void* " + kModuleName + "_slot = nullptr;\n");
-        o.w("[[maybe_unused]] SPP_HIDDEN static " + kModuleName + "* spp_mod() { return static_cast<" + kModuleName
+        o.w("[[maybe_unused]] HOT_HIDDEN static " + kModuleName + "* spp_mod() { return static_cast<" + kModuleName
             + "*>(" + kModuleName + "_slot); }\n");
     }
     // A ".cpp" script can name a script class before its class block: a static method prototype
@@ -2919,9 +2919,9 @@ void translate_impl(
         // The module block of a ".cpp" script can come before the class of a pointer field.
         // "typeid(C*)" of an incomplete class C makes clang emit an RTTI record of C without
         // its bases, and a later dynamic_cast of a C object fails. The function template
-        // spp::type_key runs the typeid at the end of the file, where C is complete.
+        // hot::type_key runs the typeid at the end of the file, where C is complete.
         const std::string plain =
-            sc.is_cpp ? "spp::type_key<" + key_type(t) + ">()" : "typeid(" + key_type(t) + ").name()";
+            sc.is_cpp ? "hot::type_key<" + key_type(t) + ">()" : "typeid(" + key_type(t) + ").name()";
         const std::vector<std::string> vals = values_in(t);
         if (vals.empty())
             return plain;
@@ -2933,7 +2933,7 @@ void translate_impl(
             h = (h ^ c) * 1099511628211ull;
         char hex[17];
         std::snprintf(hex, sizeof hex, "%016llx", static_cast<unsigned long long>(h));
-        return "spp::layout_keyed(" + plain + ", \"" + hex + "\")";
+        return "hot::layout_keyed(" + plain + ", \"" + hex + "\")";
     };
     auto emit_value = [&](ClassDef& cd)
     {
@@ -3070,7 +3070,7 @@ void translate_impl(
             // An initializer and a function of the module read the block through spp_mod().
             o.w("// The module state block of this generation. The loader sets the slot.\n");
             o.w("static void* " + cn + "_slot = nullptr;\n");
-            o.w("[[maybe_unused]] SPP_HIDDEN static " + cn + "* spp_mod() { return static_cast<" + cn + "*>(" + cn
+            o.w("[[maybe_unused]] HOT_HIDDEN static " + cn + "* spp_mod() { return static_cast<" + cn + "*>(" + cn
                 + "_slot); }\n");
         }
         for (const Method& m : cd.methods)
@@ -3109,7 +3109,7 @@ void translate_impl(
             auto at_line = [&](int line, uint32_t pos)
             { return "#line " + std::to_string(line) + " \"" + esc(file_at(pos)) + "\"\n"; };
             o.w(at_line(cd.line, cd.pos));
-            o.w("    " + cn + (tag_init ? "(spp::Construct)" : "()"));
+            o.w("    " + cn + (tag_init ? "(hot::Construct)" : "()"));
             for (size_t i = 0; i < cd.fields.size(); ++i)
             {
                 o.w("\n" + at_line(cd.fields[i].line, cd.fields[i].pos));
@@ -3121,7 +3121,7 @@ void translate_impl(
                 o.w(" { " + P + "ctor(this); }\n");
             else
                 o.w(" {}\n");
-            const std::string init_call = cn + (tag_init ? "(spp::Construct{})" : "()");
+            const std::string init_call = cn + (tag_init ? "(hot::Construct{})" : "()");
             if (tag_init)
                 o.w(at_line(cd.line, cd.pos) + "    " + cn + "() : " + init_call + " { " + P + "ctor(this); }\n");
             for (const sppc::ast::Ctor& c : cd.ctors)
@@ -3166,22 +3166,22 @@ void translate_impl(
         o.w("#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n");
         if (cd.fields.empty())
         {
-            o.w("static const spp::FieldInfo* const " + cn + "_fields = nullptr;\n");
+            o.w("static const hot::FieldInfo* const " + cn + "_fields = nullptr;\n");
         }
         else
         {
-            o.w("static const spp::FieldInfo " + cn + "_fields[] = {\n");
+            o.w("static const hot::FieldInfo " + cn + "_fields[] = {\n");
             for (const Field& f : cd.fields)
             {
                 const std::string T = f.type;
                 const bool sub = types.is_script_value(T);
                 o.w("    {\"" + f.name + "\", " + (f.alias.empty() ? "nullptr" : "\"" + f.alias + "\"") + ", "
                     + field_key(T) + ", offsetof(" + cn + ", " + f.name + "), sizeof(" + T + "),\n     alignof(" + T
-                    + "), spp::" + (sub ? "value_field_flags" : "field_flags") + "<" + T + ">(), " + P + "init_"
-                    + f.name + ", spp::move_field<" + T + ">, spp::field_destroyer<" + T + ">()");
+                    + "), hot::" + (sub ? "value_field_flags" : "field_flags") + "<" + T + ">(), " + P + "init_"
+                    + f.name + ", hot::move_field<" + T + ">, hot::field_destroyer<" + T + ">()");
                 auto hk = hooks.find(f.name);
                 if (hk != hooks.end())
-                    o.w(", " + (sc.is_cpp ? "spp::type_key<" + hk->second->params[0].type + ">()"
+                    o.w(", " + (sc.is_cpp ? "hot::type_key<" + hk->second->params[0].type + ">()"
                                           : "typeid(" + hk->second->params[0].type + ").name()")
                         + ", " + P + hk->second->name + "_hook");
                 else if (sub)
@@ -3191,7 +3191,7 @@ void translate_impl(
             o.w("};\n");
         }
         o.w("#pragma clang diagnostic pop\n");
-        o.w("static const spp::StateLayout " + cn + "_layout = {\n    \"" + cn + "\", sizeof(" + cn + "), alignof(" + cn
+        o.w("static const hot::StateLayout " + cn + "_layout = {\n    \"" + cn + "\", sizeof(" + cn + "), alignof(" + cn
             + "), " + std::to_string(cd.fields.size()) + ", " + cn + "_fields,\n};\n\n");
 
         // The function bodies. "self" is the struct itself, so "st" is "self".
@@ -3206,7 +3206,7 @@ void translate_impl(
             o.w(at);
             o.w("static " + ret + " " + sym + "(" + cn + "* __self" + param_text(m.params) + ")\n");
             o.w(at + "{\n");
-            o.w(at + "    SPP_NODEBUG_LOCAL auto* __st = __self;\n");
+            o.w(at + "    HOT_NODEBUG_LOCAL auto* __st = __self;\n");
             if (!write_raw(m))
             {
                 sppc::lower_block(m.body, cx, g_diag);
@@ -3438,10 +3438,10 @@ void translate_impl(
         auto slot_id = [&](const std::string& n) { return (multi ? cn + "_" : std::string()) + "SLOT_" + n; };
 
         // ---- base class information from libclang
-        // A class without a base derives from spp::PlainObject (design 7.10.1).
+        // A class without a base derives from hot::PlainObject (design 7.10.1).
         // A class with a script parent uses the native base of the root of the chain.
         BaseInfo bi;
-        const std::string B = root.base.empty() ? std::string("spp::PlainObject") : root.base;
+        const std::string B = root.base.empty() ? std::string("hot::PlainObject") : root.base;
         if (root.base.empty())
         {
             bi.virtual_dtor = true;
@@ -3825,7 +3825,7 @@ void translate_impl(
             const Hook h = hook_of(m);
             if (h == Hook::OnReload)
             {
-                m.params[0].type = "const spp::OldState&";
+                m.params[0].type = "const hot::OldState&";
                 m.ret = "void";
                 continue;
             }
@@ -4052,12 +4052,12 @@ void translate_impl(
             o.w("    " + slot_id(slots[i].id) + " = " + std::to_string(slots[i].index >= 0 ? size_t(slots[i].index) : i)
                 + ",\n");
         o.w("    " + slot_id("COUNT") + " = " + std::to_string(table_size) + ",\n};\n\n");
-        o.w("extern spp::ClassRecord " + cn + "_record;\n\n");
+        o.w("extern hot::ClassRecord " + cn + "_record;\n\n");
 
         // ---- shell
         o.w("// The shell overrides every virtual of " + BL + ". Each stub reads one slot.\n");
         // A bare "this" used as a handle needs "shared_from_this" (design 7.10.1). A plain class
-        // gets it from spp::PlainObject. A native base needs it in the shell.
+        // gets it from hot::PlainObject. A native base needs it in the shell.
         // The lowering of the bodies sets "handle_this". The base is added to this line then.
         bool handle_this = false;
         base_cx.handle_this = &handle_this;
@@ -4065,34 +4065,34 @@ void translate_impl(
         base_cx.uses_format = &uses_format;
         base_cx.module_vars = module_vars;
         base_cx.in_module_init = cn == kModuleName;
-        // A shell with script children is not final. The tag spp::ConstructChild builds the base
+        // A shell with script children is not final. The tag hot::ConstructChild builds the base
         // without the state: the shell of the child makes the state of the child (design 4.5).
         const bool parent_shell = has_children.count(cn) > 0;
         const std::string shell_head = "struct " + shell + (parent_shell ? "" : " final") + " : "
-            + (par ? par->name + "_Shell" : BL + ", spp::ShellBase");
+            + (par ? par->name + "_Shell" : BL + ", hot::ShellBase");
         const size_t shell_head_end = o.s.size() + shell_head.size();
         o.w(shell_head + " {\n");
         // The members of the shell map to the class line.
         if (par)
         {
             mapped("    template <class... A>\n    explicit " + shell
-                    + "(spp::Construct, A&&... a)\n        : " + par->name
-                    + "_Shell(spp::ConstructChild{}, std::forward<A>(a)...)\n    {\n        spp::init_state(this, &"
+                    + "(hot::Construct, A&&... a)\n        : " + par->name
+                    + "_Shell(hot::ConstructChild{}, std::forward<A>(a)...)\n    {\n        hot::init_state(this, &"
                     + cn + "_record);\n    }\n",
                 cd.line, cd.pos);
             if (parent_shell)
-                mapped("    template <class... A>\n    explicit " + shell + "(spp::ConstructChild c, A&&... a) : "
+                mapped("    template <class... A>\n    explicit " + shell + "(hot::ConstructChild c, A&&... a) : "
                         + par->name + "_Shell(c, std::forward<A>(a)...)\n    {\n    }\n",
                     cd.line, cd.pos);
         }
         else
         {
-            mapped("    template <class... A>\n    explicit " + shell + "(spp::Construct, A&&... a) : " + B
-                    + "(std::forward<A>(a)...)\n    {\n        spp::init_state(this, &" + cn + "_record);\n    }\n    ~"
-                    + shell + "() override { spp::destroy_state(this); }\n",
+            mapped("    template <class... A>\n    explicit " + shell + "(hot::Construct, A&&... a) : " + B
+                    + "(std::forward<A>(a)...)\n    {\n        hot::init_state(this, &" + cn + "_record);\n    }\n    ~"
+                    + shell + "() override { hot::destroy_state(this); }\n",
                 cd.line, cd.pos);
             if (parent_shell)
-                mapped("    template <class... A>\n    explicit " + shell + "(spp::ConstructChild, A&&... a) : " + B
+                mapped("    template <class... A>\n    explicit " + shell + "(hot::ConstructChild, A&&... a) : " + B
                         + "(std::forward<A>(a)...)\n    {\n    }\n",
                     cd.line, cd.pos);
         }
@@ -4109,7 +4109,7 @@ void translate_impl(
             }
             std::string text = "\n    " + nv.ret + " " + nv.name + "(" + str_join(ps, ", ") + ")"
                 + (nv.is_const ? " const" : "") + (nv.no_except ? " noexcept" : "") + " override\n    {\n";
-            text += "        return spp::call<" + nv.ret + "(" + str_join(sig, ", ") + ")>(" + self_arg + ", "
+            text += "        return hot::call<" + nv.ret + "(" + str_join(sig, ", ") + ")>(" + self_arg + ", "
                 + slot_id(slots[i].id) + (as.empty() ? "" : ", " + str_join(as, ", ")) + ");\n    }\n";
             // The shell override maps to the class line, so a breakpoint on the function has one location.
             mapped(text, cd.line, cd.pos);
@@ -4157,7 +4157,7 @@ void translate_impl(
         o.w("struct " + S + (pinfo ? " : " + pinfo->S : std::string()) + " {\n");
         // The runtime writes the owner shell into the first member of a root state struct.
         if (!pinfo)
-            o.w("    spp::ShellBase* __spp_owner;\n");
+            o.w("    hot::ShellBase* __spp_owner;\n");
         for (const Field& f : cd.fields)
         {
             const std::string decl = "    " + f.type + " " + f.name + ";\n";
@@ -4215,7 +4215,7 @@ void translate_impl(
                     as += (k ? ", " : "") + arg_expr(nv.ptypes[k], "a" + std::to_string(k));
                 }
                 o.w("    // Not overridden: call the implementation of " + nv.from + ".\n");
-                mapped("    SPP_NODEBUG " + nv.ret + " __fwd_" + sl.id + "(" + ps
+                mapped("    HOT_NODEBUG " + nv.ret + " __fwd_" + sl.id + "(" + ps
                         + ")\n    {\n        return static_cast<" + shell + "*>(__spp_owner)->" + nv.from
                         + "::" + nv.name + "(" + as + ");\n    }\n",
                     cd.line, cd.pos);
@@ -4245,7 +4245,7 @@ void translate_impl(
             const bool uses_self = f.raw && init.find("__self") != std::string::npos;
             if (uses_self && !state_of_declared)
             {
-                o.w("SPP_HIDDEN " + S + "* state_of(" + shell + "* __self);\n");
+                o.w("HOT_HIDDEN " + S + "* state_of(" + shell + "* __self);\n");
                 state_of_declared = true;
             }
             o.w("static void " + P + "init_" + f.name + (uses_self ? "(void* st, void* f) { " : "(void*, void* f) { ")
@@ -4281,8 +4281,8 @@ void translate_impl(
             const bool sub = types.is_script_value(T);
             std::string row = "    {\"" + f.name + "\", " + (f.alias.empty() ? "nullptr" : "\"" + f.alias + "\"") + ", "
                 + field_key(T) + ", offsetof($S$, " + f.name + "), sizeof(" + T + "),\n     alignof(" + T
-                + "), spp::" + (sub ? "value_field_flags" : "field_flags") + "<" + T + ">(), " + P + "init_" + f.name
-                + ", spp::move_field<" + T + ">, spp::field_destroyer<" + T + ">()";
+                + "), hot::" + (sub ? "value_field_flags" : "field_flags") + "<" + T + ">(), " + P + "init_" + f.name
+                + ", hot::move_field<" + T + ">, hot::field_destroyer<" + T + ">()";
             auto cv = converts.find(f.name);
             if (cv != converts.end())
                 row += ", typeid(" + cv->second->params[0].type + ").name(), " + P + cv->second->name + "_hook";
@@ -4294,11 +4294,11 @@ void translate_impl(
         }
         if (info.rows.empty())
         {
-            o.w("static const spp::FieldInfo* const " + cn + "_fields = nullptr;\n");
+            o.w("static const hot::FieldInfo* const " + cn + "_fields = nullptr;\n");
         }
         else
         {
-            o.w("static const spp::FieldInfo " + cn + "_fields[] = {\n");
+            o.w("static const hot::FieldInfo " + cn + "_fields[] = {\n");
             for (std::string row : info.rows)
             {
                 const size_t at = row.find("$S$");
@@ -4309,12 +4309,12 @@ void translate_impl(
             o.w("};\n");
         }
         o.w("#pragma clang diagnostic pop\n\n");
-        o.w("static const spp::StateLayout " + cn + "_layout = {\n    \"" + S + "\", sizeof(" + S + "), alignof(" + S
+        o.w("static const hot::StateLayout " + cn + "_layout = {\n    \"" + S + "\", sizeof(" + S + "), alignof(" + S
             + "), " + std::to_string(info.rows.size()) + ", " + cn + "_fields, true,\n};\n\n");
 
         // ---- generation functions
         o.w("// ------------------------------------------------- generation functions\n");
-        o.w("SPP_HIDDEN " + S + "* state_of(" + shell + "* __self)\n{\n    return static_cast<" + S
+        o.w("HOT_HIDDEN " + S + "* state_of(" + shell + "* __self)\n{\n    return static_cast<" + S
             + "*>(__self->state);\n}\n\n");
 
         auto type_list = [](const Method& m)
@@ -4336,7 +4336,7 @@ void translate_impl(
         for (const Method& m : cd.methods)
             if (!m.overrides_virtual && hook_of(m) != Hook::Convert)
             {
-                const std::string decl = "[[maybe_unused]] SPP_HIDDEN static " + fn_ret(m) + " " + P + m.name + "("
+                const std::string decl = "[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.name + "("
                     + shell + "* __self" + body_decl_def(m) + ");\n";
                 o.head_segments(decl, P + m.name, m, all_text);
                 o.w(decl);
@@ -4347,8 +4347,8 @@ void translate_impl(
         {
             if (m.vslot_owner != cn || m.is_override)
                 continue;
-            o.w("[[maybe_unused]] SPP_HIDDEN static " + fn_ret(m) + " " + P + m.name + "_virt(" + shell + "* __self"
-                + param_decl(m) + ")\n{\n    return spp::call<" + fn_ret(m) + "(" + B + "*" + type_list(m)
+            o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.name + "_virt(" + shell + "* __self"
+                + param_decl(m) + ")\n{\n    return hot::call<" + fn_ret(m) + "(" + B + "*" + type_list(m)
                 + ")>(__self, " + slot_id(m.name) + arg_list(m) + ");\n}\n\n");
         }
 
@@ -4364,7 +4364,7 @@ void translate_impl(
             ctor_ms[k].pos = cd.ctors[k].pos;
             ctor_ms[k].line = cd.ctors[k].line;
             ctor_ms[k].end_line = cd.ctors[k].end_line;
-            o.w("[[maybe_unused]] SPP_HIDDEN static void " + P + "ctor(" + shell + "* __self" + param_decl(ctor_ms[k])
+            o.w("[[maybe_unused]] HOT_HIDDEN static void " + P + "ctor(" + shell + "* __self" + param_decl(ctor_ms[k])
                 + ");\n");
         }
         // The default overload has the fewest parameters. The factory of the engine uses it.
@@ -4398,7 +4398,7 @@ void translate_impl(
             return r;
         };
         if (has_dtor)
-            o.w("[[maybe_unused]] SPP_HIDDEN static void " + P + "dtor(" + shell + "* __self);\n");
+            o.w("[[maybe_unused]] HOT_HIDDEN static void " + P + "dtor(" + shell + "* __self);\n");
         // The function that runs the constructors: the constructor of the parent first.
         const bool has_entry = has_ctor || (pinfo && !pinfo->ctor_entry.empty());
         const std::string entry = has_entry ? P + "ctor_chain" : std::string();
@@ -4468,9 +4468,9 @@ void translate_impl(
                 std::string plan_text;
                 if (!par)
                 {
-                    plan_text += "[[maybe_unused]] SPP_HIDDEN static auto " + P + "super_args(" + pd
+                    plan_text += "[[maybe_unused]] HOT_HIDDEN static auto " + P + "super_args(" + pd
                         + ")\n{\n    return std::make_tuple(" + sup_text + ");\n}\n";
-                    plan_text += "SPP_HIDDEN static auto " + P + "plan(" + pd + ")\n{\n    return std::make_pair(" + P
+                    plan_text += "HOT_HIDDEN static auto " + P + "plan(" + pd + ")\n{\n    return std::make_pair(" + P
                         + "super_args(" + names + "), std::tuple<>());\n}\n";
                 }
                 else
@@ -4479,7 +4479,7 @@ void translate_impl(
                     // class when no class of the chain calls "base(...)" with arguments.
                     const bool own_base = (has_base_call ? (sc->raw ? sc->raw_base_args.size() : sc->base_args.size()) : 0) == 0
                         && !root_super;
-                    plan_text += "SPP_HIDDEN static auto " + P + "plan(" + pd + ")\n{\n    auto __up = std::make_tuple("
+                    plan_text += "HOT_HIDDEN static auto " + P + "plan(" + pd + ")\n{\n    auto __up = std::make_tuple("
                         + (has_base_call ? sup_text : std::string())
                         + ");\n    auto __pp = std::apply([](auto&... x) { return " + PP
                         + "plan(x...); }, __up);\n    return std::make_pair("
@@ -4492,7 +4492,7 @@ void translate_impl(
                 {
                     // Runs the constructor of each parent first, with the arguments of the plan. The
                     // plan owns the arguments, so the parent can move them.
-                    plan_text += "template <class Chain>\nSPP_HIDDEN static void " + P + "ctor_chain(" + shell
+                    plan_text += "template <class Chain>\nHOT_HIDDEN static void " + P + "ctor_chain(" + shell
                         + "* __self, [[maybe_unused]] Chain& __chain" + param_decl(cm) + ")\n{\n";
                     if (pinfo && !pinfo->ctor_entry.empty())
                         plan_text += "    std::apply([&](auto&&... x) { " + pinfo->ctor_entry +
@@ -4507,12 +4507,12 @@ void translate_impl(
             o.w("// Makes the shell with the base arguments. Only the first generation of the class runs it.\n");
             o.w("// \"key\" names the type of the arguments. An unknown key gives nullptr.\n");
             std::string construct_text =
-                "SPP_NODEBUG static spp::ShellBase* " + P + "construct(const char* key, const void* args)\n{\n";
+                "HOT_NODEBUG static hot::ShellBase* " + P + "construct(const char* key, const void* args)\n{\n";
             for (size_t k = 0; k < ctor_ms.size(); ++k)
                 construct_text += "    if (std::strcmp(key, typeid(" + sa_name(k)
                     + ").name()) == 0) {\n        const auto& t = *static_cast<const " + sa_name(k)
-                    + "*>(args);\n        return std::apply([](auto&... x) -> spp::ShellBase* { return new " + shell
-                    + "(spp::Construct{}, x...); }, t);\n    }\n";
+                    + "*>(args);\n        return std::apply([](auto&... x) -> hot::ShellBase* { return new " + shell
+                    + "(hot::Construct{}, x...); }, t);\n    }\n";
             construct_text += "    return nullptr;\n}\n";
             mapped(construct_text, cd.line, cd.pos);
             o.w("\n");
@@ -4538,11 +4538,11 @@ void translate_impl(
                 // The functions of a constructor overload map to the line of the constructor.
                 const int cline = cm.line > 0 ? cm.line : cd.line;
                 const uint32_t cpos = cm.pos != 0 ? cm.pos : cd.pos;
-                std::string build_text = "SPP_HIDDEN static " + shell + "* " + P + "build([[maybe_unused]] bool __note"
+                std::string build_text = "HOT_HIDDEN static " + shell + "* " + P + "build([[maybe_unused]] bool __note"
                     + param_decl(cm) + ")\n{\n";
                 build_text += "    auto __plan = " + P + "plan("
                     + (ctor_fwd.empty() ? std::string() : ctor_fwd.substr(2)) + ");\n";
-                build_text += "    auto* __self = static_cast<" + shell + "*>(spp::construct_shell(&" + cn
+                build_text += "    auto* __self = static_cast<" + shell + "*>(hot::construct_shell(&" + cn
                     + "_record, typeid(" + sa_name(k) + ").name(), &__plan.first, __note));\n";
                 if (has_entry)
                 {
@@ -4552,7 +4552,7 @@ void translate_impl(
                 }
                 build_text += "    return __self;\n}\n";
                 mapped(build_text, cline, cpos);
-                mapped("[[maybe_unused]] SPP_HIDDEN static " + shell + "* " + P + "new(" + pd_def + ")\n{\n    return "
+                mapped("[[maybe_unused]] HOT_HIDDEN static " + shell + "* " + P + "new(" + pd_def + ")\n{\n    return "
                         + P + "build(true" + ctor_fwd + ");\n}\n",
                     cline, cpos);
                 o.w("\n");
@@ -4564,7 +4564,7 @@ void translate_impl(
                 o.w("// The factory of the engine calls it through the canonical record: the current generation\n"
                     "// gives the base arguments and the constructors.\n");
                 const Method& dm = ctor_ms[dflt];
-                mapped("SPP_NODEBUG static spp::ShellBase* " + P + "new_default()\n{\n" + locals + "    return " + P
+                mapped("HOT_NODEBUG static hot::ShellBase* " + P + "new_default()\n{\n" + locals + "    return " + P
                         + "build(false" + (defaults.empty() ? "" : ", " + defaults) + ");\n}\n",
                     dm.line > 0 ? dm.line : cd.line, dm.pos != 0 ? dm.pos : cd.pos);
                 o.w("\n");
@@ -4575,7 +4575,7 @@ void translate_impl(
         info.dtor_chain = dtor_chain;
         if (dtor_chain)
         {
-            std::string slot_text = "static void " + P + "dtor_slot(spp::ShellBase* s)\n{\n";
+            std::string slot_text = "static void " + P + "dtor_slot(hot::ShellBase* s)\n{\n";
             if (has_dtor)
                 slot_text += "    " + P + "dtor(static_cast<" + shell + "*>(s));\n";
             if (pinfo && pinfo->dtor_chain)
@@ -4610,7 +4610,7 @@ void translate_impl(
                     fwd += std::string(fwd.empty() ? "" : ", ") + "std::forward<"
                         + (p.body_type.empty() ? p.type : p.body_type) + ">(" + p.name + ")";
                 const std::string whead =
-                    "[[maybe_unused]] SPP_HIDDEN static " + ret + " " + sym + "(" + shell + "* __self" + body_decl(m);
+                    "[[maybe_unused]] HOT_HIDDEN static " + ret + " " + sym + "(" + shell + "* __self" + body_decl(m);
                 o.w(line_at(m.line));
                 o.head_segments(whead, sym, m, all_text);
                 o.w(whead + ")\n");
@@ -4637,18 +4637,18 @@ void translate_impl(
             o.w(line_at(m.line));
             o.w("{\n");
             o.w(line_at(m.line));
-            o.w("    if (SPP_UNLIKELY(spp::active_generation != GEN)) {\n");
+            o.w("    if (HOT_UNLIKELY(hot::active_generation != GEN)) {\n");
             o.w(line_at(m.line));
-            o.w("        spp::stale_call(\"" + what + "\");\n");
+            o.w("        hot::stale_call(\"" + what + "\");\n");
             o.w(line_at(m.line));
             o.w("        return" + (ret == "void" ? std::string() : " " + ret + "()") + ";\n");
             o.w(line_at(m.line));
             o.w("    }\n");
             // The two local names and the body forms map to the first statement.
             o.w(line_at(first_line));
-            o.w("    SPP_NODEBUG_LOCAL auto* __self = static_cast<" + shell + "*>(this->__spp_owner);\n");
+            o.w("    HOT_NODEBUG_LOCAL auto* __self = static_cast<" + shell + "*>(this->__spp_owner);\n");
             o.w(line_at(first_line));
-            o.w("    SPP_NODEBUG_LOCAL auto* __st = this;\n");
+            o.w("    HOT_NODEBUG_LOCAL auto* __st = this;\n");
             for (size_t b = 0; b < body_locals.size();)
             {
                 const size_t e = body_locals.find('\n', b) + 1;
@@ -4751,7 +4751,7 @@ void translate_impl(
                     ps += ", " + nv.ptypes[k] + " a" + std::to_string(k);
                     as += (k ? ", " : "") + arg_expr(nv.ptypes[k], "a" + std::to_string(k));
                 }
-                o.w("[[maybe_unused]] SPP_HIDDEN static " + nv.ret + " " + P + "base_" + nv.name + "(" + B + "* a" + ps
+                o.w("[[maybe_unused]] HOT_HIDDEN static " + nv.ret + " " + P + "base_" + nv.name + "(" + B + "* a" + ps
                     + ")\n{\n    return state_of(static_cast<" + shell + "*>(a))->" + table[i] + "(" + as
                     + ");\n}\n\n");
             }
@@ -4777,8 +4777,8 @@ void translate_impl(
                 o.w("// The signature changed (design 5.3). This thunk serves the new signature. A\n"
                     "// delegate on the thunk of the old signature detaches.\n");
                 mapped("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* __a" + param_decl(m)
-                        + ")\n{\n    SPP_NODEBUG_LOCAL auto* __self = static_cast<" + shell
-                        + "*>(__a);\n    return spp::call<" + sig + ">(__self, " + slot_id(m.name) + arg_list(m)
+                        + ")\n{\n    HOT_NODEBUG_LOCAL auto* __self = static_cast<" + shell
+                        + "*>(__a);\n    return hot::call<" + sig + ">(__self, " + slot_id(m.name) + arg_list(m)
                         + ");\n}\n",
                     m.line, m.pos);
                 o.w("\n");
@@ -4789,8 +4789,8 @@ void translate_impl(
             o.w("// The thunk has the same address in each generation (section 4.11). The\n"
                 "// generation that adds the function emits it. It reads the slot at call time.\n");
             mapped("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* __a" + param_decl(m)
-                    + ")\n{\n    SPP_NODEBUG_LOCAL auto* __self = static_cast<" + shell
-                    + "*>(__a);\n    return spp::call<" + fn_ret(m) + "(" + B + "*" + type_list(m) + ")>(__self, "
+                    + ")\n{\n    HOT_NODEBUG_LOCAL auto* __self = static_cast<" + shell
+                    + "*>(__a);\n    return hot::call<" + fn_ret(m) + "(" + B + "*" + type_list(m) + ")>(__self, "
                     + slot_id(m.name) + arg_list(m) + ");\n}\n",
                 m.line, m.pos);
             o.w("\n");
@@ -4814,20 +4814,20 @@ void translate_impl(
         // ISO C++ has no array of size zero. A class without slots gets one null entry.
         if (table.empty())
         {
-            o.w("static const spp::SlotFn " + cn + "_slots[1] = {nullptr};\n\n");
+            o.w("static const hot::SlotFn " + cn + "_slots[1] = {nullptr};\n\n");
         }
         else
         {
-            o.w("static const spp::SlotFn " + cn + "_slots[" + slot_id("COUNT") + "] = {\n");
+            o.w("static const hot::SlotFn " + cn + "_slots[" + slot_id("COUNT") + "] = {\n");
             for (const std::string& fn : table)
-                o.w(fn.empty() ? std::string("    nullptr,\n") : "    reinterpret_cast<spp::SlotFn>(&" + fn + "),\n");
+                o.w(fn.empty() ? std::string("    nullptr,\n") : "    reinterpret_cast<hot::SlotFn>(&" + fn + "),\n");
             o.w("};\n\n");
         }
         std::string on_reload_init;
         for (const Method& m : cd.methods)
             if (hook_of(m) == Hook::OnReload)
             {
-                mapped("static void " + P + "onReload_hook(spp::ShellBase* s, const spp::OldState& old)\n{\n    " + P
+                mapped("static void " + P + "onReload_hook(hot::ShellBase* s, const hot::OldState& old)\n{\n    " + P
                         + "onReload(static_cast<" + shell + "*>(s), old);\n}\n",
                     m.line, m.pos);
                 o.w("\n");
@@ -4847,9 +4847,9 @@ void translate_impl(
                 + (gen_new ? "&" + P + "construct, typeid(" + cn + "_SuperArgs).name()" : "nullptr, nullptr") + ", "
                 + (!entry.empty() ? "&" + P + "new_default" : std::string("nullptr")) + ", nullptr, "
                 + (dtor_chain ? "&" + P + "dtor_slot" : std::string("nullptr")) + ",\n";
-        o.w("spp::ClassRecord " + cn + "_record = {\n    \"" + cd.key_name() + "\", GEN, " + cn + "_slots, " + slot_id("COUNT")
+        o.w("hot::ClassRecord " + cn + "_record = {\n    \"" + cd.key_name() + "\", GEN, " + cn + "_slots, " + slot_id("COUNT")
             + ", &" + cn + "_layout, " + (par ? "&" + par->name + "_record" : std::string("nullptr")) + ",\n    \"" + BL
-            + "\", spp::shell_layout_hash(\"" + BL + "\", sizeof(" + shell + "), alignof(" + shell + "), "
+            + "\", hot::shell_layout_hash(\"" + BL + "\", sizeof(" + shell + "), alignof(" + shell + "), "
             + std::to_string(native_count) + "),\n" + (on_reload_init.empty() ? "" : "   " + on_reload_init) + ctor_init
             + "};\n\n");
         if (!entry.empty())
@@ -4860,7 +4860,7 @@ void translate_impl(
             // The plan takes a "T&" parameter by reference: default_args gives a variable.
             std::string plan_locals;
             const std::string defaults = default_args(ctor_ms[dflt], plan_locals);
-            mapped("SPP_NODEBUG static spp::Instance " + cn + "_create()\n{\n    spp::ScriptEntry entry;  // the creation is an entry (S27)\n    spp::ShellBase* s = nullptr;\n    if (" + cn +
+            mapped("HOT_NODEBUG static hot::Instance " + cn + "_create()\n{\n    hot::ScriptEntry entry;  // the creation is an entry (S27)\n    hot::ShellBase* s = nullptr;\n    if (" + cn +
                        "_record.new_default) {\n        s = " + cn + "_record.new_default();\n    } else {\n" + plan_locals + "        auto plan = " + P +
                        "plan(" + defaults + ");\n        s = " + P + "construct(typeid(" + sa_name(dflt) + ").name(), &plan.first);\n    }\n    auto* p = static_cast<" +
                        shell + "*>(s);\n    return {static_cast<" + B + "*>(p), p};\n}\n",
@@ -4869,9 +4869,9 @@ void translate_impl(
         }
         else
         {
-            mapped("SPP_NODEBUG static spp::Instance " + cn
-                    + "_create()\n{\n    spp::ScriptEntry entry;  // the creation is an entry (S27)\n    auto* p = new "
-                    + shell + "(spp::Construct{}" + ctor_args + ");\n    return {static_cast<" + B + "*>(p), p};\n}\n",
+            mapped("HOT_NODEBUG static hot::Instance " + cn
+                    + "_create()\n{\n    hot::ScriptEntry entry;  // the creation is an entry (S27)\n    auto* p = new "
+                    + shell + "(hot::Construct{}" + ctor_args + ");\n    return {static_cast<" + B + "*>(p), p};\n}\n",
                 cd.line, cd.pos);
             o.w("\n");
         }
@@ -4882,7 +4882,7 @@ void translate_impl(
     }
     write_texts(seq.size());
 
-    o.w("extern \"C\" void script_register(spp::Registry& reg)\n{\n");
+    o.w("extern \"C\" void script_register(hot::Registry& reg)\n{\n");
     if (has_module)
         o.w("    reg.set_module_state(&" + kModuleName + "_layout, &" + kModuleName + "_slot);\n");
     for (const auto& r : registers)

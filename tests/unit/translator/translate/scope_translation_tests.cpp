@@ -1,6 +1,6 @@
 // Tests for sppc::translate with scopes. The script writes "." for a scope.
 // The generated C++ uses "::".
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -42,7 +42,7 @@ TEST(ScopeTranslation, MemberAccessUsesDeref)
         "    override void Tick(float dt) { var n = this.title.size(); }\n}\n";
     const sppc::TranslateResult r = sppc::translate(temp_options(dir, script));
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.cpp.find("spp::deref(__st->title).size()"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("hot::deref(__st->title).size()"), std::string::npos) << r.cpp;
 }
 
 TEST(ScopeTranslation, DoubleColonInABaseClassIsAnError)

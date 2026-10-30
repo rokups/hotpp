@@ -1,7 +1,7 @@
 // Tests of script properties with the backend that SPP_BACKEND selected.
 //
 // CMake defines the macro SPP_SOURCE_DIR.
-#include "spp/backend.h"
+#include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
@@ -23,7 +23,7 @@ using test_support::source;
 // set accessor and a custom getter and setter. The hidden fields are normal state fields.
 TEST_P(BackendTests, PropertiesReadAndWrite)
 {
-    spp::LoadResult v1 = backend->load(source("props_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("props_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Gauge"));
@@ -37,7 +37,7 @@ TEST_P(BackendTests, PropertiesReadAndWrite)
     s.world.Tick(kDt); // Hp += 1, Shield = Shield + 2, Level++
     EXPECT_EQ(*s.field("__p_Hp"), 51.0f);
     EXPECT_EQ(*s.field("shield_raw"), 2.0f);
-    const int* level = spp::field_ptr<int>(s.inst.shell, "__p_Level");
+    const int* level = hot::field_ptr<int>(s.inst.shell, "__p_Level");
     ASSERT_NE(level, nullptr);
     EXPECT_EQ(*level, 2);
 
@@ -51,7 +51,7 @@ TEST_P(BackendTests, PropertiesReadAndWrite)
 // The accessors run for the other object. An object of another class gives an exception.
 TEST_P(BackendTests, PropertiesOfOtherObjectReadAndWrite)
 {
-    const spp::ScriptSource src = {"props_other.hot", R"(
+    const hot::ScriptSource src = {"props_other.hot", R"(
 using "Actor.h";
 
 class Gauge : Actor {
@@ -81,27 +81,27 @@ class Gauge : Actor {
     }
 }
 )"};
-    spp::LoadResult r = backend->load(src, 1);
+    hot::LoadResult r = backend->load(src, 1);
     ASSERT_TRUE(r) << r.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module), "Gauge"));
-    const spp::ClassEntry* entry = s.loader.find("Gauge");
+    const hot::ClassEntry* entry = s.loader.find("Gauge");
     ASSERT_NE(entry, nullptr);
-    const spp::Instance other = entry->create();
+    const hot::Instance other = entry->create();
     Actor* source = static_cast<Actor*>(other.native);
     s.world.Add(source);
 
     s.actor->TakeDamage(*source, 5.0f);
-    auto f = [](spp::ShellBase* sh, const char* name) { return *spp::field_ptr<float>(sh, name); };
+    auto f = [](hot::ShellBase* sh, const char* name) { return *hot::field_ptr<float>(sh, name); };
     EXPECT_EQ(f(s.inst.shell, "seen"), 150.0f); // 50 + 100, read on the other object
     EXPECT_EQ(f(s.inst.shell, "__p_Hp"), 30.0f);
     EXPECT_EQ(f(s.inst.shell, "chained"), 30.0f);
     EXPECT_EQ(f(s.inst.shell, "old_hits"), 1.0f); // "Hits++" gives the old value
     EXPECT_EQ(f(other.shell, "__p_Hp"), 30.0f); // 50 - 5, then 30
     EXPECT_EQ(f(other.shell, "raw"), 3.0f); // the setter clamps -5 to 0, then 0 + 3
-    EXPECT_EQ(*spp::field_ptr<int>(other.shell, "__p_Hits"), 2);
+    EXPECT_EQ(*hot::field_ptr<int>(other.shell, "__p_Hits"), 2);
     // The accessors did not touch the state of the caller.
-    EXPECT_EQ(*spp::field_ptr<int>(s.inst.shell, "__p_Hits"), 0);
+    EXPECT_EQ(*hot::field_ptr<int>(s.inst.shell, "__p_Hits"), 0);
     EXPECT_EQ(f(s.inst.shell, "raw"), 0.0f);
 
     // A native actor is not a Gauge. The property access throws and changes nothing.

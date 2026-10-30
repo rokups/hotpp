@@ -3,7 +3,7 @@
 //
 // CMake defines the macro SPP_SOURCE_DIR.
 #include "Weapon.h"
-#include "spp/backend.h"
+#include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
@@ -24,24 +24,24 @@ using test_support::source;
 // A field or a local without an initializer has the zero value.
 TEST_P(BackendTests, DefaultValues)
 {
-    spp::LoadResult v1 = backend->load(source("default_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("default_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Knight"));
     s.commit_at_frame_boundary();
     s.world.Tick(kDt);
-    EXPECT_EQ(*spp::field_ptr<int>(s.inst.shell, "n"), 0);
-    EXPECT_EQ(*spp::field_ptr<float>(s.inst.shell, "f"), 0.0f);
-    EXPECT_FALSE(*spp::field_ptr<bool>(s.inst.shell, "b"));
-    EXPECT_EQ(spp::field_ptr<std::shared_ptr<Weapon>>(s.inst.shell, "weapon")->get(), nullptr);
-    EXPECT_EQ(*spp::field_ptr<int>(s.inst.shell, "seen"), 0);
+    EXPECT_EQ(*hot::field_ptr<int>(s.inst.shell, "n"), 0);
+    EXPECT_EQ(*hot::field_ptr<float>(s.inst.shell, "f"), 0.0f);
+    EXPECT_FALSE(*hot::field_ptr<bool>(s.inst.shell, "b"));
+    EXPECT_EQ(hot::field_ptr<std::shared_ptr<Weapon>>(s.inst.shell, "weapon")->get(), nullptr);
+    EXPECT_EQ(*hot::field_ptr<int>(s.inst.shell, "seen"), 0);
 }
 
 // A member of a temporary in a for-of loop: "this.mk().first". The temporary must live
 // during the whole loop. The generated code compiles and runs with the selected backend.
 TEST_P(BackendTests, ForOfOverAMemberOfATemporaryRuns)
 {
-    const spp::ScriptSource src = {"temp.hot", R"(
+    const hot::ScriptSource src = {"temp.hot", R"(
 using "Actor.h";
 using <utility>;
 using <vector>;
@@ -67,7 +67,7 @@ class Player : Actor {
     override void TakeDamage(Actor& source, float amount) {}
 }
 )"};
-    spp::LoadResult r = backend->load(src, 1);
+    hot::LoadResult r = backend->load(src, 1);
     ASSERT_TRUE(r) << r.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));

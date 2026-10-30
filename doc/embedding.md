@@ -74,7 +74,7 @@ Linux is the tested platform. Windows and macOS are untested. `src/runtime/modul
 
 ### Threads
 
-These rules come from the comments in `include/spp/runtime/loader.h`.
+These rules come from the comments in `include/hot/runtime/loader.h`.
 
 - `load`, `frame_boundary`, `stats`, `find` and `thunk` run on the main thread only. Worker threads do not call them.
 - `request_reload` and `reload_pending` can run on any thread, also while workers run script code.
@@ -95,7 +95,7 @@ A host that loads a module must export its symbols. The modules resolve the host
 
 ### C++17 baseline
 
-The generated code, `include/spp` and the runtime library need C++17 only. A C++17 host works. The standard of the scripts is the standard of the host (17, 20 or 23). A standard below 20 selects fmt for `${}`. See [CMake](cmake.html) for the table.
+The generated code, `include/hot` and the runtime library need C++17 only. A C++17 host works. The standard of the scripts is the standard of the host (17, 20 or 23). A standard below 20 selects fmt for `${}`. See [CMake](cmake.html) for the table.
 
 ### Core copies
 
@@ -113,23 +113,23 @@ cmake --preset linux-clang-jit
 ```
 
 ```cpp
-auto backend = spp::make_default_backend();   // declare before the loader
-spp::Loader loader;                           // declare before the objects
-spp::LoadResult module = backend->load({"player.hot", text}, 1);
+auto backend = hot::make_default_backend();   // declare before the loader
+hot::Loader loader;                           // declare before the objects
+hot::LoadResult module = backend->load({"player.hot", text}, 1);
 if (!module) { /* report module.error and module.reason */ }
-spp::ReloadResult loaded = loader.load(std::move(*module.module));
+hot::ReloadResult loaded = loader.load(std::move(*module.module));
 if (!loaded) { /* report loaded.error */ }
-const spp::ClassEntry* entry = loader.find("Player");
+const hot::ClassEntry* entry = loader.find("Player");
 std::unique_ptr<Actor> player(static_cast<Actor*>(entry->create().native));
 ```
 
-`make_default_backend` takes the compiler, the include folders and the flags from the build. The folders are the include folder of S++ and, with `SPP_BUILD_TESTS` ON, `tests/engine`. The flags are `CMAKE_CXX_FLAGS` at the time of `add_subdirectory`. The `CLANG_FILES` work folder is `<build>/tmp/spp_work/p<pid>`, and the backend removes it at exit unless `SPP_KEEP_TEMP` keeps it. A host adds its own folders and flags with `spp::DefaultBackendOptions` (`include/spp/backend.h`):
+`make_default_backend` takes the compiler, the include folders and the flags from the build. The folders are the include folder of S++ and, with `SPP_BUILD_TESTS` ON, `tests/engine`. The flags are `CMAKE_CXX_FLAGS` at the time of `add_subdirectory`. The `CLANG_FILES` work folder is `<build>/tmp/spp_work/p<pid>`, and the backend removes it at exit unless `SPP_KEEP_TEMP` keeps it. A host adds its own folders and flags with `hot::DefaultBackendOptions` (`include/hot/backend.h`):
 
 ```cpp
-spp::DefaultBackendOptions options;
+hot::DefaultBackendOptions options;
 options.include_dirs = {"engine"};   // after the build-time include folders
 options.extra_flags = {"-DGAME=1"};  // after the build-time flags
-auto backend = spp::make_default_backend(options);
+auto backend = hot::make_default_backend(options);
 ```
 
 `make_default_backend()` without an argument is the same as a call with empty options. Both backends use the options.
@@ -151,8 +151,8 @@ sppc player_v1.hot --gen 1 -I include -I tests/engine --out-dir out/
 ```
 
 ```cpp
-spp::Loader loader;
-spp::LoadResult module = spp::module_from_library("out/player_v1.g1.so");
+hot::Loader loader;
+hot::LoadResult module = hot::module_from_library("out/player_v1.g1.so");
 if (!module || !loader.load(std::move(*module.module))) { /* report */ }
 ```
 
@@ -172,7 +172,7 @@ Ask for a reload at any time. Commit it at the frame boundary.
 
 ```cpp
 // next: a LoadResult of generation 2, from a backend
-spp::ReloadResult r = loader.request_reload(std::move(next));   // checks only
+hot::ReloadResult r = loader.request_reload(std::move(next));   // checks only
 // later, at the frame boundary of the main thread:
 loader.commit_pending();
 loader.frame_boundary();                                        // unloads old generations
@@ -180,7 +180,7 @@ loader.frame_boundary();                                        // unloads old g
 
 `request_reload` has two overloads. One takes a `Module`. The other takes a `LoadResult`: a failed result becomes a `ReloadResult` without a call of the validation. A backend failure with the reason `SlotsRemoved` becomes `FullReloadRequired`. Any other failure becomes `Failed`.
 
-`request_reload` returns a `spp::ReloadResult` (`include/spp/runtime/reload_result.h`). It has a `status`, a `reason`, an `error` text and the `classes` involved. The status is one of these:
+`request_reload` returns a `hot::ReloadResult` (`include/hot/runtime/reload_result.h`). It has a `status`, a `reason`, an `error` text and the `classes` involved. The status is one of these:
 
 | Status | Meaning |
 |---|---|
@@ -208,7 +208,7 @@ For `FullReloadRequired`, the host does these steps:
 1. Save the host state.
 2. Drop all script objects, handles, closures and thunk pointers.
 3. Call `loader.reset(error)` on the same `Loader`.
-4. Call `backend->load(source, 1, spp::LoadMode::Fresh)`.
+4. Call `backend->load(source, 1, hot::LoadMode::Fresh)`.
 5. Call `loader.load(module)`.
 6. Restore the host state.
 
@@ -219,13 +219,13 @@ The host does the serialization. The script has no hook for it. `reset` returns 
 **Links:** `spp_jit_backend`. It brings `spp_runtime`, `sppc_lib`, `clang-cpp` and `LLVM`. Set `ENABLE_EXPORTS`. The target exists only when `SPP_BACKEND` is `JIT`.
 
 ```cpp
-spp::JitOptions options;
+hot::JitOptions options;
 options.compiler = "/usr/bin/clang++";             // the driver name; an absolute path is best
 options.include_dirs = {SPP_INCLUDE_DIR, "engine"};
 options.resource_dir = RESOURCE_DIR;                // <compiler> -print-resource-dir
-spp::JitBackend backend(std::move(options));        // declare before the loader
-spp::Loader loader;
-spp::LoadResult built = backend.load({"player.hot", text}, 1);
+hot::JitBackend backend(std::move(options));        // declare before the loader
+hot::Loader loader;
+hot::LoadResult built = backend.load({"player.hot", text}, 1);
 ```
 
 **Run time:** the backend translates in memory, compiles in memory with the Clang library and loads the code with LLVM ORC. No process starts. The backend writes no file, except the precompiled header of `make_pch`. Each `load` makes a new JITDylib. The slot order stays in memory.
@@ -243,18 +243,18 @@ spp::LoadResult built = backend.load({"player.hot", text}, 1);
 **Links:** `spp_clang_backend`. It brings `spp_runtime` and `sppc_lib`. Set `ENABLE_EXPORTS`.
 
 ```cpp
-spp::ClangFilesOptions options;
+hot::ClangFilesOptions options;
 options.compiler = "clang++";
 options.include_dirs = {SPP_INCLUDE_DIR, "engine"};
 options.extra_flags = {"-fsanitize=address"};
 options.work_dir = "build/spp_work";
 options.remove_work_dir_at_exit = true;
-spp::ClangFilesBackend backend(std::move(options));   // declare before the loader
-spp::Loader loader;
-spp::LoadResult built = backend.load({"player.hot", text}, 1);
+hot::ClangFilesBackend backend(std::move(options));   // declare before the loader
+hot::Loader loader;
+hot::LoadResult built = backend.load({"player.hot", text}, 1);
 ```
 
-**Run time:** the backend translates in memory, writes a `.cpp` in `work_dir`, runs the compiler (without a shell) to make a `.so`, and loads it. Each call makes a new `.so`. The compile command is `<compiler> -std=<standard> -fPIC -shared -g -Werror=return-type`, then `-resource-dir`, `extra_flags`, the `-I` folders and the format flags (`compile_command` in `include/spp/clang_files_backend.h`).
+**Run time:** the backend translates in memory, writes a `.cpp` in `work_dir`, runs the compiler (without a shell) to make a `.so`, and loads it. Each call makes a new `.so`. The compile command is `<compiler> -std=<standard> -fPIC -shared -g -Werror=return-type`, then `-resource-dir`, `extra_flags`, the `-I` folders and the format flags (`compile_command` in `include/hot/clang_files_backend.h`).
 
 **Requires:** the compiler at run time. A work folder that the program can write.
 
@@ -275,9 +275,9 @@ sppc --aot player.hot boss.hot --out-dir gen -I include -I tests/engine
 ```
 
 ```cpp
-#include "spp/aot.h"
+#include "hot/aot.h"
 
-spp::AotRegistry registry(spp::aot_table);   // the main thread; it lives as long as the objects
+hot::AotRegistry registry(hot::aot_table);   // the main thread; it lives as long as the objects
 Actor* boss = registry.create_as<Actor>("Boss");
 world.Add(boss);
 ```
@@ -292,7 +292,7 @@ world.Add(boss);
 
 ## The backend interface
 
-`include/spp/backend.h`, `include/spp/module.h`.
+`include/hot/backend.h`, `include/hot/module.h`.
 
 | Type | Role |
 |---|---|
@@ -332,25 +332,25 @@ Fields of `Module`:
 
 `Backend::load` does not touch the live generation. On failure the result has an `error` and a `reason`.
 
-`spp::module_from_library(path)` builds a `Module` from a shared library (`dlopen` and `dlsym`). The loader calls `Loader::load` for the first module, `request_reload` and `commit_pending` for the next ones, and `reset` for a full reload. `Loader` also has `stats()`, `stats_text()`, `set_sync_mode`, `sync_mode`, `reload_pending`, `find`, `module_state` and `thunk`.
+`hot::module_from_library(path)` builds a `Module` from a shared library (`dlopen` and `dlsym`). The loader calls `Loader::load` for the first module, `request_reload` and `commit_pending` for the next ones, and `reset` for a full reload. `Loader` also has `stats()`, `stats_text()`, `set_sync_mode`, `sync_mode`, `reload_pending`, `find`, `module_state` and `thunk`.
 
 ### Options structs
 
-`DefaultBackendOptions` (`include/spp/backend.h`):
+`DefaultBackendOptions` (`include/hot/backend.h`):
 
 | Field | Default | Meaning |
 |---|---|---|
 | `include_dirs` | empty | Added after the build-time include folders (`SPP_DEFAULT_INCLUDES`). |
 | `extra_flags` | empty | Added after the build-time flags (`SPP_DEFAULT_CXXFLAGS`). |
 
-`ClangFilesOptions` (`include/spp/clang_files_backend.h`):
+`ClangFilesOptions` (`include/hot/clang_files_backend.h`):
 
 | Field | Default | Meaning |
 |---|---|---|
 | `compiler` | `"clang++"` | The compiler command. |
 | `include_dirs` | empty | For the script imports and for the compile. |
 | `resource_dir` | empty | The Clang resource folder. Empty: the default of the compiler. |
-| `std_version` | empty | For example `"c++17"`. Empty: the standard of the host (`spp::cxx_std_name()`). |
+| `std_version` | empty | For example `"c++17"`. Empty: the standard of the host (`hot::cxx_std_name()`). |
 | `session` | empty | The translator cache. Empty: the backend makes its own. Share one to keep the cache between backends. |
 | `extra_flags` | empty | Added to the compile command. |
 | `work_dir` | `"spp_work"` | The `.cpp` and `.so` files go here. |
@@ -359,7 +359,7 @@ Fields of `Module`:
 | `strict_borrowed` | `true` | `false`: a borrowed-storage finding is a warning. |
 | `raw_diagnostics` | `false` | `true`: the error text is the raw compiler output. `false`: it uses script names. |
 
-`JitOptions` (`include/spp/jit_backend.h`):
+`JitOptions` (`include/hot/jit_backend.h`):
 
 | Field | Default | Meaning |
 |---|---|---|

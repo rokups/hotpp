@@ -10,8 +10,8 @@ target_include_directories(sppc_lib PRIVATE ${CLANG_C_INCLUDE_DIR})
 target_link_libraries(sppc_lib PUBLIC ${CLANG_C_LIBRARY})
 target_link_libraries(sppc_lib PRIVATE foonathan::lexy::core)
 # The translator needs C++20. The host can use C++17. The parse of the native headers uses the
-# standard of the host (SPP_CXX_STANDARD, include/spp/config.h), not the standard of this target.
+# standard of the host (HOT_CXX_STANDARD, include/hot/config.h), not the standard of this target.
 target_compile_features(sppc_lib PRIVATE cxx_std_20)
 spp_effective_cxx_standard(SPP_HOST_CXX_STANDARD spp_runtime_core)
-target_compile_definitions(sppc_lib PRIVATE SPP_CXX_STANDARD=${SPP_HOST_CXX_STANDARD})
+target_compile_definitions(sppc_lib PRIVATE HOT_CXX_STANDARD=${SPP_HOST_CXX_STANDARD})
 target_compile_definitions(sppc_lib PRIVATE SPP_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")

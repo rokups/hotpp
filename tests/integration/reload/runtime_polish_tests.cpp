@@ -1,7 +1,7 @@
 // Runtime polish (S9): the removed class handler (design 6.1), script_stats (8.4), the entry
 // counter check at the commit (6.3) and the harness with the file watcher and the commands (8.1).
 #include "Harness.h"
-#include "spp/backend.h"
+#include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
 #include "support/script_files.h"
@@ -21,9 +21,9 @@ using test_support::read_file;
 using test_support::Session;
 using test_support::source;
 
-const spp::ClassInfo* find_class(const spp::LoaderStats& st, const std::string& name)
+const hot::ClassInfo* find_class(const hot::LoaderStats& st, const std::string& name)
 {
-    for (const spp::ClassInfo& c : st.classes)
+    for (const hot::ClassInfo& c : st.classes)
         if (c.name == name)
             return &c;
     return nullptr;
@@ -33,19 +33,19 @@ const spp::ClassInfo* find_class(const spp::LoaderStats& st, const std::string& 
 // methods log and do nothing. The Hero object runs the new code.
 TEST_P(BackendTests, RemovedClassKeepsItsObjectsValid)
 {
-    spp::LoadResult v1 = backend->load(source("removed_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("removed_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("removed_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("removed_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
     s.commit_at_frame_boundary();
-    spp::Instance ghost = s.loader.find("Ghost")->create();
+    hot::Instance ghost = s.loader.find("Ghost")->create();
     s.world.Add(static_cast<Actor*>(ghost.native));
     s.world.Tick(kDt);
     s.world.Tick(kDt);
-    ASSERT_EQ(*spp::field_ptr<int>(ghost.shell, "haunts"), 2);
-    const uint64_t calls0 = spp::removed_class_call_count();
+    ASSERT_EQ(*hot::field_ptr<int>(ghost.shell, "haunts"), 2);
+    const uint64_t calls0 = hot::removed_class_call_count();
 
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
@@ -58,37 +58,37 @@ TEST_P(BackendTests, RemovedClassKeepsItsObjectsValid)
 
     EXPECT_NE(log.find("WARNING: class Ghost is removed from the source; 1 live object(s)"), std::string::npos) << log;
     EXPECT_NE(log.find("call of a method of a removed script class ignored"), std::string::npos) << log;
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     // The Ghost object kept its state. The Tick of the first frame after the commit ran in the
     // old code (the commit is at the end of that frame), so haunts is 3 and not more.
-    EXPECT_EQ(*spp::field_ptr<int>(ghost.shell, "haunts"), 3);
-    EXPECT_EQ(*spp::field_ptr<float>(ghost.shell, "chill"), 2.5f);
-    EXPECT_EQ(*spp::field_ptr<int>(s.inst.shell, "ticks"), 2 + 1 + 100); // Hero runs the new code
-    EXPECT_GE(spp::removed_class_call_count(), calls0 + 2); // one Tick and one TakeDamage
+    EXPECT_EQ(*hot::field_ptr<int>(ghost.shell, "haunts"), 3);
+    EXPECT_EQ(*hot::field_ptr<float>(ghost.shell, "chill"), 2.5f);
+    EXPECT_EQ(*hot::field_ptr<int>(s.inst.shell, "ticks"), 2 + 1 + 100); // Hero runs the new code
+    EXPECT_GE(hot::removed_class_call_count(), calls0 + 2); // one Tick and one TakeDamage
 
-    const spp::LoaderStats st = s.loader.stats();
-    const spp::ClassInfo* g = find_class(st, "Ghost");
+    const hot::LoaderStats st = s.loader.stats();
+    const hot::ClassInfo* g = find_class(st, "Ghost");
     ASSERT_NE(g, nullptr);
     EXPECT_TRUE(g->removed);
     EXPECT_EQ(g->live_objects, 1u);
     for (uint32_t i = 0; i < g->slots; ++i)
-        EXPECT_TRUE(ghost.shell->cls->slots[i] == reinterpret_cast<spp::SlotFn>(&spp::StateBase::__removed));
+        EXPECT_TRUE(ghost.shell->cls->slots[i] == reinterpret_cast<hot::SlotFn>(&hot::StateBase::__removed));
     EXPECT_FALSE(find_class(st, "Hero")->removed);
 }
 
 // The class comes back in a later generation. The old object gets the new code.
 TEST_P(BackendTests, RemovedClassCanReturn)
 {
-    spp::LoadResult v1 = backend->load(source("removed_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("removed_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("removed_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("removed_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
-    spp::LoadResult v3 = backend->load(source("removed_v1.hot"), 3);
+    hot::LoadResult v3 = backend->load(source("removed_v1.hot"), 3);
     ASSERT_TRUE(v3) << v3.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
     s.commit_at_frame_boundary();
-    spp::Instance ghost = s.loader.find("Ghost")->create();
+    hot::Instance ghost = s.loader.find("Ghost")->create();
     s.world.Add(static_cast<Actor*>(ghost.native));
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
@@ -98,25 +98,25 @@ TEST_P(BackendTests, RemovedClassCanReturn)
     s.world.Tick(kDt);
     ASSERT_FALSE(s.commit_failed);
     EXPECT_FALSE(find_class(s.loader.stats(), "Ghost")->removed);
-    const int before = *spp::field_ptr<int>(ghost.shell, "haunts");
+    const int before = *hot::field_ptr<int>(ghost.shell, "haunts");
     s.world.Tick(kDt);
-    EXPECT_EQ(*spp::field_ptr<int>(ghost.shell, "haunts"), before + 1);
+    EXPECT_EQ(*hot::field_ptr<int>(ghost.shell, "haunts"), before + 1);
 }
 
 // script_stats: generations, pins, live objects and slots (design 8.4).
 TEST_P(BackendTests, StatsListGenerationsClassesAndSlots)
 {
-    spp::LoadResult v1 = backend->load(source("removed_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("removed_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("removed_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("removed_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
     s.commit_at_frame_boundary();
-    spp::Instance ghost = s.loader.find("Ghost")->create();
+    hot::Instance ghost = s.loader.find("Ghost")->create();
     s.world.Add(static_cast<Actor*>(ghost.native));
 
-    spp::LoaderStats st = s.loader.stats();
+    hot::LoaderStats st = s.loader.stats();
     EXPECT_EQ(st.live_objects, 2u);
     ASSERT_EQ(st.classes.size(), 2u);
     EXPECT_EQ(st.classes[0].name, "Ghost"); // sorted by name
@@ -148,28 +148,28 @@ TEST(EntryCounters, CommitWithAnOpenScopeAssertsInDebugBuilds)
     GTEST_FLAG_SET(death_test_style, "threadsafe");
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(GEN1_SO));
-    spp::LoadResult v2 = spp::module_from_library(GEN2_SO);
+    hot::LoadResult v2 = hot::module_from_library(GEN2_SO);
     ASSERT_TRUE(v2) << v2.error;
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    EXPECT_EQ(spp::in_script_tick(), 0);
+    EXPECT_EQ(hot::in_script_tick(), 0);
     EXPECT_DEATH(
         {
-            spp::ScriptTickScope scope;
+            hot::ScriptTickScope scope;
             s.loader.commit_pending();
         },
         "BUG: commit with 1 thread");
     // The parent process did not commit and has no open scope.
-    EXPECT_EQ(spp::in_script_tick(), 0);
+    EXPECT_EQ(hot::in_script_tick(), 0);
     EXPECT_TRUE(s.loader.reload_pending());
 }
 #else
 // A release build has no counter: the scope does nothing and the commit has no check.
 TEST(EntryCounters, ReleaseBuildHasNoCounter)
 {
-    static_assert(!spp::kTickChecks);
-    spp::ScriptTickScope scope;
-    EXPECT_EQ(spp::in_script_tick(), 0);
+    static_assert(!hot::kTickChecks);
+    hot::ScriptTickScope scope;
+    EXPECT_EQ(hot::in_script_tick(), 0);
 }
 #endif
 
@@ -203,19 +203,19 @@ TEST(HarnessTests, FileChangeReloadsAndCommandsWork)
     ASSERT_TRUE(h.start(error)) << error;
     h.frame(kDt, 0);
     h.frame(kDt, 0);
-    EXPECT_EQ(spp::active_generation, 1u);
+    EXPECT_EQ(hot::active_generation, 1u);
     EXPECT_EQ(h.reloads_started(), 0u); // no change: no reload
 
     script.write("player_v2.hot");
     h.frame(kDt, 2000); // the watcher sees the change; the commit is at the end of the frame
     EXPECT_EQ(h.reloads_started(), 1u);
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
 
     const std::string stats = h.command("stats");
     EXPECT_NE(stats.find("script_stats: active generation 2, 1 live objects"), std::string::npos) << stats;
     EXPECT_NE(h.command("reload").find("reload validated"), std::string::npos); // generation 3
     h.frame(kDt, 0);
-    EXPECT_EQ(spp::active_generation, 3u);
+    EXPECT_EQ(hot::active_generation, 3u);
     EXPECT_NE(h.command("bogus").find("unknown command"), std::string::npos);
     EXPECT_EQ(h.command(""), "");
     EXPECT_FALSE(h.quit_requested());
@@ -242,7 +242,7 @@ TEST(HarnessTests, FullReloadKeepsPositionAndName)
     const std::string out = testing::internal::GetCapturedStdout();
     EXPECT_NE(out.find("[host] full reload: "), std::string::npos) << out;
     EXPECT_EQ(h.reloads_started(), 1u);
-    EXPECT_EQ(spp::active_generation, 1u);
+    EXPECT_EQ(hot::active_generation, 1u);
     ASSERT_EQ(h.world().Actors().size(), 1u);
     EXPECT_EQ(h.world().Actors()[0]->Name, "Doc");
     EXPECT_EQ(h.world().Actors()[0]->Position.x, 1.5f);
@@ -267,17 +267,17 @@ TEST(HarnessTests, FullReloadBuildErrorKeepsTheActors)
         f << "\nclass Broken : Actor {\n    void f() { int x = \"text\"; }\n}\n";
     }
     testing::internal::CaptureStderr();
-    const spp::ReloadResult result = h.reload();
+    const hot::ReloadResult result = h.reload();
     const std::string log = testing::internal::GetCapturedStderr();
-    EXPECT_EQ(result.status, spp::ReloadStatus::Failed) << result.error << log;
+    EXPECT_EQ(result.status, hot::ReloadStatus::Failed) << result.error << log;
     EXPECT_NE(result.error.find("full reload failed"), std::string::npos) << result.error;
-    EXPECT_EQ(spp::active_generation, 1u);
+    EXPECT_EQ(hot::active_generation, 1u);
     ASSERT_EQ(h.world().Actors().size(), 1u);
     EXPECT_EQ(h.world().Actors()[0]->Name, "Doc");
 
     // The fixed script applies the full reload. The actor comes back.
     script.write("fnremoved_v2.hot");
-    EXPECT_EQ(h.reload().status, spp::ReloadStatus::Applied);
+    EXPECT_EQ(h.reload().status, hot::ReloadStatus::Applied);
     ASSERT_EQ(h.world().Actors().size(), 1u);
     EXPECT_EQ(h.world().Actors()[0]->Name, "Doc");
     testing::internal::GetCapturedStdout();
@@ -299,7 +299,7 @@ TEST(HarnessTests, BrokenScriptKeepsTheOldGeneration)
     h.frame(kDt, 2000);
     const std::string log = testing::internal::GetCapturedStderr();
     EXPECT_NE(log.find("[harness] reload failed"), std::string::npos) << log;
-    EXPECT_EQ(spp::active_generation, 1u);
+    EXPECT_EQ(hot::active_generation, 1u);
     h.frame(kDt, 0);
     testing::internal::GetCapturedStdout();
 }

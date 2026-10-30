@@ -1,5 +1,5 @@
 // Tests for sppc::analyze: the facts of a script that has syntax errors.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>

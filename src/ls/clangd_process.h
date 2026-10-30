@@ -13,7 +13,7 @@
 #include <thread>
 #include <vector>
 
-namespace spp::ls
+namespace hot::ls
 {
 
 class ClangdProcess
@@ -55,4 +55,4 @@ private:
     Handler on_notification_;
 };
 
-} // namespace spp::ls
+} // namespace hot::ls

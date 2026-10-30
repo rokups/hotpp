@@ -4,9 +4,9 @@
 #include "hosts.h"
 #include "jsonrpc.h"
 #include "semantic.h"
-#include "spp/clang_files_backend.h"
-#include "spp/config.h"
-#include "spp/sppc_lib.h"
+#include "hot/clang_files_backend.h"
+#include "hot/config.h"
+#include "hot/sppc_lib.h"
 #include "symbol_index.h"
 
 #include <nlohmann/json.hpp>
@@ -27,7 +27,7 @@
 
 namespace fs = std::filesystem;
 
-namespace spp::ls
+namespace hot::ls
 {
 
 using json = nlohmann::json;
@@ -354,7 +354,7 @@ private:
         o.include_dirs = e.include_dirs;
         o.resource_dir = e.resource_dir;
         o.std_version = e.std_version;
-        o.format_lib = spp::format_lib_name();
+        o.format_lib = hot::format_lib_name();
         return o;
     }
     // ---- hosts
@@ -760,13 +760,13 @@ void Server::send_generated(Doc& d, const std::string& cpp)
     if (!d.in_clangd)
     {
         // The compile command of the backend for the virtual file (design 10.1).
-        spp::ClangFilesOptions co;
+        hot::ClangFilesOptions co;
         const Effective e = effective_options(d.path);
         co.include_dirs = e.include_dirs;
         co.resource_dir = e.resource_dir;
         co.std_version = e.std_version;
         co.extra_flags = e.extra_flags;
-        const std::vector<std::string> cmd = spp::compile_command(co, d.gen_path, d.gen_path + ".so");
+        const std::vector<std::string> cmd = hot::compile_command(co, d.gen_path, d.gen_path + ".so");
         clangd_->notify("workspace/didChangeConfiguration",
             {{"settings",
                 {{"compilationDatabaseChanges",
@@ -1105,7 +1105,7 @@ static bool is_generated_name(const std::string& n)
     for (const char* x : parts)
         if (n.find(x) != std::string::npos)
             return true;
-    return n[0] == '_' || n.compare(0, 4, "spp_") == 0 || n.compare(0, 3, "Spp") == 0 || n == "spp";
+    return n[0] == '_' || n.compare(0, 4, "spp_") == 0 || n.compare(0, 3, "Spp") == 0 || n == "hot";
 }
 
 static bool has_prefix(const std::string& name, const std::string& prefix)
@@ -1313,7 +1313,7 @@ json Server::on_completion(const Doc& d, const json& p)
                 || name.find("::") != std::string::npos)
                 continue;
             if (after_dot && (name == "cls" || name == "state"))
-                continue; // spp::ShellBase (runtime/shell.h)
+                continue; // hot::ShellBase (runtime/shell.h)
             if (!member)
             {
                 // A name in scope: a variable, a function, a type, an enumerator, a namespace.
@@ -1344,7 +1344,7 @@ json Server::on_completion(const Doc& d, const json& p)
     {
         for (const std::string& k : script_keywords())
             add(k, 14, "keyword", "3");
-        // The global helpers of a script (include/spp/runtime/enumerate.h).
+        // The global helpers of a script (include/hot/runtime/enumerate.h).
         for (const std::string& h : script_helpers())
             add(h, 3, "global function", "3");
         for (const std::string& k : builtin_type_names())
@@ -2478,4 +2478,4 @@ bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, s
     return true;
 }
 
-} // namespace spp::ls
+} // namespace hot::ls

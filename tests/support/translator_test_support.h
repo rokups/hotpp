@@ -1,7 +1,7 @@
 // Helpers for the tests that call sppc::translate. CMake defines SPP_SOURCE_DIR.
 #pragma once
 
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 
 #include <gtest/gtest.h>
 

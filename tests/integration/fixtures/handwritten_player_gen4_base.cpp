@@ -4,7 +4,7 @@
 // shell layout hash differs from generation 1. Live objects of generation 1
 // cannot survive this change (class RECONSTRUCT, section 5.2).
 #include "Actor.h"
-#include "spp/runtime.h"
+#include "hot/runtime.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -22,34 +22,34 @@ enum : unsigned
     SLOT_COUNT = 4,
 };
 
-extern spp::ClassRecord Player_record;
+extern hot::ClassRecord Player_record;
 
 // ---------------------------------------------------------------- shell
 struct Player_Shell final
     : Actor
-    , spp::ShellBase
+    , hot::ShellBase
 {
     double extra_shell_member = 0; // changes the shell layout
     template <class... A>
-    explicit Player_Shell(spp::Construct, A&&... a)
+    explicit Player_Shell(hot::Construct, A&&... a)
         : Actor(std::forward<A>(a)...)
     {
-        spp::init_state(this, &Player_record);
+        hot::init_state(this, &Player_record);
     }
-    ~Player_Shell() override { spp::destroy_state(this); }
+    ~Player_Shell() override { hot::destroy_state(this); }
 
-    void Tick(float dt) override { return spp::call<void(Actor*, float)>(this, SLOT_Tick, dt); }
-    void TakeDamage(float a) override { return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a); }
+    void Tick(float dt) override { return hot::call<void(Actor*, float)>(this, SLOT_Tick, dt); }
+    void TakeDamage(float a) override { return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a); }
     void TakeDamage(Actor& src, float a) override
     {
-        return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, src, a);
+        return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, src, a);
     }
 };
 
 // ---------------------------------------------------------------- state
 struct PlayerState_g4
 {
-    spp::ShellBase* __spp_owner; // the runtime writes it (has_owner)
+    hot::ShellBase* __spp_owner; // the runtime writes it (has_owner)
     float health;
     float speed;
     float shield;
@@ -77,9 +77,9 @@ static void move_float(void* dst, const void* src)
     new (dst) float(*static_cast<const float*>(src));
 }
 
-constexpr uint8_t kFloatFlags = spp::kTriviallyCopyable | spp::kNothrowMove;
+constexpr uint8_t kFloatFlags = hot::kTriviallyCopyable | hot::kNothrowMove;
 
-static const spp::FieldInfo Player_fields[] = {
+static const hot::FieldInfo Player_fields[] = {
     {"health", "hp", typeid(float).name(), offsetof(PlayerState_g4, health), sizeof(float), alignof(float), kFloatFlags,
         init_health, move_float, nullptr},
     {"speed", nullptr, typeid(float).name(), offsetof(PlayerState_g4, speed), sizeof(float), alignof(float),
@@ -88,7 +88,7 @@ static const spp::FieldInfo Player_fields[] = {
         kFloatFlags, init_shield, move_float, nullptr},
 };
 
-static const spp::StateLayout Player_layout = {
+static const hot::StateLayout Player_layout = {
     "PlayerState_g4",
     sizeof(PlayerState_g4),
     alignof(PlayerState_g4),
@@ -105,8 +105,8 @@ static inline PlayerState_g4* state_of(Player_Shell* self)
 
 void PlayerState_g4::heal(float amount)
 {
-    if (SPP_UNLIKELY(spp::active_generation != GEN))
-        return spp::stale_call("Player::heal");
+    if (HOT_UNLIKELY(hot::active_generation != GEN))
+        return hot::stale_call("Player::heal");
     [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
     [[maybe_unused]] auto* st = this;
     st->health = std::min(st->health + 2.0f * amount, 100.0f);
@@ -115,8 +115,8 @@ void PlayerState_g4::heal(float amount)
 
 void PlayerState_g4::Tick(float dt)
 {
-    if (SPP_UNLIKELY(spp::active_generation != GEN))
-        return spp::stale_call("Player::Tick");
+    if (HOT_UNLIKELY(hot::active_generation != GEN))
+        return hot::stale_call("Player::Tick");
     [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
     [[maybe_unused]] auto* st = this;
     self->Move({2.0f * st->speed * dt, 0, 0});
@@ -126,8 +126,8 @@ void PlayerState_g4::Tick(float dt)
 
 void PlayerState_g4::TakeDamage_f(float amount)
 {
-    if (SPP_UNLIKELY(spp::active_generation != GEN))
-        return spp::stale_call("Player::TakeDamage(float)");
+    if (HOT_UNLIKELY(hot::active_generation != GEN))
+        return hot::stale_call("Player::TakeDamage(float)");
     [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
     [[maybe_unused]] auto* st = this;
     st->health = std::max(st->health - amount, 0.0f);
@@ -136,8 +136,8 @@ void PlayerState_g4::TakeDamage_f(float amount)
 
 void PlayerState_g4::TakeDamage_Af(Actor& src, float amount)
 {
-    if (SPP_UNLIKELY(spp::active_generation != GEN))
-        return spp::stale_call("Player::TakeDamage(Actor&, float)");
+    if (HOT_UNLIKELY(hot::active_generation != GEN))
+        return hot::stale_call("Player::TakeDamage(Actor&, float)");
     [[maybe_unused]] auto* self = static_cast<Player_Shell*>(__spp_owner);
     [[maybe_unused]] auto* st = this;
     std::printf("[gen4] %s: hit by %s\n", self->Name.c_str(), src.Name.c_str());
@@ -145,14 +145,14 @@ void PlayerState_g4::TakeDamage_Af(Actor& src, float amount)
 }
 
 // ------------------------------------------------------ record and entry
-static const spp::SlotFn Player_slots[SLOT_COUNT] = {
-    reinterpret_cast<spp::SlotFn>(&PlayerState_g4::Tick),
-    reinterpret_cast<spp::SlotFn>(&PlayerState_g4::TakeDamage_f),
-    reinterpret_cast<spp::SlotFn>(&PlayerState_g4::TakeDamage_Af),
-    reinterpret_cast<spp::SlotFn>(&PlayerState_g4::heal),
+static const hot::SlotFn Player_slots[SLOT_COUNT] = {
+    reinterpret_cast<hot::SlotFn>(&PlayerState_g4::Tick),
+    reinterpret_cast<hot::SlotFn>(&PlayerState_g4::TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&PlayerState_g4::TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&PlayerState_g4::heal),
 };
 
-spp::ClassRecord Player_record = {
+hot::ClassRecord Player_record = {
     "Player",
     GEN,
     Player_slots,
@@ -160,16 +160,16 @@ spp::ClassRecord Player_record = {
     &Player_layout,
     nullptr,
     "Actor",
-    spp::shell_layout_hash("Actor", sizeof(Player_Shell), alignof(Player_Shell), 3),
+    hot::shell_layout_hash("Actor", sizeof(Player_Shell), alignof(Player_Shell), 3),
 };
 
-static spp::Instance Player_create()
+static hot::Instance Player_create()
 {
-    auto* p = new Player_Shell(spp::Construct{}, std::string("Player"));
+    auto* p = new Player_Shell(hot::Construct{}, std::string("Player"));
     return {static_cast<Actor*>(p), p};
 }
 
-extern "C" void script_register(spp::Registry& reg)
+extern "C" void script_register(hot::Registry& reg)
 {
     reg.add(&Player_record, &Player_create);
 }

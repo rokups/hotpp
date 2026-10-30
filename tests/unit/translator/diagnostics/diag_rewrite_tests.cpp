@@ -1,7 +1,7 @@
 // Tests of the pure function sppc::rewrite_diagnostic (design 4.2, experiment F2).
 // The input is Clang text that the tests write by hand. The golden tests with a real
 // compile are in tests/integration/backends/diagnostic_mistake_tests.cpp.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 
 #include <gtest/gtest.h>
 

@@ -10,7 +10,7 @@
 #include <unistd.h>
 
 namespace fs = std::filesystem;
-using spp::ls::HostSet;
+using hot::ls::HostSet;
 
 namespace
 {

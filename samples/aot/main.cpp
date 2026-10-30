@@ -1,7 +1,7 @@
 // The program of the sample. The C++ of the script is part of this binary. The program has no
 // loader and no compiler at run time.
 #include "Creature.h"
-#include "spp/aot.h"
+#include "hot/aot.h"
 
 #include <cstdio>
 #include <exception>
@@ -11,9 +11,9 @@ int main()
 {
     try
     {
-        // The registry makes the script classes known. spp::aot_table comes from the library
+        // The registry makes the script classes known. hot::aot_table comes from the library
         // sample_aot_scripts.
-        spp::AotRegistry registry(spp::aot_table);
+        hot::AotRegistry registry(hot::aot_table);
         std::unique_ptr<Creature> wolf(registry.create_as<Creature>("Wolf"));
         if (!wolf)
         {

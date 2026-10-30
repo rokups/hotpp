@@ -3,7 +3,7 @@
 // object after each frame. Two runs that give the same text behave the same.
 #pragma once
 #include "Actor.h"
-#include "spp/runtime.h"
+#include "hot/runtime.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -15,7 +15,7 @@ namespace aot_demo
 {
 
 // The text of one field of a script object. Types that the demo does not print show "?".
-inline std::string field_text(const spp::FieldInfo& f, const char* state)
+inline std::string field_text(const hot::FieldInfo& f, const char* state)
 {
     const void* p = state + f.offset;
     char buf[64];
@@ -38,10 +38,10 @@ inline std::string field_text(const spp::FieldInfo& f, const char* state)
 
 inline std::string describe(Actor* actor)
 {
-    auto* shell = dynamic_cast<spp::ShellBase*>(actor);
+    auto* shell = dynamic_cast<hot::ShellBase*>(actor);
     if (!shell)
         return "native";
-    const spp::StateLayout* l = shell->cls->layout;
+    const hot::StateLayout* l = shell->cls->layout;
     char buf[96];
     std::snprintf(buf, sizeof buf, "%s %s pos.x=%.3f", shell->cls->name, actor->Name.c_str(),
         static_cast<double>(actor->Position.x));
@@ -52,7 +52,7 @@ inline std::string describe(Actor* actor)
     return text;
 }
 
-// "create" makes an object of a class name and gives an spp::Instance.
+// "create" makes an object of a class name and gives an hot::Instance.
 // The run makes one object of each class, ticks the world 3 times and hits the objects.
 template <class Create> std::string run(Create&& create)
 {

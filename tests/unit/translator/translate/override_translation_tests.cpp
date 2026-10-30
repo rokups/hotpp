@@ -1,5 +1,5 @@
 // Tests for sppc::translate with the override rules of the native virtual methods.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -18,7 +18,7 @@ TEST(OverrideTranslation, ExplicitOverrideUsesTheVirtualSlot)
     EXPECT_EQ(r.slots_out.find("Foo::Update"), std::string::npos) << r.slots_out;
     // The state member is the slot. No wrapper frame exists.
     EXPECT_NE(r.cpp.find("void FooState_g1::Update(float dt)"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("reinterpret_cast<spp::SlotFn>(&FooState_g1::Update)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("reinterpret_cast<hot::SlotFn>(&FooState_g1::Update)"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("Foo__Update"), std::string::npos) << r.cpp;
 }
 

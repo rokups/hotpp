@@ -4,7 +4,7 @@
 // for each test and each process stops two tests from writing the same files.
 #pragma once
 
-#include "spp/scratch.h"
+#include "hot/scratch.h"
 
 #include <gtest/gtest.h>
 
@@ -25,12 +25,12 @@ inline std::string scratch_path(std::string name)
 }
 
 // The scratch directory of the running test. The directory is empty at the start. The
-// destructor removes it, unless spp::keep_temp() is true.
-class TestScratch : public spp::ScratchDir
+// destructor removes it, unless hot::keep_temp() is true.
+class TestScratch : public hot::ScratchDir
 {
 public:
     TestScratch()
-        : spp::ScratchDir(scratch_path(current_test_name()))
+        : hot::ScratchDir(scratch_path(current_test_name()))
     {
     }
 
@@ -46,12 +46,12 @@ private:
 
 // A scratch directory for a cache that lives across the tests of the process. The directory
 // exists until the process ends. Each name gives one directory.
-inline spp::ScratchDir& process_scratch(const char* name)
+inline hot::ScratchDir& process_scratch(const char* name)
 {
-    static std::map<std::string, std::unique_ptr<spp::ScratchDir>> dirs;
-    std::unique_ptr<spp::ScratchDir>& dir = dirs[name];
+    static std::map<std::string, std::unique_ptr<hot::ScratchDir>> dirs;
+    std::unique_ptr<hot::ScratchDir>& dir = dirs[name];
     if (!dir)
-        dir = std::make_unique<spp::ScratchDir>(scratch_path(name));
+        dir = std::make_unique<hot::ScratchDir>(scratch_path(name));
     return *dir;
 }
 

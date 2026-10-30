@@ -9,7 +9,7 @@
 
 namespace fs = std::filesystem;
 
-namespace spp::ls
+namespace hot::ls
 {
 
 using json = nlohmann::json;
@@ -274,4 +274,4 @@ std::shared_ptr<const Host> HostSet::match(const std::string& script_path) const
     return best;
 }
 
-} // namespace spp::ls
+} // namespace hot::ls

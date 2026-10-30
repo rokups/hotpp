@@ -25,7 +25,7 @@ compiler (the object library `precompiled_library_cpp_scripts_plain`). This show
    It makes the library `wolf.g1.so`. `FLAGS` pass the flags of the host build to the compile.
 2. The variable `SPP_SCRIPTS_sample_precompiled_spp_scripts_LIBRARIES` has the paths of the
    libraries. The test gives the path to the program as `argv[1]`.
-3. `spp::module_from_library(path)` opens the library. `spp::Loader::load` takes the module.
+3. `hot::module_from_library(path)` opens the library. `hot::Loader::load` takes the module.
    `Loader::find("Wolf")` returns the class entry and `create()` makes an object.
 4. The loader is declared first, so it is destroyed last. The object dies before it.
 
@@ -90,7 +90,7 @@ the path of a `wolf.g1.so` file. It is under `spp_scripts/sample_precompiled_spp
 2. Link your program to `spp_runtime`, set `ENABLE_EXPORTS ON` and add `add_dependencies(<program> <name>)`.
 3. Take the library paths from `SPP_SCRIPTS_<name>_LIBRARIES`. Give them to the program in
    a way that suits you (an argument, a config file or a fixed folder).
-4. Call `spp::module_from_library(path)`. Check the `LoadResult`. Give the module to `Loader::load`.
+4. Call `hot::module_from_library(path)`. Check the `LoadResult`. Give the module to `Loader::load`.
 5. For a later generation, build another library with `SPPC_ARGS --gen 2` and give it to
    `request_reload`. See the sample [hot-reload](../hot-reload/) for the reload calls.
 

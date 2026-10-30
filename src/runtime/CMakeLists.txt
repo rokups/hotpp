@@ -4,17 +4,17 @@
 #   spp_runtime: the core plus the state tracking, the migration and the generation loader.
 add_library(spp_runtime_core STATIC threads.cpp registry.cpp)
 target_include_directories(spp_runtime_core PUBLIC ${PROJECT_SOURCE_DIR}/include)
-# The format library is a build-time choice (include/spp/config.h). It has no runtime switch.
+# The format library is a build-time choice (include/hot/config.h). It has no runtime switch.
 if(SPP_FORMAT_LIB STREQUAL "fmt")
     get_property(SPP_FMT_INCLUDE_DIR GLOBAL PROPERTY SPP_FMT_INCLUDE_DIR)
-    target_compile_definitions(spp_runtime_core PUBLIC SPP_USE_FMT=1 SPP_FMT_INCLUDE_DIR="${SPP_FMT_INCLUDE_DIR}")
+    target_compile_definitions(spp_runtime_core PUBLIC HOT_USE_FMT=1 HOT_FMT_INCLUDE_DIR="${SPP_FMT_INCLUDE_DIR}")
 else()
-    target_compile_definitions(spp_runtime_core PUBLIC SPP_USE_FMT=0)
+    target_compile_definitions(spp_runtime_core PUBLIC HOT_USE_FMT=0)
 endif()
-# The C++ standard of the host (include/spp/config.h). The backends use it for the compile of
+# The C++ standard of the host (include/hot/config.h). The backends use it for the compile of
 # the scripts and for the parse of the native headers. The target sppc_lib gets the same value.
 spp_effective_cxx_standard(SPP_HOST_CXX_STANDARD spp_runtime_core)
-target_compile_definitions(spp_runtime_core PUBLIC SPP_CXX_STANDARD=${SPP_HOST_CXX_STANDARD})
+target_compile_definitions(spp_runtime_core PUBLIC HOT_CXX_STANDARD=${SPP_HOST_CXX_STANDARD})
 add_library(spp_runtime STATIC
     state.cpp migration.cpp loader.cpp module.cpp
     scratch.cpp)

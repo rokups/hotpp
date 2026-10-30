@@ -1,6 +1,6 @@
 // Tests for the type-directed member access on script handles, "return this" as a handle and
 // the parameter analysis of value parameters (design 7.10.1, 7.10.5).
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -60,7 +60,7 @@ TEST(TypedAccess, FieldOfAScriptHandleUsesTheState)
     const sppc::TranslateResult r = translate_script(
         std::string(kTwoClasses) + "class Boss : Unit {\n    Squad s;\n    int Run() { return this.s.size; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "state_of(spp::shell_of<Squad_Shell>(__st->s, \"Squad\"))->size")) << r.cpp;
+    EXPECT_TRUE(has(r, "state_of(hot::shell_of<Squad_Shell>(__st->s, \"Squad\"))->size")) << r.cpp;
 }
 
 TEST(TypedAccess, MethodOfAScriptHandleIsADirectCall)
@@ -68,8 +68,8 @@ TEST(TypedAccess, MethodOfAScriptHandleIsADirectCall)
     const sppc::TranslateResult r = translate_script(std::string(kTwoClasses)
         + "class Boss : Unit {\n    Squad s;\n    int Run(Squad other) { other.Grow(2); return this.s.Count(); }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "Squad__Grow(spp::shell_of<Squad_Shell>(other, \"Squad\"), 2)")) << r.cpp;
-    EXPECT_TRUE(has(r, "Squad__Count(spp::shell_of<Squad_Shell>(__st->s, \"Squad\"))")) << r.cpp;
+    EXPECT_TRUE(has(r, "Squad__Grow(hot::shell_of<Squad_Shell>(other, \"Squad\"), 2)")) << r.cpp;
+    EXPECT_TRUE(has(r, "Squad__Count(hot::shell_of<Squad_Shell>(__st->s, \"Squad\"))")) << r.cpp;
 }
 
 TEST(TypedAccess, PropertyOfAScriptHandleUsesItsAccessors)
@@ -77,8 +77,8 @@ TEST(TypedAccess, PropertyOfAScriptHandleUsesItsAccessors)
     const sppc::TranslateResult r = translate_script(std::string(kTwoClasses)
         + "class Boss : Unit {\n    Squad s;\n    int Run() { this.s.Power = 4; return this.s.Power; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "Squad__set_Power(spp::shell_of<Squad_Shell>(__st->s, \"Squad\"), 4)")) << r.cpp;
-    EXPECT_TRUE(has(r, "Squad__get_Power(spp::shell_of<Squad_Shell>(__st->s, \"Squad\"))")) << r.cpp;
+    EXPECT_TRUE(has(r, "Squad__set_Power(hot::shell_of<Squad_Shell>(__st->s, \"Squad\"), 4)")) << r.cpp;
+    EXPECT_TRUE(has(r, "Squad__get_Power(hot::shell_of<Squad_Shell>(__st->s, \"Squad\"))")) << r.cpp;
 }
 
 TEST(TypedAccess, LocalFromNewHasTheTypeOfTheClass)
@@ -86,7 +86,7 @@ TEST(TypedAccess, LocalFromNewHasTheTypeOfTheClass)
     const sppc::TranslateResult r = translate_script(
         std::string(kTwoClasses) + "class Boss : Unit {\n    int Run() { var q = new Squad(); return q.size; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "state_of(spp::shell_of<Squad_Shell>(q, \"Squad\"))->size")) << r.cpp;
+    EXPECT_TRUE(has(r, "state_of(hot::shell_of<Squad_Shell>(q, \"Squad\"))->size")) << r.cpp;
 }
 
 TEST(TypedAccess, ScriptFunctionUsedAsAValueIsAnError)
@@ -103,9 +103,9 @@ TEST(TypedAccess, ReturnThisAsAHandleUsesSharedFromThis)
         "class Node : Unit {\n    Node Self() { return this; }\n}\n"
         "class Plain {\n    Plain Me() { return this; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "return spp::handle_from_this<std::shared_ptr<Node>>(__self);")) << r.cpp;
-    EXPECT_TRUE(has(r, "return spp::handle_from_this<std::shared_ptr<Plain>>(__self);")) << r.cpp;
-    EXPECT_TRUE(has(r, "spp::ShellBase, std::enable_shared_from_this<Node_Shell> {")) << r.cpp;
+    EXPECT_TRUE(has(r, "return hot::handle_from_this<std::shared_ptr<Node>>(__self);")) << r.cpp;
+    EXPECT_TRUE(has(r, "return hot::handle_from_this<std::shared_ptr<Plain>>(__self);")) << r.cpp;
+    EXPECT_TRUE(has(r, "hot::ShellBase, std::enable_shared_from_this<Node_Shell> {")) << r.cpp;
 }
 
 TEST(TypedAccess, BareThisAsAPointerNeedsNoSharedFromThis)
@@ -165,7 +165,7 @@ TEST(ParamAnalysis, SlotAdapterKeepsTheCanonicalForm)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // The slot is the state member. It has the canonical form of the parameter.
     EXPECT_TRUE(has(r, "int32_t BoxState_g1::Peek(Blob __b)")) << r.cpp;
-    EXPECT_TRUE(has(r, "reinterpret_cast<spp::SlotFn>(&BoxState_g1::Peek)")) << r.cpp;
+    EXPECT_TRUE(has(r, "reinterpret_cast<hot::SlotFn>(&BoxState_g1::Peek)")) << r.cpp;
 }
 
 // S20b: the analysis follows a parameter into the script functions that get it by value.
@@ -222,8 +222,8 @@ TEST(TypedAccess, PropertyNameOnAKnownNativeTypeIsTheNativeMember)
         "class Box : Unit {\n    int N { get; set; }\n"
         "    int Run(Rec& r) { r.N = 2; var q = Rec.Get(); q.N = 3; return r.N + q.N; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "spp::deref(r).N = 2;")) << r.cpp;
-    EXPECT_TRUE(has(r, "spp::deref(q).N = 3;")) << r.cpp;
+    EXPECT_TRUE(has(r, "hot::deref(r).N = 2;")) << r.cpp;
+    EXPECT_TRUE(has(r, "hot::deref(q).N = 3;")) << r.cpp;
     EXPECT_FALSE(has(r, "shell_of")) << r.cpp;
 }
 

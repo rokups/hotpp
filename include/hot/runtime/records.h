@@ -2,7 +2,7 @@
 #pragma once
 #include <cstdint>
 
-namespace spp
+namespace hot
 {
 
 struct ShellBase;
@@ -110,7 +110,7 @@ struct ClassRecord
     // A commit copies it from the new record, so the current generation runs at destruction.
     void (*dtor)(ShellBase* self) = nullptr;
     // The signature key of each slot (typeid(Sig).name()), or null (design 5.3). The loader
-    // sets it when a reload changes the signature of a script function. spp::call compares
+    // sets it when a reload changes the signature of a script function. hot::call compares
     // the key with its own signature. A call with another signature detaches: it does not run.
     const char* const* slot_keys = nullptr;
     // True when the shell derives from std::enable_shared_from_this (design 7.10.1): the class
@@ -123,4 +123,4 @@ struct ClassRecord
     const char* const* construct_keys = nullptr;
 };
 
-} // namespace spp
+} // namespace hot

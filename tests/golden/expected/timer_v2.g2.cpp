@@ -8,7 +8,7 @@
 #include <typeinfo>
 #include <utility>
 
-#include "spp/runtime.h"
+#include "hot/runtime.h"
 
 #line 2 "timer_v2.hot"
 #include "Actor.h"
@@ -26,22 +26,22 @@ enum : unsigned {
     SLOT_COUNT = 4,
 };
 
-extern spp::ClassRecord Beeper_record;
+extern hot::ClassRecord Beeper_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
-struct Beeper_Shell final : Actor, spp::ShellBase {
+struct Beeper_Shell final : Actor, hot::ShellBase {
 #line 4 "timer_v2.hot"
     template <class... A>
 #line 4 "timer_v2.hot"
-    explicit Beeper_Shell(spp::Construct, A&&... a) : Actor(std::forward<A>(a)...)
+    explicit Beeper_Shell(hot::Construct, A&&... a) : Actor(std::forward<A>(a)...)
 #line 4 "timer_v2.hot"
     {
 #line 4 "timer_v2.hot"
-        spp::init_state(this, &Beeper_record);
+        hot::init_state(this, &Beeper_record);
 #line 4 "timer_v2.hot"
     }
 #line 4 "timer_v2.hot"
-    ~Beeper_Shell() override { spp::destroy_state(this); }
+    ~Beeper_Shell() override { hot::destroy_state(this); }
 #line 46 "timer_v2.hot.cpp"
 
 #line 4 "timer_v2.hot"
@@ -49,7 +49,7 @@ struct Beeper_Shell final : Actor, spp::ShellBase {
 #line 4 "timer_v2.hot"
     {
 #line 4 "timer_v2.hot"
-        return spp::call<void(Actor*, float)>(this, SLOT_Tick, a0);
+        return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 4 "timer_v2.hot"
     }
 #line 56 "timer_v2.hot.cpp"
@@ -59,7 +59,7 @@ struct Beeper_Shell final : Actor, spp::ShellBase {
 #line 4 "timer_v2.hot"
     {
 #line 4 "timer_v2.hot"
-        return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
+        return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 4 "timer_v2.hot"
     }
 #line 66 "timer_v2.hot.cpp"
@@ -69,7 +69,7 @@ struct Beeper_Shell final : Actor, spp::ShellBase {
 #line 4 "timer_v2.hot"
     {
 #line 4 "timer_v2.hot"
-        return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
+        return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 4 "timer_v2.hot"
     }
 #line 76 "timer_v2.hot.cpp"
@@ -77,7 +77,7 @@ struct Beeper_Shell final : Actor, spp::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct BeeperState_g2 {
-    spp::ShellBase* __spp_owner;
+    hot::ShellBase* __spp_owner;
     int32_t ticks;
     int32_t fired;
 
@@ -85,7 +85,7 @@ struct BeeperState_g2 {
     void arm(World& w, float delay);
     // Not overridden: call the implementation of Actor.
 #line 4 "timer_v2.hot"
-    SPP_NODEBUG void __fwd_TakeDamage_f(float a0)
+    HOT_NODEBUG void __fwd_TakeDamage_f(float a0)
 #line 4 "timer_v2.hot"
     {
 #line 4 "timer_v2.hot"
@@ -95,7 +95,7 @@ struct BeeperState_g2 {
 #line 96 "timer_v2.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 4 "timer_v2.hot"
-    SPP_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
+    HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
 #line 4 "timer_v2.hot"
     {
 #line 4 "timer_v2.hot"
@@ -115,28 +115,28 @@ static void Beeper__init_fired(void*, void* f) { using T = int32_t; new (f) T(0)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static_assert(offsetof(BeeperState_g2, __spp_owner) == 0, "the owner pointer must be the first member");
-static const spp::FieldInfo Beeper_fields[] = {
+static const hot::FieldInfo Beeper_fields[] = {
     {"ticks", nullptr, typeid(int32_t).name(), offsetof(BeeperState_g2, ticks), sizeof(int32_t),
-     alignof(int32_t), spp::field_flags<int32_t>(), Beeper__init_ticks, spp::move_field<int32_t>, spp::field_destroyer<int32_t>()},
+     alignof(int32_t), hot::field_flags<int32_t>(), Beeper__init_ticks, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
     {"fired", nullptr, typeid(int32_t).name(), offsetof(BeeperState_g2, fired), sizeof(int32_t),
-     alignof(int32_t), spp::field_flags<int32_t>(), Beeper__init_fired, spp::move_field<int32_t>, spp::field_destroyer<int32_t>()},
+     alignof(int32_t), hot::field_flags<int32_t>(), Beeper__init_fired, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
 };
 #pragma clang diagnostic pop
 
-static const spp::StateLayout Beeper_layout = {
+static const hot::StateLayout Beeper_layout = {
     "BeeperState_g2", sizeof(BeeperState_g2), alignof(BeeperState_g2), 2, Beeper_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-SPP_HIDDEN BeeperState_g2* state_of(Beeper_Shell* __self)
+HOT_HIDDEN BeeperState_g2* state_of(Beeper_Shell* __self)
 {
     return static_cast<BeeperState_g2*>(__self->state);
 }
 
-[[maybe_unused]] SPP_HIDDEN static void Beeper__arm(Beeper_Shell* __self, World& w, float delay);
+[[maybe_unused]] HOT_HIDDEN static void Beeper__arm(Beeper_Shell* __self, World& w, float delay);
 
 #line 4 "timer_v2.hot"
-[[maybe_unused]] SPP_HIDDEN static auto Beeper__super_args()
+[[maybe_unused]] HOT_HIDDEN static auto Beeper__super_args()
 #line 4 "timer_v2.hot"
 {
 #line 4 "timer_v2.hot"
@@ -144,7 +144,7 @@ SPP_HIDDEN BeeperState_g2* state_of(Beeper_Shell* __self)
 #line 4 "timer_v2.hot"
 }
 #line 4 "timer_v2.hot"
-SPP_HIDDEN static auto Beeper__plan()
+HOT_HIDDEN static auto Beeper__plan()
 #line 4 "timer_v2.hot"
 {
 #line 4 "timer_v2.hot"
@@ -156,7 +156,7 @@ using Beeper_SuperArgs = decltype(Beeper__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
 #line 4 "timer_v2.hot"
-SPP_NODEBUG static spp::ShellBase* Beeper__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Beeper__construct(const char* key, const void* args)
 #line 4 "timer_v2.hot"
 {
 #line 4 "timer_v2.hot"
@@ -164,7 +164,7 @@ SPP_NODEBUG static spp::ShellBase* Beeper__construct(const char* key, const void
 #line 4 "timer_v2.hot"
         const auto& t = *static_cast<const Beeper_SuperArgs*>(args);
 #line 4 "timer_v2.hot"
-        return std::apply([](auto&... x) -> spp::ShellBase* { return new Beeper_Shell(spp::Construct{}, x...); }, t);
+        return std::apply([](auto&... x) -> hot::ShellBase* { return new Beeper_Shell(hot::Construct{}, x...); }, t);
 #line 4 "timer_v2.hot"
     }
 #line 4 "timer_v2.hot"
@@ -176,20 +176,20 @@ SPP_NODEBUG static spp::ShellBase* Beeper__construct(const char* key, const void
 static const char* const Beeper__construct_keys[] = {typeid(Beeper_SuperArgs).name(), nullptr};
 
 #line 4 "timer_v2.hot"
-SPP_HIDDEN static Beeper_Shell* Beeper__build([[maybe_unused]] bool __note)
+HOT_HIDDEN static Beeper_Shell* Beeper__build([[maybe_unused]] bool __note)
 #line 4 "timer_v2.hot"
 {
 #line 4 "timer_v2.hot"
     auto __plan = Beeper__plan();
 #line 4 "timer_v2.hot"
-    auto* __self = static_cast<Beeper_Shell*>(spp::construct_shell(&Beeper_record, typeid(Beeper_SuperArgs).name(), &__plan.first, __note));
+    auto* __self = static_cast<Beeper_Shell*>(hot::construct_shell(&Beeper_record, typeid(Beeper_SuperArgs).name(), &__plan.first, __note));
 #line 4 "timer_v2.hot"
     return __self;
 #line 4 "timer_v2.hot"
 }
 #line 191 "timer_v2.hot.cpp"
 #line 4 "timer_v2.hot"
-[[maybe_unused]] SPP_HIDDEN static Beeper_Shell* Beeper__new()
+[[maybe_unused]] HOT_HIDDEN static Beeper_Shell* Beeper__new()
 #line 4 "timer_v2.hot"
 {
 #line 4 "timer_v2.hot"
@@ -203,17 +203,17 @@ void BeeperState_g2::Tick(float dt)
 #line 8 "timer_v2.hot"
 {
 #line 8 "timer_v2.hot"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 8 "timer_v2.hot"
-        spp::stale_call("Beeper::Tick(float)");
+        hot::stale_call("Beeper::Tick(float)");
 #line 8 "timer_v2.hot"
         return;
 #line 8 "timer_v2.hot"
     }
 #line 9 "timer_v2.hot"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Beeper_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Beeper_Shell*>(this->__spp_owner);
 #line 9 "timer_v2.hot"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 9 "timer_v2.hot"
     __st->ticks = __st->ticks + 1;
 #line 10 "timer_v2.hot"
@@ -221,7 +221,7 @@ void BeeperState_g2::Tick(float dt)
 #line 222 "timer_v2.hot.cpp"
 
 #line 12 "timer_v2.hot"
-[[maybe_unused]] SPP_HIDDEN static void Beeper__arm(Beeper_Shell* __self, World& w, float delay)
+[[maybe_unused]] HOT_HIDDEN static void Beeper__arm(Beeper_Shell* __self, World& w, float delay)
 #line 12 "timer_v2.hot"
 {
 #line 12 "timer_v2.hot"
@@ -234,23 +234,23 @@ void BeeperState_g2::arm(World& w, float delay)
 #line 12 "timer_v2.hot"
 {
 #line 12 "timer_v2.hot"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 12 "timer_v2.hot"
-        spp::stale_call("Beeper::arm");
+        hot::stale_call("Beeper::arm");
 #line 12 "timer_v2.hot"
         return;
 #line 12 "timer_v2.hot"
     }
 #line 13 "timer_v2.hot"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Beeper_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Beeper_Shell*>(this->__spp_owner);
 #line 13 "timer_v2.hot"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "timer_v2.hot"
-    spp::deref(w).AddTimer(delay, spp::make_closure(GEN, "Beeper::arm lambda", [=]() { SPP_NODEBUG_LOCAL auto* __st = state_of(__self);
+    hot::deref(w).AddTimer(delay, hot::make_closure(GEN, "Beeper::arm lambda", [=]() { HOT_NODEBUG_LOCAL auto* __st = state_of(__self);
 #line 14 "timer_v2.hot"
         __st->fired = __st->fired + 10;
 #line 15 "timer_v2.hot"
-        std::printf("[timer v2] %s: fired=%d\n", spp::deref(__self->Name).c_str(), __st->fired);
+        std::printf("[timer v2] %s: fired=%d\n", hot::deref(__self->Name).c_str(), __st->fired);
 #line 16 "timer_v2.hot"
     }));
 #line 17 "timer_v2.hot"
@@ -258,35 +258,35 @@ void BeeperState_g2::arm(World& w, float delay)
 #line 259 "timer_v2.hot.cpp"
 
 // ------------------------------------------------------ record and entry
-static const spp::SlotFn Beeper_slots[SLOT_COUNT] = {
-    reinterpret_cast<spp::SlotFn>(&BeeperState_g2::Tick),
-    reinterpret_cast<spp::SlotFn>(&BeeperState_g2::__fwd_TakeDamage_f),
-    reinterpret_cast<spp::SlotFn>(&BeeperState_g2::__fwd_TakeDamage_Af),
-    reinterpret_cast<spp::SlotFn>(&BeeperState_g2::arm),
+static const hot::SlotFn Beeper_slots[SLOT_COUNT] = {
+    reinterpret_cast<hot::SlotFn>(&BeeperState_g2::Tick),
+    reinterpret_cast<hot::SlotFn>(&BeeperState_g2::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&BeeperState_g2::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&BeeperState_g2::arm),
 };
 
-spp::ClassRecord Beeper_record = {
+hot::ClassRecord Beeper_record = {
     "Beeper", GEN, Beeper_slots, SLOT_COUNT, &Beeper_layout, nullptr,
-    "Actor", spp::shell_layout_hash("Actor", sizeof(Beeper_Shell), alignof(Beeper_Shell), 3),
+    "Actor", hot::shell_layout_hash("Actor", sizeof(Beeper_Shell), alignof(Beeper_Shell), 3),
     nullptr,
     &Beeper__construct, typeid(Beeper_SuperArgs).name(), nullptr, nullptr, nullptr,
 };
 
 #line 4 "timer_v2.hot"
-SPP_NODEBUG static spp::Instance Beeper_create()
+HOT_NODEBUG static hot::Instance Beeper_create()
 #line 4 "timer_v2.hot"
 {
 #line 4 "timer_v2.hot"
-    spp::ScriptEntry entry;  // the creation is an entry (S27)
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 4 "timer_v2.hot"
-    auto* p = new Beeper_Shell(spp::Construct{}, std::string("Beeper"));
+    auto* p = new Beeper_Shell(hot::Construct{}, std::string("Beeper"));
 #line 4 "timer_v2.hot"
     return {static_cast<Actor*>(p), p};
 #line 4 "timer_v2.hot"
 }
 #line 288 "timer_v2.hot.cpp"
 
-extern "C" void script_register(spp::Registry& reg)
+extern "C" void script_register(hot::Registry& reg)
 {
     reg.add(&Beeper_record, &Beeper_create);
     Beeper_record.construct_keys = Beeper__construct_keys;

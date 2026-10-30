@@ -7,7 +7,7 @@
 // error ("the compile of ... failed") is not part of the expected text.
 // To change a golden file, set SPP_UPDATE_GOLDEN: the test writes the error text of the run
 // (without the "the compile of" line) and still compares. Look at the diff before you commit.
-#include "spp/backend.h"
+#include "hot/backend.h"
 #include "support/script_files.h"
 
 #include <gtest/gtest.h>
@@ -59,10 +59,10 @@ TEST_P(DiagnosticMistakes, ErrorSpeaksScriptNames)
 {
     const std::string name = GetParam();
     // A relative name: the error text starts with it.
-    const spp::ScriptSource source{name + ".hot", test_support::read_file(kDir + name + ".hot"), {}};
+    const hot::ScriptSource source{name + ".hot", test_support::read_file(kDir + name + ".hot"), {}};
     ASSERT_FALSE(source.text.empty());
-    auto backend = spp::make_default_backend();
-    const spp::LoadResult r = backend->load(source, 1);
+    auto backend = hot::make_default_backend();
+    const hot::LoadResult r = backend->load(source, 1);
     ASSERT_FALSE(r) << "the script must not compile";
     const std::string actual = normalize(r.error);
     if (std::getenv("SPP_UPDATE_GOLDEN"))
@@ -81,7 +81,7 @@ TEST_P(DiagnosticMistakes, ErrorSpeaksScriptNames)
     // No generated name is left in the lines that name the script.
     // A script that uses "__" in a name of its own can see that name in the error.
     const bool script_has_dunder = source.text.find("__") != std::string::npos;
-    for (const char* generated : {"_Shell", "State_g", "__", "self->", "spp::deref", ".cpp"})
+    for (const char* generated : {"_Shell", "State_g", "__", "self->", "hot::deref", ".cpp"})
     {
         if (script_has_dunder && std::string(generated) == "__")
             continue;

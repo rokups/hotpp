@@ -1,14 +1,14 @@
 // The factory of a script class and the plan that migrates the state of a live object.
 #pragma once
-#include "spp/runtime/records.h"
-#include "spp/runtime/shell.h"
+#include "hot/runtime/records.h"
+#include "hot/runtime/shell.h"
 
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
-namespace spp
+namespace hot
 {
 
 // A new object. "native" is the Actor* (the native base) of the shell.
@@ -62,4 +62,4 @@ std::string readable_layout(const char* layout_name);
 // rejects the reload: it converts the value (hook) or it uses the default value (warning).
 MigrationPlan build_plan(const StateLayout& old_layout, const StateLayout& new_layout);
 
-} // namespace spp
+} // namespace hot

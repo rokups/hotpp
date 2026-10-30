@@ -1,7 +1,7 @@
 // Reload tests of a script family over two modules (S20a, design 4.5 and 4.10). The child module
 // imports the parent module with "using "xmod_parent.hot";". One generation holds both modules.
 // A reload of either module builds a new generation from the current text of both modules.
-#include "spp/backend.h"
+#include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
 #include "support/script_files.h"
@@ -19,32 +19,32 @@ using test_support::Session;
 
 template <class T> T* fld(Session& s, const char* name)
 {
-    return spp::field_ptr<T>(s.inst.shell, name);
+    return hot::field_ptr<T>(s.inst.shell, name);
 }
 
 // The child module with the text of a parent module under the name of the "using" line.
-spp::ScriptSource family(const char* child, const char* parent)
+hot::ScriptSource family(const char* child, const char* parent)
 {
-    spp::ScriptSource src = test_support::source(child);
+    hot::ScriptSource src = test_support::source(child);
     src.modules.emplace_back("xmod_parent.hot", test_support::source(parent).text);
     return src;
 }
 
-void reload(Session& s, spp::LoadResult& r, uint32_t gen)
+void reload(Session& s, hot::LoadResult& r, uint32_t gen)
 {
     ASSERT_TRUE(r) << r.error;
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*r.module)));
     s.world.Tick(kDt); // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
-    EXPECT_EQ(spp::active_generation, gen);
+    EXPECT_EQ(hot::active_generation, gen);
 }
 
 // A reload of the parent module, then a reload of the child module. The live child object keeps
 // its address and its values. The child override stays in its slot after the parent adds a slot.
 TEST_P(BackendTests, FamilyOverTwoModulesReloadsEachModule)
 {
-    spp::LoadResult g1 = backend->load(family("xmod_child_v1.hot", "xmod_parent_v1.hot"), 1);
+    hot::LoadResult g1 = backend->load(family("xmod_child_v1.hot", "xmod_parent_v1.hot"), 1);
     ASSERT_TRUE(g1) << g1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*g1.module), "Grunt"));
@@ -60,7 +60,7 @@ TEST_P(BackendTests, FamilyOverTwoModulesReloadsEachModule)
     void* const shell = s.inst.shell;
 
     // Reload the parent module: a new field and a new virtual function before "Power".
-    spp::LoadResult g2 = backend->load(family("xmod_child_v1.hot", "xmod_parent_v2.hot"), 2);
+    hot::LoadResult g2 = backend->load(family("xmod_child_v1.hot", "xmod_parent_v2.hot"), 2);
     ASSERT_NO_FATAL_FAILURE(reload(s, g2, 2));
     s.world.Tick(kDt);
     EXPECT_EQ(s.inst.shell, shell);
@@ -72,7 +72,7 @@ TEST_P(BackendTests, FamilyOverTwoModulesReloadsEachModule)
     EXPECT_EQ(s.inst.shell->cls->super->generation, 2u);
 
     // Reload the child module: a changed override, a new override and a new field.
-    spp::LoadResult g3 = backend->load(family("xmod_child_v2.hot", "xmod_parent_v2.hot"), 3);
+    hot::LoadResult g3 = backend->load(family("xmod_child_v2.hot", "xmod_parent_v2.hot"), 3);
     ASSERT_NO_FATAL_FAILURE(reload(s, g3, 3));
     s.world.Tick(kDt);
     EXPECT_EQ(s.inst.shell, shell);
@@ -86,7 +86,7 @@ TEST_P(BackendTests, FamilyOverTwoModulesReloadsEachModule)
 // The child module builds a child object with "new" and uses it through a parent handle.
 TEST_P(BackendTests, FamilyOverTwoModulesNewAndIs)
 {
-    spp::LoadResult g1 = backend->load(family("xmod_child_v1.hot", "xmod_parent_v1.hot"), 1);
+    hot::LoadResult g1 = backend->load(family("xmod_child_v1.hot", "xmod_parent_v1.hot"), 1);
     ASSERT_TRUE(g1) << g1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*g1.module), "Spawner"));
@@ -94,7 +94,7 @@ TEST_P(BackendTests, FamilyOverTwoModulesNewAndIs)
     s.world.Tick(kDt);
     EXPECT_EQ(*fld<int>(s, "made_power"), 6);
     EXPECT_TRUE(*fld<bool>(s, "made_unit"));
-    spp::LoadResult g2 = backend->load(family("xmod_child_v2.hot", "xmod_parent_v2.hot"), 2);
+    hot::LoadResult g2 = backend->load(family("xmod_child_v2.hot", "xmod_parent_v2.hot"), 2);
     ASSERT_NO_FATAL_FAILURE(reload(s, g2, 2));
     s.world.Tick(kDt);
     EXPECT_EQ(*fld<int>(s, "made_power"), 12);
@@ -103,7 +103,7 @@ TEST_P(BackendTests, FamilyOverTwoModulesNewAndIs)
 // A missing parent module is a translation error at the "using" line.
 TEST_P(BackendTests, FamilyOverTwoModulesMissingParent)
 {
-    spp::LoadResult r = backend->load(test_support::source("xmod_child_v1.hot"), 1);
+    hot::LoadResult r = backend->load(test_support::source("xmod_child_v1.hot"), 1);
     ASSERT_FALSE(r);
     EXPECT_NE(r.error.find("the script 'xmod_parent.hot' is not found"), std::string::npos) << r.error;
 }
@@ -112,7 +112,7 @@ TEST_P(BackendTests, FamilyOverTwoModulesMissingParent)
 // Generation 2 uses "new" for a class without a constructor and without "new" in generation 1.
 TEST_P(BackendTests, ConstructorOverloadsAndALaterNew)
 {
-    spp::LoadResult g1 = backend->load(test_support::source("ctor_overload_v1.hot"), 1);
+    hot::LoadResult g1 = backend->load(test_support::source("ctor_overload_v1.hot"), 1);
     ASSERT_TRUE(g1) << g1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*g1.module), "Spawner"));
@@ -124,7 +124,7 @@ TEST_P(BackendTests, ConstructorOverloadsAndALaterNew)
     EXPECT_EQ(*fld<int>(s, "k3"), 4);
     EXPECT_EQ(*fld<int>(s, "seen"), 8);
     EXPECT_EQ(*fld<int>(s, "elite"), 309); // Elite() selects Unit(float), Elite(8) selects Unit(int)
-    spp::LoadResult g2 = backend->load(test_support::source("ctor_overload_v2.hot"), 2);
+    hot::LoadResult g2 = backend->load(test_support::source("ctor_overload_v2.hot"), 2);
     ASSERT_NO_FATAL_FAILURE(reload(s, g2, 2));
     s.world.Tick(kDt);
     EXPECT_EQ(*fld<int>(s, "plain"), 3);
@@ -134,7 +134,7 @@ TEST_P(BackendTests, ConstructorOverloadsAndALaterNew)
 // "ref" reaches the parent through two levels. A "&&" constructor parameter takes a temporary.
 TEST_P(BackendTests, SuperArgumentBindsToARefParameter)
 {
-    spp::LoadResult g1 = backend->load(test_support::source("ctor_ref_v1.hot"), 1);
+    hot::LoadResult g1 = backend->load(test_support::source("ctor_ref_v1.hot"), 1);
     ASSERT_TRUE(g1) << g1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*g1.module), "Spawner"));
@@ -153,7 +153,7 @@ TEST_P(BackendTests, SuperArgumentBindsToARefParameter)
 // Generation 3 changes nothing in the keys, so it makes no new core.
 TEST_P(BackendTests, ConstructorOverloadWithANewKeyTypeInALaterGeneration)
 {
-    spp::LoadResult g1 = backend->load(test_support::source("ctor_newkey_v1.hot"), 1);
+    hot::LoadResult g1 = backend->load(test_support::source("ctor_newkey_v1.hot"), 1);
     ASSERT_TRUE(g1) << g1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*g1.module), "Spawner"));
@@ -163,7 +163,7 @@ TEST_P(BackendTests, ConstructorOverloadWithANewKeyTypeInALaterGeneration)
     EXPECT_EQ(*fld<int>(s, "hp_float"), 0);
     const size_t cores1 = s.loader.stats().core_modules;
 
-    spp::LoadResult g2 = backend->load(test_support::source("ctor_newkey_v2.hot"), 2);
+    hot::LoadResult g2 = backend->load(test_support::source("ctor_newkey_v2.hot"), 2);
     ASSERT_NO_FATAL_FAILURE(reload(s, g2, 2));
     s.world.Tick(kDt);
     EXPECT_EQ(*fld<int>(s, "hp_int"), 3);
@@ -171,11 +171,11 @@ TEST_P(BackendTests, ConstructorOverloadWithANewKeyTypeInALaterGeneration)
     EXPECT_EQ(*fld<int>(s, "kind_float"), 2);
     EXPECT_EQ(s.loader.stats().core_modules, cores1 + 1);
     // The object of the new key uses the canonical record: a later reload reaches it.
-    spp::Instance made = s.loader.find("Unit")->create();
+    hot::Instance made = s.loader.find("Unit")->create();
     EXPECT_EQ(made.shell->cls, s.loader.find("Unit")->record);
     delete static_cast<Actor*>(made.native);
 
-    spp::LoadResult g3 = backend->load(test_support::source("ctor_newkey_v2.hot"), 3);
+    hot::LoadResult g3 = backend->load(test_support::source("ctor_newkey_v2.hot"), 3);
     ASSERT_NO_FATAL_FAILURE(reload(s, g3, 3));
     s.world.Tick(kDt);
     EXPECT_EQ(*fld<int>(s, "hp_float"), 40);

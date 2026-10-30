@@ -1,5 +1,5 @@
 // Tests for sppc::translate with the kinds of script classes: shell class, plain class, [value] class.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -69,7 +69,7 @@ TEST(ScriptKindsTranslation, PlainClassUsesThePlainObjectBase)
         "    override void Update(float dt) { this.c = new Counter(1); }\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "spp::PlainObject")) << r.cpp;
+    EXPECT_TRUE(has(r, "hot::PlainObject")) << r.cpp;
     EXPECT_TRUE(has(r, "std::shared_ptr<Counter>(Counter__new(1))")) << r.cpp;
 }
 

@@ -4,7 +4,7 @@
 #include <cstdlib>
 #include <unistd.h>
 
-namespace spp::ls
+namespace hot::ls
 {
 
 bool MessageReader::fill()
@@ -71,4 +71,4 @@ bool write_message(int fd, const std::string& body)
     return true;
 }
 
-} // namespace spp::ls
+} // namespace hot::ls

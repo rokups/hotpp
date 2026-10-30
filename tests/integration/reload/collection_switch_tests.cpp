@@ -1,5 +1,5 @@
 // Tests of the string switch and the collection literal with the backend that SPP_BACKEND selected.
-#include "spp/backend.h"
+#include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
@@ -19,7 +19,7 @@ using test_support::Session;
 // a return and the default case work. A continue in a case goes to the outer loop.
 TEST_P(BackendTests, StringSwitchRuns)
 {
-    const spp::ScriptSource src = {"strsw.hot", R"(
+    const hot::ScriptSource src = {"strsw.hot", R"(
 using "Actor.h";
 using <string>;
 using <vector>;
@@ -86,7 +86,7 @@ class Player : Actor {
     override void TakeDamage(Actor& source, float amount) {}
 }
 )"};
-    spp::LoadResult r = backend->load(src, 1);
+    hot::LoadResult r = backend->load(src, 1);
     ASSERT_TRUE(r) << r.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
@@ -100,7 +100,7 @@ class Player : Actor {
 // A collection literal builds a vector and a map from a declared type. A field initializer works.
 TEST_P(BackendTests, CollectionLiteralRuns)
 {
-    const spp::ScriptSource src = {"coll.hot", R"(
+    const hot::ScriptSource src = {"coll.hot", R"(
 using "Actor.h";
 using <map>;
 using <string>;
@@ -122,7 +122,7 @@ class Player : Actor {
     override void TakeDamage(Actor& source, float amount) {}
 }
 )"};
-    spp::LoadResult r = backend->load(src, 1);
+    hot::LoadResult r = backend->load(src, 1);
     ASSERT_TRUE(r) << r.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));

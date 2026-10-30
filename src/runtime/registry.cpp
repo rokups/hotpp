@@ -1,7 +1,7 @@
-#include "spp/runtime/registry.h"
+#include "hot/runtime/registry.h"
 
-#include "spp/runtime/shell.h"
-#include "spp/runtime/state.h"
+#include "hot/runtime/shell.h"
+#include "hot/runtime/state.h"
 
 #include <atomic>
 #include <cstdio>
@@ -9,7 +9,7 @@
 #include <set>
 #include <utility>
 
-namespace spp
+namespace hot
 {
 
 namespace
@@ -92,4 +92,4 @@ void* Registry::thunk(const std::string& name) const
     return it == thunks_.end() ? nullptr : it->second.fn;
 }
 
-} // namespace spp
+} // namespace hot

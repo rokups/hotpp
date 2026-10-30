@@ -3,8 +3,8 @@
 #include "clangd_process.h"
 #include "integration/ls/ls_client.h"
 #include "semantic.h"
-#include "spp/clang_files_backend.h"
-#include "spp/sppc_lib.h"
+#include "hot/clang_files_backend.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 #include "symbol_index.h"
 
@@ -59,9 +59,9 @@ bool have_clangd()
             GTEST_SKIP() << "clangd is not installed"; \
     } while (0)
 
-spp::ls::ServerOptions options(const TempDir& dir, bool clangd)
+hot::ls::ServerOptions options(const TempDir& dir, bool clangd)
 {
-    spp::ls::ServerOptions o;
+    hot::ls::ServerOptions o;
     o.clangd = clangd ? SPP_CLANGD_PATH : "";
     o.include_dirs = {SPP_SOURCE_DIR "/include", SPP_SOURCE_DIR "/tests/engine"};
     // SPP_LS_CLANGD_LOG keeps the clangd log after the test (the temporary dir goes away).
@@ -91,7 +91,7 @@ struct Session
     TempDir dir;
     std::string path, uri;
     std::unique_ptr<LsClient> client;
-    explicit Session(bool clangd, const std::string& text = kScript, spp::ls::ServerOptions* o = nullptr)
+    explicit Session(bool clangd, const std::string& text = kScript, hot::ls::ServerOptions* o = nullptr)
     {
         path = (dir.path() / "player.hot").string();
         uri = uri_of(path);
@@ -207,7 +207,7 @@ TEST(LanguageServer, CompletionAfterThisListsNativeAndScriptMembers)
     EXPECT_TRUE(has("Position")) << r.dump(); // a native field of Actor
     EXPECT_TRUE(has("hp")); // a script field
     EXPECT_TRUE(has("heal")); // a script method
-    EXPECT_FALSE(has("cls")); // spp::ShellBase is hidden
+    EXPECT_FALSE(has("cls")); // hot::ShellBase is hidden
     EXPECT_FALSE(has("state"));
 }
 
@@ -542,12 +542,12 @@ TEST(LanguageServer, SemanticTokensMarkBaseIsAsAndTheAccessWordsAsKeywords)
 
 TEST(LanguageServer, TheRemovedWordsAreNotKeywords)
 {
-    const std::vector<std::string>& k = spp::ls::script_keywords();
+    const std::vector<std::string>& k = hot::ls::script_keywords();
     for (const char* w : {"function", "let", "import", "ref", "out", "super", "static", "module"})
         EXPECT_EQ(std::count(k.begin(), k.end(), w), 0) << w;
     for (const char* w : {"base", "is", "as", "public", "protected", "private", "this", "struct", "using"})
         EXPECT_EQ(std::count(k.begin(), k.end(), w), 1) << w;
-    const std::vector<std::string>& h = spp::ls::script_helpers();
+    const std::vector<std::string>& h = hot::ls::script_helpers();
     EXPECT_EQ(h, (std::vector<std::string>{"enumerate", "range"}));
 }
 
@@ -555,9 +555,9 @@ TEST(LanguageServer, BindingsAreLocals)
 {
     const std::string text = kNewSyntaxScript;
     const size_t at = text.find("this.sum = f(this.sum)");
-    const spp::ls::ScriptScope scope = spp::ls::scan_scope(text, at, at);
+    const hot::ls::ScriptScope scope = hot::ls::scan_scope(text, at, at);
     std::map<std::string, std::string> locals; // name -> type
-    for (const spp::ls::ScopeName& n : scope.locals)
+    for (const hot::ls::ScopeName& n : scope.locals)
         locals[n.name] = n.type;
     // "var (a, b)" and the foreach with "var (k, v)" or "var (i, e)" bind plain locals.
     for (const char* n : {"a", "b", "k", "v", "i", "e", "j", "f", "sq", "name", "s"})
@@ -567,9 +567,9 @@ TEST(LanguageServer, BindingsAreLocals)
 
     const std::string ref = "class A { void F() { var& (x, y) = G(); if (o is std.vector<int> list) { @ } } }";
     const size_t p = ref.find('@');
-    const spp::ls::ScriptScope s2 = spp::ls::scan_scope(ref, p, p);
+    const hot::ls::ScriptScope s2 = hot::ls::scan_scope(ref, p, p);
     std::set<std::string> names;
-    for (const spp::ls::ScopeName& n : s2.locals)
+    for (const hot::ls::ScopeName& n : s2.locals)
         names.insert(n.name);
     EXPECT_EQ(names, (std::set<std::string>{"x", "y", "list"}));
 }
@@ -602,7 +602,7 @@ TEST(LanguageServer, GeneratedFileOnDiskMapsBackToTheScript)
     EXPECT_EQ(r["result"]["uri"], s.uri);
     EXPECT_EQ(r["result"]["range"]["start"]["line"], 11);
     // A line of translator text (the shell) gets the last script line before it.
-    const auto direct = spp::ls::line_directive_target(t.cpp, gline + 1);
+    const auto direct = hot::ls::line_directive_target(t.cpp, gline + 1);
     ASSERT_TRUE(direct);
     EXPECT_EQ(direct->file, s.path);
     EXPECT_EQ(direct->line, 11);
@@ -744,13 +744,13 @@ TEST(LanguageServer, BackgroundIndexFindsAScriptSymbolInAGeneratedFile)
     ASSERT_TRUE(t.ok) << t.diagnostics;
     const std::string cpp = (dir.path() / "player.g1.cpp").string();
     write_file(cpp, t.cpp);
-    spp::ClangFilesOptions co;
+    hot::ClangFilesOptions co;
     co.include_dirs = o.include_dirs;
     const std::string so = (dir.path() / "player.g1.so").string();
     write_file(dir.path() / "compile_commands.json",
-        spp::compile_commands_json({{dir.path().string(), cpp, spp::compile_command(co, cpp, so), so}}));
+        hot::compile_commands_json({{dir.path().string(), cpp, hot::compile_command(co, cpp, so), so}}));
 
-    spp::ls::ServerOptions opt = options(dir, true);
+    hot::ls::ServerOptions opt = options(dir, true);
     opt.include_dirs.clear(); // the server reads them from compile_commands.json
     opt.compile_commands_dir = dir.path().string();
     LsClient client(opt);
@@ -793,16 +793,16 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
     const std::string cpp_text = "int cpp_function() { return 1; }\nint cpp_bad() { int x = \"abc\"; return x; }\n";
     const std::string cpp = (root / "main.cpp").string();
     write_file(cpp, cpp_text);
-    spp::ClangFilesOptions co;
+    hot::ClangFilesOptions co;
     co.include_dirs = o.include_dirs;
     write_file(root / "compile_commands.json",
-        spp::compile_commands_json({{root.string(), gen, spp::compile_command(co, gen, gen + ".so"), gen + ".so"},
-            {root.string(), cpp, spp::compile_command(co, cpp, cpp + ".so"), cpp + ".so"}}));
+        hot::compile_commands_json({{root.string(), gen, hot::compile_command(co, gen, gen + ".so"), gen + ".so"},
+            {root.string(), cpp, hot::compile_command(co, cpp, cpp + ".so"), cpp + ".so"}}));
 
     // The C++ clangd, as the clangd extension starts it.
     std::mutex mu;
     std::vector<json> published;
-    spp::ls::ClangdProcess cpp_clangd;
+    hot::ls::ClangdProcess cpp_clangd;
     ASSERT_TRUE(cpp_clangd.start(SPP_CLANGD_PATH,
         {"--log=error", "--background-index", "--compile-commands-dir=" + root.string()}, "", [&](const json& m)
     {
@@ -819,7 +819,7 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
         {{"textDocument", {{"uri", uri_of(cpp)}, {"languageId", "cpp"}, {"version", 1}, {"text", cpp_text}}}});
 
     // spp-ls on the same project.
-    spp::ls::ServerOptions opt = options(dir, true);
+    hot::ls::ServerOptions opt = options(dir, true);
     opt.include_dirs.clear();
     opt.compile_commands_dir = root.string();
     LsClient client(opt);
@@ -888,15 +888,15 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
 namespace
 {
 
-spp::ls::IndexShard sample_shard()
+hot::ls::IndexShard sample_shard()
 {
-    spp::ls::IndexShard shard;
-    spp::ls::IndexClass c;
+    hot::ls::IndexShard shard;
+    hot::ls::IndexClass c;
     c.name = "Player";
     c.begin = {2, 6};
     c.refs = {{2, 6}, {9, 4}};
-    spp::ls::IndexMember known{"hp", "field", {3, 10}, std::vector<spp::ls::IndexPos>{{3, 10}, {11, 13}}};
-    spp::ls::IndexMember unknown{"heal", "method", {10, 9}, std::nullopt};
+    hot::ls::IndexMember known{"hp", "field", {3, 10}, std::vector<hot::ls::IndexPos>{{3, 10}, {11, 13}}};
+    hot::ls::IndexMember unknown{"heal", "method", {10, 9}, std::nullopt};
     c.members = {known, unknown};
     shard.classes.push_back(c);
     return shard;
@@ -933,7 +933,7 @@ TEST(SymbolIndex, DigestCoversTheImportedScripts)
     write_file(inc + "/lib.hot", "using \"far.hot\";\n");
     write_file(inc + "/far.hot", "class Far {}\n");
     const std::string text = "using \"deep.hot\";\nusing \"lib.hot\";\n";
-    const auto digest = [&] { return spp::ls::SymbolIndex::digest(main, text, {inc}); };
+    const auto digest = [&] { return hot::ls::SymbolIndex::digest(main, text, {inc}); };
     const std::string before = digest();
     EXPECT_EQ(before, digest());
     write_file(deep, "class Deep { int x = 1; }\n"); // an import
@@ -942,21 +942,21 @@ TEST(SymbolIndex, DigestCoversTheImportedScripts)
     write_file(inc + "/far.hot", "class Far { int y = 1; }\n"); // an import of an import
     EXPECT_NE(after_deep, digest());
     // A script with no import has the digest of its text, plus nothing else.
-    EXPECT_EQ(spp::ls::SymbolIndex::digest(main, "class A {}\n", {}), spp::ls::SymbolIndex::digest("class A {}\n"));
+    EXPECT_EQ(hot::ls::SymbolIndex::digest(main, "class A {}\n", {}), hot::ls::SymbolIndex::digest("class A {}\n"));
 }
 
 TEST(SymbolIndex, ReusesAShardWhenTheDigestMatches)
 {
     TempDir dir;
-    spp::ls::SymbolIndex index;
+    hot::ls::SymbolIndex index;
     index.open((dir.path() / "index").string());
     const std::string script = (dir.path() / "a.hot").string();
     write_file(script, "class A {}\n");
-    const std::string digest = spp::ls::SymbolIndex::digest("class A {}\n");
+    const std::string digest = hot::ls::SymbolIndex::digest("class A {}\n");
     ASSERT_TRUE(index.store(script, digest, sample_shard()));
     auto shard = index.load(script, digest);
     ASSERT_TRUE(shard);
-    spp::ls::IndexClass* c = shard->find_class("Player");
+    hot::ls::IndexClass* c = shard->find_class("Player");
     ASSERT_NE(c, nullptr);
     EXPECT_EQ(c->refs.size(), 2u);
     ASSERT_NE(c->find_member("hp"), nullptr);
@@ -970,15 +970,15 @@ TEST(SymbolIndex, ReusesAShardWhenTheDigestMatches)
 TEST(SymbolIndex, ADifferentDigestGivesNoShardAndTheNewShardReplacesTheOld)
 {
     TempDir dir;
-    spp::ls::SymbolIndex index;
+    hot::ls::SymbolIndex index;
     index.open((dir.path() / "index").string());
     const std::string script = (dir.path() / "a.hot").string();
     write_file(script, "x");
-    const std::string d1 = spp::ls::SymbolIndex::digest("one"), d2 = spp::ls::SymbolIndex::digest("two");
+    const std::string d1 = hot::ls::SymbolIndex::digest("one"), d2 = hot::ls::SymbolIndex::digest("two");
     ASSERT_NE(d1, d2);
     ASSERT_TRUE(index.store(script, d1, sample_shard()));
     EXPECT_FALSE(index.load(script, d2));
-    ASSERT_TRUE(index.store(script, d2, spp::ls::IndexShard{}));
+    ASSERT_TRUE(index.store(script, d2, hot::ls::IndexShard{}));
     EXPECT_FALSE(index.load(script, d1));
     ASSERT_TRUE(index.load(script, d2));
     EXPECT_EQ(file_count(dir.path() / "index"), 1u);
@@ -987,7 +987,7 @@ TEST(SymbolIndex, ADifferentDigestGivesNoShardAndTheNewShardReplacesTheOld)
 TEST(SymbolIndex, PruneDeletesTheShardOfAMissingFile)
 {
     TempDir dir;
-    spp::ls::SymbolIndex index;
+    hot::ls::SymbolIndex index;
     index.open((dir.path() / "index").string());
     const std::string a = (dir.path() / "a.hot").string(), b = (dir.path() / "b.hot").string();
     write_file(a, "x");
@@ -1005,7 +1005,7 @@ TEST(SymbolIndex, PruneDeletesTheShardOfAMissingFile)
 TEST(SymbolIndex, ADifferentFormatVersionIsDropped)
 {
     TempDir dir;
-    spp::ls::SymbolIndex index;
+    hot::ls::SymbolIndex index;
     index.open((dir.path() / "index").string());
     const std::string script = (dir.path() / "a.hot").string();
     write_file(script, "x");
@@ -1018,7 +1018,7 @@ TEST(SymbolIndex, ADifferentFormatVersionIsDropped)
         ss << in.rdbuf();
         return std::optional<std::string>(ss.str());
     }();
-    const std::string head = "spp-index " + std::to_string(spp::ls::SymbolIndex::kFormatVersion) + " ";
+    const std::string head = "spp-index " + std::to_string(hot::ls::SymbolIndex::kFormatVersion) + " ";
     ASSERT_EQ(text.rfind(head, 0), 0u);
     text.replace(0, head.size(), "spp-index 999 ");
     write_file(file, text);
@@ -1029,14 +1029,14 @@ TEST(SymbolIndex, ADifferentFormatVersionIsDropped)
 TEST(SymbolIndex, TheIndexDoesNotGrowAfter1000EditsOfOneFile)
 {
     TempDir dir;
-    spp::ls::SymbolIndex index;
+    hot::ls::SymbolIndex index;
     index.open((dir.path() / "index").string());
     const std::string script = (dir.path() / "a.hot").string();
     write_file(script, "x");
     std::uintmax_t first_size = 0;
     for (int i = 0; i < 1000; ++i)
     {
-        const std::string digest = spp::ls::SymbolIndex::digest("version " + std::to_string(i));
+        const std::string digest = hot::ls::SymbolIndex::digest("version " + std::to_string(i));
         ASSERT_TRUE(index.store(script, digest, sample_shard()));
         if (i == 0)
             first_size = std::filesystem::file_size(index.shard_path(script));
@@ -1085,7 +1085,7 @@ TEST(LanguageServer, MemberRenameOnAClosedFileAfterARestartUsesTheIndex)
 {
     REQUIRE_CLANGD();
     Session s(true);
-    spp::ls::ServerOptions o = options(s.dir, true);
+    hot::ls::ServerOptions o = options(s.dir, true);
     o.index_dir = (s.dir.path() / "my-index").string();
     s.client.reset();
     s.client = std::make_unique<LsClient>(o);
@@ -1482,7 +1482,7 @@ std::vector<std::string> host_completion_labels(
     };
     if (host && !change_host_later)
         write_host();
-    spp::ls::ServerOptions o;
+    hot::ls::ServerOptions o;
     o.clangd = SPP_CLANGD_PATH;
     o.hosts_dir = (root / "hosts").string();
     o.clangd_log = (root / "clangd.log").string();
@@ -1558,7 +1558,7 @@ TEST(LanguageServerHosts, IncludeDirWithSpecialCharactersFromAnIncludesFileAppli
     const std::string text = "using \"thing.h\";\n\nclass A {\n    void f() {\n        Thing.\n    }\n}\n";
     const std::string path = (root / "scripts" / "a.hot").string();
     write_file(path, text);
-    spp::ls::ServerOptions o;
+    hot::ls::ServerOptions o;
     o.clangd = SPP_CLANGD_PATH;
     o.hosts_dir = (root / "hosts").string();
     o.clangd_log = (root / "clangd.log").string();
@@ -1609,7 +1609,7 @@ TEST(LanguageServerHosts, NewScriptFileIsFoundAfterAWatchedFilesEvent)
     const std::string text = "class Player {\n    float hp = 1.0;\n}\n";
     const std::string path = (root / "a.hot").string();
     write_file(path, text);
-    spp::ls::ServerOptions o;
+    hot::ls::ServerOptions o;
     o.hosts_dir = (root / "hosts").string();
     o.include_dirs = {SPP_SOURCE_DIR "/include"};
     LsClient client(o);
@@ -1648,7 +1648,7 @@ struct HostDiagCase
 {
     TempDir dir;
     std::string path, uri, text = "class A {\n}\n";
-    spp::ls::ServerOptions o;
+    hot::ls::ServerOptions o;
     HostDiagCase()
     {
         const std::filesystem::path root = dir.path();
@@ -1748,7 +1748,7 @@ struct CppScriptCase
 {
     TempDir dir;
     std::string script_path, other_path, script_uri, other_uri;
-    spp::ls::ServerOptions o;
+    hot::ls::ServerOptions o;
     // "scripts/a.cpp" is in the script dir of the host. "other/b.cpp" is in no host.
     CppScriptCase()
     {

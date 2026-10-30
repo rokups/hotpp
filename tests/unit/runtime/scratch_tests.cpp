@@ -1,5 +1,5 @@
 // The scratch directory helpers: removal at exit, SPP_KEEP_TEMP and the safe remove.
-#include "spp/scratch.h"
+#include "hot/scratch.h"
 
 #include <gtest/gtest.h>
 
@@ -47,7 +47,7 @@ TEST_F(Scratch, DirectoryIsRemovedOnDestruction)
 {
     const std::string path = test_dir("rm");
     {
-        spp::ScratchDir dir(path);
+        hot::ScratchDir dir(path);
         EXPECT_TRUE(fs::is_directory(path));
         std::ofstream(dir.file("a.txt")) << "x";
         EXPECT_TRUE(fs::exists(dir.file("a.txt")));
@@ -61,7 +61,7 @@ TEST_F(Scratch, ConstructorRemovesOldContent)
     fs::create_directories(path);
     std::ofstream(path + "/old.txt") << "x";
     {
-        spp::ScratchDir dir(path);
+        hot::ScratchDir dir(path);
         EXPECT_FALSE(fs::exists(dir.file("old.txt")));
     }
     EXPECT_FALSE(fs::exists(path));
@@ -71,9 +71,9 @@ TEST_F(Scratch, KeepTempKeepsTheDirectory)
 {
     const std::string path = test_dir("keep");
     setenv("SPP_KEEP_TEMP", "1", 1);
-    EXPECT_TRUE(spp::keep_temp());
+    EXPECT_TRUE(hot::keep_temp());
     {
-        spp::ScratchDir dir(path);
+        hot::ScratchDir dir(path);
     }
     EXPECT_TRUE(fs::is_directory(path));
     std::error_code ec;
@@ -83,21 +83,21 @@ TEST_F(Scratch, KeepTempKeepsTheDirectory)
 TEST_F(Scratch, ZeroOrEmptyMeansFalse)
 {
     setenv("SPP_KEEP_TEMP", "0", 1);
-    EXPECT_FALSE(spp::keep_temp());
+    EXPECT_FALSE(hot::keep_temp());
     setenv("SPP_KEEP_TEMP", "", 1);
-    EXPECT_FALSE(spp::keep_temp());
+    EXPECT_FALSE(hot::keep_temp());
 }
 
 TEST_F(Scratch, PredicateAcceptsOnlySafePaths)
 {
-    EXPECT_TRUE(spp::is_removable_scratch_path("/tmp/x/p1"));
-    EXPECT_FALSE(spp::is_removable_scratch_path("/"));
-    EXPECT_FALSE(spp::is_removable_scratch_path("/."));
-    EXPECT_FALSE(spp::is_removable_scratch_path("/tmp/.."));
-    EXPECT_FALSE(spp::is_removable_scratch_path("/a/../.."));
-    EXPECT_FALSE(spp::is_removable_scratch_path("/tmp/x/../y"));
-    EXPECT_FALSE(spp::is_removable_scratch_path("rel"));
-    EXPECT_FALSE(spp::is_removable_scratch_path(""));
+    EXPECT_TRUE(hot::is_removable_scratch_path("/tmp/x/p1"));
+    EXPECT_FALSE(hot::is_removable_scratch_path("/"));
+    EXPECT_FALSE(hot::is_removable_scratch_path("/."));
+    EXPECT_FALSE(hot::is_removable_scratch_path("/tmp/.."));
+    EXPECT_FALSE(hot::is_removable_scratch_path("/a/../.."));
+    EXPECT_FALSE(hot::is_removable_scratch_path("/tmp/x/../y"));
+    EXPECT_FALSE(hot::is_removable_scratch_path("rel"));
+    EXPECT_FALSE(hot::is_removable_scratch_path(""));
 }
 
 TEST_F(Scratch, RemoveIgnoresRelativePaths)
@@ -105,7 +105,7 @@ TEST_F(Scratch, RemoveIgnoresRelativePaths)
     // The sentinel is a relative path. The call must not remove it.
     const std::string rel = "spp_scratch_relative_" + std::to_string(getpid());
     fs::create_directories(rel);
-    spp::remove_scratch(rel);
+    hot::remove_scratch(rel);
     EXPECT_TRUE(fs::is_directory(rel));
     std::error_code ec;
     fs::remove_all(rel, ec);

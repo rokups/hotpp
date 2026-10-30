@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Actor.h"
-#include "spp/runtime.h"
+#include "hot/runtime.h"
 #include "support/reload_assert.h"
 
 #include <gtest/gtest.h>
@@ -20,9 +20,9 @@ constexpr float kDt = 1.0f / 60.0f;
 // is the last to be destroyed. The libraries stay loaded while the world deletes
 // the actors. Call start() inside ASSERT_NO_FATAL_FAILURE.
 // The module of a library that exists. A failure throws; GoogleTest reports it.
-inline spp::Module library(const char* path)
+inline hot::Module library(const char* path)
 {
-    spp::LoadResult r = spp::module_from_library(path);
+    hot::LoadResult r = hot::module_from_library(path);
     if (!r)
         throw std::runtime_error(r.error);
     return std::move(*r.module);
@@ -30,18 +30,18 @@ inline spp::Module library(const char* path)
 
 struct Session
 {
-    spp::Loader loader;
+    hot::Loader loader;
     World world;
-    spp::Instance inst{};
+    hot::Instance inst{};
     Actor* actor = nullptr;
     bool commit_failed = false;
 
     // Register the module, make an object of the class (default: Player) and add it to the world.
-    void start(spp::Module module, const char* class_name = "Player")
+    void start(hot::Module module, const char* class_name = "Player")
     {
         std::string error;
         ASSERT_RELOAD_OK(loader.load(std::move(module)));
-        const spp::ClassEntry* entry = loader.find(class_name);
+        const hot::ClassEntry* entry = loader.find(class_name);
         ASSERT_NE(entry, nullptr) << "class " << class_name << " is not registered";
         inst = entry->create();
         actor = static_cast<Actor*>(inst.native);
@@ -51,7 +51,7 @@ struct Session
     // Load the library at the path as a module, then start.
     void start(const char* path)
     {
-        spp::LoadResult r = spp::module_from_library(path);
+        hot::LoadResult r = hot::module_from_library(path);
         ASSERT_TRUE(r) << r.error;
         start(std::move(*r.module));
     }
@@ -64,7 +64,7 @@ struct Session
         {
             if (loader.reload_pending())
             {
-                if (const spp::ReloadResult res = loader.commit_pending(); !res)
+                if (const hot::ReloadResult res = loader.commit_pending(); !res)
                 {
                     ADD_FAILURE() << "commit failed: " << res.error;
                     commit_failed = true;
@@ -74,7 +74,7 @@ struct Session
         });
     }
 
-    float* field(const char* name) { return spp::field_ptr<float>(inst.shell, name); }
+    float* field(const char* name) { return hot::field_ptr<float>(inst.shell, name); }
 };
 
 } // namespace test_support

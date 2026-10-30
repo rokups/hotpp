@@ -23,7 +23,7 @@ class Names(unittest.TestCase):
     def test_handle(self):
         self.assertEqual(f.class_of_handle("std::shared_ptr<Player_Shell>"), "Player")
         self.assertEqual(f.class_of_handle("std::__1::shared_ptr<Enemy_Shell>"), "Enemy")
-        self.assertEqual(f.class_of_handle("spp::Intrusive<Foe_Shell, a, b>"), "Foe")
+        self.assertEqual(f.class_of_handle("hot::Intrusive<Foe_Shell, a, b>"), "Foe")
         self.assertIsNone(f.class_of_handle("std::shared_ptr<int>"))
 
     def test_function_names(self):
@@ -31,7 +31,7 @@ class Names(unittest.TestCase):
         self.assertEqual(f.script_function_name("Player__heal_virt"), "Player.heal")
         self.assertEqual(f.script_function_name("Player__get_Health"), "Player.Health (read)")
         self.assertEqual(f.script_function_name("Player__set_Health"), "Player.Health (write)")
-        self.assertEqual(f.script_function_name("spp::Player__heal(Player_Shell*)"), "Player.heal")
+        self.assertEqual(f.script_function_name("hot::Player__heal(Player_Shell*)"), "Player.heal")
         self.assertIsNone(f.script_function_name("main"))
 
 

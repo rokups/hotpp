@@ -21,14 +21,14 @@ namespace f1
 using test_support::kDt;
 using test_support::Session;
 
-inline void run_f1_reload(spp::Module v1, spp::Module v2)
+inline void run_f1_reload(hot::Module v1, hot::Module v2)
 {
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(v1)));
     s.commit_at_frame_boundary();
-    spp::Loader& loader = s.loader;
+    hot::Loader& loader = s.loader;
     World& world = s.world;
-    spp::Instance& inst = s.inst;
+    hot::Instance& inst = s.inst;
     Actor* a = s.actor;
     const float dt = kDt;
     std::string error;
@@ -47,7 +47,7 @@ inline void run_f1_reload(spp::Module v1, spp::Module v2)
 
     a->TakeDamage(*source, 5.0f); // hp 68, and target is set
     EXPECT_EQ(*field("hp"), 68.0f);
-    std::string* target = spp::field_ptr<std::string>(inst.shell, "target");
+    std::string* target = hot::field_ptr<std::string>(inst.shell, "target");
     ASSERT_NE(target, nullptr);
     EXPECT_EQ(*target, source->Name);
 
@@ -61,11 +61,11 @@ inline void run_f1_reload(spp::Module v1, spp::Module v2)
 
     // Validation phase: no side effect.
     Actor* const addr = a;
-    spp::ShellBase* const shell = inst.shell;
+    hot::ShellBase* const shell = inst.shell;
     void* const old_state = shell->state;
     ASSERT_RELOAD_OK(loader.request_reload(std::move(v2)));
     EXPECT_TRUE(loader.reload_pending());
-    EXPECT_EQ(spp::active_generation, 1u);
+    EXPECT_EQ(hot::active_generation, 1u);
     EXPECT_EQ(shell->state, old_state);
     EXPECT_EQ(field("health"), nullptr);
 
@@ -73,7 +73,7 @@ inline void run_f1_reload(spp::Module v1, spp::Module v2)
     world.Tick(dt); // generation 1 Tick heals 1: hp 74; then the commit
     ASSERT_FALSE(s.commit_failed);
     EXPECT_FALSE(loader.reload_pending());
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     ASSERT_EQ(world.Actors().size(), 2u);
     EXPECT_EQ(world.Actors()[0], addr); // the same address
     EXPECT_NE(shell->state, old_state);
@@ -84,7 +84,7 @@ inline void run_f1_reload(spp::Module v1, spp::Module v2)
     ASSERT_NE(field("shield"), nullptr);
     EXPECT_EQ(*field("shield"), 25.0f);
     EXPECT_EQ(*field("speed"), 5.0f);
-    std::string* target2 = spp::field_ptr<std::string>(inst.shell, "target");
+    std::string* target2 = hot::field_ptr<std::string>(inst.shell, "target");
     ASSERT_NE(target2, nullptr);
     EXPECT_EQ(*target2, source->Name);
 

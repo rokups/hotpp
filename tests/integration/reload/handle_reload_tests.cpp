@@ -4,7 +4,7 @@
 // CMake defines the macro SPP_SOURCE_DIR.
 #include "Object.h"
 #include "Weapon.h"
-#include "spp/backend.h"
+#include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/handle_reload_scenario.h"
 #include "support/reload_assert.h"
@@ -26,11 +26,11 @@ using test_support::source;
 
 TEST_P(BackendTests, HandleFieldSurvivesReload)
 {
-    spp::LoadResult v1 = backend->load(source("handle_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("handle_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("handle_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("handle_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
-    spp::LoadResult v1b = backend->load(source("handle_v1.hot"), 3);
+    hot::LoadResult v1b = backend->load(source("handle_v1.hot"), 3);
     ASSERT_TRUE(v1b) << v1b.error;
     handlereload::run_handle_reload(std::move(*v1.module), std::move(*v2.module), std::move(*v1b.module));
 }
@@ -40,16 +40,16 @@ TEST_P(BackendTests, HandleFieldSurvivesReload)
 // The Weapon object dies with the old block.
 TEST_P(BackendTests, HandleTypeChangeUsesTheDefaultAndWarns)
 {
-    spp::LoadResult v1 = backend->load(source("handle_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("handle_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v3 = backend->load(source("handle_v3.hot"), 2);
+    hot::LoadResult v3 = backend->load(source("handle_v3.hot"), 2);
     ASSERT_TRUE(v3) << v3.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Knight"));
     s.commit_at_frame_boundary();
     s.world.Tick(kDt);
     s.world.Tick(kDt);
-    auto swings = spp::field_ptr<int>(s.inst.shell, "swings");
+    auto swings = hot::field_ptr<int>(s.inst.shell, "swings");
     ASSERT_NE(swings, nullptr);
     EXPECT_EQ(*swings, 2);
     std::string error;
@@ -60,11 +60,11 @@ TEST_P(BackendTests, HandleTypeChangeUsesTheDefaultAndWarns)
     EXPECT_FALSE(s.commit_failed);
     EXPECT_NE(log.find("WARNING: Knight"), std::string::npos) << log;
     EXPECT_NE(log.find("field weapon changed its type"), std::string::npos) << log;
-    EXPECT_EQ(spp::active_generation, 2u);
-    auto weapon = spp::field_ptr<int>(s.inst.shell, "weapon");
+    EXPECT_EQ(hot::active_generation, 2u);
+    auto weapon = hot::field_ptr<int>(s.inst.shell, "weapon");
     ASSERT_NE(weapon, nullptr);
     EXPECT_EQ(*weapon, 0);
-    swings = spp::field_ptr<int>(s.inst.shell, "swings");
+    swings = hot::field_ptr<int>(s.inst.shell, "swings");
     ASSERT_NE(swings, nullptr);
     EXPECT_EQ(*swings, 3); // the migrated value plus the Tick of generation 3
 }
@@ -73,19 +73,19 @@ TEST_P(BackendTests, HandleTypeChangeUsesTheDefaultAndWarns)
 // no leak, no early delete and no double release.
 TEST_P(BackendTests, IntrusiveHandleSurvivesReload)
 {
-    using H = spp::Intrusive<Item, &Object::AddRef, &Object::Release>;
-    spp::LoadResult v1 = backend->load(source("intrusive_v1.hot"), 1);
+    using H = hot::Intrusive<Item, &Object::AddRef, &Object::Release>;
+    hot::LoadResult v1 = backend->load(source("intrusive_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("intrusive_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("intrusive_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
-    spp::LoadResult v1b = backend->load(source("intrusive_v1.hot"), 3);
+    hot::LoadResult v1b = backend->load(source("intrusive_v1.hot"), 3);
     ASSERT_TRUE(v1b) << v1b.error;
     ASSERT_EQ(Object::live, 0);
     {
         Session s;
         ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Smith"));
         s.commit_at_frame_boundary();
-        auto item = [&] { return spp::field_ptr<H>(s.inst.shell, "item"); };
+        auto item = [&] { return hot::field_ptr<H>(s.inst.shell, "item"); };
 
         s.world.Tick(kDt);
         ASSERT_NE(item(), nullptr);
@@ -100,7 +100,7 @@ TEST_P(BackendTests, IntrusiveHandleSurvivesReload)
         ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
         s.world.Tick(kDt);
         ASSERT_FALSE(s.commit_failed);
-        EXPECT_EQ(spp::active_generation, 2u);
+        EXPECT_EQ(hot::active_generation, 2u);
         ASSERT_NE(item(), nullptr);
         EXPECT_EQ(item()->get(), raw);
         EXPECT_EQ(raw->refs, 1);
@@ -117,7 +117,7 @@ TEST_P(BackendTests, IntrusiveHandleSurvivesReload)
         ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v1b.module)));
         s.world.Tick(kDt);
         ASSERT_FALSE(s.commit_failed);
-        EXPECT_EQ(spp::active_generation, 3u);
+        EXPECT_EQ(hot::active_generation, 3u);
         ASSERT_NE(item(), nullptr);
         EXPECT_EQ(item()->get(), raw);
         EXPECT_EQ(raw->refs, 1);
@@ -130,7 +130,7 @@ TEST_P(BackendTests, IntrusiveHandleSurvivesReload)
 // The stub names a method that the native class does not have. The load gives an error.
 TEST_P(BackendTests, IntrusiveMissingMethodIsAnError)
 {
-    spp::LoadResult r = backend->load(source("intrusive_bad.hot"), 1);
+    hot::LoadResult r = backend->load(source("intrusive_bad.hot"), 1);
     EXPECT_FALSE(r);
     EXPECT_NE(r.error.find("Grab"), std::string::npos) << r.error;
     EXPECT_NE(r.error.find("Object"), std::string::npos) << r.error;

@@ -1,7 +1,7 @@
 // Tests for the ".cpp" frontend: the structure, the body edits and the error messages.
 // The base class Actor comes from tests/engine/Actor.h.
 #include "parser/cpp_frontend.h"
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 
 #include <gtest/gtest.h>
 
@@ -48,7 +48,7 @@ struct Parsed
 };
 
 const char* const kMain = R"(#include "Actor.h"
-#include <spp/script.h>
+#include <hot/script.h>
 #include <vector>
 
 const int kMax = 5;
@@ -66,9 +66,9 @@ public:
     void Jump() {}
     void Use(Actor* a) { (void)a; }
     void Peek(Player& other) { other.Move(Vec3()); }
-    void onReload(const spp::OldState& old) { (void)old; }
+    void onReload(const hot::OldState& old) { (void)old; }
     int hp = 100;
-    SPP_ALIAS("mana") int energy = 3;
+    HOT_ALIAS("mana") int energy = 3;
     std::vector<int> items{1, 2, 3};
     int lives{3};
 };
@@ -84,13 +84,13 @@ TEST(CppFrontend, Structure)
     EXPECT_TRUE(s.is_cpp);
     ASSERT_EQ(s.imports.size(), 3u);
     EXPECT_EQ(s.imports[0].path, "Actor.h");
-    EXPECT_EQ(s.imports[1].path, "<spp/script.h>");
+    EXPECT_EQ(s.imports[1].path, "<hot/script.h>");
     EXPECT_EQ(s.imports[2].line, 3);
     // The chunks keep the source order. The module block is at the first module variable.
     using K = ast::Script::Chunk::Kind;
     ASSERT_EQ(s.chunks.size(), 7u);
     EXPECT_EQ(s.chunks[0].text, "#include \"Actor.h\"");
-    EXPECT_EQ(s.chunks[1].text, "#include <spp/script.h>");
+    EXPECT_EQ(s.chunks[1].text, "#include <hot/script.h>");
     EXPECT_EQ(s.chunks[2].line, 3);
     EXPECT_EQ(s.chunks[3].text, "const int kMax = 5;");
     EXPECT_EQ(s.chunks[3].line, 5);
@@ -792,7 +792,7 @@ public:
     EXPECT_NE(r.cpp.find("C__s_plan() + C__s_super_args() + C__s_new_default() + C__s_construct_keys"),
         std::string::npos)
         << r.cpp;
-    EXPECT_NE(r.cpp.find("SPP_HIDDEN static auto C__plan()"), std::string::npos) << r.cpp; // the generated one
+    EXPECT_NE(r.cpp.find("HOT_HIDDEN static auto C__plan()"), std::string::npos) << r.cpp; // the generated one
 }
 
 // A pointer or a reference to a type needs only a declaration before the first module variable.
@@ -1090,15 +1090,15 @@ TEST(CppFrontend, ScriptClassTypeEdits)
         "state_of(p)->v = state_of(const_cast<S_Shell*>(&(c)))->v; S__set(q, S__get(p)); "
         "state_of(S__peer(r))->v = (int)sizeof(S_Shell); (void)static_cast<S_Shell*>(a); (void)(S_Shell*)a; ");
     EXPECT_EQ(method_of(p, "T", "B").raw_body,
-        " S_Shell* d = spp::as_script<S_Shell>(a, \"S\"); "
-        "S_Shell& e = (*spp::shell_of<S_Shell>(*a, \"S\")); "
+        " S_Shell* d = hot::as_script<S_Shell>(a, \"S\"); "
+        "S_Shell& e = (*hot::shell_of<S_Shell>(*a, \"S\")); "
         "S__set(&(s), state_of(d)->v + state_of(&(e))->v); d->Tick(1); delete d; ");
     // A module variable and a field access edit the same place: the field access is outside.
     EXPECT_EQ(method_of(p, "T", "C").raw_body,
         " state_of(spp_mod()->first)->v = 1; S__set(spp_mod()->first, S__get(spp_mod()->first)); ");
     // A const object: the field access keeps the C++ check of the source.
     EXPECT_EQ(method_of(p, "T", "D").raw_body,
-        " const S_Shell& r = (*spp::shell_of<S_Shell>(*a, \"S\")); return state_of(const_cast<S_Shell*>(&(r)))->v; ");
+        " const S_Shell& r = (*hot::shell_of<S_Shell>(*a, \"S\")); return state_of(const_cast<S_Shell*>(&(r)))->v; ");
 }
 
 TEST(CppFrontend, ScriptClassTypeErrors)
@@ -1169,7 +1169,7 @@ TEST(CppFrontend, ScriptChildClass)
     const std::string tick = method_of(p, "Kid", "Tick").raw_body;
     EXPECT_NE(tick.find("Base__base_Tick(__self, dt);"), std::string::npos) << tick;
     EXPECT_NE(tick.find("hits = Base__Power(__self) + Base__Power_virt(__self) + kid;"), std::string::npos) << tick;
-    EXPECT_NE(tick.find("spp::as_script<Kid_Shell>("), std::string::npos) << tick;
+    EXPECT_NE(tick.find("hot::as_script<Kid_Shell>("), std::string::npos) << tick;
 }
 
 TEST(CppFrontend, ScriptChildClassErrors)

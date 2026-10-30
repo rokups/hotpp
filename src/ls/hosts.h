@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-namespace spp::ls
+namespace hot::ls
 {
 
 struct Host
@@ -69,4 +69,4 @@ private:
     std::vector<std::shared_ptr<const Host>> skipped_; // valid, but no CMakeCache.txt
 };
 
-} // namespace spp::ls
+} // namespace hot::ls

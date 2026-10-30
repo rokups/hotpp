@@ -2,8 +2,8 @@
 // The AOT program aot_demo runs the same steps in another process. The text must be the
 // same. A symbol check shows that aot_demo has no loader and no Clang code.
 #include "demo_run.h"
-#include "spp/backend.h"
-#include "spp/runtime.h"
+#include "hot/backend.h"
+#include "hot/runtime.h"
 #include "support/script_files.h"
 
 #include <gtest/gtest.h>
@@ -35,8 +35,8 @@ std::string run_command(const std::string& command, int* status = nullptr)
 // The output of the demo with the loader: the text that the script prints, then the log.
 std::string run_with_loader()
 {
-    std::unique_ptr<spp::Backend> backend = spp::make_default_backend();
-    spp::LoadResult r = backend->load(test_support::source("aot_demo.hot"), 1);
+    std::unique_ptr<hot::Backend> backend = hot::make_default_backend();
+    hot::LoadResult r = backend->load(test_support::source("aot_demo.hot"), 1);
     if (!r)
     {
         ADD_FAILURE() << r.error;
@@ -45,8 +45,8 @@ std::string run_with_loader()
     testing::internal::CaptureStdout();
     std::string log;
     {
-        spp::Loader loader;
-        const spp::ReloadResult loaded = loader.load(std::move(*r.module));
+        hot::Loader loader;
+        const hot::ReloadResult loaded = loader.load(std::move(*r.module));
         if (!loaded)
         {
             ADD_FAILURE() << loaded.error;
@@ -111,11 +111,11 @@ std::string symbols_of(const std::string& path)
     #endif
 #endif
 #ifdef SPP_TEST_SANITIZER
-const char* const kLoaderMarks[] = {"spp::Loader", "spp::module_from_library", "migrate_block", "ClangFilesBackend",
+const char* const kLoaderMarks[] = {"hot::Loader", "hot::module_from_library", "migrate_block", "ClangFilesBackend",
     "FileWatcher", "removed_class_handler", "sppc::translate", "clang_createIndex", "clang_parseTranslationUnit",
     "clang::"};
 #else
-const char* const kLoaderMarks[] = {"spp::Loader", "spp::module_from_library", "migrate_block", "ClangFilesBackend",
+const char* const kLoaderMarks[] = {"hot::Loader", "hot::module_from_library", "migrate_block", "ClangFilesBackend",
     "FileWatcher", "removed_class_handler", "sppc::translate", "dlopen", "clang_createIndex",
     "clang_parseTranslationUnit", "clang::", "LLVM", "llvm::"};
 #endif
@@ -126,9 +126,9 @@ TEST(AotLink, AotProgramHasNoLoaderOrClangSymbol)
     if (syms.empty())
         GTEST_SKIP() << "nm is not available";
     // The scripts and the AOT runtime are in the binary.
-    EXPECT_NE(syms.find("spp::AotRegistry::AotRegistry"), std::string::npos);
+    EXPECT_NE(syms.find("hot::AotRegistry::AotRegistry"), std::string::npos);
     EXPECT_NE(syms.find("Veteran_record"), std::string::npos);
-    EXPECT_NE(syms.find("spp::aot_table"), std::string::npos);
+    EXPECT_NE(syms.find("hot::aot_table"), std::string::npos);
     for (const char* mark : kLoaderMarks)
         EXPECT_EQ(syms.find(mark), std::string::npos) << mark;
 }
@@ -139,7 +139,7 @@ TEST(AotLink, ScanFindsTheLoaderInAProgramThatLinksIt)
     const std::string syms = symbols_of(std::filesystem::read_symlink("/proc/self/exe").string());
     if (syms.empty())
         GTEST_SKIP() << "nm is not available";
-    EXPECT_NE(syms.find("spp::Loader"), std::string::npos);
+    EXPECT_NE(syms.find("hot::Loader"), std::string::npos);
     EXPECT_NE(syms.find("migrate_block"), std::string::npos);
 }
 

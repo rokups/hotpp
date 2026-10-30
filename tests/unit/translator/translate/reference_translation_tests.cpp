@@ -2,7 +2,7 @@
 // ("var&"), the foreach with "var&", the hole of the borrowed field and the script text of
 // the messages.
 #include "builtin_types.h"
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/check_translate_test_support.h"
 #include "support/translator_test_support.h"
 
@@ -62,7 +62,7 @@ TEST(ReferenceTranslation, MemberAccessThroughAScriptClassReferenceUsesTheClass)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // The three forms lower the access in the same way.
     EXPECT_FALSE(has(r.cpp, "w.dmg")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "return spp::deref(w).dmg;") || has(r.cpp, "spp::shell_of<Weapon_Shell>(w, \"Weapon\")"))
+    EXPECT_TRUE(has(r.cpp, "return hot::deref(w).dmg;") || has(r.cpp, "hot::shell_of<Weapon_Shell>(w, \"Weapon\")"))
         << r.cpp;
 }
 

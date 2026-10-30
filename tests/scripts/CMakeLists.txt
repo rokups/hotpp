@@ -31,10 +31,10 @@ add_library(cpp_scripts_plain1 OBJECT cpp_player_v1.cpp)
 target_include_directories(cpp_scripts_plain1 PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine)
 target_compile_features(cpp_scripts_plain1 PRIVATE cxx_std_17)
 
-# Generation 2 still has the aids SPP_ALIAS and onReload. A normal build needs the header for them.
+# Generation 2 still has the aids HOT_ALIAS and onReload. A normal build needs the header for them.
 # The option -include works in GCC and in Clang. SHELL: keeps the two words together.
 add_library(cpp_scripts_plain2 OBJECT cpp_player_v2.cpp)
 target_include_directories(cpp_scripts_plain2 PRIVATE
     ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/tests/engine)
-target_compile_options(cpp_scripts_plain2 PRIVATE "SHELL:-include spp/script.h")
+target_compile_options(cpp_scripts_plain2 PRIVATE "SHELL:-include hot/script.h")
 target_compile_features(cpp_scripts_plain2 PRIVATE cxx_std_17)

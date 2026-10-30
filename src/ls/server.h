@@ -3,7 +3,7 @@
 // The server is a proxy. It owns the text of each .hot document. It runs sppc::analyze() on the
 // text and gets the generated C++ and the source map. It gives the generated C++ to a stock
 // clangd child process as a virtual file "<script>.cpp" with the compile command of the backend
-// (spp::compile_command). It maps the positions of each request and each answer between the
+// (hot::compile_command). It maps the positions of each request and each answer between the
 // script and the generated C++. The diag rewriter changes generated names to script names.
 #pragma once
 
@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace spp::ls
+namespace hot::ls
 {
 
 struct ServerOptions
@@ -53,4 +53,4 @@ bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, s
 // The text of the usage message.
 const char* usage_text();
 
-} // namespace spp::ls
+} // namespace hot::ls

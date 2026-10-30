@@ -1,5 +1,5 @@
 // Tests for sppc::translate with the string switch and the collection literal.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>

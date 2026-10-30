@@ -1,5 +1,5 @@
 // Tests for the checks of a stub (design 7.10.7). Libclang answers the questions about the type.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/check_translate_test_support.h"
 
 #include <gtest/gtest.h>
@@ -83,7 +83,7 @@ TEST(StubChecks, IntrusiveWithBothMethodsIsOk)
     const sppc::TranslateResult r =
         check_translate("[native, intrusive(\"AddRef\", \"Release\")] class Counted;\n", "    Counted c;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "spp::Intrusive<Counted, &Counted::AddRef, &Counted::Release> c;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::Intrusive<Counted, &Counted::AddRef, &Counted::Release> c;")) << r.cpp;
 }
 
 TEST(StubChecks, IntrusiveMethodMustNotBeOverloaded)

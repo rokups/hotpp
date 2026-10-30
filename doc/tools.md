@@ -40,13 +40,13 @@ A `.cpp` script is a C++ file (see [C++ scripts](cpp-scripts.html)). The editor 
 
 ### clangd setup
 
-clangd must see the aids of a script (`SPP_ALIAS`, `spp::OldState`). `sppc` injects the header `spp/script.h`, but clangd does not. Add the header and the include directory of S++ to the flags of clangd. A script without aids needs no setting.
+clangd must see the aids of a script (`HOT_ALIAS`, `hot::OldState`). `sppc` injects the header `hot/script.h`, but clangd does not. Add the header and the include directory of S++ to the flags of clangd. A script without aids needs no setting.
 
 Put this in a `.clangd` file at the root of the project. Replace `<spp>` with the path of the S++ directory.
 
 ```yaml
 CompileFlags:
-  Add: [-include, spp/script.h, -I<spp>/include]
+  Add: [-include, hot/script.h, -I<spp>/include]
 ```
 
 Or add the same flags to the entry of the script in `compile_commands.json`:
@@ -55,7 +55,7 @@ Or add the same flags to the entry of the script in `compile_commands.json`:
 {
   "directory": "/project/build",
   "file": "/project/scripts/player.cpp",
-  "arguments": ["c++", "-std=c++17", "-include", "spp/script.h", "-I<spp>/include", "-c", "/project/scripts/player.cpp"]
+  "arguments": ["c++", "-std=c++17", "-include", "hot/script.h", "-I<spp>/include", "-c", "/project/scripts/player.cpp"]
 }
 ```
 

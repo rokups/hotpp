@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-namespace spp::ls
+namespace hot::ls
 {
 
 struct IndexPos
@@ -84,4 +84,4 @@ private:
     int loads_ = 0, stores_ = 0;
 };
 
-} // namespace spp::ls
+} // namespace hot::ls

@@ -9,7 +9,7 @@
   Step-in then skips them and goes to the script member of the state struct.
 -->
 <NonUserCode xmlns="http://schemas.microsoft.com/vstudio/debugger/jmc/2015">
-  <Function Name="spp::*" />
+  <Function Name="hot::*" />
   <Function Name="*_Shell::*" />
   <Function Name="*__*_virt" />
   <Function Name="*__*__thunk" />

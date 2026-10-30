@@ -72,7 +72,7 @@ TEST(StatementLowering, FinallyBody)
 {
     Fixture f;
     EXPECT_EQ(f.body("try { throw 1; } finally { this.n = 1; }"),
-        "{ spp::Finally __fin_0([&] { __st->n = 1; }); { throw 1; } }");
+        "{ hot::Finally __fin_0([&] { __st->n = 1; }); { throw 1; } }");
     // A loop or a switch fully inside the finally block can use break and continue.
     // A lambda in the finally block can use return.
     f.body(

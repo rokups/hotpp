@@ -2,15 +2,15 @@
 // load the code with LLVM ORC. No file is written and no process starts.
 #pragma once
 
-#include "spp/backend.h"
-#include "spp/sppc_lib.h"
+#include "hot/backend.h"
+#include "hot/sppc_lib.h"
 
 #include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
 
-namespace spp
+namespace hot
 {
 
 struct JitOptions
@@ -19,7 +19,7 @@ struct JitOptions
     std::vector<std::string> include_dirs; // for the script imports and for the compile
     std::string resource_dir; // the Clang resource dir (empty: the default)
     // The C++ standard of the compile and of the import parse, for example "c++17". Empty: the
-    // standard of the host (spp::cxx_std_name() in spp/config.h).
+    // standard of the host (hot::cxx_std_name() in hot/config.h).
     std::string std_version;
     // The translator cache. Empty: the backend makes its own. Share one to keep the
     // cache between backends.
@@ -93,4 +93,4 @@ private:
     std::string debugger_error_;
 };
 
-} // namespace spp
+} // namespace hot

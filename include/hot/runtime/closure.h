@@ -1,8 +1,8 @@
 // The closure that leaves script code and the guard of a script "finally" block.
 #pragma once
-#include "spp/runtime/compat.h"
-#include "spp/runtime/hidden.h"
-#include "spp/runtime/threads.h"
+#include "hot/runtime/compat.h"
+#include "hot/runtime/hidden.h"
+#include "hot/runtime/threads.h"
 
 #include <cstdint>
 #include <functional>
@@ -10,13 +10,13 @@
 
 // A hint that a condition is rarely true.
 #if defined(__clang__) || defined(__GNUC__)
-    #define SPP_UNLIKELY(x) __builtin_expect(!!(x), 0)
+    #define HOT_UNLIKELY(x) __builtin_expect(!!(x), 0)
 #else
 // unverified: not built on MSVC. The MSVC form is the plain condition.
-    #define SPP_UNLIKELY(x) (x)
+    #define HOT_UNLIKELY(x) (x)
 #endif
 
-namespace spp
+namespace hot
 {
 
 // A closure that leaves script code (section 4.11). It holds one pin of its
@@ -35,10 +35,10 @@ template <class R, class... A> class Closure<R(A...)>
 public:
     using Function = std::function<R(A...)>;
 
-    SPP_HIDDEN Closure() {}
+    HOT_HIDDEN Closure() {}
 
     template <class F>
-    SPP_HIDDEN Closure(uint32_t generation, const char* what, F fn)
+    HOT_HIDDEN Closure(uint32_t generation, const char* what, F fn)
         : fn_(std::move(fn))
         , gen_(generation)
         , what_(what)
@@ -46,7 +46,7 @@ public:
         pin(gen_);
     }
 
-    SPP_HIDDEN Closure(const Closure& o)
+    HOT_HIDDEN Closure(const Closure& o)
         : fn_(o.fn_)
         , gen_(o.gen_)
         , what_(o.what_)
@@ -55,7 +55,7 @@ public:
             pin(gen_);
     }
 
-    SPP_HIDDEN Closure(Closure&& o) noexcept
+    HOT_HIDDEN Closure(Closure&& o) noexcept
         : fn_(std::move(o.fn_))
         , gen_(o.gen_)
         , what_(o.what_)
@@ -64,7 +64,7 @@ public:
         o.gen_ = 0;
     }
 
-    SPP_HIDDEN Closure& operator=(Closure o) noexcept
+    HOT_HIDDEN Closure& operator=(Closure o) noexcept
     {
         std::swap(fn_, o.fn_);
         std::swap(gen_, o.gen_);
@@ -73,17 +73,17 @@ public:
     }
 
     // The lambda goes first (its captures can use the generation code), then the pin.
-    SPP_HIDDEN ~Closure()
+    HOT_HIDDEN ~Closure()
     {
         fn_ = nullptr;
         if (gen_)
             unpin(gen_);
     }
 
-    SPP_HIDDEN R operator()(A... a) const
+    HOT_HIDDEN R operator()(A... a) const
     {
         ScriptEntry entry; // design 6.3: the guard reads active_generation
-        if (SPP_UNLIKELY(!fn_ || gen_ != active_generation))
+        if (HOT_UNLIKELY(!fn_ || gen_ != active_generation))
         {
             stale_call(what_ ? what_ : "closure");
             return R();
@@ -91,18 +91,18 @@ public:
         return fn_(std::forward<A>(a)...);
     }
 
-    SPP_HIDDEN explicit operator bool() const { return gen_ != 0; }
-    SPP_HIDDEN uint32_t generation() const { return gen_; }
+    HOT_HIDDEN explicit operator bool() const { return gen_ != 0; }
+    HOT_HIDDEN uint32_t generation() const { return gen_; }
 
     // A std::function that holds a copy of this closure (and so one more pin).
-    SPP_HIDDEN Function to_function() const
+    HOT_HIDDEN Function to_function() const
     {
         Closure copy(*this);
         return Function(std::move(copy));
     }
 
     // Conversion to an engine delegate type that binds a std::function.
-    template <class D, std::enable_if_t<detail::has_bind<D, Function>::value, int> = 0> SPP_HIDDEN operator D() const
+    template <class D, std::enable_if_t<detail::has_bind<D, Function>::value, int> = 0> HOT_HIDDEN operator D() const
     {
         D d;
         d.Bind(to_function());
@@ -116,7 +116,7 @@ private:
 };
 
 // The guard of a script "finally" block. The translator writes
-//   { spp::Finally __fin_N([&] { body }); try { ... } catch ... }
+//   { hot::Finally __fin_N([&] { body }); try { ... } catch ... }
 // The destructor runs the body on each path out of the outer block: the normal end,
 // a return, a break, a continue and an exception.
 //
@@ -126,13 +126,13 @@ private:
 template <class F> class Finally
 {
 public:
-    SPP_HIDDEN explicit Finally(F f)
+    HOT_HIDDEN explicit Finally(F f)
         : f_(std::move(f))
     {
     }
     Finally(const Finally&) = delete;
     Finally& operator=(const Finally&) = delete;
-    SPP_HIDDEN ~Finally()
+    HOT_HIDDEN ~Finally()
     {
         try
         {
@@ -163,10 +163,10 @@ template <class C, class R, class... A> struct SigOf<R (C::*)(A...)>
 
 // The translator wraps each arrow lambda in this call. "what" names the lambda
 // in the stale call log.
-template <class F> SPP_HIDDEN auto make_closure(uint32_t generation, const char* what, F fn)
+template <class F> HOT_HIDDEN auto make_closure(uint32_t generation, const char* what, F fn)
 {
     using Sig = typename detail::SigOf<decltype(&F::operator())>::type;
     return Closure<Sig>(generation, what, std::move(fn));
 }
 
-} // namespace spp
+} // namespace hot

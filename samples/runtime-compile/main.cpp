@@ -3,8 +3,8 @@
 // The build makes two programs from this file. The definitions SAMPLE_SCRIPT_DIR and
 // SAMPLE_SCRIPT_EXT select the script variant (.hot or .cpp).
 #include "Creature.h"
-#include "spp/backend.h"
-#include "spp/runtime/loader.h"
+#include "hot/backend.h"
+#include "hot/runtime/loader.h"
 
 #include <cstdio>
 #include <fstream>
@@ -25,26 +25,26 @@ int main()
     text << in.rdbuf();
 
     // The backend runs the compiler. The folder of Creature.h is an include dir of the compile.
-    spp::DefaultBackendOptions options;
+    hot::DefaultBackendOptions options;
     options.include_dirs = {SAMPLE_DIR};
-    std::unique_ptr<spp::Backend> backend = spp::make_default_backend(options);
+    std::unique_ptr<hot::Backend> backend = hot::make_default_backend(options);
 
     // The loader is first, so it is destroyed last. The script object dies before it.
-    spp::Loader loader;
-    const spp::ScriptSource source{path, text.str(), {}};
-    spp::LoadResult built = backend->load(source, 1);
+    hot::Loader loader;
+    const hot::ScriptSource source{path, text.str(), {}};
+    hot::LoadResult built = backend->load(source, 1);
     if (!built)
     {
         std::fprintf(stderr, "sample_runtime_compile: compile failed: %s\n", built.error.c_str());
         return 1;
     }
-    const spp::ReloadResult loaded = loader.load(std::move(*built.module));
+    const hot::ReloadResult loaded = loader.load(std::move(*built.module));
     if (!loaded)
     {
         std::fprintf(stderr, "sample_runtime_compile: load failed: %s\n", loaded.error.c_str());
         return 1;
     }
-    const spp::ClassEntry* entry = loader.find("Wolf");
+    const hot::ClassEntry* entry = loader.find("Wolf");
     if (!entry)
     {
         std::fprintf(stderr, "sample_runtime_compile: the class Wolf is not available\n");

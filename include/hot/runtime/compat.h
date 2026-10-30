@@ -1,5 +1,5 @@
 // C++17 forms of C++20 library traits and attributes. The generated code and the runtime
-// headers need C++17 only. Do not use a feature of a later standard in include/spp.
+// headers need C++17 only. Do not use a feature of a later standard in include/hot.
 #pragma once
 #include <memory>
 #include <type_traits>
@@ -7,12 +7,12 @@
 
 // A branch hint: the condition is usually false. C++20 has [[unlikely]].
 #if defined(__clang__) || defined(__GNUC__)
-    #define SPP_UNLIKELY(x) __builtin_expect(!!(x), 0)
+    #define HOT_UNLIKELY(x) __builtin_expect(!!(x), 0)
 #else
-    #define SPP_UNLIKELY(x) (x)
+    #define HOT_UNLIKELY(x) (x)
 #endif
 
-namespace spp::detail
+namespace hot::detail
 {
 
 // std::remove_cvref_t (C++20).
@@ -60,4 +60,4 @@ struct has_bind<D, F, std::void_t<decltype(std::declval<D&>().Bind(std::declval<
 {
 };
 
-} // namespace spp::detail
+} // namespace hot::detail

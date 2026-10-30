@@ -1,5 +1,5 @@
 // Tests for sppc::translate with the reload hooks: onReload(OldState) and convert_<field>.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -33,10 +33,10 @@ TEST(ReloadHookTranslation, OnReloadGetsNoSlotAndGoesToTheRecord)
         "    float hp = 1.0;\n"
         "    void onReload(OldState old) { if (old.has(\"x\")) this.hp = old.get<float>(\"x\"); }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.cpp.find("static void Foo__onReload(Foo_Shell* __self, const spp::OldState& old)"), std::string::npos)
+    EXPECT_NE(r.cpp.find("static void Foo__onReload(Foo_Shell* __self, const hot::OldState& old)"), std::string::npos)
         << r.cpp;
-    EXPECT_NE(r.cpp.find("spp::deref(old).has(\"x\")"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("spp::deref(old).get<float>(\"x\")"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("hot::deref(old).has(\"x\")"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("hot::deref(old).get<float>(\"x\")"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("    Foo__onReload_hook,\n    &Foo__construct"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("SLOT_onReload"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("__thunk"), std::string::npos) << r.cpp;
@@ -71,7 +71,7 @@ TEST(ReloadHookTranslation, ConvertHookGoesToTheFieldRow)
     ASSERT_NE(at, std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.substr(at, r.cpp.find("\n}\n", at) - at).find("__st->"), std::string::npos) << r.cpp;
     // The field "other" has no convert hook.
-    EXPECT_NE(r.cpp.find("spp::field_destroyer<int32_t>()},"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("hot::field_destroyer<int32_t>()},"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("SLOT_convert_level"), std::string::npos) << r.cpp;
 }
 

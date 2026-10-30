@@ -36,7 +36,7 @@ endfunction()
 # the default of S++ (20, set by the root CMakeLists.txt), else 17.
 # A value less than 17 gives 17. A value above 23 gives 23. The value 21 or 22 gives 20.
 # The runtime library and the backends compile the generated code with this standard
-# (SPP_CXX_STANDARD in include/spp/config.h).
+# (HOT_CXX_STANDARD in include/hot/config.h).
 function(spp_effective_cxx_standard out target)
     set(std "")
     if(TARGET ${target})

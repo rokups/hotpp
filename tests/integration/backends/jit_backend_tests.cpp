@@ -4,8 +4,8 @@
 // check this, and they check that a generation can go away.
 //
 // CMake defines these macros: SPP_SOURCE_DIR, SPP_SCRATCH_DIR, SPP_CXX and SPP_RESOURCE_DIR.
-#include "spp/backend.h"
-#include "spp/jit_backend.h"
+#include "hot/backend.h"
+#include "hot/jit_backend.h"
 #include "support/dwarf_lines.h"
 #include "support/f1_scenario.h"
 #include "support/scratch_dir.h"
@@ -48,7 +48,7 @@ namespace
 
 namespace fs = std::filesystem;
 
-spp::ScriptSource source(const char* file)
+hot::ScriptSource source(const char* file)
 {
     const std::string path = std::string(SPP_SOURCE_DIR) + "/tests/scripts/" + file;
     std::ifstream f(path);
@@ -132,17 +132,17 @@ TEST(JitTests, ChildDetectorSeesAChild)
 
 TEST(JitTests, NoFileAndNoChildProcess)
 {
-    std::unique_ptr<spp::Backend> backend = spp::make_default_backend();
+    std::unique_ptr<hot::Backend> backend = hot::make_default_backend();
     ASSERT_STREQ(backend->name(), "JIT");
     EmptyWorkDir work;
     const long faults_before = child_faults();
     {
-        spp::LoadResult v1 = backend->load(source("player_v1.hot"), 1);
+        hot::LoadResult v1 = backend->load(source("player_v1.hot"), 1);
         ASSERT_TRUE(v1) << v1.error;
-        spp::LoadResult v2 = backend->load(source("player_v2.hot"), 2);
+        hot::LoadResult v2 = backend->load(source("player_v2.hot"), 2);
         ASSERT_TRUE(v2) << v2.error;
         // A bad script also leaves no file and starts no process.
-        spp::LoadResult bad = backend->load(source("bad.hot"), 1);
+        hot::LoadResult bad = backend->load(source("bad.hot"), 1);
         EXPECT_FALSE(bad);
         f1::run_f1_reload(std::move(*v1.module), std::move(*v2.module));
     }
@@ -154,8 +154,8 @@ TEST(JitTests, NoFileAndNoChildProcess)
 // The error text names the script. The text has no stray line from the compiler.
 TEST(JitTests, ErrorTextNamesTheScript)
 {
-    std::unique_ptr<spp::Backend> backend = spp::make_default_backend();
-    spp::LoadResult bad = backend->load(source("bad.hot"), 1);
+    std::unique_ptr<hot::Backend> backend = hot::make_default_backend();
+    hot::LoadResult bad = backend->load(source("bad.hot"), 1);
     ASSERT_FALSE(bad);
     EXPECT_NE(bad.error.find("bad.hot:9:"), std::string::npos) << bad.error;
     EXPECT_NE(bad.error.find(" error: "), std::string::npos) << bad.error;
@@ -171,24 +171,24 @@ TEST(JitTests, PrecompiledHeaderWorks)
         std::ofstream f(header);
         f << "#include <algorithm>\n#include <cstddef>\n#include <cstdint>\n#include <cstdio>\n"
              "#include <new>\n#include <string>\n#include <type_traits>\n#include <typeinfo>\n"
-             "#include <utility>\n#include \"spp/runtime.h\"\n#include \"Actor.h\"\n"
+             "#include <utility>\n#include \"hot/runtime.h\"\n#include \"Actor.h\"\n"
              "#include \"Math.h\"\n";
     }
-    spp::JitOptions o;
+    hot::JitOptions o;
     o.compiler = SPP_CXX;
     o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/tests/engine", std::string(SPP_SOURCE_DIR) + "/include"};
     o.resource_dir = SPP_RESOURCE_DIR;
     std::string error;
     {
-        spp::JitBackend maker(o);
+        hot::JitBackend maker(o);
         ASSERT_TRUE(maker.make_pch(header, pch, error)) << error;
     }
     ASSERT_TRUE(fs::exists(pch));
     o.pch_path = pch;
-    spp::JitBackend backend(o);
-    spp::LoadResult v1 = backend.load(source("player_v1.hot"), 1);
+    hot::JitBackend backend(o);
+    hot::LoadResult v1 = backend.load(source("player_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend.load(source("player_v2.hot"), 2);
+    hot::LoadResult v2 = backend.load(source("player_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     f1::run_f1_reload(std::move(*v1.module), std::move(*v2.module));
 }
@@ -197,7 +197,7 @@ TEST(JitTests, PrecompiledHeaderWorks)
 // host. Both need the unwind tables of the JIT code (EH frames), which JITLink registers.
 TEST(JitTests, ExceptionsWorkInJitCode)
 {
-    const spp::ScriptSource src = {"throws.hot", R"(
+    const hot::ScriptSource src = {"throws.hot", R"(
 using "Actor.h";
 using "Math.h";
 
@@ -216,8 +216,8 @@ class Player : Actor {
 }
 )",
         {}};
-    std::unique_ptr<spp::Backend> backend = spp::make_default_backend();
-    spp::LoadResult r = backend->load(src, 1);
+    std::unique_ptr<hot::Backend> backend = hot::make_default_backend();
+    hot::LoadResult r = backend->load(src, 1);
     ASSERT_TRUE(r) << r.error;
     test_support::Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
@@ -240,12 +240,12 @@ class Player : Actor {
 // When the last copy goes, the generation is removed from the JIT.
 TEST(JitTests, ModuleOutlivesBackendAndGenerationsCanBeRemoved)
 {
-    spp::Module kept;
+    hot::Module kept;
     {
-        std::unique_ptr<spp::Backend> backend = spp::make_default_backend();
+        std::unique_ptr<hot::Backend> backend = hot::make_default_backend();
         for (int i = 0; i < 3; ++i)
         {
-            spp::LoadResult r = backend->load(source("player_v1.hot"), 1);
+            hot::LoadResult r = backend->load(source("player_v1.hot"), 1);
             ASSERT_TRUE(r) << r.error;
             // The same generation loads again and again: each time a new JITDylib.
             if (i == 2)
@@ -264,13 +264,13 @@ TEST(JitTests, DebuggerGetsObjectWithScriptLines)
 {
     if (!test_support::have_dwarfdump())
         GTEST_SKIP() << "llvm-dwarfdump is not installed";
-    spp::JitOptions o;
+    hot::JitOptions o;
     o.compiler = SPP_CXX;
     o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/include", std::string(SPP_SOURCE_DIR) + "/tests/engine"};
     o.resource_dir = SPP_RESOURCE_DIR;
-    spp::JitBackend backend(o);
-    const spp::ScriptSource src = source("player_v2.hot");
-    spp::LoadResult r = backend.load(src, 1);
+    hot::JitBackend backend(o);
+    const hot::ScriptSource src = source("player_v2.hot");
+    hot::LoadResult r = backend.load(src, 1);
     ASSERT_TRUE(r) << r.error;
     ASSERT_TRUE(backend.debugger_support()) << backend.debugger_error();
 
@@ -293,13 +293,13 @@ TEST(JitTests, DebuggerGetsObjectWithScriptLines)
 // The option turns the plugin off.
 TEST(JitTests, DebuggerSupportCanBeOff)
 {
-    spp::JitOptions o;
+    hot::JitOptions o;
     o.compiler = SPP_CXX;
     o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/include", std::string(SPP_SOURCE_DIR) + "/tests/engine"};
     o.resource_dir = SPP_RESOURCE_DIR;
     o.debugger_support = false;
-    spp::JitBackend backend(o);
-    spp::LoadResult r = backend.load(source("player_v1.hot"), 1);
+    hot::JitBackend backend(o);
+    hot::LoadResult r = backend.load(source("player_v1.hot"), 1);
     ASSERT_TRUE(r) << r.error;
     EXPECT_FALSE(backend.debugger_support());
 }

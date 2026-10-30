@@ -1,5 +1,5 @@
 // Tests for the names of the generated code, the expression body of a lambda and the C style cast.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>

@@ -8,7 +8,7 @@
 #include <typeinfo>
 #include <utility>
 
-#include "spp/runtime.h"
+#include "hot/runtime.h"
 
 #line 14 "cpp_static_v1.cpp.cpp"
 
@@ -16,7 +16,7 @@ constexpr uint32_t GEN = 1;
 struct SppModule;
 // The module state block of this generation. The loader sets the slot.
 static void* SppModule_slot = nullptr;
-[[maybe_unused]] SPP_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+[[maybe_unused]] HOT_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
 struct Counter_Shell;
 using Counter = Counter_Shell;
 #line 3 "cpp_static_v1.cpp"
@@ -51,16 +51,16 @@ static void SppModule__init_snapshot(void*, void* f) { using T = int; new (f) T(
 #line 52 "cpp_static_v1.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static const spp::FieldInfo SppModule_fields[] = {
-    {"Counter__s_count", nullptr, spp::type_key<int>(), offsetof(SppModule, Counter__s_count), sizeof(int),
-     alignof(int), spp::field_flags<int>(), SppModule__init_Counter__s_count, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"Counter__s_hits", nullptr, spp::type_key<int>(), offsetof(SppModule, Counter__s_hits), sizeof(int),
-     alignof(int), spp::field_flags<int>(), SppModule__init_Counter__s_hits, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"snapshot", nullptr, spp::type_key<int>(), offsetof(SppModule, snapshot), sizeof(int),
-     alignof(int), spp::field_flags<int>(), SppModule__init_snapshot, spp::move_field<int>, spp::field_destroyer<int>()},
+static const hot::FieldInfo SppModule_fields[] = {
+    {"Counter__s_count", nullptr, hot::type_key<int>(), offsetof(SppModule, Counter__s_count), sizeof(int),
+     alignof(int), hot::field_flags<int>(), SppModule__init_Counter__s_count, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"Counter__s_hits", nullptr, hot::type_key<int>(), offsetof(SppModule, Counter__s_hits), sizeof(int),
+     alignof(int), hot::field_flags<int>(), SppModule__init_Counter__s_hits, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"snapshot", nullptr, hot::type_key<int>(), offsetof(SppModule, snapshot), sizeof(int),
+     alignof(int), hot::field_flags<int>(), SppModule__init_snapshot, hot::move_field<int>, hot::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
-static const spp::StateLayout SppModule_layout = {
+static const hot::StateLayout SppModule_layout = {
     "SppModule", sizeof(SppModule), alignof(SppModule), 3, SppModule_fields,
 };
 
@@ -80,22 +80,22 @@ enum : unsigned {
     SLOT_COUNT = 4,
 };
 
-extern spp::ClassRecord Counter_record;
+extern hot::ClassRecord Counter_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
-struct Counter_Shell final : Actor, spp::ShellBase {
+struct Counter_Shell final : Actor, hot::ShellBase {
 #line 8 "cpp_static_v1.cpp"
     template <class... A>
 #line 8 "cpp_static_v1.cpp"
-    explicit Counter_Shell(spp::Construct, A&&... a) : Actor(std::forward<A>(a)...)
+    explicit Counter_Shell(hot::Construct, A&&... a) : Actor(std::forward<A>(a)...)
 #line 8 "cpp_static_v1.cpp"
     {
 #line 8 "cpp_static_v1.cpp"
-        spp::init_state(this, &Counter_record);
+        hot::init_state(this, &Counter_record);
 #line 8 "cpp_static_v1.cpp"
     }
 #line 8 "cpp_static_v1.cpp"
-    ~Counter_Shell() override { spp::destroy_state(this); }
+    ~Counter_Shell() override { hot::destroy_state(this); }
 #line 100 "cpp_static_v1.cpp.cpp"
 
 #line 8 "cpp_static_v1.cpp"
@@ -103,7 +103,7 @@ struct Counter_Shell final : Actor, spp::ShellBase {
 #line 8 "cpp_static_v1.cpp"
     {
 #line 8 "cpp_static_v1.cpp"
-        return spp::call<void(Actor*, float)>(this, SLOT_Tick, a0);
+        return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 8 "cpp_static_v1.cpp"
     }
 #line 110 "cpp_static_v1.cpp.cpp"
@@ -113,7 +113,7 @@ struct Counter_Shell final : Actor, spp::ShellBase {
 #line 8 "cpp_static_v1.cpp"
     {
 #line 8 "cpp_static_v1.cpp"
-        return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
+        return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 8 "cpp_static_v1.cpp"
     }
 #line 120 "cpp_static_v1.cpp.cpp"
@@ -123,7 +123,7 @@ struct Counter_Shell final : Actor, spp::ShellBase {
 #line 8 "cpp_static_v1.cpp"
     {
 #line 8 "cpp_static_v1.cpp"
-        return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
+        return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 8 "cpp_static_v1.cpp"
     }
 #line 130 "cpp_static_v1.cpp.cpp"
@@ -131,7 +131,7 @@ struct Counter_Shell final : Actor, spp::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct CounterState_g1 {
-    spp::ShellBase* __spp_owner;
+    hot::ShellBase* __spp_owner;
     int last;
     int via_free;
 
@@ -140,7 +140,7 @@ struct CounterState_g1 {
     int Peek();
     // Not overridden: call the implementation of Actor.
 #line 8 "cpp_static_v1.cpp"
-    SPP_NODEBUG void __fwd_TakeDamage_f(float a0)
+    HOT_NODEBUG void __fwd_TakeDamage_f(float a0)
 #line 8 "cpp_static_v1.cpp"
     {
 #line 8 "cpp_static_v1.cpp"
@@ -150,7 +150,7 @@ struct CounterState_g1 {
 #line 151 "cpp_static_v1.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 8 "cpp_static_v1.cpp"
-    SPP_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
+    HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
 #line 8 "cpp_static_v1.cpp"
     {
 #line 8 "cpp_static_v1.cpp"
@@ -170,29 +170,29 @@ static void Counter__init_via_free(void*, void* f) { using T = int; new (f) T(0)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static_assert(offsetof(CounterState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
-static const spp::FieldInfo Counter_fields[] = {
-    {"last", nullptr, spp::type_key<int>(), offsetof(CounterState_g1, last), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Counter__init_last, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"via_free", nullptr, spp::type_key<int>(), offsetof(CounterState_g1, via_free), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Counter__init_via_free, spp::move_field<int>, spp::field_destroyer<int>()},
+static const hot::FieldInfo Counter_fields[] = {
+    {"last", nullptr, hot::type_key<int>(), offsetof(CounterState_g1, last), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Counter__init_last, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"via_free", nullptr, hot::type_key<int>(), offsetof(CounterState_g1, via_free), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Counter__init_via_free, hot::move_field<int>, hot::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
 
-static const spp::StateLayout Counter_layout = {
+static const hot::StateLayout Counter_layout = {
     "CounterState_g1", sizeof(CounterState_g1), alignof(CounterState_g1), 2, Counter_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-SPP_HIDDEN CounterState_g1* state_of(Counter_Shell* __self)
+HOT_HIDDEN CounterState_g1* state_of(Counter_Shell* __self)
 {
     return static_cast<CounterState_g1*>(__self->state);
 }
 
-[[maybe_unused]] SPP_HIDDEN static int Counter__Peek(Counter_Shell* __self);
+[[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self);
 
-[[maybe_unused]] SPP_HIDDEN static void Counter__ctor(Counter_Shell* __self);
+[[maybe_unused]] HOT_HIDDEN static void Counter__ctor(Counter_Shell* __self);
 #line 11 "cpp_static_v1.cpp"
-[[maybe_unused]] SPP_HIDDEN static auto Counter__super_args()
+[[maybe_unused]] HOT_HIDDEN static auto Counter__super_args()
 #line 11 "cpp_static_v1.cpp"
 {
 #line 11 "cpp_static_v1.cpp"
@@ -200,7 +200,7 @@ SPP_HIDDEN CounterState_g1* state_of(Counter_Shell* __self)
 #line 11 "cpp_static_v1.cpp"
 }
 #line 11 "cpp_static_v1.cpp"
-SPP_HIDDEN static auto Counter__plan()
+HOT_HIDDEN static auto Counter__plan()
 #line 11 "cpp_static_v1.cpp"
 {
 #line 11 "cpp_static_v1.cpp"
@@ -210,7 +210,7 @@ SPP_HIDDEN static auto Counter__plan()
 #line 11 "cpp_static_v1.cpp"
 template <class Chain>
 #line 11 "cpp_static_v1.cpp"
-SPP_HIDDEN static void Counter__ctor_chain(Counter_Shell* __self, [[maybe_unused]] Chain& __chain)
+HOT_HIDDEN static void Counter__ctor_chain(Counter_Shell* __self, [[maybe_unused]] Chain& __chain)
 #line 11 "cpp_static_v1.cpp"
 {
 #line 11 "cpp_static_v1.cpp"
@@ -222,7 +222,7 @@ using Counter_SuperArgs = decltype(Counter__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
 #line 8 "cpp_static_v1.cpp"
-SPP_NODEBUG static spp::ShellBase* Counter__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Counter__construct(const char* key, const void* args)
 #line 8 "cpp_static_v1.cpp"
 {
 #line 8 "cpp_static_v1.cpp"
@@ -230,7 +230,7 @@ SPP_NODEBUG static spp::ShellBase* Counter__construct(const char* key, const voi
 #line 8 "cpp_static_v1.cpp"
         const auto& t = *static_cast<const Counter_SuperArgs*>(args);
 #line 8 "cpp_static_v1.cpp"
-        return std::apply([](auto&... x) -> spp::ShellBase* { return new Counter_Shell(spp::Construct{}, x...); }, t);
+        return std::apply([](auto&... x) -> hot::ShellBase* { return new Counter_Shell(hot::Construct{}, x...); }, t);
 #line 8 "cpp_static_v1.cpp"
     }
 #line 8 "cpp_static_v1.cpp"
@@ -242,13 +242,13 @@ SPP_NODEBUG static spp::ShellBase* Counter__construct(const char* key, const voi
 static const char* const Counter__construct_keys[] = {typeid(Counter_SuperArgs).name(), nullptr};
 
 #line 11 "cpp_static_v1.cpp"
-SPP_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
+HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
 #line 11 "cpp_static_v1.cpp"
 {
 #line 11 "cpp_static_v1.cpp"
     auto __plan = Counter__plan();
 #line 11 "cpp_static_v1.cpp"
-    auto* __self = static_cast<Counter_Shell*>(spp::construct_shell(&Counter_record, typeid(Counter_SuperArgs).name(), &__plan.first, __note));
+    auto* __self = static_cast<Counter_Shell*>(hot::construct_shell(&Counter_record, typeid(Counter_SuperArgs).name(), &__plan.first, __note));
 #line 11 "cpp_static_v1.cpp"
     try {
 #line 11 "cpp_static_v1.cpp"
@@ -267,7 +267,7 @@ SPP_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
 }
 #line 269 "cpp_static_v1.cpp.cpp"
 #line 11 "cpp_static_v1.cpp"
-[[maybe_unused]] SPP_HIDDEN static Counter_Shell* Counter__new()
+[[maybe_unused]] HOT_HIDDEN static Counter_Shell* Counter__new()
 #line 11 "cpp_static_v1.cpp"
 {
 #line 11 "cpp_static_v1.cpp"
@@ -279,7 +279,7 @@ SPP_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 11 "cpp_static_v1.cpp"
-SPP_NODEBUG static spp::ShellBase* Counter__new_default()
+HOT_NODEBUG static hot::ShellBase* Counter__new_default()
 #line 11 "cpp_static_v1.cpp"
 {
 #line 11 "cpp_static_v1.cpp"
@@ -289,7 +289,7 @@ SPP_NODEBUG static spp::ShellBase* Counter__new_default()
 #line 290 "cpp_static_v1.cpp.cpp"
 
 #line 11 "cpp_static_v1.cpp"
-[[maybe_unused]] SPP_HIDDEN static void Counter__ctor(Counter_Shell* __self)
+[[maybe_unused]] HOT_HIDDEN static void Counter__ctor(Counter_Shell* __self)
 #line 11 "cpp_static_v1.cpp"
 {
 #line 11 "cpp_static_v1.cpp"
@@ -302,17 +302,17 @@ void CounterState_g1::ctor()
 #line 11 "cpp_static_v1.cpp"
 {
 #line 11 "cpp_static_v1.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 11 "cpp_static_v1.cpp"
-        spp::stale_call("Counter::Counter");
+        hot::stale_call("Counter::Counter");
 #line 11 "cpp_static_v1.cpp"
         return;
 #line 11 "cpp_static_v1.cpp"
     }
 #line 11 "cpp_static_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__spp_owner);
 #line 11 "cpp_static_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 11 "cpp_static_v1.cpp"
 
 #line 11 "cpp_static_v1.cpp"
@@ -324,17 +324,17 @@ void CounterState_g1::Tick(float dt)
 #line 13 "cpp_static_v1.cpp"
 {
 #line 13 "cpp_static_v1.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 13 "cpp_static_v1.cpp"
-        spp::stale_call("Counter::Tick(float)");
+        hot::stale_call("Counter::Tick(float)");
 #line 13 "cpp_static_v1.cpp"
         return;
 #line 13 "cpp_static_v1.cpp"
     }
 #line 13 "cpp_static_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__spp_owner);
 #line 13 "cpp_static_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 14 "cpp_static_v1.cpp"
 
         ++spp_mod()->Counter__s_count;                // a bare name
@@ -348,7 +348,7 @@ void CounterState_g1::Tick(float dt)
 #line 349 "cpp_static_v1.cpp.cpp"
 
 #line 23 "cpp_static_v1.cpp"
-[[maybe_unused]] SPP_HIDDEN static int Counter__Peek(Counter_Shell* __self)
+[[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self)
 #line 23 "cpp_static_v1.cpp"
 {
 #line 23 "cpp_static_v1.cpp"
@@ -361,17 +361,17 @@ int CounterState_g1::Peek()
 #line 23 "cpp_static_v1.cpp"
 {
 #line 23 "cpp_static_v1.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 23 "cpp_static_v1.cpp"
-        spp::stale_call("Counter::Peek");
+        hot::stale_call("Counter::Peek");
 #line 23 "cpp_static_v1.cpp"
         return int();
 #line 23 "cpp_static_v1.cpp"
     }
 #line 23 "cpp_static_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__spp_owner);
 #line 23 "cpp_static_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 24 "cpp_static_v1.cpp"
 
         int (*fn)(int) = &Counter__s_scale;
@@ -388,36 +388,36 @@ static int Counter__Peek__thunk(Actor* __a)
 #line 23 "cpp_static_v1.cpp"
 {
 #line 23 "cpp_static_v1.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(__a);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(__a);
 #line 23 "cpp_static_v1.cpp"
-    return spp::call<int(Actor*)>(__self, SLOT_Peek);
+    return hot::call<int(Actor*)>(__self, SLOT_Peek);
 #line 23 "cpp_static_v1.cpp"
 }
 #line 397 "cpp_static_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
-static const spp::SlotFn Counter_slots[SLOT_COUNT] = {
-    reinterpret_cast<spp::SlotFn>(&CounterState_g1::Tick),
-    reinterpret_cast<spp::SlotFn>(&CounterState_g1::__fwd_TakeDamage_f),
-    reinterpret_cast<spp::SlotFn>(&CounterState_g1::__fwd_TakeDamage_Af),
-    reinterpret_cast<spp::SlotFn>(&CounterState_g1::Peek),
+static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
+    reinterpret_cast<hot::SlotFn>(&CounterState_g1::Tick),
+    reinterpret_cast<hot::SlotFn>(&CounterState_g1::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&CounterState_g1::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&CounterState_g1::Peek),
 };
 
-spp::ClassRecord Counter_record = {
+hot::ClassRecord Counter_record = {
     "Counter", GEN, Counter_slots, SLOT_COUNT, &Counter_layout, nullptr,
-    "Actor", spp::shell_layout_hash("Actor", sizeof(Counter_Shell), alignof(Counter_Shell), 3),
+    "Actor", hot::shell_layout_hash("Actor", sizeof(Counter_Shell), alignof(Counter_Shell), 3),
     nullptr,
     &Counter__construct, typeid(Counter_SuperArgs).name(), &Counter__new_default, nullptr, nullptr,
 };
 
 #line 8 "cpp_static_v1.cpp"
-SPP_NODEBUG static spp::Instance Counter_create()
+HOT_NODEBUG static hot::Instance Counter_create()
 #line 8 "cpp_static_v1.cpp"
 {
 #line 8 "cpp_static_v1.cpp"
-    spp::ScriptEntry entry;  // the creation is an entry (S27)
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 8 "cpp_static_v1.cpp"
-    spp::ShellBase* s = nullptr;
+    hot::ShellBase* s = nullptr;
 #line 8 "cpp_static_v1.cpp"
     if (Counter_record.new_default) {
 #line 8 "cpp_static_v1.cpp"
@@ -451,7 +451,7 @@ int tally()
 }
 
 #line 454 "cpp_static_v1.cpp.cpp"
-extern "C" void script_register(spp::Registry& reg)
+extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_module_state(&SppModule_layout, &SppModule_slot);
     reg.add(&Counter_record, &Counter_create);

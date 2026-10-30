@@ -1,6 +1,6 @@
 // Translation tests of script imports (S20a, design 4.5 and 4.10): "using "parent.hot";" adds the
 // classes of another script module to the generation. The child can derive from them.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>

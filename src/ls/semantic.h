@@ -1,14 +1,14 @@
 // The script facts that the server makes without clangd: semantic tokens and text helpers.
 #pragma once
 
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 
 #include <map>
 #include <string>
 #include <string_view>
 #include <vector>
 
-namespace spp::ls
+namespace hot::ls
 {
 
 // The token types of the semantic token legend, in the order of their index.
@@ -66,4 +66,4 @@ inline bool is_id_char(char c)
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
 }
 
-} // namespace spp::ls
+} // namespace hot::ls

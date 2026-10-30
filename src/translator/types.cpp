@@ -307,7 +307,7 @@ std::string TypeModel::storage(const std::string& type) const
         return type;
     const TypeRule rule = lookup(type);
     if (!rule.intrusive_add.empty())
-        return "spp::Intrusive<" + type + ", &" + rule.owner + "::" + rule.intrusive_add + ", &" + rule.owner
+        return "hot::Intrusive<" + type + ", &" + rule.owner + "::" + rule.intrusive_add + ", &" + rule.owner
             + "::" + rule.intrusive_release + ">";
     return replace_all(rule.handle_tpl, "$T", type);
 }

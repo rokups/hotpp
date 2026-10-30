@@ -1,14 +1,14 @@
 // A loadable generation: the register function and the owner of the code memory.
 #pragma once
 
-#include "spp/runtime/reload_result.h"
+#include "hot/runtime/reload_result.h"
 
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 
-namespace spp
+namespace hot
 {
 
 class Registry;
@@ -53,4 +53,4 @@ struct LoadResult
 // GetProcAddress on Windows; unverified: not built on MSVC).
 LoadResult module_from_library(const std::string& path);
 
-} // namespace spp
+} // namespace hot

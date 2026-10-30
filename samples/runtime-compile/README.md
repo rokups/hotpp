@@ -22,11 +22,11 @@ compiler (the object library `runtime_compile_cpp_scripts_plain`). This shows th
 
 ## How it works
 
-1. `spp::make_default_backend(options)` makes the backend. `spp::DefaultBackendOptions`
+1. `hot::make_default_backend(options)` makes the backend. `hot::DefaultBackendOptions`
    adds `include_dirs` (here the folder of `Creature.h`) and `extra_flags` to the build defaults.
 2. `backend->load({path, text, {}}, 1)` translates and compiles the script. It returns a
-   `spp::LoadResult`. On failure, `error` has the compiler messages.
-3. `spp::Loader::load` takes the module. `Loader::find("Wolf")` returns the class entry.
+   `hot::LoadResult`. On failure, `error` has the compiler messages.
+3. `hot::Loader::load` takes the module. `Loader::find("Wolf")` returns the class entry.
    `create()` makes an object.
 4. The program owns the object and calls `Tick`. The backend and the loader are declared first,
    so they are destroyed last. The object must die before the loader unloads the code.
@@ -86,7 +86,7 @@ To use another S++ tree, add `-DSPP_ROOT=/path/to/spp`. The `CMakeLists.txt` of 
 ## Adapt it to your project
 
 1. Link your program to `spp_backend` and set `ENABLE_EXPORTS ON` on it.
-2. Fill `spp::DefaultBackendOptions`. Put the folders of your headers in `include_dirs`.
+2. Fill `hot::DefaultBackendOptions`. Put the folders of your headers in `include_dirs`.
    Put extra compiler flags in `extra_flags`. They come after the build defaults.
 3. Read the script text yourself and give it to `backend->load({name, text, {}}, generation)`.
 4. Check the `LoadResult` and the `ReloadResult` of `loader.load`. Show `error` to the user.

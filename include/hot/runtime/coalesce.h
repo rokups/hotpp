@@ -1,12 +1,12 @@
 // The helper of the script operator "x ?? y".
 #pragma once
-#include "spp/runtime/hidden.h"
+#include "hot/runtime/hidden.h"
 
 #include <optional>
 #include <type_traits>
 #include <utility>
 
-namespace spp
+namespace hot
 {
 
 template <class T> struct is_optional : std::false_type
@@ -21,7 +21,7 @@ template <class T> struct is_optional<std::optional<T>> : std::true_type
 // time. "y" is a callable: it runs only when "x" is false.
 // When "x" is an optional and the result of "y" is not, the result has the common type of the
 // value type of "x" and the type of "y". Then the helper gives the value in "x".
-template <class X, class F> SPP_HIDDEN constexpr auto coalesce(X&& x, F&& y)
+template <class X, class F> HOT_HIDDEN constexpr auto coalesce(X&& x, F&& y)
 {
     using Y = std::invoke_result_t<F&>;
     using DX = std::decay_t<X>;
@@ -42,4 +42,4 @@ template <class X, class F> SPP_HIDDEN constexpr auto coalesce(X&& x, F&& y)
     }
 }
 
-} // namespace spp
+} // namespace hot

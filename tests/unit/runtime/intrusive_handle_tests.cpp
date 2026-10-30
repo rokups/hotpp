@@ -1,5 +1,5 @@
-// Tests for spp::Intrusive. A new object starts with zero references.
-#include "spp/runtime.h"
+// Tests for hot::Intrusive. A new object starts with zero references.
+#include "hot/runtime.h"
 
 #include <gtest/gtest.h>
 
@@ -29,13 +29,13 @@ struct RcDerived : RcBase
     int y = 0;
 };
 
-using BaseH = spp::Intrusive<RcBase, &RcBase::AddRef, &RcBase::Release>;
-using DerivedH = spp::Intrusive<RcDerived, &RcBase::AddRef, &RcBase::Release>;
+using BaseH = hot::Intrusive<RcBase, &RcBase::AddRef, &RcBase::Release>;
+using DerivedH = hot::Intrusive<RcDerived, &RcBase::AddRef, &RcBase::Release>;
 
 static_assert(std::is_nothrow_move_constructible_v<BaseH>);
 static_assert(std::is_nothrow_move_assignable_v<BaseH>);
-static_assert(spp::is_handle_v<BaseH>);
-static_assert(spp::is_handle_v<const BaseH&>);
+static_assert(hot::is_handle_v<BaseH>);
+static_assert(hot::is_handle_v<const BaseH&>);
 static_assert(std::is_convertible_v<DerivedH, BaseH>);
 static_assert(!std::is_convertible_v<BaseH, DerivedH>);
 
@@ -144,13 +144,13 @@ TEST_F(IntrusiveFixture, Reset)
 TEST_F(IntrusiveFixture, DerefReadWrite)
 {
     BaseH h(new RcBase);
-    spp::deref(h).x = 5;
+    hot::deref(h).x = 5;
     EXPECT_EQ(h->x, 5);
-    EXPECT_EQ(spp::deref(h).x, 5);
+    EXPECT_EQ(hot::deref(h).x, 5);
     EXPECT_EQ((*h).x, 5);
     const BaseH& ch = h;
-    EXPECT_EQ(spp::deref(ch).x, 5);
-    EXPECT_EQ(spp::deref(BaseH(h)).x, 5);
+    EXPECT_EQ(hot::deref(ch).x, 5);
+    EXPECT_EQ(hot::deref(BaseH(h)).x, 5);
     EXPECT_EQ(h->refs, 1);
     RcBase* raw = h; // The implicit conversion gives the raw pointer.
     EXPECT_EQ(raw, h.get());
@@ -165,7 +165,7 @@ TEST_F(IntrusiveFixture, BaseConversion)
         BaseH b = d; // Copy form.
         EXPECT_EQ(raw->refs, 2);
         EXPECT_EQ(b.get(), raw);
-        spp::deref(b).x = 9;
+        hot::deref(b).x = 9;
         EXPECT_EQ(d->x, 9);
         BaseH c = std::move(d); // Move form.
         EXPECT_TRUE(d == nullptr);

@@ -3,7 +3,7 @@
 // The cache keeps the virtual methods of the native base classes. A hit must give
 // the same output as a miss. A change of a header must invalidate the cache.
 // CMake defines SPP_SOURCE_DIR.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/stub_translate_test_support.h"
 #include "support/translator_test_support.h"
 

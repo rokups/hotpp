@@ -403,10 +403,10 @@ struct Lowerer
             cx.local_type[name] = object_type(type);
     }
 
-    // "spp::shell_of<C_Shell>(obj, "C")" for the lowered text of the object.
+    // "hot::shell_of<C_Shell>(obj, "C")" for the lowered text of the object.
     std::string shell_text(const ClassDef& d, const std::string& obj_text) const
     {
-        return "spp::shell_of<" + d.name + "_Shell>(" + obj_text + ", \"" + d.name + "\")";
+        return "hot::shell_of<" + d.name + "_Shell>(" + obj_text + ", \"" + d.name + "\")";
     }
 
     // Where a handle type is expected, a bare "this" becomes a handle (design 7.10.1).
@@ -424,7 +424,7 @@ struct Lowerer
         a.push_back(raw("__self", 0));
         if (cx.handle_this)
             *cx.handle_this = true;
-        e = call_of("spp::handle_from_this<" + h + ">", std::move(a), pos);
+        e = call_of("hot::handle_from_this<" + h + ">", std::move(a), pos);
     }
 
     // The arguments of a call of the script function "fn" (null: no information).
@@ -536,7 +536,7 @@ struct Lowerer
         return d.name + "__" + word + "_" + prop;
     }
 
-    // The first argument of an accessor: "self", or "spp::shell_of<Cls_Shell>(obj, "Cls")"
+    // The first argument of an accessor: "self", or "hot::shell_of<Cls_Shell>(obj, "Cls")"
     // for another object. The helper checks the class of the object at run time.
     ExprP receiver(PropRef& r, uint32_t pos)
     {
@@ -547,11 +547,11 @@ struct Lowerer
         c.pos = pos;
         if (r.cls->is_value)
         { // a [value] object: the address of the struct
-            c.callee = raw("spp::value_ptr", pos);
+            c.callee = raw("hot::value_ptr", pos);
             c.args.push_back(std::move(*r.obj));
             return make_expr(std::move(c));
         }
-        c.callee = raw("spp::shell_of<" + r.cls->name + "_Shell>", pos);
+        c.callee = raw("hot::shell_of<" + r.cls->name + "_Shell>", pos);
         c.args.push_back(std::move(*r.obj));
         c.args.push_back(raw("\"" + r.cls->name + "\"", 0));
         return make_expr(std::move(c));
@@ -585,7 +585,7 @@ struct Lowerer
     // In a statement ("discard" is true) the write is a call of the setter. Then a compound
     // write on "this" is "Cls__set_P(self, Cls__get_P(self) op (e))".
     // Else a helper of runtime.h makes the write. The helper gives the C# value and
-    // evaluates the object once: spp::prop_set, spp::prop_update or spp::prop_post.
+    // evaluates the object once: hot::prop_set, hot::prop_update or hot::prop_post.
     bool prop_write(ExprP& e, bool discard)
     {
         static const std::map<std::string, std::string> op_names = {{"+", "op_add"}, {"-", "op_sub"}, {"*", "op_mul"},
@@ -652,12 +652,12 @@ struct Lowerer
         }
         else if (op.empty())
         {
-            e = call_of("spp::prop_set", args_of(raw(set, pos), std::move(recv), std::move(value)), pos);
+            e = call_of("hot::prop_set", args_of(raw(set, pos), std::move(recv), std::move(value)), pos);
         }
         else
         {
-            const std::string helper = postfix && !discard ? "spp::prop_post" : "spp::prop_update";
-            e = call_of(helper + "<spp::" + op_names.at(op) + ">",
+            const std::string helper = postfix && !discard ? "hot::prop_post" : "hot::prop_update";
+            e = call_of(helper + "<hot::" + op_names.at(op) + ">",
                 args_of(raw(get, pos), raw(set, pos), std::move(recv), std::move(value)), pos);
         }
         return true;
@@ -758,11 +758,11 @@ struct Lowerer
             }
         }
         // A bare "enumerate(xs)" or "range(n)" is the helper of the runtime, if nothing else has
-        // the name. The call is explicit: "spp::enumerate(xs)".
+        // the name. The call is explicit: "hot::enumerate(xs)".
         if (const std::string* n = simple_name(*c.callee); n && is_helper_name(*n))
         {
             const uint32_t pos = std::get<NameExpr>(c.callee->v).pos;
-            c.callee = raw_named("spp::", *n, pos, pos);
+            c.callee = raw_named("hot::", *n, pos, pos);
         }
         // "obj.M(args)" where obj has the type of a script class (not a [value] class) and M is
         // a script function of it: a direct call of the generation function.
@@ -889,14 +889,14 @@ struct Lowerer
         e = make_expr(std::move(c));
     }
 
-    // Wraps an object in "spp::deref(...)". The helper gives a reference for a pointer and
+    // Wraps an object in "hot::deref(...)". The helper gives a reference for a pointer and
     // for a reference. So the member access after it is the same for both.
     void deref(ExprP& obj)
     {
         const uint32_t pos = pos_of(*obj);
         CallExpr c;
         c.pos = pos;
-        c.callee = raw("spp::deref", pos);
+        c.callee = raw("hot::deref", pos);
         c.args.push_back(std::move(obj));
         obj = make_expr(std::move(c));
     }
@@ -1043,11 +1043,11 @@ struct Lowerer
         // The lambda captures by value. "self" is a pointer to the shell. The state pointer
         // is read again inside, so a lambda never keeps the pointer to a block.
         l.body.stmts.insert(
-            l.body.stmts.begin(), make_stmt(RawStmt{"SPP_NODEBUG_LOCAL auto* __st = state_of(__self);", 0}));
+            l.body.stmts.begin(), make_stmt(RawStmt{"HOT_NODEBUG_LOCAL auto* __st = state_of(__self);", 0}));
         const uint32_t pos = l.pos;
         CallExpr c;
         c.pos = pos;
-        c.callee = raw("spp::make_closure", pos);
+        c.callee = raw("hot::make_closure", pos);
         c.args.push_back(raw("GEN", 0));
         c.args.push_back(raw("\"" + cx.where + " lambda\"", 0));
         c.args.push_back(std::move(e));
@@ -1197,7 +1197,7 @@ struct Lowerer
 
     // A name with more than one part. If the first part is a local, the name is a member
     // chain: "a.b.c" becomes the node of "a.b.c" with MemberExpr. The lowering of it is
-    // "spp::deref(spp::deref(a).b).c". Else it is a scope chain: the printer joins the
+    // "hot::deref(hot::deref(a).b).c". Else it is a scope chain: the printer joins the
     // parts with "::". The change comes before the property rewrite, so "p.P" is "obj.P".
     void member_chain(ExprP& e)
     {
@@ -1300,7 +1300,7 @@ struct Lowerer
                     : "[&" + binding_captures(bindings, print(*inner), true) + "]() -> auto { return ";
                 ExprP head = make_expr(UnaryExpr{open, std::move(inner), false, 0});
                 ExprP lazy = make_expr(UnaryExpr{"; }", std::move(head), true, 0});
-                e = call_of("spp::coalesce", args_of(std::move(b->lhs), std::move(lazy)), pos);
+                e = call_of("hot::coalesce", args_of(std::move(b->lhs), std::move(lazy)), pos);
                 return;
             }
         }
@@ -1403,8 +1403,8 @@ struct Lowerer
     }
 
     // "obj is T" and "obj as T" (design 7.7). A script class T uses the class records:
-    // "spp::is_script(obj, "T")" and "spp::as_script<T_Shell>(obj, "T")". A native type T uses
-    // RTTI: "spp::is_native<T>(obj)" and "spp::as_native<T>(obj)" (dynamic_cast).
+    // "hot::is_script(obj, "T")" and "hot::as_script<T_Shell>(obj, "T")". A native type T uses
+    // RTTI: "hot::is_native<T>(obj)" and "hot::as_native<T>(obj)" (dynamic_cast).
     void type_test(ExprP& e, TypeTestExpr& t)
     {
         const uint32_t pos = t.pos;
@@ -1423,9 +1423,9 @@ struct Lowerer
         CallExpr c;
         c.pos = pos;
         if (d)
-            c.callee = raw(t.is_as ? "spp::as_script<" + type + "_Shell>" : std::string("spp::is_script"), pos);
+            c.callee = raw(t.is_as ? "hot::as_script<" + type + "_Shell>" : std::string("hot::is_script"), pos);
         else
-            c.callee = raw((t.is_as ? "spp::as_native<" : "spp::is_native<") + type + ">", pos);
+            c.callee = raw((t.is_as ? "hot::as_native<" : "hot::is_native<") + type + ">", pos);
         c.args.push_back(std::move(t.obj));
         if (d)
             c.args.push_back(raw("\"" + type + "\"", pos));
@@ -1535,7 +1535,7 @@ struct Lowerer
         if (!callee || !callee->template_args.empty())
             return;
         const bool bare = callee->parts.size() == 1 && is_helper_name(callee->parts[0]);
-        const bool scoped = callee->parts.size() == 2 && callee->parts[0] == "spp";
+        const bool scoped = callee->parts.size() == 2 && callee->parts[0] == "hot";
         if (!bare && !scoped)
             return;
         const std::string& helper = callee->parts.back();

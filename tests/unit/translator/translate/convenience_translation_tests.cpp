@@ -1,5 +1,5 @@
 // Tests for sppc::translate with three conveniences: "=>" bodies, default values and "??".
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/check_translate_test_support.h"
 
 #include <gtest/gtest.h>
@@ -60,7 +60,7 @@ TEST(DefaultValueTranslation, DefaultIsOnTheFirstDeclarationOnly)
     // The slot, the thunk and the definition have no default text.
     EXPECT_TRUE(has(r.cpp, "static void Foo__Heal(Foo_Shell* __self, float amount, int32_t times)\n")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "Foo__Heal__thunk(Widget* __a, float amount, int32_t times)")) << r.cpp;
-    for (const char* part : {"__thunk", "spp::call<", "FooState_g1::Heal", "void Heal(", "add_thunk"})
+    for (const char* part : {"__thunk", "hot::call<", "FooState_g1::Heal", "void Heal(", "add_thunk"})
         EXPECT_FALSE(has(lines_with(r.cpp, part), " = ")) << part << "\n" << lines_with(r.cpp, part);
     // A call without the argument is a call with the default of the declaration.
     EXPECT_TRUE(has(r.cpp, "Foo__Heal(__self); Foo__Heal(__self, 2.0f);")) << r.cpp;
@@ -72,7 +72,7 @@ TEST(DefaultValueTranslation, SlotKeyDoesNotChangeWithTheDefault)
     const sppc::TranslateResult b = check_translate("", "    void Heal(float amount = 5.0) { }\n");
     const sppc::TranslateResult c = check_translate("", "    void Heal(float amount) { }\n");
     ASSERT_TRUE(a.ok && b.ok && c.ok) << a.diagnostics << b.diagnostics << c.diagnostics;
-    for (const char* part : {"add_thunk", "spp::call<", "reinterpret_cast<spp::SlotFn>", "typeid"})
+    for (const char* part : {"add_thunk", "hot::call<", "reinterpret_cast<hot::SlotFn>", "typeid"})
     {
         EXPECT_EQ(lines_with(a.cpp, part), lines_with(c.cpp, part)) << part;
         EXPECT_EQ(lines_with(b.cpp, part), lines_with(c.cpp, part)) << part;
@@ -118,7 +118,7 @@ TEST(CoalesceTranslation, BecomesARuntimeHelperCall)
         "    Foo Pick(Foo a, Foo b) { return a ?? b; }\n    int Num(std.shared_ptr<int> p, int d) { return *(p ?? p) + "
         "d; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "return spp::coalesce(a, [&]() -> auto { return (b); });")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "return hot::coalesce(a, [&]() -> auto { return (b); });")) << r.cpp;
 }
 
 TEST(CoalesceTranslation, ChainIsRightAssociative)
@@ -126,7 +126,7 @@ TEST(CoalesceTranslation, ChainIsRightAssociative)
     const sppc::TranslateResult r = check_translate("", "    Foo Pick(Foo a, Foo b, Foo c) => a ?? b ?? c;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(
-        has(r.cpp, "spp::coalesce(a, [&]() -> auto { return (spp::coalesce(b, [&]() -> auto { return (c); })); })"))
+        has(r.cpp, "hot::coalesce(a, [&]() -> auto { return (hot::coalesce(b, [&]() -> auto { return (c); })); })"))
         << r.cpp;
 }
 
@@ -157,11 +157,11 @@ TEST(IsBindingTranslation, IfAndWhileBindAHandle)
         "        bool plain = x is Foo;\n"
         "    }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "{ auto g = spp::as_script<Foo_Shell>(x, \"Foo\"); if (g) {")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "auto h = spp::as_script<Foo_Shell>(x, \"Foo\"); if (h && ")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "else { auto k = spp::as_script<Foo_Shell>(x, \"Foo\"); if (k) {")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "for (;;) { auto w = spp::as_script<Foo_Shell>(x, \"Foo\"); if (!(w && ")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "bool plain = spp::is_script(x, \"Foo\");")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "{ auto g = hot::as_script<Foo_Shell>(x, \"Foo\"); if (g) {")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "auto h = hot::as_script<Foo_Shell>(x, \"Foo\"); if (h && ")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "else { auto k = hot::as_script<Foo_Shell>(x, \"Foo\"); if (k) {")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "for (;;) { auto w = hot::as_script<Foo_Shell>(x, \"Foo\"); if (!(w && ")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "bool plain = hot::is_script(x, \"Foo\");")) << r.cpp;
 }
 
 TEST(IsBindingTranslation, BindingOutsideTheStartOfAConditionIsAnError)
@@ -240,5 +240,5 @@ TEST(DefaultValueTranslation, CoalesceInADefaultHasNoCapture)
     const sppc::TranslateResult r = check_translate("", "    int Add(int a, int b = 1 ?? 2) { return a + b; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "[]() -> auto { return (2); }")) << r.cpp;
-    EXPECT_FALSE(has(r.cpp, "b = spp::coalesce(1, [&]")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "b = hot::coalesce(1, [&]")) << r.cpp;
 }

@@ -1,5 +1,5 @@
 // Tests for sppc::translate with the module-level declarations: module variables, enum, struct.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -134,7 +134,7 @@ TEST(ModuleDeclTranslation, InitializerReadsAnEarlierModuleVariable)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("new (f) T(spp_mod()->a + 1);"), std::string::npos) << r.cpp;
     // spp_mod() comes before the init functions that use it.
-    EXPECT_LT(r.cpp.find("SPP_HIDDEN static SppModule* spp_mod()"), r.cpp.find("SppModule__init_b")) << r.cpp;
+    EXPECT_LT(r.cpp.find("HOT_HIDDEN static SppModule* spp_mod()"), r.cpp.find("SppModule__init_b")) << r.cpp;
 }
 
 TEST(ModuleDeclTranslation, ErrorModuleVariableDeclaredLaterInAnInitializer)

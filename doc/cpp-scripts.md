@@ -19,11 +19,11 @@ Both modes work in one program. A `Loader` holds one module for each generation,
 
 ## The file compiles unchanged
 
-A normal CMake build compiles a `.cpp` script with no `sppc`. Do not write `#include "spp/script.h"` in the script. The tool `sppc` injects `spp/script.h` itself. The header gives the macro `SPP_ALIAS` and the type `spp::OldState`.
+A normal CMake build compiles a `.cpp` script with no `sppc`. Do not write `#include "hot/script.h"` in the script. The tool `sppc` injects `hot/script.h` itself. The header gives the macro `HOT_ALIAS` and the type `hot::OldState`.
 
-The aids `SPP_ALIAS`, `onReload` and `convert_*` are temporary. Use them for a reload session. Remove them after the session. Then the file is standard C++ and a normal build compiles it with no extra option. The fixture `tests/scripts/cpp_player_v1.cpp` has no aids.
+The aids `HOT_ALIAS`, `onReload` and `convert_*` are temporary. Use them for a reload session. Remove them after the session. Then the file is standard C++ and a normal build compiles it with no extra option. The fixture `tests/scripts/cpp_player_v1.cpp` has no aids.
 
-A normal build of a file that still has aids needs the header. Pass `-include spp/script.h` to the compiler, and add the `include` directory of spp to the include path. The fixture `tests/scripts/cpp_player_v2.cpp` has aids. Its plain target `cpp_scripts_plain2` does this.
+A normal build of a file that still has aids needs the header. Pass `-include hot/script.h` to the compiler, and add the `include` directory of spp to the include path. The fixture `tests/scripts/cpp_player_v2.cpp` has aids. Its plain target `cpp_scripts_plain2` does this.
 
 In a normal build the file has plain C++ meaning. There is no state migration and there are no slots. Do not share objects between the two builds.
 
@@ -101,7 +101,7 @@ public:
 
 The file `tests/scripts/cpp_player_v2.cpp` is generation 2. It makes these changes:
 
-- The field `hp` has the new name `health`. `SPP_ALIAS("hp")` keeps the value.
+- The field `hp` has the new name `health`. `HOT_ALIAS("hp")` keeps the value.
 - The field `level` changes from `int` to `float`. The method `convert_level` converts the value.
 - The module variable `total` changes from `int` to `float`. The free function `convert_total` converts the value.
 - The method `onReload` clamps `health`.
@@ -175,13 +175,13 @@ public:
     // The convert hook of the field level.
     float convert_level(int old) { return old * 10.0f; }
 
-    void onReload(const spp::OldState& old)
+    void onReload(const hot::OldState& old)
     {
         if (old.has("hp") && old.get<float>("hp") > 100.0f)
             health = 100.0f;
     }
 
-    SPP_ALIAS("hp") float health = 100.0f;
+    HOT_ALIAS("hp") float health = 100.0f;
     float speed = 5.0f;
     std::string target;
     Point p{1, 2};
@@ -234,9 +234,9 @@ A lambda cannot capture `*this`. A copy of the object has no meaning in a script
 
 - A class that derives from a native class, or from a script class of the same file (see "Script class inheritance").
 - Fields with initializers and migration.
-- `SPP_ALIAS("old")` on a field.
+- `HOT_ALIAS("old")` on a field.
 - `convert_<field>` methods.
-- The method `onReload(const spp::OldState&)`.
+- The method `onReload(const hot::OldState&)`.
 - Constructors with a base initializer, for example `Actor(args)`, and with a member initializer list (see "Member initializer lists").
 - Destructors.
 - Static data members and static methods (see "Static members").
@@ -432,10 +432,10 @@ The fixtures `tests/scripts/cpp_ctor_init_v1.cpp` and `tests/scripts/cpp_ctor_in
 
 These features follow the rules of [Hot reload](hot-reload.html). Only the spelling is C++.
 
-- `SPP_ALIAS("old")` before a field gives the old name of the field. On clang the macro is `[[clang::annotate("spp.alias=old")]]`. A compiler other than clang ignores it.
+- `HOT_ALIAS("old")` before a field gives the old name of the field. On clang the macro is `[[clang::annotate("hot.alias=old")]]`. A compiler other than clang ignores it.
 - `convert_<field>(Old old)` is a method of the class. It converts the old value to the new type of the field.
 - `convert_<var>(Old old)` is a free function. It converts the old value of a module variable.
-- `void onReload(const spp::OldState& old)` runs once for each live object, after the migration. Use `old.has("hp")` and `old.get<float>("hp")`.
+- `void onReload(const hot::OldState& old)` runs once for each live object, after the migration. Use `old.has("hp")` and `old.get<float>("hp")`.
 
 ## Namespaces
 
@@ -469,7 +469,7 @@ class Brain : public Player { /* ... */ };
 - Name lookup works as in C++ for `using namespace`, a using-declaration, a namespace alias and a qualified name like `game::Player`. A class at file scope can use a script class of a namespace by any of these forms.
 - A class of an inner namespace can derive from a class of an outer namespace.
 - A namespace with no script class and no module variable stays as written. It has no migration. An `extern "C"` block also stays as written, so a variable in it is not a module variable.
-- `SPP_ALIAS` is for a field only. It has no effect on a class name, so a class in a namespace has no alias. A rename of the class or of its namespace makes a new class. It is not a migration.
+- `HOT_ALIAS` is for a field only. It has no effect on a class name, so a class in a namespace has no alias. A rename of the class or of its namespace makes a new class. It is not a migration.
 - A class and a variable in different namespaces must not give the same name after the join with `__`. The class `game::Player` and a class `game__Player` give the same name, and `sppc` gives an error.
 
 ## Unsupported forms
@@ -531,7 +531,7 @@ For a `const` field or a reference field, use a default member initializer in th
 - An in-class brace initializer of a class-type field is not visited by libclang. A module variable inside such an initializer is not rewritten.
 - A `.cpp` translation does one more libclang parse than a `.hot` translation. A reload is slower. One parse of the engine headers takes about 400 ms.
 - In a normal build the file has plain C++ meaning. There is no state migration and there are no slots. Objects must not be shared between the two builds.
-- The language server gives only the errors of `sppc` for a `.cpp` script, and only when a host lists the file. The other editor features come from clangd. For a script with aids, clangd needs the flags `-include spp/script.h` and `-I<spp>/include`. See [Tools](tools.html#a-cpp-script-in-the-editor).
+- The language server gives only the errors of `sppc` for a `.cpp` script, and only when a host lists the file. The other editor features come from clangd. For a script with aids, clangd needs the flags `-include hot/script.h` and `-I<spp>/include`. See [Tools](tools.html#a-cpp-script-in-the-editor).
 
 ## CMake
 

@@ -3,7 +3,7 @@
 // and the diagnostics of a bad script.
 //
 // CMake defines these macros: SPP_SOURCE_DIR and SPP_BACKEND_NAME.
-#include "spp/backend.h"
+#include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/f1_scenario.h"
 #include "support/native_std_scenario.h"
@@ -33,9 +33,9 @@ TEST_P(BackendTests, DefaultBackendIsTheSelectedOne)
 
 TEST_P(BackendTests, F1ReloadKeepsAddressAndMigratesState)
 {
-    spp::LoadResult v1 = backend->load(source("player_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("player_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("player_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("player_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     f1::run_f1_reload(std::move(*v1.module), std::move(*v2.module));
 }
@@ -44,9 +44,9 @@ TEST_P(BackendTests, F1ReloadKeepsAddressAndMigratesState)
 // migrates a std::string and a std::vector.
 TEST_P(BackendTests, NativeFunctionsAndStdContainersMigrate)
 {
-    spp::LoadResult v1 = backend->load(source("native_std_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("native_std_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("native_std_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("native_std_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     nativestd::run_native_std_reload(std::move(*v1.module), std::move(*v2.module));
 }
@@ -54,14 +54,14 @@ TEST_P(BackendTests, NativeFunctionsAndStdContainersMigrate)
 // A bad script gives an error at the script line. The runtime keeps running.
 TEST_P(BackendTests, BadScriptGivesErrorAndRuntimeKeepsRunning)
 {
-    spp::LoadResult v1 = backend->load(source("player_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("player_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module)));
     s.commit_at_frame_boundary();
 
-    const spp::ScriptSource bad = source("bad.hot");
-    spp::LoadResult r = backend->load(bad, 1);
+    const hot::ScriptSource bad = source("bad.hot");
+    hot::LoadResult r = backend->load(bad, 1);
     EXPECT_FALSE(r);
     ASSERT_FALSE(r.error.empty());
     expect_errors_at_script(r.error, line_with(bad.text, "\"fast\""));
@@ -71,16 +71,16 @@ TEST_P(BackendTests, BadScriptGivesErrorAndRuntimeKeepsRunning)
     s.world.Tick(kDt);
     ASSERT_NE(s.field("hp"), nullptr);
     EXPECT_EQ(*s.field("hp"), 71.0f); // 100 - 30 + 1 (Tick heals 1)
-    EXPECT_EQ(spp::active_generation, 1u);
+    EXPECT_EQ(hot::active_generation, 1u);
 
     // The failed build did not damage the slot file: generation 2 still reloads.
-    spp::LoadResult v2 = backend->load(source("player_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("player_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt);
     ASSERT_FALSE(s.commit_failed);
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     EXPECT_NE(s.field("health"), nullptr);
 }
 

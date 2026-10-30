@@ -18,7 +18,7 @@ TEST(NameResolutionLowering, CatchNameIsALocal)
 {
     Fixture f;
     EXPECT_EQ(f.body("try { throw 1; } catch (std.exception& e) { e.what(); } catch (...) { throw; }"),
-        "try { throw 1; } catch (std::exception& e) { spp::deref(e).what(); } "
+        "try { throw 1; } catch (std::exception& e) { hot::deref(e).what(); } "
         "catch (...) { throw; }");
     EXPECT_EQ(f.body("throw this.health;"), "throw __st->health;");
     EXPECT_EQ(f.diag.items.size(), 0u);
@@ -27,7 +27,7 @@ TEST(NameResolutionLowering, CatchNameIsALocal)
 TEST(NameResolutionLowering, LocalShadowsAScope)
 {
     Fixture f;
-    EXPECT_EQ(f.body("var std = 1; std.x;"), "auto std = 1; spp::deref(std).x;");
+    EXPECT_EQ(f.body("var std = 1; std.x;"), "auto std = 1; hot::deref(std).x;");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
@@ -60,7 +60,7 @@ TEST(NameResolutionLowering, LocalLeaksOutOfABlock)
 {
     Fixture f;
     // The old rewriter has no block scope: Foo stays a local after the block.
-    EXPECT_EQ(f.body("{ var Foo = 1; } Foo.bar();"), "{ auto Foo = 1; } spp::deref(Foo).bar();");
+    EXPECT_EQ(f.body("{ var Foo = 1; } Foo.bar();"), "{ auto Foo = 1; } hot::deref(Foo).bar();");
 }
 
 TEST(NameResolutionLowering, ScriptFnHiddenAfterBlock)
@@ -73,14 +73,14 @@ TEST(NameResolutionLowering, LambdaParameterLeaks)
 {
     Fixture f;
     EXPECT_EQ(f.body("var g = (int* q) => { }; q.x;"),
-        "auto g = spp::make_closure(GEN, \"Player::run lambda\", [=](int32_t* q) "
-        "{ SPP_NODEBUG_LOCAL auto* __st = state_of(__self); }); spp::deref(q).x;");
+        "auto g = hot::make_closure(GEN, \"Player::run lambda\", [=](int32_t* q) "
+        "{ HOT_NODEBUG_LOCAL auto* __st = state_of(__self); }); hot::deref(q).x;");
 }
 
 TEST(NameResolutionLowering, ForOfVariableIsLocal)
 {
     Fixture f;
-    EXPECT_EQ(f.body("foreach (var Foo in xs) { Foo.a(); }"), "for (auto Foo : xs) { spp::deref(Foo).a(); }");
+    EXPECT_EQ(f.body("foreach (var Foo in xs) { Foo.a(); }"), "for (auto Foo : xs) { hot::deref(Foo).a(); }");
 }
 
 TEST(NameResolutionLowering, ErrorScriptFnMustBeCalled)
@@ -95,9 +95,9 @@ TEST(NameResolutionLowering, ErrorScriptFnMustBeCalled)
 TEST(NameResolutionLowering, BareFieldBeforeADotIsAMember)
 {
     Fixture f;
-    EXPECT_EQ(f.expr("target.hp"), "spp::deref(__st->target).hp");
+    EXPECT_EQ(f.expr("target.hp"), "hot::deref(__st->target).hp");
     EXPECT_EQ(f.expr("target.hp"), f.expr("this.target.hp"));
-    EXPECT_EQ(f.body("target.push_back(1);"), "spp::deref(__st->target).push_back(1);");
+    EXPECT_EQ(f.body("target.push_back(1);"), "hot::deref(__st->target).push_back(1);");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
@@ -105,7 +105,7 @@ TEST(NameResolutionLowering, LocalHidesABareFieldBeforeADot)
 {
     Fixture f;
     f.param("target");
-    EXPECT_EQ(f.expr("target.hp"), "spp::deref(target).hp");
+    EXPECT_EQ(f.expr("target.hp"), "hot::deref(target).hp");
     // A name that is not a member stays a scope.
     EXPECT_EQ(f.expr("Foo.bar"), "Foo::bar");
 }
@@ -117,7 +117,7 @@ TEST(NameResolutionLowering, BareNativeBaseMember)
     f.cx.native_members = {"Move", "Position", "Name", "health"};
     EXPECT_EQ(f.expr("Move(1)"), "__self->Move(1)");
     EXPECT_EQ(f.expr("Position"), "__self->Position");
-    EXPECT_EQ(f.expr("Position.x"), "spp::deref(__self->Position).x");
+    EXPECT_EQ(f.expr("Position.x"), "hot::deref(__self->Position).x");
     EXPECT_EQ(f.body("Name = 1;"), "__self->Name = 1;");
     // A field of the script class wins over the native member.
     EXPECT_EQ(f.expr("health"), "health");
@@ -134,7 +134,7 @@ TEST(NameResolutionLowering, BareFieldOfAValueClass)
     f.cd.is_value = true;
     EXPECT_EQ(f.expr("health * 2"), "__st->health * 2");
     EXPECT_EQ(f.body("n += 1;"), "__st->n += 1;");
-    EXPECT_EQ(f.expr("target.x"), "spp::deref(__st->target).x");
+    EXPECT_EQ(f.expr("target.x"), "hot::deref(__st->target).x");
     f.param("n");
     EXPECT_EQ(f.expr("n"), "n");
 }
@@ -147,7 +147,7 @@ TEST(NameResolutionLowering, ScriptMemberWinsOverAModuleVariable)
     f.cx.module_vars = {{"health", "float"}, {"level", "int"}, {"Name", "int"}};
     f.cx.native_members = {"level", "Name"};
     EXPECT_EQ(f.expr("health"), "health");
-    EXPECT_EQ(f.expr("target.hp"), "spp::deref(__st->target).hp");
+    EXPECT_EQ(f.expr("target.hp"), "hot::deref(__st->target).hp");
     EXPECT_EQ(f.expr("target.hp"), f.expr("this.target.hp"));
     EXPECT_EQ(f.expr("level"), "spp_mod()->level");
     EXPECT_EQ(f.expr("Name"), "spp_mod()->Name");

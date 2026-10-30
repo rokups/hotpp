@@ -14,7 +14,7 @@
 
 namespace fs = std::filesystem;
 
-namespace spp::ls
+namespace hot::ls
 {
 
 using json = nlohmann::json;
@@ -298,4 +298,4 @@ int SymbolIndex::prune()
     return removed;
 }
 
-} // namespace spp::ls
+} // namespace hot::ls

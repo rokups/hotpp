@@ -3,7 +3,7 @@
 
 #include <string>
 
-namespace spp::ls
+namespace hot::ls
 {
 
 // Reads the messages from a file descriptor. One reader for each descriptor.
@@ -27,4 +27,4 @@ private:
 // The caller makes sure that only one thread writes to the descriptor at a time.
 bool write_message(int fd, const std::string& body);
 
-} // namespace spp::ls
+} // namespace hot::ls

@@ -1,6 +1,6 @@
 // Tests for TranslateResult::source_map: the map between generated C++ and the script.
 #include "diag.h"
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>

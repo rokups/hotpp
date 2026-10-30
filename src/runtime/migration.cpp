@@ -1,4 +1,4 @@
-#include "spp/runtime/migration.h"
+#include "hot/runtime/migration.h"
 
 #include "runtime_internal.h"
 
@@ -6,7 +6,7 @@
 #include <cstring>
 #include <cxxabi.h>
 
-namespace spp
+namespace hot
 {
 
 std::string readable_type(const char* type_key)
@@ -179,4 +179,4 @@ void migrate_block(const StateLayout& o, const StateLayout& n, const MigrationPl
     }
 }
 
-} // namespace spp
+} // namespace hot

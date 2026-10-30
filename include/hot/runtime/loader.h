@@ -1,10 +1,10 @@
 // The loader of generation modules: validation, commit and unload.
 #pragma once
-#include "spp/module.h"
-#include "spp/runtime/records.h"
-#include "spp/runtime/registry.h"
-#include "spp/runtime/reload_result.h"
-#include "spp/runtime/threads.h"
+#include "hot/module.h"
+#include "hot/runtime/records.h"
+#include "hot/runtime/registry.h"
+#include "hot/runtime/reload_result.h"
+#include "hot/runtime/threads.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -15,7 +15,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace spp
+namespace hot
 {
 
 // The state of a generation module in the loader (section 4.9).
@@ -247,4 +247,4 @@ private:
     std::set<std::string> key_text_; // the text of the keys; a module can unload
 };
 
-} // namespace spp
+} // namespace hot

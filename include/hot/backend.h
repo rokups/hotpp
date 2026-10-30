@@ -7,7 +7,7 @@
 // module_from_library (module.h) and give the Module to the Loader.
 #pragma once
 
-#include "spp/module.h"
+#include "hot/module.h"
 
 #include <cstdint>
 #include <memory>
@@ -15,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-namespace spp
+namespace hot
 {
 
 struct ScriptSource
@@ -61,4 +61,4 @@ struct DefaultBackendOptions
 };
 std::unique_ptr<Backend> make_default_backend(const DefaultBackendOptions& options);
 
-} // namespace spp
+} // namespace hot

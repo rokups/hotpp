@@ -1,6 +1,6 @@
 // A script with the user names a, st and self, an expression lambda and C style casts must pass
 // the whole chain: sppc, then the compile of the generated C++ by the selected backend.
-#include "spp/backend.h"
+#include "hot/backend.h"
 
 #include <gtest/gtest.h>
 
@@ -37,9 +37,9 @@ class Names : Actor {
 
 TEST(GeneratedNameCompile, UserNamesLambdaExpressionAndCastCompile)
 {
-    auto backend = spp::make_default_backend();
-    const spp::ScriptSource source{"names_compile.hot", kScript, {}};
-    const spp::LoadResult r = backend->load(source, 1);
+    auto backend = hot::make_default_backend();
+    const hot::ScriptSource source{"names_compile.hot", kScript, {}};
+    const hot::LoadResult r = backend->load(source, 1);
     ASSERT_TRUE(r) << r.error;
 }
 

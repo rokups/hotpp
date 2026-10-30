@@ -14,7 +14,7 @@
 # Default mode (no AOT): the function only runs sppc. It makes one custom target "name".
 # The target makes the library OUT_DIR/<script name>.g<n>.so for each script. OUT_DIR
 # defaults to ${CMAKE_BINARY_DIR}/spp_scripts. Load such a library with
-# spp::module_from_library. The variable SPP_SCRIPTS_<TARGET>_LIBRARIES gets the paths.
+# hot::module_from_library. The variable SPP_SCRIPTS_<TARGET>_LIBRARIES gets the paths.
 # SPPC_ARGS are extra arguments for sppc, in both modes. The generation is 1; the option
 # --gen n in SPPC_ARGS sets another one (the tests build later generations this way).
 # FLAGS are compile flags (--cxxflag). The generations of one class
@@ -25,7 +25,7 @@
 # first -I. INCLUDES come after it.
 #
 # AOT mode (design M7): the function runs "sppc --aot" and makes the static library "name"
-# from the generated C++. The library defines spp::aot_table (include/spp/aot.h). It links
+# from the generated C++. The library defines hot::aot_table (include/hot/aot.h). It links
 # spp_aot (PUBLIC), so a program that links "name" has no loader, no reload and no Clang.
 # INCLUDES are the include dirs of the translator and of the compile. FLAGS are flags
 # for sppc. OUT_DIR defaults to ${CMAKE_BINARY_DIR}/spp_aot/<name>. AOT mode has no AFTER

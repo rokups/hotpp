@@ -15,7 +15,7 @@
 //
 // The odd generations have the field "spare", the even generations have "shield".
 #include "Util.h"
-#include "spp/backend.h"
+#include "hot/backend.h"
 #include "support/reload_assert.h"
 #include "support/test_support.h"
 
@@ -67,27 +67,27 @@ class Player : Actor {
 )";
 }
 
-spp::Backend& backend()
+hot::Backend& backend()
 {
-    static std::unique_ptr<spp::Backend> b = spp::make_default_backend();
+    static std::unique_ptr<hot::Backend> b = hot::make_default_backend();
     return *b;
 }
 
 // A new Module of the generation for each call. The first call builds it (about a second).
 // A later call loads the library file again. A backend without a file (JIT) builds again.
-spp::Module module_of(uint32_t generation, bool creator = false)
+hot::Module module_of(uint32_t generation, bool creator = false)
 {
     static std::vector<std::string> paths(kGenerations + 1);
     static std::vector<std::string> creator_paths(kGenerations + 1);
     std::string& path = (creator ? creator_paths : paths).at(generation);
     if (!path.empty())
     {
-        spp::LoadResult again = spp::module_from_library(path);
+        hot::LoadResult again = hot::module_from_library(path);
         if (again)
             return std::move(*again.module);
     }
-    spp::ScriptSource src{creator ? "s27_player.hot" : "s21_player.hot", script_text(generation, creator)};
-    spp::LoadResult r = backend().load(src, generation);
+    hot::ScriptSource src{creator ? "s27_player.hot" : "s21_player.hot", script_text(generation, creator)};
+    hot::LoadResult r = backend().load(src, generation);
     if (!r)
         throw std::runtime_error(r.error);
     if (std::filesystem::exists(r.module->origin))
@@ -95,9 +95,9 @@ spp::Module module_of(uint32_t generation, bool creator = false)
     return std::move(*r.module);
 }
 
-int32_t int_field(spp::ShellBase* sh, const char* name)
+int32_t int_field(hot::ShellBase* sh, const char* name)
 {
-    const int32_t* p = spp::field_ptr<int32_t>(sh, name);
+    const int32_t* p = hot::field_ptr<int32_t>(sh, name);
     return p ? *p : -1;
 }
 
@@ -108,15 +108,15 @@ std::atomic<long> g_probes{0};
 void check_object(Actor* a)
 {
     g_probes.fetch_add(1, std::memory_order_relaxed);
-    auto* sh = dynamic_cast<spp::ShellBase*>(a);
-    bool ok = sh && spp::entry_depth() == 1 && spp::active_entries() >= 1;
+    auto* sh = dynamic_cast<hot::ShellBase*>(a);
+    bool ok = sh && hot::entry_depth() == 1 && hot::active_entries() >= 1;
     if (ok)
     {
         const uint32_t gen = sh->cls->generation;
-        ok = gen == spp::active_generation && spp::field_ptr<int32_t>(sh, "calls")
-            && spp::field_ptr<int32_t>(sh, "hits");
-        const float* shield = spp::field_ptr<float>(sh, "shield");
-        const int32_t* spare = spp::field_ptr<int32_t>(sh, "spare");
+        ok = gen == hot::active_generation && hot::field_ptr<int32_t>(sh, "calls")
+            && hot::field_ptr<int32_t>(sh, "hits");
+        const float* shield = hot::field_ptr<float>(sh, "shield");
+        const int32_t* spare = hot::field_ptr<int32_t>(sh, "spare");
         if (gen % 2 == 0)
             ok = ok && shield && *shield == 25.0f && !spare;
         else
@@ -160,16 +160,16 @@ private:
 struct Rig
 {
     Session s;
-    std::vector<spp::Instance> actors;
+    std::vector<hot::Instance> actors;
 
     void start()
     {
         ASSERT_NO_FATAL_FAILURE(s.start(module_of(1)));
         actors.push_back(s.inst);
-        const spp::ClassEntry* entry = s.loader.find("Player");
+        const hot::ClassEntry* entry = s.loader.find("Player");
         for (int i = 1; i < kActors; ++i)
         {
-            spp::Instance inst = entry->create();
+            hot::Instance inst = entry->create();
             actors.push_back(inst);
             s.world.Add(static_cast<Actor*>(inst.native));
         }
@@ -179,14 +179,14 @@ struct Rig
 TEST(EntryCounters, WorkersCallWhileOtherThreadCommits)
 {
     // Build all generations first: the build is not part of the test.
-    std::vector<spp::Module> mods;
+    std::vector<hot::Module> mods;
     for (uint32_t g = 2; g <= kGenerations; ++g)
         mods.push_back(module_of(g));
     Rig rig;
     ASSERT_NO_FATAL_FAILURE(rig.start());
     Session& s = rig.s;
-    s.loader.set_sync_mode(spp::SyncMode::EntryCounters);
-    ASSERT_EQ(s.loader.sync_mode(), spp::SyncMode::EntryCounters);
+    s.loader.set_sync_mode(hot::SyncMode::EntryCounters);
+    ASSERT_EQ(s.loader.sync_mode(), hot::SyncMode::EntryCounters);
     g_violations = 0;
     g_probes = 0;
     Util::SetProbe(&check_object);
@@ -208,22 +208,22 @@ TEST(EntryCounters, WorkersCallWhileOtherThreadCommits)
 
     int committed = 0;
     std::string errors;
-    const uint64_t windows0 = spp::commit_window_count();
-    const uint64_t blocked0 = spp::blocked_entry_count();
+    const uint64_t windows0 = hot::commit_window_count();
+    const uint64_t blocked0 = hot::blocked_entry_count();
     std::thread committer([&]
     {
-        for (spp::Module& m : mods)
+        for (hot::Module& m : mods)
         {
             // Let the workers run between two commits.
             const long seen = g_probes.load();
             while (g_probes.load() < seen + 4 * kActors)
                 std::this_thread::yield();
-            if (const spp::ReloadResult req = s.loader.request_reload(std::move(m)); !req)
+            if (const hot::ReloadResult req = s.loader.request_reload(std::move(m)); !req)
             {
                 errors += "request: " + req.error + "\n";
                 continue;
             }
-            if (const spp::ReloadResult com = s.loader.commit_pending())
+            if (const hot::ReloadResult com = s.loader.commit_pending())
                 ++committed;
             else
                 errors += "commit: " + com.error + "\n";
@@ -241,16 +241,16 @@ TEST(EntryCounters, WorkersCallWhileOtherThreadCommits)
 
     EXPECT_TRUE(errors.empty()) << errors;
     EXPECT_EQ(committed, static_cast<int>(kGenerations) - 1);
-    EXPECT_EQ(spp::commit_window_count() - windows0, kGenerations - 1);
-    EXPECT_GT(spp::blocked_entry_count(), blocked0); // the workers ran into the commits
-    EXPECT_EQ(spp::active_generation, kGenerations);
+    EXPECT_EQ(hot::commit_window_count() - windows0, kGenerations - 1);
+    EXPECT_GT(hot::blocked_entry_count(), blocked0); // the workers ran into the commits
+    EXPECT_EQ(hot::active_generation, kGenerations);
     EXPECT_EQ(g_violations.load(), 0);
-    EXPECT_EQ(spp::active_entries(), 0u);
+    EXPECT_EQ(hot::active_entries(), 0u);
     long total = 0;
     int wrong = 0;
     for (int i = 0; i < kActors; ++i)
     {
-        spp::ShellBase* sh = rig.actors[i].shell;
+        hot::ShellBase* sh = rig.actors[i].shell;
         total += calls[i];
         const bool good = sh->cls->generation == kGenerations && int_field(sh, "calls") == calls[i]
             && int_field(sh, "hits") == calls[i];
@@ -262,15 +262,15 @@ TEST(EntryCounters, WorkersCallWhileOtherThreadCommits)
     // The retired generations unload: each frame_boundary of the committer counted a frame.
     s.loader.frame_boundary();
     int retired = 0;
-    for (const spp::GenerationInfo& g : s.loader.stats().generations)
-        retired += g.state == spp::GenState::Retired;
+    for (const hot::GenerationInfo& g : s.loader.stats().generations)
+        retired += g.state == hot::GenState::Retired;
     EXPECT_EQ(retired, 0) << s.loader.stats_text();
 }
 
 // The commit thread for the next tests: it starts while the main thread is in script code.
-spp::Loader* g_loader = nullptr;
+hot::Loader* g_loader = nullptr;
 std::thread* g_commit_thread = nullptr;
-spp::ReloadResult g_commit; // the result of the commit that the test starts
+hot::ReloadResult g_commit; // the result of the commit that the test starts
 uint32_t g_depth_in_probe = 0;
 uint32_t g_active_in_probe = 0;
 
@@ -280,10 +280,10 @@ void start_commit_and_wait(Actor*)
 {
     if (g_commit_thread)
         return;
-    g_depth_in_probe = spp::entry_depth();
-    g_active_in_probe = spp::active_entries();
+    g_depth_in_probe = hot::entry_depth();
+    g_active_in_probe = hot::active_entries();
     g_commit_thread = new std::thread([] { g_commit = g_loader->commit_pending(); });
-    while (!spp::commit_window_closed())
+    while (!hot::commit_window_closed())
         std::this_thread::yield();
 }
 
@@ -291,7 +291,7 @@ TEST(EntryCounters, ReentrantCallDuringCommitDoesNotDeadlock)
 {
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(module_of(1)));
-    s.loader.set_sync_mode(spp::SyncMode::EntryCounters);
+    s.loader.set_sync_mode(hot::SyncMode::EntryCounters);
     std::string err;
     ASSERT_RELOAD_OK(s.loader.request_reload(module_of(2)));
     g_loader = &s.loader;
@@ -309,13 +309,13 @@ TEST(EntryCounters, ReentrantCallDuringCommitDoesNotDeadlock)
     EXPECT_EQ(g_depth_in_probe, 1u);
     EXPECT_EQ(g_active_in_probe, 1u);
     EXPECT_RELOAD_OK(g_commit);
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     EXPECT_EQ(s.inst.shell->cls->generation, 2u);
     EXPECT_EQ(int_field(s.inst.shell, "calls"), 1);
     EXPECT_EQ(int_field(s.inst.shell, "hits"), 1); // the nested call ran before the commit
     s.actor->Tick(kDt); // the next call runs the new generation
     EXPECT_EQ(int_field(s.inst.shell, "calls"), 2);
-    EXPECT_NE(spp::field_ptr<float>(s.inst.shell, "shield"), nullptr);
+    EXPECT_NE(hot::field_ptr<float>(s.inst.shell, "shield"), nullptr);
 }
 
 void commit_inside_script(Actor*)
@@ -327,36 +327,36 @@ TEST(EntryCounters, CommitInsideScriptCodeFails)
 {
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(module_of(1)));
-    s.loader.set_sync_mode(spp::SyncMode::EntryCounters);
+    s.loader.set_sync_mode(hot::SyncMode::EntryCounters);
     std::string err;
     ASSERT_RELOAD_OK(s.loader.request_reload(module_of(2)));
     g_loader = &s.loader;
-    g_commit = spp::ReloadResult{spp::ReloadStatus::Applied, spp::ReloadReason::None, {}, {}};
+    g_commit = hot::ReloadResult{hot::ReloadStatus::Applied, hot::ReloadReason::None, {}, {}};
     Util::SetProbe(&commit_inside_script);
     Watchdog watchdog(120s);
     s.actor->Tick(kDt);
     Util::SetProbe(nullptr);
     EXPECT_FALSE(g_commit);
-    EXPECT_EQ(g_commit.reason, spp::ReloadReason::Busy);
+    EXPECT_EQ(g_commit.reason, hot::ReloadReason::Busy);
     EXPECT_NE(g_commit.error.find("inside script code"), std::string::npos) << g_commit.error;
     EXPECT_TRUE(s.loader.reload_pending());
-    EXPECT_EQ(spp::active_generation, 1u);
+    EXPECT_EQ(hot::active_generation, 1u);
     // Outside script code the same commit works.
     EXPECT_RELOAD_OK(s.loader.commit_pending());
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
 }
 
 void probe_default_mode(Actor*)
 {
-    g_depth_in_probe = spp::entry_depth();
-    g_active_in_probe = spp::active_entries();
+    g_depth_in_probe = hot::entry_depth();
+    g_active_in_probe = hot::active_entries();
 }
 
 TEST(EntryCounters, DefaultModeCountsNothing)
 {
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(module_of(1)));
-    EXPECT_EQ(s.loader.sync_mode(), spp::SyncMode::StopTheWorld);
+    EXPECT_EQ(s.loader.sync_mode(), hot::SyncMode::StopTheWorld);
     g_depth_in_probe = 99;
     g_active_in_probe = 99;
     Util::SetProbe(&probe_default_mode);
@@ -376,42 +376,42 @@ std::atomic<int> g_unguarded{0};
 void creation_probe(Actor* a)
 {
     g_probes.fetch_add(1, std::memory_order_relaxed);
-    if (spp::entry_depth() != 1 || spp::active_entries() < 1 || !dynamic_cast<spp::ShellBase*>(a))
+    if (hot::entry_depth() != 1 || hot::active_entries() < 1 || !dynamic_cast<hot::ShellBase*>(a))
         g_unguarded.fetch_add(1, std::memory_order_relaxed);
 }
 
 TEST(EntryCounters, CreationThroughTheFactoryIsAnEntry)
 {
     constexpr uint32_t kCreatorGenerations = 5;
-    std::vector<spp::Module> mods;
+    std::vector<hot::Module> mods;
     for (uint32_t g = 2; g <= kCreatorGenerations; ++g)
         mods.push_back(module_of(g, true));
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(module_of(1, true)));
-    s.loader.set_sync_mode(spp::SyncMode::EntryCounters);
+    s.loader.set_sync_mode(hot::SyncMode::EntryCounters);
     g_unguarded = 0;
     g_probes = 0;
     Util::SetProbe(&creation_probe);
     Watchdog watchdog(240s);
 
-    const spp::ClassEntry* entry = s.loader.find("Player");
+    const hot::ClassEntry* entry = s.loader.find("Player");
     std::atomic<bool> stop{false};
     std::atomic<long> created{0};
     std::atomic<int> bad{0};
     std::thread creator([&]
     {
-        std::deque<spp::Instance> live;
+        std::deque<hot::Instance> live;
         while (!stop.load(std::memory_order_relaxed))
         {
-            spp::Instance inst = entry->create();
+            hot::Instance inst = entry->create();
             {
-                spp::ScriptEntry hold; // a commit cannot run now
+                hot::ScriptEntry hold; // a commit cannot run now
                 const uint32_t gen = inst.shell->cls->generation;
-                const int32_t* hits = spp::field_ptr<int32_t>(inst.shell, "hits");
-                const bool spare = spp::field_ptr<int32_t>(inst.shell, "spare") != nullptr;
-                const bool shield = spp::field_ptr<float>(inst.shell, "shield") != nullptr;
+                const int32_t* hits = hot::field_ptr<int32_t>(inst.shell, "hits");
+                const bool spare = hot::field_ptr<int32_t>(inst.shell, "spare") != nullptr;
+                const bool shield = hot::field_ptr<float>(inst.shell, "shield") != nullptr;
                 // The object has the layout of the generation of its record. The constructor ran once.
-                if (gen != spp::active_generation || !hits || *hits != 1 || spare == shield || spare != (gen % 2 == 1))
+                if (gen != hot::active_generation || !hits || *hits != 1 || spare == shield || spare != (gen % 2 == 1))
                     bad.fetch_add(1, std::memory_order_relaxed);
             }
             live.push_back(inst);
@@ -422,26 +422,26 @@ TEST(EntryCounters, CreationThroughTheFactoryIsAnEntry)
             }
             created.fetch_add(1, std::memory_order_relaxed);
         }
-        for (spp::Instance& i : live)
+        for (hot::Instance& i : live)
             delete static_cast<Actor*>(i.native);
     });
 
     int committed = 0;
     std::string errors;
-    const uint64_t windows0 = spp::commit_window_count();
+    const uint64_t windows0 = hot::commit_window_count();
     std::thread committer([&]
     {
-        for (spp::Module& m : mods)
+        for (hot::Module& m : mods)
         {
             const long seen = created.load();
             while (created.load() < seen + 200)
                 std::this_thread::yield();
-            if (const spp::ReloadResult req = s.loader.request_reload(std::move(m)); !req)
+            if (const hot::ReloadResult req = s.loader.request_reload(std::move(m)); !req)
             {
                 errors += "request: " + req.error + "\n";
                 continue;
             }
-            if (const spp::ReloadResult com = s.loader.commit_pending())
+            if (const hot::ReloadResult com = s.loader.commit_pending())
                 ++committed;
             else
                 errors += "commit: " + com.error + "\n";
@@ -458,12 +458,12 @@ TEST(EntryCounters, CreationThroughTheFactoryIsAnEntry)
 
     EXPECT_TRUE(errors.empty()) << errors;
     EXPECT_EQ(committed, static_cast<int>(kCreatorGenerations) - 1);
-    EXPECT_EQ(spp::commit_window_count() - windows0, kCreatorGenerations - 1);
-    EXPECT_EQ(spp::active_generation, kCreatorGenerations);
+    EXPECT_EQ(hot::commit_window_count() - windows0, kCreatorGenerations - 1);
+    EXPECT_EQ(hot::active_generation, kCreatorGenerations);
     EXPECT_EQ(g_unguarded.load(), 0); // each constructor ran inside an entry of depth 1
     EXPECT_GE(g_probes.load(), created.load());
     EXPECT_EQ(bad.load(), 0);
-    EXPECT_EQ(spp::active_entries(), 0u);
+    EXPECT_EQ(hot::active_entries(), 0u);
 }
 
 } // namespace

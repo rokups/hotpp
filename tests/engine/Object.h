@@ -1,5 +1,5 @@
 // A native class with an intrusive reference count. Scripts hold it through
-// spp::Intrusive. The definitions are in Object.cpp, so the executable
+// hot::Intrusive. The definitions are in Object.cpp, so the executable
 // has the only copy of the counter "live".
 #pragma once
 

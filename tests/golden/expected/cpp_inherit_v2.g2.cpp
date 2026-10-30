@@ -8,7 +8,7 @@
 #include <typeinfo>
 #include <utility>
 
-#include "spp/runtime.h"
+#include "hot/runtime.h"
 
 #line 14 "cpp_inherit_v2.cpp.cpp"
 
@@ -16,7 +16,7 @@ constexpr uint32_t GEN = 2;
 struct SppModule;
 // The module state block of this generation. The loader sets the slot.
 static void* SppModule_slot = nullptr;
-[[maybe_unused]] SPP_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+[[maybe_unused]] HOT_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
 struct Base_Shell;
 using Base = Base_Shell;
 struct Kid_Shell;
@@ -39,27 +39,27 @@ enum : unsigned {
     Base_SLOT_COUNT = 6,
 };
 
-extern spp::ClassRecord Base_record;
+extern hot::ClassRecord Base_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
-struct Base_Shell : Actor, spp::ShellBase, std::enable_shared_from_this<Base_Shell> {
+struct Base_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<Base_Shell> {
 #line 8 "cpp_inherit_v2.cpp"
     template <class... A>
 #line 8 "cpp_inherit_v2.cpp"
-    explicit Base_Shell(spp::Construct, A&&... a) : Actor(std::forward<A>(a)...)
+    explicit Base_Shell(hot::Construct, A&&... a) : Actor(std::forward<A>(a)...)
 #line 8 "cpp_inherit_v2.cpp"
     {
 #line 8 "cpp_inherit_v2.cpp"
-        spp::init_state(this, &Base_record);
+        hot::init_state(this, &Base_record);
 #line 8 "cpp_inherit_v2.cpp"
     }
 #line 8 "cpp_inherit_v2.cpp"
-    ~Base_Shell() override { spp::destroy_state(this); }
+    ~Base_Shell() override { hot::destroy_state(this); }
 #line 59 "cpp_inherit_v2.cpp.cpp"
 #line 8 "cpp_inherit_v2.cpp"
     template <class... A>
 #line 8 "cpp_inherit_v2.cpp"
-    explicit Base_Shell(spp::ConstructChild, A&&... a) : Actor(std::forward<A>(a)...)
+    explicit Base_Shell(hot::ConstructChild, A&&... a) : Actor(std::forward<A>(a)...)
 #line 8 "cpp_inherit_v2.cpp"
     {
 #line 8 "cpp_inherit_v2.cpp"
@@ -71,7 +71,7 @@ struct Base_Shell : Actor, spp::ShellBase, std::enable_shared_from_this<Base_She
 #line 8 "cpp_inherit_v2.cpp"
     {
 #line 8 "cpp_inherit_v2.cpp"
-        return spp::call<void(Actor*, float)>(this, Base_SLOT_Tick, a0);
+        return hot::call<void(Actor*, float)>(this, Base_SLOT_Tick, a0);
 #line 8 "cpp_inherit_v2.cpp"
     }
 #line 78 "cpp_inherit_v2.cpp.cpp"
@@ -81,7 +81,7 @@ struct Base_Shell : Actor, spp::ShellBase, std::enable_shared_from_this<Base_She
 #line 8 "cpp_inherit_v2.cpp"
     {
 #line 8 "cpp_inherit_v2.cpp"
-        return spp::call<void(Actor*, float)>(this, Base_SLOT_TakeDamage_f, a0);
+        return hot::call<void(Actor*, float)>(this, Base_SLOT_TakeDamage_f, a0);
 #line 8 "cpp_inherit_v2.cpp"
     }
 #line 88 "cpp_inherit_v2.cpp.cpp"
@@ -91,7 +91,7 @@ struct Base_Shell : Actor, spp::ShellBase, std::enable_shared_from_this<Base_She
 #line 8 "cpp_inherit_v2.cpp"
     {
 #line 8 "cpp_inherit_v2.cpp"
-        return spp::call<void(Actor*, Actor&, float)>(this, Base_SLOT_TakeDamage_Af, a0, a1);
+        return hot::call<void(Actor*, Actor&, float)>(this, Base_SLOT_TakeDamage_Af, a0, a1);
 #line 8 "cpp_inherit_v2.cpp"
     }
 #line 98 "cpp_inherit_v2.cpp.cpp"
@@ -99,7 +99,7 @@ struct Base_Shell : Actor, spp::ShellBase, std::enable_shared_from_this<Base_She
 
 // ---------------------------------------------------------------- state
 struct BaseState_g2 {
-    spp::ShellBase* __spp_owner;
+    hot::ShellBase* __spp_owner;
     float hp;
     int hits;
     int twice;
@@ -112,7 +112,7 @@ struct BaseState_g2 {
     void TakeDamage_f(float amount);
     // Not overridden: call the implementation of Actor.
 #line 8 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG void __fwd_Tick(float a0)
+    HOT_NODEBUG void __fwd_Tick(float a0)
 #line 8 "cpp_inherit_v2.cpp"
     {
 #line 8 "cpp_inherit_v2.cpp"
@@ -122,7 +122,7 @@ struct BaseState_g2 {
 #line 123 "cpp_inherit_v2.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 8 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
+    HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
 #line 8 "cpp_inherit_v2.cpp"
     {
 #line 8 "cpp_inherit_v2.cpp"
@@ -148,40 +148,40 @@ static void Base__init_armor(void*, void* f) { using T = int; new (f) T(4); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static_assert(offsetof(BaseState_g2, __spp_owner) == 0, "the owner pointer must be the first member");
-static const spp::FieldInfo Base_fields[] = {
-    {"hp", nullptr, spp::type_key<float>(), offsetof(BaseState_g2, hp), sizeof(float),
-     alignof(float), spp::field_flags<float>(), Base__init_hp, spp::move_field<float>, spp::field_destroyer<float>()},
-    {"hits", nullptr, spp::type_key<int>(), offsetof(BaseState_g2, hits), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Base__init_hits, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"twice", nullptr, spp::type_key<int>(), offsetof(BaseState_g2, twice), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Base__init_twice, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"armor", nullptr, spp::type_key<int>(), offsetof(BaseState_g2, armor), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Base__init_armor, spp::move_field<int>, spp::field_destroyer<int>()},
+static const hot::FieldInfo Base_fields[] = {
+    {"hp", nullptr, hot::type_key<float>(), offsetof(BaseState_g2, hp), sizeof(float),
+     alignof(float), hot::field_flags<float>(), Base__init_hp, hot::move_field<float>, hot::field_destroyer<float>()},
+    {"hits", nullptr, hot::type_key<int>(), offsetof(BaseState_g2, hits), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Base__init_hits, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"twice", nullptr, hot::type_key<int>(), offsetof(BaseState_g2, twice), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Base__init_twice, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"armor", nullptr, hot::type_key<int>(), offsetof(BaseState_g2, armor), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Base__init_armor, hot::move_field<int>, hot::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
 
-static const spp::StateLayout Base_layout = {
+static const hot::StateLayout Base_layout = {
     "BaseState_g2", sizeof(BaseState_g2), alignof(BaseState_g2), 4, Base_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-SPP_HIDDEN BaseState_g2* state_of(Base_Shell* __self)
+HOT_HIDDEN BaseState_g2* state_of(Base_Shell* __self)
 {
     return static_cast<BaseState_g2*>(__self->state);
 }
 
-[[maybe_unused]] SPP_HIDDEN static int Base__Power(Base_Shell* __self);
-[[maybe_unused]] SPP_HIDDEN static int Base__Twice(Base_Shell* __self);
-[[maybe_unused]] SPP_HIDDEN static void Base__Bump(Base_Shell* __self);
+[[maybe_unused]] HOT_HIDDEN static int Base__Power(Base_Shell* __self);
+[[maybe_unused]] HOT_HIDDEN static int Base__Twice(Base_Shell* __self);
+[[maybe_unused]] HOT_HIDDEN static void Base__Bump(Base_Shell* __self);
 
-[[maybe_unused]] SPP_HIDDEN static int Base__Power_virt(Base_Shell* __self)
+[[maybe_unused]] HOT_HIDDEN static int Base__Power_virt(Base_Shell* __self)
 {
-    return spp::call<int(Actor*)>(__self, Base_SLOT_Power);
+    return hot::call<int(Actor*)>(__self, Base_SLOT_Power);
 }
 
-[[maybe_unused]] SPP_HIDDEN static void Base__ctor(Base_Shell* __self, int start);
+[[maybe_unused]] HOT_HIDDEN static void Base__ctor(Base_Shell* __self, int start);
 #line 11 "cpp_inherit_v2.cpp"
-[[maybe_unused]] SPP_HIDDEN static auto Base__super_args(int start)
+[[maybe_unused]] HOT_HIDDEN static auto Base__super_args(int start)
 #line 11 "cpp_inherit_v2.cpp"
 {
 #line 11 "cpp_inherit_v2.cpp"
@@ -189,7 +189,7 @@ SPP_HIDDEN BaseState_g2* state_of(Base_Shell* __self)
 #line 11 "cpp_inherit_v2.cpp"
 }
 #line 11 "cpp_inherit_v2.cpp"
-SPP_HIDDEN static auto Base__plan(int start)
+HOT_HIDDEN static auto Base__plan(int start)
 #line 11 "cpp_inherit_v2.cpp"
 {
 #line 11 "cpp_inherit_v2.cpp"
@@ -199,7 +199,7 @@ SPP_HIDDEN static auto Base__plan(int start)
 #line 11 "cpp_inherit_v2.cpp"
 template <class Chain>
 #line 11 "cpp_inherit_v2.cpp"
-SPP_HIDDEN static void Base__ctor_chain(Base_Shell* __self, [[maybe_unused]] Chain& __chain, int start)
+HOT_HIDDEN static void Base__ctor_chain(Base_Shell* __self, [[maybe_unused]] Chain& __chain, int start)
 #line 11 "cpp_inherit_v2.cpp"
 {
 #line 11 "cpp_inherit_v2.cpp"
@@ -211,7 +211,7 @@ using Base_SuperArgs = decltype(Base__plan(std::declval<int>()).first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
 #line 8 "cpp_inherit_v2.cpp"
-SPP_NODEBUG static spp::ShellBase* Base__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Base__construct(const char* key, const void* args)
 #line 8 "cpp_inherit_v2.cpp"
 {
 #line 8 "cpp_inherit_v2.cpp"
@@ -219,7 +219,7 @@ SPP_NODEBUG static spp::ShellBase* Base__construct(const char* key, const void* 
 #line 8 "cpp_inherit_v2.cpp"
         const auto& t = *static_cast<const Base_SuperArgs*>(args);
 #line 8 "cpp_inherit_v2.cpp"
-        return std::apply([](auto&... x) -> spp::ShellBase* { return new Base_Shell(spp::Construct{}, x...); }, t);
+        return std::apply([](auto&... x) -> hot::ShellBase* { return new Base_Shell(hot::Construct{}, x...); }, t);
 #line 8 "cpp_inherit_v2.cpp"
     }
 #line 8 "cpp_inherit_v2.cpp"
@@ -231,13 +231,13 @@ SPP_NODEBUG static spp::ShellBase* Base__construct(const char* key, const void* 
 static const char* const Base__construct_keys[] = {typeid(Base_SuperArgs).name(), nullptr};
 
 #line 11 "cpp_inherit_v2.cpp"
-SPP_HIDDEN static Base_Shell* Base__build([[maybe_unused]] bool __note, int start)
+HOT_HIDDEN static Base_Shell* Base__build([[maybe_unused]] bool __note, int start)
 #line 11 "cpp_inherit_v2.cpp"
 {
 #line 11 "cpp_inherit_v2.cpp"
     auto __plan = Base__plan(start);
 #line 11 "cpp_inherit_v2.cpp"
-    auto* __self = static_cast<Base_Shell*>(spp::construct_shell(&Base_record, typeid(Base_SuperArgs).name(), &__plan.first, __note));
+    auto* __self = static_cast<Base_Shell*>(hot::construct_shell(&Base_record, typeid(Base_SuperArgs).name(), &__plan.first, __note));
 #line 11 "cpp_inherit_v2.cpp"
     try {
 #line 11 "cpp_inherit_v2.cpp"
@@ -256,7 +256,7 @@ SPP_HIDDEN static Base_Shell* Base__build([[maybe_unused]] bool __note, int star
 }
 #line 258 "cpp_inherit_v2.cpp.cpp"
 #line 11 "cpp_inherit_v2.cpp"
-[[maybe_unused]] SPP_HIDDEN static Base_Shell* Base__new(int start = 0)
+[[maybe_unused]] HOT_HIDDEN static Base_Shell* Base__new(int start = 0)
 #line 11 "cpp_inherit_v2.cpp"
 {
 #line 11 "cpp_inherit_v2.cpp"
@@ -268,7 +268,7 @@ SPP_HIDDEN static Base_Shell* Base__build([[maybe_unused]] bool __note, int star
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 11 "cpp_inherit_v2.cpp"
-SPP_NODEBUG static spp::ShellBase* Base__new_default()
+HOT_NODEBUG static hot::ShellBase* Base__new_default()
 #line 11 "cpp_inherit_v2.cpp"
 {
 #line 11 "cpp_inherit_v2.cpp"
@@ -278,7 +278,7 @@ SPP_NODEBUG static spp::ShellBase* Base__new_default()
 #line 279 "cpp_inherit_v2.cpp.cpp"
 
 #line 11 "cpp_inherit_v2.cpp"
-[[maybe_unused]] SPP_HIDDEN static void Base__ctor(Base_Shell* __self, int start)
+[[maybe_unused]] HOT_HIDDEN static void Base__ctor(Base_Shell* __self, int start)
 #line 11 "cpp_inherit_v2.cpp"
 {
 #line 11 "cpp_inherit_v2.cpp"
@@ -291,17 +291,17 @@ void BaseState_g2::ctor(int start)
 #line 11 "cpp_inherit_v2.cpp"
 {
 #line 11 "cpp_inherit_v2.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 11 "cpp_inherit_v2.cpp"
-        spp::stale_call("Base::Base");
+        hot::stale_call("Base::Base");
 #line 11 "cpp_inherit_v2.cpp"
         return;
 #line 11 "cpp_inherit_v2.cpp"
     }
 #line 11 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
 #line 11 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 11 "cpp_inherit_v2.cpp"
 { decltype(__st->hits) __spp_mi(start); __st->hits = std::move(__spp_mi); }
 #line 11 "cpp_inherit_v2.cpp"
@@ -311,7 +311,7 @@ void BaseState_g2::ctor(int start)
 #line 312 "cpp_inherit_v2.cpp.cpp"
 
 #line 13 "cpp_inherit_v2.cpp"
-[[maybe_unused]] SPP_HIDDEN static int Base__Power(Base_Shell* __self)
+[[maybe_unused]] HOT_HIDDEN static int Base__Power(Base_Shell* __self)
 #line 13 "cpp_inherit_v2.cpp"
 {
 #line 13 "cpp_inherit_v2.cpp"
@@ -324,17 +324,17 @@ int BaseState_g2::Power()
 #line 13 "cpp_inherit_v2.cpp"
 {
 #line 13 "cpp_inherit_v2.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 13 "cpp_inherit_v2.cpp"
-        spp::stale_call("Base::Power");
+        hot::stale_call("Base::Power");
 #line 13 "cpp_inherit_v2.cpp"
         return int();
 #line 13 "cpp_inherit_v2.cpp"
     }
 #line 13 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
 #line 13 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "cpp_inherit_v2.cpp"
  return 1; 
 #line 13 "cpp_inherit_v2.cpp"
@@ -342,7 +342,7 @@ int BaseState_g2::Power()
 #line 343 "cpp_inherit_v2.cpp.cpp"
 
 #line 15 "cpp_inherit_v2.cpp"
-[[maybe_unused]] SPP_HIDDEN static int Base__Twice(Base_Shell* __self)
+[[maybe_unused]] HOT_HIDDEN static int Base__Twice(Base_Shell* __self)
 #line 15 "cpp_inherit_v2.cpp"
 {
 #line 15 "cpp_inherit_v2.cpp"
@@ -355,17 +355,17 @@ int BaseState_g2::Twice()
 #line 15 "cpp_inherit_v2.cpp"
 {
 #line 15 "cpp_inherit_v2.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 15 "cpp_inherit_v2.cpp"
-        spp::stale_call("Base::Twice");
+        hot::stale_call("Base::Twice");
 #line 15 "cpp_inherit_v2.cpp"
         return int();
 #line 15 "cpp_inherit_v2.cpp"
     }
 #line 15 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
 #line 15 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 15 "cpp_inherit_v2.cpp"
  return Base__Power_virt(__self) * 2; 
 #line 15 "cpp_inherit_v2.cpp"
@@ -373,7 +373,7 @@ int BaseState_g2::Twice()
 #line 374 "cpp_inherit_v2.cpp.cpp"
 
 #line 17 "cpp_inherit_v2.cpp"
-[[maybe_unused]] SPP_HIDDEN static void Base__Bump(Base_Shell* __self)
+[[maybe_unused]] HOT_HIDDEN static void Base__Bump(Base_Shell* __self)
 #line 17 "cpp_inherit_v2.cpp"
 {
 #line 17 "cpp_inherit_v2.cpp"
@@ -386,17 +386,17 @@ void BaseState_g2::Bump()
 #line 17 "cpp_inherit_v2.cpp"
 {
 #line 17 "cpp_inherit_v2.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 17 "cpp_inherit_v2.cpp"
-        spp::stale_call("Base::Bump");
+        hot::stale_call("Base::Bump");
 #line 17 "cpp_inherit_v2.cpp"
         return;
 #line 17 "cpp_inherit_v2.cpp"
     }
 #line 17 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
 #line 17 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 17 "cpp_inherit_v2.cpp"
  hits += 10; 
 #line 17 "cpp_inherit_v2.cpp"
@@ -408,17 +408,17 @@ void BaseState_g2::TakeDamage_f(float amount)
 #line 19 "cpp_inherit_v2.cpp"
 {
 #line 19 "cpp_inherit_v2.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 19 "cpp_inherit_v2.cpp"
-        spp::stale_call("Base::TakeDamage(float)");
+        hot::stale_call("Base::TakeDamage(float)");
 #line 19 "cpp_inherit_v2.cpp"
         return;
 #line 19 "cpp_inherit_v2.cpp"
     }
 #line 19 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__spp_owner);
 #line 19 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 20 "cpp_inherit_v2.cpp"
 
         hp -= amount;
@@ -428,46 +428,46 @@ void BaseState_g2::TakeDamage_f(float amount)
 }
 #line 430 "cpp_inherit_v2.cpp.cpp"
 
-[[maybe_unused]] SPP_HIDDEN static void Base__base_Tick(Actor* a, float a0)
+[[maybe_unused]] HOT_HIDDEN static void Base__base_Tick(Actor* a, float a0)
 {
     return state_of(static_cast<Base_Shell*>(a))->BaseState_g2::__fwd_Tick(a0);
 }
 
-[[maybe_unused]] SPP_HIDDEN static void Base__base_TakeDamage(Actor* a, float a0)
+[[maybe_unused]] HOT_HIDDEN static void Base__base_TakeDamage(Actor* a, float a0)
 {
     return state_of(static_cast<Base_Shell*>(a))->BaseState_g2::TakeDamage_f(a0);
 }
 
-[[maybe_unused]] SPP_HIDDEN static void Base__base_TakeDamage(Actor* a, Actor& a0, float a1)
+[[maybe_unused]] HOT_HIDDEN static void Base__base_TakeDamage(Actor* a, Actor& a0, float a1)
 {
     return state_of(static_cast<Base_Shell*>(a))->BaseState_g2::__fwd_TakeDamage_Af(a0, a1);
 }
 
 // ------------------------------------------------------ record and entry
-static const spp::SlotFn Base_slots[Base_SLOT_COUNT] = {
-    reinterpret_cast<spp::SlotFn>(&BaseState_g2::__fwd_Tick),
-    reinterpret_cast<spp::SlotFn>(&BaseState_g2::TakeDamage_f),
-    reinterpret_cast<spp::SlotFn>(&BaseState_g2::__fwd_TakeDamage_Af),
-    reinterpret_cast<spp::SlotFn>(&BaseState_g2::Power),
-    reinterpret_cast<spp::SlotFn>(&BaseState_g2::Twice),
-    reinterpret_cast<spp::SlotFn>(&BaseState_g2::Bump),
+static const hot::SlotFn Base_slots[Base_SLOT_COUNT] = {
+    reinterpret_cast<hot::SlotFn>(&BaseState_g2::__fwd_Tick),
+    reinterpret_cast<hot::SlotFn>(&BaseState_g2::TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&BaseState_g2::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&BaseState_g2::Power),
+    reinterpret_cast<hot::SlotFn>(&BaseState_g2::Twice),
+    reinterpret_cast<hot::SlotFn>(&BaseState_g2::Bump),
 };
 
-spp::ClassRecord Base_record = {
+hot::ClassRecord Base_record = {
     "Base", GEN, Base_slots, Base_SLOT_COUNT, &Base_layout, nullptr,
-    "Actor", spp::shell_layout_hash("Actor", sizeof(Base_Shell), alignof(Base_Shell), 3),
+    "Actor", hot::shell_layout_hash("Actor", sizeof(Base_Shell), alignof(Base_Shell), 3),
     nullptr,
     &Base__construct, typeid(Base_SuperArgs).name(), &Base__new_default, nullptr, nullptr,
 };
 
 #line 8 "cpp_inherit_v2.cpp"
-SPP_NODEBUG static spp::Instance Base_create()
+HOT_NODEBUG static hot::Instance Base_create()
 #line 8 "cpp_inherit_v2.cpp"
 {
 #line 8 "cpp_inherit_v2.cpp"
-    spp::ScriptEntry entry;  // the creation is an entry (S27)
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 8 "cpp_inherit_v2.cpp"
-    spp::ShellBase* s = nullptr;
+    hot::ShellBase* s = nullptr;
 #line 8 "cpp_inherit_v2.cpp"
     if (Base_record.new_default) {
 #line 8 "cpp_inherit_v2.cpp"
@@ -503,14 +503,14 @@ static void SppModule__init_kid_casts(void*, void* f) { using T = int; new (f) T
 #line 504 "cpp_inherit_v2.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static const spp::FieldInfo SppModule_fields[] = {
-    {"last_ticked", nullptr, spp::type_key<Base *>(), offsetof(SppModule, last_ticked), sizeof(Base *),
-     alignof(Base *), spp::field_flags<Base *>(), SppModule__init_last_ticked, spp::move_field<Base *>, spp::field_destroyer<Base *>()},
-    {"kid_casts", nullptr, spp::type_key<int>(), offsetof(SppModule, kid_casts), sizeof(int),
-     alignof(int), spp::field_flags<int>(), SppModule__init_kid_casts, spp::move_field<int>, spp::field_destroyer<int>()},
+static const hot::FieldInfo SppModule_fields[] = {
+    {"last_ticked", nullptr, hot::type_key<Base *>(), offsetof(SppModule, last_ticked), sizeof(Base *),
+     alignof(Base *), hot::field_flags<Base *>(), SppModule__init_last_ticked, hot::move_field<Base *>, hot::field_destroyer<Base *>()},
+    {"kid_casts", nullptr, hot::type_key<int>(), offsetof(SppModule, kid_casts), sizeof(int),
+     alignof(int), hot::field_flags<int>(), SppModule__init_kid_casts, hot::move_field<int>, hot::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
-static const spp::StateLayout SppModule_layout = {
+static const hot::StateLayout SppModule_layout = {
     "SppModule", sizeof(SppModule), alignof(SppModule), 2, SppModule_fields,
 };
 
@@ -525,20 +525,20 @@ enum : unsigned {
     Kid_SLOT_COUNT = 7,
 };
 
-extern spp::ClassRecord Kid_record;
+extern hot::ClassRecord Kid_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Kid_Shell final : Base_Shell {
 #line 35 "cpp_inherit_v2.cpp"
     template <class... A>
 #line 35 "cpp_inherit_v2.cpp"
-    explicit Kid_Shell(spp::Construct, A&&... a)
+    explicit Kid_Shell(hot::Construct, A&&... a)
 #line 35 "cpp_inherit_v2.cpp"
-        : Base_Shell(spp::ConstructChild{}, std::forward<A>(a)...)
+        : Base_Shell(hot::ConstructChild{}, std::forward<A>(a)...)
 #line 35 "cpp_inherit_v2.cpp"
     {
 #line 35 "cpp_inherit_v2.cpp"
-        spp::init_state(this, &Kid_record);
+        hot::init_state(this, &Kid_record);
 #line 35 "cpp_inherit_v2.cpp"
     }
 #line 545 "cpp_inherit_v2.cpp.cpp"
@@ -582,51 +582,51 @@ static void Kid__init_bonus(void*, void* f) { using T = int; new (f) T(0); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static_assert(offsetof(KidState_g2, __spp_owner) == 0, "the owner pointer must be the first member");
-static const spp::FieldInfo Kid_fields[] = {
-    {"hp", nullptr, spp::type_key<float>(), offsetof(KidState_g2, hp), sizeof(float),
-     alignof(float), spp::field_flags<float>(), Base__init_hp, spp::move_field<float>, spp::field_destroyer<float>()},
-    {"hits", nullptr, spp::type_key<int>(), offsetof(KidState_g2, hits), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Base__init_hits, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"twice", nullptr, spp::type_key<int>(), offsetof(KidState_g2, twice), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Base__init_twice, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"armor", nullptr, spp::type_key<int>(), offsetof(KidState_g2, armor), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Base__init_armor, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"kid_hits", nullptr, spp::type_key<int>(), offsetof(KidState_g2, kid_hits), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Kid__init_kid_hits, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"moved", nullptr, spp::type_key<float>(), offsetof(KidState_g2, moved), sizeof(float),
-     alignof(float), spp::field_flags<float>(), Kid__init_moved, spp::move_field<float>, spp::field_destroyer<float>()},
-    {"super_power", nullptr, spp::type_key<int>(), offsetof(KidState_g2, super_power), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Kid__init_super_power, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"seen_hits", nullptr, spp::type_key<int>(), offsetof(KidState_g2, seen_hits), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Kid__init_seen_hits, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"gen", nullptr, spp::type_key<int>(), offsetof(KidState_g2, gen), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Kid__init_gen, spp::move_field<int>, spp::field_destroyer<int>()},
-    {"bonus", nullptr, spp::type_key<int>(), offsetof(KidState_g2, bonus), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Kid__init_bonus, spp::move_field<int>, spp::field_destroyer<int>()},
+static const hot::FieldInfo Kid_fields[] = {
+    {"hp", nullptr, hot::type_key<float>(), offsetof(KidState_g2, hp), sizeof(float),
+     alignof(float), hot::field_flags<float>(), Base__init_hp, hot::move_field<float>, hot::field_destroyer<float>()},
+    {"hits", nullptr, hot::type_key<int>(), offsetof(KidState_g2, hits), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Base__init_hits, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"twice", nullptr, hot::type_key<int>(), offsetof(KidState_g2, twice), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Base__init_twice, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"armor", nullptr, hot::type_key<int>(), offsetof(KidState_g2, armor), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Base__init_armor, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"kid_hits", nullptr, hot::type_key<int>(), offsetof(KidState_g2, kid_hits), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Kid__init_kid_hits, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"moved", nullptr, hot::type_key<float>(), offsetof(KidState_g2, moved), sizeof(float),
+     alignof(float), hot::field_flags<float>(), Kid__init_moved, hot::move_field<float>, hot::field_destroyer<float>()},
+    {"super_power", nullptr, hot::type_key<int>(), offsetof(KidState_g2, super_power), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Kid__init_super_power, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"seen_hits", nullptr, hot::type_key<int>(), offsetof(KidState_g2, seen_hits), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Kid__init_seen_hits, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"gen", nullptr, hot::type_key<int>(), offsetof(KidState_g2, gen), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Kid__init_gen, hot::move_field<int>, hot::field_destroyer<int>()},
+    {"bonus", nullptr, hot::type_key<int>(), offsetof(KidState_g2, bonus), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Kid__init_bonus, hot::move_field<int>, hot::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
 
-static const spp::StateLayout Kid_layout = {
+static const hot::StateLayout Kid_layout = {
     "KidState_g2", sizeof(KidState_g2), alignof(KidState_g2), 10, Kid_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-SPP_HIDDEN KidState_g2* state_of(Kid_Shell* __self)
+HOT_HIDDEN KidState_g2* state_of(Kid_Shell* __self)
 {
     return static_cast<KidState_g2*>(__self->state);
 }
 
-[[maybe_unused]] SPP_HIDDEN static int Kid__Power(Kid_Shell* __self);
-[[maybe_unused]] SPP_HIDDEN static int Kid__Bonus(Kid_Shell* __self);
+[[maybe_unused]] HOT_HIDDEN static int Kid__Power(Kid_Shell* __self);
+[[maybe_unused]] HOT_HIDDEN static int Kid__Bonus(Kid_Shell* __self);
 
-[[maybe_unused]] SPP_HIDDEN static int Kid__Bonus_virt(Kid_Shell* __self)
+[[maybe_unused]] HOT_HIDDEN static int Kid__Bonus_virt(Kid_Shell* __self)
 {
-    return spp::call<int(Actor*)>(__self, Kid_SLOT_Bonus);
+    return hot::call<int(Actor*)>(__self, Kid_SLOT_Bonus);
 }
 
-[[maybe_unused]] SPP_HIDDEN static void Kid__ctor(Kid_Shell* __self, int start);
+[[maybe_unused]] HOT_HIDDEN static void Kid__ctor(Kid_Shell* __self, int start);
 #line 39 "cpp_inherit_v2.cpp"
-SPP_HIDDEN static auto Kid__plan(int start)
+HOT_HIDDEN static auto Kid__plan(int start)
 #line 39 "cpp_inherit_v2.cpp"
 {
 #line 39 "cpp_inherit_v2.cpp"
@@ -640,7 +640,7 @@ SPP_HIDDEN static auto Kid__plan(int start)
 #line 39 "cpp_inherit_v2.cpp"
 template <class Chain>
 #line 39 "cpp_inherit_v2.cpp"
-SPP_HIDDEN static void Kid__ctor_chain(Kid_Shell* __self, [[maybe_unused]] Chain& __chain, int start)
+HOT_HIDDEN static void Kid__ctor_chain(Kid_Shell* __self, [[maybe_unused]] Chain& __chain, int start)
 #line 39 "cpp_inherit_v2.cpp"
 {
 #line 39 "cpp_inherit_v2.cpp"
@@ -654,7 +654,7 @@ using Kid_SuperArgs = decltype(Kid__plan(std::declval<int>()).first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
 #line 35 "cpp_inherit_v2.cpp"
-SPP_NODEBUG static spp::ShellBase* Kid__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Kid__construct(const char* key, const void* args)
 #line 35 "cpp_inherit_v2.cpp"
 {
 #line 35 "cpp_inherit_v2.cpp"
@@ -662,7 +662,7 @@ SPP_NODEBUG static spp::ShellBase* Kid__construct(const char* key, const void* a
 #line 35 "cpp_inherit_v2.cpp"
         const auto& t = *static_cast<const Kid_SuperArgs*>(args);
 #line 35 "cpp_inherit_v2.cpp"
-        return std::apply([](auto&... x) -> spp::ShellBase* { return new Kid_Shell(spp::Construct{}, x...); }, t);
+        return std::apply([](auto&... x) -> hot::ShellBase* { return new Kid_Shell(hot::Construct{}, x...); }, t);
 #line 35 "cpp_inherit_v2.cpp"
     }
 #line 35 "cpp_inherit_v2.cpp"
@@ -674,13 +674,13 @@ SPP_NODEBUG static spp::ShellBase* Kid__construct(const char* key, const void* a
 static const char* const Kid__construct_keys[] = {typeid(Kid_SuperArgs).name(), nullptr};
 
 #line 39 "cpp_inherit_v2.cpp"
-SPP_HIDDEN static Kid_Shell* Kid__build([[maybe_unused]] bool __note, int start)
+HOT_HIDDEN static Kid_Shell* Kid__build([[maybe_unused]] bool __note, int start)
 #line 39 "cpp_inherit_v2.cpp"
 {
 #line 39 "cpp_inherit_v2.cpp"
     auto __plan = Kid__plan(start);
 #line 39 "cpp_inherit_v2.cpp"
-    auto* __self = static_cast<Kid_Shell*>(spp::construct_shell(&Kid_record, typeid(Kid_SuperArgs).name(), &__plan.first, __note));
+    auto* __self = static_cast<Kid_Shell*>(hot::construct_shell(&Kid_record, typeid(Kid_SuperArgs).name(), &__plan.first, __note));
 #line 39 "cpp_inherit_v2.cpp"
     try {
 #line 39 "cpp_inherit_v2.cpp"
@@ -699,7 +699,7 @@ SPP_HIDDEN static Kid_Shell* Kid__build([[maybe_unused]] bool __note, int start)
 }
 #line 701 "cpp_inherit_v2.cpp.cpp"
 #line 39 "cpp_inherit_v2.cpp"
-[[maybe_unused]] SPP_HIDDEN static Kid_Shell* Kid__new(int start = 3)
+[[maybe_unused]] HOT_HIDDEN static Kid_Shell* Kid__new(int start = 3)
 #line 39 "cpp_inherit_v2.cpp"
 {
 #line 39 "cpp_inherit_v2.cpp"
@@ -711,7 +711,7 @@ SPP_HIDDEN static Kid_Shell* Kid__build([[maybe_unused]] bool __note, int start)
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 39 "cpp_inherit_v2.cpp"
-SPP_NODEBUG static spp::ShellBase* Kid__new_default()
+HOT_NODEBUG static hot::ShellBase* Kid__new_default()
 #line 39 "cpp_inherit_v2.cpp"
 {
 #line 39 "cpp_inherit_v2.cpp"
@@ -721,7 +721,7 @@ SPP_NODEBUG static spp::ShellBase* Kid__new_default()
 #line 722 "cpp_inherit_v2.cpp.cpp"
 
 #line 39 "cpp_inherit_v2.cpp"
-[[maybe_unused]] SPP_HIDDEN static void Kid__ctor(Kid_Shell* __self, int start)
+[[maybe_unused]] HOT_HIDDEN static void Kid__ctor(Kid_Shell* __self, int start)
 #line 39 "cpp_inherit_v2.cpp"
 {
 #line 39 "cpp_inherit_v2.cpp"
@@ -734,17 +734,17 @@ void KidState_g2::ctor(int start)
 #line 39 "cpp_inherit_v2.cpp"
 {
 #line 39 "cpp_inherit_v2.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 39 "cpp_inherit_v2.cpp"
-        spp::stale_call("Kid::Kid");
+        hot::stale_call("Kid::Kid");
 #line 39 "cpp_inherit_v2.cpp"
         return;
 #line 39 "cpp_inherit_v2.cpp"
     }
 #line 39 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
 #line 39 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 39 "cpp_inherit_v2.cpp"
  kid_hits = start; 
 #line 39 "cpp_inherit_v2.cpp"
@@ -752,7 +752,7 @@ void KidState_g2::ctor(int start)
 #line 753 "cpp_inherit_v2.cpp.cpp"
 
 #line 41 "cpp_inherit_v2.cpp"
-[[maybe_unused]] SPP_HIDDEN static int Kid__Power(Kid_Shell* __self)
+[[maybe_unused]] HOT_HIDDEN static int Kid__Power(Kid_Shell* __self)
 #line 41 "cpp_inherit_v2.cpp"
 {
 #line 41 "cpp_inherit_v2.cpp"
@@ -765,17 +765,17 @@ int KidState_g2::Power()
 #line 41 "cpp_inherit_v2.cpp"
 {
 #line 41 "cpp_inherit_v2.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 41 "cpp_inherit_v2.cpp"
-        spp::stale_call("Kid::Power");
+        hot::stale_call("Kid::Power");
 #line 41 "cpp_inherit_v2.cpp"
         return int();
 #line 41 "cpp_inherit_v2.cpp"
     }
 #line 41 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
 #line 41 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 41 "cpp_inherit_v2.cpp"
  return 7; 
 #line 41 "cpp_inherit_v2.cpp"
@@ -787,17 +787,17 @@ void KidState_g2::TakeDamage_f(float amount)
 #line 44 "cpp_inherit_v2.cpp"
 {
 #line 44 "cpp_inherit_v2.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 44 "cpp_inherit_v2.cpp"
-        spp::stale_call("Kid::TakeDamage(float)");
+        hot::stale_call("Kid::TakeDamage(float)");
 #line 44 "cpp_inherit_v2.cpp"
         return;
 #line 44 "cpp_inherit_v2.cpp"
     }
 #line 44 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
 #line 44 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 45 "cpp_inherit_v2.cpp"
 
         Base__base_TakeDamage(__self, amount * 3.0f);
@@ -808,7 +808,7 @@ void KidState_g2::TakeDamage_f(float amount)
 #line 809 "cpp_inherit_v2.cpp.cpp"
 
 #line 51 "cpp_inherit_v2.cpp"
-[[maybe_unused]] SPP_HIDDEN static int Kid__Bonus(Kid_Shell* __self)
+[[maybe_unused]] HOT_HIDDEN static int Kid__Bonus(Kid_Shell* __self)
 #line 51 "cpp_inherit_v2.cpp"
 {
 #line 51 "cpp_inherit_v2.cpp"
@@ -821,17 +821,17 @@ int KidState_g2::Bonus()
 #line 51 "cpp_inherit_v2.cpp"
 {
 #line 51 "cpp_inherit_v2.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 51 "cpp_inherit_v2.cpp"
-        spp::stale_call("Kid::Bonus");
+        hot::stale_call("Kid::Bonus");
 #line 51 "cpp_inherit_v2.cpp"
         return int();
 #line 51 "cpp_inherit_v2.cpp"
     }
 #line 51 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
 #line 51 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 51 "cpp_inherit_v2.cpp"
  return gen * 10; 
 #line 51 "cpp_inherit_v2.cpp"
@@ -843,17 +843,17 @@ void KidState_g2::Tick(float dt)
 #line 53 "cpp_inherit_v2.cpp"
 {
 #line 53 "cpp_inherit_v2.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 53 "cpp_inherit_v2.cpp"
-        spp::stale_call("Kid::Tick(float)");
+        hot::stale_call("Kid::Tick(float)");
 #line 53 "cpp_inherit_v2.cpp"
         return;
 #line 53 "cpp_inherit_v2.cpp"
     }
 #line 53 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__spp_owner);
 #line 53 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 54 "cpp_inherit_v2.cpp"
 
         Base__base_Tick(__self, dt);
@@ -864,7 +864,7 @@ void KidState_g2::Tick(float dt)
         super_power = Base__Power(__self);
         bonus = Kid__Bonus_virt(__self);
         spp_mod()->last_ticked = __self;
-        Kid_Shell* k = spp::as_script<Kid_Shell>(spp_mod()->last_ticked, "Kid");
+        Kid_Shell* k = hot::as_script<Kid_Shell>(spp_mod()->last_ticked, "Kid");
         if (k == __self)
             spp_mod()->kid_casts++;
         seen_hits = state_of(spp_mod()->last_ticked)->hits + state_of(k)->kid_hits + Kid__Bonus_virt(k);
@@ -880,39 +880,39 @@ static int Kid__Bonus__thunk(Actor* __a)
 #line 51 "cpp_inherit_v2.cpp"
 {
 #line 51 "cpp_inherit_v2.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(__a);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(__a);
 #line 51 "cpp_inherit_v2.cpp"
-    return spp::call<int(Actor*)>(__self, Kid_SLOT_Bonus);
+    return hot::call<int(Actor*)>(__self, Kid_SLOT_Bonus);
 #line 51 "cpp_inherit_v2.cpp"
 }
 #line 889 "cpp_inherit_v2.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
-static const spp::SlotFn Kid_slots[Kid_SLOT_COUNT] = {
-    reinterpret_cast<spp::SlotFn>(&KidState_g2::Tick),
-    reinterpret_cast<spp::SlotFn>(&KidState_g2::TakeDamage_f),
-    reinterpret_cast<spp::SlotFn>(&BaseState_g2::__fwd_TakeDamage_Af),
-    reinterpret_cast<spp::SlotFn>(&KidState_g2::Power),
-    reinterpret_cast<spp::SlotFn>(&BaseState_g2::Twice),
-    reinterpret_cast<spp::SlotFn>(&BaseState_g2::Bump),
-    reinterpret_cast<spp::SlotFn>(&KidState_g2::Bonus),
+static const hot::SlotFn Kid_slots[Kid_SLOT_COUNT] = {
+    reinterpret_cast<hot::SlotFn>(&KidState_g2::Tick),
+    reinterpret_cast<hot::SlotFn>(&KidState_g2::TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&BaseState_g2::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&KidState_g2::Power),
+    reinterpret_cast<hot::SlotFn>(&BaseState_g2::Twice),
+    reinterpret_cast<hot::SlotFn>(&BaseState_g2::Bump),
+    reinterpret_cast<hot::SlotFn>(&KidState_g2::Bonus),
 };
 
-spp::ClassRecord Kid_record = {
+hot::ClassRecord Kid_record = {
     "Kid", GEN, Kid_slots, Kid_SLOT_COUNT, &Kid_layout, &Base_record,
-    "Actor", spp::shell_layout_hash("Actor", sizeof(Kid_Shell), alignof(Kid_Shell), 3),
+    "Actor", hot::shell_layout_hash("Actor", sizeof(Kid_Shell), alignof(Kid_Shell), 3),
     nullptr,
     &Kid__construct, typeid(Kid_SuperArgs).name(), &Kid__new_default, nullptr, nullptr,
 };
 
 #line 35 "cpp_inherit_v2.cpp"
-SPP_NODEBUG static spp::Instance Kid_create()
+HOT_NODEBUG static hot::Instance Kid_create()
 #line 35 "cpp_inherit_v2.cpp"
 {
 #line 35 "cpp_inherit_v2.cpp"
-    spp::ScriptEntry entry;  // the creation is an entry (S27)
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 35 "cpp_inherit_v2.cpp"
-    spp::ShellBase* s = nullptr;
+    hot::ShellBase* s = nullptr;
 #line 35 "cpp_inherit_v2.cpp"
     if (Kid_record.new_default) {
 #line 35 "cpp_inherit_v2.cpp"
@@ -933,7 +933,7 @@ SPP_NODEBUG static spp::Instance Kid_create()
 }
 #line 935 "cpp_inherit_v2.cpp.cpp"
 
-extern "C" void script_register(spp::Registry& reg)
+extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_module_state(&SppModule_layout, &SppModule_slot);
     reg.add(&Base_record, &Base_create);

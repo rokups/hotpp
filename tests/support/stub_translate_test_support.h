@@ -56,7 +56,7 @@ inline const char* kIntrusiveStub = "[native, handle(\"$T*\"), intrusive(\"AddRe
 
 inline const char* kSharedStub = "[native, handle(\"std::shared_ptr<$T>\")] class Object;\n";
 
-inline const std::string kIntr = "spp::Intrusive<Item, &Object::AddRef, &Object::Release>";
+inline const std::string kIntr = "hot::Intrusive<Item, &Object::AddRef, &Object::Release>";
 
 inline sppc::TranslateResult hier_translate(const std::string& stubs, const std::string& members,
     bool stub_in_prelude = false, sppc::TranslatorSession* session = nullptr)

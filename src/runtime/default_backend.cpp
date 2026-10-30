@@ -2,8 +2,8 @@
 //
 // CMake defines SPP_BACKEND_CLANG_FILES or SPP_BACKEND_JIT.
 // A list value uses "|" between the items.
-#include "spp/backend.h"
-#include "spp/scratch.h"
+#include "hot/backend.h"
+#include "hot/scratch.h"
 
 #include <filesystem>
 #include <sstream>
@@ -11,14 +11,14 @@
 #include <unistd.h>
 #include <vector>
 #if defined(SPP_BACKEND_CLANG_FILES)
-    #include "spp/clang_files_backend.h"
+    #include "hot/clang_files_backend.h"
 #elif defined(SPP_BACKEND_JIT)
-    #include "spp/jit_backend.h"
+    #include "hot/jit_backend.h"
 #else
     #error "Define SPP_BACKEND_CLANG_FILES or SPP_BACKEND_JIT."
 #endif
 
-namespace spp
+namespace hot
 {
 
 #if defined(SPP_BACKEND_CLANG_FILES) || defined(SPP_BACKEND_JIT)
@@ -70,4 +70,4 @@ std::unique_ptr<Backend> make_default_backend(const DefaultBackendOptions& optio
 #endif
 }
 
-} // namespace spp
+} // namespace hot

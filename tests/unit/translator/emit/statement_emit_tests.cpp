@@ -59,7 +59,7 @@ TEST(StatementEmit, TryFinally)
     t.catches.push_back(std::move(c));
     t.finally_block = BlockStmt{slist(es(id("g"))), 0, 0};
     EXPECT_EQ(
-        print(*make_stmt(std::move(t))), "{ spp::Finally __fin_0([&] { g; }); try { f; } catch (...) { throw; } }");
+        print(*make_stmt(std::move(t))), "{ hot::Finally __fin_0([&] { g; }); try { f; } catch (...) { throw; } }");
 
     // Without a catch clause: the body is a plain block. A nested try gets the next name.
     TryStmt inner;
@@ -69,8 +69,8 @@ TEST(StatementEmit, TryFinally)
     outer.block = BlockStmt{slist(make_stmt(std::move(inner))), 0, 0};
     outer.finally_block = BlockStmt{slist(es(id("c"))), 0, 0};
     EXPECT_EQ(print(*make_stmt(std::move(outer))),
-        "{ spp::Finally __fin_0([&] { c; }); "
-        "{ { spp::Finally __fin_1([&] { b; }); { a; } } } }");
+        "{ hot::Finally __fin_0([&] { c; }); "
+        "{ { hot::Finally __fin_1([&] { b; }); { a; } } } }");
 }
 
 TEST(StatementEmit, ElseIfAndWhile)

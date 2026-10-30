@@ -1,7 +1,7 @@
 // Reload tests of a plain C++ script (a ".cpp" script). The file extension selects the parser
 // of sppc. The host passes the script as a ScriptSource like any other script. The tests use
 // the backend that SPP_BACKEND selected.
-#include "spp/backend.h"
+#include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
 #include "support/script_files.h"
@@ -19,15 +19,15 @@ using test_support::kDt;
 using test_support::Session;
 using test_support::source;
 
-template <class T> T* fld(spp::ShellBase* shell, const char* name)
+template <class T> T* fld(hot::ShellBase* shell, const char* name)
 {
-    return spp::field_ptr<T>(shell, name);
+    return hot::field_ptr<T>(shell, name);
 }
 
 // The module state block of the loader. The test reads a variable by its name.
 template <class T> T* modvar(Session& s, const char* name)
 {
-    const spp::ModuleStateInfo ms = s.loader.module_state();
+    const hot::ModuleStateInfo ms = s.loader.module_state();
     if (!ms.layout || !*ms.slot)
         return nullptr;
     for (uint32_t i = 0; i < ms.layout->field_count; ++i)
@@ -39,12 +39,12 @@ template <class T> T* modvar(Session& s, const char* name)
 // Generation 1 as a C++ script. The native virtual Tick runs the script code.
 TEST_P(BackendTests, CppScriptRunsThroughNativeVirtual)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_player_v1.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_player_v1.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Player"));
     s.commit_at_frame_boundary();
-    EXPECT_EQ(spp::active_generation, 1u);
+    EXPECT_EQ(hot::active_generation, 1u);
     ASSERT_NE(fld<float>(s.inst.shell, "hp"), nullptr);
     EXPECT_EQ(*fld<float>(s.inst.shell, "hp"), 100.0f);
     EXPECT_EQ(*fld<float>(s.inst.shell, "speed"), 5.0f);
@@ -64,7 +64,7 @@ TEST_P(BackendTests, CppScriptRunsThroughNativeVirtual)
 // Default arguments of a .cpp script: a constructor, a constant and a module variable.
 TEST_P(BackendTests, CppScriptDefaultArguments)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_defaults.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_defaults.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Counter"));
@@ -82,9 +82,9 @@ TEST_P(BackendTests, CppScriptDefaultArguments)
 // migrates the variable, and the free function then uses the migrated value.
 TEST_P(BackendTests, CppScriptFreeFunctionUsesModuleVariable)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_freefn.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_freefn.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("cpp_freefn.cpp"), 2);
+    hot::LoadResult v2 = backend->load(source("cpp_freefn.cpp"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Counter"));
@@ -94,9 +94,9 @@ TEST_P(BackendTests, CppScriptFreeFunctionUsesModuleVariable)
     EXPECT_EQ(*modvar<int>(s, "total"), 107);
 
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    const spp::ReloadResult res = s.loader.commit_pending();
+    const hot::ReloadResult res = s.loader.commit_pending();
     ASSERT_TRUE(res) << res.error;
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     ASSERT_NE(modvar<int>(s, "total"), nullptr);
     EXPECT_EQ(*modvar<int>(s, "total"), 107); // migrated
 
@@ -109,9 +109,9 @@ TEST_P(BackendTests, CppScriptFreeFunctionUsesModuleVariable)
 // after a reload.
 TEST_P(BackendTests, CppScriptTemplateUsesModuleVariable)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_template_fn.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_template_fn.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("cpp_template_fn.cpp"), 2);
+    hot::LoadResult v2 = backend->load(source("cpp_template_fn.cpp"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Scaler"));
@@ -121,9 +121,9 @@ TEST_P(BackendTests, CppScriptTemplateUsesModuleVariable)
     EXPECT_EQ(*modvar<int>(s, "total"), 2);
 
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    const spp::ReloadResult res = s.loader.commit_pending();
+    const hot::ReloadResult res = s.loader.commit_pending();
     ASSERT_TRUE(res) << res.error;
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     ASSERT_NE(modvar<int>(s, "total"), nullptr);
     EXPECT_EQ(*modvar<int>(s, "total"), 2); // migrated
 
@@ -136,9 +136,9 @@ TEST_P(BackendTests, CppScriptTemplateUsesModuleVariable)
 // also after a reload.
 TEST_P(BackendTests, CppScriptNamespaceFunctionUsesModuleVariable)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_namespace_fn.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_namespace_fn.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("cpp_namespace_fn.cpp"), 2);
+    hot::LoadResult v2 = backend->load(source("cpp_namespace_fn.cpp"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Bumper"));
@@ -148,9 +148,9 @@ TEST_P(BackendTests, CppScriptNamespaceFunctionUsesModuleVariable)
     EXPECT_EQ(*modvar<int>(s, "total"), 105);
 
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    const spp::ReloadResult res = s.loader.commit_pending();
+    const hot::ReloadResult res = s.loader.commit_pending();
     ASSERT_TRUE(res) << res.error;
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     ASSERT_NE(modvar<int>(s, "total"), nullptr);
     EXPECT_EQ(*modvar<int>(s, "total"), 105); // migrated
 
@@ -162,9 +162,9 @@ TEST_P(BackendTests, CppScriptNamespaceFunctionUsesModuleVariable)
 // The reload to generation 2. The alias moves hp to health. The convert hooks change level and total.
 TEST_P(BackendTests, CppScriptReloadMigratesFieldsAndModuleVariable)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_player_v1.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_player_v1.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("cpp_player_v2.cpp"), 2);
+    hot::LoadResult v2 = backend->load(source("cpp_player_v2.cpp"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Player"));
@@ -174,9 +174,9 @@ TEST_P(BackendTests, CppScriptReloadMigratesFieldsAndModuleVariable)
 
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    const spp::ReloadResult res = s.loader.commit_pending();
+    const hot::ReloadResult res = s.loader.commit_pending();
     ASSERT_TRUE(res) << res.error;
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
 
     EXPECT_EQ(fld<float>(s.inst.shell, "hp"), nullptr); // the name is "health" now
     ASSERT_NE(fld<float>(s.inst.shell, "health"), nullptr);
@@ -197,9 +197,9 @@ TEST_P(BackendTests, CppScriptReloadMigratesFieldsAndModuleVariable)
 // static data member takes its initializer. The hook convert_count converts the changed type.
 TEST_P(BackendTests, CppScriptStaticMembersMigrate)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_static_v1.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_static_v1.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("cpp_static_v2.cpp"), 2);
+    hot::LoadResult v2 = backend->load(source("cpp_static_v2.cpp"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Counter"));
@@ -216,9 +216,9 @@ TEST_P(BackendTests, CppScriptStaticMembersMigrate)
     EXPECT_EQ(*fld<int>(s.inst.shell, "via_free"), 45); // a free function: scale(12) + hits
 
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    const spp::ReloadResult res = s.loader.commit_pending();
+    const hot::ReloadResult res = s.loader.commit_pending();
     ASSERT_TRUE(res) << res.error;
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     ASSERT_NE(modvar<float>(s, "Counter__s_count"), nullptr);
     EXPECT_FLOAT_EQ(*modvar<float>(s, "Counter__s_count"), 12.5f); // convert_count(12)
     EXPECT_EQ(*modvar<int>(s, "Counter__s_hits"), 9); // migrated
@@ -238,9 +238,9 @@ TEST_P(BackendTests, CppScriptStaticMembersMigrate)
 // and the module variables keep their values. The new code runs after the reload.
 TEST_P(BackendTests, CppScriptOutOfClassDefinitionsReload)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_outofclass_v1.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_outofclass_v1.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("cpp_outofclass_v2.cpp"), 2);
+    hot::LoadResult v2 = backend->load(source("cpp_outofclass_v2.cpp"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Fighter"));
@@ -252,9 +252,9 @@ TEST_P(BackendTests, CppScriptOutOfClassDefinitionsReload)
     EXPECT_FLOAT_EQ(s.actor->Position.x, 2.0f * kDt);
 
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    const spp::ReloadResult res = s.loader.commit_pending();
+    const hot::ReloadResult res = s.loader.commit_pending();
     ASSERT_TRUE(res) << res.error;
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     EXPECT_EQ(*modvar<int>(s, "ticks"), 2); // kept: the new constructor did not run
     EXPECT_EQ(*fld<int>(s.inst.shell, "hp"), 18); // kept
 
@@ -268,7 +268,7 @@ TEST_P(BackendTests, CppScriptOutOfClassDefinitionsReload)
 // A static member can have the name of a function that the generated code has for the class.
 TEST_P(BackendTests, CppScriptStaticMembersWithGeneratedNames)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_static_names.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_static_names.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Names"));
@@ -280,9 +280,9 @@ TEST_P(BackendTests, CppScriptStaticMembersWithGeneratedNames)
 // variable: a warning, and the new variable takes its default value.
 TEST_P(BackendTests, CppScriptStaticMemberRetypeWithoutHook)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_retype_v1.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_retype_v1.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("cpp_retype_v2.cpp"), 2);
+    hot::LoadResult v2 = backend->load(source("cpp_retype_v2.cpp"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Gauge"));
@@ -292,7 +292,7 @@ TEST_P(BackendTests, CppScriptStaticMemberRetypeWithoutHook)
 
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     testing::internal::CaptureStderr();
-    const spp::ReloadResult res = s.loader.commit_pending();
+    const hot::ReloadResult res = s.loader.commit_pending();
     const std::string log = testing::internal::GetCapturedStderr();
     ASSERT_TRUE(res) << res.error;
     ASSERT_NE(modvar<float>(s, "Gauge__s_reading"), nullptr);
@@ -306,9 +306,9 @@ TEST_P(BackendTests, CppScriptStaticMemberRetypeWithoutHook)
 // The hook onReload runs at the reload and reads the old value through its old name.
 TEST_P(BackendTests, CppScriptOnReloadRuns)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_player_v1.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_player_v1.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("cpp_player_v2.cpp"), 2);
+    hot::LoadResult v2 = backend->load(source("cpp_player_v2.cpp"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Player"));
@@ -316,7 +316,7 @@ TEST_P(BackendTests, CppScriptOnReloadRuns)
 
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    const spp::ReloadResult res = s.loader.commit_pending();
+    const hot::ReloadResult res = s.loader.commit_pending();
     ASSERT_TRUE(res) << res.error;
     ASSERT_NE(fld<float>(s.inst.shell, "health"), nullptr);
     EXPECT_EQ(*fld<float>(s.inst.shell, "health"), 100.0f); // onReload set it
@@ -326,9 +326,9 @@ TEST_P(BackendTests, CppScriptOnReloadRuns)
 // The object, its state and the casts on it work in generation 1 and after the reload.
 TEST_P(BackendTests, CppScriptObjectsSurviveReload)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_objects_v1.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_objects_v1.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("cpp_objects_v2.cpp"), 2);
+    hot::LoadResult v2 = backend->load(source("cpp_objects_v2.cpp"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Spawner"));
@@ -341,7 +341,7 @@ TEST_P(BackendTests, CppScriptObjectsSurviveReload)
     s.actor->Tick(kDt); // boost(2): power 7, hits 2
     ASSERT_NE(*slot, nullptr);
     Actor* minion = *slot;
-    auto* shell = dynamic_cast<spp::ShellBase*>(minion);
+    auto* shell = dynamic_cast<hot::ShellBase*>(minion);
     ASSERT_NE(shell, nullptr);
     EXPECT_EQ(*fld<int>(shell, "power"), 7);
     EXPECT_EQ(*fld<int>(shell, "hits"), 2);
@@ -352,13 +352,13 @@ TEST_P(BackendTests, CppScriptObjectsSurviveReload)
     ASSERT_NE(made, nullptr);
     ASSERT_NE(*made, nullptr);
     Actor* first = *made;
-    EXPECT_EQ(*fld<int>(dynamic_cast<spp::ShellBase*>(first), "power"), 1);
+    EXPECT_EQ(*fld<int>(dynamic_cast<hot::ShellBase*>(first), "power"), 1);
     EXPECT_FLOAT_EQ(minion->Position.x, 2.0f * kDt);
 
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    const spp::ReloadResult res = s.loader.commit_pending();
+    const hot::ReloadResult res = s.loader.commit_pending();
     ASSERT_TRUE(res) << res.error;
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     ASSERT_EQ(*modvar<Actor*>(s, "minion"), minion); // the same object
     EXPECT_EQ(*fld<int>(shell, "power"), 7);
     EXPECT_EQ(*fld<int>(shell, "hits"), 2);
@@ -371,7 +371,7 @@ TEST_P(BackendTests, CppScriptObjectsSurviveReload)
     EXPECT_EQ(*modvar<int>(s, "cast_hits"), 3); // the casts of generation 2 find the object
     EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 11 + 14 + 1);
     EXPECT_EQ(*modvar<Actor*>(s, "Minion__s_first_made"), first);
-    EXPECT_EQ(*fld<int>(dynamic_cast<spp::ShellBase*>(first), "shield"), 5);
+    EXPECT_EQ(*fld<int>(dynamic_cast<hot::ShellBase*>(first), "shield"), 5);
 
     *modvar<Actor*>(s, "minion") = nullptr;
     delete minion; // the virtual destructor of the shell runs
@@ -384,9 +384,9 @@ TEST_P(BackendTests, CppScriptObjectsSurviveReload)
 // old object keeps its state, and a new object runs the new initializers.
 TEST_P(BackendTests, CppScriptMemberInitializersReload)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_ctor_init_v1.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_ctor_init_v1.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("cpp_ctor_init_v2.cpp"), 2);
+    hot::LoadResult v2 = backend->load(source("cpp_ctor_init_v2.cpp"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Spawner"));
@@ -395,7 +395,7 @@ TEST_P(BackendTests, CppScriptMemberInitializersReload)
     ASSERT_NE(slot, nullptr);
     ASSERT_NE(*slot, nullptr);
     Actor* first = *slot;
-    auto* shell = dynamic_cast<spp::ShellBase*>(first);
+    auto* shell = dynamic_cast<hot::ShellBase*>(first);
     ASSERT_NE(shell, nullptr);
     EXPECT_EQ(*fld<int>(shell, "hp"), 8); // hp_ * 2
     EXPECT_EQ(*fld<int>(shell, "tag"), 1); // the default argument, with the brace form
@@ -407,9 +407,9 @@ TEST_P(BackendTests, CppScriptMemberInitializersReload)
 
     *fld<int>(shell, "kept") = 70;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    const spp::ReloadResult res = s.loader.commit_pending();
+    const hot::ReloadResult res = s.loader.commit_pending();
     ASSERT_TRUE(res) << res.error;
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     EXPECT_EQ(*fld<int>(shell, "hp"), 8); // kept: the constructor did not run again
     EXPECT_EQ(*fld<std::string>(shell, "name"), "bob");
     EXPECT_EQ(*fld<int>(shell, "kept"), 70);
@@ -420,7 +420,7 @@ TEST_P(BackendTests, CppScriptMemberInitializersReload)
     ASSERT_NE(slot2, nullptr);
     ASSERT_NE(*slot2, nullptr);
     Actor* second = *slot2;
-    auto* shell2 = dynamic_cast<spp::ShellBase*>(second);
+    auto* shell2 = dynamic_cast<hot::ShellBase*>(second);
     ASSERT_NE(shell2, nullptr);
     EXPECT_EQ(*fld<int>(shell2, "hp"), 12); // hp_ * 3
     EXPECT_EQ(*fld<int>(shell2, "tag"), 10);
@@ -441,13 +441,13 @@ TEST_P(BackendTests, CppScriptMemberInitializersReload)
 // virtual Bonus. The cast from Base* to Kid* finds the object in both generations.
 TEST_P(BackendTests, CppScriptChildClassReload)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_inherit_v1.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_inherit_v1.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("cpp_inherit_v2.cpp"), 2);
+    hot::LoadResult v2 = backend->load(source("cpp_inherit_v2.cpp"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Kid"));
-    spp::ShellBase* shell = s.inst.shell;
+    hot::ShellBase* shell = s.inst.shell;
     ASSERT_NE(shell->cls->super, nullptr);
     EXPECT_STREQ(shell->cls->super->name, "Base");
     EXPECT_EQ(*fld<int>(shell, "hits"), 6); // Kid(3) gives Base(6)
@@ -471,9 +471,9 @@ TEST_P(BackendTests, CppScriptChildClassReload)
     EXPECT_EQ(*modvar<int>(s, "kid_casts"), 2);
 
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    const spp::ReloadResult res = s.loader.commit_pending();
+    const hot::ReloadResult res = s.loader.commit_pending();
     ASSERT_TRUE(res) << res.error;
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     EXPECT_EQ(s.inst.shell, shell); // the same object
     EXPECT_EQ(shell->cls->super->generation, 2u);
     EXPECT_EQ(*fld<int>(shell, "hits"), 27); // the parent state stays
@@ -502,13 +502,13 @@ TEST_P(BackendTests, CppScriptChildClassReload)
 // virtual method Extra to Base. Mid and Leaf override it, and Base calls it.
 TEST_P(BackendTests, CppScriptChainReload)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_chain_v1.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_chain_v1.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("cpp_chain_v2.cpp"), 2);
+    hot::LoadResult v2 = backend->load(source("cpp_chain_v2.cpp"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Leaf"));
-    spp::ShellBase* shell = s.inst.shell;
+    hot::ShellBase* shell = s.inst.shell;
     ASSERT_NE(shell->cls->super, nullptr);
     ASSERT_NE(shell->cls->super->super, nullptr);
     EXPECT_STREQ(shell->cls->super->name, "Mid");
@@ -522,7 +522,7 @@ TEST_P(BackendTests, CppScriptChainReload)
     EXPECT_EQ(*modvar<int>(s, "mids"), 2); // the cast to Mid finds the Leaf object
 
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    const spp::ReloadResult res = s.loader.commit_pending();
+    const hot::ReloadResult res = s.loader.commit_pending();
     ASSERT_TRUE(res) << res.error;
     EXPECT_EQ(s.inst.shell, shell);
     EXPECT_EQ(shell->cls->super->super->generation, 2u);
@@ -544,9 +544,9 @@ TEST_P(BackendTests, CppScriptChainReload)
 // The old generation stays loaded, because a live field can hold code.
 TEST_P(BackendTests, CppScriptLambdasUseTheShell)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_lambda_v1.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_lambda_v1.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("cpp_lambda_v2.cpp"), 2);
+    hot::LoadResult v2 = backend->load(source("cpp_lambda_v2.cpp"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Lamp"));
@@ -571,9 +571,9 @@ TEST_P(BackendTests, CppScriptLambdasUseTheShell)
     EXPECT_EQ((*fld<Fn>(s.inst.shell, "from_init"))(), 13 + 6); // a lambda in a field initializer
 
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    const spp::ReloadResult res = s.loader.commit_pending();
+    const hot::ReloadResult res = s.loader.commit_pending();
     ASSERT_TRUE(res) << res.error;
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     EXPECT_EQ(*fld<int>(s.inst.shell, "count"), 13); // kept
 
     s.actor->Tick(kDt); // bump adds 5 more in generation 2: 13 + 6 + 10 + 7 = 36
@@ -593,7 +593,7 @@ TEST_P(BackendTests, CppScriptLambdasUseTheShell)
     s.loader.frame_boundary();
     s.loader.frame_boundary();
     ASSERT_EQ(s.loader.stats().generations.size(), 2u);
-    EXPECT_NE(s.loader.stats().generations[0].state, spp::GenState::Unloaded);
+    EXPECT_NE(s.loader.stats().generations[0].state, hot::GenState::Unloaded);
     EXPECT_TRUE(s.loader.stats().state_holds_code);
 }
 
@@ -603,24 +603,24 @@ TEST_P(BackendTests, CppScriptLambdasUseTheShell)
 // variable in generation 2. A class of the inner namespace derives from a class of the outer one.
 TEST_P(BackendTests, CppScriptNamespacesReload)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_ns_v1.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_ns_v1.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("cpp_ns_v2.cpp"), 2);
+    hot::LoadResult v2 = backend->load(source("cpp_ns_v2.cpp"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "game::ai::Brain"));
-    spp::ShellBase* shell = s.inst.shell;
+    hot::ShellBase* shell = s.inst.shell;
     EXPECT_STREQ(shell->cls->name, "game::ai::Brain");
     ASSERT_NE(shell->cls->super, nullptr);
     EXPECT_STREQ(shell->cls->super->name, "game::Player");
     EXPECT_EQ(s.loader.find("Brain"), nullptr); // the name has the namespace
 
-    const spp::ClassEntry* red_entry = s.loader.find("red::Unit");
-    const spp::ClassEntry* blue_entry = s.loader.find("blue::Unit");
+    const hot::ClassEntry* red_entry = s.loader.find("red::Unit");
+    const hot::ClassEntry* blue_entry = s.loader.find("blue::Unit");
     ASSERT_NE(red_entry, nullptr);
     ASSERT_NE(blue_entry, nullptr);
-    spp::Instance red = red_entry->create();
-    spp::Instance blue = blue_entry->create();
+    hot::Instance red = red_entry->create();
+    hot::Instance blue = blue_entry->create();
     ASSERT_NE(red.shell, nullptr);
     ASSERT_NE(blue.shell, nullptr);
 
@@ -639,9 +639,9 @@ TEST_P(BackendTests, CppScriptNamespacesReload)
     EXPECT_EQ(*fld<int>(blue.shell, "armor"), 5);
 
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    const spp::ReloadResult res = s.loader.commit_pending();
+    const hot::ReloadResult res = s.loader.commit_pending();
     ASSERT_TRUE(res) << res.error;
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     EXPECT_EQ(s.inst.shell, shell);
     ASSERT_NE(modvar<long long>(s, "game__score"), nullptr);
     EXPECT_EQ(*modvar<long long>(s, "game__score"), 100); // convert_game__score(1)
@@ -666,7 +666,7 @@ TEST_P(BackendTests, CppScriptNamespacesReload)
 // directive and a namespace alias.
 TEST_P(BackendTests, CppScriptNamespaceNamesInScriptCode)
 {
-    spp::LoadResult v1 = backend->load(source("cpp_ns_v1.cpp"), 1);
+    hot::LoadResult v1 = backend->load(source("cpp_ns_v1.cpp"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Watcher"));
@@ -682,9 +682,9 @@ TEST_P(BackendTests, CppScriptNamespaceNamesInScriptCode)
 // One loader holds one module for each generation, so the two scripts use two loaders.
 TEST_P(BackendTests, SppAndCppScriptsRunSideBySide)
 {
-    spp::LoadResult spp_mod = backend->load(source("echo_v1.hot"), 1);
+    hot::LoadResult spp_mod = backend->load(source("echo_v1.hot"), 1);
     ASSERT_TRUE(spp_mod) << spp_mod.error;
-    spp::LoadResult cpp_mod = backend->load(source("cpp_player_v1.cpp"), 1);
+    hot::LoadResult cpp_mod = backend->load(source("cpp_player_v1.cpp"), 1);
     ASSERT_TRUE(cpp_mod) << cpp_mod.error;
     Session echo, player;
     ASSERT_NO_FATAL_FAILURE(echo.start(std::move(*spp_mod.module), "Echo"));

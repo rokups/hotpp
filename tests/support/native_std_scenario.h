@@ -22,13 +22,13 @@ namespace nativestd
 using test_support::kDt;
 using test_support::Session;
 
-inline void run_native_std_reload(spp::Module v1, spp::Module v2)
+inline void run_native_std_reload(hot::Module v1, hot::Module v2)
 {
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(v1), "Tracker"));
     s.commit_at_frame_boundary();
-    auto str = [&](const char* n) { return spp::field_ptr<std::string>(s.inst.shell, n); };
-    auto vec = [&] { return spp::field_ptr<std::vector<int>>(s.inst.shell, "history"); };
+    auto str = [&](const char* n) { return hot::field_ptr<std::string>(s.inst.shell, n); };
+    auto vec = [&] { return hot::field_ptr<std::vector<int>>(s.inst.shell, "history"); };
 
     const std::string label = "tracker label that is longer than the small string buffer";
     ASSERT_NE(str("label"), nullptr);
@@ -53,7 +53,7 @@ inline void run_native_std_reload(spp::Module v1, spp::Module v2)
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(v2)));
     s.world.Tick(kDt);
     ASSERT_FALSE(s.commit_failed);
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
 
     // The std::string and the std::vector moved to the new block.
     EXPECT_EQ(str("label"), nullptr);

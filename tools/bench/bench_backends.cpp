@@ -19,9 +19,9 @@
 //
 // CMake defines: BENCH_SOURCE_DIR, BENCH_CXX, BENCH_INCLUDES (items split by
 // "|"), BENCH_RESOURCE_DIR, BENCH_WORK_DIR and BENCH_JIT or BENCH_CLANG_FILES.
-#include "spp/runtime.h"
-#include "spp/scratch.h"
-#include "spp/sppc_lib.h"
+#include "hot/runtime.h"
+#include "hot/scratch.h"
+#include "hot/sppc_lib.h"
 
 #include <sys/resource.h>
 
@@ -38,9 +38,9 @@
 #include <vector>
 
 #if defined(BENCH_JIT)
-    #include "spp/jit_backend.h"
+    #include "hot/jit_backend.h"
 #else
-    #include "spp/clang_files_backend.h"
+    #include "hot/clang_files_backend.h"
 #endif
 
 namespace
@@ -63,7 +63,7 @@ std::vector<std::string> split(const std::string& s)
     return v;
 }
 
-spp::ScriptSource source(const char* file)
+hot::ScriptSource source(const char* file)
 {
     const std::string path = std::string(BENCH_SOURCE_DIR) + "/tests/scripts/" + file;
     std::ifstream f(path);
@@ -73,10 +73,10 @@ spp::ScriptSource source(const char* file)
 }
 
 // One load. Returns the time in ms, or -1 on error (the text goes to stderr).
-double timed_load(spp::Backend& b, const spp::ScriptSource& s, uint32_t gen)
+double timed_load(hot::Backend& b, const hot::ScriptSource& s, uint32_t gen)
 {
     const Clock::time_point t = Clock::now();
-    spp::LoadResult r = b.load(s, gen);
+    hot::LoadResult r = b.load(s, gen);
     const double ms = ms_since(t);
     if (!r)
     {
@@ -85,8 +85,8 @@ double timed_load(spp::Backend& b, const spp::ScriptSource& s, uint32_t gen)
     }
     // The Loader registers the class. This also proves that the module works,
     // and it links the runtime into this executable (the JIT code needs it).
-    spp::Loader loader;
-    const spp::ReloadResult loaded = loader.load(std::move(*r.module));
+    hot::Loader loader;
+    const hot::ReloadResult loaded = loader.load(std::move(*r.module));
     if (!loaded)
     {
         std::fprintf(stderr, "register failed: %s\n", loaded.error.c_str());
@@ -135,10 +135,10 @@ int main(int argc, char** argv)
     const std::vector<std::string> includes = split(BENCH_INCLUDES);
 
     auto session = std::make_shared<sppc::TranslatorSession>();
-    auto make = [&](bool share) -> std::unique_ptr<spp::Backend>
+    auto make = [&](bool share) -> std::unique_ptr<hot::Backend>
     {
 #if defined(BENCH_JIT)
-        spp::JitOptions o;
+        hot::JitOptions o;
         o.compiler = BENCH_CXX;
         o.include_dirs = includes;
         o.resource_dir = BENCH_RESOURCE_DIR;
@@ -146,9 +146,9 @@ int main(int argc, char** argv)
         o.pch_path = pch;
         if (share)
             o.session = session;
-        return std::make_unique<spp::JitBackend>(std::move(o));
+        return std::make_unique<hot::JitBackend>(std::move(o));
 #else
-        spp::ClangFilesOptions o;
+        hot::ClangFilesOptions o;
         o.compiler = BENCH_CXX;
         o.include_dirs = includes;
         o.resource_dir = BENCH_RESOURCE_DIR;
@@ -156,27 +156,27 @@ int main(int argc, char** argv)
         o.work_dir = std::string(BENCH_WORK_DIR) + "/bench" + std::to_string(getpid());
         std::error_code ec;
         std::filesystem::remove_all(o.work_dir, ec);
-        o.remove_work_dir_at_exit = !spp::keep_temp();
+        o.remove_work_dir_at_exit = !hot::keep_temp();
         if (share)
             o.session = session;
-        return std::make_unique<spp::ClangFilesBackend>(std::move(o));
+        return std::make_unique<hot::ClangFilesBackend>(std::move(o));
 #endif
     };
 
 #if defined(BENCH_JIT)
     if (!make_pch.empty())
     {
-        spp::JitOptions o;
+        hot::JitOptions o;
         o.compiler = BENCH_CXX;
         o.include_dirs = includes;
         o.resource_dir = BENCH_RESOURCE_DIR;
         o.extra_flags = flags;
-        spp::JitBackend b(std::move(o));
+        hot::JitBackend b(std::move(o));
         const std::string header_path = make_pch + ".hpp";
         const char* header =
             "#include <algorithm>\n#include <cstddef>\n#include <cstdint>\n#include <cstdio>\n"
             "#include <new>\n#include <string>\n#include <type_traits>\n#include <typeinfo>\n"
-            "#include <utility>\n#include \"spp/runtime.h\"\n#include \"Actor.h\"\n"
+            "#include <utility>\n#include \"hot/runtime.h\"\n#include \"Actor.h\"\n"
             "#include \"Math.h\"\n";
         std::ofstream(header_path) << header;
         std::string error;
@@ -193,9 +193,9 @@ int main(int argc, char** argv)
     }
 #endif
 
-    const spp::ScriptSource v1 = source("player_v1.hot");
-    const spp::ScriptSource v2 = source("player_v2.hot");
-    std::unique_ptr<spp::Backend> backend = make(false);
+    const hot::ScriptSource v1 = source("player_v1.hot");
+    const hot::ScriptSource v2 = source("player_v2.hot");
+    std::unique_ptr<hot::Backend> backend = make(false);
     const double cold1 = timed_load(*backend, v1, 1);
     const double cold2 = timed_load(*backend, v2, 2);
     if (cold1 < 0 || cold2 < 0)
@@ -207,7 +207,7 @@ int main(int argc, char** argv)
     double tr = 0, co = 0, ji = 0;
     for (int i = 0; i < warm; ++i)
     {
-        std::unique_ptr<spp::Backend> b = make(!no_cache);
+        std::unique_ptr<hot::Backend> b = make(!no_cache);
         const double a = timed_load(*b, v1, 1);
         const double c = timed_load(*b, v2, 2);
         if (a < 0 || c < 0)
@@ -215,7 +215,7 @@ int main(int argc, char** argv)
         w1.push_back(a);
         w2.push_back(c);
 #if defined(BENCH_JIT)
-        const spp::JitTimings t = static_cast<spp::JitBackend&>(*b).last_timings();
+        const hot::JitTimings t = static_cast<hot::JitBackend&>(*b).last_timings();
         tr = t.translate_ms, co = t.compile_ms, ji = t.jit_ms;
 #endif
     }

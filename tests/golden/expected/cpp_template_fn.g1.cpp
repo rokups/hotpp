@@ -8,7 +8,7 @@
 #include <typeinfo>
 #include <utility>
 
-#include "spp/runtime.h"
+#include "hot/runtime.h"
 
 #line 14 "cpp_template_fn.cpp.cpp"
 
@@ -16,7 +16,7 @@ constexpr uint32_t GEN = 1;
 struct SppModule;
 // The module state block of this generation. The loader sets the slot.
 static void* SppModule_slot = nullptr;
-[[maybe_unused]] SPP_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
+[[maybe_unused]] HOT_HIDDEN static SppModule* spp_mod() { return static_cast<SppModule*>(SppModule_slot); }
 struct Scaler_Shell;
 using Scaler = Scaler_Shell;
 #line 3 "cpp_template_fn.cpp"
@@ -33,12 +33,12 @@ static void SppModule__init_total(void*, void* f) { using T = int; new (f) T(0);
 #line 34 "cpp_template_fn.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
-static const spp::FieldInfo SppModule_fields[] = {
-    {"total", nullptr, spp::type_key<int>(), offsetof(SppModule, total), sizeof(int),
-     alignof(int), spp::field_flags<int>(), SppModule__init_total, spp::move_field<int>, spp::field_destroyer<int>()},
+static const hot::FieldInfo SppModule_fields[] = {
+    {"total", nullptr, hot::type_key<int>(), offsetof(SppModule, total), sizeof(int),
+     alignof(int), hot::field_flags<int>(), SppModule__init_total, hot::move_field<int>, hot::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
-static const spp::StateLayout SppModule_layout = {
+static const hot::StateLayout SppModule_layout = {
     "SppModule", sizeof(SppModule), alignof(SppModule), 1, SppModule_fields,
 };
 
@@ -61,22 +61,22 @@ enum : unsigned {
     SLOT_COUNT = 3,
 };
 
-extern spp::ClassRecord Scaler_record;
+extern hot::ClassRecord Scaler_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
-struct Scaler_Shell final : Actor, spp::ShellBase {
+struct Scaler_Shell final : Actor, hot::ShellBase {
 #line 15 "cpp_template_fn.cpp"
     template <class... A>
 #line 15 "cpp_template_fn.cpp"
-    explicit Scaler_Shell(spp::Construct, A&&... a) : Actor(std::forward<A>(a)...)
+    explicit Scaler_Shell(hot::Construct, A&&... a) : Actor(std::forward<A>(a)...)
 #line 15 "cpp_template_fn.cpp"
     {
 #line 15 "cpp_template_fn.cpp"
-        spp::init_state(this, &Scaler_record);
+        hot::init_state(this, &Scaler_record);
 #line 15 "cpp_template_fn.cpp"
     }
 #line 15 "cpp_template_fn.cpp"
-    ~Scaler_Shell() override { spp::destroy_state(this); }
+    ~Scaler_Shell() override { hot::destroy_state(this); }
 #line 81 "cpp_template_fn.cpp.cpp"
 
 #line 15 "cpp_template_fn.cpp"
@@ -84,7 +84,7 @@ struct Scaler_Shell final : Actor, spp::ShellBase {
 #line 15 "cpp_template_fn.cpp"
     {
 #line 15 "cpp_template_fn.cpp"
-        return spp::call<void(Actor*, float)>(this, SLOT_Tick, a0);
+        return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 15 "cpp_template_fn.cpp"
     }
 #line 91 "cpp_template_fn.cpp.cpp"
@@ -94,7 +94,7 @@ struct Scaler_Shell final : Actor, spp::ShellBase {
 #line 15 "cpp_template_fn.cpp"
     {
 #line 15 "cpp_template_fn.cpp"
-        return spp::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
+        return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 15 "cpp_template_fn.cpp"
     }
 #line 101 "cpp_template_fn.cpp.cpp"
@@ -104,7 +104,7 @@ struct Scaler_Shell final : Actor, spp::ShellBase {
 #line 15 "cpp_template_fn.cpp"
     {
 #line 15 "cpp_template_fn.cpp"
-        return spp::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
+        return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 15 "cpp_template_fn.cpp"
     }
 #line 111 "cpp_template_fn.cpp.cpp"
@@ -112,14 +112,14 @@ struct Scaler_Shell final : Actor, spp::ShellBase {
 
 // ---------------------------------------------------------------- state
 struct ScalerState_g1 {
-    spp::ShellBase* __spp_owner;
+    hot::ShellBase* __spp_owner;
     int last;
 
     void ctor();
     void Tick(float dt);
     // Not overridden: call the implementation of Actor.
 #line 15 "cpp_template_fn.cpp"
-    SPP_NODEBUG void __fwd_TakeDamage_f(float a0)
+    HOT_NODEBUG void __fwd_TakeDamage_f(float a0)
 #line 15 "cpp_template_fn.cpp"
     {
 #line 15 "cpp_template_fn.cpp"
@@ -129,7 +129,7 @@ struct ScalerState_g1 {
 #line 130 "cpp_template_fn.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 15 "cpp_template_fn.cpp"
-    SPP_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
+    HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
 #line 15 "cpp_template_fn.cpp"
     {
 #line 15 "cpp_template_fn.cpp"
@@ -146,26 +146,26 @@ static void Scaler__init_last(void*, void* f) { using T = int; new (f) T(0); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static_assert(offsetof(ScalerState_g1, __spp_owner) == 0, "the owner pointer must be the first member");
-static const spp::FieldInfo Scaler_fields[] = {
-    {"last", nullptr, spp::type_key<int>(), offsetof(ScalerState_g1, last), sizeof(int),
-     alignof(int), spp::field_flags<int>(), Scaler__init_last, spp::move_field<int>, spp::field_destroyer<int>()},
+static const hot::FieldInfo Scaler_fields[] = {
+    {"last", nullptr, hot::type_key<int>(), offsetof(ScalerState_g1, last), sizeof(int),
+     alignof(int), hot::field_flags<int>(), Scaler__init_last, hot::move_field<int>, hot::field_destroyer<int>()},
 };
 #pragma clang diagnostic pop
 
-static const spp::StateLayout Scaler_layout = {
+static const hot::StateLayout Scaler_layout = {
     "ScalerState_g1", sizeof(ScalerState_g1), alignof(ScalerState_g1), 1, Scaler_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-SPP_HIDDEN ScalerState_g1* state_of(Scaler_Shell* __self)
+HOT_HIDDEN ScalerState_g1* state_of(Scaler_Shell* __self)
 {
     return static_cast<ScalerState_g1*>(__self->state);
 }
 
 
-[[maybe_unused]] SPP_HIDDEN static void Scaler__ctor(Scaler_Shell* __self);
+[[maybe_unused]] HOT_HIDDEN static void Scaler__ctor(Scaler_Shell* __self);
 #line 20 "cpp_template_fn.cpp"
-[[maybe_unused]] SPP_HIDDEN static auto Scaler__super_args()
+[[maybe_unused]] HOT_HIDDEN static auto Scaler__super_args()
 #line 20 "cpp_template_fn.cpp"
 {
 #line 20 "cpp_template_fn.cpp"
@@ -173,7 +173,7 @@ SPP_HIDDEN ScalerState_g1* state_of(Scaler_Shell* __self)
 #line 20 "cpp_template_fn.cpp"
 }
 #line 20 "cpp_template_fn.cpp"
-SPP_HIDDEN static auto Scaler__plan()
+HOT_HIDDEN static auto Scaler__plan()
 #line 20 "cpp_template_fn.cpp"
 {
 #line 20 "cpp_template_fn.cpp"
@@ -183,7 +183,7 @@ SPP_HIDDEN static auto Scaler__plan()
 #line 20 "cpp_template_fn.cpp"
 template <class Chain>
 #line 20 "cpp_template_fn.cpp"
-SPP_HIDDEN static void Scaler__ctor_chain(Scaler_Shell* __self, [[maybe_unused]] Chain& __chain)
+HOT_HIDDEN static void Scaler__ctor_chain(Scaler_Shell* __self, [[maybe_unused]] Chain& __chain)
 #line 20 "cpp_template_fn.cpp"
 {
 #line 20 "cpp_template_fn.cpp"
@@ -195,7 +195,7 @@ using Scaler_SuperArgs = decltype(Scaler__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
 #line 15 "cpp_template_fn.cpp"
-SPP_NODEBUG static spp::ShellBase* Scaler__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Scaler__construct(const char* key, const void* args)
 #line 15 "cpp_template_fn.cpp"
 {
 #line 15 "cpp_template_fn.cpp"
@@ -203,7 +203,7 @@ SPP_NODEBUG static spp::ShellBase* Scaler__construct(const char* key, const void
 #line 15 "cpp_template_fn.cpp"
         const auto& t = *static_cast<const Scaler_SuperArgs*>(args);
 #line 15 "cpp_template_fn.cpp"
-        return std::apply([](auto&... x) -> spp::ShellBase* { return new Scaler_Shell(spp::Construct{}, x...); }, t);
+        return std::apply([](auto&... x) -> hot::ShellBase* { return new Scaler_Shell(hot::Construct{}, x...); }, t);
 #line 15 "cpp_template_fn.cpp"
     }
 #line 15 "cpp_template_fn.cpp"
@@ -215,13 +215,13 @@ SPP_NODEBUG static spp::ShellBase* Scaler__construct(const char* key, const void
 static const char* const Scaler__construct_keys[] = {typeid(Scaler_SuperArgs).name(), nullptr};
 
 #line 20 "cpp_template_fn.cpp"
-SPP_HIDDEN static Scaler_Shell* Scaler__build([[maybe_unused]] bool __note)
+HOT_HIDDEN static Scaler_Shell* Scaler__build([[maybe_unused]] bool __note)
 #line 20 "cpp_template_fn.cpp"
 {
 #line 20 "cpp_template_fn.cpp"
     auto __plan = Scaler__plan();
 #line 20 "cpp_template_fn.cpp"
-    auto* __self = static_cast<Scaler_Shell*>(spp::construct_shell(&Scaler_record, typeid(Scaler_SuperArgs).name(), &__plan.first, __note));
+    auto* __self = static_cast<Scaler_Shell*>(hot::construct_shell(&Scaler_record, typeid(Scaler_SuperArgs).name(), &__plan.first, __note));
 #line 20 "cpp_template_fn.cpp"
     try {
 #line 20 "cpp_template_fn.cpp"
@@ -240,7 +240,7 @@ SPP_HIDDEN static Scaler_Shell* Scaler__build([[maybe_unused]] bool __note)
 }
 #line 242 "cpp_template_fn.cpp.cpp"
 #line 20 "cpp_template_fn.cpp"
-[[maybe_unused]] SPP_HIDDEN static Scaler_Shell* Scaler__new()
+[[maybe_unused]] HOT_HIDDEN static Scaler_Shell* Scaler__new()
 #line 20 "cpp_template_fn.cpp"
 {
 #line 20 "cpp_template_fn.cpp"
@@ -252,7 +252,7 @@ SPP_HIDDEN static Scaler_Shell* Scaler__build([[maybe_unused]] bool __note)
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 20 "cpp_template_fn.cpp"
-SPP_NODEBUG static spp::ShellBase* Scaler__new_default()
+HOT_NODEBUG static hot::ShellBase* Scaler__new_default()
 #line 20 "cpp_template_fn.cpp"
 {
 #line 20 "cpp_template_fn.cpp"
@@ -262,7 +262,7 @@ SPP_NODEBUG static spp::ShellBase* Scaler__new_default()
 #line 263 "cpp_template_fn.cpp.cpp"
 
 #line 20 "cpp_template_fn.cpp"
-[[maybe_unused]] SPP_HIDDEN static void Scaler__ctor(Scaler_Shell* __self)
+[[maybe_unused]] HOT_HIDDEN static void Scaler__ctor(Scaler_Shell* __self)
 #line 20 "cpp_template_fn.cpp"
 {
 #line 20 "cpp_template_fn.cpp"
@@ -275,17 +275,17 @@ void ScalerState_g1::ctor()
 #line 20 "cpp_template_fn.cpp"
 {
 #line 20 "cpp_template_fn.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 20 "cpp_template_fn.cpp"
-        spp::stale_call("Scaler::Scaler");
+        hot::stale_call("Scaler::Scaler");
 #line 20 "cpp_template_fn.cpp"
         return;
 #line 20 "cpp_template_fn.cpp"
     }
 #line 20 "cpp_template_fn.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Scaler_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Scaler_Shell*>(this->__spp_owner);
 #line 20 "cpp_template_fn.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 20 "cpp_template_fn.cpp"
 
 #line 20 "cpp_template_fn.cpp"
@@ -297,17 +297,17 @@ void ScalerState_g1::Tick(float dt)
 #line 22 "cpp_template_fn.cpp"
 {
 #line 22 "cpp_template_fn.cpp"
-    if (SPP_UNLIKELY(spp::active_generation != GEN)) {
+    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
 #line 22 "cpp_template_fn.cpp"
-        spp::stale_call("Scaler::Tick(float)");
+        hot::stale_call("Scaler::Tick(float)");
 #line 22 "cpp_template_fn.cpp"
         return;
 #line 22 "cpp_template_fn.cpp"
     }
 #line 22 "cpp_template_fn.cpp"
-    SPP_NODEBUG_LOCAL auto* __self = static_cast<Scaler_Shell*>(this->__spp_owner);
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Scaler_Shell*>(this->__spp_owner);
 #line 22 "cpp_template_fn.cpp"
-    SPP_NODEBUG_LOCAL auto* __st = this;
+    HOT_NODEBUG_LOCAL auto* __st = this;
 #line 23 "cpp_template_fn.cpp"
 
         spp_mod()->total += 2;
@@ -319,27 +319,27 @@ void ScalerState_g1::Tick(float dt)
 #line 320 "cpp_template_fn.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
-static const spp::SlotFn Scaler_slots[SLOT_COUNT] = {
-    reinterpret_cast<spp::SlotFn>(&ScalerState_g1::Tick),
-    reinterpret_cast<spp::SlotFn>(&ScalerState_g1::__fwd_TakeDamage_f),
-    reinterpret_cast<spp::SlotFn>(&ScalerState_g1::__fwd_TakeDamage_Af),
+static const hot::SlotFn Scaler_slots[SLOT_COUNT] = {
+    reinterpret_cast<hot::SlotFn>(&ScalerState_g1::Tick),
+    reinterpret_cast<hot::SlotFn>(&ScalerState_g1::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&ScalerState_g1::__fwd_TakeDamage_Af),
 };
 
-spp::ClassRecord Scaler_record = {
+hot::ClassRecord Scaler_record = {
     "Scaler", GEN, Scaler_slots, SLOT_COUNT, &Scaler_layout, nullptr,
-    "Actor", spp::shell_layout_hash("Actor", sizeof(Scaler_Shell), alignof(Scaler_Shell), 3),
+    "Actor", hot::shell_layout_hash("Actor", sizeof(Scaler_Shell), alignof(Scaler_Shell), 3),
     nullptr,
     &Scaler__construct, typeid(Scaler_SuperArgs).name(), &Scaler__new_default, nullptr, nullptr,
 };
 
 #line 15 "cpp_template_fn.cpp"
-SPP_NODEBUG static spp::Instance Scaler_create()
+HOT_NODEBUG static hot::Instance Scaler_create()
 #line 15 "cpp_template_fn.cpp"
 {
 #line 15 "cpp_template_fn.cpp"
-    spp::ScriptEntry entry;  // the creation is an entry (S27)
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 15 "cpp_template_fn.cpp"
-    spp::ShellBase* s = nullptr;
+    hot::ShellBase* s = nullptr;
 #line 15 "cpp_template_fn.cpp"
     if (Scaler_record.new_default) {
 #line 15 "cpp_template_fn.cpp"
@@ -360,7 +360,7 @@ SPP_NODEBUG static spp::Instance Scaler_create()
 }
 #line 362 "cpp_template_fn.cpp.cpp"
 
-extern "C" void script_register(spp::Registry& reg)
+extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_module_state(&SppModule_layout, &SppModule_slot);
     reg.add(&Scaler_record, &Scaler_create);

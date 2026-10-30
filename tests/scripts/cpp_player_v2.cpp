@@ -65,13 +65,13 @@ public:
     // The convert hook of the field level.
     float convert_level(int old) { return old * 10.0f; }
 
-    void onReload(const spp::OldState& old)
+    void onReload(const hot::OldState& old)
     {
         if (old.has("hp") && old.get<float>("hp") > 100.0f)
             health = 100.0f;
     }
 
-    SPP_ALIAS("hp") float health = 100.0f;
+    HOT_ALIAS("hp") float health = 100.0f;
     float speed = 5.0f;
     std::string target;
     Point p{1, 2};

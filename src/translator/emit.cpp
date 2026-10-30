@@ -548,7 +548,7 @@ struct StmtPrinter
         e.put(";");
     }
     // A finally block prints as an RAII guard before the try:
-    //   { spp::Finally __fin_N([&] { body }); try { ... } catch ... }
+    //   { hot::Finally __fin_N([&] { body }); try { ... } catch ... }
     // The guard runs the body when the outer block ends, on each path out of it.
     // N is unique in the Emitter, so a nested try gets a different name.
     void operator()(const TryStmt& n) const
@@ -557,7 +557,7 @@ struct StmtPrinter
         {
             e.put("{", n.pos);
             e.space();
-            e.put("spp::Finally __fin_" + std::to_string(e.next_finally()) + "([&" + n.finally_captures + "]");
+            e.put("hot::Finally __fin_" + std::to_string(e.next_finally()) + "([&" + n.finally_captures + "]");
             block(*n.finally_block, e);
             e.put(")");
             e.put(";");

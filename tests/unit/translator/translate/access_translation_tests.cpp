@@ -1,6 +1,6 @@
 // Tests for the access words public, protected and private on the members of a script class.
 // The checker enforces them. The generated C++ keeps all members public.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>

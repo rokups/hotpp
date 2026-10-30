@@ -8,10 +8,10 @@
     #include <intrin.h>
 #endif
 
-#include "spp/runtime/compat.h"
-#include "spp/runtime/hidden.h"
+#include "hot/runtime/compat.h"
+#include "hot/runtime/hidden.h"
 
-namespace spp
+namespace hot
 {
 
 // The generation that is live now. A generation function checks it.
@@ -25,7 +25,7 @@ extern uint32_t active_generation;
 // of a global flag and one branch that is not taken.
 //
 // EntryCounters. For an engine with no frame boundary. Each script entry (a slot call through
-// spp::call, a thunk, a closure call, a script destructor) is a ScriptEntry. The outermost entry
+// hot::call, a thunk, a closure call, a script destructor) is a ScriptEntry. The outermost entry
 // of a thread increments one global count of active entries. A nested entry on the same thread
 // (script -> native -> script) only increments a thread-local depth, so it never blocks.
 // A commit (CommitWindow) closes the gate and waits until the count is zero. A new outermost
@@ -42,14 +42,14 @@ extern uint32_t active_generation;
 //     reads the fields of a script object holds a ScriptEntry. Object creation and
 //     destruction stay on one thread at a time (the rule of the live object table).
 //
-// Define SPP_NO_ENTRY_COUNTERS to remove the mode at compile time. Then a ScriptEntry is empty.
+// Define HOT_NO_ENTRY_COUNTERS to remove the mode at compile time. Then a ScriptEntry is empty.
 enum class SyncMode : uint8_t
 {
     StopTheWorld,
     EntryCounters,
 };
 
-#ifdef SPP_NO_ENTRY_COUNTERS
+#ifdef HOT_NO_ENTRY_COUNTERS
 inline constexpr bool kEntryCounters = false;
 #else
 inline constexpr bool kEntryCounters = true;
@@ -60,7 +60,7 @@ namespace detail
 // True in EntryCounters mode. Loader::set_sync_mode writes it.
 // A plain bool: the accessors below use atomic builtins, so no std frame appears in the debugger.
 extern bool g_entry_counters;
-SPP_HIDDEN bool load_entry_counters()
+HOT_HIDDEN bool load_entry_counters()
 {
 #if defined(_MSC_VER) && !defined(__clang__)
     // unverified: not built on MSVC. A volatile load of one byte, then a compiler barrier.
@@ -71,7 +71,7 @@ SPP_HIDDEN bool load_entry_counters()
     return __atomic_load_n(&g_entry_counters, __ATOMIC_RELAXED);
 #endif
 }
-SPP_HIDDEN void store_entry_counters(bool value)
+HOT_HIDDEN void store_entry_counters(bool value)
 {
 #if defined(_MSC_VER) && !defined(__clang__)
     // unverified: not built on MSVC. An interlocked exchange of one byte is a full barrier.
@@ -80,12 +80,12 @@ SPP_HIDDEN void store_entry_counters(bool value)
     __atomic_store_n(&g_entry_counters, value, __ATOMIC_SEQ_CST);
 #endif
 }
-SPP_NODEBUG void enter_script(); // the slow path of ScriptEntry (threads.cpp)
-SPP_NODEBUG void leave_script();
+HOT_NODEBUG void enter_script(); // the slow path of ScriptEntry (threads.cpp)
+HOT_NODEBUG void leave_script();
 } // namespace detail
 
 // True when the process uses the EntryCounters mode.
-SPP_HIDDEN bool entry_counters_enabled()
+HOT_HIDDEN bool entry_counters_enabled()
 {
     if constexpr (kEntryCounters)
         return detail::load_entry_counters();
@@ -98,15 +98,15 @@ SPP_HIDDEN bool entry_counters_enabled()
 class ScriptEntry
 {
 public:
-    SPP_HIDDEN ScriptEntry()
+    HOT_HIDDEN ScriptEntry()
         : counted_(entry_counters_enabled())
     {
-        if (SPP_UNLIKELY(counted_))
+        if (HOT_UNLIKELY(counted_))
             detail::enter_script();
     }
-    SPP_HIDDEN ~ScriptEntry()
+    HOT_HIDDEN ~ScriptEntry()
     {
-        if (SPP_UNLIKELY(counted_))
+        if (HOT_UNLIKELY(counted_))
             detail::leave_script();
     }
     ScriptEntry(const ScriptEntry&) = delete;
@@ -206,7 +206,7 @@ public:
 #endif
 
 // Called by a generation function when its generation is not live.
-SPP_NODEBUG void stale_call(const char* what);
+HOT_NODEBUG void stale_call(const char* what);
 
 // The number of stale calls that the guard ignored since the start.
 uint64_t stale_call_count();
@@ -216,8 +216,8 @@ uint64_t stale_call_count();
 // generation. The counts are atomic: any thread can pin or unpin. A generation
 // number maps to one of 65536 counters; two numbers that are 65536 apart share a
 // counter. This can only delay an unload.
-SPP_NODEBUG void pin(uint32_t generation);
-SPP_NODEBUG void unpin(uint32_t generation);
+HOT_NODEBUG void pin(uint32_t generation);
+HOT_NODEBUG void unpin(uint32_t generation);
 uint32_t pin_count(uint32_t generation);
 
-} // namespace spp
+} // namespace hot

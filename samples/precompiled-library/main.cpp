@@ -1,8 +1,8 @@
 // The program of the sample. It loads a script library that the build made. The program has
 // no backend and no compiler at run time. argv[1] is the path of the library.
 #include "Creature.h"
-#include "spp/module.h"
-#include "spp/runtime/loader.h"
+#include "hot/module.h"
+#include "hot/runtime/loader.h"
 
 #include <cstdio>
 #include <memory>
@@ -15,20 +15,20 @@ int main(int argc, char** argv)
         return 2;
     }
     // The loader is first, so it is destroyed last. The script object dies before it.
-    spp::Loader loader;
-    spp::LoadResult module = spp::module_from_library(argv[1]);
+    hot::Loader loader;
+    hot::LoadResult module = hot::module_from_library(argv[1]);
     if (!module)
     {
         std::fprintf(stderr, "sample_precompiled: %s\n", module.error.c_str());
         return 1;
     }
-    const spp::ReloadResult loaded = loader.load(std::move(*module.module));
+    const hot::ReloadResult loaded = loader.load(std::move(*module.module));
     if (!loaded)
     {
         std::fprintf(stderr, "sample_precompiled: load failed: %s\n", loaded.error.c_str());
         return 1;
     }
-    const spp::ClassEntry* entry = loader.find("Wolf");
+    const hot::ClassEntry* entry = loader.find("Wolf");
     if (!entry)
     {
         std::fprintf(stderr, "sample_precompiled: the class Wolf is not available\n");

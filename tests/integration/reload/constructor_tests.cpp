@@ -1,6 +1,6 @@
 // Reload tests of the script constructor, the destructor and "new" of a script class (S4)
 // with the backend that SPP_BACKEND selected.
-#include "spp/backend.h"
+#include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
 #include "support/script_files.h"
@@ -19,13 +19,13 @@ using test_support::source;
 
 template <class T> T* fld(Session& s, const char* name)
 {
-    return spp::field_ptr<T>(s.inst.shell, name);
+    return hot::field_ptr<T>(s.inst.shell, name);
 }
 
 // A script object builds a Squad with "new". The constructor runs once for each new object.
 TEST_P(BackendTests, NewBuildsAScriptObjectAndRunsTheConstructor)
 {
-    spp::LoadResult v1 = backend->load(source("ctor_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("ctor_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Spawner"));
@@ -44,7 +44,7 @@ TEST_P(BackendTests, NewBuildsAScriptObjectAndRunsTheConstructor)
 // The engine factory runs the constructor with default arguments.
 TEST_P(BackendTests, FactoryRunsTheConstructorOnce)
 {
-    spp::LoadResult v1 = backend->load(source("ctor_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("ctor_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Squad"));
@@ -57,9 +57,9 @@ TEST_P(BackendTests, FactoryRunsTheConstructorOnce)
 // A "new" after the reload uses the new constructor body.
 TEST_P(BackendTests, ReloadDoesNotRerunTheConstructor)
 {
-    spp::LoadResult v1 = backend->load(source("ctor_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("ctor_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("ctor_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("ctor_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Spawner"));
@@ -71,7 +71,7 @@ TEST_P(BackendTests, ReloadDoesNotRerunTheConstructor)
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt); // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     testing::internal::CaptureStdout();
     s.world.Tick(kDt); // the first Tick of generation 2
     const std::string log = testing::internal::GetCapturedStdout();
@@ -84,9 +84,9 @@ TEST_P(BackendTests, ReloadDoesNotRerunTheConstructor)
 // A Squad that exists before the reload keeps its state. The constructor does not run again.
 TEST_P(BackendTests, OldObjectKeepsItsConstructorState)
 {
-    spp::LoadResult v1 = backend->load(source("ctor_v1.hot"), 1);
+    hot::LoadResult v1 = backend->load(source("ctor_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("ctor_v2.hot"), 2);
+    hot::LoadResult v2 = backend->load(source("ctor_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Squad"));

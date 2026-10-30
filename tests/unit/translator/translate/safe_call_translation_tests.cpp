@@ -1,5 +1,5 @@
 // Tests for the safe call "?." at the start of an expression statement.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/check_translate_test_support.h"
 
 #include <gtest/gtest.h>
@@ -12,21 +12,21 @@ TEST(SafeCallTranslation, CallOnAHandleChecksTheHandle)
 {
     const sppc::TranslateResult r = check_translate(kDefaultShared, "    void Run(Weapon m) { m?.Draw(1); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "{ if (m) spp::deref(m).Draw(1); }")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "{ if (m) hot::deref(m).Draw(1); }")) << r.cpp;
 }
 
 TEST(SafeCallTranslation, AssignmentToAFieldChecksTheHandle)
 {
     const sppc::TranslateResult r = check_translate(kDefaultShared, "    void Run(Weapon m) { m?.dmg = 3; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "{ if (m) spp::deref(m).dmg = 3; }")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "{ if (m) hot::deref(m).dmg = 3; }")) << r.cpp;
 }
 
 TEST(SafeCallTranslation, PointerReceiverChecksThePointer)
 {
     const sppc::TranslateResult r = check_translate("", "    void Run(Weapon* p) { p?.Draw(); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "{ if (p) spp::deref(p).Draw(); }")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "{ if (p) hot::deref(p).Draw(); }")) << r.cpp;
 }
 
 TEST(SafeCallTranslation, ReceiverThatIsNotAnameRunsOnce)
@@ -35,7 +35,7 @@ TEST(SafeCallTranslation, ReceiverThatIsNotAnameRunsOnce)
         check_translate(kDefaultShared, "    Weapon Get() { return null; }\n    void Run() { this.Get()?.Draw(); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "auto __safe0 = ")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "if (__safe0) spp::deref(__safe0).Draw();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "if (__safe0) hot::deref(__safe0).Draw();")) << r.cpp;
 }
 
 TEST(SafeCallTranslation, SafeCallInsideAnotherExpressionIsAnError)
@@ -62,5 +62,5 @@ TEST(SafeCallTranslation, PropertyReceiverRunsTheGetterOnce)
         check_translate(kDefaultShared, "    Weapon W { get; set; }\n    void Run() { W?.Draw(1); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "auto __safe0 = ")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "if (__safe0) spp::deref(__safe0).Draw(1);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "if (__safe0) hot::deref(__safe0).Draw(1);")) << r.cpp;
 }

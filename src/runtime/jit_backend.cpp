@@ -1,7 +1,7 @@
-#include "spp/jit_backend.h"
+#include "hot/jit_backend.h"
 
-#include "spp/config.h"
-#include "spp/sppc_lib.h"
+#include "hot/config.h"
+#include "hot/sppc_lib.h"
 
 #include <clang/Basic/Diagnostic.h>
 #include <clang/CodeGen/CodeGenAction.h>
@@ -27,7 +27,7 @@
 #include <filesystem>
 #include <mutex>
 
-namespace spp
+namespace hot
 {
 
 namespace
@@ -392,4 +392,4 @@ bool JitBackend::make_pch(const std::string& header_path, const std::string& out
     return ok && !ci.getDiagnostics().hasErrorOccurred();
 }
 
-} // namespace spp
+} // namespace hot

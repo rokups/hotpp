@@ -1,5 +1,5 @@
 // Tests for sppc::translate with the [alias] attribute of a field.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>

@@ -1,4 +1,4 @@
-#include "spp/scratch.h"
+#include "hot/scratch.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -8,7 +8,7 @@
     #define SPP_KEEP_TEMP_DEFAULT 0
 #endif
 
-namespace spp
+namespace hot
 {
 
 namespace fs = std::filesystem;
@@ -59,4 +59,4 @@ ScratchDir::~ScratchDir()
         remove_scratch(path_);
 }
 
-} // namespace spp
+} // namespace hot

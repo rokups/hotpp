@@ -14,7 +14,7 @@
   <Type Name="*_Shell">
     <DisplayString>script object</DisplayString>
     <Expand>
-      <ExpandedItem>(spp::ShellBase*)this,nd</ExpandedItem>
+      <ExpandedItem>(hot::ShellBase*)this,nd</ExpandedItem>
     </Expand>
   </Type>
   <!-- A handle to a shell. -->

@@ -9,7 +9,7 @@
 //  - The script uses "." for a scope and for a member access. A name with more than one part
 //    is a member chain when the first part is a local. Else it is a scope chain and the
 //    parts join with "::". A member access on a value (not "this" and not "base") becomes
-//    "spp::deref(object).member". The helper works for a pointer and for a reference.
+//    "hot::deref(object).member". The helper works for a pointer and for a reference.
 //  - "this.P" and a bare "P" (not a local) name the property P of the class. A read becomes
 //    "Cls__get_P(self)". The statement "P = e;" becomes "Cls__set_P(self, e);". The statements
 //    "P op= e;", "++P;" and "P++;" become "Cls__set_P(self, Cls__get_P(self) op (e));".
@@ -17,18 +17,18 @@
 //    (S20b): a script class gives its accessors, a native type gives the native member. The
 //    native base of the family and an unknown type keep the name rule: P must be a property
 //    of the class. "base.P" is not a property.
-//    The object becomes "spp::shell_of<Cls_Shell>(obj, "Cls")". The helper checks at run
+//    The object becomes "hot::shell_of<Cls_Shell>(obj, "Cls")". The helper checks at run
 //    time that the object is a script object of the class. The C++ compiler rejects an
 //    object that is not of the native base type. A read becomes "Cls__get_P(shell)".
 //  - A write that gives a value uses a helper of runtime.h. So "a = this.P = 1" and
-//    "x = (p.P += 2)" compile. "spp::prop_set" gives the assigned value.
-//    "spp::prop_update" gives the new value. "spp::prop_post" ("P++") gives the old
+//    "x = (p.P += 2)" compile. "hot::prop_set" gives the assigned value.
+//    "hot::prop_update" gives the new value. "hot::prop_post" ("P++") gives the old
 //    value. A compound write on another object also uses prop_update in a statement. The
 //    helper evaluates the object once.
 //  - Type-directed access. When the type of "obj" is a script class C (see RCtx), "obj.f" becomes
-//    "state_of(spp::shell_of<C_Shell>(obj, "C"))->f" and "obj.M(a)" becomes
-//    "C__M(spp::shell_of<C_Shell>(obj, "C"), a)". The helper throws std::runtime_error for a
-//    null handle. A bare "this" becomes "spp::handle_from_this<H>(self)" where a handle type is
+//    "state_of(hot::shell_of<C_Shell>(obj, "C"))->f" and "obj.M(a)" becomes
+//    "C__M(hot::shell_of<C_Shell>(obj, "C"), a)". The helper throws std::runtime_error for a
+//    null handle. A bare "this" becomes "hot::handle_from_this<H>(self)" where a handle type is
 //    expected: a "return", an initializer, an assignment and an argument of a script function.
 #pragma once
 
@@ -98,7 +98,7 @@ struct RCtx
     // The virtuals of the native interface bases (design 4.4): the name to the interface base.
     // "base.F()" of such a virtual calls the implementation of the interface base.
     std::map<std::string, std::string> interface_virtuals;
-    // Set to true when a bare "this" becomes a handle (spp::handle_from_this). The translator
+    // Set to true when a bare "this" becomes a handle (hot::handle_from_this). The translator
     // then gives a native-base shell the base std::enable_shared_from_this. May be null.
     bool* handle_this = nullptr;
     // String interpolation (design 7.3): "std" (the default) or "fmt". Set to true when a

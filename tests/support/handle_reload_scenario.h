@@ -21,12 +21,12 @@ using test_support::kDt;
 using test_support::Session;
 
 // A handle field (std::shared_ptr<Weapon>) must keep its object across reloads.
-inline void run_handle_reload(spp::Module v1, spp::Module v2, spp::Module v1_again)
+inline void run_handle_reload(hot::Module v1, hot::Module v2, hot::Module v1_again)
 {
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(v1), "Knight"));
     s.commit_at_frame_boundary();
-    auto handle = [&] { return spp::field_ptr<std::shared_ptr<Weapon>>(s.inst.shell, "weapon"); };
+    auto handle = [&] { return hot::field_ptr<std::shared_ptr<Weapon>>(s.inst.shell, "weapon"); };
 
     s.world.Tick(kDt);
     ASSERT_NE(handle(), nullptr);
@@ -41,7 +41,7 @@ inline void run_handle_reload(spp::Module v1, spp::Module v2, spp::Module v1_aga
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(v2)));
     s.world.Tick(kDt);
     ASSERT_FALSE(s.commit_failed);
-    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(hot::active_generation, 2u);
     ASSERT_NE(handle(), nullptr);
     EXPECT_EQ(handle()->get(), raw);
     EXPECT_EQ(handle()->use_count(), 1);

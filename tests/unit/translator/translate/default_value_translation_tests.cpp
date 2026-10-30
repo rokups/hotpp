@@ -1,5 +1,5 @@
 // Tests for sppc::translate with fields and locals that have no initializer.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/stub_translate_test_support.h"
 #include "support/translator_test_support.h"
 

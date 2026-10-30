@@ -2,7 +2,7 @@
 // executable only. A shared library then uses the executable symbols.
 #include "Actor.h"
 
-#include "spp/runtime.h"
+#include "hot/runtime.h"
 
 #include <condition_variable>
 #include <cstdio>
@@ -179,7 +179,7 @@ void World::AddTimer(float seconds, std::function<void()> fn)
 
 void World::TickActor(Actor* actor, float dt)
 {
-    spp::ScriptTickScope scope; // the debug check of the safe point
+    hot::ScriptTickScope scope; // the debug check of the safe point
     actor->Tick(dt);
     if (observer_)
         observer_(actor);

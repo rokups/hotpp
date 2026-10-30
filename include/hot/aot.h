@@ -2,7 +2,7 @@
 // There is no loader, no reload, no JIT and no Clang at run time.
 //
 // "sppc --aot" writes the C++ of each script and one registration file. The registration
-// file defines the constant table spp::aot_table. The table lists the register function
+// file defines the constant table hot::aot_table. The table lists the register function
 // of each script. A script registers its classes through the same Registry calls as a
 // generation module. The class records, the slot tables and the factories are constant data
 // of the binary.
@@ -10,15 +10,15 @@
 // A program with AOT scripts links spp_aot (the core of the runtime) and the static
 // library of the scripts. It must not link spp_runtime (loader, migration, dlopen).
 #pragma once
-#include "spp/runtime/migration.h"
-#include "spp/runtime/records.h"
-#include "spp/runtime/registry.h"
+#include "hot/runtime/migration.h"
+#include "hot/runtime/records.h"
+#include "hot/runtime/registry.h"
 
 #include <cstddef>
 #include <string>
 #include <vector>
 
-namespace spp
+namespace hot
 {
 
 // One script of the AOT table.
@@ -80,4 +80,4 @@ private:
     size_t script_count_ = 0;
 };
 
-} // namespace spp
+} // namespace hot

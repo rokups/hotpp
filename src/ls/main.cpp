@@ -12,15 +12,15 @@ int main(int argc, char** argv)
     for (const std::string& a : args)
         if (a == "--help" || a == "-h")
         {
-            std::fputs(spp::ls::usage_text(), stdout);
+            std::fputs(hot::ls::usage_text(), stdout);
             return 0;
         }
-    spp::ls::ServerOptions options;
+    hot::ls::ServerOptions options;
     std::string error;
-    if (!spp::ls::parse_arguments(args, options, error))
+    if (!hot::ls::parse_arguments(args, options, error))
     {
-        std::fprintf(stderr, "spp-ls: error: %s\n%s", error.c_str(), spp::ls::usage_text());
+        std::fprintf(stderr, "spp-ls: error: %s\n%s", error.c_str(), hot::ls::usage_text());
         return 2;
     }
-    return spp::ls::run_server(0, 1, options);
+    return hot::ls::run_server(0, 1, options);
 }

@@ -1,14 +1,14 @@
 // The registry that a generation module fills in script_register.
 #pragma once
-#include "spp/runtime/hidden.h"
-#include "spp/runtime/migration.h"
-#include "spp/runtime/records.h"
+#include "hot/runtime/hidden.h"
+#include "hot/runtime/migration.h"
+#include "hot/runtime/records.h"
 
 #include <cstdint>
 #include <string>
 #include <unordered_map>
 
-namespace spp
+namespace hot
 {
 
 // The module state block of a generation (design 5.3, 4.7): the module-level script variables.
@@ -44,11 +44,11 @@ public:
     void add(ClassRecord* record, Factory create);
     // A thunk is a stable function address for a native delegate (section 4.11). The first
     // registration of a key keeps its address (append-only).
-    SPP_NODEBUG void add_thunk(const std::string& name, void* fn);
+    HOT_NODEBUG void add_thunk(const std::string& name, void* fn);
     // A thunk for a changed signature of a script function (design 5.3). "sig" is
     // typeid(Sig).name() of the slot signature. "slot" is the slot that the thunk calls.
-    SPP_NODEBUG void add_thunk(const std::string& name, void* fn, const char* sig, unsigned slot);
-    SPP_NODEBUG void add_thunk(const ThunkEntry& entry);
+    HOT_NODEBUG void add_thunk(const std::string& name, void* fn, const char* sig, unsigned slot);
+    HOT_NODEBUG void add_thunk(const ThunkEntry& entry);
     const ClassEntry* find(const std::string& name) const;
     ClassEntry* find(const std::string& name);
     // The thunk of the latest signature of a name, or the thunk with this exact key.
@@ -72,4 +72,4 @@ private:
     ModuleStateInfo module_state_;
 };
 
-} // namespace spp
+} // namespace hot

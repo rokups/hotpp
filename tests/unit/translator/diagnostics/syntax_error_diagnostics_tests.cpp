@@ -1,5 +1,5 @@
 // Tests for the error text of the removed and the wrong syntax in a class body.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>

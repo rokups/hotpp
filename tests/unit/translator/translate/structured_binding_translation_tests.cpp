@@ -1,5 +1,5 @@
 // Tests for the translation of the structured bindings and the foreach helpers.
-#include "spp/sppc_lib.h"
+#include "hot/sppc_lib.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -57,9 +57,9 @@ TEST(StructuredBindingTranslation, ForeachForms)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "for (auto [k, v] : __st->m)")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "for (auto& [k, v] : __st->m)")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "for (auto [i, x] : spp::enumerate(__st->m))")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "for (int32_t i : spp::range(3))")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "for (int32_t i : spp::range(1, 3))")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "for (auto [i, x] : hot::enumerate(__st->m))")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "for (int32_t i : hot::range(3))")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "for (int32_t i : hot::range(1, 3))")) << r.cpp;
 }
 
 TEST(StructuredBindingTranslation, NamesAreLocals)
@@ -120,21 +120,21 @@ TEST(StructuredBindingTranslation, UserDefinedRangeWinsOverTheHelper)
         "    int Run() { return range(2); }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "return A__range(__self, 2);")) << r.cpp;
-    EXPECT_FALSE(has(r.cpp, "spp::range")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "hot::range")) << r.cpp;
 
     r = translate_with_header(script("var range = 3; var enumerate = 4; int s = range + enumerate;"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_FALSE(has(r.cpp, "spp::range")) << r.cpp;
-    EXPECT_FALSE(has(r.cpp, "spp::enumerate")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "hot::range")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "hot::enumerate")) << r.cpp;
     r = translate_with_header("using \"u.h\";\nclass A {\n    int Run(int range) { return range(1); }\n}\n");
-    EXPECT_FALSE(has(r.cpp, "spp::range")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "hot::range")) << r.cpp;
 
     TempDir dir;
     write_file(dir.path() / "g.h", "inline int range(int n) { return n; }\n");
     r = sppc::translate(temp_options(dir, "using \"g.h\";\nclass A {\n    int Run() { return range(3); }\n}\n"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "return range(3);")) << r.cpp;
-    EXPECT_FALSE(has(r.cpp, "spp::range")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "hot::range")) << r.cpp;
 }
 
 } // namespace

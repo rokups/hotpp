@@ -1,7 +1,7 @@
 # Sample: imgui
 
 This sample shows a Dear ImGui window whose user interface a script draws.
-The program builds `spp::ClangFilesBackend` itself and reloads the script when the file changes.
+The program builds `hot::ClangFilesBackend` itself and reloads the script when the file changes.
 
 The sample needs SDL3 and CMake 3.24. Without SDL3 the configure prints
 `sample_imgui: skipped (SDL3 not found)` and the sample adds no target.
@@ -29,7 +29,7 @@ The language server serves `.hot` scripts only. It does not serve `demo.cpp`.
 1. The script `script/demo.hot` has the class `Demo`. It derives from the host class `UiApp` and
    overrides `Frame`. It includes the real `imgui.h` (`using "imgui.h";`) and calls the ImGui API as it is.
 2. A pointer parameter takes the address of a field, for example `ImGui.Checkbox("c", &this.on)`.
-3. `main.cpp` fills `spp::ClangFilesOptions` and loads the script. The host calls `Frame` once for each frame.
+3. `main.cpp` fills `hot::ClangFilesOptions` and loads the script. The host calls `Frame` once for each frame.
 4. The host checks the modification time of the script at each frame. When it changes, the host
    compiles a new generation and starts a reload. The commit happens at the frame boundary.
    The object keeps its field values.

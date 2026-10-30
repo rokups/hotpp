@@ -1450,12 +1450,12 @@ void Frontend::examine(CXCursor k, WalkState& st)
         const uint32_t head = static_cast<uint32_t>(open + 1 - e.begin);
         if (ptr)
         {
-            add(e.begin, head, "spp::as_script<" + shell + ">(");
+            add(e.begin, head, "hot::as_script<" + shell + ">(");
             add(e.end - 1, 1, ", " + quoted + ")");
         }
         else
         { // a reference: the object must be of the class, else std::runtime_error
-            add(e.begin, head, "(*spp::shell_of<" + shell + ">(");
+            add(e.begin, head, "(*hot::shell_of<" + shell + ">(");
             add(e.end - 1, 1, ", " + quoted + "))");
         }
         st.skip_end = std::max(st.skip_end, static_cast<uint32_t>(open + 1));
@@ -1639,8 +1639,8 @@ void Frontend::make_field(CXCursor c, const ClassInfo* cls, const Where<ast::Fie
         if (clang_getCursorKind(k) == CXCursor_AnnotateAttr)
         {
             std::string a = spelling(k);
-            if (a.rfind("spp.alias=", 0) == 0)
-                f.alias = a.substr(std::strlen("spp.alias="));
+            if (a.rfind("hot.alias=", 0) == 0)
+                f.alias = a.substr(std::strlen("hot.alias="));
         }
     read_init(c, cls, where, index);
 }
@@ -1663,7 +1663,7 @@ void Frontend::read_init(CXCursor c, const ClassInfo* cls, const Where<ast::Fiel
             continue;
         }
         if (i < decl.end && is_ident(text_[i]))
-        { // a macro attribute: SPP_ALIAS("old")
+        { // a macro attribute: HOT_ALIAS("old")
             size_t n = i;
             while (n < decl.end && is_ident(text_[n]))
                 ++n;
@@ -1919,7 +1919,7 @@ void Frontend::make_method(CXCursor c, const ClassInfo* cls, const Where<ast::Me
             for (char ch : p.type)
                 if (!is_space(ch))
                     t += ch;
-            if (t == "spp::OldState" || t == "constspp::OldState&" || t == "OldState" || t == "constOldState&")
+            if (t == "hot::OldState" || t == "consthot::OldState&" || t == "OldState" || t == "constOldState&")
                 p.type = "OldState";
         }
     if (!has_body(c))
