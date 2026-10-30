@@ -1060,4 +1060,47 @@ TEST(SppcTool, CompileCommandsOptionWritesTheDatabase)
     EXPECT_EQ(read_file(cdb_dir + "/compile_commands.json"), expected);
 }
 
+// sppc --emit-cpp translates a plain C++ script (a ".cpp" file) to a generation file.
+TEST(SppcTool, EmitCppTranslatesACppScript)
+{
+    std::string text;
+    const std::string script = std::string(SPP_SOURCE_DIR) + "/tests/scripts/cpp_player_v1.cpp";
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
+        0)
+        << text;
+    EXPECT_NE(text.find("script_register"), std::string::npos) << text;
+}
+
+// A virtual method without "override" is not supported in a ".cpp" script. sppc fails.
+TEST(SppcTool, CppScriptWithUnsupportedFormFails)
+{
+    TestScratch scratch;
+    const std::string script = scratch.file("sppc_cpp_virtual.cpp");
+    {
+        std::ofstream f(script);
+        f << "#include \"Actor.h\"\nclass Foo : public Actor\n{\npublic:\n    virtual void Run() {}\n};\n";
+    }
+    std::string text;
+    EXPECT_NE(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
+        0);
+    EXPECT_NE(text.find("error"), std::string::npos) << text;
+    EXPECT_NE(text.find("virtual"), std::string::npos) << text;
+}
+
+// A syntax error in a ".cpp" script makes sppc fail with an error at the script line.
+TEST(SppcTool, CppScriptWithSyntaxErrorFails)
+{
+    TestScratch scratch;
+    const std::string script = scratch.file("sppc_cpp_syntax.cpp");
+    {
+        std::ofstream f(script);
+        f << "#include \"Actor.h\"\nclass Foo : public Actor\n{\npublic:\n    void Tick(float dt) override { int x = ; }\n};\n";
+    }
+    std::string text;
+    EXPECT_NE(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
+        0);
+    EXPECT_NE(text.find("sppc_cpp_syntax.cpp:5:"), std::string::npos) << text;
+    EXPECT_NE(text.find("error"), std::string::npos) << text;
+}
+
 } // namespace

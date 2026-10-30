@@ -395,6 +395,10 @@ struct Field
     Access access = Access::Public;
     int line = 0;
     uint32_t pos = 0;
+    // For a ".cpp" script. When "raw" is true, the translator uses the raw text and not the AST.
+    bool raw = false;
+    std::string raw_init; // the edited initializer text
+    bool raw_brace_init = false; // true when the initializer is "{...}"
 };
 
 struct Method
@@ -421,6 +425,10 @@ struct Method
     bool expr_body = false;
     int line = 0, end_line = 0;
     uint32_t pos = 0, end_pos = 0;
+    // For a ".cpp" script. When "raw" is true, the translator uses the raw text and not the AST.
+    bool raw = false;
+    std::string raw_body; // the edited C++ text between the braces, without the braces
+    int raw_line = 0; // the script line of the "{": the first line of "raw_body"
 };
 
 // A constructor: "Name(T a) : base(args) { body }". The name is the name of the class.
@@ -437,6 +445,11 @@ struct Ctor
     Span body_span; // the raw text between the braces
     int line = 0, end_line = 0;
     uint32_t pos = 0, end_pos = 0, base_pos = 0; // the name, the "}", the "base" word
+    // For a ".cpp" script. When "raw" is true, the translator uses the raw text and not the AST.
+    bool raw = false;
+    std::string raw_body; // the edited C++ text between the braces, without the braces
+    int raw_line = 0; // the script line of the "{": the first line of "raw_body"
+    std::string raw_base_args; // the text between the parentheses of the native base initializer
 };
 
 // A property: "Type Name { get; set; }" or "Type Name { get { ... } set { ... } }".
@@ -529,6 +542,16 @@ struct Script
     std::vector<Field> vars;
     // Convert hooks of module variables: "T convert_<var>(Old old) { }" at file level.
     std::vector<Method> var_hooks;
+    // True when the script is a ".cpp" file. The bodies are then raw C++ text.
+    bool is_cpp = false;
+    // A file-scope declaration of a ".cpp" script. The text stays as written.
+    struct RawDecl
+    {
+        int line = 0;
+        uint32_t pos = 0;
+        std::string text;
+    };
+    std::vector<RawDecl> prelude; // the verbatim file-scope declarations, in source order
 };
 
 } // namespace sppc::ast

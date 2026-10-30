@@ -122,6 +122,7 @@ if(SPP_BUILD_TESTS)
     file(GLOB SPP_RUNTIME_HEADERS ${PROJECT_SOURCE_DIR}/include/spp/runtime/*.h)
     set(SPP_HEADERS ${PROJECT_SOURCE_DIR}/tests/engine/Actor.h ${PROJECT_SOURCE_DIR}/tests/engine/Math.h
                     ${PROJECT_SOURCE_DIR}/include/spp/runtime.h ${PROJECT_SOURCE_DIR}/include/spp/module.h
+                    ${PROJECT_SOURCE_DIR}/include/spp/script.h
                     ${SPP_RUNTIME_HEADERS})
 endif()
 

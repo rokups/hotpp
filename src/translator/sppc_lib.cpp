@@ -28,6 +28,7 @@
 #include "diag.h"
 #include "emit.h"
 #include "lower.h"
+#include "parser/cpp_frontend.h"
 #include "parser/parser.h"
 #include "spp/config.h"
 #include "types.h"
@@ -2008,6 +2009,30 @@ std::map<std::string, BaseInfo> session_bases(sppc::TranslatorSession::Impl& S, 
     return r;
 }
 
+// The libclang arguments for the script and for the probe of the imports. The header
+// "spp/script.h" is a forced include when an include dir has it. A script can include it too.
+std::vector<std::string> clang_args(const Options& opt)
+{
+    std::vector<std::string> args = {"-x", "c++", "-std=" + opt.std_version, "-ferror-limit=0"};
+    const size_t slash = opt.input.rfind('/');
+    args.push_back("-I" + (slash == std::string::npos ? std::string(".") : opt.input.substr(0, slash)));
+    for (const auto& d : opt.includes)
+        args.push_back("-I" + d);
+    if (!opt.resource_dir.empty())
+        args.push_back("-resource-dir=" + opt.resource_dir);
+    for (const auto& d : opt.includes)
+    {
+        const std::string header = d + "/spp/script.h";
+        if (std::filesystem::exists(header))
+        {
+            args.push_back("-include");
+            args.push_back(header);
+            break;
+        }
+    }
+    return args;
+}
+
 void translate_impl(
     const sppc::TranslateOptions& in, sppc::TranslatorSession::Impl& session, sppc::TranslateResult& res)
 {
@@ -2031,7 +2056,19 @@ void translate_impl(
     g_script = opt.input;
 
     sppc::LineMap map(in.script_text);
-    Script sc = parse_structure(in.script_text, map);
+    const bool is_cpp_script = opt.input.size() > 4 && opt.input.compare(opt.input.size() - 4, 4, ".cpp") == 0;
+    Script sc;
+    if (is_cpp_script)
+    {
+        sc = sppc::parse_cpp_script(in.script_text, opt.input, clang_args(opt), map, g_diag);
+        if (!g_diag.items.empty())
+            throw TranslateAbort{};
+        for (const Import& im : sc.imports)
+            if (im.path.size() > 4 && im.path.compare(im.path.size() - 4, 4, ".spp") == 0)
+                fail_at(map, im.pos, "a .cpp script cannot include a .spp script");
+    }
+    else
+        sc = parse_structure(in.script_text, map);
 
     // ---- script imports (design 4.10): "using "parent.spp";". One generation holds all script
     // modules of the program, so a class can derive from a class of another script. The
@@ -2505,13 +2542,7 @@ void translate_impl(
             "#line " + std::to_string(im.line) + " \"" + esc(file_at(im.pos)) + "\"\n#include " + im.target() + "\n";
     // No error limit. The facts file can have many errors (one for each unknown type). The default
     // limit of 20 gives a "too many errors" fatal error, and this is not an error of the imports.
-    std::vector<std::string> args = {"-x", "c++", "-std=" + opt.std_version, "-ferror-limit=0"};
-    size_t slash = opt.input.rfind('/');
-    args.push_back("-I" + (slash == std::string::npos ? std::string(".") : opt.input.substr(0, slash)));
-    for (const auto& d : opt.includes)
-        args.push_back("-I" + d);
-    if (!opt.resource_dir.empty())
-        args.push_back("-resource-dir=" + opt.resource_dir);
+    const std::vector<std::string> args = clang_args(opt);
     std::set<std::string> import_paths, base_names;
     for (const auto& im : sc.imports)
         import_paths.insert(im.path);
@@ -2688,6 +2719,18 @@ void translate_impl(
         o.w("#line " + std::to_string(im.line) + " \"" + esc(file_at(im.pos)) + "\"\n");
         o.w("#include " + im.target() + "\n");
     }
+    // A ".cpp" script has raw bodies. The function writes the text with the script line of the
+    // function. The caller writes the closing brace and the "#line" of the generated file.
+    auto write_raw = [&](const Method& m)
+    {
+        if (!m.raw)
+            return false;
+        // The text starts right after the "{", so its first line is the line of the "{".
+        o.w("#line " + std::to_string(m.raw_line > 0 ? m.raw_line : m.line) + " \"" + esc(file_at(m.pos)) + "\"\n");
+        o.w(m.raw_body);
+        o.w("\n");
+        return true;
+    };
     reset();
     // S26: the native structs with a function pointer field. The runtime reads this as a code holder.
     bool marked = false;
@@ -2699,6 +2742,14 @@ void translate_impl(
         }
     if (marked)
         reset();
+    // The file-scope declarations of a ".cpp" script, as written in the script.
+    for (const auto& d : sc.prelude)
+    {
+        o.w("\n#line " + std::to_string(d.line) + " \"" + esc(file_at(d.pos)) + "\"\n");
+        o.w(d.text);
+        o.w("\n\n");
+        reset();
+    }
     o.w("\nconstexpr uint32_t GEN = " + std::to_string(opt.gen) + ";\n");
 
     // ---- script enums. The enum is a C++ "enum class" with the underlying type of the script.
@@ -2916,7 +2967,9 @@ void translate_impl(
             fc.typed_init = !f.type.empty();
             fc.module_earlier = earlier;
             std::string init;
-            if (f.has_init && f.init)
+            if (f.raw)
+                init = f.raw_init; // a ".cpp" script: the text is already C++
+            else if (f.has_init && f.init)
             {
                 sppc::lower_expr(f.init, fc, g_diag);
                 if (!g_diag.items.empty())
@@ -2983,7 +3036,8 @@ void translate_impl(
             for (size_t i = 0; i < cd.fields.size(); ++i)
             {
                 o.w("\n" + at_line(cd.fields[i].line, cd.fields[i].pos));
-                o.w(std::string(i ? "        , " : "        : ") + cd.fields[i].name + "(" + inits[i] + ")");
+                o.w(std::string(i ? "        , " : "        : ") + cd.fields[i].name
+                    + (cd.fields[i].raw_brace_init ? inits[i] : "(" + inits[i] + ")"));
             }
             o.w("\n" + at_line(cd.line, cd.pos));
             if (zero && !tag_init)
@@ -3023,8 +3077,8 @@ void translate_impl(
         {
             const Field& f = cd.fields[i];
             o.w("#line " + std::to_string(f.line) + " \"" + esc(file_at(f.pos)) + "\"\n");
-            o.w("static void " + P + "init_" + f.name + "(void*, void* f) { using T = " + f.type + "; new (f) T("
-                + inits[i] + "); }\n");
+            o.w("static void " + P + "init_" + f.name + "(void*, void* f) { using T = " + f.type + "; new (f) T"
+                + (f.raw_brace_init ? inits[i] : "(" + inits[i] + ")") + "; }\n");
             reset();
         }
         o.w("#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n");
@@ -3069,16 +3123,19 @@ void translate_impl(
             o.w("static " + ret + " " + sym + "(" + cn + "* __self" + param_text(m.params) + ")\n");
             o.w(at + "{\n");
             o.w(at + "    SPP_NODEBUG_LOCAL auto* __st = __self;\n");
-            sppc::lower_block(m.body, cx, g_diag);
-            if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
+            if (!write_raw(m))
             {
-                reset();
-                return;
+                sppc::lower_block(m.body, cx, g_diag);
+                if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
+                {
+                    reset();
+                    return;
+                }
+                sppc::ast::Emitter em(map, opt.input);
+                sppc::ast::emit_stmts(m.body.stmts, em, 1);
+                em.finish();
+                o.w_emitted(em, all_text);
             }
-            sppc::ast::Emitter em(map, opt.input);
-            sppc::ast::emit_stmts(m.body.stmts, em, 1);
-            em.finish();
-            o.w_emitted(em, all_text);
             o.w("#line " + std::to_string(end_line) + " \"" + esc(file_at(m.pos)) + "\"\n}\n");
             reset();
             o.w("\n");
@@ -3092,6 +3149,9 @@ void translate_impl(
             cm.line = c.line;
             cm.end_line = c.end_line;
             cm.body = std::move(c.body);
+            cm.raw = c.raw;
+            cm.raw_body = c.raw_body;
+            cm.raw_line = c.raw_line;
             emit_vbody(cm, P + "ctor", "void", cn + "::" + cn);
         }
         for (Method& m : cd.methods)
@@ -3106,13 +3166,16 @@ void translate_impl(
             cx.in_module_hook = true;
             sppc::add_params(cx, m->params);
             o.w("static " + m->ret + " " + P + m->name + "(" + m->params[0].type + " " + m->params[0].name + ")\n{\n");
-            sppc::lower_block(m->body, cx, g_diag);
-            if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
-                continue;
-            sppc::ast::Emitter em(map, opt.input);
-            sppc::ast::emit_stmts(m->body.stmts, em, 1);
-            em.finish();
-            o.w_emitted(em, all_text);
+            if (!write_raw(*m))
+            {
+                sppc::lower_block(m->body, cx, g_diag);
+                if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
+                    continue;
+                sppc::ast::Emitter em(map, opt.input);
+                sppc::ast::emit_stmts(m->body.stmts, em, 1);
+                em.finish();
+                o.w_emitted(em, all_text);
+            }
             reset();
             o.w("}\n\n");
         }
@@ -4007,7 +4070,9 @@ void translate_impl(
             fc.allow_this = false;
             fc.typed_init = !f.type.empty();
             std::string init;
-            if (f.has_init && f.init)
+            if (f.raw)
+                init = f.raw_init; // a ".cpp" script: the text is already C++
+            else if (f.has_init && f.init)
             {
                 sppc::lower_expr(f.init, fc, g_diag);
                 if (!g_diag.items.empty())
@@ -4015,8 +4080,8 @@ void translate_impl(
                 init = sppc::ast::print(*f.init);
             }
             o.w("#line " + std::to_string(f.line) + " \"" + esc(file_at(f.pos)) + "\"\n");
-            o.w("static void " + P + "init_" + f.name + "(void*, void* f) { using T = " + f.type + "; new (f) T(" + init
-                + "); }\n");
+            o.w("static void " + P + "init_" + f.name + "(void*, void* f) { using T = " + f.type + "; new (f) T"
+                + (f.raw_brace_init ? init : "(" + init + ")") + "; }\n");
             reset();
         }
         // A convert hook of a field (design 4.7). The wrapper builds the new field from the old one.
@@ -4195,7 +4260,11 @@ void translate_impl(
                 std::string sup_text;
                 const bool has_base_call = sc && sc->has_base_call;
                 const int sup_line = sc ? sc->line : cd.line;
-                if (has_base_call)
+                if (has_base_call && sc->raw)
+                {
+                    sup_text = sc->raw_base_args;
+                }
+                else if (has_base_call)
                 {
                     RCtx fc = base_cx;
                     fc.allow_this = false;
@@ -4237,7 +4306,8 @@ void translate_impl(
                 {
                     // The base arguments come from the plan of the parent, or from the name of this
                     // class when no class of the chain calls "base(...)" with arguments.
-                    const bool own_base = (has_base_call ? sc->base_args.size() : 0) == 0 && !root_super;
+                    const bool own_base = (has_base_call ? (sc->raw ? sc->raw_base_args.size() : sc->base_args.size()) : 0) == 0
+                        && !root_super;
                     plan_text += "SPP_HIDDEN static auto " + P + "plan(" + pd + ")\n{\n    auto __up = std::make_tuple("
                         + (has_base_call ? sup_text : std::string())
                         + ");\n    auto __pp = std::apply([](auto&... x) { return " + PP
@@ -4415,16 +4485,19 @@ void translate_impl(
                 o.w(body_locals.substr(b, e - b));
                 b = e;
             }
-            sppc::lower_block(m.body, cx, g_diag);
-            if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
+            if (!write_raw(m))
             {
-                reset();
-                return;
+                sppc::lower_block(m.body, cx, g_diag);
+                if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
+                {
+                    reset();
+                    return;
+                }
+                sppc::ast::Emitter em(map, opt.input);
+                sppc::ast::emit_stmts(m.body.stmts, em, 1);
+                em.finish();
+                o.w_emitted(em, all_text);
             }
-            sppc::ast::Emitter em(map, opt.input);
-            sppc::ast::emit_stmts(m.body.stmts, em, 1);
-            em.finish();
-            o.w_emitted(em, all_text);
             o.w(line_at(end_line));
             o.w("}\n");
             reset();
@@ -4445,16 +4518,19 @@ void translate_impl(
             o.w("#line " + std::to_string(m.line) + " \"" + file + "\"\n");
             o.w("static " + m.ret + " " + P + m.name + "(" + m.params[0].type + " " + m.params[0].name + ")\n");
             o.w("#line " + std::to_string(m.line) + " \"" + file + "\"\n{\n");
-            sppc::lower_block(m.body, cx, g_diag);
-            if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
+            if (!write_raw(m))
             {
-                reset();
-                return;
+                sppc::lower_block(m.body, cx, g_diag);
+                if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
+                {
+                    reset();
+                    return;
+                }
+                sppc::ast::Emitter em(map, opt.input);
+                sppc::ast::emit_stmts(m.body.stmts, em, 1);
+                em.finish();
+                o.w_emitted(em, all_text);
             }
-            sppc::ast::Emitter em(map, opt.input);
-            sppc::ast::emit_stmts(m.body.stmts, em, 1);
-            em.finish();
-            o.w_emitted(em, all_text);
             o.w("#line " + std::to_string(end_line) + " \"" + file + "\"\n}\n");
             reset();
             o.w("\n");
@@ -4463,6 +4539,9 @@ void translate_impl(
         for (size_t k = 0; has_ctor && k < cd.ctors.size(); ++k)
         {
             ctor_ms[k].body = std::move(cd.ctors[k].body);
+            ctor_ms[k].raw = cd.ctors[k].raw;
+            ctor_ms[k].raw_body = cd.ctors[k].raw_body;
+            ctor_ms[k].raw_line = cd.ctors[k].raw_line;
             emit_body(ctor_ms[k], true, P + "ctor", "void", cn + "::" + cn, "ctor");
         }
         if (has_dtor)

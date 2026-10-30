@@ -37,12 +37,13 @@ void check_golden(const std::string& name, const std::string& text)
 
 // Translates "<base>_v1" as generation 1 and "<base>_v2" as generation 2.
 // The slot input of generation 2 is the slot output of generation 1.
-void golden_pair(const std::string& base)
+// "ext" is the extension of the script files.
+void golden_pair(const std::string& base, const std::string& ext = ".spp")
 {
     std::string slots;
     for (int gen = 1; gen <= 2; ++gen)
     {
-        const std::string file = base + "_v" + std::to_string(gen) + ".spp";
+        const std::string file = base + "_v" + std::to_string(gen) + ext;
         sppc::TranslateOptions o = engine_options(file.c_str(), gen);
         o.script_name = file; // the file name only, so the output has no absolute path
         o.slots_in = slots;
@@ -56,9 +57,9 @@ void golden_pair(const std::string& base)
 }
 
 // Translates one script as generation 1. The script has no second generation.
-void golden_one(const std::string& base)
+void golden_one(const std::string& base, const std::string& ext = ".spp")
 {
-    const std::string file = base + ".spp";
+    const std::string file = base + ext;
     sppc::TranslateOptions o = engine_options(file.c_str(), 1);
     o.script_name = file;
     const sppc::TranslateResult r = sppc::translate(o);
@@ -92,4 +93,9 @@ TEST(GoldenTranslation, Props)
 TEST(GoldenTranslation, AbiChild)
 {
     golden_pair("abi_child");
+}
+
+TEST(GoldenTranslation, CppPlayer)
+{
+    golden_pair("cpp_player", ".cpp");
 }

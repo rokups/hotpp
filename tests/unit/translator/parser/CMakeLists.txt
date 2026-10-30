@@ -29,3 +29,11 @@ target_link_libraries(unit_translator_parser_tests PRIVATE sppc_lib GTest::gtest
 target_include_directories(unit_translator_parser_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/translator ${PROJECT_SOURCE_DIR}/tests)
 target_compile_definitions(unit_translator_parser_tests PRIVATE SPP_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 spp_gtest(unit_translator_parser_tests)
+
+# The tests of the ".cpp" frontend (libclang). The engine header Actor.h gives the base class.
+add_executable(unit_translator_cpp_frontend_tests cpp_frontend_tests.cpp)
+target_link_libraries(unit_translator_cpp_frontend_tests PRIVATE sppc_lib GTest::gtest_main)
+target_include_directories(unit_translator_cpp_frontend_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/translator)
+target_compile_definitions(unit_translator_cpp_frontend_tests PRIVATE SPP_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+    SPP_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
+spp_gtest(unit_translator_cpp_frontend_tests TEST_PREFIX cpp_frontend.)

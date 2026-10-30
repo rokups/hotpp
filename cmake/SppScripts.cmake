@@ -67,6 +67,20 @@ function(spp_add_scripts)
         endif()
     endif()
 
+    # The output name comes from the stem of the script. Two scripts with the same stem clash.
+    set(seen_stems "")
+    set(seen_scripts "")
+    foreach(s ${A_SCRIPTS})
+        get_filename_component(stem ${s} NAME_WLE)
+        list(FIND seen_stems "${stem}" seen_at)
+        if(NOT seen_at EQUAL -1)
+            list(GET seen_scripts ${seen_at} seen_script)
+            message(FATAL_ERROR "spp_add_scripts: the scripts '${seen_script}' and '${s}' have the same stem '${stem}' (target ${A_TARGET})")
+        endif()
+        list(APPEND seen_stems "${stem}")
+        list(APPEND seen_scripts "${s}")
+    endforeach()
+
     # The format library of "${...}".
     spp_effective_cxx_standard(std_num "")
     spp_format_library(format_lib ${std_num})
