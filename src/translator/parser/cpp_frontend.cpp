@@ -257,10 +257,46 @@ std::string last_name(const std::string& s)
     return trim(c == std::string::npos ? r : r.substr(c + 2));
 }
 
+// The namespace path of a declaration: "game::ai". It is empty at file scope. A class between
+// the declaration and the namespace does not count.
+std::string ns_of(CXCursor c)
+{
+    std::vector<std::string> parts;
+    for (CXCursor p = clang_getCursorSemanticParent(c);
+         !clang_Cursor_isNull(p) && clang_getCursorKind(p) != CXCursor_TranslationUnit;
+         p = clang_getCursorSemanticParent(p))
+        if (clang_getCursorKind(p) == CXCursor_Namespace)
+            parts.push_back(spelling(p));
+    std::string r;
+    for (size_t i = parts.size(); i-- > 0;)
+        r += (r.empty() ? "" : "::") + parts[i];
+    return r;
+}
+
+// The file-scope name that sppc generates for a name in a namespace: "game::ai", "Brain" gives
+// "game__ai__Brain". The name stays the same at file scope.
+std::string mangle_in(const std::string& ns, const std::string& name)
+{
+    std::string r;
+    for (size_t i = 0; i < ns.size(); ++i)
+    {
+        if (ns.compare(i, 2, "::") == 0)
+        {
+            r += "__";
+            ++i;
+        }
+        else
+            r += ns[i];
+    }
+    return ns.empty() ? name : r + "__" + name;
+}
+
 // The facts of a script class that the body edits need.
 struct ClassInfo
 {
-    std::string name, usr;
+    std::string name, usr; // "name" is the file-scope name: "game__Player" for "game::Player"
+    std::string simple, display; // the name as written ("Player") and the qualified name ("game::Player")
+    std::string base_simple; // the name of the base as written, without the namespace
     std::string base; // the direct base: a native class, or the script parent of a child class
     std::string native; // the native base of the root script class of the chain
     uint32_t end = 0; // the end of the class in the text
@@ -330,6 +366,11 @@ private:
         bool virt = false;
         uint32_t cpos = 0;
         std::string vowner;
+        // The names for a message and for the class record. They differ from "name" and
+        // "owner_name" for a declaration in a namespace: "game::Player" and "game__Player".
+        std::string display, owner_display;
+        const std::string& shown() const { return display.empty() ? name : display; }
+        const std::string& owner_shown() const { return owner_display.empty() ? owner_name : owner_display; }
     };
 
     // The output of a static method: a prototype before the class block and the definition after
@@ -370,7 +411,8 @@ private:
         std::function<void(std::string&&)> store;
     };
 
-    std::vector<CXCursor> top_; // the top-level cursors of the main file
+    std::vector<CXCursor> top_; // the top-level cursors of the main file. A namespace with script code is flattened.
+    std::string cur_ns_; // the namespace path of the declaration that read_top reads
     std::vector<Slice> slices_;
     std::vector<size_t> by_pos_; // the indexes of the slices in the order of the extents
     std::vector<Edit> edits_; // the edits of the walk, with absolute offsets
@@ -387,7 +429,10 @@ private:
     void read_top(const std::vector<CXCursor>& top);
 
     void index(const std::vector<CXCursor>& top);
-    void index_member(CXCursor k, const std::string& owner_usr, const std::string& owner_name, uint32_t cpos);
+    void index_member(CXCursor k, const std::string& owner_usr, const std::string& owner_name,
+        const std::string& owner_display, uint32_t cpos);
+    void add_top(CXCursor k);
+    bool holds_script(CXCursor ns) const;
     const Entry* lookup(CXCursor ref) const;
 
     int line(uint32_t pos) const { return map_.line(pos); }
@@ -396,6 +441,9 @@ private:
     std::string slot_owner(CXCursor m) const;
     const Entry* script_base_of(CXCursor rec) const;
     const Entry* class_entry(CXType t) const;
+    std::string type_in_script(CXType t) const;
+    void check_unique_name(CXCursor k, const Entry& en);
+    void collect_ns_types(CXType t, std::vector<std::pair<std::string, std::string>>& out, int depth) const;
     bool names_script_class(CXCursor c) const;
     void check_class_use(CXCursor k, CXCursor parent, const Entry& en, bool static_parent);
     void check_type_refs(CXCursor c);
@@ -511,6 +559,78 @@ const Frontend::Entry* Frontend::class_entry(CXType t) const
     return en && en->kind == Kind::ScriptClass ? en : nullptr;
 }
 
+// Collects the script classes of a namespace that a type names, with the spelling in the text.
+void Frontend::collect_ns_types(CXType t, std::vector<std::pair<std::string, std::string>>& out, int depth) const
+{
+    if (depth > 8)
+        return;
+    switch (t.kind)
+    {
+    case CXType_Pointer:
+        collect_ns_types(clang_getPointeeType(t), out, depth + 1);
+        return;
+    case CXType_LValueReference:
+    case CXType_RValueReference:
+        collect_ns_types(clang_getPointeeType(t), out, depth + 1);
+        return;
+    case CXType_ConstantArray:
+    case CXType_IncompleteArray:
+    case CXType_VariableArray:
+        collect_ns_types(clang_getArrayElementType(t), out, depth + 1);
+        return;
+    default:
+        break;
+    }
+    if (const Entry* en = class_entry(t))
+    {
+        if (en->display != en->name)
+        {
+            std::string text = type_text(t);
+            for (const char* q : {"const ", "volatile "})
+                if (text.compare(0, std::strlen(q), q) == 0)
+                    text.erase(0, std::strlen(q));
+            out.emplace_back(text, en->name);
+        }
+        return;
+    }
+    CXType named = t.kind == CXType_Elaborated ? clang_Type_getNamedType(t) : t;
+    const int n = clang_Type_getNumTemplateArguments(named);
+    for (int i = 0; i < n; ++i)
+    {
+        CXType a = clang_Type_getTemplateArgumentAsType(named, static_cast<unsigned>(i));
+        if (a.kind != CXType_Invalid)
+            collect_ns_types(a, out, depth + 1);
+    }
+}
+
+// The text of a type as the generated code needs it: the name of a script class in a namespace
+// becomes the file scope name of the class.
+std::string Frontend::type_in_script(CXType t) const
+{
+    std::string text = type_text(t);
+    std::vector<std::pair<std::string, std::string>> names;
+    collect_ns_types(t, names, 0);
+    std::sort(names.begin(), names.end(), [](const auto& a, const auto& b) { return a.first.size() > b.first.size(); });
+    for (const auto& [from, to] : names)
+    {
+        size_t at = 0;
+        while ((at = text.find(from, at)) != std::string::npos)
+        {
+            const size_t end = at + from.size();
+            const bool left = at == 0 || !(std::isalnum(static_cast<unsigned char>(text[at - 1])) || text[at - 1] == '_' || text[at - 1] == ':');
+            const bool right = end >= text.size() || !(std::isalnum(static_cast<unsigned char>(text[end])) || text[end] == '_');
+            if (left && right)
+            {
+                text.replace(at, from.size(), to);
+                at += to.size();
+            }
+            else
+                at = end;
+        }
+    }
+    return text;
+}
+
 // True when a declaration below "c" names a script class, or uses a field or a method of one.
 // The walk must then edit the text of the declaration.
 bool Frontend::names_script_class(CXCursor c) const
@@ -535,7 +655,7 @@ bool Frontend::names_script_class(CXCursor c) const
 // valid only for a static member. All other uses fail: a value, an array, a template argument.
 void Frontend::check_class_use(CXCursor k, CXCursor parent, const Entry& en, bool static_parent)
 {
-    const std::string cls = "the script class '" + en.name + "'";
+    const std::string cls = "the script class '" + en.shown() + "'";
     size_t i = skip_ws(text_, extent_of(k).end, text_.size());
     for (bool more = true; more;)
     {
@@ -581,8 +701,8 @@ void Frontend::check_class_use(CXCursor k, CXCursor parent, const Entry& en, boo
 void Frontend::check_type_refs(CXCursor c)
 {
     const CXCursorKind ck = clang_getCursorKind(c);
-    // Only a class at file scope is a script class. A local class, a nested class or a class in a
-    // namespace has no shell, so it cannot derive from a script class.
+    // Only a class at file scope or in a namespace is a script class. A local class or a nested
+    // class has no shell, so it cannot derive from a script class.
     if ((ck == CXCursor_ClassDecl || ck == CXCursor_StructDecl) && clang_isCursorDefinition(c))
     {
         const Entry* self = lookup(c);
@@ -591,7 +711,7 @@ void Frontend::check_type_refs(CXCursor c)
                 if (clang_getCursorKind(k) == CXCursor_CXXBaseSpecifier)
                     if (const Entry* b = class_entry(clang_getCursorType(k)))
                         fail(pos_of(k),
-                            "the class '" + spelling(c) + "' cannot derive from the script class '" + b->name +
+                            "the class '" + spelling(c) + "' cannot derive from the script class '" + b->shown() +
                                 "': only a class at file scope can derive from a script class in a .cpp script");
     }
     // A script class has no C++ RTTI that works after a reload: each generation has its own
@@ -616,7 +736,7 @@ void Frontend::check_type_refs(CXCursor c)
             }
             if (en)
                 fail(pos_of(c),
-                    "'typeid' of the script class '" + en->name +
+                    "'typeid' of the script class '" + en->shown() +
                         "' is not supported in a .cpp script: a script class has no C++ RTTI; use dynamic_cast");
         }
     // "new C(args)": the TypeRef of C is valid. The placement and the array forms fail.
@@ -633,13 +753,13 @@ void Frontend::check_type_refs(CXCursor c)
                     if (skip_ws(text_, extent_of(k).end, text_.size()) < text_.size() &&
                         text_[skip_ws(text_, extent_of(k).end, text_.size())] == '[')
                         fail(pos_of(c),
-                            "an array 'new' of the script class '" + alloc->name +
+                            "an array 'new' of the script class '" + alloc->shown() +
                                 "' is not supported in a .cpp script; use an array of pointers");
                     break;
                 }
                 if (clang_isExpression(kind))
                     fail(pos_of(c),
-                        "a placement 'new' of the script class '" + alloc->name +
+                        "a placement 'new' of the script class '" + alloc->shown() +
                             "' is not supported in a .cpp script");
             }
     }
@@ -745,7 +865,7 @@ bool Frontend::find_module_ref(CXCursor c, const CXCursor* skip, std::string& na
                 }
             if (have & what)
             {
-                name = en->owner_name.empty() ? en->name : en->owner_name + "::" + en->name;
+                name = en->owner_name.empty() ? en->shown() : en->owner_shown() + "::" + en->name;
                 pos = pos_of(k);
                 return true;
             }
@@ -925,6 +1045,30 @@ void Frontend::examine(CXCursor k, WalkState& st)
             --i;
         return i >= 2 && text_.compare(i - 2, 2, "::") == 0;
     };
+    // The start of the qualifier before the name at "pos": "game::ai::Brain" starts at "game". The
+    // generated name of a class in a namespace has no qualifier, so an edit replaces all of it.
+    auto qualifier_begin = [&](size_t pos)
+    {
+        size_t b = pos;
+        for (;;)
+        {
+            size_t i = b;
+            while (i > 0 && is_space(text_[i - 1]))
+                --i;
+            if (i < 2 || text_.compare(i - 2, 2, "::") != 0)
+                return b;
+            const size_t colon = i - 2;
+            i = colon;
+            while (i > 0 && is_space(text_[i - 1]))
+                --i;
+            size_t j = i;
+            while (j > 0 && is_ident(text_[j - 1]))
+                --j;
+            if (j == i)
+                return colon; // a leading "::"
+            b = j;
+        }
+    };
     // True when "ref" is a static member or a nested type of the native base or its ancestors.
     auto base_scoped = [&](CXCursor ref)
     {
@@ -1008,7 +1152,7 @@ void Frontend::examine(CXCursor k, WalkState& st)
         const uint32_t name = pos_of(k);
         const std::string op = name > o.end ? trim(text_.substr(o.end, name - o.end)) : std::string();
         if (op != "->" && op != ".")
-            fail(e.begin, "cannot read the member access of the script class '" + en.owner_name + "'");
+            fail(e.begin, "cannot read the member access of the script class '" + en.owner_shown() + "'");
         const bool arrow = op == "->";
         // A call of a const method adds an implicit const conversion of the object. The type
         // of the object is the type under that conversion.
@@ -1040,7 +1184,7 @@ void Frontend::examine(CXCursor k, WalkState& st)
         }
         const size_t paren = skip_ws(text_, e.end, text_.size());
         if (paren >= text_.size() || text_[paren] != '(')
-            fail(name, "the method '" + en.owner_name + "::" + en.name + "' of a script class must be called");
+            fail(name, "the method '" + en.owner_shown() + "::" + en.name + "' of a script class must be called");
         const size_t first = skip_ws(text_, paren + 1, text_.size());
         const bool no_args = first < text_.size() && text_[first] == ')';
         add(o.begin, 0, (callee.empty() ? en.owner_name + "__" + en.name : callee) + "(" + open, true);
@@ -1144,7 +1288,7 @@ void Frontend::examine(CXCursor k, WalkState& st)
             const CXCursor obj = object_of();
             if (!st.cls || !st.cls->script_bases.count(qual->owner_usr) || (!clang_Cursor_isNull(obj) && !is_this(obj)))
                 fail(pos_of(k),
-                    "the script class '" + qual->name +
+                    "the script class '" + qual->shown() +
                         "' can qualify only a static member, or a member that a child class uses on itself, in a "
                         ".cpp script");
             const uint32_t name = pos_of(k);
@@ -1251,7 +1395,10 @@ void Frontend::examine(CXCursor k, WalkState& st)
         if (en && en->kind == Kind::ScriptClass)
         { // check_type_refs allows only a pointer, a reference, sizeof and a static qualifier
             if (!scope_follows(k))
-                add(e.begin, e.end - e.begin, en->name + "_Shell");
+            {
+                const uint32_t from = en->display == en->name ? e.begin : static_cast<uint32_t>(qualifier_begin(e.begin));
+                add(from, e.end - from, en->name + "_Shell");
+            }
             return;
         }
         if (!qualified(e.begin) && base_scoped(ref))
@@ -1271,7 +1418,7 @@ void Frontend::examine(CXCursor k, WalkState& st)
                 break;
             }
         if (tr.end <= e.begin || tr.end > e.end)
-            fail(e.begin, "cannot read this 'new' of the script class '" + en->name + "'");
+            fail(e.begin, "cannot read this 'new' of the script class '" + en->shown() + "'");
         add(e.begin, tr.end - e.begin, en->name + "__new");
         const size_t i = skip_ws(text_, tr.end, e.end);
         if (i >= e.end)
@@ -1297,8 +1444,8 @@ void Frontend::examine(CXCursor k, WalkState& st)
         const size_t gt = lt == std::string::npos ? lt : match_close(text_, lt, e.end);
         const size_t open = gt == std::string::npos ? gt : skip_ws(text_, gt + 1, e.end);
         if (open >= e.end || text_[open] != '(' || text_[e.end - 1] != ')')
-            fail(e.begin, "cannot read this dynamic_cast to the script class '" + en->name + "'");
-        const std::string shell = en->name + "_Shell", quoted = "\"" + en->name + "\"";
+            fail(e.begin, "cannot read this dynamic_cast to the script class '" + en->shown() + "'");
+        const std::string shell = en->name + "_Shell", quoted = "\"" + en->shown() + "\"";
         const uint32_t head = static_cast<uint32_t>(open + 1 - e.begin);
         if (ptr)
         {
@@ -1471,9 +1618,11 @@ void Frontend::make_field(CXCursor c, const ClassInfo* cls, const Where<ast::Fie
     ast::Field& f = out.back();
     f.raw = true;
     f.name = mangled.empty() ? spelling(c) : mangled;
-    f.type = f.script_type = type_text(clang_getCursorType(c));
+    f.type = f.script_type = type_in_script(clang_getCursorType(c));
     f.pos = pos_of(c);
     f.line = line(f.pos);
+    if (!cls || !mangled.empty())
+        f.ns = ns_of(c); // a module variable: the module block is at file scope
     switch (mangled.empty() ? clang_getCXXAccessSpecifier(c) : CX_CXXPublic)
     {
     case CX_CXXPrivate:
@@ -1555,7 +1704,7 @@ void Frontend::fill_params(CXCursor c, std::vector<ast::Param>& out, const Class
         CXCursor a = clang_Cursor_getArgument(c, static_cast<unsigned>(i));
         ast::Param p;
         p.name = spelling(a);
-        p.type = type_text(clang_getCursorType(a));
+        p.type = type_in_script(clang_getCursorType(a));
         for (CXCursor k : children(a))
             if (clang_isExpression(clang_getCursorKind(k)))
             {
@@ -1617,7 +1766,8 @@ bool Frontend::is_member_def(CXCursor c) const
     const CXCursorKind kind = clang_getCursorKind(c);
     if (kind != CXCursor_CXXMethod && kind != CXCursor_Constructor && kind != CXCursor_Destructor)
         return false;
-    if (clang_getCursorKind(clang_getCursorLexicalParent(c)) != CXCursor_TranslationUnit)
+    const CXCursorKind lexical = clang_getCursorKind(clang_getCursorLexicalParent(c));
+    if (lexical != CXCursor_TranslationUnit && lexical != CXCursor_Namespace)
         return false;
     auto it = table_.find(usr(clang_getCursorSemanticParent(c)));
     return it != table_.end() && it->second.kind == Kind::ScriptClass;
@@ -1634,7 +1784,7 @@ void Frontend::declare(
     d.index = index;
     d.cls = cls;
     d.pos = pos_of(c);
-    d.name = cls->name + "::" + spelling(c);
+    d.name = cls->display + "::" + spelling(c);
     const CXCursorKind kind = clang_getCursorKind(c);
     d.what = kind == CXCursor_Constructor ? "constructor" : kind == CXCursor_Destructor ? "destructor" : "method";
     declared_[usr(c)] = std::move(d);
@@ -1759,7 +1909,7 @@ void Frontend::make_method(CXCursor c, const ClassInfo* cls, const Where<ast::Me
                     m.is_new = true;
     }
     if (kind != CXCursor_Destructor)
-        m.ret = type_text(clang_getResultType(clang_getCursorType(c)));
+        m.ret = type_in_script(clang_getResultType(clang_getCursorType(c)));
     fill_params(c, m.params, cls);
     if (m.name == "onReload")
         for (ast::Param& p : m.params)
@@ -1870,9 +2020,9 @@ void Frontend::read_member_inits(
         if (q != b.begin && text_[q] != ',')
             fail(static_cast<uint32_t>(q), "cannot read this member initializer");
         const Range args{static_cast<uint32_t>(a + 1), static_cast<uint32_t>(a_end)};
-        if (last_name(word) == cls.name)
+        if (last_name(word) == cls.simple)
             fail(static_cast<uint32_t>(s), "a delegating constructor is not supported in a .cpp script class");
-        if (!cls.base.empty() && last_name(word) == last_name(cls.base))
+        if (!cls.base.empty() && last_name(word) == cls.base_simple)
         {
             if (has_base)
                 fail(static_cast<uint32_t>(s), "the base class is initialized twice in this constructor");
@@ -1935,7 +2085,7 @@ void Frontend::read_member_inits(
             const uint32_t at = static_cast<uint32_t>(s);
             if (clang_Cursor_isNull(field))
                 fail(at,
-                    "'" + word + "' is not a field of the script class '" + cls.name +
+                    "'" + word + "' is not a field of the script class '" + cls.display +
                         "'; only a field or the base class can be in the initializer list");
             const CXType ft = clang_getCursorType(field);
             if (ft.kind == CXType_LValueReference || ft.kind == CXType_RValueReference)
@@ -2050,6 +2200,7 @@ void Frontend::pre_class(CXCursor c)
     auto chunk_at = [&](uint32_t pos)
     {
         ast::Script::Chunk ch;
+        ch.ns = ast::gen_namespace(cur_ns_); // the generated names of the class are in this namespace
         ch.pos = pos;
         ch.line = line(pos);
         sc_.chunks.push_back(std::move(ch));
@@ -2067,7 +2218,7 @@ void Frontend::pre_class(CXCursor c)
         else if (en && en->kind == Kind::ScriptStatic && !has_var)
         {
             has_var = true;
-            first_var = en->owner_name + "::" + en->name;
+            first_var = en->owner_shown() + "::" + en->name;
         }
     }
     if (has_var && first_var_pos_ == UINT32_MAX)
@@ -2157,6 +2308,7 @@ void Frontend::make_static_fn(CXCursor c, const ClassInfo* cls)
     drop_static_word(c);
     const Range e = extent_of(c);
     ast::Script::Chunk def;
+    def.ns = ast::gen_namespace(cur_ns_);
     def.pos = e.begin;
     def.line = line(e.begin);
     sc_.chunks.push_back(std::move(def));
@@ -2244,12 +2396,20 @@ void Frontend::process_class(CXCursor c)
     const size_t ci = sc_.classes.size(); // the slices find the class by this index
     sc_.classes.emplace_back();
     ast::ClassDef& cd = sc_.classes.back(); // valid until the next class
-    cd.name = spelling(c);
+    const Entry* self = lookup(c);
+    if (!self)
+        fail(pos_of(c), "internal error: the script class has no table entry");
+    cd.name = self->name; // "game__Player" for "game::Player"
+    cd.ns = ns_of(c);
+    if (!cd.ns.empty())
+        cd.key = self->shown();
     cd.pos = pos_of(c);
     cd.line = line(cd.pos);
     infos_.emplace_back();
     ClassInfo& info = infos_.back();
     info.name = cd.name;
+    info.simple = spelling(c);
+    info.display = self->shown();
     info.usr = usr(c);
     info.end = extent_of(c).end;
     class_infos_[info.usr] = &info; // a deque does not move its elements
@@ -2267,7 +2427,7 @@ void Frontend::process_class(CXCursor c)
         const Entry* sb = class_entry(clang_getCursorType(k));
         if (sb)
         {
-            const std::string what = "the script class '" + sb->name + "'";
+            const std::string what = "the script class '" + sb->shown() + "'";
             if (n_bases > 1)
                 fail(pos_of(k), "a .cpp script class with the base " + what + " cannot have another base class");
             if (clang_isVirtualBase(k))
@@ -2276,7 +2436,7 @@ void Frontend::process_class(CXCursor c)
                 fail(pos_of(k), "a .cpp script class must derive from " + what + " with 'public'");
             auto it = class_infos_.find(sb->owner_usr);
             if (it == class_infos_.end())
-                fail(pos_of(k), "internal error: the parent class '" + sb->name + "' has no record");
+                fail(pos_of(k), "internal error: the parent class '" + sb->shown() + "' has no record");
             parent = it->second;
         }
         else if (!clang_Cursor_isNull(decl) && from_main(decl))
@@ -2300,6 +2460,7 @@ void Frontend::process_class(CXCursor c)
             cd.interfaces.push_back(b);
     }
     info.base = cd.base;
+    info.base_simple = parent ? parent->simple : last_name(cd.base);
     if (parent)
     {
         info.native = parent->native;
@@ -2376,6 +2537,7 @@ void Frontend::process_class(CXCursor c)
 void Frontend::add_text(Range e, bool edit)
 {
     ast::Script::Chunk ch;
+    ch.ns = cur_ns_;
     ch.pos = e.begin;
     ch.line = line(e.begin);
     ch.text = text_.substr(e.begin, e.end - e.begin);
@@ -2424,11 +2586,13 @@ bool is_script_class(CXCursor c)
 
 // Records a member of the script class "owner_usr". An out-of-class method definition has the
 // USR of its declaration: the first entry stays. The same is true for a static data member.
-void Frontend::index_member(CXCursor k, const std::string& owner_usr, const std::string& owner_name, uint32_t cpos)
+void Frontend::index_member(CXCursor k, const std::string& owner_usr, const std::string& owner_name,
+    const std::string& owner_display, uint32_t cpos)
 {
     const CXCursorKind kind = clang_getCursorKind(k);
     Entry en{Kind::ScriptField, owner_usr, owner_name, spelling(k), std::string()};
     en.cpos = cpos;
+    en.owner_display = owner_display;
     if (kind == CXCursor_VarDecl)
     {
         en.kind = clang_isConstQualifiedType(clang_getCursorType(k)) ? Kind::ScriptStaticConst : Kind::ScriptStatic;
@@ -2449,6 +2613,17 @@ void Frontend::index_member(CXCursor k, const std::string& owner_usr, const std:
     table_.emplace(usr(k), std::move(en));
 }
 
+// Two script classes, or two module variables, must not get the same file scope name. The class
+// "game::Player" and the class "game__Player" both give "game__Player".
+void Frontend::check_unique_name(CXCursor k, const Entry& en)
+{
+    for (const auto& v : table_)
+        if (v.second.kind == en.kind && v.second.name == en.name && v.second.display != en.display)
+            fail(pos_of(k),
+                "'" + en.display + "' and '" + v.second.display + "' have the same generated name '" + en.name
+                    + "'. Rename one of them");
+}
+
 // Index the declarations of the main file: the script classes with their members and the module
 // variables. The second loop is for out-of-class method definitions. It adds nothing yet.
 void Frontend::index(const std::vector<CXCursor>& top)
@@ -2457,15 +2632,26 @@ void Frontend::index(const std::vector<CXCursor>& top)
     {
         if (is_script_class(k))
         {
-            const std::string u = usr(k), n = spelling(k);
-            table_[u] = Entry{Kind::ScriptClass, u, n, n, std::string()};
+            // A class in a namespace has the file-scope name "game__Player". The class record has
+            // the name "game::Player". The two classes "a::X" and "b::X" have two different names.
+            const std::string u = usr(k), ns = ns_of(k), n = mangle_in(ns, spelling(k));
+            Entry cls{Kind::ScriptClass, u, n, n, std::string()};
+            cls.display = ns.empty() ? n : ns + "::" + spelling(k);
+            check_unique_name(k, cls);
+            table_[u] = cls;
             // A child class needs the table entry of its parent: the parent comes first in the text.
             const uint32_t cpos = extent_of(k).begin;
             for (CXCursor m : children(k))
-                index_member(m, u, n, cpos);
+                index_member(m, u, n, cls.display, cpos);
         }
         else if (is_module_var(k) && !is_record(clang_getCursorKind(clang_getCursorSemanticParent(k))))
-            table_[usr(k)] = Entry{Kind::ModuleVar, std::string(), std::string(), spelling(k), std::string()};
+        { // a variable in a namespace is the member "game__score" of the module block
+            const std::string ns = ns_of(k);
+            Entry var{Kind::ModuleVar, std::string(), std::string(), mangle_in(ns, spelling(k)), std::string()};
+            var.display = ns.empty() ? var.name : ns + "::" + spelling(k);
+            check_unique_name(k, var);
+            table_[usr(k)] = var;
+        }
     }
     for (CXCursor k : top)
     {
@@ -2473,8 +2659,57 @@ void Frontend::index(const std::vector<CXCursor>& top)
             continue;
         auto it = table_.find(usr(clang_getCursorSemanticParent(k)));
         if (it != table_.end() && it->second.kind == Kind::ScriptClass)
-            index_member(k, it->first, it->second.name, 0);
+            index_member(k, it->first, it->second.name, it->second.display, 0);
     }
+}
+
+// True when the namespace "ns" holds a script class, a module variable, or the definition of a
+// member of a class outside the class. The text of such a namespace cannot stay as one block.
+bool Frontend::holds_script(CXCursor ns) const
+{
+    for (CXCursor c : children(ns))
+    {
+        if (!from_main(c))
+            continue;
+        const CXCursorKind kind = clang_getCursorKind(c);
+        if (kind == CXCursor_Namespace)
+        {
+            if (holds_script(c))
+                return true;
+            continue;
+        }
+        if (is_script_class(c) ||
+            (is_module_var(c) && !is_record(clang_getCursorKind(clang_getCursorSemanticParent(c)))))
+            return true;
+        const bool member_kind = kind == CXCursor_CXXMethod || kind == CXCursor_Constructor ||
+            kind == CXCursor_Destructor || kind == CXCursor_VarDecl;
+        if (member_kind && clang_isCursorDefinition(c) &&
+            is_script_class(clang_getCursorSemanticParent(c)))
+            return true;
+    }
+    return false;
+}
+
+// Adds a top-level cursor of the main file. A namespace with script code gives its declarations,
+// each with its namespace. Other namespaces stay one declaration with the text as written.
+void Frontend::add_top(CXCursor k)
+{
+    if (clang_getCursorKind(k) == CXCursor_Namespace && holds_script(k))
+    {
+        if (spelling(k).empty())
+            fail(pos_of(k),
+                "an anonymous namespace cannot hold a script class or a module variable in a .cpp script; "
+                "use a named namespace");
+        if (clang_Cursor_isInlineNamespace(k))
+            fail(pos_of(k),
+                "an inline namespace cannot hold a script class or a module variable in a .cpp script; "
+                "remove 'inline'");
+        for (CXCursor c : children(k))
+            if (from_main(c))
+                add_top(c);
+        return;
+    }
+    top_.push_back(k);
 }
 
 const Frontend::Entry* Frontend::lookup(CXCursor ref) const
@@ -2488,7 +2723,7 @@ ast::Script Frontend::run(CXTranslationUnit tu, const std::string& name)
     main_ = clang_getFile(tu, name.c_str());
     for (CXCursor k : children(clang_getTranslationUnitCursor(tu)))
         if (from_main(k))
-            top_.push_back(k);
+            add_top(k);
     index(top_);
     try
     {
@@ -2509,6 +2744,7 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
     for (CXCursor k : top)
     {
         const CXCursorKind kind = clang_getCursorKind(k);
+        cur_ns_ = ns_of(k);
         if (kind == CXCursor_InclusionDirective)
         { // only a real directive: not one in a comment or in a skipped "#if 0" region
             add_import(k);
@@ -2524,7 +2760,7 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
             const Entry* fwd = lookup(k);
             if (fwd && fwd->kind == Kind::ScriptClass)
                 fail(pos_of(k),
-                    "a forward declaration of the script class '" + fwd->name +
+                    "a forward declaration of the script class '" + fwd->shown() +
                         "' is not supported in a .cpp script; define the class before its first use");
         }
         check_type_refs(k);
@@ -2548,7 +2784,7 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
                 sc_.chunks.push_back(std::move(ch));
             }
             check_late_refs(k);
-            make_field(k, nullptr, [this]() -> std::vector<ast::Field>& { return sc_.vars; });
+            make_field(k, nullptr, [this]() -> std::vector<ast::Field>& { return sc_.vars; }, en->name);
         }
         else if (kind == CXCursor_FunctionDecl && clang_isCursorDefinition(k))
         {
@@ -2556,8 +2792,18 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
             bool hook = false;
             if (n.rfind("convert_", 0) == 0)
                 for (const auto& v : table_)
-                    hook = hook ||
-                        (v.second.kind == Kind::ModuleVar && v.second.name == n.substr(std::strlen("convert_")));
+                {
+                    const bool same = v.second.kind == Kind::ModuleVar && v.second.name == n.substr(std::strlen("convert_"));
+                    hook = hook || (same && cur_ns_.empty());
+                    // A hook has the file-scope name of the variable: "convert_game__score". The
+                    // same name in a namespace, or the short name in the namespace of the variable,
+                    // is an error.
+                    if (v.second.kind == Kind::ModuleVar && !cur_ns_.empty() &&
+                        (same || v.second.shown() == cur_ns_ + "::" + n.substr(std::strlen("convert_"))))
+                        fail(pos_of(k),
+                            "the convert hook of the module variable '" + v.second.shown() +
+                                "' must be at file scope and must be named 'convert_" + v.second.name + "'");
+                }
             std::string var;
             uint32_t var_pos = 0;
             if (hook)

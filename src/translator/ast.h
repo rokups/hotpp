@@ -15,6 +15,13 @@
 namespace sppc::ast
 {
 
+// The nested namespace of a namespace "ns" of a ".cpp" script. It holds the names that sppc
+// generates for the script classes of "ns". It is empty for the file scope.
+inline std::string gen_namespace(const std::string& ns)
+{
+    return ns.empty() ? ns : ns + "::spp_gen";
+}
+
 using sppc::Span;
 
 // True when a parameter type is a "T&" (a non-const lvalue reference). A "T&&" and a
@@ -399,6 +406,9 @@ struct Field
     bool raw = false;
     std::string raw_init; // the edited initializer text
     bool raw_brace_init = false; // true when the initializer is "{...}"
+    // A module variable of a ".cpp" script in a namespace: the namespace path ("game::ai"). The
+    // module block is at file scope, so the translator declares the type in the namespace.
+    std::string ns;
 };
 
 // A line of raw C++ text with the script line where it starts.
@@ -487,6 +497,10 @@ struct Property
 struct ClassDef
 {
     std::string name, base;
+    // A ".cpp" script class in a namespace: "name" is the file-scope name "game__Player", "ns"
+    // is the namespace path "game", and "key" is the name that the class record has: "game::Player".
+    std::string ns, key;
+    const std::string& key_name() const { return key.empty() ? name : key; }
     // The native interface bases after the primary base: "class Boss : Actor, IDamageable"
     // (design 4.4). The primary base is "base".
     std::vector<std::string> interfaces;
@@ -568,6 +582,8 @@ struct Script
         uint32_t pos = 0;
         std::string text; // Text only
         std::string name; // Class only
+        // The namespace path of a Text chunk ("game::ai"). The translator writes the text in it.
+        std::string ns;
     };
     std::vector<Chunk> chunks; // a ".cpp" script only
 };

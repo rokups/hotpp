@@ -168,6 +168,13 @@ TEST(GoldenTranslation, CppNamespaceFunction)
     golden_one("cpp_namespace_fn", ".cpp");
 }
 
+// A .cpp script with classes and module variables in namespaces, one nested with the compact form.
+// Two classes have the same name in two namespaces. Generation 2 changes a variable type.
+TEST(GoldenTranslation, CppNamespaces)
+{
+    golden_pair("cpp_ns", ".cpp");
+}
+
 // A .cpp script with a constexpr function that reads a module variable only at runtime.
 TEST(GoldenTranslation, CppConstexprFunction)
 {

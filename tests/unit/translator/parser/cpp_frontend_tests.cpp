@@ -770,8 +770,8 @@ TEST(CppFrontend, ModuleVariablePointerToLaterType)
     ASSERT_EQ(p.script.vars.size(), 3u);
 }
 
-// A variable in a namespace and a static local variable are not module variables. Their text
-// stays as written. A use of a module variable next to them gets the edit.
+// A variable in a namespace is a module variable with the namespace in its name. A static local
+// variable is not a module variable. A use of the variable gets the edit.
 TEST(CppFrontend, NamespaceAndStaticLocalVariables)
 {
     Parsed p("namespace n { int c = 0; }\n"
@@ -779,12 +779,12 @@ TEST(CppFrontend, NamespaceAndStaticLocalVariables)
              "int f() { static int calls = 0; return ++calls + n::c + total; }\n");
     ASSERT_TRUE(p.diag.items.empty()) << p.errors();
     const ast::Script& s = p.script;
-    ASSERT_EQ(s.vars.size(), 1u);
-    EXPECT_EQ(s.vars[0].name, "total");
-    ASSERT_EQ(s.chunks.size(), 3u);
-    EXPECT_EQ(s.chunks[0].text, "namespace n { int c = 0; }");
-    EXPECT_EQ(s.chunks[1].kind, ast::Script::Chunk::Kind::Module);
-    EXPECT_EQ(s.chunks[2].text, "int f() { static int calls = 0; return ++calls + n::c + spp_mod()->total; }");
+    ASSERT_EQ(s.vars.size(), 2u);
+    EXPECT_EQ(s.vars[0].name, "n__c");
+    EXPECT_EQ(s.vars[0].ns, "n");
+    EXPECT_EQ(s.vars[1].name, "total");
+    EXPECT_EQ(s.vars[1].ns, "");
+    EXPECT_EQ(s.chunks.back().text, "int f() { static int calls = 0; return ++calls + spp_mod()->n__c + spp_mod()->total; }");
 }
 
 // A declaration that uses a module variable stays in its place, with the edits of a body. This
@@ -1365,6 +1365,136 @@ TEST(CppFrontend, TemplateBase)
         dir.string());
     ASSERT_TRUE(p.diag.items.empty()) << p.errors();
     EXPECT_EQ(p.method("F").raw_body, " __self->Hit(); __self->value = 2; ");
+}
+
+// A class in a namespace has a file scope name and a key with the namespace. Two classes with
+// the same name in two namespaces do not collide. The compact form of a nested namespace works.
+TEST(CppFrontend, NamespaceClassNames)
+{
+    Parsed p("#include \"Actor.h\"\n"
+             "namespace red { class Unit : public Actor { public: int hits = 0; }; }\n"
+             "namespace blue { class Unit : public Actor { public: int hits = 0; }; }\n"
+             "namespace game::ai { class Brain : public Actor { public: int x = 0; }; }\n"
+             "class Plain : public Actor { public: int y = 0; };\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    const auto& c = p.script.classes;
+    ASSERT_EQ(c.size(), 4u);
+    EXPECT_EQ(c[0].name, "red__Unit");
+    EXPECT_EQ(c[0].key, "red::Unit");
+    EXPECT_EQ(c[0].ns, "red");
+    EXPECT_EQ(c[1].name, "blue__Unit");
+    EXPECT_EQ(c[1].key, "blue::Unit");
+    EXPECT_EQ(c[2].name, "game__ai__Brain");
+    EXPECT_EQ(c[2].key, "game::ai::Brain");
+    EXPECT_EQ(c[2].ns, "game::ai");
+    EXPECT_EQ(c[3].name, "Plain");
+    EXPECT_EQ(c[3].key_name(), "Plain");
+    EXPECT_EQ(c[3].ns, "");
+}
+
+// A class of an inner namespace derives from a class of an outer namespace. A type in a field of
+// a module variable and in a parameter uses the file scope name.
+TEST(CppFrontend, NamespaceBaseAndTypes)
+{
+    Parsed p("#include \"Actor.h\"\n"
+             "namespace game { class Player : public Actor { public: int points = 0; }; }\n"
+             "namespace game::ai { class Brain : public game::Player { public: int mood = 0;\n"
+             "    void Look(Player* p, game::Player& q) { mood = p->points + q.points; } }; }\n"
+             "game::ai::Brain* brain = nullptr;\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    ASSERT_EQ(p.script.classes.size(), 2u);
+    const ast::ClassDef& brain = p.script.classes[1];
+    EXPECT_EQ(brain.name, "game__ai__Brain");
+    EXPECT_EQ(brain.base, "game__Player");
+    ASSERT_EQ(p.script.vars.size(), 1u);
+    EXPECT_EQ(p.script.vars[0].type, "game__ai__Brain *");
+    for (const auto& m : brain.methods)
+        if (m.name == "Look")
+        {
+            ASSERT_EQ(m.params.size(), 2u);
+            EXPECT_EQ(m.params[0].type, "game__Player *");
+            EXPECT_EQ(m.params[1].type, "game__Player &");
+        }
+}
+
+// A module variable in a namespace is a member of the module with the namespace in its name.
+// A function of the namespace uses it through "spp_mod()".
+TEST(CppFrontend, NamespaceModuleVariable)
+{
+    Parsed p("namespace game { int score = 0; int bonus(int x) { return x + score; } }\n"
+             "namespace game::ai { int mood = 3; }\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    const ast::Script& s = p.script;
+    ASSERT_EQ(s.vars.size(), 2u);
+    EXPECT_EQ(s.vars[0].name, "game__score");
+    EXPECT_EQ(s.vars[0].ns, "game");
+    EXPECT_EQ(s.vars[1].name, "game__ai__mood");
+    EXPECT_EQ(s.vars[1].ns, "game::ai");
+    bool found = false;
+    for (const auto& ch : s.chunks)
+        if (ch.text.find("int bonus(int x)") != std::string::npos)
+        {
+            found = true;
+            EXPECT_EQ(ch.ns, "game");
+            EXPECT_NE(ch.text.find("return x + spp_mod()->game__score;"), std::string::npos) << ch.text;
+        }
+    EXPECT_TRUE(found);
+}
+
+// A namespace without script code stays as one text chunk.
+TEST(CppFrontend, NamespaceWithoutScriptCodeStaysText)
+{
+    Parsed p("namespace util { inline int twice(int x) { return x * 2; } }\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    ASSERT_EQ(p.script.chunks.size(), 1u);
+    EXPECT_EQ(p.script.chunks[0].text, "namespace util { inline int twice(int x) { return x * 2; } }");
+    EXPECT_EQ(p.script.chunks[0].ns, "");
+}
+
+// The convert hook of a variable in a namespace is at file scope. Its name has the namespace.
+TEST(CppFrontend, NamespaceConvertHook)
+{
+    Parsed p("namespace game { int score = 0; }\n"
+             "long long convert_game__score(int old) { return old * 2LL; }\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    ASSERT_EQ(p.script.vars.size(), 1u);
+    EXPECT_FALSE(p.script.var_hooks.empty());
+}
+
+TEST(CppFrontend, NamespaceErrors)
+{
+    expect_error("namespace { int hidden = 0; }", "an anonymous namespace cannot hold a script class");
+    expect_error("namespace { class S : public Actor {}; }", "an anonymous namespace cannot hold a script class");
+    expect_error("inline namespace v1 { int level = 0; }", "an inline namespace cannot hold a script class");
+    expect_error("namespace game { int score = 0; long long convert_score(int old) { return old; } }",
+        "must be at file scope and must be named 'convert_game__score'");
+    expect_error("namespace game { int y = 0; int convert_game__y(int old) { return old; } }",
+        "must be at file scope and must be named 'convert_game__y'");
+    expect_error("namespace game { class Player : public Actor {}; }\nclass game__Player : public Actor {};",
+        "have the same generated name 'game__Player'");
+    expect_error("namespace game { int score = 0; }\nint game__score = 1;",
+        "have the same generated name 'game__score'");
+}
+
+// A plain class in an anonymous namespace with out-of-class members is not script code. It stays
+// as written, like before.
+TEST(CppFrontend, AnonymousNamespaceWithPlainClassStaysText)
+{
+    Parsed p("namespace { struct Helper { int f(); }; int Helper::f() { return 1; } }\n"
+             "namespace { struct H { static int n; }; int H::n = 0; }\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    ASSERT_EQ(p.script.chunks.size(), 2u);
+    EXPECT_TRUE(p.script.vars.empty());
+}
+
+// An extern "C" block passes through as written. A variable in it is not a module variable.
+TEST(CppFrontend, ExternCBlockStaysText)
+{
+    Parsed p("extern \"C\" { int counter = 0; }\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    ASSERT_EQ(p.script.chunks.size(), 1u);
+    EXPECT_EQ(p.script.chunks[0].text, "extern \"C\" { int counter = 0; }");
+    EXPECT_TRUE(p.script.vars.empty());
 }
 
 TEST(CppFrontend, ClangError)

@@ -809,6 +809,13 @@ std::string str_join(const std::vector<std::string>& v, const char* sep)
 
 using sppc::RCtx;
 
+// The last part of a qualified name: "game::Player" gives "Player".
+std::string last_component(const std::string& q)
+{
+    const size_t p = q.rfind("::");
+    return p == std::string::npos ? q : q.substr(p + 2);
+}
+
 // The name of a function for the stale call log: "Cls::name" or "Cls::name(types)".
 std::string body_what(const std::string& cn, const Method& m)
 {
@@ -2773,10 +2780,39 @@ void translate_impl(
     }
     // A ".cpp" script can name a script class before its class block: a static method prototype
     // or a module variable with a pointer to the class. The shell and its alias are declared here.
+    // A class in a namespace gets its names in the nested namespace "spp_gen" of the namespace
+    // (see ast::gen_namespace). The names have the file-scope form "game__Player", so a class
+    // with the same name in another namespace does not collide. A using directive makes the names
+    // visible at file scope. The class name as written ("Player") is an alias in the namespace.
     if (sc.is_cpp)
+    {
+        std::set<std::string> directives;
         for (const ClassDef& c : sc.classes)
-            if (c.name != kModuleName && !c.is_value)
+        {
+            if (c.name == kModuleName || c.is_value)
+                continue;
+            if (c.ns.empty())
+            {
                 o.w("struct " + c.name + "_Shell;\nusing " + c.name + " = " + c.name + "_Shell;\n");
+                continue;
+            }
+            const std::string gen = sppc::ast::gen_namespace(c.ns);
+            o.w("namespace " + gen + " { struct " + c.name + "_Shell; using " + c.name + " = " + c.name + "_Shell; }\n");
+            o.w("namespace " + c.ns + " { using " + last_component(c.key_name()) + " = ::" + gen + "::" + c.name
+                + "_Shell; }\n");
+            if (directives.insert(gen).second)
+                o.w("using namespace " + gen + ";\n");
+        }
+        // The module variables in a namespace can use the directive too.
+        for (const ClassDef& c : sc.classes)
+            if (c.name == kModuleName)
+                for (const Field& f : c.fields)
+                    if (!f.ns.empty() && directives.insert(sppc::ast::gen_namespace(f.ns)).second)
+                    {
+                        const std::string gen = sppc::ast::gen_namespace(f.ns);
+                        o.w("namespace " + gen + " {}\nusing namespace " + gen + ";\n");
+                    }
+    }
 
     // ---- script enums. The enum is a C++ "enum class" with the underlying type of the script.
     {
@@ -3048,6 +3084,15 @@ void translate_impl(
             if (c.params.empty())
                 zero = &c;
         const bool tag_init = zero && cd.ctors.size() > 1;
+        // The module block is at file scope. The type of a variable in a namespace gets an alias in
+        // the namespace, so the names of the type resolve as in the script.
+        for (Field& f : cd.fields)
+            if (!f.ns.empty())
+            {
+                const std::string gen = sppc::ast::gen_namespace(f.ns), alias = f.name + "_t";
+                o.w("namespace " + gen + " { using " + alias + " = " + f.type + "; }\n");
+                f.type = "::" + gen + "::" + alias;
+            }
         o.w("struct " + cn + " {\n");
         for (const Field& f : cd.fields)
             o.w("    " + f.type + " " + f.name + ";\n");
@@ -3108,9 +3153,14 @@ void translate_impl(
         for (size_t i = 0; i < cd.fields.size(); ++i)
         {
             const Field& f = cd.fields[i];
+            // The initializer is in the namespace of the variable: it can name the entities there.
+            if (!f.ns.empty())
+                o.w("namespace " + sppc::ast::gen_namespace(f.ns) + " {\n");
             o.w("#line " + std::to_string(f.line) + " \"" + esc(file_at(f.pos)) + "\"\n");
             o.w("static void " + P + "init_" + f.name + "(void*, void* f) { using T = " + f.type + "; new (f) T"
                 + (f.raw_brace_init ? inits[i] : "(" + inits[i] + ")") + "; }\n");
+            if (!f.ns.empty())
+                o.w("}\n");
             reset();
         }
         o.w("#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n");
@@ -3186,10 +3236,10 @@ void translate_impl(
             cm.raw = c.raw;
             cm.raw_body = c.raw_body;
             cm.raw_line = c.raw_line;
-            emit_vbody(cm, P + "ctor", "void", cn + "::" + cn);
+            emit_vbody(cm, P + "ctor", "void", cd.key_name() + "::" + last_component(cd.key_name()));
         }
         for (Method& m : cd.methods)
-            emit_vbody(m, P + m.name, fn_ret(m), body_what(cn, m));
+            emit_vbody(m, P + m.name, fn_ret(m), body_what(cd.key_name(), m));
         // A convert hook has no self and reads no module variable: the new block is not complete.
         for (auto& [vname, m] : hooks)
         {
@@ -3341,9 +3391,11 @@ void translate_impl(
                     reset();
                 continue;
             }
+            if (!ch->ns.empty()) // a declaration in a namespace of the script
+                o.w("\nnamespace " + ch->ns + " {");
             o.w("\n#line " + std::to_string(ch->line) + " \"" + esc(file_at(ch->pos)) + "\"\n");
             o.w(ch->text);
-            o.w("\n\n");
+            o.w(ch->ns.empty() ? "\n\n" : "\n}\n\n");
             reset();
         }
     };
@@ -3366,6 +3418,10 @@ void translate_impl(
             emit_value(cd);
             continue;
         }
+        // The block of a class in a namespace is in the nested namespace "spp_gen" of the namespace,
+        // so the script text in the class finds the names of the namespace.
+        if (!cd.ns.empty())
+            o.w("namespace " + sppc::ast::gen_namespace(cd.ns) + " {\n");
         const bool has_ctor = !cd.ctors.empty(), has_dtor = !cd.dtors.empty();
         // The classes of a chain (design 4.5): "par" is the script parent, "root" the first class.
         ClassDef* par = script_parent(cd);
@@ -3439,9 +3495,9 @@ void translate_impl(
             root_super = root_super || c.has_base_call;
         std::string ctor_args;
         if (bi.ctor_kind == 1)
-            ctor_args = ", std::string(\"" + cn + "\")";
+            ctor_args = ", std::string(\"" + cd.key_name() + "\")";
         else if (bi.ctor_kind == 2)
-            ctor_args = ", \"" + cn + "\"";
+            ctor_args = ", \"" + cd.key_name() + "\"";
         else if (!bi.default_ctor && !root_super)
             fail_at(map, cd.pos,
                 "base class '" + root.base + "' has no default constructor and no constructor that takes a name");
@@ -4383,7 +4439,7 @@ void translate_impl(
                 {
                     RCtx fc = base_cx;
                     fc.allow_this = false;
-                    fc.where = cn + "::" + cn;
+                    fc.where = cd.key_name() + "::" + last_component(cd.key_name());
                     sppc::add_params(fc, cm.params);
                     std::vector<std::string> parts;
                     for (ExprP& a : cd.ctors[k].base_args)
@@ -4623,7 +4679,7 @@ void translate_impl(
         auto emit_convert = [&](Method& m)
         {
             RCtx cx = base_cx;
-            cx.where = body_what(cn, m);
+            cx.where = body_what(cd.key_name(), m);
             cx.allow_this = false;
             cx.field_type.clear();
             cx.fns.clear();
@@ -4658,10 +4714,10 @@ void translate_impl(
             ctor_ms[k].raw_body = cd.ctors[k].raw_body;
             ctor_ms[k].raw_line = cd.ctors[k].raw_line;
             ctor_ms[k].raw_pre = cd.ctors[k].raw_pre;
-            emit_body(ctor_ms[k], true, P + "ctor", "void", cn + "::" + cn, "ctor");
+            emit_body(ctor_ms[k], true, P + "ctor", "void", cd.key_name() + "::" + last_component(cd.key_name()), "ctor");
         }
         if (has_dtor)
-            emit_body(cd.dtors[0], true, P + "dtor", "void", cn + "::~" + cn, "dtor");
+            emit_body(cd.dtors[0], true, P + "dtor", "void", cd.key_name() + "::~" + last_component(cd.key_name()), "dtor");
         for (Method& m : cd.methods)
         {
             if (hook_of(m) == Hook::Convert)
@@ -4674,11 +4730,11 @@ void translate_impl(
                 for (const Slot& x : slots)
                     if (x.impl == &m)
                         s = &x;
-                emit_body(m, false, P + s->id, s->nv->ret, body_what(cn, m), s->id);
+                emit_body(m, false, P + s->id, s->nv->ret, body_what(cd.key_name(), m), s->id);
             }
             else
             {
-                emit_body(m, true, P + m.name, fn_ret(m), body_what(cn, m), m.name);
+                emit_body(m, true, P + m.name, fn_ret(m), body_what(cd.key_name(), m), m.name);
             }
         }
         if (!g_diag.items.empty())
@@ -4707,11 +4763,11 @@ void translate_impl(
             // A changed signature of an earlier function gets a new thunk with a signature key
             // (design 5.3). The thunk of the old signature detaches. The same signature emits nothing.
             const std::string sig = fn_ret(m) + "(" + B + "*" + type_list(m) + ")";
-            sig_lines.push_back("sig " + cn + "::" + m.name + " " + sig + "\n");
+            sig_lines.push_back("sig " + cd.key_name() + "::" + m.name + " " + sig + "\n");
             bool changed = false;
             if (slots[i].intro_gen != opt.gen)
             {
-                auto old = old_sigs.find(cn + "::" + m.name);
+                auto old = old_sigs.find(cd.key_name() + "::" + m.name);
                 changed = old != old_sigs.end() && old->second != sig;
                 if (!changed)
                     continue;
@@ -4726,7 +4782,7 @@ void translate_impl(
                         + ");\n}\n",
                     m.line, m.pos);
                 o.w("\n");
-                thunk_regs.push_back("    reg.add_thunk(\"" + cn + "::" + m.name + "\", reinterpret_cast<void*>(&" + P
+                thunk_regs.push_back("    reg.add_thunk(\"" + cd.key_name() + "::" + m.name + "\", reinterpret_cast<void*>(&" + P
                     + m.name + "__thunk), typeid(" + sig + ").name(), " + slot_id(m.name) + ");\n");
                 continue;
             }
@@ -4738,7 +4794,7 @@ void translate_impl(
                     + slot_id(m.name) + arg_list(m) + ");\n}\n",
                 m.line, m.pos);
             o.w("\n");
-            thunk_regs.push_back("    reg.add_thunk(\"" + cn + "::" + m.name + "\", reinterpret_cast<void*>(&" + P
+            thunk_regs.push_back("    reg.add_thunk(\"" + cd.key_name() + "::" + m.name + "\", reinterpret_cast<void*>(&" + P
                 + m.name + "__thunk));\n");
         }
 
@@ -4791,7 +4847,7 @@ void translate_impl(
                 + (gen_new ? "&" + P + "construct, typeid(" + cn + "_SuperArgs).name()" : "nullptr, nullptr") + ", "
                 + (!entry.empty() ? "&" + P + "new_default" : std::string("nullptr")) + ", nullptr, "
                 + (dtor_chain ? "&" + P + "dtor_slot" : std::string("nullptr")) + ",\n";
-        o.w("spp::ClassRecord " + cn + "_record = {\n    \"" + cn + "\", GEN, " + cn + "_slots, " + slot_id("COUNT")
+        o.w("spp::ClassRecord " + cn + "_record = {\n    \"" + cd.key_name() + "\", GEN, " + cn + "_slots, " + slot_id("COUNT")
             + ", &" + cn + "_layout, " + (par ? "&" + par->name + "_record" : std::string("nullptr")) + ",\n    \"" + BL
             + "\", spp::shell_layout_hash(\"" + BL + "\", sizeof(" + shell + "), alignof(" + shell + "), "
             + std::to_string(native_count) + "),\n" + (on_reload_init.empty() ? "" : "   " + on_reload_init) + ctor_init
@@ -4821,6 +4877,8 @@ void translate_impl(
         }
         registers.push_back({cn, true});
         infos[cn] = std::move(info);
+        if (!cd.ns.empty())
+            o.w("} // namespace " + sppc::ast::gen_namespace(cd.ns) + "\n");
     }
     write_texts(seq.size());
 

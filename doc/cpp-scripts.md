@@ -197,7 +197,7 @@ public:
 - A bare use or a `this->` use of a native base member goes to the native owner. Examples are `Move(...)` and `this->Name`.
 - In a lambda, a field or a method of the object goes through the object. See "Lambdas".
 - `this` as an argument becomes the native owner.
-- A non-const file-scope variable becomes a migrated module variable.
+- A non-const variable at file scope or in a namespace becomes a migrated module variable.
 - A file-scope declaration can use a module variable. Examples are a free function, a function template, a `constexpr` function, a function in a namespace and a default argument. `sppc` edits the declaration like a method body: the name becomes `spp_mod()->name`. The declaration stays in its place. A declaration that uses no module variable stays as written.
 
 The generated file keeps the source order of the script. A block at the top declares `spp_mod()`. The module block comes at the place of the first module variable. The block of a class comes at the place of the class. So a module variable can use only the types and the functions that come before the first module variable. A variable that is not a module variable cannot use a module variable: it gets its value when the library loads, before the module state exists.
@@ -248,7 +248,8 @@ A lambda cannot capture `*this`. A copy of the object has no meaning in a script
 At file scope a `.cpp` script can have:
 
 - Module variables, with free-function `convert_<var>` hooks.
-- Verbatim code: enums, structs without a base, free functions, `using`, namespaces and `const` or `constexpr` variables.
+- Namespaces that hold script classes and module variables. See "Namespaces".
+- Verbatim code: enums, structs without a base, free functions, `using`, namespaces without script code and `const` or `constexpr` variables.
 - A free function, a function template, a `constexpr` function or a function in a namespace can use a module variable (see "How sppc edits a body"). A `constexpr` function can read it only in a call at runtime.
 
 ## Static members
@@ -436,6 +437,41 @@ These features follow the rules of [Hot reload](hot-reload.html). Only the spell
 - `convert_<var>(Old old)` is a free function. It converts the old value of a module variable.
 - `void onReload(const spp::OldState& old)` runs once for each live object, after the migration. Use `old.has("hp")` and `old.get<float>("hp")`.
 
+## Namespaces
+
+A script class and a module variable can be in a named namespace. The compact form `namespace game::ai { ... }` works too. A normal C++ build compiles the file as written.
+
+```cpp
+namespace game
+{
+int score = 0;
+int bonus(int x) { return x + score; }
+
+class Player : public Actor
+{
+public:
+    Player() : Actor("Player") {}
+    void Tick(float dt) override { score += 1; points = bonus(10); }
+    int points = 0;
+};
+} // namespace game
+
+namespace game::ai
+{
+class Brain : public Player { /* ... */ };
+} // namespace game::ai
+```
+
+- A class in a namespace keeps its qualified name in the hot-reload state. The class above is `game::Player`. The class `Brain` is `game::ai::Brain`. So `red::Unit` and `blue::Unit` are two different classes. A reload migrates each one on its own.
+- A module variable in a namespace has the namespace in its name, with `__` between the parts. The variable `game::score` is `game__score`. The variable `game::ai::mood` is `game__ai__mood`. This name is the key of the migration. A tool that reads the module state shows this name.
+- A convert hook of a module variable in a namespace is a free function at file scope, not in the namespace. Its name is `convert_` and the name with `__`. For `game::score` the hook is `convert_game__score`. The hook of a variable at file scope does not change: `convert_total`.
+- A function in a namespace stays in the namespace. It can use a module variable of the namespace by its short name or by a qualified name. A class can use the names of its namespace without a qualifier.
+- Name lookup works as in C++ for `using namespace`, a using-declaration, a namespace alias and a qualified name like `game::Player`. A class at file scope can use a script class of a namespace by any of these forms.
+- A class of an inner namespace can derive from a class of an outer namespace.
+- A namespace with no script class and no module variable stays as written. It has no migration. An `extern "C"` block also stays as written, so a variable in it is not a module variable.
+- `SPP_ALIAS` is for a field only. It has no effect on a class name, so a class in a namespace has no alias. A rename of the class or of its namespace makes a new class. It is not a migration.
+- A class and a variable in different namespaces must not give the same name after the join with `__`. The class `game::Player` and a class `game__Player` give the same name, and `sppc` gives an error.
+
 ## Unsupported forms
 
 A class with no base is not a script class. `sppc` copies it unchanged, like a struct without a base. It has no hot reload.
@@ -444,9 +480,13 @@ The first version gives an error for each form in this list. The text in the sec
 
 | Form | Message |
 |---|---|
+| A script class or a module variable in an anonymous namespace | `an anonymous namespace cannot hold a script class or a module variable in a .cpp script; use a named namespace` |
+| A script class or a module variable in an inline namespace | `an inline namespace cannot hold a script class or a module variable in a .cpp script; remove 'inline'` |
+| A convert hook for a module variable of a namespace, written inside a namespace | `the convert hook of the module variable '<ns::var>' must be at file scope and must be named 'convert_<ns__var>'` |
+| Two classes or two module variables with the same name after the join with `__` | `'<a>' and '<b>' have the same generated name '<name>'. Rename one of them` |
 | A script class that derives from a class of the file that is not a script class | `a .cpp script class cannot derive from '<name>': it is a plain class of the script; derive from a script class or from a native class` |
 | A script class that derives from a script class of another `.cpp` file | `a .cpp script class cannot derive from '<name>' of another .cpp file; a script class can derive only from a script class of the same file` |
-| A class in a function, in another class or in a namespace that derives from a script class | `the class '<name>' cannot derive from the script class '<parent>': only a class at file scope can derive from a script class in a .cpp script` |
+| A class in a function or in another class that derives from a script class | `the class '<name>' cannot derive from the script class '<parent>': only a class at file scope can derive from a script class in a .cpp script` |
 | A script class with a script parent and one more base class | `a .cpp script class with the base the script class '<name>' cannot have another base class` |
 | A script parent with `virtual`, for example `class Kid : public virtual Base` | `a .cpp script class cannot derive from the script class '<name>' with 'virtual'` |
 | A script parent with `protected` or `private` | `a .cpp script class must derive from the script class '<name>' with 'public'` |

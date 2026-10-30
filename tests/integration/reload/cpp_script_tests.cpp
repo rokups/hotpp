@@ -597,6 +597,87 @@ TEST_P(BackendTests, CppScriptLambdasUseTheShell)
     EXPECT_TRUE(s.loader.stats().state_holds_code);
 }
 
+// Classes and module variables in namespaces. The names of the state have the namespace:
+// "game::ai::Brain" is the class and "game__score" is the module variable. Two classes with the
+// name Unit in two namespaces stay separate. The hook convert_game__score changes the type of the
+// variable in generation 2. A class of the inner namespace derives from a class of the outer one.
+TEST_P(BackendTests, CppScriptNamespacesReload)
+{
+    spp::LoadResult v1 = backend->load(source("cpp_ns_v1.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult v2 = backend->load(source("cpp_ns_v2.cpp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "game::ai::Brain"));
+    spp::ShellBase* shell = s.inst.shell;
+    EXPECT_STREQ(shell->cls->name, "game::ai::Brain");
+    ASSERT_NE(shell->cls->super, nullptr);
+    EXPECT_STREQ(shell->cls->super->name, "game::Player");
+    EXPECT_EQ(s.loader.find("Brain"), nullptr); // the name has the namespace
+
+    const spp::ClassEntry* red_entry = s.loader.find("red::Unit");
+    const spp::ClassEntry* blue_entry = s.loader.find("blue::Unit");
+    ASSERT_NE(red_entry, nullptr);
+    ASSERT_NE(blue_entry, nullptr);
+    spp::Instance red = red_entry->create();
+    spp::Instance blue = blue_entry->create();
+    ASSERT_NE(red.shell, nullptr);
+    ASSERT_NE(blue.shell, nullptr);
+
+    s.actor->Tick(kDt); // Player::Tick: score 1, points 11. Then mood 5 and thought 2 + 5.
+    EXPECT_EQ(*fld<int>(shell, "points"), 11);
+    EXPECT_EQ(*fld<int>(shell, "thought"), 7);
+    ASSERT_NE(modvar<int>(s, "game__score"), nullptr);
+    EXPECT_EQ(*modvar<int>(s, "game__score"), 1);
+    ASSERT_NE(modvar<int>(s, "game__ai__mood"), nullptr);
+    EXPECT_EQ(*modvar<int>(s, "game__ai__mood"), 5);
+    static_cast<Actor*>(red.native)->Tick(kDt);
+    static_cast<Actor*>(blue.native)->Tick(kDt);
+    EXPECT_EQ(*fld<int>(red.shell, "hits"), 1);
+    EXPECT_EQ(*fld<int>(blue.shell, "hits"), 10);
+    EXPECT_EQ(fld<int>(red.shell, "armor"), nullptr); // only blue::Unit has this field
+    EXPECT_EQ(*fld<int>(blue.shell, "armor"), 5);
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    const spp::ReloadResult res = s.loader.commit_pending();
+    ASSERT_TRUE(res) << res.error;
+    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(s.inst.shell, shell);
+    ASSERT_NE(modvar<long long>(s, "game__score"), nullptr);
+    EXPECT_EQ(*modvar<long long>(s, "game__score"), 100); // convert_game__score(1)
+    EXPECT_EQ(*modvar<int>(s, "game__ai__mood"), 5); // migrated
+    EXPECT_EQ(*fld<int>(shell, "points"), 11);
+    EXPECT_EQ(*fld<int>(shell, "level"), 4); // the new field of game::Player
+    EXPECT_EQ(*fld<int>(red.shell, "hits"), 1);
+    EXPECT_EQ(fld<int>(red.shell, "shield"), nullptr);
+    EXPECT_EQ(*fld<int>(blue.shell, "shield"), 9); // the new field of blue::Unit only
+
+    s.actor->Tick(kDt); // score 101. points = 10 + 101. mood 7. thought = 102 + 7.
+    EXPECT_EQ(*modvar<long long>(s, "game__score"), 101);
+    EXPECT_EQ(*fld<int>(shell, "points"), 111);
+    EXPECT_EQ(*fld<int>(shell, "thought"), 109);
+    static_cast<Actor*>(red.native)->Tick(kDt);
+    static_cast<Actor*>(blue.native)->Tick(kDt);
+    EXPECT_EQ(*fld<int>(red.shell, "hits"), 3);
+    EXPECT_EQ(*fld<int>(blue.shell, "hits"), 30);
+}
+
+// A class at file scope uses the classes and variables of namespaces by a qualified name, a using
+// directive and a namespace alias.
+TEST_P(BackendTests, CppScriptNamespaceNamesInScriptCode)
+{
+    spp::LoadResult v1 = backend->load(source("cpp_ns_v1.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Watcher"));
+    s.actor->Tick(kDt);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "seen"), 5 + 1); // mood_now() + game::bonus(0)
+    EXPECT_EQ(*fld<int>(s.inst.shell, "points_seen"), 11);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "thought_seen"), 7);
+    ASSERT_NE(modvar<void*>(s, "brain"), nullptr);
+    EXPECT_NE(*modvar<void*>(s, "brain"), nullptr);
+}
+
 // A .spp script and a .cpp script live in the same process. Each has its own loader and one object.
 // One loader holds one module for each generation, so the two scripts use two loaders.
 TEST_P(BackendTests, SppAndCppScriptsRunSideBySide)
