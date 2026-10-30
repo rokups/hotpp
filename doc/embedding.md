@@ -121,7 +121,7 @@ The build chooses the format library for string interpolation. No runtime switch
 - C++17 (the standard is less than 20): fmt. `std::format` needs C++20.
 - C++20 and later: `std::format`. Set `-DSPP_USE_FMT=ON` to use fmt at any standard.
 
-The standard is the `CXX_STANDARD` argument of `spp_add_scripts`, else `CMAKE_CXX_STANDARD`, else 17. The runtime backends use the standard of the spp build. The header `include/spp/config.h` has the choice (`SPP_USE_FMT`). When the build uses fmt, `spp_add_scripts` passes `--format=fmt` to `sppc`, and an AOT library links the target `spp_fmt`.
+The standard is `CMAKE_CXX_STANDARD`, else 17. `spp_add_scripts` passes it to `sppc` as `--std`. The runtime backends use the standard of the spp build. The header `include/spp/config.h` has the choice (`SPP_USE_FMT`). When the build uses fmt, `spp_add_scripts` passes `--format=fmt` to `sppc`, and an AOT library links the target `spp_fmt`.
 
 The cache variable `SPP_FMT_PROVIDER` says where fmt comes from:
 

@@ -27,13 +27,13 @@
 # and no AFTER. PRELUDES is only for AOT mode.
 #
 # String interpolation "${...}": the C++ standard picks the format library at build time
-# (cmake/SppFormat.cmake). The standard is CXX_STANDARD, else CMAKE_CXX_STANDARD, else 17.
+# (cmake/SppFormat.cmake). The standard is CMAKE_CXX_STANDARD, else 17.
 # A standard less than 20 selects fmt. C++20 and later select std::format, unless the CMake
 # option SPP_USE_FMT is ON. With fmt, the function gets fmt (SPP_FMT_PROVIDER: an installed
 # package, else CPM.cmake, by default), passes --format=fmt to sppc and gives the compile the fmt include directory.
 # In AOT mode the library "name" links the target spp_fmt (fmt). There is no runtime switch.
 function(spp_add_scripts)
-    cmake_parse_arguments(A "AOT" "TARGET;GEN;OUT_DIR;AFTER;CXX_STANDARD" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS" ${ARGN})
+    cmake_parse_arguments(A "AOT" "TARGET;GEN;OUT_DIR;AFTER" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS" ${ARGN})
     if(A_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "spp_add_scripts: unknown arguments: ${A_UNPARSED_ARGUMENTS}")
     endif()
@@ -54,12 +54,7 @@ function(spp_add_scripts)
     endif()
 
     # The format library of "${...}".
-    set(std_num 17)
-    if(A_CXX_STANDARD)
-        set(std_num ${A_CXX_STANDARD})
-    elseif(CMAKE_CXX_STANDARD)
-        set(std_num ${CMAKE_CXX_STANDARD})
-    endif()
+    spp_effective_cxx_standard(std_num "")
     spp_format_library(format_lib ${std_num})
     set(fmt_flags "")
     set(fmt_includes "")
@@ -83,9 +78,9 @@ function(spp_add_scripts)
         list(APPEND args -I ${i})
     endforeach()
 
-    set(format_args "")
+    set(format_args --std=c++${std_num})
     if(format_lib STREQUAL "fmt")
-        set(format_args --format=fmt)
+        list(APPEND format_args --format=fmt)
     endif()
 
     if(A_AOT)
