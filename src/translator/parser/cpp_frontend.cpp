@@ -300,7 +300,10 @@ private:
 
     void collect_bases(CXCursor rec, std::set<std::string>& out);
     void check_type_refs(CXCursor c, const std::string& own_usr);
-    void check_module_refs(CXCursor c, bool hook = false);
+    void check_hook_refs(CXCursor c);
+    bool find_module_ref(CXCursor c, const CXCursor* skip, std::string& name, uint32_t& pos);
+    std::string strip_defaults(CXCursor fn, uint32_t begin, const std::string& sig);
+    void add_module_func(CXCursor fn, Range e, const std::string& var, uint32_t var_pos);
     void examine(CXCursor k, EditCtx& ctx);
     void walk(CXCursor c, EditCtx& ctx);
     std::string edit_region(CXCursor root, Range region, const ClassInfo* cls);
@@ -349,27 +352,116 @@ void Frontend::check_type_refs(CXCursor c, const std::string& own_usr)
     }
 }
 
-// Fails on a reference to a module variable in a free function or in a convert hook.
-void Frontend::check_module_refs(CXCursor c, bool hook)
+// Fails on a reference to a module variable in a convert hook.
+void Frontend::check_hook_refs(CXCursor c)
+{
+    std::string name;
+    uint32_t pos = 0;
+    if (find_module_ref(c, nullptr, name, pos)) // the same text as the .spp lowering gives
+        fail(pos,
+            "the module variable '" + name +
+                "' cannot be used in a convert hook: the new module state is not complete yet");
+}
+
+// Finds the first reference to a module variable below "c". It does not search below "skip".
+bool Frontend::find_module_ref(CXCursor c, const CXCursor* skip, std::string& name, uint32_t& pos)
 {
     for (CXCursor k : children(c))
     {
+        if (skip && clang_equalCursors(k, *skip))
+            continue;
         if (clang_getCursorKind(k) == CXCursor_DeclRefExpr)
         {
             auto it = module_vars_.find(usr(clang_getCursorReferenced(k)));
             if (it != module_vars_.end())
             {
-                if (hook) // the same text as the .spp lowering gives
-                    fail(pos_of(k),
-                        "the module variable '" + it->second +
-                            "' cannot be used in a convert hook: the new module state is not complete yet");
-                fail(pos_of(k),
-                    "a free function cannot use the module variable '" + it->second +
-                        "' in a .cpp script (first version)");
+                name = it->second;
+                pos = pos_of(k);
+                return true;
             }
         }
-        check_module_refs(k, hook);
+        if (find_module_ref(k, skip, name, pos))
+            return true;
     }
+    return false;
+}
+
+// Gives "sig", the text of a function head from "begin", without the default arguments. A
+// definition must not repeat the defaults of the prototype. The new lines stay, so the lines
+// of the script map to the same lines.
+std::string Frontend::strip_defaults(CXCursor fn, uint32_t begin, const std::string& sig)
+{
+    std::vector<std::pair<size_t, size_t>> cuts; // [from, to) in "sig"
+    for (CXCursor a : children(fn))
+    {
+        if (clang_getCursorKind(a) != CXCursor_ParmDecl)
+            continue;
+        const Range pr = extent_of(a);
+        int depth = 0;
+        for (size_t i = pr.begin; i < pr.end && i < begin + sig.size();)
+        {
+            const size_t k = skip_opaque(text_, i);
+            if (k != i)
+            {
+                i = k;
+                continue;
+            }
+            const char ch = text_[i];
+            if (ch == '(' || ch == '[' || ch == '{')
+                ++depth;
+            else if (ch == ')' || ch == ']' || ch == '}')
+                --depth;
+            else if (ch == '=' && depth == 0 && i + 1 < text_.size() && text_[i + 1] != '=' &&
+                std::strchr("=!<>", text_[i - 1]) == nullptr)
+            {
+                size_t from = i;
+                while (from > pr.begin && is_space(text_[from - 1]))
+                    --from;
+                cuts.emplace_back(from - begin, std::min<size_t>(pr.end - begin, sig.size()));
+                break;
+            }
+            ++i;
+        }
+    }
+    std::string out = sig;
+    for (auto it = cuts.rbegin(); it != cuts.rend(); ++it)
+    {
+        std::string keep;
+        for (size_t i = it->first; i < it->second; ++i)
+            if (sig[i] == '\n')
+                keep += '\n';
+        out.replace(it->first, it->second - it->first, keep);
+    }
+    return out;
+}
+
+// A free function that uses a module variable. The body calls spp_mod(), and the module block
+// comes after the prelude. So the prelude gets the prototype and "post_funcs" gets the
+// definition with the edited body.
+void Frontend::add_module_func(CXCursor fn, Range e, const std::string& var, uint32_t var_pos)
+{
+    const CXCursor body = body_of(fn);
+    std::string name;
+    uint32_t pos = 0;
+    if (find_module_ref(fn, &body, name, pos))
+        fail(pos, "a default argument cannot use the module variable '" + name + "' in a .cpp script");
+    const Range b = extent_of(body);
+    const std::string sig = text_.substr(e.begin, b.begin - e.begin);
+    for (size_t i = 0; i < sig.size(); ++i)
+        if (word_at(sig, i, "constexpr") || word_at(sig, i, "consteval"))
+            fail(var_pos,
+                "a constexpr function cannot use the module variable '" + var +
+                    "' in a .cpp script: sppc moves the body after the module block");
+    ast::Script::RawDecl proto;
+    proto.pos = e.begin;
+    proto.line = line(e.begin);
+    proto.text = trim(sig) + ";";
+    sc_.prelude.push_back(std::move(proto));
+    ast::Script::RawDecl def;
+    def.pos = e.begin;
+    def.line = line(e.begin);
+    def.text = strip_defaults(fn, e.begin, sig) + edit_region(fn, Range{b.begin, b.end}, nullptr);
+    sc_.post_funcs.push_back(std::move(def));
 }
 
 // Records the edit of one cursor of a region. The cases of the switch are the rules.
@@ -868,16 +960,17 @@ ast::Script Frontend::run(CXTranslationUnit tu, const std::string& name)
             if (n.rfind("convert_", 0) == 0)
                 for (const auto& v : module_vars_)
                     hook = hook || v.second == n.substr(std::strlen("convert_"));
+            std::string var;
+            uint32_t var_pos = 0;
             if (hook)
             {
-                check_module_refs(k, true);
+                check_hook_refs(k);
                 sc_.var_hooks.push_back(make_method(k, nullptr));
             }
+            else if (find_module_ref(k, nullptr, var, var_pos))
+                add_module_func(k, e, var, var_pos);
             else
-            {
-                check_module_refs(k);
                 add_prelude(k, e);
-            }
         }
         else if (kind == CXCursor_MacroDefinition)
         { // the extent starts at the name: take the "#define" of the line too
@@ -887,7 +980,19 @@ ast::Script Frontend::run(CXTranslationUnit tu, const std::string& name)
             add_prelude(k, Range{static_cast<uint32_t>(b), e.end});
         }
         else
+        {
+            std::string var;
+            uint32_t var_pos = 0;
+            if (kind == CXCursor_FunctionTemplate && find_module_ref(k, nullptr, var, var_pos))
+                fail(var_pos,
+                    "a function template cannot use the module variable '" + var +
+                        "' in a .cpp script: sppc moves the body after the module block");
+            if (kind == CXCursor_Namespace && find_module_ref(k, nullptr, var, var_pos))
+                fail(var_pos,
+                    "a function in a namespace cannot use the module variable '" + var +
+                        "' in a .cpp script: sppc moves the body after the module block");
             add_prelude(k, e);
+        }
     }
     return std::move(sc_);
 }

@@ -552,6 +552,9 @@ struct Script
         std::string text;
     };
     std::vector<RawDecl> prelude; // the verbatim file-scope declarations, in source order
+    // The definitions of the free functions that use a module variable. The prelude holds
+    // their prototypes. The translator writes the definitions after the module state block.
+    std::vector<RawDecl> post_funcs;
 };
 
 } // namespace sppc::ast

@@ -105,3 +105,10 @@ TEST(GoldenTranslation, CppDefaults)
 {
     golden_one("cpp_defaults", ".cpp");
 }
+
+// A .cpp script with free functions that use a module variable: the prototype comes first and
+// the definition comes after the module block.
+TEST(GoldenTranslation, CppFreeFunction)
+{
+    golden_one("cpp_freefn", ".cpp");
+}

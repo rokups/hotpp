@@ -190,10 +190,37 @@ TEST(CppFrontend, StructureErrors)
     expect_error("class S : public Actor { void F(); };", "define the method inside the class");
     expect_error("class S : public Actor { int hp = 0; S() : hp(1) {} };", "use a default member initializer");
     expect_error("class S : public Actor { int hp = 0; S() : Actor(), hp(1) {} };", "use a default member initializer");
-    expect_error("int total = 0;\nint g() { return total; }",
-        "a free function cannot use the module variable 'total' in a .cpp script (first version)");
+    expect_error("int total = 0;\ntemplate <class T> T g(T a) { return a + total; }",
+        "a function template cannot use the module variable 'total' in a .cpp script");
+    expect_error("int total = 0;\nconstexpr int g(bool b) { return b ? 1 : total; }",
+        "a constexpr function cannot use the module variable 'total' in a .cpp script");
+    expect_error("int total = 0;\nnamespace n { int g() { return total; } }",
+        "a function in a namespace cannot use the module variable 'total' in a .cpp script");
+    expect_error("int total = 0;\nint g(int a = total) { return a; }",
+        "a default argument cannot use the module variable 'total' in a .cpp script");
     expect_error("class S : public Actor {};\nvoid g(S* s) { (void)s; }",
         "the script class 'S' cannot be named outside its body (first version)");
+}
+
+// A free function that uses a module variable: the prelude has the prototype and "post_funcs"
+// has the definition with the edited body. A function without a module variable stays as written.
+TEST(CppFrontend, FreeFunctionWithModuleVariable)
+{
+    Parsed p("int total = 0;\n"
+             "static inline int plain(int a) { return a + 1; }\n"
+             "static inline int bump(int a,\n"
+             "                       int b = 2) { total += a + b; return total; }\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    const ast::Script& s = p.script;
+    ASSERT_EQ(s.prelude.size(), 2u);
+    EXPECT_EQ(s.prelude[0].text, "static inline int plain(int a) { return a + 1; }");
+    EXPECT_EQ(s.prelude[1].text, "static inline int bump(int a,\n                       int b = 2);");
+    EXPECT_EQ(s.prelude[1].line, 3);
+    ASSERT_EQ(s.post_funcs.size(), 1u);
+    EXPECT_EQ(s.post_funcs[0].line, 3);
+    EXPECT_EQ(s.post_funcs[0].text,
+        "static inline int bump(int a,\n                       int b)"
+        " { spp_mod()->total += a + b; return spp_mod()->total; }");
 }
 
 // A default argument keeps its text. A module variable and a base member get the edits of a body.

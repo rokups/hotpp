@@ -197,6 +197,7 @@ public:
 - A bare use or a `this->` use of a native base member goes to the native owner. Examples are `Move(...)` and `this->Name`.
 - `this` as an argument becomes the native owner.
 - A non-const file-scope variable becomes a migrated module variable.
+- A free function can use a module variable. `sppc` edits the body like a method body: the name becomes `spp_mod()->name`. The module block comes after the verbatim code. So `sppc` writes only the prototype of the function in the verbatim code. It writes the definition after the module block. `static` and `inline` stay on both. A default argument stays on the prototype only. The function can call other free functions and methods can call it. A function that uses no module variable stays as written.
 - A static member or a nested type of the base gets the `Base::` prefix.
 
 All other text stays as you wrote it.
@@ -217,6 +218,7 @@ At file scope a `.cpp` script can have:
 
 - Module variables, with free-function `convert_<var>` hooks.
 - Verbatim code: enums, structs without a base, free functions, `using`, namespaces and `const` or `constexpr` variables.
+- A free function can use a module variable (see "How sppc edits a body"). A function template, a `constexpr` function or a function in a namespace cannot use one.
 
 ## Aliases, onReload and convert hooks
 
@@ -247,7 +249,10 @@ The first version gives an error for each form in this list. The text in the sec
 | Script inheritance | See "A class that derives from another class of the same file". |
 | The name of the script class outside its body | `the script class '<name>' cannot be named outside its body (first version)` |
 | A `[this]` lambda that uses a base member | `a lambda that uses a base member must capture with [&] or [=]` |
-| A free function that uses a module variable | `a free function cannot use the module variable '<name>' in a .cpp script (first version)` |
+| A function template that uses a module variable | `a function template cannot use the module variable '<name>' in a .cpp script` |
+| A `constexpr` function that uses a module variable | `a constexpr function cannot use the module variable '<name>' in a .cpp script` |
+| A function in a namespace that uses a module variable | `a function in a namespace cannot use the module variable '<name>' in a .cpp script` |
+| A default argument of a free function that uses a module variable | `a default argument cannot use the module variable '<name>' in a .cpp script` |
 | A base member hidden by a macro | `a macro hides a member of the base class; write the member in the script text` |
 | An include of a `.spp` script | `a .cpp script cannot include a .spp script` |
 

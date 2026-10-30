@@ -3265,6 +3265,18 @@ void translate_impl(
         if (cd.is_value)
         {
             emit_value(cd);
+            if (cn == kModuleName)
+            {
+                // The free functions that use a module variable. They call spp_mod(), so they
+                // come after the module block. The prelude holds their prototypes.
+                for (const auto& d : sc.post_funcs)
+                {
+                    o.w("\n#line " + std::to_string(d.line) + " \"" + esc(file_at(d.pos)) + "\"\n");
+                    o.w(d.text);
+                    o.w("\n\n");
+                    reset();
+                }
+            }
             continue;
         }
         const bool has_ctor = !cd.ctors.empty(), has_dtor = !cd.dtors.empty();

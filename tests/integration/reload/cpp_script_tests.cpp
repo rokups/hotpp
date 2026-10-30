@@ -77,6 +77,33 @@ TEST_P(BackendTests, CppScriptDefaultArguments)
     EXPECT_EQ(*modvar<int>(s, "calls"), 4);
 }
 
+// A free function reads and writes the module variable. A method uses the same variable. A reload
+// migrates the variable, and the free function then uses the migrated value.
+TEST_P(BackendTests, CppScriptFreeFunctionUsesModuleVariable)
+{
+    spp::LoadResult v1 = backend->load(source("cpp_freefn.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult v2 = backend->load(source("cpp_freefn.cpp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Counter"));
+    s.actor->Tick(kDt); // add_total(3): total = 6 + 1 = 7. The method adds 100.
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 7);
+    ASSERT_NE(modvar<int>(s, "total"), nullptr);
+    EXPECT_EQ(*modvar<int>(s, "total"), 107);
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    const spp::ReloadResult res = s.loader.commit_pending();
+    ASSERT_TRUE(res) << res.error;
+    EXPECT_EQ(spp::active_generation, 2u);
+    ASSERT_NE(modvar<int>(s, "total"), nullptr);
+    EXPECT_EQ(*modvar<int>(s, "total"), 107); // migrated
+
+    s.actor->Tick(kDt); // add_total(3): 107 + 7 = 114. The method adds 100.
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 114);
+    EXPECT_EQ(*modvar<int>(s, "total"), 214);
+}
+
 // The reload to generation 2. The alias moves hp to health. The convert hooks change level and total.
 TEST_P(BackendTests, CppScriptReloadMigratesFieldsAndModuleVariable)
 {
