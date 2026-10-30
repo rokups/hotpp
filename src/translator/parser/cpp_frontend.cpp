@@ -11,6 +11,7 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <utility>
 
@@ -269,14 +270,14 @@ struct Edit
     std::string text;
 };
 
-// The state of the edits of one region (a body, the base arguments, an initializer).
-struct EditCtx
+// The state of the one walk of the main file (see apply_slices). All offsets are absolute.
+struct WalkState
 {
-    const ClassInfo* cls = nullptr; // null outside a script class (a module variable, a hook)
-    Range region;
-    std::vector<Edit> edits;
+    const ClassInfo* cls = nullptr; // the enclosing script class; null outside one (a module variable, a hook)
+    size_t slice = 0; // the slice that holds the cursor that examine looks at
     std::set<uint32_t> this_member; // the offsets of a "this" that a member access uses
-    std::vector<Range> this_lambdas; // the lambdas that capture "this" by name
+    std::vector<std::pair<size_t, Range>> this_lambdas; // the lambdas that capture "this" by name, and their slice
+    std::vector<std::optional<CppFail>> fails; // the first error of the walk in each slice
 };
 
 class Frontend
@@ -319,19 +320,24 @@ private:
 
     // A text region that needs edits. The functions that read the declarations record a slice.
     // apply_slices() edits all slices in the order of the records. "store" puts the edited text
-    // in the model. It finds the target by an index, because the model vectors can move.
+    // in the model. It finds the target by an index, because the model vectors can move. "cls"
+    // is the class that the walk must find for the slice. The walk checks it.
     struct Slice
     {
-        CXCursor root;
         Range extent;
         const ClassInfo* cls;
         std::function<void(std::string&&)> store;
     };
 
+    std::vector<CXCursor> top_; // the top-level cursors of the main file
     std::vector<Slice> slices_;
+    std::vector<size_t> by_pos_; // the indexes of the slices in the order of the extents
+    std::vector<Edit> edits_; // the edits of the walk, with absolute offsets
     std::deque<ClassInfo> infos_; // the class facts that the slices point to
+    std::map<std::string, const ClassInfo*> class_infos_; // USR of a script class -> its facts
 
-    void add_slice(CXCursor root, Range extent, const ClassInfo* cls, std::function<void(std::string&&)> store);
+    void add_slice(Range extent, const ClassInfo* cls, std::function<void(std::string&&)> store);
+    bool slice_at(uint32_t pos, size_t& out) const;
     void apply_slices();
     void read_top(const std::vector<CXCursor>& top);
 
@@ -347,9 +353,9 @@ private:
     bool find_module_ref(CXCursor c, const CXCursor* skip, std::string& name, uint32_t& pos);
     std::string strip_defaults(CXCursor fn, uint32_t begin, const std::string& sig);
     void add_module_func(CXCursor fn, Range e, const std::string& var, uint32_t var_pos);
-    void examine(CXCursor k, EditCtx& ctx);
-    void walk(CXCursor c, EditCtx& ctx);
-    std::string edit_region(CXCursor root, Range region, const ClassInfo* cls);
+    void examine(CXCursor k, WalkState& st);
+    void visit(CXCursor k, WalkState& st);
+    void walk_main(WalkState& st);
     void process_class(CXCursor c);
     template <class T> using Where = std::function<std::vector<T>&()>; // gives the vector of a model list
 
@@ -509,12 +515,14 @@ void Frontend::add_module_func(CXCursor fn, Range e, const std::string& var, uin
     const size_t index = sc_.post_funcs.size();
     const std::string head = def.text;
     sc_.post_funcs.push_back(std::move(def));
-    add_slice(fn, Range{b.begin, b.end}, nullptr,
+    add_slice(Range{b.begin, b.end}, nullptr,
         [this, index, head](std::string&& s) { sc_.post_funcs[index].text = head + s; });
 }
 
-// Records the edit of one cursor of a region. The cases of the switch are the rules.
-void Frontend::examine(CXCursor k, EditCtx& ctx)
+// Records the edit of one cursor in a slice. The cases of the switch are the rules. A cursor
+// outside every slice gets no edit and no error. "st.slice" is the slice of the cursor before
+// the first error.
+void Frontend::examine(CXCursor k, WalkState& st)
 {
     // A cursor of a macro expansion is not "from the main file" for libclang. The expansion
     // location gives its place in the script.
@@ -525,14 +533,16 @@ void Frontend::examine(CXCursor k, EditCtx& ctx)
         return;
     const CXCursorKind kind = clang_getCursorKind(k);
     const Range e = extent_of(k);
-    if (!ctx.region.has(e.begin))
+    if (!slice_at(e.begin, st.slice))
         return;
+    if (st.cls != slices_[st.slice].cls)
+        fail(e.begin, "internal error: the walk found a different class for this slice");
     const bool macro = in_macro(k);
     auto add = [&](uint32_t pos, uint32_t len, std::string rep)
     {
         if (macro)
             fail(e.begin, kMacroMsg);
-        ctx.edits.push_back(Edit{pos, len, std::move(rep)});
+        edits_.push_back(Edit{pos, len, std::move(rep)});
     };
     // True when the text before "pos" ends with "::" (a qualified name).
     auto qualified = [&](uint32_t pos)
@@ -545,12 +555,12 @@ void Frontend::examine(CXCursor k, EditCtx& ctx)
     // True when "ref" is a static member or a nested type of the native base or its ancestors.
     auto base_scoped = [&](CXCursor ref)
     {
-        if (!ctx.cls)
+        if (!st.cls)
             return false;
         CXCursor p = clang_getCursorSemanticParent(ref);
         if (clang_getCursorKind(p) == CXCursor_EnumDecl && !clang_EnumDecl_isScoped(p))
             p = clang_getCursorSemanticParent(p);
-        return is_record(clang_getCursorKind(p)) && ctx.cls->base_usrs.count(usr(p)) != 0;
+        return is_record(clang_getCursorKind(p)) && st.cls->base_usrs.count(usr(p)) != 0;
     };
     const std::string t = e.end > e.begin ? text_.substr(e.begin, e.end - e.begin) : std::string();
 
@@ -558,14 +568,14 @@ void Frontend::examine(CXCursor k, EditCtx& ctx)
     {
     case CXCursor_MemberRefExpr:
     {
-        if (!ctx.cls)
+        if (!st.cls)
             return;
         CXCursor ref = clang_getCursorReferenced(k);
         if (clang_Cursor_isNull(ref))
             return;
         const std::string parent = usr(clang_getCursorSemanticParent(ref));
-        const bool need = ctx.cls->base_usrs.count(parent) != 0 ||
-            (parent == ctx.cls->usr && clang_getCursorKind(ref) == CXCursor_CXXMethod &&
+        const bool need = st.cls->base_usrs.count(parent) != 0 ||
+            (parent == st.cls->usr && clang_getCursorKind(ref) == CXCursor_CXXMethod &&
                 has_child(ref, CXCursor_CXXOverrideAttr));
         if (need && macro)
             fail(e.begin, kMacroMsg);
@@ -585,7 +595,7 @@ void Frontend::examine(CXCursor k, EditCtx& ctx)
         if (rest.find('.') != std::string::npos || rest.find("->") != std::string::npos)
             return; // another object, for example "other.Move"
         if (explicit_this)
-            ctx.this_member.insert(e.begin);
+            st.this_member.insert(e.begin);
         if (!need)
             return;
         if (explicit_this)
@@ -596,10 +606,10 @@ void Frontend::examine(CXCursor k, EditCtx& ctx)
     }
     case CXCursor_CXXThisExpr:
     {
-        if (!ctx.cls || ctx.this_member.count(e.begin) || !word_at(text_, e.begin, "this"))
+        if (!st.cls || st.this_member.count(e.begin) || !word_at(text_, e.begin, "this"))
             return; // a member access uses it, or the "this" is implicit
         // The "this" of a local class in the body is not the script object.
-        if (usr(clang_getTypeDeclaration(clang_getPointeeType(clang_getCursorType(k)))) != ctx.cls->usr)
+        if (usr(clang_getTypeDeclaration(clang_getPointeeType(clang_getCursorType(k)))) != st.cls->usr)
             return;
         add(e.begin, 4, "__self");
         return;
@@ -616,7 +626,7 @@ void Frontend::examine(CXCursor k, EditCtx& ctx)
             return;
         }
         if (t.find("::") == std::string::npos && !qualified(e.begin) && base_scoped(ref))
-            add(e.begin, 0, ctx.cls->base + "::");
+            add(e.begin, 0, st.cls->base + "::");
         return;
     }
     case CXCursor_TypeRef:
@@ -626,7 +636,7 @@ void Frontend::examine(CXCursor k, EditCtx& ctx)
         if (en && en->kind == Kind::ScriptClass)
             fail(e.begin, "the script class '" + en->name + "' cannot be named outside its body (first version)");
         if (!qualified(e.begin) && base_scoped(ref))
-            add(e.begin, 0, ctx.cls->base + "::");
+            add(e.begin, 0, st.cls->base + "::");
         return;
     }
     case CXCursor_LambdaExpr:
@@ -636,7 +646,7 @@ void Frontend::examine(CXCursor k, EditCtx& ctx)
         for (size_t i = 0; i < capture.size(); ++i)
             if (word_at(capture, i, "this"))
             {
-                ctx.this_lambdas.push_back(e);
+                st.this_lambdas.emplace_back(st.slice, e);
                 break;
             }
         return;
@@ -646,54 +656,117 @@ void Frontend::examine(CXCursor k, EditCtx& ctx)
     }
 }
 
-void Frontend::walk(CXCursor c, EditCtx& ctx)
+// Examines the cursor "k" and then the cursors below it. The parent comes first: a member
+// access marks its "this". An error goes to the slice of the cursor. The walk continues,
+// because an error of a later slice must not hide an error of an earlier slice.
+void Frontend::visit(CXCursor k, WalkState& st)
 {
-    for (CXCursor k : children(c))
+    try
     {
-        examine(k, ctx); // the parent first: a member access marks its "this"
-        walk(k, ctx);
+        examine(k, st);
+    }
+    catch (CppFail& f)
+    {
+        std::optional<CppFail>& first = st.fails[st.slice];
+        if (!first)
+            first = std::move(f);
+    }
+    for (CXCursor c : children(k))
+        visit(c, st);
+}
+
+// The one walk of the main file. It visits each top-level cursor and all cursors below it once.
+// A script class is a top-level cursor. The index gives it, and it sets the class of the walk.
+// A preprocessing cursor (for example a macro expansion in a body) is a top-level cursor too. It
+// is not below a declaration and no rule applies to it, so the walk skips it.
+void Frontend::walk_main(WalkState& st)
+{
+    for (CXCursor k : top_)
+    {
+        if (clang_isPreprocessing(clang_getCursorKind(k)))
+            continue;
+        st.cls = nullptr;
+        const Entry* en = clang_isCursorDefinition(k) ? lookup(k) : nullptr;
+        if (en && en->kind == Kind::ScriptClass)
+        {
+            auto it = class_infos_.find(usr(k));
+            if (it != class_infos_.end())
+                st.cls = it->second;
+        }
+        visit(k, st);
     }
 }
 
-// Gives the text of "region" with the edits of the cursors below "root".
-std::string Frontend::edit_region(CXCursor root, Range region, const ClassInfo* cls)
+void Frontend::add_slice(Range extent, const ClassInfo* cls, std::function<void(std::string&&)> store)
 {
-    EditCtx ctx;
-    ctx.cls = cls;
-    ctx.region = region;
-    walk(root, ctx);
-    for (const Range& l : ctx.this_lambdas)
-        for (const Edit& ed : ctx.edits)
-            if (l.has(ed.pos))
-                fail(l.begin, "a lambda that uses a base member must capture with [&] or [=]");
-    std::stable_sort(ctx.edits.begin(), ctx.edits.end(), [](const Edit& a, const Edit& b) { return a.pos > b.pos; });
-    std::string s = text_.substr(region.begin, region.end - region.begin);
-    const Edit* prev = nullptr;
-    for (const Edit& ed : ctx.edits)
-    {
-        if (prev && prev->pos == ed.pos && prev->len == ed.len && prev->text == ed.text)
-            continue; // the same edit twice
-        s.replace(ed.pos - region.begin, ed.len, ed.text);
-        prev = &ed;
-    }
-    return s;
+    slices_.push_back(Slice{extent, cls, std::move(store)});
 }
 
-void Frontend::add_slice(CXCursor root, Range extent, const ClassInfo* cls, std::function<void(std::string&&)> store)
+// Finds the slice whose extent holds "pos". The extents do not overlap.
+bool Frontend::slice_at(uint32_t pos, size_t& out) const
 {
-    slices_.push_back(Slice{root, extent, cls, std::move(store)});
+    auto it = std::upper_bound(by_pos_.begin(), by_pos_.end(), pos,
+        [this](uint32_t p, size_t i) { return p < slices_[i].extent.begin; });
+    if (it == by_pos_.begin() || !slices_[*(it - 1)].extent.has(pos))
+        return false;
+    out = *(it - 1);
+    return true;
 }
 
-// Edits the slices in the order of the records. So the first error is the same as with an edit
-// at the time of the record.
+// Walks the main file once. Then it edits the slices in the order of the records. So the first
+// error is the same as with an edit at the time of the record. In each slice, the edits apply
+// from the last offset to the first offset.
 void Frontend::apply_slices()
 {
+    by_pos_.clear();
+    for (size_t i = 0; i < slices_.size(); ++i)
+        if (slices_[i].extent.end > slices_[i].extent.begin) // an empty slice holds no cursor
+            by_pos_.push_back(i);
+    std::stable_sort(by_pos_.begin(), by_pos_.end(),
+        [this](size_t a, size_t b) { return slices_[a].extent.begin < slices_[b].extent.begin; });
+    for (size_t i = 1; i < by_pos_.size(); ++i)
+        if (slices_[by_pos_[i]].extent.begin < slices_[by_pos_[i - 1]].extent.end)
+            fail(slices_[by_pos_[i]].extent.begin, "internal error: two edit slices overlap");
+    WalkState st;
+    st.fails.resize(slices_.size());
+    edits_.clear();
+    walk_main(st);
+    std::vector<std::vector<const Edit*>> edits(slices_.size()); // the edits of each slice, in walk order
+    for (const Edit& ed : edits_)
+    {
+        size_t si = 0;
+        if (!slice_at(ed.pos, si))
+            fail(ed.pos, "internal error: an edit is outside every slice");
+        edits[si].push_back(&ed);
+    }
+    std::vector<std::vector<Range>> lambdas(slices_.size());
+    for (const auto& sl : st.this_lambdas)
+        lambdas[sl.first].push_back(sl.second);
     for (size_t i = 0; i < slices_.size(); ++i)
     {
-        const Slice& sl = slices_[i];
-        sl.store(edit_region(sl.root, sl.extent, sl.cls));
+        if (st.fails[i])
+            throw *st.fails[i];
+        std::vector<const Edit*>& eds = edits[i];
+        for (const Range& l : lambdas[i])
+            for (const Edit* ed : eds)
+                if (l.has(ed->pos))
+                    fail(l.begin, "a lambda that uses a base member must capture with [&] or [=]");
+        std::stable_sort(eds.begin(), eds.end(), [](const Edit* a, const Edit* b) { return a->pos > b->pos; });
+        const Range region = slices_[i].extent;
+        std::string s = text_.substr(region.begin, region.end - region.begin);
+        const Edit* prev = nullptr;
+        for (const Edit* ed : eds)
+        {
+            if (prev && prev->pos == ed->pos && prev->len == ed->len && prev->text == ed->text)
+                continue; // the same edit twice
+            s.replace(ed->pos - region.begin, ed->len, ed->text);
+            prev = ed;
+        }
+        slices_[i].store(std::move(s));
     }
     slices_.clear();
+    by_pos_.clear();
+    edits_.clear();
 }
 
 // A field or a module variable. The initializer is the text after "=", or "{...}", or "(...)".
@@ -761,7 +834,7 @@ void Frontend::make_field(CXCursor c, const ClassInfo* cls, const Where<ast::Fie
         f.has_init = true;
         const char open = text_[i];
         const uint32_t fpos = f.pos;
-        add_slice(c, Range{start, decl.end}, cls, [where, index, open, fpos](std::string&& s) {
+        add_slice(Range{start, decl.end}, cls, [where, index, open, fpos](std::string&& s) {
             ast::Field& fd = where()[index];
             fd.raw_init = trim(s);
             if (open == '(')
@@ -793,7 +866,7 @@ void Frontend::fill_params(CXCursor c, std::vector<ast::Param>& out, const Class
                 p.def->lowered = true;
                 p.def->pos = pos_of(k);
                 std::shared_ptr<ast::ParamDefault> def = p.def;
-                add_slice(a, extent_of(k), cls, [def](std::string&& s) { def->cpp = trim(s); });
+                add_slice(extent_of(k), cls, [def](std::string&& s) { def->cpp = trim(s); });
                 break;
             }
         out.push_back(std::move(p));
@@ -859,7 +932,7 @@ void Frontend::make_method(CXCursor c, const ClassInfo* cls, const Where<ast::Me
     m.end_pos = b.end - 1;
     m.end_line = line(m.end_pos);
     m.raw_line = line(b.begin); // "raw_body" starts right after the "{"
-    add_slice(c, Range{b.begin + 1, b.end - 1}, cls,
+    add_slice(Range{b.begin + 1, b.end - 1}, cls,
         [where, index](std::string&& s) { where()[index].raw_body = std::move(s); });
 }
 
@@ -902,11 +975,11 @@ void Frontend::make_ctor(CXCursor c, const ClassInfo& cls, const Where<ast::Ctor
             fail(colon, "use a default member initializer");
         ct.has_base_call = true;
         ct.base_pos = static_cast<uint32_t>(s);
-        add_slice(c, Range{static_cast<uint32_t>(a + 1), static_cast<uint32_t>(a_end)}, &cls,
+        add_slice(Range{static_cast<uint32_t>(a + 1), static_cast<uint32_t>(a_end)}, &cls,
             [where, index](std::string&& s) { where()[index].raw_base_args = std::move(s); });
     }
     ct.raw_line = line(b.begin); // "raw_body" starts right after the "{"
-    add_slice(c, Range{b.begin + 1, b.end - 1}, &cls,
+    add_slice(Range{b.begin + 1, b.end - 1}, &cls,
         [where, index](std::string&& s) { where()[index].raw_body = std::move(s); });
 }
 
@@ -922,6 +995,7 @@ void Frontend::process_class(CXCursor c)
     ClassInfo& info = infos_.back();
     info.name = cd.name;
     info.usr = usr(c);
+    class_infos_[info.usr] = &info; // a deque does not move its elements
     for (CXCursor k : children(c))
     {
         if (clang_getCursorKind(k) != CXCursor_CXXBaseSpecifier)
@@ -1065,14 +1139,13 @@ const Frontend::Entry* Frontend::lookup(CXCursor ref) const
 ast::Script Frontend::run(CXTranslationUnit tu, const std::string& name)
 {
     main_ = clang_getFile(tu, name.c_str());
-    std::vector<CXCursor> top;
     for (CXCursor k : children(clang_getTranslationUnitCursor(tu)))
         if (from_main(k))
-            top.push_back(k);
-    index(top);
+            top_.push_back(k);
+    index(top_);
     try
     {
-        read_top(top);
+        read_top(top_);
     }
     catch (const CppFail&)
     { // an earlier slice with an error is the first error: the edit was at the record before
