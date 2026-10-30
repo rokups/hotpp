@@ -1,0 +1,42 @@
+:root{--tk-kw:#cf222e;--tk-type:#0550ae;--tk-str:#0a3069;--tk-num:#0550ae;--tk-com:#6e7781;--tk-fn:#8250df;--tk-meta:#953800;--tk-lit:#0550ae;--tk-var:#953800;--bg:#fff;--fg:#222;--side:#f3f4f6;--link:#1d4ed8;--code:#f6f8fa;--line:#ddd}
+:root[data-theme=dark]{--tk-kw:#ff7b72;--tk-type:#79c0ff;--tk-str:#a5d6ff;--tk-num:#79c0ff;--tk-com:#8b949e;--tk-fn:#d2a8ff;--tk-meta:#ffa657;--tk-lit:#79c0ff;--tk-var:#ffa657;--bg:#16181d;--fg:#d8dbe2;--side:#1e2128;--link:#7aa7ff;--code:#1f232b;--line:#383d48}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--tk-kw:#ff7b72;--tk-type:#79c0ff;--tk-str:#a5d6ff;--tk-num:#79c0ff;--tk-com:#8b949e;--tk-fn:#d2a8ff;--tk-meta:#ffa657;--tk-lit:#79c0ff;--tk-var:#ffa657;--bg:#16181d;--fg:#d8dbe2;--side:#1e2128;--link:#7aa7ff;--code:#1f232b;--line:#383d48}}
+body{margin:0;font:16px/1.6 system-ui,sans-serif;color:var(--fg);background:var(--bg);display:flex}
+nav.side{width:14rem;min-height:100vh;padding:1rem;background:var(--side);box-sizing:border-box;flex-shrink:0}
+nav.side .brand{font-size:1.4rem;font-weight:700;text-decoration:none;color:var(--fg)}
+nav.side ul{list-style:none;padding:0}
+nav.side li{margin:.3rem 0}
+nav.side li.active a{font-weight:700}
+a{color:var(--link);text-decoration:none}
+main{max-width:50rem;padding:1rem 2rem;min-width:0}
+pre{background:var(--code);padding:.8rem;overflow-x:auto;border-radius:4px}
+code{font-size:.9em}
+table{border-collapse:collapse}td,th{border:1px solid var(--line);padding:.3rem .6rem}
+#theme{margin-top:1rem;background:none;color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:.2rem .6rem;cursor:pointer}
+header.topbar{display:none}
+#menu{background:none;color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:.2rem .8rem;cursor:pointer}
+/* Portrait and narrow screens: no sidebar. A Menu button in the top bar opens the page list. */
+@media (orientation:portrait),(max-width:48rem){
+header.topbar{display:flex;align-items:center;justify-content:space-between;padding:.6rem 1rem;background:var(--side);border-bottom:1px solid var(--line)}
+header.topbar .brand{font-size:1.2rem;font-weight:700;color:var(--fg)}
+body{display:block}
+nav.side{display:none;width:auto;min-height:0}
+nav.side .brand{display:none}
+body.menu nav.side{display:block}
+main{max-width:none;padding:1rem}
+table{display:block;overflow-x:auto}
+img{max-width:100%;height:auto}
+main code{overflow-wrap:anywhere}
+pre code{overflow-wrap:normal}
+}
+/* Code tokens. highlight.js adds the hljs classes in the browser. */
+.hljs-keyword,.hljs-doctag{color:var(--tk-kw)}
+.hljs-type,.hljs-built_in,.hljs-title.class_,.hljs-title.class_.inherited__{color:var(--tk-type)}
+.hljs-string,.hljs-regexp{color:var(--tk-str)}
+.hljs-number,.hljs-literal,.hljs-symbol{color:var(--tk-num)}
+.hljs-comment{color:var(--tk-com);font-style:italic}
+.hljs-title.function_,.hljs-title{color:var(--tk-fn)}
+.hljs-meta,.hljs-meta .hljs-keyword,.hljs-meta .hljs-string{color:var(--tk-meta)}
+.hljs-variable,.hljs-variable.language_,.hljs-attr,.hljs-attribute,.hljs-params,.hljs-property{color:var(--tk-var)}
+.hljs-char.escape_,.hljs-subst{color:var(--tk-lit)}
+.hljs-string .hljs-subst{color:var(--fg)}

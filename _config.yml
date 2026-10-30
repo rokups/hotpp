@@ -1,0 +1,10 @@
+title: Hot++
+description: A hot-reloadable scripting language for C++
+url: https://rokups.github.io
+baseurl: /hotpp
+markdown: kramdown
+highlighter: rouge
+exclude:
+  - deploy.sh
+  - README.md
+  - lambda-hot-reload.md

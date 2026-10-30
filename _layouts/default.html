@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if page.title %}{{ page.title }} - {% endif %}{{ site.title }}</title>
+  <script>var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t;</script>
+  <link rel="stylesheet" href="{{ '/assets/style.css' | relative_url }}">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="{{ '/' | relative_url }}">{{ site.title }}</a>
+  <button id="menu" type="button" aria-expanded="false" aria-controls="sidenav">Menu</button>
+</header>
+<nav class="side" id="sidenav">
+  <a class="brand" href="{{ '/' | relative_url }}">{{ site.title }}</a>
+  <ul>
+  {% assign pages = site.pages | where_exp: "p", "p.nav_order" | sort: "nav_order" %}
+  {% for p in pages %}
+    <li{% if p.url == page.url %} class="active"{% endif %}><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
+  {% endfor %}
+  </ul>
+  <button id="theme" type="button">Theme</button>
+</nav>
+<main>
+  <h1>{{ page.title }}</h1>
+  {{ content }}
+</main>
+<!-- Code highlighting: highlight.js 11.9.0 (pinned) and the Hot++ language file. The page works without JavaScript. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" integrity="sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/cpp.min.js" integrity="sha384-pF0kkJHJ7iLK/GTjymCseh94/WcMBVV6C9lKk2HdA+dut+ACEizCpQbrzWE4fpfv" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js" integrity="sha384-RbRhXcXx5VHUdUaC5R0oV+XBXA5GhkaVCUzK8xN19K3FmtWSHyGVgulK92XnhBsI" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/cmake.min.js" integrity="sha384-iqJTnKrAPlpoueHQticEO1SgUDmD+Lv1EGplrE41YfNgnnVCt6pLeVjutOnr/Ddi" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="{{ '/assets/highlight-hot.js' | relative_url }}"></script>
+<script>
+document.getElementById("menu").onclick=function(){
+  var open=document.body.classList.toggle("menu");this.setAttribute("aria-expanded",open);};
+document.getElementById("theme").onclick=function(){
+  var d=document.documentElement,dark=d.dataset.theme?d.dataset.theme=="dark":matchMedia("(prefers-color-scheme: dark)").matches;
+  d.dataset.theme=dark?"light":"dark";localStorage.setItem("theme",d.dataset.theme);};
+</script>
+</body>
+</html>
