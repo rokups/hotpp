@@ -429,6 +429,7 @@ private:
     void read_top(const std::vector<CXCursor>& top);
 
     void index(const std::vector<CXCursor>& top);
+    void check_static_names(CXCursor cls, const std::string& cls_name, const std::string& display);
     void index_member(CXCursor k, const std::string& owner_usr, const std::string& owner_name,
         const std::string& owner_display, uint32_t cpos);
     void add_top(CXCursor k);
@@ -2324,7 +2325,14 @@ void Frontend::make_static_fn(CXCursor c, const ClassInfo* cls)
             {
                 // An array bound or a template argument of the type is an expression too. The
                 // default argument follows a "=" (or it is a "{...}" after the name).
-                const Range d = extent_of(k);
+                Range d = extent_of(k);
+                // The extent of a class type default with a braced list ("= {}") starts at the "=".
+                if (d.begin < text_.size() && text_[d.begin] == '=' && d.begin + 1 < d.end)
+                {
+                    ++d.begin;
+                    while (d.begin < d.end && is_space(text_[d.begin]))
+                        ++d.begin;
+                }
                 size_t q = d.begin;
                 while (q > 0 && is_space(text_[q - 1]))
                     --q;
@@ -2624,6 +2632,28 @@ void Frontend::check_unique_name(CXCursor k, const Entry& en)
                     + "'. Rename one of them");
 }
 
+// A static member "x" has the generated name "<Class>__s_x". An instance method "s_x" has the same
+// name. The two must not be in one class.
+void Frontend::check_static_names(CXCursor cls, const std::string& cls_name, const std::string& display)
+{
+    std::map<std::string, CXCursor> methods; // the instance methods
+    for (CXCursor m : children(cls))
+        if (clang_getCursorKind(m) == CXCursor_CXXMethod && !clang_CXXMethod_isStatic(m))
+            methods.emplace(spelling(m), m);
+    for (CXCursor m : children(cls))
+    {
+        const CXCursorKind kind = clang_getCursorKind(m);
+        if (kind != CXCursor_VarDecl && !(kind == CXCursor_CXXMethod && clang_CXXMethod_isStatic(m)))
+            continue;
+        auto it = methods.find("s_" + spelling(m));
+        if (it != methods.end())
+            fail(pos_of(it->second),
+                "the method '" + display + "::" + it->first + "' and the static member '" + display + "::"
+                    + spelling(m) + "' have the same generated name '" + cls_name + "__s_" + spelling(m)
+                    + "'. Rename one of them");
+    }
+}
+
 // Index the declarations of the main file: the script classes with their members and the module
 // variables. The second loop is for out-of-class method definitions. It adds nothing yet.
 void Frontend::index(const std::vector<CXCursor>& top)
@@ -2643,6 +2673,7 @@ void Frontend::index(const std::vector<CXCursor>& top)
             const uint32_t cpos = extent_of(k).begin;
             for (CXCursor m : children(k))
                 index_member(m, u, n, cls.display, cpos);
+            check_static_names(k, n, cls.display);
         }
         else if (is_module_var(k) && !is_record(clang_getCursorKind(clang_getCursorSemanticParent(k))))
         { // a variable in a namespace is the member "game__score" of the module block

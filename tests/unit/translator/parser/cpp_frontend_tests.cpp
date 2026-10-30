@@ -729,6 +729,39 @@ TEST(CppFrontend, StaticMethodDefaultArgumentDetection)
     EXPECT_NE(defs.find("int (&a)[kN], int k)"), std::string::npos) << defs;
 }
 
+// ">=" after a template close is not a default argument in C++: clang rejects "std::vector<int>={}".
+// The form with a space is a default argument. sppc keeps it.
+TEST(CppFrontend, StaticMethodDefaultArgumentAfterTemplateClose)
+{
+    expect_error("#include <vector>\nclass C : public Actor { public: static void f(std::vector<int>={}) {} };",
+        "a space is required between a right angle bracket and an equals sign");
+    Parsed p("#include <vector>\n#include \"Actor.h\"\n"
+             "class C : public Actor {\n"
+             "public:\n"
+             "    static void f(std::vector<int> = {}) {}\n"
+             "    static void g(std::vector<int> v = {}) {}\n"
+             "};\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    std::string protos, defs;
+    for (const auto& c : p.script.chunks)
+        (!c.text.empty() && c.text.back() == ';' ? protos : defs) += c.text + "\n";
+    EXPECT_NE(protos.find("f(std::vector<int> = {})"), std::string::npos) << protos;
+    EXPECT_NE(protos.find("g(std::vector<int> v = {})"), std::string::npos) << protos;
+    EXPECT_NE(defs.find("f(std::vector<int>)"), std::string::npos) << defs;
+    EXPECT_NE(defs.find("g(std::vector<int> v)"), std::string::npos) << defs;
+}
+
+// An instance method "s_x" and a static member "x" have the same generated name.
+TEST(CppFrontend, InstanceMethodWithStaticMemberNameIsAnError)
+{
+    expect_error("class C : public Actor { public: static const int x = 1; int s_x() { return 2; } };",
+        "have the same generated name 'C__s_x'");
+    expect_error("class C : public Actor { public: static int x() { return 1; } int s_x() { return 2; } };",
+        "have the same generated name 'C__s_x'");
+    expect_error("class C : public Actor { public: static int x; int s_x() { return 2; } };",
+        "have the same generated name 'C__s_x'");
+}
+
 // A static member has the name "<Class>__s_<name>". It never equals a generated name of the class,
 // such as "C__plan". The generated code has the function "C__plan" next to the static method.
 TEST(CppFrontend, StaticMemberNamesDoNotCollide)

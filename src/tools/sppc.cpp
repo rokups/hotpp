@@ -315,6 +315,25 @@ int run_aot(const Args& args)
     return write_file(args.out_dir + "/spp_aot_registry.cpp", reg) ? 0 : 1;
 }
 
+// True when the two paths name the same existing file. A missing file is never the same file.
+bool same_file(const std::string& a, const std::string& b)
+{
+    std::error_code ec;
+    return fs::exists(a, ec) && fs::exists(b, ec) && fs::equivalent(a, b, ec);
+}
+
+// Fails when the path "out" is the same file as one input. The tool must never overwrite a script.
+bool check_not_input(const Args& args, const std::string& out)
+{
+    for (const std::string& in : args.inputs)
+        if (same_file(in, out))
+        {
+            std::fprintf(stderr, "sppc: error: the output file %s is the input file %s\n", out.c_str(), in.c_str());
+            return false;
+        }
+    return true;
+}
+
 int run_emit(const Args& args)
 {
     if (args.has_build_only || args.inputs.size() != 1 || args.gen < 1)
@@ -339,6 +358,8 @@ int run_emit(const Args& args)
     const std::string& input = args.inputs[0];
     opt.script_name = input;
     opt.output_name = args.output; // empty: the default name
+    if (!args.output.empty() && !check_not_input(args, args.output))
+        return 1;
     if (!read_file(input, opt.script_text))
     {
         std::fprintf(stderr, "sppc: error: cannot read %s\n", input.c_str());
@@ -425,6 +446,16 @@ int run_build(const Args& args)
             std::fprintf(stderr, "sppc: error: two scripts have the name %s\n", fs::path(s).stem().string().c_str());
             return 1;
         }
+    }
+
+    // The tool writes the .so and the .cpp next to it. Neither may be an input file.
+    for (const std::string& s : args.inputs)
+    {
+        const std::string so = single_so
+            ? args.output
+            : out_dir + "/" + fs::path(s).stem().string() + ".g" + std::to_string(args.gen) + ".so";
+        if (!check_not_input(args, so) || !check_not_input(args, fs::path(so).replace_extension(".cpp").string()))
+            return 1;
     }
 
     spp::ClangFilesBackend backend(opt);

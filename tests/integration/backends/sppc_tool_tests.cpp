@@ -1115,4 +1115,37 @@ TEST(SppcTool, CppScriptWithSyntaxErrorFails)
     EXPECT_NE(text.find("error"), std::string::npos) << text;
 }
 
+// The tool never writes over an input file. "-o a.so" writes "a.cpp" next to the library.
+TEST(SppcTool, OutputNeverOverwritesAnInput)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("sppc_no_overwrite");
+    std::filesystem::create_directories(dir);
+    const std::string script = dir + "/a.cpp";
+    const std::string source = "#include \"Actor.h\"\nclass Foo : public Actor\n{\npublic:\n    int x = 1;\n};\n";
+    {
+        std::ofstream f(script);
+        f << source;
+    }
+    std::string text;
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "' --gen 1 -o '" + dir + "/a.so' --cxx '"
+                      + SPP_CXX + "'" + engine_args() + " 2>&1",
+                  text),
+        1)
+        << text;
+    EXPECT_NE(text.find("the output file"), std::string::npos) << text;
+    EXPECT_EQ(read_file(script), source);
+    EXPECT_FALSE(std::filesystem::exists(dir + "/a.so"));
+
+    // The same file by another path (a relative path with "..") is found too.
+    std::string text2;
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp '" + script + "' --gen 1 -o '" + dir
+                      + "/../sppc_no_overwrite/a.cpp'" + engine_args() + " 2>&1",
+                  text2),
+        1)
+        << text2;
+    EXPECT_NE(text2.find("the output file"), std::string::npos) << text2;
+    EXPECT_EQ(read_file(script), source);
+}
+
 } // namespace

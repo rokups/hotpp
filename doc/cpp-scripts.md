@@ -492,6 +492,7 @@ The first version gives an error for each form in this list. The text in the sec
 | A script parent with `protected` or `private` | `a .cpp script class must derive from the script class '<name>' with 'public'` |
 | `virtual` without `override` on a method that overrides a virtual method | `the method '<name>' overrides a virtual method; write 'override'` |
 | A static member used through an object that has a side effect, for example `f().count` | `a static member must be used by its name` |
+| An instance method `s_x` and a static member `x` in one class (both get the name `<Class>__s_x`) | `the method '<Class>::s_x' and the static member '<Class>::x' have the same generated name '<Class>__s_x'. Rename one of them` |
 | A static const member without an initializer in the class | `a static const member needs an initializer in the class` |
 | A method, a constructor or a destructor that the class declares and the file never defines | `the method 'Player::hit' is declared but never defined; define it in the class or after the class` (the words `constructor` and `destructor` replace `method` for those members) |
 | A definition outside the class that has no declaration in the class | `out-of-line definition of 'hit' does not match any declaration in 'Player'` (this error comes from the C++ parser) |
