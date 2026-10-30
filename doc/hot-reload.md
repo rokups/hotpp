@@ -28,7 +28,7 @@ The host compiles the new script as a new generation. The commit runs at the fra
 | Remove a function so that a class has fewer slots | Full reload |
 | Change a native header, a native class layout or a native virtual signature | Full reload. The host triggers it. |
 
-A `.cpp` script (see [C++ scripts](cpp-scripts.html)) follows the same table. It has no properties, no script virtual methods and no script-class handles. A `.cpp` reload is slower, because `sppc` does one more libclang parse. A normal build of the file has no state migration and no slots.
+A `.cpp` script (see [C++ scripts](cpp-scripts.html)) follows the same table. It has no properties, no script virtual methods and no script-class handles. A `.cpp` reload is slower, because `sppc` does one more libclang parse. A `.cpp` script has no alias and no `onReload`. A field rename in a `.cpp` script is a field removal plus an add. A normal build of the file has no state migration and no slots.
 
 ## Full reload
 

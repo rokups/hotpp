@@ -1,7 +1,6 @@
 // Generation 2 of the script as a plain C++ file. It adds the field howls.
 // The field bites and the base state stay.
 #include "Creature.h"
-#include "spp/script.h"
 
 #include <cstdio>
 #include <string>

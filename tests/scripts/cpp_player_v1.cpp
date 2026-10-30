@@ -2,7 +2,6 @@
 // A normal C++ build compiles this file. The tool sppc also translates it.
 #include "Actor.h"
 #include "Math.h"
-#include "spp/script.h"
 
 #include <cstdio>
 #include <string>

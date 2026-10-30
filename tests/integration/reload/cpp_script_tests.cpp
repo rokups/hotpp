@@ -60,7 +60,7 @@ TEST_P(BackendTests, CppScriptRunsThroughNativeVirtual)
     EXPECT_EQ(*fld<int>(s.inst.shell, "level"), 1);
 }
 
-// The reload to generation 2. The alias moves hp to health. The convert hooks change level and total.
+// The reload to generation 2. The convert hooks change level and total.
 TEST_P(BackendTests, CppScriptReloadMigratesFieldsAndModuleVariable)
 {
     spp::LoadResult v1 = backend->load(source("cpp_player_v1.cpp"), 1);
@@ -79,9 +79,8 @@ TEST_P(BackendTests, CppScriptReloadMigratesFieldsAndModuleVariable)
     ASSERT_TRUE(res) << res.error;
     EXPECT_EQ(spp::active_generation, 2u);
 
-    EXPECT_EQ(fld<float>(s.inst.shell, "hp"), nullptr); // the name is "health" now
-    ASSERT_NE(fld<float>(s.inst.shell, "health"), nullptr);
-    EXPECT_EQ(*fld<float>(s.inst.shell, "health"), 71.0f); // onReload did not change it
+    ASSERT_NE(fld<float>(s.inst.shell, "hp"), nullptr);
+    EXPECT_EQ(*fld<float>(s.inst.shell, "hp"), 71.0f); // the field keeps its name and value
     ASSERT_NE(fld<float>(s.inst.shell, "level"), nullptr);
     EXPECT_FLOAT_EQ(*fld<float>(s.inst.shell, "level"), 10.0f); // convert_level(1)
     ASSERT_NE(modvar<float>(s, "total"), nullptr);
@@ -91,25 +90,6 @@ TEST_P(BackendTests, CppScriptReloadMigratesFieldsAndModuleVariable)
     s.actor->Tick(kDt); // the Tick of generation 2
     EXPECT_FLOAT_EQ(*modvar<float>(s, "total"), 3.0f);
     EXPECT_FLOAT_EQ(s.actor->Position.x, 5.0f * kDt + 2.0f * 5.0f * kDt);
-}
-
-// The hook onReload runs at the reload and reads the old value through its old name.
-TEST_P(BackendTests, CppScriptOnReloadRuns)
-{
-    spp::LoadResult v1 = backend->load(source("cpp_player_v1.cpp"), 1);
-    ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("cpp_player_v2.cpp"), 2);
-    ASSERT_TRUE(v2) << v2.error;
-    Session s;
-    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Player"));
-    *fld<float>(s.inst.shell, "hp") = 150.0f; // more than the maximum
-
-    std::string error;
-    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
-    const spp::ReloadResult res = s.loader.commit_pending();
-    ASSERT_TRUE(res) << res.error;
-    ASSERT_NE(fld<float>(s.inst.shell, "health"), nullptr);
-    EXPECT_EQ(*fld<float>(s.inst.shell, "health"), 100.0f); // onReload set it
 }
 
 // A .spp script and a .cpp script live in the same process. Each has its own loader and one object.

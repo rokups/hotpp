@@ -27,8 +27,8 @@ foreach(variant spp cpp)
     add_test(NAME ${target} COMMAND ${target})
 endforeach()
 
-# The normal toolchain compiles the .cpp script too. A .cpp script must compile unchanged.
+# The normal toolchain compiles the .cpp script too. The compile uses no sppc and no spp include dir.
 add_library(aot_cpp_scripts_plain OBJECT script/wolf.cpp)
 target_include_directories(aot_cpp_scripts_plain PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR} ${SPP_ROOT}/include)
+    ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(aot_cpp_scripts_plain PRIVATE cxx_std_17)

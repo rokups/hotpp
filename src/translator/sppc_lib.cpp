@@ -2009,8 +2009,7 @@ std::map<std::string, BaseInfo> session_bases(sppc::TranslatorSession::Impl& S, 
     return r;
 }
 
-// The libclang arguments for the script and for the probe of the imports. The header
-// "spp/script.h" is a forced include when an include dir has it. A script can include it too.
+// The libclang arguments for the script and for the probe of the imports.
 std::vector<std::string> clang_args(const Options& opt)
 {
     std::vector<std::string> args = {"-x", "c++", "-std=" + opt.std_version, "-ferror-limit=0"};
@@ -2020,16 +2019,6 @@ std::vector<std::string> clang_args(const Options& opt)
         args.push_back("-I" + d);
     if (!opt.resource_dir.empty())
         args.push_back("-resource-dir=" + opt.resource_dir);
-    for (const auto& d : opt.includes)
-    {
-        const std::string header = d + "/spp/script.h";
-        if (std::filesystem::exists(header))
-        {
-            args.push_back("-include");
-            args.push_back(header);
-            break;
-        }
-    }
     return args;
 }
 

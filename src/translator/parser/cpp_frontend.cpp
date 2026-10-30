@@ -558,13 +558,6 @@ ast::Field Frontend::make_field(CXCursor c, const ClassInfo* cls)
     default:
         break;
     }
-    for (CXCursor k : children(c))
-        if (clang_getCursorKind(k) == CXCursor_AnnotateAttr)
-        {
-            std::string a = spelling(k);
-            if (a.rfind("spp.alias=", 0) == 0)
-                f.alias = a.substr(std::strlen("spp.alias="));
-        }
     // The text finds the initializer. libclang does not visit every initializer: it skips
     // the "{...}" of a class-type field. The edits of such an initializer are then missing.
     const Range decl = extent_of(c);
@@ -579,7 +572,7 @@ ast::Field Frontend::make_field(CXCursor c, const ClassInfo* cls)
             continue;
         }
         if (i < decl.end && is_ident(text_[i]))
-        { // a macro attribute: SPP_ALIAS("old")
+        { // a macro attribute
             size_t n = i;
             while (n < decl.end && is_ident(text_[n]))
                 ++n;
@@ -667,16 +660,6 @@ ast::Method Frontend::make_method(CXCursor c, const ClassInfo* cls)
     if (kind != CXCursor_Destructor)
         m.ret = type_text(clang_getResultType(clang_getCursorType(c)));
     fill_params(c, m.params);
-    if (m.name == "onReload")
-        for (ast::Param& p : m.params)
-        {
-            std::string t;
-            for (char ch : p.type)
-                if (!is_space(ch))
-                    t += ch;
-            if (t == "spp::OldState" || t == "constspp::OldState&" || t == "OldState" || t == "constOldState&")
-                p.type = "OldState";
-        }
     const Range b = extent_of(body_of(c));
     m.end_pos = b.end - 1;
     m.end_line = line(m.end_pos);

@@ -6,7 +6,7 @@ nav_order: 2
 
 A script is a class in a `.spp` file. It derives from a native engine class.
 
-A script can also be a plain C++ file, a `.cpp` script. It compiles unchanged in a normal build. See [C++ scripts](cpp-scripts.html).
+A script can also be a plain C++ file, a `.cpp` script. It is standard C++ with no spp header. It compiles in a normal build. See [C++ scripts](cpp-scripts.html).
 
 ## Write a class
 
