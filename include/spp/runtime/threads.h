@@ -8,6 +8,7 @@
 #include <intrin.h>
 #endif
 
+#include "spp/runtime/compat.h"
 #include "spp/runtime/hidden.h"
 
 namespace spp {
@@ -95,12 +96,12 @@ class ScriptEntry {
 public:
     SPP_HIDDEN ScriptEntry() : counted_(entry_counters_enabled())
     {
-        if (counted_) [[unlikely]]
+        if (SPP_UNLIKELY(counted_))
             detail::enter_script();
     }
     SPP_HIDDEN ~ScriptEntry()
     {
-        if (counted_) [[unlikely]]
+        if (SPP_UNLIKELY(counted_))
             detail::leave_script();
     }
     ScriptEntry(const ScriptEntry&) = delete;

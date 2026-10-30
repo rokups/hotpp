@@ -156,6 +156,7 @@ struct LambdaExpr {
     std::vector<Param> params;  // an empty type prints as "auto"
     BlockStmt body;
     uint32_t pos = 0;
+    std::string captures;  // the lowering: init-captures after "[=", for example ", a = a"
 };
 // A string with "${expr}" or "${expr:spec}" (design 7.3, DECISIONS item 10). The literal parts
 // keep the script text between the quotes (with escapes). "lits" has one more item than "args".
@@ -291,6 +292,7 @@ struct TryStmt {
     std::vector<CatchClause> catches;  // zero or more; zero only with a finally block
     std::optional<BlockStmt> finally_block;
     uint32_t pos = 0;
+    std::string finally_captures;  // the lowering: init-captures after "[&", for example ", &a = a"
 };
 struct EmptyStmt {
     uint32_t pos = 0;

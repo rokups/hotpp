@@ -7,7 +7,10 @@
 #include <utility>
 #include <vector>
 
+// The constructors let a script write "Vec3(x, y, z)" in C++17. C++17 has no "()" form for an aggregate.
 struct Vec3 {
+    Vec3() = default;
+    Vec3(float x_, float y_, float z_) : x(x_), y(y_), z(z_) {}
     float x = 0, y = 0, z = 0;
 };
 

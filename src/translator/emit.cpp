@@ -267,7 +267,7 @@ struct ExprPrinter {
     }
     void operator()(const LambdaExpr& n) const
     {
-        e.put("[=]", n.pos);
+        e.put("[=" + n.captures + "]", n.pos);
         e.put("(");
         for (size_t i = 0; i < n.params.size(); ++i) {
             if (i) {
@@ -497,7 +497,7 @@ struct StmtPrinter {
         if (n.finally_block) {
             e.put("{", n.pos);
             e.space();
-            e.put("spp::Finally __fin_" + std::to_string(e.next_finally()) + "([&]");
+            e.put("spp::Finally __fin_" + std::to_string(e.next_finally()) + "([&" + n.finally_captures + "]");
             block(*n.finally_block, e);
             e.put(")");
             e.put(";");

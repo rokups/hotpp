@@ -3,6 +3,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "spp/runtime/compat.h"
 #include "spp/runtime/hidden.h"
 
 namespace spp {
@@ -31,20 +32,20 @@ SPP_PROP_OP(op_shr, >>)
 // A property write that gives a value (lower.h). Each helper evaluates the object once.
 // "o.P = v" gives v. "o.P op= e" and "++o.P" give the new value. "o.P++" gives the old value.
 template <class O, class T>
-SPP_HIDDEN T prop_set(void (*set)(O*, T), std::type_identity_t<O>* o, std::type_identity_t<T> v)
+SPP_HIDDEN T prop_set(void (*set)(O*, T), detail::type_identity_t<O>* o, detail::type_identity_t<T> v)
 {
     set(o, v);
     return v;
 }
 template <class Op, class O, class T, class E>
-SPP_HIDDEN T prop_update(T (*get)(O*), void (*set)(O*, T), std::type_identity_t<O>* o, E&& e)
+SPP_HIDDEN T prop_update(T (*get)(O*), void (*set)(O*, T), detail::type_identity_t<O>* o, E&& e)
 {
     T v = Op{}(get(o), std::forward<E>(e));
     set(o, v);
     return v;
 }
 template <class Op, class O, class T, class E>
-SPP_HIDDEN T prop_post(T (*get)(O*), void (*set)(O*, T), std::type_identity_t<O>* o, E&& e)
+SPP_HIDDEN T prop_post(T (*get)(O*), void (*set)(O*, T), detail::type_identity_t<O>* o, E&& e)
 {
     T old = get(o);
     set(o, Op{}(old, std::forward<E>(e)));

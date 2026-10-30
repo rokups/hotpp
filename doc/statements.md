@@ -76,16 +76,16 @@ class Sum {
 
     int Pairs(std.map<std.string, int>& m, std.vector<int>& xs) {
         int sum = 0;
-        foreach (var (k, v) in m) sum += v;                    // key and value
-        foreach (var (i, x) in spp.enumerate(xs)) sum += i * x;   // index and element
-        foreach (int i in spp.range(3)) sum += i;                 // 0, 1, 2
-        foreach (int i in spp.range(2, 5)) sum += i;              // 2, 3, 4
+        foreach (var (k, v) in m) sum += v;                        // key and value
+        foreach (var (i, x) in enumerate(xs)) sum += i * x;   // index and element
+        foreach (int i in range(3)) sum += i;                  // 0, 1, 2
+        foreach (int i in range(2, 5)) sum += i;               // 2, 3, 4
         return sum;
     }
 }
 ```
 
-In `spp.enumerate`, `i` is a copy and `x` is a reference to the element. `var&` over `spp.enumerate` is an error.
+`enumerate` and `range` are global functions. A local, a member, a type or a native global of the same name hides them. In `enumerate`, `i` is a copy and `x` is a reference to the element. `var&` over `enumerate` is an error.
 
 ## Structured bindings
 

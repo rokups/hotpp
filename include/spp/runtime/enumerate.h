@@ -1,4 +1,4 @@
-// The helpers of the script ranges "spp.enumerate(xs)" and "spp.range(n)".
+// The helpers of the script ranges "enumerate(xs)" and "range(n)".
 #pragma once
 #include <cstddef>
 #include <iterator>
@@ -9,7 +9,7 @@
 
 namespace spp {
 
-// The range of "spp.enumerate(xs)". An item is a pair: the index as size_t and the element. The
+// The range of "enumerate(xs)". An item is a pair: the index as size_t and the element. The
 // element is a reference when the iterator of "xs" gives a reference. So the binding
 // "var (i, x)" gives the index by value and "x" as a reference to the element. A container that
 // is an lvalue is not copied. A container that is an rvalue moves into the range.
@@ -52,7 +52,7 @@ SPP_HIDDEN Enumerated<C> enumerate(C&& c)
     return Enumerated<C>(std::forward<C>(c));
 }
 
-// The range of "spp.range(a, b)": the values a, a + 1, ... b - 1.
+// The range of "range(a, b)": the values a, a + 1, ... b - 1.
 template <class T>
 class IntRange {
 public:
@@ -85,7 +85,7 @@ SPP_HIDDEN IntRange<std::common_type_t<A, B>> range(A a, B b)
     return IntRange<std::common_type_t<A, B>>(a, b);
 }
 
-// The range of "spp.range(n)": the values 0 ... n - 1.
+// The range of "range(n)": the values 0 ... n - 1.
 template <class N>
 SPP_HIDDEN IntRange<N> range(N n)
 {

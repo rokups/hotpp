@@ -4,6 +4,7 @@
 #include <type_traits>
 
 #include "spp/runtime/handles.h"
+#include "spp/runtime/compat.h"
 #include "spp/runtime/hidden.h"
 
 namespace spp {
@@ -24,22 +25,19 @@ SPP_HIDDEN T& deref(T* p)
     return *p;
 }
 // The two overloads below exclude a handle. Else they win over the handle overload.
-template <class T>
+template <class T, std::enable_if_t<!is_handle_v<T>, int> = 0>
 SPP_HIDDEN T& deref(T& v)
-    requires(!is_handle_v<T>)
 {
     return v;
 }
-template <class T>
-SPP_HIDDEN std::remove_cvref_t<T> deref(T&& v)
-    requires(!std::is_lvalue_reference_v<T> && !is_handle_v<T>)
+template <class T, std::enable_if_t<!std::is_lvalue_reference_v<T> && !is_handle_v<T>, int> = 0>
+SPP_HIDDEN detail::remove_cvref_t<T> deref(T&& v)
 {
     return static_cast<T&&>(v);
 }
 // The handle overload binds an lvalue and a temporary. It covers std::shared_ptr.
-template <class H>
+template <class H, std::enable_if_t<is_handle_v<H>, int> = 0>
 SPP_HIDDEN decltype(auto) deref(H&& h)
-    requires(is_handle_v<H>)
 {
     return *h;
 }

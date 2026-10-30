@@ -50,8 +50,8 @@ TEST(StructuredBindingTranslation, ForeachForms)
 {
     const sppc::TranslateResult r = translate_with_header(script(
         "int s = 0; foreach (var (k, v) in this.m) s += k + v; foreach (var& (k, v) in this.m) v += 1;"
-        " foreach (var (i, x) in spp.enumerate(this.m)) s += x; foreach (int i in spp.range(3)) s += i;"
-        " foreach (int i in spp.range(1, 3)) s += i;"));
+        " foreach (var (i, x) in enumerate(this.m)) s += x; foreach (int i in range(3)) s += i;"
+        " foreach (int i in range(1, 3)) s += i;"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "for (auto [k, v] : __st->m)")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "for (auto& [k, v] : __st->m)")) << r.cpp;
@@ -97,13 +97,59 @@ TEST(StructuredBindingTranslation, MalformedBindingIsAnError)
 TEST(StructuredBindingTranslation, RefBindingCannotBindToATemporaryRange)
 {
     sppc::TranslateResult r = translate_with_header(
-        script("int s = 0; foreach (var& (i, x) in spp.enumerate(this.m)) s += x;"));
+        script("int s = 0; foreach (var& (i, x) in enumerate(this.m)) s += x;"));
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics,
-                    "'var&' cannot bind to the temporary value of 'spp.enumerate'; use 'var (i, x)'"))
+                    "'var&' cannot bind to the temporary value of 'enumerate'; use 'var (i, x)'"))
         << r.diagnostics;
-    r = translate_with_header(script("int s = 0; foreach (var& i in spp.range(3)) s += i;"));
+    r = translate_with_header(script("int s = 0; foreach (var& i in range(3)) s += i;"));
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "'var&' cannot bind to the temporary value of 'spp.range'; use 'var i'"))
+    EXPECT_TRUE(has(r.diagnostics, "'var&' cannot bind to the temporary value of 'range'; use 'var i'"))
         << r.diagnostics;
+}
+
+namespace {
+
+// The helpers "enumerate" and "range" are the last choice of a bare call. A member, a local, a
+// parameter and a native global of the same name win.
+TEST(StructuredBindingTranslation, UserDefinedRangeWinsOverTheHelper)
+{
+    sppc::TranslateResult r = translate_with_header(
+        "using \"u.h\";\n"
+        "class A {\n    int range(int n) { return n + 1; }\n"
+        "    int Run() { return range(2); }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "return A__range(__self, 2);")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "spp::range")) << r.cpp;
+
+    r = translate_with_header(script("var range = 3; var enumerate = 4; int s = range + enumerate;"));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(has(r.cpp, "spp::range")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "spp::enumerate")) << r.cpp;
+    r = translate_with_header(
+        "using \"u.h\";\nclass A {\n    int Run(int range) { return range(1); }\n}\n");
+    EXPECT_FALSE(has(r.cpp, "spp::range")) << r.cpp;
+
+    TempDir dir;
+    write_file(dir.path() / "g.h", "inline int range(int n) { return n; }\n");
+    r = sppc::translate(temp_options(dir, "using \"g.h\";\nclass A {\n    int Run() { return range(3); }\n}\n"));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "return range(3);")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "spp::range")) << r.cpp;
+}
+
+}  // namespace
+
+// C++17 cannot capture a structured binding in a lambda. A lambda, a "??" and a "finally" that
+// use a binding get an init-capture. A name after "." and a lambda parameter get no capture.
+TEST(StructuredBindingTranslation, LambdaCapturesBindingsByInitCapture)
+{
+    const sppc::TranslateResult r = translate_with_header(script(
+        "var (a, b) = Mk(); var fn = () => a + b; int s = fn();"
+        " foreach (var (k, v) in this.m) { var g = (int a) => a + v + this.pr.first; s += g(1); }"
+        " try { s += a; } finally { s += b; }"));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "[=, a = a, b = b]()")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "[=, v = v](int32_t a)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "([&, &b = b] {")) << r.cpp;
 }

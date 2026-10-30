@@ -989,6 +989,14 @@ std::string handle_type(std::string tpl, const std::string& name)
 
 // A query "@fn:KEY" asks how the native function KEY takes its parameters (S25). The probe does
 // not hold it. A cursor walk of the imports answers it.
+// The query "@global:NAME" asks if the headers declare NAME in the global namespace. The
+// lowering of a bare "enumerate" or "range" uses the answer.
+const char* const kGlobalQuery = "@global:";
+bool is_global_query(const std::string& q)
+{
+    return q.compare(0, 8, kGlobalQuery) == 0;
+}
+
 const char* const kFnQuery = "@fn:";
 bool is_fn_query(const std::string& q)
 {
@@ -1063,7 +1071,7 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
         if (const_query) body += "using sppc_c" + std::to_string(i) + " = " + t + ";\n";
     }
     for (size_t i = 0; i < queries.size(); ++i) {
-        if (is_fn_query(queries[i]) || is_code_query(queries[i])) continue;  // a cursor walk answers it
+        if (is_fn_query(queries[i]) || is_code_query(queries[i]) || is_global_query(queries[i])) continue;  // a cursor walk answers it
         body += "using sppc_q" + std::to_string(i) + " = " + queries[i] + ";\n";
     }
     return head + "#line 1 \"" + kFactsFile + "\"\n" + body;
@@ -1173,6 +1181,42 @@ void answer_function_queries(CXCursor root, const std::vector<std::string>& quer
         for (CXCursor f : found) r += (r.empty() ? "" : ";") + function_kinds(f);
         answers[q] = r;
     }
+}
+
+// Answers the queries "@global:NAME". The answer is "1" when a declaration of NAME is in the
+// global namespace (also in an "extern "C"" block). A name in another namespace does not count.
+void answer_global_queries(CXCursor root, const std::vector<std::string>& queries,
+                           std::map<std::string, std::string>& answers)
+{
+    std::set<std::string> declared;
+    std::function<CXChildVisitResult(CXCursor)> walk = [&](CXCursor c) {
+        switch (clang_getCursorKind(c)) {
+        case CXCursor_LinkageSpec:
+            visit(c, walk);
+            break;
+        case CXCursor_FunctionDecl:
+        case CXCursor_FunctionTemplate:
+        case CXCursor_VarDecl:
+        case CXCursor_ClassDecl:
+        case CXCursor_StructDecl:
+        case CXCursor_UnionDecl:
+        case CXCursor_ClassTemplate:
+        case CXCursor_EnumDecl:
+        case CXCursor_TypedefDecl:
+        case CXCursor_TypeAliasDecl:
+        case CXCursor_TypeAliasTemplateDecl:
+        case CXCursor_Namespace:
+        case CXCursor_UsingDeclaration:
+            declared.insert(cxs(clang_getCursorSpelling(c)));
+            break;
+        default:
+            break;
+        }
+        return CXChildVisit_Continue;
+    };
+    visit(root, walk);
+    for (const std::string& q : queries)
+        if (is_global_query(q)) answers[q] = declared.count(q.substr(8)) ? "1" : "";
 }
 
 bool type_holds_code(CXType t, int depth);
@@ -1456,10 +1500,11 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         });
         for (size_t i = 0; i < queries.size(); ++i) {
             auto it = aliases.find("sppc_q" + std::to_string(i));
-            if (!is_fn_query(queries[i]) && !is_code_query(queries[i])) answers[queries[i]] = it == aliases.end() ? std::string() : alias_type(it->second);
+            if (!is_fn_query(queries[i]) && !is_code_query(queries[i]) && !is_global_query(queries[i])) answers[queries[i]] = it == aliases.end() ? std::string() : alias_type(it->second);
         }
         answer_function_queries(root, queries, answers);
         answer_code_queries(root, queries, answers);
+        answer_global_queries(root, queries, answers);
         for (size_t i = 0; i < reqs.size(); ++i)
             for (const std::string& m : reqs[i].members) {
                 if (m.rfind("const:", 0) != 0) continue;
@@ -1971,6 +2016,20 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
             if (uniq.insert(q).second) query_texts.push_back(q);
         for (const std::string& k : native_q.fn_keys) query_texts.push_back(kFnQuery + k);
     }
+    // The helpers "enumerate" and "range" are the last fallback of a bare call. A native name in
+    // the global namespace wins, so the translator asks the headers about each name that the
+    // script calls.
+    for (const char* helper : {"enumerate", "range"}) {
+        const std::string h = helper;
+        for (size_t at = all_text.find(h); at != std::string::npos; at = all_text.find(h, at + 1)) {
+            const size_t end = at + h.size();
+            const bool word_start = at == 0 || !(std::isalnum(static_cast<unsigned char>(all_text[at - 1])) ||
+                                                 all_text[at - 1] == '_' || all_text[at - 1] == '.');
+            if (!word_start || end >= all_text.size() || !(all_text[end] == '(' || all_text[end] == ' ')) continue;
+            query_texts.push_back(kGlobalQuery + h);
+            break;
+        }
+    }
     // S26: the native structs that the script uses. A cursor walk checks them for a code pointer.
     {
         std::set<std::string> script_class_names;
@@ -2020,6 +2079,12 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                       },
                       hier, facts, query_answers);
     for (auto& [d, q] : native_q.vars) d->native_type = query_answers[q];
+    {
+        std::set<std::string> globals;
+        for (const std::string& q : query_texts)
+            if (is_global_query(q) && query_answers[q] == "1") globals.insert(q.substr(8));
+        types.set_native_globals(std::move(globals));
+    }
     types.set_classes([&facts](const std::string& name) {
         auto it = facts.find(name);
         sppc::TypeModel::ClassFacts c;
@@ -3399,7 +3464,7 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 if (has_entry) {
                     // Runs the constructor of each parent first, with the arguments of the plan. The
                     // plan owns the arguments, so the parent can move them.
-                    plan_text += "SPP_HIDDEN static void " + P + "ctor_chain(" + shell + "* __self, [[maybe_unused]] auto& __chain" +
+                    plan_text += "template <class Chain>\nSPP_HIDDEN static void " + P + "ctor_chain(" + shell + "* __self, [[maybe_unused]] Chain& __chain" +
                                  param_decl(cm) + ")\n{\n";
                     if (pinfo && !pinfo->ctor_entry.empty())
                         plan_text += "    std::apply([&](auto&&... x) { " + pinfo->ctor_entry +
@@ -3658,10 +3723,15 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
 
         // ---- record and entry
         o.w("// ------------------------------------------------------ record and entry\n");
-        o.w("static const spp::SlotFn " + cn + "_slots[" + slot_id("COUNT") + "] = {\n");
-        for (const std::string& fn : table)
-            o.w(fn.empty() ? std::string("    nullptr,\n") : "    reinterpret_cast<spp::SlotFn>(&" + fn + "),\n");
-        o.w("};\n\n");
+        // ISO C++ has no array of size zero. A class without slots gets one null entry.
+        if (table.empty()) {
+            o.w("static const spp::SlotFn " + cn + "_slots[1] = {nullptr};\n\n");
+        } else {
+            o.w("static const spp::SlotFn " + cn + "_slots[" + slot_id("COUNT") + "] = {\n");
+            for (const std::string& fn : table)
+                o.w(fn.empty() ? std::string("    nullptr,\n") : "    reinterpret_cast<spp::SlotFn>(&" + fn + "),\n");
+            o.w("};\n\n");
+        }
         std::string on_reload_init;
         for (const Method& m : cd.methods)
             if (hook_of(m) == Hook::OnReload) {

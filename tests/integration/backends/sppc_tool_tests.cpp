@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 #include "spp/backend.h"
 #include "spp/clang_files_backend.h"
@@ -217,6 +218,39 @@ std::string engine_args()
            "/include'";
 }
 
+// Generated code and the runtime headers need C++17 only (DECISIONS). The flags reject each
+// C++20 feature and each extension of the compiler.
+const char* const kCxx17Flags = " -std=c++17 -fsyntax-only -pedantic -Wc++20-extensions -Werror";
+
+// Translates the script and compiles the C++ with -std=c++17. A script with "${...}" uses
+// --format=fmt, because std::format is C++20. Without the fmt headers, such a script is not checked.
+void expect_compiles_as_cxx17(const std::string& script)
+{
+    std::string format, defines;
+    if (read_file(script).find("${") != std::string::npos) {
+#if __has_include(<fmt/format.h>)
+        format = " --format=fmt";
+        defines = " -DFMT_HEADER_ONLY";
+#else
+        return;
+#endif
+    }
+    const std::string out = script + ".cxx17.cpp";
+    std::string log;
+    EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp" + format + " -o '" + out + "' '" + script +
+                              "'" + engine_args() + " 2>&1",
+                          log),
+              0)
+        << log;
+    std::string cc;
+    EXPECT_EQ(run_command(std::string("'") + SPP_CXX + "'" + kCxx17Flags + defines + " -I '" + SPP_SOURCE_DIR +
+                              "/example/engine' -I '" + SPP_SOURCE_DIR + "/include' '" + out + "' 2>&1",
+                          cc),
+              0)
+        << "C++17: " << script << "\n"
+        << cc;
+}
+
 // A "T&" parameter and a "T&" local of a script class: the generated C++ must compile.
 TEST(SppcTool, ScriptClassReferenceCompiles)
 {
@@ -240,6 +274,7 @@ TEST(SppcTool, ScriptClassReferenceCompiles)
         "    }\n}\n",
         f);
     std::fclose(f);
+    expect_compiles_as_cxx17(script);
     const std::string out = scratch.file("sppc_class_ref.cpp");
     std::string log;
     EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'" +
@@ -263,6 +298,7 @@ void expect_script_compiles(TestScratch& scratch, const char* name, const char* 
     ASSERT_NE(f, nullptr);
     std::fputs(text, f);
     std::fclose(f);
+    expect_compiles_as_cxx17(script);
     const std::string out = scratch.file(std::string(name) + ".cpp");
     std::string log;
     EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'" +
@@ -345,6 +381,7 @@ TEST(SppcTool, IsBindingCompilesAndRuns)
         "    }\n}\n",
         f);
     std::fclose(f);
+    expect_compiles_as_cxx17(script);
     const std::string so = scratch.file("sppc_is_bind.so");
     std::string log;
     ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so +
@@ -388,6 +425,7 @@ TEST(SppcTool, AccessWordsCompileAndRun)
         "    }\n}\n",
         f);
     std::fclose(f);
+    expect_compiles_as_cxx17(script);
     const std::string so = scratch.file("sppc_access.so");
     std::string log;
     ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so +
@@ -435,6 +473,7 @@ TEST(SppcTool, BareMemberNamesCompileAndRun)
         "    }\n}\n",
         f);
     std::fclose(f);
+    expect_compiles_as_cxx17(script);
     const std::string so = scratch.file("sppc_bare_members.so");
     std::string log;
     ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so +
@@ -449,8 +488,8 @@ TEST(SppcTool, BareMemberNamesCompileAndRun)
 }
 
 // A structured binding "var (a, b) = e" and "foreach (var (k, v) in c)" give C++ that compiles and
-// runs. They work for std.pair, std.tuple, a struct and a std.map. "spp.enumerate" and
-// "spp.range" are the helpers of the foreach with an index.
+// runs. They work for std.pair, std.tuple, a struct and a std.map. "enumerate" and
+// "range" are the helpers of the foreach with an index.
 TEST(SppcTool, StructuredBindingsCompileAndRun)
 {
     TestScratch scratch;
@@ -478,19 +517,20 @@ TEST(SppcTool, StructuredBindingsCompileAndRun)
         "        foreach (var (k, v) in m) sum += k * v;\n"
         "        foreach (var& (k, v) in m) v += 1;\n"
         "        foreach (const var& (k, v) in m) sum += v;\n"
-        "        foreach (var (i, x) in spp.enumerate(xs)) sum += (int)i * x;\n"
-        "        foreach (var (i, x) in spp.enumerate(xs)) x += 1;\n"
-        "        foreach (int i in spp.range(3)) sum += i;\n"
-        "        foreach (int i in spp.range(2, 4)) sum += i;\n"
-        "        foreach (int i in spp.range(0)) sum += 1000;\n"
+        "        foreach (var (i, x) in enumerate(xs)) sum += (int)i * x;\n"
+        "        foreach (var (i, x) in enumerate(xs)) x += 1;\n"
+        "        foreach (int i in range(3)) sum += i;\n"
+        "        foreach (int i in range(2, 4)) sum += i;\n"
+        "        foreach (int i in range(0)) sum += 1000;\n"
         "        int last = 0;\n"
-        "        foreach (var x in spp.enumerate(xs)) last = x.second;\n"
+        "        foreach (var x in enumerate(xs)) last = x.second;\n"
         "        var fn = () => a + b;\n"
         "        last += fn();\n"
         "        this.Name = \"s ${sum} ${a}${b} ${t1}${t2}${t3} ${px}${py} ${this.pr.first} ${this.pr.second} ${e}${g} ${xs[0]}${xs[2]} ${last}\";\n"
         "    }\n}\n",
         f);
     std::fclose(f);
+    expect_compiles_as_cxx17(script);
     const std::string so = scratch.file("sppc_bindings.so");
     std::string log;
     ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so +
@@ -541,6 +581,7 @@ TEST(SppcTool, HandleAddressOfDereferenceAndThisCompile)
         "    }\n}\n",
         f);
     std::fclose(f);
+    expect_compiles_as_cxx17(script);
     const std::string out = scratch.file("sppc_handle_deref.cpp");
     std::string log;
     EXPECT_EQ(run_command(std::string("'") + SPPC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'" +
@@ -643,6 +684,7 @@ TEST(SppcTool, CoalesceRunsTheRightSideOnlyWhenNeeded)
         "    }\n}\n",
         f);
     std::fclose(f);
+    expect_compiles_as_cxx17(script);
     const std::string so = scratch.file("sppc_coalesce_run.so");
     std::string log;
     ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so +
@@ -691,6 +733,7 @@ TEST(SppcTool, CoalesceInVarKeepsTheOperandType)
         "    }\n}\n",
         f);
     std::fclose(f);
+    expect_compiles_as_cxx17(script);
     const std::string so = scratch.file("sppc_coalesce_var.so");
     std::string log;
     ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so +
@@ -710,6 +753,7 @@ TEST(SppcTool, InterpolationRunsWithStdFormat)
 {
     TestScratch scratch;
     const std::string script = write_interp_script(scratch, "sppc_interp_run.spp");
+    expect_compiles_as_cxx17(script);
     const std::string so = scratch.file("sppc_interp_run.so");
     std::string log;
     ASSERT_EQ(run_command(std::string("'") + SPPC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so +
@@ -723,6 +767,78 @@ TEST(SppcTool, InterpolationRunsWithStdFormat)
     EXPECT_EQ(s.actor->Name, "hp = 7, name L7, r 0.50 {x} ${y} hi");
 }
 #endif
+
+// Statements and expressions that lower to more complex C++ compile with -std=c++17: a string
+// switch, collection literals, "?.", "??", "is" with a binding, default arguments, structured
+// bindings in lambdas, in "??" and in "finally", enumerate and range.
+TEST(SppcTool, LoweredStatementsCompileAsCxx17)
+{
+    TestScratch scratch;
+    const std::string script = scratch.file("sppc_cxx17.spp");
+    std::FILE* f = std::fopen(script.c_str(), "w");
+    ASSERT_NE(f, nullptr);
+    std::fputs(
+        "using <map>;\nusing <string>;\nusing <utility>;\nusing <vector>;\nusing \"Actor.h\";\n"
+        "class Unit { int hp = 1; void Hit(int d = 1) { hp -= d; } }\n"
+        "class Hero : Actor {\n"
+        "    std.vector<int> ids = [1, 2, 3];\n"
+        "    std.map<std.string, int> named = [\"a\": 1, \"b\": 2];\n"
+        "    Unit Find() { return null; }\n"
+        "    int Mode(std.string s) {\n"
+        "        switch (s) {\n"
+        "            case \"idle\": return 0;\n"
+        "            case \"walk\":\n"
+        "            case \"run\": return 1;\n"
+        "            default: return 2;\n"
+        "        }\n"
+        "    }\n"
+        "    override void Tick(float dt) {\n"
+        "        Unit u = Find();\n"
+        "        u?.Hit();\n"
+        "        u?.hp = 3;\n"
+        "        Unit w = u ?? new Unit();\n"
+        "        w.Hit(2);\n"
+        "        std.vector<int> none = [];\n"
+        "        var (a, b) = std.make_pair(1, 2);\n"
+        "        var (u1, u2) = std.make_pair(Find(), Find());\n"
+        "        Unit picked = u1 ?? u2;\n"
+        "        var fn = () => a + b;\n"
+        "        int n = fn() + Mode(\"run\");\n"
+        "        foreach (var (k, v) in named) { var g = (int z) => z + v + a; n += g(1); }\n"
+        "        foreach (var (i, x) in enumerate(ids)) n += (int)i * x;\n"
+        "        foreach (int i in range(1, 3)) n += i;\n"
+        "        try { n += a; } finally { n += b; }\n"
+        "        if (picked is Unit p && p.hp > 0) n += p.hp;\n"
+        "    }\n}\n",
+        f);
+    std::fclose(f);
+    expect_compiles_as_cxx17(script);
+}
+
+// Each public header compiles alone with -std=c++17. A script or an embedder can include it.
+TEST(SppcTool, PublicHeadersCompileAloneAsCxx17)
+{
+    TestScratch scratch;
+    std::vector<std::string> headers;
+    for (const char* dir : {"/include/spp", "/include/spp/runtime"})
+        for (const auto& entry : std::filesystem::directory_iterator(std::string(SPP_SOURCE_DIR) + dir))
+            if (entry.is_regular_file() && entry.path().extension() == ".h") headers.push_back(entry.path().string());
+    ASSERT_FALSE(headers.empty());
+    for (const std::string& h : headers) {
+        const std::string tu = scratch.file("hdr_" + std::filesystem::path(h).stem().string() + ".cpp");
+        std::FILE* f = std::fopen(tu.c_str(), "w");
+        ASSERT_NE(f, nullptr);
+        std::fputs(("#include \"" + h + "\"\n").c_str(), f);
+        std::fclose(f);
+        std::string cc;
+        EXPECT_EQ(run_command(std::string("'") + SPP_CXX + "'" + kCxx17Flags + " -I '" + SPP_SOURCE_DIR +
+                                  "/include' '" + tu + "' 2>&1",
+                              cc),
+                  0)
+            << h << "\n"
+            << cc;
+    }
+}
 
 // --aot writes the C++ of each script and the registration file. It does not compile.
 TEST(SppcTool, AotModeWritesTheCppAndTheRegistrationFile)

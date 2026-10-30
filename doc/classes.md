@@ -12,6 +12,7 @@ The compiler resolves a bare name in this order:
 2. A script member: this class first, then the base classes.
 3. A native member of the base class. A module variable of the same name wins over it.
 4. A module variable, a type, a native global or a namespace.
+5. The helper functions `enumerate` and `range`.
 
 ## Fields and methods
 

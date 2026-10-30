@@ -4,6 +4,7 @@
 #include <functional>
 #include <utility>
 
+#include "spp/runtime/compat.h"
 #include "spp/runtime/hidden.h"
 #include "spp/runtime/threads.h"
 
@@ -90,8 +91,7 @@ public:
     }
 
     // Conversion to an engine delegate type that binds a std::function.
-    template <class D>
-        requires requires(D& d, Function f) { d.Bind(std::move(f)); }
+    template <class D, std::enable_if_t<detail::has_bind<D, Function>::value, int> = 0>
     SPP_HIDDEN operator D() const
     {
         D d;

@@ -5,6 +5,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "spp/runtime/compat.h"
 #include "spp/runtime/hidden.h"
 
 namespace spp {
@@ -16,7 +17,7 @@ struct is_handle : std::false_type {};
 template <class T>
 struct is_handle<std::shared_ptr<T>> : std::true_type {};
 template <class T>
-inline constexpr bool is_handle_v = is_handle<std::remove_cvref_t<T>>::value;
+inline constexpr bool is_handle_v = is_handle<detail::remove_cvref_t<T>>::value;
 
 // An intrusive reference-counted handle. The object keeps its own count.
 // "Add" and "Release" are member function pointers of the OWNER class, for example
@@ -42,15 +43,13 @@ public:
     SPP_HIDDEN Intrusive(Intrusive&& o) noexcept : p_(o.p_) { o.p_ = nullptr; }
 
     // Conversion from a handle of a derived type. Add and Release stay the same.
-    template <class U>
-        requires(!std::is_same_v<U, T> && std::is_convertible_v<U*, T*>)
+    template <class U, std::enable_if_t<!std::is_same_v<U, T> && std::is_convertible_v<U*, T*>, int> = 0>
     SPP_HIDDEN Intrusive(const Intrusive<U, Add, Release>& o) : p_(o.get())
     {
         if (p_)
             (p_->*Add)();
     }
-    template <class U>
-        requires(!std::is_same_v<U, T> && std::is_convertible_v<U*, T*>)
+    template <class U, std::enable_if_t<!std::is_same_v<U, T> && std::is_convertible_v<U*, T*>, int> = 0>
     SPP_HIDDEN Intrusive(Intrusive<U, Add, Release>&& o) noexcept : p_(o.get())
     {
         o.detach_();

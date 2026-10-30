@@ -81,6 +81,12 @@ public:
     // True when the name is a script class of the script ([value] classes too).
     bool is_script_class(const std::string& type) const;
 
+    // The names that the native headers declare in the global namespace (a function, a
+    // variable, a type or a namespace). Only the names that the translator asked for are in
+    // the set. A bare "enumerate" or "range" of such a name is not the script helper.
+    void set_native_globals(std::set<std::string> names) { native_globals_ = std::move(names); }
+    bool is_native_global(const std::string& name) const { return native_globals_.count(name) != 0; }
+
     // The C++ type of "T&", "T*&" and "const T&" when T is a script class that is a handle:
     // "storage(T)&" or "const storage(T)&". Else an empty string (the native types stay raw).
     std::string script_ref_storage(const std::string& type) const;
@@ -128,6 +134,7 @@ private:
         bool is_value = false;
     };
     std::map<std::string, ScriptClass> script_;
+    std::set<std::string> native_globals_;
     std::set<std::string> prelude_names_;  // the stubs that a prelude gave
 };
 

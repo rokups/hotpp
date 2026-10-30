@@ -47,6 +47,7 @@ The file `CMakePresets.json` has the presets. A build goes to `cmake-build/<pres
 - Add `-asan` or `-tsan` to the preset name for a sanitizer build, for example `linux-clang-files-asan`.
 - The build presets end with `-dbg` or `-rel`.
 - The JIT backend also works with ThreadSanitizer. ORC and ThreadSanitizer do not conflict.
+- Generated code and the runtime headers need C++17 only. The tool `sppc` itself needs C++20. For string interpolation in C++17, use `--format=fmt`. See DECISIONS.md.
 
 ### Build tree layout
 
@@ -96,6 +97,8 @@ Imports: `using "Actor.h";` becomes `#include "Actor.h"`. A standard header uses
 A script uses `.` for a scope and for a member access, for a pointer and for a reference. `std.string` becomes `std::string`. `p.m` becomes `spp::deref(p).m`, and the C++ compiler picks the pointer or the reference form. The text `::` and `->` in a script is an error: "use '.' instead of '::'" and "use '.' instead of '->'". The `=>` of a lambda stays. The old `->` return type is removed: the return type stands before the name.
 
 A loop over a container is `foreach (Type x in c) stmt`. The head can also be `foreach (var x in c)`, `foreach (const Type x in c)` or `foreach (const var x in c)`. These words cannot be names of variables: `var`, `foreach`, `in`, `using`, `override`, `virtual`, `new`, `public`, `private`, `protected`, `get`, `set`, `finally` and `void`. A member name after a `.` can be any of them, for example `p.get()`.
+
+`enumerate(xs)` and `range(n)` or `range(a, b)` are global functions of every script. `foreach (var (i, x) in enumerate(xs))` gives the index and the element. `foreach (int i in range(10))` counts. They are the last choice of the name rules: a local, a parameter, a member, a type or a native global of the same name wins.
 
 An initializer is optional. With no initializer, a field, a property or a local has the default value: zero, `false`, null or the default constructor. `var` and `const` need an initializer.
 

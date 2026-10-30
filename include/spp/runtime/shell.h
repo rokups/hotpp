@@ -9,6 +9,7 @@
 #include <typeinfo>
 #include <utility>
 
+#include "spp/runtime/compat.h"
 #include "spp/runtime/records.h"
 #include "spp/runtime/hidden.h"
 #include "spp/runtime/threads.h"
@@ -83,7 +84,7 @@ SPP_HIDDEN auto call(ShellBase* self, unsigned slot, A&&... a)
 {
     ScriptEntry entry;
     const ClassRecord* cls = self->cls;
-    if (const char* const* keys = cls->slot_keys) [[unlikely]] {
+    if (const char* const* keys = cls->slot_keys; SPP_UNLIKELY(keys != nullptr)) {
         if (keys[slot] && std::strcmp(keys[slot], typeid(Sig).name()) != 0) {
             detached_call(cls, slot);
             return detail::detached_result<typename detail::sig_result<Sig>::type>();
@@ -124,7 +125,7 @@ SPP_NODEBUG inline ShellBase* construct_shell(const ClassRecord* rec, const char
 template <class H, class S>
 SPP_HIDDEN H handle_from_this(S* self)
 {
-    if constexpr (requires { typename H::element_type; } && requires { self->shared_from_this(); }) {
+    if constexpr (detail::has_element_type<H>::value && detail::has_shared_from_this<S>::value) {
         try {
             return std::static_pointer_cast<typename H::element_type>(self->shared_from_this());
         } catch (const std::bad_weak_ptr&) {
@@ -166,15 +167,13 @@ SPP_HIDDEN Shell* shell_of(T* p, const char* cls)
         return static_cast<Shell*>(p);
     }
 }
-template <class Shell, class T>
-    requires(!requires(const T& h) { h.get(); })
+template <class Shell, class T, std::enable_if_t<!detail::has_get_v<T>, int> = 0>
 SPP_HIDDEN Shell* shell_of(T& v, const char* cls)
 {
     return shell_of<Shell>(&v, cls);
 }
 // A handle of a script object (std::shared_ptr or Intrusive): check the pointee.
-template <class Shell, class H>
-    requires requires(const H& h) { h.get(); }
+template <class Shell, class H, std::enable_if_t<detail::has_get_v<H>, int> = 0>
 SPP_HIDDEN Shell* shell_of(const H& h, const char* cls)
 {
     return shell_of<Shell>(h.get(), cls);
@@ -202,14 +201,12 @@ SPP_HIDDEN bool is_script(T* p, const char* cls)
     const ShellBase* s = shell_base_of(p);
     return s && s->cls && record_is(s->cls, cls);
 }
-template <class H>
-    requires requires(const H& h) { h.get(); }
+template <class H, std::enable_if_t<detail::has_get_v<H>, int> = 0>
 SPP_HIDDEN bool is_script(const H& h, const char* cls)
 {
     return is_script(h.get(), cls);
 }
-template <class T>
-    requires(!std::is_pointer_v<T> && !requires(const T& h) { h.get(); })
+template <class T, std::enable_if_t<!std::is_pointer_v<T> && !detail::has_get_v<T>, int> = 0>
 SPP_HIDDEN bool is_script(T& v, const char* cls)
 {
     return is_script(&v, cls);
@@ -230,14 +227,12 @@ SPP_HIDDEN std::shared_ptr<Shell> as_script(const std::shared_ptr<U>& h, const c
     Shell* s = as_script<Shell>(h.get(), cls);
     return s ? std::shared_ptr<Shell>(h, s) : nullptr;
 }
-template <class Shell, class H>
-    requires requires(const H& h) { h.get(); }
+template <class Shell, class H, std::enable_if_t<detail::has_get_v<H>, int> = 0>
 SPP_HIDDEN Shell* as_script(const H& h, const char* cls)
 {
     return as_script<Shell>(h.get(), cls);
 }
-template <class Shell, class T>
-    requires(!std::is_pointer_v<T> && !requires(const T& h) { h.get(); })
+template <class Shell, class T, std::enable_if_t<!std::is_pointer_v<T> && !detail::has_get_v<T>, int> = 0>
 SPP_HIDDEN Shell* as_script(T& v, const char* cls)
 {
     return as_script<Shell>(&v, cls);
@@ -249,14 +244,12 @@ SPP_HIDDEN bool is_native(U* p)
 {
     return dynamic_cast<const T*>(p) != nullptr;
 }
-template <class T, class H>
-    requires requires(const H& h) { h.get(); }
+template <class T, class H, std::enable_if_t<detail::has_get_v<H>, int> = 0>
 SPP_HIDDEN bool is_native(const H& h)
 {
     return is_native<T>(h.get());
 }
-template <class T, class U>
-    requires(!std::is_pointer_v<U> && !requires(const U& h) { h.get(); })
+template <class T, class U, std::enable_if_t<!std::is_pointer_v<U> && !detail::has_get_v<U>, int> = 0>
 SPP_HIDDEN bool is_native(U& v)
 {
     return is_native<T>(&v);
@@ -271,14 +264,12 @@ SPP_HIDDEN std::shared_ptr<T> as_native(const std::shared_ptr<U>& h)
 {
     return std::dynamic_pointer_cast<T>(h);
 }
-template <class T, class H>
-    requires requires(const H& h) { h.get(); }
+template <class T, class H, std::enable_if_t<detail::has_get_v<H>, int> = 0>
 SPP_HIDDEN T* as_native(const H& h)
 {
     return as_native<T>(h.get());
 }
-template <class T, class U>
-    requires(!std::is_pointer_v<U> && !requires(const U& h) { h.get(); })
+template <class T, class U, std::enable_if_t<!std::is_pointer_v<U> && !detail::has_get_v<U>, int> = 0>
 SPP_HIDDEN T* as_native(U& v)
 {
     return as_native<T>(&v);

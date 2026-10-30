@@ -30,9 +30,9 @@ TEST(StructuredBindingParse, Foreach)
     EXPECT_EQ(round_trip("foreach (var& (k, v) in m) f(k, v);"), "for (auto& [k, v] : m) f(k, v);");
     EXPECT_EQ(round_trip("foreach (const var& (k, v) in m) f(k, v);"),
               "for (const auto& [k, v] : m) f(k, v);");
-    EXPECT_EQ(round_trip("foreach (var (i, x) in spp.enumerate(xs)) f(i, x);"),
-              "for (auto [i, x] : spp::enumerate(xs)) f(i, x);");
-    EXPECT_EQ(round_trip("foreach (int i in spp.range(n)) f(i);"), "for (int32_t i : spp::range(n)) f(i);");
+    EXPECT_EQ(round_trip("foreach (var (i, x) in enumerate(xs)) f(i, x);"),
+              "for (auto [i, x] : enumerate(xs)) f(i, x);");
+    EXPECT_EQ(round_trip("foreach (int i in range(n)) f(i);"), "for (int32_t i : range(n)) f(i);");
 }
 
 TEST(StructuredBindingParse, ErrorsOfMalformedBindings)

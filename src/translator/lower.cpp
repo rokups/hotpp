@@ -4,6 +4,7 @@
 #include "builtin_types.h"
 #include "emit.h"
 
+#include <cctype>
 #include <optional>
 #include <set>
 #include <utility>
@@ -541,6 +542,18 @@ struct Lowerer {
         for (ExprP& x : v) expr(x);
     }
 
+    // True for the bare name of a helper of the runtime ("enumerate" or "range"), if nothing else
+    // has the name. This is the last choice of the name rules: a local, a parameter, a member, a
+    // module variable, a type or a native global of the same name wins.
+    bool is_helper_name(const std::string& n) const
+    {
+        if (n != "enumerate" && n != "range") return false;
+        if (cx.locals.count(n) || cx.module_vars.count(n) || cx.fns.count(n) || cx.field_type.count(n)) return false;
+        if (cx.props.count(n) || cx.native_members.count(n) || cx.classes.count(n) || cx.script_classes.count(n)) return false;
+        if (cx.cls && (find_field(*cx.cls, n) || find_prop(*cx.cls, n) || find_fn(*cx.cls, n))) return false;
+        return !(cx.types && (cx.types->is_native_global(n) || cx.types->is_script_class(n)));
+    }
+
     // A script fn that "this.f" or "f" names. The call gets the "self" argument.
     void script_call(CallExpr& c, const std::string& fn, uint32_t pos, uint32_t name_pos = 0)
     {
@@ -597,6 +610,12 @@ struct Lowerer {
                     return;
                 }
             }
+        }
+        // A bare "enumerate(xs)" or "range(n)" is the helper of the runtime, if nothing else has
+        // the name. The call is explicit: "spp::enumerate(xs)".
+        if (const std::string* n = simple_name(*c.callee); n && is_helper_name(*n)) {
+            const uint32_t pos = std::get<NameExpr>(c.callee->v).pos;
+            c.callee = raw_named("spp::", *n, pos, pos);
         }
         // "obj.M(args)" where obj has the type of a script class (not a [value] class) and M is
         // a script function of it: a direct call of the generation function.
@@ -823,6 +842,9 @@ struct Lowerer {
         const bool outer_lambda = std::exchange(in_lambda, true);
         block(l.body);
         in_lambda = outer_lambda;
+        std::set<std::string> param_names;
+        for (const Param& p : l.params) param_names.insert(p.name);
+        l.captures = binding_captures(bindings, text_of(l.body), false, param_names);
         fin = outer;
         cx.ret_type = outer_ret;
         // The lambda captures by value. "self" is a pointer to the shell. The state pointer
@@ -1035,7 +1057,9 @@ struct Lowerer {
                 ExprP inner = make_expr(ParenExpr{std::move(b->rhs), 0});
                 // A default value is not in a function, so its lambda has no capture. The lambda gives a
                 // value (not a reference), so a temporary on the right side cannot dangle.
-                const char* open = cx.in_default ? "[]() -> auto { return " : "[&]() -> auto { return ";
+                const std::string open = cx.in_default ? std::string("[]() -> auto { return ")
+                                                       : "[&" + binding_captures(bindings, print(*inner), true) +
+                                                             "]() -> auto { return ";
                 ExprP head = make_expr(UnaryExpr{open, std::move(inner), false, 0});
                 ExprP lazy = make_expr(UnaryExpr{"; }", std::move(head), true, 0});
                 e = call_of("spp::coalesce", args_of(std::move(b->lhs), std::move(lazy)), pos);
@@ -1209,15 +1233,19 @@ struct Lowerer {
         return make_expr(std::move(c));
     }
 
-    // "foreach (var& x in spp.enumerate(xs))": the range gives temporary values, so a reference
+    // "foreach (var& x in enumerate(xs))": the range gives temporary values, so a reference
     // cannot bind to them.
     void check_ref_range(const ForOfStmt& fo)
     {
         if (!fo.is_ref || !fo.range) return;
         const auto* call = std::get_if<CallExpr>(&fo.range->v);
         const auto* callee = call ? std::get_if<NameExpr>(&call->callee->v) : nullptr;
-        if (!callee || callee->parts.size() != 2 || callee->parts[0] != "spp") return;
-        if (callee->parts[1] != "enumerate" && callee->parts[1] != "range") return;
+        if (!callee || !callee->template_args.empty()) return;
+        const bool bare = callee->parts.size() == 1 && is_helper_name(callee->parts[0]);
+        const bool scoped = callee->parts.size() == 2 && callee->parts[0] == "spp";
+        if (!bare && !scoped) return;
+        const std::string& helper = callee->parts.back();
+        if (helper != "enumerate" && helper != "range") return;
         std::string use = "var ";
         if (fo.names.empty()) {
             use += fo.name;
@@ -1226,7 +1254,7 @@ struct Lowerer {
             for (size_t i = 0; i < fo.names.size(); ++i) use += (i ? ", " : "") + fo.names[i];
             use += ")";
         }
-        error(callee->pos, "'var&' cannot bind to the temporary value of 'spp." + callee->parts[1] + "'; use '" + use + "'");
+        error(callee->pos, "'var&' cannot bind to the temporary value of '" + helper + "'; use '" + use + "'");
     }
 
     // "h?.f(a);" becomes "{ if (h) h.f(a); }". When the receiver is not a simple name, the
@@ -1301,7 +1329,62 @@ struct Lowerer {
         for (StmtP& s : v) stmt(s);
     }
 
-    void block(BlockStmt& b) { stmts(b.stmts); }
+    // A binding name goes out of scope at the end of its block.
+    void block(BlockStmt& b)
+    {
+        const size_t mark = bindings.size();
+        stmts(b.stmts);
+        bindings.resize(mark);
+    }
+
+    // The names of the structured bindings in scope ("var (a, b) = e" and "foreach (var (k, v)
+    // in c)"). C++17 cannot capture a structured binding in a lambda (C++20 can). So a lambda
+    // that uses a binding gets an init-capture "a = a" (or "&a = a"). An init-capture is C++14.
+    std::vector<std::string> bindings;
+
+    // The init-captures for the names in "scope" that the C++ text uses, for example ", a = a".
+    // "by_ref" gives ", &a = a". A name in "skip" (a lambda parameter) gets no capture. A name
+    // after ".", "->" or "::" and a name in a literal are not a use. An extra capture of an
+    // unused name is not an error: it only makes a copy.
+    static std::string binding_captures(const std::vector<std::string>& scope, const std::string& text, bool by_ref,
+                                        const std::set<std::string>& skip = {})
+    {
+        if (scope.empty()) return {};
+        std::set<std::string> used;
+        auto ident = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+        for (size_t i = 0; i < text.size();) {
+            const char c = text[i];
+            if (c == '"' || c == '\'') {
+                for (++i; i < text.size() && text[i] != c; ++i)
+                    if (text[i] == '\\') ++i;
+                ++i;
+            } else if (std::isdigit(static_cast<unsigned char>(c))) {
+                while (i < text.size() && (ident(text[i]) || text[i] == '.')) ++i;
+            } else if (ident(c)) {
+                const size_t start = i;
+                while (i < text.size() && ident(text[i])) ++i;
+                size_t k = start;
+                while (k > 0 && (text[k - 1] == ' ' || text[k - 1] == '\t' || text[k - 1] == '\n')) --k;
+                const bool member = k > 0 && (text[k - 1] == '.' || (k > 1 && text[k - 1] == '>' && text[k - 2] == '-') ||
+                                              (k > 1 && text[k - 1] == ':' && text[k - 2] == ':'));
+                if (!member) used.insert(text.substr(start, i - start));
+            } else {
+                ++i;
+            }
+        }
+        std::string r;
+        std::set<std::string> done;
+        for (const std::string& n : scope)
+            if (used.count(n) && !skip.count(n) && done.insert(n).second) r += std::string(", ") + (by_ref ? "&" : "") + n + " = " + n;
+        return r;
+    }
+    static std::string text_of(const BlockStmt& b)
+    {
+        std::string t;
+        for (const StmtP& s : b.stmts)
+            if (s) t += print(*s) + "\n";
+        return t;
+    }
 
     // The body of a loop. A "break" or "continue" in it targets the loop.
     void loop_body(StmtP& s)
@@ -1325,6 +1408,7 @@ struct Lowerer {
             if (!d->names.empty()) {  // a structured binding: the names are plain locals
                 for (const std::string& n : d->names) declare(n, std::string());
                 expr(d->init);
+                bindings.insert(bindings.end(), d->names.begin(), d->names.end());
                 return;
             }
             std::string t = d->type;
@@ -1363,7 +1447,10 @@ struct Lowerer {
             if (cx.types && !fo->type.empty()) fo->type = cx.types->storage(fo->type);
             check_ref_range(*fo);
             expr(fo->range);
+            const size_t mark = bindings.size();
+            bindings.insert(bindings.end(), fo->names.begin(), fo->names.end());
             loop_body(fo->body);
+            bindings.resize(mark);
         } else if (auto* r = std::get_if<ReturnStmt>(&x.v)) {
             if (fin.inside) error(r->pos, "'return' is not allowed in a 'finally' block");
             coerce(r->expr, cx.ret_type);
@@ -1387,6 +1474,7 @@ struct Lowerer {
                 fin = {true, 0, 0};
                 block(*tr->finally_block);
                 fin = outer;
+                tr->finally_captures = binding_captures(bindings, text_of(*tr->finally_block), true);
             }
         } else if (auto* sw = std::get_if<SwitchStmt>(&x.v)) {
             const bool strings = classify_labels(*sw);
