@@ -1,7 +1,7 @@
-# S++ samples
+# Hot++ samples
 
-Each sample is a small project. It shows one way to host S++ in a program.
-A sample builds in the S++ source tree. Most samples also build as a separate project.
+Each sample is a small project. It shows one way to host Hot++ in a program.
+A sample builds in the Hot++ source tree. Most samples also build as a separate project.
 
 | Sample | Situation | Key API | Link | State |
 |---|---|---|---|---|
@@ -13,7 +13,7 @@ A sample builds in the S++ source tree. Most samples also build as a separate pr
 | [jit-backend](jit-backend/) | The backend compiles in memory with the Clang library. It needs `HOT_BACKEND=JIT`. | `hot::JitBackend`, `hot::JitOptions` | `hot_jit_backend` | ready |
 | [imgui](imgui/) | A Dear ImGui window whose user interface a script draws. It reloads the script. It needs SDL3 and CMake 3.24. It builds nothing without them. | `hot::ClangFilesBackend`, `hot::Loader::request_reload` | `hot_runtime`, `hot_clang_backend` | ready |
 
-Copy your host from these samples. The folder `tests/engine` is a test host for the S++ tests. It is not a model for a user project.
+Copy your host from these samples. The folder `tests/engine` is a test host for the Hot++ tests. It is not a model for a user project.
 
 ## Build in the source tree
 
@@ -27,8 +27,8 @@ ctest --preset linux-clang-files-dbg -R '^sample_aot_(hot|cpp)$'
 
 ## Build as a separate project
 
-Each sample has a `CMakeLists.txt` that works in the S++ tree and as a separate project. The
-README of each sample has the commands. Use `-DHOT_ROOT=/path/to/spp` to select the S++ tree.
+Each sample has a `CMakeLists.txt` that works in the Hot++ tree and as a separate project. The
+README of each sample has the commands. Use `-DHOT_ROOT=/path/to/hot` to select the Hot++ tree.
 
 The option `HOT_SAMPLES_STANDALONE_TEST` adds one test, `samples_standalone_aot`. The test
 configures, builds and tests the sample `aot` in a new build directory under `samples_standalone/`.

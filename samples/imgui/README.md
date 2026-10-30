@@ -10,7 +10,7 @@ The sample needs SDL3 and CMake 3.24. Without SDL3 the configure prints
 
 The sample has one program (`main.cpp`) and two variants of the same script. Both are in the folder `script`:
 
-- `script/demo.hot`: the script in the S++ syntax.
+- `script/demo.hot`: the script in the Hot++ syntax.
 - `script/demo.cpp`: the script as plain C++. See [C++ scripts](../../doc/cpp-scripts.md).
 
 The build makes one program for each variant from the same `main.cpp`:
@@ -42,13 +42,13 @@ The language server serves `.hot` scripts only. It does not serve `demo.cpp`.
 - `UiApp.h`, `UiApp.cpp`: the host base class. It has the virtual function `Frame`.
 - `script/demo.hot` and `script/demo.cpp`: the script in two variants. The class `Demo` derives from `UiApp`.
 - `main.cpp`: the program. It makes the window, the backend and the loader. It reloads the script.
-- `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
+- `CMakeLists.txt`: the build. It works in the Hot++ tree and as a separate project.
 
 ## Build and run
 
 The program opens a window, so the sample has no test.
 
-### In the S++ tree
+### In the Hot++ tree
 
 ```
 cmake --preset linux-clang-files
@@ -67,14 +67,14 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang
 cmake --build build --target sample_imgui_hot sample_imgui_cpp
 ```
 
-To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`.
+To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`.
 
 ## Adapt it to your project
 
 1. Link your program to `hot_runtime` and `hot_clang_backend`. Set `ENABLE_EXPORTS ON`.
 2. Link a library that the scripts call (here `imgui_sdl3`) as a whole archive.
    The linker then keeps all objects.
-3. Put the include folders of the script in `include_dirs`: the include folder of S++,
+3. Put the include folders of the script in `include_dirs`: the include folder of Hot++,
    the folder of the host headers and the folder of the library headers.
 4. Call `hot_script_host` so that the language server knows the script folder.
 5. Gap: a native array field such as `float rgb[3];` gives "expected a member name". Use `ImVec4 col`

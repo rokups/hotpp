@@ -1,6 +1,6 @@
 /*
- * S++ language definition for highlight.js (version 11).
- * The word lists come from editors/vscode/syntaxes/spp.tmLanguage.json.
+ * Hot++ language definition for highlight.js (version 11).
+ * The word lists come from editors/vscode/syntaxes/hot.tmLanguage.json.
  * Keep the two files in sync when the language changes.
  */
 (function (hljs) {
@@ -132,10 +132,10 @@
     beginScope: { 1: 'keyword', 3: 'type' }
   };
 
-  function spp() {
+  function hot() {
     return {
-      name: 'S++',
-      aliases: ['spp'],
+      name: 'Hot++',
+      aliases: ['hot'],
       keywords: KEYWORDS,
       contains: [
         hljs.C_LINE_COMMENT_MODE,
@@ -153,10 +153,10 @@
     };
   }
 
-  hljs.registerLanguage('spp', spp);
+  hljs.registerLanguage('hot', hot);
 
   // Rouge writes each fenced block as div.language-X.highlighter-rouge > ... > pre > code.
-  // Rouge does not know S++. For known languages it adds its own spans.
+  // Rouge does not know Hot++. For known languages it adds its own spans.
   // Reset the code to plain text, then let highlight.js style it.
   var blocks = document.querySelectorAll('div.highlighter-rouge pre code');
   Array.prototype.forEach.call(blocks, function (code) {

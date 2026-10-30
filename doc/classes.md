@@ -18,7 +18,7 @@ The compiler resolves a bare name in this order:
 
 A field can have an initializer. A method that does not override a native method is a plain script method.
 
-```spp
+```hot
 class Counter {
     int count = 0;
     std.string label;           // default value
@@ -33,7 +33,7 @@ class Counter {
 
 `=>` gives a method or a read-only property an expression body. A parameter can have a default value. Put it on the first declaration. Constructors and destructors need a block body.
 
-```spp
+```hot
 class Calc {
     int bonus = 2;
 
@@ -50,7 +50,7 @@ A default value is an error on a `virtual` or `override` method. A struct constr
 
 The constructor has the class name. The destructor starts with `~`. `new` calls a constructor and gives a handle.
 
-```spp
+```hot
 class Counter {
     int count = 0;
 
@@ -71,7 +71,7 @@ class User {
 
 A property has accessors. `get; set;` makes an automatic property. In a custom setter, `value` is the new value.
 
-```spp
+```hot
 using "Actor.h";
 
 class Gauge : Actor {
@@ -90,7 +90,7 @@ class Gauge : Actor {
 
 A `struct` is a value type: a copy is a real copy. A `class` is a handle. `[value]` on a script class is an error: write `struct`.
 
-```spp
+```hot
 struct Point {
     float x = 0.0;
     float y = 0.0;
@@ -116,7 +116,7 @@ class Holder {
 
 `this` is a handle of the current class. Pass it to a handle parameter or store it in a handle local. A `T&` parameter of a script class cannot take `this`: copy it to a local first, as [Borrowing](borrowing.html) shows.
 
-```spp
+```hot
 class Squad {
     Squad leader = null;
 
@@ -133,7 +133,7 @@ class Squad {
 
 `public`, `protected` and `private` work on fields, methods, properties, accessors and constructors. The default is `public`. `private` is for the class. `protected` is for the class and its script subclasses. A subclass `D` uses a protected member of its parent only through `this` or a `D` object, not through a parent object or a sibling subclass object. A bad use gives `'X' is private in 'C'`.
 
-```spp
+```hot
 class Account {
     private int balance = 0;
     protected int Fee() => 2;
@@ -145,7 +145,7 @@ class Vip : Account {
 }
 ```
 
-```spp
+```hot
 // error
 class Account { private int balance = 0; }
 
@@ -160,7 +160,7 @@ Limits: hotc checks only known script types. It does not check native members. h
 
 `[alias("old")]` gives the old name of a field. A reload then moves the value to the new name.
 
-```spp
+```hot
 using "Actor.h";
 
 class Player : Actor {

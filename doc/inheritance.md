@@ -10,7 +10,7 @@ A script class can derive from native classes and from other script classes.
 
 A method replaces a native virtual method only with `override`. Without it the translator reports an error.
 
-```spp
+```hot
 using "Actor.h";
 
 class Player : Actor {
@@ -25,7 +25,7 @@ class Player : Actor {
 
 The first base is the main base. The other bases are interfaces. Implement each pure virtual method with `override`. `base.` calls the interface code.
 
-```spp
+```hot
 using "Actor.h";
 using "Damageable.h";
 
@@ -44,7 +44,7 @@ class Boss : Actor, IDamageable {
 
 A script class can derive from a script class. `virtual` opens a method for overrides. `base(...)` calls the parent constructor. `new` hides a parent method instead of replacing it.
 
-```spp
+```hot
 using "Actor.h";
 
 class Unit : Actor {
@@ -68,7 +68,7 @@ class Grunt : Unit {
 
 `using "parent.hot";` makes the classes of another script visible.
 
-```spp
+```hot
 using "parent.hot";
 using "Actor.h";
 

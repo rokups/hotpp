@@ -1,6 +1,6 @@
-# S++ formatters for lldb (design 4.12). Add this to ~/.lldbinit, or run:
+# Hot++ formatters for lldb (design 4.12). Add this to ~/.lldbinit, or run:
 #   command source /path/to/hotpp/tools/lldb/hot.lldbinit
-# Change the path to the place of your S++ checkout.
+# Change the path to the place of your Hot++ checkout.
 command script import /path/to/hotpp/tools/lldb/hot_formatters.py
 # The command "hot-bt" prints the script frames with script names.
 # Set a breakpoint with the generated name, or with the script line:

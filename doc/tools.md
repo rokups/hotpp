@@ -26,7 +26,7 @@ hot_script_host(NAME engine TARGET engine
                 INCLUDES ${CMAKE_SOURCE_DIR}/engine)
 ```
 
-Add `.cache/` to the ignore list of the project. Without a host, give the options in `spp.server.args`.
+Add `.cache/` to the ignore list of the project. Without a host, give the options in `hot.server.args`.
 
 ## A `.cpp` script in the editor
 
@@ -40,9 +40,9 @@ A `.cpp` script is a C++ file (see [C++ scripts](cpp-scripts.html)). The editor 
 
 ### clangd setup
 
-clangd must see the aids of a script (`HOT_ALIAS`, `hot::OldState`). `hotc` injects the header `hot/script.h`, but clangd does not. Add the header and the include directory of S++ to the flags of clangd. A script without aids needs no setting.
+clangd must see the aids of a script (`HOT_ALIAS`, `hot::OldState`). `hotc` injects the header `hot/script.h`, but clangd does not. Add the header and the include directory of Hot++ to the flags of clangd. A script without aids needs no setting.
 
-Put this in a `.clangd` file at the root of the project. Replace `<hotpp>` with the path of the S++ directory.
+Put this in a `.clangd` file at the root of the project. Replace `<hotpp>` with the path of the Hot++ directory.
 
 ```yaml
 CompileFlags:
@@ -65,15 +65,15 @@ Or add the same flags to the entry of the script in `compile_commands.json`:
 
 ## VS Code
 
-The extension is in `editors/vscode/`. It gives highlighting, the language server client and breakpoints in `.hot` files. For a `.cpp` script, the extension shows the errors of `hotc` as diagnostics. It does not register `.cpp` as the language `hot`. It gives no other `spp` feature on a `.cpp` file.
+The extension is in `editors/vscode/`. It gives highlighting, the language server client and breakpoints in `.hot` files. For a `.cpp` script, the extension shows the errors of `hotc` as diagnostics. It does not register `.cpp` as the language `hot`. It gives no other `hot` feature on a `.cpp` file.
 
 | Setting | Default |
 |---|---|
-| `spp.server.path` | `hot-ls` |
-| `spp.server.args` | `["--stdio"]` |
-| `spp.server.enable` | `true` |
+| `hot.server.path` | `hot-ls` |
+| `hot.server.args` | `["--stdio"]` |
+| `hot.server.enable` | `true` |
 
-The command `S++: Show Script Position` maps a place in a generated `.cpp` file to the script. The command `S++: Restart Language Server` reads the settings again.
+The command `Hot++: Show Script Position` maps a place in a generated `.cpp` file to the script. The command `Hot++: Restart Language Server` reads the settings again.
 
 ## Debugger helpers
 

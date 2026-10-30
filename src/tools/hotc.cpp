@@ -1,4 +1,4 @@
-// hotc: the command line tool of S++. It has two modes.
+// hotc: the command line tool of Hot++. It has two modes.
 //
 // Build mode (default): compile .hot files ahead of time into one shared library for each file.
 //   hotc <file.hot>... --gen N --out-dir DIR [-I dir]... [--resource-dir dir]

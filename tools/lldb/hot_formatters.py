@@ -1,4 +1,4 @@
-"""LLDB formatters for S++ (design 4.12, experiment F3).
+"""LLDB formatters for Hot++ (design 4.12, experiment F3).
 
 The translator makes C++ with generated names. These formatters show the script names:
   - a state block "Player_State_g2" or "PlayerState_g2" is shown as "Player"

@@ -1,4 +1,4 @@
-# The samples of S++ for consumer projects. Each sample is a small project that uses S++ as a library.
+# The samples of Hot++ for consumer projects. Each sample is a small project that uses Hot++ as a library.
 add_subdirectory(aot)
 add_subdirectory(runtime-compile)
 add_subdirectory(precompiled-library)
@@ -8,7 +8,7 @@ add_subdirectory(jit-backend)
 add_subdirectory(imgui)
 
 # Option: build the sample aot as a separate project, in a new build directory. The test checks
-# that the sample works without the build settings of the S++ source tree.
+# that the sample works without the build settings of the Hot++ source tree.
 if(HOT_SAMPLES_STANDALONE_TEST)
     set(dir ${CMAKE_BINARY_DIR}/samples_standalone/aot)
     add_test(NAME samples_standalone_aot

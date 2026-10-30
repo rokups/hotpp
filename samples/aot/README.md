@@ -7,7 +7,7 @@ The C++ is part of the program. The program has no loader and no compiler at run
 
 The sample has one program (`main.cpp`) and two variants of the same script:
 
-- `script/wolf.hot`: the script in the S++ syntax. `Tick` uses string interpolation.
+- `script/wolf.hot`: the script in the Hot++ syntax. `Tick` uses string interpolation.
 - `script/wolf.cpp`: the script as plain C++. See [C++ scripts](../../doc/cpp-scripts.md). A `.cpp` script has no string interpolation, so `Tick` uses `snprintf`.
 
 The build makes one AOT library and one program for each variant:
@@ -37,11 +37,11 @@ The program does not call `dlopen`. It has no `ENABLE_EXPORTS`. A script change 
 - `Creature.h`: the host class. It is header-only.
 - `script/wolf.hot` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`. The `.hot` `Tick` uses string interpolation (`"${...}"`), so the build checks the format library and the C++ standard of the AOT library.
 - `main.cpp`: the program. It makes a `Wolf` with `hot::AotRegistry` and calls `Tick` three times.
-- `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
+- `CMakeLists.txt`: the build. It works in the Hot++ tree and as a separate project.
 
 ## Build and run
 
-### In the S++ tree
+### In the Hot++ tree
 
 The option `HOT_BUILD_SAMPLES` is ON for the main project.
 
@@ -58,12 +58,12 @@ cmake-build/linux-clang-files/bin/Debug/sample_aot_hot
 cmake-build/linux-clang-files/bin/Debug/sample_aot_cpp
 ```
 This sample has a test for the separate build too. Set `-DHOT_SAMPLES_STANDALONE_TEST=ON`
-when you configure the S++ tree. The test is `samples_standalone_aot`. It builds both variants and runs both tests.
+when you configure the Hot++ tree. The test is `samples_standalone_aot`. It builds both variants and runs both tests.
 
 ### As a separate project
 
-Use the S++ source tree in `HOT_ROOT`. The default value is the tree that holds this folder.
-The build fetches the S++ dependencies with CPM. It needs `clang`, `libclang` and Ninja.
+Use the Hot++ source tree in `HOT_ROOT`. The default value is the tree that holds this folder.
+The build fetches the Hot++ dependencies with CPM. It needs `clang`, `libclang` and Ninja.
 
 ```
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++
@@ -71,7 +71,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample calls
+To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`. The `CMakeLists.txt` of the sample calls
 `add_subdirectory` for `HOT_ROOT` only when the target `hotc` does not exist yet.
 
 ### With FetchContent
@@ -81,11 +81,11 @@ The rest of the file stays the same.
 
 ```cmake
 include(FetchContent)
-FetchContent_Declare(spp GIT_REPOSITORY <the URL of the S++ repository> GIT_TAG <a tag or a commit>)
-FetchContent_MakeAvailable(spp)
+FetchContent_Declare(hot GIT_REPOSITORY <the URL of the Hot++ repository> GIT_TAG <a tag or a commit>)
+FetchContent_MakeAvailable(hot)
 ```
 
-S++ is not the main project in this case. Its tests and samples are OFF.
+Hot++ is not the main project in this case. Its tests and samples are OFF.
 The function `hot_add_scripts` is then available.
 
 ## Link
@@ -96,7 +96,7 @@ The function `hot_add_scripts` is then available.
 
 ## Adapt it to your project
 
-1. Add S++ to your project with `add_subdirectory` or FetchContent (see above).
+1. Add Hot++ to your project with `add_subdirectory` or FetchContent (see above).
 2. Call `hot_add_scripts(TARGET <name> AOT SCRIPTS <your .hot files> INCLUDES <absolute folders of your headers> DEPENDS <your headers>)`.
    The build does not track the headers by itself, so list them in `DEPENDS`.
 3. Link your program to `<name>`.

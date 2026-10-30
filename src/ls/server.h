@@ -1,4 +1,4 @@
-// hot-ls: a stdio Language Server (LSP 3.17) for S++ scripts (design 10.1, M12 to M14).
+// hot-ls: a stdio Language Server (LSP 3.17) for Hot++ scripts (design 10.1, M12 to M14).
 //
 // The server is a proxy. It owns the text of each .hot document. It runs hotc::analyze() on the
 // text and gets the generated C++ and the source map. It gives the generated C++ to a stock

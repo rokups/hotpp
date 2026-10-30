@@ -29,11 +29,11 @@ Answer these questions in order. Stop at the first answer that fits.
 | Explicit Clang files backend | [clang-files-backend](https://github.com/rokups/spp/tree/main/samples/clang-files-backend) |
 | In-process JIT | [jit-backend](https://github.com/rokups/spp/tree/main/samples/jit-backend) |
 
-The sample [imgui](https://github.com/rokups/spp/tree/main/samples/imgui) combines hot reload with a Dear ImGui window. Copy your host from `samples/`. The folder `tests/engine` is a test host for the S++ tests. It is not a model for a user project.
+The sample [imgui](https://github.com/rokups/spp/tree/main/samples/imgui) combines hot reload with a Dear ImGui window. Copy your host from `samples/`. The folder `tests/engine` is a test host for the Hot++ tests. It is not a model for a user project.
 
 ## Hosting situations
 
-Pick the row that matches your program. Each sample is a small project that builds in the S++ tree and as a separate project.
+Pick the row that matches your program. Each sample is a small project that builds in the Hot++ tree and as a separate project.
 
 | Situation | Links | Key API | Sample |
 |---|---|---|---|
@@ -90,7 +90,7 @@ A host that loads a module must export its symbols. The modules resolve the host
 
 - Set `ENABLE_EXPORTS` on the executable (`-rdynamic` on Linux). Every sample except `aot` does this.
 - Link a static library of your own as a whole archive when scripts call functions that the host code does not use. `samples/imgui/CMakeLists.txt` uses `$<LINK_LIBRARY:WHOLE_ARCHIVE,imgui_sdl3>` for this.
-- The executable must link the runtime objects that the script code uses (see the JIT section of `README.md`). The samples link the S++ libraries without a whole-archive link.
+- The executable must link the runtime objects that the script code uses (see the JIT section of `README.md`). The samples link the Hot++ libraries without a whole-archive link.
 - An AOT program does not load a module, so it does not export.
 
 ### C++17 baseline
@@ -123,7 +123,7 @@ const hot::ClassEntry* entry = loader.find("Player");
 std::unique_ptr<Actor> player(static_cast<Actor*>(entry->create().native));
 ```
 
-`make_default_backend` takes the compiler, the include folders and the flags from the build. The folders are the include folder of S++ and, with `HOT_BUILD_TESTS` ON, `tests/engine`. The flags are `CMAKE_CXX_FLAGS` at the time of `add_subdirectory`. The `CLANG_FILES` work folder is `<build>/tmp/hot_work/p<pid>`, and the backend removes it at exit unless `HOT_KEEP_TEMP` keeps it. A host adds its own folders and flags with `hot::DefaultBackendOptions` (`include/hot/backend.h`):
+`make_default_backend` takes the compiler, the include folders and the flags from the build. The folders are the include folder of Hot++ and, with `HOT_BUILD_TESTS` ON, `tests/engine`. The flags are `CMAKE_CXX_FLAGS` at the time of `add_subdirectory`. The `CLANG_FILES` work folder is `<build>/tmp/hot_work/p<pid>`, and the backend removes it at exit unless `HOT_KEEP_TEMP` keeps it. A host adds its own folders and flags with `hot::DefaultBackendOptions` (`include/hot/backend.h`):
 
 ```cpp
 hot::DefaultBackendOptions options;

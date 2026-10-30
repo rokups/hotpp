@@ -10,7 +10,7 @@ A borrowed value is a reference or a pointer to an object that something else ow
 
 A value (`Vec3`) is a copy. A handle (a script class, or a native class with a stub) is a smart pointer. A borrowed value is `T&`, `T*`, `var&` or `&x`. The state block of a script object moves when the script reloads. A stored pointer into the block would dangle. A handle is safe: its pointee does not move.
 
-```spp
+```hot
 using "Actor.h";
 
 class Hero : Actor {
@@ -31,7 +31,7 @@ class Hero : Actor {
 | Field, return type, collection element, lambda capture | `Vec3& last;`, `() => p.x` | no |
 | `&x` in an assignment or `return` | `p = &x;` | no |
 
-```spp
+```hot
 using "Actor.h";
 class Hero {
     Hero(int* n) { }
@@ -53,7 +53,7 @@ class Hero {
 
 A field, a return value, a collection element, a lambda capture and a stored `&x` are errors. A field of the move-only type `std.unique_ptr<T>` is also an error, because a reload copies each field.
 
-```spp
+```hot
 // error
 using "Actor.h";
 class Bad {
@@ -81,7 +81,7 @@ the lambda captures 'v', a borrowed pointer or reference. A closure cannot keep 
 
 `.` on a handle means a member of the pointee. `&h` on a handle is an error: pass `h` for a handle parameter, `&*h` for a `T*` and `*h` for a `T&`. A `T&` of a script class is a reference to the handle, so the callee can rebind it. `this` is not a variable: copy it to a local first. An intrusive stub is an exception: its `T*` is the handle, so a field can have it.
 
-```spp
+```hot
 using "Actor.h"; using "Weapon.h"; using "Armory.h"; using "Object.h";
 [native, handle("std::shared_ptr<$T>")] class Weapon;
 [native, handle("$T*"), intrusive("AddRef", "Release")] class Object;
@@ -100,7 +100,7 @@ class Hero : Actor {
 
 `Weapon*` of a native handle is borrowed, so it is a finding in a field. `Hero*` of a script class is always an error. The `this` error shows after the other errors are fixed.
 
-```spp
+```hot
 // error
 using "Actor.h"; using "Weapon.h"; using "Armory.h";
 [native, handle("std::shared_ptr<$T>")] class Weapon;
@@ -127,7 +127,7 @@ a pointer to the script class 'Hero' is not allowed: use 'Hero' (a handle)
 
 A local is borrowed when it is `var& r = x;`, `var p = &x;`, a typed `T*` or `T&`, or a `var` that takes a native pointer from a call. A native pointer to a handle type is not borrowed. A lambda that uses a borrowed local gives the capture error.
 
-```spp
+```hot
 using "Actor.h"; using "Armory.h";
 class Scan : Actor {
     void Run(Armory& a, Vec3& pos) {

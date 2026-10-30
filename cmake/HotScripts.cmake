@@ -21,7 +21,7 @@
 # share a slot file in OUT_DIR. Build generation 2 after generation 1: give AFTER the
 # target of generation 1.
 #
-# In both modes, the hotc call always has the include dir of S++ (HOT_INCLUDE_DIR) as the
+# In both modes, the hotc call always has the include dir of Hot++ (HOT_INCLUDE_DIR) as the
 # first -I. INCLUDES come after it.
 #
 # AOT mode (design M7): the function runs "hotc --aot" and makes the static library "name"
@@ -33,15 +33,15 @@
 #
 # String interpolation "${...}": the C++ standard picks the format library at build time
 # (cmake/HotFormat.cmake). The standard comes from hot_effective_cxx_standard: the property
-# CXX_STANDARD of the target, else CMAKE_CXX_STANDARD, else the S++ default 20, else 17.
+# CXX_STANDARD of the target, else CMAKE_CXX_STANDARD, else the Hot++ default 20, else 17.
 # A standard less than 20 selects fmt. C++20 and later select std::format, unless the CMake
 # option HOT_USE_FMT is ON. With fmt, the function gets fmt (HOT_FMT_PROVIDER: an installed
 # package, else CPM.cmake, by default), passes --format=fmt to hotc and gives the compile the fmt include directory.
 # In AOT mode the library "name" links the target hot_fmt (fmt). There is no runtime switch.
-# The include dir of S++. It is relative to this file, so it works in a consumer project.
+# The include dir of Hot++. It is relative to this file, so it works in a consumer project.
 # It is an internal cache variable, so a project that uses add_subdirectory sees it in every scope.
 get_filename_component(_hot_include_dir "${CMAKE_CURRENT_LIST_DIR}/../include" ABSOLUTE)
-set(HOT_INCLUDE_DIR "${_hot_include_dir}" CACHE INTERNAL "The include dir of S++")
+set(HOT_INCLUDE_DIR "${_hot_include_dir}" CACHE INTERNAL "The include dir of Hot++")
 
 function(hot_add_scripts)
     cmake_parse_arguments(A "AOT" "TARGET;OUT_DIR;AFTER" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS;HOTC_ARGS" ${ARGN})
@@ -101,7 +101,7 @@ function(hot_add_scripts)
         get_filename_component(abs ${s} ABSOLUTE)
         list(APPEND scripts ${abs})
     endforeach()
-    # The include dir of S++ comes first. A caller does not need to pass it in INCLUDES.
+    # The include dir of Hot++ comes first. A caller does not need to pass it in INCLUDES.
     set(args -I ${HOT_INCLUDE_DIR})
     foreach(i ${A_INCLUDES})
         list(APPEND args -I ${i})
@@ -192,7 +192,7 @@ endfunction()
 # The cache variable HOT_HOSTS_DIR defaults to ${CMAKE_SOURCE_DIR}/.cache/hot/hosts.
 #
 # The include dirs, defines and options of TARGET are in the file. They include the
-# usage requirements of the linked libraries. The include dir of S++ (HOT_INCLUDE_DIR) is
+# usage requirements of the linked libraries. The include dir of Hot++ (HOT_INCLUDE_DIR) is
 # always the first include dir. Then come the include dirs of the target, then INCLUDES. FLAGS
 # come after the options of the target. A UTILITY target has no such lists, so the function
 # skips them. A relative path in SCRIPT_DIRS, SCRIPTS or INCLUDES is relative to the current

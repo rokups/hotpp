@@ -1,6 +1,6 @@
-# S++
+# Hot++
 
-S++ is a hot-reloadable scripting language for C++. This is a prototype of its runtime, translator, tools and language server.
+Hot++ is a hot-reloadable scripting language for C++. This is a prototype of its runtime, translator, tools and language server.
 The design is in `hot-design.md` in the project root. See "Status" for the milestones.
 
 ## Status
@@ -32,7 +32,7 @@ Not done, and not testable here: Windows and macOS, a real engine, a real lldb a
 - `include/hot/` has the public headers: `runtime.h`, `module.h`, `backend.h`, `clang_files_backend.h`, `jit_backend.h` and `hotc_lib.h`. Use the form `#include "hot/<name>.h"`.
 - `src/` has the library code. `src/runtime/` has the script runtime and the backends. `src/translator/` has the translator library `hotc_lib`. `src/tools/` has the tool `hotc`.
 - `tests/engine/` is the test host (`Actor`, `World`, `Harness`, `FileWatcher`). It is not a model for a user project: copy from `samples/`. `tests/scripts/` has the test scripts. `tests/integration/aot/` has the program `aot_demo`. `tests/integration/fixtures/` has the hand-written generations. `tools/bench/bench_backends.cpp` is the benchmark.
-- `samples/` has seven self-contained projects for consumers of S++ (see "Samples"): six show one way to host S++ each, and `imgui` is a Dear ImGui demo. Each one shows the `add_subdirectory` pattern.
+- `samples/` has seven self-contained projects for consumers of Hot++ (see "Samples"): six show one way to host Hot++ each, and `imgui` is a Dear ImGui demo. Each one shows the `add_subdirectory` pattern.
 - `tests/` has the GoogleTest cases and the shared headers.
 - `cmake/` has `CPM.cmake`, `HotScripts.cmake` (`hot_add_scripts`, `hot_script_host`), `HotTests.cmake` (`hot_gtest`) and `HotFormat.cmake` (the format library of `${}`).
 
@@ -48,10 +48,10 @@ The file `CMakePresets.json` has the presets. A build goes to `cmake-build/<pres
 - Add `-asan` or `-tsan` to the preset name for a sanitizer build, for example `linux-clang-files-asan`.
 - The build presets end with `-dbg` or `-rel`.
 - The JIT backend also works with ThreadSanitizer. ORC and ThreadSanitizer do not conflict.
-- `.clang-format` has a second document, `Language: CSharp`, for the S++ scripts. It uses the Microsoft style with the C++ choices on top (4 spaces, 120 columns, Allman braces).
+- `.clang-format` has a second document, `Language: CSharp`, for the Hot++ scripts. It uses the Microsoft style with the C++ choices on top (4 spaces, 120 columns, Allman braces).
 - `tools/format-hot.sh [--check] files...` formats `.hot` files in place. `--check` changes nothing and lists the files that need formatting. clang-format has no `.hot` mapping, so the script uses `--assume-filename=<file>.cs`.
 - Known limits: the formatter writes `using<map>;`, `std.string && s` (a qualified rvalue reference parameter) and `["a" : 1]`. It puts a lambda body on its own lines after `=>`. These are spaces only. Meaning stays the same. See DECISIONS.md.
-- S++ supports C++17 and later. The generated code, `include/hot`, the runtime library and the backends build as C++17 or later.
+- Hot++ supports C++17 and later. The generated code, `include/hot`, the runtime library and the backends build as C++17 or later.
 - `hotc`, the language server and the tests need C++20. The build forces C++20 on these targets. The default standard of the other targets is 20. Set `-DCMAKE_CXX_STANDARD=17` for a C++17 host.
 - The standard of the host (`HOT_CXX_STANDARD` in `include/hot/config.h`: 17, 20 or 23) is the standard of the script compile and of the parse of the native headers. The `hotc` flag `--std=c++17|c++20|c++23` overrides it.
 - A C++17 host needs fmt for `${}`. See DECISIONS.md.
@@ -84,7 +84,7 @@ To purge an old build tree, remove the preset directory and configure again:
 
 ## Samples
 
-The folder `samples/` has seven projects: `aot`, `runtime-compile`, `precompiled-library`, `hot-reload`, `clang-files-backend`, `jit-backend` and `imgui`. See `samples/README.md` for the list. `doc/cmake.md` explains how a project uses S++ with CMake.
+The folder `samples/` has seven projects: `aot`, `runtime-compile`, `precompiled-library`, `hot-reload`, `clang-files-backend`, `jit-backend` and `imgui`. See `samples/README.md` for the list. `doc/cmake.md` explains how a project uses Hot++ with CMake.
 
 The option `HOT_BUILD_SAMPLES` is ON for the main project. The target names start with `sample_`:
 
@@ -312,7 +312,7 @@ At start-up the program makes the registry. The registry calls the register func
 
 `new` of a script class, script virtuals, properties, `is`/`as` and constructors work as under the loader, because the code is the same. The generation guard stays in the code and costs one compare. An AOT program never runs `onReload`.
 
-The sample [samples/aot](samples/aot/) is a small project that consumes S++ with `add_subdirectory`. The test program is `tests/integration/aot/aot_demo_main.cpp` (target `aot_demo`) with the script `tests/scripts/aot_demo.hot`. The tests are in `tests/integration/aot/`. They run the same steps with the loader and with the AOT program and compare the text. They check with `nm` that `aot_demo` has no loader and no Clang symbol. A compile error in the AOT C++ shows the generated file, not the script line.
+The sample [samples/aot](samples/aot/) is a small project that consumes Hot++ with `add_subdirectory`. The test program is `tests/integration/aot/aot_demo_main.cpp` (target `aot_demo`) with the script `tests/scripts/aot_demo.hot`. The tests are in `tests/integration/aot/`. They run the same steps with the loader and with the AOT program and compare the text. They check with `nm` that `aot_demo` has no loader and no Clang symbol. A compile error in the AOT C++ shows the generated file, not the script line.
 
 ## Dependencies
 
@@ -443,12 +443,12 @@ Editors:
 An editor uses two language servers on one project:
 
 - The official clangd extension serves the C++ files. It reads the `compile_commands.json` of the project build.
-- The `spp` extension and `hot-ls` serve all features for the `.hot` files. For a `.cpp` script that a host lists, they show only the errors of `hotc` as diagnostics. `hot-ls` is not a transparent clangd proxy. It does not answer for C++ files.
+- The `hot` extension and `hot-ls` serve all features for the `.hot` files. For a `.cpp` script that a host lists, they show only the errors of `hotc` as diagnostics. `hot-ls` is not a transparent clangd proxy. It does not answer for C++ files.
 
 Steps:
 
 1. Install the clangd extension (`llvm-vs-code-extensions.vscode-clangd`) and `clangd`. Set it up for the C++ build as usual.
-2. Build `hot-ls` and install the extension in `editors/vscode/`. Put the `hot-ls` arguments in `spp.server.args`. The include dirs come from the script hosts (next subsection). The flags `-I` and `--cxxflag` still work as overrides.
+2. Build `hot-ls` and install the extension in `editors/vscode/`. Put the `hot-ls` arguments in `hot.server.args`. The include dirs come from the script hosts (next subsection). The flags `-I` and `--cxxflag` still work as overrides.
 3. Optional, for workspace symbols and the background index of scripts: run `hotc <file.hot>... --gen N --out-dir DIR --compile-commands CDIR`. Give `--compile-commands-dir CDIR` to `hot-ls`.
 4. Add `.cache/` to the ignore list of the project (for example in `.gitignore`).
 
@@ -492,7 +492,7 @@ How it works:
 Features:
 
 - Diagnostics: the parse errors of analyze, and the clangd errors at the script position.
-- Completion works on any identifier prefix, with no trigger needed. The trigger characters are `.` and `::` (the client sends `:`, and the server ignores a single `:`). The list has: locals and parameters in scope, module variables, script enums, classes and structs, the enumerators after `Mode.`, the script members (own and inherited from script bases) after `this.` or after a variable of a script class, the native types, functions and members from clangd, and the S++ keywords and builtin types from a fixed list. All names are in script form (`std.string`). The helpers of the translator (thunks, `SLOT_`, `_Shell`, plumbing) are not shown. The list is filtered by the typed prefix.
+- Completion works on any identifier prefix, with no trigger needed. The trigger characters are `.` and `::` (the client sends `:`, and the server ignores a single `:`). The list has: locals and parameters in scope, module variables, script enums, classes and structs, the enumerators after `Mode.`, the script members (own and inherited from script bases) after `this.` or after a variable of a script class, the native types, functions and members from clangd, and the Hot++ keywords and builtin types from a fixed list. All names are in script form (`std.string`). The helpers of the translator (thunks, `SLOT_`, `_Shell`, plumbing) are not shown. The list is filtered by the typed prefix.
   - The script facts come from a token scan of the text. It works on a script with syntax errors. For clangd, the server puts the typed prefix and the placeholder `__hot_complete` in place of the word at the cursor. It closes the open brackets of an incomplete statement and translates again with the tolerant parse. Then it asks clangd at the placeholder.
   - If the translation fails, the list has the keywords and the script facts, without clangd.
   - `hot/indexStats` also gives `completions`, the number of completion translations. A test uses it to check the reuse.

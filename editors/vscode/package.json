@@ -1,7 +1,7 @@
 {
-  "name": "spp",
-  "displayName": "S++",
-  "description": "Syntax highlighting and language server client for S++ scripts (.hot). Shows the hotc errors of .cpp scripts.",
+  "name": "hotpp",
+  "displayName": "Hot++",
+  "description": "Syntax highlighting and language server client for Hot++ scripts (.hot). Shows the hotc errors of .cpp scripts.",
   "version": "0.1.0",
   "publisher": "spp",
   "license": "UNLICENSED",
@@ -9,22 +9,22 @@
   "engines": { "vscode": "^1.80.0" },
   "categories": ["Programming Languages"],
   "main": "./src/extension.js",
-  "activationEvents": ["onLanguage:hot", "onLanguage:cpp", "onCommand:spp.showScriptPosition", "onCommand:spp.restartServer"],
+  "activationEvents": ["onLanguage:hot", "onLanguage:cpp", "onCommand:hot.showScriptPosition", "onCommand:hot.restartServer"],
   "contributes": {
     "commands": [
       {
-        "command": "spp.showScriptPosition",
-        "title": "S++: Show Script Position"
+        "command": "hot.showScriptPosition",
+        "title": "Hot++: Show Script Position"
       },
       {
-        "command": "spp.restartServer",
-        "title": "S++: Restart Language Server"
+        "command": "hot.restartServer",
+        "title": "Hot++: Restart Language Server"
       }
     ],
     "languages": [
       {
         "id": "hot",
-        "aliases": ["S++", "hot"],
+        "aliases": ["Hot++", "hot"],
         "extensions": [".hot"],
         "configuration": "./language-configuration.json"
       }
@@ -36,24 +36,24 @@
       {
         "language": "hot",
         "scopeName": "source.hot",
-        "path": "./syntaxes/spp.tmLanguage.json"
+        "path": "./syntaxes/hot.tmLanguage.json"
       }
     ],
     "configuration": {
-      "title": "S++",
+      "title": "Hot++",
       "properties": {
-        "spp.server.path": {
+        "hot.server.path": {
           "type": "string",
           "default": "hot-ls",
-          "description": "Path of the S++ language server binary. The default finds hot-ls in PATH. ${workspaceFolder} is expanded."
+          "description": "Path of the Hot++ language server binary. The default finds hot-ls in PATH. ${workspaceFolder} is expanded."
         },
-        "spp.server.args": {
+        "hot.server.args": {
           "type": "array",
           "items": { "type": "string" },
           "default": ["--stdio"],
           "description": "Arguments for the language server. ${workspaceFolder} is expanded."
         },
-        "spp.server.enable": {
+        "hot.server.enable": {
           "type": "boolean",
           "default": true,
           "description": "Start the language server. Highlighting works when this is off."
@@ -69,6 +69,6 @@
     "vscode-textmate": "^9.0.0"
   },
   "scripts": {
-    "test": "node test/grammar.test.js && node test/expand.test.js && node test/only_spp.test.js"
+    "test": "node test/grammar.test.js && node test/expand.test.js && node test/only_hot.test.js"
   }
 }

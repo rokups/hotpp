@@ -74,7 +74,7 @@ The host must drop all objects first. `reset` fails when one script object remai
 
 `[alias("old")]` gives the old name. The reload moves the value to the new field.
 
-```spp
+```hot
 using "Actor.h";
 
 class Hero : Actor {
@@ -86,7 +86,7 @@ class Hero : Actor {
 
 `convert_<field>` gets the old value and returns the new value. The function has no `this`. It cannot read other fields.
 
-```spp
+```hot
 using "Actor.h";
 
 class Hero : Actor {
@@ -102,7 +102,7 @@ class Hero : Actor {
 
 `void onReload(OldState old)` runs once for each live object, after the migration of all objects. `old.has("hp")` tests the old field name. `old.get<float>("hp")` reads the old value. It throws when the field is absent or has another type.
 
-```spp
+```hot
 using "Actor.h";
 
 class Hero : Actor {
@@ -120,7 +120,7 @@ class Hero : Actor {
 
 A module variable can have a `convert_<name>` hook at file level. It is the only free function that a script can have.
 
-```spp
+```hot
 using "Actor.h";
 
 float level = 1.0;              // was: int level

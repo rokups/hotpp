@@ -12,7 +12,7 @@ sample adds no target and no test.
 
 The sample has one program (`main.cpp`) and two variants of the same script:
 
-- `script/wolf.hot`: the script in the S++ syntax.
+- `script/wolf.hot`: the script in the Hot++ syntax.
 - `script/wolf.cpp`: the script as plain C++. See [C++ scripts](../../doc/cpp-scripts.md).
 
 The build makes one program for each variant from the same `main.cpp`:
@@ -39,14 +39,14 @@ compiler (the object library `jit_backend_cpp_scripts_plain`). This shows that a
 - `script/wolf.hot` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`.
 - `main.cpp`: the program. It fills `hot::JitOptions`, compiles the script, loads it
   and calls `Tick` three times.
-- `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
+- `CMakeLists.txt`: the build. It works in the Hot++ tree and as a separate project.
 
 ## Options
 
 | Field | Value in the sample |
 |---|---|
 | `compiler` | `CMAKE_CXX_COMPILER` |
-| `include_dirs` | the include dir of S++ and the folder of the sample |
+| `include_dirs` | the include dir of Hot++ and the folder of the sample |
 | `resource_dir` | the output of `<compiler> -print-resource-dir` |
 | `extra_flags` | `CMAKE_CXX_FLAGS` (the flags of the host, for example a sanitizer) |
 
@@ -56,7 +56,7 @@ The other fields (`session`, `pch_path`, `strict_borrowed`, `raw_diagnostics`, `
 
 ## Build and run
 
-### In the S++ tree
+### In the Hot++ tree
 
 Configure with the preset for the JIT backend. The option `HOT_BUILD_SAMPLES` is ON for the main project.
 
@@ -75,8 +75,8 @@ cmake-build/linux-clang-jit/bin/Debug/sample_jit_cpp
 
 ### As a separate project
 
-Use the S++ source tree in `HOT_ROOT`. The default value is the tree that holds this folder.
-The build fetches the S++ dependencies with CPM. It needs `clang`, `libclang`, the LLVM and
+Use the Hot++ source tree in `HOT_ROOT`. The default value is the tree that holds this folder.
+The build fetches the Hot++ dependencies with CPM. It needs `clang`, `libclang`, the LLVM and
 Clang development packages, and Ninja.
 
 ```
@@ -85,7 +85,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample sets
+To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`. The `CMakeLists.txt` of the sample sets
 `HOT_BACKEND` to `JIT` when it is not defined.
 
 ## Link
@@ -95,7 +95,7 @@ To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`. The `CMakeLists.txt` of 
 
 ## Adapt it to your project
 
-1. Configure S++ with `HOT_BACKEND=JIT`. LLVM and Clang must be installed. CPM does not fetch them.
+1. Configure Hot++ with `HOT_BACKEND=JIT`. LLVM and Clang must be installed. CPM does not fetch them.
 2. Link your program to `hot_jit_backend` and set `ENABLE_EXPORTS ON`.
 3. Give `compiler` as a full path when you can. The backend uses it to find the toolchain.
    Set `resource_dir` from `<compiler> -print-resource-dir`.

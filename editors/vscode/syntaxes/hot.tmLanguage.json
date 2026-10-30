@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "name": "S++",
+  "name": "Hot++",
   "scopeName": "source.hot",
   "patterns": [
     { "include": "#comments" },

@@ -1,4 +1,4 @@
-// hot-ls: the S++ language server. It speaks LSP over stdin and stdout (see server.h).
+// hot-ls: the Hot++ language server. It speaks LSP over stdin and stdout (see server.h).
 #include "server.h"
 
 #include <cstdio>

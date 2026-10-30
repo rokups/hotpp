@@ -4,7 +4,7 @@ title: Types
 nav_order: 3
 ---
 
-S++ has fixed-width builtin types. Other types come from C++.
+Hot++ has fixed-width builtin types. Other types come from C++.
 
 ## Builtin types
 
@@ -31,7 +31,7 @@ S++ has fixed-width builtin types. Other types come from C++.
 
 A variable can have no initializer. It then gets the default value (zero, `false`, `null`). `var` takes the type from the initializer. `const` makes the variable read only.
 
-```spp
+```hot
 class Demo {
     int hp = 100;
     ulong id = 7;
@@ -51,7 +51,7 @@ class Demo {
 
 Use `.` for a scope. The translator writes `::` and `->` for you.
 
-```spp
+```hot
 class Names {
     std.string name = "demo";
     std.vector<int> list = std.vector<int>();
@@ -64,7 +64,7 @@ class Names {
 
 `[a, b]` builds a list. `[k: v]` builds a map. `[]` is empty. The C++ type comes from the declaration, so a literal needs a typed local, a typed field initializer or a place inside another literal. `var x = [1, 2];` is an error.
 
-```spp
+```hot
 using <map>;
 
 class Tables {
@@ -82,7 +82,7 @@ class Tables {
 
 A script class is a handle. `new` makes the object and `null` clears the handle. A native class needs a stub to be a handle.
 
-```spp
+```hot
 using "Actor.h";
 using "Weapon.h";
 
@@ -105,7 +105,7 @@ A parameter `T&` is a reference. The call has no marker: write `f(x)`. A referen
 
 `var& r = x;` and `const var& r = x;` make a reference local. `var r = x;` copies.
 
-```spp
+```hot
 using "Actor.h";
 
 class Bullet {

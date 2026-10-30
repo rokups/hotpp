@@ -7,8 +7,8 @@ if(HOT_NODE)
              COMMAND ${HOT_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/test/grammar.test.js)
     add_test(NAME VscodeExpand
              COMMAND ${HOT_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/test/expand.test.js)
-    add_test(NAME VscodeOnlySpp
-             COMMAND ${HOT_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/test/only_spp.test.js)
+    add_test(NAME VscodeOnlyHot
+             COMMAND ${HOT_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/test/only_hot.test.js)
 else()
     message(STATUS "node not found: the test of the VS Code grammar is off")
 endif()

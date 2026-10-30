@@ -1,12 +1,12 @@
 # The sample clang-files-backend: the program builds ClangFilesBackend itself.
 # HOT_BACKEND=CLANG_FILES selects this backend for make_default_backend. A program that builds it
 # sets the compiler, the flags and the work folder itself.
-# This file works in the S++ build (add_subdirectory) and as a separate project.
+# This file works in the Hot++ build (add_subdirectory) and as a separate project.
 cmake_minimum_required(VERSION 3.20)
 project(hot_sample_clang_files_backend CXX)
 
-# The S++ source tree. A separate build uses it. The S++ build already has the targets.
-set(HOT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The S++ source tree")
+# The Hot++ source tree. A separate build uses it. The Hot++ build already has the targets.
+set(HOT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The Hot++ source tree")
 if(NOT TARGET hotc)
     add_subdirectory(${HOT_ROOT} hot)
 endif()

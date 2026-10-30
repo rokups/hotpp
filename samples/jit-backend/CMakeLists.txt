@@ -1,16 +1,16 @@
 # The sample jit-backend: the program builds JitBackend itself. The backend compiles in memory
 # with the Clang library. It needs HOT_BACKEND=JIT and the LLVM and Clang development packages.
-# This file works in the S++ build (add_subdirectory) and as a separate project.
+# This file works in the Hot++ build (add_subdirectory) and as a separate project.
 cmake_minimum_required(VERSION 3.20)
 project(hot_sample_jit CXX)
 
-# The S++ build sets HOT_BACKEND. A separate project asks for the JIT backend by default.
+# The Hot++ build sets HOT_BACKEND. A separate project asks for the JIT backend by default.
 if(NOT DEFINED HOT_BACKEND)
-    set(HOT_BACKEND JIT CACHE STRING "S++ backend: CLANG_FILES or JIT")
+    set(HOT_BACKEND JIT CACHE STRING "Hot++ backend: CLANG_FILES or JIT")
 endif()
 
-# The S++ source tree. A separate build uses it. The S++ build already has the targets.
-set(HOT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The S++ source tree")
+# The Hot++ source tree. A separate build uses it. The Hot++ build already has the targets.
+set(HOT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The Hot++ source tree")
 if(NOT TARGET hotc)
     add_subdirectory(${HOT_ROOT} hot)
 endif()

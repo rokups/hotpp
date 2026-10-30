@@ -12,7 +12,7 @@ A `.cpp` script holds a class that derives from a native engine class. The class
 
 The extension selects the parser:
 
-- `.hot` selects the custom S++ syntax.
+- `.hot` selects the custom Hot++ syntax.
 - `.cpp` selects libclang.
 
 Both modes work in one program. A `Loader` holds one module for each generation, as for `.hot` scripts. Use one session for each script. There is no import between the modes. A `.cpp` script cannot include a `.hot` script. A `.hot` script cannot import a `.cpp` script.
@@ -531,7 +531,7 @@ For a `const` field or a reference field, use a default member initializer in th
 - An in-class brace initializer of a class-type field is not visited by libclang. A module variable inside such an initializer is not rewritten.
 - A `.cpp` translation does one more libclang parse than a `.hot` translation. A reload is slower. One parse of the engine headers takes about 400 ms.
 - In a normal build the file has plain C++ meaning. There is no state migration and there are no slots. Objects must not be shared between the two builds.
-- The language server gives only the errors of `hotc` for a `.cpp` script, and only when a host lists the file. The other editor features come from clangd. For a script with aids, clangd needs the flags `-include hot/script.h` and `-I<spp>/include`. See [Tools](tools.html#a-cpp-script-in-the-editor).
+- The language server gives only the errors of `hotc` for a `.cpp` script, and only when a host lists the file. The other editor features come from clangd. For a script with aids, clangd needs the flags `-include hot/script.h` and `-I<hot>/include`. See [Tools](tools.html#a-cpp-script-in-the-editor).
 
 ## CMake
 

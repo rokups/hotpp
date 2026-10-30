@@ -1,15 +1,15 @@
 cmake_minimum_required(VERSION 3.20)
 project(hotpp CXX)
 
-# HOT_TOP_LEVEL is ON when S++ is the main project. It is OFF when a consumer project
+# HOT_TOP_LEVEL is ON when Hot++ is the main project. It is OFF when a consumer project
 # uses add_subdirectory. The options below default to ON only for the main project.
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(HOT_TOP_LEVEL ON)
 else()
     set(HOT_TOP_LEVEL OFF)
 endif()
-option(HOT_BUILD_TESTS "Build the S++ tests" ${HOT_TOP_LEVEL})
-option(HOT_BUILD_SAMPLES "Build the S++ samples" ${HOT_TOP_LEVEL})
+option(HOT_BUILD_TESTS "Build the Hot++ tests" ${HOT_TOP_LEVEL})
+option(HOT_BUILD_SAMPLES "Build the Hot++ samples" ${HOT_TOP_LEVEL})
 option(HOT_SAMPLES_STANDALONE_TEST "Configure, build and test samples/aot as a separate project" OFF)
 
 # Put the build output in bin/ and lib/. Ninja Multi-Config adds /<CONFIG> to each path.
@@ -19,10 +19,10 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 enable_testing()
 
-# The S++ backend, chosen at build time (design section 3.3).
+# The Hot++ backend, chosen at build time (design section 3.3).
 #   CLANG_FILES: translate in memory, run an external clang++, dlopen the .so.
 #   JIT:         translate and compile in memory with the Clang library, load with LLVM ORC.
-set(HOT_BACKEND CLANG_FILES CACHE STRING "S++ backend: CLANG_FILES or JIT")
+set(HOT_BACKEND CLANG_FILES CACHE STRING "Hot++ backend: CLANG_FILES or JIT")
 set_property(CACHE HOT_BACKEND PROPERTY STRINGS CLANG_FILES JIT)
 if(NOT HOT_BACKEND STREQUAL "JIT" AND NOT HOT_BACKEND STREQUAL "CLANG_FILES")
     message(FATAL_ERROR "HOT_BACKEND must be CLANG_FILES or JIT. It is: ${HOT_BACKEND}")

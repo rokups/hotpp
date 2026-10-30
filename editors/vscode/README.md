@@ -1,6 +1,6 @@
-# S++ for VS Code
+# Hot++ for VS Code
 
-This extension gives support for S++ scripts (`.hot`, language id `hot`).
+This extension gives support for Hot++ scripts (`.hot`, language id `hot`).
 
 ## Features
 
@@ -8,7 +8,7 @@ This extension gives support for S++ scripts (`.hot`, language id `hot`).
   the numeric suffixes, the attributes (`[native, handle("...")]`), the comments and the
   string interpolation `${expr}` and `${expr:spec}`.
 - Brackets, comments and auto-close pairs (`language-configuration.json`).
-- A thin client of the S++ language server `hot-ls`. It runs `hot-ls --stdio`.
+- A thin client of the Hot++ language server `hot-ls`. It runs `hot-ls --stdio`.
   The server gives diagnostics, completion, hover, go-to-definition, references,
   document symbols, workspace symbols, semantic tokens and rename.
   Rename and references also cover the other `.hot` files of the workspace.
@@ -18,25 +18,25 @@ This extension gives support for S++ scripts (`.hot`, language id `hot`).
 
 | Command | Meaning |
 | --- | --- |
-| `S++: Show Script Position` (`spp.showScriptPosition`) | Run it in a generated `.cpp` file (for example `player.g1.cpp`). It sends `hot/toScript` for the cursor and opens the script at that place. |
-| `S++: Restart Language Server` (`spp.restartServer`) | Stops `hot-ls` and starts it again. It reads the settings again. Use it after you change `spp.server.path` or `spp.server.args`, or after you rebuild `hot-ls`. |
+| `Hot++: Show Script Position` (`hot.showScriptPosition`) | Run it in a generated `.cpp` file (for example `player.g1.cpp`). It sends `hot/toScript` for the cursor and opens the script at that place. |
+| `Hot++: Restart Language Server` (`hot.restartServer`) | Stops `hot-ls` and starts it again. It reads the settings again. Use it after you change `hot.server.path` or `hot.server.args`, or after you rebuild `hot-ls`. |
 
 ## Settings
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `spp.server.path` | `hot-ls` | Path of the server binary. |
-| `spp.server.args` | `["--stdio"]` | Arguments of the server. |
-| `spp.server.enable` | `true` | Start the server. |
+| `hot.server.path` | `hot-ls` | Path of the server binary. |
+| `hot.server.args` | `["--stdio"]` | Arguments of the server. |
+| `hot.server.enable` | `true` | Start the server. |
 
 If the binary is missing, the extension shows one warning. Highlighting still works.
 
 The build makes `build/hot-ls`. It uses a stock `clangd` as a child process (see `DECISIONS.md`, items 13 and 18).
 `clangd` must be in `PATH`, or you give its path with `--clangd`.
-Put the server arguments in `spp.server.args`. For example:
+Put the server arguments in `hot.server.args`. For example:
 
 ```json
-"spp.server.args": ["--stdio", "-I", "/home/me/game/include",
+"hot.server.args": ["--stdio", "-I", "/home/me/game/include",
                     "--compile-commands-dir", "/home/me/game/build/hot_cdb"]
 ```
 
@@ -50,7 +50,7 @@ Put the server arguments in `spp.server.args`. For example:
 | `--clangd-log file` | The stderr of clangd, with `--log=info`. |
 
 The client can also give `includeDirs`, `clangd` and `compileCommandsDir` in `initializationOptions`.
-The extension expands `${workspaceFolder}` in `spp.server.path` and in `spp.server.args`.
+The extension expands `${workspaceFolder}` in `hot.server.path` and in `hot.server.args`.
 It is the path of the first workspace folder. For example: `"-I", "${workspaceFolder}/include"`.
 
 ## Use with the clangd extension
@@ -59,9 +59,9 @@ This extension and `hot-ls` serve all features for `.hot` files. For a `.cpp` sc
 Install both extensions. They run side by side on one project.
 
 1. Install the clangd extension and `clangd`. Set it up for the C++ build as usual.
-2. Install this extension and set `spp.server.path` and `spp.server.args`.
+2. Install this extension and set `hot.server.path` and `hot.server.args`.
 3. Optional: run `hotc <file.hot>... --gen N --out-dir DIR --compile-commands CDIR`.
-   Add `"--compile-commands-dir", "CDIR"` to `spp.server.args`.
+   Add `"--compile-commands-dir", "CDIR"` to `hot.server.args`.
 4. Add `.cache/` to the ignore list of the project.
 
 The two servers can share the `.cache/` directory. The index of the clangd extension is in

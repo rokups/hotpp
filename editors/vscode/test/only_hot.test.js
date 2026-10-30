@@ -1,11 +1,11 @@
 // Test of the middleware that keeps the features of the server on the "hot" documents
-// (src/only_spp.js). It needs node only.
+// (src/only_hot.js). It needs node only.
 'use strict';
 
 const assert = require('assert');
-const { onlySpp, FEATURES } = require('../src/only_spp.js');
+const { onlyHot, FEATURES } = require('../src/only_hot.js');
 
-const m = onlySpp();
+const m = onlyHot();
 for (const name of FEATURES) assert.strictEqual(typeof m[name], 'function', name);
 
 // A "cpp" document gets no answer and the server is not called.
@@ -22,4 +22,4 @@ assert.strictEqual(calls, 0);
 // A "hot" document goes to the server with the same arguments, without "next".
 assert.deepStrictEqual(m.provideHover({ languageId: 'hot' }, 'pos', 'tok', next), [{ languageId: 'hot' }, 'pos', 'tok']);
 assert.strictEqual(calls, 1);
-console.log('only_spp.test.js: ok');
+console.log('only_hot.test.js: ok');

@@ -36,7 +36,7 @@ const FEATURES = [
 
 // Makes the middleware object. In each function the first argument is the document and the last
 // argument is the function "next" that calls the server.
-function onlySpp() {
+function onlyHot() {
   const middleware = {};
   for (const name of FEATURES) {
     middleware[name] = (...args) => {
@@ -49,4 +49,4 @@ function onlySpp() {
   return middleware;
 }
 
-module.exports = { onlySpp, FEATURES };
+module.exports = { onlyHot, FEATURES };

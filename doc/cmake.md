@@ -4,7 +4,7 @@ title: CMake
 nav_order: 14
 ---
 
-This page shows how a host project uses S++ with CMake. It lists the requirements, the targets, the options and the functions. It ends with the presets and a table of errors.
+This page shows how a host project uses Hot++ with CMake. It lists the requirements, the targets, the options and the functions. It ends with the presets and a table of errors.
 
 The page [Embedding](embedding.html) describes the six hosting situations. Each situation has a sample project. The links to the samples are at the end of this page.
 
@@ -26,10 +26,10 @@ This is the complete `CMakeLists.txt`:
 cmake_minimum_required(VERSION 3.20)
 project(myapp CXX)
 
-# Set the standard and the flags BEFORE add_subdirectory. S++ reads them there.
+# Set the standard and the flags BEFORE add_subdirectory. Hot++ reads them there.
 set(CMAKE_CXX_STANDARD 20)
 
-set(HOT_ROOT "/path/to/hotpp" CACHE PATH "The S++ source tree")
+set(HOT_ROOT "/path/to/hotpp" CACHE PATH "The Hot++ source tree")
 add_subdirectory(${HOT_ROOT} hot)
 
 # hotc translates wolf.hot to C++. The library myapp_scripts has the result.
@@ -47,9 +47,9 @@ cmake --build build
 ./build/myapp
 ```
 
-The program prints three lines, one for each call of `Tick`. The first configure fetches the S++ dependencies with CPM.cmake. Then the build runs `hotc` and compiles the result. S++ sets `CMAKE_RUNTIME_OUTPUT_DIRECTORY` only for its own targets. So `hotc` is in `build/bin/` and your program is in `build/`.
+The program prints three lines, one for each call of `Tick`. The first configure fetches the Hot++ dependencies with CPM.cmake. Then the build runs `hotc` and compiles the result. Hot++ sets `CMAKE_RUNTIME_OUTPUT_DIRECTORY` only for its own targets. So `hotc` is in `build/bin/` and your program is in `build/`.
 
-For a host that loads scripts (a loader), replace the last three lines of the example with one of the cases in [Embedding](embedding.html). The build-time part is always `add_subdirectory`, then link one S++ target, then `ENABLE_EXPORTS`.
+For a host that loads scripts (a loader), replace the last three lines of the example with one of the cases in [Embedding](embedding.html). The build-time part is always `add_subdirectory`, then link one Hot++ target, then `ENABLE_EXPORTS`.
 
 ## Requirements
 
@@ -68,7 +68,7 @@ A host that links only `hot_runtime` (a precompiled library) or only `hot_aot` h
 
 ### What CPM fetches
 
-S++ uses CPM.cmake (`cmake/CPM.cmake`, in the repository, so CPM itself needs no download). The root file sets `CPM_USE_LOCAL_PACKAGES` to ON when you do not define it. So CPM calls `find_package` first and fetches only a package that is missing.
+Hot++ uses CPM.cmake (`cmake/CPM.cmake`, in the repository, so CPM itself needs no download). The root file sets `CPM_USE_LOCAL_PACKAGES` to ON when you do not define it. So CPM calls `find_package` first and fetches only a package that is missing.
 
 | Package | Version | When |
 |---|---|---|
@@ -84,7 +84,7 @@ libclang, the Clang compiler, Threads, LLVM and Clang (for JIT) come from the sy
 
 | Setting | Effect |
 |---|---|
-| `-DCPM_USE_LOCAL_PACKAGES=OFF` | Fetch every CPM package. S++ sets the default to ON. |
+| `-DCPM_USE_LOCAL_PACKAGES=OFF` | Fetch every CPM package. Hot++ sets the default to ON. |
 | `-DCPM_DOWNLOAD_ALL=ON` | Fetch every CPM package, also when an installed one exists. |
 | `-DCPM_LOCAL_PACKAGES_ONLY=ON` | Never fetch. The configure step fails when a package is missing. |
 | `-DCPM_SOURCE_CACHE=<dir>` | Keep the fetched sources in one folder. The next configure does not download again. The environment variable `CPM_SOURCE_CACHE` gives the default. |
@@ -94,12 +94,12 @@ For an offline build, install lexy, nlohmann_json (and GoogleTest, if you build 
 
 The fmt package has its own switch. For an offline build with fmt, set `HOT_FMT_PROVIDER` to `SYSTEM` (an installed fmt) or `NONE` (your project makes the fmt target). Both values never fetch.
 
-## Consume S++
+## Consume Hot++
 
-Add the S++ source tree with `add_subdirectory`. The second argument is a build folder, because the tree is outside your source tree.
+Add the Hot++ source tree with `add_subdirectory`. The second argument is a build folder, because the tree is outside your source tree.
 
 ```cmake
-set(HOT_ROOT "/path/to/hotpp" CACHE PATH "The S++ source tree")
+set(HOT_ROOT "/path/to/hotpp" CACHE PATH "The Hot++ source tree")
 add_subdirectory(${HOT_ROOT} hot)
 
 hot_add_scripts(TARGET app_scripts AOT SCRIPTS wolf.hot
@@ -114,7 +114,7 @@ FetchContent gives the same result. Replace the first two lines of the example:
 
 ```cmake
 include(FetchContent)
-FetchContent_Declare(hotpp GIT_REPOSITORY <the URL of the S++ repository> GIT_TAG <a tag or a commit>)
+FetchContent_Declare(hotpp GIT_REPOSITORY <the URL of the Hot++ repository> GIT_TAG <a tag or a commit>)
 FetchContent_MakeAvailable(hotpp)
 ```
 
@@ -153,21 +153,21 @@ A static library of your own can hide a host function from the linker, because t
 target_link_libraries(app PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,my_native_lib>")
 ```
 
-`LINK_LIBRARY` needs CMake 3.24. The S++ libraries need no whole-archive link in the samples.
+`LINK_LIBRARY` needs CMake 3.24. The Hot++ libraries need no whole-archive link in the samples.
 
 The generated code and the headers in `include/hot` need C++17 only.
 
 ## Build options and variables
 
-S++ has these options that select what the build adds. They are ON by default only when S++ is the main project (`HOT_TOP_LEVEL`). They are OFF by default when your project uses `add_subdirectory` or FetchContent.
+Hot++ has these options that select what the build adds. They are ON by default only when Hot++ is the main project (`HOT_TOP_LEVEL`). They are OFF by default when your project uses `add_subdirectory` or FetchContent.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `HOT_BUILD_TESTS` | main project: ON | Build the S++ tests. They need GoogleTest. It adds `tests/`, `editors/vscode` and `tools/bench`. It also adds the test engine dir `tests/engine` to the default include dirs of the backends. |
+| `HOT_BUILD_TESTS` | main project: ON | Build the Hot++ tests. They need GoogleTest. It adds `tests/`, `editors/vscode` and `tools/bench`. It also adds the test engine dir `tests/engine` to the default include dirs of the backends. |
 | `HOT_BUILD_SAMPLES` | main project: ON | Build the samples in `samples/`. The targets start with `sample_`. |
 | `HOT_SAMPLES_STANDALONE_TEST` | `OFF` | Add the CTest test `samples_standalone_aot`. The test builds `samples/aot` as a separate project in `samples_standalone/aot` of the build tree. Only `aot` has this test. It works only when `HOT_BUILD_SAMPLES` is ON. |
 
-When S++ is a subproject, `HOT_BUILD_*` are OFF. Set one to ON in your cache only if you want S++ to build it in your tree. These options work also in a subproject. If `HOT_BUILD_TESTS` is ON, the default include dirs of the backends (`HOT_DEFAULT_INCLUDE_DIRS`) also have `tests/engine`.
+When Hot++ is a subproject, `HOT_BUILD_*` are OFF. Set one to ON in your cache only if you want Hot++ to build it in your tree. These options work also in a subproject. If `HOT_BUILD_TESTS` is ON, the default include dirs of the backends (`HOT_DEFAULT_INCLUDE_DIRS`) also have `tests/engine`.
 
 ## Options
 
@@ -190,7 +190,7 @@ These variables are not options but they matter:
 | `CMAKE_CXX_FLAGS` | The default backend passes it to every script compile (split into arguments). Sanitizer flags go here. |
 | `CMAKE_CXX_COMPILER` | The default backend, `hotc` and the language server use this compiler for the scripts. |
 | `CPM_*` | See "Offline builds". |
-| `HOT_INCLUDE_DIR` | An INTERNAL cache variable. It is the `include` folder of S++. `hot_add_scripts` puts it first in the `-I` list. |
+| `HOT_INCLUDE_DIR` | An INTERNAL cache variable. It is the `include` folder of Hot++. `hot_add_scripts` puts it first in the `-I` list. |
 | `HOT_SCRATCH_DIR` | `${CMAKE_BINARY_DIR}/tmp`. The scratch root. `HOT_KEEP_TEMP` keeps it. |
 
 The default backend writes its files to `${HOT_SCRATCH_DIR}/hot_work/p<pid>`. It removes this folder at exit, unless `HOT_KEEP_TEMP` keeps it.
@@ -204,7 +204,7 @@ The build chooses the standard and the format library for string interpolation `
 The standard is the first of these that has a value:
 
 1. `CMAKE_CXX_STANDARD` in the scope of the caller.
-2. The default of S++: 20. S++ sets it when you set none, and it also keeps the value in a global property so `hot_add_scripts` agrees.
+2. The default of Hot++: 20. Hot++ sets it when you set none, and it also keeps the value in a global property so `hot_add_scripts` agrees.
 3. 17 (only a fallback).
 
 The standard is then fixed to 17, 20 or 23. A value of 21 or 22 gives 20. A smaller value gives 17. A larger value gives 23. `hot_add_scripts` passes the result to `hotc` as `--std=c++<n>`. The runtime backends use the same value (`HOT_CXX_STANDARD` in `include/hot/config.h`), both for the compile and for the parse of the native headers.
@@ -241,7 +241,7 @@ The cache variable `HOT_FMT_PROVIDER` says where fmt comes from:
 | `AUTO` (default) | `find_package(fmt)`. If fmt is not installed, CPM.cmake fetches fmt. |
 | `SYSTEM` | `find_package(fmt REQUIRED)`. The build never fetches. |
 | `CPM` | CPM.cmake always fetches fmt (version 11.2.0). |
-| `NONE` | Your project makes the target `fmt::fmt-header-only` or `fmt::fmt`. S++ only links to it. The configure step fails if the target does not exist. |
+| `NONE` | Your project makes the target `fmt::fmt-header-only` or `fmt::fmt`. Hot++ only links to it. The configure step fails if the target does not exist. |
 
 A target `fmt::fmt-header-only` or `fmt::fmt` that exists already is always used. Then the build does not search and does not fetch. The configure step prints the choice, for example `String interpolation uses: fmt`, and the source of fmt.
 
@@ -256,7 +256,7 @@ hot_add_scripts(TARGET name SCRIPTS a.hot b.hot AOT
                 [DEPENDS file...] [OUT_DIR dir] [HOTC_ARGS arg...])
 ```
 
-The function runs `hotc` at build time. It has two modes. `AOT` selects the second mode. The function also calls `hot_script_host` with the name `TARGET`, so the language server knows the scripts. Call it after `add_subdirectory` of S++.
+The function runs `hotc` at build time. It has two modes. `AOT` selects the second mode. The function also calls `hot_script_host` with the name `TARGET`, so the language server knows the scripts. Call it after `add_subdirectory` of Hot++.
 
 ### Keywords
 
@@ -273,7 +273,7 @@ The function runs `hotc` at build time. It has two modes. `AOT` selects the seco
 | `AFTER` | none | A target that must build first. It works only in the default mode. AOT mode stops with an error. | none |
 | `HOTC_ARGS` | empty | More arguments for `hotc`, in both modes. | none |
 
-The `hotc` call always has the include folder of S++ (`HOT_INCLUDE_DIR`) as the first `-I`. You do not need to put it in `INCLUDES`.
+The `hotc` call always has the include folder of Hot++ (`HOT_INCLUDE_DIR`) as the first `-I`. You do not need to put it in `INCLUDES`.
 
 The function checks its arguments. A word that is not a keyword stops the configure step with `hot_add_scripts: unknown arguments: ...`.
 
@@ -311,7 +311,7 @@ The generations of one class share the slot file `OUT_DIR/slots.txt`. This file 
 | Variable | Scope | Mode | Value |
 |---|---|---|---|
 | `HOT_SCRIPTS_<TARGET>_LIBRARIES` | the scope of the caller (`PARENT_SCOPE`) | default | The paths of the libraries, one for each script. |
-| `HOT_INCLUDE_DIR` | the cache (INTERNAL) | both | The include folder of S++. Set when the S++ file is loaded, not by the call. |
+| `HOT_INCLUDE_DIR` | the cache (INTERNAL) | both | The include folder of Hot++. Set when the Hot++ file is loaded, not by the call. |
 
 AOT mode sets no variable. The function also writes the file `${HOT_HOSTS_DIR}/<TARGET>.json` when CMake generates (see `hot_script_host`).
 
@@ -368,7 +368,7 @@ hot_script_host(NAME name [TARGET target] [SCRIPT_DIRS dir...] [SCRIPTS file...]
 
 The function describes a script host for the language server `hot-ls`. It does not build anything. When CMake generates the build system, it writes `${HOT_HOSTS_DIR}/<name>.json`. With `TARGET`, it also writes three side files in the same folder.
 
-`NAME` and one of `SCRIPT_DIRS` or `SCRIPTS` are required. `TARGET` is the CMake target of your host program. The file gets its include folders, defines and options. The include folder of S++ is always first. A relative path in `SCRIPT_DIRS`, `SCRIPTS` or `INCLUDES` is relative to the current source folder (`sourceDir` in the file). A UTILITY target (a custom target) has no such lists, so the function skips them.
+`NAME` and one of `SCRIPT_DIRS` or `SCRIPTS` are required. `TARGET` is the CMake target of your host program. The file gets its include folders, defines and options. The include folder of Hot++ is always first. A relative path in `SCRIPT_DIRS`, `SCRIPTS` or `INCLUDES` is relative to the current source folder (`sourceDir` in the file). A UTILITY target (a custom target) has no such lists, so the function skips them.
 
 ```cmake
 hot_script_host(NAME engine TARGET engine
@@ -389,12 +389,12 @@ You do not need this call for scripts that `hot_add_scripts` builds, because tha
 
 The folder is `HOT_HOSTS_DIR`. The default is `${CMAKE_SOURCE_DIR}/.cache/hot/hosts`. Add `.cache/` to the ignore list of your project. The side files exist because a quote or a backslash in a path cannot pass through a generator expression into JSON. A path with a newline, and a path with a semicolon, do not work.
 
-`hot_add_scripts` calls `hot_script_host` without `TARGET`, so it writes only the JSON file. The `includeDirs` entry has the include folder of S++, the `INCLUDES` and (with fmt) the fmt folder. In default mode `flags` has `FLAGS` and the fmt flags.
+`hot_add_scripts` calls `hot_script_host` without `TARGET`, so it writes only the JSON file. The `includeDirs` entry has the include folder of Hot++, the `INCLUDES` and (with fmt) the fmt folder. In default mode `flags` has `FLAGS` and the fmt flags.
 
 Two notes on the fields:
 
-- `std`: with `TARGET`, the `CXX_STANDARD` property of the target, else `CMAKE_CXX_STANDARD`, else 17. Without `TARGET` it is `CMAKE_CXX_STANDARD` or 17. It does not use the default 20 of S++. If your project sets no standard, the host file says `c++17` and the scripts build as C++20. Set `CMAKE_CXX_STANDARD` to make them agree.
-- `resourceDir`: the value of `CLANG_RESOURCE_DIR`. A consumer project does not see this S++ variable, so the field can be empty. Then `hot-ls` uses its own `--resource-dir` option or its default.
+- `std`: with `TARGET`, the `CXX_STANDARD` property of the target, else `CMAKE_CXX_STANDARD`, else 17. Without `TARGET` it is `CMAKE_CXX_STANDARD` or 17. It does not use the default 20 of Hot++. If your project sets no standard, the host file says `c++17` and the scripts build as C++20. Set `CMAKE_CXX_STANDARD` to make them agree.
+- `resourceDir`: the value of `CLANG_RESOURCE_DIR`. A consumer project does not see this Hot++ variable, so the field can be empty. Then `hot-ls` uses its own `--resource-dir` option or its default.
 
 ## Sanitizers and the build type
 
@@ -450,7 +450,7 @@ The first column has the text as it appears in the source. A text with `...` has
 
 | Message | Cause | Fix |
 |---|---|---|
-| `hotc: error: this hotc is built for --format=std, not --format=fmt` (or the other way) | `hot_add_scripts` chose another format library than the one `hotc` has. The standard in your scope differed from the standard when S++ was configured. | Set `CMAKE_CXX_STANDARD` and `HOT_USE_FMT` before `add_subdirectory`. Do not change them later. Configure again in a new build folder. |
+| `hotc: error: this hotc is built for --format=std, not --format=fmt` (or the other way) | `hot_add_scripts` chose another format library than the one `hotc` has. The standard in your scope differed from the standard when Hot++ was configured. | Set `CMAKE_CXX_STANDARD` and `HOT_USE_FMT` before `add_subdirectory`. Do not change them later. Configure again in a new build folder. |
 | `HOT_BACKEND must be CLANG_FILES or JIT. It is: ...` | The cache variable has another value. | Use `CLANG_FILES` or `JIT`. |
 | `HOT_FMT_PROVIDER must be AUTO, SYSTEM, CPM or NONE. It is: ...` | A wrong value. | Use one of the four values. |
 | `HOT_FMT_PROVIDER is NONE, but the target fmt::fmt-header-only or fmt::fmt does not exist...` | `NONE` needs your own fmt target. | Create the target before `add_subdirectory`, or use another provider. |
@@ -466,14 +466,14 @@ The first column has the text as it appears in the source. A text with `...` has
 | `the compile of ... failed (exit code ...)` | The C++ compiler rejected the generated code. The text before it has the compiler diagnostics. | Read the diagnostics. Check `INCLUDES`, `FLAGS` and the standard. |
 | `the script '...' is not found` | A `using "x.hot";` line names a script that the translator cannot read. | Check the path. Add the folder to `INCLUDES`. |
 | `base class '...' is not found in the imported headers` | The header of the native base class is not in the `using` lines or not in the include folders. | Add the header with `using`. Add its folder to `INCLUDES`. |
-| `symbol script_register not found in ...` | The file is a library, but not an S++ generation module. | Load a library that `hotc` made. |
+| `symbol script_register not found in ...` | The file is a library, but not an Hot++ generation module. | Load a library that `hotc` made. |
 | `the class ... is in two AOT scripts (...)` | Two AOT scripts have a class of the same name. It is an exception of `AotRegistry`. | Rename one class. |
 | `no AOT script class ...` | `AotRegistry::create` got an unknown class name. | Check the name and the scripts in `SCRIPTS`. |
 | `the loader already has a generation: call reset first` | `Loader::load` ran twice. | Use `request_reload` for a later generation, or call `reset` first. |
 | `class ...: generation ... is not newer than the active generation ...` | The module has the same generation number as the active one. | Use a higher `--gen` number. |
 | `cannot write ...` | The backend or `hotc` cannot write the slot file or an output file. | Check the rights of the `OUT_DIR` or the work folder. |
 
-Some problems have no fixed S++ message. The text comes from the tool that reports them.
+Some problems have no fixed Hot++ message. The text comes from the tool that reports them.
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -483,7 +483,7 @@ Some problems have no fixed S++ message. The text comes from the tool that repor
 | The configure step stops in `find_library` or `find_path` for libclang. | The development package of libclang is not installed. The message is from CMake. | Install it, or set `CMAKE_PREFIX_PATH`. |
 | The configure step stops in `find_package(LLVM)` or `find_package(Clang)`. | `HOT_BACKEND` is `JIT`, and the packages are missing. The message is from CMake. | Install the LLVM and Clang development packages, or use `CLANG_FILES`. |
 | The script compile cannot find compiler headers such as `stddef.h`. | The resource folder is wrong or empty. The root file takes it from `<compiler> -print-resource-dir`. The compiler must be Clang. MSVC has no such option. | Use `clang++` as `CMAKE_CXX_COMPILER`. For a backend that you build yourself, set `resource_dir`. For MSVC set `HOT_CLANG_RESOURCE_DIR`. |
-| CMake reports an unknown command `hot_add_scripts`. | The call comes before `add_subdirectory` of S++. The message is from CMake. | Move the call after `add_subdirectory`. |
+| CMake reports an unknown command `hot_add_scripts`. | The call comes before `add_subdirectory` of Hot++. The message is from CMake. | Move the call after `add_subdirectory`. |
 | A script change does not rebuild the library. | A changed header or an imported script is not in `DEPENDS`. | Add the file to `DEPENDS`. |
 | A program with sanitizer flags crashes when it loads a module. | The module is compiled without the same flags. | Put the flags in `FLAGS` or `extra_flags`. See "Sanitizers and the build type". |
 
@@ -493,7 +493,7 @@ Some problems have no fixed S++ message. The text comes from the tool that repor
 
 ## Samples
 
-Each sample is a small project. It builds in the S++ tree and as a separate project. Each sample has a `README.md` with the sections "How it works", "Files", "Build and run" and "Adapt it to your project". The page [Embedding](embedding.html) maps each hosting situation to its sample and has the code outline.
+Each sample is a small project. It builds in the Hot++ tree and as a separate project. Each sample has a `README.md` with the sections "How it works", "Files", "Build and run" and "Adapt it to your project". The page [Embedding](embedding.html) maps each hosting situation to its sample and has the code outline.
 
 - [aot](https://github.com/rokups/spp/tree/main/samples/aot): the C++ of the scripts is in the binary.
 - [runtime-compile](https://github.com/rokups/spp/tree/main/samples/runtime-compile): the program compiles a script at run time.
@@ -502,4 +502,4 @@ Each sample is a small project. It builds in the S++ tree and as a separate proj
 - [clang-files-backend](https://github.com/rokups/spp/tree/main/samples/clang-files-backend): the program builds `ClangFilesBackend` itself.
 - [jit-backend](https://github.com/rokups/spp/tree/main/samples/jit-backend): the program builds `JitBackend` itself. It needs `HOT_BACKEND=JIT`.
 
-The samples use the S++ tree in `HOT_ROOT`. The default is the tree that holds the `samples` folder. To use a sample in your project, set `HOT_ROOT` to the S++ tree (or use FetchContent) and copy the `hot_add_scripts` and `target_link_libraries` lines.
+The samples use the Hot++ tree in `HOT_ROOT`. The default is the tree that holds the `samples` folder. To use a sample in your project, set `HOT_ROOT` to the Hot++ tree (or use FetchContent) and copy the `hot_add_scripts` and `target_link_libraries` lines.

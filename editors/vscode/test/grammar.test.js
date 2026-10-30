@@ -1,4 +1,4 @@
-// Test of the TextMate grammar of S++. Run: node test/grammar.test.js [--update]
+// Test of the TextMate grammar of Hot++. Run: node test/grammar.test.js [--update]
 //
 // Always run (plain node, no package):
 //  - package.json, language-configuration.json and the grammar are valid JSON.
@@ -31,14 +31,14 @@ function readJson(file) {
 // ---- part 1: JSON and keyword coverage
 const pkg = readJson(path.join(root, 'package.json'));
 readJson(path.join(root, 'language-configuration.json'));
-const grammarFile = path.join(root, 'syntaxes', 'spp.tmLanguage.json');
+const grammarFile = path.join(root, 'syntaxes', 'hot.tmLanguage.json');
 const grammar = readJson(grammarFile);
 if (!grammar) process.exit(1);
 if (pkg) {
   const c = pkg.contributes || {};
   if (!(c.languages || []).some((l) => l.id === 'hot' && l.extensions.includes('.hot'))) fail('language hot');
   if (!(c.grammars || []).some((g) => g.scopeName === grammar.scopeName)) fail('grammar scope');
-  if (!c.configuration || !c.configuration.properties['spp.server.path']) fail('setting spp.server.path');
+  if (!c.configuration || !c.configuration.properties['hot.server.path']) fail('setting hot.server.path');
 }
 
 const keywords = ['var', 'foreach', 'in', 'using', 'override', 'virtual', 'new', 'public', 'private',

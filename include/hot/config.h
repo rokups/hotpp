@@ -1,4 +1,4 @@
-// Build-time configuration of the S++ runtime.
+// Build-time configuration of the Hot++ runtime.
 //
 // CMake sets HOT_USE_FMT on the runtime library. The value is 1 when string interpolation
 // "${...}" uses fmt, and 0 when it uses std::format. The build chooses the value from the C++

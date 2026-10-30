@@ -11,7 +11,7 @@ builds it itself sets the compiler, the flags and the work folder.
 
 The sample has one program (`main.cpp`) and two variants of the same script:
 
-- `script/wolf.hot`: the script in the S++ syntax.
+- `script/wolf.hot`: the script in the Hot++ syntax.
 - `script/wolf.cpp`: the script as plain C++. See [C++ scripts](../../doc/cpp-scripts.md).
 
 The build makes one program for each variant from the same `main.cpp`:
@@ -38,14 +38,14 @@ compiler (the object library `clang_files_backend_cpp_scripts_plain`). This show
 - `script/wolf.hot` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`.
 - `main.cpp`: the program. It fills `hot::ClangFilesOptions`, compiles the script, loads it
   and calls `Tick` three times.
-- `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
+- `CMakeLists.txt`: the build. It works in the Hot++ tree and as a separate project.
 
 ## Options
 
 | Field | Value in the sample |
 |---|---|
 | `compiler` | `CMAKE_CXX_COMPILER` |
-| `include_dirs` | the include dir of S++ and the folder of the sample |
+| `include_dirs` | the include dir of Hot++ and the folder of the sample |
 | `extra_flags` | `CMAKE_CXX_FLAGS` (the flags of the host, for example a sanitizer) |
 | `resource_dir` | the output of `<compiler> -print-resource-dir` |
 | `work_dir` | `hot_work_hot` or `hot_work_cpp` in the build folder (one for each program) |
@@ -58,7 +58,7 @@ See the table of the options in [Embedding](../../doc/embedding.md).
 
 ## Build and run
 
-### In the S++ tree
+### In the Hot++ tree
 
 The option `HOT_BUILD_SAMPLES` is ON for the main project.
 
@@ -77,8 +77,8 @@ cmake-build/linux-clang-files/bin/Debug/sample_clang_files_cpp
 
 ### As a separate project
 
-Use the S++ source tree in `HOT_ROOT`. The default value is the tree that holds this folder.
-The build fetches the S++ dependencies with CPM. It needs `clang`, `libclang` and Ninja.
+Use the Hot++ source tree in `HOT_ROOT`. The default value is the tree that holds this folder.
+The build fetches the Hot++ dependencies with CPM. It needs `clang`, `libclang` and Ninja.
 
 ```
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++
@@ -86,7 +86,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample calls
+To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`. The `CMakeLists.txt` of the sample calls
 `add_subdirectory` for `HOT_ROOT` only when the target `hotc` does not exist yet.
 
 ## Link
@@ -99,7 +99,7 @@ To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`. The `CMakeLists.txt` of 
 
 1. Link your program to `hot_clang_backend` and set `ENABLE_EXPORTS ON`.
 2. Pass values from CMake as compile definitions, as `CMakeLists.txt` does: the compiler, the flags,
-   the include folders of S++ (`HOT_INCLUDE_DIR`) and of your headers, and the resource folder.
+   the include folders of Hot++ (`HOT_INCLUDE_DIR`) and of your headers, and the resource folder.
 3. Use a work folder that only this backend uses when you set `remove_work_dir_at_exit` to `true`.
 4. Keep the compiler flags of the host, such as a sanitizer, in `extra_flags`.
 5. The compiler must exist on the machine that runs the program.

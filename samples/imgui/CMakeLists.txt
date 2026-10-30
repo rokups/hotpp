@@ -1,12 +1,12 @@
 # The sample imgui: a Dear ImGui window whose user interface a script draws.
 # The program builds ClangFilesBackend itself and reloads the script when the file changes.
 # It needs SDL3. Without SDL3 the configure prints a message and adds no target.
-# This file works in the S++ build (add_subdirectory) and as a separate project.
+# This file works in the Hot++ build (add_subdirectory) and as a separate project.
 cmake_minimum_required(VERSION 3.24)
 project(hot_sample_imgui CXX)
 
-# The S++ source tree. A separate build uses it. The S++ build already has the targets.
-set(HOT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The S++ source tree")
+# The Hot++ source tree. A separate build uses it. The Hot++ build already has the targets.
+set(HOT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The Hot++ source tree")
 if(NOT TARGET hotc)
     add_subdirectory(${HOT_ROOT} hot)
 endif()
@@ -17,7 +17,7 @@ if(NOT SDL3_FOUND)
     return()
 endif()
 
-# CPM fetches Dear ImGui. The S++ build may not load CPM, so load it here when needed.
+# CPM fetches Dear ImGui. The Hot++ build may not load CPM, so load it here when needed.
 if(NOT COMMAND CPMAddPackage)
     include(${HOT_ROOT}/cmake/CPM.cmake)
 endif()

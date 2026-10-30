@@ -7,7 +7,7 @@ The program has no backend and no compiler at run time.
 
 The sample has one program (`main.cpp`) and two variants of the same script:
 
-- `script/wolf.hot`: the script in the S++ syntax.
+- `script/wolf.hot`: the script in the Hot++ syntax.
 - `script/wolf.cpp`: the script as plain C++. See [C++ scripts](../../doc/cpp-scripts.md).
 
 The build makes one library and one program for each variant:
@@ -43,11 +43,11 @@ module (`hot-core-<pid>-<n>-<name>`). See "Core copies" in [Embedding](../../doc
 - `script/wolf.hot` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`.
 - `main.cpp`: the program. `argv[1]` is the path of the library. The program loads it and
   calls `Tick` three times.
-- `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
+- `CMakeLists.txt`: the build. It works in the Hot++ tree and as a separate project.
 
 ## Build and run
 
-### In the S++ tree
+### In the Hot++ tree
 
 The option `HOT_BUILD_SAMPLES` is ON for the main project.
 
@@ -66,8 +66,8 @@ cmake-build/linux-clang-files/bin/Debug/sample_precompiled_cpp cmake-build/linux
 
 ### As a separate project
 
-Use the S++ source tree in `HOT_ROOT`. The default value is the tree that holds this folder.
-The build fetches the S++ dependencies with CPM. It needs `clang`, `libclang` and Ninja.
+Use the Hot++ source tree in `HOT_ROOT`. The default value is the tree that holds this folder.
+The build fetches the Hot++ dependencies with CPM. It needs `clang`, `libclang` and Ninja.
 
 ```
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++
@@ -75,7 +75,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample calls
+To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`. The `CMakeLists.txt` of the sample calls
 `add_subdirectory` for `HOT_ROOT` only when the target `hotc` does not exist yet.
 
 The test runs the program with the library path as `argv[1]`. To run the program yourself, give

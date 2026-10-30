@@ -9,7 +9,7 @@ The host needs a C++ compiler at run time.
 
 The sample has one program (`main.cpp`) and two variants of the same scripts:
 
-- `script/wolf_v1.hot` and `script/wolf_v2.hot`: the scripts in the S++ syntax.
+- `script/wolf_v1.hot` and `script/wolf_v2.hot`: the scripts in the Hot++ syntax.
 - `script/wolf_v1.cpp` and `script/wolf_v2.cpp`: the scripts as plain C++. See [C++ scripts](../../doc/cpp-scripts.md).
 
 Both variants are in the folder `script`. The file extension picks the variant.
@@ -56,11 +56,11 @@ run on the main thread.
 - `main.cpp`: the program. It ticks twice, reloads and ticks twice again.
   The definition `SAMPLE_SCRIPT_DIR` is the folder `script`. The definition `SAMPLE_SCRIPT_EXT` (`.hot` or `.cpp`) picks the variant.
   The definition `SAMPLE_DIR` is the folder of `Creature.h`.
-- `CMakeLists.txt`: the build. It works in the S++ tree and as a separate project.
+- `CMakeLists.txt`: the build. It works in the Hot++ tree and as a separate project.
 
 ## Build and run
 
-### In the S++ tree
+### In the Hot++ tree
 
 The option `HOT_BUILD_SAMPLES` is ON for the main project.
 
@@ -79,8 +79,8 @@ cmake-build/linux-clang-files/bin/Debug/sample_hot_reload_cpp
 
 ### As a separate project
 
-Use the S++ source tree in `HOT_ROOT`. The default value is the tree that holds this folder.
-The build fetches the S++ dependencies with CPM. It needs `clang`, `libclang` and Ninja.
+Use the Hot++ source tree in `HOT_ROOT`. The default value is the tree that holds this folder.
+The build fetches the Hot++ dependencies with CPM. It needs `clang`, `libclang` and Ninja.
 
 ```
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++
@@ -88,7 +88,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-To use another S++ tree, add `-DHOT_ROOT=/path/to/spp`. The `CMakeLists.txt` of the sample calls
+To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`. The `CMakeLists.txt` of the sample calls
 `add_subdirectory` for `HOT_ROOT` only when the target `hotc` does not exist yet.
 
 ## Adapt it to your project
