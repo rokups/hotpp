@@ -1,2 +1,4 @@
 test/**
 CMakeLists.txt
+CMakeLists.txt
+package-lock.json

@@ -41,3 +41,7 @@ hotc player.hot --gen 1 -I include -I tests/engine -o player.so
 ```
 
 The scripts of this page use the headers of the test host in `tests/engine` (`Actor.h`). For your own project, use your own native headers. The folder `tests/engine` is a test host and is not a model for a user project. Copy from `samples/` (see `samples/README.md`).
+
+## Build a program with the SDK
+
+To use scripts in a C++ program, install the Hot++ SDK. A project then needs only `find_package(Hot REQUIRED)` and `hot_add_host(...)` in its `CMakeLists.txt`. You do not need the Hot++ source tree. See [CMake](cmake.html), the sections "Quick start with an installed SDK" and "Install the SDK".

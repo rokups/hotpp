@@ -14,6 +14,16 @@ This extension gives support for Hot++ scripts (`.hot`, language id `hot`).
   Rename and references also cover the other `.hot` files of the workspace.
   See "Language server" in the top `README.md`.
 
+## Install from the SDK
+
+The install of the Hot++ SDK (`cmake --install`) puts the extension in `<prefix>/share/hot/vscode`. If the build found `vsce`, the folder has a package file:
+
+```
+code --install-extension <prefix>/share/hot/vscode/hotpp-0.1.0.vsix
+```
+
+If the build did not find `vsce`, the folder `<prefix>/share/hot/vscode/hotpp` holds the extension files. Copy it to `~/.vscode/extensions/hotpp` (or run `code --extensionDevelopmentPath=<prefix>/share/hot/vscode/hotpp`). Then set `hot.server.path` to `<prefix>/bin/hot-ls`, or put `<prefix>/bin` in `PATH`. The server needs `clangd` in `PATH` (see below).
+
 ## Commands
 
 | Command | Meaning |

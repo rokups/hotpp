@@ -1,0 +1,58 @@
+# The package config of the Hot++ SDK. Use: find_package(Hot REQUIRED).
+# It makes the targets hot::runtime, hot::aot, hot::backend, hot::clang_backend, hot::hotc and
+# hot::hot_ls. It makes hot::jit_backend only when the SDK has the JIT backend.
+# It loads the functions hot_add_host, hot_add_scripts and hot_script_host.
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
+# The values of the SDK build. The libraries have them built in, so a consumer cannot change them.
+set(HOT_BACKEND "@HOT_BACKEND@" CACHE INTERNAL "The backend of the Hot++ SDK")
+set(HOT_PORTABLE @HOT_PORTABLE@ CACHE INTERNAL "The Hot++ SDK is a portable build")
+# The format library of the runtime in the SDK: "fmt" or "std". hot_format_library uses it.
+set(HOT_SDK_FORMAT_LIB "@HOT_FORMAT_LIB@" CACHE INTERNAL "The format library of the Hot++ SDK")
+if(HOT_SDK_FORMAT_LIB STREQUAL "fmt")
+    set(HOT_USE_FMT ON CACHE INTERNAL "The Hot++ SDK uses fmt")
+else()
+    set(HOT_USE_FMT OFF CACHE INTERNAL "The Hot++ SDK uses fmt")
+endif()
+# The default C++ standard of the host, when the consumer sets none (hot_effective_cxx_standard).
+set_property(GLOBAL PROPERTY HOT_DEFAULT_CXX_STANDARD @HOT_SDK_CXX_STANDARD@)
+
+if(HOT_BACKEND STREQUAL "JIT")
+    # LLVMConfig.cmake probes C headers, so the C language must be on.
+    get_property(_hot_languages GLOBAL PROPERTY ENABLED_LANGUAGES)
+    if(NOT "C" IN_LIST _hot_languages)
+        enable_language(C)
+    endif()
+    find_dependency(LLVM CONFIG)
+    find_dependency(Clang CONFIG)
+endif()
+
+# HotScripts.cmake keeps this value (it sets the variable only when it is not defined).
+set(HOT_INCLUDE_DIR "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_INCLUDEDIR@" CACHE INTERNAL "The include dir of Hot++")
+
+include("${CMAKE_CURRENT_LIST_DIR}/HotTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/HotFormat.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/HotScripts.cmake")
+
+# libclang. The export holds no path of it. Find it here: a cache value of the user wins, then the
+# folder of the SDK build, then the standard places. Only hot::hotc_lib and the targets that link
+# it (hot::clang_backend, hot::backend, hot::jit_backend) need it. A program in AOT mode does not.
+find_library(HOT_CLANG_C_LIBRARY NAMES clang libclang
+             HINTS "@HOT_CLANG_C_LIBRARY_DIR@" DOC "The libclang library for Hot++")
+if(HOT_CLANG_C_LIBRARY)
+    set_property(TARGET hot::hotc_lib APPEND PROPERTY INTERFACE_LINK_LIBRARIES "${HOT_CLANG_C_LIBRARY}")
+else()
+    message(WARNING "Hot++: libclang is not found. The SDK was built with @HOT_CLANG_C_LIBRARY@. "
+        "Install libclang or set HOT_CLANG_C_LIBRARY to the file. Without it the targets "
+        "hot::hotc_lib, hot::clang_backend and hot::backend cannot link.")
+    set_property(TARGET hot::hotc_lib APPEND PROPERTY INTERFACE_LINK_LIBRARIES HOT_CLANG_C_LIBRARY-NOTFOUND)
+endif()
+
+# The tools of the SDK, as file paths.
+get_target_property(HOT_HOTC_EXECUTABLE hot::hotc LOCATION)
+get_target_property(HOT_LS_EXECUTABLE hot::hot_ls LOCATION)
+
+check_required_components(Hot)

@@ -32,9 +32,9 @@ Not done, and not testable here: Windows and macOS, a real engine, a real lldb a
 - `include/hot/` has the public headers: `runtime.h`, `module.h`, `backend.h`, `clang_files_backend.h`, `jit_backend.h` and `hotc_lib.h`. Use the form `#include "hot/<name>.h"`.
 - `src/` has the library code. `src/runtime/` has the script runtime and the backends. `src/translator/` has the translator library `hotc_lib`. `src/tools/` has the tool `hotc`.
 - `tests/engine/` is the test host (`Actor`, `World`, `Harness`, `FileWatcher`). It is not a model for a user project: copy from `samples/`. `tests/scripts/` has the test scripts. `tests/integration/aot/` has the program `aot_demo`. `tests/integration/fixtures/` has the hand-written generations. `tools/bench/bench_backends.cpp` is the benchmark.
-- `samples/` has seven self-contained projects for consumers of Hot++ (see "Samples"): six show one way to host Hot++ each, and `imgui` is a Dear ImGui demo. Each one shows the `add_subdirectory` pattern.
+- `samples/` has seven self-contained projects for consumers of Hot++ (see "Samples"): six show one way to host Hot++ each, and `imgui` is a Dear ImGui demo. Each one shows the `add_subdirectory` pattern. With `-DHOT_ROOT=` and `CMAKE_PREFIX_PATH` each one uses an installed SDK (`find_package(Hot)`) instead.
 - `tests/` has the GoogleTest cases and the shared headers.
-- `cmake/` has `CPM.cmake`, `HotScripts.cmake` (`hot_add_scripts`, `hot_script_host`), `HotTests.cmake` (`hot_gtest`) and `HotFormat.cmake` (the format library of `${}`).
+- `cmake/` has `HotConfig.cmake.in` (the package config of the installed SDK), `SdkInstallTest.cmake`, `CPM.cmake`, `HotScripts.cmake` (`hot_add_scripts`, `hot_script_host`), `HotTests.cmake` (`hot_gtest`) and `HotFormat.cmake` (the format library of `${}`).
 
 ## Build
 
@@ -81,6 +81,17 @@ To purge an old build tree, remove the preset directory and configure again:
 
     rm -rf cmake-build/<preset>
     cmake --preset <preset>
+
+## Install the SDK
+
+`cmake --install` makes a relocatable prefix with `bin/hotc`, `bin/hot-ls`, the libraries, the headers, the CMake package and the VS Code extension. A user project does not need the Hot++ source tree. It calls `find_package(Hot REQUIRED)` and then `hot_add_host(...)`:
+
+    cmake -S . -B build-sdk -DHOT_PORTABLE=ON -DHOT_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release
+    cmake --build build-sdk
+    cmake --install build-sdk --prefix /opt/hot-sdk
+    cmake -S myapp -B myapp/build -DCMAKE_PREFIX_PATH=/opt/hot-sdk
+
+See "Install the SDK" in `doc/cmake.md`. The test `sdk_install_sample` installs the SDK and builds `samples/aot` against it.
 
 ## Samples
 

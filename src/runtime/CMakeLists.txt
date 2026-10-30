@@ -3,7 +3,9 @@
 #     build links only this part (design M7). It has no loader, no migration, no dlopen.
 #   hot_runtime: the core plus the state tracking, the migration and the generation loader.
 add_library(hot_runtime_core STATIC threads.cpp registry.cpp)
-target_include_directories(hot_runtime_core PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(hot_runtime_core PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 # The format library is a build-time choice (include/hot/config.h). It has no runtime switch.
 if(HOT_FORMAT_LIB STREQUAL "fmt")
     get_property(HOT_FMT_INCLUDE_DIR GLOBAL PROPERTY HOT_FMT_INCLUDE_DIR)
@@ -11,7 +13,10 @@ if(HOT_FORMAT_LIB STREQUAL "fmt")
         # A portable build holds no build path. The empty value means: the compiler finds fmt.
         set(HOT_FMT_INCLUDE_DIR "")
     endif()
-    target_compile_definitions(hot_runtime_core PUBLIC HOT_USE_FMT=1 HOT_FMT_INCLUDE_DIR="${HOT_FMT_INCLUDE_DIR}")
+    # The export holds no build path. The installed target has no HOT_FMT_INCLUDE_DIR (config.h
+    # uses an empty text), so the compiler finds fmt by itself.
+    target_compile_definitions(hot_runtime_core PUBLIC HOT_USE_FMT=1
+        $<BUILD_INTERFACE:HOT_FMT_INCLUDE_DIR="${HOT_FMT_INCLUDE_DIR}">)
 else()
     target_compile_definitions(hot_runtime_core PUBLIC HOT_USE_FMT=0)
 endif()
@@ -52,8 +57,12 @@ target_link_libraries(hot_clang_backend PUBLIC hot_runtime hotc_lib)
 # LLVM and Clang come from the system. CPM does not fetch them. The root file finds them.
 if(HOT_BACKEND STREQUAL "JIT")
     add_library(hot_jit_backend STATIC jit_backend.cpp)
-    target_include_directories(hot_jit_backend PUBLIC ${PROJECT_SOURCE_DIR}/include)
-    target_include_directories(hot_jit_backend SYSTEM PUBLIC ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
+    # Only jit_backend.cpp includes the LLVM and Clang headers. The public header does not.
+    # So these dirs are PRIVATE and the export holds no system path.
+    target_include_directories(hot_jit_backend PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+    target_include_directories(hot_jit_backend SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
     target_compile_definitions(hot_jit_backend PRIVATE ${LLVM_DEFINITIONS})
     target_link_libraries(hot_jit_backend PUBLIC hot_runtime hotc_lib clang-cpp LLVM)
 endif()

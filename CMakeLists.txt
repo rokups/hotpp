@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
-project(hotpp CXX)
+project(hotpp VERSION 0.1.0 LANGUAGES CXX)
+
+include(GNUInstallDirs)
 
 # HOT_TOP_LEVEL is ON when Hot++ is the main project. It is OFF when a consumer project
 # uses add_subdirectory. The options below default to ON only for the main project.
@@ -8,6 +10,7 @@ if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
 else()
     set(HOT_TOP_LEVEL OFF)
 endif()
+option(HOT_INSTALL "Generate the install rules of the Hot++ SDK" ${HOT_TOP_LEVEL})
 option(HOT_BUILD_TESTS "Build the Hot++ tests" ${HOT_TOP_LEVEL})
 option(HOT_BUILD_SAMPLES "Build the Hot++ samples" ${HOT_TOP_LEVEL})
 option(HOT_SAMPLES_STANDALONE_TEST "Configure, build and test samples/aot as a separate project" OFF)
@@ -161,9 +164,72 @@ if(HOT_BUILD_TESTS)
     add_subdirectory(tests)
     # The benchmark uses the test engine and the test scripts.
     add_subdirectory(tools/bench)
-    add_subdirectory(editors/vscode)
+
+    # The test of the installed SDK: install, then build samples/aot against the prefix.
+    # It needs the whole build, because "cmake --install" installs all targets.
+    if(HOT_INSTALL)
+        add_test(NAME sdk_install_sample
+            COMMAND ${CMAKE_COMMAND}
+                -DBUILD_DIR=${CMAKE_BINARY_DIR} -DSAMPLE_DIR=${PROJECT_SOURCE_DIR}/samples/aot
+                -DWORK_DIR=${CMAKE_BINARY_DIR}/sdk_install
+                -DCXX_COMPILER=${CMAKE_CXX_COMPILER} "-DCXX_FLAGS=${CMAKE_CXX_FLAGS}"
+                -DGENERATOR=${CMAKE_GENERATOR} -DCONFIG=$<CONFIG>
+                -P ${PROJECT_SOURCE_DIR}/cmake/SdkInstallTest.cmake)
+        set_tests_properties(sdk_install_sample PROPERTIES LABELS sdk TIMEOUT 600)
+    endif()
 endif()
+
+# The VS Code extension. The folder has the node tests (HOT_BUILD_TESTS) and the install rules.
+add_subdirectory(editors/vscode)
 
 if(HOT_BUILD_SAMPLES)
     add_subdirectory(samples)
+endif()
+
+# ------------------------------------------------------------ Install (the relocatable SDK)
+# "cmake --install" makes a prefix. A consumer uses find_package(Hot) and hot_add_host.
+# HOT_PORTABLE=ON and HOT_BUILD_TESTS=OFF make an SDK without build paths in the binaries.
+if(HOT_INSTALL)
+    include(CMakePackageConfigHelpers)
+    set(HOT_CMAKE_INSTALL_DIR ${CMAKE_INSTALL_LIBDIR}/cmake/Hot)
+
+    # The names in the namespace hot:: (hot::runtime, hot::aot, ...).
+    set_target_properties(hot_runtime PROPERTIES EXPORT_NAME runtime)
+    set_target_properties(hot_runtime_core PROPERTIES EXPORT_NAME runtime_core)
+    set_target_properties(hot_aot PROPERTIES EXPORT_NAME aot)
+    set_target_properties(hot_backend PROPERTIES EXPORT_NAME backend)
+    set_target_properties(hot_clang_backend PROPERTIES EXPORT_NAME clang_backend)
+    set_target_properties(hotc_lib PROPERTIES EXPORT_NAME hotc_lib)
+    set_target_properties(hotc PROPERTIES EXPORT_NAME hotc)
+    set_target_properties(hot_ls PROPERTIES EXPORT_NAME hot_ls)
+    set(HOT_INSTALL_TARGETS hot_runtime hot_runtime_core hot_aot hot_backend hot_clang_backend
+                            hotc_lib hotc hot_ls)
+    if(TARGET hot_jit_backend)
+        set_target_properties(hot_jit_backend PROPERTIES EXPORT_NAME jit_backend)
+        list(APPEND HOT_INSTALL_TARGETS hot_jit_backend)
+    endif()
+
+    install(TARGETS ${HOT_INSTALL_TARGETS} EXPORT HotTargets
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    install(DIRECTORY include/hot DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    install(EXPORT HotTargets NAMESPACE hot:: DESTINATION ${HOT_CMAKE_INSTALL_DIR})
+
+    # The values of this build that the package config sets for a consumer.
+    hot_effective_cxx_standard(HOT_SDK_CXX_STANDARD hot_runtime_core)
+    get_filename_component(HOT_CLANG_C_LIBRARY_DIR "${CLANG_C_LIBRARY}" DIRECTORY)
+    set(HOT_CLANG_C_LIBRARY "${CLANG_C_LIBRARY}")
+    configure_package_config_file(cmake/HotConfig.cmake.in
+        ${CMAKE_CURRENT_BINARY_DIR}/HotConfig.cmake
+        INSTALL_DESTINATION ${HOT_CMAKE_INSTALL_DIR})
+    write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/HotConfigVersion.cmake
+        VERSION ${PROJECT_VERSION} COMPATIBILITY SameMajorVersion)
+    install(FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/HotConfig.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/HotConfigVersion.cmake
+        cmake/HotScripts.cmake
+        cmake/HotFormat.cmake
+        cmake/CPM.cmake
+        DESTINATION ${HOT_CMAKE_INSTALL_DIR})
 endif()

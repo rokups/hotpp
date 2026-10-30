@@ -6,9 +6,18 @@ cmake_minimum_required(VERSION 3.24)
 project(hot_sample_imgui CXX)
 
 # The Hot++ source tree. A separate build uses it. The Hot++ build already has the targets.
-set(HOT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The Hot++ source tree")
-if(NOT TARGET hotc)
-    add_subdirectory(${HOT_ROOT} hot)
+# An empty HOT_ROOT means: use the installed SDK (find_package(Hot), CMAKE_PREFIX_PATH).
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../CMakeLists.txt")
+    set(HOT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "The Hot++ source tree. Empty: use the installed SDK")
+else()
+    set(HOT_ROOT "" CACHE PATH "The Hot++ source tree. Empty: use the installed SDK")
+endif()
+if(NOT TARGET hot::hotc)
+    if(HOT_ROOT)
+        add_subdirectory(${HOT_ROOT} hot)
+    else()
+        find_package(Hot REQUIRED)
+    endif()
 endif()
 
 find_package(SDL3 QUIET)

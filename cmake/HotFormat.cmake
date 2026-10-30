@@ -4,6 +4,7 @@
 #   C++20 and later:                      std::format, unless HOT_USE_FMT is ON.
 #
 # HOT_USE_FMT=ON selects fmt at any standard. No runtime switch exists.
+# An installed SDK fixes the choice (HOT_SDK_FORMAT_LIB, set by HotConfig.cmake).
 # The cache variable HOT_FMT_PROVIDER says where fmt comes from:
 #   AUTO   (default) find_package(fmt) first, then CPM.cmake fetches fmt.
 #   SYSTEM find_package(fmt REQUIRED) only. The build never fetches.
@@ -20,9 +21,25 @@ set(_HOT_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(HOT_FMT_VERSION 11.2.0)
 
 # hot_format_library(<out> <cxx standard>): set <out> to "fmt" or "std".
+#
+# An installed SDK (find_package(Hot)) sets HOT_SDK_FORMAT_LIB. The runtime in the SDK was built
+# with this choice, so the scripts of the consumer must use it too, at any consumer standard.
+# An SDK with std::format needs C++20 in the consumer. Else the function stops with an error.
 function(hot_format_library out std)
     if(std STREQUAL "" OR std MATCHES "[^0-9]")
         set(std 17)
+    endif()
+    if(HOT_SDK_FORMAT_LIB STREQUAL "fmt")
+        set(${out} fmt PARENT_SCOPE)
+        return()
+    elseif(HOT_SDK_FORMAT_LIB STREQUAL "std")
+        if(std LESS 20)
+            message(FATAL_ERROR "Hot++: this SDK uses std::format, which needs C++20, but the C++ "
+                "standard of the project is ${std}. Set CMAKE_CXX_STANDARD to 20 or later, or use "
+                "an SDK that was built with C++17 (it uses fmt).")
+        endif()
+        set(${out} std PARENT_SCOPE)
+        return()
     endif()
     if(HOT_USE_FMT OR std LESS 20)
         set(${out} fmt PARENT_SCOPE)

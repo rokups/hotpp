@@ -40,8 +40,11 @@
 # In AOT mode the library "name" links the target hot_fmt (fmt). There is no runtime switch.
 # The include dir of Hot++. It is relative to this file, so it works in a consumer project.
 # It is an internal cache variable, so a project that uses add_subdirectory sees it in every scope.
-get_filename_component(_hot_include_dir "${CMAKE_CURRENT_LIST_DIR}/../include" ABSOLUTE)
-set(HOT_INCLUDE_DIR "${_hot_include_dir}" CACHE INTERNAL "The include dir of Hot++")
+# The installed package config (HotConfig.cmake) sets the variable first. Then this file keeps it.
+if(NOT DEFINED HOT_INCLUDE_DIR)
+    get_filename_component(_hot_include_dir "${CMAKE_CURRENT_LIST_DIR}/../include" ABSOLUTE)
+    set(HOT_INCLUDE_DIR "${_hot_include_dir}" CACHE INTERNAL "The include dir of Hot++")
+endif()
 
 # Sets the variable named by "out" to the Clang resource directory of the build compiler.
 # It uses CLANG_RESOURCE_DIR if set. Else it asks CMAKE_CXX_COMPILER (Clang only). Empty if unknown.
@@ -146,12 +149,12 @@ function(hot_add_scripts)
         add_custom_command(
             OUTPUT ${sources} ${registry}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
-            COMMAND hotc --aot ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS} ${format_args} ${A_HOTC_ARGS}
-            DEPENDS hotc ${scripts} ${A_PRELUDES} ${A_DEPENDS}
+            COMMAND hot::hotc --aot ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS} ${format_args} ${A_HOTC_ARGS}
+            DEPENDS hot::hotc ${scripts} ${A_PRELUDES} ${A_DEPENDS}
             COMMENT "hotc --aot: ${A_SCRIPTS}"
             VERBATIM)
         add_library(${A_TARGET} STATIC ${sources} ${registry})
-        target_link_libraries(${A_TARGET} PUBLIC hot_aot)
+        target_link_libraries(${A_TARGET} PUBLIC hot::aot)
         # The generated code uses the format library that the effective standard selects (std::format
         # from C++20). The library gets this standard as a minimum. A higher standard of the
         # consumer stays, and a consumer that links the library gets the minimum too.
@@ -184,9 +187,9 @@ function(hot_add_scripts)
     add_custom_command(
         OUTPUT ${outputs}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
-        COMMAND hotc ${scripts} --out-dir ${A_OUT_DIR}
+        COMMAND hot::hotc ${scripts} --out-dir ${A_OUT_DIR}
                 --cxx ${CMAKE_CXX_COMPILER} ${args} --gen ${A_GEN} ${A_HOTC_ARGS}
-        DEPENDS hotc ${scripts} ${A_DEPENDS}
+        DEPENDS hot::hotc ${scripts} ${A_DEPENDS}
         COMMENT "hotc: generation ${A_GEN} of ${A_SCRIPTS}"
         VERBATIM)
     add_custom_target(${A_TARGET} DEPENDS ${outputs})
