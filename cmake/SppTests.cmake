@@ -8,6 +8,9 @@
 # FIXTURES_REQUIRED in PROPERTIES. The wrapper sets it, and a second value would replace it.
 include(GoogleTest)
 
+# The dir of this file. CMAKE_CURRENT_LIST_DIR is not valid inside add_test arguments.
+set(SPP_CMAKE_DIR ${CMAKE_CURRENT_LIST_DIR})
+
 function(spp_gtest target)
     cmake_parse_arguments(PARSE_ARGV 1 A "" "" "PROPERTIES")
     # The tests need C++20, also when the host standard (CMAKE_CXX_STANDARD) is 17.
@@ -19,5 +22,5 @@ endfunction()
 
 add_test(NAME spp_scratch_clean
     COMMAND ${CMAKE_COMMAND} -DKEEP=$<BOOL:${SPP_KEEP_TEMP}> -DDIR=${SPP_SCRATCH_DIR}
-            -P ${CMAKE_SOURCE_DIR}/cmake/CleanScratch.cmake)
+            -P ${SPP_CMAKE_DIR}/CleanScratch.cmake)
 set_tests_properties(spp_scratch_clean PROPERTIES FIXTURES_SETUP spp_scratch)

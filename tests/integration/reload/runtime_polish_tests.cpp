@@ -189,7 +189,7 @@ struct TempScript
     void write(const char* name) const
     {
         std::ofstream f(file, std::ios::trunc);
-        f << read_file(std::string(SPP_SOURCE_DIR) + "/example/scripts/" + name);
+        f << read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/" + name);
     }
 };
 
@@ -263,7 +263,7 @@ TEST(HarnessTests, FullReloadBuildErrorKeepsTheActors)
 
     {
         std::ofstream f(script.file, std::ios::trunc);
-        f << read_file(std::string(SPP_SOURCE_DIR) + "/example/scripts/fnremoved_v2.spp");
+        f << read_file(std::string(SPP_SOURCE_DIR) + "/tests/scripts/fnremoved_v2.spp");
         f << "\nclass Broken : Actor {\n    void f() { int x = \"text\"; }\n}\n";
     }
     testing::internal::CaptureStderr();

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Tools
-nav_order: 14
+nav_order: 15
 ---
 
 `spp-ls` is the language server. The VS Code extension starts it.
@@ -20,7 +20,7 @@ nav_order: 14
 `spp-ls` serves only `.spp` files. Use the clangd extension for the C++ files. `clangd` must be in `PATH`. CMake writes the script host files, so you do not pass `-I` flags.
 
 ```cmake
-spp_script_host(NAME game TARGET game_engine
+spp_script_host(NAME engine TARGET engine
                 SCRIPT_DIRS ${CMAKE_SOURCE_DIR}/scripts
                 INCLUDES ${CMAKE_SOURCE_DIR}/engine)
 ```
@@ -29,7 +29,7 @@ Add `.cache/` to the ignore list of the project. Without a host, give the option
 
 ## sppc format flag
 
-`sppc --format=std|fmt` picks the format library for `${}` in the C++ text. The default is `std`. The flag is for build systems: `spp_add_scripts` sets it. `fmt` output also compiles as C++17. In build mode (without `--emit-cpp` and `--aot`), the build of `sppc` fixes the library, and a different `--format` is an error. See doc/embedding.md.
+`sppc --format=std|fmt` picks the format library for `${}` in the C++ text. The default is `std`. The flag is for build systems: `spp_add_scripts` sets it. `fmt` output also compiles as C++17. In build mode (without `--emit-cpp` and `--aot`), the build of `sppc` fixes the library, and a different `--format` is an error. See [CMake](cmake.html).
 
 ## VS Code
 

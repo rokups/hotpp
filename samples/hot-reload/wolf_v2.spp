@@ -1,0 +1,18 @@
+// Generation 2 of the script. It adds the field howls. The fields bites and the base state stay.
+using "Creature.h";
+using <string>;
+
+class Wolf : Creature {
+    int bites = 0;
+    int howls = 0;
+
+    Wolf() : base(std.string("wolf")) {
+    }
+
+    override void Tick(float dt) {
+        this.bites = this.bites + 1;
+        this.howls = this.howls + 1;
+        this.Hp = this.Hp - 1;
+        std.printf("[v2] %s: hp=%d howls=%d\n", this.Name.c_str(), this.Hp, this.howls);
+    }
+}

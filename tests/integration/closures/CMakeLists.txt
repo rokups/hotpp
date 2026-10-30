@@ -2,10 +2,10 @@
 add_executable(integration_closure_tests
     closure_tests.cpp
     generation_unload_tests.cpp
-    ${CMAKE_SOURCE_DIR}/example/engine/Actor.cpp
-    ${CMAKE_SOURCE_DIR}/example/engine/Util.cpp)
-target_include_directories(integration_closure_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+target_include_directories(integration_closure_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
 target_link_libraries(integration_closure_tests PRIVATE spp_backend GTest::gtest_main)
 set_target_properties(integration_closure_tests PROPERTIES ENABLE_EXPORTS ON)
-target_compile_definitions(integration_closure_tests PRIVATE SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+target_compile_definitions(integration_closure_tests PRIVATE SPP_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 spp_gtest(integration_closure_tests)

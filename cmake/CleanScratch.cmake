@@ -1,6 +1,6 @@
 # Remove the scratch files of the tests, the backends and the benchmarks.
 # Run it as a script: cmake -DKEEP=<bool> -DDIR=<scratch dir> -P CleanScratch.cmake
-# The directory imgui stays: it is the work directory of the example.
+# The directory imgui stays: it is the work directory of the sample `samples/imgui`.
 set(_keep "${KEEP}")
 if(DEFINED ENV{SPP_KEEP_TEMP})
     if(NOT "$ENV{SPP_KEEP_TEMP}" STREQUAL "" AND NOT "$ENV{SPP_KEEP_TEMP}" STREQUAL "0")

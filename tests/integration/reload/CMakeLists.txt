@@ -20,16 +20,16 @@ add_executable(integration_reload_tests
     core_module_tests.cpp
     reload_contract_tests.cpp
     full_reload_tests.cpp
-    ${CMAKE_SOURCE_DIR}/example/engine/Harness.cpp
-    ${CMAKE_SOURCE_DIR}/example/engine/Actor.cpp
-    ${CMAKE_SOURCE_DIR}/example/engine/Object.cpp
-    ${CMAKE_SOURCE_DIR}/example/engine/Util.cpp)
-target_include_directories(integration_reload_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    ${PROJECT_SOURCE_DIR}/tests/engine/Harness.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Object.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+target_include_directories(integration_reload_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
 target_link_libraries(integration_reload_tests PRIVATE spp_backend engine_harness GTest::gtest_main)
 set_target_properties(integration_reload_tests PROPERTIES ENABLE_EXPORTS ON)
 add_dependencies(integration_reload_tests gen1 gen2 gen4_base stress_generation)
 target_compile_definitions(integration_reload_tests PRIVATE
-    SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    SPP_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
     SPP_BACKEND_NAME="${SPP_BACKEND}"
     GEN1_SO="$<TARGET_FILE:gen1>"
     GEN2_SO="$<TARGET_FILE:gen2>"

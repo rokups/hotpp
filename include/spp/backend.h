@@ -53,4 +53,12 @@ public:
 // The backend that SPP_BACKEND selected at build time.
 std::unique_ptr<Backend> make_default_backend();
 
+// Additions to the build-time defaults of make_default_backend.
+struct DefaultBackendOptions
+{
+    std::vector<std::string> include_dirs; // after SPP_DEFAULT_INCLUDES
+    std::vector<std::string> extra_flags;  // after SPP_DEFAULT_CXXFLAGS
+};
+std::unique_ptr<Backend> make_default_backend(const DefaultBackendOptions& options);
+
 } // namespace spp

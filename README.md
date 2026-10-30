@@ -9,11 +9,11 @@ Each row is a milestone of `spp-design.md` section 10. "Not testable here" means
 
 | Milestone | Status | Note |
 |---|---|---|
-| M0 Spikes | Partial | R0 and P1 are done with `minengine`. The spikes for risk 2 and 3 need the real engine: not testable here. |
+| M0 Spikes | Partial | R0 and P1 are done with the test host `tests/engine`. The spikes for risk 2 and 3 need the real engine: not testable here. |
 | M1 Runtime spine | Done | R1 to R6 pass, also under ASan and TSan. |
 | M2 Translator v0 | Done | F1 passes, also for a native base that derives from a class template instance, a template over a template and a partial specialization (design risk 8). `class Foo : Tmpl<int>` works. |
 | M3 Diagnostics and debugging | Partial | F2 passes. F3 passes with gdb. lldb, the lldb formatters in a live session and Visual Studio with natvis are not testable here. |
-| M4 Engine integration | Not testable here | `minengine` is the only host. A real engine is needed. |
+| M4 Engine integration | Not testable here | The test host `tests/engine` and the samples in `samples/` are the only hosts. A real engine is needed. |
 | M5 Contract enforcement | Done | The rows of design 5.3 have tests in `tests/integration/reload/` and `tests/unit/translator/translate/`. |
 | M6 Language v1 | Done | Inheritance, virtuals, `is`/`as`, lambdas, enums, structs, module variables, interpolation, constructors. Coroutines are not in version 1. |
 | M7 AOT compilation | Done | `sppc --aot`. Generation 1 only. |
@@ -31,9 +31,10 @@ Not done, and not testable here: Windows and macOS, a real engine, a real lldb a
 
 - `include/spp/` has the public headers: `runtime.h`, `module.h`, `backend.h`, `clang_files_backend.h`, `jit_backend.h` and `sppc_lib.h`. Use the form `#include "spp/<name>.h"`.
 - `src/` has the library code. `src/runtime/` has the script runtime and the backends. `src/translator/` has the translator library `sppc_lib`. `src/tools/` has the tool `sppc`.
-- `example/` has the example engine and the examples. `example/engine/` has the executable `minengine` (`Actor`, `World`, a small main program). `example/scripts/` has the example scripts. `tests/integration/fixtures/` has the hand-written generations. `example/bench_backends.cpp` is the benchmark.
+- `tests/engine/` is the test host (`Actor`, `World`, `Harness`, `FileWatcher`). It is not a model for a user project: copy from `samples/`. `tests/scripts/` has the test scripts. `tests/integration/aot/` has the program `aot_demo`. `tests/integration/fixtures/` has the hand-written generations. `tools/bench/bench_backends.cpp` is the benchmark.
+- `samples/` has seven self-contained projects for consumers of S++ (see "Samples"): six show one way to host S++ each, and `imgui` is a Dear ImGui demo. Each one shows the `add_subdirectory` pattern.
 - `tests/` has the GoogleTest cases and the shared headers.
-- `cmake/` has `CPM.cmake` and `SppScripts.cmake` (`spp_add_scripts`).
+- `cmake/` has `CPM.cmake`, `SppScripts.cmake` (`spp_add_scripts`, `spp_script_host`), `SppTests.cmake` (`spp_gtest`) and `SppFormat.cmake` (the format library of `${}`).
 
 ## Build
 
@@ -54,11 +55,11 @@ The file `CMakePresets.json` has the presets. A build goes to `cmake-build/<pres
 - `sppc`, the language server and the tests need C++20. The build forces C++20 on these targets. The default standard of the other targets is 20. Set `-DCMAKE_CXX_STANDARD=17` for a C++17 host.
 - The standard of the host (`SPP_CXX_STANDARD` in `include/spp/config.h`: 17, 20 or 23) is the standard of the script compile and of the parse of the native headers. The `sppc` flag `--std=c++17|c++20|c++23` overrides it.
 - A C++17 host needs fmt for `${}`. See DECISIONS.md.
-- String interpolation `${}` uses fmt in a C++17 build and `std::format` in a C++20 build. `-DSPP_USE_FMT=ON` selects fmt at C++20 and later. The choice is a build-time choice. `SPP_FMT_PROVIDER` says where fmt comes from: `AUTO` (default: `find_package`, then CPM.cmake), `SYSTEM` (`find_package` only), `CPM` (always fetch) or `NONE` (your project supplies the target `fmt::fmt-header-only` or `fmt::fmt`). See doc/embedding.md.
+- String interpolation `${}` uses fmt in a C++17 build and `std::format` in a C++20 build. `-DSPP_USE_FMT=ON` selects fmt at C++20 and later. The choice is a build-time choice. `SPP_FMT_PROVIDER` says where fmt comes from: `AUTO` (default: `find_package`, then CPM.cmake), `SYSTEM` (`find_package` only), `CPM` (always fetch) or `NONE` (your project supplies the target `fmt::fmt-header-only` or `fmt::fmt`). See doc/cmake.md and doc/embedding.md.
 
 ### Build tree layout
 
-The source tree has one `CMakeLists.txt` in each directory (`src/*`, `example/*`, `tests/*`). The build tree `cmake-build/<preset>` has these folders:
+The source tree has one `CMakeLists.txt` in each directory (`src/*`, `samples/*`, `tests/*`, `tools/*`). The build tree `cmake-build/<preset>` has these folders:
 
 - `bin/<CONFIG>/` has the executables.
 - `lib/<CONFIG>/` has the libraries and the fixture `.so` files.
@@ -81,25 +82,43 @@ To purge an old build tree, remove the preset directory and configure again:
     rm -rf cmake-build/<preset>
     cmake --preset <preset>
 
+## Samples
+
+The folder `samples/` has seven projects: `aot`, `runtime-compile`, `precompiled-library`, `hot-reload`, `clang-files-backend`, `jit-backend` and `imgui`. See `samples/README.md` for the list. `doc/cmake.md` explains how a project uses S++ with CMake.
+
+The option `SPP_BUILD_SAMPLES` is ON for the main project. The target names start with `sample_`:
+
+    cmake --preset linux-clang-files
+    cmake --build --preset linux-clang-files-dbg --target sample_aot
+    ctest --preset linux-clang-files-dbg -R '^sample_aot$'
+
+A sample also builds as a separate project. It needs `clang`, `libclang` and Ninja. The default `SPP_ROOT` is the tree that holds the sample:
+
+    cmake -S samples/aot -B /tmp/sample_aot -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++
+    cmake --build /tmp/sample_aot
+    ctest --test-dir /tmp/sample_aot --output-on-failure
+
+The option `SPP_SAMPLES_STANDALONE_TEST` (default OFF) adds the CTest test `samples_standalone_aot`. The test builds and runs `samples/aot` as a separate project in `samples_standalone/aot` of the build tree.
+
 ## Run
 
-    cmake-build/linux-clang-files/bin/Debug/minengine cmake-build/linux-clang-files/lib/Debug/gen1.so
+    ctest --preset linux-clang-files-dbg -R sample_hot_reload -V
 
-The command loads `gen1.so` and makes one `Player`. It ticks the world 3 times. It exits with 0 on success.
+The test runs `samples/hot-reload`. It loads a script, makes one object, reloads the script and keeps the live object. It exits with 0 on success. The test `HandwrittenGeneration` loads `gen1.so` in the same way (see "Test").
 
 The test `ReloadMigration` uses the path of a library that does not exist (`gen3_missing.so`). The load must fail.
 
 ## Translator
 
-    cmake-build/linux-clang-files/bin/Debug/sppc --emit-cpp example/scripts/player_v1.spp --gen 1 -o out.cpp -I include -I example/engine --slots player.slots
+    cmake-build/linux-clang-files/bin/Debug/sppc --emit-cpp tests/scripts/player_v1.spp --gen 1 -o out.cpp -I include -I tests/engine --slots player.slots
 
 `sppc --emit-cpp` is a thin wrapper. It reads the files and calls `sppc::translate` from `sppc_lib` (`include/spp/sppc_lib.h`). The function takes strings: script text, script name for `#line`, generation, slot file content, include dirs and resource dir. It returns strings: C++ text, new slot file content and diagnostics. It does not write a file. The translator reads the script and the imported headers. It asks libclang (C API) for the virtual methods of the native base class. A `sppc::TranslatorSession` keeps the answer, see "Translator session". It writes the shell (one stub for each virtual), the state struct, the reflection table, the generation functions, the thunks and the record. It writes `#line` directives, so a Clang error points to the script line. It reports a missing pure virtual override and an override of a `final` method. A method with the name of a base virtual method and other parameter types is an error (it hides the virtual method).
 
-The script has no brace initialization. Use parentheses: `T(args)` and `new T(args)`. A `{` in an expression gives an error. The script subset: `using`, `class N : Base`, fields `Type name;` or `Type name = init;` with `[alias("old")]`, methods `Ret name(T a) { ... }` (a method overrides a base virtual method when the name and the parameter types match; `void` means no return value), locals `Type name = e;`, `var name = e;`, `const Type name = e;` and `const var name = e;` (`var` gives `auto`), `this.`, `base.`, `null`, float literals, `Math.Min` as `Math::Min`, `if`, `while`, `for`, `return`, `throw`, `try`, `catch` and `finally`. A catch clause is `catch (Type e)` or `catch (...)`. A method can have a modifier: `override`, `virtual`, `new`, `public`, `private` or `protected`. A method that overrides a native virtual method needs `override`. The parser stores the access word and `virtual`. It does not enforce the access word, and `virtual` has no effect yet. A property is `Type N { get; set; }`, `{ get; }`, `{ get; private set; }` or `{ get { ... } set { ... } }`. The setter body reads the new value as `value`. A read or a write of `p.N` on another object of the class calls `get_N` or `set_N` of that object. A write gives the assigned value, so `a = p.N = 1` works. The rule uses the name only. If `p` is not an object of the class, the access throws `std::runtime_error`. Native stubs tell the translator how a C++ type behaves. `[native, handle("std::shared_ptr<$T>")] class Weapon;` declares a handle type. `$T` is the class. `[native, value] class std.string;` declares a value type. A pattern stub covers many types: `std.vector<*>` or `physics.*`. A stub lives in the script or in a prelude file. Give a prelude file to `sppc --prelude file` or in `TranslateOptions::preludes`. A handle type in a field, a local, a return type and `foreach` uses the storage type. A handle parameter becomes `const H&`. `.` on a handle uses `spp::deref`. `std::shared_ptr` is built in. A custom handle needs the `spp::is_handle` trait. A type with no stub keeps its raw text. `new T(args)` needs parentheses. It gives `std::make_shared<T>(args)` for a shared_ptr handle, `H(new T(args))` for another handle and `T(args)` otherwise. See `example/scripts/handle_v1.spp` to `handle_v3.spp`. A reload that changes a field type is accepted (design 4.7): the `convert_<field>` hook converts the value, else the field gets its default value and the runtime logs a warning. See "Reload hooks". A handle stub on a native base class applies to all native subclasses. The nearest base wins. An exact stub on a subclass wins. A base stub beats a pattern stub. Only `handle` and `intrusive` are inherited. `value` is not inherited. The class hierarchy comes from libclang. A class in a system header is not in the map. A nested class and a template are not in the map. `intrusive("AddRef", "Release")` implies a handle: `[native, handle("$T*"), intrusive("AddRef", "Release")] class Object;`. If `handle` is given, it must be `$T*`. `intrusive` does not combine with `value`. The storage type is `spp::Intrusive<T, &Owner::AddRef, &Owner::Release>`. Owner is the class with the stub. A new object starts with zero references (the boost `intrusive_ptr` convention). The wrapper adds a reference when it is made from `T*`. The Add and Release methods must be non-overloaded, non-template members. A missing method gives a clang error that names it. A reload copies the field (add) and destroys the old block (release), so the count stays correct. See `example/scripts/intrusive_v1.spp`, `intrusive_v2.spp` and `example/engine/Object.h`. A script class is a handle. `class Name : Base { }` uses the handle of the native base. `class Name { }` has no base and is also a handle. `struct Name { }` is a value type inside the state block with copy semantics. `[value] class` on a script class is an error: use `struct`. A reload migrates it recursively. See `example/scripts/kinds_v1.spp` and `kinds_v2.spp`. Deferred to slice 2: member access on a script handle, the borrowed-pointer checks of design 7.10.6, the checks of design 7.10.7, and the analysis of a parameter that a method stores as a copy. Native interface bases and their conflict checks are done (S8b, see "Native interface bases"). A comparison of an `Intrusive` with a raw `T*` is untested. Weak spot: a non-string attribute argument can give a spurious second error on a stub. A `T&` parameter takes its argument with no marker: `f(x)`. The prefix `&e` is the C++ address-of operator. It gives a borrowed pointer, and a field, a return value or a collection cannot hold it. `&h` on a handle is an error: use `h`, `&*h` or `*h`. `.` on a handle always means a member of the pointee, so `h.get()` calls `get` of the pointee. The arrow lambda `() => { ... }`, `(float x) => { ... }` and `(x) => { ... }` works in a method body. A parameter is `Type name`. A method parameter needs a type. A lambda parameter without a type is `auto`. The lambda body is a block or an expression: `(int x) => x * 2` is `(int32_t x) { return x * 2; }`. A C style cast `(T)e` works for a builtin type, `T*` and `T&`. A statement that starts with a chain with `?.` runs only when the receiver is not null: `h?.F(a);` and `h?.field = v;` give `if (h) ...`. The receiver runs once. `?.` in any other expression is an error. A parameter name has only one limit: the `__` prefix is reserved for generated code. See "Closures and unload".
+The script has no brace initialization. Use parentheses: `T(args)` and `new T(args)`. A `{` in an expression gives an error. The script subset: `using`, `class N : Base`, fields `Type name;` or `Type name = init;` with `[alias("old")]`, methods `Ret name(T a) { ... }` (a method overrides a base virtual method when the name and the parameter types match; `void` means no return value), locals `Type name = e;`, `var name = e;`, `const Type name = e;` and `const var name = e;` (`var` gives `auto`), `this.`, `base.`, `null`, float literals, `Math.Min` as `Math::Min`, `if`, `while`, `for`, `return`, `throw`, `try`, `catch` and `finally`. A catch clause is `catch (Type e)` or `catch (...)`. A method can have a modifier: `override`, `virtual`, `new`, `public`, `private` or `protected`. A method that overrides a native virtual method needs `override`. The parser stores the access word and `virtual`. It does not enforce the access word, and `virtual` has no effect yet. A property is `Type N { get; set; }`, `{ get; }`, `{ get; private set; }` or `{ get { ... } set { ... } }`. The setter body reads the new value as `value`. A read or a write of `p.N` on another object of the class calls `get_N` or `set_N` of that object. A write gives the assigned value, so `a = p.N = 1` works. The rule uses the name only. If `p` is not an object of the class, the access throws `std::runtime_error`. Native stubs tell the translator how a C++ type behaves. `[native, handle("std::shared_ptr<$T>")] class Weapon;` declares a handle type. `$T` is the class. `[native, value] class std.string;` declares a value type. A pattern stub covers many types: `std.vector<*>` or `physics.*`. A stub lives in the script or in a prelude file. Give a prelude file to `sppc --prelude file` or in `TranslateOptions::preludes`. A handle type in a field, a local, a return type and `foreach` uses the storage type. A handle parameter becomes `const H&`. `.` on a handle uses `spp::deref`. `std::shared_ptr` is built in. A custom handle needs the `spp::is_handle` trait. A type with no stub keeps its raw text. `new T(args)` needs parentheses. It gives `std::make_shared<T>(args)` for a shared_ptr handle, `H(new T(args))` for another handle and `T(args)` otherwise. See `tests/scripts/handle_v1.spp` to `handle_v3.spp`. A reload that changes a field type is accepted (design 4.7): the `convert_<field>` hook converts the value, else the field gets its default value and the runtime logs a warning. See "Reload hooks". A handle stub on a native base class applies to all native subclasses. The nearest base wins. An exact stub on a subclass wins. A base stub beats a pattern stub. Only `handle` and `intrusive` are inherited. `value` is not inherited. The class hierarchy comes from libclang. A class in a system header is not in the map. A nested class and a template are not in the map. `intrusive("AddRef", "Release")` implies a handle: `[native, handle("$T*"), intrusive("AddRef", "Release")] class Object;`. If `handle` is given, it must be `$T*`. `intrusive` does not combine with `value`. The storage type is `spp::Intrusive<T, &Owner::AddRef, &Owner::Release>`. Owner is the class with the stub. A new object starts with zero references (the boost `intrusive_ptr` convention). The wrapper adds a reference when it is made from `T*`. The Add and Release methods must be non-overloaded, non-template members. A missing method gives a clang error that names it. A reload copies the field (add) and destroys the old block (release), so the count stays correct. See `tests/scripts/intrusive_v1.spp`, `intrusive_v2.spp` and `tests/engine/Object.h`. A script class is a handle. `class Name : Base { }` uses the handle of the native base. `class Name { }` has no base and is also a handle. `struct Name { }` is a value type inside the state block with copy semantics. `[value] class` on a script class is an error: use `struct`. A reload migrates it recursively. See `tests/scripts/kinds_v1.spp` and `kinds_v2.spp`. Deferred to slice 2: member access on a script handle, the borrowed-pointer checks of design 7.10.6, the checks of design 7.10.7, and the analysis of a parameter that a method stores as a copy. Native interface bases and their conflict checks are done (S8b, see "Native interface bases"). A comparison of an `Intrusive` with a raw `T*` is untested. Weak spot: a non-string attribute argument can give a spurious second error on a stub. A `T&` parameter takes its argument with no marker: `f(x)`. The prefix `&e` is the C++ address-of operator. It gives a borrowed pointer, and a field, a return value or a collection cannot hold it. `&h` on a handle is an error: use `h`, `&*h` or `*h`. `.` on a handle always means a member of the pointee, so `h.get()` calls `get` of the pointee. The arrow lambda `() => { ... }`, `(float x) => { ... }` and `(x) => { ... }` works in a method body. A parameter is `Type name`. A method parameter needs a type. A lambda parameter without a type is `auto`. The lambda body is a block or an expression: `(int x) => x * 2` is `(int32_t x) { return x * 2; }`. A C style cast `(T)e` works for a builtin type, `T*` and `T&`. A statement that starts with a chain with `?.` runs only when the receiver is not null: `h?.F(a);` and `h?.field = v;` give `if (h) ...`. The receiver runs once. `?.` in any other expression is an error. A parameter name has only one limit: the `__` prefix is reserved for generated code. See "Closures and unload".
 
 Builtin type names are fixed-width. The parser changes each alias to one canonical C++ name, so `ulong` and `uint64` give the same text in the emitted C++, in the override key and in the reload type key. `int` becomes `int32_t`. The table is in `src/translator/builtin_types.h` and in `spp-design.md` (section 7.1.1). The names: `bool`, `sbyte`/`int8`, `byte`/`uint8`, `short`/`int16`, `ushort`/`uint16`, `int`/`int32`, `uint`/`uint32`, `long`/`int64`, `ulong`/`uint64`, `nint`/`intptr`, `nuint`/`uintptr`, `float`, `double`, `char` (8 bit) and `wchar`/`char16` (`char16_t`). The C++ multi-word spellings are errors with a hint: `unsigned int` gives "use 'uint'", and `long long` gives "use 'long'". A native name such as `int32_t` or `size_t` stays a normal native name.
 
-Imports: `using "Actor.h";` becomes `#include "Actor.h"`. A standard header uses angle brackets: `using <vector>;` or `using "<vector>";`. Both forms become `#include <vector>`, in the generated file and in the libclang probe. A missing header gives an error with the script name and line. The generated file always includes `<cstddef>`, `<cstdint>`, `<cstdio>`, `<new>`, `<string>`, `<type_traits>`, `<typeinfo>`, `<utility>` and `spp/runtime.h`. Add `using` for any other standard header, for example `<algorithm>`. A script can call a non-inline function of the host, for example `Distance` in `example/engine/Util.cpp`. The host executable must export it (`ENABLE_EXPORTS`, `-rdynamic`).
+Imports: `using "Actor.h";` becomes `#include "Actor.h"`. A standard header uses angle brackets: `using <vector>;` or `using "<vector>";`. Both forms become `#include <vector>`, in the generated file and in the libclang probe. A missing header gives an error with the script name and line. The generated file always includes `<cstddef>`, `<cstdint>`, `<cstdio>`, `<new>`, `<string>`, `<type_traits>`, `<typeinfo>`, `<utility>` and `spp/runtime.h`. Add `using` for any other standard header, for example `<algorithm>`. A script can call a non-inline function of the host, for example `Distance` in `tests/engine/Util.cpp`. The host executable must export it (`ENABLE_EXPORTS`, `-rdynamic`).
 
 A script uses `.` for a scope and for a member access, for a pointer and for a reference. `std.string` becomes `std::string`. `p.m` becomes `spp::deref(p).m`, and the C++ compiler picks the pointer or the reference form. The text `::` and `->` in a script is an error: "use '.' instead of '::'" and "use '.' instead of '->'". The `=>` of a lambda stays. The old `->` return type is removed: the return type stands before the name.
 
@@ -115,18 +134,18 @@ The slot file (`--slots`) keeps the slot order of the script methods stable betw
 
 ### Module declarations (S8a)
 
-A script can declare enums, structs and module variables at file level (`DECISIONS.md` item 11). See `example/scripts/module_v1.spp` and `module_v2.spp`.
+A script can declare enums, structs and module variables at file level (`DECISIONS.md` item 11). See `tests/scripts/module_v1.spp` and `module_v2.spp`.
 
 - `enum Name [: type] { A, B = 5, C }` becomes `enum class Name : T`. The default type is `int`. `Name.A` becomes `Name::A`. A reload migrates an enum field as an integer.
 - `struct Name { ... }` is the only way to declare a script value type. `[value] class Name { ... }` is an error: use `struct`. `[native, value] class X;` is a native stub and stays.
 - A module variable is `[alias("old")] Type name [= init];` at file level. Every class of the script reads it by its bare name. The translator puts the variables in a synthetic struct `SppModule`. The loader owns one module block. A reload migrates it like the fields of a class.
 - An initializer can use a module variable declared before it. The loader runs the initializers in declaration order.
-- A convert hook of a module variable is `T convert_<var>(Old old) { ... }` at file level (`DECISIONS.md` item 14). It cannot read a module variable. See `example/scripts/modconv_v1.spp` and `modconv_v2.spp`.
+- A convert hook of a module variable is `T convert_<var>(Old old) { ... }` at file level (`DECISIONS.md` item 14). It cannot read a module variable. See `tests/scripts/modconv_v1.spp` and `modconv_v2.spp`.
 - Limits: a module variable is a native type, an enum or a struct. A script has no other free functions.
 
 ### Native interface bases (S8b)
 
-A script class can have more than one native base: `class Boss : Actor, IDamageable, ITagged`. The first base is the primary base. The other bases are interface bases (design 4.4). See `example/scripts/boss_v1.spp`, `boss_v2.spp`, `boss_rebase.spp` and `example/engine/Damageable.h`.
+A script class can have more than one native base: `class Boss : Actor, IDamageable, ITagged`. The first base is the primary base. The other bases are interface bases (design 4.4). See `tests/scripts/boss_v1.spp`, `boss_v2.spp`, `boss_rebase.spp` and `tests/engine/Damageable.h`.
 
 - The shell derives from all bases: `struct Boss_Shell final : Actor, IDamageable, ITagged, spp::ShellBase`. The constructor arguments go to the primary base. An interface base needs a default constructor.
 - libclang reads the virtuals of each base. Each virtual gets one slot. The slots of the primary base come first, then the slots of each interface base in the order of the list. A name in two bases gets a suffix of its parameter types, for example `SLOT_Size_i`.
@@ -181,7 +200,7 @@ Facts that differ from the first design:
 
 ### Measurements
 
-Machine: 32 threads, Linux 7.2, clang 23.1.3, `-O0`/`-O1` as noted, the page cache is warm. Tool: `cmake-build/<preset>/bin/Debug/bench_backends` (`example/bench_backends.cpp`, `std::chrono`). Times in ms for one `load` (translate + compile + load) of `player_v1.spp` (v1) and `player_v2.spp` (v2). "Cold" is the first load in a new process (a new session). "Warm" is the median of 5 later loads in the same process. Warm backends share one translator session, except in the rows "no cache" (`--no-cache`). Cold v1 always parses the headers. Cold v2 and all warm loads use the cache, except v1 in the rows "no cache".
+Machine: 32 threads, Linux 7.2, clang 23.1.3, `-O0`/`-O1` as noted, the page cache is warm. Tool: `cmake-build/<preset>/bin/Debug/bench_backends` (`tools/bench/bench_backends.cpp`, `std::chrono`). Times in ms for one `load` (translate + compile + load) of `player_v1.spp` (v1) and `player_v2.spp` (v2). "Cold" is the first load in a new process (a new session). "Warm" is the median of 5 later loads in the same process. Warm backends share one translator session, except in the rows "no cache" (`--no-cache`). Cold v1 always parses the headers. Cold v2 and all warm loads use the cache, except v1 in the rows "no cache".
 
 | Configuration | v1 cold | v2 cold | v1 warm | v2 warm |
 |---|---|---|---|---|
@@ -196,7 +215,7 @@ Machine: 32 threads, Linux 7.2, clang 23.1.3, `-O0`/`-O1` as noted, the page cac
 
 CLANG_FILES with a PCH (P1, S19). The bench tool makes a PCH only in the JIT backend. For CLANG_FILES, make the PCH with the compiler and pass it through `--cxxflag`. The PCH header has the same includes as the one in `bench_backends.cpp`.
 
-    clang++ -std=c++20 -fPIC -g -O1 -resource-dir=$(clang++ -print-resource-dir) -I include -I example/engine \
+    clang++ -std=c++20 -fPIC -g -O1 -resource-dir=$(clang++ -print-resource-dir) -I include -I tests/engine \
         -x c++-header pch.hpp -o p.pch
     bench_backends --warm 9 --cxxflag -O1 --cxxflag -include-pch --cxxflag $PWD/p.pch
 
@@ -221,10 +240,10 @@ Phases of one JIT load (v2, warm, cache): translate 1.4, compile 782, ORC (code 
 
 ## Precompiled scripts
 
-The tool `sppc` compiles scripts ahead of time. This is not a backend. Any build can load the result. Call `spp::module_from_library(path)` and give the `Module` to the `Loader`. This call needs no backend object.
+The tool `sppc` compiles scripts ahead of time. This is not a backend. Any build can load the result. Call `spp::module_from_library(path)` and give the `Module` to the `Loader`. This call needs no backend object. The sample [samples/precompiled-library](samples/precompiled-library/) is a complete project.
 
-    sppc player_v1.spp --gen 1 -I include -I example/engine --out-dir out/
-    sppc player_v2.spp --gen 2 -I include -I example/engine --out-dir out/
+    sppc player_v1.spp --gen 1 -I include -I tests/engine --out-dir out/
+    sppc player_v2.spp --gen 2 -I include -I tests/engine --out-dir out/
 
 The tool `sppc` has two modes. The default mode builds a `.so`. The mode `--emit-cpp` only translates (see "Translator").
 
@@ -255,8 +274,8 @@ The exit code is 0 for success, 1 for an error and 2 for a wrong command line. T
 
 The CMake function `spp_add_scripts` (`cmake/SppScripts.cmake`) only runs `sppc`:
 
-    spp_add_scripts(TARGET player SCRIPTS example/scripts/player_v1.spp
-                    INCLUDES include example/engine FLAGS ${flags} DEPENDS ${headers})
+    spp_add_scripts(TARGET player SCRIPTS tests/scripts/player_v1.spp
+                    INCLUDES include tests/engine FLAGS ${flags} DEPENDS ${headers})
 
 `TARGET` is a custom target that makes the libraries in `OUT_DIR` (default `${CMAKE_BINARY_DIR}/spp_scripts`). The generation is 1. `SPPC_ARGS` passes extra arguments to `sppc`. The tests use `SPPC_ARGS --gen n` and `AFTER` to build later generations.
 
@@ -276,7 +295,7 @@ Command line (S12). The tool translates generation 1 of each script. It does not
 The CMake function `spp_add_scripts` with the option `AOT` (`cmake/SppScripts.cmake`) runs `sppc --aot` and builds a static library. `AFTER` does not work with `AOT`. `PRELUDES` works only with `AOT`:
 
     spp_add_scripts(TARGET game_scripts AOT SCRIPTS player.spp boss.spp
-                    INCLUDES include example/engine [PRELUDES file...] [DEPENDS file...])
+                    INCLUDES include tests/engine [PRELUDES file...] [DEPENDS file...])
     target_link_libraries(game PRIVATE game_scripts)
 
 The library links `spp_aot`. This target holds the core of the runtime (`threads.cpp`, `registry.cpp`) and the AOT registry (`aot.cpp`). The loader, the migration and `dlopen` are in the other target `spp_runtime`. Do not link both targets in one program.
@@ -289,7 +308,7 @@ At start-up the program makes the registry. The registry calls the register func
 
 `new` of a script class, script virtuals, properties, `is`/`as` and constructors work as under the loader, because the code is the same. The generation guard stays in the code and costs one compare. An AOT program never runs `onReload`.
 
-The example is `example/aot/main.cpp` (target `aot_demo`) with the script `example/scripts/aot_demo.spp`. The tests are in `tests/integration/aot/`. They run the same steps with the loader and with the AOT program and compare the text. They check with `nm` that `aot_demo` has no loader and no Clang symbol. A compile error in the AOT C++ shows the generated file, not the script line.
+The sample [samples/aot](samples/aot/) is a small project that consumes S++ with `add_subdirectory`. The test program is `tests/integration/aot/aot_demo_main.cpp` (target `aot_demo`) with the script `tests/scripts/aot_demo.spp`. The tests are in `tests/integration/aot/`. They run the same steps with the loader and with the AOT program and compare the text. They check with `nm` that `aot_demo` has no loader and no Clang symbol. A compile error in the AOT C++ shows the generated file, not the script line.
 
 ## Dependencies
 
@@ -315,30 +334,30 @@ All tests are GoogleTest cases. CMake registers them with `spp_gtest` (a wrapper
 
 - `HandwrittenGeneration` (`tests/integration/reload/handwritten_generation_tests.cpp`) loads `gen1.so` and makes one `Player`. It ticks the world 3 times and calls both `TakeDamage` overloads. It checks the type name, the position and the field `hp` by reflection.
 - `ReloadMigration` (`tests/integration/reload/reload_migration_tests.cpp`) binds a delegate to `heal` through a thunk. It reloads gen 2 at the frame boundary and checks the address, the migrated state, the new `Tick` and the delegate. It then tries gen 4 and a missing library. Both must be rejected, and gen 2 must keep running.
-- `BackendTests` (`tests/integration/reload/`) use the backend that `SPP_BACKEND` selected. They run the F1 reload scenario (`tests/support/f1_scenario.h`): generation 1 then generation 2, the same address, `hp` becomes `health`, `shield` is 25 and a delegate calls the new `heal`. A bad script (`example/scripts/bad.spp`) must give an error that names `bad.spp` and the line. The runtime must keep running after the error.
+- `BackendTests` (`tests/integration/reload/`) use the backend that `SPP_BACKEND` selected. They run the F1 reload scenario (`tests/support/f1_scenario.h`): generation 1 then generation 2, the same address, `hp` becomes `health`, `shield` is 25 and a delegate calls the new `heal`. A bad script (`tests/scripts/bad.spp`) must give an error that names `bad.spp` and the line. The runtime must keep running after the error.
 - `SessionCache` (`tests/unit/translator/session/session_cache_tests.cpp`) checks the cache: a hit gives the same output as a miss, a changed header (also a nested one) invalidates it, a second base class works in the same session, and the second translate takes less than 150 ms (the real value is about 1.3 ms).
 - `JitTests` (`tests/integration/backends/jit_backend_tests.cpp`, only in a JIT build) check that no file appears and no child process runs. They also check exceptions in JIT code, a precompiled header and the life of a generation.
-- `Closure`, `GenerationUnload` (`tests/integration/closures/`) test escaped closures and the unload of generations with `example/scripts/timer_v1.spp` and `timer_v2.spp`. See "Closures and unload".
+- `Closure`, `GenerationUnload` (`tests/integration/closures/`) test escaped closures and the unload of generations with `tests/scripts/timer_v1.spp` and `timer_v2.spp`. See "Closures and unload".
 - `LambdaTranslation` (`tests/unit/translator/translate/lambda_translation_tests.cpp`) checks the output for an arrow lambda.
 - The other translator tests are in `tests/unit/translator/`. Each folder is one test program: `parser`, `lowering`, `emit`, `types`, `diagnostics`, `session` and `translate`. The golden-output tests are in `tests/golden/`. The expected files are in `tests/golden/expected/`. Set `SPP_UPDATE_GOLDEN` to write them again.
 - `PrecompiledTests` load the libraries that `spp_add_scripts` made with `sppc`, through `module_from_library`. They run the same F1 scenario. They run for each `SPP_BACKEND` value. One test runs `sppc` on `bad.spp` and checks the exit code and the error line.
 
-## ImGui example
+## ImGui sample
 
-`imgui_app` (`example/imgui/`) draws a Dear ImGui window. A script class draws the user interface. The script includes the real `imgui.h` (`using "imgui.h";`) and calls the ImGui API as it is: `ImGui.Begin("x")`, `ImGui.Text("n: %d", this.n)`, `ImGui.Checkbox("c", &this.on)`. A pointer parameter takes the address of a field. There is no wrapper layer.
+`sample_imgui` (`samples/imgui/`) draws a Dear ImGui window. A script class draws the user interface. The script includes the real `imgui.h` (`using "imgui.h";`) and calls the ImGui API as it is: `ImGui.Begin("x")`, `ImGui.Text("n: %d", this.n)`, `ImGui.Checkbox("c", &this.on)`. A pointer parameter takes the address of a field. There is no wrapper layer.
 
 Build. The target exists only when CMake finds SDL3 (`find_package(SDL3)`). Without SDL3 the configure step prints a STATUS message and the rest of the build is the same. CPM fetches Dear ImGui (v1.92.9b) and builds the static library `imgui_sdl3` with the SDL3 and SDL_Renderer backends. The executable links it as a whole archive, so a script can call every ImGui function.
 
     cmake --preset linux-clang-files
-    cmake --build --preset linux-clang-files-dbg --target imgui_app
+    cmake --build --preset linux-clang-files-dbg --target sample_imgui
 
-Run. The default script is `example/imgui/demo.spp`.
+Run. The default script is `samples/imgui/demo.spp`.
 
-    cmake-build/linux-clang-files/bin/Debug/imgui_app [script]
+    cmake-build/linux-clang-files/bin/Debug/sample_imgui [script]
 
 Hot reload. The host checks the modification time of the script file at each frame. When it changes, the host compiles the script as a new generation and starts a reload. The commit happens after `Frame()`, at the frame boundary. The object keeps its field values. If the compile or the reload fails, the window "Script error" shows the text and the old generation keeps running. If `Frame()` throws, the host drops the object and shows the message. The next good reload makes a new object. The host writes `reloaded gen N` and `reload failed: ...` to stderr.
 
-The base class is `UiApp` (`example/imgui/UiApp.h`, virtual `Frame()`). Gap: a native array field such as `float rgb[3];` gives "expected a member name", so `ImGui.ColorEdit3("c", this.rgb)` does not work. Use `ImVec4 col` and `&this.col.x`, or three float fields.
+The base class is `UiApp` (`samples/imgui/UiApp.h`, virtual `Frame()`). Gap: a native array field such as `float rgb[3];` gives "expected a member name", so `ImGui.ColorEdit3("c", this.rgb)` does not work. Use `ImVec4 col` and `&this.col.x`, or three float fields.
 
 ## Reload
 
@@ -364,7 +383,7 @@ A script class can define two kinds of hook (design 4.7). A hook is not a script
 - A native move constructor that throws during the migration is fatal (design 6.6). The runtime calls `spp::request_restart`. Without a handler (`spp::set_restart_handler`) it aborts. With a handler that returns, the commit returns false and the old generation stays.
 - The reload still rejects a change of the native base class and a change of the shell layout.
 
-See `example/scripts/hooks_v1.spp` to `hooks_v3.spp`, `tests/unit/runtime/migration_tests.cpp` and `tests/integration/reload/hook_tests.cpp`.
+See `tests/scripts/hooks_v1.spp` to `hooks_v3.spp`, `tests/unit/runtime/migration_tests.cpp` and `tests/integration/reload/hook_tests.cpp`.
 
 ## Diagnostics and debugging
 
@@ -443,7 +462,7 @@ A script host tells `spp-ls` how the engine compiles its scripts. CMake writes t
 include(cmake/SppScripts.cmake)
 # spp_add_scripts calls spp_script_host by themselves.
 # Call it directly for a host without these functions:
-spp_script_host(NAME game TARGET game_engine
+spp_script_host(NAME engine TARGET engine
                 SCRIPT_DIRS ${CMAKE_SOURCE_DIR}/scripts
                 INCLUDES ${CMAKE_SOURCE_DIR}/engine)
 ```
@@ -514,7 +533,7 @@ The debug check is the counter `spp::in_script_tick()`. The engine wraps each ac
 
 A class that a new generation drops is removed (design 6.1). Its record stays. Its live objects keep their state. Each slot points to `spp::removed_class_handler()`, which logs the first call, counts all calls and returns zero. A floating point result of such a call is not defined. The class can come back in a later generation. `Loader::stats()` and `Loader::stats_text()` (the `script_stats` text) list the generations, the pins, the live objects, the classes with their slots and the removed classes.
 
-`minengine script.spp [Class]` compiles the script, ticks at 60 Hz and reloads when the file changes (`FileWatcher`: inotify on Linux, polling else). Commands on stdin: `reload`, `stats`, `quit`.
+The sample `samples/hot-reload` shows the reload path. The test host `tests/engine/Harness` ticks a world and reloads a script when the file changes (`FileWatcher`: inotify on Linux, polling else). The tests in `tests/integration/reload/` (`integration_reload_tests`) test this.
 
 The warnings of a reload use readable names: C++ type names (`int`, `std::string`) and class names (`Hero`, not `HeroState_g2`).
 

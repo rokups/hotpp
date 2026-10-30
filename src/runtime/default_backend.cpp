@@ -38,11 +38,18 @@ std::vector<std::string> split_list(const std::string& s)
 
 std::unique_ptr<Backend> make_default_backend()
 {
+    return make_default_backend(DefaultBackendOptions{});
+}
+
+std::unique_ptr<Backend> make_default_backend(const DefaultBackendOptions& options)
+{
 #if defined(SPP_BACKEND_CLANG_FILES)
     ClangFilesOptions o;
     o.compiler = SPP_DEFAULT_CXX;
     o.include_dirs = split_list(SPP_DEFAULT_INCLUDES);
     o.extra_flags = split_list(SPP_DEFAULT_CXXFLAGS);
+    o.include_dirs.insert(o.include_dirs.end(), options.include_dirs.begin(), options.include_dirs.end());
+    o.extra_flags.insert(o.extra_flags.end(), options.extra_flags.begin(), options.extra_flags.end());
     o.resource_dir = SPP_DEFAULT_RESOURCE_DIR;
     // One work directory for each process, so parallel test processes do not share files.
     o.work_dir = std::string(SPP_DEFAULT_WORK_DIR) + "/p" + std::to_string(getpid());
@@ -56,6 +63,8 @@ std::unique_ptr<Backend> make_default_backend()
     o.compiler = SPP_DEFAULT_CXX;
     o.include_dirs = split_list(SPP_DEFAULT_INCLUDES);
     o.extra_flags = split_list(SPP_DEFAULT_CXXFLAGS);
+    o.include_dirs.insert(o.include_dirs.end(), options.include_dirs.begin(), options.include_dirs.end());
+    o.extra_flags.insert(o.extra_flags.end(), options.extra_flags.begin(), options.extra_flags.end());
     o.resource_dir = SPP_DEFAULT_RESOURCE_DIR;
     return std::make_unique<JitBackend>(std::move(o));
 #endif

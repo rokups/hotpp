@@ -2,10 +2,10 @@
 #
 #   spp_add_scripts(TARGET name SCRIPTS a.spp b.spp
 #                   [INCLUDES dir...] [FLAGS cxxflag...] [DEPENDS file...]
-#                   [OUT_DIR dir] [AFTER target])
+#                   [OUT_DIR dir] [AFTER target] [SPPC_ARGS arg...])
 #   spp_add_scripts(TARGET name SCRIPTS a.spp b.spp AOT
 #                   [INCLUDES dir...] [PRELUDES file...] [FLAGS sppc-flag...]
-#                   [DEPENDS file...] [OUT_DIR dir])
+#                   [DEPENDS file...] [OUT_DIR dir] [SPPC_ARGS arg...])
 #
 # The function also calls spp_script_host with the name TARGET. The host has the scripts
 # and the INCLUDES. In the default mode it has the FLAGS too. The language server uses
@@ -21,19 +21,28 @@
 # share a slot file in OUT_DIR. Build generation 2 after generation 1: give AFTER the
 # target of generation 1.
 #
+# In both modes, the sppc call always has the include dir of S++ (SPP_INCLUDE_DIR) as the
+# first -I. INCLUDES come after it.
+#
 # AOT mode (design M7): the function runs "sppc --aot" and makes the static library "name"
 # from the generated C++. The library defines spp::aot_table (include/spp/aot.h). It links
 # spp_aot (PUBLIC), so a program that links "name" has no loader, no reload and no Clang.
 # INCLUDES are the include dirs of the translator and of the compile. FLAGS are flags
-# for sppc. OUT_DIR defaults to ${CMAKE_BINARY_DIR}/spp_aot/<name>. AOT mode has no GEN
-# and no AFTER. PRELUDES is only for AOT mode.
+# for sppc. OUT_DIR defaults to ${CMAKE_BINARY_DIR}/spp_aot/<name>. AOT mode has no AFTER
+# and always uses generation 1. PRELUDES is only for AOT mode.
 #
 # String interpolation "${...}": the C++ standard picks the format library at build time
-# (cmake/SppFormat.cmake). The standard is CMAKE_CXX_STANDARD, else 17.
+# (cmake/SppFormat.cmake). The standard comes from spp_effective_cxx_standard: the property
+# CXX_STANDARD of the target, else CMAKE_CXX_STANDARD, else the S++ default 20, else 17.
 # A standard less than 20 selects fmt. C++20 and later select std::format, unless the CMake
 # option SPP_USE_FMT is ON. With fmt, the function gets fmt (SPP_FMT_PROVIDER: an installed
 # package, else CPM.cmake, by default), passes --format=fmt to sppc and gives the compile the fmt include directory.
 # In AOT mode the library "name" links the target spp_fmt (fmt). There is no runtime switch.
+# The include dir of S++. It is relative to this file, so it works in a consumer project.
+# It is an internal cache variable, so a project that uses add_subdirectory sees it in every scope.
+get_filename_component(_spp_include_dir "${CMAKE_CURRENT_LIST_DIR}/../include" ABSOLUTE)
+set(SPP_INCLUDE_DIR "${_spp_include_dir}" CACHE INTERNAL "The include dir of S++")
+
 function(spp_add_scripts)
     cmake_parse_arguments(A "AOT" "TARGET;OUT_DIR;AFTER" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS;SPPC_ARGS" ${ARGN})
     if(A_UNPARSED_ARGUMENTS)
@@ -78,7 +87,8 @@ function(spp_add_scripts)
         get_filename_component(abs ${s} ABSOLUTE)
         list(APPEND scripts ${abs})
     endforeach()
-    set(args "")
+    # The include dir of S++ comes first. A caller does not need to pass it in INCLUDES.
+    set(args -I ${SPP_INCLUDE_DIR})
     foreach(i ${A_INCLUDES})
         list(APPEND args -I ${i})
     endforeach()
@@ -111,6 +121,10 @@ function(spp_add_scripts)
             VERBATIM)
         add_library(${A_TARGET} STATIC ${sources} ${registry})
         target_link_libraries(${A_TARGET} PUBLIC spp_aot)
+        # The generated code uses the format library that the effective standard selects (std::format
+        # from C++20). The library gets this standard as a minimum. A higher standard of the
+        # consumer stays, and a consumer that links the library gets the minimum too.
+        target_compile_features(${A_TARGET} PUBLIC cxx_std_${std_num})
         if(format_lib STREQUAL "fmt")
             target_link_libraries(${A_TARGET} PUBLIC spp_fmt)
         endif()
@@ -164,7 +178,7 @@ endfunction()
 # The cache variable SPP_HOSTS_DIR defaults to ${CMAKE_SOURCE_DIR}/.cache/spp/hosts.
 #
 # The include dirs, defines and options of TARGET are in the file. They include the
-# usage requirements of the linked libraries. The dir ${CMAKE_SOURCE_DIR}/include is
+# usage requirements of the linked libraries. The include dir of S++ (SPP_INCLUDE_DIR) is
 # always the first include dir. Then come the include dirs of the target, then INCLUDES. FLAGS
 # come after the options of the target. A UTILITY target has no such lists, so the function
 # skips them. A relative path in SCRIPT_DIRS, SCRIPTS or INCLUDES is relative to the current
@@ -243,7 +257,7 @@ function(spp_script_host)
 
     # The array texts. The paths stay as they are. A relative path is relative to sourceDir,
     # and spp-ls resolves it.
-    set(includes "${CMAKE_SOURCE_DIR}/include")
+    set(includes "${SPP_INCLUDE_DIR}")
     list(APPEND includes ${A_INCLUDES})
     _spp_host_json_array(j_dirs ${A_SCRIPT_DIRS})
     _spp_host_json_array(j_scripts ${A_SCRIPTS})
@@ -282,11 +296,9 @@ function(spp_script_host)
     string(APPEND json "  \"sourceDir\": \"${e_src}\",\n")
     string(APPEND json "  \"compiler\": \"${e_cxx}\",\n")
     # The language standard of the scripts. The generated code needs C++17 only, so the scripts
-    # use the standard of the consuming target. Without a target, CMAKE_CXX_STANDARD or 17 applies.
-    set(std_num 17)
-    if(DEFINED CMAKE_CXX_STANDARD AND NOT CMAKE_CXX_STANDARD STREQUAL "")
-        set(std_num ${CMAKE_CXX_STANDARD})
-    endif()
+    # use the standard of the consuming target. Without a target, the effective standard
+    # (spp_effective_cxx_standard) applies, as in the build of the scripts.
+    spp_effective_cxx_standard(std_num "")
     if(use_target)
         set(std_num "$<IF:$<BOOL:$<TARGET_PROPERTY:${A_TARGET},CXX_STANDARD>>,$<TARGET_PROPERTY:${A_TARGET},CXX_STANDARD>,${std_num}>")
     endif()

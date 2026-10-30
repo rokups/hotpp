@@ -99,7 +99,7 @@ inline std::vector<LineRow> line_rows(const std::string& dump)
 }
 
 // The lines of the rows of the line table that belong to the file with this base name. A name
-// in the table can have a directory: "example/scripts/x.spp" matches "x.spp".
+// in the table can have a directory: "tests/scripts/x.spp" matches "x.spp".
 inline std::set<int> lines_of_file(const std::string& dump, const std::string& base_name)
 {
     std::set<int> lines;

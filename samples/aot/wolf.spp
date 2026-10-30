@@ -1,0 +1,19 @@
+// The script of the sample. Wolf derives from the host class Creature and overrides Tick.
+// Tick uses string interpolation, so the sample also checks the format library of the build.
+using "Creature.h";
+using <string>;
+
+class Wolf : Creature {
+    int bites = 0;
+
+    Wolf() : base(std.string("wolf")) {
+    }
+
+    override void Tick(float dt) {
+        this.bites = this.bites + 1;
+        this.Hp = this.Hp - 1;
+        // String interpolation: the build of the script needs std::format (C++20) or fmt.
+        std.string line = "${this.Name}: bites=${this.bites} hp=${this.Hp:03d}";
+        std.printf("[wolf] %s\n", line.c_str());
+    }
+}

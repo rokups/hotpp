@@ -1,7 +1,7 @@
 // The handle reload scenario. Every way to get a module runs the same checks.
 //
 // run_handle_reload gets the modules of the scripts handle_v1, handle_v2 and handle_v1
-// again (example/scripts). It checks that a shared_ptr field keeps its object.
+// again (tests/scripts). It checks that a shared_ptr field keeps its object.
 #pragma once
 
 #include "Weapon.h"

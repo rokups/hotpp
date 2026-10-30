@@ -50,7 +50,7 @@ namespace fs = std::filesystem;
 
 spp::ScriptSource source(const char* file)
 {
-    const std::string path = std::string(SPP_SOURCE_DIR) + "/example/scripts/" + file;
+    const std::string path = std::string(SPP_SOURCE_DIR) + "/tests/scripts/" + file;
     std::ifstream f(path);
     std::stringstream ss;
     ss << f.rdbuf();
@@ -176,7 +176,7 @@ TEST(JitTests, PrecompiledHeaderWorks)
     }
     spp::JitOptions o;
     o.compiler = SPP_CXX;
-    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/example/engine", std::string(SPP_SOURCE_DIR) + "/include"};
+    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/tests/engine", std::string(SPP_SOURCE_DIR) + "/include"};
     o.resource_dir = SPP_RESOURCE_DIR;
     std::string error;
     {
@@ -266,7 +266,7 @@ TEST(JitTests, DebuggerGetsObjectWithScriptLines)
         GTEST_SKIP() << "llvm-dwarfdump is not installed";
     spp::JitOptions o;
     o.compiler = SPP_CXX;
-    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/include", std::string(SPP_SOURCE_DIR) + "/example/engine"};
+    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/include", std::string(SPP_SOURCE_DIR) + "/tests/engine"};
     o.resource_dir = SPP_RESOURCE_DIR;
     spp::JitBackend backend(o);
     const spp::ScriptSource src = source("player_v2.spp");
@@ -295,7 +295,7 @@ TEST(JitTests, DebuggerSupportCanBeOff)
 {
     spp::JitOptions o;
     o.compiler = SPP_CXX;
-    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/include", std::string(SPP_SOURCE_DIR) + "/example/engine"};
+    o.include_dirs = {std::string(SPP_SOURCE_DIR) + "/include", std::string(SPP_SOURCE_DIR) + "/tests/engine"};
     o.resource_dir = SPP_RESOURCE_DIR;
     o.debugger_support = false;
     spp::JitBackend backend(o);

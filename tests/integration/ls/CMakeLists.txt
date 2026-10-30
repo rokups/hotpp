@@ -5,10 +5,10 @@ if(NOT SPP_CLANGD)
     set(SPP_CLANGD "")
 endif()
 add_executable(integration_ls_tests ls_tests.cpp)
-target_include_directories(integration_ls_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+target_include_directories(integration_ls_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
 target_link_libraries(integration_ls_tests PRIVATE spp_ls_lib GTest::gtest_main)
 target_compile_definitions(integration_ls_tests PRIVATE
-    SPP_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    SPP_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
     SPP_CLANGD_PATH="${SPP_CLANGD}"
     SPP_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
 spp_gtest(integration_ls_tests DISCOVERY_TIMEOUT 30)

@@ -1,6 +1,6 @@
 03_native_argument_missing.spp:11:1: error: missing argument 'delta'
    11 |     override void Tick(float dt) { this.Move(); }
-<src>/example/engine/Actor.h:34:10: note: 'Move' declared here
+<src>/tests/engine/Actor.h:34:10: note: 'Move' declared here
    34 |     void Move(Vec3 delta);
       |          ^    ~~~~~~~~~~
 1 error generated.

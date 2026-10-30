@@ -93,7 +93,7 @@ Run `node test/grammar.test.js`. CTest runs it as `VscodeGrammar` when `node` is
 - The test always checks the JSON files and the keyword and builtin type coverage.
   It reads the builtin types from `src/translator/builtin_types.h`.
 - `node test/expand.test.js` checks the expansion of `${workspaceFolder}` (CTest: `VscodeExpand`).
-- After `npm install` it also tokenizes every `example/scripts/*.spp` file
+- After `npm install` it also tokenizes every `tests/scripts/*.spp` file
   and compares `test/sample.spp` with `test/sample.snap`.
 - Without `vscode-textmate` the tokenizer part is skipped and the test prints a notice.
 - Run `node test/grammar.test.js --update` to accept a new snapshot.

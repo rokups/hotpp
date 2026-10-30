@@ -1,7 +1,7 @@
 // The F1 reload scenario. Every way to get a module runs the same checks.
 //
-// run_f1_reload gets the module of generation 1 (example/scripts/player_v1.spp)
-// and the module of generation 2 (example/scripts/player_v2.spp). It checks that
+// run_f1_reload gets the module of generation 1 (tests/scripts/player_v1.spp)
+// and the module of generation 2 (tests/scripts/player_v2.spp). It checks that
 // the address stays, the state migrates (hp -> health, shield 25) and a
 // delegate that was bound before the reload calls the new heal.
 #pragma once

@@ -1,6 +1,7 @@
-// The harness of minengine (design 8.1): one script file, a world, a file watcher
+// The harness of the test host (design 8.1): one script file, a world, a file watcher
 // and a command channel. The class has no I/O of its own except the file and the log.
-// main.cpp feeds it the lines of stdin.
+// The caller feeds it the command lines. The tests in tests/integration/reload use it.
+// It is not a model for a user project: copy from samples/ (for example samples/hot-reload).
 //
 // Commands: "reload" (compile the file now), "stats" (the script_stats text), "quit".
 #pragma once

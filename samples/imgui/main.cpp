@@ -1,6 +1,6 @@
-// imgui_app: a Dear ImGui window whose user interface a script draws.
-// Usage: imgui_app [script]
-// The default script is example/imgui/demo.spp. The script class Demo
+// sample_imgui: a Dear ImGui window whose user interface a script draws.
+// Usage: sample_imgui [script]
+// The default script is samples/imgui/demo.spp. The script class Demo
 // derives from UiApp. The host calls Frame once for each frame.
 // The struct Host loads the script and reloads it when the file changes.
 #include "UiApp.h"
@@ -240,7 +240,7 @@ int main(int argc, char** argv)
     }
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
-    if (!SDL_CreateWindowAndRenderer("imgui_app", 800, 600, SDL_WINDOW_RESIZABLE, &window, &renderer))
+    if (!SDL_CreateWindowAndRenderer("sample_imgui", 800, 600, SDL_WINDOW_RESIZABLE, &window, &renderer))
     {
         std::fprintf(stderr, "SDL window failed: %s\n", SDL_GetError());
         delete host.app;

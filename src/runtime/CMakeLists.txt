@@ -3,7 +3,7 @@
 #     build links only this part (design M7). It has no loader, no migration, no dlopen.
 #   spp_runtime: the core plus the state tracking, the migration and the generation loader.
 add_library(spp_runtime_core STATIC threads.cpp registry.cpp)
-target_include_directories(spp_runtime_core PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/example/engine)
+target_include_directories(spp_runtime_core PUBLIC ${PROJECT_SOURCE_DIR}/include)
 # The format library is a build-time choice (include/spp/config.h). It has no runtime switch.
 if(SPP_FORMAT_LIB STREQUAL "fmt")
     get_property(SPP_FMT_INCLUDE_DIR GLOBAL PROPERTY SPP_FMT_INCLUDE_DIR)
@@ -36,7 +36,7 @@ target_link_libraries(spp_clang_backend PUBLIC spp_runtime sppc_lib)
 # LLVM and Clang come from the system. CPM does not fetch them. The root file finds them.
 if(SPP_BACKEND STREQUAL "JIT")
     add_library(spp_jit_backend STATIC jit_backend.cpp)
-    target_include_directories(spp_jit_backend PUBLIC ${CMAKE_SOURCE_DIR}/include)
+    target_include_directories(spp_jit_backend PUBLIC ${PROJECT_SOURCE_DIR}/include)
     target_include_directories(spp_jit_backend SYSTEM PUBLIC ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
     target_compile_definitions(spp_jit_backend PRIVATE ${LLVM_DEFINITIONS})
     target_link_libraries(spp_jit_backend PUBLIC spp_runtime sppc_lib clang-cpp LLVM)
@@ -51,7 +51,7 @@ if(SPP_BACKEND STREQUAL "CLANG_FILES")
         SPP_BACKEND_CLANG_FILES=1
         SPP_DEFAULT_CXX="${CMAKE_CXX_COMPILER}"
         SPP_DEFAULT_CXXFLAGS="${SPP_CXXFLAGS_JOINED}"
-        SPP_DEFAULT_INCLUDES="${CMAKE_SOURCE_DIR}/include|${CMAKE_SOURCE_DIR}/example/engine"
+        SPP_DEFAULT_INCLUDES="${SPP_DEFAULT_INCLUDES_JOINED}"
         SPP_DEFAULT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}"
         SPP_DEFAULT_WORK_DIR="${SPP_SCRATCH_DIR}/spp_work")
 elseif(SPP_BACKEND STREQUAL "JIT")
@@ -60,6 +60,6 @@ elseif(SPP_BACKEND STREQUAL "JIT")
         SPP_BACKEND_JIT=1
         SPP_DEFAULT_CXX="${CMAKE_CXX_COMPILER}"
         SPP_DEFAULT_CXXFLAGS="${SPP_CXXFLAGS_JOINED}"
-        SPP_DEFAULT_INCLUDES="${CMAKE_SOURCE_DIR}/include|${CMAKE_SOURCE_DIR}/example/engine"
+        SPP_DEFAULT_INCLUDES="${SPP_DEFAULT_INCLUDES_JOINED}"
         SPP_DEFAULT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
 endif()

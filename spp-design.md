@@ -1016,7 +1016,7 @@ class Player : Actor {                       // Actor : Object, so Actor* is a h
 
 ### 8.1 Harness
 
-Build a standalone executable `minengine`. It has:
+Build a standalone test host. (Status: this became the test host `tests/engine`, driven by the reload tests, and the sample `samples/hot-reload`.) It has:
 
 - `class Actor` with three virtuals: `Tick(float)`, `TakeDamage(float)` and `TakeDamage(Actor&, float)`. It has a `std::string Name`, a `Vec3 Position` and `void Move(Vec3)`.
 - `class World` with a vector of `Actor*`, a tick loop, a `Delegate<void(float)>` list, and a timer that stores `std::function<void()>`.
@@ -1049,8 +1049,8 @@ Status of the experiments (S19). R0 to R6 pass with hand-written and generated c
 |---|---|---|
 | F1 | Pass for plain native bases, bases that derive from a plain class, and explicit template specializations. A base that derives from an implicit instance of a class template gives no virtuals: see risk 8. | `tests/support/f1_scenario.h`, `tests/unit/translator/translate/template_base_translation_tests.cpp` |
 | F2 | Pass. 21 mistakes, each with a golden message that names the script line and script names. | `tests/golden/diagnostics/`, `DiagnosticMistakes` |
-| F3 | Partial. The DWARF line table has the `.spp` lines. gdb 18.1 stops at `player_v1.spp:11` in a live process, prints `Player__Tick ... at example/scripts/player_v1.spp:13` and steps by script lines. This frame name is from before phase 2. The frame is now the state member `PlayerState_g1::Tick`. This is not run again. lldb and Visual Studio were not run. The lldb formatters and natvis have unit tests for the pure Python part only. | `DebugInfo.*`, `JitTests.DebuggerGetsObjectWithScriptLines`, `tools/lldb/`, `tools/natvis/` |
-| P1 | Pass, without the real engine headers. One module after a one-line change, `-O1`, warm, on the test machine: JIT 808 ms, JIT with PCH 166 ms, CLANG_FILES 1105 ms, CLANG_FILES with PCH 350 ms. The criterion is under 2 s. The PCH for CLANG_FILES is made with `clang++ -x c++-header` (1.1 s once, 13.5 MB) and used with `--cxxflag -include-pch`. | `example/bench_backends.cpp`, README "Measurements" |
+| F3 | Partial. The DWARF line table has the `.spp` lines. gdb 18.1 stops at `player_v1.spp:11` in a live process, prints `Player__Tick ... at tests/scripts/player_v1.spp:13` and steps by script lines. This frame name is from before phase 2. The frame is now the state member `PlayerState_g1::Tick`. This is not run again. lldb and Visual Studio were not run. The lldb formatters and natvis have unit tests for the pure Python part only. | `DebugInfo.*`, `JitTests.DebuggerGetsObjectWithScriptLines`, `tools/lldb/`, `tools/natvis/` |
+| P1 | Pass, without the real engine headers. One module after a one-line change, `-O1`, warm, on the test machine: JIT 808 ms, JIT with PCH 166 ms, CLANG_FILES 1105 ms, CLANG_FILES with PCH 350 ms. The criterion is under 2 s. The PCH for CLANG_FILES is made with `clang++ -x c++-header` (1.1 s once, 13.5 MB) and used with `--cxxflag -include-pch`. | `tools/bench/bench_backends.cpp`, README "Measurements" |
 
 The test engine headers are small. The real engine headers can change the numbers. Measure again when they are available.
 

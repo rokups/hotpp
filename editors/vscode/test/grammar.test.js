@@ -4,7 +4,7 @@
 //  - package.json, language-configuration.json and the grammar are valid JSON.
 //  - Every keyword and every builtin type name of the language is in the grammar.
 // Run when vscode-textmate and vscode-oniguruma are installed (npm install in this folder):
-//  - Every file of example/scripts/*.spp tokenizes. No token has an "invalid" scope.
+//  - Every file of tests/scripts/*.spp tokenizes. No token has an "invalid" scope.
 //    No rule stays open at the end of a file.
 //  - test/sample.spp matches the snapshot test/sample.snap.
 // Without the two packages the second part is skipped and a notice says so.
@@ -116,7 +116,7 @@ async function main() {
     return out;
   }
 
-  const dir = path.join(repo, 'example', 'scripts');
+  const dir = path.join(repo, 'tests', 'scripts');
   const files = fs.readdirSync(dir).filter((f) => f.endsWith('.spp')).sort();
   if (files.length === 0) fail('no example scripts found');
   for (const f of files) tokenize(fs.readFileSync(path.join(dir, f), 'utf8'), f, false);

@@ -1,4 +1,4 @@
-// bench_backends: time the compile and the load of the two example scripts.
+// bench_backends: time the compile and the load of the two test scripts.
 //
 // The tool uses the backend that the build selected (SPP_BACKEND). Run it
 // many times for the cold numbers: each process starts cold.
@@ -65,7 +65,7 @@ std::vector<std::string> split(const std::string& s)
 
 spp::ScriptSource source(const char* file)
 {
-    const std::string path = std::string(BENCH_SOURCE_DIR) + "/example/scripts/" + file;
+    const std::string path = std::string(BENCH_SOURCE_DIR) + "/tests/scripts/" + file;
     std::ifstream f(path);
     std::stringstream ss;
     ss << f.rdbuf();

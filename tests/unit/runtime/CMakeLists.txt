@@ -12,5 +12,5 @@ add_executable(unit_runtime_tests
     entry_counter_tests.cpp
     scratch_tests.cpp)
 target_link_libraries(unit_runtime_tests PRIVATE spp_runtime engine_harness GTest::gtest_main)
-target_include_directories(unit_runtime_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+target_include_directories(unit_runtime_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
 spp_gtest(unit_runtime_tests)

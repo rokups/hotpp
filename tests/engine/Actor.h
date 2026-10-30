@@ -1,4 +1,4 @@
-// Engine API for the minengine harness (design section 8.1).
+// Engine API for the test host in tests/engine (design section 8.1).
 // Script code calls these members directly. There is no wrapper code.
 #pragma once
 #include <functional>

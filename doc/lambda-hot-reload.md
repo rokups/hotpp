@@ -20,7 +20,7 @@ Yes. The current closure design does not allow it. A new design that treats a la
 - The closure holds the lambda in a `std::function`, a pin on its generation, and a guard.
 - The translator emits `make_closure` for each arrow lambda (`src/translator/lower.cpp:655-692`).
 - The lambda body and its captures are compiled into the library of one generation.
-- Native code stores the closure. Example: `Actor::AddTimer` in `example/engine/Actor.h`.
+- Native code stores the closure. Example: `Actor::AddTimer` in `tests/engine/Actor.h` (the test host).
 - After a reload, the guard compares the closure generation with `active_generation` (`closure.h:75`).
 - A mismatch logs a stale call and returns `R()`. No lambda body runs.
 - The pin keeps the old library loaded while native code holds the closure.
@@ -55,7 +55,7 @@ Give each lambda the same treatment as a method.
 - `src/runtime/loader.cpp:274-299`: `frame_boundary`, unload gate.
 - `include/spp/runtime/registry.h`: thunk entries.
 - `include/spp/runtime/shell.h:77-94`: `spp::call` and the slot key check.
-- `example/scripts/timer_v1.spp`, `timer_v2.spp`: lambda in a World timer.
+- `tests/scripts/timer_v1.spp`, `timer_v2.spp`: lambda in a World timer.
 
 ## Next step
 

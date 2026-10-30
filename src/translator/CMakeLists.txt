@@ -5,7 +5,7 @@ find_path(CLANG_C_INCLUDE_DIR clang-c/Index.h REQUIRED)
 add_library(sppc_lib STATIC sppc_lib.cpp emit.cpp lower.cpp types.cpp check.cpp diag_rewrite.cpp
     parser/script_grammar.cpp
     parser/expression_grammar.cpp parser/statement_grammar.cpp)
-target_include_directories(sppc_lib PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(sppc_lib PUBLIC ${PROJECT_SOURCE_DIR}/include)
 target_include_directories(sppc_lib PRIVATE ${CLANG_C_INCLUDE_DIR})
 target_link_libraries(sppc_lib PUBLIC ${CLANG_C_LIBRARY})
 target_link_libraries(sppc_lib PRIVATE foonathan::lexy::core)

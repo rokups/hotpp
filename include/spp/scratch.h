@@ -1,4 +1,4 @@
-// Scratch files: the directories that the backends and the examples write at run time.
+// Scratch files: the directories that the backends and the samples write at run time.
 #pragma once
 
 #include <string>

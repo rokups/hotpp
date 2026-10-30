@@ -63,7 +63,7 @@ spp::ls::ServerOptions options(const TempDir& dir, bool clangd)
 {
     spp::ls::ServerOptions o;
     o.clangd = clangd ? SPP_CLANGD_PATH : "";
-    o.include_dirs = {SPP_SOURCE_DIR "/include", SPP_SOURCE_DIR "/example/engine"};
+    o.include_dirs = {SPP_SOURCE_DIR "/include", SPP_SOURCE_DIR "/tests/engine"};
     // SPP_LS_CLANGD_LOG keeps the clangd log after the test (the temporary dir goes away).
     const char* log = std::getenv("SPP_LS_CLANGD_LOG");
     o.clangd_log = log ? log : (dir.path() / "clangd.log").string();
@@ -588,7 +588,7 @@ TEST(LanguageServer, GeneratedFileOnDiskMapsBackToTheScript)
     o.script_text = kScript;
     o.script_name = s.path;
     o.generation = 1;
-    o.include_dirs = {SPP_SOURCE_DIR "/include", SPP_SOURCE_DIR "/example/engine"};
+    o.include_dirs = {SPP_SOURCE_DIR "/include", SPP_SOURCE_DIR "/tests/engine"};
     const sppc::TranslateResult t = sppc::translate(o);
     ASSERT_TRUE(t.ok) << t.diagnostics;
     const std::string cpp = (s.dir.path() / "player.g1.cpp").string();
@@ -739,7 +739,7 @@ TEST(LanguageServer, BackgroundIndexFindsAScriptSymbolInAGeneratedFile)
     o.script_text = kScript;
     o.script_name = script;
     o.generation = 1;
-    o.include_dirs = {SPP_SOURCE_DIR "/include", SPP_SOURCE_DIR "/example/engine"};
+    o.include_dirs = {SPP_SOURCE_DIR "/include", SPP_SOURCE_DIR "/tests/engine"};
     const sppc::TranslateResult t = sppc::translate(o);
     ASSERT_TRUE(t.ok) << t.diagnostics;
     const std::string cpp = (dir.path() / "player.g1.cpp").string();
@@ -785,7 +785,7 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
     o.script_text = kScript;
     o.script_name = script;
     o.generation = 1;
-    o.include_dirs = {SPP_SOURCE_DIR "/include", SPP_SOURCE_DIR "/example/engine"};
+    o.include_dirs = {SPP_SOURCE_DIR "/include", SPP_SOURCE_DIR "/tests/engine"};
     const sppc::TranslateResult t = sppc::translate(o);
     ASSERT_TRUE(t.ok) << t.diagnostics;
     const std::string gen = (root / "player.g1.cpp").string();

@@ -58,10 +58,10 @@ inline sppc::TranslateOptions engine_options(const char* script_file, int genera
 {
     const std::string root = SPP_SOURCE_DIR;
     sppc::TranslateOptions o;
-    o.script_name = root + "/example/scripts/" + script_file;
+    o.script_name = root + "/tests/scripts/" + script_file;
     o.script_text = read_file(o.script_name);
     o.generation = generation;
-    o.include_dirs = {root + "/example/engine", root + "/include"};
+    o.include_dirs = {root + "/tests/engine", root + "/include"};
     return o;
 }
 
