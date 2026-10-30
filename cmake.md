@@ -4,7 +4,7 @@ title: CMake
 nav_order: 14
 ---
 
-This page shows how a host project uses Hot++ with CMake. It lists the requirements, the targets, the options and the functions. It ends with the presets and a table of errors.
+This page shows how a host project uses Hot++ with CMake. It lists the requirements, the targets, the options and the functions. It also describes portable binaries. It ends with the presets and a table of errors.
 
 The page [Embedding](embedding.html) describes the six hosting situations. Each situation has a sample project. The links to the samples are at the end of this page.
 
@@ -32,11 +32,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(HOT_ROOT "/path/to/hotpp" CACHE PATH "The Hot++ source tree")
 add_subdirectory(${HOT_ROOT} hot)
 
-# hotc translates wolf.hot to C++. The library myapp_scripts has the result.
-hot_add_scripts(TARGET myapp_scripts AOT SCRIPTS wolf.hot
-                INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS Creature.h)
 add_executable(myapp main.cpp)
-target_link_libraries(myapp PRIVATE myapp_scripts)
+# hotc translates wolf.hot to C++. The call links the result to myapp.
+hot_add_host(TARGET myapp MODE AOT SCRIPTS wolf.hot
+             INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS Creature.h)
 ```
 
 Configure, build and run:
@@ -49,7 +48,7 @@ cmake --build build
 
 The program prints three lines, one for each call of `Tick`. The first configure fetches the Hot++ dependencies with CPM.cmake. Then the build runs `hotc` and compiles the result. Hot++ sets `CMAKE_RUNTIME_OUTPUT_DIRECTORY` only for its own targets. So `hotc` is in `build/bin/` and your program is in `build/`.
 
-For a host that loads scripts (a loader), replace the last three lines of the example with one of the cases in [Embedding](embedding.html). The build-time part is always `add_subdirectory`, then link one Hot++ target, then `ENABLE_EXPORTS`.
+For a host that loads scripts, change `MODE` to `HOT_RELOAD` (the host compiles the script at run time) or to `PRECOMPILED` (the build makes a script library and the host loads it). The call is the same. See the section `hot_add_host`. The cases are in [Embedding](embedding.html).
 
 ## Requirements
 
@@ -102,13 +101,12 @@ Add the Hot++ source tree with `add_subdirectory`. The second argument is a buil
 set(HOT_ROOT "/path/to/hotpp" CACHE PATH "The Hot++ source tree")
 add_subdirectory(${HOT_ROOT} hot)
 
-hot_add_scripts(TARGET app_scripts AOT SCRIPTS wolf.hot
-                INCLUDES ${CMAKE_CURRENT_SOURCE_DIR})
 add_executable(app main.cpp)
-target_link_libraries(app PRIVATE app_scripts)
+hot_add_host(TARGET app MODE AOT SCRIPTS wolf.hot
+             INCLUDES ${CMAKE_CURRENT_SOURCE_DIR})
 ```
 
-The call to `add_subdirectory` defines the functions `hot_add_scripts` and `hot_script_host`. It also defines the targets that the next table lists.
+The call to `add_subdirectory` defines the functions `hot_add_host`, `hot_add_scripts` and `hot_script_host`. It also defines the targets that the next table lists.
 
 FetchContent gives the same result. Replace the first two lines of the example:
 
@@ -125,21 +123,24 @@ Two variables are read when `add_subdirectory` runs. Set them before the call:
 
 ### Targets
 
-| Target | What a host gets |
-|---|---|
-| `hot_runtime` | The loader, the reload, the migration and `module_from_library`. It has no backend. |
-| `hot_backend` | `make_default_backend`. It links `hot_runtime` and the backend that `HOT_BACKEND` selects. |
-| `hot_clang_backend` | `ClangFilesBackend`. It runs an external `clang++`. It always exists. It links `hot_runtime` and `hotc_lib`. |
-| `hot_jit_backend` | `JitBackend`. It compiles in memory. It exists only when `HOT_BACKEND` is `JIT`. |
-| `hot_aot` | The AOT registry and the core of the runtime. It has no loader. |
-| `hotc` | The tool. `hot_add_scripts` runs it at build time. |
-| `hot_fmt` | An INTERFACE target for fmt. It exists only when the build uses fmt. |
+| Target | Alias | What a host gets |
+|---|---|---|
+| `hot_runtime` | `hot::runtime` | The loader, the reload, the migration and `module_from_library`. It has no backend. It also has `hot::default_paths()`. |
+| `hot_runtime_core` | `hot::runtime_core` | The globals and the registry that generated code needs. The other runtime targets link it. |
+| `hot_backend` | `hot::backend` | `make_default_backend`. It links `hot_runtime` and the backend that `HOT_BACKEND` selects. |
+| `hot_clang_backend` | `hot::clang_backend` | `ClangFilesBackend`. It runs an external `clang++`. It always exists. It links `hot_runtime` and `hotc_lib`. |
+| `hot_jit_backend` | `hot::jit_backend` | `JitBackend`. It compiles in memory. It exists only when `HOT_BACKEND` is `JIT`. |
+| `hot_aot` | `hot::aot` | The AOT registry and the core of the runtime. It has no loader. |
+| `hotc` | `hot::hotc` | The tool. `hot_add_host` and `hot_add_scripts` run it at build time. |
+| `hot_fmt` | none | An INTERFACE target for fmt. It exists only when the build uses fmt. |
 
-Do not link `hot_runtime` and `hot_aot` in one program. The library from `hot_add_scripts` with `AOT` links `hot_aot` for you.
+Use the aliases in your project. The real names can change. `hot_add_host` links the right target for you, so you seldom link one by hand.
+
+Do not link `hot::runtime` and `hot::aot` in one program. The library from `hot_add_host` or `hot_add_scripts` with `AOT` links `hot::aot` for you.
 
 ### Export the host symbols
 
-A host that loads generation modules must export its symbols. This applies to a program that links `hot_runtime`, `hot_backend` or one backend library. The modules resolve the host functions and the runtime functions from the executable.
+A host that loads generation modules must export its symbols. This applies to a program that links `hot::runtime`, `hot::backend` or one backend library. `hot_add_host` does this for the modes `HOT_RELOAD` and `PRECOMPILED`. The modules resolve the host functions and the runtime functions from the executable.
 
 ```cmake
 set_target_properties(app PROPERTIES ENABLE_EXPORTS ON)
@@ -165,6 +166,7 @@ Hot++ has these options that select what the build adds. They are ON by default 
 |---|---|---|
 | `HOT_BUILD_TESTS` | main project: ON | Build the Hot++ tests. They need GoogleTest. It adds `tests/`, `editors/vscode` and `tools/bench`. It also adds the test engine dir `tests/engine` to the default include dirs of the backends. |
 | `HOT_BUILD_SAMPLES` | main project: ON | Build the samples in `samples/`. The targets start with `sample_`. |
+| `HOT_PORTABLE` | `OFF` | Keep build paths out of the binaries. See the section "Portable binaries". It cannot be ON together with `HOT_BUILD_TESTS`: the configure step stops with an error. |
 | `HOT_SAMPLES_STANDALONE_TEST` | `OFF` | Add the CTest test `samples_standalone_aot`. The test builds `samples/aot` as a separate project in `samples_standalone/aot` of the build tree. Only `aot` has this test. It works only when `HOT_BUILD_SAMPLES` is ON. |
 
 When Hot++ is a subproject, `HOT_BUILD_*` are OFF. Set one to ON in your cache only if you want Hot++ to build it in your tree. These options work also in a subproject. If `HOT_BUILD_TESTS` is ON, the default include dirs of the backends (`HOT_DEFAULT_INCLUDE_DIRS`) also have `tests/engine`.
@@ -190,7 +192,7 @@ These variables are not options but they matter:
 | `CMAKE_CXX_FLAGS` | The default backend passes it to every script compile (split into arguments). Sanitizer flags go here. |
 | `CMAKE_CXX_COMPILER` | The default backend, `hotc` and the language server use this compiler for the scripts. |
 | `CPM_*` | See "Offline builds". |
-| `HOT_INCLUDE_DIR` | An INTERNAL cache variable. It is the `include` folder of Hot++. `hot_add_scripts` puts it first in the `-I` list. |
+| `HOT_INCLUDE_DIR` | An INTERNAL cache variable. It is the `include` folder of Hot++. `hot_add_scripts` puts it first in the `-I` list. (At run time, a portable host reads an environment variable with the same name. See "Portable binaries".) |
 | `HOT_SCRATCH_DIR` | `${CMAKE_BINARY_DIR}/tmp`. The scratch root. `HOT_KEEP_TEMP` keeps it. |
 
 The default backend writes its files to `${HOT_SCRATCH_DIR}/hot_work/p<pid>`. It removes this folder at exit, unless `HOT_KEEP_TEMP` keeps it.
@@ -245,7 +247,55 @@ The cache variable `HOT_FMT_PROVIDER` says where fmt comes from:
 
 A target `fmt::fmt-header-only` or `fmt::fmt` that exists already is always used. Then the build does not search and does not fetch. The configure step prints the choice, for example `String interpolation uses: fmt`, and the source of fmt.
 
+## hot_add_host
+
+```
+hot_add_host(TARGET name [MODE AOT|HOT_RELOAD|PRECOMPILED] SCRIPTS a.hot b.hot
+             [INCLUDES dir...] [DEPENDS file...] [PRELUDES file...]
+             [FLAGS flag...] [HOTC_ARGS arg...])
+```
+
+This is the call that most hosts need. Make your program with `add_executable` first. Then call `hot_add_host` with the same name. The call links the Hot++ target that the mode needs, sets `ENABLE_EXPORTS` when the mode needs it, and sets up the scripts. It uses `hot_add_scripts` and `hot_script_host` inside. Call it after `add_subdirectory` of Hot++.
+
+### Keywords
+
+| Keyword | Default | Meaning |
+|---|---|---|
+| `TARGET` | none, required | The program target. It must exist before the call. |
+| `MODE` | `HOT_RELOAD` | How the program gets its scripts. See the next table. |
+| `SCRIPTS` | none, required | The script files (`.hot` or `.cpp`). A relative path is relative to the current source folder. Two scripts in one call need different names (the file name without the extension). |
+| `INCLUDES` | empty | Include folders. The program, `hotc` and the language server get them. Use absolute paths. |
+| `DEPENDS` | empty | More files that the build depends on, for example your headers. The build does not track the headers of a script by itself. |
+| `PRELUDES` | empty | Prelude files for `hotc --prelude`. Only for `MODE AOT`. |
+| `FLAGS` | empty | Compile flags for the scripts (`PRECOMPILED`) or flags for `hotc` (`AOT`). |
+| `HOTC_ARGS` | empty | More arguments for `hotc`. |
+
+A word that is not a keyword, a missing `TARGET` or `SCRIPTS`, and an unknown `MODE` stop the configure step with an error.
+
+### Modes
+
+| Mode | What the build does | What the call links and sets | At run time |
+|---|---|---|---|
+| `AOT` | `hotc` translates the scripts to C++. The build makes the static library `<TARGET>_scripts`. | The program links `<TARGET>_scripts` (PRIVATE). The library links `hot::aot`. | No loader. No compiler. The scripts are in the binary. |
+| `PRECOMPILED` | `hotc` builds a script library (`.so`) for each script, in `${CMAKE_BINARY_DIR}/hot_scripts/<TARGET>`. The program depends on the target `<TARGET>_scripts`. | The program links `hot::runtime` and gets `ENABLE_EXPORTS`. The variable `HOT_SCRIPTS_<TARGET>_LIBRARIES` has the library paths (in the scope of the caller). | The program loads the libraries with `hot::module_from_library`. No compiler. |
+| `HOT_RELOAD` | The build does not compile the scripts. | The program links `hot::backend` and gets `ENABLE_EXPORTS`. A development build also gets the define `HOT_SCRIPT_DIR`, the folder of the first script. | The backend compiles the scripts. The host needs a compiler. The scripts can reload. |
+
+```cmake
+add_executable(game main.cpp)
+hot_add_host(TARGET game MODE HOT_RELOAD
+             SCRIPTS script/player.hot script/boss.hot
+             INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/engine DEPENDS engine/Actor.h)
+```
+
+In every mode the program also gets `INCLUDES` as private include folders.
+
+With `HOT_PORTABLE` ON and `MODE HOT_RELOAD`, the call does not define `HOT_SCRIPT_DIR`, because that is a build path. Instead it copies the Hot++ headers to `hot/include` next to the program after each build. The host finds them there at run time. See "Portable binaries". Give the script folder to the host in another way, for example with an argument.
+
+Use `hot_add_scripts` directly when you need more control: more than one generation (`AFTER`, `--gen`), your own `OUT_DIR`, or a script library without a program target. The next section describes it.
+
 ## hot_add_scripts
+
+`hot_add_scripts` is the lower-level call. `hot_add_host` calls it.
 
 ```
 hot_add_scripts(TARGET name SCRIPTS a.hot b.hot
@@ -396,12 +446,66 @@ Two notes on the fields:
 - `std`: with `TARGET`, the `CXX_STANDARD` property of the target, else `CMAKE_CXX_STANDARD`, else 17. Without `TARGET` it is `CMAKE_CXX_STANDARD` or 17. It does not use the default 20 of Hot++. If your project sets no standard, the host file says `c++17` and the scripts build as C++20. Set `CMAKE_CXX_STANDARD` to make them agree.
 - `resourceDir`: the value of `CLANG_RESOURCE_DIR`. A consumer project does not see this Hot++ variable, so the field can be empty. Then `hot-ls` uses its own `--resource-dir` option or its default.
 
+## Portable binaries
+
+A normal (development) build puts paths of the build tree into the binary: the compiler, the Hot++ headers, the Clang resource folder and the work folder. A binary like this works only on the machine that built it. For a release, configure with `-DHOT_PORTABLE=ON`. The binaries then hold no build path. The host finds the paths at run time with `hot::default_paths()` (`#include "hot/paths.h"`).
+
+```
+cmake -S . -B build-release -DHOT_PORTABLE=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++
+```
+
+`HOT_PORTABLE` and `HOT_BUILD_TESTS` cannot both be ON, because the tests need the build paths. Build the tests in a normal build.
+
+```cpp
+struct DefaultPaths {
+    std::string compiler;                  // the C++ compiler
+    std::vector<std::string> include_dirs; // the Hot++ include folders
+    std::string resource_dir;              // the Clang resource folder. Empty means the compiler default.
+    std::string work_dir;                  // the parent of the work folder
+    std::vector<std::string> cxxflags;     // the compile flags
+};
+DefaultPaths default_paths();
+```
+
+`make_default_backend` uses this function. A host that builds its own backend (see the samples `clang-files-backend` and `jit-backend`) fills its options from it. A field that the search does not find is empty.
+
+### The search order
+
+| Value | Development build | Portable build, in this order |
+|---|---|---|
+| `compiler` | The compiler of the build. | 1. The environment variable `HOT_CXX`. 2. `clang++` on `PATH`. |
+| `include_dirs` | The `include` folder of Hot++ (and the folders of the build, for example `tests/engine`). | 1. The environment variable `HOT_INCLUDE_DIR`. 2. `<exe>/hot/include`. 3. `<exe>/../include`. The first folder of 2 and 3 that has `hot/script.h` wins. |
+| `resource_dir` | The folder of the build compiler. | 1. The environment variable `HOT_RESOURCE_DIR`. 2. The output of `<compiler> -print-resource-dir`. The host runs this one time. |
+| `work_dir` | A folder in the build tree. | 1. `$XDG_RUNTIME_DIR/hot_work`, if the variable is set. 2. `hot_work-<uid>` in the temporary folder of the system. |
+| `cxxflags` | The flags of the build (`CMAKE_CXX_FLAGS`). | The same. A flag that names a path puts that path into the binary. See below. |
+
+`<exe>` is the folder of the running program. On Linux it comes from `/proc/self/exe`. If that fails, the current folder is used. The backend adds a folder `p<pid>` to `work_dir` for each process.
+
+The default backend of a portable build makes `work_dir` with mode 0700. It refuses to use the folder, and `make_default_backend` throws `std::runtime_error` with a message, when the folder is not a real directory, when another user owns it, or when group or other users can write to it. `hot::check_work_dir(dir)` does this check. It returns an empty text when the folder is safe. Windows uses the plain temporary folder.
+
+`CMAKE_CXX_FLAGS` goes into the host as the default flags, in a portable build too. A flag that names a path (for example `--gcc-toolchain=/opt/gcc`) puts that path into the binary. Keep such flags out of `CMAKE_CXX_FLAGS` for a release build. Give them to the host at run time with `DefaultBackendOptions::extra_flags` instead.
+
+In a portable build the translator and the backends also use the resource folder from this search when you give none. A host without `clang++` on `PATH` sets `HOT_RESOURCE_DIR` (and `HOT_CXX`). The build-time `hotc` is different: `hot_add_scripts` and `hot_add_host` pass `--resource-dir` to it. The value comes from `CLANG_RESOURCE_DIR`, else from `<CMAKE_CXX_COMPILER> -print-resource-dir` at configure time. So the build does not need `clang++` on `PATH`, and the value does not go into the host binary. The fmt headers are not in the binary either. With fmt, the compiler must find the fmt headers by itself on the target machine.
+
+### What a release host must provide
+
+A host that compiles scripts at run time (`HOT_RELOAD`) needs two things next to the release:
+
+- **A compiler.** A Clang C++ compiler. It must be on `PATH` as `clang++`, or the environment variable `HOT_CXX` must name it. The compiler must be the same family and version as the one that built the host, or the module ABI can differ.
+- **The Hot++ headers.** The folder `include` of Hot++ (it has `hot/script.h`). Put it in `<exe>/hot/include` or in `<exe>/../include`, or set `HOT_INCLUDE_DIR`. `hot_add_host` with `MODE HOT_RELOAD` copies it to `<exe>/hot/include` after the build. Copy this folder into your package. Your own headers that the scripts include (for example `Creature.h`) must be in `include_dirs` too.
+
+An `AOT` host needs neither. A `PRECOMPILED` host needs no compiler. It needs the script libraries.
+
+### Security
+
+The compiler name from the environment runs a program: `HOT_CXX` is the program that the host starts, and `HOT_INCLUDE_DIR` picks the headers that the compiler reads. A host must not take these values from untrusted input. The search reads the environment of the process only. If your host runs in an environment that a user does not control, set the values in your own code and fill the backend options yourself.
+
 ## Sanitizers and the build type
 
 Scripts and the host must use the same sanitizer runtime. The root file `CMakeLists.txt` says that the script backends pass the same flags to the compile of the scripts, so the generation modules use the same runtime as the host.
 
 - `make_default_backend` passes `CMAKE_CXX_FLAGS` to every script compile. A preset with `-fsanitize=address` therefore works with no more settings.
-- A backend that you build yourself needs the flags in `extra_flags`. The samples `clang-files-backend` and `jit-backend` copy `CMAKE_CXX_FLAGS` into `extra_flags`.
+- A backend that you build yourself needs the flags in `extra_flags`. The samples `clang-files-backend` and `jit-backend` take them from `hot::default_paths().cxxflags`, which has `CMAKE_CXX_FLAGS`.
 - `hot_add_scripts` in the default mode does not read `CMAKE_CXX_FLAGS`. Put the host flags in `FLAGS`: `separate_arguments(host_flags NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")`, then `FLAGS ${host_flags}`. The sample [precompiled-library](https://github.com/rokups/hotpp/tree/main/samples/precompiled-library) does this.
 - `hot_add_scripts` in AOT mode builds a normal library. It follows the flags of the project.
 - Use one build folder for each mode (plain, ASan, TSan). The presets do this.
@@ -455,8 +559,11 @@ The first column has the text as it appears in the source. A text with `...` has
 | `HOT_FMT_PROVIDER must be AUTO, SYSTEM, CPM or NONE. It is: ...` | A wrong value. | Use one of the four values. |
 | `HOT_FMT_PROVIDER is NONE, but the target fmt::fmt-header-only or fmt::fmt does not exist...` | `NONE` needs your own fmt target. | Create the target before `add_subdirectory`, or use another provider. |
 | `Hot++: fmt is not available. Check HOT_FMT_PROVIDER (now ...).` | No provider gave a fmt target. | Install fmt, or use `CPM`. |
-| `hot_add_scripts needs TARGET and SCRIPTS` | A required keyword is missing. | Give both. |
-| `hot_add_scripts: unknown arguments: ...` | A word is not a keyword (for example a typo). | Check the spelling. Keywords are upper case. |
+| `hot_add_scripts needs TARGET and SCRIPTS` (also `hot_add_host needs TARGET and SCRIPTS`) | A required keyword is missing. | Give both. |
+| `hot_add_host: MODE must be AOT, HOT_RELOAD or PRECOMPILED. It is: ...` | An unknown mode. | Use one of the three. |
+| `hot_add_host: the target ... does not exist` | The call comes before `add_executable`. | Make the program target first. |
+| `HOT_PORTABLE and HOT_BUILD_TESTS are both ON ...` | The tests need the build paths. | Set `HOT_BUILD_TESTS=OFF`, or build the tests in a normal build. |
+| `hot_add_scripts: unknown arguments: ...` (also `hot_add_host: unknown arguments: ...`) | A word is not a keyword (for example a typo). | Check the spelling. Keywords are upper case. |
 | `hot_add_scripts: AFTER does not work with AOT (target ...)` | `AFTER` and `AOT` in one call. | Remove `AFTER`. AOT makes only generation 1. |
 | `hot_add_scripts: PRELUDES works only with AOT (target ...)` | `PRELUDES` in the default mode. | Add `AOT` or remove `PRELUDES`. |
 | `hot_script_host needs NAME and SCRIPT_DIRS or SCRIPTS` | A required keyword is missing. | Give `NAME` and one of the two lists. |
@@ -502,4 +609,4 @@ Each sample is a small project. It builds in the Hot++ tree and as a separate pr
 - [clang-files-backend](https://github.com/rokups/hotpp/tree/main/samples/clang-files-backend): the program builds `ClangFilesBackend` itself.
 - [jit-backend](https://github.com/rokups/hotpp/tree/main/samples/jit-backend): the program builds `JitBackend` itself. It needs `HOT_BACKEND=JIT`.
 
-The samples use the Hot++ tree in `HOT_ROOT`. The default is the tree that holds the `samples` folder. To use a sample in your project, set `HOT_ROOT` to the Hot++ tree (or use FetchContent) and copy the `hot_add_scripts` and `target_link_libraries` lines.
+The samples use the Hot++ tree in `HOT_ROOT`. The default is the tree that holds the `samples` folder. To use a sample in your project, set `HOT_ROOT` to the Hot++ tree (or use FetchContent) and copy the `add_executable` and `hot_add_host` lines.
