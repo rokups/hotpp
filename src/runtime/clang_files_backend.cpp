@@ -148,8 +148,18 @@ std::string compile_commands_json(const std::vector<CompileCommandEntry>& entrie
 bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation,
                               const std::string& out_so, std::string& error)
 {
+    return build_impl(source, generation, LoadMode::Reload, out_so, error, nullptr, nullptr);
+}
+
+// "deferred_slots" null: write the slots file when the compile succeeds (the tool sppc).
+// Else give the new content of the slots file back, and leave the file as it is.
+bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generation, LoadMode mode,
+                                   const std::string& out_so, std::string& error,
+                                   std::string* deferred_slots, bool* slots_removed)
+{
     std::lock_guard<std::mutex> lock(mutex_);
     error.clear();
+    if (slots_removed) *slots_removed = false;
     std::error_code ec;
     const fs::path so_path(out_so);
     if (so_path.has_parent_path()) fs::create_directories(so_path.parent_path(), ec);
@@ -169,9 +179,11 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation,
     to.resource_dir = opt_.resource_dir;
     to.strict_borrowed = opt_.strict_borrowed;
     to.format_lib = format_lib_name();
-    read_text(opt_.slots_file, to.slots_in);  // a missing file means the first generation
+    // A missing file means the first generation. A fresh generation starts with no slots.
+    if (mode == LoadMode::Reload) read_text(opt_.slots_file, to.slots_in);
     sppc::TranslateResult tr = sppc::translate(to, *opt_.session);
     if (!tr.ok) {
+        if (slots_removed) *slots_removed = tr.slots_removed;
         error = opt_.raw_diagnostics ? tr.diagnostics
                                      : sppc::rewrite_translator_diagnostic(tr.diagnostics, sppc::script_texts(source.name, source.text, tr));
         return false;
@@ -192,6 +204,10 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation,
                 std::to_string(rc) + ")\n";
         return false;
     }
+    if (deferred_slots) {
+        *deferred_slots = tr.slots_out + tr.sigs_out;
+        return true;
+    }
     if (!write_text(opt_.slots_file, tr.slots_out + tr.sigs_out)) {
         error = "cannot write " + opt_.slots_file;
         return false;
@@ -199,15 +215,50 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation,
     return true;
 }
 
-LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generation)
+LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generation, LoadMode mode)
 {
     std::string stem = fs::path(source.name).stem().string();
     if (stem.empty()) stem = "script";
-    const std::string so = opt_.work_dir + "/" + stem + ".g" + std::to_string(generation) + "." +
-                           std::to_string(sequence_++) + ".so";
+    // A fresh load starts a new epoch. The epoch is in the name, so a fresh library never has
+    // the path of a library that the process still maps.
+    const unsigned epoch = mode == LoadMode::Fresh ? ++epoch_ : epoch_.load();
+    const std::string so = opt_.work_dir + "/" + stem + ".g" + std::to_string(generation) + ".e" +
+                           std::to_string(epoch) + "." + std::to_string(sequence_++) + ".so";
     LoadResult r;
-    if (!build(source, generation, so, r.error)) return r;
-    return module_from_library(so);
+    std::string slots;
+    bool slots_removed = false;
+    if (!build_impl(source, generation, mode, so, r.error, &slots, &slots_removed)) {
+        r.reason = slots_removed ? ReloadReason::SlotsRemoved : ReloadReason::CompileError;
+        return r;
+    }
+    // Check now that the slots file is writable: the write at on_accept time then rarely fails.
+    // The open for append does not change a file that exists. A new empty file is removed again.
+    {
+        std::error_code ec;
+        const bool existed = fs::exists(opt_.slots_file, ec);
+        bool writable;
+        {
+            std::ofstream probe(opt_.slots_file, std::ios::app);
+            writable = static_cast<bool>(probe);
+        }
+        if (!existed) fs::remove(opt_.slots_file, ec);
+        if (!writable) {
+            r.error = "cannot write " + opt_.slots_file;
+            r.reason = ReloadReason::CompileError;
+            return r;
+        }
+    }
+    r = module_from_library(so);
+    if (!r.module) {
+        if (r.reason == ReloadReason::None) r.reason = ReloadReason::BadModule;
+        return r;
+    }
+    // The slots file changes only when the module is live. The callback holds a copy
+    // of the path and the text, not the backend: the module can outlive the backend.
+    r.module->on_accept = [path = opt_.slots_file, slots = std::move(slots)] {
+        if (!write_text(path, slots)) std::fprintf(stderr, "[script] WARNING: cannot write %s\n", path.c_str());
+    };
+    return r;
 }
 
 }  // namespace spp

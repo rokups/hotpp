@@ -3,6 +3,7 @@ add_executable(unit_runtime_tests
     coalesce_tests.cpp
     deref_tests.cpp
     migration_tests.cpp
+    loader_reset_tests.cpp
     module_state_tests.cpp
     intrusive_handle_tests.cpp
     shell_tests.cpp
@@ -11,4 +12,5 @@ add_executable(unit_runtime_tests
     entry_counter_tests.cpp
     scratch_tests.cpp)
 target_link_libraries(unit_runtime_tests PRIVATE spp_runtime engine_harness GTest::gtest_main)
+target_include_directories(unit_runtime_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests)
 spp_gtest(unit_runtime_tests)

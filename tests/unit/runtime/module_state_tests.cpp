@@ -6,6 +6,7 @@
 #include <string>
 
 #include "spp/runtime.h"
+#include "support/reload_assert.h"
 
 namespace {
 
@@ -90,7 +91,7 @@ struct Scenario {
     void start()
     {
         std::string error;
-        ASSERT_TRUE(loader.load(module_of(register1, "gen1"), error)) << error;
+        ASSERT_RELOAD_OK(loader.load(module_of(register1, "gen1")));
     }
 };
 
@@ -122,9 +123,9 @@ TEST(ModuleState, ReloadMigratesByNameAliasAndConvertHook)
     mfields2[2].convert_from = spp::type_key<int>();
 
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(module_of(register2, "gen2"), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(module_of(register2, "gen2")));
     testing::internal::CaptureStderr();
-    ASSERT_TRUE(s.loader.commit_pending(error)) << error;
+    ASSERT_RELOAD_OK(s.loader.commit_pending());
     testing::internal::GetCapturedStderr();
 
     EXPECT_EQ(slot1, nullptr);  // the old generation has no block now
@@ -142,9 +143,9 @@ TEST(ModuleState, ATypeChangeWithoutAHookWarnsAndTakesTheDefault)
     Scenario s;
     ASSERT_NO_FATAL_FAILURE(s.start());
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(module_of(register2, "gen2"), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(module_of(register2, "gen2")));
     testing::internal::CaptureStderr();
-    ASSERT_TRUE(s.loader.commit_pending(error)) << error;
+    ASSERT_RELOAD_OK(s.loader.commit_pending());
     const std::string log = testing::internal::GetCapturedStderr();
     EXPECT_NE(log.find("field tag changed its type"), std::string::npos) << log;
     EXPECT_EQ(static_cast<Mod2*>(slot2)->tag, -3.0f);
@@ -156,9 +157,9 @@ TEST(ModuleState, AReloadWithoutModuleVariablesDropsTheBlock)
     Scenario s;
     ASSERT_NO_FATAL_FAILURE(s.start());
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(module_of(register_without, "gen2"), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(module_of(register_without, "gen2")));
     testing::internal::CaptureStderr();
-    ASSERT_TRUE(s.loader.commit_pending(error)) << error;
+    ASSERT_RELOAD_OK(s.loader.commit_pending());
     testing::internal::GetCapturedStderr();
     EXPECT_EQ(slot1, nullptr);
     EXPECT_EQ(s.loader.module_state().layout, nullptr);
@@ -168,12 +169,12 @@ TEST(ModuleState, AReloadFromNoBlockInitializesAllVariables)
 {
     Scenario s;
     std::string error;
-    ASSERT_TRUE(s.loader.load(module_of(register_without1, "gen1"), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.load(module_of(register_without1, "gen1")));
     EXPECT_EQ(s.loader.module_state().layout, nullptr);
     crec2 = spp::ClassRecord{"Empty", 2, cslots, 1, &empty_layout, nullptr, "Base", kHash};
-    ASSERT_TRUE(s.loader.request_reload(module_of(register2, "gen2"), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(module_of(register2, "gen2")));
     testing::internal::CaptureStderr();
-    ASSERT_TRUE(s.loader.commit_pending(error)) << error;
+    ASSERT_RELOAD_OK(s.loader.commit_pending());
     testing::internal::GetCapturedStderr();
     ASSERT_NE(slot2, nullptr);
     EXPECT_EQ(static_cast<Mod2*>(slot2)->total, -1);

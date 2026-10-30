@@ -18,6 +18,7 @@
 
 #include "spp/backend.h"
 #include "support/backend_fixture.h"
+#include "support/reload_assert.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 
@@ -96,7 +97,7 @@ void run_reloads(int reloads)
         }
         auto [m, p] = load_copy();
         std::string error;
-        ASSERT_TRUE(s.loader.request_reload(std::move(m), error)) << error;
+        ASSERT_RELOAD_OK(s.loader.request_reload(std::move(m)));
         fs::remove(p);
         s.world.Tick(kDt);  // the commit runs at the frame boundary
         ASSERT_FALSE(s.commit_failed);
@@ -186,7 +187,7 @@ TEST_P(BackendTests, RemovedClassHoldsOnlyTheGenerationOfItsLayout)
     std::string error;
     testing::internal::CaptureStderr();
     for (spp::LoadResult* r : {&v2, &v3}) {
-        ASSERT_TRUE(s.loader.request_reload(std::move(*r->module), error)) << error;
+        ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*r->module)));
         s.world.Tick(kDt);
         s.world.Tick(kDt);
         ASSERT_FALSE(s.commit_failed);
@@ -230,7 +231,7 @@ TEST_P(BackendTests, CodeHoldingFieldBlocksTheUnload)
     s.world.Tick(kDt);
     std::string error;
     testing::internal::CaptureStderr();
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     for (int i = 0; i < 4; ++i) s.world.Tick(kDt);
     testing::internal::GetCapturedStderr();
     ASSERT_FALSE(s.commit_failed);

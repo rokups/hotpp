@@ -25,12 +25,21 @@ struct ScriptSource {
     std::vector<std::pair<std::string, std::string>> modules;
 };
 
+// Reload: the new generation continues the slot numbering of the earlier generations.
+// Fresh: the load ignores the slot state of the earlier generations (the backend does not read
+// the slots file, and the slot numbering starts empty). It builds a new library with a new name,
+// so it never overwrites a library that the process still maps. A full reload uses it
+// (the host calls Loader::reset first).
+enum class LoadMode { Reload, Fresh };
+
 class Backend {
 public:
     virtual ~Backend() = default;
     // Makes the Module of one script for one generation. On failure the result has
-    // an error text with the compiler diagnostics. It does not touch the live generation.
-    virtual LoadResult load(const ScriptSource& source, uint32_t generation) = 0;
+    // an error text with the compiler diagnostics and a "reason". It does not touch the live
+    // generation. It does not write the slot state: the Module has an "on_accept" callback that
+    // writes it, and the Loader calls the callback when the module is live.
+    virtual LoadResult load(const ScriptSource& source, uint32_t generation, LoadMode mode = LoadMode::Reload) = 0;
     virtual const char* name() const = 0;
 };
 

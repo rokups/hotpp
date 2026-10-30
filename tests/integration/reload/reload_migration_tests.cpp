@@ -4,6 +4,7 @@
 #include <cmath>
 #include <string>
 
+#include "support/reload_assert.h"
 #include "support/test_support.h"
 
 namespace {
@@ -39,7 +40,7 @@ TEST(ReloadMigration, ReloadMigratesAndRejectedReloadsKeepGeneration2)
     Actor* const addr = a;
     spp::ShellBase* const shell = s.inst.shell;
     void* const old_state = shell->state;
-    ASSERT_TRUE(s.loader.request_reload(test_support::library(GEN2_SO), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(test_support::library(GEN2_SO)));
     EXPECT_TRUE(s.loader.reload_pending());
     EXPECT_EQ(spp::active_generation, 1u);
     EXPECT_EQ(shell->state, old_state);
@@ -79,8 +80,10 @@ TEST(ReloadMigration, ReloadMigratesAndRejectedReloadsKeepGeneration2)
     // Rejected reloads: other shell layout, and a library that is not there.
     void* const state2 = shell->state;
     const float pos2 = a->Position.x;
-    EXPECT_FALSE(s.loader.request_reload(test_support::library(GEN4_BASE_SO), error));
-    EXPECT_FALSE(error.empty());
+    const spp::ReloadResult rejected = s.loader.request_reload(test_support::library(GEN4_BASE_SO));
+    EXPECT_FALSE(rejected);
+    EXPECT_EQ(rejected.status, spp::ReloadStatus::FullReloadRequired);
+    EXPECT_FALSE(rejected.error.empty());
     EXPECT_FALSE(s.loader.reload_pending());
     error.clear();
     spp::LoadResult missing = spp::module_from_library(GEN3_MISSING_SO);
@@ -116,7 +119,7 @@ TEST(ReloadMigration, CommitWritesTheOwnerOfTheNewBlock)
     s.commit_at_frame_boundary();
     spp::ShellBase* const shell = s.inst.shell;
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(test_support::library(GEN2_SO), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(test_support::library(GEN2_SO)));
     s.world.Tick(kDt);
     ASSERT_FALSE(s.commit_failed);
     ASSERT_EQ(shell->cls->generation, 2u);

@@ -87,7 +87,7 @@ LoadResult open_library(const std::string& path, const std::string& origin, bool
         r.error = "symbol script_register not found in " + path;
         return r;  // "owner" closes the library
     }
-    r.module = Module{fn, std::move(owner), origin, {}};
+    r.module = Module{fn, std::move(owner), origin, {}, {}};
     return r;
 }
 

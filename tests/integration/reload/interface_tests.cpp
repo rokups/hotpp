@@ -7,6 +7,7 @@
 #include "Damageable.h"
 #include "spp/backend.h"
 #include "support/backend_fixture.h"
+#include "support/reload_assert.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 
@@ -64,7 +65,7 @@ TEST_P(BackendTests, ReloadAddsOverridesOfInterfaceVirtuals)
     EXPECT_EQ(dmg->Absorb(5), 45);
 
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt);  // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);
@@ -88,8 +89,12 @@ TEST_P(BackendTests, ReloadThatRemovesAnInterfaceBaseIsRejected)
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Boss"));
     s.commit_at_frame_boundary();
-    std::string error;
-    EXPECT_FALSE(s.loader.request_reload(std::move(*bad.module), error));
+    const spp::ReloadResult rejected = s.loader.request_reload(std::move(*bad.module));
+    const std::string& error = rejected.error;
+    EXPECT_FALSE(rejected);
+    EXPECT_EQ(rejected.status, spp::ReloadStatus::FullReloadRequired);
+    EXPECT_EQ(rejected.reason, spp::ReloadReason::InterfaceBasesChanged);
+    EXPECT_EQ(rejected.classes, std::vector<std::string>{"Boss"});
     EXPECT_NE(error.find("class Boss: native interface bases changed (Actor, IDamageable, ITagged -> "
                          "Actor, IDamageable; RECONSTRUCT change)"),
               std::string::npos)
@@ -110,8 +115,11 @@ TEST_P(BackendTests, ReloadThatAddsAnInterfaceBaseIsRejected)
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Boss"));
     s.commit_at_frame_boundary();
-    std::string error;
-    EXPECT_FALSE(s.loader.request_reload(std::move(*bad.module), error));
+    const spp::ReloadResult rejected = s.loader.request_reload(std::move(*bad.module));
+    const std::string& error = rejected.error;
+    EXPECT_FALSE(rejected);
+    EXPECT_EQ(rejected.status, spp::ReloadStatus::FullReloadRequired);
+    EXPECT_EQ(rejected.reason, spp::ReloadReason::InterfaceBasesChanged);
     EXPECT_NE(error.find("native interface bases changed (Actor, IDamageable -> Actor, IDamageable, ITagged"),
               std::string::npos)
         << error;

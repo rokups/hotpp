@@ -11,6 +11,7 @@
 
 #include "spp/backend.h"
 #include "support/backend_fixture.h"
+#include "support/reload_assert.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 #include "support/f1_scenario.h"
@@ -75,7 +76,7 @@ TEST_P(BackendTests, BadScriptGivesErrorAndRuntimeKeepsRunning)
     spp::LoadResult v2 = backend->load(source("player_v2.spp"), 2);
     ASSERT_TRUE(v2) << v2.error;
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt);
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);

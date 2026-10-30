@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "spp/backend.h"
+#include "support/reload_assert.h"
 #include "support/test_support.h"
 
 namespace {
@@ -182,9 +183,8 @@ void run_commit_only_at_barrier(unsigned seed)
     s.world.SetFrameBoundaryHook([&] {
         if (s.loader.reload_pending()) {
             busy_at_commit += spp::in_script_tick();
-            std::string err;
-            if (!s.loader.commit_pending(err)) {
-                ADD_FAILURE() << "commit failed: " << err;
+            if (const spp::ReloadResult res = s.loader.commit_pending(); !res) {
+                ADD_FAILURE() << "commit failed: " << res.error;
                 s.commit_failed = true;
             }
             commit_frame = frame;
@@ -203,14 +203,15 @@ void run_commit_only_at_barrier(unsigned seed)
     std::string request_error;
     std::thread compile_thread([&] {
         std::this_thread::sleep_for(delay);
-        request_ok = s.loader.request_reload(std::move(v2), request_error);
+        const spp::ReloadResult req = s.loader.request_reload(std::move(v2));
+        request_ok = static_cast<bool>(req);
+        request_error = req.error;
         requested.store(true);
         // Then it requests a bad reload again and again.
         // So a validation can run at the same time as the commit. Each one must fail.
         while (!stop.load()) {
             spp::LoadResult other = spp::module_from_library(GEN4_BASE_SO);
-            std::string e;
-            if (other && s.loader.request_reload(std::move(*other.module), e)) ++unexpected;
+            if (other && s.loader.request_reload(std::move(*other.module))) ++unexpected;
             (void)s.loader.reload_pending();
             std::this_thread::sleep_for(std::chrono::microseconds(20));
         }
@@ -290,9 +291,15 @@ void run_rejected_reload(unsigned seed)
         missing_error = missing.error;
         // 2. A library with another shell layout: the validation rejects it.
         spp::LoadResult other = spp::module_from_library(GEN4_BASE_SO);
-        if (other) base_ok = s.loader.request_reload(std::move(*other.module), base_error);
+        if (other) {
+            const spp::ReloadResult res = s.loader.request_reload(std::move(*other.module));
+            base_ok = static_cast<bool>(res);
+            base_error = res.error;
+        }
         // 3. A module without the register function.
-        null_ok = s.loader.request_reload(spp::Module{}, null_error);
+        const spp::ReloadResult null_res = s.loader.request_reload(spp::Module{});
+        null_ok = static_cast<bool>(null_res);
+        null_error = null_res.error;
         pending_after = s.loader.reload_pending();
         requested.store(true);
     });
@@ -329,7 +336,7 @@ void run_rejected_reload(unsigned seed)
 
     // The loader still works: a good reload commits at the next barrier.
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(v2_supplier().get(), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(v2_supplier().get()));
     s.world.TickParallel(kDt, kWorkers);
     EXPECT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);

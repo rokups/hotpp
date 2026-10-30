@@ -49,8 +49,10 @@ public:
     ~JitBackend() override;
 
     // Each call makes a new JITDylib, so a reload of the same generation is possible.
-    // The slot order of the fn methods stays in memory between the calls.
-    LoadResult load(const ScriptSource& source, uint32_t generation) override;
+    // The slot order of the fn methods stays in memory between the calls. It changes only when
+    // the module is live (the "on_accept" callback of the Module). Fresh mode: see
+    // backend.h.
+    LoadResult load(const ScriptSource& source, uint32_t generation, LoadMode mode = LoadMode::Reload) override;
     const char* name() const override { return "JIT"; }
 
     JitTimings last_timings() const { return timings_; }
@@ -70,8 +72,14 @@ private:
     std::shared_ptr<JitState> impl_;  // a Module keeps a copy: the JIT must outlive the code
     JitOptions opt_;
     std::mutex mutex_;  // one build at a time: the slot text is shared
-    std::string slots_;
+    // The slot text. A Module keeps a copy of the pointer, so the callback is safe after the backend.
+    struct SlotState {
+        std::mutex mutex;
+        std::string text;
+    };
+    std::shared_ptr<SlotState> slots_ = std::make_shared<SlotState>();
     unsigned sequence_ = 0;
+    unsigned epoch_ = 0;  // counts the fresh loads; it is in the name of the JITDylib
     JitTimings timings_;
     bool debugger_support_ = false;
     std::string debugger_error_;

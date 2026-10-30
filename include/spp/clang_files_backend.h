@@ -38,8 +38,13 @@ public:
     ~ClangFilesBackend() override;
 
     // Makes a new .so for each call, so a reload of the same generation is possible.
-    LoadResult load(const ScriptSource& source, uint32_t generation) override;
+    // The slots file does not change here. The Module has an "on_accept" callback that writes
+    // it, and the Loader calls it when the module is live. A rejected module leaves the file
+    // as it is. The load fails when the slots file is not writable. Fresh mode: see backend.h.
+    LoadResult load(const ScriptSource& source, uint32_t generation, LoadMode mode = LoadMode::Reload) override;
     const char* name() const override { return "CLANG_FILES"; }
+    // The path of the slots file. The file changes only when the Loader accepts a module.
+    const std::string& slots_file() const { return opt_.slots_file; }
 
     // Translates and compiles one script into "out_so". It writes the .cpp
     // next to the .so. It does not load the library. The slot file changes only
@@ -48,9 +53,13 @@ public:
                std::string& error);
 
 private:
+    bool build_impl(const ScriptSource& source, uint32_t generation, LoadMode mode, const std::string& out_so,
+                    std::string& error, std::string* deferred_slots, bool* slots_removed);
+
     ClangFilesOptions opt_;
     std::mutex mutex_;  // one build at a time: the slot file is shared
     std::atomic<unsigned> sequence_{0};
+    std::atomic<unsigned> epoch_{0};  // counts the fresh loads; it is in the name of the library
 };
 
 // The compile command of the backend for one generated .cpp and its .so. The backend and

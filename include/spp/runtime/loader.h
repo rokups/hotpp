@@ -11,6 +11,7 @@
 
 #include "spp/module.h"
 #include "spp/runtime/records.h"
+#include "spp/runtime/reload_result.h"
 #include "spp/runtime/registry.h"
 #include "spp/runtime/threads.h"
 
@@ -125,20 +126,55 @@ public:
     Loader(const Loader&) = delete;
     Loader& operator=(const Loader&) = delete;
 
-    // Registers the first module.
-    bool load(Module module, std::string& error);
+    // Registers the first module. A full reload also uses it for the fresh generation, after
+    // reset. The result is Applied or Failed. It calls Module::on_accept on success.
+    // It fails with ReloadReason::BadModule when the loader already has a generation: call reset
+    // first.
+    ReloadResult load(Module module);
 
-    // Validation phase. Returns false and leaves the live generation unchanged
-    // when the module is not acceptable. A Backend or module_from_library makes the Module.
-    bool request_reload(Module module, std::string& error);
+    // Drops all state of the loader for a full reload. The sequence of the host is: save the host
+    // state, drop all script handles, closures and thunk pointers, reset, load the fresh module
+    // (Backend::load with LoadMode::Fresh) and call load() again, then restore the host state.
+    // It returns false and changes nothing when one of these is true (checked in this order):
+    // a reload is pending; live script objects remain (the error names the classes and the
+    // counts, for example "3 live objects remain: ClassA x2, ClassB x1"); a generation is pinned
+    // (a closure or a running call); the call comes from script code.
+    // The check for a call from script code is exact only in EntryCounters mode (and in a debug
+    // build, which also checks in_script_tick()). In StopTheWorld mode with NDEBUG no counter
+    // exists. The host must not call reset from script code.
+    // On success the loader has no generation, no class and no module state block.
+    // The libraries unload, active_generation is zero and the next load() starts at generation 1.
+    // These host pointers dangle after a reset: every pointer from thunk(), every ClassEntry or
+    // record pointer from find(), the layout and the slot from module_state(), every function
+    // pointer, closure and handle that came from a script module. Call it on the main thread
+    // when no worker runs script code.
+    bool reset(std::string& error);
+
+    // Validation phase. The result is Pending when the module is acceptable. Module::on_accept
+    // runs later, when commit_pending makes the generation live. Else the result is Failed or
+    // FullReloadRequired, with the reason and the classes involved, and the live generation
+    // stays unchanged.
+    // FullReloadRequired means that hot reload cannot apply the change: the host saves its
+    // state, frees all script objects and loads the module again as a fresh generation.
+    // A Backend or module_from_library makes the Module.
+    ReloadResult request_reload(Module module);
+
+    // The host calls this overload when it checked the LoadResult of a backend itself. A
+    // failed LoadResult becomes a result without a call of the validation. A backend failure
+    // with the reason SlotsRemoved becomes FullReloadRequired. Any other failure becomes
+    // Failed with the reason of the LoadResult (CompileError when it is None).
+    // A successful LoadResult goes to request_reload(Module).
+    ReloadResult request_reload(LoadResult built);
     bool reload_pending() const
     {
         std::lock_guard<std::mutex> lock(mutex_);
         return pending_ != nullptr;
     }
-    // Commit phase. Call it only at a frame boundary. Returns true when a
-    // reload was committed. On false, "error" tells why (empty: nothing pending).
-    bool commit_pending(std::string& error);
+    // Commit phase. Call it only at a frame boundary. The result is Applied when a reload
+    // was committed. Else the result is Failed. Nothing pending gives Failed with the reason
+    // None and an empty error. A commit that cannot run now gives Busy. A commit that cannot
+    // migrate the state gives MigrationFailed.
+    ReloadResult commit_pending();
 
     // Call it at each frame boundary, after commit_pending. It unloads the
     // retired generations that may unload, then counts the boundary.
@@ -181,7 +217,7 @@ private:
     // Sets the signature key of the slot of a keyed thunk in the canonical record (design 5.3).
     void set_slot_key(const ThunkEntry& t);
     // The commit itself, after the synchronization of the mode.
-    bool commit_locked(std::string& error);
+    ReloadResult commit_locked();
 
     mutable std::mutex mutex_;  // see "Threads" above
     Registry registry_;

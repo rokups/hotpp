@@ -5,6 +5,7 @@
 #include <condition_variable>
 #include <cstdio>
 #include <mutex>
+#include <sstream>
 #include <thread>
 
 #include "spp/runtime.h"
@@ -113,6 +114,44 @@ struct World::Pool {
 void World::Add(Actor* actor)
 {
     actors_.push_back(actor);
+}
+
+std::string World::Save() const
+{
+    std::string text;
+    char buf[128];
+    for (const Actor* a : actors_) {
+        std::snprintf(buf, sizeof buf, "%.9g %.9g %.9g ", a->Position.x, a->Position.y, a->Position.z);
+        text += buf;
+        text += a->Name;
+        text += '\n';
+    }
+    return text;
+}
+
+void World::Clear()
+{
+    pool_.reset();  // no worker holds an actor
+    for (Actor* a : actors_) delete a;
+    actors_.clear();
+    timers_.clear();
+    observer_ = nullptr;
+}
+
+void World::Restore(const std::string& text, const std::function<Actor*()>& make)
+{
+    std::istringstream in(text);
+    std::string line;
+    while (std::getline(in, line)) {
+        Vec3 pos;
+        int used = 0;
+        if (std::sscanf(line.c_str(), "%f %f %f %n", &pos.x, &pos.y, &pos.z, &used) != 3) continue;
+        Actor* actor = make();
+        if (!actor) continue;
+        actor->Name = line.substr(static_cast<size_t>(used));
+        actor->Position = pos;
+        Add(actor);
+    }
 }
 
 void World::AddTimer(float seconds, std::function<void()> fn)

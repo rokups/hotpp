@@ -111,7 +111,8 @@ struct Host {
             return;
         }
         loaded = true;
-        if (!loader.load(std::move(m), last_error)) {
+        if (const spp::ReloadResult res = loader.load(std::move(m)); !res) {
+            last_error = res.error;
             loaded = false;
             std::fprintf(stderr, "load failed: %s\n", last_error.c_str());
             return;
@@ -136,18 +137,18 @@ struct Host {
             return;
         }
         if (!loaded) {  // the first load failed: this module is the first one
-            if (!loader.load(std::move(m), err)) {
-                last_error = err;
-                std::fprintf(stderr, "reload failed: %s\n", err.c_str());
+            if (const spp::ReloadResult res = loader.load(std::move(m)); !res) {
+                last_error = res.error;
+                std::fprintf(stderr, "reload failed: %s\n", res.error.c_str());
                 return;
             }
             loaded = true;
             recreate_app();
             return;
         }
-        if (!loader.request_reload(std::move(m), err)) {
-            last_error = err;
-            std::fprintf(stderr, "reload failed: %s\n", err.c_str());
+        if (const spp::ReloadResult res = loader.request_reload(std::move(m)); !res) {
+            last_error = res.error;
+            std::fprintf(stderr, "reload failed: %s\n", res.error.c_str());
         }
         // Success: the error text stays until the commit works.
     }
@@ -155,15 +156,15 @@ struct Host {
     // Call it after app->Frame() and before Render. It is the frame boundary.
     void frame_end()
     {
-        std::string err;
         if (loader.reload_pending()) {
-            if (loader.commit_pending(err)) {
+            const spp::ReloadResult res = loader.commit_pending();
+            if (res) {
                 last_error.clear();
                 std::fprintf(stderr, "reloaded gen %u\n", generation);
                 if (!app) recreate_app();
             } else {
-                last_error = err;
-                std::fprintf(stderr, "reload failed: %s\n", err.c_str());
+                last_error = res.error;
+                std::fprintf(stderr, "reload failed: %s\n", res.error.c_str());
             }
         }
         loader.frame_boundary();

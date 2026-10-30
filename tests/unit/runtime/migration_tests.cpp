@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "spp/runtime.h"
+#include "support/reload_assert.h"
 
 namespace {
 
@@ -142,7 +143,7 @@ struct Scenario {
     void start()
     {
         std::string error;
-        ASSERT_TRUE(loader.load(module_of(register1, "gen1"), error)) << error;
+        ASSERT_RELOAD_OK(loader.load(module_of(register1, "gen1")));
         spp::Instance inst = loader.find("Fake")->create();
         obj = static_cast<Fake*>(inst.shell);
         *spp::field_ptr<float>(obj, "hp") = 120.0f;
@@ -279,9 +280,9 @@ TEST(Migration, ConvertDefaultRenameAndOnReloadHook)
     record2.on_reload = on_reload;
 
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(module_of(register2, "gen2"), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(module_of(register2, "gen2")));
     testing::internal::CaptureStderr();
-    ASSERT_TRUE(s.loader.commit_pending(error)) << error;
+    ASSERT_RELOAD_OK(s.loader.commit_pending());
     const std::string log = testing::internal::GetCapturedStderr();
 
     EXPECT_EQ(static_cast<spp::ShellBase*>(s.obj), before);
@@ -314,9 +315,9 @@ TEST(Migration, ATypeChangeWithoutAnyHookStillCommits)
     Scenario s;
     ASSERT_NO_FATAL_FAILURE(s.start());
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(module_of(register2, "gen2"), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(module_of(register2, "gen2")));
     testing::internal::CaptureStderr();
-    ASSERT_TRUE(s.loader.commit_pending(error)) << error;
+    ASSERT_RELOAD_OK(s.loader.commit_pending());
     const std::string log = testing::internal::GetCapturedStderr();
     EXPECT_NE(log.find("field level changed its type"), std::string::npos) << log;
     EXPECT_EQ(*spp::field_ptr<float>(s.obj, "level"), 1.5f);
@@ -331,9 +332,9 @@ TEST(Migration, AThrowingOnReloadIsLoggedAndTheObjectStaysValid)
     record2.on_reload = on_reload;
     g_hook_throws = true;
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(module_of(register2, "gen2"), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(module_of(register2, "gen2")));
     testing::internal::CaptureStderr();
-    ASSERT_TRUE(s.loader.commit_pending(error)) << error;
+    ASSERT_RELOAD_OK(s.loader.commit_pending());
     const std::string log = testing::internal::GetCapturedStderr();
     EXPECT_NE(log.find("ERROR: onReload of Fake threw: boom"), std::string::npos) << log;
     EXPECT_EQ(g_hook.calls, 1);
@@ -349,8 +350,11 @@ TEST(Migration, ABaseClassChangeIsStillRejected)
     ASSERT_NO_FATAL_FAILURE(s.start());
     const char* saved = record2.base_name;
     record2.base_name = "Other";
-    std::string error;
-    EXPECT_FALSE(s.loader.request_reload(module_of(register2, "gen2"), error));
+    const spp::ReloadResult rejected = s.loader.request_reload(module_of(register2, "gen2"));
+    const std::string& error = rejected.error;
+    EXPECT_FALSE(rejected);
+    EXPECT_EQ(rejected.status, spp::ReloadStatus::FullReloadRequired);
+    EXPECT_EQ(rejected.reason, spp::ReloadReason::NativeBaseChanged);
     EXPECT_NE(error.find("base class changed"), std::string::npos) << error;
     record2.base_name = saved;
     EXPECT_EQ(spp::active_generation, 1u);
@@ -392,24 +396,26 @@ TEST(Migration, AThrowingNativeMoveRequestsARestart)
     trecord1 = spp::ClassRecord{"Thrown", 1, slots, 1, &tlayout, nullptr, "Base", kHash};
     spp::Loader loader;
     std::string error;
-    ASSERT_TRUE(loader.load(module_of(tregister1, "t1"), error)) << error;
+    ASSERT_RELOAD_OK(loader.load(module_of(tregister1, "t1")));
     Fake* obj = static_cast<Fake*>(loader.find("Thrown")->create().shell);
     spp::field_ptr<Thrower>(obj, "t")->v = 42;
 
-    ASSERT_TRUE(loader.request_reload(module_of(tregister2, "t2"), error)) << error;
+    ASSERT_RELOAD_OK(loader.request_reload(module_of(tregister2, "t2")));
     g_restart_reason.clear();
     spp::clear_restart_request();
     spp::set_restart_handler(test_handler);
     Thrower::armed = true;
     testing::internal::CaptureStderr();
-    EXPECT_FALSE(loader.commit_pending(error));
+    const spp::ReloadResult committed = loader.commit_pending();
+    EXPECT_FALSE(committed);
+    EXPECT_EQ(committed.reason, spp::ReloadReason::MigrationFailed);
     const std::string log = testing::internal::GetCapturedStderr();
     Thrower::armed = false;
     spp::set_restart_handler(nullptr);
 
     EXPECT_TRUE(spp::restart_requested());
     EXPECT_NE(g_restart_reason.find("FATAL"), std::string::npos) << g_restart_reason;
-    EXPECT_NE(error.find("restart"), std::string::npos) << error;
+    EXPECT_NE(committed.error.find("restart"), std::string::npos) << committed.error;
     EXPECT_NE(log.find("FATAL: restart requested"), std::string::npos) << log;
     // The old block stays valid and the generation does not change.
     EXPECT_EQ(spp::field_ptr<Thrower>(obj, "t")->v, 42);

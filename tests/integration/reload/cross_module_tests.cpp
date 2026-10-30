@@ -7,6 +7,7 @@
 
 #include "spp/backend.h"
 #include "support/backend_fixture.h"
+#include "support/reload_assert.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 
@@ -33,7 +34,7 @@ void reload(Session& s, spp::LoadResult& r, uint32_t gen)
 {
     ASSERT_TRUE(r) << r.error;
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*r.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*r.module)));
     s.world.Tick(kDt);  // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, gen);

@@ -1,0 +1,16 @@
+// A module variable that holds a closure. The closure pins its generation, so reset fails
+// until a script function clears the variable.
+using "Actor.h";
+
+std.function<int(int)> callback;
+
+class Holder : Actor {
+    void Store() {
+        callback = (int x) => { return x + 1; };
+    }
+
+    void Clear() {
+        std.function<int(int)> none;
+        callback = none;
+    }
+}

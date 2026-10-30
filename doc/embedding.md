@@ -19,8 +19,8 @@ cmake --preset linux-clang-jit
 spp::Loader loader;                       // declare first: it is destroyed last
 auto backend = spp::make_default_backend();
 spp::LoadResult module = backend->load({"player.spp", text}, 1);
-std::string error;
-loader.load(std::move(*module.module), error);
+spp::ReloadResult loaded = loader.load(std::move(*module.module));
+if (!loaded) { /* report loaded.error */ }
 ```
 
 ## Precompiled scripts
@@ -33,8 +33,7 @@ sppc player_v1.spp --gen 1 -I include -I example/engine --out-dir out/
 
 ```cpp
 spp::LoadResult module = spp::module_from_library("out/player_v1.g1.so");
-std::string error;
-if (!module || !loader.load(std::move(*module.module), error)) { /* report */ }
+if (!module || !loader.load(std::move(*module.module))) { /* report */ }
 ```
 
 The host must export the functions that the script calls (`ENABLE_EXPORTS`).
@@ -44,15 +43,37 @@ The host must export the functions that the script calls (`ENABLE_EXPORTS`).
 Ask for a reload at any time. Commit it at the frame boundary.
 
 ```cpp
-// next: a Module of generation 2, from a backend or from module_from_library
-std::string error;
-loader.request_reload(std::move(*next.module), error);     // checks only
+// next: a LoadResult of generation 2, from a backend
+spp::ReloadResult r = loader.request_reload(std::move(next));   // checks only
 world.SetFrameBoundaryHook([&] {
-    std::string e;
-    loader.commit_pending(e);
-    loader.frame_boundary();                                // unloads old generations
+    loader.commit_pending();
+    loader.frame_boundary();                                    // unloads old generations
 });
 ```
+
+`request_reload` returns a `spp::ReloadResult` (`include/spp/runtime/reload_result.h`). It has a `status`, a `reason`, an `error` text and the `classes` involved. The status is one of these:
+
+| Status | Meaning |
+|---|---|
+| `Applied` | The new generation is active. |
+| `Pending` | The module is acceptable. `commit_pending` applies it. |
+| `FullReloadRequired` | Hot reload cannot apply the change. The host does a full reload. |
+| `Failed` | The module is not acceptable. The live generation continues. |
+
+The result converts to `true` for `Applied` and `Pending`.
+
+### Full reload
+
+For `FullReloadRequired`, the host does these steps:
+
+1. Save the host state.
+2. Drop all script objects, handles, closures and thunk pointers.
+3. Call `loader.reset(error)` on the same `Loader`.
+4. Call `backend->load(source, 1, spp::LoadMode::Fresh)`.
+5. Call `loader.load(module)`.
+6. Restore the host state.
+
+The host does the serialization. The script has no hook for it. `reset` returns `false` and changes nothing when objects remain. The error is, for example, `2 live objects remain: Player x1, Weapon x1`. It also fails when a reload is pending or a generation is pinned. The check for a call from script code is exact only in EntryCounters mode. The host must not call `reset` from script code. After `reset`, pointers from `find()`, `module_state()` and `thunk()` are invalid. The runtime does not see a change in a native header: the host starts a full reload itself. `example/engine/Harness.cpp` (`full_reload`) is a complete sample.
 
 ## AOT compilation
 

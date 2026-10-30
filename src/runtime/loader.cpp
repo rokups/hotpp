@@ -7,6 +7,7 @@
 #include <exception>
 #include <functional>
 #include <iterator>
+#include <map>
 #include <set>
 #include <utility>
 
@@ -142,6 +143,58 @@ Loader::~Loader()
     }
 }
 
+bool Loader::reset(std::string& error)
+{
+    // The checks change nothing. The first check that fails gives the text.
+    if (entry_depth() != 0 || in_script_tick() != 0) {
+        error = "reset was called inside script code";
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (pending_) {
+        error = "a reload is pending";
+        return false;
+    }
+    if (!g_live.empty()) {
+        std::map<std::string, size_t> by_name;  // sorted, so the text is stable
+        for (const auto& [s, creator] : g_live) ++by_name[s->cls->name];
+        error = std::to_string(g_live.size()) + " live objects remain: ";
+        bool first = true;
+        for (const auto& [name, count] : by_name) {
+            if (!first) error += ", ";
+            first = false;
+            error += name + " x" + std::to_string(count);
+        }
+        return false;
+    }
+    for (const Gen& g : gens_) {
+        if (g.state != GenState::Unloaded && pin_count(g.generation) != 0) {
+            error = "generation " + std::to_string(g.generation) + " is pinned";
+            return false;
+        }
+    }
+    // The code of the field destroyers is still loaded here: "gens_" goes later.
+    if (mod_block_) {
+        if (mod_slot_) *mod_slot_ = nullptr;
+        destroy_fields(mod_layout_, mod_block_);
+        aligned_free(mod_block_);
+    }
+    mod_block_ = nullptr;
+    mod_layout_ = nullptr;
+    mod_slot_ = nullptr;
+    removed_.clear();
+    slot_keys_.clear();
+    record_gen_.clear();
+    registry_ = Registry{};  // the records point into the code that unloads next
+    gens_.clear();           // unloads the libraries of the generations
+    cores_.clear();          // after "gens_", as in the destructor
+    key_text_.clear();
+    frame_ = 0;
+    active_generation = 0;
+    clear_restart_request();
+    return true;
+}
+
 bool Loader::make_module_block(const ModuleStateInfo& info, std::string& error)
 {
     char* block = alloc_state(info.layout);
@@ -167,11 +220,39 @@ bool Loader::make_module_block(const ModuleStateInfo& info, std::string& error)
     return true;
 }
 
-bool Loader::load(Module module, std::string& error)
+namespace {
+
+ReloadResult make_result(ReloadStatus status, ReloadReason reason, std::string error = {},
+                         std::vector<std::string> classes = {})
 {
-    if (!module.register_fn) {
-        error = "the module has no script_register function";
-        return false;
+    ReloadResult r;
+    r.status = status;
+    r.reason = reason;
+    r.error = std::move(error);
+    r.classes = std::move(classes);
+    return r;
+}
+
+ReloadResult failed(ReloadReason reason, std::string error, std::vector<std::string> classes = {})
+{
+    return make_result(ReloadStatus::Failed, reason, std::move(error), std::move(classes));
+}
+
+ReloadResult full_reload(ReloadReason reason, std::string error, std::string cls)
+{
+    return make_result(ReloadStatus::FullReloadRequired, reason, std::move(error), {std::move(cls)});
+}
+
+}  // namespace
+
+ReloadResult Loader::load(Module module)
+{
+    if (!module.register_fn)
+        return failed(ReloadReason::BadModule, "the module has no script_register function");
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!gens_.empty())  // "active_generation" is global: a destroyed loader can leave it set
+            return failed(ReloadReason::BadModule, "the loader already has a generation: call reset first");
     }
     Registry code;
     module.register_fn(code);
@@ -181,11 +262,9 @@ bool Loader::load(Module module, std::string& error)
     const bool have_core = open_core(module, code, core, core_reg);
     std::lock_guard<std::mutex> lock(mutex_);
     if (const ModuleStateInfo& ms = code.module_state(); ms.layout) {
-        if (mod_block_) {
-            error = "the loader has a module state block already";
-            return false;
-        }
-        if (!make_module_block(ms, error)) return false;
+        if (mod_block_) return failed(ReloadReason::BadModule, "the loader has a module state block already");
+        std::string error;
+        if (!make_module_block(ms, error)) return failed(ReloadReason::BadModule, std::move(error));
     }
     const Registry& canon = have_core ? core_reg : code;
     for (const auto& [name, e] : canon.entries()) registry_.add(e.record, e.create);
@@ -197,12 +276,15 @@ bool Loader::load(Module module, std::string& error)
         for (const auto& [name, e] : code.entries()) adopt(registry_.find(name)->record, e.record);
     const uint32_t gen = registry_.max_generation();
     if (!have_core) note_records(code, gen);
+    std::function<void()> on_accept = module.on_accept;
     add_generation(std::move(module), gen);
     gens_.back().registry_refs =
         have_core ? 0u : static_cast<uint32_t>(code.entries().size() + code.thunks().size());
     if (have_core) cores_.push_back(std::move(core));
     active_generation = gen;
-    return true;
+    // The module is accepted. The callback runs under the loader mutex: it must not call the Loader.
+    if (on_accept) on_accept();
+    return make_result(ReloadStatus::Applied, ReloadReason::None);
 }
 
 // Remembers which module holds each record of a registry.
@@ -378,26 +460,35 @@ void* StateBase::__removed() { return removed_class_handler(); }
 
 uint64_t removed_class_call_count() { return g_removed_calls.load(std::memory_order_relaxed); }
 
-bool Loader::request_reload(Module module, std::string& error)
+ReloadResult Loader::request_reload(LoadResult built)
+{
+    // The host checked the LoadResult of the backend itself, then it calls this overload. A
+    // backend failure becomes a result here. So a host needs no own mapping of the reason: a
+    // SlotsRemoved failure (a class lost slots, see sppc_lib.h) is a FullReloadRequired result.
+    if (!built.module) {
+        const ReloadReason reason =
+            built.reason == ReloadReason::None ? ReloadReason::CompileError : built.reason;
+        if (reason == ReloadReason::SlotsRemoved)
+            return make_result(ReloadStatus::FullReloadRequired, reason, std::move(built.error));
+        return failed(reason, std::move(built.error));
+    }
+    return request_reload(std::move(*built.module));
+}
+
+ReloadResult Loader::request_reload(Module module)
 {
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (pending_) {
-            error = "a reload is already pending";
-            return false;
-        }
+        if (pending_) return failed(ReloadReason::Busy, "a reload is already pending");
     }
-    if (!module.register_fn) {
-        error = "the module has no script_register function";
-        return false;
-    }
+    if (!module.register_fn)
+        return failed(ReloadReason::BadModule, "the module has no script_register function");
     auto p = std::make_unique<Pending>();
     p->module = std::move(module);
     try {
         p->module.register_fn(p->staged);
     } catch (...) {
-        error = "script_register threw an exception";
-        return false;
+        return failed(ReloadReason::BadModule, "script_register threw an exception");
     }
     // A generation that adds a class or a thunk gets a core instance (module.h). Only a commit
     // changes "registry_", and a commit needs "pending_". The check of "pending_" below
@@ -418,23 +509,19 @@ bool Loader::request_reload(Module module, std::string& error)
     // The lock keeps "registry_" and the class records stable. Only
     // commit_pending changes them, and it takes the same lock.
     std::lock_guard<std::mutex> lock(mutex_);
-    if (pending_) {  // another thread was faster
-        error = "a reload is already pending";
-        return false;
-    }
+    if (pending_)  // another thread was faster
+        return failed(ReloadReason::Busy, "a reload is already pending");
     // A class that is missing in the new generation is removed (design 6.1): no rejection.
     for (const auto& [name, in] : p->staged.entries()) {
         ClassEntry* canon = registry_.find(name);
-        if (!in.record->layout) {
-            error = "class " + name + " has no state layout";
-            return false;
-        }
-        if (in.record->generation <= active_generation) {
-            error = "class " + name + ": generation " + std::to_string(in.record->generation) +
-                    " is not newer than the active generation " +
-                    std::to_string(active_generation);
-            return false;
-        }
+        if (!in.record->layout)
+            return failed(ReloadReason::BadModule, "class " + name + " has no state layout", {name});
+        if (in.record->generation <= active_generation)
+            return failed(ReloadReason::GenerationNotNewer,
+                          "class " + name + ": generation " + std::to_string(in.record->generation) +
+                              " is not newer than the active generation " +
+                              std::to_string(active_generation),
+                          {name});
         PendingClass pc{canon, in.record, in.create, {}};
         if (canon) {
             const ClassRecord* cur = canon->record;
@@ -445,21 +532,23 @@ bool Loader::request_reload(Module module, std::string& error)
                 // (design 4.4). An added or removed interface base changes the shell (5.3: RECONSTRUCT).
                 const std::string s0 = b0, s1 = b1;
                 if (s0.substr(0, s0.find(',')) == s1.substr(0, s1.find(',')))
-                    error = "class " + name + ": native interface bases changed (" + s0 + " -> " + s1 +
-                            "; RECONSTRUCT change)";
-                else
-                    error = "class " + name + ": base class changed (" + s0 + " -> " + s1 + ")";
-                return false;
+                    return full_reload(ReloadReason::InterfaceBasesChanged,
+                                       "class " + name + ": native interface bases changed (" + s0 + " -> " +
+                                           s1 + "; RECONSTRUCT change)",
+                                       name);
+                return full_reload(ReloadReason::NativeBaseChanged,
+                                   "class " + name + ": base class changed (" + s0 + " -> " + s1 + ")", name);
             }
             // A change of the script parent changes the shell hierarchy (design 5.3: RECONSTRUCT).
             const char* p0 = cur->super ? cur->super->name : "";
             const char* p1 = in.record->super ? in.record->super->name : "";
-            if (std::strcmp(p0, p1) != 0) {
-                error = "class " + name + ": script parent class changed (" + (*p0 ? p0 : "none") + " -> " +
-                        (*p1 ? p1 : "none") + "; RECONSTRUCT change)";
-                return false;
-            }
+            if (std::strcmp(p0, p1) != 0)
+                return full_reload(ReloadReason::ScriptParentChanged,
+                                   "class " + name + ": script parent class changed (" + (*p0 ? p0 : "none") +
+                                       " -> " + (*p1 ? p1 : "none") + "; RECONSTRUCT change)",
+                                   name);
             if (cur->shell_hash != in.record->shell_hash) {
+                std::string error;
                 if (!cur->shares_this && in.record->shares_this)
                     error = "class " + name +
                             ": the new generation uses 'this' as a handle (or adds a script child) for the "
@@ -472,12 +561,11 @@ bool Loader::request_reload(Module module, std::string& error)
                             "layout changes (RECONSTRUCT change). Restart the program";
                 else
                     error = "class " + name + ": shell layout hash differs (RECONSTRUCT change)";
-                return false;
+                return full_reload(ReloadReason::ShellLayoutChanged, std::move(error), name);
             }
-            if (in.record->slot_count < cur->slot_count) {
-                error = "class " + name + ": the new generation has fewer slots";
-                return false;
-            }
+            if (in.record->slot_count < cur->slot_count)
+                return full_reload(ReloadReason::SlotsRemoved,
+                                   "class " + name + ": the new generation has fewer slots", name);
             // A type change does not reject the reload (design 4.7): the plan converts the
             // field or uses the default value. The commit logs the warnings of the plan.
             pc.plan = build_plan(*cur->layout, *in.record->layout);
@@ -487,14 +575,12 @@ bool Loader::request_reload(Module module, std::string& error)
     // The module state block migrates like the fields of a class (design 5.3). A type change
     // never rejects the reload. Without a block in the old generation, all variables are new.
     if (const ModuleStateInfo& nms = p->staged.module_state(); nms.layout) {
-        if (!nms.slot) {
-            error = "the module state has no slot";
-            return false;
-        }
+        if (!nms.slot) return failed(ReloadReason::BadModule, "the module state has no slot");
         p->mod_plan = build_plan(mod_layout_ ? *mod_layout_ : kEmptyLayout, *nms.layout);
     }
+    // The module is valid. The callback "on_accept" runs when the commit makes the generation live.
     pending_ = std::move(p);
-    return true;
+    return make_result(ReloadStatus::Pending, ReloadReason::None);
 }
 
 void Loader::set_sync_mode(SyncMode mode)
@@ -507,19 +593,17 @@ SyncMode Loader::sync_mode() const
     return entry_counters_enabled() ? SyncMode::EntryCounters : SyncMode::StopTheWorld;
 }
 
-bool Loader::commit_pending(std::string& error)
+ReloadResult Loader::commit_pending()
 {
-    error.clear();
     if (entry_counters_enabled()) {
         // EntryCounters mode (design 6.3). The thread must not wait for its own entry.
-        if (entry_depth() != 0) {
-            error = "commit_pending was called inside script code; the commit would wait for itself";
-            return false;
-        }
-        if (!reload_pending()) return false;  // no window when nothing is pending
+        if (entry_depth() != 0)
+            return failed(ReloadReason::Busy,
+                          "commit_pending was called inside script code; the commit would wait for itself");
+        if (!reload_pending()) return failed(ReloadReason::None, {});  // no window when nothing is pending
         CommitWindow window;  // no thread is in script code until the end of the scope
         std::lock_guard<std::mutex> lock(mutex_);
-        return commit_locked(error);
+        return commit_locked();
     }
     // StopTheWorld mode. Debug check (design 6.3): all entry depths are zero. Count first,
     // then assert. In a release build kTickChecks is false and this code is gone.
@@ -532,12 +616,12 @@ bool Loader::commit_pending(std::string& error)
         assert(busy == 0 && "commit_pending must run at the safe point");
     }
     std::lock_guard<std::mutex> lock(mutex_);
-    return commit_locked(error);
+    return commit_locked();
 }
 
-bool Loader::commit_locked(std::string& error)
+ReloadResult Loader::commit_locked()
 {
-    if (!pending_) return false;
+    if (!pending_) return failed(ReloadReason::None, {});
     Pending& P = *pending_;
 
     struct Work {
@@ -571,9 +655,8 @@ bool Loader::commit_locked(std::string& error)
     } catch (...) {
         for (Work& w : work) aligned_free(w.new_block);
         aligned_free(new_mod);
-        error = "out of memory in commit step 1; the old generation continues";
         pending_.reset();
-        return false;
+        return failed(ReloadReason::MigrationFailed, "out of memory in commit step 1; the old generation continues");
     }
 
     for (const std::string& w : P.mod_plan.warnings)
@@ -603,9 +686,9 @@ bool Loader::commit_locked(std::string& error)
             aligned_free(new_mod);
         }
         pending_.reset();
-        error = "FATAL: exception during state migration; a restart is needed";
+        const std::string error = "FATAL: exception during state migration; a restart is needed";
         request_restart(error.c_str());
-        return false;
+        return failed(ReloadReason::MigrationFailed, error);
     }
     for (Work& w : work) w.obj->state = w.new_block;
 
@@ -728,10 +811,13 @@ bool Loader::commit_locked(std::string& error)
             g.retired_frame = frame_;
         }
     if (!P.have_core) note_records(P.staged, active_generation);
+    const std::function<void()> on_accept = P.module.on_accept;
     add_generation(std::move(P.module), active_generation);
     gens_.back().registry_refs = new_refs;
     pending_.reset();
-    return true;
+    // The generation is live. The callback runs under the loader mutex: it must not call the Loader.
+    if (on_accept) on_accept();
+    return make_result(ReloadStatus::Applied, ReloadReason::None);
 }
 
 }  // namespace spp

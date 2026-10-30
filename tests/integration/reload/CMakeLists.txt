@@ -19,6 +19,7 @@ add_executable(integration_reload_tests
     runtime_polish_tests.cpp
     core_module_tests.cpp
     reload_contract_tests.cpp
+    full_reload_tests.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Harness.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Actor.cpp
     ${CMAKE_SOURCE_DIR}/example/engine/Object.cpp
@@ -35,4 +36,7 @@ target_compile_definitions(integration_reload_tests PRIVATE
     GEN4_BASE_SO="$<TARGET_FILE:gen4_base>"
     STRESS_SO="$<TARGET_FILE:stress_generation>"
     GEN3_MISSING_SO="${CMAKE_BINARY_DIR}/gen3_missing.so")
+if(SPP_BACKEND STREQUAL "CLANG_FILES")
+    target_compile_definitions(integration_reload_tests PRIVATE SPP_TEST_CLANG_FILES=1)
+endif()
 spp_gtest(integration_reload_tests)

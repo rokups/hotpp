@@ -23,7 +23,7 @@ The recommended architecture has four parts.
 
 **First experiment.** R0 in section 8. Hand-write a shell, a state block and a generation module. Compile them into a shared library. Load it into the harness. Tick the object through a native base pointer. It tests the export surface and the toolchain compatibility before any translator work.
 
-**What the system does not promise.** A change to the native base class, to script inheritance, or to native headers does not preserve live objects. Section 5 lists each change with its class: live, reconstruct, restart or error.
+**What the system does not promise.** A change to the native base class, to script inheritance, or to native headers does not preserve live objects. Section 5 lists each change with its class: live, reconstruct, restart or error. A reconstruct or restart change needs a full reload by the host (section 5.6).
 ## 2. Evidence-based survey
 
 Each claim has a status. Verified: read in a primary source or reproduced locally. Partial: a secondary source. Assumed: not found.
@@ -464,8 +464,8 @@ Each change falls into one of four classes.
 | Class | Meaning |
 |---|---|
 | LIVE | Supported. Live objects survive. |
-| RECONSTRUCT | The shell changes. Live objects of the class cannot survive. Version 1 rejects the reload. A later version can offer destroy-and-recreate through an engine-specific hook. |
-| RESTART | Needs a new process. |
+| RECONSTRUCT | The shell changes. Live objects of the class cannot survive. Version 1 returns `FullReloadRequired` (section 5.6). A later version can offer destroy-and-recreate through an engine-specific hook. |
+| RESTART | Needs a full reload by the host (section 5.6). A native header change is host-triggered. |
 | ERROR | The translator rejects the script. |
 
 ### 5.3 The contract
@@ -525,6 +525,19 @@ Each change falls into one of four classes.
 | Script templates and generics | Possible as C++ templates. Deferred to keep the first translator small. |
 | Script exception types | type_info of a script type lives in a generation module. Catch sites across generations would not match. |
 | Reload while a worker thread runs script code | The safe point needs a quiescent job system. |
+### 5.6 Full reload
+
+A RECONSTRUCT change (and a removed slot) gives `FullReloadRequired` from `Loader::request_reload`. The result has the reason (`ReloadReason`) and the class names. The live generation stays. The host restarts the script state:
+
+1. Save the host state. The host does the serialization. The script has no hook.
+2. Drop all script objects, handles, closures and thunk pointers.
+3. Call `Loader::reset(error)`. It fails, and changes nothing, when objects remain (the error is "N live objects remain: A x1, B x2"), when a reload is pending or when a generation is pinned.
+4. Compile with `Backend::load(source, 1, LoadMode::Fresh)`. A fresh load ignores the earlier slot numbering.
+5. Call `Loader::load`. The generation is 1 again.
+6. Restore the host state with the new scripts.
+
+The slots file is written only when the Loader accepts the module. After `reset`, pointers from `find()`, `module_state()` and `thunk()` are invalid. The runtime does not see a change in a native header: the host starts the full reload itself.
+
 ## 6. Runtime lifecycle
 
 ### 6.1 Entities and their states

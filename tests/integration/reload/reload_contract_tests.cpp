@@ -31,12 +31,11 @@ const spp::GenerationInfo* find_gen(const spp::LoaderStats& st, uint32_t generat
 // Validates and commits one module at the next frame boundary. Returns the captured stderr.
 std::string reload(Session& s, spp::LoadResult& r)
 {
-    std::string error;
     testing::internal::CaptureStderr();
-    const bool ok = s.loader.request_reload(std::move(*r.module), error);
+    const spp::ReloadResult res = s.loader.request_reload(std::move(*r.module));
     s.world.Tick(kDt);
     const std::string log = testing::internal::GetCapturedStderr();
-    EXPECT_TRUE(ok) << error;
+    EXPECT_RELOAD_OK(res);
     return log;
 }
 
@@ -47,15 +46,15 @@ using Heal2 = void (*)(Actor*, int32_t, int32_t);
 // warning. A new thunk serves the new signature. A reload with the same signature keeps it.
 TEST_P(BackendTests, SignatureChangeDetachesTheOldDelegate)
 {
+    // The slot state changes when the Loader accepts a module. So build each generation after the
+    // Loader accepted the one before it.
     spp::LoadResult v1 = backend->load(source("sigchange_v1.spp"), 1);
     ASSERT_TRUE(v1) << v1.error;
-    spp::LoadResult v2 = backend->load(source("sigchange_v2.spp"), 2);
-    ASSERT_TRUE(v2) << v2.error;
-    spp::LoadResult v3 = backend->load(source("sigchange_v3.spp"), 3);
-    ASSERT_TRUE(v3) << v3.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Medic"));
     s.commit_at_frame_boundary();
+    spp::LoadResult v2 = backend->load(source("sigchange_v2.spp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
     auto old_heal = reinterpret_cast<Heal1>(s.loader.thunk("Medic::heal"));
     ASSERT_NE(old_heal, nullptr);
     old_heal(s.actor, 5);
@@ -79,6 +78,8 @@ TEST_P(BackendTests, SignatureChangeDetachesTheOldDelegate)
     EXPECT_EQ(*int_field(s, "hp"), 21);
 
     // The same signature: no new thunk, no warning. The new body runs through the same thunk.
+    spp::LoadResult v3 = backend->load(source("sigchange_v3.spp"), 3);
+    ASSERT_TRUE(v3) << v3.error;
     const std::string log3 = reload(s, v3);
     EXPECT_EQ(log3.find("signature"), std::string::npos) << log3;
     EXPECT_EQ(s.loader.thunk("Medic::heal"), reinterpret_cast<void*>(new_heal));
@@ -136,8 +137,11 @@ TEST_P(BackendTests, FirstHandleUseOfThisIsRejected)
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Echo"));
     s.commit_at_frame_boundary();
     EXPECT_FALSE(s.inst.shell->cls->shares_this);
-    std::string error;
-    EXPECT_FALSE(s.loader.request_reload(std::move(*v2.module), error));
+    const spp::ReloadResult rejected = s.loader.request_reload(std::move(*v2.module));
+    const std::string& error = rejected.error;
+    EXPECT_FALSE(rejected);
+    EXPECT_EQ(rejected.status, spp::ReloadStatus::FullReloadRequired);
+    EXPECT_EQ(rejected.reason, spp::ReloadReason::ShellLayoutChanged);
     EXPECT_NE(error.find("uses 'this' as a handle"), std::string::npos) << error;
     EXPECT_NE(error.find("enable_shared_from_this"), std::string::npos) << error;
     s.world.Tick(kDt);

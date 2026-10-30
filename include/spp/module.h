@@ -6,6 +6,8 @@
 #include <optional>
 #include <string>
 
+#include "spp/runtime/reload_result.h"
+
 namespace spp {
 
 class Registry;
@@ -28,12 +30,19 @@ struct Module {
     std::shared_ptr<void> keep_alive;
     std::string origin;  // a name for the messages, for example the path of the library
     std::function<LoadResult()> make_core;  // empty: the module cannot make a core instance
+    // The Loader calls it when the module is live: at the end of a successful load, and at the end
+    // of a successful commit of a reload. A backend uses it to write the slots file only for a
+    // live module. A rejected module, and a reload that does not commit, never call it.
+    std::function<void()> on_accept;
 };
 
 // The result of a build or a load: a Module, or an error text with the diagnostics.
 struct LoadResult {
     std::optional<Module> module;
     std::string error;
+    // Why the build failed. A backend failure is CompileError. SlotsRemoved means that a class has
+    // fewer slots than before: only a full reload can apply the change.
+    ReloadReason reason = ReloadReason::None;
     explicit operator bool() const { return module.has_value(); }
 };
 

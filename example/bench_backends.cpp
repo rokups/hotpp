@@ -83,9 +83,9 @@ double timed_load(spp::Backend& b, const spp::ScriptSource& s, uint32_t gen)
     // The Loader registers the class. This also proves that the module works,
     // and it links the runtime into this executable (the JIT code needs it).
     spp::Loader loader;
-    std::string error;
-    if (!loader.load(std::move(*r.module), error)) {
-        std::fprintf(stderr, "register failed: %s\n", error.c_str());
+    const spp::ReloadResult loaded = loader.load(std::move(*r.module));
+    if (!loaded) {
+        std::fprintf(stderr, "register failed: %s\n", loaded.error.c_str());
         return -1;
     }
     return ms;

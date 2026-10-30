@@ -9,6 +9,7 @@
 
 #include "Actor.h"
 #include "spp/runtime.h"
+#include "support/reload_assert.h"
 
 namespace test_support {
 
@@ -36,7 +37,7 @@ struct Session {
     void start(spp::Module module, const char* class_name = "Player")
     {
         std::string error;
-        ASSERT_TRUE(loader.load(std::move(module), error)) << error;
+        ASSERT_RELOAD_OK(loader.load(std::move(module)));
         const spp::ClassEntry* entry = loader.find(class_name);
         ASSERT_NE(entry, nullptr) << "class " << class_name << " is not registered";
         inst = entry->create();
@@ -57,10 +58,11 @@ struct Session {
     void commit_at_frame_boundary()
     {
         world.SetFrameBoundaryHook([this] {
-            std::string err;
-            if (loader.reload_pending() && !loader.commit_pending(err)) {
-                ADD_FAILURE() << "commit failed: " << err;
-                commit_failed = true;
+            if (loader.reload_pending()) {
+                if (const spp::ReloadResult res = loader.commit_pending(); !res) {
+                    ADD_FAILURE() << "commit failed: " << res.error;
+                    commit_failed = true;
+                }
             }
             loader.frame_boundary();
         });

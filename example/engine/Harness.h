@@ -26,8 +26,11 @@ public:
     bool start(std::string& error);
 
     // Compiles the file again and validates it. The commit happens at the end of
-    // the next frame. A failure keeps the old generation.
-    bool reload(std::string& error);
+    // the next frame. A failure keeps the old generation. When hot reload cannot apply the
+    // change (FullReloadRequired), the harness does a full reload at once and the result is
+    // Applied. A full reload restarts the generation at 1 and makes the actors again from
+    // their saved position and name.
+    spp::ReloadResult reload();
 
     // Runs one command line. The result is the text for the user.
     std::string command(const std::string& line);
@@ -42,6 +45,8 @@ public:
     unsigned reloads_started() const { return reloads_; }
 
 private:
+    Actor* make_actor();  // a new script object of class_name_, or null
+    spp::ReloadResult full_reload(const spp::ScriptSource& source, const spp::ReloadResult& needed);
     std::string script_, class_name_;
     std::unique_ptr<spp::Backend> backend_;
     spp::Loader loader_;  // before the world: it is destroyed after the world
@@ -49,6 +54,8 @@ private:
     FileWatcher watcher_;
     uint32_t next_generation_ = 1;
     unsigned reloads_ = 0;
+    std::string saved_;           // the actors of a full reload that failed after the reset
+    bool restore_pending_ = false;  // true: the Loader has no script and "saved_" holds the actors
     bool quit_ = false;
 };
 

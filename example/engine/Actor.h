@@ -100,6 +100,14 @@ public:
     void ClearTimers() { timers_.clear(); }
     size_t TimerCount() const { return timers_.size(); }
 
+    // Full reload support. Save writes one line for each actor: "x y z name". Clear deletes
+    // every actor and drops the timers and the tick observer, which can hold script closures.
+    // The frame boundary hook stays: it is host code. Restore makes the actors again.
+    // "make" gives a new actor, a script object. Call Clear before the Loader reset.
+    std::string Save() const;
+    void Clear();
+    void Restore(const std::string& text, const std::function<Actor*()>& make);
+
 private:
     struct Pool;  // the worker threads and the barrier
     void TickActor(Actor* actor, float dt);

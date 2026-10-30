@@ -204,7 +204,7 @@ JitBackend::JitBackend(JitOptions options) : opt_(std::move(options))
 
 JitBackend::~JitBackend() = default;
 
-LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
+LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, LoadMode mode)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     LoadResult r;
@@ -212,7 +212,11 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
     namespace fs = std::filesystem;
     std::string stem = fs::path(source.name).stem().string();
     if (stem.empty()) stem = "script";
-    const std::string id = stem + ".g" + std::to_string(generation) + "." + std::to_string(sequence_++);
+    // A fresh load starts a new epoch. The epoch is in the name of the JITDylib, so a fresh
+    // generation never has the name of a JITDylib that the process still uses.
+    if (mode == LoadMode::Fresh) ++epoch_;
+    const std::string id = stem + ".g" + std::to_string(generation) + ".e" + std::to_string(epoch_) + "." +
+                           std::to_string(sequence_++);
     const std::string cpp_path = std::string(kVirtualDir) + "/" + id + ".cpp";
 
     timings_ = {};
@@ -227,12 +231,17 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
     to.resource_dir = opt_.resource_dir;
     to.strict_borrowed = opt_.strict_borrowed;
     to.format_lib = format_lib_name();
-    to.slots_in = slots_;
+    // A fresh load ignores the slot state of the earlier generations.
+    if (mode == LoadMode::Reload) {
+        std::lock_guard<std::mutex> slock(slots_->mutex);
+        to.slots_in = slots_->text;
+    }
     sppc::TranslateResult tr = sppc::translate(to, *opt_.session);
     timings_.translate_ms = ms_since(t0);
     if (!tr.ok) {
         r.error = opt_.raw_diagnostics ? tr.diagnostics
                                        : sppc::rewrite_translator_diagnostic(tr.diagnostics, sppc::script_texts(source.name, source.text, tr));
+        r.reason = tr.slots_removed ? ReloadReason::SlotsRemoved : ReloadReason::CompileError;
         return r;
     }
 
@@ -244,6 +253,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
             c.diagnostics = sppc::rewrite_diagnostic(c.diagnostics, {{source.name, source.text}}, {{cpp_path, tr.cpp}},
                                                   &tr.source_map);
         r.error = c.diagnostics + "the compile of " + source.name + " failed\n";
+        r.reason = ReloadReason::CompileError;
         return r;
     }
 
@@ -283,10 +293,16 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation)
     LoadResult added = add_to_jit(impl_, id, llvm::orc::ThreadSafeModule(std::move(c.module), tsc));
     if (!added) {
         r.error = added.error;
+        r.reason = ReloadReason::BadModule;
         return r;
     }
     timings_.jit_ms = ms_since(t0);
-    slots_ = tr.slots_out + tr.sigs_out;  // the slot order changes only when the whole load succeeds
+    // The slot order changes only when the Loader accepts the module. The callback holds the
+    // shared slot state, not the backend: the module can outlive the backend.
+    added.module->on_accept = [state = slots_, text = tr.slots_out + tr.sigs_out] {
+        std::lock_guard<std::mutex> slock(state->mutex);
+        state->text = text;
+    };
     // The core gets its own JITDylib. The loader calls make_core at most one time.
     std::shared_ptr<JitState> impl = impl_;
     added.module->make_core = [impl, id, core_ir]() {

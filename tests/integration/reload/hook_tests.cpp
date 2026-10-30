@@ -6,6 +6,7 @@
 
 #include "spp/backend.h"
 #include "support/backend_fixture.h"
+#include "support/reload_assert.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 
@@ -38,7 +39,7 @@ TEST_P(BackendTests, HooksMigrateConvertAndWarn)
     Actor* before = s.actor;
 
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     testing::internal::CaptureStderr();
     s.world.Tick(kDt);
     const std::string log = testing::internal::GetCapturedStderr();
@@ -72,10 +73,10 @@ TEST_P(BackendTests, ThrowingOnReloadHookIsCaught)
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
     s.commit_at_frame_boundary();
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt);
     ASSERT_EQ(spp::active_generation, 2u);
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v3.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v3.module)));
     testing::internal::CaptureStderr();
     s.world.Tick(kDt);
     const std::string log = testing::internal::GetCapturedStderr();

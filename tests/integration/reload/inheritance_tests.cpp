@@ -6,6 +6,7 @@
 
 #include "spp/backend.h"
 #include "support/backend_fixture.h"
+#include "support/reload_assert.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 #include "Util.h"
@@ -78,7 +79,7 @@ TEST_P(BackendTests, VirtualCallThroughAParentHandleFollowsTheReload)
     EXPECT_EQ(*fld<int>(s, "grunt_rage"), 7);  // "as Grunt" gives the child
 
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt);  // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);
@@ -103,7 +104,7 @@ TEST_P(BackendTests, ReloadMigratesTheParentAndTheChildPart)
     s.commit_at_frame_boundary();
     s.world.Tick(kDt);
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt);
     ASSERT_FALSE(s.commit_failed);
     s.world.Tick(kDt);
@@ -150,7 +151,7 @@ TEST_P(BackendTests, FamilyReloadKeepsInheritedPropertyValues)
     ASSERT_EQ(*fld<int>(s, "leaf_bonus"), 90);
 
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt);  // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);
@@ -174,8 +175,11 @@ TEST_P(BackendTests, ReloadThatChangesTheScriptParentIsRejected)
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Driver"));
     s.commit_at_frame_boundary();
     s.world.Tick(kDt);
-    std::string error;
-    EXPECT_FALSE(s.loader.request_reload(std::move(*bad.module), error));
+    const spp::ReloadResult rejected = s.loader.request_reload(std::move(*bad.module));
+    const std::string& error = rejected.error;
+    EXPECT_FALSE(rejected);
+    EXPECT_EQ(rejected.status, spp::ReloadStatus::FullReloadRequired);
+    EXPECT_EQ(rejected.reason, spp::ReloadReason::ScriptParentChanged);
     EXPECT_NE(error.find("script parent class changed"), std::string::npos) << error;
     EXPECT_NE(error.find("G"), std::string::npos) << error;
     EXPECT_FALSE(s.loader.reload_pending());
@@ -222,7 +226,7 @@ TEST_P(BackendTests, SuperArgumentsOfAChainEvaluateOneTime)
     EXPECT_EQ(*fld<int>(s, "kid_log"), 123);
 
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt);  // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);
@@ -271,7 +275,7 @@ TEST_P(BackendTests, ChildUsesInheritedMethodsNativeBaseAndSuperUnderTheSlotAbi)
     EXPECT_EQ(*fld<int>(s, "hits"), 21);
 
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt);  // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);

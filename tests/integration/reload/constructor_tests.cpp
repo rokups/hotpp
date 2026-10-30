@@ -6,6 +6,7 @@
 
 #include "spp/backend.h"
 #include "support/backend_fixture.h"
+#include "support/reload_assert.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 
@@ -67,7 +68,7 @@ TEST_P(BackendTests, ReloadDoesNotRerunTheConstructor)
     EXPECT_EQ(*fld<float>(s, "seen_x"), 2.0f);
 
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt);  // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);
@@ -92,7 +93,7 @@ TEST_P(BackendTests, OldObjectKeepsItsConstructorState)
     s.commit_at_frame_boundary();
     ASSERT_EQ(*fld<int>(s, "ctor_runs"), 1);
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt);
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(*fld<int>(s, "ctor_runs"), 1);

@@ -69,8 +69,10 @@ int main(int argc, char** argv)
 
     std::string error;
     spp::LoadResult module = spp::module_from_library(argv[1]);
-    if (!module || !loader.load(std::move(*module.module), error)) {
-        std::fprintf(stderr, "load failed: %s\n", module ? error.c_str() : module.error.c_str());
+    spp::ReloadResult loaded;
+    if (module) loaded = loader.load(std::move(*module.module));
+    if (!module || !loaded) {
+        std::fprintf(stderr, "load failed: %s\n", module ? loaded.error.c_str() : module.error.c_str());
         return 1;
     }
     const spp::ClassEntry* entry = loader.find("Player");

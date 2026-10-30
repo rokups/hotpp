@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "spp/backend.h"
+#include "support/reload_assert.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 
@@ -59,7 +60,7 @@ public:
     void reload(Session& s, spp::Module m)
     {
         std::string error;
-        ASSERT_TRUE(s.loader.request_reload(std::move(m), error)) << error;
+        ASSERT_RELOAD_OK(s.loader.request_reload(std::move(m)));
         s.world.Tick(kDt);
         ASSERT_FALSE(s.commit_failed);
     }

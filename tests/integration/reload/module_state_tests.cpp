@@ -6,6 +6,7 @@
 
 #include "spp/backend.h"
 #include "support/backend_fixture.h"
+#include "support/reload_assert.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 
@@ -76,7 +77,7 @@ TEST_P(BackendTests, ReloadKeepsModuleVariables)
     ASSERT_EQ(*modvar<int>(s, "mode"), 2);  // Mode.Run
 
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt);  // the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     ASSERT_EQ(spp::active_generation, 2u);
@@ -126,7 +127,7 @@ TEST_P(BackendTests, ModuleVariableOrderAndConvertHook)
     EXPECT_EQ(*modvar<int>(s, "doubled"), 11);
 
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt);  // doubled is 12; the commit happens at the end of this frame
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);

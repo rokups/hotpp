@@ -41,9 +41,9 @@ std::string run_with_loader()
     std::string log;
     {
         spp::Loader loader;
-        std::string error;
-        if (!loader.load(std::move(*r.module), error)) {
-            ADD_FAILURE() << error;
+        const spp::ReloadResult loaded = loader.load(std::move(*r.module));
+        if (!loaded) {
+            ADD_FAILURE() << loaded.error;
         } else {
             log = aot_demo::run([&](const char* name) { return loader.find(name)->create(); });
         }

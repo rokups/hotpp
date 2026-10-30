@@ -60,6 +60,7 @@ using namespace sppc::ast;
 // State of the call in progress. Each thread has its own copy.
 thread_local std::string g_script;  // the script name, as given by the caller
 thread_local sppc::Diagnostics g_diag;  // the diagnostics of the call
+thread_local bool g_slots_removed = false;  // the call failed because a slot of an earlier generation is gone
 
 struct TranslateAbort {};
 
@@ -3019,7 +3020,10 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
                 if (e.cls != cn) continue;
                 auto it = fn_by_name.find(e.fn);
                 if (it == fn_by_name.end())
+                {
+                    g_slots_removed = true;
                     fail_at(map, cd.pos, "function '" + e.fn + "' of an earlier generation is removed. The slot count must not shrink");
+                }
                 Slot s;
                 s.id = e.fn;
                 s.impl = it->second;
@@ -3042,7 +3046,10 @@ void translate_impl(const sppc::TranslateOptions& in, sppc::TranslatorSession::I
         } else {
             for (const auto& e : old_manifest)
                 if (e.cls == cn && !fn_by_name.count(e.fn))
+                {
+                    g_slots_removed = true;
                     fail_at(map, cd.pos, "function '" + e.fn + "' of an earlier generation is removed. The slot count must not shrink");
+                }
             // An "override" of a script virtual uses the slot of the parent. It adds no entry.
             for (const Method& m : cd.methods) {
                 if (m.overrides_virtual || m.is_override || hook_of(m) != Hook::None) continue;
@@ -3921,6 +3928,7 @@ TranslateResult translate(const TranslateOptions& in, TranslatorSession& session
     TranslateResult res;
     g_diag.clear();
     g_script = in.script_name;
+    g_slots_removed = false;
     try {
         translate_impl(in, *session.impl_, res);
         res.ok = true;
@@ -3930,6 +3938,7 @@ TranslateResult translate(const TranslateOptions& in, TranslatorSession& session
         res.slots_out.clear();
         res.sigs_out.clear();
     }
+    res.slots_removed = !res.ok && g_slots_removed;
     res.diagnostics = g_diag.format(g_script);
     res.warnings = g_diag.format_warnings(g_script);
     return res;

@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "support/reload_assert.h"
 #include "support/test_support.h"
 
 namespace nativestd {
@@ -48,7 +49,7 @@ inline void run_native_std_reload(spp::Module v1, spp::Module v2)
 
     // The reload commits after the next Tick, which is still generation 1.
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(v2), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(v2)));
     s.world.Tick(kDt);
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(spp::active_generation, 2u);

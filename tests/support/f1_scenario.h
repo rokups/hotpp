@@ -12,6 +12,7 @@
 #include <string>
 #include <utility>
 
+#include "support/reload_assert.h"
 #include "support/test_support.h"
 
 namespace f1 {
@@ -60,7 +61,7 @@ inline void run_f1_reload(spp::Module v1, spp::Module v2)
     Actor* const addr = a;
     spp::ShellBase* const shell = inst.shell;
     void* const old_state = shell->state;
-    ASSERT_TRUE(loader.request_reload(std::move(v2), error)) << error;
+    ASSERT_RELOAD_OK(loader.request_reload(std::move(v2)));
     EXPECT_TRUE(loader.reload_pending());
     EXPECT_EQ(spp::active_generation, 1u);
     EXPECT_EQ(shell->state, old_state);

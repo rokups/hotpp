@@ -1,0 +1,10 @@
+// Generation 2 of the removed function test (full reload). The function rest() is gone.
+using "Actor.h";
+
+class Medic : Actor {
+    int hp = 10;
+
+    void heal(int amount) {
+        this.hp = this.hp + amount;
+    }
+}

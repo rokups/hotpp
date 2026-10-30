@@ -8,6 +8,7 @@
 
 #include "spp/backend.h"
 #include "support/backend_fixture.h"
+#include "support/reload_assert.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 
@@ -107,7 +108,7 @@ TEST_P(BackendTests, ReloadMigratesInlineValuesRecursively)
     spp::ShellBase* before = handle_target(s, "counter");
 
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     testing::internal::CaptureStdout();
     s.world.Tick(kDt);  // the commit happens at the end of this frame
     testing::internal::GetCapturedStdout();

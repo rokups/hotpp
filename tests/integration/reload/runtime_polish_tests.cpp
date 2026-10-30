@@ -9,6 +9,7 @@
 #include "Harness.h"
 #include "spp/backend.h"
 #include "support/backend_fixture.h"
+#include "support/reload_assert.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 
@@ -45,7 +46,7 @@ TEST_P(BackendTests, RemovedClassKeepsItsObjectsValid)
     const uint64_t calls0 = spp::removed_class_call_count();
 
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     testing::internal::CaptureStderr();
     s.world.Tick(kDt);  // the commit happens at the end of this frame
     s.world.Tick(kDt);  // the Ghost virtuals now go to the handler
@@ -89,10 +90,10 @@ TEST_P(BackendTests, RemovedClassCanReturn)
     spp::Instance ghost = s.loader.find("Ghost")->create();
     s.world.Add(static_cast<Actor*>(ghost.native));
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt);
     ASSERT_TRUE(find_class(s.loader.stats(), "Ghost")->removed);
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v3.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v3.module)));
     s.world.Tick(kDt);
     ASSERT_FALSE(s.commit_failed);
     EXPECT_FALSE(find_class(s.loader.stats(), "Ghost")->removed);
@@ -131,7 +132,7 @@ TEST_P(BackendTests, StatsListGenerationsClassesAndSlots)
     EXPECT_EQ(text.find("REMOVED"), std::string::npos) << text;
 
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     s.world.Tick(kDt);
     const std::string after = s.loader.stats_text();
     EXPECT_NE(after.find("active generation 2"), std::string::npos) << after;
@@ -150,13 +151,12 @@ TEST(EntryCounters, CommitWithAnOpenScopeAssertsInDebugBuilds)
     spp::LoadResult v2 = spp::module_from_library(GEN2_SO);
     ASSERT_TRUE(v2) << v2.error;
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
     EXPECT_EQ(spp::in_script_tick(), 0);
     EXPECT_DEATH(
         {
             spp::ScriptTickScope scope;
-            std::string e;
-            s.loader.commit_pending(e);
+            s.loader.commit_pending();
         },
         "BUG: commit with 1 thread");
     // The parent process did not commit and has no open scope.
@@ -220,6 +220,65 @@ TEST(HarnessTests, FileChangeReloadsAndCommandsWork)
     EXPECT_FALSE(h.quit_requested());
     h.command("quit");
     EXPECT_TRUE(h.quit_requested());
+    testing::internal::GetCapturedStdout();
+}
+
+// A removed function needs a full reload. The harness saves the actors, resets the Loader,
+// loads the script as generation 1 and makes the actors again with the saved state.
+TEST(HarnessTests, FullReloadKeepsPositionAndName)
+{
+    TempScript script("fnremoved_v1.spp");
+    harness::Harness h(script.file.string(), "Medic");
+    std::string error;
+    testing::internal::CaptureStdout();
+    ASSERT_TRUE(h.start(error)) << error;
+    h.world().Actors()[0]->Name = "Doc";
+    h.world().Actors()[0]->Position = Vec3(1.5f, 2.0f, -3.0f);
+    h.frame(kDt, 0);
+
+    script.write("fnremoved_v2.spp");
+    h.frame(kDt, 2000);
+    const std::string out = testing::internal::GetCapturedStdout();
+    EXPECT_NE(out.find("[host] full reload: "), std::string::npos) << out;
+    EXPECT_EQ(h.reloads_started(), 1u);
+    EXPECT_EQ(spp::active_generation, 1u);
+    ASSERT_EQ(h.world().Actors().size(), 1u);
+    EXPECT_EQ(h.world().Actors()[0]->Name, "Doc");
+    EXPECT_EQ(h.world().Actors()[0]->Position.x, 1.5f);
+    EXPECT_EQ(h.world().Actors()[0]->Position.z, -3.0f);
+}
+
+// A script that removes a function and has a C++ type error: the Fresh build fails before the
+// harness clears the world. The actors and the old generation stay as they are.
+TEST(HarnessTests, FullReloadBuildErrorKeepsTheActors)
+{
+    TempScript script("fnremoved_v1.spp");
+    harness::Harness h(script.file.string(), "Medic");
+    std::string error;
+    testing::internal::CaptureStdout();
+    ASSERT_TRUE(h.start(error)) << error;
+    h.world().Actors()[0]->Name = "Doc";
+    h.frame(kDt, 0);
+
+    {
+        std::ofstream f(script.file, std::ios::trunc);
+        f << read_file(std::string(SPP_SOURCE_DIR) + "/example/scripts/fnremoved_v2.spp");
+        f << "\nclass Broken : Actor {\n    void f() { int x = \"text\"; }\n}\n";
+    }
+    testing::internal::CaptureStderr();
+    const spp::ReloadResult result = h.reload();
+    const std::string log = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(result.status, spp::ReloadStatus::Failed) << result.error << log;
+    EXPECT_NE(result.error.find("full reload failed"), std::string::npos) << result.error;
+    EXPECT_EQ(spp::active_generation, 1u);
+    ASSERT_EQ(h.world().Actors().size(), 1u);
+    EXPECT_EQ(h.world().Actors()[0]->Name, "Doc");
+
+    // The fixed script applies the full reload. The actor comes back.
+    script.write("fnremoved_v2.spp");
+    EXPECT_EQ(h.reload().status, spp::ReloadStatus::Applied);
+    ASSERT_EQ(h.world().Actors().size(), 1u);
+    EXPECT_EQ(h.world().Actors()[0]->Name, "Doc");
     testing::internal::GetCapturedStdout();
 }
 

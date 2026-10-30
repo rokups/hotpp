@@ -1,0 +1,15 @@
+// Generation 1 of the removed function test (full reload). The class Medic has two functions.
+// Generation 2 does not have rest(). The slot count would shrink, so only a full reload applies it.
+using "Actor.h";
+
+class Medic : Actor {
+    int hp = 10;
+
+    void heal(int amount) {
+        this.hp = this.hp + amount;
+    }
+
+    void rest() {
+        this.hp = this.hp + 1;
+    }
+}

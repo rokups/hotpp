@@ -27,6 +27,7 @@
 
 #include "Util.h"
 #include "spp/backend.h"
+#include "support/reload_assert.h"
 #include "support/test_support.h"
 
 namespace {
@@ -198,15 +199,14 @@ TEST(EntryCounters, WorkersCallWhileOtherThreadCommits)
             // Let the workers run between two commits.
             const long seen = g_probes.load();
             while (g_probes.load() < seen + 4 * kActors) std::this_thread::yield();
-            std::string err;
-            if (!s.loader.request_reload(std::move(m), err)) {
-                errors += "request: " + err + "\n";
+            if (const spp::ReloadResult req = s.loader.request_reload(std::move(m)); !req) {
+                errors += "request: " + req.error + "\n";
                 continue;
             }
-            if (s.loader.commit_pending(err))
+            if (const spp::ReloadResult com = s.loader.commit_pending())
                 ++committed;
             else
-                errors += "commit: " + err + "\n";
+                errors += "commit: " + com.error + "\n";
             s.loader.frame_boundary();
         }
         const long seen = g_probes.load();
@@ -245,8 +245,7 @@ TEST(EntryCounters, WorkersCallWhileOtherThreadCommits)
 // The commit thread for the next tests: it starts while the main thread is in script code.
 spp::Loader* g_loader = nullptr;
 std::thread* g_commit_thread = nullptr;
-bool g_commit_ok = false;
-std::string g_commit_error;
+spp::ReloadResult g_commit;  // the result of the commit that the test starts
 uint32_t g_depth_in_probe = 0;
 uint32_t g_active_in_probe = 0;
 
@@ -257,7 +256,7 @@ void start_commit_and_wait(Actor*)
     if (g_commit_thread) return;
     g_depth_in_probe = spp::entry_depth();
     g_active_in_probe = spp::active_entries();
-    g_commit_thread = new std::thread([] { g_commit_ok = g_loader->commit_pending(g_commit_error); });
+    g_commit_thread = new std::thread([] { g_commit = g_loader->commit_pending(); });
     while (!spp::commit_window_closed()) std::this_thread::yield();
 }
 
@@ -267,7 +266,7 @@ TEST(EntryCounters, ReentrantCallDuringCommitDoesNotDeadlock)
     ASSERT_NO_FATAL_FAILURE(s.start(module_of(1)));
     s.loader.set_sync_mode(spp::SyncMode::EntryCounters);
     std::string err;
-    ASSERT_TRUE(s.loader.request_reload(module_of(2), err)) << err;
+    ASSERT_RELOAD_OK(s.loader.request_reload(module_of(2)));
     g_loader = &s.loader;
     g_commit_thread = nullptr;
     Util::SetProbe(&start_commit_and_wait);
@@ -282,7 +281,7 @@ TEST(EntryCounters, ReentrantCallDuringCommitDoesNotDeadlock)
 
     EXPECT_EQ(g_depth_in_probe, 1u);
     EXPECT_EQ(g_active_in_probe, 1u);
-    EXPECT_TRUE(g_commit_ok) << g_commit_error;
+    EXPECT_RELOAD_OK(g_commit);
     EXPECT_EQ(spp::active_generation, 2u);
     EXPECT_EQ(s.inst.shell->cls->generation, 2u);
     EXPECT_EQ(int_field(s.inst.shell, "calls"), 1);
@@ -294,7 +293,7 @@ TEST(EntryCounters, ReentrantCallDuringCommitDoesNotDeadlock)
 
 void commit_inside_script(Actor*)
 {
-    g_commit_ok = g_loader->commit_pending(g_commit_error);
+    g_commit = g_loader->commit_pending();
 }
 
 TEST(EntryCounters, CommitInsideScriptCodeFails)
@@ -303,20 +302,20 @@ TEST(EntryCounters, CommitInsideScriptCodeFails)
     ASSERT_NO_FATAL_FAILURE(s.start(module_of(1)));
     s.loader.set_sync_mode(spp::SyncMode::EntryCounters);
     std::string err;
-    ASSERT_TRUE(s.loader.request_reload(module_of(2), err)) << err;
+    ASSERT_RELOAD_OK(s.loader.request_reload(module_of(2)));
     g_loader = &s.loader;
-    g_commit_ok = true;
-    g_commit_error.clear();
+    g_commit = spp::ReloadResult{spp::ReloadStatus::Applied, spp::ReloadReason::None, {}, {}};
     Util::SetProbe(&commit_inside_script);
     Watchdog watchdog(120s);
     s.actor->Tick(kDt);
     Util::SetProbe(nullptr);
-    EXPECT_FALSE(g_commit_ok);
-    EXPECT_NE(g_commit_error.find("inside script code"), std::string::npos) << g_commit_error;
+    EXPECT_FALSE(g_commit);
+    EXPECT_EQ(g_commit.reason, spp::ReloadReason::Busy);
+    EXPECT_NE(g_commit.error.find("inside script code"), std::string::npos) << g_commit.error;
     EXPECT_TRUE(s.loader.reload_pending());
     EXPECT_EQ(spp::active_generation, 1u);
     // Outside script code the same commit works.
-    EXPECT_TRUE(s.loader.commit_pending(err)) << err;
+    EXPECT_RELOAD_OK(s.loader.commit_pending());
     EXPECT_EQ(spp::active_generation, 2u);
 }
 
@@ -402,15 +401,14 @@ TEST(EntryCounters, CreationThroughTheFactoryIsAnEntry)
         for (spp::Module& m : mods) {
             const long seen = created.load();
             while (created.load() < seen + 200) std::this_thread::yield();
-            std::string err;
-            if (!s.loader.request_reload(std::move(m), err)) {
-                errors += "request: " + err + "\n";
+            if (const spp::ReloadResult req = s.loader.request_reload(std::move(m)); !req) {
+                errors += "request: " + req.error + "\n";
                 continue;
             }
-            if (s.loader.commit_pending(err))
+            if (const spp::ReloadResult com = s.loader.commit_pending())
                 ++committed;
             else
-                errors += "commit: " + err + "\n";
+                errors += "commit: " + com.error + "\n";
             // No frame_boundary here: it walks the live object table, which the creator changes.
         }
         const long seen = created.load();

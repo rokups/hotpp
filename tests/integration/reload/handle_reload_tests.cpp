@@ -10,6 +10,7 @@
 
 #include "spp/backend.h"
 #include "support/backend_fixture.h"
+#include "support/reload_assert.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 #include "Object.h"
@@ -51,7 +52,7 @@ TEST_P(BackendTests, HandleTypeChangeUsesTheDefaultAndWarns)
     ASSERT_NE(swings, nullptr);
     EXPECT_EQ(*swings, 2);
     std::string error;
-    ASSERT_TRUE(s.loader.request_reload(std::move(*v3.module), error)) << error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v3.module)));
     testing::internal::CaptureStderr();
     s.world.Tick(kDt);
     const std::string log = testing::internal::GetCapturedStderr();
@@ -95,7 +96,7 @@ TEST_P(BackendTests, IntrusiveHandleSurvivesReload)
 
         // The reload commits after the next Tick, which is still generation 1.
         std::string error;
-        ASSERT_TRUE(s.loader.request_reload(std::move(*v2.module), error)) << error;
+        ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
         s.world.Tick(kDt);
         ASSERT_FALSE(s.commit_failed);
         EXPECT_EQ(spp::active_generation, 2u);
@@ -112,7 +113,7 @@ TEST_P(BackendTests, IntrusiveHandleSurvivesReload)
         EXPECT_EQ(Object::live, 1);
 
         // Back to generation 1: the commit removes the field "spare" and releases it.
-        ASSERT_TRUE(s.loader.request_reload(std::move(*v1b.module), error)) << error;
+        ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v1b.module)));
         s.world.Tick(kDt);
         ASSERT_FALSE(s.commit_failed);
         EXPECT_EQ(spp::active_generation, 3u);
