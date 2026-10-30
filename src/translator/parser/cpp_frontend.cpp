@@ -261,6 +261,7 @@ std::string last_name(const std::string& s)
 struct ClassInfo
 {
     std::string name, usr, base;
+    uint32_t end = 0; // the end of the class in the text
     std::set<std::string> base_usrs; // the native base and all its ancestors
 };
 
@@ -298,6 +299,7 @@ private:
     const std::string& text_;
     const LineMap& map_;
     ast::Script sc_;
+    template <class T> using Where = std::function<std::vector<T>&()>; // gives the vector of a model list
 
     // The kinds of declaration that the index records.
     enum class Kind
@@ -332,6 +334,21 @@ private:
     std::map<std::string, size_t> static_vars_; // USR of a static data member -> the index in the module variables
 
     std::map<std::string, Entry> table_; // USR of the declaration -> entry
+
+    // A method, a constructor or a destructor that the class declares without a body. The
+    // definition comes later in the file, outside the class. The definition gives the body.
+    // "method" or "ctor" finds the model entry by "index".
+    struct Declared
+    {
+        Where<ast::Method> method;
+        Where<ast::Ctor> ctor;
+        size_t index = 0;
+        const ClassInfo* cls = nullptr;
+        uint32_t pos = 0;
+        std::string name, what; // "Player::hit" and "method", "constructor" or "destructor"
+        bool defined = false;
+    };
+    std::map<std::string, Declared> declared_; // USR of the declaration -> its record
 
     // A text region that needs edits. The functions that read the declarations record a slice.
     // apply_slices() edits all slices in the order of the records. "store" puts the edited text
@@ -397,12 +414,19 @@ private:
     void visit(CXCursor k, WalkState& st);
     void walk_main(WalkState& st);
     void process_class(CXCursor c);
-    template <class T> using Where = std::function<std::vector<T>&()>; // gives the vector of a model list
-
     void make_field(CXCursor c, const ClassInfo* cls, const Where<ast::Field>& where, const std::string& mangled = {});
     void read_init(CXCursor c, const ClassInfo* cls, const Where<ast::Field>& where, size_t index);
     void fill_params(CXCursor c, std::vector<ast::Param>& out, const ClassInfo* cls);
     CXCursor body_of(CXCursor c);
+    bool has_body(CXCursor c);
+    bool is_defaulted(CXCursor c);
+    bool is_member_def(CXCursor c) const;
+    void read_method_body(CXCursor c, const ClassInfo* cls, const Where<ast::Method>& where, size_t index);
+    void read_ctor_body(CXCursor c, const ClassInfo& cls, const Where<ast::Ctor>& where, size_t index);
+    void declare(CXCursor c, const ClassInfo* cls, size_t index, const Where<ast::Method>& m, const Where<ast::Ctor>& ct);
+    void define_member(CXCursor c);
+    void check_late_decls(CXCursor c, const Declared& d, uint32_t from);
+    void check_all_defined();
     void make_method(CXCursor c, const ClassInfo* cls, const Where<ast::Method>& where);
     void make_ctor(CXCursor c, const ClassInfo& cls, const Where<ast::Ctor>& where);
     void add_text(Range e, bool edit);
@@ -565,7 +589,10 @@ void Frontend::check_type_refs(CXCursor c)
         if (clang_getCursorKind(k) == CXCursor_TypeRef && ck != CXCursor_CXXBaseSpecifier)
         {
             const Entry* en = lookup(clang_getCursorReferenced(k));
-            if (en && en->kind == Kind::ScriptClass && en != alloc)
+            // The name of the class in "Player::Player" and "Player::~Player" is not a use.
+            const bool own_name = (ck == CXCursor_Constructor || ck == CXCursor_Destructor) && is_member_def(c) &&
+                usr(clang_getCursorReferenced(k)) == usr(clang_getCursorSemanticParent(c));
+            if (en && en->kind == Kind::ScriptClass && en != alloc && !own_name)
                 check_class_use(k, c, *en, static_parent);
         }
         check_type_refs(k);
@@ -592,11 +619,12 @@ bool Frontend::scope_follows(CXCursor k) const
     return text_.compare(i, 2, "::") == 0;
 }
 
-// True when "parent" is a use of a static member, or the definition of one outside its class.
-// The class name can be a qualifier below it.
+// True when "parent" is a use of a static member, or the definition of one outside its class. It
+// is also true for a method, a constructor or a destructor defined outside its class. The class
+// name can be a qualifier below it.
 bool Frontend::qualifies_static(CXCursor parent) const
 {
-    if (is_static_ref(parent))
+    if (is_static_ref(parent) || is_member_def(parent))
         return true;
     if (clang_getCursorKind(parent) != CXCursor_VarDecl)
         return false;
@@ -1124,6 +1152,12 @@ void Frontend::walk_main(WalkState& st)
             if (it != class_infos_.end())
                 st.cls = it->second;
         }
+        else if (is_member_def(k))
+        { // a definition outside the class: the body is the body of a member
+            auto it = class_infos_.find(usr(clang_getCursorSemanticParent(k)));
+            if (it != class_infos_.end())
+                st.cls = it->second;
+        }
         visit(k, st);
     }
 }
@@ -1329,7 +1363,138 @@ CXCursor Frontend::body_of(CXCursor c)
     for (CXCursor k : children(c))
         if (clang_getCursorKind(k) == CXCursor_CompoundStmt)
             return k;
-    fail(pos_of(c), "define the method inside the class");
+    fail(pos_of(c), "define the static method inside the class");
+}
+
+bool Frontend::has_body(CXCursor c)
+{
+    for (CXCursor k : children(c))
+        if (clang_getCursorKind(k) == CXCursor_CompoundStmt)
+            return true;
+    return false;
+}
+
+// True when the declaration "c" ends with "= default" or "= delete".
+bool Frontend::is_defaulted(CXCursor c)
+{
+    const Range e = extent_of(c);
+    size_t end = e.end;
+    while (end > e.begin && is_space(text_[end - 1]))
+        --end;
+    for (const char* w : {"default", "delete"})
+    {
+        const size_t n = std::strlen(w);
+        if (end >= e.begin + n && text_.compare(end - n, n, w) == 0)
+        {
+            size_t q = end - n;
+            while (q > e.begin && is_space(text_[q - 1]))
+                --q;
+            if (q > e.begin && text_[q - 1] == '=')
+                return true;
+        }
+    }
+    return false;
+}
+
+// True when "c" is a method, a constructor or a destructor of a script class that the file
+// defines outside the class.
+bool Frontend::is_member_def(CXCursor c) const
+{
+    const CXCursorKind kind = clang_getCursorKind(c);
+    if (kind != CXCursor_CXXMethod && kind != CXCursor_Constructor && kind != CXCursor_Destructor)
+        return false;
+    if (clang_getCursorKind(clang_getCursorLexicalParent(c)) != CXCursor_TranslationUnit)
+        return false;
+    auto it = table_.find(usr(clang_getCursorSemanticParent(c)));
+    return it != table_.end() && it->second.kind == Kind::ScriptClass;
+}
+
+// Records a member that the class declares without a body. The definition outside the class
+// gives the body later (see define_member).
+void Frontend::declare(
+    CXCursor c, const ClassInfo* cls, size_t index, const Where<ast::Method>& m, const Where<ast::Ctor>& ct)
+{
+    Declared d;
+    d.method = m;
+    d.ctor = ct;
+    d.index = index;
+    d.cls = cls;
+    d.pos = pos_of(c);
+    d.name = cls->name + "::" + spelling(c);
+    const CXCursorKind kind = clang_getCursorKind(c);
+    d.what = kind == CXCursor_Constructor ? "constructor" : kind == CXCursor_Destructor ? "destructor" : "method";
+    declared_[usr(c)] = std::move(d);
+}
+
+// The definition "c" outside the class gives the body of the member that the class declares. The
+// parameter names of the definition are the names that the body uses. The types and the default
+// arguments come from the declaration. The text of the definition does not stay in the output.
+void Frontend::define_member(CXCursor c)
+{
+    auto it = declared_.find(usr(c));
+    if (it == declared_.end())
+        fail(pos_of(c),
+            "the definition of '" + spelling(clang_getCursorSemanticParent(c)) + "::" + spelling(c) +
+                "' has no declaration in the script class");
+    Declared& d = it->second;
+    if (d.defined)
+        fail(pos_of(c), "the " + d.what + " '" + d.name + "' is defined twice");
+    d.defined = true;
+    check_late_decls(c, d, extent_of(c).begin);
+    std::vector<ast::Param>& ps = d.ctor ? d.ctor()[d.index].params : d.method()[d.index].params;
+    const int n = clang_Cursor_getNumArguments(c);
+    for (int i = 0; i < n && static_cast<size_t>(i) < ps.size(); ++i)
+    {
+        const std::string name = spelling(clang_Cursor_getArgument(c, static_cast<unsigned>(i)));
+        if (!name.empty())
+            ps[static_cast<size_t>(i)].name = name;
+    }
+    if (d.ctor)
+        read_ctor_body(c, *d.cls, d.ctor, d.index);
+    else
+        read_method_body(c, d.cls, d.method, d.index);
+}
+
+// The body of a definition outside the class moves into the code of the class. So it cannot
+// name a declaration that the file puts after the class and before the definition. "from" is
+// the start of the definition. The first declaration of the name decides (a prototype before the
+// class is valid). A script entity is not checked: the generated code has its own order for it.
+void Frontend::check_late_decls(CXCursor c, const Declared& d, uint32_t from)
+{
+    for (CXCursor k : children(c))
+    {
+        const CXCursorKind kind = clang_getCursorKind(k);
+        if (kind == CXCursor_TypeRef || kind == CXCursor_TemplateRef || kind == CXCursor_NamespaceRef ||
+            kind == CXCursor_DeclRefExpr)
+        {
+            CXCursor ref = clang_getCursorReferenced(k);
+            if (!clang_Cursor_isNull(ref) && !lookup(ref))
+            {
+                ref = clang_getCanonicalCursor(ref);
+                const uint32_t at = pos_of(ref);
+                if (from_main(ref) && at >= d.cls->end && at < from && !lookup(ref))
+                    fail(pos_of(k),
+                        "the definition of '" + d.name + "' uses '" + spelling(ref) +
+                            "', which the file declares after the class; the body moves into the class, so "
+                            "declare '" + spelling(ref) + "' before the class");
+            }
+        }
+        check_late_decls(k, d, from);
+    }
+}
+
+// A member that the class declares and the file never defines is an error: the compiler sees it
+// only at link time.
+void Frontend::check_all_defined()
+{
+    const Declared* first = nullptr;
+    for (const auto& kv : declared_)
+        if (!kv.second.defined && (!first || kv.second.pos < first->pos))
+            first = &kv.second;
+    if (first)
+        fail(first->pos,
+            "the " + first->what + " '" + first->name +
+                "' is declared but never defined; define it in the class or after the class");
 }
 
 ast::Access access_of(CXCursor c)
@@ -1377,6 +1542,26 @@ void Frontend::make_method(CXCursor c, const ClassInfo* cls, const Where<ast::Me
             if (t == "spp::OldState" || t == "constspp::OldState&" || t == "OldState" || t == "constOldState&")
                 p.type = "OldState";
         }
+    if (!has_body(c))
+    {
+        // A static method and a static convert hook need the body in the class.
+        if (!cls || clang_CXXMethod_isStatic(c))
+            fail(m.pos, "define the static method inside the class");
+        if (clang_isCursorDefinition(c) || is_defaulted(c))
+            fail(m.pos, "a defaulted or deleted method is not supported in a .cpp script class");
+        if (clang_CXXMethod_isPureVirtual(c))
+            fail(m.pos, "a pure virtual method is not supported in a .cpp script class");
+        declare(c, cls, index, where, nullptr);
+        return;
+    }
+    read_method_body(c, cls, where, index);
+}
+
+// Reads the body of the method "index" from the definition "c". The definition is in the class
+// or outside it.
+void Frontend::read_method_body(CXCursor c, const ClassInfo* cls, const Where<ast::Method>& where, size_t index)
+{
+    ast::Method& m = where()[index];
     const Range b = extent_of(body_of(c));
     m.end_pos = b.end - 1;
     m.end_line = line(m.end_pos);
@@ -1396,11 +1581,26 @@ void Frontend::make_ctor(CXCursor c, const ClassInfo& cls, const Where<ast::Ctor
     ct.line = line(ct.pos);
     ct.access = access_of(c);
     fill_params(c, ct.params, &cls);
+    if (!has_body(c))
+    {
+        if (clang_isCursorDefinition(c) || is_defaulted(c))
+            fail(ct.pos, "a defaulted or deleted constructor is not supported in a .cpp script class");
+        declare(c, &cls, index, nullptr, where);
+        return;
+    }
+    read_ctor_body(c, cls, where, index);
+}
+
+// Reads the body and the base initializer of the constructor "index" from the definition "c".
+void Frontend::read_ctor_body(CXCursor c, const ClassInfo& cls, const Where<ast::Ctor>& where, size_t index)
+{
+    ast::Ctor& ct = where()[index];
+    const uint32_t cpos = pos_of(c);
     const Range b = extent_of(body_of(c));
     ct.end_pos = b.end - 1;
     ct.end_line = line(ct.end_pos);
     // The text between the ")" of the parameters and the "{" of the body has the initializers.
-    size_t open = text_.find('(', ct.pos);
+    size_t open = text_.find('(', cpos);
     size_t close = open == std::string::npos ? open : match_close(text_, open, b.begin);
     if (close == std::string::npos)
         fail(ct.pos, "cannot find the parameter list of the constructor");
@@ -1643,6 +1843,7 @@ void Frontend::process_class(CXCursor c)
     ClassInfo& info = infos_.back();
     info.name = cd.name;
     info.usr = usr(c);
+    info.end = extent_of(c).end;
     class_infos_[info.usr] = &info; // a deque does not move its elements
     for (CXCursor k : children(c))
     {
@@ -1873,7 +2074,9 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
         }
         check_type_refs(k);
         const Range e = extent_of(k);
-        if (script_class)
+        if (is_member_def(k) && clang_isCursorDefinition(k))
+            define_member(k); // the body goes to the member in the class; the text does not stay
+        else if (script_class)
             process_class(k);
         else if (kind == CXCursor_VarDecl && en && (en->kind == Kind::ScriptStatic || en->kind == Kind::ScriptStaticConst))
             read_static_def(k);
@@ -1925,6 +2128,7 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
             add_text(e, find_module_ref(k, nullptr, var, var_pos, kAll) || names_script_class(k));
         }
     }
+    check_all_defined();
 }
 
 } // namespace

@@ -233,6 +233,37 @@ TEST_P(BackendTests, CppScriptStaticMembersMigrate)
     EXPECT_EQ(*fld<int>(s.inst.shell, "via_free"), 50); // scale(13) + hits
 }
 
+// Generation 2 moves the method bodies out of the class and changes the body of hit. The fields
+// and the module variables keep their values. The new code runs after the reload.
+TEST_P(BackendTests, CppScriptOutOfClassDefinitionsReload)
+{
+    spp::LoadResult v1 = backend->load(source("cpp_outofclass_v1.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    spp::LoadResult v2 = backend->load(source("cpp_outofclass_v2.cpp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Fighter"));
+    s.actor->Tick(kDt);
+    s.actor->Tick(kDt);
+    EXPECT_EQ(*modvar<int>(s, "ticks"), 2);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "hp"), 18); // hit(1) twice
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 18);
+    EXPECT_FLOAT_EQ(s.actor->Position.x, 2.0f * kDt);
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    const spp::ReloadResult res = s.loader.commit_pending();
+    ASSERT_TRUE(res) << res.error;
+    EXPECT_EQ(spp::active_generation, 2u);
+    EXPECT_EQ(*modvar<int>(s, "ticks"), 2); // kept: the new constructor did not run
+    EXPECT_EQ(*fld<int>(s.inst.shell, "hp"), 18); // kept
+
+    s.actor->Tick(kDt); // the definition outside the class: hit(1) takes 2, Move is twice as fast
+    EXPECT_EQ(*modvar<int>(s, "ticks"), 3);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "hp"), 16);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 16);
+    EXPECT_FLOAT_EQ(s.actor->Position.x, 2.0f * kDt + 2.0f * kDt);
+}
+
 // A static member can have the name of a function that the generated code has for the class.
 TEST_P(BackendTests, CppScriptStaticMembersWithGeneratedNames)
 {

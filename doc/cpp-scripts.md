@@ -215,6 +215,7 @@ All other text stays as you wrote it.
 - Constructors with a base initializer, for example `Actor(args)`.
 - Destructors.
 - Static data members and static methods (see "Static members").
+- Methods, constructors and destructors that the file defines outside the class (see "Definitions outside the class").
 - `override` of native virtual methods, and native interface bases.
 - Default arguments on a constructor and on a method. The text of a default gets the same edits as a method body, so it can name a module variable. An `override` has no default argument (sppc gives an error): the call through the base sees the base declaration. The fixture `tests/scripts/cpp_defaults.cpp` shows them.
 
@@ -265,6 +266,39 @@ float Counter::count = 10.0f;
 ```
 
 The fixtures `tests/scripts/cpp_static_v1.cpp` and `tests/scripts/cpp_static_v2.cpp` show the forms. The second one changes the type of `count` from `int` to `float`.
+
+## Definitions outside the class
+
+A script class can declare a method, a constructor or a destructor and define it later in the file, as in plain C++.
+
+```cpp
+class Player : public Actor
+{
+public:
+    Player(int a);
+    int hit(int d, int scale = step);
+    int get() const;
+    int hp = 10;
+};
+
+class Other : public Actor { /* ... */ };
+
+Player::Player(int a) : Actor("Player") { hp = a; }
+int Player::hit(int d, int scale) { hp -= d * scale; return hp; }
+int Player::get() const { return hp; }
+```
+
+The body of the definition has the same edits as a body in the class. It can use a native base member, `this`, a module variable and a field. The definition can come after other classes. The fixture `tests/scripts/cpp_outofclass_v2.cpp` shows the forms.
+
+**Limit:** the body moves into the code of the class. So the body can use only what the class can use. A body that names a type, a function or a constant that the file declares after the class and before the definition is an error of `sppc` (see "Unsupported forms"). Plain C++ allows it. Declare such a name before the class. A prototype before the class is enough for a function.
+
+These rules apply:
+
+- The class declaration gives the types, the `override`, the access and the default arguments. Do not repeat a default argument in the definition: C++ does not allow it.
+- The body uses the parameter names of the definition. They can differ from the names in the declaration.
+- A reload treats the method as a method with a body in the class. A change of the body, or a move of the body out of the class or into it, keeps the state of the objects.
+- `sppc` removes the definition from the output and puts the body in the code of the class.
+- A static method must have its body in the class (see "Static members").
 
 ## Script classes as types
 
@@ -320,7 +354,12 @@ The first version gives an error for each form in this list. The text in the sec
 | `virtual` without `override` | `'virtual' is not supported in a .cpp script; use 'override' of a native virtual` |
 | A static member used through an object that has a side effect, for example `f().count` | `a static member must be used by its name` |
 | A static const member without an initializer in the class | `a static const member needs an initializer in the class` |
-| A method defined outside the class | `define the method inside the class` |
+| A method, a constructor or a destructor that the class declares and the file never defines | `the method 'Player::hit' is declared but never defined; define it in the class or after the class` (the words `constructor` and `destructor` replace `method` for those members) |
+| A definition outside the class that has no declaration in the class | `out-of-line definition of 'hit' does not match any declaration in 'Player'` (this error comes from the C++ parser) |
+| A static method that is declared in the class and defined outside it | `define the static method inside the class` |
+| A body outside the class that names a declaration which the file puts after the class | `the definition of 'Player::hit' uses 'kLate', which the file declares after the class; the body moves into the class, so declare 'kLate' before the class` |
+| A pure virtual method (`= 0`) | `a pure virtual method is not supported in a .cpp script class` |
+| A constructor, a destructor or a method that is `= default` or `= delete` | `a defaulted or deleted method is not supported in a .cpp script class` (the word `constructor` replaces `method` for a constructor) |
 | A member initializer in a constructor | `use a default member initializer` |
 | Any other declaration in the class | `this declaration is not supported in a .cpp script class` |
 | Properties | There is no property syntax in C++. Use two methods. |

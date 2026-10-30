@@ -167,6 +167,178 @@ TEST(CppFrontend, CtorDtorFields)
     EXPECT_TRUE(c.fields[3].raw_brace_init);
 }
 
+// A method, a constructor or a destructor can have its definition outside the class. The body is
+// the body of the member, and the text does not stay in the output.
+TEST(CppFrontend, OutOfClassMethod)
+{
+    Parsed p(R"(#include "Actor.h"
+int total = 0;
+class Player : public Actor
+{
+public:
+    int hit(int d);
+    int get() const;
+    void Tick(float dt) override;
+    void Use(Actor* a) { (void)a; }
+    int hp = 10;
+};
+class Other : public Actor
+{
+public:
+    void Poke() {}
+};
+int Player::hit(int dmg) { hp -= dmg; total += 1; Move(Vec3()); return this->hp; }
+int Player::get() const { return hp; }
+void Player::Tick(float dt) { this->Move(Vec3(dt, 0, 0)); Use(this); }
+)");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    ASSERT_EQ(p.script.classes.size(), 2u);
+    const ast::ClassDef& c = p.script.classes[0];
+    ASSERT_EQ(c.methods.size(), 4u);
+    EXPECT_EQ(p.method("hit").raw_body,
+        " hp -= dmg; spp_mod()->total += 1; __self->Move(Vec3()); return this->hp; ");
+    EXPECT_EQ(p.method("hit").params.at(0).name, "dmg"); // the name of the definition
+    EXPECT_EQ(p.method("hit").ret, "int");
+    EXPECT_EQ(p.method("hit").line, 6); // the head maps to the declaration
+    EXPECT_EQ(p.method("hit").raw_line, 17);
+    EXPECT_EQ(p.method("hit").end_line, 17);
+    EXPECT_EQ(p.method("get").raw_body, " return hp; ");
+    EXPECT_TRUE(p.method("Tick").is_override);
+    EXPECT_EQ(p.method("Tick").raw_body, " __self->Move(Vec3(dt, 0, 0)); Use(__self); ");
+    EXPECT_EQ(p.script.classes[1].methods.size(), 1u);
+    // The definitions do not stay as chunks.
+    for (const auto& ch : p.script.chunks)
+        EXPECT_EQ(ch.text.find("Player::"), std::string::npos) << ch.text;
+}
+
+TEST(CppFrontend, OutOfClassDefaultArgumentAndOrder)
+{
+    // The default argument is only in the class. The definition comes after another class.
+    Parsed p(R"(#include "Actor.h"
+int limit = 3;
+class A : public Actor
+{
+public:
+    int add(int a, int b = limit);
+};
+class B : public Actor
+{
+public:
+    void Go() {}
+};
+int A::add(int x, int y) { return x + y + limit; }
+)");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    const ast::Method& m = p.method("add");
+    ASSERT_EQ(m.params.size(), 2u);
+    EXPECT_EQ(m.params[0].name, "x");
+    EXPECT_EQ(m.params[1].name, "y");
+    ASSERT_TRUE(m.params[1].def);
+    EXPECT_EQ(m.params[1].def->cpp, "spp_mod()->limit");
+    EXPECT_EQ(m.raw_body, " return x + y + spp_mod()->limit; ");
+}
+
+TEST(CppFrontend, OutOfClassCtorDtor)
+{
+    Parsed p(R"(#include "Actor.h"
+int total = 0;
+class Player : public Actor
+{
+public:
+    Player(int a);
+    ~Player();
+    int hp = 1;
+};
+Player::Player(int a) : Actor("p") { hp = a; total++; }
+Player::~Player() { total--; }
+)");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    const ast::ClassDef& c = p.script.classes.at(0);
+    ASSERT_EQ(c.ctors.size(), 1u);
+    EXPECT_TRUE(c.ctors[0].has_base_call);
+    EXPECT_EQ(c.ctors[0].raw_base_args, "\"p\"");
+    EXPECT_EQ(c.ctors[0].raw_body, " hp = a; spp_mod()->total++; ");
+    EXPECT_EQ(c.ctors[0].raw_line, 10);
+    ASSERT_EQ(c.dtors.size(), 1u);
+    EXPECT_EQ(c.dtors[0].raw_body, " spp_mod()->total--; ");
+}
+
+TEST(CppFrontend, OutOfClassEarlierDeclarationIsValid)
+{
+    // A prototype before the class, a definition after the class and a type before the class.
+    Parsed p(R"(#include "Actor.h"
+int later();
+struct Early { int v = 2; };
+class S : public Actor
+{
+public:
+    int F();
+};
+int later() { return 1; }
+int S::F() { Early e; return later() + e.v; }
+)");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    EXPECT_EQ(p.method("F").raw_body, " Early e; return later() + e.v; ");
+}
+
+TEST(CppFrontend, OutOfClassOverloadsAndNames)
+{
+    // The overloads link by USR, not by name or by order. The names come from the definition.
+    // An unnamed parameter keeps the name of the other declaration.
+    Parsed p(R"(#include "Actor.h"
+class S : public Actor
+{
+public:
+    int F(int a);
+    int F(float b);
+    int G(int, int second);
+    int H(int keep);
+    int hp = 0;
+};
+int S::F(float x) { return 2 + (int)x; }
+int S::F(int y) { return 1 + y; }
+int S::G(int first, int) { return first; }
+int S::H(int) { return 7; }
+)");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    const ast::ClassDef& c = p.script.classes.at(0);
+    ASSERT_EQ(c.methods.size(), 4u);
+    EXPECT_EQ(c.methods[0].params[0].name, "y");
+    EXPECT_EQ(c.methods[0].raw_body, " return 1 + y; ");
+    EXPECT_EQ(c.methods[1].params[0].name, "x");
+    EXPECT_EQ(c.methods[1].raw_body, " return 2 + (int)x; ");
+    EXPECT_EQ(c.methods[2].params[0].name, "first");
+    EXPECT_EQ(c.methods[2].params[1].name, "second");
+    EXPECT_EQ(c.methods[3].params[0].name, "keep");
+}
+
+TEST(CppFrontend, OutOfClassQualifiers)
+{
+    Parsed p(R"(#include "Actor.h"
+class S : public Actor
+{
+public:
+    S() noexcept;
+    int F() noexcept;
+    int G() &;
+    int H() const &&;
+    int hp = 1;
+};
+S::S() noexcept : Actor("s") { hp = 2; }
+int S::F() noexcept { return hp; }
+int S::G() & { return hp + 1; }
+int S::H() const && { return hp + 2; }
+)");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    const ast::ClassDef& c = p.script.classes.at(0);
+    ASSERT_EQ(c.ctors.size(), 1u);
+    EXPECT_TRUE(c.ctors[0].has_base_call);
+    EXPECT_EQ(c.ctors[0].raw_body, " hp = 2; ");
+    EXPECT_EQ(p.method("F").raw_body, " return hp; ");
+    EXPECT_EQ(p.method("G").raw_body, " return hp + 1; ");
+    EXPECT_EQ(p.method("H").raw_body, " return hp + 2; ");
+}
+
 TEST(CppFrontend, BaseStaticAndNestedNames)
 {
     namespace fs = std::filesystem;
@@ -195,7 +367,8 @@ TEST(CppFrontend, StructureErrors)
         "a .cpp script class cannot derive from a class of the same file (first version)");
     expect_error("class S : public Actor { virtual void F() {} };",
         "'virtual' is not supported in a .cpp script; use 'override' of a native virtual");
-    expect_error("class S : public Actor { void F(); };", "define the method inside the class");
+    expect_error("class S : public Actor { void F(); };",
+        "the method 'S::F' is declared but never defined; define it in the class or after the class");
     expect_error("class S : public Actor { int hp = 0; S() : hp(1) {} };", "use a default member initializer");
     expect_error("class S : public Actor { int hp = 0; S() : Actor(), hp(1) {} };", "use a default member initializer");
     expect_error("int total = 0;\nstruct Late { int v = 0; };\nLate late;",
@@ -213,6 +386,41 @@ TEST(CppFrontend, StructureErrors)
         "the module state exists");
     expect_error("class S : public Actor {};\nvoid g(S s) { (void)s; }",
         "the script class 'S' by value is not supported in a .cpp script; use a pointer or a reference");
+}
+
+TEST(CppFrontend, OutOfClassErrors)
+{
+    expect_error("class S : public Actor { void F(); S(); ~S(); };\nS::S() {}\nS::~S() {}",
+        "the method 'S::F' is declared but never defined");
+    expect_error("class S : public Actor { S(); };\nvoid S::G() {}",
+        "out-of-line definition of 'G' does not match any declaration");
+    expect_error("class S : public Actor { S(); ~S(); };\nS::S() {}",
+        "the destructor 'S::~S' is declared but never defined");
+    expect_error("class S : public Actor { S(int a); };",
+        "the constructor 'S::S' is declared but never defined");
+    expect_error("class S : public Actor { S() = default; };", "a defaulted or deleted constructor is not supported");
+    expect_error("class S : public Actor { static void F(); };\nvoid S::F() {}", "define the static method inside the class");
+    expect_error("class S : public Actor { void F() = delete; };", "a defaulted or deleted method is not supported");
+    expect_error("class S : public Actor { S& operator=(const S&) = default; };",
+        "a defaulted or deleted method is not supported");
+    expect_error("class S : public Actor { ~S() = default; };", "a defaulted or deleted method is not supported");
+    expect_error("class S : public Actor { void Tick(float dt) override = 0; };",
+        "a pure virtual method is not supported in a .cpp script class");
+    expect_error("class S : public Actor { virtual void F() = 0; };", "'virtual' is not supported in a .cpp script");
+    // A method that is defined twice is an error of the C++ parser.
+    expect_error("class S : public Actor { void F(); };\nvoid S::F() {}\nvoid S::F() {}", "redefinition of 'F'");
+    // A definition before the class cannot name the class.
+    expect_error("void S::F() {}\nclass S : public Actor { void F(); };", "S");
+    // The body moves into the class: a name that the file declares after the class is not valid.
+    expect_error("class S : public Actor { int F(); };\nconst int kLate = 3;\nint S::F() { return kLate; }",
+        "the definition of 'S::F' uses 'kLate', which the file declares after the class");
+    expect_error("class S : public Actor { int F(); };\nstruct Late { int v; };\nint S::F() { Late l{1}; return l.v; }",
+        "the definition of 'S::F' uses 'Late', which the file declares after the class");
+    expect_error("class S : public Actor { int F(); };\nint late() { return 1; }\nint S::F() { return late(); }",
+        "the definition of 'S::F' uses 'late', which the file declares after the class");
+    // An error in a definition keeps the rules of a body.
+    expect_error("class S : public Actor { void F(); };\nvoid S::F() { S s; }",
+        "the script class 'S' by value is not supported in a .cpp script");
 }
 
 // A static data member is a module variable "<Class>__<name>". The out-of-class definition gives the
@@ -363,7 +571,7 @@ TEST(CppFrontend, StaticMemberErrors)
         "invalid use of 'this' outside of a non-static member function");
     expect_error("class S : public Actor { static int n; };\nint g() { S s; return 0; }",
         "the script class 'S' by value is not supported in a .cpp script; use a pointer or a reference");
-    expect_error("class S : public Actor { static void F(); };", "define the method inside the class");
+    expect_error("class S : public Actor { static void F(); };", "define the static method inside the class");
     expect_error("class S : public Actor { static const int k; };", "a static const member needs an initializer");
     expect_error("int a = 1;\nclass S : public Actor { public: static int f() { return 1; } static int n; };\nint b = S::f();",
         "'f' must come before the first module variable 'a'");

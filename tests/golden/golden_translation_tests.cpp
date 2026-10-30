@@ -107,6 +107,13 @@ TEST(GoldenTranslation, CppStatic)
     golden_pair("cpp_static", ".cpp");
 }
 
+// A .cpp script with methods, a constructor and a destructor that are defined outside the class.
+// The body goes to the member in the class block, and the definition text does not stay.
+TEST(GoldenTranslation, CppOutOfClass)
+{
+    golden_pair("cpp_outofclass", ".cpp");
+}
+
 // A .cpp script uses a script class as a type: "new", pointers, references, field access,
 // method calls and casts on another script object.
 TEST(GoldenTranslation, CppObjects)
