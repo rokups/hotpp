@@ -13,6 +13,8 @@ This list shows what version 1 does not support.
 - The `?.` operator inside an expression. It works only at the start of an expression statement.
 - Reload while a worker thread runs script code. The default commit waits for the frame boundary.
 - A stored `T&` or `T*`. A borrowed value cannot go to a field. The option `--no-strict-borrowed` makes this a warning. See [Borrowing](borrowing.html).
+- A script class, struct or enum with the name of a C++ type from a `using` header. Rename the script type.
+- Shared state in an `inline` function, an `inline` variable or a template static member of a host header. The script modules build with hidden symbol visibility. Each module gets its own copy of that state, and the host does not share it. Put such state in a `.cpp` file of the host, or mark it exported.
 - Free functions. Only the `convert_` hooks can stand at file level.
 - A collection literal without a declared type: `var x = [1, 2];` is an error.
 - Runtime checks (null and bounds) in `.cpp` scripts. They cover `.hot` scripts only. They also skip a C++ container other than `std::array` and a C array, and they skip a throw in a constructor.
