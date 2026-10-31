@@ -75,6 +75,14 @@ std::string uri_to_path(const std::string& uri)
     return r;
 }
 
+// hot-ls serves a ".hot" script and a ".cpp" script. Any other file (a header, for example) belongs
+// to the C++ tools: hot-ls does not analyze it and does not publish for it.
+bool is_served_path(const std::string& path)
+{
+    const std::string ext = fs::path(path).extension().string();
+    return ext == ".hot" || ext == ".cpp";
+}
+
 std::string path_to_uri(const std::string& path)
 {
     static const char* digits = "0123456789ABCDEF";
@@ -886,9 +894,12 @@ void Server::update(Doc& d)
     }
 }
 
+static std::string script_file_path(const Doc& d, const std::string& name);
+
 json Server::analyze_diagnostics(const Doc& d) const
 {
     json out = json::array();
+    std::map<std::string, std::pair<int, std::string>> headers; // the first error of each C++ header
     auto add = [&](Pos p, const std::string& message, int severity)
     {
         const auto [b, e] = word_at(d, p);
@@ -899,7 +910,7 @@ json Server::analyze_diagnostics(const Doc& d) const
     for (const hotc::AnalyzeError& e : d.facts.errors)
         add({e.pos.line - 1, e.pos.col - 1}, e.message, 1);
     // The translation errors: "name:line:col: error: text", one line each.
-    static const std::regex re(R"(^(.*):(\d+):(\d+): (error|warning): (.*)$)");
+    static const std::regex re(R"(^(.*):(\d+):(\d+): (fatal error|error|warning): (.*)$)");
     std::istringstream ss(d.facts.diagnostics);
     for (std::string l; std::getline(ss, l);)
     {
@@ -907,8 +918,42 @@ json Server::analyze_diagnostics(const Doc& d) const
         if (!std::regex_match(l, m, re))
             continue;
         if (m[1] != d.path)
-            continue; // an imported script: import_diagnostics() has it
-        add({std::stoi(m[2]) - 1, std::stoi(m[3]) - 1}, m[5], m[4] == "error" ? 1 : 2);
+        {
+            // An imported script: import_diagnostics() has it. An error in a C++ header does not
+            // go to the header (the C++ tools own it): it shows at the "using" line of the script.
+            const std::string path = script_file_path(d, m[1]);
+            if (!is_served_path(path) && path != d.path && m[4] != "warning")
+                headers.emplace(path, std::make_pair(std::stoi(m[2]), m[5].str()));
+            continue;
+        }
+        add({std::stoi(m[2]) - 1, std::stoi(m[3]) - 1}, m[5], m[4] == "warning" ? 2 : 1);
+    }
+    for (const auto& [uri, diags] : d.clang_import_diags)
+    {
+        const std::string path = uri_to_path(uri);
+        if (is_served_path(path) || diags.empty())
+            continue;
+        const json& first = diags[0];
+        headers.emplace(path,
+            std::make_pair(first["range"]["start"]["line"].get<int>() + 1, first.value("message", std::string())));
+    }
+    for (const auto& [path, err] : headers)
+    {
+        const std::string name = fs::path(path).filename().string();
+        int line = 0;
+        for (int i = 0; i < static_cast<int>(d.text.starts.size()); ++i)
+        {
+            const std::string_view l = d.text.line(i);
+            if (l.find("using") != std::string_view::npos && l.find(name) != std::string_view::npos)
+            {
+                line = i;
+                break;
+            }
+        }
+        const int len = std::max<int>(1, static_cast<int>(d.text.line(line).size()));
+        out.push_back({{"range", script_range(d, {line, 0}, {line, len})}, {"severity", 1}, {"source", "hot"},
+            {"message",
+                "error in header '" + name + "': " + err.second + " (line " + std::to_string(err.first) + ")"}});
     }
     // A script without a host and without -I options has no include directories.
     if (opt_.include_dirs.empty() && opt_.compile_commands_dir.empty() && fs::path(d.path).extension() == ".hot"
@@ -938,7 +983,7 @@ static std::string script_file_path(const Doc& d, const std::string& name)
 std::map<std::string, json> Server::import_diagnostics(const Doc& d) const
 {
     std::map<std::string, json> out;
-    static const std::regex re(R"(^(.*):(\d+):(\d+): (error|warning): (.*)$)");
+    static const std::regex re(R"(^(.*):(\d+):(\d+): (fatal error|error|warning): (.*)$)");
     std::istringstream ss(d.facts.diagnostics);
     std::map<std::string, Text> texts;
     for (std::string l; std::getline(ss, l);)
@@ -963,7 +1008,7 @@ std::map<std::string, json> Server::import_diagnostics(const Doc& d) const
         const json range = {
             {"start", to_lsp(t->second, {line, col}, utf8_)}, {"end", to_lsp(t->second, {line, end}, utf8_)}};
         out[uri].push_back(
-            {{"range", range}, {"severity", m[4] == "error" ? 1 : 2}, {"source", "hot"}, {"message", m[5].str()}});
+            {{"range", range}, {"severity", m[4] == "warning" ? 2 : 1}, {"source", "hot"}, {"message", m[5].str()}});
     }
     for (const auto& [uri, diags] : d.clang_import_diags)
     {
@@ -971,6 +1016,14 @@ std::map<std::string, json> Server::import_diagnostics(const Doc& d) const
             continue;
         for (const json& x : diags)
             out[uri].push_back(x);
+    }
+    // A C++ header is not a script: the C++ tools show its errors. hot-ls does not publish for it.
+    for (auto it = out.begin(); it != out.end();)
+    {
+        if (is_served_path(uri_to_path(it->first)))
+            ++it;
+        else
+            it = out.erase(it);
     }
     return out;
 }
@@ -2461,6 +2514,8 @@ void Server::handle(const json& msg)
         auto d = std::make_shared<Doc>();
         d->uri = td.value("uri", std::string());
         d->path = uri_to_path(d->uri);
+        if (!is_served_path(d->path))
+            return; // a header or other file: the C++ tools own it
         d->cpp = fs::path(d->path).extension() == ".cpp";
         if (!d->cpp)
         {
@@ -2540,7 +2595,12 @@ void Server::handle(const json& msg)
         return reply_error(id, kMethodNotFound, "unknown method: " + method);
     auto d = doc_of(p);
     if (!d)
+    {
+        // A file that hot-ls does not serve (a header, for example) gets an empty answer.
+        if (!is_served_path(uri_to_path(p.value("/textDocument/uri"_json_pointer, std::string()))))
+            return reply(id, nullptr);
         return reply_error(id, kInvalidParams, "the document is not open");
+    }
     if (d->cpp)
         return reply(id, nullptr); // a ".cpp" document: clangd owns the features, hot-ls only publishes errors
     if (method == "textDocument/completion")

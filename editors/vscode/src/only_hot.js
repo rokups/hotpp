@@ -49,4 +49,11 @@ function onlyHot() {
   return middleware;
 }
 
-module.exports = { onlyHot, FEATURES };
+// The documents that the client sends to the server: the "hot" documents and the ".cpp" files.
+// A C++ header (".h", ".hpp") is not a script. The C++ tools own it, so the server never gets it.
+const DOCUMENT_SELECTOR = [
+  { scheme: 'file', language: 'hot' },
+  { scheme: 'file', language: 'cpp', pattern: '**/*.cpp' },
+];
+
+module.exports = { onlyHot, FEATURES, DOCUMENT_SELECTOR };

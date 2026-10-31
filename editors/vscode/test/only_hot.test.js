@@ -3,7 +3,7 @@
 'use strict';
 
 const assert = require('assert');
-const { onlyHot, FEATURES } = require('../src/only_hot.js');
+const { onlyHot, FEATURES, DOCUMENT_SELECTOR } = require('../src/only_hot.js');
 
 const m = onlyHot();
 for (const name of FEATURES) assert.strictEqual(typeof m[name], 'function', name);
@@ -29,4 +29,13 @@ assert.strictEqual(m.provideDefinition({ languageId: 'cpp' }, 'pos', 'tok', next
 assert.strictEqual(calls, 1);
 assert.deepStrictEqual(m.provideDefinition({ languageId: 'hot' }, 'pos', 'tok', next), [{ languageId: 'hot' }, 'pos', 'tok']);
 assert.strictEqual(calls, 2);
+
+// The selector sends only "hot" documents and ".cpp" files to the server. A header is not sent.
+assert.deepStrictEqual(DOCUMENT_SELECTOR, [
+  { scheme: 'file', language: 'hot' },
+  { scheme: 'file', language: 'cpp', pattern: '**/*.cpp' },
+]);
+const cppEntry = DOCUMENT_SELECTOR.find((s) => s.language === 'cpp');
+assert.ok(cppEntry.pattern.endsWith('*.cpp'));
+assert.ok(!DOCUMENT_SELECTOR.some((s) => s.language === 'cpp' && !s.pattern));
 console.log('only_hot.test.js: ok');

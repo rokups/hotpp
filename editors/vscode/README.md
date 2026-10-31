@@ -13,6 +13,8 @@ This extension gives support for Hot++ scripts (`.hot`, language id `hot`).
   document symbols, workspace symbols, semantic tokens and rename.
   Rename and references also cover the other `.hot` files of the workspace.
   See "Language server" in the top `README.md`.
+- `hot-ls` serves `.hot` files and `.cpp` scripts only. The client sends no C++ header
+  (`.h`, `.hpp`) to it. The C++ tools, for example clangd, own the headers.
 
 ## Install from the SDK
 

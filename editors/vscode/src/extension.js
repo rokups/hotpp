@@ -4,7 +4,7 @@
 
 const vscode = require('vscode');
 const { expandWorkspaceFolder, expandAll } = require('./expand.js');
-const { onlyHot } = require('./only_hot.js');
+const { onlyHot, DOCUMENT_SELECTOR } = require('./only_hot.js');
 
 let client;
 let watchers = [];  // the file watchers of the client
@@ -71,11 +71,8 @@ function startServer() {
     // The server gets the ".cpp" documents too. It publishes the hotc errors for a ".cpp" script,
     // which a host lists, and it ignores any other ".cpp" file. The middleware keeps all the
     // other features (completion, hover, tokens, formatting) on the "hot" documents: clangd owns
-    // them for a ".cpp" file.
-    documentSelector: [
-      { scheme: 'file', language: 'hot' },
-      { scheme: 'file', language: 'cpp' },
-    ],
+    // them for a ".cpp" file. A C++ header does not reach the server.
+    documentSelector: DOCUMENT_SELECTOR,
     middleware: onlyHot(),
     // The client sends workspace/didChangeWatchedFiles for these files. The code disposes the
     // watchers in deactivate(), so a restart does not leave old watchers.

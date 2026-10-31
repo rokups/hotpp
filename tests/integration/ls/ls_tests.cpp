@@ -235,6 +235,63 @@ TEST(LanguageServer, DefinitionOfAScriptMethodIsInTheScript)
     EXPECT_EQ(loc["range"]["start"]["character"], 9) << r.dump();
 }
 
+// A C++ header is not a script. hot-ls ignores it: no diagnostics, and an empty answer to each
+// feature request. The header text here is not valid Hot++, so any analysis would give an error.
+TEST(LanguageServer, CppHeaderIsIgnored)
+{
+    Session s(false);
+    const std::string header = (s.dir.path() / "engine.h").string();
+    const std::string text = "#pragma once\nstruct Engine { int hp; };\n";
+    write_file(header, text);
+    for (const char* name : {"engine.h", "engine.hpp", "engine.hh", "engine.cc"})
+    {
+        const std::string uri = uri_of((s.dir.path() / name).string());
+        s.client->open(uri, text);
+        s.client->change(uri, 2, text + "struct {");
+        for (const char* method : {"textDocument/definition", "textDocument/hover", "textDocument/references",
+                 "textDocument/documentSymbol", "textDocument/completion", "textDocument/semanticTokens/full"})
+        {
+            const json r = s.client->request(method, doc_pos(uri, 1, 8));
+            ASSERT_TRUE(r.contains("result")) << method << " " << r.dump();
+            const json& v = r["result"];
+            EXPECT_TRUE(v.is_null() || (v.is_array() && v.empty())) << method << " " << r.dump();
+        }
+        const json n = s.client->wait_notification("textDocument/publishDiagnostics",
+            [&](const json& p) { return p.value("uri", std::string()) == uri; }, 200);
+        EXPECT_TRUE(n.is_null()) << name << " " << n.dump();
+    }
+    // The script still works.
+    const json r = s.client->request("textDocument/documentSymbol", doc_pos(s.uri, 0, 0));
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
+}
+
+// A broken header that a script includes is not published for the header. The error shows on the
+// "using" line of the script. A missing header shows there too.
+TEST(LanguageServer, HeaderErrorShowsOnTheUsingLine)
+{
+    REQUIRE_CLANGD();
+    for (const bool missing : {false, true})
+    {
+        const std::string script = "using \"bad.h\";\nclass A {\n    int x = 1;\n}\n";
+        Session s(true, script);
+        const std::string header = (s.dir.path() / "bad.h").string();
+        if (!missing)
+            write_file(header, "#pragma once\nstruct Bad { int x\n};\nint y = ;\n");
+        s.client->change(s.uri, 2, script + "\n");
+        const json n = s.client->wait_notification("textDocument/publishDiagnostics",
+            [&](const json& p) { return p.value("uri", std::string()) == s.uri && !p["diagnostics"].empty(); }, 60000);
+        ASSERT_FALSE(n.is_null()) << (missing ? "missing" : "broken") << ": no diagnostic on the script";
+        bool found = false;
+        for (const json& d : n["params"]["diagnostics"])
+            if (d["range"]["start"]["line"] == 0 && d["message"].get<std::string>().find("bad.h") != std::string::npos)
+                found = true;
+        EXPECT_TRUE(found) << (missing ? "missing: " : "broken: ") << n.dump();
+        const json h = s.client->wait_notification("textDocument/publishDiagnostics",
+            [&](const json& p) { return p.value("uri", std::string()) == uri_of(header); }, 200);
+        EXPECT_TRUE(h.is_null()) << h.dump();
+    }
+}
+
 // S30 (a): the translation fails, so clangd keeps the last good C++. The positions go through
 // the edit. The call of heal moves two lines down. A missing import makes the translation fail. The definition is still
 // found.

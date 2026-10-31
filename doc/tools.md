@@ -18,6 +18,8 @@ nav_order: 22
 
 ## Setup
 
+`hot-ls` serves only `.hot` files and `.cpp` scripts. A C++ header (`.h`, `.hpp`) belongs to the C++ tools, for example clangd. `hot-ls` does not analyze a header, does not publish errors for it, and gives an empty answer to a request for it. F12 from a script can jump into a header: the C++ tools serve it there.
+
 `hot-ls` serves all features for `.hot` files. For a `.cpp` script, `hot-ls` gives only the errors of `hotc`. The clangd extension serves all other features of a C++ file. `clangd` must be in `PATH`. CMake writes the script host files, so you do not pass `-I` flags.
 
 ```cmake
