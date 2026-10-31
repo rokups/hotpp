@@ -128,3 +128,21 @@ TEST(ScriptKindsTranslation, ValueClassCannotUseAHandleClass)
     expect_error(
         "struct V { Squad s; }\nclass Squad : Unit { int a = 0; }\n", "a struct can use only native types and structs");
 }
+
+TEST(ScriptKindsTranslation, ScriptClassCallWithoutNewIsAnError)
+{
+    const std::string hint = "'Helper' is a script class. Create it with 'new Helper()'.";
+    const std::string cls = "class Helper : Unit { int n = 0; }\n";
+    expect_error(cls + "class User : Unit { void run() { Helper h = Helper(); } }\n", hint);
+    expect_error(cls + "class User : Unit { void run() { var h = Helper(); } }\n", hint);
+    expect_error(cls + "class User : Unit { void run() { Helper h = Helper(3); } }\n", hint);
+    expect_error(cls + "class User : Unit { Helper h = Helper(); }\n", hint);
+}
+
+TEST(ScriptKindsTranslation, ScriptClassWithNewAndStructCallStayValid)
+{
+    const hotc::TranslateResult r = translate_script(
+        "struct P { int a = 0; }\nclass Helper : Unit { int n = 0; }\n"
+        "class User : Unit { Helper g; void run() { Helper h = new Helper(); P p = P(); } }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}

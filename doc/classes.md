@@ -49,7 +49,7 @@ A default value is an error on a `virtual` or `override` method. A struct constr
 
 ## Constructors and destructors
 
-The constructor has the class name. The destructor starts with `~`. `new` calls a constructor and gives a handle.
+The constructor has the class name. The destructor starts with `~`. `new` calls a constructor and gives a handle. A script class is a handle, so `Helper()` without `new` is an error. Write `new Helper()`.
 
 ```hot
 class Counter {

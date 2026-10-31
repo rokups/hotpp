@@ -1,0 +1,11 @@
+using "Actor.h";
+
+class Helper {
+    int n = 1;
+}
+
+class Player : Actor {
+    override void Tick(float dt) {
+        Helper h = Helper();
+    }
+}

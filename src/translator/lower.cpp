@@ -730,10 +730,34 @@ struct Lowerer
         c.args.insert(c.args.begin(), raw("__self", 0));
     }
 
+    // True when "T(args)" is a call of the name of a handle class. A handle needs "new".
+    // A script class is a handle, unless it is a [value] class. A native class is a handle
+    // when its own stub says so. The text is the hint for the error.
+    std::string handle_call_hint(const std::string& n) const
+    {
+        if (cx.locals.count(n) || cx.fns.count(n))
+            return {};
+        const ClassDef* d = class_named(n);
+        if (d && !d->is_value)
+            return "'" + n + "' is a script class. Create it with 'new " + n + "()'.";
+        if (!d && cx.types && !cx.script_classes.count(n))
+        {
+            const TypeRule r = cx.types->lookup(n);
+            if (r.kind == Kind::Handle && r.native && r.owner == n && cx.types->is_handle(n))
+                return "'" + n + "' is a native class with a handle. Create it with 'new " + n + "()'.";
+        }
+        return {};
+    }
+
     void call(CallExpr& c)
     {
         if (const std::string* n = simple_name(*c.callee))
         {
+            if (const std::string hint = handle_call_hint(*n); !hint.empty())
+            {
+                error(std::get<NameExpr>(c.callee->v).pos, hint);
+                return;
+            }
             if (default_banned(*n))
             {
                 error(std::get<NameExpr>(c.callee->v).pos, kDefaultBan);
