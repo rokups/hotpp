@@ -27,7 +27,7 @@ cmake_minimum_required(VERSION 3.20)
 project(myapp CXX)
 
 # Set the standard and the flags BEFORE add_subdirectory. Hot++ reads them there.
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17) # the default of Hot++. Use 20 or 23 for std::format.
 
 set(HOT_ROOT "/path/to/hotpp" CACHE PATH "The Hot++ source tree")
 add_subdirectory(${HOT_ROOT} hot)
@@ -81,7 +81,7 @@ cmake --build build
 | CMake | 3.20 or later (`cmake_minimum_required` of the root file). The presets in `CMakePresets.json` need 3.25. |
 | Generator | Any generator. The presets use `Ninja Multi-Config`, so they need Ninja. |
 | C++ compiler | A Clang C++ compiler. The presets set `clang++`. The configure step runs `<compiler> -print-resource-dir`. The build does not check which compiler you use. Other compilers are untested. |
-| C++ standard | The host can use C++17, C++20 or C++23. The tool `hotc`, the language server and the tests always build as C++20, so the compiler must support C++20. |
+| C++ standard | The default is C++17. The host, `hotc`, the language server and the tests all build as C++17. The host can use C++20 or C++23 when it sets `CMAKE_CXX_STANDARD`. |
 | libclang | The C API (`libclang`) and the header `clang-c/Index.h`, from the system. The configure step first runs `find_package(Clang CONFIG QUIET)` and links the imported target `libclang`. The package must have the same major version as the compiler that sets the Clang resource folder (`CLANG_RESOURCE_DIR`), and the step looks first in `<resource folder>/../../cmake/clang`. If the package has no such target or has another version, the step uses the fallback: `find_library(NAMES clang REQUIRED)` and `find_path(clang-c/Index.h REQUIRED)`. The configure step fails if the fallback finds nothing. Every build needs libclang, also an AOT build, because `hotc` links it. |
 | Threads | `find_package(Threads REQUIRED)`. |
 | LLVM and Clang | Only for the JIT backend. With `HOT_ENABLE_JIT=AUTO` (the default) the configure step runs `find_package(LLVM CONFIG)` and `find_package(Clang CONFIG)`, and the JIT backend is on only when both are found. With `HOT_ENABLE_JIT=ON` the configure step stops with an error when a package is missing. With `OFF` it does not look for them. The JIT backend links `clang-cpp` and `LLVM`. The root file also enables the language C when `HOT_ENABLE_JIT` is not `OFF`. |
@@ -216,7 +216,7 @@ These variables are not options but they matter:
 
 | Variable | Meaning |
 |---|---|
-| `CMAKE_CXX_STANDARD` | The standard of the host and of the scripts. Default 20. See below. |
+| `CMAKE_CXX_STANDARD` | The standard of the host and of the scripts. Default 17. See below. |
 | `CMAKE_CXX_FLAGS` | The default backend passes it to every script compile (split into arguments). Sanitizer flags go here. |
 | `CMAKE_CXX_COMPILER` | The default backend, `hotc` and the language server use this compiler for the scripts. |
 | `CPM_*` | See "Offline builds". |
@@ -234,7 +234,7 @@ The build chooses the standard and the format library for string interpolation `
 The standard is the first of these that has a value:
 
 1. `CMAKE_CXX_STANDARD` in the scope of the caller.
-2. The default of Hot++: 20. Hot++ sets it when you set none, and it also keeps the value in a global property so `hot_add_scripts` agrees.
+2. The default of Hot++: 17. Hot++ sets it when you set none, and it also keeps the value in a global property so `hot_add_scripts` agrees.
 3. 17 (only a fallback).
 
 The standard is then fixed to 17, 20 or 23. A value of 21 or 22 gives 20. A smaller value gives 17. A larger value gives 23. `hot_add_scripts` passes the result to `hotc` as `--std=c++<n>`. The runtime backends use the same value (`HOT_CXX_STANDARD` in `include/hot/config.h`), both for the compile and for the parse of the native headers.
@@ -243,8 +243,7 @@ The format library follows from the standard and from `HOT_USE_FMT`:
 
 | `CMAKE_CXX_STANDARD` in your project | `HOT_USE_FMT` | Standard of the scripts | Format library | Flag for `hotc` |
 |---|---|---|---|---|
-| not set | OFF | 20 | `std::format` | none |
-| not set | ON | 20 | fmt | `--format=fmt` |
+| not set | OFF or ON | 17 | fmt | `--format=fmt` |
 | 17 | OFF or ON | 17 | fmt | `--format=fmt` |
 | 20 | OFF | 20 | `std::format` | none |
 | 20 | ON | 20 | fmt | `--format=fmt` |
@@ -260,7 +259,7 @@ Your own targets keep the default of the compiler when you set no standard. Set 
 
 If you set `CMAKE_CXX_STANDARD` after `add_subdirectory`, the runtime and `hotc` are already built for the old value. Then `hot_add_scripts` can ask `hotc` for another format library. `hotc` stops with the error "this hotc is built for --format=...". See the troubleshooting table.
 
-`hotc`, the language server and the tests always build as C++20. This does not change the standard of your host. The header `include/hot/config.h` has the macros `HOT_USE_FMT` and `HOT_CXX_STANDARD`.
+The default standard is 17, so string interpolation uses fmt by default. To use `std::format`, set `CMAKE_CXX_STANDARD` to 20 or 23 before `add_subdirectory`. `hotc`, the language server and the tests build with the same standard as the rest. The header `include/hot/config.h` has the macros `HOT_USE_FMT` and `HOT_CXX_STANDARD`.
 
 ### The format library
 
@@ -472,7 +471,7 @@ The folder is `HOT_HOSTS_DIR`. The default is `${CMAKE_SOURCE_DIR}/.cache/hot/ho
 
 Two notes on the fields:
 
-- `std`: with `TARGET`, the `CXX_STANDARD` property of the target, else `CMAKE_CXX_STANDARD`, else 17. Without `TARGET` it is `CMAKE_CXX_STANDARD` or 17. It does not use the default 20 of Hot++. If your project sets no standard, the host file says `c++17` and the scripts build as C++20. Set `CMAKE_CXX_STANDARD` to make them agree.
+- `std`: with `TARGET`, the `CXX_STANDARD` property of the target, else `CMAKE_CXX_STANDARD`, else 17. Without `TARGET` it is `CMAKE_CXX_STANDARD` or 17. It agrees with the default 17 of Hot++.
 - `resourceDir`: the value of `CLANG_RESOURCE_DIR`. A consumer project does not see this Hot++ variable, so the field can be empty. Then `hot-ls` uses its own `--resource-dir` option or its default.
 
 ## Install the SDK
@@ -680,7 +679,7 @@ Some problems have no fixed Hot++ message. The text comes from the tool that rep
 
 ## hot_gtest
 
-`hot_gtest(<target> [gtest_discover_tests arguments...] [PROPERTIES ...])` is an internal helper. It is in `cmake/HotTests.cmake`, and the build loads it only when `HOT_BUILD_TESTS` is ON. It registers the GoogleTest cases of a test target, requires C++20 for the target and makes each test depend on the fixture `hot_scratch`. Host projects do not call it.
+`hot_gtest(<target> [gtest_discover_tests arguments...] [PROPERTIES ...])` is an internal helper. It is in `cmake/HotTests.cmake`, and the build loads it only when `HOT_BUILD_TESTS` is ON. It registers the GoogleTest cases of a test target, makes each test depend on the fixture `hot_scratch`. Host projects do not call it.
 
 ## Samples
 
