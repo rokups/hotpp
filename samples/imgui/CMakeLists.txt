@@ -20,6 +20,11 @@ if(NOT TARGET hot::hotc)
     endif()
 endif()
 
+if(NOT TARGET hot::clang_backend)
+    message(STATUS "sample_imgui: skipped (this Hot++ has no target hot::clang_backend)")
+    return()
+endif()
+
 find_package(SDL3 QUIET)
 if(NOT SDL3_FOUND)
     message(STATUS "sample_imgui: skipped (SDL3 not found)")

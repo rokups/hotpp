@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-#ifdef HOT_TEST_CLANG_FILES
+#ifdef HOT_WITH_CLANG_FILES
     #include "hot/clang_files_backend.h"
 #endif
 
@@ -26,18 +26,26 @@ using test_support::kDt;
 using test_support::Session;
 using test_support::source;
 
-#ifdef HOT_TEST_CLANG_FILES
-std::string slots_text(hot::Backend& backend)
+// True when the default backend is the clang files backend (the environment variable HOT_BACKEND
+// can choose the JIT backend). Only this backend has a slots file.
+bool is_files_backend(hot::Backend& backend)
 {
-    auto* files = dynamic_cast<hot::ClangFilesBackend*>(&backend);
-    if (!files)
-        return "<not the file backend>";
-    std::ifstream f(files->slots_file());
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
+    return std::string(backend.name()) == "CLANG_FILES";
 }
+
+std::string slots_text([[maybe_unused]] hot::Backend& backend)
+{
+#ifdef HOT_WITH_CLANG_FILES
+    if (auto* files = dynamic_cast<hot::ClangFilesBackend*>(&backend))
+    {
+        std::ifstream f(files->slots_file());
+        std::stringstream ss;
+        ss << f.rdbuf();
+        return ss.str();
+    }
 #endif
+    return "<not the file backend>";
+}
 
 // A change of the script parent needs a full reload. The result names the class.
 TEST_P(BackendTests, ParentChangeRequiresFullReload)
@@ -64,7 +72,8 @@ TEST_P(BackendTests, ParentChangeRequiresFullReload)
 // wrote the file at the end of the build before; now the commit of an accepted module writes it.
 TEST_P(BackendTests, RejectedReloadLeavesTheSlotsFileUnchanged)
 {
-#ifdef HOT_TEST_CLANG_FILES
+    if (!is_files_backend(*backend))
+        GTEST_SKIP() << "Only the clang files backend has a slots file.";
     hot::LoadResult v1 = backend->load(source("family_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
     // The build alone does not write the file.
@@ -90,9 +99,6 @@ TEST_P(BackendTests, RejectedReloadLeavesTheSlotsFileUnchanged)
     EXPECT_EQ(slots_text(*backend), after_v1); // a pending reload did not write yet
     s.world.Tick(kDt); // the frame boundary commits: the generation is live
     EXPECT_NE(slots_text(*backend), after_v1);
-#else
-    GTEST_SKIP() << "only the file backend has a slots file";
-#endif
 }
 
 // A removed script function shrinks the slot count. hotc fails with the reason SlotsRemoved.
@@ -181,16 +187,18 @@ TEST_P(BackendTests, FreshLoadIgnoresTheSlotState)
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Medic"));
     s.commit_at_frame_boundary();
 
-#ifdef HOT_TEST_CLANG_FILES
-    const std::string before = slots_text(*backend);
-    EXPECT_FALSE(before.empty());
-#endif
+    const bool files = is_files_backend(*backend);
+    std::string before;
+    if (files)
+    {
+        before = slots_text(*backend);
+        EXPECT_FALSE(before.empty());
+    }
     hot::LoadResult fresh = backend->load(source("fnremoved_v2.hot"), 1, hot::LoadMode::Fresh);
     ASSERT_TRUE(fresh) << fresh.error;
     EXPECT_FALSE(fresh.module->origin.empty());
-#ifdef HOT_TEST_CLANG_FILES
-    EXPECT_EQ(slots_text(*backend), before); // the build did not write
-#endif
+    if (files)
+        EXPECT_EQ(slots_text(*backend), before); // the build did not write
 }
 
 // A host with a Loader and one script object that it owns. The host frees the object before the
@@ -274,11 +282,12 @@ TEST_P(BackendTests, FullReloadSequenceAfterAParentChange)
     EXPECT_EQ(*host.field<int>("top_f"), 2); // G.f: A.f(1) * 2 (G is a child of S now)
     EXPECT_EQ(*host.field<int>("leaf_a"), 3); // G() : base() calls S() : base(3), then A(3)
 
-#ifdef HOT_TEST_CLANG_FILES
-    // The slots file has the slots of the fresh generation only: S got its own h().
-    const std::string slots = slots_text(*backend);
-    EXPECT_NE(slots.find("S::h"), std::string::npos) << slots;
-#endif
+    if (is_files_backend(*backend))
+    {
+        // The slots file has the slots of the fresh generation only: S got its own h().
+        const std::string slots = slots_text(*backend);
+        EXPECT_NE(slots.find("S::h"), std::string::npos) << slots;
+    }
 
     // A later hot reload works after the full reload. Generation 2 is compatible with generation 1.
     hot::LoadResult v3 = backend->load(source("family_reparent_v2.hot"), 2);
@@ -300,9 +309,10 @@ TEST_P(BackendTests, FullReloadSequenceAfterARemovedFunction)
     ASSERT_RELOAD_OK(host.loader.load(std::move(*v1.module)));
     ASSERT_NO_FATAL_FAILURE(host.create("Medic"));
     *host.field<int>("hp") = 42;
-#ifdef HOT_TEST_CLANG_FILES
-    EXPECT_NE(slots_text(*backend).find("Medic::rest"), std::string::npos);
-#endif
+    if (is_files_backend(*backend))
+    {
+        EXPECT_NE(slots_text(*backend).find("Medic::rest"), std::string::npos);
+    }
 
     hot::LoadResult v2 = backend->load(source("fnremoved_v2.hot"), 2);
     ASSERT_FALSE(v2);
@@ -322,11 +332,12 @@ TEST_P(BackendTests, FullReloadSequenceAfterARemovedFunction)
     *host.field<int>("hp") = saved_hp;
     EXPECT_EQ(*host.field<int>("hp"), 42);
     EXPECT_EQ(hot::active_generation, 1u);
-#ifdef HOT_TEST_CLANG_FILES
-    const std::string slots = slots_text(*backend);
-    EXPECT_EQ(slots.find("Medic::rest"), std::string::npos) << slots;
-    EXPECT_NE(slots.find("Medic::heal"), std::string::npos) << slots;
-#endif
+    if (is_files_backend(*backend))
+    {
+        const std::string slots = slots_text(*backend);
+        EXPECT_EQ(slots.find("Medic::rest"), std::string::npos) << slots;
+        EXPECT_NE(slots.find("Medic::heal"), std::string::npos) << slots;
+    }
 }
 
 // A script with a module variable block: reset frees the block. The fresh load makes a new

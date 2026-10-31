@@ -5,7 +5,8 @@ add_executable(bench_backends bench_backends.cpp
 set_target_properties(bench_backends PROPERTIES ENABLE_EXPORTS ON)
 target_include_directories(bench_backends PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine)
 target_link_libraries(bench_backends PRIVATE hot_backend)
-if(HOT_BACKEND STREQUAL "JIT")
+# The bench times one backend: the JIT backend only when the build has no clang files backend.
+if(HOT_JIT_ENABLED AND NOT HOT_CLANG_FILES_ENABLED)
     target_link_libraries(bench_backends PRIVATE hot_jit_backend)
     target_compile_definitions(bench_backends PRIVATE BENCH_JIT=1)
 else()

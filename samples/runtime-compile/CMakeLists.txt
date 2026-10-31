@@ -18,6 +18,11 @@ if(NOT TARGET hot::hotc)
     endif()
 endif()
 
+if(NOT TARGET hot::backend)
+    message(STATUS "sample_runtime_compile: skipped (this Hot++ has no target hot::backend)")
+    return()
+endif()
+
 # One program source, two script variants. The extension picks the script.
 #   sample_runtime_compile_hot reads script/wolf.hot.
 #   sample_runtime_compile_cpp reads script/wolf.cpp.

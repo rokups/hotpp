@@ -27,7 +27,7 @@ All work is committed, except what `git status` shows. Slices S0 to S21 are done
 | Threads | `World::TickParallel` with a barrier. Stop-the-world commit at the barrier. A second mode, `SyncMode::EntryCounters`, blocks new entries. ASan and TSan are clean. Done. |
 | Translator | `hotc_lib` works on strings. It reads the native base with libclang. It emits `#line`. A session cache cuts a warm translate to about 1.3 ms. Tolerant parse, `source_map`, `analyze`. Done. |
 | Language | Classes, properties, constructors, inheritance, virtuals, `is`/`as`, enums, structs, module variables, native interface bases, interpolation. Done (syntax below). |
-| Backends | `HOT_BACKEND=CLANG_FILES` (default, external `clang++`) or `JIT` (in-process Clang plus ORC). Chosen at build time. Done. |
+| Backends | Clang files (`HOT_ENABLE_CLANG_FILES`, default ON, external `clang++`) and JIT (`HOT_ENABLE_JIT`, default AUTO, in-process Clang plus ORC). Chosen at run time (`DefaultBackendOptions::kind`, env `HOT_BACKEND=jit|files`). Done. |
 | Tools | `hotc` (build `.so`, `--emit-cpp`, `--aot`, `--compile-commands`), `bench_backends`, `hot-ls`. Done. |
 | AOT compilation | `hotc --aot`, `hot_add_scripts` with `AOT`, library `hot_aot` with no loader. Done (generation 1 only). |
 | Diagnostics, debug | Diagnostic rewriter, `#line`, DWARF script lines, lldb formatters, natvis. gdb check done (F3, see below). lldb and Visual Studio not run. |
@@ -40,7 +40,7 @@ Layout:
 
 ## Build and test
 - `cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ && ninja -C build && ctest --test-dir build -j8`
-- Add `-DHOT_BACKEND=JIT` for the JIT backend. Add `-DCMAKE_CXX_FLAGS=-fsanitize=address` or `=thread` for sanitizers.
+- The JIT backend is on in `AUTO` when CMake finds LLVM and Clang. Add `-DHOT_ENABLE_CLANG_FILES=OFF -DHOT_ENABLE_JIT=ON` for a JIT-only build. Add `-DCMAKE_CXX_FLAGS=-fsanitize=address` or `=thread` for sanitizers.
 - Presets: `cmake --preset linux-clang-files` (or `linux-clang-jit`), then `cmake --build --preset linux-clang-files-dbg`. Add `-asan` or `-tsan` to the name.
 - Tests at S19 in `build` (CLANG_FILES): 765 tests (with the 2 new template-base tests), all pass, 2 skipped (`CoreModule.ThousandReloads` needs `HOT_STRESS=1`; one `FileWatcherTests` case skips by design in the inotify mode). The other builds (`build-asan`, `build-jit`, `build-tsan`) were not run in S19. Run them before a release.
 - `StatementParseLimits.DeepNesting` can overflow the stack in a TSan build. `FileWatcherTests.SeesWriteAndRenameButNotOtherFiles` can fail under `ctest -j8` load in a TSan build. It passes alone.

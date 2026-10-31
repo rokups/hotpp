@@ -1,4 +1,4 @@
-// Tests for the JIT backend only (HOT_BACKEND=JIT).
+// Tests for the JIT backend only (HOT_ENABLE_JIT resolves ON).
 //
 // The backend must not write a file and must not start a process. These tests
 // check this, and they check that a generation can go away.

@@ -1,6 +1,6 @@
 # The sample clang-files-backend: the program builds ClangFilesBackend itself.
-# HOT_BACKEND=CLANG_FILES selects this backend for make_default_backend. A program that builds it
-# sets the compiler, the flags and the work folder itself.
+# HOT_ENABLE_CLANG_FILES=ON builds this backend into hot::backend (make_default_backend).
+# A program that builds it itself sets the compiler, the flags and the work folder.
 # This file works in the Hot++ build (add_subdirectory) and as a separate project.
 cmake_minimum_required(VERSION 3.20)
 project(hot_sample_clang_files_backend CXX)
@@ -18,6 +18,11 @@ if(NOT TARGET hot::hotc)
     else()
         find_package(Hot REQUIRED)
     endif()
+endif()
+
+if(NOT TARGET hot::clang_backend)
+    message(STATUS "sample_clang_files: skipped (this Hot++ has no target hot::clang_backend)")
+    return()
 endif()
 
 # One program source, two script variants. The extension picks the script.

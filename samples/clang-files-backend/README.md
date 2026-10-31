@@ -4,7 +4,7 @@ This sample shows a program that builds `hot::ClangFilesBackend` itself.
 The backend translates the script in memory, runs an external `clang++` and loads the `.so`.
 The host needs a C++ compiler at run time.
 
-`HOT_BACKEND=CLANG_FILES` selects this backend for `make_default_backend`. A program that
+`HOT_ENABLE_CLANG_FILES=ON` (default) builds this backend into `make_default_backend`. A program that
 builds it itself sets the compiler, the flags and the work folder.
 
 ## Two script variants

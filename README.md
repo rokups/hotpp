@@ -184,10 +184,10 @@ libclang needs about 400 ms to parse the engine headers. `hotc::TranslatorSessio
 
 A backend turns script source into a loadable `Module`. A `Module` has the `script_register` function and an owner of the code memory (for a `.so`: a `dlopen` handle). The `Loader` takes a `Module` in `load` and in `request_reload`. The class `Backend` (`include/hot/backend.h`) has the method `load(source, generation)`. It returns a `Module` or an error text with the compiler diagnostics.
 
-The CMake cache option `HOT_BACKEND` selects the backend at build time. `make_default_backend()` returns it.
+The CMake options `HOT_ENABLE_CLANG_FILES` (default `ON`) and `HOT_ENABLE_JIT` (default `AUTO`: on when CMake finds LLVM and Clang) decide which backends the build has. The program chooses one at run time. `make_default_backend()` returns the clang files backend when the build has it. The environment variable `HOT_BACKEND` (`jit` or `files`) or `DefaultBackendOptions::kind` chooses the other one. A request for a backend that the build does not have throws `std::runtime_error`. The error names the CMake option.
 
-- `CLANG_FILES` (default). `ClangFilesBackend` calls `hotc::translate` in the process, writes the `.cpp` in a work directory, runs an external `clang++` to make a `.so`, and loads it. The options are the compiler command, the include dirs, the resource dir, the extra flags and the work directory.
-- `JIT`. `JitBackend` calls `hotc::translate` in the process, compiles the C++ text in memory with the Clang library and loads the code with LLVM ORC. See the section "JIT backend".
+- Clang files (default). `ClangFilesBackend` calls `hotc::translate` in the process, writes the `.cpp` in a work directory, runs an external `clang++` to make a `.so`, and loads it. The options are the compiler command, the include dirs, the resource dir, the extra flags and the work directory.
+- JIT. `JitBackend` calls `hotc::translate` in the process, compiles the C++ text in memory with the Clang library and loads the code with LLVM ORC. See the section "JIT backend".
 
 Example: `cmake --preset linux-clang-files`.
 
@@ -351,13 +351,13 @@ All tests are GoogleTest cases. CMake registers them with `hot_gtest` (a wrapper
 
 - `HandwrittenGeneration` (`tests/integration/reload/handwritten_generation_tests.cpp`) loads `gen1.so` and makes one `Player`. It ticks the world 3 times and calls both `TakeDamage` overloads. It checks the type name, the position and the field `hp` by reflection.
 - `ReloadMigration` (`tests/integration/reload/reload_migration_tests.cpp`) binds a delegate to `heal` through a thunk. It reloads gen 2 at the frame boundary and checks the address, the migrated state, the new `Tick` and the delegate. It then tries gen 4 and a missing library. Both must be rejected, and gen 2 must keep running.
-- `BackendTests` (`tests/integration/reload/`) use the backend that `HOT_BACKEND` selected. They run the F1 reload scenario (`tests/support/f1_scenario.h`): generation 1 then generation 2, the same address, `hp` becomes `health`, `shield` is 25 and a delegate calls the new `heal`. A bad script (`tests/scripts/bad.hot`) must give an error that names `bad.hot` and the line. The runtime must keep running after the error.
+- `BackendTests` (`tests/integration/reload/`) use the backend that `make_default_backend` returns (the environment variable `HOT_BACKEND` chooses it). They run the F1 reload scenario (`tests/support/f1_scenario.h`): generation 1 then generation 2, the same address, `hp` becomes `health`, `shield` is 25 and a delegate calls the new `heal`. A bad script (`tests/scripts/bad.hot`) must give an error that names `bad.hot` and the line. The runtime must keep running after the error.
 - `SessionCache` (`tests/unit/translator/session/session_cache_tests.cpp`) checks the cache: a hit gives the same output as a miss, a changed header (also a nested one) invalidates it, a second base class works in the same session, and the second translate takes less than 150 ms (the real value is about 1.3 ms).
 - `JitTests` (`tests/integration/backends/jit_backend_tests.cpp`, only in a JIT build) check that no file appears and no child process runs. They also check exceptions in JIT code, a precompiled header and the life of a generation.
 - `Closure`, `GenerationUnload` (`tests/integration/closures/`) test escaped closures and the unload of generations with `tests/scripts/timer_v1.hot` and `timer_v2.hot`. See "Closures and unload".
 - `LambdaTranslation` (`tests/unit/translator/translate/lambda_translation_tests.cpp`) checks the output for an arrow lambda.
 - The other translator tests are in `tests/unit/translator/`. Each folder is one test program: `parser`, `lowering`, `emit`, `types`, `diagnostics`, `session` and `translate`. The golden-output tests are in `tests/golden/`. The expected files are in `tests/golden/expected/`. Set `HOT_UPDATE_GOLDEN` to write them again.
-- `PrecompiledTests` load the libraries that `hot_add_scripts` made with `hotc`, through `module_from_library`. They run the same F1 scenario. They run for each `HOT_BACKEND` value. One test runs `hotc` on `bad.hot` and checks the exit code and the error line.
+- `PrecompiledTests` load the libraries that `hot_add_scripts` made with `hotc`, through `module_from_library`. They run the same F1 scenario. They run with each backend. One test runs `hotc` on `bad.hot` and checks the exit code and the error line.
 
 ## ImGui sample
 

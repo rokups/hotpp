@@ -16,7 +16,7 @@ if(HOT_SAMPLES_STANDALONE_TEST)
         COMMAND ${CMAKE_CTEST_COMMAND} --build-and-test ${CMAKE_CURRENT_SOURCE_DIR}/aot ${dir}
             --build-generator ${CMAKE_GENERATOR} --build-config $<CONFIG> --build-noclean
             --build-options -DHOT_ROOT=${PROJECT_SOURCE_DIR} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-                -DHOT_BACKEND=${HOT_BACKEND} -DCMAKE_BUILD_TYPE=$<CONFIG>
+                -DHOT_ENABLE_CLANG_FILES=${HOT_ENABLE_CLANG_FILES} -DHOT_ENABLE_JIT=${HOT_ENABLE_JIT} -DCMAKE_BUILD_TYPE=$<CONFIG>
             --test-command ${CMAKE_CTEST_COMMAND} --test-dir ${dir} -C $<CONFIG> --output-on-failure)
     set_tests_properties(samples_standalone_aot PROPERTIES TIMEOUT 3600 LABELS standalone)
 endif()

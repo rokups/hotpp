@@ -225,7 +225,9 @@ endfunction()
 #                overrides a script with the backend, and reverts it with Loader::revert_unit.
 #                HOT_SCRIPT_DIR (the directory of the first script) is a development define, as in
 #                HOT_RELOAD. A portable build copies the include dir as in HOT_RELOAD. The mode
-#                fails at configure time when the target hot::backend does not exist.
+#                fails at configure time when the target hot::backend does not exist (a build
+#                with HOT_ENABLE_CLANG_FILES=OFF and HOT_ENABLE_JIT=OFF). MODE HOT_RELOAD
+#                fails in the same way.
 #   PRECOMPILED: hot_add_scripts makes the script libraries with the target ${t}_scripts. The
 #                target t links hot::runtime, exports its symbols and depends on ${t}_scripts.
 #                The libraries go to ${CMAKE_BINARY_DIR}/hot_scripts/${t}, so two hosts do not clash.
@@ -257,6 +259,12 @@ function(hot_add_host)
         message(FATAL_ERROR "hot_add_host: MODE AOT_RELOAD needs a backend (the target hot::backend), "
                 "because the program compiles overrides at run time. This Hot++ has no backend. "
                 "Use MODE AOT, or use a Hot++ build or SDK that has a backend (target ${H_TARGET})")
+    endif()
+    if(H_MODE STREQUAL "HOT_RELOAD" AND NOT TARGET hot::backend)
+        message(FATAL_ERROR "hot_add_host: MODE HOT_RELOAD needs a backend (the target hot::backend), "
+                "because the program compiles scripts at run time. This Hot++ has no backend. "
+                "Use MODE AOT or PRECOMPILED, or use a Hot++ build or SDK that has a backend "
+                "(HOT_ENABLE_CLANG_FILES or HOT_ENABLE_JIT) (target ${H_TARGET})")
     endif()
     set(t ${H_TARGET})
     set(common_args SCRIPTS ${H_SCRIPTS})

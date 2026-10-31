@@ -1,13 +1,8 @@
 # The sample jit-backend: the program builds JitBackend itself. The backend compiles in memory
-# with the Clang library. It needs HOT_BACKEND=JIT and the LLVM and Clang development packages.
+# with the Clang library. It needs HOT_ENABLE_JIT=ON (or AUTO with the packages) and the LLVM and Clang development packages.
 # This file works in the Hot++ build (add_subdirectory) and as a separate project.
 cmake_minimum_required(VERSION 3.20)
 project(hot_sample_jit CXX)
-
-# The Hot++ build sets HOT_BACKEND. A separate project asks for the JIT backend by default.
-if(NOT DEFINED HOT_BACKEND)
-    set(HOT_BACKEND JIT CACHE STRING "Hot++ backend: CLANG_FILES or JIT")
-endif()
 
 # The Hot++ source tree. A separate build uses it. The Hot++ build already has the targets.
 # An empty HOT_ROOT means: use the installed SDK (find_package(Hot), CMAKE_PREFIX_PATH).
@@ -24,8 +19,8 @@ if(NOT TARGET hot::hotc)
     endif()
 endif()
 
-if(NOT HOT_BACKEND STREQUAL "JIT")
-    message(STATUS "sample_jit: skipped, HOT_BACKEND is ${HOT_BACKEND}")
+if(NOT TARGET hot::jit_backend)
+    message(STATUS "sample_jit: skipped (this Hot++ has no JIT backend, see HOT_ENABLE_JIT)")
     return()
 endif()
 

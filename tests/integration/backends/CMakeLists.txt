@@ -5,8 +5,9 @@ set(BACKEND_TEST_SOURCES
     diagnostic_mistake_tests.cpp
     debug_info_tests.cpp
     generated_name_compile_tests.cpp
-    vfs_backend_tests.cpp)
-if(HOT_BACKEND STREQUAL "JIT")
+    vfs_backend_tests.cpp
+    backend_selection_tests.cpp)
+if(HOT_JIT_ENABLED)
     list(APPEND BACKEND_TEST_SOURCES jit_backend_tests.cpp)
 endif()
 add_executable(integration_backend_tests ${BACKEND_TEST_SOURCES}
@@ -29,7 +30,7 @@ target_compile_definitions(integration_backend_tests PRIVATE
     PRE_HANDLE_V1_SO="${CMAKE_BINARY_DIR}/hot_scripts/handle_v1.g1.so"
     PRE_HANDLE_V2_SO="${CMAKE_BINARY_DIR}/hot_scripts/handle_v2.g2.so"
     PRE_HANDLE_V1B_SO="${CMAKE_BINARY_DIR}/hot_scripts/handle_v1.g3.so")
-if(HOT_BACKEND STREQUAL "JIT")
+if(HOT_JIT_ENABLED)
     target_compile_definitions(integration_backend_tests PRIVATE HOT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
 endif()
 hot_gtest(integration_backend_tests)

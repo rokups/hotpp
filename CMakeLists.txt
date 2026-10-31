@@ -22,14 +22,38 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 enable_testing()
 
-# The Hot++ backend, chosen at build time (design section 3.3).
-#   CLANG_FILES: translate in memory, run an external clang++, dlopen the .so.
-#   JIT:         translate and compile in memory with the Clang library, load with LLVM ORC.
-set(HOT_BACKEND CLANG_FILES CACHE STRING "Hot++ backend: CLANG_FILES or JIT")
-set_property(CACHE HOT_BACKEND PROPERTY STRINGS CLANG_FILES JIT)
-if(NOT HOT_BACKEND STREQUAL "JIT" AND NOT HOT_BACKEND STREQUAL "CLANG_FILES")
-    message(FATAL_ERROR "HOT_BACKEND must be CLANG_FILES or JIT. It is: ${HOT_BACKEND}")
+# The Hot++ backends. The program chooses one at run time (make_default_backend, hot/backend.h).
+#   HOT_ENABLE_CLANG_FILES: build the clang files backend into hot::backend. It translates in
+#                           memory, runs an external clang++ and loads the .so with dlopen.
+#   HOT_ENABLE_JIT:         build the JIT backend into hot::backend. It translates and compiles in
+#                           memory with the Clang library and loads with LLVM ORC. It needs the
+#                           LLVM and Clang CMake packages. AUTO: on when CMake finds the packages.
+# The old option HOT_BACKEND picked one backend at build time. Map it once, then remove it from
+# the cache, so a later -D value of the new options wins.
+#   JIT:          HOT_ENABLE_CLANG_FILES=OFF and HOT_ENABLE_JIT=ON. Configure does not override a
+#                 new option that is already in the cache.
+#   CLANG_FILES:  nothing. It was the old default, and an old build folder always has it.
+if(DEFINED HOT_BACKEND)
+    if(HOT_BACKEND STREQUAL "JIT")
+        if(DEFINED CACHE{HOT_ENABLE_JIT} OR DEFINED CACHE{HOT_ENABLE_CLANG_FILES})
+            message(STATUS "HOT_BACKEND=JIT is ignored. HOT_ENABLE_CLANG_FILES or HOT_ENABLE_JIT is already set.")
+        else()
+            set(HOT_ENABLE_CLANG_FILES OFF CACHE BOOL "" FORCE)
+            set(HOT_ENABLE_JIT ON CACHE STRING "" FORCE)
+            message(WARNING "HOT_BACKEND is deprecated. The program now chooses the backend at run "
+                    "time. Configure maps HOT_BACKEND=JIT to HOT_ENABLE_CLANG_FILES=OFF and "
+                    "HOT_ENABLE_JIT=ON. Use these options.")
+        endif()
+    elseif(NOT HOT_BACKEND STREQUAL "CLANG_FILES")
+        message(FATAL_ERROR "HOT_BACKEND must be CLANG_FILES or JIT. It is: ${HOT_BACKEND}")
+    endif()
+    unset(HOT_BACKEND CACHE)
+    unset(HOT_BACKEND)
 endif()
+
+option(HOT_ENABLE_CLANG_FILES "Build the clang files backend (external clang++) into hot::backend" ON)
+set(HOT_ENABLE_JIT AUTO CACHE STRING "Build the JIT backend into hot::backend: AUTO, ON or OFF")
+set_property(CACHE HOT_ENABLE_JIT PROPERTY STRINGS AUTO ON OFF)
 
 # All scratch files go under one root. HOT_KEEP_TEMP keeps them for debugging.
 option(HOT_KEEP_TEMP "Keep the scratch files under tmp/ for debugging" OFF)
@@ -114,12 +138,40 @@ else()
 endif()
 
 # JitBackend (src/runtime): LLVM and Clang come from the system. CPM does not fetch them.
-if(HOT_BACKEND STREQUAL "JIT")
+# HOT_JIT_ENABLED and HOT_CLANG_FILES_ENABLED hold the resolved choice.
+set(HOT_CLANG_FILES_ENABLED ${HOT_ENABLE_CLANG_FILES})
+string(TOUPPER "${HOT_ENABLE_JIT}" HOT_JIT_MODE)
+if(NOT HOT_JIT_MODE MATCHES "^(AUTO|ON|OFF)$")
+    message(FATAL_ERROR "HOT_ENABLE_JIT must be AUTO, ON or OFF. It is: ${HOT_ENABLE_JIT}")
+endif()
+set(HOT_JIT_ENABLED OFF)
+if(NOT HOT_JIT_MODE STREQUAL "OFF")
     # LLVMConfig.cmake probes C headers (FindLibEdit), so the C language must be on.
     enable_language(C)
-    find_package(LLVM REQUIRED CONFIG)
-    find_package(Clang REQUIRED CONFIG)
-    message(STATUS "JIT backend: LLVM ${LLVM_PACKAGE_VERSION}, Clang ${Clang_VERSION}")
+    find_package(LLVM CONFIG QUIET)
+    if(LLVM_FOUND)
+        find_package(Clang CONFIG QUIET)
+    endif()
+    if(LLVM_FOUND AND Clang_FOUND)
+        set(HOT_JIT_ENABLED ON)
+        message(STATUS "JIT backend: on (LLVM ${LLVM_PACKAGE_VERSION}, Clang ${Clang_VERSION})")
+    elseif(HOT_JIT_MODE STREQUAL "ON")
+        message(FATAL_ERROR "HOT_ENABLE_JIT=ON needs the LLVM and Clang CMake packages. CMake does not "
+                "find them. Install the LLVM and Clang development packages, or add their folders to "
+                "CMAKE_PREFIX_PATH, or set HOT_ENABLE_JIT=AUTO or OFF.")
+    else()
+        message(STATUS "JIT backend: off (HOT_ENABLE_JIT=AUTO, no LLVM and Clang CMake packages)")
+    endif()
+else()
+    message(STATUS "JIT backend: off (HOT_ENABLE_JIT=OFF)")
+endif()
+message(STATUS "Clang files backend: ${HOT_CLANG_FILES_ENABLED}")
+if(NOT HOT_CLANG_FILES_ENABLED AND NOT HOT_JIT_ENABLED)
+    message(STATUS "No run-time backend: hot::backend is not built. Only AOT and PRECOMPILED hosts work.")
+    if(HOT_BUILD_TESTS)
+        message(FATAL_ERROR "The tests need a run-time backend. Set HOT_ENABLE_CLANG_FILES=ON or "
+                "HOT_ENABLE_JIT=ON, or set HOT_BUILD_TESTS=OFF.")
+    endif()
 endif()
 
 # The compiler flags for the scripts. The backends use them.
@@ -197,13 +249,18 @@ if(HOT_INSTALL)
     set_target_properties(hot_runtime PROPERTIES EXPORT_NAME runtime)
     set_target_properties(hot_runtime_core PROPERTIES EXPORT_NAME runtime_core)
     set_target_properties(hot_aot PROPERTIES EXPORT_NAME aot)
-    set_target_properties(hot_backend PROPERTIES EXPORT_NAME backend)
-    set_target_properties(hot_clang_backend PROPERTIES EXPORT_NAME clang_backend)
     set_target_properties(hotc_lib PROPERTIES EXPORT_NAME hotc_lib)
     set_target_properties(hotc PROPERTIES EXPORT_NAME hotc)
     set_target_properties(hot_ls PROPERTIES EXPORT_NAME hot_ls)
-    set(HOT_INSTALL_TARGETS hot_runtime hot_runtime_core hot_aot hot_backend hot_clang_backend
-                            hotc_lib hotc hot_ls)
+    set(HOT_INSTALL_TARGETS hot_runtime hot_runtime_core hot_aot hotc_lib hotc hot_ls)
+    if(TARGET hot_backend)
+        set_target_properties(hot_backend PROPERTIES EXPORT_NAME backend)
+        list(APPEND HOT_INSTALL_TARGETS hot_backend)
+    endif()
+    if(HOT_CLANG_FILES_ENABLED)
+        set_target_properties(hot_clang_backend PROPERTIES EXPORT_NAME clang_backend)
+        list(APPEND HOT_INSTALL_TARGETS hot_clang_backend)
+    endif()
     if(TARGET hot_jit_backend)
         set_target_properties(hot_jit_backend PROPERTIES EXPORT_NAME jit_backend)
         list(APPEND HOT_INSTALL_TARGETS hot_jit_backend)

@@ -2,7 +2,8 @@
 //
 // The Loader does not know how a Module is made. A backend can run an external
 // compiler (ClangFilesBackend) or compile in the process (JitBackend).
-// CMake selects the default backend with the cache option HOT_BACKEND.
+// The CMake options HOT_ENABLE_CLANG_FILES and HOT_ENABLE_JIT decide which backends the build has.
+// The program chooses one at run time (make_default_backend).
 // A library that the tool hotc made ahead of time needs no backend: call
 // module_from_library (module.h) and give the Module to the Loader.
 #pragma once
@@ -135,7 +136,23 @@ inline bool slots_cover(const std::string& text, const std::string& have)
     return true;
 }
 
-// The backend that HOT_BACKEND selected at build time.
+// The backends that make_default_backend can return.
+//   Auto:       the environment variable HOT_BACKEND ("jit" or "files") when it is set. Else the
+//               clang files backend when the build has it, else the JIT backend.
+//   ClangFiles: the clang files backend (CMake option HOT_ENABLE_CLANG_FILES).
+//   Jit:        the JIT backend (CMake option HOT_ENABLE_JIT).
+enum class BackendKind
+{
+    Auto,
+    ClangFiles,
+    Jit
+};
+
+// True when the build has the backend. Auto is true when the build has at least one backend.
+bool backend_available(BackendKind kind);
+
+// The backend that the run-time choice selects (BackendKind::Auto, see above).
+// It throws std::runtime_error when the backend is not in the build or the variable is wrong.
 std::unique_ptr<Backend> make_default_backend();
 
 // Additions to the build-time defaults of make_default_backend.
@@ -147,6 +164,8 @@ struct DefaultBackendOptions
     // disk only. For each directory the backend asks this file system first and then the disk.
     // It must be thread safe (hot/vfs.h).
     std::shared_ptr<hot::FileSystem> fs;
+    // The backend to make. An explicit value wins over the environment variable HOT_BACKEND.
+    BackendKind kind = BackendKind::Auto;
 };
 std::unique_ptr<Backend> make_default_backend(const DefaultBackendOptions& options);
 

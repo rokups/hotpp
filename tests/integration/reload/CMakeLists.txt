@@ -1,5 +1,5 @@
 # Reload tests. The first group loads hand-written libraries. The second group
-# uses the backend that HOT_BACKEND selected. The file gen3_missing.so does not exist on purpose.
+# uses the backend that make_default_backend returns (the environment variable HOT_BACKEND chooses it). The file gen3_missing.so does not exist on purpose.
 add_executable(integration_reload_tests
     handwritten_generation_tests.cpp
     reload_migration_tests.cpp
@@ -31,13 +31,9 @@ set_target_properties(integration_reload_tests PROPERTIES ENABLE_EXPORTS ON)
 add_dependencies(integration_reload_tests gen1 gen2 gen4_base stress_generation)
 target_compile_definitions(integration_reload_tests PRIVATE
     HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-    HOT_BACKEND_NAME="${HOT_BACKEND}"
     GEN1_SO="$<TARGET_FILE:gen1>"
     GEN2_SO="$<TARGET_FILE:gen2>"
     GEN4_BASE_SO="$<TARGET_FILE:gen4_base>"
     STRESS_SO="$<TARGET_FILE:stress_generation>"
     GEN3_MISSING_SO="${CMAKE_BINARY_DIR}/gen3_missing.so")
-if(HOT_BACKEND STREQUAL "CLANG_FILES")
-    target_compile_definitions(integration_reload_tests PRIVATE HOT_TEST_CLANG_FILES=1)
-endif()
 hot_gtest(integration_reload_tests)

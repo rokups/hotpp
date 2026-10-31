@@ -18,6 +18,11 @@ if(NOT TARGET hot::hotc)
     endif()
 endif()
 
+if(NOT TARGET hot::backend)
+    message(STATUS "sample_hot_reload: skipped (this Hot++ has no target hot::backend)")
+    return()
+endif()
+
 # One program source, two script variants. The extension picks the
 # scripts. Both variants are in the folder script. The names of the script files stay wolf_v1 and wolf_v2.
 #   sample_hot_reload_hot reads script/wolf_v1.hot and wolf_v2.hot.

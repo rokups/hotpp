@@ -22,7 +22,8 @@
       "hidden": true,
       "inherits": "base",
       "cacheVariables": {
-        "HOT_BACKEND": "CLANG_FILES"
+        "HOT_ENABLE_CLANG_FILES": "ON",
+        "HOT_ENABLE_JIT": "OFF"
       }
     },
     {
@@ -30,7 +31,8 @@
       "hidden": true,
       "inherits": "base",
       "cacheVariables": {
-        "HOT_BACKEND": "JIT"
+        "HOT_ENABLE_CLANG_FILES": "OFF",
+        "HOT_ENABLE_JIT": "ON"
       }
     },
     {

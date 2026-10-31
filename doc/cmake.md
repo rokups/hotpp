@@ -72,7 +72,7 @@ cmake -S . -B build -G Ninja -DCMAKE_PREFIX_PATH=/opt/hot-sdk -DCMAKE_CXX_COMPIL
 cmake --build build
 ```
 
-`find_package(Hot)` defines the same functions and the same targets (`hot::runtime`, `hot::aot`, `hot::backend`, `hot::hotc` and the others) as `add_subdirectory`. It sets `HOT_HOTC_EXECUTABLE` and `HOT_LS_EXECUTABLE` to the paths of the tools. If the SDK has no JIT backend, the target `hot::jit_backend` does not exist.
+`find_package(Hot)` defines the same functions and the same targets (`hot::runtime`, `hot::aot`, `hot::backend`, `hot::hotc` and the others) as `add_subdirectory`. It sets `HOT_HOTC_EXECUTABLE` and `HOT_LS_EXECUTABLE` to the paths of the tools. The SDK records which backends it has in the variables `HOT_SDK_CLANG_FILES` and `HOT_SDK_JIT` (`ON` or `OFF`). The target `hot::clang_backend` exists only when the SDK has the clang files backend. The target `hot::jit_backend` exists only when the SDK has the JIT backend. The target `hot::backend` exists when the SDK has at least one of them.
 
 ## Requirements
 
@@ -84,7 +84,7 @@ cmake --build build
 | C++ standard | The host can use C++17, C++20 or C++23. The tool `hotc`, the language server and the tests always build as C++20, so the compiler must support C++20. |
 | libclang | The C API (`libclang`) and the header `clang-c/Index.h`, from the system. The configure step first runs `find_package(Clang CONFIG QUIET)` and links the imported target `libclang`. The package must have the same major version as the compiler that sets the Clang resource folder (`CLANG_RESOURCE_DIR`), and the step looks first in `<resource folder>/../../cmake/clang`. If the package has no such target or has another version, the step uses the fallback: `find_library(NAMES clang REQUIRED)` and `find_path(clang-c/Index.h REQUIRED)`. The configure step fails if the fallback finds nothing. Every build needs libclang, also an AOT build, because `hotc` links it. |
 | Threads | `find_package(Threads REQUIRED)`. |
-| LLVM and Clang | Only for `HOT_BACKEND=JIT`. The configure step runs `find_package(LLVM REQUIRED CONFIG)` and `find_package(Clang REQUIRED CONFIG)`. The JIT backend links `clang-cpp` and `LLVM`. The root file also enables the language C for this case. |
+| LLVM and Clang | Only for the JIT backend. With `HOT_ENABLE_JIT=AUTO` (the default) the configure step runs `find_package(LLVM CONFIG)` and `find_package(Clang CONFIG)`, and the JIT backend is on only when both are found. With `HOT_ENABLE_JIT=ON` the configure step stops with an error when a package is missing. With `OFF` it does not look for them. The JIT backend links `clang-cpp` and `LLVM`. The root file also enables the language C when `HOT_ENABLE_JIT` is not `OFF`. |
 | Platform | Linux is the tested platform. Windows and macOS are untested. See [Limits](limits.html). |
 
 A host that links only `hot_runtime` (a precompiled library) or only `hot_aot` has no libclang or Clang at run time. A host that links `hot_backend` needs the libraries of the backend at run time, and `ClangFilesBackend` also needs the compiler (see [Embedding](embedding.html)).
@@ -151,9 +151,9 @@ Two variables are read when `add_subdirectory` runs. Set them before the call:
 |---|---|---|
 | `hot_runtime` | `hot::runtime` | The loader, the reload, the migration and `module_from_library`. It has no backend. It also has `hot::default_paths()`. |
 | `hot_runtime_core` | `hot::runtime_core` | The globals and the registry that generated code needs. The other runtime targets link it. |
-| `hot_backend` | `hot::backend` | `make_default_backend`. It links `hot_runtime` and the backend that `HOT_BACKEND` selects. |
-| `hot_clang_backend` | `hot::clang_backend` | `ClangFilesBackend`. It runs an external `clang++`. It always exists. It links `hot_runtime` and `hotc_lib`. |
-| `hot_jit_backend` | `hot::jit_backend` | `JitBackend`. It compiles in memory. It exists only when `HOT_BACKEND` is `JIT`. |
+| `hot_backend` | `hot::backend` | `make_default_backend` and `backend_available`. It links `hot_runtime` and the backends that the build has. It defines `HOT_WITH_CLANG_FILES` and `HOT_WITH_JIT` for them. The target does not exist when both backends are off. |
+| `hot_clang_backend` | `hot::clang_backend` | `ClangFilesBackend`. It runs an external `clang++`. The alias exists when `HOT_ENABLE_CLANG_FILES` is `ON`. (The library `hot_clang_backend` is always built, because `hotc` and `hot-ls` use it.) It links `hot_runtime` and `hotc_lib`. |
+| `hot_jit_backend` | `hot::jit_backend` | `JitBackend`. It compiles in memory. It exists only when the JIT backend is on (see `HOT_ENABLE_JIT`). |
 | `hot_aot` | `hot::aot` | The AOT registry and the core of the runtime. It has no loader. |
 | `hotc` | `hot::hotc` | The tool. `hot_add_host` and `hot_add_scripts` run it at build time. |
 | `hot_fmt` | none | An INTERFACE target for fmt. It exists only when the build uses fmt. |
@@ -201,7 +201,9 @@ Set an option with `-D` on the command line, or with `set(... CACHE ...)` before
 
 | Option | Default | Meaning and when to change it |
 |---|---|---|
-| `HOT_BACKEND` | `CLANG_FILES` | The backend of `make_default_backend`. `CLANG_FILES` runs an external `clang++`. `JIT` compiles in memory. Other values stop the configure step. Change it to `JIT` to avoid a compiler process, or when you want the JIT samples. `JIT` needs LLVM and Clang. |
+| `HOT_ENABLE_CLANG_FILES` | `ON` | `ON` builds the clang files backend into `hot::backend`. It runs an external `clang++`. Set `OFF` when the program must not need a compiler process. |
+| `HOT_ENABLE_JIT` | `AUTO` | The JIT backend compiles in memory with the Clang library. `AUTO`: on when CMake finds the LLVM and Clang packages. `ON`: on, and the configure step stops with an error when the packages are missing. `OFF`: off. The JIT backend needs LLVM and Clang. |
+| `HOT_BACKEND` | not set | Deprecated. The configure step reads it once and removes it from the cache. `JIT` becomes `HOT_ENABLE_CLANG_FILES=OFF` with `HOT_ENABLE_JIT=ON` (with a warning), unless one of the new options is already in the cache. `CLANG_FILES` (the old default) changes nothing. A later `-D` value of the new options always wins. |
 | `HOT_KEEP_TEMP` | `OFF` | `ON` keeps the scratch files of the default backend and of the tests. Change it to read the generated `.cpp` files. The environment variable `HOT_KEEP_TEMP` overrides it at run time: an empty value or `0` means OFF, any other value means ON. |
 | `HOT_USE_FMT` | `OFF` | `ON` selects fmt for string interpolation at any C++ standard. Change it when you want one format library for C++17 and C++20 builds. |
 | `HOT_FMT_PROVIDER` | `AUTO` | Where fmt comes from. See the section "The format library". Change it for an offline build, or when your project has its own fmt. |
@@ -504,7 +506,7 @@ The prefix is relocatable. You can copy or move it to another folder or machine.
 
 - **libclang.** `hotc` and the language server link `libclang`. The export holds no path of it. `HotConfig.cmake` first runs `find_package(Clang CONFIG QUIET)` and links the imported target `libclang`. The folder of the Clang package of the SDK build is a hint, so the same version wins. If that target is missing, or its major version differs from the SDK build, it uses the fallback `find_library` for `clang` (or `libclang`) with the folder of the SDK build as a hint, then the standard places. A value of the cache variable `HOT_CLANG_C_LIBRARY` always wins and skips the package. Set `-DHOT_CLANG_C_LIBRARY=/path/to/libclang.so` when the library is somewhere else. If CMake finds no libclang, it prints a warning, and the link of `hot::hotc_lib`, `hot::clang_backend` and `hot::backend` fails with the message `HOT_CLANG_C_LIBRARY-NOTFOUND`. A program in AOT mode does not link libclang.
 - **A C++ compiler.** A user project that uses the CMake package needs a Clang C++ compiler of the same family and version as the SDK build, as for any Hot++ build.
-- **LLVM and Clang (JIT only).** An SDK built with `HOT_BACKEND=JIT` has the target `hot::jit_backend`. `HotConfig.cmake` then calls `find_package(LLVM CONFIG)` and `find_package(Clang CONFIG)`, so the user machine needs the LLVM and Clang CMake packages. Add their folders to `CMAKE_PREFIX_PATH` if CMake does not find them. An SDK built with `CLANG_FILES` does not need them.
+- **LLVM and Clang (JIT only).** An SDK with the JIT backend (`HOT_SDK_JIT` is `ON`) has the target `hot::jit_backend`. `HotConfig.cmake` then calls `find_package(LLVM CONFIG)` and `find_package(Clang CONFIG)`, so the user machine needs the LLVM and Clang CMake packages. Add their folders to `CMAKE_PREFIX_PATH` if CMake does not find them. An SDK without the JIT backend does not need them.
 - **clangd (for `hot-ls`).** The language server starts a stock `clangd` as a child process. It must be in `PATH`, or you give its path with `--clangd` (see the VS Code extension). `hot-ls` also needs the Clang resource folder; pass `--resource-dir` if the server cannot find it. Without `clangd`, `--clangd ""` leaves only the analysis features.
 
 ### The format library of the SDK
@@ -592,14 +594,14 @@ Scripts and the host must use the same sanitizer runtime. The root file `CMakeLi
 
 `CMakePresets.json` (version 6, CMake 3.25 or later) has these presets. The generator is `Ninja Multi-Config`, the configurations are `Debug` and `RelWithDebInfo`, and the build folder is `cmake-build/<preset>`. The compiler is `clang++`.
 
-| Configure preset | Backend | Sanitizer (`CMAKE_CXX_FLAGS`) | Purpose |
+| Configure preset | Backends in the build | Sanitizer (`CMAKE_CXX_FLAGS`) | Purpose |
 |---|---|---|---|
-| `linux-clang-files` | `CLANG_FILES` | none | The default development build. |
-| `linux-clang-files-asan` | `CLANG_FILES` | `-fsanitize=address` | Memory errors. |
-| `linux-clang-files-tsan` | `CLANG_FILES` | `-fsanitize=thread` | Data races. |
-| `linux-clang-jit` | `JIT` | none | The JIT backend. It needs LLVM and Clang. |
-| `linux-clang-jit-asan` | `JIT` | `-fsanitize=address` | Memory errors with the JIT. |
-| `linux-clang-jit-tsan` | `JIT` | `-fsanitize=thread` | Data races with the JIT. |
+| `linux-clang-files` | clang files only | none | The default development build. |
+| `linux-clang-files-asan` | clang files only | `-fsanitize=address` | Memory errors. |
+| `linux-clang-files-tsan` | clang files only | `-fsanitize=thread` | Data races. |
+| `linux-clang-jit` | JIT only | none | The JIT backend. It needs LLVM and Clang. |
+| `linux-clang-jit-asan` | JIT only | `-fsanitize=address` | Memory errors with the JIT. |
+| `linux-clang-jit-tsan` | JIT only | `-fsanitize=thread` | Data races with the JIT. |
 
 The build presets and the test presets have the same names for each configure preset:
 
@@ -631,7 +633,10 @@ The first column has the text as it appears in the source. A text with `...` has
 | Message | Cause | Fix |
 |---|---|---|
 | `hotc: error: this hotc is built for --format=std, not --format=fmt` (or the other way) | `hot_add_scripts` chose another format library than the one `hotc` has. The standard in your scope differed from the standard when Hot++ was configured. | Set `CMAKE_CXX_STANDARD` and `HOT_USE_FMT` before `add_subdirectory`. Do not change them later. Configure again in a new build folder. |
-| `HOT_BACKEND must be CLANG_FILES or JIT. It is: ...` | The cache variable has another value. | Use `CLANG_FILES` or `JIT`. |
+| `HOT_ENABLE_JIT must be AUTO, ON or OFF. It is: ...` | The cache variable has another value. | Use `AUTO`, `ON` or `OFF`. |
+| `HOT_ENABLE_JIT=ON needs the LLVM and Clang CMake packages. CMake does not find them.` | You asked for the JIT backend, and the packages are missing. | Install the LLVM and Clang development packages, add them to `CMAKE_PREFIX_PATH`, or use `AUTO` or `OFF`. |
+| `hot_add_host: MODE HOT_RELOAD needs a backend` (or `AOT_RELOAD`) | Hot++ has no run-time backend: `HOT_ENABLE_CLANG_FILES` and `HOT_ENABLE_JIT` are both off. | Use `MODE AOT` or `PRECOMPILED`, or turn on a backend. |
+| `The JIT backend is not in this build. Configure Hot++ with HOT_ENABLE_JIT=ON ...` (a `std::runtime_error` at run time) | The program asked for the JIT backend (`BackendKind::Jit` or `HOT_BACKEND=jit`), but the build does not have it. | Build with `HOT_ENABLE_JIT=ON`, or ask for the other backend. The error for the clang files backend names `HOT_ENABLE_CLANG_FILES`. |
 | `HOT_FMT_PROVIDER must be AUTO, SYSTEM, CPM or NONE. It is: ...` | A wrong value. | Use one of the four values. |
 | `HOT_FMT_PROVIDER is NONE, but the target fmt::fmt-header-only or fmt::fmt does not exist...` | `NONE` needs your own fmt target. | Create the target before `add_subdirectory`, or use another provider. |
 | `Hot++: fmt is not available. Check HOT_FMT_PROVIDER (now ...).` | No provider gave a fmt target. | Install fmt, or use `CPM`. |
@@ -665,7 +670,7 @@ Some problems have no fixed Hot++ message. The text comes from the tool that rep
 | `Loader::load` or `module_from_library` fails and `error` has the `dlopen` text with `undefined symbol`. | The host is not linked with `ENABLE_EXPORTS`, or the host does not contain a function that the script calls. The `dlopen` text comes from the system. | Set `ENABLE_EXPORTS ON`. Link the code with the function, as a whole archive if it is a static library. |
 | The JIT backend fails with `script_register not found or not linkable: ...`. | The in-memory code needs a symbol that the executable does not export (see `README.md`, the section on the JIT backend). | Same as above. |
 | The configure step stops in `find_library` or `find_path` for libclang (the fallback, used when the Clang CMake package has no target `libclang`). | The development package of libclang is not installed. The message is from CMake. | Install it, or set `CMAKE_PREFIX_PATH`. |
-| The configure step stops in `find_package(LLVM)` or `find_package(Clang)`. | `HOT_BACKEND` is `JIT`, and the packages are missing. The message is from CMake. | Install the LLVM and Clang development packages, or use `CLANG_FILES`. |
+| The JIT backend is not in the build, and you want it. | `HOT_ENABLE_JIT` is `AUTO` and CMake does not find the LLVM and Clang packages. The configure output says `JIT backend: off`. | Install the LLVM and Clang development packages, or set `HOT_ENABLE_JIT=ON` to get an error that names the problem. |
 | The script compile cannot find compiler headers such as `stddef.h`. | The resource folder is wrong or empty. The root file takes it from `<compiler> -print-resource-dir`. The compiler must be Clang. MSVC has no such option. | Use `clang++` as `CMAKE_CXX_COMPILER`. For a backend that you build yourself, set `resource_dir`. For MSVC set `HOT_CLANG_RESOURCE_DIR`. |
 | CMake reports an unknown command `hot_add_scripts`. | The call comes before `add_subdirectory` of Hot++. The message is from CMake. | Move the call after `add_subdirectory`. |
 | A script change does not rebuild the library. | A changed header or an imported script is not in `DEPENDS`. | Add the file to `DEPENDS`. |
@@ -684,6 +689,6 @@ Each sample is a small project. It builds in the Hot++ tree and as a separate pr
 - [precompiled-library](https://github.com/rokups/hotpp/tree/main/samples/precompiled-library): the build makes a script library and the program loads it.
 - [hot-reload](https://github.com/rokups/hotpp/tree/main/samples/hot-reload): the program replaces the code of a live object.
 - [clang-files-backend](https://github.com/rokups/hotpp/tree/main/samples/clang-files-backend): the program builds `ClangFilesBackend` itself.
-- [jit-backend](https://github.com/rokups/hotpp/tree/main/samples/jit-backend): the program builds `JitBackend` itself. It needs `HOT_BACKEND=JIT`.
+- [jit-backend](https://github.com/rokups/hotpp/tree/main/samples/jit-backend): the program builds `JitBackend` itself. It needs the JIT backend (`HOT_ENABLE_JIT`).
 
 The samples use the Hot++ tree in `HOT_ROOT`. The default is the tree that holds the `samples` folder. To use a sample in your project, set `HOT_ROOT` to the Hot++ tree (or use FetchContent) and copy the `add_executable` and `hot_add_host` lines.

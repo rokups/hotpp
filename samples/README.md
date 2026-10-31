@@ -11,7 +11,7 @@ A sample builds in the Hot++ source tree. Most samples also build as a separate 
 | [precompiled-library](precompiled-library/) | The build makes a script library. The program loads it. | `hot::module_from_library`, `hot::Loader`, `hot_add_host(... MODE PRECOMPILED ...)` | `hot::runtime` | ready |
 | [hot-reload](hot-reload/) | The program reloads a script and keeps the live object. | `hot::Loader::request_reload`, `commit_pending`, `frame_boundary` | `hot_backend` | ready |
 | [clang-files-backend](clang-files-backend/) | The backend runs an external `clang++` and loads the `.so`. | `hot::ClangFilesBackend`, `hot::ClangFilesOptions` | `hot_clang_backend` | ready |
-| [jit-backend](jit-backend/) | The backend compiles in memory with the Clang library. It needs `HOT_BACKEND=JIT`. | `hot::JitBackend`, `hot::JitOptions` | `hot_jit_backend` | ready |
+| [jit-backend](jit-backend/) | The backend compiles in memory with the Clang library. It needs the JIT backend (`HOT_ENABLE_JIT`). | `hot::JitBackend`, `hot::JitOptions` | `hot_jit_backend` | ready |
 | [imgui](imgui/) | A Dear ImGui window whose user interface a script draws. It reloads the script. It needs SDL3 and CMake 3.24. It builds nothing without them. | `hot::ClangFilesBackend`, `hot::Loader::request_reload` | `hot_runtime`, `hot_clang_backend` | ready |
 
 Copy your host from these samples. The folder `tests/engine` is a test host for the Hot++ tests. It is not a model for a user project.

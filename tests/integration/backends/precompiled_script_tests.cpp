@@ -1,7 +1,7 @@
 // Tests of scripts that hotc compiled ahead of time.
 //
 // PrecompiledTests load .so files that hotc made at build time (hot_add_scripts)
-// as a Module with module_from_library. They run for every HOT_BACKEND value.
+// as a Module with module_from_library. They run with each backend that the build has.
 //
 // CMake defines these macros: HOT_SCRATCH_DIR, PRE_V1_SO, PRE_V2_SO, PRE_NATIVE_V1_SO,
 // PRE_NATIVE_V2_SO, PRE_HANDLE_V1_SO, PRE_HANDLE_V2_SO and PRE_HANDLE_V1B_SO.

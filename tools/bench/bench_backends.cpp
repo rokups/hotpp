@@ -1,6 +1,6 @@
 // bench_backends: time the compile and the load of the two test scripts.
 //
-// The tool uses the backend that the build selected (HOT_BACKEND). Run it
+// The tool uses the backend that the build selected (the JIT backend only when HOT_ENABLE_CLANG_FILES is OFF). Run it
 // many times for the cold numbers: each process starts cold.
 //
 // Usage:

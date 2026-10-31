@@ -5,7 +5,7 @@ The backend translates the script in memory, compiles it in memory with the Clan
 and loads the code with LLVM ORC. No process starts. The backend writes no file.
 
 The sample needs the system LLVM and Clang development packages. It builds only when
-`HOT_BACKEND=JIT`. With another backend the configure prints `sample_jit: skipped` and the
+the JIT backend is on (`HOT_ENABLE_JIT` is `ON`, or `AUTO` with the packages). Else the configure prints `sample_jit: skipped` and the
 sample adds no target and no test.
 
 ## Two script variants
@@ -85,13 +85,13 @@ The build fetches the Hot++ dependencies with CPM. It needs `clang`, `libclang`,
 Clang development packages, and Ninja.
 
 ```
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++ -DHOT_BACKEND=JIT
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++ -DHOT_ENABLE_JIT=ON
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
 To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`. The `CMakeLists.txt` of the sample sets
-`HOT_BACKEND` to `JIT` when it is not defined.
+Hot++ builds the JIT backend when `HOT_ENABLE_JIT` is `AUTO` and CMake finds LLVM and Clang.
 
 ## Link
 
@@ -100,7 +100,7 @@ To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`. The `CMakeLists.txt` o
 
 ## Adapt it to your project
 
-1. Configure Hot++ with `HOT_BACKEND=JIT`. LLVM and Clang must be installed. CPM does not fetch them.
+1. Configure Hot++ with `HOT_ENABLE_JIT=ON`. LLVM and Clang must be installed. CPM does not fetch them.
 2. Link your program to `hot::jit_backend` and set `ENABLE_EXPORTS ON` (`hot_add_host` does this).
 3. Fill `compiler` and `resource_dir` from `hot::default_paths()`. The backend uses the compiler path to find the toolchain.
 4. Keep the compiler flags of the host, such as a sanitizer, in `extra_flags`.

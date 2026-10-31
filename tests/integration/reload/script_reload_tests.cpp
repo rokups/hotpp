@@ -2,7 +2,7 @@
 // They run the F1 reload scenario, a reload with native functions and std containers,
 // and the diagnostics of a bad script.
 //
-// CMake defines these macros: HOT_SOURCE_DIR and HOT_BACKEND_NAME.
+// CMake defines the macro HOT_SOURCE_DIR.
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/f1_scenario.h"
@@ -13,6 +13,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -28,7 +29,16 @@ using test_support::source;
 
 TEST_P(BackendTests, DefaultBackendIsTheSelectedOne)
 {
-    EXPECT_EQ(GetParam(), backend->name());
+    // The environment variable HOT_BACKEND ("jit" or "files") chooses the backend. Else the clang
+    // files backend is the default when the build has it.
+    const char* env = std::getenv("HOT_BACKEND");
+    const std::string choice = env ? env : "";
+    std::string expected = hot::backend_available(hot::BackendKind::ClangFiles) ? "CLANG_FILES" : "JIT";
+    if (choice == "jit")
+        expected = "JIT";
+    else if (choice == "files")
+        expected = "CLANG_FILES";
+    EXPECT_EQ(expected, backend->name());
 }
 
 TEST_P(BackendTests, F1ReloadKeepsAddressAndMigratesState)
@@ -84,6 +94,6 @@ TEST_P(BackendTests, BadScriptGivesErrorAndRuntimeKeepsRunning)
     EXPECT_NE(s.field("health"), nullptr);
 }
 
-INSTANTIATE_TEST_SUITE_P(Selected, BackendTests, ::testing::Values(std::string(HOT_BACKEND_NAME)));
+INSTANTIATE_TEST_SUITE_P(Selected, BackendTests, ::testing::Values(std::string("default")));
 
 } // namespace

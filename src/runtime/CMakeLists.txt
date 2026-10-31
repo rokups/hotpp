@@ -50,12 +50,14 @@ target_link_libraries(hot_aot PUBLIC hot_runtime_core Threads::Threads)
 
 # ------------------------------------------------------------ Backends
 # ClangFilesBackend: hotc_lib in memory, then an external compiler.
+# The library is always built, because hotc and hot-ls use it. HOT_ENABLE_CLANG_FILES decides
+# if hot_backend links it.
 add_library(hot_clang_backend STATIC clang_files_backend.cpp)
 target_link_libraries(hot_clang_backend PUBLIC hot_runtime hotc_lib)
 
 # JitBackend: hotc_lib in memory, the Clang library compiles in memory, LLVM ORC loads.
 # LLVM and Clang come from the system. CPM does not fetch them. The root file finds them.
-if(HOT_BACKEND STREQUAL "JIT")
+if(HOT_JIT_ENABLED)
     add_library(hot_jit_backend STATIC jit_backend.cpp)
     # Only jit_backend.cpp includes the LLVM and Clang headers. The public header does not.
     # So these dirs are PRIVATE and the export holds no system path.
@@ -67,27 +69,36 @@ if(HOT_BACKEND STREQUAL "JIT")
     target_link_libraries(hot_jit_backend PUBLIC hot_runtime hotc_lib clang-cpp LLVM)
 endif()
 
-# make_default_backend() returns the backend that HOT_BACKEND selected.
-add_library(hot_backend STATIC default_backend.cpp)
-target_link_libraries(hot_backend PUBLIC hot_runtime)
-if(HOT_PORTABLE)
-    # default_backend.cpp checks the work directory of a portable host.
-    target_compile_definitions(hot_backend PRIVATE HOT_PORTABLE=1)
-endif()
-if(HOT_BACKEND STREQUAL "CLANG_FILES")
-    target_link_libraries(hot_backend PUBLIC hot_clang_backend)
-    target_compile_definitions(hot_backend PRIVATE HOT_BACKEND_CLANG_FILES=1)
-elseif(HOT_BACKEND STREQUAL "JIT")
-    target_link_libraries(hot_backend PUBLIC hot_jit_backend)
-    target_compile_definitions(hot_backend PRIVATE HOT_BACKEND_JIT=1)
+# make_default_backend() returns the backend that the program chooses at run time. The target
+# exists only when at least one backend is on. It defines HOT_WITH_CLANG_FILES and HOT_WITH_JIT
+# for the backends that it has. The SDK headers and the tests use these defines.
+if(HOT_CLANG_FILES_ENABLED OR HOT_JIT_ENABLED)
+    add_library(hot_backend STATIC default_backend.cpp)
+    target_link_libraries(hot_backend PUBLIC hot_runtime)
+    if(HOT_PORTABLE)
+        # default_backend.cpp checks the work directory of a portable host.
+        target_compile_definitions(hot_backend PRIVATE HOT_PORTABLE=1)
+    endif()
+    if(HOT_CLANG_FILES_ENABLED)
+        target_link_libraries(hot_backend PUBLIC hot_clang_backend)
+        target_compile_definitions(hot_backend PUBLIC HOT_WITH_CLANG_FILES=1)
+    endif()
+    if(HOT_JIT_ENABLED)
+        target_link_libraries(hot_backend PUBLIC hot_jit_backend)
+        target_compile_definitions(hot_backend PUBLIC HOT_WITH_JIT=1)
+    endif()
 endif()
 
 # Alias targets for a consumer project. They have the namespace hot::.
 add_library(hot::runtime ALIAS hot_runtime)
 add_library(hot::runtime_core ALIAS hot_runtime_core)
 add_library(hot::aot ALIAS hot_aot)
-add_library(hot::backend ALIAS hot_backend)
-add_library(hot::clang_backend ALIAS hot_clang_backend)
+if(TARGET hot_backend)
+    add_library(hot::backend ALIAS hot_backend)
+endif()
+if(HOT_CLANG_FILES_ENABLED)
+    add_library(hot::clang_backend ALIAS hot_clang_backend)
+endif()
 if(TARGET hot_jit_backend)
     add_library(hot::jit_backend ALIAS hot_jit_backend)
 endif()

@@ -31,8 +31,8 @@ compiler (the object library `runtime_compile_cpp_scripts_plain`). This shows th
 4. The program owns the object and calls `Tick`. The backend and the loader are declared first,
    so they are destroyed last. The object must die before the loader unloads the code.
 
-`make_default_backend` uses the compiler and the flags of the build of Hot++. The backend is the one
-that `HOT_BACKEND` selects (default `CLANG_FILES`). The compiler must stay available on the
+`make_default_backend` uses the compiler and the flags of the build of Hot++. The backend is the clang files
+backend (or the one that the environment variable `HOT_BACKEND` selects: `jit` or `files`). The compiler must stay available on the
 machine that runs the program.
 
 ## Files
@@ -96,7 +96,7 @@ To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`. The `CMakeLists.txt` o
 4. Check the `LoadResult` and the `ReloadResult` of `loader.load`. Show `error` to the user.
 5. Declare the backend and the loader before your script objects. Delete the objects first.
 
-For a different `HOT_BACKEND` configure with `-DHOT_BACKEND=JIT`. The code does not change.
+For the JIT backend run the program with `HOT_BACKEND=jit` (the build needs `HOT_ENABLE_JIT`). The code does not change.
 To set the compiler and the work folder yourself, see the samples
 [clang-files-backend](../clang-files-backend/) and [jit-backend](../jit-backend/).
 For reload, see [hot-reload](../hot-reload/).
