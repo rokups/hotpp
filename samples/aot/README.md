@@ -74,7 +74,7 @@ ctest --test-dir build --output-on-failure
 To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`. The `CMakeLists.txt` of the sample calls
 `add_subdirectory` for `HOT_ROOT` only when the target `hotc` does not exist yet.
 
-### With FetchContent
+### With `FetchContent`
 
 Replace the `HOT_ROOT` and `add_subdirectory` lines of `CMakeLists.txt` with this text.
 The rest of the file stays the same.
@@ -85,18 +85,18 @@ FetchContent_Declare(hot GIT_REPOSITORY <the URL of the Hot++ repository> GIT_TA
 FetchContent_MakeAvailable(hot)
 ```
 
-Hot++ is not the main project in this case. Its tests and samples are OFF.
+Hot++ is not the main project in this case. Its tests and samples are `OFF`.
 The functions `hot_add_host` and `hot_add_scripts` are then available.
 
 ## Link
 
 - `sample_aot_hot_scripts` and `sample_aot_cpp_scripts` are the libraries from `hot_add_host(... MODE AOT ...)`. The program links its library (PRIVATE).
-  Each has the generated C++ and the table `hot::aot_table`. It links `hot::runtime_core` (PUBLIC). The program links `hot::aot`.
+  Each has the generated C++ and the table `hot::aot_table`. It links `hot::runtime_core` (`PUBLIC`). The program links `hot::aot`.
 - Each program links only the library of its variant. It does not link `hot_runtime`.
 
 ## Adapt it to your project
 
-1. Add Hot++ to your project with `add_subdirectory` or FetchContent (see above).
+1. Add Hot++ to your project with `add_subdirectory` or `FetchContent` (see above).
 2. Make your program with `add_executable(<name> ...)`. Then call `hot_add_host(TARGET <name> MODE AOT SCRIPTS <your .hot files> INCLUDES <absolute folders of your headers> DEPENDS <your headers>)`.
    The build does not track the headers by itself, so list them in `DEPENDS`.
 3. The call links the script library `<name>_scripts` to your program.

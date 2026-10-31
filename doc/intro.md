@@ -51,8 +51,8 @@ wolf->Tick(1.0f / 60.0f);                                       // same pointer,
 
 ## How it works
 
-1. Parse: `lexy` reads a `.hot` script. libclang reads a `.cpp` script.
-2. Check: libclang reads the native headers. Hot++ finds the base classes, the virtual methods and the types.
+1. Parse: `lexy` reads a `.hot` script. `libclang` reads a `.cpp` script.
+2. Check: `libclang` reads the native headers. Hot++ finds the base classes, the virtual methods and the types.
 3. Translate to C++: `hotc` writes a state struct, a shell class that derives from the native base, and a slot table.
 4. Compile: Clang compiles the C++ in the process (JIT), through `clang++` (clang files), or ahead of time (AOT).
 5. Load and swap: the loader moves the fields to the new generation and swaps the slot table. The shell keeps its address.
@@ -60,12 +60,12 @@ wolf->Tick(1.0f / 60.0f);                                       // same pointer,
 See [The generated C++](#the-generated-c) for a sketch of the code. What Hot++ uses:
 
 - [lexy](https://github.com/foonathan/lexy): the parser of the `.hot` syntax.
-- libclang (C API): reads the native headers and the `.cpp` scripts.
+- `libclang` (C API): reads the native headers and the `.cpp` scripts.
 - Clang: compiles the generated C++, as a library (JIT) or as `clang++` (files).
-- LLVM ORC (LLJIT): loads the compiled code in the process and unloads it.
+- LLVM ORC (`LLJIT`): loads the compiled code in the process and unloads it.
 - [fmt](https://github.com/fmtlib/fmt): string interpolation `${}` in C++17. C++20 can use `std::format`.
-- [nlohmann_json](https://github.com/nlohmann/json) and clangd: the language server `hot-ls`.
-- CMake with CPM.cmake: the build, and the fetch of missing packages. GoogleTest runs the tests.
+- [nlohmann_json](https://github.com/nlohmann/json) and `clangd`: the language server `hot-ls`.
+- CMake with `CPM.cmake`: the build, and the fetch of missing packages. GoogleTest runs the tests.
 
 ## Three forms of a script
 
@@ -81,7 +81,7 @@ The numbers come from `bench_backends` (Release build, median of 3 runs). See [B
 
 ## Quick start
 
-Hot++ needs CMake 3.20 and a Clang C++ compiler with libclang. The JIT also needs the LLVM and Clang development packages.
+Hot++ needs CMake 3.20 and a Clang C++ compiler with `libclang`. The JIT also needs the LLVM and Clang development packages.
 
 ```cmake
 set(CMAKE_CXX_STANDARD 17)

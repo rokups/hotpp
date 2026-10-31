@@ -63,7 +63,7 @@ run on the main thread.
 
 ### In the Hot++ tree
 
-The option `HOT_BUILD_SAMPLES` is ON for the main project.
+The option `HOT_BUILD_SAMPLES` is `ON` for the main project.
 
 ```
 cmake --preset linux-clang-files

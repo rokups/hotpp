@@ -34,14 +34,14 @@ The build presets and the test presets have the same names for each configure pr
 
 | Build and test preset | Configure preset | Configuration |
 |---|---|---|
-| `linux-clang-files-dbg` | `linux-clang-files` | Debug |
-| `linux-clang-files-rel` | `linux-clang-files` | RelWithDebInfo |
-| `linux-clang-files-asan` | `linux-clang-files-asan` | Debug |
-| `linux-clang-files-tsan` | `linux-clang-files-tsan` | Debug |
-| `linux-clang-jit-dbg` | `linux-clang-jit` | Debug |
-| `linux-clang-jit-rel` | `linux-clang-jit` | RelWithDebInfo |
-| `linux-clang-jit-asan` | `linux-clang-jit-asan` | Debug |
-| `linux-clang-jit-tsan` | `linux-clang-jit-tsan` | Debug |
+| `linux-clang-files-dbg` | `linux-clang-files` | `Debug` |
+| `linux-clang-files-rel` | `linux-clang-files` | `RelWithDebInfo` |
+| `linux-clang-files-asan` | `linux-clang-files-asan` | `Debug` |
+| `linux-clang-files-tsan` | `linux-clang-files-tsan` | `Debug` |
+| `linux-clang-jit-dbg` | `linux-clang-jit` | `Debug` |
+| `linux-clang-jit-rel` | `linux-clang-jit` | `RelWithDebInfo` |
+| `linux-clang-jit-asan` | `linux-clang-jit-asan` | `Debug` |
+| `linux-clang-jit-tsan` | `linux-clang-jit-tsan` | `Debug` |
 
 The hidden presets `base`, `base-files`, `base-jit`, `base-clang`, `base-asan`, `base-tsan` and `base-test` hold the common settings. The sanitizer presets set `CMAKE_CXX_FLAGS` to the sanitizer flag only. The test presets print the output of a failed test. Example:
 
@@ -96,13 +96,13 @@ Some problems have no fixed Hot++ message. The text comes from the tool that rep
 | The linker reports an undefined reference to `hot::aot_table`. | A program that uses `AotRegistry` does not link the library from `hot_add_scripts(... AOT ...)`. Only that library defines the table. | Link the AOT library. |
 | `Loader::load` or `module_from_library` fails and `error` has the `dlopen` text with `undefined symbol`. | The host is not linked with `ENABLE_EXPORTS`, or the host does not contain a function that the script calls. The `dlopen` text comes from the system. | Set `ENABLE_EXPORTS ON`. Link the code with the function, as a whole archive if it is a static library. |
 | The JIT backend fails with `script_register not found or not linkable: ...`. | The in-memory code needs a symbol that the executable does not export (see `README.md`, the section on the JIT backend). | Same as above. |
-| The configure step stops in `find_library` or `find_path` for libclang (the fallback, used when the Clang CMake package has no target `libclang`). | The development package of libclang is not installed. The message is from CMake. | Install it, or set `CMAKE_PREFIX_PATH`. |
+| The configure step stops in `find_library` or `find_path` for `libclang` (the fallback, used when the Clang CMake package has no target `libclang`). | The development package of `libclang` is not installed. The message is from CMake. | Install it, or set `CMAKE_PREFIX_PATH`. |
 | The JIT backend is not in the build, and you want it. | `HOT_ENABLE_JIT` is `AUTO` and CMake does not find the LLVM and Clang packages. The configure output says `JIT backend: off`. | Install the LLVM and Clang development packages, or set `HOT_ENABLE_JIT=ON` to get an error that names the problem. |
 | The script compile cannot find compiler headers such as `stddef.h`. | The resource folder is wrong or empty. The root file takes it from `<compiler> -print-resource-dir`. The compiler must be Clang. MSVC has no such option. | Use `clang++` as `CMAKE_CXX_COMPILER`. For a backend that you build yourself, set `resource_dir`. For MSVC set `HOT_CLANG_RESOURCE_DIR`. |
 | CMake reports an unknown command `hot_add_scripts`. | The call comes before `add_subdirectory` of Hot++. The message is from CMake. | Move the call after `add_subdirectory`. |
 | A script change does not rebuild the library. | A changed header or an imported script is not in `DEPENDS`. | Add the file to `DEPENDS`. |
 | A program with sanitizer flags crashes when it loads a module. | The module is compiled without the same flags. | Put the flags in `FLAGS` or `extra_flags`. See "Sanitizers and the build type". |
 
-## hot_gtest
+## `hot_gtest`
 
 `hot_gtest(<target> [gtest_discover_tests arguments...] [PROPERTIES ...])` is an internal helper. It is in `cmake/HotTests.cmake`, and the build loads it only when `HOT_BUILD_TESTS` is ON. It registers the GoogleTest cases of a test target, makes each test depend on the fixture `hot_scratch`. Host projects do not call it.

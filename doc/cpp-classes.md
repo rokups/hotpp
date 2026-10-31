@@ -134,7 +134,7 @@ These rules apply:
 
 The fixtures `tests/scripts/cpp_ctor_init_v1.cpp` and `tests/scripts/cpp_ctor_init_v2.cpp` show the forms.
 
-## Aliases, onReload and convert hooks
+## Aliases, `onReload` and convert hooks
 
 These features follow the rules of [Hot reload](hot-reload.html). Only the spelling is C++.
 

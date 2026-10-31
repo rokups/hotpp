@@ -63,7 +63,7 @@ For a `const` field or a reference field, use a default member initializer in th
 ## Known limits
 
 - A field of a native struct type that has a function pointer can point into the code of an old version. `hotc` finds such a struct in an included header, wherever the `#include` is. Then the old version stays loaded while a live object has the field. `hotc` does not find a struct that you define in the script file itself.
-- An in-class brace initializer of a class-type field is not visited by libclang. A module variable inside such an initializer is not rewritten.
-- A `.cpp` translation does one more libclang parse than a `.hot` translation. A reload is slower. One parse of the engine headers takes about 400 ms.
+- An in-class brace initializer of a class-type field is not visited by `libclang`. A module variable inside such an initializer is not rewritten.
+- A `.cpp` translation does one more `libclang` parse than a `.hot` translation. A reload is slower. One parse of the engine headers takes about 400 ms.
 - In a normal build the file has plain C++ meaning. There is no state migration and there are no slots. Objects must not be shared between the two builds.
-- The language server gives only the errors of `hotc` for a `.cpp` script, and only when a host lists the file. The other editor features come from clangd. For a script with aids, clangd needs the flags `-include hot/script.h` and `-I<hot>/include`. See [Tools](tools.html#a-cpp-script-in-the-editor).
+- The language server gives only the errors of `hotc` for a `.cpp` script, and only when a host lists the file. The other editor features come from `clangd`. For a script with aids, `clangd` needs the flags `-include hot/script.h` and `-I<hot>/include`. See [Tools](tools.html#a-cpp-script-in-the-editor).

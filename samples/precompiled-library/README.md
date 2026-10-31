@@ -29,7 +29,7 @@ compiler (the object library `precompiled_library_cpp_scripts_plain`). This show
    `Loader::find("Wolf")` returns the class entry and `create()` makes an object.
 4. The loader is declared first, so it is destroyed last. The object dies before it.
 
-The program links `hot::runtime`. It does not link `hot::backend`. `ENABLE_EXPORTS` is ON.
+The program links `hot::runtime`. It does not link `hot::backend`. `ENABLE_EXPORTS` is `ON`.
 The library resolves host and runtime symbols from the executable.
 Each program depends on the library target of its variant, so the library
 exists before the test runs.
@@ -49,7 +49,7 @@ module (`hot-core-<pid>-<n>-<name>`). See "Core copies" in [Embedding](../../doc
 
 ### In the Hot++ tree
 
-The option `HOT_BUILD_SAMPLES` is ON for the main project.
+The option `HOT_BUILD_SAMPLES` is `ON` for the main project.
 
 ```
 cmake --preset linux-clang-files

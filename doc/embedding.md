@@ -32,7 +32,7 @@ Q6 -->|Yes| EXP["Explicit Clang files backend"]
 Q6 -->|No| RT["Compile at run time"]
 </pre>
 
-1. Must the shipped program have no compiler, no libclang and no loader? Then the scripts are fixed at build time. Use **AOT**. If the shipped program may carry a loader and a compiler, and you want an AOT start with per-script overrides, use **AOT with run-time overrides**.
+1. Must the shipped program have no compiler, no `libclang` and no loader? Then the scripts are fixed at build time. Use **AOT**. If the shipped program may carry a loader and a compiler, and you want an AOT start with per-script overrides, use **AOT with run-time overrides**.
 2. Do the scripts change after the program is built, but you build them ahead of time (with the build or with `hotc`)? Use a **precompiled library**.
 3. Does the program read `.hot` text at run time and compile it? Then ask the next two questions.
 4. Must a live object keep its field values while its code changes? Use **hot reload**.
@@ -72,13 +72,13 @@ Pick the row that matches your program. Each sample is a small project that buil
 |---|---|---|---|---|---|
 | AOT | No | No | None. `AotRegistry` registers the classes. | `hot_aot` through the AOT library | No loader, no Clang, no `ENABLE_EXPORTS`. |
 | AOT with run-time overrides | Yes, for an override only | Yes, for each script | `load_aot` registers the compiled-in classes. An override costs one translate and one compile. | `hot_backend` and the AOT library | `ENABLE_EXPORTS`. One `Loader` in the process. Never link `hot::aot`. |
-| Precompiled library | No | Yes, when you load a newer generation that you built ahead | `dlopen` of the library | `hot_runtime` | No libclang at run time. `ENABLE_EXPORTS`. A writable temp folder (see [Core copies](embedding-rules.html#core-copies)). |
+| Precompiled library | No | Yes, when you load a newer generation that you built ahead | `dlopen` of the library | `hot_runtime` | No `libclang` at run time. `ENABLE_EXPORTS`. A writable temp folder (see [Core copies](embedding-rules.html#core-copies)). |
 | Compile at run time | `CLANG_FILES`: yes, the compiler of the build. `JIT`: no process, but Clang libraries. | Yes | One translate and one compile for each load. | `hot_backend` | The program picks the backend at run time (`BackendKind`, the environment variable `HOT_BACKEND`). `ENABLE_EXPORTS`. |
 | Hot reload | Same as compile at run time | Yes | Same as compile at run time | `hot_backend` | The host calls `request_reload`, `commit_pending` and `frame_boundary`. |
 | In-process JIT | No process. The program links LLVM and Clang. | Yes | No process start. About 140 ms less than `CLANG_FILES` for one load at `-O1` (see below the table). | `hot_jit_backend` | `HOT_ENABLE_JIT`. `ENABLE_EXPORTS`. |
 | Explicit Clang files backend | Yes. `ClangFilesOptions::compiler`. | Yes | One compiler process for each load. | `hot_clang_backend` | You set every option. `ENABLE_EXPORTS`. |
 
-The load numbers come from the benchmark in `README.md` (section "JIT backend"). The run-time cost is in [Benchmarks](benchmarks.html). The tool `tools/bench/bench_backends` measures all backends in one run. The author measured them on one machine. A translate with a new `TranslatorSession` takes about 406 ms, because libclang parses the headers. A translate with the same session takes about 1.3 ms. A warm load with `CLANG_FILES` at `-O1` and no precompiled header takes about 1.1 s. The JIT is about 140 ms (15%) faster at the same `-O1`. The load numbers use `-O1` and the test headers, which are small. Measure again with your own headers. The code of a script runs at the same speed in every backend.
+The load numbers come from the benchmark in `README.md` (section "JIT backend"). The run-time cost is in [Benchmarks](benchmarks.html). The tool `tools/bench/bench_backends` measures all backends in one run. The author measured them on one machine. A translate with a new `TranslatorSession` takes about 406 ms, because `libclang` parses the headers. A translate with the same session takes about 1.3 ms. A warm load with `CLANG_FILES` at `-O1` and no precompiled header takes about 1.1 s. The JIT is about 140 ms (15%) faster at the same `-O1`. The load numbers use `-O1` and the test headers, which are small. Measure again with your own headers. The code of a script runs at the same speed in every backend.
 
 Linux is the tested platform. Windows and macOS are untested. `src/runtime/module.cpp` has a Windows branch (`LoadLibraryA`). It is marked as not built on MSVC. `src/runtime/default_backend.cpp` includes `unistd.h`, so `make_default_backend` is POSIX only.
 

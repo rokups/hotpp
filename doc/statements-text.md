@@ -63,7 +63,7 @@ class Pick {
 }
 ```
 
-## is and as
+## `is` and `as`
 
 `x is T` tests the type of a handle. `x as T` gives a `T` handle, or `null` when the type does not match. `x is T name` also binds a `T` handle. It works only as the first part of an `if` or `while` condition. `&&` can follow it.
 

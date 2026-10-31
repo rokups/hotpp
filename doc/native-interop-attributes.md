@@ -38,7 +38,7 @@ A string in a stub can use `$std::` for the configured namespace:
 
 Plain `std::` in a stub string stays as you write it. The names of `<type_traits>`, `size_t` and the C functions always use `std::`.
 
-The host must declare the namespace. For a test, `namespace mystd = std;` is enough. Use the same namespace in the C++ text that libclang reads.
+The host must declare the namespace. For a test, `namespace mystd = std;` is enough. Use the same namespace in the C++ text that `libclang` reads.
 
 ### The array type
 

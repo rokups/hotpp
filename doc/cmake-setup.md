@@ -13,38 +13,38 @@ group: CMake
 | Generator | Any generator. The presets use `Ninja Multi-Config`, so they need Ninja. |
 | C++ compiler | A Clang C++ compiler. The presets set `clang++`. The configure step runs `<compiler> -print-resource-dir`. The build does not check which compiler you use. Other compilers are untested. |
 | C++ standard | The default is C++17. The host, `hotc`, the language server and the tests all build as C++17. The host can use C++20 or C++23 when it sets `CMAKE_CXX_STANDARD`. |
-| libclang | The C API (`libclang`) and the header `clang-c/Index.h`, from the system. The configure step first runs `find_package(Clang CONFIG QUIET)` and links the imported target `libclang`. The package must have the same major version as the compiler that sets the Clang resource folder (`CLANG_RESOURCE_DIR`), and the step looks first in `<resource folder>/../../cmake/clang`. If the package has no such target or has another version, the step uses the fallback: `find_library(NAMES clang REQUIRED)` and `find_path(clang-c/Index.h REQUIRED)`. The configure step fails if the fallback finds nothing. Every build needs libclang, also an AOT build, because `hotc` links it. |
+| `libclang` | The C API (`libclang`) and the header `clang-c/Index.h`, from the system. The configure step first runs `find_package(Clang CONFIG QUIET)` and links the imported target `libclang`. The package must have the same major version as the compiler that sets the Clang resource folder (`CLANG_RESOURCE_DIR`), and the step looks first in `<resource folder>/../../cmake/clang`. If the package has no such target or has another version, the step uses the fallback: `find_library(NAMES clang REQUIRED)` and `find_path(clang-c/Index.h REQUIRED)`. The configure step fails if the fallback finds nothing. Every build needs `libclang`, also an AOT build, because `hotc` links it. |
 | Threads | `find_package(Threads REQUIRED)`. |
 | LLVM and Clang | Only for the JIT backend. With `HOT_ENABLE_JIT=AUTO` (the default) the configure step runs `find_package(LLVM CONFIG)` and `find_package(Clang CONFIG)`, and the JIT backend is on only when both are found. With `HOT_ENABLE_JIT=ON` the configure step stops with an error when a package is missing. With `OFF` it does not look for them. The JIT backend links `clang-cpp` and `LLVM`. The root file also enables the language C when `HOT_ENABLE_JIT` is not `OFF`. |
 | Platform | Linux is the tested platform. Windows and macOS are untested. See [Limits](limits.html). |
 
-A host that links only `hot_runtime` (a precompiled library) or only `hot_aot` has no libclang or Clang at run time. A host that links `hot_backend` needs the libraries of the backend at run time, and `ClangFilesBackend` also needs the compiler (see [Embedding](embedding.html)).
+A host that links only `hot_runtime` (a precompiled library) or only `hot_aot` has no `libclang` or Clang at run time. A host that links `hot_backend` needs the libraries of the backend at run time, and `ClangFilesBackend` also needs the compiler (see [Embedding](embedding.html)).
 
 ### What CPM fetches
 
-Hot++ uses CPM.cmake (`cmake/CPM.cmake`, in the repository, so CPM itself needs no download). The root file sets `CPM_USE_LOCAL_PACKAGES` to ON when you do not define it. So CPM calls `find_package` first and fetches only a package that is missing.
+Hot++ uses `CPM.cmake` (`cmake/CPM.cmake`, in the repository, so CPM itself needs no download). The root file sets `CPM_USE_LOCAL_PACKAGES` to `ON` when you do not define it. So CPM calls `find_package` first and fetches only a package that is missing.
 
 | Package | Version | When |
 |---|---|---|
-| lexy | v2025.05.0 | Always. |
-| nlohmann_json | 3.12.0 (a release archive) | Always. The language server uses it. |
-| GoogleTest | v1.17.0 | Only when `HOT_BUILD_TESTS` is ON. |
+| `lexy` | v2025.05.0 | Always. |
+| `nlohmann_json` | 3.12.0 (a release archive) | Always. The language server uses it. |
+| GoogleTest | v1.17.0 | Only when `HOT_BUILD_TESTS` is `ON`. |
 | fmt | 11.2.0 | Only when the build uses fmt and no fmt is installed (see `HOT_FMT_PROVIDER`). |
 | Dear ImGui | v1.92.9b | Only in the sample `samples/imgui`, and only when `find_package(SDL3)` succeeds (see `README.md`). |
 
-libclang, the Clang compiler, Threads, LLVM and Clang (for JIT) come from the system. CPM never fetches them.
+`libclang`, the Clang compiler, Threads, LLVM and Clang (for JIT) come from the system. CPM never fetches them.
 
 ### Offline builds
 
 | Setting | Effect |
 |---|---|
-| `-DCPM_USE_LOCAL_PACKAGES=OFF` | Fetch every CPM package. Hot++ sets the default to ON. |
+| `-DCPM_USE_LOCAL_PACKAGES=OFF` | Fetch every CPM package. Hot++ sets the default to `ON`. |
 | `-DCPM_DOWNLOAD_ALL=ON` | Fetch every CPM package, also when an installed one exists. |
 | `-DCPM_LOCAL_PACKAGES_ONLY=ON` | Never fetch. The configure step fails when a package is missing. |
 | `-DCPM_SOURCE_CACHE=<dir>` | Keep the fetched sources in one folder. The next configure does not download again. The environment variable `CPM_SOURCE_CACHE` gives the default. |
 | `-DCMAKE_DISABLE_FIND_PACKAGE_<name>=ON` | Fetch one package. Use `GTest`, `lexy` or `nlohmann_json` as the name. |
 
-For an offline build, install lexy, nlohmann_json (and GoogleTest, if you build the tests) or fill the cache with `CPM_SOURCE_CACHE` on a machine that has network access. Then set `CPM_SOURCE_CACHE` to that folder.
+For an offline build, install `lexy`, `nlohmann_json` (and GoogleTest, if you build the tests) or fill the cache with `CPM_SOURCE_CACHE` on a machine that has network access. Then set `CPM_SOURCE_CACHE` to that folder.
 
 The fmt package has its own switch. For an offline build with fmt, set `HOT_FMT_PROVIDER` to `SYSTEM` (an installed fmt) or `NONE` (your project makes the fmt target). Both values never fetch.
 
@@ -63,7 +63,7 @@ hot_add_host(TARGET app MODE AOT SCRIPTS wolf.hot
 
 The call to `add_subdirectory` defines the functions `hot_add_host`, `hot_add_scripts` and `hot_script_host`. It also defines the targets that the next table lists.
 
-FetchContent gives the same result. Replace the first two lines of the example:
+`FetchContent` gives the same result. Replace the first two lines of the example:
 
 ```cmake
 include(FetchContent)
@@ -87,7 +87,7 @@ Two variables are read when `add_subdirectory` runs. Set them before the call:
 | `hot_jit_backend` | `hot::jit_backend` | `JitBackend`. It compiles in memory. It exists only when the JIT backend is on (see `HOT_ENABLE_JIT`). |
 | `hot_aot` | `hot::aot` | The AOT registry and the core of the runtime. It has no loader. |
 | `hotc` | `hot::hotc` | The tool. `hot_add_host` and `hot_add_scripts` run it at build time. |
-| `hot_fmt` | none | An INTERFACE target for fmt. It exists only when the build uses fmt. |
+| `hot_fmt` | none | An `INTERFACE` target for fmt. It exists only when the build uses fmt. |
 
 Use the aliases in your project. The real names can change. `hot_add_host` links the right target for you, so you seldom link one by hand.
 

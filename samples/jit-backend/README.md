@@ -63,7 +63,7 @@ The other fields (`session`, `pch_path`, `strict_borrowed`, `raw_diagnostics`, `
 
 ### In the Hot++ tree
 
-Configure with the preset for the JIT backend. The option `HOT_BUILD_SAMPLES` is ON for the main project.
+Configure with the preset for the JIT backend. The option `HOT_BUILD_SAMPLES` is `ON` for the main project.
 
 ```
 cmake --preset linux-clang-jit
@@ -96,7 +96,7 @@ Hot++ builds the JIT backend when `HOT_ENABLE_JIT` is `AUTO` and CMake finds LLV
 ## Link
 
 - The program links `hot::jit_backend`. It brings `hot::runtime`, `hotc_lib`, `clang-cpp` and `LLVM`.
-- `ENABLE_EXPORTS` is ON. The JIT code resolves host and runtime symbols from the executable.
+- `ENABLE_EXPORTS` is `ON`. The JIT code resolves host and runtime symbols from the executable.
 
 ## Adapt it to your project
 

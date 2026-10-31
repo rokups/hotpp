@@ -13,7 +13,7 @@ The host compiles the new script as a new generation. The commit runs at the fra
 | Change | Result |
 |---|---|
 | Method body | LIVE |
-| Add a method, a virtual or an override | LIVE. An old object can call a new method at once. |
+| Add a method, a `virtual` or an `override` | LIVE. An old object can call a new method at once. |
 | Change a method signature | LIVE. Native delegates bound to the old signature detach with a warning. |
 | Add, remove or reorder a field | LIVE |
 | Change a field initializer | LIVE. Existing objects keep their values. |
@@ -28,7 +28,7 @@ The host compiles the new script as a new generation. The commit runs at the fra
 | Remove a function so that a class has fewer slots | Full reload |
 | Change a native header, a native class layout or a native virtual signature | Full reload. The host triggers it. |
 
-A `.cpp` script (see [C++ scripts](cpp-scripts.html)) follows the same table. It has no properties, no script virtual methods and no script-class handles. A `.cpp` reload is slower, because `hotc` does one more libclang parse. A normal build of the file has no state migration and no slots.
+A `.cpp` script (see [C++ scripts](cpp-scripts.html)) follows the same table. It has no properties, no script virtual methods and no script-class handles. A `.cpp` reload is slower, because `hotc` does one more `libclang` parse. A normal build of the file has no state migration and no slots.
 
 ## Full reload
 
@@ -68,7 +68,7 @@ if (r.status == hot::ReloadStatus::FullReloadRequired) {
 
 The sample [hot-reload](https://github.com/rokups/hotpp/blob/main/samples/hot-reload/main.cpp) shows `request_reload`, `commit_pending` and `frame_boundary` in a small program.
 
-The host must drop all objects first. `reset` fails when one script object remains. The error names the classes, for example `3 live objects remain: Driver x1, G x1, S x1`. It also fails when a reload is pending or a closure pins a generation. A failed `reset` changes nothing. A module variable can hold a closure, for example in a `std.function`. The closure pins its generation, and `reset` then fails with `generation N is pinned`. Before `reset`, the host calls a script function that clears such a variable (see `tests/scripts/modclosure.hot`). `loader.load` fails with `BadModule` when the loader still has a generation: call `reset` first. Build the Fresh module before `world.Clear()` when you can: a build error then leaves the actors intact (the test host `tests/engine/Harness.cpp` does this). After a `reset`, every pointer from `find()`, `module_state()` and `thunk()` is invalid.
+The host must drop all objects first. `reset` fails when one script object remains. The error names the classes, for example `3 live objects remain: Driver x1, G x1, S x1`. It also fails when a reload is pending or a closure pins a generation. A failed `reset` changes nothing. A module variable can hold a closure, for example in a `std.function`. The closure pins its generation, and `reset` then fails with `generation N is pinned`. Before `reset`, the host calls a script function that clears such a variable (see `tests/scripts/modclosure.hot`). `loader.load` fails with `BadModule` when the loader still has a generation: call `reset` first. Build the `Fresh` module before `world.Clear()` when you can: a build error then leaves the actors intact (the test host `tests/engine/Harness.cpp` does this). After a `reset`, every pointer from `find()`, `module_state()` and `thunk()` is invalid.
 
 ## Renamed fields
 
@@ -98,7 +98,7 @@ class Hero : Actor {
 }
 ```
 
-## onReload
+## `onReload`
 
 `void onReload(OldState old)` runs once for each live object, after the migration of all objects. `old.has("hp")` tests the old field name. `old.get<float>("hp")` reads the old value. It throws when the field is absent or has another type.
 

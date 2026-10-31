@@ -14,7 +14,7 @@ A `.cpp` script holds a class that derives from a native engine class. The class
 The extension selects the parser:
 
 - `.hot` selects the custom Hot++ syntax.
-- `.cpp` selects libclang.
+- `.cpp` selects `libclang`.
 
 Both modes work in one program. A `Loader` holds one module for each generation, as for `.hot` scripts. Use one session for each script. There is no import between the modes. A `.cpp` script cannot include a `.hot` script. A `.hot` script cannot import a `.cpp` script.
 

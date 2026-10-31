@@ -64,7 +64,7 @@ See the table of the options in [Embedding](../../doc/embedding-interface.md#opt
 
 ### In the Hot++ tree
 
-The option `HOT_BUILD_SAMPLES` is ON for the main project.
+The option `HOT_BUILD_SAMPLES` is `ON` for the main project.
 
 ```
 cmake --preset linux-clang-files
@@ -96,7 +96,7 @@ To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`. The `CMakeLists.txt` o
 ## Link
 
 - The program links `hot::clang_backend`. It brings `hot::runtime` and `hotc_lib`. `hot_add_host` also links `hot::backend`.
-- `ENABLE_EXPORTS` is ON. The generation modules resolve host and runtime symbols from the
+- `ENABLE_EXPORTS` is `ON`. The generation modules resolve host and runtime symbols from the
   executable.
 
 ## Adapt it to your project

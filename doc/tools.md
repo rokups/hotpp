@@ -6,9 +6,9 @@ nav_order: 42
 
 `hot-ls` is the language server. The VS Code extension starts it. For the inner workings see [Language server internals](tools-ls.html).
 
-## hot-ls features
+## `hot-ls` features
 
-- Diagnostics from the parser and from clangd, at the script position.
+- Diagnostics from the parser and from `clangd`, at the script position.
 - The `hotc` errors of a `.cpp` script, as diagnostics (see [A `.cpp` script in the editor](#a-cpp-script-in-the-editor)).
 - Completion for locals, fields, enums, classes, native members and keywords.
 - Signature help, hover, go to definition and references.
@@ -18,9 +18,9 @@ nav_order: 42
 
 ## Setup
 
-`hot-ls` serves only `.hot` files and `.cpp` scripts. A C++ header (`.h`, `.hpp`) belongs to the C++ tools, for example clangd. `hot-ls` does not analyze a header, does not publish errors for it, and gives an empty answer to a request for it. F12 from a script can jump into a header: the C++ tools serve it there.
+`hot-ls` serves only `.hot` files and `.cpp` scripts. A C++ header (`.h`, `.hpp`) belongs to the C++ tools, for example `clangd`. `hot-ls` does not analyze a header, does not publish errors for it, and gives an empty answer to a request for it. F12 from a script can jump into a header: the C++ tools serve it there.
 
-`hot-ls` serves all features for `.hot` files. For a `.cpp` script, `hot-ls` gives only the errors of `hotc`. The clangd extension serves all other features of a C++ file. `clangd` must be in `PATH`. CMake writes the script host files, so you do not pass `-I` flags.
+`hot-ls` serves all features for `.hot` files. For a `.cpp` script, `hot-ls` gives only the errors of `hotc`. The `clangd` extension serves all other features of a C++ file. `clangd` must be in `PATH`. CMake writes the script host files, so you do not pass `-I` flags.
 
 ```cmake
 hot_script_host(NAME engine TARGET engine
@@ -48,7 +48,7 @@ If F12 does not jump, check these points:
 - The host file is in `.cache/hot/hosts/` of the workspace, and its build directory still exists.
 - The script has no error that stops the translation. Fix the errors in the Problems panel first.
 
-For a `.cpp` script, the clangd extension gives F12. `hot-ls` gives no answer for it. F12 works when clangd reads the compile database of the project (`compile_commands.json`), and when the clangd flags of [clangd setup](#clangd-setup) are set.
+For a `.cpp` script, the `clangd` extension gives F12. `hot-ls` gives no answer for it. F12 works when `clangd` reads the compile database of the project (`compile_commands.json`), and when the `clangd` flags of [clangd setup](#clangd-setup) are set.
 
 ## A `.cpp` script in the editor
 
@@ -57,12 +57,12 @@ A `.cpp` script is a C++ file (see [C++ scripts](cpp-scripts.html)). The editor 
 - `hot-ls` treats a `.cpp` file as a script only when a host lists it. The host lists the file in `SCRIPTS`, or in a directory of `SCRIPT_DIRS`. See `hot_script_host` in [CMake](cmake-scripts.html#hot_script_host). Put no other `.cpp` file in a script directory: `hot-ls` treats it as a script too.
 - `hot-ls` ignores any other `.cpp` file. It gives no diagnostic and no answer for it.
 - The diagnostics come from the same checks as `hotc` does at build time. They appear when you open, edit or save the file.
-- For a script, `hot-ls` gives no completion, hover, definition, references, rename, symbols or semantic tokens. The answer is empty. clangd owns these features. `hot-ls` does not add the script to the index of `.hot` symbols.
+- For a script, `hot-ls` gives no completion, hover, definition, references, rename, symbols or semantic tokens. The answer is empty. `clangd` owns these features. `hot-ls` does not add the script to the index of `.hot` symbols.
 - The VS Code extension does not register `.cpp` as the language `hot`. It sends the `.cpp` documents to `hot-ls`. It keeps all features other than the diagnostics on the `hot` documents.
 
-### clangd setup
+### `clangd` setup
 
-clangd must see the aids of a script (`HOT_ALIAS`, `hot::OldState`). `hotc` injects the header `hot/script.h`, but clangd does not. Add the header and the include directory of Hot++ to the flags of clangd. A script without aids needs no setting.
+`clangd` must see the aids of a script (`HOT_ALIAS`, `hot::OldState`). `hotc` injects the header `hot/script.h`, but `clangd` does not. Add the header and the include directory of Hot++ to the flags of `clangd`. A script without aids needs no setting.
 
 Put this in a `.clangd` file at the root of the project. Replace `<hotpp>` with the path of the Hot++ directory.
 
@@ -91,7 +91,7 @@ Or add the same flags to the entry of the script in `compile_commands.json`:
 - Diagnostics can be missing after an edit that gives the same C++ text.
 - The index folder is the first workspace folder only.
 
-## hotc format flag
+## `hotc` format flag
 
 `hotc --format=std|fmt` picks the format library for `${}` in the C++ text. The default is `std`. The flag is for build systems: `hot_add_scripts` sets it. `fmt` output also compiles as C++17. In build mode (without `--emit-cpp` and `--aot`), the build of `hotc` fixes the library, and a different `--format` is an error. See [CMake](cmake-options.html#the-format-library).
 

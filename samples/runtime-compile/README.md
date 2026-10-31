@@ -46,7 +46,7 @@ machine that runs the program.
 
 ### In the Hot++ tree
 
-The option `HOT_BUILD_SAMPLES` is ON for the main project.
+The option `HOT_BUILD_SAMPLES` is `ON` for the main project.
 
 ```
 cmake --preset linux-clang-files
@@ -78,7 +78,7 @@ To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`. The `CMakeLists.txt` o
 ## Link
 
 - `hot_add_host(... MODE HOT_RELOAD ...)` links `hot::backend`. It brings `hot::runtime` and the backend library.
-- The call sets `ENABLE_EXPORTS` to ON. The generation modules resolve host and runtime symbols from the
+- The call sets `ENABLE_EXPORTS` to `ON`. The generation modules resolve host and runtime symbols from the
   executable.
 - The compiler, the resource directory and the work directory come from `hot::default_paths()`
   (`hot/paths.h`). The build of the sample is not portable, so they are the build values.

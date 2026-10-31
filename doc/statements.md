@@ -35,7 +35,7 @@ class Flow {
 }
 ```
 
-## switch
+## `switch`
 
 `switch` works as in C++ for enums and integers. A `switch` on string labels becomes an `if` chain. Each case must end with `break`, `return`, `throw` or `continue`. The last case can end any way. A case can have several labels. Mixed labels and repeated labels are errors. The switch value is read one time. `default` can be at any position. A string `switch` with a `break` inside an `if` and a `continue` for an outer loop is an error.
 
@@ -62,7 +62,7 @@ class Speed {
 }
 ```
 
-## foreach
+## `foreach`
 
 `foreach` walks a container. `var x` and `T x` copy each element. `var& x` and `const var& x` bind a reference to the element.
 
