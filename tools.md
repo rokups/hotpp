@@ -28,6 +28,26 @@ hot_script_host(NAME engine TARGET engine
 
 Add `.cache/` to the ignore list of the project. Without a host, give the options in `hot.server.args`.
 
+## Go to definition on a native symbol
+
+In a `.hot` file, F12 on a symbol of a C++ header jumps to the header. This works for a class, a struct, a free function, a method, a field, an enum, an enum value, a type alias and a macro. It works also for a type in a base class list, after `new`, after `as` and `is`, in a template argument and in a pointer type. The editor opens the header at the declaration.
+
+F12 needs a host. The host tells `hot-ls` the include directories of the header. Make the host with `hot_add_host` or `hot_script_host` (see [CMake](cmake.html)), and run CMake again. The script must be in a script directory of the host.
+
+When no host matches the script, `hot-ls` uses the nearest host in the workspace. The nearest host is the host whose script directory shares the most path parts with the script. If it finds no host, it uses the default include directories of the Hot++ build. The headers of your engine are then not found. When F12 finds nothing on a symbol, the editor shows this message. It shows it one time for each file, and again after the host set changes:
+
+```text
+hot-ls: No script host matches <script>, so F12 may not find native symbols. Add hot_add_host(...) or hot_script_host(...) in CMake and run CMake again.
+```
+
+If F12 does not jump, check these points:
+
+- The script has a `using "header.h";` line for the header, and the header is in an include directory of the host.
+- The host file is in `.cache/hot/hosts/` of the workspace, and its build directory still exists.
+- The script has no error that stops the translation. Fix the errors in the Problems panel first.
+
+For a `.cpp` script, the clangd extension gives F12. `hot-ls` gives no answer for it. F12 works when clangd reads the compile database of the project (`compile_commands.json`), and when the clangd flags of [clangd setup](#clangd-setup) are set.
+
 ## A `.cpp` script in the editor
 
 A `.cpp` script is a C++ file (see [C++ scripts](cpp-scripts.html)). The editor shows the errors of `hotc` for it as diagnostics. The source of these diagnostics is `hot`.
