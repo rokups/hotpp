@@ -1,0 +1,26 @@
+// Generation 1: scoped stub rules and cpp_prelude. "self" keeps the intrusive handle on Object.
+// The subclasses of Object get a shared handle and the text OBJECT_DATA. Smith has no Object base.
+using "Actor.h";
+using "Object.h";
+
+[native, handle("$T*"), intrusive("AddRef", "Release"), self] class Object;
+[native, handle("std::shared_ptr<$T>"), cpp_prelude("OBJECT_DATA;")] class : Object;
+
+class Smith : Actor {
+    Object root;
+    Item item;
+    int ticks;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+    }
+}
+
+[cpp_prelude("HOT_OBJECT($T, $B);")]
+class Tool : Object {
+    int uses;
+
+    void Use() {
+        this.uses = this.uses + 1;
+    }
+}

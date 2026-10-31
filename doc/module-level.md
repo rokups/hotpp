@@ -80,4 +80,6 @@ using "Weapon.h";
 [native, value] class std.string;
 ```
 
+A stub can cover only the subclasses of a type, and `cpp_prelude` adds C++ text: see "Scope of a stub" in [native-interop.md](native-interop.md).
+
 A script has no free functions. Only a convert hook (`T convert_<var>(Old old)`) is allowed at file level. A convert hook cannot read a module variable. An imported script cannot have module variables or convert hooks.

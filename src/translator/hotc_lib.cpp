@@ -789,6 +789,37 @@ struct Out
     }
 };
 
+// The text of the cpp_prelude lines of a class. "$T" is the receiving C++ class and "$B" is
+// its direct C++ base. Each line has an indent of four spaces.
+std::string prelude_block(const std::vector<std::string>& texts, const std::string& self, const std::string& base)
+{
+    std::string out;
+    for (const std::string& raw : texts)
+    {
+        std::string text;
+        for (size_t i = 0; i < raw.size(); ++i)
+        {
+            if (raw[i] == '$' && i + 1 < raw.size() && (raw[i + 1] == 'T' || raw[i + 1] == 'B'))
+            {
+                text += raw[i + 1] == 'T' ? self : base;
+                ++i;
+            }
+            else
+                text += raw[i];
+        }
+        for (size_t b = 0; b <= text.size();)
+        {
+            size_t nl = text.find('\n', b);
+            if (nl == std::string::npos)
+                nl = text.size();
+            if (nl > b)
+                out += "    " + text.substr(b, nl - b) + "\n";
+            b = nl + 1;
+        }
+    }
+    return out;
+}
+
 std::string esc(const std::string& f)
 {
     std::string r;
@@ -2883,7 +2914,26 @@ void translate_impl(
     };
     for (const StubSrc& ss : all_stubs)
         if (is_exact(ss.stub->name))
-            check_stub(ss, ss.stub->name, "");
+            check_stub(ss, ss.stub->name, ss.stub->derived ? " (the rule 'class : " + ss.stub->name + "')" : "");
+    // A rule "class : Base;" is not for the subclasses of a script class: they have no native storage.
+    for (const StubSrc& ss : all_stubs)
+    {
+        const Stub& st = *ss.stub;
+        const bool storage = !st.handle.empty() || !st.intrusive_add.empty() || !st.intrusive_release.empty();
+        if (st.derived && storage && class_by_name.count(st.name))
+        {
+            g_diag.add(st.pos, *ss.map,
+                "'class : " + st.name + "': a storage rule for the subclasses of a script class is not allowed");
+            g_diag.items.back().file = ss.file;
+        }
+        else if (!st.derived && st.is_self && !st.cpp_prelude.empty() && is_exact(st.name)
+            && !class_by_name.count(st.name) && !st.is_struct)
+        {
+            g_diag.warn(st.pos, *ss.map,
+                "'cpp_prelude' with 'self' has no effect on the native type '" + st.name + "': it has no shell");
+            g_diag.warnings.back().file = ss.file;
+        }
+    }
     if (!g_diag.items.empty())
         throw TranslateAbort{};
 
@@ -3336,6 +3386,8 @@ void translate_impl(
                 f.type = "::" + gen + "::" + alias;
             }
         o.w("struct " + cn + " {\n");
+        if (!is_module && !sc.is_cpp)
+            o.w(prelude_block(types.preludes(cn), cn, std::string()));
         for (const Field& f : cd.fields)
             o.w("    " + f.type + " " + f.name + ";\n");
         if (is_module)
@@ -4314,6 +4366,9 @@ void translate_impl(
             + (par ? par->name + "_Shell" : BL + ", hot::ShellBase");
         const size_t shell_head_end = o.s.size() + shell_head.size();
         o.w(shell_head + " {\n");
+        // A ".cpp" script has no cpp_prelude, also not from a prelude file.
+        if (!sc.is_cpp)
+            o.w(prelude_block(types.preludes(cn), shell, par ? par->name + "_Shell" : B));
         // The members of the shell map to the class line.
         if (par)
         {

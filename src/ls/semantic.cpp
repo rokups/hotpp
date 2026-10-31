@@ -30,7 +30,8 @@ const std::set<std::string>& keywords()
     static const std::set<std::string> k = {"if", "else", "while", "do", "for", "foreach", "in", "return", "break",
         "continue", "switch", "case", "default", "is", "as", "new", "delete", "public", "private", "protected",
         "override", "virtual", "const", "get", "set", "this", "base", "true", "false", "null", "try", "catch",
-        "finally", "throw", "var", "void", "class", "struct", "enum", "using", "native", "handle", "value"};
+        "finally", "throw", "var", "void", "class", "struct", "enum", "using", "native", "handle", "value",
+        "intrusive", "default_handle", "cpp_prelude", "self"};
     return k;
 }
 

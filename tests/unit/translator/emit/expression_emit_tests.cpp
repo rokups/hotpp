@@ -56,13 +56,13 @@ TEST(ExpressionEmit, Unary)
     EXPECT_EQ(print(*un("-", id("x"))), "-x");
     EXPECT_EQ(print(*un("++", id("i"), true)), "i++");
     EXPECT_EQ(print(*un("-", un("-", id("x")))), "- -x");
-    EXPECT_EQ(print(*un("*", id("p"))), "*p");
+    EXPECT_EQ(print(*un("*", id("p"))), "hot::star(p)");
 }
 
 TEST(ExpressionEmit, IndexParenNull)
 {
     ExprP e = make_expr(IndexExpr{id("a"), make_expr(ParenExpr{bin("+", id("i"), num("1"))})});
-    EXPECT_EQ(print(*e), "a[(i + 1)]");
+    EXPECT_EQ(print(*e), "hot::index(a, (i + 1))");
     EXPECT_EQ(print(*make_expr(NullExpr{})), "nullptr");
 }
 

@@ -53,7 +53,7 @@ TEST(MemberAccessLowering, MemberOfAValue)
     Fixture f;
     f.param("a");
     EXPECT_EQ(f.expr("make().x"), "hot::deref(make()).x");
-    EXPECT_EQ(f.expr("a[1].x"), "hot::deref(a[1]).x");
+    EXPECT_EQ(f.expr("a[1].x"), "hot::deref(hot::index(a, 1)).x");
     EXPECT_EQ(f.expr("(a).x"), "hot::deref((a)).x");
     EXPECT_EQ(f.expr("Vec3.Zero().x"), "hot::deref(Vec3::Zero()).x");
     EXPECT_EQ(f.diag.items.size(), 0u);

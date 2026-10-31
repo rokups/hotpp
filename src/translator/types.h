@@ -27,6 +27,9 @@ struct TypeRule
     std::string handle_tpl; // the handle template, "$T" is the class (Kind::Handle only)
     std::string owner; // the name of the stub that matched (empty for Raw)
     std::string intrusive_add, intrusive_release; // the member names of an intrusive handle, else empty
+    bool native = false; // the stub has the attribute [native]
+    bool self = false; // an exact stub with [self]: the rule is for this type only
+    std::string cpp_prelude; // the raw text of [cpp_prelude("...")] of the stub
 };
 
 class TypeModel
@@ -38,6 +41,8 @@ public:
     // The map gives the line and the column for an error at the stub.
     // These are errors: two stubs of one name in one list, "value" together with "handle",
     // "default_handle" on a class other than "*", and any other attribute on "class *".
+    // A stub "class : Base;" is a rule for the subclasses of Base. It has no "value" and no
+    // "default_handle". One "class : Base;" and one "struct *;" are allowed in a file.
     enum class Source
     {
         Prelude,
@@ -82,14 +87,23 @@ public:
     void set_bases(BaseFn fn);
 
     // The rule of a C++ type, in this order:
-    // 1) an exact stub,
-    // 2) the first Handle stub on a base class (breadth first, nearest base wins),
-    // 3) the longest pattern,
-    // 4) a plain data class (trivially copyable, standard layout) is a Value,
-    // 5) the stub "class *;": a class that is not plain gets its default handle,
-    // 6) Raw.
-    // Only the Handle kind is inherited. "owner" is the stub that matched.
+    // 1) a script class (the walk of 3 gives its handle),
+    // 2) an exact stub (with [self] or without),
+    // 3) the bases, breadth first, nearest base first. At each base B:
+    //    the stub "class : B;" wins (any kind, Raw too). Else the exact stub of B wins,
+    //    when it is a Handle stub without [self]. An exact Raw stub of B does not stop the walk.
+    // 4) the longest pattern,
+    // 5) a plain data class (trivially copyable, standard layout) is a Value,
+    // 6) the stub "class *;": a class that is not plain gets its default handle,
+    // 7) Raw.
+    // Only the Handle kind of an exact stub is inherited. "owner" is the stub that matched.
     TypeRule lookup(const std::string& cpp_type) const;
+
+    // The C++ texts of cpp_prelude for a script class. The texts are raw (no "$T" is replaced).
+    // The order: the text of "class *;" (a shell) or of "struct *;" (a struct), then each base
+    // from the farthest to the nearest (the exact stub of the base when it has no [self], then
+    // the stub "class : Base;"), then the text of the class itself. An empty text is not in the list.
+    std::vector<std::string> preludes(const std::string& type) const;
 
     // True when the name is a script class of the script ([value] classes too).
     bool is_script_class(const std::string& type) const;
@@ -141,7 +155,14 @@ public:
 private:
     TypeRule lookup_stub(const std::string& cpp_type) const;
 
+    // The direct bases of a type: the bases of a script class, else the base callback.
+    std::vector<std::string> direct_bases(const std::string& name) const;
+    // The rule that a base gives to its subclasses (empty owner: there is none).
+    bool base_rule(const std::string& base, TypeRule& out) const;
+
     std::map<std::string, TypeRule> exact_;
+    std::map<std::string, TypeRule> derived_; // the stubs "class : Base;", by the name of Base
+    std::string class_prelude_, struct_prelude_; // the texts of "class *;" and "struct *;"
     std::vector<std::pair<std::string, TypeRule>> patterns_; // the prefix and the rule
     BaseFn bases_;
     ClassFn classes_;
@@ -149,7 +170,9 @@ private:
     struct ScriptClass
     {
         std::string base;
+        std::vector<std::string> interfaces;
         bool is_value = false;
+        std::string cpp_prelude;
     };
     std::map<std::string, ScriptClass> script_;
     std::set<std::string> native_globals_;

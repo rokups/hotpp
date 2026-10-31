@@ -97,6 +97,12 @@ TEST(GoldenTranslation, Checks)
     golden_one("checks_v1");
 }
 
+// The scoped stub rules and cpp_prelude: "self", "class : Base" and the text in the shell.
+TEST(GoldenTranslation, Prelude)
+{
+    golden_one("prelude_v1");
+}
+
 TEST(GoldenTranslation, Props)
 {
     golden_one("props_v1");

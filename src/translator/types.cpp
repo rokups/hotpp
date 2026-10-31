@@ -45,16 +45,30 @@ void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diag
     std::set<std::string> reported;
     for (const ast::Stub& s : stubs)
     {
-        if (!seen.insert(s.name).second)
+        // The key of the stub in this list: "class : B" and "struct *" have own keys.
+        const std::string key = s.is_struct ? "struct *" : s.derived ? ": " + s.name : s.name;
+        if (!seen.insert(key).second)
         {
-            if (reported.insert(s.name).second)
+            if (reported.insert(key).second)
             {
                 diags.add(s.pos, map,
-                    s.name == "*" ? "only one 'class *' is allowed in a file" : "duplicate stub for '" + s.name + "'");
+                    s.is_struct       ? "only one 'struct *' is allowed in a file"
+                        : s.name == "*" && !s.derived ? "only one 'class *' is allowed in a file"
+                                                      : "duplicate stub for '" + key + "'");
             }
             continue;
         }
-        if (s.name == "*")
+        if (s.is_struct)
+        {
+            struct_prelude_ = s.cpp_prelude;
+            continue;
+        }
+        if (s.derived && s.is_value)
+        {
+            diags.add(s.pos, map, "'value' is not allowed on 'class : Base': it breaks polymorphic types");
+            continue;
+        }
+        if (s.name == "*" && !s.derived)
         {
             if (s.is_value)
                 diags.add(s.pos, map, "'value' is not allowed on 'class *': it breaks polymorphic types");
@@ -66,6 +80,7 @@ void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diag
                 if (source == Source::Script && !default_handle_.empty())
                     diags.warn(s.pos, map, "the 'class *' of the script overrides the 'class *' of a prelude");
                 default_handle_ = s.default_handle;
+                class_prelude_ = s.cpp_prelude;
             }
             continue;
         }
@@ -96,6 +111,9 @@ void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diag
         }
 
         TypeRule rule;
+        rule.self = s.is_self;
+        rule.native = s.is_native;
+        rule.cpp_prelude = s.cpp_prelude;
         if (intrusive)
         {
             rule.kind = Kind::Handle;
@@ -115,9 +133,15 @@ void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diag
 
         // A script stub that replaces a stub of a prelude gives a warning.
         if (source == Source::Prelude)
-            prelude_names_.insert(s.name);
-        else if (prelude_names_.count(s.name))
-            diags.warn(s.pos, map, "the stub for '" + s.name + "' overrides the stub of a prelude");
+            prelude_names_.insert(key);
+        else if (prelude_names_.count(key))
+            diags.warn(s.pos, map, "the stub for '" + key + "' overrides the stub of a prelude");
+
+        if (s.derived)
+        {
+            derived_[s.name] = rule;
+            continue;
+        }
 
         const bool pattern = ends_with(s.name, "<*>") || ends_with(s.name, "::*");
         if (!pattern)
@@ -139,7 +163,7 @@ void TypeModel::add_script_classes(const std::vector<ast::ClassDef>& classes)
 {
     script_.clear();
     for (const ast::ClassDef& cd : classes)
-        script_[cd.name] = {cd.base, cd.is_value};
+        script_[cd.name] = {cd.base, cd.interfaces, cd.is_value, cd.cpp_prelude};
 }
 
 bool TypeModel::is_script_value(const std::string& type) const
@@ -191,8 +215,63 @@ TypeRule TypeModel::lookup(const std::string& cpp_type) const
     return d;
 }
 
+std::vector<std::string> TypeModel::direct_bases(const std::string& name) const
+{
+    auto sc = script_.find(name);
+    if (sc != script_.end())
+    {
+        std::vector<std::string> out;
+        if (!sc->second.base.empty())
+            out.push_back(sc->second.base);
+        out.insert(out.end(), sc->second.interfaces.begin(), sc->second.interfaces.end());
+        return out;
+    }
+    return bases_ ? bases_(name) : std::vector<std::string>{};
+}
+
+bool TypeModel::base_rule(const std::string& base, TypeRule& out) const
+{
+    auto d = derived_.find(base);
+    // A rule "class : B;" with only a cpp_prelude is not a storage rule: the walk goes on.
+    if (d != derived_.end() && (d->second.kind != Kind::Raw || d->second.native))
+    {
+        out = d->second;
+        out.owner = base;
+        return true;
+    }
+    auto b = exact_.find(base);
+    if (b != exact_.end() && b->second.kind == Kind::Handle && !b->second.self)
+    {
+        out = b->second;
+        out.owner = base;
+        return true;
+    }
+    return false;
+}
+
 TypeRule TypeModel::lookup_stub(const std::string& cpp_type) const
 {
+    // Breadth first walk of the bases. The visited set stops a cycle.
+    auto walk = [&](TypeRule& out)
+    {
+        std::set<std::string> visited{cpp_type};
+        std::deque<std::string> queue{cpp_type};
+        while (!queue.empty())
+        {
+            const std::string current = queue.front();
+            queue.pop_front();
+            for (const std::string& base : direct_bases(current))
+            {
+                if (!visited.insert(base).second)
+                    continue;
+                if (base_rule(base, out))
+                    return true;
+                queue.push_back(base);
+            }
+        }
+        return false;
+    };
+
     auto sc = script_.find(cpp_type);
     if (sc != script_.end())
     {
@@ -204,10 +283,22 @@ TypeRule TypeModel::lookup_stub(const std::string& cpp_type) const
             return r;
         }
         // The handle of the native base, else the default handle of a script class.
-        if (!sc->second.base.empty())
+        TypeRule found;
+        if (walk(found))
         {
+            if (found.kind == Kind::Handle)
+            {
+                found.cpp_prelude.clear();
+                found.self = false;
+                return found;
+            }
+        }
+        else if (!sc->second.base.empty())
+        {
+            // A pattern, the facts or "class *" of the base. The exact stub of a native base
+            // was in the walk: a stub with [self] is not for a subclass.
             const TypeRule b = lookup(sc->second.base);
-            if (b.kind == Kind::Handle)
+            if (b.kind == Kind::Handle && (b.owner != sc->second.base || script_.count(b.owner)))
             {
                 r = b;
                 return r;
@@ -225,29 +316,10 @@ TypeRule TypeModel::lookup_stub(const std::string& cpp_type) const
         return r;
     }
 
-    if (bases_)
     {
-        // Breadth first walk of the bases. The visited set stops a cycle.
-        std::set<std::string> visited{cpp_type};
-        std::deque<std::string> queue{cpp_type};
-        while (!queue.empty())
-        {
-            const std::string current = queue.front();
-            queue.pop_front();
-            for (const std::string& base : bases_(current))
-            {
-                if (!visited.insert(base).second)
-                    continue;
-                auto b = exact_.find(base);
-                if (b != exact_.end() && b->second.kind == Kind::Handle)
-                {
-                    TypeRule r = b->second;
-                    r.owner = base;
-                    return r;
-                }
-                queue.push_back(base);
-            }
-        }
+        TypeRule r;
+        if (walk(r))
+            return r;
     }
 
     const std::pair<std::string, TypeRule>* best = nullptr;
@@ -354,6 +426,48 @@ TypeModel::Callee TypeModel::make_callee(const std::string& type) const
     if (lookup(type).handle_tpl == "std::shared_ptr<$T>")
         return {"std::make_shared<" + type + ">", false};
     return {storage(type), true};
+}
+
+
+std::vector<std::string> TypeModel::preludes(const std::string& type) const
+{
+    std::vector<std::string> out;
+    auto sc = script_.find(type);
+    if (sc == script_.end())
+        return out;
+    auto add = [&](const std::string& text)
+    {
+        if (!text.empty())
+            out.push_back(text);
+    };
+    add(sc->second.is_value ? struct_prelude_ : class_prelude_);
+
+    // All bases, nearest first. The list is reversed after: the farthest base comes first.
+    std::vector<std::string> order;
+    std::set<std::string> visited{type};
+    std::deque<std::string> queue{type};
+    while (!queue.empty())
+    {
+        const std::string current = queue.front();
+        queue.pop_front();
+        for (const std::string& base : direct_bases(current))
+            if (visited.insert(base).second)
+            {
+                order.push_back(base);
+                queue.push_back(base);
+            }
+    }
+    for (auto it = order.rbegin(); it != order.rend(); ++it)
+    {
+        auto e = exact_.find(*it);
+        if (e != exact_.end() && !e->second.self)
+            add(e->second.cpp_prelude);
+        auto d = derived_.find(*it);
+        if (d != derived_.end())
+            add(d->second.cpp_prelude);
+    }
+    add(sc->second.cpp_prelude);
+    return out;
 }
 
 } // namespace hotc

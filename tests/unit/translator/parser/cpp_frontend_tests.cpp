@@ -1599,3 +1599,19 @@ TEST(AnalyzeCpp, PathMustBeCpp)
     ASSERT_EQ(r.errors.size(), 1u);
     EXPECT_EQ(r.errors[0].pos.line, 1);
 }
+
+// A ".cpp" script has no cpp_prelude, also not from a prelude file.
+TEST(CppFrontend, PreludeFileTextIsIgnored)
+{
+    hotc::TranslateOptions o;
+    o.script_name = "t.cpp";
+    o.script_text = "#include \"Actor.h\"\nclass C : public Actor\n{\npublic:\n    C() : Actor(\"C\") {}\n"
+                    "    void Tick(float dt) override { last = 1; }\n    int last = 0;\n};\n";
+    o.generation = 1;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.resource_dir = HOT_RESOURCE_DIR;
+    o.preludes.push_back({"p.prelude", "[cpp_prelude(\"PRE_TEXT;\")] class *;\n"});
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(r.cpp.find("PRE_TEXT"), std::string::npos) << r.cpp;
+}

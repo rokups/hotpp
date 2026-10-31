@@ -122,3 +122,107 @@ TEST(NativeStubParse, NonStringAttributeArgumentGivesOneError)
         EXPECT_EQ(p.diag.items[0].msg, "expected a string in [alias(...)]");
     }
 }
+
+TEST(NativeStubParse, SelfOnExactName)
+{
+    StubParsed p("[native, self, handle(\"$T*\")] class Object;\n");
+    ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    ASSERT_EQ(p.script.stubs.size(), 1u);
+    EXPECT_TRUE(p.script.stubs[0].is_self);
+    EXPECT_FALSE(p.script.stubs[0].derived);
+    EXPECT_EQ(p.script.stubs[0].name, "Object");
+}
+
+TEST(NativeStubParse, SelfErrors)
+{
+    for (const char* text : {"[native, self] class *;\n", "[native, self] class std.vector<*>;\n",
+             "[native, self] class physics.*;\n", "[self] class : Base;\n"})
+    {
+        StubParsed p(text);
+        ASSERT_EQ(p.diag.items.size(), 1u) << text << p.diag.format("t");
+        EXPECT_EQ(p.diag.items[0].msg, "'self' is valid only on a stub with an exact name");
+    }
+    StubParsed p("[native, self(1)] class A;\n");
+    ASSERT_GE(p.diag.items.size(), 1u);
+    EXPECT_EQ(p.diag.items[0].msg, "attribute 'self' takes 0 arguments");
+}
+
+TEST(NativeStubParse, DerivedStub)
+{
+    StubParsed p("[handle(\"$T*\")] class : game.Object;\n[native, value] class : Base;\n");
+    ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    ASSERT_EQ(p.script.stubs.size(), 2u);
+    EXPECT_TRUE(p.script.stubs[0].derived);
+    EXPECT_EQ(p.script.stubs[0].name, "game::Object");
+    EXPECT_EQ(p.script.stubs[0].handle, "$T*");
+    EXPECT_FALSE(p.script.stubs[0].is_native);
+    EXPECT_TRUE(p.script.stubs[1].derived);
+    EXPECT_EQ(p.script.stubs[1].name, "Base");
+    EXPECT_TRUE(p.script.classes.empty());
+}
+
+TEST(NativeStubParse, CppPreludeOnStubs)
+{
+    StubParsed p("[native, cpp_prelude(\"int x;\")] class Object;\n[cpp_prelude(\"a\")] class : Object;\n"
+                 "[cpp_prelude(\"b\")] class *;\n");
+    ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    ASSERT_EQ(p.script.stubs.size(), 3u);
+    EXPECT_EQ(p.script.stubs[0].cpp_prelude, "int x;");
+    EXPECT_EQ(p.script.stubs[1].cpp_prelude, "a");
+    EXPECT_EQ(p.script.stubs[2].cpp_prelude, "b");
+    EXPECT_EQ(p.script.stubs[2].name, "*");
+}
+
+TEST(NativeStubParse, StructStar)
+{
+    StubParsed p("[cpp_prelude(\"x\")] struct *;\n[native, cpp_prelude(\"y\")] struct *;\n");
+    ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    ASSERT_EQ(p.script.stubs.size(), 2u);
+    EXPECT_TRUE(p.script.stubs[0].is_struct);
+    EXPECT_EQ(p.script.stubs[0].name, "*");
+    EXPECT_EQ(p.script.stubs[0].cpp_prelude, "x");
+}
+
+TEST(NativeStubParse, StructStarErrors)
+{
+    {
+        StubParsed p("[cpp_prelude(\"x\"), value] struct *;\n");
+        ASSERT_EQ(p.diag.items.size(), 1u) << p.diag.format("t");
+        EXPECT_EQ(p.diag.items[0].msg, "'struct *' accepts only 'cpp_prelude'");
+    }
+    {
+        StubParsed p("[native, handle(\"$T*\")] struct *;\n");
+        ASSERT_EQ(p.diag.items.size(), 1u) << p.diag.format("t");
+        EXPECT_EQ(p.diag.items[0].msg, "'struct *' accepts only 'cpp_prelude'");
+    }
+    {
+        StubParsed p("[native] struct Name;\n");
+        ASSERT_EQ(p.diag.items.size(), 1u) << p.diag.format("t");
+        EXPECT_EQ(p.diag.items[0].msg, "a native stub is declared with 'class', not 'struct'");
+    }
+}
+
+TEST(NativeStubParse, CppPreludeOnClassDefinition)
+{
+    StubParsed p("[cpp_prelude(\"int n = 0;\")] class Foo : Base { }\n[cpp_prelude(\"q\")] struct S { }\n");
+    ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    ASSERT_EQ(p.script.classes.size(), 2u);
+    EXPECT_EQ(p.script.classes[0].cpp_prelude, "int n = 0;");
+    EXPECT_EQ(p.script.classes[1].cpp_prelude, "q");
+}
+
+TEST(NativeStubParse, CppPreludeArgumentCount)
+{
+    StubParsed p("[native, cpp_prelude] class A;\n");
+    ASSERT_GE(p.diag.items.size(), 1u);
+    EXPECT_EQ(p.diag.items[0].msg, "attribute 'cpp_prelude' takes 1 arguments");
+}
+
+TEST(NativeStubParse, NativeIsOptionalOnStarAndDerived)
+{
+    StubParsed p("[default_handle(\"std::shared_ptr<$T>\")] class *;\n[handle(\"$T*\")] class : Base;\n");
+    ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    ASSERT_EQ(p.script.stubs.size(), 2u);
+    EXPECT_FALSE(p.script.stubs[0].is_native);
+    EXPECT_FALSE(p.script.stubs[1].is_native);
+}

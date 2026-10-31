@@ -2,6 +2,7 @@
 #include "diag.h"
 #include "parser/parser.h"
 #include "hot/hotc_lib.h"
+#include "support/stub_translate_test_support.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
@@ -10,6 +11,7 @@
 #include <string>
 
 using namespace translator_test;
+using namespace stub_translate_test;
 
 TEST(TranslateDiagnostics, TwoBrokenMembersGiveTwoErrors)
 {
@@ -191,4 +193,27 @@ TEST(TranslateDiagnostics, NonStringStubAttributeArgumentGivesOneError)
         EXPECT_FALSE(r.ok);
         EXPECT_EQ(count_errors(r.diagnostics), 1) << stub << r.diagnostics;
     }
+}
+
+// A storage rule for the subclasses of a script class is an error. A prelude text is allowed.
+TEST(TranslateDiagnostics, DerivedStorageRuleOnAScriptClassIsAnError)
+{
+    const hotc::TranslateResult r = hier_translate("[handle(\"std::shared_ptr<$T>\")] class : Foo;\n", "");
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(count_errors(r.diagnostics), 1) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("'class : Foo': a storage rule for the subclasses of a script class is not allowed"),
+        std::string::npos)
+        << r.diagnostics;
+    const hotc::TranslateResult ok = hier_translate("[cpp_prelude(\"x;\")] class : Foo;\n", "");
+    EXPECT_TRUE(ok.ok) << ok.diagnostics;
+}
+
+TEST(TranslateDiagnostics, PreludeWithSelfOnANativeTypeWarns)
+{
+    const hotc::TranslateResult r = hier_translate(
+        "[native, self, handle(\"std::shared_ptr<$T>\"), cpp_prelude(\"x;\")] class Object;\n", "");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.warnings.find("warning: 'cpp_prelude' with 'self' has no effect on the native type 'Object': it has no shell"),
+        std::string::npos)
+        << r.warnings;
 }

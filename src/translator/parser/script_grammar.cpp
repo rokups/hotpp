@@ -938,8 +938,10 @@ struct bases_p
 struct ClassAttrs
 {
     const char* pos = nullptr; // the "["
-    bool is_native = false, is_value = false;
+    bool is_native = false, is_value = false, is_self = false;
     std::string handle, default_handle, intrusive_add, intrusive_release;
+    std::string cpp_prelude; // [cpp_prelude("text")]
+    bool has_prelude = false;
     std::string alias; // [alias("old")]: valid on a module variable only
     bool has_alias = false;
     const char* handle_pos = nullptr; // the "handle" name, or null
@@ -949,9 +951,9 @@ struct ClassAttrs
 // The expected count of arguments of a class attribute, or -1 for an unknown name.
 int class_attr_arity(const std::string& name)
 {
-    if (name == "native" || name == "value")
+    if (name == "native" || name == "value" || name == "self")
         return 0;
-    if (name == "handle" || name == "default_handle" || name == "alias")
+    if (name == "handle" || name == "default_handle" || name == "alias" || name == "cpp_prelude")
         return 1;
     if (name == "intrusive")
         return 2;
@@ -994,6 +996,13 @@ struct class_attrs_p
                 a.is_native = true;
             else if (it.name == "value")
                 a.is_value = true;
+            else if (it.name == "self")
+                a.is_self = true;
+            else if (it.name == "cpp_prelude")
+            {
+                a.cpp_prelude = std::move(it.args[0]);
+                a.has_prelude = true;
+            }
             else if (it.name == "alias")
             {
                 a.alias = std::move(it.args[0]);
@@ -1099,11 +1108,58 @@ const ClassAttrs* class_attrs_of(const ClassAttrs& a)
     return &a;
 }
 
+// Build a stub from the attributes. "derived" means "class : Base;": the name is then the base.
+TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bool is_struct, std::string&& name,
+    bool derived)
+{
+    TopItem t;
+    t.kind = TopItem::IsStub;
+    ast::Stub& s = t.stub;
+    const bool star = name == "*";
+    s.name = std::move(name);
+    s.derived = derived;
+    s.is_struct = is_struct;
+    s.pos = st.offset(pos);
+    s.line = st.map->line(s.pos);
+    if (a)
+    {
+        s.is_native = a->is_native;
+        s.is_value = a->is_value;
+        s.is_self = a->is_self;
+        s.handle = a->handle;
+        s.default_handle = a->default_handle;
+        s.intrusive_add = a->intrusive_add;
+        s.intrusive_release = a->intrusive_release;
+        s.cpp_prelude = a->cpp_prelude;
+        if (a->is_value && a->handle_pos)
+            st.error(a->handle_pos, "'value' and 'handle' are exclusive");
+        if (a->has_alias)
+            st.error(a->pos, "attribute 'alias' is not allowed on a stub");
+        if (a->is_self && (derived || s.name.find('*') != std::string::npos))
+            st.error(a->pos, "'self' is valid only on a stub with an exact name");
+    }
+    if (is_struct && (derived || !star))
+        st.error(pos, "a native stub is declared with 'class', not 'struct'");
+    else if (is_struct)
+    {
+        if (a)
+            for (const auto& u : a->used)
+                if (u.second != "cpp_prelude" && u.second != "native")
+                    st.error(a->pos, "'struct *' accepts only 'cpp_prelude'");
+    }
+    else if (!s.is_native && !derived && !star)
+        st.error(pos, "a stub needs the attribute 'native'");
+    return t;
+}
+
 // The part of a class, a struct or a stub after the keyword: the name, then ";" (a stub) or
 // the base and the members. The value is the position and the name first.
-constexpr auto class_rest = dsl::position + dsl::p<stub_name_p>
-    + (dsl::lit_c<';'> >> dsl::nullopt
-        | dsl::else_ >> (dsl::opt(dsl::lit_c<':'> >> dsl::p<bases_p>) + dsl::lit_c<'{'> + dsl::p<members_p>));
+// "class : Base;" is a stub for the subclasses of Base. It gives one value: the base name.
+constexpr auto class_rest = dsl::position
+    + (dsl::peek(dsl::lit_c<':'>) >> (dsl::lit_c<':'> + dsl::p<base_p> + dsl::lit_c<';'>)
+        | dsl::else_ >> (dsl::p<stub_name_p>
+            + (dsl::lit_c<';'> >> dsl::nullopt
+                | dsl::else_ >> (dsl::opt(dsl::lit_c<':'> >> dsl::p<bases_p>) + dsl::lit_c<'{'> + dsl::p<members_p>))));
 
 // [attributes] class name ";" is a stub. [attributes] class name ":" Base "{" members "}" is a class.
 // A "struct" is a script value type. Else the declaration is a module variable:
@@ -1118,33 +1174,14 @@ struct class_p
                        [](const ParseState& st, const char* pos, const auto& attrs, const auto& kw,
                            const char* name_pos, std::string&& name, lexy::nullopt)
     {
-        const ClassAttrs* a = class_attrs_of(attrs);
-        const bool is_struct = std::distance(kw.begin(), kw.end()) == 6;
-        TopItem t;
-        t.kind = TopItem::IsStub;
-        ast::Stub& s = t.stub;
-        s.name = std::move(name);
-        s.pos = st.offset(pos);
-        s.line = st.map->line(s.pos);
-        if (a)
-        {
-            s.is_native = a->is_native;
-            s.is_value = a->is_value;
-            s.handle = a->handle;
-            s.default_handle = a->default_handle;
-            s.intrusive_add = a->intrusive_add;
-            s.intrusive_release = a->intrusive_release;
-            if (a->is_value && a->handle_pos)
-                st.error(a->handle_pos, "'value' and 'handle' are exclusive");
-            if (a->has_alias)
-                st.error(a->pos, "attribute 'alias' is not allowed on a stub");
-        }
-        if (is_struct)
-            st.error(pos, "a native stub is declared with 'class', not 'struct'");
-        else if (!s.is_native)
-            st.error(pos, "a stub needs the attribute 'native'");
-        (void)name_pos;
-        return t;
+        return make_stub(st, pos, class_attrs_of(attrs), std::distance(kw.begin(), kw.end()) == 6,
+            std::move(name), false);
+    },
+                       [](const ParseState& st, const char* pos, const auto& attrs, const auto& kw,
+                           const char*, std::string&& base)
+    {
+        return make_stub(st, pos, class_attrs_of(attrs), std::distance(kw.begin(), kw.end()) == 6,
+            std::move(base), true);
     },
                        [](const ParseState& st, const char* pos, const auto& attrs, const auto& kw,
                            const char* name_pos, std::string&& name, auto&& base, auto&& members)
@@ -1169,10 +1206,13 @@ struct class_p
         // A struct is the only script value type (design 5.3, 7.10.1).
         c.is_value = is_struct;
         if (a)
+            c.cpp_prelude = a->cpp_prelude;
+        if (a)
             for (const auto& u : a->used)
-                st.error(u.first,
-                    u.second == "value" ? std::string("'[value]' is not allowed on a script class: use 'struct'")
-                                        : "attribute '" + u.second + "' is not allowed on a script class");
+                if (u.second != "cpp_prelude")
+                    st.error(u.first,
+                            u.second == "value" ? std::string("'[value]' is not allowed on a script class: use 'struct'")
+                                            : "attribute '" + u.second + "' is not allowed on a script class");
         add_members(st, c, std::move(members));
         return t;
     },

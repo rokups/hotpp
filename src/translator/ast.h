@@ -510,18 +510,25 @@ struct ClassDef
     std::vector<Method> dtors; // "~Name() { }": the name is "~Name"; the translator allows one
     std::vector<Property> props; // in source order
     bool is_value = false; // the attribute [value]
+    std::string cpp_prelude; // the attribute [cpp_prelude("text")]: C++ text for this class only
     int line = 0;
     uint32_t pos = 0;
 };
 
 // A class stub: a native class with no body. The attributes give the storage kind.
-// The name may end with "<*>" or "::*", or it may be "*".
+// The name may end with "<*>" or "::*", or it may be "*". "class : Base;" is a rule for the
+// subclasses of Base. "struct *;" carries only a "cpp_prelude".
 struct Stub
 {
     std::string name;
     bool is_native = false, is_value = false;
     std::string handle, default_handle;
     std::string intrusive_add, intrusive_release;
+    // "class : Base;": the rule is for the subclasses of Base only, and "name" is Base.
+    bool derived = false;
+    bool is_self = false; // the attribute [self]: the rule is for this type only, not subclasses
+    bool is_struct = false; // "struct *;": only "cpp_prelude" is valid
+    std::string cpp_prelude; // the attribute [cpp_prelude("text")]
     int line = 0;
     uint32_t pos = 0;
 };

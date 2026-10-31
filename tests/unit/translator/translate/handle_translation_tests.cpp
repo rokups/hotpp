@@ -141,7 +141,7 @@ TEST(HandleTranslation, AddressOfADereferencedHandleIsAllowed)
     const hotc::TranslateResult r =
         weapon_translate("    void Take(Weapon* q) { }\n    void Run() { Weapon h = null; this.Take(&*h); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "&*h")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "&hot::star(h)")) << r.cpp;
 }
 
 TEST(HandleTranslation, AddressOfAMemberOfAHandleIsAllowed)
@@ -167,9 +167,9 @@ TEST(HandleTranslation, DereferenceAndMultiplyEmitCorrectly)
         "        int a = *it; int b = (*it) + 1; int n = 2; int c = n * *it; this.Hit(*h); return a + b + c;\n"
         "    }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "int32_t a = *it;")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "(*it) + 1")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "n * *it")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "int32_t a = hot::star(it);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "(hot::star(it)) + 1")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "n * hot::star(it)")) << r.cpp;
 }
 
 TEST(HandleTranslation, AmpersandAndAndAreUnchanged)

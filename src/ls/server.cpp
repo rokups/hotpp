@@ -1443,8 +1443,10 @@ json Server::on_completion(const Doc& d, const json& p)
     // ---- the keywords and the builtin types
     if (!member)
     {
+        // "self" is a stub attribute. It is also the name of a generated helper, so it is not offered.
         for (const std::string& k : script_keywords())
-            add(k, 14, "keyword", "3");
+            if (k != "self")
+                add(k, 14, "keyword", "3");
         // The global helpers of a script (include/hot/runtime/enumerate.h).
         for (const std::string& h : script_helpers())
             add(h, 3, "global function", "3");
