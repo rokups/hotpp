@@ -1,7 +1,7 @@
 ---
 layout: default
 title: CMake
-nav_order: 14
+nav_order: 15
 ---
 
 This page shows how a host project uses Hot++ with CMake. It lists the requirements, the targets, the options and the functions. It also describes portable binaries. It ends with the presets and a table of errors.

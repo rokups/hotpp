@@ -2,6 +2,7 @@
 layout: default
 title: Types
 nav_order: 3
+group: Hot script
 ---
 
 Hot++ has fixed-width builtin types. Other types come from C++.

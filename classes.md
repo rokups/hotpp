@@ -2,6 +2,7 @@
 layout: default
 title: Classes
 nav_order: 5
+group: Hot script
 ---
 
 A class holds fields and methods. A bare name reaches a member of `this`. This works everywhere: in classes, in structs, before a `.` and for native members of the base class. Write `this.` only to pick the member when a parameter or a local has the same name.

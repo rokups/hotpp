@@ -2,6 +2,7 @@
 layout: default
 title: Inheritance
 nav_order: 6
+group: Hot script
 ---
 
 A script class can derive from native classes and from other script classes.

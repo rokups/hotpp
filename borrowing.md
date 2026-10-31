@@ -2,6 +2,7 @@
 layout: default
 title: Borrowing
 nav_order: 4
+group: Hot script
 ---
 
 A borrowed value is a reference or a pointer to an object that something else owns. A script can use it during one call. A script cannot store it.

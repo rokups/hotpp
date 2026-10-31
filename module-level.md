@@ -2,6 +2,7 @@
 layout: default
 title: Module level
 nav_order: 7
+group: Hot script
 ---
 
 The top of a script file can hold imports, enums, structs, variables and native stubs.

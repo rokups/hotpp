@@ -1,7 +1,8 @@
 ---
 layout: default
 title: Limits
-nav_order: 16
+nav_order: 11
+group: Hot script
 ---
 
 This list shows what version 1 does not support.
