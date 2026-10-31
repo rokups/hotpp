@@ -13,17 +13,17 @@ LLVM and Clang must be installed. CMake uses `find_package(LLVM)` and `find_pack
 How it works (`src/runtime/jit_backend.cpp`):
 
 1. `hotc::translate` makes the C++ text. The slot file text stays in memory in the backend object.
-2. `clang::createInvocation` builds the cc1 command through the driver (so the libstdc++ include paths are right). The flags are `-std=c++20 -O1 -fPIC -gline-tables-only`, the include dirs, the resource dir and the extra flags. The input file exists only in an `InMemoryFileSystem` that overlays the real file system. `#line` makes the diagnostics name the script.
+2. `clang::createInvocation` builds the `cc1` command through the driver (so the `libstdc++` include paths are right). The flags are `-std=c++20 -O1 -fPIC -gline-tables-only`, the include dirs, the resource dir and the extra flags. The input file exists only in an `InMemoryFileSystem` that overlays the real file system. `#line` makes the diagnostics name the script.
 3. `EmitLLVMOnlyAction` gives an `llvm::Module`. The diagnostics go to a string.
-4. One `LLJIT` (JITLink) lives for the session. Each `load` makes a new `JITDylib` and a `ResourceTracker`, adds the module, runs the static initializers (`LLJIT::initialize`) and looks up `script_register`. The Main JITDylib has a `DynamicLibrarySearchGenerator` for the process. The executable needs `ENABLE_EXPORTS` (`-rdynamic`), and it must link the runtime objects that the script code uses.
+4. One `LLJIT` (`JITLink`) lives for the session. Each `load` makes a new `JITDylib` and a `ResourceTracker`, adds the module, runs the static initializers (`LLJIT::initialize`) and looks up `script_register`. The Main `JITDylib` has a `DynamicLibrarySearchGenerator` for the process. The executable needs `ENABLE_EXPORTS` (`-rdynamic`), and it must link the runtime objects that the script code uses.
 5. The `keep_alive` of the `Module` owns the generation. When the last copy goes, it runs `LLJIT::deinitialize`, `ResourceTracker::remove` and `removeJITDylib`. It also holds the `LLJIT`, so a `Module` can outlive the backend. As in the design, ORC does not track calls in flight. The safety rules are the same as for `dlclose`.
 
 No file is written and no process starts. `tests/integration/backends/jit_backend_tests.cpp` checks this: it sets the current directory and `TMPDIR` to a new empty directory, loads two generations and a bad script, and asserts that the directory is empty and that no child process ran. `strace -f` on the same test shows one `execve` (the test itself), only thread `clone3` calls and no file opened for writing. The same file tests exceptions (a `throw` and a `catch` in JIT code, and a `throw` that goes through JIT frames to the host), `-include-pch`, and the life of a generation.
 
 Facts that differ from the first design:
 
-- `-g` leaks. After a failed compile, Clang does not free the temporary debug metadata (about 270 KB for `bad.hot`, found with LeakSanitizer). `-gline-tables-only` does not leak, and it costs the same time. `JitOptions::debug_flag` sets the flag. LLJIT does not register a debugger plugin, so full debug info has no use now.
-- `CompilerInstance::ExecuteAction` prints "N errors generated." to stderr when `ShowCarets` is on. The backend uses its own copy of the diagnostic options for the printer, so the text goes only to the result.
+- `-g` leaks. After a failed compile, Clang does not free the temporary debug metadata (about 270 KB for `bad.hot`, found with LeakSanitizer). `-gline-tables-only` does not leak, and it costs the same time. `JitOptions::debug_flag` sets the flag. `LLJIT` does not register a debugger plugin, so full debug info has no use now.
+- `CompilerInstance::ExecuteAction` prints "`N errors generated.`" to `stderr` when `ShowCarets` is on. The backend uses its own copy of the diagnostic options for the printer, so the text goes only to the result.
 - `CompilerInvocation` keeps pointers into the argument strings. The strings must live as long as the compile.
 - `LLVMConfig.cmake` probes C headers, so CMake calls `enable_language(C)` for the JIT build.
 - The global constructors of a script (the class record) are run by `LLJIT::initialize`. Without it, `Player_record` has no value.
@@ -39,11 +39,11 @@ Machine: 32 threads, Linux 7.2, clang 23.1.3, `-O0`/`-O1` as noted, the page cac
 | JIT, `-O0`, cache | 1283 | 781 | 786 | 789 |
 | JIT, `-O1`, `-include-pch`, cache | 622 | 166 | 170 | 166 |
 | JIT, `-O1`, `-include-pch`, no cache | 637 | 166 | 586 | 169 |
-| CLANG_FILES, `-O0 -g` (default), cache | 1370 | 908 | 913 | 907 |
-| CLANG_FILES, `-O1`, cache | 1394 | 941 | 957 | 947 |
-| CLANG_FILES, `-O1`, no cache | 1395 | 940 | 1356 | 940 |
+| `CLANG_FILES`, `-O0 -g` (default), cache | 1370 | 908 | 913 | 907 |
+| `CLANG_FILES`, `-O1`, cache | 1394 | 941 | 957 | 947 |
+| `CLANG_FILES`, `-O1`, no cache | 1395 | 940 | 1356 | 940 |
 
-CLANG_FILES with a PCH (P1, S19). The earlier tool made a PCH only in the JIT backend (`--make-pch`). The current tool has no PCH option, but `--cxxflag` still passes `-include-pch`. For CLANG_FILES, make the PCH with the compiler and pass it through `--cxxflag`.
+`CLANG_FILES` with a PCH (P1, S19). The earlier tool made a PCH only in the JIT backend (`--make-pch`). The current tool has no PCH option, but `--cxxflag` still passes `-include-pch`. For `CLANG_FILES`, make the PCH with the compiler and pass it through `--cxxflag`.
 
     clang++ -std=c++20 -fPIC -g -O1 -resource-dir=$(clang++ -print-resource-dir) -I include -I tests/engine \
         -x c++-header pch.hpp -o p.pch
@@ -51,22 +51,22 @@ CLANG_FILES with a PCH (P1, S19). The earlier tool made a PCH only in the JIT ba
 
 | Configuration (S19 run, same machine, other load) | v1 cold | v2 cold | v1 warm | v2 warm |
 |---|---|---|---|---|
-| CLANG_FILES, `-O1`, cache | 1693 | 1111 | 1110 | 1104 |
-| CLANG_FILES, `-O1`, `-include-pch`, cache | 931 | 344 | 357 | 349 |
+| `CLANG_FILES`, `-O1`, cache | 1693 | 1111 | 1110 | 1104 |
+| `CLANG_FILES`, `-O1`, `-include-pch`, cache | 931 | 344 | 357 | 349 |
 
 The PCH takes 1.1 s to make, once, and is 13.5 MB. It saves 755 ms of 1104 ms in a warm load (68%). The numbers of this run are higher than the rows above, because the machine had more load. Compare the two rows of one run only.
 
-P1 criterion (design 8.2): under 2 s for one module after a one-line change, fail over 5 s. Result: pass in every configuration, also CLANG_FILES with no PCH (1.1 s). With a PCH: JIT 166 ms and CLANG_FILES 350 ms. The test headers are small. Measure again with the real engine headers.
+P1 criterion (design 8.2): under 2 s for one module after a one-line change, fail over 5 s. Result: pass in every configuration, also `CLANG_FILES` with no PCH (1.1 s). With a PCH: JIT 166 ms and `CLANG_FILES` 350 ms. The test headers are small. Measure again with the real engine headers.
 
-Before the cache, the translate time was 411 ms in each load. The split of one translate (v2, `std::chrono` in `translate_impl`, measured before the change) was: libclang parse of the imports 406 ms, script parser 0.4 ms, visit of the base class 0.5 ms, text emit 2.7 ms. Only the libclang parse is large.
+Before the cache, the translate time was 411 ms in each load. The split of one translate (v2, `std::chrono` in `translate_impl`, measured before the change) was: `libclang` parse of the imports 406 ms, script parser 0.4 ms, visit of the base class 0.5 ms, text emit 2.7 ms. Only the `libclang` parse is large.
 
 Translate alone (the bench prints it): 406 ms with a new session (miss), 1.3 ms with the same session (hit). The target was 50 ms.
 
 Phases of one JIT load (v2, warm, cache): translate 1.4, compile 782, ORC (code generation, link, initializers, lookup) 19. With `-include-pch`: translate 1.4, compile 146, ORC 18. A new session parses the headers again, so v1 warm in the rows "no cache" costs 411 ms more.
 
-- JIT against CLANG_FILES with the same `-O1`: about 140 ms less (15%). The saving is the process start and the link step. The compile itself is the main cost in both.
+- JIT against `CLANG_FILES` with the same `-O1`: about 140 ms less (15%). The saving is the process start and the link step. The compile itself is the main cost in both.
 - `-include-pch` works with the in-memory compile. `JitBackend::make_pch(header, out)` makes the PCH in the process (886 ms once, 10 MB). The header must start with the same includes as the generated file. It saves 636 ms of 782 ms in the compile phase (81%) and 642 ms of 808 ms in a load (79%, with the translator cache). The PCH keeps the path and the time stamp of the header and needs the same flags (for example `-fsanitize`).
-- Size: `backend_tests` is 1.29 MB (CLANG_FILES) and 1.69 MB (JIT), so +0.4 MB. Both builds already need `libclang.so` (45 MB) and `libLLVM.so` (173 MB) for the translator. The JIT build also needs `libclang-cpp.so` (78 MB). Peak RSS of the bench process: 100 MB (CLANG_FILES), 299 MB (JIT), 246 MB (JIT with PCH).
+- Size: `backend_tests` is 1.29 MB (`CLANG_FILES`) and 1.69 MB (JIT), so +0.4 MB. Both builds already need `libclang.so` (45 MB) and `libLLVM.so` (173 MB) for the translator. The JIT build also needs `libclang-cpp.so` (78 MB). Peak RSS of the bench process: 100 MB (`CLANG_FILES`), 299 MB (JIT), 246 MB (JIT with PCH).
 
 ## Threads and the safe point
 
@@ -82,7 +82,7 @@ The debug check is the counter `hot::in_script_tick()`. The engine wraps each ac
 
 A class that a new generation drops is removed (design 6.1). Its record stays. Its live objects keep their state. Each slot points to `hot::removed_class_handler()`, which logs the first call, counts all calls and returns zero. A floating point result of such a call is not defined. The class can come back in a later generation. `Loader::stats()` and `Loader::stats_text()` (the `script_stats` text) list the generations, the pins, the live objects, the classes with their slots and the removed classes.
 
-The sample `samples/hot-reload` shows the reload path. The test host `tests/engine/Harness` ticks a world and reloads a script when the file changes (`FileWatcher`: inotify on Linux, polling else). The tests in `tests/integration/reload/` (`integration_reload_tests`) test this.
+The sample `samples/hot-reload` shows the reload path. The test host `tests/engine/Harness` ticks a world and reloads a script when the file changes (`FileWatcher`: `inotify` on Linux, polling else). The tests in `tests/integration/reload/` (`integration_reload_tests`) test this.
 
 The warnings of a reload use readable names: C++ type names (`int`, `std::string`) and class names (`Hero`, not `HeroState_g2`).
 
@@ -134,7 +134,7 @@ An arrow lambda becomes `hot::make_closure(GEN, "Class::fn lambda", [=](params) 
 
 `World::AddTimer(seconds, fn)` stores a one-shot callable. `World::Tick` fires it before the frame boundary hook and then destroys it. `ClearTimers()` drops all timers.
 
-The `Loader` owns all modules. A reload retires the old generation. `Loader::frame_boundary()` (call it in the hook, after `commit_pending`) unloads a retired generation when all of these are true: the pin count is zero, a frame boundary passed after the commit, and `code_refs` is zero. The unload is `dlclose` (CLANG_FILES) or the removal of the ORC resource tracker (JIT). `Loader::stats()` gives the active generation, each generation with its state (active, retired, unloaded), its pins and its `code_refs`, and the number of live objects.
+The `Loader` owns all modules. A reload retires the old generation. `Loader::frame_boundary()` (call it in the hook, after `commit_pending`) unloads a retired generation when all of these are true: the pin count is zero, a frame boundary passed after the commit, and `code_refs` is zero. The unload is `dlclose` (`CLANG_FILES`) or the removal of the ORC resource tracker (JIT). `Loader::stats()` gives the active generation, each generation with its state (active, retired, unloaded), its pins and its `code_refs`, and the number of live objects.
 
 Result of R3: the stale call is logged once and the old body does not run. No ASan error. Result of R6: generation 2 of the chain 1, 2, 3 unloads after its closure is dropped, and later ticks are clean. Generation 1 unloads too (S10). A core module holds the class record, the factory, the thunks and the vtables. The core is a second instance of the same generation code, and it never unloads. Destroy the last copy of a closure on the main thread. The destructor code is in the module.
 
@@ -155,7 +155,7 @@ Debug information:
 - The generated C++ has `#line` directives. The JIT and `hotc` use `-gline-tables-only`, so the DWARF line table names the `.hot` file. The tests `DebugInfo.*` check this with `llvm-dwarfdump`.
 - The JIT backend registers each object with the debugger through the GDB JIT interface (`llvm::orc::enableDebuggerSupport`). `JitOptions::debugger_support` turns it off. `debugger_support()` and `debugger_error()` tell the result. The test `JitTests.DebuggerGetsObjectWithScriptLines` reads `__jit_debug_descriptor`. LLVM 23 has no `createJITLoaderGDBRegistrar`.
 - `tools/lldb/hot_formatters.py` and `tools/lldb/hot.lldbinit` show state blocks, shells and handles by script name. The command `hot-bt` prints the script frames. A synthetic child provider hides `__hot_owner` from the state blocks. `tools/natvis/hot.natvis` does the same for Visual Studio.
-- The pure Python helpers have a test (`PythonLldbFormatters`, `python3 -I`). lldb itself, a real debugger session and Visual Studio were NOT run. The F3 check (breakpoint in `heal`, step, inspect `this.health`) stays open.
+- The pure Python helpers have a test (`PythonLldbFormatters`, `python3 -I`). `lldb` itself, a real debugger session and Visual Studio were NOT run. The F3 check (breakpoint in `heal`, step, inspect `this.health`) stays open.
 
 ### What the debugger shows
 
@@ -177,7 +177,7 @@ For runtime header authors:
 
 Editors:
 
-- `editors/vscode/package.json` has `contributes.breakpoints` for the language `hot`. The C++ extension (`cppdbg` with gdb, or lldb) works with no custom launch configuration.
-- Option: the gdb setting `skip -gfi "*/include/c++/*"` hides the libstdc++ stops.
+- `editors/vscode/package.json` has `contributes.breakpoints` for the language `hot`. The C++ extension (`cppdbg` with `gdb`, or `lldb`) works with no custom launch configuration.
+- Option: the `gdb` setting `skip -gfi "*/include/c++/*"` hides the `libstdc++` stops.
 - `tools/natjmc/hot.natjmc` is a Just My Code file. It marks `hot::*`, the shell, the thunks, the virtual helpers, the base forwarders and `state_of` as non-user code. Status: unverified. Visual Studio reads it from the user Visual Studio Visualizers folder. `cppvsdbg` in VS Code may not read it.
 - MSVC and Visual Studio are untested. The MSVC code paths are unverified: `HOT_NODEBUG_LOCAL` in `hidden.h`, `hot::aligned_alloc`, the `LoadLibrary` branch in `module.cpp` and `/JMC` in CMake.

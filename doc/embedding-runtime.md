@@ -63,7 +63,7 @@ auto backend = hot::make_default_backend(options);
 
 ## Precompiled library
 
-**Links:** `hot_runtime`. No backend and no libclang. Set `ENABLE_EXPORTS`.
+**Links:** `hot_runtime`. No backend and no `libclang`. Set `ENABLE_EXPORTS`.
 
 `hotc` builds a script into a `.so` ahead of time. Any build can load it. In CMake use `hot_add_host` with `MODE PRECOMPILED`, or `hot_add_scripts` for more control. On the command line:
 
