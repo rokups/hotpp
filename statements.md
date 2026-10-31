@@ -110,7 +110,7 @@ A lambda, a `??` right side and a `finally` block can use a binding. A `var&` bi
 
 ## try, catch, finally
 
-You throw and catch C++ exception types. A `finally` block always runs. A script cannot declare an exception type.
+You throw and catch C++ exception types. A `finally` block always runs. A script cannot declare an exception type. It can catch the builtin types `NullReference`, `IndexOutOfRange` and `ScriptError` (see "Runtime errors").
 
 ```hot
 class Safe {
@@ -129,6 +129,42 @@ class Safe {
     }
 }
 ```
+
+## Runtime errors
+
+The runtime checks a pointer, a handle and an array index. A failed check throws one of these builtin types:
+
+- `NullReference`: the script used a null pointer or a null handle, for example `p.x` or `*p`.
+- `IndexOutOfRange`: an array index is negative or not less than the size of the array.
+- `ScriptError`: the base of the two types above.
+
+Write the type name in a `catch` clause. The prefix `hot.` is also valid. Use `catch (ScriptError e)` to catch both types. `e.what()` gives the message.
+
+```hot
+class Grid {
+    int[4] vals;
+    Weapon weapon = null;
+
+    int At(int i) {
+        try {
+            return this.vals[i];
+        } catch (IndexOutOfRange e) {
+            return -1;
+        }
+    }
+
+    int Dmg() {
+        try {
+            return this.weapon.dmg;
+        } catch (ScriptError e) {
+            std.printf("error: %s\n", e.what());
+            return 0;
+        }
+    }
+}
+```
+
+A throw does not roll back. A field keeps each value that the script wrote before the throw. A script that does not catch the error passes it to the host. See "Error reports" in [Embedding](embedding.html). The host can remove the checks at build time (`HOT_RUNTIME_CHECKS` in [CMake](cmake.html)). Then a null access or a bad index is undefined behavior.
 
 ## String interpolation
 

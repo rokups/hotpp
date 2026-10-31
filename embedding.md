@@ -105,6 +105,38 @@ The generated code, `include/hot` and the runtime library need C++17 only. A C++
 
 `module_from_library` makes a second, independent instance of the library for the loader (the "core"). It copies the file to the temp folder as `hot-core-<pid>-<n>-<name>` and removes the copy after `dlclose`. If the temp folder is not available, it uses the folder of the library. If the copy fails (`cannot copy <path> for the core module: ...`), the generation stays loaded and the loader prints `[script] WARNING: no core module for ...` to `stderr`.
 
+### Error reports
+
+A script can throw `NullReference`, `IndexOutOfRange` or `ScriptError` (see [Statements](statements.html)). All three derive from `hot::ScriptError`, which derives from `std::runtime_error`. Include `hot/runtime.h`.
+
+When the host calls a script function and the script does not catch a `ScriptError`, the runtime reports it. Then the call returns a default value (`0`, `false`, or nothing for `void`). The object stays alive. The next call works. A field keeps the values that the script wrote before the throw.
+
+Set a handler to receive the report:
+
+```cpp
+hot::set_script_error_handler([](const hot::ScriptErrorReport& r) {
+    log("%s in %s: %s", r.type, r.class_name, r.message);
+});
+```
+
+`hot::set_script_error_handler({})` restores the default. `hot::script_error_handler()` gives the current handler. The handler runs on the thread of the call. These fields are valid only during the call of the handler:
+
+| Field | Meaning |
+|---|---|
+| `type` | `hot::NullReference`, `hot::IndexOutOfRange` or `hot::ScriptError`. |
+| `message` | The text of `what()`. |
+| `class_name` | The script class of the object, or `?`. |
+| `self` | The shell of the object (`const hot::ShellBase*`), or null. |
+| `traceback` | An empty text for now. |
+
+Without a handler, the runtime prints one line to `stderr`: `[script] ERROR: unhandled hot::IndexOutOfRange in Player: <message>`.
+
+An error reports only when it leaves the outermost script call. A script that calls native code, which calls a script override, can catch the error in the calling script.
+
+Only a `ScriptError` stops at the boundary. Any other C++ exception that a script throws reaches the host. The host must catch it. If the return type has no default value (for example a reference), the runtime reports the error and throws it again.
+
+The checks are a build-time choice. The CMake option `HOT_RUNTIME_CHECKS` (default `ON`) sets the macro `HOT_RUNTIME_CHECKS`. With `OFF` the macro is `0`: the generated code has no checks, and an installed host sees the same setting. Each check costs one compare for a pointer access, a handle access or a `std::array` index. See [CMake](cmake.html).
+
 ## Compile at run time
 
 **Links:** `hot_backend`. It brings `hot_runtime` and the backends that the build has. Set `ENABLE_EXPORTS`. The target does not exist when both CMake options `HOT_ENABLE_CLANG_FILES` and `HOT_ENABLE_JIT` are off.
