@@ -39,3 +39,4 @@ The `hotc` tool turns a script into C++. The engine reloads a changed script whi
 - [Embedding](embedding.html): load scripts with a `Loader`.
 - [CMake](cmake.html): use Hot++ in a host project.
 - [Tools](tools.html): the `hot-ls` language server.
+- [Benchmarks](benchmarks.html): the run-time cost of script code against native C++, and how to measure it.
