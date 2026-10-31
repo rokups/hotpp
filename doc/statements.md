@@ -214,7 +214,7 @@ class Spotter {
 
 `is` and `as` work after a reload. An object that a generation made keeps its class after the reload, and `is` still finds it. The test uses the name of the script class. It does not use C++ RTTI, so a cast of an object of an old generation also works.
 
-A `.cpp` script has the same rules with the C++ forms (see [C++ scripts](cpp-scripts.html#script-classes-as-types)):
+A `.cpp` script has the same rules with the C++ forms (see [C++ scripts](cpp-types.html#script-classes-as-types)):
 
 | `.hot` | `.cpp` | Difference |
 |---|---|---|

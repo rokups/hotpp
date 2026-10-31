@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Embedding
-nav_order: 15
+nav_order: 20
 ---
 
 The host loads scripts with a `Loader`. A development build compiles them. An AOT build links them.
