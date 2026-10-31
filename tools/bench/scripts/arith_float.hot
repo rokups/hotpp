@@ -1,0 +1,14 @@
+// Case: floating point arithmetic loop.
+using "BenchEngine.h";
+
+class BenchArithFloat : BenchBase {
+    override long Run(int n) {
+        float x = 0.5;
+        double d = 0.0d;
+        for (int i = 0; i < n; i++) {
+            x = x * 0.999 + 0.5;
+            d = d + x * 0.25d;
+        }
+        return static_cast<long>(d);
+    }
+}

@@ -1,0 +1,12 @@
+// Case: native to script call. The native method DriveHook calls the virtual Hook n times.
+using "BenchEngine.h";
+
+class BenchHook : BenchBase {
+    override int Hook(int x) {
+        return x + 1;
+    }
+
+    override long Run(int n) {
+        return DriveHook(n);
+    }
+}

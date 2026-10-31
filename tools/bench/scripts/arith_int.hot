@@ -1,0 +1,14 @@
+// Case: integer arithmetic loop.
+using "BenchEngine.h";
+
+class BenchArithInt : BenchBase {
+    override long Run(int n) {
+        long s = 0;
+        int x = 1;
+        for (int i = 0; i < n; i++) {
+            x = (x * 31 + i) & 1048575;
+            s += x % 7 + (x >> 3);
+        }
+        return s;
+    }
+}

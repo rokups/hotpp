@@ -1,0 +1,20 @@
+// Case: std.vector access loop.
+using "BenchEngine.h";
+using <vector>;
+
+class BenchVector : BenchBase {
+    std.vector<int> v = std.vector<int>();
+
+    override long Run(int n) {
+        if (v.size() == 0) {
+            for (int j = 0; j < 256; j++) v.push_back(j);
+        }
+        long s = 0;
+        for (int i = 0; i < n; i++) {
+            int k = i & 255;
+            v[k] = (v[(k + 1) & 255] + i) & 65535;
+            s += v[k];
+        }
+        return s;
+    }
+}

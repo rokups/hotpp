@@ -1,0 +1,16 @@
+// Case: script to script call. Fib is recursive, so the compiler cannot remove the calls.
+// Fib(10) and Fib(11) take 177 and 287 calls. Run(n) makes n/2 of each: 232 calls per iteration.
+using "BenchEngine.h";
+
+class BenchCallScript : BenchBase {
+    int Fib(int n) {
+        if (n < 2) return n;
+        return Fib(n - 1) + Fib(n - 2);
+    }
+
+    override long Run(int n) {
+        long s = 0;
+        for (int i = 0; i < n; i++) s += Fib(10 + (i & 1));
+        return s;
+    }
+}

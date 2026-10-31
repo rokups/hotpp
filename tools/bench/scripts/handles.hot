@@ -1,0 +1,32 @@
+// Case: handle dereference and null check along a chain of four objects.
+using "BenchEngine.h";
+
+class BenchNode {
+    int v = 0;
+    BenchNode next = null;
+}
+
+class BenchHandles : BenchBase {
+    BenchNode head = null;
+
+    override long Run(int n) {
+        if (head == null) {
+            head = new BenchNode();
+            head.v = 1;
+            BenchNode cur = head;
+            for (int j = 1; j < 4; j++) {
+                cur.next = new BenchNode();
+                cur.next.v = j + 1;
+                cur = cur.next;
+            }
+        }
+        long s = 0;
+        BenchNode p = head;
+        for (int i = 0; i < n; i++) {
+            if (p == null) p = head;
+            s += p.v;
+            p = p.next;
+        }
+        return s;
+    }
+}

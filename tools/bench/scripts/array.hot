@@ -1,0 +1,16 @@
+// Case: array index loop. The index has a bounds check (HOT_RUNTIME_CHECKS).
+using "BenchEngine.h";
+
+class BenchArray : BenchBase {
+    int[256] arr;
+
+    override long Run(int n) {
+        long s = 0;
+        for (int i = 0; i < n; i++) {
+            int k = i & 255;
+            arr[k] = (arr[(k + 1) & 255] + i) & 65535;
+            s += arr[k];
+        }
+        return s;
+    }
+}

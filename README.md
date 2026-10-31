@@ -31,7 +31,7 @@ Not done, and not testable here: Windows and macOS, a real engine, a real lldb a
 
 - `include/hot/` has the public headers: `runtime.h`, `module.h`, `backend.h`, `clang_files_backend.h`, `jit_backend.h` and `hotc_lib.h`. Use the form `#include "hot/<name>.h"`.
 - `src/` has the library code. `src/runtime/` has the script runtime and the backends. `src/translator/` has the translator library `hotc_lib`. `src/tools/` has the tool `hotc`.
-- `tests/engine/` is the test host (`Actor`, `World`, `Harness`, `FileWatcher`). It is not a model for a user project: copy from `samples/`. `tests/scripts/` has the test scripts. `tests/integration/aot/` has the program `aot_demo`. `tests/integration/fixtures/` has the hand-written generations. `tools/bench/bench_backends.cpp` is the benchmark.
+- `tests/engine/` is the test host (`Actor`, `World`, `Harness`, `FileWatcher`). It is not a model for a user project: copy from `samples/`. `tests/scripts/` has the test scripts. `tests/integration/aot/` has the program `aot_demo`. `tests/integration/fixtures/` has the hand-written generations. `tools/bench/` has the benchmark `bench_backends` (`bench_backends.cpp`, the scripts in `scripts/`).
 - `samples/` has seven self-contained projects for consumers of Hot++ (see "Samples"): six show one way to host Hot++ each, and `imgui` is a Dear ImGui demo. Each one shows the `add_subdirectory` pattern. With `-DHOT_ROOT=` and `CMAKE_PREFIX_PATH` each one uses an installed SDK (`find_package(Hot)`) instead.
 - `tests/` has the GoogleTest cases and the shared headers.
 - `cmake/` has `HotConfig.cmake.in` (the package config of the installed SDK), `SdkInstallTest.cmake`, `CPM.cmake`, `HotScripts.cmake` (`hot_add_scripts`, `hot_script_host`), `HotTests.cmake` (`hot_gtest`) and `HotFormat.cmake` (the format library of `${}`).
@@ -215,7 +215,7 @@ Facts that differ from the first design:
 
 ### Measurements
 
-Machine: 32 threads, Linux 7.2, clang 23.1.3, `-O0`/`-O1` as noted, the page cache is warm. Tool: `cmake-build/<preset>/bin/Debug/bench_backends` (`tools/bench/bench_backends.cpp`, `std::chrono`). Times in ms for one `load` (translate + compile + load) of `player_v1.hot` (v1) and `player_v2.hot` (v2). "Cold" is the first load in a new process (a new session). "Warm" is the median of 5 later loads in the same process. Warm backends share one translator session, except in the rows "no cache" (`--no-cache`). Cold v1 always parses the headers. Cold v2 and all warm loads use the cache, except v1 in the rows "no cache".
+Machine: 32 threads, Linux 7.2, clang 23.1.3, `-O0`/`-O1` as noted, the page cache is warm. Tool: `bench_backends` (`tools/bench/bench_backends.cpp`, `std::chrono`). The rows below come from an earlier version of the tool, which had a fixed backend, the options `--pch` and `--make-pch` and `-O1` for the scripts. The current tool tests all backends in one run (see "Run-time cost" below). Times in ms for one `load` (translate + compile + load) of `player_v1.hot` (v1) and `player_v2.hot` (v2). "Cold" is the first load in a new process (a new session). "Warm" is the median of 5 later loads in the same process. Warm backends share one translator session, except in the rows "no cache" (`--no-cache`). Cold v1 always parses the headers. Cold v2 and all warm loads use the cache, except v1 in the rows "no cache".
 
 | Configuration | v1 cold | v2 cold | v1 warm | v2 warm |
 |---|---|---|---|---|
@@ -228,7 +228,7 @@ Machine: 32 threads, Linux 7.2, clang 23.1.3, `-O0`/`-O1` as noted, the page cac
 | CLANG_FILES, `-O1`, cache | 1394 | 941 | 957 | 947 |
 | CLANG_FILES, `-O1`, no cache | 1395 | 940 | 1356 | 940 |
 
-CLANG_FILES with a PCH (P1, S19). The bench tool makes a PCH only in the JIT backend. For CLANG_FILES, make the PCH with the compiler and pass it through `--cxxflag`. The PCH header has the same includes as the one in `bench_backends.cpp`.
+CLANG_FILES with a PCH (P1, S19). The earlier tool made a PCH only in the JIT backend (`--make-pch`). The current tool has no PCH option, but `--cxxflag` still passes `-include-pch`. For CLANG_FILES, make the PCH with the compiler and pass it through `--cxxflag`.
 
     clang++ -std=c++20 -fPIC -g -O1 -resource-dir=$(clang++ -print-resource-dir) -I include -I tests/engine \
         -x c++-header pch.hpp -o p.pch
@@ -252,6 +252,46 @@ Phases of one JIT load (v2, warm, cache): translate 1.4, compile 782, ORC (code 
 - JIT against CLANG_FILES with the same `-O1`: about 140 ms less (15%). The saving is the process start and the link step. The compile itself is the main cost in both.
 - `-include-pch` works with the in-memory compile. `JitBackend::make_pch(header, out)` makes the PCH in the process (886 ms once, 10 MB). The header must start with the same includes as the generated file. It saves 636 ms of 782 ms in the compile phase (81%) and 642 ms of 808 ms in a load (79%, with the translator cache). The PCH keeps the path and the time stamp of the header and needs the same flags (for example `-fsanitize`).
 - Size: `backend_tests` is 1.29 MB (CLANG_FILES) and 1.69 MB (JIT), so +0.4 MB. Both builds already need `libclang.so` (45 MB) and `libLLVM.so` (173 MB) for the translator. The JIT build also needs `libclang-cpp.so` (78 MB). Peak RSS of the bench process: 100 MB (CLANG_FILES), 299 MB (JIT), 246 MB (JIT with PCH).
+
+### Run-time cost
+
+The tool `bench_backends` measures the run-time cost of script code. One binary tests every backend of the build at run time, with no rebuild. A backend that the build does not have is skipped.
+
+    bench_backends [--backend all|files|jit|aot] [--filter text] [--iters N] [--list] [--csv file]
+
+Each case is a script in `tools/bench/scripts/` and a native C++ twin in `bench_backends.cpp`. Both do the same work and derive from the same native class (`tools/bench/BenchEngine.h`). The host calls both through the base class. The tool checks that the script and the twin give the same result. The backends `files` and `jit` compile the scripts at run time (`-O2`). The backend `aot` runs the same scripts as C++ inside the binary (`Loader::load_aot`, `MODE AOT_RELOAD` of `hot_add_host`). The native twin and the AOT scripts also use `-O2`.
+
+Machine: AMD Ryzen 9 3950X (16 cores, 32 threads), Linux 7.2, clang 23.1.3, `CMAKE_BUILD_TYPE=Release`, `HOT_RUNTIME_CHECKS=ON`. Time in ns for one operation (median of 7 runs). One run of all backends takes about 70 s, because every case needs one compile for each compiling backend.
+
+| Case | native | `files` | `jit` | `aot` |
+|---|---|---|---|---|
+| empty method call (host to script) | 1.75 | 7.02 (4.0x) | 7.92 (4.5x) | 6.43 (3.7x) |
+| script to script call (recursive) | 1.07 | 1.60 (1.5x) | 1.20 (1.1x) | 1.22 (1.1x) |
+| script to native call | 1.47 | 2.05 (1.4x) | 2.04 (1.4x) | 1.46 (1.0x) |
+| native to script virtual call | 1.47 | 7.31 (5.0x) | 7.02 (4.8x) | 5.84 (4.0x) |
+| field read and write loop | 0.88 | 0.88 (1.0x) | 0.88 (1.0x) | 0.88 (1.0x) |
+| integer arithmetic loop | 1.41 | 1.41 (1.0x) | 1.41 (1.0x) | 1.41 (1.0x) |
+| float arithmetic loop | 1.75 | 1.75 (1.0x) | 1.75 (1.0x) | 1.75 (1.0x) |
+| array index (`int[256]`, checked) | 0.62 | 0.64 (1.0x) | 0.64 (1.0x) | 0.64 (1.0x) |
+| `std.vector` index | 0.62 | 0.64 (1.0x) | 0.64 (1.0x) | 0.64 (1.0x) |
+| handle dereference and null check | 2.56 | 10.46 (4.1x) | 10.46 (4.1x) | 10.46 (4.1x) |
+| string interpolation | 65.5 | 149 (2.3x) | 144 (2.2x) | 141 (2.2x) |
+| `new` and free of a script object | 9.96 | 111 (11x) | 102 (10x) | 102 (10x) |
+| closure call | 1.75 | 4.70 (2.7x) | 4.68 (2.7x) | 4.38 (2.5x) |
+| loop with a method call | 1.24 | 1.25 (1.0x) | 1.24 (1.0x) | 1.26 (1.0x) |
+| reload of 100 objects with 65 fields (one reload, without the compile) | - | 0.11 ms | 1.3 ms | - |
+
+How to read the table:
+
+- All three backends give the same code speed. The backends differ in the cost of a load, not in the cost of a run. The small differences in one row are noise of the machine.
+- A loop that only uses fields, numbers, arrays and `std.vector` runs at native speed. The array check costs about 3%.
+- A call between the host and a script, a handle and an allocation cost more. Native C++ twins use `std::shared_ptr` (`make_shared`) for handles and objects, so the twin does the same kind of work. The script object has a shell and a state block, and `new` makes both.
+- The twin of the string case builds the text with `std::to_string`. The script uses `${}`. The two are not the same work, so read this row as a rough value.
+- The twin of the reload case does not exist. The `jit` reload is slower than the `files` reload in this run. The tool does not explain why.
+- A build with an empty `CMAKE_BUILD_TYPE` compiles the runtime without optimization. It gives larger ratios for `new` (about 38x) and for the string case. Measure with a Release build.
+- `HOT_RUNTIME_CHECKS` is a build option. The tool prints its value and has no second column for it. Build again with `-DHOT_RUNTIME_CHECKS=OFF` to compare.
+
+The load section of the same tool (without `--no-load`) prints the translate time (miss and hit), the cold and warm load, and the peak RSS for each compiling backend. In this run, with `-O2`: translate 541 ms (miss) and 1.4 ms (hit); `files` loads `player_v1.hot` cold in 1.77 s and warm in 1.7 s, and `player_v2.hot` in 1.2 s; `jit` loads them in 1.64 s cold and 1.04 s warm for v2. The first backend in the process has a cold start. A later backend finds a warm process (LLVM state, file cache).
 
 ## Precompiled scripts
 

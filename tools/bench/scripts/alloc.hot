@@ -1,0 +1,19 @@
+// Case: allocation and free of a script object with new.
+using "BenchEngine.h";
+
+class BenchObj {
+    int a = 1;
+    int b = 2;
+}
+
+class BenchAlloc : BenchBase {
+    override long Run(int n) {
+        long s = 0;
+        for (int i = 0; i < n; i++) {
+            BenchObj o = new BenchObj();
+            o.a = i;
+            s += o.a + o.b;
+        }
+        return s;
+    }
+}

@@ -1,0 +1,8 @@
+// Case: empty method call. The host calls Run(0) many times.
+using "BenchEngine.h";
+
+class BenchEmpty : BenchBase {
+    override long Run(int n) {
+        return n;
+    }
+}

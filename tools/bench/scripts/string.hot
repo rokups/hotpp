@@ -1,0 +1,14 @@
+// Case: string concat and format with interpolation.
+using "BenchEngine.h";
+using <string>;
+
+class BenchString : BenchBase {
+    override long Run(int n) {
+        long s = 0;
+        for (int i = 0; i < n; i++) {
+            std.string t = "v=${i}-${s}";
+            s += static_cast<long>(t.size());
+        }
+        return s;
+    }
+}

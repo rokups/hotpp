@@ -1,45 +1,68 @@
-// bench_backends: time the compile and the load of the two test scripts.
+// bench_backends: measure the run-time cost of the script backends and the cost of a load.
 //
-// The tool uses the backend that the build selected (the JIT backend only when HOT_ENABLE_CLANG_FILES is OFF). Run it
-// many times for the cold numbers: each process starts cold.
+// One binary tests every backend that the build has, at run time, with no rebuild:
+//   files  the clang files backend (a compiler process for each load)
+//   jit    the in-process JIT backend
+//   aot    the C++ of the scripts is part of this binary (Loader::load_aot)
+// A pure native C++ twin of each script class is the reference.
 //
 // Usage:
-//   bench_backends [--warm N] [--cxxflag F]... [--pch FILE] [--make-pch FILE] [--no-cache]
+//   bench_backends [--backend all|files|jit|aot] [--filter text] [--iters N] [--list]
+//                  [--csv file] [--warm N] [--reps N] [--opt FLAG] [--cxxflag F]...
+//                  [--no-cache] [--no-load]
 //
-// It prints one line: the cold time of generation 1 and 2 (the first load of
-// each in this process) and the median time of N warm loads of each. For the
-// JIT backend it also prints the phases of the last warm load.
-// The warm loads share one translator session (the header parse is cached).
-// --no-cache gives each warm backend a new session, so every load parses the headers.
-// The tool also prints the time of one translate with a new session (miss) and with
-// the same session again (hit).
-// --cxxflag adds a compile flag (for example -O1 for the CLANG_FILES backend).
-// --make-pch FILE (JIT only) makes a precompiled header and exits.
-// --pch FILE (JIT only) compiles with -include-pch FILE.
+//   --backend  the backend to test. The default "all" tests every backend that the build has.
+//              A backend that the build does not have is skipped with a note.
+//   --filter   run only the cases whose name contains the text. The load section runs only
+//              when there is no filter.
+//   --iters N  the loop count of each case (the default is the count of the case).
+//   --list     print the backends and the cases, then exit.
+//   --csv FILE write the table also as CSV.
+//   --warm N   the number of warm loads in the load section (default 2).
+//   --reps N   the number of timed runs of a case. The result is the median (default 7).
+//   --opt FLAG the optimization flag for the scripts that a backend compiles (default -O2).
+//              The native twin and the AOT scripts get -O2 from CMake.
+//   --cxxflag F add a compile flag for the scripts (repeat it for more flags).
+//   --no-cache each warm load of the load section gets a new translator session.
+//   --no-load  skip the load section.
 //
-// CMake defines: BENCH_SOURCE_DIR, BENCH_CXX, BENCH_INCLUDES (items split by
-// "|"), BENCH_RESOURCE_DIR, BENCH_WORK_DIR and BENCH_JIT or BENCH_CLANG_FILES.
-#include "hot/runtime.h"
-#include "hot/scratch.h"
+// Each case is a script in tools/bench/scripts and a native twin in this file. Both derive from
+// BenchBase (BenchEngine.h) and have the same algorithm. The host calls them through BenchBase.
+// The result of each case is checked against the result of the twin.
+//
+// CMake defines: BENCH_SOURCE_DIR, BENCH_SCRIPT_DIR, BENCH_CXX, BENCH_INCLUDES (items split by
+// "|"), BENCH_RESOURCE_DIR and BENCH_WORK_DIR. The macros HOT_WITH_CLANG_FILES and HOT_WITH_JIT
+// come from hot_backend.
+#include "BenchEngine.h"
+#include "hot/aot.h"
+#include "hot/backend.h"
+#include "hot/config.h"
 #include "hot/hotc_lib.h"
+#include "hot/runtime.h"
+#include "hot/runtime/loader.h"
+#include "hot/scratch.h"
 
 #include <sys/resource.h>
+#include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <memory>
 #include <sstream>
 #include <string>
-#include <unistd.h>
 #include <vector>
 
-#if defined(BENCH_JIT)
+#if defined(HOT_WITH_JIT)
     #include "hot/jit_backend.h"
-#else
+#endif
+#if defined(HOT_WITH_CLANG_FILES)
     #include "hot/clang_files_backend.h"
 #endif
 
@@ -53,6 +76,14 @@ double ms_since(Clock::time_point t)
     return std::chrono::duration<double, std::milli>(Clock::now() - t).count();
 }
 
+double median(std::vector<double> v)
+{
+    if (v.empty())
+        return 0;
+    std::sort(v.begin(), v.end());
+    return v[v.size() / 2];
+}
+
 std::vector<std::string> split(const std::string& s)
 {
     std::vector<std::string> v;
@@ -63,13 +94,589 @@ std::vector<std::string> split(const std::string& s)
     return v;
 }
 
-hot::ScriptSource source(const char* file)
+std::string read_file(const std::string& path)
 {
-    const std::string path = std::string(BENCH_SOURCE_DIR) + "/tests/scripts/" + file;
     std::ifstream f(path);
     std::stringstream ss;
     ss << f.rdbuf();
-    return {path, ss.str()};
+    return ss.str();
+}
+
+// Keep the compiler from removing the work of the native twin.
+volatile int64_t g_sink = 0;
+
+template <class T> inline void escape(T* p)
+{
+    asm volatile("" : : "g"(p) : "memory");
+}
+
+#define BENCH_NOINLINE __attribute__((noinline))
+
+// ---- The native twins. Each one does the same work as the script of the same name. ----
+
+struct NEmpty : BenchBase
+{
+    int64_t Run(int n) override { return n; }
+};
+
+struct NCallScript : BenchBase
+{
+    // Recursive, so the compiler cannot remove the calls (as in the script).
+    BENCH_NOINLINE int Fib(int n) { return n < 2 ? n : Fib(n - 1) + Fib(n - 2); }
+    int64_t Run(int n) override
+    {
+        int64_t s = 0;
+        for (int i = 0; i < n; i++)
+            s += Fib(10 + (i & 1));
+        return s;
+    }
+};
+
+struct NCallNative : BenchBase
+{
+    int64_t Run(int n) override
+    {
+        int64_t s = 0;
+        for (int i = 0; i < n; i++)
+            s += NativeAdd(i, 1);
+        return s;
+    }
+};
+
+struct NHook : BenchBase
+{
+    int Hook(int x) override { return x + 1; }
+    int64_t Run(int n) override { return DriveHook(n); }
+};
+
+struct NFields : BenchBase
+{
+    int a = 1;
+    int b = 2;
+    float f = 0.5f;
+    int64_t Run(int n) override
+    {
+        for (int i = 0; i < n; i++)
+        {
+            a = (a + i) & 65535;
+            b = b ^ a;
+            f = f + 0.25f;
+        }
+        return a + b + static_cast<int64_t>(f);
+    }
+};
+
+struct NArithInt : BenchBase
+{
+    int64_t Run(int n) override
+    {
+        int64_t s = 0;
+        int x = 1;
+        for (int i = 0; i < n; i++)
+        {
+            x = (x * 31 + i) & 1048575;
+            s += x % 7 + (x >> 3);
+        }
+        return s;
+    }
+};
+
+struct NArithFloat : BenchBase
+{
+    int64_t Run(int n) override
+    {
+        float x = 0.5f;
+        double d = 0.0;
+        for (int i = 0; i < n; i++)
+        {
+            x = x * 0.999f + 0.5f;
+            d = d + x * 0.25;
+        }
+        return static_cast<int64_t>(d);
+    }
+};
+
+struct NArray : BenchBase
+{
+    std::array<int, 256> arr{};
+    int64_t Run(int n) override
+    {
+        int64_t s = 0;
+        for (int i = 0; i < n; i++)
+        {
+            int k = i & 255;
+            arr[k] = (arr[(k + 1) & 255] + i) & 65535;
+            s += arr[k];
+        }
+        return s;
+    }
+};
+
+struct NVector : BenchBase
+{
+    std::vector<int> v;
+    int64_t Run(int n) override
+    {
+        if (v.size() == 0)
+            for (int j = 0; j < 256; j++)
+                v.push_back(j);
+        int64_t s = 0;
+        for (int i = 0; i < n; i++)
+        {
+            int k = i & 255;
+            v[k] = (v[(k + 1) & 255] + i) & 65535;
+            s += v[k];
+        }
+        return s;
+    }
+};
+
+struct NNode
+{
+    int v = 0;
+    std::shared_ptr<NNode> next;
+};
+
+struct NHandles : BenchBase
+{
+    std::shared_ptr<NNode> head;
+    int64_t Run(int n) override
+    {
+        if (!head)
+        {
+            head = std::make_shared<NNode>();
+            head->v = 1;
+            std::shared_ptr<NNode> cur = head;
+            for (int j = 1; j < 4; j++)
+            {
+                cur->next = std::make_shared<NNode>();
+                cur->next->v = j + 1;
+                cur = cur->next;
+            }
+        }
+        int64_t s = 0;
+        std::shared_ptr<NNode> p = head;
+        for (int i = 0; i < n; i++)
+        {
+            if (!p)
+                p = head;
+            s += p->v;
+            p = p->next;
+        }
+        return s;
+    }
+};
+
+struct NString : BenchBase
+{
+    int64_t Run(int n) override
+    {
+        int64_t s = 0;
+        for (int i = 0; i < n; i++)
+        {
+            std::string t = "v=" + std::to_string(i) + "-" + std::to_string(s);
+            escape(t.data());
+            s += static_cast<int64_t>(t.size());
+        }
+        return s;
+    }
+};
+
+struct NObj
+{
+    int a = 1;
+    int b = 2;
+};
+
+struct NAlloc : BenchBase
+{
+    int64_t Run(int n) override
+    {
+        int64_t s = 0;
+        for (int i = 0; i < n; i++)
+        {
+            std::shared_ptr<NObj> o = std::make_shared<NObj>();
+            escape(o.get());
+            o->a = i;
+            s += o->a + o->b;
+        }
+        return s;
+    }
+};
+
+struct NClosure : BenchBase
+{
+    int64_t Run(int n) override
+    {
+        int k = 3;
+        std::function<int(int)> f = [k](int x) { return x + k; };
+        escape(&f);
+        int64_t s = 0;
+        for (int i = 0; i < n; i++)
+            s += f(i);
+        return s;
+    }
+};
+
+struct NMethodLoop : BenchBase
+{
+    int a = 0;
+    int b = 0;
+    void Step(int d)
+    {
+        a = (a + d) & 65535;
+        b = b + a;
+        if (b > 1000000)
+            b = b - 1000000;
+    }
+    int64_t Run(int n) override
+    {
+        for (int i = 0; i < n; i++)
+            Step(i);
+        return a + b;
+    }
+};
+
+template <class T> std::unique_ptr<BenchBase> make_native()
+{
+    return std::make_unique<T>();
+}
+
+struct Case
+{
+    const char* name;
+    const char* label;
+    const char* script; // the file in BENCH_SCRIPT_DIR
+    const char* cls;    // the script class
+    std::unique_ptr<BenchBase> (*make)();
+    int64_t iters;
+    bool per_call; // true: the host calls Run(0) iters times. false: one call with n = iters.
+    double ops_per_iter; // the operations in one iteration (the divisor of the time)
+};
+
+const Case kCases[] = {
+    {"empty", "empty method call (host to script)", "empty.hot", "BenchEmpty", make_native<NEmpty>, 5000000, true, 1},
+    {"call_script", "script to script call", "call_script.hot", "BenchCallScript", make_native<NCallScript>, 20000,
+        false, 232},
+    {"call_native", "script to native call", "call_native.hot", "BenchCallNative", make_native<NCallNative>, 5000000,
+        false, 1},
+    {"virtual_hook", "native to script virtual call", "virtual_hook.hot", "BenchHook", make_native<NHook>, 5000000,
+        false, 1},
+    {"fields", "field read and write loop", "fields.hot", "BenchFields", make_native<NFields>, 5000000, false, 1},
+    {"arith_int", "integer arithmetic loop", "arith_int.hot", "BenchArithInt", make_native<NArithInt>, 5000000, false, 1},
+    {"arith_float", "float arithmetic loop", "arith_float.hot", "BenchArithFloat", make_native<NArithFloat>, 5000000,
+        false, 1},
+    {"array", "array index loop (T[256], checked)", "array.hot", "BenchArray", make_native<NArray>, 5000000, false, 1},
+    {"vector", "std.vector index loop", "vector.hot", "BenchVector", make_native<NVector>, 5000000, false, 1},
+    {"handles", "handle deref and null check chain", "handles.hot", "BenchHandles", make_native<NHandles>, 3000000,
+        false, 1},
+    {"string", "string interpolation / concat", "string.hot", "BenchString", make_native<NString>, 300000, false, 1},
+    {"alloc", "new and free of a script object", "alloc.hot", "BenchAlloc", make_native<NAlloc>, 1000000, false, 1},
+    {"closure", "closure call", "closure.hot", "BenchClosure", make_native<NClosure>, 5000000, false, 1},
+    {"method_loop", "loop with a method call", "method_loop.hot", "BenchMethodLoop", make_native<NMethodLoop>, 5000000,
+        false, 1},
+};
+
+// ---- The measurement ----
+
+// The result of one timed run is ns for each operation.
+BENCH_NOINLINE double time_run(BenchBase& b, const Case& c, int64_t iters)
+{
+    int64_t sink = 0;
+    const Clock::time_point t = Clock::now();
+    if (c.per_call)
+        for (int64_t i = 0; i < iters; ++i)
+            sink += b.Run(0);
+    else
+        sink = b.Run(static_cast<int>(iters));
+    const double ns = std::chrono::duration<double, std::nano>(Clock::now() - t).count();
+    g_sink = sink;
+    return ns / (static_cast<double>(iters) * c.ops_per_iter);
+}
+
+BENCH_NOINLINE int64_t one_result(BenchBase& b)
+{
+    return b.Run(1000);
+}
+
+struct Options
+{
+    std::string backend = "all";
+    std::string filter;
+    std::string csv;
+    int64_t iters = 0;
+    int warm = 2;
+    int reps = 7;
+    std::string opt = "-O2";
+    std::vector<std::string> flags; // more compile flags for the scripts (--cxxflag)
+    bool no_cache = false;
+    bool list = false;
+    bool no_load = false;
+};
+
+// The median of the timed runs, after two warm-up runs.
+double measure(BenchBase& b, const Case& c, const Options& o)
+{
+    const int64_t iters = o.iters > 0 ? o.iters : c.iters;
+    time_run(b, c, std::max<int64_t>(iters / 4, 1));
+    time_run(b, c, std::max<int64_t>(iters / 4, 1));
+    std::vector<double> v;
+    for (int i = 0; i < o.reps; ++i)
+        v.push_back(time_run(b, c, iters));
+    return median(v);
+}
+
+// ---- The backends ----
+
+enum class Kind
+{
+    Files,
+    Jit,
+    Aot
+};
+
+const char* kind_name(Kind k)
+{
+    return k == Kind::Files ? "files" : k == Kind::Jit ? "jit" : "aot";
+}
+
+bool kind_available(Kind k)
+{
+    switch (k)
+    {
+        case Kind::Files:
+            return hot::backend_available(hot::BackendKind::ClangFiles);
+        case Kind::Jit:
+            return hot::backend_available(hot::BackendKind::Jit);
+        case Kind::Aot:
+            return true;
+    }
+    return false;
+}
+
+std::unique_ptr<hot::Backend> make_backend(Kind k, const Options& o)
+{
+    hot::DefaultBackendOptions d;
+    d.include_dirs = {BENCH_SCRIPT_DIR "/.."};
+    d.extra_flags = {o.opt};
+    d.extra_flags.insert(d.extra_flags.end(), o.flags.begin(), o.flags.end());
+    d.kind = k == Kind::Files ? hot::BackendKind::ClangFiles : hot::BackendKind::Jit;
+    return hot::make_default_backend(d);
+}
+
+struct Row
+{
+    double ns = -1; // -1: not measured
+    bool mismatch = false;
+};
+
+struct BackendResult
+{
+    Kind kind;
+    std::vector<Row> rows; // one for each case
+    double reload_ns = -1;
+    std::string note;
+};
+
+// Make an object of a script class and run the case on it.
+bool run_instance(const hot::ClassEntry* entry, const Case& c, const Options& o, int64_t native_check, Row& row,
+    std::string& note)
+{
+    if (!entry)
+    {
+        note = std::string("class ") + c.cls + " not found";
+        return false;
+    }
+    std::unique_ptr<BenchBase> check(static_cast<BenchBase*>(entry->create().native));
+    row.mismatch = one_result(*check) != native_check;
+    check.reset();
+    std::unique_ptr<BenchBase> obj(static_cast<BenchBase*>(entry->create().native));
+    row.ns = measure(*obj, c, o);
+    return true;
+}
+
+// The run-time backends compile one script for each case and load it in a new loader.
+void run_cases_compiled(Kind k, const Options& o, const std::vector<int64_t>& checks, const std::vector<int>& selected,
+    BackendResult& out)
+{
+    std::unique_ptr<hot::Backend> backend = make_backend(k, o);
+    for (int idx : selected)
+    {
+        const Case& c = kCases[idx];
+        const std::string path = std::string(BENCH_SCRIPT_DIR) + "/" + c.script;
+        hot::LoadResult r = backend->load({path, read_file(path), {}}, 1);
+        if (!r)
+        {
+            out.note += std::string(c.name) + ": compile failed: " + r.error.substr(0, 300) + "\n";
+            continue;
+        }
+        hot::Loader loader;
+        const hot::ReloadResult loaded = loader.load(std::move(*r.module));
+        if (!loaded)
+        {
+            out.note += std::string(c.name) + ": load failed: " + loaded.error + "\n";
+            continue;
+        }
+        std::string note;
+        if (!run_instance(loader.find(c.cls), c, o, checks[idx], out.rows[idx], note))
+            out.note += std::string(c.name) + ": " + note + "\n";
+    }
+}
+
+// The AOT scripts are part of this binary. One loader holds all of them.
+void run_cases_aot(const Options& o, const std::vector<int64_t>& checks, const std::vector<int>& selected,
+    BackendResult& out)
+{
+    hot::Loader loader;
+    const hot::ReloadResult loaded = loader.load_aot(hot::aot_table);
+    if (!loaded)
+    {
+        out.note += "load_aot failed: " + loaded.error + "\n";
+        return;
+    }
+    for (int idx : selected)
+    {
+        const Case& c = kCases[idx];
+        std::string note;
+        if (!run_instance(loader.find(c.cls), c, o, checks[idx], out.rows[idx], note))
+            out.note += std::string(c.name) + ": " + note + "\n";
+    }
+}
+
+// ---- The reload case ----
+
+constexpr int kReloadFields = 64;
+constexpr int kReloadObjects = 100;
+
+// Version 1 has the fields f0..f63. Version 2 adds the field extra, so the state block migrates.
+std::string reload_script(bool v2)
+{
+    std::string s = "using \"BenchEngine.h\";\n\nclass BenchReload : BenchBase {\n";
+    for (int i = 0; i < kReloadFields; ++i)
+        s += "    int f" + std::to_string(i) + " = " + std::to_string(i) + ";\n";
+    if (v2)
+        s += "    int extra = 7;\n";
+    s += "    override long Run(int n) {\n";
+    if (v2)
+        s += "        extra = extra + 1;\n";
+    s += "        long s = 0;\n";
+    for (int i = 0; i < kReloadFields; ++i)
+        s += "        s += f" + std::to_string(i) + ";\n";
+    s += "        return s;\n    }\n}\n";
+    return s;
+}
+
+// The time of request_reload and commit_pending for kReloadObjects live objects.
+void run_reload(Kind k, const Options& o, BackendResult& out)
+{
+    const int reps = 2; // each rep needs one compile
+    std::unique_ptr<hot::Backend> backend = make_backend(k, o);
+    const std::string dir = std::string(BENCH_SCRIPT_DIR) + "/";
+    std::vector<hot::LoadResult> built; // generation 1, then 2..reps+1 (alternating v2, v1)
+    for (int g = 1; g <= reps + 1; ++g)
+    {
+        const bool v2 = (g % 2) == 0;
+        built.push_back(backend->load({dir + (v2 ? "reload_v2.hot" : "reload_v1.hot"), reload_script(v2), {}},
+            static_cast<uint32_t>(g)));
+        if (!built.back())
+        {
+            out.note += "reload: compile failed: " + built.back().error.substr(0, 300) + "\n";
+            return;
+        }
+    }
+    hot::Loader loader;
+    if (const hot::ReloadResult l = loader.load(std::move(*built[0].module)); !l)
+    {
+        out.note += "reload: load failed: " + l.error + "\n";
+        return;
+    }
+    const hot::ClassEntry* entry = loader.find("BenchReload");
+    if (!entry)
+    {
+        out.note += "reload: class not found\n";
+        return;
+    }
+    std::vector<std::unique_ptr<BenchBase>> objects;
+    for (int i = 0; i < kReloadObjects; ++i)
+        objects.emplace_back(static_cast<BenchBase*>(entry->create().native));
+    std::vector<double> times;
+    for (int g = 2; g <= reps + 1; ++g)
+    {
+        const Clock::time_point t = Clock::now();
+        const hot::ReloadResult req = loader.request_reload(std::move(built[g - 1]));
+        const hot::ReloadResult com = req ? loader.commit_pending() : req;
+        const double ms = ms_since(t);
+        if (!com)
+        {
+            out.note += "reload: failed: " + com.error + "\n";
+            return;
+        }
+        times.push_back(ms * 1e6);
+        loader.frame_boundary();
+        loader.frame_boundary();
+    }
+    constexpr int64_t kSum = kReloadFields * (kReloadFields - 1) / 2;
+    if (objects.back()->Run(0) != kSum)
+        out.note += "reload: a field lost its value in the migration\n";
+    out.reload_ns = median(times);
+}
+
+// ---- The load section (translate, cold load, warm load) ----
+
+struct LoadResultRow
+{
+    bool ok = false;
+    double miss = 0, hit = 0, cold1 = 0, cold2 = 0, warm1 = 0, warm2 = 0, rss_mb = 0;
+    double translate = 0, compile = 0, jit = 0;
+};
+
+hot::ScriptSource test_source(const char* file)
+{
+    const std::string path = std::string(BENCH_SOURCE_DIR) + "/tests/scripts/" + file;
+    return {path, read_file(path), {}};
+}
+
+std::unique_ptr<hot::Backend> make_explicit(Kind k, bool share, const std::shared_ptr<hotc::TranslatorSession>& session,
+    const Options& o)
+{
+    const std::vector<std::string> includes = split(BENCH_INCLUDES);
+#if defined(HOT_WITH_JIT)
+    if (k == Kind::Jit)
+    {
+        hot::JitOptions j;
+        j.compiler = BENCH_CXX;
+        j.include_dirs = includes;
+        j.resource_dir = BENCH_RESOURCE_DIR;
+        j.extra_flags = {o.opt};
+        j.extra_flags.insert(j.extra_flags.end(), o.flags.begin(), o.flags.end());
+        if (share)
+            j.session = session;
+        return std::make_unique<hot::JitBackend>(std::move(j));
+    }
+#endif
+#if defined(HOT_WITH_CLANG_FILES)
+    if (k == Kind::Files)
+    {
+        hot::ClangFilesOptions f;
+        f.compiler = BENCH_CXX;
+        f.include_dirs = includes;
+        f.resource_dir = BENCH_RESOURCE_DIR;
+        f.extra_flags = {o.opt};
+        f.extra_flags.insert(f.extra_flags.end(), o.flags.begin(), o.flags.end());
+        f.work_dir = std::string(BENCH_WORK_DIR) + "/bench" + std::to_string(getpid());
+        std::error_code ec;
+        std::filesystem::remove_all(f.work_dir, ec);
+        f.remove_work_dir_at_exit = !hot::keep_temp();
+        if (share)
+            f.session = session;
+        return std::make_unique<hot::ClangFilesBackend>(std::move(f));
+    }
+#endif
+    (void)k;
+    (void)share;
+    (void)session;
+    (void)o;
+    return nullptr;
 }
 
 // One load. Returns the time in ms, or -1 on error (the text goes to stderr).
@@ -80,11 +687,10 @@ double timed_load(hot::Backend& b, const hot::ScriptSource& s, uint32_t gen)
     const double ms = ms_since(t);
     if (!r)
     {
-        std::fprintf(stderr, "load failed: %s\n", r.error.c_str());
+        std::fprintf(stderr, "load failed: %s\n", r.error.substr(0, 400).c_str());
         return -1;
     }
-    // The Loader registers the class. This also proves that the module works,
-    // and it links the runtime into this executable (the JIT code needs it).
+    // The Loader registers the class. This also proves that the module works.
     hot::Loader loader;
     const hot::ReloadResult loaded = loader.load(std::move(*r.module));
     if (!loaded)
@@ -95,156 +701,288 @@ double timed_load(hot::Backend& b, const hot::ScriptSource& s, uint32_t gen)
     return ms;
 }
 
-double median(std::vector<double> v)
+LoadResultRow run_load_section(Kind k, const Options& o)
 {
-    if (v.empty())
-        return 0;
-    std::sort(v.begin(), v.end());
-    return v[v.size() / 2];
+    LoadResultRow res;
+    const hot::ScriptSource v1 = test_source("player_v1.hot");
+    const hot::ScriptSource v2 = test_source("player_v2.hot");
+    auto session = std::make_shared<hotc::TranslatorSession>();
+    {
+        std::unique_ptr<hot::Backend> backend = make_explicit(k, false, session, o);
+        if (!backend)
+            return res;
+        res.cold1 = timed_load(*backend, v1, 1);
+        res.cold2 = timed_load(*backend, v2, 2);
+        if (res.cold1 < 0 || res.cold2 < 0)
+            return res;
+    }
+    std::vector<double> w1, w2;
+    for (int i = 0; i < o.warm; ++i)
+    {
+        std::unique_ptr<hot::Backend> b = make_explicit(k, !o.no_cache, session, o);
+        const double a = timed_load(*b, v1, 1);
+        const double c = timed_load(*b, v2, 2);
+        if (a < 0 || c < 0)
+            return res;
+        w1.push_back(a);
+        w2.push_back(c);
+#if defined(HOT_WITH_JIT)
+        if (k == Kind::Jit)
+        {
+            const hot::JitTimings t = static_cast<hot::JitBackend&>(*b).last_timings();
+            res.translate = t.translate_ms, res.compile = t.compile_ms, res.jit = t.jit_ms;
+        }
+#endif
+    }
+    res.warm1 = median(w1);
+    res.warm2 = median(w2);
+    // One translate alone: a new session (miss) and then the same session (hit).
+    hotc::TranslateOptions to;
+    to.script_text = v1.text;
+    to.script_name = v1.name;
+    to.generation = 1;
+    to.include_dirs = split(BENCH_INCLUDES);
+    to.resource_dir = BENCH_RESOURCE_DIR;
+    hotc::TranslatorSession ts;
+    Clock::time_point t = Clock::now();
+    const bool ok1 = hotc::translate(to, ts).ok;
+    res.miss = ms_since(t);
+    t = Clock::now();
+    const bool ok2 = hotc::translate(to, ts).ok;
+    res.hit = ms_since(t);
+    rusage ru{};
+    getrusage(RUSAGE_SELF, &ru);
+    res.rss_mb = static_cast<double>(ru.ru_maxrss) / 1024.0;
+    res.ok = ok1 && ok2;
+    return res;
+}
+
+// ---- The output ----
+
+std::string fmt_ns(double ns)
+{
+    char b[32];
+    if (ns < 0)
+        return "-";
+    std::snprintf(b, sizeof b, ns >= 1000 ? "%.0f" : ns >= 100 ? "%.1f" : "%.2f", ns);
+    return b;
+}
+
+std::string fmt_ratio(double ns, double native)
+{
+    char b[32];
+    if (ns < 0 || native <= 0)
+        return "-";
+    std::snprintf(b, sizeof b, "%.2fx", ns / native);
+    return b;
 }
 
 } // namespace
 
 int main(int argc, char** argv)
 {
-    int warm = 5;
-    std::vector<std::string> flags;
-    std::string pch, make_pch;
-    bool no_cache = false;
+    Options o;
     for (int i = 1; i < argc; ++i)
     {
         const std::string a = argv[i];
-        if (a == "--warm" && i + 1 < argc)
-            warm = std::atoi(argv[++i]);
-        else if (a == "--cxxflag" && i + 1 < argc)
-            flags.push_back(argv[++i]);
+        auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
+        if (a == "--backend")
+            o.backend = next();
+        else if (a == "--filter")
+            o.filter = next();
+        else if (a == "--iters")
+            o.iters = std::atoll(next().c_str());
+        else if (a == "--csv")
+            o.csv = next();
+        else if (a == "--warm")
+            o.warm = std::max(1, std::atoi(next().c_str()));
+        else if (a == "--reps")
+            o.reps = std::max(1, std::atoi(next().c_str()));
+        else if (a == "--opt")
+            o.opt = next();
+        else if (a == "--cxxflag")
+            o.flags.push_back(next());
         else if (a == "--no-cache")
-            no_cache = true;
-        else if (a == "--pch" && i + 1 < argc)
-            pch = argv[++i];
-        else if (a == "--make-pch" && i + 1 < argc)
-            make_pch = argv[++i];
+            o.no_cache = true;
+        else if (a == "--list")
+            o.list = true;
+        else if (a == "--no-load")
+            o.no_load = true;
         else
         {
             std::fprintf(stderr,
-                "usage: bench_backends [--warm N] [--cxxflag F]... [--pch FILE] "
-                "[--make-pch FILE] [--no-cache]\n");
+                "usage: bench_backends [--backend all|files|jit|aot] [--filter text] [--iters N] [--list]\n"
+                "                      [--csv file] [--warm N] [--reps N] [--opt FLAG] [--cxxflag F]...\n"
+                "                      [--no-cache] [--no-load]\n");
             return 2;
         }
     }
-    const std::vector<std::string> includes = split(BENCH_INCLUDES);
-
-    auto session = std::make_shared<hotc::TranslatorSession>();
-    auto make = [&](bool share) -> std::unique_ptr<hot::Backend>
+    if (o.backend != "all" && o.backend != "files" && o.backend != "jit" && o.backend != "aot")
     {
-#if defined(BENCH_JIT)
-        hot::JitOptions o;
-        o.compiler = BENCH_CXX;
-        o.include_dirs = includes;
-        o.resource_dir = BENCH_RESOURCE_DIR;
-        o.extra_flags = flags;
-        o.pch_path = pch;
-        if (share)
-            o.session = session;
-        return std::make_unique<hot::JitBackend>(std::move(o));
-#else
-        hot::ClangFilesOptions o;
-        o.compiler = BENCH_CXX;
-        o.include_dirs = includes;
-        o.resource_dir = BENCH_RESOURCE_DIR;
-        o.extra_flags = flags;
-        o.work_dir = std::string(BENCH_WORK_DIR) + "/bench" + std::to_string(getpid());
-        std::error_code ec;
-        std::filesystem::remove_all(o.work_dir, ec);
-        o.remove_work_dir_at_exit = !hot::keep_temp();
-        if (share)
-            o.session = session;
-        return std::make_unique<hot::ClangFilesBackend>(std::move(o));
-#endif
-    };
-
-#if defined(BENCH_JIT)
-    if (!make_pch.empty())
-    {
-        hot::JitOptions o;
-        o.compiler = BENCH_CXX;
-        o.include_dirs = includes;
-        o.resource_dir = BENCH_RESOURCE_DIR;
-        o.extra_flags = flags;
-        hot::JitBackend b(std::move(o));
-        const std::string header_path = make_pch + ".hpp";
-        const char* header =
-            "#include <algorithm>\n#include <cstddef>\n#include <cstdint>\n#include <cstdio>\n"
-            "#include <new>\n#include <string>\n#include <type_traits>\n#include <typeinfo>\n"
-            "#include <utility>\n#include \"hot/runtime.h\"\n#include \"Actor.h\"\n"
-            "#include \"Math.h\"\n";
-        std::ofstream(header_path) << header;
-        std::string error;
-        const Clock::time_point t = Clock::now();
-        const bool ok = b.make_pch(header_path, make_pch, error);
-        std::printf("make_pch ok=%d ms=%.1f\n%s", ok, ms_since(t), error.c_str());
-        return ok ? 0 : 1;
-    }
-#else
-    if (!make_pch.empty() || !pch.empty())
-    {
-        std::fprintf(stderr, "--pch and --make-pch need the JIT backend\n");
+        std::fprintf(stderr, "bench_backends: unknown backend '%s'\n", o.backend.c_str());
         return 2;
     }
-#endif
 
-    const hot::ScriptSource v1 = source("player_v1.hot");
-    const hot::ScriptSource v2 = source("player_v2.hot");
-    std::unique_ptr<hot::Backend> backend = make(false);
-    const double cold1 = timed_load(*backend, v1, 1);
-    const double cold2 = timed_load(*backend, v2, 2);
-    if (cold1 < 0 || cold2 < 0)
-        return 1;
+    std::vector<Kind> kinds;
+    std::string notes;
+    for (Kind k : {Kind::Files, Kind::Jit, Kind::Aot})
+    {
+        if (o.backend != "all" && o.backend != kind_name(k))
+            continue;
+        if (kind_available(k))
+            kinds.push_back(k);
+        else
+            notes += std::string("note: backend '") + kind_name(k) + "' is not built in. Skipped.\n";
+    }
 
-    // Warm: each round has a new backend, so the slot file starts clean.
-    // The process keeps its LLVM state, its page cache and its file cache.
-    std::vector<double> w1, w2;
-    double tr = 0, co = 0, ji = 0;
-    for (int i = 0; i < warm; ++i)
+    std::vector<int> selected;
+    for (int i = 0; i < static_cast<int>(sizeof kCases / sizeof kCases[0]); ++i)
+        if (o.filter.empty() || std::string(kCases[i].name).find(o.filter) != std::string::npos)
+            selected.push_back(i);
+
+    if (o.list)
     {
-        std::unique_ptr<hot::Backend> b = make(!no_cache);
-        const double a = timed_load(*b, v1, 1);
-        const double c = timed_load(*b, v2, 2);
-        if (a < 0 || c < 0)
-            return 1;
-        w1.push_back(a);
-        w2.push_back(c);
-#if defined(BENCH_JIT)
-        const hot::JitTimings t = static_cast<hot::JitBackend&>(*b).last_timings();
-        tr = t.translate_ms, co = t.compile_ms, ji = t.jit_ms;
-#endif
+        std::printf("backends:\n");
+        for (Kind k : {Kind::Files, Kind::Jit, Kind::Aot})
+            std::printf("  %-6s %s\n", kind_name(k), kind_available(k) ? "available" : "not built in");
+        std::printf("cases:\n");
+        for (const Case& c : kCases)
+            std::printf("  %-13s %-40s %-18s iters=%lld\n", c.name, c.label, c.script,
+                static_cast<long long>(c.iters));
+        std::printf("  %-13s %-40s (%d objects x %d fields)\n", "reload", "reload and state migration", kReloadObjects,
+            kReloadFields + 1);
+        return 0;
     }
-    // One translate alone: a new session (miss) and then the same session (hit).
-    double miss = 0, hit = 0;
+
+    std::printf("bench_backends: HOT_RUNTIME_CHECKS=%d (a build option; the AOT scripts and the native twin use "
+                "-O2, script compile flag %s)\n",
+        HOT_RUNTIME_CHECKS, o.opt.c_str());
+
+    // The native reference. It also gives the check value of each case.
+    std::vector<int64_t> checks(sizeof kCases / sizeof kCases[0], 0);
+    std::vector<double> native(checks.size(), -1);
+    for (int idx : selected)
     {
-        hotc::TranslateOptions to;
-        to.script_text = v1.text;
-        to.script_name = v1.name;
-        to.generation = 1;
-        to.include_dirs = includes;
-        to.resource_dir = BENCH_RESOURCE_DIR;
-        hotc::TranslatorSession ts;
-        Clock::time_point t = Clock::now();
-        const bool ok1 = hotc::translate(to, ts).ok;
-        miss = ms_since(t);
-        t = Clock::now();
-        const bool ok2 = hotc::translate(to, ts).ok;
-        hit = ms_since(t);
-        if (!ok1 || !ok2)
-            return 1;
+        std::unique_ptr<BenchBase> check = kCases[idx].make();
+        checks[idx] = one_result(*check);
+        std::unique_ptr<BenchBase> obj = kCases[idx].make();
+        native[idx] = measure(*obj, kCases[idx], o);
     }
-    std::printf("translate_miss=%.1f translate_hit=%.1f\n", miss, hit);
-    std::printf("backend=%s cold_v1=%.1f cold_v2=%.1f warm_v1=%.1f warm_v2=%.1f", backend->name(), cold1, cold2,
-        median(w1), median(w2));
-    if (tr > 0)
-        std::printf(" (last v2: translate=%.1f compile=%.1f jit=%.1f)", tr, co, ji);
-    rusage ru{};
-    getrusage(RUSAGE_SELF, &ru);
-    std::printf(" peak_rss_mb=%.0f\n", static_cast<double>(ru.ru_maxrss) / 1024.0);
+
+    // The load section first, so that the first backend has a cold process.
+    std::vector<std::pair<Kind, LoadResultRow>> loads;
+    const bool do_load = !o.no_load && o.filter.empty();
+    std::vector<BackendResult> results;
+    for (Kind k : kinds)
+    {
+        if (do_load && k != Kind::Aot)
+            loads.emplace_back(k, run_load_section(k, o));
+    }
+    for (Kind k : kinds)
+    {
+        BackendResult br;
+        br.kind = k;
+        br.rows.assign(checks.size(), Row{});
+        const Clock::time_point t = Clock::now();
+        try
+        {
+            if (k == Kind::Aot)
+                run_cases_aot(o, checks, selected, br);
+            else
+            {
+                run_cases_compiled(k, o, checks, selected, br);
+                if (o.filter.empty() || std::string("reload").find(o.filter) != std::string::npos)
+                    run_reload(k, o, br);
+            }
+        }
+        catch (const std::exception& e)
+        {
+            br.note += std::string("error: ") + e.what() + "\n";
+        }
+        std::fprintf(stderr, "backend %s: %.1f s\n", kind_name(k), ms_since(t) / 1000.0);
+        results.push_back(std::move(br));
+    }
+
+    // Load section output.
+    if (!loads.empty())
+    {
+        std::printf("\nLoad time of tests/scripts/player_v1.hot and player_v2.hot (ms):\n");
+        std::printf("%-6s %10s %10s %9s %9s %9s %9s %9s\n", "", "tr.miss", "tr.hit", "cold v1", "cold v2", "warm v1",
+            "warm v2", "rss MB");
+        for (auto& [k, l] : loads)
+        {
+            if (!l.ok)
+            {
+                std::printf("%-6s failed\n", kind_name(k));
+                continue;
+            }
+            std::printf("%-6s %10.1f %10.1f %9.1f %9.1f %9.1f %9.1f %9.0f", kind_name(k), l.miss, l.hit, l.cold1,
+                l.cold2, l.warm1, l.warm2, l.rss_mb);
+            if (l.compile > 0)
+                std::printf("  (last v2: translate=%.1f compile=%.1f jit=%.1f)", l.translate, l.compile, l.jit);
+            std::printf("\n");
+        }
+        std::printf("The cold load of a later backend is warmer than a cold process: the process keeps the LLVM state "
+                    "and the file cache.\n");
+    }
+
+    // Run-time table.
+    std::printf("\nRun time (ns per operation, median of %d runs; ratio = backend / native):\n", o.reps);
+    std::printf("%-13s %9s", "case", "native");
+    for (const BackendResult& r : results)
+        std::printf(" | %9s %7s", kind_name(r.kind), "ratio");
+    std::printf("\n");
+    std::ostringstream csv;
+    csv << "case,native_ns";
+    for (const BackendResult& r : results)
+        csv << "," << kind_name(r.kind) << "_ns," << kind_name(r.kind) << "_ratio";
+    csv << "\n";
+    bool any_mismatch = false;
+    for (int idx : selected)
+    {
+        std::printf("%-13s %9s", kCases[idx].name, fmt_ns(native[idx]).c_str());
+        csv << kCases[idx].name << "," << native[idx];
+        for (const BackendResult& r : results)
+        {
+            const Row& row = r.rows[idx];
+            std::string ns = fmt_ns(row.ns);
+            if (row.mismatch)
+            {
+                ns += "!";
+                any_mismatch = true;
+            }
+            std::printf(" | %9s %7s", ns.c_str(), fmt_ratio(row.ns, native[idx]).c_str());
+            csv << "," << row.ns << "," << (row.ns > 0 && native[idx] > 0 ? row.ns / native[idx] : -1);
+        }
+        std::printf("\n");
+        csv << "\n";
+    }
+    const bool show_reload = o.filter.empty() || std::string("reload").find(o.filter) != std::string::npos;
+    if (show_reload)
+    {
+        std::printf("%-13s %9s", "reload", "-");
+        csv << "reload,";
+        for (const BackendResult& r : results)
+        {
+            std::printf(" | %9s %7s", fmt_ns(r.reload_ns).c_str(), "-");
+            csv << "," << r.reload_ns << ",";
+        }
+        std::printf("\n");
+        csv << "\n";
+        std::printf("reload: ns for one request_reload and commit_pending of %d live objects with %d fields (the "
+                    "compile is not in it). The AOT backend has no reload.\n",
+            kReloadObjects, kReloadFields + 1);
+    }
+    if (any_mismatch)
+        std::printf("A '!' marks a result that differs from the native twin.\n");
+    for (const BackendResult& r : results)
+        if (!r.note.empty())
+            std::printf("\nnotes for %s:\n%s", kind_name(r.kind), r.note.c_str());
+    std::printf("%s", notes.c_str());
+    if (!o.csv.empty())
+    {
+        std::ofstream f(o.csv);
+        f << csv.str();
+    }
     return 0;
 }

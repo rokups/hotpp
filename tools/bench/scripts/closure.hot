@@ -1,0 +1,13 @@
+// Case: closure call. The lambda captures a local.
+using "BenchEngine.h";
+using <functional>;
+
+class BenchClosure : BenchBase {
+    override long Run(int n) {
+        int k = 3;
+        std.function<int(int)> f = (int x) => x + k;
+        long s = 0;
+        for (int i = 0; i < n; i++) s += f(i);
+        return s;
+    }
+}
