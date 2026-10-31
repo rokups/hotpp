@@ -1,22 +1,22 @@
-// Generation 3: Item gets a field. The vector resets with a warning.
+// Generation 3: Entry gets a field. The vector resets with a warning.
 using "Actor.h";
 using <vector>;
 
-struct Item {
+struct Entry {
     int weight = 0;
     int color = 0;
 
-    Item(int w) {
+    Entry(int w) {
         this.weight = w;
     }
 }
 
 class Bag : Actor {
-    std.vector<Item> items = std.vector<Item>();
+    std.vector<Entry> items = std.vector<Entry>();
     int count = 0;
 
     override void Tick(float dt) {
-        this.items.push_back(Item(9));
+        this.items.push_back(Entry(9));
         this.count = static_cast<int>(this.items.size());
     }
 }

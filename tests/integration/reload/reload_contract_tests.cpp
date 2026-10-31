@@ -116,13 +116,13 @@ TEST_P(BackendTests, ContainerOfValueTypeResetsOnLayoutChange)
     ASSERT_NE(items, nullptr);
     EXPECT_NE(std::strchr(items->type_key, '#'), nullptr) << items->type_key;
 
-    // The same layout of Item: the vector moves. A tick runs before the commit and one after it.
+    // The same layout of Entry: the vector moves. A tick runs before the commit and one after it.
     const std::string log2 = reload(s, v2);
     EXPECT_EQ(log2.find("container resets"), std::string::npos) << log2;
     s.world.Tick(kDt);
     EXPECT_EQ(*int_field(s, "count"), 4);
 
-    // Item gets a field: the vector resets. The tick after the commit adds one item.
+    // Entry gets a field: the vector resets. The tick after the commit adds one item.
     const std::string log3 = reload(s, v3);
     EXPECT_NE(log3.find("field items"), std::string::npos) << log3;
     EXPECT_NE(log3.find("container resets"), std::string::npos) << log3;

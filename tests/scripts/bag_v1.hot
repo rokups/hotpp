@@ -1,21 +1,22 @@
-// Generation 1: a std::vector of the struct Item in a state field (design 5.3, S17).
+// Generation 1: a std::vector of the struct Entry in a state field (design 5.3, S17).
+// The name Entry avoids the host struct Item (tests/engine/Object.h). The host exports its Item::Item(int), and the script module would bind to it.
 using "Actor.h";
 using <vector>;
 
-struct Item {
+struct Entry {
     int weight = 0;
 
-    Item(int w) {
+    Entry(int w) {
         this.weight = w;
     }
 }
 
 class Bag : Actor {
-    std.vector<Item> items = std.vector<Item>();
+    std.vector<Entry> items = std.vector<Entry>();
     int count = 0;
 
     override void Tick(float dt) {
-        this.items.push_back(Item(5));
+        this.items.push_back(Entry(5));
         this.count = static_cast<int>(this.items.size());
     }
 }

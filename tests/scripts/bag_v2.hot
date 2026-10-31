@@ -1,21 +1,21 @@
-// Generation 2: the layout of Item stays. The vector migrates (LIVE).
+// Generation 2: the layout of Entry stays. The vector migrates (LIVE).
 using "Actor.h";
 using <vector>;
 
-struct Item {
+struct Entry {
     int weight = 0;
 
-    Item(int w) {
+    Entry(int w) {
         this.weight = w;
     }
 }
 
 class Bag : Actor {
-    std.vector<Item> items = std.vector<Item>();
+    std.vector<Entry> items = std.vector<Entry>();
     int count = 0;
 
     override void Tick(float dt) {
-        this.items.push_back(Item(7));
+        this.items.push_back(Entry(7));
         this.count = static_cast<int>(this.items.size());
     }
 }
