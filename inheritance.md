@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Inheritance
-nav_order: 7
+nav_order: 10
 group: Hot script
 ---
 
@@ -132,4 +132,4 @@ class Grunt : Unit {
 }
 ```
 
-For `is` and `as`, see [Statements](statements.html).
+For `is` and `as`, see [Statements](statements-text.html#is-and-as).

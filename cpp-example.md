@@ -1,7 +1,7 @@
 ---
 layout: default
 title: C++ script example
-nav_order: 15
+nav_order: 23
 group: C++ scripts
 ---
 
@@ -172,7 +172,7 @@ public:
 
 ## CMake
 
-`hot_add_scripts` takes `.cpp` paths in `SCRIPTS`, as it takes `.hot` paths. A `foo.hot` and a `foo.cpp` in one call fail at configure time, because they have the same stem. See [CMake](cmake.html).
+`hot_add_scripts` takes `.cpp` paths in `SCRIPTS`, as it takes `.hot` paths. A `foo.hot` and a `foo.cpp` in one call fail at configure time, because they have the same stem. See [CMake](cmake-scripts.html).
 
 ```cmake
 hot_add_scripts(TARGET gen1 SCRIPTS cpp_player_v1.cpp)

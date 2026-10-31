@@ -44,4 +44,4 @@ The scripts of this page use the headers of the test host in `tests/engine` (`Ac
 
 ## Build a program with the SDK
 
-To use scripts in a C++ program, install the Hot++ SDK. A project then needs only `find_package(Hot REQUIRED)` and `hot_add_host(...)` in its `CMakeLists.txt`. You do not need the Hot++ source tree. See [CMake](cmake.html), the sections "Quick start with an installed SDK" and "Install the SDK".
+To use scripts in a C++ program, install the Hot++ SDK. A project then needs only `find_package(Hot REQUIRED)` and `hot_add_host(...)` in its `CMakeLists.txt`. You do not need the Hot++ source tree. See [CMake](cmake.html), the sections [Quick start with an installed SDK](cmake.html#quick-start-with-an-installed-sdk) and [Install the SDK](cmake-sdk.html#install-the-sdk).

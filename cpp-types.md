@@ -1,7 +1,7 @@
 ---
 layout: default
 title: C++ script types and inheritance
-nav_order: 18
+nav_order: 26
 group: C++ scripts
 ---
 
@@ -38,7 +38,7 @@ A static method and a static data member can name their own class, for example `
 
 The size of a script object can change at a reload. So a script object cannot be a value: only a pointer or a reference can follow it. The C++ RTTI of a script class is not the same in two generations. So `typeid` of a script class is an error. Use `dynamic_cast`.
 
-The `.hot` page [Statements](statements.html#is-and-as) compares these forms with `is`, `as` and `new` of a `.hot` script.
+The `.hot` page [Statements](statements-text.html#is-and-as) compares these forms with `is`, `as` and `new` of a `.hot` script.
 
 ## Script class inheritance
 
