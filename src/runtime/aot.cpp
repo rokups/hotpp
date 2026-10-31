@@ -19,9 +19,6 @@ void track_object(ShellBase*)
 void untrack_object(ShellBase*)
 {
 }
-void note_creator(ShellBase*, uint32_t)
-{
-}
 
 namespace
 {

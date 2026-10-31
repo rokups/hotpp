@@ -41,6 +41,10 @@ HOT_HIDDEN void* aligned_alloc(size_t align, size_t size)
     // unverified: not built on MSVC. MSVC has no std::aligned_alloc.
     return _aligned_malloc(size, align);
 #else
+    // malloc gives this alignment already, and it is faster than aligned_alloc. std::free
+    // frees both kinds of block.
+    if (align <= alignof(std::max_align_t))
+        return std::malloc(size);
     return std::aligned_alloc(align, size);
 #endif
 }

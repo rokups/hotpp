@@ -1,0 +1,22 @@
+// Case: field read and write of another script object through a handle (the state indirection).
+using "BenchEngine.h";
+
+class BenchCell {
+    int x = 0;
+    int y = 1;
+}
+
+class BenchStateField : BenchBase {
+    BenchCell c = null;
+
+    override long Run(int n) {
+        if (c == null) c = new BenchCell();
+        long s = 0;
+        for (int i = 0; i < n; i++) {
+            c.x = (c.x + i) & 65535;
+            c.y = c.y ^ c.x;
+            s += c.y;
+        }
+        return s;
+    }
+}

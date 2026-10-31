@@ -1,0 +1,23 @@
+// Case: a call of a script method through a handle to another script object.
+using "BenchEngine.h";
+
+class BenchAdder {
+    int k = 3;
+
+    int Add(int x) {
+        return x + k;
+    }
+}
+
+class BenchHandleCall : BenchBase {
+    BenchAdder a = null;
+
+    override long Run(int n) {
+        if (a == null) a = new BenchAdder();
+        long s = 0;
+        for (int i = 0; i < n; i++) {
+            s += a.Add(i ^ (int)(s & 7));
+        }
+        return s;
+    }
+}

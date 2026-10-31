@@ -9,7 +9,7 @@
 // Usage:
 //   bench_backends [--backend all|files|jit|aot] [--filter text] [--iters N] [--list]
 //                  [--csv file] [--warm N] [--reps N] [--opt FLAG] [--cxxflag F]...
-//                  [--no-cache] [--no-load]
+//                  [--no-cache] [--no-load] [--reloads N]
 //
 //   --backend  the backend to test. The default "all" tests every backend that the build has.
 //              A backend that the build does not have is skipped with a note.
@@ -25,6 +25,8 @@
 //   --cxxflag F add a compile flag for the scripts (repeat it for more flags).
 //   --no-cache each warm load of the load section gets a new translator session.
 //   --no-load  skip the load section.
+//   --reloads N the largest N of the reload chain (default 100). The chain measures a call after
+//              0, 1, 10 and 100 reloads. Each reload needs one compile.
 //
 // Each case is a script in tools/bench/scripts and a native twin in this file. Both derive from
 // BenchBase (BenchEngine.h) and have the same algorithm. The host calls them through BenchBase.
@@ -47,16 +49,21 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <memory>
+#include <new>
 #include <sstream>
 #include <string>
+#include <thread>
+#include <unordered_map>
 #include <vector>
 
 #if defined(HOT_WITH_JIT)
@@ -337,6 +344,314 @@ struct NMethodLoop : BenchBase
     }
 };
 
+// ---- new and free: the native kinds of smart pointer (native-only rows) ----
+// Each twin does the work of NAlloc with another kind of owner. The table compares the script
+// case "alloc" with each of them.
+
+struct NAllocSharedNew : BenchBase
+{
+    int64_t Run(int n) override
+    {
+        int64_t s = 0;
+        for (int i = 0; i < n; i++)
+        {
+            std::shared_ptr<NObj> o(new NObj);
+            escape(o.get());
+            o->a = i;
+            s += o->a + o->b;
+        }
+        return s;
+    }
+};
+
+struct NAllocUnique : BenchBase
+{
+    int64_t Run(int n) override
+    {
+        int64_t s = 0;
+        for (int i = 0; i < n; i++)
+        {
+            std::unique_ptr<NObj> o = std::make_unique<NObj>();
+            escape(o.get());
+            o->a = i;
+            s += o->a + o->b;
+        }
+        return s;
+    }
+};
+
+// An intrusive pointer with an atomic count in the object (as boost::intrusive_ptr).
+struct IObj
+{
+    std::atomic<int> refs{0};
+    int a = 1;
+    int b = 2;
+};
+
+class IPtr
+{
+public:
+    explicit IPtr(IObj* p) : p_(p) { p_->refs.fetch_add(1, std::memory_order_relaxed); }
+    IPtr(const IPtr&) = delete;
+    IPtr& operator=(const IPtr&) = delete;
+    ~IPtr()
+    {
+        if (p_->refs.fetch_sub(1, std::memory_order_acq_rel) == 1)
+            delete p_;
+    }
+    IObj* operator->() const { return p_; }
+    IObj* get() const { return p_; }
+
+private:
+    IObj* p_;
+};
+
+struct NAllocIntrusive : BenchBase
+{
+    int64_t Run(int n) override
+    {
+        int64_t s = 0;
+        for (int i = 0; i < n; i++)
+        {
+            IPtr o(new IObj);
+            escape(o.get());
+            o->a = i;
+            s += o->a + o->b;
+        }
+        return s;
+    }
+};
+
+// A twin with the shape of a script object: a shell with a virtual base and a separate state
+// block. The constructor allocates the block (aligned_alloc) and runs the field initializers
+// through a table of function pointers. A function pointer makes the shell, as the record of a
+// script class does. A std::shared_ptr made from "new" owns the shell. With "Track", the twin
+// also adds the object to a hash map of live objects and removes it in the destructor.
+struct NShellBase
+{
+    const void* cls = nullptr;
+    void* state = nullptr;
+};
+
+struct NPlain : std::enable_shared_from_this<NPlain>
+{
+    virtual ~NPlain() = default;
+};
+
+struct NObjState
+{
+    NShellBase* owner;
+    int a;
+    int b;
+};
+
+struct NFieldInit
+{
+    size_t offset;
+    void (*init)(void*);
+};
+
+void n_init_a(void* f)
+{
+    new (f) int(1);
+}
+void n_init_b(void* f)
+{
+    new (f) int(2);
+}
+const NFieldInit kNObjFields[] = {{offsetof(NObjState, a), n_init_a}, {offsetof(NObjState, b), n_init_b}};
+
+std::unordered_map<NShellBase*, uint32_t> g_native_live;
+
+template <bool Track> struct NShellObj final : NPlain, NShellBase
+{
+    NShellObj()
+    {
+        constexpr size_t align = alignof(NObjState);
+        constexpr size_t size = (sizeof(NObjState) + align - 1) / align * align;
+        char* mem = static_cast<char*>(std::aligned_alloc(align, size));
+        if (!mem)
+            throw std::bad_alloc();
+        *reinterpret_cast<NShellBase**>(mem) = this;
+        for (const NFieldInit& f : kNObjFields)
+            f.init(mem + f.offset);
+        state = mem;
+        if constexpr (Track)
+            g_native_live.emplace(this, 0u);
+    }
+    ~NShellObj() override
+    {
+        if constexpr (Track)
+            g_native_live.erase(this);
+        std::free(state);
+    }
+};
+
+template <bool Track> BENCH_NOINLINE NShellBase* n_new_shell()
+{
+    auto* s = new NShellObj<Track>();
+    if constexpr (Track)
+    {
+        auto it = g_native_live.find(s); // the creator note of construct_shell
+        if (it != g_native_live.end())
+            it->second = 1;
+    }
+    return s;
+}
+
+template <bool Track> struct NAllocShell : BenchBase
+{
+    NShellBase* (*make)() = n_new_shell<Track>;
+    int64_t Run(int n) override
+    {
+        escape(&make);
+        int64_t s = 0;
+        for (int i = 0; i < n; i++)
+        {
+            std::shared_ptr<NShellObj<Track>> o(static_cast<NShellObj<Track>*>(make()));
+            escape(o.get());
+            NObjState* st = static_cast<NObjState*>(o->state);
+            st->a = i;
+            s += st->a + st->b;
+        }
+        return s;
+    }
+};
+
+// ---- Twins of the cases of reloadable access and calls ----
+
+struct NCell
+{
+    int x = 0;
+    int y = 1;
+};
+
+struct NStateField : BenchBase
+{
+    std::shared_ptr<NCell> c;
+    int64_t Run(int n) override
+    {
+        if (!c)
+            c = std::make_shared<NCell>();
+        int64_t s = 0;
+        for (int i = 0; i < n; i++)
+        {
+            c->x = (c->x + i) & 65535;
+            c->y = c->y ^ c->x;
+            s += c->y;
+        }
+        return s;
+    }
+};
+
+struct NEntry : BenchBase
+{
+    int k = 1;
+    int Add(int x) { return x + k; }
+    int64_t Run(int n) override
+    {
+        int64_t s = 0;
+        for (int i = 0; i < n; i++)
+            s += Add(i ^ static_cast<int>(s & 7)); // a loop-carried value: no closed form
+        return s;
+    }
+};
+
+struct NShape
+{
+    int w = 2;
+    virtual ~NShape() = default;
+    virtual int Area(int x) { return x; }
+};
+
+struct NSquare : NShape
+{
+    int Area(int x) override { return x * w + 1; }
+};
+
+struct NSlotScript : BenchBase
+{
+    std::shared_ptr<NShape> s;
+    int64_t Run(int n) override
+    {
+        if (!s)
+        {
+            s = std::make_shared<NSquare>();
+            escape(s.get()); // the compiler must not see the dynamic type
+        }
+        NShape* p = s.get();
+        escape(&p);
+        int64_t t = 0;
+        for (int i = 0; i < n; i++)
+            t += p->Area(i & 255);
+        return t;
+    }
+};
+
+struct NAdder
+{
+    int k = 3;
+    int Add(int x) { return x + k; }
+};
+
+struct NHandleCall : BenchBase
+{
+    std::shared_ptr<NAdder> a;
+    int64_t Run(int n) override
+    {
+        if (!a)
+            a = std::make_shared<NAdder>();
+        int64_t s = 0;
+        for (int i = 0; i < n; i++)
+            s += a->Add(i ^ static_cast<int>(s & 7));
+        return s;
+    }
+};
+
+int g_counter = 0;
+int g_step = 3;
+
+struct NModVar : BenchBase
+{
+    int64_t Run(int n) override
+    {
+        int64_t s = 0;
+        for (int i = 0; i < n; i++)
+        {
+            g_counter = (g_counter + g_step + i) & 65535;
+            s += g_counter;
+        }
+        return s;
+    }
+};
+
+int g_bias = 1;
+
+int n_add_bias(int x)
+{
+    return x + g_bias;
+}
+
+struct NModFn : BenchBase
+{
+    static int Twice(int x) { return x * 2; }
+    int64_t Run(int n) override
+    {
+        int64_t s = 0;
+        for (int i = 0; i < n; i++)
+            s += n_add_bias(i) + Twice(i & 7);
+        return s;
+    }
+};
+
+// The twin of the reload chain: a native to script virtual call that reads a field.
+struct NChain : BenchBase
+{
+    int k = 1;
+    int Hook(int x) override { return x + k; }
+    int64_t Run(int n) override { return DriveHook(n); }
+};
+
 template <class T> std::unique_ptr<BenchBase> make_native()
 {
     return std::make_unique<T>();
@@ -375,6 +690,29 @@ const Case kCases[] = {
     {"closure", "closure call", "closure.hot", "BenchClosure", make_native<NClosure>, 5000000, false, 1},
     {"method_loop", "loop with a method call", "method_loop.hot", "BenchMethodLoop", make_native<NMethodLoop>, 5000000,
         false, 1},
+    // Native-only rows: the kinds of owner for the comparison with "alloc".
+    {"alloc_shared_new", "native: std::shared_ptr<T>(new T)", nullptr, nullptr, make_native<NAllocSharedNew>, 1000000,
+        false, 1},
+    {"alloc_unique", "native: std::make_unique<T>()", nullptr, nullptr, make_native<NAllocUnique>, 1000000, false, 1},
+    {"alloc_intrusive", "native: intrusive pointer (atomic count)", nullptr, nullptr, make_native<NAllocIntrusive>,
+        1000000, false, 1},
+    {"alloc_shell", "native: virtual base + state block", nullptr, nullptr, make_native<NAllocShell<false>>, 1000000,
+        false, 1},
+    {"alloc_shell_map", "native: shell + hash map of live objects", nullptr, nullptr, make_native<NAllocShell<true>>,
+        1000000, false, 1},
+    // Access and calls of reloadable code.
+    {"state_field", "field of another object (state block)", "state_field.hot", "BenchStateField",
+        make_native<NStateField>, 5000000, false, 1},
+    {"method_entry", "small method call on this (live check)", "method_entry.hot", "BenchEntry", make_native<NEntry>,
+        5000000, false, 1},
+    {"slot_script", "script to script virtual call (slot)", "slot_script.hot", "BenchSlotScript",
+        make_native<NSlotScript>, 5000000, false, 1},
+    {"handle_call", "method call through a handle", "handle_call.hot", "BenchHandleCall", make_native<NHandleCall>,
+        5000000, false, 1},
+    {"module_var", "module variable read and write", "module_var.hot", "BenchModVar", make_native<NModVar>, 5000000,
+        false, 1},
+    {"module_fn", "module function + static method call", "module_fn.cpp", "BenchModFn", make_native<NModFn>, 5000000,
+        false, 1},
 };
 
 // ---- The measurement ----
@@ -412,6 +750,7 @@ struct Options
     bool no_cache = false;
     bool list = false;
     bool no_load = false;
+    int reloads = 100; // the largest N of the reload chain
 };
 
 // The median of the timed runs, after two warm-up runs.
@@ -475,6 +814,8 @@ struct BackendResult
     Kind kind;
     std::vector<Row> rows; // one for each case
     double reload_ns = -1;
+    std::vector<double> chain_old; // ns per call of the reload chain, one for each step
+    std::vector<double> chain_new;
     std::string note;
 };
 
@@ -503,6 +844,8 @@ void run_cases_compiled(Kind k, const Options& o, const std::vector<int64_t>& ch
     for (int idx : selected)
     {
         const Case& c = kCases[idx];
+        if (!c.script)
+            continue; // a native-only row
         const std::string path = std::string(BENCH_SCRIPT_DIR) + "/" + c.script;
         hot::LoadResult r = backend->load({path, read_file(path), {}}, 1);
         if (!r)
@@ -537,6 +880,8 @@ void run_cases_aot(const Options& o, const std::vector<int64_t>& checks, const s
     for (int idx : selected)
     {
         const Case& c = kCases[idx];
+        if (!c.script)
+            continue; // a native-only row
         std::string note;
         if (!run_instance(loader.find(c.cls), c, o, checks[idx], out.rows[idx], note))
             out.note += std::string(c.name) + ": " + note + "\n";
@@ -619,6 +964,85 @@ void run_reload(Kind k, const Options& o, BackendResult& out)
     if (objects.back()->Run(0) != kSum)
         out.note += "reload: a field lost its value in the migration\n";
     out.reload_ns = median(times);
+}
+
+// ---- The reload chain: the cost of a call after N reloads ----
+
+// The steps of the chain. The tool measures after 0, 1, 10 and 100 reloads (--reloads limits N).
+constexpr int kChainSteps[] = {0, 1, 10, 100};
+
+// Generation g of the chain script. An even generation adds a field, so each reload migrates
+// the state block of the object.
+std::string chain_script(int g)
+{
+    std::string s = "using \"BenchEngine.h\";\n\nclass BenchChain : BenchBase {\n    int k = 1;\n";
+    if (g % 2 == 0)
+        s += "    int pad = 0;\n";
+    s += "    override int Hook(int x) {\n        return x + k;\n    }\n\n"
+         "    override long Run(int n) {\n        return DriveHook(n);\n    }\n}\n";
+    return s;
+}
+
+const Case kChainCase = {"chain", "call after N reloads", nullptr, "BenchChain", make_native<NChain>, 5000000, false, 1};
+
+// Loads generation 1, makes an object, then reloads up to the largest step. At each step the
+// tool times the call on the old object (made in generation 1 and migrated N times) and on a
+// new object (made after the last reload).
+void run_chain(Kind k, const Options& o, int64_t native_check, BackendResult& out)
+{
+    std::unique_ptr<hot::Backend> backend = make_backend(k, o);
+    const std::string path = std::string(BENCH_SCRIPT_DIR) + "/chain.hot";
+    auto build = [&](int g) { return backend->load({path, chain_script(g), {}}, static_cast<uint32_t>(g)); };
+    hot::LoadResult first = build(1);
+    if (!first)
+    {
+        out.note += "chain: compile failed: " + first.error.substr(0, 300) + "\n";
+        return;
+    }
+    hot::Loader loader;
+    if (const hot::ReloadResult l = loader.load(std::move(*first.module)); !l)
+    {
+        out.note += "chain: load failed: " + l.error + "\n";
+        return;
+    }
+    const hot::ClassEntry* entry = loader.find(kChainCase.cls);
+    if (!entry)
+    {
+        out.note += "chain: class not found\n";
+        return;
+    }
+    std::unique_ptr<BenchBase> old_obj(static_cast<BenchBase*>(entry->create().native));
+    int done = 0;
+    for (int step : kChainSteps)
+    {
+        if (step > o.reloads)
+            break;
+        while (done < step)
+        {
+            ++done;
+            hot::LoadResult r = build(done + 1);
+            if (!r)
+            {
+                out.note += "chain: compile failed: " + r.error.substr(0, 300) + "\n";
+                return;
+            }
+            const hot::ReloadResult req = loader.request_reload(std::move(r));
+            const hot::ReloadResult com = req ? loader.commit_pending() : req;
+            if (!com)
+            {
+                out.note += "chain: reload failed: " + com.error + "\n";
+                return;
+            }
+            loader.frame_boundary();
+            loader.frame_boundary();
+        }
+        entry = loader.find(kChainCase.cls);
+        std::unique_ptr<BenchBase> new_obj(static_cast<BenchBase*>(entry->create().native));
+        if (one_result(*old_obj) != native_check || one_result(*new_obj) != native_check)
+            out.note += "chain: the result after " + std::to_string(step) + " reloads differs from the native twin\n";
+        out.chain_old.push_back(measure(*old_obj, kChainCase, o));
+        out.chain_new.push_back(measure(*new_obj, kChainCase, o));
+    }
 }
 
 // ---- The load section (translate, cold load, warm load) ----
@@ -781,6 +1205,10 @@ std::string fmt_ratio(double ns, double native)
 
 int main(int argc, char** argv)
 {
+    // libstdc++ uses plain (not atomic) std::shared_ptr counts while the process has only one
+    // thread. The JIT backend starts threads, and a real host has threads. One thread at the
+    // start gives every case, native and script, the atomic counts.
+    std::thread([] {}).join();
     Options o;
     for (int i = 1; i < argc; ++i)
     {
@@ -808,12 +1236,14 @@ int main(int argc, char** argv)
             o.list = true;
         else if (a == "--no-load")
             o.no_load = true;
+        else if (a == "--reloads")
+            o.reloads = std::max(0, std::atoi(next().c_str()));
         else
         {
             std::fprintf(stderr,
                 "usage: bench_backends [--backend all|files|jit|aot] [--filter text] [--iters N] [--list]\n"
                 "                      [--csv file] [--warm N] [--reps N] [--opt FLAG] [--cxxflag F]...\n"
-                "                      [--no-cache] [--no-load]\n");
+                "                      [--no-cache] [--no-load] [--reloads N]\n");
             return 2;
         }
     }
@@ -847,10 +1277,11 @@ int main(int argc, char** argv)
             std::printf("  %-6s %s\n", kind_name(k), kind_available(k) ? "available" : "not built in");
         std::printf("cases:\n");
         for (const Case& c : kCases)
-            std::printf("  %-13s %-40s %-18s iters=%lld\n", c.name, c.label, c.script,
+            std::printf("  %-16s %-40s %-18s iters=%lld\n", c.name, c.label, c.script,
                 static_cast<long long>(c.iters));
-        std::printf("  %-13s %-40s (%d objects x %d fields)\n", "reload", "reload and state migration", kReloadObjects,
+        std::printf("  %-16s %-40s (%d objects x %d fields)\n", "reload", "reload and state migration", kReloadObjects,
             kReloadFields + 1);
+        std::printf("  %-16s %-40s (N = 0, 1, 10, 100; --reloads limits N)\n", "chain", kChainCase.label);
         return 0;
     }
 
@@ -867,6 +1298,16 @@ int main(int argc, char** argv)
         checks[idx] = one_result(*check);
         std::unique_ptr<BenchBase> obj = kCases[idx].make();
         native[idx] = measure(*obj, kCases[idx], o);
+    }
+    const bool do_chain = o.filter.empty() || std::string("chain").find(o.filter) != std::string::npos;
+    int64_t chain_check = 0;
+    double chain_native = -1;
+    if (do_chain)
+    {
+        std::unique_ptr<BenchBase> check = kChainCase.make();
+        chain_check = one_result(*check);
+        std::unique_ptr<BenchBase> obj = kChainCase.make();
+        chain_native = measure(*obj, kChainCase, o);
     }
 
     // The load section first, so that the first backend has a cold process.
@@ -893,6 +1334,8 @@ int main(int argc, char** argv)
                 run_cases_compiled(k, o, checks, selected, br);
                 if (o.filter.empty() || std::string("reload").find(o.filter) != std::string::npos)
                     run_reload(k, o, br);
+                if (do_chain)
+                    run_chain(k, o, chain_check, br);
             }
         }
         catch (const std::exception& e)
@@ -928,7 +1371,7 @@ int main(int argc, char** argv)
 
     // Run-time table.
     std::printf("\nRun time (ns per operation, median of %d runs; ratio = backend / native):\n", o.reps);
-    std::printf("%-13s %9s", "case", "native");
+    std::printf("%-16s %9s", "case", "native");
     for (const BackendResult& r : results)
         std::printf(" | %9s %7s", kind_name(r.kind), "ratio");
     std::printf("\n");
@@ -940,11 +1383,17 @@ int main(int argc, char** argv)
     bool any_mismatch = false;
     for (int idx : selected)
     {
-        std::printf("%-13s %9s", kCases[idx].name, fmt_ns(native[idx]).c_str());
+        std::printf("%-16s %9s", kCases[idx].name, fmt_ns(native[idx]).c_str());
         csv << kCases[idx].name << "," << native[idx];
         for (const BackendResult& r : results)
         {
             const Row& row = r.rows[idx];
+            if (!kCases[idx].script)
+            {
+                std::printf(" | %9s %7s", "-", "-");
+                csv << ",,";
+                continue;
+            }
             std::string ns = fmt_ns(row.ns);
             if (row.mismatch)
             {
@@ -960,7 +1409,7 @@ int main(int argc, char** argv)
     const bool show_reload = o.filter.empty() || std::string("reload").find(o.filter) != std::string::npos;
     if (show_reload)
     {
-        std::printf("%-13s %9s", "reload", "-");
+        std::printf("%-16s %9s", "reload", "-");
         csv << "reload,";
         for (const BackendResult& r : results)
         {
@@ -972,6 +1421,49 @@ int main(int argc, char** argv)
         std::printf("reload: ns for one request_reload and commit_pending of %d live objects with %d fields (the "
                     "compile is not in it). The AOT backend has no reload.\n",
             kReloadObjects, kReloadFields + 1);
+    }
+    // The script case "alloc" against each native kind of owner.
+    int alloc_idx = -1;
+    for (int idx : selected)
+        if (std::string(kCases[idx].name) == "alloc")
+            alloc_idx = idx;
+    if (alloc_idx >= 0)
+    {
+        std::printf("\nnew and free: the script case 'alloc' against each native owner (ratio = backend / native):\n");
+        std::printf("%-17s %9s", "native owner", "native");
+        for (const BackendResult& r : results)
+            std::printf(" | %7s", kind_name(r.kind));
+        std::printf("\n");
+        for (int idx : selected)
+        {
+            const std::string name = kCases[idx].name;
+            if (name.compare(0, 5, "alloc") != 0)
+                continue;
+            std::printf("%-17s %9s", name == "alloc" ? "make_shared" : name.c_str() + 6, fmt_ns(native[idx]).c_str());
+            for (const BackendResult& r : results)
+                std::printf(" | %7s", fmt_ratio(r.rows[alloc_idx].ns, native[idx]).c_str());
+            std::printf("\n");
+        }
+    }
+    // The reload chain.
+    bool any_chain = false;
+    for (const BackendResult& r : results)
+        any_chain = any_chain || !r.chain_old.empty();
+    if (any_chain)
+    {
+        std::printf("\nchain: native to script virtual call after N reloads (ns per call; native %s):\n",
+            fmt_ns(chain_native).c_str());
+        std::printf("%-6s %5s %9s %7s %9s %7s\n", "", "N", "old obj", "ratio", "new obj", "ratio");
+        for (const BackendResult& r : results)
+            for (size_t i = 0; i < r.chain_old.size(); ++i)
+            {
+                std::printf("%-6s %5d %9s %7s %9s %7s\n", kind_name(r.kind), kChainSteps[i],
+                    fmt_ns(r.chain_old[i]).c_str(), fmt_ratio(r.chain_old[i], chain_native).c_str(),
+                    fmt_ns(r.chain_new[i]).c_str(), fmt_ratio(r.chain_new[i], chain_native).c_str());
+                csv << "chain_" << kChainSteps[i] << "_" << kind_name(r.kind) << "," << chain_native << ","
+                    << r.chain_old[i] << "," << r.chain_new[i] << "\n";
+            }
+        std::printf("old obj: made in generation 1 and migrated N times. new obj: made after the last reload.\n");
     }
     if (any_mismatch)
         std::printf("A '!' marks a result that differs from the native twin.\n");

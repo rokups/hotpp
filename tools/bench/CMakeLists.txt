@@ -8,8 +8,11 @@
 # Loader::load_aot. The AOT library and the native twin get -O2, so they match the -O2 that the
 # program passes to the compile of the scripts at run time.
 #
+# The scripts are .hot files and .cpp scripts (a .cpp script has module functions and static
+# methods, which a .hot script does not have).
+#
 # The load section uses the test engine (tests/engine) and the test scripts.
-file(GLOB BENCH_SCRIPTS ${CMAKE_CURRENT_SOURCE_DIR}/scripts/*.hot)
+file(GLOB BENCH_SCRIPTS ${CMAKE_CURRENT_SOURCE_DIR}/scripts/*.hot ${CMAKE_CURRENT_SOURCE_DIR}/scripts/*.cpp)
 list(SORT BENCH_SCRIPTS)
 add_executable(bench_backends bench_backends.cpp BenchEngine.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)

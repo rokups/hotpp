@@ -1,0 +1,16 @@
+// Case: read and write of a module variable.
+using "BenchEngine.h";
+
+int counter = 0;
+int step = 3;
+
+class BenchModVar : BenchBase {
+    override long Run(int n) {
+        long s = 0;
+        for (int i = 0; i < n; i++) {
+            counter = (counter + step + i) & 65535;
+            s += counter;
+        }
+        return s;
+    }
+}

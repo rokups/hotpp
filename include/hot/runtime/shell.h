@@ -23,7 +23,21 @@ struct ShellBase
 {
     ClassRecord* cls = nullptr;
     void* state = nullptr;
+    // The list of live objects (state.cpp). Only the runtime uses these members. A list in the
+    // object needs no allocation and no hash lookup, so "new" and free stay cheap.
+    ShellBase* live_prev = nullptr;
+    ShellBase* live_next = nullptr;
+    // The generation whose "new" made the object and its handle, or 0 (see note_creator).
+    uint32_t creator = 0;
     HOT_HIDDEN ShellBase() noexcept {}
+    // A copy is not in the list of live objects, so it does not copy the list members.
+    HOT_HIDDEN ShellBase(const ShellBase& o) noexcept : cls(o.cls), state(o.state) {}
+    HOT_HIDDEN ShellBase& operator=(const ShellBase& o) noexcept
+    {
+        cls = o.cls;
+        state = o.state;
+        return *this;
+    }
 };
 
 // The base of the shell of a script class that has no native base (design 7.10.1). It gives
@@ -114,10 +128,12 @@ HOT_HIDDEN auto call(ShellBase* self, unsigned slot, A&&... a)
 {
     // A call inside another call (script -> native -> script) is not the end of the script stack.
     // The error passes to the script code that called, which can catch it.
+    // The depth is a thread_local of the runtime. One lookup gives the reference for both changes.
     struct Depth
     {
-        HOT_HIDDEN Depth() { ++detail::call_depth(); }
-        HOT_HIDDEN ~Depth() { --detail::call_depth(); }
+        uint32_t& d;
+        HOT_HIDDEN Depth() : d(detail::call_depth()) { ++d; }
+        HOT_HIDDEN ~Depth() { --d; }
     } depth;
     try
     {
@@ -125,7 +141,7 @@ HOT_HIDDEN auto call(ShellBase* self, unsigned slot, A&&... a)
     }
     catch (const ScriptError&)
     {
-        if (!NoExcept && detail::call_depth() > 1)
+        if (!NoExcept && depth.d > 1)
             throw;
         detail::report_unhandled(self, std::current_exception());
         using R = typename detail::sig_result<Sig>::type;
@@ -136,10 +152,13 @@ HOT_HIDDEN auto call(ShellBase* self, unsigned slot, A&&... a)
     }
 }
 
-// Records that the code of "generation" made the object "self" (state.cpp). The loader keeps
+// Records that the code of "generation" made the object "self" (ShellBase::creator). The loader keeps
 // that generation loaded while the object lives, because the handle of the object (for example
 // the control block of a std::shared_ptr) has code of that generation.
-void note_creator(ShellBase* self, uint32_t generation);
+HOT_HIDDEN void note_creator(ShellBase* self, uint32_t generation)
+{
+    self->creator = generation;
+}
 
 // Builds the shell of a script object (design 7.3). "rec" is the record of the running
 // generation. "key" is typeid(std::tuple<...>).name() of the base arguments in "args". The

@@ -255,43 +255,11 @@ Phases of one JIT load (v2, warm, cache): translate 1.4, compile 782, ORC (code 
 
 ### Run-time cost
 
-The tool `bench_backends` measures the run-time cost of script code. One binary tests every backend of the build at run time, with no rebuild. A backend that the build does not have is skipped.
+The tool `bench_backends` (`tools/bench/`) measures the run-time cost of script code against a native C++ twin of each case. One binary tests the backends `files`, `jit` and `aot`. The page [doc/benchmarks.md](doc/benchmarks.md) has the commands, the results and the caveats. It also compares `new` with the C++ smart pointers and measures reloadable access and calls.
 
-    bench_backends [--backend all|files|jit|aot] [--filter text] [--iters N] [--list] [--csv file]
+In short (Release build): loops of fields, numbers, arrays, module variables and calls inside one script run at native speed. A call from the host into a script costs about 3.5x a native virtual call. `new` and free of a script object cost about 5.5x `std::make_shared`.
 
-Each case is a script in `tools/bench/scripts/` and a native C++ twin in `bench_backends.cpp`. Both do the same work and derive from the same native class (`tools/bench/BenchEngine.h`). The host calls both through the base class. The tool checks that the script and the twin give the same result. The backends `files` and `jit` compile the scripts at run time (`-O2`). The backend `aot` runs the same scripts as C++ inside the binary (`Loader::load_aot`, `MODE AOT_RELOAD` of `hot_add_host`). The native twin and the AOT scripts also use `-O2`.
-
-Machine: AMD Ryzen 9 3950X (16 cores, 32 threads), Linux 7.2, clang 23.1.3, `CMAKE_BUILD_TYPE=Release`, `HOT_RUNTIME_CHECKS=ON`. Time in ns for one operation (median of 7 runs). One run of all backends takes about 70 s, because every case needs one compile for each compiling backend.
-
-| Case | native | `files` | `jit` | `aot` |
-|---|---|---|---|---|
-| empty method call (host to script) | 1.75 | 7.02 (4.0x) | 7.92 (4.5x) | 6.43 (3.7x) |
-| script to script call (recursive) | 1.07 | 1.60 (1.5x) | 1.20 (1.1x) | 1.22 (1.1x) |
-| script to native call | 1.47 | 2.05 (1.4x) | 2.04 (1.4x) | 1.46 (1.0x) |
-| native to script virtual call | 1.47 | 7.31 (5.0x) | 7.02 (4.8x) | 5.84 (4.0x) |
-| field read and write loop | 0.88 | 0.88 (1.0x) | 0.88 (1.0x) | 0.88 (1.0x) |
-| integer arithmetic loop | 1.41 | 1.41 (1.0x) | 1.41 (1.0x) | 1.41 (1.0x) |
-| float arithmetic loop | 1.75 | 1.75 (1.0x) | 1.75 (1.0x) | 1.75 (1.0x) |
-| array index (`int[256]`, checked) | 0.62 | 0.64 (1.0x) | 0.64 (1.0x) | 0.64 (1.0x) |
-| `std.vector` index | 0.62 | 0.64 (1.0x) | 0.64 (1.0x) | 0.64 (1.0x) |
-| handle dereference and null check | 2.56 | 10.46 (4.1x) | 10.46 (4.1x) | 10.46 (4.1x) |
-| string interpolation | 65.5 | 149 (2.3x) | 144 (2.2x) | 141 (2.2x) |
-| `new` and free of a script object | 9.96 | 111 (11x) | 102 (10x) | 102 (10x) |
-| closure call | 1.75 | 4.70 (2.7x) | 4.68 (2.7x) | 4.38 (2.5x) |
-| loop with a method call | 1.24 | 1.25 (1.0x) | 1.24 (1.0x) | 1.26 (1.0x) |
-| reload of 100 objects with 65 fields (one reload, without the compile) | - | 0.11 ms | 1.3 ms | - |
-
-How to read the table:
-
-- All three backends give the same code speed. The backends differ in the cost of a load, not in the cost of a run. The small differences in one row are noise of the machine.
-- A loop that only uses fields, numbers, arrays and `std.vector` runs at native speed. The array check costs about 3%.
-- A call between the host and a script, a handle and an allocation cost more. Native C++ twins use `std::shared_ptr` (`make_shared`) for handles and objects, so the twin does the same kind of work. The script object has a shell and a state block, and `new` makes both.
-- The twin of the string case builds the text with `std::to_string`. The script uses `${}`. The two are not the same work, so read this row as a rough value.
-- The twin of the reload case does not exist. The `jit` reload is slower than the `files` reload in this run. The tool does not explain why.
-- A build with an empty `CMAKE_BUILD_TYPE` compiles the runtime without optimization. It gives larger ratios for `new` (about 38x) and for the string case. Measure with a Release build.
-- `HOT_RUNTIME_CHECKS` is a build option. The tool prints its value and has no second column for it. Build again with `-DHOT_RUNTIME_CHECKS=OFF` to compare.
-
-The load section of the same tool (without `--no-load`) prints the translate time (miss and hit), the cold and warm load, and the peak RSS for each compiling backend. In this run, with `-O2`: translate 541 ms (miss) and 1.4 ms (hit); `files` loads `player_v1.hot` cold in 1.77 s and warm in 1.7 s, and `player_v2.hot` in 1.2 s; `jit` loads them in 1.64 s cold and 1.04 s warm for v2. The first backend in the process has a cold start. A later backend finds a warm process (LLVM state, file cache).
+The load section of the same tool runs without `--no-load`. For each compiling backend, it prints the translate time (miss and hit), the load time and the peak RSS. An earlier run used `-O2`. The translate took 541 ms (miss) and 1.4 ms (hit). `files` loaded `player_v1.hot` in 1.77 s cold and 1.7 s warm, and `player_v2.hot` in 1.2 s. `jit` loaded them in 1.64 s cold and 1.04 s warm for v2. The first backend in the process has a cold start. A later backend finds a warm process (LLVM state, file cache).
 
 ## Precompiled scripts
 

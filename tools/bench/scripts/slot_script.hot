@@ -1,0 +1,29 @@
+// Case: a virtual call from script to script through the base class (slot dispatch).
+using "BenchEngine.h";
+
+class BenchShape {
+    int w = 2;
+
+    virtual int Area(int x) {
+        return x;
+    }
+}
+
+class BenchSquare : BenchShape {
+    override int Area(int x) {
+        return x * w + 1;
+    }
+}
+
+class BenchSlotScript : BenchBase {
+    BenchShape s = null;
+
+    override long Run(int n) {
+        if (s == null) s = new BenchSquare();
+        long t = 0;
+        for (int i = 0; i < n; i++) {
+            t += s.Area(i & 255);
+        }
+        return t;
+    }
+}
