@@ -9,8 +9,8 @@ class Wolf : Creature {
     }
 
     override void Tick(float dt) {
-        this.bites = this.bites + 1;
-        this.Hp = this.Hp - 1;
-        std.printf("[v1] %s: bites=%d hp=%d\n", this.Name.c_str(), this.bites, this.Hp);
+        bites = bites + 1;
+        Hp = Hp - 1;
+        std.printf("[v1] %s: bites=%d hp=%d\n", Name.c_str(), bites, Hp);
     }
 }

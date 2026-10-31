@@ -10,10 +10,10 @@ class Wolf : Creature {
     }
 
     override void Tick(float dt) {
-        this.bites = this.bites + 1;
-        this.Hp = this.Hp - 1;
+        bites = bites + 1;
+        Hp = Hp - 1;
         // String interpolation: the build of the script needs std::format (C++20) or fmt.
-        std.string line = "${this.Name}: bites=${this.bites} hp=${this.Hp:03d}";
+        std.string line = "${Name}: bites=${bites} hp=${Hp:03d}";
         std.printf("[wolf] %s\n", line.c_str());
     }
 }

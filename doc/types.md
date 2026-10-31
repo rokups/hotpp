@@ -91,10 +91,10 @@ class Grid {
 
     int Sum() {
         int sum = 0;
-        foreach (var x in this.cells) {
+        foreach (var x in cells) {
             sum += x;
         }
-        return sum + this.cells.size();
+        return sum + cells.size();
     }
 }
 ```

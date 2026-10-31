@@ -11,12 +11,12 @@ class Demo : UiApp {
     override void Frame() {
         if (ImGui.Begin("Demo")) {
             ImGui.Text("Hello from a script");
-            ImGui.Text("Clicks: %d", this.clicks);
+            ImGui.Text("Clicks: %d", clicks);
             if (ImGui.Button("Click me")) {
-                this.clicks = this.clicks + 1;
+                clicks = clicks + 1;
             }
-            ImGui.Checkbox("Enabled", &this.on);
-            ImGui.SliderFloat("Speed", &this.speed, 0.0f, 10.0f);
+            ImGui.Checkbox("Enabled", &on);
+            ImGui.SliderFloat("Speed", &speed, 0.0f, 10.0f);
         }
         ImGui.End();
     }
