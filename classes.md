@@ -45,7 +45,7 @@ class Calc {
 }
 ```
 
-A default value is an error on a `virtual` or `override` method. A struct constructor cannot have a default for every parameter.
+A default value is an error on a `virtual` or `override` method. A struct constructor cannot have a default for every parameter. Calls from script code and the engine factory use the default value. It is not part of the reload key, so a change of a default value does not need a new key.
 
 ## Constructors and destructors
 
@@ -67,6 +67,10 @@ class User {
     }
 }
 ```
+
+A reload does not run a constructor again. A changed constructor body applies to new objects only. If a constructor body throws, the object is deleted and the destructor still runs. A class has one destructor. Two overloads cannot differ only in the pass mode of a parameter.
+
+The `__` prefix is reserved. Do not start the name of a field or a parameter with `__`.
 
 ## Properties
 

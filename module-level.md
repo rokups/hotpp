@@ -28,7 +28,7 @@ These headers are always included, so they need no `using`:
 
 ## Enums and structs
 
-An enum is a scoped enum. Add a base type after `:`. A struct is a value type. It is the only way to make one: `[value]` on a script class is an error.
+An enum is a scoped enum. Add a base type after `:`. The default base type is `int`. A struct is a value type. It is the only way to make one: `[value]` on a script class is an error.
 
 ```hot
 enum Mode { Idle, Walk, Run }
@@ -60,6 +60,8 @@ class Hero : Actor {
 }
 ```
 
+An initializer can use only a variable that is above it. A later variable, or the variable itself, is an error. The name `HotModule` is reserved.
+
 `[alias("old")]` before a variable keeps the value of the old name.
 
 ```hot
@@ -78,4 +80,4 @@ using "Weapon.h";
 [native, value] class std.string;
 ```
 
-A script has no free functions. Only a convert hook (`T convert_<var>(Old old)`) is allowed at file level.
+A script has no free functions. Only a convert hook (`T convert_<var>(Old old)`) is allowed at file level. A convert hook cannot read a module variable. An imported script cannot have module variables or convert hooks.

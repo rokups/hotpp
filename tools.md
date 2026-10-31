@@ -79,6 +79,16 @@ Or add the same flags to the entry of the script in `compile_commands.json`:
 }
 ```
 
+## Format a script file
+
+`tools/format-hot.sh [--check] files...` formats `.hot` files with `clang-format`. It reads the `CSharp` section of the `.clang-format` file in the Hot++ repository. `--check` reports a difference and changes no file. The script works from any directory. The first run changes K&R braces in old scripts.
+
+## Language server limits
+
+- The formatter of `hot-ls` is a brace-depth indenter, not a full formatter.
+- Diagnostics can be missing after an edit that gives the same C++ text.
+- The index folder is the first workspace folder only.
+
 ## hotc format flag
 
 `hotc --format=std|fmt` picks the format library for `${}` in the C++ text. The default is `std`. The flag is for build systems: `hot_add_scripts` sets it. `fmt` output also compiles as C++17. In build mode (without `--emit-cpp` and `--aot`), the build of `hotc` fixes the library, and a different `--format` is an error. See [CMake](cmake.html).

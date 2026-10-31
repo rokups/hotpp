@@ -41,6 +41,14 @@ class Boss : Actor, IDamageable {
 }
 ```
 
+These rules apply to the bases:
+
+- The first base gets the constructor arguments.
+- Each other base needs a default constructor.
+- A signature in two bases is an error.
+- A method pair `F()` and `F() const` is an error.
+- Only the root class of a family can have interface bases. A child class gets them from the root.
+
 ## Script parent
 
 A script class can derive from a script class. `virtual` opens a method for overrides. `base(...)` calls the parent constructor. `new` hides a parent method instead of replacing it.
@@ -67,7 +75,7 @@ class Grunt : Unit {
 
 ## Parent in another file
 
-`using "parent.hot";` makes the classes of another script visible.
+`using "parent.hot";` makes the classes of another script visible. The script joins the generation of the child. A class name in two scripts is an error. A native stub in the main script wins over a stub with the same name in the imported script.
 
 ```hot
 using "parent.hot";

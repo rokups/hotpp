@@ -72,7 +72,7 @@ Linux is the tested platform. Windows and macOS are untested. `src/runtime/modul
 - `Loader::find(name)` returns a `const ClassEntry*` or `nullptr`. `entry->create()` makes an object and returns an `Instance`. `Instance::native` is a pointer to the native base class (for example `Creature`). The caller owns the object. Delete it through the native pointer (the native class needs a virtual destructor). The samples use `std::unique_ptr<Creature>`.
 - With AOT, `AotRegistry::create(name)` returns the `Instance` and `create_as<Native>(name)` returns the native pointer. The caller owns the object, or gives it to the engine (for example `World::Add`).
 - The pointers from `find()`, `module_state()` and `thunk()` and every function pointer, closure and handle that came from a script module become invalid after `Loader::reset`.
-- A retired generation unloads in `frame_boundary()` when its pin count is zero, at least one frame boundary passed, and no code of the module is in use. A live state field that can hold code (`kMayHoldCode`, for example a `std::shared_ptr`) blocks every unload.
+- A retired generation unloads in `frame_boundary()` when its pin count is zero, at least one frame boundary passed, and no code of the module is in use. A live state field that can hold code (`kMayHoldCode`, for example a `std::shared_ptr`) blocks every unload. A native struct with a function pointer field also sets `kMayHoldCode`. The translator finds the struct by its class or alias name, not a template instance such as `Cb<int>`.
 - A JIT `Module` keeps the JIT alive, so its code stays valid. For `ClangFilesBackend` the module keeps the loaded library alive.
 
 ### Threads
@@ -83,6 +83,7 @@ These rules come from the comments in `include/hot/runtime/loader.h`.
 - `request_reload` and `reload_pending` can run on any thread, also while workers run script code.
 - In the default mode (`StopTheWorld`), `commit_pending` runs on the main thread at the frame boundary, when no worker is in script code.
 - In `EntryCounters` mode (`Loader::set_sync_mode`), `commit_pending` can run on one thread while other threads call script code. It blocks new script entries and waits for the running ones. It fails when the calling thread is in script code. The mode is global for the process. Change it only when no thread is in script code.
+- In `EntryCounters` mode, native code that reads the fields of a script object holds a `ScriptEntry`. A script frame that waits for a commit, or for a thread at the gate, deadlocks.
 - `Loader::reset` runs on the main thread when no worker runs script code. Never call it from script code.
 - `AotRegistry` is made and destroyed on the main thread.
 - `ClangFilesBackend` builds one script at a time (it has a mutex for the shared slot file).
@@ -211,7 +212,7 @@ loader.frame_boundary();                                        // unloads old g
 
 The result converts to `true` for `Applied` and `Pending`. The reason is one of `None`, `NativeBaseChanged`, `InterfaceBasesChanged`, `ScriptParentChanged`, `ShellLayoutChanged`, `SlotsRemoved`, `CompileError`, `BadModule`, `GenerationNotNewer`, `Busy` and `MigrationFailed`. `to_string` gives the name.
 
-`commit_pending` returns `Applied` when it committed. With nothing pending it returns `Failed` with the reason `None` and an empty error. It returns `Busy` when the commit cannot run now, and `MigrationFailed` when the state does not migrate. If the runtime cannot go on (for example a native move constructor throws during a migration), it calls the handler from `set_restart_handler` and aborts when there is none. When the handler returns, the commit fails, the old generation stays active and `restart_requested()` is true.
+`commit_pending` returns `Applied` when it committed. With nothing pending it returns `Failed` with the reason `None` and an empty error. It returns `Busy` when the commit cannot run now, and `MigrationFailed` when the state does not migrate. If the runtime cannot go on (for example a native move constructor throws during a migration), it calls `hot::request_restart`. This calls the handler from `set_restart_handler` and aborts when there is none. When the handler returns, the commit fails, the old generation stays active and `restart_requested()` is true.
 
 **Run time:** the object keeps its field values. The new code runs through the same pointer. The retired generation unloads in `frame_boundary`.
 
@@ -305,6 +306,8 @@ world.Add(boss);
 **Run time:** the constructor of `AotRegistry` calls the register function of each script. `has`, `class_names`, `record`, `create`, `create_as`, `thunk`, `class_count` and `script_count` read the registry.
 
 **Requires:** no compiler and no loader at run time. Script names and class names must be unique.
+
+**Limits:** a plain AOT program has generation 1 only. The `onReload` hook and the `convert_` hooks never run. A type error in a script shows when the C++ compiler builds the generated file.
 
 **Failure:** the constructor throws `std::runtime_error` when two scripts have a class of the same name (`the class ... is in two AOT scripts (...)`) or when the initializer of a module variable throws. `create` throws `std::runtime_error` (`no AOT script class ...`) for an unknown class.
 
