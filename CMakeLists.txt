@@ -218,8 +218,13 @@ if(HOT_INSTALL)
 
     # The values of this build that the package config sets for a consumer.
     hot_effective_cxx_standard(HOT_SDK_CXX_STANDARD hot_runtime_core)
-    get_filename_component(HOT_CLANG_C_LIBRARY_DIR "${CLANG_C_LIBRARY}" DIRECTORY)
-    set(HOT_CLANG_C_LIBRARY "${CLANG_C_LIBRARY}")
+    get_filename_component(HOT_CLANG_C_LIBRARY_DIR "${HOT_LIBCLANG_FILE}" DIRECTORY)
+    set(HOT_CLANG_C_LIBRARY "${HOT_LIBCLANG_FILE}")
+    # The folder of the Clang package of this build (empty if the build used the fallback).
+    set(HOT_CLANG_CMAKE_DIR "")
+    if(HOT_LIBCLANG_FROM_PACKAGE)
+        set(HOT_CLANG_CMAKE_DIR "${Clang_DIR}")
+    endif()
     configure_package_config_file(cmake/HotConfig.cmake.in
         ${CMAKE_CURRENT_BINARY_DIR}/HotConfig.cmake
         INSTALL_DESTINATION ${HOT_CMAKE_INSTALL_DIR})

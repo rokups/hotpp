@@ -20,6 +20,12 @@ endif()
 # The default C++ standard of the host, when the consumer sets none (hot_effective_cxx_standard).
 set_property(GLOBAL PROPERTY HOT_DEFAULT_CXX_STANDARD @HOT_SDK_CXX_STANDARD@)
 
+# The Clang package of the SDK build. Its folder is a hint, so the package of the same version wins.
+set(_hot_clang_hints "")
+if(NOT "@HOT_CLANG_CMAKE_DIR@" STREQUAL "")
+    set(_hot_clang_hints HINTS "@HOT_CLANG_CMAKE_DIR@")
+endif()
+
 if(HOT_BACKEND STREQUAL "JIT")
     # LLVMConfig.cmake probes C headers, so the C language must be on.
     get_property(_hot_languages GLOBAL PROPERTY ENABLED_LANGUAGES)
@@ -27,7 +33,7 @@ if(HOT_BACKEND STREQUAL "JIT")
         enable_language(C)
     endif()
     find_dependency(LLVM CONFIG)
-    find_dependency(Clang CONFIG)
+    find_dependency(Clang CONFIG ${_hot_clang_hints})
 endif()
 
 # HotScripts.cmake keeps this value (it sets the variable only when it is not defined).
@@ -37,18 +43,45 @@ include("${CMAKE_CURRENT_LIST_DIR}/HotTargets.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/HotFormat.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/HotScripts.cmake")
 
-# libclang. The export holds no path of it. Find it here: a cache value of the user wins, then the
-# folder of the SDK build, then the standard places. Only hot::hotc_lib and the targets that link
-# it (hot::clang_backend, hot::backend, hot::jit_backend) need it. A program in AOT mode does not.
-find_library(HOT_CLANG_C_LIBRARY NAMES clang libclang
-             HINTS "@HOT_CLANG_C_LIBRARY_DIR@" DOC "The libclang library for Hot++")
-if(HOT_CLANG_C_LIBRARY)
-    set_property(TARGET hot::hotc_lib APPEND PROPERTY INTERFACE_LINK_LIBRARIES "${HOT_CLANG_C_LIBRARY}")
+# libclang. The export holds no path of it. Find it here. Only hot::hotc_lib and the targets that
+# link it (hot::clang_backend, hot::backend, hot::jit_backend) need it. A program in AOT mode does
+# not. First choice: the target libclang of the Clang CMake package, if its major version is the
+# version of the SDK build. A cache value of the user in HOT_CLANG_C_LIBRARY wins. Fallback:
+# find_library (the folder of the SDK build, then the standard places).
+if(NOT TARGET libclang AND NOT HOT_CLANG_C_LIBRARY)
+    if(NOT HOT_BACKEND STREQUAL "JIT")
+        # LLVMConfig.cmake probes C headers, so the C language must be on.
+        get_property(_hot_languages GLOBAL PROPERTY ENABLED_LANGUAGES)
+        if(NOT "C" IN_LIST _hot_languages)
+            enable_language(C)
+        endif()
+    endif()
+    find_package(Clang CONFIG QUIET ${_hot_clang_hints})
+endif()
+# The package must have the major version of the SDK build. Else use the fallback.
+set(_hot_use_package OFF)
+if(TARGET libclang AND NOT HOT_CLANG_C_LIBRARY)
+    set(_hot_use_package ON)
+    if(NOT "@HOT_LIBCLANG_VERSION_MAJOR@" STREQUAL "" AND Clang_VERSION)
+        string(REGEX MATCH "^[0-9]+" _hot_pkg_major "${Clang_VERSION}")
+        if(NOT _hot_pkg_major STREQUAL "@HOT_LIBCLANG_VERSION_MAJOR@")
+            set(_hot_use_package OFF)
+        endif()
+    endif()
+endif()
+if(_hot_use_package)
+    set_property(TARGET hot::hotc_lib APPEND PROPERTY INTERFACE_LINK_LIBRARIES libclang)
 else()
-    message(WARNING "Hot++: libclang is not found. The SDK was built with @HOT_CLANG_C_LIBRARY@. "
-        "Install libclang or set HOT_CLANG_C_LIBRARY to the file. Without it the targets "
-        "hot::hotc_lib, hot::clang_backend and hot::backend cannot link.")
-    set_property(TARGET hot::hotc_lib APPEND PROPERTY INTERFACE_LINK_LIBRARIES HOT_CLANG_C_LIBRARY-NOTFOUND)
+    find_library(HOT_CLANG_C_LIBRARY NAMES clang libclang
+                 HINTS "@HOT_CLANG_C_LIBRARY_DIR@" DOC "The libclang library for Hot++")
+    if(HOT_CLANG_C_LIBRARY)
+        set_property(TARGET hot::hotc_lib APPEND PROPERTY INTERFACE_LINK_LIBRARIES "${HOT_CLANG_C_LIBRARY}")
+    else()
+        message(WARNING "Hot++: libclang is not found. The SDK was built with @HOT_CLANG_C_LIBRARY@. "
+            "Install libclang or set HOT_CLANG_C_LIBRARY to the file. Without it the targets "
+            "hot::hotc_lib, hot::clang_backend and hot::backend cannot link.")
+        set_property(TARGET hot::hotc_lib APPEND PROPERTY INTERFACE_LINK_LIBRARIES HOT_CLANG_C_LIBRARY-NOTFOUND)
+    endif()
 endif()
 
 # The tools of the SDK, as file paths.
