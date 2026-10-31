@@ -177,6 +177,44 @@ TEST(ScriptImportTranslation, ImportWithAnotherStdNamespaceIsAnError)
         << r.diagnostics;
 }
 
+// An imported script uses the array template of the main script. Another value is an error.
+TEST(ScriptImportTranslation, ImportWithAnotherArrayTemplateIsAnError)
+{
+    TempDir dir;
+    hotc::TranslateOptions o = options(dir, std::string("[array(\"other::Arr<$T, $N>\")];\n") + kParent);
+    o.preludes.emplace_back("host.prelude", "[array(\"my::Fixed<$T, $N>\")];\n");
+    const hotc::TranslateResult r = hotc::translate(o);
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("sets the array template 'other::Arr<$T, $N>' but the program uses 'my::Fixed<$T, $N>'"),
+        std::string::npos)
+        << r.diagnostics;
+}
+
+// The same value in the import is valid, and the import uses the template of the main script.
+TEST(ScriptImportTranslation, ImportUsesTheArrayTemplateOfTheProgram)
+{
+    TempDir dir;
+    hotc::TranslateOptions o = options(dir,
+        "using \"w.h\";\nclass Base : Widget {\n    int[2] hp;\n    virtual int Power() { return 1; }\n}\n");
+    o.script_text = "[array(\"my::Fixed<$T, $N>\")];\n" + o.script_text;
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("my::Fixed<int32_t, 2> hp;"), std::string::npos) << r.cpp;
+}
+
+// An import that sets the same template as the main script is valid.
+TEST(ScriptImportTranslation, ImportWithTheSameArrayTemplateIsValid)
+{
+    TempDir dir;
+    hotc::TranslateOptions o = options(dir,
+        "[array(\"my::Fixed<$T, $N>\")];\nusing \"w.h\";\nclass Base : Widget {\n    int[2] hp;\n"
+        "    virtual int Power() { return 1; }\n}\n");
+    o.script_text = "[array(\"my::Fixed<$T, $N>\")];\n" + o.script_text;
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("my::Fixed<int32_t, 2> hp;"), std::string::npos) << r.cpp;
+}
+
 // The byte 0x01 is the internal placeholder of the standard namespace. An import cannot hold it.
 TEST(ScriptImportTranslation, TheByte0x01IsAnErrorInAnImport)
 {

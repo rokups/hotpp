@@ -136,7 +136,7 @@ ast::NameExpr split_name(const ParseState& st, std::string_view t, uint32_t pos)
                     const Span args{b, pos + static_cast<uint32_t>(e) - 1};
                     Diagnostics quiet;
                     std::vector<ExprP> list =
-                        parse_expression_list(ParseInput{std::string_view(st.base, st.size), st.map}, args, quiet);
+                        parse_expression_list(ParseInput{std::string_view(st.base, st.size), st.map, st.array_tpl}, args, quiet);
                     if (quiet.items.empty() && !list.empty())
                     {
                         n.targ_exprs = std::move(list);
@@ -477,7 +477,7 @@ ExprP make_string(const ParseState& st, const char* b, const char* e)
     n.pos = st.offset(b);
     std::string cur;
     const char* close_quote = e - 1;
-    const ParseInput in{std::string_view(st.base, st.size), st.map};
+    const ParseInput in{std::string_view(st.base, st.size), st.map, st.array_tpl};
     for (const char* p = b + 1; p < close_quote;)
     {
         if (*p == '\\' && p + 1 < close_quote)
@@ -763,7 +763,7 @@ struct paren_p
             l.body.stmts.push_back(ast::make_stmt(std::move(r)));
             return ast::make_expr(std::move(l));
         }
-        const ParseInput in{std::string_view(st.base, st.size), st.map};
+        const ParseInput in{std::string_view(st.base, st.size), st.map, st.array_tpl};
         l.body = parse_block(in, rest.body, *st.diag);
         return ast::make_expr(std::move(l));
     }),
@@ -1030,7 +1030,7 @@ bool run(ParseInput in, Span span, Diagnostics& diag, Result& out, uint32_t& end
     const std::size_t size = in.text.size();
     const std::size_t end = span.end < size ? span.end : size;
     const std::size_t begin = span.begin < end ? span.begin : end;
-    const ParseState st{in.text.data(), in.map, &diag, size};
+    const ParseState st{in.text.data(), in.map, &diag, size, in.array_tpl};
     const auto input = lexy::string_input<Encoding>(in.text.data() + begin, end - begin);
     int syntax_errors = 0;
     auto sink = lexy::callback<void>([&](const auto&, const auto& e)

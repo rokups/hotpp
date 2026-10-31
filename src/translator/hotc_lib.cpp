@@ -114,9 +114,9 @@ const std::string kModuleName = "HotModule";
 
 // Parses the script: the structure, the method bodies and the field initializers.
 // The parser reports all syntax errors in source order. Any error stops the translation.
-Script parse_structure(const std::string& text, const hotc::LineMap& map)
+Script parse_structure(const std::string& text, const hotc::LineMap& map, std::string_view host_array_tpl)
 {
-    Script sc = hotc::parse_script(text, map, g_diag);
+    Script sc = hotc::parse_script_array(text, map, g_diag, host_array_tpl);
     if (!g_diag.items.empty())
         throw TranslateAbort{};
     return sc;
@@ -2422,6 +2422,7 @@ void translate_impl(
     };
     std::deque<PreludeData> prelude_data; // the addresses must stay
     std::string std_ns = "std";
+    std::string array_tpl(hotc::kDefaultArrayTpl); // the template of the type "T[N]"
     // The namespace of this call. The guard restores the old value at each exit.
     struct StdNsGuard
     {
@@ -2439,7 +2440,7 @@ void translate_impl(
         if (const size_t bad = ptext.find('\x01'); bad != std::string::npos)
             pd.add(static_cast<uint32_t>(bad), pmap, "the byte 0x01 is not allowed in a script");
         else
-            ps = hotc::parse_script(ptext, pmap, pd);
+            ps = hotc::parse_script_array(ptext, pmap, pd, array_tpl); // the template of the earlier preludes
         if (pd.items.empty() && !ps.classes.empty())
         {
             const ClassDef& pc = ps.classes.front();
@@ -2458,6 +2459,8 @@ void translate_impl(
                     pd.add(apos, pmap, "attribute '" + aname + "' is given twice in the preludes");
             if (m.has_std)
                 std_ns = m.std_ns;
+            if (m.has_array)
+                array_tpl = m.array_tpl;
         }
         if (!pd.items.empty())
         {
@@ -2493,7 +2496,7 @@ void translate_impl(
                 fail_at(map, im.pos, "a .cpp script cannot include a .hot script");
     }
     else
-        sc = parse_structure(in.script_text, map);
+        sc = parse_structure(in.script_text, map, array_tpl);
     // The module attributes of the script override the defaults of the preludes.
     {
         std::set<std::string> seen;
@@ -2504,6 +2507,8 @@ void translate_impl(
                     fail_at(map, apos, "attribute '" + aname + "' is given twice in one file");
             if (m.has_std)
                 std_ns = m.std_ns;
+            if (m.has_array)
+                array_tpl = m.array_tpl;
         }
         hotc::current_std_ns() = std_ns;
     }
@@ -2588,7 +2593,7 @@ void translate_impl(
                 imported_files.push_back({base, file, text});
                 res.imports.emplace_back(file, text);
                 import_texts.push_back(std::string(base, ' ') + text);
-                Script is = parse_structure(import_texts.back(), map);
+                Script is = parse_structure(import_texts.back(), map, array_tpl);
                 {
                     // The output has one namespace for all the scripts of the program.
                     std::set<std::string> seen;
@@ -2601,6 +2606,11 @@ void translate_impl(
                             fail_at(map, m.std_pos,
                                 "the imported script '" + file + "' sets the namespace '" + m.std_ns
                                     + "' but the program uses '" + std_ns + "'");
+                        if (m.has_array && m.array_tpl != array_tpl)
+                            fail_at(map, m.array_pos,
+                                "the imported script '" + file + "' sets the array template '"
+                                    + hotc::std_to_user(m.array_tpl) + "' but the program uses '"
+                                    + hotc::std_to_user(array_tpl) + "'");
                     }
                 }
                 if (!is.vars.empty())
@@ -5754,24 +5764,30 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
     AnalyzeResult res;
     const LineMap map(text);
     Diagnostics diag;
-    const ast::Script sc = parse_script(text, map, diag);
+    // The standard namespace and the array template of the module: the default of the preludes,
+    // then the script. The type text of the parser holds the placeholder of the namespace, so the
+    // result expands it.
+    std::string module_ns = "std";
+    std::string host_array_tpl(kDefaultArrayTpl);
+    for (const auto& [pname, ptext] : options.preludes)
+    {
+        const LineMap pmap(ptext);
+        Diagnostics pd;
+        for (const ast::ModuleAttrs& m : parse_script(ptext, pmap, pd).module_attrs)
+        {
+            if (m.has_std)
+                module_ns = m.std_ns;
+            if (m.has_array)
+                host_array_tpl = m.array_tpl;
+        }
+    }
+    const ast::Script sc = parse_script_array(text, map, diag, host_array_tpl);
 
     for (const Diag& d : diag.items)
         res.errors.push_back({{d.line, d.col}, d.pos, d.msg});
     for (uint32_t h : diag.member_holes)
         res.completion_points.push_back(src_pos(map, h));
 
-    // The standard namespace of the module: the default of the preludes, then the script. The
-    // type text of the parser holds the placeholder of the namespace, so the result expands it.
-    std::string module_ns = "std";
-    for (const auto& [pname, ptext] : options.preludes)
-    {
-        const LineMap pmap(ptext);
-        Diagnostics pd;
-        for (const ast::ModuleAttrs& m : parse_script(ptext, pmap, pd).module_attrs)
-            if (m.has_std)
-                module_ns = m.std_ns;
-    }
     for (const ast::ModuleAttrs& m : sc.module_attrs)
         if (m.has_std)
             module_ns = m.std_ns;

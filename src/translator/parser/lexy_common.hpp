@@ -40,6 +40,8 @@ struct ParseState
     const LineMap* map;
     Diagnostics* diag;
     size_t size = 0; // the size of the whole buffer that starts at base
+    // The template of the type "T[N]" (the module attribute "array", std_ns.h). It is the internal form.
+    std::string_view array_tpl = kDefaultArrayTpl;
 
     uint32_t offset(const char* p) const { return static_cast<uint32_t>(p - base); }
     void error(const char* p, std::string msg) const { diag->add(offset(p), *map, std::move(msg)); }
@@ -441,11 +443,12 @@ inline std::string canonical_type_at(const ParseState& st, const char* pos, cons
 // The largest size of a fixed-size array: 1 << 24 values.
 constexpr std::uint64_t max_array_size = std::uint64_t{1} << 24;
 
-// Rewrites the fixed-size array types of a type text. "T[N]" becomes "std::array<T, N>".
-// "T[M][N]" becomes "std::array<std::array<T, N>, M>". N is an integer literal. The element
-// type starts at the beginning of the text or after a "<", a "," or a "(". A "[]", a size that
-// is not an integer literal, a size of 0 and a size above "max_array_size" are errors at "pos". If "report" is false, the function does not
-// report the errors and leaves the text of the bad array as it is.
+// Rewrites the fixed-size array types of a type text. "T[N]" becomes the array template of the
+// state ("std::array<T, N>" by default). "T[M][N]" nests the template: the default gives
+// "std::array<std::array<T, N>, M>". N is an integer literal. The element type starts at the
+// beginning of the text or after a "<", a "," or a "(". A "[]", a size that is not an integer
+// literal, a size of 0 and a size above "max_array_size" are errors at "pos". If "report" is
+// false, the function does not report the errors and leaves the text of the bad array as it is.
 inline std::string array_types(const ParseState& st, const char* pos, const std::string& t, bool report = true)
 {
     if (t.find('[') == std::string::npos)
@@ -516,7 +519,7 @@ inline std::string array_types(const ParseState& st, const char* pos, const std:
         }
         std::string elem = out.substr(start);
         for (std::size_t k = dims.size(); k-- > 0;)
-            elem = "std::array<" + elem + ", " + dims[k] + ">";
+            elem = array_type_text(st.array_tpl, elem, dims[k]);
         out.resize(start);
         out += elem;
         i = j;

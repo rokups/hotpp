@@ -1,0 +1,15 @@
+// Generation 1: the module attribute array gives the type of "T[N]" in a script.
+using "Actor.h";
+using "ArrayAlias.h";
+
+[array("hostns::FixedArray<$T, $N>")];
+
+class Grid : Actor {
+    int[4] cells;
+    float[2][3] weights;
+
+    override void Tick(float dt) {
+        this.cells[1] = 7;
+        this.weights[1][2] = dt;
+    }
+}

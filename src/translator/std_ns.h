@@ -40,6 +40,78 @@ inline std::string std_from_user(std::string_view text)
     return out;
 }
 
+// Converts the internal placeholder back to the "$std::" of the user form. A message uses it.
+inline std::string std_to_user(std::string_view text)
+{
+    std::string out;
+    out.reserve(text.size());
+    for (size_t i = 0; i < text.size();)
+    {
+        if (text.compare(i, kStdPlaceholder.size(), kStdPlaceholder) == 0)
+        {
+            out += "$std::";
+            i += kStdPlaceholder.size();
+        }
+        else
+            out += text[i++];
+    }
+    return out;
+}
+
+// The default template of a fixed-size array type "T[N]" (the module attribute "array"). "$T" is
+// the element type and "$N" is the size.
+inline constexpr std::string_view kDefaultArrayTpl = "\x01std::array<$T, $N>";
+
+// True when the array template (the internal form) has "$T" and "$N" and no other "$" name. A
+// letter, a digit or "_" after "$T" or "$N" makes a different name ("$Tag"), which is an error.
+// The text "err" gets the reason when the result is false.
+inline bool valid_array_tpl(std::string_view tpl, std::string& err)
+{
+    bool has_t = false, has_n = false;
+    for (size_t i = 0; i < tpl.size(); ++i)
+    {
+        if (tpl[i] != '$')
+            continue;
+        const char next = i + 1 < tpl.size() ? tpl[i + 1] : ' ';
+        const char after = i + 2 < tpl.size() ? tpl[i + 2] : ' ';
+        const bool word_after = std::isalnum(static_cast<unsigned char>(after)) || after == '_';
+        if (next == 'T' && !word_after)
+            has_t = true;
+        else if (next == 'N' && !word_after)
+            has_n = true;
+        else
+        {
+            err = "the array template has an unknown '$' name; use '$T', '$N' and '$std::'";
+            return false;
+        }
+    }
+    if (!has_t || !has_n)
+    {
+        err = std::string("the array template needs ") + (has_t ? "'$N' (the size)" : "'$T' (the element type)");
+        if (!has_t && !has_n)
+            err = "the array template needs '$T' (the element type) and '$N' (the size)";
+        return false;
+    }
+    return true;
+}
+
+// The array type for the element type and the size: each "$T" and "$N" of the template.
+inline std::string array_type_text(std::string_view tpl, std::string_view elem, std::string_view size)
+{
+    std::string out;
+    for (size_t i = 0; i < tpl.size(); ++i)
+    {
+        if (tpl[i] == '$' && i + 1 < tpl.size() && (tpl[i + 1] == 'T' || tpl[i + 1] == 'N'))
+        {
+            out += tpl[i + 1] == 'T' ? elem : size;
+            ++i;
+        }
+        else
+            out += tpl[i];
+    }
+    return out;
+}
+
 // The namespace of the current call (default "std"). The translator sets it when it reads the
 // module attribute list of the preludes. The libclang readers use it to map the native text.
 inline std::string& current_std_ns()

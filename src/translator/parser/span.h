@@ -1,6 +1,8 @@
 // A byte range in the script text. This header has no parser-library include.
 #pragma once
 
+#include "../std_ns.h"
+
 #include <cstdint>
 #include <string_view>
 
@@ -22,6 +24,8 @@ struct ParseInput
 {
     std::string_view text;
     const LineMap* map = nullptr;
+    // The template of the type "T[N]" (the module attribute "array", std_ns.h). It is the internal form.
+    std::string_view array_tpl = kDefaultArrayTpl;
 };
 
 } // namespace hotc

@@ -328,6 +328,40 @@ TEST(HotcTool, ModuleAttributeStdCompiles)
         << cc;
 }
 
+// The module attribute array in a prelude: the generated C++ names the host array template. The header
+// ArrayAlias.h has the alias template, so the C++ compiles as C++17.
+TEST(HotcTool, ModuleAttributeArrayCompiles)
+{
+    TestScratch scratch;
+    const std::string prelude = scratch.file("hotc_module_array.prelude");
+    const std::string script = scratch.file("hotc_module_array.hot");
+    const std::string out = scratch.file("hotc_module_array.cpp");
+    {
+        std::ofstream(prelude) << "[array(\"hostns::FixedArray<$T, $N>\")];\n";
+        std::ofstream(script) << "using \"Actor.h\";\nusing \"ArrayAlias.h\";\n\n"
+                                 "class Grid : Actor {\n    int[4] cells;\n    float[2][3] weights;\n"
+                                 "    override void Tick(float dt) {\n"
+                                 "        this.cells[1] = 7;\n"
+                                 "        int[2] local;\n"
+                                 "        this.weights[1][2] = dt;\n    }\n}\n";
+    }
+    std::string log;
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp --prelude '" + prelude + "' -o '" + out + "' '"
+                      + script + "'" + engine_args() + " 2>&1",
+                  log),
+        0)
+        << log;
+    const std::string cpp = read_file(out);
+    EXPECT_NE(cpp.find("hostns::FixedArray<int32_t, 4> cells"), std::string::npos);
+    EXPECT_EQ(cpp.find("std::array"), std::string::npos);
+    std::string cc;
+    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++17 -fsyntax-only -I '" + HOT_SOURCE_DIR
+                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
+                  cc),
+        0)
+        << cc;
+}
+
 // Translates the script text and compiles the C++ with -fsyntax-only.
 void expect_script_compiles(TestScratch& scratch, const char* name, const char* text)
 {

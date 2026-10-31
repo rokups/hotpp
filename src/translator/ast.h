@@ -555,6 +555,11 @@ struct ModuleAttrs
     int line = 0;
     uint32_t pos = 0;
     uint32_t std_pos = 0; // the position of the attribute "std"
+    bool has_array = false; // the attribute [array("template")]
+    // The template of the type "T[N]": "$T" is the element type and "$N" is the size. It is the
+    // internal form: the placeholder of std_ns.h stands for "$std::".
+    std::string array_tpl = std::string(kDefaultArrayTpl);
+    uint32_t array_pos = 0; // the position of the attribute "array"
 };
 
 // A script enum: "enum Name : type { A, B = 5 }". It becomes a C++ "enum class". The

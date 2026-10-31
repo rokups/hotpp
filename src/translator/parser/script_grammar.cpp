@@ -973,6 +973,9 @@ struct ClassAttrs
     std::string std_ns; // [std("name")]: valid in a module attribute list only
     bool has_std = false;
     const char* std_pos = nullptr; // the "std" name, or null
+    std::string array_tpl; // [array("template")]: valid in a module attribute list only
+    bool has_array = false;
+    const char* array_pos = nullptr; // the "array" name, or null
     const char* handle_pos = nullptr; // the "handle" name, or null
     std::vector<std::pair<const char*, std::string>> used; // the valid attributes
 };
@@ -982,7 +985,8 @@ int class_attr_arity(const std::string& name)
 {
     if (name == "native" || name == "value" || name == "self")
         return 0;
-    if (name == "handle" || name == "default_handle" || name == "alias" || name == "cpp_prelude" || name == "std")
+    if (name == "handle" || name == "default_handle" || name == "alias" || name == "cpp_prelude" || name == "std"
+        || name == "array")
         return 1;
     if (name == "intrusive")
         return 2;
@@ -1042,6 +1046,12 @@ struct class_attrs_p
                 a.std_ns = std::move(it.args[0]);
                 a.has_std = true;
                 a.std_pos = it.pos;
+            }
+            else if (it.name == "array")
+            {
+                a.array_tpl = std_from_user(it.args[0]);
+                a.has_array = true;
+                a.array_pos = it.pos;
             }
             else if (it.name == "handle")
             {
@@ -1172,6 +1182,8 @@ TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bo
             st.error(a->pos, "attribute 'alias' is not allowed on a stub");
         if (a->has_std)
             st.error(a->std_pos, "attribute 'std' is valid only on a module attribute list: end the list with ';'");
+        if (a->has_array)
+            st.error(a->array_pos, "attribute 'array' is valid only on a module attribute list: end the list with ';'");
         if (a->is_self && (derived || s.name.find('*') != std::string::npos))
             st.error(a->pos, "'self' is valid only on a stub with an exact name");
     }
@@ -1193,7 +1205,7 @@ TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bo
 // needs a row here, a field in ast::ModuleAttrs and a branch in make_module_attrs.
 int module_attr_arity(const std::string& name)
 {
-    if (name == "std")
+    if (name == "std" || name == "array")
         return 1;
     return -1;
 }
@@ -1229,6 +1241,18 @@ TopItem make_module_attrs(const ParseState& st, const char* pos, const ClassAttr
         m.std_pos = st.offset(a->std_pos);
         if (!valid_std_ns(m.std_ns))
             st.error(a->std_pos, "'" + m.std_ns + "' is not a C++ namespace name");
+    }
+    if (a->has_array)
+    {
+        std::string why;
+        if (valid_array_tpl(a->array_tpl, why))
+        {
+            m.has_array = true;
+            m.array_tpl = a->array_tpl;
+            m.array_pos = st.offset(a->array_pos);
+        }
+        else
+            st.error(a->array_pos, why);
     }
     return t;
 }
@@ -1451,11 +1475,28 @@ struct file_p
 
 } // namespace
 
-ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics& diag)
+ast::Script parse_script_array(std::string_view text, const LineMap& map, Diagnostics& diag,
+    std::string_view host_array_tpl)
+{
+    const size_t n_items = diag.items.size(), n_warnings = diag.warnings.size(), n_holes = diag.member_holes.size();
+    ast::Script sc = parse_script(text, map, diag, host_array_tpl);
+    std::string tpl(host_array_tpl);
+    for (const ast::ModuleAttrs& m : sc.module_attrs)
+        if (m.has_array)
+            tpl = m.array_tpl; // a repeat is an error that the caller reports; the last one counts here
+    if (tpl == host_array_tpl)
+        return sc;
+    diag.items.resize(n_items);
+    diag.warnings.resize(n_warnings);
+    diag.member_holes.resize(n_holes);
+    return parse_script(text, map, diag, tpl);
+}
+
+ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics& diag, std::string_view array_tpl)
 {
     ast::Script script;
     const size_t first_item = diag.items.size();
-    const ParseState st{text.data(), &map, &diag, text.size()};
+    const ParseState st{text.data(), &map, &diag, text.size(), array_tpl};
     const auto input = lexy::string_input<Encoding>(text.data(), text.size());
     auto result = parse_with_diag<file_p>(input, st);
     if (result.has_value())
@@ -1479,7 +1520,7 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
         }
     }
     // The span-then-call step: parse each body and each initializer.
-    const ParseInput in{text, &map};
+    const ParseInput in{text, &map, array_tpl};
     for (ast::EnumDef& e : script.enums)
         for (ast::Enumerator& m : e.items)
             if (m.has_value && !only_blank(span_text(st, m.value_span)))

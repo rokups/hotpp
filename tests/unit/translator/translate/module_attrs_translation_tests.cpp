@@ -227,3 +227,140 @@ TEST(ModuleAttrsTranslation, TheByte0x01IsAnErrorInAPrelude)
     EXPECT_TRUE(has(r.diagnostics, "the byte 0x01 is not allowed in a script")) << r.diagnostics;
     EXPECT_TRUE(has(r.diagnostics, "host.prelude")) << r.diagnostics;
 }
+
+// ---- the module attribute array: the template of the type "T[N]".
+
+namespace
+{
+
+const char* kFixed = "[array(\"my::Fixed<$T, $N>\")];\n";
+
+} // namespace
+
+TEST(ModuleAttrsTranslation, TheArrayTypeIsStdArrayByDefault)
+{
+    const hotc::TranslateResult r = check_translate("", "    int[3] a;\n    void F() { int[2][4] b; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "std::array<int32_t, 3> a;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "std::array<std::array<int32_t, 4>, 2> b")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, TheArrayTemplateOfThePreludeIsTheDefault)
+{
+    const hotc::TranslateResult r = check_translate(
+        "", "    int[3] a;\n    void F() { int[2][4] b; std.vector<int[2]> v; }\n", {{"host.prelude", kFixed}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "my::Fixed<int32_t, 3> a;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "my::Fixed<my::Fixed<int32_t, 4>, 2> b")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "std::vector<my::Fixed<int32_t, 2>> v")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "std::array")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, TheArrayTemplateInTheScriptOverridesThePreludeDefault)
+{
+    const hotc::TranslateResult r = check_translate(
+        "[array(\"other::Arr<$N, $T>\")];\n", "    int[3] a;\n", {{"host.prelude", kFixed}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "other::Arr<3, int32_t> a;")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "my::Fixed")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, TheArrayTemplateInTheScriptWorksAfterTheFirstUse)
+{
+    // The attribute list comes after the class. The parser reads the file again with the template.
+    const hotc::TranslateResult r =
+        check_translate("", "    int[3] a;\n    void F() { int[2] b; }\n}\n[array(\"my::Fixed<$T, $N>\")];\nclass Last {\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "my::Fixed<int32_t, 3> a;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "my::Fixed<int32_t, 2> b")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, ASyntaxErrorBeforeALateArrayAttributeIsReportedOnce)
+{
+    // The attribute list comes after the error. The parser reads the file twice, but the error appears once.
+    const hotc::TranslateResult r = check_translate(
+        "", "    int[3] a;\n    void F() { int y = ; }\n}\n[array(\"my::Fixed<$T, $N>\")];\nclass Last {\n");
+    EXPECT_FALSE(r.ok);
+    const std::string msg = "expected an expression";
+    const size_t first = r.diagnostics.find(msg);
+    ASSERT_NE(first, std::string::npos) << r.diagnostics;
+    EXPECT_EQ(r.diagnostics.find(msg, first + 1), std::string::npos) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "t.hot:4:")) << r.diagnostics;
+}
+
+TEST(ModuleAttrsTranslation, ANameThatStartsWithDollarTIsAnError)
+{
+    const hotc::TranslateResult r = check_translate("[array(\"my::Fixed<$Tag, $N>\")];\n", "    int x;\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "unknown '$' name")) << r.diagnostics;
+    const hotc::TranslateResult n = check_translate("[array(\"my::Fixed<$T, $N1>\")];\n", "    int x;\n");
+    EXPECT_FALSE(n.ok);
+    EXPECT_TRUE(has(n.diagnostics, "unknown '$' name")) << n.diagnostics;
+}
+
+TEST(ModuleAttrsTranslation, DollarStdInTheArrayTemplateFollowsTheNamespace)
+{
+    const hotc::TranslateResult r = check_translate("[array(\"$std::array<$T, $N>\")];\n", "    int[3] a;\n",
+        {{"host.prelude", kMystd}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "mystd::array<int32_t, 3> a;")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "\x01std::")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, TheDefaultArrayTemplateFollowsTheNamespace)
+{
+    const hotc::TranslateResult r = check_translate("", "    int[3] a;\n", {{"host.prelude", kMystd}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "mystd::array<int32_t, 3> a;")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, TheArrayAndTheStdAttributeShareOneList)
+{
+    const hotc::TranslateResult r =
+        check_translate("[std(\"mystd\"), array(\"$std::array<$T, $N>\")];\n", "    int[3] a;\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "mystd::array<int32_t, 3> a;")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, ARepeatedArrayAttributeIsAnError)
+{
+    const hotc::TranslateResult one = check_translate(std::string(kFixed) + kFixed, "    int x;\n");
+    EXPECT_FALSE(one.ok);
+    EXPECT_TRUE(has(one.diagnostics, "attribute 'array' is given twice in one file")) << one.diagnostics;
+    const hotc::TranslateResult pre =
+        check_translate("", "    int x;\n", {{"a.prelude", kFixed}, {"b.prelude", kFixed}});
+    EXPECT_FALSE(pre.ok);
+    EXPECT_TRUE(has(pre.diagnostics, "attribute 'array' is given twice in the preludes")) << pre.diagnostics;
+}
+
+TEST(ModuleAttrsTranslation, AnArrayTemplateNeedsTheElementTypeAndTheSize)
+{
+    const hotc::TranslateResult no_n = check_translate("[array(\"my::Fixed<$T>\")];\n", "    int x;\n");
+    EXPECT_FALSE(no_n.ok);
+    EXPECT_TRUE(has(no_n.diagnostics, "the array template needs '$N' (the size)")) << no_n.diagnostics;
+    const hotc::TranslateResult no_t = check_translate("[array(\"my::Fixed<int, $N>\")];\n", "    int x;\n");
+    EXPECT_FALSE(no_t.ok);
+    EXPECT_TRUE(has(no_t.diagnostics, "the array template needs '$T' (the element type)")) << no_t.diagnostics;
+    const hotc::TranslateResult none = check_translate("[array(\"my::Fixed\")];\n", "    int x;\n");
+    EXPECT_FALSE(none.ok);
+    EXPECT_TRUE(has(none.diagnostics, "the array template needs '$T' (the element type) and '$N' (the size)"))
+        << none.diagnostics;
+    const hotc::TranslateResult bad = check_translate("[array(\"my::Fixed<$T, $N, $X>\")];\n", "    int x;\n");
+    EXPECT_FALSE(bad.ok);
+    EXPECT_TRUE(has(bad.diagnostics, "unknown '$' name")) << bad.diagnostics;
+}
+
+TEST(ModuleAttrsTranslation, TheAttributeArrayNeedsOneArgument)
+{
+    const hotc::TranslateResult r = check_translate("[array];\n", "    int x;\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "attribute 'array' takes 1 arguments")) << r.diagnostics;
+}
+
+TEST(ModuleAttrsTranslation, TheAttributeArrayIsValidOnlyInTheList)
+{
+    const hotc::TranslateResult r =
+        check_translate("", "    int x;\n", {{"host.prelude", "[array(\"my::Fixed<$T, $N>\"), native] class Foo2;\n"}});
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "attribute 'array' is valid only on a module attribute list")) << r.diagnostics;
+}

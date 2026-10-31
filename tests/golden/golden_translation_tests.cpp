@@ -244,6 +244,17 @@ TEST(GoldenTranslation, ModuleAttrsOverride)
     check_golden("module_attrs_override_v1.g1.slots", r.slots_out);
 }
 
+// The module attribute array of the script: the text has the template of the host for "T[N]".
+TEST(GoldenTranslation, ModuleAttrsArray)
+{
+    hotc::TranslateOptions o = engine_options("module_attrs_array_v1.hot", 1);
+    o.script_name = "module_attrs_array_v1.hot";
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    check_golden("module_attrs_array_v1.g1.cpp", r.cpp);
+    check_golden("module_attrs_array_v1.g1.slots", r.slots_out);
+}
+
 // A native stub with the name of a header type is not a script type. It gives no name clash error.
 TEST(GoldenTranslation, NativeStubWithAHeaderTypeNameIsNotAClash)
 {

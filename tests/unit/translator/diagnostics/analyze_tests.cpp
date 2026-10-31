@@ -139,6 +139,31 @@ TEST(Analyze, TranslateStillFailsForTheSameText)
     EXPECT_EQ(t.diagnostics, "t.hot:3:20: error: expected an expression\n");
 }
 
+// The module attribute array gives the type of "T[N]". The type text of the analysis uses it.
+TEST(Analyze, ArrayTemplateOfTheModuleAttributeApplies)
+{
+    const std::string text = "using \"w.h\";\n[array(\"my::Fixed<$T, $N>\")];\nclass Foo : Wrap<int[3]> {\n}\n";
+    const hotc::AnalyzeResult r = analyze_text(text);
+    ASSERT_EQ(r.classes.size(), 1u);
+    EXPECT_EQ(r.classes[0].base, "Wrap<my::Fixed<int32_t, 3>>");
+    const hotc::AnalyzeResult d = analyze_text("using \"w.h\";\nclass Foo : Wrap<int[3]> {\n}\n");
+    ASSERT_EQ(d.classes.size(), 1u);
+    EXPECT_EQ(d.classes[0].base, "Wrap<std::array<int32_t, 3>>");
+}
+
+// The attribute can come after the first use of "T[N]". The analysis reads the text again with the template.
+TEST(Analyze, ArrayTemplateAfterTheFirstUseApplies)
+{
+    const std::string text = "using \"w.h\";\nclass Foo : Wrap<int[3]> {\n}\n[array(\"my::Fixed<$T, $N>\")];\n";
+    const hotc::AnalyzeResult r = analyze_text(text); // the header has no "my::Fixed": only the base text counts
+    ASSERT_EQ(r.classes.size(), 1u);
+    EXPECT_EQ(r.classes[0].base, "Wrap<my::Fixed<int32_t, 3>>");
+    // A syntax error before the attribute is reported once.
+    const hotc::AnalyzeResult e =
+        analyze_text("using \"w.h\";\nclass Foo : Widget {\n    void a() { x = ; }\n}\n[array(\"my::Fixed<$T, $N>\")];\n");
+    EXPECT_EQ(e.errors.size(), 1u) << e.diagnostics;
+}
+
 // The type text of the parser holds an internal placeholder for "std". The base text for a
 // language server must not hold it: the module attribute gives the namespace.
 TEST(Analyze, BaseTextHasNoPlaceholderByte)
