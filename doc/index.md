@@ -1,12 +1,13 @@
 ---
 layout: default
 title: Home
-nav_order: 1
+nav_order: 0
 ---
 
 Hot++ is a scripting language for C++ programs. A script is a `.hot` file that looks like C#.
 The `hotc` tool turns a script into C++. The engine reloads a changed script while it runs.
 
+- [Introduction](intro.html): what Hot++ is, a `.hot` and a `.cpp` script side by side, and how `hotc` makes the features work.
 - [Getting started](getting-started.html): write a class, check it and compile it.
 - [Types](types.html): builtin types, collection literals, handles, references and pointers.
 - [Borrowing](borrowing.html): where `T&`, `T*` and `&x` are allowed, and the errors.
