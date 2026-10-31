@@ -10,7 +10,26 @@ This page has seven hosting situations. Each situation has a sample project. The
 
 ## Which situation fits?
 
-Answer these questions in order. Stop at the first answer that fits.
+Answer these questions in order. Stop at the first answer that fits. The diagram shows the questions. The numbered list below has the same steps in text.
+
+<pre class="mermaid">
+flowchart TD
+Q1{"Must the shipped program have no compiler and no loader?"}
+Q1 -->|Yes| AOT["AOT"]
+Q1 -->|No| Q1b{"Do you want an AOT start with per-script overrides?"}
+Q1b -->|Yes| AOTR["AOT with run-time overrides"]
+Q1b -->|No| Q2{"Do the scripts change after the build, but you build them ahead of time?"}
+Q2 -->|Yes| PRE["Precompiled library"]
+Q2 -->|No| Q3{"Does the program read .hot text at run time and compile it?"}
+Q3 -->|No| BACK["Check the first two answers again"]
+Q3 -->|Yes| Q4{"Must a live object keep its field values while its code changes?"}
+Q4 -->|Yes| HR["Hot reload"]
+Q4 -->|No| Q5{"Can you link LLVM and Clang, and do you want no compiler process?"}
+Q5 -->|Yes| JIT["In-process JIT"]
+Q5 -->|No| Q6{"Do you want to set the compiler, the flags and the folders in your own code?"}
+Q6 -->|Yes| EXP["Explicit Clang files backend"]
+Q6 -->|No| RT["Compile at run time"]
+</pre>
 
 1. Must the shipped program have no compiler, no libclang and no loader? Then the scripts are fixed at build time. Use **AOT**. If the shipped program may carry a loader and a compiler, and you want an AOT start with per-script overrides, use **AOT with run-time overrides**.
 2. Do the scripts change after the program is built, but you build them ahead of time (with the build or with `hotc`)? Use a **precompiled library**.
