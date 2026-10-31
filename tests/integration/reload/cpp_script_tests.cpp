@@ -303,6 +303,80 @@ TEST_P(BackendTests, CppScriptStaticMemberRetypeWithoutHook)
     EXPECT_NE(log.find("field level changed its type"), std::string::npos) << log;
 }
 
+// C array fields: the state keeps the array type. A reload copies each element, also of a
+// string array, a const array, a two-dimensional array and an array of vectors. A module variable and
+// a static data member of an array type migrate. A new array field takes its initializer. A field
+// that changes its size resets, and the loader writes a warning to stderr.
+TEST_P(BackendTests, CppScriptArrayFieldsReload)
+{
+    hot::LoadResult v1 = backend->load(source("cpp_array_v1.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    hot::LoadResult v2 = backend->load(source("cpp_array_v2.cpp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Buf"));
+    using Data = int[4];
+    using Data6 = int[6];
+    using Grid = int[2][3];
+    using Names = std::string[2];
+    using Lut = const int[3];
+    using Tags = const std::string[2];
+    using Rows = std::vector<int>[2];
+    using Table = int[4];
+    using Hits = int[3];
+    ASSERT_NE(fld<Data>(s.inst.shell, "data"), nullptr);
+    ASSERT_NE(fld<Grid>(s.inst.shell, "grid"), nullptr);
+    ASSERT_NE(fld<Names>(s.inst.shell, "names"), nullptr);
+    ASSERT_NE(fld<Lut>(s.inst.shell, "lut"), nullptr);
+    EXPECT_EQ((*fld<Data>(s.inst.shell, "data"))[2], 30);
+    EXPECT_EQ((*fld<Grid>(s.inst.shell, "grid"))[1][2], 0);
+    EXPECT_EQ((*fld<Names>(s.inst.shell, "names"))[0], "first");
+    EXPECT_EQ((*fld<Lut>(s.inst.shell, "lut"))[1], 2);
+    EXPECT_EQ((*fld<Tags>(s.inst.shell, "tags"))[1], "y");
+    EXPECT_EQ((*modvar<Table>(s, "table"))[3], 4);
+    EXPECT_EQ((*modvar<Hits>(s, "Buf__s_hits"))[2], 7);
+
+    s.actor->Tick(kDt); // data 11 22 33 44, grid[1][2] 5, total 110 + 4, table[0] 2, hits[1] 7
+    EXPECT_EQ((*fld<Data>(s.inst.shell, "data"))[3], 44);
+    EXPECT_EQ((*fld<Grid>(s.inst.shell, "grid"))[1][2], 5);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "total"), 11 + 22 + 33 + 44 + 4);
+    EXPECT_EQ((*fld<Rows>(s.inst.shell, "rows"))[1].size(), 1u);
+    EXPECT_EQ((*modvar<Table>(s, "table"))[0], 2);
+    EXPECT_EQ((*modvar<Hits>(s, "Buf__s_hits"))[1], 7);
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    testing::internal::CaptureStderr();
+    const hot::ReloadResult res = s.loader.commit_pending();
+    const std::string log = testing::internal::GetCapturedStderr();
+    ASSERT_TRUE(res) << res.error;
+    EXPECT_EQ(hot::active_generation, 2u);
+    // "data" changed from int[4] to int[6]: it resets to the initializer and the loader warns.
+    EXPECT_NE(log.find("field data changed its type"), std::string::npos) << log;
+    ASSERT_NE(fld<Data6>(s.inst.shell, "data"), nullptr);
+    EXPECT_EQ(fld<Data>(s.inst.shell, "data"), nullptr);
+    EXPECT_EQ((*fld<Data6>(s.inst.shell, "data"))[0], 10);
+    EXPECT_EQ((*fld<Data6>(s.inst.shell, "data"))[3], 40);
+    EXPECT_EQ((*fld<Data6>(s.inst.shell, "data"))[5], 0);
+    // The other arrays keep their values.
+    EXPECT_EQ((*fld<Grid>(s.inst.shell, "grid"))[1][2], 5);
+    EXPECT_EQ((*fld<Names>(s.inst.shell, "names"))[0], "first");
+    EXPECT_EQ((*fld<Lut>(s.inst.shell, "lut"))[2], 3);
+    EXPECT_EQ((*fld<Tags>(s.inst.shell, "tags"))[0], "x");
+    EXPECT_EQ((*fld<Rows>(s.inst.shell, "rows"))[1].size(), 1u);
+    EXPECT_EQ((*fld<Rows>(s.inst.shell, "rows"))[1][0], 3);
+    EXPECT_EQ((*modvar<Table>(s, "table"))[0], 2);
+    EXPECT_EQ((*modvar<Hits>(s, "Buf__s_hits"))[1], 7);
+    ASSERT_NE(fld<int[8]>(s.inst.shell, "extra"), nullptr);
+    EXPECT_EQ((*fld<int[8]>(s.inst.shell, "extra"))[2], 3); // the new field takes its initializer
+
+    s.actor->Tick(kDt); // the Tick of generation 2
+    EXPECT_EQ((*fld<Data6>(s.inst.shell, "data"))[0], 110);
+    EXPECT_EQ((*fld<Grid>(s.inst.shell, "grid"))[1][2], 6);
+    EXPECT_EQ((*fld<int[8]>(s.inst.shell, "extra"))[3], 7);
+    EXPECT_EQ((*modvar<Table>(s, "table"))[0], 12);
+    EXPECT_EQ((*modvar<Hits>(s, "Buf__s_hits"))[1], 17);
+}
+
 // The hook onReload runs at the reload and reads the old value through its old name.
 TEST_P(BackendTests, CppScriptOnReloadRuns)
 {

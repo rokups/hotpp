@@ -190,12 +190,19 @@ struct holds_no_code<std::unordered_map<K, V, std::hash<K>, std::equal_to<K>, st
 template <class T> struct holds_no_code<const T> : holds_no_code<T>
 {
 };
+// A C array holds code when its element does.
+template <class T, size_t N> struct holds_no_code<T[N]> : holds_no_code<T>
+{
+};
+template <class T, size_t N> struct holds_no_code<const T[N]> : holds_no_code<T>
+{
+};
 
 // Helpers for the reflection table of generated code. T is the field type.
 template <class T> HOT_HIDDEN constexpr uint8_t field_flags()
 {
     return static_cast<uint8_t>((std::is_trivially_copyable_v<T> ? kTriviallyCopyable : 0)
-        | (std::is_nothrow_move_constructible_v<T> ? kNothrowMove : 0) | (holds_no_code<T>::value ? 0 : kMayHoldCode));
+        | (std::is_nothrow_move_constructible_v<std::remove_all_extents_t<T>> ? kNothrowMove : 0) | (holds_no_code<T>::value ? 0 : kMayHoldCode));
 }
 
 // The flags of a field that holds a [value] script class (design 5.3). The loader looks at the
@@ -205,14 +212,50 @@ template <class T> HOT_HIDDEN constexpr uint8_t value_field_flags()
     return static_cast<uint8_t>((field_flags<T>() & ~kMayHoldCode) | kScriptStruct);
 }
 
+// A field can be a C array, for example "int arr[256]" of a ".cpp" script. An array has no copy
+// constructor and no destructor call. These helpers work on each element. They take raw
+// addresses, so a const element type (a "const int lut[3]" field) works.
+template <class T> HOT_NODEBUG inline void copy_into(void* dst, const void* src)
+{
+    if constexpr (std::is_array_v<T>)
+    {
+        using E = std::remove_extent_t<T>;
+        for (size_t i = 0; i < std::extent_v<T>; ++i)
+            copy_into<E>(static_cast<char*>(dst) + i * sizeof(E), static_cast<const char*>(src) + i * sizeof(E));
+    }
+    else
+    {
+        using U = std::remove_cv_t<T>;
+        ::new (dst) U(*static_cast<const U*>(src));
+    }
+}
+
+template <class T> HOT_NODEBUG inline void destroy_in(void* obj)
+{
+    if constexpr (std::is_array_v<T>)
+    {
+        using E = std::remove_extent_t<T>;
+        for (size_t i = std::extent_v<T>; i > 0; --i)
+            destroy_in<E>(static_cast<char*>(obj) + (i - 1) * sizeof(E));
+    }
+    else
+    {
+        using U = std::remove_cv_t<T>;
+        static_cast<U*>(obj)->~U();
+    }
+}
+
 template <class T> HOT_NODEBUG inline void move_field(void* dst, const void* src)
 {
-    new (dst) T(*static_cast<const T*>(src));
+    if constexpr (std::is_array_v<T>)
+        copy_into<T>(dst, src);
+    else
+        new (dst) T(*static_cast<const T*>(src));
 }
 
 template <class T> HOT_NODEBUG inline void destroy_field(void* field)
 {
-    static_cast<T*>(field)->~T();
+    destroy_in<T>(field);
 }
 
 template <class T> HOT_HIDDEN constexpr void (*field_destroyer())(void*)

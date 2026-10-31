@@ -147,6 +147,12 @@ TEST(GoldenTranslation, AbiChild)
     golden_pair("abi_child");
 }
 
+// C array fields: the state keeps "int data[4]"; the init and the migration row use the array type.
+TEST(GoldenTranslation, CppArrayFields)
+{
+    golden_pair("cpp_array", ".cpp");
+}
+
 TEST(GoldenTranslation, CppPlayer)
 {
     golden_pair("cpp_player", ".cpp");

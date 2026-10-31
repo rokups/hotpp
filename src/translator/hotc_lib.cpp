@@ -61,6 +61,55 @@ namespace
 
 using namespace hotc::ast;
 
+// Splits the spelling of a C array type into the element type and the extents, for example
+// "int[2][3]" into "int" and "[2][3]". The extents are the "[...]" groups at the end of the text. An
+// element type can have "(" or "<...[...]...>", for example "std::function<void ()>[4]". The tail is
+// empty when the type is not an array type.
+std::pair<std::string, std::string> split_c_array(const std::string& t)
+{
+    size_t end = t.size();
+    while (end > 0 && t[end - 1] == ']')
+    {
+        int depth = 0;
+        size_t k = end;
+        while (k > 0)
+        {
+            --k;
+            if (t[k] == ']')
+                ++depth;
+            else if (t[k] == '[' && --depth == 0)
+                break;
+        }
+        if (depth != 0)
+            return {t, std::string()};
+        end = k;
+    }
+    while (end > 0 && t[end - 1] == ' ')
+        --end;
+    if (end == t.size() || end == 0)
+        return {t, std::string()};
+    return {t.substr(0, end), t.substr(t.find('[', end))};
+}
+
+// True when the type text is a C array type of a field: "int[256]", "int[2][3]" or an array of
+// function pointers such as "void (*[4])(int)". The declaration of the last form needs an alias.
+bool is_c_array_type(const std::string& t)
+{
+    return !split_c_array(t).second.empty() || t.find("(*[") != std::string::npos;
+}
+
+// The declaration of a field "name" of the type "t" without the final ";". An array of function
+// pointers goes through an alias, as its declarator has the name inside.
+std::string field_declarator(const std::string& t, const std::string& name)
+{
+    const auto [head, tail] = split_c_array(t);
+    if (!tail.empty())
+        return head + " " + name + tail;
+    if (is_c_array_type(t))
+        return "using " + name + "__array_t = " + t + "; " + name + "__array_t " + name;
+    return t + " " + name;
+}
+
 // State of the call in progress. Each thread has its own copy.
 thread_local std::string g_script; // the script name, as given by the caller
 thread_local hotc::Diagnostics g_diag; // the diagnostics of the call
@@ -3957,7 +4006,8 @@ void translate_impl(
         if (!is_module && !sc.is_cpp)
             o.w(prelude_block(types.preludes(cn), cn, std::string()));
         for (const Field& f : cd.fields)
-            o.w("    " + f.type + " " + f.name + ";\n");
+            o.w("    " + (sc.is_cpp && is_c_array_type(f.type) ? field_declarator(f.type, f.name) : f.type + " " + f.name)
+                + ";\n");
         if (is_module)
         {
             // The loader builds the module block with the init functions of the field table, in
@@ -4020,7 +4070,9 @@ void translate_impl(
                 o.w("namespace " + hotc::ast::gen_namespace(f.ns) + " {\n");
             o.w("#line " + std::to_string(f.line) + " \"" + esc(file_at(f.pos)) + "\"\n");
             o.w("static void " + P + "init_" + f.name + "(void*, void* f) { using T = " + f.type + "; new (f) T"
-                + (f.raw_brace_init ? inits[i] : "(" + inits[i] + ")") + "; }\n");
+                + (f.raw_brace_init ? inits[i]
+                        : inits[i].empty() && sc.is_cpp && is_c_array_type(f.type) ? "{}" : "(" + inits[i] + ")")
+                + "; }\n");
             if (!f.ns.empty())
                 o.w("}\n");
             reset();
@@ -5180,9 +5232,13 @@ void translate_impl(
             o.w("    hot::ShellBase* __hot_owner;\n");
         for (const Field& f : cd.fields)
         {
-            const std::string decl = "    " + f.type + " " + f.name + ";\n";
+            // A C array type "int[2][3]" is written as "int name[2][3]".
+            const bool c_array = f.raw && is_c_array_type(f.type);
+            const std::string declarator = c_array ? field_declarator(f.type, f.name) : f.type + " " + f.name;
+            const std::string decl = "    " + declarator + ";\n";
             if (f.pos != 0)
-                o.name_segment(decl, 4 + f.type.size(), f.name, all_text, f.pos, f.name);
+                o.name_segment(decl, 4 + (c_array ? split_c_array(f.type).first.size() : f.type.size()), f.name,
+                    all_text, f.pos, f.name);
             o.w(decl);
         }
         // The bodies of the class are members of the state struct. A debugger shows "this" with
@@ -5272,7 +5328,9 @@ void translate_impl(
                 + (uses_self ? "[[maybe_unused]] auto* __self = static_cast<" + shell + "*>(static_cast<" + S
                         + "*>(st)->__hot_owner); "
                              : std::string())
-                + "using T = " + f.type + "; new (f) T" + (f.raw_brace_init ? init : "(" + init + ")") + "; }\n");
+                + "using T = " + f.type + "; new (f) T"
+                + (f.raw_brace_init ? init : init.empty() && f.raw && is_c_array_type(f.type) ? "{}" : "(" + init + ")")
+                + "; }\n");
             reset();
         }
         // A convert hook of a field (design 4.7). The wrapper builds the new field from the old one.
