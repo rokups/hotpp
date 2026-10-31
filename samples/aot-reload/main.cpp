@@ -131,7 +131,7 @@ int main(int argc, char** argv)
 
     // Phase 3, revert. The compiled-in code of the unit is live again. The field howls does not
     // exist in the AOT layout, so the object drops it. The field bites stays.
-    const hot::ReloadResult reverted = loader.revert_unit(kUnit);
+    const hot::ReloadResult reverted = loader.revert_unit(kUnit, *backend);
     if (!reverted)
         return fail("revert failed", reverted.error);
     const hot::ReloadResult committed_revert = loader.commit_pending();

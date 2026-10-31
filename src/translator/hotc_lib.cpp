@@ -1025,6 +1025,7 @@ struct Options
     std::vector<std::string> includes;
     std::string resource_dir; // the Clang resource directory (builtin headers)
     std::string std_version; // the C++ standard of the parse, for example "c++17"
+    bool aot = false; // AOT code: each thunk carries its signature key (see TranslateOptions::aot)
 };
 
 struct ManifestEntry
@@ -2264,6 +2265,7 @@ void translate_impl(
     opt.input = in.script_name;
     opt.output = in.output_name;
     opt.gen = in.generation;
+    opt.aot = in.aot;
     opt.includes = in.include_dirs;
     opt.resource_dir = in.resource_dir;
     opt.std_version = in.std_version.empty() ? hot::cxx_std_name() : in.std_version;
@@ -5034,8 +5036,11 @@ void translate_impl(
                     + slot_id(m.name) + arg_list(m) + ");\n}\n",
                 m.line, m.pos);
             o.w("\n");
+            // AOT code gives the thunk its signature key too. So Loader::revert_unit can put the key of
+            // the AOT signature back, and a delegate of an override signature detaches.
             thunk_regs.push_back("    reg.add_thunk(\"" + cd.key_name() + "::" + m.name + "\", reinterpret_cast<void*>(&" + P
-                + m.name + "__thunk));\n");
+                + m.name + "__thunk)"
+                + (opt.aot ? ", typeid(" + sig + ").name(), " + slot_id(m.name) : std::string()) + ");\n");
         }
 
         // A bare "this" used as a handle in a native-base class needs shared_from_this in the

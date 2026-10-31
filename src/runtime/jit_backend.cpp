@@ -268,6 +268,12 @@ void JitBackend::seed_slots(const std::string& text)
         slots_->text = text;
 }
 
+void JitBackend::revert_slots(const std::string& text)
+{
+    std::lock_guard<std::mutex> lock(slots_->mutex);
+    slots_->text = slots_revert(slots_->text, text);
+}
+
 LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, LoadMode mode)
 {
     std::lock_guard<std::mutex> lock(mutex_);

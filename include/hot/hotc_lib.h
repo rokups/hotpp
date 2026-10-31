@@ -48,6 +48,9 @@ struct TranslateOptions
     // directory the translator reads this file system first and then the disk. Null: the disk only.
     // The file system must be thread safe.
     std::shared_ptr<hot::FileSystem> fs;
+    // AOT code (hotc --aot). Each thunk of a script function carries the signature key of its
+    // slot, also the thunk of the first signature. Loader::revert_unit restores the keys from it.
+    bool aot = false;
 };
 
 // The scripts of a build: pairs of the name that "#line" uses and the script text.

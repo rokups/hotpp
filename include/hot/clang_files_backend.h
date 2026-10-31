@@ -58,6 +58,8 @@ public:
     // Writes the text to the slots file when the file does not exist yet or when the text covers
     // the content of the file (backend.h: slots_cover). A failed write does nothing.
     void seed_slots(const std::string& text) override;
+    // Puts the signature lines of the AOT code back in the slots file (Backend::revert_slots).
+    void revert_slots(const std::string& text) override;
 
     // Translates and compiles one script into "out_so". It writes the .cpp
     // next to the .so. It does not load the library. The slot file changes only

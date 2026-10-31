@@ -317,7 +317,7 @@ loader.commit_pending();                             // at a safe point of the h
 loader.frame_boundary();
 
 // Go back to the compiled-in code.
-loader.revert_unit("wolf");                          // stage the AOT code again
+loader.revert_unit("wolf", *backend);                // stage the AOT code again
 loader.commit_pending();
 loader.frame_boundary();
 ```
@@ -332,7 +332,8 @@ loader.frame_boundary();
 - Never link `hot::aot` and `hot::backend` (or `hot::runtime`) in one program. `MODE AOT_RELOAD` links the second one only.
 - The AOT library compiles with hidden symbols. This stops the override library from binding to the AOT code.
 - `revert_unit` fails (`BadModule`) when the unit has no AOT module. It returns `Busy` while another reload waits for its commit.
-- The AOT code has the first signature of each method, and the loader does not check that signature. After a revert, a delegate on the thunk of an override signature does not detach. Drop such delegates before the revert.
+- The AOT thunks carry the signature key of each method. The revert sets these keys again. After a revert, a delegate on the thunk of an override signature detaches: a call logs once and does not run the AOT function. Take the thunk of the AOT signature again to call the method.
+- `revert_unit` needs the backend of the override. The backend learns the signatures of an override only when the loader accepts the override. The commit of the revert calls `Backend::revert_slots` with the AOT slot lines of the unit. So a later override of the unit sees the AOT signatures. The backend must live until the commit.
 - `HOT_SCRIPT_DIR` is a development define. The override files stay out of `SCRIPTS`.
 
 **Failure:** `load_aot` returns an error when a class is in two units. A failed `load_aot` leaves the `Loader` empty.

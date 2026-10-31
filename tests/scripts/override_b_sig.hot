@@ -1,0 +1,14 @@
+// Unit B of the override tests, run-time override that changes a signature. Hits gets a parameter.
+using "Actor.h";
+
+class Beta : Actor {
+    int hits = 0;
+
+    override void Tick(float dt) {
+        this.hits = this.hits + 10;
+    }
+
+    int Hits(int extra) {
+        return this.hits + extra;
+    }
+}

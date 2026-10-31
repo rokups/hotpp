@@ -13,7 +13,7 @@ One live `Wolf` object goes through three phases. Each phase ticks the object tw
 
 1. **aot.** `Loader::load_aot(hot::aot_table)` registers the compiled-in script. The object runs the AOT code (`[aot]`).
 2. **override.** The backend compiles `script/wolf_override` at run time. The program sets `Module::unit` to `wolf`, then calls `request_reload` and `commit_pending`. The object keeps `bites` and gets the field `howls` (`[override]`).
-3. **revert.** `Loader::revert_unit("wolf")` and `commit_pending` give the AOT code back. The object keeps `bites` and drops `howls` (`[aot]`).
+3. **revert.** `Loader::revert_unit("wolf", *backend)` and `commit_pending` give the AOT code back. The object keeps `bites` and drops `howls` (`[aot]`).
 
 Before `load_aot`, the program calls `backend->seed_slots(hot::aot_table.slots)`. The override then
 keeps the slot numbers of the AOT code.

@@ -268,6 +268,7 @@ int run_aot(const Args& args)
         usage();
     hotc::TranslateOptions base;
     base.generation = 1;
+    base.aot = true;
     base.strict_borrowed = args.strict_borrowed;
     base.format_lib = args.format_lib;
     // Without --resource-dir the translator needs the default. A portable build finds it at run time.

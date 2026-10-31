@@ -17,6 +17,7 @@ namespace
 
 constexpr float kDt = 1.0f / 60.0f;
 const char* const kUnitA = "override_a_v1";
+const char* const kUnitB = "override_b_v1";
 
 // The loader is the first member: it is destroyed last, after the actors.
 class AotOverride : public ::testing::Test
@@ -72,9 +73,21 @@ protected:
         loader.frame_boundary();
     }
 
+    void override_b(uint32_t generation, const char* file)
+    {
+        hot::LoadResult built = backend->load(test_support::source(file), generation);
+        ASSERT_TRUE(built) << built.error;
+        built.module->unit = kUnitB;
+        const hot::ReloadResult req = loader.request_reload(std::move(*built.module));
+        ASSERT_TRUE(req) << req.error;
+        const hot::ReloadResult done = loader.commit_pending();
+        ASSERT_TRUE(done) << done.error;
+        loader.frame_boundary();
+    }
+
     void revert_a()
     {
-        const hot::ReloadResult r = loader.revert_unit(kUnitA);
+        const hot::ReloadResult r = loader.revert_unit(kUnitA, *backend);
         ASSERT_TRUE(r) << r.error;
         EXPECT_EQ(r.status, hot::ReloadStatus::Pending);
         const hot::ReloadResult done = loader.commit_pending();
@@ -182,8 +195,30 @@ TEST_F(AotOverride, RevertAfterASignatureChangeRestoresTheAotSignature)
     EXPECT_EQ(call_int("Alpha::Total", alpha), 4);
     const std::string log = testing::internal::GetCapturedStderr();
     EXPECT_EQ(hot::detached_call_count(), detached0) << log;
-    // The AOT slot has no key (the first signature is not checked), so the thunk of the override
-    // signature does not detach. A host must drop the delegates of an override before the revert.
+}
+
+// The AOT thunks carry the key of the AOT signature. The revert sets the key again. A delegate
+// that the host took for the override signature detaches: it does not call the AOT function.
+TEST_F(AotOverride, OverrideSignatureDelegateDetachesAfterTheRevert)
+{
+    tick(alpha, 3);
+    ASSERT_NO_FATAL_FAILURE(override_a(2, "override_a_sig.hot"));
+    using TotalWithArg = int32_t (*)(Actor*, int32_t);
+    auto changed = reinterpret_cast<TotalWithArg>(loader.thunk("Alpha::Total"));
+    ASSERT_NE(changed, nullptr);
+    EXPECT_EQ(changed(static_cast<Actor*>(alpha.native), 4), 7);
+
+    ASSERT_NO_FATAL_FAILURE(revert_a());
+    const uint64_t detached0 = hot::detached_call_count();
+    testing::internal::CaptureStderr();
+    // The old delegate does not run the AOT function. The call returns the default value.
+    EXPECT_EQ(changed(static_cast<Actor*>(alpha.native), 4), 0);
+    EXPECT_EQ(hot::detached_call_count(), detached0 + 1);
+    // The state of the object does not change, and the AOT signature works.
+    EXPECT_EQ(*field(alpha, "count"), 3);
+    EXPECT_EQ(call_int("Alpha::Total", alpha), 3);
+    const std::string log = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(hot::detached_call_count(), detached0 + 1) << log;
 }
 
 TEST_F(AotOverride, AotClosureIsLiveAgainAfterTheRevert)
@@ -200,7 +235,7 @@ TEST_F(AotOverride, AotClosureIsLiveAgainAfterTheRevert)
 
 TEST_F(AotOverride, RevertOfAUnitWithoutAnAotModuleFails)
 {
-    const hot::ReloadResult unknown = loader.revert_unit("no_such_unit");
+    const hot::ReloadResult unknown = loader.revert_unit("no_such_unit", *backend);
     EXPECT_FALSE(unknown);
     EXPECT_EQ(unknown.reason, hot::ReloadReason::BadModule);
     EXPECT_NE(unknown.error.find("no AOT module"), std::string::npos) << unknown.error;
@@ -208,7 +243,7 @@ TEST_F(AotOverride, RevertOfAUnitWithoutAnAotModuleFails)
 
     // A loader without load_aot has no AOT module at all.
     hot::Loader plain;
-    const hot::ReloadResult none = plain.revert_unit(kUnitA);
+    const hot::ReloadResult none = plain.revert_unit(kUnitA, *backend);
     EXPECT_FALSE(none);
     EXPECT_EQ(none.reason, hot::ReloadReason::BadModule);
 
@@ -217,7 +252,79 @@ TEST_F(AotOverride, RevertOfAUnitWithoutAnAotModuleFails)
     ASSERT_TRUE(built) << built.error;
     built.module->unit = kUnitA;
     ASSERT_TRUE(loader.request_reload(std::move(*built.module)));
-    EXPECT_EQ(loader.revert_unit(kUnitA).reason, hot::ReloadReason::Busy);
+    EXPECT_EQ(loader.revert_unit(kUnitA, *backend).reason, hot::ReloadReason::Busy);
+}
+
+// A second override after a revert, with the same file that changes the signature. The slot must
+// get the key of the override signature again. The AOT thunk then detaches.
+TEST_F(AotOverride, SecondOverrideWithTheSameSignatureChangeSetsTheKeyAgain)
+{
+    using TotalWithArg = int32_t (*)(Actor*, int32_t);
+    using TotalNoArg = int32_t (*)(Actor*);
+    auto aot_total = reinterpret_cast<TotalNoArg>(loader.thunk("Alpha::Total"));
+    ASSERT_NE(aot_total, nullptr);
+    tick(alpha, 3);
+    ASSERT_NO_FATAL_FAILURE(override_a(2, "override_a_sig.hot"));
+    ASSERT_NO_FATAL_FAILURE(revert_a());
+    ASSERT_NO_FATAL_FAILURE(override_a(4, "override_a_sig.hot"));
+
+    auto changed = reinterpret_cast<TotalWithArg>(loader.thunk("Alpha::Total"));
+    ASSERT_NE(changed, nullptr);
+    const uint64_t detached0 = hot::detached_call_count();
+    testing::internal::CaptureStderr();
+    EXPECT_EQ(changed(static_cast<Actor*>(alpha.native), 4), 7);
+    EXPECT_EQ(hot::detached_call_count(), detached0);
+    // The call with the AOT signature detaches and returns the default value.
+    EXPECT_EQ(aot_total(static_cast<Actor*>(alpha.native)), 0);
+    const std::string log = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(hot::detached_call_count(), detached0 + 1) << log;
+    EXPECT_EQ(*field(alpha, "count"), 3);
+}
+
+// A second override after a revert, with a file that keeps the AOT signature. The AOT key stays.
+TEST_F(AotOverride, SecondOverrideThatKeepsTheSignatureStaysCallable)
+{
+    tick(alpha, 3);
+    ASSERT_NO_FATAL_FAILURE(override_a(2, "override_a_sig.hot"));
+    ASSERT_NO_FATAL_FAILURE(revert_a());
+    ASSERT_NO_FATAL_FAILURE(override_a(4, "override_a_v2.hot"));
+
+    const uint64_t detached0 = hot::detached_call_count();
+    testing::internal::CaptureStderr();
+    EXPECT_EQ(call_int("Alpha::Total", alpha), 8);
+    tick(alpha, 1);
+    EXPECT_EQ(call_int("Alpha::Total", alpha), 10);
+    const std::string log = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(hot::detached_call_count(), detached0) << log;
+}
+
+// Units A and B are overridden. B changes the signature of Hits. The revert of A must not change
+// the signature state of B. Else the edit of B back to the AOT signature emits no key.
+TEST_F(AotOverride, RevertOfOneUnitKeepsTheSignatureStateOfTheOtherUnit)
+{
+    using HitsWithArg = int32_t (*)(Actor*, int32_t);
+    using HitsNoArg = int32_t (*)(Actor*);
+    auto aot_hits = reinterpret_cast<HitsNoArg>(loader.thunk("Beta::Hits"));
+    ASSERT_NE(aot_hits, nullptr);
+    tick(beta, 2);
+    ASSERT_NO_FATAL_FAILURE(override_a(2));
+    ASSERT_NO_FATAL_FAILURE(override_b(3, "override_b_sig.hot"));
+    auto changed = reinterpret_cast<HitsWithArg>(loader.thunk("Beta::Hits"));
+    ASSERT_NE(changed, nullptr);
+    EXPECT_EQ(changed(static_cast<Actor*>(beta.native), 1), 21);
+
+    ASSERT_NO_FATAL_FAILURE(revert_a());
+    // B goes back to the AOT signature by an edit.
+    ASSERT_NO_FATAL_FAILURE(override_b(5, "override_b_v1.hot"));
+
+    const uint64_t detached0 = hot::detached_call_count();
+    testing::internal::CaptureStderr();
+    EXPECT_EQ(aot_hits(static_cast<Actor*>(beta.native)), 20);
+    EXPECT_EQ(hot::detached_call_count(), detached0);
+    // The delegate of the other signature detaches and returns the default value.
+    EXPECT_EQ(changed(static_cast<Actor*>(beta.native), 1), 0);
+    const std::string log = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(hot::detached_call_count(), detached0 + 1) << log;
 }
 
 } // namespace

@@ -107,6 +107,15 @@ void ClangFilesBackend::seed_slots(const std::string& text)
         std::fprintf(stderr, "[script] WARNING: cannot write %s\n", opt_.slots_file.c_str());
 }
 
+void ClangFilesBackend::revert_slots(const std::string& text)
+{
+    std::string have;
+    if (!read_text(opt_.slots_file, have))
+        return;
+    if (!write_text(opt_.slots_file, slots_revert(have, text)))
+        std::fprintf(stderr, "[script] WARNING: cannot write %s\n", opt_.slots_file.c_str());
+}
+
 ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options)
     : opt_(std::move(options))
 {

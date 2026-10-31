@@ -58,7 +58,57 @@ public:
     // backend takes the text, because the state is empty or stale (for example a file of an
     // earlier run). The default does nothing.
     virtual void seed_slots(const std::string& text) { (void)text; }
+
+    // Gives the signature lines of the AOT code back to the slot state. Loader::revert_unit calls
+    // it at the commit, with the AOT slot lines of the classes of the reverted unit. The backend
+    // learns an override only in on_accept, and a revert has no such callback of the backend. So
+    // without this call the state still has the signatures of the override, and a later override
+    // that has the same signatures emits no key for them (see slots_revert). The default does nothing.
+    virtual void revert_slots(const std::string& text) { (void)text; }
 };
+
+// Replaces each line "sig Cls::fn Sig" of "state" with the line of "aot" for the same function.
+// Other lines of "state" stay, so the slot numbers of the methods that an override added stay.
+inline std::string slots_revert(const std::string& state, const std::string& aot)
+{
+    auto name_of = [](const std::string& line)
+    {
+        const size_t sp = line.find(' ', 4);
+        return line.rfind("sig ", 0) == 0 && sp != std::string::npos ? line.substr(4, sp - 4) : std::string();
+    };
+    std::vector<std::pair<std::string, std::string>> aot_sigs; // function, line
+    for (size_t pos = 0; pos < aot.size();)
+    {
+        size_t eol = aot.find('\n', pos);
+        if (eol == std::string::npos)
+            eol = aot.size();
+        const std::string line = aot.substr(pos, eol - pos);
+        pos = eol + 1;
+        if (std::string n = name_of(line); !n.empty())
+            aot_sigs.emplace_back(std::move(n), line);
+    }
+    std::string out;
+    for (size_t pos = 0; pos < state.size();)
+    {
+        size_t eol = state.find('\n', pos);
+        const bool last = eol == std::string::npos;
+        if (last)
+            eol = state.size();
+        std::string line = state.substr(pos, eol - pos);
+        pos = eol + 1;
+        if (const std::string n = name_of(line); !n.empty())
+            for (const auto& [fn, aot_line] : aot_sigs)
+                if (fn == n)
+                {
+                    line = aot_line;
+                    break;
+                }
+        out += line;
+        if (!last)
+            out += '\n';
+    }
+    return out;
+}
 
 // True when every non-empty line of "have" is a line of "text". The backends use it in seed_slots.
 inline bool slots_cover(const std::string& text, const std::string& have)

@@ -1,5 +1,7 @@
 #include "hot/runtime/loader.h"
 
+#include "hot/backend.h"
+
 #include "runtime_internal.h"
 
 #include <algorithm>
@@ -31,7 +33,6 @@ struct Loader::Pending
     std::vector<PendingClass> classes;
     MigrationPlan mod_plan; // the plan of the module state block (old layout to new layout)
     // The core instance (module.h) when the generation adds a class or a thunk, else empty.
-    bool revert = false; // revert_unit: the slot keys of the unit go back to the AOT signatures
     bool have_core = false;
     Module core;
     Registry core_reg;
@@ -242,6 +243,7 @@ bool Loader::reset(std::string& error)
     restore_aot_records();
     unit_of_.clear();
     aot_records_.clear();
+    aot_slots_.clear();
     aot_units_.clear();
     revert_records_.clear();
     revert_slots_.clear();
@@ -359,8 +361,14 @@ ReloadResult Loader::load_aot(const AotTable& table)
         }
     }
     std::lock_guard<std::mutex> lock(mutex_);
+    aot_slots_ = table.slots ? table.slots : "";
     for (const auto& [name, e] : registry_.entries())
-        aot_records_.emplace(name, *e.record);
+    {
+        // The saved copy has no key table: the table belongs to the loader and can move or go.
+        // The commit of a revert sets the key table of the canonical record again.
+        ClassRecord& saved = aot_records_.emplace(name, *e.record).first->second;
+        saved.slot_keys = nullptr;
+    }
     return make_result(ReloadStatus::Applied, ReloadReason::None);
 }
 
@@ -713,7 +721,32 @@ ReloadResult Loader::request_reload(Module module)
     return validate_and_stage(std::move(p));
 }
 
-ReloadResult Loader::revert_unit(const std::string& unit)
+namespace
+{
+// The lines of the slot manifest "aot" for the classes in "classes". A line is "Cls::fn gen" or
+// "sig Cls::fn Sig".
+std::string slot_lines_of(const std::string& aot, const std::set<std::string>& classes)
+{
+    std::string out;
+    for (size_t pos = 0; pos < aot.size();)
+    {
+        size_t eol = aot.find('\n', pos);
+        if (eol == std::string::npos)
+            eol = aot.size();
+        const std::string line = aot.substr(pos, eol - pos);
+        pos = eol + 1;
+        const size_t b = line.rfind("sig ", 0) == 0 ? 4 : 0;
+        const size_t sp = line.find(' ', b);
+        const std::string fn = line.substr(b, sp == std::string::npos ? std::string::npos : sp - b);
+        const size_t e = fn.rfind("::");
+        if (e != std::string::npos && classes.count(fn.substr(0, e)))
+            out += line + "\n";
+    }
+    return out;
+}
+} // namespace
+
+ReloadResult Loader::revert_unit(const std::string& unit, Backend& backend)
 {
     auto p = std::make_unique<Pending>();
     {
@@ -726,12 +759,17 @@ ReloadResult Loader::revert_unit(const std::string& unit)
         p->module.register_fn = au->second.register_fn;
         p->module.origin = "aot:" + unit + " (revert)";
         p->module.unit = unit;
-        p->revert = true;
+        std::set<std::string> classes;
+        for (const auto& [name, e] : au->second.reg.entries())
+            classes.insert(name);
+        // The commit runs this callback. The backend gets the AOT signatures of this unit only.
+        p->module.on_accept = [&backend, lines = slot_lines_of(aot_slots_, classes)]
+        { backend.revert_slots(lines); };
         // A fresh generation number: the "generation is newer" check of the validation passes.
         const uint32_t generation = active_generation + 1;
         Registry& st = p->staged;
-        // The AOT thunks make the AOT signature the current one again. The commit also clears the
-        // slot keys that an override set (see commit_pending).
+        // The AOT thunks make the AOT signature the current one again. The commit sets the slot
+        // keys of the AOT signatures again (see commit_pending).
         for (const auto& [key, t] : au->second.reg.thunks())
             st.add_thunk(t);
         st.set_live_flag(au->second.reg.live_flag());
@@ -1065,15 +1103,8 @@ ReloadResult Loader::commit_locked()
     for (const PendingClass& pc : P.classes)
         if (!pc.canon && !P.have_core)
             ++new_refs;
-    // A revert gives the AOT code back. The AOT thunks with the first signature have no key, so the
-    // keys of an override must go. A thunk with a signature sets its key again below.
-    if (P.revert)
-        for (auto& [cls, keys] : slot_keys_)
-        {
-            const auto u = unit_of_.find(cls);
-            if (P.staged.find(cls) || (u != unit_of_.end() && u->second == unit))
-                std::fill(keys.begin(), keys.end(), nullptr);
-        }
+    // A revert gives the AOT code back. The AOT thunks carry the signature keys of the AOT code.
+    // The loop below sets these keys again, so a delegate of an override signature detaches.
     for (const auto& [key, t] : (P.have_core ? P.core_reg : P.staged).thunks())
     {
         if (!registry_.has_thunk(key) && !P.have_core)

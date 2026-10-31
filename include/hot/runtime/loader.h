@@ -21,6 +21,8 @@
 namespace hot
 {
 
+class Backend;
+
 // The state of a generation module in the loader (section 4.9).
 enum class GenState : uint8_t
 {
@@ -231,7 +233,11 @@ public:
     // goes to 1 and the flag of the override goes to 0 at the commit.
     // It fails with BadModule when the unit has no AOT module, and with Busy when a reload is
     // pending.
-    ReloadResult revert_unit(const std::string& unit);
+    // "backend" is required. The commit of the revert calls Backend::revert_slots with the AOT
+    // slot lines of the classes of the unit only, so the next override of the unit sees the AOT
+    // signatures (the backend learns an override only in on_accept). The backend must live until
+    // the commit. A failed revert does not call it.
+    ReloadResult revert_unit(const std::string& unit, Backend& backend);
     const ClassRecord* aot_record(const std::string& name) const
     {
         const auto it = aot_records_.find(name);
@@ -301,6 +307,7 @@ private:
     // removes only the missing classes of this unit. A class never changes its unit.
     std::unordered_map<std::string, std::string> unit_of_;
     std::unordered_map<std::string, ClassRecord> aot_records_; // the AOT records, by class name
+    std::string aot_slots_; // AotTable::slots of load_aot: the slot manifest of the AOT scripts
     // The AOT modules by unit, for revert_unit: the register function and the registry that the
     // function filled (the records in it are the canonical records, so it is not a copy of them).
     struct AotUnit
