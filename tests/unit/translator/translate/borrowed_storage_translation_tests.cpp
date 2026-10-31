@@ -426,3 +426,91 @@ TEST(BorrowedStorage, PlainAssignmentAndValueCopyOfAReferenceStayLegal)
         check_translate("", "    void Run(int& r) { var c = r; int q = 0; q = 5; c = r; var f = () => c + q; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
+
+// Task 40: a borrowed value is valid for the whole call, so every call form takes it.
+TEST(BorrowedArgs, AddressInTernaryParenCastAndDerefIsAllowedInACall)
+{
+    const hotc::TranslateResult r = check_translate("",
+        "    void Take(Vec3* p) { }\n"
+        "    void See(Vec3& v) { }\n"
+        "    void Run(Vec3& a, Vec3* b, bool c) {\n"
+        "        Vec3 x; Vec3 y;\n"
+        "        Take(c ? &x : &y); Take(c ? b : &x); Take((&x)); Take((Vec3*)&x); Take(c ? &a : (Vec3*)&y);\n"
+        "        See(*(c ? &x : &y)); See(*(Vec3*)&x); Take(b ?? &x);\n"
+        "    }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "c ? &x : &y);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "(Vec3*)&x);")) << r.cpp;
+}
+
+TEST(BorrowedArgs, AddressInTernaryAndCastIsAllowedForALocalAndBorrows)
+{
+    const hotc::TranslateResult r = check_translate("",
+        "    void Take(Vec3* p) { }\n"
+        "    void Run(bool c) { Vec3 x; Vec3 y; var p = c ? &x : &y; var q = (Vec3*)&x; Take(p); Take(q); }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    const hotc::TranslateResult s = check_translate("",
+        "    void Run(bool c) { Vec3 x; Vec3 y; var p = c ? &x : &y; var f = () => { p.x = 1; }; }\n");
+    EXPECT_FALSE(s.ok);
+    EXPECT_TRUE(has(s.diagnostics, "the lambda captures 'p'")) << s.diagnostics;
+}
+
+TEST(BorrowedArgs, EveryCallFormTakesABorrowedParameterAndLocal)
+{
+    const hotc::TranslateResult r = check_translate("",
+        "    Foo(Vec3* p) { }\n"
+        "    void Take(Vec3* p) { }\n"
+        "    void See(Vec3& v) { }\n"
+        "    void Run(Vec3& v, Vec3* p, Owner& o) {\n"
+        "        Vec3 x; var& r = x; var q = &x;\n"
+        "        Take(p); See(v); Take(&v); See(r); Take(q); Take(&r); Take(&*p);\n"
+        "        var a = new Foo(&x); var b = new Foo(p); var c = new Foo(q);\n"
+        "        var f = (Vec3& w) => { See(w); }; f(v); f(x);\n"
+        "        var g = (Vec3* w) => { Take(w); }; g(&x); g(p); g(q);\n"
+        "        try { Take(&x); } catch (std.exception& e) { Take(&x); }\n"
+        "        std.vector<Vec3> xs; foreach (var& e in xs) { See(e); Take(&e); }\n"
+        "    }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+// A native call that gives a pointer back is not tracked as an alias, but its result is a borrowed
+// local. A copy of the pointer cannot be stored or captured.
+TEST(BorrowedArgs, ResultOfACallWithABorrowedArgumentStaysBorrowed)
+{
+    const hotc::TranslateResult r = check_translate("",
+        "    Weapon* Pick(Weapon* w) { return w; }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "a return value cannot hold a borrowed pointer")) << r.diagnostics;
+    const hotc::TranslateResult s = check_translate("",
+        "    void Run(Weapon* w) { var q = Echo(w); var f = () => { q.dmg = 1; }; }\n");
+    EXPECT_FALSE(s.ok);
+    EXPECT_TRUE(has(s.diagnostics, "the lambda captures 'q'")) << s.diagnostics;
+}
+
+TEST(BorrowedArgs, AddressStaysAnErrorOutsideACallAndALocal)
+{
+    for (const char* body : {"Vec3 x; Vec3 k = *(&x);", "Vec3 x; var n = &x + 1;", "Vec3 x; (c ? &x : &x);",
+             "Vec3 x; last = c ? &x : &x;"})
+    {
+        const hotc::TranslateResult r = check_translate("",
+            std::string("    Vec3* last;\n    void Run(bool c) { ") + body + " }\n");
+        EXPECT_FALSE(r.ok) << body;
+        EXPECT_TRUE(has(r.diagnostics, "a '&' value cannot be stored")) << body << r.diagnostics;
+    }
+}
+
+TEST(BorrowedArgs, CastNotInACallArgumentIsStillAnErrorToStore)
+{
+    const hotc::TranslateResult r = check_translate("",
+        "    Vec3 keep;\n    Vec3* Get(Vec3& v) { return (Vec3*)&v; }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "a '&' value cannot be stored")) << r.diagnostics;
+}
+
+// "base(*p)" is a reference to the pointee. The plan binds it by reference, like "base(r)".
+TEST(BorrowedArgs, BaseArgumentOfADerefBindsByReference)
+{
+    const hotc::TranslateResult r = check_translate("", "    Foo(Widget* p) : base(*p) { }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "std::ref(hot::star(p))")) << r.cpp;
+}

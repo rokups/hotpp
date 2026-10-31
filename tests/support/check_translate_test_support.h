@@ -35,7 +35,8 @@ inline const char* kCheckHeader =
     "struct Owner { Weapon* weapon = nullptr; int N = 0; Weapon* GetWeapon() { return weapon; }\n"
     "    Weapon* Pick() { return weapon; } Weapon* Pick(int) { return weapon; } static Owner* Get() { return nullptr; "
     "} };\n"
-    "inline Weapon* FindWeapon() { return nullptr; }\n";
+    "inline Weapon* FindWeapon() { return nullptr; }\n"
+    "inline Weapon* Echo(Weapon* w) { return w; }\n";
 
 // Translates "using \"c.h\"; <stubs> class Foo : Widget { <members> }".
 // "preludes" are (name, text) pairs. "strict" sets strict_borrowed.

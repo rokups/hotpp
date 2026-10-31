@@ -117,6 +117,13 @@ TEST(GoldenTranslation, HandleCall)
     golden_one("handle_call_v1");
 }
 
+// A borrowed value (T&, T*, var&, &x) is an argument of every call form: a method, a native call, a
+// constructor, new, a lambda, a ternary, a cast and a nested call.
+TEST(GoldenTranslation, BorrowedArgs)
+{
+    golden_one("borrowed_args_v1");
+}
+
 TEST(GoldenTranslation, Props)
 {
     golden_one("props_v1");

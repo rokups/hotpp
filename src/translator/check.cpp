@@ -422,6 +422,46 @@ struct Checker
     // True when the expression is a "&e" value.
     static bool is_borrow_form(const Expr& e) { return as_address_of(e) != nullptr; }
 
+    // Allows each "&e" value that the expression passes on to a call or a local. The value can stand in
+    // parentheses, in a branch of a ternary expression or of "??", and in a cast to a pointer
+    // type. With "deref" it can also stand under a prefix "*", because "*(c ? &a : &b)" is a
+    // reference for a call argument. Returns true when the expression has such a value.
+    bool allow_borrow_forms(const Expr& e, bool deref)
+    {
+        if (is_borrow_form(e))
+        {
+            allowed_refs.insert(&e);
+            return true;
+        }
+        if (auto* p = std::get_if<ParenExpr>(&e.v))
+            return p->inner && allow_borrow_forms(*p->inner, deref);
+        if (auto* t = std::get_if<TernaryExpr>(&e.v))
+        {
+            const bool a = t->a && allow_borrow_forms(*t->a, deref);
+            const bool b = t->b && allow_borrow_forms(*t->b, deref);
+            return a || b;
+        }
+        if (auto* b = std::get_if<BinaryExpr>(&e.v))
+        {
+            if (b->op != "??")
+                return false;
+            const bool l = b->lhs && allow_borrow_forms(*b->lhs, deref);
+            const bool r = b->rhs && allow_borrow_forms(*b->rhs, deref);
+            return l || r;
+        }
+        if (auto* u = std::get_if<UnaryExpr>(&e.v); u && !u->postfix && u->operand)
+        {
+            if (u->op == "*")
+                return deref && allow_borrow_forms(*u->operand, deref);
+            if (u->op.size() >= 3 && u->op.front() == '(' && u->op.back() == ')')
+            {
+                const std::string ty = trim(u->op.substr(1, u->op.size() - 2));
+                return !ty.empty() && ty.back() == '*' && allow_borrow_forms(*u->operand, deref);
+            }
+        }
+        return false;
+    }
+
     // Marks a local of a borrowed type. A pointer stays borrowed when a "var" copies it.
     void add_borrowed(const std::string& name, const std::string& type)
     {
@@ -526,9 +566,8 @@ struct Checker
             {
                 borrowed.insert(d->name); // "var& r = x": a local reference
             }
-            else if (d->init && is_borrow_form(*d->init))
+            else if (d->init && allow_borrow_forms(*d->init, false))
             {
-                allowed_refs.insert(d->init.get());
                 add_borrowed(d->name, "*");
             }
             else if (!d->type.empty() && is_borrowed_type(d->type))
@@ -589,14 +628,14 @@ struct Checker
         {
             callee_names.insert(c->callee.get());
             for (const ExprP& a : c->args)
-                if (a && is_borrow_form(*a))
-                    allowed_refs.insert(a.get());
+                if (a)
+                    allow_borrow_forms(*a, true);
         }
         else if (auto* n = std::get_if<NewExpr>(&e.v))
         {
             for (const ExprP& a : n->args)
-                if (a && is_borrow_form(*a))
-                    allowed_refs.insert(a.get());
+                if (a)
+                    allow_borrow_forms(*a, true);
         }
         else if (auto* b = std::get_if<BinaryExpr>(&e.v))
         {

@@ -1,0 +1,44 @@
+// Generation 1: a borrowed value is valid for the whole call, so every call form takes it
+// (task 40). Distance and Util.Sum are native calls that take "const Vec3&".
+using "Actor.h";
+using "Util.h";
+
+class Probe {
+    float last = 0;
+    Probe() { }
+    Probe(Vec3* p) { last = p.x; }
+    void Look(Vec3& v) { last = v.x; }
+    void Take(Vec3* p) { last = p.y; }
+    // Passes the borrowed values on to native calls and to other methods.
+    float Pass(Vec3& v, Vec3* p) {
+        Look(v);
+        Take(p);
+        return Distance(v, *p);
+    }
+}
+
+class Caller : Actor {
+    Probe probe = null;
+
+    float Run(Vec3& v, Vec3* p, bool c) {
+        Vec3 a;
+        Vec3 b;
+        var& r = a;
+        var q = &b;
+        probe = new Probe(&a);
+        var other = new Probe(p);
+        probe.Look(v);
+        probe.Take(&a);
+        probe.Take(q);
+        probe.Look(r);
+        probe.Take(c ? &a : &b);
+        probe.Take(c ? p : &a);
+        probe.Take((Vec3*)&a);
+        probe.Take(&*p);
+        var f = (Vec3& w) => { probe.Look(w); };
+        f(a);
+        f(v);
+        float d = Distance(*(c ? &a : &b), *p);
+        return d + probe.Pass(v, p) + other.Pass(*q, &a) + Util.Sum(r);
+    }
+}

@@ -4931,8 +4931,8 @@ void translate_impl(
                 const Method& cm = ctor_ms[k];
                 const hotc::ast::Ctor* sc = has_ctor ? &cd.ctors[k] : nullptr;
                 // A "&&" parameter is a const reference in the plan: the plan only reads it. A "T&"
-                // parameter stays a reference, and "base(x)" with the name of such a parameter
-                // binds the parent parameter to the lvalue of the child (std::ref).
+                // parameter stays a reference, and "base(x)" with the name of such a parameter or
+                // "base(*p)" binds the parent parameter to the lvalue of the child (std::ref).
                 std::string pd, names, declvals;
                 for (size_t i = 0; i < cm.params.size(); ++i)
                 {
@@ -4966,6 +4966,10 @@ void translate_impl(
                         if (const auto* nm = std::get_if<hotc::ast::NameExpr>(&a->v); nm && nm->parts.size() == 1)
                             for (const Param& p : cm.params)
                                 bind_ref = bind_ref || (p.name == nm->parts[0] && hotc::ast::is_ref_type(p.type));
+                        // "*p" of a borrowed pointer is a reference to the pointee: it binds by reference too.
+                        if (const auto* un = std::get_if<hotc::ast::UnaryExpr>(&a->v);
+                            un && !un->postfix && un->op == "*")
+                            bind_ref = true;
                         hotc::lower_expr(a, fc, g_diag);
                         if (!g_diag.items.empty())
                             throw TranslateAbort{};
