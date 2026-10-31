@@ -25,9 +25,17 @@ The `hotc` tool turns a script into C++. The engine reloads a changed script whi
 - [Diagnostics](diagnostics.html): the error format of the tools.
 - [Limits](limits.html): what version 1 does not support.
 
-## More
+## C++ scripts
 
 - [C++ scripts](cpp-scripts.html): a script as a plain `.cpp` file that also compiles in a normal build.
+- [Example](cpp-example.html): two generations of a `.cpp` script and the CMake commands that build them.
+- [How hotc edits C++](cpp-translation.html): the edits of a method body, lambdas and namespaces.
+- [Script classes](cpp-classes.html): what a class can have, static members, definitions outside the class, member initializer lists.
+- [Types and inheritance](cpp-types.html): a script class as a type, casts and script class inheritance.
+- [Limits and errors](cpp-limits.html): the unsupported forms with the messages of `hotc`, and the known limits.
+
+## More
+
 - [Embedding](embedding.html): load scripts with a `Loader`.
 - [CMake](cmake.html): use Hot++ in a host project.
 - [Tools](tools.html): the `hot-ls` language server.
