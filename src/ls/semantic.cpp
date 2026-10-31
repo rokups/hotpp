@@ -31,7 +31,7 @@ const std::set<std::string>& keywords()
         "continue", "switch", "case", "default", "is", "as", "new", "delete", "public", "private", "protected",
         "override", "virtual", "const", "get", "set", "this", "base", "true", "false", "null", "try", "catch",
         "finally", "throw", "var", "void", "class", "struct", "enum", "using", "native", "handle", "value",
-        "intrusive", "default_handle", "cpp_prelude", "self"};
+        "intrusive", "default_handle", "cpp_prelude", "self", "alias", "weak"};
     return k;
 }
 

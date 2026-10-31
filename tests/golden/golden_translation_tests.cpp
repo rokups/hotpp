@@ -117,6 +117,12 @@ TEST(GoldenTranslation, HandleCall)
     golden_one("handle_call_v1");
 }
 
+// Weak handles: "[weak] T" fields, parameters and locals. A read locks the handle.
+TEST(GoldenTranslation, WeakHandle)
+{
+    golden_one("weak_handle_v1");
+}
+
 // A borrowed value (T&, T*, var&, &x) is an argument of every call form: a method, a native call, a
 // constructor, new, a lambda, a ternary, a cast and a nested call.
 TEST(GoldenTranslation, BorrowedArgs)

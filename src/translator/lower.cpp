@@ -36,6 +36,8 @@ RCtx make_class_ctx(const ast::ClassDef& cd)
     for (const ast::Field& f : cd.fields)
     {
         cx.field_type[f.name] = f.type;
+        if (f.weak)
+            cx.weak_fields.insert(f.name);
     }
     for (const ast::Method& m : cd.methods)
         if (!m.overrides_virtual)
@@ -67,6 +69,10 @@ void add_params(RCtx& cx, const std::vector<ast::Param>& params)
     for (const ast::Param& p : params)
     {
         cx.locals.insert(p.name);
+        if (p.weak)
+            cx.weak_locals.insert(p.name);
+        else
+            cx.weak_locals.erase(p.name);
         const std::string t = object_type(p.script_type.empty() ? p.type : p.script_type);
         if (t.empty())
             cx.local_type.erase(p.name);
@@ -433,10 +439,127 @@ struct Lowerer
     void declare(const std::string& name, const std::string& type)
     {
         cx.locals.insert(name);
+        cx.weak_locals.erase(name); // a "[weak]" local adds the name again after this call
         if (type.empty())
             cx.local_type.erase(name);
         else
             cx.local_type[name] = object_type(type);
+    }
+
+    // ---- weak handles (task 38)
+    // True for the next name() or member() call when the node is the target of "=". A target
+    // is not locked: the assignment writes the weak_ptr itself.
+    bool weak_target = false;
+    bool target_next = false; // the same for the next expr() call
+
+    // A field of the class "c" (or of a script parent) that has "[weak]".
+    bool weak_field_of(const ClassDef& c, const std::string& n) const
+    {
+        const Field* f = find_field(c, n);
+        return f && f->weak;
+    }
+
+    // A bare name that names a "[weak]" parameter, local or field of the current class.
+    bool weak_bare(const std::string& n) const
+    {
+        if (cx.locals.count(n))
+            return cx.weak_locals.count(n) != 0;
+        // A script member wins over a module variable (the rule of name_inner).
+        if (!cx.cls || !cx.allow_this || (is_module_var(n) && !is_script_member(n)))
+            return false;
+        return cx.weak_fields.count(n) != 0 || weak_field_of(*cx.cls, n);
+    }
+
+    // The member "name" of an object of the script type "t" is a "[weak]" field.
+    bool weak_member(const std::string& t, const std::string& name) const
+    {
+        const ClassDef* d = class_named(t);
+        return d && weak_field_of(*d, name);
+    }
+
+    // The name of the weak handle that the expression reads (the root of "x", "x.f", "x[i].f"
+    // and "this.x"), else an empty string. Call it before the lowering of the expression.
+    std::string weak_root(const Expr& e) const
+    {
+        if (auto* n = std::get_if<NameExpr>(&e.v))
+        {
+            if (n->parts.empty() || !n->template_args.empty())
+                return {};
+            if (weak_bare(n->parts[0]))
+                return n->parts[0];
+            // "a.w": the field "w" of the script object "a"
+            for (size_t i = 1; i < n->parts.size(); ++i)
+            {
+                const Expr head = NameExprView(*n, i);
+                if (weak_member(type_of(head), n->parts[i]))
+                    return n->parts[i];
+            }
+            return {};
+        }
+        if (auto* m = std::get_if<MemberExpr>(&e.v))
+        {
+            if (!m->obj)
+                return {};
+            if (std::holds_alternative<ThisExpr>(m->obj->v))
+                return cx.cls && cx.allow_this && weak_field_of(*cx.cls, m->name) ? m->name : std::string();
+            if (weak_member(type_of(*m->obj), m->name))
+                return m->name;
+            return weak_root(*m->obj);
+        }
+        if (auto* ix = std::get_if<IndexExpr>(&e.v))
+            return ix->obj ? weak_root(*ix->obj) : std::string();
+        if (auto* p = std::get_if<ParenExpr>(&e.v))
+            return p->inner ? weak_root(*p->inner) : std::string();
+        return {};
+    }
+
+    // True when the expression is the weak handle itself: "x", "this.x" or "obj.x".
+    bool is_weak_handle(const Expr& e) const
+    {
+        if (auto* n = std::get_if<NameExpr>(&e.v))
+        {
+            if (n->parts.size() == 1)
+                return n->template_args.empty() && weak_bare(n->parts[0]);
+            if (n->parts.size() < 2 || !n->template_args.empty())
+                return false;
+            const Expr head = NameExprView(*n, n->parts.size() - 1);
+            return weak_member(type_of(head), n->parts.back());
+        }
+        if (auto* m = std::get_if<MemberExpr>(&e.v))
+        {
+            if (!m->obj)
+                return false;
+            if (std::holds_alternative<ThisExpr>(m->obj->v))
+                return cx.cls && cx.allow_this && weak_field_of(*cx.cls, m->name);
+            return weak_member(type_of(*m->obj), m->name);
+        }
+        return false;
+    }
+
+    // A reference into a weak handle dangles: the locked handle ends with the statement.
+    void weak_ref_error(uint32_t pos, const std::string& name)
+    {
+        error(pos,
+            "a reference into the weak handle '" + name
+                + "' dangles: the lock ends with the statement. Copy the handle to a local first: 'T h = "
+                + name + ";'");
+    }
+
+    // The C++ type of a "[weak] T" parameter. The translator can rewrite "type" to it before the pass.
+    std::string weak_param_type(const Param& p) const
+    {
+        if (p.type.find("weak_ptr<") != std::string::npos)
+            return p.type;
+        return cx.types ? cx.types->weak_storage(p.script_type.empty() ? p.type : p.script_type) : std::string();
+    }
+
+    // "hot::lock(e)": the read of a weak handle.
+    void lock(ExprP& e)
+    {
+        const uint32_t pos = pos_of(*e);
+        std::vector<ExprP> a;
+        a.push_back(std::move(e));
+        e = call_of("hot::lock", std::move(a), pos);
     }
 
     // "hot::shell_of<C_Shell>(obj, "C")" for the lowered text of the object.
@@ -472,6 +595,20 @@ struct Lowerer
         {
             const Param& p = fn->params[i - first];
             const std::string& t = p.script_type.empty() ? p.type : p.script_type;
+            if (p.weak)
+            { // "null" for a "[weak] T" parameter: the empty weak_ptr (a weak_ptr has no nullptr form)
+                if (c.args[i] && std::holds_alternative<NullExpr>(c.args[i]->v))
+                {
+                    const std::string w = weak_param_type(p);
+                    if (!w.empty())
+                        c.args[i] = raw(w + "()", pos_of(*c.args[i]));
+                }
+                else if (!p.script_type.empty())
+                {
+                    coerce(c.args[i], p.script_type); // "this" becomes the strong handle of the script type
+                }
+                continue;
+            }
             if (!is_ref_type(t))
             {
                 coerce(c.args[i], t);
@@ -1005,6 +1142,7 @@ struct Lowerer
 
     void member(ExprP& e, MemberExpr& m)
     {
+        const bool target = std::exchange(weak_target, false);
         if (m.safe)
             error(pos_of(*m.obj), "'?.' is allowed only at the start of an expression statement");
         const uint32_t obj_pos = pos_of(*m.obj);
@@ -1029,7 +1167,10 @@ struct Lowerer
                 const ClassDef* owner = nullptr;
                 if (const Field* f = find_field(*cx.cls, m.name, &owner))
                     check_member(f->access, *owner, m.name, m.name_pos ? m.name_pos : obj_pos);
-                e = raw_named("__st->", m.name, obj_pos, m.name_pos);
+                const bool weak = !target && weak_field_of(*cx.cls, m.name);
+                e = raw_named("__st->", m.name, obj_pos, m.name_pos); // "m" is gone now
+                if (weak)
+                    lock(e);
             }
             else if (cx.fns.count(m.name))
             {
@@ -1089,8 +1230,11 @@ struct Lowerer
         {
             if (find_field(*d, m.name))
             { // a field of a script object behind a handle
+                const bool weak = weak_field_of(*d, m.name);
                 expr(m.obj);
                 e = raw("state_of(" + shell_text(*d, print(*m.obj)) + ")->" + m.name, obj_pos);
+                if (weak && !target)
+                    lock(e);
                 return;
             }
             if (find_fn(*d, m.name))
@@ -1099,8 +1243,12 @@ struct Lowerer
                 return;
             }
         }
+        // A "[weak]" field of a script struct: "hot::lock(hot::deref(s).w)".
+        const bool weak_value = td && td->is_value && weak_field_of(*td, m.name) && !target;
         expr(m.obj);
         deref(m.obj);
+        if (weak_value)
+            lock(e);
     }
 
     // True while the pass lowers the body of a lambda.
@@ -1118,6 +1266,7 @@ struct Lowerer
             error(l.pos, "a lambda is not allowed in a struct: a value can move");
             return;
         }
+        const ScopeSave scope(cx); // a parameter can hide a "[weak]" name of the function
         for (const Param& p : l.params)
         {
             // An empty type is "auto". Only a parameter without a name is an error.
@@ -1248,6 +1397,17 @@ struct Lowerer
 
     void name(ExprP& e, NameExpr& n)
     {
+        const bool target = std::exchange(weak_target, false);
+        // A read of a "[weak]" name locks it. The node of the name can change below, so the
+        // flag comes first.
+        const bool weak = !target && n.parts.size() == 1 && n.template_args.empty() && weak_bare(n.parts[0]);
+        name_inner(e, n);
+        if (weak && e)
+            lock(e);
+    }
+
+    void name_inner(ExprP& e, NameExpr& n)
+    {
         if (!n.parts.empty() && default_banned(n.parts[0]))
         {
             error(n.pos, kDefaultBan);
@@ -1340,6 +1500,7 @@ struct Lowerer
     void expr(ExprP& e)
     {
         const bool discard = std::exchange(discard_next, false);
+        const bool target = std::exchange(target_next, false);
         if (!e)
             return;
         member_chain(e);
@@ -1361,6 +1522,7 @@ struct Lowerer
         }
         else if (auto* nm = std::get_if<NameExpr>(&x.v))
         {
+            weak_target = target;
             name(e, *nm);
         }
         else if (auto* num = std::get_if<NumberExpr>(&x.v))
@@ -1369,6 +1531,7 @@ struct Lowerer
         }
         else if (auto* m = std::get_if<MemberExpr>(&x.v))
         {
+            weak_target = target;
             member(e, *m);
         }
         else if (auto* c = std::get_if<CallExpr>(&x.v))
@@ -1382,13 +1545,27 @@ struct Lowerer
         }
         else if (auto* u = std::get_if<UnaryExpr>(&x.v))
         {
+            if (u->op == "&" && !u->postfix && u->operand)
+                if (const std::string w = weak_root(*u->operand); !w.empty())
+                    weak_ref_error(u->pos ? u->pos : pos_of(*u->operand), w);
             expr(u->operand);
         }
         else if (auto* b = std::get_if<BinaryExpr>(&x.v))
         {
             if (b->op == "=" && b->lhs && b->rhs)
                 coerce(b->rhs, type_of(*b->lhs));
+            // "w = e" writes the weak handle "w": the target is not locked. "w = null" resets it.
+            if (b->op == "=" && b->lhs)
+                member_chain(b->lhs);
+            const bool weak_lhs = b->op == "=" && b->lhs && is_weak_handle(*b->lhs);
+            const bool reset = weak_lhs && b->rhs && std::holds_alternative<NullExpr>(b->rhs->v);
+            target_next = weak_lhs;
             expr(b->lhs);
+            if (reset)
+            {
+                e = make_expr(UnaryExpr{".reset()", std::move(b->lhs), true, b->pos});
+                return;
+            }
             expr(b->rhs);
             // "x ?? y" is a call of the runtime helper. The helper reads x one time. The
             // second argument is a lambda, so y runs only when x is false.
@@ -1742,8 +1919,31 @@ struct Lowerer
     }
 
     // A binding name goes out of scope at the end of its block.
+    // The names that a block, a loop, a catch clause or a lambda declares end with it. A local
+    // can hide a "[weak]" name only inside the scope. After the scope the old meaning is back.
+    struct ScopeSave
+    {
+        RCtx& cx;
+        std::set<std::string> locals, weak_locals;
+        std::map<std::string, std::string> local_type;
+        explicit ScopeSave(RCtx& c)
+            : cx(c)
+            , locals(c.locals)
+            , weak_locals(c.weak_locals)
+            , local_type(c.local_type)
+        {
+        }
+        ~ScopeSave()
+        {
+            cx.locals = std::move(locals);
+            cx.weak_locals = std::move(weak_locals);
+            cx.local_type = std::move(local_type);
+        }
+    };
+
     void block(BlockStmt& b)
     {
+        const ScopeSave scope(cx);
         const size_t mark = bindings.size();
         stmts(b.stmts);
         bindings.resize(mark);
@@ -1859,8 +2059,27 @@ struct Lowerer
                 nested_collection(d->init);
             // "var me = this;" holds a handle of the current class.
             coerce(d->init, d->type.empty() && cx.cls ? cx.cls->name : d->type);
+            // "var& r = w.f" or "var& r = w" of a weak handle: the lock is a temporary.
+            if (d->is_ref && d->init)
+                if (const std::string w = weak_root(*d->init); !w.empty())
+                    weak_ref_error(d->pos, w);
             declare(d->name, t);
-            if (cx.types && !d->type.empty())
+            if (d->weak)
+            {
+                // "[weak] T x": a weak_ptr of the shared handle of T. "= null" is the empty weak_ptr.
+                cx.weak_locals.insert(d->name);
+                if (d->init && std::holds_alternative<NullExpr>(d->init->v))
+                    d->init = nullptr;
+                if (cx.types)
+                {
+                    const std::string w = cx.types->weak_storage(d->type);
+                    if (w.empty())
+                        error(d->weak_pos ? d->weak_pos : d->pos, weak_handle_error(script_type_text(d->type)));
+                    else
+                        d->type = w;
+                }
+            }
+            else if (cx.types && !d->type.empty())
                 d->type = cx.types->storage(d->type);
             expr(d->init);
         }
@@ -1886,6 +2105,7 @@ struct Lowerer
         }
         else if (auto* f = std::get_if<ForStmt>(&x.v))
         {
+            const ScopeSave scope(cx);
             stmts(f->init);
             expr(f->cond);
             for (ExprP& step : f->step)
@@ -1897,6 +2117,11 @@ struct Lowerer
         }
         else if (auto* fo = std::get_if<ForOfStmt>(&x.v))
         {
+            // "foreach (var x in w.items)" of a weak handle "w": the lock ends before the loop.
+            if (fo->range)
+                if (const std::string w = weak_root(*fo->range); !w.empty())
+                    weak_ref_error(pos_of(*fo->range), w);
+            const ScopeSave scope(cx);
             declare(fo->name, std::string());
             for (const std::string& n : fo->names)
                 declare(n, std::string());
@@ -1935,6 +2160,7 @@ struct Lowerer
             block(tr->block);
             for (CatchClause& c : tr->catches)
             {
+                const ScopeSave scope(cx);
                 if (!c.is_all)
                 {
                     declare(c.name, std::string());
@@ -1956,10 +2182,13 @@ struct Lowerer
             const bool strings = classify_labels(*sw);
             expr(sw->subject);
             ++fin.switches;
-            for (SwitchCase& c : sw->cases)
             {
-                exprs(c.labels);
-                stmts(c.stmts);
+                const ScopeSave scope(cx); // the body of the switch is one scope
+                for (SwitchCase& c : sw->cases)
+                {
+                    exprs(c.labels);
+                    stmts(c.stmts);
+                }
             }
             --fin.switches;
             if (strings)

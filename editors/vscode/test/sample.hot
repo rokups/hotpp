@@ -37,3 +37,9 @@ class Calc : Base {
         var let = function + super;
     }
 }
+// Weak handles: the field style and the inline style.
+class Node {
+    [weak]
+    Node parent;
+    void See([weak] Node n) { [weak] Node m = n; }
+}

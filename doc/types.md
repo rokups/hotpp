@@ -131,6 +131,46 @@ class Knight : Actor {
 }
 ```
 
+### Weak handles
+
+A handle keeps its object alive. Two objects that hold handles to each other make a cycle. Then neither object is released. A weak handle does not keep its object alive, so it breaks the cycle. Usually the child holds a weak handle to its parent.
+
+Put `[weak]` before the declaration. On a field, write the attribute on its own line. On a parameter or a local, write it inline.
+
+```hot
+class Node {
+    Node child = null;
+    [weak]
+    Node parent = null;
+    int hp = 10;
+
+    void Adopt(Node c) { child = c; c.parent = this; }
+    int ParentHp() { return parent != null ? parent.hp : 0; }
+    void See([weak] Node n) { [weak] Node seen = n; }
+}
+```
+
+These are the rules:
+
+- The type is a handle with a `std::shared_ptr` handle template. A script class without a native base is one. A native class needs a stub such as `[native, handle("std::shared_ptr<$T>")] class Weapon;`.
+- The storage is `std::weak_ptr<T>`. Each read locks it and gives the strong handle. When the object is gone, the read gives `null`.
+- Assign a strong handle to set it. `x = null` clears it. A `null` argument or the default `= null` gives an empty weak handle.
+- `Weapon w = x;` copies a strong handle out. A lambda that uses `x` captures the weak handle, and each read in the body locks it.
+- A reference into the object is an error, for example `var& r = x.hp`, `&x.hp` or `foreach (var i in x.items)`. The lock ends with the statement, so the reference dangles. Copy the handle to a local first: `Node h = x;`.
+- A reload that changes a field from strong to weak, or from weak to strong, resets the field to `null`.
+
+`[weak]` is an error in these places:
+
+| Place | Fix |
+| --- | --- |
+| An intrusive stub, a value, a builtin type, or a script class with a native base that is not a `std::shared_ptr` | Remove `[weak]`, or give the class the handle `"$std::shared_ptr<$T>"` |
+| `[weak] var x`, `[weak] var& x` or a structured binding | Write the handle type: `[weak] T x` |
+| A `for` initializer, a `foreach` variable or a lambda parameter | Use a local before the loop or the lambda |
+| A method, a stub or a module variable | Put it on a field, a parameter or a local |
+| `new C(null)` for a `[weak]` constructor parameter (a known gap: the generated C++ does not compile) | Pass a variable: `Node none = null; new C(none)` |
+
+A `[weak]` parameter does not match a native virtual method with a strong handle parameter. The override then gives the usual "hides" error.
+
 ## References and pointers
 
 A parameter `T&` is a reference. The call has no marker: write `f(x)`. A reference is borrowed: use it in the method, but do not store it in a field.

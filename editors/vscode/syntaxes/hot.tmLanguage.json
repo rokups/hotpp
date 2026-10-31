@@ -5,6 +5,7 @@
   "patterns": [
     { "include": "#comments" },
     { "include": "#attribute" },
+    { "include": "#inline-attribute" },
     { "include": "#using" },
     { "include": "#declaration" },
     { "include": "#expression" }
@@ -46,6 +47,15 @@
         }
       ]
     },
+    "inline-attribute": {
+      "match": "(\\[)\\s*(weak)\\s*(\\])(?=\\s*[A-Za-z_])",
+      "captures": {
+        "0": { "name": "meta.attribute.hot" },
+        "1": { "name": "punctuation.definition.attribute.begin.hot" },
+        "2": { "name": "entity.other.attribute-name.hot" },
+        "3": { "name": "punctuation.definition.attribute.end.hot" }
+      }
+    },
     "using": {
       "match": "\\b(using)\\b\\s*(?:(<[^>\\n]*>)|(\"[^\"\\n]*\"))?",
       "captures": {
@@ -73,6 +83,7 @@
         { "include": "#string" },
         { "include": "#char" },
         { "include": "#number" },
+        { "include": "#inline-attribute" },
         { "include": "#collection-literal" },
         { "include": "#structured-binding" },
         { "include": "#type-test" },

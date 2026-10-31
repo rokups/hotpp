@@ -13,7 +13,7 @@ The host compiles the new script as a new generation. The commit runs at the fra
 | Change | Result |
 |---|---|
 | Method body | LIVE |
-| Add or remove a method, a virtual or an override | LIVE |
+| Add a method, a virtual or an override | LIVE. An old object can call a new method at once. |
 | Change a method signature | LIVE. Native delegates bound to the old signature detach with a warning. |
 | Add, remove or reorder a field | LIVE |
 | Change a field initializer | LIVE. Existing objects keep their values. |

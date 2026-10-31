@@ -104,6 +104,8 @@ An override can take a native `Weapon*` or `Weapon&` as the plain handle `Weapon
 
 `Weapon*` of a native handle is borrowed, so it is a finding in a field. `Hero*` of a script class is always an error. The `this` error shows after the other errors are fixed.
 
+A weak handle `[weak] T x` does not keep its object alive, so it breaks a cycle of handles. Each read locks it for one statement. So `var& r = x.hp` and `&x.hp` are errors: the reference dangles. See "Weak handles" in `types.md`.
+
 ```hot
 // error
 using "Actor.h"; using "Weapon.h"; using "Armory.h";

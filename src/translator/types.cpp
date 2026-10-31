@@ -416,6 +416,19 @@ std::string TypeModel::storage(const std::string& type) const
     return replace_all(rule.handle_tpl, "$T", type);
 }
 
+std::string TypeModel::weak_storage(const std::string& type) const
+{
+    if (!is_handle(type))
+        return {};
+    const TypeRule rule = lookup(type);
+    if (!rule.intrusive_add.empty())
+        return {};
+    const std::string pre = shared_prefix(rule.handle_tpl);
+    if (pre.empty())
+        return {};
+    return pre + "weak_ptr<" + type + ">";
+}
+
 std::string TypeModel::param(const std::string& type) const
 {
     if (const std::string r = script_ref_storage(type); !r.empty())
@@ -460,6 +473,12 @@ TypeModel::Callee TypeModel::make_callee(const std::string& type) const
     return {storage(type), true};
 }
 
+
+std::string weak_handle_error(const std::string& script_type)
+{
+    return "[weak] needs a std::shared_ptr handle type, and '" + script_type
+        + "' is not one. Remove '[weak]', or give the class the handle(\"$std::shared_ptr<$T>\")";
+}
 
 std::string override_key_norm(const std::string& type)
 {

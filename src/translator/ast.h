@@ -56,6 +56,8 @@ struct Param
     // With native_type: the handle storage type of the script parameter. The first line of the body
     // makes the handle with hot::bind<bind_to>(native argument).
     std::string bind_to{};
+    // "[weak] T name": the parameter holds a weak handle (task 38). The storage is a weak_ptr.
+    bool weak = false;
 };
 
 // ------------------------------------------------------------------ expressions
@@ -256,6 +258,9 @@ struct VarDeclStmt
     // text is "auto [a, b]". "type" is empty. "var&" and "const var" set "is_ref" and "is_const".
     std::vector<std::string> names{};
     std::vector<uint32_t> name_poss{}; // the byte offset of each name in "names"
+    // "[weak] T x = e": the local holds a weak handle (task 38). The storage is a weak_ptr.
+    bool weak = false;
+    uint32_t weak_pos = 0; // the byte offset of "weak" (0: not known)
 };
 struct IfStmt
 {
@@ -402,6 +407,7 @@ struct Field
 {
     std::string name, alias, type; // alias: the previous name from [alias("...")]
     std::string script_type; // "type" as the script writes it (see Param)
+    bool weak = false; // "[weak]": the field holds a weak handle (task 38)
     ExprP init; // null when the field has no initializer, or the parse failed
     Span init_span; // the raw text after "=", up to the ";"
     bool has_init = false;

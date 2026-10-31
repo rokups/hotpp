@@ -130,6 +130,11 @@ public:
     // The C++ storage type of a declaration.
     std::string storage(const std::string& type) const;
 
+    // The C++ storage type of a "[weak] T" declaration (task 38): "std::weak_ptr<T>" with the
+    // namespace of the shared pointer template. The handle of T must be a std::shared_ptr. Any
+    // other type (a value, an intrusive handle, a raw type) gives an empty string.
+    std::string weak_storage(const std::string& type) const;
+
     // The C++ type of a parameter: "const H&" for a handle, else storage().
     std::string param(const std::string& type) const;
 
@@ -208,6 +213,9 @@ private:
     bool raw_script_refs_ = false;
     std::set<std::string> prelude_names_; // the stubs that a prelude gave
 };
+
+// The message for a "[weak] T" declaration when weak_storage(T) is empty (task 38).
+std::string weak_handle_error(const std::string& script_type);
 
 // A native virtual method as the matcher of an override sees it.
 struct VirtualSig

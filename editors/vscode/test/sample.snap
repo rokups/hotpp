@@ -393,3 +393,28 @@
 37: ";" punctuation.terminator.statement.hot
 38: "    }" 
 39: "}" 
+40: "// Weak handles: the field style and the inline style." comment.line.double-slash.hot
+41: "class" storage.type.class.hot
+41: "Node" entity.name.type.class.hot
+41: " {" 
+42: "[" meta.attribute.hot punctuation.definition.attribute.begin.hot
+42: "weak" meta.attribute.hot entity.other.attribute-name.hot
+42: "]" meta.attribute.hot punctuation.definition.attribute.end.hot
+43: "    Node parent" 
+43: ";" punctuation.terminator.statement.hot
+44: "void" storage.type.hot
+44: "See" entity.name.function.hot
+44: "(" 
+44: "[" meta.attribute.hot punctuation.definition.attribute.begin.hot
+44: "weak" meta.attribute.hot entity.other.attribute-name.hot
+44: "]" meta.attribute.hot punctuation.definition.attribute.end.hot
+44: " Node n) { " 
+44: "[" meta.attribute.hot punctuation.definition.attribute.begin.hot
+44: "weak" meta.attribute.hot entity.other.attribute-name.hot
+44: "]" meta.attribute.hot punctuation.definition.attribute.end.hot
+44: " Node m " 
+44: "=" keyword.operator.assignment.hot
+44: " n" 
+44: ";" punctuation.terminator.statement.hot
+44: " }" 
+45: "}" 

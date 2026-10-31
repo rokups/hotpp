@@ -1,0 +1,71 @@
+// Generation 1: weak handles (task 38). A read locks the handle. "= null" resets it.
+// A Node holds its child strongly and its parent weakly, so the pair is not a cycle of owners.
+using "Weapon.h";
+
+[native, handle("std::shared_ptr<$T>")] class Weapon;
+
+// A script struct with a weak field. A read through the struct locks the handle too.
+struct Rack {
+    [weak]
+    Weapon held = null;
+    int Dmg() { return held != null ? held.dmg : 0; }
+}
+
+class Node {
+    Node child = null;
+    [weak]
+    Node parent = null;
+    [weak]
+    Weapon seen = null;
+    int hp = 5;
+
+    void Adopt(Node kid) {
+        this.child = kid;
+        kid.parent = this;
+    }
+
+    // "this" for a "[weak]" parameter is the strong handle of the object.
+    void SetParent([weak] Node p) { parent = p; }
+
+    void AdoptBySet(Node kid) {
+        this.child = kid;
+        kid.SetParent(this);
+    }
+
+    int ParentHp() {
+        if (parent == null)
+            return -1;
+        return parent.hp;
+    }
+
+    void See([weak] Weapon w) {
+        seen = w;
+        [weak] Weapon local = w;
+        Weapon strong = local;
+        if (strong != null)
+            hp = hp + strong.dmg;
+        local = null;
+    }
+
+    int Watch() {
+        var f = () => seen != null ? seen.dmg : 0;
+        return f();
+    }
+
+    // A "[weak]" parameter with the default "null": the empty weak_ptr.
+    int Try([weak] Weapon w = null) { return w != null ? w.dmg : 0; }
+
+    int Racks(Weapon w) {
+        Rack r;
+        r.held = w;
+        Weapon h = r.held;
+        int n = r.held != null ? r.held.dmg : 0;
+        r.held = null;
+        return n + Try(null) + Try() + Try(h);
+    }
+
+    void Forget() {
+        parent = null;
+        this.seen = null;
+    }
+}

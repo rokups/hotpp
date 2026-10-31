@@ -161,6 +161,9 @@ struct DeclParts
     Span init;
 };
 
+// One attribute before a local declaration: "[weak] T x = e;". The name and its byte offset.
+using StmtAttr = std::pair<std::string, uint32_t>;
+
 struct ForInit
 {
     bool is_decl = false;
@@ -231,6 +234,38 @@ StmtP make_decl(const ParseState& st, DeclParts&& d)
             return nullptr;
     }
     return ast::make_stmt(std::move(v));
+}
+
+// A local declaration with attributes: "[weak] T x = e;". Only "weak" is known. A weak local
+// needs a written handle type, so "var", "var&" and a structured binding are errors.
+StmtP make_attr_decl(const ParseState& st, std::vector<StmtAttr>&& attrs, DeclParts&& d)
+{
+    uint32_t weak_pos = 0;
+    for (const StmtAttr& a : attrs)
+    {
+        if (a.first != "weak")
+            st.error(st.base + a.second, "unknown attribute '" + a.first + "' on a local variable");
+        else if (weak_pos != 0)
+            st.error(st.base + a.second, "duplicate attribute 'weak'");
+        else
+            weak_pos = a.second;
+    }
+    const bool untyped = d.head.type.empty();
+    StmtP s = make_decl(st, std::move(d));
+    if (!s || weak_pos == 0)
+        return s;
+    auto* v = std::get_if<ast::VarDeclStmt>(&s->v);
+    if (!v)
+        return s;
+    if (untyped)
+    {
+        st.error(st.base + weak_pos,
+            "[weak] needs the handle type of the local: write '[weak] T name', not 'var' or a structured binding");
+        return nullptr;
+    }
+    v->weak = true;
+    v->weak_pos = weak_pos;
+    return s;
 }
 
 std::vector<StmtP> keep(std::vector<StmtP>&& v)
@@ -759,6 +794,32 @@ struct decl_stmt
     static constexpr auto rule = dsl::p<decl_p<init_cfg>> + semi;
     static constexpr auto value = lexy::bind(
         lexy::callback<StmtP>([](const ParseState& st, DeclParts&& d) { return make_decl(st, std::move(d)); }),
+        lexy::parse_state, lexy::values);
+};
+
+// One attribute name of a local declaration, with its byte offset.
+struct stmt_attr_p
+{
+    static constexpr auto rule = dsl::position + dsl::p<name_p>;
+    static constexpr auto value =
+        lexy::bind(lexy::callback<StmtAttr>([](const ParseState& st, const char* pos, std::string name)
+    { return StmtAttr{std::move(name), st.offset(pos)}; }),
+            lexy::parse_state, lexy::values);
+};
+
+struct stmt_attr_list
+{
+    static constexpr auto rule = dsl::terminator(dsl::lit_c<']'>).list(dsl::p<stmt_attr_p>, dsl::sep(dsl::lit_c<','>));
+    static constexpr auto value = lexy::as_list<std::vector<StmtAttr>>;
+};
+
+// "[weak] T x = e;": a local declaration with attributes.
+struct attr_decl_stmt
+{
+    static constexpr auto rule = dsl::lit_c<'['> + dsl::p<stmt_attr_list> + dsl::p<decl_p<init_cfg>> + semi;
+    static constexpr auto value = lexy::bind(lexy::callback<StmtP>([](const ParseState& st,
+                                                                       std::vector<StmtAttr>&& attrs, DeclParts&& d)
+    { return make_attr_decl(st, std::move(attrs), std::move(d)); }),
         lexy::parse_state, lexy::values);
 };
 
@@ -1311,7 +1372,8 @@ struct stmt
         | dsl::peek(kw_continue) >> dsl::p<continue_stmt> | dsl::peek(kw_switch) >> dsl::p<switch_stmt>
         | dsl::peek(kw_throw) >> dsl::p<throw_stmt> | dsl::peek(kw_try) >> dsl::p<try_stmt>
         | dsl::peek(dsl::lit_c<';'>) >> dsl::p<empty_stmt> | dsl::peek(dsl::eof | dsl::lit_c<'}'>) >> dsl::error<e_stmt>
-        | decl_ahead >> dsl::p<decl_stmt> | dsl::else_ >> dsl::p<expr_stmt>;
+        | dsl::peek(dsl::lit_c<'['>) >> dsl::p<attr_decl_stmt> | decl_ahead >> dsl::p<decl_stmt>
+        | dsl::else_ >> dsl::p<expr_stmt>;
     static constexpr auto value = lexy::forward<StmtP>;
 };
 

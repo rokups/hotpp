@@ -191,4 +191,12 @@ template <class H, class Src> HOT_HIDDEN H bind(Src&& s)
     }
 }
 
+// Reads a weak handle ("[weak] T x"). The result is the strong handle, or a null handle when
+// the object is gone. The template takes any weak pointer type with "lock()", so a custom
+// standard namespace (the module attribute "std") works too.
+template <class W> HOT_HIDDEN auto lock(const W& w) -> decltype(w.lock())
+{
+    return w.lock();
+}
+
 } // namespace hot

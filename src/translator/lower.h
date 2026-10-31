@@ -1,9 +1,9 @@
 // The lowering pass. It changes the parsed script AST into AST that the printer
 // (emit.h) prints as C++. translate() in hotc_lib.cpp uses this pass. The pass has the
 // rules of the old token rewriter:
-//  - The set "locals" has no block scope. A name stays in the set until the end of the
-//    body. The pass visits the nodes in the order of the script text, so a use before a
-//    declaration sees no local.
+//  - The set "locals" has block scope. A name stays in the set until the end of its block,
+//    loop, catch clause or lambda. The pass visits the nodes in the order of the script
+//    text, so a use before a declaration sees no local.
 //  - A local declaration, a parameter of a fn and a parameter of a lambda add a
 //    name to "locals".
 //  - The script uses "." for a scope and for a member access. A name with more than one part
@@ -59,6 +59,12 @@ struct RCtx
     };
     std::map<std::string, PropInfo> props;
     std::set<std::string> locals; // parameters and declared locals
+    // Weak handles (task 38). "weak_fields" has the "[weak]" fields of the class. "weak_locals" has
+    // the "[weak]" parameters and locals. A read of such a name becomes "hot::lock(name)". The
+    // statement "name = null;" becomes "name.reset();". A field of a script parent and a field of
+    // another script object are weak when the AST of the field says so.
+    std::set<std::string> weak_fields;
+    std::set<std::string> weak_locals;
     bool allow_this = true;
     // True in the default value of a parameter. The value is in a C++ declaration, so it cannot
     // use a field, a parameter, a script function or "this".

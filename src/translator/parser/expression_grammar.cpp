@@ -683,12 +683,30 @@ struct coll_p
 };
 
 // ---------------------------------------------------------------- lambda
+// An attribute such as "[weak]" before a lambda parameter. It is an error: the rule reads it and
+// reports it, so the message is clear.
+struct lambda_attr_p
+{
+    static constexpr auto rule = dsl::lit_c<'['> + dsl::position + dsl::p<id_str> + dsl::lit_c<']'>;
+    static constexpr auto value = lexy::bind(lexy::callback<int>([](const ParseState& st, const char* pos, std::string name)
+    {
+        if (name == "weak")
+            st.error(pos, "[weak] is not valid on a lambda parameter. Copy the handle to a '[weak] T' local before "
+                          "the lambda: the lambda captures it");
+        else
+            st.error(pos, "attribute '" + name + "' is not valid on a lambda parameter");
+        return 0;
+    }),
+        lexy::parse_state, lexy::values);
+};
+
 // "Type name" or "name". A parameter without a type has an empty type ("auto").
 struct param_p
 {
-    static constexpr auto rule = dsl::p<scan_param_type> + dsl::p<id_str> + dsl::if_(dsl::lit_c<','>);
+    static constexpr auto rule = dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<lambda_attr_p>)
+        + dsl::p<scan_param_type> + dsl::p<id_str> + dsl::if_(dsl::lit_c<','>);
     static constexpr auto value = lexy::bind(lexy::callback<ast::Param>(
-                                                 [](const ParseState& st, Span type, std::string name)
+                                                 [](const ParseState& st, auto, Span type, std::string name)
     {
         if (only_blank(span_text(st, type)))
             return ast::Param{std::move(name), ""};

@@ -56,25 +56,26 @@ TEST(NameResolutionLowering, LocalDoesNotLeakIntoEarlierText)
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
-TEST(NameResolutionLowering, LocalLeaksOutOfABlock)
+TEST(NameResolutionLowering, LocalEndsWithItsBlock)
 {
     Fixture f;
-    // The old rewriter has no block scope: Foo stays a local after the block.
-    EXPECT_EQ(f.body("{ var Foo = 1; } Foo.bar();"), "{ auto Foo = 1; } hot::deref(Foo).bar();");
+    // A local has block scope: after the block, Foo is a scope again.
+    EXPECT_EQ(f.body("{ var Foo = 1; } Foo.bar();"), "{ auto Foo = 1; } Foo::bar();");
 }
 
-TEST(NameResolutionLowering, ScriptFnHiddenAfterBlock)
+TEST(NameResolutionLowering, ScriptFnBackAfterBlock)
 {
     Fixture f;
-    EXPECT_EQ(f.body("{ var heal = 1; } heal(2);"), "{ auto heal = 1; } heal(2);");
+    // The local ends with the block, so the call is the script function again.
+    EXPECT_EQ(f.body("{ var heal = 1; } heal(2);"), "{ auto heal = 1; } Player__heal(__self, 2);");
 }
 
-TEST(NameResolutionLowering, LambdaParameterLeaks)
+TEST(NameResolutionLowering, LambdaParameterEndsWithTheLambda)
 {
     Fixture f;
     EXPECT_EQ(f.body("var g = (int* q) => { }; q.x;"),
         "auto g = hot::make_closure(GEN, &hot_live, \"Player::run lambda\", [=](int32_t* q) "
-        "{ HOT_NODEBUG_LOCAL auto* __st = state_of(__self); }); hot::deref(q).x;");
+        "{ HOT_NODEBUG_LOCAL auto* __st = state_of(__self); }); q::x;");
 }
 
 TEST(NameResolutionLowering, ForOfVariableIsLocal)

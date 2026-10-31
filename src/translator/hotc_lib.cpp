@@ -84,7 +84,12 @@ std::string default_arg(const hotc::ast::Param& p, const std::vector<hotc::ast::
         cx.in_default = true;
         for (const hotc::ast::Param& q : ps)
             cx.locals.insert(q.name);
-        if (p.def->expr)
+        if (p.weak && p.def->expr && std::holds_alternative<hotc::ast::NullExpr>(p.def->expr->v))
+        {
+            // "[weak] T w = null": the empty weak_ptr. The type is the weak_ptr storage here.
+            p.def->cpp = p.type + "()";
+        }
+        else if (p.def->expr)
         {
             hotc::lower_expr(p.def->expr, cx, g_diag);
             if (!g_diag.items.empty())
@@ -110,6 +115,27 @@ const std::string kModuleName = "HotModule";
 {
     g_diag.add(pos, map, msg);
     throw TranslateAbort{};
+}
+
+// The C++ storage of a "[weak] T" field or parameter (task 38): a weak_ptr of the shared handle.
+// A type without a std::shared_ptr handle is an error.
+std::string weak_storage_or_fail(
+    const hotc::TypeModel& types, const hotc::LineMap& map, uint32_t pos, const std::string& type)
+{
+    std::string w = types.weak_storage(type);
+    if (w.empty())
+        fail_at(map, pos, hotc::weak_handle_error(hotc::script_type_text(type)));
+    return w;
+}
+
+// A "[weak] T x = null" field keeps no initializer: an empty weak_ptr is null.
+void drop_weak_null_init(hotc::ast::Field& f)
+{
+    if (f.weak && f.init && std::holds_alternative<hotc::ast::NullExpr>(f.init->v))
+    {
+        f.init = nullptr;
+        f.has_init = false;
+    }
 }
 
 // Parses the script: the structure, the method bodies and the field initializers.
@@ -3713,17 +3739,20 @@ void translate_impl(
                 throw TranslateAbort{};
         }
         for (Field& f : cd.fields)
-            f.type = types.storage(f.type);
+        {
+            f.type = f.weak ? weak_storage_or_fail(types, map, f.pos, f.type) : types.storage(f.type);
+            drop_weak_null_init(f);
+        }
         for (Method& m : cd.methods)
         {
             for (Param& p : m.params)
-                p.type = types.param(p.type);
+                p.type = p.weak ? weak_storage_or_fail(types, map, m.pos, p.type) : types.param(p.type);
             if (!m.ret.empty())
                 m.ret = types.storage(m.ret);
         }
         for (hotc::ast::Ctor& c : cd.ctors)
             for (Param& p : c.params)
-                p.type = types.param(p.type);
+                p.type = p.weak ? weak_storage_or_fail(types, map, c.pos, p.type) : types.param(p.type);
         // The convert hooks of the module variables: the same rules as a convert hook of a field.
         const bool is_module = cn == kModuleName;
         std::map<std::string, Method*> hooks; // by variable name
@@ -4349,8 +4378,9 @@ void translate_impl(
             for (const auto& nv : bi.virtuals)
                 sigs.push_back({nv.name, nv.ptypes, nv.is_const});
             std::vector<std::string> script_ptypes;
+            // A "[weak] T" parameter has the weak_ptr type. It matches only a native weak_ptr parameter.
             for (const Param& p : m.params)
-                script_ptypes.push_back(p.type);
+                script_ptypes.push_back(p.weak ? weak_storage_or_fail(types, map, m.pos, p.type) : p.type);
             // The relaxed pass (handle carriers) is not for a ".cpp" script.
             const hotc::OverrideMatch om = hotc::match_native_virtual(m.name, script_ptypes, sigs, types, m.is_const,
                 hotc::relaxed_override_enabled() && !sc.is_cpp);
@@ -4587,7 +4617,10 @@ void translate_impl(
 
         // ---- the C++ storage types. An override keeps the native types.
         for (Field& f : cd.fields)
-            f.type = types.storage(f.type);
+        {
+            f.type = f.weak ? weak_storage_or_fail(types, map, f.pos, f.type) : types.storage(f.type);
+            drop_weak_null_init(f);
+        }
         for (Method& m : cd.methods)
         {
             if (m.overrides_virtual)
@@ -4597,6 +4630,11 @@ void translate_impl(
                 // type: the first line makes it with hot::bind.
                 for (Param& p : m.params)
                 {
+                    if (p.weak)
+                    { // the native parameter is the same weak_ptr type
+                        p.type = weak_storage_or_fail(types, map, m.pos, p.type);
+                        continue;
+                    }
                     if (p.native_type.empty())
                         continue;
                     const hotc::ParamUse use = hotc::analyze_param_use(m, p.name, param_ctx);
@@ -4630,6 +4668,11 @@ void translate_impl(
             // The slot adapter and the thunk keep the form of param().
             for (Param& p : m.params)
             {
+                if (p.weak)
+                { // "[weak] T": the weak_ptr by value in the slot and in the body
+                    p.type = weak_storage_or_fail(types, map, m.pos, p.type);
+                    continue;
+                }
                 if (hotc::ast::is_ref_type(p.type))
                 { // a "T&" parameter keeps its form
                     p.type = types.param(p.type); // a script class gives "storage(T)&"
@@ -4648,7 +4691,7 @@ void translate_impl(
 
         for (hotc::ast::Ctor& c : cd.ctors)
             for (Param& p : c.params)
-                p.type = types.param(p.type);
+                p.type = p.weak ? weak_storage_or_fail(types, map, c.pos, p.type) : types.param(p.type);
 
         // ---- slots: native virtuals first, then the script functions
         std::vector<Slot> slots;

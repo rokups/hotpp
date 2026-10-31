@@ -60,6 +60,7 @@ struct Annot
     const char* pos = nullptr; // the "[" or the "@"
     std::string alias;
     bool has_alias = false;
+    const char* weak_pos = nullptr; // the name of "[weak]", or null
 };
 
 // One attribute: a name and a list of strings. The list can be empty.
@@ -266,9 +267,17 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
     if (const Annot* a = annot_of(ann))
     {
         if (m.kind == Member::IsField)
+        {
             m.field.alias = a->alias;
-        else if (a->has_alias)
-            st.error(a->pos, "[alias] applies to fields only");
+            m.field.weak = a->weak_pos != nullptr;
+        }
+        else
+        {
+            if (a->has_alias)
+                st.error(a->pos, "[alias] applies to fields only");
+            if (a->weak_pos)
+                st.error(a->weak_pos, "[weak] applies to fields, parameters and local variables only");
+        }
     }
     const Mods mods = mods_of(st, mods_in);
     if (m.kind == Member::IsDtor)
@@ -427,7 +436,7 @@ struct attr_list
     static constexpr auto value = lexy::as_list<std::vector<AttrItem>>;
 };
 
-// "[" attribute { "," attribute } "]". Only "alias" is known.
+// "[" attribute { "," attribute } "]". Only "alias" and "weak" are known.
 struct attrs_p
 {
     static constexpr auto rule = dsl::position + dsl::lit_c<'['> + dsl::p<attr_list>;
@@ -439,7 +448,16 @@ struct attrs_p
         a.pos = pos;
         for (AttrItem& it : items)
         {
-            if (it.name != "alias")
+            if (it.name == "weak")
+            {
+                if (!it.args.empty())
+                    st.error(it.pos, "attribute 'weak' takes 0 arguments");
+                else if (a.weak_pos)
+                    st.error(it.pos, "duplicate attribute 'weak'");
+                else
+                    a.weak_pos = it.pos;
+            }
+            else if (it.name != "alias")
                 st.error(it.pos, "unknown attribute '" + it.name + "'");
             else if (it.args.size() != 1)
                 st.error(it.pos, "attribute 'alias' takes 1 arguments");
@@ -472,14 +490,21 @@ struct param_default_cfg
 // "Type name" or "Type name = default".
 struct param_p
 {
-    static constexpr auto rule = dsl::position + dsl::p<scan_param_type> + dsl::p<name_p<e_param_name>>
+    static constexpr auto rule = dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<attrs_p>) + dsl::position
+        + dsl::p<scan_param_type> + dsl::p<name_p<e_param_name>>
         + dsl::opt(dsl::peek(dsl::lit_c<'='>) >> dsl::p<scan_until<param_default_cfg>>) + dsl::if_(dsl::lit_c<','>);
     static constexpr auto value =
         lexy::bind(lexy::callback<ast::Param>(
-                       [](const ParseState& st, const char* pos, Span type, std::string name, auto def)
+                       [](const ParseState& st, const auto& ann, const char* pos, Span type, std::string name, auto def)
     {
         check_name(st, pos, name);
         ast::Param p{std::move(name), ""};
+        if (const Annot* a = annot_of(ann))
+        {
+            if (a->has_alias)
+                st.error(a->pos, "[alias] applies to fields only");
+            p.weak = a->weak_pos != nullptr;
+        }
         if (only_blank(span_text(st, type)))
             st.error(pos, "a parameter needs a type; write 'Type name'");
         else
@@ -983,7 +1008,7 @@ struct ClassAttrs
 // The expected count of arguments of a class attribute, or -1 for an unknown name.
 int class_attr_arity(const std::string& name)
 {
-    if (name == "native" || name == "value" || name == "self" || name == "checked_index")
+    if (name == "native" || name == "value" || name == "self" || name == "checked_index" || name == "weak")
         return 0;
     if (name == "handle" || name == "default_handle" || name == "alias" || name == "cpp_prelude" || name == "std"
         || name == "array")
@@ -1062,6 +1087,10 @@ struct class_attrs_p
             }
             else if (it.name == "default_handle")
                 a.default_handle = std_from_user(it.args[0]);
+            else if (it.name == "weak")
+            {
+                // A field, a parameter or a local takes "[weak]". The user of the list reports it.
+            }
             else
             {
                 a.intrusive_add = std_from_user(it.args[0]);
@@ -1183,6 +1212,9 @@ TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bo
             st.error(a->handle_pos, "'value' and 'handle' are exclusive");
         if (a->has_alias)
             st.error(a->pos, "attribute 'alias' is not allowed on a stub");
+        for (const auto& u : a->used)
+            if (u.second == "weak")
+                st.error(u.first, "attribute 'weak' is not allowed on a stub: put it on a field, a parameter or a local");
         if (a->has_std)
             st.error(a->std_pos, "attribute 'std' is valid only on a module attribute list: end the list with ';'");
         if (a->has_array)
