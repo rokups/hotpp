@@ -102,6 +102,8 @@ class Grid {
 These rules apply to an array:
 
 - The size is a literal. `int[]` and `int[n]` are errors.
+- The size is from 1 to 16777216 (`1 << 24`). `int[0]` and a larger size are errors.
+- `is`, `as` and casts do not take an array type. `x is int[3]`, `x as int[3]` and `(int[3])x` are errors.
 - An array has no bounds check. An index outside the array is undefined behavior.
 - `.size()` gives the number of values.
 - A copy of an array copies all values.

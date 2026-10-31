@@ -1,0 +1,3 @@
+35_array_cast.hot:4:27: error: cannot cast to the array type 'int[3]'
+    4 |     int F(int x) { return (int[3])x; }
+1 error generated.

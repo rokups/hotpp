@@ -1,0 +1,3 @@
+33_array_size_too_large.hot:4:5: error: the size of an array must be at most 16777216
+    4 |     int[99999999999999999999] scores;
+1 error generated.

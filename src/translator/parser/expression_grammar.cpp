@@ -35,6 +35,7 @@ using ast::ExprP;
 // The script has no "::" and no "->". A "." does both jobs. The errors tell the user.
 HOT_ERROR_TAG(e_expected_expr, "expected an expression");
 HOT_ERROR_TAG(e_end_of_expr, "expected end of expression");
+HOT_ERROR_TAG(e_test_array, "is and as do not accept an array type");
 HOT_ERROR_TAG(e_brace_init, "brace initialization is not supported; use parentheses");
 HOT_ERROR_TAG(e_new_paren, "expected '(' after the type of 'new'");
 HOT_ERROR_TAG(e_targs, "not a template argument list");
@@ -806,6 +807,15 @@ constexpr auto cast_a = dsl::lit_c<'('> + cast_ws + cast_const + cast_builtin + 
 constexpr auto cast_b =
     dsl::lit_c<'('> + cast_ws + cast_const + cast_qname + cast_ws + cast_mark + cast_ws + cast_marks + dsl::lit_c<')'>;
 
+// A cast to an array type, for example "(int[3])x" or "(Foo[2])x". It is an error. A name needs
+// an operand after the ")": "(a[3])" is an index expression.
+constexpr auto cast_dims = dsl::lit_c<'['> + dsl::until(dsl::lit_c<']'>)
+    + dsl::while_(dsl::lit_c<'['> >> dsl::until(dsl::lit_c<']'>));
+constexpr auto cast_c = dsl::lit_c<'('> + cast_ws + cast_const + cast_builtin + cast_ws + cast_marks + cast_dims
+    + cast_ws + dsl::lit_c<')'>;
+constexpr auto cast_d = dsl::lit_c<'('> + cast_ws + cast_const + cast_qname + cast_ws + cast_marks + cast_dims
+    + cast_ws + dsl::lit_c<')'> + cast_ws + dsl::peek(dsl::token(id_b) | dsl::ascii::digit);
+
 // The text between the parentheses of a cast. It is already checked by cast_a or cast_b.
 struct cast_scan : lexy::token_production
 {
@@ -825,6 +835,21 @@ struct cast_atom_p
             lexy::parse_state, lexy::values);
 };
 
+// The operand of the cast to an array type is read to find more errors. The result is the operand.
+struct cast_array_p
+{
+    static constexpr auto rule =
+        dsl::position + dsl::lit_c<'('> + dsl::p<cast_scan> + dsl::lit_c<')'> + dsl::recurse<unary_expr>;
+    static constexpr auto value =
+        lexy::bind(lexy::callback<ExprP>([](const ParseState& st, const char* pos, Span type, ExprP&& e)
+    {
+        const std::string t(type_text(span_text(st, type)));
+        st.error(pos, "cannot cast to the array type '" + t + "'");
+        return std::move(e);
+    }),
+            lexy::parse_state, lexy::values);
+};
+
 // ---------------------------------------------------------------- the expression
 // "Full" is the whole expression. Not "Full" is the unary expression: a prefix operator or an
 // atom with the postfix operators. A cast uses it for the operand.
@@ -836,7 +861,8 @@ template <bool Full> struct expr_g : lexy::expression_production
     static constexpr auto atom = dsl::peek(dsl::if_(dsl::lit_c<'.'>) + dsl::ascii::digit) >> dsl::p<number_p>
         | dsl::peek(dsl::lit_c<'"'>) >> dsl::p<literal_p<ast::StringExpr, '"'>>
         | dsl::peek(dsl::lit_c<'\''>) >> dsl::p<literal_p<ast::CharExpr, '\''>>
-        | dsl::peek(dsl::lit_c<'`'>) >> dsl::error<e_interpolation> | dsl::peek(cast_a) >> dsl::p<cast_atom_p>
+        | dsl::peek(dsl::lit_c<'`'>) >> dsl::error<e_interpolation> | dsl::peek(cast_c) >> dsl::p<cast_array_p>
+        | dsl::peek(cast_d) >> dsl::p<cast_array_p> | dsl::peek(cast_a) >> dsl::p<cast_atom_p>
         | dsl::peek(cast_b) >> dsl::p<cast_atom_p> | dsl::peek(dsl::lit_c<'('>) >> dsl::p<paren_p>
         | dsl::peek(dsl::lit_c<'{'>) >> dsl::error<e_brace_init> | dsl::peek(dsl::lit_c<'['>) >> dsl::p<coll_p>
         | dsl::peek(kw_this) >> dsl::p<kw_p<ast::ThisExpr, std::remove_cv_t<decltype(kw_this)>>>
@@ -885,8 +911,10 @@ template <bool Full> struct expr_g : lexy::expression_production
     struct test_lvl : dsl::postfix_op
     {
         static constexpr auto op =
-            dsl::op<IsTag>(kw_is >> dsl::p<qname_tok> + dsl::opt(dsl::peek(id_b) >> dsl::p<bind_tok>))
-            / dsl::op<AsTag>(LEXY_KEYWORD("as", id) >> dsl::p<qname_tok>);
+            dsl::op<IsTag>(kw_is >> dsl::p<qname_tok> + dsl::if_(dsl::peek(dsl::lit_c<'['>) >> dsl::error<e_test_array>)
+                + dsl::opt(dsl::peek(id_b) >> dsl::p<bind_tok>))
+            / dsl::op<AsTag>(LEXY_KEYWORD("as", id) >> dsl::p<qname_tok>
+                + dsl::if_(dsl::peek(dsl::lit_c<'['>) >> dsl::error<e_test_array>));
         using operand = shift_lvl;
     };
     struct rel_lvl : dsl::infix_op_left

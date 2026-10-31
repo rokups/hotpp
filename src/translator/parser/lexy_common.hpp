@@ -14,6 +14,7 @@
 #include "../diag.h"
 #include "span.h"
 
+#include <cstdint>
 #include <lexy/action/parse.hpp>
 #include <lexy/callback.hpp>
 #include <lexy/dsl.hpp>
@@ -416,10 +417,13 @@ inline std::string canonical_type_at(const ParseState& st, const char* pos, cons
     return r;
 }
 
+// The largest size of a fixed-size array: 1 << 24 values.
+constexpr std::uint64_t max_array_size = std::uint64_t{1} << 24;
+
 // Rewrites the fixed-size array types of a type text. "T[N]" becomes "std::array<T, N>".
 // "T[M][N]" becomes "std::array<std::array<T, N>, M>". N is an integer literal. The element
-// type starts at the beginning of the text or after a "<", a "," or a "(". A "[]" and a size that
-// is not an integer literal are errors at "pos". If "report" is false, the function does not
+// type starts at the beginning of the text or after a "<", a "," or a "(". A "[]", a size that
+// is not an integer literal, a size of 0 and a size above "max_array_size" are errors at "pos". If "report" is false, the function does not
 // report the errors and leaves the text of the bad array as it is.
 inline std::string array_types(const ParseState& st, const char* pos, const std::string& t, bool report = true)
 {
@@ -466,7 +470,21 @@ inline std::string array_types(const ParseState& st, const char* pos, const std:
                 bad = true;
                 break;
             }
-            dims.push_back(size);
+            // The value stops growing above the limit, so a long digit string does not overflow.
+            std::uint64_t value = 0;
+            for (const char d : size)
+                if (value <= max_array_size)
+                    value = value * 10 + static_cast<std::uint64_t>(d - '0');
+            if (value < 1 || value > max_array_size)
+            {
+                if (report)
+                    st.error(pos,
+                        value < 1 ? "the size of an array must be at least 1"
+                                  : "the size of an array must be at most " + std::to_string(max_array_size));
+                bad = true;
+                break;
+            }
+            dims.push_back(std::to_string(value)); // no leading zeros: C++ reads "010" as octal
             j = e + 1;
         }
         if (bad)

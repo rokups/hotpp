@@ -1,0 +1,7 @@
+using "Actor.h";
+
+class Player : Actor {
+    bool Check(Actor x) { return x is int[3]; }
+
+    override void Tick(float dt) { }
+}
