@@ -6,7 +6,8 @@
   <title>{% if page.title %}{{ page.title }} - {% endif %}{{ site.title }}</title>
   <script>var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t;</script>
   <link rel="stylesheet" href="{{ '/assets/style.css' | relative_url }}">
-</head>
+{% if content contains 'class="mermaid"' %}  <noscript><style>pre.mermaid{display:none}</style></noscript>
+{% endif %}</head>
 <body>
 <header class="topbar">
   <a class="brand" href="{{ '/' | relative_url }}">{{ site.title }}</a>
@@ -47,5 +48,27 @@ document.getElementById("theme").onclick=function(){
   var d=document.documentElement,dark=d.dataset.theme?d.dataset.theme=="dark":matchMedia("(prefers-color-scheme: dark)").matches;
   d.dataset.theme=dark?"light":"dark";localStorage.setItem("theme",d.dataset.theme);};
 </script>
-</body>
+{% if content contains 'class="mermaid"' %}<!-- Diagrams: Mermaid 12.2.0 (pinned). Only the pages with a pre.mermaid block load it. Without JavaScript the diagram is hidden and the text list on the page stays. -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@12.2.0/dist/mermaid.min.js" integrity="sha384-8xUhuLNMjW/cI2Dacg3DR4WliYznvIg0LVG1stctThKD/YVrJFI9TNCFxft5NYgp" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function(){
+  var els=document.querySelectorAll("pre.mermaid");
+  if(!window.mermaid||!els.length)return;
+  els.forEach(function(e){e.dataset.src=e.textContent;});
+  function draw(){
+    var d=document.documentElement,cs=getComputedStyle(d);
+    var v=function(n){return cs.getPropertyValue(n).trim();};
+    var dark=d.dataset.theme?d.dataset.theme=="dark":matchMedia("(prefers-color-scheme: dark)").matches;
+    mermaid.initialize({startOnLoad:false,securityLevel:"strict",theme:"base",themeVariables:{darkMode:dark,background:v("--bg"),
+      fontFamily:"system-ui,sans-serif",primaryColor:v("--code"),primaryTextColor:v("--fg"),primaryBorderColor:v("--line"),
+      lineColor:v("--fg"),edgeLabelBackground:v("--bg")}});
+    els.forEach(function(e){e.removeAttribute("data-processed");e.textContent=e.dataset.src;});
+    mermaid.run({nodes:els});
+  }
+  draw();
+  document.getElementById("theme").addEventListener("click",draw);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change",draw);
+})();
+</script>
+{% endif %}</body>
 </html>

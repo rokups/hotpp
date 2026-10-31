@@ -13,6 +13,8 @@ a{color:var(--link);text-decoration:none}
 main{max-width:50rem;padding:1rem 2rem;min-width:0}
 pre{background:var(--code);padding:.8rem;overflow-x:auto;border-radius:4px}
 code{font-size:.9em}
+pre.mermaid{background:none;text-align:center;padding:0}
+pre.mermaid svg{max-width:100%;height:auto}
 table{border-collapse:collapse}td,th{border:1px solid var(--line);padding:.3rem .6rem}
 #theme{margin-top:1rem;background:none;color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:.2rem .6rem;cursor:pointer}
 header.topbar{display:none}
