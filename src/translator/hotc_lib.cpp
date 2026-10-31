@@ -30,6 +30,7 @@
 #include "lower.h"
 #include "parser/cpp_frontend.h"
 #include "parser/parser.h"
+#include "std_ns.h"
 #include "hot/config.h"
 #include "types.h"
 
@@ -144,7 +145,8 @@ std::string tidy(std::string s)
         for (size_t p; (p = s.find(q)) != std::string::npos;)
             s.erase(p, 1);
     }
-    return s;
+    // The native text has the real namespace; the translator keeps the placeholder (std_ns.h).
+    return hotc::unexpand_std(s);
 }
 
 std::string norm(const std::string& s)
@@ -1047,7 +1049,7 @@ std::string arg_expr(const std::string& type, const std::string& name)
 {
     std::string n = norm(type);
     if (n.size() > 2 && n.compare(n.size() - 2, 2, "&&") == 0)
-        return "std::move(" + name + ")";
+        return "\x01std::move(" + name + ")";
     return name;
 }
 
@@ -1374,7 +1376,7 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
         "std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>; else return false; }\n"
         "template <class T> constexpr bool hotc_small() { if constexpr (hotc_complete<T>()) return "
         "std::is_trivially_copyable_v<T> && sizeof(T) <= 16; else return false; }\n"
-        "template <class U> std::true_type hotc_esft_f(const std::enable_shared_from_this<U>*);\n"
+        "template <class U> std::true_type hotc_esft_f(const \x01std::enable_shared_from_this<U>*);\n"
         "std::false_type hotc_esft_f(...);\n"
         "template <class T> constexpr bool hotc_esft() { if constexpr (hotc_complete<T>()) return "
         "decltype(hotc_esft_f(static_cast<T*>(nullptr)))::value; else return false; }\n"
@@ -1480,7 +1482,7 @@ std::string function_param_types(CXCursor fn)
     {
         if (clang_getCursorKind(c) == CXCursor_ParmDecl)
         {
-            const std::string t = cxs(clang_getTypeSpelling(clang_getCursorType(c)));
+            const std::string t = hotc::unexpand_std(cxs(clang_getTypeSpelling(clang_getCursorType(c))));
             if (t.find("...") != std::string::npos)
                 pack = true;
             r += (r.empty() ? "" : "\t") + t;
@@ -1899,8 +1901,10 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
             base_probe += "using " + alias + " = " + name + ";\nstatic_assert(sizeof(" + alias + ") > 0);\n";
             instance_aliases.emplace_back(alias, name);
         }
-    const std::string full_probe =
-        reqs.empty() && queries.empty() ? base_probe : base_probe + facts_text(reqs, fact_lines, queries);
+    // The facts and the queries hold the placeholder of the standard namespace (std_ns.h).
+    const std::string full_probe = hotc::expand_std(
+        reqs.empty() && queries.empty() ? base_probe : base_probe + facts_text(reqs, fact_lines, queries),
+        hotc::current_std_ns());
     std::vector<const char*> cargs;
     for (const auto& a : args)
         cargs.push_back(a.c_str());
@@ -2407,7 +2411,71 @@ void translate_impl(
         opt.output = opt.input + ".cpp";
     g_script = opt.input;
 
+    // ---- the preludes. They load first. A module attribute list ("[std("eastl")];") in a prelude
+    // sets the default of the host. A list in the script overrides the default for the script.
+    // An attribute name is valid once in one file, and once in all the preludes.
+    struct PreludeData
+    {
+        std::string name;
+        Script script;
+        hotc::LineMap map;
+    };
+    std::deque<PreludeData> prelude_data; // the addresses must stay
+    std::string std_ns = "std";
+    // The namespace of this call. The guard restores the old value at each exit.
+    struct StdNsGuard
+    {
+        std::string old = hotc::current_std_ns();
+        ~StdNsGuard() { hotc::current_std_ns() = old; }
+    } std_ns_guard;
+    hotc::current_std_ns() = std_ns;
+    std::set<std::string> module_attrs_seen;
+    for (const auto& [pname, ptext] : in.preludes)
+    {
+        const hotc::LineMap pmap(ptext);
+        hotc::Diagnostics pd;
+        Script ps;
+        // The byte 0x01 is the internal placeholder of the standard namespace (std_ns.h).
+        if (const size_t bad = ptext.find('\x01'); bad != std::string::npos)
+            pd.add(static_cast<uint32_t>(bad), pmap, "the byte 0x01 is not allowed in a script");
+        else
+            ps = hotc::parse_script(ptext, pmap, pd);
+        if (pd.items.empty() && !ps.classes.empty())
+        {
+            const ClassDef& pc = ps.classes.front();
+            pd.add(pc.pos, pmap, "a prelude can hold only stubs: '" + pname + "' has the class '" + pc.name + "'");
+        }
+        if (pd.items.empty() && !ps.enums.empty())
+            pd.add(ps.enums.front().pos, pmap, "a prelude can hold only stubs: '" + pname + "' has an enum");
+        if (pd.items.empty() && !ps.vars.empty())
+            pd.add(ps.vars.front().pos, pmap, "a prelude can hold only stubs: '" + pname + "' has a module variable");
+        for (const hotc::ast::ModuleAttrs& m : ps.module_attrs)
+        {
+            if (!pd.items.empty())
+                break;
+            for (const auto& [aname, apos] : m.used)
+                if (!module_attrs_seen.insert(aname).second)
+                    pd.add(apos, pmap, "attribute '" + aname + "' is given twice in the preludes");
+            if (m.has_std)
+                std_ns = m.std_ns;
+        }
+        if (!pd.items.empty())
+        {
+            for (auto& d : pd.items)
+            {
+                d.file = pname;
+                g_diag.items.push_back(std::move(d));
+            }
+            throw TranslateAbort{};
+        }
+        prelude_data.push_back({pname, std::move(ps), pmap});
+    }
+    hotc::current_std_ns() = std_ns;
+
     hotc::LineMap map(in.script_text);
+    // The byte 0x01 is the internal placeholder of the standard namespace (std_ns.h).
+    if (const size_t bad = in.script_text.find('\x01'); bad != std::string::npos)
+        fail_at(map, static_cast<uint32_t>(bad), "the byte 0x01 is not allowed in a script");
     const bool is_cpp_script = opt.input.size() > 4 && opt.input.compare(opt.input.size() - 4, 4, ".cpp") == 0;
     Script sc;
     if (is_cpp_script)
@@ -2426,6 +2494,19 @@ void translate_impl(
     }
     else
         sc = parse_structure(in.script_text, map);
+    // The module attributes of the script override the defaults of the preludes.
+    {
+        std::set<std::string> seen;
+        for (const hotc::ast::ModuleAttrs& m : sc.module_attrs)
+        {
+            for (const auto& [aname, apos] : m.used)
+                if (!seen.insert(aname).second)
+                    fail_at(map, apos, "attribute '" + aname + "' is given twice in one file");
+            if (m.has_std)
+                std_ns = m.std_ns;
+        }
+        hotc::current_std_ns() = std_ns;
+    }
 
     // ---- script imports (design 4.10): "using "parent.hot";". One generation holds all script
     // modules of the program, so a class can derive from a class of another script. The
@@ -2497,11 +2578,31 @@ void translate_impl(
                     fail_at(map, im.pos, "the script '" + im.path + "' is not found");
                 const uint32_t base = next_base;
                 next_base += static_cast<uint32_t>(text.size()) + 1;
+                // The byte 0x01 is the internal placeholder of the standard namespace (std_ns.h).
+                if (const size_t bad = text.find('\x01'); bad != std::string::npos)
+                {
+                    map.add_file(base, text, file);
+                    fail_at(map, base + static_cast<uint32_t>(bad), "the byte 0x01 is not allowed in a script");
+                }
                 map.add_file(base, text, file);
                 imported_files.push_back({base, file, text});
                 res.imports.emplace_back(file, text);
                 import_texts.push_back(std::string(base, ' ') + text);
                 Script is = parse_structure(import_texts.back(), map);
+                {
+                    // The output has one namespace for all the scripts of the program.
+                    std::set<std::string> seen;
+                    for (const hotc::ast::ModuleAttrs& m : is.module_attrs)
+                    {
+                        for (const auto& [aname, apos] : m.used)
+                            if (!seen.insert(aname).second)
+                                fail_at(map, apos, "attribute '" + aname + "' is given twice in one file");
+                        if (m.has_std && m.std_ns != std_ns)
+                            fail_at(map, m.std_pos,
+                                "the imported script '" + file + "' sets the namespace '" + m.std_ns
+                                    + "' but the program uses '" + std_ns + "'");
+                    }
+                }
                 if (!is.vars.empty())
                     fail_at(map, is.vars.front().pos,
                         "an imported script cannot have module variables: '" + is.vars.front().name + "' is in '" + file
@@ -2574,6 +2675,7 @@ void translate_impl(
 
     // ---- the type model: the preludes first, then the stubs of the script
     hotc::TypeModel types;
+    types.set_std_ns(std_ns);
     // A stub with the place that holds it. The checks of the stubs (7.10.7) report there.
     struct StubSrc
     {
@@ -2582,41 +2684,21 @@ void translate_impl(
         std::string file; // empty: the script
     };
     std::vector<StubSrc> all_stubs;
-    struct PreludeData
+    for (PreludeData& pre : prelude_data)
     {
-        std::string name;
-        Script script;
-        hotc::LineMap map;
-    };
-    std::deque<PreludeData> prelude_data; // the addresses must stay
-    for (const auto& [pname, ptext] : in.preludes)
-    {
-        const hotc::LineMap pmap(ptext);
         hotc::Diagnostics pd;
-        Script ps = hotc::parse_script(ptext, pmap, pd);
-        if (pd.items.empty() && !ps.classes.empty())
-        {
-            const ClassDef& pc = ps.classes.front();
-            pd.add(pc.pos, pmap, "a prelude can hold only stubs: '" + pname + "' has the class '" + pc.name + "'");
-        }
-        if (pd.items.empty() && !ps.enums.empty())
-            pd.add(ps.enums.front().pos, pmap, "a prelude can hold only stubs: '" + pname + "' has an enum");
-        if (pd.items.empty() && !ps.vars.empty())
-            pd.add(ps.vars.front().pos, pmap, "a prelude can hold only stubs: '" + pname + "' has a module variable");
-        if (pd.items.empty())
-            types.add_stubs(ps.stubs, pd, pmap, hotc::TypeModel::Source::Prelude);
+        types.add_stubs(pre.script.stubs, pd, pre.map, hotc::TypeModel::Source::Prelude);
         if (!pd.items.empty())
         {
             for (auto& d : pd.items)
             {
-                d.file = pname;
+                d.file = pre.name;
                 g_diag.items.push_back(std::move(d));
             }
             throw TranslateAbort{};
         }
-        prelude_data.push_back({pname, std::move(ps), pmap});
-        for (const Stub& st : prelude_data.back().script.stubs)
-            all_stubs.push_back({&st, &prelude_data.back().map, pname});
+        for (const Stub& st : pre.script.stubs)
+            all_stubs.push_back({&st, &pre.map, pre.name});
     }
     types.add_stubs(sc.stubs, g_diag, map, hotc::TypeModel::Source::Script);
     if (!g_diag.items.empty())
@@ -3962,7 +4044,7 @@ void translate_impl(
             root_super = root_super || c.has_base_call;
         std::string ctor_args;
         if (bi.ctor_kind == 1)
-            ctor_args = ", std::string(\"" + cd.key_name() + "\")";
+            ctor_args = ", \x01std::string(\"" + cd.key_name() + "\")";
         else if (bi.ctor_kind == 2)
             ctor_args = ", \"" + cd.key_name() + "\"";
         else if (!bi.default_ctor && !root_super)
@@ -4593,23 +4675,23 @@ void translate_impl(
         {
             mapped("    template <class... A>\n    explicit " + shell
                     + "(hot::Construct, A&&... a)\n        : " + par->name
-                    + "_Shell(hot::ConstructChild{}, std::forward<A>(a)...)\n    {\n        hot::init_state(this, &"
+                    + "_Shell(hot::ConstructChild{}, \x01std::forward<A>(a)...)\n    {\n        hot::init_state(this, &"
                     + cn + "_record);\n    }\n",
                 cd.line, cd.pos);
             if (parent_shell)
                 mapped("    template <class... A>\n    explicit " + shell + "(hot::ConstructChild c, A&&... a) : "
-                        + par->name + "_Shell(c, std::forward<A>(a)...)\n    {\n    }\n",
+                        + par->name + "_Shell(c, \x01std::forward<A>(a)...)\n    {\n    }\n",
                     cd.line, cd.pos);
         }
         else
         {
             mapped("    template <class... A>\n    explicit " + shell + "(hot::Construct, A&&... a) : " + B
-                    + "(std::forward<A>(a)...)\n    {\n        hot::init_state(this, &" + cn + "_record);\n    }\n    ~"
+                    + "(\x01std::forward<A>(a)...)\n    {\n        hot::init_state(this, &" + cn + "_record);\n    }\n    ~"
                     + shell + "() override { hot::destroy_state(this); }\n",
                 cd.line, cd.pos);
             if (parent_shell)
                 mapped("    template <class... A>\n    explicit " + shell + "(hot::ConstructChild, A&&... a) : " + B
-                        + "(std::forward<A>(a)...)\n    {\n    }\n",
+                        + "(\x01std::forward<A>(a)...)\n    {\n    }\n",
                     cd.line, cd.pos);
         }
         for (size_t i = 0; i < native_count && !par; ++i)
@@ -4973,7 +5055,7 @@ void translate_impl(
                         hotc::lower_expr(a, fc, g_diag);
                         if (!g_diag.items.empty())
                             throw TranslateAbort{};
-                        parts.push_back(bind_ref ? "std::ref(" + hotc::ast::print(*a) + ")" : hotc::ast::print(*a));
+                        parts.push_back(bind_ref ? "\x01std::ref(" + hotc::ast::print(*a) + ")" : hotc::ast::print(*a));
                     }
                     sup_text = str_join(parts, ", ");
                 }
@@ -4990,9 +5072,9 @@ void translate_impl(
                 if (!par)
                 {
                     plan_text += "[[maybe_unused]] HOT_HIDDEN static auto " + P + "super_args(" + pd
-                        + ")\n{\n    return std::make_tuple(" + sup_text + ");\n}\n";
-                    plan_text += "HOT_HIDDEN static auto " + P + "plan(" + pd + ")\n{\n    return std::make_pair(" + P
-                        + "super_args(" + names + "), std::tuple<>());\n}\n";
+                        + ")\n{\n    return \x01std::make_tuple(" + sup_text + ");\n}\n";
+                    plan_text += "HOT_HIDDEN static auto " + P + "plan(" + pd + ")\n{\n    return \x01std::make_pair(" + P
+                        + "super_args(" + names + "), \x01std::tuple<>());\n}\n";
                 }
                 else
                 {
@@ -5000,14 +5082,14 @@ void translate_impl(
                     // class when no class of the chain calls "base(...)" with arguments.
                     const bool own_base = (has_base_call ? (sc->raw ? sc->raw_base_args.size() : sc->base_args.size()) : 0) == 0
                         && !root_super;
-                    plan_text += "HOT_HIDDEN static auto " + P + "plan(" + pd + ")\n{\n    auto __up = std::make_tuple("
+                    plan_text += "HOT_HIDDEN static auto " + P + "plan(" + pd + ")\n{\n    auto __up = \x01std::make_tuple("
                         + (has_base_call ? sup_text : std::string())
-                        + ");\n    auto __pp = std::apply([](auto&... x) { return " + PP
-                        + "plan(x...); }, __up);\n    return std::make_pair("
+                        + ");\n    auto __pp = \x01std::apply([](auto&... x) { return " + PP
+                        + "plan(x...); }, __up);\n    return \x01std::make_pair("
                         + (own_base
-                                ? "std::make_tuple(" + (ctor_args.empty() ? std::string() : ctor_args.substr(2)) + ")"
-                                : std::string("std::move(__pp.first)"))
-                        + ", std::make_pair(std::move(__up), std::move(__pp.second)));\n}\n";
+                                ? "\x01std::make_tuple(" + (ctor_args.empty() ? std::string() : ctor_args.substr(2)) + ")"
+                                : std::string("\x01std::move(__pp.first)"))
+                        + ", \x01std::make_pair(\x01std::move(__up), \x01std::move(__pp.second)));\n}\n";
                 }
                 if (has_entry)
                 {
@@ -5016,8 +5098,8 @@ void translate_impl(
                     plan_text += "template <class Chain>\nHOT_HIDDEN static void " + P + "ctor_chain(" + shell
                         + "* __self, [[maybe_unused]] Chain& __chain" + param_decl(cm) + ")\n{\n";
                     if (pinfo && !pinfo->ctor_entry.empty())
-                        plan_text += "    std::apply([&](auto&&... x) { " + pinfo->ctor_entry +
-                                     "(__self, __chain.second, std::forward<decltype(x)>(x)...); }, std::move(__chain.first));\n";
+                        plan_text += "    \x01std::apply([&](auto&&... x) { " + pinfo->ctor_entry +
+                                     "(__self, __chain.second, \x01std::forward<decltype(x)>(x)...); }, \x01std::move(__chain.first));\n";
                     if (sc)
                         plan_text += "    " + P + "ctor(__self" + ctor_fwd + ");\n";
                     plan_text += "}\n";
@@ -5032,7 +5114,7 @@ void translate_impl(
             for (size_t k = 0; k < ctor_ms.size(); ++k)
                 construct_text += "    if (std::strcmp(key, typeid(" + sa_name(k)
                     + ").name()) == 0) {\n        const auto& t = *static_cast<const " + sa_name(k)
-                    + "*>(args);\n        return std::apply([](auto&... x) -> hot::ShellBase* { return new " + shell
+                    + "*>(args);\n        return \x01std::apply([](auto&... x) -> hot::ShellBase* { return new " + shell
                     + "(hot::Construct{}, x...); }, t);\n    }\n";
             construct_text += "    return nullptr;\n}\n";
             mapped(construct_text, cd.line, cd.pos);
@@ -5128,7 +5210,7 @@ void translate_impl(
             {
                 std::string fwd;
                 for (const Param& p : m.params)
-                    fwd += std::string(fwd.empty() ? "" : ", ") + "std::forward<"
+                    fwd += std::string(fwd.empty() ? "" : ", ") + "\x01std::forward<"
                         + (p.body_type.empty() ? p.type : p.body_type) + ">(" + p.name + ")";
                 const std::string whead =
                     "[[maybe_unused]] HOT_HIDDEN static " + ret + " " + sym + "(" + shell + "* __self" + body_decl(m);
@@ -5146,10 +5228,10 @@ void translate_impl(
                 params += std::string(params.empty() ? "" : ", ") + p.type + " " + (conv ? "__" : "") + p.name;
                 if (conv && !p.bind_to.empty())
                     body_locals += "    " + p.body_type + " " + p.name + " = hot::bind<" + p.bind_to
-                        + ">(std::forward<" + p.type + ">(__" + p.name + "));\n";
+                        + ">(\x01std::forward<" + p.type + ">(__" + p.name + "));\n";
                 else if (conv)
                     body_locals +=
-                        "    " + p.body_type + " " + p.name + " = std::forward<" + p.type + ">(__" + p.name + ");\n";
+                        "    " + p.body_type + " " + p.name + " = \x01std::forward<" + p.type + ">(__" + p.name + ");\n";
             }
             std::string mhead = ret + " " + S + "::" + member + "(" + params;
             o.w(line_at(m.line));
@@ -5295,7 +5377,8 @@ void translate_impl(
             const Method& m = *slots[i].impl;
             // A changed signature of an earlier function gets a new thunk with a signature key
             // (design 5.3). The thunk of the old signature detaches. The same signature emits nothing.
-            const std::string sig = fn_ret(m) + "(" + B + "*" + type_list(m) + ")";
+            // The slot file holds the real namespace, so the compare uses it too.
+            const std::string sig = hotc::expand_std(fn_ret(m) + "(" + B + "*" + type_list(m) + ")", std_ns);
             sig_lines.push_back("sig " + cd.key_name() + "::" + m.name + " " + sig + "\n");
             bool changed = false;
             if (slots[i].intro_gen != opt.gen)
@@ -5337,10 +5420,13 @@ void translate_impl(
         // A bare "this" used as a handle in a native-base class needs shared_from_this in the
         // shell. The insert stays in one line, so the line numbers do not change.
         // A shell with script children always gets it: a child cannot add it to the parent.
+        const std::string shared_storage = types.storage(cn);
+        const bool shared_placeholder = shared_storage.rfind("\x01std::shared_ptr<", 0) == 0;
         if ((handle_this || parent_shell) && !par && !cd.base.empty()
-            && types.storage(cn).rfind("std::shared_ptr<", 0) == 0)
+            && (shared_placeholder || shared_storage.rfind("std::shared_ptr<", 0) == 0))
         {
-            o.insert(shell_head_end, ", std::enable_shared_from_this<" + shell + ">");
+            o.insert(shell_head_end,
+                std::string(shared_placeholder ? ", \x01std::" : ", std::") + "enable_shared_from_this<" + shell + ">");
             // The loader names this cause when the shell hash changes (design 5.3).
             flag_regs.push_back("    " + cn + "_record.shares_this = true;\n");
         }
@@ -5432,7 +5518,9 @@ void translate_impl(
 
     if (uses_format)
         o.insert(format_include_pos, in.format_lib == "fmt" ? "#include <fmt/format.h>" : "#include <format>");
-    res.cpp = o.s;
+    // The placeholder of the standard namespace becomes the name of the config (std_ns.h). The
+    // segments move with the text.
+    res.cpp = hotc::expand_std(o.s, std_ns, o.segs);
     // A segment of an imported script holds a position of the map. It becomes the file number
     // and the offset in the text of that file.
     for (const ImportedFile& f : imported_files)
@@ -5673,13 +5761,28 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
     for (uint32_t h : diag.member_holes)
         res.completion_points.push_back(src_pos(map, h));
 
+    // The standard namespace of the module: the default of the preludes, then the script. The
+    // type text of the parser holds the placeholder of the namespace, so the result expands it.
+    std::string module_ns = "std";
+    for (const auto& [pname, ptext] : options.preludes)
+    {
+        const LineMap pmap(ptext);
+        Diagnostics pd;
+        for (const ast::ModuleAttrs& m : parse_script(ptext, pmap, pd).module_attrs)
+            if (m.has_std)
+                module_ns = m.std_ns;
+    }
+    for (const ast::ModuleAttrs& m : sc.module_attrs)
+        if (m.has_std)
+            module_ns = m.std_ns;
+
     // The ranges of the members, as (begin, end) byte offsets. The class facts and the map use them.
     std::vector<std::pair<size_t, size_t>> ranges;
     for (const ast::ClassDef& c : sc.classes)
     {
         AnalyzedClass ac;
         ac.name = c.name;
-        ac.base = c.base;
+        ac.base = expand_std(c.base, module_ns);
         ac.begin = src_pos(map, c.pos);
         auto add = [&](const char* kind, const std::string& name, uint32_t begin, uint32_t end, bool body)
         {

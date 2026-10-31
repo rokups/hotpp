@@ -71,7 +71,7 @@ TEST(ModifierParse, AccessOnAField)
         ModParsed p(member_class("protected std.string s;"));
         EXPECT_TRUE(p.errors().empty());
         EXPECT_EQ(p.field().access, ast::Access::Protected);
-        EXPECT_EQ(p.field().type, "std::string");
+        EXPECT_EQ(p.field().type, "\x01std::string");
     }
     {
         ModParsed p(member_class("public float f;"));

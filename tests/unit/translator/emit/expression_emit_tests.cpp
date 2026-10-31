@@ -30,7 +30,7 @@ TEST(ExpressionEmit, NestedCalls)
     ExprP inner = call(arrow(id("self"), "Name"), {});
     ExprP e = call(name({"std", "printf"}), list(str("\"%s\""), call(dot(std::move(inner), "c_str"), {})));
     EXPECT_EQ(print(*e),
-        "std::printf(\"%s\", self->Name()."
+        "\x01std::printf(\"%s\", self->Name()."
         "c_str())");
 }
 
@@ -47,7 +47,7 @@ TEST(ExpressionEmit, NameParts)
     NameExpr n;
     n.parts = {"std", "vector"};
     n.template_args = "<int>";
-    EXPECT_EQ(print(*make_expr(std::move(n))), "std::vector<int>");
+    EXPECT_EQ(print(*make_expr(std::move(n))), "\x01std::vector<int>");
 }
 
 TEST(ExpressionEmit, Unary)

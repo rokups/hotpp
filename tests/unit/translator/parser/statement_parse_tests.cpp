@@ -53,7 +53,7 @@ TEST(StatementParse, For)
     EXPECT_EQ(round_trip("foreach (var x in xs) f(x);"), "for (auto x : xs) f(x);");
     EXPECT_EQ(round_trip("foreach (const var x in this.items) { f(x); }"), "for (const auto x : this.items) { f(x); }");
     EXPECT_EQ(round_trip("foreach (Actor* x in actors) f(x);"), "for (Actor* x : actors) f(x);");
-    EXPECT_EQ(round_trip("foreach (std.vector<int> x in g()) f(x);"), "for (std::vector<int32_t> x : g()) f(x);");
+    EXPECT_EQ(round_trip("foreach (std.vector<int> x in g()) f(x);"), "for (\x01std::vector<int32_t> x : g()) f(x);");
     // A name that has "in" inside is not the keyword.
     EXPECT_EQ(round_trip("foreach (Din x in xs) f(x);"), "for (Din x : xs) f(x);");
     EXPECT_EQ(round_trip("foreach (const Actor* a in xs) f(a);"), "for (const Actor* a : xs) f(a);");

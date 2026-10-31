@@ -281,6 +281,24 @@ inline bool is_digit(char c)
     return std::isdigit(static_cast<unsigned char>(c)) != 0;
 }
 
+// A "." after the name "std" is a scope of the configurable standard namespace. The text then
+// holds the placeholder "\x01std::" (see std_ns.h). The function marks the name that ends the text.
+// A "std" after a "." or a "::" is a member name and stays.
+inline void mark_std_scope(std::string& out)
+{
+    const std::size_t n = out.size();
+    if (n >= 3 && out.compare(n - 3, 3, "std") == 0
+        && (n == 3 || !(is_id(out[n - 4]) || out[n - 4] == ':' || out[n - 4] == '\x01')))
+        out.insert(n - 3, "\x01");
+}
+
+// Appends the scope separator "::" to a qualified name.
+inline void append_scope(std::string& out)
+{
+    mark_std_scope(out);
+    out += "::";
+}
+
 // True when the text has only white space and comments.
 inline bool only_blank(std::string_view s)
 {
@@ -394,7 +412,10 @@ inline std::string type_text(std::string_view s, std::size_t* colons = nullptr)
         if (tok == "::" && colons && *colons == std::string_view::npos)
             *colons = b;
         if (tok == ".")
+        {
             tok = "::";
+            mark_std_scope(out);
+        }
         if (have_prev && ((prev_word && word) || prev_comma))
             out += ' ';
         out += tok;
@@ -530,7 +551,7 @@ inline std::string scope_text(const ParseState& st, const char* begin, std::stri
         const bool scope =
             t[i] == '.' && i > 0 && i + 1 < t.size() && (is_id(t[i - 1]) || t[i - 1] == '>') && is_id0(t[i + 1]);
         if (scope)
-            out += "::";
+            append_scope(out);
         else
             out += t[i];
     }

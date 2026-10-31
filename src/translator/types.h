@@ -51,6 +51,10 @@ public:
     void add_stubs(
         const std::vector<ast::Stub>& stubs, Diagnostics& diags, const LineMap& map, Source source = Source::Prelude);
 
+    // The namespace of the standard library names (module attribute std, std_ns.h). The text of a
+    // stub with a plain "std::" matches the native text for this name only. The default is "std".
+    void set_std_ns(std::string ns) { std_ns_ = std::move(ns); }
+
     // The handle template of the stub "class *;" (empty: there is none).
     const std::string& default_handle() const { return default_handle_; }
 
@@ -191,6 +195,7 @@ private:
     BaseFn bases_;
     ClassFn classes_;
     std::string default_handle_;
+    std::string std_ns_ = "std"; // see set_std_ns()
     struct ScriptClass
     {
         std::string base;

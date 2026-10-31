@@ -3,6 +3,8 @@
 // generated code cannot resolve. An edit never adds a newline, so the line numbers stay.
 #include "cpp_frontend.h"
 
+#include "../std_ns.h"
+
 #include <clang-c/Index.h>
 
 #include <algorithm>
@@ -107,7 +109,7 @@ std::string spelling(CXCursor c)
 
 std::string type_text(CXType t)
 {
-    return cxs(clang_getTypeSpelling(t));
+    return unexpand_std(cxs(clang_getTypeSpelling(t))); // the placeholder of the namespace (std_ns.h)
 }
 
 bool from_main(CXCursor c)
@@ -2159,7 +2161,7 @@ void Frontend::read_member_inits(
                 const std::string v = trim(t);
                 const std::string end = v.find("//") == std::string::npos ? close : "\n" + close;
                 where()[index].raw_pre[k].text = "{ decltype(" + field + ") __hot_mi" + (v.empty() ? "{}" : open + v + end) +
-                    "; " + field + " = std::move(__hot_mi); }";
+                    "; " + field + " = \x01std::move(__hot_mi); }";
             });
     }
 }

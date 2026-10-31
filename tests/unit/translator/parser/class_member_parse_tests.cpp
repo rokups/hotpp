@@ -23,8 +23,8 @@ TEST(ClassMemberParse, TypeFirstMembers)
                          "    std.string name() { return this.s; }\n"
                          "}\n",
                   sd),
-        (std::vector<std::string>{"field std::string|s|-|", "field float|hp|init|", "field int32_t|n|init|old",
-            "field std::vector<std::string>|v|-|", "method |tick", "method int32_t*|pick", "method std::string|name"}));
+        (std::vector<std::string>{"field \x01std::string|s|-|", "field float|hp|init|", "field int32_t|n|init|old",
+            "field \x01std::vector<\x01std::string>|v|-|", "method |tick", "method int32_t*|pick", "method \x01std::string|name"}));
     EXPECT_EQ(sd.items.size(), 0u) << sd.format("t");
 }
 
@@ -56,7 +56,7 @@ TEST(ClassMemberParse, TemplateInstanceBase)
     ASSERT_EQ(p.script.classes.size(), 1u);
     EXPECT_EQ(p.script.classes[0].base, "Tmpl<int32_t>");
     ASSERT_EQ(p.script.classes[0].interfaces.size(), 1u);
-    EXPECT_EQ(p.script.classes[0].interfaces[0], "ns::Other<std::string, Map<int32_t, float>>");
+    EXPECT_EQ(p.script.classes[0].interfaces[0], "ns::Other<\x01std::string, Map<int32_t, float>>");
 }
 
 TEST(ClassMemberParse, TemplateInstanceBaseNeedsClosingBracket)

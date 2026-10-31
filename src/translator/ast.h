@@ -542,6 +542,21 @@ struct Stub
     uint32_t pos = 0;
 };
 
+// A module attribute list of a host: "[std("eastl")];". An attribute list with ";" and no item.
+// Any .hot file may hold it. A list in a prelude is the default of the host. A list in a script
+// overrides the default for that script. An attribute name is valid once in one file. Each
+// attribute sets one field. A later attribute adds a field and a row in the attribute table of the parser
+// ("module_attr_arity" in script_grammar.cpp).
+struct ModuleAttrs
+{
+    bool has_std = false; // the attribute [std("name")]
+    std::string std_ns = "std"; // the namespace of the standard library names
+    std::vector<std::pair<std::string, uint32_t>> used; // the attribute names and their positions
+    int line = 0;
+    uint32_t pos = 0;
+    uint32_t std_pos = 0; // the position of the attribute "std"
+};
+
 // A script enum: "enum Name : type { A, B = 5 }". It becomes a C++ "enum class". The
 // underlying type is a builtin integer type; empty means int32_t. A value is optional.
 struct Enumerator
@@ -576,6 +591,7 @@ struct Script
     std::vector<Import> imports;
     std::vector<ClassDef> classes;
     std::vector<Stub> stubs; // in source order
+    std::vector<ModuleAttrs> module_attrs; // the module attribute lists of the file, in source order
     std::vector<EnumDef> enums;
     // Module variables: "Type name = init;" at file level. The translator collects them in
     // the module state block.

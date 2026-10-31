@@ -329,7 +329,7 @@ struct Checker
         std::string t = trim(type);
         if (t.compare(0, 5, "const") == 0 && t.size() > 5 && t[5] == ' ')
             t = trim(t.substr(6));
-        for (const char* q : {"std.unique_ptr", "std::unique_ptr"})
+        for (const char* q : {"std.unique_ptr", "std::unique_ptr", "\x01std::unique_ptr"})
         {
             const size_t n = std::string(q).size();
             if (t.compare(0, n, q) == 0 && (t.size() == n || t[n] == '<' || t[n] == ' '))
@@ -1480,7 +1480,7 @@ struct QueryCollector
             return {};
         std::string r;
         for (size_t i = 0; i < n; ++i)
-            r += (i ? "::" : "") + parts[i];
+            r += (i ? "::" : "") + (i == 0 && n >= 2 && parts[0] == "std" ? std::string("\x01std") : parts[i]);
         return r;
     }
 

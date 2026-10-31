@@ -56,12 +56,12 @@ TEST(BuiltinTypeParse, NameAndAliasGiveOneCanonicalType)
 
 TEST(BuiltinTypeParse, AliasesInsideTypesAndNew)
 {
-    EXPECT_EQ(round_trip("std.vector<ulong> v = f();"), "std::vector<uint64_t> v = f();");
+    EXPECT_EQ(round_trip("std.vector<ulong> v = f();"), "\x01std::vector<uint64_t> v = f();");
     EXPECT_EQ(
-        round_trip("std.map<uint8, std.vector<int64>> m = f();"), "std::map<uint8_t, std::vector<int64_t>> m = f();");
+        round_trip("std.map<uint8, std.vector<int64>> m = f();"), "\x01std::map<uint8_t, \x01std::vector<int64_t>> m = f();");
     EXPECT_EQ(round_trip("ulong* p = f();"), "uint64_t* p = f();");
-    EXPECT_EQ(round_trip("var v = new std.vector<ulong>(3);"), "auto v = new std::vector<uint64_t>(3);");
-    EXPECT_EQ(round_trip("var v = std.vector<ulong>();"), "auto v = std::vector<uint64_t>();");
+    EXPECT_EQ(round_trip("var v = new std.vector<ulong>(3);"), "auto v = new \x01std::vector<uint64_t>(3);");
+    EXPECT_EQ(round_trip("var v = std.vector<ulong>();"), "auto v = \x01std::vector<uint64_t>();");
     EXPECT_EQ(round_trip("var f = (ulong a) => { return a; };"), "auto f = [=](uint64_t a) { return a; };");
 }
 

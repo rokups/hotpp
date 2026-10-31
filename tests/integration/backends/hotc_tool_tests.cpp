@@ -294,6 +294,40 @@ TEST(HotcTool, ScriptClassReferenceCompiles)
         << cc;
 }
 
+// The module attribute std in a prelude: the generated C++ names the standard library "mystd".
+// The header StdAlias.h has "namespace mystd = std;", so the C++ compiles as C++17.
+TEST(HotcTool, ModuleAttributeStdCompiles)
+{
+    TestScratch scratch;
+    const std::string prelude = scratch.file("hotc_module_attrs.prelude");
+    const std::string script = scratch.file("hotc_module_attrs.hot");
+    const std::string out = scratch.file("hotc_module_attrs.cpp");
+    {
+        std::ofstream(prelude) << "[std(\"mystd\")];\n";
+        std::ofstream(script) << "using \"Actor.h\";\nusing \"StdAlias.h\";\nusing <vector>;\n\n"
+                                 "class Counter : Actor {\n    std.string label = \"c\";\n"
+                                 "    std.vector<int> history = std.vector<int>();\n"
+                                 "    override void Tick(float dt) {\n"
+                                 "        this.history.push_back(1);\n"
+                                 "        this.label = std.to_string(this.history.size());\n    }\n}\n";
+    }
+    std::string log;
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp --prelude '" + prelude + "' -o '" + out + "' '"
+                      + script + "'" + engine_args() + " 2>&1",
+                  log),
+        0)
+        << log;
+    const std::string cpp = read_file(out);
+    EXPECT_NE(cpp.find("mystd::string"), std::string::npos);
+    EXPECT_EQ(cpp.find("\x01std::"), std::string::npos);
+    std::string cc;
+    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++17 -fsyntax-only -I '" + HOT_SOURCE_DIR
+                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
+                  cc),
+        0)
+        << cc;
+}
+
 // Translates the script text and compiles the C++ with -fsyntax-only.
 void expect_script_compiles(TestScratch& scratch, const char* name, const char* text)
 {

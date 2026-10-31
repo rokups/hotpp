@@ -154,8 +154,8 @@ TEST(StatementLowering, CollectionLiteralWithDeclaredType)
     Fixture f;
     EXPECT_EQ(f.body("std.vector<int> xs = [1, 2, 3]; std.map<std.string, int> m = [\"a\": 1]; "
                      "std.vector<int> e = [];"),
-        "std::vector<int32_t> xs = {1, 2, 3}; std::map<std::string, int32_t> m = {{\"a\", 1}}; "
-        "std::vector<int32_t> e = {};");
+        "\x01std::vector<int32_t> xs = {1, 2, 3}; \x01std::map<\x01std::string, int32_t> m = {{\"a\", 1}}; "
+        "\x01std::vector<int32_t> e = {};");
     EXPECT_EQ(f.errors().size(), 0u);
 }
 

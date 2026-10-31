@@ -34,7 +34,7 @@ TEST(ScriptClassType, ShellClassUsesTheDefaultHandle)
     Fixture f;
     f.model.add_script_classes(one("Squad", "Unit"));
     EXPECT_EQ(f.model.lookup("Squad").kind, Kind::Handle);
-    EXPECT_EQ(f.model.storage("Squad"), "std::shared_ptr<Squad>");
+    EXPECT_EQ(f.model.storage("Squad"), "\x01std::shared_ptr<Squad>");
     EXPECT_FALSE(f.model.is_script_value("Squad"));
 }
 
@@ -51,7 +51,7 @@ TEST(ScriptClassType, PlainClassIsAHandle)
 {
     Fixture f;
     f.model.add_script_classes(one("Counter", ""));
-    EXPECT_EQ(f.model.storage("Counter"), "std::shared_ptr<Counter>");
+    EXPECT_EQ(f.model.storage("Counter"), "\x01std::shared_ptr<Counter>");
 }
 
 TEST(ScriptClassType, ValueClassIsStoredInline)

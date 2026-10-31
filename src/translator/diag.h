@@ -8,6 +8,8 @@
 #include <utility>
 #include <vector>
 
+#include "std_ns.h"
+
 namespace hotc
 {
 
@@ -99,17 +101,25 @@ struct Diagnostics
     // The parser also adds an error for each. A language server uses them for completion.
     std::vector<uint32_t> member_holes;
 
+    // The type text of the translator holds the placeholder "\x01std::" of the standard namespace
+    // (std_ns.h). A message shows the namespace of the host.
+    static std::string script_form(std::string msg) { return expand_std(msg, current_std_ns()); }
+
     void add(uint32_t pos, const LineMap& map, std::string msg)
     {
-        items.push_back(Diag{pos, map.line(pos), map.col(pos), std::move(msg), map.file(pos), "error"});
+        items.push_back(Diag{pos, map.line(pos), map.col(pos), script_form(std::move(msg)), map.file(pos), "error"});
     }
 
     void warn(uint32_t pos, const LineMap& map, std::string msg)
     {
-        warnings.push_back(Diag{pos, map.line(pos), map.col(pos), std::move(msg), map.file(pos), "warning"});
+        warnings.push_back(
+            Diag{pos, map.line(pos), map.col(pos), script_form(std::move(msg)), map.file(pos), "warning"});
     }
 
-    void add_line(int line, std::string msg) { items.push_back(Diag{0, line, 0, std::move(msg), {}, "error"}); }
+    void add_line(int line, std::string msg)
+    {
+        items.push_back(Diag{0, line, 0, script_form(std::move(msg)), {}, "error"});
+    }
 
     // A diagnostic from another file, for example a header that libclang reads.
     void add_foreign(std::string file, int line, int col, std::string severity, std::string msg)

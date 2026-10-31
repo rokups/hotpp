@@ -27,7 +27,7 @@ TEST(LineDirectiveEmit, LineDirectiveOnLineChange)
     StmtP s = es(std::move(e));
     EXPECT_EQ(print_lines(*s, map, "t.hot", 1),
         "#line 2 \"t.hot\"\n"
-        "    std::printf(\"x\", dt,\n"
+        "    \x01std::printf(\"x\", dt,\n"
         "#line 3 \"t.hot\"\n"
         "    self->p, hp);\n");
 }

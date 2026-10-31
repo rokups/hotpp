@@ -1,0 +1,17 @@
+// Generation 1: the module attribute std overrides the default of the prelude for this script.
+using <vector>;
+using <string>;
+using "Actor.h";
+using "StdAlias.h";
+
+[std("other_std")];
+
+class Counter : Actor {
+    std.string label = "counter";
+    std.vector<int> history = std.vector<int>();
+
+    override void Tick(float dt) {
+        this.history.push_back(1);
+        this.label = std.to_string(this.history.size());
+    }
+}

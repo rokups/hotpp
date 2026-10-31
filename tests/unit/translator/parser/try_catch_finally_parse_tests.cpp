@@ -17,12 +17,12 @@ TEST(TryCatchFinallyParse, Exceptions)
 {
     EXPECT_EQ(round_trip("throw 42;"), "throw 42;");
     EXPECT_EQ(round_trip("throw;"), "throw;");
-    EXPECT_EQ(round_trip("throw std.runtime_error(\"x\");"), "throw std::runtime_error(\"x\");");
+    EXPECT_EQ(round_trip("throw std.runtime_error(\"x\");"), "throw \x01std::runtime_error(\"x\");");
     EXPECT_EQ(round_trip("try { f(); } catch (int e) { g(e); }"), "try { f(); } catch (int32_t e) { g(e); }");
     EXPECT_EQ(round_trip("try { f(); } catch (std.exception& e) { g(); }\n"
                          "catch (const std.string& m) { throw; } catch (...) { }"),
-        "try { f(); } catch (std::exception& e) { g(); } "
-        "catch (const std::string& m) { throw; } catch (...) {}");
+        "try { f(); } catch (\x01std::exception& e) { g(); } "
+        "catch (const \x01std::string& m) { throw; } catch (...) {}");
     EXPECT_EQ(round_trip("try { try { throw 1; } catch (...) { throw; } } catch (int e) { }"),
         "try { try { throw 1; } catch (...) { throw; } } catch (int32_t e) {}");
     // The words are keywords only as whole words.
@@ -110,7 +110,7 @@ TEST(TryCatchFinallyParse, ExceptionErrors)
     {
         // A pointer type and a qualified type.
         EXPECT_EQ(round_trip("try { f(); } catch (Actor* a) { } catch (std.runtime_error e) { }"),
-            "try { f(); } catch (Actor* a) {} catch (std::runtime_error e) {}");
+            "try { f(); } catch (Actor* a) {} catch (\x01std::runtime_error e) {}");
     }
     {
         // The statements after a broken throw stay.

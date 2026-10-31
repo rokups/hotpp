@@ -9,6 +9,7 @@
 #include "lexy_common.hpp"
 #include "parser.h"
 #include "statement.h"
+#include "../std_ns.h"
 
 #include <algorithm>
 #include <cctype>
@@ -142,6 +143,12 @@ void check_name(const ParseState& st, const char* pos, const std::string& name)
         st.error(pos, "'" + name + "' is a reserved word");
 }
 
+// The value of the end ";" of a module attribute list: the position of the ";".
+struct ModuleAttrsMark
+{
+    const char* pos = nullptr;
+};
+
 struct TopItem
 {
     enum Kind
@@ -152,7 +159,8 @@ struct TopItem
         IsStub,
         IsEnum,
         IsVar,
-        IsHook
+        IsHook,
+        IsModuleAttrs
     } kind = None;
     ast::Import import;
     ast::ClassDef cls;
@@ -160,6 +168,7 @@ struct TopItem
     ast::EnumDef en;
     ast::Field var; // a module variable
     ast::Method hook; // a convert hook of a module variable
+    ast::ModuleAttrs module_attrs; // "[std(\"x\")];"
 };
 
 const Annot* annot_of(lexy::nullopt)
@@ -910,7 +919,7 @@ struct base_name_p
         lexy::fold_inplace<std::string>("", [](std::string& acc, std::string&& part)
     {
         if (!acc.empty())
-            acc += "::";
+            append_scope(acc);
         acc += part;
     });
 };
@@ -961,6 +970,9 @@ struct ClassAttrs
     bool has_prelude = false;
     std::string alias; // [alias("old")]: valid on a module variable only
     bool has_alias = false;
+    std::string std_ns; // [std("name")]: valid in a module attribute list only
+    bool has_std = false;
+    const char* std_pos = nullptr; // the "std" name, or null
     const char* handle_pos = nullptr; // the "handle" name, or null
     std::vector<std::pair<const char*, std::string>> used; // the valid attributes
 };
@@ -970,7 +982,7 @@ int class_attr_arity(const std::string& name)
 {
     if (name == "native" || name == "value" || name == "self")
         return 0;
-    if (name == "handle" || name == "default_handle" || name == "alias" || name == "cpp_prelude")
+    if (name == "handle" || name == "default_handle" || name == "alias" || name == "cpp_prelude" || name == "std")
         return 1;
     if (name == "intrusive")
         return 2;
@@ -1017,7 +1029,7 @@ struct class_attrs_p
                 a.is_self = true;
             else if (it.name == "cpp_prelude")
             {
-                a.cpp_prelude = std::move(it.args[0]);
+                a.cpp_prelude = std_from_user(it.args[0]);
                 a.has_prelude = true;
             }
             else if (it.name == "alias")
@@ -1025,17 +1037,23 @@ struct class_attrs_p
                 a.alias = std::move(it.args[0]);
                 a.has_alias = true;
             }
+            else if (it.name == "std")
+            {
+                a.std_ns = std::move(it.args[0]);
+                a.has_std = true;
+                a.std_pos = it.pos;
+            }
             else if (it.name == "handle")
             {
-                a.handle = std::move(it.args[0]);
+                a.handle = std_from_user(it.args[0]);
                 a.handle_pos = it.pos;
             }
             else if (it.name == "default_handle")
-                a.default_handle = std::move(it.args[0]);
+                a.default_handle = std_from_user(it.args[0]);
             else
             {
-                a.intrusive_add = std::move(it.args[0]);
-                a.intrusive_release = std::move(it.args[1]);
+                a.intrusive_add = std_from_user(it.args[0]);
+                a.intrusive_release = std_from_user(it.args[1]);
             }
         }
         return a;
@@ -1073,7 +1091,7 @@ struct stub_dotted
         lexy::fold_inplace<std::string>("", [](std::string& acc, std::string&& part)
     {
         if (!acc.empty())
-            acc += "::";
+            append_scope(acc);
         acc += part;
     });
 };
@@ -1152,6 +1170,8 @@ TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bo
             st.error(a->handle_pos, "'value' and 'handle' are exclusive");
         if (a->has_alias)
             st.error(a->pos, "attribute 'alias' is not allowed on a stub");
+        if (a->has_std)
+            st.error(a->std_pos, "attribute 'std' is valid only on a module attribute list: end the list with ';'");
         if (a->is_self && (derived || s.name.find('*') != std::string::npos))
             st.error(a->pos, "'self' is valid only on a stub with an exact name");
     }
@@ -1166,6 +1186,50 @@ TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bo
     }
     else if (!s.is_native && !derived && !star)
         st.error(pos, "a stub needs the attribute 'native'");
+    return t;
+}
+
+// The attributes of a module attribute list and the number of their arguments. A new attribute
+// needs a row here, a field in ast::ModuleAttrs and a branch in make_module_attrs.
+int module_attr_arity(const std::string& name)
+{
+    if (name == "std")
+        return 1;
+    return -1;
+}
+
+// The end ";" of a module attribute list, or a bare ";" that does nothing. The value is the position of the ";".
+struct module_attrs_end_p
+{
+    static constexpr auto rule = dsl::position + dsl::lit_c<';'>;
+    static constexpr auto value =
+        lexy::callback<ModuleAttrsMark>([](const char* pos) { return ModuleAttrsMark{pos}; });
+};
+
+TopItem make_module_attrs(const ParseState& st, const char* pos, const ClassAttrs* a)
+{
+    TopItem t;
+    if (!a)
+        return t; // a bare ";" does nothing
+    t.kind = TopItem::IsModuleAttrs;
+    ast::ModuleAttrs& m = t.module_attrs;
+    m.pos = st.offset(pos);
+    m.line = st.map->line(m.pos);
+    for (const auto& u : a->used)
+    {
+        if (module_attr_arity(u.second) < 0)
+            st.error(u.first, "attribute '" + u.second + "' is not allowed in a module attribute list");
+        else
+            m.used.emplace_back(u.second, st.offset(u.first));
+    }
+    if (a->has_std)
+    {
+        m.has_std = true;
+        m.std_ns = a->std_ns;
+        m.std_pos = st.offset(a->std_pos);
+        if (!valid_std_ns(m.std_ns))
+            st.error(a->std_pos, "'" + m.std_ns + "' is not a C++ namespace name");
+    }
     return t;
 }
 
@@ -1185,7 +1249,9 @@ struct class_p
 {
     static constexpr auto rule = dsl::position + dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<class_attrs_p>)
         + (dsl::peek(kw_class) >> (dsl::capture(kw_class) + class_rest)
-            | dsl::peek(kw_struct) >> (dsl::capture(kw_struct) + class_rest) | dsl::else_ >> dsl::p<typed_member>);
+            | dsl::peek(kw_struct) >> (dsl::capture(kw_struct) + class_rest)
+            | dsl::peek(dsl::lit_c<';'>) >> dsl::p<module_attrs_end_p>
+            | dsl::else_ >> dsl::p<typed_member>);
     static constexpr auto value =
         lexy::bind(lexy::callback<TopItem>(
                        [](const ParseState& st, const char* pos, const auto& attrs, const auto& kw,
@@ -1233,6 +1299,8 @@ struct class_p
         add_members(st, c, std::move(members));
         return t;
     },
+                       [](const ParseState& st, const char*, const auto& attrs, ModuleAttrsMark mark)
+    { return make_module_attrs(st, mark.pos, class_attrs_of(attrs)); },
                        [](const ParseState& st, const char* pos, const auto& attrs, Member&& m)
     {
         const ClassAttrs* a = class_attrs_of(attrs);
@@ -1353,7 +1421,7 @@ struct enum_p
 struct decl
 {
     static constexpr auto rule = dsl::peek(kw_using) >> dsl::p<import_p> | dsl::peek(kw_enum) >> dsl::p<enum_p>
-        | dsl::peek(dsl::literal_set(dsl::lit_c<'['>, kw_class, kw_struct)) >> dsl::p<class_p>
+        | dsl::peek(dsl::literal_set(dsl::lit_c<'['>, dsl::lit_c<';'>, kw_class, kw_struct)) >> dsl::p<class_p>
         | dsl::peek(id) >> dsl::p<class_p> | dsl::else_ >> dsl::error<e_top>(junk);
     static constexpr auto value = lexy::callback<TopItem>([](ast::Import&& im)
     {
@@ -1406,6 +1474,8 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
                 script.vars.push_back(std::move(t.var));
             else if (t.kind == TopItem::IsHook)
                 script.var_hooks.push_back(std::move(t.hook));
+            else if (t.kind == TopItem::IsModuleAttrs)
+                script.module_attrs.push_back(std::move(t.module_attrs));
         }
     }
     // The span-then-call step: parse each body and each initializer.

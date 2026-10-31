@@ -63,12 +63,12 @@ TEST(MemberAccessLowering, ScopeChain)
 {
     Fixture f;
     EXPECT_EQ(f.expr("Math.Max(this.health - amount, 0.0)"), "Math::Max(__st->health - amount, 0.0f)");
-    EXPECT_EQ(f.expr("std.printf(\"a\")"), "std::printf(\"a\")");
+    EXPECT_EQ(f.expr("std.printf(\"a\")"), "\x01std::printf(\"a\")");
     EXPECT_EQ(f.expr("Engine.World.Spawn()"), "Engine::World::Spawn()");
     EXPECT_EQ(f.expr("Color.Red"), "Color::Red");
     EXPECT_EQ(f.expr("A.B.c"), "A::B::c");
-    EXPECT_EQ(f.expr("std.vector<float>(1.0, 2.0)"), "std::vector<float>(1.0f, 2.0f)");
-    EXPECT_EQ(f.expr("std.vector<std.string>()"), "std::vector<std::string>()");
+    EXPECT_EQ(f.expr("std.vector<float>(1.0, 2.0)"), "\x01std::vector<float>(1.0f, 2.0f)");
+    EXPECT_EQ(f.expr("std.vector<std.string>()"), "\x01std::vector<\x01std::string>()");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
@@ -108,12 +108,12 @@ TEST(MemberAccessLowering, TypeTemplateArgumentsKeepTheirText)
 {
     Fixture f;
     EXPECT_EQ(f.expr("static_cast<int>(x)"), "static_cast<int32_t>(x)");
-    EXPECT_EQ(f.expr("std.vector<std.vector<int>>()"), "std::vector<std::vector<int32_t>>()");
+    EXPECT_EQ(f.expr("std.vector<std.vector<int>>()"), "\x01std::vector<\x01std::vector<int32_t>>()");
     EXPECT_EQ(f.expr("f<b>(c)"), "f<b>(c)");
     EXPECT_EQ(f.expr("f<int*>(c)"), "f<int32_t*>(c)");
     EXPECT_EQ(f.expr("f<const char*>(c)"), "f<const char*>(c)");
-    EXPECT_EQ(f.expr("std.map<int,float>()"), "std::map<int32_t,float>()");
-    EXPECT_EQ(f.expr("f<std.vector<int>>(c)"), "f<std::vector<int32_t>>(c)");
-    EXPECT_EQ(f.expr("f<std.string>(c)"), "f<std::string>(c)");
+    EXPECT_EQ(f.expr("std.map<int,float>()"), "\x01std::map<int32_t,float>()");
+    EXPECT_EQ(f.expr("f<std.vector<int>>(c)"), "f<\x01std::vector<int32_t>>(c)");
+    EXPECT_EQ(f.expr("f<std.string>(c)"), "f<\x01std::string>(c)");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }

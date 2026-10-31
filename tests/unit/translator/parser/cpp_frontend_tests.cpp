@@ -373,10 +373,10 @@ TEST(CppFrontend, MemberInitializersKeepFieldOrder)
     EXPECT_TRUE(c.has_base_call);
     EXPECT_EQ(c.raw_base_args, "\"x\"");
     ASSERT_EQ(c.raw_pre.size(), 4u); // the field "d" has a default member initializer and no entry
-    EXPECT_EQ(c.raw_pre[0].text, "{ decltype(__st->b) __hot_mi(a * 2); __st->b = std::move(__hot_mi); }");
-    EXPECT_EQ(c.raw_pre[1].text, "{ decltype(__st->c) __hot_mi{a + 1}; __st->c = std::move(__hot_mi); }");
-    EXPECT_EQ(c.raw_pre[2].text, "{ decltype(__st->name) __hot_mi(std::move(n)); __st->name = std::move(__hot_mi); }");
-    EXPECT_EQ(c.raw_pre[3].text, "{ decltype(__st->Actor_unused_marker_) __hot_mi(0); __st->Actor_unused_marker_ = std::move(__hot_mi); }");
+    EXPECT_EQ(c.raw_pre[0].text, "{ decltype(__st->b) __hot_mi(a * 2); __st->b = \x01std::move(__hot_mi); }");
+    EXPECT_EQ(c.raw_pre[1].text, "{ decltype(__st->c) __hot_mi{a + 1}; __st->c = \x01std::move(__hot_mi); }");
+    EXPECT_EQ(c.raw_pre[2].text, "{ decltype(__st->name) __hot_mi(std::move(n)); __st->name = \x01std::move(__hot_mi); }");
+    EXPECT_EQ(c.raw_pre[3].text, "{ decltype(__st->Actor_unused_marker_) __hot_mi(0); __st->Actor_unused_marker_ = \x01std::move(__hot_mi); }");
     EXPECT_EQ(c.raw_pre[0].line, 7);
     EXPECT_EQ(c.raw_body, "");
 }
@@ -392,11 +392,11 @@ TEST(CppFrontend, MemberInitializersEditsAndEmptyForms)
     const ast::Ctor& c = p.script.classes.at(0).ctors.at(0);
     EXPECT_FALSE(c.has_base_call);
     ASSERT_EQ(c.raw_pre.size(), 4u);
-    EXPECT_EQ(c.raw_pre[0].text, "{ decltype(__st->a) __hot_mi{}; __st->a = std::move(__hot_mi); }");
-    EXPECT_EQ(c.raw_pre[1].text, "{ decltype(__st->b) __hot_mi{}; __st->b = std::move(__hot_mi); }");
+    EXPECT_EQ(c.raw_pre[0].text, "{ decltype(__st->a) __hot_mi{}; __st->a = \x01std::move(__hot_mi); }");
+    EXPECT_EQ(c.raw_pre[1].text, "{ decltype(__st->b) __hot_mi{}; __st->b = \x01std::move(__hot_mi); }");
     EXPECT_EQ(c.raw_pre[2].text,
-        "{ decltype(__st->c) __hot_mi(hot_mod()->total + __self->Name.size()); __st->c = std::move(__hot_mi); }");
-    EXPECT_EQ(c.raw_pre[3].text, "{ decltype(__st->d) __hot_mi([=] { return 3; }()); __st->d = std::move(__hot_mi); }");
+        "{ decltype(__st->c) __hot_mi(hot_mod()->total + __self->Name.size()); __st->c = \x01std::move(__hot_mi); }");
+    EXPECT_EQ(c.raw_pre[3].text, "{ decltype(__st->d) __hot_mi([=] { return 3; }()); __st->d = \x01std::move(__hot_mi); }");
 }
 
 // An entry may name a parameter that has the name of the field. A constructor with no list has none.
@@ -408,7 +408,7 @@ TEST(CppFrontend, MemberInitializersParameterWithFieldName)
     const auto& cs = p.script.classes.at(0).ctors;
     ASSERT_EQ(cs.size(), 2u);
     ASSERT_EQ(cs[0].raw_pre.size(), 1u);
-    EXPECT_EQ(cs[0].raw_pre[0].text, "{ decltype(__st->hp) __hot_mi(hp); __st->hp = std::move(__hot_mi); }");
+    EXPECT_EQ(cs[0].raw_pre[0].text, "{ decltype(__st->hp) __hot_mi(hp); __st->hp = \x01std::move(__hot_mi); }");
     EXPECT_TRUE(cs[1].raw_pre.empty());
 }
 
@@ -422,8 +422,8 @@ TEST(CppFrontend, MemberInitializersOutOfClass)
     const ast::Ctor& c = p.script.classes.at(0).ctors.at(0);
     EXPECT_EQ(c.raw_base_args, "\"s\"");
     ASSERT_EQ(c.raw_pre.size(), 2u);
-    EXPECT_EQ(c.raw_pre[0].text, "{ decltype(__st->x) __hot_mi(v); __st->x = std::move(__hot_mi); }");
-    EXPECT_EQ(c.raw_pre[1].text, "{ decltype(__st->y) __hot_mi(v + 1); __st->y = std::move(__hot_mi); }");
+    EXPECT_EQ(c.raw_pre[0].text, "{ decltype(__st->x) __hot_mi(v); __st->x = \x01std::move(__hot_mi); }");
+    EXPECT_EQ(c.raw_pre[1].text, "{ decltype(__st->y) __hot_mi(v + 1); __st->y = \x01std::move(__hot_mi); }");
     EXPECT_EQ(c.raw_body, " y++; ");
 }
 
@@ -434,7 +434,7 @@ TEST(CppFrontend, MemberInitializerEndsWithLineComment)
              "    S() : a(1 // one\n) {}\n    int a;\n};\n");
     ASSERT_TRUE(p.diag.items.empty()) << p.errors();
     EXPECT_EQ(p.script.classes.at(0).ctors.at(0).raw_pre.at(0).text,
-        "{ decltype(__st->a) __hot_mi(1 // one\n); __st->a = std::move(__hot_mi); }");
+        "{ decltype(__st->a) __hot_mi(1 // one\n); __st->a = \x01std::move(__hot_mi); }");
 }
 
 TEST(CppFrontend, MemberInitializerErrors)
@@ -470,8 +470,8 @@ TEST(CppFrontend, MemberInitializersSkipComments)
     ASSERT_EQ(cs.size(), 2u);
     EXPECT_EQ(cs[0].raw_base_args, "\"x\"");
     ASSERT_EQ(cs[0].raw_pre.size(), 2u);
-    EXPECT_EQ(cs[0].raw_pre[0].text, "{ decltype(__st->a) __hot_mi(1); __st->a = std::move(__hot_mi); }");
-    EXPECT_EQ(cs[0].raw_pre[1].text, "{ decltype(__st->b) __hot_mi{2}; __st->b = std::move(__hot_mi); }");
+    EXPECT_EQ(cs[0].raw_pre[0].text, "{ decltype(__st->a) __hot_mi(1); __st->a = \x01std::move(__hot_mi); }");
+    EXPECT_EQ(cs[0].raw_pre[1].text, "{ decltype(__st->b) __hot_mi{2}; __st->b = \x01std::move(__hot_mi); }");
     EXPECT_TRUE(cs[1].raw_pre.empty());
 }
 

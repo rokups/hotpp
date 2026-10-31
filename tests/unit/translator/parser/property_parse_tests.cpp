@@ -26,7 +26,7 @@ TEST(PropertyParse, Properties)
                   sd),
         (std::vector<std::string>{
             "int32_t|A1|u|get:u:auto|set:u:auto|-",
-            "std::string|A2|u|get:u:auto|-|init",
+            "\x01std::string|A2|u|get:u:auto|-|init",
             "float|A3|r|get:r:auto|set:o:auto|init",
             "int32_t|A4|u|get:u:body|set:r:body|-|g1|s2",
         }));

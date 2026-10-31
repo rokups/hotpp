@@ -138,3 +138,17 @@ TEST(Analyze, TranslateStillFailsForTheSameText)
     EXPECT_TRUE(t.cpp.empty());
     EXPECT_EQ(t.diagnostics, "t.hot:3:20: error: expected an expression\n");
 }
+
+// The type text of the parser holds an internal placeholder for "std". The base text for a
+// language server must not hold it: the module attribute gives the namespace.
+TEST(Analyze, BaseTextHasNoPlaceholderByte)
+{
+    const std::string text = "using \"w.h\";\n[std(\"mystd\")];\nclass Foo : Wrap<std.string> {\n    int hits = 0;\n}\n";
+    const hotc::AnalyzeResult r = analyze_text(text);
+    ASSERT_EQ(r.classes.size(), 1u);
+    EXPECT_EQ(r.classes[0].base, "Wrap<mystd::string>");
+    EXPECT_EQ(r.classes[0].base.find('\x01'), std::string::npos);
+    const hotc::AnalyzeResult d = analyze_text("using \"w.h\";\nclass Foo : Wrap<std.string> {\n}\n");
+    ASSERT_EQ(d.classes.size(), 1u);
+    EXPECT_EQ(d.classes[0].base, "Wrap<std::string>");
+}

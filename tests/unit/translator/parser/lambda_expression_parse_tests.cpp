@@ -45,8 +45,8 @@ TEST(LambdaExpressionParse, Lambda)
 
     // Qualified, const reference and template types.
     EXPECT_EQ(round_trip("(const std.string& s, std.map<int, float> m) => { }"),
-        "[=](const std::string& s, std::map<int32_t, float> m) {}");
-    EXPECT_EQ(round_trip("(std.function<void(int)> f) => { }"), "[=](std::function<void(int32_t)> f) {}");
+        "[=](const \x01std::string& s, \x01std::map<int32_t, float> m) {}");
+    EXPECT_EQ(round_trip("(std.function<void(int)> f) => { }"), "[=](\x01std::function<void(int32_t)> f) {}");
     // A paren expression is still a paren expression.
     EXPECT_EQ(round_trip("(a)"), "(a)");
 }

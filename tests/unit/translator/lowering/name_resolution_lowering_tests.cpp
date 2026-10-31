@@ -18,7 +18,7 @@ TEST(NameResolutionLowering, CatchNameIsALocal)
 {
     Fixture f;
     EXPECT_EQ(f.body("try { throw 1; } catch (std.exception& e) { e.what(); } catch (...) { throw; }"),
-        "try { throw 1; } catch (std::exception& e) { hot::deref(e).what(); } "
+        "try { throw 1; } catch (\x01std::exception& e) { hot::deref(e).what(); } "
         "catch (...) { throw; }");
     EXPECT_EQ(f.body("throw this.health;"), "throw __st->health;");
     EXPECT_EQ(f.diag.items.size(), 0u);

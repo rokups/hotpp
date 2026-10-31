@@ -16,7 +16,7 @@ TEST(NativeStubParse, NativeValueString)
     ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
     ASSERT_EQ(p.script.stubs.size(), 1u);
     EXPECT_TRUE(p.script.classes.empty());
-    EXPECT_EQ(p.script.stubs[0].name, "std::string");
+    EXPECT_EQ(p.script.stubs[0].name, "\x01std::string");
     EXPECT_TRUE(p.script.stubs[0].is_native);
     EXPECT_TRUE(p.script.stubs[0].is_value);
 }
@@ -36,7 +36,7 @@ TEST(NativeStubParse, TemplatePattern)
     StubParsed p("[native, value] class std.vector<*>;\n[native, value] class physics.*;\n");
     ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
     ASSERT_EQ(p.script.stubs.size(), 2u);
-    EXPECT_EQ(p.script.stubs[0].name, "std::vector<*>");
+    EXPECT_EQ(p.script.stubs[0].name, "\x01std::vector<*>");
     EXPECT_EQ(p.script.stubs[1].name, "physics::*");
 }
 

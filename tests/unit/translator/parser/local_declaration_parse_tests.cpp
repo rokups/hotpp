@@ -32,10 +32,10 @@ TEST(LocalDeclarationParse, Declarations)
     EXPECT_EQ(round_trip("var x = 1;"), "auto x = 1;");
     EXPECT_EQ(round_trip("const var x = f(1);"), "const auto x = f(1);");
     EXPECT_EQ(round_trip("float x = 2.0;"), "float x = 2.0;");
-    EXPECT_EQ(round_trip("std.vector<int> v = f(1, 2);"), "std::vector<int32_t> v = f(1, 2);");
+    EXPECT_EQ(round_trip("std.vector<int> v = f(1, 2);"), "\x01std::vector<int32_t> v = f(1, 2);");
     EXPECT_EQ(round_trip("const Actor* p = null;"), "const Actor* p = nullptr;");
     EXPECT_EQ(round_trip("std.map<int, std.vector<int>> m;"),
-        "std::map<int32_t, std::vector<int32_t>> m = std::map<int32_t, std::vector<int32_t>>();");
+        "\x01std::map<int32_t, \x01std::vector<int32_t>> m = \x01std::map<int32_t, \x01std::vector<int32_t>>();");
     EXPECT_EQ(round_trip("var f = (int a) => { return a; };"), "auto f = [=](int32_t a) { return a; };");
 }
 
@@ -47,10 +47,10 @@ TEST(LocalDeclarationParse, TypeFirstDeclarations)
     EXPECT_EQ(round_trip("const int X = 5;"), "const int32_t X = 5;");
     EXPECT_EQ(round_trip("const var y = 1;"), "const auto y = 1;");
     EXPECT_EQ(round_trip("Actor* p = null;"), "Actor* p = nullptr;");
-    EXPECT_EQ(round_trip("std.string s;"), "std::string s = std::string();");
-    EXPECT_EQ(round_trip("std.string s = \"x\";"), "std::string s = \"x\";");
+    EXPECT_EQ(round_trip("std.string s;"), "\x01std::string s = \x01std::string();");
+    EXPECT_EQ(round_trip("std.string s = \"x\";"), "\x01std::string s = \"x\";");
     EXPECT_EQ(round_trip("uint n = 0;"), "uint32_t n = 0;");
-    EXPECT_EQ(round_trip("const std.exception& e = f();"), "const std::exception& e = f();");
+    EXPECT_EQ(round_trip("const std.exception& e = f();"), "const \x01std::exception& e = f();");
     EXPECT_EQ(round_trip("int[3] a;"), "std::array<int32_t, 3> a = std::array<int32_t, 3>();");
     EXPECT_EQ(round_trip("/* c */ int // d\n x = 1;"), "int32_t x = 1;");
 
@@ -81,7 +81,7 @@ TEST(LocalDeclarationParse, TypeFirstDeclarations)
     EXPECT_EQ(d->type, "a<b>");
     d = decl("std.map<int, std.vector<int>> m = f();");
     ASSERT_TRUE(d);
-    EXPECT_EQ(d->type, "std::map<int32_t, std::vector<int32_t>>");
+    EXPECT_EQ(d->type, "\x01std::map<int32_t, \x01std::vector<int32_t>>");
     EXPECT_FALSE(decl("f(x);"));
     EXPECT_FALSE(decl("a = b;"));
     EXPECT_FALSE(decl("a.b = c;"));
@@ -101,7 +101,7 @@ TEST(LocalDeclarationParse, TypeFirstDeclarations)
         errors_of(Parsed("const x = 1;")), (std::vector<std::string>{"1:7: expected 'var' or a type after 'const'"}));
 
     // A declaration in the init of a for statement.
-    EXPECT_EQ(round_trip("for (std.size_t i = 0; i < n; i++) f(i);"), "for (std::size_t i = 0; i < n; i++) f(i);");
+    EXPECT_EQ(round_trip("for (std.size_t i = 0; i < n; i++) f(i);"), "for (\x01std::size_t i = 0; i < n; i++) f(i);");
     EXPECT_EQ(
         round_trip("for (Actor* p = first; p; p = next(p)) f(p);"), "for (Actor* p = first; p; p = next(p)) f(p);");
     EXPECT_EQ(round_trip("for (const int k = 3; i < k; i++) f(i);"), "for (const int32_t k = 3; i < k; i++) f(i);");
@@ -114,10 +114,10 @@ TEST(LocalDeclarationParse, TypeFirstDeclarations)
 TEST(LocalDeclarationParse, TypeScope)
 {
     EXPECT_EQ(round_trip("std.string a = x; std.vector<std.string> b;"),
-        "std::string a = x; std::vector<std::string> b = std::vector<std::string>();");
+        "\x01std::string a = x; \x01std::vector<\x01std::string> b = \x01std::vector<\x01std::string>();");
     EXPECT_EQ(round_trip("A.B.C* c; std.array<int, 3> d; float e;"),
         "A::B::C* c = std::type_identity_t<A::B::C*>(); "
-        "std::array<int32_t, 3> d = std::array<int32_t, 3>(); float e = float();");
+        "\x01std::array<int32_t, 3> d = \x01std::array<int32_t, 3>(); float e = float();");
     Parsed p("int a;\nstd::string b = x;");
     EXPECT_EQ(errors_of(p), (std::vector<std::string>{"2:4: use '.' instead of '::'"}));
     Parsed q("foreach (std::string s in xs) f(s);");
@@ -126,8 +126,8 @@ TEST(LocalDeclarationParse, TypeScope)
 
 TEST(LocalDeclarationParse, CollectionLiteralInitializer)
 {
-    EXPECT_EQ(round_trip("std.vector<int> xs = [1, 2, 3];"), "std::vector<int32_t> xs = {1, 2, 3};");
+    EXPECT_EQ(round_trip("std.vector<int> xs = [1, 2, 3];"), "\x01std::vector<int32_t> xs = {1, 2, 3};");
     EXPECT_EQ(round_trip("std.map<std.string, int> m = [\"a\": 1, \"b\": 2];"),
-        "std::map<std::string, int32_t> m = {{\"a\", 1}, {\"b\", 2}};");
-    EXPECT_EQ(round_trip("const std.vector<int> e = [];"), "const std::vector<int32_t> e = {};");
+        "\x01std::map<\x01std::string, int32_t> m = {{\"a\", 1}, {\"b\", 2}};");
+    EXPECT_EQ(round_trip("const std.vector<int> e = [];"), "const \x01std::vector<int32_t> e = {};");
 }

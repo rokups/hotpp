@@ -1,0 +1,15 @@
+// Generation 1: the standard names in a script, with the configured standard namespace.
+using <vector>;
+using <string>;
+using "Actor.h";
+using "StdAlias.h";
+
+class Counter : Actor {
+    std.string label = "counter";
+    std.vector<int> history = std.vector<int>();
+
+    override void Tick(float dt) {
+        this.history.push_back(1);
+        this.label = std.to_string(this.history.size());
+    }
+}

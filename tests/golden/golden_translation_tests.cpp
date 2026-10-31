@@ -220,6 +220,30 @@ TEST(GoldenTranslation, CppConstexprFunction)
     golden_one("cpp_constexpr", ".cpp");
 }
 
+// The module attribute list "[std(\"mystd\")];" in a prelude. The text has "mystd::" for each standard name.
+TEST(GoldenTranslation, ModuleAttrsStd)
+{
+    hotc::TranslateOptions o = engine_options("module_attrs_std_v1.hot", 1);
+    o.script_name = "module_attrs_std_v1.hot";
+    o.preludes.emplace_back("module.prelude", "[std(\"mystd\")];\n");
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    check_golden("module_attrs_std_v1.g1.cpp", r.cpp);
+    check_golden("module_attrs_std_v1.g1.slots", r.slots_out);
+}
+
+// The module attribute std of the script overrides the default of the prelude for the script.
+TEST(GoldenTranslation, ModuleAttrsOverride)
+{
+    hotc::TranslateOptions o = engine_options("module_attrs_override_v1.hot", 1);
+    o.script_name = "module_attrs_override_v1.hot";
+    o.preludes.emplace_back("module.prelude", "[std(\"mystd\")];\n");
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    check_golden("module_attrs_override_v1.g1.cpp", r.cpp);
+    check_golden("module_attrs_override_v1.g1.slots", r.slots_out);
+}
+
 // A native stub with the name of a header type is not a script type. It gives no name clash error.
 TEST(GoldenTranslation, NativeStubWithAHeaderTypeNameIsNotAClash)
 {

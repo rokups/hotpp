@@ -1,0 +1,229 @@
+// Tests for the module attribute list "[std(\"name\")];" (the standard namespace of the host).
+#include "hot/hotc_lib.h"
+#include "support/check_translate_test_support.h"
+
+#include <gtest/gtest.h>
+
+#include <algorithm>
+#include <string>
+#include <utility>
+#include <vector>
+
+using hotc::SourcePos;
+
+using namespace check_translate_test;
+
+namespace
+{
+
+const char* kMystd = "[std(\"mystd\")];\n";
+const char* kDefaultHandle = "[native, default_handle(\"$std::shared_ptr<$T>\")] class *;\n";
+
+} // namespace
+
+TEST(ModuleAttrsTranslation, TheNamespaceReplacesStdInTheGeneratedText)
+{
+    const hotc::TranslateResult r = check_translate("",
+        "    std.string s;\n    std.vector<int> v;\n    void F() { this.s = std.to_string(3); }\n",
+        {{"host.prelude", kMystd}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "mystd::string s;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "mystd::vector<int32_t> v;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "mystd::to_string(3)")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "\x01std::")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, WithoutTheListTheNamespaceIsStd)
+{
+    const hotc::TranslateResult r = check_translate("", "    std.string s;\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "std::string s;")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, ANestedNamespaceIsValid)
+{
+    const hotc::TranslateResult r =
+        check_translate("", "    std.string s;\n", {{"host.prelude", "[std(\"my::eastl\")];\n"}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "my::eastl::string s;")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, TheHandleStubUsesTheNamespace)
+{
+    const hotc::TranslateResult r = check_translate("", "    Mesh m;\n    void Make() { this.m = new Mesh(); }\n",
+        {{"host.prelude", std::string(kMystd) + kDefaultHandle}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "mystd::shared_ptr<Mesh> m;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "mystd::make_shared<Mesh>()")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, PlainStdInAStubStaysLiteral)
+{
+    const hotc::TranslateResult r = check_translate("", "    Mesh m;\n",
+        {{"host.prelude", std::string(kMystd) + "[native, default_handle(\"std::shared_ptr<$T>\")] class *;\n"}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Mesh> m;")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, ASecondStdIsAnError)
+{
+    const hotc::TranslateResult r = check_translate(
+        "", "    int x;\n", {{"a.prelude", kMystd}, {"b.prelude", "[std(\"other\")];\n"}});
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "attribute 'std' is given twice")) << r.diagnostics;
+}
+
+TEST(ModuleAttrsTranslation, ASecondStdInOnePreludeIsAnError)
+{
+    const hotc::TranslateResult r =
+        check_translate("", "    int x;\n", {{"a.prelude", std::string(kMystd) + "[std(\"mystd\")];\n"}});
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "attribute 'std' is given twice")) << r.diagnostics;
+}
+
+TEST(ModuleAttrsTranslation, TheListInAScriptSetsTheNamespaceOfTheScript)
+{
+    const hotc::TranslateResult r = check_translate(kMystd, "    std.string s;\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "mystd::string s;")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, TheListInTheScriptOverridesThePreludeDefault)
+{
+    const hotc::TranslateResult r = check_translate("[std(\"my::eastl\")];\n", "    std.string s;\n",
+        {{"host.prelude", kMystd}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "my::eastl::string s;")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "mystd::")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, ARepeatedAttributeInOneScriptIsAnError)
+{
+    const hotc::TranslateResult r = check_translate(std::string(kMystd) + kMystd, "    int x;\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "attribute 'std' is given twice in one file")) << r.diagnostics;
+}
+
+TEST(ModuleAttrsTranslation, ABareSemicolonDoesNothing)
+{
+    const hotc::TranslateResult r = check_translate(";\n", "    std.string s;\n", {{"host.prelude", ";\n" + std::string(kMystd)}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "mystd::string s;")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, ABadNamespaceIsAnError)
+{
+    const hotc::TranslateResult r =
+        check_translate("", "    int x;\n", {{"host.prelude", "[std(\"not a name\")];\n"}});
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "'not a name' is not a C++ namespace name")) << r.diagnostics;
+}
+
+TEST(ModuleAttrsTranslation, AnOtherAttributeIsAnError)
+{
+    const hotc::TranslateResult r = check_translate("", "    int x;\n", {{"host.prelude", "[native];\n"}});
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "attribute 'native' is not allowed in a module attribute list")) << r.diagnostics;
+}
+
+TEST(ModuleAttrsTranslation, TheAttributeStdIsValidOnlyInTheList)
+{
+    const hotc::TranslateResult r =
+        check_translate("", "    int x;\n", {{"host.prelude", "[std(\"mystd\"), native] class Foo2;\n"}});
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "attribute 'std' is valid only on a module attribute list")) << r.diagnostics;
+}
+
+namespace
+{
+
+// The 1-based line and column of the first match of the text in the generated C++.
+SourcePos pos_of(const std::string& text, const std::string& needle)
+{
+    const size_t at = text.find(needle);
+    if (at == std::string::npos)
+        return {0, 0};
+    const int line = 1 + static_cast<int>(std::count(text.begin(), text.begin() + static_cast<std::ptrdiff_t>(at), '\n'));
+    return {line, static_cast<int>(at - (text.rfind('\n', at) + 1)) + 1};
+}
+
+// A string literal with "$std::" is user text. It stays as it is, and the source map stays 1:1.
+void expect_literal_is_kept(const std::vector<std::pair<std::string, std::string>>& preludes)
+{
+    const hotc::TranslateResult r = check_translate("",
+        "    int n = 0;\n    void F() { std.string s = \"cost $std::x\"; this.n = 9; }\n", preludes);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "\"cost $std::x\"")) << r.cpp;
+    // Script line 4: the "9" is at column 56, after the literal and the name "std.string".
+    const SourcePos g = pos_of(r.cpp, "9;");
+    ASSERT_GT(g.line, 0) << r.cpp;
+    EXPECT_EQ(r.source_map.map_to_script(g.line, g.col), (SourcePos{4, 56})) << r.cpp;
+    EXPECT_EQ(r.source_map.map_to_generated(4, 56), g) << r.cpp;
+}
+
+} // namespace
+
+TEST(ModuleAttrsTranslation, ALiteralWithDollarStdKeepsItsTextInTheDefaultMode)
+{
+    expect_literal_is_kept({});
+}
+
+TEST(ModuleAttrsTranslation, ALiteralWithDollarStdKeepsItsTextWithAnotherNamespace)
+{
+    expect_literal_is_kept({{"host.prelude", kMystd}});
+    const hotc::TranslateResult r = check_translate(kMystd, "    void F() { std.string s = \"cost $std::x\"; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "mystd::string s = \"cost $std::x\"")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, ACppScriptStringWithDollarStdKeepsItsText)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", std::string("#include <string>\nnamespace mystd = std;\n") + kHeaderV1);
+    hotc::TranslateOptions o = temp_options(dir, "#include \"w.h\"\n"
+                                                 "class A : public Widget { public: const char* s = \"cost $std::x\"; };\n");
+    o.script_name = "t.cpp";
+    o.preludes.emplace_back("host.prelude", kMystd);
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "\"cost $std::x\"")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, TheSourceMapStaysExactWithAnotherNamespace)
+{
+    const hotc::TranslateResult r = check_translate("",
+        "    std.vector<std.string> v;\n    int n = 7;\n    void F() { std.string t = std.to_string(this.n); this.n = 9; }\n",
+        {{"host.prelude", kMystd}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    // Script line 5: "    void F() { std.string t = std.to_string(this.n); this.n = 9; }".
+    // "this.n = 9" starts at column 55. The names before it grow in the generated text.
+    const SourcePos g = pos_of(r.cpp, "9;");
+    ASSERT_GT(g.line, 0) << r.cpp;
+    EXPECT_EQ(r.source_map.map_to_generated(5, 63), g) << r.cpp;
+    EXPECT_EQ(r.source_map.map_to_script(g.line, g.col), (SourcePos{5, 63})) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, AnOverrideMatchesAParameterWithAnotherNamespace)
+{
+    const hotc::TranslateResult r = check_translate(
+        "class Snk : SinkBase {\n    override void Take(std.vector<int> v) { }\n}\n", "    int x;\n",
+        {{"host.prelude", kMystd}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "mystd::vector<int32_t>")) << r.cpp;
+}
+
+// The byte 0x01 is the internal placeholder of the standard namespace. A script cannot hold it.
+TEST(ModuleAttrsTranslation, TheByte0x01IsAnErrorInTheMainScript)
+{
+    const hotc::TranslateResult r = check_translate("", "    std.string s = \"a\x01 b\";\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "the byte 0x01 is not allowed in a script")) << r.diagnostics;
+}
+
+TEST(ModuleAttrsTranslation, TheByte0x01IsAnErrorInAPrelude)
+{
+    const hotc::TranslateResult r = check_translate("", "    int x;\n", {{"host.prelude", "// a\x01 b\n"}});
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "the byte 0x01 is not allowed in a script")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "host.prelude")) << r.diagnostics;
+}

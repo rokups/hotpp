@@ -165,6 +165,28 @@ TEST(ScriptImportTranslation, ImportFromDisk)
     EXPECT_NE(r.cpp.find((dir.path() / "base.hot").string() + "\""), std::string::npos);
 }
 
+// An imported script uses the namespace of the main script. Another value is an error.
+TEST(ScriptImportTranslation, ImportWithAnotherStdNamespaceIsAnError)
+{
+    TempDir dir;
+    hotc::TranslateOptions o = options(dir, std::string("[std(\"other_std\")];\n") + kParent);
+    o.preludes.emplace_back("host.prelude", "[std(\"mystd\")];\n");
+    const hotc::TranslateResult r = hotc::translate(o);
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("sets the namespace 'other_std' but the program uses 'mystd'"), std::string::npos)
+        << r.diagnostics;
+}
+
+// The byte 0x01 is the internal placeholder of the standard namespace. An import cannot hold it.
+TEST(ScriptImportTranslation, TheByte0x01IsAnErrorInAnImport)
+{
+    TempDir dir;
+    const hotc::TranslateResult r = hotc::translate(options(dir, std::string(kParent) + "// a\x01 b\n"));
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("the byte 0x01 is not allowed in a script"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("base.hot"), std::string::npos) << r.diagnostics;
+}
+
 // Errors: a missing script, module variables in an import, and a class in two modules.
 TEST(ScriptImportTranslation, ImportErrors)
 {

@@ -2,6 +2,7 @@
 #include "types.h"
 
 #include "builtin_types.h"
+#include "std_ns.h"
 
 #include <algorithm>
 #include <deque>
@@ -30,6 +31,17 @@ bool is_builtin(const std::string& t)
         "uint64_t", "size_t", "ptrdiff_t", "intptr_t", "uintptr_t", "long long", "unsigned long", "unsigned long long",
         "unsigned char", "unsigned short", "signed char", "wchar_t", "char8_t", "char16_t", "char32_t"};
     return names.count(t) != 0;
+}
+
+// The prefix of the shared pointer template "\x01std::shared_ptr<$T>" or "std::shared_ptr<$T>" (the
+// text of a stub keeps its own form): "\x01std::" or "std::". Empty for any other template.
+std::string shared_prefix(const std::string& tpl)
+{
+    if (tpl == "\x01std::shared_ptr<$T>")
+        return "\x01std::";
+    if (tpl == "std::shared_ptr<$T>")
+        return "std::";
+    return {};
 }
 
 std::string replace_all(std::string s, const std::string& from, const std::string& to)
@@ -307,7 +319,7 @@ TypeRule TypeModel::lookup_stub(const std::string& cpp_type) const
             }
         }
         r.kind = Kind::Handle;
-        r.handle_tpl = "std::shared_ptr<$T>";
+        r.handle_tpl = "\x01std::shared_ptr<$T>";
         return r;
     }
     auto it = exact_.find(cpp_type);
@@ -434,8 +446,8 @@ std::string TypeModel::make(const std::string& type, const std::string& args) co
 {
     if (!is_handle(type))
         return type + "(" + args + ")";
-    if (lookup(type).handle_tpl == "std::shared_ptr<$T>")
-        return "std::make_shared<" + type + ">(" + args + ")";
+    if (const std::string pre = shared_prefix(lookup(type).handle_tpl); !pre.empty())
+        return pre + "make_shared<" + type + ">(" + args + ")";
     return storage(type) + "(new " + type + "(" + args + "))";
 }
 
@@ -443,8 +455,8 @@ TypeModel::Callee TypeModel::make_callee(const std::string& type) const
 {
     if (!is_handle(type))
         return {type, false};
-    if (lookup(type).handle_tpl == "std::shared_ptr<$T>")
-        return {"std::make_shared<" + type + ">", false};
+    if (const std::string pre = shared_prefix(lookup(type).handle_tpl); !pre.empty())
+        return {pre + "make_shared<" + type + ">", false};
     return {storage(type), true};
 }
 
@@ -475,8 +487,9 @@ char TypeModel::carrier_form(const std::string& native_param_type) const
 std::string TypeModel::carrier_parse(const std::string& native_param_type, char& form) const
 {
     form = 0;
-    // Work on the canonical text with single spaces.
-    std::string t = canonical_type(native_param_type, nullptr, true);
+    // Work on the canonical text with single spaces. A plain "std::" or "<ns>::" of the text and
+    // of the stub templates is the placeholder "\x01std::" (std_ns.h), so the two forms match.
+    std::string t = unexpand_std(canonical_type(native_param_type, nullptr, true), std_ns_);
     auto trim = [](std::string& x)
     {
         const size_t b = x.find_first_not_of(" \t");
@@ -526,7 +539,7 @@ std::string TypeModel::carrier_parse(const std::string& native_param_type, char&
     auto native_storage = [&](const std::string& type)
     {
         const TypeRule rule = lookup(type);
-        return replace_all(rule.handle_tpl, "$T", type);
+        return unexpand_std(replace_all(rule.handle_tpl, "$T", type), std_ns_);
     };
     auto strip = [](const std::string& x)
     {
@@ -557,7 +570,7 @@ std::string TypeModel::carrier_parse(const std::string& native_param_type, char&
     auto add_tpl = [&](const std::string& tpl)
     {
         if (tpl.find("$T") != std::string::npos)
-            templates.insert(strip(tpl));
+            templates.insert(strip(unexpand_std(tpl, std_ns_)));
     };
     for (const auto& e : exact_)
         add_tpl(e.second.handle_tpl);
@@ -566,7 +579,7 @@ std::string TypeModel::carrier_parse(const std::string& native_param_type, char&
     for (const auto& e : patterns_)
         add_tpl(e.second.handle_tpl);
     add_tpl(default_handle_);
-    add_tpl("std::shared_ptr<$T>");
+    add_tpl("\x01std::shared_ptr<$T>");
     for (const std::string& tpl : templates)
     {
         const size_t at = tpl.find("$T");

@@ -19,7 +19,7 @@ TEST(MethodParameterParse, TypeFirstParameters)
                             "}\n",
                   sd),
         (std::vector<std::string>{
-            "Actor*|a", "std::string|s", "const T&|r", "std::map<int32_t, std::vector<float>>|m"}));
+            "Actor*|a", "\x01std::string|s", "const T&|r", "\x01std::map<int32_t, \x01std::vector<float>>|m"}));
     EXPECT_EQ(sd.items.size(), 0u) << sd.format("t");
 }
 

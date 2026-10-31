@@ -253,6 +253,41 @@ The translator checks a stub against the native type.
 - `value` on a polymorphic type that is not `final` is an error. This prevents slicing.
 - `intrusive` needs the two named methods, and they must not be overloaded.
 
+## Module attributes
+
+A module attribute list is an attribute list that ends with `;` and has no item.
+
+```
+[std("eastl")];
+```
+
+The attributes apply to the module (the file) that holds the list. A bare `;` is valid and does nothing.
+
+The attribute `std("name")` sets the name of the standard namespace. The default is `std`. A host that uses another library, such as EASTL, sets it one time in a prelude. The generated C++ then writes `eastl::string`, `eastl::vector`, `eastl::shared_ptr` and so on.
+
+- A list in a prelude is the default for each module of the host.
+- A list in a script overrides the default for that script only.
+- One attribute name is valid one time in one file. A repeat is an error.
+- Two preludes cannot set the same attribute.
+- An imported script uses the namespace of the main script. It can set only that same namespace.
+
+In a script, `std.x` is the name `x` in the configured namespace. A script that writes `std.string` gets `eastl::string`.
+
+With a namespace other than `std`, the script cannot name the real `std`. The name `std.x` always means `x` in the configured namespace.
+
+An interpolated string does not follow the configured namespace. It uses `std::format` or `fmt::format` (the `--format` option) and gives a `std::string`.
+
+A string in a stub can use `$std::` for the configured namespace:
+
+```
+[std("eastl")];
+[native, default_handle("$std::shared_ptr<$T>")] class *;
+```
+
+Plain `std::` in a stub string stays as you write it. The names of `<type_traits>`, `size_t` and the C functions always use `std::`.
+
+The host must declare the namespace. For a test, `namespace mystd = std;` is enough. Use the same namespace in the C++ text that libclang reads.
+
 ## Other limits
 
 - Write `.`, not `::` or `->`.

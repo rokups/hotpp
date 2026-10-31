@@ -96,7 +96,7 @@ TEST(ScopedRuleType, ScriptClassSkipsSelfStub)
     s.is_self = true;
     f.add({s});
     f.model.add_script_classes(classes_of(script_class("Hero", "Object")));
-    EXPECT_EQ(f.model.storage("Hero"), "std::shared_ptr<Hero>");
+    EXPECT_EQ(f.model.storage("Hero"), "\x01std::shared_ptr<Hero>");
 }
 
 TEST(ScopedRuleType, DerivedRawRuleBlocksDefaultHandle)

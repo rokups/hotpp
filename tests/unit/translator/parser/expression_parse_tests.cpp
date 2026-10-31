@@ -83,7 +83,7 @@ TEST(ExpressionParse, CallsAndMembers)
         round_trip("this.Move(Vec3(2.0 * this.speed * dt, 0, 0))"), "this.Move(Vec3(2.0 * this.speed * dt, 0, 0))");
     // The printer joins the parts of a name with "::". The lowering pass chooses the form.
     EXPECT_EQ(round_trip("Math.Max(this.health - amount, 0.0)"), "Math::Max(this.health - amount, 0.0)");
-    EXPECT_EQ(round_trip("std.printf(\"x\", a)"), "std::printf(\"x\", a)");
+    EXPECT_EQ(round_trip("std.printf(\"x\", a)"), "\x01std::printf(\"x\", a)");
     EXPECT_EQ(round_trip("v.size() < n"), "v::size() < n");
     EXPECT_EQ(round_trip("x[i + 1].y.z"), "hot::index(x, i + 1).y.z");
     EXPECT_EQ(round_trip("f().x"), "f().x");
@@ -99,11 +99,11 @@ TEST(ExpressionParse, Names)
 {
     EXPECT_EQ(round_trip("static_cast<int>(x)"), "static_cast<int32_t>(x)");
     EXPECT_EQ(round_trip("a.b.c"), "a::b::c");
-    EXPECT_EQ(round_trip("std.vector<int>.size_type"), "std::vector<int32_t>::size_type");
+    EXPECT_EQ(round_trip("std.vector<int>.size_type"), "\x01std::vector<int32_t>::size_type");
     EXPECT_EQ(round_trip("make<Foo<int>, 3>(x)"), "make<Foo<int32_t>, 3>(x)");
-    EXPECT_EQ(round_trip("std.max<float>(a, b)"), "std::max<float>(a, b)");
+    EXPECT_EQ(round_trip("std.max<float>(a, b)"), "\x01std::max<float>(a, b)");
     EXPECT_EQ(round_trip("pick<Color.Red>(t)"), "pick<Color::Red>(t)");
-    EXPECT_EQ(round_trip("std.vector<std.string>(a)"), "std::vector<std::string>(a)");
+    EXPECT_EQ(round_trip("std.vector<std.string>(a)"), "\x01std::vector<\x01std::string>(a)");
     // A "<" that does not start template arguments is less-than.
     EXPECT_EQ(round_trip("a < b && c > (d)"), "a < b && c > (d)");
     EXPECT_EQ(round_trip("a < b > c"), "a < b > c");
@@ -172,7 +172,7 @@ TEST(ExpressionParse, NewExpression)
 {
     EXPECT_EQ(round_trip("new Weapon(1, 2)"), "new Weapon(1, 2)");
     EXPECT_EQ(round_trip("new Weapon()"), "new Weapon()");
-    EXPECT_EQ(round_trip("new std.vector<float>()"), "new std::vector<float>()");
+    EXPECT_EQ(round_trip("new std.vector<float>()"), "new \x01std::vector<float>()");
     EXPECT_EQ(round_trip("new A(new B(1), x + 1)"), "new A(new B(1), x + 1)");
     EXPECT_EQ(round_trip("new Weapon(1).dmg"), "new Weapon(1).dmg");
     Parsed p("new Weapon(1, 2)");
@@ -250,7 +250,7 @@ TEST(ExpressionParse, CastOfAPointerOrReferenceType)
 {
     EXPECT_EQ(round_trip("(Foo*)p"), "(Foo*)p");
     EXPECT_EQ(round_trip("(const Foo&)r"), "(const Foo&)r");
-    EXPECT_EQ(round_trip("(std.string*)p"), "(std::string*)p");
+    EXPECT_EQ(round_trip("(std.string*)p"), "(\x01std::string*)p");
     EXPECT_EQ(round_trip("(Foo **)p"), "(Foo**)p");
 }
 

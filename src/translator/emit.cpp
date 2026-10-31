@@ -157,8 +157,10 @@ struct ExprPrinter
     void operator()(const NameExpr& n) const
     {
         std::string t;
+        // A scope "std.x" is the placeholder "\x01std::x" (see std_ns.h).
+        const bool std_scope = n.parts.size() >= 2 && n.parts[0] == "std";
         for (size_t i = 0; i < n.parts.size(); ++i)
-            t += (i ? "::" : "") + n.parts[i];
+            t += (i ? "::" : "") + (i == 0 && std_scope ? "\x01std" : n.parts[i]);
         if (n.parts.size() >= 2 && n.pos != 0 && n.last_pos != 0)
         {
             // The last part gets its own segment, so the language server maps a position in it.
@@ -167,6 +169,8 @@ struct ExprPrinter
             size_t name_at = 0;
             for (size_t i = 0; i + 1 < n.parts.size(); ++i)
                 name_at += n.parts[i].size() + 2;
+            if (std_scope)
+                ++name_at;
             e.put_named(t + n.template_args, n.pos, name_at, n.last_pos);
             return;
         }
