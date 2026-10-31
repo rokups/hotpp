@@ -2,6 +2,7 @@
 layout: default
 title: Lambdas
 nav_order: 9
+group: Hot script
 ---
 
 A lambda is an arrow function with a block body or an expression body. It captures by value.

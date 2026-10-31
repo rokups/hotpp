@@ -1,7 +1,7 @@
 ---
 layout: default
 title: C++ scripts
-nav_order: 17
+nav_order: 13
 ---
 
 A `.cpp` script is a plain C++ file. It uses the same hot reload as a `.hot` script. This page describes the `.cpp` script mode.

@@ -2,6 +2,7 @@
 layout: default
 title: Native interop
 nav_order: 10
+group: Hot script
 ---
 
 A script calls engine code directly. There is no wrapper code.

@@ -16,9 +16,17 @@
   <a class="brand" href="{{ '/' | relative_url }}">{{ site.title }}</a>
   <ul>
   {% assign pages = site.pages | where_exp: "p", "p.nav_order" | sort: "nav_order" %}
+  {% assign cur = "" %}
   {% for p in pages %}
+    {% assign grp = p.group | default: "" %}
+    {% if grp != cur %}
+      {% if cur != "" %}</ul></details></li>{% endif %}
+      {% if grp != "" %}<li class="group"><details{% if p.group == page.group %} open{% endif %}><summary>{{ grp }}</summary><ul>{% endif %}
+      {% assign cur = grp %}
+    {% endif %}
     <li{% if p.url == page.url %} class="active"{% endif %}><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
   {% endfor %}
+  {% if cur != "" %}</ul></details></li>{% endif %}
   </ul>
   <button id="theme" type="button">Theme</button>
 </nav>

@@ -2,6 +2,7 @@
 layout: default
 title: Statements
 nav_order: 8
+group: Hot script
 ---
 
 Statements look like C#, with C++ names and `.` for scope.
