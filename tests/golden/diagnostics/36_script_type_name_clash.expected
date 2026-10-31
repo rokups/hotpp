@@ -1,0 +1,3 @@
+36_script_type_name_clash.hot:4:1: error: the script type 'Item' has the same name as a C++ type from the header 'Object.h'. Rename the script type.
+    4 | struct Item {
+1 error generated.

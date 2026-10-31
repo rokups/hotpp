@@ -1308,6 +1308,15 @@ bool is_global_query(const std::string& q)
     return q.compare(0, 8, kGlobalQuery) == 0;
 }
 
+// The query "@gtype:NAME" asks if the headers declare a type NAME in the global namespace. The
+// answer is the file name of the first declaration, or "?" when the file is not known. A script
+// type with the name of a C++ type binds to the member functions of the host, so it is an error.
+const char* const kGlobalTypeQuery = "@gtype:";
+bool is_global_type_query(const std::string& q)
+{
+    return q.compare(0, 7, kGlobalTypeQuery) == 0;
+}
+
 const char* const kFnQuery = "@fn:";
 bool is_fn_query(const std::string& q)
 {
@@ -1421,7 +1430,7 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
     for (size_t i = 0; i < queries.size(); ++i)
     {
         if (is_fn_query(queries[i]) || is_fnp_query(queries[i]) || is_code_query(queries[i])
-            || is_global_query(queries[i]))
+            || is_global_query(queries[i]) || is_global_type_query(queries[i]))
             continue; // a cursor walk answers it
         body += "using hotc_q" + std::to_string(i) + " = " + queries[i] + ";\n";
     }
@@ -1611,6 +1620,50 @@ void answer_global_queries(
     for (const std::string& q : queries)
         if (is_global_query(q))
             answers[q] = declared.count(q.substr(8)) ? "1" : "";
+}
+
+// Answers the queries "@gtype:NAME". The answer is the file name of the first declaration of a
+// type NAME in the global namespace (also in an "extern "C"" block), or empty when there is none.
+void answer_global_type_queries(
+    CXCursor root, const std::vector<std::string>& queries, std::map<std::string, std::string>& answers)
+{
+    std::map<std::string, std::string> declared;
+    std::function<CXChildVisitResult(CXCursor)> walk = [&](CXCursor c)
+    {
+        switch (clang_getCursorKind(c))
+        {
+        case CXCursor_LinkageSpec: visit(c, walk); break;
+        case CXCursor_ClassDecl:
+        case CXCursor_StructDecl:
+        case CXCursor_UnionDecl:
+        case CXCursor_ClassTemplate:
+        case CXCursor_EnumDecl:
+        case CXCursor_TypedefDecl:
+        case CXCursor_TypeAliasDecl:
+        {
+            const std::string name = cxs(clang_getCursorSpelling(c));
+            if (name.empty() || declared.count(name))
+                break;
+            CXFile file = nullptr;
+            clang_getFileLocation(clang_getCursorLocation(c), &file, nullptr, nullptr, nullptr);
+            std::string path = file ? cxs(clang_getFileName(file)) : std::string();
+            const size_t slash = path.find_last_of('/');
+            if (slash != std::string::npos)
+                path.erase(0, slash + 1);
+            declared[name] = path.empty() ? "?" : path;
+            break;
+        }
+        default: break;
+        }
+        return CXChildVisit_Continue;
+    };
+    visit(root, walk);
+    for (const std::string& q : queries)
+        if (is_global_type_query(q))
+        {
+            auto it = declared.find(q.substr(7));
+            answers[q] = it == declared.end() ? std::string() : it->second;
+        }
 }
 
 bool type_holds_code(CXType t, int depth);
@@ -1991,12 +2044,13 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         {
             auto it = aliases.find("hotc_q" + std::to_string(i));
             if (!is_fn_query(queries[i]) && !is_fnp_query(queries[i]) && !is_code_query(queries[i])
-                && !is_global_query(queries[i]))
+                && !is_global_query(queries[i]) && !is_global_type_query(queries[i]))
                 answers[queries[i]] = it == aliases.end() ? std::string() : alias_type(it->second);
         }
         answer_function_queries(root, queries, answers);
         answer_code_queries(root, queries, answers);
         answer_global_queries(root, queries, answers);
+        answer_global_type_queries(root, queries, answers);
         for (size_t i = 0; i < reqs.size(); ++i)
             for (const std::string& m : reqs[i].members)
             {
@@ -2837,6 +2891,16 @@ void translate_impl(
                 query_texts.push_back(kCodeQuery + t);
         }
     }
+    // A script type with the name of a C++ type from the headers binds to the host (task 42).
+    {
+        std::set<std::string> uniq;
+        for (const ClassDef& cd : sc.classes)
+            if (uniq.insert(cd.name).second)
+                query_texts.push_back(kGlobalTypeQuery + cd.name);
+        for (const hotc::ast::EnumDef& e : sc.enums)
+            if (uniq.insert(e.name).second)
+                query_texts.push_back(kGlobalTypeQuery + e.name);
+    }
     std::vector<FactReq> reqs;
     for (auto& [t, ms] : asked)
         reqs.push_back({t, std::vector<std::string>(ms.begin(), ms.end())});
@@ -2943,6 +3007,25 @@ void translate_impl(
             if (is_global_query(q) && query_answers[q] == "1")
                 globals.insert(q.substr(8));
         types.set_native_globals(std::move(globals));
+    }
+    // A script type must not have the name of a C++ type from the headers: the module would bind to
+    // the member functions of the host.
+    {
+        auto same_name = [&](const std::string& name, uint32_t pos)
+        {
+            auto it = query_answers.find(kGlobalTypeQuery + name);
+            if (it == query_answers.end() || it->second.empty())
+                return;
+            const std::string from = it->second == "?" ? std::string() : " from the header '" + it->second + "'";
+            g_diag.add(pos, map,
+                "the script type '" + name + "' has the same name as a C++ type" + from + ". Rename the script type.");
+        };
+        for (const ClassDef& cd : sc.classes)
+            same_name(cd.name, cd.pos);
+        for (const hotc::ast::EnumDef& e : sc.enums)
+            same_name(e.name, e.pos);
+        if (!g_diag.items.empty())
+            throw TranslateAbort{};
     }
     types.set_classes([&facts](const std::string& name)
     {

@@ -212,3 +212,16 @@ TEST(GoldenTranslation, CppConstexprFunction)
 {
     golden_one("cpp_constexpr", ".cpp");
 }
+
+// A native stub with the name of a header type is not a script type. It gives no name clash error.
+TEST(GoldenTranslation, NativeStubWithAHeaderTypeNameIsNotAClash)
+{
+    hotc::TranslateOptions o = engine_options("player_v1.hot", 1);
+    o.script_name = "stub_item.hot";
+    o.script_text =
+        "using \"Actor.h\";\nusing \"Object.h\";\n\n[native] class Item;\n\nclass Bag : Actor {\n    int count = 0;\n\n"
+        "    override void Tick(float dt) { this.count = this.count + 1; }\n}\n";
+    const hotc::TranslateResult r = hotc::translate(o);
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(r.diagnostics.find("has the same name"), std::string::npos) << r.diagnostics;
+}

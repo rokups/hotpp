@@ -1,0 +1,12 @@
+using "Actor.h";
+using "Object.h";
+
+struct Item {
+    int weight = 0;
+}
+
+class Bag : Actor {
+    int count = 0;
+
+    override void Tick(float dt) { this.count = this.count + 1; }
+}

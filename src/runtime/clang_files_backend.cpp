@@ -152,7 +152,10 @@ std::vector<std::string> compile_command(const ClangFilesOptions& opt, const std
 {
     std::vector<std::string> cmd = {opt.compiler,
         "-std=" + (opt.std_version.empty() ? std::string(cxx_std_name()) : opt.std_version), "-fPIC", "-shared", "-g",
-        "-Werror=return-type"};
+        "-Werror=return-type",
+        // A module symbol must not bind to a host symbol with the same mangled name. The entry
+        // point script_register has default visibility (hot/runtime/registry.h).
+        "-fvisibility=hidden", "-fvisibility-inlines-hidden"};
     if (!opt.resource_dir.empty())
         cmd.push_back("-resource-dir=" + opt.resource_dir);
     for (const std::string& f : opt.extra_flags)

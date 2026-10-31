@@ -117,6 +117,12 @@ class Holder {
 }
 ```
 
+A script type cannot have the name of a C++ type from a `using` header. This applies to a class, a struct and an enum. The module would bind to the member functions of the host type and corrupt memory. The translator stops with this error:
+
+```
+the script type 'Item' has the same name as a C++ type from the header 'Object.h'. Rename the script type.
+```
+
 ## this as a value
 
 `this` is a handle of the current class. Pass it to a handle parameter or store it in a handle local. A `T&` parameter of a script class cannot take `this`: copy it to a local first, as [Borrowing](borrowing.html) shows.

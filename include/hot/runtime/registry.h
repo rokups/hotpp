@@ -81,3 +81,7 @@ private:
 };
 
 } // namespace hot
+
+// The entry point of a generation module. The loader finds it by name. This declaration gives it
+// default visibility, so the module can build with -fvisibility=hidden.
+extern "C" HOT_EXPORT void script_register(hot::Registry& reg);
