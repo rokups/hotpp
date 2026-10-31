@@ -1,0 +1,70 @@
+// Generation 1: classes that use each other through handles (task 47). The order of the
+// classes in the file does not matter. Only a cycle of structs held by value is an error.
+using "Object.h";
+
+[native, handle("$T*"), intrusive("AddRef", "Release")] class Object;
+
+// A parent holds its child strongly. The child holds the parent weakly, so the pair is not a
+// cycle of owners.
+class Parent {
+    Child kid = null;
+    int hp = 7;
+
+    void Adopt() {
+        kid = new Child();
+        kid.parent = this;
+    }
+
+    int KidAge() => kid != null ? kid.age : -1;
+}
+
+class Child {
+    [weak]
+    Parent parent = null;
+    int age = 3;
+
+    int ParentHp() {
+        Parent p = parent;
+        return p != null ? p.hp + p.KidAge() : -1;
+    }
+}
+
+// Two classes that hold each other strongly. The script breaks the cycle with "= null".
+class Ping {
+    Pong other = null;
+
+    int Count() => other != null ? other.n : 0;
+}
+
+class Pong {
+    Ping other = null;
+    int n = 2;
+
+    void Link(Ping p) {
+        other = p;
+        p.other = this;
+    }
+
+    void Unlink() { other = null; }
+}
+
+// A class that refers to itself.
+class Node {
+    Node next = null;
+
+    int Length() => next != null ? 1 + next.Length() : 1;
+}
+
+// Two classes with an intrusive handle that hold each other.
+class Owner : Object {
+    Part part;
+
+    int Value() => part != null ? part.v + part.OwnerBack() : 0;
+}
+
+class Part : Object {
+    Owner owner;
+    int v = 4;
+
+    int OwnerBack() => owner != null ? 1 : 0;
+}

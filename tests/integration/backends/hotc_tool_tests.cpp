@@ -294,6 +294,26 @@ TEST(HotcTool, ScriptClassReferenceCompiles)
         << cc;
 }
 
+// Classes that use each other through handles (task 47): the golden script builds a library, and
+// the C++ compiles as C++17. A body uses the members of a class that comes later in the order.
+TEST(HotcTool, ClassesThatUseEachOtherBuildALibrary)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_cycle_handles");
+    std::filesystem::create_directories(dir);
+    const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/cycle_handles_v1.hot";
+    std::string text;
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '" + dir
+                      + "/cycle.so' --cxx '" + HOT_CXX + "' 2>&1",
+                  text),
+        0)
+        << text;
+    EXPECT_TRUE(std::filesystem::exists(dir + "/cycle.so"));
+    const std::string copy = scratch.file("hotc_cycle_handles.hot");
+    std::ofstream(copy) << read_file(script);
+    expect_compiles_as_cxx17(copy);
+}
+
 // The module attribute std in a prelude: the generated C++ names the standard library "mystd".
 // The header StdAlias.h has "namespace mystd = std;", so the C++ compiles as C++17.
 TEST(HotcTool, ModuleAttributeStdCompiles)

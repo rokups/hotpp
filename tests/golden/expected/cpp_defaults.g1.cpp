@@ -259,131 +259,6 @@ HOT_NODEBUG static hot::ShellBase* Counter__new_default()
 }
 #line 261 "cpp_defaults.cpp.cpp"
 
-#line 17 "cpp_defaults.cpp"
-[[maybe_unused]] HOT_HIDDEN static void Counter__ctor(Counter_Shell* __self, int start)
-#line 17 "cpp_defaults.cpp"
-{
-#line 17 "cpp_defaults.cpp"
-    return state_of(__self)->ctor(std::forward<int>(start));
-#line 17 "cpp_defaults.cpp"
-}
-#line 271 "cpp_defaults.cpp.cpp"
-#line 17 "cpp_defaults.cpp"
-void CounterState_g1::ctor(int start)
-#line 17 "cpp_defaults.cpp"
-{
-#line 17 "cpp_defaults.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 17 "cpp_defaults.cpp"
-        hot::stale_call("Counter::Counter");
-#line 17 "cpp_defaults.cpp"
-        return;
-#line 17 "cpp_defaults.cpp"
-    }
-#line 17 "cpp_defaults.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
-#line 17 "cpp_defaults.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 17 "cpp_defaults.cpp"
-    HOT_TRACE_FRAME("Counter.Counter", "cpp_defaults.cpp");
-#line 18 "cpp_defaults.cpp"
-
-        value = start;
-    
-#line 20 "cpp_defaults.cpp"
-}
-#line 296 "cpp_defaults.cpp.cpp"
-
-#line 23 "cpp_defaults.cpp"
-[[maybe_unused]] HOT_HIDDEN static int Counter__Add(Counter_Shell* __self, int a, int b, int c)
-#line 23 "cpp_defaults.cpp"
-{
-#line 23 "cpp_defaults.cpp"
-    return state_of(__self)->Add(std::forward<int>(a), std::forward<int>(b), std::forward<int>(c));
-#line 23 "cpp_defaults.cpp"
-}
-#line 306 "cpp_defaults.cpp.cpp"
-#line 23 "cpp_defaults.cpp"
-int CounterState_g1::Add(int a, int b, int c)
-#line 23 "cpp_defaults.cpp"
-{
-#line 23 "cpp_defaults.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 23 "cpp_defaults.cpp"
-        hot::stale_call("Counter::Add");
-#line 23 "cpp_defaults.cpp"
-        return int();
-#line 23 "cpp_defaults.cpp"
-    }
-#line 23 "cpp_defaults.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
-#line 23 "cpp_defaults.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 23 "cpp_defaults.cpp"
-    HOT_TRACE_FRAME("Counter.Add", "cpp_defaults.cpp");
-#line 24 "cpp_defaults.cpp"
-
-        hot_mod()->calls++;
-        return a + b + c;
-    
-#line 27 "cpp_defaults.cpp"
-}
-#line 332 "cpp_defaults.cpp.cpp"
-
-#line 29 "cpp_defaults.cpp"
-void CounterState_g1::Tick(float dt)
-#line 29 "cpp_defaults.cpp"
-{
-#line 29 "cpp_defaults.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 29 "cpp_defaults.cpp"
-        hot::stale_call("Counter::Tick(float)");
-#line 29 "cpp_defaults.cpp"
-        return;
-#line 29 "cpp_defaults.cpp"
-    }
-#line 29 "cpp_defaults.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
-#line 29 "cpp_defaults.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 29 "cpp_defaults.cpp"
-    HOT_TRACE_FRAME("Counter.Tick", "cpp_defaults.cpp");
-#line 30 "cpp_defaults.cpp"
-
-        value = Add(10);
-        last = Add(10, 5, 100);
-        __self->Move(Vec3(dt, 0, 0));
-    
-#line 34 "cpp_defaults.cpp"
-}
-#line 360 "cpp_defaults.cpp.cpp"
-
-#line 37 "cpp_defaults.cpp"
-void CounterState_g1::TakeDamage_f(float amount)
-#line 37 "cpp_defaults.cpp"
-{
-#line 37 "cpp_defaults.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 37 "cpp_defaults.cpp"
-        hot::stale_call("Counter::TakeDamage(float)");
-#line 37 "cpp_defaults.cpp"
-        return;
-#line 37 "cpp_defaults.cpp"
-    }
-#line 37 "cpp_defaults.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
-#line 37 "cpp_defaults.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 37 "cpp_defaults.cpp"
-    HOT_TRACE_FRAME("Counter.TakeDamage", "cpp_defaults.cpp");
-#line 38 "cpp_defaults.cpp"
-
-        value -= static_cast<int>(amount);
-    
-#line 40 "cpp_defaults.cpp"
-}
-#line 386 "cpp_defaults.cpp.cpp"
-
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 23 "cpp_defaults.cpp"
@@ -396,7 +271,7 @@ static int Counter__Add__thunk(Actor* __a, int a, int b, int c)
     return hot::call<int(Actor*, int, int, int)>(__self, SLOT_Add, a, b, c);
 #line 23 "cpp_defaults.cpp"
 }
-#line 400 "cpp_defaults.cpp.cpp"
+#line 275 "cpp_defaults.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
@@ -439,7 +314,133 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "cpp_defaults.cpp"
 }
-#line 443 "cpp_defaults.cpp.cpp"
+#line 318 "cpp_defaults.cpp.cpp"
+
+// ---------------------------------------------------------------- function bodies
+#line 17 "cpp_defaults.cpp"
+[[maybe_unused]] HOT_HIDDEN static void Counter__ctor(Counter_Shell* __self, int start)
+#line 17 "cpp_defaults.cpp"
+{
+#line 17 "cpp_defaults.cpp"
+    return state_of(__self)->ctor(std::forward<int>(start));
+#line 17 "cpp_defaults.cpp"
+}
+#line 329 "cpp_defaults.cpp.cpp"
+#line 17 "cpp_defaults.cpp"
+void CounterState_g1::ctor(int start)
+#line 17 "cpp_defaults.cpp"
+{
+#line 17 "cpp_defaults.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 17 "cpp_defaults.cpp"
+        hot::stale_call("Counter::Counter");
+#line 17 "cpp_defaults.cpp"
+        return;
+#line 17 "cpp_defaults.cpp"
+    }
+#line 17 "cpp_defaults.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
+#line 17 "cpp_defaults.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 17 "cpp_defaults.cpp"
+    HOT_TRACE_FRAME("Counter.Counter", "cpp_defaults.cpp");
+#line 18 "cpp_defaults.cpp"
+
+        value = start;
+    
+#line 20 "cpp_defaults.cpp"
+}
+#line 354 "cpp_defaults.cpp.cpp"
+
+#line 23 "cpp_defaults.cpp"
+[[maybe_unused]] HOT_HIDDEN static int Counter__Add(Counter_Shell* __self, int a, int b, int c)
+#line 23 "cpp_defaults.cpp"
+{
+#line 23 "cpp_defaults.cpp"
+    return state_of(__self)->Add(std::forward<int>(a), std::forward<int>(b), std::forward<int>(c));
+#line 23 "cpp_defaults.cpp"
+}
+#line 364 "cpp_defaults.cpp.cpp"
+#line 23 "cpp_defaults.cpp"
+int CounterState_g1::Add(int a, int b, int c)
+#line 23 "cpp_defaults.cpp"
+{
+#line 23 "cpp_defaults.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 23 "cpp_defaults.cpp"
+        hot::stale_call("Counter::Add");
+#line 23 "cpp_defaults.cpp"
+        return int();
+#line 23 "cpp_defaults.cpp"
+    }
+#line 23 "cpp_defaults.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
+#line 23 "cpp_defaults.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 23 "cpp_defaults.cpp"
+    HOT_TRACE_FRAME("Counter.Add", "cpp_defaults.cpp");
+#line 24 "cpp_defaults.cpp"
+
+        hot_mod()->calls++;
+        return a + b + c;
+    
+#line 27 "cpp_defaults.cpp"
+}
+#line 390 "cpp_defaults.cpp.cpp"
+
+#line 29 "cpp_defaults.cpp"
+void CounterState_g1::Tick(float dt)
+#line 29 "cpp_defaults.cpp"
+{
+#line 29 "cpp_defaults.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 29 "cpp_defaults.cpp"
+        hot::stale_call("Counter::Tick(float)");
+#line 29 "cpp_defaults.cpp"
+        return;
+#line 29 "cpp_defaults.cpp"
+    }
+#line 29 "cpp_defaults.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
+#line 29 "cpp_defaults.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 29 "cpp_defaults.cpp"
+    HOT_TRACE_FRAME("Counter.Tick", "cpp_defaults.cpp");
+#line 30 "cpp_defaults.cpp"
+
+        value = Add(10);
+        last = Add(10, 5, 100);
+        __self->Move(Vec3(dt, 0, 0));
+    
+#line 34 "cpp_defaults.cpp"
+}
+#line 418 "cpp_defaults.cpp.cpp"
+
+#line 37 "cpp_defaults.cpp"
+void CounterState_g1::TakeDamage_f(float amount)
+#line 37 "cpp_defaults.cpp"
+{
+#line 37 "cpp_defaults.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 37 "cpp_defaults.cpp"
+        hot::stale_call("Counter::TakeDamage(float)");
+#line 37 "cpp_defaults.cpp"
+        return;
+#line 37 "cpp_defaults.cpp"
+    }
+#line 37 "cpp_defaults.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
+#line 37 "cpp_defaults.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 37 "cpp_defaults.cpp"
+    HOT_TRACE_FRAME("Counter.TakeDamage", "cpp_defaults.cpp");
+#line 38 "cpp_defaults.cpp"
+
+        value -= static_cast<int>(amount);
+    
+#line 40 "cpp_defaults.cpp"
+}
+#line 444 "cpp_defaults.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

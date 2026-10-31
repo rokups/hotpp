@@ -1,0 +1,15 @@
+using "Actor.h";
+
+// A struct holds the other struct by value, so each struct holds itself. A handle breaks the cycle.
+struct Wheel {
+    float size = 1.0;
+    Axle axle;
+}
+
+struct Axle {
+    Wheel wheel;
+}
+
+class Car : Actor {
+    Wheel front;
+}

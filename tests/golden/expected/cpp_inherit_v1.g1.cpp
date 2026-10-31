@@ -273,167 +273,6 @@ HOT_NODEBUG static hot::ShellBase* Base__new_default()
 }
 #line 275 "cpp_inherit_v1.cpp.cpp"
 
-#line 11 "cpp_inherit_v1.cpp"
-[[maybe_unused]] HOT_HIDDEN static void Base__ctor(Base_Shell* __self, int start)
-#line 11 "cpp_inherit_v1.cpp"
-{
-#line 11 "cpp_inherit_v1.cpp"
-    return state_of(__self)->ctor(std::forward<int>(start));
-#line 11 "cpp_inherit_v1.cpp"
-}
-#line 285 "cpp_inherit_v1.cpp.cpp"
-#line 11 "cpp_inherit_v1.cpp"
-void BaseState_g1::ctor(int start)
-#line 11 "cpp_inherit_v1.cpp"
-{
-#line 11 "cpp_inherit_v1.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 11 "cpp_inherit_v1.cpp"
-        hot::stale_call("Base::Base");
-#line 11 "cpp_inherit_v1.cpp"
-        return;
-#line 11 "cpp_inherit_v1.cpp"
-    }
-#line 11 "cpp_inherit_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
-#line 11 "cpp_inherit_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 11 "cpp_inherit_v1.cpp"
-    HOT_TRACE_FRAME("Base.Base", "cpp_inherit_v1.cpp");
-#line 11 "cpp_inherit_v1.cpp"
-{ decltype(__st->hits) __hot_mi(start); __st->hits = std::move(__hot_mi); }
-#line 11 "cpp_inherit_v1.cpp"
-
-#line 11 "cpp_inherit_v1.cpp"
-}
-#line 310 "cpp_inherit_v1.cpp.cpp"
-
-#line 13 "cpp_inherit_v1.cpp"
-[[maybe_unused]] HOT_HIDDEN static int Base__Power(Base_Shell* __self)
-#line 13 "cpp_inherit_v1.cpp"
-{
-#line 13 "cpp_inherit_v1.cpp"
-    return state_of(__self)->Power();
-#line 13 "cpp_inherit_v1.cpp"
-}
-#line 320 "cpp_inherit_v1.cpp.cpp"
-#line 13 "cpp_inherit_v1.cpp"
-int BaseState_g1::Power()
-#line 13 "cpp_inherit_v1.cpp"
-{
-#line 13 "cpp_inherit_v1.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 13 "cpp_inherit_v1.cpp"
-        hot::stale_call("Base::Power");
-#line 13 "cpp_inherit_v1.cpp"
-        return int();
-#line 13 "cpp_inherit_v1.cpp"
-    }
-#line 13 "cpp_inherit_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
-#line 13 "cpp_inherit_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 13 "cpp_inherit_v1.cpp"
-    HOT_TRACE_FRAME("Base.Power", "cpp_inherit_v1.cpp");
-#line 13 "cpp_inherit_v1.cpp"
- return 1; 
-#line 13 "cpp_inherit_v1.cpp"
-}
-#line 343 "cpp_inherit_v1.cpp.cpp"
-
-#line 15 "cpp_inherit_v1.cpp"
-[[maybe_unused]] HOT_HIDDEN static int Base__Twice(Base_Shell* __self)
-#line 15 "cpp_inherit_v1.cpp"
-{
-#line 15 "cpp_inherit_v1.cpp"
-    return state_of(__self)->Twice();
-#line 15 "cpp_inherit_v1.cpp"
-}
-#line 353 "cpp_inherit_v1.cpp.cpp"
-#line 15 "cpp_inherit_v1.cpp"
-int BaseState_g1::Twice()
-#line 15 "cpp_inherit_v1.cpp"
-{
-#line 15 "cpp_inherit_v1.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 15 "cpp_inherit_v1.cpp"
-        hot::stale_call("Base::Twice");
-#line 15 "cpp_inherit_v1.cpp"
-        return int();
-#line 15 "cpp_inherit_v1.cpp"
-    }
-#line 15 "cpp_inherit_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
-#line 15 "cpp_inherit_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 15 "cpp_inherit_v1.cpp"
-    HOT_TRACE_FRAME("Base.Twice", "cpp_inherit_v1.cpp");
-#line 15 "cpp_inherit_v1.cpp"
- return Base__Power_virt(__self) * 2; 
-#line 15 "cpp_inherit_v1.cpp"
-}
-#line 376 "cpp_inherit_v1.cpp.cpp"
-
-#line 17 "cpp_inherit_v1.cpp"
-[[maybe_unused]] HOT_HIDDEN static void Base__Bump(Base_Shell* __self)
-#line 17 "cpp_inherit_v1.cpp"
-{
-#line 17 "cpp_inherit_v1.cpp"
-    return state_of(__self)->Bump();
-#line 17 "cpp_inherit_v1.cpp"
-}
-#line 386 "cpp_inherit_v1.cpp.cpp"
-#line 17 "cpp_inherit_v1.cpp"
-void BaseState_g1::Bump()
-#line 17 "cpp_inherit_v1.cpp"
-{
-#line 17 "cpp_inherit_v1.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 17 "cpp_inherit_v1.cpp"
-        hot::stale_call("Base::Bump");
-#line 17 "cpp_inherit_v1.cpp"
-        return;
-#line 17 "cpp_inherit_v1.cpp"
-    }
-#line 17 "cpp_inherit_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
-#line 17 "cpp_inherit_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 17 "cpp_inherit_v1.cpp"
-    HOT_TRACE_FRAME("Base.Bump", "cpp_inherit_v1.cpp");
-#line 17 "cpp_inherit_v1.cpp"
- hits += 10; 
-#line 17 "cpp_inherit_v1.cpp"
-}
-#line 409 "cpp_inherit_v1.cpp.cpp"
-
-#line 19 "cpp_inherit_v1.cpp"
-void BaseState_g1::TakeDamage_f(float amount)
-#line 19 "cpp_inherit_v1.cpp"
-{
-#line 19 "cpp_inherit_v1.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 19 "cpp_inherit_v1.cpp"
-        hot::stale_call("Base::TakeDamage(float)");
-#line 19 "cpp_inherit_v1.cpp"
-        return;
-#line 19 "cpp_inherit_v1.cpp"
-    }
-#line 19 "cpp_inherit_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
-#line 19 "cpp_inherit_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 19 "cpp_inherit_v1.cpp"
-    HOT_TRACE_FRAME("Base.TakeDamage", "cpp_inherit_v1.cpp");
-#line 20 "cpp_inherit_v1.cpp"
-
-        hp -= amount;
-        hits += 1;
-    
-#line 23 "cpp_inherit_v1.cpp"
-}
-#line 436 "cpp_inherit_v1.cpp.cpp"
-
 [[maybe_unused]] HOT_HIDDEN static void Base__base_Tick(Actor* a, float a0)
 {
     return state_of(static_cast<Base_Shell*>(a))->BaseState_g1::__fwd_Tick(a0);
@@ -461,7 +300,7 @@ static int Base__Power__thunk(Actor* __a)
     return hot::call<int(Actor*)>(__self, Base_SLOT_Power);
 #line 13 "cpp_inherit_v1.cpp"
 }
-#line 465 "cpp_inherit_v1.cpp.cpp"
+#line 304 "cpp_inherit_v1.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -475,7 +314,7 @@ static int Base__Twice__thunk(Actor* __a)
     return hot::call<int(Actor*)>(__self, Base_SLOT_Twice);
 #line 15 "cpp_inherit_v1.cpp"
 }
-#line 479 "cpp_inherit_v1.cpp.cpp"
+#line 318 "cpp_inherit_v1.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -489,7 +328,7 @@ static void Base__Bump__thunk(Actor* __a)
     return hot::call<void(Actor*)>(__self, Base_SLOT_Bump);
 #line 17 "cpp_inherit_v1.cpp"
 }
-#line 493 "cpp_inherit_v1.cpp.cpp"
+#line 332 "cpp_inherit_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Base_slots[Base_SLOT_COUNT] = {
@@ -534,7 +373,7 @@ HOT_NODEBUG static hot::Instance Base_create()
     return {static_cast<Actor*>(p), p};
 #line 8 "cpp_inherit_v1.cpp"
 }
-#line 538 "cpp_inherit_v1.cpp.cpp"
+#line 377 "cpp_inherit_v1.cpp.cpp"
 
 
 // ---------------------------------------------------------------- [value] class HotModule
@@ -545,10 +384,10 @@ struct HotModule {
 
 #line 31 "cpp_inherit_v1.cpp"
 static void HotModule__init_last_ticked(void*, void* f) { using T = Base *; new (f) T(nullptr); }
-#line 549 "cpp_inherit_v1.cpp.cpp"
+#line 388 "cpp_inherit_v1.cpp.cpp"
 #line 32 "cpp_inherit_v1.cpp"
 static void HotModule__init_kid_casts(void*, void* f) { using T = int; new (f) T(0); }
-#line 552 "cpp_inherit_v1.cpp.cpp"
+#line 391 "cpp_inherit_v1.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static const hot::FieldInfo HotModule_fields[] = {
@@ -588,7 +427,7 @@ struct Kid_Shell final : Base_Shell {
         hot::init_state(this, &Kid_record);
 #line 34 "cpp_inherit_v1.cpp"
     }
-#line 592 "cpp_inherit_v1.cpp.cpp"
+#line 431 "cpp_inherit_v1.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -605,16 +444,16 @@ struct KidState_g1 : BaseState_g1 {
 
 #line 57 "cpp_inherit_v1.cpp"
 static void Kid__init_kid_hits(void*, void* f) { using T = int; new (f) T(0); }
-#line 609 "cpp_inherit_v1.cpp.cpp"
+#line 448 "cpp_inherit_v1.cpp.cpp"
 #line 58 "cpp_inherit_v1.cpp"
 static void Kid__init_moved(void*, void* f) { using T = float; new (f) T(0.0f); }
-#line 612 "cpp_inherit_v1.cpp.cpp"
+#line 451 "cpp_inherit_v1.cpp.cpp"
 #line 59 "cpp_inherit_v1.cpp"
 static void Kid__init_super_power(void*, void* f) { using T = int; new (f) T(0); }
-#line 615 "cpp_inherit_v1.cpp.cpp"
+#line 454 "cpp_inherit_v1.cpp.cpp"
 #line 60 "cpp_inherit_v1.cpp"
 static void Kid__init_seen_hits(void*, void* f) { using T = int; new (f) T(0); }
-#line 618 "cpp_inherit_v1.cpp.cpp"
+#line 457 "cpp_inherit_v1.cpp.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -674,7 +513,7 @@ HOT_HIDDEN static void Kid__ctor_chain(Kid_Shell* __self, [[maybe_unused]] Chain
     Kid__ctor(__self, start);
 #line 38 "cpp_inherit_v1.cpp"
 }
-#line 678 "cpp_inherit_v1.cpp.cpp"
+#line 517 "cpp_inherit_v1.cpp.cpp"
 using Kid_SuperArgs = decltype(Kid__plan(std::declval<int>()).first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
@@ -694,7 +533,7 @@ HOT_NODEBUG static hot::ShellBase* Kid__construct(const char* key, const void* a
     return nullptr;
 #line 34 "cpp_inherit_v1.cpp"
 }
-#line 698 "cpp_inherit_v1.cpp.cpp"
+#line 537 "cpp_inherit_v1.cpp.cpp"
 
 static const char* const Kid__construct_keys[] = {typeid(Kid_SuperArgs).name(), nullptr};
 
@@ -722,7 +561,7 @@ HOT_HIDDEN static Kid_Shell* Kid__build([[maybe_unused]] bool __note, int start)
     return __self;
 #line 38 "cpp_inherit_v1.cpp"
 }
-#line 726 "cpp_inherit_v1.cpp.cpp"
+#line 565 "cpp_inherit_v1.cpp.cpp"
 #line 38 "cpp_inherit_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static Kid_Shell* Kid__new(int start = 3)
 #line 38 "cpp_inherit_v1.cpp"
@@ -731,7 +570,7 @@ HOT_HIDDEN static Kid_Shell* Kid__build([[maybe_unused]] bool __note, int start)
     return Kid__build(true, start);
 #line 38 "cpp_inherit_v1.cpp"
 }
-#line 735 "cpp_inherit_v1.cpp.cpp"
+#line 574 "cpp_inherit_v1.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -743,109 +582,7 @@ HOT_NODEBUG static hot::ShellBase* Kid__new_default()
     return Kid__build(false, 3);
 #line 38 "cpp_inherit_v1.cpp"
 }
-#line 747 "cpp_inherit_v1.cpp.cpp"
-
-#line 38 "cpp_inherit_v1.cpp"
-[[maybe_unused]] HOT_HIDDEN static void Kid__ctor(Kid_Shell* __self, int start)
-#line 38 "cpp_inherit_v1.cpp"
-{
-#line 38 "cpp_inherit_v1.cpp"
-    return state_of(__self)->ctor(std::forward<int>(start));
-#line 38 "cpp_inherit_v1.cpp"
-}
-#line 757 "cpp_inherit_v1.cpp.cpp"
-#line 38 "cpp_inherit_v1.cpp"
-void KidState_g1::ctor(int start)
-#line 38 "cpp_inherit_v1.cpp"
-{
-#line 38 "cpp_inherit_v1.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 38 "cpp_inherit_v1.cpp"
-        hot::stale_call("Kid::Kid");
-#line 38 "cpp_inherit_v1.cpp"
-        return;
-#line 38 "cpp_inherit_v1.cpp"
-    }
-#line 38 "cpp_inherit_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__hot_owner);
-#line 38 "cpp_inherit_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 38 "cpp_inherit_v1.cpp"
-    HOT_TRACE_FRAME("Kid.Kid", "cpp_inherit_v1.cpp");
-#line 38 "cpp_inherit_v1.cpp"
- kid_hits = start; 
-#line 38 "cpp_inherit_v1.cpp"
-}
-#line 780 "cpp_inherit_v1.cpp.cpp"
-
-#line 40 "cpp_inherit_v1.cpp"
-[[maybe_unused]] HOT_HIDDEN static int Kid__Power(Kid_Shell* __self)
-#line 40 "cpp_inherit_v1.cpp"
-{
-#line 40 "cpp_inherit_v1.cpp"
-    return state_of(__self)->Power();
-#line 40 "cpp_inherit_v1.cpp"
-}
-#line 790 "cpp_inherit_v1.cpp.cpp"
-#line 40 "cpp_inherit_v1.cpp"
-int KidState_g1::Power()
-#line 40 "cpp_inherit_v1.cpp"
-{
-#line 40 "cpp_inherit_v1.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 40 "cpp_inherit_v1.cpp"
-        hot::stale_call("Kid::Power");
-#line 40 "cpp_inherit_v1.cpp"
-        return int();
-#line 40 "cpp_inherit_v1.cpp"
-    }
-#line 40 "cpp_inherit_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__hot_owner);
-#line 40 "cpp_inherit_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 40 "cpp_inherit_v1.cpp"
-    HOT_TRACE_FRAME("Kid.Power", "cpp_inherit_v1.cpp");
-#line 40 "cpp_inherit_v1.cpp"
- return 5; 
-#line 40 "cpp_inherit_v1.cpp"
-}
-#line 813 "cpp_inherit_v1.cpp.cpp"
-
-#line 42 "cpp_inherit_v1.cpp"
-void KidState_g1::Tick(float dt)
-#line 42 "cpp_inherit_v1.cpp"
-{
-#line 42 "cpp_inherit_v1.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 42 "cpp_inherit_v1.cpp"
-        hot::stale_call("Kid::Tick(float)");
-#line 42 "cpp_inherit_v1.cpp"
-        return;
-#line 42 "cpp_inherit_v1.cpp"
-    }
-#line 42 "cpp_inherit_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__hot_owner);
-#line 42 "cpp_inherit_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 42 "cpp_inherit_v1.cpp"
-    HOT_TRACE_FRAME("Kid.Tick", "cpp_inherit_v1.cpp");
-#line 43 "cpp_inherit_v1.cpp"
-
-        Base__base_Tick(__self, dt);
-        __self->Move(Vec3(1.0f, 0, 0));
-        moved = __self->Position.x;
-        Bump();
-        twice = Twice();
-        super_power = Base__Power(__self);
-        hot_mod()->last_ticked = __self;
-        Kid_Shell* k = hot::as_script<Kid_Shell>(hot_mod()->last_ticked, "Kid");
-        if (k == __self)
-            hot_mod()->kid_casts++;
-        seen_hits = state_of(hot_mod()->last_ticked)->hits + state_of(k)->kid_hits;
-    
-#line 55 "cpp_inherit_v1.cpp"
-}
-#line 849 "cpp_inherit_v1.cpp.cpp"
+#line 586 "cpp_inherit_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Kid_slots[Kid_SLOT_COUNT] = {
@@ -890,7 +627,271 @@ HOT_NODEBUG static hot::Instance Kid_create()
     return {static_cast<Actor*>(p), p};
 #line 34 "cpp_inherit_v1.cpp"
 }
-#line 894 "cpp_inherit_v1.cpp.cpp"
+#line 631 "cpp_inherit_v1.cpp.cpp"
+
+// ---------------------------------------------------------------- function bodies
+#line 11 "cpp_inherit_v1.cpp"
+[[maybe_unused]] HOT_HIDDEN static void Base__ctor(Base_Shell* __self, int start)
+#line 11 "cpp_inherit_v1.cpp"
+{
+#line 11 "cpp_inherit_v1.cpp"
+    return state_of(__self)->ctor(std::forward<int>(start));
+#line 11 "cpp_inherit_v1.cpp"
+}
+#line 642 "cpp_inherit_v1.cpp.cpp"
+#line 11 "cpp_inherit_v1.cpp"
+void BaseState_g1::ctor(int start)
+#line 11 "cpp_inherit_v1.cpp"
+{
+#line 11 "cpp_inherit_v1.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 11 "cpp_inherit_v1.cpp"
+        hot::stale_call("Base::Base");
+#line 11 "cpp_inherit_v1.cpp"
+        return;
+#line 11 "cpp_inherit_v1.cpp"
+    }
+#line 11 "cpp_inherit_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
+#line 11 "cpp_inherit_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 11 "cpp_inherit_v1.cpp"
+    HOT_TRACE_FRAME("Base.Base", "cpp_inherit_v1.cpp");
+#line 11 "cpp_inherit_v1.cpp"
+{ decltype(__st->hits) __hot_mi(start); __st->hits = std::move(__hot_mi); }
+#line 11 "cpp_inherit_v1.cpp"
+
+#line 11 "cpp_inherit_v1.cpp"
+}
+#line 667 "cpp_inherit_v1.cpp.cpp"
+
+#line 13 "cpp_inherit_v1.cpp"
+[[maybe_unused]] HOT_HIDDEN static int Base__Power(Base_Shell* __self)
+#line 13 "cpp_inherit_v1.cpp"
+{
+#line 13 "cpp_inherit_v1.cpp"
+    return state_of(__self)->Power();
+#line 13 "cpp_inherit_v1.cpp"
+}
+#line 677 "cpp_inherit_v1.cpp.cpp"
+#line 13 "cpp_inherit_v1.cpp"
+int BaseState_g1::Power()
+#line 13 "cpp_inherit_v1.cpp"
+{
+#line 13 "cpp_inherit_v1.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 13 "cpp_inherit_v1.cpp"
+        hot::stale_call("Base::Power");
+#line 13 "cpp_inherit_v1.cpp"
+        return int();
+#line 13 "cpp_inherit_v1.cpp"
+    }
+#line 13 "cpp_inherit_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
+#line 13 "cpp_inherit_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 13 "cpp_inherit_v1.cpp"
+    HOT_TRACE_FRAME("Base.Power", "cpp_inherit_v1.cpp");
+#line 13 "cpp_inherit_v1.cpp"
+ return 1; 
+#line 13 "cpp_inherit_v1.cpp"
+}
+#line 700 "cpp_inherit_v1.cpp.cpp"
+
+#line 15 "cpp_inherit_v1.cpp"
+[[maybe_unused]] HOT_HIDDEN static int Base__Twice(Base_Shell* __self)
+#line 15 "cpp_inherit_v1.cpp"
+{
+#line 15 "cpp_inherit_v1.cpp"
+    return state_of(__self)->Twice();
+#line 15 "cpp_inherit_v1.cpp"
+}
+#line 710 "cpp_inherit_v1.cpp.cpp"
+#line 15 "cpp_inherit_v1.cpp"
+int BaseState_g1::Twice()
+#line 15 "cpp_inherit_v1.cpp"
+{
+#line 15 "cpp_inherit_v1.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 15 "cpp_inherit_v1.cpp"
+        hot::stale_call("Base::Twice");
+#line 15 "cpp_inherit_v1.cpp"
+        return int();
+#line 15 "cpp_inherit_v1.cpp"
+    }
+#line 15 "cpp_inherit_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
+#line 15 "cpp_inherit_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 15 "cpp_inherit_v1.cpp"
+    HOT_TRACE_FRAME("Base.Twice", "cpp_inherit_v1.cpp");
+#line 15 "cpp_inherit_v1.cpp"
+ return Base__Power_virt(__self) * 2; 
+#line 15 "cpp_inherit_v1.cpp"
+}
+#line 733 "cpp_inherit_v1.cpp.cpp"
+
+#line 17 "cpp_inherit_v1.cpp"
+[[maybe_unused]] HOT_HIDDEN static void Base__Bump(Base_Shell* __self)
+#line 17 "cpp_inherit_v1.cpp"
+{
+#line 17 "cpp_inherit_v1.cpp"
+    return state_of(__self)->Bump();
+#line 17 "cpp_inherit_v1.cpp"
+}
+#line 743 "cpp_inherit_v1.cpp.cpp"
+#line 17 "cpp_inherit_v1.cpp"
+void BaseState_g1::Bump()
+#line 17 "cpp_inherit_v1.cpp"
+{
+#line 17 "cpp_inherit_v1.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 17 "cpp_inherit_v1.cpp"
+        hot::stale_call("Base::Bump");
+#line 17 "cpp_inherit_v1.cpp"
+        return;
+#line 17 "cpp_inherit_v1.cpp"
+    }
+#line 17 "cpp_inherit_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
+#line 17 "cpp_inherit_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 17 "cpp_inherit_v1.cpp"
+    HOT_TRACE_FRAME("Base.Bump", "cpp_inherit_v1.cpp");
+#line 17 "cpp_inherit_v1.cpp"
+ hits += 10; 
+#line 17 "cpp_inherit_v1.cpp"
+}
+#line 766 "cpp_inherit_v1.cpp.cpp"
+
+#line 19 "cpp_inherit_v1.cpp"
+void BaseState_g1::TakeDamage_f(float amount)
+#line 19 "cpp_inherit_v1.cpp"
+{
+#line 19 "cpp_inherit_v1.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 19 "cpp_inherit_v1.cpp"
+        hot::stale_call("Base::TakeDamage(float)");
+#line 19 "cpp_inherit_v1.cpp"
+        return;
+#line 19 "cpp_inherit_v1.cpp"
+    }
+#line 19 "cpp_inherit_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Base_Shell*>(this->__hot_owner);
+#line 19 "cpp_inherit_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 19 "cpp_inherit_v1.cpp"
+    HOT_TRACE_FRAME("Base.TakeDamage", "cpp_inherit_v1.cpp");
+#line 20 "cpp_inherit_v1.cpp"
+
+        hp -= amount;
+        hits += 1;
+    
+#line 23 "cpp_inherit_v1.cpp"
+}
+#line 793 "cpp_inherit_v1.cpp.cpp"
+
+#line 38 "cpp_inherit_v1.cpp"
+[[maybe_unused]] HOT_HIDDEN static void Kid__ctor(Kid_Shell* __self, int start)
+#line 38 "cpp_inherit_v1.cpp"
+{
+#line 38 "cpp_inherit_v1.cpp"
+    return state_of(__self)->ctor(std::forward<int>(start));
+#line 38 "cpp_inherit_v1.cpp"
+}
+#line 803 "cpp_inherit_v1.cpp.cpp"
+#line 38 "cpp_inherit_v1.cpp"
+void KidState_g1::ctor(int start)
+#line 38 "cpp_inherit_v1.cpp"
+{
+#line 38 "cpp_inherit_v1.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 38 "cpp_inherit_v1.cpp"
+        hot::stale_call("Kid::Kid");
+#line 38 "cpp_inherit_v1.cpp"
+        return;
+#line 38 "cpp_inherit_v1.cpp"
+    }
+#line 38 "cpp_inherit_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__hot_owner);
+#line 38 "cpp_inherit_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 38 "cpp_inherit_v1.cpp"
+    HOT_TRACE_FRAME("Kid.Kid", "cpp_inherit_v1.cpp");
+#line 38 "cpp_inherit_v1.cpp"
+ kid_hits = start; 
+#line 38 "cpp_inherit_v1.cpp"
+}
+#line 826 "cpp_inherit_v1.cpp.cpp"
+
+#line 40 "cpp_inherit_v1.cpp"
+[[maybe_unused]] HOT_HIDDEN static int Kid__Power(Kid_Shell* __self)
+#line 40 "cpp_inherit_v1.cpp"
+{
+#line 40 "cpp_inherit_v1.cpp"
+    return state_of(__self)->Power();
+#line 40 "cpp_inherit_v1.cpp"
+}
+#line 836 "cpp_inherit_v1.cpp.cpp"
+#line 40 "cpp_inherit_v1.cpp"
+int KidState_g1::Power()
+#line 40 "cpp_inherit_v1.cpp"
+{
+#line 40 "cpp_inherit_v1.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 40 "cpp_inherit_v1.cpp"
+        hot::stale_call("Kid::Power");
+#line 40 "cpp_inherit_v1.cpp"
+        return int();
+#line 40 "cpp_inherit_v1.cpp"
+    }
+#line 40 "cpp_inherit_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__hot_owner);
+#line 40 "cpp_inherit_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 40 "cpp_inherit_v1.cpp"
+    HOT_TRACE_FRAME("Kid.Power", "cpp_inherit_v1.cpp");
+#line 40 "cpp_inherit_v1.cpp"
+ return 5; 
+#line 40 "cpp_inherit_v1.cpp"
+}
+#line 859 "cpp_inherit_v1.cpp.cpp"
+
+#line 42 "cpp_inherit_v1.cpp"
+void KidState_g1::Tick(float dt)
+#line 42 "cpp_inherit_v1.cpp"
+{
+#line 42 "cpp_inherit_v1.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 42 "cpp_inherit_v1.cpp"
+        hot::stale_call("Kid::Tick(float)");
+#line 42 "cpp_inherit_v1.cpp"
+        return;
+#line 42 "cpp_inherit_v1.cpp"
+    }
+#line 42 "cpp_inherit_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__hot_owner);
+#line 42 "cpp_inherit_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 42 "cpp_inherit_v1.cpp"
+    HOT_TRACE_FRAME("Kid.Tick", "cpp_inherit_v1.cpp");
+#line 43 "cpp_inherit_v1.cpp"
+
+        Base__base_Tick(__self, dt);
+        __self->Move(Vec3(1.0f, 0, 0));
+        moved = __self->Position.x;
+        Bump();
+        twice = Twice();
+        super_power = Base__Power(__self);
+        hot_mod()->last_ticked = __self;
+        Kid_Shell* k = hot::as_script<Kid_Shell>(hot_mod()->last_ticked, "Kid");
+        if (k == __self)
+            hot_mod()->kid_casts++;
+        seen_hits = state_of(hot_mod()->last_ticked)->hits + state_of(k)->kid_hits;
+    
+#line 55 "cpp_inherit_v1.cpp"
+}
+#line 895 "cpp_inherit_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

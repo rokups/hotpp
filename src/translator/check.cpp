@@ -1855,6 +1855,24 @@ bool uses_bare_this(const ClassDef& cd)
     return found;
 }
 
+std::set<std::string> block_new_targets(const ClassDef& cd)
+{
+    std::set<std::string> out;
+    auto fe = [&](const Expr& e)
+    {
+        if (auto* n = std::get_if<NewExpr>(&e.v))
+            out.insert(n->type);
+    };
+    auto fs = [](const Stmt&) {};
+    auto w = make_walker(fe, fs);
+    for (const Field& f : cd.fields)
+        w.expr(f.init);
+    for (const Ctor& c : cd.ctors)
+        for (const ExprP& a : c.base_args)
+            w.expr(a);
+    return out;
+}
+
 std::set<std::string> new_targets(const Script& sc)
 {
     std::set<std::string> out;

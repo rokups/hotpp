@@ -1,0 +1,9 @@
+Child::ParentHp 1
+Parent::Adopt 1
+Parent::KidAge 1
+Pong::Link 1
+Pong::Unlink 1
+Ping::Count 1
+Node::Length 1
+Part::OwnerBack 1
+Owner::Value 1

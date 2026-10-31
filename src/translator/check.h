@@ -47,6 +47,9 @@ void check_base_ctor_access(
 // The type names that a "new" expression names, in all classes of the script. The translator
 // emits a "new" function for each script class in the set.
 std::set<std::string> new_targets(const ast::Script& sc);
+// The classes that a "new" in the block of the class builds: a field initializer or a base
+// argument. The block needs the "new" function of each one, so the class comes after them.
+std::set<std::string> block_new_targets(const ast::ClassDef& cd);
 
 // The C++ type names that the script writes in declarations, "new" and lambda parameters.
 // The translator asks libclang about them when the stub "class *;" is active.

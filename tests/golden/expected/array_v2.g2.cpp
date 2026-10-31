@@ -19,6 +19,7 @@
 constexpr uint32_t GEN = 2;
 // The live flag of this module. The loader sets it. The guard of each function reads it.
 static uint32_t hot_live = 0;
+struct Grid_Shell;
 
 // ---------------------------------------------------------------- class Grid
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -47,7 +48,7 @@ struct Grid_Shell final : Actor, hot::ShellBase {
     }
 #line 5 "array_v2.hot"
     ~Grid_Shell() override { hot::destroy_state(this); }
-#line 51 "array_v2.hot.cpp"
+#line 52 "array_v2.hot.cpp"
 
 #line 5 "array_v2.hot"
     void Tick(float a0) override
@@ -57,7 +58,7 @@ struct Grid_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 5 "array_v2.hot"
     }
-#line 61 "array_v2.hot.cpp"
+#line 62 "array_v2.hot.cpp"
 
 #line 5 "array_v2.hot"
     void TakeDamage(float a0) override
@@ -67,7 +68,7 @@ struct Grid_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 5 "array_v2.hot"
     }
-#line 71 "array_v2.hot.cpp"
+#line 72 "array_v2.hot.cpp"
 
 #line 5 "array_v2.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -77,7 +78,7 @@ struct Grid_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 5 "array_v2.hot"
     }
-#line 81 "array_v2.hot.cpp"
+#line 82 "array_v2.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -101,7 +102,7 @@ struct GridState_g2 {
         return static_cast<Grid_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 5 "array_v2.hot"
     }
-#line 105 "array_v2.hot.cpp"
+#line 106 "array_v2.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 5 "array_v2.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -111,24 +112,24 @@ struct GridState_g2 {
         return static_cast<Grid_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 5 "array_v2.hot"
     }
-#line 115 "array_v2.hot.cpp"
+#line 116 "array_v2.hot.cpp"
 };
 
 #line 6 "array_v2.hot"
 static void Grid__init_a(void*, void* f) { using T = std::array<int32_t, 3>; new (f) T(); }
-#line 120 "array_v2.hot.cpp"
+#line 121 "array_v2.hot.cpp"
 #line 7 "array_v2.hot"
 static void Grid__init_v(void*, void* f) { using T = std::array<float, 3>; new (f) T({1.0f, 2.0f, 3.0f}); }
-#line 123 "array_v2.hot.cpp"
+#line 124 "array_v2.hot.cpp"
 #line 8 "array_v2.hot"
 static void Grid__init_m(void*, void* f) { using T = std::array<std::array<int32_t, 3>, 2>; new (f) T(); }
-#line 126 "array_v2.hot.cpp"
+#line 127 "array_v2.hot.cpp"
 #line 9 "array_v2.hot"
 static void Grid__init_rows(void*, void* f) { using T = std::vector<std::array<int32_t, 3>>; new (f) T(); }
-#line 129 "array_v2.hot.cpp"
+#line 130 "array_v2.hot.cpp"
 #line 10 "array_v2.hot"
 static void Grid__init_extra(void*, void* f) { using T = int32_t; new (f) T(7); }
-#line 132 "array_v2.hot.cpp"
+#line 133 "array_v2.hot.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -176,7 +177,7 @@ HOT_HIDDEN static auto Grid__plan()
     return std::make_pair(Grid__super_args(), std::tuple<>());
 #line 5 "array_v2.hot"
 }
-#line 180 "array_v2.hot.cpp"
+#line 181 "array_v2.hot.cpp"
 using Grid_SuperArgs = decltype(Grid__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
@@ -196,7 +197,7 @@ HOT_NODEBUG static hot::ShellBase* Grid__construct(const char* key, const void* 
     return nullptr;
 #line 5 "array_v2.hot"
 }
-#line 200 "array_v2.hot.cpp"
+#line 201 "array_v2.hot.cpp"
 
 static const char* const Grid__construct_keys[] = {typeid(Grid_SuperArgs).name(), nullptr};
 
@@ -212,7 +213,7 @@ HOT_HIDDEN static Grid_Shell* Grid__build([[maybe_unused]] bool __note)
     return __self;
 #line 5 "array_v2.hot"
 }
-#line 216 "array_v2.hot.cpp"
+#line 217 "array_v2.hot.cpp"
 #line 5 "array_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static Grid_Shell* Grid__new()
 #line 5 "array_v2.hot"
@@ -221,8 +222,39 @@ HOT_HIDDEN static Grid_Shell* Grid__build([[maybe_unused]] bool __note)
     return Grid__build(true);
 #line 5 "array_v2.hot"
 }
-#line 225 "array_v2.hot.cpp"
+#line 226 "array_v2.hot.cpp"
 
+// ------------------------------------------------------ record and entry
+static const hot::SlotFn Grid_slots[SLOT_COUNT] = {
+    reinterpret_cast<hot::SlotFn>(&GridState_g2::Tick),
+    reinterpret_cast<hot::SlotFn>(&GridState_g2::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&GridState_g2::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&GridState_g2::total),
+    reinterpret_cast<hot::SlotFn>(&GridState_g2::make),
+};
+
+hot::ClassRecord Grid_record = {
+    "Grid", GEN, Grid_slots, SLOT_COUNT, &Grid_layout, nullptr,
+    "Actor", hot::shell_layout_hash("Actor", sizeof(Grid_Shell), alignof(Grid_Shell), 3),
+    nullptr,
+    &Grid__construct, typeid(Grid_SuperArgs).name(), nullptr, nullptr, nullptr,
+};
+
+#line 5 "array_v2.hot"
+HOT_NODEBUG static hot::Instance Grid_create()
+#line 5 "array_v2.hot"
+{
+#line 5 "array_v2.hot"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 5 "array_v2.hot"
+    auto* p = new Grid_Shell(hot::Construct{}, std::string("Grid"));
+#line 5 "array_v2.hot"
+    return {static_cast<Actor*>(p), p};
+#line 5 "array_v2.hot"
+}
+#line 256 "array_v2.hot.cpp"
+
+// ---------------------------------------------------------------- function bodies
 #line 12 "array_v2.hot"
 void GridState_g2::Tick(float dt)
 #line 12 "array_v2.hot"
@@ -251,7 +283,7 @@ void GridState_g2::Tick(float dt)
     HOT_TRACE_LINE(); hot::index(hot::index(__st->m, 1), 2) = hot::index(__st->a, 0) + 5;
 #line 17 "array_v2.hot"
 }
-#line 255 "array_v2.hot.cpp"
+#line 287 "array_v2.hot.cpp"
 
 #line 19 "array_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Grid__total(Grid_Shell* __self)
@@ -261,7 +293,7 @@ void GridState_g2::Tick(float dt)
     return state_of(__self)->total();
 #line 19 "array_v2.hot"
 }
-#line 265 "array_v2.hot.cpp"
+#line 297 "array_v2.hot.cpp"
 #line 19 "array_v2.hot"
 int32_t GridState_g2::total()
 #line 19 "array_v2.hot"
@@ -292,7 +324,7 @@ int32_t GridState_g2::total()
     HOT_TRACE_LINE(); return sum + hot::deref(__st->a).size() + __st->extra;
 #line 25 "array_v2.hot"
 }
-#line 296 "array_v2.hot.cpp"
+#line 328 "array_v2.hot.cpp"
 
 #line 27 "array_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static std::array<int32_t, 4> Grid__make(Grid_Shell* __self, std::array<int32_t, 2> p)
@@ -302,7 +334,7 @@ int32_t GridState_g2::total()
     return state_of(__self)->make(std::forward<std::array<int32_t, 2>>(p));
 #line 27 "array_v2.hot"
 }
-#line 306 "array_v2.hot.cpp"
+#line 338 "array_v2.hot.cpp"
 #line 27 "array_v2.hot"
 std::array<int32_t, 4> GridState_g2::make(std::array<int32_t, 2> p)
 #line 27 "array_v2.hot"
@@ -329,37 +361,7 @@ std::array<int32_t, 4> GridState_g2::make(std::array<int32_t, 2> p)
     HOT_TRACE_LINE(); return r;
 #line 31 "array_v2.hot"
 }
-#line 333 "array_v2.hot.cpp"
-
-// ------------------------------------------------------ record and entry
-static const hot::SlotFn Grid_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&GridState_g2::Tick),
-    reinterpret_cast<hot::SlotFn>(&GridState_g2::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&GridState_g2::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&GridState_g2::total),
-    reinterpret_cast<hot::SlotFn>(&GridState_g2::make),
-};
-
-hot::ClassRecord Grid_record = {
-    "Grid", GEN, Grid_slots, SLOT_COUNT, &Grid_layout, nullptr,
-    "Actor", hot::shell_layout_hash("Actor", sizeof(Grid_Shell), alignof(Grid_Shell), 3),
-    nullptr,
-    &Grid__construct, typeid(Grid_SuperArgs).name(), nullptr, nullptr, nullptr,
-};
-
-#line 5 "array_v2.hot"
-HOT_NODEBUG static hot::Instance Grid_create()
-#line 5 "array_v2.hot"
-{
-#line 5 "array_v2.hot"
-    hot::ScriptEntry entry;  // the creation is an entry (S27)
-#line 5 "array_v2.hot"
-    auto* p = new Grid_Shell(hot::Construct{}, std::string("Grid"));
-#line 5 "array_v2.hot"
-    return {static_cast<Actor*>(p), p};
-#line 5 "array_v2.hot"
-}
-#line 363 "array_v2.hot.cpp"
+#line 365 "array_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

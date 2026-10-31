@@ -123,6 +123,13 @@ TEST(GoldenTranslation, WeakHandle)
     golden_one("weak_handle_v1");
 }
 
+// Classes that use each other through handles: a weak back handle, a strong pair, a self
+// reference and an intrusive pair. The forward block declares each class first.
+TEST(GoldenTranslation, CycleHandles)
+{
+    golden_one("cycle_handles_v1");
+}
+
 // A borrowed value (T&, T*, var&, &x) is an argument of every call form: a method, a native call, a
 // constructor, new, a lambda, a ternary, a cast and a nested call.
 TEST(GoldenTranslation, BorrowedArgs)

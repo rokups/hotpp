@@ -7,6 +7,7 @@ add_executable(integration_reload_tests
     script_language_tests.cpp
     handle_reload_tests.cpp
     weak_handle_tests.cpp
+    cycle_handle_tests.cpp
     hook_tests.cpp
     constructor_tests.cpp
     script_kinds_tests.cpp

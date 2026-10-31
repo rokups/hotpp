@@ -1,0 +1,56 @@
+// Generation 2: the field "age" of Child has the new name "years" ([alias]). Child comes before
+// Parent in the file, and each class uses the other. The child holds its parent weakly.
+using "Actor.h";
+
+int dead_parents = 0;
+
+class Child {
+    [weak]
+    Parent parent = null;
+    [alias("age")] int years = 3;
+
+    int ParentHp() {
+        Parent p = parent;
+        return p != null ? p.hp + p.kid.years : -1;
+    }
+}
+
+class Parent {
+    Child kid = null;
+    int hp = 9;
+
+    void Adopt(Child c) {
+        kid = c;
+        c.parent = this;
+    }
+
+    ~Parent() {
+        dead_parents = dead_parents + 1;
+    }
+}
+
+class Keeper : Actor {
+    Parent dad = null;
+    Child kid = null;
+    int frames = 0;
+    int parent_hp = -1;
+    int parent_alive = 0;
+    int deaths = 0;
+    int kid_age = -1;
+
+    override void Tick(float dt) {
+        frames = frames + 1;
+        if (frames == 1) {
+            dad = new Parent();
+            kid = new Child();
+            dad.Adopt(kid);
+            kid.years = 5;
+        }
+        if (frames == 4)
+            dad = null; // the only strong handle of the parent
+        parent_hp = kid.ParentHp();
+        parent_alive = kid.parent != null ? 1 : 0;
+        deaths = dead_parents;
+        kid_age = dad != null ? dad.kid.years : -1;
+    }
+}

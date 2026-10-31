@@ -329,6 +329,79 @@ HOT_NODEBUG static hot::ShellBase* Lamp__new_default()
 }
 #line 331 "cpp_lambda_v1.cpp.cpp"
 
+// The thunk has the same address in each generation (section 4.11). The
+// generation that adds the function emits it. It reads the slot at call time.
+#line 51 "cpp_lambda_v1.cpp"
+static void Lamp__bump__thunk(Actor* __a, int n)
+#line 51 "cpp_lambda_v1.cpp"
+{
+#line 51 "cpp_lambda_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(__a);
+#line 51 "cpp_lambda_v1.cpp"
+    return hot::call<void(Actor*, int)>(__self, SLOT_bump, n);
+#line 51 "cpp_lambda_v1.cpp"
+}
+#line 345 "cpp_lambda_v1.cpp.cpp"
+
+// The thunk has the same address in each generation (section 4.11). The
+// generation that adds the function emits it. It reads the slot at call time.
+#line 52 "cpp_lambda_v1.cpp"
+static bool Lamp__self_is_set__thunk(Actor* __a, Actor * a)
+#line 52 "cpp_lambda_v1.cpp"
+{
+#line 52 "cpp_lambda_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(__a);
+#line 52 "cpp_lambda_v1.cpp"
+    return hot::call<bool(Actor*, Actor *)>(__self, SLOT_self_is_set, a);
+#line 52 "cpp_lambda_v1.cpp"
+}
+#line 359 "cpp_lambda_v1.cpp.cpp"
+
+// ------------------------------------------------------ record and entry
+static const hot::SlotFn Lamp_slots[SLOT_COUNT] = {
+    reinterpret_cast<hot::SlotFn>(&LampState_g1::Tick),
+    reinterpret_cast<hot::SlotFn>(&LampState_g1::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&LampState_g1::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&LampState_g1::bump),
+    reinterpret_cast<hot::SlotFn>(&LampState_g1::self_is_set),
+};
+
+hot::ClassRecord Lamp_record = {
+    "Lamp", GEN, Lamp_slots, SLOT_COUNT, &Lamp_layout, nullptr,
+    "Actor", hot::shell_layout_hash("Actor", sizeof(Lamp_Shell), alignof(Lamp_Shell), 3),
+    nullptr,
+    &Lamp__construct, typeid(Lamp_SuperArgs).name(), &Lamp__new_default, nullptr, nullptr,
+};
+
+#line 9 "cpp_lambda_v1.cpp"
+HOT_NODEBUG static hot::Instance Lamp_create()
+#line 9 "cpp_lambda_v1.cpp"
+{
+#line 9 "cpp_lambda_v1.cpp"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 9 "cpp_lambda_v1.cpp"
+    hot::ShellBase* s = nullptr;
+#line 9 "cpp_lambda_v1.cpp"
+    if (Lamp_record.new_default) {
+#line 9 "cpp_lambda_v1.cpp"
+        s = Lamp_record.new_default();
+#line 9 "cpp_lambda_v1.cpp"
+    } else {
+#line 9 "cpp_lambda_v1.cpp"
+        auto plan = Lamp__plan();
+#line 9 "cpp_lambda_v1.cpp"
+        s = Lamp__construct(typeid(Lamp_SuperArgs).name(), &plan.first);
+#line 9 "cpp_lambda_v1.cpp"
+    }
+#line 9 "cpp_lambda_v1.cpp"
+    auto* p = static_cast<Lamp_Shell*>(s);
+#line 9 "cpp_lambda_v1.cpp"
+    return {static_cast<Actor*>(p), p};
+#line 9 "cpp_lambda_v1.cpp"
+}
+#line 403 "cpp_lambda_v1.cpp.cpp"
+
+// ---------------------------------------------------------------- function bodies
 #line 13 "cpp_lambda_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Lamp__ctor(Lamp_Shell* __self)
 #line 13 "cpp_lambda_v1.cpp"
@@ -337,7 +410,7 @@ HOT_NODEBUG static hot::ShellBase* Lamp__new_default()
     return state_of(__self)->ctor();
 #line 13 "cpp_lambda_v1.cpp"
 }
-#line 341 "cpp_lambda_v1.cpp.cpp"
+#line 414 "cpp_lambda_v1.cpp.cpp"
 #line 13 "cpp_lambda_v1.cpp"
 void LampState_g1::ctor()
 #line 13 "cpp_lambda_v1.cpp"
@@ -363,7 +436,7 @@ void LampState_g1::ctor()
     
 #line 17 "cpp_lambda_v1.cpp"
 }
-#line 367 "cpp_lambda_v1.cpp.cpp"
+#line 440 "cpp_lambda_v1.cpp.cpp"
 
 #line 19 "cpp_lambda_v1.cpp"
 void LampState_g1::Tick(float dt)
@@ -416,7 +489,7 @@ void LampState_g1::Tick(float dt)
     
 #line 49 "cpp_lambda_v1.cpp"
 }
-#line 420 "cpp_lambda_v1.cpp.cpp"
+#line 493 "cpp_lambda_v1.cpp.cpp"
 
 #line 51 "cpp_lambda_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Lamp__bump(Lamp_Shell* __self, int n)
@@ -426,7 +499,7 @@ void LampState_g1::Tick(float dt)
     return state_of(__self)->bump(std::forward<int>(n));
 #line 51 "cpp_lambda_v1.cpp"
 }
-#line 430 "cpp_lambda_v1.cpp.cpp"
+#line 503 "cpp_lambda_v1.cpp.cpp"
 #line 51 "cpp_lambda_v1.cpp"
 void LampState_g1::bump(int n)
 #line 51 "cpp_lambda_v1.cpp"
@@ -449,7 +522,7 @@ void LampState_g1::bump(int n)
  count += n; 
 #line 51 "cpp_lambda_v1.cpp"
 }
-#line 453 "cpp_lambda_v1.cpp.cpp"
+#line 526 "cpp_lambda_v1.cpp.cpp"
 
 #line 52 "cpp_lambda_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static bool Lamp__self_is_set(Lamp_Shell* __self, Actor * a)
@@ -459,7 +532,7 @@ void LampState_g1::bump(int n)
     return state_of(__self)->self_is_set(std::forward<Actor *>(a));
 #line 52 "cpp_lambda_v1.cpp"
 }
-#line 463 "cpp_lambda_v1.cpp.cpp"
+#line 536 "cpp_lambda_v1.cpp.cpp"
 #line 52 "cpp_lambda_v1.cpp"
 bool LampState_g1::self_is_set(Actor * a)
 #line 52 "cpp_lambda_v1.cpp"
@@ -482,79 +555,7 @@ bool LampState_g1::self_is_set(Actor * a)
  return a != nullptr; 
 #line 52 "cpp_lambda_v1.cpp"
 }
-#line 486 "cpp_lambda_v1.cpp.cpp"
-
-// The thunk has the same address in each generation (section 4.11). The
-// generation that adds the function emits it. It reads the slot at call time.
-#line 51 "cpp_lambda_v1.cpp"
-static void Lamp__bump__thunk(Actor* __a, int n)
-#line 51 "cpp_lambda_v1.cpp"
-{
-#line 51 "cpp_lambda_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(__a);
-#line 51 "cpp_lambda_v1.cpp"
-    return hot::call<void(Actor*, int)>(__self, SLOT_bump, n);
-#line 51 "cpp_lambda_v1.cpp"
-}
-#line 500 "cpp_lambda_v1.cpp.cpp"
-
-// The thunk has the same address in each generation (section 4.11). The
-// generation that adds the function emits it. It reads the slot at call time.
-#line 52 "cpp_lambda_v1.cpp"
-static bool Lamp__self_is_set__thunk(Actor* __a, Actor * a)
-#line 52 "cpp_lambda_v1.cpp"
-{
-#line 52 "cpp_lambda_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(__a);
-#line 52 "cpp_lambda_v1.cpp"
-    return hot::call<bool(Actor*, Actor *)>(__self, SLOT_self_is_set, a);
-#line 52 "cpp_lambda_v1.cpp"
-}
-#line 514 "cpp_lambda_v1.cpp.cpp"
-
-// ------------------------------------------------------ record and entry
-static const hot::SlotFn Lamp_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&LampState_g1::Tick),
-    reinterpret_cast<hot::SlotFn>(&LampState_g1::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&LampState_g1::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&LampState_g1::bump),
-    reinterpret_cast<hot::SlotFn>(&LampState_g1::self_is_set),
-};
-
-hot::ClassRecord Lamp_record = {
-    "Lamp", GEN, Lamp_slots, SLOT_COUNT, &Lamp_layout, nullptr,
-    "Actor", hot::shell_layout_hash("Actor", sizeof(Lamp_Shell), alignof(Lamp_Shell), 3),
-    nullptr,
-    &Lamp__construct, typeid(Lamp_SuperArgs).name(), &Lamp__new_default, nullptr, nullptr,
-};
-
-#line 9 "cpp_lambda_v1.cpp"
-HOT_NODEBUG static hot::Instance Lamp_create()
-#line 9 "cpp_lambda_v1.cpp"
-{
-#line 9 "cpp_lambda_v1.cpp"
-    hot::ScriptEntry entry;  // the creation is an entry (S27)
-#line 9 "cpp_lambda_v1.cpp"
-    hot::ShellBase* s = nullptr;
-#line 9 "cpp_lambda_v1.cpp"
-    if (Lamp_record.new_default) {
-#line 9 "cpp_lambda_v1.cpp"
-        s = Lamp_record.new_default();
-#line 9 "cpp_lambda_v1.cpp"
-    } else {
-#line 9 "cpp_lambda_v1.cpp"
-        auto plan = Lamp__plan();
-#line 9 "cpp_lambda_v1.cpp"
-        s = Lamp__construct(typeid(Lamp_SuperArgs).name(), &plan.first);
-#line 9 "cpp_lambda_v1.cpp"
-    }
-#line 9 "cpp_lambda_v1.cpp"
-    auto* p = static_cast<Lamp_Shell*>(s);
-#line 9 "cpp_lambda_v1.cpp"
-    return {static_cast<Actor*>(p), p};
-#line 9 "cpp_lambda_v1.cpp"
-}
-#line 558 "cpp_lambda_v1.cpp.cpp"
+#line 559 "cpp_lambda_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

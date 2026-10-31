@@ -263,67 +263,6 @@ HOT_NODEBUG static hot::ShellBase* Scaler__new_default()
 }
 #line 265 "cpp_template_fn.cpp.cpp"
 
-#line 20 "cpp_template_fn.cpp"
-[[maybe_unused]] HOT_HIDDEN static void Scaler__ctor(Scaler_Shell* __self)
-#line 20 "cpp_template_fn.cpp"
-{
-#line 20 "cpp_template_fn.cpp"
-    return state_of(__self)->ctor();
-#line 20 "cpp_template_fn.cpp"
-}
-#line 275 "cpp_template_fn.cpp.cpp"
-#line 20 "cpp_template_fn.cpp"
-void ScalerState_g1::ctor()
-#line 20 "cpp_template_fn.cpp"
-{
-#line 20 "cpp_template_fn.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 20 "cpp_template_fn.cpp"
-        hot::stale_call("Scaler::Scaler");
-#line 20 "cpp_template_fn.cpp"
-        return;
-#line 20 "cpp_template_fn.cpp"
-    }
-#line 20 "cpp_template_fn.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Scaler_Shell*>(this->__hot_owner);
-#line 20 "cpp_template_fn.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 20 "cpp_template_fn.cpp"
-    HOT_TRACE_FRAME("Scaler.Scaler", "cpp_template_fn.cpp");
-#line 20 "cpp_template_fn.cpp"
-
-#line 20 "cpp_template_fn.cpp"
-}
-#line 298 "cpp_template_fn.cpp.cpp"
-
-#line 22 "cpp_template_fn.cpp"
-void ScalerState_g1::Tick(float dt)
-#line 22 "cpp_template_fn.cpp"
-{
-#line 22 "cpp_template_fn.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 22 "cpp_template_fn.cpp"
-        hot::stale_call("Scaler::Tick(float)");
-#line 22 "cpp_template_fn.cpp"
-        return;
-#line 22 "cpp_template_fn.cpp"
-    }
-#line 22 "cpp_template_fn.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Scaler_Shell*>(this->__hot_owner);
-#line 22 "cpp_template_fn.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 22 "cpp_template_fn.cpp"
-    HOT_TRACE_FRAME("Scaler.Tick", "cpp_template_fn.cpp");
-#line 23 "cpp_template_fn.cpp"
-
-        hot_mod()->total += 2;
-        last = scaled(3);
-        __self->Move(Vec3(dt, 0, 0));
-    
-#line 27 "cpp_template_fn.cpp"
-}
-#line 326 "cpp_template_fn.cpp.cpp"
-
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Scaler_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&ScalerState_g1::Tick),
@@ -364,7 +303,69 @@ HOT_NODEBUG static hot::Instance Scaler_create()
     return {static_cast<Actor*>(p), p};
 #line 15 "cpp_template_fn.cpp"
 }
-#line 368 "cpp_template_fn.cpp.cpp"
+#line 307 "cpp_template_fn.cpp.cpp"
+
+// ---------------------------------------------------------------- function bodies
+#line 20 "cpp_template_fn.cpp"
+[[maybe_unused]] HOT_HIDDEN static void Scaler__ctor(Scaler_Shell* __self)
+#line 20 "cpp_template_fn.cpp"
+{
+#line 20 "cpp_template_fn.cpp"
+    return state_of(__self)->ctor();
+#line 20 "cpp_template_fn.cpp"
+}
+#line 318 "cpp_template_fn.cpp.cpp"
+#line 20 "cpp_template_fn.cpp"
+void ScalerState_g1::ctor()
+#line 20 "cpp_template_fn.cpp"
+{
+#line 20 "cpp_template_fn.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 20 "cpp_template_fn.cpp"
+        hot::stale_call("Scaler::Scaler");
+#line 20 "cpp_template_fn.cpp"
+        return;
+#line 20 "cpp_template_fn.cpp"
+    }
+#line 20 "cpp_template_fn.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Scaler_Shell*>(this->__hot_owner);
+#line 20 "cpp_template_fn.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 20 "cpp_template_fn.cpp"
+    HOT_TRACE_FRAME("Scaler.Scaler", "cpp_template_fn.cpp");
+#line 20 "cpp_template_fn.cpp"
+
+#line 20 "cpp_template_fn.cpp"
+}
+#line 341 "cpp_template_fn.cpp.cpp"
+
+#line 22 "cpp_template_fn.cpp"
+void ScalerState_g1::Tick(float dt)
+#line 22 "cpp_template_fn.cpp"
+{
+#line 22 "cpp_template_fn.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 22 "cpp_template_fn.cpp"
+        hot::stale_call("Scaler::Tick(float)");
+#line 22 "cpp_template_fn.cpp"
+        return;
+#line 22 "cpp_template_fn.cpp"
+    }
+#line 22 "cpp_template_fn.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Scaler_Shell*>(this->__hot_owner);
+#line 22 "cpp_template_fn.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 22 "cpp_template_fn.cpp"
+    HOT_TRACE_FRAME("Scaler.Tick", "cpp_template_fn.cpp");
+#line 23 "cpp_template_fn.cpp"
+
+        hot_mod()->total += 2;
+        last = scaled(3);
+        __self->Move(Vec3(dt, 0, 0));
+    
+#line 27 "cpp_template_fn.cpp"
+}
+#line 369 "cpp_template_fn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

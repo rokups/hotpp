@@ -282,100 +282,6 @@ HOT_NODEBUG static hot::ShellBase* Counter__new_default()
 }
 #line 284 "cpp_freefn.cpp.cpp"
 
-#line 31 "cpp_freefn.cpp"
-[[maybe_unused]] HOT_HIDDEN static void Counter__ctor(Counter_Shell* __self)
-#line 31 "cpp_freefn.cpp"
-{
-#line 31 "cpp_freefn.cpp"
-    return state_of(__self)->ctor();
-#line 31 "cpp_freefn.cpp"
-}
-#line 294 "cpp_freefn.cpp.cpp"
-#line 31 "cpp_freefn.cpp"
-void CounterState_g1::ctor()
-#line 31 "cpp_freefn.cpp"
-{
-#line 31 "cpp_freefn.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 31 "cpp_freefn.cpp"
-        hot::stale_call("Counter::Counter");
-#line 31 "cpp_freefn.cpp"
-        return;
-#line 31 "cpp_freefn.cpp"
-    }
-#line 31 "cpp_freefn.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
-#line 31 "cpp_freefn.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 31 "cpp_freefn.cpp"
-    HOT_TRACE_FRAME("Counter.Counter", "cpp_freefn.cpp");
-#line 31 "cpp_freefn.cpp"
-
-#line 31 "cpp_freefn.cpp"
-}
-#line 317 "cpp_freefn.cpp.cpp"
-
-#line 33 "cpp_freefn.cpp"
-void CounterState_g1::Tick(float dt)
-#line 33 "cpp_freefn.cpp"
-{
-#line 33 "cpp_freefn.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 33 "cpp_freefn.cpp"
-        hot::stale_call("Counter::Tick(float)");
-#line 33 "cpp_freefn.cpp"
-        return;
-#line 33 "cpp_freefn.cpp"
-    }
-#line 33 "cpp_freefn.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
-#line 33 "cpp_freefn.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 33 "cpp_freefn.cpp"
-    HOT_TRACE_FRAME("Counter.Tick", "cpp_freefn.cpp");
-#line 34 "cpp_freefn.cpp"
-
-        last = add_total(3);
-        hot_mod()->total += 100;
-        __self->Move(Vec3(dt, 0, 0));
-    
-#line 38 "cpp_freefn.cpp"
-}
-#line 345 "cpp_freefn.cpp.cpp"
-
-#line 41 "cpp_freefn.cpp"
-[[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self)
-#line 41 "cpp_freefn.cpp"
-{
-#line 41 "cpp_freefn.cpp"
-    return state_of(__self)->Peek();
-#line 41 "cpp_freefn.cpp"
-}
-#line 355 "cpp_freefn.cpp.cpp"
-#line 41 "cpp_freefn.cpp"
-int CounterState_g1::Peek()
-#line 41 "cpp_freefn.cpp"
-{
-#line 41 "cpp_freefn.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 41 "cpp_freefn.cpp"
-        hot::stale_call("Counter::Peek");
-#line 41 "cpp_freefn.cpp"
-        return int();
-#line 41 "cpp_freefn.cpp"
-    }
-#line 41 "cpp_freefn.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
-#line 41 "cpp_freefn.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 41 "cpp_freefn.cpp"
-    HOT_TRACE_FRAME("Counter.Peek", "cpp_freefn.cpp");
-#line 41 "cpp_freefn.cpp"
- return read_total(); 
-#line 41 "cpp_freefn.cpp"
-}
-#line 378 "cpp_freefn.cpp.cpp"
-
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 41 "cpp_freefn.cpp"
@@ -388,7 +294,7 @@ static int Counter__Peek__thunk(Actor* __a)
     return hot::call<int(Actor*)>(__self, SLOT_Peek);
 #line 41 "cpp_freefn.cpp"
 }
-#line 392 "cpp_freefn.cpp.cpp"
+#line 298 "cpp_freefn.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
@@ -431,7 +337,102 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 26 "cpp_freefn.cpp"
 }
-#line 435 "cpp_freefn.cpp.cpp"
+#line 341 "cpp_freefn.cpp.cpp"
+
+// ---------------------------------------------------------------- function bodies
+#line 31 "cpp_freefn.cpp"
+[[maybe_unused]] HOT_HIDDEN static void Counter__ctor(Counter_Shell* __self)
+#line 31 "cpp_freefn.cpp"
+{
+#line 31 "cpp_freefn.cpp"
+    return state_of(__self)->ctor();
+#line 31 "cpp_freefn.cpp"
+}
+#line 352 "cpp_freefn.cpp.cpp"
+#line 31 "cpp_freefn.cpp"
+void CounterState_g1::ctor()
+#line 31 "cpp_freefn.cpp"
+{
+#line 31 "cpp_freefn.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 31 "cpp_freefn.cpp"
+        hot::stale_call("Counter::Counter");
+#line 31 "cpp_freefn.cpp"
+        return;
+#line 31 "cpp_freefn.cpp"
+    }
+#line 31 "cpp_freefn.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
+#line 31 "cpp_freefn.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 31 "cpp_freefn.cpp"
+    HOT_TRACE_FRAME("Counter.Counter", "cpp_freefn.cpp");
+#line 31 "cpp_freefn.cpp"
+
+#line 31 "cpp_freefn.cpp"
+}
+#line 375 "cpp_freefn.cpp.cpp"
+
+#line 33 "cpp_freefn.cpp"
+void CounterState_g1::Tick(float dt)
+#line 33 "cpp_freefn.cpp"
+{
+#line 33 "cpp_freefn.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 33 "cpp_freefn.cpp"
+        hot::stale_call("Counter::Tick(float)");
+#line 33 "cpp_freefn.cpp"
+        return;
+#line 33 "cpp_freefn.cpp"
+    }
+#line 33 "cpp_freefn.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
+#line 33 "cpp_freefn.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 33 "cpp_freefn.cpp"
+    HOT_TRACE_FRAME("Counter.Tick", "cpp_freefn.cpp");
+#line 34 "cpp_freefn.cpp"
+
+        last = add_total(3);
+        hot_mod()->total += 100;
+        __self->Move(Vec3(dt, 0, 0));
+    
+#line 38 "cpp_freefn.cpp"
+}
+#line 403 "cpp_freefn.cpp.cpp"
+
+#line 41 "cpp_freefn.cpp"
+[[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self)
+#line 41 "cpp_freefn.cpp"
+{
+#line 41 "cpp_freefn.cpp"
+    return state_of(__self)->Peek();
+#line 41 "cpp_freefn.cpp"
+}
+#line 413 "cpp_freefn.cpp.cpp"
+#line 41 "cpp_freefn.cpp"
+int CounterState_g1::Peek()
+#line 41 "cpp_freefn.cpp"
+{
+#line 41 "cpp_freefn.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 41 "cpp_freefn.cpp"
+        hot::stale_call("Counter::Peek");
+#line 41 "cpp_freefn.cpp"
+        return int();
+#line 41 "cpp_freefn.cpp"
+    }
+#line 41 "cpp_freefn.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
+#line 41 "cpp_freefn.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 41 "cpp_freefn.cpp"
+    HOT_TRACE_FRAME("Counter.Peek", "cpp_freefn.cpp");
+#line 41 "cpp_freefn.cpp"
+ return read_total(); 
+#line 41 "cpp_freefn.cpp"
+}
+#line 436 "cpp_freefn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

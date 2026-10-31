@@ -290,105 +290,6 @@ HOT_NODEBUG static hot::ShellBase* Counter__new_default()
 }
 #line 292 "cpp_static_v1.cpp.cpp"
 
-#line 11 "cpp_static_v1.cpp"
-[[maybe_unused]] HOT_HIDDEN static void Counter__ctor(Counter_Shell* __self)
-#line 11 "cpp_static_v1.cpp"
-{
-#line 11 "cpp_static_v1.cpp"
-    return state_of(__self)->ctor();
-#line 11 "cpp_static_v1.cpp"
-}
-#line 302 "cpp_static_v1.cpp.cpp"
-#line 11 "cpp_static_v1.cpp"
-void CounterState_g1::ctor()
-#line 11 "cpp_static_v1.cpp"
-{
-#line 11 "cpp_static_v1.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 11 "cpp_static_v1.cpp"
-        hot::stale_call("Counter::Counter");
-#line 11 "cpp_static_v1.cpp"
-        return;
-#line 11 "cpp_static_v1.cpp"
-    }
-#line 11 "cpp_static_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
-#line 11 "cpp_static_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 11 "cpp_static_v1.cpp"
-    HOT_TRACE_FRAME("Counter.Counter", "cpp_static_v1.cpp");
-#line 11 "cpp_static_v1.cpp"
-
-#line 11 "cpp_static_v1.cpp"
-}
-#line 325 "cpp_static_v1.cpp.cpp"
-
-#line 13 "cpp_static_v1.cpp"
-void CounterState_g1::Tick(float dt)
-#line 13 "cpp_static_v1.cpp"
-{
-#line 13 "cpp_static_v1.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 13 "cpp_static_v1.cpp"
-        hot::stale_call("Counter::Tick(float)");
-#line 13 "cpp_static_v1.cpp"
-        return;
-#line 13 "cpp_static_v1.cpp"
-    }
-#line 13 "cpp_static_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
-#line 13 "cpp_static_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 13 "cpp_static_v1.cpp"
-    HOT_TRACE_FRAME("Counter.Tick", "cpp_static_v1.cpp");
-#line 14 "cpp_static_v1.cpp"
-
-        ++hot_mod()->Counter__s_count;                // a bare name
-        hot_mod()->Counter__s_hits += 2;        // an access through "this"
-        last = Counter__s_scale(hot_mod()->Counter__s_count);    // a call of a static method
-        via_free = tally();     // a free function uses the static members
-        __self->Move(Vec3(dt, 0, 0));
-    
-#line 20 "cpp_static_v1.cpp"
-}
-#line 355 "cpp_static_v1.cpp.cpp"
-
-#line 23 "cpp_static_v1.cpp"
-[[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self)
-#line 23 "cpp_static_v1.cpp"
-{
-#line 23 "cpp_static_v1.cpp"
-    return state_of(__self)->Peek();
-#line 23 "cpp_static_v1.cpp"
-}
-#line 365 "cpp_static_v1.cpp.cpp"
-#line 23 "cpp_static_v1.cpp"
-int CounterState_g1::Peek()
-#line 23 "cpp_static_v1.cpp"
-{
-#line 23 "cpp_static_v1.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 23 "cpp_static_v1.cpp"
-        hot::stale_call("Counter::Peek");
-#line 23 "cpp_static_v1.cpp"
-        return int();
-#line 23 "cpp_static_v1.cpp"
-    }
-#line 23 "cpp_static_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
-#line 23 "cpp_static_v1.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 23 "cpp_static_v1.cpp"
-    HOT_TRACE_FRAME("Counter.Peek", "cpp_static_v1.cpp");
-#line 24 "cpp_static_v1.cpp"
-
-        int (*fn)(int) = &Counter__s_scale;
-        return fn(hot_mod()->Counter__s_count) + Counter__s_kFactor;
-    
-#line 27 "cpp_static_v1.cpp"
-}
-#line 391 "cpp_static_v1.cpp.cpp"
-
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 23 "cpp_static_v1.cpp"
@@ -401,7 +302,7 @@ static int Counter__Peek__thunk(Actor* __a)
     return hot::call<int(Actor*)>(__self, SLOT_Peek);
 #line 23 "cpp_static_v1.cpp"
 }
-#line 405 "cpp_static_v1.cpp.cpp"
+#line 306 "cpp_static_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
@@ -444,13 +345,113 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 8 "cpp_static_v1.cpp"
 }
-#line 448 "cpp_static_v1.cpp.cpp"
+#line 349 "cpp_static_v1.cpp.cpp"
+
+// ---------------------------------------------------------------- function bodies
+#line 11 "cpp_static_v1.cpp"
+[[maybe_unused]] HOT_HIDDEN static void Counter__ctor(Counter_Shell* __self)
+#line 11 "cpp_static_v1.cpp"
+{
+#line 11 "cpp_static_v1.cpp"
+    return state_of(__self)->ctor();
+#line 11 "cpp_static_v1.cpp"
+}
+#line 360 "cpp_static_v1.cpp.cpp"
+#line 11 "cpp_static_v1.cpp"
+void CounterState_g1::ctor()
+#line 11 "cpp_static_v1.cpp"
+{
+#line 11 "cpp_static_v1.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 11 "cpp_static_v1.cpp"
+        hot::stale_call("Counter::Counter");
+#line 11 "cpp_static_v1.cpp"
+        return;
+#line 11 "cpp_static_v1.cpp"
+    }
+#line 11 "cpp_static_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
+#line 11 "cpp_static_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 11 "cpp_static_v1.cpp"
+    HOT_TRACE_FRAME("Counter.Counter", "cpp_static_v1.cpp");
+#line 11 "cpp_static_v1.cpp"
+
+#line 11 "cpp_static_v1.cpp"
+}
+#line 383 "cpp_static_v1.cpp.cpp"
+
+#line 13 "cpp_static_v1.cpp"
+void CounterState_g1::Tick(float dt)
+#line 13 "cpp_static_v1.cpp"
+{
+#line 13 "cpp_static_v1.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 13 "cpp_static_v1.cpp"
+        hot::stale_call("Counter::Tick(float)");
+#line 13 "cpp_static_v1.cpp"
+        return;
+#line 13 "cpp_static_v1.cpp"
+    }
+#line 13 "cpp_static_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
+#line 13 "cpp_static_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 13 "cpp_static_v1.cpp"
+    HOT_TRACE_FRAME("Counter.Tick", "cpp_static_v1.cpp");
+#line 14 "cpp_static_v1.cpp"
+
+        ++hot_mod()->Counter__s_count;                // a bare name
+        hot_mod()->Counter__s_hits += 2;        // an access through "this"
+        last = Counter__s_scale(hot_mod()->Counter__s_count);    // a call of a static method
+        via_free = tally();     // a free function uses the static members
+        __self->Move(Vec3(dt, 0, 0));
+    
+#line 20 "cpp_static_v1.cpp"
+}
+#line 413 "cpp_static_v1.cpp.cpp"
+
+#line 23 "cpp_static_v1.cpp"
+[[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self)
+#line 23 "cpp_static_v1.cpp"
+{
+#line 23 "cpp_static_v1.cpp"
+    return state_of(__self)->Peek();
+#line 23 "cpp_static_v1.cpp"
+}
+#line 423 "cpp_static_v1.cpp.cpp"
+#line 23 "cpp_static_v1.cpp"
+int CounterState_g1::Peek()
+#line 23 "cpp_static_v1.cpp"
+{
+#line 23 "cpp_static_v1.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 23 "cpp_static_v1.cpp"
+        hot::stale_call("Counter::Peek");
+#line 23 "cpp_static_v1.cpp"
+        return int();
+#line 23 "cpp_static_v1.cpp"
+    }
+#line 23 "cpp_static_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
+#line 23 "cpp_static_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 23 "cpp_static_v1.cpp"
+    HOT_TRACE_FRAME("Counter.Peek", "cpp_static_v1.cpp");
+#line 24 "cpp_static_v1.cpp"
+
+        int (*fn)(int) = &Counter__s_scale;
+        return fn(hot_mod()->Counter__s_count) + Counter__s_kFactor;
+    
+#line 27 "cpp_static_v1.cpp"
+}
+#line 449 "cpp_static_v1.cpp.cpp"
 
 
 #line 29 "cpp_static_v1.cpp"
 int Counter__s_scale(int v) { return v * Counter__s_kFactor; }
 
-#line 454 "cpp_static_v1.cpp.cpp"
+#line 455 "cpp_static_v1.cpp.cpp"
 
 #line 46 "cpp_static_v1.cpp"
 int tally()
@@ -458,7 +459,7 @@ int tally()
     return Counter__s_scale(hot_mod()->Counter__s_count) + hot_mod()->Counter__s_hits;
 }
 
-#line 462 "cpp_static_v1.cpp.cpp"
+#line 463 "cpp_static_v1.cpp.cpp"
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);

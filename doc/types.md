@@ -138,17 +138,23 @@ A handle keeps its object alive. Two objects that hold handles to each other mak
 Put `[weak]` before the declaration. On a field, write the attribute on its own line. On a parameter or a local, write it inline.
 
 ```hot
-class Node {
-    Node child = null;
-    [weak]
-    Node parent = null;
+class Parent {
+    Child kid = null;
     int hp = 10;
 
-    void Adopt(Node c) { child = c; c.parent = this; }
+    void Adopt(Child c) { kid = c; c.parent = this; }
+}
+
+class Child {
+    [weak]
+    Parent parent = null;
+
     int ParentHp() { return parent != null ? parent.hp : 0; }
-    void See([weak] Node n) { [weak] Node seen = n; }
+    void See([weak] Parent p) { [weak] Parent seen = p; }
 }
 ```
+
+The two classes use each other, and the order in the file does not matter. See [Classes that use each other](classes.html#classes-that-use-each-other).
 
 These are the rules:
 

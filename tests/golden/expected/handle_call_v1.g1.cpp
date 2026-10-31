@@ -19,6 +19,7 @@
 constexpr uint32_t GEN = 1;
 // The live flag of this module. The loader sets it. The guard of each function reads it.
 static uint32_t hot_live = 0;
+struct Caller_Shell;
 
 // ---------------------------------------------------------------- class Caller
 // Slot numbers. Native virtuals come first, in the order of Actor, Wearer.
@@ -53,7 +54,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
     }
 #line 10 "handle_call_v1.hot"
     ~Caller_Shell() override { hot::destroy_state(this); }
-#line 57 "handle_call_v1.hot.cpp"
+#line 58 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     void Tick(float a0) override
@@ -63,7 +64,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 67 "handle_call_v1.hot.cpp"
+#line 68 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     void TakeDamage(float a0) override
@@ -73,7 +74,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 77 "handle_call_v1.hot.cpp"
+#line 78 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -83,7 +84,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 10 "handle_call_v1.hot"
     }
-#line 87 "handle_call_v1.hot.cpp"
+#line 88 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     int WearRaw(Charm* a0) override
@@ -93,7 +94,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<int(Actor*, Charm*)>(this, SLOT_WearRaw, a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 97 "handle_call_v1.hot.cpp"
+#line 98 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     int WearRef(const Charm& a0) override
@@ -103,7 +104,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<int(Actor*, const Charm&)>(this, SLOT_WearRef, a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 107 "handle_call_v1.hot.cpp"
+#line 108 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     int WearShared(std::shared_ptr<Charm> a0) override
@@ -113,7 +114,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<int(Actor*, std::shared_ptr<Charm>)>(this, SLOT_WearShared, a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 117 "handle_call_v1.hot.cpp"
+#line 118 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     int WearItem(Item* a0) override
@@ -123,7 +124,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<int(Actor*, Item*)>(this, SLOT_WearItem, a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 127 "handle_call_v1.hot.cpp"
+#line 128 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     int WearBlade(Blade* a0) override
@@ -133,7 +134,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<int(Actor*, Blade*)>(this, SLOT_WearBlade, a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 137 "handle_call_v1.hot.cpp"
+#line 138 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     std::shared_ptr<Charm> Spawn() override
@@ -143,7 +144,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<std::shared_ptr<Charm>(Actor*)>(this, SLOT_Spawn);
 #line 10 "handle_call_v1.hot"
     }
-#line 147 "handle_call_v1.hot.cpp"
+#line 148 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     std::shared_ptr<Charm> Make(int a0) override
@@ -153,7 +154,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<std::shared_ptr<Charm>(Actor*, int)>(this, SLOT_Make, a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 157 "handle_call_v1.hot.cpp"
+#line 158 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     Charm* Borrow() override
@@ -163,7 +164,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<Charm*(Actor*)>(this, SLOT_Borrow);
 #line 10 "handle_call_v1.hot"
     }
-#line 167 "handle_call_v1.hot.cpp"
+#line 168 "handle_call_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -182,7 +183,7 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->Actor::Tick(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 186 "handle_call_v1.hot.cpp"
+#line 187 "handle_call_v1.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG void __fwd_TakeDamage_f(float a0)
@@ -192,7 +193,7 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 196 "handle_call_v1.hot.cpp"
+#line 197 "handle_call_v1.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -202,7 +203,7 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 10 "handle_call_v1.hot"
     }
-#line 206 "handle_call_v1.hot.cpp"
+#line 207 "handle_call_v1.hot.cpp"
     // Not overridden: call the implementation of Wearer.
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG int __fwd_WearRef(const Charm& a0)
@@ -212,7 +213,7 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->Wearer::WearRef(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 216 "handle_call_v1.hot.cpp"
+#line 217 "handle_call_v1.hot.cpp"
     // Not overridden: call the implementation of Wearer.
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG int __fwd_WearShared(std::shared_ptr<Charm> a0)
@@ -222,7 +223,7 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->Wearer::WearShared(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 226 "handle_call_v1.hot.cpp"
+#line 227 "handle_call_v1.hot.cpp"
     // Not overridden: call the implementation of Wearer.
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG int __fwd_WearItem(Item* a0)
@@ -232,7 +233,7 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->Wearer::WearItem(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 236 "handle_call_v1.hot.cpp"
+#line 237 "handle_call_v1.hot.cpp"
     // Not overridden: call the implementation of Wearer.
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG std::shared_ptr<Charm> __fwd_Spawn()
@@ -242,7 +243,7 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->Wearer::Spawn();
 #line 10 "handle_call_v1.hot"
     }
-#line 246 "handle_call_v1.hot.cpp"
+#line 247 "handle_call_v1.hot.cpp"
     // Not overridden: call the implementation of Wearer.
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG std::shared_ptr<Charm> __fwd_Make(int a0)
@@ -252,7 +253,7 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->Wearer::Make(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 256 "handle_call_v1.hot.cpp"
+#line 257 "handle_call_v1.hot.cpp"
     // Not overridden: call the implementation of Wearer.
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG Charm* __fwd_Borrow()
@@ -262,12 +263,12 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->Wearer::Borrow();
 #line 10 "handle_call_v1.hot"
     }
-#line 266 "handle_call_v1.hot.cpp"
+#line 267 "handle_call_v1.hot.cpp"
 };
 
 #line 11 "handle_call_v1.hot"
 static void Caller__init_last(void*, void* f) { using T = std::shared_ptr<Charm>; new (f) T(); }
-#line 271 "handle_call_v1.hot.cpp"
+#line 272 "handle_call_v1.hot.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -305,7 +306,7 @@ HOT_HIDDEN static auto Caller__plan()
     return std::make_pair(Caller__super_args(), std::tuple<>());
 #line 10 "handle_call_v1.hot"
 }
-#line 309 "handle_call_v1.hot.cpp"
+#line 310 "handle_call_v1.hot.cpp"
 using Caller_SuperArgs = decltype(Caller__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
@@ -325,7 +326,7 @@ HOT_NODEBUG static hot::ShellBase* Caller__construct(const char* key, const void
     return nullptr;
 #line 10 "handle_call_v1.hot"
 }
-#line 329 "handle_call_v1.hot.cpp"
+#line 330 "handle_call_v1.hot.cpp"
 
 static const char* const Caller__construct_keys[] = {typeid(Caller_SuperArgs).name(), nullptr};
 
@@ -341,7 +342,7 @@ HOT_HIDDEN static Caller_Shell* Caller__build([[maybe_unused]] bool __note)
     return __self;
 #line 10 "handle_call_v1.hot"
 }
-#line 345 "handle_call_v1.hot.cpp"
+#line 346 "handle_call_v1.hot.cpp"
 #line 10 "handle_call_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Caller_Shell* Caller__new()
 #line 10 "handle_call_v1.hot"
@@ -350,8 +351,45 @@ HOT_HIDDEN static Caller_Shell* Caller__build([[maybe_unused]] bool __note)
     return Caller__build(true);
 #line 10 "handle_call_v1.hot"
 }
-#line 354 "handle_call_v1.hot.cpp"
+#line 355 "handle_call_v1.hot.cpp"
 
+// ------------------------------------------------------ record and entry
+static const hot::SlotFn Caller_slots[SLOT_COUNT] = {
+    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_Tick),
+    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&CallerState_g1::WearRaw),
+    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_WearRef),
+    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_WearShared),
+    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_WearItem),
+    reinterpret_cast<hot::SlotFn>(&CallerState_g1::WearBlade),
+    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_Spawn),
+    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_Make),
+    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_Borrow),
+};
+
+hot::ClassRecord Caller_record = {
+    "Caller", GEN, Caller_slots, SLOT_COUNT, &Caller_layout, nullptr,
+    "Actor, Wearer", hot::shell_layout_hash("Actor, Wearer", sizeof(Caller_Shell), alignof(Caller_Shell), 11),
+    nullptr,
+    &Caller__construct, typeid(Caller_SuperArgs).name(), nullptr, nullptr, nullptr,
+};
+
+#line 10 "handle_call_v1.hot"
+HOT_NODEBUG static hot::Instance Caller_create()
+#line 10 "handle_call_v1.hot"
+{
+#line 10 "handle_call_v1.hot"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 10 "handle_call_v1.hot"
+    auto* p = new Caller_Shell(hot::Construct{}, std::string("Caller"));
+#line 10 "handle_call_v1.hot"
+    return {static_cast<Actor*>(p), p};
+#line 10 "handle_call_v1.hot"
+}
+#line 391 "handle_call_v1.hot.cpp"
+
+// ---------------------------------------------------------------- function bodies
 #line 13 "handle_call_v1.hot"
 int CallerState_g1::WearRaw(Charm* __c)
 #line 13 "handle_call_v1.hot"
@@ -378,7 +416,7 @@ int CallerState_g1::WearRaw(Charm* __c)
     HOT_TRACE_LINE(); return 1;
 #line 16 "handle_call_v1.hot"
 }
-#line 382 "handle_call_v1.hot.cpp"
+#line 420 "handle_call_v1.hot.cpp"
 
 #line 19 "handle_call_v1.hot"
 int CallerState_g1::WearBlade(Blade* __b)
@@ -444,43 +482,7 @@ int CallerState_g1::WearBlade(Blade* __b)
     HOT_TRACE_LINE(); return Mixed(hot::star(local));
 #line 41 "handle_call_v1.hot"
 }
-#line 448 "handle_call_v1.hot.cpp"
-
-// ------------------------------------------------------ record and entry
-static const hot::SlotFn Caller_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_Tick),
-    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&CallerState_g1::WearRaw),
-    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_WearRef),
-    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_WearShared),
-    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_WearItem),
-    reinterpret_cast<hot::SlotFn>(&CallerState_g1::WearBlade),
-    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_Spawn),
-    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_Make),
-    reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_Borrow),
-};
-
-hot::ClassRecord Caller_record = {
-    "Caller", GEN, Caller_slots, SLOT_COUNT, &Caller_layout, nullptr,
-    "Actor, Wearer", hot::shell_layout_hash("Actor, Wearer", sizeof(Caller_Shell), alignof(Caller_Shell), 11),
-    nullptr,
-    &Caller__construct, typeid(Caller_SuperArgs).name(), nullptr, nullptr, nullptr,
-};
-
-#line 10 "handle_call_v1.hot"
-HOT_NODEBUG static hot::Instance Caller_create()
-#line 10 "handle_call_v1.hot"
-{
-#line 10 "handle_call_v1.hot"
-    hot::ScriptEntry entry;  // the creation is an entry (S27)
-#line 10 "handle_call_v1.hot"
-    auto* p = new Caller_Shell(hot::Construct{}, std::string("Caller"));
-#line 10 "handle_call_v1.hot"
-    return {static_cast<Actor*>(p), p};
-#line 10 "handle_call_v1.hot"
-}
-#line 484 "handle_call_v1.hot.cpp"
+#line 486 "handle_call_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

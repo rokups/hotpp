@@ -73,20 +73,21 @@ static const hot::StateLayout HotModule_layout = {
     "HotModule", sizeof(HotModule), alignof(HotModule), 1, HotModule_fields,
 };
 
+// ---------------------------------------------------------------- function bodies
 static float HotModule__convert_total(int old)
 {
 #line 27 "cpp_player_v2.cpp"
 
     return old * 2.0f;
 
-#line 83 "cpp_player_v2.cpp.cpp"
+#line 84 "cpp_player_v2.cpp.cpp"
 }
 
 
 #line 18 "cpp_player_v2.cpp"
 const float kMaxHp = 100.0f;
 
-#line 90 "cpp_player_v2.cpp.cpp"
+#line 91 "cpp_player_v2.cpp.cpp"
 
 #line 20 "cpp_player_v2.cpp"
 static float clamp_hp(float v)
@@ -94,7 +95,7 @@ static float clamp_hp(float v)
     return Math::Max(Math::Min(v, kMaxHp), 0.0f);
 }
 
-#line 98 "cpp_player_v2.cpp.cpp"
+#line 99 "cpp_player_v2.cpp.cpp"
 
 // ---------------------------------------------------------------- class Player
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -122,7 +123,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
     }
 #line 31 "cpp_player_v2.cpp"
     ~Player_Shell() override { hot::destroy_state(this); }
-#line 126 "cpp_player_v2.cpp.cpp"
+#line 127 "cpp_player_v2.cpp.cpp"
 
 #line 31 "cpp_player_v2.cpp"
     void Tick(float a0) override
@@ -132,7 +133,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 31 "cpp_player_v2.cpp"
     }
-#line 136 "cpp_player_v2.cpp.cpp"
+#line 137 "cpp_player_v2.cpp.cpp"
 
 #line 31 "cpp_player_v2.cpp"
     void TakeDamage(float a0) override
@@ -142,7 +143,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 31 "cpp_player_v2.cpp"
     }
-#line 146 "cpp_player_v2.cpp.cpp"
+#line 147 "cpp_player_v2.cpp.cpp"
 
 #line 31 "cpp_player_v2.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -152,7 +153,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 31 "cpp_player_v2.cpp"
     }
-#line 156 "cpp_player_v2.cpp.cpp"
+#line 157 "cpp_player_v2.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -175,22 +176,22 @@ struct PlayerState_g2 {
 
 #line 74 "cpp_player_v2.cpp"
 static void Player__init_health(void*, void* f) { using T = float; new (f) T(100.0f); }
-#line 179 "cpp_player_v2.cpp.cpp"
+#line 180 "cpp_player_v2.cpp.cpp"
 #line 75 "cpp_player_v2.cpp"
 static void Player__init_speed(void*, void* f) { using T = float; new (f) T(5.0f); }
-#line 182 "cpp_player_v2.cpp.cpp"
+#line 183 "cpp_player_v2.cpp.cpp"
 #line 76 "cpp_player_v2.cpp"
 static void Player__init_target(void*, void* f) { using T = std::string; new (f) T(); }
-#line 185 "cpp_player_v2.cpp.cpp"
+#line 186 "cpp_player_v2.cpp.cpp"
 #line 77 "cpp_player_v2.cpp"
 static void Player__init_p(void*, void* f) { using T = Point; new (f) T{1, 2}; }
-#line 188 "cpp_player_v2.cpp.cpp"
+#line 189 "cpp_player_v2.cpp.cpp"
 #line 78 "cpp_player_v2.cpp"
 static void Player__init_mode(void*, void* f) { using T = Mode; new (f) T(Mode::Idle); }
-#line 191 "cpp_player_v2.cpp.cpp"
+#line 192 "cpp_player_v2.cpp.cpp"
 #line 79 "cpp_player_v2.cpp"
 static void Player__init_level(void*, void* f) { using T = float; new (f) T(1.0f); }
-#line 194 "cpp_player_v2.cpp.cpp"
+#line 195 "cpp_player_v2.cpp.cpp"
 static float Player__convert_level(int old);
 #line 66 "cpp_player_v2.cpp"
 static void Player__convert_level_hook(void* dst, const void* src)
@@ -200,7 +201,7 @@ static void Player__convert_level_hook(void* dst, const void* src)
     new (dst) float(Player__convert_level(*static_cast<const int*>(src)));
 #line 66 "cpp_player_v2.cpp"
 }
-#line 204 "cpp_player_v2.cpp.cpp"
+#line 205 "cpp_player_v2.cpp.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -261,7 +262,7 @@ HOT_HIDDEN static void Player__ctor_chain(Player_Shell* __self, [[maybe_unused]]
     Player__ctor(__self);
 #line 34 "cpp_player_v2.cpp"
 }
-#line 265 "cpp_player_v2.cpp.cpp"
+#line 266 "cpp_player_v2.cpp.cpp"
 using Player_SuperArgs = decltype(Player__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
@@ -281,7 +282,7 @@ HOT_NODEBUG static hot::ShellBase* Player__construct(const char* key, const void
     return nullptr;
 #line 31 "cpp_player_v2.cpp"
 }
-#line 285 "cpp_player_v2.cpp.cpp"
+#line 286 "cpp_player_v2.cpp.cpp"
 
 static const char* const Player__construct_keys[] = {typeid(Player_SuperArgs).name(), nullptr};
 
@@ -309,7 +310,7 @@ HOT_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
     return __self;
 #line 34 "cpp_player_v2.cpp"
 }
-#line 313 "cpp_player_v2.cpp.cpp"
+#line 314 "cpp_player_v2.cpp.cpp"
 #line 34 "cpp_player_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static Player_Shell* Player__new()
 #line 34 "cpp_player_v2.cpp"
@@ -318,7 +319,7 @@ HOT_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
     return Player__build(true);
 #line 34 "cpp_player_v2.cpp"
 }
-#line 322 "cpp_player_v2.cpp.cpp"
+#line 323 "cpp_player_v2.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -330,208 +331,7 @@ HOT_NODEBUG static hot::ShellBase* Player__new_default()
     return Player__build(false);
 #line 34 "cpp_player_v2.cpp"
 }
-#line 334 "cpp_player_v2.cpp.cpp"
-
-#line 34 "cpp_player_v2.cpp"
-[[maybe_unused]] HOT_HIDDEN static void Player__ctor(Player_Shell* __self)
-#line 34 "cpp_player_v2.cpp"
-{
-#line 34 "cpp_player_v2.cpp"
-    return state_of(__self)->ctor();
-#line 34 "cpp_player_v2.cpp"
-}
-#line 344 "cpp_player_v2.cpp.cpp"
-#line 34 "cpp_player_v2.cpp"
-void PlayerState_g2::ctor()
-#line 34 "cpp_player_v2.cpp"
-{
-#line 34 "cpp_player_v2.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 34 "cpp_player_v2.cpp"
-        hot::stale_call("Player::Player");
-#line 34 "cpp_player_v2.cpp"
-        return;
-#line 34 "cpp_player_v2.cpp"
-    }
-#line 34 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
-#line 34 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 34 "cpp_player_v2.cpp"
-    HOT_TRACE_FRAME("Player.Player", "cpp_player_v2.cpp");
-#line 34 "cpp_player_v2.cpp"
-
-#line 34 "cpp_player_v2.cpp"
-}
-#line 367 "cpp_player_v2.cpp.cpp"
-
-#line 36 "cpp_player_v2.cpp"
-void PlayerState_g2::Tick(float dt)
-#line 36 "cpp_player_v2.cpp"
-{
-#line 36 "cpp_player_v2.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 36 "cpp_player_v2.cpp"
-        hot::stale_call("Player::Tick(float)");
-#line 36 "cpp_player_v2.cpp"
-        return;
-#line 36 "cpp_player_v2.cpp"
-    }
-#line 36 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
-#line 36 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 36 "cpp_player_v2.cpp"
-    HOT_TRACE_FRAME("Player.Tick", "cpp_player_v2.cpp");
-#line 37 "cpp_player_v2.cpp"
-
-        __self->Move(Vec3(2.0f * speed * dt, 0, 0));
-        std::printf("[v2] %s: Tick dt=%.4f pos.x=%.4f health=%.1f level=%.1f\n", __self->Name.c_str(), dt,
-            __self->Position.x, health, level);
-        hot_mod()->total++;
-        auto step = [&, __self] { __self->Move(Vec3(0, 1, 0)); };
-        step();
-    
-#line 44 "cpp_player_v2.cpp"
-}
-#line 398 "cpp_player_v2.cpp.cpp"
-
-#line 46 "cpp_player_v2.cpp"
-void PlayerState_g2::TakeDamage_f(float amount)
-#line 46 "cpp_player_v2.cpp"
-{
-#line 46 "cpp_player_v2.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 46 "cpp_player_v2.cpp"
-        hot::stale_call("Player::TakeDamage(float)");
-#line 46 "cpp_player_v2.cpp"
-        return;
-#line 46 "cpp_player_v2.cpp"
-    }
-#line 46 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
-#line 46 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 46 "cpp_player_v2.cpp"
-    HOT_TRACE_FRAME("Player.TakeDamage", "cpp_player_v2.cpp");
-#line 47 "cpp_player_v2.cpp"
-
-        health = clamp_hp(health - amount);
-        std::printf("[v2] %s: TakeDamage %.1f -> health=%.1f\n", __self->Name.c_str(), amount, health);
-    
-#line 50 "cpp_player_v2.cpp"
-}
-#line 425 "cpp_player_v2.cpp.cpp"
-
-#line 52 "cpp_player_v2.cpp"
-void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
-#line 52 "cpp_player_v2.cpp"
-{
-#line 52 "cpp_player_v2.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 52 "cpp_player_v2.cpp"
-        hot::stale_call("Player::TakeDamage(Actor &, float)");
-#line 52 "cpp_player_v2.cpp"
-        return;
-#line 52 "cpp_player_v2.cpp"
-    }
-#line 52 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
-#line 52 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 52 "cpp_player_v2.cpp"
-    HOT_TRACE_FRAME("Player.TakeDamage", "cpp_player_v2.cpp");
-#line 53 "cpp_player_v2.cpp"
-
-        target = source.Name;
-        std::printf("[v2] %s: hit by %s\n", __self->Name.c_str(), target.c_str());
-        __self->TakeDamage(amount);
-    
-#line 57 "cpp_player_v2.cpp"
-}
-#line 453 "cpp_player_v2.cpp.cpp"
-
-#line 59 "cpp_player_v2.cpp"
-[[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float a)
-#line 59 "cpp_player_v2.cpp"
-{
-#line 59 "cpp_player_v2.cpp"
-    return state_of(__self)->heal(std::forward<float>(a));
-#line 59 "cpp_player_v2.cpp"
-}
-#line 463 "cpp_player_v2.cpp.cpp"
-#line 59 "cpp_player_v2.cpp"
-void PlayerState_g2::heal(float a)
-#line 59 "cpp_player_v2.cpp"
-{
-#line 59 "cpp_player_v2.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 59 "cpp_player_v2.cpp"
-        hot::stale_call("Player::heal");
-#line 59 "cpp_player_v2.cpp"
-        return;
-#line 59 "cpp_player_v2.cpp"
-    }
-#line 59 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
-#line 59 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 59 "cpp_player_v2.cpp"
-    HOT_TRACE_FRAME("Player.heal", "cpp_player_v2.cpp");
-#line 60 "cpp_player_v2.cpp"
-
-        health = clamp_hp(health + 2.0f * a);
-        std::printf("[v2] %s: heal %.1f (x2) -> health=%.1f\n", __self->Name.c_str(), a, health);
-    
-#line 63 "cpp_player_v2.cpp"
-}
-#line 489 "cpp_player_v2.cpp.cpp"
-
-#line 66 "cpp_player_v2.cpp"
-static float Player__convert_level(int old)
-#line 66 "cpp_player_v2.cpp"
-{
-#line 66 "cpp_player_v2.cpp"
- return old * 10.0f; 
-#line 66 "cpp_player_v2.cpp"
-}
-#line 499 "cpp_player_v2.cpp.cpp"
-
-#line 68 "cpp_player_v2.cpp"
-[[maybe_unused]] HOT_HIDDEN static void Player__onReload(Player_Shell* __self, const hot::OldState& old)
-#line 68 "cpp_player_v2.cpp"
-{
-#line 68 "cpp_player_v2.cpp"
-    return state_of(__self)->onReload(std::forward<const hot::OldState&>(old));
-#line 68 "cpp_player_v2.cpp"
-}
-#line 509 "cpp_player_v2.cpp.cpp"
-#line 68 "cpp_player_v2.cpp"
-void PlayerState_g2::onReload(const hot::OldState& old)
-#line 68 "cpp_player_v2.cpp"
-{
-#line 68 "cpp_player_v2.cpp"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 68 "cpp_player_v2.cpp"
-        hot::stale_call("Player::onReload");
-#line 68 "cpp_player_v2.cpp"
-        return;
-#line 68 "cpp_player_v2.cpp"
-    }
-#line 68 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
-#line 68 "cpp_player_v2.cpp"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 68 "cpp_player_v2.cpp"
-    HOT_TRACE_FRAME("Player.onReload", "cpp_player_v2.cpp");
-#line 69 "cpp_player_v2.cpp"
-
-        if (old.has("hp") && old.get<float>("hp") > 100.0f)
-            health = 100.0f;
-    
-#line 72 "cpp_player_v2.cpp"
-}
-#line 535 "cpp_player_v2.cpp.cpp"
+#line 335 "cpp_player_v2.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Player_slots[SLOT_COUNT] = {
@@ -549,7 +349,7 @@ static void Player__onReload_hook(hot::ShellBase* s, const hot::OldState& old)
     Player__onReload(static_cast<Player_Shell*>(s), old);
 #line 68 "cpp_player_v2.cpp"
 }
-#line 553 "cpp_player_v2.cpp.cpp"
+#line 353 "cpp_player_v2.cpp.cpp"
 
 hot::ClassRecord Player_record = {
     "Player", GEN, Player_slots, SLOT_COUNT, &Player_layout, nullptr,
@@ -584,7 +384,209 @@ HOT_NODEBUG static hot::Instance Player_create()
     return {static_cast<Actor*>(p), p};
 #line 31 "cpp_player_v2.cpp"
 }
-#line 588 "cpp_player_v2.cpp.cpp"
+#line 388 "cpp_player_v2.cpp.cpp"
+
+// ---------------------------------------------------------------- function bodies
+#line 34 "cpp_player_v2.cpp"
+[[maybe_unused]] HOT_HIDDEN static void Player__ctor(Player_Shell* __self)
+#line 34 "cpp_player_v2.cpp"
+{
+#line 34 "cpp_player_v2.cpp"
+    return state_of(__self)->ctor();
+#line 34 "cpp_player_v2.cpp"
+}
+#line 399 "cpp_player_v2.cpp.cpp"
+#line 34 "cpp_player_v2.cpp"
+void PlayerState_g2::ctor()
+#line 34 "cpp_player_v2.cpp"
+{
+#line 34 "cpp_player_v2.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 34 "cpp_player_v2.cpp"
+        hot::stale_call("Player::Player");
+#line 34 "cpp_player_v2.cpp"
+        return;
+#line 34 "cpp_player_v2.cpp"
+    }
+#line 34 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
+#line 34 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 34 "cpp_player_v2.cpp"
+    HOT_TRACE_FRAME("Player.Player", "cpp_player_v2.cpp");
+#line 34 "cpp_player_v2.cpp"
+
+#line 34 "cpp_player_v2.cpp"
+}
+#line 422 "cpp_player_v2.cpp.cpp"
+
+#line 36 "cpp_player_v2.cpp"
+void PlayerState_g2::Tick(float dt)
+#line 36 "cpp_player_v2.cpp"
+{
+#line 36 "cpp_player_v2.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 36 "cpp_player_v2.cpp"
+        hot::stale_call("Player::Tick(float)");
+#line 36 "cpp_player_v2.cpp"
+        return;
+#line 36 "cpp_player_v2.cpp"
+    }
+#line 36 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
+#line 36 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 36 "cpp_player_v2.cpp"
+    HOT_TRACE_FRAME("Player.Tick", "cpp_player_v2.cpp");
+#line 37 "cpp_player_v2.cpp"
+
+        __self->Move(Vec3(2.0f * speed * dt, 0, 0));
+        std::printf("[v2] %s: Tick dt=%.4f pos.x=%.4f health=%.1f level=%.1f\n", __self->Name.c_str(), dt,
+            __self->Position.x, health, level);
+        hot_mod()->total++;
+        auto step = [&, __self] { __self->Move(Vec3(0, 1, 0)); };
+        step();
+    
+#line 44 "cpp_player_v2.cpp"
+}
+#line 453 "cpp_player_v2.cpp.cpp"
+
+#line 46 "cpp_player_v2.cpp"
+void PlayerState_g2::TakeDamage_f(float amount)
+#line 46 "cpp_player_v2.cpp"
+{
+#line 46 "cpp_player_v2.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 46 "cpp_player_v2.cpp"
+        hot::stale_call("Player::TakeDamage(float)");
+#line 46 "cpp_player_v2.cpp"
+        return;
+#line 46 "cpp_player_v2.cpp"
+    }
+#line 46 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
+#line 46 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 46 "cpp_player_v2.cpp"
+    HOT_TRACE_FRAME("Player.TakeDamage", "cpp_player_v2.cpp");
+#line 47 "cpp_player_v2.cpp"
+
+        health = clamp_hp(health - amount);
+        std::printf("[v2] %s: TakeDamage %.1f -> health=%.1f\n", __self->Name.c_str(), amount, health);
+    
+#line 50 "cpp_player_v2.cpp"
+}
+#line 480 "cpp_player_v2.cpp.cpp"
+
+#line 52 "cpp_player_v2.cpp"
+void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
+#line 52 "cpp_player_v2.cpp"
+{
+#line 52 "cpp_player_v2.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 52 "cpp_player_v2.cpp"
+        hot::stale_call("Player::TakeDamage(Actor &, float)");
+#line 52 "cpp_player_v2.cpp"
+        return;
+#line 52 "cpp_player_v2.cpp"
+    }
+#line 52 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
+#line 52 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 52 "cpp_player_v2.cpp"
+    HOT_TRACE_FRAME("Player.TakeDamage", "cpp_player_v2.cpp");
+#line 53 "cpp_player_v2.cpp"
+
+        target = source.Name;
+        std::printf("[v2] %s: hit by %s\n", __self->Name.c_str(), target.c_str());
+        __self->TakeDamage(amount);
+    
+#line 57 "cpp_player_v2.cpp"
+}
+#line 508 "cpp_player_v2.cpp.cpp"
+
+#line 59 "cpp_player_v2.cpp"
+[[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float a)
+#line 59 "cpp_player_v2.cpp"
+{
+#line 59 "cpp_player_v2.cpp"
+    return state_of(__self)->heal(std::forward<float>(a));
+#line 59 "cpp_player_v2.cpp"
+}
+#line 518 "cpp_player_v2.cpp.cpp"
+#line 59 "cpp_player_v2.cpp"
+void PlayerState_g2::heal(float a)
+#line 59 "cpp_player_v2.cpp"
+{
+#line 59 "cpp_player_v2.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 59 "cpp_player_v2.cpp"
+        hot::stale_call("Player::heal");
+#line 59 "cpp_player_v2.cpp"
+        return;
+#line 59 "cpp_player_v2.cpp"
+    }
+#line 59 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
+#line 59 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 59 "cpp_player_v2.cpp"
+    HOT_TRACE_FRAME("Player.heal", "cpp_player_v2.cpp");
+#line 60 "cpp_player_v2.cpp"
+
+        health = clamp_hp(health + 2.0f * a);
+        std::printf("[v2] %s: heal %.1f (x2) -> health=%.1f\n", __self->Name.c_str(), a, health);
+    
+#line 63 "cpp_player_v2.cpp"
+}
+#line 544 "cpp_player_v2.cpp.cpp"
+
+#line 66 "cpp_player_v2.cpp"
+static float Player__convert_level(int old)
+#line 66 "cpp_player_v2.cpp"
+{
+#line 66 "cpp_player_v2.cpp"
+ return old * 10.0f; 
+#line 66 "cpp_player_v2.cpp"
+}
+#line 554 "cpp_player_v2.cpp.cpp"
+
+#line 68 "cpp_player_v2.cpp"
+[[maybe_unused]] HOT_HIDDEN static void Player__onReload(Player_Shell* __self, const hot::OldState& old)
+#line 68 "cpp_player_v2.cpp"
+{
+#line 68 "cpp_player_v2.cpp"
+    return state_of(__self)->onReload(std::forward<const hot::OldState&>(old));
+#line 68 "cpp_player_v2.cpp"
+}
+#line 564 "cpp_player_v2.cpp.cpp"
+#line 68 "cpp_player_v2.cpp"
+void PlayerState_g2::onReload(const hot::OldState& old)
+#line 68 "cpp_player_v2.cpp"
+{
+#line 68 "cpp_player_v2.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 68 "cpp_player_v2.cpp"
+        hot::stale_call("Player::onReload");
+#line 68 "cpp_player_v2.cpp"
+        return;
+#line 68 "cpp_player_v2.cpp"
+    }
+#line 68 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
+#line 68 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 68 "cpp_player_v2.cpp"
+    HOT_TRACE_FRAME("Player.onReload", "cpp_player_v2.cpp");
+#line 69 "cpp_player_v2.cpp"
+
+        if (old.has("hp") && old.get<float>("hp") > 100.0f)
+            health = 100.0f;
+    
+#line 72 "cpp_player_v2.cpp"
+}
+#line 590 "cpp_player_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

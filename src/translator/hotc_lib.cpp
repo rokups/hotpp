@@ -128,6 +128,43 @@ std::string weak_storage_or_fail(
     return w;
 }
 
+// A template argument that names a script class (for example "std.vector<Child>") is not supported
+// yet (task 48). The type of the argument is the shell, not the handle. A smart pointer of the
+// class is the handle type, so it is not an error. "type" is the script type text.
+void fail_on_script_class_targ(
+    const hotc::TypeModel& types, const hotc::LineMap& map, uint32_t pos, const std::string& type)
+{
+    std::vector<std::string> outer; // the template name at each open "<"
+    std::string word, last;
+    auto end_word = [&](size_t at)
+    {
+        if (word.empty())
+            return;
+        const bool qualified = at >= word.size() + 2 && type.compare(at - word.size() - 2, 2, "::") == 0;
+        const bool smart = !outer.empty()
+            && (outer.back() == "shared_ptr" || outer.back() == "weak_ptr" || outer.back() == "unique_ptr");
+        if (!outer.empty() && !qualified && !smart && types.is_script_class(word) && !types.is_script_value(word))
+            fail_at(map, pos, "a template argument cannot be a script class yet: '" + word + "'");
+        last = word;
+        word.clear();
+    };
+    for (size_t i = 0; i < type.size(); ++i)
+    {
+        const char c = type[i];
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_')
+        {
+            word += c;
+            continue;
+        }
+        end_word(i);
+        if (c == '<')
+            outer.push_back(last);
+        else if (c == '>' && !outer.empty())
+            outer.pop_back();
+    }
+    end_word(type.size());
+}
+
 // A "[weak] T x = null" field keeps no initializer: an empty weak_ptr is null.
 void drop_weak_null_init(hotc::ast::Field& f)
 {
@@ -3495,6 +3532,51 @@ void translate_impl(
         o.w("\n");
         return true;
     };
+    // The function bodies come after the last block (design 7.10.1). A body can then use every
+    // class of the script, also a class that comes later in the emit order. The loop lowers each
+    // body in its block, because the lowering changes the block (for example "handle_this").
+    // "write" writes the text of the body later. "ns" is the namespace of the class, or empty.
+    struct DeferredBody
+    {
+        std::string ns;
+        std::function<void()> write;
+    };
+    std::vector<DeferredBody> bodies;
+    // The parts of a method that the text of a deferred body reads. The emitter holds the statements.
+    auto body_head = [](const Method& m)
+    {
+        auto h = std::make_shared<Method>();
+        h->name = m.name;
+        h->params = m.params;
+        h->line = m.line;
+        h->end_line = m.end_line;
+        h->pos = m.pos;
+        h->raw = m.raw;
+        h->raw_body = m.raw_body;
+        h->raw_line = m.raw_line;
+        h->raw_pre = m.raw_pre;
+        return std::shared_ptr<const Method>(std::move(h));
+    };
+    // Lowers the statements of a body into an emitter. Returns null for a raw body or an error.
+    auto lower_body = [&](Method& m, RCtx& cx, bool trace) -> std::shared_ptr<hotc::ast::Emitter>
+    {
+        if (m.raw)
+            return nullptr;
+        hotc::lower_block(m.body, cx, g_diag);
+        if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
+            return nullptr;
+        auto em = std::make_shared<hotc::ast::Emitter>(map, opt.input);
+        em->trace_lines = trace;
+        hotc::ast::emit_stmts(m.body.stmts, *em, 1);
+        em->finish();
+        return em;
+    };
+    // Writes the statements of a deferred body: the raw text or the text of the emitter.
+    auto write_stmts = [&](const Method& m, const hotc::ast::Emitter* em)
+    {
+        if (!write_raw(m) && em)
+            o.w_emitted(*em, all_text);
+    };
     reset();
     // S26: the native structs with a function pointer field. The runtime reads this as a code holder.
     // "only" limits the marks to the types in the set. A mark comes once. A ".cpp" script writes the
@@ -3541,34 +3623,44 @@ void translate_impl(
         o.w("[[maybe_unused]] HOT_HIDDEN static " + kModuleName + "* hot_mod() { return static_cast<" + kModuleName
             + "*>(" + kModuleName + "_slot); }\n");
     }
-    // A ".cpp" script can name a script class before its class block: a static method prototype
-    // or a module variable with a pointer to the class. The shell and its alias are declared here.
+    // A script can name a script class before its class block: a handle field, a parameter, a
+    // static method prototype or a module variable with a pointer to the class. So two classes can
+    // use each other through handles. The shell and its alias (the type name of the class for the
+    // script, design 7.10.1) are declared here.
     // A class in a namespace gets its names in the nested namespace "hot_gen" of the namespace
     // (see ast::gen_namespace). The names have the file-scope form "game__Player", so a class
     // with the same name in another namespace does not collide. A using directive makes the names
     // visible at file scope. The class name as written ("Player") is an alias in the namespace.
-    if (sc.is_cpp)
+    // A ".hot" script gets the alias only when the script can use the name. So a typo of a class
+    // name stays an unknown type, and the compiler does not suggest the class.
     {
+        const std::set<std::string> used_types = hotc::used_type_names(sc);
+        const std::set<std::string> new_set = hotc::new_targets(sc);
         std::set<std::string> directives;
         for (const ClassDef& c : sc.classes)
         {
             if (c.name == kModuleName || c.is_value)
                 continue;
+            const bool named = sc.is_cpp || !c.ctors.empty() || new_set.count(c.name) || used_types.count(c.name)
+                || script_parent(c) || has_children.count(c.name);
+            const std::string alias = named ? " using " + c.name + " = " + c.name + "_Shell;" : std::string();
             if (c.ns.empty())
             {
-                o.w("struct " + c.name + "_Shell;\nusing " + c.name + " = " + c.name + "_Shell;\n");
+                o.w("struct " + c.name + "_Shell;" + (named ? "\nusing " + c.name + " = " + c.name + "_Shell;" : "")
+                    + "\n");
                 continue;
             }
             const std::string gen = hotc::ast::gen_namespace(c.ns);
-            o.w("namespace " + gen + " { struct " + c.name + "_Shell; using " + c.name + " = " + c.name + "_Shell; }\n");
-            o.w("namespace " + c.ns + " { using " + last_component(c.key_name()) + " = ::" + gen + "::" + c.name
-                + "_Shell; }\n");
+            o.w("namespace " + gen + " { struct " + c.name + "_Shell;" + alias + " }\n");
+            if (named)
+                o.w("namespace " + c.ns + " { using " + last_component(c.key_name()) + " = ::" + gen + "::" + c.name
+                    + "_Shell; }\n");
             if (directives.insert(gen).second)
                 o.w("using namespace " + gen + ";\n");
         }
-        // The module variables in a namespace can use the directive too.
+        // The module variables in a namespace of a ".cpp" script can use the directive too.
         for (const ClassDef& c : sc.classes)
-            if (c.name == kModuleName)
+            if (sc.is_cpp && c.name == kModuleName)
                 for (const Field& f : c.fields)
                     if (!f.ns.empty() && directives.insert(hotc::ast::gen_namespace(f.ns)).second)
                     {
@@ -3611,17 +3703,18 @@ void translate_impl(
     std::vector<std::pair<std::string, bool>> registers; // class name, for the register function
     std::vector<std::string> thunk_regs;
     std::vector<std::string> flag_regs; // the record flags that script_register sets
-    // The script classes that a "new" expression names (design 7.3). They get a "new" function.
-    const std::set<std::string> new_set = hotc::new_targets(sc);
     std::set<std::string> new_ready; // the classes with a "new" function that are emitted so far
 
     // ---- [value] script classes (design 7.10.1). A value class is a C++ struct with real
     // copy semantics. Its member functions are inline in the generation module, so a reload
     // replaces them with the module. Its field table lets the migration recurse (design 5.3).
-    const std::set<std::string> used_types = hotc::used_type_names(sc);
     std::set<std::string> script_names;
     for (const ClassDef& cd : sc.classes)
         script_names.insert(cd.name);
+    // A function body comes after the last block, so it can build each class with "new". A field
+    // initializer is in the block: it uses "new_ready".
+    std::set<std::string> body_new = script_names;
+    body_new.erase(kModuleName);
     auto param_text = [](const std::vector<hotc::ast::Param>& ps)
     {
         std::string r;
@@ -3963,35 +4056,34 @@ void translate_impl(
         o.w("static const hot::StateLayout " + cn + "_layout = {\n    \"" + cn + "\", sizeof(" + cn + "), alignof(" + cn
             + "), " + std::to_string(cd.fields.size()) + ", " + cn + "_fields,\n};\n\n");
 
-        // The function bodies. "self" is the struct itself, so "st" is "self".
+        // The function bodies. "self" is the struct itself, so "st" is "self". The text comes
+        // after the last block (see "bodies").
         auto emit_vbody = [&](Method& m, const std::string& sym, const std::string& ret, const std::string& what)
         {
             RCtx cx = base_cx;
             cx.where = what;
+            cx.new_classes = body_new;
             hotc::add_params(cx, m.params);
+            std::shared_ptr<hotc::ast::Emitter> em = lower_body(m, cx, false);
+            if (!g_diag.items.empty())
+                return;
             // The head, the braces and the local name map to the script line of the function.
-            const std::string at = "#line " + std::to_string(m.line) + " \"" + esc(file_at(m.pos)) + "\"\n";
+            const std::string file = esc(file_at(m.pos));
+            const std::string at = "#line " + std::to_string(m.line) + " \"" + file + "\"\n";
             const int end_line = m.end_line > 0 ? m.end_line : m.line;
-            o.w(at);
-            o.w("static " + ret + " " + sym + "(" + cn + "* __self" + param_text(m.params) + ")\n");
-            o.w(at + "{\n");
-            o.w(at + "    HOT_NODEBUG_LOCAL auto* __st = __self;\n");
-            if (!write_raw(m))
-            {
-                hotc::lower_block(m.body, cx, g_diag);
-                if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
+            const std::string head = "static " + ret + " " + sym + "(" + cn + "* __self" + param_text(m.params) + ")\n";
+            bodies.push_back({std::string(),
+                [&o, &reset, &write_stmts, h = body_head(m), em, file, at, end_line, head]
                 {
+                    o.w(at);
+                    o.w(head);
+                    o.w(at + "{\n");
+                    o.w(at + "    HOT_NODEBUG_LOCAL auto* __st = __self;\n");
+                    write_stmts(*h, em.get());
+                    o.w("#line " + std::to_string(end_line) + " \"" + file + "\"\n}\n");
                     reset();
-                    return;
-                }
-                hotc::ast::Emitter em(map, opt.input);
-                hotc::ast::emit_stmts(m.body.stmts, em, 1);
-                em.finish();
-                o.w_emitted(em, all_text);
-            }
-            o.w("#line " + std::to_string(end_line) + " \"" + esc(file_at(m.pos)) + "\"\n}\n");
-            reset();
-            o.w("\n");
+                    o.w("\n");
+                }});
         };
         for (hotc::ast::Ctor& c : cd.ctors)
         {
@@ -4018,34 +4110,39 @@ void translate_impl(
             cx.in_module_init = false;
             cx.in_module_hook = true;
             hotc::add_params(cx, m->params);
-            o.w("static " + m->ret + " " + P + m->name + "(" + m->params[0].type + " " + m->params[0].name + ")\n{\n");
-            if (!write_raw(*m))
-            {
-                hotc::lower_block(m->body, cx, g_diag);
-                if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
-                    continue;
-                hotc::ast::Emitter em(map, opt.input);
-                hotc::ast::emit_stmts(m->body.stmts, em, 1);
-                em.finish();
-                o.w_emitted(em, all_text);
-            }
-            reset();
-            o.w("}\n\n");
+            std::shared_ptr<hotc::ast::Emitter> em = lower_body(*m, cx, false);
+            if (!g_diag.items.empty())
+                continue;
+            const std::string head =
+                "static " + m->ret + " " + P + m->name + "(" + m->params[0].type + " " + m->params[0].name + ")\n{\n";
+            bodies.push_back({std::string(),
+                [&o, &reset, &write_stmts, h = body_head(*m), em, head]
+                {
+                    o.w(head);
+                    write_stmts(*h, em.get());
+                    reset();
+                    o.w("}\n\n");
+                }});
         }
         if (!g_diag.items.empty())
             throw TranslateAbort{};
     };
 
-    // The emit order (design 7.10.1). A class that names another script class in a field, a
-    // parameter, a local or a "new" comes after that class. So the script can declare the
-    // classes in any order. A [value] class comes first: other classes hold it as a field.
-    // The other classes keep the script order when no use forces a change. A cycle is an error.
+    // The emit order (design 7.10.1). A struct that a class holds by value comes before the class,
+    // and a script parent comes before its child. These are the hard uses: a cycle of them is an
+    // error. A handle (a field, a parameter, a local or a "new") needs no order: the forward block
+    // declares each class, and the function bodies come after the last block. So two classes can
+    // use each other through handles. A "new" in the block (a field initializer or a base
+    // argument) is a firm use: it needs the "new" function of the class. The lowering reports a
+    // firm use that the order cannot satisfy. The other handle uses are soft. A firm or a soft use
+    // puts the used class first when no cycle prevents it. The classes keep the script order when
+    // no use forces a change. A [value] class comes first.
     std::vector<ClassDef*> order;
     {
         std::map<std::string, ClassDef*> by_name;
         for (ClassDef& cd : sc.classes)
             by_name[cd.name] = &cd;
-        std::map<std::string, std::set<std::string>> deps;
+        std::map<std::string, std::set<std::string>> hard, firm, soft;
         for (ClassDef& cd : sc.classes)
         {
             for (const std::string& u : hotc::used_type_names(cd))
@@ -4059,32 +4156,84 @@ void translate_impl(
                         "a module variable can use only native types, enums and structs: '" + u + "' is not");
                 if (cd.is_value && !(cd.name == kModuleName && sc.is_cpp) && !types.is_script_value(u))
                     fail_at(map, cd.pos, "a struct can use only native types and structs: '" + u + "' is not");
-                deps[cd.name].insert(u);
+                (types.is_script_value(u) ? hard : soft)[cd.name].insert(u);
             }
             if (script_parent(cd))
-                deps[cd.name].insert(cd.base); // the parent shell comes first
+                hard[cd.name].insert(cd.base); // the parent shell comes first
+            for (const std::string& u : hotc::block_new_targets(cd))
+                if (by_name.count(u) && u != cd.name && !hard[cd.name].count(u))
+                {
+                    firm[cd.name].insert(u);
+                    soft[cd.name].erase(u);
+                }
         }
+        // A cycle of hard uses is an error. The other passes need a graph of hard uses without a cycle.
         std::map<std::string, int> state; // 1: on the path, 2: done
-        std::vector<std::string> path;
+        {
+            std::vector<std::string> path;
+            std::function<void(ClassDef&)> check = [&](ClassDef& cd)
+            {
+                int& st = state[cd.name];
+                if (st == 2)
+                    return;
+                if (st == 1)
+                {
+                    std::string cycle;
+                    bool derives = false;
+                    for (size_t i = std::find(path.begin(), path.end(), cd.name) - path.begin(); i < path.size(); ++i)
+                    {
+                        cycle += path[i] + " -> ";
+                        const ClassDef* p = script_parent(*by_name[path[i]]);
+                        derives = derives || (p && p->name == (i + 1 < path.size() ? path[i + 1] : cd.name));
+                    }
+                    fail_at(map, cd.pos,
+                        derives ? "the classes derive from each other in a cycle: " + cycle + cd.name
+                                : "the structs use each other in a cycle: " + cycle + cd.name
+                                + ". A struct holds the other struct by value, so the size has no end."
+                                  " Make one of them a class: a handle field breaks the cycle");
+                }
+                st = 1;
+                path.push_back(cd.name);
+                for (const std::string& u : hard[cd.name])
+                    check(*by_name[u]);
+                path.pop_back();
+                state[cd.name] = 2;
+            };
+            for (ClassDef& cd : sc.classes)
+                check(cd);
+            state.clear();
+        }
+        // True when "n" or a class that "n" needs first (a hard or a firm use) is on the path. Then
+        // a firm or a soft use of "n" does not change the order. "seen" stops a cycle of firm uses.
+        std::set<std::string> seen;
+        std::function<bool(const std::string&)> blocked_in = [&](const std::string& n)
+        {
+            if (state[n] == 1)
+                return true;
+            if (state[n] == 2 || !seen.insert(n).second)
+                return false;
+            for (auto* uses : {&hard, &firm})
+                for (const std::string& h : (*uses)[n])
+                    if (blocked_in(h))
+                        return true;
+            return false;
+        };
+        auto blocked = [&](const std::string& n)
+        {
+            seen.clear();
+            return blocked_in(n);
+        };
         std::function<void(ClassDef&)> visit = [&](ClassDef& cd)
         {
-            int& st = state[cd.name];
-            if (st == 2)
+            if (state[cd.name] != 0)
                 return;
-            if (st == 1)
-            {
-                std::string cycle;
-                for (const std::string& n : path)
-                    cycle += n + " -> ";
-                fail_at(map, cd.pos,
-                    "the classes use each other in a cycle: " + cycle + cd.name
-                        + ". A handle type must not depend on itself through other classes");
-            }
-            st = 1;
-            path.push_back(cd.name);
-            for (const std::string& u : deps[cd.name])
+            state[cd.name] = 1;
+            for (const std::string& u : hard[cd.name])
                 visit(*by_name[u]);
-            path.pop_back();
+            for (auto* uses : {&firm, &soft})
+                for (const std::string& u : (*uses)[cd.name])
+                    if (state[u] != 2 && !blocked(u))
+                        visit(*by_name[u]);
             state[cd.name] = 2;
             order.push_back(&cd);
         };
@@ -4169,8 +4318,37 @@ void translate_impl(
         }
     };
 
+    // Writes the pending function bodies, in the order of the blocks, and clears them. A ".hot"
+    // script writes all bodies after the last block, so every class is complete there. A ".cpp"
+    // script also writes them before each text between two blocks. So a body does not see a
+    // declaration, a using directive or a macro that comes later in the file, as in C++.
+    auto flush_bodies = [&]
+    {
+        if (bodies.empty())
+            return;
+        o.w("// ---------------------------------------------------------------- function bodies\n");
+        std::string body_ns; // the open namespace
+        for (const DeferredBody& b : bodies)
+        {
+            if (b.ns != body_ns)
+            {
+                if (!body_ns.empty())
+                    o.w("} // namespace " + body_ns + "\n");
+                if (!b.ns.empty())
+                    o.w("namespace " + b.ns + " {\n");
+                body_ns = b.ns;
+            }
+            b.write();
+        }
+        if (!body_ns.empty())
+            o.w("} // namespace " + body_ns + "\n");
+        bodies.clear();
+    };
+
     for (size_t si = 0; si < seq.size(); ++si)
     {
+        if (sc.is_cpp && !texts[si].empty())
+            flush_bodies();
         write_texts(si);
         ClassDef& cd = *seq[si];
         // A type that the block uses is complete here. So the mark is after its declaration and
@@ -4200,8 +4378,6 @@ void translate_impl(
         // Each shell class gets a construct entry, also without a constructor and without "new".
         // Only the first generation of a class makes shells. So a "new" in a later generation works.
         const bool gen_new = true;
-        // The script type name of the class: only when the script can use it (the old rule).
-        const bool type_alias = has_ctor || new_set.count(cn) > 0 || family;
         const std::string P = cn + "__";
         const std::string PP = par ? par->name + "__" : std::string();
         auto slot_id = [&](const std::string& n) { return (multi ? cn + "_" : std::string()) + "SLOT_" + n; };
@@ -4616,6 +4792,20 @@ void translate_impl(
         const hotc::ParamContext param_ctx = make_ctx(cd);
 
         // ---- the C++ storage types. An override keeps the native types.
+        if (!sc.is_cpp)
+        {
+            for (const Field& f : cd.fields)
+                fail_on_script_class_targ(types, map, f.pos, f.type);
+            for (const Method& m : cd.methods)
+            {
+                fail_on_script_class_targ(types, map, m.pos, m.ret);
+                for (const Param& p : m.params)
+                    fail_on_script_class_targ(types, map, m.pos, p.type);
+            }
+            for (const hotc::ast::Ctor& c : cd.ctors)
+                for (const Param& p : c.params)
+                    fail_on_script_class_targ(types, map, c.pos, p.type);
+        }
         for (Field& f : cd.fields)
         {
             f.type = f.weak ? weak_storage_or_fail(types, map, f.pos, f.type) : types.storage(f.type);
@@ -4948,9 +5138,6 @@ void translate_impl(
             mapped(text, cd.line, cd.pos);
         }
         o.w("};\n\n");
-        // The type name of the class for the script: a handle field names it (design 7.10.1).
-        if (!sc.is_cpp && (type_alias || used_types.count(cn))) // a ".cpp" script has it in the forward block
-            o.w("using " + cn + " = " + shell + ";\n\n");
 
         // ---- state struct and field table
         o.w("// ---------------------------------------------------------------- state\n");
@@ -5432,26 +5619,27 @@ void translate_impl(
             RCtx cx = base_cx;
             cx.where = what;
             cx.ret_type = m.script_ret;
+            cx.new_classes = body_new;
             hotc::add_params(cx, m.params);
             const std::string file = esc(file_at(m.pos));
-            auto line_at = [&](int l) { return "#line " + std::to_string(l) + " \"" + file + "\"\n"; };
             const int end_line = m.end_line > 0 ? m.end_line : m.line;
             int first_line = m.line;
             if (!m.body.stmts.empty() && hotc::ast::pos_of(*m.body.stmts.front()) != 0)
                 first_line = map.line(hotc::ast::pos_of(*m.body.stmts.front()));
+            // The text of the body comes after the last block (see "bodies"). The lowering is here.
+            std::shared_ptr<hotc::ast::Emitter> em = lower_body(m, cx, true);
+            if (!g_diag.items.empty())
+                return;
             // The wrapper of a script function: it only calls the member.
+            std::string whead, wbody;
             if (is_fn)
             {
                 std::string fwd;
                 for (const Param& p : m.params)
                     fwd += std::string(fwd.empty() ? "" : ", ") + "\x01std::forward<"
                         + (p.body_type.empty() ? p.type : p.body_type) + ">(" + p.name + ")";
-                const std::string whead =
-                    "[[maybe_unused]] HOT_HIDDEN static " + ret + " " + sym + "(" + shell + "* __self" + body_decl(m);
-                o.w(line_at(m.line));
-                o.head_segments(whead, sym, m, all_text);
-                o.w(whead + ")\n");
-                mapped("{\n    return state_of(__self)->" + member + "(" + fwd + ");\n}\n", m.line, m.pos);
+                whead = "[[maybe_unused]] HOT_HIDDEN static " + ret + " " + sym + "(" + shell + "* __self" + body_decl(m);
+                wbody = "{\n    return state_of(__self)->" + member + "(" + fwd + ");\n}\n";
             }
             // The member of the state struct. It has the parameter forms of the slot signature. A
             // parameter with a body form gets the name "__<name>"; the first line copies or moves it.
@@ -5467,61 +5655,62 @@ void translate_impl(
                     body_locals +=
                         "    " + p.body_type + " " + p.name + " = \x01std::forward<" + p.type + ">(__" + p.name + ");\n";
             }
-            std::string mhead = ret + " " + S + "::" + member + "(" + params;
-            o.w(line_at(m.line));
-            o.head_segments(mhead, member, m, all_text, ret.size() + 1 + S.size() + 2);
-            o.w(mhead + ")\n");
-            // The brace and the check of the generation map to the line of the function. So the entry
-            // row and the prologue end are on this line, and a breakpoint on the first statement
-            // line does not resolve to the function line.
-            o.w(line_at(m.line));
-            o.w("{\n");
-            o.w(line_at(m.line));
-            o.w("    if (HOT_UNLIKELY(!hot_live)) {\n");
-            o.w(line_at(m.line));
-            o.w("        hot::stale_call(\"" + what + "\");\n");
-            o.w(line_at(m.line));
-            o.w("        return" + (ret == "void" ? std::string() : " " + ret + "()") + ";\n");
-            o.w(line_at(m.line));
-            o.w("    }\n");
-            // The two local names and the body forms map to the first statement.
-            o.w(line_at(first_line));
-            o.w("    HOT_NODEBUG_LOCAL auto* __self = static_cast<" + shell + "*>(this->__hot_owner);\n");
-            o.w(line_at(first_line));
-            o.w("    HOT_NODEBUG_LOCAL auto* __st = this;\n");
+            const std::string mhead = ret + " " + S + "::" + member + "(" + params;
+            const size_t mhead_from = ret.size() + 1 + S.size() + 2;
             // The frame of the traceback (hot/runtime/trace.h). The macro is empty when HOT_TRACEBACK is 0.
-            {
-                std::string tname = what.substr(0, what.find('('));
-                for (size_t c; (c = tname.find("::")) != std::string::npos;)
-                    tname.replace(c, 2, ".");
-                o.w(line_at(first_line));
-                o.w("    HOT_TRACE_FRAME(\"" + tname + "\", \"" + file + "\");\n");
-            }
-            for (size_t b = 0; b < body_locals.size();)
-            {
-                const size_t e = body_locals.find('\n', b) + 1;
-                o.w(line_at(first_line));
-                o.w(body_locals.substr(b, e - b));
-                b = e;
-            }
-            if (!write_raw(m))
-            {
-                hotc::lower_block(m.body, cx, g_diag);
-                if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
+            std::string tname = what.substr(0, what.find('('));
+            for (size_t c; (c = tname.find("::")) != std::string::npos;)
+                tname.replace(c, 2, ".");
+            const std::string stale_ret = "        return" + (ret == "void" ? std::string() : " " + ret + "()") + ";\n";
+            bodies.push_back({cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns),
+                [&o, &all_text, &mapped, &reset, &write_stmts, h = body_head(m), em, file, end_line, first_line,
+                    is_fn, sym, whead, wbody, member, mhead, mhead_from, what, shell, body_locals, tname, stale_ret]
                 {
+                    const Method& m = *h;
+                    auto line_at = [&](int l) { return "#line " + std::to_string(l) + " \"" + file + "\"\n"; };
+                    if (is_fn)
+                    {
+                        o.w(line_at(m.line));
+                        o.head_segments(whead, sym, m, all_text);
+                        o.w(whead + ")\n");
+                        mapped(wbody, m.line, m.pos);
+                    }
+                    o.w(line_at(m.line));
+                    o.head_segments(mhead, member, m, all_text, mhead_from);
+                    o.w(mhead + ")\n");
+                    // The brace and the check of the generation map to the line of the function. So
+                    // the entry row and the prologue end are on this line, and a breakpoint on the
+                    // first statement line does not resolve to the function line.
+                    o.w(line_at(m.line));
+                    o.w("{\n");
+                    o.w(line_at(m.line));
+                    o.w("    if (HOT_UNLIKELY(!hot_live)) {\n");
+                    o.w(line_at(m.line));
+                    o.w("        hot::stale_call(\"" + what + "\");\n");
+                    o.w(line_at(m.line));
+                    o.w(stale_ret);
+                    o.w(line_at(m.line));
+                    o.w("    }\n");
+                    // The two local names and the body forms map to the first statement.
+                    o.w(line_at(first_line));
+                    o.w("    HOT_NODEBUG_LOCAL auto* __self = static_cast<" + shell + "*>(this->__hot_owner);\n");
+                    o.w(line_at(first_line));
+                    o.w("    HOT_NODEBUG_LOCAL auto* __st = this;\n");
+                    o.w(line_at(first_line));
+                    o.w("    HOT_TRACE_FRAME(\"" + tname + "\", \"" + file + "\");\n");
+                    for (size_t b = 0; b < body_locals.size();)
+                    {
+                        const size_t e = body_locals.find('\n', b) + 1;
+                        o.w(line_at(first_line));
+                        o.w(body_locals.substr(b, e - b));
+                        b = e;
+                    }
+                    write_stmts(m, em.get());
+                    o.w(line_at(end_line));
+                    o.w("}\n");
                     reset();
-                    return;
-                }
-                hotc::ast::Emitter em(map, opt.input);
-                em.trace_lines = true;
-                hotc::ast::emit_stmts(m.body.stmts, em, 1);
-                em.finish();
-                o.w_emitted(em, all_text);
-            }
-            o.w(line_at(end_line));
-            o.w("}\n");
-            reset();
-            o.w("\n");
+                    o.w("\n");
+                }});
         };
 
         // A convert hook has no self and no state: the new block is not complete yet.
@@ -5533,27 +5722,24 @@ void translate_impl(
             cx.field_type.clear();
             cx.fns.clear();
             hotc::add_params(cx, m.params);
+            std::shared_ptr<hotc::ast::Emitter> em = lower_body(m, cx, false);
+            if (!g_diag.items.empty())
+                return;
             const std::string file = esc(file_at(m.pos));
             const int end_line = m.end_line > 0 ? m.end_line : m.line;
-            o.w("#line " + std::to_string(m.line) + " \"" + file + "\"\n");
-            o.w("static " + m.ret + " " + P + m.name + "(" + m.params[0].type + " " + m.params[0].name + ")\n");
-            o.w("#line " + std::to_string(m.line) + " \"" + file + "\"\n{\n");
-            if (!write_raw(m))
-            {
-                hotc::lower_block(m.body, cx, g_diag);
-                if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
+            const std::string head =
+                "static " + m.ret + " " + P + m.name + "(" + m.params[0].type + " " + m.params[0].name + ")\n";
+            bodies.push_back({cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns),
+                [&o, &reset, &write_stmts, h = body_head(m), em, file, end_line, head]
                 {
+                    o.w("#line " + std::to_string(h->line) + " \"" + file + "\"\n");
+                    o.w(head);
+                    o.w("#line " + std::to_string(h->line) + " \"" + file + "\"\n{\n");
+                    write_stmts(*h, em.get());
+                    o.w("#line " + std::to_string(end_line) + " \"" + file + "\"\n}\n");
                     reset();
-                    return;
-                }
-                hotc::ast::Emitter em(map, opt.input);
-                hotc::ast::emit_stmts(m.body.stmts, em, 1);
-                em.finish();
-                o.w_emitted(em, all_text);
-            }
-            o.w("#line " + std::to_string(end_line) + " \"" + file + "\"\n}\n");
-            reset();
-            o.w("\n");
+                    o.w("\n");
+                }});
         };
 
         for (size_t k = 0; has_ctor && k < cd.ctors.size(); ++k)
@@ -5736,6 +5922,7 @@ void translate_impl(
         if (!cd.ns.empty())
             o.w("} // namespace " + hotc::ast::gen_namespace(cd.ns) + "\n");
     }
+    flush_bodies();
     write_texts(seq.size());
 
     o.w("extern \"C\" void script_register(hot::Registry& reg)\n{\n");

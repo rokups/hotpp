@@ -23,6 +23,7 @@ namespace hot { template <class T, auto N> struct checked_index< ::hostns2::Fixe
 constexpr uint32_t GEN = 1;
 // The live flag of this module. The loader sets it. The guard of each function reads it.
 static uint32_t hot_live = 0;
+struct Grid_Shell;
 
 // ---------------------------------------------------------------- class Grid
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -49,7 +50,7 @@ struct Grid_Shell final : Actor, hot::ShellBase {
     }
 #line 11 "checked_index_v1.hot"
     ~Grid_Shell() override { hot::destroy_state(this); }
-#line 53 "checked_index_v1.hot.cpp"
+#line 54 "checked_index_v1.hot.cpp"
 
 #line 11 "checked_index_v1.hot"
     void Tick(float a0) override
@@ -59,7 +60,7 @@ struct Grid_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 11 "checked_index_v1.hot"
     }
-#line 63 "checked_index_v1.hot.cpp"
+#line 64 "checked_index_v1.hot.cpp"
 
 #line 11 "checked_index_v1.hot"
     void TakeDamage(float a0) override
@@ -69,7 +70,7 @@ struct Grid_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 11 "checked_index_v1.hot"
     }
-#line 73 "checked_index_v1.hot.cpp"
+#line 74 "checked_index_v1.hot.cpp"
 
 #line 11 "checked_index_v1.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -79,7 +80,7 @@ struct Grid_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 11 "checked_index_v1.hot"
     }
-#line 83 "checked_index_v1.hot.cpp"
+#line 84 "checked_index_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -99,7 +100,7 @@ struct GridState_g1 {
         return static_cast<Grid_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 11 "checked_index_v1.hot"
     }
-#line 103 "checked_index_v1.hot.cpp"
+#line 104 "checked_index_v1.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 11 "checked_index_v1.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -109,18 +110,18 @@ struct GridState_g1 {
         return static_cast<Grid_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 11 "checked_index_v1.hot"
     }
-#line 113 "checked_index_v1.hot.cpp"
+#line 114 "checked_index_v1.hot.cpp"
 };
 
 #line 12 "checked_index_v1.hot"
 static void Grid__init_cells(void*, void* f) { using T = hostns2::Fixed<int32_t, 4>; new (f) T(); }
-#line 118 "checked_index_v1.hot.cpp"
+#line 119 "checked_index_v1.hot.cpp"
 #line 13 "checked_index_v1.hot"
 static void Grid__init_ring(void*, void* f) { using T = hostns2::Ring<int32_t>; new (f) T(); }
-#line 121 "checked_index_v1.hot.cpp"
+#line 122 "checked_index_v1.hot.cpp"
 #line 14 "checked_index_v1.hot"
 static void Grid__init_plain(void*, void* f) { using T = hostns2::Plain; new (f) T(); }
-#line 124 "checked_index_v1.hot.cpp"
+#line 125 "checked_index_v1.hot.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -162,7 +163,7 @@ HOT_HIDDEN static auto Grid__plan()
     return std::make_pair(Grid__super_args(), std::tuple<>());
 #line 11 "checked_index_v1.hot"
 }
-#line 166 "checked_index_v1.hot.cpp"
+#line 167 "checked_index_v1.hot.cpp"
 using Grid_SuperArgs = decltype(Grid__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
@@ -182,7 +183,7 @@ HOT_NODEBUG static hot::ShellBase* Grid__construct(const char* key, const void* 
     return nullptr;
 #line 11 "checked_index_v1.hot"
 }
-#line 186 "checked_index_v1.hot.cpp"
+#line 187 "checked_index_v1.hot.cpp"
 
 static const char* const Grid__construct_keys[] = {typeid(Grid_SuperArgs).name(), nullptr};
 
@@ -198,7 +199,7 @@ HOT_HIDDEN static Grid_Shell* Grid__build([[maybe_unused]] bool __note)
     return __self;
 #line 11 "checked_index_v1.hot"
 }
-#line 202 "checked_index_v1.hot.cpp"
+#line 203 "checked_index_v1.hot.cpp"
 #line 11 "checked_index_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Grid_Shell* Grid__new()
 #line 11 "checked_index_v1.hot"
@@ -207,35 +208,7 @@ HOT_HIDDEN static Grid_Shell* Grid__build([[maybe_unused]] bool __note)
     return Grid__build(true);
 #line 11 "checked_index_v1.hot"
 }
-#line 211 "checked_index_v1.hot.cpp"
-
-#line 16 "checked_index_v1.hot"
-void GridState_g1::Tick(float dt)
-#line 16 "checked_index_v1.hot"
-{
-#line 16 "checked_index_v1.hot"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 16 "checked_index_v1.hot"
-        hot::stale_call("Grid::Tick(float)");
-#line 16 "checked_index_v1.hot"
-        return;
-#line 16 "checked_index_v1.hot"
-    }
-#line 17 "checked_index_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Grid_Shell*>(this->__hot_owner);
-#line 17 "checked_index_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 17 "checked_index_v1.hot"
-    HOT_TRACE_FRAME("Grid.Tick", "checked_index_v1.hot");
-#line 17 "checked_index_v1.hot"
-    HOT_TRACE_LINE(); hot::index(__st->cells, 1) = 7;
-#line 18 "checked_index_v1.hot"
-    HOT_TRACE_LINE(); hot::index(__st->ring, 2) = 3;
-#line 19 "checked_index_v1.hot"
-    HOT_TRACE_LINE(); hot::index(__st->plain, 0) = 1;
-#line 20 "checked_index_v1.hot"
-}
-#line 239 "checked_index_v1.hot.cpp"
+#line 212 "checked_index_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Grid_slots[SLOT_COUNT] = {
@@ -263,7 +236,36 @@ HOT_NODEBUG static hot::Instance Grid_create()
     return {static_cast<Actor*>(p), p};
 #line 11 "checked_index_v1.hot"
 }
-#line 267 "checked_index_v1.hot.cpp"
+#line 240 "checked_index_v1.hot.cpp"
+
+// ---------------------------------------------------------------- function bodies
+#line 16 "checked_index_v1.hot"
+void GridState_g1::Tick(float dt)
+#line 16 "checked_index_v1.hot"
+{
+#line 16 "checked_index_v1.hot"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 16 "checked_index_v1.hot"
+        hot::stale_call("Grid::Tick(float)");
+#line 16 "checked_index_v1.hot"
+        return;
+#line 16 "checked_index_v1.hot"
+    }
+#line 17 "checked_index_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Grid_Shell*>(this->__hot_owner);
+#line 17 "checked_index_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 17 "checked_index_v1.hot"
+    HOT_TRACE_FRAME("Grid.Tick", "checked_index_v1.hot");
+#line 17 "checked_index_v1.hot"
+    HOT_TRACE_LINE(); hot::index(__st->cells, 1) = 7;
+#line 18 "checked_index_v1.hot"
+    HOT_TRACE_LINE(); hot::index(__st->ring, 2) = 3;
+#line 19 "checked_index_v1.hot"
+    HOT_TRACE_LINE(); hot::index(__st->plain, 0) = 1;
+#line 20 "checked_index_v1.hot"
+}
+#line 269 "checked_index_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

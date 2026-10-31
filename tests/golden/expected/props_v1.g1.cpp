@@ -17,6 +17,7 @@
 constexpr uint32_t GEN = 1;
 // The live flag of this module. The loader sets it. The guard of each function reads it.
 static uint32_t hot_live = 0;
+struct Gauge_Shell;
 
 // ---------------------------------------------------------------- class Gauge
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -51,7 +52,7 @@ struct Gauge_Shell final : Actor, hot::ShellBase {
     }
 #line 6 "props_v1.hot"
     ~Gauge_Shell() override { hot::destroy_state(this); }
-#line 55 "props_v1.hot.cpp"
+#line 56 "props_v1.hot.cpp"
 
 #line 6 "props_v1.hot"
     void Tick(float a0) override
@@ -61,7 +62,7 @@ struct Gauge_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 6 "props_v1.hot"
     }
-#line 65 "props_v1.hot.cpp"
+#line 66 "props_v1.hot.cpp"
 
 #line 6 "props_v1.hot"
     void TakeDamage(float a0) override
@@ -71,7 +72,7 @@ struct Gauge_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 6 "props_v1.hot"
     }
-#line 75 "props_v1.hot.cpp"
+#line 76 "props_v1.hot.cpp"
 
 #line 6 "props_v1.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -81,7 +82,7 @@ struct Gauge_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 6 "props_v1.hot"
     }
-#line 85 "props_v1.hot.cpp"
+#line 86 "props_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -111,21 +112,21 @@ struct GaugeState_g1 {
         return static_cast<Gauge_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 6 "props_v1.hot"
     }
-#line 115 "props_v1.hot.cpp"
+#line 116 "props_v1.hot.cpp"
 };
 
 #line 10 "props_v1.hot"
 static void Gauge__init_shield_raw(void*, void* f) { using T = float; new (f) T(0.0f); }
-#line 120 "props_v1.hot.cpp"
+#line 121 "props_v1.hot.cpp"
 #line 7 "props_v1.hot"
 static void Gauge__init___p_Hp(void*, void* f) { using T = float; new (f) T(50.0f); }
-#line 123 "props_v1.hot.cpp"
+#line 124 "props_v1.hot.cpp"
 #line 8 "props_v1.hot"
 static void Gauge__init___p_MaxHp(void*, void* f) { using T = float; new (f) T(100.0f); }
-#line 126 "props_v1.hot.cpp"
+#line 127 "props_v1.hot.cpp"
 #line 9 "props_v1.hot"
 static void Gauge__init___p_Level(void*, void* f) { using T = int32_t; new (f) T(1); }
-#line 129 "props_v1.hot.cpp"
+#line 130 "props_v1.hot.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -177,7 +178,7 @@ HOT_HIDDEN static auto Gauge__plan()
     return std::make_pair(Gauge__super_args(), std::tuple<>());
 #line 6 "props_v1.hot"
 }
-#line 181 "props_v1.hot.cpp"
+#line 182 "props_v1.hot.cpp"
 using Gauge_SuperArgs = decltype(Gauge__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
@@ -197,7 +198,7 @@ HOT_NODEBUG static hot::ShellBase* Gauge__construct(const char* key, const void*
     return nullptr;
 #line 6 "props_v1.hot"
 }
-#line 201 "props_v1.hot.cpp"
+#line 202 "props_v1.hot.cpp"
 
 static const char* const Gauge__construct_keys[] = {typeid(Gauge_SuperArgs).name(), nullptr};
 
@@ -213,7 +214,7 @@ HOT_HIDDEN static Gauge_Shell* Gauge__build([[maybe_unused]] bool __note)
     return __self;
 #line 6 "props_v1.hot"
 }
-#line 217 "props_v1.hot.cpp"
+#line 218 "props_v1.hot.cpp"
 #line 6 "props_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Gauge_Shell* Gauge__new()
 #line 6 "props_v1.hot"
@@ -222,325 +223,7 @@ HOT_HIDDEN static Gauge_Shell* Gauge__build([[maybe_unused]] bool __note)
     return Gauge__build(true);
 #line 6 "props_v1.hot"
 }
-#line 226 "props_v1.hot.cpp"
-
-#line 16 "props_v1.hot"
-void GaugeState_g1::Tick(float dt)
-#line 16 "props_v1.hot"
-{
-#line 16 "props_v1.hot"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 16 "props_v1.hot"
-        hot::stale_call("Gauge::Tick(float)");
-#line 16 "props_v1.hot"
-        return;
-#line 16 "props_v1.hot"
-    }
-#line 17 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
-#line 17 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 17 "props_v1.hot"
-    HOT_TRACE_FRAME("Gauge.Tick", "props_v1.hot");
-#line 17 "props_v1.hot"
-    HOT_TRACE_LINE(); if (Gauge__get_Hp(__self) < Gauge__get_MaxHp(__self)) Gauge__set_Hp(__self, Gauge__get_Hp(__self) + (1.0f));
-#line 18 "props_v1.hot"
-    HOT_TRACE_LINE(); Gauge__set_Shield(__self, Gauge__get_Shield(__self) + 2.0f);
-#line 19 "props_v1.hot"
-    HOT_TRACE_LINE(); Gauge__set_Level(__self, Gauge__get_Level(__self) + 1);
-#line 20 "props_v1.hot"
-}
-#line 254 "props_v1.hot.cpp"
-
-#line 22 "props_v1.hot"
-void GaugeState_g1::TakeDamage_f(float amount)
-#line 22 "props_v1.hot"
-{
-#line 22 "props_v1.hot"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 22 "props_v1.hot"
-        hot::stale_call("Gauge::TakeDamage(float)");
-#line 22 "props_v1.hot"
-        return;
-#line 22 "props_v1.hot"
-    }
-#line 23 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
-#line 23 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 23 "props_v1.hot"
-    HOT_TRACE_FRAME("Gauge.TakeDamage", "props_v1.hot");
-#line 23 "props_v1.hot"
-    HOT_TRACE_LINE(); Gauge__set_Shield(__self, Gauge__get_Shield(__self) - (amount));
-#line 24 "props_v1.hot"
-    HOT_TRACE_LINE(); if (Gauge__get_Shield(__self) <= 0.0f) Gauge__set_Hp(__self, Gauge__get_Hp(__self) - amount);
-#line 25 "props_v1.hot"
-}
-#line 280 "props_v1.hot.cpp"
-
-#line 27 "props_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static float Gauge__total(Gauge_Shell* __self)
-#line 27 "props_v1.hot"
-{
-#line 27 "props_v1.hot"
-    return state_of(__self)->total();
-#line 27 "props_v1.hot"
-}
-#line 290 "props_v1.hot.cpp"
-#line 27 "props_v1.hot"
-float GaugeState_g1::total()
-#line 27 "props_v1.hot"
-{
-#line 27 "props_v1.hot"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 27 "props_v1.hot"
-        hot::stale_call("Gauge::total");
-#line 27 "props_v1.hot"
-        return float();
-#line 27 "props_v1.hot"
-    }
-#line 28 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
-#line 28 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 28 "props_v1.hot"
-    HOT_TRACE_FRAME("Gauge.total", "props_v1.hot");
-#line 28 "props_v1.hot"
-    HOT_TRACE_LINE(); return Gauge__get_Hp(__self) + Gauge__get_Shield(__self);
-#line 29 "props_v1.hot"
-}
-#line 313 "props_v1.hot.cpp"
-
-#line 7 "props_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static float Gauge__get_Hp(Gauge_Shell* __self)
-#line 7 "props_v1.hot"
-{
-#line 7 "props_v1.hot"
-    return state_of(__self)->get_Hp();
-#line 7 "props_v1.hot"
-}
-#line 323 "props_v1.hot.cpp"
-#line 7 "props_v1.hot"
-float GaugeState_g1::get_Hp()
-#line 7 "props_v1.hot"
-{
-#line 7 "props_v1.hot"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 7 "props_v1.hot"
-        hot::stale_call("Gauge::get_Hp");
-#line 7 "props_v1.hot"
-        return float();
-#line 7 "props_v1.hot"
-    }
-#line 7 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
-#line 7 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 7 "props_v1.hot"
-    HOT_TRACE_FRAME("Gauge.get_Hp", "props_v1.hot");
-#line 7 "props_v1.hot"
-    HOT_TRACE_LINE(); return __st->__p_Hp;
-#line 7 "props_v1.hot"
-}
-#line 346 "props_v1.hot.cpp"
-
-#line 7 "props_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static void Gauge__set_Hp(Gauge_Shell* __self, float value)
-#line 7 "props_v1.hot"
-{
-#line 7 "props_v1.hot"
-    return state_of(__self)->set_Hp(std::forward<float>(value));
-#line 7 "props_v1.hot"
-}
-#line 356 "props_v1.hot.cpp"
-#line 7 "props_v1.hot"
-void GaugeState_g1::set_Hp(float value)
-#line 7 "props_v1.hot"
-{
-#line 7 "props_v1.hot"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 7 "props_v1.hot"
-        hot::stale_call("Gauge::set_Hp");
-#line 7 "props_v1.hot"
-        return;
-#line 7 "props_v1.hot"
-    }
-#line 7 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
-#line 7 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 7 "props_v1.hot"
-    HOT_TRACE_FRAME("Gauge.set_Hp", "props_v1.hot");
-#line 7 "props_v1.hot"
-    HOT_TRACE_LINE(); __st->__p_Hp = value;
-#line 7 "props_v1.hot"
-}
-#line 379 "props_v1.hot.cpp"
-
-#line 8 "props_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static float Gauge__get_MaxHp(Gauge_Shell* __self)
-#line 8 "props_v1.hot"
-{
-#line 8 "props_v1.hot"
-    return state_of(__self)->get_MaxHp();
-#line 8 "props_v1.hot"
-}
-#line 389 "props_v1.hot.cpp"
-#line 8 "props_v1.hot"
-float GaugeState_g1::get_MaxHp()
-#line 8 "props_v1.hot"
-{
-#line 8 "props_v1.hot"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 8 "props_v1.hot"
-        hot::stale_call("Gauge::get_MaxHp");
-#line 8 "props_v1.hot"
-        return float();
-#line 8 "props_v1.hot"
-    }
-#line 8 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
-#line 8 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 8 "props_v1.hot"
-    HOT_TRACE_FRAME("Gauge.get_MaxHp", "props_v1.hot");
-#line 8 "props_v1.hot"
-    HOT_TRACE_LINE(); return __st->__p_MaxHp;
-#line 8 "props_v1.hot"
-}
-#line 412 "props_v1.hot.cpp"
-
-#line 9 "props_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static int32_t Gauge__get_Level(Gauge_Shell* __self)
-#line 9 "props_v1.hot"
-{
-#line 9 "props_v1.hot"
-    return state_of(__self)->get_Level();
-#line 9 "props_v1.hot"
-}
-#line 422 "props_v1.hot.cpp"
-#line 9 "props_v1.hot"
-int32_t GaugeState_g1::get_Level()
-#line 9 "props_v1.hot"
-{
-#line 9 "props_v1.hot"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 9 "props_v1.hot"
-        hot::stale_call("Gauge::get_Level");
-#line 9 "props_v1.hot"
-        return int32_t();
-#line 9 "props_v1.hot"
-    }
-#line 9 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
-#line 9 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 9 "props_v1.hot"
-    HOT_TRACE_FRAME("Gauge.get_Level", "props_v1.hot");
-#line 9 "props_v1.hot"
-    HOT_TRACE_LINE(); return __st->__p_Level;
-#line 9 "props_v1.hot"
-}
-#line 445 "props_v1.hot.cpp"
-
-#line 9 "props_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static void Gauge__set_Level(Gauge_Shell* __self, int32_t value)
-#line 9 "props_v1.hot"
-{
-#line 9 "props_v1.hot"
-    return state_of(__self)->set_Level(std::forward<int32_t>(value));
-#line 9 "props_v1.hot"
-}
-#line 455 "props_v1.hot.cpp"
-#line 9 "props_v1.hot"
-void GaugeState_g1::set_Level(int32_t value)
-#line 9 "props_v1.hot"
-{
-#line 9 "props_v1.hot"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 9 "props_v1.hot"
-        hot::stale_call("Gauge::set_Level");
-#line 9 "props_v1.hot"
-        return;
-#line 9 "props_v1.hot"
-    }
-#line 9 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
-#line 9 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 9 "props_v1.hot"
-    HOT_TRACE_FRAME("Gauge.set_Level", "props_v1.hot");
-#line 9 "props_v1.hot"
-    HOT_TRACE_LINE(); __st->__p_Level = value;
-#line 9 "props_v1.hot"
-}
-#line 478 "props_v1.hot.cpp"
-
-#line 12 "props_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static float Gauge__get_Shield(Gauge_Shell* __self)
-#line 12 "props_v1.hot"
-{
-#line 12 "props_v1.hot"
-    return state_of(__self)->get_Shield();
-#line 12 "props_v1.hot"
-}
-#line 488 "props_v1.hot.cpp"
-#line 12 "props_v1.hot"
-float GaugeState_g1::get_Shield()
-#line 12 "props_v1.hot"
-{
-#line 12 "props_v1.hot"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 12 "props_v1.hot"
-        hot::stale_call("Gauge::get_Shield");
-#line 12 "props_v1.hot"
-        return float();
-#line 12 "props_v1.hot"
-    }
-#line 12 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
-#line 12 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 12 "props_v1.hot"
-    HOT_TRACE_FRAME("Gauge.get_Shield", "props_v1.hot");
-#line 12 "props_v1.hot"
-    HOT_TRACE_LINE(); return __st->shield_raw;
-#line 12 "props_v1.hot"
-}
-#line 511 "props_v1.hot.cpp"
-
-#line 13 "props_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static void Gauge__set_Shield(Gauge_Shell* __self, float value)
-#line 13 "props_v1.hot"
-{
-#line 13 "props_v1.hot"
-    return state_of(__self)->set_Shield(std::forward<float>(value));
-#line 13 "props_v1.hot"
-}
-#line 521 "props_v1.hot.cpp"
-#line 13 "props_v1.hot"
-void GaugeState_g1::set_Shield(float value)
-#line 13 "props_v1.hot"
-{
-#line 13 "props_v1.hot"
-    if (HOT_UNLIKELY(!hot_live)) {
-#line 13 "props_v1.hot"
-        hot::stale_call("Gauge::set_Shield");
-#line 13 "props_v1.hot"
-        return;
-#line 13 "props_v1.hot"
-    }
-#line 13 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
-#line 13 "props_v1.hot"
-    HOT_NODEBUG_LOCAL auto* __st = this;
-#line 13 "props_v1.hot"
-    HOT_TRACE_FRAME("Gauge.set_Shield", "props_v1.hot");
-#line 13 "props_v1.hot"
-    HOT_TRACE_LINE(); __st->shield_raw = value < 0.0f ? 0.0f : value;
-#line 13 "props_v1.hot"
-}
-#line 544 "props_v1.hot.cpp"
+#line 227 "props_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -554,7 +237,7 @@ static float Gauge__total__thunk(Actor* __a)
     return hot::call<float(Actor*)>(__self, SLOT_total);
 #line 27 "props_v1.hot"
 }
-#line 558 "props_v1.hot.cpp"
+#line 241 "props_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -568,7 +251,7 @@ static float Gauge__get_Hp__thunk(Actor* __a)
     return hot::call<float(Actor*)>(__self, SLOT_get_Hp);
 #line 7 "props_v1.hot"
 }
-#line 572 "props_v1.hot.cpp"
+#line 255 "props_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -582,7 +265,7 @@ static void Gauge__set_Hp__thunk(Actor* __a, float value)
     return hot::call<void(Actor*, float)>(__self, SLOT_set_Hp, value);
 #line 7 "props_v1.hot"
 }
-#line 586 "props_v1.hot.cpp"
+#line 269 "props_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -596,7 +279,7 @@ static float Gauge__get_MaxHp__thunk(Actor* __a)
     return hot::call<float(Actor*)>(__self, SLOT_get_MaxHp);
 #line 8 "props_v1.hot"
 }
-#line 600 "props_v1.hot.cpp"
+#line 283 "props_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -610,7 +293,7 @@ static int32_t Gauge__get_Level__thunk(Actor* __a)
     return hot::call<int32_t(Actor*)>(__self, SLOT_get_Level);
 #line 9 "props_v1.hot"
 }
-#line 614 "props_v1.hot.cpp"
+#line 297 "props_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -624,7 +307,7 @@ static void Gauge__set_Level__thunk(Actor* __a, int32_t value)
     return hot::call<void(Actor*, int32_t)>(__self, SLOT_set_Level, value);
 #line 9 "props_v1.hot"
 }
-#line 628 "props_v1.hot.cpp"
+#line 311 "props_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -638,7 +321,7 @@ static float Gauge__get_Shield__thunk(Actor* __a)
     return hot::call<float(Actor*)>(__self, SLOT_get_Shield);
 #line 12 "props_v1.hot"
 }
-#line 642 "props_v1.hot.cpp"
+#line 325 "props_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -652,7 +335,7 @@ static void Gauge__set_Shield__thunk(Actor* __a, float value)
     return hot::call<void(Actor*, float)>(__self, SLOT_set_Shield, value);
 #line 13 "props_v1.hot"
 }
-#line 656 "props_v1.hot.cpp"
+#line 339 "props_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Gauge_slots[SLOT_COUNT] = {
@@ -688,7 +371,326 @@ HOT_NODEBUG static hot::Instance Gauge_create()
     return {static_cast<Actor*>(p), p};
 #line 6 "props_v1.hot"
 }
-#line 692 "props_v1.hot.cpp"
+#line 375 "props_v1.hot.cpp"
+
+// ---------------------------------------------------------------- function bodies
+#line 16 "props_v1.hot"
+void GaugeState_g1::Tick(float dt)
+#line 16 "props_v1.hot"
+{
+#line 16 "props_v1.hot"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 16 "props_v1.hot"
+        hot::stale_call("Gauge::Tick(float)");
+#line 16 "props_v1.hot"
+        return;
+#line 16 "props_v1.hot"
+    }
+#line 17 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
+#line 17 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 17 "props_v1.hot"
+    HOT_TRACE_FRAME("Gauge.Tick", "props_v1.hot");
+#line 17 "props_v1.hot"
+    HOT_TRACE_LINE(); if (Gauge__get_Hp(__self) < Gauge__get_MaxHp(__self)) Gauge__set_Hp(__self, Gauge__get_Hp(__self) + (1.0f));
+#line 18 "props_v1.hot"
+    HOT_TRACE_LINE(); Gauge__set_Shield(__self, Gauge__get_Shield(__self) + 2.0f);
+#line 19 "props_v1.hot"
+    HOT_TRACE_LINE(); Gauge__set_Level(__self, Gauge__get_Level(__self) + 1);
+#line 20 "props_v1.hot"
+}
+#line 404 "props_v1.hot.cpp"
+
+#line 22 "props_v1.hot"
+void GaugeState_g1::TakeDamage_f(float amount)
+#line 22 "props_v1.hot"
+{
+#line 22 "props_v1.hot"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 22 "props_v1.hot"
+        hot::stale_call("Gauge::TakeDamage(float)");
+#line 22 "props_v1.hot"
+        return;
+#line 22 "props_v1.hot"
+    }
+#line 23 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
+#line 23 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 23 "props_v1.hot"
+    HOT_TRACE_FRAME("Gauge.TakeDamage", "props_v1.hot");
+#line 23 "props_v1.hot"
+    HOT_TRACE_LINE(); Gauge__set_Shield(__self, Gauge__get_Shield(__self) - (amount));
+#line 24 "props_v1.hot"
+    HOT_TRACE_LINE(); if (Gauge__get_Shield(__self) <= 0.0f) Gauge__set_Hp(__self, Gauge__get_Hp(__self) - amount);
+#line 25 "props_v1.hot"
+}
+#line 430 "props_v1.hot.cpp"
+
+#line 27 "props_v1.hot"
+[[maybe_unused]] HOT_HIDDEN static float Gauge__total(Gauge_Shell* __self)
+#line 27 "props_v1.hot"
+{
+#line 27 "props_v1.hot"
+    return state_of(__self)->total();
+#line 27 "props_v1.hot"
+}
+#line 440 "props_v1.hot.cpp"
+#line 27 "props_v1.hot"
+float GaugeState_g1::total()
+#line 27 "props_v1.hot"
+{
+#line 27 "props_v1.hot"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 27 "props_v1.hot"
+        hot::stale_call("Gauge::total");
+#line 27 "props_v1.hot"
+        return float();
+#line 27 "props_v1.hot"
+    }
+#line 28 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
+#line 28 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 28 "props_v1.hot"
+    HOT_TRACE_FRAME("Gauge.total", "props_v1.hot");
+#line 28 "props_v1.hot"
+    HOT_TRACE_LINE(); return Gauge__get_Hp(__self) + Gauge__get_Shield(__self);
+#line 29 "props_v1.hot"
+}
+#line 463 "props_v1.hot.cpp"
+
+#line 7 "props_v1.hot"
+[[maybe_unused]] HOT_HIDDEN static float Gauge__get_Hp(Gauge_Shell* __self)
+#line 7 "props_v1.hot"
+{
+#line 7 "props_v1.hot"
+    return state_of(__self)->get_Hp();
+#line 7 "props_v1.hot"
+}
+#line 473 "props_v1.hot.cpp"
+#line 7 "props_v1.hot"
+float GaugeState_g1::get_Hp()
+#line 7 "props_v1.hot"
+{
+#line 7 "props_v1.hot"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 7 "props_v1.hot"
+        hot::stale_call("Gauge::get_Hp");
+#line 7 "props_v1.hot"
+        return float();
+#line 7 "props_v1.hot"
+    }
+#line 7 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
+#line 7 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 7 "props_v1.hot"
+    HOT_TRACE_FRAME("Gauge.get_Hp", "props_v1.hot");
+#line 7 "props_v1.hot"
+    HOT_TRACE_LINE(); return __st->__p_Hp;
+#line 7 "props_v1.hot"
+}
+#line 496 "props_v1.hot.cpp"
+
+#line 7 "props_v1.hot"
+[[maybe_unused]] HOT_HIDDEN static void Gauge__set_Hp(Gauge_Shell* __self, float value)
+#line 7 "props_v1.hot"
+{
+#line 7 "props_v1.hot"
+    return state_of(__self)->set_Hp(std::forward<float>(value));
+#line 7 "props_v1.hot"
+}
+#line 506 "props_v1.hot.cpp"
+#line 7 "props_v1.hot"
+void GaugeState_g1::set_Hp(float value)
+#line 7 "props_v1.hot"
+{
+#line 7 "props_v1.hot"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 7 "props_v1.hot"
+        hot::stale_call("Gauge::set_Hp");
+#line 7 "props_v1.hot"
+        return;
+#line 7 "props_v1.hot"
+    }
+#line 7 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
+#line 7 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 7 "props_v1.hot"
+    HOT_TRACE_FRAME("Gauge.set_Hp", "props_v1.hot");
+#line 7 "props_v1.hot"
+    HOT_TRACE_LINE(); __st->__p_Hp = value;
+#line 7 "props_v1.hot"
+}
+#line 529 "props_v1.hot.cpp"
+
+#line 8 "props_v1.hot"
+[[maybe_unused]] HOT_HIDDEN static float Gauge__get_MaxHp(Gauge_Shell* __self)
+#line 8 "props_v1.hot"
+{
+#line 8 "props_v1.hot"
+    return state_of(__self)->get_MaxHp();
+#line 8 "props_v1.hot"
+}
+#line 539 "props_v1.hot.cpp"
+#line 8 "props_v1.hot"
+float GaugeState_g1::get_MaxHp()
+#line 8 "props_v1.hot"
+{
+#line 8 "props_v1.hot"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 8 "props_v1.hot"
+        hot::stale_call("Gauge::get_MaxHp");
+#line 8 "props_v1.hot"
+        return float();
+#line 8 "props_v1.hot"
+    }
+#line 8 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
+#line 8 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 8 "props_v1.hot"
+    HOT_TRACE_FRAME("Gauge.get_MaxHp", "props_v1.hot");
+#line 8 "props_v1.hot"
+    HOT_TRACE_LINE(); return __st->__p_MaxHp;
+#line 8 "props_v1.hot"
+}
+#line 562 "props_v1.hot.cpp"
+
+#line 9 "props_v1.hot"
+[[maybe_unused]] HOT_HIDDEN static int32_t Gauge__get_Level(Gauge_Shell* __self)
+#line 9 "props_v1.hot"
+{
+#line 9 "props_v1.hot"
+    return state_of(__self)->get_Level();
+#line 9 "props_v1.hot"
+}
+#line 572 "props_v1.hot.cpp"
+#line 9 "props_v1.hot"
+int32_t GaugeState_g1::get_Level()
+#line 9 "props_v1.hot"
+{
+#line 9 "props_v1.hot"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 9 "props_v1.hot"
+        hot::stale_call("Gauge::get_Level");
+#line 9 "props_v1.hot"
+        return int32_t();
+#line 9 "props_v1.hot"
+    }
+#line 9 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
+#line 9 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 9 "props_v1.hot"
+    HOT_TRACE_FRAME("Gauge.get_Level", "props_v1.hot");
+#line 9 "props_v1.hot"
+    HOT_TRACE_LINE(); return __st->__p_Level;
+#line 9 "props_v1.hot"
+}
+#line 595 "props_v1.hot.cpp"
+
+#line 9 "props_v1.hot"
+[[maybe_unused]] HOT_HIDDEN static void Gauge__set_Level(Gauge_Shell* __self, int32_t value)
+#line 9 "props_v1.hot"
+{
+#line 9 "props_v1.hot"
+    return state_of(__self)->set_Level(std::forward<int32_t>(value));
+#line 9 "props_v1.hot"
+}
+#line 605 "props_v1.hot.cpp"
+#line 9 "props_v1.hot"
+void GaugeState_g1::set_Level(int32_t value)
+#line 9 "props_v1.hot"
+{
+#line 9 "props_v1.hot"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 9 "props_v1.hot"
+        hot::stale_call("Gauge::set_Level");
+#line 9 "props_v1.hot"
+        return;
+#line 9 "props_v1.hot"
+    }
+#line 9 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
+#line 9 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 9 "props_v1.hot"
+    HOT_TRACE_FRAME("Gauge.set_Level", "props_v1.hot");
+#line 9 "props_v1.hot"
+    HOT_TRACE_LINE(); __st->__p_Level = value;
+#line 9 "props_v1.hot"
+}
+#line 628 "props_v1.hot.cpp"
+
+#line 12 "props_v1.hot"
+[[maybe_unused]] HOT_HIDDEN static float Gauge__get_Shield(Gauge_Shell* __self)
+#line 12 "props_v1.hot"
+{
+#line 12 "props_v1.hot"
+    return state_of(__self)->get_Shield();
+#line 12 "props_v1.hot"
+}
+#line 638 "props_v1.hot.cpp"
+#line 12 "props_v1.hot"
+float GaugeState_g1::get_Shield()
+#line 12 "props_v1.hot"
+{
+#line 12 "props_v1.hot"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 12 "props_v1.hot"
+        hot::stale_call("Gauge::get_Shield");
+#line 12 "props_v1.hot"
+        return float();
+#line 12 "props_v1.hot"
+    }
+#line 12 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
+#line 12 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 12 "props_v1.hot"
+    HOT_TRACE_FRAME("Gauge.get_Shield", "props_v1.hot");
+#line 12 "props_v1.hot"
+    HOT_TRACE_LINE(); return __st->shield_raw;
+#line 12 "props_v1.hot"
+}
+#line 661 "props_v1.hot.cpp"
+
+#line 13 "props_v1.hot"
+[[maybe_unused]] HOT_HIDDEN static void Gauge__set_Shield(Gauge_Shell* __self, float value)
+#line 13 "props_v1.hot"
+{
+#line 13 "props_v1.hot"
+    return state_of(__self)->set_Shield(std::forward<float>(value));
+#line 13 "props_v1.hot"
+}
+#line 671 "props_v1.hot.cpp"
+#line 13 "props_v1.hot"
+void GaugeState_g1::set_Shield(float value)
+#line 13 "props_v1.hot"
+{
+#line 13 "props_v1.hot"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 13 "props_v1.hot"
+        hot::stale_call("Gauge::set_Shield");
+#line 13 "props_v1.hot"
+        return;
+#line 13 "props_v1.hot"
+    }
+#line 13 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Gauge_Shell*>(this->__hot_owner);
+#line 13 "props_v1.hot"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 13 "props_v1.hot"
+    HOT_TRACE_FRAME("Gauge.set_Shield", "props_v1.hot");
+#line 13 "props_v1.hot"
+    HOT_TRACE_LINE(); __st->shield_raw = value < 0.0f ? 0.0f : value;
+#line 13 "props_v1.hot"
+}
+#line 694 "props_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
