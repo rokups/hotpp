@@ -7,11 +7,13 @@
 #include "hot/clang_files_backend.h"
 #include "hot/config.h"
 #include "hot/hotc_lib.h"
+#include "hot/paths.h"
 #include "symbol_index.h"
 
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -157,6 +159,9 @@ struct Doc
     // a script. It ignores any other ".cpp" document. All the other requests get no answer.
     bool cpp = false;
     bool cpp_published = false; // the last publish of a ".cpp" document had a diagnostic list
+    // The "no host matches" message went to the user for this document. It resets when the host
+    // set of the document changes. It lives in the document, so a close of the document drops it.
+    mutable bool no_host_told = false;
     Text text;
     hotc::AnalyzeResult facts;
     // The generated C++ that clangd has as the real text, and its map. The map belongs to the
@@ -358,7 +363,6 @@ private:
         return o;
     }
     // ---- hosts
-    // The options for one script: the host first, then the options of the command line.
     struct Effective
     {
         std::vector<std::string> include_dirs, extra_flags;
@@ -372,10 +376,44 @@ private:
                 return m;
         return nullptr;
     }
+    // The host that is nearest to a script that no host matches, or null. It must share a
+    // directory with the script that is a workspace root or below it. Without a workspace root, it
+    // must share two path parts at least.
+    std::shared_ptr<const Host> nearest_host(const std::string& path) const
+    {
+        std::shared_ptr<const Host> best;
+        size_t best_parts = 0;
+        for (const HostSet& h : hosts_)
+        {
+            fs::path common;
+            const auto m = h.nearest(path, common);
+            const size_t parts = static_cast<size_t>(std::distance(common.begin(), common.end()));
+            bool in_root = roots_.empty() ? parts >= 2 : false;
+            for (const std::string& r : roots_)
+            {
+                const fs::path root = fs::path(r).lexically_normal();
+                const std::string rel = common.lexically_relative(root).string();
+                if (!common.empty() && !rel.empty() && rel.compare(0, 2, "..") != 0)
+                    in_root = true;
+            }
+            if (m && in_root && parts > best_parts)
+            {
+                best_parts = parts;
+                best = m;
+            }
+        }
+        return best;
+    }
+    // The options for one script: the host first, then the options of the command line. A script
+    // that no host matches uses the nearest host, so that its "using" headers are found. When
+    // the command line has no include dir and no host is near, the default include dirs of the
+    // build are used (the runtime headers).
     Effective effective_options(const std::string& path) const
     {
         Effective e;
-        const auto host = host_of(path);
+        auto host = host_of(path);
+        if (!host)
+            host = nearest_host(path);
         if (host)
         {
             e.include_dirs = host->include_dirs;
@@ -385,6 +423,13 @@ private:
         e.include_dirs.insert(e.include_dirs.end(), opt_.include_dirs.begin(), opt_.include_dirs.end());
         e.extra_flags.insert(e.extra_flags.end(), opt_.extra_flags.begin(), opt_.extra_flags.end());
         e.resource_dir = host && !host->resource_dir.empty() ? host->resource_dir : opt_.resource_dir;
+        if (!host && opt_.include_dirs.empty() && opt_.compile_commands_dir.empty())
+        {
+            const hot::DefaultPaths defaults = hot::default_paths();
+            e.include_dirs = defaults.include_dirs;
+            if (e.resource_dir.empty())
+                e.resource_dir = defaults.resource_dir;
+        }
         return e;
     }
     static bool same_host(const std::shared_ptr<const Host>& a, const std::shared_ptr<const Host>& b)
@@ -444,6 +489,7 @@ private:
     json on_formatting(const Doc& d, const json& p);
     json on_code_action(const Doc& d, const json& p);
     json on_locations(const Doc& d, const json& p, const std::string& method);
+    std::vector<Pos> gen_word_candidates(const Doc& d, Pos script_pos) const;
     json on_document_symbol(const Doc& d);
     json on_semantic_tokens(const Doc& d);
     json on_workspace_symbol(const json& p);
@@ -654,6 +700,7 @@ void Server::refresh_hosts(Doc* current)
         if (same_host(now, d->host))
             continue;
         d->host = now;
+        d->no_host_told = false;
         if (d.get() != current)
             log_host(*d, now); // the caller logs the current document
         // clangd gets the new compile command at the next send_generated.
@@ -1610,6 +1657,160 @@ json Server::on_code_action(const Doc& d, const json& p)
     return actions;
 }
 
+// True for a word that can name a native or script symbol: not a keyword, a builtin type, a
+// number or a name that the translator makes.
+static bool is_symbol_word(const std::string& w)
+{
+    const auto is_one_of = [&w](const std::vector<std::string>& v) { return std::find(v.begin(), v.end(), w) != v.end(); };
+    return !w.empty() && (std::isalpha(static_cast<unsigned char>(w[0])) || w[0] == '_') && !is_generated_name(w)
+        && !is_one_of(script_keywords()) && !is_one_of(builtin_type_names());
+}
+
+// Replaces the text of the string literals, the character literals and the comments of a line by
+// spaces. "in_block" is true inside a block comment that goes on to the next line.
+static std::string blank_non_code(std::string_view l, bool& in_block)
+{
+    std::string out(l);
+    for (size_t i = 0; i < l.size();)
+    {
+        if (in_block)
+        {
+            const size_t e = l.find("*/", i);
+            const size_t end = e == std::string_view::npos ? l.size() : e + 2;
+            std::fill(out.begin() + static_cast<long>(i), out.begin() + static_cast<long>(end), ' ');
+            in_block = e == std::string_view::npos;
+            i = end;
+        }
+        else if (l.compare(i, 2, "//") == 0)
+        {
+            std::fill(out.begin() + static_cast<long>(i), out.end(), ' ');
+            break;
+        }
+        else if (l.compare(i, 2, "/*") == 0)
+            in_block = true;
+        else if (l[i] == '"' || l[i] == '\'')
+        {
+            size_t e = i + 1;
+            while (e < l.size() && l[e] != l[i])
+                e += l[e] == '\\' ? 2 : 1;
+            e = std::min(e + 1, l.size());
+            std::fill(out.begin() + static_cast<long>(i), out.begin() + static_cast<long>(e), ' ');
+            i = e;
+        }
+        else
+            ++i;
+    }
+    return out;
+}
+
+// The generated places of the word at a script position, for a word with no map segment. The
+// "#line" directives give the script line of each generated line. A generated line of the same
+// script line that has the word gives a place. A word in a string or a comment is not a place.
+// A line that follows a directive at once is in the mapped region of the script line: its places
+// come first. The wrapper text of the translator (the shell, the stubs) comes after. In the
+// mapped region, the place with the same number of the word as in the script line comes first
+// when both have the same count of the word. The caller asks the first places only.
+std::vector<Pos> Server::gen_word_candidates(const Doc& d, Pos script_pos) const
+{
+    std::vector<Pos> out;
+    const auto [wb, we] = word_at(d, script_pos);
+    if (we <= wb)
+        return out;
+    const std::string w = word(d, script_pos);
+    if (!is_symbol_word(w))
+        return out;
+    const auto old = d.text_to_gen_script({script_pos.line, wb});
+    if (!old)
+        return out;
+    auto whole_words = [&w](std::string_view l)
+    {
+        std::vector<int> cols;
+        for (size_t from = 0, at; (at = l.find(w, from)) != std::string_view::npos; from = at + 1)
+            if ((at == 0 || !is_id_char(l[at - 1])) && (at + w.size() >= l.size() || !is_id_char(l[at + w.size()])))
+                cols.push_back(static_cast<int>(at));
+        return cols;
+    };
+    bool script_block = false;
+    const std::vector<int> in_script = whole_words(blank_non_code(d.gen_script.line(old->line), script_block));
+    const auto nth = std::find(in_script.begin(), in_script.end(), old->col);
+    // Walk the generated lines. A directive sets the script line of the lines after it. A
+    // directive of the .cpp file marks text of the translator: it has no script line.
+    struct Place
+    {
+        Pos pos;
+        bool mapped; // the line follows a directive at once
+    };
+    std::vector<Place> places;
+    int script_line = -1, last_directive = -1;
+    bool in_block = false;
+    for (int l = 0; l < static_cast<int>(d.gen.starts.size()); ++l)
+    {
+        const std::string_view t = d.gen.line(l);
+        size_t i = 0;
+        while (i < t.size() && (t[i] == ' ' || t[i] == '\t'))
+            ++i;
+        if (!in_block && i < t.size() && t[i] == '#')
+        {
+            ++i;
+            while (i < t.size() && t[i] == ' ')
+                ++i;
+            if (t.compare(i, 4, "line") == 0)
+            {
+                i += 4;
+                const int n = std::atoi(std::string(t.substr(i)).c_str());
+                const size_t q1 = t.find('"', i), q2 = t.rfind('"');
+                std::string file;
+                for (size_t k = q1 + 1; q1 != std::string_view::npos && k < q2; ++k)
+                {
+                    if (t[k] == '\\' && k + 1 < q2)
+                        ++k;
+                    file += t[k];
+                }
+                script_line = file == d.path ? n - 1 : -1;
+                last_directive = l;
+            }
+            continue; // a directive or an include line
+        }
+        const std::string code = blank_non_code(t, in_block);
+        if (script_line < 0 || script_line + (l - last_directive - 1) != old->line)
+            continue;
+        for (const int c : whole_words(code))
+            places.push_back({{l, c}, l == last_directive + 1});
+    }
+    // In each group, a place that is not followed by "(" comes before a call, a constructor or a
+    // destructor name.
+    auto is_call = [&](const Pos& p)
+    {
+        const std::string_view t = d.gen.line(p.line);
+        size_t e = static_cast<size_t>(p.col) + w.size();
+        while (e < t.size() && t[e] == ' ')
+            ++e;
+        return e < t.size() && t[e] == '(';
+    };
+    std::stable_sort(places.begin(), places.end(),
+        [&](const Place& a, const Place& b)
+        {
+            if (a.mapped != b.mapped)
+                return a.mapped;
+            return !is_call(a.pos) && is_call(b.pos);
+        });
+    const size_t mapped = static_cast<size_t>(
+        std::count_if(places.begin(), places.end(), [](const Place& p) { return p.mapped; }));
+    if (nth != in_script.end() && mapped == in_script.size())
+    {
+        // The generated order of the mapped places is the script order. Sort them by position
+        // first, then take the one of the same number.
+        std::stable_sort(places.begin(), places.begin() + static_cast<long>(mapped),
+            [](const Place& a, const Place& b) { return a.pos < b.pos; });
+        std::rotate(places.begin(), places.begin() + (nth - in_script.begin()),
+            places.begin() + (nth - in_script.begin()) + 1);
+    }
+    constexpr size_t kMaxAsks = 4;
+    for (size_t k = 0; k < places.size() && out.size() < kMaxAsks; ++k)
+        out.push_back(places[k].pos);
+    return out;
+}
+
 json Server::on_locations(const Doc& d, const json& p, const std::string& method)
 {
     json out = json::array();
@@ -1630,24 +1831,68 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
             for_other_scripts(d, {here_word, ""}, here_word, add);
         return out;
     }
-    const auto g = to_gen(d, here);
-    if (!g)
-        return out;
-    json params = {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}};
-    if (method == "textDocument/references")
-        params["context"] = {{"includeDeclaration", true}};
-    auto r = clangd_result(method, params);
-    if (!r)
-        return out;
-    json list = r->is_array() ? *r : json::array({*r});
-    std::set<std::string> seen;
-    for (const json& loc : list)
+    // The places in the generated text to ask clangd. A word without a map segment (a type name,
+    // a base class, a name after "new") has the places of the same word in the generated lines
+    // of its script line. The first place that gives an answer wins.
+    std::vector<Pos> asks;
+    bool by_word = false;
+    if (const auto g = to_gen(d, here))
+        asks.push_back(*g);
+    else if (method == "textDocument/definition")
     {
-        json m = map_location(d, loc);
-        if (m.is_null() || !seen.insert(m.dump()).second)
-            continue;
-        out.push_back(std::move(m));
+        asks = gen_word_candidates(d, here);
+        by_word = true;
     }
+    // The asks of a word share a short time budget: a place that clangd does not answer in time
+    // does not hold the editor.
+    constexpr int kWordBudgetMs = 3000;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kWordBudgetMs);
+    std::set<std::string> seen;
+    for (const Pos& g : asks)
+    {
+        int timeout_ms = 60000;
+        if (by_word)
+        {
+            const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - std::chrono::steady_clock::now()).count();
+            if (left <= 0)
+                break;
+            timeout_ms = static_cast<int>(left);
+        }
+        json params = {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, g)}};
+        if (method == "textDocument/references")
+            params["context"] = {{"includeDeclaration", true}};
+        auto r = clangd_result(method, params, timeout_ms);
+        if (!r)
+            continue;
+        json list = r->is_array() ? *r : json::array({*r});
+        for (const json& loc : list)
+        {
+            json m = map_location(d, loc);
+            if (m.is_null() || !seen.insert(m.dump()).second)
+                continue;
+            out.push_back(std::move(m));
+        }
+        if (!out.empty())
+            break;
+    }
+    // A symbol word with a place in the generated text (or no generated text at all, because the
+    // translation never worked), but no answer, and no host in use (a host that
+    // matches, or the nearest host): tell the user one time why F12 cannot find the symbol.
+    if (out.empty() && (!asks.empty() || !d.map) && method == "textDocument/definition" && !d.no_host_told
+        && is_symbol_word(here_word) && !is_script_class(d, here_word) && !host_of(d.path) && !nearest_host(d.path))
+    {
+        d.no_host_told = true;
+        send_client({{"jsonrpc", "2.0"}, {"method", "window/showMessage"},
+            {"params",
+                {{"type", 3},
+                    {"message",
+                        "hot-ls: No script host matches " + d.path
+                            + ", so F12 may not find native symbols. Add hot_add_host(...) or hot_script_host(...) in "
+                              "CMake and run CMake again."}}}});
+    }
+    if (asks.empty())
+        return out;
     if (method == "textDocument/references" && roots_.size())
     {
         const Pos cur = from_lsp(d.text, p["position"], utf8_);

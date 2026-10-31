@@ -57,6 +57,12 @@ public:
     // name in sorted order wins.
     std::shared_ptr<const Host> match(const std::string& script_path) const;
 
+    // Gives the host whose script dirs and scripts are nearest to a script that no host matches,
+    // or nullptr. The nearness is the count of leading path parts that the directory of the
+    // script shares with a script dir (or with the directory of a script) of the host. "common"
+    // gets the shared directory of the best host. On a tie, the first name in sorted order wins.
+    std::shared_ptr<const Host> nearest(const std::string& script_path, std::filesystem::path& common) const;
+
     size_t size() const { return hosts_.size(); }
 
 private:

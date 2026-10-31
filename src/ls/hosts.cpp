@@ -274,4 +274,36 @@ std::shared_ptr<const Host> HostSet::match(const std::string& script_path) const
     return best;
 }
 
+std::shared_ptr<const Host> HostSet::nearest(const std::string& script_path, fs::path& common) const
+{
+    const fs::path script_dir = fs::path(script_path).lexically_normal().parent_path();
+    std::shared_ptr<const Host> best;
+    size_t best_count = 0;
+    for (const auto& h : hosts_)
+    {
+        std::vector<fs::path> dirs;
+        for (const std::string& d : h->script_dirs)
+            dirs.push_back(strip_slash(d));
+        for (const std::string& s : h->scripts)
+            dirs.push_back(fs::path(s).parent_path());
+        for (const fs::path& d : dirs)
+        {
+            const fs::path norm = d.lexically_normal();
+            fs::path out;
+            size_t n = 0;
+            auto a = script_dir.begin();
+            auto b = norm.begin();
+            for (; a != script_dir.end() && b != norm.end() && *a == *b; ++a, ++b, ++n)
+                out /= *a;
+            if (n > best_count)
+            {
+                best_count = n;
+                best = h;
+                common = out;
+            }
+        }
+    }
+    return best;
+}
+
 } // namespace hot::ls

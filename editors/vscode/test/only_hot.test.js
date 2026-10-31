@@ -22,4 +22,11 @@ assert.strictEqual(calls, 0);
 // A "hot" document goes to the server with the same arguments, without "next".
 assert.deepStrictEqual(m.provideHover({ languageId: 'hot' }, 'pos', 'tok', next), [{ languageId: 'hot' }, 'pos', 'tok']);
 assert.strictEqual(calls, 1);
+
+// F12: a "hot" document reaches the server (a native symbol is found there). A "cpp" document
+// does not: the clangd extension answers it.
+assert.strictEqual(m.provideDefinition({ languageId: 'cpp' }, 'pos', 'tok', next), undefined);
+assert.strictEqual(calls, 1);
+assert.deepStrictEqual(m.provideDefinition({ languageId: 'hot' }, 'pos', 'tok', next), [{ languageId: 'hot' }, 'pos', 'tok']);
+assert.strictEqual(calls, 2);
 console.log('only_hot.test.js: ok');

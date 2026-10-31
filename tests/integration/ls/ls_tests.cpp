@@ -362,6 +362,207 @@ TEST(LanguageServer, DefinitionOfANativeMethodIsInTheNativeHeader)
     EXPECT_NE(uri.find("Actor"), std::string::npos) << r.dump();
 }
 
+// ------------------------------------------------------------------ definition of native symbols
+namespace
+{
+
+const char* const kNativeHeader =
+    "#pragma once\n"
+    "#include \"Actor.h\"\n"
+    "#include <vector>\n"
+    "\n"
+    "enum class Mood { Calm, Angry };\n"
+    "enum Level { LevelLow, LevelHigh };\n"
+    "using Score = int;\n"
+    "#define MAX_HP 100\n"
+    "\n"
+    "struct Counter\n"
+    "{\n"
+    "    int count = 0;\n"
+    "    int Bump(int by);\n"
+    "};\n"
+    "\n"
+    "class Boss : public Actor\n"
+    "{\n"
+    "public:\n"
+    "    int rage = 0;\n"
+    "    void Roar();\n"
+    "};\n"
+    "\n"
+    "int Clamp100(int v);\n"
+    "int Tag(const char* text, Counter c);\n";
+
+const char* const kNativeScript =
+    "using \"Actor.h\";\n"
+    "using \"Weapon.h\";\n"
+    "using \"natives.h\";\n"
+    "\n"
+    "[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n"
+    "\n"
+    "class Hero : Boss {\n"
+    "    Counter counter;\n"
+    "    Score score = 0;\n"
+    "    std.vector<Counter> counters;\n"
+    "    Mood mood = Mood.Calm;\n"
+    "\n"
+    "    override void Tick(float dt) {\n"
+    "        Counter local;\n"
+    "        Counter* ptr = &local;\n"
+    "        Weapon w = new Weapon(1, \"a\");\n"
+    "        Boss other = this as Boss;\n"
+    "        bool isBoss = this is Boss;\n"
+    "        int x = Clamp100(MAX_HP);\n"
+    "        this.Roar();\n"
+    "        this.rage = local.Bump(this.counter.count);\n"
+    "        Level lv = LevelHigh;\n"
+    "        Mood m = Mood.Angry;\n"
+    "        int tag = Tag(\"Counter Counter Counter Counter\", Counter());\n"
+    "    }\n"
+    "}\n";
+
+// A server with the script above. The script uses a header of the temporary directory.
+struct NativeSession
+{
+    TempDir dir;
+    std::string path, uri;
+    std::unique_ptr<LsClient> client;
+    NativeSession()
+    {
+        write_file((dir.path() / "natives.h").string(), kNativeHeader);
+        path = (dir.path() / "hero.hot").string();
+        uri = uri_of(path);
+        write_file(path, kNativeScript);
+        hot::ls::ServerOptions o = options(dir, true);
+        o.include_dirs.push_back(dir.path().string());
+        client = std::make_unique<LsClient>(o);
+        client->initialize(uri_of(dir.path().string()));
+        client->open(uri, kNativeScript);
+    }
+    // F12 on the first "word" in the first "context" of the script. The answer is a location in
+    // the header "header" (a file of the temporary directory or of tests/engine). The line of the
+    // location starts with "decl" and the range starts at the word "word" of that line.
+    void expect(const std::string& context, const std::string& word, const std::string& header,
+        const std::string& decl, int nth = 0)
+    {
+        const std::string text = kNativeScript;
+        size_t at = 0;
+        for (int i = 0; i <= nth; ++i)
+            at = text.find(context, i == 0 ? 0 : at + 1);
+        ASSERT_NE(at, std::string::npos) << context;
+        at += context.rfind(word);
+        const int line = static_cast<int>(std::count(text.begin(), text.begin() + static_cast<long>(at), '\n'));
+        const int col = static_cast<int>(at - (text.rfind('\n', at - 1) + 1));
+        const json r = client->request("textDocument/definition", doc_pos(uri, line, col));
+        SCOPED_TRACE(context + " -> " + r.dump());
+        ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty());
+        const json& loc = r["result"][0];
+        const std::string file = header == "natives.h" ? (dir.path() / header).string()
+                                                       : std::string(HOT_SOURCE_DIR "/tests/engine/") + header;
+        EXPECT_EQ(std::filesystem::path(loc.value("uri", "").substr(7)).filename(), header);
+        std::ifstream in(file);
+        std::string h((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        const size_t d = h.find(decl);
+        ASSERT_NE(d, std::string::npos) << decl;
+        const int dl = static_cast<int>(std::count(h.begin(), h.begin() + static_cast<long>(d), '\n'));
+        EXPECT_EQ(loc["range"]["start"]["line"], dl);
+        const size_t ls = h.rfind('\n', d) == std::string::npos ? 0 : h.rfind('\n', d) + 1;
+        const size_t le = h.find('\n', d);
+        const std::string hl = h.substr(ls, le - ls);
+        const int c = loc["range"]["start"]["character"];
+        EXPECT_EQ(hl.substr(static_cast<size_t>(c), word.size()), word) << hl;
+    }
+};
+
+} // namespace
+
+TEST(LanguageServerNative, ClassNameOfAVariableTypeJumpsToTheClass)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    s.expect("Counter local;", "Counter", "natives.h", "struct Counter");
+    s.expect("Counter counter;", "Counter", "natives.h", "struct Counter");
+}
+
+TEST(LanguageServerNative, BaseClassNameJumpsToTheClass)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    s.expect("class Hero : Boss", "Boss", "natives.h", "class Boss");
+}
+
+TEST(LanguageServerNative, ClassNameAfterNewJumpsToTheClass)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    s.expect("new Weapon(", "Weapon", "Weapon.h", "struct Weapon");
+}
+
+TEST(LanguageServerNative, ClassNameInAsAndIsJumpsToTheClass)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    s.expect("this as Boss", "Boss", "natives.h", "class Boss");
+    s.expect("this is Boss", "Boss", "natives.h", "class Boss");
+}
+
+TEST(LanguageServerNative, FreeFunctionCallJumpsToTheFunction)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    s.expect("Clamp100(MAX_HP)", "Clamp100", "natives.h", "int Clamp100");
+}
+
+TEST(LanguageServerNative, MethodCallOnAnObjectJumpsToTheMethod)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    s.expect("local.Bump(", "Bump", "natives.h", "int Bump");
+    s.expect("this.Roar()", "Roar", "natives.h", "void Roar");
+}
+
+TEST(LanguageServerNative, FieldJumpsToTheField)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    s.expect("this.rage =", "rage", "natives.h", "int rage");
+    s.expect("this.counter.count", "count", "natives.h", "int count");
+}
+
+TEST(LanguageServerNative, EnumTypeAndEnumValueJumpToTheEnum)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    s.expect("Mood m = ", "Mood", "natives.h", "enum class Mood");
+    s.expect("Mood.Angry;", "Angry", "natives.h", "enum class Mood");
+    s.expect("Level lv", "Level", "natives.h", "enum Level");
+    s.expect("= LevelHigh;", "LevelHigh", "natives.h", "enum Level");
+}
+
+TEST(LanguageServerNative, TypeInATemplateArgumentAndInAPointerTypeJumpsToTheType)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    s.expect("std.vector<Counter>", "Counter", "natives.h", "struct Counter");
+    s.expect("Counter* ptr", "Counter", "natives.h", "struct Counter");
+}
+
+// The word is four times in a string of the same line before the real use. The strings are not
+// places for the word.
+TEST(LanguageServerNative, WordInAStringOrAComment)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    s.expect("Tag(\"Counter Counter Counter Counter\", Counter())", "Counter", "natives.h", "struct Counter");
+}
+
+TEST(LanguageServerNative, TypeAliasAndMacroJumpToTheirDeclaration)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    s.expect("Score score", "Score", "natives.h", "using Score");
+    s.expect("Clamp100(MAX_HP)", "MAX_HP", "natives.h", "#define MAX_HP");
+}
+
 TEST(LanguageServer, ReferencesOfAScriptFieldAreInTheScript)
 {
     REQUIRE_CLANGD();
@@ -1717,6 +1918,103 @@ TEST(LanguageServerHosts, InformationDiagnosticGoesWhenAHostAppears)
     c.write_host();
     client.change(c.uri, 2, c.text + "\n");
     EXPECT_FALSE(has_source(c.next_diagnostics(client)["params"]["diagnostics"], "hot-ls"));
+}
+
+// F12 on a native type in a script that no host matches (step 13).
+namespace
+{
+
+// A workspace with the header "inc/thing.h", the host file for "scripts" (when "host") and the
+// script "other/a.hot". No host matches the script. The host is the nearest one. The server has
+// no -I option, so the include dirs of the host are the only way to find "thing.h".
+struct NoMatchCase
+{
+    TempDir dir;
+    std::string uri;
+    std::unique_ptr<LsClient> client;
+    explicit NoMatchCase(bool host)
+    {
+        const std::filesystem::path root = dir.path();
+        for (const char* d : {"inc", "scripts", "other", "build", "hosts"})
+            std::filesystem::create_directories(root / d);
+        write_file((root / "inc" / "thing.h").string(), "#pragma once\nstruct Thing\n{\n    int value = 0;\n};\n");
+        const std::string text = "using \"thing.h\";\n\nclass A {\n    void f() {\n        Thing t;\n    }\n}\n";
+        const std::string path = (root / "other" / "a.hot").string();
+        write_file(path, text);
+        write_file((root / "build" / "CMakeCache.txt").string(), "# cache\n");
+        if (host)
+            write_file((root / "hosts" / "h.json").string(),
+                R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string()
+                    + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")"
+                    + (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" + (root / "inc").string()
+                    + R"(",")" + HOT_SOURCE_DIR + R"(/include"],"defines":[],"flags":[]})");
+        hot::ls::ServerOptions o;
+        o.clangd = HOT_CLANGD_PATH;
+        o.hosts_dir = (root / "hosts").string();
+        o.clangd_log = (root / "clangd.log").string();
+        client = std::make_unique<LsClient>(o);
+        client->initialize(uri_of(root.string()));
+        uri = uri_of(path);
+        client->open(uri, text);
+    }
+};
+
+} // namespace
+
+TEST(LanguageServerHosts, DefinitionUsesTheNearestHostWhenNoHostMatchesTheScript)
+{
+    REQUIRE_CLANGD();
+    NoMatchCase c(true);
+    const json r = c.client->request("textDocument/definition", doc_pos(c.uri, 4, 9));
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
+    EXPECT_NE(r["result"][0].value("uri", "").find("/inc/thing.h"), std::string::npos) << r.dump();
+    EXPECT_EQ(r["result"][0]["range"]["start"]["line"], 1) << r.dump();
+}
+
+// "Thing" is on line 4 of the script. Without a host, clangd does not find its header, so the
+// answer is empty. The word has a place in the generated C++, so the server says why.
+TEST(LanguageServerHosts, DefinitionWithoutAnyHostSaysOnceThatNoHostMatches)
+{
+    REQUIRE_CLANGD();
+    NoMatchCase c(false);
+    auto message = [&](int ms)
+    {
+        return c.client->wait_notification("window/showMessage",
+            [](const json& p) { return p.value("message", std::string()).find("No script host matches") != std::string::npos; },
+            ms);
+    };
+    const json r = c.client->request("textDocument/definition", doc_pos(c.uri, 4, 9));
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    EXPECT_TRUE(r["result"].is_array() && r["result"].empty()) << r.dump();
+    EXPECT_FALSE(message(10000).is_null()) << "the server must say that no host matches";
+    // The second F12 in the same document gives no second message.
+    c.client->request("textDocument/definition", doc_pos(c.uri, 4, 9));
+    EXPECT_TRUE(message(700).is_null());
+}
+
+TEST(LanguageServerHosts, DefinitionGivesNoNoHostMessageForAKeywordOrANumber)
+{
+    REQUIRE_CLANGD();
+    NoMatchCase c(false);
+    // Line 2 is "class A {". Line 3 is "void f() {". The word "void" is a builtin type.
+    c.client->request("textDocument/definition", doc_pos(c.uri, 3, 6));
+    c.client->request("textDocument/definition", doc_pos(c.uri, 2, 1));
+    EXPECT_TRUE(c.client->wait_notification("window/showMessage", [](const json&) { return true; }, 700).is_null());
+}
+
+TEST(LanguageServerHosts, DefinitionGivesNoNoHostMessageWhenTheNearestHostIsUsed)
+{
+    REQUIRE_CLANGD();
+    NoMatchCase c(true);
+    // "Nope" is not declared anywhere: the answer is empty, but a host is in use.
+    c.client->notify("textDocument/didChange",
+        {{"textDocument", {{"uri", c.uri}, {"version", 2}}},
+            {"contentChanges", json::array({{{"text",
+                "using \"thing.h\";\n\nclass A {\n    void f() {\n        Nope();\n    }\n}\n"}}})}});
+    const json r = c.client->request("textDocument/definition", doc_pos(c.uri, 4, 9));
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    EXPECT_TRUE(r["result"].is_array() && r["result"].empty()) << r.dump();
+    EXPECT_TRUE(c.client->wait_notification("window/showMessage", [](const json&) { return true; }, 700).is_null());
 }
 
 // ------------------------------------------------------------------ ".cpp" scripts
