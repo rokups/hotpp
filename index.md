@@ -60,3 +60,6 @@ The `hotc` tool turns a script into C++. The engine reloads a changed script whi
   - [Presets, tests and troubleshooting](cmake-presets.html): sanitizers, presets, the table of errors and `hot_gtest`.
 - [Tools](tools.html): the `hot-ls` language server.
 - [Benchmarks](benchmarks.html): the run-time cost of script code against native C++, and how to measure it.
+- [Development notes](development.html): the milestones, the source layout, the tests, the translator and the `hotc` command line.
+- [Language server internals](tools-ls.html): the script hosts, the index and the features of `hot-ls`.
+- [Runtime internals](internals.html): the JIT backend, threads, closures and debug information.
