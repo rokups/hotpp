@@ -127,15 +127,32 @@ hot::set_script_error_handler([](const hot::ScriptErrorReport& r) {
 | `message` | The text of `what()`. |
 | `class_name` | The script class of the object, or `?`. |
 | `self` | The shell of the object (`const hot::ShellBase*`), or null. |
-| `traceback` | An empty text for now. |
+| `traceback` | The script call stack of the throw point, or an empty text when the traceback is off. See "Traceback". |
 
-Without a handler, the runtime prints one line to `stderr`: `[script] ERROR: unhandled hot::IndexOutOfRange in Player: <message>`.
+Without a handler, the runtime prints one line to `stderr`: `[script] ERROR: unhandled hot::IndexOutOfRange in Player: <message>`. When the traceback is on, the lines of the traceback follow it.
 
 An error reports only when it leaves the outermost script call. A script that calls native code, which calls a script override, can catch the error in the calling script.
 
 Only a `ScriptError` stops at the boundary. Any other C++ exception that a script throws reaches the host. The host must catch it. If the return type has no default value (for example a reference), the runtime reports the error and throws it again.
 
 The checks are a build-time choice. The CMake option `HOT_RUNTIME_CHECKS` (default `ON`) sets the macro `HOT_RUNTIME_CHECKS`. With `OFF` the macro is `0`: the generated code has no checks, and an installed host sees the same setting. Each check costs one compare for a pointer access, a handle access or a `std::array` index. See [CMake](cmake.html).
+
+### Traceback
+
+The traceback is off by default. To turn it on, configure Hot++ with `-DHOT_TRACEBACK=ON`. The option sets the macro `HOT_TRACEBACK` to `1` for the runtime library and for the compile of the scripts. It works for `.hot` scripts only.
+
+With the traceback on, each script member function records a frame on a thread-local stack. Each statement stores its script line in the frame. A `hot::ScriptError` copies the stack when the script throws it, because the unwind removes the frames. `hot::ScriptError::traceback()` gives the text. `hot::ScriptErrorReport::traceback` has the same text. Each frame is one line, and the innermost frame is first:
+
+```
+[script] ERROR: unhandled hot::NullReference in Player: null handle dereference
+  at Player.Inner (player.hot:12)
+  at Player.Outer (player.hot:17)
+  at Player.Tick (player.hot:21)
+```
+
+The stack keeps the 64 innermost frames. A last line `  ... N more` shows how many outer frames it dropped. A lambda records no frame and no line.
+
+The cost is one store for each statement and one push and pop for each call. The generated code is the same when the option is `OFF`: the macros `HOT_TRACE_FRAME` and `HOT_TRACE_LINE` are empty. Build the host and the scripts with the same setting. A script without the macros gives an empty traceback.
 
 ## Compile at run time
 
