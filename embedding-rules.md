@@ -40,7 +40,11 @@ A host that loads a module must export its symbols. The modules resolve the host
 - Link a static library of your own as a whole archive when scripts call functions that the host code does not use. `samples/imgui/CMakeLists.txt` uses `$<LINK_LIBRARY:WHOLE_ARCHIVE,imgui_sdl3>` for this.
 - The executable must link the runtime objects that the script code uses (see the JIT section of `README.md`). The samples link the Hot++ libraries without a whole-archive link.
 - An AOT program does not load a module, so it does not export. A program with run-time overrides loads modules, so it exports (`MODE AOT_RELOAD` sets this).
-- On Linux, a module of the `files` backend reads the thread-local call depth of the runtime (`hot::detail::g_call_depth`) directly. This needs static TLS. So the runtime must be in the executable, or in a shared library that loads at the program start. A runtime in a library that the host loads with `dlopen` can fail with `cannot allocate memory in static TLS block`. Then compile the scripts with `-DHOT_NO_TLS_DEPTH`: the call reads the depth through `hot::detail::call_depth()`. The `jit` backend always does this.
+- The runtime keeps the call depth of the script calls in a static TLS variable (`hot::detail::g_call_depth`). The script code reads it with one instruction. A host that is one executable, or that links the runtime library at the program start, needs nothing more. A host that loads the runtime library later with `dlopen` can fail with `cannot allocate memory in static TLS block`. Then give glibc more static TLS space with an environment variable. This needs glibc 2.32 or later. Set the variable before the process starts: a change at run time has no effect. Use 4096 bytes or more:
+
+  ```sh
+  GLIBC_TUNABLES=glibc.rtld.optional_static_tls=4096 ./my_host
+  ```
 
 ### C++17 baseline
 
