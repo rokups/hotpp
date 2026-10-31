@@ -18,7 +18,7 @@ Answer these questions in order. Stop at the first answer that fits.
 4. Must a live object keep its field values while its code changes? Use **hot reload**.
 5. Do you want to avoid a compiler process, and can you link LLVM and Clang? Use the **in-process JIT**.
 6. Do you want to set the compiler, the include folders, the flags and the work folder in your own code? Use the **explicit Clang files backend** (or the explicit JIT backend).
-7. Else use **compile at run time** with `make_default_backend`. The build option `HOT_BACKEND` picks the backend.
+7. Else use **compile at run time** with `make_default_backend`. The program picks the backend at run time (see "Compile at run time").
 
 | Situation | Sample |
 |---|---|
@@ -41,7 +41,7 @@ Pick the row that matches your program. Each sample is a small project that buil
 | Compile at run time | `hot_backend` | `make_default_backend` | [runtime-compile](https://github.com/rokups/hotpp/tree/main/samples/runtime-compile) |
 | Precompiled library | `hot_runtime` | `module_from_library` | [precompiled-library](https://github.com/rokups/hotpp/tree/main/samples/precompiled-library) |
 | Hot reload | `hot_backend` | `request_reload`, `commit_pending`, `frame_boundary` | [hot-reload](https://github.com/rokups/hotpp/tree/main/samples/hot-reload) |
-| In-process JIT | `hot_jit_backend` (needs `HOT_BACKEND=JIT`) | `JitBackend` | [jit-backend](https://github.com/rokups/hotpp/tree/main/samples/jit-backend) |
+| In-process JIT | `hot_jit_backend` (needs `HOT_ENABLE_JIT`) | `JitBackend` | [jit-backend](https://github.com/rokups/hotpp/tree/main/samples/jit-backend) |
 | Explicit Clang files backend | `hot_clang_backend` | `ClangFilesBackend` | [clang-files-backend](https://github.com/rokups/hotpp/tree/main/samples/clang-files-backend) |
 | AOT | `hot::aot` (through `hot_add_host` with `MODE AOT`) | `AotRegistry` | [aot](https://github.com/rokups/hotpp/tree/main/samples/aot) |
 | AOT with run-time overrides | `hot::backend` (through `hot_add_host` with `MODE AOT_RELOAD`) | `Loader::load_aot`, `Backend::seed_slots`, `Loader::revert_unit` | [aot-reload](https://github.com/rokups/hotpp/tree/main/samples/aot-reload) |
@@ -53,9 +53,9 @@ Pick the row that matches your program. Each sample is a small project that buil
 | AOT | No | No | None. `AotRegistry` registers the classes. | `hot_aot` through the AOT library | No loader, no Clang, no `ENABLE_EXPORTS`. |
 | AOT with run-time overrides | Yes, for an override only | Yes, for each script | `load_aot` registers the compiled-in classes. An override costs one translate and one compile. | `hot_backend` and the AOT library | `ENABLE_EXPORTS`. One `Loader` in the process. Never link `hot::aot`. |
 | Precompiled library | No | Yes, when you load a newer generation that you built ahead | `dlopen` of the library | `hot_runtime` | No libclang at run time. `ENABLE_EXPORTS`. A writable temp folder (see "Core copies"). |
-| Compile at run time | `CLANG_FILES`: yes, the compiler of the build. `JIT`: no process, but Clang libraries. | Yes | One translate and one compile for each load. | `hot_backend` | The backend is the one that `HOT_BACKEND` selects. `ENABLE_EXPORTS`. |
+| Compile at run time | `CLANG_FILES`: yes, the compiler of the build. `JIT`: no process, but Clang libraries. | Yes | One translate and one compile for each load. | `hot_backend` | The program picks the backend at run time (`BackendKind`, the environment variable `HOT_BACKEND`). `ENABLE_EXPORTS`. |
 | Hot reload | Same as compile at run time | Yes | Same as compile at run time | `hot_backend` | The host calls `request_reload`, `commit_pending` and `frame_boundary`. |
-| In-process JIT | No process. The program links LLVM and Clang. | Yes | No process start. About 140 ms less than `CLANG_FILES` for one load at `-O1` (see below the table). | `hot_jit_backend` | `HOT_BACKEND=JIT`. `ENABLE_EXPORTS`. |
+| In-process JIT | No process. The program links LLVM and Clang. | Yes | No process start. About 140 ms less than `CLANG_FILES` for one load at `-O1` (see below the table). | `hot_jit_backend` | `HOT_ENABLE_JIT`. `ENABLE_EXPORTS`. |
 | Explicit Clang files backend | Yes. `ClangFilesOptions::compiler`. | Yes | One compiler process for each load. | `hot_clang_backend` | You set every option. `ENABLE_EXPORTS`. |
 
 The numbers come from the benchmark in `README.md` (section "JIT backend"). The author measured them on one machine. A translate with a new `TranslatorSession` takes about 406 ms, because libclang parses the headers. A translate with the same session takes about 1.3 ms. A warm load with `CLANG_FILES` at `-O1` and no precompiled header takes about 1.1 s. The JIT is about 140 ms (15%) faster at the same `-O1`. The test headers are small. Measure again with your own headers.
@@ -106,9 +106,9 @@ The generated code, `include/hot` and the runtime library need C++17 only. A C++
 
 ## Compile at run time
 
-**Links:** `hot_backend`. It brings `hot_runtime` and the backend that `HOT_BACKEND` selects. Set `ENABLE_EXPORTS`.
+**Links:** `hot_backend`. It brings `hot_runtime` and the backends that the build has. Set `ENABLE_EXPORTS`. The target does not exist when both CMake options `HOT_ENABLE_CLANG_FILES` and `HOT_ENABLE_JIT` are off.
 
-**Run time:** the backend turns script text into a `Module`. `CLANG_FILES` is the default. It runs an external `clang++` and loads a `.so`. `JIT` compiles in memory with the Clang library and LLVM ORC. Select one with the CMake option `HOT_BACKEND`.
+**Run time:** the backend turns script text into a `Module`. Two backends exist. The clang files backend runs an external `clang++` and loads a `.so`. The JIT backend compiles in memory with the Clang library and LLVM ORC. The CMake options `HOT_ENABLE_CLANG_FILES` (default `ON`) and `HOT_ENABLE_JIT` (default `AUTO`: on when CMake finds LLVM and Clang) decide which backends the build has. The program picks one at run time.
 
 ```
 cmake --preset linux-clang-files
@@ -126,7 +126,7 @@ const hot::ClassEntry* entry = loader.find("Player");
 std::unique_ptr<Actor> player(static_cast<Actor*>(entry->create().native));
 ```
 
-`make_default_backend` takes the compiler, the include folders and the flags from the build. The folders are the include folder of Hot++ and, with `HOT_BUILD_TESTS` ON, `tests/engine`. The flags are `CMAKE_CXX_FLAGS` at the time of `add_subdirectory`. The `CLANG_FILES` work folder is `<build>/tmp/hot_work/p<pid>`, and the backend removes it at exit unless `HOT_KEEP_TEMP` keeps it. A host adds its own folders and flags with `hot::DefaultBackendOptions` (`include/hot/backend.h`):
+`make_default_backend` takes the compiler, the include folders and the flags from the build. The folders are the include folder of Hot++ and, with `HOT_BUILD_TESTS` ON, `tests/engine`. The flags are `CMAKE_CXX_FLAGS` at the time of `add_subdirectory`. The clang files work folder is `<build>/tmp/hot_work/p<pid>`, and the backend removes it at exit unless `HOT_KEEP_TEMP` keeps it. A host adds its own folders and flags with `hot::DefaultBackendOptions` (`include/hot/backend.h`):
 
 ```cpp
 hot::DefaultBackendOptions options;
@@ -137,7 +137,24 @@ auto backend = hot::make_default_backend(options);
 
 `make_default_backend()` without an argument is the same as a call with empty options. Both backends use the options.
 
-**Requires:** with `CLANG_FILES`, the compiler of the build must exist on the machine that runs the program. With `JIT`, the program needs the LLVM and Clang libraries and no compiler process.
+**Run-time choice:** `options.kind` is a `hot::BackendKind`. The value `Auto` (the default) works in this order:
+
+1. The environment variable `HOT_BACKEND`, when it is set. The values are `jit` and `files`, in any case. `clang_files` and `clang-files` also mean `files`. Any other value is an error.
+2. Else the clang files backend, when the build has it.
+3. Else the JIT backend.
+
+The value `ClangFiles` or `Jit` selects that backend and ignores the environment variable. `hot::backend_available(kind)` tells if the build has a backend. Use it before you ask for one.
+
+```cpp
+hot::DefaultBackendOptions options;
+if (hot::backend_available(hot::BackendKind::Jit))
+    options.kind = hot::BackendKind::Jit;   // else keep Auto
+auto backend = hot::make_default_backend(options);
+```
+
+**Disabled backend:** when you ask for a backend that the build does not have, `make_default_backend` throws `std::runtime_error`. The message names the CMake option, for example `The JIT backend is not in this build. Configure Hot++ with HOT_ENABLE_JIT=ON (it needs the LLVM and Clang packages).`. The same error comes when the environment variable names such a backend.
+
+**Requires:** with the clang files backend, the compiler of the build must exist on the machine that runs the program. With the JIT backend, the program needs the LLVM and Clang libraries and no compiler process. A build with both backends links LLVM and Clang into the program, also when it uses the clang files backend.
 
 **Failure:** `LoadResult` has `error` (the compiler diagnostics with script names) and `reason` (`CompileError`, or `SlotsRemoved` when a class has fewer slots). `Loader::load` returns a `ReloadResult` with `Failed` and the reason `BadModule` when the module has no `script_register`, or when the loader already has a generation.
 
@@ -219,7 +236,7 @@ The host does the serialization. The script has no hook for it. `reset` returns 
 
 ## In-process JIT
 
-**Links:** `hot_jit_backend`. It brings `hot_runtime`, `hotc_lib`, `clang-cpp` and `LLVM`. Set `ENABLE_EXPORTS`. The target exists only when `HOT_BACKEND` is `JIT`.
+**Links:** `hot_jit_backend`. It brings `hot_runtime`, `hotc_lib`, `clang-cpp` and `LLVM`. Set `ENABLE_EXPORTS`. The target exists only when the build has the JIT backend (`HOT_ENABLE_JIT` is `ON`, or `AUTO` and CMake finds LLVM and Clang).
 
 ```cpp
 hot::JitOptions options;
