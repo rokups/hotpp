@@ -54,11 +54,11 @@ compiler (the object library `clang_files_backend_cpp_scripts_plain`). This show
 `hot::default_paths()` (`hot/paths.h`) gives the compiler, the Hot++ include folders, the resource
 folder and the work folder. A development build takes them from the build tree. A portable build
 (`HOT_PORTABLE=ON`) has no build path in the binary and finds them at run time (see
-[CMake](../../doc/cmake.md)). The script folder is `argv[1]`, else the definition `HOT_SCRIPT_DIR`.
+[CMake](../../doc/cmake-sdk.md#portable-binaries)). The script folder is `argv[1]`, else the definition `HOT_SCRIPT_DIR`.
 The definition `HOT_SAMPLE_EXT` (`.hot` or `.cpp`) picks the variant. `argv[2]` replaces it.
 The C++ standard is empty in the options, so the backend uses the standard of the host.
 The other fields (`slots_file`, `session`, `strict_borrowed`, `raw_diagnostics`) keep their defaults.
-See the table of the options in [Embedding](../../doc/embedding.md).
+See the table of the options in [Embedding](../../doc/embedding-interface.md#options-structs).
 
 ## Build and run
 

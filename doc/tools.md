@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Tools
-nav_order: 22
+nav_order: 42
 ---
 
 `hot-ls` is the language server. The VS Code extension starts it.
@@ -34,7 +34,7 @@ Add `.cache/` to the ignore list of the project. Without a host, give the option
 
 In a `.hot` file, F12 on a symbol of a C++ header jumps to the header. This works for a class, a struct, a free function, a method, a field, an enum, an enum value, a type alias and a macro. It works also for a type in a base class list, after `new`, after `as` and `is`, in a template argument and in a pointer type. The editor opens the header at the declaration.
 
-F12 needs a host. The host tells `hot-ls` the include directories of the header. Make the host with `hot_add_host` or `hot_script_host` (see [CMake](cmake.html)), and run CMake again. The script must be in a script directory of the host.
+F12 needs a host. The host tells `hot-ls` the include directories of the header. Make the host with `hot_add_host` or `hot_script_host` (see [CMake](cmake-host.html) and [CMake](cmake-scripts.html#hot_script_host)), and run CMake again. The script must be in a script directory of the host.
 
 When no host matches the script, `hot-ls` uses the nearest host in the workspace. The nearest host is the host whose script directory shares the most path parts with the script. If it finds no host, it uses the default include directories of the Hot++ build. The headers of your engine are then not found. When F12 finds nothing on a symbol, the editor shows this message. It shows it one time for each file, and again after the host set changes:
 
@@ -54,7 +54,7 @@ For a `.cpp` script, the clangd extension gives F12. `hot-ls` gives no answer fo
 
 A `.cpp` script is a C++ file (see [C++ scripts](cpp-scripts.html)). The editor shows the errors of `hotc` for it as diagnostics. The source of these diagnostics is `hot`.
 
-- `hot-ls` treats a `.cpp` file as a script only when a host lists it. The host lists the file in `SCRIPTS`, or in a directory of `SCRIPT_DIRS`. See `hot_script_host` in [CMake](cmake.html). Put no other `.cpp` file in a script directory: `hot-ls` treats it as a script too.
+- `hot-ls` treats a `.cpp` file as a script only when a host lists it. The host lists the file in `SCRIPTS`, or in a directory of `SCRIPT_DIRS`. See `hot_script_host` in [CMake](cmake-scripts.html#hot_script_host). Put no other `.cpp` file in a script directory: `hot-ls` treats it as a script too.
 - `hot-ls` ignores any other `.cpp` file. It gives no diagnostic and no answer for it.
 - The diagnostics come from the same checks as `hotc` does at build time. They appear when you open, edit or save the file.
 - For a script, `hot-ls` gives no completion, hover, definition, references, rename, symbols or semantic tokens. The answer is empty. clangd owns these features. `hot-ls` does not add the script to the index of `.hot` symbols.
@@ -93,7 +93,7 @@ Or add the same flags to the entry of the script in `compile_commands.json`:
 
 ## hotc format flag
 
-`hotc --format=std|fmt` picks the format library for `${}` in the C++ text. The default is `std`. The flag is for build systems: `hot_add_scripts` sets it. `fmt` output also compiles as C++17. In build mode (without `--emit-cpp` and `--aot`), the build of `hotc` fixes the library, and a different `--format` is an error. See [CMake](cmake.html).
+`hotc --format=std|fmt` picks the format library for `${}` in the C++ text. The default is `std`. The flag is for build systems: `hot_add_scripts` sets it. `fmt` output also compiles as C++17. In build mode (without `--emit-cpp` and `--aot`), the build of `hotc` fixes the library, and a different `--format` is an error. See [CMake](cmake-options.html#the-format-library).
 
 ## VS Code
 

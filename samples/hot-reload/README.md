@@ -100,7 +100,7 @@ To use another Hot++ tree, add `-DHOT_ROOT=/path/to/hot`. The `CMakeLists.txt` o
    Increase `next_generation` each time. Do not send a reload while another is pending (the reason is `Busy`).
 4. Call `commit_pending()` and then `frame_boundary()` at one safe point of each frame.
 5. Look at `status` and `reason` of each `ReloadResult`. For `FullReloadRequired`, do a full reload
-   with `Loader::reset` and `LoadMode::Fresh`. See "Full reload" in [Embedding](../../doc/embedding.md).
+   with `Loader::reset` and `LoadMode::Fresh`. See "Full reload" in [Embedding](../../doc/embedding-reload.md#full-reload).
 
 ## Expected output
 

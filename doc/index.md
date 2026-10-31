@@ -14,14 +14,22 @@ The `hotc` tool turns a script into C++. The engine reloads a changed script whi
 
 ## Hot script
 
-- [Types](types.html): builtin types, collection literals, handles, references and pointers.
-- [Borrowing](borrowing.html): where `T&`, `T*` and `&x` are allowed, and the errors.
-- [Classes](classes.html): fields, methods, `=>` bodies, default values, constructors, properties, structs, access words.
+- [Types](types.html): builtin types, variables, C++ types, collection literals and arrays.
+  - [Handles, references and pointers](types-handles.html): handles, weak handles, references and pointers.
+- [Borrowing](borrowing.html): where `T&`, `T*` and `&x` are allowed or rejected, and handles.
+  - [Borrowed locals, calls and fixes](borrowing-locals.html): borrowed locals, borrowed values in calls, the escape hatch and quick fixes.
+- [Classes](classes.html): fields, methods, `=>` bodies, default values, constructors, properties, structs.
+  - [Mutual use, this and access words](classes-use.html): classes that use each other, `this` as a value, access words and renamed fields.
 - [Inheritance](inheritance.html): native bases, virtual methods, script parents.
 - [Module level](module-level.html): `using`, enums, structs, module variables, native stubs.
-- [Statements](statements.html): control flow, string `switch`, `foreach` and bindings, `try`, string interpolation, casts, `??`, `?.`, `is` and `as`.
+- [Statements](statements.html): control flow, string `switch`, `foreach` and structured bindings.
+  - [try, catch and runtime errors](statements-errors.html): `try`, `catch`, `finally` and the errors that the runtime throws.
+  - [Strings, casts and patterns](statements-text.html): string interpolation, casts, `??`, `?.`, `is` and `as`.
 - [Lambdas](lambdas.html): arrow functions with a block body or an expression body.
-- [Native interop](native-interop.html): how a script calls engine code directly.
+- [Native interop](native-interop.html): how a script calls engine code directly, native objects and the fallback handle.
+  - [Scope of a stub and C++ insertions](native-interop-scope.html): the scope of a stub and the C++ insertions.
+  - [operator->, stub checks and index bounds](native-interop-checks.html): types with `operator->`, the checks on a stub and the bounds check on an index.
+  - [Module attributes and other limits](native-interop-attributes.html): module attributes, the array type and other limits.
 - [Diagnostics](diagnostics.html): the error format of the tools.
 - [Limits](limits.html): what version 1 does not support.
 
@@ -36,7 +44,19 @@ The `hotc` tool turns a script into C++. The engine reloads a changed script whi
 
 ## More
 
-- [Embedding](embedding.html): load scripts with a `Loader`.
-- [CMake](cmake.html): use Hot++ in a host project.
+- [Embedding](embedding.html): load scripts with a `Loader`, and which hosting situation fits.
+  - [Rules, errors and traceback](embedding-rules.html): ownership, threads, symbol export, error reports and the traceback.
+  - [Run-time compile and precompiled library](embedding-runtime.html): the two situations that load a library.
+  - [Reload API](embedding-reload.html): `request_reload`, the status values and the full reload.
+  - [JIT, clang files and AOT](embedding-backends.html): the JIT, the clang files backend, AOT and AOT with overrides.
+  - [File system of the host](embedding-vfs.html): the virtual file system for imports and headers.
+  - [Backend interface and options](embedding-interface.html): the backend interface and the options structs.
+- [CMake](cmake.html): use Hot++ in a host project, and the quick start.
+  - [Setup and targets](cmake-setup.html): the requirements, how to consume Hot++ and the targets.
+  - [Options and standard](cmake-options.html): the build options, the C++ standard and the format library.
+  - [Hosts with hot_add_host](cmake-host.html): the keywords and the modes.
+  - [Script functions](cmake-scripts.html): `hot_add_scripts` and `hot_script_host`.
+  - [SDK and portable binaries](cmake-sdk.html): install the SDK, and build a host without build paths.
+  - [Presets, tests and troubleshooting](cmake-presets.html): sanitizers, presets, the table of errors and `hot_gtest`.
 - [Tools](tools.html): the `hot-ls` language server.
 - [Benchmarks](benchmarks.html): the run-time cost of script code against native C++, and how to measure it.

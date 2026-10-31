@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Benchmarks
-nav_order: 23
+nav_order: 43
 ---
 
 The tool `bench_backends` measures the run-time cost of script code. Each case is a script and a native C++ twin that does the same work. The twin is the reference. The result is a ratio: script time divided by native time.

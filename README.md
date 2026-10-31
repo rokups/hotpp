@@ -54,8 +54,8 @@ The file `CMakePresets.json` has the presets. A build goes to `cmake-build/<pres
 - Hot++ supports C++17 and later. The generated code, `include/hot`, the runtime library and the backends build as C++17 or later.
 - The whole project builds as C++17 by default: the runtime, `hotc`, the language server, the tools, the samples and the tests. Set `-DCMAKE_CXX_STANDARD=20` (or 23) to opt in to a later standard.
 - The standard of the host (`HOT_CXX_STANDARD` in `include/hot/config.h`: 17, 20 or 23) is the standard of the script compile and of the parse of the native headers. The `hotc` flag `--std=c++17|c++20|c++23` overrides it.
-- The default C++17 build needs fmt for `${}`. See `doc/cmake.md`.
-- String interpolation `${}` uses fmt by default (C++17). To use `std::format`, set `-DCMAKE_CXX_STANDARD=20` or later. `-DHOT_USE_FMT=ON` selects fmt at C++20 and later. The choice is a build-time choice. `HOT_FMT_PROVIDER` says where fmt comes from: `AUTO` (default: `find_package`, then CPM.cmake), `SYSTEM` (`find_package` only), `CPM` (always fetch) or `NONE` (your project supplies the target `fmt::fmt-header-only` or `fmt::fmt`). See doc/cmake.md and doc/embedding.md.
+- The default C++17 build needs fmt for `${}`. See `doc/cmake-options.md`.
+- String interpolation `${}` uses fmt by default (C++17). To use `std::format`, set `-DCMAKE_CXX_STANDARD=20` or later. `-DHOT_USE_FMT=ON` selects fmt at C++20 and later. The choice is a build-time choice. `HOT_FMT_PROVIDER` says where fmt comes from: `AUTO` (default: `find_package`, then CPM.cmake), `SYSTEM` (`find_package` only), `CPM` (always fetch) or `NONE` (your project supplies the target `fmt::fmt-header-only` or `fmt::fmt`). See doc/cmake-options.md and doc/embedding-rules.md.
 
 ### Build tree layout
 
@@ -91,7 +91,7 @@ To purge an old build tree, remove the preset directory and configure again:
     cmake --install build-sdk --prefix /opt/hot-sdk
     cmake -S myapp -B myapp/build -DCMAKE_PREFIX_PATH=/opt/hot-sdk
 
-See "Install the SDK" in `doc/cmake.md`. The test `sdk_install_sample` installs the SDK and builds `samples/aot` against it.
+See "Install the SDK" in `doc/cmake-sdk.md`. The test `sdk_install_sample` installs the SDK and builds `samples/aot` against it.
 
 ## Samples
 

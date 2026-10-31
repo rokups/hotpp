@@ -108,7 +108,7 @@ template <class T> HOT_HIDDEN T& as_ref(T* p)
 // The default is false, so a container uses its own operator[]. std::array and std::vector are
 // checked by default (the private trait default_checked_index below). The stub attribute
 // "checked_index" of a native type makes the translator write a specialization in the module
-// header (see doc/native-interop.md). A host can also write one by hand:
+// header (see doc/native-interop-checks.md). A host can also write one by hand:
 //     template <class T> struct hot::checked_index<my::Ring<T>> : std::true_type {};
 // A checked type needs "size()" and "operator[]". A specialization that derives from
 // std::false_type removes the default check of a type. The trait is separate from

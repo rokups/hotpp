@@ -104,7 +104,7 @@ The functions `hot_add_host` and `hot_add_scripts` are then available.
 5. Make objects with `create_as<YourBase>("ClassName")`. Class names must be unique over all scripts.
 
 An AOT build has no hot reload. If you need hot reload in a development build, use another sample
-for that build. See the section "AOT" in [Embedding](../../doc/embedding.md).
+for that build. See the section "AOT" in [Embedding](../../doc/embedding-backends.md#aot).
 
 ## Expected output
 

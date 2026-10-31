@@ -1,7 +1,7 @@
 ---
 layout: default
 title: How hotc edits C++
-nav_order: 16
+nav_order: 24
 group: C++ scripts
 ---
 

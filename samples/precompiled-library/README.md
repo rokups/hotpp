@@ -35,7 +35,7 @@ Each program depends on the library target of its variant, so the library
 exists before the test runs.
 
 `module_from_library` also makes a private copy of the library in the temp folder for the core
-module (`hot-core-<pid>-<n>-<name>`). See "Core copies" in [Embedding](../../doc/embedding.md).
+module (`hot-core-<pid>-<n>-<name>`). See "Core copies" in [Embedding](../../doc/embedding-rules.md#core-copies).
 
 ## Files
 

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Diagnostics
-nav_order: 12
+nav_order: 20
 group: Hot script
 ---
 

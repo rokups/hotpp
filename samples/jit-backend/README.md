@@ -51,13 +51,13 @@ compiler (the object library `jit_backend_cpp_scripts_plain`). This shows that a
 | `extra_flags` | `hot::default_paths().cxxflags` (the flags of the host, for example a sanitizer) |
 
 `hot::default_paths()` (`hot/paths.h`) takes the values from the build tree in a development build.
-A portable build (`HOT_PORTABLE=ON`) finds them at run time (see [CMake](../../doc/cmake.md)).
+A portable build (`HOT_PORTABLE=ON`) finds them at run time (see [CMake](../../doc/cmake-sdk.md#portable-binaries)).
 The script folder is `argv[1]`, else the definition `HOT_SCRIPT_DIR`. The definition
 `HOT_SAMPLE_EXT` (`.hot` or `.cpp`) picks the variant. `argv[2]` replaces it.
 
 The C++ standard (`std_version`) is empty, so the backend uses the standard of the host.
 The other fields (`session`, `pch_path`, `strict_borrowed`, `raw_diagnostics`, `debug_flag`,
-`debugger_support`) keep their defaults. See the table of the options in [Embedding](../../doc/embedding.md).
+`debugger_support`) keep their defaults. See the table of the options in [Embedding](../../doc/embedding-interface.md#options-structs).
 
 ## Build and run
 
