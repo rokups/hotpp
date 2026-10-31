@@ -51,7 +51,7 @@ TEST(LocalDeclarationParse, TypeFirstDeclarations)
     EXPECT_EQ(round_trip("std.string s = \"x\";"), "std::string s = \"x\";");
     EXPECT_EQ(round_trip("uint n = 0;"), "uint32_t n = 0;");
     EXPECT_EQ(round_trip("const std.exception& e = f();"), "const std::exception& e = f();");
-    EXPECT_EQ(round_trip("int[3] a;"), "int32_t[3] a = std::type_identity_t<int32_t[3]>();");
+    EXPECT_EQ(round_trip("int[3] a;"), "std::array<int32_t, 3> a = std::array<int32_t, 3>();");
     EXPECT_EQ(round_trip("/* c */ int // d\n x = 1;"), "int32_t x = 1;");
 
     // The kind of each statement: a declaration or an expression.

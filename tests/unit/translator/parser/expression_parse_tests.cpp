@@ -69,7 +69,7 @@ TEST(ExpressionParse, PrefixAndPostfix)
 {
     EXPECT_EQ(round_trip("- -a"), "- -a");
     EXPECT_EQ(round_trip("!a && ~b"), "!a && ~b");
-    EXPECT_EQ(round_trip("*p++"), "*p++");
+    EXPECT_EQ(round_trip("*p++"), "hot::star(p++)");
     EXPECT_EQ(round_trip("a & b && c"), "a & b && c");
     EXPECT_EQ(round_trip("++i + --j"), "++i + --j");
     EXPECT_EQ(round_trip("a++ + b"), "a++ + b");
@@ -85,12 +85,12 @@ TEST(ExpressionParse, CallsAndMembers)
     EXPECT_EQ(round_trip("Math.Max(this.health - amount, 0.0)"), "Math::Max(this.health - amount, 0.0)");
     EXPECT_EQ(round_trip("std.printf(\"x\", a)"), "std::printf(\"x\", a)");
     EXPECT_EQ(round_trip("v.size() < n"), "v::size() < n");
-    EXPECT_EQ(round_trip("x[i + 1].y.z"), "x[i + 1].y.z");
+    EXPECT_EQ(round_trip("x[i + 1].y.z"), "hot::index(x, i + 1).y.z");
     EXPECT_EQ(round_trip("f().x"), "f().x");
     EXPECT_EQ(round_trip("this.p.m"), "this.p.m");
     EXPECT_EQ(round_trip("(a).x"), "(a).x");
     EXPECT_EQ(round_trip("f()"), "f()");
-    EXPECT_EQ(round_trip("f(a)(b)[c]"), "f(a)(b)[c]");
+    EXPECT_EQ(round_trip("f(a)(b)[c]"), "hot::index(f(a)(b), c)");
     EXPECT_EQ(round_trip("base.Tick(dt)"), "base.Tick(dt)");
     EXPECT_EQ(round_trip("x = null"), "x = nullptr");
 }
@@ -275,7 +275,7 @@ TEST(ExpressionParse, CollectionLiteral)
     EXPECT_EQ(round_trip("[]"), "{}");
     EXPECT_EQ(round_trip("[\"a\": 1, \"b\": 2]"), "{{\"a\", 1}, {\"b\", 2}}");
     EXPECT_EQ(round_trip("[[1], [2, 3]]"), "{{1}, {2, 3}}");
-    EXPECT_EQ(round_trip("a[i] + [1][0]"), "a[i] + {1}[0]");
+    EXPECT_EQ(round_trip("a[i] + [1][0]"), "hot::index(a, i) + hot::index({1}, 0)");
     // A ternary in an element or in a map value needs no parentheses.
     EXPECT_EQ(round_trip("[c ? 1 : 2, 3]"), "{c ? 1 : 2, 3}");
     EXPECT_EQ(round_trip("[\"a\": c ? 1 : 2, \"b\": 3]"), "{{\"a\", c ? 1 : 2}, {\"b\", 3}}");
