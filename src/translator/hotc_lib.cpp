@@ -3899,21 +3899,37 @@ void translate_impl(
             std::string key = m.name + "(";
             for (const Param& p : m.params)
                 key += key_norm(p.type) + ",";
-            const NativeVirtual* hit = nullptr;
+            // "F()" and "F() const" have the same name and parameters. A "const" after the
+            // parameters selects the const method. Without it, the non-const method is the
+            // default (the C++ rule), and a lone const method matches too.
+            std::vector<const NativeVirtual*> matches;
             for (const auto& nv : bi.virtuals)
             {
                 std::string k = nv.key();
                 if (nv.is_const)
                     k.resize(k.size() - 5);
-                if (k != key + ")")
-                    continue;
-                // The script has no "const" on a method, so "F()" and "F() const" both match.
-                if (hit)
+                if (k == key + ")")
+                    matches.push_back(&nv);
+            }
+            const NativeVirtual* hit = nullptr;
+            if (!matches.empty())
+            {
+                std::vector<const NativeVirtual*> same_const;
+                for (const NativeVirtual* nv : matches)
+                    if (nv->is_const == m.is_const)
+                        same_const.push_back(nv);
+                if (same_const.empty() && m.is_const)
                     fail_at(map, m.pos,
-                        "the override '" + m.name + "' is ambiguous: it matches '" + hit->text()
-                            + (hit->is_const ? " const" : "") + "' of " + hit->owner + " and '" + nv.text()
-                            + (nv.is_const ? " const" : "") + "' of " + nv.owner);
-                hit = &nv;
+                        "'" + m.name + "' is marked const but the native virtual of " + matches[0]->owner
+                            + " is not const");
+                // Without "const" and without a non-const match, use the const matches.
+                const std::vector<const NativeVirtual*>& pick = same_const.empty() ? matches : same_const;
+                hit = pick[0];
+                if (pick.size() > 1)
+                    fail_at(map, m.pos,
+                        "the override '" + m.name + "' is ambiguous: it matches '" + pick[0]->text()
+                            + (pick[0]->is_const ? " const" : "") + "' of " + pick[0]->owner + " and '"
+                            + pick[1]->text() + (pick[1]->is_const ? " const" : "") + "' of " + pick[1]->owner);
             }
             if (!hit)
             {

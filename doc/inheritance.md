@@ -46,8 +46,25 @@ These rules apply to the bases:
 - The first base gets the constructor arguments.
 - Each other base needs a default constructor.
 - A signature in two bases is an error.
-- A method pair `F()` and `F() const` is an error.
+- A method pair `F()` and `F() const` needs a marker. See below.
 - Only the root class of a family can have interface bases. A child class gets them from the root.
+
+### Const methods
+
+Two native bases can have `F()` and `F() const` as virtual methods. Write `const` after the parameters to select the const method.
+
+- Without `const`, the override matches by name and parameters. If both methods match, the non-const method wins.
+- A native base with only a const method matches an override without `const`.
+- `const` on an override whose native method is not const is an error.
+
+```hot
+class Foo : Widget, IConst {
+    // Widget has `Size()` and IConst has `Size() const`.
+    override int Size() const => 2; // overrides the const method of IConst
+}
+```
+
+A script class has one method for each name. The marker only selects the native method. The body can still write the fields of `this`.
 
 ## Script parent
 

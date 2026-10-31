@@ -84,6 +84,7 @@ struct MethodRest
     Span base_args;
     Span body;
     bool expr_body = false; // "=> e;": the body is the span of "e"
+    bool is_const = false; // "F() const": the marker after the parameters
 };
 
 // The part of a field after the name.
@@ -495,6 +496,7 @@ struct params_p
 
 // The part of a method after the name: params, an optional base call and body.
 constexpr auto kw_base = LEXY_KEYWORD("base", id);
+constexpr auto kw_const_mark = LEXY_KEYWORD("const", id);
 
 // ": base(args)". The args stay a raw span. The call is valid in a constructor only.
 struct base_call_p
@@ -523,14 +525,24 @@ struct arrow_body_p
     static constexpr auto value = lexy::callback<ArrowBody>([](Span s) { return ArrowBody{s}; });
 };
 
+// The optional "const" after the parameters of a method.
+struct const_mark_p
+{
+    static constexpr auto rule = dsl::capture(kw_const_mark);
+    static constexpr auto value = lexy::callback<bool>([](auto) { return true; });
+};
+
 struct method_tail
 {
-    static constexpr auto rule = dsl::p<params_p> + dsl::opt(dsl::peek(dsl::lit_c<':'>) >> dsl::p<base_call_p>)
+    static constexpr auto rule = dsl::p<params_p> + dsl::opt(dsl::peek(kw_const_mark) >> dsl::p<const_mark_p>)
+        + dsl::opt(dsl::peek(dsl::lit_c<':'>) >> dsl::p<base_call_p>)
         + (dsl::peek(LEXY_LIT("=>")) >> dsl::p<arrow_body_p> | dsl::else_ >> dsl::p<scan_balanced>);
     static constexpr auto value = lexy::bind(lexy::callback<MethodRest>(
-                                                 [](const ParseState&, auto&& params, auto&& sup, auto body_in)
+                                                 [](const ParseState&, auto&& params, auto&& cm, auto&& sup, auto body_in)
     {
         MethodRest r;
+        if constexpr (std::is_same_v<std::decay_t<decltype(cm)>, bool>)
+            r.is_const = cm;
         Span body;
         if constexpr (std::is_same_v<decltype(body_in), ArrowBody>)
         {
@@ -744,6 +756,8 @@ struct typed_member
             m.kind = Member::IsCtor;
             if (rest.expr_body)
                 st.error(name_pos, "a constructor needs a block body; '=>' is for methods");
+            if (rest.is_const)
+                st.error(name_pos, "a constructor cannot be 'const'");
             ast::Ctor& c = m.ctor;
             m.ctor_name = std::move(name);
             c.params = std::move(rest.params);
@@ -770,6 +784,7 @@ struct typed_member
         me.ret = ret == "void" ? std::string{} : std::move(ret);
         me.body_span = rest.body;
         me.expr_body = rest.expr_body;
+        me.is_const = rest.is_const;
         if (rest.expr_body && only_blank(span_text(st, rest.body)))
             st.error(st.base + rest.body.begin, "expected an expression");
         me.pos = st.offset(start);
@@ -835,6 +850,8 @@ struct dtor_p
         m.kind = Member::IsDtor;
         if (rest.expr_body)
             st.error(name_pos, "a destructor needs a block body; '=>' is for methods");
+        if (rest.is_const)
+            st.error(name_pos, "a destructor cannot be 'const'");
         ast::Method& me = m.method;
         if (!rest.params.empty())
             st.error(name_pos, "a destructor has no parameters");

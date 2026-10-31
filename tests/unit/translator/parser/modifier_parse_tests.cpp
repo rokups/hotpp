@@ -157,3 +157,26 @@ TEST(ModifierParse, Errors)
         EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:5: 'new' is only valid on a method"}));
     }
 }
+
+// "const" after the parameters selects the const native virtual method.
+TEST(ModifierParse, ConstMarkAfterTheParameters)
+{
+    {
+        ModParsed p(member_class("override int Size() const { return 1; }"));
+        EXPECT_TRUE(p.errors().empty());
+        EXPECT_TRUE(p.method().is_const);
+        EXPECT_TRUE(p.method().is_override);
+        EXPECT_FALSE(p.method().expr_body);
+    }
+    {
+        ModParsed p(member_class("int Size() const => 1;"));
+        EXPECT_TRUE(p.errors().empty());
+        EXPECT_TRUE(p.method().is_const);
+        EXPECT_TRUE(p.method().expr_body);
+    }
+    {
+        ModParsed p(member_class("override int Size() { return 1; }"));
+        EXPECT_TRUE(p.errors().empty());
+        EXPECT_FALSE(p.method().is_const);
+    }
+}
