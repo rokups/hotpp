@@ -121,8 +121,8 @@ ast::NameExpr split_name(const ParseState& st, std::string_view t, uint32_t pos)
                     break;
             }
             const std::size_t e = j < t.size() ? j + 1 : t.size();
-            const std::string targs =
-                canonical_type_at(st, st.base + pos + i, scope_text(st, st.base + pos + i, t.substr(i, e - i)));
+            const std::string targs = array_types(st, st.base + pos + i,
+                canonical_type_at(st, st.base + pos + i, scope_text(st, st.base + pos + i, t.substr(i, e - i))), false);
             const std::size_t targs_at = i;
             i = e;
             if (i >= t.size())

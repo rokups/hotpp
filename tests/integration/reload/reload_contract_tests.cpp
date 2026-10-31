@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -127,6 +128,49 @@ TEST_P(BackendTests, ContainerOfValueTypeResetsOnLayoutChange)
     EXPECT_NE(log3.find("container resets"), std::string::npos) << log3;
     s.world.Tick(kDt);
     EXPECT_EQ(*int_field(s, "count"), 1);
+    ASSERT_FALSE(s.commit_failed);
+}
+
+// A fixed-size array field is a std::array. The values move when the type stays. A new size is
+// a new type, so the field resets to its default value.
+TEST_P(BackendTests, ArrayFieldMigratesAndResetsOnSizeChange)
+{
+    hot::LoadResult v1 = backend->load(source("array_mig_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    hot::LoadResult v2 = backend->load(source("array_mig_v2.hot"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    hot::LoadResult v3 = backend->load(source("array_mig_v3.hot"), 3);
+    ASSERT_TRUE(v3) << v3.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Grid"));
+    s.commit_at_frame_boundary();
+    using Three = std::array<int, 3>;
+    using Four = std::array<int, 4>;
+    Three* a3 = hot::field_ptr<Three>(s.inst.shell, "a");
+    ASSERT_NE(a3, nullptr);
+    EXPECT_EQ(*a3, (Three{1, 2, 3})); // the default value
+    s.world.Tick(kDt);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*a3, (Three{21, 2, 3}));
+    EXPECT_EQ(*int_field(s, "count"), 2);
+
+    // A new field: the array keeps its values. A tick runs before the commit and one after it.
+    reload(s, v2);
+    s.world.Tick(kDt);
+    a3 = hot::field_ptr<Three>(s.inst.shell, "a");
+    ASSERT_NE(a3, nullptr);
+    EXPECT_EQ(*a3, (Three{31, 102, 3}));
+    EXPECT_EQ(*int_field(s, "count"), 4);
+    ASSERT_NE(int_field(s, "extra"), nullptr);
+    EXPECT_EQ(*int_field(s, "extra"), 5);
+
+    // The size changes from 3 to 4: the field is of a new type and resets. Other fields move.
+    reload(s, v3);
+    EXPECT_EQ(hot::field_ptr<Three>(s.inst.shell, "a"), nullptr);
+    Four* a4 = hot::field_ptr<Four>(s.inst.shell, "a");
+    ASSERT_NE(a4, nullptr);
+    EXPECT_EQ(*a4, (Four{7, 8, 9, 10}));
+    EXPECT_EQ(*int_field(s, "count"), 5);
     ASSERT_FALSE(s.commit_failed);
 }
 

@@ -1,0 +1,12 @@
+// Generation 3: the size of the array changes from 3 to 4. This is a new type, so the field resets.
+using "Actor.h";
+
+class Grid : Actor {
+    int[4] a = [7, 8, 9, 10];
+    int count = 0;
+    int extra = 5;
+
+    override void Tick(float dt) {
+        this.count++;
+    }
+}

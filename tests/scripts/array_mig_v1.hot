@@ -1,0 +1,12 @@
+// Generation 1: a fixed-size array field with a default value.
+using "Actor.h";
+
+class Grid : Actor {
+    int[3] a = [1, 2, 3];
+    int count = 0;
+
+    override void Tick(float dt) {
+        this.a[0] += 10;
+        this.count++;
+    }
+}

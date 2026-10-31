@@ -1,0 +1,32 @@
+// Generation 2 of the Grid class: the arrays stay. The class gets a field and a changed body.
+using "Actor.h";
+using <vector>;
+
+class Grid : Actor {
+    int[3] a;
+    float[3] v = [1.0, 2.0, 3.0];
+    int[2][3] m;
+    std.vector<int[3]> rows;
+    int extra = 7;
+
+    override void Tick(float dt) {
+        for (int i = 0; i < 3; i++) {
+            this.a[i] += 2;
+        }
+        this.m[1][2] = this.a[0] + 5;
+    }
+
+    int total() {
+        int sum = 0;
+        foreach (var x in this.a) {
+            sum += x;
+        }
+        return sum + this.a.size() + this.extra;
+    }
+
+    int[4] make(int[2] p) {
+        int[4] r;
+        r[0] = p[0];
+        return r;
+    }
+}

@@ -19,6 +19,7 @@
 #include "hot/runtime/state.h"
 #include "hot/runtime/threads.h"
 
+#include <array> // the generated code uses std::array for the array types of a script
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>

@@ -78,6 +78,35 @@ class Tables {
 }
 ```
 
+## Arrays
+
+`T[N]` is an array of `N` values of type `T`. The size `N` is an integer literal. The C++ type is `std::array<T, N>`. `T[M][N]` is an array of `M` arrays of `N` values.
+
+```hot
+class Grid {
+    int[4] cells;
+    float[3] v = [1.0, 2.0, 3.0];
+    int[2][3] table;
+
+    int Sum() {
+        int sum = 0;
+        foreach (var x in this.cells) {
+            sum += x;
+        }
+        return sum + this.cells.size();
+    }
+}
+```
+
+These rules apply to an array:
+
+- The size is a literal. `int[]` and `int[n]` are errors.
+- An array has no bounds check. An index outside the array is undefined behavior.
+- `.size()` gives the number of values.
+- A copy of an array copies all values.
+- A reload keeps the values of an array field when the type stays the same.
+- A new size is a new type. For example, `int[3]` becomes `int[4]`. Then the field gets its default value.
+
 ## Handles
 
 A script class is a handle. `new` makes the object and `null` clears the handle. A native class needs a stub to be a handle.

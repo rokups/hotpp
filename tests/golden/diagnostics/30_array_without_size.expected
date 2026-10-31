@@ -1,0 +1,3 @@
+30_array_without_size.hot:4:5: error: an array type needs a size: write 'T[N]'
+    4 |     int[] scores;
+1 error generated.

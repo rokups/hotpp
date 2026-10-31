@@ -1,0 +1,7 @@
+using "Actor.h";
+
+class Player : Actor {
+    int[Count] scores;
+
+    override void Tick(float dt) { }
+}

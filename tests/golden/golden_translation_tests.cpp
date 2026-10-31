@@ -85,6 +85,12 @@ TEST(GoldenTranslation, Timer)
     golden_pair("timer");
 }
 
+// Fixed-size array types: fields, locals, parameters, a return type and a generic argument.
+TEST(GoldenTranslation, Array)
+{
+    golden_pair("array");
+}
+
 TEST(GoldenTranslation, Props)
 {
     golden_one("props_v1");

@@ -921,7 +921,7 @@ struct base_p
         const std::string text = type_text(raw, &colons);
         if (colons != std::string_view::npos)
             st.error(st.base + args.begin + colons, e_use_dot_colons::name);
-        return canonical_type_at(st, st.base + args.begin, name + text);
+        return array_types(st, st.base + args.begin, canonical_type_at(st, st.base + args.begin, name + text));
     }),
         lexy::parse_state, lexy::values);
 };

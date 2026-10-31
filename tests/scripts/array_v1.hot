@@ -1,0 +1,31 @@
+// Generation 1 of the Grid class: fixed-size array types.
+using "Actor.h";
+using <vector>;
+
+class Grid : Actor {
+    int[3] a;
+    float[3] v = [1.0, 2.0, 3.0];
+    int[2][3] m;
+    std.vector<int[3]> rows;
+
+    override void Tick(float dt) {
+        for (int i = 0; i < 3; i++) {
+            this.a[i] += 1;
+        }
+        this.m[1][2] = this.a[0] + 5;
+    }
+
+    int total() {
+        int sum = 0;
+        foreach (var x in this.a) {
+            sum += x;
+        }
+        return sum + this.a.size();
+    }
+
+    int[4] make(int[2] p) {
+        int[4] r;
+        r[0] = p[0];
+        return r;
+    }
+}

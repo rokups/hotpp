@@ -25,6 +25,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <vector>
 
 namespace hotc::parser
 {
@@ -415,6 +416,75 @@ inline std::string canonical_type_at(const ParseState& st, const char* pos, cons
     return r;
 }
 
+// Rewrites the fixed-size array types of a type text. "T[N]" becomes "std::array<T, N>".
+// "T[M][N]" becomes "std::array<std::array<T, N>, M>". N is an integer literal. The element
+// type starts at the beginning of the text or after a "<", a "," or a "(". A "[]" and a size that
+// is not an integer literal are errors at "pos". If "report" is false, the function does not
+// report the errors and leaves the text of the bad array as it is.
+inline std::string array_types(const ParseState& st, const char* pos, const std::string& t, bool report = true)
+{
+    if (t.find('[') == std::string::npos)
+        return t;
+    std::string out;
+    std::size_t start = 0; // the start of the current element type in "out"
+    std::size_t i = 0;
+    while (i < t.size())
+    {
+        const char c = t[i];
+        if (c != '[')
+        {
+            out += c;
+            ++i;
+            if (c == '<' || c == ',' || c == '(')
+            {
+                start = out.size();
+                while (i < t.size() && t[i] == ' ')
+                    out += t[i++];
+                start = out.size();
+            }
+            continue;
+        }
+        std::vector<std::string> dims;
+        std::size_t j = i;
+        bool bad = false;
+        while (j < t.size() && t[j] == '[')
+        {
+            const std::size_t e = t.find(']', j);
+            if (e == std::string::npos)
+            {
+                bad = true;
+                break;
+            }
+            const std::string size = t.substr(j + 1, e - j - 1);
+            const bool literal = !size.empty() && std::all_of(size.begin(), size.end(), is_digit);
+            if (!literal)
+            {
+                if (report)
+                    st.error(pos,
+                        size.empty() ? "an array type needs a size: write 'T[N]'"
+                                     : "the size of an array must be an integer literal");
+                bad = true;
+                break;
+            }
+            dims.push_back(size);
+            j = e + 1;
+        }
+        if (bad)
+        {
+            out += c;
+            ++i;
+            continue;
+        }
+        std::string elem = out.substr(start);
+        for (std::size_t k = dims.size(); k-- > 0;)
+            elem = "std::array<" + elem + ", " + dims[k] + ">";
+        out.resize(start);
+        out += elem;
+        i = j;
+    }
+    return out;
+}
+
 // The type text of a span. An empty type is an error. A "::" is an error: the script uses ".".
 inline std::string type_of_span(const ParseState& st, Span sp)
 {
@@ -425,7 +495,7 @@ inline std::string type_of_span(const ParseState& st, Span sp)
     std::string t = type_text(raw, &colons);
     if (colons != std::string_view::npos)
         st.error(st.base + sp.begin + colons, e_use_dot_colons::name);
-    return canonical_type_at(st, st.base + sp.begin, t);
+    return array_types(st, st.base + sp.begin, canonical_type_at(st, st.base + sp.begin, t));
 }
 
 // Rewrites the scope separators of the raw text of template arguments: "." between two names
