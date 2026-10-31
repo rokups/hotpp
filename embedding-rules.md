@@ -48,7 +48,7 @@ A host that loads a module must export its symbols. The modules resolve the host
 
 ### C++17 baseline
 
-The generated code, `include/hot` and the runtime library need C++17 only. A C++17 host works. The standard of the scripts is the standard of the host (17, 20 or 23). A standard below 20 selects fmt for `${}`. See [CMake](cmake-options.html#the-format-library) for the table.
+The generated code, `include/hot` and the runtime library need C++17 only. A C++17 host works. The standard of the scripts is the standard of the host (17, 20 or 23). A standard below 20 selects `fmt` for `${}`. See [CMake](cmake-options.html#the-format-library) for the table.
 
 ### Core copies
 

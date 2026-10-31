@@ -7,7 +7,7 @@ nav_order: 43
 The tool `bench_backends` measures the run-time cost of script code. Each case has up to three versions that do the same work:
 
 - a `.hot` script,
-- a [`.cpp` script](cpp-scripts.html): a plain C++ file that `hotc` translates (the libclang frontend),
+- a [`.cpp` script](cpp-scripts.html): a plain C++ file that `hotc` translates (the `libclang` frontend),
 - a native C++ twin.
 
 The native twin is the reference. The result is a ratio: script time divided by native time.
@@ -82,7 +82,7 @@ The `reload` case and the `chain` case have a `.cpp` version too. The tool makes
 
 ## Machine
 
-The CPU is an AMD Ryzen 9 3950X (a desktop CPU, 16 cores, 32 threads). The software is Linux 7.2, glibc 2.44, clang 23.1.3 and libstdc++. The build uses `CMAKE_BUILD_TYPE=Release`, `HOT_RUNTIME_CHECKS=ON` and `HOT_TRACEBACK=OFF`. The process runs on one core (`taskset -c 6`). The values are the median of 3 runs of the tool (each run gives the median of 7 timed runs).
+The CPU is an AMD Ryzen 9 3950X (a desktop CPU, 16 cores, 32 threads). The software is Linux 7.2, glibc 2.44, clang 23.1.3 and `libstdc++`. The build uses `CMAKE_BUILD_TYPE=Release`, `HOT_RUNTIME_CHECKS=ON` and `HOT_TRACEBACK=OFF`. The process runs on one core (`taskset -c 6`). The values are the median of 3 runs of the tool (each run gives the median of 7 timed runs).
 
 The call rows have newer values, from 3 runs on `taskset -c 4`. These rows are the host to script calls, the script to native call, the script to script calls, the closure, the method rows, the module function and the call after N reloads. The other rows are from the older runs.
 
@@ -97,7 +97,7 @@ Between the 3 runs, 84% of the cells changed by less than 3%. Some cells changed
 
 Time in ns for one operation. The ratio is in parentheses. There is one table for each backend. The rows are the same in each table. The rows after `loop with a method call` test code that a reload can change. The native twin of these rows is the same code in plain C++. It uses a direct member access, a plain virtual call and a plain call.
 
-### files
+### `files`
 
 | Case | native | `.hot` | `.cpp` |
 |---|---|---|---|
@@ -123,7 +123,7 @@ Time in ns for one operation. The ratio is in parentheses. There is one table fo
 | module variable read and write | 0.38 | 0.36 (0.94x) | 0.36 (0.95x) |
 | module function and static method | 0.32 | n/a | 0.41 (1.3x) |
 
-### jit
+### `jit`
 
 | Case | native | `.hot` | `.cpp` |
 |---|---|---|---|
@@ -149,7 +149,7 @@ Time in ns for one operation. The ratio is in parentheses. There is one table fo
 | module variable read and write | 0.38 | 0.36 (0.94x) | 0.36 (0.94x) |
 | module function and static method | 0.32 | n/a | 0.41 (1.3x) |
 
-### aot
+### `aot`
 
 | Case | native | `.hot` | `.cpp` |
 |---|---|---|---|
@@ -238,7 +238,7 @@ The `.cpp` case does `new` and `delete` with a raw pointer. The `.cpp` object ha
 
 The native twins do the same work with other owners. Each cell has two ratios, `.hot` / `.cpp`: the script time divided by the native time of the row.
 
-| Native owner | native | files | jit | aot |
+| Native owner | native | `files` | `jit` | `aot` |
 |---|---|---|---|---|
 | `std::make_shared<T>()` | 10.8 | 4.4x / 3.2x | 4.5x / 3.4x | 4.6x / 3.4x |
 | `std::shared_ptr<T>(new T)` | 17.7 | 2.7x / 2.0x | 2.7x / 2.1x | 2.9x / 2.1x |
@@ -316,7 +316,7 @@ The cost does not grow with the number of reloads. A new object, made after the 
 ## Caveats
 
 - The cases are small loops. A real program has other costs: cache misses, the size of the code and the calls between modules.
-- A twin is only as fair as its code. The string twin uses `std::to_string`. The `.hot` script uses `${}` (fmt). The `.cpp` script uses `std::to_string`, as the twin does. So the `.hot` string row is a rough value. It is also the one row where `.hot` is more than 10% faster than native (0.80x to 0.82x). The cause is `fmt` against `std::to_string`.
+- A twin is only as fair as its code. The string twin uses `std::to_string`. The `.hot` script uses `${}` (`fmt`). The `.cpp` script uses `std::to_string`, as the twin does. So the `.hot` string row is a rough value. It is also the one row where `.hot` is more than 10% faster than native (0.80x to 0.82x). The cause is `fmt` against `std::to_string`.
 - A `.cpp` script is a normal C++ file, and the compiler sees all of it. The native twin hides some values from the compiler (for the string, the closure and `new`). So a ratio of a `.cpp` script below 1.0x can come from this difference.
 - The `.cpp` twins with pointers have no generation check. The `.hot` handles have it. So these rows do not show the cost of a handle in `.hot` against a pointer in `.cpp` only. The language and the owner differ.
 - The native time of the script to script virtual call was 1.75 ns in this run. Another build of the tool gave 1.46 ns. The native time of a virtual call depends on the layout of the code. Compare the script with the native twin of the same run.
