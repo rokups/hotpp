@@ -5,7 +5,7 @@ nav_order: 39
 group: CMake
 ---
 
-## hot_add_scripts
+## `hot_add_scripts`
 
 `hot_add_scripts` is the lower-level call. `hot_add_host` calls it.
 
@@ -27,7 +27,7 @@ The function runs `hotc` at build time. It has two modes. `AOT` selects the seco
 | `TARGET` | none, required | The name of the target. In the default mode it is a custom target. In AOT mode it is a static library. | none |
 | `SCRIPTS` | none, required | The script files. A file is a `.hot` script or a `.cpp` script (see [C++ scripts](cpp-scripts.html)). The extension selects the parser. | A relative path is relative to the current source folder. The function makes it absolute. |
 | `AOT` | off | A flag. It selects the AOT mode. | none |
-| `INCLUDES` | empty | Include folders. `hotc` gets each one as `-I`. In AOT mode the library also gets them as PUBLIC include folders. The language server host gets them too. | Use an absolute path. The function passes the text to `hotc` as it is, and the custom command runs in the current build folder. The AOT include folders and the host file read a relative path from the current source folder. |
+| `INCLUDES` | empty | Include folders. `hotc` gets each one as `-I`. In AOT mode the library also gets them as `PUBLIC` include folders. The language server host gets them too. | Use an absolute path. The function passes the text to `hotc` as it is, and the custom command runs in the current build folder. The AOT include folders and the host file read a relative path from the current source folder. |
 | `PRELUDES` | empty | Prelude files for `hotc --prelude`. They work only with `AOT`. The default mode stops with an error. | A relative path is relative to the current source folder. |
 | `FLAGS` | empty | In the default mode: compile flags for the scripts (`--cxxflag`). In AOT mode: flags for `hotc`. | none |
 | `DEPENDS` | empty | More files that the build depends on. | A relative path is relative to the current source folder (the rule of `add_custom_command`). |
@@ -73,7 +73,7 @@ The generations of one class share the slot file `OUT_DIR/slots.txt`. This file 
 | Variable | Scope | Mode | Value |
 |---|---|---|---|
 | `HOT_SCRIPTS_<TARGET>_LIBRARIES` | the scope of the caller (`PARENT_SCOPE`) | default | The paths of the libraries, one for each script. |
-| `HOT_INCLUDE_DIR` | the cache (INTERNAL) | both | The include folder of Hot++. Set when the Hot++ file is loaded, not by the call. |
+| `HOT_INCLUDE_DIR` | the cache (`INTERNAL`) | both | The include folder of Hot++. Set when the Hot++ file is loaded, not by the call. |
 
 AOT mode sets no variable. The function also writes the file `${HOT_HOSTS_DIR}/<TARGET>.json` when CMake generates (see `hot_script_host`).
 
@@ -117,11 +117,11 @@ target_link_libraries(game PRIVATE game_scripts)
 
 The function runs `hotc --aot` and makes the static library `name`. The library has the files `OUT_DIR/<script name>.aot.cpp` and `OUT_DIR/hot_aot_registry.cpp`. The library defines `hot::aot_table` (`include/hot/aot.h`).
 
-The library links `hot_runtime_core` (PUBLIC). A program that links `name` and `hot::aot` has no loader, no reload and no Clang. When the build uses fmt, the library also links `hot_fmt`. AOT mode makes only generation 1. Script names and class names must be unique across the scripts of one table.
+The library links `hot_runtime_core` (`PUBLIC`). A program that links `name` and `hot::aot` has no loader, no reload and no Clang. When the build uses fmt, the library also links `hot_fmt`. AOT mode makes only generation 1. Script names and class names must be unique across the scripts of one table.
 
 The library is a normal target, so it uses the compile flags of your project (`CMAKE_CXX_FLAGS` and the build type). `FLAGS` go to `hotc`, not to the compiler.
 
-## hot_script_host
+## `hot_script_host`
 
 ```
 hot_script_host(NAME name [TARGET target] [SCRIPT_DIRS dir...] [SCRIPTS file...]
@@ -130,7 +130,7 @@ hot_script_host(NAME name [TARGET target] [SCRIPT_DIRS dir...] [SCRIPTS file...]
 
 The function describes a script host for the language server `hot-ls`. It does not build anything. When CMake generates the build system, it writes `${HOT_HOSTS_DIR}/<name>.json`. With `TARGET`, it also writes three side files in the same folder.
 
-`NAME` and one of `SCRIPT_DIRS` or `SCRIPTS` are required. `TARGET` is the CMake target of your host program. The file gets its include folders, defines and options. The include folder of Hot++ is always first. A relative path in `SCRIPT_DIRS`, `SCRIPTS` or `INCLUDES` is relative to the current source folder (`sourceDir` in the file). A UTILITY target (a custom target) has no such lists, so the function skips them.
+`NAME` and one of `SCRIPT_DIRS` or `SCRIPTS` are required. `TARGET` is the CMake target of your host program. The file gets its include folders, defines and options. The include folder of Hot++ is always first. A relative path in `SCRIPT_DIRS`, `SCRIPTS` or `INCLUDES` is relative to the current source folder (`sourceDir` in the file). A `UTILITY` target (a custom target) has no such lists, so the function skips them.
 
 ```cmake
 hot_script_host(NAME engine TARGET engine

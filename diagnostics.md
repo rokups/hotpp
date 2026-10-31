@@ -41,7 +41,7 @@ Typos, wrong types and a missing `return` have plain messages.
 
 The generated C++ has `#line` directives. A debugger shows `.hot` files and lines. A breakpoint on a script line works, and so does stepping.
 
-- gdb and lldb: set a breakpoint with `breakpoint set --file player.hot --line 12` (lldb) or `break player.hot:12` (gdb).
-- lldb: `tools/lldb/hot.lldbinit` loads formatters. The command `hot-bt` prints script frames.
+- `gdb` and `lldb`: set a breakpoint with `breakpoint set --file player.hot --line 12` (`lldb`) or `break player.hot:12` (`gdb`).
+- `lldb`: `tools/lldb/hot.lldbinit` loads formatters. The command `hot-bt` prints script frames.
 - VS Code: the extension enables breakpoints in `.hot` files.
-- Status: a real gdb or lldb session and Visual Studio are untested. Tests check only the `.hot` line table.
+- Status: a real `gdb` or `lldb` session and Visual Studio are untested. Tests check only the `.hot` line table.

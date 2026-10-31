@@ -5,7 +5,7 @@ nav_order: 13
 group: Hot script
 ---
 
-## try, catch, finally
+## `try`, `catch`, `finally`
 
 You throw and catch C++ exception types. A `finally` block always runs. A script cannot declare an exception type. It can catch the builtin types `NullReference`, `IndexOutOfRange` and `ScriptError` (see "Runtime errors").
 

@@ -47,7 +47,7 @@ cmake --build build
 ./build/myapp
 ```
 
-The program prints three lines, one for each call of `Tick`. The first configure fetches the Hot++ dependencies with CPM.cmake. Then the build runs `hotc` and compiles the result. Hot++ sets `CMAKE_RUNTIME_OUTPUT_DIRECTORY` only for its own targets. So `hotc` is in `build/bin/` and your program is in `build/`.
+The program prints three lines, one for each call of `Tick`. The first configure fetches the Hot++ dependencies with `CPM.cmake`. Then the build runs `hotc` and compiles the result. Hot++ sets `CMAKE_RUNTIME_OUTPUT_DIRECTORY` only for its own targets. So `hotc` is in `build/bin/` and your program is in `build/`.
 
 For a host that loads scripts, change `MODE` to `HOT_RELOAD` (the host compiles the script at run time), to `PRECOMPILED` (the build makes a script library and the host loads it) or to `AOT_RELOAD` (AOT code at start, run-time overrides later). The call is the same. See the section `hot_add_host`. The cases are in [Embedding](embedding.html).
 

@@ -19,7 +19,7 @@ hot::Loader loader;
 hot::LoadResult built = backend.load({"player.hot", text}, 1);
 ```
 
-**Run time:** the backend translates in memory, compiles in memory with the Clang library and loads the code with LLVM ORC. No process starts. The backend writes no file, except the precompiled header of `make_pch`. Each `load` makes a new JITDylib. The slot order stays in memory.
+**Run time:** the backend translates in memory, compiles in memory with the Clang library and loads the code with LLVM ORC. No process starts. The backend writes no file, except the precompiled header of `make_pch`. Each `load` makes a new `JITDylib`. The slot order stays in memory.
 
 **Requires:** the LLVM and Clang development packages at build time, and their shared libraries at run time. No compiler process. Pass the same flags as the host (for example a sanitizer) in `extra_flags`.
 

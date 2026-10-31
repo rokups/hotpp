@@ -7,9 +7,9 @@ group: C++ scripts
 
 This page describes the edits that `hotc` makes in a `.cpp` script: method bodies, lambdas and namespaces.
 
-## How hotc edits a body
+## How `hotc` edits a body
 
-`hotc` parses the `.cpp` file with libclang. It keeps each method body as text. It edits only the names that the generated code cannot resolve:
+`hotc` parses the `.cpp` file with `libclang`. It keeps each method body as text. It edits only the names that the generated code cannot resolve:
 
 - A bare use or a `this->` use of a native base member goes to the native owner. Examples are `Move(...)` and `this->Name`.
 - In a lambda, a field or a method of the object goes through the object. See [Lambdas](cpp-translation.html#lambdas).

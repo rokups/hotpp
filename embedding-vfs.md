@@ -91,4 +91,4 @@ To reload, call `fs->set` with a new text and a new version. Then call `load` ag
 - The `JIT` backend gives the files to the compiler in memory. It writes nothing.
 - A folder in `include_dirs` does not need to exist on the disk. A relative folder or a folder with `..` is allowed.
 - Give the host file system the path as the search builds it. For a header with `..` in the path, the file system gets the path with `..` first, then the normal path.
-- A virtual header that you remove makes the next load fail with a "file not found" error.
+- A virtual header that you remove makes the next load fail with a "`file not found`" error.

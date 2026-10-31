@@ -40,6 +40,7 @@ A host that loads a module must export its symbols. The modules resolve the host
 - Link a static library of your own as a whole archive when scripts call functions that the host code does not use. `samples/imgui/CMakeLists.txt` uses `$<LINK_LIBRARY:WHOLE_ARCHIVE,imgui_sdl3>` for this.
 - The executable must link the runtime objects that the script code uses (see the JIT section of `README.md`). The samples link the Hot++ libraries without a whole-archive link.
 - An AOT program does not load a module, so it does not export. A program with run-time overrides loads modules, so it exports (`MODE AOT_RELOAD` sets this).
+- On Linux, a module of the `files` backend reads the thread-local call depth of the runtime (`hot::detail::g_call_depth`) directly. This needs static TLS. So the runtime must be in the executable, or in a shared library that loads at the program start. A runtime in a library that the host loads with `dlopen` can fail with `cannot allocate memory in static TLS block`. Then compile the scripts with `-DHOT_NO_TLS_DEPTH`: the call reads the depth through `hot::detail::call_depth()`. The `jit` backend always does this.
 
 ### C++17 baseline
 

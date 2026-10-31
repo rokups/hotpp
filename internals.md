@@ -130,7 +130,7 @@ The tests are in `tests/unit/runtime/entry_counter_tests.cpp` and `tests/integra
 
 ## Closures and unload
 
-An arrow lambda becomes `hot::make_closure(GEN, "Class::fn lambda", [=](params) { ... })`. It captures by value. `this` is the pointer `__self`. The body reads the state pointer again, so a lambda never keeps a pointer to a state block. The result is a `hot::Closure<Sig>`. It holds one pin of its generation (`hot::pin`, `unpin`, `pin_count`; the counts are atomic). Each call checks the generation. When the generation is not live, the call logs a stale call, counts it (`hot::stale_call_count()`) and returns a default value. The body does not run. A `Closure` converts to `std::function` and to an engine delegate that has `Bind(std::function<Sig>)`.
+An arrow lambda becomes `hot::make_closure(GEN, "Class::fn lambda", [=](params) { ... })`. It captures by value. `this` is the pointer `__self`. The body reads the state pointer again, so a lambda never keeps a pointer to a state block. The result is a `hot::Closure<Sig>`. It holds one pin of its generation (`hot::pin`, `unpin`, `pin_count`; the counts are atomic). Each call checks the generation. When the generation is not live, the call logs a stale call, counts it (`hot::stale_call_count()`) and returns a default value. The body does not run. A `Closure` converts to `std::function` and to an engine delegate that has `Bind(std::function<Sig>)`. The `std::function` holds the guarded lambda (`hot::detail::GuardedFn`: the pin, the guard and the lambda), not the `Closure`. So a call through it is one indirect call.
 
 `World::AddTimer(seconds, fn)` stores a one-shot callable. `World::Tick` fires it before the frame boundary hook and then destroys it. `ClearTimers()` drops all timers.
 
