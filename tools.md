@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Tools
-nav_order: 16
+nav_order: 17
 ---
 
 `hot-ls` is the language server. The VS Code extension starts it.

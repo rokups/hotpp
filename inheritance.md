@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Inheritance
-nav_order: 6
+nav_order: 7
 group: Hot script
 ---
 
