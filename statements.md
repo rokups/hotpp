@@ -132,10 +132,10 @@ class Safe {
 
 ## Runtime errors
 
-The runtime checks a pointer, a handle and an array index. A failed check throws one of these builtin types:
+The runtime checks a pointer, a handle and an index of an array, a `std::vector` or any type with the stub attribute `checked_index` (see [Native interop](native-interop.html)). A failed check throws one of these builtin types:
 
 - `NullReference`: the script used a null pointer or a null handle, for example `p.x` or `*p`.
-- `IndexOutOfRange`: an array index is negative or not less than the size of the array.
+- `IndexOutOfRange`: an index is negative or not less than the size of an array, a `std::vector` or a checked native container.
 - `ScriptError`: the base of the two types above.
 
 Write the type name in a `catch` clause. The prefix `hot.` is also valid. Use `catch (ScriptError e)` to catch both types. `e.what()` gives the message.
