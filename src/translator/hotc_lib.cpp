@@ -1342,6 +1342,16 @@ bool is_code_query(const std::string& q)
     return q.compare(0, 6, kCodeQuery) == 0;
 }
 
+// A query "@decl:NAME" asks what the headers declare with the qualified name NAME (no arguments):
+// nothing, a class, a class template or another template. A cursor walk answers it with a letter
+// (see answer_decl_queries). The translator writes a specialization of hot::checked_index for a
+// declared name only, and it reports a stub that does not fit the kind of its name.
+const char* const kDeclQuery = "@decl:";
+bool is_decl_query(const std::string& q)
+{
+    return q.compare(0, 6, kDeclQuery) == 0;
+}
+
 // The name of the probe section with the facts. libclang reports an error in it for a type
 // that it does not know. The translator does not treat such an error as an error of the imports.
 const char* const kFactsFile = "hotc_facts";
@@ -1432,7 +1442,7 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
     for (size_t i = 0; i < queries.size(); ++i)
     {
         if (is_fn_query(queries[i]) || is_fnp_query(queries[i]) || is_code_query(queries[i])
-            || is_global_query(queries[i]) || is_global_type_query(queries[i]))
+            || is_decl_query(queries[i]) || is_global_query(queries[i]) || is_global_type_query(queries[i]))
             continue; // a cursor walk answers it
         body += "using hotc_q" + std::to_string(i) + " = " + queries[i] + ";\n";
     }
@@ -1767,6 +1777,86 @@ void answer_code_queries(
     }
 }
 
+// Answers the queries "@decl:NAME". NAME is a qualified name. A namespace that is inline
+// ("__1", "__cxx11") is not part of the name. Another namespace ("std::__detail") stays. The
+// answer is one letter:
+//   "0": the headers do not declare NAME.
+//   "1": a class, a typedef or an alias that is not a template.
+//   "t": a class template with type parameters only (a pack too).
+//   "o": another template: an alias template, or a template with a non-type parameter or a
+//        template template parameter.
+// A template wins over a class of the same name (an explicit specialization).
+void answer_decl_queries(
+    CXCursor root, const std::vector<std::string>& queries, std::map<std::string, std::string>& answers)
+{
+    std::set<std::string> wanted;
+    for (const std::string& q : queries)
+        if (is_decl_query(q))
+            wanted.insert(q.substr(6));
+    if (wanted.empty())
+        return;
+    std::map<std::string, char> declared;
+    auto note = [&](const std::string& name, char kind)
+    {
+        char& k = declared[name];
+        if (k == 0 || (k == '1' && kind != '1') || (k == 't' && kind == 'o'))
+            k = kind;
+    };
+    std::function<CXChildVisitResult(CXCursor)> walk = [&](CXCursor c)
+    {
+        const CXCursorKind ck = clang_getCursorKind(c);
+        switch (ck)
+        {
+        case CXCursor_Namespace:
+        case CXCursor_LinkageSpec: visit(c, walk); break;
+        case CXCursor_ClassDecl:
+        case CXCursor_StructDecl:
+        case CXCursor_ClassTemplate:
+        case CXCursor_TypeAliasTemplateDecl:
+        case CXCursor_TypedefDecl:
+        case CXCursor_TypeAliasDecl:
+        {
+            std::string qn;
+            for (CXCursor p = clang_getCursorSemanticParent(c);
+                !clang_Cursor_isNull(p) && !clang_isTranslationUnit(clang_getCursorKind(p));
+                p = clang_getCursorSemanticParent(p))
+            {
+                const std::string n = cxs(clang_getCursorSpelling(p));
+                if (!n.empty() && !(clang_getCursorKind(p) == CXCursor_Namespace && clang_Cursor_isInlineNamespace(p)))
+                    qn = n + "::" + qn;
+            }
+            char kind = '1';
+            if (ck == CXCursor_TypeAliasTemplateDecl)
+                kind = 'o';
+            else if (ck == CXCursor_ClassTemplate)
+            {
+                kind = 't';
+                visit(c, [&](CXCursor child)
+                {
+                    const CXCursorKind pk = clang_getCursorKind(child);
+                    if (pk == CXCursor_NonTypeTemplateParameter || pk == CXCursor_TemplateTemplateParameter)
+                        kind = 'o';
+                    return CXChildVisit_Continue;
+                });
+            }
+            note(qn + cxs(clang_getCursorSpelling(c)), kind);
+            if (ck == CXCursor_ClassDecl || ck == CXCursor_StructDecl || ck == CXCursor_ClassTemplate)
+                visit(c, walk);
+            break;
+        }
+        default: break;
+        }
+        return CXChildVisit_Continue;
+    };
+    visit(root, walk);
+    for (const std::string& q : queries)
+        if (is_decl_query(q))
+        {
+            auto it = declared.find(q.substr(6));
+            answers[q] = it == declared.end() ? std::string("0") : std::string(1, it->second);
+        }
+}
+
 // The type of a query alias as "auto" deduces it: no reference and no top-level const.
 // Empty: libclang does not know the type.
 std::string alias_type(CXCursor alias)
@@ -2048,11 +2138,12 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         {
             auto it = aliases.find("hotc_q" + std::to_string(i));
             if (!is_fn_query(queries[i]) && !is_fnp_query(queries[i]) && !is_code_query(queries[i])
-                && !is_global_query(queries[i]) && !is_global_type_query(queries[i]))
+                && !is_decl_query(queries[i]) && !is_global_query(queries[i]) && !is_global_type_query(queries[i]))
                 answers[queries[i]] = it == aliases.end() ? std::string() : alias_type(it->second);
         }
         answer_function_queries(root, queries, answers);
         answer_code_queries(root, queries, answers);
+        answer_decl_queries(root, queries, answers);
         answer_global_queries(root, queries, answers);
         answer_global_type_queries(root, queries, answers);
         for (size_t i = 0; i < reqs.size(); ++i)
@@ -2993,6 +3084,57 @@ void translate_impl(
             if (uniq.insert(e.name).second)
                 query_texts.push_back(kGlobalTypeQuery + e.name);
     }
+    // Task 37: the types with a bounds test for "a[i]". A stub with [checked_index] and the custom
+    // array template give a specialization of hot::checked_index. The text keeps the placeholder
+    // of the standard namespace. The module header gets it only when the headers declare the
+    // name (the query "@decl:"): the name of a stub can be a type that the script does not include.
+    struct CheckedSpec
+    {
+        std::string name; // the qualified name with the placeholder, no arguments
+        std::string text; // the specialization
+        const StubSrc* src = nullptr; // the stub, or null for the array template
+        bool pattern = false; // the stub is "Name<*>"
+    };
+    std::vector<CheckedSpec> checked_specs;
+    if (!sc.is_cpp)
+    {
+        std::map<std::string, const StubSrc*> checked; // a later stub of the same name wins
+        for (const StubSrc& ss : all_stubs)
+            if (!ss.stub->derived && !ss.stub->is_struct)
+                checked[ss.stub->name] = ss.stub->checked_index ? &ss : nullptr;
+        for (const auto& [name, src] : checked)
+        {
+            if (!src)
+                continue;
+            const bool pattern = name.size() > 3 && name.compare(name.size() - 3, 3, "<*>") == 0;
+            const std::string base = pattern ? name.substr(0, name.size() - 3) : name;
+            checked_specs.push_back({base,
+                pattern ? "template <class... A> struct checked_index< ::" + base + "<A...>> : std::true_type {};"
+                        : "template <> struct checked_index< ::" + base + "> : std::true_type {};",
+                src, pattern});
+        }
+        // The array template "Name<$T, $N>" is a template-id: a partial specialization names it.
+        // Another form needs a stub with [checked_index] on the array type.
+        if (array_tpl != hotc::kDefaultArrayTpl)
+        {
+            std::string t;
+            for (char ch : array_tpl)
+                if (ch != ' ')
+                    t += ch;
+            const size_t lt = t.find('<');
+            const std::string head = lt == std::string::npos ? std::string() : t.substr(0, lt);
+            const bool plain = !head.empty() && t.compare(lt, std::string::npos, "<$T,$N>") == 0
+                && std::all_of(head.begin(), head.end(), [](char ch)
+                    { return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_' || ch == ':' || ch == '\x01'; });
+            if (plain)
+                checked_specs.push_back(
+                    {head, "template <class T, auto N> struct checked_index< ::" + head + "<T, N>> : std::true_type {};"});
+        }
+        std::set<std::string> uniq;
+        for (const CheckedSpec& c : checked_specs)
+            if (uniq.insert(c.name).second)
+                query_texts.push_back(kDeclQuery + hotc::expand_std(c.name, std_ns));
+    }
     std::vector<FactReq> reqs;
     for (auto& [t, ms] : asked)
         reqs.push_back({t, std::vector<std::string>(ms.begin(), ms.end())});
@@ -3198,6 +3340,33 @@ void translate_impl(
             g_diag.warnings.back().file = ss.file;
         }
     }
+    // A stub with [checked_index] must fit the kind of its name: "Name" a class, "Name<*>" a class
+    // template with type parameters only. The message gives the fix.
+    for (const CheckedSpec& c : checked_specs)
+    {
+        if (!c.src)
+            continue;
+        const std::string user = hotc::expand_std(c.name, std_ns);
+        const std::string kind = query_answers[kDeclQuery + user];
+        std::string msg;
+        if (!c.pattern && kind == "t")
+            msg = "'checked_index' on '" + user + "': it is a class template; write '" + user + "<*>'";
+        else if (!c.pattern && kind == "o")
+            msg = "'checked_index' on '" + user + "': it is an alias template or has a non-type parameter; "
+                  "a stub cannot name it. For an array type use the module attribute 'array'";
+        else if (c.pattern && kind == "1")
+            msg = "'checked_index' on '" + user + "<*>': '" + user + "' is not a class template; write it as '"
+                + user + "'";
+        else if (c.pattern && kind == "o")
+            msg = "'checked_index' on '" + user + "<*>': '" + user + "' is an alias template or has a non-type "
+                  "parameter. For an array type use the module attribute 'array'. Else name the real class "
+                  "of the alias in a stub";
+        if (!msg.empty())
+        {
+            g_diag.add(c.src->stub->pos, *c.src->map, msg);
+            g_diag.items.back().file = c.src->file;
+        }
+    }
     if (!g_diag.items.empty())
         throw TranslateAbort{};
 
@@ -3321,6 +3490,18 @@ void translate_impl(
     };
     if (!sc.is_cpp)
         write_marks();
+    if (!sc.is_cpp)
+    {
+        // One specialization of a type comes once. Another module header in another translation
+        // unit has the same definition.
+        std::set<std::string> written;
+        for (const CheckedSpec& c : checked_specs)
+            if (const std::string kind = query_answers[kDeclQuery + hotc::expand_std(c.name, std_ns)];
+                kind != "0" && !kind.empty() && (c.src || kind != "1") && written.insert(c.text).second)
+                o.w("namespace hot { " + c.text + " }\n");
+        if (!written.empty())
+            reset();
+    }
     o.w("\nconstexpr uint32_t GEN = " + std::to_string(opt.gen) + ";\n");
     o.w("// The live flag of this module. The loader sets it. The guard of each function reads it.\n");
     o.w("static uint32_t hot_live = 0;\n");

@@ -1,0 +1,21 @@
+// Generation 1: a stub with checked_index gives a bounds test for "a[i]" of a host type.
+using "Actor.h";
+using "CheckedTypes.h";
+
+[array("hostns2::Fixed<$T, $N>")];
+
+[native, checked_index] class hostns2.Ring<*>;
+[native, checked_index] class hostns2.Plain;
+[native, checked_index] class hostns2.Missing<*>;
+
+class Grid : Actor {
+    int[4] cells;
+    hostns2.Ring<int> ring;
+    hostns2.Plain plain;
+
+    override void Tick(float dt) {
+        this.cells[1] = 7;
+        this.ring[2] = 3;
+        this.plain[0] = 1;
+    }
+}

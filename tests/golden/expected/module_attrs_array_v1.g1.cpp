@@ -15,6 +15,8 @@
 #line 3 "module_attrs_array_v1.hot"
 #include "ArrayAlias.h"
 #line 18 "module_attrs_array_v1.hot.cpp"
+namespace hot { template <class T, auto N> struct checked_index< ::hostns::FixedArray<T, N>> : std::true_type {}; }
+#line 20 "module_attrs_array_v1.hot.cpp"
 
 constexpr uint32_t GEN = 1;
 // The live flag of this module. The loader sets it. The guard of each function reads it.
@@ -45,7 +47,7 @@ struct Grid_Shell final : Actor, hot::ShellBase {
     }
 #line 7 "module_attrs_array_v1.hot"
     ~Grid_Shell() override { hot::destroy_state(this); }
-#line 49 "module_attrs_array_v1.hot.cpp"
+#line 51 "module_attrs_array_v1.hot.cpp"
 
 #line 7 "module_attrs_array_v1.hot"
     void Tick(float a0) override
@@ -55,7 +57,7 @@ struct Grid_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 7 "module_attrs_array_v1.hot"
     }
-#line 59 "module_attrs_array_v1.hot.cpp"
+#line 61 "module_attrs_array_v1.hot.cpp"
 
 #line 7 "module_attrs_array_v1.hot"
     void TakeDamage(float a0) override
@@ -65,7 +67,7 @@ struct Grid_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 7 "module_attrs_array_v1.hot"
     }
-#line 69 "module_attrs_array_v1.hot.cpp"
+#line 71 "module_attrs_array_v1.hot.cpp"
 
 #line 7 "module_attrs_array_v1.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -75,7 +77,7 @@ struct Grid_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 7 "module_attrs_array_v1.hot"
     }
-#line 79 "module_attrs_array_v1.hot.cpp"
+#line 81 "module_attrs_array_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -94,7 +96,7 @@ struct GridState_g1 {
         return static_cast<Grid_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 7 "module_attrs_array_v1.hot"
     }
-#line 98 "module_attrs_array_v1.hot.cpp"
+#line 100 "module_attrs_array_v1.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 7 "module_attrs_array_v1.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -104,15 +106,15 @@ struct GridState_g1 {
         return static_cast<Grid_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 7 "module_attrs_array_v1.hot"
     }
-#line 108 "module_attrs_array_v1.hot.cpp"
+#line 110 "module_attrs_array_v1.hot.cpp"
 };
 
 #line 8 "module_attrs_array_v1.hot"
 static void Grid__init_cells(void*, void* f) { using T = hostns::FixedArray<int32_t, 4>; new (f) T(); }
-#line 113 "module_attrs_array_v1.hot.cpp"
+#line 115 "module_attrs_array_v1.hot.cpp"
 #line 9 "module_attrs_array_v1.hot"
 static void Grid__init_weights(void*, void* f) { using T = hostns::FixedArray<hostns::FixedArray<float, 3>, 2>; new (f) T(); }
-#line 116 "module_attrs_array_v1.hot.cpp"
+#line 118 "module_attrs_array_v1.hot.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -152,7 +154,7 @@ HOT_HIDDEN static auto Grid__plan()
     return std::make_pair(Grid__super_args(), std::tuple<>());
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 156 "module_attrs_array_v1.hot.cpp"
+#line 158 "module_attrs_array_v1.hot.cpp"
 using Grid_SuperArgs = decltype(Grid__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
@@ -172,7 +174,7 @@ HOT_NODEBUG static hot::ShellBase* Grid__construct(const char* key, const void* 
     return nullptr;
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 176 "module_attrs_array_v1.hot.cpp"
+#line 178 "module_attrs_array_v1.hot.cpp"
 
 static const char* const Grid__construct_keys[] = {typeid(Grid_SuperArgs).name(), nullptr};
 
@@ -188,7 +190,7 @@ HOT_HIDDEN static Grid_Shell* Grid__build([[maybe_unused]] bool __note)
     return __self;
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 192 "module_attrs_array_v1.hot.cpp"
+#line 194 "module_attrs_array_v1.hot.cpp"
 #line 7 "module_attrs_array_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Grid_Shell* Grid__new()
 #line 7 "module_attrs_array_v1.hot"
@@ -197,7 +199,7 @@ HOT_HIDDEN static Grid_Shell* Grid__build([[maybe_unused]] bool __note)
     return Grid__build(true);
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 201 "module_attrs_array_v1.hot.cpp"
+#line 203 "module_attrs_array_v1.hot.cpp"
 
 #line 11 "module_attrs_array_v1.hot"
 void GridState_g1::Tick(float dt)
@@ -223,7 +225,7 @@ void GridState_g1::Tick(float dt)
     HOT_TRACE_LINE(); hot::index(hot::index(__st->weights, 1), 2) = dt;
 #line 14 "module_attrs_array_v1.hot"
 }
-#line 227 "module_attrs_array_v1.hot.cpp"
+#line 229 "module_attrs_array_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Grid_slots[SLOT_COUNT] = {
@@ -251,7 +253,7 @@ HOT_NODEBUG static hot::Instance Grid_create()
     return {static_cast<Actor*>(p), p};
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 255 "module_attrs_array_v1.hot.cpp"
+#line 257 "module_attrs_array_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

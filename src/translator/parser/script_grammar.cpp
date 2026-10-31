@@ -964,7 +964,7 @@ struct bases_p
 struct ClassAttrs
 {
     const char* pos = nullptr; // the "["
-    bool is_native = false, is_value = false, is_self = false;
+    bool is_native = false, is_value = false, is_self = false, is_checked_index = false;
     std::string handle, default_handle, intrusive_add, intrusive_release;
     std::string cpp_prelude; // [cpp_prelude("text")]
     bool has_prelude = false;
@@ -983,7 +983,7 @@ struct ClassAttrs
 // The expected count of arguments of a class attribute, or -1 for an unknown name.
 int class_attr_arity(const std::string& name)
 {
-    if (name == "native" || name == "value" || name == "self")
+    if (name == "native" || name == "value" || name == "self" || name == "checked_index")
         return 0;
     if (name == "handle" || name == "default_handle" || name == "alias" || name == "cpp_prelude" || name == "std"
         || name == "array")
@@ -1031,6 +1031,8 @@ struct class_attrs_p
                 a.is_value = true;
             else if (it.name == "self")
                 a.is_self = true;
+            else if (it.name == "checked_index")
+                a.is_checked_index = true;
             else if (it.name == "cpp_prelude")
             {
                 a.cpp_prelude = std_from_user(it.args[0]);
@@ -1171,6 +1173,7 @@ TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bo
         s.is_native = a->is_native;
         s.is_value = a->is_value;
         s.is_self = a->is_self;
+        s.checked_index = a->is_checked_index;
         s.handle = a->handle;
         s.default_handle = a->default_handle;
         s.intrusive_add = a->intrusive_add;
@@ -1186,6 +1189,16 @@ TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bo
             st.error(a->array_pos, "attribute 'array' is valid only on a module attribute list: end the list with ';'");
         if (a->is_self && (derived || s.name.find('*') != std::string::npos))
             st.error(a->pos, "'self' is valid only on a stub with an exact name");
+        if (a->is_checked_index && !is_struct)
+        {
+            // The runtime trait needs a name or a template that C++ can write: "Name" or "Name<*>".
+            const bool tpl = s.name.size() > 3 && s.name.compare(s.name.size() - 3, 3, "<*>") == 0;
+            const std::string base = tpl ? s.name.substr(0, s.name.size() - 3) : s.name;
+            if (derived)
+                st.error(a->pos, "'checked_index' is not allowed on 'class : Base': name the type itself");
+            else if (base.find('*') != std::string::npos)
+                st.error(a->pos, "'checked_index' is valid only on an exact name or on 'Name<*>'");
+        }
     }
     if (is_struct && (derived || !star))
         st.error(pos, "a native stub is declared with 'class', not 'struct'");

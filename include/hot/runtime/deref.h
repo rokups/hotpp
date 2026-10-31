@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace hot
 {
@@ -103,29 +104,49 @@ template <class T> HOT_HIDDEN T& as_ref(T* p)
     return *p;
 }
 
-// The script writes "c[i]". The translator writes "hot::index(c, i)". An array has a bounds
-// test: an index that is negative or not less than N throws hot::IndexOutOfRange, unless
-// HOT_RUNTIME_CHECKS is 0. A negative index converts to a large std::size_t, so one test
-// covers both. An rvalue std::array returns the element BY VALUE (moved), as hot::deref does.
-// Each array overload is more specialized than the generic overload below it.
-template <class T, std::size_t N, class I> HOT_HIDDEN T& index(std::array<T, N>& c, I i)
+// The trait "checked_index<C>" tells whether "c[i]" has a bounds test for the container type C.
+// The default is false, so a container uses its own operator[]. std::array and std::vector are
+// checked by default (the private trait default_checked_index below). The stub attribute
+// "checked_index" of a native type makes the translator write a specialization in the module
+// header (see doc/native-interop.md). A host can also write one by hand:
+//     template <class T> struct hot::checked_index<my::Ring<T>> : std::true_type {};
+// A checked type needs "size()" and "operator[]". A specialization that derives from
+// std::false_type removes the default check of a type. The trait is separate from
+// hot::holds_no_code.
+namespace detail
 {
-    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(static_cast<std::size_t>(i) >= N))
-        detail::throw_index_out_of_range(static_cast<std::size_t>(i), N);
-    return c[static_cast<std::size_t>(i)];
-}
-template <class T, std::size_t N, class I> HOT_HIDDEN const T& index(const std::array<T, N>& c, I i)
+// True when "R" (the result of operator[] of C) is a proxy: a prvalue that is not a "value_type".
+template <class C, class R, class = void> struct index_proxy : std::false_type
 {
-    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(static_cast<std::size_t>(i) >= N))
-        detail::throw_index_out_of_range(static_cast<std::size_t>(i), N);
-    return c[static_cast<std::size_t>(i)];
-}
-template <class T, std::size_t N, class I> HOT_HIDDEN T index(std::array<T, N>&& c, I i)
+};
+template <class C, class R>
+struct index_proxy<C, R, std::void_t<typename C::value_type>>
+    : std::bool_constant<!std::is_reference_v<R> && !std::is_same_v<R, typename C::value_type>>
 {
-    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(static_cast<std::size_t>(i) >= N))
-        detail::throw_index_out_of_range(static_cast<std::size_t>(i), N);
-    return std::move(c[static_cast<std::size_t>(i)]);
-}
+    using type = typename C::value_type;
+};
+template <class C> struct default_checked_index : std::false_type
+{
+};
+template <class T, std::size_t N> struct default_checked_index<std::array<T, N>> : std::true_type
+{
+};
+template <class T, class A> struct default_checked_index<std::vector<T, A>> : std::true_type
+{
+};
+} // namespace detail
+
+template <class C> struct checked_index : detail::default_checked_index<C>
+{
+};
+
+// The script writes "c[i]". The translator writes "hot::index(c, i)". A container with
+// checked_index<C> and a C array have a bounds test: an index that is negative or not less than
+// the size throws hot::IndexOutOfRange, unless HOT_RUNTIME_CHECKS is 0. A negative index
+// converts to a large std::size_t, so one test covers both. An rvalue checked container returns
+// a non-const element BY VALUE (moved), as hot::deref does: a reference would dangle. A proxy
+// (the element of an rvalue std::vector<bool>) becomes a "value_type" value for the same reason.
+// Any other container (std::map, a native type) uses its own operator[].
 template <class T, std::size_t N, class I> HOT_HIDDEN T& index(T (&c)[N], I i)
 {
     if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(static_cast<std::size_t>(i) >= N))
@@ -138,10 +159,25 @@ template <class T, std::size_t N, class I> HOT_HIDDEN const T& index(const T (&c
         detail::throw_index_out_of_range(static_cast<std::size_t>(i), N);
     return c[static_cast<std::size_t>(i)];
 }
-// Any other container (std::vector, std::map, a native type) uses its own operator[].
 template <class C, class I> HOT_HIDDEN decltype(auto) index(C&& c, I&& i)
 {
-    return static_cast<C&&>(c)[static_cast<I&&>(i)];
+    if constexpr (checked_index<detail::remove_cvref_t<C>>::value)
+    {
+        if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(static_cast<std::size_t>(i) >= static_cast<std::size_t>(c.size())))
+            detail::throw_index_out_of_range(static_cast<std::size_t>(i), static_cast<std::size_t>(c.size()));
+        using R = decltype(static_cast<C&&>(c)[static_cast<I&&>(i)]);
+        if constexpr (!std::is_lvalue_reference_v<C> && std::is_lvalue_reference_v<R>
+            && !std::is_const_v<std::remove_reference_t<R>>)
+            return std::remove_reference_t<R>(std::move(c[static_cast<I&&>(i)]));
+        else if constexpr (!std::is_lvalue_reference_v<C> && detail::index_proxy<detail::remove_cvref_t<C>, R>::value)
+            // A proxy (std::vector<bool>) would keep a pointer to the dead temporary.
+            return static_cast<typename detail::index_proxy<detail::remove_cvref_t<C>, R>::type>(
+                c[static_cast<I&&>(i)]);
+        else
+            return static_cast<C&&>(c)[static_cast<I&&>(i)];
+    }
+    else
+        return static_cast<C&&>(c)[static_cast<I&&>(i)];
 }
 
 } // namespace hot

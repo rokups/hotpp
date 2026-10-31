@@ -106,7 +106,7 @@ These rules apply to an array:
 - The size is a literal. `int[]` and `int[n]` are errors.
 - The size is from 1 to 16777216 (`1 << 24`). `int[0]` and a larger size are errors.
 - `is`, `as` and casts do not take an array type. `x is int[3]`, `x as int[3]` and `(int[3])x` are errors.
-- An index is checked. An index that is negative or not less than the size throws `IndexOutOfRange` (see [Statements](statements.html)). The build option `HOT_RUNTIME_CHECKS=OFF` removes the check. Then an index outside the array is undefined behavior.
+- An index is checked. An index that is negative or not less than the size throws `IndexOutOfRange` (see [Statements](statements.html)). The build option `HOT_RUNTIME_CHECKS=OFF` removes the check. Then an index outside the array is undefined behavior. A custom array type from the module attribute `array` is checked also (see [Native interop](native-interop.html)).
 - `.size()` gives the number of values.
 - A copy of an array copies all values.
 - A reload keeps the values of an array field when the type stays the same.

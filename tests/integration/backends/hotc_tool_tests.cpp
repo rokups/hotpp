@@ -362,6 +362,150 @@ TEST(HotcTool, ModuleAttributeArrayCompiles)
         << cc;
 }
 
+// The stubs with checked_index and the custom array template: the generated C++ has the
+// specializations of hot::checked_index and compiles as C++17. The stub of a type that the
+// headers do not declare gives none.
+TEST(HotcTool, CheckedIndexStubsCompile)
+{
+    TestScratch scratch;
+    const std::string script = scratch.file("hotc_checked_index.hot");
+    const std::string out = scratch.file("hotc_checked_index.cpp");
+    {
+        std::ofstream(script) << "using \"Actor.h\";\nusing \"CheckedTypes.h\";\nusing <deque>;\n\n"
+                                 "[array(\"hostns2::Fixed<$T, $N>\")];\n"
+                                 "[native, checked_index] class hostns2.Ring<*>;\n"
+                                 "[native, checked_index] class hostns2.Plain;\n"
+                                 "[native, checked_index] class hostns2.Missing<*>;\n"
+                                 "[native, checked_index] class std.deque<*>;\n"
+                                 "[native, checked_index] class hostns2.__detail.Deep<*>;\n"
+                                 "[native, checked_index] class hostns2.Versioned<*>;\n\n"
+                                 "class Grid : Actor {\n    int[4] cells;\n    hostns2.Ring<int> ring;\n"
+                                 "    hostns2.Plain plain;\n"
+                                 "    override void Tick(float dt) {\n"
+                                 "        this.cells[1] = 7;\n        this.ring[2] = 3;\n"
+                                 "        this.plain[0] = 1;\n    }\n}\n";
+    }
+    std::string log;
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
+                      + engine_args() + " 2>&1",
+                  log),
+        0)
+        << log;
+    const std::string cpp = read_file(out);
+    EXPECT_NE(cpp.find("struct checked_index< ::hostns2::Ring<A...>>"), std::string::npos) << cpp;
+    EXPECT_NE(cpp.find("struct checked_index< ::hostns2::Plain>"), std::string::npos) << cpp;
+    EXPECT_NE(cpp.find("checked_index< ::hostns2::Fixed<T, N>>"), std::string::npos) << cpp;
+    EXPECT_EQ(cpp.find("Missing"), std::string::npos) << cpp;
+    EXPECT_NE(cpp.find("checked_index< ::std::deque<A...>>"), std::string::npos) << cpp;
+    EXPECT_NE(cpp.find("checked_index< ::hostns2::__detail::Deep<A...>>"), std::string::npos) << cpp;
+    EXPECT_NE(cpp.find("checked_index< ::hostns2::Versioned<A...>>"), std::string::npos) << cpp;
+    std::string cc;
+    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++17 -fsyntax-only -I '" + HOT_SOURCE_DIR
+                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
+                  cc),
+        0)
+        << cc;
+}
+
+// The module attribute array with the alias template FixedArray of ArrayAlias.h: the partial
+// specialization through the alias compiles as C++17.
+TEST(HotcTool, ArrayAliasCheckedIndexCompiles)
+{
+    TestScratch scratch;
+    const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/module_attrs_array_v1.hot";
+    const std::string out = scratch.file("hotc_array_alias.cpp");
+    std::string log;
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
+                      + engine_args() + " 2>&1",
+                  log),
+        0)
+        << log;
+    const std::string cpp = read_file(out);
+    EXPECT_NE(cpp.find("checked_index< ::hostns::FixedArray<T, N>>"), std::string::npos) << cpp;
+    std::string cc;
+    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++17 -fsyntax-only -I '" + HOT_SOURCE_DIR
+                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
+                  cc),
+        0)
+        << cc;
+}
+
+// A stub with checked_index must fit the kind of its name. The message gives the fix.
+void expect_checked_index_error(const char* name, const char* stub, const char* message)
+{
+    TestScratch scratch;
+    const std::string script = scratch.file(std::string("hotc_ci_err_") + name + ".hot");
+    const std::string out = scratch.file(std::string("hotc_ci_err_") + name + ".cpp");
+    {
+        std::ofstream(script) << "using \"Actor.h\";\nusing \"CheckedTypes.h\";\nusing \"ArrayAlias.h\";\n\n"
+                              << stub << "\n\nclass Grid : Actor {\n}\n";
+    }
+    std::string log;
+    EXPECT_NE(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
+                      + engine_args() + " 2>&1",
+                  log),
+        0)
+        << log;
+    EXPECT_NE(log.find(message), std::string::npos) << log;
+    EXPECT_NE(log.find(":5:"), std::string::npos) << log; // the line of the stub
+}
+
+TEST(HotcTool, CheckedIndexOnAClassTemplateNeedsThePattern)
+{
+    expect_checked_index_error("exact_tpl", "[native, checked_index] class hostns2.Ring;",
+        "'checked_index' on 'hostns2::Ring': it is a class template; write 'hostns2::Ring<*>'");
+}
+
+TEST(HotcTool, CheckedIndexPatternOnAPlainClassIsAnError)
+{
+    expect_checked_index_error("pattern_plain", "[native, checked_index] class hostns2.Plain<*>;",
+        "'hostns2::Plain' is not a class template; write it as 'hostns2::Plain'");
+}
+
+TEST(HotcTool, CheckedIndexPatternOnAnAliasTemplateIsAnError)
+{
+    expect_checked_index_error("pattern_alias", "[native, checked_index] class hostns.FixedArray<*>;",
+        "is an alias template or has a non-type parameter. For an array type use the module attribute 'array'");
+}
+
+TEST(HotcTool, CheckedIndexPatternOnATemplateWithASizeParameterIsAnError)
+{
+    expect_checked_index_error("pattern_nttp", "[native, checked_index] class hostns2.Fixed<*>;",
+        "is an alias template or has a non-type parameter. For an array type use the module attribute 'array'");
+}
+
+TEST(HotcTool, CheckedIndexExactNameOnATemplateWithASizeParameterIsAnError)
+{
+    expect_checked_index_error("exact_nttp", "[native, checked_index] class hostns2.Fixed;",
+        "'checked_index' on 'hostns2::Fixed': it is an alias template or has a non-type parameter");
+}
+
+// With HOT_RUNTIME_CHECKS=0 hot::index of a checked container has no test. The program defines
+// the throw function to abort, so a test that stays makes the run fail.
+TEST(HotcTool, CheckedIndexHasNoTestWithoutRuntimeChecks)
+{
+    TestScratch scratch;
+    const std::string src = scratch.file("hotc_unchecked_index.cpp");
+    const std::string exe = scratch.file("hotc_unchecked_index.bin");
+    {
+        std::ofstream(src) << "#include \"hot/runtime/deref.h\"\n#include <cstdlib>\n#include <vector>\n"
+                              "namespace hot::detail {\n"
+                              "void throw_index_out_of_range(std::size_t, std::size_t) { std::abort(); }\n"
+                              "void throw_null_reference(const char*) { std::abort(); }\n}\n"
+                              "struct Lax { int v = 3; std::size_t size() const { return 1; }\n"
+                              "  int& operator[](std::size_t) { return v; } };\n"
+                              "namespace hot { template <> struct checked_index<Lax> : std::true_type {}; }\n"
+                              "int main() { Lax l; std::vector<int> g(1); return hot::index(l, 5) == 3 ? 0 : 1; }\n";
+    }
+    std::string log;
+    ASSERT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++17 -DHOT_RUNTIME_CHECKS=0 -I '" + HOT_SOURCE_DIR
+                      + "/include' '" + src + "' -o '" + exe + "' 2>&1",
+                  log),
+        0)
+        << log;
+    EXPECT_EQ(run_command("'" + exe + "' 2>&1", log), 0) << log;
+}
+
 // Translates the script text and compiles the C++ with -fsyntax-only.
 void expect_script_compiles(TestScratch& scratch, const char* name, const char* text)
 {

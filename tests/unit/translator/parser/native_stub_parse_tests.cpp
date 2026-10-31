@@ -147,6 +147,49 @@ TEST(NativeStubParse, SelfErrors)
     EXPECT_EQ(p.diag.items[0].msg, "attribute 'self' takes 0 arguments");
 }
 
+// The stub attribute checked_index is valid on an exact name and on "Name<*>".
+TEST(NativeStubParse, CheckedIndexOnExactNameAndTemplatePattern)
+{
+    StubParsed p("[native, checked_index] class std.vector<*>;\n[native, checked_index] class my.Ring<*>;\n"
+                 "[native, checked_index] class my.Plain;\n[native, handle(\"$T*\"), checked_index] class A;\n"
+                 "[native] class B;\n");
+    ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    ASSERT_EQ(p.script.stubs.size(), 5u);
+    EXPECT_TRUE(p.script.stubs[0].checked_index);
+    EXPECT_EQ(p.script.stubs[1].name, "my::Ring<*>");
+    EXPECT_TRUE(p.script.stubs[1].checked_index);
+    EXPECT_TRUE(p.script.stubs[2].checked_index);
+    EXPECT_TRUE(p.script.stubs[3].checked_index);
+    EXPECT_FALSE(p.script.stubs[4].checked_index);
+}
+
+// A name with another "*", "class *" and "class : Base" cannot name one C++ template.
+TEST(NativeStubParse, CheckedIndexInvalidPlaces)
+{
+    for (const char* text : {"[native, checked_index] class *;\n", "[native, checked_index] class physics.*;\n",
+             "[native, checked_index] class a.*.b<*>;\n"})
+    {
+        StubParsed p(text);
+        ASSERT_EQ(p.diag.items.size(), 1u) << text << p.diag.format("t");
+        EXPECT_EQ(p.diag.items[0].msg, "'checked_index' is valid only on an exact name or on 'Name<*>'");
+    }
+    StubParsed d("[native, checked_index] class : Base;\n");
+    ASSERT_EQ(d.diag.items.size(), 1u) << d.diag.format("t");
+    EXPECT_EQ(d.diag.items[0].msg, "'checked_index' is not allowed on 'class : Base': name the type itself");
+    StubParsed st("[checked_index] struct *;\n");
+    ASSERT_GE(st.diag.items.size(), 1u);
+    EXPECT_EQ(st.diag.items[0].msg, "'struct *' accepts only 'cpp_prelude'");
+    StubParsed c("[checked_index] class Foo { }\n");
+    ASSERT_GE(c.diag.items.size(), 1u);
+    EXPECT_EQ(c.diag.items[0].msg, "attribute 'checked_index' is not allowed on a script class");
+    StubParsed a("[native, checked_index(1)] class A;\n");
+    ASSERT_GE(a.diag.items.size(), 1u);
+    EXPECT_EQ(a.diag.items[0].msg, "attribute 'checked_index' takes 0 arguments");
+    StubParsed m("[checked_index];\n");
+    ASSERT_EQ(m.diag.items.size(), 1u) << m.diag.format("t");
+    EXPECT_EQ(m.diag.items[0].msg, "attribute 'checked_index' is not allowed in a module attribute list");
+}
+
 TEST(NativeStubParse, DerivedStub)
 {
     StubParsed p("[handle(\"$T*\")] class : game.Object;\n[native, value] class : Base;\n");

@@ -135,7 +135,7 @@ An error reports only when it leaves the outermost script call. A script that ca
 
 Only a `ScriptError` stops at the boundary. Any other C++ exception that a script throws reaches the host. The host must catch it. If the return type has no default value (for example a reference), the runtime reports the error and throws it again.
 
-The checks are a build-time choice. The CMake option `HOT_RUNTIME_CHECKS` (default `ON`) sets the macro `HOT_RUNTIME_CHECKS`. With `OFF` the macro is `0`: the generated code has no checks, and an installed host sees the same setting. Each check costs one compare for a pointer access, a handle access or a `std::array` index. See [CMake](cmake.html).
+The checks are a build-time choice. The CMake option `HOT_RUNTIME_CHECKS` (default `ON`) sets the macro `HOT_RUNTIME_CHECKS`. With `OFF` the macro is `0`: the generated code has no checks, and an installed host sees the same setting. Each check costs one compare for a pointer access, a handle access or an index of a checked container (`std::array`, `std::vector`, a stub with `checked_index`). See [CMake](cmake.html).
 
 ### Traceback
 

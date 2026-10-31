@@ -255,6 +255,18 @@ TEST(GoldenTranslation, ModuleAttrsArray)
     check_golden("module_attrs_array_v1.g1.slots", r.slots_out);
 }
 
+// A stub with checked_index and the custom array template give a specialization of
+// hot::checked_index. A name that the headers do not declare gets none.
+TEST(GoldenTranslation, CheckedIndexStubs)
+{
+    hotc::TranslateOptions o = engine_options("checked_index_v1.hot", 1);
+    o.script_name = "checked_index_v1.hot";
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    check_golden("checked_index_v1.g1.cpp", r.cpp);
+    check_golden("checked_index_v1.g1.slots", r.slots_out);
+}
+
 // A native stub with the name of a header type is not a script type. It gives no name clash error.
 TEST(GoldenTranslation, NativeStubWithAHeaderTypeNameIsNotAClash)
 {

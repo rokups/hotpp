@@ -537,6 +537,7 @@ struct Stub
     bool derived = false;
     bool is_self = false; // the attribute [self]: the rule is for this type only, not subclasses
     bool is_struct = false; // "struct *;": only "cpp_prelude" is valid
+    bool checked_index = false; // the attribute [checked_index]: "a[i]" has a bounds test for the type
     std::string cpp_prelude; // the attribute [cpp_prelude("text")]
     int line = 0;
     uint32_t pos = 0;

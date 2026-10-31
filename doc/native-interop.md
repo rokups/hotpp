@@ -137,6 +137,8 @@ A stub name decides which types the rule covers.
 | `struct *;` | Every script `struct`. Only `cpp_prelude` is valid. |
 | `class ns.*;` and `class T<*>;` | Every type whose name starts with the prefix. |
 
+The attribute `checked_index` is an exception: it is valid on an exact name and on `T<*>` only, and it does not reach subclasses (see "Bounds check on an index").
+
 `self` is valid only on an exact name. It is not valid on `*`, on a pattern or on `class : Base;`. `class : Base;` accepts `native` but does not need it. It does not accept `value` or `default_handle`. The attribute `native` is optional on `class *;` and on `class : Base;`. A rule `class : Base;` that has only `cpp_prelude` and no `native` does not change the storage of a type. A file can have only one `class : Base;` for each `Base`, one `class *;` and one `struct *;`.
 
 The translator picks the rule in this order:
@@ -253,6 +255,55 @@ The translator checks a stub against the native type.
 - `value` on a polymorphic type that is not `final` is an error. This prevents slicing.
 - `intrusive` needs the two named methods, and they must not be overloaded.
 
+## Bounds check on an index
+
+The script writes an index as `a[i]`. The generated C++ calls `hot::index(a, i)`. A type that is *checked* gets a bounds test. An index that is negative or not less than `size()` throws `IndexOutOfRange`. Other types use their own `operator[]`.
+
+These types are checked by default:
+
+- A C array.
+- `std::array<T, N>`.
+- `std::vector<T, A>`. This is a change: an index outside a vector was undefined behavior before. Now it throws.
+- The array type `T[N]` of the script. This includes a custom type from the module attribute `array` (see "The array type").
+
+Other types are not checked. For example `std::map` keeps its own `operator[]`.
+
+The stub attribute `checked_index` has no argument. It makes a native type checked:
+
+```hot
+using "Ring.h";
+
+[native, checked_index] class my.Ring<*>;   // every my::Ring<T>
+[native, checked_index] class my.Buffer;    // my::Buffer only
+
+class Wave {
+    my.Ring<float> samples;
+    float Last() { return this.samples[this.samples.size() - 1]; }
+}
+```
+
+- The type needs `size()` and an `operator[]` that takes `std::size_t`.
+- `checked_index` is valid on an exact name and on a pattern `Name<*>`. It is not valid on `class *;`, on `class : Base;`, on `ns.*` or on a script class. The attribute covers the named type only. A subclass does not get it.
+- The name must fit the stub. `Name` names a class (or a typedef). `Name<*>` names a class template that has type parameters only. `Name<*>` writes a partial specialization with a pack of type parameters. The translator reads the headers and reports an error at the stub in these cases:
+  - `Name` is a class template: write `Name<*>`.
+  - `Name<*>` is not a class template: write `Name`.
+  - `Name` or `Name<*>` is an alias template, or a template with a non-type parameter (for example `my::Fixed<T, N>`) or a template template parameter. A stub cannot name it. For an array type, use the module attribute `array`.
+- The module header gets the specialization only when the headers of the script declare the name. A stub for an undeclared type does nothing. A namespace that is `inline` in the header ("__1" of libc++) is not part of the name. A namespace that is not inline, such as `std::__detail`, is part of it.
+- `std.` in the stub follows the std rule: `[native, checked_index] class std.deque<*>;` names `deque` of the configured namespace.
+- An rvalue that is a checked container returns the element by value (moved), as `hot::deref` does. For a proxy, such as the element of an rvalue `std::vector<bool>`, it returns the `value_type` by value, so no proxy dangles.
+
+The translator writes this for a stub in the module header:
+
+```cpp
+namespace hot { template <class... A> struct checked_index< ::my::Ring<A...>> : std::true_type {}; }
+```
+
+A host can write the specialization by hand, for example for a type that a `.cpp` script uses. A `.cpp` script has raw bodies and calls `operator[]` itself. A hand-written `std::false_type` specialization removes the default check of a type. Do not combine a stub with a hand-written `hot::checked_index` specialization for the same type: the two definitions are a redefinition in one translation unit.
+
+Put the `checked_index` stubs in a shared prelude. Then every module of one program writes the same trait definition. A module that uses the type without the stub can have another trait value. In an AOT program, the modules are compiled into one program. A module without the stub can then differ from a module with it, and the one-definition rule is broken for that type.
+
+The macro `HOT_RUNTIME_CHECKS=0` (CMake option `HOT_RUNTIME_CHECKS=OFF`) removes the test of every checked type. Then an index outside the container is undefined behavior again, and `hot::index` costs nothing. The trait `hot::checked_index` is separate from `hot::holds_no_code`. A checked type that is not trivially copyable still needs a `holds_no_code` specialization if it cannot hold code.
+
 ## Module attributes
 
 A module attribute list is an attribute list that ends with `;` and has no item.
@@ -303,9 +354,9 @@ The attribute `array("template")` sets the C++ type of a fixed-size array `T[N]`
 - The scope rules are the same as for `std`. A list in a prelude is the default of the host. A list in a script overrides it. A repeat in one file is an error. An imported script uses the value of the main script and cannot set another value.
 - Both attributes can be in one list: `[std("eastl"), array("$std::array<$T, $N>")];`.
 
-The script writes an index as `a[i]`. The generated C++ calls `hot::index`. `hot::index` checks the bounds of `std::array` and of a C array. A custom array type uses its own `operator[]` and has no check from the runtime.
+The array template is checked. If the template has the form `Name<$T, $N>` (a plain template-id), the translator writes `template <class T, auto N> struct checked_index< ::Name<T, N>> : std::true_type {};` in the module header, when the headers declare `Name`. The type needs `size()` and `operator[]`. `Name` can be an alias template that passes `T` and `N` straight to the real template, as in `template <class T, std::size_t N> using FixedArray = std::array<T, N>;`. An alias that changes `T` or `N` cannot be deduced, and the C++ compiler rejects the specialization: use the real array type in the module attribute. For another form, such as a nested type `Name<$T, $N>::type`, or the order `Name<$N, $T>`, add a stub `[native, checked_index]` for the real array type (see "Bounds check on an index"). Without it, the type has no check.
 
-A custom array type has no bounds check. The host should also specialize `hot::holds_no_code` for the custom array type, as the runtime does for `std::array`. Without it, a custom array type that is not trivially copyable counts as a type that can hold code.
+The host should also specialize `hot::holds_no_code` for the custom array type, as the runtime does for `std::array`. Without it, a custom array type that is not trivially copyable counts as a type that can hold code. The two traits are separate.
 
 A stub in a prelude can name an array type only in the base of a stub such as `class : Wrap<int[3]>;`. That type uses the template of the earlier preludes and of the same prelude.
 
