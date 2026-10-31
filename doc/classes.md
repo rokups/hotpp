@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Classes
-nav_order: 5
+nav_order: 6
 group: Hot script
 ---
 

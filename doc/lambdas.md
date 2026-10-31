@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Lambdas
-nav_order: 9
+nav_order: 10
 group: Hot script
 ---
 
