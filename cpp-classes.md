@@ -11,6 +11,7 @@ This page describes what a script class can have in a `.cpp` script.
 
 - A class that derives from a native class, or from a script class of the same file (see [Script class inheritance](cpp-types.html#script-class-inheritance)).
 - Fields with initializers and migration.
+- C array fields, for example `int data[4]`, `const int lut[3]`, `std::string names[2][3]` or `std::function<void()> handlers[4]`. A module variable and a static data member can also have an array type. The field keeps its array type in the state. A reload copies each element. An array that changes its type or size resets, and the loader writes a warning. The fixtures `tests/scripts/cpp_array_v1.cpp` and `tests/scripts/cpp_array_v2.cpp` show them. An array field cannot be in a member initializer list.
 - `HOT_ALIAS("old")` on a field.
 - `convert_<field>` methods.
 - The method `onReload(const hot::OldState&)`.
