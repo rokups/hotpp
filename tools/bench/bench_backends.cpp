@@ -5,7 +5,8 @@
 //   jit    the in-process JIT backend
 //   aot    the C++ of the scripts is part of this binary (Loader::load_aot)
 // A pure native C++ twin of each script class is the reference. A case has up to two scripts: a .hot
-// script and a .cpp script (plain C++ that hotc translates). The table has both for each backend.
+// script and a .cpp script (plain C++ that hotc translates). The matrix has both for each backend,
+// also for the reload and the reload chain.
 //
 // Usage:
 //   bench_backends [--backend all|files|jit|aot] [--filter text] [--iters N] [--list]
@@ -276,6 +277,52 @@ struct NHandles : BenchBase
     }
 };
 
+// The pointer version of NHandles: raw pointers, with no count and no generation. The reference of the .cpp twin.
+struct NPNode
+{
+    int v = 0;
+    NPNode* next = nullptr;
+};
+
+struct NHandlesPtr : BenchBase
+{
+    NPNode* head = nullptr;
+    ~NHandlesPtr() override
+    {
+        while (head)
+        {
+            NPNode* n = head->next;
+            delete head;
+            head = n;
+        }
+    }
+    int64_t Run(int n) override
+    {
+        if (!head)
+        {
+            head = new NPNode();
+            head->v = 1;
+            NPNode* cur = head;
+            for (int j = 1; j < 4; j++)
+            {
+                cur->next = new NPNode();
+                cur->next->v = j + 1;
+                cur = cur->next;
+            }
+        }
+        int64_t s = 0;
+        NPNode* p = head;
+        for (int i = 0; i < n; i++)
+        {
+            if (!p)
+                p = head;
+            s += p->v;
+            p = p->next;
+        }
+        return s;
+    }
+};
+
 struct NString : BenchBase
 {
     int64_t Run(int n) override
@@ -349,6 +396,24 @@ struct NMethodLoop : BenchBase
 // ---- new and free: the native kinds of smart pointer (native-only rows) ----
 // Each twin does the work of NAlloc with another kind of owner. The table compares the script
 // case "alloc" with each of them.
+
+// A raw "new" and "delete". The reference of the .cpp twin of "alloc".
+struct NAllocRaw : BenchBase
+{
+    int64_t Run(int n) override
+    {
+        int64_t s = 0;
+        for (int i = 0; i < n; i++)
+        {
+            NObj* o = new NObj();
+            escape(o);
+            o->a = i;
+            s += o->a + o->b;
+            delete o;
+        }
+        return s;
+    }
+};
 
 struct NAllocSharedNew : BenchBase
 {
@@ -687,12 +752,15 @@ const Case kCases[] = {
     {"vector", "std.vector index loop", "vector.hot", "BenchVector", make_native<NVector>, 5000000, false, 1},
     {"handles", "handle deref and null check chain", "handles.hot", "BenchHandles", make_native<NHandles>, 3000000,
         false, 1},
+    {"handles_ptr", "pointer deref and null check chain", nullptr, nullptr, make_native<NHandlesPtr>, 3000000, false,
+        1},
     {"string", "string interpolation / concat", "string.hot", "BenchString", make_native<NString>, 300000, false, 1},
     {"alloc", "new and free of a script object", "alloc.hot", "BenchAlloc", make_native<NAlloc>, 1000000, false, 1},
     {"closure", "closure call", "closure.hot", "BenchClosure", make_native<NClosure>, 5000000, false, 1},
     {"method_loop", "loop with a method call", "method_loop.hot", "BenchMethodLoop", make_native<NMethodLoop>, 5000000,
         false, 1},
     // Native-only rows: the kinds of owner for the comparison with "alloc".
+    {"alloc_raw", "native: raw new and delete", nullptr, nullptr, make_native<NAllocRaw>, 1000000, false, 1},
     {"alloc_shared_new", "native: std::shared_ptr<T>(new T)", nullptr, nullptr, make_native<NAllocSharedNew>, 1000000,
         false, 1},
     {"alloc_unique", "native: std::make_unique<T>()", nullptr, nullptr, make_native<NAllocUnique>, 1000000, false, 1},
@@ -718,8 +786,9 @@ const Case kCases[] = {
 };
 
 // The .cpp twin of a case: a plain C++ file that hotc translates (the libclang frontend). It does the same
-// work as the .hot script. A case with no entry here cannot be written as a .cpp script: it needs script
-// class handles (handles, alloc, state_field, handle_call) or a script virtual method (slot_script).
+// work as the .hot script. A .cpp script has no handles, so the twins of the cases with handles (handles,
+// alloc, state_field, handle_call, slot_script) use raw pointers to script objects. A raw pointer has no
+// generation check. A case with no entry here cannot be written as a .cpp script (see the list in the docs).
 struct CppTwin
 {
     const char* name; // the name of the case
@@ -741,6 +810,11 @@ const CppTwin kCppTwins[] = {
     {"closure", "cpp_closure.cpp", "BenchClosureCpp"},
     {"method_loop", "cpp_method_loop.cpp", "BenchMethodLoopCpp"},
     {"method_entry", "cpp_method_entry.cpp", "BenchEntryCpp"},
+    {"handles_ptr", "cpp_handles.cpp", "BenchHandlesCpp"},
+    {"alloc", "cpp_alloc.cpp", "BenchAllocCpp"},
+    {"state_field", "cpp_state_field.cpp", "BenchStateFieldCpp"},
+    {"slot_script", "cpp_slot_script.cpp", "BenchSlotScriptCpp"},
+    {"handle_call", "cpp_handle_call.cpp", "BenchHandleCallCpp"},
     {"module_var", "cpp_module_var.cpp", "BenchModVarCpp"},
     {"module_fn", "module_fn.cpp", "BenchModFn"},
 };
@@ -856,14 +930,22 @@ struct Row
     bool mismatch = false;
 };
 
+// One cell of the output matrix. na: the text of a cell that has no value ("n/a" or "-").
+struct Cell
+{
+    double ns = -1;
+    bool mismatch = false;
+    const char* na = nullptr;
+};
+
 struct BackendResult
 {
     Kind kind;
     std::vector<Row> rows;     // one for each case: the .hot script
     std::vector<Row> rows_cpp; // one for each case: the .cpp script
-    double reload_ns = -1;
-    std::vector<double> chain_old; // ns per call of the reload chain, one for each step
-    std::vector<double> chain_new;
+    double reload_ns[2] = {-1, -1};      // [0] the .hot script, [1] the .cpp script
+    std::vector<double> chain_old[2];    // ns per call of the reload chain, one for each step
+    std::vector<double> chain_new[2];
     std::string note;
 };
 
@@ -953,26 +1035,32 @@ constexpr int kReloadFields = 64;
 constexpr int kReloadObjects = 100;
 
 // Version 1 has the fields f0..f63. Version 2 adds the field extra, so the state block migrates.
-std::string reload_script(bool v2)
+// The .cpp version is the same class in C++.
+std::string reload_script(bool v2, bool cpp)
 {
-    std::string s = "using \"BenchEngine.h\";\n\nclass BenchReload : BenchBase {\n";
+    std::string s;
+    if (cpp)
+        s = "#include \"BenchEngine.h\"\n#include <cstdint>\n\nclass BenchReloadCpp : public BenchBase {\npublic:\n";
+    else
+        s = "using \"BenchEngine.h\";\n\nclass BenchReload : BenchBase {\n";
     for (int i = 0; i < kReloadFields; ++i)
         s += "    int f" + std::to_string(i) + " = " + std::to_string(i) + ";\n";
     if (v2)
         s += "    int extra = 7;\n";
-    s += "    override long Run(int n) {\n";
+    s += cpp ? "    int64_t Run(int n) override {\n" : "    override long Run(int n) {\n";
     if (v2)
         s += "        extra = extra + 1;\n";
-    s += "        long s = 0;\n";
+    s += cpp ? "        int64_t s = 0;\n" : "        long s = 0;\n";
     for (int i = 0; i < kReloadFields; ++i)
         s += "        s += f" + std::to_string(i) + ";\n";
-    s += "        return s;\n    }\n}\n";
+    s += cpp ? "        return s;\n    }\n};\n" : "        return s;\n    }\n}\n";
     return s;
 }
 
 // The time of request_reload and commit_pending for kReloadObjects live objects.
-void run_reload(Kind k, const Options& o, BackendResult& out)
+void run_reload(Kind k, const Options& o, bool cpp, BackendResult& out)
 {
+    const std::string tag = cpp ? "reload (.cpp)" : "reload (.hot)";
     const int reps = 2; // each rep needs one compile
     std::unique_ptr<hot::Backend> backend = make_backend(k, o);
     const std::string dir = std::string(BENCH_SCRIPT_DIR) + "/";
@@ -980,24 +1068,24 @@ void run_reload(Kind k, const Options& o, BackendResult& out)
     for (int g = 1; g <= reps + 1; ++g)
     {
         const bool v2 = (g % 2) == 0;
-        built.push_back(backend->load({dir + (v2 ? "reload_v2.hot" : "reload_v1.hot"), reload_script(v2), {}},
-            static_cast<uint32_t>(g)));
+        const std::string file = std::string(v2 ? "reload_v2" : "reload_v1") + (cpp ? ".cpp" : ".hot");
+        built.push_back(backend->load({dir + file, reload_script(v2, cpp), {}}, static_cast<uint32_t>(g)));
         if (!built.back())
         {
-            out.note += "reload: compile failed: " + built.back().error.substr(0, 300) + "\n";
+            out.note += tag + ": compile failed: " + built.back().error.substr(0, 300) + "\n";
             return;
         }
     }
     hot::Loader loader;
     if (const hot::ReloadResult l = loader.load(std::move(*built[0].module)); !l)
     {
-        out.note += "reload: load failed: " + l.error + "\n";
+        out.note += tag + ": load failed: " + l.error + "\n";
         return;
     }
-    const hot::ClassEntry* entry = loader.find("BenchReload");
+    const hot::ClassEntry* entry = loader.find(cpp ? "BenchReloadCpp" : "BenchReload");
     if (!entry)
     {
-        out.note += "reload: class not found\n";
+        out.note += tag + ": class not found\n";
         return;
     }
     std::vector<std::unique_ptr<BenchBase>> objects;
@@ -1012,7 +1100,7 @@ void run_reload(Kind k, const Options& o, BackendResult& out)
         const double ms = ms_since(t);
         if (!com)
         {
-            out.note += "reload: failed: " + com.error + "\n";
+            out.note += tag + ": failed: " + com.error + "\n";
             return;
         }
         times.push_back(ms * 1e6);
@@ -1021,8 +1109,8 @@ void run_reload(Kind k, const Options& o, BackendResult& out)
     }
     constexpr int64_t kSum = kReloadFields * (kReloadFields - 1) / 2;
     if (objects.back()->Run(0) != kSum)
-        out.note += "reload: a field lost its value in the migration\n";
-    out.reload_ns = median(times);
+        out.note += tag + ": a field lost its value in the migration\n";
+    out.reload_ns[cpp ? 1 : 0] = median(times);
 }
 
 // ---- The reload chain: the cost of a call after N reloads ----
@@ -1032,13 +1120,21 @@ constexpr int kChainSteps[] = {0, 1, 10, 100};
 
 // Generation g of the chain script. An even generation adds a field, so each reload migrates
 // the state block of the object.
-std::string chain_script(int g)
+std::string chain_script(int g, bool cpp)
 {
-    std::string s = "using \"BenchEngine.h\";\n\nclass BenchChain : BenchBase {\n    int k = 1;\n";
+    std::string s;
+    if (cpp)
+        s = "#include \"BenchEngine.h\"\n#include <cstdint>\n\nclass BenchChainCpp : public BenchBase {\npublic:\n    int k = 1;\n";
+    else
+        s = "using \"BenchEngine.h\";\n\nclass BenchChain : BenchBase {\n    int k = 1;\n";
     if (g % 2 == 0)
         s += "    int pad = 0;\n";
-    s += "    override int Hook(int x) {\n        return x + k;\n    }\n\n"
-         "    override long Run(int n) {\n        return DriveHook(n);\n    }\n}\n";
+    if (cpp)
+        s += "    int Hook(int x) override {\n        return x + k;\n    }\n\n"
+             "    int64_t Run(int n) override {\n        return DriveHook(n);\n    }\n};\n";
+    else
+        s += "    override int Hook(int x) {\n        return x + k;\n    }\n\n"
+             "    override long Run(int n) {\n        return DriveHook(n);\n    }\n}\n";
     return s;
 }
 
@@ -1047,27 +1143,30 @@ const Case kChainCase = {"chain", "call after N reloads", nullptr, "BenchChain",
 // Loads generation 1, makes an object, then reloads up to the largest step. At each step the
 // tool times the call on the old object (made in generation 1 and migrated N times) and on a
 // new object (made after the last reload).
-void run_chain(Kind k, const Options& o, int64_t native_check, BackendResult& out)
+void run_chain(Kind k, const Options& o, bool cpp, int64_t native_check, BackendResult& out)
 {
+    const std::string tag = cpp ? "chain (.cpp)" : "chain (.hot)";
+    const char* cls = cpp ? "BenchChainCpp" : kChainCase.cls;
+    const int li = cpp ? 1 : 0;
     std::unique_ptr<hot::Backend> backend = make_backend(k, o);
-    const std::string path = std::string(BENCH_SCRIPT_DIR) + "/chain.hot";
-    auto build = [&](int g) { return backend->load({path, chain_script(g), {}}, static_cast<uint32_t>(g)); };
+    const std::string path = std::string(BENCH_SCRIPT_DIR) + (cpp ? "/chain.cpp" : "/chain.hot");
+    auto build = [&](int g) { return backend->load({path, chain_script(g, cpp), {}}, static_cast<uint32_t>(g)); };
     hot::LoadResult first = build(1);
     if (!first)
     {
-        out.note += "chain: compile failed: " + first.error.substr(0, 300) + "\n";
+        out.note += tag + ": compile failed: " + first.error.substr(0, 300) + "\n";
         return;
     }
     hot::Loader loader;
     if (const hot::ReloadResult l = loader.load(std::move(*first.module)); !l)
     {
-        out.note += "chain: load failed: " + l.error + "\n";
+        out.note += tag + ": load failed: " + l.error + "\n";
         return;
     }
-    const hot::ClassEntry* entry = loader.find(kChainCase.cls);
+    const hot::ClassEntry* entry = loader.find(cls);
     if (!entry)
     {
-        out.note += "chain: class not found\n";
+        out.note += tag + ": class not found\n";
         return;
     }
     std::unique_ptr<BenchBase> old_obj(static_cast<BenchBase*>(entry->create().native));
@@ -1082,25 +1181,25 @@ void run_chain(Kind k, const Options& o, int64_t native_check, BackendResult& ou
             hot::LoadResult r = build(done + 1);
             if (!r)
             {
-                out.note += "chain: compile failed: " + r.error.substr(0, 300) + "\n";
+                out.note += tag + ": compile failed: " + r.error.substr(0, 300) + "\n";
                 return;
             }
             const hot::ReloadResult req = loader.request_reload(std::move(r));
             const hot::ReloadResult com = req ? loader.commit_pending() : req;
             if (!com)
             {
-                out.note += "chain: reload failed: " + com.error + "\n";
+                out.note += tag + ": reload failed: " + com.error + "\n";
                 return;
             }
             loader.frame_boundary();
             loader.frame_boundary();
         }
-        entry = loader.find(kChainCase.cls);
+        entry = loader.find(cls);
         std::unique_ptr<BenchBase> new_obj(static_cast<BenchBase*>(entry->create().native));
         if (one_result(*old_obj) != native_check || one_result(*new_obj) != native_check)
-            out.note += "chain: the result after " + std::to_string(step) + " reloads differs from the native twin\n";
-        out.chain_old.push_back(measure(*old_obj, kChainCase, o));
-        out.chain_new.push_back(measure(*new_obj, kChainCase, o));
+            out.note += tag + ": the result after " + std::to_string(step) + " reloads differs from the native twin\n";
+        out.chain_old[li].push_back(measure(*old_obj, kChainCase, o));
+        out.chain_new[li].push_back(measure(*new_obj, kChainCase, o));
     }
 }
 
@@ -1341,7 +1440,8 @@ int main(int argc, char** argv)
                 script_of(c, true).file ? script_of(c, true).file : "-", static_cast<long long>(c.iters));
         std::printf("  %-16s %-40s (%d objects x %d fields)\n", "reload", "reload and state migration", kReloadObjects,
             kReloadFields + 1);
-        std::printf("  %-16s %-40s (N = 0, 1, 10, 100; --reloads limits N)\n", "chain", kChainCase.label);
+        std::printf("  %-16s %-40s (N = 0, 1, 10, 100; --reloads limits N; .hot and .cpp)\n", "chain",
+            kChainCase.label);
         return 0;
     }
 
@@ -1393,10 +1493,13 @@ int main(int argc, char** argv)
             else
             {
                 run_cases_compiled(k, o, checks, selected, br);
-                if (o.filter.empty() || std::string("reload").find(o.filter) != std::string::npos)
-                    run_reload(k, o, br);
-                if (do_chain)
-                    run_chain(k, o, chain_check, br);
+                for (const bool cpp : {false, true})
+                {
+                    if (o.filter.empty() || std::string("reload").find(o.filter) != std::string::npos)
+                        run_reload(k, o, cpp, br);
+                    if (do_chain)
+                        run_chain(k, o, cpp, chain_check, br);
+                }
             }
         }
         catch (const std::exception& e)
@@ -1430,9 +1533,10 @@ int main(int argc, char** argv)
                     "and the file cache.\n");
     }
 
-    // Run-time table. Each backend has a .hot column and a .cpp column, each with a ratio to native.
-    std::printf("\nRun time (ns per operation, median of %d runs; ratio = script / native; n/a = the language "
-                "cannot write the case):\n",
+    // One matrix. A row is a case, the reload or a step of the chain. Each backend has a .hot column and a
+    // .cpp column, each with a ratio to native. The CSV file has the same rows and columns.
+    std::printf("\nRun time (ns per operation, median of %d runs; ratio = script / native; n/a = this language or "
+                "backend cannot do the case):\n",
         o.reps);
     std::printf("%-16s %9s", "case", "native");
     for (const BackendResult& r : results)
@@ -1446,51 +1550,100 @@ int main(int argc, char** argv)
             csv << "," << kind_name(r.kind) << "_" << lang << "_ns," << kind_name(r.kind) << "_" << lang << "_ratio";
     csv << "\n";
     bool any_mismatch = false;
-    for (int idx : selected)
-    {
-        std::printf("%-16s %9s", kCases[idx].name, fmt_ns(native[idx]).c_str());
-        csv << kCases[idx].name << "," << native[idx];
-        const bool native_only = !script_of(kCases[idx], false).file && !script_of(kCases[idx], true).file;
-        for (const BackendResult& r : results)
+    // One row. cells has two entries for each backend: the .hot cell and the .cpp cell.
+    auto emit_row = [&](const std::string& name, double native_ns, const std::vector<Cell>& cells) {
+        std::printf("%-16s %9s", name.c_str(), fmt_ns(native_ns).c_str());
+        csv << name << "," << native_ns;
+        for (size_t i = 0; i < cells.size(); ++i)
         {
-            for (const bool cpp : {false, true})
+            const Cell& c = cells[i];
+            const char* sep = (i % 2 == 0) ? " | " : " ";
+            if (c.na)
             {
-                const Row& row = cpp ? r.rows_cpp[idx] : r.rows[idx];
-                if (!script_of(kCases[idx], cpp).file)
-                {
-                    std::printf("%s%9s %7s", cpp ? " " : " | ", native_only ? "-" : "n/a", native_only ? "-" : "n/a");
-                    csv << ",,";
-                    continue;
-                }
-                std::string ns = fmt_ns(row.ns);
-                if (row.mismatch)
-                {
-                    ns += "!";
-                    any_mismatch = true;
-                }
-                std::printf("%s%9s %7s", cpp ? " " : " | ", ns.c_str(), fmt_ratio(row.ns, native[idx]).c_str());
-                csv << "," << row.ns << "," << (row.ns > 0 && native[idx] > 0 ? row.ns / native[idx] : -1);
+                std::printf("%s%9s %7s", sep, c.na, c.na);
+                csv << ",,";
+                continue;
             }
+            std::string ns = fmt_ns(c.ns);
+            if (c.mismatch)
+            {
+                ns += "!";
+                any_mismatch = true;
+            }
+            std::printf("%s%9s %7s", sep, ns.c_str(), fmt_ratio(c.ns, native_ns).c_str());
+            csv << "," << c.ns << "," << (c.ns > 0 && native_ns > 0 ? c.ns / native_ns : -1);
         }
         std::printf("\n");
         csv << "\n";
+    };
+    for (int idx : selected)
+    {
+        const bool native_only = !script_of(kCases[idx], false).file && !script_of(kCases[idx], true).file;
+        std::vector<Cell> cells;
+        for (const BackendResult& r : results)
+            for (const bool cpp : {false, true})
+            {
+                Cell c;
+                if (!script_of(kCases[idx], cpp).file)
+                    c.na = native_only ? "-" : "n/a";
+                else
+                {
+                    const Row& row = cpp ? r.rows_cpp[idx] : r.rows[idx];
+                    c.ns = row.ns;
+                    c.mismatch = row.mismatch;
+                }
+                cells.push_back(c);
+            }
+        emit_row(kCases[idx].name, native[idx], cells);
     }
     const bool show_reload = o.filter.empty() || std::string("reload").find(o.filter) != std::string::npos;
     if (show_reload)
     {
-        std::printf("%-16s %9s", "reload", "-");
-        csv << "reload,";
+        std::vector<Cell> cells;
         for (const BackendResult& r : results)
-        {
-            std::printf(" | %9s %7s", fmt_ns(r.reload_ns).c_str(), "-");
-            csv << "," << r.reload_ns << ",";
-        }
-        std::printf("\n");
-        csv << "\n";
+            for (int l = 0; l < 2; ++l)
+            {
+                Cell c;
+                if (r.kind == Kind::Aot)
+                    c.na = "n/a";
+                else
+                    c.ns = r.reload_ns[l];
+                cells.push_back(c);
+            }
+        emit_row("reload", -1, cells);
+    }
+    if (do_chain)
+        for (size_t i = 0; i < sizeof kChainSteps / sizeof kChainSteps[0]; ++i)
+            for (const bool is_new : {false, true})
+            {
+                bool any = false;
+                std::vector<Cell> cells;
+                for (const BackendResult& r : results)
+                    for (int l = 0; l < 2; ++l)
+                    {
+                        Cell c;
+                        const std::vector<double>& v = is_new ? r.chain_new[l] : r.chain_old[l];
+                        if (r.kind == Kind::Aot)
+                            c.na = "n/a";
+                        else if (i < v.size())
+                        {
+                            c.ns = v[i];
+                            any = true;
+                        }
+                        cells.push_back(c);
+                    }
+                if (any)
+                    emit_row("chain_" + std::to_string(kChainSteps[i]) + (is_new ? "_new" : "_old"), chain_native,
+                        cells);
+            }
+    if (show_reload)
         std::printf("reload: ns for one request_reload and commit_pending of %d live objects with %d fields (the "
                     "compile is not in it). The AOT backend has no reload.\n",
             kReloadObjects, kReloadFields + 1);
-    }
+    if (do_chain)
+        std::printf("chain_N_old: the native to script virtual call after N reloads, on an object made in generation 1 "
+                    "and migrated N times. chain_N_new: on an object made after the last reload. The AOT backend has "
+                    "no reload.\n");
     // The script case "alloc" against each native kind of owner.
     int alloc_idx = -1;
     for (int idx : selected)
@@ -1498,10 +1651,11 @@ int main(int argc, char** argv)
             alloc_idx = idx;
     if (alloc_idx >= 0)
     {
-        std::printf("\nnew and free: the script case 'alloc' against each native owner (ratio = backend / native):\n");
+        std::printf("\nnew and free: the script case 'alloc' against each native owner (ratio = script / native):\n");
         std::printf("%-17s %9s", "native owner", "native");
         for (const BackendResult& r : results)
-            std::printf(" | %7s", kind_name(r.kind));
+            std::printf(" | %7s %7s", (std::string(kind_name(r.kind)) + " hot").c_str(),
+                (std::string(kind_name(r.kind)) + " cpp").c_str());
         std::printf("\n");
         for (int idx : selected)
         {
@@ -1510,29 +1664,10 @@ int main(int argc, char** argv)
                 continue;
             std::printf("%-17s %9s", name == "alloc" ? "make_shared" : name.c_str() + 6, fmt_ns(native[idx]).c_str());
             for (const BackendResult& r : results)
-                std::printf(" | %7s", fmt_ratio(r.rows[alloc_idx].ns, native[idx]).c_str());
+                std::printf(" | %7s %7s", fmt_ratio(r.rows[alloc_idx].ns, native[idx]).c_str(),
+                    fmt_ratio(r.rows_cpp[alloc_idx].ns, native[idx]).c_str());
             std::printf("\n");
         }
-    }
-    // The reload chain.
-    bool any_chain = false;
-    for (const BackendResult& r : results)
-        any_chain = any_chain || !r.chain_old.empty();
-    if (any_chain)
-    {
-        std::printf("\nchain: native to script virtual call after N reloads (ns per call; native %s):\n",
-            fmt_ns(chain_native).c_str());
-        std::printf("%-6s %5s %9s %7s %9s %7s\n", "", "N", "old obj", "ratio", "new obj", "ratio");
-        for (const BackendResult& r : results)
-            for (size_t i = 0; i < r.chain_old.size(); ++i)
-            {
-                std::printf("%-6s %5d %9s %7s %9s %7s\n", kind_name(r.kind), kChainSteps[i],
-                    fmt_ns(r.chain_old[i]).c_str(), fmt_ratio(r.chain_old[i], chain_native).c_str(),
-                    fmt_ns(r.chain_new[i]).c_str(), fmt_ratio(r.chain_new[i], chain_native).c_str());
-                csv << "chain_" << kChainSteps[i] << "_" << kind_name(r.kind) << "," << chain_native << ","
-                    << r.chain_old[i] << "," << r.chain_new[i] << "\n";
-            }
-        std::printf("old obj: made in generation 1 and migrated N times. new obj: made after the last reload.\n");
     }
     if (any_mismatch)
         std::printf("A '!' marks a result that differs from the native twin.\n");

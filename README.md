@@ -255,7 +255,7 @@ Phases of one JIT load (v2, warm, cache): translate 1.4, compile 782, ORC (code 
 
 ### Run-time cost
 
-The tool `bench_backends` (`tools/bench/`) measures the run-time cost of script code against a native C++ twin of each case. One binary tests the backends `files`, `jit` and `aot`. The page [doc/benchmarks.md](doc/benchmarks.md) has the commands, the results and the caveats. It also compares `new` with the C++ smart pointers and measures reloadable access and calls.
+The tool `bench_backends` (`tools/bench/`) measures the run-time cost of script code against a native C++ twin of each case. One binary tests the backends `files`, `jit` and `aot`. The page [doc/benchmarks.md](doc/benchmarks.md) has the commands, the results and the caveats. Each case runs as a `.hot` script and as a `.cpp` script in each backend. The page also compares `new` with the C++ smart pointers and measures reloadable access, the reload and a call after N reloads.
 
 In short (Release build): loops of fields, numbers, arrays, module variables and calls inside one script run at native speed. A call from the host into a script costs about 3.5x a native virtual call. `new` and free of a script object cost about 5.5x `std::make_shared`.
 
