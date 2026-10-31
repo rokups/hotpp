@@ -51,6 +51,12 @@ class Hitter : Actor {
 }
 ```
 
+A script handle `Weapon w` goes to a native `Use(Weapon*)` or `Use(const Weapon&)` in the plain form: `Use(w)`. The translator writes `hot::as_ptr(w)` for `T*` and `const T*`. It writes `hot::as_ref(w)` for `T&` and `const T&`. A null handle gives `nullptr` for a pointer. A null handle throws `NullReference` for a reference. A parameter of the handle type (`std::shared_ptr<Weapon>`) takes `w` as it is.
+
+The conversion needs a clear parameter form. All overloads of the function with this number of arguments must take the argument in the same form. When the overloads disagree, for example `Mixed(Weapon*)` and `Mixed(const Weapon&)`, nothing converts. Write `Mixed(&*w)` or `Mixed(*w)`. The conversion applies to an argument that is a variable, a field or a member chain. Other expressions keep their form. A `.cpp` script does not convert.
+
+A pointer from a temporary handle is valid to the end of the full expression. Do not store it. A handle in a local or a field keeps the object alive.
+
 ## Native API patterns
 
 The translator reads the native signature. You write the call in the plain form.
@@ -102,7 +108,7 @@ class Shop : Actor {
 }
 ```
 
-`&h` on a handle is an error. Pass `h` for a handle parameter, `&*h` for a `T*` and `*h` for a `T&`. `.` on a handle always means a member of the pointee, so `h.get()` calls `get` of the pointee. Inside a method, `this` is a handle for a handle parameter. For a native `Actor&` parameter, write `*this`. A `T&` parameter of a script class takes a variable, not `this`: write `Hero me = this;` first.
+`&h` on a handle is an error. Pass `h` for a handle parameter, or for a native `T*` or `T&` parameter. `&*h` for a `T*` and `*h` for a `T&` stay valid. `.` on a handle always means a member of the pointee, so `h.get()` calls `get` of the pointee. Inside a method, `this` is a handle for a handle parameter. For a native `Actor&` parameter, write `*this`. A `T&` parameter of a script class takes a variable, not `this`: write `Hero me = this;` first.
 
 ## Fallback handle
 

@@ -178,4 +178,39 @@ TEST_P(BackendTests, HandleOverrideBindsTheNativeParameter)
     EXPECT_EQ(*fld<int>(s, "worn"), 33);
 }
 
+// A handle goes to a native "T*" or "const T&" parameter without "&*" and "*". A null handle gives
+// nullptr for "T*" and throws NullReference for "const T&". Two overloads that disagree keep the
+// explicit form.
+TEST_P(BackendTests, HandleCallConvertsToNativePointerAndReference)
+{
+    hot::LoadResult v1 = backend->load(source("handle_call_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Caller"));
+    s.commit_at_frame_boundary();
+    auto* w = dynamic_cast<Wearer*>(s.actor);
+    ASSERT_NE(w, nullptr);
+
+    auto blade = std::make_shared<Blade>();
+    auto select = [&](int which)
+    {
+        blade->power = which;
+        return w->WearBlade(blade.get());
+    };
+    // The field "last" is null.
+    EXPECT_EQ(select(0), -1); // Polish(local): nullptr
+    EXPECT_EQ(select(1), -1); // Polish(this.last): nullptr
+    EXPECT_EQ(select(2), -99); // Shine(local): NullReference, caught in the script
+
+    auto charm = std::make_shared<Charm>();
+    charm->power = 7;
+    EXPECT_EQ(w->WearRaw(charm.get()), 1);
+    EXPECT_EQ(select(0), 7);
+    EXPECT_EQ(select(1), 7);
+    EXPECT_EQ(select(2), 7);
+    EXPECT_EQ(select(3), 7); // the explicit "&*"
+    EXPECT_EQ(select(4), 1); // Mixed(Charm*)
+    EXPECT_EQ(select(5), 2); // Mixed(const Charm&)
+}
+
 } // namespace

@@ -1,0 +1,42 @@
+// Generation 1: a handle goes to a native parameter without "&*" and "*" (task 33, phase 3).
+// Polish takes a "Charm*" and Shine takes a "const Charm&": the plain handle converts.
+// Mixed has both forms: no conversion happens, so the script writes the form.
+using "Actor.h";
+using "Equip.h";
+
+[native, handle("std::shared_ptr<$T>")] class Charm;
+[native, handle("std::shared_ptr<$T>")] class Blade;
+
+class Caller : Actor, Wearer {
+    Charm last;
+
+    override int WearRaw(Charm c) {
+        this.last = c;
+        return 1;
+    }
+
+    // The power of the blade selects the call.
+    override int WearBlade(Blade b) {
+        Charm local = this.last;
+        if (b.power == 0) {
+            return Polish(local);
+        }
+        if (b.power == 1) {
+            return Polish(this.last);
+        }
+        if (b.power == 2) {
+            try {
+                return Shine(local);
+            } catch (NullReference e) {
+                return -99;
+            }
+        }
+        if (b.power == 3) {
+            return Polish(&*local);
+        }
+        if (b.power == 4) {
+            return Mixed(&*local);
+        }
+        return Mixed(*local);
+    }
+}

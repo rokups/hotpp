@@ -51,3 +51,25 @@ inline int WearItemThrough(Wearer& w, Item* i)
 {
     return w.WearItem(i);
 }
+
+// Native functions that take a handle type in one form (a script passes the plain handle) and
+// in two forms (the script must write the form: no conversion). The null pointer gives -1.
+inline int Polish(Charm* c)
+{
+    return c ? c->power : -1;
+}
+
+inline int Shine(const Charm& c)
+{
+    return c.power;
+}
+
+inline int Mixed(Charm* c)
+{
+    return c ? 1 : -1;
+}
+
+inline int Mixed(const Charm& c)
+{
+    return c.power >= 0 ? 2 : -2;
+}

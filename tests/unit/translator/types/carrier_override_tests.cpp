@@ -224,3 +224,32 @@ TEST(OverrideReturn, OtherHandleTypeDiffers)
     CarrierFixture f;
     EXPECT_FALSE(override_return_ok("Item", "std::shared_ptr<Weapon>", f.model, true));
 }
+
+TEST(CarrierForm, PointerReferenceAndHandleForms)
+{
+    CarrierFixture f;
+    EXPECT_EQ(f.model.carrier_form("Weapon*"), 'p');
+    EXPECT_EQ(f.model.carrier_form("const Weapon*"), 'p');
+    EXPECT_EQ(f.model.carrier_form("Weapon &"), 'r');
+    EXPECT_EQ(f.model.carrier_form("const Weapon&"), 'r');
+    EXPECT_EQ(f.model.carrier_form("std::shared_ptr<Weapon>"), 'h');
+    EXPECT_EQ(f.model.carrier_form("const std::shared_ptr<Weapon> &"), 'h');
+    EXPECT_EQ(f.model.carrier_form("std::shared_ptr<Weapon>&&"), 'h');
+}
+
+TEST(CarrierForm, IntrusiveStorageIsTheHandleForm)
+{
+    CarrierFixture f;
+    EXPECT_EQ(f.model.carrier_form("Item*"), 'h');
+    EXPECT_EQ(f.model.carrier_form("Item&"), 'r');
+}
+
+TEST(CarrierForm, NotCarriersGiveZero)
+{
+    CarrierFixture f;
+    EXPECT_EQ(f.model.carrier_form("Weapon"), 0);
+    EXPECT_EQ(f.model.carrier_form("Plain*"), 0);
+    EXPECT_EQ(f.model.carrier_form("int"), 0);
+    EXPECT_EQ(f.model.carrier_form("std::shared_ptr<Weapon>&"), 0);
+    EXPECT_EQ(f.model.carrier_form(""), 0);
+}

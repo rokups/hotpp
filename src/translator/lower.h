@@ -36,6 +36,7 @@
 #include "diag.h"
 #include "types.h"
 
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -119,6 +120,15 @@ struct RCtx
     // True when the top expression of lower_expr is an initializer with a declared type. Then a
     // collection literal is allowed as the whole expression.
     bool typed_init = false;
+    // Call-site conversion of a handle to a native parameter (task 33, phase 3). Both hooks may
+    // be empty: then no conversion happens.
+    //  - "native_key" gives the key of the native function that a call names, else an empty
+    //    string.
+    //  - "native_carrier" says how the overloads of the function "key" with "argc" arguments
+    //    take the argument "arg": "p:T" (T* or const T*), "r:T" (T& or const T&), "h:T" (the
+    //    handle itself) or an empty string (no overload, or the overloads do not agree).
+    std::function<std::string(const ast::CallExpr&)> native_key;
+    std::function<std::string(const std::string& key, size_t arg, size_t argc)> native_carrier;
 };
 
 // The context of a class: the fields and the script fns. A body or an initializer

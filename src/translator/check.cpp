@@ -613,8 +613,9 @@ struct Checker
                 const std::string h = handle_operand(*u->operand);
                 if (!h.empty())
                     error(u->pos,
-                        "'&' on the handle '" + h + "' is not allowed. Pass '" + h + "' for a handle parameter, '&*" + h
-                            + "' for a 'T*' parameter, or '*" + h + "' for a 'T&' parameter");
+                        "'&' on the handle '" + h + "' is not allowed. Pass '" + h
+                            + "' for a handle parameter or a native 'T*' or 'T&' parameter, or use '&*" + h + "' for a 'T*' and '*"
+                            + h + "' for a 'T&'");
             }
             if (!allowed_refs.count(&e))
                 borrowed_finding(u->pos,
@@ -1588,11 +1589,11 @@ struct QueryCollector
     // a script function of the class: the parameter analysis reads its body.
     void note_call_target(const CallExpr& c)
     {
+        // The parameter analysis needs the calls that get a parameter. The call-site conversion
+        // of a handle to a native parameter (task 33) needs the key of any call with arguments.
         bool has = false;
         for (const ExprP& a : c.args)
-            if (a)
-                if (const std::string* n = simple_name_of(*a))
-                    has = has || param_names.count(*n) > 0;
+            has = has || a;
         if (!has)
             return;
         CallTarget t;

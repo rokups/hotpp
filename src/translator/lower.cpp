@@ -828,8 +828,50 @@ struct Lowerer
                 }
             }
         }
+        // A handle that goes to a native parameter "T*" or "T&": the call-site conversion
+        // (task 33). The types are from before the lowering of the arguments.
+        const std::vector<char> forms = native_arg_forms(c);
         expr(c.callee);
         exprs(c.args);
+        for (size_t i = 0; i < forms.size(); ++i)
+        {
+            if (!forms[i])
+                continue;
+            const uint32_t pos = pos_of(*c.args[i]);
+            CallExpr w;
+            w.pos = pos;
+            w.callee = raw(forms[i] == 'p' ? "hot::as_ptr" : "hot::as_ref", pos);
+            w.args.push_back(std::move(c.args[i]));
+            c.args[i] = make_expr(std::move(w));
+        }
+    }
+
+    // For each argument of the native call: 'p' (hot::as_ptr), 'r' (hot::as_ref) or 0 (keep). An
+    // argument converts when its script type is a handle type T, the form of the parameter is
+    // "T*" or "T&" and all overloads of the native function agree (hook "native_carrier").
+    // Only an argument with a known type that is a name or a member access converts.
+    std::vector<char> native_arg_forms(const CallExpr& c) const
+    {
+        std::vector<char> forms(c.args.size(), 0);
+        if (!cx.native_key || !cx.native_carrier || !cx.types)
+            return forms;
+        const std::string key = cx.native_key(c);
+        if (key.empty())
+            return forms;
+        for (size_t i = 0; i < c.args.size(); ++i)
+        {
+            const Expr* a = c.args[i].get();
+            if (!a || !(std::holds_alternative<NameExpr>(a->v) || std::holds_alternative<MemberExpr>(a->v)))
+                continue;
+            const std::string t = type_of(*a);
+            if (t.empty())
+                continue;
+            const std::string r = cx.native_carrier(key, i, c.args.size());
+            if (r.size() > 2 && r[1] == ':' && (r[0] == 'p' || r[0] == 'r') && r.compare(2, std::string::npos, t) == 0
+                && cx.types->is_handle(t))
+                forms[i] = r[0];
+        }
+        return forms;
     }
 
     // "new C(args)" of a script class. The constructors that take this number of arguments are

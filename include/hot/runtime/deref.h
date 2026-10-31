@@ -72,6 +72,37 @@ template <class T, std::enable_if_t<!is_handle_v<T>, int> = 0> HOT_HIDDEN declty
     return *static_cast<T&&>(v);
 }
 
+// The script passes a handle "h" to a native parameter "T*" or "const T*". The translator
+// writes "hot::as_ptr(h)". A null handle gives nullptr. Else the result is "&*h". The pointer
+// does not own the object. A pointer of a temporary handle is valid to the end of the full
+// expression only. A raw pointer passes through.
+template <class H, std::enable_if_t<is_handle_v<H>, int> = 0> HOT_HIDDEN auto as_ptr(const H& h)
+{
+    using P = decltype(&*h);
+    return h ? &*h : static_cast<P>(nullptr);
+}
+template <class T> HOT_HIDDEN T* as_ptr(T* p)
+{
+    return p;
+}
+
+// The script passes a handle "h" to a native parameter "T&" or "const T&". The translator
+// writes "hot::as_ref(h)". A null handle throws hot::NullReference, unless HOT_RUNTIME_CHECKS
+// is 0. Else the result is "*h".
+template <class H, std::enable_if_t<is_handle_v<H>, int> = 0>
+HOT_HIDDEN decltype(auto) as_ref(const H& h)
+{
+    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(!h))
+        detail::throw_null_reference("null handle passed to a reference parameter");
+    return *h;
+}
+template <class T> HOT_HIDDEN T& as_ref(T* p)
+{
+    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(!p))
+        detail::throw_null_reference("null handle passed to a reference parameter");
+    return *p;
+}
+
 // The script writes "c[i]". The translator writes "hot::index(c, i)". An array has a bounds
 // test: an index that is negative or not less than N throws hot::IndexOutOfRange, unless
 // HOT_RUNTIME_CHECKS is 0. A negative index converts to a large std::size_t, so one test

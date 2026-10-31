@@ -84,3 +84,39 @@ TEST(HandleLowering, NewScriptClassBeforeItsDefinitionIsAnError)
     ASSERT_EQ(f.errors().size(), 1u);
     EXPECT_NE(f.errors()[0].find("must come before the class that builds it with 'new'"), std::string::npos);
 }
+
+// The call-site conversion of a handle to a native parameter (task 33, phase 3).
+TEST(HandleLowering, HandleToNativePointerAndReference)
+{
+    const TypeModel types = stub_model("Weapon", "std::shared_ptr<$T>");
+    Fixture f;
+    f.cx.types = &types;
+    std::string carrier;
+    f.cx.native_key = [](const ast::CallExpr&) { return std::string("Use"); };
+    f.cx.native_carrier = [&carrier](const std::string&, size_t arg, size_t) { return arg == 0 ? carrier : std::string(); };
+
+    carrier = "p:Weapon";
+    EXPECT_EQ(f.body("Weapon w = null; Use(w);"), "std::shared_ptr<Weapon> w = nullptr; Use(hot::as_ptr(w));");
+    carrier = "r:Weapon";
+    EXPECT_EQ(f.body("Weapon w = null; Use(w, 1);"), "std::shared_ptr<Weapon> w = nullptr; Use(hot::as_ref(w), 1);");
+    // The handle form, a disagreement and another handle type keep the argument.
+    carrier = "h:Weapon";
+    EXPECT_EQ(f.body("Weapon w = null; Use(w);"), "std::shared_ptr<Weapon> w = nullptr; Use(w);");
+    carrier = "";
+    EXPECT_EQ(f.body("Weapon w = null; Use(w);"), "std::shared_ptr<Weapon> w = nullptr; Use(w);");
+    carrier = "p:Shield";
+    EXPECT_EQ(f.body("Weapon w = null; Use(w);"), "std::shared_ptr<Weapon> w = nullptr; Use(w);");
+    // An explicit form and a non-handle argument are not converted.
+    carrier = "p:Weapon";
+    EXPECT_EQ(f.body("Weapon w = null; Use(&*w); Use(3);"),
+        "std::shared_ptr<Weapon> w = nullptr; Use(&hot::star(w)); Use(3);");
+}
+
+TEST(HandleLowering, HandleToNativeNeedsTheHooks)
+{
+    const TypeModel types = stub_model("Weapon", "std::shared_ptr<$T>");
+    Fixture f;
+    f.cx.types = &types;
+    f.cx.native_key = [](const ast::CallExpr&) { return std::string("Use"); };
+    EXPECT_EQ(f.body("Weapon w = null; Use(w);"), "std::shared_ptr<Weapon> w = nullptr; Use(w);");
+}

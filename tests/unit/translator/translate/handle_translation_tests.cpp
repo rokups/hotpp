@@ -106,8 +106,8 @@ TEST(HandleTranslation, AddressOfAHandleLocalIsAnError)
     const hotc::TranslateResult r = weapon_translate("    void Run() { Weapon h = null; var q = &h; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics,
-        "'&' on the handle 'h' is not allowed. Pass 'h' for a handle parameter, "
-        "'&*h' for a 'T*' parameter, or '*h' for a 'T&' parameter"))
+        "'&' on the handle 'h' is not allowed. Pass 'h' for a handle parameter or a native 'T*' or 'T&' "
+        "parameter, or use '&*h' for a 'T*' and '*h' for a 'T&'"))
         << r.diagnostics;
 }
 
@@ -239,7 +239,7 @@ TEST(HandleTranslation, AddressOfAHandleMessageDoesNotOfferGet)
     const hotc::TranslateResult r = weapon_translate("    void Run() { Weapon h = null; var q = &h; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_FALSE(has(r.diagnostics, ".get()")) << r.diagnostics;
-    EXPECT_TRUE(has(r.diagnostics, "'&*h' for a 'T*' parameter")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "'&*h' for a 'T*'")) << r.diagnostics;
 }
 
 // "h.get()" on a handle calls "get" of the pointee, so the member must exist there.

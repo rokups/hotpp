@@ -110,6 +110,13 @@ TEST(GoldenTranslation, HandleOverride)
     golden_one("handle_override_v1");
 }
 
+// A handle passed to a native "T*" or "const T&" parameter converts (hot::as_ptr, hot::as_ref).
+// Two overloads that disagree keep the explicit form.
+TEST(GoldenTranslation, HandleCall)
+{
+    golden_one("handle_call_v1");
+}
+
 TEST(GoldenTranslation, Props)
 {
     golden_one("props_v1");

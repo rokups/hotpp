@@ -186,3 +186,43 @@ static_assert(!CanDeref<Item[2]>);
 static_assert(CanDeref<Item>);
 
 } // namespace
+
+namespace
+{
+
+TEST(AsPtr, HandleGivesThePointer)
+{
+    auto h = std::make_shared<Item>(Item{8});
+    Item* p = hot::as_ptr(h);
+    EXPECT_EQ(p, h.get());
+    const std::shared_ptr<Item> c = h;
+    static_assert(std::is_same_v<decltype(hot::as_ptr(c)), Item*>);
+}
+
+TEST(AsPtr, NullHandleGivesNullptr)
+{
+    std::shared_ptr<Item> h;
+    EXPECT_EQ(hot::as_ptr(h), nullptr);
+}
+
+TEST(AsPtr, RawPointerPassesThrough)
+{
+    Item i;
+    Item* p = &i;
+    EXPECT_EQ(hot::as_ptr(p), &i);
+}
+
+TEST(AsRef, HandleGivesTheObject)
+{
+    auto h = std::make_shared<Item>(Item{9});
+    EXPECT_EQ(&hot::as_ref(h), h.get());
+    static_assert(std::is_same_v<decltype(hot::as_ref(h)), Item&>);
+}
+
+TEST(AsRef, NullHandleThrows)
+{
+    std::shared_ptr<Item> h;
+    EXPECT_THROW(hot::as_ref(h), hot::NullReference);
+}
+
+} // namespace

@@ -165,12 +165,18 @@ public:
     // so "T*" is the handle carrier. The text goes through the canonical type spelling first.
     std::string carrier_of(const std::string& native_param_type) const;
 
+    // The form of the carrier that carrier_of finds: 'p' for "T*" and "const T*", 'r' for "T&"
+    // and "const T&", 'h' for "H", "const H&" and "H&&" (the "T*" of an intrusive stub is 'h').
+    // The result is 0 when the text is not a carrier.
+    char carrier_form(const std::string& native_param_type) const;
+
     // The handle type T of a native return type that is H by value ("std::shared_ptr<Weapon>"),
     // else an empty string. A pointer, a reference and the intrusive "T*" are not carriers of
     // a return: the lifetime of the result is not clear (task 33, phase 2).
     std::string return_carrier_of(const std::string& native_return_type) const;
 
 private:
+    std::string carrier_parse(const std::string& native_param_type, char& form) const;
     TypeRule lookup_stub(const std::string& cpp_type) const;
 
     // The direct bases of a type: the bases of a script class, else the base callback.

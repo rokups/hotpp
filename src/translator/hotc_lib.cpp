@@ -1313,6 +1313,15 @@ bool is_fn_query(const std::string& q)
     return q.compare(0, 4, kFnQuery) == 0;
 }
 
+// A query "@fnp:KEY" asks for the parameter type spellings of the native function KEY (task 33,
+// phase 3). The answer has the overloads divided by ";". An overload has its parameter types
+// divided by a tab. A last field "+" marks a function that takes more arguments.
+const char* const kFnParamQuery = "@fnp:";
+bool is_fnp_query(const std::string& q)
+{
+    return q.compare(0, 5, kFnParamQuery) == 0;
+}
+
 // A query "@code:T" asks: does the native type T hold a code pointer in a field (S26)? A cursor
 // walk answers it with "1" or "0". T is a class name or an alias name, not a template instance.
 const char* const kCodeQuery = "@code:";
@@ -1410,7 +1419,8 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
     }
     for (size_t i = 0; i < queries.size(); ++i)
     {
-        if (is_fn_query(queries[i]) || is_code_query(queries[i]) || is_global_query(queries[i]))
+        if (is_fn_query(queries[i]) || is_fnp_query(queries[i]) || is_code_query(queries[i])
+            || is_global_query(queries[i]))
             continue; // a cursor walk answers it
         body += "using hotc_q" + std::to_string(i) + " = " + queries[i] + ";\n";
     }
@@ -1448,6 +1458,26 @@ std::string function_kinds(CXCursor fn)
         return CXChildVisit_Continue;
     });
     return pack ? r + "+" : r;
+}
+
+// The parameter type spellings of one function, divided by a tab. A last field "+": the function
+// takes more arguments (a C variadic function or a parameter pack).
+std::string function_param_types(CXCursor fn)
+{
+    std::string r;
+    bool pack = clang_Cursor_isVariadic(fn) != 0;
+    visit(fn, [&](CXCursor c)
+    {
+        if (clang_getCursorKind(c) == CXCursor_ParmDecl)
+        {
+            const std::string t = cxs(clang_getTypeSpelling(clang_getCursorType(c)));
+            if (t.find("...") != std::string::npos)
+                pack = true;
+            r += (r.empty() ? "" : "\t") + t;
+        }
+        return CXChildVisit_Continue;
+    });
+    return pack ? r + "\t+" : r;
 }
 
 // Adds the functions "name" of the class and, when it has none, of its bases.
@@ -1493,9 +1523,9 @@ void answer_function_queries(
 {
     std::set<std::string> last; // the last name of each key
     for (const std::string& q : queries)
-        if (is_fn_query(q))
+        if (is_fn_query(q) || is_fnp_query(q))
         {
-            const std::string key = q.substr(4);
+            const std::string key = q.substr(is_fnp_query(q) ? 5 : 4);
             const size_t p = key.rfind("::");
             last.insert(p == std::string::npos ? key : key.substr(p + 2));
         }
@@ -1526,9 +1556,10 @@ void answer_function_queries(
     visit(root, walk);
     for (const std::string& q : queries)
     {
-        if (!is_fn_query(q))
+        const bool types_query = is_fnp_query(q);
+        if (!types_query && !is_fn_query(q))
             continue;
-        const std::string key = q.substr(4);
+        const std::string key = q.substr(types_query ? 5 : 4);
         std::vector<CXCursor> found;
         for (const auto& [qn, v] : fns)
             if (ends_with_scope(qn, key))
@@ -1542,7 +1573,7 @@ void answer_function_queries(
         }
         std::string r;
         for (CXCursor f : found)
-            r += (r.empty() ? "" : ";") + function_kinds(f);
+            r += (r.empty() ? "" : ";") + (types_query ? function_param_types(f) : function_kinds(f));
         answers[q] = r;
     }
 }
@@ -1958,7 +1989,8 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         for (size_t i = 0; i < queries.size(); ++i)
         {
             auto it = aliases.find("hotc_q" + std::to_string(i));
-            if (!is_fn_query(queries[i]) && !is_code_query(queries[i]) && !is_global_query(queries[i]))
+            if (!is_fn_query(queries[i]) && !is_fnp_query(queries[i]) && !is_code_query(queries[i])
+                && !is_global_query(queries[i]))
                 answers[queries[i]] = it == aliases.end() ? std::string() : alias_type(it->second);
         }
         answer_function_queries(root, queries, answers);
@@ -2763,7 +2795,10 @@ void translate_impl(
             if (uniq.insert(q).second)
                 query_texts.push_back(q);
         for (const std::string& k : native_q.fn_keys)
+        {
             query_texts.push_back(kFnQuery + k);
+            query_texts.push_back(kFnParamQuery + k);
+        }
     }
     // The helpers "enumerate" and "range" are the last fallback of a bare call. A native name in
     // the global namespace wins, so the translator asks the headers about each name that the
@@ -2857,6 +2892,50 @@ void translate_impl(
         hier, facts, query_answers, fs);
     for (auto& [d, q] : native_q.vars)
         d->native_type = query_answers[q];
+    // The hooks of the call-site conversion of a handle to a native parameter (task 33, phase 3).
+    // The conversion needs the answer of all overloads (filtered by the number of arguments as
+    // native_arg does) to agree on the form and on the handle type.
+    auto wire_native_hooks = [&native_q, &query_answers, &types](RCtx& cx)
+    {
+        cx.native_key = [&native_q](const hotc::ast::CallExpr& c) -> std::string
+        {
+            auto it = native_q.calls.find(&c);
+            return it == native_q.calls.end() ? std::string() : it->second.native;
+        };
+        cx.native_carrier = [&query_answers, &types](const std::string& key, size_t arg, size_t argc) -> std::string
+        {
+            auto it = query_answers.find(kFnParamQuery + key);
+            if (it == query_answers.end() || it->second.empty())
+                return {};
+            std::string result;
+            bool any = false;
+            std::stringstream ss(it->second);
+            for (std::string overload; std::getline(ss, overload, ';');)
+            {
+                std::vector<std::string> ps;
+                std::stringstream ps_stream(overload);
+                for (std::string p; std::getline(ps_stream, p, '\t');)
+                    ps.push_back(p);
+                const bool pack = !ps.empty() && ps.back() == "+";
+                if (pack)
+                    ps.pop_back();
+                if (argc > ps.size() && !pack)
+                    continue; // too many arguments: not this overload
+                if (arg >= ps.size())
+                    return {}; // a pack or a variadic argument: no conversion
+                const char form = types.carrier_form(ps[arg]);
+                const std::string t = types.carrier_of(ps[arg]);
+                if (!form || t.empty())
+                    return {};
+                const std::string r = std::string(1, form) + ":" + t;
+                if (any && r != result)
+                    return {};
+                result = r;
+                any = true;
+            }
+            return result;
+        };
+    };
     {
         std::set<std::string> globals;
         for (const std::string& q : query_texts)
@@ -3315,6 +3394,7 @@ void translate_impl(
         RCtx base_cx = hotc::make_class_ctx(cd);
         base_cx.map = &map;
         base_cx.types = &types;
+        wire_native_hooks(base_cx);
         base_cx.script_classes = script_names;
         for (const auto& sc_cls : sc.classes)
             base_cx.classes[sc_cls.name] = &sc_cls;
@@ -4357,6 +4437,7 @@ void translate_impl(
         RCtx base_cx = hotc::make_class_ctx(cd);
         base_cx.map = &map;
         base_cx.types = &types;
+        wire_native_hooks(base_cx);
         for (const auto& sc_cls : sc.classes)
         {
             base_cx.script_classes.insert(sc_cls.name);

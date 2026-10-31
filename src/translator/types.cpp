@@ -460,6 +460,21 @@ std::string override_key_norm(const std::string& type)
 
 std::string TypeModel::carrier_of(const std::string& native_param_type) const
 {
+    char form = 0;
+    return carrier_parse(native_param_type, form);
+}
+
+char TypeModel::carrier_form(const std::string& native_param_type) const
+{
+    char form = 0;
+    if (carrier_parse(native_param_type, form).empty())
+        return 0;
+    return form;
+}
+
+std::string TypeModel::carrier_parse(const std::string& native_param_type, char& form) const
+{
+    form = 0;
     // Work on the canonical text with single spaces.
     std::string t = canonical_type(native_param_type, nullptr, true);
     auto trim = [](std::string& x)
@@ -507,9 +522,6 @@ std::string TypeModel::carrier_of(const std::string& native_param_type) const
         return {};
 
     // "T*", "const T*", "T&" and "const T&".
-    if ((suffix == Suffix::Ptr || suffix == Suffix::Ref) && is_handle(core))
-        return core;
-
     // The storage text of a handle type: "$T*" of an intrusive stub is "T*".
     auto native_storage = [&](const std::string& type)
     {
@@ -524,6 +536,16 @@ std::string TypeModel::carrier_of(const std::string& native_param_type) const
                 r += c;
         return r;
     };
+
+    if ((suffix == Suffix::Ptr || suffix == Suffix::Ref) && is_handle(core))
+    {
+        // The plain "T*" of an intrusive stub is the storage H: the handle passes as it is.
+        if (suffix == Suffix::Ptr)
+            form = (!is_const && strip(native_storage(core)) == core + "*") ? 'h' : 'p';
+        else
+            form = 'r';
+        return core;
+    }
 
     // "H" (by value), "const H&" and "H&&". The templates tell where T is in the text of H.
     // "H&" without const is not a carrier.
@@ -553,7 +575,10 @@ std::string TypeModel::carrier_of(const std::string& native_param_type) const
             continue;
         const std::string inner = core.substr(pre.size(), core.size() - pre.size() - post.size());
         if (is_handle(inner) && strip(native_storage(inner)) == core)
+        {
+            form = 'h';
             return inner;
+        }
     }
     return {};
 }

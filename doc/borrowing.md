@@ -80,7 +80,7 @@ the lambda captures 'v', a borrowed pointer or reference. A closure cannot keep 
 
 ## Handles and borrowing
 
-`.` on a handle means a member of the pointee. `&h` on a handle is an error: pass `h` for a handle parameter, `&*h` for a `T*` and `*h` for a `T&`. A `T&` of a script class is a reference to the handle, so the callee can rebind it. `this` is not a variable: copy it to a local first. An intrusive stub is an exception: its `T*` is the handle, so a field can have it.
+`.` on a handle means a member of the pointee. `&h` on a handle is an error. Pass `h` for a handle parameter, or for a native `T*` or `T&` parameter: the translator converts the handle (see "Native objects as parameters" in `native-interop.md`). `&*h` and `*h` stay valid. A `T&` of a script class is a reference to the handle, so the callee can rebind it. `this` is not a variable: copy it to a local first. An intrusive stub is an exception: its `T*` is the handle, so a field can have it.
 
 ```hot
 using "Actor.h"; using "Weapon.h"; using "Armory.h"; using "Object.h";
@@ -93,7 +93,8 @@ class Hero : Actor {
     void Pair(Hero& out) { out = buddy; }   // out is the handle itself
     void Join(Hero& other) { }
     void Run(Armory& a, Weapon h) {
-        a.Use(&*h); a.Hit(*h);           // T* parameter, T& parameter
+        a.Use(h); a.Hit(h);              // T* parameter, T& parameter: the plain handle
+        a.Use(&*h); a.Hit(*h);           // the same, written out
         Hero me = this; Join(me);        // this is not a variable: pass a copy
     }
 }
@@ -122,7 +123,7 @@ class Hero : Actor {
 ```
 a field cannot hold a borrowed pointer or reference to 'Weapon'. Declare a stub ...
 a pointer to the script class 'Hero' is not allowed: use 'Hero' (a handle)
-'&' on the handle 'h' is not allowed. Pass 'h' for a handle parameter, '&*h' for a 'T*' parameter, or '*h' for a 'T&' parameter
+'&' on the handle 'h' is not allowed. Pass 'h' for a handle parameter or a native 'T*' or 'T&' parameter, or use '&*h' for a 'T*' and '*h' for a 'T&'
 'this' cannot bind to the reference parameter 'other' of the script class 'Hero'. Copy it to a local first: 'Hero me = this;'
 ```
 
