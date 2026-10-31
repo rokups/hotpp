@@ -288,6 +288,27 @@ Plain `std::` in a stub string stays as you write it. The names of `<type_traits
 
 The host must declare the namespace. For a test, `namespace mystd = std;` is enough. Use the same namespace in the C++ text that libclang reads.
 
+### The array type
+
+The attribute `array("template")` sets the C++ type of a fixed-size array `T[N]` of a script. The default is `$std::array<$T, $N>`.
+
+```
+[array("my::Fixed<$T, $N>")];
+```
+
+- `$T` is the element type. `$N` is the size.
+- The template must hold both `$T` and `$N`. Another `$` name is an error.
+- `$std::` is the configured standard namespace. With `[std("eastl")]`, the default is `eastl::array<T, N>`.
+- A multi-dimension array nests the template. `int[2][3]` becomes `my::Fixed<my::Fixed<int32_t, 3>, 2>`.
+- The scope rules are the same as for `std`. A list in a prelude is the default of the host. A list in a script overrides it. A repeat in one file is an error. An imported script uses the value of the main script and cannot set another value.
+- Both attributes can be in one list: `[std("eastl"), array("$std::array<$T, $N>")];`.
+
+The script writes an index as `a[i]`. The generated C++ calls `hot::index`. `hot::index` checks the bounds of `std::array` and of a C array. A custom array type uses its own `operator[]` and has no check from the runtime.
+
+A custom array type has no bounds check. The host should also specialize `hot::holds_no_code` for the custom array type, as the runtime does for `std::array`. Without it, a custom array type that is not trivially copyable counts as a type that can hold code.
+
+A stub in a prelude can name an array type only in the base of a stub such as `class : Wrap<int[3]>;`. That type uses the template of the earlier preludes and of the same prelude.
+
 ## Other limits
 
 - Write `.`, not `::` or `->`.

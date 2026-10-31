@@ -83,7 +83,7 @@ class Tables {
 
 ## Arrays
 
-`T[N]` is an array of `N` values of type `T`. The size `N` is an integer literal. The C++ type is `std::array<T, N>`. `T[M][N]` is an array of `M` arrays of `N` values.
+`T[N]` is an array of `N` values of type `T`. The size `N` is an integer literal. The C++ type is `std::array<T, N>` by default. The module attribute `array` sets another type (see [Native interop](native-interop.html)). `T[M][N]` is an array of `M` arrays of `N` values.
 
 ```hot
 class Grid {
