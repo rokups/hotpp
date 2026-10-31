@@ -83,7 +83,7 @@ TEST(ConstructorTranslation, NewOfAScriptClass)
         "    override void Update(float dt) { var s = new Squad(3); }\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "Squad__new(3)")) << r.cpp;
+    EXPECT_TRUE(has(r, "Squad__new_shared(3)")) << r.cpp;
 }
 
 TEST(ConstructorTranslation, NewNeedsNoConstructor)
@@ -94,7 +94,7 @@ TEST(ConstructorTranslation, NewNeedsNoConstructor)
         "    override void Update(float dt) { var s = new Squad(); }\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "Squad__new()")) << r.cpp;
+    EXPECT_TRUE(has(r, "Squad__new_shared()")) << r.cpp;
 }
 
 TEST(ConstructorTranslation, DestructorGoesToTheRecord)
@@ -139,7 +139,7 @@ TEST(ConstructorTranslation, OverloadsAndRefParameters)
     EXPECT_TRUE(has(r, "static void Squad__ctor(Squad_Shell* __self);")) << r.cpp;
     EXPECT_TRUE(has(r, "static void Squad__ctor(Squad_Shell* __self, int32_t n, int32_t& seen);")) << r.cpp;
     EXPECT_TRUE(has(r, "using Squad_SuperArgs_1 = ")) << r.cpp;
-    EXPECT_TRUE(has(r, "static hot::ShellBase* Squad__construct(const char* key, const void* args)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static hot::ShellBase* Squad__construct(void* mem, const char* key, const void* args)")) << r.cpp;
     EXPECT_TRUE(has(r, "static Squad_Shell* Squad__new(int32_t n, int32_t& seen)")) << r.cpp;
     // The factory uses the overload with the fewest parameters.
     EXPECT_TRUE(has(r, "return Squad__build(false);")) << r.cpp;

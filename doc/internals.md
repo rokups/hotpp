@@ -89,7 +89,9 @@ The warnings of a reload use readable names: C++ type names (`int`, `std::string
 Rules for threads:
 
 - A worker reads class records and state blocks. It writes the state of its own actors only.
-- A worker does not create or destroy script objects. It does not call the loader.
+- A worker does not create or destroy script objects. It does not call the loader. The release of the last handle of an object also destroys the object.
+- The list of live objects (`LiveObjects`, `src/runtime/state.cpp`) has no lock. A lock costs about 3 ns for each `new` and free. So only one thread at a time can create or destroy script objects. A host that creates objects on more than one thread must serialize the creation and the destruction with its own lock. A debug build asserts when two threads change the list at the same time.
+- The reload walks the list on the main thread at the safe point. Then no other thread creates or destroys an object.
 - The main thread calls `load`, `commit_pending`, `frame_boundary` and `stats`.
 - Any thread can pin or unpin a generation.
 

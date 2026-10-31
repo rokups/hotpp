@@ -153,24 +153,29 @@ HOT_HIDDEN static auto Player__plan()
 #line 154 "player_v2.hot.cpp"
 using Player_SuperArgs = decltype(Player__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
-// "key" names the type of the arguments. An unknown key gives nullptr.
+// "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
+// gives a shell from "new". Else the shell is made in "mem".
 #line 6 "player_v2.hot"
-HOT_NODEBUG static hot::ShellBase* Player__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Player__construct(void* mem, const char* key, const void* args)
 #line 6 "player_v2.hot"
 {
 #line 6 "player_v2.hot"
-    if (std::strcmp(key, typeid(Player_SuperArgs).name()) == 0) {
+    if (key == typeid(Player_SuperArgs).name() || std::strcmp(key, typeid(Player_SuperArgs).name()) == 0) {
 #line 6 "player_v2.hot"
         const auto& t = *static_cast<const Player_SuperArgs*>(args);
 #line 6 "player_v2.hot"
-        return std::apply([](auto&... x) -> hot::ShellBase* { return new Player_Shell(hot::Construct{}, x...); }, t);
+        return std::apply([mem](auto&... x) -> hot::ShellBase* {
+#line 6 "player_v2.hot"
+            return mem ? ::new (mem) Player_Shell(hot::Construct{}, x...) : new Player_Shell(hot::Construct{}, x...);
+#line 6 "player_v2.hot"
+        }, t);
 #line 6 "player_v2.hot"
     }
 #line 6 "player_v2.hot"
     return nullptr;
 #line 6 "player_v2.hot"
 }
-#line 174 "player_v2.hot.cpp"
+#line 179 "player_v2.hot.cpp"
 
 static const char* const Player__construct_keys[] = {typeid(Player_SuperArgs).name(), nullptr};
 
@@ -186,7 +191,7 @@ HOT_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
     return __self;
 #line 6 "player_v2.hot"
 }
-#line 190 "player_v2.hot.cpp"
+#line 195 "player_v2.hot.cpp"
 #line 6 "player_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static Player_Shell* Player__new()
 #line 6 "player_v2.hot"
@@ -195,7 +200,22 @@ HOT_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
     return Player__build(true);
 #line 6 "player_v2.hot"
 }
-#line 199 "player_v2.hot.cpp"
+#line 204 "player_v2.hot.cpp"
+#line 6 "player_v2.hot"
+template <int = 0>
+#line 6 "player_v2.hot"
+[[maybe_unused]] HOT_HIDDEN static std::shared_ptr<Player_Shell> Player__new_shared()
+#line 6 "player_v2.hot"
+{
+#line 6 "player_v2.hot"
+    auto __plan = Player__plan();
+#line 6 "player_v2.hot"
+    auto __h = hot::make_shared_shell<Player_Shell>(&Player_record, typeid(Player_SuperArgs).name(), &__plan.first);
+#line 6 "player_v2.hot"
+    return __h;
+#line 6 "player_v2.hot"
+}
+#line 219 "player_v2.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Player_slots[SLOT_COUNT] = {
@@ -224,7 +244,7 @@ HOT_NODEBUG static hot::Instance Player_create()
     return {static_cast<Actor*>(p), p};
 #line 6 "player_v2.hot"
 }
-#line 228 "player_v2.hot.cpp"
+#line 248 "player_v2.hot.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 12 "player_v2.hot"
@@ -253,7 +273,7 @@ void PlayerState_g2::Tick(float dt)
     hot::deref(__self->Name).c_str(), dt, hot::deref(__self->Position).x, __st->health, __st->shield);
 #line 16 "player_v2.hot"
 }
-#line 257 "player_v2.hot.cpp"
+#line 277 "player_v2.hot.cpp"
 
 #line 18 "player_v2.hot"
 void PlayerState_g2::TakeDamage_f(float amount)
@@ -281,7 +301,7 @@ void PlayerState_g2::TakeDamage_f(float amount)
     __st->health);
 #line 22 "player_v2.hot"
 }
-#line 285 "player_v2.hot.cpp"
+#line 305 "player_v2.hot.cpp"
 
 #line 24 "player_v2.hot"
 void PlayerState_g2::TakeDamage_Af(Actor& source, float amount)
@@ -309,7 +329,7 @@ void PlayerState_g2::TakeDamage_Af(Actor& source, float amount)
     HOT_TRACE_LINE(); __self->TakeDamage(amount);
 #line 28 "player_v2.hot"
 }
-#line 313 "player_v2.hot.cpp"
+#line 333 "player_v2.hot.cpp"
 
 #line 30 "player_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float amount)
@@ -319,7 +339,7 @@ void PlayerState_g2::TakeDamage_Af(Actor& source, float amount)
     return state_of(__self)->heal(std::forward<float>(amount));
 #line 30 "player_v2.hot"
 }
-#line 323 "player_v2.hot.cpp"
+#line 343 "player_v2.hot.cpp"
 #line 30 "player_v2.hot"
 void PlayerState_g2::heal(float amount)
 #line 30 "player_v2.hot"
@@ -346,7 +366,7 @@ void PlayerState_g2::heal(float amount)
     __st->health);
 #line 34 "player_v2.hot"
 }
-#line 350 "player_v2.hot.cpp"
+#line 370 "player_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

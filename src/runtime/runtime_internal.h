@@ -15,6 +15,10 @@ namespace hot
 // generation whose code made the object with "new" (construct_shell), or 0. That code also made
 // the handle of the object, for example the control block of a std::shared_ptr. So the
 // generation must stay loaded while the object lives. Do not insert or erase during a walk.
+// The list has no lock: a lock costs about 3 ns for each "new" and free. Only one thread at a
+// time creates or destroys script objects (doc/internals.md, "Threads and the safe point"). A
+// debug build asserts when two changes overlap. The reload walks the list on the main thread at
+// the safe point, when no other thread creates or destroys an object.
 class LiveObjects
 {
 public:

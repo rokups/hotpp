@@ -94,6 +94,9 @@ struct ClassRecord
     //    known key. An unknown key gives nullptr. A later generation with a new key gets a new core
     //    module, and its "construct" replaces this one (S27).
     //    Each script shell class has it (S20a). Null for a record without a script shell.
+    //    "mem" null: the shell comes from "new". Else "construct" makes the shell in "mem"
+    //    (placement new). Then "mem" has the size and the alignment of the shell, and the caller
+    //    frees it (make_shared_shell in shell.h).
     //  - construct_key: the key of the first overload. Information only.
     //  - new_default: makes a new object with default constructor arguments. It evaluates
     //    the "base(...)" arguments one time, makes the shell through "construct" and runs
@@ -102,7 +105,7 @@ struct ClassRecord
     //  - canonical: set by the loader in each generation record that is not canonical. It
     //    points to the canonical record of the class: the record of the core module, or the
     //    first record of the class when there is no core.
-    ShellBase* (*construct)(const char* key, const void* args) = nullptr;
+    ShellBase* (*construct)(void* mem, const char* key, const void* args) = nullptr;
     const char* construct_key = nullptr;
     ShellBase* (*new_default)() = nullptr;
     ClassRecord* canonical = nullptr;

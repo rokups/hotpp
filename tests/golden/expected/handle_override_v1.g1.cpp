@@ -282,24 +282,29 @@ HOT_HIDDEN static auto Holder__plan()
 #line 283 "handle_override_v1.hot.cpp"
 using Holder_SuperArgs = decltype(Holder__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
-// "key" names the type of the arguments. An unknown key gives nullptr.
+// "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
+// gives a shell from "new". Else the shell is made in "mem".
 #line 11 "handle_override_v1.hot"
-HOT_NODEBUG static hot::ShellBase* Holder__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Holder__construct(void* mem, const char* key, const void* args)
 #line 11 "handle_override_v1.hot"
 {
 #line 11 "handle_override_v1.hot"
-    if (std::strcmp(key, typeid(Holder_SuperArgs).name()) == 0) {
+    if (key == typeid(Holder_SuperArgs).name() || std::strcmp(key, typeid(Holder_SuperArgs).name()) == 0) {
 #line 11 "handle_override_v1.hot"
         const auto& t = *static_cast<const Holder_SuperArgs*>(args);
 #line 11 "handle_override_v1.hot"
-        return std::apply([](auto&... x) -> hot::ShellBase* { return new Holder_Shell(hot::Construct{}, x...); }, t);
+        return std::apply([mem](auto&... x) -> hot::ShellBase* {
+#line 11 "handle_override_v1.hot"
+            return mem ? ::new (mem) Holder_Shell(hot::Construct{}, x...) : new Holder_Shell(hot::Construct{}, x...);
+#line 11 "handle_override_v1.hot"
+        }, t);
 #line 11 "handle_override_v1.hot"
     }
 #line 11 "handle_override_v1.hot"
     return nullptr;
 #line 11 "handle_override_v1.hot"
 }
-#line 303 "handle_override_v1.hot.cpp"
+#line 308 "handle_override_v1.hot.cpp"
 
 static const char* const Holder__construct_keys[] = {typeid(Holder_SuperArgs).name(), nullptr};
 
@@ -315,7 +320,7 @@ HOT_HIDDEN static Holder_Shell* Holder__build([[maybe_unused]] bool __note)
     return __self;
 #line 11 "handle_override_v1.hot"
 }
-#line 319 "handle_override_v1.hot.cpp"
+#line 324 "handle_override_v1.hot.cpp"
 #line 11 "handle_override_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Holder_Shell* Holder__new()
 #line 11 "handle_override_v1.hot"
@@ -324,7 +329,22 @@ HOT_HIDDEN static Holder_Shell* Holder__build([[maybe_unused]] bool __note)
     return Holder__build(true);
 #line 11 "handle_override_v1.hot"
 }
-#line 328 "handle_override_v1.hot.cpp"
+#line 333 "handle_override_v1.hot.cpp"
+#line 11 "handle_override_v1.hot"
+template <int = 0>
+#line 11 "handle_override_v1.hot"
+[[maybe_unused]] HOT_HIDDEN static std::shared_ptr<Holder_Shell> Holder__new_shared()
+#line 11 "handle_override_v1.hot"
+{
+#line 11 "handle_override_v1.hot"
+    auto __plan = Holder__plan();
+#line 11 "handle_override_v1.hot"
+    auto __h = hot::make_shared_shell<Holder_Shell>(&Holder_record, typeid(Holder_SuperArgs).name(), &__plan.first);
+#line 11 "handle_override_v1.hot"
+    return __h;
+#line 11 "handle_override_v1.hot"
+}
+#line 348 "handle_override_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Holder_slots[SLOT_COUNT] = {
@@ -360,7 +380,7 @@ HOT_NODEBUG static hot::Instance Holder_create()
     return {static_cast<Actor*>(p), p};
 #line 11 "handle_override_v1.hot"
 }
-#line 364 "handle_override_v1.hot.cpp"
+#line 384 "handle_override_v1.hot.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 17 "handle_override_v1.hot"
@@ -391,7 +411,7 @@ int HolderState_g1::WearRaw(Charm* __c)
     HOT_TRACE_LINE(); return 1;
 #line 21 "handle_override_v1.hot"
 }
-#line 395 "handle_override_v1.hot.cpp"
+#line 415 "handle_override_v1.hot.cpp"
 
 #line 23 "handle_override_v1.hot"
 int HolderState_g1::WearRef(const Charm& __c)
@@ -419,7 +439,7 @@ int HolderState_g1::WearRef(const Charm& __c)
     HOT_TRACE_LINE(); return 2;
 #line 26 "handle_override_v1.hot"
 }
-#line 423 "handle_override_v1.hot.cpp"
+#line 443 "handle_override_v1.hot.cpp"
 
 #line 28 "handle_override_v1.hot"
 int HolderState_g1::WearShared(std::shared_ptr<Charm> __c)
@@ -447,7 +467,7 @@ int HolderState_g1::WearShared(std::shared_ptr<Charm> __c)
     HOT_TRACE_LINE(); return 3;
 #line 31 "handle_override_v1.hot"
 }
-#line 451 "handle_override_v1.hot.cpp"
+#line 471 "handle_override_v1.hot.cpp"
 
 #line 33 "handle_override_v1.hot"
 int HolderState_g1::WearBlade(Blade* __b)
@@ -475,7 +495,7 @@ int HolderState_g1::WearBlade(Blade* __b)
     HOT_TRACE_LINE(); return 5;
 #line 36 "handle_override_v1.hot"
 }
-#line 479 "handle_override_v1.hot.cpp"
+#line 499 "handle_override_v1.hot.cpp"
 
 #line 39 "handle_override_v1.hot"
 std::shared_ptr<Charm> HolderState_g1::Spawn()
@@ -499,7 +519,7 @@ std::shared_ptr<Charm> HolderState_g1::Spawn()
     HOT_TRACE_LINE(); return __st->last;
 #line 41 "handle_override_v1.hot"
 }
-#line 503 "handle_override_v1.hot.cpp"
+#line 523 "handle_override_v1.hot.cpp"
 
 #line 43 "handle_override_v1.hot"
 std::shared_ptr<Charm> HolderState_g1::Make(int32_t power)
@@ -527,7 +547,7 @@ std::shared_ptr<Charm> HolderState_g1::Make(int32_t power)
     HOT_TRACE_LINE(); return c;
 #line 47 "handle_override_v1.hot"
 }
-#line 531 "handle_override_v1.hot.cpp"
+#line 551 "handle_override_v1.hot.cpp"
 
 #line 49 "handle_override_v1.hot"
 int HolderState_g1::WearItem(Item* __i)
@@ -555,7 +575,7 @@ int HolderState_g1::WearItem(Item* __i)
     HOT_TRACE_LINE(); return 4;
 #line 52 "handle_override_v1.hot"
 }
-#line 559 "handle_override_v1.hot.cpp"
+#line 579 "handle_override_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

@@ -158,24 +158,29 @@ HOT_HIDDEN static auto Grid__plan()
 #line 159 "module_attrs_array_v1.hot.cpp"
 using Grid_SuperArgs = decltype(Grid__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
-// "key" names the type of the arguments. An unknown key gives nullptr.
+// "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
+// gives a shell from "new". Else the shell is made in "mem".
 #line 7 "module_attrs_array_v1.hot"
-HOT_NODEBUG static hot::ShellBase* Grid__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Grid__construct(void* mem, const char* key, const void* args)
 #line 7 "module_attrs_array_v1.hot"
 {
 #line 7 "module_attrs_array_v1.hot"
-    if (std::strcmp(key, typeid(Grid_SuperArgs).name()) == 0) {
+    if (key == typeid(Grid_SuperArgs).name() || std::strcmp(key, typeid(Grid_SuperArgs).name()) == 0) {
 #line 7 "module_attrs_array_v1.hot"
         const auto& t = *static_cast<const Grid_SuperArgs*>(args);
 #line 7 "module_attrs_array_v1.hot"
-        return std::apply([](auto&... x) -> hot::ShellBase* { return new Grid_Shell(hot::Construct{}, x...); }, t);
+        return std::apply([mem](auto&... x) -> hot::ShellBase* {
+#line 7 "module_attrs_array_v1.hot"
+            return mem ? ::new (mem) Grid_Shell(hot::Construct{}, x...) : new Grid_Shell(hot::Construct{}, x...);
+#line 7 "module_attrs_array_v1.hot"
+        }, t);
 #line 7 "module_attrs_array_v1.hot"
     }
 #line 7 "module_attrs_array_v1.hot"
     return nullptr;
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 179 "module_attrs_array_v1.hot.cpp"
+#line 184 "module_attrs_array_v1.hot.cpp"
 
 static const char* const Grid__construct_keys[] = {typeid(Grid_SuperArgs).name(), nullptr};
 
@@ -191,7 +196,7 @@ HOT_HIDDEN static Grid_Shell* Grid__build([[maybe_unused]] bool __note)
     return __self;
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 195 "module_attrs_array_v1.hot.cpp"
+#line 200 "module_attrs_array_v1.hot.cpp"
 #line 7 "module_attrs_array_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Grid_Shell* Grid__new()
 #line 7 "module_attrs_array_v1.hot"
@@ -200,7 +205,22 @@ HOT_HIDDEN static Grid_Shell* Grid__build([[maybe_unused]] bool __note)
     return Grid__build(true);
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 204 "module_attrs_array_v1.hot.cpp"
+#line 209 "module_attrs_array_v1.hot.cpp"
+#line 7 "module_attrs_array_v1.hot"
+template <int = 0>
+#line 7 "module_attrs_array_v1.hot"
+[[maybe_unused]] HOT_HIDDEN static std::shared_ptr<Grid_Shell> Grid__new_shared()
+#line 7 "module_attrs_array_v1.hot"
+{
+#line 7 "module_attrs_array_v1.hot"
+    auto __plan = Grid__plan();
+#line 7 "module_attrs_array_v1.hot"
+    auto __h = hot::make_shared_shell<Grid_Shell>(&Grid_record, typeid(Grid_SuperArgs).name(), &__plan.first);
+#line 7 "module_attrs_array_v1.hot"
+    return __h;
+#line 7 "module_attrs_array_v1.hot"
+}
+#line 224 "module_attrs_array_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Grid_slots[SLOT_COUNT] = {
@@ -228,7 +248,7 @@ HOT_NODEBUG static hot::Instance Grid_create()
     return {static_cast<Actor*>(p), p};
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 232 "module_attrs_array_v1.hot.cpp"
+#line 252 "module_attrs_array_v1.hot.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 11 "module_attrs_array_v1.hot"
@@ -255,7 +275,7 @@ void GridState_g1::Tick(float dt)
     HOT_TRACE_LINE(); hot::index(hot::index(__st->weights, 1), 2) = dt;
 #line 14 "module_attrs_array_v1.hot"
 }
-#line 259 "module_attrs_array_v1.hot.cpp"
+#line 279 "module_attrs_array_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

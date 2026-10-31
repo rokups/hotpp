@@ -28,6 +28,7 @@ These rules come from the comments in `include/hot/runtime/loader.h`.
 - In `EntryCounters` mode (`Loader::set_sync_mode`), `commit_pending` can run on one thread while other threads call script code. It blocks new script entries and waits for the running ones. It fails when the calling thread is in script code. The mode is global for the process. Change it only when no thread is in script code.
 - In `EntryCounters` mode, native code that reads the fields of a script object holds a `ScriptEntry`. A script frame that waits for a commit, or for a thread at the gate, deadlocks.
 - `Loader::reset` runs on the main thread when no worker runs script code. Never call it from script code.
+- Only one thread at a time creates or destroys script objects. This includes `new` in script code, `ClassEntry::create` and the release of the last handle. A host that does this on more than one thread uses its own lock (see [Internals](internals.html#threads-and-the-safe-point)).
 - `AotRegistry` is made and destroyed on the main thread.
 - `ClangFilesBackend` builds one script at a time (it has a mutex for the shared slot file).
 

@@ -9,6 +9,12 @@ group: Hot script
 
 A script class is a handle. `new` makes the object and `null` clears the handle. A native class needs a stub to be a handle.
 
+With a `std::shared_ptr` handle, `new` puts the object and the control block of the handle in one block of memory:
+
+- The handle owns the object before the constructor body runs. So the constructor can give `this` as a handle.
+- When the constructor throws, the handle releases the object. A handle that the constructor gave out keeps the object alive.
+- The last strong handle runs the destructor and frees the fields. A weak handle keeps only the memory of the object, until the last weak handle goes.
+
 ```hot
 using "Actor.h";
 using "Weapon.h";

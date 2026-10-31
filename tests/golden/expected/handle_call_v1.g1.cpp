@@ -309,24 +309,29 @@ HOT_HIDDEN static auto Caller__plan()
 #line 310 "handle_call_v1.hot.cpp"
 using Caller_SuperArgs = decltype(Caller__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
-// "key" names the type of the arguments. An unknown key gives nullptr.
+// "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
+// gives a shell from "new". Else the shell is made in "mem".
 #line 10 "handle_call_v1.hot"
-HOT_NODEBUG static hot::ShellBase* Caller__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Caller__construct(void* mem, const char* key, const void* args)
 #line 10 "handle_call_v1.hot"
 {
 #line 10 "handle_call_v1.hot"
-    if (std::strcmp(key, typeid(Caller_SuperArgs).name()) == 0) {
+    if (key == typeid(Caller_SuperArgs).name() || std::strcmp(key, typeid(Caller_SuperArgs).name()) == 0) {
 #line 10 "handle_call_v1.hot"
         const auto& t = *static_cast<const Caller_SuperArgs*>(args);
 #line 10 "handle_call_v1.hot"
-        return std::apply([](auto&... x) -> hot::ShellBase* { return new Caller_Shell(hot::Construct{}, x...); }, t);
+        return std::apply([mem](auto&... x) -> hot::ShellBase* {
+#line 10 "handle_call_v1.hot"
+            return mem ? ::new (mem) Caller_Shell(hot::Construct{}, x...) : new Caller_Shell(hot::Construct{}, x...);
+#line 10 "handle_call_v1.hot"
+        }, t);
 #line 10 "handle_call_v1.hot"
     }
 #line 10 "handle_call_v1.hot"
     return nullptr;
 #line 10 "handle_call_v1.hot"
 }
-#line 330 "handle_call_v1.hot.cpp"
+#line 335 "handle_call_v1.hot.cpp"
 
 static const char* const Caller__construct_keys[] = {typeid(Caller_SuperArgs).name(), nullptr};
 
@@ -342,7 +347,7 @@ HOT_HIDDEN static Caller_Shell* Caller__build([[maybe_unused]] bool __note)
     return __self;
 #line 10 "handle_call_v1.hot"
 }
-#line 346 "handle_call_v1.hot.cpp"
+#line 351 "handle_call_v1.hot.cpp"
 #line 10 "handle_call_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Caller_Shell* Caller__new()
 #line 10 "handle_call_v1.hot"
@@ -351,7 +356,22 @@ HOT_HIDDEN static Caller_Shell* Caller__build([[maybe_unused]] bool __note)
     return Caller__build(true);
 #line 10 "handle_call_v1.hot"
 }
-#line 355 "handle_call_v1.hot.cpp"
+#line 360 "handle_call_v1.hot.cpp"
+#line 10 "handle_call_v1.hot"
+template <int = 0>
+#line 10 "handle_call_v1.hot"
+[[maybe_unused]] HOT_HIDDEN static std::shared_ptr<Caller_Shell> Caller__new_shared()
+#line 10 "handle_call_v1.hot"
+{
+#line 10 "handle_call_v1.hot"
+    auto __plan = Caller__plan();
+#line 10 "handle_call_v1.hot"
+    auto __h = hot::make_shared_shell<Caller_Shell>(&Caller_record, typeid(Caller_SuperArgs).name(), &__plan.first);
+#line 10 "handle_call_v1.hot"
+    return __h;
+#line 10 "handle_call_v1.hot"
+}
+#line 375 "handle_call_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Caller_slots[SLOT_COUNT] = {
@@ -387,7 +407,7 @@ HOT_NODEBUG static hot::Instance Caller_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "handle_call_v1.hot"
 }
-#line 391 "handle_call_v1.hot.cpp"
+#line 411 "handle_call_v1.hot.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 13 "handle_call_v1.hot"
@@ -416,7 +436,7 @@ int CallerState_g1::WearRaw(Charm* __c)
     HOT_TRACE_LINE(); return 1;
 #line 16 "handle_call_v1.hot"
 }
-#line 420 "handle_call_v1.hot.cpp"
+#line 440 "handle_call_v1.hot.cpp"
 
 #line 19 "handle_call_v1.hot"
 int CallerState_g1::WearBlade(Blade* __b)
@@ -482,7 +502,7 @@ int CallerState_g1::WearBlade(Blade* __b)
     HOT_TRACE_LINE(); return Mixed(hot::star(local));
 #line 41 "handle_call_v1.hot"
 }
-#line 486 "handle_call_v1.hot.cpp"
+#line 506 "handle_call_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

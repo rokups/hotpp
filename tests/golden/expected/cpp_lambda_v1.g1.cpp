@@ -261,24 +261,29 @@ HOT_HIDDEN static void Lamp__ctor_chain(Lamp_Shell* __self, [[maybe_unused]] Cha
 #line 262 "cpp_lambda_v1.cpp.cpp"
 using Lamp_SuperArgs = decltype(Lamp__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
-// "key" names the type of the arguments. An unknown key gives nullptr.
+// "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
+// gives a shell from "new". Else the shell is made in "mem".
 #line 9 "cpp_lambda_v1.cpp"
-HOT_NODEBUG static hot::ShellBase* Lamp__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Lamp__construct(void* mem, const char* key, const void* args)
 #line 9 "cpp_lambda_v1.cpp"
 {
 #line 9 "cpp_lambda_v1.cpp"
-    if (std::strcmp(key, typeid(Lamp_SuperArgs).name()) == 0) {
+    if (key == typeid(Lamp_SuperArgs).name() || std::strcmp(key, typeid(Lamp_SuperArgs).name()) == 0) {
 #line 9 "cpp_lambda_v1.cpp"
         const auto& t = *static_cast<const Lamp_SuperArgs*>(args);
 #line 9 "cpp_lambda_v1.cpp"
-        return std::apply([](auto&... x) -> hot::ShellBase* { return new Lamp_Shell(hot::Construct{}, x...); }, t);
+        return std::apply([mem](auto&... x) -> hot::ShellBase* {
+#line 9 "cpp_lambda_v1.cpp"
+            return mem ? ::new (mem) Lamp_Shell(hot::Construct{}, x...) : new Lamp_Shell(hot::Construct{}, x...);
+#line 9 "cpp_lambda_v1.cpp"
+        }, t);
 #line 9 "cpp_lambda_v1.cpp"
     }
 #line 9 "cpp_lambda_v1.cpp"
     return nullptr;
 #line 9 "cpp_lambda_v1.cpp"
 }
-#line 282 "cpp_lambda_v1.cpp.cpp"
+#line 287 "cpp_lambda_v1.cpp.cpp"
 
 static const char* const Lamp__construct_keys[] = {typeid(Lamp_SuperArgs).name(), nullptr};
 
@@ -306,7 +311,7 @@ HOT_HIDDEN static Lamp_Shell* Lamp__build([[maybe_unused]] bool __note)
     return __self;
 #line 13 "cpp_lambda_v1.cpp"
 }
-#line 310 "cpp_lambda_v1.cpp.cpp"
+#line 315 "cpp_lambda_v1.cpp.cpp"
 #line 13 "cpp_lambda_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static Lamp_Shell* Lamp__new()
 #line 13 "cpp_lambda_v1.cpp"
@@ -315,7 +320,24 @@ HOT_HIDDEN static Lamp_Shell* Lamp__build([[maybe_unused]] bool __note)
     return Lamp__build(true);
 #line 13 "cpp_lambda_v1.cpp"
 }
-#line 319 "cpp_lambda_v1.cpp.cpp"
+#line 324 "cpp_lambda_v1.cpp.cpp"
+#line 13 "cpp_lambda_v1.cpp"
+template <int = 0>
+#line 13 "cpp_lambda_v1.cpp"
+[[maybe_unused]] HOT_HIDDEN static std::shared_ptr<Lamp_Shell> Lamp__new_shared()
+#line 13 "cpp_lambda_v1.cpp"
+{
+#line 13 "cpp_lambda_v1.cpp"
+    auto __plan = Lamp__plan();
+#line 13 "cpp_lambda_v1.cpp"
+    auto __h = hot::make_shared_shell<Lamp_Shell>(&Lamp_record, typeid(Lamp_SuperArgs).name(), &__plan.first);
+#line 13 "cpp_lambda_v1.cpp"
+    Lamp__ctor_chain(__h.get(), __plan.second);
+#line 13 "cpp_lambda_v1.cpp"
+    return __h;
+#line 13 "cpp_lambda_v1.cpp"
+}
+#line 341 "cpp_lambda_v1.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -327,7 +349,7 @@ HOT_NODEBUG static hot::ShellBase* Lamp__new_default()
     return Lamp__build(false);
 #line 13 "cpp_lambda_v1.cpp"
 }
-#line 331 "cpp_lambda_v1.cpp.cpp"
+#line 353 "cpp_lambda_v1.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -341,7 +363,7 @@ static void Lamp__bump__thunk(Actor* __a, int n)
     return hot::call<void(Actor*, int)>(__self, SLOT_bump, n);
 #line 51 "cpp_lambda_v1.cpp"
 }
-#line 345 "cpp_lambda_v1.cpp.cpp"
+#line 367 "cpp_lambda_v1.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -355,7 +377,7 @@ static bool Lamp__self_is_set__thunk(Actor* __a, Actor * a)
     return hot::call<bool(Actor*, Actor *)>(__self, SLOT_self_is_set, a);
 #line 52 "cpp_lambda_v1.cpp"
 }
-#line 359 "cpp_lambda_v1.cpp.cpp"
+#line 381 "cpp_lambda_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Lamp_slots[SLOT_COUNT] = {
@@ -390,7 +412,7 @@ HOT_NODEBUG static hot::Instance Lamp_create()
 #line 9 "cpp_lambda_v1.cpp"
         auto plan = Lamp__plan();
 #line 9 "cpp_lambda_v1.cpp"
-        s = Lamp__construct(typeid(Lamp_SuperArgs).name(), &plan.first);
+        s = Lamp__construct(nullptr, typeid(Lamp_SuperArgs).name(), &plan.first);
 #line 9 "cpp_lambda_v1.cpp"
     }
 #line 9 "cpp_lambda_v1.cpp"
@@ -399,7 +421,7 @@ HOT_NODEBUG static hot::Instance Lamp_create()
     return {static_cast<Actor*>(p), p};
 #line 9 "cpp_lambda_v1.cpp"
 }
-#line 403 "cpp_lambda_v1.cpp.cpp"
+#line 425 "cpp_lambda_v1.cpp.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 13 "cpp_lambda_v1.cpp"
@@ -410,7 +432,7 @@ HOT_NODEBUG static hot::Instance Lamp_create()
     return state_of(__self)->ctor();
 #line 13 "cpp_lambda_v1.cpp"
 }
-#line 414 "cpp_lambda_v1.cpp.cpp"
+#line 436 "cpp_lambda_v1.cpp.cpp"
 #line 13 "cpp_lambda_v1.cpp"
 void LampState_g1::ctor()
 #line 13 "cpp_lambda_v1.cpp"
@@ -436,7 +458,7 @@ void LampState_g1::ctor()
     
 #line 17 "cpp_lambda_v1.cpp"
 }
-#line 440 "cpp_lambda_v1.cpp.cpp"
+#line 462 "cpp_lambda_v1.cpp.cpp"
 
 #line 19 "cpp_lambda_v1.cpp"
 void LampState_g1::Tick(float dt)
@@ -489,7 +511,7 @@ void LampState_g1::Tick(float dt)
     
 #line 49 "cpp_lambda_v1.cpp"
 }
-#line 493 "cpp_lambda_v1.cpp.cpp"
+#line 515 "cpp_lambda_v1.cpp.cpp"
 
 #line 51 "cpp_lambda_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Lamp__bump(Lamp_Shell* __self, int n)
@@ -499,7 +521,7 @@ void LampState_g1::Tick(float dt)
     return state_of(__self)->bump(std::forward<int>(n));
 #line 51 "cpp_lambda_v1.cpp"
 }
-#line 503 "cpp_lambda_v1.cpp.cpp"
+#line 525 "cpp_lambda_v1.cpp.cpp"
 #line 51 "cpp_lambda_v1.cpp"
 void LampState_g1::bump(int n)
 #line 51 "cpp_lambda_v1.cpp"
@@ -522,7 +544,7 @@ void LampState_g1::bump(int n)
  count += n; 
 #line 51 "cpp_lambda_v1.cpp"
 }
-#line 526 "cpp_lambda_v1.cpp.cpp"
+#line 548 "cpp_lambda_v1.cpp.cpp"
 
 #line 52 "cpp_lambda_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static bool Lamp__self_is_set(Lamp_Shell* __self, Actor * a)
@@ -532,7 +554,7 @@ void LampState_g1::bump(int n)
     return state_of(__self)->self_is_set(std::forward<Actor *>(a));
 #line 52 "cpp_lambda_v1.cpp"
 }
-#line 536 "cpp_lambda_v1.cpp.cpp"
+#line 558 "cpp_lambda_v1.cpp.cpp"
 #line 52 "cpp_lambda_v1.cpp"
 bool LampState_g1::self_is_set(Actor * a)
 #line 52 "cpp_lambda_v1.cpp"
@@ -555,7 +577,7 @@ bool LampState_g1::self_is_set(Actor * a)
  return a != nullptr; 
 #line 52 "cpp_lambda_v1.cpp"
 }
-#line 559 "cpp_lambda_v1.cpp.cpp"
+#line 581 "cpp_lambda_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

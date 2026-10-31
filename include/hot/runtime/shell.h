@@ -166,20 +166,69 @@ HOT_HIDDEN void note_creator(ShellBase* self, uint32_t generation)
 // (module.h), or in the first generation when there is no core. So every object has the vtable
 // of that module. The caller runs the script constructor on the shell. "note" false skips
 // note_creator: the engine factory uses it, because the engine owns that object.
+// "mem" null gives a shell from "new". Else the shell is made in "mem" (make_shared_shell).
 HOT_NODEBUG inline ShellBase* construct_shell(
-    const ClassRecord* rec, const char* key, const void* args, bool note = true)
+    const ClassRecord* rec, const char* key, const void* args, bool note = true, void* mem = nullptr)
 {
     const ClassRecord* canon = rec->canonical ? rec->canonical : rec;
     if (!canon->construct)
         throw std::runtime_error(std::string("class ") + rec->name
             + " has no constructor entry in its first generation; restart the program");
-    ShellBase* s = canon->construct(key, args);
+    ShellBase* s = canon->construct(mem, key, args);
     if (!s)
         throw std::runtime_error(std::string("class ") + rec->name
             + ": the types of the 'base(...)' arguments changed since the first generation");
     if (note)
         note_creator(s, rec->generation);
     return s;
+}
+
+namespace detail
+{
+// True when the class T has its own operator new (in T or in a base class).
+template <class T, class = void> struct has_class_new : std::false_type
+{
+};
+template <class T>
+struct has_class_new<T, std::void_t<decltype(T::operator new(std::size_t{}))>> : std::true_type
+{
+};
+
+// The allocator of make_shared_shell. std::allocate_shared calls "construct" for the shell, in
+// the block of the control block. "construct" makes the shell through the canonical record, so
+// the shell has the vtable of the canonical module. "destroy" runs the destructor of the shell.
+template <class T> struct ShellAllocator
+{
+    using value_type = T;
+    const ClassRecord* rec;
+    const char* key;
+    const void* args;
+    HOT_HIDDEN ShellAllocator(const ClassRecord* r, const char* k, const void* a) noexcept : rec(r), key(k), args(a) {}
+    template <class U>
+    HOT_HIDDEN ShellAllocator(const ShellAllocator<U>& o) noexcept : rec(o.rec), key(o.key), args(o.args)
+    {
+    }
+    HOT_HIDDEN T* allocate(std::size_t n) { return std::allocator<T>().allocate(n); }
+    HOT_HIDDEN void deallocate(T* p, std::size_t n) noexcept { std::allocator<T>().deallocate(p, n); }
+    template <class U> HOT_HIDDEN void construct(U* p) { construct_shell(rec, key, args, true, p); }
+    template <class U> HOT_HIDDEN void destroy(U* p) noexcept { p->~U(); }
+    template <class U> HOT_HIDDEN bool operator==(const ShellAllocator<U>&) const noexcept { return true; }
+    template <class U> HOT_HIDDEN bool operator!=(const ShellAllocator<U>&) const noexcept { return false; }
+};
+} // namespace detail
+
+// The "new" of a script class with a std::shared_ptr handle. It is construct_shell with "note"
+// true, and the result has an owner. One block of memory holds the shell and the control block,
+// so "new" makes two blocks, not three. The block stays until the last std::weak_ptr goes; the
+// destructor and the state block go with the last std::shared_ptr. A class with its own
+// operator new keeps two blocks for the shell and the control block, so that operator new runs.
+template <class Shell>
+HOT_NODEBUG inline std::shared_ptr<Shell> make_shared_shell(const ClassRecord* rec, const char* key, const void* args)
+{
+    if constexpr (detail::has_class_new<Shell>::value)
+        return std::shared_ptr<Shell>(static_cast<Shell*>(construct_shell(rec, key, args)));
+    else
+        return std::allocate_shared<Shell>(detail::ShellAllocator<Shell>(rec, key, args));
 }
 
 // A handle of the script object that owns the shell "self": the lowering of a bare "this"

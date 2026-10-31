@@ -1087,13 +1087,15 @@ struct Lowerer
                 e = make_expr(std::move(c));
                 return;
             }
-            c.callee = raw(n.type + "__new", pos);
+            // A script class is a handle (design 7.10.1): "H(Name__new(args))". A std::shared_ptr
+            // handle uses "H(Name__new_shared(args))": one block for the shell and the control block.
+            const std::string h = cx.types ? cx.types->storage(type) : type;
+            const bool shared = h.rfind("\x01std::shared_ptr<", 0) == 0 || h.rfind("std::shared_ptr<", 0) == 0;
+            c.callee = raw(n.type + (shared ? "__new_shared" : "__new"), pos);
             c.args = std::move(n.args);
             e = make_expr(std::move(c));
-            // A script class is a handle (design 7.10.1): "H(Name__new(args))".
             if (cx.types)
             {
-                const std::string h = cx.types->storage(type);
                 if (h != type)
                 {
                     CallExpr w;

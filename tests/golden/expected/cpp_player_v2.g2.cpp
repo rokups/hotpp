@@ -265,24 +265,29 @@ HOT_HIDDEN static void Player__ctor_chain(Player_Shell* __self, [[maybe_unused]]
 #line 266 "cpp_player_v2.cpp.cpp"
 using Player_SuperArgs = decltype(Player__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
-// "key" names the type of the arguments. An unknown key gives nullptr.
+// "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
+// gives a shell from "new". Else the shell is made in "mem".
 #line 31 "cpp_player_v2.cpp"
-HOT_NODEBUG static hot::ShellBase* Player__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Player__construct(void* mem, const char* key, const void* args)
 #line 31 "cpp_player_v2.cpp"
 {
 #line 31 "cpp_player_v2.cpp"
-    if (std::strcmp(key, typeid(Player_SuperArgs).name()) == 0) {
+    if (key == typeid(Player_SuperArgs).name() || std::strcmp(key, typeid(Player_SuperArgs).name()) == 0) {
 #line 31 "cpp_player_v2.cpp"
         const auto& t = *static_cast<const Player_SuperArgs*>(args);
 #line 31 "cpp_player_v2.cpp"
-        return std::apply([](auto&... x) -> hot::ShellBase* { return new Player_Shell(hot::Construct{}, x...); }, t);
+        return std::apply([mem](auto&... x) -> hot::ShellBase* {
+#line 31 "cpp_player_v2.cpp"
+            return mem ? ::new (mem) Player_Shell(hot::Construct{}, x...) : new Player_Shell(hot::Construct{}, x...);
+#line 31 "cpp_player_v2.cpp"
+        }, t);
 #line 31 "cpp_player_v2.cpp"
     }
 #line 31 "cpp_player_v2.cpp"
     return nullptr;
 #line 31 "cpp_player_v2.cpp"
 }
-#line 286 "cpp_player_v2.cpp.cpp"
+#line 291 "cpp_player_v2.cpp.cpp"
 
 static const char* const Player__construct_keys[] = {typeid(Player_SuperArgs).name(), nullptr};
 
@@ -310,7 +315,7 @@ HOT_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
     return __self;
 #line 34 "cpp_player_v2.cpp"
 }
-#line 314 "cpp_player_v2.cpp.cpp"
+#line 319 "cpp_player_v2.cpp.cpp"
 #line 34 "cpp_player_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static Player_Shell* Player__new()
 #line 34 "cpp_player_v2.cpp"
@@ -319,7 +324,24 @@ HOT_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
     return Player__build(true);
 #line 34 "cpp_player_v2.cpp"
 }
-#line 323 "cpp_player_v2.cpp.cpp"
+#line 328 "cpp_player_v2.cpp.cpp"
+#line 34 "cpp_player_v2.cpp"
+template <int = 0>
+#line 34 "cpp_player_v2.cpp"
+[[maybe_unused]] HOT_HIDDEN static std::shared_ptr<Player_Shell> Player__new_shared()
+#line 34 "cpp_player_v2.cpp"
+{
+#line 34 "cpp_player_v2.cpp"
+    auto __plan = Player__plan();
+#line 34 "cpp_player_v2.cpp"
+    auto __h = hot::make_shared_shell<Player_Shell>(&Player_record, typeid(Player_SuperArgs).name(), &__plan.first);
+#line 34 "cpp_player_v2.cpp"
+    Player__ctor_chain(__h.get(), __plan.second);
+#line 34 "cpp_player_v2.cpp"
+    return __h;
+#line 34 "cpp_player_v2.cpp"
+}
+#line 345 "cpp_player_v2.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -331,7 +353,7 @@ HOT_NODEBUG static hot::ShellBase* Player__new_default()
     return Player__build(false);
 #line 34 "cpp_player_v2.cpp"
 }
-#line 335 "cpp_player_v2.cpp.cpp"
+#line 357 "cpp_player_v2.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Player_slots[SLOT_COUNT] = {
@@ -349,7 +371,7 @@ static void Player__onReload_hook(hot::ShellBase* s, const hot::OldState& old)
     Player__onReload(static_cast<Player_Shell*>(s), old);
 #line 68 "cpp_player_v2.cpp"
 }
-#line 353 "cpp_player_v2.cpp.cpp"
+#line 375 "cpp_player_v2.cpp.cpp"
 
 hot::ClassRecord Player_record = {
     "Player", GEN, Player_slots, SLOT_COUNT, &Player_layout, nullptr,
@@ -375,7 +397,7 @@ HOT_NODEBUG static hot::Instance Player_create()
 #line 31 "cpp_player_v2.cpp"
         auto plan = Player__plan();
 #line 31 "cpp_player_v2.cpp"
-        s = Player__construct(typeid(Player_SuperArgs).name(), &plan.first);
+        s = Player__construct(nullptr, typeid(Player_SuperArgs).name(), &plan.first);
 #line 31 "cpp_player_v2.cpp"
     }
 #line 31 "cpp_player_v2.cpp"
@@ -384,7 +406,7 @@ HOT_NODEBUG static hot::Instance Player_create()
     return {static_cast<Actor*>(p), p};
 #line 31 "cpp_player_v2.cpp"
 }
-#line 388 "cpp_player_v2.cpp.cpp"
+#line 410 "cpp_player_v2.cpp.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 34 "cpp_player_v2.cpp"
@@ -395,7 +417,7 @@ HOT_NODEBUG static hot::Instance Player_create()
     return state_of(__self)->ctor();
 #line 34 "cpp_player_v2.cpp"
 }
-#line 399 "cpp_player_v2.cpp.cpp"
+#line 421 "cpp_player_v2.cpp.cpp"
 #line 34 "cpp_player_v2.cpp"
 void PlayerState_g2::ctor()
 #line 34 "cpp_player_v2.cpp"
@@ -418,7 +440,7 @@ void PlayerState_g2::ctor()
 
 #line 34 "cpp_player_v2.cpp"
 }
-#line 422 "cpp_player_v2.cpp.cpp"
+#line 444 "cpp_player_v2.cpp.cpp"
 
 #line 36 "cpp_player_v2.cpp"
 void PlayerState_g2::Tick(float dt)
@@ -449,7 +471,7 @@ void PlayerState_g2::Tick(float dt)
     
 #line 44 "cpp_player_v2.cpp"
 }
-#line 453 "cpp_player_v2.cpp.cpp"
+#line 475 "cpp_player_v2.cpp.cpp"
 
 #line 46 "cpp_player_v2.cpp"
 void PlayerState_g2::TakeDamage_f(float amount)
@@ -476,7 +498,7 @@ void PlayerState_g2::TakeDamage_f(float amount)
     
 #line 50 "cpp_player_v2.cpp"
 }
-#line 480 "cpp_player_v2.cpp.cpp"
+#line 502 "cpp_player_v2.cpp.cpp"
 
 #line 52 "cpp_player_v2.cpp"
 void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
@@ -504,7 +526,7 @@ void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
     
 #line 57 "cpp_player_v2.cpp"
 }
-#line 508 "cpp_player_v2.cpp.cpp"
+#line 530 "cpp_player_v2.cpp.cpp"
 
 #line 59 "cpp_player_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float a)
@@ -514,7 +536,7 @@ void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
     return state_of(__self)->heal(std::forward<float>(a));
 #line 59 "cpp_player_v2.cpp"
 }
-#line 518 "cpp_player_v2.cpp.cpp"
+#line 540 "cpp_player_v2.cpp.cpp"
 #line 59 "cpp_player_v2.cpp"
 void PlayerState_g2::heal(float a)
 #line 59 "cpp_player_v2.cpp"
@@ -540,7 +562,7 @@ void PlayerState_g2::heal(float a)
     
 #line 63 "cpp_player_v2.cpp"
 }
-#line 544 "cpp_player_v2.cpp.cpp"
+#line 566 "cpp_player_v2.cpp.cpp"
 
 #line 66 "cpp_player_v2.cpp"
 static float Player__convert_level(int old)
@@ -550,7 +572,7 @@ static float Player__convert_level(int old)
  return old * 10.0f; 
 #line 66 "cpp_player_v2.cpp"
 }
-#line 554 "cpp_player_v2.cpp.cpp"
+#line 576 "cpp_player_v2.cpp.cpp"
 
 #line 68 "cpp_player_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__onReload(Player_Shell* __self, const hot::OldState& old)
@@ -560,7 +582,7 @@ static float Player__convert_level(int old)
     return state_of(__self)->onReload(std::forward<const hot::OldState&>(old));
 #line 68 "cpp_player_v2.cpp"
 }
-#line 564 "cpp_player_v2.cpp.cpp"
+#line 586 "cpp_player_v2.cpp.cpp"
 #line 68 "cpp_player_v2.cpp"
 void PlayerState_g2::onReload(const hot::OldState& old)
 #line 68 "cpp_player_v2.cpp"
@@ -586,7 +608,7 @@ void PlayerState_g2::onReload(const hot::OldState& old)
     
 #line 72 "cpp_player_v2.cpp"
 }
-#line 590 "cpp_player_v2.cpp.cpp"
+#line 612 "cpp_player_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

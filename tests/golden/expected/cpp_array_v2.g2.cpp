@@ -249,24 +249,29 @@ HOT_HIDDEN static void Buf__ctor_chain(Buf_Shell* __self, [[maybe_unused]] Chain
 #line 250 "cpp_array_v2.cpp.cpp"
 using Buf_SuperArgs = decltype(Buf__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
-// "key" names the type of the arguments. An unknown key gives nullptr.
+// "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
+// gives a shell from "new". Else the shell is made in "mem".
 #line 10 "cpp_array_v2.cpp"
-HOT_NODEBUG static hot::ShellBase* Buf__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Buf__construct(void* mem, const char* key, const void* args)
 #line 10 "cpp_array_v2.cpp"
 {
 #line 10 "cpp_array_v2.cpp"
-    if (std::strcmp(key, typeid(Buf_SuperArgs).name()) == 0) {
+    if (key == typeid(Buf_SuperArgs).name() || std::strcmp(key, typeid(Buf_SuperArgs).name()) == 0) {
 #line 10 "cpp_array_v2.cpp"
         const auto& t = *static_cast<const Buf_SuperArgs*>(args);
 #line 10 "cpp_array_v2.cpp"
-        return std::apply([](auto&... x) -> hot::ShellBase* { return new Buf_Shell(hot::Construct{}, x...); }, t);
+        return std::apply([mem](auto&... x) -> hot::ShellBase* {
+#line 10 "cpp_array_v2.cpp"
+            return mem ? ::new (mem) Buf_Shell(hot::Construct{}, x...) : new Buf_Shell(hot::Construct{}, x...);
+#line 10 "cpp_array_v2.cpp"
+        }, t);
 #line 10 "cpp_array_v2.cpp"
     }
 #line 10 "cpp_array_v2.cpp"
     return nullptr;
 #line 10 "cpp_array_v2.cpp"
 }
-#line 270 "cpp_array_v2.cpp.cpp"
+#line 275 "cpp_array_v2.cpp.cpp"
 
 static const char* const Buf__construct_keys[] = {typeid(Buf_SuperArgs).name(), nullptr};
 
@@ -294,7 +299,7 @@ HOT_HIDDEN static Buf_Shell* Buf__build([[maybe_unused]] bool __note)
     return __self;
 #line 13 "cpp_array_v2.cpp"
 }
-#line 298 "cpp_array_v2.cpp.cpp"
+#line 303 "cpp_array_v2.cpp.cpp"
 #line 13 "cpp_array_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static Buf_Shell* Buf__new()
 #line 13 "cpp_array_v2.cpp"
@@ -303,7 +308,24 @@ HOT_HIDDEN static Buf_Shell* Buf__build([[maybe_unused]] bool __note)
     return Buf__build(true);
 #line 13 "cpp_array_v2.cpp"
 }
-#line 307 "cpp_array_v2.cpp.cpp"
+#line 312 "cpp_array_v2.cpp.cpp"
+#line 13 "cpp_array_v2.cpp"
+template <int = 0>
+#line 13 "cpp_array_v2.cpp"
+[[maybe_unused]] HOT_HIDDEN static std::shared_ptr<Buf_Shell> Buf__new_shared()
+#line 13 "cpp_array_v2.cpp"
+{
+#line 13 "cpp_array_v2.cpp"
+    auto __plan = Buf__plan();
+#line 13 "cpp_array_v2.cpp"
+    auto __h = hot::make_shared_shell<Buf_Shell>(&Buf_record, typeid(Buf_SuperArgs).name(), &__plan.first);
+#line 13 "cpp_array_v2.cpp"
+    Buf__ctor_chain(__h.get(), __plan.second);
+#line 13 "cpp_array_v2.cpp"
+    return __h;
+#line 13 "cpp_array_v2.cpp"
+}
+#line 329 "cpp_array_v2.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -315,7 +337,7 @@ HOT_NODEBUG static hot::ShellBase* Buf__new_default()
     return Buf__build(false);
 #line 13 "cpp_array_v2.cpp"
 }
-#line 319 "cpp_array_v2.cpp.cpp"
+#line 341 "cpp_array_v2.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Buf_slots[SLOT_COUNT] = {
@@ -349,7 +371,7 @@ HOT_NODEBUG static hot::Instance Buf_create()
 #line 10 "cpp_array_v2.cpp"
         auto plan = Buf__plan();
 #line 10 "cpp_array_v2.cpp"
-        s = Buf__construct(typeid(Buf_SuperArgs).name(), &plan.first);
+        s = Buf__construct(nullptr, typeid(Buf_SuperArgs).name(), &plan.first);
 #line 10 "cpp_array_v2.cpp"
     }
 #line 10 "cpp_array_v2.cpp"
@@ -358,7 +380,7 @@ HOT_NODEBUG static hot::Instance Buf_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "cpp_array_v2.cpp"
 }
-#line 362 "cpp_array_v2.cpp.cpp"
+#line 384 "cpp_array_v2.cpp.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 13 "cpp_array_v2.cpp"
@@ -369,7 +391,7 @@ HOT_NODEBUG static hot::Instance Buf_create()
     return state_of(__self)->ctor();
 #line 13 "cpp_array_v2.cpp"
 }
-#line 373 "cpp_array_v2.cpp.cpp"
+#line 395 "cpp_array_v2.cpp.cpp"
 #line 13 "cpp_array_v2.cpp"
 void BufState_g2::ctor()
 #line 13 "cpp_array_v2.cpp"
@@ -392,7 +414,7 @@ void BufState_g2::ctor()
  names[0] = "first"; 
 #line 13 "cpp_array_v2.cpp"
 }
-#line 396 "cpp_array_v2.cpp.cpp"
+#line 418 "cpp_array_v2.cpp.cpp"
 
 #line 15 "cpp_array_v2.cpp"
 void BufState_g2::Tick(float dt)
@@ -424,7 +446,7 @@ void BufState_g2::Tick(float dt)
     
 #line 24 "cpp_array_v2.cpp"
 }
-#line 428 "cpp_array_v2.cpp.cpp"
+#line 450 "cpp_array_v2.cpp.cpp"
 
 #line 26 "cpp_array_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Buf__sum(Buf_Shell* __self)
@@ -434,7 +456,7 @@ void BufState_g2::Tick(float dt)
     return state_of(__self)->sum();
 #line 26 "cpp_array_v2.cpp"
 }
-#line 438 "cpp_array_v2.cpp.cpp"
+#line 460 "cpp_array_v2.cpp.cpp"
 #line 26 "cpp_array_v2.cpp"
 int BufState_g2::sum()
 #line 26 "cpp_array_v2.cpp"
@@ -462,7 +484,7 @@ int BufState_g2::sum()
     
 #line 32 "cpp_array_v2.cpp"
 }
-#line 466 "cpp_array_v2.cpp.cpp"
+#line 488 "cpp_array_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

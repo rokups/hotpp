@@ -62,8 +62,9 @@ HOT_HIDDEN void aligned_free(void* p)
 // Allocates a state block for a layout. Returns null when memory is out.
 HOT_HIDDEN char* alloc_state(const StateLayout* l)
 {
+    // "align" comes from alignof, so it is a power of two: a mask rounds up with no division.
     size_t align = l->align;
-    size_t size = (l->size + align - 1) / align * align;
+    size_t size = (l->size + align - 1) & ~(align - 1);
     if (size == 0)
         size = align;
     return static_cast<char*>(hot::aligned_alloc(align, size));
@@ -99,11 +100,26 @@ HOT_NODEBUG inline void init_state(ShellBase* self, ClassRecord* cls)
     if (!mem)
         throw std::bad_alloc();
     set_owner(l, mem, self);
-    for (uint32_t i = 0; i < l->field_count; ++i)
+    uint32_t i = 0;
+    try
     {
-        const FieldInfo& f = l->fields[i];
-        if (f.init)
-            f.init(mem, mem + f.offset);
+        for (; i < l->field_count; ++i)
+        {
+            const FieldInfo& f = l->fields[i];
+            if (f.init)
+                f.init(mem, mem + f.offset);
+        }
+    }
+    catch (...)
+    { // an initializer threw: destroy the fields that it made before, in reverse order, and free the block
+        while (i-- > 0)
+        {
+            const FieldInfo& f = l->fields[i];
+            if (f.destroy)
+                f.destroy(mem + f.offset);
+        }
+        hot::aligned_free(mem);
+        throw;
     }
     self->state = mem;
     track_object(self);

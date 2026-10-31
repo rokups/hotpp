@@ -191,24 +191,29 @@ HOT_HIDDEN static void Counter__ctor_chain(Counter_Shell* __self, [[maybe_unused
 #line 192 "cpp_defaults.cpp.cpp"
 using Counter_SuperArgs = decltype(Counter__plan(std::declval<int>()).first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
-// "key" names the type of the arguments. An unknown key gives nullptr.
+// "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
+// gives a shell from "new". Else the shell is made in "mem".
 #line 10 "cpp_defaults.cpp"
-HOT_NODEBUG static hot::ShellBase* Counter__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Counter__construct(void* mem, const char* key, const void* args)
 #line 10 "cpp_defaults.cpp"
 {
 #line 10 "cpp_defaults.cpp"
-    if (std::strcmp(key, typeid(Counter_SuperArgs).name()) == 0) {
+    if (key == typeid(Counter_SuperArgs).name() || std::strcmp(key, typeid(Counter_SuperArgs).name()) == 0) {
 #line 10 "cpp_defaults.cpp"
         const auto& t = *static_cast<const Counter_SuperArgs*>(args);
 #line 10 "cpp_defaults.cpp"
-        return std::apply([](auto&... x) -> hot::ShellBase* { return new Counter_Shell(hot::Construct{}, x...); }, t);
+        return std::apply([mem](auto&... x) -> hot::ShellBase* {
+#line 10 "cpp_defaults.cpp"
+            return mem ? ::new (mem) Counter_Shell(hot::Construct{}, x...) : new Counter_Shell(hot::Construct{}, x...);
+#line 10 "cpp_defaults.cpp"
+        }, t);
 #line 10 "cpp_defaults.cpp"
     }
 #line 10 "cpp_defaults.cpp"
     return nullptr;
 #line 10 "cpp_defaults.cpp"
 }
-#line 212 "cpp_defaults.cpp.cpp"
+#line 217 "cpp_defaults.cpp.cpp"
 
 static const char* const Counter__construct_keys[] = {typeid(Counter_SuperArgs).name(), nullptr};
 
@@ -236,7 +241,7 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note, in
     return __self;
 #line 17 "cpp_defaults.cpp"
 }
-#line 240 "cpp_defaults.cpp.cpp"
+#line 245 "cpp_defaults.cpp.cpp"
 #line 17 "cpp_defaults.cpp"
 [[maybe_unused]] HOT_HIDDEN static Counter_Shell* Counter__new(int start = kStep * 3)
 #line 17 "cpp_defaults.cpp"
@@ -245,7 +250,24 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note, in
     return Counter__build(true, start);
 #line 17 "cpp_defaults.cpp"
 }
-#line 249 "cpp_defaults.cpp.cpp"
+#line 254 "cpp_defaults.cpp.cpp"
+#line 17 "cpp_defaults.cpp"
+template <int = 0>
+#line 17 "cpp_defaults.cpp"
+[[maybe_unused]] HOT_HIDDEN static std::shared_ptr<Counter_Shell> Counter__new_shared(int start = kStep * 3)
+#line 17 "cpp_defaults.cpp"
+{
+#line 17 "cpp_defaults.cpp"
+    auto __plan = Counter__plan(start);
+#line 17 "cpp_defaults.cpp"
+    auto __h = hot::make_shared_shell<Counter_Shell>(&Counter_record, typeid(Counter_SuperArgs).name(), &__plan.first);
+#line 17 "cpp_defaults.cpp"
+    Counter__ctor_chain(__h.get(), __plan.second, start);
+#line 17 "cpp_defaults.cpp"
+    return __h;
+#line 17 "cpp_defaults.cpp"
+}
+#line 271 "cpp_defaults.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -257,7 +279,7 @@ HOT_NODEBUG static hot::ShellBase* Counter__new_default()
     return Counter__build(false, kStep * 3);
 #line 17 "cpp_defaults.cpp"
 }
-#line 261 "cpp_defaults.cpp.cpp"
+#line 283 "cpp_defaults.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -271,7 +293,7 @@ static int Counter__Add__thunk(Actor* __a, int a, int b, int c)
     return hot::call<int(Actor*, int, int, int)>(__self, SLOT_Add, a, b, c);
 #line 23 "cpp_defaults.cpp"
 }
-#line 275 "cpp_defaults.cpp.cpp"
+#line 297 "cpp_defaults.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
@@ -305,7 +327,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
 #line 10 "cpp_defaults.cpp"
         auto plan = Counter__plan(kStep * 3);
 #line 10 "cpp_defaults.cpp"
-        s = Counter__construct(typeid(Counter_SuperArgs).name(), &plan.first);
+        s = Counter__construct(nullptr, typeid(Counter_SuperArgs).name(), &plan.first);
 #line 10 "cpp_defaults.cpp"
     }
 #line 10 "cpp_defaults.cpp"
@@ -314,7 +336,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "cpp_defaults.cpp"
 }
-#line 318 "cpp_defaults.cpp.cpp"
+#line 340 "cpp_defaults.cpp.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 17 "cpp_defaults.cpp"
@@ -325,7 +347,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return state_of(__self)->ctor(std::forward<int>(start));
 #line 17 "cpp_defaults.cpp"
 }
-#line 329 "cpp_defaults.cpp.cpp"
+#line 351 "cpp_defaults.cpp.cpp"
 #line 17 "cpp_defaults.cpp"
 void CounterState_g1::ctor(int start)
 #line 17 "cpp_defaults.cpp"
@@ -350,7 +372,7 @@ void CounterState_g1::ctor(int start)
     
 #line 20 "cpp_defaults.cpp"
 }
-#line 354 "cpp_defaults.cpp.cpp"
+#line 376 "cpp_defaults.cpp.cpp"
 
 #line 23 "cpp_defaults.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Counter__Add(Counter_Shell* __self, int a, int b, int c)
@@ -360,7 +382,7 @@ void CounterState_g1::ctor(int start)
     return state_of(__self)->Add(std::forward<int>(a), std::forward<int>(b), std::forward<int>(c));
 #line 23 "cpp_defaults.cpp"
 }
-#line 364 "cpp_defaults.cpp.cpp"
+#line 386 "cpp_defaults.cpp.cpp"
 #line 23 "cpp_defaults.cpp"
 int CounterState_g1::Add(int a, int b, int c)
 #line 23 "cpp_defaults.cpp"
@@ -386,7 +408,7 @@ int CounterState_g1::Add(int a, int b, int c)
     
 #line 27 "cpp_defaults.cpp"
 }
-#line 390 "cpp_defaults.cpp.cpp"
+#line 412 "cpp_defaults.cpp.cpp"
 
 #line 29 "cpp_defaults.cpp"
 void CounterState_g1::Tick(float dt)
@@ -414,7 +436,7 @@ void CounterState_g1::Tick(float dt)
     
 #line 34 "cpp_defaults.cpp"
 }
-#line 418 "cpp_defaults.cpp.cpp"
+#line 440 "cpp_defaults.cpp.cpp"
 
 #line 37 "cpp_defaults.cpp"
 void CounterState_g1::TakeDamage_f(float amount)
@@ -440,7 +462,7 @@ void CounterState_g1::TakeDamage_f(float amount)
     
 #line 40 "cpp_defaults.cpp"
 }
-#line 444 "cpp_defaults.cpp.cpp"
+#line 466 "cpp_defaults.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

@@ -157,24 +157,29 @@ HOT_HIDDEN static auto Beeper__plan()
 #line 158 "timer_v2.hot.cpp"
 using Beeper_SuperArgs = decltype(Beeper__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
-// "key" names the type of the arguments. An unknown key gives nullptr.
+// "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
+// gives a shell from "new". Else the shell is made in "mem".
 #line 4 "timer_v2.hot"
-HOT_NODEBUG static hot::ShellBase* Beeper__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Beeper__construct(void* mem, const char* key, const void* args)
 #line 4 "timer_v2.hot"
 {
 #line 4 "timer_v2.hot"
-    if (std::strcmp(key, typeid(Beeper_SuperArgs).name()) == 0) {
+    if (key == typeid(Beeper_SuperArgs).name() || std::strcmp(key, typeid(Beeper_SuperArgs).name()) == 0) {
 #line 4 "timer_v2.hot"
         const auto& t = *static_cast<const Beeper_SuperArgs*>(args);
 #line 4 "timer_v2.hot"
-        return std::apply([](auto&... x) -> hot::ShellBase* { return new Beeper_Shell(hot::Construct{}, x...); }, t);
+        return std::apply([mem](auto&... x) -> hot::ShellBase* {
+#line 4 "timer_v2.hot"
+            return mem ? ::new (mem) Beeper_Shell(hot::Construct{}, x...) : new Beeper_Shell(hot::Construct{}, x...);
+#line 4 "timer_v2.hot"
+        }, t);
 #line 4 "timer_v2.hot"
     }
 #line 4 "timer_v2.hot"
     return nullptr;
 #line 4 "timer_v2.hot"
 }
-#line 178 "timer_v2.hot.cpp"
+#line 183 "timer_v2.hot.cpp"
 
 static const char* const Beeper__construct_keys[] = {typeid(Beeper_SuperArgs).name(), nullptr};
 
@@ -190,7 +195,7 @@ HOT_HIDDEN static Beeper_Shell* Beeper__build([[maybe_unused]] bool __note)
     return __self;
 #line 4 "timer_v2.hot"
 }
-#line 194 "timer_v2.hot.cpp"
+#line 199 "timer_v2.hot.cpp"
 #line 4 "timer_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static Beeper_Shell* Beeper__new()
 #line 4 "timer_v2.hot"
@@ -199,7 +204,22 @@ HOT_HIDDEN static Beeper_Shell* Beeper__build([[maybe_unused]] bool __note)
     return Beeper__build(true);
 #line 4 "timer_v2.hot"
 }
-#line 203 "timer_v2.hot.cpp"
+#line 208 "timer_v2.hot.cpp"
+#line 4 "timer_v2.hot"
+template <int = 0>
+#line 4 "timer_v2.hot"
+[[maybe_unused]] HOT_HIDDEN static std::shared_ptr<Beeper_Shell> Beeper__new_shared()
+#line 4 "timer_v2.hot"
+{
+#line 4 "timer_v2.hot"
+    auto __plan = Beeper__plan();
+#line 4 "timer_v2.hot"
+    auto __h = hot::make_shared_shell<Beeper_Shell>(&Beeper_record, typeid(Beeper_SuperArgs).name(), &__plan.first);
+#line 4 "timer_v2.hot"
+    return __h;
+#line 4 "timer_v2.hot"
+}
+#line 223 "timer_v2.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Beeper_slots[SLOT_COUNT] = {
@@ -228,7 +248,7 @@ HOT_NODEBUG static hot::Instance Beeper_create()
     return {static_cast<Actor*>(p), p};
 #line 4 "timer_v2.hot"
 }
-#line 232 "timer_v2.hot.cpp"
+#line 252 "timer_v2.hot.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 8 "timer_v2.hot"
@@ -253,7 +273,7 @@ void BeeperState_g2::Tick(float dt)
     HOT_TRACE_LINE(); __st->ticks = __st->ticks + 1;
 #line 10 "timer_v2.hot"
 }
-#line 257 "timer_v2.hot.cpp"
+#line 277 "timer_v2.hot.cpp"
 
 #line 12 "timer_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static void Beeper__arm(Beeper_Shell* __self, World& w, float delay)
@@ -263,7 +283,7 @@ void BeeperState_g2::Tick(float dt)
     return state_of(__self)->arm(std::forward<World&>(w), std::forward<float>(delay));
 #line 12 "timer_v2.hot"
 }
-#line 267 "timer_v2.hot.cpp"
+#line 287 "timer_v2.hot.cpp"
 #line 12 "timer_v2.hot"
 void BeeperState_g2::arm(World& w, float delay)
 #line 12 "timer_v2.hot"
@@ -292,7 +312,7 @@ void BeeperState_g2::arm(World& w, float delay)
     }));
 #line 17 "timer_v2.hot"
 }
-#line 296 "timer_v2.hot.cpp"
+#line 316 "timer_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

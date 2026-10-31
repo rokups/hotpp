@@ -222,24 +222,29 @@ HOT_HIDDEN static void Counter__ctor_chain(Counter_Shell* __self, [[maybe_unused
 #line 223 "cpp_static_v1.cpp.cpp"
 using Counter_SuperArgs = decltype(Counter__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
-// "key" names the type of the arguments. An unknown key gives nullptr.
+// "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
+// gives a shell from "new". Else the shell is made in "mem".
 #line 8 "cpp_static_v1.cpp"
-HOT_NODEBUG static hot::ShellBase* Counter__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Counter__construct(void* mem, const char* key, const void* args)
 #line 8 "cpp_static_v1.cpp"
 {
 #line 8 "cpp_static_v1.cpp"
-    if (std::strcmp(key, typeid(Counter_SuperArgs).name()) == 0) {
+    if (key == typeid(Counter_SuperArgs).name() || std::strcmp(key, typeid(Counter_SuperArgs).name()) == 0) {
 #line 8 "cpp_static_v1.cpp"
         const auto& t = *static_cast<const Counter_SuperArgs*>(args);
 #line 8 "cpp_static_v1.cpp"
-        return std::apply([](auto&... x) -> hot::ShellBase* { return new Counter_Shell(hot::Construct{}, x...); }, t);
+        return std::apply([mem](auto&... x) -> hot::ShellBase* {
+#line 8 "cpp_static_v1.cpp"
+            return mem ? ::new (mem) Counter_Shell(hot::Construct{}, x...) : new Counter_Shell(hot::Construct{}, x...);
+#line 8 "cpp_static_v1.cpp"
+        }, t);
 #line 8 "cpp_static_v1.cpp"
     }
 #line 8 "cpp_static_v1.cpp"
     return nullptr;
 #line 8 "cpp_static_v1.cpp"
 }
-#line 243 "cpp_static_v1.cpp.cpp"
+#line 248 "cpp_static_v1.cpp.cpp"
 
 static const char* const Counter__construct_keys[] = {typeid(Counter_SuperArgs).name(), nullptr};
 
@@ -267,7 +272,7 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
     return __self;
 #line 11 "cpp_static_v1.cpp"
 }
-#line 271 "cpp_static_v1.cpp.cpp"
+#line 276 "cpp_static_v1.cpp.cpp"
 #line 11 "cpp_static_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static Counter_Shell* Counter__new()
 #line 11 "cpp_static_v1.cpp"
@@ -276,7 +281,24 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
     return Counter__build(true);
 #line 11 "cpp_static_v1.cpp"
 }
-#line 280 "cpp_static_v1.cpp.cpp"
+#line 285 "cpp_static_v1.cpp.cpp"
+#line 11 "cpp_static_v1.cpp"
+template <int = 0>
+#line 11 "cpp_static_v1.cpp"
+[[maybe_unused]] HOT_HIDDEN static std::shared_ptr<Counter_Shell> Counter__new_shared()
+#line 11 "cpp_static_v1.cpp"
+{
+#line 11 "cpp_static_v1.cpp"
+    auto __plan = Counter__plan();
+#line 11 "cpp_static_v1.cpp"
+    auto __h = hot::make_shared_shell<Counter_Shell>(&Counter_record, typeid(Counter_SuperArgs).name(), &__plan.first);
+#line 11 "cpp_static_v1.cpp"
+    Counter__ctor_chain(__h.get(), __plan.second);
+#line 11 "cpp_static_v1.cpp"
+    return __h;
+#line 11 "cpp_static_v1.cpp"
+}
+#line 302 "cpp_static_v1.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -288,7 +310,7 @@ HOT_NODEBUG static hot::ShellBase* Counter__new_default()
     return Counter__build(false);
 #line 11 "cpp_static_v1.cpp"
 }
-#line 292 "cpp_static_v1.cpp.cpp"
+#line 314 "cpp_static_v1.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -302,7 +324,7 @@ static int Counter__Peek__thunk(Actor* __a)
     return hot::call<int(Actor*)>(__self, SLOT_Peek);
 #line 23 "cpp_static_v1.cpp"
 }
-#line 306 "cpp_static_v1.cpp.cpp"
+#line 328 "cpp_static_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
@@ -336,7 +358,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
 #line 8 "cpp_static_v1.cpp"
         auto plan = Counter__plan();
 #line 8 "cpp_static_v1.cpp"
-        s = Counter__construct(typeid(Counter_SuperArgs).name(), &plan.first);
+        s = Counter__construct(nullptr, typeid(Counter_SuperArgs).name(), &plan.first);
 #line 8 "cpp_static_v1.cpp"
     }
 #line 8 "cpp_static_v1.cpp"
@@ -345,7 +367,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 8 "cpp_static_v1.cpp"
 }
-#line 349 "cpp_static_v1.cpp.cpp"
+#line 371 "cpp_static_v1.cpp.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 11 "cpp_static_v1.cpp"
@@ -356,7 +378,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return state_of(__self)->ctor();
 #line 11 "cpp_static_v1.cpp"
 }
-#line 360 "cpp_static_v1.cpp.cpp"
+#line 382 "cpp_static_v1.cpp.cpp"
 #line 11 "cpp_static_v1.cpp"
 void CounterState_g1::ctor()
 #line 11 "cpp_static_v1.cpp"
@@ -379,7 +401,7 @@ void CounterState_g1::ctor()
 
 #line 11 "cpp_static_v1.cpp"
 }
-#line 383 "cpp_static_v1.cpp.cpp"
+#line 405 "cpp_static_v1.cpp.cpp"
 
 #line 13 "cpp_static_v1.cpp"
 void CounterState_g1::Tick(float dt)
@@ -409,7 +431,7 @@ void CounterState_g1::Tick(float dt)
     
 #line 20 "cpp_static_v1.cpp"
 }
-#line 413 "cpp_static_v1.cpp.cpp"
+#line 435 "cpp_static_v1.cpp.cpp"
 
 #line 23 "cpp_static_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self)
@@ -419,7 +441,7 @@ void CounterState_g1::Tick(float dt)
     return state_of(__self)->Peek();
 #line 23 "cpp_static_v1.cpp"
 }
-#line 423 "cpp_static_v1.cpp.cpp"
+#line 445 "cpp_static_v1.cpp.cpp"
 #line 23 "cpp_static_v1.cpp"
 int CounterState_g1::Peek()
 #line 23 "cpp_static_v1.cpp"
@@ -445,13 +467,13 @@ int CounterState_g1::Peek()
     
 #line 27 "cpp_static_v1.cpp"
 }
-#line 449 "cpp_static_v1.cpp.cpp"
+#line 471 "cpp_static_v1.cpp.cpp"
 
 
 #line 29 "cpp_static_v1.cpp"
 int Counter__s_scale(int v) { return v * Counter__s_kFactor; }
 
-#line 455 "cpp_static_v1.cpp.cpp"
+#line 477 "cpp_static_v1.cpp.cpp"
 
 #line 46 "cpp_static_v1.cpp"
 int tally()
@@ -459,7 +481,7 @@ int tally()
     return Counter__s_scale(hot_mod()->Counter__s_count) + hot_mod()->Counter__s_hits;
 }
 
-#line 463 "cpp_static_v1.cpp.cpp"
+#line 485 "cpp_static_v1.cpp.cpp"
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);

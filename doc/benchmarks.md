@@ -22,7 +22,7 @@ All values come from the `Results` section below. They are the median of 3 runs.
 - A call from the host into a script costs 3.3x to 3.8x of a native virtual call. This is 3.4 to 4.1 ns more. `aot` is the fastest and `jit` is the slowest. `.hot` and `.cpp` are equal.
 - A call after 0, 1, 10 or 100 reloads costs the same: 5.26 ns (3.6x) in `files` and in `jit`, for `.hot` and for `.cpp`.
 - A script to native call costs 1.4x (2.05 ns) in `files` and in `jit`. It costs 1.0x in `aot`.
-- `new` and free of a script object cost 57 to 61 ns in `.hot`: 5.4x to 5.8x of `std::make_shared`. In `.cpp` with a raw pointer, they cost 35 to 36 ns: 3.3x to 3.4x.
+- `new` and free of a script object cost 47 to 50 ns in `.hot`: 4.4x to 4.6x of `std::make_shared`. In `.cpp` with a raw pointer, they cost 35 to 37 ns: 3.2x to 3.4x.
 - A script to script virtual call costs 0.4 to 0.9 ns more than a native one. This is true for `.hot` and `.cpp`.
 - A `.hot` closure call costs 2.5x. A `.hot` `std.vector` index costs 1.4x. The `.cpp` twins of both run at native speed.
 - A reload of 100 objects with 65 fields takes 0.10 ms in `files` and 1.4 ms in `jit`. The compile is not in it.
@@ -111,7 +111,7 @@ Time in ns for one operation. The ratio is in parentheses. There is one table fo
 | handle dereference and null check | 9.85 | 10.5 (1.1x) | n/a |
 | pointer dereference and null check | 0.41 | n/a | 0.80 (1.9x) |
 | string interpolation or concatenation | 72.4 | 59.7 (0.82x) | 68.1 (0.94x) |
-| `new` and free of a script object | 10.5 | 57.5 (5.5x) | 35.6 (3.4x) |
+| `new` and free of a script object | 10.8 | 47.3 (4.4x) | 35.0 (3.2x) |
 | closure call | 1.75 | 4.39 (2.5x) | 1.75 (1.0x) |
 | loop with a method call | 1.26 | 1.25 (0.99x) | 1.26 (1.0x) |
 | field of another object (handle or pointer) | 0.62 | 0.59 (0.95x) | 0.59 (0.95x) |
@@ -137,7 +137,7 @@ Time in ns for one operation. The ratio is in parentheses. There is one table fo
 | handle dereference and null check | 9.85 | 10.4 (1.1x) | n/a |
 | pointer dereference and null check | 0.41 | n/a | 0.80 (1.9x) |
 | string interpolation or concatenation | 72.4 | 58.5 (0.81x) | 65.9 (0.91x) |
-| `new` and free of a script object | 10.5 | 57.3 (5.4x) | 36.2 (3.4x) |
+| `new` and free of a script object | 10.8 | 48.1 (4.5x) | 36.8 (3.4x) |
 | closure call | 1.75 | 4.42 (2.5x) | 1.75 (1.0x) |
 | loop with a method call | 1.26 | 1.25 (0.99x) | 1.26 (0.99x) |
 | field of another object (handle or pointer) | 0.62 | 0.59 (0.95x) | 0.61 (0.99x) |
@@ -163,7 +163,7 @@ Time in ns for one operation. The ratio is in parentheses. There is one table fo
 | handle dereference and null check | 9.85 | 10.4 (1.1x) | n/a |
 | pointer dereference and null check | 0.41 | n/a | 0.80 (1.9x) |
 | string interpolation or concatenation | 72.4 | 57.7 (0.80x) | 66.2 (0.91x) |
-| `new` and free of a script object | 10.5 | 61.4 (5.8x) | 35.2 (3.3x) |
+| `new` and free of a script object | 10.8 | 50.4 (4.6x) | 36.5 (3.4x) |
 | closure call | 1.75 | 4.38 (2.5x) | 1.75 (1.0x) |
 | loop with a method call | 1.26 | 1.26 (1.0x) | 1.26 (1.0x) |
 | field of another object (handle or pointer) | 0.62 | 0.61 (0.99x) | 0.58 (0.94x) |
@@ -178,7 +178,7 @@ Some rows depend on the backend:
 - The call from the host into a script (the first two rows) costs 5.26 ns in `files`. It costs 5.56 ns in `jit` and 4.9 ns in `aot`.
 - The script to native call costs 2.05 ns in `files` and in `jit`. It costs 1.46 ns in `aot`: the call is direct there.
 - The `.hot` script to script virtual call is 2.20 ns in `files` and 2.6 ns in `jit` and `aot`. The `.cpp` call is 2.18 to 2.35 ns.
-- `new` and free of a `.hot` object cost 57.5 ns in `files` and 57.3 ns in `jit`. They cost 61.4 ns in `aot`.
+- `new` and free of a `.hot` object cost 47.3 ns in `files`, 48.1 ns in `jit` and 50.4 ns in `aot`.
 
 The string row is nearly the same in the three backends: `.hot` 0.80x to 0.82x and `.cpp` 0.91x to 0.94x.
 
@@ -203,7 +203,7 @@ The `.hot` handle chain is 10.5 ns. The native twin of that row holds `std::shar
 
 ## The cost of `new`
 
-The `.hot` case makes an object with `new`, writes a field and frees the object. A script object has two parts. The shell is the object that native code sees. The state block holds the fields, and a reload can replace it. A `std::shared_ptr` owns the shell. So one `new` makes three blocks of memory.
+The `.hot` case makes an object with `new`, writes a field and frees the object. A script object has two parts. The shell is the object that native code sees. The state block holds the fields, and a reload can replace it. A `std::shared_ptr` owns the shell. One block holds the shell and the control block of the `std::shared_ptr` (as `std::make_shared` does). So one `new` makes two blocks of memory: the shell block and the state block.
 
 The `.cpp` case does `new` and `delete` with a raw pointer. The `.cpp` object has a shell and a state block, but no `std::shared_ptr`.
 
@@ -211,19 +211,36 @@ The native twins do the same work with other owners. Each cell has two ratios, `
 
 | Native owner | native | files | jit | aot |
 |---|---|---|---|---|
-| `std::make_shared<T>()` | 10.5 | 5.5x / 3.4x | 5.4x / 3.4x | 5.8x / 3.3x |
-| `std::shared_ptr<T>(new T)` | 17.6 | 3.3x / 2.0x | 3.3x / 2.1x | 3.5x / 2.0x |
-| `std::make_unique<T>()` | 8.18 | 7.0x / 4.3x | 7.0x / 4.4x | 7.5x / 4.3x |
-| raw `new T` and `delete` | 8.19 | 7.0x / 4.3x | 7.0x / 4.4x | 7.5x / 4.3x |
-| intrusive pointer (atomic count) | 14.1 | 4.1x / 2.5x | 4.1x / 2.6x | 4.3x / 2.5x |
-| virtual base + state block, `shared_ptr(new T)` | 37.7 | 1.5x / 0.94x | 1.5x / 0.96x | 1.6x / 0.94x |
-| same, with a hash map of live objects | 64.5 | 0.89x / 0.55x | 0.89x / 0.56x | 0.95x / 0.55x |
+| `std::make_shared<T>()` | 10.8 | 4.4x / 3.2x | 4.5x / 3.4x | 4.6x / 3.4x |
+| `std::shared_ptr<T>(new T)` | 17.7 | 2.7x / 2.0x | 2.7x / 2.1x | 2.9x / 2.1x |
+| `std::make_unique<T>()` | 8.19 | 5.8x / 4.3x | 5.9x / 4.5x | 6.2x / 4.5x |
+| raw `new T` and `delete` | 8.20 | 5.7x / 4.3x | 5.9x / 4.5x | 6.2x / 4.5x |
+| intrusive pointer (atomic count) | 14.2 | 3.3x / 2.5x | 3.4x / 2.6x | 3.6x / 2.6x |
+| virtual base + state block, `shared_ptr(new T)` | 38.8 | 1.2x / 0.90x | 1.2x / 0.97x | 1.3x / 0.96x |
+| same, with a hash map of live objects | 64.5 | 0.72x / 0.55x | 0.75x / 0.57x | 0.78x / 0.57x |
 
-The `.hot` time is 57 to 61 ns, and the `.cpp` time is 35 to 36 ns. The `.hot` object has a `std::shared_ptr` with an atomic count. The `.cpp` object has not.
+The `.hot` time is 47 to 50 ns, and the `.cpp` time is 35 to 37 ns. The `.hot` object has a `std::shared_ptr` with an atomic count. The `.cpp` object has not. Three other runs gave up to 5 ns more for `.hot` in `jit` and `aot`.
 
-The last two rows have the shape of a script object. The class has a virtual base. Its constructor allocates a state block and runs the field initializers through a table. The `.hot` script is about 1.5x of the first of the two. The difference is the work that a reload needs: the list of live objects and the constructor lookup. The `.cpp` script is at 0.94x to 0.96x of the same twin. A profile shows that `malloc` and `free` take about half of the script time. The native time of the shell row changed by 12% between runs, so its ratios are less sure.
+The last two rows have the shape of a script object. The class has a virtual base. Its constructor allocates a state block and runs the field initializers through a table. The `.hot` script is 1.2x to 1.3x of the first of the two. That twin makes three blocks, and the script makes two. The `.cpp` script is at 0.90x to 0.97x of the same twin. The native time of the shell row changed by 12% between runs, so its ratios are less sure.
 
 The last row has a hash map for the list of live objects. The script does not use a hash map: the list is in the object. So the script is faster than that twin.
+
+A micro benchmark of the same object shows where the time of a `.hot` `new` goes. It ran on one core, in a process with more than one thread. The values are approximate (about 1 to 2 ns):
+
+| Step | ns |
+|---|---|
+| `malloc` and `free` of the shell | 7.5 |
+| `malloc` and `free` of the state block | 3.6 |
+| the constructor of the shell and the virtual destructor call | 3.8 |
+| the record, the owner pointer and the size of the block | 2.6 |
+| the script entry and the destructor check of `destroy_state` | 2.5 |
+| the field initializers and destructors through the table | 4.1 |
+| the list of live objects (insert and erase) | 3 to 5 |
+| the constructor lookup through the canonical record | 1 |
+| the allocator of the shared block (`make_shared_shell`) | 3 |
+| the control block and the atomic counts of the `std::shared_ptr` | 13 |
+
+In the old layout, the `std::shared_ptr` had its own block, for 8 ns more. The old constructor lookup compared the key text, for 5 ns more. The atomic counts of `std::enable_shared_from_this` cost most of the last step. The base of a script class has it, because `this` can become a handle. A `std::weak_ptr` keeps the shell block until the `std::weak_ptr` goes. The destructor runs and the state block goes with the last `std::shared_ptr`.
 
 ## Reloadable access and calls
 

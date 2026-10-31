@@ -57,7 +57,7 @@ TEST(ScriptKindsTranslation, NewOfAShellClassGivesAHandle)
         "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "std::shared_ptr<Squad> kid")) << r.cpp;
-    EXPECT_TRUE(has(r, "std::shared_ptr<Squad>(Squad__new(3))")) << r.cpp;
+    EXPECT_TRUE(has(r, "std::shared_ptr<Squad>(Squad__new_shared(3))")) << r.cpp;
 }
 
 TEST(ScriptKindsTranslation, PlainClassUsesThePlainObjectBase)
@@ -70,7 +70,7 @@ TEST(ScriptKindsTranslation, PlainClassUsesThePlainObjectBase)
         "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "hot::PlainObject")) << r.cpp;
-    EXPECT_TRUE(has(r, "std::shared_ptr<Counter>(Counter__new(1))")) << r.cpp;
+    EXPECT_TRUE(has(r, "std::shared_ptr<Counter>(Counter__new_shared(1))")) << r.cpp;
 }
 
 TEST(ScriptKindsTranslation, ValueClassIsAStructWithCopySemantics)

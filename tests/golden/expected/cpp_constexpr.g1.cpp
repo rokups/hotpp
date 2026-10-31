@@ -199,24 +199,29 @@ HOT_HIDDEN static void Limiter__ctor_chain(Limiter_Shell* __self, [[maybe_unused
 #line 200 "cpp_constexpr.cpp.cpp"
 using Limiter_SuperArgs = decltype(Limiter__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
-// "key" names the type of the arguments. An unknown key gives nullptr.
+// "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
+// gives a shell from "new". Else the shell is made in "mem".
 #line 16 "cpp_constexpr.cpp"
-HOT_NODEBUG static hot::ShellBase* Limiter__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Limiter__construct(void* mem, const char* key, const void* args)
 #line 16 "cpp_constexpr.cpp"
 {
 #line 16 "cpp_constexpr.cpp"
-    if (std::strcmp(key, typeid(Limiter_SuperArgs).name()) == 0) {
+    if (key == typeid(Limiter_SuperArgs).name() || std::strcmp(key, typeid(Limiter_SuperArgs).name()) == 0) {
 #line 16 "cpp_constexpr.cpp"
         const auto& t = *static_cast<const Limiter_SuperArgs*>(args);
 #line 16 "cpp_constexpr.cpp"
-        return std::apply([](auto&... x) -> hot::ShellBase* { return new Limiter_Shell(hot::Construct{}, x...); }, t);
+        return std::apply([mem](auto&... x) -> hot::ShellBase* {
+#line 16 "cpp_constexpr.cpp"
+            return mem ? ::new (mem) Limiter_Shell(hot::Construct{}, x...) : new Limiter_Shell(hot::Construct{}, x...);
+#line 16 "cpp_constexpr.cpp"
+        }, t);
 #line 16 "cpp_constexpr.cpp"
     }
 #line 16 "cpp_constexpr.cpp"
     return nullptr;
 #line 16 "cpp_constexpr.cpp"
 }
-#line 220 "cpp_constexpr.cpp.cpp"
+#line 225 "cpp_constexpr.cpp.cpp"
 
 static const char* const Limiter__construct_keys[] = {typeid(Limiter_SuperArgs).name(), nullptr};
 
@@ -244,7 +249,7 @@ HOT_HIDDEN static Limiter_Shell* Limiter__build([[maybe_unused]] bool __note)
     return __self;
 #line 21 "cpp_constexpr.cpp"
 }
-#line 248 "cpp_constexpr.cpp.cpp"
+#line 253 "cpp_constexpr.cpp.cpp"
 #line 21 "cpp_constexpr.cpp"
 [[maybe_unused]] HOT_HIDDEN static Limiter_Shell* Limiter__new()
 #line 21 "cpp_constexpr.cpp"
@@ -253,7 +258,24 @@ HOT_HIDDEN static Limiter_Shell* Limiter__build([[maybe_unused]] bool __note)
     return Limiter__build(true);
 #line 21 "cpp_constexpr.cpp"
 }
-#line 257 "cpp_constexpr.cpp.cpp"
+#line 262 "cpp_constexpr.cpp.cpp"
+#line 21 "cpp_constexpr.cpp"
+template <int = 0>
+#line 21 "cpp_constexpr.cpp"
+[[maybe_unused]] HOT_HIDDEN static std::shared_ptr<Limiter_Shell> Limiter__new_shared()
+#line 21 "cpp_constexpr.cpp"
+{
+#line 21 "cpp_constexpr.cpp"
+    auto __plan = Limiter__plan();
+#line 21 "cpp_constexpr.cpp"
+    auto __h = hot::make_shared_shell<Limiter_Shell>(&Limiter_record, typeid(Limiter_SuperArgs).name(), &__plan.first);
+#line 21 "cpp_constexpr.cpp"
+    Limiter__ctor_chain(__h.get(), __plan.second);
+#line 21 "cpp_constexpr.cpp"
+    return __h;
+#line 21 "cpp_constexpr.cpp"
+}
+#line 279 "cpp_constexpr.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -265,7 +287,7 @@ HOT_NODEBUG static hot::ShellBase* Limiter__new_default()
     return Limiter__build(false);
 #line 21 "cpp_constexpr.cpp"
 }
-#line 269 "cpp_constexpr.cpp.cpp"
+#line 291 "cpp_constexpr.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Limiter_slots[SLOT_COUNT] = {
@@ -298,7 +320,7 @@ HOT_NODEBUG static hot::Instance Limiter_create()
 #line 16 "cpp_constexpr.cpp"
         auto plan = Limiter__plan();
 #line 16 "cpp_constexpr.cpp"
-        s = Limiter__construct(typeid(Limiter_SuperArgs).name(), &plan.first);
+        s = Limiter__construct(nullptr, typeid(Limiter_SuperArgs).name(), &plan.first);
 #line 16 "cpp_constexpr.cpp"
     }
 #line 16 "cpp_constexpr.cpp"
@@ -307,7 +329,7 @@ HOT_NODEBUG static hot::Instance Limiter_create()
     return {static_cast<Actor*>(p), p};
 #line 16 "cpp_constexpr.cpp"
 }
-#line 311 "cpp_constexpr.cpp.cpp"
+#line 333 "cpp_constexpr.cpp.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 21 "cpp_constexpr.cpp"
@@ -318,7 +340,7 @@ HOT_NODEBUG static hot::Instance Limiter_create()
     return state_of(__self)->ctor();
 #line 21 "cpp_constexpr.cpp"
 }
-#line 322 "cpp_constexpr.cpp.cpp"
+#line 344 "cpp_constexpr.cpp.cpp"
 #line 21 "cpp_constexpr.cpp"
 void LimiterState_g1::ctor()
 #line 21 "cpp_constexpr.cpp"
@@ -341,7 +363,7 @@ void LimiterState_g1::ctor()
 
 #line 21 "cpp_constexpr.cpp"
 }
-#line 345 "cpp_constexpr.cpp.cpp"
+#line 367 "cpp_constexpr.cpp.cpp"
 
 #line 23 "cpp_constexpr.cpp"
 void LimiterState_g1::Tick(float dt)
@@ -369,7 +391,7 @@ void LimiterState_g1::Tick(float dt)
     
 #line 28 "cpp_constexpr.cpp"
 }
-#line 373 "cpp_constexpr.cpp.cpp"
+#line 395 "cpp_constexpr.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

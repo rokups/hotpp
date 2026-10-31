@@ -188,24 +188,29 @@ HOT_HIDDEN static auto Tracker__plan()
 #line 189 "native_std_v1.hot.cpp"
 using Tracker_SuperArgs = decltype(Tracker__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
-// "key" names the type of the arguments. An unknown key gives nullptr.
+// "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
+// gives a shell from "new". Else the shell is made in "mem".
 #line 10 "native_std_v1.hot"
-HOT_NODEBUG static hot::ShellBase* Tracker__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Tracker__construct(void* mem, const char* key, const void* args)
 #line 10 "native_std_v1.hot"
 {
 #line 10 "native_std_v1.hot"
-    if (std::strcmp(key, typeid(Tracker_SuperArgs).name()) == 0) {
+    if (key == typeid(Tracker_SuperArgs).name() || std::strcmp(key, typeid(Tracker_SuperArgs).name()) == 0) {
 #line 10 "native_std_v1.hot"
         const auto& t = *static_cast<const Tracker_SuperArgs*>(args);
 #line 10 "native_std_v1.hot"
-        return std::apply([](auto&... x) -> hot::ShellBase* { return new Tracker_Shell(hot::Construct{}, x...); }, t);
+        return std::apply([mem](auto&... x) -> hot::ShellBase* {
+#line 10 "native_std_v1.hot"
+            return mem ? ::new (mem) Tracker_Shell(hot::Construct{}, x...) : new Tracker_Shell(hot::Construct{}, x...);
+#line 10 "native_std_v1.hot"
+        }, t);
 #line 10 "native_std_v1.hot"
     }
 #line 10 "native_std_v1.hot"
     return nullptr;
 #line 10 "native_std_v1.hot"
 }
-#line 209 "native_std_v1.hot.cpp"
+#line 214 "native_std_v1.hot.cpp"
 
 static const char* const Tracker__construct_keys[] = {typeid(Tracker_SuperArgs).name(), nullptr};
 
@@ -221,7 +226,7 @@ HOT_HIDDEN static Tracker_Shell* Tracker__build([[maybe_unused]] bool __note)
     return __self;
 #line 10 "native_std_v1.hot"
 }
-#line 225 "native_std_v1.hot.cpp"
+#line 230 "native_std_v1.hot.cpp"
 #line 10 "native_std_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Tracker_Shell* Tracker__new()
 #line 10 "native_std_v1.hot"
@@ -230,7 +235,22 @@ HOT_HIDDEN static Tracker_Shell* Tracker__build([[maybe_unused]] bool __note)
     return Tracker__build(true);
 #line 10 "native_std_v1.hot"
 }
-#line 234 "native_std_v1.hot.cpp"
+#line 239 "native_std_v1.hot.cpp"
+#line 10 "native_std_v1.hot"
+template <int = 0>
+#line 10 "native_std_v1.hot"
+[[maybe_unused]] HOT_HIDDEN static std::shared_ptr<Tracker_Shell> Tracker__new_shared()
+#line 10 "native_std_v1.hot"
+{
+#line 10 "native_std_v1.hot"
+    auto __plan = Tracker__plan();
+#line 10 "native_std_v1.hot"
+    auto __h = hot::make_shared_shell<Tracker_Shell>(&Tracker_record, typeid(Tracker_SuperArgs).name(), &__plan.first);
+#line 10 "native_std_v1.hot"
+    return __h;
+#line 10 "native_std_v1.hot"
+}
+#line 254 "native_std_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Tracker_slots[SLOT_COUNT] = {
@@ -258,7 +278,7 @@ HOT_NODEBUG static hot::Instance Tracker_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "native_std_v1.hot"
 }
-#line 262 "native_std_v1.hot.cpp"
+#line 282 "native_std_v1.hot.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 18 "native_std_v1.hot"
@@ -307,7 +327,7 @@ void TrackerState_g1::Tick(float dt)
     HOT_TRACE_LINE(); hot::deref(__st->history).push_back(static_cast<int32_t>(hot::deref(__st->history).size()) * 10);
 #line 32 "native_std_v1.hot"
 }
-#line 311 "native_std_v1.hot.cpp"
+#line 331 "native_std_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

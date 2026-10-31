@@ -226,24 +226,29 @@ HOT_HIDDEN static void Minion__ctor_chain(Minion_Shell* __self, [[maybe_unused]]
 #line 227 "cpp_objects_v2.cpp.cpp"
 using Minion_SuperArgs = decltype(Minion__plan(std::declval<int>()).first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
-// "key" names the type of the arguments. An unknown key gives nullptr.
+// "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
+// gives a shell from "new". Else the shell is made in "mem".
 #line 6 "cpp_objects_v2.cpp"
-HOT_NODEBUG static hot::ShellBase* Minion__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Minion__construct(void* mem, const char* key, const void* args)
 #line 6 "cpp_objects_v2.cpp"
 {
 #line 6 "cpp_objects_v2.cpp"
-    if (std::strcmp(key, typeid(Minion_SuperArgs).name()) == 0) {
+    if (key == typeid(Minion_SuperArgs).name() || std::strcmp(key, typeid(Minion_SuperArgs).name()) == 0) {
 #line 6 "cpp_objects_v2.cpp"
         const auto& t = *static_cast<const Minion_SuperArgs*>(args);
 #line 6 "cpp_objects_v2.cpp"
-        return std::apply([](auto&... x) -> hot::ShellBase* { return new Minion_Shell(hot::Construct{}, x...); }, t);
+        return std::apply([mem](auto&... x) -> hot::ShellBase* {
+#line 6 "cpp_objects_v2.cpp"
+            return mem ? ::new (mem) Minion_Shell(hot::Construct{}, x...) : new Minion_Shell(hot::Construct{}, x...);
+#line 6 "cpp_objects_v2.cpp"
+        }, t);
 #line 6 "cpp_objects_v2.cpp"
     }
 #line 6 "cpp_objects_v2.cpp"
     return nullptr;
 #line 6 "cpp_objects_v2.cpp"
 }
-#line 247 "cpp_objects_v2.cpp.cpp"
+#line 252 "cpp_objects_v2.cpp.cpp"
 
 static const char* const Minion__construct_keys[] = {typeid(Minion_SuperArgs).name(), nullptr};
 
@@ -271,7 +276,7 @@ HOT_HIDDEN static Minion_Shell* Minion__build([[maybe_unused]] bool __note, int 
     return __self;
 #line 9 "cpp_objects_v2.cpp"
 }
-#line 275 "cpp_objects_v2.cpp.cpp"
+#line 280 "cpp_objects_v2.cpp.cpp"
 #line 9 "cpp_objects_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static Minion_Shell* Minion__new(int p = 1)
 #line 9 "cpp_objects_v2.cpp"
@@ -280,7 +285,24 @@ HOT_HIDDEN static Minion_Shell* Minion__build([[maybe_unused]] bool __note, int 
     return Minion__build(true, p);
 #line 9 "cpp_objects_v2.cpp"
 }
-#line 284 "cpp_objects_v2.cpp.cpp"
+#line 289 "cpp_objects_v2.cpp.cpp"
+#line 9 "cpp_objects_v2.cpp"
+template <int = 0>
+#line 9 "cpp_objects_v2.cpp"
+[[maybe_unused]] HOT_HIDDEN static std::shared_ptr<Minion_Shell> Minion__new_shared(int p = 1)
+#line 9 "cpp_objects_v2.cpp"
+{
+#line 9 "cpp_objects_v2.cpp"
+    auto __plan = Minion__plan(p);
+#line 9 "cpp_objects_v2.cpp"
+    auto __h = hot::make_shared_shell<Minion_Shell>(&Minion_record, typeid(Minion_SuperArgs).name(), &__plan.first);
+#line 9 "cpp_objects_v2.cpp"
+    Minion__ctor_chain(__h.get(), __plan.second, p);
+#line 9 "cpp_objects_v2.cpp"
+    return __h;
+#line 9 "cpp_objects_v2.cpp"
+}
+#line 306 "cpp_objects_v2.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -292,7 +314,7 @@ HOT_NODEBUG static hot::ShellBase* Minion__new_default()
     return Minion__build(false, 1);
 #line 9 "cpp_objects_v2.cpp"
 }
-#line 296 "cpp_objects_v2.cpp.cpp"
+#line 318 "cpp_objects_v2.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Minion_slots[Minion_SLOT_COUNT] = {
@@ -328,7 +350,7 @@ HOT_NODEBUG static hot::Instance Minion_create()
 #line 6 "cpp_objects_v2.cpp"
         auto plan = Minion__plan(1);
 #line 6 "cpp_objects_v2.cpp"
-        s = Minion__construct(typeid(Minion_SuperArgs).name(), &plan.first);
+        s = Minion__construct(nullptr, typeid(Minion_SuperArgs).name(), &plan.first);
 #line 6 "cpp_objects_v2.cpp"
     }
 #line 6 "cpp_objects_v2.cpp"
@@ -337,7 +359,7 @@ HOT_NODEBUG static hot::Instance Minion_create()
     return {static_cast<Actor*>(p), p};
 #line 6 "cpp_objects_v2.cpp"
 }
-#line 341 "cpp_objects_v2.cpp.cpp"
+#line 363 "cpp_objects_v2.cpp.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 9 "cpp_objects_v2.cpp"
@@ -348,7 +370,7 @@ HOT_NODEBUG static hot::Instance Minion_create()
     return state_of(__self)->ctor(std::forward<int>(p));
 #line 9 "cpp_objects_v2.cpp"
 }
-#line 352 "cpp_objects_v2.cpp.cpp"
+#line 374 "cpp_objects_v2.cpp.cpp"
 #line 9 "cpp_objects_v2.cpp"
 void MinionState_g2::ctor(int p)
 #line 9 "cpp_objects_v2.cpp"
@@ -371,7 +393,7 @@ void MinionState_g2::ctor(int p)
  power = p; 
 #line 9 "cpp_objects_v2.cpp"
 }
-#line 375 "cpp_objects_v2.cpp.cpp"
+#line 397 "cpp_objects_v2.cpp.cpp"
 
 #line 11 "cpp_objects_v2.cpp"
 void MinionState_g2::Tick(float dt)
@@ -395,7 +417,7 @@ void MinionState_g2::Tick(float dt)
  __self->Move(Vec3(dt, 0, 0)); 
 #line 11 "cpp_objects_v2.cpp"
 }
-#line 399 "cpp_objects_v2.cpp.cpp"
+#line 421 "cpp_objects_v2.cpp.cpp"
 
 #line 13 "cpp_objects_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Minion__boost(Minion_Shell* __self, int v)
@@ -405,7 +427,7 @@ void MinionState_g2::Tick(float dt)
     return state_of(__self)->boost(std::forward<int>(v));
 #line 13 "cpp_objects_v2.cpp"
 }
-#line 409 "cpp_objects_v2.cpp.cpp"
+#line 431 "cpp_objects_v2.cpp.cpp"
 #line 13 "cpp_objects_v2.cpp"
 void MinionState_g2::boost(int v)
 #line 13 "cpp_objects_v2.cpp"
@@ -428,7 +450,7 @@ void MinionState_g2::boost(int v)
  power += 2 * v; 
 #line 13 "cpp_objects_v2.cpp"
 }
-#line 432 "cpp_objects_v2.cpp.cpp"
+#line 454 "cpp_objects_v2.cpp.cpp"
 
 #line 14 "cpp_objects_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Minion__total(Minion_Shell* __self)
@@ -438,7 +460,7 @@ void MinionState_g2::boost(int v)
     return state_of(__self)->total();
 #line 14 "cpp_objects_v2.cpp"
 }
-#line 442 "cpp_objects_v2.cpp.cpp"
+#line 464 "cpp_objects_v2.cpp.cpp"
 #line 14 "cpp_objects_v2.cpp"
 int MinionState_g2::total()
 #line 14 "cpp_objects_v2.cpp"
@@ -461,7 +483,7 @@ int MinionState_g2::total()
  return power + hits; 
 #line 14 "cpp_objects_v2.cpp"
 }
-#line 465 "cpp_objects_v2.cpp.cpp"
+#line 487 "cpp_objects_v2.cpp.cpp"
 
 #line 17 "cpp_objects_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Minion__copy_from(Minion_Shell* __self, const Minion & other)
@@ -471,7 +493,7 @@ int MinionState_g2::total()
     return state_of(__self)->copy_from(std::forward<const Minion &>(other));
 #line 17 "cpp_objects_v2.cpp"
 }
-#line 475 "cpp_objects_v2.cpp.cpp"
+#line 497 "cpp_objects_v2.cpp.cpp"
 #line 17 "cpp_objects_v2.cpp"
 void MinionState_g2::copy_from(const Minion & other)
 #line 17 "cpp_objects_v2.cpp"
@@ -494,13 +516,13 @@ void MinionState_g2::copy_from(const Minion & other)
  power = state_of(const_cast<Minion_Shell*>(&(other)))->power; 
 #line 17 "cpp_objects_v2.cpp"
 }
-#line 498 "cpp_objects_v2.cpp.cpp"
+#line 520 "cpp_objects_v2.cpp.cpp"
 
 
 #line 20 "cpp_objects_v2.cpp"
 Minion_Shell* Minion__s_spawn(int p) { return Minion__new(p); }
 
-#line 504 "cpp_objects_v2.cpp.cpp"
+#line 526 "cpp_objects_v2.cpp.cpp"
 
 #line 33 "cpp_objects_v2.cpp"
 static Minion_Shell* find_minion(Actor* a)
@@ -508,7 +530,7 @@ static Minion_Shell* find_minion(Actor* a)
     return hot::as_script<Minion_Shell>(a, "Minion");
 }
 
-#line 512 "cpp_objects_v2.cpp.cpp"
+#line 534 "cpp_objects_v2.cpp.cpp"
 
 // ---------------------------------------------------------------- class Spawner
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -535,7 +557,7 @@ struct Spawner_Shell final : Actor, hot::ShellBase {
     }
 #line 38 "cpp_objects_v2.cpp"
     ~Spawner_Shell() override { hot::destroy_state(this); }
-#line 539 "cpp_objects_v2.cpp.cpp"
+#line 561 "cpp_objects_v2.cpp.cpp"
 
 #line 38 "cpp_objects_v2.cpp"
     void Tick(float a0) override
@@ -545,7 +567,7 @@ struct Spawner_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Spawner_SLOT_Tick, a0);
 #line 38 "cpp_objects_v2.cpp"
     }
-#line 549 "cpp_objects_v2.cpp.cpp"
+#line 571 "cpp_objects_v2.cpp.cpp"
 
 #line 38 "cpp_objects_v2.cpp"
     void TakeDamage(float a0) override
@@ -555,7 +577,7 @@ struct Spawner_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Spawner_SLOT_TakeDamage_f, a0);
 #line 38 "cpp_objects_v2.cpp"
     }
-#line 559 "cpp_objects_v2.cpp.cpp"
+#line 581 "cpp_objects_v2.cpp.cpp"
 
 #line 38 "cpp_objects_v2.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -565,7 +587,7 @@ struct Spawner_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, Spawner_SLOT_TakeDamage_Af, a0, a1);
 #line 38 "cpp_objects_v2.cpp"
     }
-#line 569 "cpp_objects_v2.cpp.cpp"
+#line 591 "cpp_objects_v2.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -584,7 +606,7 @@ struct SpawnerState_g2 {
         return static_cast<Spawner_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 38 "cpp_objects_v2.cpp"
     }
-#line 588 "cpp_objects_v2.cpp.cpp"
+#line 610 "cpp_objects_v2.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 38 "cpp_objects_v2.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -594,12 +616,12 @@ struct SpawnerState_g2 {
         return static_cast<Spawner_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 38 "cpp_objects_v2.cpp"
     }
-#line 598 "cpp_objects_v2.cpp.cpp"
+#line 620 "cpp_objects_v2.cpp.cpp"
 };
 
 #line 59 "cpp_objects_v2.cpp"
 static void Spawner__init_last(void*, void* f) { using T = int; new (f) T(0); }
-#line 603 "cpp_objects_v2.cpp.cpp"
+#line 625 "cpp_objects_v2.cpp.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -648,27 +670,32 @@ HOT_HIDDEN static void Spawner__ctor_chain(Spawner_Shell* __self, [[maybe_unused
     Spawner__ctor(__self);
 #line 41 "cpp_objects_v2.cpp"
 }
-#line 652 "cpp_objects_v2.cpp.cpp"
+#line 674 "cpp_objects_v2.cpp.cpp"
 using Spawner_SuperArgs = decltype(Spawner__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
-// "key" names the type of the arguments. An unknown key gives nullptr.
+// "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
+// gives a shell from "new". Else the shell is made in "mem".
 #line 38 "cpp_objects_v2.cpp"
-HOT_NODEBUG static hot::ShellBase* Spawner__construct(const char* key, const void* args)
+HOT_NODEBUG static hot::ShellBase* Spawner__construct(void* mem, const char* key, const void* args)
 #line 38 "cpp_objects_v2.cpp"
 {
 #line 38 "cpp_objects_v2.cpp"
-    if (std::strcmp(key, typeid(Spawner_SuperArgs).name()) == 0) {
+    if (key == typeid(Spawner_SuperArgs).name() || std::strcmp(key, typeid(Spawner_SuperArgs).name()) == 0) {
 #line 38 "cpp_objects_v2.cpp"
         const auto& t = *static_cast<const Spawner_SuperArgs*>(args);
 #line 38 "cpp_objects_v2.cpp"
-        return std::apply([](auto&... x) -> hot::ShellBase* { return new Spawner_Shell(hot::Construct{}, x...); }, t);
+        return std::apply([mem](auto&... x) -> hot::ShellBase* {
+#line 38 "cpp_objects_v2.cpp"
+            return mem ? ::new (mem) Spawner_Shell(hot::Construct{}, x...) : new Spawner_Shell(hot::Construct{}, x...);
+#line 38 "cpp_objects_v2.cpp"
+        }, t);
 #line 38 "cpp_objects_v2.cpp"
     }
 #line 38 "cpp_objects_v2.cpp"
     return nullptr;
 #line 38 "cpp_objects_v2.cpp"
 }
-#line 672 "cpp_objects_v2.cpp.cpp"
+#line 699 "cpp_objects_v2.cpp.cpp"
 
 static const char* const Spawner__construct_keys[] = {typeid(Spawner_SuperArgs).name(), nullptr};
 
@@ -696,7 +723,7 @@ HOT_HIDDEN static Spawner_Shell* Spawner__build([[maybe_unused]] bool __note)
     return __self;
 #line 41 "cpp_objects_v2.cpp"
 }
-#line 700 "cpp_objects_v2.cpp.cpp"
+#line 727 "cpp_objects_v2.cpp.cpp"
 #line 41 "cpp_objects_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static Spawner_Shell* Spawner__new()
 #line 41 "cpp_objects_v2.cpp"
@@ -705,7 +732,24 @@ HOT_HIDDEN static Spawner_Shell* Spawner__build([[maybe_unused]] bool __note)
     return Spawner__build(true);
 #line 41 "cpp_objects_v2.cpp"
 }
-#line 709 "cpp_objects_v2.cpp.cpp"
+#line 736 "cpp_objects_v2.cpp.cpp"
+#line 41 "cpp_objects_v2.cpp"
+template <int = 0>
+#line 41 "cpp_objects_v2.cpp"
+[[maybe_unused]] HOT_HIDDEN static std::shared_ptr<Spawner_Shell> Spawner__new_shared()
+#line 41 "cpp_objects_v2.cpp"
+{
+#line 41 "cpp_objects_v2.cpp"
+    auto __plan = Spawner__plan();
+#line 41 "cpp_objects_v2.cpp"
+    auto __h = hot::make_shared_shell<Spawner_Shell>(&Spawner_record, typeid(Spawner_SuperArgs).name(), &__plan.first);
+#line 41 "cpp_objects_v2.cpp"
+    Spawner__ctor_chain(__h.get(), __plan.second);
+#line 41 "cpp_objects_v2.cpp"
+    return __h;
+#line 41 "cpp_objects_v2.cpp"
+}
+#line 753 "cpp_objects_v2.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -717,7 +761,7 @@ HOT_NODEBUG static hot::ShellBase* Spawner__new_default()
     return Spawner__build(false);
 #line 41 "cpp_objects_v2.cpp"
 }
-#line 721 "cpp_objects_v2.cpp.cpp"
+#line 765 "cpp_objects_v2.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Spawner_slots[Spawner_SLOT_COUNT] = {
@@ -750,7 +794,7 @@ HOT_NODEBUG static hot::Instance Spawner_create()
 #line 38 "cpp_objects_v2.cpp"
         auto plan = Spawner__plan();
 #line 38 "cpp_objects_v2.cpp"
-        s = Spawner__construct(typeid(Spawner_SuperArgs).name(), &plan.first);
+        s = Spawner__construct(nullptr, typeid(Spawner_SuperArgs).name(), &plan.first);
 #line 38 "cpp_objects_v2.cpp"
     }
 #line 38 "cpp_objects_v2.cpp"
@@ -759,7 +803,7 @@ HOT_NODEBUG static hot::Instance Spawner_create()
     return {static_cast<Actor*>(p), p};
 #line 38 "cpp_objects_v2.cpp"
 }
-#line 763 "cpp_objects_v2.cpp.cpp"
+#line 807 "cpp_objects_v2.cpp.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 41 "cpp_objects_v2.cpp"
@@ -770,7 +814,7 @@ HOT_NODEBUG static hot::Instance Spawner_create()
     return state_of(__self)->ctor();
 #line 41 "cpp_objects_v2.cpp"
 }
-#line 774 "cpp_objects_v2.cpp.cpp"
+#line 818 "cpp_objects_v2.cpp.cpp"
 #line 41 "cpp_objects_v2.cpp"
 void SpawnerState_g2::ctor()
 #line 41 "cpp_objects_v2.cpp"
@@ -793,7 +837,7 @@ void SpawnerState_g2::ctor()
 
 #line 41 "cpp_objects_v2.cpp"
 }
-#line 797 "cpp_objects_v2.cpp.cpp"
+#line 841 "cpp_objects_v2.cpp.cpp"
 
 #line 43 "cpp_objects_v2.cpp"
 void SpawnerState_g2::Tick(float dt)
@@ -830,7 +874,7 @@ void SpawnerState_g2::Tick(float dt)
     
 #line 57 "cpp_objects_v2.cpp"
 }
-#line 834 "cpp_objects_v2.cpp.cpp"
+#line 878 "cpp_objects_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

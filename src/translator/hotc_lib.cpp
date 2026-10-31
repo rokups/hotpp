@@ -5587,14 +5587,17 @@ void translate_impl(
                 o.w("using " + sa_name(k) + " = decltype(" + P + "plan(" + declvals + ").first);\n");
             }
             o.w("// Makes the shell with the base arguments. Only the first generation of the class runs it.\n");
-            o.w("// \"key\" names the type of the arguments. An unknown key gives nullptr.\n");
-            std::string construct_text =
-                "HOT_NODEBUG static hot::ShellBase* " + P + "construct(const char* key, const void* args)\n{\n";
+            o.w("// \"key\" names the type of the arguments. An unknown key gives nullptr. \"mem\" null\n");
+            o.w("// gives a shell from \"new\". Else the shell is made in \"mem\".\n");
+            std::string construct_text = "HOT_NODEBUG static hot::ShellBase* " + P
+                + "construct(void* mem, const char* key, const void* args)\n{\n";
+            // The key of the same module is the same pointer, so the compare of the text is rare.
             for (size_t k = 0; k < ctor_ms.size(); ++k)
-                construct_text += "    if (std::strcmp(key, typeid(" + sa_name(k)
-                    + ").name()) == 0) {\n        const auto& t = *static_cast<const " + sa_name(k)
-                    + "*>(args);\n        return \x01std::apply([](auto&... x) -> hot::ShellBase* { return new " + shell
-                    + "(hot::Construct{}, x...); }, t);\n    }\n";
+                construct_text += "    if (key == typeid(" + sa_name(k) + ").name() || std::strcmp(key, typeid("
+                    + sa_name(k) + ").name()) == 0) {\n        const auto& t = *static_cast<const " + sa_name(k)
+                    + "*>(args);\n        return \x01std::apply([mem](auto&... x) -> hot::ShellBase* {\n"
+                    + "            return mem ? ::new (mem) " + shell + "(hot::Construct{}, x...) : new " + shell
+                    + "(hot::Construct{}, x...);\n        }, t);\n    }\n";
             construct_text += "    return nullptr;\n}\n";
             mapped(construct_text, cd.line, cd.pos);
             o.w("\n");
@@ -5637,6 +5640,19 @@ void translate_impl(
                 mapped("[[maybe_unused]] HOT_HIDDEN static " + shell + "* " + P + "new(" + pd_def + ")\n{\n    return "
                         + P + "build(true" + ctor_fwd + ");\n}\n",
                     cline, cpos);
+                // "new" of a class with a std::shared_ptr handle: one block for the shell and the
+                // control block (make_shared_shell). An exception of the constructor frees the object
+                // through the handle. A template, so a class without such a "new" does not compile it.
+                std::string shared_text = "template <int = 0>\n[[maybe_unused]] HOT_HIDDEN static \x01std::shared_ptr<"
+                    + shell + "> " + P + "new_shared(" + pd_def + ")\n{\n";
+                shared_text += "    auto __plan = " + P + "plan("
+                    + (ctor_fwd.empty() ? std::string() : ctor_fwd.substr(2)) + ");\n";
+                shared_text += "    auto __h = hot::make_shared_shell<" + shell + ">(&" + cn + "_record, typeid("
+                    + sa_name(k) + ").name(), &__plan.first);\n";
+                if (has_entry)
+                    shared_text += "    " + entry + "(__h.get(), __plan.second" + ctor_fwd + ");\n";
+                shared_text += "    return __h;\n}\n";
+                mapped(shared_text, cline, cpos);
                 o.w("\n");
             }
             if (has_entry)
@@ -5962,7 +5978,7 @@ void translate_impl(
             const std::string defaults = default_args(ctor_ms[dflt], plan_locals);
             mapped("HOT_NODEBUG static hot::Instance " + cn + "_create()\n{\n    hot::ScriptEntry entry;  // the creation is an entry (S27)\n    hot::ShellBase* s = nullptr;\n    if (" + cn +
                        "_record.new_default) {\n        s = " + cn + "_record.new_default();\n    } else {\n" + plan_locals + "        auto plan = " + P +
-                       "plan(" + defaults + ");\n        s = " + P + "construct(typeid(" + sa_name(dflt) + ").name(), &plan.first);\n    }\n    auto* p = static_cast<" +
+                       "plan(" + defaults + ");\n        s = " + P + "construct(nullptr, typeid(" + sa_name(dflt) + ").name(), &plan.first);\n    }\n    auto* p = static_cast<" +
                        shell + "*>(s);\n    return {static_cast<" + B + "*>(p), p};\n}\n",
                    cd.line, cd.pos);
             o.w("\n");
