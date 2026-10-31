@@ -91,6 +91,12 @@ TEST(GoldenTranslation, Array)
     golden_pair("array");
 }
 
+// The runtime checks: "a[i]" is hot::index, "*p" is hot::star, and the catch types of the runtime.
+TEST(GoldenTranslation, Checks)
+{
+    golden_one("checks_v1");
+}
+
 TEST(GoldenTranslation, Props)
 {
     golden_one("props_v1");

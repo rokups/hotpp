@@ -1,5 +1,6 @@
 #include "hot/runtime/registry.h"
 
+#include "hot/runtime/errors.h"
 #include "hot/runtime/shell.h"
 #include "hot/runtime/state.h"
 
@@ -17,6 +18,10 @@ namespace
 std::atomic<uint64_t> g_detached_calls{0};
 std::mutex g_detached_mutex;
 std::set<std::pair<std::string, unsigned>> g_detached_logged;
+
+// This reference keeps errors.cpp in the link. The host must export the symbols of errors.cpp
+// to the script modules, but no host code names them. The linker would drop errors.o.
+[[gnu::used]] void (*const g_keep_errors)(const char*) = &detail::throw_null_reference;
 } // namespace
 
 void detached_call(const ClassRecord* cls, unsigned slot)

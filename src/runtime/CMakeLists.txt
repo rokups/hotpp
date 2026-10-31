@@ -2,7 +2,7 @@
 #   hot_runtime_core: the globals and the registry that generated code needs. An AOT
 #     build links only this part (design M7). It has no loader, no migration, no dlopen.
 #   hot_runtime: the core plus the state tracking, the migration and the generation loader.
-add_library(hot_runtime_core STATIC threads.cpp registry.cpp)
+add_library(hot_runtime_core STATIC threads.cpp registry.cpp errors.cpp)
 target_include_directories(hot_runtime_core PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
@@ -19,6 +19,11 @@ if(HOT_FORMAT_LIB STREQUAL "fmt")
         $<BUILD_INTERFACE:HOT_FMT_INCLUDE_DIR="${HOT_FMT_INCLUDE_DIR}">)
 else()
     target_compile_definitions(hot_runtime_core PUBLIC HOT_USE_FMT=0)
+endif()
+# The runtime checks (include/hot/config.h). The define is PUBLIC, so the export of the target
+# carries it: an installed host sees the setting of the SDK build.
+if(NOT HOT_RUNTIME_CHECKS)
+    target_compile_definitions(hot_runtime_core PUBLIC HOT_RUNTIME_CHECKS=0)
 endif()
 # The C++ standard of the host (include/hot/config.h). The backends use it for the compile of
 # the scripts and for the parse of the native headers. The target hotc_lib gets the same value.

@@ -89,6 +89,42 @@ const std::string* simple_name(const Expr& e)
     return &n->parts[0];
 }
 
+// A catch clause for an exception type of the runtime (include/hot/runtime/errors.h): the type
+// text "NullReference", "hot.IndexOutOfRange" or "const hot::ScriptError &" becomes
+// "const hot::X&". Another type text stays as it is.
+void normalize_runtime_catch_type(std::string& type)
+{
+    std::string t = type;
+    auto trim = [&t]()
+    {
+        const size_t b = t.find_first_not_of(" \t");
+        const size_t e = t.find_last_not_of(" \t");
+        t = b == std::string::npos ? std::string() : t.substr(b, e - b + 1);
+    };
+    trim();
+    if (t.compare(0, 6, "const ") == 0)
+    {
+        t.erase(0, 6);
+        trim();
+    }
+    if (!t.empty() && t.back() == '&')
+    {
+        t.pop_back();
+        trim();
+    }
+    for (const char* prefix : {"hot::", "hot."})
+    {
+        const size_t n = std::char_traits<char>::length(prefix);
+        if (t.compare(0, n, prefix) == 0)
+        {
+            t.erase(0, n);
+            break;
+        }
+    }
+    if (t == "NullReference" || t == "IndexOutOfRange" || t == "ScriptError")
+        type = "const hot::" + t + "&";
+}
+
 // The member of "this". Gives the node or null.
 const MemberExpr* this_member(const Expr& e)
 {
@@ -1834,7 +1870,10 @@ struct Lowerer
             for (CatchClause& c : tr->catches)
             {
                 if (!c.is_all)
+                {
                     declare(c.name, std::string());
+                    normalize_runtime_catch_type(c.type);
+                }
                 block(c.block);
             }
             if (tr->finally_block)

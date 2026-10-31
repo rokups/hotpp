@@ -151,6 +151,8 @@ CompileSetup make_invocation(const JitOptions& opt, const std::string& path, con
     }
     for (const std::string& f : format_compile_flags())
         args.push_back(f);
+    for (const std::string& f : checks_compile_flags())
+        args.push_back(f);
     if (!as_pch && !opt.pch_path.empty())
     {
         args.push_back("-include-pch");

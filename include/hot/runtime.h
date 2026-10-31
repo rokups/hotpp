@@ -7,6 +7,7 @@
 #include "hot/runtime/coalesce.h"
 #include "hot/runtime/deref.h"
 #include "hot/runtime/enumerate.h"
+#include "hot/runtime/errors.h"
 #include "hot/runtime/handles.h"
 #include "hot/runtime/hashing.h"
 #include "hot/runtime/loader.h"

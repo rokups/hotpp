@@ -1,6 +1,7 @@
 // The base of a generated shell, the slot call and the checked access to a shell.
 #pragma once
 #include "hot/runtime/compat.h"
+#include "hot/runtime/errors.h"
 #include "hot/runtime/hidden.h"
 #include "hot/runtime/records.h"
 #include "hot/runtime/threads.h"
@@ -81,7 +82,9 @@ template <class R> HOT_HIDDEN R detached_result()
 // signature of the slot. When the slot has a signature key (ClassRecord::slot_keys) and "Sig" is another signature, the
 // call detaches. The call is a script entry (threads.h). In StopTheWorld mode the entry is one flag check. The entry
 // starts before the read of the slot, so a commit cannot change the slot under it.
-template <class Sig, class... A> HOT_HIDDEN auto call(ShellBase* self, unsigned slot, A&&... a)
+// This form lets an exception pass to the caller. A call from one script function to another
+// script virtual function uses it, because the script caller can catch the exception.
+template <class Sig, class... A> HOT_HIDDEN auto call_script(ShellBase* self, unsigned slot, A&&... a)
 {
     ScriptEntry entry;
     const ClassRecord* cls = self->cls;
@@ -95,6 +98,42 @@ template <class Sig, class... A> HOT_HIDDEN auto call(ShellBase* self, unsigned 
     }
     using Pmf = typename detail::sig_pmf<Sig>::type;
     return (static_cast<StateBase*>(self->state)->*reinterpret_cast<Pmf>(cls->slots[slot]))(std::forward<A>(a)...);
+}
+
+// The call from the host into the script: a shell override of a native virtual function, and a
+// thunk of a delegate. This is the end of the script stack. A hot::ScriptError that the script does
+// not handle goes to hot::detail::report_unhandled (errors.h). Then the call returns a value-initialized
+// result. A result type with no default value (for example a reference) throws the exception again.
+// Any other exception passes to the host, which can catch it. A call inside another call (the
+// native code calls a script override while a script call runs) lets the error pass: only the
+// outermost call reports.
+// "NoExcept" is true for the shell override of a noexcept native virtual function. An exception
+// must not leave it, so it always reports and returns the result, also inside another call.
+template <class Sig, bool NoExcept = false, class... A>
+HOT_HIDDEN auto call(ShellBase* self, unsigned slot, A&&... a)
+{
+    // A call inside another call (script -> native -> script) is not the end of the script stack.
+    // The error passes to the script code that called, which can catch it.
+    struct Depth
+    {
+        HOT_HIDDEN Depth() { ++detail::call_depth(); }
+        HOT_HIDDEN ~Depth() { --detail::call_depth(); }
+    } depth;
+    try
+    {
+        return call_script<Sig>(self, slot, std::forward<A>(a)...);
+    }
+    catch (const ScriptError&)
+    {
+        if (!NoExcept && detail::call_depth() > 1)
+            throw;
+        detail::report_unhandled(self, std::current_exception());
+        using R = typename detail::sig_result<Sig>::type;
+        if constexpr (std::is_void_v<R> || std::is_default_constructible_v<R>)
+            return detail::detached_result<R>();
+        else
+            throw;
+    }
 }
 
 // Records that the code of "generation" made the object "self" (state.cpp). The loader keeps
@@ -159,11 +198,12 @@ template <class T> HOT_HIDDEN T* value_ptr(T* p)
 // Property access on an object other than "this" (lower.h). "p.P" becomes
 // "Cls__get_P(hot::shell_of<Cls_Shell>(p, "Cls"))". The helper accepts a pointer and
 // a reference. The object must be a live script object of the class "cls". Else the
-// helper throws std::runtime_error. A pointer to the shell itself needs no check.
+// helper throws std::runtime_error. A null object throws hot::NullReference. A pointer to the shell itself needs no check.
 template <class Shell, class T> HOT_HIDDEN Shell* shell_of(T* p, const char* cls)
 {
     if (!p)
-        throw std::runtime_error(std::string("the handle is null: expected a script object of class ") + cls);
+        detail::throw_null_reference(
+            (std::string("the handle is null: expected a script object of class ") + cls).c_str());
     if constexpr (std::is_const_v<T>)
     {
         // A ".cpp" script casts a const object. The script code is const-correct C++, so it

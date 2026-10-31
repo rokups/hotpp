@@ -1181,7 +1181,7 @@ struct class_p
         const ClassAttrs* a = class_attrs_of(attrs);
         TopItem t;
         // "T convert_<var>(Old old) { }" at file level is the convert hook of a module
-        // variable (DECISIONS.md item 14). Other functions must be members of a class.
+        // variable. Other functions must be members of a class.
         if (m.kind == Member::IsMethod && m.method.name.rfind("convert_", 0) == 0)
         {
             if (a && !a->used.empty())

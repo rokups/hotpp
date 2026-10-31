@@ -168,6 +168,8 @@ std::vector<std::string> compile_command(const ClangFilesOptions& opt, const std
     }
     for (const std::string& f : format_compile_flags())
         cmd.push_back(f);
+    for (const std::string& f : checks_compile_flags())
+        cmd.push_back(f);
     cmd.push_back(cpp_path);
     cmd.push_back("-o");
     cmd.push_back(out_so);

@@ -11,7 +11,7 @@
 //  - a script function used as a value (it has no address, because a reload replaces it).
 //
 // The pass sees the types that the script writes. A "var" local from a native call or member
-// gets its type from libclang (VarDeclStmt::native_type, S20b). See HANDOFF.md for the gaps.
+// gets its type from libclang (VarDeclStmt::native_type, S20b).
 #pragma once
 
 #include "ast.h"

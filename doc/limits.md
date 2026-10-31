@@ -15,6 +15,8 @@ This list shows what version 1 does not support.
 - A stored `T&` or `T*`. A borrowed value cannot go to a field. The option `--no-strict-borrowed` makes this a warning. See [Borrowing](borrowing.html).
 - Free functions. Only the `convert_` hooks can stand at file level.
 - A collection literal without a declared type: `var x = [1, 2];` is an error.
+- Runtime checks (null and bounds) in `.cpp` scripts. They cover `.hot` scripts only. They also skip a C++ container other than `std::array` and a C array, and they skip a throw in a constructor.
+- A `noexcept` native virtual that a script overrides and whose result has no default value (a reference, for example). An unhandled `ScriptError` there ends the program.
 - Access checks on native members. Only members of known script types are checked.
 - Brace initializers. Write `T(args)`.
 - `::` and `->`. Write `.`.

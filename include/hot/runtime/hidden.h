@@ -3,6 +3,14 @@
 
 // A small helper that the generated code calls. It inlines at the call site and has no debug
 // info of its own, so "step into" on a script line does not enter it.
+// HOT_EXPORT keeps a symbol visible outside its module. The AOT libraries build with
+// -fvisibility=hidden. A type whose RTTI must match across the host and a script module needs it.
+#if defined(__clang__) || defined(__GNUC__)
+    #define HOT_EXPORT [[gnu::visibility("default")]]
+#else
+    #define HOT_EXPORT
+#endif
+
 #if defined(__clang__) || defined(__GNUC__)
     #define HOT_HIDDEN [[gnu::always_inline, gnu::nodebug]] inline
 #elif defined(_MSC_VER)

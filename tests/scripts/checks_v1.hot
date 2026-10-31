@@ -1,0 +1,38 @@
+// Generation 1 of the Checks class: the null and bounds checks of the runtime.
+using "Actor.h";
+
+class Checks : Actor {
+    int[4] vals;
+
+    int at(int i) {
+        return this.vals[i];
+    }
+
+    int load(int* p) {
+        return *p;
+    }
+
+    int safe_at(int i) {
+        try {
+            return this.vals[i];
+        } catch (IndexOutOfRange e) {
+            return -1;
+        }
+    }
+
+    int safe_load(int* p) {
+        try {
+            return *p;
+        } catch (const hot.NullReference& e) {
+            return -1;
+        } catch (hot.ScriptError e) {
+            return -2;
+        } catch (...) {
+            return -3;
+        }
+    }
+
+    void first_member(Actor* other) {
+        other.Move(Vec3());
+    }
+}

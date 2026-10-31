@@ -170,7 +170,7 @@ HOT_HIDDEN BaseState_g2* state_of(Base_Shell* __self)
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Base__Power_virt(Base_Shell* __self)
 {
-    return hot::call<int32_t(Actor*)>(__self, Base_SLOT_Power);
+    return hot::call_script<int32_t(Actor*)>(__self, Base_SLOT_Power);
 }
 
 #line 7 "abi_child_v2.hot"

@@ -228,10 +228,12 @@ struct ExprPrinter
     }
     void operator()(const IndexExpr& n) const
     {
+        // The helper checks the bounds of an array. Another container uses its own operator[].
+        e.put("hot::index(", n.pos);
         emit_expr(*n.obj, e);
-        e.put("[");
+        e.put(", ");
         emit_expr(*n.index, e);
-        e.put("]");
+        e.put(")");
     }
     void operator()(const UnaryExpr& n) const
     {
@@ -239,6 +241,14 @@ struct ExprPrinter
         {
             emit_expr(*n.operand, e);
             e.put(n.op);
+            return;
+        }
+        if (n.op == "*")
+        {
+            // The helper checks a null pointer and a null handle. Another type uses its operator*.
+            e.put("hot::star(", n.pos);
+            emit_expr(*n.operand, e);
+            e.put(")");
             return;
         }
         e.put(n.op, n.pos);

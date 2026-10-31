@@ -1,11 +1,15 @@
 // The deref helper: the translator writes it for the member access "a.b".
 #pragma once
+#include "hot/config.h"
 #include "hot/runtime/compat.h"
+#include "hot/runtime/errors.h"
 #include "hot/runtime/handles.h"
 #include "hot/runtime/hidden.h"
 
+#include <array>
 #include <cstddef>
 #include <type_traits>
+#include <utility>
 
 namespace hot
 {
@@ -20,8 +24,11 @@ namespace hot
 // range-for and in a reference binding: "for (auto x : deref(make()).list)".
 // A member of a temporary handle lives to the end of the full expression. A range-for
 // over a member of a temporary handle needs a local variable for the handle.
+// A null pointer or a null handle throws hot::NullReference, unless HOT_RUNTIME_CHECKS is 0.
 template <class T> HOT_HIDDEN T& deref(T* p)
 {
+    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(!p))
+        detail::throw_null_reference("null pointer dereference");
     return *p;
 }
 // The two overloads below exclude a handle. Else they win over the handle overload.
@@ -37,10 +44,73 @@ HOT_HIDDEN detail::remove_cvref_t<T> deref(T&& v)
 // The handle overload binds an lvalue and a temporary. It covers std::shared_ptr.
 template <class H, std::enable_if_t<is_handle_v<H>, int> = 0> HOT_HIDDEN decltype(auto) deref(H&& h)
 {
+    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(!h))
+        detail::throw_null_reference("null handle dereference");
     return *h;
 }
 // An array is not an object that has members. The script cannot use "arr.x" on an array.
 // Without this overload, the array would decay to a pointer and "arr.x" would compile.
 template <class T, std::size_t N> void deref(T (&)[N]) = delete;
+
+
+// The script writes "*p" for a pointer and for a handle. The translator writes "hot::star(p)".
+// The helper has the same null test as hot::deref. Any other type uses its own operator*.
+template <class T> HOT_HIDDEN T& star(T* p)
+{
+    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(!p))
+        detail::throw_null_reference("null pointer dereference");
+    return *p;
+}
+template <class H, std::enable_if_t<is_handle_v<H>, int> = 0> HOT_HIDDEN decltype(auto) star(H&& h)
+{
+    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(!h))
+        detail::throw_null_reference("null handle dereference");
+    return *h;
+}
+template <class T, std::enable_if_t<!is_handle_v<T>, int> = 0> HOT_HIDDEN decltype(auto) star(T&& v)
+{
+    return *static_cast<T&&>(v);
+}
+
+// The script writes "c[i]". The translator writes "hot::index(c, i)". An array has a bounds
+// test: an index that is negative or not less than N throws hot::IndexOutOfRange, unless
+// HOT_RUNTIME_CHECKS is 0. A negative index converts to a large std::size_t, so one test
+// covers both. An rvalue std::array returns the element BY VALUE (moved), as hot::deref does.
+// Each array overload is more specialized than the generic overload below it.
+template <class T, std::size_t N, class I> HOT_HIDDEN T& index(std::array<T, N>& c, I i)
+{
+    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(static_cast<std::size_t>(i) >= N))
+        detail::throw_index_out_of_range(static_cast<std::size_t>(i), N);
+    return c[static_cast<std::size_t>(i)];
+}
+template <class T, std::size_t N, class I> HOT_HIDDEN const T& index(const std::array<T, N>& c, I i)
+{
+    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(static_cast<std::size_t>(i) >= N))
+        detail::throw_index_out_of_range(static_cast<std::size_t>(i), N);
+    return c[static_cast<std::size_t>(i)];
+}
+template <class T, std::size_t N, class I> HOT_HIDDEN T index(std::array<T, N>&& c, I i)
+{
+    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(static_cast<std::size_t>(i) >= N))
+        detail::throw_index_out_of_range(static_cast<std::size_t>(i), N);
+    return std::move(c[static_cast<std::size_t>(i)]);
+}
+template <class T, std::size_t N, class I> HOT_HIDDEN T& index(T (&c)[N], I i)
+{
+    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(static_cast<std::size_t>(i) >= N))
+        detail::throw_index_out_of_range(static_cast<std::size_t>(i), N);
+    return c[static_cast<std::size_t>(i)];
+}
+template <class T, std::size_t N, class I> HOT_HIDDEN const T& index(const T (&c)[N], I i)
+{
+    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(static_cast<std::size_t>(i) >= N))
+        detail::throw_index_out_of_range(static_cast<std::size_t>(i), N);
+    return c[static_cast<std::size_t>(i)];
+}
+// Any other container (std::vector, std::map, a native type) uses its own operator[].
+template <class C, class I> HOT_HIDDEN decltype(auto) index(C&& c, I&& i)
+{
+    return static_cast<C&&>(c)[static_cast<I&&>(i)];
+}
 
 } // namespace hot

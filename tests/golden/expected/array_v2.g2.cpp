@@ -242,11 +242,11 @@ void GridState_g2::Tick(float dt)
 #line 13 "array_v2.hot"
     for (int32_t i = 0; i < 3; i++) {
 #line 14 "array_v2.hot"
-        __st->a[i] += 2;
+        hot::index(__st->a, i) += 2;
 #line 15 "array_v2.hot"
     }
 #line 16 "array_v2.hot"
-    __st->m[1][2] = __st->a[0] + 5;
+    hot::index(hot::index(__st->m, 1), 2) = hot::index(__st->a, 0) + 5;
 #line 17 "array_v2.hot"
 }
 #line 253 "array_v2.hot.cpp"
@@ -318,7 +318,7 @@ std::array<int32_t, 4> GridState_g2::make(std::array<int32_t, 2> p)
 #line 28 "array_v2.hot"
     std::array<int32_t, 4> r = std::array<int32_t, 4>();
 #line 29 "array_v2.hot"
-    r[0] = p[0];
+    hot::index(r, 0) = hot::index(p, 0);
 #line 30 "array_v2.hot"
     return r;
 #line 31 "array_v2.hot"

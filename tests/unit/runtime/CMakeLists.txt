@@ -2,6 +2,7 @@
 add_executable(unit_runtime_tests
     coalesce_tests.cpp
     deref_tests.cpp
+    runtime_checks_tests.cpp
     migration_tests.cpp
     loader_reset_tests.cpp
     loader_unit_tests.cpp

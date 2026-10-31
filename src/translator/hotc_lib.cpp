@@ -2548,7 +2548,7 @@ void translate_impl(
         sc.vars.clear();
         sc.classes.push_back(std::move(mod));
     }
-    // Convert hooks of module variables (DECISIONS.md item 14). The module class emits them.
+    // Convert hooks of module variables. The module class emits them.
     std::vector<Method> mod_hooks = std::move(sc.var_hooks);
     sc.var_hooks.clear();
     for (const Method& m : mod_hooks)
@@ -4351,7 +4351,8 @@ void translate_impl(
             }
             std::string text = "\n    " + nv.ret + " " + nv.name + "(" + str_join(ps, ", ") + ")"
                 + (nv.is_const ? " const" : "") + (nv.no_except ? " noexcept" : "") + " override\n    {\n";
-            text += "        return hot::call<" + nv.ret + "(" + str_join(sig, ", ") + ")>(" + self_arg + ", "
+            text += "        return hot::call<" + nv.ret + "(" + str_join(sig, ", ") + ")" + (nv.no_except ? ", true" : "") + ">("
+                + self_arg + ", "
                 + slot_id(slots[i].id) + (as.empty() ? "" : ", " + str_join(as, ", ")) + ");\n    }\n";
             // The shell override maps to the class line, so a breakpoint on the function has one location.
             mapped(text, cd.line, cd.pos);
@@ -4590,7 +4591,7 @@ void translate_impl(
             if (m.vslot_owner != cn || m.is_override)
                 continue;
             o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.name + "_virt(" + shell + "* __self"
-                + param_decl(m) + ")\n{\n    return hot::call<" + fn_ret(m) + "(" + B + "*" + type_list(m)
+                + param_decl(m) + ")\n{\n    return hot::call_script<" + fn_ret(m) + "(" + B + "*" + type_list(m)
                 + ")>(__self, " + slot_id(m.name) + arg_list(m) + ");\n}\n\n");
         }
 

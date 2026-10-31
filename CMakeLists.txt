@@ -174,9 +174,17 @@ if(NOT HOT_CLANG_FILES_ENABLED AND NOT HOT_JIT_ENABLED)
     endif()
 endif()
 
+# The runtime checks of the scripts: the null test of a pointer and a handle, and the bounds test
+# of an array (include/hot/runtime/errors.h). OFF removes them. The runtime library defines
+# HOT_RUNTIME_CHECKS=0 for the host and for the installed SDK (src/runtime/CMakeLists.txt).
+option(HOT_RUNTIME_CHECKS "Check null dereference and array bounds in scripts" ON)
+
 # The compiler flags for the scripts. The backends use them.
 # A list value uses "|" between the items.
 separate_arguments(HOT_CXXFLAGS_LIST NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
+if(NOT HOT_RUNTIME_CHECKS)
+    list(APPEND HOT_CXXFLAGS_LIST -DHOT_RUNTIME_CHECKS=0)
+endif()
 list(JOIN HOT_CXXFLAGS_LIST "|" HOT_CXXFLAGS_JOINED)
 
 # The headers that the precompiled and AOT scripts depend on (the engine headers are in tests/engine). The tests use them.

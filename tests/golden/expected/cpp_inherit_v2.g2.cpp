@@ -178,7 +178,7 @@ HOT_HIDDEN BaseState_g2* state_of(Base_Shell* __self)
 
 [[maybe_unused]] HOT_HIDDEN static int Base__Power_virt(Base_Shell* __self)
 {
-    return hot::call<int(Actor*)>(__self, Base_SLOT_Power);
+    return hot::call_script<int(Actor*)>(__self, Base_SLOT_Power);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Base__ctor(Base_Shell* __self, int start);
@@ -623,7 +623,7 @@ HOT_HIDDEN KidState_g2* state_of(Kid_Shell* __self)
 
 [[maybe_unused]] HOT_HIDDEN static int Kid__Bonus_virt(Kid_Shell* __self)
 {
-    return hot::call<int(Actor*)>(__self, Kid_SLOT_Bonus);
+    return hot::call_script<int(Actor*)>(__self, Kid_SLOT_Bonus);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Kid__ctor(Kid_Shell* __self, int start);

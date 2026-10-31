@@ -27,6 +27,11 @@
         #define HOT_CXX_STANDARD 17
     #endif
 #endif
+// The runtime checks of a script: the null test of a pointer and a handle, and the bounds test
+// of an array. The value 0 removes them from the generated code. The default is 1.
+#ifndef HOT_RUNTIME_CHECKS
+    #define HOT_RUNTIME_CHECKS 1
+#endif
 // The include directory of fmt, or an empty text when the compiler finds fmt by itself.
 #ifndef HOT_FMT_INCLUDE_DIR
     #define HOT_FMT_INCLUDE_DIR ""
@@ -58,6 +63,16 @@ inline std::vector<std::string> format_compile_flags()
         if (HOT_FMT_INCLUDE_DIR[0] != '\0')
             flags.push_back(std::string("-I") + HOT_FMT_INCLUDE_DIR);
     }
+    return flags;
+}
+
+// The flags that the compile command of a script needs for the runtime checks.
+// The list is empty when the checks are on.
+inline std::vector<std::string> checks_compile_flags()
+{
+    std::vector<std::string> flags;
+    if (!HOT_RUNTIME_CHECKS)
+        flags.push_back("-DHOT_RUNTIME_CHECKS=0");
     return flags;
 }
 

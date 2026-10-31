@@ -1008,6 +1008,8 @@ TEST(HotcTool, CompileCommandUsesTheBackendFlags)
         "-Werror=return-type", "-resource-dir=/res", "-O2", "-I/i1", "-I/i2"};
     for (const std::string& f : hot::format_compile_flags())
         expected.push_back(f); // fmt build only
+    for (const std::string& f : hot::checks_compile_flags())
+        expected.push_back(f); // HOT_RUNTIME_CHECKS=OFF build only
     for (const char* f : {"/x.cpp", "-o", "/x.so"})
         expected.push_back(f);
     EXPECT_EQ(hot::compile_command(o, "/x.cpp", "/x.so"), expected);
@@ -1052,6 +1054,8 @@ TEST(HotcTool, CompileCommandsOptionWritesTheDatabase)
     std::string fmt_args; // fmt build only
     for (const std::string& f : hot::format_compile_flags())
         fmt_args += "\"" + f + "\", ";
+    for (const std::string& f : hot::checks_compile_flags())
+        fmt_args += "\"" + f + "\", "; // HOT_RUNTIME_CHECKS=OFF build only
     const std::string expected =
         "[\n  {\n    \"directory\": \"" + fs::current_path().string() + "\",\n    \"file\": \"" + cpp +
         "\",\n    \"arguments\": [\"" + cxx + "\", \"-std=" + std::string(hot::cxx_std_name()) + "\", \"-fPIC\", \"-shared\", \"-g\", "

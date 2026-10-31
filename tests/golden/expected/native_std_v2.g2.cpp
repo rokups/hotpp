@@ -264,13 +264,13 @@ void TrackerState_g2::Tick(float dt)
 #line 24 "native_std_v2.hot"
     std::sort(hot::deref(v).begin(), hot::deref(v).end(), std::greater<float>());
 #line 25 "native_std_v2.hot"
-    __st->lowest = Math::Min(v[0], v[2]);
+    __st->lowest = Math::Min(hot::index(v, 0), hot::index(v, 2));
 #line 26 "native_std_v2.hot"
     __st->dist = Distance(__self->Position, Vec3(1, 1, 1));
 #line 27 "native_std_v2.hot"
     __st->sum = Util::Sum(__self->Position) * 2.0f;
 #line 28 "native_std_v2.hot"
-    __st->described = Util::Describe(*__self);
+    __st->described = Util::Describe(hot::star(__self));
 #line 29 "native_std_v2.hot"
     __self->Name = FormatVec(__self->Position);
 #line 30 "native_std_v2.hot"
