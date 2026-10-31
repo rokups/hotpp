@@ -8,8 +8,11 @@
 # Loader::load_aot. The AOT library and the native twin get -O2, so they match the -O2 that the
 # program passes to the compile of the scripts at run time.
 #
-# The scripts are .hot files and .cpp scripts (a .cpp script has module functions and static
-# methods, which a .hot script does not have).
+# Each case is a .hot script and, when C++ can write the case, a .cpp script (cpp_<case>.cpp). The
+# .cpp scripts are plain C++ files that hotc translates (the libclang frontend). Both kinds are built
+# in the same way. A .cpp script has module functions and static methods, which a .hot script does
+# not have (module_fn.cpp). A .cpp script has no script class handles and no script virtual
+# methods, so the cases with handles, new and script virtual calls have no .cpp script.
 #
 # The load section uses the test engine (tests/engine) and the test scripts.
 file(GLOB BENCH_SCRIPTS ${CMAKE_CURRENT_SOURCE_DIR}/scripts/*.hot ${CMAKE_CURRENT_SOURCE_DIR}/scripts/*.cpp)

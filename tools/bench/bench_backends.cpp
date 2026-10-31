@@ -4,7 +4,8 @@
 //   files  the clang files backend (a compiler process for each load)
 //   jit    the in-process JIT backend
 //   aot    the C++ of the scripts is part of this binary (Loader::load_aot)
-// A pure native C++ twin of each script class is the reference.
+// A pure native C++ twin of each script class is the reference. A case has up to two scripts: a .hot
+// script and a .cpp script (plain C++ that hotc translates). The table has both for each backend.
 //
 // Usage:
 //   bench_backends [--backend all|files|jit|aot] [--filter text] [--iters N] [--list]
@@ -28,7 +29,8 @@
 //   --reloads N the largest N of the reload chain (default 100). The chain measures a call after
 //              0, 1, 10 and 100 reloads. Each reload needs one compile.
 //
-// Each case is a script in tools/bench/scripts and a native twin in this file. Both derive from
+// Each case is a .hot script and a .cpp script in tools/bench/scripts (the .cpp scripts are named
+// cpp_<case>.cpp; a case that a .cpp script cannot write has none) and a native twin in this file. All derive from
 // BenchBase (BenchEngine.h) and have the same algorithm. The host calls them through BenchBase.
 // The result of each case is checked against the result of the twin.
 //
@@ -661,8 +663,8 @@ struct Case
 {
     const char* name;
     const char* label;
-    const char* script; // the file in BENCH_SCRIPT_DIR
-    const char* cls;    // the script class
+    const char* script; // the .hot file in BENCH_SCRIPT_DIR (nullptr: no .hot script)
+    const char* cls;    // the class of the .hot script
     std::unique_ptr<BenchBase> (*make)();
     int64_t iters;
     bool per_call; // true: the host calls Run(0) iters times. false: one call with n = iters.
@@ -711,9 +713,54 @@ const Case kCases[] = {
         5000000, false, 1},
     {"module_var", "module variable read and write", "module_var.hot", "BenchModVar", make_native<NModVar>, 5000000,
         false, 1},
-    {"module_fn", "module function + static method call", "module_fn.cpp", "BenchModFn", make_native<NModFn>, 5000000,
+    {"module_fn", "module function + static method call", nullptr, nullptr, make_native<NModFn>, 5000000,
         false, 1},
 };
+
+// The .cpp twin of a case: a plain C++ file that hotc translates (the libclang frontend). It does the same
+// work as the .hot script. A case with no entry here cannot be written as a .cpp script: it needs script
+// class handles (handles, alloc, state_field, handle_call) or a script virtual method (slot_script).
+struct CppTwin
+{
+    const char* name; // the name of the case
+    const char* script;
+    const char* cls;
+};
+
+const CppTwin kCppTwins[] = {
+    {"empty", "cpp_empty.cpp", "BenchEmptyCpp"},
+    {"call_script", "cpp_call_script.cpp", "BenchCallScriptCpp"},
+    {"call_native", "cpp_call_native.cpp", "BenchCallNativeCpp"},
+    {"virtual_hook", "cpp_virtual_hook.cpp", "BenchHookCpp"},
+    {"fields", "cpp_fields.cpp", "BenchFieldsCpp"},
+    {"arith_int", "cpp_arith_int.cpp", "BenchArithIntCpp"},
+    {"arith_float", "cpp_arith_float.cpp", "BenchArithFloatCpp"},
+    {"array", "cpp_array.cpp", "BenchArrayCpp"},
+    {"vector", "cpp_vector.cpp", "BenchVectorCpp"},
+    {"string", "cpp_string.cpp", "BenchStringCpp"},
+    {"closure", "cpp_closure.cpp", "BenchClosureCpp"},
+    {"method_loop", "cpp_method_loop.cpp", "BenchMethodLoopCpp"},
+    {"method_entry", "cpp_method_entry.cpp", "BenchEntryCpp"},
+    {"module_var", "cpp_module_var.cpp", "BenchModVarCpp"},
+    {"module_fn", "module_fn.cpp", "BenchModFn"},
+};
+
+// The script of a case in one language: the .hot script (cpp = false) or the .cpp twin (cpp = true).
+struct ScriptRef
+{
+    const char* file = nullptr; // nullptr: the case has no script in this language
+    const char* cls = nullptr;
+};
+
+ScriptRef script_of(const Case& c, bool cpp)
+{
+    if (!cpp)
+        return {c.script, c.cls};
+    for (const CppTwin& t : kCppTwins)
+        if (std::string(t.name) == c.name)
+            return {t.script, t.cls};
+    return {};
+}
 
 // ---- The measurement ----
 
@@ -812,7 +859,8 @@ struct Row
 struct BackendResult
 {
     Kind kind;
-    std::vector<Row> rows; // one for each case
+    std::vector<Row> rows;     // one for each case: the .hot script
+    std::vector<Row> rows_cpp; // one for each case: the .cpp script
     double reload_ns = -1;
     std::vector<double> chain_old; // ns per call of the reload chain, one for each step
     std::vector<double> chain_new;
@@ -820,12 +868,12 @@ struct BackendResult
 };
 
 // Make an object of a script class and run the case on it.
-bool run_instance(const hot::ClassEntry* entry, const Case& c, const Options& o, int64_t native_check, Row& row,
-    std::string& note)
+bool run_instance(const hot::ClassEntry* entry, const Case& c, const char* cls, const Options& o,
+    int64_t native_check, Row& row, std::string& note)
 {
     if (!entry)
     {
-        note = std::string("class ") + c.cls + " not found";
+        note = std::string("class ") + cls + " not found";
         return false;
     }
     std::unique_ptr<BenchBase> check(static_cast<BenchBase*>(entry->create().native));
@@ -844,25 +892,31 @@ void run_cases_compiled(Kind k, const Options& o, const std::vector<int64_t>& ch
     for (int idx : selected)
     {
         const Case& c = kCases[idx];
-        if (!c.script)
-            continue; // a native-only row
-        const std::string path = std::string(BENCH_SCRIPT_DIR) + "/" + c.script;
-        hot::LoadResult r = backend->load({path, read_file(path), {}}, 1);
-        if (!r)
+        for (const bool cpp : {false, true})
         {
-            out.note += std::string(c.name) + ": compile failed: " + r.error.substr(0, 300) + "\n";
-            continue;
+            const ScriptRef sc = script_of(c, cpp);
+            if (!sc.file)
+                continue; // a native-only row, or no script in this language
+            const std::string tag = std::string(c.name) + (cpp ? " (.cpp)" : " (.hot)");
+            const std::string path = std::string(BENCH_SCRIPT_DIR) + "/" + sc.file;
+            hot::LoadResult r = backend->load({path, read_file(path), {}}, 1);
+            if (!r)
+            {
+                out.note += tag + ": compile failed: " + r.error.substr(0, 300) + "\n";
+                continue;
+            }
+            hot::Loader loader;
+            const hot::ReloadResult loaded = loader.load(std::move(*r.module));
+            if (!loaded)
+            {
+                out.note += tag + ": load failed: " + loaded.error + "\n";
+                continue;
+            }
+            std::string note;
+            Row& row = cpp ? out.rows_cpp[idx] : out.rows[idx];
+            if (!run_instance(loader.find(sc.cls), c, sc.cls, o, checks[idx], row, note))
+                out.note += tag + ": " + note + "\n";
         }
-        hot::Loader loader;
-        const hot::ReloadResult loaded = loader.load(std::move(*r.module));
-        if (!loaded)
-        {
-            out.note += std::string(c.name) + ": load failed: " + loaded.error + "\n";
-            continue;
-        }
-        std::string note;
-        if (!run_instance(loader.find(c.cls), c, o, checks[idx], out.rows[idx], note))
-            out.note += std::string(c.name) + ": " + note + "\n";
     }
 }
 
@@ -880,11 +934,16 @@ void run_cases_aot(const Options& o, const std::vector<int64_t>& checks, const s
     for (int idx : selected)
     {
         const Case& c = kCases[idx];
-        if (!c.script)
-            continue; // a native-only row
-        std::string note;
-        if (!run_instance(loader.find(c.cls), c, o, checks[idx], out.rows[idx], note))
-            out.note += std::string(c.name) + ": " + note + "\n";
+        for (const bool cpp : {false, true})
+        {
+            const ScriptRef sc = script_of(c, cpp);
+            if (!sc.file)
+                continue; // a native-only row, or no script in this language
+            std::string note;
+            Row& row = cpp ? out.rows_cpp[idx] : out.rows[idx];
+            if (!run_instance(loader.find(sc.cls), c, sc.cls, o, checks[idx], row, note))
+                out.note += std::string(c.name) + (cpp ? " (.cpp): " : " (.hot): ") + note + "\n";
+        }
     }
 }
 
@@ -1277,8 +1336,9 @@ int main(int argc, char** argv)
             std::printf("  %-6s %s\n", kind_name(k), kind_available(k) ? "available" : "not built in");
         std::printf("cases:\n");
         for (const Case& c : kCases)
-            std::printf("  %-16s %-40s %-18s iters=%lld\n", c.name, c.label, c.script,
-                static_cast<long long>(c.iters));
+            std::printf("  %-16s %-40s hot=%-16s cpp=%-22s iters=%lld\n", c.name, c.label,
+                script_of(c, false).file ? script_of(c, false).file : "-",
+                script_of(c, true).file ? script_of(c, true).file : "-", static_cast<long long>(c.iters));
         std::printf("  %-16s %-40s (%d objects x %d fields)\n", "reload", "reload and state migration", kReloadObjects,
             kReloadFields + 1);
         std::printf("  %-16s %-40s (N = 0, 1, 10, 100; --reloads limits N)\n", "chain", kChainCase.label);
@@ -1324,6 +1384,7 @@ int main(int argc, char** argv)
         BackendResult br;
         br.kind = k;
         br.rows.assign(checks.size(), Row{});
+        br.rows_cpp.assign(checks.size(), Row{});
         const Clock::time_point t = Clock::now();
         try
         {
@@ -1369,39 +1430,47 @@ int main(int argc, char** argv)
                     "and the file cache.\n");
     }
 
-    // Run-time table.
-    std::printf("\nRun time (ns per operation, median of %d runs; ratio = backend / native):\n", o.reps);
+    // Run-time table. Each backend has a .hot column and a .cpp column, each with a ratio to native.
+    std::printf("\nRun time (ns per operation, median of %d runs; ratio = script / native; n/a = the language "
+                "cannot write the case):\n",
+        o.reps);
     std::printf("%-16s %9s", "case", "native");
     for (const BackendResult& r : results)
-        std::printf(" | %9s %7s", kind_name(r.kind), "ratio");
+        std::printf(" | %9s %7s %9s %7s", (std::string(kind_name(r.kind)) + " hot").c_str(), "ratio",
+            (std::string(kind_name(r.kind)) + " cpp").c_str(), "ratio");
     std::printf("\n");
     std::ostringstream csv;
     csv << "case,native_ns";
     for (const BackendResult& r : results)
-        csv << "," << kind_name(r.kind) << "_ns," << kind_name(r.kind) << "_ratio";
+        for (const char* lang : {"hot", "cpp"})
+            csv << "," << kind_name(r.kind) << "_" << lang << "_ns," << kind_name(r.kind) << "_" << lang << "_ratio";
     csv << "\n";
     bool any_mismatch = false;
     for (int idx : selected)
     {
         std::printf("%-16s %9s", kCases[idx].name, fmt_ns(native[idx]).c_str());
         csv << kCases[idx].name << "," << native[idx];
+        const bool native_only = !script_of(kCases[idx], false).file && !script_of(kCases[idx], true).file;
         for (const BackendResult& r : results)
         {
-            const Row& row = r.rows[idx];
-            if (!kCases[idx].script)
+            for (const bool cpp : {false, true})
             {
-                std::printf(" | %9s %7s", "-", "-");
-                csv << ",,";
-                continue;
+                const Row& row = cpp ? r.rows_cpp[idx] : r.rows[idx];
+                if (!script_of(kCases[idx], cpp).file)
+                {
+                    std::printf("%s%9s %7s", cpp ? " " : " | ", native_only ? "-" : "n/a", native_only ? "-" : "n/a");
+                    csv << ",,";
+                    continue;
+                }
+                std::string ns = fmt_ns(row.ns);
+                if (row.mismatch)
+                {
+                    ns += "!";
+                    any_mismatch = true;
+                }
+                std::printf("%s%9s %7s", cpp ? " " : " | ", ns.c_str(), fmt_ratio(row.ns, native[idx]).c_str());
+                csv << "," << row.ns << "," << (row.ns > 0 && native[idx] > 0 ? row.ns / native[idx] : -1);
             }
-            std::string ns = fmt_ns(row.ns);
-            if (row.mismatch)
-            {
-                ns += "!";
-                any_mismatch = true;
-            }
-            std::printf(" | %9s %7s", ns.c_str(), fmt_ratio(row.ns, native[idx]).c_str());
-            csv << "," << row.ns << "," << (row.ns > 0 && native[idx] > 0 ? row.ns / native[idx] : -1);
         }
         std::printf("\n");
         csv << "\n";
