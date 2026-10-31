@@ -4,7 +4,7 @@ title: Tools
 nav_order: 42
 ---
 
-`hot-ls` is the language server. The VS Code extension starts it.
+`hot-ls` is the language server. The VS Code extension starts it. For the inner workings see [Language server internals](tools-ls.html).
 
 ## hot-ls features
 
