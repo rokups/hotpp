@@ -1,6 +1,7 @@
 // Reload tests of native interface bases (S8b, design 4.4 and 5.3) with the backend that
 // HOT_BACKEND selected. The shell of Boss derives from Actor, IDamageable and ITagged.
 #include "Damageable.h"
+#include "Equip.h"
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
@@ -125,6 +126,48 @@ TEST_P(BackendTests, ReloadThatAddsAnInterfaceBaseIsRejected)
         << error;
     EXPECT_FALSE(s.loader.reload_pending());
     EXPECT_EQ(hot::active_generation, 1u);
+}
+
+// An override that writes the plain handle type: the slot keeps the native parameter type, and the
+// body gets a handle. A "Charm*" gives the owning handle through shared_from_this. An intrusive
+// "Item*" adds a reference. An object that no shared_ptr owns throws NullReference.
+TEST_P(BackendTests, HandleOverrideBindsTheNativeParameter)
+{
+    hot::LoadResult v1 = backend->load(source("handle_override_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Holder"));
+    s.commit_at_frame_boundary();
+    auto* w = dynamic_cast<Wearer*>(s.actor);
+    ASSERT_NE(w, nullptr);
+
+    auto charm = std::make_shared<Charm>();
+    charm->power = 3;
+    EXPECT_EQ(WearThrough(*w, charm, 0), 1); // Charm*
+    EXPECT_EQ(charm.use_count(), 2); // the field "last" shares the object
+    EXPECT_EQ(*fld<int>(s, "worn"), 3);
+    EXPECT_EQ(WearThrough(*w, charm, 1), 2); // const Charm&
+    EXPECT_EQ(*fld<int>(s, "worn"), 33);
+    auto other = std::make_shared<Charm>();
+    EXPECT_EQ(WearThrough(*w, other, 2), 3); // std::shared_ptr<Charm>
+    EXPECT_EQ(other.use_count(), 2);
+    EXPECT_EQ(charm.use_count(), 1); // the field "last" holds the other object now
+
+    Item* item = new Item(5);
+    EXPECT_EQ(WearItemThrough(*w, item), 4); // Item*: the handle adds a reference
+    EXPECT_EQ(item->refs, 1);
+
+    // The class gets shared_from_this from a base: the handle is a cast of the base handle.
+    auto blade = std::make_shared<Blade>();
+    EXPECT_EQ(w->WearBlade(blade.get()), 5);
+    EXPECT_EQ(blade.use_count(), 2);
+
+    // A Charm that no shared_ptr owns: shared_from_this fails with hot::NullReference. The script
+    // boundary logs the error and the body does not run.
+    Charm raw;
+    raw.power = 100;
+    w->WearRaw(&raw);
+    EXPECT_EQ(*fld<int>(s, "worn"), 33);
 }
 
 } // namespace

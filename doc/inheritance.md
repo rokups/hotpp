@@ -66,6 +66,33 @@ class Foo : Widget, IConst {
 
 A script class has one method for each name. The marker only selects the native method. The body can still write the fields of `this`.
 
+### Parameter forms of an override
+
+A native virtual method can take a handle type in several forms. Write the plain handle type in the override. The translator finds the native method and keeps its signature. The body gets a handle.
+
+| Native parameter | The body gets |
+|---|---|
+| `Weapon*`, `const Weapon*` | `Weapon` through `shared_from_this()`, or an intrusive reference |
+| `Weapon&`, `const Weapon&` | the same |
+| `std::shared_ptr<Weapon>`, `const std::shared_ptr<Weapon>&`, `std::shared_ptr<Weapon>&&` | the handle itself |
+
+```hot
+class Foo : Gun {
+    // Gun has `virtual void Hit(Weapon* w)`.
+    override void Hit(Weapon w) { w.dmg = 1; }
+}
+```
+
+- The exact native spelling always works and wins. `override void Hit(Weapon* w)` is the exact form.
+- If two native methods carry the same handle type, the override is ambiguous. The error lists each method. Write the exact parameter type.
+- If no native method matches, the error `hides the virtual method` lists the candidates. A `.cpp` script also gets a hint with the native parameter type.
+- A `std::shared_ptr` stub needs `std::enable_shared_from_this` in the native class to take a `T*` or a `T&`. Without it, the C++ compile stops with a message. Write the exact type instead.
+- A `const Weapon*` or `const Weapon&` binds a normal handle. A script handle has no `const`. The handle gives write access even when the native method passes `const`. Do not write to it.
+- An intrusive stub (`intrusive("AddRef", "Release")`) adds a reference for a `T*`.
+- A `T*` of an object that no `std::shared_ptr` owns throws `NullReference` in the override. A null `T*` gives a null handle.
+- A `.cpp` script does not use this rule. It writes the exact native type.
+- Return types and a borrowed `T*` or `T&` in the body are not part of this rule.
+
 ## Script parent
 
 A script class can derive from a script class. `virtual` opens a method for overrides. `base(...)` calls the parent constructor. `new` hides a parent method instead of replacing it.

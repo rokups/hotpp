@@ -60,6 +60,8 @@ public:
     struct ClassFacts
     {
         bool known = false, plain = false, small = false;
+        // The class derives (directly or not) from std::enable_shared_from_this<X>.
+        bool shared_from_this = false;
     };
     using ClassFn = std::function<ClassFacts(const std::string&)>;
 
@@ -152,6 +154,17 @@ public:
     // True when the type is a plain handle type (not a pointer, a reference or a builtin).
     bool is_handle(const std::string& type) const;
 
+    // True when the class has std::enable_shared_from_this<X> in its bases. The fact of libclang
+    // for the class counts, and the fact of each base (the bases of a script class too).
+    bool has_shared_from_this(const std::string& type) const;
+
+    // The handle type T that a native parameter type text carries, else an empty string.
+    // T is a handle class (a native stub or a script class). H is the native storage text of T,
+    // for example "std::shared_ptr<Weapon>". The carriers of T are: "T*", "const T*", "T&",
+    // "const T&", "H", "const H&" and "H&&". For an intrusive stub the storage text is "T*",
+    // so "T*" is the handle carrier. The text goes through the canonical type spelling first.
+    std::string carrier_of(const std::string& native_param_type) const;
+
 private:
     TypeRule lookup_stub(const std::string& cpp_type) const;
 
@@ -179,5 +192,50 @@ private:
     bool raw_script_refs_ = false;
     std::set<std::string> prelude_names_; // the stubs that a prelude gave
 };
+
+// A native virtual method as the matcher of an override sees it.
+struct VirtualSig
+{
+    std::string name;
+    std::vector<std::string> ptypes; // the native parameter type texts
+    bool is_const = false;
+};
+
+// The result of match_native_virtual().
+struct OverrideMatch
+{
+    enum class Kind
+    {
+        None, // no virtual matches
+        Hit, // "hits" has one index
+        Ambiguous, // "hits" has two or more indices
+        ConstMismatch // the script marks "const" and every match is non-const; "hits" has the matches
+    };
+    Kind kind = Kind::None;
+    bool relaxed = false; // the match needed the handle carriers
+    std::vector<size_t> hits; // the indices in the list of virtuals
+    // Kind::None only: the virtuals of the same name that the relaxed rule would match.
+    std::vector<size_t> relaxed_candidates;
+};
+
+// The key of a type text for the match: the canonical spelling without spaces.
+std::string override_key_norm(const std::string& type);
+
+// Finds the native virtual that a script method overrides.
+// "script_ptypes" are the parameter type texts of the script. The exact pass compares the
+// canonical type texts. "F()" and "F() const" have the same key. "is_const" (a trailing
+// "const" of the script) selects the const method. Without it the non-const method is the
+// default, and a lone const method matches too.
+// If the exact pass finds nothing and "relaxed" is true, the relaxed pass replaces each native
+// parameter type that is a carrier of a handle type T (TypeModel::carrier_of) by T and compares
+// again. The exact spelling always wins.
+OverrideMatch match_native_virtual(const std::string& name, const std::vector<std::string>& script_ptypes,
+    const std::vector<VirtualSig>& virtuals, const TypeModel& model, bool is_const, bool relaxed);
+
+// The relaxed override match is on (task 33). A ".cpp" script does not use it.
+constexpr bool relaxed_override_enabled()
+{
+    return true;
+}
 
 } // namespace hotc

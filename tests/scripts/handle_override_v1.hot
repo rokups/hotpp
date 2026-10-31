@@ -1,0 +1,42 @@
+// Generation 1: an override takes the plain handle type of a native parameter (task 33).
+// Charm is a shared handle with shared_from_this. Blade gets it from the base Charm. Item is an intrusive handle.
+// The native methods take "Charm*", "const Charm&", "std::shared_ptr<Charm>" and "Item*".
+using "Actor.h";
+using "Equip.h";
+
+[native, handle("std::shared_ptr<$T>")] class Charm;
+[native, handle("std::shared_ptr<$T>")] class Blade;
+[native, handle("$T*"), intrusive("AddRef", "Release")] class Item;
+
+class Holder : Actor, Wearer {
+    Charm last;
+    Item kept;
+    Blade blade;
+    int worn;
+
+    override int WearRaw(Charm c) {
+        this.last = c;
+        this.worn = this.worn + c.power;
+        return 1;
+    }
+
+    override int WearRef(Charm c) {
+        this.worn = this.worn + c.power * 10;
+        return 2;
+    }
+
+    override int WearShared(Charm c) {
+        this.last = c;
+        return 3;
+    }
+
+    override int WearBlade(Blade b) {
+        this.blade = b;
+        return 5;
+    }
+
+    override int WearItem(Item i) {
+        this.kept = i;
+        return 4;
+    }
+}

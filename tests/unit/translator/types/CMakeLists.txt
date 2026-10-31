@@ -1,5 +1,6 @@
 # The tests of the type model: stubs to C++ storage types.
 add_executable(unit_translator_types_tests
+    carrier_override_tests.cpp
     default_handle_type_tests.cpp
     inherited_handle_type_tests.cpp
     intrusive_handle_type_tests.cpp

@@ -1,6 +1,7 @@
 // The trait of a handle and the intrusive reference-counted handle.
 #pragma once
 #include "hot/runtime/compat.h"
+#include "hot/runtime/errors.h"
 #include "hot/runtime/hidden.h"
 
 #include <cstddef>
@@ -109,5 +110,74 @@ private:
 template <class T, auto Add, auto Release> struct is_handle<Intrusive<T, Add, Release>> : std::true_type
 {
 };
+
+namespace detail
+{
+template <class H> struct is_shared_ptr : std::false_type
+{
+};
+template <class T> struct is_shared_ptr<std::shared_ptr<T>> : std::true_type
+{
+};
+template <class H> struct is_intrusive : std::false_type
+{
+};
+template <class T, auto Add, auto Release> struct is_intrusive<Intrusive<T, Add, Release>> : std::true_type
+{
+};
+template <class...> inline constexpr bool always_false_v = false;
+} // namespace detail
+
+// Makes the handle H from the argument of a native virtual method. A script override that takes
+// the plain handle type "Weapon w" gets it from the native parameter:
+//  - a handle ("H", "const H&", "H&&") or anything that converts to H: H itself;
+//  - an intrusive H from "T*": the handle adds a reference (Intrusive(T*));
+//  - a std::shared_ptr<T> from "T*" or "T&": "shared_from_this()" of the object. A null pointer
+//    gives an empty handle. An object that no shared_ptr owns throws hot::NullReference.
+// Else the call does not compile: the native class needs a shared_from_this base.
+template <class H, class Src> HOT_HIDDEN H bind(Src&& s)
+{
+    if constexpr (std::is_convertible_v<Src&&, H>)
+    {
+        return H(std::forward<Src>(s));
+    }
+    else
+    {
+        using S = detail::remove_cvref_t<Src>;
+        auto* raw = [&]
+        {
+            if constexpr (std::is_pointer_v<S>)
+                return s;
+            else
+                return std::addressof(s);
+        }();
+        using E = std::remove_const_t<std::remove_pointer_t<decltype(raw)>>;
+        E* object = const_cast<E*>(raw);
+        if constexpr (detail::is_intrusive<H>::value)
+        {
+            return H(object);
+        }
+        else if constexpr (detail::is_shared_ptr<H>::value && detail::has_shared_from_this<E>::value)
+        {
+            if (!object)
+                return H();
+            try
+            {
+                return std::static_pointer_cast<typename H::element_type>(object->shared_from_this());
+            }
+            catch (const std::bad_weak_ptr&)
+            {
+                detail::throw_null_reference("the object has no owning handle: shared_from_this failed");
+            }
+        }
+        else
+        {
+            static_assert(detail::always_false_v<H, Src>,
+                "the native method passes a raw pointer or a reference to a handle type: give the class a "
+                "std::enable_shared_from_this base or write the exact native parameter type in the override");
+            return H();
+        }
+    }
+}
 
 } // namespace hot

@@ -623,6 +623,7 @@ struct TypeFacts
     bool plain = false; // trivially copyable and standard layout
     bool small = false; // trivially copyable and 16 bytes or less (design 7.10.5)
     bool arrow = false; // a pointer, or a type with operator->
+    bool esft = false; // a base is std::enable_shared_from_this<X>
     std::map<std::string, bool> members; // for each asked name: "&T::name" is valid
 };
 using FactMap = std::map<std::string, TypeFacts>;
@@ -1332,6 +1333,7 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
     const std::vector<std::string>& queries)
 {
     std::string head =
+        "#include <memory>\n"
         "#include <type_traits>\n"
         "#include <utility>\n"
         // The probe uses C++17 only (detection with void_t), so it parses with the standard of the host.
@@ -1353,6 +1355,10 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
         "std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>; else return false; }\n"
         "template <class T> constexpr bool hotc_small() { if constexpr (hotc_complete<T>()) return "
         "std::is_trivially_copyable_v<T> && sizeof(T) <= 16; else return false; }\n"
+        "template <class U> std::true_type hotc_esft_f(const std::enable_shared_from_this<U>*);\n"
+        "std::false_type hotc_esft_f(...);\n"
+        "template <class T> constexpr bool hotc_esft() { if constexpr (hotc_complete<T>()) return "
+        "decltype(hotc_esft_f(static_cast<T*>(nullptr)))::value; else return false; }\n"
         "template <class T> constexpr bool hotc_arrow() { if constexpr (std::is_pointer_v<T>) return true; else if "
         "constexpr (hotc_complete<T>()) return hotc_has_arrow<T>::value; else return false; }\n"
         // The type queries (S20b): the return type of a function or of a member function, and
@@ -1375,7 +1381,7 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
     for (size_t i = 0; i < reqs.size(); ++i)
     {
         const std::string& t = reqs[i].type;
-        const char* kinds[] = {"is_class", "copy", "nothrow_move", "polymorphic", "final", "plain", "small", "arrow"};
+        const char* kinds[] = {"is_class", "copy", "nothrow_move", "polymorphic", "final", "plain", "small", "arrow", "esft"};
         for (const char* k : kinds)
         {
             lines.emplace_back(i, k);
@@ -1930,6 +1936,8 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
                 f.small = v == 1;
             else if (k == "arrow")
                 f.arrow = v == 1;
+            else if (k == "esft")
+                f.esft = v == 1;
             else
                 f.members[k.substr(7)] = v == 1;
         }
@@ -2865,6 +2873,7 @@ void translate_impl(
             c.known = it->second.known && it->second.is_class;
             c.plain = it->second.plain;
             c.small = it->second.small;
+            c.shared_from_this = it->second.esft;
         }
         return c;
     });
@@ -3896,40 +3905,52 @@ void translate_impl(
                         fail_at(map, m.pos, "default values are not allowed on virtual or override methods");
             // A method overrides a base virtual method when the name and the parameter types match.
             // The method must have the modifier "override" (C# rules).
-            std::string key = m.name + "(";
-            for (const Param& p : m.params)
-                key += key_norm(p.type) + ",";
             // "F()" and "F() const" have the same name and parameters. A "const" after the
             // parameters selects the const method. Without it, the non-const method is the
             // default (the C++ rule), and a lone const method matches too.
-            std::vector<const NativeVirtual*> matches;
+            std::vector<hotc::VirtualSig> sigs;
             for (const auto& nv : bi.virtuals)
-            {
-                std::string k = nv.key();
-                if (nv.is_const)
-                    k.resize(k.size() - 5);
-                if (k == key + ")")
-                    matches.push_back(&nv);
-            }
+                sigs.push_back({nv.name, nv.ptypes, nv.is_const});
+            std::vector<std::string> script_ptypes;
+            for (const Param& p : m.params)
+                script_ptypes.push_back(p.type);
+            // The relaxed pass (handle carriers) is not for a ".cpp" script.
+            const hotc::OverrideMatch om = hotc::match_native_virtual(m.name, script_ptypes, sigs, types, m.is_const,
+                hotc::relaxed_override_enabled() && !sc.is_cpp);
             const NativeVirtual* hit = nullptr;
-            if (!matches.empty())
+            auto native_text = [&](size_t i)
+            { return bi.virtuals[i].text() + (bi.virtuals[i].is_const ? " const" : ""); };
+            if (om.kind == hotc::OverrideMatch::Kind::ConstMismatch)
+                fail_at(map, m.pos,
+                    "'" + m.name + "' is marked const but the native virtual of " + bi.virtuals[om.hits[0]].owner
+                        + " is not const");
+            if (!om.hits.empty())
             {
-                std::vector<const NativeVirtual*> same_const;
-                for (const NativeVirtual* nv : matches)
-                    if (nv->is_const == m.is_const)
-                        same_const.push_back(nv);
-                if (same_const.empty() && m.is_const)
+                hit = &bi.virtuals[om.hits[0]];
+                // A relaxed match: the slot keeps the native parameter types. The script type is the
+                // type of the body parameter (task 33).
+                if (om.relaxed && om.hits.size() == 1)
+                    for (size_t k = 0; k < m.params.size() && k < hit->ptypes.size(); ++k)
+                        if (hotc::override_key_norm(m.params[k].type) != hotc::override_key_norm(hit->ptypes[k]))
+                            m.params[k].native_type = hit->ptypes[k];
+                if (om.hits.size() > 1)
+                {
+                    const NativeVirtual& v0 = bi.virtuals[om.hits[0]];
+                    const NativeVirtual& v1 = bi.virtuals[om.hits[1]];
+                    if (om.relaxed)
+                    {
+                        std::string all;
+                        for (size_t i : om.hits)
+                            all += (all.empty() ? "" : "; ") + native_text(i);
+                        fail_at(map, m.pos,
+                            "the override '" + m.name + "' matches more than one native method: " + all
+                                + ". Write the exact parameter type.");
+                    }
                     fail_at(map, m.pos,
-                        "'" + m.name + "' is marked const but the native virtual of " + matches[0]->owner
-                            + " is not const");
-                // Without "const" and without a non-const match, use the const matches.
-                const std::vector<const NativeVirtual*>& pick = same_const.empty() ? matches : same_const;
-                hit = pick[0];
-                if (pick.size() > 1)
-                    fail_at(map, m.pos,
-                        "the override '" + m.name + "' is ambiguous: it matches '" + pick[0]->text()
-                            + (pick[0]->is_const ? " const" : "") + "' of " + pick[0]->owner + " and '"
-                            + pick[1]->text() + (pick[1]->is_const ? " const" : "") + "' of " + pick[1]->owner);
+                        "the override '" + m.name + "' is ambiguous: it matches '" + v0.text()
+                            + (v0.is_const ? " const" : "") + "' of " + v0.owner + " and '" + v1.text()
+                            + (v1.is_const ? " const" : "") + "' of " + v1.owner);
+                }
             }
             if (!hit)
             {
@@ -3948,6 +3969,9 @@ void translate_impl(
                     std::string msg = "function '" + m.name + "' hides the virtual method of " + same_name->owner;
                     if (!cands.empty())
                         msg += ". Candidates: " + cands;
+                    // The native parameters are handle carriers: say what the native method takes.
+                    for (size_t i : om.relaxed_candidates)
+                        msg += "\nhint: the native method takes '" + native_text(i) + "'. Write the exact parameter type.";
                     fail_at(map, m.pos, msg);
                 }
                 // A script virtual method (design 7.6). "override" replaces the slot of the nearest
@@ -4129,7 +4153,19 @@ void translate_impl(
         {
             if (m.overrides_virtual)
             {
-                // An override keeps the native type.
+                // An override keeps the native type. A parameter that matched through the handle
+                // carriers keeps the native type in the slot. The body gets the handle of the script
+                // type: the first line makes it with hot::bind.
+                for (Param& p : m.params)
+                {
+                    if (p.native_type.empty())
+                        continue;
+                    const hotc::ParamUse use = hotc::analyze_param_use(m, p.name, param_ctx);
+                    p.body_type = types.body_param(
+                        p.script_type, use.mutated || use.aliased, use.rebound || use.aliased, use.stored);
+                    p.bind_to = types.storage(p.script_type);
+                    p.type = p.native_type;
+                }
                 continue;
             }
             const Hook h = hook_of(m);
@@ -4937,7 +4973,10 @@ void translate_impl(
             {
                 const bool conv = !p.body_type.empty();
                 params += std::string(params.empty() ? "" : ", ") + p.type + " " + (conv ? "__" : "") + p.name;
-                if (conv)
+                if (conv && !p.bind_to.empty())
+                    body_locals += "    " + p.body_type + " " + p.name + " = hot::bind<" + p.bind_to
+                        + ">(std::forward<" + p.type + ">(__" + p.name + "));\n";
+                else if (conv)
                     body_locals +=
                         "    " + p.body_type + " " + p.name + " = std::forward<" + p.type + ">(__" + p.name + ");\n";
             }

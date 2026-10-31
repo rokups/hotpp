@@ -11,6 +11,7 @@ add_executable(unit_translator_translate_tests
     safe_call_translation_tests.cpp
     default_value_translation_tests.cpp
     handle_translation_tests.cpp
+    handle_override_translation_tests.cpp
     import_translation_tests.cpp
     script_import_translation_tests.cpp
     inherited_handle_translation_tests.cpp

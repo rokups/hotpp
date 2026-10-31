@@ -20,9 +20,9 @@ inline const char* kWeaponHeader =
 
 inline const char* kWeaponStub = "[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n";
 
-inline std::string weapon_script(const std::string& stub, const std::string& members)
+inline std::string weapon_script(const std::string& stub, const std::string& members, const std::string& base = "Widget")
 {
-    return "using \"w.h\";\n" + stub + "class Foo : Widget {\n" + members + "}\n";
+    return "using \"w.h\";\n" + stub + "class Foo : " + base + " {\n" + members + "}\n";
 }
 
 inline hotc::TranslateResult weapon_translate(const std::string& members, bool stub_in_prelude = false)

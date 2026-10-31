@@ -50,6 +50,12 @@ struct Param
     // The type of the parameter in the generation function of a script function, when the
     // parameter analysis (design 7.10.5) picks another form than "type". Empty: same as "type".
     std::string body_type{};
+    // An override that matched a native virtual through the handle carriers (task 33): the native
+    // parameter type text. The slot keeps this type. Empty: the type is not relaxed.
+    std::string native_type{};
+    // With native_type: the handle storage type of the script parameter. The first line of the body
+    // makes the handle with hot::bind<bind_to>(native argument).
+    std::string bind_to{};
 };
 
 // ------------------------------------------------------------------ expressions

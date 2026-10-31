@@ -1,6 +1,8 @@
 // The type model. See types.h.
 #include "types.h"
 
+#include "builtin_types.h"
+
 #include <algorithm>
 #include <deque>
 #include <set>
@@ -343,6 +345,24 @@ bool TypeModel::is_handle(const std::string& type) const
     return lookup(type).kind == Kind::Handle;
 }
 
+bool TypeModel::has_shared_from_this(const std::string& type) const
+{
+    std::set<std::string> visited;
+    std::deque<std::string> queue{type};
+    while (!queue.empty())
+    {
+        const std::string current = queue.front();
+        queue.pop_front();
+        if (!visited.insert(current).second)
+            continue;
+        if (classes_ && classes_(current).shared_from_this)
+            return true;
+        for (const std::string& base : direct_bases(current))
+            queue.push_back(base);
+    }
+    return false;
+}
+
 bool TypeModel::is_script_class(const std::string& type) const
 {
     return script_.count(type) != 0;
@@ -428,6 +448,176 @@ TypeModel::Callee TypeModel::make_callee(const std::string& type) const
     return {storage(type), true};
 }
 
+
+std::string override_key_norm(const std::string& type)
+{
+    std::string r;
+    for (char c : canonical_type(type, nullptr, true))
+        if (!std::isspace(static_cast<unsigned char>(c)))
+            r += c;
+    return r;
+}
+
+std::string TypeModel::carrier_of(const std::string& native_param_type) const
+{
+    // Work on the canonical text with single spaces.
+    std::string t = canonical_type(native_param_type, nullptr, true);
+    auto trim = [](std::string& x)
+    {
+        const size_t b = x.find_first_not_of(" \t");
+        const size_t e = x.find_last_not_of(" \t");
+        x = b == std::string::npos ? std::string() : x.substr(b, e - b + 1);
+    };
+    trim(t);
+    bool is_const = false;
+    if (starts_with(t, "const ") || starts_with(t, "const\t"))
+    {
+        is_const = true;
+        t = t.substr(6);
+        trim(t);
+    }
+    enum class Suffix
+    {
+        None,
+        Ptr,
+        Ref,
+        RRef
+    } suffix = Suffix::None;
+    if (ends_with(t, "&&"))
+    {
+        suffix = Suffix::RRef;
+        t.resize(t.size() - 2);
+    }
+    else if (ends_with(t, "&"))
+    {
+        suffix = Suffix::Ref;
+        t.resize(t.size() - 1);
+    }
+    else if (ends_with(t, "*"))
+    {
+        suffix = Suffix::Ptr;
+        t.resize(t.size() - 1);
+    }
+    trim(t);
+    std::string core;
+    for (char c : t)
+        if (!std::isspace(static_cast<unsigned char>(c)))
+            core += c;
+    if (core.empty() || core.find('*') != std::string::npos || core.find('&') != std::string::npos)
+        return {};
+
+    // "T*", "const T*", "T&" and "const T&".
+    if ((suffix == Suffix::Ptr || suffix == Suffix::Ref) && is_handle(core))
+        return core;
+
+    // The storage text of a handle type: "$T*" of an intrusive stub is "T*".
+    auto native_storage = [&](const std::string& type)
+    {
+        const TypeRule rule = lookup(type);
+        return replace_all(rule.handle_tpl, "$T", type);
+    };
+    auto strip = [](const std::string& x)
+    {
+        std::string r;
+        for (char c : x)
+            if (!std::isspace(static_cast<unsigned char>(c)))
+                r += c;
+        return r;
+    };
+
+    // "H" (by value), "const H&" and "H&&". The templates tell where T is in the text of H.
+    // "H&" without const is not a carrier.
+    const bool h_form = (suffix == Suffix::None && !is_const) || (suffix == Suffix::Ref && is_const)
+        || (suffix == Suffix::RRef && !is_const);
+    if (!h_form)
+        return {};
+    std::set<std::string> templates;
+    auto add_tpl = [&](const std::string& tpl)
+    {
+        if (tpl.find("$T") != std::string::npos)
+            templates.insert(strip(tpl));
+    };
+    for (const auto& e : exact_)
+        add_tpl(e.second.handle_tpl);
+    for (const auto& e : derived_)
+        add_tpl(e.second.handle_tpl);
+    for (const auto& e : patterns_)
+        add_tpl(e.second.handle_tpl);
+    add_tpl(default_handle_);
+    add_tpl("std::shared_ptr<$T>");
+    for (const std::string& tpl : templates)
+    {
+        const size_t at = tpl.find("$T");
+        const std::string pre = tpl.substr(0, at), post = tpl.substr(at + 2);
+        if (core.size() <= pre.size() + post.size() || !starts_with(core, pre) || !ends_with(core, post))
+            continue;
+        const std::string inner = core.substr(pre.size(), core.size() - pre.size() - post.size());
+        if (is_handle(inner) && strip(native_storage(inner)) == core)
+            return inner;
+    }
+    return {};
+}
+
+OverrideMatch match_native_virtual(const std::string& name, const std::vector<std::string>& script_ptypes,
+    const std::vector<VirtualSig>& virtuals, const TypeModel& model, bool is_const, bool relaxed)
+{
+    OverrideMatch result;
+    std::string key;
+    for (const std::string& p : script_ptypes)
+        key += override_key_norm(p) + ",";
+    auto native_key = [&](const VirtualSig& v, bool use_carriers)
+    {
+        std::string k;
+        for (const std::string& p : v.ptypes)
+        {
+            std::string c = use_carriers ? model.carrier_of(p) : std::string();
+            k += (c.empty() ? override_key_norm(p) : override_key_norm(c)) + ",";
+        }
+        return k;
+    };
+    auto collect = [&](bool use_carriers)
+    {
+        std::vector<size_t> matches;
+        for (size_t i = 0; i < virtuals.size(); ++i)
+            if (virtuals[i].name == name && native_key(virtuals[i], use_carriers) == key)
+                matches.push_back(i);
+        return matches;
+    };
+    auto select = [&](const std::vector<size_t>& matches)
+    {
+        std::vector<size_t> same_const;
+        for (size_t i : matches)
+            if (virtuals[i].is_const == is_const)
+                same_const.push_back(i);
+        if (same_const.empty() && is_const)
+        {
+            result.kind = OverrideMatch::Kind::ConstMismatch;
+            result.hits = matches;
+            return;
+        }
+        // Without "const" and without a non-const match, use the const matches.
+        result.hits = same_const.empty() ? matches : same_const;
+        result.kind = result.hits.size() > 1 ? OverrideMatch::Kind::Ambiguous : OverrideMatch::Kind::Hit;
+    };
+
+    std::vector<size_t> exact = collect(false);
+    if (!exact.empty())
+    {
+        select(exact);
+        return result;
+    }
+    std::vector<size_t> loose = collect(true);
+    if (loose.empty())
+        return result;
+    if (relaxed)
+    {
+        select(loose);
+        result.relaxed = true;
+        return result;
+    }
+    result.relaxed_candidates = loose;
+    return result;
+}
 
 std::vector<std::string> TypeModel::preludes(const std::string& type) const
 {

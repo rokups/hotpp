@@ -103,6 +103,13 @@ TEST(GoldenTranslation, Prelude)
     golden_one("prelude_v1");
 }
 
+// An override with the plain handle type for native parameters of the forms T*, const T&,
+// std::shared_ptr<T> and an intrusive T*: the slot keeps the native type and the body binds the handle.
+TEST(GoldenTranslation, HandleOverride)
+{
+    golden_one("handle_override_v1");
+}
+
 TEST(GoldenTranslation, Props)
 {
     golden_one("props_v1");
