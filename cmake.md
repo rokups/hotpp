@@ -48,7 +48,7 @@ cmake --build build
 
 The program prints three lines, one for each call of `Tick`. The first configure fetches the Hot++ dependencies with CPM.cmake. Then the build runs `hotc` and compiles the result. Hot++ sets `CMAKE_RUNTIME_OUTPUT_DIRECTORY` only for its own targets. So `hotc` is in `build/bin/` and your program is in `build/`.
 
-For a host that loads scripts, change `MODE` to `HOT_RELOAD` (the host compiles the script at run time) or to `PRECOMPILED` (the build makes a script library and the host loads it). The call is the same. See the section `hot_add_host`. The cases are in [Embedding](embedding.html).
+For a host that loads scripts, change `MODE` to `HOT_RELOAD` (the host compiles the script at run time), to `PRECOMPILED` (the build makes a script library and the host loads it) or to `AOT_RELOAD` (AOT code at start, run-time overrides later). The call is the same. See the section `hot_add_host`. The cases are in [Embedding](embedding.html).
 
 ## Quick start with an installed SDK
 
@@ -160,11 +160,11 @@ Two variables are read when `add_subdirectory` runs. Set them before the call:
 
 Use the aliases in your project. The real names can change. `hot_add_host` links the right target for you, so you seldom link one by hand.
 
-Do not link `hot::runtime` and `hot::aot` in one program. The library from `hot_add_host` or `hot_add_scripts` with `AOT` links `hot::aot` for you.
+Do not link `hot::runtime` and `hot::aot` in one program. The library from `hot_add_host` or `hot_add_scripts` with `AOT` links only `hot::runtime_core`. `hot_add_host` with `MODE AOT` adds `hot::aot`. `MODE AOT_RELOAD` adds `hot::backend` and never `hot::aot`.
 
 ### Export the host symbols
 
-A host that loads generation modules must export its symbols. This applies to a program that links `hot::runtime`, `hot::backend` or one backend library. `hot_add_host` does this for the modes `HOT_RELOAD` and `PRECOMPILED`. The modules resolve the host functions and the runtime functions from the executable.
+A host that loads generation modules must export its symbols. This applies to a program that links `hot::runtime`, `hot::backend` or one backend library. `hot_add_host` does this for the modes `HOT_RELOAD`, `AOT_RELOAD` and `PRECOMPILED`. The modules resolve the host functions and the runtime functions from the executable.
 
 ```cmake
 set_target_properties(app PROPERTIES ENABLE_EXPORTS ON)
@@ -274,7 +274,7 @@ A target `fmt::fmt-header-only` or `fmt::fmt` that exists already is always used
 ## hot_add_host
 
 ```
-hot_add_host(TARGET name [MODE AOT|HOT_RELOAD|PRECOMPILED] SCRIPTS a.hot b.hot
+hot_add_host(TARGET name [MODE AOT|AOT_RELOAD|HOT_RELOAD|PRECOMPILED] SCRIPTS a.hot b.hot
              [INCLUDES dir...] [DEPENDS file...] [PRELUDES file...]
              [FLAGS flag...] [HOTC_ARGS arg...])
 ```
@@ -290,7 +290,7 @@ This is the call that most hosts need. Make your program with `add_executable` f
 | `SCRIPTS` | none, required | The script files (`.hot` or `.cpp`). A relative path is relative to the current source folder. Two scripts in one call need different names (the file name without the extension). |
 | `INCLUDES` | empty | Include folders. The program, `hotc` and the language server get them. Use absolute paths. |
 | `DEPENDS` | empty | More files that the build depends on, for example your headers. The build does not track the headers of a script by itself. |
-| `PRELUDES` | empty | Prelude files for `hotc --prelude`. Only for `MODE AOT`. |
+| `PRELUDES` | empty | Prelude files for `hotc --prelude`. Only for `MODE AOT` and `MODE AOT_RELOAD`. |
 | `FLAGS` | empty | Compile flags for the scripts (`PRECOMPILED`) or flags for `hotc` (`AOT`). |
 | `HOTC_ARGS` | empty | More arguments for `hotc`. |
 
@@ -300,7 +300,8 @@ A word that is not a keyword, a missing `TARGET` or `SCRIPTS`, and an unknown `M
 
 | Mode | What the build does | What the call links and sets | At run time |
 |---|---|---|---|
-| `AOT` | `hotc` translates the scripts to C++. The build makes the static library `<TARGET>_scripts`. | The program links `<TARGET>_scripts` (PRIVATE). The library links `hot::aot`. | No loader. No compiler. The scripts are in the binary. |
+| `AOT` | `hotc` translates the scripts to C++. The build makes the static library `<TARGET>_scripts`. | The program links `<TARGET>_scripts` and `hot::aot` (PRIVATE). The library links only `hot::runtime_core`. | No loader. No compiler. The scripts are in the binary. |
+| `AOT_RELOAD` | `hotc` translates the scripts to C++ as in `AOT`. The build makes the static library `<TARGET>_scripts`. The override files are not in `SCRIPTS`. | The program links `<TARGET>_scripts` and `hot::backend` (not `hot::aot`) and gets `ENABLE_EXPORTS`. A development build also gets the define `HOT_SCRIPT_DIR`, the folder of the first script. | The program starts with `Loader::load_aot(hot::aot_table)`. Then a backend compiles an override of one script at run time, and `Loader::revert_unit` goes back to the AOT code. The host needs a compiler for the override. See "AOT with run-time overrides" in [Embedding](embedding.html). |
 | `PRECOMPILED` | `hotc` builds a script library (`.so`) for each script, in `${CMAKE_BINARY_DIR}/hot_scripts/<TARGET>`. The program depends on the target `<TARGET>_scripts`. | The program links `hot::runtime` and gets `ENABLE_EXPORTS`. The variable `HOT_SCRIPTS_<TARGET>_LIBRARIES` has the library paths (in the scope of the caller). | The program loads the libraries with `hot::module_from_library`. No compiler. |
 | `HOT_RELOAD` | The build does not compile the scripts. | The program links `hot::backend` and gets `ENABLE_EXPORTS`. A development build also gets the define `HOT_SCRIPT_DIR`, the folder of the first script. | The backend compiles the scripts. The host needs a compiler. The scripts can reload. |
 
@@ -429,7 +430,7 @@ target_link_libraries(game PRIVATE game_scripts)
 
 The function runs `hotc --aot` and makes the static library `name`. The library has the files `OUT_DIR/<script name>.aot.cpp` and `OUT_DIR/hot_aot_registry.cpp`. The library defines `hot::aot_table` (`include/hot/aot.h`).
 
-The library links `hot_aot` (PUBLIC). A program that links `name` has no loader, no reload and no Clang. When the build uses fmt, the library also links `hot_fmt`. AOT mode makes only generation 1. Script names and class names must be unique across the scripts of one table.
+The library links `hot_runtime_core` (PUBLIC). A program that links `name` and `hot::aot` has no loader, no reload and no Clang. When the build uses fmt, the library also links `hot_fmt`. AOT mode makes only generation 1. Script names and class names must be unique across the scripts of one table.
 
 The library is a normal target, so it uses the compile flags of your project (`CMAKE_CXX_FLAGS` and the build type). `FLAGS` go to `hotc`, not to the compiler.
 
@@ -635,7 +636,8 @@ The first column has the text as it appears in the source. A text with `...` has
 | `HOT_FMT_PROVIDER is NONE, but the target fmt::fmt-header-only or fmt::fmt does not exist...` | `NONE` needs your own fmt target. | Create the target before `add_subdirectory`, or use another provider. |
 | `Hot++: fmt is not available. Check HOT_FMT_PROVIDER (now ...).` | No provider gave a fmt target. | Install fmt, or use `CPM`. |
 | `hot_add_scripts needs TARGET and SCRIPTS` (also `hot_add_host needs TARGET and SCRIPTS`) | A required keyword is missing. | Give both. |
-| `hot_add_host: MODE must be AOT, HOT_RELOAD or PRECOMPILED. It is: ...` | An unknown mode. | Use one of the three. |
+| `hot_add_host: MODE must be AOT, AOT_RELOAD, HOT_RELOAD or PRECOMPILED. It is: ...` | An unknown mode. | Use one of the four. |
+| `hot_add_host: MODE AOT_RELOAD needs a backend (the target hot::backend) ...` | The Hot++ in use has no `hot::backend` target. The override needs a compiler at run time. | Use a Hot++ build or SDK with a backend, or use `MODE AOT`. |
 | `hot_add_host: the target ... does not exist` | The call comes before `add_executable`. | Make the program target first. |
 | `HOT_PORTABLE and HOT_BUILD_TESTS are both ON ...` | The tests need the build paths. | Set `HOT_BUILD_TESTS=OFF`, or build the tests in a normal build. |
 | `hot_add_scripts: unknown arguments: ...` (also `hot_add_host: unknown arguments: ...`) | A word is not a keyword (for example a typo). | Check the spelling. Keywords are upper case. |
