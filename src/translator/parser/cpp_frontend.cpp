@@ -2866,7 +2866,8 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
 } // namespace
 
 ast::Script parse_cpp_script(const std::string& text, const std::string& name,
-    const std::vector<std::string>& clang_args, const LineMap& map, Diagnostics& diag)
+    const std::vector<std::string>& clang_args, const LineMap& map, Diagnostics& diag,
+    const std::vector<std::pair<std::string, std::string>>& virtual_files)
 {
     ast::Script sc;
     std::vector<const char*> cargs;
@@ -2874,9 +2875,12 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
         cargs.push_back(a.c_str());
     Handles h;
     h.idx = clang_createIndex(0, 0);
-    CXUnsavedFile unsaved{name.c_str(), text.c_str(), static_cast<unsigned long>(text.size())};
+    std::vector<CXUnsavedFile> unsaved;
+    unsaved.push_back({name.c_str(), text.c_str(), static_cast<unsigned long>(text.size())});
+    for (const auto& [vpath, vtext] : virtual_files)
+        unsaved.push_back({vpath.c_str(), vtext.c_str(), static_cast<unsigned long>(vtext.size())});
     CXErrorCode ec = clang_parseTranslationUnit2(h.idx, name.c_str(), cargs.data(), static_cast<int>(cargs.size()),
-        &unsaved, 1, CXTranslationUnit_DetailedPreprocessingRecord, &h.tu);
+        unsaved.data(), static_cast<unsigned>(unsaved.size()), CXTranslationUnit_DetailedPreprocessingRecord, &h.tu);
     if (ec != CXError_Success || !h.tu)
     {
         diag.add_line(0, "libclang cannot parse the script");

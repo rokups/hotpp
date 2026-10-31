@@ -8,6 +8,7 @@
 #pragma once
 
 #include "hot/module.h"
+#include "hot/vfs.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -92,6 +93,10 @@ struct DefaultBackendOptions
 {
     std::vector<std::string> include_dirs; // after HOT_DEFAULT_INCLUDES
     std::vector<std::string> extra_flags;  // after HOT_DEFAULT_CXXFLAGS
+    // The file system of the host for the script imports and the "using "x.h";" headers. Null: the
+    // disk only. For each directory the backend asks this file system first and then the disk.
+    // It must be thread safe (hot/vfs.h).
+    std::shared_ptr<hot::FileSystem> fs;
 };
 std::unique_ptr<Backend> make_default_backend(const DefaultBackendOptions& options);
 

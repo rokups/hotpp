@@ -6,6 +6,7 @@
 #include "../diag.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace hotc
@@ -17,7 +18,10 @@ namespace hotc
 // when the generated code cannot resolve it (a base member, "this", a module variable).
 // The function adds an error to "diag" and stops at the first unsupported construct.
 // It never throws for a bad script. The offsets in the errors are bytes in "text".
+// "virtual_files" (path, text) are headers that exist only in memory. The caller keeps them
+// alive until the function returns.
 ast::Script parse_cpp_script(const std::string& text, const std::string& name,
-    const std::vector<std::string>& clang_args, const LineMap& map, Diagnostics& diag);
+    const std::vector<std::string>& clang_args, const LineMap& map, Diagnostics& diag,
+    const std::vector<std::pair<std::string, std::string>>& virtual_files = {});
 
 } // namespace hotc

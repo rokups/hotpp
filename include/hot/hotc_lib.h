@@ -13,6 +13,8 @@
 #include <utility>
 #include <vector>
 
+#include "hot/vfs.h"
+
 namespace hotc
 {
 
@@ -42,6 +44,10 @@ struct TranslateOptions
     // std::format and adds <format>. "fmt" lowers to fmt::format and adds <fmt/format.h>. The
     // user supplies the fmt header. Any other value is an error.
     std::string format_lib = "std";
+    // The file system of the host for the imports ("using "x.hot";" and "using "x.h";"). For each
+    // directory the translator reads this file system first and then the disk. Null: the disk only.
+    // The file system must be thread safe.
+    std::shared_ptr<hot::FileSystem> fs;
 };
 
 // The scripts of a build: pairs of the name that "#line" uses and the script text.
@@ -151,6 +157,9 @@ struct TranslateResult
     // the diagnostics and "#line" use. It is valid also when ok is false: a diagnostic
     // rewriter needs the text of an imported script to show its source line.
     ScriptTexts imports;
+    // The native headers that the parse read from TranslateOptions::fs, as path and text. The
+    // headers that these include, and that the host file system holds, are here too.
+    std::vector<std::pair<std::string, std::string>> virtual_files;
 };
 
 // The main script and the imported scripts of a translation, as input for the rewriters.

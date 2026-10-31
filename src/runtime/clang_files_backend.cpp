@@ -12,6 +12,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <spawn.h>
 #include <sstream>
 #include <unistd.h>
@@ -121,8 +122,24 @@ ClangFilesBackend::~ClangFilesBackend()
         remove_scratch(opt_.work_dir);
 }
 
-std::vector<std::string> compile_command(
-    const ClangFilesOptions& opt, const std::string& cpp_path, const std::string& out_so)
+namespace
+{
+
+// The place of a virtual path under "<work_dir>/vfs". The path becomes absolute and lexically
+// normal first, so the ".." parts of "../shared" or of "a/../b" are resolved. The result has no
+// root and no leading slash. It gives no value when the result would leave the mirror root.
+std::optional<std::string> vfs_relative(const std::string& path)
+{
+    const std::string rel = fs::absolute(fs::path(path)).lexically_normal().relative_path().string();
+    if (rel == ".." || rel.compare(0, 3, "../") == 0)
+        return std::nullopt;
+    return rel;
+}
+
+} // namespace
+
+std::vector<std::string> compile_command(const ClangFilesOptions& opt, const std::string& cpp_path,
+    const std::string& out_so, const std::string& script_dir)
 {
     std::vector<std::string> cmd = {opt.compiler,
         "-std=" + (opt.std_version.empty() ? std::string(cxx_std_name()) : opt.std_version), "-fPIC", "-shared", "-g",
@@ -131,8 +148,15 @@ std::vector<std::string> compile_command(
         cmd.push_back("-resource-dir=" + opt.resource_dir);
     for (const std::string& f : opt.extra_flags)
         cmd.push_back(f);
+    const std::string mirror = opt.work_dir + "/vfs/";
+    if (opt.fs && !script_dir.empty())
+        cmd.push_back("-I" + mirror + vfs_relative(script_dir).value_or(std::string()));
     for (const std::string& d : opt.include_dirs)
+    {
+        if (opt.fs)
+            cmd.push_back("-I" + mirror + vfs_relative(d).value_or(std::string()));
         cmd.push_back("-I" + d);
+    }
     for (const std::string& f : format_compile_flags())
         cmd.push_back(f);
     cmd.push_back(cpp_path);
@@ -223,6 +247,7 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     to.std_version = opt_.std_version.empty() ? cxx_std_name() : opt_.std_version;
     to.strict_borrowed = opt_.strict_borrowed;
     to.format_lib = format_lib_name();
+    to.fs = opt_.fs;
     // A missing file means the first generation. A fresh generation starts with no slots.
     if (mode == LoadMode::Reload)
         read_text(opt_.slots_file, to.slots_in);
@@ -242,7 +267,33 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
         return false;
     }
 
-    const std::vector<std::string> cmd = compile_command(opt_, cpp_path, out_so);
+    // The headers of the host file system go to disk files, because the external compiler reads
+    // the disk. Each load writes them again under "<work_dir>/vfs".
+    if (opt_.fs)
+    {
+        const fs::path mirror = fs::path(opt_.work_dir) / "vfs";
+        fs::remove_all(mirror, ec);
+        for (const auto& [vpath, vtext] : tr.virtual_files)
+        {
+            const std::optional<std::string> rel = vfs_relative(vpath);
+            if (!rel)
+            {
+                error = "the virtual file '" + vpath + "' is outside the mirror directory\n";
+                return false;
+            }
+            const fs::path target = mirror / *rel;
+            fs::create_directories(target.parent_path(), ec);
+            if (!write_text(target.string(), vtext))
+            {
+                error = "cannot write " + target.string();
+                return false;
+            }
+        }
+    }
+    const size_t script_slash = source.name.rfind('/');
+    const std::string script_dir =
+        script_slash == std::string::npos ? std::string(".") : source.name.substr(0, script_slash);
+    const std::vector<std::string> cmd = compile_command(opt_, cpp_path, out_so, script_dir);
     fs::remove(so_path, ec);
     std::string output;
     const int rc = run_command(cmd, output);

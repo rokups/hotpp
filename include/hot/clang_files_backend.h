@@ -35,6 +35,10 @@ struct ClangFilesOptions
     // True: the error text is the raw output of the compiler. False (the default): it speaks
     // script names (hotc::rewrite_diagnostic).
     bool raw_diagnostics = false;
+    // The file system of the host for the script imports and the "using "x.h";" headers. Null: the
+    // disk only. For each directory the backend asks this file system first and then the disk.
+    // It must be thread safe (hot/vfs.h).
+    std::shared_ptr<hot::FileSystem> fs;
 };
 
 class ClangFilesBackend : public Backend
@@ -72,8 +76,11 @@ private:
 
 // The compile command of the backend for one generated .cpp and its .so. The backend and
 // the compile database (hotc --compile-commands) both use it, so the flags are the same.
-std::vector<std::string> compile_command(
-    const ClangFilesOptions& options, const std::string& cpp_path, const std::string& out_so);
+// With a host file system ("options.fs"), the files of the host go to "<work_dir>/vfs/<path>".
+// The command then adds "-I<work_dir>/vfs/<dir>" before each "-I<dir>", and one for
+// "script_dir" (the directory of the script; empty: none).
+std::vector<std::string> compile_command(const ClangFilesOptions& options, const std::string& cpp_path,
+    const std::string& out_so, const std::string& script_dir = std::string());
 
 // One entry of a compile database (the format of clangd and CMake's compile_commands.json).
 struct CompileCommandEntry

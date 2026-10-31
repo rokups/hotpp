@@ -109,13 +109,25 @@ struct CompileSetup
     std::unique_ptr<clang::CompilerInvocation> invocation;
 };
 
-CompileSetup make_invocation(
-    const JitOptions& opt, const std::string& path, const std::string* text, bool as_pch, std::string& diagnostics)
+// "virtual_files" (path, text) are the headers that only the file system of the host holds. They
+// go into the memory file system under their exact paths.
+CompileSetup make_invocation(const JitOptions& opt, const std::string& path, const std::string* text, bool as_pch,
+    std::string& diagnostics, const std::vector<std::pair<std::string, std::string>>* virtual_files = nullptr,
+    const std::string& script_dir = std::string())
 {
     CompileSetup s;
     auto memory = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
     if (text)
         memory->addFile(path, 0, llvm::MemoryBuffer::getMemBufferCopy(*text, path));
+    // The memory file system needs absolute normal paths, so the paths of the files and the paths
+    // of the "-I" dirs are made absolute and normal when a host file system is set.
+    auto normal = [](const std::string& p) { return std::filesystem::absolute(p).lexically_normal().string(); };
+    if (virtual_files)
+        for (const auto& [vpath, vtext] : *virtual_files)
+        {
+            const std::string full = normal(vpath);
+            memory->addFile(full, 0, llvm::MemoryBuffer::getMemBufferCopy(vtext, full));
+        }
     s.vfs = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
     s.vfs->pushOverlay(memory);
 
@@ -128,8 +140,15 @@ CompileSetup make_invocation(
         args.push_back("-resource-dir=" + opt.resource_dir);
     for (const std::string& f : opt.extra_flags)
         args.push_back(f);
+    // With a host file system, a header in the directory of the script is a virtual file there.
+    if (opt.fs && !script_dir.empty())
+        args.push_back("-I" + normal(script_dir));
     for (const std::string& d : opt.include_dirs)
+    {
+        if (opt.fs)
+            args.push_back("-I" + normal(d));
         args.push_back("-I" + d);
+    }
     for (const std::string& f : format_compile_flags())
         args.push_back(f);
     if (!as_pch && !opt.pch_path.empty())
@@ -154,10 +173,11 @@ CompileSetup make_invocation(
     return s;
 }
 
-Compiled compile(const JitOptions& opt, const std::string& path, const std::string& text)
+Compiled compile(const JitOptions& opt, const std::string& path, const std::string& text,
+    const std::vector<std::pair<std::string, std::string>>& virtual_files, const std::string& script_dir)
 {
     Compiled out;
-    CompileSetup s = make_invocation(opt, path, &text, false, out.diagnostics);
+    CompileSetup s = make_invocation(opt, path, &text, false, out.diagnostics, &virtual_files, script_dir);
     if (!s.invocation)
     {
         out.diagnostics += "cannot build the compile command\n";
@@ -279,6 +299,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     to.std_version = opt_.std_version.empty() ? cxx_std_name() : opt_.std_version;
     to.strict_borrowed = opt_.strict_borrowed;
     to.format_lib = format_lib_name();
+    to.fs = opt_.fs;
     // A fresh load ignores the slot state of the earlier generations.
     if (mode == LoadMode::Reload)
     {
@@ -297,7 +318,10 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     }
 
     t0 = Clock::now();
-    Compiled c = compile(opt_, cpp_path, tr.cpp);
+    const size_t script_slash = source.name.rfind('/');
+    const std::string script_dir =
+        script_slash == std::string::npos ? std::string(".") : source.name.substr(0, script_slash);
+    Compiled c = compile(opt_, cpp_path, tr.cpp, tr.virtual_files, script_dir);
     timings_.compile_ms = ms_since(t0);
     if (!c.module)
     {

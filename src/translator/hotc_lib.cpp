@@ -636,6 +636,8 @@ struct FactReq
 
 // The direct bases of each native class, by qualified name, in declaration order.
 using Hierarchy = std::map<std::string, std::vector<std::string>>;
+// Headers that exist only in the file system of the host: path and text.
+using VirtualFiles = std::vector<std::pair<std::string, std::string>>;
 
 // The qualified name of a declaration: the namespaces and the classes, joined with "::".
 // An empty spelling (an anonymous namespace) is skipped.
@@ -1080,6 +1082,11 @@ struct FileStamp
     unsigned long long ino = 0;
     bool hashed = false; // the file is recent: each check reads the content
     unsigned long long hash = 0;
+    // The file is in the file system of the host, not on the disk. The fields mtime_ns, ctime_ns,
+    // size and ino are not used then. The file is the same when it exists and "version" is the
+    // same. The version 0 means unknown: "hashed" is true and each check reads the content.
+    bool virt = false;
+    uint64_t version = 0;
 };
 
 // A file is recent when its time is less than this value before the check.
@@ -1090,6 +1097,18 @@ long long now_ns()
     struct timespec ts;
     ::clock_gettime(CLOCK_REALTIME, &ts);
     return static_cast<long long>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
+}
+
+// FNV-1a hash of a text.
+unsigned long long hash_text(const std::string& text)
+{
+    unsigned long long h = 14695981039346656037ULL;
+    for (const char c : text)
+    {
+        h ^= static_cast<unsigned char>(c);
+        h *= 1099511628211ULL;
+    }
+    return h;
 }
 
 // FNV-1a hash of the content of a file.
@@ -1114,11 +1133,51 @@ long long ns_of(const struct timespec& ts)
     return static_cast<long long>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
 }
 
+// The host file system can hold a file under the normal spelling ("d/b/y.h") of the path that
+// libclang uses ("d/a/../b/y.h"). These two functions try the spelling of the search, then the
+// normal spelling.
+hot::VfsStat host_stat(hot::FileSystem& fs, const std::string& path)
+{
+    hot::VfsStat st = fs.stat(path);
+    if (!st.exists)
+    {
+        const std::string normal = std::filesystem::path(path).lexically_normal().string();
+        if (normal != path)
+            st = fs.stat(normal);
+    }
+    return st;
+}
+
+bool host_read(hot::FileSystem& fs, const std::string& path, std::string& out)
+{
+    if (fs.read(path, out))
+        return true;
+    const std::string normal = std::filesystem::path(path).lexically_normal().string();
+    return normal != path && fs.read(normal, out);
+}
+
 // Reads the stamp. The stamp has the hash of the content of an existing file.
-FileStamp stamp_of(const std::string& path)
+// The host file system "fs" (can be null) wins over the disk for the same path.
+FileStamp stamp_of(hot::FileSystem* fs, const std::string& path)
 {
     FileStamp f;
     f.path = path;
+    if (fs)
+    {
+        const hot::VfsStat vs = host_stat(*fs, path);
+        if (vs.exists)
+        {
+            f.virt = true;
+            f.version = vs.version;
+            if (vs.version == 0)
+            {
+                std::string text;
+                f.hashed = true;
+                f.hash = host_read(*fs, path, text) ? hash_text(text) : 0;
+            }
+            return f;
+        }
+    }
     struct stat st;
     if (::stat(path.c_str(), &st) == 0)
     {
@@ -1135,8 +1194,25 @@ FileStamp stamp_of(const std::string& path)
 // True when the file is the same as at the time of the record. The check reads the content
 // when the record is recent, or when the inode or the ctime differ although the time and the
 // size are equal. A new ctime with the same content is accepted, and the record learns it.
-bool stamp_fresh(FileStamp& rec)
+bool stamp_fresh(hot::FileSystem* fs, FileStamp& rec)
 {
+    if (rec.virt)
+    {
+        // A virtual file is the same when the host file system still has it with the same version.
+        // The version 0 is unknown, so the content decides.
+        if (!fs)
+            return false;
+        const hot::VfsStat vs = host_stat(*fs, rec.path);
+        if (!vs.exists || vs.version != rec.version)
+            return false;
+        if (rec.version != 0)
+            return true;
+        std::string text;
+        return host_read(*fs, rec.path, text) && hash_text(text) == rec.hash;
+    }
+    // A file on the disk is hidden when the host file system now has the same path.
+    if (fs && host_stat(*fs, rec.path).exists)
+        return false;
     struct stat st;
     long long mtime = -1, ctime = -1, size = -1;
     unsigned long long ino = 0;
@@ -1166,17 +1242,17 @@ bool stamp_fresh(FileStamp& rec)
 
 // Adds the stamps of the paths that a search of the include dirs tried before it found
 // "rel". A new file at one of these paths would hide the file that the parse used.
-void add_shadow_stamps(const std::string& rel, const std::vector<std::string>& dirs, std::set<std::string>& seen,
-    std::vector<FileStamp>& files)
+void add_shadow_stamps(hot::FileSystem* fs, const std::string& rel, const std::vector<std::string>& dirs,
+    std::set<std::string>& seen, std::vector<FileStamp>& files)
 {
     for (const auto& d : dirs)
     {
         const std::string cand = d + "/" + rel;
         struct stat st;
-        if (::stat(cand.c_str(), &st) == 0)
+        if ((fs && host_stat(*fs, cand).exists) || ::stat(cand.c_str(), &st) == 0)
             return; // the first file that exists
         if (seen.insert(cand).second)
-            files.push_back(stamp_of(cand));
+            files.push_back(stamp_of(fs, cand));
     }
 }
 
@@ -1684,7 +1760,7 @@ int eval_bool(CXCursor var)
 void parse_bases(const std::string& probe, const std::vector<std::string>& args, const std::set<std::string>& names,
     const std::set<std::string>& import_paths, std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files,
     Hierarchy& hierarchy, const std::vector<FactReq>& reqs, FactMap& facts, const std::vector<std::string>& queries,
-    std::map<std::string, std::string>& answers)
+    std::map<std::string, std::string>& answers, const VirtualFiles& virtual_files, hot::FileSystem* fs)
 {
     std::vector<std::pair<size_t, std::string>> fact_lines;
     // A template instance as a base ("Tmpl<int>") is named by an alias. The size check makes the
@@ -1707,10 +1783,15 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         cargs.push_back(a.c_str());
     ClangHandles ch;
     CXIndex idx = ch.idx = clang_createIndex(0, 0);
-    CXUnsavedFile unsaved{"hotc_probe.cpp", full_probe.c_str(), static_cast<unsigned long>(full_probe.size())};
+    // The probe and the headers that exist only in memory. libclang reads the texts of
+    // "virtual_files" until the parse ends, so the caller keeps them alive.
+    std::vector<CXUnsavedFile> unsaved;
+    unsaved.push_back({"hotc_probe.cpp", full_probe.c_str(), static_cast<unsigned long>(full_probe.size())});
+    for (const auto& [vpath, vtext] : virtual_files)
+        unsaved.push_back({vpath.c_str(), vtext.c_str(), static_cast<unsigned long>(vtext.size())});
     CXTranslationUnit tu = nullptr;
     CXErrorCode ec = clang_parseTranslationUnit2(idx, "hotc_probe.cpp", cargs.data(), static_cast<int>(cargs.size()),
-        &unsaved, 1, CXTranslationUnit_SkipFunctionBodies, &tu);
+        unsaved.data(), static_cast<unsigned>(unsaved.size()), CXTranslationUnit_SkipFunctionBodies, &tu);
     ch.tu = tu;
     if (ec != CXError_Success || !tu)
         fail(0, "libclang cannot parse the imports");
@@ -1740,16 +1821,22 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         fail(0, "the imports have errors");
 
     std::set<std::string> seen;
+    struct IncludeCtx
+    {
+        std::set<std::string>* seen;
+        std::vector<FileStamp>* files;
+        hot::FileSystem* fs;
+    };
     auto on_include = [](CXFile f, CXSourceLocation*, unsigned depth, CXClientData d)
     {
         if (depth == 0)
             return; // the probe file
-        auto* v = static_cast<std::pair<std::set<std::string>*, std::vector<FileStamp>*>*>(d);
+        auto* v = static_cast<IncludeCtx*>(d);
         std::string path = cxs(clang_getFileName(f));
-        if (v->first->insert(path).second)
-            v->second->push_back(stamp_of(path));
+        if (v->seen->insert(path).second)
+            v->files->push_back(stamp_of(v->fs, path));
     };
-    std::pair<std::set<std::string>*, std::vector<FileStamp>*> ctx{&seen, &files};
+    IncludeCtx ctx{&seen, &files, fs};
     files.clear();
     clang_getInclusions(tu, on_include, &ctx);
 
@@ -1760,15 +1847,15 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
             dirs.push_back(a.substr(2));
     for (const auto& ip : import_paths)
         if (!ip.empty() && ip.front() != '<')
-            add_shadow_stamps(ip, dirs, seen, files);
+            add_shadow_stamps(fs, ip, dirs, seen, files);
         else if (ip.size() > 2)
-            add_shadow_stamps(ip.substr(1, ip.size() - 2), dirs, seen, files);
+            add_shadow_stamps(fs, ip.substr(1, ip.size() - 2), dirs, seen, files);
     const std::vector<FileStamp> used = files;
     for (const FileStamp& f : used)
         for (const auto& d : dirs)
-            if (f.mtime_ns >= 0 && f.path.size() > d.size() + 1 && f.path.compare(0, d.size() + 1, d + "/") == 0)
+            if ((f.mtime_ns >= 0 || f.virt) && f.path.size() > d.size() + 1 && f.path.compare(0, d.size() + 1, d + "/") == 0)
             {
-                add_shadow_stamps(f.path.substr(d.size() + 1), dirs, seen, files);
+                add_shadow_stamps(fs, f.path.substr(d.size() + 1), dirs, seen, files);
                 break;
             }
 
@@ -1957,13 +2044,13 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
     const std::set<std::string>& names, const std::vector<FactReq>& reqs, const std::vector<std::string>& queries,
     const std::function<void(std::map<std::string, BaseInfo>&, std::vector<FileStamp>&, Hierarchy&, FactMap&,
         std::map<std::string, std::string>&)>& parse,
-    Hierarchy& hierarchy, FactMap& facts_out, std::map<std::string, std::string>& answers_out)
+    Hierarchy& hierarchy, FactMap& facts_out, std::map<std::string, std::string>& answers_out, hot::FileSystem* fs)
 {
     std::lock_guard<std::mutex> lock(S.mutex);
     auto& e = S.entries[key];
     bool fresh = !e.files.empty();
     for (size_t i = 0; fresh && i < e.files.size(); ++i)
-        fresh = stamp_fresh(e.files[i]);
+        fresh = stamp_fresh(fs, e.files[i]);
     if (!fresh)
         e = {};
     bool complete = fresh;
@@ -2014,6 +2101,136 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
             r.emplace(n, it->second);
     }
     return r;
+}
+
+// ---- headers from the file system of the host
+//
+// libclang reads the disk. A header that exists only in the file system of the host goes to
+// libclang as an unsaved file. The translator must find these headers before the parse: the
+// native imports, and the headers that these include.
+
+// The "#include" lines of a text: the name, and true for the form <name>.
+std::vector<std::pair<std::string, bool>> scan_includes(const std::string& text)
+{
+    std::vector<std::pair<std::string, bool>> r;
+    size_t at = 0;
+    while (at < text.size())
+    {
+        size_t end = text.find('\n', at);
+        if (end == std::string::npos)
+            end = text.size();
+        size_t i = at;
+        auto skip_blank = [&]
+        {
+            while (i < end && (text[i] == ' ' || text[i] == '\t'))
+                ++i;
+        };
+        skip_blank();
+        if (i < end && text[i] == '#')
+        {
+            ++i;
+            skip_blank();
+            if (text.compare(i, 7, "include") == 0)
+            {
+                i += 7;
+                skip_blank();
+                if (i < end && (text[i] == '"' || text[i] == '<'))
+                {
+                    const bool angle = text[i] == '<';
+                    const size_t close = text.find(angle ? '>' : '"', i + 1);
+                    if (close != std::string::npos && close < end && close > i + 1)
+                        r.emplace_back(text.substr(i + 1, close - i - 1), angle);
+                }
+            }
+        }
+        at = end + 1;
+    }
+    return r;
+}
+
+std::string dir_of(const std::string& path)
+{
+    const size_t slash = path.rfind('/');
+    return slash == std::string::npos ? std::string(".") : path.substr(0, slash);
+}
+
+// The most nested "#include" level that the search follows. A deeper level stops quietly.
+constexpr int kMaxVirtualIncludeDepth = 64;
+
+// What the search of the virtual headers has done: the spellings that it added to the result, and
+// the normalized paths whose includes it scanned. A header can have more than one spelling
+// ("a/x.h" and "a/../a/x.h"), because libclang finds an unsaved file by the spelling. Only the
+// normalized path is scanned once, so an include cycle with ".." parts ends.
+struct VirtualSearch
+{
+    std::set<std::string> spellings, scanned;
+};
+
+// Finds the header "rel" in "dirs" in order, the host first for each dir. A hit on the disk
+// stops the search. A hit in the host file system adds the file to "out", and its includes too.
+void collect_virtual_header(hot::FileSystem& fs, const std::string& rel, bool angle, const std::string& includer_dir,
+    const std::vector<std::string>& dirs, VirtualSearch& seen, VirtualFiles& out, int depth)
+{
+    if (depth > kMaxVirtualIncludeDepth)
+        return;
+    std::vector<std::string> search;
+    if (!angle && !includer_dir.empty())
+        search.push_back(includer_dir);
+    for (const std::string& d : dirs)
+        search.push_back(d);
+    for (const std::string& d : search)
+    {
+        const std::string path = d + "/" + rel;
+        std::string text;
+        // The host file system can hold the file under the normal spelling ("d/b/y.h" for
+        // "d/a/../b/y.h"). libclang finds an unsaved file by the spelling that it builds, so the
+        // result keeps the spelling of the search.
+        const std::string normal = std::filesystem::path(path).lexically_normal().string();
+        if (fs.read(path, text) || (normal != path && fs.read(normal, text)))
+        {
+            if (seen.spellings.insert(path).second)
+                out.emplace_back(path, text);
+            if (!seen.scanned.insert(std::filesystem::path(path).lexically_normal().string()).second)
+                return;
+            const std::string here = dir_of(path);
+            const std::string body = std::move(text);
+            for (const auto& [name, is_angle] : scan_includes(body))
+                collect_virtual_header(fs, name, is_angle, here, dirs, seen, out, depth + 1);
+            return;
+        }
+        if (hot::disk_file_system()->stat(path).exists)
+            return;
+    }
+}
+
+// The headers of the native imports (and the headers that these include) that exist only in the
+// file system of the host. "dirs" are the script directory and the include directories. A system
+// import ("<vector>") stays on the disk.
+VirtualFiles collect_virtual_headers(
+    hot::FileSystem* fs, const std::vector<Import>& natives, const std::vector<std::string>& dirs)
+{
+    VirtualFiles out;
+    if (!fs)
+        return out;
+    VirtualSearch seen;
+    for (const Import& im : natives)
+        if (!im.path.empty() && im.path.front() != '<')
+            collect_virtual_header(*fs, im.path, false, std::string(), dirs, seen, out, 0);
+    return out;
+}
+
+// The same for the "#include" lines of the text of a ".cpp" script.
+VirtualFiles collect_virtual_includes(
+    hot::FileSystem* fs, const std::string& text, const std::string& script_dir, const std::vector<std::string>& dirs)
+{
+    VirtualFiles out;
+    if (!fs)
+        return out;
+    VirtualSearch seen;
+    for (const auto& [name, angle] : scan_includes(text))
+        if (name != "hot/script.h")
+            collect_virtual_header(*fs, name, angle, script_dir, dirs, seen, out, 0);
+    return out;
 }
 
 // The libclang arguments for the script and for the probe of the imports. The header
@@ -2067,7 +2284,12 @@ void translate_impl(
     Script sc;
     if (is_cpp_script)
     {
-        sc = hotc::parse_cpp_script(in.script_text, opt.input, clang_args(opt), map, g_diag);
+        // The headers of the host that the script includes go to libclang as unsaved files.
+        std::vector<std::string> dirs{dir_of(opt.input)};
+        for (const std::string& d : in.include_dirs)
+            dirs.push_back(d);
+        res.virtual_files = collect_virtual_includes(in.fs.get(), in.script_text, dirs.front(), dirs);
+        sc = hotc::parse_cpp_script(in.script_text, opt.input, clang_args(opt), map, g_diag, res.virtual_files);
         if (!g_diag.items.empty())
             throw TranslateAbort{};
         for (const Import& im : sc.imports)
@@ -2110,16 +2332,15 @@ void translate_impl(
             dirs.push_back(slash == std::string::npos ? std::string(".") : opt.input.substr(0, slash));
             for (const std::string& d : in.include_dirs)
                 dirs.push_back(d);
+            // For each directory: the file system of the host first, then the disk.
             for (const std::string& d : dirs)
             {
-                std::ifstream f(d + "/" + path, std::ios::binary);
-                if (!f)
-                    continue;
-                std::ostringstream ss;
-                ss << f.rdbuf();
-                text = ss.str();
-                file = d + "/" + path;
-                return true;
+                const std::string full = d + "/" + path;
+                if ((in.fs && in.fs->read(full, text)) || hot::disk_file_system()->read(full, text))
+                {
+                    file = full;
+                    return true;
+                }
             }
             return false;
         };
@@ -2544,6 +2765,14 @@ void translate_impl(
         reqs.push_back({t, std::vector<std::string>(ms.begin(), ms.end())});
 
     // ---- libclang: parse the imports and read the native base classes.
+    // The native headers that only the file system of the host holds go to libclang in memory.
+    if (!is_cpp_script)
+    {
+        std::vector<std::string> dirs{dir_of(opt.input)};
+        for (const std::string& d : in.include_dirs)
+            dirs.push_back(d);
+        res.virtual_files = collect_virtual_headers(in.fs.get(), sc.imports, dirs);
+    }
     std::string probe;
     for (const auto& im : sc.imports)
         probe +=
@@ -2567,6 +2796,15 @@ void translate_impl(
         key += a + "\n";
     for (const auto& p : import_paths)
         key += "#" + p + "\n";
+    // A host file system gives other files than the disk. Another file system, or another set of
+    // virtual headers, is another key. The stamps of the entry then check the versions.
+    hot::FileSystem* fs = in.fs.get();
+    if (fs)
+    {
+        key += "fs:" + std::to_string(fs->id()) + "\n";
+        for (const auto& v : res.virtual_files)
+            key += "@" + v.first + "\n";
+    }
     Hierarchy hier; // must outlive every use of "types"
     FactMap facts;
     hotc::ParamMemo param_memo; // the parameter analysis of the classes that are done (S25)
@@ -2574,8 +2812,8 @@ void translate_impl(
     const std::map<std::string, BaseInfo> bases = session_bases(session, key, base_names, reqs, query_texts,
         [&](std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files, Hierarchy& h, FactMap& fm,
             std::map<std::string, std::string>& qa)
-    { parse_bases(probe, args, base_names, import_paths, out, files, h, reqs, fm, query_texts, qa); },
-        hier, facts, query_answers);
+    { parse_bases(probe, args, base_names, import_paths, out, files, h, reqs, fm, query_texts, qa, res.virtual_files, fs); },
+        hier, facts, query_answers, fs);
     for (auto& [d, q] : native_q.vars)
         d->native_type = query_answers[q];
     {

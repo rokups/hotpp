@@ -37,6 +37,10 @@ struct JitOptions
     // True: register the JIT code with the debugger (GDB JIT interface, design 4.10). Needs
     // a debug flag to be useful: the line table names the .hot files.
     bool debugger_support = true;
+    // The file system of the host for the script imports and the "using "x.h";" headers. Null: the
+    // disk only. For each directory the backend asks this file system first and then the disk.
+    // It must be thread safe (hot/vfs.h).
+    std::shared_ptr<hot::FileSystem> fs;
 };
 
 struct JitState; // the LLJIT of the session

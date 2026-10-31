@@ -38,6 +38,7 @@ std::unique_ptr<Backend> make_default_backend(const DefaultBackendOptions& optio
     o.include_dirs.insert(o.include_dirs.end(), options.include_dirs.begin(), options.include_dirs.end());
     o.extra_flags.insert(o.extra_flags.end(), options.extra_flags.begin(), options.extra_flags.end());
     o.resource_dir = paths.resource_dir;
+    o.fs = options.fs;
 #ifdef HOT_PORTABLE
     // The work directory of a portable host is in a shared place. Refuse an unsafe one.
     const std::string work_error = check_work_dir(paths.work_dir);
@@ -60,6 +61,7 @@ std::unique_ptr<Backend> make_default_backend(const DefaultBackendOptions& optio
     o.include_dirs.insert(o.include_dirs.end(), options.include_dirs.begin(), options.include_dirs.end());
     o.extra_flags.insert(o.extra_flags.end(), options.extra_flags.begin(), options.extra_flags.end());
     o.resource_dir = paths.resource_dir;
+    o.fs = options.fs;
     return std::make_unique<JitBackend>(std::move(o));
 #endif
 }
