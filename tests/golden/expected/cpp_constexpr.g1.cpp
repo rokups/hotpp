@@ -293,10 +293,12 @@ void LimiterState_g1::ctor()
 #line 21 "cpp_constexpr.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 21 "cpp_constexpr.cpp"
+    HOT_TRACE_FRAME("Limiter.Limiter", "cpp_constexpr.cpp");
+#line 21 "cpp_constexpr.cpp"
 
 #line 21 "cpp_constexpr.cpp"
 }
-#line 300 "cpp_constexpr.cpp.cpp"
+#line 302 "cpp_constexpr.cpp.cpp"
 
 #line 23 "cpp_constexpr.cpp"
 void LimiterState_g1::Tick(float dt)
@@ -314,6 +316,8 @@ void LimiterState_g1::Tick(float dt)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Limiter_Shell*>(this->__hot_owner);
 #line 23 "cpp_constexpr.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 23 "cpp_constexpr.cpp"
+    HOT_TRACE_FRAME("Limiter.Tick", "cpp_constexpr.cpp");
 #line 24 "cpp_constexpr.cpp"
 
         hot_mod()->total += 1;
@@ -322,7 +326,7 @@ void LimiterState_g1::Tick(float dt)
     
 #line 28 "cpp_constexpr.cpp"
 }
-#line 326 "cpp_constexpr.cpp.cpp"
+#line 330 "cpp_constexpr.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Limiter_slots[SLOT_COUNT] = {
@@ -364,7 +368,7 @@ HOT_NODEBUG static hot::Instance Limiter_create()
     return {static_cast<Actor*>(p), p};
 #line 16 "cpp_constexpr.cpp"
 }
-#line 368 "cpp_constexpr.cpp.cpp"
+#line 372 "cpp_constexpr.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

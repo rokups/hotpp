@@ -13,6 +13,7 @@
 #include "Damageable.h"
 #include "Guarded.h"
 
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -291,6 +292,70 @@ TEST_P(BackendTests, UnhandledDefaultPrintsToStderr)
     s.world.Tick(kDt);
     const std::string err = testing::internal::GetCapturedStderr();
     EXPECT_NE(err.find("[script] ERROR: unhandled hot::IndexOutOfRange in Player: "), std::string::npos) << err;
+}
+
+// A null handle in a script function that another script function calls. The report has the
+// traceback with HOT_TRACEBACK=1, and an empty traceback without it.
+TEST_P(BackendTests, UnhandledReportHasTheScriptTraceback)
+{
+    const std::string text = std::string(R"(
+using "Actor.h";
+using "Weapon.h";
+
+[native, handle("std::shared_ptr<$T>")] class Weapon;
+
+class Player : Actor {
+    Weapon weapon = null;
+    float v = 0.0;
+
+    void Inner() {
+        this.v = this.weapon.dmg;
+    }
+
+    void Outer() {
+        this.v = 1.0;
+        this.Inner();
+    }
+
+    override void Tick(float dt) {
+        this.Outer();
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(Actor& source, float amount) {}
+}
+)");
+    const auto line_of = [&text](const std::string& needle)
+    {
+        const size_t at = text.find(needle);
+        return 1 + std::count(text.begin(), text.begin() + static_cast<std::ptrdiff_t>(at), '\n');
+    };
+    hot::LoadResult r = backend->load({"chk_trace.hot", text}, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    HandlerGuard guard;
+    std::vector<std::string> tracebacks;
+    hot::set_script_error_handler([&tracebacks](const hot::ScriptErrorReport& e) { tracebacks.push_back(e.traceback); });
+    s.world.Tick(kDt);
+    ASSERT_EQ(tracebacks.size(), 1u);
+#if HOT_TRACEBACK
+    const std::string& t = tracebacks[0];
+    const std::string inner = "  at Player.Inner (chk_trace.hot:" + std::to_string(line_of("this.weapon.dmg")) + ")\n";
+    const std::string outer = "  at Player.Outer (chk_trace.hot:" + std::to_string(line_of("this.Inner();")) + ")\n";
+    const std::string tick = "  at Player.Tick (chk_trace.hot:" + std::to_string(line_of("this.Outer();")) + ")\n";
+    EXPECT_EQ(t, inner + outer + tick);
+    // The default handler prints the lines under the error line.
+    hot::set_script_error_handler({});
+    testing::internal::CaptureStderr();
+    s.world.Tick(kDt);
+    const std::string err = testing::internal::GetCapturedStderr();
+    EXPECT_NE(err.find("[script] ERROR: unhandled hot::NullReference in Player: "), std::string::npos) << err;
+    EXPECT_NE(err.find(inner + outer + tick), std::string::npos) << err;
+#else
+    (void)line_of;
+    EXPECT_TRUE(tracebacks[0].empty()) << tracebacks[0];
+#endif
 }
 
 // A script override of a native virtual function that throws a ScriptError: the host call

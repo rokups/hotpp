@@ -254,30 +254,32 @@ void TrackerState_g2::Tick(float dt)
 #line 20 "native_std_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 20 "native_std_v2.hot"
-    auto v = std::vector<float>();
+    HOT_TRACE_FRAME("Tracker.Tick", "native_std_v2.hot");
+#line 20 "native_std_v2.hot"
+    HOT_TRACE_LINE(); auto v = std::vector<float>();
 #line 21 "native_std_v2.hot"
-    hot::deref(v).push_back(9.0f);
+    HOT_TRACE_LINE(); hot::deref(v).push_back(9.0f);
 #line 22 "native_std_v2.hot"
-    hot::deref(v).push_back(8.0f);
+    HOT_TRACE_LINE(); hot::deref(v).push_back(8.0f);
 #line 23 "native_std_v2.hot"
-    hot::deref(v).push_back(7.0f);
+    HOT_TRACE_LINE(); hot::deref(v).push_back(7.0f);
 #line 24 "native_std_v2.hot"
-    std::sort(hot::deref(v).begin(), hot::deref(v).end(), std::greater<float>());
+    HOT_TRACE_LINE(); std::sort(hot::deref(v).begin(), hot::deref(v).end(), std::greater<float>());
 #line 25 "native_std_v2.hot"
-    __st->lowest = Math::Min(hot::index(v, 0), hot::index(v, 2));
+    HOT_TRACE_LINE(); __st->lowest = Math::Min(hot::index(v, 0), hot::index(v, 2));
 #line 26 "native_std_v2.hot"
-    __st->dist = Distance(__self->Position, Vec3(1, 1, 1));
+    HOT_TRACE_LINE(); __st->dist = Distance(__self->Position, Vec3(1, 1, 1));
 #line 27 "native_std_v2.hot"
-    __st->sum = Util::Sum(__self->Position) * 2.0f;
+    HOT_TRACE_LINE(); __st->sum = Util::Sum(__self->Position) * 2.0f;
 #line 28 "native_std_v2.hot"
-    __st->described = Util::Describe(hot::star(__self));
+    HOT_TRACE_LINE(); __st->described = Util::Describe(hot::star(__self));
 #line 29 "native_std_v2.hot"
-    __self->Name = FormatVec(__self->Position);
+    HOT_TRACE_LINE(); __self->Name = FormatVec(__self->Position);
 #line 30 "native_std_v2.hot"
-    hot::deref(__st->history).push_back(static_cast<int32_t>(hot::deref(__st->history).size()) * 10);
+    HOT_TRACE_LINE(); hot::deref(__st->history).push_back(static_cast<int32_t>(hot::deref(__st->history).size()) * 10);
 #line 31 "native_std_v2.hot"
 }
-#line 281 "native_std_v2.hot.cpp"
+#line 283 "native_std_v2.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Tracker_slots[SLOT_COUNT] = {
@@ -305,7 +307,7 @@ HOT_NODEBUG static hot::Instance Tracker_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "native_std_v2.hot"
 }
-#line 309 "native_std_v2.hot.cpp"
+#line 311 "native_std_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

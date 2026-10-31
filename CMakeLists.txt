@@ -179,11 +179,20 @@ endif()
 # HOT_RUNTIME_CHECKS=0 for the host and for the installed SDK (src/runtime/CMakeLists.txt).
 option(HOT_RUNTIME_CHECKS "Check null dereference and array bounds in scripts" ON)
 
+# The script traceback (include/hot/runtime/trace.h). ON makes each script function record a frame
+# and each script exception keep the call stack of its throw point. The cost is a few stores in
+# each statement. The runtime library defines HOT_TRACEBACK=1 for the host
+# (src/runtime/CMakeLists.txt).
+option(HOT_TRACEBACK "Record the script call stack for the error report" OFF)
+
 # The compiler flags for the scripts. The backends use them.
 # A list value uses "|" between the items.
 separate_arguments(HOT_CXXFLAGS_LIST NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
 if(NOT HOT_RUNTIME_CHECKS)
     list(APPEND HOT_CXXFLAGS_LIST -DHOT_RUNTIME_CHECKS=0)
+endif()
+if(HOT_TRACEBACK)
+    list(APPEND HOT_CXXFLAGS_LIST -DHOT_TRACEBACK=1)
 endif()
 list(JOIN HOT_CXXFLAGS_LIST "|" HOT_CXXFLAGS_JOINED)
 

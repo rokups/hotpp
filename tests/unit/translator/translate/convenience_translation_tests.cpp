@@ -157,10 +157,10 @@ TEST(IsBindingTranslation, IfAndWhileBindAHandle)
         "        bool plain = x is Foo;\n"
         "    }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "{ auto g = hot::as_script<Foo_Shell>(x, \"Foo\"); if (g) {")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "{ HOT_TRACE_LINE(); auto g = hot::as_script<Foo_Shell>(x, \"Foo\"); if (g) {")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "auto h = hot::as_script<Foo_Shell>(x, \"Foo\"); if (h && ")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "else { auto k = hot::as_script<Foo_Shell>(x, \"Foo\"); if (k) {")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "for (;;) { auto w = hot::as_script<Foo_Shell>(x, \"Foo\"); if (!(w && ")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "else { HOT_TRACE_LINE(); auto k = hot::as_script<Foo_Shell>(x, \"Foo\"); if (k) {")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "for (;;) { HOT_TRACE_LINE(); auto w = hot::as_script<Foo_Shell>(x, \"Foo\"); if (!(w && ")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "bool plain = hot::is_script(x, \"Foo\");")) << r.cpp;
 }
 

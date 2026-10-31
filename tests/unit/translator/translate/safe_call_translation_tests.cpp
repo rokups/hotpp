@@ -12,21 +12,21 @@ TEST(SafeCallTranslation, CallOnAHandleChecksTheHandle)
 {
     const hotc::TranslateResult r = check_translate(kDefaultShared, "    void Run(Weapon m) { m?.Draw(1); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "{ if (m) hot::deref(m).Draw(1); }")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "{ HOT_TRACE_LINE(); if (m) hot::deref(m).Draw(1); }")) << r.cpp;
 }
 
 TEST(SafeCallTranslation, AssignmentToAFieldChecksTheHandle)
 {
     const hotc::TranslateResult r = check_translate(kDefaultShared, "    void Run(Weapon m) { m?.dmg = 3; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "{ if (m) hot::deref(m).dmg = 3; }")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "{ HOT_TRACE_LINE(); if (m) hot::deref(m).dmg = 3; }")) << r.cpp;
 }
 
 TEST(SafeCallTranslation, PointerReceiverChecksThePointer)
 {
     const hotc::TranslateResult r = check_translate("", "    void Run(Weapon* p) { p?.Draw(); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "{ if (p) hot::deref(p).Draw(); }")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "{ HOT_TRACE_LINE(); if (p) hot::deref(p).Draw(); }")) << r.cpp;
 }
 
 TEST(SafeCallTranslation, ReceiverThatIsNotAnameRunsOnce)

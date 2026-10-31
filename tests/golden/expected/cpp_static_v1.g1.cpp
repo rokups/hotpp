@@ -316,10 +316,12 @@ void CounterState_g1::ctor()
 #line 11 "cpp_static_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 11 "cpp_static_v1.cpp"
+    HOT_TRACE_FRAME("Counter.Counter", "cpp_static_v1.cpp");
+#line 11 "cpp_static_v1.cpp"
 
 #line 11 "cpp_static_v1.cpp"
 }
-#line 323 "cpp_static_v1.cpp.cpp"
+#line 325 "cpp_static_v1.cpp.cpp"
 
 #line 13 "cpp_static_v1.cpp"
 void CounterState_g1::Tick(float dt)
@@ -337,6 +339,8 @@ void CounterState_g1::Tick(float dt)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
 #line 13 "cpp_static_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 13 "cpp_static_v1.cpp"
+    HOT_TRACE_FRAME("Counter.Tick", "cpp_static_v1.cpp");
 #line 14 "cpp_static_v1.cpp"
 
         ++hot_mod()->Counter__s_count;                // a bare name
@@ -347,7 +351,7 @@ void CounterState_g1::Tick(float dt)
     
 #line 20 "cpp_static_v1.cpp"
 }
-#line 351 "cpp_static_v1.cpp.cpp"
+#line 355 "cpp_static_v1.cpp.cpp"
 
 #line 23 "cpp_static_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self)
@@ -357,7 +361,7 @@ void CounterState_g1::Tick(float dt)
     return state_of(__self)->Peek();
 #line 23 "cpp_static_v1.cpp"
 }
-#line 361 "cpp_static_v1.cpp.cpp"
+#line 365 "cpp_static_v1.cpp.cpp"
 #line 23 "cpp_static_v1.cpp"
 int CounterState_g1::Peek()
 #line 23 "cpp_static_v1.cpp"
@@ -374,6 +378,8 @@ int CounterState_g1::Peek()
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
 #line 23 "cpp_static_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 23 "cpp_static_v1.cpp"
+    HOT_TRACE_FRAME("Counter.Peek", "cpp_static_v1.cpp");
 #line 24 "cpp_static_v1.cpp"
 
         int (*fn)(int) = &Counter__s_scale;
@@ -381,7 +387,7 @@ int CounterState_g1::Peek()
     
 #line 27 "cpp_static_v1.cpp"
 }
-#line 385 "cpp_static_v1.cpp.cpp"
+#line 391 "cpp_static_v1.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -395,7 +401,7 @@ static int Counter__Peek__thunk(Actor* __a)
     return hot::call<int(Actor*)>(__self, SLOT_Peek);
 #line 23 "cpp_static_v1.cpp"
 }
-#line 399 "cpp_static_v1.cpp.cpp"
+#line 405 "cpp_static_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
@@ -438,13 +444,13 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 8 "cpp_static_v1.cpp"
 }
-#line 442 "cpp_static_v1.cpp.cpp"
+#line 448 "cpp_static_v1.cpp.cpp"
 
 
 #line 29 "cpp_static_v1.cpp"
 int Counter__s_scale(int v) { return v * Counter__s_kFactor; }
 
-#line 448 "cpp_static_v1.cpp.cpp"
+#line 454 "cpp_static_v1.cpp.cpp"
 
 #line 46 "cpp_static_v1.cpp"
 int tally()
@@ -452,7 +458,7 @@ int tally()
     return Counter__s_scale(hot_mod()->Counter__s_count) + hot_mod()->Counter__s_hits;
 }
 
-#line 456 "cpp_static_v1.cpp.cpp"
+#line 462 "cpp_static_v1.cpp.cpp"
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);

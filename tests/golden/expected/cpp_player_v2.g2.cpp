@@ -358,10 +358,12 @@ void PlayerState_g2::ctor()
 #line 34 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 34 "cpp_player_v2.cpp"
+    HOT_TRACE_FRAME("Player.Player", "cpp_player_v2.cpp");
+#line 34 "cpp_player_v2.cpp"
 
 #line 34 "cpp_player_v2.cpp"
 }
-#line 365 "cpp_player_v2.cpp.cpp"
+#line 367 "cpp_player_v2.cpp.cpp"
 
 #line 36 "cpp_player_v2.cpp"
 void PlayerState_g2::Tick(float dt)
@@ -379,6 +381,8 @@ void PlayerState_g2::Tick(float dt)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 36 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 36 "cpp_player_v2.cpp"
+    HOT_TRACE_FRAME("Player.Tick", "cpp_player_v2.cpp");
 #line 37 "cpp_player_v2.cpp"
 
         __self->Move(Vec3(2.0f * speed * dt, 0, 0));
@@ -390,7 +394,7 @@ void PlayerState_g2::Tick(float dt)
     
 #line 44 "cpp_player_v2.cpp"
 }
-#line 394 "cpp_player_v2.cpp.cpp"
+#line 398 "cpp_player_v2.cpp.cpp"
 
 #line 46 "cpp_player_v2.cpp"
 void PlayerState_g2::TakeDamage_f(float amount)
@@ -408,6 +412,8 @@ void PlayerState_g2::TakeDamage_f(float amount)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 46 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 46 "cpp_player_v2.cpp"
+    HOT_TRACE_FRAME("Player.TakeDamage", "cpp_player_v2.cpp");
 #line 47 "cpp_player_v2.cpp"
 
         health = clamp_hp(health - amount);
@@ -415,7 +421,7 @@ void PlayerState_g2::TakeDamage_f(float amount)
     
 #line 50 "cpp_player_v2.cpp"
 }
-#line 419 "cpp_player_v2.cpp.cpp"
+#line 425 "cpp_player_v2.cpp.cpp"
 
 #line 52 "cpp_player_v2.cpp"
 void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
@@ -433,6 +439,8 @@ void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 52 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 52 "cpp_player_v2.cpp"
+    HOT_TRACE_FRAME("Player.TakeDamage", "cpp_player_v2.cpp");
 #line 53 "cpp_player_v2.cpp"
 
         target = source.Name;
@@ -441,7 +449,7 @@ void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
     
 #line 57 "cpp_player_v2.cpp"
 }
-#line 445 "cpp_player_v2.cpp.cpp"
+#line 453 "cpp_player_v2.cpp.cpp"
 
 #line 59 "cpp_player_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float a)
@@ -451,7 +459,7 @@ void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
     return state_of(__self)->heal(std::forward<float>(a));
 #line 59 "cpp_player_v2.cpp"
 }
-#line 455 "cpp_player_v2.cpp.cpp"
+#line 463 "cpp_player_v2.cpp.cpp"
 #line 59 "cpp_player_v2.cpp"
 void PlayerState_g2::heal(float a)
 #line 59 "cpp_player_v2.cpp"
@@ -468,6 +476,8 @@ void PlayerState_g2::heal(float a)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 59 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 59 "cpp_player_v2.cpp"
+    HOT_TRACE_FRAME("Player.heal", "cpp_player_v2.cpp");
 #line 60 "cpp_player_v2.cpp"
 
         health = clamp_hp(health + 2.0f * a);
@@ -475,7 +485,7 @@ void PlayerState_g2::heal(float a)
     
 #line 63 "cpp_player_v2.cpp"
 }
-#line 479 "cpp_player_v2.cpp.cpp"
+#line 489 "cpp_player_v2.cpp.cpp"
 
 #line 66 "cpp_player_v2.cpp"
 static float Player__convert_level(int old)
@@ -485,7 +495,7 @@ static float Player__convert_level(int old)
  return old * 10.0f; 
 #line 66 "cpp_player_v2.cpp"
 }
-#line 489 "cpp_player_v2.cpp.cpp"
+#line 499 "cpp_player_v2.cpp.cpp"
 
 #line 68 "cpp_player_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__onReload(Player_Shell* __self, const hot::OldState& old)
@@ -495,7 +505,7 @@ static float Player__convert_level(int old)
     return state_of(__self)->onReload(std::forward<const hot::OldState&>(old));
 #line 68 "cpp_player_v2.cpp"
 }
-#line 499 "cpp_player_v2.cpp.cpp"
+#line 509 "cpp_player_v2.cpp.cpp"
 #line 68 "cpp_player_v2.cpp"
 void PlayerState_g2::onReload(const hot::OldState& old)
 #line 68 "cpp_player_v2.cpp"
@@ -512,6 +522,8 @@ void PlayerState_g2::onReload(const hot::OldState& old)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 68 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 68 "cpp_player_v2.cpp"
+    HOT_TRACE_FRAME("Player.onReload", "cpp_player_v2.cpp");
 #line 69 "cpp_player_v2.cpp"
 
         if (old.has("hp") && old.get<float>("hp") > 100.0f)
@@ -519,7 +531,7 @@ void PlayerState_g2::onReload(const hot::OldState& old)
     
 #line 72 "cpp_player_v2.cpp"
 }
-#line 523 "cpp_player_v2.cpp.cpp"
+#line 535 "cpp_player_v2.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Player_slots[SLOT_COUNT] = {
@@ -537,7 +549,7 @@ static void Player__onReload_hook(hot::ShellBase* s, const hot::OldState& old)
     Player__onReload(static_cast<Player_Shell*>(s), old);
 #line 68 "cpp_player_v2.cpp"
 }
-#line 541 "cpp_player_v2.cpp.cpp"
+#line 553 "cpp_player_v2.cpp.cpp"
 
 hot::ClassRecord Player_record = {
     "Player", GEN, Player_slots, SLOT_COUNT, &Player_layout, nullptr,
@@ -572,7 +584,7 @@ HOT_NODEBUG static hot::Instance Player_create()
     return {static_cast<Actor*>(p), p};
 #line 31 "cpp_player_v2.cpp"
 }
-#line 576 "cpp_player_v2.cpp.cpp"
+#line 588 "cpp_player_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

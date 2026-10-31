@@ -222,10 +222,12 @@ void SmithState_g1::Tick(float dt)
 #line 15 "prelude_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 15 "prelude_v1.hot"
-    __st->ticks = __st->ticks + 1;
+    HOT_TRACE_FRAME("Smith.Tick", "prelude_v1.hot");
+#line 15 "prelude_v1.hot"
+    HOT_TRACE_LINE(); __st->ticks = __st->ticks + 1;
 #line 16 "prelude_v1.hot"
 }
-#line 229 "prelude_v1.hot.cpp"
+#line 231 "prelude_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Smith_slots[Smith_SLOT_COUNT] = {
@@ -253,7 +255,7 @@ HOT_NODEBUG static hot::Instance Smith_create()
     return {static_cast<Actor*>(p), p};
 #line 9 "prelude_v1.hot"
 }
-#line 257 "prelude_v1.hot.cpp"
+#line 259 "prelude_v1.hot.cpp"
 
 
 // ---------------------------------------------------------------- class Tool
@@ -281,7 +283,7 @@ struct Tool_Shell final : Object, hot::ShellBase {
     }
 #line 19 "prelude_v1.hot"
     ~Tool_Shell() override { hot::destroy_state(this); }
-#line 285 "prelude_v1.hot.cpp"
+#line 287 "prelude_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -294,7 +296,7 @@ struct ToolState_g1 {
 
 #line 21 "prelude_v1.hot"
 static void Tool__init_uses(void*, void* f) { using T = int32_t; new (f) T(); }
-#line 298 "prelude_v1.hot.cpp"
+#line 300 "prelude_v1.hot.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -333,7 +335,7 @@ HOT_HIDDEN static auto Tool__plan()
     return std::make_pair(Tool__super_args(), std::tuple<>());
 #line 19 "prelude_v1.hot"
 }
-#line 337 "prelude_v1.hot.cpp"
+#line 339 "prelude_v1.hot.cpp"
 using Tool_SuperArgs = decltype(Tool__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
@@ -353,7 +355,7 @@ HOT_NODEBUG static hot::ShellBase* Tool__construct(const char* key, const void* 
     return nullptr;
 #line 19 "prelude_v1.hot"
 }
-#line 357 "prelude_v1.hot.cpp"
+#line 359 "prelude_v1.hot.cpp"
 
 static const char* const Tool__construct_keys[] = {typeid(Tool_SuperArgs).name(), nullptr};
 
@@ -369,7 +371,7 @@ HOT_HIDDEN static Tool_Shell* Tool__build([[maybe_unused]] bool __note)
     return __self;
 #line 19 "prelude_v1.hot"
 }
-#line 373 "prelude_v1.hot.cpp"
+#line 375 "prelude_v1.hot.cpp"
 #line 19 "prelude_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Tool_Shell* Tool__new()
 #line 19 "prelude_v1.hot"
@@ -378,7 +380,7 @@ HOT_HIDDEN static Tool_Shell* Tool__build([[maybe_unused]] bool __note)
     return Tool__build(true);
 #line 19 "prelude_v1.hot"
 }
-#line 382 "prelude_v1.hot.cpp"
+#line 384 "prelude_v1.hot.cpp"
 
 #line 23 "prelude_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Tool__Use(Tool_Shell* __self)
@@ -388,7 +390,7 @@ HOT_HIDDEN static Tool_Shell* Tool__build([[maybe_unused]] bool __note)
     return state_of(__self)->Use();
 #line 23 "prelude_v1.hot"
 }
-#line 392 "prelude_v1.hot.cpp"
+#line 394 "prelude_v1.hot.cpp"
 #line 23 "prelude_v1.hot"
 void ToolState_g1::Use()
 #line 23 "prelude_v1.hot"
@@ -406,10 +408,12 @@ void ToolState_g1::Use()
 #line 24 "prelude_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 24 "prelude_v1.hot"
-    __st->uses = __st->uses + 1;
+    HOT_TRACE_FRAME("Tool.Use", "prelude_v1.hot");
+#line 24 "prelude_v1.hot"
+    HOT_TRACE_LINE(); __st->uses = __st->uses + 1;
 #line 25 "prelude_v1.hot"
 }
-#line 413 "prelude_v1.hot.cpp"
+#line 417 "prelude_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -423,7 +427,7 @@ static void Tool__Use__thunk(Object* __a)
     return hot::call<void(Object*)>(__self, Tool_SLOT_Use);
 #line 23 "prelude_v1.hot"
 }
-#line 427 "prelude_v1.hot.cpp"
+#line 431 "prelude_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Tool_slots[Tool_SLOT_COUNT] = {
@@ -449,7 +453,7 @@ HOT_NODEBUG static hot::Instance Tool_create()
     return {static_cast<Object*>(p), p};
 #line 19 "prelude_v1.hot"
 }
-#line 453 "prelude_v1.hot.cpp"
+#line 457 "prelude_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

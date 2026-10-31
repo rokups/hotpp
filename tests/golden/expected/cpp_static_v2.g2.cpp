@@ -344,10 +344,12 @@ void CounterState_g2::ctor()
 #line 12 "cpp_static_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 12 "cpp_static_v2.cpp"
+    HOT_TRACE_FRAME("Counter.Counter", "cpp_static_v2.cpp");
+#line 12 "cpp_static_v2.cpp"
 
 #line 12 "cpp_static_v2.cpp"
 }
-#line 351 "cpp_static_v2.cpp.cpp"
+#line 353 "cpp_static_v2.cpp.cpp"
 
 #line 14 "cpp_static_v2.cpp"
 void CounterState_g2::Tick(float dt)
@@ -365,6 +367,8 @@ void CounterState_g2::Tick(float dt)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
 #line 14 "cpp_static_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 14 "cpp_static_v2.cpp"
+    HOT_TRACE_FRAME("Counter.Tick", "cpp_static_v2.cpp");
 #line 15 "cpp_static_v2.cpp"
 
         hot_mod()->Counter__s_count += 1.0f;
@@ -376,7 +380,7 @@ void CounterState_g2::Tick(float dt)
     
 #line 22 "cpp_static_v2.cpp"
 }
-#line 380 "cpp_static_v2.cpp.cpp"
+#line 384 "cpp_static_v2.cpp.cpp"
 
 #line 24 "cpp_static_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self)
@@ -386,7 +390,7 @@ void CounterState_g2::Tick(float dt)
     return state_of(__self)->Peek();
 #line 24 "cpp_static_v2.cpp"
 }
-#line 390 "cpp_static_v2.cpp.cpp"
+#line 394 "cpp_static_v2.cpp.cpp"
 #line 24 "cpp_static_v2.cpp"
 int CounterState_g2::Peek()
 #line 24 "cpp_static_v2.cpp"
@@ -403,6 +407,8 @@ int CounterState_g2::Peek()
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Counter_Shell*>(this->__hot_owner);
 #line 24 "cpp_static_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 24 "cpp_static_v2.cpp"
+    HOT_TRACE_FRAME("Counter.Peek", "cpp_static_v2.cpp");
 #line 25 "cpp_static_v2.cpp"
 
         int (*fn)(int) = &Counter__s_scale;
@@ -410,7 +416,7 @@ int CounterState_g2::Peek()
     
 #line 28 "cpp_static_v2.cpp"
 }
-#line 414 "cpp_static_v2.cpp.cpp"
+#line 420 "cpp_static_v2.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
@@ -453,18 +459,18 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 9 "cpp_static_v2.cpp"
 }
-#line 457 "cpp_static_v2.cpp.cpp"
+#line 463 "cpp_static_v2.cpp.cpp"
 
 
 #line 30 "cpp_static_v2.cpp"
 int Counter__s_scale(int v) { return v * Counter__s_kFactor; }
 
-#line 463 "cpp_static_v2.cpp.cpp"
+#line 469 "cpp_static_v2.cpp.cpp"
 
 #line 33 "cpp_static_v2.cpp"
 int Counter__s_plus(int a, int b) { return a + b; }
 
-#line 468 "cpp_static_v2.cpp.cpp"
+#line 474 "cpp_static_v2.cpp.cpp"
 
 #line 50 "cpp_static_v2.cpp"
 int tally()
@@ -472,7 +478,7 @@ int tally()
     return Counter__s_scale(static_cast<int>(hot_mod()->Counter__s_count)) + hot_mod()->Counter__s_hits;
 }
 
-#line 476 "cpp_static_v2.cpp.cpp"
+#line 482 "cpp_static_v2.cpp.cpp"
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);

@@ -4947,6 +4947,14 @@ void translate_impl(
             o.w("    HOT_NODEBUG_LOCAL auto* __self = static_cast<" + shell + "*>(this->__hot_owner);\n");
             o.w(line_at(first_line));
             o.w("    HOT_NODEBUG_LOCAL auto* __st = this;\n");
+            // The frame of the traceback (hot/runtime/trace.h). The macro is empty when HOT_TRACEBACK is 0.
+            {
+                std::string tname = what.substr(0, what.find('('));
+                for (size_t c; (c = tname.find("::")) != std::string::npos;)
+                    tname.replace(c, 2, ".");
+                o.w(line_at(first_line));
+                o.w("    HOT_TRACE_FRAME(\"" + tname + "\", \"" + file + "\");\n");
+            }
             for (size_t b = 0; b < body_locals.size();)
             {
                 const size_t e = body_locals.find('\n', b) + 1;
@@ -4963,6 +4971,7 @@ void translate_impl(
                     return;
                 }
                 hotc::ast::Emitter em(map, opt.input);
+                em.trace_lines = true;
                 hotc::ast::emit_stmts(m.body.stmts, em, 1);
                 em.finish();
                 o.w_emitted(em, all_text);

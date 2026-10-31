@@ -73,13 +73,20 @@ void Emitter::put(std::string_view t, uint32_t pos)
     if (!broke && space_ && !out_.empty())
         out_ += ' ';
     space_ = false;
-    if (map_ && pos != 0 && !t.empty())
+    if (map_ && pos != 0 && !t.empty() && !no_segment_)
         segments_.push_back({pos, static_cast<uint32_t>(out_.size()), static_cast<uint32_t>(t.size())});
     out_ += t;
     if (t == "{")
         ++depth;
     if (t == "}")
         --depth;
+}
+
+void Emitter::put_plain(std::string_view t, uint32_t pos)
+{
+    no_segment_ = true;
+    put(t, pos);
+    no_segment_ = false;
 }
 
 void Emitter::put_named(std::string_view t, uint32_t pos, size_t name_at, uint32_t name_pos)
@@ -325,7 +332,10 @@ struct ExprPrinter
             e.put(p.name);
         }
         e.put(")");
+        const bool trace = e.trace_lines;
+        e.trace_lines = false;
         block(n.body, e);
+        e.trace_lines = trace;
     }
 };
 
@@ -618,9 +628,29 @@ void simple(const Stmt& s, Emitter& e)
 
 void stmt_list(const std::vector<StmtP>& v, Emitter& e)
 {
+    int trace_line = 0;      // the script line of the last macro, when the last statement was simple
     for (const StmtP& s : v)
     {
         e.space();
+        // The macro sets the script line of the frame. A block, an empty statement and a jump
+        // need no line. A simple statement on the line of the simple statement before it needs none.
+        const bool simple_stmt = std::holds_alternative<ExprStmt>(s->v) || std::holds_alternative<VarDeclStmt>(s->v);
+        if (e.trace_lines && !std::holds_alternative<BlockStmt>(s->v) && !std::holds_alternative<EmptyStmt>(s->v)
+            && !std::holds_alternative<BreakStmt>(s->v) && !std::holds_alternative<ContinueStmt>(s->v))
+        {
+            if (const uint32_t pos = pos_of(*s); pos != 0)
+            {
+                const int line = e.line_of(pos);
+                if (line != trace_line)
+                {
+                    e.put_plain("HOT_TRACE_LINE();", pos);
+                    e.space();
+                }
+                trace_line = simple_stmt ? line : 0;
+            }
+        }
+        else
+            trace_line = 0;
         emit_stmt(*s, e);
     }
 }

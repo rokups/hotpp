@@ -293,10 +293,12 @@ void BumperState_g1::ctor()
 #line 23 "cpp_namespace_fn.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 23 "cpp_namespace_fn.cpp"
+    HOT_TRACE_FRAME("Bumper.Bumper", "cpp_namespace_fn.cpp");
+#line 23 "cpp_namespace_fn.cpp"
 
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 300 "cpp_namespace_fn.cpp.cpp"
+#line 302 "cpp_namespace_fn.cpp.cpp"
 
 #line 25 "cpp_namespace_fn.cpp"
 void BumperState_g1::Tick(float dt)
@@ -314,6 +316,8 @@ void BumperState_g1::Tick(float dt)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Bumper_Shell*>(this->__hot_owner);
 #line 25 "cpp_namespace_fn.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 25 "cpp_namespace_fn.cpp"
+    HOT_TRACE_FRAME("Bumper.Tick", "cpp_namespace_fn.cpp");
 #line 26 "cpp_namespace_fn.cpp"
 
         last = counter::bump(5);
@@ -322,7 +326,7 @@ void BumperState_g1::Tick(float dt)
     
 #line 30 "cpp_namespace_fn.cpp"
 }
-#line 326 "cpp_namespace_fn.cpp.cpp"
+#line 330 "cpp_namespace_fn.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Bumper_slots[SLOT_COUNT] = {
@@ -364,7 +368,7 @@ HOT_NODEBUG static hot::Instance Bumper_create()
     return {static_cast<Actor*>(p), p};
 #line 18 "cpp_namespace_fn.cpp"
 }
-#line 368 "cpp_namespace_fn.cpp.cpp"
+#line 372 "cpp_namespace_fn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

@@ -298,10 +298,12 @@ void FighterState_g1::ctor()
 #line 11 "cpp_outofclass_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 11 "cpp_outofclass_v1.cpp"
+    HOT_TRACE_FRAME("Fighter.Fighter", "cpp_outofclass_v1.cpp");
+#line 11 "cpp_outofclass_v1.cpp"
 
 #line 11 "cpp_outofclass_v1.cpp"
 }
-#line 305 "cpp_outofclass_v1.cpp.cpp"
+#line 307 "cpp_outofclass_v1.cpp.cpp"
 
 #line 13 "cpp_outofclass_v1.cpp"
 void FighterState_g1::Tick(float dt)
@@ -319,6 +321,8 @@ void FighterState_g1::Tick(float dt)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__hot_owner);
 #line 13 "cpp_outofclass_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 13 "cpp_outofclass_v1.cpp"
+    HOT_TRACE_FRAME("Fighter.Tick", "cpp_outofclass_v1.cpp");
 #line 14 "cpp_outofclass_v1.cpp"
 
         __self->Move(Vec3(dt, 0, 0));
@@ -328,7 +332,7 @@ void FighterState_g1::Tick(float dt)
     
 #line 19 "cpp_outofclass_v1.cpp"
 }
-#line 332 "cpp_outofclass_v1.cpp.cpp"
+#line 336 "cpp_outofclass_v1.cpp.cpp"
 
 #line 21 "cpp_outofclass_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Fighter__hit(Fighter_Shell* __self, int d, int scale)
@@ -338,7 +342,7 @@ void FighterState_g1::Tick(float dt)
     return state_of(__self)->hit(std::forward<int>(d), std::forward<int>(scale));
 #line 21 "cpp_outofclass_v1.cpp"
 }
-#line 342 "cpp_outofclass_v1.cpp.cpp"
+#line 346 "cpp_outofclass_v1.cpp.cpp"
 #line 21 "cpp_outofclass_v1.cpp"
 int FighterState_g1::hit(int d, int scale)
 #line 21 "cpp_outofclass_v1.cpp"
@@ -355,6 +359,8 @@ int FighterState_g1::hit(int d, int scale)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Fighter_Shell*>(this->__hot_owner);
 #line 21 "cpp_outofclass_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 21 "cpp_outofclass_v1.cpp"
+    HOT_TRACE_FRAME("Fighter.hit", "cpp_outofclass_v1.cpp");
 #line 22 "cpp_outofclass_v1.cpp"
 
         hp -= d * scale;
@@ -362,7 +368,7 @@ int FighterState_g1::hit(int d, int scale)
     
 #line 25 "cpp_outofclass_v1.cpp"
 }
-#line 366 "cpp_outofclass_v1.cpp.cpp"
+#line 372 "cpp_outofclass_v1.cpp.cpp"
 
 #line 27 "cpp_outofclass_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Fighter__get(Fighter_Shell* __self)
@@ -372,7 +378,7 @@ int FighterState_g1::hit(int d, int scale)
     return state_of(__self)->get();
 #line 27 "cpp_outofclass_v1.cpp"
 }
-#line 376 "cpp_outofclass_v1.cpp.cpp"
+#line 382 "cpp_outofclass_v1.cpp.cpp"
 #line 27 "cpp_outofclass_v1.cpp"
 int FighterState_g1::get()
 #line 27 "cpp_outofclass_v1.cpp"
@@ -390,10 +396,12 @@ int FighterState_g1::get()
 #line 27 "cpp_outofclass_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 27 "cpp_outofclass_v1.cpp"
+    HOT_TRACE_FRAME("Fighter.get", "cpp_outofclass_v1.cpp");
+#line 27 "cpp_outofclass_v1.cpp"
  return hp; 
 #line 27 "cpp_outofclass_v1.cpp"
 }
-#line 397 "cpp_outofclass_v1.cpp.cpp"
+#line 405 "cpp_outofclass_v1.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -407,7 +415,7 @@ static int Fighter__hit__thunk(Actor* __a, int d, int scale)
     return hot::call<int(Actor*, int, int)>(__self, SLOT_hit, d, scale);
 #line 21 "cpp_outofclass_v1.cpp"
 }
-#line 411 "cpp_outofclass_v1.cpp.cpp"
+#line 419 "cpp_outofclass_v1.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -421,7 +429,7 @@ static int Fighter__get__thunk(Actor* __a)
     return hot::call<int(Actor*)>(__self, SLOT_get);
 #line 27 "cpp_outofclass_v1.cpp"
 }
-#line 425 "cpp_outofclass_v1.cpp.cpp"
+#line 433 "cpp_outofclass_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Fighter_slots[SLOT_COUNT] = {
@@ -465,7 +473,7 @@ HOT_NODEBUG static hot::Instance Fighter_create()
     return {static_cast<Actor*>(p), p};
 #line 8 "cpp_outofclass_v1.cpp"
 }
-#line 469 "cpp_outofclass_v1.cpp.cpp"
+#line 477 "cpp_outofclass_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

@@ -32,6 +32,11 @@
 #ifndef HOT_RUNTIME_CHECKS
     #define HOT_RUNTIME_CHECKS 1
 #endif
+// The script traceback (hot/runtime/trace.h). The value 1 makes each script function record a
+// frame, and each script exception keep the call stack of its throw point. The default is 0.
+#ifndef HOT_TRACEBACK
+    #define HOT_TRACEBACK 0
+#endif
 // The include directory of fmt, or an empty text when the compiler finds fmt by itself.
 #ifndef HOT_FMT_INCLUDE_DIR
     #define HOT_FMT_INCLUDE_DIR ""
@@ -73,6 +78,16 @@ inline std::vector<std::string> checks_compile_flags()
     std::vector<std::string> flags;
     if (!HOT_RUNTIME_CHECKS)
         flags.push_back("-DHOT_RUNTIME_CHECKS=0");
+    return flags;
+}
+
+// The flags that the compile command of a script needs for the traceback.
+// The list is empty when the traceback is off.
+inline std::vector<std::string> traceback_compile_flags()
+{
+    std::vector<std::string> flags;
+    if (HOT_TRACEBACK)
+        flags.push_back("-DHOT_TRACEBACK=1");
     return flags;
 }
 

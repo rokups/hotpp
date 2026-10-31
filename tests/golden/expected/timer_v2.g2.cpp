@@ -217,10 +217,12 @@ void BeeperState_g2::Tick(float dt)
 #line 9 "timer_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 9 "timer_v2.hot"
-    __st->ticks = __st->ticks + 1;
+    HOT_TRACE_FRAME("Beeper.Tick", "timer_v2.hot");
+#line 9 "timer_v2.hot"
+    HOT_TRACE_LINE(); __st->ticks = __st->ticks + 1;
 #line 10 "timer_v2.hot"
 }
-#line 224 "timer_v2.hot.cpp"
+#line 226 "timer_v2.hot.cpp"
 
 #line 12 "timer_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static void Beeper__arm(Beeper_Shell* __self, World& w, float delay)
@@ -230,7 +232,7 @@ void BeeperState_g2::Tick(float dt)
     return state_of(__self)->arm(std::forward<World&>(w), std::forward<float>(delay));
 #line 12 "timer_v2.hot"
 }
-#line 234 "timer_v2.hot.cpp"
+#line 236 "timer_v2.hot.cpp"
 #line 12 "timer_v2.hot"
 void BeeperState_g2::arm(World& w, float delay)
 #line 12 "timer_v2.hot"
@@ -248,7 +250,9 @@ void BeeperState_g2::arm(World& w, float delay)
 #line 13 "timer_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "timer_v2.hot"
-    hot::deref(w).AddTimer(delay, hot::make_closure(GEN, &hot_live, "Beeper::arm lambda", [=]() { HOT_NODEBUG_LOCAL auto* __st = state_of(__self);
+    HOT_TRACE_FRAME("Beeper.arm", "timer_v2.hot");
+#line 13 "timer_v2.hot"
+    HOT_TRACE_LINE(); hot::deref(w).AddTimer(delay, hot::make_closure(GEN, &hot_live, "Beeper::arm lambda", [=]() { HOT_NODEBUG_LOCAL auto* __st = state_of(__self);
 #line 14 "timer_v2.hot"
         __st->fired = __st->fired + 10;
 #line 15 "timer_v2.hot"
@@ -257,7 +261,7 @@ void BeeperState_g2::arm(World& w, float delay)
     }));
 #line 17 "timer_v2.hot"
 }
-#line 261 "timer_v2.hot.cpp"
+#line 265 "timer_v2.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Beeper_slots[SLOT_COUNT] = {
@@ -286,7 +290,7 @@ HOT_NODEBUG static hot::Instance Beeper_create()
     return {static_cast<Actor*>(p), p};
 #line 4 "timer_v2.hot"
 }
-#line 290 "timer_v2.hot.cpp"
+#line 294 "timer_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

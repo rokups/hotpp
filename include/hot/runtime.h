@@ -19,6 +19,7 @@
 #include "hot/runtime/shell.h"
 #include "hot/runtime/state.h"
 #include "hot/runtime/threads.h"
+#include "hot/runtime/trace.h"
 
 #include <array> // the generated code uses std::array for the array types of a script
 #include <cstddef>

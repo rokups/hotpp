@@ -37,6 +37,8 @@ public:
 
     // Writes one leaf. A pos of 0 means: stay on the current line.
     void put(std::string_view text, uint32_t pos = 0);
+    // Like put, but the leaf gets no segment: the leaf is not script text.
+    void put_plain(std::string_view text, uint32_t pos);
     // Writes one leaf that stays on the current line, and records "pos" for the source map.
     // The "#line" directives do not change.
     void put_mapped(std::string_view text, uint32_t pos);
@@ -53,8 +55,16 @@ public:
     // Gives a new number for the name of a finally guard. The numbers start at 0.
     int next_finally() { return finally_count_++; }
 
+    // The script line of a position, or 0 in plain mode.
+    int line_of(uint32_t pos) const { return map_ ? map_->line(pos) : 0; }
+
     const std::string& text() const { return out_; }
     int source_line() const { return line_; }
+
+    // True: a statement in a block gets "HOT_TRACE_LINE();" before it (hot/runtime/trace.h).
+    // The function body of a script member sets it. A lambda body clears it, because the lambda
+    // has no frame of its own.
+    bool trace_lines = false;
 
     int depth = 0; // the indentation level; each "{" adds 1 and each "}" removes 1
 
@@ -66,6 +76,7 @@ private:
     bool space_ = false;
     int finally_count_ = 0;
     std::vector<Segment> segments_;
+    bool no_segment_ = false;
 };
 
 void emit_expr(const Expr& e, Emitter& out);

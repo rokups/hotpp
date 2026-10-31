@@ -289,10 +289,12 @@ void ScalerState_g1::ctor()
 #line 20 "cpp_template_fn.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 20 "cpp_template_fn.cpp"
+    HOT_TRACE_FRAME("Scaler.Scaler", "cpp_template_fn.cpp");
+#line 20 "cpp_template_fn.cpp"
 
 #line 20 "cpp_template_fn.cpp"
 }
-#line 296 "cpp_template_fn.cpp.cpp"
+#line 298 "cpp_template_fn.cpp.cpp"
 
 #line 22 "cpp_template_fn.cpp"
 void ScalerState_g1::Tick(float dt)
@@ -310,6 +312,8 @@ void ScalerState_g1::Tick(float dt)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Scaler_Shell*>(this->__hot_owner);
 #line 22 "cpp_template_fn.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 22 "cpp_template_fn.cpp"
+    HOT_TRACE_FRAME("Scaler.Tick", "cpp_template_fn.cpp");
 #line 23 "cpp_template_fn.cpp"
 
         hot_mod()->total += 2;
@@ -318,7 +322,7 @@ void ScalerState_g1::Tick(float dt)
     
 #line 27 "cpp_template_fn.cpp"
 }
-#line 322 "cpp_template_fn.cpp.cpp"
+#line 326 "cpp_template_fn.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Scaler_slots[SLOT_COUNT] = {
@@ -360,7 +364,7 @@ HOT_NODEBUG static hot::Instance Scaler_create()
     return {static_cast<Actor*>(p), p};
 #line 15 "cpp_template_fn.cpp"
 }
-#line 364 "cpp_template_fn.cpp.cpp"
+#line 368 "cpp_template_fn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

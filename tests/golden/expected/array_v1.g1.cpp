@@ -234,16 +234,18 @@ void GridState_g1::Tick(float dt)
 #line 12 "array_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 12 "array_v1.hot"
-    for (int32_t i = 0; i < 3; i++) {
+    HOT_TRACE_FRAME("Grid.Tick", "array_v1.hot");
+#line 12 "array_v1.hot"
+    HOT_TRACE_LINE(); for (int32_t i = 0; i < 3; i++) {
 #line 13 "array_v1.hot"
-        hot::index(__st->a, i) += 1;
+        HOT_TRACE_LINE(); hot::index(__st->a, i) += 1;
 #line 14 "array_v1.hot"
     }
 #line 15 "array_v1.hot"
-    hot::index(hot::index(__st->m, 1), 2) = hot::index(__st->a, 0) + 5;
+    HOT_TRACE_LINE(); hot::index(hot::index(__st->m, 1), 2) = hot::index(__st->a, 0) + 5;
 #line 16 "array_v1.hot"
 }
-#line 247 "array_v1.hot.cpp"
+#line 249 "array_v1.hot.cpp"
 
 #line 18 "array_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Grid__total(Grid_Shell* __self)
@@ -253,7 +255,7 @@ void GridState_g1::Tick(float dt)
     return state_of(__self)->total();
 #line 18 "array_v1.hot"
 }
-#line 257 "array_v1.hot.cpp"
+#line 259 "array_v1.hot.cpp"
 #line 18 "array_v1.hot"
 int32_t GridState_g1::total()
 #line 18 "array_v1.hot"
@@ -271,18 +273,20 @@ int32_t GridState_g1::total()
 #line 19 "array_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 19 "array_v1.hot"
-    int32_t sum = 0;
+    HOT_TRACE_FRAME("Grid.total", "array_v1.hot");
+#line 19 "array_v1.hot"
+    HOT_TRACE_LINE(); int32_t sum = 0;
 #line 20 "array_v1.hot"
-    for (auto x : __st->a) {
+    HOT_TRACE_LINE(); for (auto x : __st->a) {
 #line 21 "array_v1.hot"
-        sum += x;
+        HOT_TRACE_LINE(); sum += x;
 #line 22 "array_v1.hot"
     }
 #line 23 "array_v1.hot"
-    return sum + hot::deref(__st->a).size();
+    HOT_TRACE_LINE(); return sum + hot::deref(__st->a).size();
 #line 24 "array_v1.hot"
 }
-#line 286 "array_v1.hot.cpp"
+#line 290 "array_v1.hot.cpp"
 
 #line 26 "array_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static std::array<int32_t, 4> Grid__make(Grid_Shell* __self, std::array<int32_t, 2> p)
@@ -292,7 +296,7 @@ int32_t GridState_g1::total()
     return state_of(__self)->make(std::forward<std::array<int32_t, 2>>(p));
 #line 26 "array_v1.hot"
 }
-#line 296 "array_v1.hot.cpp"
+#line 300 "array_v1.hot.cpp"
 #line 26 "array_v1.hot"
 std::array<int32_t, 4> GridState_g1::make(std::array<int32_t, 2> p)
 #line 26 "array_v1.hot"
@@ -310,14 +314,16 @@ std::array<int32_t, 4> GridState_g1::make(std::array<int32_t, 2> p)
 #line 27 "array_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 27 "array_v1.hot"
-    std::array<int32_t, 4> r = std::array<int32_t, 4>();
+    HOT_TRACE_FRAME("Grid.make", "array_v1.hot");
+#line 27 "array_v1.hot"
+    HOT_TRACE_LINE(); std::array<int32_t, 4> r = std::array<int32_t, 4>();
 #line 28 "array_v1.hot"
-    hot::index(r, 0) = hot::index(p, 0);
+    HOT_TRACE_LINE(); hot::index(r, 0) = hot::index(p, 0);
 #line 29 "array_v1.hot"
-    return r;
+    HOT_TRACE_LINE(); return r;
 #line 30 "array_v1.hot"
 }
-#line 321 "array_v1.hot.cpp"
+#line 327 "array_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -331,7 +337,7 @@ static int32_t Grid__total__thunk(Actor* __a)
     return hot::call<int32_t(Actor*)>(__self, SLOT_total);
 #line 18 "array_v1.hot"
 }
-#line 335 "array_v1.hot.cpp"
+#line 341 "array_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -345,7 +351,7 @@ static std::array<int32_t, 4> Grid__make__thunk(Actor* __a, std::array<int32_t, 
     return hot::call<std::array<int32_t, 4>(Actor*, std::array<int32_t, 2>)>(__self, SLOT_make, p);
 #line 26 "array_v1.hot"
 }
-#line 349 "array_v1.hot.cpp"
+#line 355 "array_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Grid_slots[SLOT_COUNT] = {
@@ -375,7 +381,7 @@ HOT_NODEBUG static hot::Instance Grid_create()
     return {static_cast<Actor*>(p), p};
 #line 5 "array_v1.hot"
 }
-#line 379 "array_v1.hot.cpp"
+#line 385 "array_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

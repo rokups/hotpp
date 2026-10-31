@@ -3,6 +3,7 @@
 
 #include "hot/runtime/records.h"
 #include "hot/runtime/shell.h"
+#include "hot/runtime/trace.h"
 
 #include <cstdio>
 #include <mutex>
@@ -12,6 +13,13 @@
 namespace hot
 {
 
+#if HOT_TRACEBACK
+ScriptError::ScriptError(const std::string& what) : std::runtime_error(what), traceback_(detail::trace_capture()) {}
+ScriptError::ScriptError(const char* what) : std::runtime_error(what), traceback_(detail::trace_capture()) {}
+#else
+ScriptError::ScriptError(const std::string& what) : std::runtime_error(what) {}
+ScriptError::ScriptError(const char* what) : std::runtime_error(what) {}
+#endif
 ScriptError::~ScriptError() = default;
 NullReference::~NullReference() = default;
 
@@ -76,7 +84,7 @@ void report_unhandled(const ShellBase* self, std::exception_ptr ep)
     if (!ep)
         return;
     const char* type = "unknown";
-    std::string message;
+    std::string message, traceback;
     try
     {
         std::rethrow_exception(ep);
@@ -90,6 +98,7 @@ void report_unhandled(const ShellBase* self, std::exception_ptr ep)
         else
             type = "hot::ScriptError";
         message = e.what();
+        traceback = e.traceback();
     }
     catch (const std::exception& e)
     {
@@ -101,12 +110,16 @@ void report_unhandled(const ShellBase* self, std::exception_ptr ep)
         message = "unknown exception";
     }
     const char* class_name = (self && self->cls && self->cls->name) ? self->cls->name : "?";
-    ScriptErrorReport report{type, message.c_str(), self, class_name, ""};
+    ScriptErrorReport report{type, message.c_str(), self, class_name, traceback.c_str()};
     ScriptErrorHandler handler = script_error_handler();
     if (handler)
         handler(report);
     else
+    {
         std::fprintf(stderr, "[script] ERROR: unhandled %s in %s: %s\n", type, class_name, message.c_str());
+        if (!traceback.empty())
+            std::fputs(traceback.c_str(), stderr);
+    }
 }
 
 } // namespace detail

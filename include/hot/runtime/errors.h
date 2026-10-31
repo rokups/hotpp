@@ -21,8 +21,17 @@ struct ShellBase;
 class HOT_EXPORT ScriptError : public std::runtime_error
 {
 public:
-    using std::runtime_error::runtime_error;
+    // With HOT_TRACEBACK=1 the constructor copies the script call stack (trace.h).
+    explicit ScriptError(const std::string& what);
+    explicit ScriptError(const char* what);
     ~ScriptError() override;
+
+    // The script call stack of the throw point, one frame in each line, innermost first.
+    // It is empty when the traceback is off.
+    const std::string& traceback() const noexcept { return traceback_; }
+
+private:
+    std::string traceback_;
 };
 
 // A null pointer or a null handle was dereferenced.
@@ -54,7 +63,7 @@ struct ScriptErrorReport
     const char* message;    // the text of what()
     const ShellBase* self;  // the object that ran the entry point, or null
     const char* class_name; // the class of "self", or "?"
-    const char* traceback;  // empty for now
+    const char* traceback;  // the script call stack (trace.h); empty when HOT_TRACEBACK is 0
 };
 
 using ScriptErrorHandler = std::function<void(const ScriptErrorReport&)>;

@@ -327,10 +327,12 @@ void PlayerState_g1::ctor()
 #line 28 "cpp_player_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 28 "cpp_player_v1.cpp"
+    HOT_TRACE_FRAME("Player.Player", "cpp_player_v1.cpp");
+#line 28 "cpp_player_v1.cpp"
 
 #line 28 "cpp_player_v1.cpp"
 }
-#line 334 "cpp_player_v1.cpp.cpp"
+#line 336 "cpp_player_v1.cpp.cpp"
 
 #line 30 "cpp_player_v1.cpp"
 void PlayerState_g1::Tick(float dt)
@@ -348,6 +350,8 @@ void PlayerState_g1::Tick(float dt)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 30 "cpp_player_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 30 "cpp_player_v1.cpp"
+    HOT_TRACE_FRAME("Player.Tick", "cpp_player_v1.cpp");
 #line 31 "cpp_player_v1.cpp"
 
         __self->Move(Vec3(speed * dt, 0, 0));
@@ -359,7 +363,7 @@ void PlayerState_g1::Tick(float dt)
     
 #line 38 "cpp_player_v1.cpp"
 }
-#line 363 "cpp_player_v1.cpp.cpp"
+#line 367 "cpp_player_v1.cpp.cpp"
 
 #line 40 "cpp_player_v1.cpp"
 void PlayerState_g1::TakeDamage_f(float amount)
@@ -377,6 +381,8 @@ void PlayerState_g1::TakeDamage_f(float amount)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 40 "cpp_player_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 40 "cpp_player_v1.cpp"
+    HOT_TRACE_FRAME("Player.TakeDamage", "cpp_player_v1.cpp");
 #line 41 "cpp_player_v1.cpp"
 
         hp = clamp_hp(hp - amount);
@@ -384,7 +390,7 @@ void PlayerState_g1::TakeDamage_f(float amount)
     
 #line 44 "cpp_player_v1.cpp"
 }
-#line 388 "cpp_player_v1.cpp.cpp"
+#line 394 "cpp_player_v1.cpp.cpp"
 
 #line 46 "cpp_player_v1.cpp"
 void PlayerState_g1::TakeDamage_Af(Actor & source, float amount)
@@ -402,6 +408,8 @@ void PlayerState_g1::TakeDamage_Af(Actor & source, float amount)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 46 "cpp_player_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 46 "cpp_player_v1.cpp"
+    HOT_TRACE_FRAME("Player.TakeDamage", "cpp_player_v1.cpp");
 #line 47 "cpp_player_v1.cpp"
 
         target = source.Name;
@@ -410,7 +418,7 @@ void PlayerState_g1::TakeDamage_Af(Actor & source, float amount)
     
 #line 51 "cpp_player_v1.cpp"
 }
-#line 414 "cpp_player_v1.cpp.cpp"
+#line 422 "cpp_player_v1.cpp.cpp"
 
 #line 53 "cpp_player_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float a)
@@ -420,7 +428,7 @@ void PlayerState_g1::TakeDamage_Af(Actor & source, float amount)
     return state_of(__self)->heal(std::forward<float>(a));
 #line 53 "cpp_player_v1.cpp"
 }
-#line 424 "cpp_player_v1.cpp.cpp"
+#line 432 "cpp_player_v1.cpp.cpp"
 #line 53 "cpp_player_v1.cpp"
 void PlayerState_g1::heal(float a)
 #line 53 "cpp_player_v1.cpp"
@@ -437,6 +445,8 @@ void PlayerState_g1::heal(float a)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Player_Shell*>(this->__hot_owner);
 #line 53 "cpp_player_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 53 "cpp_player_v1.cpp"
+    HOT_TRACE_FRAME("Player.heal", "cpp_player_v1.cpp");
 #line 54 "cpp_player_v1.cpp"
 
         hp = clamp_hp(hp + a);
@@ -444,7 +454,7 @@ void PlayerState_g1::heal(float a)
     
 #line 57 "cpp_player_v1.cpp"
 }
-#line 448 "cpp_player_v1.cpp.cpp"
+#line 458 "cpp_player_v1.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -458,7 +468,7 @@ static void Player__heal__thunk(Actor* __a, float a)
     return hot::call<void(Actor*, float)>(__self, SLOT_heal, a);
 #line 53 "cpp_player_v1.cpp"
 }
-#line 462 "cpp_player_v1.cpp.cpp"
+#line 472 "cpp_player_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Player_slots[SLOT_COUNT] = {
@@ -501,7 +511,7 @@ HOT_NODEBUG static hot::Instance Player_create()
     return {static_cast<Actor*>(p), p};
 #line 25 "cpp_player_v1.cpp"
 }
-#line 505 "cpp_player_v1.cpp.cpp"
+#line 515 "cpp_player_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
