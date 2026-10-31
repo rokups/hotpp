@@ -28,6 +28,8 @@ Hot++ has fixed-width builtin types. Other types come from C++.
 
 `null` is the empty handle.
 
+The C++ spellings with many words are errors, for example `unsigned int` and `long long`. The message gives the script type: use `uint` or `long`. A native virtual method with an `unsigned` parameter matches a script override with `uint`.
+
 ## Variables
 
 A variable can have no initializer. It then gets the default value (zero, `false`, `null`). `var` takes the type from the initializer. `const` makes the variable read only.

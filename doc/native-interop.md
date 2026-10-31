@@ -133,9 +133,18 @@ class Holder : Actor {
 }
 ```
 
+## Checks on a stub
+
+The translator checks a stub against the native type.
+
+- `value` needs a copy constructor and a move constructor that does not throw. A reload moves the state block.
+- `value` on a polymorphic type that is not `final` is an error. This prevents slicing.
+- `intrusive` needs the two named methods, and they must not be overloaded.
+
 ## Other limits
 
 - Write `.`, not `::` or `->`.
+- `T(args)` for a native aggregate needs C++20. In a C++17 build, the native type needs a constructor.
 - A native array has no `.` access.
 - A native static data member, such as `Vec3.Zero.x`, needs a typed local first.
 - A function that the script calls must be exported by the host. Link with `ENABLE_EXPORTS`.

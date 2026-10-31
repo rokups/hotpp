@@ -1,11 +1,11 @@
 # Hot++
 
 Hot++ is a hot-reloadable scripting language for C++. This is a prototype of its runtime, translator, tools and language server.
-The design is in `hot-design.md` in the project root. See "Status" for the milestones.
+The documentation is in `doc/index.md`. See "Status" for the milestones.
 
 ## Status
 
-Each row is a milestone of `hot-design.md` section 10. "Not testable here" means that the work needs a part that this machine does not have. `DECISIONS.md` has the decisions and the reasons. `TASKS.md` has the slices. `HANDOFF.md` has the state and the limits.
+Each row is a milestone. "Not testable here" means that the work needs a part that this machine does not have. `TASKS.md` has the slices.
 
 | Milestone | Status | Note |
 |---|---|---|
@@ -50,11 +50,11 @@ The file `CMakePresets.json` has the presets. A build goes to `cmake-build/<pres
 - The JIT backend also works with ThreadSanitizer. ORC and ThreadSanitizer do not conflict.
 - `.clang-format` has a second document, `Language: CSharp`, for the Hot++ scripts. It uses the Microsoft style with the C++ choices on top (4 spaces, 120 columns, Allman braces).
 - `tools/format-hot.sh [--check] files...` formats `.hot` files in place. `--check` changes nothing and lists the files that need formatting. clang-format has no `.hot` mapping, so the script uses `--assume-filename=<file>.cs`.
-- Known limits: the formatter writes `using<map>;`, `std.string && s` (a qualified rvalue reference parameter) and `["a" : 1]`. It puts a lambda body on its own lines after `=>`. These are spaces only. Meaning stays the same. See DECISIONS.md.
+- Known limits: the formatter writes `using<map>;`, `std.string && s` (a qualified rvalue reference parameter) and `["a" : 1]`. It puts a lambda body on its own lines after `=>`. These are spaces only. Meaning stays the same. See `doc/tools.md`.
 - Hot++ supports C++17 and later. The generated code, `include/hot`, the runtime library and the backends build as C++17 or later.
 - `hotc`, the language server and the tests need C++20. The build forces C++20 on these targets. The default standard of the other targets is 20. Set `-DCMAKE_CXX_STANDARD=17` for a C++17 host.
 - The standard of the host (`HOT_CXX_STANDARD` in `include/hot/config.h`: 17, 20 or 23) is the standard of the script compile and of the parse of the native headers. The `hotc` flag `--std=c++17|c++20|c++23` overrides it.
-- A C++17 host needs fmt for `${}`. See DECISIONS.md.
+- A C++17 host needs fmt for `${}`. See `doc/cmake.md`.
 - String interpolation `${}` uses fmt in a C++17 build and `std::format` in a C++20 build. `-DHOT_USE_FMT=ON` selects fmt at C++20 and later. The choice is a build-time choice. `HOT_FMT_PROVIDER` says where fmt comes from: `AUTO` (default: `find_package`, then CPM.cmake), `SYSTEM` (`find_package` only), `CPM` (always fetch) or `NONE` (your project supplies the target `fmt::fmt-header-only` or `fmt::fmt`). See doc/cmake.md and doc/embedding.md.
 
 ### Build tree layout
@@ -127,7 +127,7 @@ The test `ReloadMigration` uses the path of a library that does not exist (`gen3
 
 The script has no brace initialization. Use parentheses: `T(args)` and `new T(args)`. A `{` in an expression gives an error. The script subset: `using`, `class N : Base`, fields `Type name;` or `Type name = init;` with `[alias("old")]`, methods `Ret name(T a) { ... }` (a method overrides a base virtual method when the name and the parameter types match; `void` means no return value), locals `Type name = e;`, `var name = e;`, `const Type name = e;` and `const var name = e;` (`var` gives `auto`), `this.`, `base.`, `null`, float literals, `Math.Min` as `Math::Min`, `if`, `while`, `for`, `return`, `throw`, `try`, `catch` and `finally`. A catch clause is `catch (Type e)` or `catch (...)`. A method can have a modifier: `override`, `virtual`, `new`, `public`, `private` or `protected`. A method that overrides a native virtual method needs `override`. The parser stores the access word and `virtual`. It does not enforce the access word, and `virtual` has no effect yet. A property is `Type N { get; set; }`, `{ get; }`, `{ get; private set; }` or `{ get { ... } set { ... } }`. The setter body reads the new value as `value`. A read or a write of `p.N` on another object of the class calls `get_N` or `set_N` of that object. A write gives the assigned value, so `a = p.N = 1` works. The rule uses the name only. If `p` is not an object of the class, the access throws `std::runtime_error`. Native stubs tell the translator how a C++ type behaves. `[native, handle("std::shared_ptr<$T>")] class Weapon;` declares a handle type. `$T` is the class. `[native, value] class std.string;` declares a value type. A pattern stub covers many types: `std.vector<*>` or `physics.*`. A stub lives in the script or in a prelude file. Give a prelude file to `hotc --prelude file` or in `TranslateOptions::preludes`. A handle type in a field, a local, a return type and `foreach` uses the storage type. A handle parameter becomes `const H&`. `.` on a handle uses `hot::deref`. `std::shared_ptr` is built in. A custom handle needs the `hot::is_handle` trait. A type with no stub keeps its raw text. `new T(args)` needs parentheses. It gives `std::make_shared<T>(args)` for a shared_ptr handle, `H(new T(args))` for another handle and `T(args)` otherwise. See `tests/scripts/handle_v1.hot` to `handle_v3.hot`. A reload that changes a field type is accepted (design 4.7): the `convert_<field>` hook converts the value, else the field gets its default value and the runtime logs a warning. See "Reload hooks". A handle stub on a native base class applies to all native subclasses. The nearest base wins. An exact stub on a subclass wins. A base stub beats a pattern stub. Only `handle` and `intrusive` are inherited. `value` is not inherited. The class hierarchy comes from libclang. A class in a system header is not in the map. A nested class and a template are not in the map. `intrusive("AddRef", "Release")` implies a handle: `[native, handle("$T*"), intrusive("AddRef", "Release")] class Object;`. If `handle` is given, it must be `$T*`. `intrusive` does not combine with `value`. The storage type is `hot::Intrusive<T, &Owner::AddRef, &Owner::Release>`. Owner is the class with the stub. A new object starts with zero references (the boost `intrusive_ptr` convention). The wrapper adds a reference when it is made from `T*`. The Add and Release methods must be non-overloaded, non-template members. A missing method gives a clang error that names it. A reload copies the field (add) and destroys the old block (release), so the count stays correct. See `tests/scripts/intrusive_v1.hot`, `intrusive_v2.hot` and `tests/engine/Object.h`. A script class is a handle. `class Name : Base { }` uses the handle of the native base. `class Name { }` has no base and is also a handle. `struct Name { }` is a value type inside the state block with copy semantics. `[value] class` on a script class is an error: use `struct`. A reload migrates it recursively. See `tests/scripts/kinds_v1.hot` and `kinds_v2.hot`. Deferred to slice 2: member access on a script handle, the borrowed-pointer checks of design 7.10.6, the checks of design 7.10.7, and the analysis of a parameter that a method stores as a copy. Native interface bases and their conflict checks are done (S8b, see "Native interface bases"). A comparison of an `Intrusive` with a raw `T*` is untested. Weak spot: a non-string attribute argument can give a spurious second error on a stub. A `T&` parameter takes its argument with no marker: `f(x)`. The prefix `&e` is the C++ address-of operator. It gives a borrowed pointer, and a field, a return value or a collection cannot hold it. `&h` on a handle is an error: use `h`, `&*h` or `*h`. `.` on a handle always means a member of the pointee, so `h.get()` calls `get` of the pointee. The arrow lambda `() => { ... }`, `(float x) => { ... }` and `(x) => { ... }` works in a method body. A parameter is `Type name`. A method parameter needs a type. A lambda parameter without a type is `auto`. The lambda body is a block or an expression: `(int x) => x * 2` is `(int32_t x) { return x * 2; }`. A C style cast `(T)e` works for a builtin type, `T*` and `T&`. A statement that starts with a chain with `?.` runs only when the receiver is not null: `h?.F(a);` and `h?.field = v;` give `if (h) ...`. The receiver runs once. `?.` in any other expression is an error. A parameter name has only one limit: the `__` prefix is reserved for generated code. See "Closures and unload".
 
-Builtin type names are fixed-width. The parser changes each alias to one canonical C++ name, so `ulong` and `uint64` give the same text in the emitted C++, in the override key and in the reload type key. `int` becomes `int32_t`. The table is in `src/translator/builtin_types.h` and in `hot-design.md` (section 7.1.1). The names: `bool`, `sbyte`/`int8`, `byte`/`uint8`, `short`/`int16`, `ushort`/`uint16`, `int`/`int32`, `uint`/`uint32`, `long`/`int64`, `ulong`/`uint64`, `nint`/`intptr`, `nuint`/`uintptr`, `float`, `double`, `char` (8 bit) and `wchar`/`char16` (`char16_t`). The C++ multi-word spellings are errors with a hint: `unsigned int` gives "use 'uint'", and `long long` gives "use 'long'". A native name such as `int32_t` or `size_t` stays a normal native name.
+Builtin type names are fixed-width. The parser changes each alias to one canonical C++ name, so `ulong` and `uint64` give the same text in the emitted C++, in the override key and in the reload type key. `int` becomes `int32_t`. The table is in `src/translator/builtin_types.h` and in `doc/types.md`. The names: `bool`, `sbyte`/`int8`, `byte`/`uint8`, `short`/`int16`, `ushort`/`uint16`, `int`/`int32`, `uint`/`uint32`, `long`/`int64`, `ulong`/`uint64`, `nint`/`intptr`, `nuint`/`uintptr`, `float`, `double`, `char` (8 bit) and `wchar`/`char16` (`char16_t`). The C++ multi-word spellings are errors with a hint: `unsigned int` gives "use 'uint'", and `long long` gives "use 'long'". A native name such as `int32_t` or `size_t` stays a normal native name.
 
 Imports: `using "Actor.h";` becomes `#include "Actor.h"`. A standard header uses angle brackets: `using <vector>;` or `using "<vector>";`. Both forms become `#include <vector>`, in the generated file and in the libclang probe. A missing header gives an error with the script name and line. The generated file always includes `<cstddef>`, `<cstdint>`, `<cstdio>`, `<new>`, `<string>`, `<type_traits>`, `<typeinfo>`, `<utility>` and `hot/runtime.h`. Add `using` for any other standard header, for example `<algorithm>`. A script can call a non-inline function of the host, for example `Distance` in `tests/engine/Util.cpp`. The host executable must export it (`ENABLE_EXPORTS`, `-rdynamic`).
 
@@ -149,13 +149,13 @@ A script can be a plain `.cpp` file. Do not write `#include "hot/script.h"`: `ho
 
 ### Module declarations (S8a)
 
-A script can declare enums, structs and module variables at file level (`DECISIONS.md` item 11). See `tests/scripts/module_v1.hot` and `module_v2.hot`.
+A script can declare enums, structs and module variables at file level (see `doc/module-level.md`). See `tests/scripts/module_v1.hot` and `module_v2.hot`.
 
 - `enum Name [: type] { A, B = 5, C }` becomes `enum class Name : T`. The default type is `int`. `Name.A` becomes `Name::A`. A reload migrates an enum field as an integer.
 - `struct Name { ... }` is the only way to declare a script value type. `[value] class Name { ... }` is an error: use `struct`. `[native, value] class X;` is a native stub and stays.
 - A module variable is `[alias("old")] Type name [= init];` at file level. Every class of the script reads it by its bare name. The translator puts the variables in a synthetic struct `HotModule`. The loader owns one module block. A reload migrates it like the fields of a class.
 - An initializer can use a module variable declared before it. The loader runs the initializers in declaration order.
-- A convert hook of a module variable is `T convert_<var>(Old old) { ... }` at file level (`DECISIONS.md` item 14). It cannot read a module variable. See `tests/scripts/modconv_v1.hot` and `modconv_v2.hot`.
+- A convert hook of a module variable is `T convert_<var>(Old old) { ... }` at file level (see `doc/module-level.md`). It cannot read a module variable. See `tests/scripts/modconv_v1.hot` and `modconv_v2.hot`.
 - Limits: a module variable is a native type, an enum or a struct. A script has no other free functions.
 
 ### Native interface bases (S8b)
@@ -451,7 +451,7 @@ Editors:
 
 `hot-ls` (S14b, design 10.1, M12 to M14) is a stdio LSP 3.17 server. It serves `.hot` files only. A `.cpp` script is a C++ file for clangd (see [doc/cpp-scripts.md](doc/cpp-scripts.md)). The code is in `src/ls/`. The extension in `editors/vscode/` starts it.
 
-### Editor setup: two servers (S31, DECISIONS 18)
+### Editor setup: two servers (S31)
 
 An editor uses two language servers on one project:
 
@@ -468,7 +468,7 @@ Steps:
 Both servers can use the same project and the same `.cache/` directory. They do not disturb each other:
 
 - The C++ clangd stores its index in `<dir of compile_commands.json>/.cache/clangd/index/`.
-- The clangd child of `hot-ls` has its own database directory `.cache/hot/clangd/` in the first workspace folder. The directory has a link to the real `compile_commands.json`. So its index is in `.cache/hot/clangd/.cache/clangd/index/`. The extra nesting is accepted. `XDG_CACHE_HOME` does not move this index (see DECISIONS 18).
+- The clangd child of `hot-ls` has its own database directory `.cache/hot/clangd/` in the first workspace folder. The directory has a link to the real `compile_commands.json`. So its index is in `.cache/hot/clangd/.cache/clangd/index/`. The extra nesting is accepted. `XDG_CACHE_HOME` does not move this index.
 - The symbol index of `hot-ls` is in `.cache/hot/index/`.
 - The C++ clangd does not get an open `.hot` document, and `hot-ls` does not get a C++ document. A diagnostic of one server never shows in the files of the other.
 

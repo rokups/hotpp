@@ -25,9 +25,8 @@ Yes. The current closure design does not allow it. A new design that treats a la
 - A mismatch logs a stale call and returns `R()`. No lambda body runs.
 - The pin keeps the old library loaded while native code holds the closure.
 - The test `EscapedClosureIsStaleAfterReload` (`tests/integration/closures/generation_unload_tests.cpp:83`) checks this on purpose.
-- `hot-design.md:515` records this as a decision.
 - The runtime does not unregister or rebind native callbacks. Only `ClearTimers` drops timers.
-- A named method already reloads. Native code holds a thunk. The thunk calls through the slot table. Slot numbers do not change (`DECISIONS.md:31`).
+- A named method already reloads. Native code holds a thunk. The thunk calls through the slot table. Slot numbers do not change.
 
 ## Proposed design
 
@@ -35,7 +34,7 @@ Give each lambda the same treatment as a method.
 
 1. **Lambda body as a slot.** The translator lowers each lambda to a hidden member of the state struct. The member gets a slot and a signature key in `ClassRecord::slots`.
 2. **Invoker outside the script library.** The closure holds a capture handle and a slot. The code that native `std::function` or `Delegate` calls must live in the shell module or the runtime. No native pointer then refers to code in an old library.
-3. **Captures in runtime-owned storage.** Today the captures sit inside the closure in native memory. Their layout comes from the old generation. The runtime cannot find them to migrate them. A runtime-owned capture block works like a state object. The live-object list tracks it (`include/hot/runtime/state.h:31`). The commit migrates it with the existing rule: copy fields with the same name and type key (`DECISIONS.md:48`).
+3. **Captures in runtime-owned storage.** Today the captures sit inside the closure in native memory. Their layout comes from the old generation. The runtime cannot find them to migrate them. A runtime-owned capture block works like a state object. The live-object list tracks it (`include/hot/runtime/state.h:31`). The commit migrates it with the existing rule: copy fields with the same name and type key.
 4. **Stable lambda identity.** A lambda needs a key that survives edits. Options: enclosing method plus ordinal, or a hash of the signature and the capture list. If the key or the signature does not match, use the current stale behavior.
 5. **No generation pin.** Calls go to the current generation. A live closure no longer needs to pin the old one. Old libraries can then unload while native code holds closures.
 

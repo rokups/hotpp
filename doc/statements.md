@@ -30,7 +30,7 @@ class Flow {
 
 ## switch
 
-`switch` works as in C++ for enums and integers. A `switch` on string labels becomes an `if` chain. Each case must end with `break`, `return`, `throw` or `continue`. The last case can end any way. A case can have several labels. Mixed labels and repeated labels are errors.
+`switch` works as in C++ for enums and integers. A `switch` on string labels becomes an `if` chain. Each case must end with `break`, `return`, `throw` or `continue`. The last case can end any way. A case can have several labels. Mixed labels and repeated labels are errors. The switch value is read one time. `default` can be at any position. A string `switch` with a `break` inside an `if` and a `continue` for an outer loop is an error.
 
 ```hot
 enum Mode { Idle, Walk, Run }
@@ -86,7 +86,7 @@ class Sum {
 }
 ```
 
-`enumerate` and `range` are global functions. A local, a member, a type or a native global of the same name hides them. In `enumerate`, `i` is a copy and `x` is a reference to the element. `var&` over `enumerate` is an error.
+`enumerate` and `range` are global functions. A local, a member, a type or a native global of the same name hides them. In `enumerate`, `i` is a copy and `x` is a reference to the element. `var&` over `enumerate` is an error. The item type is `std::pair<size_t, T&>`. `range` gives values of the common type of its arguments.
 
 ## Structured bindings
 
@@ -105,6 +105,8 @@ class Split {
     }
 }
 ```
+
+A lambda, a `??` right side and a `finally` block can use a binding. A `var&` binding is a borrowed name, so a lambda cannot capture it.
 
 ## try, catch, finally
 
@@ -146,6 +148,8 @@ class Hud : Actor {
 }
 ```
 
+The string must use double quotes. A backtick string is an error. Write `\${` to get a literal `${`. A `{` or `}` in the text of an interpolated string prints as one brace: the compiler doubles it for you. A string with no `${` stays a plain literal.
+
 ## Casts
 
 A C style cast `(T)e` works for a builtin type (`(int)f`) and for a name with `*` or `&` (`(Foo*)p`). For any other type, use `static_cast<T>(e)`.
@@ -165,7 +169,7 @@ For a checked cast to a script class, use `as` (see "is and as").
 
 ## Null coalescing and safe calls
 
-`a ?? b` gives `a` when `a` is not null (or not false). Otherwise it gives `b`. The right side runs only when it is needed. `??` binds between `||` and `?:`. It is right associative.
+`a ?? b` gives `a` when `a` is not null (or not false). Otherwise it gives `b`. The right side runs only when it is needed. `??` binds between `||` and `?:`. It is right associative. The left side is read one time.
 
 `?.` works only at the start of an expression statement: `h?.F();` and `h?.x = 1;` do nothing when `h` is null.
 

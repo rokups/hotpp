@@ -159,7 +159,7 @@ UseTab: Never
 ...
 
 # C# (the Hot++ scripts, *.hot). Microsoft style plus the same choices as the C++ document.
-# Use tools/format-hot.sh. See DECISIONS.md, "C# style for scripts".
+# Use tools/format-hot.sh. See doc/tools.md.
 ---
 Language: CSharp
 BasedOnStyle: Microsoft

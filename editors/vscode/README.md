@@ -41,7 +41,7 @@ If the build did not find `vsce`, the folder `<prefix>/share/hot/vscode/hotpp` h
 
 If the binary is missing, the extension shows one warning. Highlighting still works.
 
-The build makes `build/hot-ls`. It uses a stock `clangd` as a child process (see `DECISIONS.md`, items 13 and 18).
+The build makes `build/hot-ls`. It uses a stock `clangd` as a child process (see `doc/tools.md`).
 `clangd` must be in `PATH`, or you give its path with `--clangd`.
 Put the server arguments in `hot.server.args`. For example:
 

@@ -21,6 +21,7 @@ This list shows what version 1 does not support.
 - A C style cast to a type other than a builtin type, `T*` or `T&`. Use `static_cast<T>(e)`.
 - Member access with `.` on an iterator, a `std.optional` or a `std.unique_ptr`. Write `(*p).x`.
 - A field of a move-only type, such as `std.unique_ptr<T>`. A reload copies each field. Use a handle.
+- More than 64 nested statements, 15 nested lambdas or 256 operators in one expression.
 - Windows and macOS. They are untested.
 - MSVC, Visual Studio, and a real gdb or lldb session. They are untested.
 

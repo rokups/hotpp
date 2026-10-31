@@ -102,6 +102,8 @@ class Hero : Actor {
 
 `void onReload(OldState old)` runs once for each live object, after the migration of all objects. `old.has("hp")` tests the old field name. `old.get<float>("hp")` reads the old value. It throws when the field is absent or has another type.
 
+A throw from `onReload` is logged. The object keeps the defaults for the affected fields, and the reload completes. A reload has no rollback after the commit. To undo a change, revert the source. The next reload migrates back with the same rules.
+
 ```hot
 using "Actor.h";
 
