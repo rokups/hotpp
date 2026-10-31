@@ -99,6 +99,8 @@ class Hero : Actor {
 }
 ```
 
+An override can take a native `Weapon*` or `Weapon&` as the plain handle `Weapon`. The body then owns a handle, not a borrowed pointer. See "Parameter forms of an override" in `inheritance.md`.
+
 `Weapon*` of a native handle is borrowed, so it is a finding in a field. `Hero*` of a script class is always an error. The `this` error shows after the other errors are fixed.
 
 ```hot
