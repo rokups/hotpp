@@ -50,7 +50,7 @@ endfunction()
 
 # hot_effective_cxx_standard(<out> <target>): set <out> to the C++ standard of the host: 17, 20
 # or 23. The value is the property CXX_STANDARD of the target, else CMAKE_CXX_STANDARD, else
-# the default of Hot++ (20, set by the root CMakeLists.txt), else 17.
+# the default of Hot++ (17, set by the root CMakeLists.txt), else 17.
 # A value less than 17 gives 17. A value above 23 gives 23. The value 21 or 22 gives 20.
 # The runtime library and the backends compile the generated code with this standard
 # (HOT_CXX_STANDARD in include/hot/config.h).

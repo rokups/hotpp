@@ -392,7 +392,8 @@ bool bind_args(CXCursor pattern, const std::vector<std::string>& args, Subst& ou
         for (const auto& [name, range] : bind)
         {
             const std::string text = join_tokens(s, range.first, range.second);
-            auto it = std::find_if(out.begin(), out.end(), [&](const auto& kv) { return kv.first == name; });
+            const std::string& key = name; // a lambda cannot capture a structured binding in C++17
+            auto it = std::find_if(out.begin(), out.end(), [&](const auto& kv) { return kv.first == key; });
             if (it == out.end())
                 out.emplace_back(name, text);
             else if (it->second != text)

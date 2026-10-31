@@ -13,8 +13,7 @@ set(HOT_CMAKE_DIR ${CMAKE_CURRENT_LIST_DIR})
 
 function(hot_gtest target)
     cmake_parse_arguments(PARSE_ARGV 1 A "" "" "PROPERTIES")
-    # The tests need C++20, also when the host standard (CMAKE_CXX_STANDARD) is 17.
-    target_compile_features(${target} PRIVATE cxx_std_20)
+    # The tests use the standard of the project (CMAKE_CXX_STANDARD, default 17).
     gtest_discover_tests(${target}
         ${A_UNPARSED_ARGUMENTS}
         PROPERTIES FIXTURES_REQUIRED hot_scratch ${A_PROPERTIES})

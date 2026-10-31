@@ -5,7 +5,6 @@
 add_library(hot_ls_lib STATIC jsonrpc.cpp clangd_process.cpp server.cpp
     semantic.cpp symbol_index.cpp hosts.cpp)
 target_include_directories(hot_ls_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} PRIVATE ${PROJECT_SOURCE_DIR}/src/translator)
-target_compile_features(hot_ls_lib PUBLIC cxx_std_20)
 target_link_libraries(hot_ls_lib PUBLIC hot_clang_backend nlohmann_json::nlohmann_json Threads::Threads)
 add_executable(hot_ls main.cpp)
 target_link_libraries(hot_ls PRIVATE hot_ls_lib)

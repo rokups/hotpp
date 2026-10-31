@@ -52,10 +52,10 @@ The file `CMakePresets.json` has the presets. A build goes to `cmake-build/<pres
 - `tools/format-hot.sh [--check] files...` formats `.hot` files in place. `--check` changes nothing and lists the files that need formatting. clang-format has no `.hot` mapping, so the script uses `--assume-filename=<file>.cs`.
 - Known limits: the formatter writes `using<map>;`, `std.string && s` (a qualified rvalue reference parameter) and `["a" : 1]`. It puts a lambda body on its own lines after `=>`. These are spaces only. Meaning stays the same. See `doc/tools.md`.
 - Hot++ supports C++17 and later. The generated code, `include/hot`, the runtime library and the backends build as C++17 or later.
-- `hotc`, the language server and the tests need C++20. The build forces C++20 on these targets. The default standard of the other targets is 20. Set `-DCMAKE_CXX_STANDARD=17` for a C++17 host.
+- The whole project builds as C++17 by default: the runtime, `hotc`, the language server, the tools, the samples and the tests. Set `-DCMAKE_CXX_STANDARD=20` (or 23) to opt in to a later standard.
 - The standard of the host (`HOT_CXX_STANDARD` in `include/hot/config.h`: 17, 20 or 23) is the standard of the script compile and of the parse of the native headers. The `hotc` flag `--std=c++17|c++20|c++23` overrides it.
-- A C++17 host needs fmt for `${}`. See `doc/cmake.md`.
-- String interpolation `${}` uses fmt in a C++17 build and `std::format` in a C++20 build. `-DHOT_USE_FMT=ON` selects fmt at C++20 and later. The choice is a build-time choice. `HOT_FMT_PROVIDER` says where fmt comes from: `AUTO` (default: `find_package`, then CPM.cmake), `SYSTEM` (`find_package` only), `CPM` (always fetch) or `NONE` (your project supplies the target `fmt::fmt-header-only` or `fmt::fmt`). See doc/cmake.md and doc/embedding.md.
+- The default C++17 build needs fmt for `${}`. See `doc/cmake.md`.
+- String interpolation `${}` uses fmt by default (C++17). To use `std::format`, set `-DCMAKE_CXX_STANDARD=20` or later. `-DHOT_USE_FMT=ON` selects fmt at C++20 and later. The choice is a build-time choice. `HOT_FMT_PROVIDER` says where fmt comes from: `AUTO` (default: `find_package`, then CPM.cmake), `SYSTEM` (`find_package` only), `CPM` (always fetch) or `NONE` (your project supplies the target `fmt::fmt-header-only` or `fmt::fmt`). See doc/cmake.md and doc/embedding.md.
 
 ### Build tree layout
 

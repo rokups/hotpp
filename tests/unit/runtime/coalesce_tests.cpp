@@ -57,7 +57,7 @@ TEST(Coalesce, OptionalLeftWithPlainRightGivesTheValueType)
     const int r2 = hot::coalesce(none, []() -> auto { return 5; });
     EXPECT_EQ(r1, 7);
     EXPECT_EQ(r2, 5);
-    static_assert(std::is_same_v<decltype(hot::coalesce(some, []() -> auto { return 5; })), int>);
+    static_assert(std::is_same_v<decltype(hot::coalesce(some, std::declval<int (&)()>())), int>);
 }
 
 TEST(Coalesce, OptionalOnBothSidesKeepsTheOptional)

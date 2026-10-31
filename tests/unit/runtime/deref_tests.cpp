@@ -178,10 +178,13 @@ TEST(Deref, AssignmentThroughASharedPtr)
 
 // An array has no overload that works:"hot::deref(arr)" is deleted. The compiler
 // rejects the call, so a test cannot show it. This check shows the same by SFINAE.
-template <class T> concept CanDeref = requires(T & t)
+template <class T, class = void> struct CanDerefImpl : std::false_type
 {
-    hot::deref(t);
 };
+template <class T> struct CanDerefImpl<T, std::void_t<decltype(hot::deref(std::declval<T&>()))>> : std::true_type
+{
+};
+template <class T> constexpr bool CanDeref = CanDerefImpl<T>::value;
 static_assert(!CanDeref<Item[2]>);
 static_assert(CanDeref<Item>);
 

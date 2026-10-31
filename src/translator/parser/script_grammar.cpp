@@ -907,7 +907,7 @@ struct base_name_p
 {
     static constexpr auto rule = dsl::list(dsl::p<name_p<e_base_name>>, dsl::sep(dsl::lit_c<'.'>));
     static constexpr auto value =
-        lexy::fold_inplace<std::string>(std::string{}, [](std::string& acc, std::string&& part)
+        lexy::fold_inplace<std::string>("", [](std::string& acc, std::string&& part)
     {
         if (!acc.empty())
             acc += "::";
@@ -1070,7 +1070,7 @@ struct stub_dotted
 {
     static constexpr auto rule = dsl::list(dsl::p<stub_part>, dsl::sep(dsl::lit_c<'.'>));
     static constexpr auto value =
-        lexy::fold_inplace<std::string>(std::string{}, [](std::string& acc, std::string&& part)
+        lexy::fold_inplace<std::string>("", [](std::string& acc, std::string&& part)
     {
         if (!acc.empty())
             acc += "::";

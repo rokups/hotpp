@@ -66,12 +66,13 @@ if(HOT_PORTABLE AND HOT_BUILD_TESTS)
     message(FATAL_ERROR "HOT_PORTABLE and HOT_BUILD_TESTS are both ON. The tests need the build paths. Set HOT_BUILD_TESTS=OFF.")
 endif()
 
-# The default standard is C++20. A parent project can set CMAKE_CXX_STANDARD to 17.
+# The default standard is C++17. A parent project can set CMAKE_CXX_STANDARD to 20 or 23.
+# The string interpolation then uses std::format (see cmake/HotFormat.cmake).
 if(NOT CMAKE_CXX_STANDARD)
-    set(CMAKE_CXX_STANDARD 20)
+    set(CMAKE_CXX_STANDARD 17)
     # The scope of a parent project does not see the variable. hot_add_scripts in that scope
     # reads this property (hot_effective_cxx_standard), so it agrees with the build of hotc.
-    set_property(GLOBAL PROPERTY HOT_DEFAULT_CXX_STANDARD 20)
+    set_property(GLOBAL PROPERTY HOT_DEFAULT_CXX_STANDARD 17)
 endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -107,12 +108,18 @@ if(HOT_BUILD_TESTS)
 endif()
 # lexy: header-only parser library. Only src/translator/parser/ includes its headers.
 # Use only foonathan::lexy::core. Do not link foonathan::lexy (it builds lexy_file).
+# Without LEXY_FORCE_CPP17, lexy asks for C++20 and so raises the standard of the translator.
+if(CMAKE_CXX_STANDARD LESS 20)
+    set(HOT_LEXY_FORCE_CPP17 ON)
+else()
+    set(HOT_LEXY_FORCE_CPP17 OFF)
+endif()
 CPMAddPackage(
     NAME lexy
     GITHUB_REPOSITORY foonathan/lexy
     GIT_TAG v2025.05.0
     VERSION 2025.05.0
-    OPTIONS "LEXY_BUILD_EXAMPLES OFF" "LEXY_BUILD_TESTS OFF" "LEXY_BUILD_PACKAGE OFF" "LEXY_ENABLE_INSTALL OFF"
+    OPTIONS "LEXY_FORCE_CPP17 ${HOT_LEXY_FORCE_CPP17}" "LEXY_BUILD_EXAMPLES OFF" "LEXY_BUILD_TESTS OFF" "LEXY_BUILD_PACKAGE OFF" "LEXY_ENABLE_INSTALL OFF"
 )
 
 # nlohmann_json: the language server in src/ls uses it.

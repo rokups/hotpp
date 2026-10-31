@@ -69,9 +69,8 @@ target_include_directories(hotc_lib PRIVATE ${CLANG_C_INCLUDE_DIR})
 # The export holds no path of libclang. HotConfig.cmake finds the library for the consumer.
 target_link_libraries(hotc_lib PUBLIC $<BUILD_INTERFACE:${HOT_LIBCLANG_TARGET}>)
 target_link_libraries(hotc_lib PRIVATE $<BUILD_INTERFACE:foonathan::lexy::core>)
-# The translator needs C++20. The host can use C++17. The parse of the native headers uses the
-# standard of the host (HOT_CXX_STANDARD, include/hot/config.h), not the standard of this target.
-target_compile_features(hotc_lib PRIVATE cxx_std_20)
+# The translator builds with the standard of the project (default C++17). The parse of the native
+# headers uses the standard of the host (HOT_CXX_STANDARD, include/hot/config.h).
 hot_effective_cxx_standard(HOT_HOST_CXX_STANDARD hot_runtime_core)
 target_compile_definitions(hotc_lib PRIVATE HOT_CXX_STANDARD=${HOT_HOST_CXX_STANDARD})
 if(HOT_PORTABLE)

@@ -156,24 +156,25 @@ ast::NameExpr split_name(const ParseState& st, std::string_view t, uint32_t pos)
 }
 
 // ---------------------------------------------------------------- operator tags
-// A string as a template argument. It names an operator.
-template <std::size_t N> struct Str
+// An operator name as template arguments: up to 3 chars. The macro HOT_CH3 splits a literal.
+// A class type as a template argument needs C++20, so the name is a list of chars.
+constexpr char op_char(const char* s, std::size_t i)
 {
-    char v[N] = {};
-    constexpr Str(const char (&s)[N])
-    {
-        for (std::size_t i = 0; i < N; ++i)
-            v[i] = s[i];
-    }
+    return s[0] == 0 ? char(0) : (i == 0 ? s[0] : op_char(s + 1, i - 1));
+}
+#define HOT_CH3(S) op_char(S, 0), op_char(S, 1), op_char(S, 2)
+template <char C0, char C1, char C2> struct OpName
+{
+    static constexpr char v[4] = {C0, C1, C2, 0};
 };
 
-template <Str S> struct Bin
+template <char C0, char C1, char C2> struct Bin
 {
 }; // an infix operator, also an assignment
-template <Str S> struct Post
+template <char C0, char C1, char C2> struct Post
 {
 }; // "++" or "--" after the operand
-template <Str S> struct Member
+template <char C0, char C1, char C2> struct Member
 {
 }; // "."
 // The name after a ".": the text and the byte offset. The text is empty when the name is missing.
@@ -185,7 +186,7 @@ struct MemberName
     std::string name;
     uint32_t pos = 0;
 };
-template <Str S> struct Pre
+template <char C0, char C1, char C2> struct Pre
 { // a prefix operator; it keeps the position of the operator
     const char* pos;
     explicit Pre(const char* p)
@@ -212,11 +213,11 @@ struct IndexTag
 {
 };
 
-#define HOT_BIN(S) dsl::op<Bin<S>>(LEXY_LIT(S))
-#define HOT_BIN_NF(S, CC) dsl::op<Bin<S>>(dsl::not_followed_by(LEXY_LIT(S), CC))
-#define HOT_PRE(S) dsl::op<Pre<S>>(LEXY_LIT(S))
-#define HOT_PRE_NF(S, CC) dsl::op<Pre<S>>(dsl::not_followed_by(LEXY_LIT(S), CC))
-#define HOT_POST(S) dsl::op<Post<S>>(LEXY_LIT(S))
+#define HOT_BIN(S) dsl::op<Bin<HOT_CH3(S)>>(LEXY_LIT(S))
+#define HOT_BIN_NF(S, CC) dsl::op<Bin<HOT_CH3(S)>>(dsl::not_followed_by(LEXY_LIT(S), CC))
+#define HOT_PRE(S) dsl::op<Pre<HOT_CH3(S)>>(LEXY_LIT(S))
+#define HOT_PRE_NF(S, CC) dsl::op<Pre<HOT_CH3(S)>>(dsl::not_followed_by(LEXY_LIT(S), CC))
+#define HOT_POST(S) dsl::op<Post<HOT_CH3(S)>>(LEXY_LIT(S))
 
 // The chars that an operator must not have after it.
 constexpr auto cc_eq = dsl::lit_c<'='>;
@@ -240,19 +241,19 @@ struct Builder
 {
     ExprP operator()(const ParseState&, ExprP e) const { return e; }
 
-    template <Str S> ExprP operator()(const ParseState&, ExprP l, Bin<S>, ExprP r) const
+    template <char C0, char C1, char C2> ExprP operator()(const ParseState&, ExprP l, Bin<C0, C1, C2>, ExprP r) const
     {
         const uint32_t pos = ast::pos_of(*l);
-        return ast::make_expr(ast::BinaryExpr{S.v, std::move(l), std::move(r), pos});
+        return ast::make_expr(ast::BinaryExpr{OpName<C0, C1, C2>::v, std::move(l), std::move(r), pos});
     }
-    template <Str S> ExprP operator()(const ParseState& st, Pre<S> t, ExprP e) const
+    template <char C0, char C1, char C2> ExprP operator()(const ParseState& st, Pre<C0, C1, C2> t, ExprP e) const
     {
-        return ast::make_expr(ast::UnaryExpr{S.v, std::move(e), false, st.offset(t.pos)});
+        return ast::make_expr(ast::UnaryExpr{OpName<C0, C1, C2>::v, std::move(e), false, st.offset(t.pos)});
     }
-    template <Str S> ExprP operator()(const ParseState&, ExprP e, Post<S>) const
+    template <char C0, char C1, char C2> ExprP operator()(const ParseState&, ExprP e, Post<C0, C1, C2>) const
     {
         const uint32_t pos = ast::pos_of(*e);
-        return ast::make_expr(ast::UnaryExpr{S.v, std::move(e), true, pos});
+        return ast::make_expr(ast::UnaryExpr{OpName<C0, C1, C2>::v, std::move(e), true, pos});
     }
     ExprP operator()(const ParseState&, ExprP c, CondTag, ExprP a, ExprP b) const
     {
@@ -304,7 +305,7 @@ struct Builder
         m.safe = true;
         return ast::make_expr(std::move(m));
     }
-    template <Str S> ExprP operator()(const ParseState&, ExprP o, Member<S>, MemberName&& name) const
+    template <char C0, char C1, char C2> ExprP operator()(const ParseState&, ExprP o, Member<C0, C1, C2>, MemberName&& name) const
     {
         const uint32_t pos = ast::pos_of(*o);
         return ast::make_expr(ast::MemberExpr{std::move(o), std::move(name.name), pos, name.pos});
@@ -879,7 +880,7 @@ template <bool Full> struct expr_g : lexy::expression_production
             / dsl::op<CallTag>(LEXY_LIT("(") >> dsl::p<elems_p<')'>>)
             / dsl::op<IndexTag>(LEXY_LIT("[") >> dsl::p<index_p>)
             / dsl::op<SafeTag>(dsl::not_followed_by(LEXY_LIT("?."), dsl::ascii::digit) >> dsl::p<member_name_p>)
-            / dsl::op<Member<".">>(LEXY_LIT(".") >> dsl::p<member_name_p>)
+            / dsl::op<Member<HOT_CH3(".")>>(LEXY_LIT(".") >> dsl::p<member_name_p>)
             / dsl::op<ArrowTag>(LEXY_LIT("->") >> dsl::try_(dsl::error<e_use_dot_arrow>, dsl::p<id_str>));
         using operand = dsl::atom;
     };

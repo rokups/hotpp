@@ -34,7 +34,7 @@
 #
 # String interpolation "${...}": the C++ standard picks the format library at build time
 # (cmake/HotFormat.cmake). The standard comes from hot_effective_cxx_standard: the property
-# CXX_STANDARD of the target, else CMAKE_CXX_STANDARD, else the Hot++ default 20, else 17.
+# CXX_STANDARD of the target, else CMAKE_CXX_STANDARD, else the Hot++ default 17.
 # A standard less than 20 selects fmt. C++20 and later select std::format, unless the CMake
 # option HOT_USE_FMT is ON. With fmt, the function gets fmt (HOT_FMT_PROVIDER: an installed
 # package, else CPM.cmake, by default), passes --format=fmt to hotc and gives the compile the fmt include directory.
