@@ -155,7 +155,10 @@ std::vector<std::string> compile_command(const ClangFilesOptions& opt, const std
         "-Werror=return-type",
         // A module symbol must not bind to a host symbol with the same mangled name. The entry
         // point script_register has default visibility (hot/runtime/registry.h).
-        "-fvisibility=hidden", "-fvisibility-inlines-hidden"};
+        "-fvisibility=hidden", "-fvisibility-inlines-hidden",
+        // A call to the host (a native method, the runtime) reads the address from the GOT. A PLT
+        // stub adds one jump to each call. The module loads with RTLD_NOW, so no symbol is lazy.
+        "-fno-plt"};
     if (!opt.resource_dir.empty())
         cmd.push_back("-resource-dir=" + opt.resource_dir);
     for (const std::string& f : opt.extra_flags)

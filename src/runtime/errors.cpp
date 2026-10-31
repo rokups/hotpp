@@ -63,11 +63,20 @@ ScriptErrorHandler script_error_handler()
 namespace detail
 {
 
-uint32_t& call_depth() noexcept
+#if HOT_ELF_TLS_DEPTH
+__thread uint32_t g_call_depth = 0;
+
+intptr_t call_depth_tp_offset() noexcept
+{
+    return reinterpret_cast<char*>(&g_call_depth) - static_cast<char*>(__builtin_thread_pointer());
+}
+#else
+uint32_t& call_depth_slot() noexcept
 {
     static thread_local uint32_t depth = 0;
     return depth;
 }
+#endif
 
 void throw_null_reference(const char* what)
 {

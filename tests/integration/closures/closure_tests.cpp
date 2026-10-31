@@ -73,6 +73,38 @@ TEST_F(Closure, ConvertsToStdFunctionAndToADelegate)
     EXPECT_EQ(hot::pin_count(9001), 3u); // c, d, f
 }
 
+// A std::function from a closure holds the guarded lambda, not the closure. So its call has one
+// indirect call. The pin and the guard stay with the std::function.
+TEST_F(Closure, StdFunctionHoldsTheGuardedLambda)
+{
+    int runs = 0;
+    hot::Closure<int(int)> c(9001, "c", [&runs](int x)
+    {
+        ++runs;
+        return x + 1;
+    });
+    std::function<int(int)> from_lvalue = c;
+    const hot::Closure<int(int)>& cref = c;
+    std::function<int(int)> from_const = cref;
+    std::function<int(int)> from_rvalue = hot::make_closure(9001, "r", [](int x) { return x * 2; });
+    for (const std::function<int(int)>* f : {&from_lvalue, &from_const, &from_rvalue})
+        EXPECT_NE(f->target_type(), typeid(hot::Closure<int(int)>));
+    EXPECT_EQ(hot::pin_count(9001), 4u); // c, from_lvalue, from_const, from_rvalue
+    EXPECT_EQ(from_lvalue(1), 2);
+    EXPECT_EQ(from_rvalue(3), 6);
+    const uint64_t stale0 = hot::stale_call_count();
+    hot::active_generation = 9002;
+    EXPECT_EQ(from_const(1), 0);
+    EXPECT_EQ(from_rvalue(1), 0);
+    EXPECT_EQ(runs, 1);
+    EXPECT_EQ(hot::stale_call_count(), stale0 + 2);
+    hot::active_generation = 9001;
+    // An empty closure gives a std::function that logs a stale call.
+    std::function<int(int)> empty = hot::Closure<int(int)>();
+    EXPECT_EQ(empty(1), 0);
+    EXPECT_EQ(hot::stale_call_count(), stale0 + 3);
+}
+
 TEST_F(Closure, PinCountIsAtomic)
 {
     // Not a proof, but a thread sanitizer or a lost update shows here.

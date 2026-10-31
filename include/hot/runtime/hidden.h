@@ -27,6 +27,16 @@
     #define HOT_NODEBUG
 #endif
 
+// A cold helper of a fast path. It stays out of line, so the fast path keeps few registers and
+// no stack slots. It has no debug info. Put it before the return type.
+#if defined(__clang__) || defined(__GNUC__)
+    #define HOT_NOINLINE [[gnu::noinline, gnu::nodebug]]
+#elif defined(_MSC_VER)
+    #define HOT_NOINLINE __declspec(noinline)
+#else
+    #define HOT_NOINLINE
+#endif
+
 // An attribute list for a local variable in generated code. The variable can be unused. It has
 // no debug info, so the debugger does not show it.
 // unverified: not built on MSVC. The MSVC form has no nodebug attribute.

@@ -72,8 +72,8 @@ See [Introduction](https://rokups.github.io/hotpp/intro.html) for the generated 
 The numbers come from `bench_backends` (Release build, median of 3 runs). See [Benchmarks](https://rokups.github.io/hotpp/benchmarks.html).
 
 - A loop inside a script runs at native speed (0.94x to 1.0x), for `.hot` and for `.cpp`.
-- A call from the host into a script costs 3.3x to 3.8x of a native virtual call. This is 3.4 to 4.1 ns more.
-- `new` and free of a `.hot` object cost 57 to 61 ns (about 5.5x of `std::make_shared`).
+- A call from the host into a script costs 2.2x to 2.4x of a native virtual call in `files` and `aot` (about 2 ns more). In `jit` it costs 2.9x.
+- `new` and free of a `.hot` object cost 47 to 50 ns (4.4x to 4.6x of `std::make_shared`).
 
 ## Quick start
 

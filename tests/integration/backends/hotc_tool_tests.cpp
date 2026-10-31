@@ -1237,11 +1237,13 @@ TEST(HotcTool, CompileCommandUsesTheBackendFlags)
     o.extra_flags = {"-O2"};
     o.resource_dir = "/res";
     std::vector<std::string> expected = {"cc", std::string("-std=") + hot::cxx_std_name(), "-fPIC", "-shared", "-g",
-        "-Werror=return-type", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-resource-dir=/res", "-O2", "-I/i1", "-I/i2"};
+        "-Werror=return-type", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-fno-plt", "-resource-dir=/res", "-O2", "-I/i1", "-I/i2"};
     for (const std::string& f : hot::format_compile_flags())
         expected.push_back(f); // fmt build only
     for (const std::string& f : hot::checks_compile_flags())
         expected.push_back(f); // HOT_RUNTIME_CHECKS=OFF build only
+    for (const std::string& f : hot::traceback_compile_flags())
+        expected.push_back(f); // HOT_TRACEBACK=ON build only
     for (const char* f : {"/x.cpp", "-o", "/x.so"})
         expected.push_back(f);
     EXPECT_EQ(hot::compile_command(o, "/x.cpp", "/x.so"), expected);
@@ -1288,10 +1290,12 @@ TEST(HotcTool, CompileCommandsOptionWritesTheDatabase)
         fmt_args += "\"" + f + "\", ";
     for (const std::string& f : hot::checks_compile_flags())
         fmt_args += "\"" + f + "\", "; // HOT_RUNTIME_CHECKS=OFF build only
+    for (const std::string& f : hot::traceback_compile_flags())
+        fmt_args += "\"" + f + "\", "; // HOT_TRACEBACK=ON build only
     const std::string expected =
         "[\n  {\n    \"directory\": \"" + fs::current_path().string() + "\",\n    \"file\": \"" + cpp +
         "\",\n    \"arguments\": [\"" + cxx + "\", \"-std=" + std::string(hot::cxx_std_name()) + "\", \"-fPIC\", \"-shared\", \"-g\", "
-        "\"-Werror=return-type\", \"-fvisibility=hidden\", \"-fvisibility-inlines-hidden\", \"-O1\", \"-I" + engine + "\", \"-I" + inc + "\", " + fmt_args + "\"" + cpp +
+        "\"-Werror=return-type\", \"-fvisibility=hidden\", \"-fvisibility-inlines-hidden\", \"-fno-plt\", \"-O1\", \"-I" + engine + "\", \"-I" + inc + "\", " + fmt_args + "\"" + cpp +
         "\", \"-o\", \"" + so + "\"],\n    \"output\": \"" + so + "\"\n  }\n]\n";
     EXPECT_EQ(read_file(cdb_dir + "/compile_commands.json"), expected);
 }

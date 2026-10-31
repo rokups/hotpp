@@ -3,6 +3,7 @@
 #include "hot/config.h"
 #include "hot/hotc_lib.h"
 #include "hot/paths.h"
+#include "hot/runtime/errors.h"
 
 #include <clang/Basic/Diagnostic.h>
 #include <clang/CodeGen/CodeGenAction.h>
@@ -133,7 +134,15 @@ CompileSetup make_invocation(const JitOptions& opt, const std::string& path, con
 
     std::vector<std::string>& args = s.args;
     args = {opt.compiler, "-std=" + (opt.std_version.empty() ? std::string(cxx_std_name()) : opt.std_version), "-O1",
-        "-fPIC", "-Werror=return-type", "-fvisibility=hidden", "-fvisibility-inlines-hidden"};
+        "-fPIC", "-Werror=return-type", "-fvisibility=hidden", "-fvisibility-inlines-hidden",
+        // A call to the host reads the address from the GOT. A stub would add one jump to each call.
+        "-fno-plt"};
+#if HOT_ELF_TLS_DEPTH
+    // The JIT links its code without TLS relocations. On ELF the code reads the call depth of the
+    // host through the thread pointer and an absolute symbol (errors.h). Other targets call
+    // hot::detail::call_depth_slot().
+    args.push_back("-DHOT_JIT_TLS_OFFSET");
+#endif
     if (!opt.debug_flag.empty())
         args.push_back(opt.debug_flag);
     if (!opt.resource_dir.empty())
@@ -227,6 +236,19 @@ LoadResult add_to_jit(const std::shared_ptr<JitState>& impl, const std::string& 
         return r;
     }
     holder->dylib = &*dylib;
+#if HOT_ELF_TLS_DEPTH
+    // The JIT code reads the call depth with the thread pointer and this offset (errors.h). The
+    // address of the absolute symbol is the offset. The offset is the same in each thread.
+    llvm::orc::SymbolMap tls;
+    tls[jit.mangleAndIntern("hot_call_depth_tp_offset")] = llvm::orc::ExecutorSymbolDef(
+        llvm::orc::ExecutorAddr(static_cast<uint64_t>(detail::call_depth_tp_offset())),
+        llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Absolute);
+    if (llvm::Error e = holder->dylib->define(llvm::orc::absoluteSymbols(std::move(tls))))
+    {
+        r.error = "cannot define the call depth offset: " + error_text(std::move(e)) + "\n";
+        return r;
+    }
+#endif
     holder->tracker = holder->dylib->createResourceTracker();
     if (llvm::Error e = jit.addIRModule(holder->tracker, std::move(tsm)))
     {

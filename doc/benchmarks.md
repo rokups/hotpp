@@ -19,12 +19,12 @@ Every section of the tool is a matrix. The two script modes (`.hot` and `.cpp`) 
 All values come from the `Results` section below. They are the median of 3 runs.
 
 - A loop of fields, numbers, arrays, module variables and calls inside one script runs at native speed (0.94x to 1.0x). This is true for `.hot` and for `.cpp`, in the three backends.
-- A call from the host into a script costs 3.3x to 3.8x of a native virtual call. This is 3.4 to 4.1 ns more. `aot` is the fastest and `jit` is the slowest. `.hot` and `.cpp` are equal.
-- A call after 0, 1, 10 or 100 reloads costs the same: 5.26 ns (3.6x) in `files` and in `jit`, for `.hot` and for `.cpp`.
-- A script to native call costs 1.4x (2.05 ns) in `files` and in `jit`. It costs 1.0x in `aot`.
+- A call from the host into a script costs 2.2x to 2.4x of a native virtual call in `files` and `aot`. This is 1.8 to 2.1 ns more. In `jit` it costs 2.9x (about 2.8 ns more). `.hot` and `.cpp` are equal. See [The cost of a call](#the-cost-of-a-call).
+- A call after 0, 1, 10 or 100 reloads costs the same: 3.4 ns (2.3x) in `files` and 4.3 ns (2.9x) in `jit`, for `.hot` and for `.cpp`.
+- A script to native call runs at native speed (1.46 ns) in the three backends.
 - `new` and free of a script object cost 47 to 50 ns in `.hot`: 4.4x to 4.6x of `std::make_shared`. In `.cpp` with a raw pointer, they cost 35 to 37 ns: 3.2x to 3.4x.
-- A script to script virtual call costs 0.4 to 0.9 ns more than a native one. This is true for `.hot` and `.cpp`.
-- A `.hot` closure call costs 2.5x. A `.hot` `std.vector` index costs 1.4x. The `.cpp` twins of both run at native speed.
+- A script to script virtual call costs 0.35 to 0.9 ns more than a native one. This is true for `.hot` and `.cpp`.
+- A `.hot` closure call costs 1.5x. A `.hot` `std.vector` index costs 1.4x. The `.cpp` twins of both run at native speed.
 - A reload of 100 objects with 65 fields takes 0.10 ms in `files` and 1.4 ms in `jit`. The compile is not in it.
 
 ## How to run
@@ -84,6 +84,8 @@ The `reload` case and the `chain` case have a `.cpp` version too. The tool makes
 
 The CPU is an AMD Ryzen 9 3950X (a desktop CPU, 16 cores, 32 threads). The software is Linux 7.2, glibc 2.44, clang 23.1.3 and libstdc++. The build uses `CMAKE_BUILD_TYPE=Release`, `HOT_RUNTIME_CHECKS=ON` and `HOT_TRACEBACK=OFF`. The process runs on one core (`taskset -c 6`). The values are the median of 3 runs of the tool (each run gives the median of 7 timed runs).
 
+The call rows have newer values, from 3 runs on `taskset -c 4`. These rows are the host to script calls, the script to native call, the script to script calls, the closure, the method rows, the module function and the call after N reloads. The other rows are from the older runs.
+
 Between the 3 runs, 84% of the cells changed by less than 3%. Some cells changed more. In each of them, one run was far from the two others, so the median is stable:
 
 - the `jit` `.hot` script to script virtual call (20%), and `handle_call` and `module_var` in `aot` (10% and 60%)
@@ -99,10 +101,10 @@ Time in ns for one operation. The ratio is in parentheses. There is one table fo
 
 | Case | native | `.hot` | `.cpp` |
 |---|---|---|---|
-| empty method call (host to script) | 1.46 | 5.26 (3.6x) | 5.26 (3.6x) |
-| native to script virtual call | 1.46 | 5.26 (3.6x) | 5.26 (3.6x) |
-| script to script call (recursive) | 1.25 | 1.20 (0.96x) | 1.11 (0.89x) |
-| script to native call | 1.46 | 2.05 (1.4x) | 2.05 (1.4x) |
+| empty method call (host to script) | 1.46 | 3.51 (2.4x) | 3.52 (2.4x) |
+| native to script virtual call | 1.46 | 3.24 (2.2x) | 3.23 (2.2x) |
+| script to script call (recursive) | 1.19 | 1.19 (1.0x) | 1.17 (0.98x) |
+| script to native call | 1.46 | 1.46 (1.0x) | 1.46 (1.0x) |
 | field read and write loop | 0.88 | 0.88 (1.0x) | 0.88 (1.0x) |
 | integer arithmetic loop | 1.41 | 1.33 (0.95x) | 1.33 (0.94x) |
 | float arithmetic loop | 1.75 | 1.75 (1.0x) | 1.75 (1.0x) |
@@ -112,12 +114,12 @@ Time in ns for one operation. The ratio is in parentheses. There is one table fo
 | pointer dereference and null check | 0.41 | n/a | 0.80 (1.9x) |
 | string interpolation or concatenation | 72.4 | 59.7 (0.82x) | 68.1 (0.94x) |
 | `new` and free of a script object | 10.8 | 47.3 (4.4x) | 35.0 (3.2x) |
-| closure call | 1.75 | 4.39 (2.5x) | 1.75 (1.0x) |
+| closure call | 1.76 | 2.64 (1.5x) | 1.76 (1.0x) |
 | loop with a method call | 1.26 | 1.25 (0.99x) | 1.26 (1.0x) |
 | field of another object (handle or pointer) | 0.62 | 0.59 (0.95x) | 0.59 (0.95x) |
 | small method call on `this` | 1.46 | 1.46 (1.0x) | 1.46 (1.0x) |
 | method call through a handle or pointer | 1.46 | 1.46 (1.0x) | 1.46 (1.0x) |
-| script to script virtual call | 1.75 | 2.20 (1.3x) | 2.35 (1.3x) |
+| script to script virtual call | 1.75 | 2.64 (1.5x) | 2.20 (1.3x) |
 | module variable read and write | 0.38 | 0.36 (0.94x) | 0.36 (0.95x) |
 | module function and static method | 0.32 | n/a | 0.41 (1.3x) |
 
@@ -125,10 +127,10 @@ Time in ns for one operation. The ratio is in parentheses. There is one table fo
 
 | Case | native | `.hot` | `.cpp` |
 |---|---|---|---|
-| empty method call (host to script) | 1.46 | 5.57 (3.8x) | 5.56 (3.8x) |
-| native to script virtual call | 1.46 | 5.55 (3.8x) | 5.56 (3.8x) |
-| script to script call (recursive) | 1.25 | 1.24 (1.0x) | 1.19 (0.96x) |
-| script to native call | 1.46 | 2.05 (1.4x) | 2.05 (1.4x) |
+| empty method call (host to script) | 1.46 | 4.30 (2.9x) | 4.23 (2.9x) |
+| native to script virtual call | 1.46 | 4.26 (2.9x) | 4.22 (2.9x) |
+| script to script call (recursive) | 1.19 | 1.20 (1.0x) | 1.20 (1.0x) |
+| script to native call | 1.46 | 1.46 (1.0x) | 1.46 (1.0x) |
 | field read and write loop | 0.88 | 0.88 (1.0x) | 0.88 (1.0x) |
 | integer arithmetic loop | 1.41 | 1.41 (1.0x) | 1.41 (1.0x) |
 | float arithmetic loop | 1.75 | 1.75 (1.0x) | 1.75 (1.0x) |
@@ -138,12 +140,12 @@ Time in ns for one operation. The ratio is in parentheses. There is one table fo
 | pointer dereference and null check | 0.41 | n/a | 0.80 (1.9x) |
 | string interpolation or concatenation | 72.4 | 58.5 (0.81x) | 65.9 (0.91x) |
 | `new` and free of a script object | 10.8 | 48.1 (4.5x) | 36.8 (3.4x) |
-| closure call | 1.75 | 4.42 (2.5x) | 1.75 (1.0x) |
+| closure call | 1.76 | 2.64 (1.5x) | 1.76 (1.0x) |
 | loop with a method call | 1.26 | 1.25 (0.99x) | 1.26 (0.99x) |
 | field of another object (handle or pointer) | 0.62 | 0.59 (0.95x) | 0.61 (0.99x) |
 | small method call on `this` | 1.46 | 1.46 (1.0x) | 1.46 (1.0x) |
 | method call through a handle or pointer | 1.46 | 1.46 (1.0x) | 1.46 (1.0x) |
-| script to script virtual call | 1.75 | 2.64 (1.5x) | 2.18 (1.2x) |
+| script to script virtual call | 1.75 | 2.10 (1.2x) | 2.20 (1.3x) |
 | module variable read and write | 0.38 | 0.36 (0.94x) | 0.36 (0.94x) |
 | module function and static method | 0.32 | n/a | 0.41 (1.3x) |
 
@@ -151,9 +153,9 @@ Time in ns for one operation. The ratio is in parentheses. There is one table fo
 
 | Case | native | `.hot` | `.cpp` |
 |---|---|---|---|
-| empty method call (host to script) | 1.46 | 4.88 (3.3x) | 4.97 (3.4x) |
-| native to script virtual call | 1.46 | 4.98 (3.4x) | 4.95 (3.4x) |
-| script to script call (recursive) | 1.25 | 1.40 (1.1x) | 1.17 (0.94x) |
+| empty method call (host to script) | 1.46 | 3.23 (2.2x) | 3.22 (2.2x) |
+| native to script virtual call | 1.46 | 3.51 (2.4x) | 3.23 (2.2x) |
+| script to script call (recursive) | 1.19 | 1.34 (1.1x) | 1.30 (1.1x) |
 | script to native call | 1.46 | 1.46 (1.0x) | 1.46 (1.0x) |
 | field read and write loop | 0.88 | 0.88 (1.0x) | 0.87 (1.0x) |
 | integer arithmetic loop | 1.41 | 1.41 (1.0x) | 1.33 (0.94x) |
@@ -164,42 +166,69 @@ Time in ns for one operation. The ratio is in parentheses. There is one table fo
 | pointer dereference and null check | 0.41 | n/a | 0.80 (1.9x) |
 | string interpolation or concatenation | 72.4 | 57.7 (0.80x) | 66.2 (0.91x) |
 | `new` and free of a script object | 10.8 | 50.4 (4.6x) | 36.5 (3.4x) |
-| closure call | 1.75 | 4.38 (2.5x) | 1.75 (1.0x) |
+| closure call | 1.76 | 2.63 (1.5x) | 1.75 (0.99x) |
 | loop with a method call | 1.26 | 1.26 (1.0x) | 1.26 (1.0x) |
 | field of another object (handle or pointer) | 0.62 | 0.61 (0.99x) | 0.58 (0.94x) |
 | small method call on `this` | 1.46 | 1.46 (1.0x) | 1.46 (1.0x) |
 | method call through a handle or pointer | 1.46 | 1.46 (1.0x) | 1.46 (1.0x) |
-| script to script virtual call | 1.75 | 2.63 (1.5x) | 2.33 (1.3x) |
+| script to script virtual call | 1.75 | 2.19 (1.3x) | 2.17 (1.2x) |
 | module variable read and write | 0.38 | 0.36 (0.94x) | 0.36 (0.94x) |
 | module function and static method | 0.32 | n/a | 0.41 (1.3x) |
 
 Some rows depend on the backend:
 
-- The call from the host into a script (the first two rows) costs 5.26 ns in `files`. It costs 5.56 ns in `jit` and 4.9 ns in `aot`.
-- The script to native call costs 2.05 ns in `files` and in `jit`. It costs 1.46 ns in `aot`: the call is direct there.
-- The `.hot` script to script virtual call is 2.20 ns in `files` and 2.6 ns in `jit` and `aot`. The `.cpp` call is 2.18 to 2.35 ns.
+- The call from the host into a script (the first two rows) costs 3.2 to 3.5 ns in `files` and `aot`. It costs 4.2 to 4.3 ns in `jit`.
+- The script to native call costs 1.46 ns in the three backends. The `files` and `jit` scripts call the host without a PLT jump (`-fno-plt`).
+- The `.hot` script to script virtual call is 2.1 to 2.6 ns. The `.cpp` call is 2.2 ns.
 - `new` and free of a `.hot` object cost 47.3 ns in `files`, 48.1 ns in `jit` and 50.4 ns in `aot`.
 
 The string row is nearly the same in the three backends: `.hot` 0.80x to 0.82x and `.cpp` 0.91x to 0.94x.
 
-The ratios of the recursive script to script call are from 0.89x to 1.1x. The native twin of this row changed by 7% between runs. The code that the compiler makes is not the same. Do not read a difference from this row.
+The ratios of the recursive script to script call are from 0.98x to 1.1x. The native twin of this row changed by 7% between older runs. The code that the compiler makes is not the same. Do not read a difference from this row.
 
 ## How to read the ratios
 
 - 1.0x is native speed. A ratio below 1.0x is noise or a small difference in the code that the compiler makes.
 - The three backends give the same code speed. They differ in the time of a load, not in the time of a run. Only the calls across the host border differ.
 - A loop of fields, numbers, arrays and calls inside one script runs at native speed. This is true for `.hot` and for `.cpp`.
-- A call from the host into a script costs 3.4 to 4.1 ns more than a native virtual call. This is true for `.hot` and `.cpp`. The call goes through a slot that a reload can change. It also catches the script errors.
+- A call from the host into a script costs 1.8 to 2.1 ns more than a native virtual call in `files` and `aot`. In `jit` it costs about 2.8 ns more. This is true for `.hot` and `.cpp`. The call goes through a slot that a reload can change. It also catches the script errors.
 - A `.cpp` script is as fast as a `.hot` script, or faster, in most cases. It is faster in four cases: `std::vector` (no check), the closure, the string and `new`.
-- The `.hot` closure call costs 2.5x. The `.cpp` lambda in a `std::function` runs at native speed.
+- The `.hot` closure call costs 1.5x. The `.cpp` lambda in a `std::function` runs at native speed.
 - The script to script call is 0.9x to 1.1x in both languages. The difference between the two is of the size of the run noise.
-- A ratio applies to the case only, not to a whole program. A ratio of 3.6x on a call of 1.5 ns is 3.8 ns more for each call.
+- A ratio applies to the case only, not to a whole program. A ratio of 2.4x on a call of 1.46 ns is 2.0 ns more for each call.
 
 ### The pointer chain
 
 The `.cpp` pointer chain costs 0.80 ns for each step. The native twin with raw pointers costs 0.41 ns, so the ratio is 1.9x. This row is not a null check cost. A script object is a shell and a state block. The fields are in the state block. So each step reads the state pointer of the shell, then the field. The native twin reads the field only. Two loads that depend on each other cost about twice one load.
 
 The `.hot` handle chain is 10.5 ns. The native twin of that row holds `std::shared_ptr` and counts every copy. It is 9.85 ns. The two chain rows have different native twins, so compare each with its own twin.
+
+## The cost of a call
+
+A micro benchmark copies the code of a host to script call and adds one step at a time. It ran on one core, with a second thread in the process, so the atomic operations are real. The values are the median of more runs. One CPU cycle is about 0.29 ns.
+
+| Step of a host to script call | ns more | total |
+|---|---|---|
+| a native virtual call | | 1.46 |
+| the shell override reads the slot of the class and calls the member function pointer | 0.88 | 2.34 |
+| the script entry check (one load of the entry counters) | 0.88 | 3.22 |
+| the check for a detached call (`slot_keys`) | 0.36 | 3.58 |
+| the `try` and `catch` of `hot::ScriptError` (with a stack protector) | 0.81 | 4.39 |
+| the call depth through an exported function (a PLT call) | 0.88 | 5.27 |
+
+The old `hot::call` did all the steps, for 5.27 ns. The new `hot::call` keeps the same checks and the same error handling, but it does less work for them:
+
+- One test covers the entry counters and the detached call. If one of them is on, the call goes to an out-of-line slow path.
+- The call depth is a thread-local variable with the initial-exec model. The call does `incl %fs:...` and `decl %fs:...`, without a function call.
+- The `catch` code is out of line. The fast path has no stack protector.
+
+The result is 3.5 ns in `files` and 3.2 ns in `aot`. The JIT links its code without TLS relocations. So the `jit` code adds the thread pointer and the offset of the variable, which the backend gives as an absolute symbol. The compiler makes the same `incl %fs:...` instruction. The `jit` call is 4.2 to 4.3 ns. The `jit` code uses `-O1`, the other backends use `-O2`.
+
+Other calls:
+
+- A script to native call went through a PLT jump in `files` and `jit`. Now the module compiles with `-fno-plt`, and the call costs 1.46 ns, as in `aot`.
+- A `.hot` closure was a `std::function` that held a `hot::Closure`, and the closure held a second `std::function`. Now the `std::function` holds the guarded lambda directly. The call has one indirect call, the entry check and the generation check: 2.6 ns, not 4.4 ns.
+- A script to script virtual call has no `try` and no call depth. It costs the same as the member function pointer call in the micro benchmark. A non-virtual script to script call is a direct call. These calls did not change.
 
 ## The cost of `new`
 
@@ -248,7 +277,7 @@ The rows after `loop with a method call` in the tables above test code that a re
 
 - A field access through a handle (`.hot`) or a pointer (`.cpp`) stays at native speed: 0.94x to 1.0x. The compiler inlines the method and moves the generation check out of the loop.
 - A method call through a handle or a pointer costs 1.46 ns, as the native call. A small method call on `this` costs the same.
-- A virtual call from script to script reads a slot. It costs 0.4 to 0.9 ns more than a native virtual call, depending on the backend and the language.
+- A virtual call from script to script reads a slot. It costs 0.35 to 0.9 ns more than a native virtual call, depending on the backend and the language.
 - A module variable read and write is 0.94x.
 - The `.hot` language has no free functions and no static methods. The module function row has a `.cpp` script only. The `.cpp` call costs 0.41 ns for the pair, against 0.32 ns for the twin: 1.3x. That is 0.1 ns more.
 
@@ -270,17 +299,17 @@ The host calls a script override (`Hook`) that reads a field. The object is made
 
 | N | `files` `.hot` | `files` `.cpp` |
 |---|---|---|
-| 0 | 5.26 (3.6x) | 5.26 (3.6x) |
-| 1 | 5.26 (3.6x) | 5.27 (3.6x) |
-| 10 | 5.26 (3.6x) | 5.27 (3.6x) |
-| 100 | 5.26 (3.6x) | 5.26 (3.6x) |
+| 0 | 3.40 (2.3x) | 3.42 (2.3x) |
+| 1 | 3.41 (2.3x) | 3.41 (2.3x) |
+| 10 | 3.42 (2.3x) | 3.41 (2.3x) |
+| 100 | 3.41 (2.3x) | 3.41 (2.3x) |
 
 | N | `jit` `.hot` | `jit` `.cpp` |
 |---|---|---|
-| 0 | 5.26 (3.6x) | 5.27 (3.6x) |
-| 1 | 5.26 (3.6x) | 5.27 (3.6x) |
-| 10 | 5.27 (3.6x) | 5.28 (3.6x) |
-| 100 | 5.26 (3.6x) | 5.27 (3.6x) |
+| 0 | 4.30 (2.9x) | 4.31 (3.0x) |
+| 1 | 4.25 (2.9x) | 4.33 (3.0x) |
+| 10 | 4.31 (2.9x) | 4.31 (3.0x) |
+| 100 | 4.16 (2.9x) | 4.32 (3.0x) |
 
 The cost does not grow with the number of reloads. A new object, made after the last reload, gives the same time: within 1% in each cell.
 

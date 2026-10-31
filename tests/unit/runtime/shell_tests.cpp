@@ -5,6 +5,10 @@
 
 #include <memory>
 #include <stdexcept>
+#include <string>
+#include <thread>
+#include <typeinfo>
+#include <vector>
 
 namespace
 {
@@ -156,6 +160,168 @@ TEST(SlotKeys, OtherSignatureDetaches)
     for (size_t p = log.find("old signature"); p != std::string::npos; p = log.find("old signature", p + 1))
         ++lines;
     EXPECT_EQ(lines, 2u) << log;
+}
+
+// ---- the call boundary of hot::call: the call depth and the catch path
+// A state whose slots throw, recurse or call another shell through hot::call.
+struct ThrowState
+{
+    hot::ShellBase* owner = nullptr;
+    hot::ShellBase* inner = nullptr; // the shell that "nested" calls
+    int depth_seen = 0;
+    int script_error(int) { throw hot::ScriptError("script error"); }
+    int other_error(int) { throw std::logic_error("other error"); }
+    int& ref_error(int) { throw hot::ScriptError("ref error"); }
+    int& ref_field(int) { return depth_seen; }
+    int nested(int x)
+    {
+        // Script -> native -> script: the inner call is not the end of the script stack.
+        depth_seen = static_cast<int>(hot::detail::call_depth());
+        return hot::call<int(Base*, int)>(inner, 0, x);
+    }
+    int recurse(int n)
+    {
+        if (n == 0)
+            return static_cast<int>(hot::detail::call_depth());
+        return hot::call<int(Base*, int)>(owner, 3, n - 1);
+    }
+};
+
+struct RuntimeCallBoundary : testing::Test
+{
+    hot::SlotFn slots[6] = {slot_of(&ThrowState::script_error), slot_of(&ThrowState::other_error),
+        slot_of(&ThrowState::nested), slot_of(&ThrowState::recurse), slot_of(&ThrowState::ref_error),
+        slot_of(&ThrowState::ref_field)};
+    hot::ClassRecord rec{"Thrower", 1, slots, 6, nullptr, nullptr, "Base", 0};
+    ThrowState state;
+    hot::ShellBase shell;
+    std::vector<std::string> reports;
+    void SetUp() override
+    {
+        shell.cls = &rec;
+        shell.state = &state;
+        state.owner = &shell;
+        state.inner = &shell;
+        hot::set_script_error_handler([this](const hot::ScriptErrorReport& r) { reports.push_back(r.message); });
+    }
+    void TearDown() override { hot::set_script_error_handler(nullptr); }
+};
+
+// call_depth() is a count of the calling thread. On ELF it is the thread-local variable, and
+// its offset from the thread pointer is the same in each thread: the jit backend uses one offset
+// for all threads (errors.h).
+TEST_F(RuntimeCallBoundary, DepthFunctionAndReferenceAgree)
+{
+    uint32_t* other_address = nullptr;
+#if HOT_ELF_TLS_DEPTH
+    auto offset_here = [] {
+        return reinterpret_cast<char*>(&hot::detail::g_call_depth) - static_cast<char*>(__builtin_thread_pointer());
+    };
+    EXPECT_EQ(&hot::detail::call_depth(), &hot::detail::g_call_depth);
+    EXPECT_EQ(offset_here(), hot::detail::call_depth_tp_offset());
+    intptr_t other = 0;
+    std::thread t([&] {
+        other = offset_here();
+        other_address = &hot::detail::call_depth();
+    });
+    t.join();
+    EXPECT_EQ(other, hot::detail::call_depth_tp_offset());
+#else
+    std::thread t([&] { other_address = &hot::detail::call_depth(); });
+    t.join();
+#endif
+    EXPECT_NE(other_address, &hot::detail::call_depth());
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+// The outermost call reports a hot::ScriptError and returns the default value.
+TEST_F(RuntimeCallBoundary, OutermostCallReportsAndReturnsDefault)
+{
+    EXPECT_EQ(hot::call<int(Base*, int)>(&shell, 0, 1), 0);
+    ASSERT_EQ(reports.size(), 1u);
+    EXPECT_EQ(reports[0], "script error");
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+// A nested call lets the error pass. Only the outermost call reports it, one time.
+TEST_F(RuntimeCallBoundary, NestedCallLetsTheErrorPass)
+{
+    ThrowState inner_state;
+    hot::ShellBase inner;
+    inner.cls = &rec;
+    inner.state = &inner_state;
+    inner_state.owner = &inner;
+    state.inner = &inner;
+    EXPECT_EQ(hot::call<int(Base*, int)>(&shell, 2, 1), 0);
+    EXPECT_EQ(state.depth_seen, 1);
+    EXPECT_EQ(reports.size(), 1u);
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+// Another exception passes to the host. The depth goes back to zero.
+TEST_F(RuntimeCallBoundary, OtherExceptionPassesToTheHost)
+{
+    EXPECT_THROW((hot::call<int(Base*, int)>(&shell, 1, 1)), std::logic_error);
+    EXPECT_TRUE(reports.empty());
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+// A noexcept override reports also inside another call.
+TEST_F(RuntimeCallBoundary, NoexceptCallReportsInsideAnotherCall)
+{
+    {
+        hot::detail::CallDepth outer;
+        EXPECT_EQ((hot::call<int(Base*, int), true>(&shell, 0, 1)), 0);
+        EXPECT_EQ(reports.size(), 1u);
+        EXPECT_EQ(hot::detail::call_depth(), 1u);
+    }
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+// A result type without a default value (a reference): the outermost call reports the error,
+// then throws it again to the host.
+TEST_F(RuntimeCallBoundary, ReferenceResultReportsAndRethrows)
+{
+    EXPECT_THROW((hot::call<int&(Base*, int)>(&shell, 4, 1)), hot::ScriptError);
+    ASSERT_EQ(reports.size(), 1u);
+    EXPECT_EQ(reports[0], "ref error");
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+// A reference result refers to the object of the script, not to a copy. This is true for the
+// fast path and for the slow path.
+TEST_F(RuntimeCallBoundary, ReferenceResultIsTheSameObject)
+{
+    EXPECT_EQ(&hot::call<int&(Base*, int)>(&shell, 5, 0), &state.depth_seen);
+    EXPECT_EQ(&hot::call_script<int&(Base*, int)>(&shell, 5, 0), &state.depth_seen);
+    hot::detail::store_entry_counters(true);
+    EXPECT_EQ(&hot::call<int&(Base*, int)>(&shell, 5, 0), &state.depth_seen);
+    hot::detail::store_entry_counters(false);
+}
+
+// Deep recursion through hot::call counts each frame and gives the count back.
+TEST_F(RuntimeCallBoundary, DeepRecursionCountsEachFrame)
+{
+    EXPECT_EQ(hot::call<int(Base*, int)>(&shell, 3, 5000), 5001);
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+// The slow path: a counted entry (EntryCounters mode) and a slot with a key. The depth and
+// the catch path are the same as in the fast path.
+TEST_F(RuntimeCallBoundary, SlowPathHasTheSameDepthAndCatch)
+{
+    const char* keys[6] = {typeid(int(Base*, int)).name(), nullptr, nullptr, nullptr, nullptr, nullptr};
+    rec.slot_keys = keys;
+    EXPECT_EQ(hot::call<int(Base*, int)>(&shell, 0, 1), 0);
+    EXPECT_EQ(hot::call<int(Base*, int)>(&shell, 3, 10), 11);
+    rec.slot_keys = nullptr;
+    hot::detail::store_entry_counters(true);
+    EXPECT_EQ(hot::call<int(Base*, int)>(&shell, 0, 1), 0);
+    EXPECT_EQ(hot::call<int(Base*, int)>(&shell, 3, 10), 11);
+    EXPECT_EQ(hot::entry_depth(), 0u);
+    hot::detail::store_entry_counters(false);
+    EXPECT_EQ(reports.size(), 2u);
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
 }
 
 } // namespace

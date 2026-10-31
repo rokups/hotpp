@@ -5,6 +5,7 @@
 //
 // CMake defines these macros: HOT_SOURCE_DIR, HOT_SCRATCH_DIR, HOT_CXX and HOT_RESOURCE_DIR.
 #include "hot/backend.h"
+#include "hot/config.h"
 #include "hot/jit_backend.h"
 #include "support/dwarf_lines.h"
 #include "support/f1_scenario.h"
@@ -14,6 +15,7 @@
 #include <gtest/gtest.h>
 #include <sys/resource.h>
 
+#include <atomic>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -21,6 +23,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <unistd.h>
 
 // The GDB JIT interface (the layout is fixed by the GDB manual). LLVM defines the descriptor.
@@ -191,6 +194,67 @@ TEST(JitTests, PrecompiledHeaderWorks)
     hot::LoadResult v2 = backend.load(source("player_v2.hot"), 2);
     ASSERT_TRUE(v2) << v2.error;
     f1::run_f1_reload(std::move(*v1.module), std::move(*v2.module));
+}
+
+// The JIT code reads the call depth of its own thread (errors.h). The main thread is inside a
+// call, so its depth is 1. A second thread calls an override that throws hot::IndexOutOfRange.
+// That call is the outermost call of the second thread, so it reports the error and returns.
+TEST(JitTests, CallDepthIsPerThreadInJitCode)
+{
+    if (!HOT_RUNTIME_CHECKS)
+        GTEST_SKIP() << "the test needs the bounds check to raise the error";
+    const hot::ScriptSource src = {"depth_thread.hot", R"(
+using "Actor.h";
+using "Math.h";
+
+class Player : Actor {
+    int[4] vals;
+
+    override void Tick(float dt) {
+        int i = 4;
+        this.vals[i] = 1;
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(Actor& source, float amount) {}
+}
+)",
+        {}};
+    hot::DefaultBackendOptions jit_options;
+    jit_options.kind = hot::BackendKind::Jit;
+    std::unique_ptr<hot::Backend> backend = hot::make_default_backend(jit_options);
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    test_support::Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    std::atomic<int> reports{0};
+    hot::set_script_error_handler([&](const hot::ScriptErrorReport&) { ++reports; });
+    bool escaped = false;
+    uint32_t depth_after = 99;
+    {
+        hot::detail::CallDepth outer;
+        std::thread t([&] {
+            for (int k = 0; k < 100; ++k)
+            {
+                try
+                {
+                    s.actor->Tick(test_support::kDt);
+                }
+                catch (...)
+                {
+                    escaped = true;
+                }
+            }
+            depth_after = hot::detail::call_depth();
+        });
+        t.join();
+        EXPECT_EQ(hot::detail::call_depth(), 1u);
+    }
+    hot::set_script_error_handler({});
+    EXPECT_FALSE(escaped);
+    EXPECT_EQ(reports.load(), 100);
+    EXPECT_EQ(depth_after, 0u);
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
 }
 
 // Exceptions: one is caught inside the JIT code, one goes through JIT frames to the

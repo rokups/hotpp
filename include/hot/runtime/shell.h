@@ -98,7 +98,9 @@ template <class R> HOT_HIDDEN R detached_result()
 // starts before the read of the slot, so a commit cannot change the slot under it.
 // This form lets an exception pass to the caller. A call from one script function to another
 // script virtual function uses it, because the script caller can catch the exception.
-template <class Sig, class... A> HOT_HIDDEN auto call_script(ShellBase* self, unsigned slot, A&&... a)
+// The result type is the result type of "Sig", also a reference ("auto" would copy the value).
+template <class Sig, class... A>
+HOT_HIDDEN typename detail::sig_result<Sig>::type call_script(ShellBase* self, unsigned slot, A&&... a)
 {
     ScriptEntry entry;
     const ClassRecord* cls = self->cls;
@@ -121,34 +123,78 @@ template <class Sig, class... A> HOT_HIDDEN auto call_script(ShellBase* self, un
 // Any other exception passes to the host, which can catch it. A call inside another call (the
 // native code calls a script override while a script call runs) lets the error pass: only the
 // outermost call reports.
+// The fast path reads the call depth (errors.h), the slot and the state, and calls the slot. The
+// rare paths (the counted entry, the signature key, the catch) are out of line.
 // "NoExcept" is true for the shell override of a noexcept native virtual function. An exception
 // must not leave it, so it always reports and returns the result, also inside another call.
-template <class Sig, bool NoExcept = false, class... A>
-HOT_HIDDEN auto call(ShellBase* self, unsigned slot, A&&... a)
+namespace detail
 {
-    // A call inside another call (script -> native -> script) is not the end of the script stack.
-    // The error passes to the script code that called, which can catch it.
-    // The depth is a thread_local of the runtime. One lookup gives the reference for both changes.
-    struct Depth
+// The number of hot::call frames on the thread (errors.h). A call inside another call
+// (script -> native -> script) is not the end of the script stack. The error passes to the
+// script code that called, which can catch it.
+struct CallDepth
+{
+    uint32_t& d;
+    HOT_HIDDEN CallDepth() noexcept : d(call_depth()) { ++d; }
+    HOT_HIDDEN ~CallDepth() { --d; }
+    CallDepth(const CallDepth&) = delete;
+    CallDepth& operator=(const CallDepth&) = delete;
+};
+
+// The catch path of hot::call. It runs inside the catch handler, so "throw;" and
+// std::current_exception() see the exception. It is out of line: then the fast path has no
+// std::exception_ptr on its stack, and so no stack protector and fewer saved registers.
+template <class R, bool NoExcept> HOT_NOINLINE R call_unhandled(ShellBase* self, uint32_t depth)
+{
+    if (!NoExcept && depth > 1)
+        throw;
+    report_unhandled(self, std::current_exception());
+    if constexpr (std::is_void_v<R> || std::is_default_constructible_v<R>)
+        return detached_result<R>();
+    else
+        throw;
+}
+
+// The full form of hot::call: a counted script entry (EntryCounters mode) and a slot with a
+// signature key. It is out of line, because both cases are rare. It takes the parameter types
+// of the slot, as the slot call does. A reference to an argument of the fast path would give that
+// argument a stack slot, and so a stack protector.
+template <class Sig, bool NoExcept> struct CallSlow;
+template <class R, class B, class... P, bool NoExcept> struct CallSlow<R(B*, P...), NoExcept>
+{
+    HOT_NOINLINE static R run(ShellBase* self, unsigned slot, P... p)
     {
-        uint32_t& d;
-        HOT_HIDDEN Depth() : d(detail::call_depth()) { ++d; }
-        HOT_HIDDEN ~Depth() { --d; }
-    } depth;
+        CallDepth depth;
+        try
+        {
+            return call_script<R(B*, P...)>(self, slot, std::forward<P>(p)...);
+        }
+        catch (const ScriptError&)
+        {
+            return call_unhandled<R, NoExcept>(self, depth.d);
+        }
+    }
+};
+} // namespace detail
+
+template <class Sig, bool NoExcept = false, class... A>
+HOT_HIDDEN typename detail::sig_result<Sig>::type call(ShellBase* self, unsigned slot, A&&... a)
+{
+    // The fast path is for StopTheWorld mode and a slot with no signature key. There a script
+    // entry is only the flag check, so the slot read needs no ScriptEntry. Else call_slow runs
+    // the entry and the key check.
+    const ClassRecord* cls = self->cls;
+    if (HOT_UNLIKELY(entry_counters_enabled() || cls->slot_keys != nullptr))
+        return detail::CallSlow<Sig, NoExcept>::run(self, slot, std::forward<A>(a)...);
+    detail::CallDepth depth;
     try
     {
-        return call_script<Sig>(self, slot, std::forward<A>(a)...);
+        using Pmf = typename detail::sig_pmf<Sig>::type;
+        return (static_cast<StateBase*>(self->state)->*reinterpret_cast<Pmf>(cls->slots[slot]))(std::forward<A>(a)...);
     }
     catch (const ScriptError&)
     {
-        if (!NoExcept && depth.d > 1)
-            throw;
-        detail::report_unhandled(self, std::current_exception());
-        using R = typename detail::sig_result<Sig>::type;
-        if constexpr (std::is_void_v<R> || std::is_default_constructible_v<R>)
-            return detail::detached_result<R>();
-        else
-            throw;
+        return detail::call_unhandled<typename detail::sig_result<Sig>::type, NoExcept>(self, depth.d);
     }
 }
 

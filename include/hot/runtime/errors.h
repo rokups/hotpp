@@ -77,9 +77,46 @@ namespace detail
 {
 
 // The number of hot::call frames on the calling thread (shell.h). The report of an error is
-// only at the outermost frame. The thread-local count is in the host module, so a script module
+// only at the outermost frame. The thread-local count is in the host runtime, so a script module
 // of any generation shares it.
-HOT_EXPORT uint32_t& call_depth() noexcept;
+#if defined(__ELF__) && (defined(__clang__) || defined(__GNUC__))
+    // ELF (Linux): the count is in static TLS. A script module reads it with the initial-exec
+    // model: one instruction, no call. The host runtime must be in the executable, in a library
+    // that loads at the program start, or in a library that dlopen loads into the surplus of the
+    // static TLS (glibc.rtld.optional_static_tls, see doc/embedding-rules.md).
+    #define HOT_ELF_TLS_DEPTH 1
+extern __thread uint32_t g_call_depth __attribute__((visibility("default"), tls_model("initial-exec")));
+
+// The offset of g_call_depth from the thread pointer. The offset of a static TLS variable is
+// the same in each thread.
+HOT_EXPORT intptr_t call_depth_tp_offset() noexcept;
+
+    #ifdef HOT_JIT_TLS_OFFSET
+// The JIT links its code without TLS relocations. The jit backend defines this absolute symbol:
+// its address is call_depth_tp_offset(). The compiler makes the same instruction as for
+// the initial-exec model: incl %fs:(offset).
+extern "C" char hot_call_depth_tp_offset[];
+    #endif
+#else
+    // Other targets: the count is a native thread_local variable of the runtime. A module
+    // reads it through an exported function, because a module cannot import TLS data on each
+    // target.
+    #define HOT_ELF_TLS_DEPTH 0
+HOT_EXPORT uint32_t& call_depth_slot() noexcept;
+#endif
+
+// The count of the calling thread.
+HOT_HIDDEN uint32_t& call_depth() noexcept
+{
+#if HOT_ELF_TLS_DEPTH && defined(HOT_JIT_TLS_OFFSET)
+    return *reinterpret_cast<uint32_t*>(static_cast<char*>(__builtin_thread_pointer()) +
+                                        reinterpret_cast<intptr_t>(hot_call_depth_tp_offset));
+#elif HOT_ELF_TLS_DEPTH
+    return g_call_depth;
+#else
+    return call_depth_slot();
+#endif
+}
 
 [[noreturn]] HOT_EXPORT void throw_null_reference(const char* what);
 [[noreturn]] HOT_EXPORT void throw_index_out_of_range(std::size_t index, std::size_t size);
