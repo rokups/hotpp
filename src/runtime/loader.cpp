@@ -31,6 +31,7 @@ struct Loader::Pending
     std::vector<PendingClass> classes;
     MigrationPlan mod_plan; // the plan of the module state block (old layout to new layout)
     // The core instance (module.h) when the generation adds a class or a thunk, else empty.
+    bool revert = false; // revert_unit: the slot keys of the unit go back to the AOT signatures
     bool have_core = false;
     Module core;
     Registry core_reg;
@@ -169,13 +170,25 @@ void request_restart(const char* reason)
 }
 
 Loader::Loader() = default;
+
+// The canonical record of an AOT class is the constant data of the program, and adopt() changes
+// it. The loader puts the saved copy back, so a later loader in the same process starts from
+// the generation 1 record.
+void Loader::restore_aot_records()
+{
+    for (const auto& [name, saved] : aot_records_)
+        if (const ClassEntry* e = registry_.find(name))
+            *e->record = saved;
+}
+
 Loader::~Loader()
 {
     set_sync_mode(SyncMode::StopTheWorld); // the mode is global; the next loader starts clean
-    if (mod_block_)
+    restore_aot_records();
+    for (auto& [unit, mb] : mod_blocks_)
     { // the code of the field destroyers is still loaded: "gens_" goes later
-        destroy_fields(mod_layout_, mod_block_);
-        aligned_free(mod_block_);
+        destroy_fields(mb.layout, mb.block);
+        aligned_free(mb.block);
     }
 }
 
@@ -218,16 +231,21 @@ bool Loader::reset(std::string& error)
         }
     }
     // The code of the field destroyers is still loaded here: "gens_" goes later.
-    if (mod_block_)
+    for (auto& [unit, mb] : mod_blocks_)
     {
-        if (mod_slot_)
-            *mod_slot_ = nullptr;
-        destroy_fields(mod_layout_, mod_block_);
-        aligned_free(mod_block_);
+        if (mb.slot)
+            *mb.slot = nullptr;
+        destroy_fields(mb.layout, mb.block);
+        aligned_free(mb.block);
     }
-    mod_block_ = nullptr;
-    mod_layout_ = nullptr;
-    mod_slot_ = nullptr;
+    mod_blocks_.clear();
+    restore_aot_records();
+    unit_of_.clear();
+    aot_records_.clear();
+    aot_units_.clear();
+    revert_records_.clear();
+    revert_slots_.clear();
+    unit_live_.clear(); // the flags are in the code that unloads next
     removed_.clear();
     slot_keys_.clear();
     record_gen_.clear();
@@ -241,7 +259,7 @@ bool Loader::reset(std::string& error)
     return true;
 }
 
-bool Loader::make_module_block(const ModuleStateInfo& info, std::string& error)
+bool Loader::make_module_block(const std::string& unit, const ModuleStateInfo& info, std::string& error)
 {
     char* block = alloc_state(info.layout);
     if (!block)
@@ -266,9 +284,7 @@ bool Loader::make_module_block(const ModuleStateInfo& info, std::string& error)
         error = "an initializer of a module variable threw an exception";
         return false;
     }
-    mod_layout_ = info.layout;
-    mod_slot_ = info.slot;
-    mod_block_ = block;
+    mod_blocks_[unit] = {info.layout, info.slot, block};
     return true;
 }
 
@@ -307,6 +323,51 @@ ReloadResult Loader::load(Module module)
         if (!gens_.empty()) // "active_generation" is global: a destroyed loader can leave it set
             return failed(ReloadReason::BadModule, "the loader already has a generation: call reset first");
     }
+    return load_unit(std::move(module));
+}
+
+ReloadResult Loader::load_aot(const AotTable& table)
+{
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!gens_.empty())
+            return failed(ReloadReason::BadModule, "the loader already has a generation: call reset first");
+    }
+    if (table.count == 0)
+        return failed(ReloadReason::BadModule, "the AOT table has no script");
+    for (size_t i = 0; i < table.count; ++i)
+    {
+        Module m;
+        m.register_fn = table.scripts[i].register_fn;
+        m.origin = std::string("aot:") + table.scripts[i].name;
+        m.unit = table.scripts[i].name;
+        Registry code;
+        ReloadResult r = load_unit(std::move(m), &code);
+        if (r)
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            AotUnit& au = aot_units_[table.scripts[i].name];
+            au.register_fn = table.scripts[i].register_fn;
+            au.reg = std::move(code);
+        }
+        else
+        {
+            std::string ignored;
+            reset(ignored); // no object exists yet: the loader is empty again
+            r.error = std::string("AOT script ") + table.scripts[i].name + ": " + r.error;
+            return r;
+        }
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& [name, e] : registry_.entries())
+        aot_records_.emplace(name, *e.record);
+    return make_result(ReloadStatus::Applied, ReloadReason::None);
+}
+
+ReloadResult Loader::load_unit(Module module, Registry* code_out)
+{
+    if (!module.register_fn)
+        return failed(ReloadReason::BadModule, "the module has no script_register function");
     Registry code;
     module.register_fn(code);
     // The core instance gives the canonical records, the factories and the thunks (module.h).
@@ -314,17 +375,24 @@ ReloadResult Loader::load(Module module)
     Registry core_reg;
     const bool have_core = open_core(module, code, core, core_reg);
     std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& [name, e] : code.entries())
+        if (const auto u = unit_of_.find(name); u != unit_of_.end())
+            return failed(ReloadReason::BadModule,
+                "class " + name + " is in two units ('" + u->second + "' and '" + module.unit + "')", {name});
     if (const ModuleStateInfo& ms = code.module_state(); ms.layout)
     {
-        if (mod_block_)
+        if (mod_blocks_.count(module.unit))
             return failed(ReloadReason::BadModule, "the loader has a module state block already");
         std::string error;
-        if (!make_module_block(ms, error))
+        if (!make_module_block(module.unit, ms, error))
             return failed(ReloadReason::BadModule, std::move(error));
     }
     const Registry& canon = have_core ? core_reg : code;
     for (const auto& [name, e] : canon.entries())
+    {
         registry_.add(e.record, e.create);
+        unit_of_.emplace(name, module.unit);
+    }
     for (const auto& [key, t] : canon.thunks())
     {
         registry_.add_thunk(t);
@@ -338,6 +406,7 @@ ReloadResult Loader::load(Module module)
     if (!have_core)
         note_records(code, gen);
     std::function<void()> on_accept = module.on_accept;
+    switch_live(module.unit, code, have_core ? &core_reg : nullptr);
     add_generation(std::move(module), gen);
     gens_.back().registry_refs = have_core ? 0u : static_cast<uint32_t>(code.entries().size() + code.thunks().size());
     if (have_core)
@@ -346,7 +415,23 @@ ReloadResult Loader::load(Module module)
     // The module is accepted. The callback runs under the loader mutex: it must not call the Loader.
     if (on_accept)
         on_accept();
+    if (code_out)
+        *code_out = code;
     return make_result(ReloadStatus::Applied, ReloadReason::None);
+}
+
+void Loader::switch_live(const std::string& unit, const Registry& code, const Registry* core)
+{
+    std::vector<uint32_t*>& flags = unit_live_[unit];
+    for (uint32_t* f : flags) // the older module is retired, not unloaded: the memory is valid
+        *f = 0;
+    flags.clear();
+    for (const Registry* r : {&code, core})
+        if (r && r->live_flag())
+        {
+            *r->live_flag() = 1;
+            flags.push_back(r->live_flag());
+        }
 }
 
 // Remembers which module holds each record of a registry.
@@ -370,11 +455,28 @@ void Loader::add_generation(Module module, uint32_t generation)
 //     removed class this is the last generation that had the class;
 //   - the generation whose "new" made the object and its handle (g_live).
 // The vtable is in the module that holds the record.
-std::unordered_map<uint32_t, uint32_t> Loader::live_by_module() const
+std::map<Loader::ModuleKey, uint32_t> Loader::live_by_module() const
 {
-    std::unordered_map<uint32_t, uint32_t> live;
+    // The unit of a generation number: the unit of its module when one module has the number.
+    // The AOT units share generation 1; then the unit of the class of the object decides.
+    std::unordered_map<uint32_t, std::pair<int, const std::string*>> owner;
+    for (const Gen& g : gens_)
+    {
+        auto& o = owner.try_emplace(g.generation, 0, nullptr).first->second;
+        ++o.first;
+        o.second = &g.module.unit;
+    }
+    static const std::string kNoUnit;
+    std::map<ModuleKey, uint32_t> live;
     for (const auto& [s, creator] : g_live)
     {
+        const auto cu = unit_of_.find(s->cls->name);
+        const std::string& class_unit = cu == unit_of_.end() ? kNoUnit : cu->second;
+        auto unit_for = [&](uint32_t gen) -> const std::string&
+        {
+            const auto o = owner.find(gen);
+            return o != owner.end() && o->second.first == 1 && o->second.second ? *o->second.second : class_unit;
+        };
         uint32_t used[3] = {s->cls->generation, creator, 0};
         if (auto it = record_gen_.find(s->cls); it != record_gen_.end())
             used[2] = it->second;
@@ -382,7 +484,7 @@ std::unordered_map<uint32_t, uint32_t> Loader::live_by_module() const
         {
             const bool seen = (i > 0 && used[i] == used[0]) || (i > 1 && used[i] == used[1]);
             if (used[i] != 0 && !seen)
-                ++live[used[i]];
+                ++live[{unit_for(used[i]), used[i]}];
         }
     }
     return live;
@@ -409,8 +511,9 @@ bool layout_holds_code(const StateLayout* l, int depth = 0)
 
 bool Loader::state_holds_code() const
 {
-    if (mod_block_ && layout_holds_code(mod_layout_))
-        return true;
+    for (const auto& [unit, mb] : mod_blocks_)
+        if (layout_holds_code(mb.layout))
+            return true;
     std::unordered_map<const StateLayout*, bool> seen;
     for (const auto& [s, creator] : g_live)
     {
@@ -423,16 +526,16 @@ bool Loader::state_holds_code() const
     return false;
 }
 
-uint32_t Loader::code_refs(const Gen& g, const std::unordered_map<uint32_t, uint32_t>& live) const
+uint32_t Loader::code_refs(const Gen& g, const std::map<ModuleKey, uint32_t>& live) const
 {
-    auto it = live.find(g.generation);
+    auto it = live.find({g.module.unit, g.generation});
     return g.registry_refs + (it == live.end() ? 0 : it->second);
 }
 
 unsigned Loader::frame_boundary()
 {
     unsigned unloaded = 0;
-    std::unordered_map<uint32_t, uint32_t> live;
+    std::map<ModuleKey, uint32_t> live;
     bool have_live = false;
     for (Gen& g : gens_)
     {
@@ -454,8 +557,13 @@ unsigned Loader::frame_boundary()
         for (const auto& [name, table] : removed_)
             if (ClassEntry* e = registry_.find(name); e && e->record->generation == g.generation)
                 e->record->layout = &kEmptyLayout;
+        // Only the records of this module go: another unit can have the same generation number.
         for (auto it = record_gen_.begin(); it != record_gen_.end();)
-            it = it->second == g.generation ? record_gen_.erase(it) : std::next(it);
+        {
+            const auto cu = unit_of_.find(it->first->name);
+            const bool mine = it->second == g.generation && cu != unit_of_.end() && cu->second == g.module.unit;
+            it = mine ? record_gen_.erase(it) : std::next(it);
+        }
         g.module = Module{}; // the keep-alive object releases the code
         g.state = GenState::Unloaded;
         std::fprintf(stderr, "[script] generation %u unloaded\n", g.generation);
@@ -602,7 +710,60 @@ ReloadResult Loader::request_reload(Module module)
     if (adds)
         p->have_core = open_core(p->module, p->staged, p->core, p->core_reg);
     p->module.make_core = nullptr; // the JIT keeps a copy of the IR for it
+    return validate_and_stage(std::move(p));
+}
 
+ReloadResult Loader::revert_unit(const std::string& unit)
+{
+    auto p = std::make_unique<Pending>();
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (pending_)
+            return failed(ReloadReason::Busy, "a reload is already pending");
+        const auto au = aot_units_.find(unit);
+        if (au == aot_units_.end())
+            return failed(ReloadReason::BadModule, "unit '" + unit + "' has no AOT module to revert to");
+        p->module.register_fn = au->second.register_fn;
+        p->module.origin = "aot:" + unit + " (revert)";
+        p->module.unit = unit;
+        p->revert = true;
+        // A fresh generation number: the "generation is newer" check of the validation passes.
+        const uint32_t generation = active_generation + 1;
+        Registry& st = p->staged;
+        // The AOT thunks make the AOT signature the current one again. The commit also clears the
+        // slot keys that an override set (see commit_pending).
+        for (const auto& [key, t] : au->second.reg.thunks())
+            st.add_thunk(t);
+        st.set_live_flag(au->second.reg.live_flag());
+        if (const ModuleStateInfo& ms = au->second.reg.module_state(); ms.layout)
+            st.set_module_state(ms.layout, ms.slot);
+        for (const auto& [name, e] : au->second.reg.entries())
+        {
+            const ClassEntry* cur = registry_.find(name);
+            const auto saved = aot_records_.find(name);
+            if (!cur || saved == aot_records_.end())
+                return failed(ReloadReason::BadModule, "class " + name + " of the AOT unit is not registered", {name});
+            ClassRecord copy = saved->second; // the AOT record as load_aot saw it
+            copy.generation = generation;
+            // The dispatch table must not shrink (a reload with fewer slots needs a full reload).
+            // The slots that an override added point to the removed class handler.
+            if (cur->record->slot_count > copy.slot_count)
+            {
+                std::vector<SlotFn> table(copy.slots, copy.slots + copy.slot_count);
+                table.resize(cur->record->slot_count, reinterpret_cast<SlotFn>(&StateBase::__removed));
+                revert_slots_.push_back(std::move(table));
+                copy.slots = revert_slots_.back().data();
+                copy.slot_count = static_cast<uint32_t>(revert_slots_.back().size());
+            }
+            revert_records_.push_back(copy);
+            st.add(&revert_records_.back(), e.create);
+        }
+    }
+    return validate_and_stage(std::move(p));
+}
+
+ReloadResult Loader::validate_and_stage(std::unique_ptr<Pending> p)
+{
     // Validation. Nothing here changes a live class or a live object.
     // The lock keeps "registry_" and the class records stable. Only
     // commit_pending changes them, and it takes the same lock.
@@ -623,6 +784,11 @@ ReloadResult Loader::request_reload(Module module)
         PendingClass pc{canon, in.record, in.create, {}};
         if (canon)
         {
+            if (const auto u = unit_of_.find(name); u != unit_of_.end() && u->second != p->module.unit)
+                return failed(ReloadReason::BadModule,
+                    "class " + name + " belongs to unit '" + u->second + "' and cannot move to unit '"
+                        + p->module.unit + "'",
+                    {name});
             const ClassRecord* cur = canon->record;
             const char* b0 = cur->base_name ? cur->base_name : "";
             const char* b1 = in.record->base_name ? in.record->base_name : "";
@@ -679,7 +845,8 @@ ReloadResult Loader::request_reload(Module module)
     {
         if (!nms.slot)
             return failed(ReloadReason::BadModule, "the module state has no slot");
-        p->mod_plan = build_plan(mod_layout_ ? *mod_layout_ : kEmptyLayout, *nms.layout);
+        const auto mb = mod_blocks_.find(p->module.unit);
+        p->mod_plan = build_plan(mb != mod_blocks_.end() ? *mb->second.layout : kEmptyLayout, *nms.layout);
     }
     // The module is valid. The callback "on_accept" runs when the commit makes the generation live.
     pending_ = std::move(p);
@@ -743,6 +910,8 @@ ReloadResult Loader::commit_locked()
     std::vector<Work> work;
     const ModuleStateInfo& nms = P.staged.module_state();
     char* new_mod = nullptr;
+    const std::string& unit = P.module.unit;
+    const auto old_mb = mod_blocks_.find(unit); // the block of the unit before this commit
 
     // Step 1: allocate all new blocks. A failure here changes nothing.
     try
@@ -794,7 +963,8 @@ ReloadResult Loader::commit_locked()
         if (nms.layout)
         {
             *nms.slot = new_mod;
-            migrate_block(mod_layout_ ? *mod_layout_ : kEmptyLayout, *nms.layout, P.mod_plan, mod_block_, new_mod);
+            migrate_block(old_mb != mod_blocks_.end() ? *old_mb->second.layout : kEmptyLayout, *nms.layout, P.mod_plan,
+                old_mb != mod_blocks_.end() ? old_mb->second.block : nullptr, new_mod);
         }
         for (Work& w : work)
             migrate_block(*w.old_layout, *w.pc->incoming->layout, w.pc->plan, w.old_block, w.new_block);
@@ -848,6 +1018,8 @@ ReloadResult Loader::commit_locked()
         {
             registry_.add(pc.incoming, pc.create);
         }
+        if (!pc.canon)
+            unit_of_.emplace(pc.incoming->name, unit);
     }
     // A class that the new generation does not have is removed (design 6.1). The record stays
     // in the registry. Each slot points to the handler. The objects keep their state block.
@@ -855,6 +1027,12 @@ ReloadResult Loader::commit_locked()
     {
         if (P.staged.find(name) || removed_.count(name))
             continue;
+        if (!unit.empty()) // a named unit removes only its own classes
+        {
+            const auto u = unit_of_.find(name);
+            if (u == unit_of_.end() || u->second != unit)
+                continue;
+        }
         ClassRecord* r = entry.record;
         std::vector<SlotFn>& table = removed_[name];
         table.assign(r->slot_count, reinterpret_cast<SlotFn>(&StateBase::__removed));
@@ -887,6 +1065,15 @@ ReloadResult Loader::commit_locked()
     for (const PendingClass& pc : P.classes)
         if (!pc.canon && !P.have_core)
             ++new_refs;
+    // A revert gives the AOT code back. The AOT thunks with the first signature have no key, so the
+    // keys of an override must go. A thunk with a signature sets its key again below.
+    if (P.revert)
+        for (auto& [cls, keys] : slot_keys_)
+        {
+            const auto u = unit_of_.find(cls);
+            if (P.staged.find(cls) || (u != unit_of_.end() && u->second == unit))
+                std::fill(keys.begin(), keys.end(), nullptr);
+        }
     for (const auto& [key, t] : (P.have_core ? P.core_reg : P.staged).thunks())
     {
         if (!registry_.has_thunk(key) && !P.have_core)
@@ -918,6 +1105,7 @@ ReloadResult Loader::commit_locked()
 
     // Step 5: switch the generation.
     active_generation = P.staged.max_generation();
+    switch_live(unit, P.staged, P.have_core ? &P.core_reg : nullptr);
 
     // Step 5b: run the onReload hooks (design 4.7, 6.6). They run in the new generation. The
     // old blocks are still alive. A hook that throws is logged. The object stays valid.
@@ -945,21 +1133,22 @@ ReloadResult Loader::commit_locked()
         destroy_fields(w.old_layout, w.old_block);
         aligned_free(w.old_block);
     }
-    if (mod_block_)
+    if (old_mb != mod_blocks_.end())
     {
-        *mod_slot_ = nullptr; // the old generation must not read the freed block
-        destroy_fields(mod_layout_, mod_block_);
-        aligned_free(mod_block_);
+        *old_mb->second.slot = nullptr; // the old generation must not read the freed block
+        destroy_fields(old_mb->second.layout, old_mb->second.block);
+        aligned_free(old_mb->second.block);
+        mod_blocks_.erase(old_mb);
     }
-    mod_layout_ = nms.layout;
-    mod_slot_ = nms.slot;
-    mod_block_ = new_mod;
+    if (nms.layout)
+        mod_blocks_[unit] = {nms.layout, nms.slot, new_mod};
 
     std::fprintf(stderr, "[script] reload committed: %s, generation %u, %zu objects migrated\n",
         P.module.origin.c_str(), active_generation, work.size());
-    // The loader owns the module. The old generations are retired now.
+    // The loader owns the module. The old generations of the unit are retired now. The live
+    // module of another unit keeps its code: its functions are still in use.
     for (Gen& g : gens_)
-        if (g.state == GenState::Active)
+        if (g.state == GenState::Active && g.module.unit == unit)
         {
             g.state = GenState::Retired;
             g.retired_frame = frame_;

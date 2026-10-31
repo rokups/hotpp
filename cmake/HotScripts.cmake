@@ -26,7 +26,8 @@
 #
 # AOT mode (design M7): the function runs "hotc --aot" and makes the static library "name"
 # from the generated C++. The library defines hot::aot_table (include/hot/aot.h). It links
-# hot_aot (PUBLIC), so a program that links "name" has no loader, no reload and no Clang.
+# hot_runtime_core (PUBLIC). A program that also links hot::aot has no loader, no reload and
+# no Clang. A program that links the loader can call Loader::load_aot(hot::aot_table).
 # INCLUDES are the include dirs of the translator and of the compile. FLAGS are flags
 # for hotc. OUT_DIR defaults to ${CMAKE_BINARY_DIR}/hot_aot/<name>. AOT mode has no AFTER
 # and always uses generation 1. PRELUDES is only for AOT mode.
@@ -154,7 +155,15 @@ function(hot_add_scripts)
             COMMENT "hotc --aot: ${A_SCRIPTS}"
             VERBATIM)
         add_library(${A_TARGET} STATIC ${sources} ${registry})
-        target_link_libraries(${A_TARGET} PUBLIC hot::aot)
+        # The library needs only the core. The program picks hot::aot (no loader) or the loader
+        # (hot::backend; Loader::load_aot takes hot::aot_table). It never links both.
+        target_link_libraries(${A_TARGET} PUBLIC hot::runtime_core)
+        # The symbols of the generated code stay inside the program. A run-time generation of the
+        # same script (a library that a backend makes) defines the same names (Hero_record,
+        # Hero_Shell). Without hidden symbols the dynamic linker binds the library to the AOT code.
+        if(NOT MSVC)
+            target_compile_options(${A_TARGET} PRIVATE -fvisibility=hidden -fvisibility-inlines-hidden)
+        endif()
         # The generated code uses the format library that the effective standard selects (std::format
         # from C++20). The library gets this standard as a minimum. A higher standard of the
         # consumer stays, and a consumer that links the library gets the minimum too.
@@ -204,12 +213,19 @@ endfunction()
 
 # hot_add_host: set up the scripts of one host program. The target must exist before the call.
 #
-#   hot_add_host(TARGET t [MODE AOT|HOT_RELOAD|PRECOMPILED] SCRIPTS a.hot b.hot
+#   hot_add_host(TARGET t [MODE AOT|AOT_RELOAD|HOT_RELOAD|PRECOMPILED] SCRIPTS a.hot b.hot
 #                [INCLUDES dir...] [DEPENDS file...] [PRELUDES file...] [FLAGS flag...]
 #                [HOTC_ARGS arg...])
 #
 # MODE defaults to HOT_RELOAD. The options have the meaning that they have in hot_add_scripts.
 #   AOT:         hot_add_scripts makes the static library ${t}_scripts. The target t links it.
+#   AOT_RELOAD:  AOT and run-time overrides in one program. hot_add_scripts makes the static library
+#                ${t}_scripts as in MODE AOT. The target t links it and hot::backend (not hot::aot),
+#                and exports its symbols. The program calls Loader::load_aot(hot::aot_table), then
+#                overrides a script with the backend, and reverts it with Loader::revert_unit.
+#                HOT_SCRIPT_DIR (the directory of the first script) is a development define, as in
+#                HOT_RELOAD. A portable build copies the include dir as in HOT_RELOAD. The mode
+#                fails at configure time when the target hot::backend does not exist.
 #   PRECOMPILED: hot_add_scripts makes the script libraries with the target ${t}_scripts. The
 #                target t links hot::runtime, exports its symbols and depends on ${t}_scripts.
 #                The libraries go to ${CMAKE_BINARY_DIR}/hot_scripts/${t}, so two hosts do not clash.
@@ -233,8 +249,14 @@ function(hot_add_host)
     if(NOT H_MODE)
         set(H_MODE HOT_RELOAD)
     endif()
-    if(NOT H_MODE STREQUAL "AOT" AND NOT H_MODE STREQUAL "HOT_RELOAD" AND NOT H_MODE STREQUAL "PRECOMPILED")
-        message(FATAL_ERROR "hot_add_host: MODE must be AOT, HOT_RELOAD or PRECOMPILED. It is: ${H_MODE}")
+    if(NOT H_MODE STREQUAL "AOT" AND NOT H_MODE STREQUAL "AOT_RELOAD" AND NOT H_MODE STREQUAL "HOT_RELOAD"
+       AND NOT H_MODE STREQUAL "PRECOMPILED")
+        message(FATAL_ERROR "hot_add_host: MODE must be AOT, AOT_RELOAD, HOT_RELOAD or PRECOMPILED. It is: ${H_MODE}")
+    endif()
+    if(H_MODE STREQUAL "AOT_RELOAD" AND NOT TARGET hot::backend)
+        message(FATAL_ERROR "hot_add_host: MODE AOT_RELOAD needs a backend (the target hot::backend), "
+                "because the program compiles overrides at run time. This Hot++ has no backend. "
+                "Use MODE AOT, or use a Hot++ build or SDK that has a backend (target ${H_TARGET})")
     endif()
     set(t ${H_TARGET})
     set(common_args SCRIPTS ${H_SCRIPTS})
@@ -257,10 +279,10 @@ function(hot_add_host)
             set(prelude_args PRELUDES ${H_PRELUDES})
         endif()
         hot_add_scripts(TARGET ${t}_scripts AOT ${common_args} ${prelude_args})
-        target_link_libraries(${t} PRIVATE ${t}_scripts)
+        target_link_libraries(${t} PRIVATE ${t}_scripts hot::aot)
     elseif(H_MODE STREQUAL "PRECOMPILED")
         if(H_PRELUDES)
-            message(FATAL_ERROR "hot_add_host: PRELUDES works only with MODE AOT (target ${t})")
+            message(FATAL_ERROR "hot_add_host: PRELUDES works only with MODE AOT or AOT_RELOAD (target ${t})")
         endif()
         hot_add_scripts(TARGET ${t}_scripts OUT_DIR ${CMAKE_BINARY_DIR}/hot_scripts/${t} ${common_args})
         target_link_libraries(${t} PRIVATE hot::runtime)
@@ -268,12 +290,24 @@ function(hot_add_host)
         add_dependencies(${t} ${t}_scripts)
         set(HOT_SCRIPTS_${t}_LIBRARIES ${HOT_SCRIPTS_${t}_scripts_LIBRARIES} PARENT_SCOPE)
     else()
-        if(H_PRELUDES)
-            message(FATAL_ERROR "hot_add_host: PRELUDES works only with MODE AOT (target ${t})")
+        # HOT_RELOAD and AOT_RELOAD. Both link the backend and export the symbols of the program.
+        if(H_MODE STREQUAL "AOT_RELOAD")
+            set(prelude_args "")
+            if(H_PRELUDES)
+                set(prelude_args PRELUDES ${H_PRELUDES})
+            endif()
+            # The scripts are AOT code. The program links the library and hot::backend, not hot::aot.
+            # It starts with Loader::load_aot(hot::aot_table). Then it overrides units at run time.
+            hot_add_scripts(TARGET ${t}_scripts AOT ${common_args} ${prelude_args})
+            target_link_libraries(${t} PRIVATE ${t}_scripts hot::backend)
+        else()
+            if(H_PRELUDES)
+                message(FATAL_ERROR "hot_add_host: PRELUDES works only with MODE AOT or AOT_RELOAD (target ${t})")
+            endif()
+            target_link_libraries(${t} PRIVATE hot::backend)
+            hot_script_host(NAME ${t} TARGET ${t} ${common_args})
         endif()
-        target_link_libraries(${t} PRIVATE hot::backend)
         set_target_properties(${t} PROPERTIES ENABLE_EXPORTS ON)
-        hot_script_host(NAME ${t} TARGET ${t} ${common_args})
         if(HOT_PORTABLE)
             add_custom_command(TARGET ${t} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${HOT_INCLUDE_DIR} $<TARGET_FILE_DIR:${t}>/hot/include

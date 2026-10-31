@@ -13,6 +13,8 @@
 #line 14 "cpp_constexpr.cpp.cpp"
 
 constexpr uint32_t GEN = 1;
+// The live flag of this module. The loader sets it. The guard of each function reads it.
+static uint32_t hot_live = 0;
 struct HotModule;
 // The module state block of this generation. The loader sets the slot.
 static void* HotModule_slot = nullptr;
@@ -21,7 +23,7 @@ struct Limiter_Shell;
 using Limiter = Limiter_Shell;
 #line 3 "cpp_constexpr.cpp"
 #include "Actor.h"
-#line 25 "cpp_constexpr.cpp.cpp"
+#line 27 "cpp_constexpr.cpp.cpp"
 
 // ---------------------------------------------------------------- [value] class HotModule
 struct HotModule {
@@ -30,7 +32,7 @@ struct HotModule {
 
 #line 6 "cpp_constexpr.cpp"
 static void HotModule__init_total(void*, void* f) { using T = int; new (f) T(0); }
-#line 34 "cpp_constexpr.cpp.cpp"
+#line 36 "cpp_constexpr.cpp.cpp"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 static const hot::FieldInfo HotModule_fields[] = {
@@ -49,12 +51,12 @@ constexpr int limit(bool fixed)
     return fixed ? 10 : hot_mod()->total;
 }
 
-#line 53 "cpp_constexpr.cpp.cpp"
+#line 55 "cpp_constexpr.cpp.cpp"
 
 #line 14 "cpp_constexpr.cpp"
 static_assert(limit(true) == 10, "a constant call does not read the module variable");
 
-#line 58 "cpp_constexpr.cpp.cpp"
+#line 60 "cpp_constexpr.cpp.cpp"
 
 // ---------------------------------------------------------------- class Limiter
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -81,7 +83,7 @@ struct Limiter_Shell final : Actor, hot::ShellBase {
     }
 #line 16 "cpp_constexpr.cpp"
     ~Limiter_Shell() override { hot::destroy_state(this); }
-#line 85 "cpp_constexpr.cpp.cpp"
+#line 87 "cpp_constexpr.cpp.cpp"
 
 #line 16 "cpp_constexpr.cpp"
     void Tick(float a0) override
@@ -91,7 +93,7 @@ struct Limiter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 16 "cpp_constexpr.cpp"
     }
-#line 95 "cpp_constexpr.cpp.cpp"
+#line 97 "cpp_constexpr.cpp.cpp"
 
 #line 16 "cpp_constexpr.cpp"
     void TakeDamage(float a0) override
@@ -101,7 +103,7 @@ struct Limiter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 16 "cpp_constexpr.cpp"
     }
-#line 105 "cpp_constexpr.cpp.cpp"
+#line 107 "cpp_constexpr.cpp.cpp"
 
 #line 16 "cpp_constexpr.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -111,7 +113,7 @@ struct Limiter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 16 "cpp_constexpr.cpp"
     }
-#line 115 "cpp_constexpr.cpp.cpp"
+#line 117 "cpp_constexpr.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -130,7 +132,7 @@ struct LimiterState_g1 {
         return static_cast<Limiter_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 16 "cpp_constexpr.cpp"
     }
-#line 134 "cpp_constexpr.cpp.cpp"
+#line 136 "cpp_constexpr.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 16 "cpp_constexpr.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -140,12 +142,12 @@ struct LimiterState_g1 {
         return static_cast<Limiter_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 16 "cpp_constexpr.cpp"
     }
-#line 144 "cpp_constexpr.cpp.cpp"
+#line 146 "cpp_constexpr.cpp.cpp"
 };
 
 #line 19 "cpp_constexpr.cpp"
 static void Limiter__init_last(void*, void* f) { using T = int; new (f) T(0); }
-#line 149 "cpp_constexpr.cpp.cpp"
+#line 151 "cpp_constexpr.cpp.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -194,7 +196,7 @@ HOT_HIDDEN static void Limiter__ctor_chain(Limiter_Shell* __self, [[maybe_unused
     Limiter__ctor(__self);
 #line 21 "cpp_constexpr.cpp"
 }
-#line 198 "cpp_constexpr.cpp.cpp"
+#line 200 "cpp_constexpr.cpp.cpp"
 using Limiter_SuperArgs = decltype(Limiter__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
@@ -214,7 +216,7 @@ HOT_NODEBUG static hot::ShellBase* Limiter__construct(const char* key, const voi
     return nullptr;
 #line 16 "cpp_constexpr.cpp"
 }
-#line 218 "cpp_constexpr.cpp.cpp"
+#line 220 "cpp_constexpr.cpp.cpp"
 
 static const char* const Limiter__construct_keys[] = {typeid(Limiter_SuperArgs).name(), nullptr};
 
@@ -242,7 +244,7 @@ HOT_HIDDEN static Limiter_Shell* Limiter__build([[maybe_unused]] bool __note)
     return __self;
 #line 21 "cpp_constexpr.cpp"
 }
-#line 246 "cpp_constexpr.cpp.cpp"
+#line 248 "cpp_constexpr.cpp.cpp"
 #line 21 "cpp_constexpr.cpp"
 [[maybe_unused]] HOT_HIDDEN static Limiter_Shell* Limiter__new()
 #line 21 "cpp_constexpr.cpp"
@@ -251,7 +253,7 @@ HOT_HIDDEN static Limiter_Shell* Limiter__build([[maybe_unused]] bool __note)
     return Limiter__build(true);
 #line 21 "cpp_constexpr.cpp"
 }
-#line 255 "cpp_constexpr.cpp.cpp"
+#line 257 "cpp_constexpr.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -263,7 +265,7 @@ HOT_NODEBUG static hot::ShellBase* Limiter__new_default()
     return Limiter__build(false);
 #line 21 "cpp_constexpr.cpp"
 }
-#line 267 "cpp_constexpr.cpp.cpp"
+#line 269 "cpp_constexpr.cpp.cpp"
 
 #line 21 "cpp_constexpr.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Limiter__ctor(Limiter_Shell* __self)
@@ -273,13 +275,13 @@ HOT_NODEBUG static hot::ShellBase* Limiter__new_default()
     return state_of(__self)->ctor();
 #line 21 "cpp_constexpr.cpp"
 }
-#line 277 "cpp_constexpr.cpp.cpp"
+#line 279 "cpp_constexpr.cpp.cpp"
 #line 21 "cpp_constexpr.cpp"
 void LimiterState_g1::ctor()
 #line 21 "cpp_constexpr.cpp"
 {
 #line 21 "cpp_constexpr.cpp"
-    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
+    if (HOT_UNLIKELY(!hot_live)) {
 #line 21 "cpp_constexpr.cpp"
         hot::stale_call("Limiter::Limiter");
 #line 21 "cpp_constexpr.cpp"
@@ -294,14 +296,14 @@ void LimiterState_g1::ctor()
 
 #line 21 "cpp_constexpr.cpp"
 }
-#line 298 "cpp_constexpr.cpp.cpp"
+#line 300 "cpp_constexpr.cpp.cpp"
 
 #line 23 "cpp_constexpr.cpp"
 void LimiterState_g1::Tick(float dt)
 #line 23 "cpp_constexpr.cpp"
 {
 #line 23 "cpp_constexpr.cpp"
-    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
+    if (HOT_UNLIKELY(!hot_live)) {
 #line 23 "cpp_constexpr.cpp"
         hot::stale_call("Limiter::Tick(float)");
 #line 23 "cpp_constexpr.cpp"
@@ -320,7 +322,7 @@ void LimiterState_g1::Tick(float dt)
     
 #line 28 "cpp_constexpr.cpp"
 }
-#line 324 "cpp_constexpr.cpp.cpp"
+#line 326 "cpp_constexpr.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Limiter_slots[SLOT_COUNT] = {
@@ -362,10 +364,11 @@ HOT_NODEBUG static hot::Instance Limiter_create()
     return {static_cast<Actor*>(p), p};
 #line 16 "cpp_constexpr.cpp"
 }
-#line 366 "cpp_constexpr.cpp.cpp"
+#line 368 "cpp_constexpr.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
+    reg.set_live_flag(&hot_live);
     reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Limiter_record, &Limiter_create);
     Limiter_record.construct_keys = Limiter__construct_keys;

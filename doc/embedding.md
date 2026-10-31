@@ -6,13 +6,13 @@ nav_order: 13
 
 The host loads scripts with a `Loader`. A development build compiles them. An AOT build links them.
 
-This page has six hosting situations. Each situation has a sample project. The page [CMake](cmake.html) has the build side: the targets, the options, `hot_add_host` and `hot_add_scripts`. A release build needs the section "Portable binaries" there.
+This page has seven hosting situations. Each situation has a sample project. The page [CMake](cmake.html) has the build side: the targets, the options, `hot_add_host` and `hot_add_scripts`. A release build needs the section "Portable binaries" there.
 
 ## Which situation fits?
 
 Answer these questions in order. Stop at the first answer that fits.
 
-1. Must the shipped program have no compiler, no libclang and no loader? Then the scripts are fixed at build time. Use **AOT**.
+1. Must the shipped program have no compiler, no libclang and no loader? Then the scripts are fixed at build time. Use **AOT**. If the shipped program may carry a loader and a compiler, and you want an AOT start with per-script overrides, use **AOT with run-time overrides**.
 2. Do the scripts change after the program is built, but you build them ahead of time (with the build or with `hotc`)? Use a **precompiled library**.
 3. Does the program read `.hot` text at run time and compile it? Then ask the next two questions.
 4. Must a live object keep its field values while its code changes? Use **hot reload**.
@@ -23,6 +23,7 @@ Answer these questions in order. Stop at the first answer that fits.
 | Situation | Sample |
 |---|---|
 | AOT | [aot](https://github.com/rokups/hotpp/tree/main/samples/aot) |
+| AOT with run-time overrides | [aot-reload](https://github.com/rokups/hotpp/tree/main/samples/aot-reload) |
 | Precompiled library | [precompiled-library](https://github.com/rokups/hotpp/tree/main/samples/precompiled-library) |
 | Compile at run time | [runtime-compile](https://github.com/rokups/hotpp/tree/main/samples/runtime-compile) |
 | Hot reload | [hot-reload](https://github.com/rokups/hotpp/tree/main/samples/hot-reload) |
@@ -43,12 +44,14 @@ Pick the row that matches your program. Each sample is a small project that buil
 | In-process JIT | `hot_jit_backend` (needs `HOT_BACKEND=JIT`) | `JitBackend` | [jit-backend](https://github.com/rokups/hotpp/tree/main/samples/jit-backend) |
 | Explicit Clang files backend | `hot_clang_backend` | `ClangFilesBackend` | [clang-files-backend](https://github.com/rokups/hotpp/tree/main/samples/clang-files-backend) |
 | AOT | `hot::aot` (through `hot_add_host` with `MODE AOT`) | `AotRegistry` | [aot](https://github.com/rokups/hotpp/tree/main/samples/aot) |
+| AOT with run-time overrides | `hot::backend` (through `hot_add_host` with `MODE AOT_RELOAD`) | `Loader::load_aot`, `Backend::seed_slots`, `Loader::revert_unit` | [aot-reload](https://github.com/rokups/hotpp/tree/main/samples/aot-reload) |
 
 ### Comparison
 
 | Situation | Compiler at run time | Hot reload | Cost at start | Link targets | Notes |
 |---|---|---|---|---|---|
 | AOT | No | No | None. `AotRegistry` registers the classes. | `hot_aot` through the AOT library | No loader, no Clang, no `ENABLE_EXPORTS`. |
+| AOT with run-time overrides | Yes, for an override only | Yes, for each script | `load_aot` registers the compiled-in classes. An override costs one translate and one compile. | `hot_backend` and the AOT library | `ENABLE_EXPORTS`. One `Loader` in the process. Never link `hot::aot`. |
 | Precompiled library | No | Yes, when you load a newer generation that you built ahead | `dlopen` of the library | `hot_runtime` | No libclang at run time. `ENABLE_EXPORTS`. A writable temp folder (see "Core copies"). |
 | Compile at run time | `CLANG_FILES`: yes, the compiler of the build. `JIT`: no process, but Clang libraries. | Yes | One translate and one compile for each load. | `hot_backend` | The backend is the one that `HOT_BACKEND` selects. `ENABLE_EXPORTS`. |
 | Hot reload | Same as compile at run time | Yes | Same as compile at run time | `hot_backend` | The host calls `request_reload`, `commit_pending` and `frame_boundary`. |
@@ -91,7 +94,7 @@ A host that loads a module must export its symbols. The modules resolve the host
 - Set `ENABLE_EXPORTS` on the executable (`-rdynamic` on Linux). Every sample except `aot` does this.
 - Link a static library of your own as a whole archive when scripts call functions that the host code does not use. `samples/imgui/CMakeLists.txt` uses `$<LINK_LIBRARY:WHOLE_ARCHIVE,imgui_sdl3>` for this.
 - The executable must link the runtime objects that the script code uses (see the JIT section of `README.md`). The samples link the Hot++ libraries without a whole-archive link.
-- An AOT program does not load a module, so it does not export.
+- An AOT program does not load a module, so it does not export. A program with run-time overrides loads modules, so it exports (`MODE AOT_RELOAD` sets this).
 
 ### C++17 baseline
 
@@ -289,6 +292,52 @@ world.Add(boss);
 **Failure:** the constructor throws `std::runtime_error` when two scripts have a class of the same name (`the class ... is in two AOT scripts (...)`) or when the initializer of a module variable throws. `create` throws `std::runtime_error` (`no AOT script class ...`) for an unknown class.
 
 **Sample:** [aot](https://github.com/rokups/hotpp/tree/main/samples/aot).
+
+## AOT with run-time overrides
+
+**Links:** the AOT script library and `hot::backend`, through `hot_add_host(... MODE AOT_RELOAD ...)`. `ENABLE_EXPORTS` is on. Do not link `hot::aot`.
+
+JIT, Clang files and AOT can all be in one host. AOT is the start state. The user switches per script at run time: a script runs its compiled-in code, runs a run-time override, or goes back to the compiled-in code.
+
+**When to use:** the shipped build is AOT, but a developer or a mod author must replace one script without a rebuild. The program carries a loader and a compiler for this. A program that never overrides a script uses plain AOT.
+
+**Call sequence:**
+
+```cpp
+auto backend = hot::make_default_backend(options);   // the same includes and flags as the AOT build
+hot::Loader loader;                                  // one Loader in the process
+backend->seed_slots(hot::aot_table.slots);           // the override keeps the AOT slot numbers
+loader.load_aot(hot::aot_table);                     // start: each AOT script is one unit
+
+// Override one script from source.
+hot::LoadResult built = backend->load({path, text, {}}, hot::active_generation + 1);
+built.module->unit = "wolf";                         // the unit is the name of the AOT script
+loader.request_reload(std::move(*built.module));     // validate
+loader.commit_pending();                             // at a safe point of the host
+loader.frame_boundary();
+
+// Go back to the compiled-in code.
+loader.revert_unit("wolf");                          // stage the AOT code again
+loader.commit_pending();
+loader.frame_boundary();
+```
+
+**What migrates:** a live object of the unit keeps the fields that have the same name and type in both layouts. A new field gets its default. A field that the new layout lacks is dropped. This holds for the override and for the revert. Closures of the old code stop (the stale call is counted and logged). Other units do not change.
+
+**Limits:**
+
+- The override needs a compiler at run time. It must use the same includes and flags as the AOT build. Else the layout or the slot numbers can differ.
+- Call `seed_slots` before the first `load`. Without it, a backend numbers the methods from zero, and they can differ from the AOT numbers.
+- One `Loader` for each process. `load_aot` registers the AOT classes in it. A second `Loader` in the process starts with the AOT classes again after the first one is gone.
+- Never link `hot::aot` and `hot::backend` (or `hot::runtime`) in one program. `MODE AOT_RELOAD` links the second one only.
+- The AOT library compiles with hidden symbols. This stops the override library from binding to the AOT code.
+- `revert_unit` fails (`BadModule`) when the unit has no AOT module. It returns `Busy` while another reload waits for its commit.
+- The AOT code has the first signature of each method, and the loader does not check that signature. After a revert, a delegate on the thunk of an override signature does not detach. Drop such delegates before the revert.
+- `HOT_SCRIPT_DIR` is a development define. The override files stay out of `SCRIPTS`.
+
+**Failure:** `load_aot` returns an error when a class is in two units. A failed `load_aot` leaves the `Loader` empty.
+
+**Sample:** [aot-reload](https://github.com/rokups/hotpp/tree/main/samples/aot-reload). The program starts with AOT, overrides `wolf`, and reverts. One object keeps its state in all three phases.
 
 ## The backend interface
 

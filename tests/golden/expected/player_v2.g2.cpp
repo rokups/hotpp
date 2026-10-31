@@ -17,6 +17,8 @@
 #line 18 "player_v2.hot.cpp"
 
 constexpr uint32_t GEN = 2;
+// The live flag of this module. The loader sets it. The guard of each function reads it.
+static uint32_t hot_live = 0;
 
 // ---------------------------------------------------------------- class Player
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -44,7 +46,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
     }
 #line 6 "player_v2.hot"
     ~Player_Shell() override { hot::destroy_state(this); }
-#line 48 "player_v2.hot.cpp"
+#line 50 "player_v2.hot.cpp"
 
 #line 6 "player_v2.hot"
     void Tick(float a0) override
@@ -54,7 +56,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 6 "player_v2.hot"
     }
-#line 58 "player_v2.hot.cpp"
+#line 60 "player_v2.hot.cpp"
 
 #line 6 "player_v2.hot"
     void TakeDamage(float a0) override
@@ -64,7 +66,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 6 "player_v2.hot"
     }
-#line 68 "player_v2.hot.cpp"
+#line 70 "player_v2.hot.cpp"
 
 #line 6 "player_v2.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -74,7 +76,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 6 "player_v2.hot"
     }
-#line 78 "player_v2.hot.cpp"
+#line 80 "player_v2.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -93,16 +95,16 @@ struct PlayerState_g2 {
 
 #line 7 "player_v2.hot"
 static void Player__init_health(void*, void* f) { using T = float; new (f) T(100.0f); }
-#line 97 "player_v2.hot.cpp"
+#line 99 "player_v2.hot.cpp"
 #line 8 "player_v2.hot"
 static void Player__init_speed(void*, void* f) { using T = float; new (f) T(5.0f); }
-#line 100 "player_v2.hot.cpp"
+#line 102 "player_v2.hot.cpp"
 #line 9 "player_v2.hot"
 static void Player__init_target(void*, void* f) { using T = std::string; new (f) T(""); }
-#line 103 "player_v2.hot.cpp"
+#line 105 "player_v2.hot.cpp"
 #line 10 "player_v2.hot"
 static void Player__init_shield(void*, void* f) { using T = float; new (f) T(25.0f); }
-#line 106 "player_v2.hot.cpp"
+#line 108 "player_v2.hot.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -147,7 +149,7 @@ HOT_HIDDEN static auto Player__plan()
     return std::make_pair(Player__super_args(), std::tuple<>());
 #line 6 "player_v2.hot"
 }
-#line 151 "player_v2.hot.cpp"
+#line 153 "player_v2.hot.cpp"
 using Player_SuperArgs = decltype(Player__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
@@ -167,7 +169,7 @@ HOT_NODEBUG static hot::ShellBase* Player__construct(const char* key, const void
     return nullptr;
 #line 6 "player_v2.hot"
 }
-#line 171 "player_v2.hot.cpp"
+#line 173 "player_v2.hot.cpp"
 
 static const char* const Player__construct_keys[] = {typeid(Player_SuperArgs).name(), nullptr};
 
@@ -183,7 +185,7 @@ HOT_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
     return __self;
 #line 6 "player_v2.hot"
 }
-#line 187 "player_v2.hot.cpp"
+#line 189 "player_v2.hot.cpp"
 #line 6 "player_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static Player_Shell* Player__new()
 #line 6 "player_v2.hot"
@@ -192,14 +194,14 @@ HOT_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
     return Player__build(true);
 #line 6 "player_v2.hot"
 }
-#line 196 "player_v2.hot.cpp"
+#line 198 "player_v2.hot.cpp"
 
 #line 12 "player_v2.hot"
 void PlayerState_g2::Tick(float dt)
 #line 12 "player_v2.hot"
 {
 #line 12 "player_v2.hot"
-    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
+    if (HOT_UNLIKELY(!hot_live)) {
 #line 12 "player_v2.hot"
         hot::stale_call("Player::Tick(float)");
 #line 12 "player_v2.hot"
@@ -218,14 +220,14 @@ void PlayerState_g2::Tick(float dt)
     hot::deref(__self->Name).c_str(), dt, hot::deref(__self->Position).x, __st->health, __st->shield);
 #line 16 "player_v2.hot"
 }
-#line 222 "player_v2.hot.cpp"
+#line 224 "player_v2.hot.cpp"
 
 #line 18 "player_v2.hot"
 void PlayerState_g2::TakeDamage_f(float amount)
 #line 18 "player_v2.hot"
 {
 #line 18 "player_v2.hot"
-    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
+    if (HOT_UNLIKELY(!hot_live)) {
 #line 18 "player_v2.hot"
         hot::stale_call("Player::TakeDamage(float)");
 #line 18 "player_v2.hot"
@@ -244,14 +246,14 @@ void PlayerState_g2::TakeDamage_f(float amount)
     __st->health);
 #line 22 "player_v2.hot"
 }
-#line 248 "player_v2.hot.cpp"
+#line 250 "player_v2.hot.cpp"
 
 #line 24 "player_v2.hot"
 void PlayerState_g2::TakeDamage_Af(Actor& source, float amount)
 #line 24 "player_v2.hot"
 {
 #line 24 "player_v2.hot"
-    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
+    if (HOT_UNLIKELY(!hot_live)) {
 #line 24 "player_v2.hot"
         hot::stale_call("Player::TakeDamage(Actor&, float)");
 #line 24 "player_v2.hot"
@@ -270,7 +272,7 @@ void PlayerState_g2::TakeDamage_Af(Actor& source, float amount)
     __self->TakeDamage(amount);
 #line 28 "player_v2.hot"
 }
-#line 274 "player_v2.hot.cpp"
+#line 276 "player_v2.hot.cpp"
 
 #line 30 "player_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float amount)
@@ -280,13 +282,13 @@ void PlayerState_g2::TakeDamage_Af(Actor& source, float amount)
     return state_of(__self)->heal(std::forward<float>(amount));
 #line 30 "player_v2.hot"
 }
-#line 284 "player_v2.hot.cpp"
+#line 286 "player_v2.hot.cpp"
 #line 30 "player_v2.hot"
 void PlayerState_g2::heal(float amount)
 #line 30 "player_v2.hot"
 {
 #line 30 "player_v2.hot"
-    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
+    if (HOT_UNLIKELY(!hot_live)) {
 #line 30 "player_v2.hot"
         hot::stale_call("Player::heal");
 #line 30 "player_v2.hot"
@@ -305,7 +307,7 @@ void PlayerState_g2::heal(float amount)
     __st->health);
 #line 34 "player_v2.hot"
 }
-#line 309 "player_v2.hot.cpp"
+#line 311 "player_v2.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Player_slots[SLOT_COUNT] = {
@@ -334,10 +336,11 @@ HOT_NODEBUG static hot::Instance Player_create()
     return {static_cast<Actor*>(p), p};
 #line 6 "player_v2.hot"
 }
-#line 338 "player_v2.hot.cpp"
+#line 340 "player_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
+    reg.set_live_flag(&hot_live);
     reg.add(&Player_record, &Player_create);
     Player_record.construct_keys = Player__construct_keys;
 }

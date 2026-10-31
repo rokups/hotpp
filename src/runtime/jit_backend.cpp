@@ -241,6 +241,13 @@ JitBackend::JitBackend(JitOptions options)
 
 JitBackend::~JitBackend() = default;
 
+void JitBackend::seed_slots(const std::string& text)
+{
+    std::lock_guard<std::mutex> lock(slots_->mutex);
+    if (!slots_cover(slots_->text, text)) // else the state has every line of the text and more
+        slots_->text = text;
+}
+
 LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, LoadMode mode)
 {
     std::lock_guard<std::mutex> lock(mutex_);

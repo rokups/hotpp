@@ -929,7 +929,7 @@ TEST(HotcTool, AotModeWritesTheCppAndTheRegistrationFile)
     const std::string reg = read_file(out_dir + "/hot_aot_registry.cpp");
     EXPECT_NE(reg.find("{\"aot_demo\", &hot_script_register_aot_demo}"), std::string::npos) << reg;
     EXPECT_NE(reg.find("{\"props_v1\", &hot_script_register_props_v1}"), std::string::npos) << reg;
-    EXPECT_NE(reg.find("aot_table = {kAotScripts, 2}"), std::string::npos) << reg;
+    EXPECT_NE(reg.find("aot_table = {kAotScripts, 2, kAotSlots}"), std::string::npos) << reg;
 }
 
 // --aot needs an output directory and does not take the options of the other modes.

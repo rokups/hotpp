@@ -1,0 +1,21 @@
+// Unit A of the override tests, AOT version. A field, a method that returns it, and a timer closure.
+using "Actor.h";
+
+class Alpha : Actor {
+    int count = 0;
+    int fired = 0;
+
+    override void Tick(float dt) {
+        this.count = this.count + 1;
+    }
+
+    int Total() {
+        return this.count;
+    }
+
+    void arm(World& w, float delay) {
+        w.AddTimer(delay, () => {
+            this.fired = this.fired + 1;
+        });
+    }
+}

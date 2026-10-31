@@ -1049,6 +1049,7 @@ struct Lowerer
         c.pos = pos;
         c.callee = raw("hot::make_closure", pos);
         c.args.push_back(raw("GEN", 0));
+        c.args.push_back(raw("&hot_live", 0));
         c.args.push_back(raw("\"" + cx.where + " lambda\"", 0));
         c.args.push_back(std::move(e));
         e = make_expr(std::move(c));

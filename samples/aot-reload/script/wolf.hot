@@ -1,0 +1,17 @@
+// The AOT script of the sample. The build compiles it into the binary. Wolf derives from the
+// host class Creature and overrides Tick.
+using "Creature.h";
+using <string>;
+
+class Wolf : Creature {
+    int bites = 0;
+
+    Wolf() : base(std.string("wolf")) {
+    }
+
+    override void Tick(float dt) {
+        this.bites = this.bites + 1;
+        this.Hp = this.Hp - 1;
+        std.printf("[aot] %s: bites=%d hp=%d\n", this.Name.c_str(), this.bites, this.Hp);
+    }
+}

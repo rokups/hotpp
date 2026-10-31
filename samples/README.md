@@ -6,6 +6,7 @@ A sample builds in the Hot++ source tree. Most samples also build as a separate 
 | Sample | Situation | Key API | Link | State |
 |---|---|---|---|---|
 | [aot](aot/) | The C++ of the scripts is in the binary. No loader. No compiler at run time. | `hot::AotRegistry`, `hot_add_host(... MODE AOT ...)` | `hot_add_host` links the script library. It links `hot::aot`. | ready |
+| [aot-reload](aot-reload/) | AOT scripts start in the binary. The program overrides one script from source at run time, then goes back to the AOT code. It needs a compiler for the override. | `hot::Loader::load_aot`, `hot::Backend::seed_slots`, `hot::Loader::revert_unit`, `hot_add_host(... MODE AOT_RELOAD ...)` | `hot_add_host` links the script library and `hot::backend` (not `hot::aot`). | ready |
 | [runtime-compile](runtime-compile/) | The program compiles a script at run time and loads it. | `hot::make_default_backend`, `hot::DefaultBackendOptions`, `hot::Loader` | `hot_backend` | ready |
 | [precompiled-library](precompiled-library/) | The build makes a script library. The program loads it. | `hot::module_from_library`, `hot::Loader`, `hot_add_host(... MODE PRECOMPILED ...)` | `hot::runtime` | ready |
 | [hot-reload](hot-reload/) | The program reloads a script and keeps the live object. | `hot::Loader::request_reload`, `commit_pending`, `frame_boundary` | `hot_backend` | ready |
@@ -23,6 +24,8 @@ The option `HOT_BUILD_SAMPLES` is ON for the main project. The target names star
 cmake --preset linux-clang-files
 cmake --build --preset linux-clang-files-dbg --target sample_aot_hot sample_aot_cpp
 ctest --preset linux-clang-files-dbg -R '^sample_aot_(hot|cpp)$'
+
+The sample `aot-reload` has the targets `sample_aot_reload_hot` and `sample_aot_reload_cpp`.
 ```
 
 ## Build as a separate project

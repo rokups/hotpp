@@ -18,10 +18,10 @@ TEST(LambdaLowering, Lambda)
 {
     Fixture f;
     EXPECT_EQ(f.body("var f = (float x, int* q) => { q.foo(); this.n = x; };"),
-        "auto f = hot::make_closure(GEN, \"Player::run lambda\", [=](float x, int32_t* q) "
+        "auto f = hot::make_closure(GEN, &hot_live, \"Player::run lambda\", [=](float x, int32_t* q) "
         "{ HOT_NODEBUG_LOCAL auto* __st = state_of(__self); hot::deref(q).foo(); __st->n = x; });");
     EXPECT_EQ(f.expr("(Actor* a) => { a.x = 1; }"),
-        "hot::make_closure(GEN, \"Player::run lambda\", [=](Actor* a) "
+        "hot::make_closure(GEN, &hot_live, \"Player::run lambda\", [=](Actor* a) "
         "{ HOT_NODEBUG_LOCAL auto* __st = state_of(__self); hot::deref(a).x = 1; })");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
@@ -30,7 +30,7 @@ TEST(LambdaLowering, LambdaNoParameters)
 {
     Fixture f;
     EXPECT_EQ(f.expr("() => { this.fired = this.fired + 1; }"),
-        "hot::make_closure(GEN, \"Player::run lambda\", [=]() "
+        "hot::make_closure(GEN, &hot_live, \"Player::run lambda\", [=]() "
         "{ HOT_NODEBUG_LOCAL auto* __st = state_of(__self); __st->fired = __st->fired + 1; })");
 }
 
@@ -63,14 +63,14 @@ TEST(LambdaLowering, BareFieldInALambdaReadsTheStateBlock)
 {
     Fixture f;
     EXPECT_EQ(f.expr("() => { fired = fired + n; }"),
-        "hot::make_closure(GEN, \"Player::run lambda\", [=]() "
+        "hot::make_closure(GEN, &hot_live, \"Player::run lambda\", [=]() "
         "{ HOT_NODEBUG_LOCAL auto* __st = state_of(__self); __st->fired = __st->fired + __st->n; })");
     EXPECT_EQ(f.expr("() => { target.hp = 1; }"),
-        "hot::make_closure(GEN, \"Player::run lambda\", [=]() "
+        "hot::make_closure(GEN, &hot_live, \"Player::run lambda\", [=]() "
         "{ HOT_NODEBUG_LOCAL auto* __st = state_of(__self); hot::deref(__st->target).hp = 1; })");
     // A parameter of the lambda hides the field. Outside the lambda a bare field stays bare.
     EXPECT_EQ(f.expr("(int n) => { n = 1; }"),
-        "hot::make_closure(GEN, \"Player::run lambda\", [=](int32_t n) "
+        "hot::make_closure(GEN, &hot_live, \"Player::run lambda\", [=](int32_t n) "
         "{ HOT_NODEBUG_LOCAL auto* __st = state_of(__self); n = 1; })");
     EXPECT_EQ(f.expr("n"), "n");
     EXPECT_EQ(f.diag.items.size(), 0u);

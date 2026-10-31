@@ -37,6 +37,7 @@ public:
 
     HOT_HIDDEN Closure() {}
 
+    // Without a live flag the guard compares the generation with active_generation.
     template <class F>
     HOT_HIDDEN Closure(uint32_t generation, const char* what, F fn)
         : fn_(std::move(fn))
@@ -46,9 +47,21 @@ public:
         pin(gen_);
     }
 
+    // "live" is the live flag of the module (Registry::set_live_flag). The guard reads it.
+    template <class F>
+    HOT_HIDDEN Closure(uint32_t generation, const uint32_t* live, const char* what, F fn)
+        : fn_(std::move(fn))
+        , gen_(generation)
+        , live_(live)
+        , what_(what)
+    {
+        pin(gen_);
+    }
+
     HOT_HIDDEN Closure(const Closure& o)
         : fn_(o.fn_)
         , gen_(o.gen_)
+        , live_(o.live_)
         , what_(o.what_)
     {
         if (gen_)
@@ -58,6 +71,7 @@ public:
     HOT_HIDDEN Closure(Closure&& o) noexcept
         : fn_(std::move(o.fn_))
         , gen_(o.gen_)
+        , live_(o.live_)
         , what_(o.what_)
     {
         o.fn_ = nullptr;
@@ -68,6 +82,7 @@ public:
     {
         std::swap(fn_, o.fn_);
         std::swap(gen_, o.gen_);
+        std::swap(live_, o.live_);
         std::swap(what_, o.what_);
         return *this;
     }
@@ -82,8 +97,8 @@ public:
 
     HOT_HIDDEN R operator()(A... a) const
     {
-        ScriptEntry entry; // design 6.3: the guard reads active_generation
-        if (HOT_UNLIKELY(!fn_ || gen_ != active_generation))
+        ScriptEntry entry; // design 6.3: the guard reads the live flag or active_generation
+        if (HOT_UNLIKELY(!fn_ || (live_ ? !*live_ : gen_ != active_generation)))
         {
             stale_call(what_ ? what_ : "closure");
             return R();
@@ -112,6 +127,7 @@ public:
 private:
     Function fn_;
     uint32_t gen_ = 0;
+    const uint32_t* live_ = nullptr; // null: the guard compares gen_ with active_generation
     const char* what_ = nullptr;
 };
 
@@ -167,6 +183,13 @@ template <class F> HOT_HIDDEN auto make_closure(uint32_t generation, const char*
 {
     using Sig = typename detail::SigOf<decltype(&F::operator())>::type;
     return Closure<Sig>(generation, what, std::move(fn));
+}
+
+// The form of the translator: "live" is the live flag of the module.
+template <class F> HOT_HIDDEN auto make_closure(uint32_t generation, const uint32_t* live, const char* what, F fn)
+{
+    using Sig = typename detail::SigOf<decltype(&F::operator())>::type;
+    return Closure<Sig>(generation, live, what, std::move(fn));
 }
 
 } // namespace hot

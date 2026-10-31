@@ -95,6 +95,17 @@ bool write_text(const std::string& path, const std::string& text)
 
 } // namespace
 
+void ClangFilesBackend::seed_slots(const std::string& text)
+{
+    std::error_code ec; // the work dir can be new: the first load makes it
+    std::filesystem::create_directories(std::filesystem::path(opt_.slots_file).parent_path(), ec);
+    std::string have;
+    if (read_text(opt_.slots_file, have) && slots_cover(have, text))
+        return; // the file has every line of the text and more: it has newer state, keep it
+    if (!write_text(opt_.slots_file, text))
+        std::fprintf(stderr, "[script] WARNING: cannot write %s\n", opt_.slots_file.c_str());
+}
+
 ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options)
     : opt_(std::move(options))
 {

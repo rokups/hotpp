@@ -41,6 +41,13 @@ public:
     const ModuleStateInfo& module_state() const { return module_state_; }
     void clear_module_state() { module_state_ = {}; }
 
+    // The generated code calls it once. "flag" is the live flag of the module: the guard of each
+    // function of the module reads it. The Loader sets it to 1 when the module is live and to 0
+    // when a newer module of the same unit replaces it. Without a call the flag is null: the
+    // module has the old guard, which compares the generation with hot::active_generation.
+    void set_live_flag(uint32_t* flag) { live_flag_ = flag; }
+    uint32_t* live_flag() const { return live_flag_; }
+
     void add(ClassRecord* record, Factory create);
     // A thunk is a stable function address for a native delegate (section 4.11). The first
     // registration of a key keeps its address (append-only).
@@ -70,6 +77,7 @@ private:
     std::unordered_map<std::string, std::string> current_; // the name to the latest key
     uint32_t max_generation_ = 0;
     ModuleStateInfo module_state_;
+    uint32_t* live_flag_ = nullptr;
 };
 
 } // namespace hot

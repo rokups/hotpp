@@ -95,7 +95,7 @@ See "Install the SDK" in `doc/cmake.md`. The test `sdk_install_sample` installs 
 
 ## Samples
 
-The folder `samples/` has seven projects: `aot`, `runtime-compile`, `precompiled-library`, `hot-reload`, `clang-files-backend`, `jit-backend` and `imgui`. See `samples/README.md` for the list. `doc/cmake.md` explains how a project uses Hot++ with CMake.
+The folder `samples/` has eight projects: `aot`, `aot-reload`, `runtime-compile`, `precompiled-library`, `hot-reload`, `clang-files-backend`, `jit-backend` and `imgui`. See `samples/README.md` for the list. `doc/cmake.md` explains how a project uses Hot++ with CMake.
 
 The option `HOT_BUILD_SAMPLES` is ON for the main project. The target names start with `sample_`:
 
@@ -311,9 +311,11 @@ The CMake function `hot_add_scripts` with the option `AOT` (`cmake/HotScripts.cm
 
     hot_add_scripts(TARGET game_scripts AOT SCRIPTS player.hot boss.hot
                     INCLUDES include tests/engine [PRELUDES file...] [DEPENDS file...])
-    target_link_libraries(game PRIVATE game_scripts)
+    target_link_libraries(game PRIVATE game_scripts hot::aot)
 
-The library links `hot_aot`. This target holds the core of the runtime (`threads.cpp`, `registry.cpp`) and the AOT registry (`aot.cpp`). The loader, the migration and `dlopen` are in the other target `hot_runtime`. Do not link both targets in one program.
+The library links only `hot::runtime_core` (`threads.cpp`, `registry.cpp`). The program adds `hot::aot`. This target holds the AOT registry (`aot.cpp`). The loader, the migration and `dlopen` are in the other target `hot_runtime`. Do not link `hot::aot` and the loader in one program. `hot_add_host(... MODE AOT ...)` links `hot::aot` for you.
+
+JIT, Clang files and AOT can all be in one host. AOT is the start state, and the user switches per script at run time. A program with the loader can use the same library (`hot_add_host(... MODE AOT_RELOAD ...)`, sample [samples/aot-reload](samples/aot-reload/)). It calls `Loader::load_aot(hot::aot_table)` and does not link `hot::aot`. Each script is one loader unit. `hot::aot_table.slots` has the slot manifest of all scripts. A run-time backend takes it through `Backend::seed_slots`, so a later generation keeps the slot numbers of the AOT code. `Loader::request_reload` with `Module::unit` set to the script name overrides one script at run time. `Loader::revert_unit(unit)` stages the AOT code of the script again as a new generation. The live objects migrate back by field name and type. A field that the AOT layout lacks is dropped. The AOT library must compile with hidden symbols: `hot_add_scripts` does this.
 
 At start-up the program makes the registry. The registry calls the register function of each script, makes the blocks of the module variables and sets `hot::active_generation` to 1:
 

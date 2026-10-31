@@ -1,0 +1,22 @@
+// Unit A of the override tests, run-time override. One more field and other method bodies.
+using "Actor.h";
+
+class Alpha : Actor {
+    int count = 0;
+    int fired = 0;
+    int bonus = 5;
+
+    override void Tick(float dt) {
+        this.count = this.count + 2;
+    }
+
+    int Total() {
+        return this.count + this.bonus;
+    }
+
+    void arm(World& w, float delay) {
+        w.AddTimer(delay, () => {
+            this.fired = this.fired + 1;
+        });
+    }
+}

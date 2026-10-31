@@ -1,0 +1,21 @@
+// Unit A of the override tests, run-time override that changes a signature. Total gets a parameter.
+using "Actor.h";
+
+class Alpha : Actor {
+    int count = 0;
+    int fired = 0;
+
+    override void Tick(float dt) {
+        this.count = this.count + 1;
+    }
+
+    int Total(int extra) {
+        return this.count + extra;
+    }
+
+    void arm(World& w, float delay) {
+        w.AddTimer(delay, () => {
+            this.fired = this.fired + 1;
+        });
+    }
+}

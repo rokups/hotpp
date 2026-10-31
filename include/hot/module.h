@@ -36,6 +36,11 @@ struct Module
     // of a successful commit of a reload. A backend uses it to write the slots file only for a
     // live module. A rejected module, and a reload that does not commit, never call it.
     std::function<void()> on_accept;
+    // The unit of the module, for example the stem of a script. The empty unit is the default:
+    // a reload of it removes every class that the new module lacks. A reload of a named unit
+    // removes only the missing classes of this unit, and it keeps the module block of each other
+    // unit. A class that arrives in another unit than its first unit makes the module bad.
+    std::string unit;
 };
 
 // The result of a build or a load: a Module, or an error text with the diagnostics.

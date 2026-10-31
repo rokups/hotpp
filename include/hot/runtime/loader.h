@@ -1,5 +1,6 @@
 // The loader of generation modules: validation, commit and unload.
 #pragma once
+#include "hot/aot.h"
 #include "hot/module.h"
 #include "hot/runtime/records.h"
 #include "hot/runtime/registry.h"
@@ -8,6 +9,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -138,6 +141,16 @@ public:
     // first.
     ReloadResult load(Module module);
 
+    // Registers all scripts of an AOT table (include/hot/aot.h) as generation 1. Each script is
+    // one unit: the unit name is the name of the script. The classes of the scripts keep the
+    // C++ of the binary; no library loads. A later reload of one unit (request_reload with
+    // Module::unit set to the name of the script) leaves the other units alone. The result is
+    // Applied or Failed. It fails with BadModule when the loader already has a generation, when
+    // the table has no script, when two scripts have a class of the same name, or when an
+    // initializer of a module variable throws. After a failure the loader is empty again.
+    // The loader keeps a copy of each AOT class record: see aot_record().
+    ReloadResult load_aot(const AotTable& table);
+
     // Drops all state of the loader for a full reload. The sequence of the host is: save the host
     // state, drop all script handles, closures and thunk pointers, reset, load the fresh module
     // (Backend::load with LoadMode::Fresh) and call load() again, then restore the host state.
@@ -199,8 +212,31 @@ public:
 
     const ClassEntry* find(const std::string& name) const { return registry_.find(name); }
     // The module state of the live generation: the layout and the slot. Null layout: none.
-    ModuleStateInfo module_state() const { return {mod_layout_, mod_slot_}; }
+    // "unit" selects the unit (Module::unit). The empty unit is the default.
+    ModuleStateInfo module_state(const std::string& unit = {}) const
+    {
+        const auto it = mod_blocks_.find(unit);
+        return it == mod_blocks_.end() ? ModuleStateInfo{} : ModuleStateInfo{it->second.layout, it->second.slot};
+    }
     void* thunk(const std::string& name) const { return registry_.thunk(name); }
+    // The copy of the record of a class as load_aot registered it (before any reload changed the
+    // canonical record), or null. A revert to the AOT code uses it.
+    // Stages the AOT code of a unit as a new generation (a revert of a run-time override). Like
+    // request_reload it only validates and returns Pending; commit_pending commits it.
+    // The new generation number is active_generation + 1, so the check "the generation is newer"
+    // of request_reload needs no bypass. The classes get the copies of their AOT records
+    // (aot_record). The dispatch table keeps its size: the slots that the override added point to
+    // the removed class handler. The live objects migrate back by field name and type: a field
+    // that the AOT layout lacks is dropped, as in a normal reload. The live flag of the AOT code
+    // goes to 1 and the flag of the override goes to 0 at the commit.
+    // It fails with BadModule when the unit has no AOT module, and with Busy when a reload is
+    // pending.
+    ReloadResult revert_unit(const std::string& unit);
+    const ClassRecord* aot_record(const std::string& name) const
+    {
+        const auto it = aot_records_.find(name);
+        return it == aot_records_.end() ? nullptr : &it->second;
+    }
 
 private:
     struct Pending;
@@ -212,15 +248,28 @@ private:
         uint64_t retired_frame = 0; // the frame counter at the retirement
         uint32_t registry_refs = 0; // classes and thunks that this module registered
     };
+    // Puts the saved copies of the AOT records back into the canonical records.
+    void restore_aot_records();
+    // The body of load() for one unit. It does not check that the loader is empty.
+    // "code_out" gets a copy of the registry of the module (load_aot keeps it).
+    ReloadResult load_unit(Module module, Registry* code_out = nullptr);
+    // The validation of request_reload for a Pending with a staged registry. It takes the mutex.
+    ReloadResult validate_and_stage(std::unique_ptr<Pending> p);
     void add_generation(Module module, uint32_t generation);
     void note_records(const Registry& reg, uint32_t generation);
     // Makes the module state block of a registry and sets the slot. False: an initializer threw.
-    bool make_module_block(const ModuleStateInfo& info, std::string& error);
+    bool make_module_block(const std::string& unit, const ModuleStateInfo& info, std::string& error);
     // The number of live objects for each module (the module that made the object).
-    std::unordered_map<uint32_t, uint32_t> live_by_module() const;
-    uint32_t code_refs(const Gen& g, const std::unordered_map<uint32_t, uint32_t>& live) const;
+    // Several units can share a generation number (the AOT units are all generation 1), so a
+    // module is the pair (unit, generation).
+    using ModuleKey = std::pair<std::string, uint32_t>;
+    std::map<ModuleKey, uint32_t> live_by_module() const;
+    uint32_t code_refs(const Gen& g, const std::map<ModuleKey, uint32_t>& live) const;
     // True when a live state block (an object or the module block) has a field with kMayHoldCode.
     bool state_holds_code() const;
+    // Makes the module (and its core) of a unit live: the live flags of the older module of the
+    // unit go to 0, the flags of the new module go to 1. A null flag (an old library) is skipped.
+    void switch_live(const std::string& unit, const Registry& code, const Registry* core);
     // Sets the signature key of the slot of a keyed thunk in the canonical record (design 5.3).
     void set_slot_key(const ThunkEntry& t);
     // The commit itself, after the synchronization of the mode.
@@ -230,17 +279,42 @@ private:
     Registry registry_;
     std::vector<Module> cores_; // the core modules; the destructor removes them after "gens_"
     std::vector<Gen> gens_; // the loader owns all modules; a retired one stays until it unloads
-    std::unordered_map<const ClassRecord*, uint32_t> record_gen_; // the module that holds a record
+    // The generation of the module that holds a record. The unit of the module is the unit of the
+    // class (unit_of_).
+    std::unordered_map<const ClassRecord*, uint32_t> record_gen_;
     uint64_t frame_ = 0;
     std::unique_ptr<Pending> pending_;
     // The dispatch tables of the removed classes (design 6.1), by class name. The record of a
     // removed class keeps its place in "registry_" while objects live.
     std::unordered_map<std::string, std::vector<SlotFn>> removed_;
-    // The live module state block (module-level script variables). Null: the script has none.
-    // "mod_slot_" is the slot variable of the module that made the layout. It points to the block.
-    const StateLayout* mod_layout_ = nullptr;
-    void** mod_slot_ = nullptr;
-    char* mod_block_ = nullptr;
+    // The live module state block of a unit (module-level script variables). A unit without a
+    // block has no entry. "slot" is the slot variable of the module that made the layout. It points
+    // to the block. The empty unit (key "") is the unit of a module without a unit name.
+    struct ModBlock
+    {
+        const StateLayout* layout = nullptr;
+        void** slot = nullptr;
+        char* block = nullptr;
+    };
+    std::unordered_map<std::string, ModBlock> mod_blocks_;
+    // The unit of each class, from the first registration of the class. A reload of a unit
+    // removes only the missing classes of this unit. A class never changes its unit.
+    std::unordered_map<std::string, std::string> unit_of_;
+    std::unordered_map<std::string, ClassRecord> aot_records_; // the AOT records, by class name
+    // The AOT modules by unit, for revert_unit: the register function and the registry that the
+    // function filled (the records in it are the canonical records, so it is not a copy of them).
+    struct AotUnit
+    {
+        void (*register_fn)(Registry&) = nullptr;
+        Registry reg;
+    };
+    std::map<std::string, AotUnit> aot_units_;
+    // The records and the slot tables that revert_unit stages. record_gen_ and the canonical
+    // records can point to them until reset.
+    std::deque<ClassRecord> revert_records_;
+    std::deque<std::vector<SlotFn>> revert_slots_;
+    // The live flags (Registry::live_flag) of the live module and its core, by unit.
+    std::unordered_map<std::string, std::vector<uint32_t*>> unit_live_;
     // The signature keys of the slots (ClassRecord::slot_keys), by class name. A class gets a
     // table when a reload changes the signature of one of its script functions (design 5.3).
     std::unordered_map<std::string, std::vector<const char*>> slot_keys_;

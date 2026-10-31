@@ -70,6 +70,33 @@ TEST(AotParity, AotProgramBehavesLikeTheLoader)
     EXPECT_EQ(aot, loaded);
 }
 
+// Loader::load_aot runs the code of the binary under a loader. The text must be the same as
+// the text of the AOT program.
+TEST(AotParity, LoadAotBehavesLikeTheAotProgram)
+{
+    testing::internal::CaptureStdout();
+    std::string log;
+    {
+        hot::Loader loader;
+        const hot::ReloadResult loaded = loader.load_aot(hot::aot_table);
+        if (!loaded)
+        {
+            ADD_FAILURE() << loaded.error;
+        }
+        else
+        {
+            log = aot_demo::run([&](const char* name) { return loader.find(name)->create(); });
+        }
+    }
+    std::fflush(stdout);
+    const std::string via_loader = testing::internal::GetCapturedStdout() + log;
+    int status = -1;
+    const std::string aot = run_command(std::string(AOT_DEMO_PATH) + " 2>&1", &status);
+    EXPECT_EQ(status, 0);
+    ASSERT_FALSE(via_loader.empty());
+    EXPECT_EQ(aot, via_loader);
+}
+
 // The text has the facts that the task names, so an empty or a wrong run cannot pass.
 TEST(AotParity, AotProgramShowsTheLanguageFeatures)
 {

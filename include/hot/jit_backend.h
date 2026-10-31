@@ -61,6 +61,8 @@ public:
     // backend.h.
     LoadResult load(const ScriptSource& source, uint32_t generation, LoadMode mode = LoadMode::Reload) override;
     const char* name() const override { return "JIT"; }
+    // Sets the slot text in memory when it is empty or when the text covers it (backend.h).
+    void seed_slots(const std::string& text) override;
 
     JitTimings last_timings() const { return timings_; }
 

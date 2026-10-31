@@ -9,6 +9,7 @@
 
 #include "hot/module.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -48,7 +49,40 @@ public:
     // writes it, and the Loader calls the callback when the module is live.
     virtual LoadResult load(const ScriptSource& source, uint32_t generation, LoadMode mode = LoadMode::Reload) = 0;
     virtual const char* name() const = 0;
+
+    // Gives the backend the slot and signature manifest of the AOT scripts (AotTable::slots), so
+    // the next generation keeps the slot numbers of the AOT code. Call it before the first load.
+    // The rule: the backend keeps its slot state only when the state has every line of the text
+    // (see slots_cover). Such a state comes from a later generation of the same scripts. Else the
+    // backend takes the text, because the state is empty or stale (for example a file of an
+    // earlier run). The default does nothing.
+    virtual void seed_slots(const std::string& text) { (void)text; }
 };
+
+// True when every non-empty line of "have" is a line of "text". The backends use it in seed_slots.
+inline bool slots_cover(const std::string& text, const std::string& have)
+{
+    std::vector<std::string> lines;
+    for (size_t pos = 0; pos < text.size();)
+    {
+        size_t eol = text.find('\n', pos);
+        if (eol == std::string::npos)
+            eol = text.size();
+        lines.push_back(text.substr(pos, eol - pos));
+        pos = eol + 1;
+    }
+    for (size_t pos = 0; pos < have.size();)
+    {
+        size_t eol = have.find('\n', pos);
+        if (eol == std::string::npos)
+            eol = have.size();
+        const std::string line = have.substr(pos, eol - pos);
+        pos = eol + 1;
+        if (!line.empty() && std::find(lines.begin(), lines.end(), line) == lines.end())
+            return false;
+    }
+    return true;
+}
 
 // The backend that HOT_BACKEND selected at build time.
 std::unique_ptr<Backend> make_default_backend();

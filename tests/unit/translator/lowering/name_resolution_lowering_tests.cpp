@@ -73,7 +73,7 @@ TEST(NameResolutionLowering, LambdaParameterLeaks)
 {
     Fixture f;
     EXPECT_EQ(f.body("var g = (int* q) => { }; q.x;"),
-        "auto g = hot::make_closure(GEN, \"Player::run lambda\", [=](int32_t* q) "
+        "auto g = hot::make_closure(GEN, &hot_live, \"Player::run lambda\", [=](int32_t* q) "
         "{ HOT_NODEBUG_LOCAL auto* __st = state_of(__self); }); hot::deref(q).x;");
 }
 

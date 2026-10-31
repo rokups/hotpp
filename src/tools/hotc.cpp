@@ -233,6 +233,35 @@ bool write_file(const std::string& path, const std::string& text)
     return true;
 }
 
+// Writes the text as a C++ string literal, one literal for each line (adjacent literals join).
+std::string cpp_string_literal(const std::string& text)
+{
+    std::string out;
+    size_t pos = 0;
+    while (pos < text.size())
+    {
+        const size_t eol = text.find('\n', pos);
+        const size_t end = eol == std::string::npos ? text.size() : eol + 1;
+        out += "    \"";
+        for (size_t i = pos; i < end; ++i)
+        {
+            const char c = text[i];
+            if (c == '\n')
+                out += "\\n";
+            else if (c == '\\' || c == '"')
+            {
+                out += '\\';
+                out += c;
+            }
+            else
+                out += c;
+        }
+        out += "\"\n";
+        pos = end;
+    }
+    return out.empty() ? "    \"\"\n" : out;
+}
+
 int run_aot(const Args& args)
 {
     if (args.has_compiler_option || args.out_dir.empty() || args.inputs.empty())
@@ -270,6 +299,7 @@ int run_aot(const Args& args)
 
     hotc::TranslatorSession session;
     std::vector<std::string> names;
+    std::string slots; // the manifests of all scripts: a class belongs to one script
     bool failed = false;
     for (const std::string& path : args.inputs)
     {
@@ -300,6 +330,7 @@ int run_aot(const Args& args)
         cpp += "#undef script_register\n";
         if (!write_file(out, cpp))
             failed = true;
+        slots += r.slots_out + r.sigs_out;
         names.push_back(stem);
     }
     if (failed)
@@ -311,8 +342,10 @@ int run_aot(const Args& args)
     reg += "\nnamespace hot {\nnamespace {\nconst AotScript kAotScripts[] = {\n";
     for (const std::string& n : names)
         reg += "    {\"" + n + "\", &hot_script_register_" + identifier(n) + "},\n";
-    reg += "};\n}  // namespace\n\nextern const AotTable aot_table;\n";
-    reg += "const AotTable aot_table = {kAotScripts, " + std::to_string(names.size()) + "};\n";
+    reg += "};\n\n// The slot manifest of all scripts. A run-time backend seeds its slot file with it.\n";
+    reg += "const char kAotSlots[] =\n" + cpp_string_literal(slots) + ";\n";
+    reg += "}  // namespace\n\nextern const AotTable aot_table;\n";
+    reg += "const AotTable aot_table = {kAotScripts, " + std::to_string(names.size()) + ", kAotSlots};\n";
     reg += "}  // namespace hot\n";
     return write_file(args.out_dir + "/hot_aot_registry.cpp", reg) ? 0 : 1;
 }

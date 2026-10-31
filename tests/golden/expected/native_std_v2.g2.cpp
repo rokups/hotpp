@@ -25,6 +25,8 @@
 #line 26 "native_std_v2.hot.cpp"
 
 constexpr uint32_t GEN = 2;
+// The live flag of this module. The loader sets it. The guard of each function reads it.
+static uint32_t hot_live = 0;
 
 // ---------------------------------------------------------------- class Tracker
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -51,7 +53,7 @@ struct Tracker_Shell final : Actor, hot::ShellBase {
     }
 #line 10 "native_std_v2.hot"
     ~Tracker_Shell() override { hot::destroy_state(this); }
-#line 55 "native_std_v2.hot.cpp"
+#line 57 "native_std_v2.hot.cpp"
 
 #line 10 "native_std_v2.hot"
     void Tick(float a0) override
@@ -61,7 +63,7 @@ struct Tracker_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 10 "native_std_v2.hot"
     }
-#line 65 "native_std_v2.hot.cpp"
+#line 67 "native_std_v2.hot.cpp"
 
 #line 10 "native_std_v2.hot"
     void TakeDamage(float a0) override
@@ -71,7 +73,7 @@ struct Tracker_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 10 "native_std_v2.hot"
     }
-#line 75 "native_std_v2.hot.cpp"
+#line 77 "native_std_v2.hot.cpp"
 
 #line 10 "native_std_v2.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -81,7 +83,7 @@ struct Tracker_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 10 "native_std_v2.hot"
     }
-#line 85 "native_std_v2.hot.cpp"
+#line 87 "native_std_v2.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -105,7 +107,7 @@ struct TrackerState_g2 {
         return static_cast<Tracker_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 10 "native_std_v2.hot"
     }
-#line 109 "native_std_v2.hot.cpp"
+#line 111 "native_std_v2.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 10 "native_std_v2.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -115,30 +117,30 @@ struct TrackerState_g2 {
         return static_cast<Tracker_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 10 "native_std_v2.hot"
     }
-#line 119 "native_std_v2.hot.cpp"
+#line 121 "native_std_v2.hot.cpp"
 };
 
 #line 11 "native_std_v2.hot"
 static void Tracker__init_title(void*, void* f) { using T = std::string; new (f) T("new title"); }
-#line 124 "native_std_v2.hot.cpp"
+#line 126 "native_std_v2.hot.cpp"
 #line 12 "native_std_v2.hot"
 static void Tracker__init_history(void*, void* f) { using T = std::vector<int32_t>; new (f) T(std::vector<int32_t>()); }
-#line 127 "native_std_v2.hot.cpp"
+#line 129 "native_std_v2.hot.cpp"
 #line 13 "native_std_v2.hot"
 static void Tracker__init_dist(void*, void* f) { using T = float; new (f) T(0.0f); }
-#line 130 "native_std_v2.hot.cpp"
+#line 132 "native_std_v2.hot.cpp"
 #line 14 "native_std_v2.hot"
 static void Tracker__init_lowest(void*, void* f) { using T = float; new (f) T(0.0f); }
-#line 133 "native_std_v2.hot.cpp"
+#line 135 "native_std_v2.hot.cpp"
 #line 15 "native_std_v2.hot"
 static void Tracker__init_sum(void*, void* f) { using T = float; new (f) T(0.0f); }
-#line 136 "native_std_v2.hot.cpp"
+#line 138 "native_std_v2.hot.cpp"
 #line 16 "native_std_v2.hot"
 static void Tracker__init_described(void*, void* f) { using T = std::string; new (f) T(""); }
-#line 139 "native_std_v2.hot.cpp"
+#line 141 "native_std_v2.hot.cpp"
 #line 17 "native_std_v2.hot"
 static void Tracker__init_note(void*, void* f) { using T = std::string; new (f) T("note from generation 2"); }
-#line 142 "native_std_v2.hot.cpp"
+#line 144 "native_std_v2.hot.cpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -188,7 +190,7 @@ HOT_HIDDEN static auto Tracker__plan()
     return std::make_pair(Tracker__super_args(), std::tuple<>());
 #line 10 "native_std_v2.hot"
 }
-#line 192 "native_std_v2.hot.cpp"
+#line 194 "native_std_v2.hot.cpp"
 using Tracker_SuperArgs = decltype(Tracker__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr.
@@ -208,7 +210,7 @@ HOT_NODEBUG static hot::ShellBase* Tracker__construct(const char* key, const voi
     return nullptr;
 #line 10 "native_std_v2.hot"
 }
-#line 212 "native_std_v2.hot.cpp"
+#line 214 "native_std_v2.hot.cpp"
 
 static const char* const Tracker__construct_keys[] = {typeid(Tracker_SuperArgs).name(), nullptr};
 
@@ -224,7 +226,7 @@ HOT_HIDDEN static Tracker_Shell* Tracker__build([[maybe_unused]] bool __note)
     return __self;
 #line 10 "native_std_v2.hot"
 }
-#line 228 "native_std_v2.hot.cpp"
+#line 230 "native_std_v2.hot.cpp"
 #line 10 "native_std_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static Tracker_Shell* Tracker__new()
 #line 10 "native_std_v2.hot"
@@ -233,14 +235,14 @@ HOT_HIDDEN static Tracker_Shell* Tracker__build([[maybe_unused]] bool __note)
     return Tracker__build(true);
 #line 10 "native_std_v2.hot"
 }
-#line 237 "native_std_v2.hot.cpp"
+#line 239 "native_std_v2.hot.cpp"
 
 #line 19 "native_std_v2.hot"
 void TrackerState_g2::Tick(float dt)
 #line 19 "native_std_v2.hot"
 {
 #line 19 "native_std_v2.hot"
-    if (HOT_UNLIKELY(hot::active_generation != GEN)) {
+    if (HOT_UNLIKELY(!hot_live)) {
 #line 19 "native_std_v2.hot"
         hot::stale_call("Tracker::Tick(float)");
 #line 19 "native_std_v2.hot"
@@ -275,7 +277,7 @@ void TrackerState_g2::Tick(float dt)
     hot::deref(__st->history).push_back(static_cast<int32_t>(hot::deref(__st->history).size()) * 10);
 #line 31 "native_std_v2.hot"
 }
-#line 279 "native_std_v2.hot.cpp"
+#line 281 "native_std_v2.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Tracker_slots[SLOT_COUNT] = {
@@ -303,10 +305,11 @@ HOT_NODEBUG static hot::Instance Tracker_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "native_std_v2.hot"
 }
-#line 307 "native_std_v2.hot.cpp"
+#line 309 "native_std_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
+    reg.set_live_flag(&hot_live);
     reg.add(&Tracker_record, &Tracker_create);
     Tracker_record.construct_keys = Tracker__construct_keys;
 }

@@ -1,0 +1,14 @@
+// Unit B of the override tests. The run-time override of unit A must not change it.
+using "Actor.h";
+
+class Beta : Actor {
+    int hits = 0;
+
+    override void Tick(float dt) {
+        this.hits = this.hits + 10;
+    }
+
+    int Hits() {
+        return this.hits;
+    }
+}

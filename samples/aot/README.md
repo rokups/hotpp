@@ -24,7 +24,7 @@ compiler (the object library `aot_cpp_scripts_plain`). This shows that a `.cpp` 
 
 1. `hot_add_host(TARGET sample_aot_hot MODE AOT SCRIPTS script/wolf.hot ...)` runs `hotc --aot`
    at build time. It makes C++ files and a table `hot::aot_table`. It builds them as a static library.
-2. The library links `hot::aot`. This library has `hot::AotRegistry` and does not have the loader.
+2. `hot_add_host` links `hot::aot` to the library. `hot::aot` has `hot::AotRegistry` and does not have the loader.
 3. `main.cpp` makes `hot::AotRegistry registry(hot::aot_table)`. The constructor registers
    the classes of all scripts.
 4. `registry.create_as<Creature>("Wolf")` makes an object and returns the native pointer.
@@ -91,7 +91,7 @@ The functions `hot_add_host` and `hot_add_scripts` are then available.
 ## Link
 
 - `sample_aot_hot_scripts` and `sample_aot_cpp_scripts` are the libraries from `hot_add_host(... MODE AOT ...)`. The program links its library (PRIVATE).
-  Each has the generated C++ and the table `hot::aot_table`. It links `hot::aot` (PUBLIC).
+  Each has the generated C++ and the table `hot::aot_table`. It links `hot::runtime_core` (PUBLIC). The program links `hot::aot`.
 - Each program links only the library of its variant. It does not link `hot_runtime`.
 
 ## Adapt it to your project

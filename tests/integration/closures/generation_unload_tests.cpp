@@ -354,4 +354,37 @@ TEST_F(GenerationUnload, StatsListGenerationsInOrder)
     EXPECT_EQ(st.active_generation, 2u);
 }
 
+// Two units. A reload of the unit "timer" to a later generation does not make the methods of
+// the unit "player" stale: each module has its own live flag.
+TEST_F(GenerationUnload, ReloadOfOneUnitKeepsTheMethodsOfAnotherUnitLive)
+{
+    hot::Module player = build("player_v1.hot", 1);
+    player.unit = "player";
+    hot::Module t2 = build("timer_v1.hot", 2);
+    t2.unit = "timer";
+    hot::Module t3 = build("timer_v2.hot", 3);
+    t3.unit = "timer";
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(player)));
+    for (hot::Module* m : {&t2, &t3})
+    {
+        ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*m)));
+        testing::internal::CaptureStderr();
+        ASSERT_RELOAD_OK(s.loader.commit_pending());
+        testing::internal::GetCapturedStderr();
+        s.loader.frame_boundary();
+        s.loader.frame_boundary();
+    }
+    EXPECT_EQ(hot::active_generation, 3u);
+
+    const uint64_t stale0 = hot::stale_call_count();
+    testing::internal::CaptureStdout();
+    testing::internal::CaptureStderr();
+    s.actor->Tick(kDt); // generation 1 code of the unit "player"
+    const std::string log = testing::internal::GetCapturedStderr();
+    const std::string out = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(hot::stale_call_count(), stale0) << log;
+    EXPECT_EQ(count_lines(out, "[v1]"), 2) << out; // the Tick line and the heal line
+}
+
 } // namespace

@@ -23,7 +23,7 @@ endif()
 #   sample_aot_hot has the C++ that hotc makes from script/wolf.hot.
 #   sample_aot_cpp has the C++ that hotc makes from script/wolf.cpp.
 # A call of hot_add_host takes scripts with one stem only, so each variant has its own call.
-# The library sample_aot_<variant>_scripts has the result and links hot::aot.
+# The library sample_aot_<variant>_scripts has the result. The program links hot::aot.
 enable_testing()
 foreach(variant hot cpp)
     # The variant "hot" uses the extension ".hot".

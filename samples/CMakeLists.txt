@@ -1,5 +1,6 @@
 # The samples of Hot++ for consumer projects. Each sample is a small project that uses Hot++ as a library.
 add_subdirectory(aot)
+add_subdirectory(aot-reload)
 add_subdirectory(runtime-compile)
 add_subdirectory(precompiled-library)
 add_subdirectory(hot-reload)

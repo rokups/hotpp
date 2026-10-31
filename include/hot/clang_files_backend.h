@@ -51,6 +51,9 @@ public:
     const char* name() const override { return "CLANG_FILES"; }
     // The path of the slots file. The file changes only when the Loader accepts a module.
     const std::string& slots_file() const { return opt_.slots_file; }
+    // Writes the text to the slots file when the file does not exist yet or when the text covers
+    // the content of the file (backend.h: slots_cover). A failed write does nothing.
+    void seed_slots(const std::string& text) override;
 
     // Translates and compiles one script into "out_so". It writes the .cpp
     // next to the .so. It does not load the library. The slot file changes only

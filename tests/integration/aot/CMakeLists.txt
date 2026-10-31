@@ -6,7 +6,7 @@ hot_add_scripts(TARGET aot_demo_scripts AOT SCRIPTS ${PROJECT_SOURCE_DIR}/tests/
 add_executable(aot_demo aot_demo_main.cpp ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
 target_include_directories(aot_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(aot_demo PRIVATE aot_demo_scripts)
+target_link_libraries(aot_demo PRIVATE aot_demo_scripts hot::aot)
 
 # AOT compilation tests (S12, design M7).
 #  integration_aot_parity_tests: links the loader. It runs the same demo with the loader and
@@ -17,7 +17,8 @@ add_executable(integration_aot_parity_tests aot_parity_tests.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Object.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
 target_include_directories(integration_aot_parity_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
-target_link_libraries(integration_aot_parity_tests PRIVATE hot_backend GTest::gtest_main)
+# aot_demo_scripts links only the core: Loader::load_aot takes the table (no hot_aot here).
+target_link_libraries(integration_aot_parity_tests PRIVATE aot_demo_scripts hot_backend GTest::gtest_main)
 set_target_properties(integration_aot_parity_tests PROPERTIES ENABLE_EXPORTS ON)
 add_dependencies(integration_aot_parity_tests aot_demo)
 target_compile_definitions(integration_aot_parity_tests PRIVATE
@@ -34,5 +35,30 @@ add_executable(integration_aot_registry_tests aot_registry_tests.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
 target_include_directories(integration_aot_registry_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
-target_link_libraries(integration_aot_registry_tests PRIVATE aot_registry_scripts GTest::gtest_main)
+target_link_libraries(integration_aot_registry_tests PRIVATE aot_registry_scripts hot::aot GTest::gtest_main)
 hot_gtest(integration_aot_registry_tests)
+
+# Loader::load_aot and Backend::seed_slots: the loader, a backend and the AOT scripts in one
+# program. The scripts library links only the core of the runtime.
+add_executable(integration_aot_load_tests aot_load_tests.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+target_include_directories(integration_aot_load_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+target_link_libraries(integration_aot_load_tests PRIVATE aot_registry_scripts hot_backend hot_clang_backend GTest::gtest_main)
+set_target_properties(integration_aot_load_tests PROPERTIES ENABLE_EXPORTS ON)
+target_compile_definitions(integration_aot_load_tests PRIVATE HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+hot_gtest(integration_aot_load_tests)
+
+# Override and revert of one AOT unit at run time: two units, the loader and a backend.
+hot_add_scripts(TARGET aot_override_scripts AOT
+    SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/override_a_v1.hot ${PROJECT_SOURCE_DIR}/tests/scripts/override_b_v1.hot
+    INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
+    DEPENDS ${HOT_HEADERS})
+add_executable(integration_aot_override_tests aot_override_tests.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+target_include_directories(integration_aot_override_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+target_link_libraries(integration_aot_override_tests PRIVATE aot_override_scripts hot_backend GTest::gtest_main)
+set_target_properties(integration_aot_override_tests PROPERTIES ENABLE_EXPORTS ON)
+target_compile_definitions(integration_aot_override_tests PRIVATE HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+hot_gtest(integration_aot_override_tests)

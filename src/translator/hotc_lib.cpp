@@ -2768,6 +2768,8 @@ void translate_impl(
     if (!sc.is_cpp)
         write_marks();
     o.w("\nconstexpr uint32_t GEN = " + std::to_string(opt.gen) + ";\n");
+    o.w("// The live flag of this module. The loader sets it. The guard of each function reads it.\n");
+    o.w("static uint32_t hot_live = 0;\n");
     // The forward block of a ".cpp" script. The text of the file can call hot_mod() before the
     // module block: the static_cast of a "void*" to a pointer of an incomplete type is valid.
     if (sc.is_cpp && has_module)
@@ -4637,7 +4639,7 @@ void translate_impl(
             o.w(line_at(m.line));
             o.w("{\n");
             o.w(line_at(m.line));
-            o.w("    if (HOT_UNLIKELY(hot::active_generation != GEN)) {\n");
+            o.w("    if (HOT_UNLIKELY(!hot_live)) {\n");
             o.w(line_at(m.line));
             o.w("        hot::stale_call(\"" + what + "\");\n");
             o.w(line_at(m.line));
@@ -4883,6 +4885,7 @@ void translate_impl(
     write_texts(seq.size());
 
     o.w("extern \"C\" void script_register(hot::Registry& reg)\n{\n");
+    o.w("    reg.set_live_flag(&hot_live);\n");
     if (has_module)
         o.w("    reg.set_module_state(&" + kModuleName + "_layout, &" + kModuleName + "_slot);\n");
     for (const auto& r : registers)

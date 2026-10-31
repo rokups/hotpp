@@ -51,6 +51,8 @@ AotRegistry::AotRegistry(const AotTable& table)
             const AotScript& script = table.scripts[i];
             Registry reg;
             script.register_fn(reg);
+            if (reg.live_flag())
+                *reg.live_flag() = 1; // all AOT code is live
             for (const auto& [name, e] : reg.entries())
             {
                 if (registry_.find(name))
