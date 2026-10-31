@@ -4043,7 +4043,9 @@ void translate_impl(
             m.overrides_virtual = true;
             if (hit->final_)
                 fail_at(map, m.pos, "'" + hit->text() + "' of " + hit->owner + " is final and cannot be overridden");
-            if (!m.ret.empty() && key_norm(m.ret) != key_norm(hit->ret))
+            if (!m.ret.empty()
+                && !hotc::override_return_ok(
+                    m.ret, hit->ret, types, hotc::relaxed_override_enabled() && !sc.is_cpp))
                 fail_at(map, m.pos,
                     "return type '" + hotc::script_type_text(m.ret) + "' differs from '"
                         + hotc::script_type_text(hit->ret) + "'");

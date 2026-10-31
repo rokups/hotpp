@@ -558,6 +558,27 @@ std::string TypeModel::carrier_of(const std::string& native_param_type) const
     return {};
 }
 
+std::string TypeModel::return_carrier_of(const std::string& native_return_type) const
+{
+    std::string t = native_return_type;
+    const size_t e = t.find_last_not_of(" \t");
+    if (e == std::string::npos || t[e] == '*' || t[e] == '&')
+        return {};
+    return carrier_of(t);
+}
+
+bool override_return_ok(
+    const std::string& script_ret, const std::string& native_ret, const TypeModel& model, bool relaxed)
+{
+    const std::string s = override_key_norm(script_ret);
+    if (s == override_key_norm(native_ret))
+        return true;
+    if (!relaxed)
+        return false;
+    const std::string t = model.return_carrier_of(native_ret);
+    return !t.empty() && override_key_norm(t) == s;
+}
+
 OverrideMatch match_native_virtual(const std::string& name, const std::vector<std::string>& script_ptypes,
     const std::vector<VirtualSig>& virtuals, const TypeModel& model, bool is_const, bool relaxed)
 {

@@ -28,6 +28,8 @@ const char* kGunHeader =
     "    virtual void Two(std::shared_ptr<Weapon> w) {}\n"
     "    virtual void Exact(Weapon* w) {}\n"
     "    virtual void Exact(std::shared_ptr<Weapon> w) {}\n"
+    "    virtual std::shared_ptr<Weapon> Spawn() { return nullptr; }\n"
+    "    virtual Weapon* Borrow() { return nullptr; }\n"
     "};\n";
 
 hotc::TranslateResult gun_translate(const std::string& members)
@@ -98,4 +100,19 @@ TEST(HandleOverrideTranslation, OtherTypeStillHides)
     const hotc::TranslateResult r = gun_translate("    override void HitP(int w) { }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "function 'HitP' hides the virtual method of Gun")) << r.diagnostics;
+}
+
+TEST(HandleOverrideTranslation, PlainHandleReturn)
+{
+    const hotc::TranslateResult r = gun_translate("    Weapon w;\n    override Weapon Spawn() { return this.w; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    // The slot keeps the native return type.
+    EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Weapon> FooState_g1::Spawn()")) << r.cpp;
+}
+
+TEST(HandleOverrideTranslation, RawPointerReturnIsNotRelaxed)
+{
+    const hotc::TranslateResult r = gun_translate("    override Weapon Borrow() { return null; }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "return type 'Weapon' differs from 'Weapon*'")) << r.diagnostics;
 }

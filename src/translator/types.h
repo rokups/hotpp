@@ -165,6 +165,11 @@ public:
     // so "T*" is the handle carrier. The text goes through the canonical type spelling first.
     std::string carrier_of(const std::string& native_param_type) const;
 
+    // The handle type T of a native return type that is H by value ("std::shared_ptr<Weapon>"),
+    // else an empty string. A pointer, a reference and the intrusive "T*" are not carriers of
+    // a return: the lifetime of the result is not clear (task 33, phase 2).
+    std::string return_carrier_of(const std::string& native_return_type) const;
+
 private:
     TypeRule lookup_stub(const std::string& cpp_type) const;
 
@@ -231,6 +236,12 @@ std::string override_key_norm(const std::string& type);
 // again. The exact spelling always wins.
 OverrideMatch match_native_virtual(const std::string& name, const std::vector<std::string>& script_ptypes,
     const std::vector<VirtualSig>& virtuals, const TypeModel& model, bool is_const, bool relaxed);
+
+// True when the return type of a script override fits the return type of the native virtual:
+// the canonical texts are equal, or "relaxed" is true and the native type is H by value
+// (TypeModel::return_carrier_of) of the handle type that the script writes.
+bool override_return_ok(
+    const std::string& script_ret, const std::string& native_ret, const TypeModel& model, bool relaxed);
 
 // The relaxed override match is on (task 33). A ".cpp" script does not use it.
 constexpr bool relaxed_override_enabled()

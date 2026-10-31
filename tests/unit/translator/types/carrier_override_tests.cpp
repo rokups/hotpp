@@ -196,3 +196,31 @@ TEST(SharedFromThisFact, BaseWalk)
     EXPECT_TRUE(f.model.has_shared_from_this("Bullet"));
     EXPECT_FALSE(f.model.has_shared_from_this("Other"));
 }
+
+TEST(OverrideReturn, ByValueHandleIsRelaxed)
+{
+    CarrierFixture f;
+    EXPECT_TRUE(override_return_ok("Weapon", "std::shared_ptr<Weapon>", f.model, true));
+    EXPECT_FALSE(override_return_ok("Weapon", "std::shared_ptr<Weapon>", f.model, false));
+    EXPECT_TRUE(override_return_ok("int", "int", f.model, false));
+    EXPECT_TRUE(override_return_ok("uint32", "unsigned int", f.model, true));
+}
+
+TEST(OverrideReturn, PointerAndReferenceAreNotRelaxed)
+{
+    CarrierFixture f;
+    EXPECT_FALSE(override_return_ok("Weapon", "Weapon*", f.model, true));
+    EXPECT_FALSE(override_return_ok("Weapon", "Weapon&", f.model, true));
+    EXPECT_FALSE(override_return_ok("Weapon", "const Weapon&", f.model, true));
+    EXPECT_FALSE(override_return_ok("Weapon", "const std::shared_ptr<Weapon>&", f.model, true));
+    // The intrusive "T*" is a handle for a parameter, not for a return.
+    EXPECT_FALSE(override_return_ok("Item", "Item*", f.model, true));
+    EXPECT_EQ(f.model.return_carrier_of("std::shared_ptr<Weapon>"), "Weapon");
+    EXPECT_EQ(f.model.return_carrier_of("Item*"), "");
+}
+
+TEST(OverrideReturn, OtherHandleTypeDiffers)
+{
+    CarrierFixture f;
+    EXPECT_FALSE(override_return_ok("Item", "std::shared_ptr<Weapon>", f.model, true));
+}

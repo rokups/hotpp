@@ -31,6 +31,10 @@ public:
     virtual int WearShared(std::shared_ptr<Charm> c) { return 0; }
     virtual int WearItem(Item* i) { return 0; }
     virtual int WearBlade(Blade* b) { return 0; }
+    // Returns: only the handle by value can be overridden with the plain handle type.
+    virtual std::shared_ptr<Charm> Spawn() { return nullptr; }
+    virtual std::shared_ptr<Charm> Make(int power) { return nullptr; }
+    virtual Charm* Borrow() { return nullptr; }
 };
 
 inline int WearThrough(Wearer& w, const std::shared_ptr<Charm>& c, int which)

@@ -91,7 +91,9 @@ class Foo : Gun {
 - An intrusive stub (`intrusive("AddRef", "Release")`) adds a reference for a `T*`.
 - A `T*` of an object that no `std::shared_ptr` owns throws `NullReference` in the override. A null `T*` gives a null handle.
 - A `.cpp` script does not use this rule. It writes the exact native type.
-- Return types and a borrowed `T*` or `T&` in the body are not part of this rule.
+- A native method that returns `std::shared_ptr<Weapon>` by value can be overridden with the return type `Weapon`. The slot keeps the native return type.
+- A native return type `Weapon*`, `Weapon&` or an intrusive `Weapon*` is not relaxed: the lifetime of the result is not clear. Write the exact native type.
+- A borrowed `T*` or `T&` in the body is not part of this rule.
 
 ## Script parent
 

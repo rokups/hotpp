@@ -35,6 +35,17 @@ class Holder : Actor, Wearer {
         return 5;
     }
 
+    // The plain handle type as the return type of a native "std::shared_ptr<Charm>" virtual.
+    override Charm Spawn() {
+        return this.last;
+    }
+
+    override Charm Make(int power) {
+        Charm c = new Charm();
+        c.power = power;
+        return c;
+    }
+
     override int WearItem(Item i) {
         this.kept = i;
         return 4;

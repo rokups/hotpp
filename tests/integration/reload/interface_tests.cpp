@@ -157,6 +157,14 @@ TEST_P(BackendTests, HandleOverrideBindsTheNativeParameter)
     EXPECT_EQ(WearItemThrough(*w, item), 4); // Item*: the handle adds a reference
     EXPECT_EQ(item->refs, 1);
 
+    // The plain handle type as the return type: the slot returns the std::shared_ptr.
+    std::shared_ptr<Charm> spawned = w->Spawn();
+    EXPECT_EQ(spawned, other); // the field "last" holds "other"
+    std::shared_ptr<Charm> made = w->Make(9);
+    ASSERT_NE(made, nullptr);
+    EXPECT_EQ(made->power, 9);
+    EXPECT_EQ(made.use_count(), 1);
+
     // The class gets shared_from_this from a base: the handle is a cast of the base handle.
     auto blade = std::make_shared<Blade>();
     EXPECT_EQ(w->WearBlade(blade.get()), 5);
