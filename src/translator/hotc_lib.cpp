@@ -2637,7 +2637,10 @@ VirtualFiles collect_virtual_includes(
 // "hot/script.h" is a forced include when an include dir has it. A script can include it too.
 std::vector<std::string> clang_args(const Options& opt)
 {
-    std::vector<std::string> args = {"-x", "c++", "-std=" + opt.std_version, "-ferror-limit=0"};
+    // The msvc target of clang parses a template body only at its first use, so the parse
+    // misses the module variables in a template body. "-fno-delayed-template-parsing" stops it.
+    std::vector<std::string> args = {
+        "-x", "c++", "-std=" + opt.std_version, "-ferror-limit=0", "-fno-delayed-template-parsing"};
     const size_t slash = opt.input.rfind('/');
     args.push_back("-I" + (slash == std::string::npos ? std::string(".") : hotc::clang_path(opt.input.substr(0, slash))));
     for (const auto& d : opt.includes)
