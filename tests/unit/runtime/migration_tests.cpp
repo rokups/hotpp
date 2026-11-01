@@ -15,9 +15,13 @@
 #include <atomic>
 #include <cstddef>
 #include <functional>
+#include <map>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 namespace
@@ -303,6 +307,56 @@ TEST(MigrationPlan, FieldWithoutCopyIsFlaggedAndAMoveOnlyFieldMoves)
     ASSERT_NE(moved->get(), nullptr);
     EXPECT_EQ(**moved, 9);
     moved->~unique_ptr();
+}
+
+// A container of a move-only type reports a copy constructor, but the copy does not compile.
+// The deep trait looks at the element types, so such a field moves.
+TEST(MigrationPlan, ContainerOfMoveOnlyElementsMovesAndDoesNotCopy)
+{
+    using Vec = std::vector<std::unique_ptr<int>>;
+    using Map = std::map<int, std::unique_ptr<int>>;
+    using Pair = std::pair<int, std::unique_ptr<int>>;
+    using Opt = std::optional<std::unique_ptr<int>>;
+    static_assert(std::is_copy_constructible_v<Vec>);
+    static_assert(!hot::deep_copyable_v<Vec>);
+    static_assert(!hot::deep_copyable_v<Map>);
+    static_assert(!hot::deep_copyable_v<Pair>);
+    static_assert(!hot::deep_copyable_v<Opt>);
+    static_assert(!hot::deep_copyable_v<std::vector<Vec>>);
+    static_assert(!hot::deep_copyable_v<std::tuple<int, Vec>>);
+    static_assert(hot::deep_copyable_v<std::vector<std::string>>);
+    static_assert(hot::deep_copyable_v<std::map<int, std::pair<std::string, int>>>);
+    static_assert(hot::deep_copyable_v<std::optional<std::shared_ptr<int>>>);
+    static_assert(hot::deep_copyable_v<std::tuple<int, std::string>>);
+    static_assert(!(hot::field_flags<Vec>() & hot::kNotMovable));
+    static_assert(!(hot::field_flags<Map>() & hot::kNotMovable));
+    static_assert(!hot::deep_copyable_v<std::vector<std::atomic<int>>>);
+
+    alignas(Vec) char to_vec[sizeof(Vec)];
+    Vec from_vec;
+    from_vec.push_back(std::make_unique<int>(5));
+    from_vec.push_back(std::make_unique<int>(6));
+    hot::move_field<Vec>(to_vec, &from_vec);
+    auto* moved = reinterpret_cast<Vec*>(to_vec);
+    ASSERT_EQ(moved->size(), 2u);
+    EXPECT_EQ(*(*moved)[1], 6);
+    moved->~Vec();
+
+    alignas(Map) char to_map[sizeof(Map)];
+    Map from_map;
+    from_map[3] = std::make_unique<int>(7);
+    hot::move_field<Map>(to_map, &from_map);
+    auto* moved_map = reinterpret_cast<Map*>(to_map);
+    ASSERT_EQ(moved_map->size(), 1u);
+    EXPECT_EQ(*(*moved_map)[3], 7);
+    moved_map->~Map();
+
+    // A copyable container still copies: the source keeps its elements.
+    alignas(std::vector<std::string>) char to_str[sizeof(std::vector<std::string>)];
+    std::vector<std::string> from_str = {"a", "b"};
+    hot::move_field<std::vector<std::string>>(to_str, &from_str);
+    EXPECT_EQ(from_str.size(), 2u);
+    reinterpret_cast<std::vector<std::string>*>(to_str)->~vector();
 }
 
 TEST(MigrationPlan, MigrateBlockRunsTheInitializerForAFieldThatCannotMove)

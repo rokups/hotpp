@@ -7,6 +7,7 @@ group: Hot script
 
 This list shows what version 1 does not support.
 
+- The words `static`, `thread_local`, `friend`, `mutable` and `volatile` on a member of a `.hot` class. For a `static` member, use a module variable (a variable at file level).
 - Coroutines.
 - Generics in script code. You can use C++ templates.
 - Script exception types. You can throw and catch C++ types.

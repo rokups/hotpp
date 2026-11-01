@@ -207,6 +207,22 @@ bool is_access_word(const std::string& w)
     return w == "public" || w == "private" || w == "protected";
 }
 
+// The error text for a C++ word that a script member cannot have, or null for any other word.
+const char* unsupported_modifier(const std::string& w)
+{
+    if (w == "static")
+        return "static members are not supported; use a module variable (a variable at file level)";
+    if (w == "thread_local")
+        return "thread_local members are not supported; use a module variable (a variable at file level)";
+    if (w == "friend")
+        return "'friend' is not supported in a script class";
+    if (w == "mutable")
+        return "'mutable' is not supported in a script class";
+    if (w == "volatile")
+        return "'volatile' is not supported in a script class";
+    return nullptr;
+}
+
 // Builds the Mods from the word list. It reports duplicates and words that cannot combine.
 Mods collect_mods(const ParseState& st, const std::vector<ModTok>& toks)
 {
@@ -216,6 +232,11 @@ Mods collect_mods(const ParseState& st, const std::vector<ModTok>& toks)
     const ModTok* kind_tok = nullptr;
     for (const ModTok& t : toks)
     {
+        if (const char* why = unsupported_modifier(t.word))
+        {
+            st.error(t.pos, why);
+            continue;
+        }
         bool dup = false;
         for (const ModTok* o : seen)
             dup = dup || o->word == t.word;
@@ -859,7 +880,15 @@ struct typed_member
 // The junk token for the error text: a word or one code point.
 constexpr auto junk = dsl::while_one(dsl::ascii::word) | dsl::else_ >> any_unit;
 
-constexpr auto modifier_set = dsl::literal_set(kw_override, kw_virtual, kw_new, kw_public, kw_private, kw_protected);
+// C++ words that a script member cannot have. The parser accepts them as modifiers to give a clear error.
+constexpr auto kw_static = LEXY_KEYWORD("static", id);
+constexpr auto kw_thread_local = LEXY_KEYWORD("thread_local", id);
+constexpr auto kw_friend = LEXY_KEYWORD("friend", id);
+constexpr auto kw_mutable = LEXY_KEYWORD("mutable", id);
+constexpr auto kw_volatile = LEXY_KEYWORD("volatile", id);
+
+constexpr auto modifier_set = dsl::literal_set(kw_override, kw_virtual, kw_new, kw_public, kw_private, kw_protected,
+    kw_static, kw_thread_local, kw_friend, kw_mutable, kw_volatile);
 
 struct mod_item : lexy::token_production
 {

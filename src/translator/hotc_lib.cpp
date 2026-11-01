@@ -102,10 +102,9 @@ bool is_c_array_type(const std::string& t)
     return !split_c_array(t).second.empty() || t.find("(*[") != std::string::npos;
 }
 
-// True when the type text has a declarator in parentheses at the top level: a pointer to an
-// array "int (*)[3]", a function pointer "void (*)(int)" or a member pointer "int (A::*)(int)".
-// The name of a field goes inside the parentheses, so the declaration needs an alias.
-bool has_paren_declarator(const std::string& t)
+// The index of the ")" that ends the first declarator in parentheses at the top level of the
+// type text, or npos. The declarator has a "*" or a "&" inside: "int (*)[3]", "void (*)(int)".
+size_t paren_declarator_close(const std::string& t)
 {
     int angle = 0;
     for (size_t i = 0; i < t.size(); ++i)
@@ -118,11 +117,33 @@ bool has_paren_declarator(const std::string& t)
         {
             const size_t close = t.find(')', i);
             const std::string inner = t.substr(i + 1, close == std::string::npos ? std::string::npos : close - i - 1);
-            if (inner.find('*') != std::string::npos || inner.find('&') != std::string::npos)
-                return true;
+            if (close != std::string::npos
+                && (inner.find('*') != std::string::npos || inner.find('&') != std::string::npos))
+            {
+                const size_t bracket = inner.find('[');
+                return bracket == std::string::npos ? close : i + 1 + bracket; // before the "[4]" of an array
+            }
         }
     }
-    return false;
+    return std::string::npos;
+}
+
+// True when the type text has a declarator in parentheses at the top level: a pointer to an
+// array "int (*)[3]", a function pointer "void (*)(int)" or a member pointer "int (A::*)(int)".
+// The name of a field goes inside the parentheses, so the declaration needs an alias.
+bool has_paren_declarator(const std::string& t)
+{
+    return paren_declarator_close(t) != std::string::npos;
+}
+
+// The declaration of a parameter or a variable "name" of the type "t". A type with a declarator
+// in parentheses gets the name inside the parentheses: "int (*)(int)" gives "int (*op)(int)".
+std::string name_in_type(const std::string& t, const std::string& name)
+{
+    const size_t close = paren_declarator_close(t);
+    if (close == std::string::npos)
+        return t + " " + name;
+    return t.substr(0, close) + name + t.substr(close);
 }
 
 // The declaration of a field "name" of the type "t" without the final ";". A type with a
@@ -3814,7 +3835,7 @@ void translate_impl(
     {
         std::string r;
         for (const hotc::ast::Param& p : ps)
-            r += ", " + p.type + " " + p.name;
+            r += ", " + name_in_type(p.type, p.name);
         return r;
     };
     // The reload type key of a field type. An enum is its underlying integer type (design 5.3).
@@ -4017,7 +4038,7 @@ void translate_impl(
         {
             std::string r;
             for (const hotc::ast::Param& p : ps)
-                r += ", " + p.type + " " + p.name + default_arg(p, ps, base_cx);
+                r += ", " + name_in_type(p.type, p.name) + default_arg(p, ps, base_cx);
             return r;
         };
         if (!(is_module && sc.is_cpp)) // a ".cpp" script has these lines in the forward block
@@ -5308,21 +5329,21 @@ void translate_impl(
             {
                 std::string r;
                 for (const Param& p : m.params)
-                    r += ", " + p.type + " " + p.name;
+                    r += ", " + name_in_type(p.type, p.name);
                 return r;
             };
             auto param_defaults = [&](const Method& m)
             {
                 std::string r;
                 for (const Param& p : m.params)
-                    r += ", " + p.type + " " + p.name + default_arg(p, m.params, base_cx);
+                    r += ", " + name_in_type(p.type, p.name) + default_arg(p, m.params, base_cx);
                 return r;
             };
             auto body_types = [](const Method& m)
             {
                 std::string r;
                 for (const Param& p : m.params)
-                    r += ", " + (p.body_type.empty() ? p.type : p.body_type) + " " + p.name;
+                    r += ", " + name_in_type(p.body_type.empty() ? p.type : p.body_type, p.name);
                 return r;
             };
             // The fields, in the order of the declaration. The shells of the parents come first.
@@ -5400,7 +5421,7 @@ void translate_impl(
         {
             std::string r;
             for (const Param& p : m.params)
-                r += ", " + p.type + " " + p.name;
+                r += ", " + name_in_type(p.type, p.name);
             return r;
         };
         // The parameters of the generation function of a script function (design 7.10.5).
@@ -5408,7 +5429,7 @@ void translate_impl(
         {
             std::string r;
             for (const Param& p : m.params)
-                r += ", " + (p.body_type.empty() ? p.type : p.body_type) + " " + p.name;
+                r += ", " + name_in_type(p.body_type.empty() ? p.type : p.body_type, p.name);
             return r;
         };
         // The same with the default values. Only the first declaration that the script calls has them.
@@ -5416,7 +5437,7 @@ void translate_impl(
         {
             std::string r;
             for (const Param& p : m.params)
-                r += ", " + (p.body_type.empty() ? p.type : p.body_type) + " " + p.name
+                r += ", " + name_in_type(p.body_type.empty() ? p.type : p.body_type, p.name)
                     + default_arg(p, m.params, base_cx);
             return r;
         };
@@ -5424,7 +5445,7 @@ void translate_impl(
         {
             std::string r;
             for (const Param& p : m.params)
-                r += ", " + p.type + " " + p.name + default_arg(p, m.params, base_cx);
+                r += ", " + name_in_type(p.type, p.name) + default_arg(p, m.params, base_cx);
             return r;
         };
         auto fn_ret = [](const Method& m) { return m.ret.empty() ? std::string("void") : m.ret; };
@@ -5736,8 +5757,8 @@ void translate_impl(
                     const Param& p = cm.params[i];
                     const std::string n = norm(p.type);
                     const bool by_ref = n.size() > 2 && n.compare(n.size() - 2, 2, "&&") == 0;
-                    pd += (i ? ", " : "") + (by_ref ? "const std::remove_reference_t<" + p.type + ">&" : p.type) + " "
-                        + p.name;
+                    pd += (i ? ", " : "")
+                        + name_in_type(by_ref ? "const std::remove_reference_t<" + p.type + ">&" : p.type, p.name);
                     names += (i ? ", " : "") + p.name;
                     declvals += (i ? ", " : "") + ("std::declval<" + p.type + ">()");
                 }
@@ -5977,7 +5998,7 @@ void translate_impl(
             for (const Param& p : m.params)
             {
                 const bool conv = !p.body_type.empty();
-                params += std::string(params.empty() ? "" : ", ") + p.type + " " + (conv ? "__" : "") + p.name;
+                params += std::string(params.empty() ? "" : ", ") + name_in_type(p.type, (conv ? "__" : "") + p.name);
                 if (conv && !p.bind_to.empty())
                     body_locals += "    " + p.body_type + " " + p.name + " = hot::bind<" + p.bind_to
                         + ">(\x01std::forward<" + p.type + ">(__" + p.name + "));\n";

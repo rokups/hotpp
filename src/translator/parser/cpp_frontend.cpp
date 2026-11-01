@@ -484,6 +484,7 @@ private:
     void process_class(CXCursor c);
     void make_field(CXCursor c, const ClassInfo* cls, const Where<ast::Field>& where, const std::string& mangled = {});
     void read_init(CXCursor c, const ClassInfo* cls, const Where<ast::Field>& where, size_t index);
+    bool in_array_bound(Range r) const;
     void fill_params(CXCursor c, std::vector<ast::Param>& out, const ClassInfo* cls);
     CXCursor body_of(CXCursor c);
     bool has_body(CXCursor c);
@@ -1708,6 +1709,16 @@ void Frontend::read_init(CXCursor c, const ClassInfo* cls, const Where<ast::Fiel
     }
 }
 
+// True when the expression at "r" is the size of an array in a declarator, as in "int (*p)[3]".
+// The size is a child of the parameter, but it is not a default value.
+bool Frontend::in_array_bound(Range r) const
+{
+    size_t i = r.begin;
+    while (i > 0 && is_space(text_[i - 1]))
+        --i;
+    return i > 0 && text_[i - 1] == '[';
+}
+
 void Frontend::fill_params(CXCursor c, std::vector<ast::Param>& out, const ClassInfo* cls)
 {
     const int n = clang_Cursor_getNumArguments(c);
@@ -1718,7 +1729,7 @@ void Frontend::fill_params(CXCursor c, std::vector<ast::Param>& out, const Class
         p.name = spelling(a);
         p.type = type_in_script(clang_getCursorType(a));
         for (CXCursor k : children(a))
-            if (clang_isExpression(clang_getCursorKind(k)))
+            if (clang_isExpression(clang_getCursorKind(k)) && !in_array_bound(extent_of(k)))
             {
                 // The text is already C++. The edits are the same as in a body. The shared
                 // default is "lowered", so the .hot path ("default_arg") writes the text as is.

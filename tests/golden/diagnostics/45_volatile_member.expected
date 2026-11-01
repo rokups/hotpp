@@ -1,0 +1,3 @@
+45_volatile_member.hot:4:5: error: 'volatile' is not supported in a script class
+    4 |     volatile int flag = 0;
+1 error generated.

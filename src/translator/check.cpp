@@ -757,7 +757,8 @@ struct Checker
         for (const Field& f : cd.fields)
         {
             check_storage(f.type, f.pos, "a field");
-            check_copyable(f.type, f.pos);
+            if (!is_cpp) // a ".cpp" field is the C++ of the user; the reload moves a field that does not copy
+                check_copyable(f.type, f.pos);
             if (f.init)
             {
                 locals.clear();

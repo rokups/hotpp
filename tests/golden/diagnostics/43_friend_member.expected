@@ -1,0 +1,3 @@
+43_friend_member.hot:4:5: error: 'friend' is not supported in a script class
+    4 |     friend void Helper(int x) { }
+1 error generated.

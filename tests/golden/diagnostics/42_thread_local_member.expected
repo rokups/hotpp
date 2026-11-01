@@ -1,0 +1,3 @@
+42_thread_local_member.hot:4:5: error: thread_local members are not supported; use a module variable (a variable at file level)
+    4 |     thread_local int count = 0;
+1 error generated.

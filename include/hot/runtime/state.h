@@ -15,6 +15,7 @@
 #include <new>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <typeinfo>
 #include <unordered_map>
@@ -255,9 +256,36 @@ template <class T, size_t N> struct holds_no_code<const T[N]> : holds_no_code<T>
 };
 
 // Helpers for the reflection table of generated code. T is the field type.
+// True when a copy of T compiles. The test goes through the element types: the copy constructor
+// of std::vector<std::unique_ptr<X>> exists, but its body does not compile. A container has a
+// "value_type" (std::vector, std::map, std::optional, std::array). A pair and a tuple have
+// their own elements.
+template <class T, class = void> struct deep_copyable : std::is_copy_constructible<T>
+{
+};
+
+template <class T> struct deep_copyable<T, std::void_t<typename T::value_type>>
+    : std::bool_constant<std::is_copy_constructible_v<T> && deep_copyable<std::remove_cv_t<typename T::value_type>>::value>
+{
+};
+
+template <class A, class B> struct deep_copyable<std::pair<A, B>, void>
+    : std::bool_constant<std::is_copy_constructible_v<std::pair<A, B>> && deep_copyable<std::remove_cv_t<A>>::value
+          && deep_copyable<std::remove_cv_t<B>>::value>
+{
+};
+
+template <class... Ts> struct deep_copyable<std::tuple<Ts...>, void>
+    : std::bool_constant<std::is_copy_constructible_v<std::tuple<Ts...>>
+          && (deep_copyable<std::remove_cv_t<Ts>>::value && ...)>
+{
+};
+
+template <class T> inline constexpr bool deep_copyable_v = deep_copyable<T>::value;
+
 // True when a field of type T moves to a new state block: a copy, or for a type that does not
 // copy, a move. A C array needs a copy of each element.
-template <class T> inline constexpr bool field_movable_v = std::is_copy_constructible_v<std::remove_all_extents_t<T>>
+template <class T> inline constexpr bool field_movable_v = deep_copyable_v<std::remove_all_extents_t<T>>
     || (!std::is_array_v<T> && std::is_move_constructible_v<T>);
 
 template <class T> HOT_HIDDEN constexpr uint8_t field_flags()
@@ -317,7 +345,7 @@ template <class T> HOT_NODEBUG inline void move_field(void* dst, const void* src
     }
     else if constexpr (std::is_array_v<T>)
         copy_into<T>(dst, src);
-    else if constexpr (std::is_copy_constructible_v<T>)
+    else if constexpr (deep_copyable_v<T>)
         new (dst) T(*static_cast<const T*>(src));
     else
         new (dst) T(std::move(*const_cast<T*>(static_cast<const T*>(src))));

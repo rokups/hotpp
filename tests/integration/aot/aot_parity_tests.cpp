@@ -127,6 +127,8 @@ TEST(AotParity, OptimizedCoverProgramBehavesLikeTheAotProgram)
         << opt;
     // A std::atomic field, a pointer to an array and a function pointer in the ".cpp" script.
     EXPECT_NE(opt.find("[aot_cover_cpp] CppBoss hits=2 row=5 op=14\n"), std::string::npos) << opt;
+    // A constructor and a method with such parameters: seed = 2 * 2, Run = (6 + 1) + seed.
+    EXPECT_NE(opt.find("[aot_cover_cpp] CppBoss applied=11 owned=7\n"), std::string::npos) << opt;
     EXPECT_NE(opt.find("hit=49 hit=45\n"), std::string::npos) << opt;
     EXPECT_NE(opt.find("guard=20 guard_bad=0 reports=hot::IndexOutOfRange;"), std::string::npos) << opt;
     // "this" as a handle gives the same object. Each of the three "new" that throw is caught (1, 10, 100).

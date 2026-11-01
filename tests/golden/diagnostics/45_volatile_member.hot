@@ -1,0 +1,5 @@
+using "Actor.h";
+
+class Player : Actor {
+    volatile int flag = 0;
+}

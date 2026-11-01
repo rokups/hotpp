@@ -1,0 +1,5 @@
+using "Actor.h";
+
+class Player : Actor {
+    friend void Helper(int x) { }
+}

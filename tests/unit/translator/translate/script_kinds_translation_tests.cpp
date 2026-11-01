@@ -228,3 +228,32 @@ TEST(ScriptKindsTranslation, CppFieldDeclaratorsAndInPlaceFields)
     // The field has no copy constructor, so the migration runs its initializer (kNotMovable).
     EXPECT_TRUE(has(r, "hot::move_field<std::atomic<int>>")) << r.cpp;
 }
+
+// A ".cpp" parameter with a declarator in parentheses gets the name inside the parentheses:
+// "int (*)(int) op" is not C++. The size of the array in "int (*p)[3]" is not a default value.
+TEST(ScriptKindsTranslation, CppParameterDeclaratorsKeepTheNameInside)
+{
+    TempDir dir;
+    write_file(dir.path() / "u.h", kHeader);
+    hotc::TranslateOptions o = temp_options(dir,
+        "#include \"u.h\"\n"
+        "class Q : public Unit { public:\n"
+        "    Q(int (*op)(int), int (*p)[3]) : n(op(p[0][1])) {}\n"
+        "    int run(int (*f)(int), int (Q::*mp)(int), int (&r)[3]) { return f(r[1]); }\n"
+        "    int n = 0;\n};\n");
+    o.script_name = "t.cpp";
+    for (const bool optimized : {false, true})
+    {
+        o.aot = true;
+        o.aot_optimized = optimized;
+        const hotc::TranslateResult r = hotc::translate(o);
+        ASSERT_TRUE(r.ok) << r.diagnostics;
+        EXPECT_TRUE(has(r, "(int (*op)(int), int (*p)[3])")) << r.cpp;
+        EXPECT_TRUE(has(r, "int (*f)(int), int (Q::*mp)(int), int (&r)[3]")) << r.cpp;
+        EXPECT_FALSE(has(r, "(*)(int) op")) << r.cpp;
+        EXPECT_FALSE(has(r, "(*)[3] p")) << r.cpp;
+        EXPECT_FALSE(has(r, "(&)[3] r")) << r.cpp;
+        EXPECT_FALSE(has(r, "(*p)[3] = 3")) << r.cpp;
+        EXPECT_FALSE(has(r, "(int (*)[3]) = ")) << r.cpp;
+    }
+}

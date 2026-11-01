@@ -9,8 +9,10 @@
 
 #include <atomic>
 #include <cstdio>
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 class CppUnit : public Actor
 {
@@ -59,6 +61,17 @@ public:
     int mine = 4;
 };
 
+// A constructor and a method whose parameters have the name inside the parentheses: a function
+// pointer and a pointer to an array.
+class CppApply : public Actor
+{
+public:
+    CppApply(int (*f)(int), int (*p)[3]) : Actor("CppApply"), seed(f(p[0][1])) {}
+    int Run(int (*g)(int), int (*q)[3]) { return g(q[1][2]) + seed; }
+
+    int seed = 0;
+};
+
 class CppBoss : public Actor
 {
 public:
@@ -68,6 +81,7 @@ public:
         std::printf("[aot_cover_cpp] CppBoss power=%d attack=%d caught=%d ticks=%d label=%s\n", power, attack, caught,
             ticks, label.c_str());
         std::printf("[aot_cover_cpp] CppBoss hits=%d row=%d op=%d\n", hits.load(), row[1][1], op(7));
+        std::printf("[aot_cover_cpp] CppBoss applied=%d owned=%d\n", applied, *owned[0]);
     }
 
     void Tick(float) override
@@ -88,6 +102,9 @@ public:
             }
             CppFussy* g = new CppFussy(1);
             (void)g;
+            CppApply* a = new CppApply([](int v) { return v * 2; }, grid);
+            applied = a->Run([](int v) { return v + 1; }, grid);
+            owned.push_back(std::make_unique<int>(7));
         }
         ticks += 1;
         hits += 1;
@@ -99,6 +116,9 @@ public:
     int attack = 0;
     int caught = 0;
     int ticks = 0;
+    int applied = 0;
+    // A container of a move-only type: it looks copyable, but the copy does not compile. It moves.
+    std::vector<std::unique_ptr<int>> owned;
     std::string label = "cpp";
     // A field that has no copy constructor must construct in place.
     std::atomic<int> hits = {0};
