@@ -1036,17 +1036,19 @@ TEST(LanguageServer, BackgroundIndexFindsAScriptSymbolInAGeneratedFile)
     opt.compile_commands_dir = dir.path().string();
     LsClient client(opt);
     client.initialize(uri_of(dir.path().string()));
-    json found;
+    json found, last;
     for (int i = 0; i < 120 && found.is_null(); ++i)
     {
         const json r = client.request("workspace/symbol", {{"query", "heal"}});
+        last = r;
         for (const json& sym : r.value("result", json::array()))
             if (sym["location"].value("uri", "") == uri_of(script))
                 found = sym;
         if (found.is_null())
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
-    ASSERT_FALSE(found.is_null()) << "the index has no script symbol";
+    ASSERT_FALSE(found.is_null()) << "the index has no script symbol for " << uri_of(script) << "\n"
+                                   << last.dump().substr(0, 3000);
     EXPECT_EQ(found["name"], "Player.heal");
     EXPECT_EQ(found["location"]["range"]["start"]["line"], 10);
 }
