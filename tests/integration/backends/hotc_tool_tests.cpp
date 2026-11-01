@@ -1164,6 +1164,47 @@ TEST(HotcTool, AotModeWritesTheCppAndTheRegistrationFile)
     EXPECT_NE(reg.find("aot_table = {kAotScripts, 2, kAotSlots}"), std::string::npos) << reg;
 }
 
+// --aot-optimized adds the define to each script and "true" to the table.
+TEST(HotcTool, AotOptimizedWritesTheDefineAndTheTableFlag)
+{
+    TestScratch scratch;
+    const std::string out_dir = scratch.file("hotc_aot_opt");
+    const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/aot_demo.hot";
+    const std::string cmd = std::string("'") + HOTC_PATH + "' --aot --aot-optimized '" + script + "' --out-dir '"
+        + out_dir + "' -I '" + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' 2>&1";
+    FILE* p = popen(cmd.c_str(), "r");
+    ASSERT_NE(p, nullptr);
+    std::string text;
+    char buf[512];
+    while (size_t n = fread(buf, 1, sizeof buf, p))
+        text.append(buf, n);
+    const int status = pclose(p);
+    ASSERT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(WEXITSTATUS(status), 0) << text;
+    const std::string demo = read_file(out_dir + "/aot_demo.aot.cpp");
+    EXPECT_NE(demo.find("\n#define HOT_AOT_OPTIMIZED 1\n"), std::string::npos);
+    const std::string reg = read_file(out_dir + "/hot_aot_registry.cpp");
+    EXPECT_NE(reg.find("aot_table = {kAotScripts, 1, kAotSlots, true}"), std::string::npos) << reg;
+}
+
+// --aot-optimized without --aot is a usage error. The tool prints the reason and the usage text.
+TEST(HotcTool, AotOptimizedWithoutAotPrintsTheUsage)
+{
+    const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/aot_demo.hot";
+    const std::string cmd = std::string("'") + HOTC_PATH + "' --aot-optimized '" + script + "' --out-dir /tmp/x 2>&1";
+    FILE* p = popen(cmd.c_str(), "r");
+    ASSERT_NE(p, nullptr);
+    std::string text;
+    char buf[512];
+    while (size_t n = fread(buf, 1, sizeof buf, p))
+        text.append(buf, n);
+    const int status = pclose(p);
+    ASSERT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(WEXITSTATUS(status), 2) << text;
+    EXPECT_NE(text.find("hotc: --aot-optimized needs --aot"), std::string::npos) << text;
+    EXPECT_NE(text.find("usage: hotc"), std::string::npos) << text;
+}
+
 // --aot needs an output directory and does not take the options of the other modes.
 TEST(HotcTool, AotModeRejectsBadUsage)
 {

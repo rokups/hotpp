@@ -198,6 +198,25 @@ HOT_HIDDEN typename detail::sig_result<Sig>::type call(ShellBase* self, unsigned
     }
 }
 
+// The call from the host into the script in optimized AOT code (HOT_AOT_OPTIMIZED). "f" is a
+// callable with no argument. It calls the script function directly: no slot, no signature key,
+// no script entry. The rule for an error is the rule of hot::call: only the outermost call
+// reports a hot::ScriptError, an inner call lets it pass, and "NoExcept" always reports.
+// "R" is the result type, also a reference or void.
+template <class R, bool NoExcept = false, class F>
+HOT_HIDDEN R call_direct(ShellBase* self, F&& f)
+{
+    detail::CallDepth depth;
+    try
+    {
+        return std::forward<F>(f)();
+    }
+    catch (const ScriptError&)
+    {
+        return detail::call_unhandled<R, NoExcept>(self, depth.d);
+    }
+}
+
 // Records that the code of "generation" made the object "self" (ShellBase::creator). The loader keeps
 // that generation loaded while the object lives, because the handle of the object (for example
 // the control block of a std::shared_ptr) has code of that generation.
@@ -276,6 +295,18 @@ HOT_NODEBUG inline std::shared_ptr<Shell> make_shared_shell(const ClassRecord* r
         return std::shared_ptr<Shell>(static_cast<Shell*>(construct_shell(rec, key, args)));
     else
         return std::allocate_shared<Shell>(detail::ShellAllocator<Shell>(rec, key, args));
+}
+
+// The "new" of a script class with a std::shared_ptr handle in optimized AOT code. The code has
+// one generation, so the shell is a plain object of "Shell". One block holds the shell and the
+// control block. A class with its own operator new keeps two blocks, so that operator new runs.
+template <class Shell, class... A>
+HOT_HIDDEN std::shared_ptr<Shell> make_shared_plain(A&... a)
+{
+    if constexpr (detail::has_class_new<Shell>::value)
+        return std::shared_ptr<Shell>(new Shell(Construct{}, a...));
+    else
+        return std::make_shared<Shell>(Construct{}, a...);
 }
 
 // A handle of the script object that owns the shell "self": the lowering of a bare "this"

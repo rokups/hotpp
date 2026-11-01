@@ -315,6 +315,9 @@ private:
     // removes only the missing classes of this unit. A class never changes its unit.
     std::unordered_map<std::string, std::string> unit_of_;
     std::unordered_map<std::string, ClassRecord> aot_records_; // the AOT records, by class name
+    // True after load_aot of an optimized table (AotTable::optimized). Then the loader refuses
+    // request_reload, revert_unit and load_unit. Reset clears it.
+    bool aot_optimized_ = false;
     std::string aot_slots_; // AotTable::slots of load_aot: the slot manifest of the AOT scripts
     // The AOT modules by unit, for revert_unit: the register function and the registry that the
     // function filled (the records in it are the canonical records, so it is not a copy of them).

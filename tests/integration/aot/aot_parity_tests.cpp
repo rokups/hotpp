@@ -70,6 +70,43 @@ TEST(AotParity, AotProgramBehavesLikeTheLoader)
     EXPECT_EQ(aot, loaded);
 }
 
+// The optimized AOT program (MODE AOT OPTIMIZED) prints the same text as the AOT program.
+TEST(AotParity, OptimizedProgramBehavesLikeTheAotProgram)
+{
+    int status = -1, opt_status = -1;
+    const std::string aot = run_command(std::string(AOT_DEMO_PATH) + " 2>&1", &status);
+    const std::string opt = run_command(std::string(AOT_DEMO_OPT_PATH) + " 2>&1", &opt_status);
+    EXPECT_EQ(status, 0);
+    EXPECT_EQ(opt_status, 0);
+    ASSERT_FALSE(aot.empty());
+    EXPECT_EQ(opt, aot);
+}
+
+// The cover script has a noexcept override, a const virtual, an interface base and a script
+// virtual through a base handle. The optimized program must print the same text. The text has
+// the facts, so a wrong run in both programs cannot pass.
+TEST(AotParity, OptimizedCoverProgramBehavesLikeTheAotProgram)
+{
+    int status = -1, opt_status = -1;
+    const std::string aot = run_command(std::string(AOT_COVER_PATH) + " 2>&1", &status);
+    const std::string opt = run_command(std::string(AOT_COVER_OPT_PATH) + " 2>&1", &opt_status);
+    EXPECT_EQ(status, 0) << aot;
+    EXPECT_EQ(opt_status, 0) << opt;
+    EXPECT_EQ(opt, aot);
+    // Elite::Power = Grunt::Power + 100; Attack uses it; Mix goes to Elite; hp 50 - 3 - 4, and Armor adds 2 to each hit.
+    EXPECT_NE(opt.find("seen_power=103 seen_attack=1030 seen_mix=5\n"), std::string::npos) << opt;
+    EXPECT_NE(opt.find("hit=49 hit=45 hp=43"), std::string::npos) << opt;
+    EXPECT_NE(opt.find("guard=20 guard_bad=0 reports=hot::IndexOutOfRange;"), std::string::npos) << opt;
+    // "this" as a handle gives the same object. Each of the three "new" that throw is caught (1, 10, 100).
+    // A "new" of a class with a native base and a constructor argument works. The objects that the
+    // throwing "new" made are destroyed: the constructor body ran for Fussy and Hurt, not for Broken.
+    EXPECT_NE(opt.find("same=1 caught=111 tally_n=7 hurt_n=1 hurt_name=hurt\n"), std::string::npos) << opt;
+    EXPECT_NE(opt.find("[aot_cover] Fussy 1 gone\n"), std::string::npos) << opt;
+    EXPECT_NE(opt.find("[aot_cover] Hurt 2 gone\n"), std::string::npos) << opt;
+    EXPECT_NE(opt.find("[aot_cover] Tally 7 gone\n"), std::string::npos) << opt;
+    EXPECT_EQ(opt.find("Broken gone"), std::string::npos) << opt;
+}
+
 // Loader::load_aot runs the code of the binary under a loader. The text must be the same as
 // the text of the AOT program.
 TEST(AotParity, LoadAotBehavesLikeTheAotProgram)

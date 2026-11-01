@@ -1,0 +1,132 @@
+// Cover script for optimized AOT code (parity test). It has what aot_demo.hot lacks:
+// a noexcept override, a const virtual that the shell forwards, a pure virtual of an interface
+// base, a script virtual that a call through a base handle reaches, and a script error in an
+// override that native code calls. It also has "new" of classes with a throwing constructor or a
+// throwing field initializer, and "this" as a handle.
+using "Actor.h";
+using "Damageable.h";
+using "Guarded.h";
+using <stdexcept>;
+using <string>;
+
+class Unit {
+    int base_power = 1;
+
+    virtual int Power() { return this.base_power; }
+    virtual int Mix(int a, int b) { return a * 10 + b; }
+    int Attack() { return Power() * 10; }
+}
+
+class Grunt : Unit {
+    int rage = 3;
+
+    override int Power() { return this.rage; }
+}
+
+class Elite : Grunt {
+    override int Power() { return base.Power() + 100; }
+    override int Mix(int a, int b) { return a + b; }
+}
+
+// No native base: the handle is a std::shared_ptr. "this" as a handle needs shared_from_this.
+class Tally {
+    int n = 0;
+
+    Tally(int start) { this.n = start; }
+    ~Tally() { std.printf("[aot_cover] Tally %d gone\n", this.n); }
+    Tally Me() { return this; }
+}
+
+// The constructor throws when the argument is positive.
+class Fussy {
+    int n = 0;
+
+    Fussy(int v) {
+        this.n = v;
+        if (v > 0) {
+            throw std.runtime_error("ctor failed");
+        }
+    }
+    ~Fussy() { std.printf("[aot_cover] Fussy %d gone\n", this.n); }
+}
+
+// The field initializer throws.
+class Broken {
+    int n = std.stoi(std.string("zz"));
+
+    ~Broken() { std.printf("[aot_cover] Broken gone\n"); }
+}
+
+// A native base with a constructor argument, and a constructor that throws.
+class Hurt : Actor {
+    int n = 0;
+
+    Hurt(int v) : base(std.string("hurt")) {
+        this.n = v;
+        if (v > 1) {
+            throw std.runtime_error("hurt failed");
+        }
+    }
+    ~Hurt() { std.printf("[aot_cover] Hurt %d gone\n", this.n); }
+}
+
+class Boss : Actor, IDamageable, IGuarded {
+    int hp = 50;
+    int[2] table = [10, 20];
+    Unit seen = null;
+    int seen_power = 0;
+    int seen_attack = 0;
+    int seen_mix = 0;
+    int probed = 0;
+    int same = 0;
+    int caught = 0;
+    int tally_n = 0;
+    int hurt_n = 0;
+    std.string hurt_name = "";
+    Hurt keep;
+
+    void Probe() {
+        this.probed = 1;
+        Tally t = new Tally(7);
+        Tally again = t.Me();
+        this.same = again == t ? 1 : 0;
+        this.tally_n = again.n;
+        try {
+            Fussy f = new Fussy(1);
+        } catch (const std.runtime_error& e) {
+            this.caught = this.caught + 1;
+        }
+        try {
+            Broken b = new Broken();
+        } catch (const std.invalid_argument& e) {
+            this.caught = this.caught + 10;
+        }
+        try {
+            Hurt h = new Hurt(2);
+        } catch (const std.runtime_error& e) {
+            this.caught = this.caught + 100;
+        }
+        this.keep = new Hurt(1);
+        this.hurt_n = this.keep.n;
+        this.hurt_name = this.keep.Name;
+    }
+
+    override void Tick(float dt) {
+        if (this.seen == null) this.seen = new Elite();
+        this.seen_power = this.seen.Power();
+        this.seen_attack = this.seen.Attack();
+        this.seen_mix = this.seen.Mix(2, 3);
+        if (this.probed == 0) {
+            this.Probe();
+        }
+    }
+
+    override int Absorb(int amount) {
+        this.hp = this.hp - amount;
+        return this.hp;
+    }
+
+    override int Guard(int x) {
+        return this.table[x];
+    }
+}

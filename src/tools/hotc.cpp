@@ -28,7 +28,8 @@
 //
 // AOT mode (--aot): translate scripts for an AOT build (design M7).
 //   hotc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]...
-//        [--no-strict-borrowed] [--format=std|fmt] [--resource-dir dir]
+//        [--no-strict-borrowed] [--format=std|fmt] [--resource-dir dir] [--aot-optimized]
+// The flag --aot-optimized builds optimized AOT code. It needs --aot.
 // For each file the tool writes DIR/<name>.aot.cpp (generation 1). It also writes
 // DIR/hot_aot_registry.cpp, which defines the constant table hot::aot_table
 // (include/hot/aot.h). The tool does not compile. The CMake function
@@ -73,7 +74,7 @@ namespace
         "[--format=std|fmt]\n"
         "            [--slots file] [--resource-dir dir] [--std=c++17|c++20|c++23]\n"
         "       hotc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]\n"
-        "            [--format=std|fmt] [--resource-dir dir] [--std=c++17|c++20|c++23]\n");
+        "            [--format=std|fmt] [--resource-dir dir] [--std=c++17|c++20|c++23] [--aot-optimized]\n");
     std::exit(2);
 }
 
@@ -92,6 +93,7 @@ struct Args
 {
     bool emit_cpp = false;
     bool aot = false;
+    bool aot_optimized = false; // --aot-optimized: needs --aot
     bool has_compiler_option = false; // --cxx, --cxxflag, --slots, --gen, -o
     std::vector<std::string> inputs;
     std::string out_dir, output, slots, resource_dir;
@@ -125,6 +127,8 @@ Args parse_args(int argc, char** argv)
             r.emit_cpp = true;
         else if (a == "--aot")
             r.aot = true;
+        else if (a == "--aot-optimized")
+            r.aot_optimized = true;
         else if (a == "--gen")
         {
             r.gen = std::atoi(next().c_str());
@@ -269,6 +273,7 @@ int run_aot(const Args& args)
     hotc::TranslateOptions base;
     base.generation = 1;
     base.aot = true;
+    base.aot_optimized = args.aot_optimized;
     base.strict_borrowed = args.strict_borrowed;
     base.format_lib = args.format_lib;
     // Without --resource-dir the translator needs the default. A portable build finds it at run time.
@@ -344,9 +349,11 @@ int run_aot(const Args& args)
     for (const std::string& n : names)
         reg += "    {\"" + n + "\", &hot_script_register_" + identifier(n) + "},\n";
     reg += "};\n\n// The slot manifest of all scripts. A run-time backend seeds its slot file with it.\n";
-    reg += "const char kAotSlots[] =\n" + cpp_string_literal(slots) + ";\n";
+    // Optimized AOT code has no slots: the manifest is empty.
+    reg += "const char kAotSlots[] =\n" + cpp_string_literal(args.aot_optimized ? std::string() : slots) + ";\n";
     reg += "}  // namespace\n\nextern const AotTable aot_table;\n";
-    reg += "const AotTable aot_table = {kAotScripts, " + std::to_string(names.size()) + ", kAotSlots};\n";
+    reg += "const AotTable aot_table = {kAotScripts, " + std::to_string(names.size()) + ", kAotSlots"
+        + (args.aot_optimized ? ", true" : "") + "};\n";
     reg += "}  // namespace hot\n";
     return write_file(args.out_dir + "/hot_aot_registry.cpp", reg) ? 0 : 1;
 }
@@ -543,6 +550,11 @@ int main(int argc, char** argv)
     const Args args = parse_args(argc, argv);
     if (args.aot && args.emit_cpp)
         usage();
+    if (args.aot_optimized && !args.aot)
+    {
+        std::fprintf(stderr, "hotc: --aot-optimized needs --aot\n");
+        usage();
+    }
     if (args.aot)
         return run_aot(args);
     return args.emit_cpp ? run_emit(args) : run_build(args);

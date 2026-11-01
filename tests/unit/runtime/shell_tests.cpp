@@ -324,4 +324,70 @@ TEST_F(RuntimeCallBoundary, SlowPathHasTheSameDepthAndCatch)
     EXPECT_EQ(hot::detail::call_depth(), 0u);
 }
 
+// ---- hot::call_direct: the same error rule as hot::call, with no slot
+// At depth 1 the call reports a hot::ScriptError and returns a value-initialized result.
+TEST_F(RuntimeCallBoundary, DirectCallReportsAndReturnsDefault)
+{
+    EXPECT_EQ(hot::call_direct<int>(&shell, [&] { return state.script_error(1); }), 0);
+    ASSERT_EQ(reports.size(), 1u);
+    EXPECT_EQ(reports[0], "script error");
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+TEST_F(RuntimeCallBoundary, DirectCallReturnsTheValueAndCountsTheDepth)
+{
+    int seen = 0;
+    EXPECT_EQ(hot::call_direct<int>(&shell, [&] { seen = static_cast<int>(hot::detail::call_depth()); return 7; }), 7);
+    EXPECT_EQ(seen, 1);
+    int called = 0;
+    hot::call_direct<void>(&shell, [&] { ++called; });
+    EXPECT_EQ(called, 1);
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+// A nested call lets the error pass. Only the outermost call reports it, one time.
+TEST_F(RuntimeCallBoundary, DirectCallNestedLetsTheErrorPass)
+{
+    const int r = hot::call_direct<int>(&shell,
+        [&] { return hot::call_direct<int>(&shell, [&]() -> int { throw hot::ScriptError("inner error"); }); });
+    EXPECT_EQ(r, 0);
+    ASSERT_EQ(reports.size(), 1u);
+    EXPECT_EQ(reports[0], "inner error");
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+    // The inner call alone, inside a frame of the test: it throws and reports nothing.
+    reports.clear();
+    {
+        hot::detail::CallDepth outer;
+        EXPECT_THROW(
+            (hot::call_direct<int>(&shell, [&]() -> int { throw hot::ScriptError("inner error"); })),
+            hot::ScriptError);
+        EXPECT_TRUE(reports.empty());
+    }
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+// NoExcept always reports and returns the result, also inside another call.
+TEST_F(RuntimeCallBoundary, DirectCallNoexceptAlwaysReports)
+{
+    {
+        hot::detail::CallDepth outer;
+        EXPECT_EQ((hot::call_direct<int, true>(&shell, [&] { return state.script_error(1); })), 0);
+        EXPECT_EQ(reports.size(), 1u);
+        EXPECT_EQ(hot::detail::call_depth(), 1u);
+    }
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+// Another exception passes to the host. A reference result refers to the object of the script.
+TEST_F(RuntimeCallBoundary, DirectCallOtherExceptionAndReferenceResult)
+{
+    EXPECT_THROW((hot::call_direct<int>(&shell, [&] { return state.other_error(1); })), std::logic_error);
+    EXPECT_TRUE(reports.empty());
+    EXPECT_EQ(&hot::call_direct<int&>(&shell, [&]() -> int& { return state.ref_field(0); }), &state.depth_seen);
+    EXPECT_THROW((hot::call_direct<int&>(&shell, [&]() -> int& { return state.ref_error(1); })), hot::ScriptError);
+    ASSERT_EQ(reports.size(), 1u);
+    EXPECT_EQ(reports[0], "ref error");
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
 } // namespace

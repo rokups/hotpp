@@ -3,7 +3,7 @@
 #   hot_add_scripts(TARGET name SCRIPTS a.hot b.hot
 #                   [INCLUDES dir...] [FLAGS cxxflag...] [DEPENDS file...]
 #                   [OUT_DIR dir] [AFTER target] [HOTC_ARGS arg...])
-#   hot_add_scripts(TARGET name SCRIPTS a.hot b.hot AOT
+#   hot_add_scripts(TARGET name SCRIPTS a.hot b.hot AOT [OPTIMIZED]
 #                   [INCLUDES dir...] [PRELUDES file...] [FLAGS hotc-flag...]
 #                   [DEPENDS file...] [OUT_DIR dir] [HOTC_ARGS arg...])
 #
@@ -31,6 +31,8 @@
 # INCLUDES are the include dirs of the translator and of the compile. FLAGS are flags
 # for hotc. OUT_DIR defaults to ${CMAKE_BINARY_DIR}/hot_aot/<name>. AOT mode has no AFTER
 # and always uses generation 1. PRELUDES is only for AOT mode.
+# OPTIMIZED (AOT mode only) passes "--aot-optimized" to hotc. An optimized AOT library has no
+# slots, so no override and no reload is possible.
 #
 # String interpolation "${...}": the C++ standard picks the format library at build time
 # (cmake/HotFormat.cmake). The standard comes from hot_effective_cxx_standard: the property
@@ -59,12 +61,15 @@ function(_hot_resource_dir out)
 endfunction()
 
 function(hot_add_scripts)
-    cmake_parse_arguments(A "AOT" "TARGET;OUT_DIR;AFTER" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS;HOTC_ARGS" ${ARGN})
+    cmake_parse_arguments(A "AOT;OPTIMIZED" "TARGET;OUT_DIR;AFTER" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS;HOTC_ARGS" ${ARGN})
     if(A_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "hot_add_scripts: unknown arguments: ${A_UNPARSED_ARGUMENTS}")
     endif()
     if(NOT A_TARGET OR NOT A_SCRIPTS)
         message(FATAL_ERROR "hot_add_scripts needs TARGET and SCRIPTS")
+    endif()
+    if(A_OPTIMIZED AND NOT A_AOT)
+        message(FATAL_ERROR "hot_add_scripts: OPTIMIZED works only with AOT (target ${A_TARGET})")
     endif()
     if(A_AOT)
         if(DEFINED A_AFTER)
@@ -147,10 +152,14 @@ function(hot_add_scripts)
             get_filename_component(abs ${p} ABSOLUTE)
             list(APPEND args --prelude ${abs})
         endforeach()
+        set(optimized_args "")
+        if(A_OPTIMIZED)
+            set(optimized_args --aot-optimized)
+        endif()
         add_custom_command(
             OUTPUT ${sources} ${registry}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
-            COMMAND hot::hotc --aot ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS} ${format_args} ${A_HOTC_ARGS}
+            COMMAND hot::hotc --aot ${optimized_args} ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS} ${format_args} ${A_HOTC_ARGS}
             DEPENDS hot::hotc ${scripts} ${A_PRELUDES} ${A_DEPENDS}
             COMMENT "hotc --aot: ${A_SCRIPTS}"
             VERBATIM)
@@ -213,12 +222,14 @@ endfunction()
 
 # hot_add_host: set up the scripts of one host program. The target must exist before the call.
 #
-#   hot_add_host(TARGET t [MODE AOT|AOT_RELOAD|HOT_RELOAD|PRECOMPILED] SCRIPTS a.hot b.hot
+#   hot_add_host(TARGET t [MODE AOT|AOT_RELOAD|HOT_RELOAD|PRECOMPILED] [OPTIMIZED] SCRIPTS a.hot b.hot
 #                [INCLUDES dir...] [DEPENDS file...] [PRELUDES file...] [FLAGS flag...]
 #                [HOTC_ARGS arg...])
 #
 # MODE defaults to HOT_RELOAD. The options have the meaning that they have in hot_add_scripts.
 #   AOT:         hot_add_scripts makes the static library ${t}_scripts. The target t links it.
+#                OPTIMIZED (only with MODE AOT) builds optimized AOT code: hot_add_scripts gets
+#                AOT OPTIMIZED. The library has no slots, so no override and no reload is possible.
 #   AOT_RELOAD:  AOT and run-time overrides in one program. hot_add_scripts makes the static library
 #                ${t}_scripts as in MODE AOT. The target t links it and hot::backend (not hot::aot),
 #                and exports its symbols. The program calls Loader::load_aot(hot::aot_table), then
@@ -238,7 +249,7 @@ endfunction()
 #                <directory of t>/hot/include after the build, where default_paths() finds it.
 # In every mode, INCLUDES are include dirs of the target t.
 function(hot_add_host)
-    cmake_parse_arguments(H "" "TARGET;MODE" "SCRIPTS;INCLUDES;DEPENDS;PRELUDES;FLAGS;HOTC_ARGS" ${ARGN})
+    cmake_parse_arguments(H "OPTIMIZED" "TARGET;MODE" "SCRIPTS;INCLUDES;DEPENDS;PRELUDES;FLAGS;HOTC_ARGS" ${ARGN})
     if(H_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "hot_add_host: unknown arguments: ${H_UNPARSED_ARGUMENTS}")
     endif()
@@ -254,6 +265,10 @@ function(hot_add_host)
     if(NOT H_MODE STREQUAL "AOT" AND NOT H_MODE STREQUAL "AOT_RELOAD" AND NOT H_MODE STREQUAL "HOT_RELOAD"
        AND NOT H_MODE STREQUAL "PRECOMPILED")
         message(FATAL_ERROR "hot_add_host: MODE must be AOT, AOT_RELOAD, HOT_RELOAD or PRECOMPILED. It is: ${H_MODE}")
+    endif()
+    if(H_OPTIMIZED AND NOT H_MODE STREQUAL "AOT")
+        message(FATAL_ERROR "hot_add_host: OPTIMIZED works only with MODE AOT. An optimized AOT library "
+                "has no slots, so no override and no reload is possible (target ${H_TARGET})")
     endif()
     if(H_MODE STREQUAL "AOT_RELOAD" AND NOT TARGET hot::backend)
         message(FATAL_ERROR "hot_add_host: MODE AOT_RELOAD needs a backend (the target hot::backend), "
@@ -286,7 +301,11 @@ function(hot_add_host)
         if(H_PRELUDES)
             set(prelude_args PRELUDES ${H_PRELUDES})
         endif()
-        hot_add_scripts(TARGET ${t}_scripts AOT ${common_args} ${prelude_args})
+        set(optimized_args "")
+        if(H_OPTIMIZED)
+            set(optimized_args OPTIMIZED)
+        endif()
+        hot_add_scripts(TARGET ${t}_scripts AOT ${optimized_args} ${common_args} ${prelude_args})
         target_link_libraries(${t} PRIVATE ${t}_scripts hot::aot)
     elseif(H_MODE STREQUAL "PRECOMPILED")
         if(H_PRELUDES)

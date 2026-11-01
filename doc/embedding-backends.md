@@ -83,6 +83,37 @@ world.Add(boss);
 
 **Sample:** [aot](https://github.com/rokups/hotpp/tree/main/samples/aot).
 
+### Optimized AOT
+
+Optimized AOT is a mode of AOT for a shipped build that never overrides or reloads a script. A call from the host into a script is then as fast as a native virtual call. Add `OPTIMIZED` to the CMake call:
+
+```cmake
+hot_add_host(TARGET game MODE AOT OPTIMIZED SCRIPTS player.hot boss.hot
+             INCLUDES ${CMAKE_CURRENT_SOURCE_DIR})
+```
+
+Without CMake, add `--aot-optimized` to `hotc --aot`. The flag needs `--aot`.
+
+**What it does:** in plain AOT, a call from the host into a script goes through a table that a run-time override can change. Optimized AOT code has no table. The host call goes to the script function directly. Your host code, your script code and the `AotRegistry` calls do not change. The script errors, the error handler and the output are the same as in plain AOT.
+
+A `hot::CommitWindow` does not wait for calls into optimized AOT code. Do not change script state from the host while another thread runs optimized script code.
+
+**When to use:** use it for the shipped build, when no developer or mod author replaces a script at run time. Keep plain AOT (or `AOT_RELOAD`) for the build that needs overrides. Both builds can use the same scripts. The `OPTIMIZED` keyword is the only difference.
+
+**What you lose:** the code cannot be overridden or reloaded. `hot_add_host(... MODE AOT_RELOAD OPTIMIZED ...)` is a configure error. `OPTIMIZED` without `AOT` is a configure error. `Loader::request_reload`, `Loader::revert_unit` and `Loader::load_unit` fail with `BadModule` when the loader holds optimized code. A program has one AOT library, so it cannot link a plain and an optimized library together.
+
+**Failure:** a `Loader` that takes the optimized table with `load_aot` works for the classes, but it refuses to override, reload or revert a script. The error text is:
+
+```
+the loader holds optimized AOT code (MODE AOT OPTIMIZED): it cannot override or reload a script. Build the scripts without OPTIMIZED
+```
+
+Build the scripts without `OPTIMIZED` to fix it.
+
+**Speed:** a host to script call costs about 1.8 ns, against 3.5 ns in plain AOT. A native to script virtual call and a script to script virtual call get cheaper too. `new` of a script object is about 7 ns cheaper. See [Benchmarks](benchmarks.html#optimized-aot-aot-opt) for the table and the build that gave the numbers.
+
+**Sample:** [aot](https://github.com/rokups/hotpp/tree/main/samples/aot). The targets `sample_aot_hot_opt` and `sample_aot_cpp_opt` build the same scripts as optimized AOT code.
+
 ## AOT with run-time overrides
 
 **Links:** the AOT script library and `hot::backend`, through `hot_add_host(... MODE AOT_RELOAD ...)`. `ENABLE_EXPORTS` is on. Do not link `hot::aot`.
@@ -116,6 +147,7 @@ loader.frame_boundary();
 
 **Limits:**
 
+- Optimized AOT code (`MODE AOT OPTIMIZED`) cannot be the start state. The loader refuses an override of it (see [Optimized AOT](#optimized-aot)).
 - The override needs a compiler at run time. It must use the same includes and flags as the AOT build. Else the layout or the slot numbers can differ.
 - Call `seed_slots` before the first `load`. Without it, a backend numbers the methods from zero, and they can differ from the AOT numbers.
 - One `Loader` for each process. `load_aot` registers the AOT classes in it. A second `Loader` in the process starts with the AOT classes again after the first one is gone.

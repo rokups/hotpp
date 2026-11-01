@@ -259,6 +259,7 @@ bool Loader::reset(std::string& error)
     unit_of_.clear();
     aot_records_.clear();
     aot_slots_.clear();
+    aot_optimized_ = false;
     aot_units_.clear();
     revert_records_.clear();
     revert_slots_.clear();
@@ -329,6 +330,10 @@ ReloadResult full_reload(ReloadReason reason, std::string error, std::string cls
     return make_result(ReloadStatus::FullReloadRequired, reason, std::move(error), {std::move(cls)});
 }
 
+const char* const kOptimizedLocked =
+    "the loader holds optimized AOT code (MODE AOT OPTIMIZED): it cannot override or reload a script. "
+    "Build the scripts without OPTIMIZED";
+
 } // namespace
 
 ReloadResult Loader::load(Module module)
@@ -377,6 +382,7 @@ ReloadResult Loader::load_aot(const AotTable& table)
     }
     std::lock_guard<std::mutex> lock(mutex_);
     aot_slots_ = table.slots ? table.slots : "";
+    aot_optimized_ = table.optimized; // from now on the loader refuses an override and a reload
     for (const auto& [name, e] : registry_.entries())
     {
         // The saved copy has no key table: the table belongs to the loader and can move or go.
@@ -389,6 +395,11 @@ ReloadResult Loader::load_aot(const AotTable& table)
 
 ReloadResult Loader::load_unit(Module module, Registry* code_out)
 {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (aot_optimized_)
+            return failed(ReloadReason::BadModule, kOptimizedLocked);
+    }
     if (!module.register_fn)
         return failed(ReloadReason::BadModule, "the module has no script_register function");
     Registry code;
@@ -692,6 +703,11 @@ uint64_t removed_class_call_count()
 
 ReloadResult Loader::request_reload(LoadResult built)
 {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (aot_optimized_)
+            return failed(ReloadReason::BadModule, kOptimizedLocked);
+    }
     // The host checked the LoadResult of the backend itself, then it calls this overload. A
     // backend failure becomes a result here. So a host needs no own mapping of the reason: a
     // SlotsRemoved failure (a class lost slots, see hotc_lib.h) is a FullReloadRequired result.
@@ -709,6 +725,8 @@ ReloadResult Loader::request_reload(Module module)
 {
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (aot_optimized_)
+            return failed(ReloadReason::BadModule, kOptimizedLocked);
         if (pending_)
             return failed(ReloadReason::Busy, "a reload is already pending");
     }
@@ -774,6 +792,8 @@ ReloadResult Loader::revert_unit(const std::string& unit, Backend& backend)
     auto p = std::make_unique<Pending>();
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (aot_optimized_)
+            return failed(ReloadReason::BadModule, kOptimizedLocked);
         if (pending_)
             return failed(ReloadReason::Busy, "a reload is already pending");
         const auto au = aot_units_.find(unit);

@@ -298,3 +298,30 @@ TEST(GoldenTranslation, NativeStubWithAHeaderTypeNameIsNotAClash)
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_EQ(r.diagnostics.find("has the same name"), std::string::npos) << r.diagnostics;
 }
+
+namespace
+{
+// Translates aot_demo.hot as AOT code (generation 1) and checks the golden file "name".
+void golden_aot(const std::string& name, bool optimized)
+{
+    hotc::TranslateOptions o = engine_options("aot_demo.hot", 1);
+    o.script_name = "aot_demo.hot";
+    o.aot = true;
+    o.aot_optimized = optimized;
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    check_golden(name, r.cpp);
+}
+} // namespace
+
+// The plain AOT output of the demo. The shape of plain AOT code must not change.
+TEST(GoldenTranslation, AotDemoAot)
+{
+    golden_aot("aot_demo_aot.g1.cpp", false);
+}
+
+// The optimized AOT output of the demo (hotc --aot-optimized): direct dispatch, no slot.
+TEST(GoldenTranslation, AotDemoOptimized)
+{
+    golden_aot("aot_demo_opt.g1.cpp", true);
+}

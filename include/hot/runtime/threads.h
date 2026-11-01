@@ -133,6 +133,7 @@ uint64_t blocked_entry_count();
 // The destructor opens the gate. Only one window is open at a time; a second one waits.
 // The caller must not be in a counted script entry (entry_depth() == 0), else it waits for ever.
 // Loader::commit_pending uses it. An engine needs it only for its own changes of script state.
+// A CommitWindow does not exclude calls into optimized AOT code (MODE AOT OPTIMIZED): those calls are not counted entries.
 class CommitWindow
 {
 public:

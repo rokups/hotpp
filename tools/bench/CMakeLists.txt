@@ -35,3 +35,27 @@ target_compile_definitions(bench_backends PRIVATE
     BENCH_INCLUDES="${PROJECT_SOURCE_DIR}/include|${PROJECT_SOURCE_DIR}/tests/engine|${CMAKE_CURRENT_SOURCE_DIR}"
     BENCH_RESOURCE_DIR="${CLANG_RESOURCE_DIR}"
     BENCH_WORK_DIR="${HOT_SCRATCH_DIR}/bench")
+
+# bench_backends_opt: the same sources, with the scripts as optimized AOT code (hotc --aot-optimized).
+# One program cannot hold two builds of the same scripts (one hot::aot_table), so this is a second
+# program. It tests only the optimized code ("aot-opt"). The loader refuses to reload that code.
+add_executable(bench_backends_opt bench_backends.cpp BenchEngine.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+target_include_directories(bench_backends_opt PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(bench_backends_opt PRIVATE hot_backend)
+hot_add_scripts(TARGET bench_backends_opt_scripts AOT OPTIMIZED SCRIPTS ${BENCH_SCRIPTS}
+                INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS BenchEngine.h)
+target_link_libraries(bench_backends_opt PRIVATE bench_backends_opt_scripts)
+set_target_properties(bench_backends_opt PROPERTIES ENABLE_EXPORTS ON)
+target_include_directories(bench_backends_opt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(NOT MSVC)
+    target_compile_options(bench_backends_opt PRIVATE -O2)
+    target_compile_options(bench_backends_opt_scripts PRIVATE -O2)
+endif()
+target_compile_definitions(bench_backends_opt PRIVATE BENCH_AOT_OPT=1
+    BENCH_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+    BENCH_SCRIPT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/scripts"
+    BENCH_CXX="${CMAKE_CXX_COMPILER}"
+    BENCH_INCLUDES="${PROJECT_SOURCE_DIR}/include|${PROJECT_SOURCE_DIR}/tests/engine|${CMAKE_CURRENT_SOURCE_DIR}"
+    BENCH_RESOURCE_DIR="${CLANG_RESOURCE_DIR}"
+    BENCH_WORK_DIR="${HOT_SCRATCH_DIR}/bench_opt")

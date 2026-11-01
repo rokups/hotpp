@@ -12,6 +12,16 @@
 namespace
 {
 
+// The same tests run with the plain library and with the optimized library (AOT_EXPECT_OPTIMIZED).
+TEST(AotRegistry, TableFlagMatchesTheBuild)
+{
+#ifdef AOT_EXPECT_OPTIMIZED
+    EXPECT_TRUE(hot::aot_table.optimized);
+#else
+    EXPECT_FALSE(hot::aot_table.optimized);
+#endif
+}
+
 TEST(AotRegistry, RegistersTheClassesOfAllScripts)
 {
     hot::AotRegistry reg(hot::aot_table);

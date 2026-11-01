@@ -38,6 +38,9 @@ struct AotTable
     // "sig Cls::fn Sig"). A run-time backend takes it through Backend::seed_slots, so a later
     // generation keeps the slot numbers of the AOT code. It can be null (an older table).
     const char* slots = nullptr;
+    // True for optimized AOT code (hotc --aot-optimized): the scripts have no slots, so the
+    // loader cannot override or reload them.
+    bool optimized = false;
 };
 
 // The table that the registration file of "hotc --aot" defines. A program that does not

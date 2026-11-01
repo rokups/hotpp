@@ -51,6 +51,9 @@ struct TranslateOptions
     // AOT code (hotc --aot). Each thunk of a script function carries the signature key of its
     // slot, also the thunk of the first signature. Loader::revert_unit restores the keys from it.
     bool aot = false;
+    // Optimized AOT code (hotc --aot-optimized). It needs aot. The generated file defines
+    // HOT_AOT_OPTIMIZED. The library has no slots, so no override and no reload is possible.
+    bool aot_optimized = false;
 };
 
 // The scripts of a build: pairs of the name that "#line" uses and the script text.

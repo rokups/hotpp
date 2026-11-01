@@ -8,7 +8,7 @@ group: CMake
 ## `hot_add_host`
 
 ```
-hot_add_host(TARGET name [MODE AOT|AOT_RELOAD|HOT_RELOAD|PRECOMPILED] SCRIPTS a.hot b.hot
+hot_add_host(TARGET name [MODE AOT|AOT_RELOAD|HOT_RELOAD|PRECOMPILED] [OPTIMIZED] SCRIPTS a.hot b.hot
              [INCLUDES dir...] [DEPENDS file...] [PRELUDES file...]
              [FLAGS flag...] [HOTC_ARGS arg...])
 ```
@@ -21,6 +21,7 @@ This is the call that most hosts need. Make your program with `add_executable` f
 |---|---|---|
 | `TARGET` | none, required | The program target. It must exist before the call. |
 | `MODE` | `HOT_RELOAD` | How the program gets its scripts. See the next table. |
+| `OPTIMIZED` | off | A flag. It builds optimized AOT code: a call from the host into a script is as fast as a native virtual call, and the code cannot be overridden or reloaded. It works only with `MODE AOT`. See [Optimized AOT](embedding-backends.html#optimized-aot). |
 | `SCRIPTS` | none, required | The script files (`.hot` or `.cpp`). A relative path is relative to the current source folder. Two scripts in one call need different names (the file name without the extension). |
 | `INCLUDES` | empty | Include folders. The program, `hotc` and the language server get them. Use absolute paths. |
 | `DEPENDS` | empty | More files that the build depends on, for example your headers. The build does not track the headers of a script by itself. |
@@ -28,7 +29,7 @@ This is the call that most hosts need. Make your program with `add_executable` f
 | `FLAGS` | empty | Compile flags for the scripts (`PRECOMPILED`) or flags for `hotc` (`AOT`). |
 | `HOTC_ARGS` | empty | More arguments for `hotc`. |
 
-A word that is not a keyword, a missing `TARGET` or `SCRIPTS`, and an unknown `MODE` stop the configure step with an error.
+A word that is not a keyword, a missing `TARGET` or `SCRIPTS`, an unknown `MODE`, and `OPTIMIZED` with another mode than `AOT` stop the configure step with an error. The error for `OPTIMIZED` is: `hot_add_host: OPTIMIZED works only with MODE AOT. An optimized AOT library has no slots, so no override and no reload is possible`.
 
 ### Modes
 

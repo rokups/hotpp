@@ -4,6 +4,9 @@
 //   files  the clang files backend (a compiler process for each load)
 //   jit    the in-process JIT backend
 //   aot    the C++ of the scripts is part of this binary (Loader::load_aot)
+// The second program, bench_backends_opt (the macro BENCH_AOT_OPT), has the scripts as optimized AOT
+// code (hotc --aot --aot-optimized). It tests only that code and calls it "aot-opt". The loader
+// refuses a reload of optimized code, so the reload cases do not run there.
 // A pure native C++ twin of each script class is the reference. A case has up to two scripts: a .hot
 // script and a .cpp script (plain C++ that hotc translates). The matrix has both for each backend,
 // also for the reload and the reload chain.
@@ -897,7 +900,11 @@ enum class Kind
 
 const char* kind_name(Kind k)
 {
+#ifdef BENCH_AOT_OPT
+    return k == Kind::Files ? "files" : k == Kind::Jit ? "jit" : "aot-opt";
+#else
     return k == Kind::Files ? "files" : k == Kind::Jit ? "jit" : "aot";
+#endif
 }
 
 bool kind_available(Kind k)
@@ -1399,13 +1406,21 @@ int main(int argc, char** argv)
         else
         {
             std::fprintf(stderr,
+#ifdef BENCH_AOT_OPT
+                "usage: bench_backends_opt [--backend all|aot-opt] [--filter text] [--iters N] [--list]\n"
+#else
                 "usage: bench_backends [--backend all|files|jit|aot] [--filter text] [--iters N] [--list]\n"
+#endif
                 "                      [--csv file] [--warm N] [--reps N] [--opt FLAG] [--cxxflag F]...\n"
                 "                      [--no-cache] [--no-load] [--reloads N]\n");
             return 2;
         }
     }
+#ifdef BENCH_AOT_OPT
+    if (o.backend != "all" && o.backend != "aot-opt")
+#else
     if (o.backend != "all" && o.backend != "files" && o.backend != "jit" && o.backend != "aot")
+#endif
     {
         std::fprintf(stderr, "bench_backends: unknown backend '%s'\n", o.backend.c_str());
         return 2;
@@ -1417,6 +1432,10 @@ int main(int argc, char** argv)
     {
         if (o.backend != "all" && o.backend != kind_name(k))
             continue;
+#ifdef BENCH_AOT_OPT
+        if (k != Kind::Aot)
+            continue; // this program has only the optimized AOT code
+#endif
         if (kind_available(k))
             kinds.push_back(k);
         else
@@ -1432,7 +1451,10 @@ int main(int argc, char** argv)
     {
         std::printf("backends:\n");
         for (Kind k : {Kind::Files, Kind::Jit, Kind::Aot})
-            std::printf("  %-6s %s\n", kind_name(k), kind_available(k) ? "available" : "not built in");
+#ifdef BENCH_AOT_OPT
+            if (k == Kind::Aot)
+#endif
+            std::printf("  %-7s %s\n", kind_name(k), kind_available(k) ? "available" : "not built in");
         std::printf("cases:\n");
         for (const Case& c : kCases)
             std::printf("  %-16s %-40s hot=%-16s cpp=%-22s iters=%lld\n", c.name, c.label,
@@ -1520,10 +1542,10 @@ int main(int argc, char** argv)
         {
             if (!l.ok)
             {
-                std::printf("%-6s failed\n", kind_name(k));
+                std::printf("%-7s failed\n", kind_name(k));
                 continue;
             }
-            std::printf("%-6s %10.1f %10.1f %9.1f %9.1f %9.1f %9.1f %9.0f", kind_name(k), l.miss, l.hit, l.cold1,
+            std::printf("%-7s %10.1f %10.1f %9.1f %9.1f %9.1f %9.1f %9.0f", kind_name(k), l.miss, l.hit, l.cold1,
                 l.cold2, l.warm1, l.warm2, l.rss_mb);
             if (l.compile > 0)
                 std::printf("  (last v2: translate=%.1f compile=%.1f jit=%.1f)", l.translate, l.compile, l.jit);

@@ -272,6 +272,31 @@ TEST_F(Units, LoadAotKeepsACopyOfTheRecordAndFailsForTwoScriptsWithOneClass)
     EXPECT_EQ(loader.find("Fake"), nullptr); // the loader is empty again
 }
 
+// An optimized AOT table (AotTable::optimized) locks the loader: find and create work, but the
+// loader refuses request_reload and load_unit (through load). Reset unlocks it.
+TEST_F(Units, OptimizedAotTableLocksTheLoader)
+{
+    const hot::AotTable table = {kAot, 2, nullptr, true};
+    ASSERT_RELOAD_OK(loader.load_aot(table));
+    ASSERT_NE(loader.find("Fake"), nullptr);
+    hot::Instance f = loader.find("Fake")->create();
+    EXPECT_NE(f.native, nullptr);
+    delete static_cast<Fake*>(f.native);
+    for (const hot::ReloadResult& r : {loader.request_reload(module_of(register_a3, "X3", "X")),
+             loader.request_reload(hot::LoadResult{})})
+    {
+        EXPECT_EQ(r.status, hot::ReloadStatus::Failed);
+        EXPECT_EQ(r.reason, hot::ReloadReason::BadModule);
+        EXPECT_NE(r.error.find("optimized AOT code"), std::string::npos) << r.error;
+        EXPECT_NE(r.error.find("Build the scripts without OPTIMIZED"), std::string::npos) << r.error;
+    }
+    EXPECT_EQ(loader.find("Fake")->record->generation, 1u);
+    std::string error;
+    ASSERT_TRUE(loader.reset(error)) << error;
+    ASSERT_RELOAD_OK(loader.load_aot(kAotTable)); // a plain table loads again
+    ASSERT_RELOAD_OK(loader.request_reload(module_of(register_a3, "X3", "X")));
+}
+
 // The host and the runtime must agree on HOT_THREAD_SAFE (config.h). The test gives the opposite
 // value by hand, because one build has one value.
 TEST(ThreadSafeBuild, AHostWithAnotherValueThrows)
