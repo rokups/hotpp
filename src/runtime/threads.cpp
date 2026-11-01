@@ -35,6 +35,13 @@ HOT_EXPORT std::atomic<int>& task_waiters()
     static std::atomic<int> n{0};
     return n;
 }
+// The process-wide task scheduler (include/hot/runtime/scheduler.h). The static initialization
+// is thread-safe. When "make" throws, the next call tries again.
+HOT_EXPORT void* default_scheduler(void* (*make)())
+{
+    static void* s = make();
+    return s;
+}
 } // namespace detail
 
 // The debug check of the safe point (see "Threads" in runtime/threads.h).

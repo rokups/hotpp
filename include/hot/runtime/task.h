@@ -56,8 +56,34 @@
 //     example on another thread): the host awaitable resumes a frame that does not exist then.
 //     The frame counts as not running from the start of a host co_await.
 //
-// All links between tasks (continuation, awaiter, running flag) are under one lock of the
-// runtime (detail::task_mutex).
+// Scheduler rules (hot/runtime/scheduler.h):
+//   - hot::yield() and hot::sleep(d) park the frame: the frame puts one entry into a scheduler
+//     and suspends. The scheduler is the one that owns the frame (hot::spawn), else
+//     hot::scheduler(). Only a task can await them: another coroutine fails a static_assert.
+//   - An entry is weak. The owner can destroy a parked task at any time, on any thread. The
+//     destroy (retire_frame) removes the entry, so the frame does not resume.
+//   - A frame parks and stops running in one step, under task_mutex() and the scheduler lock. A
+//     tick pops an entry and marks the frame as running in one step, under the same two locks.
+//     So a destroy on another thread waits for the frame, or it removes the entry first.
+//   - Lock order: task_mutex(), then the lock of one scheduler. Code that holds a scheduler lock
+//     does not take task_mutex() and does not take the lock of another scheduler.
+//   - A tick resumes a frame through the generation guard, like resume_frame. The timer of a
+//     stale frame is due at once. A tick pops one entry at a time, so a resume can tick again.
+//   - A spawned task belongs to the scheduler. A coroutine cannot await it. The scheduler
+//     destroys it when it finishes, at cancel(id) or at cancel_all(). At that time an error that
+//     nobody read goes to report_unhandled.
+//   - spawn, tick, run, run_until_done and cancel run on one thread (the main thread). A frame
+//     can park on any thread.
+//   - A scheduler that dies does not resume the frames that are parked in it. A spawn or a
+//     run_until_done of such a frame throws ScriptError("task was parked in a destroyed
+//     scheduler"). The owner can destroy the task.
+//   - run_until_done sets the scheduler of the frame only during the call. After it, the frame
+//     parks in hot::scheduler() again.
+//   - The task calls on_done under task_mutex(). So a scheduler that waits for a task can die
+//     right after the task ends: the destroy takes task_mutex() first.
+//
+// All links between tasks (continuation, awaiter, running flag, scheduler entry) are under one
+// lock of the runtime (detail::task_mutex).
 #pragma once
 #if defined(__cpp_impl_coroutine) && defined(__has_include)
     #if __has_include(<coroutine>)
@@ -88,6 +114,7 @@ namespace hot
 {
 
 template <class T> class Task;
+class Scheduler;
 
 namespace detail
 {
@@ -103,6 +130,9 @@ struct TaskPromiseBase;
 inline std::coroutine_handle<> complete(TaskPromiseBase& p) noexcept;
 inline std::coroutine_handle<> retire_frame(TaskPromiseBase& p, std::coroutine_handle<> h, bool own_run) noexcept;
 inline void discard_frame(TaskPromiseBase& p, std::coroutine_handle<> h) noexcept;
+// Removes the entries of a parked frame from its scheduler (hot/runtime/scheduler.h). The caller
+// holds task_mutex(). The function takes the lock of the scheduler.
+inline void detach_parked(TaskPromiseBase& p) noexcept;
 
 // The origin of the code of a task: the generation, the live flag and the name.
 struct TaskOriginData
@@ -156,7 +186,7 @@ inline bool is_cancellation(const std::exception_ptr& e) noexcept
 // The pin is the first member, so the runtime destroys it last. The generation code stays
 // loaded until the runtime destroys all other members (the same rule as GuardedFn).
 // The lock task_mutex() guards: the links (continuation, parent, awaiting, awaiter_slot), on_done,
-// started, awaited. The flags finished and running are atomic. A writer sets finished under the
+// started, awaited, sched, parked_in, orphaned. The flags finished and running are atomic. A writer sets finished under the
 // lock, with release order. done() and await_ready read it with acquire order, without the lock.
 // A thread sets running only when it starts to run the frame, with run_thread set first.
 struct TaskPromiseBase
@@ -168,7 +198,7 @@ struct TaskPromiseBase
     TaskPromiseBase* parent = nullptr;  // the promise of the continuation, when it is a task
     TaskPromiseBase* awaiting = nullptr; // the task that this task awaits now
     TaskPromiseBase** awaiter_slot = nullptr; // the link field of the awaiter, cleared when the promise dies
-    void (*on_done)(void*) = nullptr;   // called when no coroutine awaits this task
+    void (*on_done)(void*) = nullptr;   // called under the lock when no coroutine awaits this task
     void* on_done_ctx = nullptr;
     std::exception_ptr error;
     TaskFail fail = TaskFail::None;
@@ -180,6 +210,9 @@ struct TaskPromiseBase
     bool destroy_requested = false; // the owner destroyed the task from its own run: see retire_frame
     bool observed = false; // a coroutine awaited the task, or result() ran
     bool taken = false;    // the result moved out
+    Scheduler* sched = nullptr;     // the scheduler that owns the frame (hot::spawn), or null
+    Scheduler* parked_in = nullptr; // the scheduler that holds the one entry of the parked frame, or null
+    bool orphaned = false; // the frame was parked in a scheduler that died: nothing resumes it
 
     // A promise without an origin: generation 0, always live.
     TaskPromiseBase() : pin(0), live(nullptr), what(nullptr) {}
@@ -193,6 +226,8 @@ struct TaskPromiseBase
             *awaiter_slot = nullptr;
         if (parent && parent->awaiting == this)
             parent->awaiting = nullptr;
+        if (HOT_UNLIKELY(parked_in)) // retire_frame detaches first: this is only a second check
+            detach_parked(*this);
     }
 
     // True when the code of the frame is not live now (design 6.3). Generation 0 is always live.
@@ -326,7 +361,9 @@ struct TaskPromiseBase
 };
 
 // Marks "p" as finished. Returns the coroutine that must run next: the continuation, or a
-// null handle. When nothing awaits the task, it calls on_done. A stale parent is cancelled in
+// null handle. When nothing awaits the task, it calls on_done under the lock. An on_done function
+// must not take task_mutex(). It can take a lock that comes after it in the lock order: the lock
+// of a scheduler, or the lock of sync_wait. A stale parent is cancelled in
 // a loop, so a chain of awaiting tasks does not grow the stack. The parent that continues is
 // marked as running under the lock: its owner cannot destroy it until it suspends again.
 // The function calls stale_call without the lock.
@@ -342,12 +379,11 @@ inline std::coroutine_handle<> complete(TaskPromiseBase& p) noexcept
         TaskPromiseBase* parent = cur->parent;
         if (!next)
         {
-            void (*fn)(void*) = cur->on_done;
-            void* ctx = cur->on_done_ctx;
-            lock.unlock(); // "cur" can be destroyed from here
-            if (fn)
-                fn(ctx);
-            return {};
+            // Under the lock: the owner of on_done removes it under this lock, and the owner of
+            // the task destroys it only after this lock. So "ctx" lives during the call.
+            if (cur->on_done)
+                cur->on_done(cur->on_done_ctx);
+            return {}; // the lock drops: "cur" can be destroyed from here
         }
         if (!parent) // a coroutine that the host wrote: not guarded
             return next;
@@ -366,16 +402,11 @@ inline std::coroutine_handle<> complete(TaskPromiseBase& p) noexcept
     }
 }
 
-// The only way to start or resume a frame from outside. It checks the generation guard first.
-inline void resume_frame(TaskPromiseBase& p, std::coroutine_handle<> h) noexcept
+// Runs a frame that the caller marked as running under the lock, with "stale" read under the
+// same lock. The caller holds a ScriptEntry that it made before the lock. A stale frame does
+// not resume: it completes with TaskFail::Reload.
+inline void run_frame(TaskPromiseBase& p, std::coroutine_handle<> h, bool stale) noexcept
 {
-    ScriptEntry entry; // design 6.3
-    bool stale = false;
-    {
-        std::lock_guard<std::mutex> lock(task_mutex());
-        stale = p.stale();
-        p.begin_run(); // a stale frame is mine too: its owner cannot destroy it now
-    }
     if (HOT_UNLIKELY(stale))
     {
         stale_call(p.what);
@@ -389,6 +420,19 @@ inline void resume_frame(TaskPromiseBase& p, std::coroutine_handle<> h) noexcept
         return;
     }
     h.resume();
+}
+
+// The only way to start or resume a frame from outside. It checks the generation guard first.
+inline void resume_frame(TaskPromiseBase& p, std::coroutine_handle<> h) noexcept
+{
+    ScriptEntry entry; // design 6.3
+    bool stale = false;
+    {
+        std::lock_guard<std::mutex> lock(task_mutex());
+        stale = p.stale();
+        p.begin_run(); // a stale frame is mine too: its owner cannot destroy it now
+    }
+    run_frame(p, h, stale);
 }
 
 template <class P> inline void resume_frame(std::coroutine_handle<P> h) noexcept
@@ -424,6 +468,10 @@ inline std::coroutine_handle<> retire_frame(TaskPromiseBase& p, std::coroutine_h
             task_cv().wait(lock, [&] { return !p.running.load(); });
             task_waiters().fetch_sub(1);
         }
+        // A scheduler must not resume the frame from here. The frame parks only while it runs,
+        // and a scheduler pops an entry only under this lock: so the detach is final.
+        if (p.parked_in)
+            detach_parked(p);
         // The frame does not run now, and the lock stays: the link to the child is final. The
         // wait comes first, because a running frame can link a new child.
         if (p.awaiting) // this task awaits a child: the child must not resume it
@@ -449,6 +497,37 @@ inline std::coroutine_handle<> retire_frame(TaskPromiseBase& p, std::coroutine_h
         next = complete(p);
     discard_frame(p, h);
     return next;
+}
+
+// Starts the frame "h" when it did not start. For a started frame it does nothing.
+inline void start_frame(TaskPromiseBase& p, std::coroutine_handle<> h) noexcept
+{
+    {
+        std::lock_guard<std::mutex> lock(task_mutex());
+        if (p.started)
+            return;
+        p.started = true;
+    }
+    resume_frame(p, h);
+}
+
+// Ends the frame "h" for its owner (the destructor of a task, or a scheduler). When the calling
+// thread runs the frame, the destroy is deferred to the next suspension or the end of the frame.
+inline void destroy_frame(TaskPromiseBase& p, std::coroutine_handle<> h) noexcept
+{
+    if (p.runs_on_this_thread())
+    {
+        // The body, or a continuation that runs inline, destroys its own task. This thread
+        // cannot wait for itself. The frame is destroyed when it suspends or ends.
+        p.destroy_requested = true;
+        return;
+    }
+    std::coroutine_handle<> next = retire_frame(p, h, false);
+    if (next)
+    {
+        ScriptEntry entry;
+        next.resume();
+    }
 }
 
 template <class P>
@@ -545,17 +624,12 @@ public:
     // host awaitable resumes the frame. It does not throw: an error of the body goes to result().
     void resume() noexcept
     {
-        if (!h_)
-            return;
-        promise_type& p = h_.promise();
-        {
-            std::lock_guard<std::mutex> lock(detail::task_mutex());
-            if (p.started)
-                return;
-            p.started = true;
-        }
-        detail::resume_frame(p, h_);
+        if (h_)
+            detail::start_frame(h_.promise(), h_);
     }
+
+    // Moves the frame out: the task is empty after it. The caller owns the frame from here.
+    Handle release() noexcept { return std::exchange(h_, {}); }
 
     // Moves the value out once, or rethrows the error of the body.
     T result()
@@ -697,22 +771,8 @@ private:
     void destroy() noexcept
     {
         Handle h = std::exchange(h_, {});
-        if (!h)
-            return;
-        detail::TaskPromiseBase& p = h.promise();
-        if (p.runs_on_this_thread())
-        {
-            // The body, or a continuation that runs inline, destroys its own task. This thread
-            // cannot wait for itself. The frame is destroyed when it suspends or ends.
-            p.destroy_requested = true;
-            return;
-        }
-        std::coroutine_handle<> next = detail::retire_frame(p, h, false);
-        if (next)
-        {
-            ScriptEntry entry;
-            next.resume();
-        }
+        if (h)
+            detail::destroy_frame(h.promise(), h);
     }
 
     Handle h_;
@@ -780,5 +840,7 @@ template <class T> T sync_wait(Task<T>& t)
 template <class T> T sync_wait(Task<T>&& t) { return sync_wait(t); }
 
 } // namespace hot
+
+    #include "hot/runtime/scheduler.h"
 
 #endif // HOT_HAS_TASK

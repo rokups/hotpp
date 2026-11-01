@@ -16,6 +16,7 @@
 #include "hot/aot.h"
 #include "hot/backend.h"
 #include "hot/runtime.h"
+#include "hot/runtime/scheduler.h"
 #include "hot/runtime/task.h"
 #include "support/script_files.h"
 
@@ -25,6 +26,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 asynctest::Gate& asynctest::gate()
 {
@@ -82,7 +84,11 @@ public:
         gate().drop();
         gate().waits = 0;
     }
-    void TearDown() override { gate().drop(); }
+    void TearDown() override
+    {
+        hot::scheduler().cancel_all();
+        gate().drop();
+    }
 
     bool aot() const { return GetParam() == Mode::Aot; }
 
@@ -150,6 +156,20 @@ public:
         if (!t)
             throw std::runtime_error(std::string("no thunk ") + name);
         return reinterpret_cast<TaskFn0>(t)(h.actor);
+    }
+
+    // A call of a sync script method (async_sched_v1.hot) through its thunk.
+    template <class R, class... A> static R sync_call(Host& h, const char* name, A... args)
+    {
+        void* t = h.loader.thunk(name);
+        if (!t)
+            throw std::runtime_error(std::string("no thunk ") + name);
+        return reinterpret_cast<R (*)(Actor*, A...)>(t)(h.actor, args...);
+    }
+    static int ticks(Host& h)
+    {
+        int* p = hot::field_ptr<int>(h.inst.shell, "ticks");
+        return p ? *p : -1;
     }
 
     static int steps(Host& h)
@@ -516,6 +536,116 @@ TEST_P(AsyncHost, WorkerThreadResumeCompletesSyncWait)
     worker.join();
     EXPECT_EQ(v, 6);
     EXPECT_EQ(steps(h), 2);
+}
+
+// ---------------------------------------------------------------- the scheduler
+
+// A script spawns a task. The host ticks the scheduler until the task ends.
+TEST_P(AsyncHost, ScriptSpawnsATaskAndTheHostTicks)
+{
+    Host h;
+    ASSERT_NO_FATAL_FAILURE(start(h, "async_sched_v1.hot", "SchedRunner"));
+    const hot::TaskId id = sync_call<hot::TaskId>(h, "SchedRunner::Start");
+    EXPECT_NE(id, 0u);
+    EXPECT_TRUE(hot::scheduler().alive(id));
+    EXPECT_EQ(hot::scheduler().size(), 1u);
+    EXPECT_EQ(ticks(h), 0); // spawn does not run the body
+    for (int i = 0; i < 4; ++i)
+    {
+        hot::scheduler().tick();
+        h.loader.frame_boundary();
+    }
+    EXPECT_EQ(ticks(h), 3);
+    EXPECT_EQ(hot::scheduler().size(), 0u);
+    EXPECT_FALSE(hot::scheduler().alive(id));
+}
+
+// hot.step runs the task to its first suspension. The task sleeps, so it is not done.
+TEST_P(AsyncHost, ScriptStepReturnsFalseAtTheFirstSuspension)
+{
+    Host h;
+    ASSERT_NO_FATAL_FAILURE(start(h, "async_sched_v1.hot", "SchedRunner"));
+    EXPECT_FALSE(sync_call<bool>(h, "SchedRunner::Once", int32_t(4)));
+    EXPECT_EQ(hot::scheduler().size(), 0u);
+}
+
+// hot.run_until_done waits for the sleep of the task.
+TEST_P(AsyncHost, ScriptRunUntilDoneReturnsTrue)
+{
+    Host h;
+    ASSERT_NO_FATAL_FAILURE(start(h, "async_sched_v1.hot", "SchedRunner"));
+    EXPECT_TRUE(sync_call<bool>(h, "SchedRunner::Finish", int32_t(4)));
+    EXPECT_EQ(hot::scheduler().size(), 0u);
+}
+
+// The error of a spawned task has no awaiter: it goes to the unhandled-error handler.
+TEST_P(AsyncHost, SpawnedTaskErrorReachesTheHandler)
+{
+    Host h;
+    ASSERT_NO_FATAL_FAILURE(start(h, "async_sched_v1.hot", "SchedRunner"));
+    std::vector<std::string> reports;
+    hot::set_script_error_handler([&reports](const hot::ScriptErrorReport& r) { reports.push_back(r.message); });
+    sync_call<hot::TaskId>(h, "SchedRunner::SpawnBoom");
+    for (int i = 0; i < 3; ++i)
+        hot::scheduler().tick();
+    hot::set_script_error_handler(nullptr);
+    ASSERT_EQ(reports.size(), 1u);
+    EXPECT_EQ(reports[0], "spawned boom");
+    EXPECT_EQ(hot::scheduler().size(), 0u);
+}
+
+// hot.scheduler().cancel(id) destroys the task before it ends.
+TEST_P(AsyncHost, ScriptCancelsASpawnedTask)
+{
+    Host h;
+    ASSERT_NO_FATAL_FAILURE(start(h, "async_sched_v1.hot", "SchedRunner"));
+    const hot::TaskId id = sync_call<hot::TaskId>(h, "SchedRunner::StartLong");
+    hot::scheduler().tick();
+    hot::scheduler().tick();
+    EXPECT_EQ(ticks(h), 2);
+    EXPECT_TRUE(hot::scheduler().alive(id));
+    sync_call<void>(h, "SchedRunner::Stop", id);
+    EXPECT_FALSE(hot::scheduler().alive(id));
+    EXPECT_EQ(hot::scheduler().size(), 0u);
+    hot::scheduler().tick();
+    EXPECT_EQ(ticks(h), 2);
+    EXPECT_EQ(hot::pin_count(1), 0u);
+}
+
+// A spawned task pins generation 1. A reload makes it stale. The next tick cancels it: the old
+// code does not run, and nobody gets a report. After cancel_all the generation unloads.
+// AOT code does not unload, so the AOT mode skips the last part.
+TEST_P(AsyncHost, ReloadCancelsASpawnedTaskAtTheNextTick)
+{
+    Host h;
+    ASSERT_NO_FATAL_FAILURE(start(h, "async_sched_v1.hot", "SchedRunner"));
+    std::vector<std::string> reports;
+    hot::set_script_error_handler([&reports](const hot::ScriptErrorReport& r) { reports.push_back(r.message); });
+    sync_call<hot::TaskId>(h, "SchedRunner::StartLong");
+    hot::scheduler().tick();
+    EXPECT_EQ(ticks(h), 1);
+    EXPECT_EQ(hot::pin_count(1), 1u);
+
+    ASSERT_NO_FATAL_FAILURE(reload(h, "async_sched_v2.hot", 2, "async_sched_v1"));
+    EXPECT_EQ(hot::scheduler().size(), 1u);
+    const uint64_t stale0 = hot::stale_call_count();
+    testing::internal::CaptureStderr();
+    hot::scheduler().tick();
+    testing::internal::GetCapturedStderr();
+    EXPECT_EQ(hot::stale_call_count(), stale0 + 1);
+    EXPECT_EQ(ticks(h), 1); // the old body did not run again
+    EXPECT_EQ(hot::scheduler().size(), 0u);
+    hot::set_script_error_handler(nullptr);
+    EXPECT_TRUE(reports.empty());
+
+    hot::scheduler().cancel_all();
+    EXPECT_EQ(hot::pin_count(1), 0u);
+    h.loader.frame_boundary();
+    if (aot())
+        return;
+    const hot::LoaderStats st = h.loader.stats();
+    ASSERT_NE(find_gen(st, 1), nullptr);
+    EXPECT_EQ(find_gen(st, 1)->state, hot::GenState::Unloaded);
 }
 
 std::string mode_name(const ::testing::TestParamInfo<Mode>& info)

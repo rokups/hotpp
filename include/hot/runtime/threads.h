@@ -229,4 +229,12 @@ HOT_NODEBUG void pin(uint32_t generation);
 HOT_NODEBUG void unpin(uint32_t generation);
 uint32_t pin_count(uint32_t generation);
 
+namespace detail
+{
+// The slot of the process-wide task scheduler (hot::scheduler() in hot/runtime/scheduler.h).
+// The first call runs "make" and keeps its result. All later calls return the same pointer.
+// The runtime never destroys the object. The slot is C++17: it does not know the type.
+HOT_EXPORT void* default_scheduler(void* (*make)());
+} // namespace detail
+
 } // namespace hot

@@ -1,0 +1,54 @@
+// Generation 2 of the SchedRunner class (tests/integration/async).
+// The scripts spawn tasks, step them and wait for them with the scheduler.
+using "Actor.h";
+
+class SchedRunner : Actor {
+    int ticks = 0;
+
+    async void Ticker(int n) {
+        for (int i = 0; i < n; i = i + 1) {
+            this.ticks = this.ticks + 100;
+            await hot.yield();
+        }
+    }
+
+    async int Slow(int x) {
+        await hot.sleep(std.chrono.milliseconds(5));
+        return x * 2;
+    }
+
+    async void Boom() {
+        await hot.yield();
+        throw hot.ScriptError("spawned boom");
+    }
+
+    uint64_t Start() {
+        return hot.spawn(this.Ticker(3));
+    }
+
+    uint64_t StartLong() {
+        return hot.spawn(this.Ticker(1000));
+    }
+
+    uint64_t SpawnBoom() {
+        return hot.spawn(this.Boom());
+    }
+
+    bool Once(int x) {
+        var t = this.Slow(x);
+        return hot.step(t);
+    }
+
+    bool Finish(int x) {
+        var t = this.Slow(x);
+        if (hot.run_until_done(t, std.chrono.milliseconds(100))) {
+            return true;
+        }
+        hot.spawn(t);
+        return false;
+    }
+
+    void Stop(uint64_t id) {
+        hot.scheduler().cancel(id);
+    }
+}

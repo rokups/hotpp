@@ -23,6 +23,7 @@ endif()
 set(ASYNC_SCRIPTS
     ${PROJECT_SOURCE_DIR}/tests/scripts/async_host_v1.hot
     ${PROJECT_SOURCE_DIR}/tests/scripts/async_override.hot
+    ${PROJECT_SOURCE_DIR}/tests/scripts/async_sched_v1.hot
     ${PROJECT_SOURCE_DIR}/tests/scripts/async_cpp.cpp)
 # The AOT code of the scripts. The test loads it with Loader::load_aot.
 hot_add_scripts(TARGET async_aot_scripts AOT SCRIPTS ${ASYNC_SCRIPTS}
