@@ -137,8 +137,8 @@ ast::NameExpr split_name(const ParseState& st, std::string_view t, uint32_t pos)
                 if (targs.size() > 2)
                 {
                     // The offsets of the raw text. The scope text can be longer than the raw text.
-                    const uint32_t b = pos + static_cast<uint32_t>(targs_at) + 1;
-                    const Span args{b, pos + static_cast<uint32_t>(e) - 1};
+                    const uint32_t targs_begin = pos + static_cast<uint32_t>(targs_at) + 1;
+                    const Span args{targs_begin, pos + static_cast<uint32_t>(e) - 1};
                     Diagnostics quiet;
                     std::vector<ExprP> list =
                         parse_expression_list(ParseInput{std::string_view(st.base, st.size), st.map, st.array_tpl}, args, quiet);

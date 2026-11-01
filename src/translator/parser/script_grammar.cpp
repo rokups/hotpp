@@ -1364,7 +1364,7 @@ struct class_p
     static constexpr auto value =
         lexy::bind(lexy::callback<TopItem>(
                        [](const ParseState& st, const char* pos, const auto& attrs, const auto& kw,
-                           const char* name_pos, std::string&& name, lexy::nullopt)
+                           const char* /*name_pos*/, std::string&& name, lexy::nullopt)
     {
         return make_stub(st, pos, class_attrs_of(attrs), std::distance(kw.begin(), kw.end()) == 6,
             std::move(name), false);

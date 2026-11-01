@@ -1251,7 +1251,7 @@ void Frontend::examine(CXCursor k, WalkState& st)
         {
             const std::string item = lt.substr(items[i].begin, items[i].end - items[i].begin);
             if (item.size() > 1 && item[0] == '*' && trim(item.substr(1)) == "this")
-                fail(e.begin + items[i].begin,
+                fail(e.begin + static_cast<uint32_t>(items[i].begin),
                     "a lambda cannot capture '*this' in a .cpp script: it would copy the object; capture a copy of the fields");
             // An init-capture "x = this": the new name is the shell, so "x->f" reads through the shell.
             const size_t eq = item.find('=');
@@ -1259,16 +1259,16 @@ void Frontend::examine(CXCursor k, WalkState& st)
                 item[eq - 1] != '>' && (eq + 1 >= item.size() || item[eq + 1] != '=') &&
                 trim(item.substr(eq + 1)) == "this")
             {
-                add(e.begin + items[i].end - 4, 4, "__self");
+                add(e.begin + static_cast<uint32_t>(items[i].end) - 4, 4, "__self");
                 continue;
             }
             if (item != "this")
                 continue;
             has_this = true;
             if (copy_default && items[i].comma != std::string::npos)
-                add(e.begin + items[i].comma, items[i].end - items[i].comma, "");
+                add(e.begin + static_cast<uint32_t>(items[i].comma), static_cast<uint32_t>(items[i].end - items[i].comma), "");
             else
-                add(e.begin + items[i].begin, 4, "__self");
+                add(e.begin + static_cast<uint32_t>(items[i].begin), 4, "__self");
         }
         // The default "&" captures the local "__self" by reference. A stored lambda would keep a
         // dangling reference. So the capture "__self" by copy comes in, when the body uses the shell.
@@ -1447,11 +1447,11 @@ void Frontend::examine(CXCursor k, WalkState& st)
     }
     case CXCursor_CXXDynamicCastExpr:
     { // the class records give the answer, not the C++ RTTI (see doc/cpp-scripts.md)
-        CXType t = clang_getCursorType(k);
-        const bool ptr = t.kind == CXType_Pointer;
-        if (t.kind == CXType_Pointer || t.kind == CXType_LValueReference || t.kind == CXType_RValueReference)
-            t = clang_getPointeeType(t);
-        const Entry* en = class_entry(t);
+        CXType cast_type = clang_getCursorType(k);
+        const bool ptr = cast_type.kind == CXType_Pointer;
+        if (cast_type.kind == CXType_Pointer || cast_type.kind == CXType_LValueReference || cast_type.kind == CXType_RValueReference)
+            cast_type = clang_getPointeeType(cast_type);
+        const Entry* en = class_entry(cast_type);
         if (!en)
             return;
         const size_t lt = text_.find('<', e.begin);
@@ -2936,9 +2936,9 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
     // keeps the names at the same address.
     std::deque<std::string> unsaved_names;
     for (const auto& [vpath, vtext] : virtual_files)
-        for (std::string& name : hotc::clang_spellings(vpath))
+        for (std::string& spelling : hotc::clang_spellings(vpath))
         {
-            unsaved_names.push_back(std::move(name));
+            unsaved_names.push_back(std::move(spelling));
             unsaved.push_back({unsaved_names.back().c_str(), vtext.c_str(), static_cast<unsigned long>(vtext.size())});
         }
     CXErrorCode ec = clang_parseTranslationUnit2(h.idx, name.c_str(), cargs.data(), static_cast<int>(cargs.size()),

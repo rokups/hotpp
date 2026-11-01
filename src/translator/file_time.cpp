@@ -42,8 +42,8 @@ FileTimes file_times(const std::string& path)
         nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
     if (h != INVALID_HANDLE_VALUE)
     {
-        FILE_BASIC_INFO basic;
-        BY_HANDLE_FILE_INFORMATION info;
+        FILE_BASIC_INFO basic{};
+        BY_HANDLE_FILE_INFORMATION info{};
         const bool ok = GetFileInformationByHandleEx(h, FileBasicInfo, &basic, sizeof(basic))
             && GetFileInformationByHandle(h, &info);
         CloseHandle(h);

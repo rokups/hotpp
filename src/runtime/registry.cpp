@@ -25,7 +25,10 @@ std::set<std::pair<std::string, unsigned>> g_detached_logged;
 
 // This reference keeps errors.cpp in the link. The host must export the symbols of errors.cpp
 // to the script modules, but no host code names them. The linker would drop errors.o.
-[[gnu::used]] void (*const g_keep_errors)(const char*) = &detail::throw_null_reference;
+#if defined(__GNUC__) || defined(__clang__)
+[[gnu::used]]
+#endif
+void (*const g_keep_errors)(const char*) = &detail::throw_null_reference; // cl: the whole archive keeps it
 } // namespace
 
 void detached_call(const ClassRecord* cls, unsigned slot)

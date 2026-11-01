@@ -2217,8 +2217,8 @@ struct Lowerer
         {
             // "foreach (var x in w.items)" of a weak handle "w": the lock ends before the loop.
             if (fo->range)
-                if (const std::string w = weak_root(*fo->range); !w.empty())
-                    weak_ref_error(pos_of(*fo->range), w);
+                if (const std::string weak = weak_root(*fo->range); !weak.empty())
+                    weak_ref_error(pos_of(*fo->range), weak);
             const ScopeSave scope(cx);
             declare(fo->name, std::string());
             for (const std::string& n : fo->names)
