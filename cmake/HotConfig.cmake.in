@@ -30,6 +30,16 @@ if(NOT DEFINED HOT_SCRIPT_COMPILER)
     if(_hot_sdk_value AND NOT EXISTS "${_hot_sdk_value}")
         set(_hot_sdk_value "")
     endif()
+    # cl cannot compile a script module: hotc gives it the options of clang++. An MSVC consumer
+    # uses clang++ of the Visual Studio component "C++ Clang tools", or a clang++ on PATH.
+    if(NOT _hot_sdk_value AND MSVC)
+        find_program(_hot_sdk_clangxx NAMES clang++
+                     HINTS "$ENV{VCINSTALLDIR}Tools/Llvm/x64/bin")
+        if(_hot_sdk_clangxx)
+            set(_hot_sdk_value "${_hot_sdk_clangxx}")
+        endif()
+        unset(_hot_sdk_clangxx CACHE)
+    endif()
     set(HOT_SCRIPT_COMPILER "${_hot_sdk_value}" CACHE STRING "The compiler of the script modules")
 endif()
 if(NOT DEFINED HOT_HOTC_TARGET)

@@ -7,11 +7,11 @@
 #
 # Jobs:
 #   linux              Build and test on Linux. Make hotpp-sdk-linux-x86_64.tar.gz.
-#   windows-msvc       Build and test on Windows with MSVC.
+#   windows-msvc       Build and test on Windows with MSVC. Make hotpp-sdk-windows-x86_64.zip.
 #   windows            Cross build for Windows on Linux. Test a subset under wine.
 #                      Make hotpp-sdk-windows-x86_64.zip.
 #   sdk-smoke-linux    Unpack the Linux SDK on a clean Ubuntu 24.04 runner. Run tests/sdk_smoke/run.cmake.
-#   sdk-smoke-windows  Unpack the Windows SDK on a clean Windows runner. Run the same script natively.
+#   sdk-smoke-windows  Unpack the Windows SDK on a clean Windows runner. Run the same script with MSVC.
 #   release            Push to master only. Move the tag "latest" and replace the release assets.
 #
 # Each SDK comes from a second build with HOT_PORTABLE=ON and HOT_BUILD_TESTS=OFF. Such a build
@@ -105,6 +105,9 @@ jobs:
   windows-msvc:
     runs-on: windows-latest
     timeout-minutes: 90
+    # sdk-smoke-windows runs when the SDK package step succeeds, also when a test fails.
+    outputs:
+      sdk: ${{ steps.package.outcome }}
     defaults:
       run:
         shell: bash
@@ -178,6 +181,41 @@ jobs:
         if: always() && steps.hotc.outcome == 'success'
         timeout-minutes: 40
         run: ctest --test-dir "$BUILD_DIR" -C "$CONFIG" -j 4 --timeout 300 --output-on-failure
+
+      # The test build is large. Remove it before the SDK build, so the disk does not become full.
+      - name: Remove the test build
+        if: always()
+        run: rm -rf "$BUILD_DIR"
+
+      # The SDK is a Release build with the DLL C++ runtime (/MD). A consumer builds in Release
+      # or RelWithDebInfo. A Debug consumer (/MDd) cannot link the static libraries of the SDK.
+      - name: Build the SDK (portable)
+        id: sdk
+        if: always()
+        run: |
+          cmake --preset vs-files -B cmake-build/sdk -DCMAKE_CONFIGURATION_TYPES=Release \
+            -DHOT_DOWNLOAD_LLVM=OFF -DHOT_LLVM_RELEASES_DIR="$(pwd -W)/cmake-build" \
+            -DHOT_BUILD_TRANSLATOR=ON -DHOT_PORTABLE=ON -DHOT_BUILD_TESTS=OFF -DHOT_BUILD_SAMPLES=OFF
+          cmake --build cmake-build/sdk --config Release --parallel
+
+      # hotc.exe and hot-ls.exe need only libclang.dll and the MSVC runtime of the system. The
+      # install puts libclang.dll in bin/ and the Clang headers in lib/clang/<major>/include.
+      - name: Package the SDK
+        id: package
+        if: always() && steps.sdk.outcome == 'success'
+        run: |
+          mkdir -p dist stage
+          cmake --install cmake-build/sdk --config Release --prefix stage/hotpp-sdk-windows-x86_64
+          test -f stage/hotpp-sdk-windows-x86_64/bin/libclang.dll
+          ls -d stage/hotpp-sdk-windows-x86_64/lib/clang/*/include
+          cd stage && cmake -E tar cf ../dist/hotpp-sdk-windows-x86_64.zip --format=zip hotpp-sdk-windows-x86_64
+
+      - uses: actions/upload-artifact@v7
+        if: always() && steps.package.outcome == 'success'
+        with:
+          name: hotpp-sdk-windows-x86_64
+          path: dist/hotpp-sdk-windows-x86_64.zip
+          if-no-files-found: error
 
   # The Windows SDK is a cross build on Linux with the preset mingw-llvm. This is the proven path
   # of the repository (doc/windows.md). The MSVC preset vs-files is not tested, so a native MSVC
@@ -324,32 +362,22 @@ jobs:
           cmake -DSDK="$RUNNER_TEMP/sdk" -DWORK_DIR="$RUNNER_TEMP/smoke" \
             -DCXX_COMPILER=clang++-${LLVM_VERSION} -P tests/sdk_smoke/run.cmake
 
-  # The Windows SDK on a real Windows runner. This proves that hotc.exe runs on Windows (not only
-  # under wine). The compiler is the GCC of MSYS2 UCRT64. It agrees with the SDK build (Arch
-  # MinGW-w64: UCRT, posix threads, SEH). The static libraries of the SDK need a GCC of the same
-  # or a newer version. The SDK config uses <msys2>/ucrt64 as the sysroot of the parse. It takes
-  # this folder from the path of g++.
+  # The Windows SDK on a clean Windows runner. The consumer uses MSVC and the default generator
+  # (the newest Visual Studio). The Visual Studio generator finds cl.exe itself, so the job does
+  # not load the Visual Studio environment.
   sdk-smoke-windows:
-    needs: windows
+    needs: windows-msvc
+    if: always() && needs.windows-msvc.outputs.sdk == 'success'
     runs-on: windows-latest
     timeout-minutes: 20
     defaults:
       run:
-        shell: msys2 {0}
+        shell: bash
     steps:
       - uses: actions/checkout@v7
         with:
           sparse-checkout: tests/sdk_smoke
           sparse-checkout-cone-mode: false
-
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          install: >-
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-cmake
-            mingw-w64-ucrt-x86_64-ninja
 
       - uses: actions/download-artifact@v8
         with:
@@ -365,8 +393,7 @@ jobs:
       - name: Run the SDK smoke test
         run: |
           temp=$(cygpath -m "$RUNNER_TEMP")
-          g++ --version
-          cmake -DSDK="$temp/sdk" -DWORK_DIR="$temp/smoke" -DCXX_COMPILER=g++ -P tests/sdk_smoke/run.cmake
+          cmake -DSDK="$temp/sdk" -DWORK_DIR="$temp/smoke" -DGENERATOR=default -P tests/sdk_smoke/run.cmake
 
   # The release "latest" follows master. Only a push to master updates it. A newer push cancels
   # this job too (the workflow group). This is safe: the job releases only the head of master,

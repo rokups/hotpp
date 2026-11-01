@@ -11,7 +11,8 @@
 #   SDK             Required. The SDK prefix (it has lib/cmake/Hot), or a folder with one such prefix.
 #   WORK_DIR        The build folder of the test. Default: sdk_smoke_build in the current folder.
 #                   The script removes it first.
-#   GENERATOR       The CMake generator. Default: Ninja.
+#   GENERATOR       The CMake generator. Default: Ninja. The value "default" gives no -G, so
+#                   CMake uses its default generator (on Windows: the newest Visual Studio).
 #   CONFIG          The build type. Default: Release.
 #   CXX_COMPILER    The C++ compiler. Default: the CMake default.
 #   TOOLCHAIN_FILE  A toolchain file, for a cross test (for example a Windows SDK under wine).
@@ -56,8 +57,11 @@ function(_run)
 endfunction()
 
 file(REMOVE_RECURSE "${WORK_DIR}")
-set(configure_args -S "${CMAKE_CURRENT_LIST_DIR}" -B "${WORK_DIR}" -G "${GENERATOR}"
+set(configure_args -S "${CMAKE_CURRENT_LIST_DIR}" -B "${WORK_DIR}"
     "-DCMAKE_PREFIX_PATH=${SDK}" "-DCMAKE_BUILD_TYPE=${CONFIG}")
+if(NOT GENERATOR STREQUAL "default")
+    list(APPEND configure_args -G "${GENERATOR}")
+endif()
 if(CXX_COMPILER)
     list(APPEND configure_args "-DCMAKE_CXX_COMPILER=${CXX_COMPILER}")
 endif()
