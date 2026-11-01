@@ -166,14 +166,21 @@ TEST(ScriptImportTranslation, ImportFromDisk)
     const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // The "#line" directive has the path of the import. On Windows the path can have "/" or
-    // "\\" (a C string) for each "\".
+    // "\\" (a C string) for each "\". The test changes both to "/" before the search.
     const std::filesystem::path base = dir.path() / "base.hot";
-    std::string escaped;
-    for (char c : base.string())
-        escaped += c == '\\' ? std::string("\\\\") : std::string(1, c);
-    const bool found = r.cpp.find(base.string() + "\"") != std::string::npos
-        || r.cpp.find(escaped + "\"") != std::string::npos
-        || r.cpp.find(base.generic_string() + "\"") != std::string::npos;
+    std::string cpp;
+    for (size_t i = 0; i < r.cpp.size(); ++i)
+    {
+        if (r.cpp[i] != '\\')
+            cpp += r.cpp[i];
+        else
+        {
+            cpp += '/';
+            if (i + 1 < r.cpp.size() && r.cpp[i + 1] == '\\')
+                ++i;
+        }
+    }
+    const bool found = cpp.find(base.generic_string() + "\"") != std::string::npos;
     EXPECT_TRUE(found) << base.generic_string() << "\n" << r.cpp.substr(0, 2000);
 }
 

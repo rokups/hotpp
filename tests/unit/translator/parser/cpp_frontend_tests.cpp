@@ -22,7 +22,10 @@ namespace
 
 std::vector<std::string> clang_args(const std::string& extra_dir)
 {
-    std::vector<std::string> a = {"-x", "c++", "-std=c++17", "-I" + std::string(HOT_SOURCE_DIR) + "/tests/engine",
+    // "-fno-delayed-template-parsing": the args of hotc (hotc_lib.cpp). The msvc target of clang
+    // parses a template body late, and the frontend then misses the body.
+    std::vector<std::string> a = {"-x", "c++", "-std=c++17", "-fno-delayed-template-parsing",
+        "-I" + std::string(HOT_SOURCE_DIR) + "/tests/engine",
         "-I" + std::string(HOT_SOURCE_DIR) + "/include", "-resource-dir=" + std::string(HOT_RESOURCE_DIR)};
     if (!extra_dir.empty())
         a.push_back("-I" + extra_dir);
