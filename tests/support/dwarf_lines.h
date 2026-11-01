@@ -20,20 +20,32 @@ namespace test_support
 // True when llvm-dwarfdump runs. A test skips when it does not.
 inline bool have_dwarfdump()
 {
+#ifdef _WIN32
+    return std::system("llvm-dwarfdump --version >NUL 2>&1") == 0;
+#else
     return std::system("llvm-dwarfdump --version >/dev/null 2>&1") == 0;
+#endif
 }
 
 // Runs a shell command. Gives stdout and stderr.
 inline std::string run_capture(const std::string& cmd)
 {
     std::string text;
+#ifdef _WIN32
+    FILE* p = _popen((cmd + " 2>&1").c_str(), "r");
+#else
     FILE* p = popen((cmd + " 2>&1").c_str(), "r");
+#endif
     if (p == nullptr)
         return text;
     char buf[4096];
     while (size_t n = fread(buf, 1, sizeof buf, p))
         text.append(buf, n);
+#ifdef _WIN32
+    _pclose(p);
+#else
     pclose(p);
+#endif
     return text;
 }
 

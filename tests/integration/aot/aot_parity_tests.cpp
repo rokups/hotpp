@@ -25,14 +25,22 @@ namespace
 std::string run_command(const std::string& command, int* status = nullptr)
 {
     std::string out;
+#ifdef _WIN32
+    FILE* pipe = _popen(command.c_str(), "r");
+#else
     FILE* pipe = popen(command.c_str(), "r");
+#endif
     if (!pipe)
         return out;
     char buf[4096];
     size_t n;
     while ((n = fread(buf, 1, sizeof buf, pipe)) > 0)
         out.append(buf, n);
+#ifdef _WIN32
+    const int st = _pclose(pipe);
+#else
     const int st = pclose(pipe);
+#endif
     if (status)
         *status = st;
     return out;
