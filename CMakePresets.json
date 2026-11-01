@@ -77,6 +77,13 @@
       "inherits": ["base-clang", "base-jit"]
     },
     {
+      "name": "vs-files",
+      "inherits": "base-files",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
       "name": "mingw-files",
       "inherits": "base-files",
       "toolchainFile": "${sourceDir}/cmake/toolchains/mingw-w64-x86_64.cmake"
@@ -95,6 +102,8 @@
     { "name": "linux-clang-files-rel", "configurePreset": "linux-clang-files", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-files-asan", "configurePreset": "linux-clang-files-asan", "configuration": "Debug" },
     { "name": "linux-clang-files-tsan", "configurePreset": "linux-clang-files-tsan", "configuration": "Debug" },
+    { "name": "vs-files-dbg", "configurePreset": "vs-files", "configuration": "Debug" },
+    { "name": "vs-files-rel", "configurePreset": "vs-files", "configuration": "RelWithDebInfo" },
     { "name": "mingw-files-dbg", "configurePreset": "mingw-files", "configuration": "Debug" },
     { "name": "linux-clang-jit-dbg", "configurePreset": "linux-clang-jit", "configuration": "Debug" },
     { "name": "linux-clang-jit-rel", "configurePreset": "linux-clang-jit", "configuration": "RelWithDebInfo" },
@@ -111,6 +120,8 @@
     { "name": "linux-clang-files-rel", "inherits": "base-test", "configurePreset": "linux-clang-files", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-files-asan", "inherits": "base-test", "configurePreset": "linux-clang-files-asan", "configuration": "Debug" },
     { "name": "linux-clang-files-tsan", "inherits": "base-test", "configurePreset": "linux-clang-files-tsan", "configuration": "Debug" },
+    { "name": "vs-files-dbg", "inherits": "base-test", "configurePreset": "vs-files", "configuration": "Debug" },
+    { "name": "vs-files-rel", "inherits": "base-test", "configurePreset": "vs-files", "configuration": "RelWithDebInfo" },
     { "name": "mingw-files-dbg", "inherits": "base-test", "configurePreset": "mingw-files", "configuration": "Debug" },
     { "name": "linux-clang-jit-dbg", "inherits": "base-test", "configurePreset": "linux-clang-jit", "configuration": "Debug" },
     { "name": "linux-clang-jit-rel", "inherits": "base-test", "configurePreset": "linux-clang-jit", "configuration": "RelWithDebInfo" },
