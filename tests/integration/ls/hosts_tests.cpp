@@ -11,7 +11,11 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
-#include <unistd.h>
+#ifdef _WIN32
+    #include <process.h> // getpid
+#else
+    #include <unistd.h>
+#endif
 
 namespace fs = std::filesystem;
 using hot::ls::HostSet;

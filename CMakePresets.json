@@ -78,10 +78,16 @@
     },
     {
       "name": "vs-files",
-      "inherits": "base-files",
-      "generator": "Visual Studio 17 2022",
+      "description": "No generator: CMake takes the newest Visual Studio of the host.",
+      "binaryDir": "${sourceDir}/cmake-build/${presetName}",
+      "installDir": "${sourceDir}/cmake-build/${presetName}/install",
       "architecture": "x64",
-      "cacheVariables": { "HOT_DOWNLOAD_LLVM": "ON" },
+      "cacheVariables": {
+        "CMAKE_CONFIGURATION_TYPES": "Debug;RelWithDebInfo",
+        "HOT_ENABLE_CLANG_FILES": "ON",
+        "HOT_ENABLE_JIT": "OFF",
+        "HOT_DOWNLOAD_LLVM": "ON"
+      },
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
     },
     {

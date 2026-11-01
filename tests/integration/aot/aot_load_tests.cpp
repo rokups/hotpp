@@ -23,7 +23,11 @@
 #include <sstream>
 #include <string>
 
-#include <unistd.h>
+#ifdef _WIN32
+    #include <process.h> // getpid
+#else
+    #include <unistd.h>
+#endif
 
 namespace
 {

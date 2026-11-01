@@ -19,9 +19,10 @@
 #include <mutex>
 #include <string>
 #include <thread>
-#include <unistd.h>
 #ifdef _WIN32
-    #include <io.h>
+    #include <io.h> // close
+#else
+    #include <unistd.h>
 #endif
 
 namespace ls_test

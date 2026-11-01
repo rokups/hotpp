@@ -23,7 +23,7 @@ on:
   push:
     branches: [master, msvc-port]
   pull_request:
-    branches: [master, msvc-port]
+    branches: [master]
   workflow_dispatch:
 
 permissions:
