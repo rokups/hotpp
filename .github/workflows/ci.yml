@@ -9,7 +9,7 @@
 #   linux              Build and test on Linux. Make hotpp-sdk-linux-x86_64.tar.gz.
 #   windows            Cross build for Windows on Linux. Test a subset under wine.
 #                      Make hotpp-sdk-windows-x86_64.zip.
-#   sdk-smoke-linux    Unpack the Linux SDK on a clean ubuntu runner. Run tests/sdk_smoke/run.cmake.
+#   sdk-smoke-linux    Unpack the Linux SDK on a clean Ubuntu 24.04 runner. Run tests/sdk_smoke/run.cmake.
 #   sdk-smoke-windows  Unpack the Windows SDK on a clean Windows runner. Run the same script natively.
 #   release            Push to master only. Move the tag "latest" and replace the release assets.
 #
@@ -43,7 +43,7 @@ env:
 
 jobs:
   linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -104,7 +104,7 @@ jobs:
   # system where the maintainer tests the preset. The SDK uses the GCC, UCRT and posix threads
   # of Arch MinGW. A consumer must use a compatible MinGW (MSYS2 UCRT64, see sdk-smoke-windows).
   windows:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     container: archlinux:latest
     outputs:
@@ -210,7 +210,7 @@ jobs:
   # gives only tests/sdk_smoke.
   sdk-smoke-linux:
     needs: linux
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -291,7 +291,7 @@ jobs:
   release:
     needs: [linux, windows, sdk-smoke-linux, sdk-smoke-windows]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
