@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <thread>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -508,6 +509,25 @@ private:
     std::string private_cdb_dir() const;
     void on_clangd_notification(const json& msg);
     void map_clangd_diagnostics(Doc& d);
+    // clangd adds the symbols of a new preamble to its index on a worker thread, after the
+    // preamble. A completion before that gets no index names (a native free function, for
+    // example), and clangd says that the answer is complete. The index adds all symbols of one
+    // preamble in one step. So the server waits until a runtime symbol of the preamble is in
+    // the index. Each generated file includes "hot/runtime.h" (hot::ShellBase).
+    // Limit: an earlier preamble of an other document can give the symbol before this preamble.
+    void wait_for_preamble_index()
+    {
+        for (int i = 0; i < 250; ++i)
+        {
+            const auto r = clangd_result("workspace/symbol", {{"query", "ShellBase"}}, 5000);
+            if (r && r->is_array())
+                for (const json& s : *r)
+                    if (s.value("name", std::string()) == "ShellBase")
+                        return;
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+    }
+
     std::optional<json> clangd_result(const std::string& method, json params, int timeout_ms = 60000)
     {
         if (!clangd_ || !clangd_->running())
@@ -1414,7 +1434,10 @@ json Server::on_completion(const Doc& d, const json& p)
                 // Before its first preamble, clangd gives only "fallback" words of the file. A
                 // request that needs the AST waits for the preamble.
                 if (preamble_ready_.insert(d.gen_uri).second)
+                {
                     clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}});
+                    wait_for_preamble_index();
+                }
                 r = clangd_result("textDocument/completion",
                     {{"textDocument", {{"uri", d.gen_uri}}},
                         {"position",
