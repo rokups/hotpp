@@ -34,6 +34,13 @@ bool is_mingw_triple(const std::string& target_triple);
 // <version> (the static libgcc) adds "-L" with the highest version.
 std::vector<std::string> mingw_target_flags(const std::string& target_triple, const std::string& sysroot);
 
+// The error text for a MinGW target with a sysroot that has no libstdc++ headers
+// (<sysroot>/include/c++/<version>). Then mingw_target_flags gives no "-isystem", and the compile
+// would use the C++ headers of the clang installation. These do not agree with a GCC host, so the
+// callers stop with this text. Empty when the triple is not MinGW, the sysroot is empty, or the
+// headers are there.
+std::string mingw_sysroot_error(const std::string& target_triple, const std::string& sysroot);
+
 // The C++ driver for a compiler: "clang" becomes "clang++" and "clang.exe" becomes "clang++.exe",
 // in the same directory. A MinGW link must use the C++ driver, so it links libstdc++. Other
 // names do not change.

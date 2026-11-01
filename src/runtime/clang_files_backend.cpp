@@ -416,6 +416,12 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     const size_t script_slash = source.name.rfind('/');
     const std::string script_dir =
         script_slash == std::string::npos ? std::string(".") : source.name.substr(0, script_slash);
+    const std::string sysroot_error = mingw_sysroot_error(opt_.target_triple, opt_.sysroot);
+    if (!sysroot_error.empty())
+    {
+        error = sysroot_error + "\n";
+        return false;
+    }
     const std::vector<std::string> cmd = compile_command(opt_, cpp_path, out_so, script_dir);
     fs::remove(so_path, ec);
     std::string output;

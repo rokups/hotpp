@@ -111,6 +111,18 @@ std::string highest_version_dir(const fs::path& dir)
 
 } // namespace
 
+std::string mingw_sysroot_error(const std::string& target_triple, const std::string& sysroot)
+{
+    if (!is_mingw_triple(target_triple) || sysroot.empty())
+        return {};
+    if (!highest_version_dir(sysroot + "/include/c++").empty())
+        return {};
+    return "the sysroot '" + sysroot + "' has no libstdc++ headers (" + sysroot
+        + "/include/c++/<version>). The MinGW target " + target_triple
+        + " needs them: without them the module and the host do not agree on std::string. Give the sysroot of "
+          "the MinGW toolchain, for example /usr/x86_64-w64-mingw32";
+}
+
 std::vector<std::string> mingw_target_flags(const std::string& target_triple, const std::string& sysroot)
 {
     std::vector<std::string> flags;

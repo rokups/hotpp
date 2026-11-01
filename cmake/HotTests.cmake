@@ -16,12 +16,17 @@ include(GoogleTest)
 set(HOT_CMAKE_DIR ${CMAKE_CURRENT_LIST_DIR})
 
 function(hot_gtest target)
-    cmake_parse_arguments(PARSE_ARGV 1 A "" "" "PROPERTIES")
+    cmake_parse_arguments(PARSE_ARGV 1 A "" "DISCOVERY_TIMEOUT" "PROPERTIES")
     # The tests use the standard of the project (CMAKE_CXX_STANDARD, default 17).
-    # An emulator (wine) starts slowly. The default discovery timeout (5 s) is too short for it.
+    # An emulator (wine) starts slowly. The default discovery timeout (5 s) is too short for it,
+    # so the timeout is at least 60 s there. A larger value of the caller wins.
+    set(_hot_timeout "${A_DISCOVERY_TIMEOUT}")
+    if(CMAKE_CROSSCOMPILING_EMULATOR AND (NOT _hot_timeout OR _hot_timeout LESS 60))
+        set(_hot_timeout 60)
+    endif()
     set(_hot_discovery "")
-    if(CMAKE_CROSSCOMPILING_EMULATOR)
-        set(_hot_discovery DISCOVERY_TIMEOUT 60)
+    if(_hot_timeout)
+        set(_hot_discovery DISCOVERY_TIMEOUT ${_hot_timeout})
     endif()
     # A test that loads script modules exports its symbols. On Windows the backend finds the
     # import library of the test next to the executable (hot_export_host).

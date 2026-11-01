@@ -92,7 +92,7 @@
       "name": "mingw-llvm",
       "inherits": "mingw-files",
       "cacheVariables": {
-        "HOT_LLVM_DIR": "${sourceDir}/cmake-build/clang+llvm-23.1.4-x86_64-pc-windows-msvc",
+        "HOT_LLVM_RELEASES_DIR": "${sourceDir}/cmake-build",
         "HOT_BUILD_TRANSLATOR": "ON"
       }
     },

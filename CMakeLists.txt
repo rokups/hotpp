@@ -21,11 +21,17 @@ option(HOT_SAMPLES_STANDALONE_TEST "Configure, build and test samples/aot as a s
 # The translator (hotc_lib, hotc, hot-ls) and the run-time backends need libclang. A cross build
 # has no libclang for the target, so the translator is off by default. Use HOT_HOST_HOTC to give
 # the build a hotc that runs on the build host. A cross build to Windows can use the LLVM release
-# for Windows (HOT_LLVM_DIR or HOT_DOWNLOAD_LLVM, cmake/HotDownloadLlvm.cmake). Then the
+# for Windows (HOT_LLVM_DIR, HOT_LLVM_RELEASES_DIR or HOT_DOWNLOAD_LLVM, cmake/HotDownloadLlvm.cmake). Then the
 # translator is on by default, and the emulator (wine) runs hotc.exe and the tests.
 include(cmake/HotLlvmVersion.cmake)
 option(HOT_DOWNLOAD_LLVM "Download the LLVM release for Windows (libclang.dll, clang++.exe)" OFF)
 set(HOT_LLVM_DIR "" CACHE PATH "The folder of an unpacked LLVM release for Windows (no download)")
+# A folder with unpacked releases. When HOT_LLVM_DIR is empty, the release folder of
+# HOT_LLVM_VERSION in it is HOT_LLVM_DIR. Thus a preset does not repeat the version.
+set(HOT_LLVM_RELEASES_DIR "" CACHE PATH "A folder with unpacked LLVM releases for Windows")
+if(NOT HOT_LLVM_DIR AND HOT_LLVM_RELEASES_DIR)
+    set(HOT_LLVM_DIR "${HOT_LLVM_RELEASES_DIR}/${HOT_LLVM_RELEASE_NAME}")
+endif()
 if(CMAKE_CROSSCOMPILING AND NOT HOT_LLVM_DIR AND NOT HOT_DOWNLOAD_LLVM)
     set(HOT_BUILD_TRANSLATOR_DEFAULT OFF)
 else()

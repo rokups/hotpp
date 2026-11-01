@@ -40,7 +40,9 @@ protected:
         fs::create_directories(b);
         if (cache)
             std::ofstream(b / "CMakeCache.txt") << "# cache\n";
-        return b.string();
+        // The JSON text of write_host takes the path as it is. A "\\" of a Windows path is not a
+        // valid JSON escape, so the path has the "/" form.
+        return b.generic_string();
     }
 
     void write_host(

@@ -33,8 +33,20 @@ std::string clang_path(const std::string& path);
 // The names of an unsaved file (a header in memory) for libclang. libclang finds an unsaved file
 // only by the exact name. On Windows, the include search adds "\\" between the folder and the
 // name in the "#include" line, so the name has more than one form. This function gives the
-// form of clang_path first, then each mix of "/" and "\\" at the last four separators. On POSIX
-// the result is clang_path(path) only.
+// form of clang_path first, then each mix of "/" and "\\" at the last four separators. A path
+// with ".." parts has more such separators: the include search adds "\\" before each relative
+// include ("../b/y.h") too. Then the mix also covers the separators from the folder before the
+// first "..", at most eight in total. On POSIX the result is clang_path(path) only.
 std::vector<std::string> clang_spellings(const std::string& path);
+
+// The path without the parts "<name>/../". The other text and the separators ("/" or "\\")
+// stay. A file system in memory can have the name with a mix of separators (a Windows folder
+// and "/"). std::filesystem::path::lexically_normal changes "/" to "\\" on Windows, so it does
+// not find such a name. A drive ("C:"), "." and ".." are not a <name>.
+std::string text_without_dot_dot(std::string path);
+
+// The names to try in a host file system for a path of the include search: the path, then the
+// lexically normal path, then text_without_dot_dot(path). Each name is in the list once.
+std::vector<std::string> host_path_candidates(const std::string& path);
 
 } // namespace hotc

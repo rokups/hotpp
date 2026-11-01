@@ -4,8 +4,10 @@
 
 #include "file_time.h"
 
+#include <algorithm>
+#include <filesystem>
+
 #ifdef _WIN32
-    #include <filesystem>
     #include <system_error>
 
     #include <windows.h>
@@ -69,7 +71,26 @@ std::vector<std::string> clang_spellings(const std::string& path)
     for (size_t k = 0; k < g.size(); ++k)
         if (g[k] == '/')
             seps.push_back(k);
-    const size_t m = seps.size() < 4 ? seps.size() : 4;
+    // Each relative include ("../b/y.h") adds a "\\" before its first part. So the mix covers
+    // the separators from the first ".." part, back by the longest run of ".." parts (the folder
+    // where that include started). At most eight separators are in the mix.
+    size_t m = seps.size() < 4 ? seps.size() : 4;
+    size_t first_dot_dot = seps.size(), run = 0, longest = 0;
+    for (size_t i = 0; i < seps.size(); ++i)
+    {
+        const bool dot_dot = g.compare(seps[i] + 1, 2, "..") == 0
+            && (seps[i] + 3 == g.size() || g[seps[i] + 3] == '/');
+        run = dot_dot ? run + 1 : 0;
+        longest = run > longest ? run : longest;
+        if (dot_dot && first_dot_dot == seps.size())
+            first_dot_dot = i;
+    }
+    if (first_dot_dot < seps.size())
+    {
+        const size_t from = first_dot_dot > longest ? first_dot_dot - longest : 0;
+        m = std::max(m, seps.size() - from);
+    }
+    m = std::min<size_t>(m, 8);
     for (int lead = 0; lead < 2; ++lead)
         for (unsigned mask = 0; mask < (1u << m); ++mask)
         {
@@ -120,5 +141,39 @@ FileTimes file_times(const std::string& path)
 }
 
 #endif
+
+std::string text_without_dot_dot(std::string p)
+{
+    auto sep = [](char c) { return c == '/' || c == '\\'; };
+    for (bool changed = true; changed;)
+    {
+        changed = false;
+        for (size_t k = 0; k + 2 < p.size(); ++k)
+        {
+            // p[k] is a separator, then "..", then a separator or the end.
+            if (!sep(p[k]) || p[k + 1] != '.' || p[k + 2] != '.' || !(k + 3 == p.size() || sep(p[k + 3])))
+                continue;
+            size_t start = k;
+            while (start > 0 && !sep(p[start - 1]))
+                --start;
+            const std::string name = p.substr(start, k - start);
+            if (name.empty() || name == ".." || name == "." || name.back() == ':')
+                continue;
+            p.erase(start, k + 3 - start + (k + 3 < p.size() ? 1 : 0));
+            changed = true;
+            break;
+        }
+    }
+    return p;
+}
+
+std::vector<std::string> host_path_candidates(const std::string& path)
+{
+    std::vector<std::string> out = {path};
+    for (std::string s : {std::filesystem::path(path).lexically_normal().string(), text_without_dot_dot(path)})
+        if (std::find(out.begin(), out.end(), s) == out.end())
+            out.push_back(std::move(s));
+    return out;
+}
 
 } // namespace hotc

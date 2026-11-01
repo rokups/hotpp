@@ -20,19 +20,32 @@
 #include <string>
 #include <thread>
 #include <unistd.h>
+#ifdef _WIN32
+    #include <io.h>
+#endif
 
 namespace ls_test
 {
 
 using json = nlohmann::json;
 
+// A pipe whose ends a child process (clangd) does not get. Else the end of the input never comes.
+// POSIX: O_CLOEXEC. Windows: a C runtime pipe in binary mode that a child does not inherit.
+inline int make_pipe(int fds[2])
+{
+#ifdef _WIN32
+    return _pipe(fds, 1 << 16, _O_BINARY | _O_NOINHERIT);
+#else
+    return pipe2(fds, O_CLOEXEC);
+#endif
+}
+
 class LsClient
 {
 public:
     explicit LsClient(const hot::ls::ServerOptions& options)
     {
-        // O_CLOEXEC: clangd must not get a copy of an end. Else the end of the input never comes.
-        if (pipe2(to_server_, O_CLOEXEC) != 0 || pipe2(from_server_, O_CLOEXEC) != 0)
+        if (make_pipe(to_server_) != 0 || make_pipe(from_server_) != 0)
             std::abort();
         server_ = std::thread([this, options]
         {

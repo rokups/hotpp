@@ -1333,25 +1333,24 @@ unsigned long long hash_file(const std::string& path)
 
 // The host file system can hold a file under the normal spelling ("d/b/y.h") of the path that
 // libclang uses ("d/a/../b/y.h"). These two functions try the spelling of the search, then the
-// normal spelling.
+// normal spellings (hotc::host_path_candidates).
 hot::VfsStat host_stat(hot::FileSystem& fs, const std::string& path)
 {
-    hot::VfsStat st = fs.stat(path);
-    if (!st.exists)
+    for (const std::string& name : hotc::host_path_candidates(path))
     {
-        const std::string normal = std::filesystem::path(path).lexically_normal().string();
-        if (normal != path)
-            st = fs.stat(normal);
+        const hot::VfsStat st = fs.stat(name);
+        if (st.exists)
+            return st;
     }
-    return st;
+    return {};
 }
 
 bool host_read(hot::FileSystem& fs, const std::string& path, std::string& out)
 {
-    if (fs.read(path, out))
-        return true;
-    const std::string normal = std::filesystem::path(path).lexically_normal().string();
-    return normal != path && fs.read(normal, out);
+    for (const std::string& name : hotc::host_path_candidates(path))
+        if (fs.read(name, out))
+            return true;
+    return false;
 }
 
 // Reads the stamp. The stamp has the hash of the content of an existing file.
@@ -1524,7 +1523,10 @@ const char* const kFactsFile = "hotc_facts";
 std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<size_t, std::string>>& lines,
     const std::vector<std::string>& queries)
 {
+    // The facts spell the fixed-width types of the script ("int" is int32_t). <memory> does not
+    // declare them on each standard library (MinGW libstdc++), so <cstdint> comes first.
     std::string head =
+        "#include <cstdint>\n"
         "#include <memory>\n"
         "#include <type_traits>\n"
         "#include <utility>\n"
@@ -2563,33 +2565,6 @@ struct VirtualSearch
     std::set<std::string> spellings, scanned;
 };
 
-// The path without the parts "<name>/../". The other text and the separators ("/" or "\\") stay.
-// A file system in memory can have the name with a mix of separators (a Windows folder and "/").
-std::string text_without_dot_dot(std::string p)
-{
-    auto sep = [](char c) { return c == '/' || c == '\\'; };
-    for (bool changed = true; changed;)
-    {
-        changed = false;
-        for (size_t k = 0; k + 3 < p.size(); ++k)
-        {
-            // p[k] is a separator, then "..", then a separator or the end.
-            if (!sep(p[k]) || p[k + 1] != '.' || p[k + 2] != '.' || !(k + 3 == p.size() || sep(p[k + 3])))
-                continue;
-            size_t start = k;
-            while (start > 0 && !sep(p[start - 1]))
-                --start;
-            const std::string name = p.substr(start, k - start);
-            if (start == 0 || name.empty() || name == ".." || name == "." || name.back() == ':')
-                continue;
-            p.erase(start, k + 3 - start + (k + 3 < p.size() ? 1 : 0));
-            changed = true;
-            break;
-        }
-    }
-    return p;
-}
-
 // Finds the header "rel" in "dirs" in order, the host first for each dir. A hit on the disk
 // stops the search. A hit in the host file system adds the file to "out", and its includes too.
 void collect_virtual_header(hot::FileSystem& fs, const std::string& rel, bool angle, const std::string& includer_dir,
@@ -2609,11 +2584,8 @@ void collect_virtual_header(hot::FileSystem& fs, const std::string& rel, bool an
         // The host file system can hold the file under the normal spelling ("d/b/y.h" for
         // "d/a/../b/y.h"). libclang finds an unsaved file by the spelling that it builds, so the
         // result keeps the spelling of the search.
-        const std::string normal = std::filesystem::path(path).lexically_normal().string();
-        // On Windows lexically_normal changes "/" to "\\". The text form keeps the separators.
-        const std::string text_normal = text_without_dot_dot(path);
-        if (fs.read(path, text) || (normal != path && fs.read(normal, text))
-            || (text_normal != path && text_normal != normal && fs.read(text_normal, text)))
+        // On Windows lexically_normal changes "/" to "\\". host_read also tries the text form.
+        if (host_read(fs, path, text))
         {
             if (seen.spellings.insert(path).second)
                 out.emplace_back(path, text);
@@ -2671,6 +2643,9 @@ std::vector<std::string> clang_args(const Options& opt)
         args.push_back("-I" + hotc::clang_path(d));
     if (!opt.resource_dir.empty())
         args.push_back("-resource-dir=" + hotc::clang_path(opt.resource_dir));
+    const std::string target_error = hotc::target_parse_error(opt.target, opt.sysroot);
+    if (!target_error.empty())
+        fail(0, target_error);
     for (std::string& a : hotc::target_parse_args(opt.target, opt.sysroot))
         args.push_back(std::move(a));
     for (const auto& d : opt.includes)
@@ -6519,7 +6494,10 @@ std::optional<SourcePos> SourceMap::map_to_generated(uint32_t file, int script_l
     return std::nullopt;
 }
 
-std::vector<std::string> target_parse_args(const std::string& target_in, const std::string& sysroot_in)
+namespace
+{
+// The target and the sysroot of the parse: the given values, else the defaults of the build.
+std::pair<std::string, std::string> parse_target(const std::string& target_in, const std::string& sysroot_in)
 {
     std::string target = target_in, sysroot = sysroot_in;
 #ifdef HOT_PARSE_TARGET
@@ -6530,6 +6508,19 @@ std::vector<std::string> target_parse_args(const std::string& target_in, const s
     if (sysroot.empty())
         sysroot = HOT_PARSE_SYSROOT;
 #endif
+    return {target, sysroot};
+}
+} // namespace
+
+std::string target_parse_error(const std::string& target_in, const std::string& sysroot_in)
+{
+    const auto [target, sysroot] = parse_target(target_in, sysroot_in);
+    return hot::mingw_sysroot_error(target, sysroot);
+}
+
+std::vector<std::string> target_parse_args(const std::string& target_in, const std::string& sysroot_in)
+{
+    const auto [target, sysroot] = parse_target(target_in, sysroot_in);
     std::vector<std::string> args;
     if (!target.empty())
     {

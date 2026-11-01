@@ -52,10 +52,12 @@ target_link_libraries(hot_runtime PUBLIC hot_runtime_core ${CMAKE_DL_LIBS} Threa
 target_compile_definitions(hot_runtime PRIVATE HOT_DEFAULT_CXXFLAGS="${HOT_CXXFLAGS_JOINED}")
 # The target and the sysroot of the script modules (HOT_HOTC_TARGET, HOT_SCRIPT_SYSROOT) for
 # DefaultPaths. They go with the compiler HOT_SCRIPT_COMPILER (HOT_DEFAULT_CXX). An empty value
-# adds no flag.
-target_compile_definitions(hot_runtime PRIVATE
-    HOT_DEFAULT_TARGET="${HOT_HOTC_TARGET}"
-    HOT_DEFAULT_SYSROOT="${HOT_SCRIPT_SYSROOT}")
+# adds no flag. The triple is not a path, so both modes have it. The sysroot is a build path, so
+# a portable build does not have it (paths.cpp then uses ""). The compiler finds its own sysroot.
+target_compile_definitions(hot_runtime PRIVATE HOT_DEFAULT_TARGET="${HOT_HOTC_TARGET}")
+if(NOT HOT_PORTABLE)
+    target_compile_definitions(hot_runtime PRIVATE HOT_DEFAULT_SYSROOT="${HOT_SCRIPT_SYSROOT}")
+endif()
 if(HOT_PORTABLE)
     target_compile_definitions(hot_runtime PRIVATE HOT_PORTABLE=1)
 else()
