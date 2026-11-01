@@ -31,7 +31,7 @@ The SDK is relocatable. You can unpack it in any folder.
 
 - CMake 3.20 or later. On Linux, also Ninja or Make.
 - **Linux:** libclang 23 and Clang 23. On Ubuntu, add the [apt.llvm.org](https://apt.llvm.org) repository and install `clang-23`, `libclang-23-dev` and `llvm-23-dev`. Use `clang++-23` as the C++ compiler.
-- **Windows:** Visual Studio 2022 or newer with the C++ tools (the workload "Desktop development with C++"), and CMake. Build in Release or RelWithDebInfo. The MSVC toolset must be the toolset of the SDK build or a newer one. The release notes give this version.
+- **Windows:** Visual Studio 2022 or newer with the C++ tools (the workload "Desktop development with C++"), and CMake. Build in Release or RelWithDebInfo. The CI builds the SDK with Visual Studio 2022 (toolset v143). A newer toolset links the static libraries of the SDK, an older toolset does not. The release notes give the toolset of the build.
 
 The CI tests the SDK on each system with an AOT host (`MODE AOT`). On Windows, the modes `HOT_RELOAD` and `PRECOMPILED` also need the `clang++.exe` of the LLVM release for Windows. See [Windows](windows.html).
 

@@ -7,7 +7,7 @@ group: CMake
 
 ## What works
 
-Hot++ builds and runs natively on Windows with MSVC (`cl.exe`). The CI job `windows-msvc` builds with the preset `vs-files` on `windows-latest` and runs the tests. The Windows SDK comes from this job.
+Hot++ builds and runs natively on Windows with MSVC (`cl.exe`). The CI job `windows-msvc` builds with the preset `vs-files` on `windows-2022` (Visual Studio 2022) and runs the tests. The Windows SDK comes from this job.
 
 - `cl.exe` builds `hotc.exe`, `hot-ls.exe`, the runtime and the hosts. They use the DLL C++ runtime (`/MD`).
 - The script modules use the `clang++.exe` of the official LLVM Windows release (version 23.1.4). They compile for `x86_64-pc-windows-msvc` with the same MSVC STL and the same DLL runtime.

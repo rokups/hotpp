@@ -57,7 +57,7 @@ All tests are GoogleTest cases. CMake registers them with `hot_gtest` (a wrapper
 
 ## CI
 
-`.github/workflows/ci.yml` runs on each push and pull request to `master`. The job `linux` builds with the preset `linux-clang-files` (Clang 23 from apt.llvm.org) and runs all tests. The job `windows-msvc` builds with the preset `vs-files` and MSVC on `windows-latest` and runs the tests. Each job then makes a portable SDK (`HOT_PORTABLE=ON`, no tests). The smoke jobs unpack each SDK on a clean runner and run `tests/sdk_smoke/run.cmake`. The Windows smoke test uses MSVC and the Visual Studio generator. A push to `master` moves the tag `latest` and replaces the assets of the release `latest`. See [Download the SDK](download.html).
+`.github/workflows/ci.yml` runs on each push and pull request to `master`. The job `linux` builds with the preset `linux-clang-files` (Clang 23 from apt.llvm.org) and runs all tests. The job `windows-msvc` builds with the preset `vs-files` and MSVC on `windows-2022` and runs the tests. The Windows smoke test runs on `windows-latest`, with a newer Visual Studio. Each job then makes a portable SDK (`HOT_PORTABLE=ON`, no tests). The smoke jobs unpack each SDK on a clean runner and run `tests/sdk_smoke/run.cmake`. The Windows smoke test uses MSVC and the Visual Studio generator. A push to `master` moves the tag `latest` and replaces the assets of the release `latest`. See [Download the SDK](download.html).
 
 ## Translator notes
 
