@@ -1051,6 +1051,8 @@ ReloadResult Loader::commit_locked()
     // runtime cannot undo a partial move of native objects. The runtime requests a restart.
     // If the handler returns, the old objects and the old generation stay as they are. The
     // new blocks are freed without a destructor call, because the partial state is unknown.
+    // A move-only field (for example std::unique_ptr) of the old object is moved-from after
+    // a failed migration. The old object keeps the field, but its value is empty.
     try
     {
         // The module block comes first. A field initializer of a class can read a module variable.

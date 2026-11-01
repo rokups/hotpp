@@ -7,6 +7,7 @@
 // that throws. The destructor of CppBoss prints the facts of the run.
 #include "Actor.h"
 
+#include <atomic>
 #include <cstdio>
 #include <stdexcept>
 #include <string>
@@ -66,6 +67,7 @@ public:
     {
         std::printf("[aot_cover_cpp] CppBoss power=%d attack=%d caught=%d ticks=%d label=%s\n", power, attack, caught,
             ticks, label.c_str());
+        std::printf("[aot_cover_cpp] CppBoss hits=%d row=%d op=%d\n", hits.load(), row[1][1], op(7));
     }
 
     void Tick(float) override
@@ -88,6 +90,9 @@ public:
             (void)g;
         }
         ticks += 1;
+        hits += 1;
+        row = grid;
+        op = [](int v) { return v * 2; };
     }
 
     int power = 0;
@@ -95,4 +100,10 @@ public:
     int caught = 0;
     int ticks = 0;
     std::string label = "cpp";
+    // A field that has no copy constructor must construct in place.
+    std::atomic<int> hits = {0};
+    // The declarator has the name inside the parentheses: a pointer to an array, a function pointer.
+    int grid[2][3] = {{1, 2, 3}, {4, 5, 6}};
+    int (*row)[3] = nullptr;
+    int (*op)(int) = nullptr;
 };

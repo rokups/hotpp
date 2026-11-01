@@ -125,12 +125,16 @@ TEST(AotParity, OptimizedCoverProgramBehavesLikeTheAotProgram)
     // The class of the ".cpp" script: Power 2 + 100, Attack 1020, one caught error, two ticks.
     EXPECT_NE(opt.find("[aot_cover_cpp] CppBoss power=102 attack=1020 caught=1 ticks=2 label=cpp\n"), std::string::npos)
         << opt;
+    // A std::atomic field, a pointer to an array and a function pointer in the ".cpp" script.
+    EXPECT_NE(opt.find("[aot_cover_cpp] CppBoss hits=2 row=5 op=14\n"), std::string::npos) << opt;
     EXPECT_NE(opt.find("hit=49 hit=45\n"), std::string::npos) << opt;
     EXPECT_NE(opt.find("guard=20 guard_bad=0 reports=hot::IndexOutOfRange;"), std::string::npos) << opt;
     // "this" as a handle gives the same object. Each of the three "new" that throw is caught (1, 10, 100).
     // A "new" of a class with a native base and a constructor argument works. The objects that the
     // throwing "new" made are destroyed: the constructor body ran for Fussy and Hurt, not for Broken.
     EXPECT_NE(opt.find("Boss same=1 caught=111 tally_n=7 hurt_n=1 hurt_name=hurt hp=43\n"), std::string::npos) << opt;
+    // "new" with null for a "[weak]" parameter, and a script enum in "${}" (the underlying integer).
+    EXPECT_NE(opt.find("[aot_cover] Boss watcher=0 phase=2\n"), std::string::npos) << opt;
     EXPECT_NE(opt.find("[aot_cover] Fussy 1 gone\n"), std::string::npos) << opt;
     EXPECT_NE(opt.find("[aot_cover] Hurt 2 gone\n"), std::string::npos) << opt;
     EXPECT_NE(opt.find("[aot_cover] Tally 7 gone\n"), std::string::npos) << opt;

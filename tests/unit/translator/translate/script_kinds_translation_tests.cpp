@@ -206,3 +206,25 @@ TEST(ScriptKindsTranslation, ScriptClassWithNewAndStructCallStayValid)
         "class User : Unit { Helper g; void run() { Helper h = new Helper(); P p = P(); } }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
+
+// A ".cpp" field with a declarator in parentheses (a pointer to an array, a function pointer, a
+// member pointer) goes through an alias: "int (*) p[3];" is not C++. A std::atomic field builds in place.
+TEST(ScriptKindsTranslation, CppFieldDeclaratorsAndInPlaceFields)
+{
+    TempDir dir;
+    write_file(dir.path() / "u.h", kHeader);
+    hotc::TranslateOptions o = temp_options(dir,
+        "#include \"u.h\"\n#include <atomic>\n"
+        "class Q : public Unit { public:\n"
+        "    int (*p)[3] = nullptr;\n    void (*cb)(int) = nullptr;\n    int (Q::*mp)(int) = nullptr;\n"
+        "    std::atomic<int> n = {0};\n};\n");
+    o.script_name = "t.cpp";
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "using p__array_t = int (*)[3]; p__array_t p;")) << r.cpp;
+    EXPECT_TRUE(has(r, "using cb__array_t = void (*)(int); cb__array_t cb;")) << r.cpp;
+    EXPECT_TRUE(has(r, "using mp__array_t = int (Q::*)(int); mp__array_t mp;")) << r.cpp;
+    EXPECT_FALSE(has(r, "int (*) p[3]")) << r.cpp;
+    // The field has no copy constructor, so the migration runs its initializer (kNotMovable).
+    EXPECT_TRUE(has(r, "hot::move_field<std::atomic<int>>")) << r.cpp;
+}

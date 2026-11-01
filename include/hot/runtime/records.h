@@ -41,6 +41,9 @@ enum FieldFlags : uint8_t
     // a function pointer. Examples: the control block of a std::shared_ptr, a std::function.
     // While a live state block has such a field, no retired generation unloads (design 4.9).
     kMayHoldCode = 8,
+    // The field type has no copy constructor and no move constructor (for example std::atomic).
+    // The migration cannot carry the value, so the new field runs its initializer again.
+    kNotMovable = 16,
 };
 
 // One row of the reflection table of a state struct (section 4.7).

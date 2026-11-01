@@ -7,10 +7,12 @@
 // the warnings, the rejections that stay and the restart request.
 #include "hot/runtime.h"
 #include "support/reload_assert.h"
+#include "../../../src/runtime/runtime_internal.h"
 
 #include <gtest/gtest.h>
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -282,6 +284,44 @@ TEST(MigrationPlan, ValueFieldWithoutLayoutIsAPlainMove)
     hot::StateLayout o{"Hero", sizeof(InnerOld), alignof(InnerOld), 1, of};
     hot::StateLayout n{"Hero", sizeof(InnerOld), alignof(InnerOld), 1, nf};
     EXPECT_EQ(hot::build_plan(o, n).steps[0].action, hot::FieldAction::Move);
+}
+
+// A field type without a copy constructor (std::atomic) has a move_field that compiles. The flag
+// kNotMovable tells the migration to run the initializer. A move-only type moves.
+TEST(MigrationPlan, FieldWithoutCopyIsFlaggedAndAMoveOnlyFieldMoves)
+{
+    static_assert(hot::field_flags<std::atomic<int>>() & hot::kNotMovable);
+    static_assert(!(hot::field_flags<std::unique_ptr<int>>() & hot::kNotMovable));
+    static_assert(!(hot::field_flags<std::string>() & hot::kNotMovable));
+    alignas(std::atomic<int>) char to_atomic[sizeof(std::atomic<int>)];
+    std::atomic<int> from_atomic{4};
+    hot::move_field<std::atomic<int>>(to_atomic, &from_atomic); // no copy, no move: nothing happens
+    alignas(std::unique_ptr<int>) char to_ptr[sizeof(std::unique_ptr<int>)];
+    std::unique_ptr<int> from_ptr = std::make_unique<int>(9);
+    hot::move_field<std::unique_ptr<int>>(to_ptr, &from_ptr);
+    auto* moved = reinterpret_cast<std::unique_ptr<int>*>(to_ptr);
+    ASSERT_NE(moved->get(), nullptr);
+    EXPECT_EQ(**moved, 9);
+    moved->~unique_ptr();
+}
+
+TEST(MigrationPlan, MigrateBlockRunsTheInitializerForAFieldThatCannotMove)
+{
+    static bool move_ran = false;
+    move_ran = false;
+    hot::FieldInfo of[] = {mk<int>("n", nullptr, 0, nullptr)};
+    hot::FieldInfo nf[] = {mk<int>("n", nullptr, 0, [](void*, void* f) { new (f) int(77); })};
+    nf[0].flags = static_cast<uint8_t>(nf[0].flags | hot::kNotMovable);
+    nf[0].move = [](void*, const void*) { move_ran = true; };
+    hot::StateLayout o{"Counter", sizeof(int), alignof(int), 1, of};
+    hot::StateLayout n{"Counter", sizeof(int), alignof(int), 1, nf};
+    const hot::MigrationPlan plan = hot::build_plan(o, n);
+    ASSERT_EQ(plan.steps[0].action, hot::FieldAction::Move); // the plan still pairs the field
+    int from = 5;
+    int to = 0;
+    hot::migrate_block(o, n, plan, reinterpret_cast<char*>(&from), reinterpret_cast<char*>(&to));
+    EXPECT_FALSE(move_ran);
+    EXPECT_EQ(to, 77); // the initializer ran: the old value is not carried
 }
 
 TEST(MigrationPlan, PlainRemoveAndPlainAddGiveNoWarning)

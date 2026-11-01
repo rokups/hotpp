@@ -738,6 +738,13 @@ struct Checker
 
     void run()
     {
+        // A field and a method with one name collide in the state struct (a ".hot" script only).
+        // A method that overrides a native virtual has no other check of this name.
+        if (!is_cpp)
+            for (const Field& f : cd.fields)
+                for (const Method& m : cd.methods)
+                    if (m.name == f.name)
+                        diag.add(f.pos, map, "the field '" + f.name + "' has the name of a method of the class");
         for (const Method& m : cd.methods)
             if (!m.overrides_virtual)
                 fn_names.insert(m.name);

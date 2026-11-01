@@ -102,10 +102,36 @@ bool is_c_array_type(const std::string& t)
     return !split_c_array(t).second.empty() || t.find("(*[") != std::string::npos;
 }
 
-// The declaration of a field "name" of the type "t" without the final ";". An array of function
-// pointers goes through an alias, as its declarator has the name inside.
+// True when the type text has a declarator in parentheses at the top level: a pointer to an
+// array "int (*)[3]", a function pointer "void (*)(int)" or a member pointer "int (A::*)(int)".
+// The name of a field goes inside the parentheses, so the declaration needs an alias.
+bool has_paren_declarator(const std::string& t)
+{
+    int angle = 0;
+    for (size_t i = 0; i < t.size(); ++i)
+    {
+        if (t[i] == '<')
+            ++angle;
+        else if (t[i] == '>' && angle > 0)
+            --angle;
+        else if (t[i] == '(' && angle == 0 && (i == 0 || t[i - 1] == ' '))
+        {
+            const size_t close = t.find(')', i);
+            const std::string inner = t.substr(i + 1, close == std::string::npos ? std::string::npos : close - i - 1);
+            if (inner.find('*') != std::string::npos || inner.find('&') != std::string::npos)
+                return true;
+        }
+    }
+    return false;
+}
+
+// The declaration of a field "name" of the type "t" without the final ";". A type with a
+// declarator in parentheses and an array of function pointers go through an alias, as the
+// declarator has the name inside.
 std::string field_declarator(const std::string& t, const std::string& name)
 {
+    if (has_paren_declarator(t))
+        return "using " + name + "__array_t = " + t + "; " + name + "__array_t " + name;
     const auto [head, tail] = split_c_array(t);
     if (!tail.empty())
         return head + " " + name + tail;
@@ -3945,6 +3971,8 @@ void translate_impl(
         base_cx.types = &types;
         wire_native_hooks(base_cx);
         base_cx.script_classes = script_names;
+        for (const auto& en : sc.enums)
+            base_cx.script_enums[en.name] = en.underlying.empty() ? std::string("int32_t") : en.underlying;
         for (const auto& sc_cls : sc.classes)
             base_cx.classes[sc_cls.name] = &sc_cls;
         base_cx.new_classes = new_ready;
@@ -4027,7 +4055,7 @@ void translate_impl(
         if (!is_module && !sc.is_cpp)
             o.w(prelude_block(types.preludes(cn), cn, std::string()));
         for (const Field& f : cd.fields)
-            o.w("    " + (sc.is_cpp && is_c_array_type(f.type) ? field_declarator(f.type, f.name) : f.type + " " + f.name)
+            o.w("    " + (sc.is_cpp ? field_declarator(f.type, f.name) : f.type + " " + f.name)
                 + ";\n");
         if (is_module)
         {
@@ -5108,6 +5136,8 @@ void translate_impl(
         base_cx.map = &map;
         base_cx.types = &types;
         wire_native_hooks(base_cx);
+        for (const auto& en : sc.enums)
+            base_cx.script_enums[en.name] = en.underlying.empty() ? std::string("int32_t") : en.underlying;
         for (const auto& sc_cls : sc.classes)
         {
             base_cx.script_classes.insert(sc_cls.name);
@@ -5311,7 +5341,7 @@ void translate_impl(
                         return "hot::field_id_t<" + fld.type + ">(" + init + ")";
                     return "hot::field_init<" + fld.type + ">(" + init + ")";
                 };
-                const std::string declarator = c_array ? field_declarator(f.type, f.name) : f.type + " " + f.name;
+                const std::string declarator = c_array || f.raw ? field_declarator(f.type, f.name) : f.type + " " + f.name;
                 std::string value;
                 if (c_array)
                     value = f.raw_brace_init ? init : "{}";
@@ -5408,7 +5438,7 @@ void translate_impl(
         {
             // A C array type "int[2][3]" is written as "int name[2][3]".
             const bool c_array = f.raw && is_c_array_type(f.type);
-            const std::string declarator = c_array ? field_declarator(f.type, f.name) : f.type + " " + f.name;
+            const std::string declarator = c_array || f.raw ? field_declarator(f.type, f.name) : f.type + " " + f.name;
             const std::string decl = "    " + declarator + ";\n";
             if (f.pos != 0)
                 o.name_segment(decl, 4 + (c_array ? split_c_array(f.type).first.size() : f.type.size()), f.name,

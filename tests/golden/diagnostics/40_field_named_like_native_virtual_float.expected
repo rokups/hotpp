@@ -1,0 +1,3 @@
+40_field_named_like_native_virtual_float.hot:4:11: error: the field 'TakeDamage' has the name of a method of the class
+    4 |     float TakeDamage = 0.0;
+1 error generated.

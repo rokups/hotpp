@@ -84,6 +84,25 @@ class Hurt : Actor {
     ~Hurt() { std.printf("[aot_cover] Hurt %d gone\n", this.n); }
 }
 
+// "null" for a "[weak]" parameter of a constructor is the empty weak handle.
+class Pin { int v = 7; }
+
+class Watcher {
+    [weak]
+    Pin p = null;
+
+    Watcher([weak] Pin q) { this.p = q; }
+    int Alive() { return this.p != null ? 1 : 0; }
+}
+
+// A script enum in "${}" prints as its underlying integer.
+enum Phase { Idle, Walk, Run }
+
+class Describe {
+    Phase m = Phase.Run;
+    std.string Text() { return "phase=${m}"; }
+}
+
 class Boss : Actor, IDamageable, IGuarded {
     int hp = 50;
     int[2] table = [10, 20];
@@ -98,6 +117,8 @@ class Boss : Actor, IDamageable, IGuarded {
     int hurt_n = 0;
     std.string hurt_name = "";
     Hurt keep;
+    Watcher watcher = null;
+    std.string extras = "";
 
     void Probe() {
         this.probed = 1;
@@ -124,6 +145,9 @@ class Boss : Actor, IDamageable, IGuarded {
         this.keep = new Hurt(1);
         this.hurt_n = this.keep.n;
         this.hurt_name = this.keep.Name;
+        this.watcher = new Watcher(null);
+        Describe describe = new Describe();
+        this.extras = "watcher=${this.watcher.Alive()} ${describe.Text()}";
     }
 
     override void Tick(float dt) {
@@ -147,6 +171,7 @@ class Boss : Actor, IDamageable, IGuarded {
             this.seen_power, this.seen_attack, this.seen_mix);
         std.printf("[aot_cover] Boss same=%d caught=%d tally_n=%d hurt_n=%d hurt_name=%s hp=%d\n", this.same,
             this.caught, this.tally_n, this.hurt_n, this.hurt_name.c_str(), this.hp);
+        std.printf("[aot_cover] Boss %s\n", this.extras.c_str());
     }
 
     override int Guard(int x) {

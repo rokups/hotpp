@@ -593,11 +593,15 @@ struct Lowerer
     // The arguments of a call of the script function "fn" (null: no information).
     void coerce_args(CallExpr& c, const Method* fn, size_t first)
     {
-        if (!fn)
-            return;
-        for (size_t i = first; i < c.args.size() && i - first < fn->params.size(); ++i)
+        if (fn)
+            coerce_args(c, fn->params, first);
+    }
+
+    void coerce_args(CallExpr& c, const std::vector<Param>& params, size_t first)
+    {
+        for (size_t i = first; i < c.args.size() && i - first < params.size(); ++i)
         {
-            const Param& p = fn->params[i - first];
+            const Param& p = params[i - first];
             const std::string& t = p.script_type.empty() ? p.type : p.script_type;
             if (p.weak)
             { // "null" for a "[weak] T" parameter: the empty weak_ptr (a weak_ptr has no nullptr form)
@@ -1080,14 +1084,32 @@ struct Lowerer
                 return;
             }
             check_ctor_access(n);
-            exprs(n.args);
             CallExpr c;
             c.pos = pos;
+            c.args = std::move(n.args);
+            // One constructor takes this number of arguments: its parameter types direct the
+            // arguments. A "null" for a "[weak] T" parameter becomes an empty weak_ptr.
+            if (const ClassDef* d = class_named(type))
+            {
+                const Ctor* only = nullptr;
+                size_t found = 0;
+                for (const Ctor& k : d->ctors)
+                {
+                    size_t required = 0;
+                    for (const Param& p : k.params)
+                        if (!p.def)
+                            ++required;
+                    if (c.args.size() >= required && c.args.size() <= k.params.size())
+                        only = &k, ++found;
+                }
+                if (found == 1)
+                    coerce_args(c, only->params, 0);
+            }
+            exprs(c.args);
             if (cx.types && cx.types->is_script_value(n.type))
             {
                 // A [value] class: "new Stats(args)" is the value "Stats(args)" (design 7.10.1).
                 c.callee = raw(n.type, pos);
-                c.args = std::move(n.args);
                 e = make_expr(std::move(c));
                 return;
             }
@@ -1096,7 +1118,6 @@ struct Lowerer
             const std::string h = cx.types ? cx.types->storage(type) : type;
             const bool shared = h.rfind("\x01std::shared_ptr<", 0) == 0 || h.rfind("std::shared_ptr<", 0) == 0;
             c.callee = raw(n.type + (shared ? "__new_shared" : "__new"), pos);
-            c.args = std::move(n.args);
             e = make_expr(std::move(c));
             if (cx.types)
             {
@@ -1640,6 +1661,18 @@ struct Lowerer
             typed_collections.insert(a.get());
     }
 
+    // The underlying type of the script enum that "x" has, or an empty text.
+    std::string enum_underlying(const Expr& x) const
+    {
+        std::string t = type_of(x);
+        if (t.empty())
+            if (auto* nm = std::get_if<NameExpr>(&x.v))
+                if (nm->parts.size() == 2 && !cx.locals.count(nm->parts[0]) && !cx.field_type.count(nm->parts[0]))
+                    t = nm->parts[0]; // Mode.Walk
+        auto it = cx.script_enums.find(t);
+        return it == cx.script_enums.end() ? std::string() : it->second;
+    }
+
     // A string with "${...}" (design 7.3, DECISIONS item 10) becomes a call of std::format or
     // fmt::format. The literal parts become the format string: "{" and "}" are doubled and the
     // escape "\$" gives "$". A string with no argument stays a plain literal.
@@ -1647,7 +1680,18 @@ struct Lowerer
     {
         const uint32_t pos = n.pos;
         for (ExprP& a : n.args)
+        {
+            // A script enum is an "enum class": the format library has no formatter for it. The
+            // text shows the underlying integer, so the argument is cast to the underlying type.
+            const std::string under = enum_underlying(*a);
             expr(a);
+            if (!under.empty())
+            {
+                std::vector<ExprP> one;
+                one.push_back(std::move(a));
+                a = call_of("static_cast<" + under + ">", std::move(one), pos);
+            }
+        }
         const bool has_args = !n.args.empty();
         std::string f = "\"";
         for (size_t i = 0; i < n.lits.size(); ++i)

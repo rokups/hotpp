@@ -255,10 +255,16 @@ template <class T, size_t N> struct holds_no_code<const T[N]> : holds_no_code<T>
 };
 
 // Helpers for the reflection table of generated code. T is the field type.
+// True when a field of type T moves to a new state block: a copy, or for a type that does not
+// copy, a move. A C array needs a copy of each element.
+template <class T> inline constexpr bool field_movable_v = std::is_copy_constructible_v<std::remove_all_extents_t<T>>
+    || (!std::is_array_v<T> && std::is_move_constructible_v<T>);
+
 template <class T> HOT_HIDDEN constexpr uint8_t field_flags()
 {
     return static_cast<uint8_t>((std::is_trivially_copyable_v<T> ? kTriviallyCopyable : 0)
-        | (std::is_nothrow_move_constructible_v<std::remove_all_extents_t<T>> ? kNothrowMove : 0) | (holds_no_code<T>::value ? 0 : kMayHoldCode));
+        | (std::is_nothrow_move_constructible_v<std::remove_all_extents_t<T>> ? kNothrowMove : 0) | (holds_no_code<T>::value ? 0 : kMayHoldCode)
+        | (field_movable_v<T> ? 0 : kNotMovable));
 }
 
 // The flags of a field that holds a [value] script class (design 5.3). The loader looks at the
@@ -303,10 +309,18 @@ template <class T> HOT_NODEBUG inline void destroy_in(void* obj)
 
 template <class T> HOT_NODEBUG inline void move_field(void* dst, const void* src)
 {
-    if constexpr (std::is_array_v<T>)
+    if constexpr (!field_movable_v<T>)
+    {
+        // No copy and no move: the flag kNotMovable makes the migration run the initializer.
+        (void)dst;
+        (void)src;
+    }
+    else if constexpr (std::is_array_v<T>)
         copy_into<T>(dst, src);
-    else
+    else if constexpr (std::is_copy_constructible_v<T>)
         new (dst) T(*static_cast<const T*>(src));
+    else
+        new (dst) T(std::move(*const_cast<T*>(static_cast<const T*>(src))));
 }
 
 template <class T> HOT_NODEBUG inline void destroy_field(void* field)

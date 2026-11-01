@@ -168,6 +168,8 @@ void migrate_block(const StateLayout& o, const StateLayout& n, const MigrationPl
             migrate_block(*of.sub, *nf.sub, *s.nested, from + of.offset, to + nf.offset);
             continue;
         }
+        if (nf.flags & kNotMovable)
+            continue; // the second loop runs the initializer
         if ((nf.flags & kTriviallyCopyable) && (of.flags & kTriviallyCopyable))
             std::memcpy(to + nf.offset, from + of.offset, nf.size);
         else
@@ -175,9 +177,10 @@ void migrate_block(const StateLayout& o, const StateLayout& n, const MigrationPl
     }
     for (uint32_t i = 0; i < n.field_count; ++i)
     {
-        if (plan.steps[i].action != FieldAction::Init)
-            continue;
         const FieldInfo& nf = n.fields[i];
+        const FieldAction a = plan.steps[i].action;
+        if (a != FieldAction::Init && !(a == FieldAction::Move && (nf.flags & kNotMovable)))
+            continue;
         if (nf.init)
             nf.init(to, to + nf.offset);
     }

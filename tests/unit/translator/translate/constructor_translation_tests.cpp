@@ -215,3 +215,24 @@ TEST(ConstructorTranslation, NewBeforeTheDefinitionIsAccepted)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_LT(r.cpp.find("Squad__new"), r.cpp.find("Boss__Update")) << r.cpp;
 }
+
+// "null" for a "[weak]" parameter of a constructor is an empty weak_ptr. A nullptr does not
+// convert to std::weak_ptr, so C__new_shared(nullptr) did not compile.
+TEST(ConstructorTranslation, NullForAWeakParameterIsTheEmptyWeakHandle)
+{
+    const hotc::TranslateResult r = translate_script(
+        "class N {\n    int v = 1;\n}\n"
+        "class C {\n    [weak]\n    N p = null;\n    C([weak] N q) { p = q; }\n}\n"
+        "class K : Unit {\n    override void Update(float dt) { C c = new C(null); }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "C__new_shared(std::weak_ptr<N>())")) << r.cpp;
+    EXPECT_FALSE(has(r, "C__new_shared(nullptr)")) << r.cpp;
+}
+
+// A field with the name of a method is an error. This includes a method that overrides a native
+// virtual, which has no other check of the name.
+TEST(ConstructorTranslation, FieldWithTheNameOfAnOverrideIsAnError)
+{
+    expect_error("class S : Unit {\n    int Update = 3;\n    override void Update(float dt) { }\n}\n",
+        "the field 'Update' has the name of a method of the class");
+}

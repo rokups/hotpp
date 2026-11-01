@@ -1,0 +1,7 @@
+using "Actor.h";
+
+class Player : Actor {
+    float TakeDamage = 0.0;
+
+    override void TakeDamage(float amount) { }
+}

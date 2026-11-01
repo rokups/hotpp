@@ -95,3 +95,19 @@ TEST(StringInterpolationTranslation, SyntaxErrorInExpressionHasAScriptPosition)
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("t.hot:5:"), std::string::npos) << r.diagnostics;
 }
+
+// A script enum is an "enum class": std::format has no formatter for it. "${m}" prints the
+// underlying integer.
+TEST(StringInterpolationTranslation, ScriptEnumPrintsTheUnderlyingInteger)
+{
+    TempDir dir;
+    write_file(dir.path() / "u.h", kHeader);
+    const hotc::TranslateResult r = hotc::translate(temp_options(dir,
+        "using \"u.h\";\nusing <string>;\nenum Mode { Idle, Walk }\nenum Small : uint8_t { A, B }\n"
+        "class P : Unit {\n    Mode m = Mode.Idle;\n    Small s = Small.B;\n"
+        "    override void Update(float dt) { this.Name = \"m=${m} s=${this.s} e=${Mode.Walk}\"; }\n}\n"));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "static_cast<int32_t>(")) << r.cpp;
+    EXPECT_TRUE(has(r, "static_cast<uint8_t>(")) << r.cpp;
+    EXPECT_TRUE(has(r, "static_cast<int32_t>(Mode::Walk)")) << r.cpp;
+}

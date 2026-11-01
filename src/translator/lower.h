@@ -82,6 +82,8 @@ struct RCtx
     const TypeModel* types = nullptr;
     // The names of all classes of the script.
     std::set<std::string> script_classes;
+    // The script enums: the name to the underlying type. "${e}" of an enum prints the integer.
+    std::map<std::string, std::string> script_enums;
     // The script classes that "new" can build now: the class itself and the classes that the
     // translator emitted before it. "new C(args)" of such a class becomes "C__new(args)".
     std::set<std::string> new_classes;
