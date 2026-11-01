@@ -671,8 +671,43 @@ std::string Server::private_cdb_dir() const
     if (ec || !fs::exists(target))
         return opt_.compile_commands_dir;
     fs::remove(link, ec);
+#ifdef _WIN32
+    // A copy with the long names, not a link. clangd keys a file by its path. A database with
+    // the short 8.3 names ("RUNNER~1") gives a second key for a file that the editor and hot-ls
+    // open with the long name. Also, a link on Windows needs a special privilege. The server
+    // reads the database one time at the start (read_compile_commands), so a copy is current.
+    const auto text = read_file(target.string());
+    json db = text ? json::parse(*text, nullptr, false) : json();
+    if (!db.is_array())
+        return opt_.compile_commands_dir;
+    for (json& e : db)
+    {
+        if (!e.is_object())
+            continue;
+        const fs::path d = long_path(e.value("directory", std::string(".")));
+        e["directory"] = d.string();
+        if (!e.contains("file") || !e["file"].is_string())
+            continue;
+        const std::string old_file = e["file"].get<std::string>();
+        fs::path f = old_file;
+        if (f.is_relative())
+            f = d / f;
+        const std::string new_file = long_path(f.lexically_normal().string());
+        e["file"] = new_file;
+        // clangd compiles the source of the argument list: it gets the long name too.
+        if (e.contains("arguments") && e["arguments"].is_array())
+            for (json& a : e["arguments"])
+                if (a.is_string() && (a.get<std::string>() == old_file || a.get<std::string>() == f.string()))
+                    a = new_file;
+    }
+    std::ofstream out(link, std::ios::binary);
+    out << db.dump(2);
+    out.close();
+    return out ? dir.string() : opt_.compile_commands_dir;
+#else
     fs::create_symlink(target, link, ec);
     return ec ? opt_.compile_commands_dir : dir.string();
+#endif
 }
 
 void Server::start_clangd(const json& init)
