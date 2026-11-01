@@ -18,9 +18,13 @@ namespace test_support
 {
 
 // True when llvm-dwarfdump runs. A test skips when it does not.
+// MSVC host: the modules have the target x86_64-pc-windows-msvc. Their debug info is CodeView
+// (a PDB), not DWARF. The tests read DWARF, so they skip.
 inline bool have_dwarfdump()
 {
-#ifdef _WIN32
+#if defined(_MSC_VER)
+    return false;
+#elif defined(_WIN32)
     return std::system("llvm-dwarfdump --version >NUL 2>&1") == 0;
 #else
     return std::system("llvm-dwarfdump --version >/dev/null 2>&1") == 0;
