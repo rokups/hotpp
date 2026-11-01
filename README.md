@@ -101,7 +101,7 @@ Each folder in [samples/](samples/) shows one way to host Hot++: [aot](samples/a
 ## Status
 
 - Linux: tested with Clang, also under ASan and TSan.
-- Windows: a MinGW host loads and hot-reloads script modules. The tests pass under wine. Visual Studio is untested. See [Windows](https://rokups.github.io/hotpp/windows.html).
+- Windows: MSVC builds the host, and the tests pass on Windows. A MinGW host also works. See [Windows](https://rokups.github.io/hotpp/windows.html).
 - macOS: untested.
 - Coroutines: `async` methods and `await` work, and they need C++20. See [Async and await](https://rokups.github.io/hotpp/async.html).
 

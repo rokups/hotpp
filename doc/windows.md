@@ -7,13 +7,13 @@ group: CMake
 
 ## What works
 
-A MinGW host loads, runs and hot-reloads script modules on Windows. The host uses GCC and libstdc++. The tests build it on Linux and run it under wine.
+Hot++ builds and runs natively on Windows with MSVC (`cl.exe`). The CI job `windows-msvc` builds with the preset `vs-files` on `windows-latest` and runs the tests. The Windows SDK comes from this job.
 
-- The script modules use the `clang++` of the official LLVM Windows release (version 23.1.4). They compile with `--target=x86_64-w64-windows-gnu` and the MinGW sysroot.
+- `cl.exe` builds `hotc.exe`, `hot-ls.exe`, the runtime and the hosts. They use the DLL C++ runtime (`/MD`).
+- The script modules use the `clang++.exe` of the official LLVM Windows release (version 23.1.4). They compile for `x86_64-pc-windows-msvc` with the same MSVC STL and the same DLL runtime.
 - The host and the modules share `std::string` and C++ exceptions. Both pass across the border.
-- `hotc.exe` and `hot-ls` build for MinGW and run under wine.
-- The runtime tests pass under wine.
-- Precompiled mode and reload mode work. Tests cover them natively and under wine.
+- AOT mode, precompiled mode and reload mode work. The integration tests cover them.
+- A MinGW host also works. The presets `mingw-files` and `mingw-llvm` build it on Linux, and the tests run under wine. The CI does not build it.
 
 ## Quick start with a preset
 
@@ -110,7 +110,7 @@ The install of a `mingw-llvm` build has `libclang.dll` in `bin/` and the Clang h
 
 ## Visual Studio
 
-The preset `vs-files` uses the generator `Visual Studio 17 2022` for x64. It works only on a Windows host. It sets `HOT_DOWNLOAD_LLVM=ON`.
+The preset `vs-files` has no generator, so CMake takes the newest Visual Studio of the host. It builds for x64. It works only on a Windows host. It sets `HOT_DOWNLOAD_LLVM=ON`.
 
 ```
 cmake --preset vs-files
@@ -118,16 +118,15 @@ cmake --build --preset vs-files-dbg
 ctest --preset vs-files-dbg
 ```
 
-This preset is untested. The code paths for `cl.exe` and `clang-cl` exist, but nobody built them.
-
-A DLL that MSVC builds exports only the symbols that have the export macro. The MinGW host exports all its symbols.
+The script modules need `link.exe`, the UCRT and the MSVC STL. Run CMake from a "Developer Command Prompt", or load `VsDevCmd.bat` first. The CI uses `vswhere.exe` to find `VsDevCmd.bat`.
 
 ## Limits
 
-- The JIT backend is off for MinGW. The LLVM C++ libraries of the release use the MSVC ABI only.
-- The `cl.exe` and `clang-cl` paths are written, but nobody built them.
-- The preset `vs-files` is untested.
-- Precompiled mode and reload mode are tested natively and under wine only.
+- The JIT backend is off for MinGW and for MSVC. The preset `vs-files` uses the clang files backend.
+- The CI excludes `hotc_tool_tests` on MSVC. These tests run POSIX shell commands.
+- The CI skips the `DebugInfo` tests on MSVC. The modules have CodeView debug info, and the tests read DWARF with `llvm-dwarfdump`.
+- The SDK is a Release build (`/MD`). A Debug consumer (`/MDd`) cannot link its static libraries.
+- The static libraries of the SDK need the MSVC toolset of the SDK build or a newer one. The release notes give this version.
 - Two language server completion tests fail under wine.
 
 See also [Options](cmake-options.html), [Presets](cmake-presets.html) and [Limits](limits.html).

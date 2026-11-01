@@ -184,4 +184,4 @@ Editors:
 - `editors/vscode/package.json` has `contributes.breakpoints` for the language `hot`. The C++ extension (`cppdbg` with `gdb`, or `lldb`) works with no custom launch configuration.
 - Option: the `gdb` setting `skip -gfi "*/include/c++/*"` hides the `libstdc++` stops.
 - `tools/natjmc/hot.natjmc` is a Just My Code file. It marks `hot::*`, the shell, the thunks, the virtual helpers, the base forwarders and `state_of` as non-user code. Status: unverified. Visual Studio reads it from the user Visual Studio Visualizers folder. `cppvsdbg` in VS Code may not read it.
-- MSVC and Visual Studio are untested. The MSVC code paths are unverified: `HOT_NODEBUG_LOCAL` in `hidden.h`, `hot::aligned_alloc`, the `LoadLibrary` branch in `module.cpp` and `/JMC` in CMake.
+- The CI builds and tests the MSVC code paths (the job `windows-msvc`). A real Visual Studio debugger session is untested.

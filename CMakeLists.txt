@@ -188,8 +188,8 @@ elseif(NOT MSVC)
         set(CLANG_RESOURCE_DIR "")
     endif()
 else()
-    # unverified: not built on MSVC. MSVC has no -print-resource-dir. Set the cache variable
-    # HOT_CLANG_RESOURCE_DIR to the resource directory of a Clang install.
+    # MSVC has no -print-resource-dir. The LLVM release (cmake/HotDownloadLlvm.cmake) sets
+    # HOT_CLANG_RESOURCE_DIR. Without the release, set it to the resource directory of a Clang install.
     set(HOT_CLANG_RESOURCE_DIR "" CACHE PATH "The Clang resource directory (MSVC builds)")
     set(CLANG_RESOURCE_DIR "${HOT_CLANG_RESOURCE_DIR}")
 endif()
