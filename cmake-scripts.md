@@ -13,7 +13,7 @@ group: CMake
 hot_add_scripts(TARGET name SCRIPTS a.hot b.hot
                 [INCLUDES dir...] [FLAGS cxxflag...] [DEPENDS file...]
                 [OUT_DIR dir] [AFTER target] [HOTC_ARGS arg...])
-hot_add_scripts(TARGET name SCRIPTS a.hot b.hot AOT
+hot_add_scripts(TARGET name SCRIPTS a.hot b.hot AOT [OPTIMIZED]
                 [INCLUDES dir...] [PRELUDES file...] [FLAGS hotc-flag...]
                 [DEPENDS file...] [OUT_DIR dir] [HOTC_ARGS arg...])
 ```
@@ -27,6 +27,7 @@ The function runs `hotc` at build time. It has two modes. `AOT` selects the seco
 | `TARGET` | none, required | The name of the target. In the default mode it is a custom target. In AOT mode it is a static library. | none |
 | `SCRIPTS` | none, required | The script files. A file is a `.hot` script or a `.cpp` script (see [C++ scripts](cpp-scripts.html)). The extension selects the parser. | A relative path is relative to the current source folder. The function makes it absolute. |
 | `AOT` | off | A flag. It selects the AOT mode. | none |
+| `OPTIMIZED` | off | A flag. It works only with `AOT`. It builds optimized AOT code: a call from the host into a script is as fast as a native virtual call, and the code cannot be overridden or reloaded (see [Optimized AOT](embedding-backends.html#optimized-aot)). `OPTIMIZED` without `AOT` stops with an error: `hot_add_scripts: OPTIMIZED works only with AOT`. | none |
 | `INCLUDES` | empty | Include folders. `hotc` gets each one as `-I`. In AOT mode the library also gets them as `PUBLIC` include folders. The language server host gets them too. | Use an absolute path. The function passes the text to `hotc` as it is, and the custom command runs in the current build folder. The AOT include folders and the host file read a relative path from the current source folder. |
 | `PRELUDES` | empty | Prelude files for `hotc --prelude`. They work only with `AOT`. The default mode stops with an error. | A relative path is relative to the current source folder. |
 | `FLAGS` | empty | In the default mode: compile flags for the scripts (`--cxxflag`). In AOT mode: flags for `hotc`. | none |
@@ -118,6 +119,8 @@ target_link_libraries(game PRIVATE game_scripts)
 The function runs `hotc --aot` and makes the static library `name`. The library has the files `OUT_DIR/<script name>.aot.cpp` and `OUT_DIR/hot_aot_registry.cpp`. The library defines `hot::aot_table` (`include/hot/aot.h`).
 
 The library links `hot_runtime_core` (`PUBLIC`). A program that links `name` and `hot::aot` has no loader, no reload and no Clang. When the build uses fmt, the library also links `hot_fmt`. AOT mode makes only generation 1. Script names and class names must be unique across the scripts of one table.
+
+Add `OPTIMIZED` after `AOT` to build optimized AOT code. The program that links the library can call the scripts faster. It cannot override or reload them. Use it for a shipped build.
 
 The library is a normal target, so it uses the compile flags of your project (`CMAKE_CXX_FLAGS` and the build type). `FLAGS` go to `hotc`, not to the compiler.
 

@@ -91,7 +91,7 @@ Two variables are read when `add_subdirectory` runs. Set them before the call:
 
 Use the aliases in your project. The real names can change. `hot_add_host` links the right target for you, so you seldom link one by hand.
 
-Do not link `hot::runtime` and `hot::aot` in one program. The library from `hot_add_host` or `hot_add_scripts` with `AOT` links only `hot::runtime_core`. `hot_add_host` with `MODE AOT` adds `hot::aot`. `MODE AOT_RELOAD` adds `hot::backend` and never `hot::aot`.
+Do not link `hot::runtime` and `hot::aot` in one program. A program has one AOT library: it cannot link a plain AOT library and an optimized one (`OPTIMIZED`) together. The library from `hot_add_host` or `hot_add_scripts` with `AOT` links only `hot::runtime_core`. `hot_add_host` with `MODE AOT` adds `hot::aot`. `MODE AOT_RELOAD` adds `hot::backend` and never `hot::aot`.
 
 ### Export the host symbols
 

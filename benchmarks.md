@@ -12,13 +12,15 @@ The tool `bench_backends` measures the run-time cost of script code. Each case h
 
 The native twin is the reference. The result is a ratio: script time divided by native time.
 
+A second tool, `bench_backends_opt`, runs the same cases with the scripts built as [optimized AOT code](embedding-backends.html#optimized-aot) (`MODE AOT OPTIMIZED`). It calls this backend `aot-opt`.
+
 Every section of the tool is a matrix. The two script modes (`.hot` and `.cpp`) run in each backend (`files`, `jit` and `aot`). This is true for the cases, for `new`, for reloadable access, for the reload and for the reload chain.
 
 ## Summary
 
 All values come from the `Results` section below. They are the median of 3 runs.
 
-- A loop of fields, numbers, arrays, module variables and calls inside one script runs at native speed (0.94x to 1.0x). This is true for `.hot` and for `.cpp`, in the three backends.
+- A loop of fields, numbers, arrays, module variables and calls inside one script runs at native speed (0.94x to 1.0x). This is true for `.hot` and for `.cpp`, in the three backends and in `aot-opt`.
 - A call from the host into a script costs 2.2x to 2.4x of a native virtual call in `files` and `aot`. This is 1.8 to 2.1 ns more. In `jit` it costs 2.9x (about 2.8 ns more). `.hot` and `.cpp` are equal. See [The cost of a call](#the-cost-of-a-call).
 - A call after 0, 1, 10 or 100 reloads costs the same: 3.4 ns (2.3x) in `files` and 4.3 ns (2.9x) in `jit`, for `.hot` and for `.cpp`.
 - A script to native call runs at native speed (1.46 ns) in the three backends.
@@ -26,6 +28,9 @@ All values come from the `Results` section below. They are the median of 3 runs.
 - A script to script virtual call costs 0.35 to 0.9 ns more than a native one. This is true for `.hot` and `.cpp`.
 - A `.hot` closure call costs 1.5x. A `.hot` `std.vector` index costs 1.4x. The `.cpp` twins of both run at native speed.
 - A reload of 100 objects with 65 fields takes 0.10 ms in `files` and 1.4 ms in `jit`. The compile is not in it.
+- Optimized AOT code (`aot-opt`) removes the cost of the slot. A call from the host into a script costs 1.76 ns, against 3.51 ns in `aot`: native speed (1.0x). A native to script virtual call costs 1.75 ns, against 3.80 ns. A script to script virtual call costs 1.75 ns, against 2.63 ns in `.hot` and 2.34 ns in `.cpp`. See [Optimized AOT](#optimized-aot-aot-opt).
+- `new` and free in `aot-opt` cost 53.8 ns in `.hot` and 31.2 ns in `.cpp`, against 61.0 ns and 38.2 ns in `aot`. The gain is 7 ns. The state block allocation stays. See [The cost of `new`](#the-cost-of-new).
+- The `aot` and `aot-opt` values in these lines come from one build with `HOT_THREAD_SAFE=ON` (see [Machine](#machine)).
 
 ## How to run
 
@@ -41,13 +46,18 @@ One binary tests every backend of the build:
 - `jit`: the JIT backend compiles each script in the process (`-O2`).
 - `aot`: the scripts are C++ in the binary (`MODE AOT_RELOAD` of `hot_add_host`, `-O2`).
 
+The program `bench_backends_opt` is a second executable with the same sources. It builds the scripts as optimized AOT code (`hotc --aot --aot-optimized`, `-O2`) and tests only that code. One program cannot hold two builds of the same scripts, so this needs its own program. Its backend is `aot-opt`, and `--backend all` runs only `aot-opt`. The loader refuses to reload optimized code, so the reload cases do not run there.
+
+    cmake --build build-rel --target bench_backends_opt
+    build-rel/bin/bench_backends_opt --no-load
+
 The native twins also use `-O2`. A backend that the build does not have is skipped. The `.hot` scripts and the `.cpp` scripts are built in the same way in each backend.
 
 The table has a row for each case, for the reload and for each step of the chain. It has two columns for each backend, `hot` and `cpp`. Each column has a time and a ratio. The CSV file has the same rows and columns. The text `n/a` marks a cell that has no value (see [Marks](#marks)).
 
 | Option | Effect |
 |---|---|
-| `--backend all\|files\|jit\|aot` | test one backend only |
+| `--backend all\|files\|jit\|aot` | test one backend only (`bench_backends_opt`: `all\|aot-opt`) |
 | `--filter text` | run only the cases whose name contains the text |
 | `--reps N` | timed runs of each case; the result is the median (default 7) |
 | `--iters N` | loop count of each case |
@@ -58,7 +68,7 @@ The table has a row for each case, for the reload and for each step of the chain
 
 The tool checks that each script gives the same result as its twin. A `!` after a time marks a different result. No `!` appeared in the runs of this page.
 
-Run the tool alone, on a quiet machine. Other work on the machine changes the numbers. One run of all backends takes about 8 minutes: about 250 s in `files`, 220 s in `jit` and 4 s in `aot`. Each case and each reload needs one compile in `files` and in `jit`. Pin the process to one core to get less noise: `taskset -c 6 build-rel/bin/bench_backends --no-load`.
+Run the tool alone, on a quiet machine. Other work on the machine changes the numbers. One run of all backends takes about 8 minutes: about 250 s in `files`, 220 s in `jit` and 4 s in `aot` (also 4 s in `aot-opt`). Each case and each reload needs one compile in `files` and in `jit`. Pin the process to one core to get less noise: `taskset -c 6 build-rel/bin/bench_backends --no-load`.
 
 ## The three versions of a case
 
@@ -78,6 +88,7 @@ The `reload` case and the `chain` case have a `.cpp` version too. The tool makes
 | `.hot` `n/a` | pointer dereference and null check | A `.hot` script has no raw pointers. |
 | `.hot` `n/a` | module function and static method | A `.hot` script has no free functions and no static methods. The native twin is a free function and a static method. |
 | `aot` `n/a` | reload and reload chain | The tool loads the AOT classes with `Loader::load_aot`. It does not reload them. |
+| `aot-opt` `n/a` | reload and reload chain | Optimized AOT code has no reload. |
 | `-` | native owners of `new` | The row is a native twin only. It has no script. |
 
 ## Machine
@@ -85,6 +96,8 @@ The `reload` case and the `chain` case have a `.cpp` version too. The tool makes
 The CPU is an AMD Ryzen 9 3950X (a desktop CPU, 16 cores, 32 threads). The software is Linux 7.2, glibc 2.44, clang 23.1.3 and `libstdc++`. The build uses `CMAKE_BUILD_TYPE=Release`, `HOT_RUNTIME_CHECKS=ON` and `HOT_TRACEBACK=OFF`. The process runs on one core (`taskset -c 6`). The values are the median of 3 runs of the tool (each run gives the median of 7 timed runs).
 
 The call rows have newer values, from 3 runs on `taskset -c 4`. These rows are the host to script calls, the script to native call, the script to script calls, the closure, the method rows, the module function and the call after N reloads. The other rows are from the older runs.
+
+The `aot` and `aot-opt` values (the `aot-opt` table, the comparison tables and the lines that name `aot-opt`) are newer. They come from one Release build with `HOT_THREAD_SAFE=ON` (the default), on `taskset -c 6`, with the median of 3 runs of `bench_backends --backend aot` and `bench_backends_opt --backend aot-opt` on a quiet machine. The tables of `files`, `jit` and `aot` above come from a build with `HOT_THREAD_SAFE=OFF`, so the `aot` table and the `aot` column of the comparison tables differ in the `new` row and in some other cells.
 
 Between the 3 runs, 84% of the cells changed by less than 3%. Some cells changed more. In each of them, one run was far from the two others, so the median is stable:
 
@@ -186,6 +199,49 @@ The string row is nearly the same in the three backends: `.hot` 0.80x to 0.82x a
 
 The ratios of the recursive script to script call are from 0.98x to 1.1x. The native twin of this row changed by 7% between older runs. The code that the compiler makes is not the same. Do not read a difference from this row.
 
+### `aot-opt`
+
+The scripts are optimized AOT code. The values come from `bench_backends_opt --backend aot-opt --no-load` (see [Machine](#machine) for the build).
+
+| Case | native | `.hot` | `.cpp` |
+|---|---|---|---|
+| empty method call (host to script) | 1.75 | 1.76 (1.0x) | 1.76 (1.0x) |
+| native to script virtual call | 1.76 | 1.75 (1.0x) | 1.75 (1.0x) |
+| script to script call (recursive) | 1.04 | 1.12 (1.1x) | 1.18 (1.1x) |
+| script to native call | 1.46 | 1.46 (1.0x) | 1.46 (1.0x) |
+| field read and write loop | 0.88 | 0.88 (1.0x) | 0.88 (1.0x) |
+| integer arithmetic loop | 1.41 | 1.41 (1.0x) | 1.41 (1.0x) |
+| float arithmetic loop | 1.75 | 1.75 (1.0x) | 1.75 (1.0x) |
+| array index (`int[256]`) | 0.62 | 0.64 (1.0x) | 0.64 (1.0x) |
+| `std.vector` index | 0.62 | 0.88 (1.4x) | 0.62 (1.0x) |
+| handle dereference and null check | 9.85 | 10.5 (1.1x) | n/a |
+| pointer dereference and null check | 0.41 | n/a | 0.80 (1.9x) |
+| string interpolation or concatenation | 67.5 | 52.5 (0.78x) | 70.9 (1.1x) |
+| `new` and free of a script object | 9.96 | 53.8 (5.4x) | 31.2 (3.1x) |
+| closure call | 1.75 | 2.63 (1.5x) | 1.75 (1.0x) |
+| loop with a method call | 1.26 | 1.24 (0.99x) | 1.26 (1.0x) |
+| field of another object (handle or pointer) | 0.59 | 0.58 (0.99x) | 0.58 (0.98x) |
+| small method call on `this` | 1.46 | 1.46 (1.0x) | 1.46 (1.0x) |
+| method call through a handle or pointer | 1.46 | 1.46 (1.0x) | 1.46 (1.0x) |
+| script to script virtual call | 1.46 | 1.75 (1.2x) | 1.75 (1.2x) |
+| module variable read and write | 0.38 | 0.36 (0.94x) | 0.36 (0.94x) |
+| module function and static method | 0.32 | n/a | 0.40 (1.3x) |
+
+The reload and the reload chain have no row: optimized code has no reload. The tool prints `n/a` for them.
+
+### `aot` against `aot-opt`
+
+The same build, the same core and the same session. The ratio is script time divided by the native time of the same program.
+
+| Case | native | `aot` `.hot` | `aot-opt` `.hot` | `aot` `.cpp` | `aot-opt` `.cpp` |
+|---|---|---|---|---|---|
+| empty method call (host to script) | 1.76 | 3.51 (2.0x) | 1.76 (1.0x) | 3.51 (2.0x) | 1.76 (1.0x) |
+| native to script virtual call | 1.76 | 3.80 (2.2x) | 1.75 (1.0x) | 3.80 (2.2x) | 1.75 (1.0x) |
+| script to script virtual call | 1.46 | 2.63 (1.8x) | 1.75 (1.2x) | 2.34 (1.6x) | 1.75 (1.2x) |
+| `new` and free of a script object | 9.96 | 61.0 (6.1x) | 53.8 (5.4x) | 38.2 (3.8x) | 31.2 (3.1x) |
+
+The other rows are equal in the two backends (within 0.1 ns, or within the noise of a run). The rows of the string, of the recursive call and of the pointer chain are in the noise of the build: the code is the same.
+
 ## How to read the ratios
 
 - 1.0x is native speed. A ratio below 1.0x is noise or a small difference in the code that the compiler makes.
@@ -195,6 +251,7 @@ The ratios of the recursive script to script call are from 0.98x to 1.1x. The na
 - A `.cpp` script is as fast as a `.hot` script, or faster, in most cases. It is faster in four cases: `std::vector` (no check), the closure, the string and `new`.
 - The `.hot` closure call costs 1.5x. The `.cpp` lambda in a `std::function` runs at native speed.
 - The script to script call is 0.9x to 1.1x in both languages. The difference between the two is of the size of the run noise.
+- Optimized AOT code (`aot-opt`) has no slot and no check for a changed script. A call from the host into a script costs the same as a native virtual call (1.0x), against 2.0x in `aot`. See [Optimized AOT](#optimized-aot-aot-opt).
 - A ratio applies to the case only, not to a whole program. A ratio of 2.4x on a call of 1.46 ns is 2.0 ns more for each call.
 
 ### The pointer chain
@@ -229,6 +286,19 @@ Other calls:
 - A script to native call went through a PLT jump in `files` and `jit`. Now the module compiles with `-fno-plt`, and the call costs 1.46 ns, as in `aot`.
 - A `.hot` closure was a `std::function` that held a `hot::Closure`, and the closure held a second `std::function`. Now the `std::function` holds the guarded lambda directly. The call has one indirect call, the entry check and the generation check: 2.6 ns, not 4.4 ns.
 - A script to script virtual call has no `try` and no call depth. It costs the same as the member function pointer call in the micro benchmark. A non-virtual script to script call is a direct call. These calls did not change.
+
+### Optimized AOT (`aot-opt`)
+
+The slot and the checks around it are the cost of a host to script call (see the table above). Optimized AOT code (`MODE AOT OPTIMIZED`) removes them. The shell override calls the script member function directly, so the compiler sees the call. The call keeps the call depth and the `catch` of `hot::ScriptError`, so a script error still goes to the error handler. The 1.76 ns of `aot-opt` includes them.
+
+| Call | `aot` | `aot-opt` | native |
+|---|---|---|---|
+| host to script (`empty`) | 3.51 | 1.76 | 1.76 |
+| native to script virtual (`virtual_hook`) | 3.80 | 1.75 | 1.76 |
+| script to script virtual (`.hot`) | 2.63 | 1.75 | 1.46 |
+| script to script virtual (`.cpp`) | 2.34 | 1.75 | 1.46 |
+
+The host to script call costs 1.75 ns less, and it is as fast as a native virtual call in this test. The script to script virtual call costs 0.9 ns less in `.hot` and 0.6 ns less in `.cpp`. A script to script virtual call is still 0.29 ns more than the native twin of this run. The calls that did not use a slot (the script to native call, the call on `this`, the call through a handle) have the same time in both backends.
 
 ## The cost of `new`
 
@@ -270,6 +340,29 @@ A micro benchmark of the same object shows where the time of a `.hot` `new` goes
 | the control block and the atomic counts of the `std::shared_ptr` | 13 |
 
 In the old layout, the `std::shared_ptr` had its own block, for 8 ns more. The old constructor lookup compared the key text, for 5 ns more. The atomic counts of `std::enable_shared_from_this` cost most of the last step. The base of a script class has it, because `this` can become a handle. A `std::weak_ptr` keeps the shell block until the `std::weak_ptr` goes. The destructor runs and the state block goes with the last `std::shared_ptr`.
+
+### `new` in optimized AOT code
+
+Optimized AOT code has one generation, so `new` makes the shell with a plain C++ `new` (or `std::make_shared`). It does not look up a constructor through the record and it does not note the generation of the object. The test ran `bench_backends` and `bench_backends_opt` in one build with `HOT_THREAD_SAFE=ON`.
+
+| `new` and free of a script object | `aot` | `aot-opt` | Difference |
+|---|---|---|---|
+| `.hot` (`std::shared_ptr`) | 61.0 ns | 53.8 ns | 7.2 ns less |
+| `.cpp` (raw pointer) | 38.2 ns | 31.2 ns | 7.0 ns less |
+
+The ratios against each native owner (`.hot` / `.cpp`):
+
+| Native owner | native | `aot` | `aot-opt` |
+|---|---|---|---|
+| `std::make_shared<T>()` | 9.96 | 6.1x / 3.8x | 5.4x / 3.1x |
+| `std::shared_ptr<T>(new T)` | 17.8 | 3.4x / 2.1x | 3.0x / 1.7x |
+| `std::make_unique<T>()` | 8.18 | 7.5x / 4.7x | 6.6x / 3.8x |
+| raw `new T` and `delete` | 8.18 | 7.5x / 4.7x | 6.6x / 3.8x |
+| intrusive pointer (atomic count) | 14.1 | 4.3x / 2.7x | 3.8x / 2.2x |
+| virtual base + state block, `shared_ptr(new T)` | 41.5 | 1.5x / 0.92x | 1.3x / 0.75x |
+| same, with a hash map of live objects | 65.1 | 0.94x / 0.59x | 0.83x / 0.48x |
+
+The gain is small: 12% for `.hot` and 18% for `.cpp`. The state block allocation stays. A script object has a shell and a state block, so `new` makes two blocks of memory, the field initializers and the destructors still run through a table, and the list of live objects still takes the lock of `HOT_THREAD_SAFE`. Optimized AOT code makes `new` cheaper by about 7 ns. It does not make `new` as cheap as a native `new`. The `.hot` time is still 5.4x of `std::make_shared`.
 
 ### The lock of `HOT_THREAD_SAFE`
 
@@ -335,4 +428,6 @@ The cost does not grow with the number of reloads. A new object, made after the 
 - The compiler can move work out of a loop in one case and not in its twin. The cases use a value that each iteration needs, but a ratio near 1.0x can still hide a small cost.
 - `HOT_RUNTIME_CHECKS=OFF` removes the null and index checks of `.hot` code. Build again with that option to compare. The tool prints the value of the option. A `.cpp` script has no such checks.
 - The `aot` backend has no reload. The reload cases run in `files` and in `jit`.
+- The `aot-opt` backend has no reload and no override. The loader refuses both. A program that needs a reload uses `aot` (`MODE AOT_RELOAD`).
+- `bench_backends_opt` is a separate program, so its native twin is a separate copy of the code. The native times of the two programs differ by up to 0.1 ns. The tables of the comparison use the ratio of each program.
 - One machine and one compiler. Measure again on your own machine and with your own headers.
