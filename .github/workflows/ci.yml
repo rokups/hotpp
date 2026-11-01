@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install LLVM, Clang and Ninja
         run: |
@@ -58,7 +58,7 @@ jobs:
           echo "/usr/lib/llvm-${LLVM_VERSION}/bin" >> "$GITHUB_PATH"
           echo "CPM_SOURCE_CACHE=$HOME/.cache/cpm" >> "$GITHUB_ENV"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/cpm
           key: cpm-linux-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
@@ -92,7 +92,7 @@ jobs:
           case "$(ldd stage/hotpp-sdk-linux-x86_64/bin/hotc)" in *libclang*) ;; *) echo "hotc does not link libclang"; exit 1 ;; esac
           tar -C stage -czf dist/hotpp-sdk-linux-x86_64.tar.gz hotpp-sdk-linux-x86_64
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: hotpp-sdk-linux-x86_64
           path: dist/hotpp-sdk-linux-x86_64.tar.gz
@@ -130,7 +130,7 @@ jobs:
         id: gcc
         run: echo "version=$(x86_64-w64-mingw32-g++ --version | head -1)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Read the LLVM release of cmake/HotLlvmVersion.cmake
         id: llvm
@@ -142,12 +142,12 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "url=https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/${name}.tar.zst" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: llvm-archive
           key: llvm-windows-${{ steps.llvm.outputs.sha }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: /github/home/.cache/cpm
           key: cpm-mingw-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
@@ -202,7 +202,7 @@ jobs:
           ls -d stage/hotpp-sdk-windows-x86_64/lib/clang/*/include
           cd stage && cmake -E tar cf ../dist/hotpp-sdk-windows-x86_64.zip --format=zip hotpp-sdk-windows-x86_64
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: hotpp-sdk-windows-x86_64
           path: dist/hotpp-sdk-windows-x86_64.zip
@@ -215,7 +215,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: tests/sdk_smoke
           sparse-checkout-cone-mode: false
@@ -228,7 +228,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang-${LLVM_VERSION} libclang-${LLVM_VERSION}-dev llvm-${LLVM_VERSION}-dev ninja-build
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: hotpp-sdk-linux-x86_64
           path: ${{ runner.temp }}/artifact
@@ -256,7 +256,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: tests/sdk_smoke
           sparse-checkout-cone-mode: false
@@ -270,7 +270,7 @@ jobs:
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-ninja
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: hotpp-sdk-windows-x86_64
           path: ${{ runner.temp }}/artifact
@@ -300,9 +300,9 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true

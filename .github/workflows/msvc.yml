@@ -29,7 +29,7 @@ jobs:
       BUILD_DIR: cmake-build/vs-files
       CONFIG: RelWithDebInfo
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Read the LLVM release of cmake/HotLlvmVersion.cmake
         id: llvm
@@ -41,7 +41,7 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "url=https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/${name}.tar.zst" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: llvm-archive
           key: llvm-windows-msvc-${{ steps.llvm.outputs.sha }}
