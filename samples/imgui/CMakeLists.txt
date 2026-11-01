@@ -84,7 +84,8 @@ endforeach()
 add_library(imgui_cpp_scripts_plain OBJECT script/demo.cpp)
 target_include_directories(imgui_cpp_scripts_plain PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(imgui_cpp_scripts_plain PRIVATE imgui_sdl3)
+# UiApp.h includes hot/runtime/export.h (HOT_EXPORT). hot::runtime_core gives the include directory.
+target_link_libraries(imgui_cpp_scripts_plain PRIVATE imgui_sdl3 hot::runtime_core)
 target_compile_features(imgui_cpp_scripts_plain PRIVATE cxx_std_17)
 
 # The language server reads this file.

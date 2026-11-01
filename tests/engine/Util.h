@@ -3,7 +3,7 @@
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
 // Native helpers for script code. The definitions are in Util.cpp.
-// They are not inline and not templates, so the host executable must export them.
+// They are not inline and not templates, so the host executable exports them (HOT_EXPORT).
 // Exception: the inline function pointer helpers at the end of the file (S17).
 #pragma once
 #include "Actor.h"
@@ -11,12 +11,12 @@
 #include <string>
 
 // The distance between two points.
-float Distance(const Vec3& a, const Vec3& b);
+HOT_EXPORT float Distance(const Vec3& a, const Vec3& b);
 
 // A text such as "(1.5, 2, 3)".
-std::string FormatVec(const Vec3& v);
+HOT_EXPORT std::string FormatVec(const Vec3& v);
 
-struct Util
+struct HOT_EXPORT Util
 {
     // The sum of the three components.
     static float Sum(const Vec3& v);

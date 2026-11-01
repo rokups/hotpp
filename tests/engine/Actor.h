@@ -1,6 +1,6 @@
-// Engine API for the test host in tests/engine (design section 8.1).
-// Script code calls these members directly. There is no wrapper code.
+// Engine API of the test host (design section 8.1). Scripts call the members directly, without wrappers.
 #pragma once
+#include "hot/runtime/export.h" // HOT_EXPORT: a script module calls these classes
 #include <functional>
 #include <memory>
 #include <string>
@@ -20,7 +20,7 @@ struct Vec3
     float x = 0, y = 0, z = 0;
 };
 
-class Actor
+class HOT_EXPORT Actor
 {
 public:
     Actor();
@@ -74,7 +74,7 @@ private:
 };
 
 // The world owns the actors that it holds. It deletes them in the destructor.
-class World
+class HOT_EXPORT World
 {
 public:
     World();

@@ -35,9 +35,11 @@ hot_add_scripts(TARGET pre_cpp1 ${pre_host} SCRIPTS cpp_player_v1.cpp AFTER pre_
 
 # The .cpp scripts are standard C++. A normal build compiles them without hotc.
 # Each generation has its own library, because both define Player and the module variable total.
-# Generation 1 has no hot-reload aids. It needs no hot include directory.
+# Generation 1 has no hot-reload aids. The script includes no hot header. The engine headers
+# include hot/runtime/export.h (HOT_EXPORT), so the target has the hot include directory.
 add_library(cpp_scripts_plain1 OBJECT cpp_player_v1.cpp)
-target_include_directories(cpp_scripts_plain1 PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine)
+target_include_directories(cpp_scripts_plain1 PRIVATE
+    ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/tests/engine)
 target_compile_features(cpp_scripts_plain1 PRIVATE cxx_std_17)
 
 # Generation 2 still has the aids HOT_ALIAS and onReload. A normal build needs the header for them.

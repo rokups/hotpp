@@ -6,7 +6,11 @@
 // The host calls Frame once for each frame. A script class overrides it.
 #pragma once
 
-class UiApp
+// HOT_EXPORT: the script module (a DLL on Windows) derives from the class. The executable
+// exports the class, so the module uses its constructor, destructor and vtable.
+#include "hot/runtime/export.h"
+
+class HOT_EXPORT UiApp
 {
 public:
     UiApp();

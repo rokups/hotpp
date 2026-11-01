@@ -6,8 +6,9 @@
 // hot::Intrusive. The definitions are in Object.cpp, so the executable
 // has the only copy of the counter "live".
 #pragma once
+#include "hot/runtime/export.h"
 
-struct Object
+struct HOT_EXPORT Object
 {
     int refs = 0;
     static int live; // The number of Object instances that exist.
