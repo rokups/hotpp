@@ -47,6 +47,13 @@ std::string normalize(std::string text)
 {
     for (size_t p = text.find(HOT_SOURCE_DIR); p != std::string::npos; p = text.find(HOT_SOURCE_DIR, p))
         text.replace(p, std::string(HOT_SOURCE_DIR).size(), "<src>");
+#ifdef _WIN32
+    // clang joins an include dir and a header name with "\": "<src>/tests/engine\Actor.h".
+    for (size_t p = text.find("<src>/"); p != std::string::npos; p = text.find("<src>/", p + 1))
+        for (size_t i = p; i < text.size() && text[i] != ':' && text[i] != '\n'; ++i)
+            if (text[i] == '\\')
+                text[i] = '/';
+#endif
     std::istringstream in(text);
     std::string out;
     for (std::string l; std::getline(in, l);)
