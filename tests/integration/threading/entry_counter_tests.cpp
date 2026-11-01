@@ -99,7 +99,7 @@ hot::Module module_of(uint32_t generation, bool creator = false)
     return std::move(*r.module);
 }
 
-int32_t int_field(hot::ShellBase* sh, const char* name)
+int32_t int_field(hot::ShellCore* sh, const char* name)
 {
     const int32_t* p = hot::field_ptr<int32_t>(sh, name);
     return p ? *p : -1;
@@ -254,7 +254,7 @@ TEST(EntryCounters, WorkersCallWhileOtherThreadCommits)
     int wrong = 0;
     for (int i = 0; i < kActors; ++i)
     {
-        hot::ShellBase* sh = rig.actors[i].shell;
+        hot::ShellBase* sh = static_cast<hot::ShellBase*>(rig.actors[i].shell);
         total += calls[i];
         const bool good = sh->cls->generation == kGenerations && int_field(sh, "calls") == calls[i]
             && int_field(sh, "hits") == calls[i];

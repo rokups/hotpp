@@ -42,7 +42,7 @@ inline std::string field_text(const hot::FieldInfo& f, const char* state)
 
 inline std::string describe(Actor* actor)
 {
-    auto* shell = dynamic_cast<hot::ShellBase*>(actor);
+    auto* shell = dynamic_cast<hot::ShellCore*>(actor);
     if (!shell)
         return "native";
     // An optimized AOT object keeps its fields in the shell and has no layout.
@@ -53,7 +53,7 @@ inline std::string describe(Actor* actor)
     std::string text = buf;
     for (uint32_t i = 0; l && i < l->field_count; ++i)
         text += std::string(" ") + l->fields[i].name + "="
-            + field_text(l->fields[i], static_cast<const char*>(shell->state));
+            + field_text(l->fields[i], static_cast<const char*>(static_cast<hot::ShellBase*>(shell)->state));
     return text;
 }
 

@@ -342,7 +342,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 13 "cpp_lambda_v2.cpp"
-HOT_NODEBUG static hot::ShellBase* Lamp__new_default()
+HOT_NODEBUG static hot::ShellCore* Lamp__new_default()
 #line 13 "cpp_lambda_v2.cpp"
 {
 #line 13 "cpp_lambda_v2.cpp"
@@ -374,7 +374,7 @@ HOT_NODEBUG static hot::Instance Lamp_create()
 #line 10 "cpp_lambda_v2.cpp"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 10 "cpp_lambda_v2.cpp"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 10 "cpp_lambda_v2.cpp"
     if (Lamp_record.new_default) {
 #line 10 "cpp_lambda_v2.cpp"

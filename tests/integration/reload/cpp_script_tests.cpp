@@ -23,7 +23,7 @@ using test_support::kDt;
 using test_support::Session;
 using test_support::source;
 
-template <class T> T* fld(hot::ShellBase* shell, const char* name)
+template <class T> T* fld(hot::ShellCore* shell, const char* name)
 {
     return hot::field_ptr<T>(shell, name);
 }
@@ -525,7 +525,7 @@ TEST_P(BackendTests, CppScriptChildClassReload)
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Kid"));
-    hot::ShellBase* shell = s.inst.shell;
+    hot::ShellBase* shell = static_cast<hot::ShellBase*>(s.inst.shell);
     ASSERT_NE(shell->cls->super, nullptr);
     EXPECT_STREQ(shell->cls->super->name, "Base");
     EXPECT_EQ(*fld<int>(shell, "hits"), 6); // Kid(3) gives Base(6)
@@ -586,7 +586,7 @@ TEST_P(BackendTests, CppScriptChainReload)
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Leaf"));
-    hot::ShellBase* shell = s.inst.shell;
+    hot::ShellBase* shell = static_cast<hot::ShellBase*>(s.inst.shell);
     ASSERT_NE(shell->cls->super, nullptr);
     ASSERT_NE(shell->cls->super->super, nullptr);
     EXPECT_STREQ(shell->cls->super->name, "Mid");
@@ -687,7 +687,7 @@ TEST_P(BackendTests, CppScriptNamespacesReload)
     ASSERT_TRUE(v2) << v2.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "game::ai::Brain"));
-    hot::ShellBase* shell = s.inst.shell;
+    hot::ShellBase* shell = static_cast<hot::ShellBase*>(s.inst.shell);
     EXPECT_STREQ(shell->cls->name, "game::ai::Brain");
     ASSERT_NE(shell->cls->super, nullptr);
     EXPECT_STREQ(shell->cls->super->name, "game::Player");

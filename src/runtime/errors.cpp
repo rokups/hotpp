@@ -92,7 +92,7 @@ void throw_index_out_of_range(std::size_t index, std::size_t size)
     throw IndexOutOfRange(index, size);
 }
 
-void report_unhandled(const ShellBase* self, std::exception_ptr ep)
+void report_unhandled(const ShellCore* self, std::exception_ptr ep)
 {
     if (!ep)
         return;

@@ -95,4 +95,19 @@ TEST(AotOptLoad, FieldPtrIsNullOnAnOptimizedObject)
     EXPECT_EQ(hot::field_ptr<int>(inst.shell, "hp"), nullptr);
 }
 
+// An optimized shell derives from ShellCore only. It has no ShellBase.
+TEST(AotOptLoad, ShellDerivesFromShellCoreOnly)
+{
+    World world;
+    hot::Loader loader;
+    ASSERT_TRUE(loader.load_aot(hot::aot_table));
+    hot::Instance inst = loader.find("Fighter")->create();
+    ASSERT_NE(inst.shell, nullptr);
+    Actor* actor = static_cast<Actor*>(inst.native);
+    world.Add(actor);
+    EXPECT_EQ(dynamic_cast<hot::ShellBase*>(actor), nullptr);
+    EXPECT_NE(dynamic_cast<hot::ShellCore*>(actor), nullptr);
+    EXPECT_TRUE(hot::is_script(actor, "Fighter"));
+}
+
 } // namespace

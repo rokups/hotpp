@@ -22,10 +22,18 @@
 namespace hot
 {
 
-// Base of each generated shell. The shell also derives from the native class.
-struct ShellBase
+// The minimal base of each generated shell: only the record of the class. The shell of
+// optimized AOT code derives from it directly. The shell also derives from the native class.
+struct ShellCore
 {
     ClassRecord* cls = nullptr;
+    HOT_HIDDEN ShellCore() noexcept {}
+};
+
+// Base of each generated shell of the other modes. It adds the state block and the list of
+// live objects.
+struct ShellBase : ShellCore
+{
     void* state = nullptr;
     // The list of live objects (state.cpp). Only the runtime uses these members. A list in the
     // object needs no allocation and no hash lookup, so "new" and free stay cheap.
@@ -35,7 +43,7 @@ struct ShellBase
     uint32_t creator = 0;
     HOT_HIDDEN ShellBase() noexcept {}
     // A copy is not in the list of live objects, so it does not copy the list members.
-    HOT_HIDDEN ShellBase(const ShellBase& o) noexcept : cls(o.cls), state(o.state) {}
+    HOT_HIDDEN ShellBase(const ShellBase& o) noexcept : ShellCore(o), state(o.state) {}
     HOT_HIDDEN ShellBase& operator=(const ShellBase& o) noexcept
     {
         cls = o.cls;
@@ -148,7 +156,7 @@ struct CallDepth
 // The catch path of hot::call. It runs inside the catch handler, so "throw;" and
 // std::current_exception() see the exception. It is out of line: then the fast path has no
 // std::exception_ptr on its stack, and so no stack protector and fewer saved registers.
-template <class R, bool NoExcept> HOT_NOINLINE R call_unhandled(ShellBase* self, uint32_t depth)
+template <class R, bool NoExcept> HOT_NOINLINE R call_unhandled(ShellCore* self, uint32_t depth)
 {
     if (!NoExcept && depth > 1)
         throw;
@@ -208,7 +216,7 @@ HOT_HIDDEN typename detail::sig_result<Sig>::type call(ShellBase* self, unsigned
 // reports a hot::ScriptError, an inner call lets it pass, and "NoExcept" always reports.
 // "R" is the result type, also a reference or void.
 template <class R, bool NoExcept = false, class F>
-HOT_HIDDEN R call_direct(ShellBase* self, F&& f)
+HOT_HIDDEN R call_direct(ShellCore* self, F&& f)
 {
     detail::CallDepth depth;
     try
@@ -368,7 +376,7 @@ template <class Shell, class T> HOT_HIDDEN Shell* shell_of(T* p, const char* cls
     {
         static_assert(std::is_base_of_v<T, Shell>,
             "the object of a property access is not of the native base of the script class");
-        auto* s = dynamic_cast<ShellBase*>(p);
+        auto* s = dynamic_cast<ShellCore*>(p);
         if (!s || !s->cls || !record_is(s->cls, cls))
             throw std::runtime_error(std::string("the object is not a script object of class ") + cls);
         return static_cast<Shell*>(p);
@@ -387,15 +395,15 @@ HOT_HIDDEN Shell* shell_of(const H& h, const char* cls)
 }
 
 // ---- "is" and "as" (design 7.7)
-// The ShellBase of the object behind "p", or null: a null pointer or a native object.
-template <class T> HOT_HIDDEN const ShellBase* shell_base_of(T* p)
+// The ShellCore of the object behind "p", or null: a null pointer or a native object.
+template <class T> HOT_HIDDEN const ShellCore* shell_core_of(T* p)
 {
     if (!p)
         return nullptr;
-    if constexpr (std::is_base_of_v<ShellBase, T>)
+    if constexpr (std::is_base_of_v<ShellCore, T>)
         return p;
     else if constexpr (std::is_polymorphic_v<T>)
-        return dynamic_cast<const ShellBase*>(p);
+        return dynamic_cast<const ShellCore*>(p);
     else
         return nullptr;
 }
@@ -404,7 +412,7 @@ template <class T> HOT_HIDDEN const ShellBase* shell_base_of(T* p)
 // a reference and a handle (a type with get()) are accepted. Null gives false.
 template <class T> HOT_HIDDEN bool is_script(T* p, const char* cls)
 {
-    const ShellBase* s = shell_base_of(p);
+    const ShellCore* s = shell_core_of(p);
     return s && s->cls && record_is(s->cls, cls);
 }
 template <class H, std::enable_if_t<detail::has_get_v<H>, int> = 0>
@@ -425,7 +433,7 @@ template <class Shell, class T> HOT_HIDDEN Shell* as_script(T* p, const char* cl
 {
     if (!is_script(p, cls))
         return nullptr;
-    return static_cast<Shell*>(const_cast<ShellBase*>(shell_base_of(p)));
+    return static_cast<Shell*>(const_cast<ShellCore*>(shell_core_of(p)));
 }
 template <class Shell, class U>
 HOT_HIDDEN std::shared_ptr<Shell> as_script(const std::shared_ptr<U>& h, const char* cls)

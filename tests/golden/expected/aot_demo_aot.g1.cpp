@@ -290,7 +290,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 17 "aot_demo.hot"
-HOT_NODEBUG static hot::ShellBase* Fighter__new_default()
+HOT_NODEBUG static hot::ShellCore* Fighter__new_default()
 #line 17 "aot_demo.hot"
 {
 #line 17 "aot_demo.hot"
@@ -300,7 +300,7 @@ HOT_NODEBUG static hot::ShellBase* Fighter__new_default()
 #line 301 "aot_demo.hot.cpp"
 
 #line 21 "aot_demo.hot"
-static void Fighter__dtor_slot(hot::ShellBase* s)
+static void Fighter__dtor_slot(hot::ShellCore* s)
 #line 21 "aot_demo.hot"
 {
 #line 21 "aot_demo.hot"
@@ -435,7 +435,7 @@ HOT_NODEBUG static hot::Instance Fighter_create()
 #line 7 "aot_demo.hot"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 7 "aot_demo.hot"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 7 "aot_demo.hot"
     if (Fighter_record.new_default) {
 #line 7 "aot_demo.hot"
@@ -647,7 +647,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 47 "aot_demo.hot"
-HOT_NODEBUG static hot::ShellBase* Veteran__new_default()
+HOT_NODEBUG static hot::ShellCore* Veteran__new_default()
 #line 47 "aot_demo.hot"
 {
 #line 47 "aot_demo.hot"
@@ -657,7 +657,7 @@ HOT_NODEBUG static hot::ShellBase* Veteran__new_default()
 #line 658 "aot_demo.hot.cpp"
 
 #line 51 "aot_demo.hot"
-static void Veteran__dtor_slot(hot::ShellBase* s)
+static void Veteran__dtor_slot(hot::ShellCore* s)
 #line 51 "aot_demo.hot"
 {
 #line 51 "aot_demo.hot"
@@ -710,7 +710,7 @@ HOT_NODEBUG static hot::Instance Veteran_create()
 #line 43 "aot_demo.hot"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 43 "aot_demo.hot"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 43 "aot_demo.hot"
     if (Veteran_record.new_default) {
 #line 43 "aot_demo.hot"
@@ -946,7 +946,7 @@ template <int = 0>
 #line 947 "aot_demo.hot.cpp"
 
 #line 72 "aot_demo.hot"
-static void Spawner__dtor_slot(hot::ShellBase* s)
+static void Spawner__dtor_slot(hot::ShellCore* s)
 #line 72 "aot_demo.hot"
 {
 #line 72 "aot_demo.hot"

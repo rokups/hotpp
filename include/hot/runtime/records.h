@@ -10,6 +10,7 @@ namespace hot
 {
 
 struct ShellBase;
+struct ShellCore;
 struct StateLayout;
 
 // An opaque state type. A slot holds a pointer to a member function of the script state. The
@@ -111,11 +112,11 @@ struct ClassRecord
     //    first record of the class when there is no core.
     ShellBase* (*construct)(void* mem, const char* key, const void* args) = nullptr;
     const char* construct_key = nullptr;
-    ShellBase* (*new_default)() = nullptr;
+    ShellCore* (*new_default)() = nullptr;
     ClassRecord* canonical = nullptr;
     // The script destructor, or null. destroy_state calls it before it destroys the fields.
     // A commit copies it from the new record, so the current generation runs at destruction.
-    void (*dtor)(ShellBase* self) = nullptr;
+    void (*dtor)(ShellCore* self) = nullptr;
     // The signature key of each slot (typeid(Sig).name()), or null (design 5.3). The loader
     // sets it when a reload changes the signature of a script function. hot::call compares
     // the key with its own signature. A call with another signature detaches: it does not run.

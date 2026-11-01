@@ -280,7 +280,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 23 "cpp_namespace_fn.cpp"
-HOT_NODEBUG static hot::ShellBase* Bumper__new_default()
+HOT_NODEBUG static hot::ShellCore* Bumper__new_default()
 #line 23 "cpp_namespace_fn.cpp"
 {
 #line 23 "cpp_namespace_fn.cpp"
@@ -310,7 +310,7 @@ HOT_NODEBUG static hot::Instance Bumper_create()
 #line 18 "cpp_namespace_fn.cpp"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 18 "cpp_namespace_fn.cpp"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 18 "cpp_namespace_fn.cpp"
     if (Bumper_record.new_default) {
 #line 18 "cpp_namespace_fn.cpp"

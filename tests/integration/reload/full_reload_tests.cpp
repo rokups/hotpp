@@ -219,7 +219,7 @@ struct FullReloadHost
         ASSERT_NE(entry, nullptr) << class_name;
         const hot::Instance inst = entry->create();
         actor = static_cast<Actor*>(inst.native);
-        shell = inst.shell;
+        shell = static_cast<hot::ShellBase*>(inst.shell);
     }
     template <class T> T* field(const char* name) { return hot::field_ptr<T>(shell, name); }
     void drop()

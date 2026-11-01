@@ -10,11 +10,11 @@
       <ExpandedItem>this,nd</ExpandedItem>
     </Expand>
   </Type>
-  <!-- A shell object. It shows the members of the shell base. -->
+  <!-- A shell object. It shows the record of the shell core. The state and the live list are in hot::ShellBase. -->
   <Type Name="*_Shell">
     <DisplayString>script object</DisplayString>
     <Expand>
-      <ExpandedItem>(hot::ShellBase*)this,nd</ExpandedItem>
+      <ExpandedItem>(hot::ShellCore*)this,nd</ExpandedItem>
     </Expand>
   </Type>
   <!-- A handle to a shell. -->

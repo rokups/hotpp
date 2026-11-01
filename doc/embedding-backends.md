@@ -96,6 +96,8 @@ Without CMake, add `--aot-optimized` to `hotc --aot`. The flag needs `--aot`.
 
 **What it does:** in plain AOT, a call from the host into a script goes through a table that a run-time override can change. Optimized AOT code has no table. The host call goes to the script function directly. Your host code, your script code and the `AotRegistry` calls do not change. The script errors, the error handler and the output are the same as in plain AOT.
 
+The fields of an optimized script object are members of the object. The object has no state block and is not in the list of live objects. `hot::field_ptr` returns null for it. The operators `is` and `as` and `hot::shell_of` work as in the other modes.
+
 A `hot::CommitWindow` does not wait for calls into optimized AOT code. Do not change script state from the host while another thread runs optimized script code.
 
 **When to use:** use it for the shipped build, when no developer or mod author replaces a script at run time. Keep plain AOT (or `AOT_RELOAD`) for the build that needs overrides. Both builds can use the same scripts. The `OPTIMIZED` keyword is the only difference.

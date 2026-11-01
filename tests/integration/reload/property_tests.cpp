@@ -96,7 +96,7 @@ class Gauge : Actor {
     s.world.Add(source);
 
     s.actor->TakeDamage(*source, 5.0f);
-    auto f = [](hot::ShellBase* sh, const char* name) { return *hot::field_ptr<float>(sh, name); };
+    auto f = [](hot::ShellCore* sh, const char* name) { return *hot::field_ptr<float>(sh, name); };
     EXPECT_EQ(f(s.inst.shell, "seen"), 150.0f); // 50 + 100, read on the other object
     EXPECT_EQ(f(s.inst.shell, "__p_Hp"), 30.0f);
     EXPECT_EQ(f(s.inst.shell, "chained"), 30.0f);

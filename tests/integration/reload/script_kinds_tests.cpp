@@ -37,7 +37,7 @@ template <class T> T* inner(Session& s, const char* outer, const char* name)
         return nullptr;
     for (uint32_t i = 0; i < o->sub->field_count; ++i)
         if (std::string(o->sub->fields[i].name) == name)
-            return reinterpret_cast<T*>(static_cast<char*>(s.inst.shell->state) + o->offset + o->sub->fields[i].offset);
+            return reinterpret_cast<T*>(static_cast<char*>(static_cast<hot::ShellBase*>(s.inst.shell)->state) + o->offset + o->sub->fields[i].offset);
     return nullptr;
 }
 
@@ -48,7 +48,7 @@ hot::ShellBase* handle_target(Session& s, const char* name)
     const hot::FieldInfo* f = hot::find_field(s.inst.shell->cls, name);
     if (!f)
         return nullptr;
-    auto* h = reinterpret_cast<std::shared_ptr<hot::PlainObject>*>(static_cast<char*>(s.inst.shell->state) + f->offset);
+    auto* h = reinterpret_cast<std::shared_ptr<hot::PlainObject>*>(static_cast<char*>(static_cast<hot::ShellBase*>(s.inst.shell)->state) + f->offset);
     return dynamic_cast<hot::ShellBase*>(h->get());
 }
 

@@ -294,7 +294,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 8 "borrowed_args_v1.hot"
-HOT_NODEBUG static hot::ShellBase* Probe__new_default()
+HOT_NODEBUG static hot::ShellCore* Probe__new_default()
 #line 8 "borrowed_args_v1.hot"
 {
 #line 8 "borrowed_args_v1.hot"
@@ -366,7 +366,7 @@ HOT_NODEBUG static hot::Instance Probe_create()
 #line 6 "borrowed_args_v1.hot"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 6 "borrowed_args_v1.hot"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 6 "borrowed_args_v1.hot"
     if (Probe_record.new_default) {
 #line 6 "borrowed_args_v1.hot"

@@ -262,7 +262,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 13 "cpp_ns_v1.cpp"
-HOT_NODEBUG static hot::ShellBase* red__Unit__new_default()
+HOT_NODEBUG static hot::ShellCore* red__Unit__new_default()
 #line 13 "cpp_ns_v1.cpp"
 {
 #line 13 "cpp_ns_v1.cpp"
@@ -292,7 +292,7 @@ HOT_NODEBUG static hot::Instance red__Unit_create()
 #line 10 "cpp_ns_v1.cpp"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 10 "cpp_ns_v1.cpp"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 10 "cpp_ns_v1.cpp"
     if (red__Unit_record.new_default) {
 #line 10 "cpp_ns_v1.cpp"
@@ -544,7 +544,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 26 "cpp_ns_v1.cpp"
-HOT_NODEBUG static hot::ShellBase* blue__Unit__new_default()
+HOT_NODEBUG static hot::ShellCore* blue__Unit__new_default()
 #line 26 "cpp_ns_v1.cpp"
 {
 #line 26 "cpp_ns_v1.cpp"
@@ -574,7 +574,7 @@ HOT_NODEBUG static hot::Instance blue__Unit_create()
 #line 23 "cpp_ns_v1.cpp"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 23 "cpp_ns_v1.cpp"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 23 "cpp_ns_v1.cpp"
     if (blue__Unit_record.new_default) {
 #line 23 "cpp_ns_v1.cpp"
@@ -999,7 +999,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 52 "cpp_ns_v1.cpp"
-HOT_NODEBUG static hot::ShellBase* game__Player__new_default()
+HOT_NODEBUG static hot::ShellCore* game__Player__new_default()
 #line 52 "cpp_ns_v1.cpp"
 {
 #line 52 "cpp_ns_v1.cpp"
@@ -1044,7 +1044,7 @@ HOT_NODEBUG static hot::Instance game__Player_create()
 #line 49 "cpp_ns_v1.cpp"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 49 "cpp_ns_v1.cpp"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 49 "cpp_ns_v1.cpp"
     if (game__Player_record.new_default) {
 #line 49 "cpp_ns_v1.cpp"
@@ -1239,7 +1239,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 73 "cpp_ns_v1.cpp"
-HOT_NODEBUG static hot::ShellBase* game__ai__Brain__new_default()
+HOT_NODEBUG static hot::ShellCore* game__ai__Brain__new_default()
 #line 73 "cpp_ns_v1.cpp"
 {
 #line 73 "cpp_ns_v1.cpp"
@@ -1269,7 +1269,7 @@ HOT_NODEBUG static hot::Instance game__ai__Brain_create()
 #line 70 "cpp_ns_v1.cpp"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 70 "cpp_ns_v1.cpp"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 70 "cpp_ns_v1.cpp"
     if (game__ai__Brain_record.new_default) {
 #line 70 "cpp_ns_v1.cpp"
@@ -1671,7 +1671,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 103 "cpp_ns_v1.cpp"
-HOT_NODEBUG static hot::ShellBase* Watcher__new_default()
+HOT_NODEBUG static hot::ShellCore* Watcher__new_default()
 #line 103 "cpp_ns_v1.cpp"
 {
 #line 103 "cpp_ns_v1.cpp"
@@ -1701,7 +1701,7 @@ HOT_NODEBUG static hot::Instance Watcher_create()
 #line 100 "cpp_ns_v1.cpp"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 100 "cpp_ns_v1.cpp"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 100 "cpp_ns_v1.cpp"
     if (Watcher_record.new_default) {
 #line 100 "cpp_ns_v1.cpp"

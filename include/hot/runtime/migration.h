@@ -19,7 +19,7 @@ namespace hot
 struct Instance
 {
     void* native;
-    ShellBase* shell;
+    ShellCore* shell;
 };
 using Factory = Instance (*)();
 

@@ -334,9 +334,10 @@ struct WalkState
 class Frontend
 {
 public:
-    Frontend(const std::string& text, const LineMap& map)
+    Frontend(const std::string& text, const LineMap& map, bool aot_optimized)
         : text_(text)
         , map_(map)
+        , aot_optimized_(aot_optimized)
     {
     }
 
@@ -346,6 +347,7 @@ private:
     CXFile main_ = nullptr;
     const std::string& text_;
     const LineMap& map_;
+    bool aot_optimized_ = false; // the fields are members of the shell: no state_of
     ast::Script sc_;
     template <class T> using Where = std::function<std::vector<T>&()>; // gives the vector of a model list
 
@@ -1185,6 +1187,9 @@ void Frontend::examine(CXCursor k, WalkState& st)
         }
         if (en.kind == Kind::ScriptField)
         {
+            // Optimized AOT: the script class is its shell, so "a.f" and "p->f" compile as they are.
+            if (aot_optimized_)
+                return true;
             add(o.begin, 0, "state_of(" + open, true);
             add(o.end, name - o.end, close + ")->", true);
             return true;
@@ -1355,9 +1360,9 @@ void Frontend::examine(CXCursor k, WalkState& st)
             (men->kind == Kind::ScriptField || (men->kind == Kind::ScriptMethod && !men->virt)))
         {
             if (explicit_this)
-                add(e.begin, 4, "state_of(__self)");
+                add(e.begin, 4, aot_optimized_ ? "__self" : "state_of(__self)");
             else
-                add(e.begin, 0, "state_of(__self)->");
+                add(e.begin, 0, aot_optimized_ ? "__self->" : "state_of(__self)->");
             return;
         }
         if (!need)
@@ -2873,7 +2878,7 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
 
 ast::Script parse_cpp_script(const std::string& text, const std::string& name,
     const std::vector<std::string>& clang_args, const LineMap& map, Diagnostics& diag,
-    const std::vector<std::pair<std::string, std::string>>& virtual_files)
+    const std::vector<std::pair<std::string, std::string>>& virtual_files, bool aot_optimized)
 {
     ast::Script sc;
     std::vector<const char*> cargs;
@@ -2918,7 +2923,7 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
         return sc;
     try
     {
-        Frontend fe(text, map);
+        Frontend fe(text, map, aot_optimized);
         sc = fe.run(h.tu, name);
     }
     catch (const CppFail& f)

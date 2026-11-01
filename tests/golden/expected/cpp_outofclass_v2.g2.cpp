@@ -289,7 +289,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 11 "cpp_outofclass_v2.cpp"
-HOT_NODEBUG static hot::ShellBase* Fighter__new_default()
+HOT_NODEBUG static hot::ShellCore* Fighter__new_default()
 #line 11 "cpp_outofclass_v2.cpp"
 {
 #line 11 "cpp_outofclass_v2.cpp"
@@ -299,7 +299,7 @@ HOT_NODEBUG static hot::ShellBase* Fighter__new_default()
 #line 300 "cpp_outofclass_v2.cpp.cpp"
 
 #line 12 "cpp_outofclass_v2.cpp"
-static void Fighter__dtor_slot(hot::ShellBase* s)
+static void Fighter__dtor_slot(hot::ShellCore* s)
 #line 12 "cpp_outofclass_v2.cpp"
 {
 #line 12 "cpp_outofclass_v2.cpp"
@@ -331,7 +331,7 @@ HOT_NODEBUG static hot::Instance Fighter_create()
 #line 8 "cpp_outofclass_v2.cpp"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 8 "cpp_outofclass_v2.cpp"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 8 "cpp_outofclass_v2.cpp"
     if (Fighter_record.new_default) {
 #line 8 "cpp_outofclass_v2.cpp"
@@ -584,7 +584,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 26 "cpp_outofclass_v2.cpp"
-HOT_NODEBUG static hot::ShellBase* Marker__new_default()
+HOT_NODEBUG static hot::ShellCore* Marker__new_default()
 #line 26 "cpp_outofclass_v2.cpp"
 {
 #line 26 "cpp_outofclass_v2.cpp"
@@ -614,7 +614,7 @@ HOT_NODEBUG static hot::Instance Marker_create()
 #line 23 "cpp_outofclass_v2.cpp"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 23 "cpp_outofclass_v2.cpp"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 23 "cpp_outofclass_v2.cpp"
     if (Marker_record.new_default) {
 #line 23 "cpp_outofclass_v2.cpp"

@@ -70,6 +70,8 @@ struct RCtx
     std::set<std::string> weak_fields;
     std::set<std::string> weak_locals;
     bool allow_this = true;
+    // True for optimized AOT code. The fields are members of the shell, so there is no state_of.
+    bool aot_optimized = false;
     // True in the default value of a parameter. The value is in a C++ declaration, so it cannot
     // use a field, a parameter, a script function or "this".
     bool in_default = false;

@@ -280,7 +280,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 21 "cpp_constexpr.cpp"
-HOT_NODEBUG static hot::ShellBase* Limiter__new_default()
+HOT_NODEBUG static hot::ShellCore* Limiter__new_default()
 #line 21 "cpp_constexpr.cpp"
 {
 #line 21 "cpp_constexpr.cpp"
@@ -310,7 +310,7 @@ HOT_NODEBUG static hot::Instance Limiter_create()
 #line 16 "cpp_constexpr.cpp"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 16 "cpp_constexpr.cpp"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 16 "cpp_constexpr.cpp"
     if (Limiter_record.new_default) {
 #line 16 "cpp_constexpr.cpp"

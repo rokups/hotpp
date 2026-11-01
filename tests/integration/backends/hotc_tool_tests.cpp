@@ -1191,6 +1191,55 @@ TEST(HotcTool, AotOptimizedWritesTheDefineAndTheTableFlag)
     EXPECT_NE(reg.find("aot_table = {kAotScripts, 1, kAotSlots, true}"), std::string::npos) << reg;
 }
 
+// Optimized AOT code has no state_of, no ShellBase and no init_state: the shell has the fields.
+TEST(HotcTool, AotOptimizedFieldAccessUsesTheShell)
+{
+    TestScratch scratch;
+    const std::string out_dir = scratch.file("hotc_aot_opt_fields");
+    const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/aot_opt_fields.hot";
+    const std::string cmd = std::string("'") + HOTC_PATH + "' --aot --aot-optimized '" + script + "' --out-dir '"
+        + out_dir + "' -I '" + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' 2>&1";
+    FILE* p = popen(cmd.c_str(), "r");
+    ASSERT_NE(p, nullptr);
+    std::string text;
+    char buf[512];
+    while (size_t n = fread(buf, 1, sizeof buf, p))
+        text.append(buf, n);
+    const int status = pclose(p);
+    ASSERT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(WEXITSTATUS(status), 0) << text;
+    const std::string out = read_file(out_dir + "/aot_opt_fields.aot.cpp");
+    EXPECT_NE(out.find("hot::ShellCore"), std::string::npos) << out;
+    EXPECT_EQ(out.find("state_of("), std::string::npos) << out;
+    EXPECT_EQ(out.find("ShellBase"), std::string::npos) << out;
+    EXPECT_EQ(out.find("init_state"), std::string::npos) << out;
+    EXPECT_EQ(out.find("destroy_state"), std::string::npos) << out;
+    EXPECT_EQ(out.find("track_object"), std::string::npos) << out;
+}
+
+// The same for a C++ script: the fields of another object and of this in a lambda.
+TEST(HotcTool, AotOptimizedCppScriptHasNoStateOf)
+{
+    TestScratch scratch;
+    const std::string out_dir = scratch.file("hotc_aot_opt_cpp_fields");
+    const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/aot_cover_cpp.cpp";
+    const std::string cmd = std::string("'") + HOTC_PATH + "' --aot --aot-optimized '" + script + "' --out-dir '"
+        + out_dir + "' -I '" + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' 2>&1";
+    FILE* p = popen(cmd.c_str(), "r");
+    ASSERT_NE(p, nullptr);
+    std::string text;
+    char buf[512];
+    while (size_t n = fread(buf, 1, sizeof buf, p))
+        text.append(buf, n);
+    const int status = pclose(p);
+    ASSERT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(WEXITSTATUS(status), 0) << text;
+    const std::string out = read_file(out_dir + "/aot_cover_cpp.aot.cpp");
+    EXPECT_NE(out.find("CppReader"), std::string::npos) << out;
+    EXPECT_EQ(out.find("state_of("), std::string::npos) << out;
+    EXPECT_EQ(out.find("ShellBase"), std::string::npos) << out;
+}
+
 // --aot-optimized without --aot is a usage error. The tool prints the reason and the usage text.
 TEST(HotcTool, AotOptimizedWithoutAotPrintsTheUsage)
 {

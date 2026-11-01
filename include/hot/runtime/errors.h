@@ -19,7 +19,7 @@
 namespace hot
 {
 
-struct ShellBase;
+struct ShellCore;
 
 // The base of the exceptions that the runtime checks throw.
 class HOT_EXPORT ScriptError : public std::runtime_error
@@ -65,7 +65,7 @@ struct ScriptErrorReport
 {
     const char* type;       // for example "hot::NullReference"
     const char* message;    // the text of what()
-    const ShellBase* self;  // the object that ran the entry point, or null
+    const ShellCore* self;  // the object that ran the entry point, or null
     const char* class_name; // the class of "self", or "?"
     const char* traceback;  // the script call stack (trace.h); empty when HOT_TRACEBACK is 0
 };
@@ -126,7 +126,7 @@ HOT_HIDDEN uint32_t& call_depth() noexcept
 [[noreturn]] HOT_EXPORT void throw_index_out_of_range(std::size_t index, std::size_t size);
 
 // Reports the exception "ep" that no script code handled. "self" can be null.
-HOT_EXPORT void report_unhandled(const ShellBase* self, std::exception_ptr ep);
+HOT_EXPORT void report_unhandled(const ShellCore* self, std::exception_ptr ep);
 
 } // namespace detail
 

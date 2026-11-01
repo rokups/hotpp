@@ -167,7 +167,7 @@ template <class T, class... A> HOT_HIDDEN constexpr T field_init(A&&... a)
 
 // Optimized AOT code: sets the record of a new object. The fields are members of the shell, so
 // the C++ constructors have made them already.
-HOT_NODEBUG inline void init_object(ShellBase* self, ClassRecord* cls) noexcept
+HOT_NODEBUG inline void init_object(ShellCore* self, ClassRecord* cls) noexcept
 {
     self->cls = cls;
 }
@@ -175,7 +175,7 @@ HOT_NODEBUG inline void init_object(ShellBase* self, ClassRecord* cls) noexcept
 // Optimized AOT code: runs the script destructor of an object. Each shell calls it in its own
 // destructor, before the fields of that shell die. Only the shell of the class of the object
 // (the record "own") runs the script destructor. A shell of a parent class does nothing.
-HOT_NODEBUG inline void finish_object(ShellBase* self, const ClassRecord* own) noexcept
+HOT_NODEBUG inline void finish_object(ShellCore* self, const ClassRecord* own) noexcept
 {
     if (self->cls != own || !own->dtor)
         return;
@@ -352,12 +352,16 @@ inline bool type_key_matches(const char* key, const char* name)
 }
 
 // Returns a pointer to a field, or null when the name or the type does not match.
-template <class T> inline T* field_ptr(ShellBase* s, const char* name)
+template <class T> inline T* field_ptr(ShellCore* s, const char* name)
 {
     const FieldInfo* f = find_field(s->cls, name);
-    if (!f || !s->state || !type_key_matches(f->type_key, type_key<T>()))
+    if (!f)
         return nullptr;
-    return reinterpret_cast<T*>(static_cast<char*>(s->state) + f->offset);
+    // A record with a layout belongs to a tracked ShellBase.
+    ShellBase* sb = static_cast<ShellBase*>(s);
+    if (!sb->state || !type_key_matches(f->type_key, type_key<T>()))
+        return nullptr;
+    return reinterpret_cast<T*>(static_cast<char*>(sb->state) + f->offset);
 }
 
 } // namespace hot

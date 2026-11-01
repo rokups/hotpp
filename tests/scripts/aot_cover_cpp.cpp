@@ -40,6 +40,24 @@ public:
     int n = 0;
 };
 
+// Reads a field of another object through a pointer, a reference and a const reference, and
+// a field of this in a lambda. The optimized shell has the fields, so no rewrite is needed.
+class CppReader : public Actor
+{
+public:
+    CppReader() : Actor("CppReader") {}
+    int ReadPtr(CppUnit* u) { return u->base_power; }
+    int ReadRef(CppUnit& u) { return u.base_power; }
+    int ReadConst(const CppUnit& u) { return u.base_power; }
+    int ReadLambda()
+    {
+        auto f = [this]() { return mine + this->mine; };
+        return f();
+    }
+
+    int mine = 4;
+};
+
 class CppBoss : public Actor
 {
 public:

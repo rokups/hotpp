@@ -70,7 +70,7 @@ All tests are GoogleTest cases. CMake registers them with `hot_gtest` (a wrapper
 
 A script class can have more than one native base: `class Boss : Actor, IDamageable, ITagged`. The first base is the primary base. The other bases are interface bases (design 4.4). See `tests/scripts/boss_v1.hot`, `boss_v2.hot`, `boss_rebase.hot` and `tests/engine/Damageable.h`.
 
-- The shell derives from all bases: `struct Boss_Shell final : Actor, IDamageable, ITagged, hot::ShellBase`. The constructor arguments go to the primary base. An interface base needs a default constructor.
+- The shell derives from all bases: `struct Boss_Shell final : Actor, IDamageable, ITagged, hot::ShellBase`. The constructor arguments go to the primary base. An interface base needs a default constructor. In optimized AOT, the last base is `hot::ShellCore`.
 - `libclang` reads the virtuals of each base. Each virtual gets one slot. The slots of the primary base come first, then the slots of each interface base in the order of the list. A name in two bases gets a suffix of its parameter types, for example `SLOT_Size_i`.
 - `override` works for a virtual of any base. A virtual without an override calls the implementation of its base, for example `IDamageable::Armor`. `base.Armor()` calls the interface implementation when the primary base has no virtual with that name.
 - The record keeps the list of the bases in `base_name` (`"Actor, IDamageable, ITagged"`). The shell hash uses the list. A reload that adds or removes a base is rejected (design 5.3: RECONSTRUCT): "native interface bases changed".

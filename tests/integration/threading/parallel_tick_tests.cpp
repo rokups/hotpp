@@ -149,7 +149,7 @@ struct Rig
             s.world.Add(static_cast<Actor*>(inst.native));
         }
         for (const hot::Instance& i : actors)
-            shell_of[static_cast<Actor*>(i.native)] = i.shell;
+            shell_of[static_cast<Actor*>(i.native)] = static_cast<hot::ShellBase*>(i.shell);
         s.world.SetTickObserver([this](Actor* a) { check(a); });
     }
 
@@ -191,7 +191,7 @@ void run_commit_only_at_barrier(unsigned seed)
     std::vector<Actor*> addr = s.world.Actors();
     std::vector<void*> old_state;
     for (const hot::Instance& i : rig.actors)
-        old_state.push_back(i.shell->state);
+        old_state.push_back(static_cast<hot::ShellBase*>(i.shell)->state);
 
     // The hook is the frame boundary: it runs on the main thread, at the barrier.
     int frame = 0; // the number of frames that started
@@ -275,7 +275,7 @@ void run_commit_only_at_barrier(unsigned seed)
     int wrong = 0;
     for (size_t i = 0; i < rig.actors.size(); ++i)
     {
-        hot::ShellBase* sh = rig.actors[i].shell;
+        hot::ShellBase* sh = static_cast<hot::ShellBase*>(rig.actors[i].shell);
         const float* health = hot::field_ptr<float>(sh, "health");
         const float* shield = hot::field_ptr<float>(sh, "shield");
         const float* hp = hot::field_ptr<float>(sh, "hp");
@@ -306,7 +306,7 @@ void run_rejected_reload(unsigned seed)
     s.commit_at_frame_boundary();
     std::vector<void*> old_state;
     for (const hot::Instance& i : rig.actors)
-        old_state.push_back(i.shell->state);
+        old_state.push_back(static_cast<hot::ShellBase*>(i.shell)->state);
 
     std::mt19937 rng(seed);
     const auto delay = std::chrono::microseconds(std::uniform_int_distribution<int>(0, 20000)(rng));
@@ -360,7 +360,7 @@ void run_rejected_reload(unsigned seed)
     int wrong = 0;
     for (size_t i = 0; i < rig.actors.size(); ++i)
     {
-        hot::ShellBase* sh = rig.actors[i].shell;
+        hot::ShellBase* sh = static_cast<hot::ShellBase*>(rig.actors[i].shell);
         const float* hp = hot::field_ptr<float>(sh, "hp");
         const bool good = sh->cls->generation == 1 && sh->state == old_state[i] && hp
             && *hp == kStartHealth + static_cast<float>(frame);

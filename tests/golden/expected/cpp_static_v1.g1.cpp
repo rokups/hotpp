@@ -303,7 +303,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 11 "cpp_static_v1.cpp"
-HOT_NODEBUG static hot::ShellBase* Counter__new_default()
+HOT_NODEBUG static hot::ShellCore* Counter__new_default()
 #line 11 "cpp_static_v1.cpp"
 {
 #line 11 "cpp_static_v1.cpp"
@@ -348,7 +348,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
 #line 8 "cpp_static_v1.cpp"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 8 "cpp_static_v1.cpp"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 8 "cpp_static_v1.cpp"
     if (Counter_record.new_default) {
 #line 8 "cpp_static_v1.cpp"

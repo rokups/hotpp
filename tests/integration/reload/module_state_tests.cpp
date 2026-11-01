@@ -21,7 +21,7 @@ using test_support::kDt;
 using test_support::Session;
 using test_support::source;
 
-template <class T> T* fld(hot::ShellBase* shell, const char* name)
+template <class T> T* fld(hot::ShellCore* shell, const char* name)
 {
     return hot::field_ptr<T>(shell, name);
 }

@@ -292,7 +292,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 11 "cpp_inherit_v2.cpp"
-HOT_NODEBUG static hot::ShellBase* Base__new_default()
+HOT_NODEBUG static hot::ShellCore* Base__new_default()
 #line 11 "cpp_inherit_v2.cpp"
 {
 #line 11 "cpp_inherit_v2.cpp"
@@ -340,7 +340,7 @@ HOT_NODEBUG static hot::Instance Base_create()
 #line 8 "cpp_inherit_v2.cpp"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 8 "cpp_inherit_v2.cpp"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 8 "cpp_inherit_v2.cpp"
     if (Base_record.new_default) {
 #line 8 "cpp_inherit_v2.cpp"
@@ -606,7 +606,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 39 "cpp_inherit_v2.cpp"
-HOT_NODEBUG static hot::ShellBase* Kid__new_default()
+HOT_NODEBUG static hot::ShellCore* Kid__new_default()
 #line 39 "cpp_inherit_v2.cpp"
 {
 #line 39 "cpp_inherit_v2.cpp"
@@ -654,7 +654,7 @@ HOT_NODEBUG static hot::Instance Kid_create()
 #line 35 "cpp_inherit_v2.cpp"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 35 "cpp_inherit_v2.cpp"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 35 "cpp_inherit_v2.cpp"
     if (Kid_record.new_default) {
 #line 35 "cpp_inherit_v2.cpp"

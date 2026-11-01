@@ -2699,7 +2699,8 @@ void translate_impl(
         for (const std::string& d : in.include_dirs)
             dirs.push_back(d);
         res.virtual_files = collect_virtual_includes(in.fs.get(), in.script_text, dirs.front(), dirs);
-        sc = hotc::parse_cpp_script(in.script_text, opt.input, clang_args(opt), map, g_diag, res.virtual_files);
+        sc = hotc::parse_cpp_script(in.script_text, opt.input, clang_args(opt), map, g_diag, res.virtual_files,
+            opt.aot_optimized);
         if (!g_diag.items.empty())
             throw TranslateAbort{};
         for (const Import& im : sc.imports)
@@ -3674,8 +3675,6 @@ void translate_impl(
     {
         o.w("// Optimized AOT code is always live: there is no override and no reload.\n");
         o.w("[[maybe_unused]] static const uint32_t hot_live = 1;\n");
-        o.w("// The fields are members of the shell, so the pointer to the state is the shell itself.\n");
-        o.w("template <class T> [[maybe_unused]] HOT_HIDDEN constexpr T* state_of(T* s) noexcept { return s; }\n");
     }
     else
     {
@@ -3744,6 +3743,7 @@ void translate_impl(
         for (hotc::ast::EnumDef& e : sc.enums)
         {
             RCtx ec = hotc::make_class_ctx(no_class);
+            ec.aot_optimized = opt.aot_optimized;
             ec.map = &map;
             ec.types = &types;
             ec.allow_this = false;
@@ -3940,6 +3940,7 @@ void translate_impl(
 
         new_ready.insert(cn);
         RCtx base_cx = hotc::make_class_ctx(cd);
+        base_cx.aot_optimized = opt.aot_optimized;
         base_cx.map = &map;
         base_cx.types = &types;
         wire_native_hooks(base_cx);
@@ -5103,6 +5104,7 @@ void translate_impl(
 
         // ---- lowering context
         RCtx base_cx = hotc::make_class_ctx(cd);
+        base_cx.aot_optimized = opt.aot_optimized;
         base_cx.map = &map;
         base_cx.types = &types;
         wire_native_hooks(base_cx);
@@ -5192,7 +5194,7 @@ void translate_impl(
         // without the state: the shell of the child makes the state of the child (design 4.5).
         const bool parent_shell = has_children.count(cn) > 0;
         const std::string shell_head = "struct " + shell + (parent_shell ? "" : " final") + " : "
-            + (par ? par->name + "_Shell" : BL + ", hot::ShellBase");
+            + (par ? par->name + "_Shell" : BL + (opt.aot_optimized ? ", hot::ShellCore" : ", hot::ShellBase"));
         const size_t shell_head_end = o.s.size() + shell_head.size();
         o.w(shell_head + " {\n");
         // A ".cpp" script has no cpp_prelude, also not from a prelude file.
@@ -5879,7 +5881,7 @@ void translate_impl(
                 o.w("// The factory of the engine calls it through the canonical record: the current generation\n"
                     "// gives the base arguments and the constructors.\n");
                 const Method& dm = ctor_ms[dflt];
-                mapped("HOT_NODEBUG static hot::ShellBase* " + P + "new_default()\n{\n" + locals + "    return " + P
+                mapped("HOT_NODEBUG static hot::ShellCore* " + P + "new_default()\n{\n" + locals + "    return " + P
                         + "build(false" + (defaults.empty() ? "" : ", " + defaults) + ");\n}\n",
                     dm.line > 0 ? dm.line : cd.line, dm.pos != 0 ? dm.pos : cd.pos);
                 o.w("\n");
@@ -5890,7 +5892,7 @@ void translate_impl(
         info.dtor_chain = dtor_chain;
         if (dtor_chain)
         {
-            std::string slot_text = "static void " + P + "dtor_slot(hot::ShellBase* s)\n{\n";
+            std::string slot_text = "static void " + P + "dtor_slot(hot::ShellCore* s)\n{\n";
             if (has_dtor)
                 slot_text += "    " + P + "dtor(static_cast<" + shell + "*>(s));\n";
             if (pinfo && pinfo->dtor_chain)
@@ -6194,8 +6196,9 @@ void translate_impl(
             o.w("};\n\n");
         }
         std::string on_reload_init;
+        // Optimized AOT code never reloads, and its shell has no ShellBase: no hook.
         for (const Method& m : cd.methods)
-            if (hook_of(m) == Hook::OnReload)
+            if (!opt.aot_optimized && hook_of(m) == Hook::OnReload)
             {
                 mapped("static void " + P + "onReload_hook(hot::ShellBase* s, const hot::OldState& old)\n{\n    " + P
                         + "onReload(static_cast<" + shell + "*>(s), old);\n}\n",
@@ -6237,7 +6240,7 @@ void translate_impl(
                         + shell + "*>(" + P + "new_default());\n    return {static_cast<" + B + "*>(p), p};\n}\n",
                     cd.line, cd.pos);
             else
-            mapped("HOT_NODEBUG static hot::Instance " + cn + "_create()\n{\n    hot::ScriptEntry entry;  // the creation is an entry (S27)\n    hot::ShellBase* s = nullptr;\n    if (" + cn +
+            mapped("HOT_NODEBUG static hot::Instance " + cn + "_create()\n{\n    hot::ScriptEntry entry;  // the creation is an entry (S27)\n    hot::ShellCore* s = nullptr;\n    if (" + cn +
                        "_record.new_default) {\n        s = " + cn + "_record.new_default();\n    } else {\n" + plan_locals + "        auto plan = " + P +
                        "plan(" + defaults + ");\n        s = " + P + "construct(nullptr, typeid(" + sa_name(dflt) + ").name(), &plan.first);\n    }\n    auto* p = static_cast<" +
                        shell + "*>(s);\n    return {static_cast<" + B + "*>(p), p};\n}\n",

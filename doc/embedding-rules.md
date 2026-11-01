@@ -79,7 +79,7 @@ hot::set_script_error_handler([](const hot::ScriptErrorReport& r) {
 | `type` | `hot::NullReference`, `hot::IndexOutOfRange` or `hot::ScriptError`. |
 | `message` | The text of `what()`. |
 | `class_name` | The script class of the object, or `?`. |
-| `self` | The shell of the object (`const hot::ShellBase*`), or null. |
+| `self` | The shell of the object (`const hot::ShellCore*`), or null. The `state` member needs an object that is not optimized (`hot::ShellBase`). |
 | `traceback` | The script call stack of the throw point, or an empty text when the traceback is off. See "Traceback". |
 
 Without a handler, the runtime prints one line to `stderr`: `[script] ERROR: unhandled hot::IndexOutOfRange in Player: <message>`. When the traceback is on, the lines of the traceback follow it.

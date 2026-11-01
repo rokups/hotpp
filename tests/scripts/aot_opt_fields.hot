@@ -1,0 +1,20 @@
+// A test script for optimized AOT code. A field of another script object and a field of this
+// in a lambda must not use state_of: the shell has the fields.
+using "Actor.h";
+
+class A {
+    int v = 5;
+}
+
+class B : Actor {
+    A a = null;
+    int n = 0;
+
+    int ReadA() { return a.v; }
+
+    void arm(World& w, float delay) {
+        w.AddTimer(delay, () => {
+            this.n = this.n + 1;
+        });
+    }
+}

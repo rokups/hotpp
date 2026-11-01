@@ -65,7 +65,7 @@ inline void run_f1_reload(hot::Module v1, hot::Module v2)
 
     // Validation phase: no side effect.
     Actor* const addr = a;
-    hot::ShellBase* const shell = inst.shell;
+    hot::ShellBase* const shell = static_cast<hot::ShellBase*>(inst.shell);
     void* const old_state = shell->state;
     ASSERT_RELOAD_OK(loader.request_reload(std::move(v2)));
     EXPECT_TRUE(loader.reload_pending());

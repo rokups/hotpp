@@ -307,7 +307,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 9 "cpp_objects_v2.cpp"
-HOT_NODEBUG static hot::ShellBase* Minion__new_default()
+HOT_NODEBUG static hot::ShellCore* Minion__new_default()
 #line 9 "cpp_objects_v2.cpp"
 {
 #line 9 "cpp_objects_v2.cpp"
@@ -340,7 +340,7 @@ HOT_NODEBUG static hot::Instance Minion_create()
 #line 6 "cpp_objects_v2.cpp"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 6 "cpp_objects_v2.cpp"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 6 "cpp_objects_v2.cpp"
     if (Minion_record.new_default) {
 #line 6 "cpp_objects_v2.cpp"
@@ -754,7 +754,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 41 "cpp_objects_v2.cpp"
-HOT_NODEBUG static hot::ShellBase* Spawner__new_default()
+HOT_NODEBUG static hot::ShellCore* Spawner__new_default()
 #line 41 "cpp_objects_v2.cpp"
 {
 #line 41 "cpp_objects_v2.cpp"
@@ -784,7 +784,7 @@ HOT_NODEBUG static hot::Instance Spawner_create()
 #line 38 "cpp_objects_v2.cpp"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 38 "cpp_objects_v2.cpp"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 38 "cpp_objects_v2.cpp"
     if (Spawner_record.new_default) {
 #line 38 "cpp_objects_v2.cpp"

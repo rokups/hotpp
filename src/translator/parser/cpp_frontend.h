@@ -26,6 +26,7 @@ namespace hotc
 // alive until the function returns.
 ast::Script parse_cpp_script(const std::string& text, const std::string& name,
     const std::vector<std::string>& clang_args, const LineMap& map, Diagnostics& diag,
-    const std::vector<std::pair<std::string, std::string>>& virtual_files = {});
+    const std::vector<std::pair<std::string, std::string>>& virtual_files = {},
+    bool aot_optimized = false);
 
 } // namespace hotc

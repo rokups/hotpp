@@ -59,7 +59,7 @@ TEST(AotRegistry, CreateGivesAnObjectThatTheWorldTicks)
     world.Tick(0.5f);
     world.Tick(0.5f);
     EXPECT_FLOAT_EQ(fighter->Position.x, 1.0f);
-    auto* shell = dynamic_cast<hot::ShellBase*>(fighter);
+    auto* shell = dynamic_cast<hot::ShellCore*>(fighter);
     ASSERT_NE(shell, nullptr);
 #ifndef AOT_EXPECT_OPTIMIZED // an optimized object has no field table
     ASSERT_NE(hot::field_ptr<int>(shell, "ticks"), nullptr);
@@ -83,7 +83,7 @@ TEST(AotRegistry, ModuleVariablesAreSharedByTheClassesOfAScript)
     world.Add(hero);
     world.Add(helper);
     world.Tick(0.1f);
-    auto* shell = dynamic_cast<hot::ShellBase*>(helper);
+    auto* shell = dynamic_cast<hot::ShellCore*>(helper);
     ASSERT_NE(shell, nullptr);
 #ifndef AOT_EXPECT_OPTIMIZED // an optimized object has no field table
     EXPECT_EQ(*hot::field_ptr<int>(shell, "seen"), 101); // Hero adds 1 (Walk), Helper adds 100

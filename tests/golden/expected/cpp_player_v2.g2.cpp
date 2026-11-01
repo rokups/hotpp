@@ -346,7 +346,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 34 "cpp_player_v2.cpp"
-HOT_NODEBUG static hot::ShellBase* Player__new_default()
+HOT_NODEBUG static hot::ShellCore* Player__new_default()
 #line 34 "cpp_player_v2.cpp"
 {
 #line 34 "cpp_player_v2.cpp"
@@ -387,7 +387,7 @@ HOT_NODEBUG static hot::Instance Player_create()
 #line 31 "cpp_player_v2.cpp"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 31 "cpp_player_v2.cpp"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 31 "cpp_player_v2.cpp"
     if (Player_record.new_default) {
 #line 31 "cpp_player_v2.cpp"

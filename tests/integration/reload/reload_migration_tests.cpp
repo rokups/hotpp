@@ -44,7 +44,7 @@ TEST(ReloadMigration, ReloadMigratesAndRejectedReloadsKeepGeneration2)
 
     // Validation phase: no side effect.
     Actor* const addr = a;
-    hot::ShellBase* const shell = s.inst.shell;
+    hot::ShellBase* const shell = static_cast<hot::ShellBase*>(s.inst.shell);
     void* const old_state = shell->state;
     ASSERT_RELOAD_OK(s.loader.request_reload(test_support::library(GEN2_SO)));
     EXPECT_TRUE(s.loader.reload_pending());
@@ -123,7 +123,7 @@ TEST(ReloadMigration, CommitWritesTheOwnerOfTheNewBlock)
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(GEN1_SO));
     s.commit_at_frame_boundary();
-    hot::ShellBase* const shell = s.inst.shell;
+    hot::ShellBase* const shell = static_cast<hot::ShellBase*>(s.inst.shell);
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(test_support::library(GEN2_SO)));
     s.world.Tick(kDt);

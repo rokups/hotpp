@@ -276,7 +276,7 @@ template <int = 0>
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
 #line 20 "cpp_template_fn.cpp"
-HOT_NODEBUG static hot::ShellBase* Scaler__new_default()
+HOT_NODEBUG static hot::ShellCore* Scaler__new_default()
 #line 20 "cpp_template_fn.cpp"
 {
 #line 20 "cpp_template_fn.cpp"
@@ -306,7 +306,7 @@ HOT_NODEBUG static hot::Instance Scaler_create()
 #line 15 "cpp_template_fn.cpp"
     hot::ScriptEntry entry;  // the creation is an entry (S27)
 #line 15 "cpp_template_fn.cpp"
-    hot::ShellBase* s = nullptr;
+    hot::ShellCore* s = nullptr;
 #line 15 "cpp_template_fn.cpp"
     if (Scaler_record.new_default) {
 #line 15 "cpp_template_fn.cpp"

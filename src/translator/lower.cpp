@@ -1238,7 +1238,9 @@ struct Lowerer
             { // a field of a script object behind a handle
                 const bool weak = weak_field_of(*d, m.name);
                 expr(m.obj);
-                e = raw("state_of(" + shell_text(*d, print(*m.obj)) + ")->" + m.name, obj_pos);
+                e = raw(cx.aot_optimized ? shell_text(*d, print(*m.obj)) + "->" + m.name
+                                         : "state_of(" + shell_text(*d, print(*m.obj)) + ")->" + m.name,
+                    obj_pos);
                 if (weak && !target)
                     lock(e);
                 return;
@@ -1300,7 +1302,9 @@ struct Lowerer
         // The lambda captures by value. "self" is a pointer to the shell. The state pointer
         // is read again inside, so a lambda never keeps the pointer to a block.
         l.body.stmts.insert(
-            l.body.stmts.begin(), make_stmt(RawStmt{"HOT_NODEBUG_LOCAL auto* __st = state_of(__self);", 0}));
+            l.body.stmts.begin(), make_stmt(RawStmt{cx.aot_optimized ? "HOT_NODEBUG_LOCAL auto* __st = __self;"
+                                           : "HOT_NODEBUG_LOCAL auto* __st = state_of(__self);",
+                0}));
         const uint32_t pos = l.pos;
         CallExpr c;
         c.pos = pos;
