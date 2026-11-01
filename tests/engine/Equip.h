@@ -30,14 +30,14 @@ class Wearer
 {
 public:
     virtual ~Wearer() = default;
-    virtual int WearRaw(Charm* c) { return 0; }
-    virtual int WearRef(const Charm& c) { return 0; }
-    virtual int WearShared(std::shared_ptr<Charm> c) { return 0; }
-    virtual int WearItem(Item* i) { return 0; }
-    virtual int WearBlade(Blade* b) { return 0; }
+    virtual int WearRaw([[maybe_unused]] Charm* c) { return 0; }
+    virtual int WearRef([[maybe_unused]] const Charm& c) { return 0; }
+    virtual int WearShared([[maybe_unused]] std::shared_ptr<Charm> c) { return 0; }
+    virtual int WearItem([[maybe_unused]] Item* i) { return 0; }
+    virtual int WearBlade([[maybe_unused]] Blade* b) { return 0; }
     // Returns: only the handle by value can be overridden with the plain handle type.
     virtual std::shared_ptr<Charm> Spawn() { return nullptr; }
-    virtual std::shared_ptr<Charm> Make(int power) { return nullptr; }
+    virtual std::shared_ptr<Charm> Make([[maybe_unused]] int power) { return nullptr; }
     virtual Charm* Borrow() { return nullptr; }
 };
 

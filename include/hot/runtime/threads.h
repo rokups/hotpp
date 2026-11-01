@@ -190,7 +190,7 @@ inline uint64_t unsafe_commit_count()
 class ScriptTickScope
 {
 public:
-    ScriptTickScope() = default;
+    ScriptTickScope() {} // user-provided: a scope variable is not an unused local (MSVC C4101)
     ScriptTickScope(const ScriptTickScope&) = delete;
     ScriptTickScope& operator=(const ScriptTickScope&) = delete;
 };

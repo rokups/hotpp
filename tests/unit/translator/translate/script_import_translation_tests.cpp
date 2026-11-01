@@ -132,7 +132,6 @@ TEST(ScriptImportTranslation, CompilerErrorHasRealFileLineColumnAndSnippet)
     // The physical line and column of "return 1" in the generated text.
     const size_t at = r.cpp.find("return 1");
     ASSERT_NE(at, std::string::npos);
-    const int line = 1 + static_cast<int>(std::count(r.cpp.begin(), r.cpp.begin() + static_cast<long>(at), '\n'));
     const int col = static_cast<int>(at - (r.cpp.rfind('\n', at) + 1)) + 1;
     // Clang prints the position of the "#line" directive: the file and the script line. It shows
     // the generated line. Several generated lines can have the same script line.
