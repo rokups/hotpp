@@ -90,6 +90,8 @@ jobs:
         continue-on-error: true
         run: cmake --build "$BUILD_DIR" --config "$CONFIG" --parallel
 
+      # The step has a time limit, so the job ends and its log is available.
       - name: Test
         if: always() && steps.hotc.outcome == 'success'
+        timeout-minutes: 40
         run: ctest --test-dir "$BUILD_DIR" -C "$CONFIG" -j 4 --timeout 300 --output-on-failure
