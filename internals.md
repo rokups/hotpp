@@ -165,6 +165,7 @@ Debug information:
 What the debugger shows:
 
 - Each script class has a state struct, for example `PlayerState_g1`. Its first member is `hot::ShellBase* __hot_owner` (offset 0, with a `static_assert`).
+- Each shell derives from `hot::ShellBase`, which derives from `hot::ShellCore`. `ShellCore` holds only the class record (`cls`). `ShellBase` adds the state pointer and the list of live objects. A shell of optimized AOT derives from `ShellCore` only.
 - Script methods are members of the state struct. A frame shows `this` (the script fields) and the parameters. The locals `__self` and `__st` have the attribute `HOT_NODEBUG_LOCAL` (`[[gnu::nodebug]]` on Clang and GCC).
 - A slot holds a pointer to the state member (`hot::SlotFn`, for example `PlayerState_g1::Tick`). `hot::call<Sig>(__self, slot, args...)` calls the member. No `Player__Tick` wrapper exists. A script function, a constructor and a destructor keep a hidden `HOT_HIDDEN` wrapper for direct script calls.
 - The member prologue has the stale-generation check. A parameter with a body type has the name `__<name>` in the member. The first body line copies it to `<name>`.
