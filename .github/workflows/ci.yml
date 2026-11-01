@@ -8,8 +8,6 @@
 # Jobs:
 #   linux              Build and test on Linux. Make hotpp-sdk-linux-x86_64.tar.gz.
 #   windows-msvc       Build and test on Windows with MSVC. Make hotpp-sdk-windows-x86_64.zip.
-#   windows            Cross build for Windows on Linux. Test a subset under wine.
-#                      Make hotpp-sdk-windows-x86_64.zip.
 #   sdk-smoke-linux    Unpack the Linux SDK on a clean Ubuntu 24.04 runner. Run tests/sdk_smoke/run.cmake.
 #   sdk-smoke-windows  Unpack the Windows SDK on a clean Windows runner. Run the same script with MSVC.
 #   release            Push to master only. Move the tag "latest" and replace the release assets.
@@ -212,116 +210,6 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         if: always() && steps.package.outcome == 'success'
-        with:
-          name: hotpp-sdk-windows-x86_64
-          path: dist/hotpp-sdk-windows-x86_64.zip
-          if-no-files-found: error
-
-  # The Windows SDK is a cross build on Linux with the preset mingw-llvm. This is the proven path
-  # of the repository (doc/windows.md). The MSVC preset vs-files is not tested, so a native MSVC
-  # build is a risk. The job runs in an Arch Linux container, not on the Ubuntu packages. Ubuntu
-  # keeps the MinGW libstdc++ headers in /usr/lib/gcc/x86_64-w64-mingw32/<version>/include/c++.
-  # hotc needs them in <sysroot>/include/c++/<version>. Arch has this layout, and Arch is the
-  # system where the maintainer tests the preset. The SDK uses the GCC, UCRT and posix threads
-  # of Arch MinGW. A consumer must use a compatible MinGW (MSYS2 UCRT64, see sdk-smoke-windows).
-  windows:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    container: archlinux:latest
-    outputs:
-      mingw-gcc: ${{ steps.gcc.outputs.version }}
-    env:
-      WINEDEBUG: -all
-      # No Mono and no Gecko: the console programs do not need them, and wineboot does not wait for them.
-      WINEDLLOVERRIDES: "mscoree,mshtml="
-      # HOME of a container job is not owned by root. Wine refuses to use it for its prefix.
-      WINEPREFIX: /tmp/wineprefix
-      CPM_SOURCE_CACHE: /github/home/.cache/cpm
-    steps:
-      - name: Install MinGW-w64, wine and the build tools
-        run: |
-          pacman -Sy --noconfirm archlinux-keyring
-          pacman -Syu --noconfirm --needed base-devel git cmake ninja mingw-w64-gcc wine zstd
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
-      # The release notes name this compiler. A Windows consumer needs a GCC of this version or newer.
-      - name: Record the MinGW compiler
-        id: gcc
-        run: echo "version=$(x86_64-w64-mingw32-g++ --version | head -1)" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/checkout@v7
-
-      - name: Read the LLVM release of cmake/HotLlvmVersion.cmake
-        id: llvm
-        run: |
-          version=$(sed -n 's/^set(HOT_LLVM_VERSION \(.*\))$/\1/p' cmake/HotLlvmVersion.cmake)
-          sha=$(grep -oE '[0-9a-f]{64}' cmake/HotLlvmVersion.cmake | head -1)
-          name="clang+llvm-${version}-x86_64-pc-windows-msvc"
-          echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "url=https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/${name}.tar.zst" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache@v6
-        with:
-          path: llvm-archive
-          key: llvm-windows-${{ steps.llvm.outputs.sha }}
-
-      - uses: actions/cache@v6
-        with:
-          path: /github/home/.cache/cpm
-          key: cpm-mingw-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
-          restore-keys: cpm-mingw-
-
-      # The preset mingw-llvm reads the release from cmake-build (HOT_LLVM_RELEASES_DIR).
-      - name: Download and unpack the LLVM release for Windows
-        run: |
-          archive="llvm-archive/${{ steps.llvm.outputs.name }}.tar.zst"
-          if [ ! -f "$archive" ]; then
-            mkdir -p llvm-archive
-            curl -fsSL -o "$archive" "${{ steps.llvm.outputs.url }}"
-          fi
-          echo "${{ steps.llvm.outputs.sha }}  $archive" | sha256sum -c -
-          mkdir -p cmake-build
-          zstd -d --long=31 -c "$archive" | tar -x -C cmake-build
-
-      - name: Prepare wine
-        run: wineboot --init
-
-      - name: Configure
-        run: cmake --preset mingw-llvm
-
-      - name: Build
-        run: cmake --build --preset mingw-llvm-dbg
-
-      # A subset of the tests. The full suite takes about 12 minutes under wine. The subset covers
-      # hotc.exe (the golden tests of the translator), the AOT mode that the SDK gives (Aot, aot)
-      # and the runtime and the loader (Runtime, Loader). It runs in about two minutes. The two
-      # language server completion tests that fail under wine are not in the subset
-      # (doc/windows.md, "Limits").
-      - name: Test (subset under wine)
-        run: ctest --preset mingw-llvm-dbg -R 'Golden|golden|Aot|aot|Runtime|Loader' -E 'LanguageServer' -j 4
-
-      # The test build is large. Remove it before the SDK build, so the disk does not become full.
-      - name: Remove the test build
-        run: rm -rf cmake-build/mingw-llvm
-
-      - name: Build the SDK (portable)
-        run: |
-          cmake --preset mingw-llvm -B cmake-build/sdk -DCMAKE_CONFIGURATION_TYPES=Release \
-            -DHOT_PORTABLE=ON -DHOT_BUILD_TESTS=OFF -DHOT_BUILD_SAMPLES=OFF
-          cmake --build cmake-build/sdk --config Release
-
-      # hotc.exe and hot-ls.exe link the MinGW runtime statically. They need only libclang.dll.
-      # The install puts libclang.dll in bin/ and the Clang headers in lib/clang/<major>/include.
-      - name: Package the SDK
-        run: |
-          mkdir -p dist stage
-          cmake --install cmake-build/sdk --config Release --prefix stage/hotpp-sdk-windows-x86_64
-          test -f stage/hotpp-sdk-windows-x86_64/bin/libclang.dll
-          ls -d stage/hotpp-sdk-windows-x86_64/lib/clang/*/include
-          cd stage && cmake -E tar cf ../dist/hotpp-sdk-windows-x86_64.zip --format=zip hotpp-sdk-windows-x86_64
-
-      - uses: actions/upload-artifact@v7
         with:
           name: hotpp-sdk-windows-x86_64
           path: dist/hotpp-sdk-windows-x86_64.zip
