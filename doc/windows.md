@@ -70,7 +70,7 @@ The preset `mingw-llvm` builds `hotc.exe` for Windows, so it needs no Linux `hot
 
 The toolchain file sets `HOT_HOTC_TARGET` to `x86_64-w64-mingw32` and `HOT_SCRIPT_SYSROOT` to the MinGW sysroot. Change them in the cache if your MinGW is in another folder.
 
-The MinGW host exports all its symbols, so the modules reach the runtime. A host with `ENABLE_EXPORTS ON` gets this through `hot_export_host(<target>)`. On Windows `hot_add_scripts` has the option `HOST`. Give it the host executable. Each module then links the import library of this host:
+On Windows a script module is a DLL. The module reaches the host only through the exports of the host executable. A host with `ENABLE_EXPORTS ON` gets these exports through `hot_export_host(<target>)`. On Windows `hot_add_scripts` has the option `HOST`. Give it the host executable. Each module then links the import library of this host:
 
 ```
 set_target_properties(game PROPERTIES ENABLE_EXPORTS ON)
@@ -79,6 +79,30 @@ hot_add_scripts(TARGET game_scripts SCRIPTS game.hot HOST game)
 ```
 
 Other systems ignore `HOST`.
+
+### Export your native classes
+
+The host exports only the symbols with the macro `HOT_EXPORT`. The build does not export all symbols. The runtime marks its own symbols. You mark the native classes and functions that a script uses:
+
+```
+#include "hot/runtime/export.h"
+
+class HOT_EXPORT Actor
+{
+public:
+    virtual ~Actor();
+    void Move(float dx);
+};
+
+HOT_EXPORT float Distance(const Vec3& a, const Vec3& b);
+```
+
+- Mark a class when it has a member that is not inline. Mark the whole class, not the members. Then the vtable and the type information come from the host.
+- Mark a function that is not inline.
+- Mark a global variable that a script reads. A module cannot import a variable without the macro.
+- An inline class or an inline function needs no mark. The module compiles its own copy.
+
+The host compiles the header with `__declspec(dllexport)`. The module compiles it with `HOT_MODULE_BUILD` and gets `__declspec(dllimport)`. On Linux and macOS the macro gives default visibility.
 
 ## The SDK on Windows
 
