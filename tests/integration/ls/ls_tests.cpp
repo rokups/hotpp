@@ -72,8 +72,16 @@ hot::ls::ServerOptions options(const TempDir& dir, bool clangd)
     o.clangd = clangd ? HOT_CLANGD_PATH : "";
     o.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine"};
     // HOT_LS_CLANGD_LOG keeps the clangd log after the test (the temporary dir goes away).
+    // A directory gets one log file for each test.
     const char* log = std::getenv("HOT_LS_CLANGD_LOG");
     o.clangd_log = log ? log : (dir.path() / "clangd.log").string();
+    std::error_code ec;
+    if (log && std::filesystem::is_directory(log, ec))
+    {
+        const ::testing::TestInfo* t = ::testing::UnitTest::GetInstance()->current_test_info();
+        const std::string name = t ? std::string(t->test_suite_name()) + "." + t->name() : "clangd";
+        o.clangd_log = (std::filesystem::path(log) / (name + ".log")).string();
+    }
     return o;
 }
 
