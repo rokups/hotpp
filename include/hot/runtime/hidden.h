@@ -15,7 +15,10 @@
 #elif defined(__GNUC__)
     #define HOT_HIDDEN [[gnu::always_inline]] inline
 #elif defined(_MSC_VER)
-    #define HOT_HIDDEN __forceinline
+    // Not __forceinline: cl does not inline a function with a try block, and then it writes
+    // C4714. cl has no nodebug, so __forceinline gives no debugger gain. The optimizer still
+    // inlines the small helpers.
+    #define HOT_HIDDEN inline
 #else
     #define HOT_HIDDEN inline
 #endif
