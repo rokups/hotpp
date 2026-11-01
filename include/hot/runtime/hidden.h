@@ -30,7 +30,10 @@
 //   loader binds each dllimport symbol of the module to the executable.
 // - GNU ld (MinGW) exports only the dllexport symbols when an object has one. The CMake function
 //   hot_export_host adds --export-all-symbols, so a module can also call the native methods of
-//   the host. An MSVC link exports only the dllexport symbols.
+//   the host.
+// - An MSVC host gets WINDOWS_EXPORT_ALL_SYMBOLS. It exports only the objects of the host target,
+//   not the objects of the static runtime. lld-link (MSVC mode) has no auto-import of data.
+//   Thus each runtime function and variable that module code uses must have HOT_EXPORT.
 #if defined(_WIN32)
     #define HOT_MODULE_EXPORT __declspec(dllexport)
 #elif defined(__clang__) || defined(__GNUC__)

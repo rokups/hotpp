@@ -52,14 +52,14 @@ public:
     void set_live_flag(uint32_t* flag) { live_flag_ = flag; }
     uint32_t* live_flag() const { return live_flag_; }
 
-    void add(ClassRecord* record, Factory create);
+    HOT_EXPORT void add(ClassRecord* record, Factory create);
     // A thunk is a stable function address for a native delegate (section 4.11). The first
     // registration of a key keeps its address (append-only).
-    HOT_NODEBUG void add_thunk(const std::string& name, void* fn);
+    HOT_NODEBUG HOT_EXPORT void add_thunk(const std::string& name, void* fn);
     // A thunk for a changed signature of a script function (design 5.3). "sig" is
     // typeid(Sig).name() of the slot signature. "slot" is the slot that the thunk calls.
-    HOT_NODEBUG void add_thunk(const std::string& name, void* fn, const char* sig, unsigned slot);
-    HOT_NODEBUG void add_thunk(const ThunkEntry& entry);
+    HOT_NODEBUG HOT_EXPORT void add_thunk(const std::string& name, void* fn, const char* sig, unsigned slot);
+    HOT_NODEBUG HOT_EXPORT void add_thunk(const ThunkEntry& entry);
     const ClassEntry* find(const std::string& name) const;
     ClassEntry* find(const std::string& name);
     // The thunk of the latest signature of a name, or the thunk with this exact key.

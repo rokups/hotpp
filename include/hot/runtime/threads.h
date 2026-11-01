@@ -19,7 +19,7 @@ namespace hot
 {
 
 // The generation that is live now. A generation function checks it.
-extern uint32_t active_generation;
+HOT_EXPORT extern uint32_t active_generation;
 
 // ---------------------------------------------------------------- synchronization modes
 // The two modes of design 6.3. Loader::set_sync_mode selects one at run time.
@@ -63,7 +63,7 @@ namespace detail
 {
 // True in EntryCounters mode. Loader::set_sync_mode writes it.
 // A plain bool: the accessors below use atomic builtins, so no std frame appears in the debugger.
-extern bool g_entry_counters;
+HOT_EXPORT extern bool g_entry_counters;
 HOT_HIDDEN bool load_entry_counters()
 {
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -84,8 +84,8 @@ HOT_HIDDEN void store_entry_counters(bool value)
     __atomic_store_n(&g_entry_counters, value, __ATOMIC_SEQ_CST);
 #endif
 }
-HOT_NODEBUG void enter_script(); // the slow path of ScriptEntry (threads.cpp)
-HOT_NODEBUG void leave_script();
+HOT_NODEBUG HOT_EXPORT void enter_script(); // the slow path of ScriptEntry (threads.cpp)
+HOT_NODEBUG HOT_EXPORT void leave_script();
 } // namespace detail
 
 // True when the process uses the EntryCounters mode.
@@ -211,7 +211,7 @@ public:
 #endif
 
 // Called by a generation function when its generation is not live.
-HOT_NODEBUG void stale_call(const char* what);
+HOT_NODEBUG HOT_EXPORT void stale_call(const char* what);
 
 // The number of stale calls that the guard ignored since the start.
 uint64_t stale_call_count();

@@ -36,8 +36,8 @@ namespace hot
 {
 
 // The runtime keeps a list of the live objects. The reload commit uses it.
-void track_object(ShellBase* self);
-void untrack_object(ShellBase* self);
+HOT_EXPORT void track_object(ShellBase* self);
+HOT_EXPORT void untrack_object(ShellBase* self);
 
 // An aligned block and its free function. A block from aligned_alloc must go to aligned_free.
 // The "size" must be a multiple of "align" for std::aligned_alloc.

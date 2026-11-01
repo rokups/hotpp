@@ -75,7 +75,7 @@ HOT_HIDDEN bool record_is(const ClassRecord* r, const char* name)
 // A call through a slot with an old signature (design 5.3): a native delegate on the thunk of a
 // signature that a reload changed. The runtime logs the first call of each slot and counts the
 // calls (loader.cpp). The call does not run.
-HOT_NODEBUG void detached_call(const ClassRecord* cls, unsigned slot);
+HOT_NODEBUG HOT_EXPORT void detached_call(const ClassRecord* cls, unsigned slot);
 uint64_t detached_call_count();
 
 namespace detail
