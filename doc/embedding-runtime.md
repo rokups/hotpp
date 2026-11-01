@@ -59,7 +59,7 @@ auto backend = hot::make_default_backend(options);
 
 **Failure:** `LoadResult` has `error` (the compiler diagnostics with script names) and `reason` (`CompileError`, or `SlotsRemoved` when a class has fewer slots). `Loader::load` returns a `ReloadResult` with `Failed` and the reason `BadModule` when the module has no `script_register`, or when the loader already has a generation.
 
-**Sample:** [runtime-compile](https://github.com/rokups/hotpp/tree/main/samples/runtime-compile).
+**Sample:** [runtime-compile](https://github.com/rokups/hotpp/tree/master/samples/runtime-compile).
 
 ## Precompiled library
 
@@ -83,4 +83,4 @@ if (!module || !loader.load(std::move(*module.module))) { /* report */ }
 
 **Failure:** `LoadResult::error` has the text of `dlerror` (for example when a symbol is missing), or `symbol script_register not found in <path>`. `reason` stays `None`.
 
-**Sample:** [precompiled-library](https://github.com/rokups/hotpp/tree/main/samples/precompiled-library).
+**Sample:** [precompiled-library](https://github.com/rokups/hotpp/tree/master/samples/precompiled-library).

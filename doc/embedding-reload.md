@@ -40,7 +40,7 @@ The result converts to `true` for `Applied` and `Pending`. The reason is one of 
 
 **Failure:** read `status`, `reason` and `error`. For `Failed`, the old generation goes on. For `FullReloadRequired`, do a full reload (below).
 
-**Sample:** [hot-reload](https://github.com/rokups/hotpp/tree/main/samples/hot-reload). See also [Hot reload](hot-reload.html) for the changes that a reload accepts.
+**Sample:** [hot-reload](https://github.com/rokups/hotpp/tree/master/samples/hot-reload). See also [Hot reload](hot-reload.html) for the changes that a reload accepts.
 
 ### Full reload
 

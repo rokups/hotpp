@@ -17,7 +17,7 @@ A script can derive from a native C++ class. It calls the C++ API directly. Ther
 
 ## Example
 
-A `.hot` script. `Wolf` derives from the host class `Creature` (see [samples/aot](https://github.com/rokups/hotpp/tree/main/samples/aot/)):
+A `.hot` script. `Wolf` derives from the host class `Creature` (see [samples/aot](https://github.com/rokups/hotpp/tree/master/samples/aot/)):
 
 ```hot
 using "Creature.h";
@@ -35,7 +35,7 @@ class Wolf : Creature {
 }
 ```
 
-The host loads generation 1, makes an object and reloads (trimmed from [samples/hot-reload](https://github.com/rokups/hotpp/tree/main/samples/hot-reload/)):
+The host loads generation 1, makes an object and reloads (trimmed from [samples/hot-reload](https://github.com/rokups/hotpp/tree/master/samples/hot-reload/)):
 
 ```cpp
 hot::Loader loader;

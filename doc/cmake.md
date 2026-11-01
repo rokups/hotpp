@@ -11,7 +11,7 @@ The page [Embedding](embedding.html) describes the six hosting situations. Each 
 
 ## Quick start
 
-This quick start makes an AOT program. The C++ of the script is in the binary. The program needs no loader and no compiler at run time. Copy `Creature.h`, `script/wolf.hot` and `main.cpp` from [samples/aot](https://github.com/rokups/hotpp/tree/main/samples/aot).
+This quick start makes an AOT program. The C++ of the script is in the binary. The program needs no loader and no compiler at run time. Copy `Creature.h`, `script/wolf.hot` and `main.cpp` from [samples/aot](https://github.com/rokups/hotpp/tree/master/samples/aot).
 
 ```
 myapp/
@@ -88,11 +88,11 @@ cmake --build build
 
 Each sample is a small project. It builds in the Hot++ tree and as a separate project. Each sample has a `README.md` with the sections "How it works", "Files", "Build and run" and "Adapt it to your project". The page [Embedding](embedding.html) maps each hosting situation to its sample and has the code outline.
 
-- [aot](https://github.com/rokups/hotpp/tree/main/samples/aot): the C++ of the scripts is in the binary.
-- [runtime-compile](https://github.com/rokups/hotpp/tree/main/samples/runtime-compile): the program compiles a script at run time.
-- [precompiled-library](https://github.com/rokups/hotpp/tree/main/samples/precompiled-library): the build makes a script library and the program loads it.
-- [hot-reload](https://github.com/rokups/hotpp/tree/main/samples/hot-reload): the program replaces the code of a live object.
-- [clang-files-backend](https://github.com/rokups/hotpp/tree/main/samples/clang-files-backend): the program builds `ClangFilesBackend` itself.
-- [jit-backend](https://github.com/rokups/hotpp/tree/main/samples/jit-backend): the program builds `JitBackend` itself. It needs the JIT backend (`HOT_ENABLE_JIT`).
+- [aot](https://github.com/rokups/hotpp/tree/master/samples/aot): the C++ of the scripts is in the binary.
+- [runtime-compile](https://github.com/rokups/hotpp/tree/master/samples/runtime-compile): the program compiles a script at run time.
+- [precompiled-library](https://github.com/rokups/hotpp/tree/master/samples/precompiled-library): the build makes a script library and the program loads it.
+- [hot-reload](https://github.com/rokups/hotpp/tree/master/samples/hot-reload): the program replaces the code of a live object.
+- [clang-files-backend](https://github.com/rokups/hotpp/tree/master/samples/clang-files-backend): the program builds `ClangFilesBackend` itself.
+- [jit-backend](https://github.com/rokups/hotpp/tree/master/samples/jit-backend): the program builds `JitBackend` itself. It needs the JIT backend (`HOT_ENABLE_JIT`).
 
 The samples use the Hot++ tree in `HOT_ROOT`. The default is the tree that holds the `samples` folder. To use a sample in your project, set `HOT_ROOT` to the Hot++ tree (or use FetchContent) and copy the `add_executable` and `hot_add_host` lines.

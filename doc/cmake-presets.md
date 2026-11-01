@@ -11,7 +11,7 @@ Scripts and the host must use the same sanitizer runtime. The root file `CMakeLi
 
 - `make_default_backend` passes `CMAKE_CXX_FLAGS` to every script compile. A preset with `-fsanitize=address` therefore works with no more settings.
 - A backend that you build yourself needs the flags in `extra_flags`. The samples `clang-files-backend` and `jit-backend` take them from `hot::default_paths().cxxflags`, which has `CMAKE_CXX_FLAGS`.
-- `hot_add_scripts` in the default mode does not read `CMAKE_CXX_FLAGS`. Put the host flags in `FLAGS`: `separate_arguments(host_flags NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")`, then `FLAGS ${host_flags}`. The sample [precompiled-library](https://github.com/rokups/hotpp/tree/main/samples/precompiled-library) does this.
+- `hot_add_scripts` in the default mode does not read `CMAKE_CXX_FLAGS`. Put the host flags in `FLAGS`: `separate_arguments(host_flags NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")`, then `FLAGS ${host_flags}`. The sample [precompiled-library](https://github.com/rokups/hotpp/tree/master/samples/precompiled-library) does this.
 - `hot_add_scripts` in AOT mode builds a normal library. It follows the flags of the project.
 - Use one build folder for each mode (plain, ASan, TSan). The presets do this.
 - The build type flags (`CMAKE_CXX_FLAGS_DEBUG` and the other ones) are not part of `CMAKE_CXX_FLAGS`. The script compile does not get them. The compile always uses `-g` and has no `-O` flag. Add `-O2` (or a flag you need) to `FLAGS`, `extra_flags` or `CMAKE_CXX_FLAGS` for optimized scripts.

@@ -97,7 +97,7 @@ Fields of `Module`:
 
 ## CMake
 
-The page [CMake](cmake.html) describes the targets, the options and the functions `hot_add_host`, `hot_add_scripts` and `hot_script_host`. A complete project is the sample [aot](https://github.com/rokups/hotpp/tree/main/samples/aot).
+The page [CMake](cmake.html) describes the targets, the options and the functions `hot_add_host`, `hot_add_scripts` and `hot_script_host`. A complete project is the sample [aot](https://github.com/rokups/hotpp/tree/master/samples/aot).
 
 ## Format library for `${}`
 

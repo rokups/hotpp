@@ -27,7 +27,7 @@ hot::LoadResult built = backend.load({"player.hot", text}, 1);
 
 **Extra API:** `last_timings()` gives the time of the phases in ms. `make_pch(header_path, out_pch, error)` makes a precompiled header in the process. The PCH keeps the path of the header. `debugger_support()` and `debugger_error()` tell if the debugger plugin runs.
 
-**Sample:** [jit-backend](https://github.com/rokups/hotpp/tree/main/samples/jit-backend).
+**Sample:** [jit-backend](https://github.com/rokups/hotpp/tree/master/samples/jit-backend).
 
 ## Explicit Clang files backend
 
@@ -53,7 +53,7 @@ hot::LoadResult built = backend.load({"player.hot", text}, 1);
 
 **Extra API:** `build(source, generation, out_so, error)` builds a `.so` without loading it (`hotc` uses it). `slots_file()` gives the slot file path. `compile_commands_json` and `run_command` are helpers.
 
-**Sample:** [clang-files-backend](https://github.com/rokups/hotpp/tree/main/samples/clang-files-backend).
+**Sample:** [clang-files-backend](https://github.com/rokups/hotpp/tree/master/samples/clang-files-backend).
 
 ## AOT
 
@@ -81,7 +81,7 @@ world.Add(boss);
 
 **Failure:** the constructor throws `std::runtime_error` when two scripts have a class of the same name (`the class ... is in two AOT scripts (...)`) or when the initializer of a module variable throws. `create` throws `std::runtime_error` (`no AOT script class ...`) for an unknown class.
 
-**Sample:** [aot](https://github.com/rokups/hotpp/tree/main/samples/aot).
+**Sample:** [aot](https://github.com/rokups/hotpp/tree/master/samples/aot).
 
 ### Optimized AOT
 
@@ -121,7 +121,7 @@ Build the scripts without `OPTIMIZED` to fix it.
 
 **Speed:** a host to script call costs about 1.5 ns, against 3.5 ns in plain AOT. A native to script virtual call and a script to script virtual call get cheaper too. `new` of a script object is about 25 ns cheaper for a `.hot` class and about 30 ns cheaper for a `.cpp` class. See [Benchmarks](benchmarks.html#optimized-aot-aot-opt) for the table and the build that gave the numbers.
 
-**Sample:** [aot](https://github.com/rokups/hotpp/tree/main/samples/aot). The targets `sample_aot_hot_opt` and `sample_aot_cpp_opt` build the same scripts as optimized AOT code.
+**Sample:** [aot](https://github.com/rokups/hotpp/tree/master/samples/aot). The targets `sample_aot_hot_opt` and `sample_aot_cpp_opt` build the same scripts as optimized AOT code.
 
 ## AOT with run-time overrides
 
@@ -169,4 +169,4 @@ loader.frame_boundary();
 
 **Failure:** `load_aot` returns an error when a class is in two units. A failed `load_aot` leaves the `Loader` empty.
 
-**Sample:** [aot-reload](https://github.com/rokups/hotpp/tree/main/samples/aot-reload). The program starts with AOT, overrides `wolf`, and reverts. One object keeps its state in all three phases.
+**Sample:** [aot-reload](https://github.com/rokups/hotpp/tree/master/samples/aot-reload). The program starts with AOT, overrides `wolf`, and reverts. One object keeps its state in all three phases.

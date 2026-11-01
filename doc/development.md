@@ -90,7 +90,7 @@ A script class can have more than one native base: `class Boss : Actor, IDamagea
 
 ## `hotc` command line
 
-The tool `hotc` compiles scripts ahead of time. This is not a backend. Any build can load the result. Call `hot::module_from_library(path)` and give the `Module` to the `Loader`. This call needs no backend object. The sample [samples/precompiled-library](https://github.com/rokups/hotpp/tree/main/samples/precompiled-library) is a complete project.
+The tool `hotc` compiles scripts ahead of time. This is not a backend. Any build can load the result. Call `hot::module_from_library(path)` and give the `Module` to the `Loader`. This call needs no backend object. The sample [samples/precompiled-library](https://github.com/rokups/hotpp/tree/master/samples/precompiled-library) is a complete project.
 
     hotc player_v1.hot --gen 1 -I include -I tests/engine --out-dir out/
     hotc player_v2.hot --gen 2 -I include -I tests/engine --out-dir out/
