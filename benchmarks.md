@@ -271,6 +271,17 @@ A micro benchmark of the same object shows where the time of a `.hot` `new` goes
 
 In the old layout, the `std::shared_ptr` had its own block, for 8 ns more. The old constructor lookup compared the key text, for 5 ns more. The atomic counts of `std::enable_shared_from_this` cost most of the last step. The base of a script class has it, because `this` can become a handle. A `std::weak_ptr` keeps the shell block until the `std::weak_ptr` goes. The destructor runs and the state block goes with the last `std::shared_ptr`.
 
+### The lock of `HOT_THREAD_SAFE`
+
+The list of live objects has a spinlock when the build has `HOT_THREAD_SAFE=ON` (the default). Each `new` and each free takes the lock once. The numbers in the tables above come from a build without the lock (`HOT_THREAD_SAFE=OFF`). The test ran `bench_backends --backend files --filter alloc --no-load` in two Release builds, on one core (`taskset -c 4`), with the median of 3 runs. Each run is the median of 7 repeats. Both builds start one thread before the test, so `std::shared_ptr` uses atomic counts in both (libstdc++ uses plain counts in a process with one thread). Native `std::make_shared<T>()` took 10.0 ns in both builds.
+
+| `new` and free of a script object | `HOT_THREAD_SAFE=OFF` | `HOT_THREAD_SAFE=ON` | Difference |
+|---|---|---|---|
+| `.hot` (`std::shared_ptr`) | 44.2 ns | 61.6 ns | +17.3 ns |
+| `.cpp` (raw pointer) | 29.6 ns | 34.4 ns | +4.8 ns |
+
+The lock is one atomic exchange to take it and one plain store to release it. The cost is the exchange itself. An experiment with a plain store in place of the exchange (not correct, for the test only) gave the `OFF` times again. Two changes did not help: the lock flag next to the list data, and a test-and-test-and-set lock (the code keeps the second, because it writes less under contention). An atomic exchange is a full barrier on x86, and it waits until the pending stores of the allocation are written. The `.hot` case does more work around it than the `.cpp` case, and it also has the atomic counts of the `std::shared_ptr`, so it pays more. I did not measure the reason inside the CPU, because `perf` is not on this machine. If one thread creates and destroys all the script objects of your program, set `HOT_THREAD_SAFE=OFF` to remove this cost. See [Thread safety](cmake-options.html#thread-safety).
+
 ## Reloadable access and calls
 
 The rows after `loop with a method call` in the tables above test code that a reload can change.

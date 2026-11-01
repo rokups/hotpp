@@ -89,9 +89,12 @@ The warnings of a reload use readable names: C++ type names (`int`, `std::string
 Rules for threads:
 
 - A worker reads class records and state blocks. It writes the state of its own actors only.
-- A worker does not create or destroy script objects. It does not call the loader. The release of the last handle of an object also destroys the object.
-- The list of live objects (`LiveObjects`, `src/runtime/state.cpp`) has no lock. A lock costs about 3 ns for each `new` and free. So only one thread at a time can create or destroy script objects. A host that creates objects on more than one thread must serialize the creation and the destruction with its own lock. A debug build asserts when two threads change the list at the same time.
-- The reload walks the list on the main thread at the safe point. Then no other thread creates or destroys an object.
+- A worker does not call the loader.
+- Any thread can create and destroy script objects when the build has `HOT_THREAD_SAFE=ON` (the default). `new` in script code, `ClassEntry::create` and the release of the last handle of an object are all valid on any thread. The list of live objects (`LiveObjects`, `src/runtime/state.cpp`) has a small spinlock for this. It is held for a few stores. It costs 5 to 17 ns for each `new` and free, depending on the work around it (see [Benchmarks](benchmarks.html#the-cost-of-new)). An object can be destroyed on another thread than the thread that made it.
+- With `HOT_THREAD_SAFE=OFF` the list has no lock, and only one thread at a time creates or destroys script objects. A host that does this on more than one thread must serialize it with its own lock. A debug build asserts when two threads change the list at the same time.
+- `Loader::stats`, `frame_boundary` and `reset` read the list under the lock. They do not race with a thread that creates or destroys a script object: the count of objects is a snapshot. The other rules do not change: call `frame_boundary` at the safe point, because it unloads code.
+- `commit_pending` does not run while another thread creates or destroys a script object. The commit migrates the objects, and the migration runs script code, so it cannot hold the lock. A thread that destroys an object during the migration is a use-after-free. In `StopTheWorld` mode the host must make sure of this: run the commit at the safe point, when no thread is in script code or in `new`. In `EntryCounters` mode each creation and destruction is a script entry, so the commit blocks them.
+- The host and the runtime library must use the same `HOT_THREAD_SAFE` value. `Loader` throws `std::runtime_error` when they differ. The backends compile the scripts with the value of the runtime (`-DHOT_THREAD_SAFE=0` when it is off). If you compile a script with your own flags, pass the same value.
 - The main thread calls `load`, `commit_pending`, `frame_boundary` and `stats`.
 - Any thread can pin or unpin a generation.
 
@@ -120,7 +123,7 @@ Cost: in the default mode, each entry reads one global flag (a relaxed atomic lo
 Limits:
 
 - A deadlock occurs when script code waits for a thread that waits at the gate, or for the end of the commit.
-- The creation of a script object through the factory (`ClassEntry::create`) is an entry (S27), so a commit cannot swap the class during the construction. Native code that reads the fields of an object holds a `hot::ScriptEntry`. `new` in script code runs inside a script entry. Object creation and destruction stay on one thread at a time.
+- The creation of a script object through the factory (`ClassEntry::create`) is an entry (S27), so a commit cannot swap the class during the construction. Native code that reads the fields of an object holds a `hot::ScriptEntry`. `new` in script code runs inside a script entry. With `HOT_THREAD_SAFE=OFF`, object creation and destruction stay on one thread at a time.
 - A thread that entered script code in the default mode is not counted.
 - `ScriptTickScope` and its debug check apply to the default mode only. A worker can wait at the gate inside a `ScriptTickScope`.
 
