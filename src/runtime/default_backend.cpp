@@ -82,12 +82,10 @@ std::unique_ptr<Backend> make_clang_files(const DefaultBackendOptions& options)
     o.extra_flags.insert(o.extra_flags.end(), options.extra_flags.begin(), options.extra_flags.end());
     o.resource_dir = paths.resource_dir;
     o.fs = options.fs;
-#ifdef HOT_DEFAULT_TARGET
-    o.target_triple = HOT_DEFAULT_TARGET;
-#endif
-#ifdef HOT_DEFAULT_SYSROOT
-    o.sysroot = HOT_DEFAULT_SYSROOT;
-#endif
+    o.target_triple = paths.target_triple;
+    o.sysroot = paths.sysroot;
+    // Windows: each module DLL links the import library of the host (hot/runtime/hidden.h).
+    o.host_import_library = paths.host_import_library;
 #ifdef HOT_PORTABLE
     // The work directory of a portable host is in a shared place. Refuse an unsafe one.
     const std::string work_error = check_work_dir(paths.work_dir);

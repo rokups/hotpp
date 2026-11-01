@@ -135,9 +135,29 @@ std::vector<std::string> mingw_target_flags(const std::string& target_triple, co
             flags.push_back("-isystem");
             flags.push_back(base + "/backward");
         }
+        // The static libgcc (libgcc.a, libgcc_eh.a) is in the GCC directory, not in the sysroot:
+        // <sysroot>/../lib/gcc/<arch>-w64-mingw32/<version> (the layout of a Linux MinGW package).
+        const std::string arch = target_triple.substr(0, target_triple.find('-'));
+        const std::string gcc_dir =
+            fs::path(sysroot).parent_path().generic_string() + "/lib/gcc/" + arch + "-w64-mingw32";
+        const std::string gcc_version = highest_version_dir(gcc_dir);
+        if (!gcc_version.empty())
+            flags.push_back("-L" + gcc_dir + "/" + gcc_version);
     }
     // A clang for the MSVC target has no GNU linker for MinGW. lld links the DLL.
     flags.push_back("-fuse-ld=lld");
+    // A MinGW host links libstdc++ and libgcc statically (cmake/toolchains/mingw-w64-x86_64.cmake).
+    // The module gets its own static copy, so it needs no libstdc++-6.dll beside the host. Both
+    // copies use the malloc of the C runtime, so a std::string can cross the boundary. The SEH
+    // unwinder of Windows runs the exceptions across the modules, and libstdc++ on Windows
+    // compares the type_info names, so the host catches a ScriptError from a module.
+    flags.push_back("-static-libgcc");
+    flags.push_back("-static-libstdc++");
+    // The static libstdc++ uses the POSIX threads of MinGW (winpthread). The host links it
+    // statically too (-static), so the module takes the static library.
+    flags.push_back("-Wl,-Bstatic");
+    flags.push_back("-lwinpthread");
+    flags.push_back("-Wl,-Bdynamic");
     return flags;
 }
 

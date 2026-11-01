@@ -23,6 +23,12 @@ function(hot_gtest target)
     if(CMAKE_CROSSCOMPILING_EMULATOR)
         set(_hot_discovery DISCOVERY_TIMEOUT 60)
     endif()
+    # A test that loads script modules exports its symbols. On Windows the backend finds the
+    # import library of the test next to the executable (hot_export_host).
+    get_target_property(_hot_exports ${target} ENABLE_EXPORTS)
+    if(_hot_exports)
+        hot_export_host(${target})
+    endif()
     gtest_discover_tests(${target}
         ${_hot_discovery}
         ${A_UNPARSED_ARGUMENTS}

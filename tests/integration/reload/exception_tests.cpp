@@ -395,6 +395,47 @@ class Boss : Actor, IDamageable {
     EXPECT_EQ(types[0], "hot::IndexOutOfRange");
 }
 
+// The module makes and throws a ScriptError, and the catch of the host (hot::call) gets it. On
+// Windows the module is a DLL with its own static libstdc++. The type of the exception must match
+// in the host, and the message (a std::string) must cross from the module to the host.
+TEST_P(BackendTests, ScriptErrorFromModuleIsCaughtInHost)
+{
+    const hot::ScriptSource src = {"chk_module_throw.hot", R"(
+using "Actor.h";
+
+class Player : Actor {
+    float ticks = 0.0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1.0;
+        throw hot.ScriptError("module boom");
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(Actor& source, float amount) {}
+}
+)"};
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    HandlerGuard guard;
+    RecordedReport rec;
+    hot::set_script_error_handler([&rec](const hot::ScriptErrorReport& e)
+    {
+        rec.type = e.type;
+        rec.message = e.message;
+        rec.class_name = e.class_name;
+        ++rec.count;
+    });
+    s.world.Tick(kDt);
+    EXPECT_EQ(rec.count, 1);
+    EXPECT_EQ(rec.type, "hot::ScriptError");
+    EXPECT_EQ(rec.message, "module boom");
+    EXPECT_EQ(rec.class_name, "Player");
+    EXPECT_EQ(*s.field("ticks"), 1.0f);
+}
+
 // Script code calls native code, and the native code calls a script override that throws. The
 // error is not at the end of the script stack, so it passes to the catch of the calling script.
 // Only a call from the host reports.

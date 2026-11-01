@@ -26,9 +26,12 @@ bool is_mingw_triple(const std::string& target_triple);
 // The extra compile and link flags for a MinGW target. Empty when the triple is not a MinGW
 // target. The flags are "-nostdinc++", an "-isystem" for each libstdc++ header directory of the
 // sysroot (<sysroot>/include/c++/<version>, its <arch>-w64-mingw32 and backward subdirectories)
-// and "-fuse-ld=lld". The <arch> is the first part of the triple, for example x86_64. The
+// and "-fuse-ld=lld -static-libgcc -static-libstdc++ -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic"
+// (a static MinGW runtime, as in the host).
+// The <arch> is the first part of the triple, for example x86_64. The
 // version is the highest directory under <sysroot>/include/c++. With no sysroot or no version
-// directory, the flags have no "-isystem".
+// directory, the flags have no "-isystem". A directory <sysroot>/../lib/gcc/<arch>-w64-mingw32/
+// <version> (the static libgcc) adds "-L" with the highest version.
 std::vector<std::string> mingw_target_flags(const std::string& target_triple, const std::string& sysroot);
 
 // The C++ driver for a compiler: "clang" becomes "clang++" and "clang.exe" becomes "clang++.exe",

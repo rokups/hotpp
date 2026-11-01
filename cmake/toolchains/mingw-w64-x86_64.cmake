@@ -19,4 +19,7 @@ set(HOT_HOTC_TARGET x86_64-w64-mingw32 CACHE STRING "")
 set(HOT_SCRIPT_SYSROOT /usr/x86_64-w64-mingw32 CACHE PATH "")
 # Link the MinGW runtime statically, so wine finds no extra DLLs next to the test executables.
 set(CMAKE_EXE_LINKER_FLAGS_INIT "-static-libgcc -static-libstdc++ -static")
-set(CMAKE_SHARED_LINKER_FLAGS_INIT "-static-libgcc -static-libstdc++")
+# A DLL (a test fixture or a script module) links the MinGW runtime statically too, as the host
+# does. Else the static libstdc++ pulls in libwinpthread-1.dll, which wine does not find.
+set(CMAKE_SHARED_LINKER_FLAGS_INIT "-static-libgcc -static-libstdc++ -static")
+set(CMAKE_MODULE_LINKER_FLAGS_INIT "-static-libgcc -static-libstdc++ -static")

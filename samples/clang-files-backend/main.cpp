@@ -77,6 +77,11 @@ int main(int argc, char** argv)
     // The flags of the host build, for example a sanitizer. The modules must use the same ones.
     options.extra_flags = paths.cxxflags;
     options.resource_dir = paths.resource_dir;
+    // A cross build (MinGW): the target and the sysroot of the modules. Windows: the import
+    // library of this program, so a module DLL reaches the runtime symbols of the program.
+    options.target_triple = paths.target_triple;
+    options.sysroot = paths.sysroot;
+    options.host_import_library = paths.host_import_library;
     // One work folder for each process.
     options.work_dir = paths.work_dir + "/sample_clang_files_p" + std::to_string(hot::detail::process_id());
     options.remove_work_dir_at_exit = true;

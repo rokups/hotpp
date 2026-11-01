@@ -28,8 +28,9 @@
 //   executable write an import library (for example libhost.dll.a or host.lib).
 // - The module links that import library (ClangFilesOptions::host_import_library). Then the
 //   loader binds each dllimport symbol of the module to the executable.
-// - A MinGW (GNU ld) link of the host with ENABLE_EXPORTS exports all symbols, not only the
-//   dllexport ones. An MSVC link exports only the dllexport symbols.
+// - GNU ld (MinGW) exports only the dllexport symbols when an object has one. The CMake function
+//   hot_export_host adds --export-all-symbols, so a module can also call the native methods of
+//   the host. An MSVC link exports only the dllexport symbols.
 #if defined(_WIN32)
     #define HOT_MODULE_EXPORT __declspec(dllexport)
 #elif defined(__clang__) || defined(__GNUC__)

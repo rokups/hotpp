@@ -20,6 +20,18 @@ if(HOT_SDK_FORMAT_LIB STREQUAL "fmt")
 else()
     set(HOT_USE_FMT OFF CACHE INTERNAL "The Hot++ SDK uses fmt")
 endif()
+# The compiler, the target triple and the sysroot of the precompiled script modules
+# (hot_add_scripts). They default to the values of the SDK build. A consumer can set them first.
+# The compiler has a value only for a cross build of the SDK. Empty means CMAKE_CXX_COMPILER.
+if(NOT DEFINED HOT_SCRIPT_COMPILER)
+    set(HOT_SCRIPT_COMPILER "@HOT_SDK_SCRIPT_COMPILER@" CACHE STRING "The compiler of the script modules")
+endif()
+if(NOT DEFINED HOT_HOTC_TARGET)
+    set(HOT_HOTC_TARGET "@HOT_HOTC_TARGET@" CACHE STRING "The target triple of the script modules (--target)")
+endif()
+if(NOT DEFINED HOT_SCRIPT_SYSROOT)
+    set(HOT_SCRIPT_SYSROOT "@HOT_SCRIPT_SYSROOT@" CACHE PATH "The sysroot of the script modules (--sysroot)")
+endif()
 # The default C++ standard of the host, when the consumer sets none (hot_effective_cxx_standard).
 set_property(GLOBAL PROPERTY HOT_DEFAULT_CXX_STANDARD @HOT_SDK_CXX_STANDARD@)
 

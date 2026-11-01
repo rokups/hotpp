@@ -375,6 +375,12 @@ if(HOT_INSTALL)
     if(HOT_LIBCLANG_FROM_PACKAGE)
         set(HOT_CLANG_CMAKE_DIR "${Clang_DIR}")
     endif()
+    # The script compiler goes to a consumer only in a cross build (HOT_HOTC_TARGET is set).
+    # In a native build it stays empty, so the consumer uses its own CMAKE_CXX_COMPILER.
+    set(HOT_SDK_SCRIPT_COMPILER "")
+    if(HOT_HOTC_TARGET)
+        set(HOT_SDK_SCRIPT_COMPILER "${HOT_SCRIPT_COMPILER}")
+    endif()
     configure_package_config_file(cmake/HotConfig.cmake.in
         ${CMAKE_CURRENT_BINARY_DIR}/HotConfig.cmake
         INSTALL_DESTINATION ${HOT_CMAKE_INSTALL_DIR})

@@ -238,6 +238,9 @@ TEST(AotLink, AotProgramHasNoLoaderOrClangSymbol)
 // A control: the same scan finds the loader in this test program, which links it.
 TEST(AotLink, ScanFindsTheLoaderInAProgramThatLinksIt)
 {
+#ifdef _WIN32
+    GTEST_SKIP() << "the test reads /proc/self/exe and runs nm through a POSIX shell";
+#endif
     const std::string syms = symbols_of(std::filesystem::read_symlink("/proc/self/exe").string());
     if (syms.empty())
         GTEST_SKIP() << "nm is not available";

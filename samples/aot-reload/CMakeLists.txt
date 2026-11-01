@@ -44,9 +44,13 @@ foreach(variant hot cpp)
                  INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS Creature.h)
 
     add_test(NAME ${target} COMMAND ${target} ${CMAKE_CURRENT_SOURCE_DIR}/script)
-    # The output must show the three phases in order, each with two ticks of its own code.
+    # The output must show the three phases in order, each with two ticks of its own code. The
+    # stderr lines of the runtime ([script] ...) can come between the lines: the order of the two
+    # streams depends on the buffers of the system (wine). Other lines cannot come between the
+    # lines. "[^\n]*\n" also takes a "\r\n" end.
+    set(l "(\\[script\\][^\n]*\n)*")
     set_tests_properties(${target} PROPERTIES
-        PASS_REGULAR_EXPRESSION "== aot\n\\[aot\\][^\n]*\n\\[aot\\][^\n]*\n== override\n\\[override\\][^\n]*\n\\[override\\][^\n]*\n== revert\n\\[aot\\][^\n]*\n\\[aot\\][^\n]*\naot-reload: ok")
+        PASS_REGULAR_EXPRESSION "== aot[^\n]*\n${l}\\[aot\\][^\n]*\n${l}\\[aot\\][^\n]*\n${l}== override[^\n]*\n${l}\\[override\\][^\n]*\n${l}\\[override\\][^\n]*\n${l}== revert[^\n]*\n${l}\\[aot\\][^\n]*\n${l}\\[aot\\][^\n]*\n${l}aot-reload: ok")
 endforeach()
 
 # The normal toolchain compiles the .cpp scripts too. A .cpp script must compile unchanged.

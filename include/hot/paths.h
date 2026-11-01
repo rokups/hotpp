@@ -22,6 +22,13 @@ struct DefaultPaths
     std::string resource_dir;              // the Clang resource directory. Empty means the compiler default.
     std::string work_dir;                  // the parent of the work directory of a process
     std::vector<std::string> cxxflags;     // the compile flags. They are the same in both modes.
+    // Windows: the import library of the running executable, <exe_dir>/lib<stem>.dll.a (MinGW) or
+    // <exe_dir>/<stem>.lib (MSVC), when the file exists. Empty on other systems. Both modes.
+    std::string host_import_library;
+    // The target triple and the sysroot of the modules (the CMake options HOT_HOTC_TARGET and
+    // HOT_SCRIPT_SYSROOT of the build). Empty: the defaults of the compiler. Both modes.
+    std::string target_triple;
+    std::string sysroot;
 };
 
 // Portable build, in this order:

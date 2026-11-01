@@ -68,6 +68,7 @@ foreach(variant hot cpp)
     target_link_libraries(${target} PRIVATE hot::runtime hot::clang_backend "$<LINK_LIBRARY:WHOLE_ARCHIVE,imgui_sdl3>")
     # The generation modules resolve host and runtime symbols from the executable.
     set_target_properties(${target} PROPERTIES ENABLE_EXPORTS ON)
+    hot_export_host(${target})
     # HOT_SAMPLE_EXT is the extension of the variant. The paths of the build go in only in a
     # development build. A portable build gets the script from argv[1] and the include folder
     # of ImGui from the environment variable HOT_IMGUI_INCLUDE_DIR.

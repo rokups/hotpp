@@ -48,9 +48,12 @@ foreach(variant hot cpp)
                  INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS Creature.h)
 
     add_test(NAME ${target} COMMAND ${target} ${CMAKE_CURRENT_SOURCE_DIR}/script)
-    # The output must have the lines of both generations.
+    # The output must have the lines of both generations. The stderr lines of the runtime
+    # ([script] ...) can come between them: the order of the two streams depends on the buffers
+    # of the system (wine). Other lines cannot come between them.
+    set(l "(\\[script\\][^\n]*\n)*")
     set_tests_properties(${target} PROPERTIES
-        PASS_REGULAR_EXPRESSION "\\[v1\\][^\n]*\n[^\n]*\\[v1\\][^\n]*\n[^\n]*\\[v2\\][^\n]*\n[^\n]*\\[v2\\]")
+        PASS_REGULAR_EXPRESSION "\\[v1\\][^\n]*\n${l}[^\n]*\\[v1\\][^\n]*\n${l}[^\n]*\\[v2\\][^\n]*\n${l}[^\n]*\\[v2\\]")
 endforeach()
 
 # The normal toolchain compiles the .cpp scripts too. A .cpp script must compile unchanged.

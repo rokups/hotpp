@@ -50,6 +50,12 @@ target_link_libraries(hot_runtime PUBLIC hot_runtime_core ${CMAKE_DL_LIBS} Threa
 # paths.cpp reads these (include/hot/paths.h). The compile flags are not paths, so both modes
 # have them. A portable build (HOT_PORTABLE) defines no build path. It finds the paths at run time.
 target_compile_definitions(hot_runtime PRIVATE HOT_DEFAULT_CXXFLAGS="${HOT_CXXFLAGS_JOINED}")
+# The target and the sysroot of the script modules (HOT_HOTC_TARGET, HOT_SCRIPT_SYSROOT) for
+# DefaultPaths. They go with the compiler HOT_SCRIPT_COMPILER (HOT_DEFAULT_CXX). An empty value
+# adds no flag.
+target_compile_definitions(hot_runtime PRIVATE
+    HOT_DEFAULT_TARGET="${HOT_HOTC_TARGET}"
+    HOT_DEFAULT_SYSROOT="${HOT_SCRIPT_SYSROOT}")
 if(HOT_PORTABLE)
     target_compile_definitions(hot_runtime PRIVATE HOT_PORTABLE=1)
 else()
@@ -104,11 +110,6 @@ if(HOT_CLANG_FILES_ENABLED OR HOT_JIT_ENABLED)
         # default_backend.cpp checks the work directory of a portable host.
         target_compile_definitions(hot_backend PRIVATE HOT_PORTABLE=1)
     endif()
-    # The target and the sysroot of the script modules (HOT_HOTC_TARGET, HOT_SCRIPT_SYSROOT).
-    # They go with the compiler HOT_SCRIPT_COMPILER (HOT_DEFAULT_CXX). An empty value adds no flag.
-    target_compile_definitions(hot_backend PRIVATE
-        HOT_DEFAULT_TARGET="${HOT_HOTC_TARGET}"
-        HOT_DEFAULT_SYSROOT="${HOT_SCRIPT_SYSROOT}")
     if(HOT_CLANG_FILES_ENABLED)
         target_link_libraries(hot_backend PUBLIC hot_clang_backend)
         target_compile_definitions(hot_backend PUBLIC HOT_WITH_CLANG_FILES=1)

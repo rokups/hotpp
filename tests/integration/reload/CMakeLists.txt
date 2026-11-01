@@ -34,7 +34,10 @@ add_executable(integration_reload_tests
 target_include_directories(integration_reload_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
 target_link_libraries(integration_reload_tests PRIVATE hot_backend engine_harness GTest::gtest_main)
 set_target_properties(integration_reload_tests PROPERTIES ENABLE_EXPORTS ON)
-add_dependencies(integration_reload_tests gen1 gen2 gen4_base stress_generation)
+# Windows: the fixtures link the import library of this test, so they build after it.
+if(NOT WIN32)
+    add_dependencies(integration_reload_tests gen1 gen2 gen4_base stress_generation)
+endif()
 target_compile_definitions(integration_reload_tests PRIVATE
     HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
     GEN1_SO="$<TARGET_FILE:gen1>"

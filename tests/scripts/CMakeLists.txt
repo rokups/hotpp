@@ -3,28 +3,33 @@
 # For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
 # ------------------------------------------------------------ Precompiled scripts
-hot_add_scripts(TARGET pre_gen1 SCRIPTS player_v1.hot
+# The test integration_backend_tests loads the libraries. On Windows they link its import library.
+set(pre_host "")
+if(HOT_BUILD_TRANSLATOR)
+    set(pre_host HOST integration_backend_tests)
+endif()
+hot_add_scripts(TARGET pre_gen1 ${pre_host} SCRIPTS player_v1.hot
                 INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
                 FLAGS ${HOT_CXXFLAGS_LIST} DEPENDS ${HOT_HEADERS})
-hot_add_scripts(TARGET pre_gen2 HOTC_ARGS --gen 2 SCRIPTS player_v2.hot AFTER pre_gen1
+hot_add_scripts(TARGET pre_gen2 ${pre_host} HOTC_ARGS --gen 2 SCRIPTS player_v2.hot AFTER pre_gen1
                 INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
                 FLAGS ${HOT_CXXFLAGS_LIST} DEPENDS ${HOT_HEADERS})
-hot_add_scripts(TARGET pre_native1 SCRIPTS native_std_v1.hot AFTER pre_gen2
+hot_add_scripts(TARGET pre_native1 ${pre_host} SCRIPTS native_std_v1.hot AFTER pre_gen2
                 INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
                 FLAGS ${HOT_CXXFLAGS_LIST} DEPENDS ${HOT_HEADERS} ${PROJECT_SOURCE_DIR}/tests/engine/Util.h)
-hot_add_scripts(TARGET pre_native2 HOTC_ARGS --gen 2 SCRIPTS native_std_v2.hot AFTER pre_native1
+hot_add_scripts(TARGET pre_native2 ${pre_host} HOTC_ARGS --gen 2 SCRIPTS native_std_v2.hot AFTER pre_native1
                 INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
                 FLAGS ${HOT_CXXFLAGS_LIST} DEPENDS ${HOT_HEADERS} ${PROJECT_SOURCE_DIR}/tests/engine/Util.h)
-hot_add_scripts(TARGET pre_handle1 SCRIPTS handle_v1.hot AFTER pre_native2
+hot_add_scripts(TARGET pre_handle1 ${pre_host} SCRIPTS handle_v1.hot AFTER pre_native2
                 INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
                 FLAGS ${HOT_CXXFLAGS_LIST} DEPENDS ${HOT_HEADERS} ${PROJECT_SOURCE_DIR}/tests/engine/Weapon.h)
-hot_add_scripts(TARGET pre_handle2 HOTC_ARGS --gen 2 SCRIPTS handle_v2.hot AFTER pre_handle1
+hot_add_scripts(TARGET pre_handle2 ${pre_host} HOTC_ARGS --gen 2 SCRIPTS handle_v2.hot AFTER pre_handle1
                 INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
                 FLAGS ${HOT_CXXFLAGS_LIST} DEPENDS ${HOT_HEADERS} ${PROJECT_SOURCE_DIR}/tests/engine/Weapon.h)
-hot_add_scripts(TARGET pre_handle3 HOTC_ARGS --gen 3 SCRIPTS handle_v1.hot AFTER pre_handle2
+hot_add_scripts(TARGET pre_handle3 ${pre_host} HOTC_ARGS --gen 3 SCRIPTS handle_v1.hot AFTER pre_handle2
                 INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
                 FLAGS ${HOT_CXXFLAGS_LIST} DEPENDS ${HOT_HEADERS} ${PROJECT_SOURCE_DIR}/tests/engine/Weapon.h)
-hot_add_scripts(TARGET pre_cpp1 SCRIPTS cpp_player_v1.cpp AFTER pre_handle3
+hot_add_scripts(TARGET pre_cpp1 ${pre_host} SCRIPTS cpp_player_v1.cpp AFTER pre_handle3
                 INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
                 FLAGS ${HOT_CXXFLAGS_LIST} DEPENDS ${HOT_HEADERS})
 

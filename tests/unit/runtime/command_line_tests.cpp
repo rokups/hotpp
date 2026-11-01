@@ -57,7 +57,8 @@ TEST(CommandLine, MingwFlagsNeedMingwTriple)
 {
     EXPECT_TRUE(hot::mingw_target_flags("", "/sysroot").empty());
     EXPECT_TRUE(hot::mingw_target_flags("x86_64-pc-windows-msvc", "/sysroot").empty());
-    const std::vector<std::string> expected = {"-fuse-ld=lld"};
+    const std::vector<std::string> expected = {"-fuse-ld=lld", "-static-libgcc", "-static-libstdc++",
+        "-Wl,-Bstatic", "-lwinpthread", "-Wl,-Bdynamic"};
     EXPECT_EQ(hot::mingw_target_flags("x86_64-w64-mingw32", ""), expected);
 }
 
@@ -72,7 +73,8 @@ TEST(CommandLine, MingwFlagsUseHighestLibstdcxxVersion)
     const std::string sysroot = root.generic_string();
     const std::string base = sysroot + "/include/c++/13.10.1";
     const std::vector<std::string> expected = {"-nostdinc++", "-isystem", base, "-isystem",
-        base + "/x86_64-w64-mingw32", "-isystem", base + "/backward", "-fuse-ld=lld"};
+        base + "/x86_64-w64-mingw32", "-isystem", base + "/backward", "-fuse-ld=lld",
+        "-static-libgcc", "-static-libstdc++", "-Wl,-Bstatic", "-lwinpthread", "-Wl,-Bdynamic"};
     EXPECT_EQ(hot::mingw_target_flags("x86_64-w64-windows-gnu", sysroot), expected);
     fs::remove_all(root, ec);
 }

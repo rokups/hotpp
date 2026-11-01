@@ -6,6 +6,7 @@
 // and the environment variable HOT_BACKEND. CMake defines HOT_WITH_CLANG_FILES and HOT_WITH_JIT
 // (on hot_backend) for the backends that the build has.
 #include "hot/backend.h"
+#include "support/test_env.h"
 
 #include <gtest/gtest.h>
 
@@ -46,9 +47,9 @@ private:
     static void set(const char* value)
     {
         if (value)
-            ::setenv("HOT_BACKEND", value, 1);
+            test_support::set_env("HOT_BACKEND", value);
         else
-            ::unsetenv("HOT_BACKEND");
+            test_support::unset_env("HOT_BACKEND");
     }
     std::optional<std::string> old_;
 };

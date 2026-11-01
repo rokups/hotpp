@@ -72,6 +72,18 @@ int* int_field(const hot::Instance& o, const char* name)
     return hot::field_ptr<int>(o.shell, name);
 }
 
+// Removes the file of a loaded library. POSIX removes it. Windows refuses for a loaded DLL, so
+// the error is ignored there.
+void remove_loaded(const fs::path& p)
+{
+#ifdef _WIN32
+    std::error_code ec;
+    fs::remove(p, ec);
+#else
+    fs::remove(p);
+#endif
+}
+
 // Reloads the stress library "reloads" times. Objects of many generations stay alive, some
 // objects die, and some generations have a pin for three reloads. The count of loaded modules
 // must stay bounded, and each object must keep its state.
@@ -94,7 +106,9 @@ void run_reloads(int reloads)
     Session s;
     auto [m1, p1] = load_copy();
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(m1), "Pulse"));
-    fs::remove(p1); // the mapping stays; the core has its own copy
+    // The mapping stays; the core has its own copy. Windows cannot remove a loaded DLL: the
+    // file stays, and remove_all at the end removes the directory when it can.
+    remove_loaded(p1);
     s.commit_at_frame_boundary();
     const uint32_t first = hot::active_generation;
     std::deque<hot::Instance> objs; // objects outside the world; the test deletes them
@@ -114,7 +128,7 @@ void run_reloads(int reloads)
         auto [m, p] = load_copy();
         std::string error;
         ASSERT_RELOAD_OK(s.loader.request_reload(std::move(m)));
-        fs::remove(p);
+        remove_loaded(p);
         s.world.Tick(kDt); // the commit runs at the frame boundary
         ASSERT_FALSE(s.commit_failed);
         ASSERT_EQ(hot::active_generation, first + static_cast<uint32_t>(i));
@@ -155,7 +169,10 @@ void run_reloads(int reloads)
     EXPECT_EQ(find_gen(st, first)->state, GenState::Unloaded);
     EXPECT_LE(max_loaded, 2u + 1u); // at most one pin is open at a time
     EXPECT_LE(max_mapped, max_loaded);
+#ifndef _WIN32
+    // mapped_files reads /proc/self/maps. Windows has no such file.
     EXPECT_EQ(mapped_files(dir.string()) + mapped_files("hot-core-"), 2u);
+#endif
     EXPECT_EQ(st.live_objects, 1 + objs.size());
 
     // The object of generation 1 kept its state over all reloads.

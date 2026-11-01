@@ -50,32 +50,70 @@ const char* const k_cxxflags = HOT_DEFAULT_CXXFLAGS;
 const char* const k_cxxflags = "";
 #endif
 
-#ifdef HOT_PORTABLE
-
-std::string env_text(const char* name)
+// The path of the running executable. Empty when the system does not tell it. A development
+// build uses it only on Windows.
+[[maybe_unused]] fs::path exe_path()
 {
-    const char* v = std::getenv(name);
-    return v ? std::string(v) : std::string();
-}
-
-// The directory of the running executable.
-fs::path exe_dir()
-{
-    std::error_code ec;
 #if defined(_WIN32)
     // The wide form keeps the characters that are not in the ANSI code page.
     std::wstring buf(32768, L'\0');
     const DWORD n = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
     if (n > 0 && n < buf.size())
-        return fs::path(buf.substr(0, n)).parent_path();
+        return fs::path(buf.substr(0, n));
 #elif defined(__linux__)
     std::vector<char> buf(4096);
     const ssize_t n = readlink("/proc/self/exe", buf.data(), buf.size() - 1);
     if (n > 0)
-        return fs::path(std::string(buf.data(), static_cast<size_t>(n))).parent_path();
+        return fs::path(std::string(buf.data(), static_cast<size_t>(n)));
 #endif
+    return {};
+}
+
+// The import library of the running executable (Windows), next to the executable: lib<stem>.dll.a
+// (MinGW) or <stem>.lib (MSVC). CMake writes it for a host with ENABLE_EXPORTS, and the CMake
+// function hot_export_host copies it there. Empty when the file does not exist.
+std::string find_host_import_library()
+{
+#ifdef _WIN32
+    const fs::path exe = exe_path();
+    if (exe.empty())
+        return {};
+#if defined(__MINGW32__)
+    const fs::path lib = exe.parent_path() / (L"lib" + exe.stem().wstring() + L".dll.a");
+#else
+    const fs::path lib = exe.parent_path() / (exe.stem().wstring() + L".lib");
+#endif
+    std::error_code ec;
+    if (fs::is_regular_file(lib, ec))
+        return lib.string();
+#endif
+    return {};
+}
+
+#ifndef HOT_DEFAULT_TARGET
+#define HOT_DEFAULT_TARGET ""
+#endif
+#ifndef HOT_DEFAULT_SYSROOT
+#define HOT_DEFAULT_SYSROOT ""
+#endif
+
+#ifdef HOT_PORTABLE
+
+// The directory of the running executable. Else the current directory.
+fs::path exe_dir()
+{
+    const fs::path exe = exe_path();
+    if (!exe.empty())
+        return exe.parent_path();
+    std::error_code ec;
     fs::path cwd = fs::current_path(ec);
     return ec ? fs::path() : cwd;
+}
+
+std::string env_text(const char* name)
+{
+    const char* v = std::getenv(name);
+    return v ? std::string(v) : std::string();
 }
 
 bool is_executable_file(const fs::path& p)
@@ -205,6 +243,9 @@ DefaultPaths compute_paths()
         p.resource_dir = query_resource_dir(p.compiler);
     p.work_dir = portable_work_dir();
     p.cxxflags = split_list(k_cxxflags);
+    p.host_import_library = find_host_import_library();
+    p.target_triple = HOT_DEFAULT_TARGET;
+    p.sysroot = HOT_DEFAULT_SYSROOT;
     return p;
 }
 
@@ -218,6 +259,9 @@ DefaultPaths compute_paths()
     p.resource_dir = HOT_DEFAULT_RESOURCE_DIR;
     p.work_dir = HOT_DEFAULT_WORK_DIR;
     p.cxxflags = split_list(k_cxxflags);
+    p.host_import_library = find_host_import_library();
+    p.target_triple = HOT_DEFAULT_TARGET;
+    p.sysroot = HOT_DEFAULT_SYSROOT;
     return p;
 }
 

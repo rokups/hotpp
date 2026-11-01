@@ -6,7 +6,7 @@
 #
 #   hot_add_scripts(TARGET name SCRIPTS a.hot b.hot
 #                   [INCLUDES dir...] [FLAGS cxxflag...] [DEPENDS file...]
-#                   [OUT_DIR dir] [AFTER target] [HOTC_ARGS arg...])
+#                   [OUT_DIR dir] [AFTER target] [HOST target] [HOTC_ARGS arg...])
 #   hot_add_scripts(TARGET name SCRIPTS a.hot b.hot AOT [OPTIMIZED]
 #                   [INCLUDES dir...] [PRELUDES file...] [FLAGS hotc-flag...]
 #                   [DEPENDS file...] [OUT_DIR dir] [HOTC_ARGS arg...])
@@ -16,7 +16,8 @@
 # the host for completion.
 #
 # Default mode (no AOT): the function only runs hotc. It makes one custom target "name".
-# The target makes the library OUT_DIR/<script name>.g<n>.so for each script. OUT_DIR
+# The target makes the library OUT_DIR/<script name>.g<n><suffix> for each script. The suffix is
+# CMAKE_SHARED_MODULE_SUFFIX (.so, or .dll on Windows). OUT_DIR
 # defaults to ${CMAKE_BINARY_DIR}/hot_scripts. Load such a library with
 # hot::module_from_library. The variable HOT_SCRIPTS_<TARGET>_LIBRARIES gets the paths.
 # HOTC_ARGS are extra arguments for hotc, in both modes. The generation is 1; the option
@@ -24,6 +25,10 @@
 # FLAGS are compile flags (--cxxflag). The generations of one class
 # share a slot file in OUT_DIR. Build generation 2 after generation 1: give AFTER the
 # target of generation 1.
+# HOST is the executable that loads the libraries. On Windows each library DLL links the import
+# library of HOST (hotc --host-implib), so HOST builds first. Other systems ignore HOST.
+# The compiler of the libraries is HOT_SCRIPT_COMPILER (default: CMAKE_CXX_COMPILER). A
+# non-empty HOT_HOTC_TARGET or HOT_SCRIPT_SYSROOT gives hotc --target or --sysroot, in both modes.
 #
 # In both modes, the hotc call always has the include dir of Hot++ (HOT_INCLUDE_DIR) as the
 # first -I. INCLUDES come after it.
@@ -53,19 +58,20 @@ if(NOT DEFINED HOT_INCLUDE_DIR)
     set(HOT_INCLUDE_DIR "${_hot_include_dir}" CACHE INTERNAL "The include dir of Hot++")
 endif()
 
-# Sets the variable named by "out" to the Clang resource directory of the build compiler.
-# It uses CLANG_RESOURCE_DIR if set. Else it asks CMAKE_CXX_COMPILER (Clang only). Empty if unknown.
-function(_hot_resource_dir out)
+# Sets the variable named by "out" to the Clang resource directory of the compiler "cxx".
+# It uses CLANG_RESOURCE_DIR if set. Else it asks "cxx" (Clang only). Empty if unknown.
+# A Windows compiler (.exe) on a different build host is not asked. Its path is not a host path.
+function(_hot_resource_dir out cxx)
     set(dir "${CLANG_RESOURCE_DIR}")
-    if(NOT dir AND NOT MSVC)
-        execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
+    if(NOT dir AND NOT MSVC AND NOT (cxx MATCHES "\\.exe$" AND NOT CMAKE_HOST_WIN32))
+        execute_process(COMMAND ${cxx} -print-resource-dir
                         OUTPUT_VARIABLE dir OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
     endif()
     set(${out} "${dir}" PARENT_SCOPE)
 endfunction()
 
 function(hot_add_scripts)
-    cmake_parse_arguments(A "AOT;OPTIMIZED" "TARGET;OUT_DIR;AFTER" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS;HOTC_ARGS" ${ARGN})
+    cmake_parse_arguments(A "AOT;OPTIMIZED" "TARGET;OUT_DIR;AFTER;HOST" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS;HOTC_ARGS" ${ARGN})
     if(A_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "hot_add_scripts: unknown arguments: ${A_UNPARSED_ARGUMENTS}")
     endif()
@@ -78,6 +84,9 @@ function(hot_add_scripts)
     if(A_AOT)
         if(DEFINED A_AFTER)
             message(FATAL_ERROR "hot_add_scripts: AFTER does not work with AOT (target ${A_TARGET})")
+        endif()
+        if(DEFINED A_HOST)
+            message(FATAL_ERROR "hot_add_scripts: HOST does not work with AOT (target ${A_TARGET})")
         endif()
     else()
         set(A_GEN 1)
@@ -127,9 +136,43 @@ function(hot_add_scripts)
     endforeach()
     # The include dir of Hot++ comes first. A caller does not need to pass it in INCLUDES.
     set(args -I ${HOT_INCLUDE_DIR})
-    # hotc at build time takes the resource directory of the build compiler. It does not search
-    # PATH. This option is build-time only. It does not go into a host binary.
-    _hot_resource_dir(res_dir)
+    # The target and the sysroot of the parse and of the modules (a cross build, for example MinGW).
+    if(HOT_HOTC_TARGET)
+        list(APPEND args --target ${HOT_HOTC_TARGET})
+    endif()
+    if(HOT_SCRIPT_SYSROOT)
+        list(APPEND args --sysroot ${HOT_SCRIPT_SYSROOT})
+    endif()
+    # The compiler of the precompiled modules. Default: the build compiler.
+    set(script_cxx "${HOT_SCRIPT_COMPILER}")
+    if(NOT script_cxx)
+        set(script_cxx "${CMAKE_CXX_COMPILER}")
+    endif()
+    # hotc at build time takes a Clang resource directory. It does not search PATH. This option
+    # is build-time only. It does not go into a host binary. The AOT mode only parses, so it
+    # takes the directory of the build compiler. The precompiled mode also gives the directory
+    # to the module compiler. There it comes from that compiler, and only when it is Clang.
+    if(A_AOT)
+        _hot_resource_dir(res_dir "${CMAKE_CXX_COMPILER}")
+    else()
+        if(script_cxx STREQUAL CMAKE_CXX_COMPILER)
+            set(script_is_clang OFF)
+            if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+                set(script_is_clang ON)
+            endif()
+        else()
+            # An explicit HOT_SCRIPT_COMPILER. Only its file name tells the compiler kind.
+            get_filename_component(script_cxx_name "${script_cxx}" NAME)
+            set(script_is_clang OFF)
+            if(script_cxx_name MATCHES "clang")
+                set(script_is_clang ON)
+            endif()
+        endif()
+        set(res_dir "")
+        if(script_is_clang)
+            _hot_resource_dir(res_dir "${script_cxx}")
+        endif()
+    endif()
     if(res_dir)
         list(APPEND args --resource-dir ${res_dir})
     endif()
@@ -198,7 +241,7 @@ function(hot_add_scripts)
     set(outputs "")
     foreach(s ${A_SCRIPTS})
         get_filename_component(stem ${s} NAME_WLE)
-        list(APPEND outputs ${A_OUT_DIR}/${stem}.g${A_GEN}.so)
+        list(APPEND outputs ${A_OUT_DIR}/${stem}.g${A_GEN}${CMAKE_SHARED_MODULE_SUFFIX})
     endforeach()
     # The backend of hotc adds the fmt include directory and the define to the compile.
     set(all_flags ${A_FLAGS} ${fmt_flags})
@@ -206,15 +249,27 @@ function(hot_add_scripts)
         list(APPEND args --cxxflag ${f})
     endforeach()
     list(APPEND args ${format_args})
+    # Windows: a module DLL links the import library of the host, so it reaches the runtime
+    # symbols of the host. So the host builds first.
+    set(host_depends "")
+    if(A_HOST AND WIN32)
+        list(APPEND args --host-implib $<TARGET_LINKER_FILE:${A_HOST}>)
+        set(host_depends ${A_HOST})
+    endif()
     add_custom_command(
         OUTPUT ${outputs}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
         COMMAND hot::hotc ${scripts} --out-dir ${A_OUT_DIR}
-                --cxx ${CMAKE_CXX_COMPILER} ${args} --gen ${A_GEN} ${A_HOTC_ARGS}
-        DEPENDS hot::hotc ${scripts} ${A_DEPENDS}
+                --cxx ${script_cxx} ${args} --gen ${A_GEN} ${A_HOTC_ARGS}
+        DEPENDS hot::hotc ${scripts} ${A_DEPENDS} ${host_depends}
         COMMENT "hotc: generation ${A_GEN} of ${A_SCRIPTS}"
         VERBATIM)
-    add_custom_target(${A_TARGET} DEPENDS ${outputs})
+    # Windows with HOST: the host cannot depend on the target (a cycle), so a full build makes it.
+    set(all_arg "")
+    if(host_depends)
+        set(all_arg ALL)
+    endif()
+    add_custom_target(${A_TARGET} ${all_arg} DEPENDS ${outputs})
     if(A_AFTER)
         add_dependencies(${A_TARGET} ${A_AFTER})
     endif()
@@ -222,6 +277,34 @@ function(hot_add_scripts)
     # The language server gets a script host with the same scripts, includes and flags.
     hot_script_host(NAME ${A_TARGET} SCRIPTS ${scripts}
                     INCLUDES ${A_INCLUDES} FLAGS ${all_flags})
+endfunction()
+
+# hot_export_host: the Windows part of a host executable t with ENABLE_EXPORTS ON. The script
+# modules (DLLs) reach the host symbols through the import library of t. Other systems: no-op.
+# - MinGW: GNU ld exports only the dllexport symbols when an object has one. The option
+#   --export-all-symbols exports all symbols, as -rdynamic does on Linux. So a module can call
+#   a native method of the host. The libraries of the MinGW runtime (libstdc++) stay out.
+# - After each build the import library goes next to the executable. The clang files backend
+#   finds it there (ClangFilesOptions::host_import_library) and links each module DLL with it.
+function(hot_export_host t)
+    if(NOT WIN32)
+        return()
+    endif()
+    get_target_property(done ${t} HOT_IMPORT_LIBRARY_COPY)
+    if(done)
+        return()
+    endif()
+    set_target_properties(${t} PROPERTIES HOT_IMPORT_LIBRARY_COPY ON)
+    if(MINGW)
+        # The static MinGW runtime stays private: each module links its own copy. An exported
+        # copy (for example _Unwind_Resume) clashes with the copy of the module.
+        target_link_options(${t} PRIVATE -Wl,--export-all-symbols
+            "-Wl,--exclude-libs,libgcc.a:libgcc_eh.a:libstdc++.a:libsupc++.a:libwinpthread.a:libpthread.a:libmingwex.a:libmingw32.a:libmsvcrt.a:libucrt.a:libucrtbase.a")
+    endif()
+    add_custom_command(TARGET ${t} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_LINKER_FILE:${t}> $<TARGET_FILE_DIR:${t}>
+        COMMENT "Copy the import library of ${t} next to it"
+        VERBATIM)
 endfunction()
 
 # hot_add_host: set up the scripts of one host program. The target must exist before the call.
@@ -246,7 +329,8 @@ endfunction()
 #   PRECOMPILED: hot_add_scripts makes the script libraries with the target ${t}_scripts. The
 #                target t links hot::runtime, exports its symbols and depends on ${t}_scripts.
 #                The libraries go to ${CMAKE_BINARY_DIR}/hot_scripts/${t}, so two hosts do not clash.
-#                The variable HOT_SCRIPTS_${t}_LIBRARIES gets the library paths.
+#                The variable HOT_SCRIPTS_${t}_LIBRARIES gets the library paths. On Windows the
+#                libraries link the import library of t, so ${t}_scripts depends on t and is in ALL.
 #   HOT_RELOAD:  the target t links hot::backend and exports its symbols. A development build
 #                gets the define HOT_SCRIPT_DIR (the directory of the first script). A portable
 #                build (HOT_PORTABLE) holds no build path. It copies the include dir of Hot++ to
@@ -315,10 +399,15 @@ function(hot_add_host)
         if(H_PRELUDES)
             message(FATAL_ERROR "hot_add_host: PRELUDES works only with MODE AOT or AOT_RELOAD (target ${t})")
         endif()
-        hot_add_scripts(TARGET ${t}_scripts OUT_DIR ${CMAKE_BINARY_DIR}/hot_scripts/${t} ${common_args})
+        hot_add_scripts(TARGET ${t}_scripts OUT_DIR ${CMAKE_BINARY_DIR}/hot_scripts/${t} HOST ${t} ${common_args})
         target_link_libraries(${t} PRIVATE hot::runtime)
         set_target_properties(${t} PROPERTIES ENABLE_EXPORTS ON)
-        add_dependencies(${t} ${t}_scripts)
+        hot_export_host(${t})
+        # Windows: the scripts link the import library of t (HOST), so they build after t. The
+        # target ${t}_scripts is then in ALL.
+        if(NOT WIN32)
+            add_dependencies(${t} ${t}_scripts)
+        endif()
         set(HOT_SCRIPTS_${t}_LIBRARIES ${HOT_SCRIPTS_${t}_scripts_LIBRARIES} PARENT_SCOPE)
     else()
         # HOT_RELOAD and AOT_RELOAD. Both link the backend and export the symbols of the program.
@@ -339,6 +428,7 @@ function(hot_add_host)
             hot_script_host(NAME ${t} TARGET ${t} ${common_args})
         endif()
         set_target_properties(${t} PROPERTIES ENABLE_EXPORTS ON)
+        hot_export_host(${t})
         if(HOT_PORTABLE)
             add_custom_command(TARGET ${t} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${HOT_INCLUDE_DIR} $<TARGET_FILE_DIR:${t}>/hot/include
