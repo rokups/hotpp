@@ -123,8 +123,10 @@ static void Grid__init_ring(void*, void* f) { using T = hostns2::Ring<int32_t>; 
 static void Grid__init_plain(void*, void* f) { using T = hostns2::Plain; new (f) T(); }
 #line 125 "checked_index_v1.hot.cpp"
 
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#endif
 static_assert(offsetof(GridState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Grid_fields[] = {
     {"cells", nullptr, typeid(hostns2::Fixed<int32_t, 4>).name(), offsetof(GridState_g1, cells), sizeof(hostns2::Fixed<int32_t, 4>),
@@ -134,7 +136,9 @@ static const hot::FieldInfo Grid_fields[] = {
     {"plain", nullptr, typeid(hostns2::Plain).name(), offsetof(GridState_g1, plain), sizeof(hostns2::Plain),
      alignof(hostns2::Plain), hot::field_flags<hostns2::Plain>(), Grid__init_plain, hot::move_field<hostns2::Plain>, hot::field_destroyer<hostns2::Plain>()},
 };
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#endif
 
 static const hot::StateLayout Grid_layout = {
     "GridState_g1", sizeof(GridState_g1), alignof(GridState_g1), 3, Grid_fields, true,
@@ -163,7 +167,7 @@ HOT_HIDDEN static auto Grid__plan()
     return std::make_pair(Grid__super_args(), std::tuple<>());
 #line 11 "checked_index_v1.hot"
 }
-#line 167 "checked_index_v1.hot.cpp"
+#line 171 "checked_index_v1.hot.cpp"
 using Grid_SuperArgs = decltype(Grid__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -188,7 +192,7 @@ HOT_NODEBUG static hot::ShellBase* Grid__construct(void* mem, const char* key, c
     return nullptr;
 #line 11 "checked_index_v1.hot"
 }
-#line 192 "checked_index_v1.hot.cpp"
+#line 196 "checked_index_v1.hot.cpp"
 
 static const char* const Grid__construct_keys[] = {typeid(Grid_SuperArgs).name(), nullptr};
 
@@ -204,7 +208,7 @@ HOT_HIDDEN static Grid_Shell* Grid__build([[maybe_unused]] bool __note)
     return __self;
 #line 11 "checked_index_v1.hot"
 }
-#line 208 "checked_index_v1.hot.cpp"
+#line 212 "checked_index_v1.hot.cpp"
 #line 11 "checked_index_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Grid_Shell* Grid__new()
 #line 11 "checked_index_v1.hot"
@@ -213,7 +217,7 @@ HOT_HIDDEN static Grid_Shell* Grid__build([[maybe_unused]] bool __note)
     return Grid__build(true);
 #line 11 "checked_index_v1.hot"
 }
-#line 217 "checked_index_v1.hot.cpp"
+#line 221 "checked_index_v1.hot.cpp"
 #line 11 "checked_index_v1.hot"
 template <int = 0>
 #line 11 "checked_index_v1.hot"
@@ -228,7 +232,7 @@ template <int = 0>
     return __h;
 #line 11 "checked_index_v1.hot"
 }
-#line 232 "checked_index_v1.hot.cpp"
+#line 236 "checked_index_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Grid_slots[SLOT_COUNT] = {
@@ -256,7 +260,7 @@ HOT_NODEBUG static hot::Instance Grid_create()
     return {static_cast<Actor*>(p), p};
 #line 11 "checked_index_v1.hot"
 }
-#line 260 "checked_index_v1.hot.cpp"
+#line 264 "checked_index_v1.hot.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 16 "checked_index_v1.hot"
@@ -285,7 +289,7 @@ void GridState_g1::Tick(float dt)
     HOT_TRACE_LINE(); hot::index(__st->plain, 0) = 1;
 #line 20 "checked_index_v1.hot"
 }
-#line 289 "checked_index_v1.hot.cpp"
+#line 293 "checked_index_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

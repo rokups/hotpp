@@ -119,8 +119,10 @@ static void Counter__init_label(void*, void* f) { using T = other_std::string; n
 static void Counter__init_history(void*, void* f) { using T = other_std::vector<int32_t>; new (f) T(other_std::vector<int32_t>()); }
 #line 121 "module_attrs_override_v1.hot.cpp"
 
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#endif
 static_assert(offsetof(CounterState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Counter_fields[] = {
     {"label", nullptr, typeid(other_std::string).name(), offsetof(CounterState_g1, label), sizeof(other_std::string),
@@ -128,7 +130,9 @@ static const hot::FieldInfo Counter_fields[] = {
     {"history", nullptr, typeid(other_std::vector<int32_t>).name(), offsetof(CounterState_g1, history), sizeof(other_std::vector<int32_t>),
      alignof(other_std::vector<int32_t>), hot::field_flags<other_std::vector<int32_t>>(), Counter__init_history, hot::move_field<other_std::vector<int32_t>>, hot::field_destroyer<other_std::vector<int32_t>>()},
 };
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#endif
 
 static const hot::StateLayout Counter_layout = {
     "CounterState_g1", sizeof(CounterState_g1), alignof(CounterState_g1), 2, Counter_fields, true,
@@ -157,7 +161,7 @@ HOT_HIDDEN static auto Counter__plan()
     return other_std::make_pair(Counter__super_args(), other_std::tuple<>());
 #line 9 "module_attrs_override_v1.hot"
 }
-#line 161 "module_attrs_override_v1.hot.cpp"
+#line 165 "module_attrs_override_v1.hot.cpp"
 using Counter_SuperArgs = decltype(Counter__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -182,7 +186,7 @@ HOT_NODEBUG static hot::ShellBase* Counter__construct(void* mem, const char* key
     return nullptr;
 #line 9 "module_attrs_override_v1.hot"
 }
-#line 186 "module_attrs_override_v1.hot.cpp"
+#line 190 "module_attrs_override_v1.hot.cpp"
 
 static const char* const Counter__construct_keys[] = {typeid(Counter_SuperArgs).name(), nullptr};
 
@@ -198,7 +202,7 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
     return __self;
 #line 9 "module_attrs_override_v1.hot"
 }
-#line 202 "module_attrs_override_v1.hot.cpp"
+#line 206 "module_attrs_override_v1.hot.cpp"
 #line 9 "module_attrs_override_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Counter_Shell* Counter__new()
 #line 9 "module_attrs_override_v1.hot"
@@ -207,7 +211,7 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
     return Counter__build(true);
 #line 9 "module_attrs_override_v1.hot"
 }
-#line 211 "module_attrs_override_v1.hot.cpp"
+#line 215 "module_attrs_override_v1.hot.cpp"
 #line 9 "module_attrs_override_v1.hot"
 template <int = 0>
 #line 9 "module_attrs_override_v1.hot"
@@ -222,7 +226,7 @@ template <int = 0>
     return __h;
 #line 9 "module_attrs_override_v1.hot"
 }
-#line 226 "module_attrs_override_v1.hot.cpp"
+#line 230 "module_attrs_override_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
@@ -250,7 +254,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 9 "module_attrs_override_v1.hot"
 }
-#line 254 "module_attrs_override_v1.hot.cpp"
+#line 258 "module_attrs_override_v1.hot.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 13 "module_attrs_override_v1.hot"
@@ -277,7 +281,7 @@ void CounterState_g1::Tick(float dt)
     HOT_TRACE_LINE(); __st->label = other_std::to_string(hot::deref(__st->history).size());
 #line 16 "module_attrs_override_v1.hot"
 }
-#line 281 "module_attrs_override_v1.hot.cpp"
+#line 285 "module_attrs_override_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

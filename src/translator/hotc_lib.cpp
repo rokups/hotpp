@@ -2879,11 +2879,11 @@ void translate_impl(
                 Script is = parse_structure(import_texts.back(), map, array_tpl);
                 {
                     // The output has one namespace for all the scripts of the program.
-                    std::set<std::string> seen;
+                    std::set<std::string> seen_attrs;
                     for (const hotc::ast::ModuleAttrs& m : is.module_attrs)
                     {
                         for (const auto& [aname, apos] : m.used)
-                            if (!seen.insert(aname).second)
+                            if (!seen_attrs.insert(aname).second)
                                 fail_at(map, apos, "attribute '" + aname + "' is given twice in one file");
                         if (m.has_std && m.std_ns != std_ns)
                             fail_at(map, m.std_pos,
@@ -4186,7 +4186,7 @@ void translate_impl(
                 o.w("}\n");
             reset();
         }
-        o.w("#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n");
+        o.w("#if defined(__clang__)\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n#endif\n");
         if (cd.fields.empty())
         {
             o.w("static const hot::FieldInfo* const " + cn + "_fields = nullptr;\n");
@@ -4213,7 +4213,7 @@ void translate_impl(
             }
             o.w("};\n");
         }
-        o.w("#pragma clang diagnostic pop\n");
+        o.w("#if defined(__clang__)\n#pragma clang diagnostic pop\n#endif\n");
         o.w("static const hot::StateLayout " + cn + "_layout = {\n    \"" + cn + "\", sizeof(" + cn + "), alignof(" + cn
             + "), " + std::to_string(cd.fields.size()) + ", " + cn + "_fields,\n};\n\n");
 
@@ -4585,10 +4585,10 @@ void translate_impl(
             for (NativeVirtual v : ib.virtuals)
             {
                 v.from = iname;
-                for (const NativeVirtual& o : bi.virtuals)
-                    if (o.key() == v.key())
+                for (const NativeVirtual& other : bi.virtuals)
+                    if (other.key() == v.key())
                         fail_at(map, root.pos,
-                            "'" + v.text() + "' is a virtual method of " + o.owner + " (base '" + o.from + "') and of "
+                            "'" + v.text() + "' is a virtual method of " + other.owner + " (base '" + other.from + "') and of "
                                 + v.owner + " (base '" + iname
                                 + "'). One method cannot override a virtual of two bases");
                 bi.virtuals.push_back(std::move(v));
@@ -5451,11 +5451,11 @@ void translate_impl(
                     continue;
                 }
                 const bool declares = !m.vslot_owner.empty() && m.vslot_owner == cn && !m.is_override;
-                const bool overrides = !m.vslot_owner.empty() && m.is_override;
+                const bool is_override = !m.vslot_owner.empty() && m.is_override;
                 // The body of a ".cpp" script calls the member directly, so the member has the defaults.
                 members += "    " + std::string(declares ? "virtual " : "") + (m.ret.empty() ? std::string("void") : m.ret)
                     + " " + body_member(m) + "(" + no_comma(m.raw ? param_defaults(m) : param_types(m)) + ")"
-                    + (overrides ? " override" : "") + ";\n";
+                    + (is_override ? " override" : "") + ";\n";
             }
             if (!members.empty())
                 mapped("\n" + members, cd.line, cd.pos);
@@ -5640,7 +5640,7 @@ void translate_impl(
         }
         else
         {
-        o.w("\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n");
+        o.w("\n#if defined(__clang__)\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n#endif\n");
         o.w("static_assert(offsetof(" + S + ", __hot_owner) == 0, \"the owner pointer must be the first member\");\n");
         // The field table of a child has the rows of the parent first. "$S$" is the state struct.
         if (pinfo)
@@ -5681,7 +5681,7 @@ void translate_impl(
             }
             o.w("};\n");
         }
-        o.w("#pragma clang diagnostic pop\n\n");
+        o.w("#if defined(__clang__)\n#pragma clang diagnostic pop\n#endif\n\n");
         o.w("static const hot::StateLayout " + cn + "_layout = {\n    \"" + S + "\", sizeof(" + S + "), alignof(" + S
             + "), " + std::to_string(info.rows.size()) + ", " + cn + "_fields, true,\n};\n\n");
         }
@@ -5802,7 +5802,7 @@ void translate_impl(
             for (size_t k = 0; k < ctor_ms.size(); ++k)
             {
                 const Method& cm = ctor_ms[k];
-                const hotc::ast::Ctor* sc = has_ctor ? &cd.ctors[k] : nullptr;
+                const hotc::ast::Ctor* ctor = has_ctor ? &cd.ctors[k] : nullptr;
                 // A "&&" parameter is a const reference in the plan: the plan only reads it. A "T&"
                 // parameter stays a reference, and "base(x)" with the name of such a parameter or
                 // "base(*p)" binds the parent parameter to the lvalue of the child (std::ref).
@@ -5819,11 +5819,11 @@ void translate_impl(
                 }
                 const std::string ctor_fwd = arg_list(cm);
                 std::string sup_text;
-                const bool has_base_call = sc && sc->has_base_call;
-                const int sup_line = sc ? sc->line : cd.line;
-                if (has_base_call && sc->raw)
+                const bool has_base_call = ctor && ctor->has_base_call;
+                const int sup_line = ctor ? ctor->line : cd.line;
+                if (has_base_call && ctor->raw)
                 {
-                    sup_text = sc->raw_base_args;
+                    sup_text = ctor->raw_base_args;
                 }
                 else if (has_base_call)
                 {
@@ -5871,7 +5871,7 @@ void translate_impl(
                 {
                     // The base arguments come from the plan of the parent, or from the name of this
                     // class when no class of the chain calls "base(...)" with arguments.
-                    const bool own_base = (has_base_call ? (sc->raw ? sc->raw_base_args.size() : sc->base_args.size()) : 0) == 0
+                    const bool own_base = (has_base_call ? (ctor->raw ? ctor->raw_base_args.size() : ctor->base_args.size()) : 0) == 0
                         && !root_super;
                     plan_text += "HOT_HIDDEN static auto " + P + "plan(" + pd + ")\n{\n    auto __up = \x01std::make_tuple("
                         + (has_base_call ? sup_text : std::string())
@@ -5891,11 +5891,11 @@ void translate_impl(
                     if (pinfo && !pinfo->ctor_entry.empty())
                         plan_text += "    \x01std::apply([&](auto&&... x) { " + pinfo->ctor_entry +
                                      "(__self, __chain.second, \x01std::forward<decltype(x)>(x)...); }, \x01std::move(__chain.first));\n";
-                    if (sc)
+                    if (ctor)
                         plan_text += "    " + P + "ctor(__self" + ctor_fwd + ");\n";
                     plan_text += "}\n";
                 }
-                mapped(plan_text, sup_line, sc ? sc->pos : cd.pos);
+                mapped(plan_text, sup_line, ctor ? ctor->pos : cd.pos);
                 if (!opt.aot_optimized)
                     o.w("using " + sa_name(k) + " = decltype(" + P + "plan(" + declvals + ").first);\n");
             }
@@ -6889,7 +6889,8 @@ AnalyzeResult analyze_cpp(
         col = std::max(col, 1);
         uint32_t offset = 0;
         if (static_cast<size_t>(line) <= starts.size())
-            offset = std::min<size_t>(starts[static_cast<size_t>(line) - 1] + static_cast<size_t>(col - 1), text.size());
+            offset = static_cast<uint32_t>(
+                std::min<size_t>(starts[static_cast<size_t>(line) - 1] + static_cast<size_t>(col - 1), text.size()));
         res.errors.push_back({{line, col}, offset, rest.substr(tag.size())});
     }
     return res;

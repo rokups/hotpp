@@ -43,15 +43,19 @@ static void HotModule__init_table(void*, void* f) { using T = int[4]; new (f) T{
 #line 43 "cpp_array_v2.cpp"
 static void HotModule__init_Buf__s_hits(void*, void* f) { using T = int[3]; new (f) T{5, 6, 7}; }
 #line 46 "cpp_array_v2.cpp.cpp"
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#endif
 static const hot::FieldInfo HotModule_fields[] = {
     {"table", nullptr, hot::type_key<int[4]>(), offsetof(HotModule, table), sizeof(int[4]),
      alignof(int[4]), hot::field_flags<int[4]>(), HotModule__init_table, hot::move_field<int[4]>, hot::field_destroyer<int[4]>()},
     {"Buf__s_hits", nullptr, hot::type_key<int[3]>(), offsetof(HotModule, Buf__s_hits), sizeof(int[3]),
      alignof(int[3]), hot::field_flags<int[3]>(), HotModule__init_Buf__s_hits, hot::move_field<int[3]>, hot::field_destroyer<int[3]>()},
 };
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#endif
 static const hot::StateLayout HotModule_layout = {
     "HotModule", sizeof(HotModule), alignof(HotModule), 2, HotModule_fields,
 };
@@ -83,7 +87,7 @@ struct Buf_Shell final : Actor, hot::ShellBase {
     }
 #line 10 "cpp_array_v2.cpp"
     ~Buf_Shell() override { hot::destroy_state(this); }
-#line 87 "cpp_array_v2.cpp.cpp"
+#line 91 "cpp_array_v2.cpp.cpp"
 
 #line 10 "cpp_array_v2.cpp"
     void Tick(float a0) override
@@ -93,7 +97,7 @@ struct Buf_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 10 "cpp_array_v2.cpp"
     }
-#line 97 "cpp_array_v2.cpp.cpp"
+#line 101 "cpp_array_v2.cpp.cpp"
 
 #line 10 "cpp_array_v2.cpp"
     void TakeDamage(float a0) override
@@ -103,7 +107,7 @@ struct Buf_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 10 "cpp_array_v2.cpp"
     }
-#line 107 "cpp_array_v2.cpp.cpp"
+#line 111 "cpp_array_v2.cpp.cpp"
 
 #line 10 "cpp_array_v2.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -113,7 +117,7 @@ struct Buf_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 10 "cpp_array_v2.cpp"
     }
-#line 117 "cpp_array_v2.cpp.cpp"
+#line 121 "cpp_array_v2.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -141,7 +145,7 @@ struct BufState_g2 {
         return static_cast<Buf_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
 #line 10 "cpp_array_v2.cpp"
     }
-#line 145 "cpp_array_v2.cpp.cpp"
+#line 149 "cpp_array_v2.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 10 "cpp_array_v2.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -151,39 +155,41 @@ struct BufState_g2 {
         return static_cast<Buf_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
 #line 10 "cpp_array_v2.cpp"
     }
-#line 155 "cpp_array_v2.cpp.cpp"
+#line 159 "cpp_array_v2.cpp.cpp"
 };
 
 #line 34 "cpp_array_v2.cpp"
 static void Buf__init_data(void*, void* f) { using T = int[6]; new (f) T{10, 20, 30, 40}; }
-#line 160 "cpp_array_v2.cpp.cpp"
+#line 164 "cpp_array_v2.cpp.cpp"
 #line 35 "cpp_array_v2.cpp"
 static void Buf__init_grid(void*, void* f) { using T = int[2][3]; new (f) T{}; }
-#line 163 "cpp_array_v2.cpp.cpp"
+#line 167 "cpp_array_v2.cpp.cpp"
 #line 36 "cpp_array_v2.cpp"
 static void Buf__init_names(void*, void* f) { using T = std::string[2]; new (f) T{}; }
-#line 166 "cpp_array_v2.cpp.cpp"
+#line 170 "cpp_array_v2.cpp.cpp"
 #line 37 "cpp_array_v2.cpp"
 static void Buf__init_total(void*, void* f) { using T = int; new (f) T(0); }
-#line 169 "cpp_array_v2.cpp.cpp"
+#line 173 "cpp_array_v2.cpp.cpp"
 #line 38 "cpp_array_v2.cpp"
 static void Buf__init_lut(void*, void* f) { using T = const int[3]; new (f) T{1, 2, 3}; }
-#line 172 "cpp_array_v2.cpp.cpp"
+#line 176 "cpp_array_v2.cpp.cpp"
 #line 39 "cpp_array_v2.cpp"
 static void Buf__init_tags(void*, void* f) { using T = const std::string[2]; new (f) T{"x", "y"}; }
-#line 175 "cpp_array_v2.cpp.cpp"
+#line 179 "cpp_array_v2.cpp.cpp"
 #line 40 "cpp_array_v2.cpp"
 static void Buf__init_handlers(void*, void* f) { using T = std::function<void ()>[2]; new (f) T{}; }
-#line 178 "cpp_array_v2.cpp.cpp"
+#line 182 "cpp_array_v2.cpp.cpp"
 #line 41 "cpp_array_v2.cpp"
 static void Buf__init_rows(void*, void* f) { using T = std::vector<int>[2]; new (f) T{}; }
-#line 181 "cpp_array_v2.cpp.cpp"
+#line 185 "cpp_array_v2.cpp.cpp"
 #line 42 "cpp_array_v2.cpp"
 static void Buf__init_extra(void*, void* f) { using T = int[8]; new (f) T{1, 2, 3}; }
-#line 184 "cpp_array_v2.cpp.cpp"
+#line 188 "cpp_array_v2.cpp.cpp"
 
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#endif
 static_assert(offsetof(BufState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Buf_fields[] = {
     {"data", nullptr, hot::type_key<int[6]>(), offsetof(BufState_g2, data), sizeof(int[6]),
@@ -205,7 +211,9 @@ static const hot::FieldInfo Buf_fields[] = {
     {"extra", nullptr, hot::type_key<int[8]>(), offsetof(BufState_g2, extra), sizeof(int[8]),
      alignof(int[8]), hot::field_flags<int[8]>(), Buf__init_extra, hot::move_field<int[8]>, hot::field_destroyer<int[8]>()},
 };
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#endif
 
 static const hot::StateLayout Buf_layout = {
     "BufState_g2", sizeof(BufState_g2), alignof(BufState_g2), 9, Buf_fields, true,
@@ -246,7 +254,7 @@ HOT_HIDDEN static void Buf__ctor_chain(Buf_Shell* __self, [[maybe_unused]] Chain
     Buf__ctor(__self);
 #line 13 "cpp_array_v2.cpp"
 }
-#line 250 "cpp_array_v2.cpp.cpp"
+#line 258 "cpp_array_v2.cpp.cpp"
 using Buf_SuperArgs = decltype(Buf__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -271,7 +279,7 @@ HOT_NODEBUG static hot::ShellBase* Buf__construct(void* mem, const char* key, co
     return nullptr;
 #line 10 "cpp_array_v2.cpp"
 }
-#line 275 "cpp_array_v2.cpp.cpp"
+#line 283 "cpp_array_v2.cpp.cpp"
 
 static const char* const Buf__construct_keys[] = {typeid(Buf_SuperArgs).name(), nullptr};
 
@@ -299,7 +307,7 @@ HOT_HIDDEN static Buf_Shell* Buf__build([[maybe_unused]] bool __note)
     return __self;
 #line 13 "cpp_array_v2.cpp"
 }
-#line 303 "cpp_array_v2.cpp.cpp"
+#line 311 "cpp_array_v2.cpp.cpp"
 #line 13 "cpp_array_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static Buf_Shell* Buf__new()
 #line 13 "cpp_array_v2.cpp"
@@ -308,7 +316,7 @@ HOT_HIDDEN static Buf_Shell* Buf__build([[maybe_unused]] bool __note)
     return Buf__build(true);
 #line 13 "cpp_array_v2.cpp"
 }
-#line 312 "cpp_array_v2.cpp.cpp"
+#line 320 "cpp_array_v2.cpp.cpp"
 #line 13 "cpp_array_v2.cpp"
 template <int = 0>
 #line 13 "cpp_array_v2.cpp"
@@ -325,7 +333,7 @@ template <int = 0>
     return __h;
 #line 13 "cpp_array_v2.cpp"
 }
-#line 329 "cpp_array_v2.cpp.cpp"
+#line 337 "cpp_array_v2.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -337,7 +345,7 @@ HOT_NODEBUG static hot::ShellCore* Buf__new_default()
     return Buf__build(false);
 #line 13 "cpp_array_v2.cpp"
 }
-#line 341 "cpp_array_v2.cpp.cpp"
+#line 349 "cpp_array_v2.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Buf_slots[SLOT_COUNT] = {
@@ -380,7 +388,7 @@ HOT_NODEBUG static hot::Instance Buf_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "cpp_array_v2.cpp"
 }
-#line 384 "cpp_array_v2.cpp.cpp"
+#line 392 "cpp_array_v2.cpp.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 13 "cpp_array_v2.cpp"
@@ -391,7 +399,7 @@ HOT_NODEBUG static hot::Instance Buf_create()
     return state_of(__self)->ctor();
 #line 13 "cpp_array_v2.cpp"
 }
-#line 395 "cpp_array_v2.cpp.cpp"
+#line 403 "cpp_array_v2.cpp.cpp"
 #line 13 "cpp_array_v2.cpp"
 void BufState_g2::ctor()
 #line 13 "cpp_array_v2.cpp"
@@ -414,7 +422,7 @@ void BufState_g2::ctor()
  names[0] = "first"; 
 #line 13 "cpp_array_v2.cpp"
 }
-#line 418 "cpp_array_v2.cpp.cpp"
+#line 426 "cpp_array_v2.cpp.cpp"
 
 #line 15 "cpp_array_v2.cpp"
 void BufState_g2::Tick(float dt)
@@ -446,7 +454,7 @@ void BufState_g2::Tick(float dt)
     
 #line 24 "cpp_array_v2.cpp"
 }
-#line 450 "cpp_array_v2.cpp.cpp"
+#line 458 "cpp_array_v2.cpp.cpp"
 
 #line 26 "cpp_array_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Buf__sum(Buf_Shell* __self)
@@ -456,7 +464,7 @@ void BufState_g2::Tick(float dt)
     return state_of(__self)->sum();
 #line 26 "cpp_array_v2.cpp"
 }
-#line 460 "cpp_array_v2.cpp.cpp"
+#line 468 "cpp_array_v2.cpp.cpp"
 #line 26 "cpp_array_v2.cpp"
 int BufState_g2::sum()
 #line 26 "cpp_array_v2.cpp"
@@ -484,7 +492,7 @@ int BufState_g2::sum()
     
 #line 32 "cpp_array_v2.cpp"
 }
-#line 488 "cpp_array_v2.cpp.cpp"
+#line 496 "cpp_array_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

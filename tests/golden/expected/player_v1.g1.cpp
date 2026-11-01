@@ -103,8 +103,10 @@ static void Player__init_speed(void*, void* f) { using T = float; new (f) T(5.0f
 static void Player__init_target(void*, void* f) { using T = std::string; new (f) T(""); }
 #line 105 "player_v1.hot.cpp"
 
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#endif
 static_assert(offsetof(PlayerState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Player_fields[] = {
     {"hp", nullptr, typeid(float).name(), offsetof(PlayerState_g1, hp), sizeof(float),
@@ -114,7 +116,9 @@ static const hot::FieldInfo Player_fields[] = {
     {"target", nullptr, typeid(std::string).name(), offsetof(PlayerState_g1, target), sizeof(std::string),
      alignof(std::string), hot::field_flags<std::string>(), Player__init_target, hot::move_field<std::string>, hot::field_destroyer<std::string>()},
 };
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#endif
 
 static const hot::StateLayout Player_layout = {
     "PlayerState_g1", sizeof(PlayerState_g1), alignof(PlayerState_g1), 3, Player_fields, true,
@@ -144,7 +148,7 @@ HOT_HIDDEN static auto Player__plan()
     return std::make_pair(Player__super_args(), std::tuple<>());
 #line 5 "player_v1.hot"
 }
-#line 148 "player_v1.hot.cpp"
+#line 152 "player_v1.hot.cpp"
 using Player_SuperArgs = decltype(Player__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -169,7 +173,7 @@ HOT_NODEBUG static hot::ShellBase* Player__construct(void* mem, const char* key,
     return nullptr;
 #line 5 "player_v1.hot"
 }
-#line 173 "player_v1.hot.cpp"
+#line 177 "player_v1.hot.cpp"
 
 static const char* const Player__construct_keys[] = {typeid(Player_SuperArgs).name(), nullptr};
 
@@ -185,7 +189,7 @@ HOT_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
     return __self;
 #line 5 "player_v1.hot"
 }
-#line 189 "player_v1.hot.cpp"
+#line 193 "player_v1.hot.cpp"
 #line 5 "player_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Player_Shell* Player__new()
 #line 5 "player_v1.hot"
@@ -194,7 +198,7 @@ HOT_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
     return Player__build(true);
 #line 5 "player_v1.hot"
 }
-#line 198 "player_v1.hot.cpp"
+#line 202 "player_v1.hot.cpp"
 #line 5 "player_v1.hot"
 template <int = 0>
 #line 5 "player_v1.hot"
@@ -209,7 +213,7 @@ template <int = 0>
     return __h;
 #line 5 "player_v1.hot"
 }
-#line 213 "player_v1.hot.cpp"
+#line 217 "player_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -223,7 +227,7 @@ static void Player__heal__thunk(Actor* __a, float amount)
     return hot::call<void(Actor*, float)>(__self, SLOT_heal, amount);
 #line 28 "player_v1.hot"
 }
-#line 227 "player_v1.hot.cpp"
+#line 231 "player_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Player_slots[SLOT_COUNT] = {
@@ -252,7 +256,7 @@ HOT_NODEBUG static hot::Instance Player_create()
     return {static_cast<Actor*>(p), p};
 #line 5 "player_v1.hot"
 }
-#line 256 "player_v1.hot.cpp"
+#line 260 "player_v1.hot.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 10 "player_v1.hot"
@@ -283,7 +287,7 @@ void PlayerState_g1::Tick(float dt)
     HOT_TRACE_LINE(); Player__heal(__self, 1.0f);
 #line 15 "player_v1.hot"
 }
-#line 287 "player_v1.hot.cpp"
+#line 291 "player_v1.hot.cpp"
 
 #line 17 "player_v1.hot"
 void PlayerState_g1::TakeDamage_f(float amount)
@@ -309,7 +313,7 @@ void PlayerState_g1::TakeDamage_f(float amount)
     HOT_TRACE_LINE(); std::printf("[v1] %s: TakeDamage %.1f -> hp=%.1f\n", hot::deref(__self->Name).c_str(), amount, __st->hp);
 #line 20 "player_v1.hot"
 }
-#line 313 "player_v1.hot.cpp"
+#line 317 "player_v1.hot.cpp"
 
 #line 22 "player_v1.hot"
 void PlayerState_g1::TakeDamage_Af(Actor& source, float amount)
@@ -337,7 +341,7 @@ void PlayerState_g1::TakeDamage_Af(Actor& source, float amount)
     HOT_TRACE_LINE(); __self->TakeDamage(amount);
 #line 26 "player_v1.hot"
 }
-#line 341 "player_v1.hot.cpp"
+#line 345 "player_v1.hot.cpp"
 
 #line 28 "player_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float amount)
@@ -347,7 +351,7 @@ void PlayerState_g1::TakeDamage_Af(Actor& source, float amount)
     return state_of(__self)->heal(std::forward<float>(amount));
 #line 28 "player_v1.hot"
 }
-#line 351 "player_v1.hot.cpp"
+#line 355 "player_v1.hot.cpp"
 #line 28 "player_v1.hot"
 void PlayerState_g1::heal(float amount)
 #line 28 "player_v1.hot"
@@ -372,7 +376,7 @@ void PlayerState_g1::heal(float amount)
     HOT_TRACE_LINE(); std::printf("[v1] %s: heal %.1f -> hp=%.1f\n", hot::deref(__self->Name).c_str(), amount, __st->hp);
 #line 31 "player_v1.hot"
 }
-#line 376 "player_v1.hot.cpp"
+#line 380 "player_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

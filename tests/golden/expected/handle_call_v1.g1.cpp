@@ -270,14 +270,18 @@ struct CallerState_g1 {
 static void Caller__init_last(void*, void* f) { using T = std::shared_ptr<Charm>; new (f) T(); }
 #line 272 "handle_call_v1.hot.cpp"
 
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#endif
 static_assert(offsetof(CallerState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Caller_fields[] = {
     {"last", nullptr, typeid(std::shared_ptr<Charm>).name(), offsetof(CallerState_g1, last), sizeof(std::shared_ptr<Charm>),
      alignof(std::shared_ptr<Charm>), hot::field_flags<std::shared_ptr<Charm>>(), Caller__init_last, hot::move_field<std::shared_ptr<Charm>>, hot::field_destroyer<std::shared_ptr<Charm>>()},
 };
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#endif
 
 static const hot::StateLayout Caller_layout = {
     "CallerState_g1", sizeof(CallerState_g1), alignof(CallerState_g1), 1, Caller_fields, true,
@@ -306,7 +310,7 @@ HOT_HIDDEN static auto Caller__plan()
     return std::make_pair(Caller__super_args(), std::tuple<>());
 #line 10 "handle_call_v1.hot"
 }
-#line 310 "handle_call_v1.hot.cpp"
+#line 314 "handle_call_v1.hot.cpp"
 using Caller_SuperArgs = decltype(Caller__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -331,7 +335,7 @@ HOT_NODEBUG static hot::ShellBase* Caller__construct(void* mem, const char* key,
     return nullptr;
 #line 10 "handle_call_v1.hot"
 }
-#line 335 "handle_call_v1.hot.cpp"
+#line 339 "handle_call_v1.hot.cpp"
 
 static const char* const Caller__construct_keys[] = {typeid(Caller_SuperArgs).name(), nullptr};
 
@@ -347,7 +351,7 @@ HOT_HIDDEN static Caller_Shell* Caller__build([[maybe_unused]] bool __note)
     return __self;
 #line 10 "handle_call_v1.hot"
 }
-#line 351 "handle_call_v1.hot.cpp"
+#line 355 "handle_call_v1.hot.cpp"
 #line 10 "handle_call_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Caller_Shell* Caller__new()
 #line 10 "handle_call_v1.hot"
@@ -356,7 +360,7 @@ HOT_HIDDEN static Caller_Shell* Caller__build([[maybe_unused]] bool __note)
     return Caller__build(true);
 #line 10 "handle_call_v1.hot"
 }
-#line 360 "handle_call_v1.hot.cpp"
+#line 364 "handle_call_v1.hot.cpp"
 #line 10 "handle_call_v1.hot"
 template <int = 0>
 #line 10 "handle_call_v1.hot"
@@ -371,7 +375,7 @@ template <int = 0>
     return __h;
 #line 10 "handle_call_v1.hot"
 }
-#line 375 "handle_call_v1.hot.cpp"
+#line 379 "handle_call_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Caller_slots[SLOT_COUNT] = {
@@ -407,7 +411,7 @@ HOT_NODEBUG static hot::Instance Caller_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "handle_call_v1.hot"
 }
-#line 411 "handle_call_v1.hot.cpp"
+#line 415 "handle_call_v1.hot.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 13 "handle_call_v1.hot"
@@ -436,7 +440,7 @@ int CallerState_g1::WearRaw(Charm* __c)
     HOT_TRACE_LINE(); return 1;
 #line 16 "handle_call_v1.hot"
 }
-#line 440 "handle_call_v1.hot.cpp"
+#line 444 "handle_call_v1.hot.cpp"
 
 #line 19 "handle_call_v1.hot"
 int CallerState_g1::WearBlade(Blade* __b)
@@ -502,7 +506,7 @@ int CallerState_g1::WearBlade(Blade* __b)
     HOT_TRACE_LINE(); return Mixed(hot::star(local));
 #line 41 "handle_call_v1.hot"
 }
-#line 506 "handle_call_v1.hot.cpp"
+#line 510 "handle_call_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

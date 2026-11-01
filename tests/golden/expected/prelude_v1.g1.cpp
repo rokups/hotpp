@@ -120,8 +120,10 @@ static void Smith__init_item(void*, void* f) { using T = std::shared_ptr<Item>; 
 static void Smith__init_ticks(void*, void* f) { using T = int32_t; new (f) T(); }
 #line 122 "prelude_v1.hot.cpp"
 
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#endif
 static_assert(offsetof(SmithState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Smith_fields[] = {
     {"root", nullptr, typeid(hot::Intrusive<Object, &Object::AddRef, &Object::Release>).name(), offsetof(SmithState_g1, root), sizeof(hot::Intrusive<Object, &Object::AddRef, &Object::Release>),
@@ -131,7 +133,9 @@ static const hot::FieldInfo Smith_fields[] = {
     {"ticks", nullptr, typeid(int32_t).name(), offsetof(SmithState_g1, ticks), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Smith__init_ticks, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
 };
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#endif
 
 static const hot::StateLayout Smith_layout = {
     "SmithState_g1", sizeof(SmithState_g1), alignof(SmithState_g1), 3, Smith_fields, true,
@@ -160,7 +164,7 @@ HOT_HIDDEN static auto Smith__plan()
     return std::make_pair(Smith__super_args(), std::tuple<>());
 #line 9 "prelude_v1.hot"
 }
-#line 164 "prelude_v1.hot.cpp"
+#line 168 "prelude_v1.hot.cpp"
 using Smith_SuperArgs = decltype(Smith__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -185,7 +189,7 @@ HOT_NODEBUG static hot::ShellBase* Smith__construct(void* mem, const char* key, 
     return nullptr;
 #line 9 "prelude_v1.hot"
 }
-#line 189 "prelude_v1.hot.cpp"
+#line 193 "prelude_v1.hot.cpp"
 
 static const char* const Smith__construct_keys[] = {typeid(Smith_SuperArgs).name(), nullptr};
 
@@ -201,7 +205,7 @@ HOT_HIDDEN static Smith_Shell* Smith__build([[maybe_unused]] bool __note)
     return __self;
 #line 9 "prelude_v1.hot"
 }
-#line 205 "prelude_v1.hot.cpp"
+#line 209 "prelude_v1.hot.cpp"
 #line 9 "prelude_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Smith_Shell* Smith__new()
 #line 9 "prelude_v1.hot"
@@ -210,7 +214,7 @@ HOT_HIDDEN static Smith_Shell* Smith__build([[maybe_unused]] bool __note)
     return Smith__build(true);
 #line 9 "prelude_v1.hot"
 }
-#line 214 "prelude_v1.hot.cpp"
+#line 218 "prelude_v1.hot.cpp"
 #line 9 "prelude_v1.hot"
 template <int = 0>
 #line 9 "prelude_v1.hot"
@@ -225,7 +229,7 @@ template <int = 0>
     return __h;
 #line 9 "prelude_v1.hot"
 }
-#line 229 "prelude_v1.hot.cpp"
+#line 233 "prelude_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Smith_slots[Smith_SLOT_COUNT] = {
@@ -253,7 +257,7 @@ HOT_NODEBUG static hot::Instance Smith_create()
     return {static_cast<Actor*>(p), p};
 #line 9 "prelude_v1.hot"
 }
-#line 257 "prelude_v1.hot.cpp"
+#line 261 "prelude_v1.hot.cpp"
 
 
 // ---------------------------------------------------------------- class Tool
@@ -281,7 +285,7 @@ struct Tool_Shell final : Object, hot::ShellBase {
     }
 #line 19 "prelude_v1.hot"
     ~Tool_Shell() override { hot::destroy_state(this); }
-#line 285 "prelude_v1.hot.cpp"
+#line 289 "prelude_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -294,16 +298,20 @@ struct ToolState_g1 {
 
 #line 21 "prelude_v1.hot"
 static void Tool__init_uses(void*, void* f) { using T = int32_t; new (f) T(); }
-#line 298 "prelude_v1.hot.cpp"
+#line 302 "prelude_v1.hot.cpp"
 
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#endif
 static_assert(offsetof(ToolState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Tool_fields[] = {
     {"uses", nullptr, typeid(int32_t).name(), offsetof(ToolState_g1, uses), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Tool__init_uses, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
 };
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#endif
 
 static const hot::StateLayout Tool_layout = {
     "ToolState_g1", sizeof(ToolState_g1), alignof(ToolState_g1), 1, Tool_fields, true,
@@ -333,7 +341,7 @@ HOT_HIDDEN static auto Tool__plan()
     return std::make_pair(Tool__super_args(), std::tuple<>());
 #line 19 "prelude_v1.hot"
 }
-#line 337 "prelude_v1.hot.cpp"
+#line 345 "prelude_v1.hot.cpp"
 using Tool_SuperArgs = decltype(Tool__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -358,7 +366,7 @@ HOT_NODEBUG static hot::ShellBase* Tool__construct(void* mem, const char* key, c
     return nullptr;
 #line 19 "prelude_v1.hot"
 }
-#line 362 "prelude_v1.hot.cpp"
+#line 370 "prelude_v1.hot.cpp"
 
 static const char* const Tool__construct_keys[] = {typeid(Tool_SuperArgs).name(), nullptr};
 
@@ -374,7 +382,7 @@ HOT_HIDDEN static Tool_Shell* Tool__build([[maybe_unused]] bool __note)
     return __self;
 #line 19 "prelude_v1.hot"
 }
-#line 378 "prelude_v1.hot.cpp"
+#line 386 "prelude_v1.hot.cpp"
 #line 19 "prelude_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Tool_Shell* Tool__new()
 #line 19 "prelude_v1.hot"
@@ -383,7 +391,7 @@ HOT_HIDDEN static Tool_Shell* Tool__build([[maybe_unused]] bool __note)
     return Tool__build(true);
 #line 19 "prelude_v1.hot"
 }
-#line 387 "prelude_v1.hot.cpp"
+#line 395 "prelude_v1.hot.cpp"
 #line 19 "prelude_v1.hot"
 template <int = 0>
 #line 19 "prelude_v1.hot"
@@ -398,7 +406,7 @@ template <int = 0>
     return __h;
 #line 19 "prelude_v1.hot"
 }
-#line 402 "prelude_v1.hot.cpp"
+#line 410 "prelude_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -412,7 +420,7 @@ static void Tool__Use__thunk(Object* __a)
     return hot::call<void(Object*)>(__self, Tool_SLOT_Use);
 #line 23 "prelude_v1.hot"
 }
-#line 416 "prelude_v1.hot.cpp"
+#line 424 "prelude_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Tool_slots[Tool_SLOT_COUNT] = {
@@ -438,7 +446,7 @@ HOT_NODEBUG static hot::Instance Tool_create()
     return {static_cast<Object*>(p), p};
 #line 19 "prelude_v1.hot"
 }
-#line 442 "prelude_v1.hot.cpp"
+#line 450 "prelude_v1.hot.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 14 "prelude_v1.hot"
@@ -463,7 +471,7 @@ void SmithState_g1::Tick(float dt)
     HOT_TRACE_LINE(); __st->ticks = __st->ticks + 1;
 #line 16 "prelude_v1.hot"
 }
-#line 467 "prelude_v1.hot.cpp"
+#line 475 "prelude_v1.hot.cpp"
 
 #line 23 "prelude_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Tool__Use(Tool_Shell* __self)
@@ -473,7 +481,7 @@ void SmithState_g1::Tick(float dt)
     return state_of(__self)->Use();
 #line 23 "prelude_v1.hot"
 }
-#line 477 "prelude_v1.hot.cpp"
+#line 485 "prelude_v1.hot.cpp"
 #line 23 "prelude_v1.hot"
 void ToolState_g1::Use()
 #line 23 "prelude_v1.hot"
@@ -496,7 +504,7 @@ void ToolState_g1::Use()
     HOT_TRACE_LINE(); __st->uses = __st->uses + 1;
 #line 25 "prelude_v1.hot"
 }
-#line 500 "prelude_v1.hot.cpp"
+#line 508 "prelude_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

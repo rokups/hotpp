@@ -117,8 +117,10 @@ static void Grid__init_cells(void*, void* f) { using T = hostns::FixedArray<int3
 static void Grid__init_weights(void*, void* f) { using T = hostns::FixedArray<hostns::FixedArray<float, 3>, 2>; new (f) T(); }
 #line 119 "module_attrs_array_v1.hot.cpp"
 
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#endif
 static_assert(offsetof(GridState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Grid_fields[] = {
     {"cells", nullptr, typeid(hostns::FixedArray<int32_t, 4>).name(), offsetof(GridState_g1, cells), sizeof(hostns::FixedArray<int32_t, 4>),
@@ -126,7 +128,9 @@ static const hot::FieldInfo Grid_fields[] = {
     {"weights", nullptr, typeid(hostns::FixedArray<hostns::FixedArray<float, 3>, 2>).name(), offsetof(GridState_g1, weights), sizeof(hostns::FixedArray<hostns::FixedArray<float, 3>, 2>),
      alignof(hostns::FixedArray<hostns::FixedArray<float, 3>, 2>), hot::field_flags<hostns::FixedArray<hostns::FixedArray<float, 3>, 2>>(), Grid__init_weights, hot::move_field<hostns::FixedArray<hostns::FixedArray<float, 3>, 2>>, hot::field_destroyer<hostns::FixedArray<hostns::FixedArray<float, 3>, 2>>()},
 };
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#endif
 
 static const hot::StateLayout Grid_layout = {
     "GridState_g1", sizeof(GridState_g1), alignof(GridState_g1), 2, Grid_fields, true,
@@ -155,7 +159,7 @@ HOT_HIDDEN static auto Grid__plan()
     return std::make_pair(Grid__super_args(), std::tuple<>());
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 159 "module_attrs_array_v1.hot.cpp"
+#line 163 "module_attrs_array_v1.hot.cpp"
 using Grid_SuperArgs = decltype(Grid__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -180,7 +184,7 @@ HOT_NODEBUG static hot::ShellBase* Grid__construct(void* mem, const char* key, c
     return nullptr;
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 184 "module_attrs_array_v1.hot.cpp"
+#line 188 "module_attrs_array_v1.hot.cpp"
 
 static const char* const Grid__construct_keys[] = {typeid(Grid_SuperArgs).name(), nullptr};
 
@@ -196,7 +200,7 @@ HOT_HIDDEN static Grid_Shell* Grid__build([[maybe_unused]] bool __note)
     return __self;
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 200 "module_attrs_array_v1.hot.cpp"
+#line 204 "module_attrs_array_v1.hot.cpp"
 #line 7 "module_attrs_array_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Grid_Shell* Grid__new()
 #line 7 "module_attrs_array_v1.hot"
@@ -205,7 +209,7 @@ HOT_HIDDEN static Grid_Shell* Grid__build([[maybe_unused]] bool __note)
     return Grid__build(true);
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 209 "module_attrs_array_v1.hot.cpp"
+#line 213 "module_attrs_array_v1.hot.cpp"
 #line 7 "module_attrs_array_v1.hot"
 template <int = 0>
 #line 7 "module_attrs_array_v1.hot"
@@ -220,7 +224,7 @@ template <int = 0>
     return __h;
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 224 "module_attrs_array_v1.hot.cpp"
+#line 228 "module_attrs_array_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Grid_slots[SLOT_COUNT] = {
@@ -248,7 +252,7 @@ HOT_NODEBUG static hot::Instance Grid_create()
     return {static_cast<Actor*>(p), p};
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 252 "module_attrs_array_v1.hot.cpp"
+#line 256 "module_attrs_array_v1.hot.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 11 "module_attrs_array_v1.hot"
@@ -275,7 +279,7 @@ void GridState_g1::Tick(float dt)
     HOT_TRACE_LINE(); hot::index(hot::index(__st->weights, 1), 2) = dt;
 #line 14 "module_attrs_array_v1.hot"
 }
-#line 279 "module_attrs_array_v1.hot.cpp"
+#line 283 "module_attrs_array_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
