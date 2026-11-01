@@ -26,6 +26,11 @@ on:
     branches: [master]
   workflow_dispatch:
 
+# A new push cancels the older runs of the same branch or pull request.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -40,10 +45,6 @@ jobs:
   linux:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # A newer run for the same ref cancels this job. The release job has its own group.
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-linux
-      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
 
@@ -108,9 +109,6 @@ jobs:
     container: archlinux:latest
     outputs:
       mingw-gcc: ${{ steps.gcc.outputs.version }}
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-windows
-      cancel-in-progress: true
     env:
       WINEDEBUG: -all
       # No Mono and no Gecko: the console programs do not need them, and wineboot does not wait for them.
@@ -214,9 +212,6 @@ jobs:
     needs: linux
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-sdk-smoke-linux
-      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -255,9 +250,6 @@ jobs:
     needs: windows
     runs-on: windows-latest
     timeout-minutes: 20
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-sdk-smoke-windows
-      cancel-in-progress: true
     defaults:
       run:
         shell: msys2 {0}
@@ -293,8 +285,9 @@ jobs:
           g++ --version | head -1
           cmake -DSDK="$temp/sdk" -DWORK_DIR="$temp/smoke" -DCXX_COMPILER=g++ -P tests/sdk_smoke/run.cmake
 
-  # The release "latest" follows master. Only a push to master updates it. The group has no
-  # cancel, so a newer run does not stop a release in progress.
+  # The release "latest" follows master. Only a push to master updates it. A newer push cancels
+  # this job too (the workflow group). This is safe: the job releases only the head of master,
+  # and the next run deletes the temporary assets of a cancelled run.
   release:
     needs: [linux, windows, sdk-smoke-linux, sdk-smoke-windows]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
@@ -302,9 +295,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
-    concurrency:
-      group: release-latest
-      cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
