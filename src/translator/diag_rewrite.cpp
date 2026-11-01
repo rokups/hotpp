@@ -441,6 +441,9 @@ std::vector<std::string> split_lines(const std::string& text, bool& final_newlin
     {
         if (c == '\n')
         {
+            // A Windows line end (the compiler output on Windows, a script with CRLF) is "\r\n".
+            if (!cur.empty() && cur.back() == '\r')
+                cur.pop_back();
             lines.push_back(cur);
             cur.clear();
         }
