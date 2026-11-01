@@ -59,9 +59,15 @@ jobs:
           ls "cmake-build/${{ steps.llvm.outputs.name }}/bin" | head -5
 
       # clang++.exe compiles the script modules. It needs link.exe, the UCRT and the MSVC STL.
-      - uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
+      # This step loads the environment of the newest Visual Studio (VsDevCmd.bat) for the next
+      # steps. Each "set" line has one variable, so no value has more than one line.
+      - name: Load the Visual Studio environment
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          cmd /c "`"$vs\Common7\Tools\VsDevCmd.bat`" -arch=x64 -host_arch=x64 -no_logo && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.+)$') { Add-Content -Path $env:GITHUB_ENV -Value "$($Matches[1])=$($Matches[2])" -Encoding utf8 }
+          }
 
       - name: Configure
         run: |
