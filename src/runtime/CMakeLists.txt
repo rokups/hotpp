@@ -43,7 +43,7 @@ hot_effective_cxx_standard(HOT_HOST_CXX_STANDARD hot_runtime_core)
 target_compile_definitions(hot_runtime_core PUBLIC HOT_CXX_STANDARD=${HOT_HOST_CXX_STANDARD})
 add_library(hot_runtime STATIC
     state.cpp migration.cpp loader.cpp module.cpp
-    scratch.cpp paths.cpp)
+    scratch.cpp paths.cpp command_line.cpp)
 # scratch.cpp reads the option as the default of keep_temp().
 target_compile_definitions(hot_runtime PRIVATE HOT_KEEP_TEMP_DEFAULT=$<BOOL:${HOT_KEEP_TEMP}>)
 target_link_libraries(hot_runtime PUBLIC hot_runtime_core ${CMAKE_DL_LIBS} Threads::Threads)
@@ -54,7 +54,7 @@ if(HOT_PORTABLE)
     target_compile_definitions(hot_runtime PRIVATE HOT_PORTABLE=1)
 else()
     target_compile_definitions(hot_runtime PRIVATE
-        HOT_DEFAULT_CXX="${CMAKE_CXX_COMPILER}"
+        HOT_DEFAULT_CXX="${HOT_SCRIPT_COMPILER}"
         HOT_DEFAULT_INCLUDES="${HOT_DEFAULT_INCLUDES_JOINED}"
         HOT_DEFAULT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}"
         HOT_DEFAULT_WORK_DIR="${HOT_SCRATCH_DIR}/hot_work")
@@ -73,6 +73,11 @@ target_link_libraries(hot_aot PUBLIC hot_runtime_core Threads::Threads)
 if(HOT_BUILD_TRANSLATOR)
     add_library(hot_clang_backend STATIC clang_files_backend.cpp)
     target_link_libraries(hot_clang_backend PUBLIC hot_runtime hotc_lib)
+elseif(CMAKE_CROSSCOMPILING)
+    # A cross build has no translator. This target only compiles the backend source for the
+    # target platform (for example the Windows run_command), so a cross build checks it.
+    add_library(hot_win_compile_check OBJECT clang_files_backend.cpp)
+    target_link_libraries(hot_win_compile_check PRIVATE hot_runtime)
 endif()
 
 # JitBackend: hotc_lib in memory, the Clang library compiles in memory, LLVM ORC loads.
@@ -99,6 +104,11 @@ if(HOT_CLANG_FILES_ENABLED OR HOT_JIT_ENABLED)
         # default_backend.cpp checks the work directory of a portable host.
         target_compile_definitions(hot_backend PRIVATE HOT_PORTABLE=1)
     endif()
+    # The target and the sysroot of the script modules (HOT_HOTC_TARGET, HOT_SCRIPT_SYSROOT).
+    # They go with the compiler HOT_SCRIPT_COMPILER (HOT_DEFAULT_CXX). An empty value adds no flag.
+    target_compile_definitions(hot_backend PRIVATE
+        HOT_DEFAULT_TARGET="${HOT_HOTC_TARGET}"
+        HOT_DEFAULT_SYSROOT="${HOT_SCRIPT_SYSROOT}")
     if(HOT_CLANG_FILES_ENABLED)
         target_link_libraries(hot_backend PUBLIC hot_clang_backend)
         target_compile_definitions(hot_backend PUBLIC HOT_WITH_CLANG_FILES=1)

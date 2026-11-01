@@ -21,6 +21,23 @@
     #define HOT_EXPORT
 #endif
 
+// HOT_MODULE_EXPORT marks a symbol that a script module gives to the host, for example
+// script_register. The module defines it, so it is always an export, also under HOT_MODULE_BUILD.
+// How a module DLL reaches the host symbols (the HOT_EXPORT symbols of the runtime):
+// - The host executable exports them. CMake ENABLE_EXPORTS on the host target makes the
+//   executable write an import library (for example libhost.dll.a or host.lib).
+// - The module links that import library (ClangFilesOptions::host_import_library). Then the
+//   loader binds each dllimport symbol of the module to the executable.
+// - A MinGW (GNU ld) link of the host with ENABLE_EXPORTS exports all symbols, not only the
+//   dllexport ones. An MSVC link exports only the dllexport symbols.
+#if defined(_WIN32)
+    #define HOT_MODULE_EXPORT __declspec(dllexport)
+#elif defined(__clang__) || defined(__GNUC__)
+    #define HOT_MODULE_EXPORT [[gnu::visibility("default")]]
+#else
+    #define HOT_MODULE_EXPORT
+#endif
+
 // Only clang knows the nodebug attribute. GCC ignores it and warns.
 #if defined(__clang__)
     #define HOT_HIDDEN [[gnu::always_inline, gnu::nodebug]] inline

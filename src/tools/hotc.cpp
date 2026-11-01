@@ -500,7 +500,7 @@ int run_build(const Args& args)
     {
         const std::string so = single_so
             ? args.output
-            : out_dir + "/" + fs::path(s).stem().string() + ".g" + std::to_string(args.gen) + ".so";
+            : out_dir + "/" + fs::path(s).stem().string() + ".g" + std::to_string(args.gen) + hot::module_suffix();
         if (!check_not_input(args, so) || !check_not_input(args, fs::path(so).replace_extension(".cpp").string()))
             return 1;
     }
@@ -520,7 +520,8 @@ int run_build(const Args& args)
         std::stringstream ss;
         ss << in.rdbuf();
         const std::string stem = fs::path(path).stem().string();
-        const std::string so = single_so ? args.output : out_dir + "/" + stem + ".g" + std::to_string(args.gen) + ".so";
+        const std::string so =
+            single_so ? args.output : out_dir + "/" + stem + ".g" + std::to_string(args.gen) + hot::module_suffix();
         std::string error;
         const bool built = backend.build({path, ss.str(), {}}, static_cast<uint32_t>(args.gen), so, error);
         if (!built)

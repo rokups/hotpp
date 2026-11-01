@@ -20,7 +20,8 @@ add_executable(unit_runtime_tests
     scratch_tests.cpp
     paths_tests.cpp
     trace_tests.cpp
-    new_shared_tests.cpp)
+    new_shared_tests.cpp
+    command_line_tests.cpp)
 target_link_libraries(unit_runtime_tests PRIVATE hot_runtime engine_harness GTest::gtest_main)
 target_include_directories(unit_runtime_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
 hot_gtest(unit_runtime_tests)

@@ -9,25 +9,98 @@
 #include "hot/hotc_lib.h"
 #include "hot/paths.h"
 
-#include <sys/wait.h>
-
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <optional>
-#include <spawn.h>
 #include <sstream>
-#include <unistd.h>
+
+#ifdef _WIN32
+    #include <windows.h>
+#else
+    #include <spawn.h>
+    #include <sys/wait.h>
+    #include <unistd.h>
 
 extern char** environ;
+#endif
 
 namespace hot
 {
 
 namespace fs = std::filesystem;
 
+#ifdef _WIN32
+int run_command(const std::vector<std::string>& argv, std::string& output)
+{
+    output.clear();
+    if (argv.empty())
+        return -1;
+    const auto fail = [&](const char* what)
+    {
+        output = "cannot run '" + argv[0] + "': " + what + " failed (error " + std::to_string(GetLastError()) + ")\n";
+        return -1;
+    };
+    SECURITY_ATTRIBUTES sa{};
+    sa.nLength = sizeof sa;
+    sa.bInheritHandle = TRUE;
+    HANDLE read_end = nullptr;
+    HANDLE write_end = nullptr;
+    if (!CreatePipe(&read_end, &write_end, &sa, 0))
+        return fail("CreatePipe");
+    // Only the child gets the write end. The parent keeps the read end for itself.
+    SetHandleInformation(read_end, HANDLE_FLAG_INHERIT, 0);
+    // The child inherits only the write end, not the inheritable handles of other threads. Else a
+    // second child can hold the write end of this pipe open, and the read loop does not end.
+    SIZE_T attr_size = 0;
+    InitializeProcThreadAttributeList(nullptr, 1, 0, &attr_size);
+    std::vector<char> attr_buf(attr_size);
+    auto* attrs = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attr_buf.data());
+    if (!InitializeProcThreadAttributeList(attrs, 1, 0, &attr_size))
+    {
+        CloseHandle(read_end);
+        CloseHandle(write_end);
+        return fail("InitializeProcThreadAttributeList");
+    }
+    HANDLE inherit[1] = {write_end};
+    UpdateProcThreadAttribute(attrs, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherit, sizeof inherit, nullptr, nullptr);
+    STARTUPINFOEXA si{};
+    si.StartupInfo.cb = sizeof si;
+    si.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    si.StartupInfo.hStdInput = nullptr;
+    si.StartupInfo.hStdOutput = write_end;
+    si.StartupInfo.hStdError = write_end;
+    si.lpAttributeList = attrs;
+    std::string cmdline = windows_command_line(argv); // CreateProcessA can change the buffer
+    PROCESS_INFORMATION pi{};
+    const BOOL started = CreateProcessA(nullptr, cmdline.data(), nullptr, nullptr, TRUE,
+        CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr, nullptr, &si.StartupInfo, &pi);
+    const DWORD start_error = GetLastError();
+    DeleteProcThreadAttributeList(attrs);
+    // Close the copy of the write end in the parent before the read loop. Else ReadFile never
+    // sees the end of the pipe, and the loop does not end.
+    CloseHandle(write_end);
+    if (!started)
+    {
+        CloseHandle(read_end);
+        SetLastError(start_error);
+        return fail("CreateProcess");
+    }
+    CloseHandle(pi.hThread);
+    char buf[4096];
+    DWORD n = 0;
+    while (ReadFile(read_end, buf, sizeof buf, &n, nullptr) && n > 0)
+        output.append(buf, n);
+    CloseHandle(read_end);
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 0;
+    const BOOL have_code = GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hProcess);
+    return have_code ? static_cast<int>(code) : -1;
+}
+#else
 int run_command(const std::vector<std::string>& argv, std::string& output)
 {
     output.clear();
@@ -74,6 +147,7 @@ int run_command(const std::vector<std::string>& argv, std::string& output)
     }
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
+#endif
 
 namespace
 {
@@ -154,15 +228,33 @@ std::optional<std::string> vfs_relative(const std::string& path)
 std::vector<std::string> compile_command(const ClangFilesOptions& opt, const std::string& cpp_path,
     const std::string& out_so, const std::string& script_dir)
 {
-    std::vector<std::string> cmd = {opt.compiler,
-        "-std=" + (opt.std_version.empty() ? std::string(cxx_std_name()) : opt.std_version), "-fPIC", "-shared", "-g",
-        "-Werror=return-type",
+    const bool mingw = is_mingw_triple(opt.target_triple);
+    // A MinGW link must use the C++ driver, so it links libstdc++ (hot/command_line.h).
+    std::vector<std::string> cmd = {mingw ? cxx_driver(opt.compiler) : opt.compiler,
+        "-std=" + (opt.std_version.empty() ? std::string(cxx_std_name()) : opt.std_version),
+#ifndef _WIN32
+        // The shared library needs position independent code. A Windows DLL does not.
+        "-fPIC",
+#endif
+        "-shared", "-g", "-Werror=return-type",
         // A module symbol must not bind to a host symbol with the same mangled name. The entry
         // point script_register has default visibility (hot/runtime/registry.h).
         "-fvisibility=hidden", "-fvisibility-inlines-hidden",
+#ifdef _WIN32
+        // HOT_EXPORT becomes dllimport: the module takes the runtime symbols from the host.
+        "-DHOT_MODULE_BUILD=1",
+#else
         // A call to the host (a native method, the runtime) reads the address from the GOT. A PLT
         // stub adds one jump to each call. The module loads with RTLD_NOW, so no symbol is lazy.
-        "-fno-plt"};
+        "-fno-plt",
+#endif
+    };
+    if (!opt.target_triple.empty())
+        cmd.push_back("--target=" + opt.target_triple);
+    if (!opt.sysroot.empty())
+        cmd.push_back("--sysroot=" + opt.sysroot);
+    for (const std::string& f : mingw_target_flags(opt.target_triple, opt.sysroot))
+        cmd.push_back(f);
     if (!opt.resource_dir.empty())
         cmd.push_back("-resource-dir=" + opt.resource_dir);
     for (const std::string& f : opt.extra_flags)
@@ -185,6 +277,9 @@ std::vector<std::string> compile_command(const ClangFilesOptions& opt, const std
     for (const std::string& f : traceback_compile_flags())
         cmd.push_back(f);
     cmd.push_back(cpp_path);
+    // The library goes after the source, so the link resolves the module's host references.
+    if (!opt.host_import_library.empty())
+        cmd.push_back(opt.host_import_library);
     cmd.push_back("-o");
     cmd.push_back(out_so);
     return cmd;
@@ -352,7 +447,7 @@ LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generati
     // the path of a library that the process still maps.
     const unsigned epoch = mode == LoadMode::Fresh ? ++epoch_ : epoch_.load();
     const std::string so = opt_.work_dir + "/" + stem + ".g" + std::to_string(generation) + ".e" + std::to_string(epoch)
-        + "." + std::to_string(sequence_++) + ".so";
+        + "." + std::to_string(sequence_++) + module_suffix();
     LoadResult r;
     std::string slots;
     bool slots_removed = false;

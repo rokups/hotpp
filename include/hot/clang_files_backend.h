@@ -7,6 +7,7 @@
 #pragma once
 
 #include "hot/backend.h"
+#include "hot/command_line.h"
 #include "hot/hotc_lib.h"
 
 #include <atomic>
@@ -43,6 +44,13 @@ struct ClangFilesOptions
     // disk only. For each directory the backend asks this file system first and then the disk.
     // It must be thread safe (hot/vfs.h).
     std::shared_ptr<hot::FileSystem> fs;
+    // The import library of the host executable (Windows). Non-empty: the link of each module DLL
+    // adds it, so the module reaches the HOT_EXPORT symbols of the host (hot/runtime/hidden.h).
+    std::string host_import_library;
+    // The target triple of the modules ("--target="). Empty: the default target of the compiler.
+    // A MinGW triple adds the libstdc++ headers of the sysroot (hot/command_line.h).
+    std::string target_triple;
+    std::string sysroot; // the sysroot of the modules ("--sysroot="); empty: none
 };
 
 class ClangFilesBackend : public Backend

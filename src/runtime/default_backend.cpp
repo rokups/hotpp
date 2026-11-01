@@ -82,6 +82,12 @@ std::unique_ptr<Backend> make_clang_files(const DefaultBackendOptions& options)
     o.extra_flags.insert(o.extra_flags.end(), options.extra_flags.begin(), options.extra_flags.end());
     o.resource_dir = paths.resource_dir;
     o.fs = options.fs;
+#ifdef HOT_DEFAULT_TARGET
+    o.target_triple = HOT_DEFAULT_TARGET;
+#endif
+#ifdef HOT_DEFAULT_SYSROOT
+    o.sysroot = HOT_DEFAULT_SYSROOT;
+#endif
 #ifdef HOT_PORTABLE
     // The work directory of a portable host is in a shared place. Refuse an unsafe one.
     const std::string work_error = check_work_dir(paths.work_dir);

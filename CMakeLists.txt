@@ -28,6 +28,11 @@ else()
 endif()
 option(HOT_BUILD_TRANSLATOR "Build the translator, the tools and the run-time backends (they need libclang)" ${HOT_BUILD_TRANSLATOR_DEFAULT})
 set(HOT_HOST_HOTC "" CACHE FILEPATH "hotc that runs on the build host (cross builds)")
+# The compile of a script module at run time (the clang files backend). An empty target or
+# sysroot adds no flag. A MinGW target adds the libstdc++ headers of the sysroot.
+set(HOT_SCRIPT_COMPILER "${CMAKE_CXX_COMPILER}" CACHE STRING "The compiler of the script modules at run time")
+set(HOT_HOTC_TARGET "" CACHE STRING "The target triple of the script modules (--target)")
+set(HOT_SCRIPT_SYSROOT "" CACHE PATH "The sysroot of the script modules (--sysroot)")
 
 # Put the build output in bin/ and lib/. Ninja Multi-Config adds /<CONFIG> to each path.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

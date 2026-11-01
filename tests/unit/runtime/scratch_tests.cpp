@@ -107,6 +107,10 @@ TEST_F(Scratch, PredicateAcceptsOnlySafePaths)
     EXPECT_FALSE(hot::is_removable_scratch_path("/tmp/x/../y"));
     EXPECT_FALSE(hot::is_removable_scratch_path("rel"));
     EXPECT_FALSE(hot::is_removable_scratch_path(""));
+#ifdef _WIN32
+    EXPECT_FALSE(hot::is_removable_scratch_path("C:/"));
+    EXPECT_FALSE(hot::is_removable_scratch_path("C:/tmp/.."));
+#endif
 }
 
 TEST_F(Scratch, RemoveIgnoresRelativePaths)

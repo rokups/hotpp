@@ -63,10 +63,11 @@ fs::path exe_dir()
 {
     std::error_code ec;
 #if defined(_WIN32)
-    std::vector<char> buf(32768);
-    const DWORD n = GetModuleFileNameA(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
+    // The wide form keeps the characters that are not in the ANSI code page.
+    std::wstring buf(32768, L'\0');
+    const DWORD n = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
     if (n > 0 && n < buf.size())
-        return fs::path(std::string(buf.data(), n)).parent_path();
+        return fs::path(buf.substr(0, n)).parent_path();
 #elif defined(__linux__)
     std::vector<char> buf(4096);
     const ssize_t n = readlink("/proc/self/exe", buf.data(), buf.size() - 1);

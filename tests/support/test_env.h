@@ -10,7 +10,8 @@
 namespace test_support
 {
 
-// Sets the variable "name" to "value". An empty "value" sets an empty string.
+// Sets the variable "name" to "value". On POSIX an empty "value" sets an empty string. On Windows
+// an empty "value" removes the variable (_putenv_s).
 inline void set_env(const char* name, const char* value)
 {
 #ifdef _WIN32
