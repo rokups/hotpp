@@ -1,0 +1,3 @@
+# Text files have LF line ends on each system. The golden files and the scripts of the tests
+# compare bytes, and a Windows checkout (core.autocrlf) would give CRLF.
+* text=auto eol=lf
