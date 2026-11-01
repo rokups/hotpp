@@ -2550,7 +2550,11 @@ std::vector<std::pair<std::string, bool>> scan_includes(const std::string& text)
 
 std::string dir_of(const std::string& path)
 {
+#ifdef _WIN32
+    const size_t slash = path.find_last_of("/\\"); // a Windows path can use "\\" or "/"
+#else
     const size_t slash = path.rfind('/');
+#endif
     return slash == std::string::npos ? std::string(".") : path.substr(0, slash);
 }
 
@@ -2641,8 +2645,8 @@ std::vector<std::string> clang_args(const Options& opt)
     // misses the module variables in a template body. "-fno-delayed-template-parsing" stops it.
     std::vector<std::string> args = {
         "-x", "c++", "-std=" + opt.std_version, "-ferror-limit=0", "-fno-delayed-template-parsing"};
-    const size_t slash = opt.input.rfind('/');
-    args.push_back("-I" + (slash == std::string::npos ? std::string(".") : hotc::clang_path(opt.input.substr(0, slash))));
+    const std::string input_dir = dir_of(opt.input);
+    args.push_back("-I" + (input_dir == "." ? input_dir : hotc::clang_path(input_dir)));
     for (const auto& d : opt.includes)
         args.push_back("-I" + hotc::clang_path(d));
     if (!opt.resource_dir.empty())
@@ -2825,8 +2829,7 @@ void translate_impl(
                     return true;
                 }
             std::vector<std::string> dirs;
-            const size_t slash = opt.input.rfind('/');
-            dirs.push_back(slash == std::string::npos ? std::string(".") : opt.input.substr(0, slash));
+            dirs.push_back(dir_of(opt.input));
             for (const std::string& d : in.include_dirs)
                 dirs.push_back(d);
             // For each directory: the file system of the host first, then the disk.
