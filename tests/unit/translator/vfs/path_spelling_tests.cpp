@@ -3,12 +3,14 @@
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
 // Tests of the path helpers of the include search: clang_path, clang_spellings,
-// text_without_dot_dot and host_path_candidates (src/translator/file_time.h).
+// text_without_dot_dot, host_path_alternatives, host_stat and host_read
+// (src/translator/file_time.h).
 #include "file_time.h"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -55,16 +57,88 @@ TEST(TextWithoutDotDot, KeepsWhatIsNotAName)
     EXPECT_EQ(hotc::text_without_dot_dot("/d/a/..b/x.h"), "/d/a/..b/x.h");
 }
 
-TEST(HostPathCandidates, ThePathComesFirstAndEachNameIsOnce)
+TEST(HostPathAlternatives, GivesTheOtherNamesOnceWithoutThePath)
 {
-    const std::vector<std::string> plain = hotc::host_path_candidates("/d/x.h");
-    ASSERT_FALSE(plain.empty());
-    EXPECT_EQ(plain.front(), "/d/x.h");
-    const std::vector<std::string> c = hotc::host_path_candidates("/d/a/../b/y.h");
-    EXPECT_EQ(c.front(), "/d/a/../b/y.h");
-    EXPECT_TRUE(has(c, "/d/b/y.h"));
+    const std::vector<std::string> plain = hotc::host_path_alternatives("/d/x.h");
+    EXPECT_FALSE(has(plain, "/d/x.h"));
+#ifndef _WIN32
+    EXPECT_TRUE(plain.empty()); // on Windows, lexically_normal gives "\\d\\x.h"
+#endif
+    const std::vector<std::string> c = hotc::host_path_alternatives("/d/a/../b/y.h");
+    EXPECT_FALSE(has(c, "/d/a/../b/y.h"));
+    ASSERT_FALSE(c.empty());
+    EXPECT_EQ(c.back(), "/d/b/y.h");
     for (const std::string& s : c)
         EXPECT_EQ(std::count(c.begin(), c.end(), s), 1) << s;
+}
+
+// A file system in memory. It records each name that a lookup asks for.
+class RecordingFs final : public hot::FileSystem
+{
+public:
+    bool read(const std::string& path, std::string& out) override
+    {
+        asked.push_back(path);
+        const auto it = files.find(path);
+        if (it == files.end())
+            return false;
+        out = it->second;
+        return true;
+    }
+    hot::VfsStat stat(const std::string& path) override
+    {
+        asked.push_back(path);
+        if (files.count(path) == 0)
+            return {};
+        return {true, 7};
+    }
+    std::map<std::string, std::string> files;
+    std::vector<std::string> asked;
+};
+
+// The folder has "\\" (the Windows form). The rest of the name has "/" and "..". The host file
+// system holds the name without "a/../" and with the same separators.
+const char* const mixed_path = "C:\\t\\d/a/../b/y.h";
+const char* const mixed_name = "C:\\t\\d/b/y.h";
+
+TEST(HostLookup, FindsAMixedSeparatorNameWithoutDotDot)
+{
+    RecordingFs fs;
+    fs.files[mixed_name] = "int y;";
+    const hot::VfsStat st = hotc::host_stat(fs, mixed_path);
+    EXPECT_TRUE(st.exists);
+    EXPECT_EQ(st.version, 7u);
+    std::string text;
+    EXPECT_TRUE(hotc::host_read(fs, mixed_path, text));
+    EXPECT_EQ(text, "int y;");
+    EXPECT_FALSE(hotc::host_stat(fs, "C:\\t\\d/a/../c/y.h").exists);
+    EXPECT_FALSE(hotc::host_read(fs, "C:\\t\\d/a/../c/y.h", text));
+}
+
+TEST(HostLookup, TriesThePathFirstThenTheAlternativesInOrder)
+{
+    RecordingFs fs;
+    fs.files[mixed_path] = "int a;";
+    fs.files[mixed_name] = "int y;";
+    // A hit on the path asks for no other name.
+    EXPECT_TRUE(hotc::host_stat(fs, mixed_path).exists);
+    std::string text;
+    EXPECT_TRUE(hotc::host_read(fs, mixed_path, text));
+    EXPECT_EQ(text, "int a;");
+    EXPECT_EQ(fs.asked, (std::vector<std::string>{mixed_path, mixed_path}));
+    // After a miss, the lookup asks for the path, then each alternative until a hit.
+    fs.files.erase(mixed_path);
+    fs.asked.clear();
+    EXPECT_TRUE(hotc::host_stat(fs, mixed_path).exists);
+    std::vector<std::string> want = {mixed_path};
+    for (const std::string& s : hotc::host_path_alternatives(mixed_path))
+    {
+        want.push_back(s);
+        if (s == mixed_name)
+            break;
+    }
+    EXPECT_EQ(fs.asked.back(), mixed_name);
+    EXPECT_EQ(fs.asked, want);
 }
 
 #ifdef _WIN32

@@ -115,12 +115,15 @@ std::string mingw_sysroot_error(const std::string& target_triple, const std::str
 {
     if (!is_mingw_triple(target_triple) || sysroot.empty())
         return {};
-    if (!highest_version_dir(sysroot + "/include/c++").empty())
+    // The libstdc++ layout has a version directory. The libc++ layout (llvm-mingw) has "v1".
+    std::error_code ec;
+    if (!highest_version_dir(sysroot + "/include/c++").empty() || fs::is_directory(sysroot + "/include/c++/v1", ec))
         return {};
-    return "the sysroot '" + sysroot + "' has no libstdc++ headers (" + sysroot
-        + "/include/c++/<version>). The MinGW target " + target_triple
+    return "the sysroot '" + sysroot + "' has no C++ standard library headers (" + sysroot
+        + "/include/c++/<version> for libstdc++ or " + sysroot + "/include/c++/v1 for libc++). The MinGW target "
+        + target_triple
         + " needs them: without them the module and the host do not agree on std::string. Give the sysroot of "
-          "the MinGW toolchain, for example /usr/x86_64-w64-mingw32";
+          "the MinGW toolchain of the host, for example /usr/x86_64-w64-mingw32";
 }
 
 std::vector<std::string> mingw_target_flags(const std::string& target_triple, const std::string& sysroot)

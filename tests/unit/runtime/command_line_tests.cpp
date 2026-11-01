@@ -79,7 +79,7 @@ TEST(CommandLine, MingwFlagsUseHighestLibstdcxxVersion)
     fs::remove_all(root, ec);
 }
 
-TEST(CommandLine, MingwSysrootWithoutLibstdcxxIsAnError)
+TEST(CommandLine, MingwSysrootWithoutCxxHeadersIsAnError)
 {
     const fs::path root =
         fs::temp_directory_path() / ("hot_command_line_sysroot_" + std::to_string(hot::detail::process_id()));
@@ -87,12 +87,15 @@ TEST(CommandLine, MingwSysrootWithoutLibstdcxxIsAnError)
     fs::remove_all(root, ec);
     fs::create_directories(root / "include");
     const std::string sysroot = root.generic_string();
-    EXPECT_NE(hot::mingw_sysroot_error("x86_64-w64-mingw32", sysroot).find("has no libstdc++ headers"),
+    EXPECT_NE(hot::mingw_sysroot_error("x86_64-w64-mingw32", sysroot).find("has no C++ standard library headers"),
         std::string::npos);
     EXPECT_TRUE(hot::mingw_sysroot_error("x86_64-w64-mingw32", "").empty());
     EXPECT_TRUE(hot::mingw_sysroot_error("x86_64-pc-linux-gnu", sysroot).empty());
+    fs::create_directories(root / "include" / "c++" / "v1");
+    EXPECT_TRUE(hot::mingw_sysroot_error("x86_64-w64-mingw32", sysroot).empty()); // libc++
+    fs::remove_all(root / "include" / "c++" / "v1", ec);
     fs::create_directories(root / "include" / "c++" / "13.2.0");
-    EXPECT_TRUE(hot::mingw_sysroot_error("x86_64-w64-mingw32", sysroot).empty());
+    EXPECT_TRUE(hot::mingw_sysroot_error("x86_64-w64-mingw32", sysroot).empty()); // libstdc++
     fs::remove_all(root, ec);
 }
 

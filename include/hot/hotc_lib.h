@@ -307,8 +307,8 @@ TranslateResult translate(const TranslateOptions& options);
 std::vector<std::string> target_parse_args(const std::string& target, const std::string& sysroot);
 
 // The error text when the target and the sysroot of the parse (with the same defaults as
-// target_parse_args) cannot work: a MinGW target with a sysroot that has no libstdc++ headers
-// (hot::mingw_sysroot_error). Empty when they can work.
+// target_parse_args) cannot work: a MinGW target with a sysroot that has no C++ standard library
+// headers (hot::mingw_sysroot_error). Empty when they can work.
 std::string target_parse_error(const std::string& target, const std::string& sysroot);
 
 // Uses the cache of the session.

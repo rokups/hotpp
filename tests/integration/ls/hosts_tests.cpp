@@ -56,7 +56,18 @@ protected:
     }
 
     // Moves the modification time of the directory forward. A coarse clock cannot hide a change.
-    void bump_dir() { fs::last_write_time(hosts_dir, fs::last_write_time(hosts_dir) + std::chrono::seconds(5)); }
+    // Windows (wine) cannot set the time of a directory with std::filesystem. There the clock of
+    // the file system is fine enough, so the error is ignored.
+    void bump_dir()
+    {
+        std::error_code ec;
+        const auto t = fs::last_write_time(hosts_dir, ec);
+        if (!ec)
+            fs::last_write_time(hosts_dir, t + std::chrono::seconds(5), ec);
+#ifndef _WIN32
+        ASSERT_FALSE(ec) << ec.message();
+#endif
+    }
 
     fs::path root, hosts_dir;
 };
@@ -170,7 +181,11 @@ TEST_F(HostsTest, IncludesFileGivesResolvedUniqueIncludeDirs)
     const std::vector<std::string> want{
         "/proj/include", // the first entry of "includeDirs" stays first
         "/abs/sp ace",
+#ifdef _WIN32
+        "/abs/q\"uote/back", // on Windows "\\" is a separator, and the host set gives "/"
+#else
         "/abs/q\"uote\\back",
+#endif
         "/abs/\xC3\xA5\xC5\xBE\xE2\x82\xAC",
         "/abs/[br,ack]$HOME#=|>-x",
         "/proj/sub/-lead",

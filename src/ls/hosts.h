@@ -41,10 +41,11 @@ public:
     // Loads each "*.json" file in dir. It replaces the previous set. It skips a file with
     // invalid JSON or a version that is not 1. When require_cache is true, it also skips a host
     // when "<binaryDir>/CMakeCache.txt" does not exist (the build directory is gone).
-    // It remembers the modification time of dir.
+    // It remembers the modification time of dir and the names of its "*.json" files.
     void load(const std::string& dir, bool require_cache = true);
 
-    // Returns true and loads again when the modification time of the directory changed.
+    // Returns true and loads again when the modification time of the directory changed, or
+    // when a "*.json" file is added or removed.
     // Else, when require_cache is true, it checks "<binaryDir>/CMakeCache.txt" of each host.
     // A skipped host whose cache file now exists is added. A host whose cache file is gone
     // is dropped (and kept as skipped). It returns true when the set of hosts changed.
@@ -75,6 +76,7 @@ private:
     bool loaded_ = false;
     bool forced_ = false; // reload at the next refresh()
     std::filesystem::file_time_type mtime_{};
+    std::vector<std::string> names_; // sorted names of the "*.json" files in dir_
     std::vector<std::shared_ptr<const Host>> hosts_; // sorted by name
     std::vector<std::shared_ptr<const Host>> skipped_; // valid, but no CMakeCache.txt
 };

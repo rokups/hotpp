@@ -5,6 +5,8 @@
 // The times of a file on the disk, for the cache stamps of the translator.
 #pragma once
 
+#include "hot/vfs.h"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -45,8 +47,15 @@ std::vector<std::string> clang_spellings(const std::string& path);
 // not find such a name. A drive ("C:"), "." and ".." are not a <name>.
 std::string text_without_dot_dot(std::string path);
 
-// The names to try in a host file system for a path of the include search: the path, then the
-// lexically normal path, then text_without_dot_dot(path). Each name is in the list once.
-std::vector<std::string> host_path_candidates(const std::string& path);
+// The other names to try in a host file system for a path of the include search, when the
+// path itself is not found: the lexically normal path, then text_without_dot_dot(path). Each
+// name is in the list once, and the path is not in the list.
+std::vector<std::string> host_path_alternatives(const std::string& path);
+
+// The host file system can hold a file under the normal spelling ("d/b/y.h") of the path that
+// libclang uses ("d/a/../b/y.h"). These two functions try the path first. Only after a miss,
+// they compute and try host_path_alternatives(path) in order.
+hot::VfsStat host_stat(hot::FileSystem& fs, const std::string& path);
+bool host_read(hot::FileSystem& fs, const std::string& path, std::string& out);
 
 } // namespace hotc

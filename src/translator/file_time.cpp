@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <set>
 
 #ifdef _WIN32
     #include <system_error>
@@ -56,13 +57,13 @@ std::string clang_path(const std::string& path)
 std::vector<std::string> clang_spellings(const std::string& path)
 {
     const std::string g = clang_path(path);
+    // The list keeps the order of the forms (the clang_path form first). The set finds a repeated form.
     std::vector<std::string> out = {g};
+    std::set<std::string> seen = {g};
     auto add = [&](std::string s)
     {
-        for (const std::string& o : out)
-            if (o == s)
-                return;
-        out.push_back(std::move(s));
+        if (seen.insert(s).second)
+            out.push_back(std::move(s));
     };
     // libclang adds "\\" after the include folder and after the folder of the includer. These
     // separators are near the end of the name, so each form of the last separators is added.
@@ -167,13 +168,37 @@ std::string text_without_dot_dot(std::string p)
     return p;
 }
 
-std::vector<std::string> host_path_candidates(const std::string& path)
+std::vector<std::string> host_path_alternatives(const std::string& path)
 {
-    std::vector<std::string> out = {path};
+    std::vector<std::string> out;
     for (std::string s : {std::filesystem::path(path).lexically_normal().string(), text_without_dot_dot(path)})
-        if (std::find(out.begin(), out.end(), s) == out.end())
+        if (s != path && std::find(out.begin(), out.end(), s) == out.end())
             out.push_back(std::move(s));
     return out;
+}
+
+hot::VfsStat host_stat(hot::FileSystem& fs, const std::string& path)
+{
+    hot::VfsStat st = fs.stat(path);
+    if (st.exists)
+        return st;
+    for (const std::string& name : host_path_alternatives(path))
+    {
+        st = fs.stat(name);
+        if (st.exists)
+            return st;
+    }
+    return {};
+}
+
+bool host_read(hot::FileSystem& fs, const std::string& path, std::string& out)
+{
+    if (fs.read(path, out))
+        return true;
+    for (const std::string& name : host_path_alternatives(path))
+        if (fs.read(name, out))
+            return true;
+    return false;
 }
 
 } // namespace hotc

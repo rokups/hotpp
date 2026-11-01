@@ -1331,27 +1331,9 @@ unsigned long long hash_file(const std::string& path)
     return h;
 }
 
-// The host file system can hold a file under the normal spelling ("d/b/y.h") of the path that
-// libclang uses ("d/a/../b/y.h"). These two functions try the spelling of the search, then the
-// normal spellings (hotc::host_path_candidates).
-hot::VfsStat host_stat(hot::FileSystem& fs, const std::string& path)
-{
-    for (const std::string& name : hotc::host_path_candidates(path))
-    {
-        const hot::VfsStat st = fs.stat(name);
-        if (st.exists)
-            return st;
-    }
-    return {};
-}
-
-bool host_read(hot::FileSystem& fs, const std::string& path, std::string& out)
-{
-    for (const std::string& name : hotc::host_path_candidates(path))
-        if (fs.read(name, out))
-            return true;
-    return false;
-}
+// The lookups in the host file system that also try the normal spellings (file_time.h).
+using hotc::host_read;
+using hotc::host_stat;
 
 // Reads the stamp. The stamp has the hash of the content of an existing file.
 // The host file system "fs" (can be null) wins over the disk for the same path.

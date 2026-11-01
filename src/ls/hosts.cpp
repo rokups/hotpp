@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <sstream>
 #include <system_error>
@@ -67,8 +68,30 @@ bool is_host_file(const fs::path& p)
     return ext == ".json" || ext == ".defines" || ext == ".options" || ext == ".includes";
 }
 
+// The form of a path that the host set compares: lexically normal, with "/" as the separator.
+// On Windows a drive letter is upper case ("c:\\x" and "C:/x" are the same path). The host files
+// and the editor can give either separator, so both sides of a compare use this form.
+std::string path_key(const fs::path& p)
+{
+    std::string out = p.lexically_normal().generic_string();
+#ifdef _WIN32
+    if (out.size() > 1 && out[1] == ':')
+        out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+#endif
+    return out;
+}
+
+// Removes the trailing slashes. The root directory stays "/" and a drive root stays "C:/".
+std::string strip_slash(std::string s)
+{
+    while (s.size() > 1 && s.back() == '/' && s[s.size() - 2] != ':')
+        s.pop_back();
+    return s;
+}
+
 // Makes a path absolute against base (when the path is relative) and normalizes it with no
-// access to the file system. The result has no trailing slash. An empty path stays empty.
+// access to the file system (path_key). The result has no trailing slash. An empty path stays
+// empty.
 std::string resolve_path(const std::string& base, const std::string& path)
 {
     if (path.empty())
@@ -76,10 +99,7 @@ std::string resolve_path(const std::string& base, const std::string& path)
     fs::path p(path);
     if (p.is_relative() && !base.empty())
         p = fs::path(base) / p;
-    std::string out = p.lexically_normal().string();
-    while (out.size() > 1 && out.back() == '/')
-        out.pop_back();
-    return out;
+    return strip_slash(path_key(p));
 }
 
 // Resolves all paths against base. With unique, a repeated path is dropped (the first stays).
@@ -98,20 +118,13 @@ std::vector<std::string> resolve_paths(const std::string& base, const std::vecto
     return out;
 }
 
-// Removes the trailing slashes. The root directory stays "/".
-std::string strip_slash(std::string s)
-{
-    while (s.size() > 1 && s.back() == '/')
-        s.pop_back();
-    return s;
-}
-
-// True when dir contains path: the path starts with dir and the next character is a "/".
+// True when dir contains path: the path starts with dir and the next character is a "/". A root
+// ("/" or "C:/") contains each path that starts with it.
 bool contains(const std::string& dir, const std::string& path)
 {
     if (dir.empty() || path.compare(0, dir.size(), dir) != 0)
         return false;
-    return dir == "/" || path.size() == dir.size() || path[dir.size()] == '/';
+    return dir.back() == '/' || path.size() == dir.size() || path[dir.size()] == '/';
 }
 
 // True when the build directory of the host has a CMakeCache.txt.
@@ -119,6 +132,22 @@ bool has_cache(const Host& h)
 {
     std::error_code ec;
     return fs::exists(fs::path(h.binary_dir) / "CMakeCache.txt", ec);
+}
+
+// Gives the sorted names of the "*.json" files in dir. A refresh compares them, because the
+// modification time of a directory can have a coarse resolution (for example, one second on
+// Windows). Then a new host file does not always change the time.
+std::vector<std::string> json_names(const std::string& dir)
+{
+    std::vector<std::string> out;
+    std::error_code ec;
+    for (const fs::directory_entry& e : fs::directory_iterator(dir, ec))
+    {
+        if (e.is_regular_file(ec) && e.path().extension() == ".json")
+            out.push_back(e.path().filename().string());
+    }
+    std::sort(out.begin(), out.end());
+    return out;
 }
 
 } // namespace
@@ -140,6 +169,7 @@ void HostSet::load(const std::string& dir, bool require_cache)
     skipped_.clear();
     std::error_code ec;
     mtime_ = fs::last_write_time(dir, ec);
+    names_ = json_names(dir);
     if (ec)
         return;
     for (const fs::directory_entry& e : fs::directory_iterator(dir, ec))
@@ -198,7 +228,8 @@ bool HostSet::refresh()
         return false;
     std::error_code ec;
     const auto now = fs::last_write_time(dir_, ec);
-    if (forced_ || !(ec ? mtime_ == fs::file_time_type{} : now == mtime_))
+    const bool same_time = ec ? mtime_ == fs::file_time_type{} : now == mtime_;
+    if (forced_ || !same_time || json_names(dir_) != names_)
     {
         forced_ = false;
         load(dir_, require_cache_);
@@ -252,20 +283,21 @@ bool HostSet::force_reload_for(const std::string& file)
 
 std::shared_ptr<const Host> HostSet::match(const std::string& script_path) const
 {
+    const std::string path = path_key(script_path);
     std::shared_ptr<const Host> best;
     long best_score = 0;
     for (const auto& h : hosts_)
     { // sorted: the first host wins a tie
         long score = 0;
         for (const std::string& s : h->scripts)
-            if (s == script_path)
+            if (s == path)
                 score = kExactScore;
         if (score == 0)
         {
             for (const std::string& d : h->script_dirs)
             {
                 const std::string dir = strip_slash(d);
-                if (contains(dir, script_path))
+                if (contains(dir, path))
                     score = std::max(score, static_cast<long>(dir.size()));
             }
         }
@@ -280,7 +312,7 @@ std::shared_ptr<const Host> HostSet::match(const std::string& script_path) const
 
 std::shared_ptr<const Host> HostSet::nearest(const std::string& script_path, fs::path& common) const
 {
-    const fs::path script_dir = fs::path(script_path).lexically_normal().parent_path();
+    const fs::path script_dir = fs::path(path_key(script_path)).parent_path();
     std::shared_ptr<const Host> best;
     size_t best_count = 0;
     for (const auto& h : hosts_)
