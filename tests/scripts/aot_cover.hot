@@ -37,6 +37,16 @@ class Tally {
     Tally Me() { return this; }
 }
 
+// The hooks onReload and convert_level never run in AOT code. The class must still build.
+class Hooked {
+    float level = 3.0;
+    int reloads = 0;
+
+    float convert_level(int old) { return old * 10.0; }
+    void onReload(OldState old) { this.reloads = this.reloads + 1; }
+    ~Hooked() { std.printf("[aot_cover] Hooked level=%.1f reloads=%d\n", this.level, this.reloads); }
+}
+
 // The constructor throws when the argument is positive.
 class Fussy {
     int n = 0;
@@ -89,6 +99,7 @@ class Boss : Actor, IDamageable, IGuarded {
         this.probed = 1;
         Tally t = new Tally(7);
         Tally again = t.Me();
+        Hooked hooked = new Hooked();
         this.same = again == t ? 1 : 0;
         this.tally_n = again.n;
         try {
@@ -124,6 +135,14 @@ class Boss : Actor, IDamageable, IGuarded {
     override int Absorb(int amount) {
         this.hp = this.hp - amount;
         return this.hp;
+    }
+
+    // The facts of the run. The native test code cannot read the fields of an optimized object.
+    ~Boss() {
+        std.printf("[aot_cover] Boss seen_power=%d seen_attack=%d seen_mix=%d\n",
+            this.seen_power, this.seen_attack, this.seen_mix);
+        std.printf("[aot_cover] Boss same=%d caught=%d tally_n=%d hurt_n=%d hurt_name=%s hp=%d\n", this.same,
+            this.caught, this.tally_n, this.hurt_n, this.hurt_name.c_str(), this.hp);
     }
 
     override int Guard(int x) {

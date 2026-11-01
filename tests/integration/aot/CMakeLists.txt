@@ -106,7 +106,7 @@ foreach(variant "" _opt)
         set(opt_keyword OPTIMIZED)
     endif()
     hot_add_scripts(TARGET aot_cover${variant}_scripts AOT ${opt_keyword}
-        SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/aot_cover.hot
+        SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/aot_cover.hot ${PROJECT_SOURCE_DIR}/tests/scripts/aot_cover_cpp.cpp
         INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
         DEPENDS ${HOT_HEADERS})
     add_executable(aot_cover${variant} aot_cover_main.cpp ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp

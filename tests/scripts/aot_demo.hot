@@ -19,7 +19,8 @@ class Fighter : Actor {
     }
 
     ~Fighter() {
-        std.printf("[aot_demo] Fighter dtor %d\n", this.hp);
+        std.printf("[aot_demo] Fighter dtor %d ticks=%d level=%d shield=%.3f\n", this.hp, this.ticks, this.Level,
+            this.Shield);
     }
 
     virtual int Power() { return 1; }
@@ -48,7 +49,7 @@ class Veteran : Fighter {
     }
 
     ~Veteran() {
-        std.printf("[aot_demo] Veteran dtor %d\n", this.rage);
+        std.printf("[aot_demo] Veteran dtor %d parent_power=%d\n", this.rage, this.parent_power);
     }
 
     override int Power() { return this.rage; }
@@ -67,6 +68,11 @@ class Spawner : Actor {
     int power = 0;
     int attack = 0;
     bool is_veteran = false;
+
+    ~Spawner() {
+        std.printf("[aot_demo] Spawner dtor power=%d attack=%d is_veteran=%d\n", this.power, this.attack,
+            this.is_veteran ? 1 : 0);
+    }
 
     override void Tick(float dt) {
         if (this.kid == null) this.kid = new Veteran(5, 7);

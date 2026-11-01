@@ -8,9 +8,11 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
+#include <sstream>
 #include <string>
 
 namespace
@@ -70,6 +72,22 @@ TEST(AotParity, AotProgramBehavesLikeTheLoader)
     EXPECT_EQ(aot, loaded);
 }
 
+// The demo prints the fields of a plain AOT object from its layout. An optimized object has no
+// layout. This function cuts each line of the AOT text after "pos.x=<number>".
+static std::string without_fields(const std::string& text)
+{
+    std::string out, line;
+    std::istringstream in(text);
+    while (std::getline(in, line))
+    {
+        const size_t at = line.find("pos.x=");
+        if (at != std::string::npos)
+            line.resize(std::min(line.size(), line.find(' ', at) == std::string::npos ? line.size() : line.find(' ', at)));
+        out += line + "\n";
+    }
+    return out;
+}
+
 // The optimized AOT program (MODE AOT OPTIMIZED) prints the same text as the AOT program.
 TEST(AotParity, OptimizedProgramBehavesLikeTheAotProgram)
 {
@@ -79,7 +97,12 @@ TEST(AotParity, OptimizedProgramBehavesLikeTheAotProgram)
     EXPECT_EQ(status, 0);
     EXPECT_EQ(opt_status, 0);
     ASSERT_FALSE(aot.empty());
-    EXPECT_EQ(opt, aot);
+    // The optimized objects have no field table, so the object lines of the demo have no fields.
+    // The script destructors print the fields, so the lines of the two programs are the same.
+    EXPECT_EQ(opt, without_fields(aot));
+    EXPECT_NE(opt.find("[aot_demo] Fighter dtor 100 ticks=3 level=4 shield=1.000\n"), std::string::npos) << opt;
+    EXPECT_NE(opt.find("[aot_demo] Veteran dtor 3 parent_power=1\n"), std::string::npos) << opt;
+    EXPECT_NE(opt.find("[aot_demo] Spawner dtor power=7 attack=70 is_veteran=1\n"), std::string::npos) << opt;
 }
 
 // The cover script has a noexcept override, a const virtual, an interface base and a script
@@ -94,16 +117,21 @@ TEST(AotParity, OptimizedCoverProgramBehavesLikeTheAotProgram)
     EXPECT_EQ(opt_status, 0) << opt;
     EXPECT_EQ(opt, aot);
     // Elite::Power = Grunt::Power + 100; Attack uses it; Mix goes to Elite; hp 50 - 3 - 4, and Armor adds 2 to each hit.
-    EXPECT_NE(opt.find("seen_power=103 seen_attack=1030 seen_mix=5\n"), std::string::npos) << opt;
-    EXPECT_NE(opt.find("hit=49 hit=45 hp=43"), std::string::npos) << opt;
+    EXPECT_NE(opt.find("Boss seen_power=103 seen_attack=1030 seen_mix=5\n"), std::string::npos) << opt;
+    // The class of the ".cpp" script: Power 2 + 100, Attack 1020, one caught error, two ticks.
+    EXPECT_NE(opt.find("[aot_cover_cpp] CppBoss power=102 attack=1020 caught=1 ticks=2 label=cpp\n"), std::string::npos)
+        << opt;
+    EXPECT_NE(opt.find("hit=49 hit=45\n"), std::string::npos) << opt;
     EXPECT_NE(opt.find("guard=20 guard_bad=0 reports=hot::IndexOutOfRange;"), std::string::npos) << opt;
     // "this" as a handle gives the same object. Each of the three "new" that throw is caught (1, 10, 100).
     // A "new" of a class with a native base and a constructor argument works. The objects that the
     // throwing "new" made are destroyed: the constructor body ran for Fussy and Hurt, not for Broken.
-    EXPECT_NE(opt.find("same=1 caught=111 tally_n=7 hurt_n=1 hurt_name=hurt\n"), std::string::npos) << opt;
+    EXPECT_NE(opt.find("Boss same=1 caught=111 tally_n=7 hurt_n=1 hurt_name=hurt hp=43\n"), std::string::npos) << opt;
     EXPECT_NE(opt.find("[aot_cover] Fussy 1 gone\n"), std::string::npos) << opt;
     EXPECT_NE(opt.find("[aot_cover] Hurt 2 gone\n"), std::string::npos) << opt;
     EXPECT_NE(opt.find("[aot_cover] Tally 7 gone\n"), std::string::npos) << opt;
+    // The hooks onReload and convert_level are in the class and never run.
+    EXPECT_NE(opt.find("[aot_cover] Hooked level=3.0 reloads=0\n"), std::string::npos) << opt;
     EXPECT_EQ(opt.find("Broken gone"), std::string::npos) << opt;
 }
 

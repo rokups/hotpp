@@ -28,8 +28,8 @@ All values come from the `Results` section below. They are the median of 3 runs.
 - A script to script virtual call costs 0.35 to 0.9 ns more than a native one. This is true for `.hot` and `.cpp`.
 - A `.hot` closure call costs 1.5x. A `.hot` `std.vector` index costs 1.4x. The `.cpp` twins of both run at native speed.
 - A reload of 100 objects with 65 fields takes 0.10 ms in `files` and 1.4 ms in `jit`. The compile is not in it.
-- Optimized AOT code (`aot-opt`) removes the cost of the slot. A call from the host into a script costs 1.76 ns, against 3.51 ns in `aot`: native speed (1.0x). A native to script virtual call costs 1.75 ns, against 3.80 ns. A script to script virtual call costs 1.75 ns, against 2.63 ns in `.hot` and 2.34 ns in `.cpp`. See [Optimized AOT](#optimized-aot-aot-opt).
-- `new` and free in `aot-opt` cost 53.8 ns in `.hot` and 31.2 ns in `.cpp`, against 61.0 ns and 38.2 ns in `aot`. The gain is 7 ns. The state block allocation stays. See [The cost of `new`](#the-cost-of-new).
+- Optimized AOT code (`aot-opt`) removes the cost of the slot. A call from the host into a script costs 1.46 ns, against 3.51 ns in `aot`: native speed (1.0x). A native to script virtual call costs 1.46 ns, against 3.80 ns. A script to script virtual call costs 1.75 ns in `.hot` and 1.46 ns in `.cpp`, against 2.63 ns and 2.35 ns in `aot`. See [Optimized AOT](#optimized-aot-aot-opt).
+- `new` and free in `aot-opt` cost 34.1 ns in `.hot` and 8.2 ns in `.cpp`, against 59.4 ns and 38.8 ns in `aot`. The fields are members of the shell, so an object is one allocation. See [The cost of `new`](#the-cost-of-new).
 - The `aot` and `aot-opt` values in these lines come from one build with `HOT_THREAD_SAFE=ON` (see [Machine](#machine)).
 
 ## How to run
@@ -205,26 +205,26 @@ The scripts are optimized AOT code. The values come from `bench_backends_opt --b
 
 | Case | native | `.hot` | `.cpp` |
 |---|---|---|---|
-| empty method call (host to script) | 1.75 | 1.76 (1.0x) | 1.76 (1.0x) |
-| native to script virtual call | 1.76 | 1.75 (1.0x) | 1.75 (1.0x) |
-| script to script call (recursive) | 1.04 | 1.12 (1.1x) | 1.18 (1.1x) |
+| empty method call (host to script) | 1.46 | 1.46 (1.0x) | 1.46 (1.0x) |
+| native to script virtual call | 1.46 | 1.46 (1.0x) | 1.46 (1.0x) |
+| script to script call (recursive) | 1.07 | 1.16 (1.1x) | 1.16 (1.1x) |
 | script to native call | 1.46 | 1.46 (1.0x) | 1.46 (1.0x) |
 | field read and write loop | 0.88 | 0.88 (1.0x) | 0.88 (1.0x) |
 | integer arithmetic loop | 1.41 | 1.41 (1.0x) | 1.41 (1.0x) |
 | float arithmetic loop | 1.75 | 1.75 (1.0x) | 1.75 (1.0x) |
 | array index (`int[256]`) | 0.62 | 0.64 (1.0x) | 0.64 (1.0x) |
 | `std.vector` index | 0.62 | 0.88 (1.4x) | 0.62 (1.0x) |
-| handle dereference and null check | 9.85 | 10.5 (1.1x) | n/a |
-| pointer dereference and null check | 0.41 | n/a | 0.80 (1.9x) |
-| string interpolation or concatenation | 67.5 | 52.5 (0.78x) | 70.9 (1.1x) |
-| `new` and free of a script object | 9.96 | 53.8 (5.4x) | 31.2 (3.1x) |
-| closure call | 1.75 | 2.63 (1.5x) | 1.75 (1.0x) |
-| loop with a method call | 1.26 | 1.24 (0.99x) | 1.26 (1.0x) |
-| field of another object (handle or pointer) | 0.59 | 0.58 (0.99x) | 0.58 (0.98x) |
+| handle dereference and null check | 9.85 | 10.4 (1.1x) | n/a |
+| pointer dereference and null check | 0.41 | n/a | 0.44 (1.1x) |
+| string interpolation or concatenation | 67.6 | 55.1 (0.8x) | 71.0 (1.1x) |
+| `new` and free of a script object | 10.2 | 34.1 (3.3x) | 8.21 (0.8x) |
+| closure call | 1.75 | 2.64 (1.5x) | 1.76 (1.0x) |
+| loop with a method call | 1.25 | 1.26 (1.0x) | 1.25 (1.0x) |
+| field of another object (handle or pointer) | 0.61 | 0.61 (1.0x) | 0.58 (0.9x) |
 | small method call on `this` | 1.46 | 1.46 (1.0x) | 1.46 (1.0x) |
 | method call through a handle or pointer | 1.46 | 1.46 (1.0x) | 1.46 (1.0x) |
-| script to script virtual call | 1.46 | 1.75 (1.2x) | 1.75 (1.2x) |
-| module variable read and write | 0.38 | 0.36 (0.94x) | 0.36 (0.94x) |
+| script to script virtual call | 1.46 | 1.75 (1.2x) | 1.46 (1.0x) |
+| module variable read and write | 0.38 | 0.36 (0.9x) | 0.36 (0.9x) |
 | module function and static method | 0.32 | n/a | 0.40 (1.3x) |
 
 The reload and the reload chain have no row: optimized code has no reload. The tool prints `n/a` for them.
@@ -235,10 +235,10 @@ The same build, the same core and the same session. The ratio is script time div
 
 | Case | native | `aot` `.hot` | `aot-opt` `.hot` | `aot` `.cpp` | `aot-opt` `.cpp` |
 |---|---|---|---|---|---|
-| empty method call (host to script) | 1.76 | 3.51 (2.0x) | 1.76 (1.0x) | 3.51 (2.0x) | 1.76 (1.0x) |
-| native to script virtual call | 1.76 | 3.80 (2.2x) | 1.75 (1.0x) | 3.80 (2.2x) | 1.75 (1.0x) |
-| script to script virtual call | 1.46 | 2.63 (1.8x) | 1.75 (1.2x) | 2.34 (1.6x) | 1.75 (1.2x) |
-| `new` and free of a script object | 9.96 | 61.0 (6.1x) | 53.8 (5.4x) | 38.2 (3.8x) | 31.2 (3.1x) |
+| empty method call (host to script) | 1.46 | 3.51 (2.4x) | 1.46 (1.0x) | 3.51 (2.4x) | 1.46 (1.0x) |
+| native to script virtual call | 1.46 | 3.80 (2.6x) | 1.46 (1.0x) | 3.80 (2.6x) | 1.46 (1.0x) |
+| script to script virtual call | 1.46 | 2.63 (1.8x) | 1.75 (1.2x) | 2.35 (1.6x) | 1.46 (1.0x) |
+| `new` and free of a script object | 10.2 | 59.4 (5.8x) | 34.1 (3.3x) | 38.8 (3.8x) | 8.21 (0.8x) |
 
 The other rows are equal in the two backends (within 0.1 ns, or within the noise of a run). The rows of the string, of the recursive call and of the pointer chain are in the noise of the build: the code is the same.
 
@@ -251,12 +251,12 @@ The other rows are equal in the two backends (within 0.1 ns, or within the noise
 - A `.cpp` script is as fast as a `.hot` script, or faster, in most cases. It is faster in four cases: `std::vector` (no check), the closure, the string and `new`.
 - The `.hot` closure call costs 1.5x. The `.cpp` lambda in a `std::function` runs at native speed.
 - The script to script call is 0.9x to 1.1x in both languages. The difference between the two is of the size of the run noise.
-- Optimized AOT code (`aot-opt`) has no slot and no check for a changed script. A call from the host into a script costs the same as a native virtual call (1.0x), against 2.0x in `aot`. See [Optimized AOT](#optimized-aot-aot-opt).
+- Optimized AOT code (`aot-opt`) has no slot and no check for a changed script. A call from the host into a script costs the same as a native virtual call (1.0x), against 2.4x in `aot`. See [Optimized AOT](#optimized-aot-aot-opt).
 - A ratio applies to the case only, not to a whole program. A ratio of 2.4x on a call of 1.46 ns is 2.0 ns more for each call.
 
 ### The pointer chain
 
-The `.cpp` pointer chain costs 0.80 ns for each step. The native twin with raw pointers costs 0.41 ns, so the ratio is 1.9x. This row is not a null check cost. A script object is a shell and a state block. The fields are in the state block. So each step reads the state pointer of the shell, then the field. The native twin reads the field only. Two loads that depend on each other cost about twice one load.
+The `.cpp` pointer chain costs 0.80 ns for each step. The native twin with raw pointers costs 0.41 ns, so the ratio is 1.9x. This row is not a null check cost. In `aot` a script object is a shell and a state block, so each step reads the state pointer of the shell, then the field. Two loads that depend on each other cost about twice one load. In `aot-opt` the fields are in the shell, and the step costs 0.44 ns (1.1x).
 
 The `.hot` handle chain is 10.5 ns. The native twin of that row holds `std::shared_ptr` and counts every copy. It is 9.85 ns. The two chain rows have different native twins, so compare each with its own twin.
 
@@ -289,16 +289,16 @@ Other calls:
 
 ### Optimized AOT (`aot-opt`)
 
-The slot and the checks around it are the cost of a host to script call (see the table above). Optimized AOT code (`MODE AOT OPTIMIZED`) removes them. The shell override calls the script member function directly, so the compiler sees the call. The call keeps the call depth and the `catch` of `hot::ScriptError`, so a script error still goes to the error handler. The 1.76 ns of `aot-opt` includes them.
+The slot and the checks around it are the cost of a host to script call (see the table above). Optimized AOT code (`MODE AOT OPTIMIZED`) removes them. The shell override calls the script member function directly, so the compiler sees the call. The fields and the script functions are members of the shell, so there is no state block and no `state_of` call. The call keeps the call depth and the `catch` of `hot::ScriptError`, so a script error still goes to the error handler. The 1.46 ns of `aot-opt` includes them.
 
 | Call | `aot` | `aot-opt` | native |
 |---|---|---|---|
-| host to script (`empty`) | 3.51 | 1.76 | 1.76 |
-| native to script virtual (`virtual_hook`) | 3.80 | 1.75 | 1.76 |
+| host to script (`empty`) | 3.51 | 1.46 | 1.46 |
+| native to script virtual (`virtual_hook`) | 3.80 | 1.46 | 1.46 |
 | script to script virtual (`.hot`) | 2.63 | 1.75 | 1.46 |
-| script to script virtual (`.cpp`) | 2.34 | 1.75 | 1.46 |
+| script to script virtual (`.cpp`) | 2.35 | 1.46 | 1.46 |
 
-The host to script call costs 1.75 ns less, and it is as fast as a native virtual call in this test. The script to script virtual call costs 0.9 ns less in `.hot` and 0.6 ns less in `.cpp`. A script to script virtual call is still 0.29 ns more than the native twin of this run. The calls that did not use a slot (the script to native call, the call on `this`, the call through a handle) have the same time in both backends.
+The host to script call costs 2.05 ns less, and it is as fast as a native virtual call in this test. The script to script virtual call costs 0.9 ns less in `.hot` and 0.9 ns less in `.cpp`. In `.hot` it is still 0.29 ns more than the native twin. The calls that did not use a slot (the script to native call, the call on `this`, the call through a handle) have the same time in both backends.
 
 ## The cost of `new`
 
@@ -347,22 +347,22 @@ Optimized AOT code has one generation, so `new` makes the shell with a plain C++
 
 | `new` and free of a script object | `aot` | `aot-opt` | Difference |
 |---|---|---|---|
-| `.hot` (`std::shared_ptr`) | 61.0 ns | 53.8 ns | 7.2 ns less |
-| `.cpp` (raw pointer) | 38.2 ns | 31.2 ns | 7.0 ns less |
+| `.hot` (`std::shared_ptr`) | 59.4 ns | 34.1 ns | 25.3 ns less |
+| `.cpp` (raw pointer) | 38.8 ns | 8.2 ns | 30.6 ns less |
 
 The ratios against each native owner (`.hot` / `.cpp`):
 
 | Native owner | native | `aot` | `aot-opt` |
 |---|---|---|---|
-| `std::make_shared<T>()` | 9.96 | 6.1x / 3.8x | 5.4x / 3.1x |
-| `std::shared_ptr<T>(new T)` | 17.8 | 3.4x / 2.1x | 3.0x / 1.7x |
-| `std::make_unique<T>()` | 8.18 | 7.5x / 4.7x | 6.6x / 3.8x |
-| raw `new T` and `delete` | 8.18 | 7.5x / 4.7x | 6.6x / 3.8x |
-| intrusive pointer (atomic count) | 14.1 | 4.3x / 2.7x | 3.8x / 2.2x |
-| virtual base + state block, `shared_ptr(new T)` | 41.5 | 1.5x / 0.92x | 1.3x / 0.75x |
-| same, with a hash map of live objects | 65.1 | 0.94x / 0.59x | 0.83x / 0.48x |
+| `std::make_shared<T>()` | 10.04 | 5.9x / 3.9x | 3.4x / 0.82x |
+| `std::shared_ptr<T>(new T)` | 17.86 | 3.3x / 2.2x | 1.9x / 0.46x |
+| `std::make_unique<T>()` | 8.17 | 7.3x / 4.7x | 4.2x / 1.0x |
+| raw `new T` and `delete` | 8.18 | 7.3x / 4.7x | 4.2x / 1.0x |
+| intrusive pointer (atomic count) | 14.10 | 4.2x / 2.8x | 2.4x / 0.58x |
+| virtual base + state block, `shared_ptr(new T)` | 41.11 | 1.4x / 0.94x | 0.83x / 0.20x |
+| same, with a hash map of live objects | 65.13 | 0.91x / 0.60x | 0.52x / 0.13x |
 
-The gain is small: 12% for `.hot` and 18% for `.cpp`. The state block allocation stays. A script object has a shell and a state block, so `new` makes two blocks of memory, the field initializers and the destructors still run through a table, and the list of live objects still takes the lock of `HOT_THREAD_SAFE`. Optimized AOT code makes `new` cheaper by about 7 ns. It does not make `new` as cheap as a native `new`. The `.hot` time is still 5.4x of `std::make_shared`.
+The fields of an optimized object are members of the shell. The object is one allocation, and it has no state block, no table of field initializers and no list of live objects. `new` and free cost 34.1 ns in `.hot` and 8.2 ns in `.cpp`, against 59.4 ns and 38.8 ns in `aot`. The `.hot` time is the cost of the `std::shared_ptr` block and of the constructor chain. The `.cpp` object has no `std::shared_ptr`, so it costs the same as a native `new` and `delete` of a class with a virtual base. The rows of the native twins with a state block are for the comparison with `aot` only. The ratios of `aot-opt` use the same native times.
 
 ### The lock of `HOT_THREAD_SAFE`
 

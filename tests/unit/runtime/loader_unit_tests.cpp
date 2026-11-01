@@ -273,7 +273,8 @@ TEST_F(Units, LoadAotKeepsACopyOfTheRecordAndFailsForTwoScriptsWithOneClass)
 }
 
 // An optimized AOT table (AotTable::optimized) locks the loader: find and create work, but the
-// loader refuses request_reload and load_unit (through load). Reset unlocks it.
+// loader refuses request_reload and load_unit (through load). Reset is refused too, because the
+// loader does not track the objects of optimized code.
 TEST_F(Units, OptimizedAotTableLocksTheLoader)
 {
     const hot::AotTable table = {kAot, 2, nullptr, true};
@@ -292,9 +293,11 @@ TEST_F(Units, OptimizedAotTableLocksTheLoader)
     }
     EXPECT_EQ(loader.find("Fake")->record->generation, 1u);
     std::string error;
-    ASSERT_TRUE(loader.reset(error)) << error;
-    ASSERT_RELOAD_OK(loader.load_aot(kAotTable)); // a plain table loads again
-    ASSERT_RELOAD_OK(loader.request_reload(module_of(register_a3, "X3", "X")));
+    EXPECT_FALSE(loader.reset(error));
+    EXPECT_EQ(error,
+        "the loader holds optimized AOT code (MODE AOT OPTIMIZED): objects are not tracked, "
+        "so it cannot reset. Exit the program instead");
+    EXPECT_NE(loader.find("Fake"), nullptr); // the loader keeps its state
 }
 
 // The host and the runtime must agree on HOT_THREAD_SAFE (config.h). The test gives the opposite

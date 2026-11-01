@@ -26,16 +26,15 @@ int main()
             world.Add(boss);
             world.Tick(0.5f);
             world.Tick(0.5f);
-            auto* shell = dynamic_cast<hot::ShellBase*>(boss);
             auto* damageable = dynamic_cast<IDamageable*>(boss);
             auto* guarded = dynamic_cast<IGuarded*>(boss);
-            std::printf("seen_power=%d seen_attack=%d seen_mix=%d\n", *hot::field_ptr<int>(shell, "seen_power"),
-                *hot::field_ptr<int>(shell, "seen_attack"), *hot::field_ptr<int>(shell, "seen_mix"));
-            std::printf("same=%d caught=%d tally_n=%d hurt_n=%d hurt_name=%s\n", *hot::field_ptr<int>(shell, "same"),
-                *hot::field_ptr<int>(shell, "caught"), *hot::field_ptr<int>(shell, "tally_n"),
-                *hot::field_ptr<int>(shell, "hurt_n"), hot::field_ptr<std::string>(shell, "hurt_name")->c_str());
+            // The class of the ".cpp" script: its destructor prints the facts.
+            World cpp_world;
+            cpp_world.Add(registry.create_as<Actor>("CppBoss"));
+            cpp_world.Tick(0.5f);
+            cpp_world.Tick(0.5f);
             const int hit1 = HitThrough(*damageable, 3), hit2 = HitThrough(*damageable, 4);
-            std::printf("hit=%d hit=%d hp=%d\n", hit1, hit2, *hot::field_ptr<int>(shell, "hp"));
+            std::printf("hit=%d hit=%d\n", hit1, hit2);
             const int guard = CallGuard(*guarded, 1), guard_bad = CallGuard(*guarded, 5);
             std::printf("guard=%d guard_bad=%d reports=%s\n", guard, guard_bad, reports.c_str());
         }

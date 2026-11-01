@@ -214,6 +214,12 @@ bool Loader::reset(std::string& error)
         return false;
     }
     std::lock_guard<std::mutex> lock(mutex_);
+    if (aot_optimized_)
+    {
+        error = "the loader holds optimized AOT code (MODE AOT OPTIMIZED): objects are not tracked, "
+                "so it cannot reset. Exit the program instead";
+        return false;
+    }
     if (pending_)
     {
         error = "a reload is pending";

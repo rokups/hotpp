@@ -65,15 +65,30 @@ TEST(AotOptLoad, LoaderRefusesReloadRevertAndLoad)
     EXPECT_FALSE(loader.load_aot(hot::aot_table));
 }
 
-TEST(AotOptLoad, ResetUnlocksTheLoader)
+TEST(AotOptLoad, ResetIsRefused)
 {
     hot::Loader loader;
     ASSERT_TRUE(loader.load_aot(hot::aot_table));
     std::string error;
-    ASSERT_TRUE(loader.reset(error)) << error;
-    EXPECT_EQ(loader.find("Hero"), nullptr);
-    ASSERT_TRUE(loader.load_aot(hot::aot_table));
+    EXPECT_FALSE(loader.reset(error));
+    EXPECT_NE(error.find("MODE AOT OPTIMIZED"), std::string::npos) << error;
+    EXPECT_NE(error.find("objects are not tracked"), std::string::npos) << error;
+    EXPECT_NE(error.find("Exit the program instead"), std::string::npos) << error;
     EXPECT_NE(loader.find("Hero"), nullptr);
+}
+
+// An optimized object has no layout: field_ptr and find_field return null and do not crash.
+TEST(AotOptLoad, FieldPtrIsNullOnAnOptimizedObject)
+{
+    World world;
+    hot::Loader loader;
+    ASSERT_TRUE(loader.load_aot(hot::aot_table));
+    hot::Instance inst = loader.find("Fighter")->create();
+    ASSERT_NE(inst.shell, nullptr);
+    world.Add(static_cast<Actor*>(inst.native));
+    EXPECT_EQ(inst.shell->cls->layout, nullptr);
+    EXPECT_EQ(hot::find_field(inst.shell->cls, "hp"), nullptr);
+    EXPECT_EQ(hot::field_ptr<int>(inst.shell, "hp"), nullptr);
 }
 
 } // namespace

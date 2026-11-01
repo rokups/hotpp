@@ -3670,6 +3670,8 @@ void translate_impl(
     {
         o.w("// Optimized AOT code is always live: there is no override and no reload.\n");
         o.w("[[maybe_unused]] static const uint32_t hot_live = 1;\n");
+        o.w("// The fields are members of the shell, so the pointer to the state is the shell itself.\n");
+        o.w("template <class T> [[maybe_unused]] HOT_HIDDEN constexpr T* state_of(T* s) noexcept { return s; }\n");
     }
     else
     {
@@ -5074,18 +5076,24 @@ void translate_impl(
         const std::string S = cn + "State_g" + std::to_string(opt.gen);
         const std::string shell = cn + "_Shell";
         std::vector<std::string> table(table_size);
+        // Optimized AOT code: the entry is the text of a qualified member call. The members of the
+        // script are "__b_" members of the shell. The native implementation is "Base::name".
+        const bool dsp = opt.aot_optimized;
+        auto member_text = [&](const std::string& id) { return dsp ? shell + "::__b_" + id : S + "::" + id; };
         for (size_t i = 0; i < native_count; ++i)
-            table[i] =
-                !slots[i].impl && pinfo ? pinfo->table[i] : S + "::" + (slots[i].impl ? "" : "__fwd_") + slots[i].id;
+            table[i] = !slots[i].impl && pinfo ? pinfo->table[i]
+                : slots[i].impl                ? member_text(slots[i].id)
+                : dsp                          ? slots[i].nv->from + "::" + slots[i].nv->name
+                                               : S + "::__fwd_" + slots[i].id;
         if (pinfo)
             for (size_t i = native_count; i < pinfo->table.size() && i < table_size; ++i)
                 table[i] = pinfo->table[i];
         for (size_t i = native_count; i < slots.size(); ++i)
-            table[slots[i].index >= 0 ? size_t(slots[i].index) : i] = S + "::" + slots[i].id;
+            table[slots[i].index >= 0 ? size_t(slots[i].index) : i] = member_text(slots[i].id);
         // An "override" of a script virtual uses the slot of the parent: its member fills the entry.
         for (const Method& m : cd.methods)
             if (m.is_override && !m.overrides_virtual)
-                table[fam_index.at(m.vslot_owner + "::" + m.name)] = S + "::" + m.name;
+                table[fam_index.at(m.vslot_owner + "::" + m.name)] = member_text(m.name);
         ClassInfo info;
         info.table = table;
 
@@ -5153,6 +5161,29 @@ void translate_impl(
         base_cx.uses_format = &uses_format;
         base_cx.module_vars = module_vars;
         base_cx.in_module_init = cn == kModuleName;
+        // Optimized AOT code: the fields are members of the shell. Each member has the lowered
+        // initializer as a default member initializer, in the order of the declaration.
+        // The member of the shell for an ordinary script function. The body of a ".cpp" script calls
+        // the function by its own name, so that member has no prefix.
+        auto body_member = [&](const Method& m) { return (opt.aot_optimized && !m.raw ? "__b_" : "") + m.name; };
+        std::vector<std::string> field_inits(cd.fields.size());
+        if (opt.aot_optimized)
+            for (size_t fi = 0; fi < cd.fields.size(); ++fi)
+            {
+                Field& f = cd.fields[fi];
+                RCtx fc = base_cx;
+                fc.allow_this = false;
+                fc.typed_init = !f.type.empty();
+                if (f.raw)
+                    field_inits[fi] = f.raw_init; // a ".cpp" script: the text is already C++
+                else if (f.has_init && f.init)
+                {
+                    hotc::lower_expr(f.init, fc, g_diag);
+                    if (!g_diag.items.empty())
+                        throw TranslateAbort{};
+                    field_inits[fi] = hotc::ast::print(*f.init);
+                }
+            }
         // A shell with script children is not final. The tag hot::ConstructChild builds the base
         // without the state: the shell of the child makes the state of the child (design 4.5).
         const bool parent_shell = has_children.count(cn) > 0;
@@ -5164,12 +5195,19 @@ void translate_impl(
         if (!sc.is_cpp)
             o.w(prelude_block(types.preludes(cn), shell, par ? par->name + "_Shell" : B));
         // The members of the shell map to the class line.
+        // Optimized AOT code: the shell sets the record. Each shell runs the script destructor when
+        // it is the shell of the class of the object, before its own fields die.
+        const std::string own_init = opt.aot_optimized ? "hot::init_object(this, &" + cn + "_record);"
+                                                       : "hot::init_state(this, &" + cn + "_record);";
+        const std::string own_dtor = opt.aot_optimized ? "hot::finish_object(this, &" + cn + "_record);"
+                                                       : "hot::destroy_state(this);";
         if (par)
         {
             mapped("    template <class... A>\n    explicit " + shell
                     + "(hot::Construct, A&&... a)\n        : " + par->name
-                    + "_Shell(hot::ConstructChild{}, \x01std::forward<A>(a)...)\n    {\n        hot::init_state(this, &"
-                    + cn + "_record);\n    }\n",
+                    + "_Shell(hot::ConstructChild{}, \x01std::forward<A>(a)...)\n    {\n        " + own_init
+                    + "\n    }\n"
+                    + (opt.aot_optimized ? "    ~" + shell + "() override { " + own_dtor + " }\n" : std::string()),
                 cd.line, cd.pos);
             if (parent_shell)
                 mapped("    template <class... A>\n    explicit " + shell + "(hot::ConstructChild c, A&&... a) : "
@@ -5179,8 +5217,8 @@ void translate_impl(
         else
         {
             mapped("    template <class... A>\n    explicit " + shell + "(hot::Construct, A&&... a) : " + B
-                    + "(\x01std::forward<A>(a)...)\n    {\n        hot::init_state(this, &" + cn + "_record);\n    }\n    ~"
-                    + shell + "() override { hot::destroy_state(this); }\n",
+                    + "(\x01std::forward<A>(a)...)\n    {\n        " + own_init + "\n    }\n    ~" + shell
+                    + "() override { " + own_dtor + " }\n",
                 cd.line, cd.pos);
             if (parent_shell)
                 mapped("    template <class... A>\n    explicit " + shell + "(hot::ConstructChild, A&&... a) : " + B
@@ -5193,7 +5231,7 @@ void translate_impl(
         std::string direct_defs;
         for (size_t i = 0; i < native_count && (!par || opt.aot_optimized); ++i)
         {
-            if (par && !slots[i].impl)
+            if ((par || opt.aot_optimized) && !slots[i].impl)
                 continue;
             const NativeVirtual& nv = *slots[i].nv;
             std::vector<std::string> ps, sig = {B + "*"}, as;
@@ -5209,11 +5247,10 @@ void translate_impl(
             {
                 mapped("\n    " + nv.ret + " " + nv.name + "(" + str_join(ps, ", ") + ")" + quals + " override;\n",
                     cd.line, cd.pos);
-                const std::string member = (slots[i].impl ? "" : "__fwd_") + slots[i].id;
                 direct_defs += "auto " + shell + "::" + nv.name + "(" + str_join(ps, ", ") + ")" + quals + " -> " + nv.ret
                     + "\n{\n    return hot::call_direct<" + nv.ret + (nv.no_except ? ", true" : "") + ">(" + self_arg
-                    + ", [&]() -> " + nv.ret + " { return state_of(" + (nv.is_const ? self_arg : "this") + ")->" + member
-                    + "(" + str_join(as, ", ") + "); });\n}\n\n";
+                    + ", [&]() -> " + nv.ret + " { return " + self_arg + "->__b_" + slots[i].id + "("
+                    + str_join(as, ", ") + "); });\n}\n\n";
                 continue;
             }
             std::string text = "\n    " + nv.ret + " " + nv.name + "(" + str_join(ps, ", ") + ")"
@@ -5224,34 +5261,104 @@ void translate_impl(
             // The shell override maps to the class line, so a breakpoint on the function has one location.
             mapped(text, cd.line, cd.pos);
         }
-        // A script virtual function (optimized AOT code): the first shell that declares it holds
-        // the virtual function "__v_<m>". A child shell with an override of it overrides it too.
-        // The call of the script goes through the vtable of the shell, not through a slot.
+        // Optimized AOT code: the fields and the bodies are members of the shell. A script virtual
+        // function is a virtual member "__b_<m>". The first shell that declares it holds the
+        // virtual function. A shell with an override of it overrides it too. A call goes through
+        // the vtable of the shell, not through a slot.
         if (opt.aot_optimized)
+        {
+            auto no_comma = [](const std::string& l) { return l.empty() ? l : l.substr(2); };
+            auto param_types = [](const Method& m)
+            {
+                std::string r;
+                for (const Param& p : m.params)
+                    r += ", " + p.type + " " + p.name;
+                return r;
+            };
+            auto param_defaults = [&](const Method& m)
+            {
+                std::string r;
+                for (const Param& p : m.params)
+                    r += ", " + p.type + " " + p.name + default_arg(p, m.params, base_cx);
+                return r;
+            };
+            auto body_types = [](const Method& m)
+            {
+                std::string r;
+                for (const Param& p : m.params)
+                    r += ", " + (p.body_type.empty() ? p.type : p.body_type) + " " + p.name;
+                return r;
+            };
+            // The fields, in the order of the declaration. The shells of the parents come first.
+            for (size_t fi = 0; fi < cd.fields.size(); ++fi)
+            {
+                const Field& f = cd.fields[fi];
+                const std::string& init = field_inits[fi];
+                const bool c_array = f.raw && is_c_array_type(f.type);
+                // A brace initializer is a list initialization. Other initializers use hot::field_init,
+                // which accepts only a direct initialization (not a C-style cast).
+                // An initializer that is a bare braced list cannot be a function argument.
+                const auto field_value = [&](const Field& fld) {
+                    if (fld.raw_brace_init)
+                        return "hot::field_id_t<" + fld.type + ">" + init;
+                    if (init.find_first_not_of(" \t") != std::string::npos && init[init.find_first_not_of(" \t")] == '{')
+                        return "hot::field_id_t<" + fld.type + ">(" + init + ")";
+                    return "hot::field_init<" + fld.type + ">(" + init + ")";
+                };
+                const std::string declarator = c_array ? field_declarator(f.type, f.name) : f.type + " " + f.name;
+                std::string value;
+                if (c_array)
+                    value = f.raw_brace_init ? init : "{}";
+                else if (f.raw && init.find("__self") != std::string::npos)
+                    value = "[this]() -> " + f.type + " { [[maybe_unused]] auto* __self = this; return "
+                        + field_value(f) + "; }()";
+                else
+                    value = field_value(f);
+                const std::string decl = "    " + declarator + " = " + value + ";\n";
+                o.w("#line " + std::to_string(f.line) + " \"" + esc(file_at(f.pos)) + "\"\n");
+                if (f.pos != 0)
+                    o.name_segment(decl, 4 + (c_array ? split_c_array(f.type).first.size() : f.type.size()), f.name,
+                        all_text, f.pos, f.name);
+                o.w(decl);
+                reset();
+            }
+            std::string members;
+            for (const hotc::ast::Ctor& c : cd.ctors)
+            {
+                Method cm;
+                cm.params = c.params;
+                members += "    void __b_ctor(" + no_comma(body_types(cm)) + ");\n";
+            }
+            if (!cd.dtors.empty())
+                members += "    void __b_dtor();\n";
             for (const Method& m : cd.methods)
             {
-                if (m.vslot_owner.empty() || m.overrides_virtual || hook_of(m) == Hook::Convert)
+                if (hook_of(m) == Hook::Convert)
                     continue;
-                const bool declares = m.vslot_owner == cn && !m.is_override;
-                if (!declares && !m.is_override)
-                    continue;
-                const std::string vret = m.ret.empty() ? std::string("void") : m.ret;
-                std::string ps, as;
-                for (const Param& p : m.params)
+                if (m.overrides_virtual)
                 {
-                    ps += (ps.empty() ? "" : ", ") + p.type + " " + p.name;
-                    as += (as.empty() ? "" : ", ") + arg_expr(p.type, p.name);
+                    const Slot* sl = nullptr;
+                    for (const Slot& x : slots)
+                        if (x.impl == &m)
+                            sl = &x;
+                    members += "    " + sl->nv->ret + " __b_" + sl->id + "(" + no_comma(param_types(m)) + ");\n";
+                    continue;
                 }
-                mapped("\n    " + std::string(declares ? "virtual " : "") + vret + " __v_" + m.name + "(" + ps
-                        + ")" + (declares ? "" : " override") + ";\n",
-                    cd.line, cd.pos);
-                direct_defs += "auto " + shell + "::__v_" + m.name + "(" + ps + ") -> " + vret
-                    + "\n{\n    return state_of(this)->" + m.name + "(" + as + ");\n}\n\n";
+                const bool declares = !m.vslot_owner.empty() && m.vslot_owner == cn && !m.is_override;
+                const bool overrides = !m.vslot_owner.empty() && m.is_override;
+                // The body of a ".cpp" script calls the member directly, so the member has the defaults.
+                members += "    " + std::string(declares ? "virtual " : "") + (m.ret.empty() ? std::string("void") : m.ret)
+                    + " " + body_member(m) + "(" + no_comma(m.raw ? param_defaults(m) : param_types(m)) + ")"
+                    + (overrides ? " override" : "") + ";\n";
             }
+            if (!members.empty())
+                mapped("\n" + members, cd.line, cd.pos);
+        }
         o.w("};\n\n");
 
         // ---- state struct and field table
-        o.w("// ---------------------------------------------------------------- state\n");
+        if (!opt.aot_optimized)
+            o.w("// ---------------------------------------------------------------- state\n");
         info.S = S;
         auto param_decl = [](const Method& m)
         {
@@ -5285,6 +5392,8 @@ void translate_impl(
             return r;
         };
         auto fn_ret = [](const Method& m) { return m.ret.empty() ? std::string("void") : m.ret; };
+        if (!opt.aot_optimized)
+        {
         o.w("struct " + S + (pinfo ? " : " + pinfo->S : std::string()) + " {\n");
         // The runtime writes the owner shell into the first member of a root state struct.
         if (!pinfo)
@@ -5357,9 +5466,12 @@ void translate_impl(
             }
         }
         o.w("};\n\n");
+        }
         bool state_of_declared = false;
         for (Field& f : cd.fields)
         {
+            if (opt.aot_optimized)
+                break;
             RCtx fc = base_cx;
             fc.allow_this = false;
             fc.typed_init = !f.type.empty();
@@ -5399,11 +5511,23 @@ void translate_impl(
                 converts[m.name.substr(8)] = &m;
         for (const auto& [fname, m] : converts)
         {
-            o.w("static " + m->ret + " " + P + m->name + "(" + m->params[0].type + " " + m->params[0].name + ");\n");
+            o.w(std::string(opt.aot_optimized ? "[[maybe_unused]] " : "") + "static " + m->ret + " " + P + m->name + "("
+                + m->params[0].type + " " + m->params[0].name + ");\n");
+            if (opt.aot_optimized)
+                continue; // no reload: no hook wrapper
             mapped("static void " + P + m->name + "_hook(void* dst, const void* src)\n{\n    new (dst) " + m->ret + "("
                     + P + m->name + "(*static_cast<const " + m->params[0].type + "*>(src)));\n}\n",
                 m->line, m->pos);
         }
+        if (opt.aot_optimized)
+        {
+            for (const Field& f : cd.fields)
+                info.fields.insert(f.name);
+            if (pinfo)
+                info.fields.insert(pinfo->fields.begin(), pinfo->fields.end());
+        }
+        else
+        {
         o.w("\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n");
         o.w("static_assert(offsetof(" + S + ", __hot_owner) == 0, \"the owner pointer must be the first member\");\n");
         // The field table of a child has the rows of the parent first. "$S$" is the state struct.
@@ -5448,11 +5572,13 @@ void translate_impl(
         o.w("#pragma clang diagnostic pop\n\n");
         o.w("static const hot::StateLayout " + cn + "_layout = {\n    \"" + S + "\", sizeof(" + S + "), alignof(" + S
             + "), " + std::to_string(info.rows.size()) + ", " + cn + "_fields, true,\n};\n\n");
+        }
 
         // ---- generation functions
         o.w("// ------------------------------------------------- generation functions\n");
-        o.w("HOT_HIDDEN " + S + "* state_of(" + shell + "* __self)\n{\n    return static_cast<" + S
-            + "*>(__self->state);\n}\n\n");
+        if (!opt.aot_optimized)
+            o.w("HOT_HIDDEN " + S + "* state_of(" + shell + "* __self)\n{\n    return static_cast<" + S
+                + "*>(__self->state);\n}\n\n");
         if (!direct_defs.empty())
         {
             o.w("// Direct dispatch of optimized AOT code: the shell calls the state member, no slot.\n");
@@ -5491,12 +5617,12 @@ void translate_impl(
                 continue;
             if (opt.aot_optimized)
             {
-                // The shell holds the virtual function (see direct_defs).
+                // The shell holds the virtual function "__b_<m>".
                 std::string as;
                 for (const Param& p : m.params)
                     as += (as.empty() ? "" : ", ") + arg_expr(p.type, p.name);
                 o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.name + "_virt(" + shell + "* __self"
-                    + param_decl(m) + ")\n{\n    return __self->__v_" + m.name + "(" + as + ");\n}\n\n");
+                    + param_decl(m) + ")\n{\n    return __self->" + body_member(m) + "(" + as + ");\n}\n\n");
                 continue;
             }
             o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.name + "_virt(" + shell + "* __self"
@@ -5791,6 +5917,10 @@ void translate_impl(
             std::shared_ptr<hotc::ast::Emitter> em = lower_body(m, cx, true);
             if (!g_diag.items.empty())
                 return;
+            // The member of the shell. A plain member only in a ".cpp" body (see body_member).
+            const std::string bmember = !opt.aot_optimized ? member
+                : m.raw && !m.overrides_virtual && member == m.name ? member
+                                                                    : "__b_" + member;
             // The wrapper of a script function: it only calls the member.
             std::string whead, wbody;
             if (is_fn)
@@ -5800,7 +5930,10 @@ void translate_impl(
                     fwd += std::string(fwd.empty() ? "" : ", ") + "\x01std::forward<"
                         + (p.body_type.empty() ? p.type : p.body_type) + ">(" + p.name + ")";
                 whead = "[[maybe_unused]] HOT_HIDDEN static " + ret + " " + sym + "(" + shell + "* __self" + body_decl(m);
-                wbody = "{\n    return state_of(__self)->" + member + "(" + fwd + ");\n}\n";
+                // A direct call of the member: no virtual dispatch, so "base.f()" reaches this class.
+                wbody = opt.aot_optimized
+                    ? "{\n    return __self->" + shell + "::" + bmember + "(" + fwd + ");\n}\n"
+                    : "{\n    return state_of(__self)->" + member + "(" + fwd + ");\n}\n";
             }
             // The member of the state struct. It has the parameter forms of the slot signature. A
             // parameter with a body form gets the name "__<name>"; the first line copies or moves it.
@@ -5816,8 +5949,8 @@ void translate_impl(
                     body_locals +=
                         "    " + p.body_type + " " + p.name + " = \x01std::forward<" + p.type + ">(__" + p.name + ");\n";
             }
-            const std::string mhead = ret + " " + S + "::" + member + "(" + params;
-            const size_t mhead_from = ret.size() + 1 + S.size() + 2;
+            const std::string mhead = ret + " " + (opt.aot_optimized ? shell : S) + "::" + bmember + "(" + params;
+            const size_t mhead_from = ret.size() + 1 + (opt.aot_optimized ? shell : S).size() + 2;
             // The frame of the traceback (hot/runtime/trace.h). The macro is empty when HOT_TRACEBACK is 0.
             std::string tname = what.substr(0, what.find('('));
             for (size_t c; (c = tname.find("::")) != std::string::npos;)
@@ -5825,7 +5958,7 @@ void translate_impl(
             const std::string stale_ret = "        return" + (ret == "void" ? std::string() : " " + ret + "()") + ";\n";
             bodies.push_back({cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns),
                 [&o, &all_text, &mapped, &reset, &write_stmts, h = body_head(m), em, file, end_line, first_line,
-                    is_fn, sym, whead, wbody, member, mhead, mhead_from, what, shell, body_locals, tname, stale_ret,
+                    is_fn, sym, whead, wbody, bmember, mhead, mhead_from, what, shell, body_locals, tname, stale_ret,
                     aot_optimized = opt.aot_optimized]
                 {
                     const Method& m = *h;
@@ -5838,7 +5971,7 @@ void translate_impl(
                         mapped(wbody, m.line, m.pos);
                     }
                     o.w(line_at(m.line));
-                    o.head_segments(mhead, member, m, all_text, mhead_from);
+                    o.head_segments(mhead, bmember, m, all_text, mhead_from);
                     o.w(mhead + ")\n");
                     // The brace and the check of the generation map to the line of the function. So
                     // the entry row and the prologue end are on this line, and a breakpoint on the
@@ -5858,7 +5991,10 @@ void translate_impl(
                     }
                     // The two local names and the body forms map to the first statement.
                     o.w(line_at(first_line));
-                    o.w("    HOT_NODEBUG_LOCAL auto* __self = static_cast<" + shell + "*>(this->__hot_owner);\n");
+                    if (aot_optimized)
+                        o.w("    HOT_NODEBUG_LOCAL auto* __self = this;\n");
+                    else
+                        o.w("    HOT_NODEBUG_LOCAL auto* __self = static_cast<" + shell + "*>(this->__hot_owner);\n");
                     o.w(line_at(first_line));
                     o.w("    HOT_NODEBUG_LOCAL auto* __st = this;\n");
                     o.w(line_at(first_line));
@@ -5893,7 +6029,8 @@ void translate_impl(
             const std::string file = esc(file_at(m.pos));
             const int end_line = m.end_line > 0 ? m.end_line : m.line;
             const std::string head =
-                "static " + m.ret + " " + P + m.name + "(" + m.params[0].type + " " + m.params[0].name + ")\n";
+                (opt.aot_optimized ? "[[maybe_unused]] static " : "static ") + m.ret + " " + P + m.name + "(" + m.params[0].type + " "
+                + m.params[0].name + ")\n";
             bodies.push_back({cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns),
                 [&o, &reset, &write_stmts, h = body_head(m), em, file, end_line, head]
                 {
@@ -5952,8 +6089,8 @@ void translate_impl(
                     as += (k ? ", " : "") + arg_expr(nv.ptypes[k], "a" + std::to_string(k));
                 }
                 o.w("[[maybe_unused]] HOT_HIDDEN static " + nv.ret + " " + P + "base_" + nv.name + "(" + B + "* a" + ps
-                    + ")\n{\n    return state_of(static_cast<" + shell + "*>(a))->" + table[i] + "(" + as
-                    + ");\n}\n\n");
+                    + ")\n{\n    return " + (opt.aot_optimized ? "" : "state_of(") + "static_cast<" + shell + "*>(a)"
+                    + (opt.aot_optimized ? "->" : ")->") + table[i] + "(" + as + ");\n}\n\n");
             }
 
         // thunks for the script functions
@@ -5994,7 +6131,7 @@ void translate_impl(
                 std::string as;
                 for (const Param& p : m.params)
                     as += (as.empty() ? "" : ", ") + arg_expr(p.type, p.name);
-                const std::string call = m.vslot_owner.empty() ? "state_of(__self)->" + m.name : "__self->__v_" + m.name;
+                const std::string call = "__self->" + body_member(m);
                 mapped("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* __a" + param_decl(m)
                         + ")\n{\n    HOT_NODEBUG_LOCAL auto* __self = static_cast<" + shell
                         + "*>(__a);\n    return hot::call_direct<" + fn_ret(m) + ">(__self, [&]() -> " + fn_ret(m)
@@ -6078,7 +6215,7 @@ void translate_impl(
                 + (!entry.empty() ? "&" + P + "new_default" : std::string("nullptr")) + ", nullptr, "
                 + (dtor_chain ? "&" + P + "dtor_slot" : std::string("nullptr")) + ",\n";
         o.w("hot::ClassRecord " + cn + "_record = {\n    \"" + cd.key_name() + "\", GEN, "
-            + (opt.aot_optimized ? std::string("nullptr, 0") : cn + "_slots, " + slot_id("COUNT")) + ", &" + cn + "_layout, " + (par ? "&" + par->name + "_record" : std::string("nullptr")) + ",\n    \"" + BL
+            + (opt.aot_optimized ? std::string("nullptr, 0") : cn + "_slots, " + slot_id("COUNT")) + ", " + (opt.aot_optimized ? std::string("nullptr") : "&" + cn + "_layout") + ", " + (par ? "&" + par->name + "_record" : std::string("nullptr")) + ",\n    \"" + BL
             + "\", hot::shell_layout_hash(\"" + BL + "\", sizeof(" + shell + "), alignof(" + shell + "), "
             + std::to_string(native_count) + "),\n" + (on_reload_init.empty() ? "" : "   " + on_reload_init) + ctor_init
             + "};\n\n");

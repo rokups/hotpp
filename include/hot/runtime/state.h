@@ -149,6 +149,42 @@ HOT_NODEBUG inline void destroy_state(ShellBase* self)
     self->state = nullptr;
 }
 
+// Optimized AOT code keeps the fields in the shell. The type "T" of a field names a type for the
+// brace initializer of the member, also when the type is a pointer type.
+template <class T> using field_id_t = T;
+
+// The value of a field initializer in optimized AOT code. The shell has the field as a member, so
+// the initializer is a prvalue. The check refuses a conversion that only a C-style cast accepts.
+template <class T, class... A> HOT_HIDDEN constexpr T field_init(A&&... a)
+{
+    static_assert(std::is_constructible_v<T, A&&...>, "the field initializer does not fit the type of the field");
+    return T(std::forward<A>(a)...);
+}
+
+// Optimized AOT code: sets the record of a new object. The fields are members of the shell, so
+// the C++ constructors have made them already.
+HOT_NODEBUG inline void init_object(ShellBase* self, ClassRecord* cls) noexcept
+{
+    self->cls = cls;
+}
+
+// Optimized AOT code: runs the script destructor of an object. Each shell calls it in its own
+// destructor, before the fields of that shell die. Only the shell of the class of the object
+// (the record "own") runs the script destructor. A shell of a parent class does nothing.
+HOT_NODEBUG inline void finish_object(ShellBase* self, const ClassRecord* own) noexcept
+{
+    if (self->cls != own || !own->dtor)
+        return;
+    try
+    {
+        own->dtor(self);
+    }
+    catch (...)
+    {
+        std::fprintf(stderr, "[script] ERROR: the destructor of %s threw\n", own->name);
+    }
+}
+
 // True when T is a raw code pointer: a function pointer, a member function pointer, or an
 // array of them. A code pointer can point into a generation module (design 4.9).
 template <class T>
@@ -283,8 +319,11 @@ template <class T> HOT_HIDDEN constexpr void (*field_destroyer())(void*)
 }
 
 // Reflection helpers.
+// An optimized AOT class has no layout: the result is null.
 inline const FieldInfo* find_field(const ClassRecord* cls, const char* name)
 {
+    if (!cls->layout)
+        return nullptr;
     for (uint32_t i = 0; i < cls->layout->field_count; ++i)
         if (std::strcmp(cls->layout->fields[i].name, name) == 0)
             return &cls->layout->fields[i];
@@ -312,7 +351,7 @@ inline bool type_key_matches(const char* key, const char* name)
 template <class T> inline T* field_ptr(ShellBase* s, const char* name)
 {
     const FieldInfo* f = find_field(s->cls, name);
-    if (!f || !type_key_matches(f->type_key, type_key<T>()))
+    if (!f || !s->state || !type_key_matches(f->type_key, type_key<T>()))
         return nullptr;
     return reinterpret_cast<T*>(static_cast<char*>(s->state) + f->offset);
 }
