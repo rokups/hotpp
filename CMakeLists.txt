@@ -18,6 +18,16 @@ option(HOT_INSTALL "Generate the install rules of the Hot++ SDK" ${HOT_TOP_LEVEL
 option(HOT_BUILD_TESTS "Build the Hot++ tests" ${HOT_TOP_LEVEL})
 option(HOT_BUILD_SAMPLES "Build the Hot++ samples" ${HOT_TOP_LEVEL})
 option(HOT_SAMPLES_STANDALONE_TEST "Configure, build and test samples/aot as a separate project" OFF)
+# The translator (hotc_lib, hotc, hot-ls) and the run-time backends need libclang. A cross build
+# has no libclang for the target, so the translator is off by default. Use HOT_HOST_HOTC to give
+# the build a hotc that runs on the build host.
+if(CMAKE_CROSSCOMPILING)
+    set(HOT_BUILD_TRANSLATOR_DEFAULT OFF)
+else()
+    set(HOT_BUILD_TRANSLATOR_DEFAULT ON)
+endif()
+option(HOT_BUILD_TRANSLATOR "Build the translator, the tools and the run-time backends (they need libclang)" ${HOT_BUILD_TRANSLATOR_DEFAULT})
+set(HOT_HOST_HOTC "" CACHE FILEPATH "hotc that runs on the build host (cross builds)")
 
 # Put the build output in bin/ and lib/. Ninja Multi-Config adds /<CONFIG> to each path.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -81,7 +91,11 @@ endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-add_compile_options(-Wall -Wextra)
+if(MSVC)
+    add_compile_options(/W4)
+else()
+    add_compile_options(-Wall -Wextra)
+endif()
 if(MSVC)
     # unverified: not built on MSVC. /JMC (Just My Code) helps the debugger skip the library code.
     add_compile_options($<$<CONFIG:Debug>:/JMC>)
@@ -139,8 +153,13 @@ find_package(Threads REQUIRED)
 
 # The Clang resource directory. The translator, the backends and the tests use it.
 if(NOT MSVC)
-    execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
-                    OUTPUT_VARIABLE CLANG_RESOURCE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+    # Only Clang knows the option. Another compiler (GCC, MinGW) gives an empty value.
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir
+                        OUTPUT_VARIABLE CLANG_RESOURCE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+    else()
+        set(CLANG_RESOURCE_DIR "")
+    endif()
 else()
     # unverified: not built on MSVC. MSVC has no -print-resource-dir. Set the cache variable
     # HOT_CLANG_RESOURCE_DIR to the resource directory of a Clang install.
@@ -152,6 +171,11 @@ endif()
 # HOT_JIT_ENABLED and HOT_CLANG_FILES_ENABLED hold the resolved choice.
 set(HOT_CLANG_FILES_ENABLED ${HOT_ENABLE_CLANG_FILES})
 string(TOUPPER "${HOT_ENABLE_JIT}" HOT_JIT_MODE)
+if(NOT HOT_BUILD_TRANSLATOR)
+    # Both backends need the translator (hotc_lib).
+    set(HOT_CLANG_FILES_ENABLED OFF)
+    set(HOT_JIT_MODE OFF)
+endif()
 if(NOT HOT_JIT_MODE MATCHES "^(AUTO|ON|OFF)$")
     message(FATAL_ERROR "HOT_ENABLE_JIT must be AUTO, ON or OFF. It is: ${HOT_ENABLE_JIT}")
 endif()
@@ -173,13 +197,21 @@ if(NOT HOT_JIT_MODE STREQUAL "OFF")
     else()
         message(STATUS "JIT backend: off (HOT_ENABLE_JIT=AUTO, no LLVM and Clang CMake packages)")
     endif()
+elseif(NOT HOT_BUILD_TRANSLATOR)
+    message(STATUS "JIT backend: off (HOT_BUILD_TRANSLATOR=OFF)")
 else()
     message(STATUS "JIT backend: off (HOT_ENABLE_JIT=OFF)")
 endif()
-message(STATUS "Clang files backend: ${HOT_CLANG_FILES_ENABLED}")
+if(HOT_BUILD_TRANSLATOR)
+    message(STATUS "Clang files backend: ${HOT_CLANG_FILES_ENABLED}")
+else()
+    message(STATUS "Clang files backend: off (HOT_BUILD_TRANSLATOR=OFF)")
+endif()
 if(NOT HOT_CLANG_FILES_ENABLED AND NOT HOT_JIT_ENABLED)
     message(STATUS "No run-time backend: hot::backend is not built. Only AOT and PRECOMPILED hosts work.")
-    if(HOT_BUILD_TESTS)
+    if(HOT_BUILD_TESTS AND NOT HOT_BUILD_TRANSLATOR)
+        message(STATUS "The tests that need a run-time backend are not built (HOT_BUILD_TRANSLATOR=OFF).")
+    elseif(HOT_BUILD_TESTS)
         message(FATAL_ERROR "The tests need a run-time backend. Set HOT_ENABLE_CLANG_FILES=ON or "
                 "HOT_ENABLE_JIT=ON, or set HOT_BUILD_TESTS=OFF.")
     endif()
@@ -253,11 +285,13 @@ add_subdirectory(src)
 if(HOT_BUILD_TESTS)
     add_subdirectory(tests)
     # The benchmark uses the test engine and the test scripts.
-    add_subdirectory(tools/bench)
+    if(HOT_BUILD_TRANSLATOR)
+        add_subdirectory(tools/bench)
+    endif()
 
     # The test of the installed SDK: install, then build samples/aot against the prefix.
     # It needs the whole build, because "cmake --install" installs all targets.
-    if(HOT_INSTALL)
+    if(HOT_INSTALL AND HOT_BUILD_TRANSLATOR)
         add_test(NAME sdk_install_sample
             COMMAND ${CMAKE_COMMAND}
                 -DBUILD_DIR=${CMAKE_BINARY_DIR} -DSAMPLE_DIR=${PROJECT_SOURCE_DIR}/samples/aot
@@ -287,10 +321,13 @@ if(HOT_INSTALL)
     set_target_properties(hot_runtime PROPERTIES EXPORT_NAME runtime)
     set_target_properties(hot_runtime_core PROPERTIES EXPORT_NAME runtime_core)
     set_target_properties(hot_aot PROPERTIES EXPORT_NAME aot)
-    set_target_properties(hotc_lib PROPERTIES EXPORT_NAME hotc_lib)
-    set_target_properties(hotc PROPERTIES EXPORT_NAME hotc)
-    set_target_properties(hot_ls PROPERTIES EXPORT_NAME hot_ls)
-    set(HOT_INSTALL_TARGETS hot_runtime hot_runtime_core hot_aot hotc_lib hotc hot_ls)
+    set(HOT_INSTALL_TARGETS hot_runtime hot_runtime_core hot_aot)
+    if(HOT_BUILD_TRANSLATOR)
+        set_target_properties(hotc_lib PROPERTIES EXPORT_NAME hotc_lib)
+        set_target_properties(hotc PROPERTIES EXPORT_NAME hotc)
+        set_target_properties(hot_ls PROPERTIES EXPORT_NAME hot_ls)
+        list(APPEND HOT_INSTALL_TARGETS hotc_lib hotc hot_ls)
+    endif()
     if(TARGET hot_backend)
         set_target_properties(hot_backend PROPERTIES EXPORT_NAME backend)
         list(APPEND HOT_INSTALL_TARGETS hot_backend)

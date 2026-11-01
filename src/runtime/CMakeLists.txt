@@ -69,8 +69,11 @@ target_link_libraries(hot_aot PUBLIC hot_runtime_core Threads::Threads)
 # ClangFilesBackend: hotc_lib in memory, then an external compiler.
 # The library is always built, because hotc and hot-ls use it. HOT_ENABLE_CLANG_FILES decides
 # if hot_backend links it.
-add_library(hot_clang_backend STATIC clang_files_backend.cpp)
-target_link_libraries(hot_clang_backend PUBLIC hot_runtime hotc_lib)
+# Only a build with the translator has it (HOT_BUILD_TRANSLATOR).
+if(HOT_BUILD_TRANSLATOR)
+    add_library(hot_clang_backend STATIC clang_files_backend.cpp)
+    target_link_libraries(hot_clang_backend PUBLIC hot_runtime hotc_lib)
+endif()
 
 # JitBackend: hotc_lib in memory, the Clang library compiles in memory, LLVM ORC loads.
 # LLVM and Clang come from the system. CPM does not fetch them. The root file finds them.

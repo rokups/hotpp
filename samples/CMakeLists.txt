@@ -3,14 +3,22 @@
 # For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
 # The samples of Hot++ for consumer projects. Each sample is a small project that uses Hot++ as a library.
-add_subdirectory(aot)
-add_subdirectory(aot-reload)
-add_subdirectory(runtime-compile)
-add_subdirectory(precompiled-library)
-add_subdirectory(hot-reload)
-add_subdirectory(clang-files-backend)
-add_subdirectory(jit-backend)
-add_subdirectory(imgui)
+# Each sample needs hot::hotc. The reload samples also need a run-time backend. A cross build
+# without the translator (HOT_BUILD_TRANSLATOR=OFF) has them only with HOT_HOST_HOTC.
+if(TARGET hot::hotc)
+    add_subdirectory(aot)
+    add_subdirectory(precompiled-library)
+else()
+    message(STATUS "samples: skipped (no target hot::hotc, set HOT_HOST_HOTC)")
+endif()
+if(TARGET hot::hotc AND TARGET hot_backend)
+    add_subdirectory(aot-reload)
+    add_subdirectory(runtime-compile)
+    add_subdirectory(hot-reload)
+    add_subdirectory(clang-files-backend)
+    add_subdirectory(jit-backend)
+    add_subdirectory(imgui)
+endif()
 
 # Option: build the sample aot as a separate project, in a new build directory. The test checks
 # that the sample works without the build settings of the Hot++ source tree.
