@@ -1,0 +1,17 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// The script of the SDK smoke test. The host expects Compute(20) == 46 (20 * 2 + 1 + 5, where
+// 5 is the length of the name "smoke").
+using "Calc.h";
+using <cstddef>;
+using <string>;
+
+class Doubler : Calc {
+    Doubler() {
+        Name = std.string("smoke");
+    }
+
+    override std.size_t Compute(std.size_t x) { return x * 2 + 1 + Name.size(); }
+}

@@ -55,6 +55,10 @@ All tests are GoogleTest cases. CMake registers them with `hot_gtest` (a wrapper
 - The other translator tests are in `tests/unit/translator/`. Each folder is one test program: `parser`, `lowering`, `emit`, `types`, `diagnostics`, `session` and `translate`. The golden-output tests are in `tests/golden/`. The expected files are in `tests/golden/expected/`. Set `HOT_UPDATE_GOLDEN` to write them again.
 - `PrecompiledTests` load the libraries that `hot_add_scripts` made with `hotc`, through `module_from_library`. They run the same F1 scenario. They run with each backend. One test runs `hotc` on `bad.hot` and checks the exit code and the error line.
 
+## CI
+
+`.github/workflows/ci.yml` runs on each push and pull request to `master`. The job `linux` builds with the preset `linux-clang-files` (Clang 23 from apt.llvm.org) and runs all tests. The job `windows` cross-builds with the preset `mingw-llvm` in an Arch Linux container and runs a subset of the tests under wine. Each job then makes a portable SDK (`HOT_PORTABLE=ON`, no tests). The smoke jobs unpack each SDK on a clean runner and run `tests/sdk_smoke/run.cmake`. The Windows SDK runs natively on `windows-latest` with the GCC of MSYS2 UCRT64. A push to `master` moves the tag `latest` and replaces the assets of the release `latest`. See [Download the SDK](download.html).
+
 ## Translator notes
 
 - The slot file (`--slots`) keeps the slot order of the script methods stable between generations. A generation can add a method, but it cannot remove one.

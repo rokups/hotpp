@@ -80,6 +80,10 @@ hot_add_scripts(TARGET game_scripts SCRIPTS game.hot HOST game)
 
 Other systems ignore `HOST`.
 
+## The SDK on Windows
+
+The install of a `mingw-llvm` build has `libclang.dll` in `bin/` and the Clang headers in `lib/clang/<major>/include`. `HotConfig.cmake` gives these headers to `hotc`. A path of the build host that does not exist on your machine is not used. The sysroot then is the parent folder of the folder of `g++`, for example `C:/msys64/ucrt64`. Set `HOT_SCRIPT_SYSROOT` to use another folder. See [Download the SDK](download.html).
+
 ## Visual Studio
 
 The preset `vs-files` uses the generator `Visual Studio 17 2022` for x64. It works only on a Windows host. It sets `HOT_DOWNLOAD_LLVM=ON`.

@@ -105,5 +105,13 @@ if(HOT_LIBCLANG_DLL)
     add_dependencies(hotc_lib hot_libclang_dll)
     if(HOT_INSTALL)
         install(FILES "${HOT_LIBCLANG_DLL}" DESTINATION ${CMAKE_INSTALL_BINDIR})
+        # The compiler headers of the release (stddef.h and others). The parse needs them. The
+        # SDK has them in lib/clang/<major>/include. libclang.dll in bin/ finds this folder itself,
+        # and HotConfig.cmake gives it to hotc. Only the headers go in: the libraries are not needed.
+        if(HOT_CLANG_RESOURCE_DIR)
+            get_filename_component(_hot_res_name "${HOT_CLANG_RESOURCE_DIR}" NAME)
+            install(DIRECTORY "${HOT_CLANG_RESOURCE_DIR}/include"
+                DESTINATION ${CMAKE_INSTALL_LIBDIR}/clang/${_hot_res_name})
+        endif()
     endif()
 endif()

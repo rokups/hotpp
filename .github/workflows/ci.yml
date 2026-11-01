@@ -1,0 +1,367 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+# The CI of Hot++. It builds and tests on Linux, it makes the SDKs for Linux and Windows, and it
+# tests each SDK on a clean runner. A push to master then puts the SDKs in the release "latest".
+#
+# Jobs:
+#   linux              Build and test on Linux. Make hotpp-sdk-linux-x86_64.tar.gz.
+#   windows            Cross build for Windows on Linux. Test a subset under wine.
+#                      Make hotpp-sdk-windows-x86_64.zip.
+#   sdk-smoke-linux    Unpack the Linux SDK on a clean ubuntu runner. Run tests/sdk_smoke/run.cmake.
+#   sdk-smoke-windows  Unpack the Windows SDK on a clean Windows runner. Run the same script natively.
+#   release            Push to master only. Move the tag "latest" and replace the release assets.
+#
+# Each SDK comes from a second build with HOT_PORTABLE=ON and HOT_BUILD_TESTS=OFF. Such a build
+# has no build paths in the binaries (CMakeLists.txt). The tests need the build paths, so the
+# test build is a different build.
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # The LLVM major version of the Linux build. apt.llvm.org gives the packages. The Clang package
+  # and libclang must have the same major version. The major version is in three places. Change
+  # them together: this line, HOT_LLVM_VERSION in cmake/HotLlvmVersion.cmake (the LLVM release
+  # of the Windows build) and the package names in doc/download.md.
+  LLVM_VERSION: "23"
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # A newer run for the same ref cancels this job. The release job has its own group.
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-linux
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM, Clang and Ninja
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
+          echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-${LLVM_VERSION} main" | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt-get update
+          sudo apt-get install -y clang-${LLVM_VERSION} clangd-${LLVM_VERSION} libclang-${LLVM_VERSION}-dev llvm-${LLVM_VERSION}-dev ninja-build
+          # The presets use "clang" and "clang++". This folder has them for the pinned version.
+          echo "/usr/lib/llvm-${LLVM_VERSION}/bin" >> "$GITHUB_PATH"
+          echo "CPM_SOURCE_CACHE=$HOME/.cache/cpm" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cpm
+          key: cpm-linux-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: cpm-linux-
+
+      - name: Configure
+        run: cmake --preset linux-clang-files
+
+      - name: Build
+        run: cmake --build --preset linux-clang-files-rel
+
+      # All tests run. No test is excluded: the Linux suite is fast in parallel. The tests that
+      # need a tool get it here: node (VscodeGrammar and the other editor tests) comes with the
+      # runner, and clangd comes from apt. The packaging of the VS Code extension needs vsce. The
+      # runner has no vsce, so the build skips that part.
+      - name: Test
+        run: ctest --preset linux-clang-files-rel -j "$(nproc)"
+
+      - name: Build the SDK (portable)
+        run: |
+          cmake --preset linux-clang-files -B cmake-build/sdk -DCMAKE_CONFIGURATION_TYPES=Release \
+            -DHOT_PORTABLE=ON -DHOT_BUILD_TESTS=OFF -DHOT_BUILD_SAMPLES=OFF
+          cmake --build cmake-build/sdk --config Release
+
+      - name: Package the SDK
+        run: |
+          mkdir -p dist stage
+          cmake --install cmake-build/sdk --config Release --prefix stage/hotpp-sdk-linux-x86_64
+          ldd stage/hotpp-sdk-linux-x86_64/bin/hotc | grep -i clang
+          tar -C stage -czf dist/hotpp-sdk-linux-x86_64.tar.gz hotpp-sdk-linux-x86_64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hotpp-sdk-linux-x86_64
+          path: dist/hotpp-sdk-linux-x86_64.tar.gz
+          if-no-files-found: error
+
+  # The Windows SDK is a cross build on Linux with the preset mingw-llvm. This is the proven path
+  # of the repository (doc/windows.md). The MSVC preset vs-files is not tested, so a native MSVC
+  # build is a risk. The job runs in an Arch Linux container, not on the Ubuntu packages. Ubuntu
+  # keeps the MinGW libstdc++ headers in /usr/lib/gcc/x86_64-w64-mingw32/<version>/include/c++.
+  # hotc needs them in <sysroot>/include/c++/<version>. Arch has this layout, and Arch is the
+  # system where the maintainer tests the preset. The SDK uses the GCC, UCRT and posix threads
+  # of Arch MinGW. A consumer must use a compatible MinGW (MSYS2 UCRT64, see sdk-smoke-windows).
+  windows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: archlinux:latest
+    outputs:
+      mingw-gcc: ${{ steps.gcc.outputs.version }}
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-windows
+      cancel-in-progress: true
+    env:
+      WINEDEBUG: -all
+      # No Mono and no Gecko: the console programs do not need them, and wineboot does not wait for them.
+      WINEDLLOVERRIDES: "mscoree,mshtml="
+      CPM_SOURCE_CACHE: /github/home/.cache/cpm
+    steps:
+      - name: Install MinGW-w64, wine and the build tools
+        run: |
+          pacman -Sy --noconfirm archlinux-keyring
+          pacman -Syu --noconfirm --needed base-devel git cmake ninja mingw-w64-gcc wine zstd
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      # The release notes name this compiler. A Windows consumer needs a GCC of this version or newer.
+      - name: Record the MinGW compiler
+        id: gcc
+        run: echo "version=$(x86_64-w64-mingw32-g++ --version | head -1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+
+      - name: Read the LLVM release of cmake/HotLlvmVersion.cmake
+        id: llvm
+        run: |
+          version=$(sed -n 's/^set(HOT_LLVM_VERSION \(.*\))$/\1/p' cmake/HotLlvmVersion.cmake)
+          sha=$(grep -oE '[0-9a-f]{64}' cmake/HotLlvmVersion.cmake | head -1)
+          name="clang+llvm-${version}-x86_64-pc-windows-msvc"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "url=https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/${name}.tar.zst" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: llvm-archive
+          key: llvm-windows-${{ steps.llvm.outputs.sha }}
+
+      - uses: actions/cache@v4
+        with:
+          path: /github/home/.cache/cpm
+          key: cpm-mingw-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: cpm-mingw-
+
+      # The preset mingw-llvm reads the release from cmake-build (HOT_LLVM_RELEASES_DIR).
+      - name: Download and unpack the LLVM release for Windows
+        run: |
+          archive="llvm-archive/${{ steps.llvm.outputs.name }}.tar.zst"
+          if [ ! -f "$archive" ]; then
+            mkdir -p llvm-archive
+            curl -fsSL -o "$archive" "${{ steps.llvm.outputs.url }}"
+          fi
+          echo "${{ steps.llvm.outputs.sha }}  $archive" | sha256sum -c -
+          mkdir -p cmake-build
+          tar --zstd -xf "$archive" -C cmake-build
+
+      - name: Prepare wine
+        run: wineboot --init
+
+      - name: Configure
+        run: cmake --preset mingw-llvm
+
+      - name: Build
+        run: cmake --build --preset mingw-llvm-dbg
+
+      # A subset of the tests. The full suite takes about 12 minutes under wine. The subset covers
+      # hotc.exe (the golden tests of the translator), the AOT mode that the SDK gives (Aot, aot)
+      # and the runtime and the loader (Runtime, Loader). It runs in about two minutes. The two
+      # language server completion tests that fail under wine are not in the subset
+      # (doc/windows.md, "Limits").
+      - name: Test (subset under wine)
+        run: ctest --preset mingw-llvm-dbg -R 'Golden|golden|Aot|aot|Runtime|Loader' -E 'LanguageServer' -j 4
+
+      # The test build is large. Remove it before the SDK build, so the disk does not become full.
+      - name: Remove the test build
+        run: rm -rf cmake-build/mingw-llvm
+
+      - name: Build the SDK (portable)
+        run: |
+          cmake --preset mingw-llvm -B cmake-build/sdk -DCMAKE_CONFIGURATION_TYPES=Release \
+            -DHOT_PORTABLE=ON -DHOT_BUILD_TESTS=OFF -DHOT_BUILD_SAMPLES=OFF
+          cmake --build cmake-build/sdk --config Release
+
+      # hotc.exe and hot-ls.exe link the MinGW runtime statically. They need only libclang.dll.
+      # The install puts libclang.dll in bin/ and the Clang headers in lib/clang/<major>/include.
+      - name: Package the SDK
+        run: |
+          mkdir -p dist stage
+          cmake --install cmake-build/sdk --config Release --prefix stage/hotpp-sdk-windows-x86_64
+          test -f stage/hotpp-sdk-windows-x86_64/bin/libclang.dll
+          ls -d stage/hotpp-sdk-windows-x86_64/lib/clang/*/include
+          cd stage && cmake -E tar cf ../dist/hotpp-sdk-windows-x86_64.zip --format=zip hotpp-sdk-windows-x86_64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hotpp-sdk-windows-x86_64
+          path: dist/hotpp-sdk-windows-x86_64.zip
+          if-no-files-found: error
+
+  # The smoke tests run without the source tree and without the build. The sparse checkout
+  # gives only tests/sdk_smoke.
+  sdk-smoke-linux:
+    needs: linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-sdk-smoke-linux
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tests/sdk_smoke
+          sparse-checkout-cone-mode: false
+
+      # The Linux SDK needs the libclang of its build and a C++ compiler.
+      - name: Install Clang, libclang and Ninja
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
+          echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-${LLVM_VERSION} main" | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt-get update
+          sudo apt-get install -y clang-${LLVM_VERSION} libclang-${LLVM_VERSION}-dev llvm-${LLVM_VERSION}-dev ninja-build
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: hotpp-sdk-linux-x86_64
+          path: ${{ runner.temp }}/artifact
+
+      - name: Unpack the SDK into an empty folder
+        run: |
+          mkdir "$RUNNER_TEMP/sdk"
+          tar -C "$RUNNER_TEMP/sdk" -xzf "$RUNNER_TEMP/artifact/hotpp-sdk-linux-x86_64.tar.gz"
+
+      - name: Run the SDK smoke test
+        run: |
+          cmake -DSDK="$RUNNER_TEMP/sdk" -DWORK_DIR="$RUNNER_TEMP/smoke" \
+            -DCXX_COMPILER=clang++-${LLVM_VERSION} -P tests/sdk_smoke/run.cmake
+
+  # The Windows SDK on a real Windows runner. This proves that hotc.exe runs on Windows (not only
+  # under wine). The compiler is the GCC of MSYS2 UCRT64. It agrees with the SDK build (Arch
+  # MinGW-w64: UCRT, posix threads, SEH). The static libraries of the SDK need a GCC of the same
+  # or a newer version. The SDK config uses <msys2>/ucrt64 as the sysroot of the parse. It takes
+  # this folder from the path of g++.
+  sdk-smoke-windows:
+    needs: windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-sdk-smoke-windows
+      cancel-in-progress: true
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tests/sdk_smoke
+          sparse-checkout-cone-mode: false
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: hotpp-sdk-windows-x86_64
+          path: ${{ runner.temp }}/artifact
+
+      - name: Unpack the SDK into an empty folder
+        run: |
+          temp=$(cygpath -m "$RUNNER_TEMP")
+          mkdir "$temp/sdk"
+          cd "$temp/sdk" && cmake -E tar xf "$temp/artifact/hotpp-sdk-windows-x86_64.zip"
+
+      - name: Run the SDK smoke test
+        run: |
+          temp=$(cygpath -m "$RUNNER_TEMP")
+          g++ --version | head -1
+          cmake -DSDK="$temp/sdk" -DWORK_DIR="$temp/smoke" -DCXX_COMPILER=g++ -P tests/sdk_smoke/run.cmake
+
+  # The release "latest" follows master. Only a push to master updates it. The group has no
+  # cancel, so a newer run does not stop a release in progress.
+  release:
+    needs: [linux, windows, sdk-smoke-linux, sdk-smoke-windows]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: release-latest
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # A newer push can move master while this run is in progress. Then this run does not
+      # release, so the release never goes back to an older commit.
+      - name: Check that this commit is the head of master
+        id: head
+        run: |
+          remote=$(git ls-remote origin refs/heads/master | cut -f1)
+          if [ "$remote" = "$GITHUB_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "master is at $remote, this run is for $GITHUB_SHA. No release."
+          fi
+
+      - name: Move the tag latest to this commit
+        if: steps.head.outputs.current == 'true'
+        run: |
+          git tag -f latest "$GITHUB_SHA"
+          git push -f origin refs/tags/latest
+
+      # Each new file goes up under a temporary name first. Then the step deletes the old asset
+      # and renames the new one to the final name. Thus a download finds the old file or the new
+      # file, and the time with no file is short. The step also deletes the assets with other names.
+      - name: Update the release latest
+        if: steps.head.outputs.current == 'true'
+        env:
+          MINGW_GCC: ${{ needs.windows.outputs.mingw-gcc }}
+        run: |
+          notes=$(printf 'The latest build of master.\n\nCommit: %s\n\nThe compiler of the Windows SDK: %s\n' "$GITHUB_SHA" "$MINGW_GCC")
+          if gh release view latest > /dev/null 2>&1; then
+            gh release edit latest --title "Latest build" --notes "$notes" --prerelease
+          else
+            gh release create latest --title "Latest build" --notes "$notes" --prerelease --verify-tag
+          fi
+          finals="hotpp-sdk-linux-x86_64.tar.gz hotpp-sdk-windows-x86_64.zip"
+          mkdir -p upload
+          for final in $finals; do
+            temp="new-${GITHUB_RUN_ID}-${final}"
+            cp "dist/$final" "upload/$temp"
+            gh release upload latest "upload/$temp" --clobber
+            old_id=$(gh api "repos/{owner}/{repo}/releases/tags/latest" --jq ".assets[] | select(.name == \"$final\") | .id")
+            if [ -n "$old_id" ]; then
+              gh api -X DELETE "repos/{owner}/{repo}/releases/assets/$old_id"
+            fi
+            new_id=$(gh api "repos/{owner}/{repo}/releases/tags/latest" --jq ".assets[] | select(.name == \"$temp\") | .id")
+            gh api -X PATCH "repos/{owner}/{repo}/releases/assets/$new_id" -f name="$final" > /dev/null
+          done
+          for asset in $(gh release view latest --json assets --jq '.assets[].name'); do
+            case " $finals " in
+              *" $asset "*) ;;
+              *) gh release delete-asset latest "$asset" --yes ;;
+            esac
+          done

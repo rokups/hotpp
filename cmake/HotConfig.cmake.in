@@ -23,14 +23,40 @@ endif()
 # The compiler, the target triple and the sysroot of the precompiled script modules
 # (hot_add_scripts). They default to the values of the SDK build. A consumer can set them first.
 # The compiler has a value only for a cross build of the SDK. Empty means CMAKE_CXX_COMPILER.
+# A cross build of the SDK (for example a Windows SDK from Linux) keeps the paths of its build host.
+# A path that does not exist on this host is not used.
 if(NOT DEFINED HOT_SCRIPT_COMPILER)
-    set(HOT_SCRIPT_COMPILER "@HOT_SDK_SCRIPT_COMPILER@" CACHE STRING "The compiler of the script modules")
+    set(_hot_sdk_value "@HOT_SDK_SCRIPT_COMPILER@")
+    if(_hot_sdk_value AND NOT EXISTS "${_hot_sdk_value}")
+        set(_hot_sdk_value "")
+    endif()
+    set(HOT_SCRIPT_COMPILER "${_hot_sdk_value}" CACHE STRING "The compiler of the script modules")
 endif()
 if(NOT DEFINED HOT_HOTC_TARGET)
     set(HOT_HOTC_TARGET "@HOT_HOTC_TARGET@" CACHE STRING "The target triple of the script modules (--target)")
 endif()
 if(NOT DEFINED HOT_SCRIPT_SYSROOT)
-    set(HOT_SCRIPT_SYSROOT "@HOT_SCRIPT_SYSROOT@" CACHE PATH "The sysroot of the script modules (--sysroot)")
+    set(_hot_sdk_value "@HOT_SCRIPT_SYSROOT@")
+    if(_hot_sdk_value AND NOT IS_DIRECTORY "${_hot_sdk_value}")
+        # A native MinGW (for example MSYS2 MINGW64): the sysroot is the parent folder of the folder
+        # of g++, when it has the C++ headers (include/c++). Else no sysroot.
+        set(_hot_sdk_value "")
+        get_filename_component(_hot_cxx_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        get_filename_component(_hot_cxx_root "${_hot_cxx_dir}/.." ABSOLUTE)
+        if(CMAKE_CXX_COMPILER AND IS_DIRECTORY "${_hot_cxx_root}/include/c++")
+            set(_hot_sdk_value "${_hot_cxx_root}")
+        endif()
+    endif()
+    set(HOT_SCRIPT_SYSROOT "${_hot_sdk_value}" CACHE PATH "The sysroot of the script modules (--sysroot)")
+endif()
+# The compiler headers of the libclang in the SDK (a Windows SDK has libclang.dll and
+# lib/clang/<major>/include). hotc parses with them. A value of the consumer wins.
+if(NOT DEFINED CLANG_RESOURCE_DIR)
+    file(GLOB _hot_sdk_res LIST_DIRECTORIES true "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/clang/[0-9]*")
+    list(LENGTH _hot_sdk_res _hot_sdk_res_count)
+    if(_hot_sdk_res_count EQUAL 1)
+        set(CLANG_RESOURCE_DIR "${_hot_sdk_res}")
+    endif()
 endif()
 # The default C++ standard of the host, when the consumer sets none (hot_effective_cxx_standard).
 set_property(GLOBAL PROPERTY HOT_DEFAULT_CXX_STANDARD @HOT_SDK_CXX_STANDARD@)

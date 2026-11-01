@@ -90,6 +90,8 @@ hot_add_host(TARGET myapp MODE HOT_RELOAD SCRIPTS wolf.hot
 
 `MODE` is `AOT`, `AOT_RELOAD`, `HOT_RELOAD` or `PRECOMPILED`. See [CMake](https://rokups.github.io/hotpp/cmake.html). To build Hot++ and run its tests, use `cmake --preset linux-clang-files`, then `cmake --build --preset linux-clang-files-dbg` and `ctest --preset linux-clang-files-dbg`.
 
+The prebuilt SDKs for Linux and Windows are in the release [`latest`](https://github.com/rokups/hotpp/releases/tag/latest). Use them with `find_package(Hot)` and `CMAKE_PREFIX_PATH`. See [Download the SDK](https://rokups.github.io/hotpp/download.html).
+
 ## Documentation
 
 The documentation is at <https://rokups.github.io/hotpp/>: [Introduction](https://rokups.github.io/hotpp/intro.html), [Getting started](https://rokups.github.io/hotpp/getting-started.html), [Hot reload](https://rokups.github.io/hotpp/hot-reload.html), [the `.hot` language](https://rokups.github.io/hotpp/types.html), [C++ scripts](https://rokups.github.io/hotpp/cpp-scripts.html), [Embedding](https://rokups.github.io/hotpp/embedding.html), [Tools](https://rokups.github.io/hotpp/tools.html) and [Development notes](https://rokups.github.io/hotpp/development.html).
