@@ -82,6 +82,96 @@ async void Chain() {
 
 A task has one awaiter. Its result can be taken once. A second `await` or a second read of the result is an error. If you destroy a task that did not finish, the runtime destroys its frame.
 
+## Spawn a task
+
+A script can start a task and not wait for it. Call `hot.spawn(task)`. The scheduler (see below) takes the task and runs it. The call returns an id of type `uint64_t`. The id 0 means no task.
+
+```hot
+async void Ticker(int n) {
+    for (int i = 0; i < n; i = i + 1) {
+        this.ticks = this.ticks + 1;
+        await hot.yield();
+    }
+}
+
+uint64_t Start() {
+    return hot.spawn(this.Ticker(3));
+}
+```
+
+- `hot.spawn` does not run the body. The next tick of the scheduler starts it.
+- The variable that held the task is empty after the call. Do not use it again.
+- A spawned task has no awaiter and no result. The scheduler discards the result.
+- An error of a spawned task goes to the handler of unhandled script errors. `hot.TaskCancelled` is silent.
+- `hot.scheduler().cancel(id)` destroys a spawned task. It returns `false` when the id is not known.
+
+```hot
+void Stop(uint64_t id) {
+    hot.scheduler().cancel(id);
+}
+```
+
+## Run a task from sync code
+
+A sync method cannot use `await`. Use one of these calls instead.
+
+- `hot.step(t)` starts the task and runs it to its first suspension, or to its end. It returns `true` when the task is done. A second `hot.step` of the same task does nothing.
+- `hot.run_until_done(t, timeout)` runs the task and the scheduler until the task is done. It returns `true` when the task is done. It returns `false` when the time is over.
+
+```hot
+bool Once(int x) {
+    var t = this.Slow(x);
+    return hot.step(t);
+}
+
+bool Finish(int x) {
+    var t = this.Slow(x);
+    if (hot.run_until_done(t, std.chrono.milliseconds(100))) {
+        return true;
+    }
+    hot.spawn(t);
+    return false;
+}
+```
+
+After a timeout, the task stays alive. You still own it. Spawn it to let the scheduler finish it, or destroy it. A timeout that is zero or less starts the task and checks it once. While `hot.run_until_done` waits, the scheduler also runs the other spawned tasks. Keep the task alive during the call: do not let another task destroy it.
+
+## The scheduler
+
+One scheduler exists for the whole process. The host drives it in the loop of the frame. It calls `tick()` and then `frame_boundary()`:
+
+```cpp
+#include "hot/runtime/task.h"
+
+hot::scheduler().tick();   // run the ready tasks and the tasks with a due timer
+loader.frame_boundary();
+```
+
+- `tick()` resumes each ready task once. It then destroys the tasks that are finished.
+- `run(timeout)` ticks until no spawned task remains or the time is over. It returns `true` when no task remains.
+- `cancel_all()` destroys all spawned tasks. Call it before `Loader::reset`. A spawned task pins its generation, and `reset` fails while a task lives.
+- `size()` gives the number of spawned tasks. `alive(id)` tells if a task is still running.
+
+Use the scheduler from one thread, usually the main thread. A task that waits for a host awaitable can resume on another thread. When it then calls `hot.yield()` or `hot.sleep(d)`, the next tick on the main thread resumes it.
+
+Do not call `hot.run_until_done` from a spawned task without a timeout. The call blocks the tick that runs the task, and the other tasks cannot run.
+
+## Wait inside a task
+
+Two awaitables work inside an `async` method of a script.
+
+- `await hot.yield()` suspends the task. The next tick resumes it.
+- `await hot.sleep(duration)` suspends the task. A tick resumes it when the time is over. Write the time as `std.chrono.milliseconds(n)`.
+
+```hot
+async int Slow(int x) {
+    await hot.sleep(std.chrono.milliseconds(5));
+    return x * 2;
+}
+```
+
+The tick that resumes a task does not resume it twice. A task that yields in a loop runs once in each tick. Several tasks run in the order of their yields.
+
 ## Await a host awaitable
 
 `await e` works with any C++20 awaitable, not only with a task of a script. The host can give a script an awaitable, for example a timer or a gate that the host opens later. The script writes `await` and the name of the awaitable.
@@ -131,8 +221,9 @@ A reload replaces the code of a class (see [Hot reload](hot-reload.html)). The r
 
 - A suspended task of a replaced generation ends with `TaskReloadCancelled` at its next resume. The old code of that task does not run again.
 - A task that did not start, and that comes from an old generation, ends the same way when it starts.
+- A sleeping spawned task of a replaced generation does not wait for its timer. The next tick cancels it. A ready spawned task ends the same way when it is resumed.
 - A task keeps its generation alive. A retired generation unloads only after the task is destroyed.
-- `Loader::reset` fails with `generation N is pinned (a closure or a task is alive)` while a task lives. Destroy all tasks before `reset`.
+- `Loader::reset` fails with `generation N is pinned (a closure or a task is alive)` while a task lives. Destroy all tasks before `reset`. For spawned tasks, call `hot::scheduler().cancel_all()`.
 
 To keep the work across a reload, start a new task with the new code. Do not keep a suspended task of the old code.
 
@@ -161,3 +252,5 @@ Include `hot/runtime/task.h` in host code that uses `hot::Task` or `hot::sync_wa
 - `async` is only for class methods. There are no free `async` functions.
 - A task must not live longer than its object.
 - A task has one awaiter, and its result can be taken once.
+- A spawned task has no awaiter and no result. An error of a spawned task goes to the handler of unhandled script errors.
+- `hot.yield()` and `hot.sleep(d)` are only valid in an `async` method.

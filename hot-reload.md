@@ -32,7 +32,7 @@ A `.cpp` script (see [C++ scripts](cpp-scripts.html)) follows the same table. It
 
 ## Tasks
 
-A task of an `async` method keeps its generation alive. After a reload, a suspended task of the old generation ends with `TaskReloadCancelled` at its next resume. The old code does not run. A retired generation unloads only after the host destroys the task. `Loader::reset` fails while a task lives, so destroy all tasks first. See [Async and await](async.html).
+A task of an `async` method keeps its generation alive. After a reload, a suspended task of the old generation ends with `TaskReloadCancelled` at its next resume. The old code does not run. A retired generation unloads only after the host destroys the task. `Loader::reset` fails while a task lives, so destroy all tasks first. Call `hot::scheduler().cancel_all()` to destroy the spawned tasks before `reset`. See [Async and await](async.html).
 
 ## Full reload
 
