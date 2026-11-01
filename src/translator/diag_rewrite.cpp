@@ -141,10 +141,14 @@ Place classify(const std::string& file, const std::map<std::string, std::vector<
 {
     if (scripts.count(file) || ends_with(file, ".hot"))
         return Place::Script;
-    static const char* const kSystem[] = {
-        "/include/c++/", "/lib/gcc/", "/lib64/gcc/", "/usr/include/", "/lib/clang/", "/lib64/clang/", "/lib/llvm"};
+    // A Windows path can have "\\". The markers use "/". The last two markers are the MSVC STL
+    // and the Windows SDK (the UCRT headers).
+    std::string path = file;
+    std::replace(path.begin(), path.end(), '\\', '/');
+    static const char* const kSystem[] = {"/include/c++/", "/lib/gcc/", "/lib64/gcc/", "/usr/include/",
+        "/lib/clang/", "/lib64/clang/", "/lib/llvm", "/VC/Tools/MSVC/", "/Windows Kits/"};
     for (const char* m : kSystem)
-        if (file.find(m) != std::string::npos)
+        if (path.find(m) != std::string::npos)
             return Place::System;
     if (ends_with(file, ".cpp"))
         return Place::Generated;
