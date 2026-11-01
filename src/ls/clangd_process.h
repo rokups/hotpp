@@ -6,7 +6,6 @@
 #pragma once
 
 #include <nlohmann/json.hpp>
-#include <sys/types.h>
 
 #include <atomic>
 #include <condition_variable>
@@ -34,7 +33,11 @@ public:
     // Starts "path" with "args". The stderr of clangd goes to "log" (empty: /dev/null).
     bool start(
         const std::string& path, const std::vector<std::string>& args, const std::string& log, Handler on_notification);
+#ifdef _WIN32
+    bool running() const { return process_ != nullptr && !closed_; }
+#else
     bool running() const { return pid_ > 0 && !closed_; }
+#endif
 
     // Sends a request and waits for the response. The result is the full response message
     // ("result" or "error"), or null when clangd does not answer in time or stopped.
@@ -48,7 +51,11 @@ private:
     void reader_loop();
     bool send(const nlohmann::json& msg);
 
-    pid_t pid_ = -1;
+#ifdef _WIN32
+    void* process_ = nullptr; // the process HANDLE
+#else
+    int pid_ = -1;
+#endif
     int to_ = -1, from_ = -1;
     std::thread reader_;
     std::mutex write_mutex_, mutex_;

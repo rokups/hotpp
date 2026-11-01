@@ -14,6 +14,7 @@
 #include "hot/clang_files_backend.h"
 #include "hot/paths.h"
 #include "hot/runtime.h"
+#include "hot/runtime/process.h"
 #include "hot/scratch.h"
 
 #include <SDL3/SDL.h>
@@ -26,7 +27,6 @@
 #include <memory>
 #include <sstream>
 #include <string>
-#include <unistd.h>
 #include <vector>
 
 namespace
@@ -72,7 +72,7 @@ std::unique_ptr<hot::Backend> make_backend(const std::string& script_path)
     o.extra_flags = paths.cxxflags;
     o.resource_dir = paths.resource_dir;
     const std::string work = app_work_dir();
-    o.work_dir = work + "/p" + std::to_string(getpid());
+    o.work_dir = work + "/p" + std::to_string(hot::detail::process_id());
     std::error_code ec;
     std::filesystem::remove_all(o.work_dir, ec);
     std::filesystem::create_directories(work, ec);

@@ -54,8 +54,13 @@
 #include "hot/runtime/loader.h"
 #include "hot/scratch.h"
 
-#include <sys/resource.h>
-#include <unistd.h>
+#ifdef _WIN32
+    #include <malloc.h>
+#else
+    #include <sys/resource.h>
+#endif
+
+#include "hot/runtime/process.h"
 
 #include <algorithm>
 #include <array>
@@ -543,7 +548,12 @@ template <bool Track> struct NShellObj final : NPlain, NShellBase
     {
         constexpr size_t align = alignof(NObjState);
         constexpr size_t size = (sizeof(NObjState) + align - 1) / align * align;
+        #ifdef _WIN32
+        // The C runtime of Windows has no aligned_alloc.
+        char* mem = static_cast<char*>(_aligned_malloc(size, align));
+#else
         char* mem = static_cast<char*>(std::aligned_alloc(align, size));
+#endif
         if (!mem)
             throw std::bad_alloc();
         *reinterpret_cast<NShellBase**>(mem) = this;
@@ -557,7 +567,11 @@ template <bool Track> struct NShellObj final : NPlain, NShellBase
     {
         if constexpr (Track)
             g_native_live.erase(this);
+#ifdef _WIN32
+        _aligned_free(state);
+#else
         std::free(state);
+#endif
     }
 };
 
@@ -1256,7 +1270,7 @@ std::unique_ptr<hot::Backend> make_explicit(Kind k, bool share, const std::share
         f.resource_dir = BENCH_RESOURCE_DIR;
         f.extra_flags = {o.opt};
         f.extra_flags.insert(f.extra_flags.end(), o.flags.begin(), o.flags.end());
-        f.work_dir = std::string(BENCH_WORK_DIR) + "/bench" + std::to_string(getpid());
+        f.work_dir = std::string(BENCH_WORK_DIR) + "/bench" + std::to_string(hot::detail::process_id());
         std::error_code ec;
         std::filesystem::remove_all(f.work_dir, ec);
         f.remove_work_dir_at_exit = !hot::keep_temp();
@@ -1343,9 +1357,13 @@ LoadResultRow run_load_section(Kind k, const Options& o)
     t = Clock::now();
     const bool ok2 = hotc::translate(to, ts).ok;
     res.hit = ms_since(t);
+#ifdef _WIN32
+    res.rss_mb = 0.0; // unverified: no peak RSS on Windows yet
+#else
     rusage ru{};
     getrusage(RUSAGE_SELF, &ru);
     res.rss_mb = static_cast<double>(ru.ru_maxrss) / 1024.0;
+#endif
     res.ok = ok1 && ok2;
     return res;
 }

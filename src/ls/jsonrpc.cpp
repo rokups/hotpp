@@ -6,17 +6,42 @@
 
 #include <cerrno>
 #include <cstdlib>
-#include <unistd.h>
+#ifdef _WIN32
+    #include <io.h>
+#else
+    #include <unistd.h>
+#endif
 
 namespace hot::ls
 {
+
+namespace
+{
+long long read_fd(int fd, char* data, size_t size)
+{
+#ifdef _WIN32
+    return ::_read(fd, data, static_cast<unsigned>(size));
+#else
+    return ::read(fd, data, size);
+#endif
+}
+
+long long write_fd(int fd, const char* data, size_t size)
+{
+#ifdef _WIN32
+    return ::_write(fd, data, static_cast<unsigned>(size));
+#else
+    return ::write(fd, data, size);
+#endif
+}
+} // namespace
 
 bool MessageReader::fill()
 {
     char chunk[65536];
     for (;;)
     {
-        const ssize_t n = ::read(fd_, chunk, sizeof chunk);
+        const long long n = read_fd(fd_, chunk, sizeof chunk);
         if (n > 0)
         {
             buf_.append(chunk, static_cast<size_t>(n));
@@ -65,7 +90,7 @@ bool write_message(int fd, const std::string& body)
     size_t done = 0;
     while (done < msg.size())
     {
-        const ssize_t n = ::write(fd, msg.data() + done, msg.size() - done);
+        const long long n = write_fd(fd, msg.data() + done, msg.size() - done);
         if (n < 0 && errno == EINTR)
             continue;
         if (n <= 0)

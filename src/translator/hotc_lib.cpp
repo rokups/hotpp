@@ -30,19 +30,21 @@
 #include "builtin_types.h"
 #include "check.h"
 #include "diag.h"
+#include "file_time.h"
 #include "emit.h"
 #include "lower.h"
 #include "parser/cpp_frontend.h"
 #include "parser/parser.h"
 #include "std_ns.h"
+#include "hot/command_line.h"
 #include "hot/config.h"
 #include "types.h"
 
 #include <clang-c/Index.h>
-#include <sys/stat.h>
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
@@ -1222,6 +1224,7 @@ struct Options
     int gen = 0;
     std::vector<std::string> includes;
     std::string resource_dir; // the Clang resource directory (builtin headers)
+    std::string target, sysroot; // the target triple and the sysroot of the parse
     std::string std_version; // the C++ standard of the parse, for example "c++17"
     bool aot = false; // AOT code: each thunk carries its signature key (see TranslateOptions::aot)
     bool aot_optimized = false; // optimized AOT code (see TranslateOptions::aot_optimized)
@@ -1294,9 +1297,9 @@ constexpr long long kRecentNs = 2000000000LL;
 
 long long now_ns()
 {
-    struct timespec ts;
-    ::clock_gettime(CLOCK_REALTIME, &ts);
-    return static_cast<long long>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
+    return static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::system_clock::now().time_since_epoch())
+                                      .count());
 }
 
 // FNV-1a hash of a text.
@@ -1326,11 +1329,6 @@ unsigned long long hash_file(const std::string& path)
         }
     }
     return h;
-}
-
-long long ns_of(const struct timespec& ts)
-{
-    return static_cast<long long>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
 }
 
 // The host file system can hold a file under the normal spelling ("d/b/y.h") of the path that
@@ -1378,13 +1376,13 @@ FileStamp stamp_of(hot::FileSystem* fs, const std::string& path)
             return f;
         }
     }
-    struct stat st;
-    if (::stat(path.c_str(), &st) == 0)
+    const hotc::FileTimes t = hotc::file_times(path);
+    if (t.exists)
     {
-        f.mtime_ns = ns_of(st.st_mtim);
-        f.ctime_ns = ns_of(st.st_ctim);
-        f.size = static_cast<long long>(st.st_size);
-        f.ino = static_cast<unsigned long long>(st.st_ino);
+        f.mtime_ns = static_cast<long long>(t.mtime_ns);
+        f.ctime_ns = static_cast<long long>(t.ctime_ns);
+        f.size = static_cast<long long>(t.size);
+        f.ino = static_cast<unsigned long long>(t.ino);
         f.hashed = f.mtime_ns > now_ns() - kRecentNs;
         f.hash = hash_file(path);
     }
@@ -1413,15 +1411,15 @@ bool stamp_fresh(hot::FileSystem* fs, FileStamp& rec)
     // A file on the disk is hidden when the host file system now has the same path.
     if (fs && host_stat(*fs, rec.path).exists)
         return false;
-    struct stat st;
     long long mtime = -1, ctime = -1, size = -1;
     unsigned long long ino = 0;
-    if (::stat(rec.path.c_str(), &st) == 0)
+    const hotc::FileTimes t = hotc::file_times(rec.path);
+    if (t.exists)
     {
-        mtime = ns_of(st.st_mtim);
-        ctime = ns_of(st.st_ctim);
-        size = static_cast<long long>(st.st_size);
-        ino = static_cast<unsigned long long>(st.st_ino);
+        mtime = static_cast<long long>(t.mtime_ns);
+        ctime = static_cast<long long>(t.ctime_ns);
+        size = static_cast<long long>(t.size);
+        ino = static_cast<unsigned long long>(t.ino);
     }
     if (mtime != rec.mtime_ns || size != rec.size)
         return false;
@@ -1448,8 +1446,7 @@ void add_shadow_stamps(hot::FileSystem* fs, const std::string& rel, const std::v
     for (const auto& d : dirs)
     {
         const std::string cand = d + "/" + rel;
-        struct stat st;
-        if ((fs && host_stat(*fs, cand).exists) || ::stat(cand.c_str(), &st) == 0)
+        if ((fs && host_stat(*fs, cand).exists) || hotc::file_times(cand).exists)
             return; // the first file that exists
         if (seen.insert(cand).second)
             files.push_back(stamp_of(fs, cand));
@@ -2168,8 +2165,18 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
     // "virtual_files" until the parse ends, so the caller keeps them alive.
     std::vector<CXUnsavedFile> unsaved;
     unsaved.push_back({"hotc_probe.cpp", full_probe.c_str(), static_cast<unsigned long>(full_probe.size())});
+    // Each name that the include search of libclang can make (hotc::clang_spellings). A deque
+    // keeps the names at the same address.
+    // "virtual_names" maps each name back to the path of the file system, for the stamps.
+    std::deque<std::string> unsaved_names;
+    std::map<std::string, std::string> virtual_names;
     for (const auto& [vpath, vtext] : virtual_files)
-        unsaved.push_back({vpath.c_str(), vtext.c_str(), static_cast<unsigned long>(vtext.size())});
+        for (std::string& name : hotc::clang_spellings(vpath))
+        {
+            virtual_names.emplace(name, vpath);
+            unsaved_names.push_back(std::move(name));
+            unsaved.push_back({unsaved_names.back().c_str(), vtext.c_str(), static_cast<unsigned long>(vtext.size())});
+        }
     CXTranslationUnit tu = nullptr;
     CXErrorCode ec = clang_parseTranslationUnit2(idx, "hotc_probe.cpp", cargs.data(), static_cast<int>(cargs.size()),
         unsaved.data(), static_cast<unsigned>(unsaved.size()), CXTranslationUnit_SkipFunctionBodies, &tu);
@@ -2207,6 +2214,7 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         std::set<std::string>* seen;
         std::vector<FileStamp>* files;
         hot::FileSystem* fs;
+        const std::map<std::string, std::string>* virtual_names;
     };
     auto on_include = [](CXFile f, CXSourceLocation*, unsigned depth, CXClientData d)
     {
@@ -2214,10 +2222,13 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
             return; // the probe file
         auto* v = static_cast<IncludeCtx*>(d);
         std::string path = cxs(clang_getFileName(f));
+        const auto vn = v->virtual_names->find(path);
+        if (vn != v->virtual_names->end())
+            path = vn->second; // an unsaved file: the stamp uses the path of the file system
         if (v->seen->insert(path).second)
             v->files->push_back(stamp_of(v->fs, path));
     };
-    IncludeCtx ctx{&seen, &files, fs};
+    IncludeCtx ctx{&seen, &files, fs, &virtual_names};
     files.clear();
     clang_getInclusions(tu, on_include, &ctx);
 
@@ -2552,6 +2563,33 @@ struct VirtualSearch
     std::set<std::string> spellings, scanned;
 };
 
+// The path without the parts "<name>/../". The other text and the separators ("/" or "\\") stay.
+// A file system in memory can have the name with a mix of separators (a Windows folder and "/").
+std::string text_without_dot_dot(std::string p)
+{
+    auto sep = [](char c) { return c == '/' || c == '\\'; };
+    for (bool changed = true; changed;)
+    {
+        changed = false;
+        for (size_t k = 0; k + 3 < p.size(); ++k)
+        {
+            // p[k] is a separator, then "..", then a separator or the end.
+            if (!sep(p[k]) || p[k + 1] != '.' || p[k + 2] != '.' || !(k + 3 == p.size() || sep(p[k + 3])))
+                continue;
+            size_t start = k;
+            while (start > 0 && !sep(p[start - 1]))
+                --start;
+            const std::string name = p.substr(start, k - start);
+            if (start == 0 || name.empty() || name == ".." || name == "." || name.back() == ':')
+                continue;
+            p.erase(start, k + 3 - start + (k + 3 < p.size() ? 1 : 0));
+            changed = true;
+            break;
+        }
+    }
+    return p;
+}
+
 // Finds the header "rel" in "dirs" in order, the host first for each dir. A hit on the disk
 // stops the search. A hit in the host file system adds the file to "out", and its includes too.
 void collect_virtual_header(hot::FileSystem& fs, const std::string& rel, bool angle, const std::string& includer_dir,
@@ -2572,7 +2610,10 @@ void collect_virtual_header(hot::FileSystem& fs, const std::string& rel, bool an
         // "d/a/../b/y.h"). libclang finds an unsaved file by the spelling that it builds, so the
         // result keeps the spelling of the search.
         const std::string normal = std::filesystem::path(path).lexically_normal().string();
-        if (fs.read(path, text) || (normal != path && fs.read(normal, text)))
+        // On Windows lexically_normal changes "/" to "\\". The text form keeps the separators.
+        const std::string text_normal = text_without_dot_dot(path);
+        if (fs.read(path, text) || (normal != path && fs.read(normal, text))
+            || (text_normal != path && text_normal != normal && fs.read(text_normal, text)))
         {
             if (seen.spellings.insert(path).second)
                 out.emplace_back(path, text);
@@ -2625,18 +2666,20 @@ std::vector<std::string> clang_args(const Options& opt)
 {
     std::vector<std::string> args = {"-x", "c++", "-std=" + opt.std_version, "-ferror-limit=0"};
     const size_t slash = opt.input.rfind('/');
-    args.push_back("-I" + (slash == std::string::npos ? std::string(".") : opt.input.substr(0, slash)));
+    args.push_back("-I" + (slash == std::string::npos ? std::string(".") : hotc::clang_path(opt.input.substr(0, slash))));
     for (const auto& d : opt.includes)
-        args.push_back("-I" + d);
+        args.push_back("-I" + hotc::clang_path(d));
     if (!opt.resource_dir.empty())
-        args.push_back("-resource-dir=" + opt.resource_dir);
+        args.push_back("-resource-dir=" + hotc::clang_path(opt.resource_dir));
+    for (std::string& a : hotc::target_parse_args(opt.target, opt.sysroot))
+        args.push_back(std::move(a));
     for (const auto& d : opt.includes)
     {
         const std::string header = d + "/hot/script.h";
         if (std::filesystem::exists(header))
         {
             args.push_back("-include");
-            args.push_back(header);
+            args.push_back(hotc::clang_path(header));
             break;
         }
     }
@@ -2654,6 +2697,8 @@ void translate_impl(
     opt.aot_optimized = in.aot_optimized;
     opt.includes = in.include_dirs;
     opt.resource_dir = in.resource_dir;
+    opt.target = in.target;
+    opt.sysroot = in.sysroot;
     opt.std_version = in.std_version.empty() ? hot::cxx_std_name() : in.std_version;
 #ifdef HOT_RESOURCE_DIR
     if (opt.resource_dir.empty())
@@ -6472,6 +6517,40 @@ std::optional<SourcePos> SourceMap::map_to_generated(uint32_t file, int script_l
         return pos_of(gen_lines_, f.gen_begin + (f.script_len == f.gen_len ? d : 0));
     }
     return std::nullopt;
+}
+
+std::vector<std::string> target_parse_args(const std::string& target_in, const std::string& sysroot_in)
+{
+    std::string target = target_in, sysroot = sysroot_in;
+#ifdef HOT_PARSE_TARGET
+    if (target.empty())
+        target = HOT_PARSE_TARGET;
+#endif
+#ifdef HOT_PARSE_SYSROOT
+    if (sysroot.empty())
+        sysroot = HOT_PARSE_SYSROOT;
+#endif
+    std::vector<std::string> args;
+    if (!target.empty())
+    {
+        args.push_back("-target");
+        args.push_back(target);
+    }
+    if (!sysroot.empty())
+        args.push_back("--sysroot=" + clang_path(sysroot));
+    // A MinGW target parses with the libstdc++ headers of the sysroot. The link flags do not apply.
+    const std::vector<std::string> mingw = hot::mingw_target_flags(target, sysroot);
+    for (size_t i = 0; i < mingw.size(); ++i)
+    {
+        if (mingw[i] == "-nostdinc++")
+            args.push_back(mingw[i]);
+        else if (mingw[i] == "-isystem" && i + 1 < mingw.size())
+        {
+            args.push_back(mingw[i]);
+            args.push_back(clang_path(mingw[++i]));
+        }
+    }
+    return args;
 }
 
 TranslateResult translate(const TranslateOptions& in)

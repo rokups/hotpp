@@ -31,6 +31,11 @@ struct TranslateOptions
     std::string slots_in; // the content of the slot file (empty: no earlier generation)
     std::vector<std::string> include_dirs; // for the imports of the script
     std::string resource_dir; // the Clang resource directory (empty: the built-in default)
+    // The target triple and the sysroot of the parse (-target, --sysroot). Empty: the built-in
+    // default of the build (HOT_HOTC_TARGET, HOT_SCRIPT_SYSROOT), else the default of libclang.
+    // A MinGW triple also adds the libstdc++ headers of the sysroot (hot::mingw_target_flags).
+    std::string target;
+    std::string sysroot;
     // The C++ standard for the parse of the native headers, for example "c++17". Empty: the
     // standard of the host (HOT_CXX_STANDARD in hot/config.h).
     std::string std_version;
@@ -294,6 +299,12 @@ std::string rewrite_clang_message(const std::string& message);
 
 // Uses a temporary session: each call parses the headers.
 TranslateResult translate(const TranslateOptions& options);
+
+// The libclang arguments for the target of the parse: "-target", "--sysroot=" and, for a MinGW
+// triple, "-nostdinc++" and the "-isystem" folders of libstdc++. An empty target or sysroot uses
+// the default of the build (HOT_HOTC_TARGET, HOT_SCRIPT_SYSROOT). The translator uses the same
+// arguments. A caller that runs libclang directly (for example a test) adds them too.
+std::vector<std::string> target_parse_args(const std::string& target, const std::string& sysroot);
 
 // Uses the cache of the session.
 TranslateResult translate(const TranslateOptions& options, TranslatorSession& session);

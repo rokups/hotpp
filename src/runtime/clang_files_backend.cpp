@@ -165,7 +165,7 @@ bool read_text(const std::string& path, std::string& text)
 
 bool write_text(const std::string& path, const std::string& text)
 {
-    std::ofstream f(path);
+    std::ofstream f(path, std::ios::binary); // binary: LF line ends on each platform
     if (!f)
         return false;
     f << text;
@@ -365,6 +365,9 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     // The translator needs the resource dir for the native headers. A portable build finds it at run time.
     to.resource_dir = opt_.resource_dir.empty() ? default_paths().resource_dir : opt_.resource_dir;
     to.std_version = opt_.std_version.empty() ? cxx_std_name() : opt_.std_version;
+    // The parse uses the target of the modules, so the native headers match the compile.
+    to.target = opt_.target_triple;
+    to.sysroot = opt_.sysroot;
     to.strict_borrowed = opt_.strict_borrowed;
     to.format_lib = format_lib_name();
     to.fs = opt_.fs;
@@ -463,7 +466,7 @@ LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generati
         const bool existed = fs::exists(opt_.slots_file, ec);
         bool writable;
         {
-            std::ofstream probe(opt_.slots_file, std::ios::app);
+            std::ofstream probe(opt_.slots_file, std::ios::app | std::ios::binary);
             writable = static_cast<bool>(probe);
         }
         if (!existed)

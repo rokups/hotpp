@@ -78,7 +78,11 @@ namespace
         "[--format=std|fmt]\n"
         "            [--slots file] [--resource-dir dir] [--std=c++17|c++20|c++23]\n"
         "       hotc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]\n"
-        "            [--format=std|fmt] [--resource-dir dir] [--std=c++17|c++20|c++23] [--aot-optimized]\n");
+        "            [--format=std|fmt] [--resource-dir dir] [--std=c++17|c++20|c++23] [--aot-optimized]\n"
+        "Each mode also accepts:\n"
+        "  --target <triple>    the target triple of the parse and of the modules (-target)\n"
+        "  --sysroot <dir>      the sysroot of the parse and of the modules (--sysroot=)\n"
+        "  --host-implib <path> the import library of the host for the link of a module DLL (build mode)\n");
     std::exit(2);
 }
 
@@ -101,6 +105,8 @@ struct Args
     bool has_compiler_option = false; // --cxx, --cxxflag, --slots, --gen, -o
     std::vector<std::string> inputs;
     std::string out_dir, output, slots, resource_dir;
+    std::string target, sysroot; // --target, --sysroot: empty means the default of the build
+    std::string host_implib; // --host-implib: the import library of the host (build mode)
     std::string std_version; // --std=: empty means the standard of the host
     std::vector<std::string> include_dirs, preludes, cxxflags;
     std::string cxx;
@@ -150,6 +156,15 @@ Args parse_args(int argc, char** argv)
         }
         else if (a == "--resource-dir")
             r.resource_dir = next();
+        else if (a == "--target")
+            r.target = next();
+        else if (a == "--sysroot")
+            r.sysroot = next();
+        else if (a == "--host-implib")
+        {
+            r.host_implib = next();
+            r.has_build_only = true;
+        }
         else if (a == "--out-dir")
         {
             r.out_dir = next();
@@ -231,7 +246,7 @@ std::string identifier(const std::string& stem)
 
 bool write_file(const std::string& path, const std::string& text)
 {
-    std::ofstream of(path);
+    std::ofstream of(path, std::ios::binary); // binary: LF line ends on each platform
     if (!of)
     {
         std::fprintf(stderr, "hotc: error: cannot write %s\n", path.c_str());
@@ -282,6 +297,8 @@ int run_aot(const Args& args)
     base.format_lib = args.format_lib;
     // Without --resource-dir the translator needs the default. A portable build finds it at run time.
     base.resource_dir = args.resource_dir.empty() ? hot::default_paths().resource_dir : args.resource_dir;
+    base.target = args.target;
+    base.sysroot = args.sysroot;
     base.std_version = args.std_version;
     base.include_dirs = args.include_dirs;
     for (const std::string& file : args.preludes)
@@ -390,6 +407,8 @@ int run_emit(const Args& args)
     opt.strict_borrowed = args.strict_borrowed;
     opt.format_lib = args.format_lib;
     opt.resource_dir = args.resource_dir.empty() ? hot::default_paths().resource_dir : args.resource_dir;
+    opt.target = args.target;
+    opt.sysroot = args.sysroot;
     opt.std_version = args.std_version;
     opt.include_dirs = args.include_dirs;
     for (const std::string& file : args.preludes)
@@ -426,7 +445,7 @@ int run_emit(const Args& args)
     }
     else
     {
-        std::ofstream of(args.output);
+        std::ofstream of(args.output, std::ios::binary);
         if (!of)
         {
             std::fprintf(stderr, "hotc: error: cannot write %s\n", args.output.c_str());
@@ -436,7 +455,7 @@ int run_emit(const Args& args)
     }
     if (!args.slots.empty())
     {
-        std::ofstream mf(args.slots);
+        std::ofstream mf(args.slots, std::ios::binary);
         if (!mf)
         {
             std::fprintf(stderr, "hotc: error: cannot write %s\n", args.slots.c_str());
@@ -469,6 +488,9 @@ int run_build(const Args& args)
     hot::ClangFilesOptions opt;
     opt.slots_file = args.slots;
     opt.resource_dir = args.resource_dir;
+    opt.target_triple = args.target;
+    opt.sysroot = args.sysroot;
+    opt.host_import_library = args.host_implib;
     opt.std_version = args.std_version;
     if (!args.cxx.empty())
         opt.compiler = args.cxx;

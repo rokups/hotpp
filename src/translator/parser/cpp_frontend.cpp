@@ -6,6 +6,7 @@
 // ast::Script. The bodies are raw text. The edits change only the references that the
 // generated code cannot resolve. An edit never adds a newline, so the line numbers stay.
 #include "cpp_frontend.h"
+#include "../file_time.h"
 
 #include "../std_ns.h"
 
@@ -2899,8 +2900,15 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
     h.idx = clang_createIndex(0, 0);
     std::vector<CXUnsavedFile> unsaved;
     unsaved.push_back({name.c_str(), text.c_str(), static_cast<unsigned long>(text.size())});
+    // Each name that the include search of libclang can make (hotc::clang_spellings). A deque
+    // keeps the names at the same address.
+    std::deque<std::string> unsaved_names;
     for (const auto& [vpath, vtext] : virtual_files)
-        unsaved.push_back({vpath.c_str(), vtext.c_str(), static_cast<unsigned long>(vtext.size())});
+        for (std::string& name : hotc::clang_spellings(vpath))
+        {
+            unsaved_names.push_back(std::move(name));
+            unsaved.push_back({unsaved_names.back().c_str(), vtext.c_str(), static_cast<unsigned long>(vtext.size())});
+        }
     CXErrorCode ec = clang_parseTranslationUnit2(h.idx, name.c_str(), cargs.data(), static_cast<int>(cargs.size()),
         unsaved.data(), static_cast<unsigned>(unsaved.size()), CXTranslationUnit_DetailedPreprocessingRecord, &h.tu);
     if (ec != CXError_Success || !h.tu)

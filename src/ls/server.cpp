@@ -28,8 +28,13 @@
 #include <set>
 #include <signal.h>
 #include <sstream>
-#include <unistd.h>
 #include <variant>
+#ifdef _WIN32
+    #include <fcntl.h>
+    #include <io.h>
+#endif
+
+#include "hot/runtime/process.h"
 
 namespace fs = std::filesystem;
 
@@ -649,7 +654,7 @@ void Server::start_clangd(const json& init)
     if (!c->start(opt_.clangd, args, opt_.clangd_log, [this](const json& m) { on_clangd_notification(m); }))
         return;
     json params = {
-        {"processId", static_cast<int>(getpid())},
+        {"processId", hot::detail::process_id()},
         {"capabilities",
             {{"general", {{"positionEncodings", {"utf-8", "utf-16"}}}},
                 {"textDocument",
@@ -2696,7 +2701,13 @@ std::optional<ScriptLine> line_directive_target(const std::string& cpp, int line
 
 int run_server(int in_fd, int out_fd, const ServerOptions& options)
 {
+#ifdef _WIN32
+    // The messages hold "\r\n". The text mode of the C runtime changes them.
+    _setmode(in_fd, _O_BINARY);
+    _setmode(out_fd, _O_BINARY);
+#else
     signal(SIGPIPE, SIG_IGN); // a write to a clangd that stopped gives an error, not a signal
+#endif
     Server server(in_fd, out_fd, options);
     return server.run();
 }

@@ -117,8 +117,8 @@ std::vector<std::string> mingw_target_flags(const std::string& target_triple, co
     if (!is_mingw_triple(target_triple))
         return flags;
     // The libstdc++ headers of the sysroot replace the C++ headers of the clang installation, so
-    // the module and a GCC host agree on std::string and on the exceptions.
-    flags.push_back("-nostdinc++");
+    // the module and a GCC host agree on std::string and on the exceptions. Without these headers
+    // the flag -nostdinc++ removes all C++ headers, so the flag comes only with them.
     if (!sysroot.empty())
     {
         const std::string cxx_dir = sysroot + "/include/c++";
@@ -126,6 +126,7 @@ std::vector<std::string> mingw_target_flags(const std::string& target_triple, co
         if (!version.empty())
         {
             const std::string base = cxx_dir + "/" + version;
+            flags.push_back("-nostdinc++");
             const std::string arch = target_triple.substr(0, target_triple.find('-'));
             flags.push_back("-isystem");
             flags.push_back(base);

@@ -26,6 +26,8 @@ std::vector<std::string> clang_args(const std::string& extra_dir)
         "-I" + std::string(HOT_SOURCE_DIR) + "/include", "-resource-dir=" + std::string(HOT_RESOURCE_DIR)};
     if (!extra_dir.empty())
         a.push_back("-I" + extra_dir);
+    for (const std::string& t : hotc::target_parse_args("", ""))
+        a.push_back(t);
     return a;
 }
 

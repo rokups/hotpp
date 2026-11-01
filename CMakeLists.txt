@@ -20,8 +20,13 @@ option(HOT_BUILD_SAMPLES "Build the Hot++ samples" ${HOT_TOP_LEVEL})
 option(HOT_SAMPLES_STANDALONE_TEST "Configure, build and test samples/aot as a separate project" OFF)
 # The translator (hotc_lib, hotc, hot-ls) and the run-time backends need libclang. A cross build
 # has no libclang for the target, so the translator is off by default. Use HOT_HOST_HOTC to give
-# the build a hotc that runs on the build host.
-if(CMAKE_CROSSCOMPILING)
+# the build a hotc that runs on the build host. A cross build to Windows can use the LLVM release
+# for Windows (HOT_LLVM_DIR or HOT_DOWNLOAD_LLVM, cmake/HotDownloadLlvm.cmake). Then the
+# translator is on by default, and the emulator (wine) runs hotc.exe and the tests.
+include(cmake/HotLlvmVersion.cmake)
+option(HOT_DOWNLOAD_LLVM "Download the LLVM release for Windows (libclang.dll, clang++.exe)" OFF)
+set(HOT_LLVM_DIR "" CACHE PATH "The folder of an unpacked LLVM release for Windows (no download)")
+if(CMAKE_CROSSCOMPILING AND NOT HOT_LLVM_DIR AND NOT HOT_DOWNLOAD_LLVM)
     set(HOT_BUILD_TRANSLATOR_DEFAULT OFF)
 else()
     set(HOT_BUILD_TRANSLATOR_DEFAULT ON)
@@ -156,8 +161,16 @@ CPMAddPackage(
 # The script runtime and the language server use threads.
 find_package(Threads REQUIRED)
 
+# libclang and clang++ from the LLVM release for Windows. It sets HOT_CLANG_RESOURCE_DIR.
+if(HOT_LLVM_DIR OR HOT_DOWNLOAD_LLVM)
+    include(cmake/HotDownloadLlvm.cmake)
+endif()
+
 # The Clang resource directory. The translator, the backends and the tests use it.
-if(NOT MSVC)
+if(HOT_CLANG_RESOURCE_DIR)
+    # A value from the LLVM release, from a preset or from the command line.
+    set(CLANG_RESOURCE_DIR "${HOT_CLANG_RESOURCE_DIR}")
+elseif(NOT MSVC)
     # Only Clang knows the option. Another compiler (GCC, MinGW) gives an empty value.
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-resource-dir

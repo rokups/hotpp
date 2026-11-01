@@ -5,7 +5,7 @@
 // The disk file system of hot::FileSystem.
 #include "hot/vfs.h"
 
-#include <sys/stat.h>
+#include "file_time.h"
 
 #include <atomic>
 #include <fstream>
@@ -39,14 +39,12 @@ public:
 
     VfsStat stat(const std::string& path) override
     {
-        struct ::stat st;
         VfsStat r;
-        if (::stat(path.c_str(), &st) != 0)
+        const hotc::FileTimes t = hotc::file_times(path);
+        if (!t.exists)
             return r;
         r.exists = true;
-        const uint64_t mtime_ns = static_cast<uint64_t>(st.st_mtim.tv_sec) * 1000000000ull
-            + static_cast<uint64_t>(st.st_mtim.tv_nsec);
-        r.version = mtime_ns ^ static_cast<uint64_t>(st.st_size);
+        r.version = t.mtime_ns ^ t.size;
         return r;
     }
 };

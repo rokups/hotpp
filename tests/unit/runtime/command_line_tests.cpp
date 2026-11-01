@@ -57,7 +57,7 @@ TEST(CommandLine, MingwFlagsNeedMingwTriple)
 {
     EXPECT_TRUE(hot::mingw_target_flags("", "/sysroot").empty());
     EXPECT_TRUE(hot::mingw_target_flags("x86_64-pc-windows-msvc", "/sysroot").empty());
-    const std::vector<std::string> expected = {"-nostdinc++", "-fuse-ld=lld"};
+    const std::vector<std::string> expected = {"-fuse-ld=lld"};
     EXPECT_EQ(hot::mingw_target_flags("x86_64-w64-mingw32", ""), expected);
 }
 

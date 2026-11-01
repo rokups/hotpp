@@ -18,7 +18,13 @@ set(HOT_CMAKE_DIR ${CMAKE_CURRENT_LIST_DIR})
 function(hot_gtest target)
     cmake_parse_arguments(PARSE_ARGV 1 A "" "" "PROPERTIES")
     # The tests use the standard of the project (CMAKE_CXX_STANDARD, default 17).
+    # An emulator (wine) starts slowly. The default discovery timeout (5 s) is too short for it.
+    set(_hot_discovery "")
+    if(CMAKE_CROSSCOMPILING_EMULATOR)
+        set(_hot_discovery DISCOVERY_TIMEOUT 60)
+    endif()
     gtest_discover_tests(${target}
+        ${_hot_discovery}
         ${A_UNPARSED_ARGUMENTS}
         PROPERTIES FIXTURES_REQUIRED hot_scratch ${A_PROPERTIES})
 endfunction()

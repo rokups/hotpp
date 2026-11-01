@@ -12,6 +12,7 @@
 #include "hot/clang_files_backend.h"
 #include "hot/paths.h"
 #include "hot/runtime/loader.h"
+#include "hot/runtime/process.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -19,7 +20,6 @@
 #include <memory>
 #include <sstream>
 #include <string>
-#include <unistd.h>
 #include <utility>
 
 namespace
@@ -78,7 +78,7 @@ int main(int argc, char** argv)
     options.extra_flags = paths.cxxflags;
     options.resource_dir = paths.resource_dir;
     // One work folder for each process.
-    options.work_dir = paths.work_dir + "/sample_clang_files_p" + std::to_string(getpid());
+    options.work_dir = paths.work_dir + "/sample_clang_files_p" + std::to_string(hot::detail::process_id());
     options.remove_work_dir_at_exit = true;
     hot::ClangFilesBackend backend(std::move(options));
 

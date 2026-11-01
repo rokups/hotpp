@@ -14,7 +14,8 @@
 #include <regex>
 #include <set>
 #include <sstream>
-#include <unistd.h>
+
+#include "hot/runtime/process.h"
 
 namespace fs = std::filesystem;
 
@@ -248,7 +249,7 @@ bool SymbolIndex::store(const std::string& script_path, const std::string& dig, 
     std::error_code ec;
     fs::create_directories(dir_, ec);
     const std::string file = shard_path(script_path);
-    const std::string tmp = file + "." + std::to_string(::getpid()) + ".tmp";
+    const std::string tmp = file + "." + std::to_string(hot::detail::process_id()) + ".tmp";
     {
         std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
         if (!out)
