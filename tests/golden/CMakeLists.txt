@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # Golden-output tests. The expected files are in the folder expected/.
 add_executable(golden_translation_tests golden_translation_tests.cpp)
 target_link_libraries(golden_translation_tests PRIVATE hotc_lib GTest::gtest_main)

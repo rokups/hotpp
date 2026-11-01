@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Unit tests of the module state block (design 5.3, 4.7) with hand-written records and no backend.
 // The block migrates like the fields of a class: by name, by alias, with a convert hook.
 #include "hot/runtime.h"

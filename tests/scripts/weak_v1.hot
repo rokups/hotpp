@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Generation 1: a parent holds its child strongly. The child holds its parent weakly.
 // The parent dies when the script lets it go, so "child.parent" reads null after that.
 // The field "held" is a strong handle here. Generation 2 makes it weak.

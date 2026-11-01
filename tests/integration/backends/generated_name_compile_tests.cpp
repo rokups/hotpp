@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // A script with the user names a, st and self, an expression lambda and C style casts must pass
 // the whole chain: hotc, then the compile of the generated C++ by the selected backend.
 #include "hot/backend.h"

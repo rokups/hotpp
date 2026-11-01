@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # Closures that outlive a generation, and the unload of a retired generation.
 add_executable(integration_closure_tests
     closure_tests.cpp

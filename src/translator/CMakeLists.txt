@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # The translator library hotc_lib. It needs libclang (C API) from the system.
 # The tool hotc (src/tools) uses it. The root file sets CLANG_RESOURCE_DIR.
 # First choice: the target libclang of the Clang CMake package (a JIT build has it already).

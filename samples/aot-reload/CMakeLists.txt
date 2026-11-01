@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # The sample aot-reload: a program with AOT scripts that also overrides a script at run time.
 # This file works in the Hot++ build (add_subdirectory) and as a separate project.
 cmake_minimum_required(VERSION 3.20)

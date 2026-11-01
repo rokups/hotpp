@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Generation 1 of a chain of three script classes: Leaf derives from Mid, and Mid derives from Base.
 // Base declares the virtual method Step. Mid and Leaf override it.
 // A normal C++ build compiles this file. The tool hotc also translates it.

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Generation 1 of the Squad and Spawner classes: constructor, base call and destructor (S4).
 // Squad is a handle (design 7.10.1): "new Squad(...)" gives a std::shared_ptr<Squad>.
 // Squad builds its base with base(label). Spawner builds a Squad with "new" in each Tick.

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests for the errors of the expression parser. Each error has a line, a column and a text.
 #include "emit.h"
 #include "parser/expression.h"

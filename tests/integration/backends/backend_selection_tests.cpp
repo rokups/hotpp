@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests of the run-time choice of the backend: backend_available, DefaultBackendOptions::kind
 // and the environment variable HOT_BACKEND. CMake defines HOT_WITH_CLANG_FILES and HOT_WITH_JIT
 // (on hot_backend) for the backends that the build has.

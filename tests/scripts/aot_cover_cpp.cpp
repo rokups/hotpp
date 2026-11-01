@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Cover script for optimized AOT code, written in C++ (parity test). The classes have field
 // initializers, a script virtual function with an override, a destructor, and a constructor
 // that throws. The destructor of CppBoss prints the facts of the run.

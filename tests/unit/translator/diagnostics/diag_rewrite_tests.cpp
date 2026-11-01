@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests of the pure function hotc::rewrite_diagnostic (design 4.2, experiment F2).
 // The input is Clang text that the tests write by hand. The golden tests with a real
 // compile are in tests/integration/backends/diagnostic_mistake_tests.cpp.

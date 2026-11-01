@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Case: script to script call. Fib is recursive, so the compiler cannot remove the calls.
 // The .cpp twin of call_script.hot: the same work as the .hot script.
 #include "BenchEngine.h"

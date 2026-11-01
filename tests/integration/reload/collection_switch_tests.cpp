@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests of the string switch and the collection literal with the backend that HOT_BACKEND selected.
 #include "hot/backend.h"
 #include "support/backend_fixture.h"

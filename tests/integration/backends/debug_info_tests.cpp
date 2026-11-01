@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Experiment F3 (design 4.10, 4.12): the debug info names the .hot files.
 //
 // The translator writes "#line" directives. Clang copies them into the DWARF line table. These

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Generation 1 of Relay (design 4.9, S17). A state field keeps a raw function pointer. The
 // pointer can point into the code of a generation, so no retired generation unloads.
 using "Actor.h";

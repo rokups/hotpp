@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // A watcher of one file for the harness (design 8.1).
 // On Linux it uses inotify on the parent directory. This also sees an editor that
 // writes a new file and renames it over the old one. Without inotify it polls the

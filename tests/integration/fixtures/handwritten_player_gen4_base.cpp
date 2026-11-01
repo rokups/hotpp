@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Hand-written generation 4 of the Player class. The runtime must reject it.
 //
 // The shell has one extra member. The size of the shell changes, so the

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The Boss class without the interface base ITagged (S8b). A reload from boss_v1.hot to this
 // script removes a native base. A reload from this script to boss_v1.hot adds one. The shell
 // changes in both cases (design 5.3: RECONSTRUCT), so the loader rejects the reload.

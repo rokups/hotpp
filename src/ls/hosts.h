@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The host files of hot-ls (step 2a).
 //
 // A host is a program that runs scripts. The CMake function hot_script_host writes one JSON

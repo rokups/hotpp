@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Script runtime (design sections 4.4, 4.6 and 4.7).
 // The parts are in include/hot/runtime. This header includes all of them.
 // The files in src/runtime have the globals and the generation loader.

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The program of the sample. The C++ of the script is part of this binary. The program has no
 // loader and no compiler at run time.
 #include "Creature.h"

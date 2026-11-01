@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The builtin type names of the script. A plain header: no lexy include.
 //
 // A script type name has a fixed width. Each alias maps to one canonical C++ name.

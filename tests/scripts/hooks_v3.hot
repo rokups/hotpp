@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Generation 3 of the Hero class. The onReload hook throws. The reload still completes.
 using "Actor.h";
 using <stdexcept>;

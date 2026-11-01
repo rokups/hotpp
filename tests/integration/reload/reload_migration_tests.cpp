@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Reload with migration, a thunk and two rejected reloads.
 // CMake defines the macros GEN1_SO, GEN2_SO, GEN4_BASE_SO and GEN3_MISSING_SO.
 // The file GEN3_MISSING_SO does not exist on purpose.

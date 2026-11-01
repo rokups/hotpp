@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests for the line map and for the format of a diagnostic (src/translator/diag.h).
 #include "diag.h"
 #include "parser/parser.h"

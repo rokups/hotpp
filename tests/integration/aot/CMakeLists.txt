@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # aot_demo has the C++ of a script in the binary. It links hot_aot and not hot_runtime, so it has
 # no loader, no migration, no dlopen and no Clang. Actor.cpp and Util.cpp are the engine.
 hot_add_scripts(TARGET aot_demo_scripts AOT SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/aot_demo.hot

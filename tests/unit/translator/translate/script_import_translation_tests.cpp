@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Translation tests of script imports (S20a, design 4.5 and 4.10): "using "parent.hot";" adds the
 // classes of another script module to the generation. The child can derive from them.
 #include "hot/hotc_lib.h"

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // A file system that a host supplies for the imports of a script. The translator reads a
 // script import ("using "x.hot";") and a native header ("using "x.h";") from this file system
 // first. It reads the disk when the host file system has no such file.

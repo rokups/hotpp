@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests for the parser of the "[weak]" attribute (task 38) on fields, parameters and locals.
 #include "emit.h"
 #include "parser/parser.h"

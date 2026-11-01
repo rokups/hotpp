@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // A small LSP test client. It runs hot::ls::run_server() on a thread of the test process and
 // talks to it over two pipes.
 #pragma once

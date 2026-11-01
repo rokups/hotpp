@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests for the parser of the expressions: operators, calls, names, literals and lists.
 // Most tests are round trips: parse the text, print the tree and compare the C++ text.
 // The printer writes a fixed layout, so the expected text can differ in spacing.

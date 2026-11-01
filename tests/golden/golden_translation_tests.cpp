@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Golden-output tests. The files in tests/golden/expected/ hold the generated C++ and the slot
 // file of each example script. A later parser port must give the same bytes.
 // Set HOT_UPDATE_GOLDEN to write the files and pass.

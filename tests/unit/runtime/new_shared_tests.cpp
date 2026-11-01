@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests of make_shared_shell: the "new" of a script class with a std::shared_ptr handle. One block
 // holds the shell and the control block. The tests use a hand-made record, as the generated code does.
 #include "hot/runtime.h"

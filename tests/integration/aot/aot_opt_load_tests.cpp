@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Optimized AOT scripts in a Loader (MODE AOT OPTIMIZED). This program links the loader, a
 // backend and an optimized AOT library. The table has the flag "optimized". The loader accepts it,
 // and then it refuses each override and each reload.

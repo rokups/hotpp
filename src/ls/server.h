@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // hot-ls: a stdio Language Server (LSP 3.17) for Hot++ scripts (design 10.1, M12 to M14).
 //
 // The server is a proxy. It owns the text of each .hot document. It runs hotc::analyze() on the

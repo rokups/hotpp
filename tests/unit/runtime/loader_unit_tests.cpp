@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Unit tests of the Loader units (Module::unit) with hand-written records and no backend.
 // A reload of a named unit keeps the classes and the module block of the other units.
 #include "hot/runtime.h"

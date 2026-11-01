@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // A script class with static members that have the names of generated functions.
 // A static member has the name "<Class>__s_<name>", so it does not collide with "<Class>__plan".
 #include "Actor.h"

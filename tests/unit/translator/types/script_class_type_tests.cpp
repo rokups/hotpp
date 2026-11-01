@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests for the type model with script classes: handle by default, [value] inline (design 7.10.1).
 #include "support/type_model_test_support.h"
 

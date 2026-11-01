@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Scratch directories for the tests. CMake defines the macro HOT_SCRATCH_DIR for the test target.
 //
 // CTest starts the tests as separate processes, and it can run them in parallel. A directory

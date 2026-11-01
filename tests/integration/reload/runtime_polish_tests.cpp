@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Runtime polish (S9): the removed class handler (design 6.1), script_stats (8.4), the entry
 // counter check at the commit (6.3) and the harness with the file watcher and the commands (8.1).
 #include "Harness.h"

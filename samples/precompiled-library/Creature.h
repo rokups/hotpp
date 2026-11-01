@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The host class of the sample. The scripts wolf.hot and wolf.cpp derive from it.
 // The class is header-only, so the script and the program use the same header.
 #pragma once

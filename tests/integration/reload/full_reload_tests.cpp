@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests of the result of a reload that hot reload cannot apply (full reload, steps 1-3):
 // the status, the reason and the classes of a ReloadResult, and the deferred write of the
 // slot state. The slot state changes only when the Loader accepts the module. The last tests

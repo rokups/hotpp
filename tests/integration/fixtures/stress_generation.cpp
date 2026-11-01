@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // A hand-written generation of the class Pulse for the reload stress test (design M8).
 //
 // The library has no fixed generation number. script_register uses the active generation plus

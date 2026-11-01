@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The factory of a script class and the plan that migrates the state of a live object.
 #pragma once
 #include "hot/runtime/records.h"

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The run of the AOT demo (S12). The AOT program and the test of the loader use this
 // same function, so they run the same steps. The result is a text that shows the state of each
 // object after each frame. Two runs that give the same text behave the same.

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # Hand-written generations of the Player class. The tests load them as libraries.
 # handwritten_player_gen1: generation 1.
 # handwritten_player_gen2: generation 2 (migration).

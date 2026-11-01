@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The run-time override of the unit wolf as a plain C++ file. The program compiles this file
 // while it runs. Wolf has one more field, howls. The fields bites and the base state stay.
 #include "Creature.h"

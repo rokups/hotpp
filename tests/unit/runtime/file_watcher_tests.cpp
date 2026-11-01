@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The file watcher of the harness (design 8.1), with a temporary directory. Both the inotify
 // mode and the polling fallback must see a change of the watched file and nothing else.
 #include "FileWatcher.h"

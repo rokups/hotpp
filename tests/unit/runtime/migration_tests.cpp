@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Unit tests of the migration (design 4.7 and 6.6) with hand-written records and no backend.
 // The tests cover the plan, the convert hook, the onReload hook with OldState,
 // the warnings, the rejections that stay and the restart request.

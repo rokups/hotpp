@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The program of the sample. The scripts are AOT code in the binary, and the program also has a
 // backend. It runs three phases with one live object:
 //   1. AOT: Loader::load_aot starts with the compiled-in script wolf.

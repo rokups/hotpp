@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # The test of the installed SDK. Run it with "cmake -P". It does these steps:
 #   1. cmake --install <BUILD_DIR> --prefix <WORK_DIR>/prefix, then move the prefix to
 #      <WORK_DIR>/prefix_moved

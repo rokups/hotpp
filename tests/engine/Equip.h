@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Native classes with virtual methods that take a handle type in several forms: a raw
 // pointer, a const reference, a std::shared_ptr and an intrusive pointer. A script override
 // writes the plain handle type for each form. The functions call the virtuals as native code.

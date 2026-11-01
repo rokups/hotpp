@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Host containers for the tests of the stub attribute "checked_index". They have no bounds test
 // of their own: the runtime test shows that hot::index adds the test.
 #pragma once

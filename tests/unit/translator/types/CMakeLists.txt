@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # The tests of the type model: stubs to C++ storage types.
 add_executable(unit_translator_types_tests
     carrier_override_tests.cpp

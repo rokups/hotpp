@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # Reload tests. The first group loads hand-written libraries. The second group
 # uses the backend that make_default_backend returns (the environment variable HOT_BACKEND chooses it). The file gen3_missing.so does not exist on purpose.
 add_executable(integration_reload_tests

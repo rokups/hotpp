@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Reload tests for classes that use each other through handles (task 47) with the backend that
 // HOT_BACKEND selected. Child comes before Parent in the script, and each class uses the other.
 // The child holds its parent through "[weak]", so the parent dies when the script lets it go.

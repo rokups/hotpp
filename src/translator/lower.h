@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The lowering pass. It changes the parsed script AST into AST that the printer
 // (emit.h) prints as C++. translate() in hotc_lib.cpp uses this pass. The pass has the
 // rules of the old token rewriter:

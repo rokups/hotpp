@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Reload tests of the hooks (design 4.7 and 6.6) with the backend that HOT_BACKEND selected:
 // onReload(OldState), the convert hook, a type change without a hook and a rename without [alias].
 #include "hot/backend.h"

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Cover script for optimized AOT code (parity test). It has what aot_demo.hot lacks:
 // a noexcept override, a const virtual that the shell forwards, a pure virtual of an interface
 // base, a script virtual that a call through a base handle reaches, and a script error in an

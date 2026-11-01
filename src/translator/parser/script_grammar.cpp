@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The grammar of the script structure: imports, classes, fields and methods.
 //
 // The grammar finds the end of each method body and of each field initializer and stores the

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests of script language features with the backend that HOT_BACKEND selected.
 // The scripts must compile and run: default values and a for-of loop over a temporary.
 //

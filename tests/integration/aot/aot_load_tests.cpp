@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // AOT scripts in a Loader (big task 14, steps 3 and 4). This program links the loader, a
 // backend and the AOT scripts (the library links only the core of the runtime). It checks
 // three things.

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // A user interface script. The host draws it with Dear ImGui.
 // The script calls the ImGui API directly. A pointer parameter takes the address of a field.
 using "UiApp.h";

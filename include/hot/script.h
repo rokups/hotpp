@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The optional header for a script file (design 4.7 and 7.8).
 // The hotc tool injects this header, so a script does not need the include for hotc.
 // A normal C++ build (without hotc) needs the include. It gives the macro HOT_ALIAS

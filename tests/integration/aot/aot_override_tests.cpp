@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Run-time override and revert of one AOT unit (big task 14, steps 5 and 6). The binary has two
 // AOT scripts (units "override_a_v1" and "override_b_v1") and a backend. The call sequence is the
 // one of samples/hot-reload/main.cpp: load, request_reload, commit_pending, frame_boundary.

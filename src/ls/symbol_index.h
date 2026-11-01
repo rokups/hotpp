@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The saved symbol index of hot-ls (S28). It is like the index of clangd.
 //
 // There is one shard for each .hot file. All shards are in one flat directory (by default

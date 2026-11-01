@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // AOT compilation (S12, design M7), part 1. The loader runs the demo script in this process.
 // The AOT program aot_demo runs the same steps in another process. The text must be the
 // same. A symbol check shows that aot_demo has no loader and no Clang code.

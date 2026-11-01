@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Shared lexy parts of the script grammars. Only .cpp files and this file include lexy.
 //
 // All grammars parse the same text buffer with lexy::string_input. A position is a pointer

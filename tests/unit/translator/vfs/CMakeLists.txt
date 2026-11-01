@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # The tests of hot::FileSystem and of the imports from a file system of the host.
 add_executable(unit_translator_vfs_tests
     vfs_tests.cpp)

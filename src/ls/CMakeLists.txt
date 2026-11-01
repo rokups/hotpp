@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # ------------------------------------------------------------ Language server (S14b)
 # hot-ls is a stdio LSP proxy. It translates a .hot document in memory and gives the generated
 # C++ to a stock clangd child process. It maps the positions with the source map. The library

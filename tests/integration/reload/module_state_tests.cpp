@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Reload tests of the module-level declarations (S8a, design 5.3): a module variable, a script
 // enum and a script struct. They use the backend that HOT_BACKEND selected.
 #include "hot/backend.h"

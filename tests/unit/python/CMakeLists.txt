@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # A plain Python test of the pure helpers of the lldb formatters. lldb is not needed.
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)

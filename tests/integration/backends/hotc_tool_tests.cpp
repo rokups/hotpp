@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests of the tool hotc as a child process.
 //
 // CMake defines these macros: HOT_SOURCE_DIR, HOT_SCRATCH_DIR, HOTC_PATH and HOT_CXX.

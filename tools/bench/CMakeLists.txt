@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # bench_backends measures the run-time cost of every backend of the build, with no rebuild.
 # One program tests the clang files backend, the JIT backend (both when the build has them) and
 # the AOT scripts. A native C++ twin of each script is the reference.

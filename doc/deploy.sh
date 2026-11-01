@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # Deploy doc/ to the gh-pages branch of github.com/rokups/hotpp (https://rokups.github.io/hotpp).
 # Code highlighting runs in the browser (highlight.js from cdnjs, see _layouts/default.html and assets/highlight-hot.js). Jekyll safe mode blocks custom Rouge lexers.
 # Usage: doc/deploy.sh [--build-only] [--yes]

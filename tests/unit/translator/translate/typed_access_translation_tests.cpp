@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests for the type-directed member access on script handles, "return this" as a handle and
 // the parameter analysis of value parameters (design 7.10.1, 7.10.5).
 #include "hot/hotc_lib.h"

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Reload tests of a script family over two modules (S20a, design 4.5 and 4.10). The child module
 // imports the parent module with "using "xmod_parent.hot";". One generation holds both modules.
 // A reload of either module builds a new generation from the current text of both modules.

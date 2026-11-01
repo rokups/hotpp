@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Generation 2 of the signature change (design 5.3, S17).
 // heal gets a second parameter. The delegate on the old thunk detaches. A new thunk serves heal(int, int).
 using "Actor.h";

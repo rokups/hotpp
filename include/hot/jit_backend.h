@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // JitBackend: translate in memory, compile in memory with the Clang library,
 // load the code with LLVM ORC. No file is written and no process starts.
 #pragma once

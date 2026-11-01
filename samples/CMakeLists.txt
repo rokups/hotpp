@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # The samples of Hot++ for consumer projects. Each sample is a small project that uses Hot++ as a library.
 add_subdirectory(aot)
 add_subdirectory(aot-reload)

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Reload tests of native interface bases (S8b, design 4.4 and 5.3) with the backend that
 // HOT_BACKEND selected. The shell of Boss derives from Actor, IDamageable and ITagged.
 #include "Damageable.h"

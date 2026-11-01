@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // aot_cover: runs the script tests/scripts/aot_cover.hot as AOT code. The parity test builds it
 // twice (plain AOT and optimized AOT) and compares the two outputs. The script has a noexcept
 // override, a const virtual that the shell forwards, a pure virtual of an interface base, a

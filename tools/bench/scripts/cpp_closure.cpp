@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Case: closure call. The lambda captures a local.
 // The .cpp twin of closure.hot: the same work as the .hot script.
 #include "BenchEngine.h"

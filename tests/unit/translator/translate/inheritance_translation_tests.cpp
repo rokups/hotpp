@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests for hotc::translate with script inheritance (S6a, design 4.5, 7.6 and 7.7): a child of a
 // script class, script virtuals, "override" and "new" of a parent function, "base" and "is"/"as".
 #include "hot/hotc_lib.h"

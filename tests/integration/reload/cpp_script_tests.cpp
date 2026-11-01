@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Reload tests of a plain C++ script (a ".cpp" script). The file extension selects the parser
 // of hotc. The host passes the script as a ScriptSource like any other script. The tests use
 // the backend that HOT_BACKEND selected.

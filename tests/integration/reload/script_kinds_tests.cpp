@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Reload tests of the kinds of script classes (S5, design 7.10.1 and 5.3): a [value] class
 // that lives inline in the state block, a class without a base that is a handle, and a class
 // with a native base that is a handle. They use the backend that HOT_BACKEND selected.

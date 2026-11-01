@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Generation 2 of the Root, Mid and Leaf classes: the "base(...)" arguments of a chain (S16).
 // The "base(...)" argument of Leaf adds 20 now. Each "base(...)" argument calls Util.Count.
 // One object of Leaf still counts two calls. Maker makes a Leaf with "new" in each Tick.

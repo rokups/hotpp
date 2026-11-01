@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # The sample clang-files-backend: the program builds ClangFilesBackend itself.
 # HOT_ENABLE_CLANG_FILES=ON builds this backend into hot::backend (make_default_backend).
 # A program that builds it itself sets the compiler, the flags and the work folder.

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The exceptions of a script and the report of an unhandled exception (hot/runtime/errors.h).
 #include "hot/runtime/errors.h"
 

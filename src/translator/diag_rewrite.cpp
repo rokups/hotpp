@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The diagnostic rewriter (design 4.2, experiment F2). See rewrite_diagnostic in hotc_lib.h.
 //
 // The input is the text that Clang prints for the generated C++. The rewriter works on lines.

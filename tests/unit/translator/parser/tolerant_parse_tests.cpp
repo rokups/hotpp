@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests for the tolerant parse: a syntax error does not hide the later errors, and the tree
 // of the valid parts stays (design 10.1, M10).
 #include "emit.h"

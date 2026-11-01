@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Reload tests for weak handles (task 38) with the backend that HOT_BACKEND selected.
 // A child holds its parent through "[weak]", so the parent dies when the script lets it go.
 // A reload that makes a strong field weak resets the field to null.

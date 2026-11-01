@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // C++17 forms of C++20 library traits and attributes. The generated code and the runtime
 // headers need C++17 only. Do not use a feature of a later standard in include/hot.
 #pragma once

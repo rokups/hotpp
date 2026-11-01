@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Out-of-line definitions keep the vtable and the type_info of Actor in the
 // executable only. A shared library then uses the executable symbols.
 #include "Actor.h"

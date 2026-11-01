@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # The sample jit-backend: the program builds JitBackend itself. The backend compiles in memory
 # with the Clang library. It needs HOT_ENABLE_JIT=ON (or AUTO with the packages) and the LLVM and Clang development packages.
 # This file works in the Hot++ build (add_subdirectory) and as a separate project.

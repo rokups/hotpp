@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Expands ${workspaceFolder} in the settings of the server. No dependency on the vscode
 // module, so a plain node test can run it.
 'use strict';

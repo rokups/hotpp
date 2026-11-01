@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // aot_demo: the AOT mode (design M7) in a program. The C++ of the script
 // tests/scripts/aot_demo.hot is part of this binary. The program has no loader, no file
 // watcher and no compiler. It prints the state of the objects after each frame.

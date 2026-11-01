@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # Backend tests: scripts that hotc compiled ahead of time, the tool hotc, and the JIT backend.
 set(BACKEND_TEST_SOURCES
     precompiled_script_tests.cpp

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # Script runtime. It has two parts.
 #   hot_runtime_core: the globals and the registry that generated code needs. An AOT
 #     build links only this part (design M7). It has no loader, no migration, no dlopen.

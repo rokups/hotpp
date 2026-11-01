@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The result types of a reload: the status, the reason and the classes involved.
 //
 // module.h (LoadResult) and loader.h (Loader) both use them. So they live in a small header

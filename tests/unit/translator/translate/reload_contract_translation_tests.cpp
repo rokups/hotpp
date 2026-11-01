@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Translation tests of the reload contract rows that S17 adds (design 5.3): the signature lines
 // and the keyed thunk, the layout key of a native container of a [value] class, and the record
 // flag of a shell with std::enable_shared_from_this.

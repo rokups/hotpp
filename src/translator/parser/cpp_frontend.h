@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The ".cpp" frontend. It reads a plain C++ script file with libclang.
 // The result is the same ast::Script that parse_script gives for a ".hot" file.
 #pragma once

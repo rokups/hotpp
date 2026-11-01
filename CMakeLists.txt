@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 cmake_minimum_required(VERSION 3.20)
 project(hotpp VERSION 0.1.0 LANGUAGES CXX)
 

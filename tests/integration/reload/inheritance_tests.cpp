@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Reload tests of script inheritance (S6a, design 4.5, 7.6 and 7.7) with the backend that
 // HOT_BACKEND selected: a child of a script class, script virtuals, "base" calls, "is" and "as".
 #include "Util.h"

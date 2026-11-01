@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // bench_backends: measure the run-time cost of the script backends and the cost of a load.
 //
 // One binary tests every backend that the build has, at run time, with no rebuild:

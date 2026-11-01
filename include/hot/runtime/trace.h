@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The script traceback. With HOT_TRACEBACK=1 each script member function records a frame on a
 // thread-local stack. A hot::ScriptError copies the stack as text when it is made (errors.h).
 // The unwind pops the frames, so the copy must happen at the throw point.

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Case: field read and write of another script object through a pointer (the state indirection).
 // The .cpp twin of state_field.hot. A .cpp script has no handles, so it uses a raw pointer.
 #include "BenchEngine.h"

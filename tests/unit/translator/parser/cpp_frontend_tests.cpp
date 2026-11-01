@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests for the ".cpp" frontend: the structure, the body edits and the error messages.
 // The base class Actor comes from tests/engine/Actor.h.
 #include "parser/cpp_frontend.h"

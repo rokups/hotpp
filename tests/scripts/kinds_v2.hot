@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Generation 2 of the kinds of script classes (S5, design 7.10.1).
 // Stats gets the new field "mana" before the old fields. The reload migrates the inline
 // value of each Hero field by name. Counter and Hero get a new field.

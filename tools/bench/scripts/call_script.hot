@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Case: script to script call. Fib is recursive, so the compiler cannot remove the calls.
 // Fib(10) and Fib(11) take 177 and 287 calls. Run(n) makes n/2 of each: 232 calls per iteration.
 using "BenchEngine.h";

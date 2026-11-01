@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests of the file system of the host (hot::FileSystem) with the backend that HOT_BACKEND
 // selected. The headers and the script imports exist only in memory.
 //

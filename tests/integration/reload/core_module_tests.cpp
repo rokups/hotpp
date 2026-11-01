@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The core module (design 4.9, M8). The core holds the class records, the factories, the
 // thunks and the vtables. So every retired generation can unload, generation 1 too.
 //

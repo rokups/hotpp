@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Reload tests with the backend that HOT_BACKEND selected (make_default_backend).
 // They run the F1 reload scenario, a reload with native functions and std containers,
 // and the diagnostics of a bad script.

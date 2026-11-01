@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Thin client of the Hot++ language server. Plain JS: no build step.
 // The extension fails soft. A missing binary or a missing package gives one warning.
 'use strict';

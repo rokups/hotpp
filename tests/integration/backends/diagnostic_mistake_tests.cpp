@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Experiment F2 (design 4.2): common mistakes in a script. The compile fails. The error text
 // speaks script names and points to the script line.
 //

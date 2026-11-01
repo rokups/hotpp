@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Case: allocation and free of a script object with new and delete.
 // The .cpp twin of alloc.hot. A .cpp script owns the object with a raw pointer, not with a handle.
 #include "BenchEngine.h"

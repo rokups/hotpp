@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # Language server tests (S14b, design M12 to M14). The test client talks to the server over
 # pipes in the test process. A test that needs clangd is skipped when clangd is missing.
 find_program(HOT_CLANGD clangd)

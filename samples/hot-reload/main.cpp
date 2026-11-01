@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The program of the sample. It loads generation 1 of wolf, ticks, reloads generation 2 and
 // ticks the same object again. The object keeps its field values.
 // The host needs a C++ compiler at run time.

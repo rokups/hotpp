@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Case: a call of a module function and of a static method (a .cpp script).
 // A .hot script has no free functions and no static methods, so this case is a .cpp script.
 #include "BenchEngine.h"

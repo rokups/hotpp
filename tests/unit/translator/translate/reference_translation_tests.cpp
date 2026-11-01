@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests for the reference types of the script: "T&" of a script class, reference locals
 // ("var&"), the foreach with "var&", the hole of the borrowed field and the script text of
 // the messages.

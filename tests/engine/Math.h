@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Math helpers for script code. A script writes Math.Min(a, b).
 // The translator turns this into Math::Min(a, b).
 #pragma once

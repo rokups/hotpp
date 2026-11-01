@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests for the type model: the stub "class *;", "default_handle" and the rules of design 7.10.3.
 #include "support/type_model_test_support.h"
 

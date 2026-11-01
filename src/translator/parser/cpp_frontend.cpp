@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The ".cpp" frontend (see cpp_frontend.h). libclang parses the file. The walk fills an
 // ast::Script. The bodies are raw text. The edits change only the references that the
 // generated code cannot resolve. An edit never adds a newline, so the line numbers stay.

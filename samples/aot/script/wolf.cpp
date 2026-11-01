@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The script of the sample as a plain C++ file. Wolf derives from the host class Creature
 // and overrides Tick. A normal C++ build compiles this file. The tool hotc also translates it.
 // A .cpp script has no string interpolation, so Tick formats the line with snprintf.

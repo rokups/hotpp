@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests for hot-ls (S14b, design M12 to M14). One test for each feature. The tests that need
 // clangd are skipped when CMake did not find clangd.
 #include "clangd_process.h"

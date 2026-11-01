@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # The format library of the string interpolation "${...}". The choice is a build-time choice.
 #
 #   C++17 (the standard is less than 20): fmt. std::format needs C++20.

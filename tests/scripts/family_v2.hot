@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Generation 2 of a family of script classes (S6b, design 4.5, 7.6 and 7.9).
 // A is the root. B and S are children of A. G is a child of B. A has the property Score.
 // B has the property Bonus. A child object reads and writes the inherited properties.

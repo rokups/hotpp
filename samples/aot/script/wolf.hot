@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The script of the sample. Wolf derives from the host class Creature and overrides Tick.
 // Tick uses string interpolation, so the sample also checks the format library of the build.
 using "Creature.h";

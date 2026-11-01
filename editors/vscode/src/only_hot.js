@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The middleware of the language client. The client also sends the ".cpp" documents to the
 // server, to get the hotc errors of a ".cpp" script. The other features of a ".cpp" file belong
 // to clangd. So each feature request of the client for a document that is not language "hot"

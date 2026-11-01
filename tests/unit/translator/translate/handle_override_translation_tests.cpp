@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests for hotc::translate with an override that takes the plain handle type of a native
 // parameter: "Weapon w" for "Weapon*", "const Weapon&" or "std::shared_ptr<Weapon>" (task 33).
 #include "hot/hotc_lib.h"

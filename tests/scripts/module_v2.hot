@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Generation 2 of the module-level declarations (S8a, design 5.3 and 7.2).
 // The module variable "total" is now "sum". The alias keeps the value.
 // The enum gets a new enumerator. The struct Point gets a new field before the old fields.

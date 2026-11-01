@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Generation 2 of the parent module (S20a). It adds a field and a virtual function before
 // "Power". The slot of "Power" does not change, because the slots come in manifest order.
 using "Actor.h";

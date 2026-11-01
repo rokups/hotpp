@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests for the hand-written generation 1 of the Player class.
 // CMake defines the macro GEN1_SO (the path of the library).
 #include "support/test_support.h"

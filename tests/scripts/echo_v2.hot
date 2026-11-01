@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Generation 2 of Echo (design 5.3, S17). The first use of "this" as a handle adds
 // std::enable_shared_from_this to the shell. The loader rejects the reload.
 using "Actor.h";

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests of scripts that hotc compiled ahead of time.
 //
 // PrecompiledTests load .so files that hotc made at build time (hot_add_scripts)

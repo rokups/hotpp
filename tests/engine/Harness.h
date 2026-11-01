@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The harness of the test host (design 8.1): one script file, a world, a file watcher
 // and a command channel. The class has no I/O of its own except the file and the log.
 // The caller feeds it the command lines. The tests in tests/integration/reload use it.

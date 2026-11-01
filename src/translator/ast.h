@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The plain AST types of the script. The parser, the lowering pass and the printer share them.
 // This header has no parser-library include and no libclang include.
 #pragma once

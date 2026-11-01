@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests for the lowering of member access: fields, "this", "base", scopes and template arguments.
 // Parse the text, lower it, print it and compare the C++ text.
 // The golden tests in tests/golden/ check the lowering of the example scripts.

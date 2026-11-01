@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Generation 1 of the module variables with an order and a convert hook (S16).
 // "doubled" reads "seed" in its initializer. Probe changes "doubled" in each Tick.
 using "Actor.h";

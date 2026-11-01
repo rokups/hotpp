@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Generation 1: a std::vector of the struct Entry in a state field (design 5.3, S17).
 // The name Entry avoids the host struct Item (tests/engine/Object.h). The host exports its Item::Item(int), and the script module would bind to it.
 using "Actor.h";

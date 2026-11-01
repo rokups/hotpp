@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The type model: maps the class stubs to the C++ storage types (design 7.10).
 // This file has no libclang and no lexy.
 #pragma once

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The program of the sample. It builds JitBackend itself, compiles the script wolf in memory with it and
 // calls Tick. The host needs the Clang library, but no external compiler process.
 // The build makes two programs from this file. The arguments select the script variant:

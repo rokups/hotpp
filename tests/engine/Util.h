@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Native helpers for script code. The definitions are in Util.cpp.
 // They are not inline and not templates, so the host executable must export them.
 // Exception: the inline function pointer helpers at the end of the file (S17).

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Generation 3 of the signature change (design 5.3, S17).
 // The signature of generation 2 stays. Only the body changes, so the thunk of generation 2 keeps working.
 using "Actor.h";

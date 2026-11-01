@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # The sample imgui: a Dear ImGui window whose user interface a script draws.
 # The program builds ClangFilesBackend itself and reloads the script when the file changes.
 # It needs SDL3. Without SDL3 the configure prints a message and adds no target.

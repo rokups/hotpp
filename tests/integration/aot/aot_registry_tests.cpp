@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // AOT compilation (S12, design M7), part 2. This program links hot_aot and the AOT scripts.
 // It does not link the loader. The tests use the AotRegistry API.
 #include "Actor.h"

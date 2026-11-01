@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Tests for cpp_prelude: the text goes to the start of the shell, and the scoped rules decide who gets it.
 #include "hot/hotc_lib.h"
 #include "support/stub_translate_test_support.h"

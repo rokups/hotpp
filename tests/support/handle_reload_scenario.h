@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The handle reload scenario. Every way to get a module runs the same checks.
 //
 // run_handle_reload gets the modules of the scripts handle_v1, handle_v2 and handle_v1

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The native-and-std reload scenario. Every way to get a module runs the same checks.
 //
 // Generation 1 (tests/scripts/native_std_v1.hot) calls the non-inline functions of

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The base protocol of LSP: "Content-Length: N\r\n\r\n" and N bytes of JSON.
 #pragma once
 

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # Remove the scratch files of the tests, the backends and the benchmarks.
 # Run it as a script: cmake -DKEEP=<bool> -DDIR=<scratch dir> -P CleanScratch.cmake
 # The directory imgui stays: it is the work directory of the sample `samples/imgui`.

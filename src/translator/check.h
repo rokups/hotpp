@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // The checks of the script AST that need no libclang (design 5.3, 7.10.4 and 7.10.6).
 // The pass runs on the parsed AST, before the lowering. It does not change the AST.
 //

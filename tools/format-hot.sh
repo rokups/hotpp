@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 # Format Hot++ scripts (*.hot) with the CSharp style of the repo .clang-format.
 # clang-format has no mapping for the .hot extension, so the script
 # uses --assume-filename=<file>.cs to select the C# language.

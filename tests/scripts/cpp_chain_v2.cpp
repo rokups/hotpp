@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Generation 2 of a chain of three script classes: Leaf derives from Mid, and Mid derives from Base.
 // Base has the new field armor and the new virtual method Extra. Mid and Leaf override Extra.
 // A normal C++ build compiles this file. The tool hotc also translates it.

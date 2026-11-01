@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Case: a call of a script method through a pointer to another script object.
 // The .cpp twin of handle_call.hot. A .cpp script has no handles, so it uses a raw pointer.
 #include "BenchEngine.h"

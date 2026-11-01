@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Test assertions for a ReloadResult. ASSERT_RELOAD_OK and EXPECT_RELOAD_OK check that the
 // result is Applied or Pending. A failure prints the status, the reason and the error text.
 #pragma once

@@ -1,3 +1,7 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
 // Native interfaces for script classes with more than one native base (S8b, design 4.4).
 // A script class names them after its primary base: "class Boss : Actor, IDamageable".
 // The shell derives from all bases. It has one slot for each virtual of each base.
