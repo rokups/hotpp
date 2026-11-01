@@ -328,4 +328,5 @@ if(HOT_INSTALL)
         cmake/HotFormat.cmake
         cmake/CPM.cmake
         DESTINATION ${HOT_CMAKE_INSTALL_DIR})
+    install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/hot)
 endif()

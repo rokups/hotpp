@@ -4,7 +4,7 @@
   "description": "Syntax highlighting and language server client for Hot++ scripts (.hot). Shows the hotc errors of .cpp scripts.",
   "version": "0.1.0",
   "publisher": "spp",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "private": true,
   "engines": { "vscode": "^1.80.0" },
   "categories": ["Programming Languages"],

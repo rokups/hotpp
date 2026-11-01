@@ -27,6 +27,7 @@ cmake --install build-sdk --prefix /opt/hot-sdk
 | `include/hot/` | The public headers. `hotc` and the host compile with this folder. |
 | `lib/cmake/Hot/` | `HotConfig.cmake`, `HotTargets.cmake`, `HotScripts.cmake`, `HotFormat.cmake` and `CPM.cmake`. |
 | `share/hot/vscode/` | The VS Code extension: the file `hotpp-<version>.vsix`, or the folder `hotpp` when `vsce` was not found at configure time. |
+| `share/hot/LICENSE` | The MIT license of Hot++. |
 
 On some systems `lib` is `lib64`. CMake uses the standard folder names (`GNUInstallDirs`).
 

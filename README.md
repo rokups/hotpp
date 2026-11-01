@@ -105,4 +105,4 @@ Each folder in [samples/](samples/) shows one way to host Hot++: [aot](samples/a
 
 ## License
 
-MIT license, see `LICENSE`.
+Hot++ uses the MIT license. See [`LICENSE`](LICENSE).
