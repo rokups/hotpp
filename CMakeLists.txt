@@ -264,7 +264,12 @@ option(HOT_THREAD_SAFE "Allow any thread to create and destroy script objects" O
 
 # The compiler flags for the scripts. The backends use them.
 # A list value uses "|" between the items.
-separate_arguments(HOT_CXXFLAGS_LIST NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
+# MSVC: the flags of cl (/EHsc, /DWIN32) are not flags of the script compiler (clang++).
+if(MSVC)
+    set(HOT_CXXFLAGS_LIST "")
+else()
+    separate_arguments(HOT_CXXFLAGS_LIST NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
+endif()
 if(NOT HOT_RUNTIME_CHECKS)
     list(APPEND HOT_CXXFLAGS_LIST -DHOT_RUNTIME_CHECKS=0)
 endif()

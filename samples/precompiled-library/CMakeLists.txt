@@ -28,7 +28,11 @@ endif()
 #   sample_precompiled_cpp loads the library of script/wolf.cpp.
 # A call of hot_add_host takes scripts with one stem only, so each variant has its own call.
 # The compile flags of the library follow the host flags.
-separate_arguments(host_flags NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
+# MSVC: the flags of cl are not flags of the script compiler (clang++).
+set(host_flags "")
+if(NOT MSVC)
+    separate_arguments(host_flags NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
+endif()
 enable_testing()
 foreach(variant hot cpp)
     # The variant "hot" uses the extension ".hot".
