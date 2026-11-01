@@ -42,15 +42,15 @@ Q6 -->|No| RT["Compile at run time"]
 
 | Situation | Sample |
 |---|---|
-| AOT | [aot](https://github.com/rokups/hotpp/tree/main/samples/aot) |
-| AOT with run-time overrides | [aot-reload](https://github.com/rokups/hotpp/tree/main/samples/aot-reload) |
-| Precompiled library | [precompiled-library](https://github.com/rokups/hotpp/tree/main/samples/precompiled-library) |
-| Compile at run time | [runtime-compile](https://github.com/rokups/hotpp/tree/main/samples/runtime-compile) |
-| Hot reload | [hot-reload](https://github.com/rokups/hotpp/tree/main/samples/hot-reload) |
-| Explicit Clang files backend | [clang-files-backend](https://github.com/rokups/hotpp/tree/main/samples/clang-files-backend) |
-| In-process JIT | [jit-backend](https://github.com/rokups/hotpp/tree/main/samples/jit-backend) |
+| AOT | [aot](https://github.com/rokups/hotpp/tree/master/samples/aot) |
+| AOT with run-time overrides | [aot-reload](https://github.com/rokups/hotpp/tree/master/samples/aot-reload) |
+| Precompiled library | [precompiled-library](https://github.com/rokups/hotpp/tree/master/samples/precompiled-library) |
+| Compile at run time | [runtime-compile](https://github.com/rokups/hotpp/tree/master/samples/runtime-compile) |
+| Hot reload | [hot-reload](https://github.com/rokups/hotpp/tree/master/samples/hot-reload) |
+| Explicit Clang files backend | [clang-files-backend](https://github.com/rokups/hotpp/tree/master/samples/clang-files-backend) |
+| In-process JIT | [jit-backend](https://github.com/rokups/hotpp/tree/master/samples/jit-backend) |
 
-The sample [imgui](https://github.com/rokups/hotpp/tree/main/samples/imgui) combines hot reload with a Dear ImGui window. Copy your host from `samples/`. The folder `tests/engine` is a test host for the Hot++ tests. It is not a model for a user project.
+The sample [imgui](https://github.com/rokups/hotpp/tree/master/samples/imgui) combines hot reload with a Dear ImGui window. Copy your host from `samples/`. The folder `tests/engine` is a test host for the Hot++ tests. It is not a model for a user project.
 
 ## Hosting situations
 
@@ -58,13 +58,13 @@ Pick the row that matches your program. Each sample is a small project that buil
 
 | Situation | Links | Key API | Sample |
 |---|---|---|---|
-| Compile at run time | `hot_backend` | `make_default_backend` | [runtime-compile](https://github.com/rokups/hotpp/tree/main/samples/runtime-compile) |
-| Precompiled library | `hot_runtime` | `module_from_library` | [precompiled-library](https://github.com/rokups/hotpp/tree/main/samples/precompiled-library) |
-| Hot reload | `hot_backend` | `request_reload`, `commit_pending`, `frame_boundary` | [hot-reload](https://github.com/rokups/hotpp/tree/main/samples/hot-reload) |
-| In-process JIT | `hot_jit_backend` (needs `HOT_ENABLE_JIT`) | `JitBackend` | [jit-backend](https://github.com/rokups/hotpp/tree/main/samples/jit-backend) |
-| Explicit Clang files backend | `hot_clang_backend` | `ClangFilesBackend` | [clang-files-backend](https://github.com/rokups/hotpp/tree/main/samples/clang-files-backend) |
-| AOT | `hot::aot` (through `hot_add_host` with `MODE AOT`) | `AotRegistry` | [aot](https://github.com/rokups/hotpp/tree/main/samples/aot) |
-| AOT with run-time overrides | `hot::backend` (through `hot_add_host` with `MODE AOT_RELOAD`) | `Loader::load_aot`, `Backend::seed_slots`, `Loader::revert_unit` | [aot-reload](https://github.com/rokups/hotpp/tree/main/samples/aot-reload) |
+| Compile at run time | `hot_backend` | `make_default_backend` | [runtime-compile](https://github.com/rokups/hotpp/tree/master/samples/runtime-compile) |
+| Precompiled library | `hot_runtime` | `module_from_library` | [precompiled-library](https://github.com/rokups/hotpp/tree/master/samples/precompiled-library) |
+| Hot reload | `hot_backend` | `request_reload`, `commit_pending`, `frame_boundary` | [hot-reload](https://github.com/rokups/hotpp/tree/master/samples/hot-reload) |
+| In-process JIT | `hot_jit_backend` (needs `HOT_ENABLE_JIT`) | `JitBackend` | [jit-backend](https://github.com/rokups/hotpp/tree/master/samples/jit-backend) |
+| Explicit Clang files backend | `hot_clang_backend` | `ClangFilesBackend` | [clang-files-backend](https://github.com/rokups/hotpp/tree/master/samples/clang-files-backend) |
+| AOT | `hot::aot` (through `hot_add_host` with `MODE AOT`) | `AotRegistry` | [aot](https://github.com/rokups/hotpp/tree/master/samples/aot) |
+| AOT with run-time overrides | `hot::backend` (through `hot_add_host` with `MODE AOT_RELOAD`) | `Loader::load_aot`, `Backend::seed_slots`, `Loader::revert_unit` | [aot-reload](https://github.com/rokups/hotpp/tree/master/samples/aot-reload) |
 
 ### Comparison
 
