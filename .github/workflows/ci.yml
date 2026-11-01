@@ -106,6 +106,7 @@ jobs:
     # sdk-smoke-windows runs when the SDK package step succeeds, also when a test fails.
     outputs:
       sdk: ${{ steps.package.outcome }}
+      msvc: ${{ steps.msvc.outputs.version }}
     defaults:
       run:
         shell: bash
@@ -151,6 +152,12 @@ jobs:
           cmd /c "`"$vs\Common7\Tools\VsDevCmd.bat`" -arch=x64 -host_arch=x64 -no_logo && set" | ForEach-Object {
             if ($_ -match '^([^=]+)=(.+)$') { Add-Content -Path $env:GITHUB_ENV -Value "$($Matches[1])=$($Matches[2])" -Encoding utf8 }
           }
+
+      # The release notes name this toolset. The static libraries of the SDK need the same MSVC
+      # toolset or a newer one in the consumer.
+      - name: Record the MSVC toolset
+        id: msvc
+        run: echo "version=Visual Studio $VisualStudioVersion, MSVC toolset $VCToolsVersion" >> "$GITHUB_OUTPUT"
 
       - name: Configure
         run: |
@@ -287,7 +294,7 @@ jobs:
   # this job too (the workflow group). This is safe: the job releases only the head of master,
   # and the next run deletes the temporary assets of a cancelled run.
   release:
-    needs: [linux, windows, sdk-smoke-linux, sdk-smoke-windows]
+    needs: [linux, windows-msvc, sdk-smoke-linux, sdk-smoke-windows]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -328,9 +335,9 @@ jobs:
       - name: Update the release latest
         if: steps.head.outputs.current == 'true'
         env:
-          MINGW_GCC: ${{ needs.windows.outputs.mingw-gcc }}
+          MSVC: ${{ needs.windows-msvc.outputs.msvc }}
         run: |
-          notes=$(printf 'The latest build of master.\n\nCommit: %s\n\nThe compiler of the Windows SDK: %s\n' "$GITHUB_SHA" "$MINGW_GCC")
+          notes=$(printf 'The latest build of master.\n\nCommit: %s\n\nThe toolset of the Windows SDK: %s. A consumer needs this MSVC toolset or a newer one.\n' "$GITHUB_SHA" "$MSVC")
           if gh release view latest > /dev/null 2>&1; then
             gh release edit latest --title "Latest build" --notes "$notes" --prerelease
           else
