@@ -63,3 +63,7 @@ The `hotc` tool turns a script into C++. The engine reloads a changed script whi
 - [Development notes](development.html): the milestones, the source layout, the tests, the translator and the `hotc` command line.
 - [Language server internals](tools-ls.html): the script hosts, the index and the features of `hot-ls`.
 - [Runtime internals](internals.html): the JIT backend, threads, closures and debug information.
+
+## License
+
+Hot++ uses the MIT license. See [`LICENSE`](https://github.com/rokups/hotpp/blob/master/LICENSE).
