@@ -11,6 +11,14 @@ LiveObjects g_live;
 
 namespace
 {
+#if HOT_THREAD_SAFE
+// HOT_THREAD_SAFE=1: insert and erase take the lock of the list (runtime_internal.h).
+struct ChangeCheck
+{
+    explicit ChangeCheck(const LiveObjects& l) : guard(l) {}
+    LiveObjects::Guard guard;
+};
+#else
 #ifndef NDEBUG
 // The debug check of the thread rule: only one thread at a time changes the list. The flag uses
 // relaxed operations, so it gives no order between threads and TSan still sees a race.
@@ -19,19 +27,22 @@ std::atomic<bool> g_live_busy{false};
 struct ChangeCheck
 {
 #ifndef NDEBUG
-    ChangeCheck()
+    explicit ChangeCheck(const LiveObjects&)
     {
         [[maybe_unused]] const bool busy = g_live_busy.exchange(true, std::memory_order_relaxed);
         assert(!busy && "two threads create or destroy script objects at the same time");
     }
     ~ChangeCheck() { g_live_busy.store(false, std::memory_order_relaxed); }
+#else
+    explicit ChangeCheck(const LiveObjects&) {}
 #endif
 };
+#endif // HOT_THREAD_SAFE
 } // namespace
 
 void LiveObjects::insert(ShellBase* s)
 {
-    ChangeCheck check;
+    ChangeCheck check(*this);
     s->live_prev = tail_;
     s->live_next = nullptr;
     if (tail_)
@@ -44,7 +55,7 @@ void LiveObjects::insert(ShellBase* s)
 
 void LiveObjects::erase(ShellBase* s)
 {
-    ChangeCheck check;
+    ChangeCheck check(*this);
     if (s->live_prev)
         s->live_prev->live_next = s->live_next;
     else if (head_ == s)

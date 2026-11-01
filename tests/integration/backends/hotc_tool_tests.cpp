@@ -1242,6 +1242,8 @@ TEST(HotcTool, CompileCommandUsesTheBackendFlags)
         expected.push_back(f); // fmt build only
     for (const std::string& f : hot::checks_compile_flags())
         expected.push_back(f); // HOT_RUNTIME_CHECKS=OFF build only
+    for (const std::string& f : hot::thread_safe_compile_flags())
+        expected.push_back(f); // HOT_THREAD_SAFE=OFF build only
     for (const std::string& f : hot::traceback_compile_flags())
         expected.push_back(f); // HOT_TRACEBACK=ON build only
     for (const char* f : {"/x.cpp", "-o", "/x.so"})
@@ -1290,6 +1292,8 @@ TEST(HotcTool, CompileCommandsOptionWritesTheDatabase)
         fmt_args += "\"" + f + "\", ";
     for (const std::string& f : hot::checks_compile_flags())
         fmt_args += "\"" + f + "\", "; // HOT_RUNTIME_CHECKS=OFF build only
+    for (const std::string& f : hot::thread_safe_compile_flags())
+        fmt_args += "\"" + f + "\", "; // HOT_THREAD_SAFE=OFF build only
     for (const std::string& f : hot::traceback_compile_flags())
         fmt_args += "\"" + f + "\", "; // HOT_TRACEBACK=ON build only
     const std::string expected =

@@ -203,7 +203,8 @@ HOT_HIDDEN typename detail::sig_result<Sig>::type call(ShellBase* self, unsigned
 // the control block of a std::shared_ptr) has code of that generation.
 HOT_HIDDEN void note_creator(ShellBase* self, uint32_t generation)
 {
-    self->creator = generation;
+    // The shell is in the list already, and a walk of another thread can read "creator".
+    __atomic_store_n(&self->creator, generation, __ATOMIC_RELAXED);
 }
 
 // Builds the shell of a script object (design 7.3). "rec" is the record of the running

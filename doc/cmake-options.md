@@ -14,6 +14,7 @@ Hot++ has these options that select what the build adds. They are `ON` by defaul
 | `HOT_BUILD_TESTS` | main project: `ON` | Build the Hot++ tests. They need GoogleTest. It adds `tests/`, `editors/vscode` and `tools/bench`. It also adds the test engine dir `tests/engine` to the default include dirs of the backends. |
 | `HOT_BUILD_SAMPLES` | main project: `ON` | Build the samples in `samples/`. The targets start with `sample_`. |
 | `HOT_RUNTIME_CHECKS` | `ON` | Check null dereference and the bounds of an index (array, `std::vector`, a type with `checked_index`) in scripts. A failed check throws `NullReference` or `IndexOutOfRange`. `OFF` removes the checks: the runtime library defines `HOT_RUNTIME_CHECKS=0` for the host, and the backends pass `-DHOT_RUNTIME_CHECKS=0` to the compile of the scripts. See [Error reports](embedding-rules.html#error-reports). |
+| `HOT_THREAD_SAFE` | `ON` | `ON`: any thread can create and destroy script objects. `OFF`: only one thread at a time does this, and the runtime has no lock. `OFF` defines `HOT_THREAD_SAFE=0` for the host, and the backends pass `-DHOT_THREAD_SAFE=0` to the compile of the scripts. See [Thread safety](#thread-safety). |
 | `HOT_TRACEBACK` | `OFF` | Record the script call stack. A `ScriptError` keeps it, and `ScriptErrorReport::traceback` gives it. `ON` defines `HOT_TRACEBACK=1` for the host, and the backends pass `-DHOT_TRACEBACK=1` to the compile of the scripts. See [Traceback](embedding-rules.html#traceback). |
 | `HOT_PORTABLE` | `OFF` | Keep build paths out of the binaries. See the section [Portable binaries](cmake-sdk.html#portable-binaries). It cannot be `ON` together with `HOT_BUILD_TESTS`: the configure step stops with an error. |
 | `HOT_SAMPLES_STANDALONE_TEST` | `OFF` | Add the CTest test `samples_standalone_aot`. The test builds `samples/aot` as a separate project in `samples_standalone/aot` of the build tree. Only `aot` has this test. It works only when `HOT_BUILD_SAMPLES` is `ON`. |
@@ -49,6 +50,16 @@ These variables are not options but they matter:
 The default backend writes its files to `${HOT_SCRATCH_DIR}/hot_work/p<pid>`. It removes this folder at exit, unless `HOT_KEEP_TEMP` keeps it.
 
 The presets `linux-clang-files` and `linux-clang-jit` select the backend in this repository. See [Presets](cmake-presets.html#presets).
+
+## Thread safety
+
+`HOT_THREAD_SAFE` is `ON` by default. Any thread can then create and destroy script objects: `new` in script code, `ClassEntry::create`, and the release of the last handle. No host lock is needed. The runtime keeps a list of the live objects for the reload. A small spinlock protects the list, and it costs 5 to 17 ns for each `new` and free, depending on the work around it. See [The cost of `new`](benchmarks.html#the-cost-of-new).
+
+Set `HOT_THREAD_SAFE` to `OFF` when only one thread creates and destroys script objects, and you want the lowest cost. The list has no lock then. If two threads change it at the same time, the result is not defined. A debug build asserts.
+
+The host and the runtime library must use the same value. The CMake targets do this for you, because the runtime library defines `HOT_THREAD_SAFE=0` for the host when the option is `OFF`. The constructor of `hot::Loader` throws `std::runtime_error` when the host differs from the runtime library. The backends pass `-DHOT_THREAD_SAFE=0` to the compile of the scripts when the option is `OFF`. If you compile a script with your own flags, pass the same `-DHOT_THREAD_SAFE=` value. The loader does not check the scripts.
+
+`Loader::stats`, `frame_boundary` and `reset` can run while other threads create and destroy script objects. A reload still needs a safe point: do not create or destroy script objects while `commit_pending` runs (see [Embedding rules](embedding-rules.html#threads)).
 
 ## The C++ standard and the format library
 

@@ -1,6 +1,7 @@
 // The loader of generation modules: validation, commit and unload.
 #pragma once
 #include "hot/aot.h"
+#include "hot/config.h"
 #include "hot/module.h"
 #include "hot/runtime/records.h"
 #include "hot/runtime/registry.h"
@@ -82,6 +83,11 @@ bool restart_requested();
 void clear_restart_request();
 void request_restart(const char* reason);
 
+// Throws std::runtime_error when the HOT_THREAD_SAFE value of the host differs from the value of
+// the runtime library (config.h). The constructor of the Loader calls it. The scripts get the
+// value from the flags of the backend (thread_safe_compile_flags).
+void check_thread_safe_build(bool host_thread_safe);
+
 // Registers generation modules. A module has the function: extern "C" void script_register(Registry&).
 //
 // Threads. The Loader has one mutex.
@@ -132,7 +138,8 @@ void request_restart(const char* reason);
 class Loader
 {
 public:
-    Loader();
+    // The inline constructor passes the HOT_THREAD_SAFE value of the host TU to the check.
+    Loader() : Loader(HOT_THREAD_SAFE != 0) {}
     ~Loader();
     Loader(const Loader&) = delete;
     Loader& operator=(const Loader&) = delete;
@@ -245,6 +252,7 @@ public:
     }
 
 private:
+    explicit Loader(bool host_thread_safe);
     struct Pending;
     struct Gen
     {

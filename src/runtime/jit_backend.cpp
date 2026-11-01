@@ -162,6 +162,8 @@ CompileSetup make_invocation(const JitOptions& opt, const std::string& path, con
         args.push_back(f);
     for (const std::string& f : checks_compile_flags())
         args.push_back(f);
+    for (const std::string& f : thread_safe_compile_flags())
+        args.push_back(f);
     for (const std::string& f : traceback_compile_flags())
         args.push_back(f);
     if (!as_pch && !opt.pch_path.empty())

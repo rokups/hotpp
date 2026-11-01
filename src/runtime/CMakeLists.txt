@@ -25,6 +25,10 @@ endif()
 if(NOT HOT_RUNTIME_CHECKS)
     target_compile_definitions(hot_runtime_core PUBLIC HOT_RUNTIME_CHECKS=0)
 endif()
+# The thread safety (include/hot/config.h). The define is PUBLIC for the same reason.
+if(NOT HOT_THREAD_SAFE)
+    target_compile_definitions(hot_runtime_core PUBLIC HOT_THREAD_SAFE=0)
+endif()
 # The traceback (include/hot/config.h). The define is PUBLIC for the same reason.
 if(HOT_TRACEBACK)
     target_compile_definitions(hot_runtime_core PUBLIC HOT_TRACEBACK=1)

@@ -9,6 +9,7 @@
 #include <cassert>
 #include <cstdio>
 #include <exception>
+#include <stdexcept>
 #include <functional>
 #include <iterator>
 #include <map>
@@ -170,7 +171,18 @@ void request_restart(const char* reason)
     std::abort(); // no engine handler: the process cannot go on
 }
 
-Loader::Loader() = default;
+Loader::Loader(bool host_thread_safe)
+{
+    check_thread_safe_build(host_thread_safe);
+}
+
+void check_thread_safe_build(bool host_thread_safe)
+{
+    if (host_thread_safe != (HOT_THREAD_SAFE != 0))
+        throw std::runtime_error(std::string("HOT_THREAD_SAFE mismatch: the host uses ") + (host_thread_safe ? "1" : "0")
+            + " but the runtime library uses " + (HOT_THREAD_SAFE ? "1" : "0")
+            + ". Build the host and the runtime with the same HOT_THREAD_SAFE option.");
+}
 
 // The canonical record of an AOT class is the constant data of the program, and adopt() changes
 // it. The loader puts the saved copy back, so a later loader in the same process starts from
@@ -207,21 +219,24 @@ bool Loader::reset(std::string& error)
         error = "a reload is pending";
         return false;
     }
-    if (!g_live.empty())
     {
-        std::map<std::string, size_t> by_name; // sorted, so the text is stable
-        for (const auto& [s, creator] : g_live)
-            ++by_name[s->cls->name];
-        error = std::to_string(g_live.size()) + " live objects remain: ";
-        bool first = true;
-        for (const auto& [name, count] : by_name)
+        const LiveObjects::Guard guard(g_live); // other threads can create objects now
+        if (!g_live.empty())
         {
-            if (!first)
-                error += ", ";
-            first = false;
-            error += name + " x" + std::to_string(count);
+            std::map<std::string, size_t> by_name; // sorted, so the text is stable
+            for (const auto& [s, creator] : g_live)
+                ++by_name[s->cls->name];
+            error = std::to_string(g_live.size()) + " live objects remain: ";
+            bool first = true;
+            for (const auto& [name, count] : by_name)
+            {
+                if (!first)
+                    error += ", ";
+                first = false;
+                error += name + " x" + std::to_string(count);
+            }
+            return false;
         }
-        return false;
     }
     for (const Gen& g : gens_)
     {
@@ -476,6 +491,7 @@ std::map<Loader::ModuleKey, uint32_t> Loader::live_by_module() const
     }
     static const std::string kNoUnit;
     std::map<ModuleKey, uint32_t> live;
+    const LiveObjects::Guard guard(g_live);
     for (const auto& [s, creator] : g_live)
     {
         const auto cu = unit_of_.find(s->cls->name);
@@ -523,6 +539,7 @@ bool Loader::state_holds_code() const
         if (layout_holds_code(mb.layout))
             return true;
     std::unordered_map<const StateLayout*, bool> seen;
+    const LiveObjects::Guard guard(g_live);
     for (const auto& [s, creator] : g_live)
     {
         auto [it, fresh] = seen.try_emplace(s->cls->layout, false);
@@ -585,15 +602,21 @@ LoaderStats Loader::stats() const
 {
     LoaderStats st;
     st.active_generation = active_generation;
-    st.live_objects = g_live.size();
+    {
+        const LiveObjects::Guard guard(g_live);
+        st.live_objects = g_live.size();
+    }
     st.core_modules = cores_.size();
     st.state_holds_code = state_holds_code();
     const auto live = live_by_module();
     for (const Gen& g : gens_)
         st.generations.push_back({g.generation, g.state, pin_count(g.generation), code_refs(g, live), g.module.origin});
     std::unordered_map<const ClassRecord*, size_t> by_class;
-    for (const auto& [s, creator] : g_live)
-        ++by_class[s->cls];
+    {
+        const LiveObjects::Guard guard(g_live);
+        for (const auto& [s, creator] : g_live)
+            ++by_class[s->cls];
+    }
     for (const auto& [name, e] : registry_.entries())
     {
         const auto it = by_class.find(e.record);
@@ -960,6 +983,9 @@ ReloadResult Loader::commit_locked()
             if (!new_mod)
                 throw std::bad_alloc();
         }
+        // The pass holds the lock, but the migration after it does not (it runs script code). So
+        // no thread creates or destroys an object while commit_pending runs (runtime_internal.h).
+        const LiveObjects::Guard guard(g_live);
         work.reserve(g_live.size());
         for (const auto& [s, creator] : g_live)
         {
@@ -1079,8 +1105,11 @@ ReloadResult Loader::commit_locked()
         r->dtor = nullptr; // the script destructor belongs to a source that does not exist now
         r->new_default = nullptr; // the same: the factory makes an object without a constructor
         size_t live = 0;
-        for (const auto& [s, creator] : g_live)
-            live += s->cls == r;
+        {
+            const LiveObjects::Guard guard(g_live);
+            for (const auto& [s, creator] : g_live)
+                live += s->cls == r;
+        }
         std::fprintf(stderr,
             "[script] WARNING: class %s is removed from the source; %zu live object(s) keep "
             "their state, and calls of its methods are ignored\n",

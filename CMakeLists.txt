@@ -192,6 +192,13 @@ option(HOT_RUNTIME_CHECKS "Check null dereference and array bounds in scripts" O
 # (src/runtime/CMakeLists.txt).
 option(HOT_TRACEBACK "Record the script call stack for the error report" OFF)
 
+# The thread safety of the runtime (include/hot/config.h). ON: any thread can create and destroy
+# script objects, because the list of live objects has a small lock. OFF: no lock, and only one
+# thread creates and destroys script objects. The runtime library defines HOT_THREAD_SAFE=0 for the
+# host and for the installed SDK (src/runtime/CMakeLists.txt). The host and the runtime
+# must use the same value. The constructor of the Loader checks this.
+option(HOT_THREAD_SAFE "Allow any thread to create and destroy script objects" ON)
+
 # The compiler flags for the scripts. The backends use them.
 # A list value uses "|" between the items.
 separate_arguments(HOT_CXXFLAGS_LIST NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
@@ -200,6 +207,9 @@ if(NOT HOT_RUNTIME_CHECKS)
 endif()
 if(HOT_TRACEBACK)
     list(APPEND HOT_CXXFLAGS_LIST -DHOT_TRACEBACK=1)
+endif()
+if(NOT HOT_THREAD_SAFE)
+    list(APPEND HOT_CXXFLAGS_LIST -DHOT_THREAD_SAFE=0)
 endif()
 list(JOIN HOT_CXXFLAGS_LIST "|" HOT_CXXFLAGS_JOINED)
 

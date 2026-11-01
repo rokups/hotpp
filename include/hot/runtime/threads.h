@@ -39,8 +39,8 @@ extern uint32_t active_generation;
 //   - A thread that entered script code in StopTheWorld mode is not counted.
 //     Change the mode only when no thread is in script code.
 //   - The creation through the factory (ClassEntry::create) is an entry. Native code that
-//     reads the fields of a script object holds a ScriptEntry. Object creation and
-//     destruction stay on one thread at a time (the rule of the live object table).
+//     reads the fields of a script object holds a ScriptEntry. With HOT_THREAD_SAFE=0, object
+//     creation and destruction stay on one thread at a time (the rule of the live object table).
 //
 // Define HOT_NO_ENTRY_COUNTERS to remove the mode at compile time. Then a ScriptEntry is empty.
 enum class SyncMode : uint8_t

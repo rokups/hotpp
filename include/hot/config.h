@@ -32,6 +32,13 @@
 #ifndef HOT_RUNTIME_CHECKS
     #define HOT_RUNTIME_CHECKS 1
 #endif
+// The thread safety of the runtime. The value 1 means that any thread can create and destroy
+// script objects: the list of live objects has a small lock. The value 0 removes the lock, and
+// only one thread at a time creates or destroys script objects. The default is 1. The host and the
+// runtime library must use the same value. The constructor of the Loader checks this.
+#ifndef HOT_THREAD_SAFE
+    #define HOT_THREAD_SAFE 1
+#endif
 // The script traceback (hot/runtime/trace.h). The value 1 makes each script function record a
 // frame, and each script exception keep the call stack of its throw point. The default is 0.
 #ifndef HOT_TRACEBACK
@@ -78,6 +85,16 @@ inline std::vector<std::string> checks_compile_flags()
     std::vector<std::string> flags;
     if (!HOT_RUNTIME_CHECKS)
         flags.push_back("-DHOT_RUNTIME_CHECKS=0");
+    return flags;
+}
+
+// The flags that the compile command of a script needs for the thread safety.
+// The list is empty when the thread safety is on.
+inline std::vector<std::string> thread_safe_compile_flags()
+{
+    std::vector<std::string> flags;
+    if (!HOT_THREAD_SAFE)
+        flags.push_back("-DHOT_THREAD_SAFE=0");
     return flags;
 }
 

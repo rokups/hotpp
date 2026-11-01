@@ -5,8 +5,14 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <atomic>
 #include <cstddef>
+#include <memory>
+#include <stdexcept>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace
 {
@@ -265,3 +271,87 @@ TEST_F(Units, LoadAotKeepsACopyOfTheRecordAndFailsForTwoScriptsWithOneClass)
     EXPECT_NE(r.error.find("two units"), std::string::npos) << r.error;
     EXPECT_EQ(loader.find("Fake"), nullptr); // the loader is empty again
 }
+
+// The host and the runtime must agree on HOT_THREAD_SAFE (config.h). The test gives the opposite
+// value by hand, because one build has one value.
+TEST(ThreadSafeBuild, AHostWithAnotherValueThrows)
+{
+    EXPECT_NO_THROW(hot::check_thread_safe_build(HOT_THREAD_SAFE != 0));
+    try
+    {
+        hot::check_thread_safe_build(!HOT_THREAD_SAFE);
+        FAIL() << "no exception";
+    }
+    catch (const std::runtime_error& e)
+    {
+        EXPECT_NE(std::string(e.what()).find("HOT_THREAD_SAFE mismatch"), std::string::npos) << e.what();
+    }
+}
+
+namespace
+{
+// A class whose state block has a std::shared_ptr. The field has kMayHoldCode, so a live object
+// makes Loader::state_holds_code true and blocks each unload.
+struct Holder : hot::ShellBase
+{
+    virtual ~Holder() { hot::destroy_state(this); }
+};
+struct HolderState
+{
+    std::shared_ptr<int> p;
+};
+hot::FieldInfo holder_fields[] = {
+    {"p", nullptr, hot::type_key<std::shared_ptr<int>>(), offsetof(HolderState, p), sizeof(std::shared_ptr<int>),
+        alignof(std::shared_ptr<int>), hot::field_flags<std::shared_ptr<int>>(),
+        [](void*, void* f) { new (f) std::shared_ptr<int>(); }, hot::move_field<std::shared_ptr<int>>,
+        hot::field_destroyer<std::shared_ptr<int>>()},
+};
+hot::StateLayout holder_layout{"HolderState", sizeof(HolderState), alignof(HolderState), 1, holder_fields};
+} // namespace
+
+// Workers create and destroy objects in a loop while the main thread calls stats() and
+// frame_boundary() after a reload. The walks of the loader take the lock of the list
+// (HOT_THREAD_SAFE=1). TSan reports a race or a missing lock here.
+#if HOT_THREAD_SAFE
+TEST_F(Units, StatsAndFrameBoundaryWhileWorkersCreateAndDestroyObjects)
+{
+    ASSERT_RELOAD_OK(loader.load(module_of(register_a1, "A1", "A")));
+    ASSERT_RELOAD_OK(loader.request_reload(module_of(register_a3, "A3", "A")));
+    ASSERT_RELOAD_OK(loader.commit_pending());
+    hot::ClassRecord holder_rec{"Holder", 1, slots, 1, &holder_layout, nullptr, "Base", kHash};
+    auto* keep = new Holder; // one object lives to the end
+    hot::init_state(keep, &holder_rec);
+    ASSERT_TRUE(loader.stats().state_holds_code);
+
+    std::atomic<bool> stop{false};
+    std::vector<std::thread> workers;
+    for (int t = 0; t < 4; ++t)
+        workers.emplace_back([&]
+        {
+            while (!stop.load(std::memory_order_relaxed))
+            {
+                auto* h = new Holder;
+                hot::init_state(h, &holder_rec);
+                hot::note_creator(h, 1);
+                auto* f = new Fake;
+                hot::init_state(f, &fake3);
+                delete h;
+                delete f;
+            }
+        });
+    size_t max_live = 0;
+    for (int i = 0; i < 300; ++i)
+    {
+        const hot::LoaderStats st = loader.stats();
+        max_live = std::max(max_live, st.live_objects);
+        EXPECT_TRUE(st.state_holds_code);
+        loader.frame_boundary();
+    }
+    stop = true;
+    for (std::thread& w : workers)
+        w.join();
+    delete keep;
+    EXPECT_GE(max_live, 1u);
+    EXPECT_EQ(loader.stats().live_objects, 0u);
+}
+#endif

@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <thread>
 #include <utility>
 
 namespace hot
@@ -15,18 +16,40 @@ namespace hot
 // generation whose code made the object with "new" (construct_shell), or 0. That code also made
 // the handle of the object, for example the control block of a std::shared_ptr. So the
 // generation must stay loaded while the object lives. Do not insert or erase during a walk.
-// The list has no lock: a lock costs about 3 ns for each "new" and free. Only one thread at a
-// time creates or destroys script objects (doc/internals.md, "Threads and the safe point"). A
-// debug build asserts when two changes overlap. The reload walks the list on the main thread at
-// the safe point, when no other thread creates or destroys an object.
+// With HOT_THREAD_SAFE=1 (the default) insert and erase take a spinlock, so any thread can create
+// and destroy script objects. The order of the list is the order in which the threads get the
+// lock. With HOT_THREAD_SAFE=0 the list has no lock: only one thread at a time creates or
+// destroys script objects, and a debug build asserts when two changes overlap (state.cpp).
+// A walk and a read of size() must hold a LiveObjects::Guard when other threads can create or
+// destroy objects. The lock is not recursive: inside a Guard do not run script code, and do not
+// create or destroy a script object. With HOT_THREAD_SAFE=0 the Guard does nothing. The migration
+// of a commit walks the objects without a Guard, because it runs script code: no thread creates
+// or destroys an object while commit_pending runs (doc/internals.md, "Threads and the safe point").
 class LiveObjects
 {
 public:
+    // Holds the lock of the list. With HOT_THREAD_SAFE=0 it does nothing.
+    class Guard
+    {
+    public:
+        explicit Guard(const LiveObjects& l) : l_(l) { l_.lock(); }
+        ~Guard() { l_.unlock(); }
+        Guard(const Guard&) = delete;
+        Guard& operator=(const Guard&) = delete;
+
+    private:
+        const LiveObjects& l_;
+    };
+
     class iterator
     {
     public:
         explicit iterator(ShellBase* s) : s_(s) {}
-        std::pair<ShellBase*, uint32_t> operator*() const { return {s_, s_->creator}; }
+        // "creator" is written after the insert (note_creator), so the read is atomic.
+        std::pair<ShellBase*, uint32_t> operator*() const
+        {
+            return {s_, __atomic_load_n(&s_->creator, __ATOMIC_RELAXED)};
+        }
         iterator& operator++()
         {
             s_ = s_->live_next;
@@ -47,6 +70,26 @@ public:
     iterator end() const { return iterator(nullptr); }
 
 private:
+#if HOT_THREAD_SAFE
+    // A spinlock: a change of the list is a few stores. A waiting thread spins on a read and
+    // gives the CPU away after some tries. The flag is next to the list data.
+    void lock() const
+    {
+        // Test and test-and-set: a waiting thread reads the flag and does not write the line.
+        for (unsigned tries = 0;; ++tries)
+        {
+            if (!lock_.load(std::memory_order_relaxed) && !lock_.exchange(true, std::memory_order_acquire))
+                return;
+            if (tries > 64)
+                std::this_thread::yield();
+        }
+    }
+    void unlock() const { lock_.store(false, std::memory_order_release); }
+    mutable std::atomic<bool> lock_{false};
+#else
+    void lock() const {}
+    void unlock() const {}
+#endif
     ShellBase* head_ = nullptr;
     ShellBase* tail_ = nullptr;
     size_t size_ = 0;

@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -34,7 +36,7 @@ const hot::StateLayout kLayout = {"CellState", sizeof(CellState), alignof(CellSt
 
 using Args = std::tuple<>;
 extern hot::ClassRecord cell_record;
-int g_destroyed = 0;
+std::atomic<int> g_destroyed{0}; // atomic: threads destroy objects at the same time
 
 struct Cell_Shell final
     : hot::PlainObject
@@ -121,7 +123,7 @@ TEST(RuntimeNewShared, ThisAsAHandleSharesTheOwnership)
 
 TEST(RuntimeNewShared, AWeakHandleOutlivesTheObject)
 {
-    const int destroyed = g_destroyed;
+    const int destroyed = g_destroyed.load();
     std::weak_ptr<Cell_Shell> w;
     {
         auto c = make_cell();
@@ -282,8 +284,8 @@ TEST(RuntimeNewShared, AClassWithItsOwnOperatorNewUsesIt)
     EXPECT_TRUE(hot::g_live.empty());
 }
 
-// An object made on a worker thread and freed on the main thread. The threads do not overlap:
-// the list of live objects has no lock (see LiveObjects in runtime_internal.h).
+// An object made on a worker thread and freed on the main thread. The threads do not overlap, so
+// the test is valid also with HOT_THREAD_SAFE=0 (see LiveObjects in runtime_internal.h).
 TEST(RuntimeNewShared, AnObjectCanMoveToAnotherThread)
 {
     std::shared_ptr<Cell_Shell> c;
@@ -294,6 +296,83 @@ TEST(RuntimeNewShared, AnObjectCanMoveToAnotherThread)
     EXPECT_TRUE(hot::g_live.empty());
 }
 
+#if HOT_THREAD_SAFE
+// Many threads create and destroy objects with no host lock (HOT_THREAD_SAFE=1). Each thread
+// keeps some objects to the end. After the join, the count is exact, each kept object is in the
+// list once, and the objects of one thread are in the order of creation.
+TEST(RuntimeNewShared, ManyThreadsWithoutAHostLock)
+{
+    constexpr int kThreads = 6;
+    constexpr int kRounds = 4000;
+    constexpr int kKeep = 5; // the objects that each thread keeps to the end
+    std::vector<std::vector<std::shared_ptr<Cell_Shell>>> kept(kThreads);
+    std::vector<std::thread> threads;
+    for (int t = 0; t < kThreads; ++t)
+        threads.emplace_back([&, t]
+        {
+            for (int i = 0; i < kRounds; ++i)
+            {
+                std::shared_ptr<Cell_Shell> c = make_cell();
+                if (i % (kRounds / kKeep) == 0)
+                    kept[t].push_back(c);
+                static_cast<CellState*>(c->state)->a += i; // a field write needs no lock
+            }
+        });
+    for (std::thread& th : threads)
+        th.join();
+    EXPECT_EQ(hot::g_live.size(), size_t(kThreads * kKeep));
+    const std::vector<hot::ShellBase*> list = live_list();
+    ASSERT_EQ(list.size(), size_t(kThreads * kKeep));
+    size_t at = 0;
+    for (const auto& objects : kept)
+    {
+        size_t last = 0;
+        for (const auto& c : objects)
+        {
+            const auto it = std::find(list.begin(), list.end(), static_cast<hot::ShellBase*>(c.get()));
+            ASSERT_NE(it, list.end());
+            const size_t pos = static_cast<size_t>(it - list.begin());
+            EXPECT_TRUE(&c == &objects.front() || pos > last);
+            last = pos;
+            ++at;
+        }
+    }
+    EXPECT_EQ(at, list.size());
+    kept.clear();
+    EXPECT_TRUE(hot::g_live.empty());
+}
+
+// The threads also destroy objects that other threads made: thread t hands its object to thread
+// t+1 through a slot. The exchange uses a mutex of the test, not a lock of the runtime.
+TEST(RuntimeNewShared, ObjectsDestroyedByAnotherThread)
+{
+    constexpr int kThreads = 4;
+    constexpr int kRounds = 3000;
+    std::mutex slot_lock;
+    std::vector<std::shared_ptr<Cell_Shell>> slots(kThreads);
+    std::vector<std::thread> threads;
+    for (int t = 0; t < kThreads; ++t)
+        threads.emplace_back([&, t]
+        {
+            for (int i = 0; i < kRounds; ++i)
+            {
+                std::shared_ptr<Cell_Shell> mine = make_cell();
+                std::shared_ptr<Cell_Shell> old;
+                {
+                    std::lock_guard<std::mutex> lock(slot_lock);
+                    old = std::move(slots[(t + 1) % kThreads]);
+                    slots[t] = std::move(mine);
+                }
+                old.reset(); // the last handle: this thread destroys an object of another thread
+            }
+        });
+    for (std::thread& th : threads)
+        th.join();
+    EXPECT_LE(hot::g_live.size(), size_t(kThreads));
+    slots.clear();
+    EXPECT_TRUE(hot::g_live.empty());
+}
+#else
 // Many threads create and destroy objects. The host serializes the creation and the destruction
 // with its own lock, as the thread rule says (doc/internals.md). The walk on the main thread
 // then gives the objects in the order of creation, and the count is exact.
@@ -333,5 +412,6 @@ TEST(RuntimeNewShared, ManyThreadsWithTheHostLock)
     kept.clear();
     EXPECT_TRUE(hot::g_live.empty());
 }
+#endif // HOT_THREAD_SAFE
 
 } // namespace
