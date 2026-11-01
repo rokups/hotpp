@@ -285,10 +285,12 @@ endfunction()
 
 # hot_export_host: the Windows part of a host executable t with ENABLE_EXPORTS ON. The script
 # modules (DLLs) reach the host symbols through the import library of t. Other systems: no-op.
-# - MinGW: GNU ld exports only the dllexport symbols when an object has one. The option
-#   --export-all-symbols exports all symbols, as -rdynamic does on Linux. So a module can call
-#   a native method of the host. The libraries of the MinGW runtime (libstdc++) stay out.
-# - MSVC: WINDOWS_EXPORT_ALL_SYMBOLS has the same effect for the functions of the objects of t.
+# - Only the HOT_EXPORT symbols are exports (hot/runtime/export.h). The build does not export
+#   all symbols. A native class or function of the host that a script uses needs HOT_EXPORT.
+# - The static library hot::runtime_core has the ABI of the generated code (threads, registry,
+#   errors). The link takes all its objects (whole archive), so each HOT_EXPORT symbol of it is
+#   an export, also when t does not use it. The objects of hot::runtime and hot::aot come in
+#   through the calls of t: a host links only one of the two, and they define the same symbols.
 # - After each build the import library goes next to the executable. The clang files backend
 #   finds it there (ClangFilesOptions::host_import_library) and links each module DLL with it.
 function(hot_export_host t)
@@ -300,15 +302,11 @@ function(hot_export_host t)
         return()
     endif()
     set_target_properties(${t} PROPERTIES HOT_IMPORT_LIBRARY_COPY ON)
-    if(MINGW)
-        # The static MinGW runtime stays private: each module links its own copy. An exported
-        # copy (for example _Unwind_Resume) clashes with the copy of the module.
-        target_link_options(${t} PRIVATE -Wl,--export-all-symbols
-            "-Wl,--exclude-libs,libgcc.a:libgcc_eh.a:libstdc++.a:libsupc++.a:libwinpthread.a:libpthread.a:libmingwex.a:libmingw32.a:libmsvcrt.a:libucrt.a:libucrtbase.a")
-    elseif(MSVC)
-        # CMake writes a .def file with all functions of the objects of t. A module can then call
-        # a native method of the host. The runtime functions have dllexport (HOT_EXPORT).
-        set_target_properties(${t} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+    if(MSVC)
+        target_link_options(${t} PRIVATE "/WHOLEARCHIVE:$<TARGET_LINKER_FILE:hot::runtime_core>")
+    else()
+        target_link_options(${t} PRIVATE
+            "-Wl,--whole-archive,$<TARGET_LINKER_FILE:hot::runtime_core>,--no-whole-archive")
     endif()
     add_custom_command(TARGET ${t} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_LINKER_FILE:${t}> $<TARGET_FILE_DIR:${t}>

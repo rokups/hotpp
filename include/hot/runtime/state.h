@@ -385,13 +385,13 @@ inline const FieldInfo* find_field(const ClassRecord* cls, const char* name)
 
 template <class T> inline const char* type_key()
 {
-    return typeid(T).name();
+    return typeid(typekey_t<T>).name();
 }
 
 // The type key of a native container of a [value] script class (design 5.3): "type#hash".
 // "hash" is the hash of the layout of the [value] classes in the type. The text stays valid
 // after the module unloads. A different hash with the same type resets the container.
-HOT_NODEBUG const char* layout_keyed(const char* type, const char* hash);
+HOT_NODEBUG HOT_EXPORT const char* layout_keyed(const char* type, const char* hash);
 
 // True when the type key of a field is the typeid name, with or without a layout hash.
 inline bool type_key_matches(const char* key, const char* name)

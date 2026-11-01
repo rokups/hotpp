@@ -5,43 +5,10 @@
 // The HOT_HIDDEN macro. Helpers on the script call path must not create debugger frames or variables.
 #pragma once
 
+#include "hot/runtime/export.h"
+
 // A small helper that the generated code calls. It inlines at the call site and has no debug
 // info of its own, so "step into" on a script line does not enter it.
-// HOT_EXPORT keeps a symbol visible outside its module. The AOT libraries build with
-// -fvisibility=hidden. A type whose RTTI must match across the host and a script module needs it.
-// On Windows a module is a DLL. The runtime exports the symbol. A module build
-// (HOT_MODULE_BUILD defined) imports it.
-#if defined(_WIN32) && defined(HOT_MODULE_BUILD)
-    #define HOT_EXPORT __declspec(dllimport)
-#elif defined(_WIN32)
-    #define HOT_EXPORT __declspec(dllexport)
-#elif defined(__clang__) || defined(__GNUC__)
-    #define HOT_EXPORT [[gnu::visibility("default")]]
-#else
-    #define HOT_EXPORT
-#endif
-
-// HOT_MODULE_EXPORT marks a symbol that a script module gives to the host, for example
-// script_register. The module defines it, so it is always an export, also under HOT_MODULE_BUILD.
-// How a module DLL reaches the host symbols (the HOT_EXPORT symbols of the runtime):
-// - The host executable exports them. CMake ENABLE_EXPORTS on the host target makes the
-//   executable write an import library (for example libhost.dll.a or host.lib).
-// - The module links that import library (ClangFilesOptions::host_import_library). Then the
-//   loader binds each dllimport symbol of the module to the executable.
-// - GNU ld (MinGW) exports only the dllexport symbols when an object has one. The CMake function
-//   hot_export_host adds --export-all-symbols, so a module can also call the native methods of
-//   the host.
-// - An MSVC host gets WINDOWS_EXPORT_ALL_SYMBOLS. It exports only the objects of the host target,
-//   not the objects of the static runtime. lld-link (MSVC mode) has no auto-import of data.
-//   Thus each runtime function and variable that module code uses must have HOT_EXPORT.
-#if defined(_WIN32)
-    #define HOT_MODULE_EXPORT __declspec(dllexport)
-#elif defined(__clang__) || defined(__GNUC__)
-    #define HOT_MODULE_EXPORT [[gnu::visibility("default")]]
-#else
-    #define HOT_MODULE_EXPORT
-#endif
-
 // Only clang knows the nodebug attribute. GCC ignores it and warns.
 #if defined(__clang__)
     #define HOT_HIDDEN [[gnu::always_inline, gnu::nodebug]] inline

@@ -225,8 +225,8 @@ HOT_EXPORT void (*set_stale_hook(void (*fn)(const char*)))(const char*);
 // generation. The counts are atomic: any thread can pin or unpin. A generation
 // number maps to one of 65536 counters; two numbers that are 65536 apart share a
 // counter. This can only delay an unload.
-HOT_NODEBUG void pin(uint32_t generation);
-HOT_NODEBUG void unpin(uint32_t generation);
+HOT_NODEBUG HOT_EXPORT void pin(uint32_t generation);
+HOT_NODEBUG HOT_EXPORT void unpin(uint32_t generation);
 uint32_t pin_count(uint32_t generation);
 
 namespace detail
