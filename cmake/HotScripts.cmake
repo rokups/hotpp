@@ -228,7 +228,11 @@ function(hot_add_scripts)
             target_link_libraries(${A_TARGET} PUBLIC hot_fmt)
         endif()
         # The generated code has parameters that a script does not use.
-        target_compile_options(${A_TARGET} PRIVATE -Wno-unused-parameter)
+        if(MSVC)
+            target_compile_options(${A_TARGET} PRIVATE /wd4100)
+        else()
+            target_compile_options(${A_TARGET} PRIVATE -Wno-unused-parameter)
+        endif()
         target_include_directories(${A_TARGET} PUBLIC ${A_INCLUDES})
         # The language server gets a script host with the same scripts and includes.
         hot_script_host(NAME ${A_TARGET} SCRIPTS ${scripts} INCLUDES ${A_INCLUDES} ${fmt_includes})
@@ -284,6 +288,7 @@ endfunction()
 # - MinGW: GNU ld exports only the dllexport symbols when an object has one. The option
 #   --export-all-symbols exports all symbols, as -rdynamic does on Linux. So a module can call
 #   a native method of the host. The libraries of the MinGW runtime (libstdc++) stay out.
+# - MSVC: WINDOWS_EXPORT_ALL_SYMBOLS has the same effect for the functions of the objects of t.
 # - After each build the import library goes next to the executable. The clang files backend
 #   finds it there (ClangFilesOptions::host_import_library) and links each module DLL with it.
 function(hot_export_host t)
@@ -300,6 +305,10 @@ function(hot_export_host t)
         # copy (for example _Unwind_Resume) clashes with the copy of the module.
         target_link_options(${t} PRIVATE -Wl,--export-all-symbols
             "-Wl,--exclude-libs,libgcc.a:libgcc_eh.a:libstdc++.a:libsupc++.a:libwinpthread.a:libpthread.a:libmingwex.a:libmingw32.a:libmsvcrt.a:libucrt.a:libucrtbase.a")
+    elseif(MSVC)
+        # CMake writes a .def file with all functions of the objects of t. A module can then call
+        # a native method of the host. The runtime functions have dllexport (HOT_EXPORT).
+        set_target_properties(${t} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
     endif()
     add_custom_command(TARGET ${t} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_LINKER_FILE:${t}> $<TARGET_FILE_DIR:${t}>

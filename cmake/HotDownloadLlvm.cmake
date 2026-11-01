@@ -69,9 +69,10 @@ if(HOT_SCRIPT_COMPILER STREQUAL CMAKE_CXX_COMPILER)
 endif()
 hot_llvm_cache(HOT_SCRIPT_COMPILER "${_hot_llvm_dir}/bin/clang++.exe" STRING
     "The compiler of the script modules at run time")
+# The build links libclang.lib directly. The CMake package of the release is not used.
+set(HOT_LIBCLANG_NO_PACKAGE ON)
 if(MINGW)
-    # The release has no CMake package of Clang and no LLVM libraries for the JIT.
-    set(HOT_LIBCLANG_NO_PACKAGE ON)
+    # The release has no LLVM libraries for a MinGW JIT.
     string(TOUPPER "$CACHE{HOT_ENABLE_JIT}" _hot_llvm_jit)
     if(_hot_llvm_jit STREQUAL "ON")
         message(WARNING "HOT_ENABLE_JIT=ON is ignored. The LLVM release has no LLVM libraries for "

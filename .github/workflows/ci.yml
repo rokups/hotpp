@@ -21,9 +21,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, msvc-port]
   pull_request:
-    branches: [master]
+    branches: [master, msvc-port]
   workflow_dispatch:
 
 permissions:

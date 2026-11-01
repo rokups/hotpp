@@ -108,13 +108,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(MSVC)
-    add_compile_options(/W4)
+    # /utf-8: the sources are UTF-8. /bigobj: the translator and the tests have large objects.
+    # /permissive- and /Zc:__cplusplus: standard C++ rules and a correct value of __cplusplus.
+    # /Zc:preprocessor: the standard preprocessor (the macros of the runtime headers need it).
+    add_compile_options(/W4 /utf-8 /bigobj /permissive- /Zc:__cplusplus /Zc:preprocessor)
+    # windows.h: no min and max macros, and only the core of the API.
+    add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
+    # /JMC (Just My Code) helps the debugger skip the library code.
+    add_compile_options($<$<CONFIG:Debug>:/JMC>)
 else()
     add_compile_options(-Wall -Wextra)
-endif()
-if(MSVC)
-    # unverified: not built on MSVC. /JMC (Just My Code) helps the debugger skip the library code.
-    add_compile_options($<$<CONFIG:Debug>:/JMC>)
 endif()
 
 # Sanitizers. Use -DCMAKE_CXX_FLAGS=-fsanitize=address or -fsanitize=thread.

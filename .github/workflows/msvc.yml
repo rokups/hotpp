@@ -1,0 +1,87 @@
+# Copyright (c) 2026 the Hot++ project.
+# This work is licensed under the terms of the MIT license.
+# For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+# A temporary workflow of the branch msvc-port: the native MSVC build only.
+name: MSVC
+
+on:
+  push:
+    branches: [msvc-port]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-msvc:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-windows-msvc
+      cancel-in-progress: true
+    defaults:
+      run:
+        shell: bash
+    env:
+      BUILD_DIR: cmake-build/vs-files
+      CONFIG: RelWithDebInfo
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the LLVM release of cmake/HotLlvmVersion.cmake
+        id: llvm
+        run: |
+          version=$(sed -n 's/^set(HOT_LLVM_VERSION \(.*\))$/\1/p' cmake/HotLlvmVersion.cmake)
+          sha=$(grep -oE '[0-9a-f]{64}' cmake/HotLlvmVersion.cmake | head -1)
+          name="clang+llvm-${version}-x86_64-pc-windows-msvc"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "url=https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/${name}.tar.zst" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: llvm-archive
+          key: llvm-windows-msvc-${{ steps.llvm.outputs.sha }}
+
+      - name: Download and unpack the LLVM release for Windows
+        run: |
+          archive="llvm-archive/${{ steps.llvm.outputs.name }}.tar.zst"
+          if [ ! -f "$archive" ]; then
+            mkdir -p llvm-archive
+            curl -fsSL -o "$archive" "${{ steps.llvm.outputs.url }}"
+          fi
+          echo "${{ steps.llvm.outputs.sha }}  $archive" | sha256sum -c -
+          mkdir -p cmake-build
+          zstd -d --long=31 -c "$archive" | tar -x -C cmake-build
+          ls "cmake-build/${{ steps.llvm.outputs.name }}/bin" | head -5
+
+      # clang++.exe compiles the script modules. It needs link.exe, the UCRT and the MSVC STL.
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure
+        run: |
+          cmake --preset vs-files -DHOT_DOWNLOAD_LLVM=OFF -DHOT_LLVM_RELEASES_DIR="$(pwd -W)/cmake-build" \
+            -DHOT_BUILD_TRANSLATOR=ON -DHOT_BUILD_TESTS=ON -DHOT_BUILD_SAMPLES=OFF
+
+      - name: Build hotc
+        id: hotc
+        continue-on-error: true
+        run: cmake --build "$BUILD_DIR" --config "$CONFIG" --target hotc --parallel -- -v:m 2>&1 | tee hotc.log | grep -E "error|warning C4" | cut -c1-300 | head -100; exit ${PIPESTATUS[0]}
+
+      - name: Build the runtime
+        id: runtime
+        continue-on-error: true
+        run: cmake --build "$BUILD_DIR" --config "$CONFIG" --target hot_runtime hot_backend --parallel -- -v:m 2>&1 | grep -E " error |error C|error LNK|fatal" | cut -c1-300 | sort -u | head -100; exit ${PIPESTATUS[0]}
+
+      - name: Build all
+        id: all
+        continue-on-error: true
+        run: cmake --build "$BUILD_DIR" --config "$CONFIG" --parallel -- -v:m -p:ContinueOnError=true 2>&1 | grep -E " error |error C|error LNK|fatal|warning MSB" | cut -c1-300 | sort -u | head -200; exit ${PIPESTATUS[0]}
+
+      - name: Test
+        if: always()
+        shell: pwsh
+        run: ctest --test-dir $env:BUILD_DIR -C $env:CONFIG -j 4 --output-on-failure --timeout 300 2>&1 | Select-Object -Last 400
