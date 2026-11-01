@@ -13,6 +13,7 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <cstdio>
 #include <deque>
 #include <fcntl.h>
 #include <functional>
@@ -165,6 +166,12 @@ private:
                         messages_.erase(it);
                         return m;
                     }
+                // No match. The messages that came are the clue (for example a URI of another form).
+                std::fprintf(stderr, "ls_client: no match in %zu messages\n", messages_.size());
+                size_t shown = 0;
+                for (const json& m : messages_)
+                    if (shown++ < 12)
+                        std::fprintf(stderr, "  %s\n", m.dump().substr(0, 400).c_str());
                 return nullptr;
             }
         }
