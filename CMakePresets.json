@@ -77,6 +77,11 @@
       "inherits": ["base-clang", "base-jit"]
     },
     {
+      "name": "mingw-files",
+      "inherits": "base-files",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/mingw-w64-x86_64.cmake"
+    },
+    {
       "name": "linux-clang-jit-asan",
       "inherits": ["base-clang", "base-asan", "base-jit"]
     },
@@ -90,6 +95,7 @@
     { "name": "linux-clang-files-rel", "configurePreset": "linux-clang-files", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-files-asan", "configurePreset": "linux-clang-files-asan", "configuration": "Debug" },
     { "name": "linux-clang-files-tsan", "configurePreset": "linux-clang-files-tsan", "configuration": "Debug" },
+    { "name": "mingw-files-dbg", "configurePreset": "mingw-files", "configuration": "Debug" },
     { "name": "linux-clang-jit-dbg", "configurePreset": "linux-clang-jit", "configuration": "Debug" },
     { "name": "linux-clang-jit-rel", "configurePreset": "linux-clang-jit", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-jit-asan", "configurePreset": "linux-clang-jit-asan", "configuration": "Debug" },
@@ -105,6 +111,7 @@
     { "name": "linux-clang-files-rel", "inherits": "base-test", "configurePreset": "linux-clang-files", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-files-asan", "inherits": "base-test", "configurePreset": "linux-clang-files-asan", "configuration": "Debug" },
     { "name": "linux-clang-files-tsan", "inherits": "base-test", "configurePreset": "linux-clang-files-tsan", "configuration": "Debug" },
+    { "name": "mingw-files-dbg", "inherits": "base-test", "configurePreset": "mingw-files", "configuration": "Debug" },
     { "name": "linux-clang-jit-dbg", "inherits": "base-test", "configurePreset": "linux-clang-jit", "configuration": "Debug" },
     { "name": "linux-clang-jit-rel", "inherits": "base-test", "configurePreset": "linux-clang-jit", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-jit-asan", "inherits": "base-test", "configurePreset": "linux-clang-jit-asan", "configuration": "Debug" },
