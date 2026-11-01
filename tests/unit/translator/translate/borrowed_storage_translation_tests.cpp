@@ -257,11 +257,24 @@ TEST(RefLocal, ARefLocalCannotBeStoredInAPointerField)
     EXPECT_TRUE(has(r.diagnostics, "a field cannot hold a borrowed pointer")) << r.diagnostics;
 }
 
-TEST(RefLocal, AVarRefLocalInAConditionalIsAnError)
+// A conditional "&" value in a "var" local is a borrowed local (commit 177b924). The local is legal,
+// but a lambda cannot capture it.
+TEST(RefLocal, AVarRefLocalInAConditionalIsBorrowedAndCannotBeCaptured)
 {
-    const hotc::TranslateResult r =
+    const hotc::TranslateResult ok =
         check_translate("", "    Vec3 pos;\n    void Move(bool c) { var r = c ? &this.pos : &this.pos; }\n");
+    EXPECT_TRUE(ok.ok) << ok.diagnostics;
+    const hotc::TranslateResult r = check_translate(
+        "", "    Vec3 pos;\n    void Move(bool c) { var r = c ? &this.pos : &this.pos; var f = () => { r.x = 1; }; }\n");
     EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'r'")) << r.diagnostics;
+}
+
+TEST(RefLocal, AConditionalOfTwoHandlesInAVarLocalIsAllowed)
+{
+    const hotc::TranslateResult r = check_translate(kHandleStubs,
+        "    Handled a;\n    Handled b;\n    void Move(bool c) { var h = c ? a : b; var f = () => { var k = h; }; }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
 TEST(RefLocal, ACopyOfAVarRefLocalIsAValueAndMayBeCaptured)
