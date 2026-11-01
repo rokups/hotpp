@@ -81,6 +81,12 @@ std::string uri_to_path(const std::string& uri)
             r += s[i];
         }
     }
+#ifdef _WIN32
+    // "file:///C:/dir/a.hot" has the path "/C:/dir/a.hot". The Windows path is "C:\dir\a.hot".
+    if (r.size() > 2 && r[0] == '/' && r[2] == ':')
+        r.erase(0, 1);
+    std::replace(r.begin(), r.end(), '/', '\\');
+#endif
     return r;
 }
 
@@ -96,10 +102,22 @@ std::string path_to_uri(const std::string& path)
 {
     static const char* digits = "0123456789ABCDEF";
     std::string r = "file://";
+#ifdef _WIN32
+    // The URI of "C:\dir\a.hot" is "file:///C:/dir/a.hot", the form that clangd writes.
+    std::string p = path;
+    std::replace(p.begin(), p.end(), '\\', '/');
+    if (p.size() > 1 && p[1] == ':')
+        p.insert(0, 1, '/');
+    for (char ch : p)
+    {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        if (is_id_char(ch) || c == '/' || c == '-' || c == '.' || c == '~' || c == ':')
+#else
     for (char ch : path)
     {
         const unsigned char c = static_cast<unsigned char>(ch);
         if (is_id_char(ch) || c == '/' || c == '-' || c == '.' || c == '~')
+#endif
         {
             r += ch;
         }

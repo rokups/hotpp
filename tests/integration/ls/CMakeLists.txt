@@ -4,7 +4,10 @@
 
 # Language server tests (S14b, design M12 to M14). The test client talks to the server over
 # pipes in the test process. A test that needs clangd is skipped when clangd is missing.
-find_program(HOT_CLANGD clangd)
+# The clangd of the script compiler comes first: it knows the same C++ (on Windows, the clangd
+# of the LLVM release, not an older clangd of Visual Studio).
+get_filename_component(_hot_script_bin "${HOT_SCRIPT_COMPILER}" DIRECTORY)
+find_program(HOT_CLANGD clangd HINTS "${_hot_script_bin}")
 if(NOT HOT_CLANGD)
     set(HOT_CLANGD "")
 endif()

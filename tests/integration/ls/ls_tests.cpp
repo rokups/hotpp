@@ -78,7 +78,14 @@ hot::ls::ServerOptions options(const TempDir& dir, bool clangd)
 
 std::string uri_of(const std::string& path)
 {
+#ifdef _WIN32
+    // The URI of "C:\\dir\\a.hot" is "file:///C:/dir/a.hot", as hot-ls and clangd write it.
+    std::string p = path;
+    std::replace(p.begin(), p.end(), '\\', '/');
+    return (p.size() > 1 && p[1] == ':' ? "file:///" : "file://") + p;
+#else
     return "file://" + path;
+#endif
 }
 
 json pos(int line, int character)
