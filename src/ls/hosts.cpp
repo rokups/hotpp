@@ -281,7 +281,7 @@ bool HostSet::force_reload_for(const std::string& file)
     const fs::path f(file);
     if (!loaded_ || !is_host_file(f))
         return false;
-    if (f.parent_path().lexically_normal() != fs::path(dir_).lexically_normal())
+    if (path_key(f.parent_path()) != path_key(fs::path(dir_))) // the long names and "/" (Windows)
         return false;
     forced_ = true;
     return true;
