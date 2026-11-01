@@ -21,7 +21,7 @@ struct LoadResult;
 
 // The code of a generation module stays valid while a copy of "keep_alive" exists.
 // For a shared library, the keep-alive object calls dlclose when the last copy goes. On Windows
-// it calls FreeLibrary. (unverified: not built on MSVC.)
+// it calls FreeLibrary.
 //
 // The core module (design 4.9, M8). "make_core" loads a second, independent instance of the
 // same code. The loader calls it once, when the generation adds a class or a thunk. The
@@ -69,7 +69,7 @@ struct LoadResult
 };
 
 // Builds a Module from an existing shared library (dlopen and dlsym, or LoadLibraryA and
-// GetProcAddress on Windows; unverified: not built on MSVC).
+// GetProcAddress on Windows).
 LoadResult module_from_library(const std::string& path);
 
 } // namespace hot

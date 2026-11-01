@@ -5,7 +5,7 @@
 #include "hot/module.h"
 
 #ifdef _WIN32
-    // unverified: not built on MSVC. The Windows branch uses LoadLibraryA and GetProcAddress.
+    // The Windows branch uses LoadLibraryA and GetProcAddress.
     #ifndef WIN32_LEAN_AND_MEAN
         #define WIN32_LEAN_AND_MEAN
     #endif
@@ -30,7 +30,7 @@ namespace
 {
 
 #ifdef _WIN32
-// unverified: not built on MSVC. These helpers wrap the Windows loader.
+// These helpers wrap the Windows loader.
 std::string last_error_text()
 {
     const DWORD code = GetLastError();
@@ -53,7 +53,6 @@ LoadResult open_library(const std::string& path, const std::string& origin, bool
 {
     LoadResult r;
 #ifdef _WIN32
-    // unverified: not built on MSVC.
     void* h = reinterpret_cast<void*>(LoadLibraryA(path.c_str()));
 #else
     void* h = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
@@ -61,7 +60,6 @@ LoadResult open_library(const std::string& path, const std::string& origin, bool
     if (!h)
     {
 #ifdef _WIN32
-        // unverified: not built on MSVC.
         r.error = "LoadLibraryA failed: " + last_error_text();
 #else
         const char* e = dlerror();
@@ -77,7 +75,6 @@ LoadResult open_library(const std::string& path, const std::string& origin, bool
     std::shared_ptr<void> owner(h, [path, owned_copy](void* handle)
     {
 #ifdef _WIN32
-        // unverified: not built on MSVC.
         FreeLibrary(reinterpret_cast<HMODULE>(handle));
 #else
         dlclose(handle);
@@ -89,7 +86,6 @@ LoadResult open_library(const std::string& path, const std::string& origin, bool
         }
     });
 #ifdef _WIN32
-    // unverified: not built on MSVC.
     auto fn = reinterpret_cast<Module::RegisterFn>(
         reinterpret_cast<void*>(GetProcAddress(reinterpret_cast<HMODULE>(h), "script_register")));
 #else
@@ -116,7 +112,6 @@ LoadResult open_core_copy(const std::string& path)
     if (ec)
         dir = fs::path(path).parent_path();
 #ifdef _WIN32
-    // unverified: not built on MSVC.
     const unsigned long pid = static_cast<unsigned long>(_getpid());
 #else
     const unsigned long pid = static_cast<unsigned long>(getpid());

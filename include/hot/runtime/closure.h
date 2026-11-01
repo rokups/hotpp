@@ -16,7 +16,7 @@
 #if defined(__clang__) || defined(__GNUC__)
     #define HOT_UNLIKELY(x) __builtin_expect(!!(x), 0)
 #else
-// unverified: not built on MSVC. The MSVC form is the plain condition.
+// The MSVC form is the plain condition.
     #define HOT_UNLIKELY(x) (x)
 #endif
 

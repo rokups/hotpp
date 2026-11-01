@@ -8,7 +8,7 @@
 #include <cstdint>
 
 #if defined(_MSC_VER) && !defined(__clang__)
-    // unverified: not built on MSVC. This header declares the intrinsics of the atomic helpers.
+    // This header declares the intrinsics of the atomic helpers.
     #include <intrin.h>
 #endif
 
@@ -67,7 +67,7 @@ HOT_EXPORT extern bool g_entry_counters;
 HOT_HIDDEN bool load_entry_counters()
 {
 #if defined(_MSC_VER) && !defined(__clang__)
-    // unverified: not built on MSVC. A volatile load of one byte, then a compiler barrier.
+    // A volatile load of one byte, then a compiler barrier.
     const bool value = __iso_volatile_load8(reinterpret_cast<const volatile char*>(&g_entry_counters)) != 0;
     _ReadWriteBarrier();
     return value;
@@ -78,7 +78,7 @@ HOT_HIDDEN bool load_entry_counters()
 HOT_HIDDEN void store_entry_counters(bool value)
 {
 #if defined(_MSC_VER) && !defined(__clang__)
-    // unverified: not built on MSVC. An interlocked exchange of one byte is a full barrier.
+    // An interlocked exchange of one byte is a full barrier.
     _InterlockedExchange8(reinterpret_cast<volatile char*>(&g_entry_counters), value ? 1 : 0);
 #else
     __atomic_store_n(&g_entry_counters, value, __ATOMIC_SEQ_CST);
