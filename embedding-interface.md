@@ -58,6 +58,8 @@ Fields of `Module`:
 | `include_dirs` | empty | Added after the build-time include folders (`HOT_DEFAULT_INCLUDES`). |
 | `extra_flags` | empty | Added after the build-time flags (`HOT_DEFAULT_CXXFLAGS`). |
 | `fs` | empty | The file system of the host for the script imports and the headers. Empty: the disk only. It must be thread safe (see [Virtual file system](embedding-vfs.html#virtual-file-system)). |
+| `kind` | `Auto` | The backend to make (see [Runtime](embedding-runtime.html)). |
+| `std_version` | empty | The C++ standard of the scripts, for example `"c++20"`. A script with `async` needs C++20 (see [Async and await](async.html)). Empty: the standard of the host. |
 
 `ClangFilesOptions` (`include/hot/clang_files_backend.h`):
 

@@ -30,6 +30,10 @@ The host compiles the new script as a new generation. The commit runs at the fra
 
 A `.cpp` script (see [C++ scripts](cpp-scripts.html)) follows the same table. It has no properties, no script virtual methods and no script-class handles. A `.cpp` reload is slower, because `hotc` does one more `libclang` parse. A normal build of the file has no state migration and no slots.
 
+## Tasks
+
+A task of an `async` method keeps its generation alive. After a reload, a suspended task of the old generation ends with `TaskReloadCancelled` at its next resume. The old code does not run. A retired generation unloads only after the host destroys the task. `Loader::reset` fails while a task lives, so destroy all tasks first. See [Async and await](async.html).
+
 ## Full reload
 
 A few changes cannot keep live objects. `Loader::request_reload` then returns the status `FullReloadRequired`, with a reason and the class names. The live generation stays. The host restarts all script state and keeps its own state.
@@ -68,7 +72,7 @@ if (r.status == hot::ReloadStatus::FullReloadRequired) {
 
 The sample [hot-reload](https://github.com/rokups/hotpp/blob/master/samples/hot-reload/main.cpp) shows `request_reload`, `commit_pending` and `frame_boundary` in a small program.
 
-The host must drop all objects first. `reset` fails when one script object remains. The error names the classes, for example `3 live objects remain: Driver x1, G x1, S x1`. It also fails when a reload is pending or a closure pins a generation. A failed `reset` changes nothing. A module variable can hold a closure, for example in a `std.function`. The closure pins its generation, and `reset` then fails with `generation N is pinned`. Before `reset`, the host calls a script function that clears such a variable (see `tests/scripts/modclosure.hot`). `loader.load` fails with `BadModule` when the loader still has a generation: call `reset` first. Build the `Fresh` module before `world.Clear()` when you can: a build error then leaves the actors intact (the test host `tests/engine/Harness.cpp` does this). After a `reset`, every pointer from `find()`, `module_state()` and `thunk()` is invalid.
+The host must drop all objects first. `reset` fails when one script object remains. The error names the classes, for example `3 live objects remain: Driver x1, G x1, S x1`. It also fails when a reload is pending or a closure pins a generation. A failed `reset` changes nothing. A module variable can hold a closure, for example in a `std.function`. The closure pins its generation, and `reset` then fails with `generation N is pinned (a closure or a task is alive)`. Before `reset`, the host calls a script function that clears such a variable (see `tests/scripts/modclosure.hot`). `loader.load` fails with `BadModule` when the loader still has a generation: call `reset` first. Build the `Fresh` module before `world.Clear()` when you can: a build error then leaves the actors intact (the test host `tests/engine/Harness.cpp` does this). After a `reset`, every pointer from `find()`, `module_state()` and `thunk()` is invalid.
 
 ## Renamed fields
 

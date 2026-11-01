@@ -28,6 +28,15 @@ A normal build of a file that still has aids needs the header. Pass `-include ho
 
 In a normal build the file has plain C++ meaning. There is no state migration and there are no slots. Do not share objects between the two builds.
 
+## Coroutines
+
+A `.cpp` script has no `async` word. A method can be a plain C++20 coroutine that returns `hot::Task<T>` and uses `co_await` and `co_return`. See [Async and await](async.html) for the task rules and the reload rules.
+
+- A member coroutine of a script class has the reload guard. After a reload, a suspended task of the old generation ends with `TaskReloadCancelled`, and the task keeps its generation alive.
+- A coroutine that is a free function or a lambda has no guard. Its frame can run old code after a reload, and it does not pin the generation.
+
+The script build needs C++20.
+
 ## Pages of this section
 
 - [Example](cpp-example.html): two generations of a `.cpp` script, and the CMake commands that build them.
