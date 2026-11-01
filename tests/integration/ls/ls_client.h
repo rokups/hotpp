@@ -20,10 +20,20 @@
 #include <string>
 #include <thread>
 #ifdef _WIN32
-    #include <io.h> // close
+    #include <io.h>
 #else
     #include <unistd.h>
 #endif
+
+// Close a pipe end. The MSVC CRT has the POSIX name close only as a deprecated name (C4996).
+inline int ls_close_fd(int fd)
+{
+#ifdef _WIN32
+    return _close(fd);
+#else
+    return ::close(fd);
+#endif
+}
 
 namespace ls_test
 {
@@ -51,7 +61,7 @@ public:
         server_ = std::thread([this, options]
         {
             exit_code_ = hot::ls::run_server(to_server_[0], from_server_[1], options);
-            close(from_server_[1]);
+            ls_close_fd(from_server_[1]);
         });
         reader_ = std::thread([this]
         {
@@ -119,11 +129,11 @@ public:
         stopped_ = true;
         request("shutdown", nullptr, 30000);
         notify("exit", nullptr);
-        close(to_server_[1]);
+        ls_close_fd(to_server_[1]);
         server_.join();
         reader_.join();
-        close(to_server_[0]);
-        close(from_server_[0]);
+        ls_close_fd(to_server_[0]);
+        ls_close_fd(from_server_[0]);
         return exit_code_;
     }
 

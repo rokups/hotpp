@@ -113,6 +113,8 @@ class Boss : Actor, IDamageable, IGuarded {
     int probed = 0;
     int same = 0;
     int caught = 0;
+    // The text of the last caught exception. The catch blocks use their variable (MSVC C4101).
+    std.string why = "";
     int tally_n = 0;
     int hurt_n = 0;
     std.string hurt_name = "";
@@ -131,16 +133,19 @@ class Boss : Actor, IDamageable, IGuarded {
             Fussy f = new Fussy(1);
         } catch (const std.runtime_error& e) {
             this.caught = this.caught + 1;
+            this.why = e.what();
         }
         try {
             Broken b = new Broken();
         } catch (const std.invalid_argument& e) {
             this.caught = this.caught + 10;
+            this.why = e.what();
         }
         try {
             Hurt h = new Hurt(2);
         } catch (const std.runtime_error& e) {
             this.caught = this.caught + 100;
+            this.why = e.what();
         }
         this.keep = new Hurt(1);
         this.hurt_n = this.keep.n;
