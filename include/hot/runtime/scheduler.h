@@ -2,7 +2,8 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
-// The task scheduler: hot::spawn, hot::step, hot::run_until_done, hot::yield and hot::sleep.
+// The task scheduler: hot::spawn, hot::TaskHandle, Task::step, Task::run_until_done, hot::yield
+// and hot::sleep.
 // This header is empty when the compiler has no coroutine support (a C++17 build).
 // task.h includes it. The rules are in the comment at the top of task.h ("Scheduler rules").
 //
@@ -198,29 +199,46 @@ inline SleepAwaiter sleep(Duration d) noexcept
     return SleepAwaiter{d, false};
 }
 
-template <class T> TaskId spawn(Task<T>& t)
+// A copyable name of a spawned task. It does not own the task. It refers to the id in the
+// process scheduler (hot::scheduler()). A handle of a finished or cancelled task is not alive.
+struct TaskHandle
 {
-    return scheduler().spawn(t);
+    TaskId id = 0; // 0 is no task
+
+    explicit operator bool() const noexcept { return id != 0; }
+    uint64_t value() const noexcept { return id; }
+
+    // Destroys the task. Returns false when the scheduler does not know the id.
+    bool cancel() const noexcept { return scheduler().cancel(id); }
+    // True while the scheduler owns the task and the task is not finished.
+    bool alive() const noexcept { return scheduler().alive(id); }
+};
+
+// Moves the task into the process scheduler. See Scheduler::spawn.
+template <class T> TaskHandle spawn(Task<T>& t)
+{
+    return TaskHandle{scheduler().spawn(t)};
 }
-template <class T> TaskId spawn(Task<T>&& t)
+template <class T> TaskHandle spawn(Task<T>&& t)
 {
-    return scheduler().spawn(t);
+    return TaskHandle{scheduler().spawn(t)};
 }
 
-// Runs a task once, on the calling thread: it starts the frame, and the frame runs to its first
-// suspension or to its end. A started task does not resume again. Returns t.done(). The caller
-// keeps the task.
-template <class T> bool step(Task<T>& t)
+// Runs the task once, on the calling thread: it starts the frame, and the frame runs to its
+// first suspension or to its end. A started task does not resume again. Returns done(). The
+// caller keeps the task.
+template <class T> bool Task<T>::step()
 {
-    if (!t.valid())
+    if (!valid())
         throw ScriptError("empty task");
-    t.resume();
-    return t.done();
+    resume();
+    return done();
 }
 
-template <class T> bool run_until_done(Task<T>& t, Duration timeout)
+// Runs the task in the process scheduler. See Scheduler::run_until_done.
+template <class T> bool Task<T>::run_until_done(std::chrono::steady_clock::duration timeout)
 {
-    return scheduler().run_until_done(t, timeout);
+    return scheduler().run_until_done(*this, timeout);
 }
 
 // ---------------------------------------------------------------------------- implementation

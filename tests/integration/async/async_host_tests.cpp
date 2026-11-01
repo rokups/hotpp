@@ -545,9 +545,9 @@ TEST_P(AsyncHost, ScriptSpawnsATaskAndTheHostTicks)
 {
     Host h;
     ASSERT_NO_FATAL_FAILURE(start(h, "async_sched_v1.hot", "SchedRunner"));
-    const hot::TaskId id = sync_call<hot::TaskId>(h, "SchedRunner::Start");
-    EXPECT_NE(id, 0u);
-    EXPECT_TRUE(hot::scheduler().alive(id));
+    const hot::TaskHandle id = sync_call<hot::TaskHandle>(h, "SchedRunner::Start");
+    EXPECT_NE(id.value(), 0u);
+    EXPECT_TRUE(id.alive());
     EXPECT_EQ(hot::scheduler().size(), 1u);
     EXPECT_EQ(ticks(h), 0); // spawn does not run the body
     for (int i = 0; i < 4; ++i)
@@ -557,10 +557,10 @@ TEST_P(AsyncHost, ScriptSpawnsATaskAndTheHostTicks)
     }
     EXPECT_EQ(ticks(h), 3);
     EXPECT_EQ(hot::scheduler().size(), 0u);
-    EXPECT_FALSE(hot::scheduler().alive(id));
+    EXPECT_FALSE(id.alive());
 }
 
-// hot.step runs the task to its first suspension. The task sleeps, so it is not done.
+// t.step() runs the task to its first suspension. The task sleeps, so it is not done.
 TEST_P(AsyncHost, ScriptStepReturnsFalseAtTheFirstSuspension)
 {
     Host h;
@@ -569,7 +569,7 @@ TEST_P(AsyncHost, ScriptStepReturnsFalseAtTheFirstSuspension)
     EXPECT_EQ(hot::scheduler().size(), 0u);
 }
 
-// hot.run_until_done waits for the sleep of the task.
+// t.run_until_done waits for the sleep of the task.
 TEST_P(AsyncHost, ScriptRunUntilDoneReturnsTrue)
 {
     Host h;
@@ -585,7 +585,7 @@ TEST_P(AsyncHost, SpawnedTaskErrorReachesTheHandler)
     ASSERT_NO_FATAL_FAILURE(start(h, "async_sched_v1.hot", "SchedRunner"));
     std::vector<std::string> reports;
     hot::set_script_error_handler([&reports](const hot::ScriptErrorReport& r) { reports.push_back(r.message); });
-    sync_call<hot::TaskId>(h, "SchedRunner::SpawnBoom");
+    sync_call<hot::TaskHandle>(h, "SchedRunner::SpawnBoom");
     for (int i = 0; i < 3; ++i)
         hot::scheduler().tick();
     hot::set_script_error_handler(nullptr);
@@ -594,18 +594,20 @@ TEST_P(AsyncHost, SpawnedTaskErrorReachesTheHandler)
     EXPECT_EQ(hot::scheduler().size(), 0u);
 }
 
-// hot.scheduler().cancel(id) destroys the task before it ends.
+// h.cancel() destroys the task before it ends.
 TEST_P(AsyncHost, ScriptCancelsASpawnedTask)
 {
     Host h;
     ASSERT_NO_FATAL_FAILURE(start(h, "async_sched_v1.hot", "SchedRunner"));
-    const hot::TaskId id = sync_call<hot::TaskId>(h, "SchedRunner::StartLong");
+    const hot::TaskHandle id = sync_call<hot::TaskHandle>(h, "SchedRunner::StartLong");
     hot::scheduler().tick();
     hot::scheduler().tick();
     EXPECT_EQ(ticks(h), 2);
-    EXPECT_TRUE(hot::scheduler().alive(id));
+    EXPECT_TRUE(id.alive());
+    EXPECT_TRUE(sync_call<bool>(h, "SchedRunner::IsAlive", id));
     sync_call<void>(h, "SchedRunner::Stop", id);
-    EXPECT_FALSE(hot::scheduler().alive(id));
+    EXPECT_FALSE(id.alive());
+    EXPECT_FALSE(sync_call<bool>(h, "SchedRunner::IsAlive", id));
     EXPECT_EQ(hot::scheduler().size(), 0u);
     hot::scheduler().tick();
     EXPECT_EQ(ticks(h), 2);
@@ -621,7 +623,7 @@ TEST_P(AsyncHost, ReloadCancelsASpawnedTaskAtTheNextTick)
     ASSERT_NO_FATAL_FAILURE(start(h, "async_sched_v1.hot", "SchedRunner"));
     std::vector<std::string> reports;
     hot::set_script_error_handler([&reports](const hot::ScriptErrorReport& r) { reports.push_back(r.message); });
-    sync_call<hot::TaskId>(h, "SchedRunner::StartLong");
+    sync_call<hot::TaskHandle>(h, "SchedRunner::StartLong");
     hot::scheduler().tick();
     EXPECT_EQ(ticks(h), 1);
     EXPECT_EQ(hot::pin_count(1), 1u);

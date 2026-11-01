@@ -382,22 +382,22 @@ TEST_F(SchedulerTest, RunDrivesUntilIdle)
 TEST_F(SchedulerTest, StepRunsToTheFirstSuspensionOnce)
 {
     Task<int> t = sleeper(10s, 3);
-    EXPECT_FALSE(hot::step(t));
+    EXPECT_FALSE(t.step());
     EXPECT_EQ(hot::scheduler().next_wake() == kNever, false); // parked in the process scheduler
-    EXPECT_FALSE(hot::step(t)); // a started task does not resume again
+    EXPECT_FALSE(t.step()); // a started task does not resume again
     EXPECT_EQ(hot::scheduler().tick(Clock::now() + 20s), 1u);
     EXPECT_TRUE(t.done());
     EXPECT_EQ(t.result(), 6);
-    EXPECT_TRUE(hot::step(t)); // done: no resume
+    EXPECT_TRUE(t.step()); // done: no resume
 }
 
 TEST_F(SchedulerTest, StepOfATaskWithoutSuspensionIsDone)
 {
     Task<int> t = no_suspension(4);
-    EXPECT_TRUE(hot::step(t));
+    EXPECT_TRUE(t.step());
     EXPECT_EQ(t.result(), 4);
     Task<int> empty;
-    EXPECT_THROW(hot::step(empty), hot::ScriptError);
+    EXPECT_THROW(empty.step(), hot::ScriptError);
 }
 
 // ---------------------------------------------------------------------------- run_until_done
@@ -406,10 +406,10 @@ TEST_F(SchedulerTest, RunUntilDoneReturnsTrue)
 {
     Watchdog dog;
     Task<int> t = sleeper(5ms, 21);
-    EXPECT_TRUE(hot::run_until_done(t, 10s));
+    EXPECT_TRUE(t.run_until_done(10s));
     EXPECT_EQ(t.result(), 42);
     Task<int> u = no_suspension(1);
-    EXPECT_TRUE(hot::run_until_done(u, 0s));
+    EXPECT_TRUE(u.run_until_done(0s));
 }
 
 TEST_F(SchedulerTest, RunUntilDoneTimeoutKeepsTheTaskThenSpawnFinishesIt)
@@ -417,7 +417,7 @@ TEST_F(SchedulerTest, RunUntilDoneTimeoutKeepsTheTaskThenSpawnFinishesIt)
     Watchdog dog;
     int destroyed = 0;
     Task<int> t = sleeper(10s, 1, &destroyed);
-    EXPECT_FALSE(hot::run_until_done(t, 20ms));
+    EXPECT_FALSE(t.run_until_done(20ms));
     EXPECT_TRUE(t.valid());
     EXPECT_FALSE(t.done());
     EXPECT_EQ(destroyed, 0);
@@ -433,7 +433,7 @@ TEST_F(SchedulerTest, RunUntilDoneTimeoutKeepsTheTaskThenSpawnFinishesIt)
 TEST_F(SchedulerTest, RunUntilDoneWithoutTimeStartsAndChecksOnce)
 {
     Task<int> t = sleeper(10s, 1);
-    EXPECT_FALSE(hot::run_until_done(t, 0s));
+    EXPECT_FALSE(t.run_until_done(0s));
     EXPECT_FALSE(t.done());
     EXPECT_NE(hot::scheduler().next_wake(), kNever);
 }
@@ -446,7 +446,7 @@ TEST_F(SchedulerTest, RunUntilDoneOfAnAwaitedTaskThrows)
     parent.resume();
     try
     {
-        hot::run_until_done(child, 10ms);
+        child.run_until_done(10ms);
         FAIL();
     }
     catch (const hot::ScriptError& e)
@@ -454,13 +454,13 @@ TEST_F(SchedulerTest, RunUntilDoneOfAnAwaitedTaskThrows)
         EXPECT_STREQ(e.what(), "task is already awaited");
     }
     Task<int> empty;
-    EXPECT_THROW(hot::run_until_done(empty, 10ms), hot::ScriptError);
+    EXPECT_THROW(empty.run_until_done(10ms), hot::ScriptError);
 }
 
 Task<int> nested_runner(int* inner_ticks, bool* ok)
 {
     Task<void> inner = ticker(inner_ticks, 2);
-    *ok = hot::run_until_done(inner, 10s); // a tick inside a tick
+    *ok = inner.run_until_done(10s); // a tick inside a tick
     co_await hot::yield();
     co_return 1;
 }
@@ -500,6 +500,26 @@ TEST_F(SchedulerTest, CancelDestroysTheFrame)
     EXPECT_EQ(s.tick(Clock::now() + 20s), 0u);
 }
 
+TEST_F(SchedulerTest, TaskHandleCancelsAndTracksTheTask)
+{
+    int destroyed = 0;
+    const hot::TaskHandle h = hot::spawn(sleeper(10s, 1, &destroyed));
+    EXPECT_TRUE(h);
+    EXPECT_NE(h.value(), 0u);
+    hot::scheduler().tick();
+    EXPECT_TRUE(h.alive());
+    const hot::TaskHandle copy = h; // a handle is a copy of the id: it does not own the task
+    EXPECT_TRUE(h.cancel());
+    EXPECT_EQ(destroyed, 1);
+    EXPECT_FALSE(h.alive());
+    EXPECT_FALSE(copy.alive());
+    EXPECT_FALSE(h.cancel()); // the second cancel finds nothing
+    const hot::TaskHandle none;
+    EXPECT_FALSE(none);
+    EXPECT_FALSE(none.cancel());
+    EXPECT_FALSE(none.alive());
+}
+
 TEST_F(SchedulerTest, CancelOfANeverStartedTask)
 {
     Scheduler s;
@@ -524,7 +544,7 @@ TEST_F(SchedulerTest, TaskDestroyedWhileParkedIsNotResumed)
     EXPECT_EQ(hot::scheduler().tick(), 0u);
     {
         Task<int> t = sleeper(10s, 1, &destroyed);
-        EXPECT_FALSE(hot::step(t)); // parks as a timer
+        EXPECT_FALSE(t.step()); // parks as a timer
     }
     EXPECT_EQ(destroyed, 2);
     EXPECT_EQ(hot::scheduler().tick(Clock::now() + 20s), 0u);
@@ -610,7 +630,7 @@ TEST_F(SchedulerTest, SpawnOfAStartedTaskMovesItsEntry)
     Scheduler s;
     int ticks = 0;
     Task<void> t = ticker(&ticks, 2);
-    EXPECT_FALSE(hot::step(t)); // parks in the process scheduler
+    EXPECT_FALSE(t.step()); // parks in the process scheduler
     EXPECT_EQ(ticks, 1);
     s.spawn(t);
     EXPECT_EQ(hot::scheduler().next_wake(), kNever);
@@ -662,7 +682,7 @@ TEST_F(SchedulerTest, RunUntilDoneWakesWhenTheTaskEndsOnAnotherThread)
         slot();
     });
     const Clock::time_point start = Clock::now();
-    EXPECT_TRUE(hot::run_until_done(t, 30s));
+    EXPECT_TRUE(t.run_until_done(30s));
     EXPECT_LT(Clock::now() - start, 10s);
     thread.join();
     EXPECT_EQ(t.result(), 9);
@@ -826,7 +846,7 @@ TEST_F(SchedulerTest, SpawnOfAFrameParkedInADeadSchedulerThrows)
         EXPECT_STREQ(e.what(), "task was parked in a destroyed scheduler");
     }
     EXPECT_TRUE(t.valid());
-    EXPECT_THROW(hot::run_until_done(t, 1ms), hot::ScriptError);
+    EXPECT_THROW(t.run_until_done(1ms), hot::ScriptError);
     EXPECT_EQ(hot::scheduler().size(), 0u);
     EXPECT_EQ(hot::scheduler().next_wake(), kNever);
     t = Task<int>();

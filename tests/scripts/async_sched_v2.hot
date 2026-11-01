@@ -22,33 +22,37 @@ class SchedRunner : Actor {
         throw hot.ScriptError("spawned boom");
     }
 
-    uint64_t Start() {
+    hot.TaskHandle Start() {
         return hot.spawn(this.Ticker(3));
     }
 
-    uint64_t StartLong() {
+    hot.TaskHandle StartLong() {
         return hot.spawn(this.Ticker(1000));
     }
 
-    uint64_t SpawnBoom() {
+    hot.TaskHandle SpawnBoom() {
         return hot.spawn(this.Boom());
     }
 
     bool Once(int x) {
         var t = this.Slow(x);
-        return hot.step(t);
+        return t.step();
     }
 
     bool Finish(int x) {
         var t = this.Slow(x);
-        if (hot.run_until_done(t, std.chrono.milliseconds(100))) {
+        if (t.run_until_done(std.chrono.milliseconds(100))) {
             return true;
         }
         hot.spawn(t);
         return false;
     }
 
-    void Stop(uint64_t id) {
-        hot.scheduler().cancel(id);
+    void Stop(hot.TaskHandle h) {
+        h.cancel();
+    }
+
+    bool IsAlive(hot.TaskHandle h) {
+        return h.alive();
     }
 }

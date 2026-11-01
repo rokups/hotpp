@@ -99,6 +99,7 @@
     #include "hot/runtime/threads.h"
 
     #include <atomic>
+    #include <chrono>
     #include <condition_variable>
     #include <coroutine>
     #include <cstdint>
@@ -627,6 +628,15 @@ public:
         if (h_)
             detail::start_frame(h_.promise(), h_);
     }
+
+    // Starts the task and runs it to its first suspension or to its end. Returns done(). A
+    // started task does not resume again. An empty task throws ScriptError("empty task").
+    // Defined in scheduler.h.
+    bool step();
+
+    // Starts the task and ticks the process scheduler until the task is done or the time is over.
+    // Returns done(). See Scheduler::run_until_done. Defined in scheduler.h.
+    bool run_until_done(std::chrono::steady_clock::duration timeout);
 
     // Moves the frame out: the task is empty after it. The caller owns the frame from here.
     Handle release() noexcept { return std::exchange(h_, {}); }
