@@ -1,0 +1,20 @@
+// A virtual async method of a base class and its override (tests/integration/async).
+// The host calls the thunk of the base method with an object of the derived class.
+using "Actor.h";
+
+class AsyncBase : Actor {
+    virtual async int Compute(int x) {
+        return x + 1;
+    }
+
+    async int Run(int x) {
+        return await Compute(x);
+    }
+}
+
+class AsyncDerived : AsyncBase {
+    override async int Compute(int x) {
+        var b = await base.Compute(x);
+        return b * 10;
+    }
+}

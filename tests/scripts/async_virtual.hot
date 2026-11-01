@@ -1,0 +1,19 @@
+// A virtual async method and an override. The override keeps the "async" of the base method.
+using <cstdio>;
+
+class Base {
+    virtual async int Compute(int x) {
+        return x + 1;
+    }
+
+    async int Run(int x) {
+        return await Compute(x);
+    }
+}
+
+class Derived : Base {
+    override async int Compute(int x) {
+        var b = await base.Compute(x);
+        return b * 10;
+    }
+}

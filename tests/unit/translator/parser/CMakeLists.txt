@@ -4,6 +4,7 @@
 
 # The tests of the parsers: expressions, statements, classes, stubs and builtin types.
 add_executable(unit_translator_parser_tests
+    async_await_parse_tests.cpp
     builtin_type_parse_tests.cpp
     class_member_parse_tests.cpp
     weak_attribute_parse_tests.cpp

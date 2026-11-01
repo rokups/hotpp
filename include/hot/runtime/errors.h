@@ -46,6 +46,25 @@ public:
     ~NullReference() override;
 };
 
+// A task ended without a result because of a cancellation. User code can throw it. A task whose
+// body ends with it counts as cancelled: report_unhandled does not see it. The awaiter of the
+// task gets the exception with its dynamic type (task.h).
+class HOT_EXPORT TaskCancelled : public ScriptError
+{
+public:
+    using ScriptError::ScriptError;
+    ~TaskCancelled() override;
+};
+
+// A reload cancelled the task: the code of the task is not live (message "task cancelled by
+// reload: <what>").
+class HOT_EXPORT TaskReloadCancelled : public TaskCancelled
+{
+public:
+    using TaskCancelled::TaskCancelled;
+    ~TaskReloadCancelled() override;
+};
+
 // An array index was negative or not less than the size of the array.
 class HOT_EXPORT IndexOutOfRange : public ScriptError
 {

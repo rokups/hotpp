@@ -259,6 +259,52 @@ void expect_compiles_as_cxx17(const std::string& script)
         << cc;
 }
 
+// An "async" method needs C++20. The generated C++ of the async scripts compiles clean as C++20,
+// also as optimized AOT code.
+TEST(HotcTool, AsyncScriptsCompileAsCxx20)
+{
+    TestScratch scratch;
+    for (const char* name : {"async_basic", "async_virtual"})
+    {
+        const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/" + name + ".hot";
+        const std::string out = scratch.file(std::string(name) + ".cpp");
+        std::string log;
+        EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp --std=c++20 -o '" + out + "' '" + script
+                          + "'" + engine_args() + " 2>&1",
+                      log),
+            0)
+            << log;
+        const std::string flags = std::string(" -std=c++20 -fsyntax-only -Werror -I '") + HOT_SOURCE_DIR
+            + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '";
+        std::string cc;
+        EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "'" + flags + out + "' 2>&1", cc), 0) << name << "\n" << cc;
+
+        const std::string aot_dir = scratch.file(std::string(name) + "_aot");
+        EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --aot --aot-optimized --std=c++20 '" + script
+                          + "' --out-dir '" + aot_dir + "' -I '" + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR
+                          + "/include' 2>&1",
+                      log),
+            0)
+            << log;
+        EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "'" + flags + aot_dir + "/" + name + ".aot.cpp' 2>&1", cc), 0)
+            << name << " (optimized AOT)\n"
+            << cc;
+    }
+}
+
+// The same script as C++17 is an error: "async" needs C++20.
+TEST(HotcTool, AsyncScriptNeedsCxx20)
+{
+    TestScratch scratch;
+    const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/async_basic.hot";
+    std::string log;
+    EXPECT_NE(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp --std=c++17 -o '" + scratch.file("a17.cpp")
+                      + "' '" + script + "'" + engine_args() + " 2>&1",
+                  log),
+        0);
+    EXPECT_NE(log.find("'async' needs C++20"), std::string::npos) << log;
+}
+
 // A "T&" parameter and a "T&" local of a script class: the generated C++ must compile.
 TEST(HotcTool, ScriptClassReferenceCompiles)
 {

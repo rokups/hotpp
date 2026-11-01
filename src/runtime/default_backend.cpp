@@ -82,6 +82,7 @@ std::unique_ptr<Backend> make_clang_files(const DefaultBackendOptions& options)
     o.extra_flags.insert(o.extra_flags.end(), options.extra_flags.begin(), options.extra_flags.end());
     o.resource_dir = paths.resource_dir;
     o.fs = options.fs;
+    o.std_version = options.std_version;
     o.target_triple = paths.target_triple;
     o.sysroot = paths.sysroot;
     // Windows: each module DLL links the import library of the host (hot/runtime/hidden.h).
@@ -114,6 +115,7 @@ std::unique_ptr<Backend> make_jit(const DefaultBackendOptions& options)
     o.extra_flags.insert(o.extra_flags.end(), options.extra_flags.begin(), options.extra_flags.end());
     o.resource_dir = paths.resource_dir;
     o.fs = options.fs;
+    o.std_version = options.std_version;
     return std::make_unique<JitBackend>(std::move(o));
 }
 #endif

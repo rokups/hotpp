@@ -34,6 +34,7 @@
 #include "emit.h"
 
 #include <algorithm>
+#include <cctype>
 
 namespace hotc::ast
 {
@@ -266,7 +267,10 @@ struct ExprPrinter
             e.put(")");
             return;
         }
-        e.put(n.op, n.pos);
+        // The script operator "await" is "co_await" in C++. It needs a space before the operand.
+        e.put(n.op == "await" ? std::string("co_await") : n.op, n.pos);
+        if (!n.op.empty() && std::isalpha(static_cast<unsigned char>(n.op.back())))
+            e.space();
         // "- -x" must not become "--x".
         const auto* inner = std::get_if<UnaryExpr>(&n.operand->v);
         if (inner && !inner->postfix && !n.op.empty() && !inner->op.empty() && inner->op[0] == n.op.back()
@@ -517,7 +521,7 @@ struct StmtPrinter
     }
     void operator()(const ReturnStmt& n) const
     {
-        e.put("return", n.pos);
+        e.put(n.co ? "co_return" : "return", n.pos);
         if (n.expr)
         {
             e.space();

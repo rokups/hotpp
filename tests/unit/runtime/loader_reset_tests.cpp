@@ -168,7 +168,7 @@ TEST_F(Reset, PinnedGenerationBlocksReset)
     hot::pin(1);
     std::string error;
     EXPECT_FALSE(loader.reset(error));
-    EXPECT_EQ(error, "generation 1 is pinned");
+    EXPECT_EQ(error, "generation 1 is pinned (a closure or a task is alive)");
     EXPECT_EQ(loader.stats().active_generation, 1u);
     hot::unpin(1);
     EXPECT_TRUE(loader.reset(error)) << error;

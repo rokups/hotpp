@@ -216,6 +216,10 @@ HOT_NODEBUG void stale_call(const char* what);
 // The number of stale calls that the guard ignored since the start.
 uint64_t stale_call_count();
 
+// Sets a function that stale_call runs after it counts the call. A null pointer removes it.
+// It returns the old function. A test uses it to see the state at the time of a stale call.
+HOT_EXPORT void (*set_stale_hook(void (*fn)(const char*)))(const char*);
+
 // Generation pins (section 4.11). A pin tells the runtime that something outside
 // script code (for example a closure in an engine timer) still holds code of the
 // generation. The counts are atomic: any thread can pin or unpin. A generation

@@ -1,0 +1,55 @@
+// Generation 1 of the AsyncRunner class (tests/integration/async).
+// The host calls the async methods through the thunks and drives the tasks.
+// "asynctest.wait_gate()" is a host awaitable: the host opens the gate.
+using "Actor.h";
+using "async_gate.h";
+
+class AsyncRunner : Actor {
+    int steps = 0;
+    int finals = 0;
+
+    async int Twice(int x) {
+        return x * 2;
+    }
+
+    async int Gated(int x) {
+        this.steps = this.steps + 1;
+        var v = await asynctest.wait_gate();
+        this.steps = this.steps + 1;
+        return x + v;
+    }
+
+    async int Parent(int x) {
+        var a = await Twice(x);
+        var b = await Gated(a);
+        return a + b;
+    }
+
+    async int FailAfterGate() {
+        await asynctest.wait_gate();
+        this.steps = this.steps + 10;
+        throw hot.ScriptError("boom after resume");
+    }
+
+    async int Cancel() {
+        throw hot.TaskCancelled("cancelled by script");
+    }
+
+    async int CatchCancel() {
+        try {
+            var v = await Cancel();
+            return v;
+        } catch (hot.TaskCancelled e) {
+            return -7;
+        }
+    }
+
+    async int WithFinally(int x) {
+        try {
+            var v = await asynctest.wait_gate();
+            return x + v;
+        } finally {
+            this.finals = this.finals + 1;
+        }
+    }
+}

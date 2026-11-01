@@ -36,8 +36,14 @@ namespace hotc
 // The findings of the borrowed-storage rule are errors with "strict_borrowed". Otherwise they
 // are warnings. The rule on the address of a script function is always an error. "is_cpp" is
 // true for a class of a ".cpp" script: it can hold a raw pointer to a script class.
+// "std_below_20" is true when the C++ standard of the build is older than C++20: an "async"
+// method is then an error, because it needs coroutines.
 void check_class(const ast::ClassDef& cd, const TypeModel& types, const LineMap& map, Diagnostics& diag,
-    bool strict_borrowed, bool is_cpp = false);
+    bool strict_borrowed, bool is_cpp = false, bool std_below_20 = false);
+
+// True when the standard option ("c++17", "gnu++14", "c++2b") names a standard older than C++20.
+// An empty or unknown text gives false.
+bool cxx_std_below_20(const std::string& std_name);
 
 // Checks the constructors of a class: no two overloads with the same parameter types, and the
 // arguments of "base(...)" use the constructor parameters only (design 7.3). Each error goes

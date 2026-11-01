@@ -22,6 +22,7 @@
 #include "hot/runtime/registry.h"
 #include "hot/runtime/shell.h"
 #include "hot/runtime/state.h"
+#include "hot/runtime/task.h" // empty without C++20 coroutines
 #include "hot/runtime/threads.h"
 #include "hot/runtime/trace.h"
 

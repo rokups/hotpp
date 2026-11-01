@@ -1745,20 +1745,46 @@ void Frontend::fill_params(CXCursor c, std::vector<ast::Param>& out, const Class
     }
 }
 
-CXCursor Frontend::body_of(CXCursor c)
+// The body of the function "c". The body of a coroutine (co_await, co_return) is in a
+// CoroutineBodyStmt: libclang shows it as an unexposed statement, and its first child is the body.
+static bool find_body(CXCursor c, CXCursor& out, bool* coroutine = nullptr)
 {
     for (CXCursor k : children(c))
-        if (clang_getCursorKind(k) == CXCursor_CompoundStmt)
-            return k;
+    {
+        const CXCursorKind kind = clang_getCursorKind(k);
+        if (kind == CXCursor_CompoundStmt)
+        {
+            out = k;
+            return true;
+        }
+        if (kind == CXCursor_UnexposedStmt)
+            for (CXCursor b : children(k))
+            {
+                if (clang_getCursorKind(b) == CXCursor_CompoundStmt)
+                {
+                    out = b;
+                    if (coroutine)
+                        *coroutine = true;
+                    return true;
+                }
+                break; // the body is the first child
+            }
+    }
+    return false;
+}
+
+CXCursor Frontend::body_of(CXCursor c)
+{
+    CXCursor b;
+    if (find_body(c, b))
+        return b;
     fail(pos_of(c), "define the static method inside the class");
 }
 
 bool Frontend::has_body(CXCursor c)
 {
-    for (CXCursor k : children(c))
-        if (clang_getCursorKind(k) == CXCursor_CompoundStmt)
-            return true;
-    return false;
+    CXCursor b;
+    return find_body(c, b);
 }
 
 // True when the declaration "c" ends with "= default" or "= delete".
@@ -1966,6 +1992,12 @@ void Frontend::read_method_body(CXCursor c, const ClassInfo* cls, const Where<as
 {
     ast::Method& m = where()[index];
     const Range b = extent_of(body_of(c));
+    {
+        CXCursor body;
+        bool co = false;
+        find_body(c, body, &co);
+        m.is_coroutine = co;
+    }
     m.end_pos = b.end - 1;
     m.end_line = line(m.end_pos);
     m.raw_line = line(b.begin); // "raw_body" starts right after the "{"

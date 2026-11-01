@@ -43,6 +43,10 @@ inline const std::vector<BuiltinType>& builtin_types()
         {"char", nullptr, "char"},
         {"wchar", "char16", "char16_t"},
     };
+    // "Task<T>" is a built-in template type too. It has no row here, because the table maps whole
+    // names. canonical_type below rewrites the name "Task" before "<" to "hot::Task". The class
+    // is in include/hot/runtime/task.h. It is a value type, not a handle. A script writes it only
+    // as the type of a field or a local. An "async" method makes it from the value type.
     return table;
 }
 
@@ -175,6 +179,12 @@ inline std::string canonical_type(std::string_view text, std::string* error = nu
             if (!scoped)
             {
                 const char* cpp = builtin_cpp_name(word);
+                size_t k = i;
+                while (k < n && std::isspace(static_cast<unsigned char>(text[k])))
+                    ++k;
+                // The built-in template "Task<T>" is the class hot::Task (not for a libclang spelling).
+                if (!cpp && !native && word == "Task" && k < n && text[k] == '<')
+                    cpp = "hot::Task";
                 out += cpp ? cpp : std::string(word);
             }
             else
@@ -222,6 +232,43 @@ inline std::string canonical_type(std::string_view text, std::string* error = nu
         i = j;
     }
     return out;
+}
+
+// True when the type text names a task type "Task<...>" (also "hot::Task<...>"), at any depth
+// of a template, for example "List<Task<int>>".
+inline bool mentions_task_type(std::string_view text)
+{
+    for (size_t at = text.find("Task<"); at != std::string_view::npos; at = text.find("Task<", at + 1))
+    {
+        const char before = at ? text[at - 1] : ' ';
+        if (!std::isalnum(static_cast<unsigned char>(before)) && before != '_')
+            return true;
+    }
+    return false;
+}
+
+// The value type T of a task type "hot::Task<T>" (also "Task<T>"). Gives an empty text for any
+// other type and for "Task<void>".
+inline std::string task_value_type(std::string_view text)
+{
+    size_t b = 0, e = text.size();
+    while (b < e && std::isspace(static_cast<unsigned char>(text[b])))
+        ++b;
+    while (e > b && std::isspace(static_cast<unsigned char>(text[e - 1])))
+        --e;
+    text = text.substr(b, e - b);
+    for (std::string_view head : {std::string_view("hot::Task<"), std::string_view("Task<")})
+    {
+        if (text.size() <= head.size() || text.substr(0, head.size()) != head || text.back() != '>')
+            continue;
+        std::string_view inner = text.substr(head.size(), text.size() - head.size() - 1);
+        while (!inner.empty() && std::isspace(static_cast<unsigned char>(inner.front())))
+            inner.remove_prefix(1);
+        while (!inner.empty() && std::isspace(static_cast<unsigned char>(inner.back())))
+            inner.remove_suffix(1);
+        return inner == "void" ? std::string() : std::string(inner);
+    }
+    return {};
 }
 
 // The script spelling of a canonical type text, for a message to the script author:

@@ -61,11 +61,12 @@ void golden_pair(const std::string& base, const std::string& ext = ".hot")
 }
 
 // Translates one script as generation 1. The script has no second generation.
-void golden_one(const std::string& base, const std::string& ext = ".hot")
+void golden_one(const std::string& base, const std::string& ext = ".hot", const std::string& std_version = "")
 {
     const std::string file = base + ext;
     hotc::TranslateOptions o = engine_options(file.c_str(), 1);
     o.script_name = file;
+    o.std_version = std_version;
     const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     check_golden(base + ".g1.cpp", r.cpp);
@@ -73,6 +74,18 @@ void golden_one(const std::string& base, const std::string& ext = ".hot")
 }
 
 } // namespace
+
+// An async method is a coroutine that returns a hot::Task. The script needs C++20.
+TEST(GoldenTranslation, AsyncBasic)
+{
+    golden_one("async_basic", ".hot", "c++20");
+}
+
+// A virtual async method and an override go through the _virt wrapper.
+TEST(GoldenTranslation, AsyncVirtual)
+{
+    golden_one("async_virtual", ".hot", "c++20");
+}
 
 TEST(GoldenTranslation, Player)
 {

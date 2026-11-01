@@ -333,6 +333,8 @@ struct Lowerer
             return class_named(nw->type) ? nw->type : std::string();
         if (auto* p = std::get_if<ParenExpr>(&e.v))
             return type_of(*p->inner);
+        if (auto* aw = std::get_if<UnaryExpr>(&e.v); aw && !aw->postfix && aw->op == "await" && aw->operand)
+            return task_value_type(type_of(*aw->operand)); // "await" of a "Task<T>" gives T
         if (auto* tn = std::get_if<TernaryExpr>(&e.v))
         { // both branches must have the same known type
             if (!tn->a || !tn->b)
@@ -1290,6 +1292,20 @@ struct Lowerer
     // True while the pass lowers the body of a lambda.
     bool in_lambda = false;
 
+    // The state of the places where C++ does not allow "co_await". A catch handler is one. The
+    // body of a finally block and the right side of "??" are lambdas in the C++ code.
+    int catch_depth = 0;
+    int lazy_depth = 0;
+    void check_await(uint32_t pos)
+    {
+        if (catch_depth > 0)
+            error(pos, "'await' is not supported inside a 'catch' block yet");
+        else if (fin.inside)
+            error(pos, "'await' is not supported inside a 'finally' block yet");
+        else if (lazy_depth > 0)
+            error(pos, "'await' cannot be used inside this expression yet");
+    }
+
     void lambda(ExprP& e, LambdaExpr& l)
     {
         if (!cx.allow_this)
@@ -1586,6 +1602,12 @@ struct Lowerer
             if (u->op == "&" && !u->postfix && u->operand)
                 if (const std::string w = weak_root(*u->operand); !w.empty())
                     weak_ref_error(u->pos ? u->pos : pos_of(*u->operand), w);
+            if (u->op == "await" && !u->postfix)
+            {
+                check_await(u->pos);
+                if (!in_lambda)
+                    ++cx.co_keywords;
+            }
             expr(u->operand);
         }
         else if (auto* b = std::get_if<BinaryExpr>(&x.v))
@@ -1604,7 +1626,12 @@ struct Lowerer
                 e = make_expr(UnaryExpr{".reset()", std::move(b->lhs), true, b->pos});
                 return;
             }
+            // The right side of "??" is in a lambda: it cannot hold an "await".
+            if (b->op == "??")
+                ++lazy_depth;
             expr(b->rhs);
+            if (b->op == "??")
+                --lazy_depth;
             // "x ?? y" is a call of the runtime helper. The helper reads x one time. The
             // second argument is a lambda, so y runs only when x is false.
             if (b->op == "??" && b->lhs && b->rhs)
@@ -2209,6 +2236,9 @@ struct Lowerer
         {
             if (fin.inside)
                 error(r->pos, "'return' is not allowed in a 'finally' block");
+            r->co = cx.async_body && !in_lambda;
+            if (r->co)
+                ++cx.co_keywords;
             coerce(r->expr, cx.ret_type);
             expr(r->expr);
         }
@@ -2237,7 +2267,9 @@ struct Lowerer
                     declare(c.name, std::string());
                     normalize_runtime_catch_type(c.type);
                 }
+                ++catch_depth;
                 block(c.block);
+                --catch_depth;
             }
             if (tr->finally_block)
             {
@@ -2246,6 +2278,13 @@ struct Lowerer
                 block(*tr->finally_block);
                 fin = outer;
                 tr->finally_captures = binding_captures(bindings, text_of(*tr->finally_block), true);
+                // In an async body the guard of a finally block can run when a reload cancelled
+                // the frame: the owner destroys the frame later. Then the state block of the
+                // generation is gone, so the body must not run. "hot_live" is a variable of the
+                // file: the lambda sees it without a capture.
+                if (cx.async_body && !in_lambda)
+                    tr->finally_block->stmts.insert(tr->finally_block->stmts.begin(),
+                        make_stmt(RawStmt{"if (HOT_UNLIKELY(!hot_live)) return;", 0}));
             }
         }
         else if (auto* sw = std::get_if<SwitchStmt>(&x.v))

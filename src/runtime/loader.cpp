@@ -252,7 +252,7 @@ bool Loader::reset(std::string& error)
     {
         if (g.state != GenState::Unloaded && pin_count(g.generation) != 0)
         {
-            error = "generation " + std::to_string(g.generation) + " is pinned";
+            error = "generation " + std::to_string(g.generation) + " is pinned (a closure or a task is alive)";
             return false;
         }
     }

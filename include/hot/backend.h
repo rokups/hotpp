@@ -170,6 +170,9 @@ struct DefaultBackendOptions
     std::shared_ptr<hot::FileSystem> fs;
     // The backend to make. An explicit value wins over the environment variable HOT_BACKEND.
     BackendKind kind = BackendKind::Auto;
+    // The C++ standard of the scripts, for example "c++20" for "async" scripts. Empty: the
+    // standard of the host (hot::cxx_std_name()).
+    std::string std_version;
 };
 std::unique_ptr<Backend> make_default_backend(const DefaultBackendOptions& options);
 

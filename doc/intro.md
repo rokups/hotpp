@@ -221,7 +221,7 @@ To read the real output, run `hotc --emit-cpp player.hot --gen 1 -I include -I t
 - Linux: tested with Clang, also under ASan and TSan.
 - Windows: partial. The code paths are not verified.
 - macOS: untested.
-- Coroutines are not in version 1.
+- Coroutines: `async` methods and `await` work, and they need C++20. See [Async and await](async.html).
 
 ## License
 

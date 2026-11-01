@@ -266,8 +266,11 @@ struct Checker
     Diagnostics& diag;
     bool strict; // true: a borrowed-storage finding is an error. False: a warning.
     bool is_cpp; // true: the class is from a ".cpp" script
+    bool std_below_20; // true: the C++ standard of the build is older than C++20
 
     std::set<std::pair<uint32_t, std::string>> reported;
+    bool in_async = false; // true while the body of an "async" method is in progress
+    bool in_async_void = false; // the same, and the value type of the method is "void"
     std::set<std::string> fn_names, field_names;
     std::set<std::string> locals; // parameters and locals of the body in progress
     std::set<std::string> borrowed; // the locals that hold a borrowed pointer or a reference
@@ -390,7 +393,35 @@ struct Checker
     }
 
     // ---- one body
-    void body(const Method& m) { body(m.params, m.body); }
+    void body(const Method& m)
+    {
+        in_async = m.is_async && !is_cpp;
+        in_async_void = in_async && (m.ret.empty() || m.ret == "void");
+        body(m.params, m.body);
+        in_async = in_async_void = false;
+    }
+
+    // The rules of an "async" method (a ".hot" script only). The script writes the value type:
+    // the method returns "hot::Task<T>" in the C++ code.
+    void check_async(const Method& m)
+    {
+        if (!m.is_async || is_cpp)
+            return;
+        if (cd.is_value)
+            error(m.pos, "'async' is only valid on a class method");
+        if (std_below_20)
+            error(m.pos, "'async' needs C++20: set CMAKE_CXX_STANDARD 20 before hot_add_scripts (hotc: --std=c++20)");
+        const std::string ret = trim(m.ret);
+        if (ret.rfind("hot::Task<", 0) == 0 || ret.rfind("Task<", 0) == 0)
+            error(m.pos, "'async' method '" + m.name + "' returns a task: write the value type, 'async' makes the task");
+        for (const Param& p : m.params)
+        {
+            std::string base;
+            if (is_borrowed_form(p.type, base))
+                error(m.pos, "'async' method '" + m.name + "' cannot take parameter '" + p.name
+                                 + "' by reference: the caller's object can end before the task continues");
+        }
+    }
 
     void body(const std::vector<Param>& params, const BlockStmt& block)
     {
@@ -551,6 +582,9 @@ struct Checker
 
     void on_stmt(const Stmt& s)
     {
+        if (auto* r = std::get_if<ReturnStmt>(&s.v))
+            if (in_async_void && scopes.empty() && r->expr)
+                error(r->pos, "an 'async void' method cannot return a value");
         if (auto* d = std::get_if<VarDeclStmt>(&s.v))
         {
             if (!d->names.empty())
@@ -627,7 +661,16 @@ struct Checker
     void on_expr(const Expr& e)
     {
         if (auto* un = std::get_if<UnaryExpr>(&e.v))
+        {
             check_cast(*un);
+            if (!un->postfix && un->op == "await" && !is_cpp)
+            {
+                if (!scopes.empty())
+                    error(un->pos, "'await' is only valid inside an 'async' method (a lambda cannot await yet)");
+                else if (!in_async)
+                    error(un->pos, "'await' is only valid inside an 'async' method");
+            }
+        }
         if (auto* c = std::get_if<CallExpr>(&e.v))
         {
             callee_names.insert(c->callee.get());
@@ -757,6 +800,9 @@ struct Checker
         for (const Field& f : cd.fields)
         {
             check_storage(f.type, f.pos, "a field");
+            // A reload copies the fields, and a task is move-only.
+            if (!is_cpp && (mentions_task_type(f.type) || mentions_task_type(f.script_type)))
+                error(f.pos, "a 'Task' field is not supported: hold the task in a local variable or in a host object");
             if (!is_cpp) // a ".cpp" field is the C++ of the user; the reload moves a field that does not copy
                 check_copyable(f.type, f.pos);
             if (f.init)
@@ -774,6 +820,7 @@ struct Checker
         }
         for (const Method& m : cd.methods)
         {
+            check_async(m);
             for (const Param& p : m.params)
                 script_pointer(p.type, m.pos);
             // An override keeps the native signature. The script cannot change its return type.
@@ -800,9 +847,22 @@ struct Checker
 } // namespace
 
 void check_class(const ClassDef& cd, const TypeModel& types, const LineMap& map, Diagnostics& diag,
-    bool strict_borrowed, bool is_cpp)
+    bool strict_borrowed, bool is_cpp, bool std_below_20)
 {
-    Checker{cd, types, map, diag, strict_borrowed, is_cpp, {}, {}, {}, {}, {}, {}, {}}.run();
+    Checker{cd, types, map, diag, strict_borrowed, is_cpp, std_below_20, {}, false, {}, {}, {}, {}, {}, {}}.run();
+}
+
+bool cxx_std_below_20(const std::string& std_name)
+{
+    // "c++17", "gnu++14", "c++1z", "c++2b": the text after "++" says the year.
+    const size_t p = std_name.find("++");
+    if (p == std::string::npos)
+        return false;
+    const std::string v = std_name.substr(p + 2);
+    for (const char* old : {"98", "03", "0x", "11", "14", "1y", "17", "1z"})
+        if (v == old)
+            return true;
+    return false;
 }
 
 void check_ctors(const ClassDef& cd, const LineMap& map, Diagnostics& diag)
@@ -1508,6 +1568,11 @@ struct QueryCollector
         }
         if (auto* p = std::get_if<ParenExpr>(&e.v))
             return type_of(*p->inner);
+        if (auto* aw = std::get_if<UnaryExpr>(&e.v); aw && !aw->postfix && aw->op == "await" && aw->operand)
+        { // "await" of a "Task<T>" gives T
+            const std::string v = task_value_type(type_of(*aw->operand).cpp);
+            return v.empty() ? QType{} : QType{v};
+        }
         if (auto* n = std::get_if<NameExpr>(&e.v))
         {
             if (n->parts.empty() || !n->template_args.empty())

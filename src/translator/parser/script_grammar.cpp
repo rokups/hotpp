@@ -141,10 +141,10 @@ struct Member
     bool get_has_access = false, set_has_access = false; // an access word on the accessor
 };
 
-// The words "get" and "set" are reserved. They are not names of members or parameters.
+// The words "get", "set", "async" and "await" are reserved. They are not member or parameter names.
 void check_name(const ParseState& st, const char* pos, const std::string& name)
 {
-    if (name == "get" || name == "set")
+    if (name == "get" || name == "set" || name == "async" || name == "await")
         st.error(pos, "'" + name + "' is a reserved word");
 }
 
@@ -196,10 +196,10 @@ struct ModTok
 // The modifiers before a member. The parser checks the rules that do not depend on the kind.
 struct Mods
 {
-    bool is_override = false, is_virtual = false, is_new = false;
+    bool is_override = false, is_virtual = false, is_new = false, is_async = false;
     bool has_access = false;
     ast::Access access = ast::Access::Public;
-    std::vector<ModTok> kind_toks; // the first "override", "virtual" or "new" words
+    std::vector<ModTok> kind_toks; // the "override", "virtual", "new" and "async" words
 };
 
 bool is_access_word(const std::string& w)
@@ -258,6 +258,12 @@ Mods collect_mods(const ParseState& st, const std::vector<ModTok>& toks)
             m.access = t.word == "public" ? ast::Access::Public
                 : t.word == "private"     ? ast::Access::Private
                                           : ast::Access::Protected;
+        }
+        else if (t.word == "async")
+        {
+            // "async" combines with "virtual" and "override". A duplicate is an error above.
+            m.kind_toks.push_back(t);
+            m.is_async = true;
         }
         else
         {
@@ -341,6 +347,7 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
         m.method.is_override = mods.is_override;
         m.method.is_virtual = mods.is_virtual;
         m.method.is_new = mods.is_new;
+        m.method.is_async = mods.is_async;
     }
     return std::move(m);
 }
@@ -887,8 +894,8 @@ constexpr auto kw_friend = LEXY_KEYWORD("friend", id);
 constexpr auto kw_mutable = LEXY_KEYWORD("mutable", id);
 constexpr auto kw_volatile = LEXY_KEYWORD("volatile", id);
 
-constexpr auto modifier_set = dsl::literal_set(kw_override, kw_virtual, kw_new, kw_public, kw_private, kw_protected,
-    kw_static, kw_thread_local, kw_friend, kw_mutable, kw_volatile);
+constexpr auto modifier_set = dsl::literal_set(kw_override, kw_virtual, kw_async, kw_new, kw_public, kw_private,
+    kw_protected, kw_static, kw_thread_local, kw_friend, kw_mutable, kw_volatile);
 
 struct mod_item : lexy::token_production
 {

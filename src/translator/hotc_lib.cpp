@@ -148,6 +148,19 @@ std::string name_in_type(const std::string& t, const std::string& name)
     return t.substr(0, close) + name + t.substr(close);
 }
 
+// The type of a parameter of an "async" coroutine: by value. The frame of a coroutine must own
+// the argument, because the caller can end before the task continues. "const T&" gives "T".
+std::string coroutine_param_type(std::string t)
+{
+    if (t.size() > 1 && t.back() == '&' && t[t.size() - 2] != '&')
+        t.pop_back();
+    while (!t.empty() && t.back() == ' ')
+        t.pop_back();
+    if (t.rfind("const ", 0) == 0 && t.find('*') == std::string::npos)
+        t.erase(0, 6);
+    return t;
+}
+
 // The declaration of a field "name" of the type "t" without the final ";". A type with a
 // declarator in parentheses and an array of function pointers go through an alias, as the
 // declarator has the name inside.
@@ -3671,9 +3684,23 @@ void translate_impl(
     {
         if (m.raw)
             return nullptr;
+        cx.co_keywords = 0;
         hotc::lower_block(m.body, cx, g_diag);
         if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
             return nullptr;
+        // A function is a coroutine only when it has a "co_" keyword. An "async void" body can end
+        // without one, so it ends with "co_return;".
+        if (m.is_async && (m.script_ret.empty() || m.script_ret == "void"))
+        {
+            if (m.body.stmts.empty() || !std::holds_alternative<hotc::ast::ReturnStmt>(m.body.stmts.back()->v))
+                m.body.stmts.push_back(hotc::ast::make_stmt(hotc::ast::RawStmt{"co_return;", 0}));
+        }
+        // An async body with a value type and no "co_" keyword (it only throws, for example) is
+        // not a coroutine: the throw comes out of the call and not out of the task. A co_await
+        // that does not suspend makes it a coroutine. The lowering counted the keywords.
+        else if (m.is_async && cx.co_keywords == 0)
+            m.body.stmts.insert(m.body.stmts.begin(),
+                hotc::ast::make_stmt(hotc::ast::RawStmt{"co_await std::suspend_never{};", 0}));
         auto em = std::make_shared<hotc::ast::Emitter>(map, opt.input);
         em->trace_lines = trace;
         hotc::ast::emit_stmts(m.body.stmts, *em, 1);
@@ -3945,7 +3972,8 @@ void translate_impl(
             reserved(c.pos, c.params);
         {
             const size_t before = g_diag.items.size();
-            hotc::check_class(cd, types, map, g_diag, in.strict_borrowed, sc.is_cpp);
+            hotc::check_class(cd, types, map, g_diag, in.strict_borrowed, sc.is_cpp,
+                hotc::cxx_std_below_20(opt.std_version));
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }
@@ -4775,6 +4803,8 @@ void translate_impl(
                             fail_at(map, m.pos,
                                 "return type '" + hotc::script_type_text(r1) + "' differs from '"
                                     + hotc::script_type_text(r0) + "'");
+                        if (am->is_async != m.is_async)
+                            fail_at(map, m.pos, "'async' of '" + m.name + "' differs from the base method");
                         m.vslot_owner = am->vslot_owner;
                     }
                     else
@@ -4808,6 +4838,8 @@ void translate_impl(
                 fail_at(map, m.pos,
                     "method '" + m.name + "' overrides a virtual method of " + hit->owner + "; write 'override'");
             m.overrides_virtual = true;
+            if (m.is_async) // a native virtual method is never async
+                fail_at(map, m.pos, "'async' of '" + m.name + "' differs from the base method");
             if (hit->final_)
                 fail_at(map, m.pos, "'" + hit->text() + "' of " + hit->owner + " is final and cannot be overridden");
             if (!m.ret.empty()
@@ -4832,6 +4864,8 @@ void translate_impl(
                 continue;
             if (m.is_override || m.is_virtual)
                 fail_at(map, m.pos, "the hook '" + m.name + "' cannot be 'override' or 'virtual'");
+            if (m.is_async)
+                fail_at(map, m.pos, "the hook '" + m.name + "' cannot be 'async'");
             if (h == Hook::OnReload)
             {
                 if (!m.ret.empty() && m.ret != "void")
@@ -4851,7 +4885,8 @@ void translate_impl(
         // ---- the borrowed-storage rule and the rows of design 5.3 that the script text shows
         {
             const size_t before = g_diag.items.size();
-            hotc::check_class(cd, types, map, g_diag, in.strict_borrowed, sc.is_cpp);
+            hotc::check_class(cd, types, map, g_diag, in.strict_borrowed, sc.is_cpp,
+                hotc::cxx_std_below_20(opt.std_version));
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }
@@ -5001,6 +5036,9 @@ void translate_impl(
             }
             if (!m.ret.empty())
                 m.ret = types.storage(m.ret);
+            // An "async" method returns the task of its value type (design: hot/runtime/task.h).
+            if (m.is_async)
+                m.ret = "hot::Task<" + (m.ret.empty() ? std::string("void") : m.ret) + ">";
         }
 
         for (hotc::ast::Ctor& c : cd.ctors)
@@ -5501,6 +5539,12 @@ void translate_impl(
                         + no_comma(m.raw ? param_decl_def(m) : param_decl(m)) + ");\n";
                 }
             }
+            // The origin of a ".cpp" coroutine: the promise of hot::Task takes it from the object
+            // (hot/runtime/task.h). So the task pins the generation and the guard checks it.
+            if (!opt.aot_optimized && std::any_of(cd.methods.begin(), cd.methods.end(),
+                                          [](const Method& m) { return m.is_coroutine; }))
+                members += "    static hot::detail::TaskOriginData hot_task_origin() { return {GEN, &hot_live, \""
+                    + cd.name + "\"}; }\n";
             if (!members.empty())
                 o.w("\n" + members);
             // Base forwarders: a native virtual that the script does not override. The slot names
@@ -5966,6 +6010,7 @@ void translate_impl(
             cx.where = what;
             cx.ret_type = m.script_ret;
             cx.new_classes = body_new;
+            cx.async_body = m.is_async;
             hotc::add_params(cx, m.params);
             const std::string file = esc(file_at(m.pos));
             const int end_line = m.end_line > 0 ? m.end_line : m.line;
@@ -5973,7 +6018,8 @@ void translate_impl(
             if (!m.body.stmts.empty() && hotc::ast::pos_of(*m.body.stmts.front()) != 0)
                 first_line = map.line(hotc::ast::pos_of(*m.body.stmts.front()));
             // The text of the body comes after the last block (see "bodies"). The lowering is here.
-            std::shared_ptr<hotc::ast::Emitter> em = lower_body(m, cx, true);
+            // The body of a coroutine has no trace frame: the frame is a guard of the thread.
+            std::shared_ptr<hotc::ast::Emitter> em = lower_body(m, cx, !m.is_async);
             if (!g_diag.items.empty())
                 return;
             // The member of the shell. A plain member only in a ".cpp" body (see body_member).
@@ -5996,11 +6042,33 @@ void translate_impl(
             }
             // The member of the state struct. It has the parameter forms of the slot signature. A
             // parameter with a body form gets the name "__<name>"; the first line copies or moves it.
+            // An "async" method: the member makes the task. The coroutine is a function of the file.
+            // The first parameter of the coroutine is the origin of the code (hot/runtime/task.h).
+            // The coroutine owns its parameters: they are values.
+            const bool is_async = m.is_async;
+            std::string co_head, co_call;
+            if (is_async)
+            {
+                const std::string co_sym = sym + "_co";
+                co_head = "[[maybe_unused]] static " + ret + " " + co_sym + "(hot::detail::TaskOriginData, " + shell
+                    + "* __self";
+                co_call = "    return " + co_sym + "(hot::detail::TaskOriginData{GEN, &hot_live, \"" + what
+                    + "\"}, __self";
+                for (const Param& p : m.params)
+                {
+                    co_head += ", " + name_in_type(coroutine_param_type(p.type), p.name);
+                    co_call += ", \x01std::forward<" + p.type + ">(" + (p.body_type.empty() ? "" : "__") + p.name + ")";
+                }
+                co_head += ")\n";
+                co_call += ");\n";
+            }
             std::string params, body_locals;
             for (const Param& p : m.params)
             {
                 const bool conv = !p.body_type.empty();
                 params += std::string(params.empty() ? "" : ", ") + name_in_type(p.type, (conv ? "__" : "") + p.name);
+                if (is_async)
+                    continue;
                 if (conv && !p.bind_to.empty())
                     body_locals += "    " + p.body_type + " " + p.name + " = hot::bind<" + p.bind_to
                         + ">(\x01std::forward<" + p.type + ">(__" + p.name + "));\n";
@@ -6014,11 +6082,16 @@ void translate_impl(
             std::string tname = what.substr(0, what.find('('));
             for (size_t c; (c = tname.find("::")) != std::string::npos;)
                 tname.replace(c, 2, ".");
-            const std::string stale_ret = "        return" + (ret == "void" ? std::string() : " " + ret + "()") + ";\n";
+            // A ".cpp" coroutine cannot "return". Its task is lazy, and the guard of the task checks the
+            // generation before the body starts (hot/runtime/task.h). So this throw only keeps the form.
+            const bool is_coroutine = m.is_coroutine;
+            const std::string stale_ret = is_coroutine
+                ? "        throw hot::TaskReloadCancelled(\"task cancelled by reload: " + what + "\");\n"
+                : "        return" + (ret == "void" ? std::string() : " " + ret + "()") + ";\n";
             bodies.push_back({cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns),
                 [&o, &all_text, &mapped, &reset, &write_stmts, h = body_head(m), em, file, end_line, first_line,
                     is_fn, sym, whead, wbody, bmember, mhead, mhead_from, what, shell, body_locals, tname, stale_ret,
-                    aot_optimized = opt.aot_optimized]
+                    is_async, is_coroutine, co_head, co_call, aot_optimized = opt.aot_optimized]
                 {
                     const Method& m = *h;
                     auto line_at = [&](int l) { return "#line " + std::to_string(l) + " \"" + file + "\"\n"; };
@@ -6028,6 +6101,21 @@ void translate_impl(
                         o.head_segments(whead, sym, m, all_text);
                         o.w(whead + ")\n");
                         mapped(wbody, m.line, m.pos);
+                    }
+                    if (is_async)
+                    { // the coroutine comes before the member that calls it
+                        o.w(line_at(m.line));
+                        o.w(co_head);
+                        o.w(line_at(m.line));
+                        o.w("{\n");
+                        o.w(line_at(first_line));
+                        o.w(aot_optimized ? "    HOT_NODEBUG_LOCAL auto* __st = __self;\n"
+                                          : "    HOT_NODEBUG_LOCAL auto* __st = state_of(__self);\n");
+                        write_stmts(m, em.get());
+                        o.w(line_at(end_line));
+                        o.w("}\n");
+                        reset();
+                        o.w("\n");
                     }
                     o.w(line_at(m.line));
                     o.head_segments(mhead, bmember, m, all_text, mhead_from);
@@ -6056,8 +6144,13 @@ void translate_impl(
                         o.w("    HOT_NODEBUG_LOCAL auto* __self = static_cast<" + shell + "*>(this->__hot_owner);\n");
                     o.w(line_at(first_line));
                     o.w("    HOT_NODEBUG_LOCAL auto* __st = this;\n");
-                    o.w(line_at(first_line));
-                    o.w("    HOT_TRACE_FRAME(\"" + tname + "\", \"" + file + "\");\n");
+                    // A trace frame is a scope object. A coroutine frame keeps it across a suspension,
+                    // so the frames of the thread do not nest then: a coroutine has none.
+                    if (!is_coroutine)
+                    {
+                        o.w(line_at(first_line));
+                        o.w("    HOT_TRACE_FRAME(\"" + tname + "\", \"" + file + "\");\n");
+                    }
                     for (size_t b = 0; b < body_locals.size();)
                     {
                         const size_t e = body_locals.find('\n', b) + 1;
@@ -6065,7 +6158,15 @@ void translate_impl(
                         o.w(body_locals.substr(b, e - b));
                         b = e;
                     }
-                    write_stmts(m, em.get());
+                    if (is_async)
+                    {
+                        o.w(line_at(first_line));
+                        o.w(co_call);
+                    }
+                    else
+                    {
+                        write_stmts(m, em.get());
+                    }
                     o.w(line_at(end_line));
                     o.w("}\n");
                     reset();

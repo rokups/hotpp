@@ -70,6 +70,11 @@ struct RCtx
     std::set<std::string> weak_fields;
     std::set<std::string> weak_locals;
     bool allow_this = true;
+    // True while the pass lowers the body of an "async" method. A "return" becomes "co_return".
+    bool async_body = false;
+    // The lowering counts the "co_await" and the "co_return" of an async body here (not in a
+    // lambda). Zero: the body is not a coroutine yet (hotc_lib.cpp adds one co_await).
+    int co_keywords = 0;
     // True for optimized AOT code. The fields are members of the shell, so there is no state_of.
     bool aot_optimized = false;
     // True in the default value of a parameter. The value is in a C++ declaration, so it cannot

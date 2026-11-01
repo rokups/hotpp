@@ -4,6 +4,7 @@
 
 # The tests of the printer of the expression and statement tree.
 add_executable(unit_translator_emit_tests
+    async_emit_tests.cpp
     expression_emit_tests.cpp
     lambda_emit_tests.cpp
     line_directive_emit_tests.cpp

@@ -398,7 +398,7 @@ TEST_P(BackendTests, LoadFailsWhenTheLoaderHasAGeneration)
 }
 
 // A module variable can hold a closure inside std.function. The closure pins its generation,
-// so reset fails with "generation 1 is pinned" until a script function clears the variable.
+// so reset fails with "generation 1 is pinned (a closure or a task is alive)" until a script function clears the variable.
 // The host must call such a function before reset (doc/hot-reload.md).
 TEST_P(BackendTests, ModuleVariableWithAClosurePinsTheGeneration)
 {
@@ -415,7 +415,7 @@ TEST_P(BackendTests, ModuleVariableWithAClosurePinsTheGeneration)
     host.drop();
     std::string error;
     EXPECT_FALSE(host.loader.reset(error));
-    EXPECT_EQ(error, "generation 1 is pinned");
+    EXPECT_EQ(error, "generation 1 is pinned (a closure or a task is alive)");
     ASSERT_NO_FATAL_FAILURE(host.create("Holder"));
     clear(host.actor); // the script function releases the closure
     host.drop();

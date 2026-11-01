@@ -1,0 +1,44 @@
+// The script of the async golden test. An async method returns the value type. The translator
+// makes a coroutine of it and the method returns a hot::Task. It needs C++20.
+using <cstdio>;
+
+class Worker {
+    int total = 0;
+
+    async int Double(int x) {
+        return x * 2;
+    }
+
+    async int Sum(int a, int b) {
+        var left = await Double(a);
+        var right = await Double(b);
+        this.total = left + right;
+        return this.total;
+    }
+
+    async void Bump() {
+        this.total = this.total + await Double(1);
+    }
+
+    async void Early(bool stop) {
+        if (stop) {
+            return;
+        }
+        await Bump();
+    }
+
+    async int Guarded(int x) {
+        try {
+            var r = await Double(x);
+            return r;
+        } catch (...) {
+            return -1;
+        }
+    }
+
+    async void Chain() {
+        var t = Double(21);
+        var v = await t;
+        std.printf("%d\n", v);
+    }
+}

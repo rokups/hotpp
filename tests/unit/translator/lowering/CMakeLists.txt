@@ -4,6 +4,7 @@
 
 # The tests of the lowering pass.
 add_executable(unit_translator_lowering_tests
+    async_lowering_tests.cpp
     handle_lowering_tests.cpp
     lambda_lowering_tests.cpp
     lowering_error_tests.cpp

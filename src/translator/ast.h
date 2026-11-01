@@ -310,6 +310,8 @@ struct ReturnStmt
 {
     ExprP expr; // may be null
     uint32_t pos = 0;
+    // True in the body of an "async" method: the statement prints as "co_return". The lowering sets it.
+    bool co = false;
 };
 struct BreakStmt
 {
@@ -444,6 +446,11 @@ struct Method
     bool is_const = false;
     // The modifiers as written. The parser stores them. Nothing checks them yet.
     bool is_override = false, is_virtual = false, is_new = false;
+    // True when the script writes "async" before the method. The method can use "await".
+    bool is_async = false;
+    // True when the body of a ".cpp" method is a C++20 coroutine (co_await, co_return). The
+    // ".cpp" frontend sets it. The member of the state then has no stale return and no trace frame.
+    bool is_coroutine = false;
     // The script class that owns the virtual slot of the function (design 7.6): the class
     // with the "virtual" declaration. A call goes through the slot then. The translator sets
     // it for a "virtual" function and for an "override" of a script virtual function. Empty:

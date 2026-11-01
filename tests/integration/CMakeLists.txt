@@ -6,6 +6,7 @@
 add_subdirectory(fixtures)
 add_subdirectory(reload)
 add_subdirectory(closures)
+add_subdirectory(async)
 add_subdirectory(threading)
 add_subdirectory(backends)
 add_subdirectory(aot)

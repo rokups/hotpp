@@ -26,6 +26,8 @@ ScriptError::ScriptError(const char* what) : std::runtime_error(what) {}
 #endif
 ScriptError::~ScriptError() = default;
 NullReference::~NullReference() = default;
+TaskCancelled::~TaskCancelled() = default;
+TaskReloadCancelled::~TaskReloadCancelled() = default;
 
 IndexOutOfRange::IndexOutOfRange(std::size_t index, std::size_t size)
     : ScriptError("index " + std::to_string(index) + " is out of range for an array of size " +

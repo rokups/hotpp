@@ -82,7 +82,8 @@ constexpr auto id_m = id.reserve(kw_const, kw_this, kw_base, kw_null, kw_if, kw_
 constexpr auto id_r =
     id.reserve(kw_const, kw_this, kw_base, kw_null, kw_if, kw_else, kw_while, kw_do, kw_for, kw_return, kw_break,
         kw_continue, kw_switch, kw_case, kw_default, kw_try, kw_catch, kw_throw, kw_var, kw_foreach, kw_in, kw_using,
-        kw_override, kw_virtual, kw_new, kw_public, kw_private, kw_protected, kw_get, kw_set, kw_finally, kw_void);
+        kw_override, kw_virtual, kw_async, kw_await, kw_new, kw_public, kw_private, kw_protected, kw_get, kw_set,
+        kw_finally, kw_void);
 
 // ---------------------------------------------------------------- plain helpers
 std::string_view span_text(const ParseState& st, Span sp)
@@ -198,6 +199,15 @@ template <char C0, char C1, char C2> struct Pre
     {
     }
 };
+// The prefix operator "await". Its name has more than 3 chars, so it has its own tag.
+struct AwaitTag
+{
+    const char* pos;
+    explicit AwaitTag(const char* p)
+        : pos(p)
+    {
+    }
+};
 struct CondTag
 {
 };
@@ -253,6 +263,10 @@ struct Builder
     template <char C0, char C1, char C2> ExprP operator()(const ParseState& st, Pre<C0, C1, C2> t, ExprP e) const
     {
         return ast::make_expr(ast::UnaryExpr{OpName<C0, C1, C2>::v, std::move(e), false, st.offset(t.pos)});
+    }
+    ExprP operator()(const ParseState& st, AwaitTag t, ExprP e) const
+    {
+        return ast::make_expr(ast::UnaryExpr{"await", std::move(e), false, st.offset(t.pos)});
     }
     template <char C0, char C1, char C2> ExprP operator()(const ParseState&, ExprP e, Post<C0, C1, C2>) const
     {
@@ -907,11 +921,12 @@ template <bool Full> struct expr_g : lexy::expression_production
         using operand = dsl::atom;
     };
 
-    // - + ! ~ * & ++ --. The prefix "&" does not match "&&". A cast "(T)" is a prefix too.
+    // - + ! ~ * & ++ -- await. The prefix "&" does not match "&&". A cast "(T)" is a prefix too.
     struct prefix_lvl : dsl::prefix_op
     {
         static constexpr auto op = HOT_PRE("++") / HOT_PRE("--") / HOT_PRE_NF("-", cc_minus_only)
-            / HOT_PRE_NF("+", cc_plus_only) / HOT_PRE("!") / HOT_PRE("~") / HOT_PRE("*") / HOT_PRE_NF("&", cc_amp_only);
+            / HOT_PRE_NF("+", cc_plus_only) / HOT_PRE("!") / HOT_PRE("~") / HOT_PRE("*") / HOT_PRE_NF("&", cc_amp_only)
+            / dsl::op<AwaitTag>(kw_await);
         using operand = postfix_lvl;
     };
 

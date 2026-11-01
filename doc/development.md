@@ -18,7 +18,7 @@ Each row is a milestone. "Not testable here" means that the work needs a part th
 | M3 Diagnostics and debugging | Partial | F2 passes. F3 passes with `gdb`. `lldb`, the `lldb` formatters in a live session and Visual Studio with `natvis` are not testable here. |
 | M4 Engine integration | Not testable here | The test host `tests/engine` and the samples in `samples/` are the only hosts. A real engine is needed. |
 | M5 Contract enforcement | Done | The rows of design 5.3 have tests in `tests/integration/reload/` and `tests/unit/translator/translate/`. |
-| M6 Language v1 | Done | Inheritance, virtuals, `is`/`as`, lambdas, enums, structs, module variables, interpolation, constructors. Coroutines are not in version 1. |
+| M6 Language v1 | Done | Inheritance, virtuals, `is`/`as`, lambdas, enums, structs, module variables, interpolation, constructors. `async` methods and `await` (C++20). |
 | M7 AOT compilation | Done | `hotc --aot`. Generation 1 only. |
 | M8 Unloading | Done | Core module. Generation 1 unloads. 1000 reloads with `HOT_STRESS=1`. |
 | M9 Optional ORC backend | Partial | The JIT backend works on Linux. The debug-symbol resolver for Windows is not testable here. |
@@ -28,7 +28,7 @@ Each row is a milestone. "Not testable here" means that the work needs a part th
 | M13 Language server stage 2 | Done | One test for each feature. |
 | M14 Language server stage 3 | Done | Background index, `hot/toScript`, rename across the workspace, `hotc --compile-commands`. |
 
-Not done, and not testable here: Windows and macOS, a real engine, a real `lldb` and Visual Studio session, the optional ORC debug-symbol resolver, and engine coroutines (version 2).
+Not done, and not testable here: Windows and macOS, a real engine, a real `lldb` and Visual Studio session, the optional ORC debug-symbol resolver.
 
 ## Source layout
 
