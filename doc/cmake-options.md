@@ -36,6 +36,23 @@ Set an option with `-D` on the command line, or with `set(... CACHE ...)` before
 | `HOT_HOSTS_DIR` | `${CMAKE_SOURCE_DIR}/.cache/hot/hosts` | The folder where `hot_script_host` writes the host files. `hot-ls` reads them from `<root>/.cache/hot/hosts` (or from its `--hosts-dir` argument). Change it only if you start `hot-ls` with another folder. |
 | `HOT_CLANG_RESOURCE_DIR` | empty | Only for MSVC (untested). MSVC has no `-print-resource-dir`. Give the resource folder of a Clang install. On other compilers the root file computes `CLANG_RESOURCE_DIR` from the compiler and ignores this variable. |
 
+### Windows options
+
+These options matter for a Windows target. See [Windows](windows.html).
+
+| Option | Default | Meaning |
+|---|---|---|
+| `HOT_BUILD_TRANSLATOR` | `ON`; `OFF` in a cross build with no LLVM release | Build the translator (`hotc`, `hot-ls`) and the run-time backends. They need `libclang`. A cross build has no `libclang` for the target, so the default is `OFF`. Set `HOT_LLVM_DIR`, `HOT_LLVM_RELEASES_DIR` or `HOT_DOWNLOAD_LLVM` to get `ON`. |
+| `HOT_HOST_HOTC` | empty | The path of a `hotc` that runs on the build host. A cross build with no translator uses it to make the modules. |
+| `HOT_DOWNLOAD_LLVM` | `OFF` | `ON` downloads the LLVM release for Windows (`clang+llvm-23.1.4-x86_64-pc-windows-msvc.tar.zst`, 263 MB) and unpacks it. The build checks the SHA256. It needs a Windows target. |
+| `HOT_LLVM_DIR` | empty | The folder of an unpacked LLVM release for Windows. No download occurs. |
+| `HOT_LLVM_RELEASES_DIR` | empty | A folder with unpacked releases. When `HOT_LLVM_DIR` is empty, the release of the right version in this folder is `HOT_LLVM_DIR`. |
+| `HOT_LLVM_URL` | the release 23.1.4 | The URL of the archive. A value of yours overrides the default. Set `HOT_LLVM_SHA256` too. |
+| `HOT_LLVM_SHA256` | the hash of the release 23.1.4 | The SHA256 of the archive at `HOT_LLVM_URL`. |
+| `HOT_SCRIPT_COMPILER` | `CMAKE_CXX_COMPILER` | The compiler that compiles the script modules at run time. With an LLVM release it is the `clang++.exe` of the release. |
+| `HOT_HOTC_TARGET` | empty | The target triple of the script modules (`--target`). The MinGW toolchain file sets `x86_64-w64-mingw32`. An empty value adds no flag. |
+| `HOT_SCRIPT_SYSROOT` | empty | The sysroot of the script modules (`--sysroot`). The MinGW toolchain file sets `/usr/x86_64-w64-mingw32`. An empty value adds no flag. |
+
 These variables are not options but they matter:
 
 | Variable | Meaning |

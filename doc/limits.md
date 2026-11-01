@@ -27,7 +27,7 @@ This list shows what version 1 does not support.
 - Member access with `.` on an iterator, a `std.optional` or a `std.unique_ptr`. Write `(*p).x`.
 - A field of a move-only type, such as `std.unique_ptr<T>`. A reload copies each field. Use a handle.
 - More than 64 nested statements, 15 nested lambdas or 256 operators in one expression.
-- Windows and macOS. They are untested.
+- macOS. It is untested. Windows works with MinGW under wine (see [Windows](windows.html)). A real Windows system is untested.
 - MSVC, Visual Studio, and a real gdb or lldb session. They are untested.
 
 A `.cpp` script (see [C++ scripts](cpp-scripts.html)) has more limits. It has no properties, no script virtual methods without `override`, no script-class handles and no `new`, and no script inheritance.

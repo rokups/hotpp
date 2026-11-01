@@ -81,6 +81,7 @@
       "inherits": "base-files",
       "generator": "Visual Studio 17 2022",
       "architecture": "x64",
+      "cacheVariables": { "HOT_DOWNLOAD_LLVM": "ON" },
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
     },
     {

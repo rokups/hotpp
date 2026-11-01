@@ -99,7 +99,7 @@ Each folder in [samples/](samples/) shows one way to host Hot++: [aot](samples/a
 ## Status
 
 - Linux: tested with Clang, also under ASan and TSan.
-- Windows: partial. The code paths are not verified.
+- Windows: a MinGW host loads and hot-reloads script modules. The tests pass under wine. Visual Studio is untested. See [Windows](https://rokups.github.io/hotpp/windows.html).
 - macOS: untested.
 - Coroutines are not in version 1.
 
