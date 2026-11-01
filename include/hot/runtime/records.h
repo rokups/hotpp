@@ -4,10 +4,29 @@
 
 // Records of the script runtime: the field table, the state layout and the class record.
 #pragma once
+#include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 namespace hot
 {
+
+// The type of a type key. The cv-qualifiers of the elements of an array are qualifiers of the
+// array, and typeid ignores them. MSVC keeps them in the name, clang does not. A host that MSVC
+// compiles and a module that clang compiles must give the same key, so the key removes them.
+template <class T> struct typekey
+{
+    using type = std::remove_cv_t<T>;
+};
+template <class T, size_t N> struct typekey<T[N]>
+{
+    using type = typename typekey<T>::type[N];
+};
+template <class T> struct typekey<T[]>
+{
+    using type = typename typekey<T>::type[];
+};
+template <class T> using typekey_t = typename typekey<T>::type;
 
 struct ShellBase;
 struct ShellCore;

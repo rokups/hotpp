@@ -34,7 +34,7 @@ public:
     template <class T> bool has(std::string_view name) const
     {
         const FieldInfo* f = find(name);
-        return f && std::strcmp(f->type_key, typeid(T).name()) == 0;
+        return f && std::strcmp(f->type_key, typeid(typekey_t<T>).name()) == 0;
     }
 
     // The old value. It throws std::runtime_error when the field is absent or has
@@ -44,7 +44,7 @@ public:
         const FieldInfo* f = find(name);
         if (!f)
             throw std::runtime_error("OldState: no old field '" + std::string(name) + "'");
-        if (std::strcmp(f->type_key, typeid(T).name()) != 0)
+        if (std::strcmp(f->type_key, typeid(typekey_t<T>).name()) != 0)
             throw std::runtime_error("OldState: old field '" + std::string(name) + "' has another type");
         return *reinterpret_cast<const T*>(block_ + f->offset);
     }
