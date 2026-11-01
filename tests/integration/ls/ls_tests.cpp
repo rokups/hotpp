@@ -1767,9 +1767,9 @@ std::vector<std::string> host_completion_labels(
     auto write_host = [&]
     {
         write_file((root / "hosts" / "h.json").string(),
-            R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string()
+            R"({"version":1,"name":"h","binaryDir":")" + (root / "build").generic_string()
                 + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")"
-                + (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" + (root / "inc").string()
+                + (root / "scripts").generic_string() + R"("],"scripts":[],"includeDirs":[")" + (root / "inc").generic_string()
                 + R"(",")" + HOT_SOURCE_DIR + R"(/include"],"defines":[],)"
                 + (defines_file.empty() ? "" : R"("definesFile":"h.defines",)") + R"("flags":[]})");
     };
@@ -1841,12 +1841,12 @@ TEST(LanguageServerHosts, IncludeDirWithSpecialCharactersFromAnIncludesFileAppli
     write_file((root / "hosts" / "h.includes").string(), weird.string() + "\n");
     write_file((root / "build" / "CMakeCache.txt").string(), "# cache\n");
     write_file((root / "hosts" / "h.json").string(),
-        R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string() + R"(","sourceDir":")" + root.string()
+        R"({"version":1,"name":"h","binaryDir":")" + (root / "build").generic_string() + R"(","sourceDir":")" + root.generic_string()
             + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":["scripts"],)"
             + R"("scripts":[],"includeDirs":[")" + HOT_SOURCE_DIR + R"(/include"],"defines":[],)"
             + R"("includesFile":"h.includes","flags":[]})");
     const std::string text = "using \"thing.h\";\n\nclass A {\n    void f() {\n        Thing.\n    }\n}\n";
-    const std::string path = (root / "scripts" / "a.hot").string();
+    const std::string path = (root / "scripts" / "a.hot").generic_string();
     write_file(path, text);
     hot::ls::ServerOptions o;
     o.clangd = HOT_CLANGD_PATH;
@@ -1951,9 +1951,9 @@ struct HostDiagCase
     {
         const std::filesystem::path root = dir.path();
         write_file((root / "hosts" / "h.json").string(),
-            R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string()
+            R"({"version":1,"name":"h","binaryDir":")" + (root / "build").generic_string()
                 + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")"
-                + (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" + HOT_SOURCE_DIR
+                + (root / "scripts").generic_string() + R"("],"scripts":[],"includeDirs":[")" + HOT_SOURCE_DIR
                 + R"(/include"],"defines":[],"flags":[]})");
     }
     json next_diagnostics(LsClient& c) const
@@ -2029,13 +2029,13 @@ struct NoMatchCase
         write_file((root / "build" / "CMakeCache.txt").string(), "# cache\n");
         if (host)
             write_file((root / "hosts" / "h.json").string(),
-                R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string()
+                R"({"version":1,"name":"h","binaryDir":")" + (root / "build").generic_string()
                     + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")"
-                    + (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" + (root / "inc").string()
+                    + (root / "scripts").generic_string() + R"("],"scripts":[],"includeDirs":[")" + (root / "inc").generic_string()
                     + R"(",")" + HOT_SOURCE_DIR + R"(/include"],"defines":[],"flags":[]})");
         hot::ls::ServerOptions o;
         o.clangd = HOT_CLANGD_PATH;
-        o.hosts_dir = (root / "hosts").string();
+        o.hosts_dir = (root / "hosts").generic_string();
         o.clangd_log = (root / "clangd.log").string();
         client = std::make_unique<LsClient>(o);
         client->initialize(uri_of(root.string()));
@@ -2144,11 +2144,11 @@ struct CppScriptCase
         other_uri = uri_of(other_path);
         write_file((root / "build" / "CMakeCache.txt").string(), "# cache\n");
         write_file((root / "hosts" / "h.json").string(),
-            R"({"version":1,"name":"h","binaryDir":")" + (root / "build").string()
+            R"({"version":1,"name":"h","binaryDir":")" + (root / "build").generic_string()
                 + R"(","compiler":"/usr/bin/c++","std":"c++17","resourceDir":"","scriptDirs":[")"
-                + (root / "scripts").string() + R"("],"scripts":[],"includeDirs":[")" + HOT_SOURCE_DIR
+                + (root / "scripts").generic_string() + R"("],"scripts":[],"includeDirs":[")" + HOT_SOURCE_DIR
                 + R"(/include",")" + HOT_SOURCE_DIR + R"(/tests/engine"],"defines":[],"flags":[]})");
-        o.hosts_dir = (root / "hosts").string();
+        o.hosts_dir = (root / "hosts").generic_string();
     }
     static void open(LsClient& c, const std::string& uri, const std::string& text)
     {

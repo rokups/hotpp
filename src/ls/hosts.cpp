@@ -3,6 +3,7 @@
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
 #include "hosts.h"
+#include "long_path.h"
 
 #include <nlohmann/json.hpp>
 
@@ -70,10 +71,15 @@ bool is_host_file(const fs::path& p)
 
 // The form of a path that the host set compares: lexically normal, with "/" as the separator.
 // On Windows a drive letter is upper case ("c:\\x" and "C:/x" are the same path). The host files
-// and the editor can give either separator, so both sides of a compare use this form.
+// and the editor can give either separator, so both sides of a compare use this form. On Windows
+// the 8.3 short names become long names ("RUNNER~1" is "runneradmin"), as in the editor URIs.
 std::string path_key(const fs::path& p)
 {
+#ifdef _WIN32
+    std::string out = fs::path(long_path(p.lexically_normal().string())).generic_string();
+#else
     std::string out = p.lexically_normal().generic_string();
+#endif
 #ifdef _WIN32
     if (out.size() > 1 && out[1] == ':')
         out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
