@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -23,6 +24,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <vector>
 
@@ -1708,6 +1710,26 @@ TEST(LanguageServer, CodeActionAppliesTheNameThatClangdSuggests)
 namespace
 {
 
+// The labels of a completion request at "pos". clangd gives the names of a header from its
+// index. It fills the index after the preamble, so an early answer can be empty. With "want",
+// the request repeats until the answer has the label or 60 seconds pass.
+std::vector<std::string> completion_labels(LsClient& client, const json& pos, const char* want)
+{
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    for (;;)
+    {
+        const json r = client.request("textDocument/completion", pos);
+        std::vector<std::string> labels;
+        if (r.contains("result") && r["result"].is_object())
+            for (const json& i : r["result"]["items"])
+                labels.push_back(i.value("insertText", i.value("label", "")));
+        if (!want || std::find(labels.begin(), labels.end(), want) != labels.end()
+            || std::chrono::steady_clock::now() >= deadline)
+            return labels;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+}
+
 // A workspace with a header in "inc" and a script in "scripts". The script uses the header.
 // With "host" the hosts dir holds a host file for the scripts dir, with "inc" as include dir.
 // The server gets no -I option for "inc". The completion after "Thing." comes from the host only.
@@ -1765,12 +1787,9 @@ std::vector<std::string> host_completion_labels(
         else
             client.change(uri, 2, text + "\n");
     }
-    const json r = client.request("textDocument/completion", doc_pos(uri, 4, 14));
-    std::vector<std::string> labels;
-    if (r.contains("result") && r["result"].is_object())
-        for (const json& i : r["result"]["items"])
-            labels.push_back(i.value("insertText", i.value("label", "")));
-    return labels;
+    // The header gives "Value" with a host, except when the defines file is missing ("-").
+    const bool gives_value = host && defines_file != "-";
+    return completion_labels(client, doc_pos(uri, 4, 14), gives_value ? "Value" : nullptr);
 }
 
 bool has_label(const std::vector<std::string>& labels, const char* n)
@@ -1828,11 +1847,7 @@ TEST(LanguageServerHosts, IncludeDirWithSpecialCharactersFromAnIncludesFileAppli
     client.initialize(uri_of(root.string()));
     const std::string uri = uri_of(path);
     client.open(uri, text);
-    const json r = client.request("textDocument/completion", doc_pos(uri, 4, 14));
-    std::vector<std::string> labels;
-    if (r.contains("result") && r["result"].is_object())
-        for (const json& i : r["result"]["items"])
-            labels.push_back(i.value("insertText", i.value("label", "")));
+    const std::vector<std::string> labels = completion_labels(client, doc_pos(uri, 4, 14), "Value");
     EXPECT_TRUE(has_label(labels, "Value"));
 }
 

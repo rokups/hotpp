@@ -86,7 +86,7 @@ TEST(DefaultValueTranslation, SlotKeyDoesNotChangeWithTheDefault)
 TEST(DefaultValueTranslation, ConstructorMayHaveDefaults)
 {
     const hotc::TranslateResult r = check_translate("",
-        "    int n;\n    Foo(int start = 3) { n = start; }\n    static void Make() { var f = new Foo(); var g = new "
+        "    int n;\n    Foo(int start = 3) { n = start; }\n    void Make() { var f = new Foo(); var g = new "
         "Foo(7); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "Foo__new(int32_t start = 3)")) << r.cpp;

@@ -1406,9 +1406,11 @@ json Server::on_completion(const Doc& d, const json& p)
             cc.rest = rest;
             cc.prefix = prefix;
             cc.valid = true;
-            // A translation that fails stays failed while the prefix grows.
-            cc.complete = !g || (r && !(r->is_object() && r->value("isIncomplete", false)));
             cc.list = r ? (r->is_array() ? *r : r->value("items", json::array())) : json::array();
+            // A translation that fails stays failed while the prefix grows. An empty answer is not
+            // complete: clangd gives the names of the headers from its index, and it fills the index
+            // after the preamble. An early answer can be empty, so the next request asks again.
+            cc.complete = !g || (r && !cc.list.empty() && !(r->is_object() && r->value("isIncomplete", false)));
         }
         incomplete = !cc.complete;
         for (const json& it : cc.list)

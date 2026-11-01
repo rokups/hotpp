@@ -20,7 +20,7 @@ A MinGW host loads, runs and hot-reloads script modules on Windows. The host use
 The preset `mingw-llvm` builds a Windows host on Linux. It needs the MinGW-w64 cross compiler and wine. It also needs the unpacked LLVM release in the folder `cmake-build`. The preset sets `HOT_LLVM_RELEASES_DIR` to this folder. To unpack the release, run this command:
 
 ```
-tar --zstd -xf clang+llvm-23.1.4-x86_64-pc-windows-msvc.tar.zst -C cmake-build
+zstd -d --long=31 -c clang+llvm-23.1.4-x86_64-pc-windows-msvc.tar.zst | tar -x -C cmake-build
 ```
 
 Then configure, build and test:

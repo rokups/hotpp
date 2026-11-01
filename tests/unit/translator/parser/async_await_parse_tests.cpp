@@ -153,9 +153,10 @@ TEST(AwaitParse, Precedence)
         ASSERT_TRUE(p.expr);
         EXPECT_EQ(p.diag.items.size(), 0u);
     }
-    EXPECT_EQ(round_trip("await f(1)"), "await f(1)");
-    EXPECT_EQ(round_trip("(await f()).x"), "(await f()).x");
-    EXPECT_EQ(round_trip("a = await f()"), "a = await f()");
+    // The round trip prints the C++ text: "await" is "co_await" in C++.
+    EXPECT_EQ(round_trip("await f(1)"), "co_await f(1)");
+    EXPECT_EQ(round_trip("(await f()).x"), "(co_await f()).x");
+    EXPECT_EQ(round_trip("a = await f()"), "a = co_await f()");
 }
 
 TEST(AwaitParse, InAStatement)

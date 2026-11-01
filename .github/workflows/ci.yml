@@ -161,7 +161,7 @@ jobs:
           fi
           echo "${{ steps.llvm.outputs.sha }}  $archive" | sha256sum -c -
           mkdir -p cmake-build
-          tar --zstd -xf "$archive" -C cmake-build
+          zstd -d --long=31 -c "$archive" | tar -x -C cmake-build
 
       - name: Prepare wine
         run: wineboot --init
