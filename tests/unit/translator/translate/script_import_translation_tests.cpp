@@ -166,7 +166,11 @@ TEST(ScriptImportTranslation, ImportFromDisk)
     o.script_name = (dir.path() / "t.hot").string();
     const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.cpp.find((dir.path() / "base.hot").string() + "\""), std::string::npos);
+    // The "#line" directive has the path as a C string: a Windows path has "\\" for each "\".
+    std::string want;
+    for (char c : (dir.path() / "base.hot").string())
+        want += c == '\\' ? std::string("\\\\") : std::string(1, c);
+    EXPECT_NE(r.cpp.find(want + "\""), std::string::npos) << want;
 }
 
 // An imported script uses the namespace of the main script. Another value is an error.
