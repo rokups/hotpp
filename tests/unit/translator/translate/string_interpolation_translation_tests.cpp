@@ -111,3 +111,71 @@ TEST(StringInterpolationTranslation, ScriptEnumPrintsTheUnderlyingInteger)
     EXPECT_TRUE(has(r, "static_cast<uint8_t>(")) << r.cpp;
     EXPECT_TRUE(has(r, "static_cast<int32_t>(Mode::Walk)")) << r.cpp;
 }
+
+// An enum from an imported script module prints the underlying integer too: a literal, a field
+// and a local.
+TEST(StringInterpolationTranslation, ImportedScriptEnumPrintsTheUnderlyingInteger)
+{
+    TempDir dir;
+    write_file(dir.path() / "u.h", kHeader);
+    hotc::TranslateOptions o = temp_options(dir,
+        "using \"u.h\";\nusing <string>;\nusing \"other.hot\";\n"
+        "class P : Unit {\n    Mode m = Mode.Walk;\n    Small s = Small.B;\n"
+        "    override void Update(float dt) {\n        Mode k = Mode.Idle;\n"
+        "        this.Name = \"a=${Mode.Walk} b=${this.m} c=${k} d=${s} e=${Small.A}\";\n    }\n}\n");
+    o.modules.emplace_back("other.hot", "enum Mode { Idle, Walk }\nenum Small : uint8_t { A, B }\n");
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "static_cast<int32_t>(Mode::Walk)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static_cast<int32_t>(__st->m)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static_cast<int32_t>(k)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static_cast<uint8_t>(s)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static_cast<uint8_t>(Small::A)")) << r.cpp;
+}
+
+namespace
+{
+
+hotc::TranslateResult translate_enum_ternary(const std::string& interp)
+{
+    TempDir dir;
+    write_file(dir.path() / "u.h", kHeader);
+    return hotc::translate(temp_options(dir,
+        "using \"u.h\";\nusing <string>;\nenum Mode { Idle, Walk }\n"
+        "class P : Unit {\n    int hp = 3;\n    Mode m = Mode.Idle;\n    Mode n = Mode.Walk;\n"
+        "    override void Update(float dt) { this.Name = " + interp + "; }\n}\n"));
+}
+
+} // namespace
+
+// A conditional with enum branches prints the underlying integer.
+TEST(StringInterpolationTranslation, ConditionalWithEnumLiteralBranchesIsCast)
+{
+    const hotc::TranslateResult r = translate_enum_ternary("\"${this.hp > 1 ? Mode.Walk : Mode.Idle}\"");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "static_cast<int32_t>(")) << r.cpp;
+    EXPECT_TRUE(has(r, "? Mode::Walk : Mode::Idle")) << r.cpp;
+}
+
+TEST(StringInterpolationTranslation, ConditionalWithEnumFieldBranchesIsCast)
+{
+    const hotc::TranslateResult r = translate_enum_ternary("\"${this.hp > 1 ? this.m : this.n}\"");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "static_cast<int32_t>(")) << r.cpp;
+}
+
+TEST(StringInterpolationTranslation, ConditionalWithParenthesesAndNestingIsCast)
+{
+    const hotc::TranslateResult r =
+        translate_enum_ternary("\"${(this.hp > 1 ? (Mode.Walk) : (this.hp > 2 ? this.m : Mode.Idle))}\"");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "static_cast<int32_t>(")) << r.cpp;
+}
+
+// A branch of unknown type: no cast, because the translator cannot prove the enum type.
+TEST(StringInterpolationTranslation, ConditionalWithAnUnknownBranchHasNoCast)
+{
+    const hotc::TranslateResult r = translate_enum_ternary("\"${this.hp > 1 ? Mode.Walk : this.hp}\"");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(has(r, "static_cast<int32_t>(")) << r.cpp;
+}

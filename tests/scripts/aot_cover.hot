@@ -100,7 +100,7 @@ enum Phase { Idle, Walk, Run }
 
 class Describe {
     Phase m = Phase.Run;
-    std.string Text() { return "phase=${m}"; }
+    std.string Text() { return "phase=${m == Phase.Run ? m : Phase.Idle}"; }
 }
 
 class Boss : Actor, IDamageable, IGuarded {

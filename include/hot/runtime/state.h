@@ -20,6 +20,7 @@
 #include <typeinfo>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #ifdef _WIN32
@@ -258,8 +259,8 @@ template <class T, size_t N> struct holds_no_code<const T[N]> : holds_no_code<T>
 // Helpers for the reflection table of generated code. T is the field type.
 // True when a copy of T compiles. The test goes through the element types: the copy constructor
 // of std::vector<std::unique_ptr<X>> exists, but its body does not compile. A container has a
-// "value_type" (std::vector, std::map, std::optional, std::array). A pair and a tuple have
-// their own elements.
+// "value_type" (std::vector, std::map, std::optional, std::array). A pair, a tuple and a
+// variant have their own elements.
 template <class T, class = void> struct deep_copyable : std::is_copy_constructible<T>
 {
 };
@@ -277,6 +278,12 @@ template <class A, class B> struct deep_copyable<std::pair<A, B>, void>
 
 template <class... Ts> struct deep_copyable<std::tuple<Ts...>, void>
     : std::bool_constant<std::is_copy_constructible_v<std::tuple<Ts...>>
+          && (deep_copyable<std::remove_cv_t<Ts>>::value && ...)>
+{
+};
+
+template <class... Ts> struct deep_copyable<std::variant<Ts...>, void>
+    : std::bool_constant<std::is_copy_constructible_v<std::variant<Ts...>>
           && (deep_copyable<std::remove_cv_t<Ts>>::value && ...)>
 {
 };

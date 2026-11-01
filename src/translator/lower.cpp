@@ -333,6 +333,13 @@ struct Lowerer
             return class_named(nw->type) ? nw->type : std::string();
         if (auto* p = std::get_if<ParenExpr>(&e.v))
             return type_of(*p->inner);
+        if (auto* tn = std::get_if<TernaryExpr>(&e.v))
+        { // both branches must have the same known type
+            if (!tn->a || !tn->b)
+                return {};
+            const std::string ta = type_of(*tn->a);
+            return !ta.empty() && ta == type_of(*tn->b) ? ta : std::string();
+        }
         if (auto* b = std::get_if<BinaryExpr>(&e.v))
         {
             if (b->op != "??" || !b->lhs || !b->rhs)
@@ -1664,6 +1671,16 @@ struct Lowerer
     // The underlying type of the script enum that "x" has, or an empty text.
     std::string enum_underlying(const Expr& x) const
     {
+        // A conditional or parentheses: both branches must have the same enum underlying type.
+        if (auto* p = std::get_if<ParenExpr>(&x.v))
+            return p->inner ? enum_underlying(*p->inner) : std::string();
+        if (auto* tn = std::get_if<TernaryExpr>(&x.v))
+        {
+            if (!tn->a || !tn->b)
+                return {};
+            const std::string ua = enum_underlying(*tn->a);
+            return ua == enum_underlying(*tn->b) ? ua : std::string();
+        }
         std::string t = type_of(x);
         if (t.empty())
             if (auto* nm = std::get_if<NameExpr>(&x.v))

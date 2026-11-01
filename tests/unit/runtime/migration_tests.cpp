@@ -22,6 +22,7 @@
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace
@@ -328,6 +329,9 @@ TEST(MigrationPlan, ContainerOfMoveOnlyElementsMovesAndDoesNotCopy)
     static_assert(hot::deep_copyable_v<std::map<int, std::pair<std::string, int>>>);
     static_assert(hot::deep_copyable_v<std::optional<std::shared_ptr<int>>>);
     static_assert(hot::deep_copyable_v<std::tuple<int, std::string>>);
+    static_assert(!hot::deep_copyable_v<std::variant<int, Vec>>);
+    static_assert(!hot::deep_copyable_v<std::variant<std::monostate, std::vector<Vec>>>);
+    static_assert(hot::deep_copyable_v<std::variant<int, std::string, std::vector<std::string>>>);
     static_assert(!(hot::field_flags<Vec>() & hot::kNotMovable));
     static_assert(!(hot::field_flags<Map>() & hot::kNotMovable));
     static_assert(!hot::deep_copyable_v<std::vector<std::atomic<int>>>);
