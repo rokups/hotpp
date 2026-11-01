@@ -7,6 +7,7 @@
 // Then the frame resumes on the thread that opens the gate. The test program defines gate().
 #pragma once
 
+#include "hot/runtime/export.h"
 #include "hot/runtime/task.h"
 
 #include <coroutine>
@@ -60,7 +61,7 @@ struct Gate
     }
 };
 
-Gate& gate();
+HOT_EXPORT Gate& gate(); // a script module calls it through the host exports
 
 // The awaiter of the gate. Only a task frame can wait at the gate.
 struct GateAwait
