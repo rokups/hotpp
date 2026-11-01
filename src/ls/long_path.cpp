@@ -1,0 +1,64 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+#include "long_path.h"
+
+#ifdef _WIN32
+    #include <filesystem>
+
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #include <windows.h>
+#endif
+
+namespace hot::ls
+{
+
+#ifdef _WIN32
+
+namespace
+{
+// GetLongPathNameW expands each part of an existing path. It fails for a missing path.
+bool expand(const std::wstring& in, std::wstring& out)
+{
+    const DWORD n = GetLongPathNameW(in.c_str(), nullptr, 0);
+    if (n == 0)
+        return false;
+    out.resize(n);
+    const DWORD m = GetLongPathNameW(in.c_str(), out.data(), n);
+    if (m == 0 || m >= n)
+        return false;
+    out.resize(m);
+    return true;
+}
+} // namespace
+
+std::string long_path(const std::string& path)
+{
+    if (path.find('~') == std::string::npos)
+        return path; // a short name always has "~"
+    const std::filesystem::path p = std::filesystem::u8path(path);
+    std::wstring out;
+    if (expand(p.wstring(), out))
+        return std::filesystem::path(out).string();
+    // A file that does not exist yet: expand the folder, then add the name.
+    if (p.has_parent_path() && p.has_filename() && expand(p.parent_path().wstring(), out))
+        return (std::filesystem::path(out) / p.filename()).string();
+    return path;
+}
+
+#else
+
+std::string long_path(const std::string& path)
+{
+    return path;
+}
+
+#endif
+
+} // namespace hot::ls

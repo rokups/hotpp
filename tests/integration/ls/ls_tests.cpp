@@ -6,6 +6,7 @@
 // clangd are skipped when CMake did not find clangd.
 #include "clangd_process.h"
 #include "integration/ls/ls_client.h"
+#include "long_path.h"
 #include "semantic.h"
 #include "hot/clang_files_backend.h"
 #include "hot/hotc_lib.h"
@@ -80,7 +81,8 @@ std::string uri_of(const std::string& path)
 {
 #ifdef _WIN32
     // The URI of "C:\\dir\\a.hot" is "file:///C:/dir/a.hot", as hot-ls and clangd write it.
-    std::string p = path;
+    // The URI has the long names: the temporary folder can have a short 8.3 name.
+    std::string p = hot::ls::long_path(path);
     std::replace(p.begin(), p.end(), '\\', '/');
     return (p.size() > 1 && p[1] == ':' ? "file:///" : "file://") + p;
 #else
