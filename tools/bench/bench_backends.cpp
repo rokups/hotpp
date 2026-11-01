@@ -80,6 +80,9 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
+#ifdef _MSC_VER
+    #include <intrin.h> // _ReadWriteBarrier
+#endif
 
 #if defined(HOT_WITH_JIT)
     #include "hot/jit_backend.h"
@@ -127,12 +130,25 @@ std::string read_file(const std::string& path)
 // Keep the compiler from removing the work of the native twin.
 volatile int64_t g_sink = 0;
 
+#if defined(_MSC_VER) && !defined(__clang__)
+// MSVC has no inline assembly on x64. A store to a volatile pointer keeps the object, and the
+// barrier keeps the order of the memory accesses.
+inline void* volatile g_escape = nullptr;
+template <class T> inline void escape(T* p)
+{
+    g_escape = p;
+    _ReadWriteBarrier();
+}
+
+    #define BENCH_NOINLINE __declspec(noinline)
+#else
 template <class T> inline void escape(T* p)
 {
     asm volatile("" : : "g"(p) : "memory");
 }
 
-#define BENCH_NOINLINE __attribute__((noinline))
+    #define BENCH_NOINLINE __attribute__((noinline))
+#endif
 
 // ---- The native twins. Each one does the same work as the script of the same name. ----
 
