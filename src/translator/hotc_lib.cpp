@@ -1823,7 +1823,7 @@ void answer_global_type_queries(
             CXFile file = nullptr;
             clang_getFileLocation(clang_getCursorLocation(c), &file, nullptr, nullptr, nullptr);
             std::string path = file ? cxs(clang_getFileName(file)) : std::string();
-            const size_t slash = path.find_last_of('/');
+            const size_t slash = path.find_last_of("/\\");
             if (slash != std::string::npos)
                 path.erase(0, slash + 1);
             declared[name] = path.empty() ? "?" : path;
