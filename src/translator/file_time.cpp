@@ -21,20 +21,50 @@ namespace hotc
 
 #ifdef _WIN32
 
+namespace
+{
+// A FILETIME counts 100 ns from 1601-01-01. The stamps count ns from 1970-01-01, the same
+// epoch as std::chrono::system_clock (the "recent" test of the cache compares with it).
+uint64_t ns_of_ticks(uint64_t ticks)
+{
+    constexpr uint64_t kEpochDiff = 116444736000000000ull;
+    return ticks > kEpochDiff ? (ticks - kEpochDiff) * 100ull : 0;
+}
+} // namespace
+
 FileTimes file_times(const std::string& path)
 {
     FileTimes r;
-    WIN32_FILE_ATTRIBUTE_DATA data;
     const std::wstring wide = std::filesystem::u8path(path).wstring();
+    // NTFS has a change time and a file index, as the ctime and the inode of POSIX. An edit
+    // that resets the last write time changes the change time. A replace gives a new index.
+    HANDLE h = CreateFileW(wide.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (h != INVALID_HANDLE_VALUE)
+    {
+        FILE_BASIC_INFO basic;
+        BY_HANDLE_FILE_INFORMATION info;
+        const bool ok = GetFileInformationByHandleEx(h, FileBasicInfo, &basic, sizeof(basic))
+            && GetFileInformationByHandle(h, &info);
+        CloseHandle(h);
+        if (ok)
+        {
+            r.exists = true;
+            r.mtime_ns = ns_of_ticks(static_cast<uint64_t>(basic.LastWriteTime.QuadPart));
+            r.ctime_ns = ns_of_ticks(static_cast<uint64_t>(basic.ChangeTime.QuadPart));
+            r.ino = (static_cast<uint64_t>(info.nFileIndexHigh) << 32) | info.nFileIndexLow;
+            if (!(info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+                r.size = (static_cast<uint64_t>(info.nFileSizeHigh) << 32) | info.nFileSizeLow;
+            return r;
+        }
+    }
+    // No handle (for example no access): the attributes only. The change time is the write time.
+    WIN32_FILE_ATTRIBUTE_DATA data;
     if (!GetFileAttributesExW(wide.c_str(), GetFileExInfoStandard, &data))
         return r;
     r.exists = true;
-    // A FILETIME counts 100 ns from 1601-01-01. The stamps count ns from 1970-01-01, the same
-    // epoch as std::chrono::system_clock (the "recent" test of the cache compares with it).
-    constexpr uint64_t kEpochDiff = 116444736000000000ull;
-    const uint64_t ticks = (static_cast<uint64_t>(data.ftLastWriteTime.dwHighDateTime) << 32)
-        | data.ftLastWriteTime.dwLowDateTime;
-    r.mtime_ns = ticks > kEpochDiff ? (ticks - kEpochDiff) * 100ull : 0;
+    r.mtime_ns = ns_of_ticks((static_cast<uint64_t>(data.ftLastWriteTime.dwHighDateTime) << 32)
+        | data.ftLastWriteTime.dwLowDateTime);
     r.ctime_ns = r.mtime_ns;
     if (!(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
         r.size = (static_cast<uint64_t>(data.nFileSizeHigh) << 32) | data.nFileSizeLow;

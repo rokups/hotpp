@@ -18,9 +18,9 @@ struct FileTimes
 {
     bool exists = false;
     uint64_t mtime_ns = 0; // the time of the last write
-    uint64_t ctime_ns = 0; // the time of the last status change (Windows: the last write)
+    uint64_t ctime_ns = 0; // the time of the last status change (Windows: the NTFS change time)
     uint64_t size = 0;
-    uint64_t ino = 0; // the inode number (Windows: 0)
+    uint64_t ino = 0; // the inode number (Windows: the file index)
 };
 
 // The times of the file at path. A missing file gives exists == false and zero values.
