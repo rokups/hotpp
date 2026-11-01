@@ -7,6 +7,7 @@
 #
 # Jobs:
 #   linux              Build and test on Linux. Make hotpp-sdk-linux-x86_64.tar.gz.
+#   windows-msvc       Build and test on Windows with MSVC.
 #   windows            Cross build for Windows on Linux. Test a subset under wine.
 #                      Make hotpp-sdk-windows-x86_64.zip.
 #   sdk-smoke-linux    Unpack the Linux SDK on a clean Ubuntu 24.04 runner. Run tests/sdk_smoke/run.cmake.
@@ -97,6 +98,86 @@ jobs:
           name: hotpp-sdk-linux-x86_64
           path: dist/hotpp-sdk-linux-x86_64.tar.gz
           if-no-files-found: error
+
+  # The native Windows build with MSVC (the preset vs-files). cl.exe builds hotc, the runtime and
+  # the tests. clang++.exe of the LLVM release compiles the script modules. All tests run, except
+  # the tests that tests/integration/backends/CMakeLists.txt excludes on MSVC, with a reason.
+  windows-msvc:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      BUILD_DIR: cmake-build/vs-files
+      CONFIG: RelWithDebInfo
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read the LLVM release of cmake/HotLlvmVersion.cmake
+        id: llvm
+        run: |
+          version=$(sed -n 's/^set(HOT_LLVM_VERSION \(.*\))$/\1/p' cmake/HotLlvmVersion.cmake)
+          sha=$(grep -oE '[0-9a-f]{64}' cmake/HotLlvmVersion.cmake | head -1)
+          name="clang+llvm-${version}-x86_64-pc-windows-msvc"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "url=https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/${name}.tar.zst" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v6
+        with:
+          path: llvm-archive
+          key: llvm-windows-msvc-${{ steps.llvm.outputs.sha }}
+
+      - name: Download and unpack the LLVM release for Windows
+        run: |
+          archive="llvm-archive/${{ steps.llvm.outputs.name }}.tar.zst"
+          if [ ! -f "$archive" ]; then
+            mkdir -p llvm-archive
+            curl -fsSL -o "$archive" "${{ steps.llvm.outputs.url }}"
+          fi
+          echo "${{ steps.llvm.outputs.sha }}  $archive" | sha256sum -c -
+          mkdir -p cmake-build
+          zstd -d --long=31 -c "$archive" | tar -x -C cmake-build
+
+      # clang++.exe compiles the script modules. It needs link.exe, the UCRT and the MSVC STL.
+      # This step loads the environment of the newest Visual Studio (VsDevCmd.bat) for the next
+      # steps. Each "set" line has one variable, so no value has more than one line.
+      - name: Load the Visual Studio environment
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          cmd /c "`"$vs\Common7\Tools\VsDevCmd.bat`" -arch=x64 -host_arch=x64 -no_logo && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.+)$') { Add-Content -Path $env:GITHUB_ENV -Value "$($Matches[1])=$($Matches[2])" -Encoding utf8 }
+          }
+
+      - name: Configure
+        run: |
+          cmake --preset vs-files -DHOT_DOWNLOAD_LLVM=OFF -DHOT_LLVM_RELEASES_DIR="$(pwd -W)/cmake-build" \
+            -DHOT_BUILD_TRANSLATOR=ON -DHOT_BUILD_TESTS=ON -DHOT_BUILD_SAMPLES=OFF
+
+      # The build goes in stages, so one run shows the state of each stage. A failed stage is red,
+      # and the next stages still run.
+      - name: Build hotc
+        id: hotc
+        continue-on-error: true
+        run: cmake --build "$BUILD_DIR" --config "$CONFIG" --target hotc --parallel
+
+      - name: Build the runtime and the language server
+        id: runtime
+        continue-on-error: true
+        run: cmake --build "$BUILD_DIR" --config "$CONFIG" --target hot_runtime hot_backend hot_ls --parallel
+
+      - name: Build all
+        id: all
+        continue-on-error: true
+        run: cmake --build "$BUILD_DIR" --config "$CONFIG" --parallel
+
+      # The step has a time limit, so the job ends and its log is available.
+      - name: Test
+        if: always() && steps.hotc.outcome == 'success'
+        timeout-minutes: 40
+        run: ctest --test-dir "$BUILD_DIR" -C "$CONFIG" -j 4 --timeout 300 --output-on-failure
 
   # The Windows SDK is a cross build on Linux with the preset mingw-llvm. This is the proven path
   # of the repository (doc/windows.md). The MSVC preset vs-files is not tested, so a native MSVC
