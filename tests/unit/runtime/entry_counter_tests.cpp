@@ -172,6 +172,9 @@ TEST_F(EntryCounters, ManyWindowsWhileThreadsEnter)
                 entries.fetch_add(1, std::memory_order_relaxed);
             }
         });
+    // A busy machine can start the threads late. Wait until every thread has entered once.
+    while (entries.load() < kThreads)
+        std::this_thread::yield();
     const uint64_t windows0 = hot::commit_window_count();
     for (int i = 0; i < kWindows; ++i)
     {
