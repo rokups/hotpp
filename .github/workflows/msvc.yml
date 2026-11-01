@@ -56,7 +56,6 @@ jobs:
           echo "${{ steps.llvm.outputs.sha }}  $archive" | sha256sum -c -
           mkdir -p cmake-build
           zstd -d --long=31 -c "$archive" | tar -x -C cmake-build
-          ls "cmake-build/${{ steps.llvm.outputs.name }}/bin" | head -5
 
       # clang++.exe compiles the script modules. It needs link.exe, the UCRT and the MSVC STL.
       # This step loads the environment of the newest Visual Studio (VsDevCmd.bat) for the next
@@ -74,41 +73,23 @@ jobs:
           cmake --preset vs-files -DHOT_DOWNLOAD_LLVM=OFF -DHOT_LLVM_RELEASES_DIR="$(pwd -W)/cmake-build" \
             -DHOT_BUILD_TRANSLATOR=ON -DHOT_BUILD_TESTS=ON -DHOT_BUILD_SAMPLES=OFF
 
-      # Each build step writes a log and shows the distinct errors. A failed step does not stop
-      # the next steps, so one run shows each stage.
+      # The build goes in stages, so one run shows the state of each stage. A failed stage is red,
+      # and the next stages still run.
       - name: Build hotc
+        id: hotc
         continue-on-error: true
-        run: |
-          rc=0; cmake --build "$BUILD_DIR" --config "$CONFIG" --target hotc --parallel > build-hotc.log 2>&1 || rc=$?
-          grep -E "error|fatal" build-hotc.log | sed -E 's/\[[A-Z]:[^]]*\]//' | cut -c1-300 | sort | uniq -c | sort -rn | head -60 || true
-          exit $rc
+        run: cmake --build "$BUILD_DIR" --config "$CONFIG" --target hotc --parallel
 
-      - name: Build the runtime
+      - name: Build the runtime and the language server
+        id: runtime
         continue-on-error: true
-        run: |
-          rc=0; cmake --build "$BUILD_DIR" --config "$CONFIG" --target hot_runtime hot_backend hot_ls --parallel > build-runtime.log 2>&1 || rc=$?
-          grep -E "error|fatal" build-runtime.log | sed -E 's/\[[A-Z]:[^]]*\]//' | cut -c1-300 | sort | uniq -c | sort -rn | head -60 || true
-          exit $rc
+        run: cmake --build "$BUILD_DIR" --config "$CONFIG" --target hot_runtime hot_backend hot_ls --parallel
 
       - name: Build all
+        id: all
         continue-on-error: true
-        run: |
-          rc=0; cmake --build "$BUILD_DIR" --config "$CONFIG" --parallel -- -p:ContinueOnError=true > build-all.log 2>&1 || rc=$?
-          grep -E "error|fatal" build-all.log | sed -E 's/\[[A-Z]:[^]]*\]//' | cut -c1-300 | sort | uniq -c | sort -rn | head -150 || true
-          exit $rc
+        run: cmake --build "$BUILD_DIR" --config "$CONFIG" --parallel
 
       - name: Test
-        if: always()
-        shell: pwsh
-        run: |
-          ctest --test-dir $env:BUILD_DIR -C $env:CONFIG -j 4 --timeout 300 --output-log ctest.log 2>&1 | Select-String -Pattern 'tests passed|Failed|\*\*\*|Timeout|Not Run' | Select-Object -Last 300
-          Select-String -Path ctest.log -Pattern '^\[  FAILED  \]|error|Failure|Expected|Which is|Value of' | Select-Object -First 300 | ForEach-Object { $_.Line.Substring(0, [Math]::Min(250, $_.Line.Length)) }
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: msvc-logs
-          path: |
-            build-*.log
-            ctest.log
-          if-no-files-found: ignore
+        if: always() && steps.hotc.outcome == 'success'
+        run: ctest --test-dir "$BUILD_DIR" -C "$CONFIG" -j 4 --timeout 300 --output-on-failure

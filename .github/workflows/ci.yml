@@ -87,7 +87,9 @@ jobs:
         run: |
           mkdir -p dist stage
           cmake --install cmake-build/sdk --config Release --prefix stage/hotpp-sdk-linux-x86_64
-          ldd stage/hotpp-sdk-linux-x86_64/bin/hotc | grep -i clang
+          # hotc must link the libclang of the system: the SDK does not have it.
+          ldd stage/hotpp-sdk-linux-x86_64/bin/hotc
+          case "$(ldd stage/hotpp-sdk-linux-x86_64/bin/hotc)" in *libclang*) ;; *) echo "hotc does not link libclang"; exit 1 ;; esac
           tar -C stage -czf dist/hotpp-sdk-linux-x86_64.tar.gz hotpp-sdk-linux-x86_64
 
       - uses: actions/upload-artifact@v4
@@ -282,7 +284,7 @@ jobs:
       - name: Run the SDK smoke test
         run: |
           temp=$(cygpath -m "$RUNNER_TEMP")
-          g++ --version | head -1
+          g++ --version
           cmake -DSDK="$temp/sdk" -DWORK_DIR="$temp/smoke" -DCXX_COMPILER=g++ -P tests/sdk_smoke/run.cmake
 
   # The release "latest" follows master. Only a push to master updates it. A newer push cancels
