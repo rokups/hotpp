@@ -102,6 +102,15 @@ A `hot::CommitWindow` does not wait for calls into optimized AOT code. Do not ch
 
 **What you lose:** the code cannot be overridden or reloaded. `hot_add_host(... MODE AOT_RELOAD OPTIMIZED ...)` is a configure error. `OPTIMIZED` without `AOT` is a configure error. `Loader::request_reload`, `Loader::revert_unit` and `Loader::load_unit` fail with `BadModule` when the loader holds optimized code. A program has one AOT library, so it cannot link a plain and an optimized library together.
 
+Optimized objects have no field table and no object tracking. This has four effects:
+
+- `hot::field_ptr` and the field reflection (`hot::find_field`) return null for an optimized object.
+- `Loader::reset` fails, because the loader does not know the live objects. Exit the program instead.
+- The live object counts in `Loader::stats()` are 0 for optimized objects.
+- The `onReload` hook and the `convert_` hooks never run (as in plain AOT).
+
+**Script classes in `.cpp` files:** in optimized AOT, the field initializers of a parent class run when the parent part of the object is built. A virtual call through `this` in a field initializer then reaches the function of the parent, not the override of the child. Do not call a virtual function from a field initializer.
+
 **Failure:** a `Loader` that takes the optimized table with `load_aot` works for the classes, but it refuses to override, reload or revert a script. The error text is:
 
 ```
@@ -110,7 +119,7 @@ the loader holds optimized AOT code (MODE AOT OPTIMIZED): it cannot override or 
 
 Build the scripts without `OPTIMIZED` to fix it.
 
-**Speed:** a host to script call costs about 1.8 ns, against 3.5 ns in plain AOT. A native to script virtual call and a script to script virtual call get cheaper too. `new` of a script object is about 7 ns cheaper. See [Benchmarks](benchmarks.html#optimized-aot-aot-opt) for the table and the build that gave the numbers.
+**Speed:** a host to script call costs about 1.5 ns, against 3.5 ns in plain AOT. A native to script virtual call and a script to script virtual call get cheaper too. `new` of a script object is about 25 ns cheaper for a `.hot` class and about 30 ns cheaper for a `.cpp` class. See [Benchmarks](benchmarks.html#optimized-aot-aot-opt) for the table and the build that gave the numbers.
 
 **Sample:** [aot](https://github.com/rokups/hotpp/tree/main/samples/aot). The targets `sample_aot_hot_opt` and `sample_aot_cpp_opt` build the same scripts as optimized AOT code.
 
