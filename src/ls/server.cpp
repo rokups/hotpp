@@ -679,8 +679,12 @@ void Server::start_clangd(const json& init)
 {
     if (opt_.clangd.empty())
         return;
-    std::vector<std::string> args = {
-        opt_.clangd_log.empty() ? "--log=error" : "--log=info", "--header-insertion=never", "-j=2"};
+    // "--limit-results": the server drops many clangd names (the generated names, the "::"
+    // names). The index search marks an answer incomplete when more than the limit of names
+    // match. The default of 100 is too small for a short prefix and the MSVC STL. An
+    // incomplete answer stops the reuse of the answer while the prefix grows.
+    std::vector<std::string> args = {opt_.clangd_log.empty() ? "--log=error" : "--log=info",
+        "--header-insertion=never", "-j=2", "--limit-results=1000"};
     if (!opt_.compile_commands_dir.empty())
     {
         args.push_back("--compile-commands-dir=" + private_cdb_dir());
