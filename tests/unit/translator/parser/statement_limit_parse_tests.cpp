@@ -13,7 +13,12 @@
 
 #include <cstddef>
 #include <functional>
-#include <pthread.h>
+#ifdef _WIN32
+    #include <windows.h>
+    #include <process.h>
+#else
+    #include <pthread.h>
+#endif
 #include <string>
 #include <vector>
 
@@ -30,6 +35,18 @@ void run_small_stack(std::size_t bytes, const std::function<void()>& fn)
     {
         const std::function<void()>* fn;
     } ctx{&fn};
+#ifdef _WIN32
+    // The stack size is the reserve of the thread, as in pthread_attr_setstacksize.
+    const uintptr_t h = _beginthreadex(nullptr, static_cast<unsigned>(bytes),
+        [](void* p) -> unsigned
+    {
+        (*static_cast<Ctx*>(p)->fn)();
+        return 0;
+    }, &ctx, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
+    ASSERT_NE(h, 0u);
+    WaitForSingleObject(reinterpret_cast<HANDLE>(h), INFINITE);
+    CloseHandle(reinterpret_cast<HANDLE>(h));
+#else
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, bytes);
@@ -43,6 +60,7 @@ void run_small_stack(std::size_t bytes, const std::function<void()>& fn)
         0);
     pthread_join(th, nullptr);
     pthread_attr_destroy(&attr);
+#endif
 }
 
 // The stack of the deep parse. A thread sanitizer makes each frame much larger, so the stack
