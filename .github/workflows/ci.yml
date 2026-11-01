@@ -115,6 +115,8 @@ jobs:
       WINEDEBUG: -all
       # No Mono and no Gecko: the console programs do not need them, and wineboot does not wait for them.
       WINEDLLOVERRIDES: "mscoree,mshtml="
+      # HOME of a container job is not owned by root. Wine refuses to use it for its prefix.
+      WINEPREFIX: /tmp/wineprefix
       CPM_SOURCE_CACHE: /github/home/.cache/cpm
     steps:
       - name: Install MinGW-w64, wine and the build tools
