@@ -16,3 +16,6 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 set(CMAKE_CROSSCOMPILING_EMULATOR wine)
 set(HOT_HOTC_TARGET x86_64-w64-mingw32 CACHE STRING "")
+# Link the MinGW runtime statically, so wine finds no extra DLLs next to the test executables.
+set(CMAKE_EXE_LINKER_FLAGS_INIT "-static-libgcc -static-libstdc++ -static")
+set(CMAKE_SHARED_LINKER_FLAGS_INIT "-static-libgcc -static-libstdc++")

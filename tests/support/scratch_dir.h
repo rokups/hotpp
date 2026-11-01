@@ -8,6 +8,7 @@
 // for each test and each process stops two tests from writing the same files.
 #pragma once
 
+#include "hot/runtime/process.h"
 #include "hot/scratch.h"
 
 #include <gtest/gtest.h>
@@ -16,7 +17,6 @@
 #include <map>
 #include <memory>
 #include <string>
-#include <unistd.h>
 
 namespace test_support
 {
@@ -25,7 +25,7 @@ namespace test_support
 inline std::string scratch_path(std::string name)
 {
     std::replace(name.begin(), name.end(), '/', '_');
-    return std::string(HOT_SCRATCH_DIR) + "/" + name + "/p" + std::to_string(getpid());
+    return std::string(HOT_SCRATCH_DIR) + "/" + name + "/p" + std::to_string(hot::detail::process_id());
 }
 
 // The scratch directory of the running test. The directory is empty at the start. The

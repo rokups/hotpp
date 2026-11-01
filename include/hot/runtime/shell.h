@@ -235,7 +235,12 @@ HOT_HIDDEN R call_direct(ShellCore* self, F&& f)
 HOT_HIDDEN void note_creator(ShellBase* self, uint32_t generation)
 {
     // The shell is in the list already, and a walk of another thread can read "creator".
+#if defined(_MSC_VER) && !defined(__clang__)
+    // An interlocked exchange of 32 bits is a full barrier, so it is stronger than relaxed.
+    _InterlockedExchange(reinterpret_cast<volatile long*>(&self->creator), static_cast<long>(generation));
+#else
     __atomic_store_n(&self->creator, generation, __ATOMIC_RELAXED);
+#endif
 }
 
 // Builds the shell of a script object (design 7.3). "rec" is the record of the running

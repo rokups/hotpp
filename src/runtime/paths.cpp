@@ -15,8 +15,10 @@
 #include <sstream>
 #include <string>
 #include <system_error>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <unistd.h>
-#ifndef _WIN32
 #include <cerrno>
 #include <cstring>
 #include <sys/stat.h>
@@ -60,7 +62,12 @@ std::string env_text(const char* name)
 fs::path exe_dir()
 {
     std::error_code ec;
-#if defined(__linux__)
+#if defined(_WIN32)
+    std::vector<char> buf(32768);
+    const DWORD n = GetModuleFileNameA(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
+    if (n > 0 && n < buf.size())
+        return fs::path(std::string(buf.data(), n)).parent_path();
+#elif defined(__linux__)
     std::vector<char> buf(4096);
     const ssize_t n = readlink("/proc/self/exe", buf.data(), buf.size() - 1);
     if (n > 0)
@@ -73,7 +80,18 @@ fs::path exe_dir()
 bool is_executable_file(const fs::path& p)
 {
     std::error_code ec;
+#ifdef _WIN32
+    // Windows has no execute bit: a regular file is a candidate. A name without an extension gets ".exe".
+    if (fs::is_regular_file(p, ec))
+        return true;
+    if (p.has_extension())
+        return false;
+    fs::path with_exe = p;
+    with_exe += ".exe";
+    return fs::is_regular_file(with_exe, ec);
+#else
     return fs::is_regular_file(p, ec) && access(p.c_str(), X_OK) == 0;
+#endif
 }
 
 std::string find_on_path(const std::string& name)
@@ -82,13 +100,26 @@ std::string find_on_path(const std::string& name)
     if (!path)
         return {};
     std::stringstream ss(path);
-    for (std::string dir; std::getline(ss, dir, ':');)
+#ifdef _WIN32
+    const char separator = ';';
+#else
+    const char separator = ':';
+#endif
+    for (std::string dir; std::getline(ss, dir, separator);)
     {
         if (dir.empty())
             continue;
-        const fs::path candidate = fs::path(dir) / name;
+        fs::path candidate = fs::path(dir) / name;
         if (is_executable_file(candidate))
+        {
+#ifdef _WIN32
+            // The file can be the name plus ".exe".
+            std::error_code ec;
+            if (!candidate.has_extension() && !fs::is_regular_file(candidate, ec))
+                candidate += ".exe";
+#endif
             return candidate.string();
+        }
     }
     return {};
 }
@@ -114,17 +145,27 @@ std::vector<std::string> find_include_dirs()
 // Run "<compiler> -print-resource-dir" and return the first line of the output.
 std::string query_resource_dir(const std::string& compiler)
 {
-    if (compiler.empty() || compiler.find('\'') != std::string::npos || compiler.find('\n') != std::string::npos)
+    if (compiler.empty() || compiler.find('\'') != std::string::npos || compiler.find('"') != std::string::npos ||
+        compiler.find('\n') != std::string::npos)
         return {};
+#ifdef _WIN32
+    const std::string cmd = "\"" + compiler + "\" -print-resource-dir 2>NUL";
+    FILE* pipe = _popen(cmd.c_str(), "r");
+#else
     const std::string cmd = "'" + compiler + "' -print-resource-dir 2>/dev/null";
     FILE* pipe = popen(cmd.c_str(), "r");
+#endif
     if (!pipe)
         return {};
     std::string out;
     char buf[512];
     while (std::fgets(buf, sizeof buf, pipe))
         out += buf;
+#ifdef _WIN32
+    if (_pclose(pipe) != 0)
+#else
     if (pclose(pipe) != 0)
+#endif
         return {};
     while (!out.empty() && (out.back() == '\n' || out.back() == '\r' || out.back() == ' '))
         out.pop_back();

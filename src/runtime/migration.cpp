@@ -8,7 +8,15 @@
 
 #include <cstdlib>
 #include <cstring>
-#include <cxxabi.h>
+#if defined(__has_include)
+    #if __has_include(<cxxabi.h>)
+        #include <cxxabi.h>
+        #define HOT_HAVE_CXXABI 1
+    #endif
+#elif !defined(_MSC_VER)
+    #include <cxxabi.h>
+    #define HOT_HAVE_CXXABI 1
+#endif
 
 namespace hot
 {
@@ -18,6 +26,9 @@ std::string readable_type(const char* type_key)
     if (!type_key)
         return "?";
     const std::string plain(type_key, std::strcspn(type_key, "#")); // without a layout hash
+#ifndef HOT_HAVE_CXXABI
+    return plain; // no demangler: the raw name
+#else
     int status = 0;
     char* d = abi::__cxa_demangle(plain.c_str(), nullptr, nullptr, &status);
     if (status != 0 || !d)
@@ -38,6 +49,7 @@ std::string readable_type(const char* type_key)
         for (size_t at; (at = out.find(from)) != std::string::npos;)
             out.replace(at, std::strlen(from), to);
     return out;
+#endif
 }
 
 std::string readable_layout(const char* layout_name)

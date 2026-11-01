@@ -47,6 +47,16 @@ struct Module
     std::string unit;
 };
 
+// The file suffix of a module library on this platform.
+inline constexpr const char* module_suffix()
+{
+#ifdef _WIN32
+    return ".dll";
+#else
+    return ".so";
+#endif
+}
+
 // The result of a build or a load: a Module, or an error text with the diagnostics.
 struct LoadResult
 {

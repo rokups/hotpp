@@ -3,15 +3,16 @@
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
 // The scratch directory helpers: removal at exit, HOT_KEEP_TEMP and the safe remove.
+#include "hot/runtime/process.h"
 #include "hot/scratch.h"
+#include "support/test_env.h"
 
 #include <gtest/gtest.h>
 
 #include <filesystem>
 #include <fstream>
-#include <stdlib.h>
+#include <cstdlib>
 #include <string>
-#include <unistd.h>
 
 namespace
 {
@@ -20,7 +21,7 @@ namespace fs = std::filesystem;
 
 std::string test_dir(const char* tag)
 {
-    return (fs::temp_directory_path() / ("hot_scratch_test_" + std::string(tag) + std::to_string(getpid()))).string();
+    return (fs::temp_directory_path() / ("hot_scratch_test_" + std::string(tag) + std::to_string(hot::detail::process_id()))).string();
 }
 
 // Each test sets the variable itself. The fixture sets it to "0" before the test, so the CMake
@@ -33,14 +34,14 @@ struct Scratch : ::testing::Test
         had_old_ = old != nullptr;
         if (old)
             old_ = old;
-        setenv("HOT_KEEP_TEMP", "0", 1);
+        test_support::set_env("HOT_KEEP_TEMP", "0");
     }
     void TearDown() override
     {
         if (had_old_)
-            setenv("HOT_KEEP_TEMP", old_.c_str(), 1);
+            test_support::set_env("HOT_KEEP_TEMP", old_.c_str());
         else
-            unsetenv("HOT_KEEP_TEMP");
+            test_support::unset_env("HOT_KEEP_TEMP");
     }
 
     bool had_old_ = false;
@@ -74,7 +75,7 @@ TEST_F(Scratch, ConstructorRemovesOldContent)
 TEST_F(Scratch, KeepTempKeepsTheDirectory)
 {
     const std::string path = test_dir("keep");
-    setenv("HOT_KEEP_TEMP", "1", 1);
+    test_support::set_env("HOT_KEEP_TEMP", "1");
     EXPECT_TRUE(hot::keep_temp());
     {
         hot::ScratchDir dir(path);
@@ -86,15 +87,19 @@ TEST_F(Scratch, KeepTempKeepsTheDirectory)
 
 TEST_F(Scratch, ZeroOrEmptyMeansFalse)
 {
-    setenv("HOT_KEEP_TEMP", "0", 1);
+    test_support::set_env("HOT_KEEP_TEMP", "0");
     EXPECT_FALSE(hot::keep_temp());
-    setenv("HOT_KEEP_TEMP", "", 1);
+    test_support::set_env("HOT_KEEP_TEMP", "");
     EXPECT_FALSE(hot::keep_temp());
 }
 
 TEST_F(Scratch, PredicateAcceptsOnlySafePaths)
 {
+#ifdef _WIN32
+    EXPECT_TRUE(hot::is_removable_scratch_path("C:/tmp/x/p1")); // a Windows path needs a drive to be absolute
+#else
     EXPECT_TRUE(hot::is_removable_scratch_path("/tmp/x/p1"));
+#endif
     EXPECT_FALSE(hot::is_removable_scratch_path("/"));
     EXPECT_FALSE(hot::is_removable_scratch_path("/."));
     EXPECT_FALSE(hot::is_removable_scratch_path("/tmp/.."));
@@ -107,7 +112,7 @@ TEST_F(Scratch, PredicateAcceptsOnlySafePaths)
 TEST_F(Scratch, RemoveIgnoresRelativePaths)
 {
     // The sentinel is a relative path. The call must not remove it.
-    const std::string rel = "hot_scratch_relative_" + std::to_string(getpid());
+    const std::string rel = "hot_scratch_relative_" + std::to_string(hot::detail::process_id());
     fs::create_directories(rel);
     hot::remove_scratch(rel);
     EXPECT_TRUE(fs::is_directory(rel));

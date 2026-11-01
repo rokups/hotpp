@@ -9,14 +9,23 @@
 // info of its own, so "step into" on a script line does not enter it.
 // HOT_EXPORT keeps a symbol visible outside its module. The AOT libraries build with
 // -fvisibility=hidden. A type whose RTTI must match across the host and a script module needs it.
-#if defined(__clang__) || defined(__GNUC__)
+// On Windows a module is a DLL. The runtime exports the symbol. A module build
+// (HOT_MODULE_BUILD defined) imports it.
+#if defined(_WIN32) && defined(HOT_MODULE_BUILD)
+    #define HOT_EXPORT __declspec(dllimport)
+#elif defined(_WIN32)
+    #define HOT_EXPORT __declspec(dllexport)
+#elif defined(__clang__) || defined(__GNUC__)
     #define HOT_EXPORT [[gnu::visibility("default")]]
 #else
     #define HOT_EXPORT
 #endif
 
-#if defined(__clang__) || defined(__GNUC__)
+// Only clang knows the nodebug attribute. GCC ignores it and warns.
+#if defined(__clang__)
     #define HOT_HIDDEN [[gnu::always_inline, gnu::nodebug]] inline
+#elif defined(__GNUC__)
+    #define HOT_HIDDEN [[gnu::always_inline]] inline
 #elif defined(_MSC_VER)
     #define HOT_HIDDEN __forceinline
 #else
@@ -25,7 +34,7 @@
 
 // A helper that cannot be always_inline (large, out-of-line or address taken). It has no debug
 // info, so the debugger steps over it. Put it before the return type or on the declaration.
-#if defined(__clang__) || defined(__GNUC__)
+#if defined(__clang__)
     #define HOT_NODEBUG [[gnu::nodebug]]
 #else
     #define HOT_NODEBUG
@@ -33,8 +42,10 @@
 
 // A cold helper of a fast path. It stays out of line, so the fast path keeps few registers and
 // no stack slots. It has no debug info. Put it before the return type.
-#if defined(__clang__) || defined(__GNUC__)
+#if defined(__clang__)
     #define HOT_NOINLINE [[gnu::noinline, gnu::nodebug]]
+#elif defined(__GNUC__)
+    #define HOT_NOINLINE [[gnu::noinline]]
 #elif defined(_MSC_VER)
     #define HOT_NOINLINE __declspec(noinline)
 #else
@@ -43,8 +54,7 @@
 
 // An attribute list for a local variable in generated code. The variable can be unused. It has
 // no debug info, so the debugger does not show it.
-// unverified: not built on MSVC. The MSVC form has no nodebug attribute.
-#if defined(__clang__) || defined(__GNUC__)
+#if defined(__clang__)
     #define HOT_NODEBUG_LOCAL [[maybe_unused, gnu::nodebug]]
 #else
     #define HOT_NODEBUG_LOCAL [[maybe_unused]]

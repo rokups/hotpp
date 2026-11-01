@@ -4,16 +4,19 @@
 
 #include "FileWatcher.h"
 
-#include <sys/stat.h>
-
 #include <chrono>
 #include <filesystem>
 #include <fstream>
-#include <poll.h>
+#include <system_error>
 #include <thread>
-#include <unistd.h>
+
+#ifndef _WIN32
+    #include <sys/stat.h>
+    #include <unistd.h>
+#endif
 
 #ifdef __linux__
+    #include <poll.h>
     #include <sys/inotify.h>
 #endif
 
@@ -44,16 +47,18 @@ FileWatcher::FileWatcher(std::string path, Mode mode)
 
 FileWatcher::~FileWatcher()
 {
+#ifdef __linux__
     if (fd_ >= 0)
         close(fd_);
+#endif
 }
 
 namespace
 {
 
-long long ns_of(const timespec& ts)
+long long ns_of(const std::filesystem::file_time_type& t)
 {
-    return static_cast<long long>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count();
 }
 
 // FNV-1a hash of the content of a file.
@@ -77,21 +82,39 @@ unsigned long long hash_file(const std::string& path)
 
 bool FileWatcher::poll_stamp()
 {
-    struct stat st{};
+    namespace fs = std::filesystem;
     long long ns = -1, size = -1, cns = -1;
     unsigned long long ino = 0;
+    std::error_code ec;
+    const auto mtime = fs::last_write_time(path_, ec);
+    if (!ec)
+    {
+        ns = ns_of(mtime);
+        size = static_cast<long long>(fs::file_size(path_, ec));
+        if (ec)
+            size = -1;
+    }
+#ifndef _WIN32
+    // The change time and the inode have no portable form. On Windows the time and the size
+    // decide, with the content hash.
+    struct stat st{};
     if (stat(path_.c_str(), &st) == 0)
     {
-        ns = ns_of(st.st_mtim);
-        cns = ns_of(st.st_ctim);
-        size = st.st_size;
+        cns = static_cast<long long>(st.st_ctim.tv_sec) * 1000000000LL + st.st_ctim.tv_nsec;
         ino = static_cast<unsigned long long>(st.st_ino);
     }
+#endif
     bool changed = ns != stamp_ns_ || size != size_;
     // The time and the size are equal, but the inode or the ctime differ: an edit can have
     // set the old time back. The content decides.
+#ifdef _WIN32
+    // No ctime and no inode here: the content hash decides on each poll.
+    const bool always_hash = true;
+#else
+    const bool always_hash = false;
+#endif
     unsigned long long hash = hash_;
-    if (size >= 0 && (changed || cns != ctime_ns_ || ino != ino_))
+    if (size >= 0 && (changed || always_hash || cns != ctime_ns_ || ino != ino_))
     {
         hash = hash_file(path_);
         if (!changed && hash != hash_)

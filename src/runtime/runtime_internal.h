@@ -52,7 +52,15 @@ public:
         // "creator" is written after the insert (note_creator), so the read is atomic.
         std::pair<ShellBase*, uint32_t> operator*() const
         {
+#if defined(_MSC_VER) && !defined(__clang__)
+            // A volatile load of 32 bits, then a compiler barrier.
+            const auto creator =
+                static_cast<uint32_t>(__iso_volatile_load32(reinterpret_cast<const volatile int*>(&s_->creator)));
+            _ReadWriteBarrier();
+            return {s_, creator};
+#else
             return {s_, __atomic_load_n(&s_->creator, __ATOMIC_RELAXED)};
+#endif
         }
         iterator& operator++()
         {

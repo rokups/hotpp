@@ -9,6 +9,7 @@
 // A list value uses "|" between the items.
 #include "hot/backend.h"
 #include "hot/paths.h"
+#include "hot/runtime/process.h"
 #include "hot/scratch.h"
 
 #include <cctype>
@@ -16,7 +17,6 @@
 #include <filesystem>
 #include <stdexcept>
 #include <string>
-#include <unistd.h>
 #include <vector>
 #if defined(HOT_WITH_CLANG_FILES)
     #include "hot/clang_files_backend.h"
@@ -89,7 +89,7 @@ std::unique_ptr<Backend> make_clang_files(const DefaultBackendOptions& options)
         throw std::runtime_error(work_error);
 #endif
     // One work directory for each process, so parallel test processes do not share files.
-    o.work_dir = paths.work_dir + "/p" + std::to_string(getpid());
+    o.work_dir = paths.work_dir + "/p" + std::to_string(hot::detail::process_id());
     std::error_code ec;
     std::filesystem::remove_all(o.work_dir, ec);
     // Only this p<pid> directory goes. The parent directory is shared with other processes.

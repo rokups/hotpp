@@ -55,7 +55,11 @@ bool changed_within(harness::FileWatcher& w, int timeout_ms)
 TEST_P(FileWatcherTests, SeesWriteAndRenameButNotOtherFiles)
 {
     harness::FileWatcher w(file, GetParam());
+#ifdef __linux__
     EXPECT_EQ(w.uses_inotify(), GetParam() == harness::FileWatcher::Mode::Auto);
+#else
+    EXPECT_FALSE(w.uses_inotify()); // only Linux has inotify
+#endif
     EXPECT_FALSE(w.wait_changed(0)); // nothing changed yet
 
     write((dir / "other.txt").string(), "x"); // another file in the same directory

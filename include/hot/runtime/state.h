@@ -22,8 +22,8 @@
 #include <utility>
 #include <vector>
 
-#ifdef _MSC_VER
-    // unverified: not built on MSVC. This header declares _aligned_malloc and _aligned_free.
+#ifdef _WIN32
+    // This header declares _aligned_malloc and _aligned_free.
     #include <malloc.h>
 #endif
 
@@ -42,8 +42,8 @@ void untrack_object(ShellBase* self);
 // The "size" must be a multiple of "align" for std::aligned_alloc.
 HOT_HIDDEN void* aligned_alloc(size_t align, size_t size)
 {
-#ifdef _MSC_VER
-    // unverified: not built on MSVC. MSVC has no std::aligned_alloc.
+#ifdef _WIN32
+    // Windows has no std::aligned_alloc. Every block comes from _aligned_malloc.
     return _aligned_malloc(size, align);
 #else
     // malloc gives this alignment already, and it is faster than aligned_alloc. std::free
@@ -56,8 +56,8 @@ HOT_HIDDEN void* aligned_alloc(size_t align, size_t size)
 
 HOT_HIDDEN void aligned_free(void* p)
 {
-#ifdef _MSC_VER
-    // unverified: not built on MSVC. A block from _aligned_malloc goes to _aligned_free.
+#ifdef _WIN32
+    // A block from _aligned_malloc goes to _aligned_free.
     _aligned_free(p);
 #else
     std::free(p);
