@@ -26,9 +26,7 @@ std::string readable_type(const char* type_key)
     if (!type_key)
         return "?";
     const std::string plain(type_key, std::strcspn(type_key, "#")); // without a layout hash
-#ifndef HOT_HAVE_CXXABI
-    return plain; // no demangler: the raw name
-#else
+#if defined(HOT_HAVE_CXXABI)
     int status = 0;
     char* d = abi::__cxa_demangle(plain.c_str(), nullptr, nullptr, &status);
     if (status != 0 || !d)
@@ -38,12 +36,33 @@ std::string readable_type(const char* type_key)
     }
     std::string out = d;
     std::free(d);
+#elif defined(_MSC_VER)
+    // The MSVC type name is readable, but it has the keywords of the class kind:
+    // "class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >".
+    std::string out = plain;
+    for (const char* kind : {"class ", "struct ", "union ", "enum "})
+    {
+        const size_t n = std::strlen(kind);
+        for (size_t at = 0; (at = out.find(kind, at)) != std::string::npos;)
+        {
+            const char before = at == 0 ? ' ' : out[at - 1];
+            if (before == ' ' || before == '<' || before == ',' || before == '(')
+                out.erase(at, n);
+            else
+                at += n;
+        }
+    }
+#else
+    return plain; // no demangler: the raw name
+#endif
+#if defined(HOT_HAVE_CXXABI) || defined(_MSC_VER)
     // The long names of the standard string types get their short names.
     static const std::pair<const char*, const char*> kShort[] = {
         {"std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >", "std::string"},
         {"std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>", "std::string"},
         {"std::basic_string<char, std::char_traits<char>, std::allocator<char> >", "std::string"},
         {"std::basic_string<char, std::char_traits<char>, std::allocator<char>>", "std::string"},
+        {"std::basic_string<char,std::char_traits<char>,std::allocator<char> >", "std::string"}, // MSVC
     };
     for (const auto& [from, to] : kShort)
         for (size_t at; (at = out.find(from)) != std::string::npos;)
