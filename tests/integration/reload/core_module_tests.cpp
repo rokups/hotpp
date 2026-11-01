@@ -25,7 +25,8 @@
 #include <set>
 #include <string>
 #ifdef _WIN32
-    #include <process.h> // getpid
+    #include <process.h>
+    #define getpid _getpid // the MSVC CRT has the POSIX name only as a deprecated name (C4996)
 #else
     #include <unistd.h>
 #endif

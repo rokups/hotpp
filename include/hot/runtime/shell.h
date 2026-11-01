@@ -158,8 +158,9 @@ struct CallDepth
 // std::exception_ptr on its stack, and so no stack protector and fewer saved registers.
 template <class R, bool NoExcept> HOT_NOINLINE R call_unhandled(ShellCore* self, uint32_t depth)
 {
-    if (!NoExcept && depth > 1)
-        throw;
+    if constexpr (!NoExcept)
+        if (depth > 1)
+            throw;
     report_unhandled(self, std::current_exception());
     if constexpr (std::is_void_v<R> || std::is_default_constructible_v<R>)
         return detached_result<R>();

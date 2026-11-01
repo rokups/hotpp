@@ -6378,7 +6378,7 @@ void translate_impl(
         }
         // After on_reload: construct, construct_key, new_default, canonical and dtor.
         std::string ctor_init;
-        if (gen_new || dtor_chain)
+        if (gen_new) // gen_new is always true (MSVC C4127 on "gen_new || dtor_chain")
             ctor_init = std::string(on_reload_init.empty() ? "    nullptr,\n" : "") + "    "
                 + (gen_new && !opt.aot_optimized ? "&" + P + "construct, typeid(" + cn + "_SuperArgs).name()"
                                                  : std::string("nullptr, nullptr")) + ", "
