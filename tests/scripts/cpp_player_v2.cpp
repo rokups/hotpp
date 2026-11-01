@@ -2,7 +2,7 @@
 // The field hp has the new name health. The field level changes from int to float.
 // The module variable total changes from int to float.
 #include "Actor.h"
-#include "Math.h"
+#include "EngineMath.h"
 
 #include <cstdio>
 #include <string>

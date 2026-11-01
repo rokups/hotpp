@@ -356,7 +356,7 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
 // An identifier. The Tag is the error text when there is none.
 template <typename Tag> struct name_p : lexy::token_production
 {
-    static constexpr auto rule = dsl::must(id).template error<Tag>;
+    static constexpr auto rule = dsl::must(id).error<Tag>;
     static constexpr auto value = lexy::as_string<std::string>;
 };
 
@@ -661,7 +661,7 @@ struct mod_item_access : lexy::token_production
 struct accessor_p
 {
     static constexpr auto rule = dsl::opt(dsl::peek(access_set) >> dsl::p<mod_item_access>) + dsl::position
-        + dsl::must(dsl::literal_set(kw_get, kw_set)).template error<e_accessor>
+        + dsl::must(dsl::literal_set(kw_get, kw_set)).error<e_accessor>
         + (dsl::peek(dsl::lit_c<'{'>) >> dsl::p<scan_balanced> | dsl::else_ >> dsl::lit_c<';'>);
     static constexpr auto value = lexy::callback<AccessorItem>([](auto&& acc, const char* pos, auto&&... body)
     {

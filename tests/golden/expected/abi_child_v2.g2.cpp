@@ -13,7 +13,7 @@
 #line 4 "abi_child_v2.hot"
 #include "Actor.h"
 #line 5 "abi_child_v2.hot"
-#include "Math.h"
+#include "EngineMath.h"
 #line 18 "abi_child_v2.hot.cpp"
 
 constexpr uint32_t GEN = 2;

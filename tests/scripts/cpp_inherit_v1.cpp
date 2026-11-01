@@ -3,7 +3,7 @@
 // Power and the native virtual Tick. Kid calls the version of the parent with "Base::".
 // A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
-#include "Math.h"
+#include "EngineMath.h"
 
 class Base : public Actor
 {

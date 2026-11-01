@@ -3,7 +3,7 @@
 // namespace game::ai has a module variable and a class that derives from a class of game.
 // A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
-#include "Math.h"
+#include "EngineMath.h"
 
 namespace red
 {

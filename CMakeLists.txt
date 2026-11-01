@@ -279,7 +279,7 @@ list(JOIN HOT_CXXFLAGS_LIST "|" HOT_CXXFLAGS_JOINED)
 # The headers that the precompiled and AOT scripts depend on (the engine headers are in tests/engine). The tests use them.
 if(HOT_BUILD_TESTS)
     file(GLOB HOT_RUNTIME_HEADERS ${PROJECT_SOURCE_DIR}/include/hot/runtime/*.h)
-    set(HOT_HEADERS ${PROJECT_SOURCE_DIR}/tests/engine/Actor.h ${PROJECT_SOURCE_DIR}/tests/engine/Math.h
+    set(HOT_HEADERS ${PROJECT_SOURCE_DIR}/tests/engine/Actor.h ${PROJECT_SOURCE_DIR}/tests/engine/EngineMath.h
                     ${PROJECT_SOURCE_DIR}/include/hot/runtime.h ${PROJECT_SOURCE_DIR}/include/hot/module.h
                     ${PROJECT_SOURCE_DIR}/include/hot/script.h
                     ${HOT_RUNTIME_HEADERS})

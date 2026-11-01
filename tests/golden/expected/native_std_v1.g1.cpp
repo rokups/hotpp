@@ -19,7 +19,7 @@
 #line 6 "native_std_v1.hot"
 #include "Actor.h"
 #line 7 "native_std_v1.hot"
-#include "Math.h"
+#include "EngineMath.h"
 #line 8 "native_std_v1.hot"
 #include "Util.h"
 #line 26 "native_std_v1.hot.cpp"

@@ -1482,7 +1482,7 @@ TEST(LanguageServer, CompletionListsNativeTypesAndFreeFunctions)
 {
     REQUIRE_CLANGD();
     const Completion c = complete_at(true, kCompleteScript, "Vec");
-    EXPECT_TRUE(c.has("Vec3")) << c.result.dump(); // a native type of Math.h
+    EXPECT_TRUE(c.has("Vec3")) << c.result.dump(); // a native type of EngineMath.h
     const Completion f = complete_at(true, kCompleteScript, "Hit");
     bool function = false;
     for (const json& i : f.result.value("items", json::array()))

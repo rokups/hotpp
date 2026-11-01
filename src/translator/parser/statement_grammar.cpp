@@ -286,7 +286,7 @@ std::vector<StmtP> keep(std::vector<StmtP>&& v)
 // A name. The value is the text.
 struct name_p : lexy::token_production
 {
-    static constexpr auto rule = dsl::must(id_r).template error<e_name>;
+    static constexpr auto rule = dsl::must(id_r).error<e_name>;
     static constexpr auto value = lexy::as_string<std::string>;
 };
 
@@ -1013,7 +1013,7 @@ struct while_stmt
 struct do_stmt
 {
     static constexpr auto rule = dsl::position + kw_do + dsl::recurse<stmt> + dsl::position
-        + dsl::must(kw_while).template error<e_while> + dsl::p<scan_until<cond_cfg>> + dsl::lit_c<')'> + semi;
+        + dsl::must(kw_while).error<e_while> + dsl::p<scan_until<cond_cfg>> + dsl::lit_c<')'> + semi;
     static constexpr auto value =
         lexy::bind(lexy::callback<StmtP>(
                        [](const ParseState& st, const char* pos, StmtP&& body, const char* wpos, Span cond) -> StmtP

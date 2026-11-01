@@ -1,7 +1,7 @@
 // Generation 2 of the Player class (design section 7.8, after).
 // The field hp has the new name health. The new field shield is 25.
 using "Actor.h";
-using "Math.h";
+using "EngineMath.h";
 
 class Player : Actor {
     [alias("hp")] float health = 100.0;

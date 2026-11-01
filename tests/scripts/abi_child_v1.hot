@@ -2,7 +2,7 @@
 // Kid inherits Bump and Twice from Base. Kid overrides Power, TakeDamage and Tick.
 // Kid calls the parent version with "base". Kid calls the native Move and reads Position.
 using "Actor.h";
-using "Math.h";
+using "EngineMath.h";
 
 class Base : Actor {
     float hp = 100.0;

@@ -26,7 +26,7 @@ using Kid = Kid_Shell;
 #line 5 "cpp_inherit_v1.cpp"
 #include "Actor.h"
 #line 6 "cpp_inherit_v1.cpp"
-#include "Math.h"
+#include "EngineMath.h"
 #line 31 "cpp_inherit_v1.cpp.cpp"
 
 // ---------------------------------------------------------------- class Base

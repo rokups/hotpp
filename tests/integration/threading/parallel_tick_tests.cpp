@@ -46,7 +46,7 @@ constexpr float kStartHealth = 10.0f;
 
 const char* const kV1 = R"(
 using "Actor.h";
-using "Math.h";
+using "EngineMath.h";
 
 class Player : Actor {
     float hp = 10.0;
@@ -61,7 +61,7 @@ class Player : Actor {
 
 const char* const kV2 = R"(
 using "Actor.h";
-using "Math.h";
+using "EngineMath.h";
 
 class Player : Actor {
     [alias("hp")] float health = 10.0;

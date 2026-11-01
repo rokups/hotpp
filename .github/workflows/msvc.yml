@@ -66,22 +66,41 @@ jobs:
           cmake --preset vs-files -DHOT_DOWNLOAD_LLVM=OFF -DHOT_LLVM_RELEASES_DIR="$(pwd -W)/cmake-build" \
             -DHOT_BUILD_TRANSLATOR=ON -DHOT_BUILD_TESTS=ON -DHOT_BUILD_SAMPLES=OFF
 
+      # Each build step writes a log and shows the distinct errors. A failed step does not stop
+      # the next steps, so one run shows each stage.
       - name: Build hotc
-        id: hotc
         continue-on-error: true
-        run: cmake --build "$BUILD_DIR" --config "$CONFIG" --target hotc --parallel -- -v:m 2>&1 | tee hotc.log | grep -E "error|warning C4" | cut -c1-300 | head -100; exit ${PIPESTATUS[0]}
+        run: |
+          rc=0; cmake --build "$BUILD_DIR" --config "$CONFIG" --target hotc --parallel > build-hotc.log 2>&1 || rc=$?
+          grep -E "error|fatal" build-hotc.log | sed -E 's/\[[A-Z]:[^]]*\]//' | cut -c1-300 | sort | uniq -c | sort -rn | head -60 || true
+          exit $rc
 
       - name: Build the runtime
-        id: runtime
         continue-on-error: true
-        run: cmake --build "$BUILD_DIR" --config "$CONFIG" --target hot_runtime hot_backend --parallel -- -v:m 2>&1 | grep -E " error |error C|error LNK|fatal" | cut -c1-300 | sort -u | head -100; exit ${PIPESTATUS[0]}
+        run: |
+          rc=0; cmake --build "$BUILD_DIR" --config "$CONFIG" --target hot_runtime hot_backend hot_ls --parallel > build-runtime.log 2>&1 || rc=$?
+          grep -E "error|fatal" build-runtime.log | sed -E 's/\[[A-Z]:[^]]*\]//' | cut -c1-300 | sort | uniq -c | sort -rn | head -60 || true
+          exit $rc
 
       - name: Build all
-        id: all
         continue-on-error: true
-        run: cmake --build "$BUILD_DIR" --config "$CONFIG" --parallel -- -v:m -p:ContinueOnError=true 2>&1 | grep -E " error |error C|error LNK|fatal|warning MSB" | cut -c1-300 | sort -u | head -200; exit ${PIPESTATUS[0]}
+        run: |
+          rc=0; cmake --build "$BUILD_DIR" --config "$CONFIG" --parallel -- -p:ContinueOnError=true > build-all.log 2>&1 || rc=$?
+          grep -E "error|fatal" build-all.log | sed -E 's/\[[A-Z]:[^]]*\]//' | cut -c1-300 | sort | uniq -c | sort -rn | head -150 || true
+          exit $rc
 
       - name: Test
         if: always()
         shell: pwsh
-        run: ctest --test-dir $env:BUILD_DIR -C $env:CONFIG -j 4 --output-on-failure --timeout 300 2>&1 | Select-Object -Last 400
+        run: |
+          ctest --test-dir $env:BUILD_DIR -C $env:CONFIG -j 4 --timeout 300 --output-log ctest.log 2>&1 | Select-String -Pattern 'tests passed|Failed|\*\*\*|Timeout|Not Run' | Select-Object -Last 300
+          Select-String -Path ctest.log -Pattern '^\[  FAILED  \]|error|Failure|Expected|Which is|Value of' | Select-Object -First 300 | ForEach-Object { $_.Line.Substring(0, [Math]::Min(250, $_.Line.Length)) }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: msvc-logs
+          path: |
+            build-*.log
+            ctest.log
+          if-no-files-found: ignore

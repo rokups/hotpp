@@ -180,7 +180,7 @@ TEST(JitTests, PrecompiledHeaderWorks)
         f << "#include <algorithm>\n#include <cstddef>\n#include <cstdint>\n#include <cstdio>\n"
              "#include <new>\n#include <string>\n#include <type_traits>\n#include <typeinfo>\n"
              "#include <utility>\n#include \"hot/runtime.h\"\n#include \"Actor.h\"\n"
-             "#include \"Math.h\"\n";
+             "#include \"EngineMath.h\"\n";
     }
     hot::JitOptions o;
     o.compiler = HOT_CXX;
@@ -210,7 +210,7 @@ TEST(JitTests, CallDepthIsPerThreadInJitCode)
         GTEST_SKIP() << "the test needs the bounds check to raise the error";
     const hot::ScriptSource src = {"depth_thread.hot", R"(
 using "Actor.h";
-using "Math.h";
+using "EngineMath.h";
 
 class Player : Actor {
     int[4] vals;
@@ -268,7 +268,7 @@ TEST(JitTests, ExceptionsWorkInJitCode)
 {
     const hot::ScriptSource src = {"throws.hot", R"(
 using "Actor.h";
-using "Math.h";
+using "EngineMath.h";
 
 class Player : Actor {
     float speed = 5.0;

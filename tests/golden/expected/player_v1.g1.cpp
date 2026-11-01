@@ -13,7 +13,7 @@
 #line 2 "player_v1.hot"
 #include "Actor.h"
 #line 3 "player_v1.hot"
-#include "Math.h"
+#include "EngineMath.h"
 #line 18 "player_v1.hot.cpp"
 
 constexpr uint32_t GEN = 1;

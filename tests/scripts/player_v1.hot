@@ -1,6 +1,6 @@
 // Generation 1 of the Player class (design section 7.8, before).
 using "Actor.h";
-using "Math.h";
+using "EngineMath.h";
 
 class Player : Actor {
     float hp = 100.0;

@@ -3,7 +3,7 @@
 // TakeDamage and the new virtual method Bonus. Power of Kid gives 7.
 // A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
-#include "Math.h"
+#include "EngineMath.h"
 
 class Base : public Actor
 {
