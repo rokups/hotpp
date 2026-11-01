@@ -22,12 +22,7 @@ namespace hot
 struct ShellCore;
 
 // The base of the exceptions that the runtime checks throw.
-#ifdef _MSC_VER
-    // C4275 and C4251: the base std::runtime_error and the member std::string have no dll export.
-    // The host and each module use the same DLL C++ runtime, so these types are the same in both.
-    #pragma warning(push)
-    #pragma warning(disable : 4275 4251)
-#endif
+HOT_EXPORT_STD_BEGIN // a std base and a std member (export.h)
 class HOT_EXPORT ScriptError : public std::runtime_error
 {
 public:
@@ -43,9 +38,7 @@ public:
 private:
     std::string traceback_;
 };
-#ifdef _MSC_VER
-    #pragma warning(pop)
-#endif
+HOT_EXPORT_STD_END
 
 // A null pointer or a null handle was dereferenced.
 class HOT_EXPORT NullReference : public ScriptError

@@ -6,7 +6,7 @@
 #include <string>
 #include <utility>
 #include <vector>
-
+HOT_EXPORT_STD_BEGIN // the exported classes have std members (export.h)
 // The constructors let a script write "Vec3(x, y, z)" in C++17. C++17 has no "()" form for an aggregate.
 struct Vec3
 {
@@ -132,3 +132,4 @@ private:
     std::function<void(Actor*)> observer_;
     std::unique_ptr<Pool> pool_;
 };
+HOT_EXPORT_STD_END

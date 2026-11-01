@@ -38,3 +38,16 @@
 #else
     #define HOT_MODULE_EXPORT
 #endif
+
+// HOT_EXPORT_STD_BEGIN and HOT_EXPORT_STD_END go around the HOT_EXPORT classes that have a
+// standard library base or member, for example a std::string field. MSVC then writes C4251
+// and C4275: the std type has no dll export. The host and each script module use the same
+// DLL C++ runtime (/MD, -fms-runtime-lib=dll), so the std types are the same in both. Thus
+// the two warnings do not apply, and these macros stop them only between BEGIN and END.
+#if defined(_MSC_VER)
+    #define HOT_EXPORT_STD_BEGIN __pragma(warning(push)) __pragma(warning(disable : 4251 4275))
+    #define HOT_EXPORT_STD_END __pragma(warning(pop))
+#else
+    #define HOT_EXPORT_STD_BEGIN
+    #define HOT_EXPORT_STD_END
+#endif
