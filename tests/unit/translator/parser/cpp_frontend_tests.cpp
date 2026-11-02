@@ -1637,6 +1637,21 @@ TEST(CppFrontend, ChildOfAbstractClass)
     }
 }
 
+// A pure virtual method of a native base that no class of the chain overrides makes the class
+// abstract. A child that overrides it is concrete.
+TEST(CppFrontend, OpenNativePureVirtualMakesTheClassAbstract)
+{
+    Parsed p("#include \"Actor.h\"\n#include \"Guarded.h\"\n"
+             "class Warden : public Actor, public IStrict\n{\npublic:\n    int n = 0;\n};\n"
+             "class Jailer : public Warden\n{\npublic:\n    int Seal(int x) noexcept override { return x; }\n};\n"
+             "class Idle : public Warden\n{\npublic:\n    int m = 0;\n};\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    ASSERT_EQ(p.script.classes.size(), 3u);
+    EXPECT_TRUE(p.script.classes[0].is_abstract); // Warden leaves Seal open
+    EXPECT_FALSE(p.script.classes[1].is_abstract); // Jailer implements it
+    EXPECT_TRUE(p.script.classes[2].is_abstract); // Idle inherits the open slot
+}
+
 TEST(CppFrontend, PureVirtualMethodErrors)
 {
     // The definition outside the class is an error.

@@ -2656,7 +2656,8 @@ void Frontend::process_class(CXCursor c)
         }
     }
     // A class with a pure method that no method overrides is abstract. A child that does not
-    // override an inherited pure method stays abstract.
+    // override an inherited pure method stays abstract. A pure method of a native base that no
+    // class of the chain overrides also makes the class abstract: libclang knows the whole chain.
     std::set<std::string> open;
     if (parent)
         open = open_pure_[parent->usr];
@@ -2673,7 +2674,7 @@ void Frontend::process_class(CXCursor c)
         if (pure_usrs_.count(usr(k)))
             open.insert(usr(k));
     }
-    sc_.classes[ci].is_abstract = !open.empty();
+    sc_.classes[ci].is_abstract = !open.empty() || clang_CXXRecord_isAbstract(c);
     open_pure_[info.usr] = std::move(open);
 }
 

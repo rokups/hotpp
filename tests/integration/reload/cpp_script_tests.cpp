@@ -5,6 +5,7 @@
 // Reload tests of a plain C++ script (a ".cpp" script). The file extension selects the parser
 // of hotc. The host passes the script as a ScriptSource like any other script. The tests use
 // the backend that HOT_BACKEND selected.
+#include "Guarded.h"
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
@@ -776,6 +777,117 @@ TEST_P(BackendTests, HotAndCppScriptsRunSideBySide)
     EXPECT_EQ(*fld<float>(player.inst.shell, "hp"), 100.0f); // heal is clamped
     EXPECT_EQ(*modvar<int>(player, "total"), 2);
     EXPECT_FLOAT_EQ(player.actor->Position.x, 2.0f * 5.0f * kDt);
+}
+
+// A .cpp script class with a pure virtual method. A concrete child implements it. A call through
+// the base reaches the override. The record of the abstract class has the flag and no factory.
+TEST_P(BackendTests, CppAbstractClassWithConcreteChild)
+{
+    hot::LoadResult v1 = backend->load(source("cpp_abstract_v1.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Square"));
+    s.commit_at_frame_boundary();
+    EXPECT_FALSE(s.inst.shell->cls->is_abstract);
+    EXPECT_NE(s.inst.shell->cls->new_default, nullptr);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "area"), 9); // Shape::Area reaches Square::Area
+    EXPECT_EQ(*fld<int>(s.inst.shell, "twice"), 18); // Twice of Shape calls the pure method
+
+    const hot::ClassEntry* shape = s.loader.find("Shape");
+    ASSERT_NE(shape, nullptr);
+    hot::Instance sh = shape->create();
+    EXPECT_TRUE(sh.shell->cls->is_abstract);
+    EXPECT_EQ(sh.shell->cls->new_default, nullptr);
+    delete static_cast<Actor*>(sh.native);
+}
+
+// A reload makes a live concrete class abstract. The object lives. A call of the pure method
+// reports a ScriptError and does not crash. A later reload makes the class concrete again and
+// the state stays. A child that stops overriding the pure method becomes abstract.
+TEST_P(BackendTests, CppReloadMakesALiveClassAbstractAndConcreteAgain)
+{
+    hot::LoadResult v1 = backend->load(source("cpp_abstract_v1.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    hot::LoadResult v2 = backend->load(source("cpp_abstract_v2.cpp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    hot::LoadResult v3 = backend->load(source("cpp_abstract_v3.cpp"), 3);
+    ASSERT_TRUE(v3) << v3.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Gate"));
+    s.commit_at_frame_boundary();
+    EXPECT_FALSE(s.inst.shell->cls->is_abstract);
+    EXPECT_NE(s.inst.shell->cls->new_default, nullptr);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 5);
+
+    const hot::ClassEntry* mid = s.loader.find("Mid");
+    ASSERT_NE(mid, nullptr);
+    hot::Instance m = mid->create();
+    s.world.Add(static_cast<Actor*>(m.native));
+    s.world.Tick(kDt);
+    EXPECT_FALSE(m.shell->cls->is_abstract);
+    EXPECT_EQ(*fld<int>(m.shell, "val"), 4);
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    s.world.Tick(kDt); // the commit happens at the end of this frame
+    ASSERT_FALSE(s.commit_failed);
+    EXPECT_EQ(hot::active_generation, 2u);
+    EXPECT_TRUE(s.inst.shell->cls->is_abstract);
+    EXPECT_EQ(s.inst.shell->cls->new_default, nullptr);
+    EXPECT_TRUE(m.shell->cls->is_abstract); // Mid no longer overrides Area
+    EXPECT_EQ(m.shell->cls->new_default, nullptr);
+    const int ticks = *fld<int>(s.inst.shell, "ticks");
+    testing::internal::CaptureStderr();
+    s.world.Tick(kDt);
+    const std::string err = testing::internal::GetCapturedStderr();
+    EXPECT_NE(err.find("abstract method 'Gate.Power' called"), std::string::npos) << err;
+    EXPECT_NE(err.find("abstract method 'Shape.Area' called"), std::string::npos) << err;
+    EXPECT_EQ(*fld<int>(s.inst.shell, "ticks"), ticks + 1); // the body ran up to the call
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 5); // the trap stopped the assignment
+    EXPECT_EQ(*fld<int>(m.shell, "val"), 4);
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v3.module)));
+    s.world.Tick(kDt);
+    ASSERT_FALSE(s.commit_failed);
+    EXPECT_EQ(hot::active_generation, 3u);
+    EXPECT_FALSE(s.inst.shell->cls->is_abstract);
+    EXPECT_NE(s.inst.shell->cls->new_default, nullptr);
+    EXPECT_TRUE(m.shell->cls->is_abstract);
+    testing::internal::CaptureStderr();
+    s.world.Tick(kDt);
+    testing::internal::GetCapturedStderr(); // Mid still traps
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 7); // the slot works again
+    EXPECT_GE(*fld<int>(s.inst.shell, "ticks"), ticks + 2); // the state stays
+}
+
+// A script class that leaves a pure virtual method of a native base open is abstract. A child
+// that implements the method is concrete.
+TEST_P(BackendTests, CppClassWithOpenNativePureVirtualIsAbstract)
+{
+    hot::LoadResult v1 = backend->load(source("cpp_abstract_native.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Jailer"));
+    s.commit_at_frame_boundary();
+    EXPECT_FALSE(s.inst.shell->cls->is_abstract);
+    auto* strict = dynamic_cast<IStrict*>(s.actor);
+    ASSERT_NE(strict, nullptr);
+    EXPECT_EQ(strict->Seal(3), 4);
+
+    const hot::ClassEntry* warden = s.loader.find("Warden");
+    ASSERT_NE(warden, nullptr);
+    hot::Instance w = warden->create();
+    EXPECT_TRUE(w.shell->cls->is_abstract);
+    EXPECT_EQ(w.shell->cls->new_default, nullptr);
+    auto* ws = dynamic_cast<IStrict*>(static_cast<Actor*>(w.native));
+    ASSERT_NE(ws, nullptr);
+    testing::internal::CaptureStderr();
+    const int result = ws->Seal(3);
+    const std::string err = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(result, 0);
+    EXPECT_NE(err.find("abstract method 'Warden.Seal' called"), std::string::npos) << err;
+    delete static_cast<Actor*>(w.native);
 }
 
 } // namespace
