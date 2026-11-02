@@ -85,6 +85,8 @@ struct NameExpr
     // The script offset of the last part of the name. The value is absolute. 0 means unknown.
     // The raw text of the earlier parts can differ from parts[i] (see split_name).
     uint32_t last_pos = 0;
+    // The script offset of each part, in the order of parts. Empty when unknown.
+    std::vector<uint32_t> part_pos;
 };
 struct ThisExpr
 {

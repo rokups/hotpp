@@ -1497,6 +1497,32 @@ TEST(LanguageServer, CompletionListsScriptClassesAndTheirOwnAndInheritedMembers)
     EXPECT_TRUE(m.has("Move")) << m.result.dump(); // from the native base
 }
 
+TEST(LanguageServer, CompletionAfterADotOnALocalAndOnAFieldListsTheMembers)
+{
+    REQUIRE_CLANGD();
+    std::string text = kCompleteScript;
+    text.replace(text.find("    int ticks = 0;\n"), 19, "    int ticks = 0;\n    Point origin;\n");
+    text.replace(text.find("        int counter = 1;\n"), 25, "        int counter = 1;\n        Point pt;\n        Base bs = null;\n        Vec3 vec;\n");
+    // A local.
+    const Completion l = complete_at(true, text, "pt.");
+    EXPECT_TRUE(l.has("x")) << l.result.dump();
+    const Completion lp = complete_at(true, text, "pt.x");
+    EXPECT_TRUE(lp.has("x")) << lp.result.dump();
+    const Completion lb = complete_at(true, text, "bs.");
+    EXPECT_TRUE(lb.has("baseField")) << lb.result.dump();
+    const Completion lbp = complete_at(true, text, "bs.base");
+    EXPECT_TRUE(lbp.has("baseMethod")) << lbp.result.dump();
+    const Completion ln = complete_at(true, text, "bs.Mov"); // a native member
+    EXPECT_TRUE(ln.has("Move")) << ln.result.dump();
+    const Completion lv = complete_at(true, text, "vec.");
+    EXPECT_TRUE(lv.has("x")) << lv.result.dump();
+    // A field of the class.
+    const Completion f = complete_at(true, text, "origin.");
+    EXPECT_TRUE(f.has("x")) << f.result.dump();
+    const Completion fp = complete_at(true, text, "origin.x");
+    EXPECT_TRUE(fp.has("x")) << fp.result.dump();
+}
+
 TEST(LanguageServer, CompletionListsNativeTypesAndFreeFunctions)
 {
     REQUIRE_CLANGD();

@@ -1549,7 +1549,8 @@ struct Lowerer
             std::string member_name = n.parts[i];
             if (i + 1 == n.parts.size())
                 member_name += n.template_args;
-            chain = make_expr(MemberExpr{std::move(chain), std::move(member_name), pos});
+            const uint32_t name_pos = i < n.part_pos.size() ? n.part_pos[i] : pos;
+            chain = make_expr(MemberExpr{std::move(chain), std::move(member_name), pos, name_pos});
         }
         e = std::move(chain); // "n" is gone now
     }
