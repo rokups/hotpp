@@ -80,7 +80,7 @@ Pick the row that matches your program. Each sample is a small project that buil
 
 The load numbers come from the benchmark in `README.md` (section "JIT backend"). The run-time cost is in [Benchmarks](benchmarks.html). The tool `tools/bench/bench_backends` measures all backends in one run. The author measured them on one machine. A translate with a new `TranslatorSession` takes about 406 ms, because `libclang` parses the headers. A translate with the same session takes about 1.3 ms. A warm load with `CLANG_FILES` at `-O1` and no precompiled header takes about 1.1 s. The JIT is about 140 ms (15%) faster at the same `-O1`. The load numbers use `-O1` and the test headers, which are small. Measure again with your own headers. The code of a script runs at the same speed in every backend.
 
-Linux is the tested platform. Windows and macOS are untested. `src/runtime/module.cpp` has a Windows branch (`LoadLibraryA`). It is marked as not built on MSVC. `src/runtime/default_backend.cpp` includes `unistd.h`, so `make_default_backend` is POSIX only.
+Linux and Windows (MSVC) are the tested platforms. macOS is untested. `src/runtime/module.cpp` has a Windows branch (`LoadLibraryA`). `make_default_backend` also works on Windows.
 
 ## Parts of this guide
 

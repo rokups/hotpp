@@ -34,7 +34,7 @@ Set an option with `-D` on the command line, or with `set(... CACHE ...)` before
 | `HOT_USE_FMT` | `OFF` | `ON` selects fmt for string interpolation at any C++ standard. Change it when you want one format library for C++17 and C++20 builds. |
 | `HOT_FMT_PROVIDER` | `AUTO` | Where fmt comes from. See the section "The format library". Change it for an offline build, or when your project has its own fmt. |
 | `HOT_HOSTS_DIR` | `${CMAKE_SOURCE_DIR}/.cache/hot/hosts` | The folder where `hot_script_host` writes the host files. `hot-ls` reads them from `<root>/.cache/hot/hosts` (or from its `--hosts-dir` argument). Change it only if you start `hot-ls` with another folder. |
-| `HOT_CLANG_RESOURCE_DIR` | empty | Only for MSVC (untested). MSVC has no `-print-resource-dir`. Give the resource folder of a Clang install. On other compilers the root file computes `CLANG_RESOURCE_DIR` from the compiler and ignores this variable. |
+| `HOT_CLANG_RESOURCE_DIR` | empty | Only for MSVC. The LLVM release sets it. MSVC has no `-print-resource-dir`. Give the resource folder of a Clang install. On other compilers the root file computes `CLANG_RESOURCE_DIR` from the compiler and ignores this variable. |
 
 ### Windows options
 

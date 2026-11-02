@@ -12,7 +12,7 @@ The CI builds the Hot++ SDK after each change on the branch `master`. It puts th
 | File | System |
 |------|--------|
 | `hotpp-sdk-linux-x86_64.tar.gz` | Linux, x86_64 |
-| `hotpp-sdk-windows-x86_64.zip` | Windows, x86_64, MinGW-w64 (GCC) |
+| `hotpp-sdk-windows-x86_64.zip` | Windows, x86_64, MSVC |
 
 Each archive has one top folder. This folder is the SDK prefix.
 
@@ -29,11 +29,17 @@ The SDK is relocatable. You can unpack it in any folder.
 
 ## What your machine needs
 
-- CMake 3.20 or later, and Ninja or Make.
+- CMake 3.20 or later. On Linux, also Ninja or Make.
 - **Linux:** libclang 23 and Clang 23. On Ubuntu, add the [apt.llvm.org](https://apt.llvm.org) repository and install `clang-23`, `libclang-23-dev` and `llvm-23-dev`. Use `clang++-23` as the C++ compiler.
-- **Windows:** the GCC of [MSYS2](https://www.msys2.org) UCRT64. Install `mingw-w64-ucrt-x86_64-gcc`, `mingw-w64-ucrt-x86_64-cmake` and `mingw-w64-ucrt-x86_64-ninja`. Run the commands in the UCRT64 shell. The SDK uses UCRT and posix threads. Your UCRT64 GCC must have the same version as the compiler of the SDK build, or a newer version. The notes of the release give the name and the version of that compiler.
+- **Windows:** Visual Studio 2022 or newer with the C++ tools (the workload "Desktop development with C++"), and CMake. Build in Release or RelWithDebInfo. The CI builds the SDK with Visual Studio 2022 (toolset v143). A newer toolset links the static libraries of the SDK, an older toolset does not. The release notes give the toolset of the build.
 
-The CI tests the SDK on each system with an AOT host (`MODE AOT`). On Windows, the modes `HOT_RELOAD` and `PRECOMPILED` also need the `clang++.exe` of the LLVM release for Windows. See [Windows](windows.html).
+The CI tests the SDK on each system with an AOT host (`MODE AOT`). On Windows, the modes `HOT_RELOAD` and `PRECOMPILED` also need a `clang++.exe` with the same major version as the SDK LLVM (23). `find_package(Hot)` looks for `clang++` in this order:
+
+1. The value of `HOT_SCRIPT_COMPILER`, if you set it.
+2. The Visual Studio component "C++ Clang tools" (`VC/Tools/Llvm/x64/bin`) of the Developer prompt or of the Visual Studio generator.
+3. A `clang++` on `PATH`.
+
+A `clang++` with an other major version gives a CMake warning. The `clang++.exe` of the LLVM release 23 for Windows is the safe choice. See [Windows](windows.html).
 
 ## Use the SDK in your project
 

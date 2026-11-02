@@ -57,7 +57,14 @@ All tests are GoogleTest cases. CMake registers them with `hot_gtest` (a wrapper
 
 ## CI
 
-`.github/workflows/ci.yml` runs on each push and pull request to `master`. The job `linux` builds with the preset `linux-clang-files` (Clang 23 from apt.llvm.org) and runs all tests. The job `windows` cross-builds with the preset `mingw-llvm` in an Arch Linux container and runs a subset of the tests under wine. Each job then makes a portable SDK (`HOT_PORTABLE=ON`, no tests). The smoke jobs unpack each SDK on a clean runner and run `tests/sdk_smoke/run.cmake`. The Windows SDK runs natively on `windows-latest` with the GCC of MSYS2 UCRT64. A push to `master` moves the tag `latest` and replaces the assets of the release `latest`. See [Download the SDK](download.html).
+`.github/workflows/ci.yml` runs on each push and pull request to `master`. The job `linux` builds with the preset `linux-clang-files` (Clang 23 from apt.llvm.org) and runs all tests. The job `windows-msvc` builds with the preset `vs-files` and MSVC on `windows-2022` and runs the tests. The Windows smoke test runs on `windows-latest`, with a newer Visual Studio. Each job then makes a portable SDK (`HOT_PORTABLE=ON`, no tests). The smoke jobs unpack each SDK on a clean runner and run `tests/sdk_smoke/run.cmake`. The Windows smoke test uses MSVC and the Visual Studio generator. A push to `master` moves the tag `latest` and replaces the assets of the release `latest`. See [Download the SDK](download.html).
+
+Windows notes:
+
+- The job `windows-msvc` uses `vswhere.exe` to find `VsDevCmd.bat`. The Windows SDK comes from this job.
+- The job excludes `hotc_tool_tests`. These tests run POSIX shell commands.
+- The job skips the `DebugInfo` tests. The modules have CodeView debug info, and the tests read DWARF with `llvm-dwarfdump`.
+- The CI does not build the MinGW presets. Their tests run under wine. Two language server completion tests fail under wine.
 
 ## Translator notes
 
