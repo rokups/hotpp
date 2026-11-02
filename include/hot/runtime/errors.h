@@ -98,6 +98,10 @@ using ScriptErrorHandler = std::function<void(const ScriptErrorReport&)>;
 HOT_EXPORT void set_script_error_handler(ScriptErrorHandler handler);
 HOT_EXPORT ScriptErrorHandler script_error_handler();
 
+// Throws ScriptError "abstract method 'C.F' called". An abstract script method and a pure native
+// base method use it as the body of the slot, so a call never reaches a missing function.
+[[noreturn]] HOT_EXPORT void abstract_called(const char* cls, const char* fn);
+
 namespace detail
 {
 

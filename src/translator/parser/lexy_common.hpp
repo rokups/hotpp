@@ -97,6 +97,8 @@ constexpr auto kw_struct = LEXY_KEYWORD("struct", id);
 constexpr auto kw_enum = LEXY_KEYWORD("enum", id);
 constexpr auto kw_override = LEXY_KEYWORD("override", id);
 constexpr auto kw_virtual = LEXY_KEYWORD("virtual", id);
+// "abstract" is a class modifier and a method modifier in a .hot file.
+constexpr auto kw_abstract = LEXY_KEYWORD("abstract", id);
 // "async" is a method modifier. "await" is a prefix operator. Neither is a name in a .hot file.
 constexpr auto kw_async = LEXY_KEYWORD("async", id);
 constexpr auto kw_await = LEXY_KEYWORD("await", id);

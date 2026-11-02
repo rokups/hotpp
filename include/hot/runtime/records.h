@@ -229,6 +229,9 @@ struct ClassRecord
     // new record, so the constructors of the current generation run. ClassEntry::construct
     // uses it.
     const CtorEntry* ctors = nullptr;
+    // True when the class is abstract. The class has no default constructor then (new_default is
+    // null), and a call of an abstract slot throws ScriptError (abstract_called in errors.h).
+    bool is_abstract = false;
 };
 
 } // namespace hot

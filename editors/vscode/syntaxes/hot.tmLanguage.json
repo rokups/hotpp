@@ -154,7 +154,7 @@
         },
         {
           "name": "storage.modifier.hot",
-          "match": "\\b(?:public|private|protected|override|virtual|const|get|set)\\b"
+          "match": "\\b(?:public|private|protected|override|virtual|abstract|const|get|set)\\b"
         },
         {
           "name": "storage.type.hot",

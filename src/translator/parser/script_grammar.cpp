@@ -35,6 +35,7 @@ HOT_ERROR_TAG(e_enumerator, "expected an enumerator name");
 HOT_ERROR_TAG(e_member, "expected a member: 'Type name;' or 'Ret name(...)'");
 HOT_ERROR_TAG(e_member_name, "expected a member name");
 HOT_ERROR_TAG(e_class_name, "expected a class name");
+HOT_ERROR_TAG(e_abstract_target, "expected 'class' after 'abstract'");
 HOT_ERROR_TAG(e_base_name, "expected a base class name");
 HOT_ERROR_TAG(e_field_name, "expected a field name");
 HOT_ERROR_TAG(e_param_name, "expected a parameter name");
@@ -93,6 +94,7 @@ struct MethodRest
     Span body;
     bool expr_body = false; // "=> e;": the body is the span of "e"
     bool is_const = false; // "F() const": the marker after the parameters
+    const char* no_body_pos = nullptr; // "F();": the ";" that stands for the body
 };
 
 // The part of a field after the name.
@@ -143,6 +145,7 @@ struct Member
     ast::Field field;
     ast::Property prop;
     bool get_has_access = false, set_has_access = false; // an access word on the accessor
+    const char* no_body_pos = nullptr; // the ";" of a method or a constructor with no body
 };
 
 // The words "get", "set", "async" and "await" are reserved. They are not member or parameter names.
@@ -204,7 +207,8 @@ struct ModTok
 // The modifiers before a member. The parser checks the rules that do not depend on the kind.
 struct Mods
 {
-    bool is_override = false, is_virtual = false, is_new = false, is_async = false;
+    bool is_override = false, is_virtual = false, is_new = false, is_async = false, is_abstract = false;
+    const char* abstract_pos = nullptr; // the "abstract" word, or null
     bool has_access = false;
     ast::Access access = ast::Access::Public;
     std::vector<ModTok> kind_toks; // the "override", "virtual", "new" and "async" words
@@ -266,6 +270,14 @@ Mods collect_mods(const ParseState& st, const std::vector<ModTok>& toks)
             m.access = t.word == "public" ? ast::Access::Public
                 : t.word == "private"     ? ast::Access::Private
                                           : ast::Access::Protected;
+        }
+        else if (t.word == "abstract")
+        {
+            // "abstract" combines with "async" and with an access word only. The check of the
+            // other words is in finish_member, where the kind of the member is known.
+            m.abstract_pos = t.pos;
+            m.is_abstract = true;
+            m.kind_toks.push_back(t);
         }
         else if (t.word == "async")
         {
@@ -336,12 +348,17 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
         m.method.access = mods.access;
         for (const ModTok& t : mods.kind_toks)
             st.error(t.pos, "'" + t.word + "' is not valid on a destructor");
+        if (m.no_body_pos)
+            st.error(m.no_body_pos, "a destructor needs a block body");
     }
     else if (m.kind == Member::IsCtor)
     {
         m.ctor.access = mods.access;
         for (const ModTok& t : mods.kind_toks)
-            st.error(t.pos, "'" + t.word + "' is not valid on a constructor");
+            st.error(t.pos, t.word == "abstract" ? std::string("a constructor cannot be 'abstract'")
+                                                 : "'" + t.word + "' is not valid on a constructor");
+        if (m.no_body_pos)
+            st.error(m.no_body_pos, "a constructor needs a block body");
     }
     else if (m.kind == Member::IsField || m.kind == Member::IsProp)
     {
@@ -359,7 +376,11 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
                 m.prop.set_access = mods.access;
         }
         for (const ModTok& t : mods.kind_toks)
-            st.error(t.pos, "'" + t.word + "' is only valid on a method");
+            st.error(t.pos,
+                t.word == "abstract"
+                    ? std::string(m.kind == Member::IsField ? "a field cannot be 'abstract'; only a method can be"
+                                                            : "a property cannot be 'abstract'; only a method can be")
+                    : "'" + t.word + "' is only valid on a method");
     }
     else
     {
@@ -368,6 +389,21 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
         m.method.is_virtual = mods.is_virtual;
         m.method.is_new = mods.is_new;
         m.method.is_async = mods.is_async;
+        if (mods.is_abstract)
+        {
+            m.method.is_abstract = true;
+            for (const ModTok& t : mods.kind_toks)
+                if (t.word == "virtual" || t.word == "new" || t.word == "override")
+                    st.error(t.pos,
+                        "'abstract' and '" + t.word + "' cannot combine"
+                            + (t.word == "virtual" ? "; an abstract method is virtual already" : ""));
+            if (m.no_body_pos == nullptr)
+                st.error(mods.abstract_pos,
+                    "an abstract method cannot have a body; end the declaration with ';'");
+        }
+        else if (m.no_body_pos)
+            st.error(m.no_body_pos,
+                "method '" + m.method.name + "' needs a body; write '{ ... }' or mark the method 'abstract'");
     }
     return std::move(m);
 }
@@ -708,11 +744,24 @@ struct const_mark_p
     static constexpr auto value = lexy::callback<bool>([](auto) { return true; });
 };
 
+// ";" in place of the body: an abstract method. Other kinds of member report it.
+struct NoBody
+{
+    const char* pos = nullptr;
+};
+
+struct no_body_p
+{
+    static constexpr auto rule = dsl::position + dsl::lit_c<';'>;
+    static constexpr auto value = lexy::callback<NoBody>([](const char* pos) { return NoBody{pos}; });
+};
+
 struct method_tail
 {
     static constexpr auto rule = dsl::p<params_p> + dsl::opt(dsl::peek(kw_const_mark) >> dsl::p<const_mark_p>)
         + dsl::opt(dsl::peek(dsl::lit_c<':'>) >> dsl::p<base_call_p>)
-        + (dsl::peek(LEXY_LIT("=>")) >> dsl::p<arrow_body_p> | dsl::else_ >> dsl::p<scan_balanced>);
+        + (dsl::peek(LEXY_LIT("=>")) >> dsl::p<arrow_body_p> | dsl::peek(dsl::lit_c<';'>) >> dsl::p<no_body_p>
+            | dsl::else_ >> dsl::p<scan_balanced>);
     static constexpr auto value = lexy::bind(lexy::callback<MethodRest>(
                                                  [](const ParseState&, auto&& params, auto&& cm, auto&& sup, auto body_in)
     {
@@ -720,7 +769,11 @@ struct method_tail
         if constexpr (std::is_same_v<std::decay_t<decltype(cm)>, bool>)
             r.is_const = cm;
         Span body;
-        if constexpr (std::is_same_v<decltype(body_in), ArrowBody>)
+        if constexpr (std::is_same_v<decltype(body_in), NoBody>)
+        {
+            r.no_body_pos = body_in.pos;
+        }
+        else if constexpr (std::is_same_v<decltype(body_in), ArrowBody>)
         {
             body = body_in.span;
             r.expr_body = true;
@@ -938,9 +991,10 @@ struct typed_member
             m.ctor_name = std::move(name);
             c.params = std::move(rest.params);
             c.body_span = rest.body;
+            m.no_body_pos = rest.no_body_pos;
             c.pos = st.offset(name_pos);
             c.line = st.map->line(c.pos);
-            c.end_pos = rest.body.end;
+            c.end_pos = rest.no_body_pos ? st.offset(rest.no_body_pos) : rest.body.end;
             c.end_line = st.map->line(c.end_pos);
             if (rest.base_pos)
             {
@@ -961,11 +1015,12 @@ struct typed_member
         me.body_span = rest.body;
         me.expr_body = rest.expr_body;
         me.is_const = rest.is_const;
+        m.no_body_pos = rest.no_body_pos;
         if (rest.expr_body && only_blank(span_text(st, rest.body)))
             st.error(st.base + rest.body.begin, "expected an expression");
         me.pos = st.offset(start);
         me.line = st.map->line(me.pos);
-        me.end_pos = rest.body.end;
+        me.end_pos = rest.no_body_pos ? st.offset(rest.no_body_pos) : rest.body.end;
         me.end_line = st.map->line(me.end_pos);
         return m;
     },
@@ -1004,7 +1059,7 @@ constexpr auto kw_friend = LEXY_KEYWORD("friend", id);
 constexpr auto kw_mutable = LEXY_KEYWORD("mutable", id);
 constexpr auto kw_volatile = LEXY_KEYWORD("volatile", id);
 
-constexpr auto modifier_set = dsl::literal_set(kw_override, kw_virtual, kw_async, kw_new, kw_public, kw_private,
+constexpr auto modifier_set = dsl::literal_set(kw_override, kw_virtual, kw_abstract, kw_async, kw_new, kw_public, kw_private,
     kw_protected, kw_static, kw_thread_local, kw_friend, kw_mutable, kw_volatile);
 
 struct mod_item : lexy::token_production
@@ -1044,9 +1099,10 @@ struct dtor_p
         m.ctor_name = name;
         me.name = "~" + name;
         me.body_span = rest.body;
+        m.no_body_pos = rest.no_body_pos;
         me.pos = st.offset(start);
         me.line = st.map->line(me.pos);
-        me.end_pos = rest.body.end;
+        me.end_pos = rest.no_body_pos ? st.offset(rest.no_body_pos) : rest.body.end;
         me.end_line = st.map->line(me.end_pos);
         return m;
     }),
@@ -1374,7 +1430,13 @@ void add_members(const ParseState& st, ast::ClassDef& c, std::vector<Member>&& m
                 st.error(st.base + m.ctor.pos, "a method needs a return type; write 'Ret name(...)'");
         }
         else if (m.kind == Member::IsMethod)
+        {
+            if (m.method.is_abstract && !c.is_abstract)
+                st.error(st.base + m.method.pos,
+                    "abstract method '" + m.method.name + "' needs an abstract " + (c.is_value ? "struct" : "class")
+                        + ": write 'abstract class " + c.name + "'");
             c.methods.push_back(std::move(m.method));
+        }
         else if (m.kind == Member::IsField)
             c.fields.push_back(std::move(m.field));
         else if (m.kind == Member::IsProp)
@@ -1569,32 +1631,53 @@ constexpr auto class_rest = dsl::position
 // [attributes] class name ";" is a stub. [attributes] class name ":" Base "{" members "}" is a class.
 // A "struct" is a script value type. Else the declaration is a module variable:
 // [alias("old")] Type name [= init];
+// "abstract" before "class" or "struct": the value is the position of the word, or nullopt.
+constexpr auto abstract_prefix = dsl::opt(dsl::peek(kw_abstract) >> dsl::position + kw_abstract);
+constexpr auto class_or_struct = dsl::literal_set(kw_class, kw_struct);
+
+const char* abstract_pos_of(lexy::nullopt)
+{
+    return nullptr;
+}
+const char* abstract_pos_of(const char* p)
+{
+    return p;
+}
+
 struct class_p
 {
     static constexpr auto rule = dsl::position + dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<class_attrs_p>)
-        + (dsl::peek(kw_class) >> (dsl::capture(kw_class) + class_rest)
-            | dsl::peek(kw_struct) >> (dsl::capture(kw_struct) + class_rest)
+        + (dsl::peek(dsl::literal_set(kw_class, kw_struct, kw_abstract))
+                >> (abstract_prefix + dsl::must(dsl::peek(class_or_struct)).error<e_abstract_target>
+                    + dsl::capture(class_or_struct) + class_rest)
             | dsl::peek(dsl::lit_c<';'>) >> dsl::p<module_attrs_end_p>
             | dsl::else_ >> dsl::p<typed_member>);
     static constexpr auto value =
         lexy::bind(lexy::callback<TopItem>(
-                       [](const ParseState& st, const char* pos, const auto& attrs, const auto& kw,
+                       [](const ParseState& st, const char* pos, const auto& attrs, const auto& abs, const auto& kw,
                            const char* /*name_pos*/, std::string&& name, lexy::nullopt)
     {
+        if (const char* ap = abstract_pos_of(abs))
+            st.error(ap, "a class stub cannot be 'abstract'");
         return make_stub(st, pos, class_attrs_of(attrs), std::distance(kw.begin(), kw.end()) == 6,
             std::move(name), false);
     },
-                       [](const ParseState& st, const char* pos, const auto& attrs, const auto& kw,
+                       [](const ParseState& st, const char* pos, const auto& attrs, const auto& abs, const auto& kw,
                            const char*, std::string&& base)
     {
+        if (const char* ap = abstract_pos_of(abs))
+            st.error(ap, "a class stub cannot be 'abstract'");
         return make_stub(st, pos, class_attrs_of(attrs), std::distance(kw.begin(), kw.end()) == 6,
             std::move(base), true);
     },
-                       [](const ParseState& st, const char* pos, const auto& attrs, const auto& kw,
+                       [](const ParseState& st, const char* pos, const auto& attrs, const auto& abs, const auto& kw,
                            const char* name_pos, std::string&& name, auto&& base, auto&& members)
     {
         const ClassAttrs* a = class_attrs_of(attrs);
         const bool is_struct = std::distance(kw.begin(), kw.end()) == 6;
+        const char* abstract_at = abstract_pos_of(abs);
+        if (abstract_at && is_struct)
+            st.error(abstract_at, "a struct cannot be 'abstract'; only a class can be");
         TopItem t;
         t.kind = TopItem::IsClass;
         ast::ClassDef& c = t.cls;
@@ -1612,6 +1695,7 @@ struct class_p
         c.line = st.map->line(c.pos);
         // A struct is the only script value type (design 5.3, 7.10.1).
         c.is_value = is_struct;
+        c.is_abstract = abstract_at != nullptr && !is_struct;
         if (a)
             c.cpp_prelude = a->cpp_prelude;
         if (a)
@@ -1638,6 +1722,9 @@ struct class_p
         const ClassAttrs* a = class_attrs_of(attrs);
         reject_tags(st, a);
         TopItem t;
+        if (m.no_body_pos && m.kind == Member::IsMethod && m.method.name.rfind("convert_", 0) == 0)
+            st.error(m.no_body_pos,
+                "method '" + m.method.name + "' needs a body; write '{ ... }'");
         // "T convert_<var>(Old old) { }" at file level is the convert hook of a module
         // variable. Other functions must be members of a class.
         if (m.kind == Member::IsMethod && m.method.name.rfind("convert_", 0) == 0)

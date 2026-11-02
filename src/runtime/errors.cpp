@@ -17,6 +17,11 @@
 namespace hot
 {
 
+void abstract_called(const char* cls, const char* fn)
+{
+    throw ScriptError(std::string("abstract method '") + cls + "." + fn + "' called");
+}
+
 #if HOT_TRACEBACK
 ScriptError::ScriptError(const std::string& what) : std::runtime_error(what), traceback_(detail::trace_capture()) {}
 ScriptError::ScriptError(const char* what) : std::runtime_error(what), traceback_(detail::trace_capture()) {}

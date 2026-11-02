@@ -455,6 +455,9 @@ struct Method
     bool is_const = false;
     // The modifiers as written. The parser stores them. Nothing checks them yet.
     bool is_override = false, is_virtual = false, is_new = false;
+    // True when the script writes "abstract" before the method. The method has no body and it
+    // implies "virtual". The parser leaves "is_virtual" false. Only a class with "is_abstract" has it.
+    bool is_abstract = false;
     // True when the script writes "async" before the method. The method can use "await".
     bool is_async = false;
     // True when the body of a ".cpp" method is a C++20 coroutine (co_await, co_return). The
@@ -567,6 +570,7 @@ struct ClassDef
     std::vector<Property> props; // in source order
     std::vector<TypeAlias> aliases; // "using Name = type;" in the class body, in source order
     bool is_value = false; // the attribute [value]
+    bool is_abstract = false; // "abstract class C { }": the class can have abstract methods
     std::string cpp_prelude; // the attribute [cpp_prelude("text")]: C++ text for this class only
     std::string cpp_overrides; // names of virtuals that the shell keeps without a slot (a .cpp script)
     // The script attributes of the class: "[Tag] class C { }". Each name is an attribute class
