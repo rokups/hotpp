@@ -53,6 +53,10 @@ public:
     // an error text with the compiler diagnostics and a "reason". It does not touch the live
     // generation. It does not write the slot state: the Module has an "on_accept" callback that
     // writes it, and the Loader calls the callback when the module is live.
+    // Threads: load can run on a worker thread while the old code runs on other threads. Run one
+    // load at a time for each backend. Do not run Loader::commit_pending or Loader::load during a
+    // load: they call "on_accept", and load reads the slot state. The library of the script opens
+    // on the thread of the call, so its static initializers run on that thread.
     virtual LoadResult load(const ScriptSource& source, uint32_t generation, LoadMode mode = LoadMode::Reload) = 0;
     virtual const char* name() const = 0;
 

@@ -25,6 +25,7 @@ These rules come from the comments in `include/hot/runtime/loader.h`.
 
 - `load`, `frame_boundary`, `stats`, `find` and `thunk` run on the main thread only. Worker threads do not call them.
 - `request_reload` and `reload_pending` can run on any thread, also while workers run script code.
+- `Backend::load` can run on a worker thread, also while other threads run the old code. Then the main thread commits the result at the frame boundary, so the compile does not stop the frame. Run one `load` at a time for each backend. Do not run `Loader::load` or `commit_pending` during a `load`: the commit writes the slot state, and `load` reads it. The script library opens on the thread of the `load`, so its static initializers run on that thread. The file system of the backend must be thread safe (see `hot/vfs.h`).
 - In the default mode (`StopTheWorld`), `commit_pending` runs on the main thread at the frame boundary, when no worker is in script code.
 - In `EntryCounters` mode (`Loader::set_sync_mode`), `commit_pending` can run on one thread while other threads call script code. It blocks new script entries and waits for the running ones. It fails when the calling thread is in script code. The mode is global for the process. Change it only when no thread is in script code.
 - In `EntryCounters` mode, native code that reads the fields of a script object holds a `ScriptEntry`. A script frame that waits for a commit, or for a thread at the gate, deadlocks.

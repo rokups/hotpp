@@ -13,9 +13,11 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -78,6 +80,44 @@ TEST_P(BackendTests, RemovedClassKeepsItsObjectsValid)
     for (uint32_t i = 0; i < g->slots; ++i)
         EXPECT_TRUE(ghost.shell->cls->slots[i] == reinterpret_cast<hot::SlotFn>(&hot::StateBase::__removed));
     EXPECT_FALSE(find_class(st, "Hero")->removed);
+}
+
+// Backend::load runs on a worker thread. The main thread runs the old code during the compile and
+// commits the finished module at the frame boundary. The object keeps its state.
+TEST_P(BackendTests, LoadOnAWorkerThreadWhileTheOldCodeRuns)
+{
+    hot::LoadResult v1 = backend->load(source("removed_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
+    s.commit_at_frame_boundary();
+
+    std::atomic<bool> done{false};
+    hot::LoadResult v2;
+    std::thread worker([&]
+    {
+        v2 = backend->load(source("removed_v2.hot"), 2);
+        done = true;
+    });
+    int frames = 0;
+    do
+    {
+        s.world.Tick(kDt); // the old code runs during the compile
+        ++frames;
+    } while (!done);
+    worker.join();
+    ASSERT_TRUE(v2) << v2.error;
+    EXPECT_EQ(hot::active_generation, 1u);
+    EXPECT_EQ(*hot::field_ptr<int>(s.inst.shell, "ticks"), frames);
+
+    testing::internal::CaptureStderr(); // the commit warns about the removed class Ghost
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    s.world.Tick(kDt); // the commit happens at the end of this frame
+    s.world.Tick(kDt);
+    testing::internal::GetCapturedStderr();
+    ASSERT_FALSE(s.commit_failed);
+    EXPECT_EQ(hot::active_generation, 2u);
+    EXPECT_EQ(*hot::field_ptr<int>(s.inst.shell, "ticks"), frames + 1 + 100); // the new code adds 100
 }
 
 // The class comes back in a later generation. The old object gets the new code.
