@@ -186,27 +186,9 @@ jobs:
 
       # The step has a time limit, so the job ends and its log is available.
       - name: Test
-        id: test
         if: always() && steps.hotc.outcome == 'success'
         timeout-minutes: 40
         run: ctest --test-dir "$BUILD_DIR" -C "$CONFIG" -j 4 --timeout 300 --output-on-failure
-
-      # A failed language server test runs again with the clangd log. Each test writes its own log
-      # file (tests/integration/ls/ls_tests.cpp). The artifact keeps the logs for the diagnosis.
-      - name: Run the failed language server tests again with the clangd log
-        if: always() && steps.test.outcome == 'failure'
-        timeout-minutes: 20
-        run: |
-          mkdir -p cmake-build/ls-logs
-          HOT_LS_CLANGD_LOG="$(pwd -W)/cmake-build/ls-logs" ctest --test-dir "$BUILD_DIR" -C "$CONFIG" \
-            --rerun-failed -R LanguageServer --timeout 300 --output-on-failure || true
-
-      - uses: actions/upload-artifact@v7
-        if: always() && steps.test.outcome == 'failure'
-        with:
-          name: ls-logs-windows
-          path: cmake-build/ls-logs
-          if-no-files-found: ignore
 
       # The test build is large. Remove it before the SDK build, so the disk does not become full.
       - name: Remove the test build
