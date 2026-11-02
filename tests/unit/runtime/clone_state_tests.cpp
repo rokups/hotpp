@@ -353,7 +353,7 @@ TEST(ValueBox, CopyIsIndependentAndMoveKeepsTheObject)
 
 TEST(ValueBox, NullHandleThrowsNullReference)
 {
-    EXPECT_THROW(hot::Value<Cell_Shell>(std::shared_ptr<Cell_Shell>()), hot::NullReference);
+    EXPECT_THROW((hot::Value<Cell_Shell>{std::shared_ptr<Cell_Shell>()}), hot::NullReference);
     EXPECT_THROW(hot::Value<Cell_Shell>::copy_of(nullptr), hot::NullReference);
 }
 
