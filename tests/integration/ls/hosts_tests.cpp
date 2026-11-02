@@ -367,8 +367,8 @@ TEST_F(HostsTest, PreludesAreRelativeToSourceDir)
     const auto h = set.match("/src/a/x.hot");
     ASSERT_TRUE(h);
     const std::vector<std::string> expected = {
-        std::filesystem::path("/src/p/game.prelude.hot").lexically_normal().string(),
-        std::filesystem::path("/abs/x.prelude.hot").lexically_normal().string()};
+        std::filesystem::path("/src/p/game.prelude.hot").lexically_normal().generic_string(),
+        std::filesystem::path("/abs/x.prelude.hot").lexically_normal().generic_string()};
     EXPECT_EQ(h->preludes, expected);
     EXPECT_TRUE(h->prelude_suffix.empty());
 }

@@ -12,6 +12,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -27,6 +28,18 @@ using test_support::source;
 template <class T> T* fld(const hot::Instance& inst, const char* name)
 {
     return hot::field_ptr<T>(inst.shell, name);
+}
+
+// The text without spaces and without the MSVC marks "__ptr64" and "__cdecl".
+// The compilers print the same type with different spaces: "int (*)(int), float" and
+// "int (__cdecl*__ptr64)(int),float". The order and the content of the types stay strict.
+std::string squeeze(std::string text)
+{
+    for (const char* mark : {"__ptr64", "__cdecl"})
+        for (size_t at; (at = text.find(mark)) != std::string::npos;)
+            text.erase(at, std::string(mark).size());
+    text.erase(std::remove(text.begin(), text.end(), ' '), text.end());
+    return text;
 }
 
 // The engine owns an object of the factory: the test deletes it.
@@ -127,13 +140,10 @@ TEST_P(BackendTests, CtorTableMismatchListsTheConstructors)
     }
     catch (const std::invalid_argument& e)
     {
-        const std::string what = e.what();
-        EXPECT_NE(what.find("'Made' has no constructor (double)"), std::string::npos) << what;
-        EXPECT_NE(what.find("()"), std::string::npos) << what;
-        EXPECT_NE(what.find("(int)"), std::string::npos) << what;
-        EXPECT_NE(what.find("(Actor*)"), std::string::npos) << what;
-        EXPECT_NE(what.find("(int, int)"), std::string::npos) << what;
-        EXPECT_NE(what.find("(int (*)(int), float)"), std::string::npos) << what;
+        const std::string what = squeeze(e.what());
+        EXPECT_NE(what.find(squeeze("'Made' has no constructor (double)")), std::string::npos) << what;
+        for (const char* ctor : {"()", "(int)", "(Actor*)", "(int,int)", "(int(*)(int),float)"})
+            EXPECT_NE(what.find(squeeze(ctor)), std::string::npos) << ctor << " in " << what;
     }
     // A const argument for a "T&" parameter: the constructor could change it.
     const int out = 0;
