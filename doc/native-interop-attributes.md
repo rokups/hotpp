@@ -84,6 +84,16 @@ class Enemy : Actor {
 - A tag applies to its class only. A child class does not get the tags of its parent.
 - Only a script class takes a tag. A stub, a module variable and a module attribute list do not.
 
+A `.cpp` script puts the macro `HOT_ATTRIBUTE("Name")` after `class`. The macro is in `hot/script.h`:
+
+```cpp
+class HOT_ATTRIBUTE("Spawnable") Enemy : public Actor {
+};
+```
+
+- The macro is the annotation `[[clang::annotate("hot.attribute=Name")]]`. Only clang keeps it.
+- A `.cpp` script cannot declare an attribute class. A prelude must declare it.
+
 At run time, `Loader::stats().classes` gives one `hot::ClassInfo` for each class. Its field `attributes` holds the tag names in source order. The record field `ClassRecord::attributes` holds the same names as a list that ends with `nullptr`. A reload replaces the tags with the tags of the new generation. A removed class has no tags.
 
 ## Other limits

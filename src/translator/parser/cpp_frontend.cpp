@@ -2476,6 +2476,20 @@ void Frontend::process_class(CXCursor c)
     info.usr = usr(c);
     info.end = extent_of(c).end;
     class_infos_[info.usr] = &info; // a deque does not move its elements
+    // HOT_ATTRIBUTE("Name") on the class is a script attribute tag, the same as "[Name]" in a .hot
+    // script. The translator checks that a prelude declares the attribute class.
+    for (CXCursor k : children(c))
+        if (clang_getCursorKind(k) == CXCursor_AnnotateAttr)
+        {
+            const std::string a = spelling(k);
+            if (a.rfind("hot.attribute=", 0) == 0)
+            {
+                std::string name = a.substr(std::strlen("hot.attribute="));
+                if (std::find(cd.attributes.begin(), cd.attributes.end(), name) != cd.attributes.end())
+                    fail(pos_of(c), "duplicate attribute '" + name + "'");
+                cd.attributes.push_back(std::move(name));
+            }
+        }
     // A child of a script class (the same design as a .hot child): the shell of the child derives
     // from the shell of the parent, and the state of the child holds the fields of the chain.
     const ClassInfo* parent = nullptr;

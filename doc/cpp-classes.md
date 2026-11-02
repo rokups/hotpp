@@ -139,6 +139,7 @@ The fixtures `tests/scripts/cpp_ctor_init_v1.cpp` and `tests/scripts/cpp_ctor_in
 These features follow the rules of [Hot reload](hot-reload.html). Only the spelling is C++.
 
 - `HOT_ALIAS("old")` before a field gives the old name of the field. On clang the macro is `[[clang::annotate("hot.alias=old")]]`. A compiler other than clang ignores it.
+- `HOT_ATTRIBUTE("Name")` after `class` gives the class a script attribute tag, the same as `[Name]` in a `.hot` script. A prelude declares the attribute class. See [Script attributes](native-interop-attributes.html#script-attributes).
 - `convert_<field>(Old old)` is a method of the class. It converts the old value to the new type of the field.
 - `convert_<var>(Old old)` is a free function. It converts the old value of a module variable.
 - `void onReload(const hot::OldState& old)` runs once for each live object, after the migration. Use `old.has("hp")` and `old.get<float>("hp")`.

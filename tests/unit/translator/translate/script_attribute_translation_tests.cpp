@@ -76,3 +76,53 @@ TEST(ScriptAttributeTranslation, AttributeClassMisuseIsAnError)
         EXPECT_TRUE(has(r.diagnostics, error)) << script << r.diagnostics;
     }
 }
+
+namespace
+{
+
+// A ".cpp" script. HOT_ATTRIBUTE("Name") is the annotation "hot.attribute=Name" on the class.
+hotc::TranslateResult cpp_attr_translate(const std::string& tags, bool declare = true)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    hotc::TranslateOptions o
+        = temp_options(dir, "#include \"w.h\"\nclass " + tags + " Foo : public Widget { public: int n = 0; };\n");
+    o.script_name = "t.cpp";
+    // The include dir with "hot/script.h": the translator injects the header, so HOT_ATTRIBUTE works.
+    o.include_dirs.push_back(std::string(HOT_SOURCE_DIR) + "/include");
+    if (declare)
+        o.preludes.push_back({"host.prelude", "[attribute] class Spawnable;\n[attribute] class Saved;\n"});
+    return hotc::translate(o);
+}
+
+} // namespace
+
+TEST(ScriptAttributeTranslation, CppScriptTagsComeFromTheAnnotation)
+{
+    const hotc::TranslateResult r = cpp_attr_translate(
+        "[[clang::annotate(\"hot.attribute=Saved\")]] [[clang::annotate(\"hot.attribute=Spawnable\")]]");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "attributes[] = {\"Saved\", \"Spawnable\", nullptr};")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Foo_record.attributes = ")) << r.cpp;
+}
+
+TEST(ScriptAttributeTranslation, CppScriptTagNeedsAPreludeDeclaration)
+{
+    const hotc::TranslateResult r = cpp_attr_translate("[[clang::annotate(\"hot.attribute=Saved\")]]", false);
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "unknown attribute 'Saved' on class 'Foo'")) << r.diagnostics;
+}
+
+TEST(ScriptAttributeTranslation, CppScriptMacroGivesTheTag)
+{
+    const hotc::TranslateResult r = cpp_attr_translate("HOT_ATTRIBUTE(\"Spawnable\")");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "attributes[] = {\"Spawnable\", nullptr};")) << r.cpp;
+}
+
+TEST(ScriptAttributeTranslation, CppScriptIgnoresOtherAnnotations)
+{
+    const hotc::TranslateResult r = cpp_attr_translate("[[clang::annotate(\"tool.mark\")]]");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(has(r.cpp, "Foo_record.attributes")) << r.cpp;
+}

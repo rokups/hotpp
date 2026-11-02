@@ -18,3 +18,13 @@
 #else
 #define HOT_ALIAS(old)
 #endif
+
+// HOT_ATTRIBUTE("Name") on a script class gives hotc a script attribute tag, the same as "[Name]"
+// in a .hot script. Write it after "class": "class HOT_ATTRIBUTE("Name") Player : public Actor".
+// A prelude declares the attribute class: "[attribute] class Name;". Only clang keeps the
+// annotation. Other compilers ignore the macro.
+#if defined(__clang__)
+#define HOT_ATTRIBUTE(name) [[clang::annotate("hot.attribute=" name)]]
+#else
+#define HOT_ATTRIBUTE(name)
+#endif
