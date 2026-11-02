@@ -156,7 +156,7 @@ TEST(ModuleDeclTranslation, ConvertHookOfAModuleVariable)
         "float level = 1.0;\nfloat convert_level(int old) { return old * 1.5; }\nclass C : Unit { }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("static float HotModule__convert_level(int32_t old)"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("typeid(int32_t).name(), HotModule__convert_level_hook}"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("typeid(int32_t).name(), HotModule__convert_level_hook, nullptr, hot::field_copy<float>()}"), std::string::npos) << r.cpp;
 }
 
 TEST(ModuleDeclTranslation, ConvertHookErrors)

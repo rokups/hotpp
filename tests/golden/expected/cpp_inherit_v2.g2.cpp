@@ -173,13 +173,13 @@ static void Base__init_armor(void*, void* f) { using T = int; new (f) T(4); }
 static_assert(offsetof(BaseState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Base_fields[] = {
     {"hp", nullptr, hot::type_key<float>(), offsetof(BaseState_g2, hp), sizeof(float),
-     alignof(float), hot::field_flags<float>(), Base__init_hp, hot::move_field<float>, hot::field_destroyer<float>()},
+     alignof(float), hot::field_flags<float>(), Base__init_hp, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
     {"hits", nullptr, hot::type_key<int>(), offsetof(BaseState_g2, hits), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Base__init_hits, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Base__init_hits, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"twice", nullptr, hot::type_key<int>(), offsetof(BaseState_g2, twice), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Base__init_twice, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Base__init_twice, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"armor", nullptr, hot::type_key<int>(), offsetof(BaseState_g2, armor), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Base__init_armor, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Base__init_armor, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -421,9 +421,9 @@ static void HotModule__init_kid_casts(void*, void* f) { using T = int; new (f) T
 #endif
 static const hot::FieldInfo HotModule_fields[] = {
     {"last_ticked", nullptr, hot::type_key<Base *>(), offsetof(HotModule, last_ticked), sizeof(Base *),
-     alignof(Base *), hot::field_flags<Base *>(), HotModule__init_last_ticked, hot::move_field<Base *>, hot::field_destroyer<Base *>()},
+     alignof(Base *), hot::field_flags<Base *>(), HotModule__init_last_ticked, hot::move_field<Base *>, hot::field_destroyer<Base *>(), nullptr, nullptr, nullptr, hot::field_copy<Base *>()},
     {"kid_casts", nullptr, hot::type_key<int>(), offsetof(HotModule, kid_casts), sizeof(int),
-     alignof(int), hot::field_flags<int>(), HotModule__init_kid_casts, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), HotModule__init_kid_casts, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -504,25 +504,25 @@ static void Kid__init_bonus(void*, void* f) { using T = int; new (f) T(0); }
 static_assert(offsetof(KidState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Kid_fields[] = {
     {"hp", nullptr, hot::type_key<float>(), offsetof(KidState_g2, hp), sizeof(float),
-     alignof(float), hot::field_flags<float>(), Base__init_hp, hot::move_field<float>, hot::field_destroyer<float>()},
+     alignof(float), hot::field_flags<float>(), Base__init_hp, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
     {"hits", nullptr, hot::type_key<int>(), offsetof(KidState_g2, hits), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Base__init_hits, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Base__init_hits, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"twice", nullptr, hot::type_key<int>(), offsetof(KidState_g2, twice), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Base__init_twice, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Base__init_twice, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"armor", nullptr, hot::type_key<int>(), offsetof(KidState_g2, armor), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Base__init_armor, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Base__init_armor, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"kid_hits", nullptr, hot::type_key<int>(), offsetof(KidState_g2, kid_hits), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Kid__init_kid_hits, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Kid__init_kid_hits, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"moved", nullptr, hot::type_key<float>(), offsetof(KidState_g2, moved), sizeof(float),
-     alignof(float), hot::field_flags<float>(), Kid__init_moved, hot::move_field<float>, hot::field_destroyer<float>()},
+     alignof(float), hot::field_flags<float>(), Kid__init_moved, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
     {"super_power", nullptr, hot::type_key<int>(), offsetof(KidState_g2, super_power), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Kid__init_super_power, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Kid__init_super_power, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"seen_hits", nullptr, hot::type_key<int>(), offsetof(KidState_g2, seen_hits), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Kid__init_seen_hits, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Kid__init_seen_hits, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"gen", nullptr, hot::type_key<int>(), offsetof(KidState_g2, gen), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Kid__init_gen, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Kid__init_gen, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"bonus", nullptr, hot::type_key<int>(), offsetof(KidState_g2, bonus), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Kid__init_bonus, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Kid__init_bonus, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop

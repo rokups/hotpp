@@ -25,6 +25,7 @@
 #include "hot/runtime/task.h" // empty without C++20 coroutines
 #include "hot/runtime/threads.h"
 #include "hot/runtime/trace.h"
+#include "hot/runtime/value.h"
 
 #include <array> // the generated code uses std::array for the array types of a script
 #include <cstddef>

@@ -157,7 +157,7 @@ static void red__Unit__init_hits(void*, void* f) { using T = int; new (f) T(0); 
 static_assert(offsetof(red__UnitState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo red__Unit_fields[] = {
     {"hits", nullptr, hot::type_key<int>(), offsetof(red__UnitState_g2, hits), sizeof(int),
-     alignof(int), hot::field_flags<int>(), red__Unit__init_hits, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), red__Unit__init_hits, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -481,11 +481,11 @@ static void blue__Unit__init_shield(void*, void* f) { using T = int; new (f) T(9
 static_assert(offsetof(blue__UnitState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo blue__Unit_fields[] = {
     {"hits", nullptr, hot::type_key<int>(), offsetof(blue__UnitState_g2, hits), sizeof(int),
-     alignof(int), hot::field_flags<int>(), blue__Unit__init_hits, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), blue__Unit__init_hits, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"armor", nullptr, hot::type_key<int>(), offsetof(blue__UnitState_g2, armor), sizeof(int),
-     alignof(int), hot::field_flags<int>(), blue__Unit__init_armor, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), blue__Unit__init_armor, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"shield", nullptr, hot::type_key<int>(), offsetof(blue__UnitState_g2, shield), sizeof(int),
-     alignof(int), hot::field_flags<int>(), blue__Unit__init_shield, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), blue__Unit__init_shield, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -722,11 +722,11 @@ static void HotModule__init_brain(void*, void* f) { using T = game__ai__Brain *;
 #endif
 static const hot::FieldInfo HotModule_fields[] = {
     {"game__score", nullptr, hot::type_key<::game::hot_gen::game__score_t>(), offsetof(HotModule, game__score), sizeof(::game::hot_gen::game__score_t),
-     alignof(::game::hot_gen::game__score_t), hot::field_flags<::game::hot_gen::game__score_t>(), HotModule__init_game__score, hot::move_field<::game::hot_gen::game__score_t>, hot::field_destroyer<::game::hot_gen::game__score_t>(), hot::type_key<int>(), HotModule__convert_game__score_hook},
+     alignof(::game::hot_gen::game__score_t), hot::field_flags<::game::hot_gen::game__score_t>(), HotModule__init_game__score, hot::move_field<::game::hot_gen::game__score_t>, hot::field_destroyer<::game::hot_gen::game__score_t>(), hot::type_key<int>(), HotModule__convert_game__score_hook, nullptr, hot::field_copy<::game::hot_gen::game__score_t>()},
     {"game__ai__mood", nullptr, hot::type_key<::game::ai::hot_gen::game__ai__mood_t>(), offsetof(HotModule, game__ai__mood), sizeof(::game::ai::hot_gen::game__ai__mood_t),
-     alignof(::game::ai::hot_gen::game__ai__mood_t), hot::field_flags<::game::ai::hot_gen::game__ai__mood_t>(), HotModule__init_game__ai__mood, hot::move_field<::game::ai::hot_gen::game__ai__mood_t>, hot::field_destroyer<::game::ai::hot_gen::game__ai__mood_t>()},
+     alignof(::game::ai::hot_gen::game__ai__mood_t), hot::field_flags<::game::ai::hot_gen::game__ai__mood_t>(), HotModule__init_game__ai__mood, hot::move_field<::game::ai::hot_gen::game__ai__mood_t>, hot::field_destroyer<::game::ai::hot_gen::game__ai__mood_t>(), nullptr, nullptr, nullptr, hot::field_copy<::game::ai::hot_gen::game__ai__mood_t>()},
     {"brain", nullptr, hot::type_key<game__ai__Brain *>(), offsetof(HotModule, brain), sizeof(game__ai__Brain *),
-     alignof(game__ai__Brain *), hot::field_flags<game__ai__Brain *>(), HotModule__init_brain, hot::move_field<game__ai__Brain *>, hot::field_destroyer<game__ai__Brain *>()},
+     alignof(game__ai__Brain *), hot::field_flags<game__ai__Brain *>(), HotModule__init_brain, hot::move_field<game__ai__Brain *>, hot::field_destroyer<game__ai__Brain *>(), nullptr, nullptr, nullptr, hot::field_copy<game__ai__Brain *>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -1007,9 +1007,9 @@ static void game__Player__init_level(void*, void* f) { using T = int; new (f) T(
 static_assert(offsetof(game__PlayerState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo game__Player_fields[] = {
     {"points", nullptr, hot::type_key<int>(), offsetof(game__PlayerState_g2, points), sizeof(int),
-     alignof(int), hot::field_flags<int>(), game__Player__init_points, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), game__Player__init_points, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"level", nullptr, hot::type_key<int>(), offsetof(game__PlayerState_g2, level), sizeof(int),
-     alignof(int), hot::field_flags<int>(), game__Player__init_level, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), game__Player__init_level, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -1271,11 +1271,11 @@ static void game__ai__Brain__init_thought(void*, void* f) { using T = int; new (
 static_assert(offsetof(game__ai__BrainState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo game__ai__Brain_fields[] = {
     {"points", nullptr, hot::type_key<int>(), offsetof(game__ai__BrainState_g2, points), sizeof(int),
-     alignof(int), hot::field_flags<int>(), game__Player__init_points, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), game__Player__init_points, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"level", nullptr, hot::type_key<int>(), offsetof(game__ai__BrainState_g2, level), sizeof(int),
-     alignof(int), hot::field_flags<int>(), game__Player__init_level, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), game__Player__init_level, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"thought", nullptr, hot::type_key<int>(), offsetof(game__ai__BrainState_g2, thought), sizeof(int),
-     alignof(int), hot::field_flags<int>(), game__ai__Brain__init_thought, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), game__ai__Brain__init_thought, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -1741,11 +1741,11 @@ static void Watcher__init_thought_seen(void*, void* f) { using T = int; new (f) 
 static_assert(offsetof(WatcherState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Watcher_fields[] = {
     {"seen", nullptr, hot::type_key<int>(), offsetof(WatcherState_g2, seen), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Watcher__init_seen, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Watcher__init_seen, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"points_seen", nullptr, hot::type_key<int>(), offsetof(WatcherState_g2, points_seen), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Watcher__init_points_seen, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Watcher__init_points_seen, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"thought_seen", nullptr, hot::type_key<int>(), offsetof(WatcherState_g2, thought_seen), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Watcher__init_thought_seen, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Watcher__init_thought_seen, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop

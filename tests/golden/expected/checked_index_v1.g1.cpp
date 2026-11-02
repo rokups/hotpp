@@ -148,11 +148,11 @@ static void Grid__init_plain(void*, void* f) { using T = hostns2::Plain; new (f)
 static_assert(offsetof(GridState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Grid_fields[] = {
     {"cells", nullptr, typeid(hot::typekey_t<hostns2::Fixed<int32_t, 4>>).name(), offsetof(GridState_g1, cells), sizeof(hostns2::Fixed<int32_t, 4>),
-     alignof(hostns2::Fixed<int32_t, 4>), hot::field_flags<hostns2::Fixed<int32_t, 4>>(), Grid__init_cells, hot::move_field<hostns2::Fixed<int32_t, 4>>, hot::field_destroyer<hostns2::Fixed<int32_t, 4>>()},
+     alignof(hostns2::Fixed<int32_t, 4>), hot::field_flags<hostns2::Fixed<int32_t, 4>>(), Grid__init_cells, hot::move_field<hostns2::Fixed<int32_t, 4>>, hot::field_destroyer<hostns2::Fixed<int32_t, 4>>(), nullptr, nullptr, nullptr, hot::field_copy<hostns2::Fixed<int32_t, 4>>()},
     {"ring", nullptr, typeid(hot::typekey_t<hostns2::Ring<int32_t>>).name(), offsetof(GridState_g1, ring), sizeof(hostns2::Ring<int32_t>),
-     alignof(hostns2::Ring<int32_t>), hot::field_flags<hostns2::Ring<int32_t>>(), Grid__init_ring, hot::move_field<hostns2::Ring<int32_t>>, hot::field_destroyer<hostns2::Ring<int32_t>>()},
+     alignof(hostns2::Ring<int32_t>), hot::field_flags<hostns2::Ring<int32_t>>(), Grid__init_ring, hot::move_field<hostns2::Ring<int32_t>>, hot::field_destroyer<hostns2::Ring<int32_t>>(), nullptr, nullptr, nullptr, hot::field_copy<hostns2::Ring<int32_t>>()},
     {"plain", nullptr, typeid(hot::typekey_t<hostns2::Plain>).name(), offsetof(GridState_g1, plain), sizeof(hostns2::Plain),
-     alignof(hostns2::Plain), hot::field_flags<hostns2::Plain>(), Grid__init_plain, hot::move_field<hostns2::Plain>, hot::field_destroyer<hostns2::Plain>()},
+     alignof(hostns2::Plain), hot::field_flags<hostns2::Plain>(), Grid__init_plain, hot::move_field<hostns2::Plain>, hot::field_destroyer<hostns2::Plain>(), nullptr, nullptr, nullptr, hot::field_copy<hostns2::Plain>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop

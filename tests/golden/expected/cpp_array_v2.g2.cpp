@@ -50,9 +50,9 @@ static void HotModule__init_Buf__s_hits(void*, void* f) { using T = int[3]; new 
 #endif
 static const hot::FieldInfo HotModule_fields[] = {
     {"table", nullptr, hot::type_key<int[4]>(), offsetof(HotModule, table), sizeof(int[4]),
-     alignof(int[4]), hot::field_flags<int[4]>(), HotModule__init_table, hot::move_field<int[4]>, hot::field_destroyer<int[4]>()},
+     alignof(int[4]), hot::field_flags<int[4]>(), HotModule__init_table, hot::move_field<int[4]>, hot::field_destroyer<int[4]>(), nullptr, nullptr, nullptr, hot::field_copy<int[4]>()},
     {"Buf__s_hits", nullptr, hot::type_key<int[3]>(), offsetof(HotModule, Buf__s_hits), sizeof(int[3]),
-     alignof(int[3]), hot::field_flags<int[3]>(), HotModule__init_Buf__s_hits, hot::move_field<int[3]>, hot::field_destroyer<int[3]>()},
+     alignof(int[3]), hot::field_flags<int[3]>(), HotModule__init_Buf__s_hits, hot::move_field<int[3]>, hot::field_destroyer<int[3]>(), nullptr, nullptr, nullptr, hot::field_copy<int[3]>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -212,23 +212,23 @@ static void Buf__init_extra(void*, void* f) { using T = int[8]; new (f) T{1, 2, 
 static_assert(offsetof(BufState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Buf_fields[] = {
     {"data", nullptr, hot::type_key<int[6]>(), offsetof(BufState_g2, data), sizeof(int[6]),
-     alignof(int[6]), hot::field_flags<int[6]>(), Buf__init_data, hot::move_field<int[6]>, hot::field_destroyer<int[6]>()},
+     alignof(int[6]), hot::field_flags<int[6]>(), Buf__init_data, hot::move_field<int[6]>, hot::field_destroyer<int[6]>(), nullptr, nullptr, nullptr, hot::field_copy<int[6]>()},
     {"grid", nullptr, hot::type_key<int[2][3]>(), offsetof(BufState_g2, grid), sizeof(int[2][3]),
-     alignof(int[2][3]), hot::field_flags<int[2][3]>(), Buf__init_grid, hot::move_field<int[2][3]>, hot::field_destroyer<int[2][3]>()},
+     alignof(int[2][3]), hot::field_flags<int[2][3]>(), Buf__init_grid, hot::move_field<int[2][3]>, hot::field_destroyer<int[2][3]>(), nullptr, nullptr, nullptr, hot::field_copy<int[2][3]>()},
     {"names", nullptr, hot::type_key<std::string[2]>(), offsetof(BufState_g2, names), sizeof(std::string[2]),
-     alignof(std::string[2]), hot::field_flags<std::string[2]>(), Buf__init_names, hot::move_field<std::string[2]>, hot::field_destroyer<std::string[2]>()},
+     alignof(std::string[2]), hot::field_flags<std::string[2]>(), Buf__init_names, hot::move_field<std::string[2]>, hot::field_destroyer<std::string[2]>(), nullptr, nullptr, nullptr, hot::field_copy<std::string[2]>()},
     {"total", nullptr, hot::type_key<int>(), offsetof(BufState_g2, total), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Buf__init_total, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Buf__init_total, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"lut", nullptr, hot::type_key<const int[3]>(), offsetof(BufState_g2, lut), sizeof(const int[3]),
-     alignof(const int[3]), hot::field_flags<const int[3]>(), Buf__init_lut, hot::move_field<const int[3]>, hot::field_destroyer<const int[3]>()},
+     alignof(const int[3]), hot::field_flags<const int[3]>(), Buf__init_lut, hot::move_field<const int[3]>, hot::field_destroyer<const int[3]>(), nullptr, nullptr, nullptr, hot::field_copy<const int[3]>()},
     {"tags", nullptr, hot::type_key<const std::string[2]>(), offsetof(BufState_g2, tags), sizeof(const std::string[2]),
-     alignof(const std::string[2]), hot::field_flags<const std::string[2]>(), Buf__init_tags, hot::move_field<const std::string[2]>, hot::field_destroyer<const std::string[2]>()},
+     alignof(const std::string[2]), hot::field_flags<const std::string[2]>(), Buf__init_tags, hot::move_field<const std::string[2]>, hot::field_destroyer<const std::string[2]>(), nullptr, nullptr, nullptr, hot::field_copy<const std::string[2]>()},
     {"handlers", nullptr, hot::type_key<std::function<void ()>[2]>(), offsetof(BufState_g2, handlers), sizeof(std::function<void ()>[2]),
-     alignof(std::function<void ()>[2]), hot::field_flags<std::function<void ()>[2]>(), Buf__init_handlers, hot::move_field<std::function<void ()>[2]>, hot::field_destroyer<std::function<void ()>[2]>()},
+     alignof(std::function<void ()>[2]), hot::field_flags<std::function<void ()>[2]>(), Buf__init_handlers, hot::move_field<std::function<void ()>[2]>, hot::field_destroyer<std::function<void ()>[2]>(), nullptr, nullptr, nullptr, hot::field_copy<std::function<void ()>[2]>()},
     {"rows", nullptr, hot::type_key<std::vector<int>[2]>(), offsetof(BufState_g2, rows), sizeof(std::vector<int>[2]),
-     alignof(std::vector<int>[2]), hot::field_flags<std::vector<int>[2]>(), Buf__init_rows, hot::move_field<std::vector<int>[2]>, hot::field_destroyer<std::vector<int>[2]>()},
+     alignof(std::vector<int>[2]), hot::field_flags<std::vector<int>[2]>(), Buf__init_rows, hot::move_field<std::vector<int>[2]>, hot::field_destroyer<std::vector<int>[2]>(), nullptr, nullptr, nullptr, hot::field_copy<std::vector<int>[2]>()},
     {"extra", nullptr, hot::type_key<int[8]>(), offsetof(BufState_g2, extra), sizeof(int[8]),
-     alignof(int[8]), hot::field_flags<int[8]>(), Buf__init_extra, hot::move_field<int[8]>, hot::field_destroyer<int[8]>()},
+     alignof(int[8]), hot::field_flags<int[8]>(), Buf__init_extra, hot::move_field<int[8]>, hot::field_destroyer<int[8]>(), nullptr, nullptr, nullptr, hot::field_copy<int[8]>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop

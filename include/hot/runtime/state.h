@@ -14,6 +14,7 @@
 #include <map>
 #include <new>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -118,6 +119,55 @@ HOT_NODEBUG inline void init_state(ShellBase* self, ClassRecord* cls)
     }
     catch (...)
     { // an initializer threw: destroy the fields that it made before, in reverse order, and free the block
+        while (i-- > 0)
+        {
+            const FieldInfo& f = l->fields[i];
+            if (f.destroy)
+                f.destroy(mem + f.offset);
+        }
+        hot::aligned_free(mem);
+        throw;
+    }
+    self->state = mem;
+    track_object(self);
+}
+
+// Makes the state block of a new object as a copy of the state of the object "src". The new
+// object has the class of "cls" (the canonical record). A field is copied with FieldInfo::copy, or
+// with a byte copy when the field is trivially copyable. A field with no copy function throws
+// std::runtime_error. A throw from a copy destroys the fields that exist and frees the block.
+// The script constructor does not run.
+HOT_NODEBUG inline void clone_state(ShellBase* self, ClassRecord* cls, const ShellBase* src)
+{
+    if (cls->canonical)
+        cls = cls->canonical;
+    self->cls = cls;
+    ScriptEntry entry; // design 6.3: a commit must not migrate the source during the copy
+    const StateLayout* l = cls->layout;
+    const char* from = static_cast<const char*>(src->state);
+    if (!from)
+        throw std::runtime_error(std::string("class ") + cls->name + ": the source object has no state");
+    char* mem = alloc_state(l);
+    if (!mem)
+        throw std::bad_alloc();
+    set_owner(l, mem, self);
+    uint32_t i = 0;
+    try
+    {
+        for (; i < l->field_count; ++i)
+        {
+            const FieldInfo& f = l->fields[i];
+            if (f.flags & kTriviallyCopyable)
+                std::memcpy(mem + f.offset, from + f.offset, f.size);
+            else if (f.copy)
+                f.copy(mem + f.offset, from + f.offset);
+            else
+                throw std::runtime_error(
+                    std::string("class ") + cls->name + " is not copyable: field '" + f.name + "'");
+        }
+    }
+    catch (...)
+    { // a copy threw: destroy the fields that exist, in reverse order, and free the block
         while (i-- > 0)
         {
             const FieldInfo& f = l->fields[i];
@@ -369,6 +419,16 @@ template <class T> HOT_HIDDEN constexpr void (*field_destroyer())(void*)
         return nullptr;
     else
         return &destroy_field<T>;
+}
+
+// The copy function of a field of type T for FieldInfo::copy: it copy-constructs the field in raw
+// memory. The result is null when a copy of T does not compile.
+template <class T> HOT_HIDDEN constexpr auto field_copy()
+{
+    if constexpr (deep_copyable_v<std::remove_all_extents_t<T>>)
+        return &copy_into<T>;
+    else
+        return static_cast<void (*)(void*, const void*)>(nullptr);
 }
 
 // Reflection helpers.

@@ -48,6 +48,15 @@ struct Worker_Shell final : hot::PlainObject, hot::ShellBase {
 #line 5 "async_basic.hot"
     ~Worker_Shell() override { hot::destroy_state(this); }
 #line 51 "async_basic.hot.cpp"
+#line 5 "async_basic.hot"
+    explicit Worker_Shell(hot::CloneFrom, const hot::ShellBase* src)
+#line 5 "async_basic.hot"
+    {
+#line 5 "async_basic.hot"
+        hot::clone_state(this, &Worker_record, src);
+#line 5 "async_basic.hot"
+    }
+#line 60 "async_basic.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -65,7 +74,7 @@ struct WorkerState_g1 {
 
 #line 6 "async_basic.hot"
 static void Worker__init_total(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 69 "async_basic.hot.cpp"
+#line 78 "async_basic.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -74,7 +83,7 @@ static void Worker__init_total(void*, void* f) { using T = int32_t; new (f) T(0)
 static_assert(offsetof(WorkerState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Worker_fields[] = {
     {"total", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(WorkerState_g1, total), sizeof(int32_t),
-     alignof(int32_t), hot::field_flags<int32_t>(), Worker__init_total, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
+     alignof(int32_t), hot::field_flags<int32_t>(), Worker__init_total, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -113,7 +122,7 @@ HOT_HIDDEN static auto Worker__plan()
     return std::make_pair(Worker__super_args(), std::tuple<>());
 #line 5 "async_basic.hot"
 }
-#line 117 "async_basic.hot.cpp"
+#line 126 "async_basic.hot.cpp"
 using Worker_SuperArgs = decltype(Worker__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -135,12 +144,20 @@ HOT_NODEBUG static hot::ShellBase* Worker__construct(void* mem, const char* key,
 #line 5 "async_basic.hot"
     }
 #line 5 "async_basic.hot"
+    if (key == hot::kCloneKey || std::strcmp(key, hot::kCloneKey) == 0) {
+#line 5 "async_basic.hot"
+        const hot::ShellBase* src = *static_cast<const hot::ShellBase* const*>(args);
+#line 5 "async_basic.hot"
+        return mem ? ::new (mem) Worker_Shell(hot::CloneFrom{}, src) : new Worker_Shell(hot::CloneFrom{}, src);
+#line 5 "async_basic.hot"
+    }
+#line 5 "async_basic.hot"
     return nullptr;
 #line 5 "async_basic.hot"
 }
-#line 142 "async_basic.hot.cpp"
+#line 159 "async_basic.hot.cpp"
 
-static const char* const Worker__construct_keys[] = {typeid(Worker_SuperArgs).name(), nullptr};
+static const char* const Worker__construct_keys[] = {typeid(Worker_SuperArgs).name(), hot::kCloneKey, nullptr};
 
 #line 5 "async_basic.hot"
 HOT_HIDDEN static Worker_Shell* Worker__build([[maybe_unused]] bool __note)
@@ -154,7 +171,7 @@ HOT_HIDDEN static Worker_Shell* Worker__build([[maybe_unused]] bool __note)
     return __self;
 #line 5 "async_basic.hot"
 }
-#line 158 "async_basic.hot.cpp"
+#line 175 "async_basic.hot.cpp"
 #line 5 "async_basic.hot"
 [[maybe_unused]] HOT_HIDDEN static Worker_Shell* Worker__new()
 #line 5 "async_basic.hot"
@@ -163,7 +180,7 @@ HOT_HIDDEN static Worker_Shell* Worker__build([[maybe_unused]] bool __note)
     return Worker__build(true);
 #line 5 "async_basic.hot"
 }
-#line 167 "async_basic.hot.cpp"
+#line 184 "async_basic.hot.cpp"
 #line 5 "async_basic.hot"
 template <int = 0>
 #line 5 "async_basic.hot"
@@ -178,7 +195,7 @@ template <int = 0>
     return __h;
 #line 5 "async_basic.hot"
 }
-#line 182 "async_basic.hot.cpp"
+#line 199 "async_basic.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -192,7 +209,7 @@ static hot::Task<int32_t> Worker__Double__thunk(hot::PlainObject* __a, int32_t x
     return hot::call<hot::Task<int32_t>(hot::PlainObject*, int32_t)>(__self, SLOT_Double, x);
 #line 8 "async_basic.hot"
 }
-#line 196 "async_basic.hot.cpp"
+#line 213 "async_basic.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -206,7 +223,7 @@ static hot::Task<int32_t> Worker__Sum__thunk(hot::PlainObject* __a, int32_t a, i
     return hot::call<hot::Task<int32_t>(hot::PlainObject*, int32_t, int32_t)>(__self, SLOT_Sum, a, b);
 #line 12 "async_basic.hot"
 }
-#line 210 "async_basic.hot.cpp"
+#line 227 "async_basic.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -220,7 +237,7 @@ static hot::Task<void> Worker__Bump__thunk(hot::PlainObject* __a)
     return hot::call<hot::Task<void>(hot::PlainObject*)>(__self, SLOT_Bump);
 #line 19 "async_basic.hot"
 }
-#line 224 "async_basic.hot.cpp"
+#line 241 "async_basic.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -234,7 +251,7 @@ static hot::Task<void> Worker__Early__thunk(hot::PlainObject* __a, bool stop)
     return hot::call<hot::Task<void>(hot::PlainObject*, bool)>(__self, SLOT_Early, stop);
 #line 23 "async_basic.hot"
 }
-#line 238 "async_basic.hot.cpp"
+#line 255 "async_basic.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -248,7 +265,7 @@ static hot::Task<int32_t> Worker__Guarded__thunk(hot::PlainObject* __a, int32_t 
     return hot::call<hot::Task<int32_t>(hot::PlainObject*, int32_t)>(__self, SLOT_Guarded, x);
 #line 30 "async_basic.hot"
 }
-#line 252 "async_basic.hot.cpp"
+#line 269 "async_basic.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -262,7 +279,7 @@ static hot::Task<void> Worker__Chain__thunk(hot::PlainObject* __a)
     return hot::call<hot::Task<void>(hot::PlainObject*)>(__self, SLOT_Chain);
 #line 39 "async_basic.hot"
 }
-#line 266 "async_basic.hot.cpp"
+#line 283 "async_basic.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Worker_slots[SLOT_COUNT] = {
@@ -293,7 +310,7 @@ HOT_NODEBUG static hot::Instance Worker_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 5 "async_basic.hot"
 }
-#line 297 "async_basic.hot.cpp"
+#line 314 "async_basic.hot.cpp"
 
 #line 5 "async_basic.hot"
 HOT_NODEBUG static hot::Instance Worker__make_0([[maybe_unused]] void** __a)
@@ -303,7 +320,7 @@ HOT_NODEBUG static hot::Instance Worker__make_0([[maybe_unused]] void** __a)
     return Worker_create();
 #line 5 "async_basic.hot"
 }
-#line 307 "async_basic.hot.cpp"
+#line 324 "async_basic.hot.cpp"
 
 static const hot::CtorEntry Worker__constructors[] = {
     {hot::ctor_key<>(), &Worker__make_0, hot::ctor_write_mask<>()},
@@ -318,7 +335,7 @@ static const hot::CtorEntry Worker__constructors[] = {
     return state_of(__self)->Double(std::forward<int32_t>(x));
 #line 8 "async_basic.hot"
 }
-#line 322 "async_basic.hot.cpp"
+#line 339 "async_basic.hot.cpp"
 #line 8 "async_basic.hot"
 [[maybe_unused]] static hot::Task<int32_t> Worker__Double_co(hot::detail::TaskOriginData, Worker_Shell* __self, int32_t x)
 #line 8 "async_basic.hot"
@@ -329,7 +346,7 @@ static const hot::CtorEntry Worker__constructors[] = {
     co_return x * 2;
 #line 10 "async_basic.hot"
 }
-#line 333 "async_basic.hot.cpp"
+#line 350 "async_basic.hot.cpp"
 
 #line 8 "async_basic.hot"
 hot::Task<int32_t> WorkerState_g1::Double(int32_t x)
@@ -353,7 +370,7 @@ hot::Task<int32_t> WorkerState_g1::Double(int32_t x)
     return Worker__Double_co(hot::detail::TaskOriginData{GEN, &hot_live, "Worker::Double"}, __self, std::forward<int32_t>(x));
 #line 10 "async_basic.hot"
 }
-#line 357 "async_basic.hot.cpp"
+#line 374 "async_basic.hot.cpp"
 
 #line 12 "async_basic.hot"
 [[maybe_unused]] HOT_HIDDEN static hot::Task<int32_t> Worker__Sum(Worker_Shell* __self, int32_t a, int32_t b)
@@ -363,7 +380,7 @@ hot::Task<int32_t> WorkerState_g1::Double(int32_t x)
     return state_of(__self)->Sum(std::forward<int32_t>(a), std::forward<int32_t>(b));
 #line 12 "async_basic.hot"
 }
-#line 367 "async_basic.hot.cpp"
+#line 384 "async_basic.hot.cpp"
 #line 12 "async_basic.hot"
 [[maybe_unused]] static hot::Task<int32_t> Worker__Sum_co(hot::detail::TaskOriginData, Worker_Shell* __self, int32_t a, int32_t b)
 #line 12 "async_basic.hot"
@@ -380,7 +397,7 @@ hot::Task<int32_t> WorkerState_g1::Double(int32_t x)
     co_return __st->total;
 #line 17 "async_basic.hot"
 }
-#line 384 "async_basic.hot.cpp"
+#line 401 "async_basic.hot.cpp"
 
 #line 12 "async_basic.hot"
 hot::Task<int32_t> WorkerState_g1::Sum(int32_t a, int32_t b)
@@ -404,7 +421,7 @@ hot::Task<int32_t> WorkerState_g1::Sum(int32_t a, int32_t b)
     return Worker__Sum_co(hot::detail::TaskOriginData{GEN, &hot_live, "Worker::Sum"}, __self, std::forward<int32_t>(a), std::forward<int32_t>(b));
 #line 17 "async_basic.hot"
 }
-#line 408 "async_basic.hot.cpp"
+#line 425 "async_basic.hot.cpp"
 
 #line 19 "async_basic.hot"
 [[maybe_unused]] HOT_HIDDEN static hot::Task<void> Worker__Bump(Worker_Shell* __self)
@@ -414,7 +431,7 @@ hot::Task<int32_t> WorkerState_g1::Sum(int32_t a, int32_t b)
     return state_of(__self)->Bump();
 #line 19 "async_basic.hot"
 }
-#line 418 "async_basic.hot.cpp"
+#line 435 "async_basic.hot.cpp"
 #line 19 "async_basic.hot"
 [[maybe_unused]] static hot::Task<void> Worker__Bump_co(hot::detail::TaskOriginData, Worker_Shell* __self)
 #line 19 "async_basic.hot"
@@ -425,7 +442,7 @@ hot::Task<int32_t> WorkerState_g1::Sum(int32_t a, int32_t b)
     __st->total = __st->total + co_await Worker__Double(__self, 1); co_return;
 #line 21 "async_basic.hot"
 }
-#line 429 "async_basic.hot.cpp"
+#line 446 "async_basic.hot.cpp"
 
 #line 19 "async_basic.hot"
 hot::Task<void> WorkerState_g1::Bump()
@@ -449,7 +466,7 @@ hot::Task<void> WorkerState_g1::Bump()
     return Worker__Bump_co(hot::detail::TaskOriginData{GEN, &hot_live, "Worker::Bump"}, __self);
 #line 21 "async_basic.hot"
 }
-#line 453 "async_basic.hot.cpp"
+#line 470 "async_basic.hot.cpp"
 
 #line 23 "async_basic.hot"
 [[maybe_unused]] HOT_HIDDEN static hot::Task<void> Worker__Early(Worker_Shell* __self, bool stop)
@@ -459,7 +476,7 @@ hot::Task<void> WorkerState_g1::Bump()
     return state_of(__self)->Early(std::forward<bool>(stop));
 #line 23 "async_basic.hot"
 }
-#line 463 "async_basic.hot.cpp"
+#line 480 "async_basic.hot.cpp"
 #line 23 "async_basic.hot"
 [[maybe_unused]] static hot::Task<void> Worker__Early_co(hot::detail::TaskOriginData, Worker_Shell* __self, bool stop)
 #line 23 "async_basic.hot"
@@ -476,7 +493,7 @@ hot::Task<void> WorkerState_g1::Bump()
     co_await Worker__Bump(__self); co_return;
 #line 28 "async_basic.hot"
 }
-#line 480 "async_basic.hot.cpp"
+#line 497 "async_basic.hot.cpp"
 
 #line 23 "async_basic.hot"
 hot::Task<void> WorkerState_g1::Early(bool stop)
@@ -500,7 +517,7 @@ hot::Task<void> WorkerState_g1::Early(bool stop)
     return Worker__Early_co(hot::detail::TaskOriginData{GEN, &hot_live, "Worker::Early"}, __self, std::forward<bool>(stop));
 #line 28 "async_basic.hot"
 }
-#line 504 "async_basic.hot.cpp"
+#line 521 "async_basic.hot.cpp"
 
 #line 30 "async_basic.hot"
 [[maybe_unused]] HOT_HIDDEN static hot::Task<int32_t> Worker__Guarded(Worker_Shell* __self, int32_t x)
@@ -510,7 +527,7 @@ hot::Task<void> WorkerState_g1::Early(bool stop)
     return state_of(__self)->Guarded(std::forward<int32_t>(x));
 #line 30 "async_basic.hot"
 }
-#line 514 "async_basic.hot.cpp"
+#line 531 "async_basic.hot.cpp"
 #line 30 "async_basic.hot"
 [[maybe_unused]] static hot::Task<int32_t> Worker__Guarded_co(hot::detail::TaskOriginData, Worker_Shell* __self, int32_t x)
 #line 30 "async_basic.hot"
@@ -531,7 +548,7 @@ hot::Task<void> WorkerState_g1::Early(bool stop)
     }
 #line 37 "async_basic.hot"
 }
-#line 535 "async_basic.hot.cpp"
+#line 552 "async_basic.hot.cpp"
 
 #line 30 "async_basic.hot"
 hot::Task<int32_t> WorkerState_g1::Guarded(int32_t x)
@@ -555,7 +572,7 @@ hot::Task<int32_t> WorkerState_g1::Guarded(int32_t x)
     return Worker__Guarded_co(hot::detail::TaskOriginData{GEN, &hot_live, "Worker::Guarded"}, __self, std::forward<int32_t>(x));
 #line 37 "async_basic.hot"
 }
-#line 559 "async_basic.hot.cpp"
+#line 576 "async_basic.hot.cpp"
 
 #line 39 "async_basic.hot"
 [[maybe_unused]] HOT_HIDDEN static hot::Task<void> Worker__Chain(Worker_Shell* __self)
@@ -565,7 +582,7 @@ hot::Task<int32_t> WorkerState_g1::Guarded(int32_t x)
     return state_of(__self)->Chain();
 #line 39 "async_basic.hot"
 }
-#line 569 "async_basic.hot.cpp"
+#line 586 "async_basic.hot.cpp"
 #line 39 "async_basic.hot"
 [[maybe_unused]] static hot::Task<void> Worker__Chain_co(hot::detail::TaskOriginData, Worker_Shell* __self)
 #line 39 "async_basic.hot"
@@ -580,7 +597,7 @@ hot::Task<int32_t> WorkerState_g1::Guarded(int32_t x)
     std::printf("%d\n", v); co_return;
 #line 43 "async_basic.hot"
 }
-#line 584 "async_basic.hot.cpp"
+#line 601 "async_basic.hot.cpp"
 
 #line 39 "async_basic.hot"
 hot::Task<void> WorkerState_g1::Chain()
@@ -604,7 +621,7 @@ hot::Task<void> WorkerState_g1::Chain()
     return Worker__Chain_co(hot::detail::TaskOriginData{GEN, &hot_live, "Worker::Chain"}, __self);
 #line 43 "async_basic.hot"
 }
-#line 608 "async_basic.hot.cpp"
+#line 625 "async_basic.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

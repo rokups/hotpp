@@ -45,7 +45,7 @@ static void HotModule__init_calls(void*, void* f) { using T = int; new (f) T(0);
 #endif
 static const hot::FieldInfo HotModule_fields[] = {
     {"calls", nullptr, hot::type_key<int>(), offsetof(HotModule, calls), sizeof(int),
-     alignof(int), hot::field_flags<int>(), HotModule__init_calls, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), HotModule__init_calls, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -159,9 +159,9 @@ static void Counter__init_last(void*, void* f) { using T = int; new (f) T(0); }
 static_assert(offsetof(CounterState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Counter_fields[] = {
     {"value", nullptr, hot::type_key<int>(), offsetof(CounterState_g1, value), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Counter__init_value, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Counter__init_value, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"last", nullptr, hot::type_key<int>(), offsetof(CounterState_g1, last), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Counter__init_last, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Counter__init_last, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop

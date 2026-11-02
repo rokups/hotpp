@@ -46,9 +46,9 @@ static void HotModule__init_step(void*, void* f) { using T = int; new (f) T(1); 
 #endif
 static const hot::FieldInfo HotModule_fields[] = {
     {"ticks", nullptr, hot::type_key<int>(), offsetof(HotModule, ticks), sizeof(int),
-     alignof(int), hot::field_flags<int>(), HotModule__init_ticks, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), HotModule__init_ticks, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"step", nullptr, hot::type_key<int>(), offsetof(HotModule, step), sizeof(int),
-     alignof(int), hot::field_flags<int>(), HotModule__init_step, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), HotModule__init_step, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -183,9 +183,9 @@ static void Fighter__init_last(void*, void* f) { using T = int; new (f) T(0); }
 static_assert(offsetof(FighterState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Fighter_fields[] = {
     {"hp", nullptr, hot::type_key<int>(), offsetof(FighterState_g2, hp), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Fighter__init_hp, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Fighter__init_hp, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"last", nullptr, hot::type_key<int>(), offsetof(FighterState_g2, last), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Fighter__init_last, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Fighter__init_last, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -532,7 +532,7 @@ static void Marker__init_n(void*, void* f) { using T = int; new (f) T(0); }
 static_assert(offsetof(MarkerState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Marker_fields[] = {
     {"n", nullptr, hot::type_key<int>(), offsetof(MarkerState_g2, n), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Marker__init_n, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Marker__init_n, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop

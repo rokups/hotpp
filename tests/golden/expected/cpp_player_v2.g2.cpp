@@ -69,7 +69,7 @@ static void HotModule__init_total(void*, void* f) { using T = float; new (f) T(0
 #endif
 static const hot::FieldInfo HotModule_fields[] = {
     {"total", nullptr, hot::type_key<float>(), offsetof(HotModule, total), sizeof(float),
-     alignof(float), hot::field_flags<float>(), HotModule__init_total, hot::move_field<float>, hot::field_destroyer<float>(), hot::type_key<int>(), HotModule__convert_total_hook},
+     alignof(float), hot::field_flags<float>(), HotModule__init_total, hot::move_field<float>, hot::field_destroyer<float>(), hot::type_key<int>(), HotModule__convert_total_hook, nullptr, hot::field_copy<float>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -215,17 +215,17 @@ static void Player__convert_level_hook(void* dst, const void* src)
 static_assert(offsetof(PlayerState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Player_fields[] = {
     {"health", "hp", hot::type_key<float>(), offsetof(PlayerState_g2, health), sizeof(float),
-     alignof(float), hot::field_flags<float>(), Player__init_health, hot::move_field<float>, hot::field_destroyer<float>()},
+     alignof(float), hot::field_flags<float>(), Player__init_health, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
     {"speed", nullptr, hot::type_key<float>(), offsetof(PlayerState_g2, speed), sizeof(float),
-     alignof(float), hot::field_flags<float>(), Player__init_speed, hot::move_field<float>, hot::field_destroyer<float>()},
+     alignof(float), hot::field_flags<float>(), Player__init_speed, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
     {"target", nullptr, hot::type_key<std::string>(), offsetof(PlayerState_g2, target), sizeof(std::string),
-     alignof(std::string), hot::field_flags<std::string>(), Player__init_target, hot::move_field<std::string>, hot::field_destroyer<std::string>()},
+     alignof(std::string), hot::field_flags<std::string>(), Player__init_target, hot::move_field<std::string>, hot::field_destroyer<std::string>(), nullptr, nullptr, nullptr, hot::field_copy<std::string>()},
     {"p", nullptr, hot::type_key<Point>(), offsetof(PlayerState_g2, p), sizeof(Point),
-     alignof(Point), hot::field_flags<Point>(), Player__init_p, hot::move_field<Point>, hot::field_destroyer<Point>()},
+     alignof(Point), hot::field_flags<Point>(), Player__init_p, hot::move_field<Point>, hot::field_destroyer<Point>(), nullptr, nullptr, nullptr, hot::field_copy<Point>()},
     {"mode", nullptr, hot::type_key<Mode>(), offsetof(PlayerState_g2, mode), sizeof(Mode),
-     alignof(Mode), hot::field_flags<Mode>(), Player__init_mode, hot::move_field<Mode>, hot::field_destroyer<Mode>()},
+     alignof(Mode), hot::field_flags<Mode>(), Player__init_mode, hot::move_field<Mode>, hot::field_destroyer<Mode>(), nullptr, nullptr, nullptr, hot::field_copy<Mode>()},
     {"level", nullptr, hot::type_key<float>(), offsetof(PlayerState_g2, level), sizeof(float),
-     alignof(float), hot::field_flags<float>(), Player__init_level, hot::move_field<float>, hot::field_destroyer<float>(), typeid(int).name(), Player__convert_level_hook},
+     alignof(float), hot::field_flags<float>(), Player__init_level, hot::move_field<float>, hot::field_destroyer<float>(), typeid(int).name(), Player__convert_level_hook, nullptr, hot::field_copy<float>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop

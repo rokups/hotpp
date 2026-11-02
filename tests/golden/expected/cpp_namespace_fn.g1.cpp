@@ -40,7 +40,7 @@ static void HotModule__init_total(void*, void* f) { using T = int; new (f) T(0);
 #endif
 static const hot::FieldInfo HotModule_fields[] = {
     {"total", nullptr, hot::type_key<int>(), offsetof(HotModule, total), sizeof(int),
-     alignof(int), hot::field_flags<int>(), HotModule__init_total, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), HotModule__init_total, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -179,7 +179,7 @@ static void Bumper__init_last(void*, void* f) { using T = int; new (f) T(0); }
 static_assert(offsetof(BumperState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Bumper_fields[] = {
     {"last", nullptr, hot::type_key<int>(), offsetof(BumperState_g1, last), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Bumper__init_last, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Bumper__init_last, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop

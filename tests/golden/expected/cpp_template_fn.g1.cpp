@@ -40,7 +40,7 @@ static void HotModule__init_total(void*, void* f) { using T = int; new (f) T(0);
 #endif
 static const hot::FieldInfo HotModule_fields[] = {
     {"total", nullptr, hot::type_key<int>(), offsetof(HotModule, total), sizeof(int),
-     alignof(int), hot::field_flags<int>(), HotModule__init_total, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), HotModule__init_total, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -175,7 +175,7 @@ static void Scaler__init_last(void*, void* f) { using T = int; new (f) T(0); }
 static_assert(offsetof(ScalerState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Scaler_fields[] = {
     {"last", nullptr, hot::type_key<int>(), offsetof(ScalerState_g1, last), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Scaler__init_last, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Scaler__init_last, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop

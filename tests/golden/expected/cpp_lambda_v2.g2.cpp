@@ -42,7 +42,7 @@ static void HotModule__init_calls(void*, void* f) { using T = int; new (f) T(0);
 #endif
 static const hot::FieldInfo HotModule_fields[] = {
     {"calls", nullptr, hot::type_key<int>(), offsetof(HotModule, calls), sizeof(int),
-     alignof(int), hot::field_flags<int>(), HotModule__init_calls, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), HotModule__init_calls, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -217,29 +217,29 @@ static void Lamp__init_from_init(void* st, void* f) { [[maybe_unused]] auto* __s
 static_assert(offsetof(LampState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Lamp_fields[] = {
     {"base_level", nullptr, hot::type_key<int>(), offsetof(LampState_g2, base_level), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Lamp__init_base_level, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Lamp__init_base_level, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"level", nullptr, hot::type_key<int>(), offsetof(LampState_g2, level), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Lamp__init_level, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Lamp__init_level, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"count", nullptr, hot::type_key<int>(), offsetof(LampState_g2, count), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Lamp__init_count, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Lamp__init_count, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"sum", nullptr, hot::type_key<int>(), offsetof(LampState_g2, sum), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Lamp__init_sum, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Lamp__init_sum, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"gen", nullptr, hot::type_key<int>(), offsetof(LampState_g2, gen), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Lamp__init_gen, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Lamp__init_gen, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"nested", nullptr, hot::type_key<int>(), offsetof(LampState_g2, nested), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Lamp__init_nested, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Lamp__init_nested, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"flag", nullptr, hot::type_key<bool>(), offsetof(LampState_g2, flag), sizeof(bool),
-     alignof(bool), hot::field_flags<bool>(), Lamp__init_flag, hot::move_field<bool>, hot::field_destroyer<bool>()},
+     alignof(bool), hot::field_flags<bool>(), Lamp__init_flag, hot::move_field<bool>, hot::field_destroyer<bool>(), nullptr, nullptr, nullptr, hot::field_copy<bool>()},
     {"stored_result", nullptr, hot::type_key<int>(), offsetof(LampState_g2, stored_result), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Lamp__init_stored_result, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Lamp__init_stored_result, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"stored", nullptr, hot::type_key<std::function<int ()>>(), offsetof(LampState_g2, stored), sizeof(std::function<int ()>),
-     alignof(std::function<int ()>), hot::field_flags<std::function<int ()>>(), Lamp__init_stored, hot::move_field<std::function<int ()>>, hot::field_destroyer<std::function<int ()>>()},
+     alignof(std::function<int ()>), hot::field_flags<std::function<int ()>>(), Lamp__init_stored, hot::move_field<std::function<int ()>>, hot::field_destroyer<std::function<int ()>>(), nullptr, nullptr, nullptr, hot::field_copy<std::function<int ()>>()},
     {"kept_ref", nullptr, hot::type_key<std::function<int ()>>(), offsetof(LampState_g2, kept_ref), sizeof(std::function<int ()>),
-     alignof(std::function<int ()>), hot::field_flags<std::function<int ()>>(), Lamp__init_kept_ref, hot::move_field<std::function<int ()>>, hot::field_destroyer<std::function<int ()>>()},
+     alignof(std::function<int ()>), hot::field_flags<std::function<int ()>>(), Lamp__init_kept_ref, hot::move_field<std::function<int ()>>, hot::field_destroyer<std::function<int ()>>(), nullptr, nullptr, nullptr, hot::field_copy<std::function<int ()>>()},
     {"kept_init", nullptr, hot::type_key<std::function<int ()>>(), offsetof(LampState_g2, kept_init), sizeof(std::function<int ()>),
-     alignof(std::function<int ()>), hot::field_flags<std::function<int ()>>(), Lamp__init_kept_init, hot::move_field<std::function<int ()>>, hot::field_destroyer<std::function<int ()>>()},
+     alignof(std::function<int ()>), hot::field_flags<std::function<int ()>>(), Lamp__init_kept_init, hot::move_field<std::function<int ()>>, hot::field_destroyer<std::function<int ()>>(), nullptr, nullptr, nullptr, hot::field_copy<std::function<int ()>>()},
     {"from_init", nullptr, hot::type_key<std::function<int ()>>(), offsetof(LampState_g2, from_init), sizeof(std::function<int ()>),
-     alignof(std::function<int ()>), hot::field_flags<std::function<int ()>>(), Lamp__init_from_init, hot::move_field<std::function<int ()>>, hot::field_destroyer<std::function<int ()>>()},
+     alignof(std::function<int ()>), hot::field_flags<std::function<int ()>>(), Lamp__init_from_init, hot::move_field<std::function<int ()>>, hot::field_destroyer<std::function<int ()>>(), nullptr, nullptr, nullptr, hot::field_copy<std::function<int ()>>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop

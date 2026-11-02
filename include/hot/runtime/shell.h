@@ -315,6 +315,31 @@ HOT_NODEBUG inline std::shared_ptr<Shell> make_shared_shell(const ClassRecord* r
         return std::allocate_shared<Shell>(detail::ShellAllocator<Shell>(rec, key, args));
 }
 
+// Makes a copy of the script object "src" with a std::shared_ptr handle. The copy has the real
+// class of "src", also when "S" is a base class (no slicing). The script constructor does not
+// run. The script destructor runs when the copy dies. The shell comes from "new", because the
+// shell has the size of its real class.
+// "caller" is the record of the generation whose code calls clone_shell. The control block of the
+// handle has code of that generation, so the loader keeps it loaded while the copy lives (see
+// note_creator). Host code passes nothing: then the copy has no creator generation.
+// A class with no clone constructor throws std::runtime_error. This happens for a class with a
+// native base, and for a module built before kCloneKey. A restart makes the new module load.
+// "S" must derive from ShellBase.
+template <class S>
+HOT_NODEBUG inline std::shared_ptr<S> clone_shell(const S& src, const ClassRecord* caller = nullptr)
+{
+    const ShellBase* p = &src;
+    const ClassRecord* canon = src.cls->canonical ? src.cls->canonical : src.cls;
+    ShellBase* s = canon->construct ? canon->construct(nullptr, kCloneKey, &p) : nullptr;
+    if (!s)
+        throw std::runtime_error(std::string("class ") + src.cls->name
+            + " is not copyable: it has no clone constructor; restart the program");
+    std::shared_ptr<S> h(static_cast<S*>(s)); // an exception here deletes the new object
+    if (caller)
+        note_creator(s, caller->generation);
+    return h;
+}
+
 // The "new" of a script class with a std::shared_ptr handle in optimized AOT code. The code has
 // one generation, so the shell is a plain object of "Shell". One block holds the shell and the
 // control block. A class with its own operator new keeps two blocks, so that operator new runs.

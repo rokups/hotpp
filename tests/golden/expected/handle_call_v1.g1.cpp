@@ -358,7 +358,7 @@ static void Caller__init_last(void*, void* f) { using T = std::shared_ptr<Charm>
 static_assert(offsetof(CallerState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Caller_fields[] = {
     {"last", nullptr, typeid(hot::typekey_t<std::shared_ptr<Charm>>).name(), offsetof(CallerState_g1, last), sizeof(std::shared_ptr<Charm>),
-     alignof(std::shared_ptr<Charm>), hot::field_flags<std::shared_ptr<Charm>>(), Caller__init_last, hot::move_field<std::shared_ptr<Charm>>, hot::field_destroyer<std::shared_ptr<Charm>>()},
+     alignof(std::shared_ptr<Charm>), hot::field_flags<std::shared_ptr<Charm>>(), Caller__init_last, hot::move_field<std::shared_ptr<Charm>>, hot::field_destroyer<std::shared_ptr<Charm>>(), nullptr, nullptr, nullptr, hot::field_copy<std::shared_ptr<Charm>>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop

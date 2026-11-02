@@ -236,3 +236,42 @@ TEST(ConstructorTranslation, FieldWithTheNameOfAnOverrideIsAnError)
     expect_error("class S : Unit {\n    int Update = 3;\n    override void Update(float dt) { }\n}\n",
         "the field 'Update' has the name of a method of the class");
 }
+
+// A shell with no native base gets a clone constructor and a clone branch in "construct". The
+// field rows have the copy function. A child builds on the shell of the parent.
+TEST(ConstructorTranslation, ShellWithoutNativeBaseHasACloneConstructor)
+{
+    const hotc::TranslateResult r = translate_script(
+        "class Base {\n"
+        "    int n = 1;\n"
+        "    std.string label = \"b\";\n"
+        "}\n"
+        "class Child : Base {\n"
+        "    int extra = 2;\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "explicit Base_Shell(hot::CloneFrom, const hot::ShellBase* src)")) << r.cpp;
+    EXPECT_TRUE(has(r, "hot::clone_state(this, &Base_record, src);")) << r.cpp;
+    EXPECT_TRUE(has(r, "explicit Child_Shell(hot::CloneFrom, const hot::ShellBase* src) : Base_Shell(hot::ConstructChild{})"))
+        << r.cpp;
+    EXPECT_TRUE(has(r, "hot::clone_state(this, &Child_record, src);")) << r.cpp;
+    EXPECT_TRUE(has(r, "key == hot::kCloneKey")) << r.cpp;
+    EXPECT_TRUE(has(r, "Base_Shell(hot::CloneFrom{}, src)")) << r.cpp;
+    EXPECT_TRUE(has(r, "Child__construct_keys[] = {")) << r.cpp;
+    EXPECT_TRUE(has(r, ", hot::kCloneKey, nullptr};")) << r.cpp;
+    EXPECT_TRUE(has(r, "hot::field_copy<int32_t>()")) << r.cpp;
+    EXPECT_TRUE(has(r, "hot::field_copy<std::string>()")) << r.cpp;
+}
+
+// A shell with a native base has no clone constructor.
+TEST(ConstructorTranslation, ShellWithNativeBaseHasNoCloneConstructor)
+{
+    const hotc::TranslateResult r = translate_script(
+        "class Squad : Unit {\n"
+        "    int size = 5;\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(has(r, "hot::CloneFrom")) << r.cpp;
+    EXPECT_FALSE(has(r, "kCloneKey")) << r.cpp;
+    EXPECT_TRUE(has(r, "hot::field_copy<int32_t>()")) << r.cpp;
+}

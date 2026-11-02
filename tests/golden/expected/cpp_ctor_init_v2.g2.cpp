@@ -176,21 +176,21 @@ static void Unit__init_extra(void*, void* f) { using T = int; new (f) T(); }
 static_assert(offsetof(UnitState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Unit_fields[] = {
     {"hp", nullptr, hot::type_key<int>(), offsetof(UnitState_g2, hp), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Unit__init_hp, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Unit__init_hp, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"tag", nullptr, hot::type_key<int>(), offsetof(UnitState_g2, tag), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Unit__init_tag, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Unit__init_tag, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"name", nullptr, hot::type_key<std::string>(), offsetof(UnitState_g2, name), sizeof(std::string),
-     alignof(std::string), hot::field_flags<std::string>(), Unit__init_name, hot::move_field<std::string>, hot::field_destroyer<std::string>()},
+     alignof(std::string), hot::field_flags<std::string>(), Unit__init_name, hot::move_field<std::string>, hot::field_destroyer<std::string>(), nullptr, nullptr, nullptr, hot::field_copy<std::string>()},
     {"twice", nullptr, hot::type_key<int>(), offsetof(UnitState_g2, twice), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Unit__init_twice, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Unit__init_twice, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"len", nullptr, hot::type_key<int>(), offsetof(UnitState_g2, len), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Unit__init_len, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Unit__init_len, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"stamp", nullptr, hot::type_key<int>(), offsetof(UnitState_g2, stamp), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Unit__init_stamp, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Unit__init_stamp, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"kept", nullptr, hot::type_key<int>(), offsetof(UnitState_g2, kept), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Unit__init_kept, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Unit__init_kept, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"extra", nullptr, hot::type_key<int>(), offsetof(UnitState_g2, extra), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Unit__init_extra, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Unit__init_extra, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -406,9 +406,9 @@ static void HotModule__init_second(void*, void* f) { using T = Unit *; new (f) T
 #endif
 static const hot::FieldInfo HotModule_fields[] = {
     {"first", nullptr, hot::type_key<Unit *>(), offsetof(HotModule, first), sizeof(Unit *),
-     alignof(Unit *), hot::field_flags<Unit *>(), HotModule__init_first, hot::move_field<Unit *>, hot::field_destroyer<Unit *>()},
+     alignof(Unit *), hot::field_flags<Unit *>(), HotModule__init_first, hot::move_field<Unit *>, hot::field_destroyer<Unit *>(), nullptr, nullptr, nullptr, hot::field_copy<Unit *>()},
     {"second", nullptr, hot::type_key<Unit *>(), offsetof(HotModule, second), sizeof(Unit *),
-     alignof(Unit *), hot::field_flags<Unit *>(), HotModule__init_second, hot::move_field<Unit *>, hot::field_destroyer<Unit *>()},
+     alignof(Unit *), hot::field_flags<Unit *>(), HotModule__init_second, hot::move_field<Unit *>, hot::field_destroyer<Unit *>(), nullptr, nullptr, nullptr, hot::field_copy<Unit *>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop

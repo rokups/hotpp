@@ -110,11 +110,11 @@ static void Player__init_target(void*, void* f) { using T = std::string; new (f)
 static_assert(offsetof(PlayerState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Player_fields[] = {
     {"hp", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(PlayerState_g1, hp), sizeof(float),
-     alignof(float), hot::field_flags<float>(), Player__init_hp, hot::move_field<float>, hot::field_destroyer<float>()},
+     alignof(float), hot::field_flags<float>(), Player__init_hp, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
     {"speed", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(PlayerState_g1, speed), sizeof(float),
-     alignof(float), hot::field_flags<float>(), Player__init_speed, hot::move_field<float>, hot::field_destroyer<float>()},
+     alignof(float), hot::field_flags<float>(), Player__init_speed, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
     {"target", nullptr, typeid(hot::typekey_t<std::string>).name(), offsetof(PlayerState_g1, target), sizeof(std::string),
-     alignof(std::string), hot::field_flags<std::string>(), Player__init_target, hot::move_field<std::string>, hot::field_destroyer<std::string>()},
+     alignof(std::string), hot::field_flags<std::string>(), Player__init_target, hot::move_field<std::string>, hot::field_destroyer<std::string>(), nullptr, nullptr, nullptr, hot::field_copy<std::string>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop

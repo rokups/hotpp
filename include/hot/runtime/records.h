@@ -107,6 +107,15 @@ struct Construct
 struct ConstructChild
 {
 };
+// Tag type. It marks the clone constructor of a shell. The constructor builds a shell that has a
+// copy of the state of another object (design 5.3, [value]). It does not run a script constructor.
+struct CloneFrom
+{
+};
+// The key of the clone constructor in ClassRecord::construct and ClassRecord::construct_keys. The
+// "args" of "construct" point to a "const ShellBase*": the object to copy. The text is the same in
+// all modules. The compare uses strcmp.
+inline constexpr const char* kCloneKey = "hot::CloneFrom";
 
 enum FieldFlags : uint8_t
 {
@@ -141,6 +150,9 @@ struct FieldInfo
     // The layout of a [value] script class stored inline in this field (design 5.3), else
     // null. The flag kScriptStruct is set then. The migration recurses into the layout.
     const StateLayout* sub = nullptr;
+    // Copy-constructs the field in raw memory "dst" from the field "src". Null when the type
+    // cannot be copied (hot::field_copy in state.h). The copy of a [value] object uses it.
+    void (*copy)(void* dst, const void* src) = nullptr;
 };
 
 // Size, alignment and fields of the state struct of one generation.

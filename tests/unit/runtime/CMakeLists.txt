@@ -21,6 +21,7 @@ add_executable(unit_runtime_tests
     paths_tests.cpp
     trace_tests.cpp
     new_shared_tests.cpp
+    clone_state_tests.cpp
     command_line_tests.cpp
     task_tests.cpp
     scheduler_tests.cpp)

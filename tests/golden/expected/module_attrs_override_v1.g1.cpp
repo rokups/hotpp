@@ -144,9 +144,9 @@ static void Counter__init_history(void*, void* f) { using T = other_std::vector<
 static_assert(offsetof(CounterState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Counter_fields[] = {
     {"label", nullptr, typeid(hot::typekey_t<other_std::string>).name(), offsetof(CounterState_g1, label), sizeof(other_std::string),
-     alignof(other_std::string), hot::field_flags<other_std::string>(), Counter__init_label, hot::move_field<other_std::string>, hot::field_destroyer<other_std::string>()},
+     alignof(other_std::string), hot::field_flags<other_std::string>(), Counter__init_label, hot::move_field<other_std::string>, hot::field_destroyer<other_std::string>(), nullptr, nullptr, nullptr, hot::field_copy<other_std::string>()},
     {"history", nullptr, typeid(hot::typekey_t<other_std::vector<int32_t>>).name(), offsetof(CounterState_g1, history), sizeof(other_std::vector<int32_t>),
-     alignof(other_std::vector<int32_t>), hot::field_flags<other_std::vector<int32_t>>(), Counter__init_history, hot::move_field<other_std::vector<int32_t>>, hot::field_destroyer<other_std::vector<int32_t>>()},
+     alignof(other_std::vector<int32_t>), hot::field_flags<other_std::vector<int32_t>>(), Counter__init_history, hot::move_field<other_std::vector<int32_t>>, hot::field_destroyer<other_std::vector<int32_t>>(), nullptr, nullptr, nullptr, hot::field_copy<other_std::vector<int32_t>>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop

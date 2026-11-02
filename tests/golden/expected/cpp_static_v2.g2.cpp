@@ -72,13 +72,13 @@ static void HotModule__init_snapshot(void*, void* f) { using T = int; new (f) T(
 #endif
 static const hot::FieldInfo HotModule_fields[] = {
     {"Counter__s_count", nullptr, hot::type_key<float>(), offsetof(HotModule, Counter__s_count), sizeof(float),
-     alignof(float), hot::field_flags<float>(), HotModule__init_Counter__s_count, hot::move_field<float>, hot::field_destroyer<float>(), hot::type_key<int>(), HotModule__convert_Counter__s_count_hook},
+     alignof(float), hot::field_flags<float>(), HotModule__init_Counter__s_count, hot::move_field<float>, hot::field_destroyer<float>(), hot::type_key<int>(), HotModule__convert_Counter__s_count_hook, nullptr, hot::field_copy<float>()},
     {"Counter__s_hits", nullptr, hot::type_key<int>(), offsetof(HotModule, Counter__s_hits), sizeof(int),
-     alignof(int), hot::field_flags<int>(), HotModule__init_Counter__s_hits, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), HotModule__init_Counter__s_hits, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"Counter__s_extra", nullptr, hot::type_key<int>(), offsetof(HotModule, Counter__s_extra), sizeof(int),
-     alignof(int), hot::field_flags<int>(), HotModule__init_Counter__s_extra, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), HotModule__init_Counter__s_extra, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"snapshot", nullptr, hot::type_key<int>(), offsetof(HotModule, snapshot), sizeof(int),
-     alignof(int), hot::field_flags<int>(), HotModule__init_snapshot, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), HotModule__init_snapshot, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -228,9 +228,9 @@ static void Counter__init_via_free(void*, void* f) { using T = int; new (f) T(0)
 static_assert(offsetof(CounterState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Counter_fields[] = {
     {"last", nullptr, hot::type_key<int>(), offsetof(CounterState_g2, last), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Counter__init_last, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Counter__init_last, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"via_free", nullptr, hot::type_key<int>(), offsetof(CounterState_g2, via_free), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Counter__init_via_free, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Counter__init_via_free, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop

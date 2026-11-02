@@ -4368,9 +4368,10 @@ void translate_impl(
                     o.w(", " + (sc.is_cpp ? "hot::type_key<" + hk->second->params[0].type + ">()"
                                           : "typeid(" + hk->second->params[0].type + ").name()")
                         + ", " + P + hk->second->name + "_hook");
-                else if (sub)
+                else
                     o.w(", nullptr, nullptr");
-                o.w((sub ? ", &" + T + "_layout" : std::string()) + "},\n");
+                // The last two members: the layout of a [value] field, and the copy function.
+                o.w(", " + (sub ? "&" + T + "_layout" : std::string("nullptr")) + ", hot::field_copy<" + T + ">()},\n");
             }
             o.w("};\n");
         }
@@ -5451,6 +5452,7 @@ void translate_impl(
         // A shell with script children is not final. The tag hot::ConstructChild builds the base
         // without the state: the shell of the child makes the state of the child (design 4.5).
         const bool parent_shell = has_children.count(cn) > 0;
+        bool has_clone = false; // true: the shell has the clone constructor
         const std::string shell_head = "struct " + shell + (parent_shell ? "" : " final") + " : "
             + (par ? par->name + "_Shell" : BL + (opt.aot_optimized ? ", hot::ShellCore" : ", hot::ShellBase"));
         const size_t shell_head_end = o.s.size() + shell_head.size();
@@ -5488,6 +5490,15 @@ void translate_impl(
                         + "(\x01std::forward<A>(a)...)\n    {\n    }\n",
                     cd.line, cd.pos);
         }
+        // The clone constructor (design 5.3, [value]). It exists for a shell with no native base. It
+        // builds the base without the state, copies the state of the source and does not run a
+        // script constructor. A child shell builds on the parent shell with the tag ConstructChild.
+        has_clone = root.base.empty() && !opt.aot_optimized;
+        if (has_clone)
+            mapped("    explicit " + shell + "(hot::CloneFrom, const hot::ShellBase* src)"
+                    + (par ? " : " + par->name + "_Shell(hot::ConstructChild{})" : std::string()) + "\n    {\n        "
+                    + "hot::clone_state(this, &" + cn + "_record, src);\n    }\n",
+                cd.line, cd.pos);
         // Base calls: a native virtual that the script does not override. The root shell derives from
         // the native base, so it can call a protected implementation. The forwarder of the state
         // struct and the "base_" function of a parent shell call this public member.
@@ -5839,10 +5850,10 @@ void translate_impl(
             auto cv = converts.find(f.name);
             if (cv != converts.end())
                 row += ", typeid(" + cv->second->params[0].type + ").name(), " + P + cv->second->name + "_hook";
-            else if (sub)
+            else
                 row += ", nullptr, nullptr";
-            if (sub)
-                row += ", &" + T + "_layout";
+            // The last two members: the layout of a [value] field, and the copy function.
+            row += ", " + (sub ? "&" + T + "_layout" : std::string("nullptr")) + ", hot::field_copy<" + T + ">()";
             info.rows.push_back(row + "},\n");
         }
         if (info.rows.empty())
@@ -6093,6 +6104,11 @@ void translate_impl(
                         + "*>(args);\n        return \x01std::apply([mem](auto&... x) -> hot::ShellBase* {\n"
                         + "            return mem ? ::new (mem) " + shell + "(hot::Construct{}, x...) : new " + shell
                         + "(hot::Construct{}, x...);\n        }, t);\n    }\n";
+                if (has_clone)
+                    construct_text += "    if (key == hot::kCloneKey || std::strcmp(key, hot::kCloneKey) == 0) {\n"
+                                      "        const hot::ShellBase* src = *static_cast<const hot::ShellBase* const*>(args);\n"
+                                      "        return mem ? ::new (mem) " + shell + "(hot::CloneFrom{}, src) : new " + shell
+                        + "(hot::CloneFrom{}, src);\n    }\n";
                 construct_text += "    return nullptr;\n}\n";
                 mapped(construct_text, cd.line, cd.pos);
                 o.w("\n");
@@ -6101,6 +6117,8 @@ void translate_impl(
                 o.w("static const char* const " + P + "construct_keys[] = {");
                 for (size_t k = 0; k < ctor_ms.size(); ++k)
                     o.w("typeid(" + sa_name(k) + ").name(), ");
+                if (has_clone)
+                    o.w("hot::kCloneKey, ");
                 o.w("nullptr};\n\n");
                 flag_regs.push_back("    " + cn + "_record.construct_keys = " + P + "construct_keys;\n");
             }

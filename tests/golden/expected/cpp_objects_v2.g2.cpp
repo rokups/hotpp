@@ -50,11 +50,11 @@ static void HotModule__init_cast_hits(void*, void* f) { using T = int; new (f) T
 #endif
 static const hot::FieldInfo HotModule_fields[] = {
     {"Minion__s_first_made", nullptr, hot::type_key<Minion *>(), offsetof(HotModule, Minion__s_first_made), sizeof(Minion *),
-     alignof(Minion *), hot::field_flags<Minion *>(), HotModule__init_Minion__s_first_made, hot::move_field<Minion *>, hot::field_destroyer<Minion *>()},
+     alignof(Minion *), hot::field_flags<Minion *>(), HotModule__init_Minion__s_first_made, hot::move_field<Minion *>, hot::field_destroyer<Minion *>(), nullptr, nullptr, nullptr, hot::field_copy<Minion *>()},
     {"minion", nullptr, hot::type_key<Minion *>(), offsetof(HotModule, minion), sizeof(Minion *),
-     alignof(Minion *), hot::field_flags<Minion *>(), HotModule__init_minion, hot::move_field<Minion *>, hot::field_destroyer<Minion *>()},
+     alignof(Minion *), hot::field_flags<Minion *>(), HotModule__init_minion, hot::move_field<Minion *>, hot::field_destroyer<Minion *>(), nullptr, nullptr, nullptr, hot::field_copy<Minion *>()},
     {"cast_hits", nullptr, hot::type_key<int>(), offsetof(HotModule, cast_hits), sizeof(int),
-     alignof(int), hot::field_flags<int>(), HotModule__init_cast_hits, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), HotModule__init_cast_hits, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -199,11 +199,11 @@ static void Minion__init_shield(void*, void* f) { using T = int; new (f) T(5); }
 static_assert(offsetof(MinionState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Minion_fields[] = {
     {"power", nullptr, hot::type_key<int>(), offsetof(MinionState_g2, power), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Minion__init_power, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Minion__init_power, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"hits", nullptr, hot::type_key<int>(), offsetof(MinionState_g2, hits), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Minion__init_hits, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Minion__init_hits, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
     {"shield", nullptr, hot::type_key<int>(), offsetof(MinionState_g2, shield), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Minion__init_shield, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Minion__init_shield, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -693,7 +693,7 @@ static void Spawner__init_last(void*, void* f) { using T = int; new (f) T(0); }
 static_assert(offsetof(SpawnerState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Spawner_fields[] = {
     {"last", nullptr, hot::type_key<int>(), offsetof(SpawnerState_g2, last), sizeof(int),
-     alignof(int), hot::field_flags<int>(), Spawner__init_last, hot::move_field<int>, hot::field_destroyer<int>()},
+     alignof(int), hot::field_flags<int>(), Spawner__init_last, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
