@@ -535,9 +535,9 @@ TEST(CppFrontend, OutOfClassErrors)
         "a defaulted or deleted method is not supported");
     expect_error("class S : public Actor { ~S() = default; };", "a defaulted or deleted method is not supported");
     expect_error("class S : public Actor { void Tick(float dt) override = 0; };",
-        "a pure virtual method is not supported in a .cpp script class");
-    expect_error("class S : public Actor { virtual void F() = 0; };",
-        "a pure virtual method is not supported in a .cpp script class");
+        "a pure virtual method cannot be 'override' in a .cpp script class");
+    expect_error("class S : public Actor { virtual void F() = 0; };\nvoid S::F() {}",
+        "a pure virtual method cannot have a definition in a .cpp script class");
     // A method that is defined twice is an error of the C++ parser.
     expect_error("class S : public Actor { void F(); };\nvoid S::F() {}\nvoid S::F() {}", "redefinition of 'F'");
     // A definition before the class cannot name the class.
@@ -1029,17 +1029,17 @@ TEST(CppFrontend, FirstErrorInSourceOrder)
 {
     const std::string lambda_msg =
         "a lambda cannot capture '*this' in a .cpp script: it would copy the object; capture a copy of the fields";
-    const std::string static_msg = "a pure virtual method is not supported in a .cpp script class";
+    const std::string static_msg = "a defaulted or deleted method is not supported in a .cpp script class";
     const std::string type_msg = "the script class 'S' by value is not supported in a .cpp script; use a pointer or a reference";
     {
         Parsed p("#include \"Actor.h\"\nclass S : public Actor { void F() { auto f = [*this] { return 1; }; f(); } };\n"
-                 "class T : public Actor { virtual void G() = 0; };");
+                 "class T : public Actor { void G() = delete; };");
         EXPECT_NE(p.errors().find(lambda_msg), std::string::npos) << p.errors();
         EXPECT_EQ(p.errors().find(static_msg), std::string::npos) << p.errors();
     }
     {
         Parsed p("#include \"Actor.h\"\n#define MV Move(Vec3())\n"
-                 "class T : public Actor { virtual void G() = 0; void F() { MV; } };");
+                 "class T : public Actor { void G() = delete; void F() { MV; } };");
         EXPECT_NE(p.errors().find(static_msg), std::string::npos) << p.errors();
         EXPECT_EQ(p.errors().find("a macro hides"), std::string::npos) << p.errors();
     }
@@ -1194,8 +1194,6 @@ TEST(CppFrontend, ScriptChildClassErrors)
         "the method 'P' overrides a virtual method; write 'override'");
     expect_error(base + "class K : public B { int Q(B* o) { return o->B::P(); } };",
         "the script class 'B' can qualify only a static member, or a member that a child class uses on itself");
-    expect_error(base + "class K : public B { virtual int Q() = 0; };",
-        "a pure virtual method is not supported in a .cpp script class");
     // Only a class at file scope is a script class.
     expect_error(base + "void g() { struct L : B {}; }",
         "the class 'L' cannot derive from the script class 'B': only a class at file scope can derive from a "
@@ -1578,16 +1576,90 @@ TEST(AnalyzeCpp, ValidScriptHasNoError)
 TEST(AnalyzeCpp, VirtualMethodHasPlace)
 {
     const std::string text =
-        "#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    virtual void F() = 0;\n};\n";
+        "#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    void F() = delete;\n};\n";
     const hotc::AnalyzeResult r = hotc::analyze_cpp(text, "/w/t.cpp", analyze_options());
     EXPECT_FALSE(r.ok);
     ASSERT_EQ(r.errors.size(), 1u) << r.diagnostics;
-    EXPECT_EQ(r.errors[0].message, "a pure virtual method is not supported in a .cpp script class");
+    EXPECT_EQ(r.errors[0].message, "a defaulted or deleted method is not supported in a .cpp script class");
     EXPECT_EQ(r.errors[0].pos.line, 5);
     EXPECT_GT(r.errors[0].pos.col, 0);
     // The offset is the place of the error in the text.
     EXPECT_EQ(r.errors[0].offset,
         text.find('\n', text.find("public:")) + 1 + static_cast<size_t>(r.errors[0].pos.col - 1));
+}
+
+// A pure virtual method ("= 0") is an abstract method. The class that has it is abstract.
+TEST(CppFrontend, PureVirtualMethodIsAbstract)
+{
+    Parsed p("#include \"Actor.h\"\nclass Shape : public Actor\n{\npublic:\n"
+             "    virtual int Area(int k) = 0;\n    int Twice() { return 2; }\n};\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    const ast::Method& m = method_of(p, "Shape", "Area");
+    EXPECT_TRUE(m.is_abstract);
+    EXPECT_TRUE(m.is_virtual);
+    EXPECT_FALSE(m.is_override);
+    EXPECT_TRUE(m.raw_body.empty());
+    EXPECT_TRUE(p.script.classes.at(0).is_abstract);
+    EXPECT_FALSE(method_of(p, "Shape", "Twice").is_abstract);
+}
+
+// A class with no pure method is not abstract.
+TEST(CppFrontend, ClassWithoutPureMethodIsConcrete)
+{
+    Parsed p("#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    virtual int F() { return 1; }\n};\n");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    EXPECT_FALSE(p.script.classes.at(0).is_abstract);
+}
+
+// A child that overrides the pure method is concrete. A child that does not stays abstract.
+TEST(CppFrontend, ChildOfAbstractClass)
+{
+    const std::string base =
+        "#include \"Actor.h\"\nclass Shape : public Actor\n{\npublic:\n    virtual int Area() = 0;\n};\n";
+    {
+        Parsed p(base + "class Sq : public Shape\n{\npublic:\n    int Area() override { return 9; }\n};\n"
+                        "class Sq2 : public Sq\n{\npublic:\n    int Area() override { return 4; }\n};\n");
+        ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+        ASSERT_EQ(p.script.classes.size(), 3u);
+        EXPECT_TRUE(p.script.classes[0].is_abstract);
+        EXPECT_FALSE(p.script.classes[1].is_abstract);
+        EXPECT_FALSE(p.script.classes[2].is_abstract);
+        EXPECT_TRUE(method_of(p, "Sq", "Area").is_override);
+        EXPECT_FALSE(method_of(p, "Sq", "Area").is_abstract);
+    }
+    {
+        Parsed p(base + "class Mid : public Shape\n{\npublic:\n    int Other() { return 1; }\n};\n"
+                        "class Leaf : public Mid\n{\npublic:\n    int Area() override { return 3; }\n};\n");
+        ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+        ASSERT_EQ(p.script.classes.size(), 3u);
+        EXPECT_TRUE(p.script.classes[1].is_abstract); // Mid does not override Area
+        EXPECT_FALSE(p.script.classes[2].is_abstract); // Leaf does
+    }
+}
+
+TEST(CppFrontend, PureVirtualMethodErrors)
+{
+    // The definition outside the class is an error.
+    expect_error("class S : public Actor { virtual int F() = 0; };\nint S::F() { return 1; }",
+        "a pure virtual method cannot have a definition in a .cpp script class");
+    // A pure method is never "declared but never defined".
+    Parsed p("#include \"Actor.h\"\nclass S : public Actor { public: virtual void F() = 0; };\n");
+    EXPECT_TRUE(p.diag.items.empty()) << p.errors();
+}
+
+TEST(CppFrontend, NewOfAbstractClassIsAnError)
+{
+    const std::string base = "class Shape : public Actor { public: virtual int Area() = 0; };\n";
+    expect_error(base + "static void make() { Shape* s = new Shape(); (void)s; }",
+        "cannot create an instance of the abstract class 'Shape'");
+    expect_error(base + "class Mid : public Shape { public: int Other() { return 1; } };\n"
+                        "static void make() { Mid* s = new Mid(); (void)s; }",
+        "cannot create an instance of the abstract class 'Mid'");
+    // A child that overrides the method is concrete.
+    Parsed p("#include \"Actor.h\"\n" + base +
+             "class Sq : public Shape { public: int Area() override { return 1; } };\n"
+             "static void make() { Sq* s = new Sq(); (void)s; }");
+    EXPECT_TRUE(p.diag.items.empty()) << p.errors();
 }
 
 // An error of a later check (not of the parser) is an error too.

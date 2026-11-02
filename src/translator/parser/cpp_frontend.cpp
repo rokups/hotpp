@@ -431,6 +431,8 @@ private:
         bool defined = false;
     };
     std::map<std::string, Declared> declared_; // USR of the declaration -> its record
+    std::set<std::string> pure_usrs_; // USR of each pure virtual method ("= 0")
+    std::map<std::string, std::set<std::string>> open_pure_; // class USR -> pure methods with no override
 
     // A text region that needs edits. The functions that read the declarations record a slice.
     // apply_slices() edits all slices in the order of the records. "store" puts the edited text
@@ -1878,6 +1880,8 @@ void Frontend::declare(
 // arguments come from the declaration. The text of the definition does not stay in the output.
 void Frontend::define_member(CXCursor c)
 {
+    if (pure_usrs_.count(usr(c)))
+        fail(pos_of(c), "a pure virtual method cannot have a definition in a .cpp script class");
     auto it = declared_.find(usr(c));
     if (it == declared_.end())
         fail(pos_of(c),
@@ -2012,7 +2016,14 @@ void Frontend::make_method(CXCursor c, const ClassInfo* cls, const Where<ast::Me
         if (clang_isCursorDefinition(c) || is_defaulted(c))
             fail(m.pos, "a defaulted or deleted method is not supported in a .cpp script class");
         if (clang_CXXMethod_isPureVirtual(c))
-            fail(m.pos, "a pure virtual method is not supported in a .cpp script class");
+        { // "virtual int F(int) = 0;": an abstract method. It has a slot and no definition.
+            if (m.is_override)
+                fail(m.pos, "a pure virtual method cannot be 'override' in a .cpp script class");
+            m.is_abstract = true;
+            m.is_virtual = true;
+            pure_usrs_.insert(usr(c));
+            return;
+        }
         declare(c, cls, index, where, nullptr);
         return;
     }
@@ -2644,6 +2655,26 @@ void Frontend::process_class(CXCursor c)
             fail(pos_of(k), "this declaration is not supported in a .cpp script class");
         }
     }
+    // A class with a pure method that no method overrides is abstract. A child that does not
+    // override an inherited pure method stays abstract.
+    std::set<std::string> open;
+    if (parent)
+        open = open_pure_[parent->usr];
+    for (CXCursor k : children(c))
+    {
+        if (clang_getCursorKind(k) != CXCursor_CXXMethod)
+            continue;
+        CXCursor* over = nullptr;
+        unsigned n = 0;
+        clang_getOverriddenCursors(k, &over, &n);
+        for (unsigned i = 0; i < n; ++i)
+            open.erase(usr(over[i]));
+        clang_disposeOverriddenCursors(over);
+        if (pure_usrs_.count(usr(k)))
+            open.insert(usr(k));
+    }
+    sc_.classes[ci].is_abstract = !open.empty();
+    open_pure_[info.usr] = std::move(open);
 }
 
 // A file-scope declaration of the main file. The text stays as written. With "edit", a slice
@@ -3074,7 +3105,14 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
         {
             CXSourceLocation loc = clang_getDiagnosticLocation(d);
             if (clang_Location_isFromMainFile(loc))
-                diag.add(offset_of(loc), map, cxs(clang_getDiagnosticSpelling(d)));
+            {
+                std::string msg = cxs(clang_getDiagnosticSpelling(d));
+                // The same text as the .hot error for "new" of an abstract class.
+                static const std::string abstract_new = "allocating an object of abstract class type ";
+                if (msg.compare(0, abstract_new.size(), abstract_new) == 0)
+                    msg = "cannot create an instance of the abstract class " + msg.substr(abstract_new.size());
+                diag.add(offset_of(loc), map, msg);
+            }
             else
             { // an error in a header: use the presumed location, as for the imports
                 CXString file;

@@ -1467,20 +1467,20 @@ TEST(HotcTool, EmitCppInjectsTheScriptHeaderForTheAids)
     EXPECT_NE(text.find("script_register"), std::string::npos) << text;
 }
 
-// A pure virtual method is not supported in a ".cpp" script. hotc fails.
+// A deleted method is not supported in a ".cpp" script. hotc fails.
 TEST(HotcTool, CppScriptWithUnsupportedFormFails)
 {
     TestScratch scratch;
     const std::string script = scratch.file("hotc_cpp_virtual.cpp");
     {
         std::ofstream f(script);
-        f << "#include \"Actor.h\"\nclass Foo : public Actor\n{\npublic:\n    virtual void Run() = 0;\n};\n";
+        f << "#include \"Actor.h\"\nclass Foo : public Actor\n{\npublic:\n    void Run() = delete;\n};\n";
     }
     std::string text;
     EXPECT_NE(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
         0);
     EXPECT_NE(text.find("error"), std::string::npos) << text;
-    EXPECT_NE(text.find("virtual"), std::string::npos) << text;
+    EXPECT_NE(text.find("deleted"), std::string::npos) << text;
 }
 
 // A syntax error in a ".cpp" script makes hotc fail with an error at the script line.

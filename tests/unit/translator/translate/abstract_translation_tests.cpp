@@ -268,3 +268,22 @@ TEST(AbstractTranslation, ReAbstractingAnOverrideIsAParseError)
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "'abstract' and 'override' cannot combine")) << r.diagnostics;
 }
+
+// A pure virtual method of a ".cpp" script class traps like a ".hot" abstract method. The class
+// is abstract: it has the flag and no default factory.
+TEST(AbstractTranslation, CppPureVirtualMethodGetsATrapBody)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kAbstractHeader);
+    hotc::TranslateOptions o = temp_options(dir,
+        "#include \"w.h\"\n"
+        "class Shape : public Widget\n{\npublic:\n    virtual int Area() = 0;\n"
+        "    int Twice() { return Area() * 2; }\n};\n"
+        "class Sq : public Shape\n{\npublic:\n    int Area() override { return 9; }\n};\n");
+    o.script_name = "t.cpp";
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "hot::abstract_called(\"Shape\", \"Area\");")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Shape_record.is_abstract = true;")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "Sq_record.is_abstract")) << r.cpp;
+}
