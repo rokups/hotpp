@@ -306,6 +306,13 @@ template <class T, size_t N> struct holds_no_code<const T[N]> : holds_no_code<T>
 {
 };
 
+// True for hot::Value<T>, the box of a [value] field (value.h specializes it). The migration of
+// a state shares the object of a box. It does not copy the object, because the object is a live
+// object that the loader migrates by itself.
+template <class T> struct is_value_box : std::false_type
+{
+};
+
 // Helpers for the reflection table of generated code. T is the field type.
 // True when a copy of T compiles. The test goes through the element types: the copy constructor
 // of std::vector<std::unique_ptr<X>> exists, but its body does not compile. A container has a
@@ -402,6 +409,8 @@ template <class T> HOT_NODEBUG inline void move_field(void* dst, const void* src
     }
     else if constexpr (std::is_array_v<T>)
         copy_into<T>(dst, src);
+    else if constexpr (is_value_box<T>::value)
+        new (dst) T(static_cast<const T*>(src)->handle()); // the same object: no clone
     else if constexpr (deep_copyable_v<T>)
         new (dst) T(*static_cast<const T*>(src));
     else

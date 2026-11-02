@@ -1,0 +1,25 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 1 of the generation-retention test. The first Tick makes a copy of a [value] in
+// the script. The host keeps the copy while generation 2 loads.
+using "Actor.h";
+
+class Pt {
+    int x = 1;
+}
+
+class Holder : Actor {
+    [value] Pt keep;
+    int ticks = 0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        if (this.ticks == 1) {
+            [value] Pt src = new Pt();
+            src.x = 5;
+            this.keep = src;
+        }
+    }
+}

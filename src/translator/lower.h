@@ -69,6 +69,14 @@ struct RCtx
     // another script object are weak when the AST of the field says so.
     std::set<std::string> weak_fields;
     std::set<std::string> weak_locals;
+    // "[value]" uses (design 7.10). "value_fields" has the "[value]" fields of the class and
+    // "value_locals" has the "[value]" parameters and locals. Such a name holds a hot::Value<E>.
+    // A conversion to a "[value]" target copies the object. "new C()" is the exception: the new
+    // object goes into the Value without a copy. A handle that goes to a "[value]" target is copied.
+    std::set<std::string> value_fields;
+    std::set<std::string> value_locals;
+    // True when the function that the pass lowers returns a "[value] T".
+    bool ret_value = false;
     bool allow_this = true;
     // True while the pass lowers the body of an "async" method. A "return" becomes "co_return".
     bool async_body = false;
@@ -164,5 +172,8 @@ std::string rewrite_number(const std::string& n);
 void lower_block(ast::BlockStmt& b, RCtx& cx, Diagnostics& diag);
 // Lowers one expression. The pass can replace the node.
 void lower_expr(ast::ExprP& e, RCtx& cx, Diagnostics& diag);
+// Lowers the initializer of a "[value]" field of the script type "type". A missing initializer
+// runs "new T()". The result is a hot::Value expression.
+void lower_value_init(ast::ExprP& e, const std::string& type, RCtx& cx, Diagnostics& diag);
 
 } // namespace hotc

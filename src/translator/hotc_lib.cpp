@@ -243,6 +243,17 @@ std::string weak_storage_or_fail(
     return w;
 }
 
+// The C++ storage of a "[value] T" field, parameter or return: hot::Value<E>. A type that
+// is not a script class with a shared handle is an error.
+std::string value_storage_or_fail(
+    const hotc::TypeModel& types, const hotc::LineMap& map, uint32_t pos, const std::string& type)
+{
+    std::string v = types.value_storage(type);
+    if (v.empty())
+        fail_at(map, pos, "[value] needs a script class with a shared handle: '" + hotc::script_type_text(type) + "'");
+    return v;
+}
+
 // A "[weak] T x = null" field keeps no initializer: an empty weak_ptr is null.
 void drop_weak_null_init(hotc::ast::Field& f)
 {
@@ -4154,19 +4165,25 @@ void translate_impl(
         }
         for (Field& f : cd.fields)
         {
-            f.type = f.weak ? weak_storage_or_fail(types, map, f.pos, f.type) : types.storage(f.type);
+            f.type = f.weak ? weak_storage_or_fail(types, map, f.pos, f.type)
+                : f.value ? value_storage_or_fail(types, map, f.pos, f.type)
+                          : types.storage(f.type);
             drop_weak_null_init(f);
         }
         for (Method& m : cd.methods)
         {
             for (Param& p : m.params)
-                p.type = p.weak ? weak_storage_or_fail(types, map, m.pos, p.type) : types.param(p.type);
+                p.type = p.weak ? weak_storage_or_fail(types, map, m.pos, p.type)
+                    : p.value ? value_storage_or_fail(types, map, m.pos, p.type)
+                              : types.param(p.type);
             if (!m.ret.empty())
-                m.ret = types.storage(m.ret);
+                m.ret = m.ret_value ? value_storage_or_fail(types, map, m.pos, m.ret) : types.storage(m.ret);
         }
         for (hotc::ast::Ctor& c : cd.ctors)
             for (Param& p : c.params)
-                p.type = p.weak ? weak_storage_or_fail(types, map, c.pos, p.type) : types.param(p.type);
+                p.type = p.weak ? weak_storage_or_fail(types, map, c.pos, p.type)
+                    : p.value ? value_storage_or_fail(types, map, c.pos, p.type)
+                              : types.param(p.type);
         // The convert hooks of the module variables: the same rules as a convert hook of a field.
         const bool is_module = cn == kModuleName;
         std::map<std::string, Method*> hooks; // by variable name
@@ -4220,6 +4237,13 @@ void translate_impl(
             std::string init;
             if (f.raw)
                 init = f.raw_init; // a ".cpp" script: the text is already C++
+            else if (f.value)
+            {
+                hotc::lower_value_init(f.init, f.script_type, fc, g_diag);
+                if (!g_diag.items.empty())
+                    throw TranslateAbort{};
+                init = hotc::ast::print(*f.init);
+            }
             else if (f.has_init && f.init)
             {
                 hotc::lower_expr(f.init, fc, g_diag);
@@ -5150,7 +5174,9 @@ void translate_impl(
         // ---- the C++ storage types. An override keeps the native types.
         for (Field& f : cd.fields)
         {
-            f.type = f.weak ? weak_storage_or_fail(types, map, f.pos, f.type) : types.storage(f.type);
+            f.type = f.weak ? weak_storage_or_fail(types, map, f.pos, f.type)
+                : f.value ? value_storage_or_fail(types, map, f.pos, f.type)
+                          : types.storage(f.type);
             drop_weak_null_init(f);
         }
         for (Method& m : cd.methods)
@@ -5205,6 +5231,11 @@ void translate_impl(
                     p.type = weak_storage_or_fail(types, map, m.pos, p.type);
                     continue;
                 }
+                if (p.value)
+                { // "[value] T": hot::Value<E> by value in the slot and in the body
+                    p.type = value_storage_or_fail(types, map, m.pos, p.type);
+                    continue;
+                }
                 if (hotc::ast::is_ref_type(p.type))
                 { // a "T&" parameter keeps its form
                     p.type = types.param(p.type); // a script class gives "storage(T)&"
@@ -5218,7 +5249,7 @@ void translate_impl(
                     p.body_type = body;
             }
             if (!m.ret.empty())
-                m.ret = types.storage(m.ret);
+                m.ret = m.ret_value ? value_storage_or_fail(types, map, m.pos, m.ret) : types.storage(m.ret);
             // An "async" method returns the task of its value type (design: hot/runtime/task.h).
             if (m.is_async)
                 m.ret = "hot::Task<" + (m.ret.empty() ? std::string("void") : m.ret) + ">";
@@ -5226,7 +5257,9 @@ void translate_impl(
 
         for (hotc::ast::Ctor& c : cd.ctors)
             for (Param& p : c.params)
-                p.type = p.weak ? weak_storage_or_fail(types, map, c.pos, p.type) : types.param(p.type);
+                p.type = p.weak ? weak_storage_or_fail(types, map, c.pos, p.type)
+                    : p.value ? value_storage_or_fail(types, map, c.pos, p.type)
+                              : types.param(p.type);
 
         // ---- slots: native virtuals first, then the script functions
         std::vector<Slot> slots;
@@ -5456,6 +5489,13 @@ void translate_impl(
                 fc.typed_init = !f.type.empty();
                 if (f.raw)
                     field_inits[fi] = f.raw_init; // a ".cpp" script: the text is already C++
+                else if (f.value)
+                {
+                    hotc::lower_value_init(f.init, f.script_type, fc, g_diag);
+                    if (!g_diag.items.empty())
+                        throw TranslateAbort{};
+                    field_inits[fi] = hotc::ast::print(*f.init);
+                }
                 else if (f.has_init && f.init)
                 {
                     hotc::lower_expr(f.init, fc, g_diag);
@@ -5796,6 +5836,13 @@ void translate_impl(
             std::string init;
             if (f.raw)
                 init = f.raw_init; // a ".cpp" script: the text is already C++
+            else if (f.value)
+            {
+                hotc::lower_value_init(f.init, f.script_type, fc, g_diag);
+                if (!g_diag.items.empty())
+                    throw TranslateAbort{};
+                init = hotc::ast::print(*f.init);
+            }
             else if (f.has_init && f.init)
             {
                 hotc::lower_expr(f.init, fc, g_diag);
@@ -6237,6 +6284,7 @@ void translate_impl(
             RCtx cx = base_cx;
             cx.where = what;
             cx.ret_type = m.script_ret;
+            cx.ret_value = m.ret_value;
             cx.new_classes = body_new;
             cx.async_body = m.is_async;
             hotc::add_params(cx, m.params);
@@ -6315,7 +6363,10 @@ void translate_impl(
             const bool is_coroutine = m.is_coroutine;
             const std::string stale_ret = is_coroutine
                 ? "        throw hot::TaskReloadCancelled(\"task cancelled by reload: " + what + "\");\n"
-                : "        return" + (ret == "void" ? std::string() : " " + ret + "()") + ";\n";
+                : m.ret_value
+                    // A hot::Value has no empty state: a stale call of a function that returns it throws.
+                    ? "        hot::detail::throw_null_reference(\"call of a retired generation: " + what + "\");\n"
+                    : "        return" + (ret == "void" ? std::string() : " " + ret + "()") + ";\n";
             bodies.push_back({cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns),
                 [&o, &all_text, &mapped, &reset, &write_stmts, h = body_head(m), em, file, end_line, first_line,
                     is_fn, sym, whead, wbody, bmember, mhead, mhead_from, what, shell, body_locals, tname, stale_ret,
@@ -6703,6 +6754,9 @@ void translate_impl(
         o.w("    reg.set_live_flag(&hot_live);\n");
     if (has_module)
         o.w("    reg.set_module_state(&" + kModuleName + "_layout, &" + kModuleName + "_slot);\n");
+    // A copy of a hot::Value must keep this generation alive (V7). The record names the generation.
+    if (!registers.empty() && o.s.find("hot::Value<") != std::string::npos)
+        o.w("    hot::set_value_caller(&" + registers.front().first + "_record);\n");
     for (const auto& r : registers)
         o.w("    reg.add(&" + r.first + "_record, &" + r.first + "_create);\n");
     for (const auto& t : flag_regs)

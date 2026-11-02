@@ -171,6 +171,11 @@ public:
     // other type (a value, an intrusive handle, a raw type) gives an empty string.
     std::string weak_storage(const std::string& type) const;
 
+    // The C++ storage type of a "[value] T" declaration: "hot::Value<E>". E is the element type of
+    // the handle of T (the shell of the script class). T must be a script class with no native base
+    // and a std::shared_ptr handle. Any other type gives an empty string.
+    std::string value_storage(const std::string& type) const;
+
     // The handle templates of the stubs that have the plain form "Name<$T>" and are not
     // "std::shared_ptr". The result is the qualified "Name" (the std placeholder expanded is not
     // done). The module header specializes hot::is_handle for each one.

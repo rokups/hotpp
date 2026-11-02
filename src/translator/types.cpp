@@ -706,6 +706,21 @@ std::string TypeModel::weak_storage(const std::string& type) const
     return pre + "weak_ptr<" + type + ">";
 }
 
+std::string TypeModel::value_storage(const std::string& type_in) const
+{
+    // A "const" box is the same box: the C++ const is not kept.
+    std::string type = type_in;
+    while (type.rfind("const ", 0) == 0)
+        type.erase(0, 6);
+    auto it = script_.find(type);
+    if (it == script_.end() || it->second.is_value || !script_native_base(type).empty())
+        return {};
+    const std::string h = storage(type);
+    const bool shared = h.rfind("std::shared_ptr<", 0) == 0
+        || (h.rfind("\x01std::shared_ptr<", 0) == 0 && std_ns() == "std");
+    return shared ? "hot::Value<" + type + ">" : std::string();
+}
+
 std::vector<std::string> TypeModel::custom_handle_templates() const
 {
     std::set<std::string> out;

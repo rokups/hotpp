@@ -160,3 +160,87 @@ TEST(ValueUseTranslation, OverrideMustMatchValue)
         "class Kid : Base {\n    override void F([value] Pt p) { }\n}\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
+
+namespace
+{
+
+// True when the C++ text has "needle".
+bool emits(const hotc::TranslateResult& r, const std::string& needle)
+{
+    return r.cpp.find(needle) != std::string::npos;
+}
+
+} // namespace
+
+TEST(ValueUseLowering, FieldsParametersAndReturnsHaveTheBoxType)
+{
+    const hotc::TranslateResult r = translate_value(
+        "class H {\n"
+        "    [value] Pt a;\n"
+        "    [value] Pt b = new Pt();\n"
+        "    int Sum([value] Pt p) { return p.x; }\n"
+        "    [value] Pt Make() { return new Pt(); }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(emits(r, "hot::Value<Pt> a;")) << r.cpp;
+    EXPECT_TRUE(emits(r, "hot::Value<Pt> b;"));
+    EXPECT_TRUE(emits(r, "int32_t Sum(hot::Value<Pt> p)"));
+    EXPECT_TRUE(emits(r, "hot::Value<Pt> Make()"));
+    // A field copy function is in the table. The reload moves the box without a copy.
+    EXPECT_TRUE(emits(r, "hot::field_copy<hot::Value<Pt>>()"));
+}
+
+TEST(ValueUseLowering, NewGoesIntoTheBoxAndAHandleIsCopied)
+{
+    const hotc::TranslateResult r = translate_value(
+        "class H {\n"
+        "    [value] Pt a;\n"
+        "    Pt h = new Pt();\n"
+        "    [value] Pt Dup() { return h; }\n"
+        "    void F() { a = new Pt(); a = h; }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    // The default of a field runs "new Pt()", and "new" is not copied.
+    EXPECT_TRUE(emits(r, "hot::Value<Pt>(std::shared_ptr<Pt>(Pt__new_shared()))")) << r.cpp;
+    // A handle source goes through copy_of (as_value): a null handle throws there.
+    EXPECT_TRUE(emits(r, "hot::as_value<Pt>(h)")) << r.cpp;
+    // A function that returns a box throws in a stale call. A box has no empty state.
+    EXPECT_TRUE(emits(r, "hot::detail::throw_null_reference(\"call of a retired generation"));
+}
+
+TEST(ValueUseLowering, LocalsAreBoxesAndVarCopies)
+{
+    const hotc::TranslateResult r = translate_value(
+        "class H {\n"
+        "    [value] Pt a;\n"
+        "    int F() {\n"
+        "        [value] Pt z;\n"
+        "        [value] Pt l = new Pt();\n"
+        "        var m = a;\n"
+        "        var f = () => m.x + l.x;\n"
+        "        return z.x + f();\n"
+        "    }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(emits(r, "hot::Value<Pt> z = hot::Value<Pt>(")) << r.cpp;
+    EXPECT_TRUE(emits(r, "hot::Value<Pt> l = hot::Value<Pt>("));
+    EXPECT_TRUE(emits(r, "auto m = a;")); // the copy constructor of the box copies the object
+    EXPECT_TRUE(emits(r, "[=]()")); // the lambda captures the boxes by copy
+}
+
+TEST(ValueUseLowering, ModuleSetsTheCallerRecordOnlyWhenItUsesValue)
+{
+    const hotc::TranslateResult with = translate_value("class H {\n    [value] Pt a;\n}\n");
+    ASSERT_TRUE(with.ok) << with.diagnostics;
+    // The copies of the box note the generation of this module (V7).
+    EXPECT_TRUE(emits(with, "hot::set_value_caller(&")) << with.cpp;
+    const hotc::TranslateResult without = translate_value("class H {\n    Pt a;\n}\n");
+    ASSERT_TRUE(without.ok) << without.diagnostics;
+    EXPECT_FALSE(emits(without, "set_value_caller"));
+}
+
+TEST(ValueUseLowering, BoxToHandleIsAnError)
+{
+    expect_error("class H {\n    [value] Pt a;\n    void F() { Pt h = a; }\n}\n",
+        "a [value] cannot convert to a handle: the object is owned by the [value]. Declare the target as a [value] to copy it");
+}

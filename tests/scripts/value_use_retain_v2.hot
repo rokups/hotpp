@@ -1,0 +1,19 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 2 of the generation-retention test. The state has no field that holds code. The
+// field "keep" goes away, so only the host copy holds generation 1.
+using "Actor.h";
+
+class Pt {
+    int x = 1;
+}
+
+class Holder : Actor {
+    int ticks = 0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+    }
+}

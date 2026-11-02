@@ -42,6 +42,8 @@ RCtx make_class_ctx(const ast::ClassDef& cd)
         cx.field_type[f.name] = f.type;
         if (f.weak)
             cx.weak_fields.insert(f.name);
+        if (f.value)
+            cx.value_fields.insert(f.name);
     }
     for (const ast::Method& m : cd.methods)
         if (!m.overrides_virtual)
@@ -77,6 +79,10 @@ void add_params(RCtx& cx, const std::vector<ast::Param>& params)
             cx.weak_locals.insert(p.name);
         else
             cx.weak_locals.erase(p.name);
+        if (p.value)
+            cx.value_locals.insert(p.name);
+        else
+            cx.value_locals.erase(p.name);
         const std::string t = object_type(p.script_type.empty() ? p.type : p.script_type);
         if (t.empty())
             cx.local_type.erase(p.name);
@@ -476,6 +482,7 @@ struct Lowerer
     {
         cx.locals.insert(name);
         cx.weak_locals.erase(name); // a "[weak]" local adds the name again after this call
+        cx.value_locals.erase(name); // a "[value]" local adds the name again after this call
         if (type.empty())
             cx.local_type.erase(name);
         else
@@ -593,6 +600,136 @@ struct Lowerer
         return cx.types->is_handle(t) ? cx.types->weak_storage(t) : p.type;
     }
 
+    // ---- [value] uses (V7)
+    // A field of the class "c" (or of a script parent) that has "[value]".
+    bool value_field_of(const ClassDef& c, const std::string& n) const
+    {
+        const Field* f = find_field(c, n);
+        return f && f->value;
+    }
+
+    // A bare name that names a "[value]" parameter, local or field of the current class.
+    bool value_bare(const std::string& n) const
+    {
+        if (cx.locals.count(n))
+            return cx.value_locals.count(n) != 0;
+        if (!cx.cls || !cx.allow_this || (is_module_var(n) && !is_script_member(n)))
+            return false;
+        return cx.value_fields.count(n) != 0 || value_field_of(*cx.cls, n);
+    }
+
+    // The script function that a call names, when the pass knows it (the rules of type_of).
+    const Method* callee_fn(const CallExpr& c) const
+    {
+        if (!c.callee)
+            return nullptr;
+        if (const std::string* n = simple_name(*c.callee))
+            return cx.locals.count(*n) || !cx.cls ? nullptr : find_fn(*cx.cls, *n);
+        if (auto* m = std::get_if<MemberExpr>(&c.callee->v))
+        {
+            if (!m->obj || std::holds_alternative<BaseExpr>(m->obj->v))
+                return nullptr;
+            const ClassDef* d = class_named(type_of(*m->obj));
+            return d ? find_fn(*d, m->name) : nullptr;
+        }
+        if (auto* nm = std::get_if<NameExpr>(&c.callee->v))
+        {
+            if (nm->parts.size() < 2)
+                return nullptr;
+            const ClassDef* d = class_named(type_of(NameExprView(*nm, nm->parts.size() - 1)));
+            return d ? find_fn(*d, nm->parts.back()) : nullptr;
+        }
+        return nullptr;
+    }
+
+    // True when the expression is a "[value]" storage or reads one: a name, "this.f", "obj.f" of
+    // a "[value]" field or a "[value]" local, or a call of a function that returns "[value] T".
+    // Call it before the lowering of the expression.
+    bool is_value_ref(const Expr& e) const
+    {
+        if (auto* n = std::get_if<NameExpr>(&e.v))
+        {
+            if (n->parts.empty() || !n->template_args.empty())
+                return false;
+            if (n->parts.size() == 1)
+                return value_bare(n->parts[0]);
+            const ClassDef* d = class_named(type_of(NameExprView(*n, n->parts.size() - 1)));
+            return d && value_field_of(*d, n->parts.back());
+        }
+        if (auto* m = std::get_if<MemberExpr>(&e.v))
+        {
+            if (!m->obj)
+                return false;
+            if (std::holds_alternative<ThisExpr>(m->obj->v))
+                return cx.cls && cx.allow_this && value_field_of(*cx.cls, m->name);
+            const ClassDef* d = class_named(type_of(*m->obj));
+            return d && value_field_of(*d, m->name);
+        }
+        if (auto* p = std::get_if<ParenExpr>(&e.v))
+            return p->inner && is_value_ref(*p->inner);
+        if (auto* c = std::get_if<CallExpr>(&e.v))
+        {
+            const Method* fn = callee_fn(*c);
+            return fn && fn->ret_value;
+        }
+        return false;
+    }
+
+    // The element type E of hot::Value<E> for the script type "t". Empty: "t" cannot be a "[value]".
+    std::string value_elem(const std::string& t) const
+    {
+        const std::string head = "hot::Value<";
+        if (t.compare(0, head.size(), head) == 0 && t.back() == '>')
+            return t.substr(head.size(), t.size() - head.size() - 1); // the storage type already
+        if (!cx.types)
+            return {};
+        const std::string v = cx.types->value_storage(t);
+        return v.size() > head.size() ? v.substr(head.size(), v.size() - head.size() - 1) : std::string();
+    }
+
+    // A "[value]" goes to a handle: the code must copy the object into a "[value]" first, or the
+    // handle must be a "[value]" itself. The text is the hint of the error.
+    void value_to_handle_error(uint32_t pos)
+    {
+        error(pos,
+            "a [value] cannot convert to a handle: the object is owned by the [value]. Declare the target as a "
+            "[value] to copy it");
+    }
+
+    // Prepares "e" for a "[value] T" target (call it before the lowering of "e"). "new C()" becomes
+    // "hot::Value<E>(new C())": the new object goes into the box without a copy. A "[value]" stays: the
+    // copy or the move of the box does the work. Any other expression is a handle (or it is not
+    // known): hot::as_value<E>(e) copies the object, and a null handle throws.
+    void value_wrap(ExprP& e, const std::string& type)
+    {
+        if (!e)
+            return;
+        const std::string elem = value_elem(object_type(type));
+        if (elem.empty())
+            return;
+        const uint32_t pos = pos_of(*e);
+        if (std::holds_alternative<NullExpr>(e->v))
+        {
+            error(pos, "a [value] is never null: it always holds an object");
+            return;
+        }
+        coerce(e, elem); // a bare "this" becomes the handle of the object
+        if (is_value_ref(*e))
+            return;
+        const bool fresh = std::holds_alternative<NewExpr>(e->v);
+        e = call_of((fresh ? "hot::Value<" : "hot::as_value<") + elem + ">", args_of(std::move(e)), pos);
+    }
+
+    // The expression "e" goes to the target of the script type "type", which is not a "[value]".
+    void value_not_to_handle(const ExprP& e, const std::string& type)
+    {
+        if (!e || type.empty())
+            return;
+        const ClassDef* d = class_named(object_type(type));
+        if (d && !d->is_value && is_value_ref(*e))
+            value_to_handle_error(pos_of(*e));
+    }
+
     // "hot::lock(e)": the read of a weak handle.
     void lock(ExprP& e)
     {
@@ -639,6 +776,13 @@ struct Lowerer
         {
             const Param& p = params[i - first];
             const std::string& t = p.script_type.empty() ? p.type : p.script_type;
+            if (p.value)
+            { // "[value] T": the argument is copied into the parameter
+                value_wrap(c.args[i], t);
+                continue;
+            }
+            if (!p.weak)
+                value_not_to_handle(c.args[i], t);
             if (p.weak)
             { // "null" for a "[weak] T" parameter: the empty weak_ptr (a weak_ptr has no nullptr form)
                 if (c.args[i] && std::holds_alternative<NullExpr>(c.args[i]->v))
@@ -1363,6 +1507,7 @@ struct Lowerer
         // A "return" in a lambda leaves only the lambda. So it is correct in a finally block.
         const FinallyState outer = fin;
         const std::string outer_ret = std::exchange(cx.ret_type, std::string());
+        const bool outer_ret_value = std::exchange(cx.ret_value, false);
         fin = {};
         const bool outer_lambda = std::exchange(in_lambda, true);
         block(l.body);
@@ -1373,6 +1518,7 @@ struct Lowerer
         l.captures = binding_captures(bindings, text_of(l.body), false, param_names);
         fin = outer;
         cx.ret_type = outer_ret;
+        cx.ret_value = outer_ret_value;
         // The lambda captures by value. "self" is a pointer to the shell. The state pointer
         // is read again inside, so a lambda never keeps the pointer to a block.
         l.body.stmts.insert(
@@ -1662,7 +1808,22 @@ struct Lowerer
         else if (auto* b = std::get_if<BinaryExpr>(&x.v))
         {
             if (b->op == "=" && b->lhs && b->rhs)
-                coerce(b->rhs, type_of(*b->lhs));
+            {
+                if (is_value_ref(*b->lhs))
+                    value_wrap(b->rhs, type_of(*b->lhs)); // the object is copied into the box
+                else
+                {
+                    coerce(b->rhs, type_of(*b->lhs));
+                    value_not_to_handle(b->rhs, type_of(*b->lhs));
+                }
+            }
+            if ((b->op == "==" || b->op == "!=") && b->lhs && b->rhs
+                && (is_value_ref(*b->lhs) || is_value_ref(*b->rhs)))
+            {
+                error(b->pos != 0 ? b->pos : pos_of(*b->lhs),
+                    "'" + b->op + "' is not valid for a [value]: a [value] is never null and it has no identity");
+                return;
+            }
             // "w = e" writes the weak handle "w": the target is not locked. "w = null" resets it.
             if (b->op == "=" && b->lhs)
                 member_chain(b->lhs);
@@ -2071,12 +2232,13 @@ struct Lowerer
     struct ScopeSave
     {
         RCtx& cx;
-        std::set<std::string> locals, weak_locals;
+        std::set<std::string> locals, weak_locals, value_locals;
         std::map<std::string, std::string> local_type;
         explicit ScopeSave(RCtx& c)
             : cx(c)
             , locals(c.locals)
             , weak_locals(c.weak_locals)
+            , value_locals(c.value_locals)
             , local_type(c.local_type)
         {
         }
@@ -2084,6 +2246,7 @@ struct Lowerer
         {
             cx.locals = std::move(locals);
             cx.weak_locals = std::move(weak_locals);
+            cx.value_locals = std::move(value_locals);
             cx.local_type = std::move(local_type);
         }
     };
@@ -2199,6 +2362,37 @@ struct Lowerer
             std::string t = d->type;
             if (t.empty() && d->init)
                 t = type_of(*d->init); // "var x = new C()"
+            // "[value] T x" and "var x = valueExpr" hold a hot::Value. "var x = valueExpr" copies it.
+            bool value_local = false;
+            if (d->value)
+            {
+                if (!d->init)
+                { // "[value] T x;" runs "new T()"
+                    NewExpr n;
+                    n.type = d->type;
+                    n.pos = d->pos;
+                    d->init = make_expr(std::move(n));
+                }
+                value_local = true;
+                if (cx.types && cx.types->value_storage(object_type(d->type)).empty())
+                    error(d->value_pos ? d->value_pos : d->pos,
+                        "[value] needs a script class with a std::shared_ptr handle, and '" + script_type_text(d->type)
+                            + "' has not");
+                else
+                    value_wrap(d->init, d->type);
+            }
+            else if (d->type.empty() && d->init && !d->is_ref && is_value_ref(*d->init))
+            {
+                value_local = true;
+            }
+            else if (d->type.empty() && d->init && d->is_ref && is_value_ref(*d->init))
+            {
+                value_local = true; // "var& r = valueExpr" names the same box
+            }
+            else
+            {
+                value_not_to_handle(d->init, d->type);
+            }
             if (t.empty())
                 t = d->native_type; // a native call or member (S20b)
             // A collection literal needs the declared type: it is the C++ type of the braces.
@@ -2211,6 +2405,15 @@ struct Lowerer
                 if (const std::string w = weak_root(*d->init); !w.empty())
                     weak_ref_error(d->pos, w);
             declare(d->name, t);
+            if (value_local)
+            {
+                cx.value_locals.insert(d->name);
+                if (d->value && cx.types)
+                    if (const std::string v = cx.types->value_storage(object_type(d->type)); !v.empty())
+                        d->type = v;
+                expr(d->init);
+                return;
+            }
             if (d->weak)
             {
                 // "[weak] T x": a weak_ptr of the shared handle of T. "= null" is the empty weak_ptr.
@@ -2294,7 +2497,14 @@ struct Lowerer
             r->co = cx.async_body && !in_lambda;
             if (r->co)
                 ++cx.co_keywords;
-            coerce(r->expr, cx.ret_type);
+            if (cx.ret_value && !in_lambda)
+                value_wrap(r->expr, cx.ret_type);
+            else
+            {
+                coerce(r->expr, cx.ret_type);
+                if (!in_lambda)
+                    value_not_to_handle(r->expr, cx.ret_type);
+            }
             expr(r->expr);
         }
         else if (auto* br = std::get_if<BreakStmt>(&x.v))
@@ -2548,6 +2758,19 @@ void lower_expr(ast::ExprP& e, RCtx& cx, Diagnostics& diag)
     Lowerer lw{cx, diag};
     if (cx.typed_init && e)
         lw.nested_collection(e);
+    lw.expr(e);
+}
+
+void lower_value_init(ast::ExprP& e, const std::string& type, RCtx& cx, Diagnostics& diag)
+{
+    Lowerer lw{cx, diag};
+    if (!e)
+    { // a "[value] T f;" field runs "new T()"
+        ast::NewExpr n;
+        n.type = type;
+        e = make_expr(std::move(n));
+    }
+    lw.value_wrap(e, type);
     lw.expr(e);
 }
 

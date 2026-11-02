@@ -385,4 +385,20 @@ TEST(ValueBox, FailedCopyAssignmentKeepsTheTarget)
     EXPECT_EQ(t.handle().get(), before);
 }
 
+// The generated script_register sets the caller record. Then a copy of a Value has the creator
+// generation of the module. Without the record, the creator is 0 (V7).
+TEST(ValueBox, CopyNotesTheCreatorOfTheCallerRecord)
+{
+    hot::Value<Cell_Shell> a(make_cell());
+    EXPECT_EQ(hot::Value<Cell_Shell>(a)->creator, 0u);
+    hot::ClassRecord caller = cell_record;
+    caller.generation = 5;
+    hot::set_value_caller(&caller);
+    hot::Value<Cell_Shell> b = a;
+    auto c = hot::Value<Cell_Shell>::copy_of(a.handle());
+    hot::set_value_caller(nullptr);
+    EXPECT_EQ(b->creator, 5u);
+    EXPECT_EQ(c->creator, 5u);
+}
+
 } // namespace
