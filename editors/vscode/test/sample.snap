@@ -418,3 +418,13 @@
 44: ";" punctuation.terminator.statement.hot
 44: " }" 
 45: "}" 
+46: "abstract" storage.modifier.hot
+46: "class" storage.type.class.hot
+46: "Shape" entity.name.type.class.hot
+46: " { " 
+46: "abstract" storage.modifier.hot
+46: "float" storage.type.builtin.hot
+46: "Area" entity.name.function.hot
+46: "()" 
+46: ";" punctuation.terminator.statement.hot
+46: " }" 

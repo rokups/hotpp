@@ -33,7 +33,9 @@ The first version gives an error for each form in this list. The text in the sec
 | A definition outside the class that has no declaration in the class | `out-of-line definition of 'hit' does not match any declaration in 'Player'` (this error comes from the C++ parser) |
 | A static method that is declared in the class and defined outside it | `define the static method inside the class` |
 | A body outside the class that names a declaration which the file puts after the class | `the definition of 'Player::hit' uses 'kLate', which the file declares after the class; the body moves into the class, so declare 'kLate' before the class` |
-| A pure virtual method (`= 0`) | `a pure virtual method is not supported in a .cpp script class` |
+| `override` on a pure virtual method, for example `int F() override = 0;` | `a pure virtual method cannot be 'override' in a .cpp script class` |
+| A definition outside the class for a pure virtual method | `a pure virtual method cannot have a definition in a .cpp script class` |
+| `new` of an abstract class, for example `new Shape()` | `cannot create an instance of the abstract class 'Shape'` |
 | A constructor, a destructor or a method that is `= default` or `= delete` | `a defaulted or deleted method is not supported in a .cpp script class` (the word `constructor` replaces `method` for a constructor) |
 | A `const` field or a reference field in the initializer list | `the const field '<name>' cannot be in the initializer list: a field lives in the state; use a default member initializer` (the words `reference field` replace `const field` for a reference) |
 | An array field in the initializer list | `the array field '<name>' cannot be in the initializer list; assign its elements in the body` |

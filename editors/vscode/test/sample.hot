@@ -43,3 +43,4 @@ class Node {
     Node parent;
     void See([weak] Node n) { [weak] Node m = n; }
 }
+abstract class Shape { abstract float Area(); }

@@ -20,6 +20,7 @@ This list shows what version 1 does not support.
 - A collection literal without a declared type: `var x = [1, 2];` is an error.
 - Runtime checks (null and bounds) in `.cpp` scripts. They cover `.hot` scripts only. They also skip a C++ container other than `std::array` and a C array, and they skip a throw in a constructor.
 - A `noexcept` native virtual that a script overrides and whose result has no default value (a reference, for example). An unhandled `ScriptError` there ends the program.
+- A `noexcept` pure virtual native method that no script class implements. The call traps: it reports `abstract method 'C.F' called` and does not end the program.
 - Access checks on native members. Only members of known script types are checked.
 - Brace initializers. Write `T(args)`.
 - `::` and `->`. Write `.`.

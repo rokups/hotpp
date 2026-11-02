@@ -119,6 +119,36 @@ class Grunt : Unit {
 }
 ```
 
+## Abstract classes
+
+`abstract class` marks a class that has abstract methods. The compiler does not allow `new` of an abstract class. The error is `cannot create an instance of the abstract class 'C'`. A host can still create the object with `_create()`. A child class that does not override all abstract methods stays abstract.
+
+```hot
+abstract class Shape {
+    abstract int Area();
+}
+
+class Square : Shape {
+    int side = 3;
+    override int Area() { return side * side; }
+}
+```
+
+A reload can make a live class abstract and back again. A live object keeps its state.
+
+## Abstract methods
+
+An abstract method has no body and the word `abstract`. It is virtual, so a child class implements it with `override`. A call of an abstract method that has no implementation throws `ScriptError` with the text `abstract method 'C.F' called`. The call `base.F()` of an abstract method is an error.
+
+```hot
+abstract class Shape {
+    abstract int Area();
+    int Twice() { return Area() * 2; }   // calls the slot of the child
+}
+```
+
+A `.hot` class must override each pure virtual method of a native base, or it must be `abstract`. A pure virtual method with `noexcept` cannot throw. The call reports the error and does not end the program.
+
 ## Parent in another file
 
 `using "parent.hot";` makes the classes of another script visible. The script joins the generation of the child. A class name in two scripts is an error. A native stub in the main script wins over a stub with the same name in the imported script.

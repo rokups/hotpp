@@ -20,6 +20,7 @@ This page describes what a script class can have in a `.cpp` script.
 - Static data members and static methods (see [Static members](cpp-classes.html#static-members)).
 - Methods, constructors and destructors that the file defines outside the class (see [Definitions outside the class](cpp-classes.html#definitions-outside-the-class)).
 - `override` of native virtual methods, and native interface bases.
+- Pure virtual methods, for example `virtual int Area() = 0;`. The class is abstract (see [Pure virtual methods](cpp-classes.html#pure-virtual-methods)).
 - New `virtual` methods, and `override` of these methods in a child class (see [Script class inheritance](cpp-types.html#script-class-inheritance)).
 - Default arguments on a constructor and on a method. The text of a default gets the same edits as a method body, so it can name a module variable. An `override` has no default argument (hotc gives an error): the call through the base sees the base declaration. The fixture `tests/scripts/cpp_defaults.cpp` shows them.
 
@@ -71,6 +72,24 @@ float Counter::count = 10.0f;
 ```
 
 The fixtures `tests/scripts/cpp_static_v1.cpp` and `tests/scripts/cpp_static_v2.cpp` show the forms. The second one changes the type of `count` from `int` to `float`.
+
+## Pure virtual methods
+
+A method with `= 0` is an abstract method. It has a slot and no body. The class is abstract without a keyword. A child class implements the method with `override`.
+
+```cpp
+class Shape : public Actor
+{
+public:
+    Shape() : Actor("Shape") {}
+    virtual int Area() = 0;
+    int Twice() { return Area() * 2; }
+};
+```
+
+A call of an unimplemented slot throws `ScriptError` with the text `abstract method 'Shape.Area' called`. `new Shape()` is an error of `hotc`. The host can still create the object. A reload can make a class abstract and back. The fixtures `tests/scripts/cpp_abstract_v1.cpp` and `tests/scripts/cpp_abstract_v2.cpp` show them.
+
+**Limit:** `override` on a pure virtual method and a definition outside the class are errors (see [Unsupported forms](cpp-limits.html#unsupported-forms)).
 
 ## Definitions outside the class
 
