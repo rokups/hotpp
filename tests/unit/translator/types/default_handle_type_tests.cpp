@@ -119,25 +119,23 @@ TEST(DefaultHandle, LaterListOverridesAndNeedsNoMessage)
     EXPECT_EQ(f.model.storage("Mesh"), "Tex<Mesh>");
 }
 
-TEST(DefaultHandle, ScriptOverrideOfThePreludeIsAWarning)
+TEST(DefaultHandle, ScriptStarOverridesTheDefaultHandleSilently)
 {
     Fixture f;
     f.add({star()});
     f.model.add_stubs({star("Tex<$T>")}, f.diags, f.map, TypeModel::Source::Script);
     EXPECT_TRUE(f.diags.items.empty());
-    ASSERT_EQ(f.diags.warnings.size(), 1u);
-    EXPECT_NE(f.diags.warnings[0].msg.find("overrides"), std::string::npos);
-    EXPECT_EQ(f.diags.warnings[0].severity, "warning");
+    EXPECT_TRUE(f.diags.warnings.empty());
+    EXPECT_EQ(f.model.default_handle(), "Tex<$T>");
 }
 
-TEST(DefaultHandle, ScriptStubThatOverridesAPreludeStubIsAWarning)
+TEST(DefaultHandle, ScriptStubReplacesTheStorageOfAPreludeStubSilently)
 {
     Fixture f;
     f.add({stub("Weapon", kShared)});
     f.model.add_stubs({stub("Weapon", "", true), stub("Other", kShared)}, f.diags, f.map, TypeModel::Source::Script);
     EXPECT_TRUE(f.diags.items.empty());
-    ASSERT_EQ(f.diags.warnings.size(), 1u);
-    EXPECT_NE(f.diags.warnings[0].msg.find("'Weapon'"), std::string::npos);
+    EXPECT_TRUE(f.diags.warnings.empty());
     EXPECT_EQ(f.model.lookup("Weapon").kind, Kind::Value);
 }
 
@@ -199,12 +197,19 @@ TEST(DefaultHandle, ValueTogetherWithHandleIsAnError)
     EXPECT_NE(f.diags.items[0].msg.find("exclusive"), std::string::npos);
 }
 
-TEST(DefaultHandle, StarWithoutDefaultHandleClearsTheFallback)
+// A later "class *" merges: without "default_handle" it keeps the fallback, and an explicit empty
+// "default_handle" clears it.
+TEST(DefaultHandle, StarWithAnEmptyDefaultHandleClearsTheFallback)
 {
     Fixture f;
     f.add({star()});
     f.add({stub("*")});
     with_classes(f);
+    EXPECT_TRUE(f.diags.items.empty());
+    EXPECT_EQ(f.model.lookup("Mesh").kind, Kind::Handle);
+    ast::Stub clear = stub("*");
+    clear.attrs = {"default_handle"};
+    f.add({clear});
     EXPECT_TRUE(f.diags.items.empty());
     EXPECT_EQ(f.model.lookup("Mesh").kind, Kind::Raw);
 }

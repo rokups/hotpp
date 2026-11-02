@@ -20,7 +20,7 @@ The attribute `std("name")` sets the name of the standard namespace. The default
 - A list in a prelude is the default for each module of the host.
 - A list in a script overrides the default for that script only.
 - One attribute name is valid one time in one file. A repeat is an error. The attribute `lib` is an exception (see "Library namespaces").
-- Two preludes cannot set the same attribute.
+- The preludes are an ordered list. A later prelude overrides the `std` and `array` of an earlier prelude. The attribute `lib` adds up.
 - An imported script uses the namespace of the main script. It can set only that same namespace.
 
 In a script, `std.x` is the name `x` in the configured namespace. A script that writes `std.string` gets `eastl::string`.
@@ -36,7 +36,7 @@ A string in a stub can use `$std::` for the configured namespace:
 [native, default_handle("$std::shared_ptr<$T>")] class *;
 ```
 
-A host gives its preludes to the translator in `hotc::TranslateOptions::preludes`. A run-time host gives them in `hot::DefaultBackendOptions::preludes`, as a list of name and text.
+A host gives its preludes to the translator in `hotc::TranslateOptions::preludes`. A run-time host gives them in `hot::DefaultBackendOptions::preludes`, as a list of name and text. When a prelude file changes, the host calls `Backend::set_preludes` with the new list and loads its scripts again. It must not call it during a load.
 
 Plain `std::` in a stub string stays as you write it. The names of `<type_traits>`, `size_t` and the C functions always use `std::`.
 

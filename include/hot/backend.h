@@ -74,6 +74,15 @@ public:
     // without this call the state still has the signatures of the override, and a later override
     // that has the same signatures emits no key for them (see slots_revert). The default does nothing.
     virtual void revert_slots(const std::string& text) { (void)text; }
+
+    // Replaces the preludes (name and text) for the next loads. A host calls it when a prelude
+    // file changes, and then loads its scripts again. Do not call it during a load. Return false
+    // when the backend has no preludes: the default does nothing.
+    virtual bool set_preludes(std::vector<std::pair<std::string, std::string>> preludes)
+    {
+        (void)preludes;
+        return false;
+    }
 };
 
 // Replaces each line "sig Cls::fn Sig" of "state" with the line of "aot" for the same function.

@@ -471,6 +471,29 @@ private:
         }
         if (e.preludes.empty())
             e.preludes = opt_.preludes;
+        // The user preludes: the files with the suffix in the script dirs, sorted by path, after
+        // the preludes of the host. The search runs for each analysis, so a new file works at once.
+        const std::string suffix = host && !host->prelude_suffix.empty() ? host->prelude_suffix : opt_.prelude_suffix;
+        if (!suffix.empty())
+        {
+            std::vector<std::string> found;
+            for (const std::string& dir : host ? host->script_dirs : roots_)
+            {
+                std::error_code ec;
+                fs::recursive_directory_iterator it(utf8_path(dir), fs::directory_options::skip_permission_denied, ec);
+                for (; !ec && it != fs::recursive_directory_iterator(); it.increment(ec))
+                {
+                    const std::string name = path_utf8(it->path().filename());
+                    if (name.size() > suffix.size() && name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0
+                        && it->is_regular_file(ec))
+                        found.push_back(path_utf8(it->path().lexically_normal()));
+                }
+            }
+            std::sort(found.begin(), found.end());
+            for (const std::string& f : found)
+                if (std::find(e.preludes.begin(), e.preludes.end(), f) == e.preludes.end())
+                    e.preludes.push_back(f);
+        }
         e.include_dirs.insert(e.include_dirs.end(), opt_.include_dirs.begin(), opt_.include_dirs.end());
         e.extra_flags.insert(e.extra_flags.end(), opt_.extra_flags.begin(), opt_.extra_flags.end());
         e.resource_dir = host && !host->resource_dir.empty() ? host->resource_dir : opt_.resource_dir;
@@ -914,6 +937,8 @@ json Server::on_initialize(const json& p)
             opt_.clangd = o.value("clangd", opt_.clangd);
         for (const json& f : o.value("preludes", json::array()))
             opt_.preludes.push_back(f.get<std::string>());
+        if (o.contains("preludeSuffix"))
+            opt_.prelude_suffix = o.value("preludeSuffix", std::string());
         if (o.contains("hostsDir"))
             opt_.hosts_dir = o.value("hostsDir", std::string());
         if (o.contains("compileCommandsDir"))

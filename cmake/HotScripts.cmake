@@ -454,10 +454,13 @@ endfunction()
 # hot_script_host: describe a script host for the language server hot-ls.
 #
 #   hot_script_host(NAME name [TARGET target] [SCRIPT_DIRS dir...] [SCRIPTS file...]
-#                   [INCLUDES dir...] [FLAGS flag...] [PRELUDES file...])
+#                   [INCLUDES dir...] [FLAGS flag...] [PRELUDES file...] [PRELUDE_SUFFIX suffix])
 #
 # PRELUDES names the prelude files that the host gives to the translator at run time. hot-ls
 # gives them to each script of the host, so it knows the stubs and the attributes of the host.
+# PRELUDE_SUFFIX (for example ".prelude.hot") names the user preludes of a host that finds them
+# in its script dirs at run time. hot-ls searches the SCRIPT_DIRS for files with this suffix at
+# each analysis, sorts them by path and gives them after PRELUDES. So a new file works at once.
 # The function writes the JSON file ${HOT_HOSTS_DIR}/<name>.json when CMake generates
 # the build system. It does not build anything. The language server reads the file.
 # The cache variable HOT_HOSTS_DIR defaults to ${CMAKE_SOURCE_DIR}/.cache/hot/hosts.
@@ -525,7 +528,7 @@ function(_hot_host_json_array out)
 endfunction()
 
 function(hot_script_host)
-    cmake_parse_arguments(A "" "NAME;TARGET" "SCRIPT_DIRS;SCRIPTS;INCLUDES;FLAGS;PRELUDES" ${ARGN})
+    cmake_parse_arguments(A "" "NAME;TARGET;PRELUDE_SUFFIX" "SCRIPT_DIRS;SCRIPTS;INCLUDES;FLAGS;PRELUDES" ${ARGN})
     if(NOT A_NAME OR (NOT A_SCRIPT_DIRS AND NOT A_SCRIPTS))
         message(FATAL_ERROR "hot_script_host needs NAME and SCRIPT_DIRS or SCRIPTS")
     endif()
@@ -573,6 +576,7 @@ function(hot_script_host)
     _hot_host_escape(e_bin "${CMAKE_BINARY_DIR}")
     _hot_host_escape(e_src "${CMAKE_CURRENT_SOURCE_DIR}")
     _hot_host_escape(e_cxx "${CMAKE_CXX_COMPILER}")
+    _hot_host_escape(e_suffix "${A_PRELUDE_SUFFIX}")
     set(res "")
     if(DEFINED CLANG_RESOURCE_DIR)
         set(res "${CLANG_RESOURCE_DIR}")
@@ -598,6 +602,7 @@ function(hot_script_host)
     string(APPEND json "  \"scripts\": ${j_scripts},\n")
     string(APPEND json "  \"includeDirs\": ${j_includes},\n")
     string(APPEND json "  \"preludes\": ${j_preludes},\n")
+    string(APPEND json "  \"preludeSuffix\": \"${e_suffix}\",\n")
     string(APPEND json "  \"defines\": [],\n")
     if(use_target)
         string(APPEND json "  \"definesFile\": \"${e_name}.defines\",\n")

@@ -1317,6 +1317,8 @@ TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bo
         s.intrusive_release = a->intrusive_release;
         s.cpp_prelude = a->cpp_prelude;
         s.cpp_overrides = a->cpp_overrides;
+        for (const auto& u : a->used)
+            s.attrs.push_back(u.second);
         if (a->is_value && a->handle_pos)
             st.error(a->handle_pos, "'value' and 'handle' are exclusive");
         if (a->has_alias)

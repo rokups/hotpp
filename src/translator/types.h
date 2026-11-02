@@ -41,12 +41,16 @@ struct TypeRule
 class TypeModel
 {
 public:
-    // Adds the stubs of one list (a prelude or a script).
-    // A later list overrides an earlier entry. A prelude gives no message.
-    // A script that overrides a stub of a prelude gives a warning (design 7.10.3).
-    // The map gives the line and the column for an error at the stub.
-    // These are errors: two stubs of one name in one list, "value" together with "handle",
-    // "default_handle" on a class other than "*", and any other attribute on "class *".
+    // Adds the stubs of one list (a prelude or a script). The lists come in order: the preludes,
+    // then the script. A stub with the key of a stub of an earlier list merges into that rule:
+    // each attribute that the later stub states replaces the earlier value. "value", "handle" and
+    // "intrusive" are one storage choice, and a later one replaces the earlier one. The texts of
+    // "cpp_prelude" stack (the later text comes after the earlier text), and the names of
+    // "cpp_overrides" add up. An empty string clears a text attribute. The flags "native", "self" and
+    // "checked_index" stay set. The map gives the line and the column for an error at the stub.
+    // These are errors: two stubs of one key in one list, "value" together with "handle",
+    // "default_handle" on a class other than "*", any other attribute on "class *", and a merged
+    // rule that breaks one of these rules.
     // A stub "class : Base;" is a rule for the subclasses of Base. It has no "value" and no
     // "default_handle". One "class : Base;" and one "struct *;" are allowed in a file.
     enum class Source
@@ -56,6 +60,12 @@ public:
     };
     void add_stubs(
         const std::vector<ast::Stub>& stubs, Diagnostics& diags, const LineMap& map, Source source = Source::Prelude);
+
+    // The key of a stub: "struct *", ": Base" for "class : Base;", else the name.
+    static std::string stub_key(const ast::Stub& s);
+    // The merged stubs, in the order of the first stub of each key. A merged stub has the position
+    // of the last stub of its key.
+    std::vector<const ast::Stub*> merged_stubs() const;
 
     // The namespace of the standard library names (module attribute std, std_ns.h). The text of a
     // stub with a plain "std::" matches the native text for this name only. The default is "std".
@@ -237,7 +247,8 @@ private:
     std::map<std::string, ScriptClass> script_;
     std::set<std::string> native_globals_;
     bool raw_script_refs_ = false;
-    std::set<std::string> prelude_names_; // the stubs that a prelude gave
+    std::map<std::string, ast::Stub> merged_; // the merged stub of each key
+    std::vector<std::string> merged_order_; // the keys in the order of their first stub
 };
 
 // The message for a "[weak] T" declaration when weak_storage(T) is empty (task 38).

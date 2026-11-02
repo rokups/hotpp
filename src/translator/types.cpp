@@ -47,87 +47,196 @@ std::string replace_all(std::string s, const std::string& from, const std::strin
 
 } // namespace
 
+std::string TypeModel::stub_key(const ast::Stub& s)
+{
+    return s.is_struct ? "struct *" : s.derived ? ": " + s.name : s.name;
+}
+
+std::vector<const ast::Stub*> TypeModel::merged_stubs() const
+{
+    std::vector<const ast::Stub*> out;
+    for (const std::string& key : merged_order_)
+        out.push_back(&merged_.at(key));
+    return out;
+}
+
+namespace
+{
+
+// True when the stub states the attribute. A set field counts too (a stub that a tool makes).
+// The list "attrs" is necessary only for an explicit empty string.
+bool states(const ast::Stub& s, const char* attr)
+{
+    if (std::find(s.attrs.begin(), s.attrs.end(), attr) != s.attrs.end())
+        return true;
+    const std::string a = attr;
+    return (a == "value" && s.is_value) || (a == "handle" && !s.handle.empty())
+        || (a == "intrusive" && (!s.intrusive_add.empty() || !s.intrusive_release.empty()))
+        || (a == "weak_handle" && !s.weak_handle.empty()) || (a == "default_handle" && !s.default_handle.empty())
+        || (a == "cpp_prelude" && !s.cpp_prelude.empty()) || (a == "cpp_overrides" && !s.cpp_overrides.empty());
+}
+
+// The names of a cpp_overrides text. A space or a comma separates two names.
+std::vector<std::string> override_names(const std::string& text)
+{
+    std::vector<std::string> names;
+    std::string cur;
+    for (const char c : text + " ")
+    {
+        if (c == ' ' || c == ',' || c == '\t' || c == '\n')
+        {
+            if (!cur.empty())
+                names.push_back(cur);
+            cur.clear();
+        }
+        else
+            cur += c;
+    }
+    return names;
+}
+
+// Merge a later stub into the merged stub of the same key. Return the text of a conflict, or an
+// empty text.
+std::string merge_stub(ast::Stub& m, const ast::Stub& s)
+{
+    const bool value = states(s, "value"), handle = states(s, "handle"), intrusive = states(s, "intrusive");
+    if (value || handle || intrusive)
+    {
+        // A new storage choice replaces the earlier one. A weak handle belongs to its handle.
+        const bool had_weak = !m.weak_handle.empty();
+        const std::string old_handle = m.handle;
+        m.is_value = value;
+        m.handle = s.handle;
+        m.intrusive_add = s.intrusive_add;
+        m.intrusive_release = s.intrusive_release;
+        if (!handle || s.handle.empty())
+            m.weak_handle.clear();
+        else if (had_weak && s.handle != old_handle && !states(s, "weak_handle"))
+            return "the new 'handle' replaces the handle of the inherited 'weak_handle': state 'weak_handle' again, or "
+                   "clear it with weak_handle(\"\")";
+    }
+    if (states(s, "weak_handle"))
+        m.weak_handle = s.weak_handle;
+    if (states(s, "default_handle"))
+        m.default_handle = s.default_handle;
+    m.is_native = m.is_native || s.is_native;
+    m.is_self = m.is_self || s.is_self;
+    m.checked_index = m.checked_index || s.checked_index;
+    if (states(s, "cpp_prelude"))
+        m.cpp_prelude = s.cpp_prelude.empty() || m.cpp_prelude.empty() ? s.cpp_prelude : m.cpp_prelude + "\n" + s.cpp_prelude;
+    if (states(s, "cpp_overrides"))
+    {
+        if (s.cpp_overrides.empty())
+            m.cpp_overrides.clear();
+        else
+        {
+            const std::vector<std::string> have = override_names(m.cpp_overrides);
+            for (const std::string& n : override_names(s.cpp_overrides))
+                if (std::find(have.begin(), have.end(), n) == have.end())
+                    m.cpp_overrides += (m.cpp_overrides.empty() ? "" : " ") + n;
+        }
+    }
+    for (const std::string& a : s.attrs)
+        if (!states(m, a.c_str()))
+            m.attrs.push_back(a);
+    m.pos = s.pos;
+    m.line = s.line;
+    return {};
+}
+
+// Check the rule of one stub (a merged stub too). Return the error text, or an empty text.
+std::string check_rule(const ast::Stub& s)
+{
+    if (s.is_struct)
+        return {};
+    if (s.derived && s.is_value)
+        return "'value' is not allowed on 'class : Base': it breaks polymorphic types";
+    if (s.name == "*" && !s.derived)
+    {
+        if (s.is_value)
+            return "'value' is not allowed on 'class *': it breaks polymorphic types";
+        if (!s.handle.empty() || !s.intrusive_add.empty() || !s.intrusive_release.empty())
+            return "'class *' accepts only 'native', 'default_handle' and 'weak_handle'";
+        if (!s.weak_handle.empty() && (s.default_handle.empty() || s.weak_handle.find("$T") == std::string::npos))
+            return "'weak_handle' needs a 'default_handle' and a template with '$T'";
+        return {};
+    }
+    if (!s.default_handle.empty())
+        return "'default_handle' is valid only on 'class *'";
+    if (!s.weak_handle.empty() && (s.handle.empty() || s.handle == "$T*" || s.weak_handle.find("$T") == std::string::npos))
+        return "'weak_handle' needs a 'handle' template other than \"$T*\" and a template with '$T'";
+    if (s.is_value && !s.handle.empty())
+        return "'value' and 'handle' are exclusive";
+    const bool intrusive = !s.intrusive_add.empty() || !s.intrusive_release.empty();
+    if (intrusive && s.is_value)
+        return "'value' and 'intrusive' are exclusive";
+    if (intrusive && !s.handle.empty() && s.handle != "$T*")
+        return "'intrusive' needs handle(\"$T*\")";
+    return {};
+}
+
+} // namespace
+
 void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diags, const LineMap& map, Source source)
 {
-    std::set<std::string> seen; // the names in this list
+    (void)source; // a script stub merges like a prelude stub
+    std::set<std::string> seen; // the keys in this list
     std::set<std::string> reported;
-    for (const ast::Stub& s : stubs)
+    for (const ast::Stub& stub : stubs)
     {
         // The key of the stub in this list: "class : B" and "struct *" have own keys.
-        const std::string key = s.is_struct ? "struct *" : s.derived ? ": " + s.name : s.name;
+        const std::string key = stub_key(stub);
         if (!seen.insert(key).second)
         {
             if (reported.insert(key).second)
             {
-                diags.add(s.pos, map,
-                    s.is_struct       ? "only one 'struct *' is allowed in a file"
-                        : s.name == "*" && !s.derived ? "only one 'class *' is allowed in a file"
-                                                      : "duplicate stub for '" + key + "'");
+                diags.add(stub.pos, map,
+                    stub.is_struct       ? "only one 'struct *' is allowed in a file"
+                        : stub.name == "*" && !stub.derived ? "only one 'class *' is allowed in a file"
+                                                            : "duplicate stub for '" + key + "'");
             }
             continue;
         }
+        // A stub of an earlier list with the same key: the later stub refines its rule.
+        const auto earlier = merged_.find(key);
+        const bool merged = earlier != merged_.end();
+        ast::Stub s = merged ? earlier->second : stub;
+        if (merged)
+        {
+            const std::string conflict = merge_stub(s, stub);
+            if (!conflict.empty())
+            {
+                diags.add(stub.pos, map, "the stub for '" + key + "': " + conflict);
+                continue;
+            }
+        }
+        if (std::string error = check_rule(s); !error.empty())
+        {
+            if (merged)
+                error += " (the rule includes the attributes of an earlier stub for '" + key
+                    + "'; an empty string clears an inherited attribute)";
+            diags.add(stub.pos, map, error);
+            continue;
+        }
+        if (!merged)
+            merged_order_.push_back(key);
+        merged_[key] = s;
+
         if (s.is_struct)
         {
             struct_prelude_ = s.cpp_prelude;
             continue;
         }
-        if (s.derived && s.is_value)
-        {
-            diags.add(s.pos, map, "'value' is not allowed on 'class : Base': it breaks polymorphic types");
-            continue;
-        }
         if (s.name == "*" && !s.derived)
         {
-            if (s.is_value)
-                diags.add(s.pos, map, "'value' is not allowed on 'class *': it breaks polymorphic types");
-            else if (!s.handle.empty() || !s.intrusive_add.empty() || !s.intrusive_release.empty())
-                diags.add(s.pos, map, "'class *' accepts only 'native', 'default_handle' and 'weak_handle'");
-            else if (!s.weak_handle.empty() && (s.default_handle.empty() || s.weak_handle.find("$T") == std::string::npos))
-                diags.add(s.pos, map, "'weak_handle' needs a 'default_handle' and a template with '$T'");
-            else
-            {
-                // A later list overrides an earlier "class *". A stub without a handle clears it.
-                if (source == Source::Script && !default_handle_.empty())
-                    diags.warn(s.pos, map, "the 'class *' of the script overrides the 'class *' of a prelude");
-                default_handle_ = s.default_handle;
-                default_weak_ = s.weak_handle;
-                class_prelude_ = s.cpp_prelude;
-                class_overrides_ = s.cpp_overrides;
-            }
-            continue;
-        }
-        if (!s.default_handle.empty())
-        {
-            diags.add(s.pos, map, "'default_handle' is valid only on 'class *'");
-            continue;
-        }
-        if (!s.weak_handle.empty()
-            && (s.handle.empty() || s.handle == "$T*" || s.weak_handle.find("$T") == std::string::npos))
-        {
-            diags.add(s.pos, map, "'weak_handle' needs a 'handle' template other than \"$T*\" and a template with '$T'");
-            continue;
-        }
-        if (s.is_value && !s.handle.empty())
-        {
-            diags.add(s.pos, map, "'value' and 'handle' are exclusive");
+            default_handle_ = s.default_handle;
+            default_weak_ = s.weak_handle;
+            class_prelude_ = s.cpp_prelude;
+            class_overrides_ = s.cpp_overrides;
             continue;
         }
 
         const bool intrusive = !s.intrusive_add.empty() || !s.intrusive_release.empty();
-        if (intrusive)
-        {
-            if (s.is_value)
-            {
-                diags.add(s.pos, map, "'value' and 'intrusive' are exclusive");
-                continue;
-            }
-            if (!s.handle.empty() && s.handle != "$T*")
-            {
-                diags.add(s.pos, map, "'intrusive' needs handle(\"$T*\")");
-                continue;
-            }
-        }
-
         TypeRule rule;
         rule.self = s.is_self;
         rule.native = s.is_native;
@@ -150,12 +259,6 @@ void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diag
         {
             rule.kind = Kind::Value;
         }
-
-        // A script stub that replaces a stub of a prelude gives a warning.
-        if (source == Source::Prelude)
-            prelude_names_.insert(key);
-        else if (prelude_names_.count(key))
-            diags.warn(s.pos, map, "the stub for '" + key + "' overrides the stub of a prelude");
 
         if (s.derived)
         {

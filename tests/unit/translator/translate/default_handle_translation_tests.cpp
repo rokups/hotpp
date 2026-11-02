@@ -90,24 +90,61 @@ TEST(DefaultHandleTranslation, TwoConflictingStubsInOneFileAreAnError)
     EXPECT_TRUE(has(r.diagnostics, "t.hot:3:1: error: duplicate stub for 'Plain'")) << r.diagnostics;
 }
 
-TEST(DefaultHandleTranslation, ScriptStubOverridesPreludeStubWithAWarning)
+// A later stub with the same key merges into the rule. A new storage replaces the old one silently.
+TEST(DefaultHandleTranslation, ScriptStubReplacesTheStorageOfAPreludeStub)
 {
     const hotc::TranslateResult r = check_translate("[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n",
         "    Weapon w;\n", {{"engine.prelude", "[native, value] class Weapon;\n"}});
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(r.diagnostics.empty()) << r.diagnostics;
-    EXPECT_TRUE(has(r.warnings, "t.hot:2:1: warning: the stub for 'Weapon' overrides the stub of a prelude"))
-        << r.warnings;
+    EXPECT_TRUE(r.warnings.empty()) << r.warnings;
     EXPECT_TRUE(has(r.cpp, "    std::shared_ptr<Weapon> w;\n")) << r.cpp;
 }
 
-TEST(DefaultHandleTranslation, ScriptStarOverridesPreludeStarWithAWarning)
+TEST(DefaultHandleTranslation, ScriptStarOverridesTheDefaultHandleOfAPrelude)
 {
     const hotc::TranslateResult r = check_translate(
         "[native, default_handle(\"Arrow<$T>\")] class *;\n", "    Mesh m;\n", {{"engine.prelude", kDefaultShared}});
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.warnings, "warning: the 'class *' of the script overrides")) << r.warnings;
+    EXPECT_TRUE(r.warnings.empty()) << r.warnings;
     EXPECT_TRUE(has(r.cpp, "    Arrow<Mesh> m;\n")) << r.cpp;
+}
+
+// A later "class *" without "default_handle" keeps the default handle of the earlier one.
+TEST(DefaultHandleTranslation, ALaterStarKeepsTheDefaultHandleThatItDoesNotState)
+{
+    const hotc::TranslateResult r = check_translate("", "    Mesh m;\n",
+        {{"lib.prelude", kDefaultShared}, {"user.prelude", "[cpp_overrides(\"Tick\")] class *;\n"}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(r.warnings.empty()) << r.warnings;
+    EXPECT_TRUE(has(r.cpp, "    std::shared_ptr<Mesh> m;\n")) << r.cpp;
+}
+
+// The merged rule must be valid. The error is at the later stub and names the earlier rule.
+TEST(DefaultHandleTranslation, AnInvalidMergedRuleIsAnErrorAtTheLaterStub)
+{
+    const hotc::TranslateResult r = check_translate("", "    Weapon w;\n",
+        {{"lib.prelude", "[native, value] class Weapon;\n"},
+            {"user.prelude", "[native, weak_handle(\"Arrow<$T>\")] class Weapon;\n"}});
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "user.prelude:1:1: error: 'weak_handle' needs a 'handle'")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "an earlier stub for 'Weapon'")) << r.diagnostics;
+}
+
+// A new handle does not keep the weak handle of the old handle silently.
+TEST(DefaultHandleTranslation, ANewHandleNeedsANewWeakHandle)
+{
+    const hotc::TranslateResult r = check_translate("", "    Weapon w;\n",
+        {{"lib.prelude", "[native, handle(\"Arrow<$T>\"), weak_handle(\"Dart<$T>\")] class Weapon;\n"},
+            {"user.prelude", "[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n"}});
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "user.prelude:1:1: error: the stub for 'Weapon': the new 'handle'")) << r.diagnostics;
+    // An empty string clears the inherited weak handle.
+    const hotc::TranslateResult ok = check_translate("", "    Weapon w;\n",
+        {{"lib.prelude", "[native, handle(\"Arrow<$T>\"), weak_handle(\"Dart<$T>\")] class Weapon;\n"},
+            {"user.prelude", "[native, handle(\"std::shared_ptr<$T>\"), weak_handle(\"\")] class Weapon;\n"}});
+    ASSERT_TRUE(ok.ok) << ok.diagnostics;
+    EXPECT_TRUE(has(ok.cpp, "    std::shared_ptr<Weapon> w;\n")) << ok.cpp;
 }
 
 TEST(DefaultHandleTranslation, ALaterPreludeOverridesAnEarlierOneWithoutAWarning)

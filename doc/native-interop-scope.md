@@ -75,6 +75,39 @@ class Cache {
 }
 ```
 
+## Stubs in more than one prelude
+
+The preludes are an ordered list. A library prelude sets the default rules, and a later prelude refines them. The script comes last. Two stubs have the same key when they name the same type in the same form: `class Name;`, `class : Name;`, `class *;`, `struct *;` or the same pattern.
+
+A stub with the key of a stub in an earlier file merges into the earlier rule. It does not replace the full rule. The merge applies these rules:
+
+| Attribute | Merge |
+| --- | --- |
+| `value`, `handle`, `intrusive` | The storage. A later stub that states one of them replaces the full earlier storage. For example, a new `handle` removes an inherited `intrusive`. |
+| `weak_handle` | Replaces the earlier value. It belongs to the handle: a new storage without a handle removes it. A new handle with an inherited weak handle is an error, unless the later stub states `weak_handle` again. |
+| `default_handle` | Replaces the earlier value. |
+| `native`, `self`, `checked_index` | Add up. A later stub cannot remove them. |
+| `cpp_prelude` | Adds up. The later text comes after the earlier text. |
+| `cpp_overrides` | Adds up. The result has the names of all stubs, each name one time. |
+
+An empty string removes an inherited attribute: `weak_handle("")`, `default_handle("")`, `cpp_prelude("")` and `cpp_overrides("")`. A new storage removes the old storage. The flags `native`, `self` and `checked_index` cannot be removed.
+
+The translator checks the merged rule with the same checks as one stub. An error, such as `value` with an inherited `weak_handle`, shows at the later stub. In one file, a second stub with the same key is an error.
+
+A later exact stub still needs `native`, as each exact stub does.
+
+Example: a library prelude and a user prelude.
+
+```hot
+// lib.prelude.hot
+[native, handle("$T*"), intrusive("AddRef", "Release"), cpp_prelude("HOT_OBJECT($N);")] class Object;
+
+// user.prelude.hot
+[native, cpp_prelude("HOT_TRACE($N);"), cpp_overrides("Update")] class Object;
+```
+
+The merged rule of `Object` keeps the intrusive handle. Each shell gets `HOT_OBJECT($N);` and then `HOT_TRACE($N);`.
+
 ## C++ insertions
 
 The attribute `cpp_prelude("text")` puts C++ text at the start of a generated type. It is valid on a stub and on a class definition. A stub can be `class Name;`, `class : Base;`, `class *;` or `struct *;`.

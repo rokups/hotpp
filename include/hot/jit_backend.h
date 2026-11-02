@@ -77,6 +77,12 @@ public:
     void seed_slots(const std::string& text) override;
     // Puts the signature lines of the AOT code back in the slot text (Backend::revert_slots).
     void revert_slots(const std::string& text) override;
+    // Replaces the preludes for the next loads (Backend::set_preludes).
+    bool set_preludes(std::vector<std::pair<std::string, std::string>> preludes) override
+    {
+        opt_.preludes = std::move(preludes);
+        return true;
+    }
 
     JitTimings last_timings() const { return timings_; }
 

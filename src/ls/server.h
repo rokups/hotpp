@@ -35,6 +35,10 @@ struct ServerOptions
     std::string hosts_dir;
     // The prelude files for the scripts that have no host with preludes (initializationOptions "preludes").
     std::vector<std::string> preludes;
+    // The suffix of the user preludes (initializationOptions "preludeSuffix"), for a host without
+    // "preludeSuffix". The server searches the script dirs of the host, or the workspace folders
+    // when no host is near.
+    std::string prelude_suffix;
     std::string clangd_log; // the stderr of clangd. Empty: /dev/null.
 };
 

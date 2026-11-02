@@ -16,6 +16,8 @@
 // cannot be in a side file.
 // "preludes" lists the prelude files that the host gives to the translator before each script.
 // A relative prelude path is relative to "sourceDir". hot-ls reads the files for each analysis.
+// "preludeSuffix" (optional) names the user preludes: the files in "scriptDirs" with this suffix.
+// hot-ls finds them at each analysis and gives them after "preludes", sorted by path.
 // HostSet loads these files. match() finds the best host for a script path.
 #pragma once
 
@@ -33,6 +35,7 @@ struct Host
     std::string name, binary_dir, compiler, std_version, resource_dir;
     std::vector<std::string> script_dirs, scripts, include_dirs, defines, flags;
     std::vector<std::string> preludes; // the absolute paths of the prelude files of the host
+    std::string prelude_suffix; // the suffix of the user preludes in the script dirs, or empty
 
     // The flags, then "-D<define>" for each define. The JSON file has no "-D" prefix.
     std::vector<std::string> cxx_flags() const;

@@ -370,4 +370,19 @@ TEST_F(HostsTest, PreludesAreRelativeToSourceDir)
         std::filesystem::path("/src/p/game.prelude.hot").lexically_normal().string(),
         std::filesystem::path("/abs/x.prelude.hot").lexically_normal().string()};
     EXPECT_EQ(h->preludes, expected);
+    EXPECT_TRUE(h->prelude_suffix.empty());
+}
+
+// "preludeSuffix" in a host file selects the user preludes in the script dirs.
+TEST_F(HostsTest, PreludeSuffixIsRead)
+{
+    const std::string build = make_build("a");
+    std::ofstream(hosts_dir / "a.json") << R"({"version":1,"name":"a","binaryDir":")" << build
+                                        << R"(","sourceDir":"/src","scriptDirs":["a"],)"
+                                        << R"("preludeSuffix":".prelude.hot"})";
+    HostSet set;
+    set.load(hosts_dir.string());
+    const auto h = set.match("/src/a/x.hot");
+    ASSERT_TRUE(h);
+    EXPECT_EQ(h->prelude_suffix, ".prelude.hot");
 }

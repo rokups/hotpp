@@ -2734,9 +2734,10 @@ void translate_impl(
         opt.output = opt.input + ".cpp";
     g_script = opt.input;
 
-    // ---- the preludes. They load first. A module attribute list ("[std("eastl")];") in a prelude
-    // sets the default of the host. A list in the script overrides the default for the script.
-    // An attribute name is valid once in one file, and once in all the preludes.
+    // ---- the preludes. They load first, in order. A module attribute list ("[std("eastl")];") in a
+    // prelude sets the default of the host, and a later prelude overrides an earlier one. A list in
+    // the script overrides the default for the script. An attribute name is valid once in one file.
+    // The attribute "lib" adds up.
     struct PreludeData
     {
         std::string name;
@@ -2762,9 +2763,9 @@ void translate_impl(
         ~StdNsGuard() { hotc::current_std_ns() = old; }
     } std_ns_guard;
     hotc::current_std_ns() = std_ns;
-    std::set<std::string> module_attrs_seen;
     for (const auto& [pname, ptext] : in.preludes)
     {
+        std::set<std::string> module_attrs_seen; // the names in this prelude
         const hotc::LineMap pmap(ptext);
         hotc::Diagnostics pd;
         Script ps;
@@ -2788,7 +2789,7 @@ void translate_impl(
                 break;
             for (const auto& [aname, apos] : m.used)
                 if (!module_attrs_seen.insert(aname).second)
-                    pd.add(apos, pmap, "attribute '" + aname + "' is given twice in the preludes");
+                    pd.add(apos, pmap, "attribute '" + aname + "' is given twice in one file");
             if (m.has_std)
                 std_ns = m.std_ns;
             if (m.has_array)
@@ -3032,6 +3033,8 @@ void translate_impl(
         std::string file; // empty: the script
     };
     std::vector<StubSrc> all_stubs;
+    // The file of the last stub of each key. A later stub with the same key merges into the rule.
+    std::map<std::string, std::pair<const hotc::LineMap*, std::string>> stub_origin;
     for (PreludeData& pre : prelude_data)
     {
         hotc::Diagnostics pd;
@@ -3046,13 +3049,19 @@ void translate_impl(
             throw TranslateAbort{};
         }
         for (const Stub& st : pre.script.stubs)
-            all_stubs.push_back({&st, &pre.map, pre.name});
+            stub_origin[hotc::TypeModel::stub_key(st)] = {&pre.map, pre.name};
     }
     types.add_stubs(sc.stubs, g_diag, map, hotc::TypeModel::Source::Script);
     if (!g_diag.items.empty())
         throw TranslateAbort{};
     for (const Stub& st : sc.stubs)
-        all_stubs.push_back({&st, &map, std::string()});
+        stub_origin[hotc::TypeModel::stub_key(st)] = {&map, std::string()};
+    // The checks use the merged stubs. Each one reports at the last stub of its key.
+    for (const Stub* st : types.merged_stubs())
+    {
+        const auto& origin = stub_origin.at(hotc::TypeModel::stub_key(*st));
+        all_stubs.push_back({st, origin.first, origin.second});
+    }
     // ---- script attributes. A tag "[Name]" on a script class needs "[attribute] class Name;" in a
     // prelude, in the script or in an imported script.
     {

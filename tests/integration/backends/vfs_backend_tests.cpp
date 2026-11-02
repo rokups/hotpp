@@ -106,6 +106,21 @@ float tick_result(Session& s)
     return *s.field("result");
 }
 
+// Backend::set_preludes: the next load uses the new preludes. An empty list removes them.
+TEST(VfsBackend, SetPreludesChangesTheNextLoad)
+{
+    auto backend = hot::make_default_backend(hot::DefaultBackendOptions{});
+    const hot::ScriptSource src{"tagged.hot", "[Tagged] class Marker { int n = 0; }\n", {}};
+    hot::LoadResult r = backend->load(src, 1);
+    EXPECT_FALSE(r);
+    EXPECT_NE(r.error.find("Tagged"), std::string::npos) << r.error;
+    ASSERT_TRUE(backend->set_preludes({{"game.prelude.hot", "[attribute] class Tagged;\n"}}));
+    r = backend->load(src, 2);
+    EXPECT_TRUE(r) << r.error;
+    ASSERT_TRUE(backend->set_preludes({}));
+    EXPECT_FALSE(backend->load(src, 3));
+}
+
 // The native header and the script module exist only in memory (an include directory).
 TEST(VfsBackend, ImportsFromTheIncludeDirectoryInMemory)
 {

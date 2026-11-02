@@ -10,6 +10,8 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <utility>
+#include <vector>
 
 using namespace translator_test;
 using namespace stub_translate_test;
@@ -29,6 +31,16 @@ hotc::TranslateResult script_translate(const std::string& script)
 }
 
 const char* kObject = "[native, handle(\"$T*\"), intrusive(\"AddRef\", \"Release\")] class Object;\n";
+
+// The script with a list of preludes. The preludes come in order.
+hotc::TranslateResult layered_translate(std::vector<std::pair<std::string, std::string>> preludes, const std::string& script)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHierHeader);
+    hotc::TranslateOptions o = temp_options(dir, "using \"w.h\";\n" + script);
+    o.preludes = std::move(preludes);
+    return hotc::translate(o);
+}
 
 } // namespace
 
@@ -61,6 +73,41 @@ TEST(PreludeTranslation, TextOfTheClassComesLast)
           "[cpp_prelude(\"own_text;\")] class Hero : Object { }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::ShellBase {\n    stub_text;\n    own_text;\n")) << r.cpp;
+}
+
+// Stubs with the same key in the preludes and the script merge. The texts stack in the order of
+// the files, and the storage of the first stub stays. No warning.
+TEST(PreludeTranslation, LaterStubsAddTheirTextAndKeepTheStorage)
+{
+    const hotc::TranslateResult r = layered_translate(
+        {{"lib.prelude", std::string(kObject) + "[cpp_prelude(\"lib_text;\")] class : Object;\n"},
+            {"user.prelude", "[native, cpp_prelude(\"user_object;\")] class Object;\n"
+                             "[cpp_prelude(\"user_text;\")] class : Object;\n"}},
+        "[cpp_prelude(\"script_text;\")] class : Object;\n"
+        "class Hero : Object { Object other; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(r.warnings.empty()) << r.warnings;
+    EXPECT_TRUE(has(r.cpp, "hot::ShellBase {\n    user_object;\n    lib_text;\n    user_text;\n    script_text;\n"))
+        << r.cpp;
+    // The intrusive storage of the library stub stays.
+    const hotc::TranslateResult base = layered_translate(
+        {{"lib.prelude", kObject}}, "class Hero : Object { Object other; }\n");
+    ASSERT_TRUE(base.ok) << base.diagnostics;
+    const size_t at = base.cpp.find(" other;");
+    ASSERT_NE(at, std::string::npos) << base.cpp;
+    const std::string line = base.cpp.substr(base.cpp.rfind('\n', at) + 1, at - base.cpp.rfind('\n', at) + 6);
+    EXPECT_TRUE(has(r.cpp, line)) << line << "\n" << r.cpp;
+}
+
+// An empty string clears an inherited text.
+TEST(PreludeTranslation, AnEmptyCppPreludeClearsTheInheritedText)
+{
+    const hotc::TranslateResult r = layered_translate(
+        {{"lib.prelude", std::string(kObject) + "[cpp_prelude(\"lib_text;\")] class : Object;\n"},
+            {"user.prelude", "[cpp_prelude(\"\")] class : Object;\n"}},
+        "class Hero : Object { }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(has(r.cpp, "lib_text;")) << r.cpp;
 }
 
 TEST(PreludeTranslation, ThisAndBaseAreReplaced)

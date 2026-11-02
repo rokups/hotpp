@@ -2289,6 +2289,27 @@ TEST(LanguageServer, PreludeDeclaresAScriptAttribute)
     EXPECT_FALSE(has_source(n["params"]["diagnostics"], "hot")) << n.dump();
 }
 
+// "prelude_suffix": hot-ls finds the user preludes in the workspace at each analysis. A prelude
+// file that comes after the start of the server works too.
+TEST(LanguageServer, PreludeSuffixFindsUserPreludes)
+{
+    TempDir dir;
+    const std::string text = "[Tagged] class Marker { int n = 0; }\n";
+    const std::string script = (dir.path() / "player.hot").string();
+    write_file(script, text);
+    hot::ls::ServerOptions o = options(dir, false);
+    o.prelude_suffix = ".prelude.hot";
+    LsClient client(o);
+    client.initialize(uri_of(dir.path().string()));
+    std::filesystem::create_directories(dir.path() / "sub");
+    write_file((dir.path() / "sub" / "user.prelude.hot").string(), "[attribute] class Tagged;\n");
+    client.open(uri_of(script), text);
+    const json n = client.wait_notification("textDocument/publishDiagnostics",
+        [&](const json& p) { return p.value("uri", std::string()) == uri_of(script); });
+    ASSERT_FALSE(n.is_null());
+    EXPECT_FALSE(has_source(n["params"]["diagnostics"], "hot")) << n.dump();
+}
+
 // An open prelude file is a script. It does not get its own text as a prelude, so its stubs
 // are not duplicates. The new stub attributes are known.
 TEST(LanguageServer, OpenPreludeFileHasNoErrors)

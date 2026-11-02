@@ -128,7 +128,8 @@ The library is a normal target, so it uses the compile flags of your project (`C
 
 ```
 hot_script_host(NAME name [TARGET target] [SCRIPT_DIRS dir...] [SCRIPTS file...]
-                [INCLUDES dir...] [FLAGS flag...] [PRELUDES file...])
+                [INCLUDES dir...] [FLAGS flag...] [PRELUDES file...]
+                [PRELUDE_SUFFIX suffix])
 ```
 
 The function describes a script host for the language server `hot-ls`. It does not build anything. When CMake generates the build system, it writes `${HOT_HOSTS_DIR}/<name>.json`. With `TARGET`, it also writes three side files in the same folder.
@@ -136,6 +137,8 @@ The function describes a script host for the language server `hot-ls`. It does n
 `NAME` and one of `SCRIPT_DIRS` or `SCRIPTS` are required. `TARGET` is the CMake target of your host program. The file gets its include folders, defines and options. The include folder of Hot++ is always first. A relative path in `SCRIPT_DIRS`, `SCRIPTS`, `INCLUDES` or `PRELUDES` is relative to the current source folder (`sourceDir` in the file). A `UTILITY` target (a custom target) has no such lists, so the function skips them.
 
 `PRELUDES` names the prelude files that your host gives to the translator at run time (`TranslateOptions::preludes`). The file has them in `preludes`. `hot-ls` gives them to each script of the host. Thus it knows the stubs and the script attributes of the prelude, as `hotc --prelude` does. A prelude file that is open in the editor does not get its own text as a prelude.
+
+`PRELUDE_SUFFIX` names the file suffix of user preludes, for example `.prelude.hot`. The file has it in `preludeSuffix`. At each analysis, `hot-ls` searches the script dirs (with subfolders) for files with this suffix. It sorts them by path and gives them after the `PRELUDES`. Thus a new user prelude works at once. Your host must find the same files in the same order.
 
 ```cmake
 hot_script_host(NAME engine TARGET engine

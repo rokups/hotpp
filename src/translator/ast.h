@@ -568,6 +568,9 @@ struct Stub
     // "[attribute] class Name;": a script attribute class, not a native type. A script class
     // uses it as a tag "[Name]". It has no storage rule.
     bool is_attribute = false;
+    // The names of the attributes that the stub states. A later stub with the same key merges
+    // only these attributes into the rule (TypeModel::add_stubs).
+    std::vector<std::string> attrs;
     int line = 0;
     uint32_t pos = 0;
 };

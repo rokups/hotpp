@@ -69,12 +69,12 @@ TEST(ModuleAttrsTranslation, PlainStdInAStubStaysLiteral)
     EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Mesh> m;")) << r.cpp;
 }
 
-TEST(ModuleAttrsTranslation, ASecondStdIsAnError)
+TEST(ModuleAttrsTranslation, ALaterPreludeOverridesTheStdOfAnEarlierOne)
 {
     const hotc::TranslateResult r = check_translate(
-        "", "    int x;\n", {{"a.prelude", kMystd}, {"b.prelude", "[std(\"other\")];\n"}});
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "attribute 'std' is given twice")) << r.diagnostics;
+        "", "    std.string s;\n", {{"a.prelude", "[std(\"other\")];\n"}, {"b.prelude", kMystd}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "mystd::")) << r.cpp;
 }
 
 TEST(ModuleAttrsTranslation, ASecondStdInOnePreludeIsAnError)
@@ -332,9 +332,18 @@ TEST(ModuleAttrsTranslation, ARepeatedArrayAttributeIsAnError)
     EXPECT_FALSE(one.ok);
     EXPECT_TRUE(has(one.diagnostics, "attribute 'array' is given twice in one file")) << one.diagnostics;
     const hotc::TranslateResult pre =
-        check_translate("", "    int x;\n", {{"a.prelude", kFixed}, {"b.prelude", kFixed}});
+        check_translate("", "    int x;\n", {{"a.prelude", std::string(kFixed) + kFixed}});
     EXPECT_FALSE(pre.ok);
-    EXPECT_TRUE(has(pre.diagnostics, "attribute 'array' is given twice in the preludes")) << pre.diagnostics;
+    EXPECT_TRUE(has(pre.diagnostics, "attribute 'array' is given twice in one file")) << pre.diagnostics;
+}
+
+// A later prelude overrides the array template of an earlier prelude.
+TEST(ModuleAttrsTranslation, ALaterPreludeOverridesTheArrayOfAnEarlierOne)
+{
+    const hotc::TranslateResult r = check_translate("", "    int[3] a;\n",
+        {{"a.prelude", kFixed}, {"b.prelude", "[array(\"$std::array<$T, $N>\")];\n"}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "std::array<int32_t, 3> a;")) << r.cpp;
 }
 
 TEST(ModuleAttrsTranslation, AnArrayTemplateNeedsTheElementTypeAndTheSize)
