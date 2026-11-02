@@ -38,6 +38,7 @@ add_executable(unit_translator_translate_tests
     stub_check_translation_tests.cpp
     string_interpolation_translation_tests.cpp
     template_base_translation_tests.cpp
+    namespaced_base_translation_tests.cpp
     typed_access_translation_tests.cpp
     source_map_translation_tests.cpp)
 target_link_libraries(unit_translator_translate_tests PRIVATE hotc_lib GTest::gtest_main)

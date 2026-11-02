@@ -327,6 +327,31 @@ std::string tidy(std::string s)
     return hotc::unexpand_std(s);
 }
 
+// The text of a type of the method "context". A class in a namespace can spell the types of its
+// methods without the namespace, but the generated code is outside of it. So for such a class the
+// text has every name fully qualified. A class outside of any namespace keeps the spelling of the
+// header: a full qualification would replace a namespace alias (for example "mystd") with its target.
+std::string qualified_spelling(CXType type, CXCursor context)
+{
+    bool in_namespace = false;
+    for (CXCursor p = clang_getCursorSemanticParent(context); !clang_Cursor_isNull(p)
+         && clang_getCursorKind(p) != CXCursor_TranslationUnit && !clang_isInvalid(clang_getCursorKind(p));
+         p = clang_getCursorSemanticParent(p))
+    {
+        if (clang_getCursorKind(p) == CXCursor_Namespace)
+        {
+            in_namespace = true;
+            break;
+        }
+    }
+    if (!in_namespace)
+        return cxs(clang_getTypeSpelling(type));
+    CXPrintingPolicy policy = clang_getCursorPrintingPolicy(context);
+    std::string text = cxs(clang_getFullyQualifiedName(type, policy, 0));
+    clang_PrintingPolicy_dispose(policy);
+    return text.empty() ? cxs(clang_getTypeSpelling(type)) : text;
+}
+
 std::string norm(const std::string& s)
 {
     std::string r;
@@ -348,6 +373,9 @@ struct NativeVirtual
     std::string name, ret, owner;
     std::string from; // the direct native base of the script class that gives the virtual
     std::vector<std::string> ptypes;
+    // The canonical (fully qualified) parameter types. They match an override in a derived native
+    // class that spells a type in another way, for example "Urho3D::StringHash" and "StringHash".
+    std::vector<std::string> canon;
     bool is_const = false, pure = false, final_ = false, no_except = false;
     std::string key() const
     {
@@ -724,11 +752,14 @@ void collect_virtuals(CXCursor cls, BaseInfo& info, const Subst& sub = {})
             NativeVirtual v;
             v.name = cxs(clang_getCursorSpelling(c));
             v.owner = owner;
-            v.ret = subst_text(tidy(cxs(clang_getTypeSpelling(clang_getResultType(clang_getCursorType(c))))), sub);
+            v.ret = subst_text(tidy(qualified_spelling(clang_getResultType(clang_getCursorType(c)), c)), sub);
             int n = clang_Cursor_getNumArguments(c);
             for (int i = 0; i < n; ++i)
-                v.ptypes.push_back(subst_text(
-                    tidy(cxs(clang_getTypeSpelling(clang_getCursorType(clang_Cursor_getArgument(c, i))))), sub));
+            {
+                const CXType at = clang_getCursorType(clang_Cursor_getArgument(c, i));
+                v.ptypes.push_back(subst_text(tidy(qualified_spelling(at, c)), sub));
+                v.canon.push_back(cxs(clang_getTypeSpelling(clang_getCanonicalType(at))));
+            }
             v.is_const = clang_CXXMethod_isConst(c);
             v.pure = clang_CXXMethod_isPureVirtual(c);
             auto es = clang_getCursorExceptionSpecificationType(c);
@@ -742,7 +773,11 @@ void collect_virtuals(CXCursor cls, BaseInfo& info, const Subst& sub = {})
                 return CXChildVisit_Continue;
             });
             auto it = std::find_if(
-                info.virtuals.begin(), info.virtuals.end(), [&](const NativeVirtual& o) { return o.key() == v.key(); });
+                info.virtuals.begin(), info.virtuals.end(), [&](const NativeVirtual& o)
+                {
+                    return o.key() == v.key()
+                        || (o.name == v.name && o.is_const == v.is_const && o.canon == v.canon);
+                });
             if (it != info.virtuals.end())
                 *it = v; // an override in a derived native class: same position
             else
