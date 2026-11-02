@@ -59,6 +59,7 @@ void adopt(ClassRecord* canon, ClassRecord* in)
     canon->on_reload = in->on_reload;
     canon->new_default = in->new_default;
     canon->dtor = in->dtor;
+    canon->attributes = in->attributes;
     if (in != canon)
         in->canonical = canon;
 }
@@ -641,8 +642,11 @@ LoaderStats Loader::stats() const
     for (const auto& [name, e] : registry_.entries())
     {
         const auto it = by_class.find(e.record);
+        std::vector<std::string> attributes;
+        for (const char* const* a = e.record->attributes; a && *a; ++a)
+            attributes.emplace_back(*a);
         st.classes.push_back({name, e.record->generation, e.record->slot_count, it == by_class.end() ? 0 : it->second,
-            removed_.count(name) != 0});
+            removed_.count(name) != 0, std::move(attributes)});
         st.slots += e.record->slot_count;
     }
     std::sort(
@@ -1136,6 +1140,7 @@ ReloadResult Loader::commit_locked()
         r->on_reload = nullptr;
         r->dtor = nullptr; // the script destructor belongs to a source that does not exist now
         r->new_default = nullptr; // the same: the factory makes an object without a constructor
+        r->attributes = nullptr; // the text is in the module of a source that does not exist now
         size_t live = 0;
         {
             const LiveObjects::Guard guard(g_live);

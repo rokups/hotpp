@@ -1,0 +1,18 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// The reload of attributes_v1.hot: Player drops a tag and Plain gets one.
+using "Actor.h";
+
+[attribute] class Spawnable;
+[attribute] class Editor;
+
+[Editor]
+class Player : Actor {
+    int hp = 1;
+}
+
+[Spawnable]
+class Plain : Actor {
+}

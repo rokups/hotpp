@@ -537,6 +537,9 @@ struct ClassDef
     std::vector<Property> props; // in source order
     bool is_value = false; // the attribute [value]
     std::string cpp_prelude; // the attribute [cpp_prelude("text")]: C++ text for this class only
+    // The script attributes of the class: "[Tag] class C { }". Each name is an attribute class
+    // ("[attribute] class Tag;"). The class record keeps the names for a query at run time.
+    std::vector<std::string> attributes;
     int line = 0;
     uint32_t pos = 0;
 };
@@ -559,6 +562,9 @@ struct Stub
     bool is_struct = false; // "struct *;": only "cpp_prelude" is valid
     bool checked_index = false; // the attribute [checked_index]: "a[i]" has a bounds test for the type
     std::string cpp_prelude; // the attribute [cpp_prelude("text")]
+    // "[attribute] class Name;": a script attribute class, not a native type. A script class
+    // uses it as a tag "[Name]". It has no storage rule.
+    bool is_attribute = false;
     int line = 0;
     uint32_t pos = 0;
 };
@@ -617,6 +623,8 @@ struct Script
     std::vector<Import> imports;
     std::vector<ClassDef> classes;
     std::vector<Stub> stubs; // in source order
+    // The script attribute classes: "[attribute] class Name;". They are not in "stubs".
+    std::vector<Stub> attribute_classes;
     std::vector<ModuleAttrs> module_attrs; // the module attribute lists of the file, in source order
     std::vector<EnumDef> enums;
     // Module variables: "Type name = init;" at file level. The translator collects them in

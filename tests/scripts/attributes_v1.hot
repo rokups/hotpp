@@ -1,0 +1,18 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Script attributes: "[attribute] class Name;" declares an attribute class. A script class
+// uses it as a tag. The loader stats give the tags of each class.
+using "Actor.h";
+
+[attribute] class Spawnable;
+[attribute] class Editor;
+
+[Spawnable, Editor]
+class Player : Actor {
+    int hp = 1;
+}
+
+class Plain : Actor {
+}

@@ -151,6 +151,10 @@ struct ClassRecord
     // of a new generation with this list. A new key makes a new core module, and its "construct"
     // replaces the canonical one (S27). The generation record has its own list.
     const char* const* construct_keys = nullptr;
+    // The script attributes of the class: the names of the tags "[Name]" on the class, in source
+    // order, ending with nullptr. Null: no attribute. The text lives in the module of the record.
+    // A commit copies the pointer into the canonical record.
+    const char* const* attributes = nullptr;
 };
 
 } // namespace hot

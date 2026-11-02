@@ -53,6 +53,9 @@ struct ClassInfo
     uint32_t slots; // the number of slots in the dispatch table
     size_t live_objects;
     bool removed; // the source dropped the class; the slots point to the removed class handler
+    // The script attributes of the class ("[Name] class C"), in source order. Empty for a
+    // removed class.
+    std::vector<std::string> attributes;
 };
 
 struct LoaderStats

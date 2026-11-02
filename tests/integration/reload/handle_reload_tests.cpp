@@ -160,6 +160,35 @@ TEST_P(BackendTests, CustomIntrusiveAndWeakHandle)
     EXPECT_EQ(*field("petValue"), -1);
 }
 
+// Script attributes: the loader stats give the tags of each class. A reload changes them.
+TEST_P(BackendTests, ScriptAttributesAreInTheStats)
+{
+    hot::LoadResult v1 = backend->load(source("attributes_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    hot::LoadResult v2 = backend->load(source("attributes_v2.hot"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Player"));
+    s.commit_at_frame_boundary();
+    auto attributes = [&](const std::string& name)
+    {
+        for (const hot::ClassInfo& c : s.loader.stats().classes)
+            if (c.name == name)
+                return c.attributes;
+        return std::vector<std::string>{"<no class>"};
+    };
+    EXPECT_EQ(attributes("Player"), (std::vector<std::string>{"Spawnable", "Editor"}));
+    EXPECT_EQ(attributes("Plain"), std::vector<std::string>{});
+
+    std::string error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    s.world.Tick(kDt);
+    ASSERT_FALSE(s.commit_failed);
+    EXPECT_EQ(hot::active_generation, 2u);
+    EXPECT_EQ(attributes("Player"), std::vector<std::string>{"Editor"});
+    EXPECT_EQ(attributes("Plain"), std::vector<std::string>{"Spawnable"});
+}
+
 // The stub names a method that the native class does not have. The load gives an error.
 TEST_P(BackendTests, IntrusiveMissingMethodIsAnError)
 {

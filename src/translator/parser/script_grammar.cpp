@@ -1043,13 +1043,17 @@ struct ClassAttrs
     bool has_array = false;
     const char* array_pos = nullptr; // the "array" name, or null
     const char* handle_pos = nullptr; // the "handle" name, or null
+    bool is_attribute = false; // [attribute]: valid on "class Name;" only
     std::vector<std::pair<const char*, std::string>> used; // the valid attributes
+    // The other names without arguments: script attribute tags. Only a script class accepts them.
+    std::vector<std::pair<const char*, std::string>> tags;
 };
 
 // The expected count of arguments of a class attribute, or -1 for an unknown name.
 int class_attr_arity(const std::string& name)
 {
-    if (name == "native" || name == "value" || name == "self" || name == "checked_index" || name == "weak")
+    if (name == "native" || name == "value" || name == "self" || name == "checked_index" || name == "weak"
+        || name == "attribute")
         return 0;
     if (name == "handle" || name == "default_handle" || name == "weak_handle" || name == "alias" || name == "cpp_prelude" || name == "std"
         || name == "array")
@@ -1075,9 +1079,22 @@ struct class_attrs_p
             bool dup = false;
             for (const auto& u : a.used)
                 dup = dup || u.second == it.name;
-            if (arity < 0)
+            for (const auto& u : a.tags)
+                dup = dup || u.second == it.name;
+            if (arity < 0 && it.args.empty() && !dup)
+            {
+                // A script attribute tag. The translator checks that an attribute class has the name.
+                a.tags.emplace_back(it.pos, it.name);
+                continue;
+            }
+            if (arity < 0 && !(dup && it.args.empty()))
             {
                 st.error(it.pos, "unknown attribute '" + it.name + "'");
+                continue;
+            }
+            if (arity < 0)
+            {
+                st.error(it.pos, "duplicate attribute '" + it.name + "'");
                 continue;
             }
             if (static_cast<size_t>(arity) != it.args.size())
@@ -1099,6 +1116,8 @@ struct class_attrs_p
                 a.is_self = true;
             else if (it.name == "checked_index")
                 a.is_checked_index = true;
+            else if (it.name == "attribute")
+                a.is_attribute = true;
             else if (it.name == "cpp_prelude")
             {
                 a.cpp_prelude = std_from_user(it.args[0]);
@@ -1227,10 +1246,41 @@ const ClassAttrs* class_attrs_of(const ClassAttrs& a)
     return &a;
 }
 
+// A tag is valid only on a script class. Other places report it as an unknown attribute.
+void reject_tags(const ParseState& st, const ClassAttrs* a)
+{
+    if (a)
+        for (const auto& t : a->tags)
+            st.error(t.first, "unknown attribute '" + t.second + "'");
+}
+
+// "[attribute] class Name;": a script attribute class. It takes no other attribute.
+TopItem make_attribute_class(const ParseState& st, const char* pos, const ClassAttrs& a, bool is_struct,
+    std::string&& name, bool derived)
+{
+    TopItem t;
+    t.kind = TopItem::IsStub;
+    ast::Stub& s = t.stub;
+    s.name = std::move(name);
+    s.is_attribute = true;
+    s.pos = st.offset(pos);
+    s.line = st.map->line(s.pos);
+    reject_tags(st, &a);
+    if (is_struct || derived || s.name.find_first_of("*<:.") != std::string::npos)
+        st.error(pos, "an attribute class is declared as '[attribute] class Name;' with a plain name");
+    for (const auto& u : a.used)
+        if (u.second != "attribute")
+            st.error(u.first, "attribute '" + u.second + "' is not allowed on an attribute class");
+    return t;
+}
+
 // Build a stub from the attributes. "derived" means "class : Base;": the name is then the base.
 TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bool is_struct, std::string&& name,
     bool derived)
 {
+    if (a && a->is_attribute)
+        return make_attribute_class(st, pos, *a, is_struct, std::move(name), derived);
+    reject_tags(st, a);
     TopItem t;
     t.kind = TopItem::IsStub;
     ast::Stub& s = t.stub;
@@ -1404,6 +1454,11 @@ struct class_p
         if (a)
             c.cpp_prelude = a->cpp_prelude;
         if (a)
+            for (const auto& tag : a->tags)
+                c.attributes.push_back(tag.second);
+        if (a && a->is_attribute)
+            st.error(a->pos, "an attribute class has no body: declare it as '[attribute] class " + c.name + ";'");
+        else if (a)
             for (const auto& u : a->used)
                 if (u.second != "cpp_prelude")
                     st.error(u.first,
@@ -1413,10 +1468,14 @@ struct class_p
         return t;
     },
                        [](const ParseState& st, const char*, const auto& attrs, ModuleAttrsMark mark)
-    { return make_module_attrs(st, mark.pos, class_attrs_of(attrs)); },
+    {
+        reject_tags(st, class_attrs_of(attrs));
+        return make_module_attrs(st, mark.pos, class_attrs_of(attrs));
+    },
                        [](const ParseState& st, const char* pos, const auto& attrs, Member&& m)
     {
         const ClassAttrs* a = class_attrs_of(attrs);
+        reject_tags(st, a);
         TopItem t;
         // "T convert_<var>(Old old) { }" at file level is the convert hook of a module
         // variable. Other functions must be members of a class.
@@ -1596,6 +1655,8 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
                 script.imports.push_back(std::move(t.import));
             else if (t.kind == TopItem::IsClass)
                 script.classes.push_back(std::move(t.cls));
+            else if (t.kind == TopItem::IsStub && t.stub.is_attribute)
+                script.attribute_classes.push_back(std::move(t.stub));
             else if (t.kind == TopItem::IsStub)
                 script.stubs.push_back(std::move(t.stub));
             else if (t.kind == TopItem::IsEnum)

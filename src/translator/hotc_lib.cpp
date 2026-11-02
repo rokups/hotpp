@@ -2951,6 +2951,8 @@ void translate_impl(
                     enums.push_back(std::move(e));
                 for (Stub& st : is.stubs)
                     stubs.push_back(std::move(st));
+                for (Stub& st : is.attribute_classes)
+                    sc.attribute_classes.push_back(std::move(st));
             }
             ims = std::move(keep);
         };
@@ -3036,6 +3038,22 @@ void translate_impl(
         throw TranslateAbort{};
     for (const Stub& st : sc.stubs)
         all_stubs.push_back({&st, &map, std::string()});
+    // ---- script attributes. A tag "[Name]" on a script class needs "[attribute] class Name;" in a
+    // prelude, in the script or in an imported script.
+    {
+        std::set<std::string> attribute_names;
+        for (const PreludeData& pre : prelude_data)
+            for (const Stub& st : pre.script.attribute_classes)
+                attribute_names.insert(st.name);
+        for (const Stub& st : sc.attribute_classes)
+            attribute_names.insert(st.name);
+        for (const ClassDef& c : sc.classes)
+            for (const std::string& a : c.attributes)
+                if (!attribute_names.count(a))
+                    fail_at(map, c.pos,
+                        "unknown attribute '" + a + "' on class '" + c.name + "': declare it as '[attribute] class "
+                            + a + ";'");
+    }
     // ---- script enums (design 5.3, 7.2). An enum becomes a C++ "enum class". A field of an
     // enum type reloads as its underlying integer type.
     std::map<std::string, std::string> enum_types; // the name and the underlying type
@@ -6414,6 +6432,17 @@ void translate_impl(
                 std::string(shared_placeholder ? ", \x01std::" : ", std::") + "enable_shared_from_this<" + shell + ">");
             // The loader names this cause when the shell hash changes (design 5.3).
             flag_regs.push_back("    " + cn + "_record.shares_this = true;\n");
+        }
+
+        // The script attributes of the class ("[Tag] class C"). The record keeps the names for a
+        // query at run time (Loader::stats). An attribute name is a plain name: it needs no escape.
+        if (!cd.attributes.empty())
+        {
+            o.w("static const char* const " + P + "attributes[] = {");
+            for (const std::string& a : cd.attributes)
+                o.w("\"" + a + "\", ");
+            o.w("nullptr};\n\n");
+            flag_regs.push_back("    " + cn + "_record.attributes = " + P + "attributes;\n");
         }
 
         // ---- record and entry

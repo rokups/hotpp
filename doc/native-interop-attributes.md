@@ -63,6 +63,29 @@ The host should also specialize `hot::holds_no_code` for the custom array type, 
 
 A stub in a prelude can name an array type only in the base of a stub such as `class : Wrap<int[3]>;`. That type uses the template of the earlier preludes and of the same prelude.
 
+## Script attributes
+
+A script attribute is a tag on a script class. The host reads the tags at run time. For example, a host can register each class with a tag in its own type system.
+
+Declare an attribute class with `[attribute] class Name;`. Then put the name in the attribute list of a script class:
+
+```hot
+[attribute] class Spawnable;
+[attribute] class Saved;
+
+[Spawnable, Saved]
+class Enemy : Actor {
+}
+```
+
+- An attribute class has a plain name and no body. It takes no other attribute.
+- A prelude, the script or an imported script can declare it. A prelude declaration makes the tag available to all scripts of the host.
+- A tag has no arguments. A tag with no declaration is an error: `unknown attribute 'Name' on class 'C'`.
+- A tag applies to its class only. A child class does not get the tags of its parent.
+- Only a script class takes a tag. A stub, a module variable and a module attribute list do not.
+
+At run time, `Loader::stats().classes` gives one `hot::ClassInfo` for each class. Its field `attributes` holds the tag names in source order. The record field `ClassRecord::attributes` holds the same names as a list that ends with `nullptr`. A reload replaces the tags with the tags of the new generation. A removed class has no tags.
+
 ## Other limits
 
 - Write `.`, not `::` or `->`.
