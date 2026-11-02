@@ -729,10 +729,18 @@ std::string TypeModel::checked_ptr_storage(const std::string& type) const
     // A raw type must be a class that libclang knows (not an enumeration and not unknown).
     if (rule.owner.empty() && !(classes_ && classes_(base).known))
         return {};
-    // TODO(S4): a stub trait ("weak_ref_traits") is a weak source too. For now, only
-    // std::enable_shared_from_this is a weak source. Without it, the old borrowed finding applies.
+    // A weak source is std::enable_shared_from_this, or the exact stub of the type with a handle
+    // that has a weak type (the module header writes weak_ref_traits for it). A subclass of such a
+    // stub has no traits. Without a weak source, the old borrowed finding applies.
     if (!has_shared_from_this(base))
-        return {};
+    {
+        bool stub_source = false;
+        for (const StubWeakSource& w : stub_weak_sources())
+            if (w.name == base)
+                stub_source = true;
+        if (!stub_source)
+            return {};
+    }
     return "hot::CheckedPtr<" + std::string(is_const ? "const " : "") + base + ">";
 }
 
@@ -805,6 +813,33 @@ std::vector<std::string> TypeModel::custom_handle_templates() const
         add(e.second.handle_tpl);
     add(default_handle_);
     return {out.begin(), out.end()};
+}
+
+std::vector<TypeModel::StubWeakSource> TypeModel::stub_weak_sources() const
+{
+    std::vector<StubWeakSource> out;
+    for (const auto& [name, rule] : exact_)
+    {
+        if (rule.kind != Kind::Handle || !rule.intrusive_add.empty() || rule.handle_tpl.find("$T") == std::string::npos
+            || rule.handle_tpl == "$T*" || script_.count(name) || name.find('<') != std::string::npos)
+            continue;
+        const std::string pre = shared_prefix(rule.handle_tpl);
+        std::string weak = rule.weak_tpl;
+        if (weak.empty())
+        {
+            if (pre.empty())
+                continue;
+            weak = pre + "weak_ptr<$T>";
+        }
+        std::string text;
+        if (rule.weak_tpl.empty() && (pre == "std::" || (pre == "\x01std::" && std_ns_ == "std")))
+            text = "hot::shared_weak_ref<$T>";
+        else
+            text = "hot::custom_weak_ref<$T, " + rule.handle_tpl + ", " + weak + ">";
+        // The text has "U" for the class: the module header writes the template parameter there.
+        out.push_back({name, replace_all(text, "$T", "U")});
+    }
+    return out;
 }
 
 std::string TypeModel::param(const std::string& type) const

@@ -15,6 +15,9 @@
 #line 5 "handle_call_v1.hot"
 #include "Equip.h"
 #line 18 "handle_call_v1.hot.cpp"
+namespace hot { template <class U> struct weak_ref_traits<U, std::enable_if_t<std::is_same_v<U, ::Blade> && !detail::has_weak_from_this<U>::value>> : hot::shared_weak_ref<U> {}; }
+namespace hot { template <class U> struct weak_ref_traits<U, std::enable_if_t<std::is_same_v<U, ::Charm> && !detail::has_weak_from_this<U>::value>> : hot::shared_weak_ref<U> {}; }
+#line 21 "handle_call_v1.hot.cpp"
 
 constexpr uint32_t GEN = 1;
 // The live flag of this module. The loader sets it. The guard of each function reads it.
@@ -54,7 +57,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
     }
 #line 10 "handle_call_v1.hot"
     ~Caller_Shell() override { hot::destroy_state(this); }
-#line 58 "handle_call_v1.hot.cpp"
+#line 61 "handle_call_v1.hot.cpp"
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG void __hot_base_Tick(float a0)
 #line 10 "handle_call_v1.hot"
@@ -63,7 +66,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return Actor::Tick(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 67 "handle_call_v1.hot.cpp"
+#line 70 "handle_call_v1.hot.cpp"
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 10 "handle_call_v1.hot"
@@ -72,7 +75,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 76 "handle_call_v1.hot.cpp"
+#line 79 "handle_call_v1.hot.cpp"
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 10 "handle_call_v1.hot"
@@ -81,7 +84,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 10 "handle_call_v1.hot"
     }
-#line 85 "handle_call_v1.hot.cpp"
+#line 88 "handle_call_v1.hot.cpp"
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG int __hot_base_WearRef(const Charm& a0)
 #line 10 "handle_call_v1.hot"
@@ -90,7 +93,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return Wearer::WearRef(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 94 "handle_call_v1.hot.cpp"
+#line 97 "handle_call_v1.hot.cpp"
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG int __hot_base_WearShared(std::shared_ptr<Charm> a0)
 #line 10 "handle_call_v1.hot"
@@ -99,7 +102,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return Wearer::WearShared(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 103 "handle_call_v1.hot.cpp"
+#line 106 "handle_call_v1.hot.cpp"
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG int __hot_base_WearItem(Item* a0)
 #line 10 "handle_call_v1.hot"
@@ -108,7 +111,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return Wearer::WearItem(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 112 "handle_call_v1.hot.cpp"
+#line 115 "handle_call_v1.hot.cpp"
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG std::shared_ptr<Charm> __hot_base_Spawn()
 #line 10 "handle_call_v1.hot"
@@ -117,7 +120,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return Wearer::Spawn();
 #line 10 "handle_call_v1.hot"
     }
-#line 121 "handle_call_v1.hot.cpp"
+#line 124 "handle_call_v1.hot.cpp"
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG std::shared_ptr<Charm> __hot_base_Make(int a0)
 #line 10 "handle_call_v1.hot"
@@ -126,7 +129,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return Wearer::Make(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 130 "handle_call_v1.hot.cpp"
+#line 133 "handle_call_v1.hot.cpp"
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG Charm* __hot_base_Borrow()
 #line 10 "handle_call_v1.hot"
@@ -135,7 +138,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return Wearer::Borrow();
 #line 10 "handle_call_v1.hot"
     }
-#line 139 "handle_call_v1.hot.cpp"
+#line 142 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     void Tick(float a0) override
@@ -145,7 +148,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 149 "handle_call_v1.hot.cpp"
+#line 152 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     void TakeDamage(float a0) override
@@ -155,7 +158,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 159 "handle_call_v1.hot.cpp"
+#line 162 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -165,7 +168,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 10 "handle_call_v1.hot"
     }
-#line 169 "handle_call_v1.hot.cpp"
+#line 172 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     int WearRaw(Charm* a0) override
@@ -175,7 +178,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<int(Actor*, Charm*)>(this, SLOT_WearRaw, a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 179 "handle_call_v1.hot.cpp"
+#line 182 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     int WearRef(const Charm& a0) override
@@ -185,7 +188,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<int(Actor*, const Charm&)>(this, SLOT_WearRef, a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 189 "handle_call_v1.hot.cpp"
+#line 192 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     int WearShared(std::shared_ptr<Charm> a0) override
@@ -195,7 +198,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<int(Actor*, std::shared_ptr<Charm>)>(this, SLOT_WearShared, a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 199 "handle_call_v1.hot.cpp"
+#line 202 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     int WearItem(Item* a0) override
@@ -205,7 +208,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<int(Actor*, Item*)>(this, SLOT_WearItem, a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 209 "handle_call_v1.hot.cpp"
+#line 212 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     int WearBlade(Blade* a0) override
@@ -215,7 +218,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<int(Actor*, Blade*)>(this, SLOT_WearBlade, a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 219 "handle_call_v1.hot.cpp"
+#line 222 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     std::shared_ptr<Charm> Spawn() override
@@ -225,7 +228,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<std::shared_ptr<Charm>(Actor*)>(this, SLOT_Spawn);
 #line 10 "handle_call_v1.hot"
     }
-#line 229 "handle_call_v1.hot.cpp"
+#line 232 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     std::shared_ptr<Charm> Make(int a0) override
@@ -235,7 +238,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<std::shared_ptr<Charm>(Actor*, int)>(this, SLOT_Make, a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 239 "handle_call_v1.hot.cpp"
+#line 242 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
     Charm* Borrow() override
@@ -245,7 +248,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
         return hot::call<Charm*(Actor*)>(this, SLOT_Borrow);
 #line 10 "handle_call_v1.hot"
     }
-#line 249 "handle_call_v1.hot.cpp"
+#line 252 "handle_call_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -264,7 +267,7 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->__hot_base_Tick(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 268 "handle_call_v1.hot.cpp"
+#line 271 "handle_call_v1.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG void __fwd_TakeDamage_f(float a0)
@@ -274,7 +277,7 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 278 "handle_call_v1.hot.cpp"
+#line 281 "handle_call_v1.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -284,7 +287,7 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 10 "handle_call_v1.hot"
     }
-#line 288 "handle_call_v1.hot.cpp"
+#line 291 "handle_call_v1.hot.cpp"
     // Not overridden: call the implementation of Wearer.
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG int __fwd_WearRef(const Charm& a0)
@@ -294,7 +297,7 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->__hot_base_WearRef(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 298 "handle_call_v1.hot.cpp"
+#line 301 "handle_call_v1.hot.cpp"
     // Not overridden: call the implementation of Wearer.
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG int __fwd_WearShared(std::shared_ptr<Charm> a0)
@@ -304,7 +307,7 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->__hot_base_WearShared(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 308 "handle_call_v1.hot.cpp"
+#line 311 "handle_call_v1.hot.cpp"
     // Not overridden: call the implementation of Wearer.
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG int __fwd_WearItem(Item* a0)
@@ -314,7 +317,7 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->__hot_base_WearItem(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 318 "handle_call_v1.hot.cpp"
+#line 321 "handle_call_v1.hot.cpp"
     // Not overridden: call the implementation of Wearer.
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG std::shared_ptr<Charm> __fwd_Spawn()
@@ -324,7 +327,7 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->__hot_base_Spawn();
 #line 10 "handle_call_v1.hot"
     }
-#line 328 "handle_call_v1.hot.cpp"
+#line 331 "handle_call_v1.hot.cpp"
     // Not overridden: call the implementation of Wearer.
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG std::shared_ptr<Charm> __fwd_Make(int a0)
@@ -334,7 +337,7 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->__hot_base_Make(a0);
 #line 10 "handle_call_v1.hot"
     }
-#line 338 "handle_call_v1.hot.cpp"
+#line 341 "handle_call_v1.hot.cpp"
     // Not overridden: call the implementation of Wearer.
 #line 10 "handle_call_v1.hot"
     HOT_NODEBUG Charm* __fwd_Borrow()
@@ -344,12 +347,12 @@ struct CallerState_g1 {
         return static_cast<Caller_Shell*>(__hot_owner)->__hot_base_Borrow();
 #line 10 "handle_call_v1.hot"
     }
-#line 348 "handle_call_v1.hot.cpp"
+#line 351 "handle_call_v1.hot.cpp"
 };
 
 #line 11 "handle_call_v1.hot"
 static void Caller__init_last(void*, void* f) { using T = std::shared_ptr<Charm>; new (f) T(); }
-#line 353 "handle_call_v1.hot.cpp"
+#line 356 "handle_call_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -391,7 +394,7 @@ HOT_HIDDEN static auto Caller__plan()
     return std::make_pair(Caller__super_args(), std::tuple<>());
 #line 10 "handle_call_v1.hot"
 }
-#line 395 "handle_call_v1.hot.cpp"
+#line 398 "handle_call_v1.hot.cpp"
 using Caller_SuperArgs = decltype(Caller__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -416,7 +419,7 @@ HOT_NODEBUG static hot::ShellBase* Caller__construct(void* mem, const char* key,
     return nullptr;
 #line 10 "handle_call_v1.hot"
 }
-#line 420 "handle_call_v1.hot.cpp"
+#line 423 "handle_call_v1.hot.cpp"
 
 static const char* const Caller__construct_keys[] = {typeid(Caller_SuperArgs).name(), nullptr};
 
@@ -432,7 +435,7 @@ HOT_HIDDEN static Caller_Shell* Caller__build([[maybe_unused]] bool __note)
     return __self;
 #line 10 "handle_call_v1.hot"
 }
-#line 436 "handle_call_v1.hot.cpp"
+#line 439 "handle_call_v1.hot.cpp"
 #line 10 "handle_call_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Caller_Shell* Caller__new()
 #line 10 "handle_call_v1.hot"
@@ -441,7 +444,7 @@ HOT_HIDDEN static Caller_Shell* Caller__build([[maybe_unused]] bool __note)
     return Caller__build(true);
 #line 10 "handle_call_v1.hot"
 }
-#line 445 "handle_call_v1.hot.cpp"
+#line 448 "handle_call_v1.hot.cpp"
 #line 10 "handle_call_v1.hot"
 template <int = 0>
 #line 10 "handle_call_v1.hot"
@@ -456,7 +459,7 @@ template <int = 0>
     return __h;
 #line 10 "handle_call_v1.hot"
 }
-#line 460 "handle_call_v1.hot.cpp"
+#line 463 "handle_call_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Caller_slots[SLOT_COUNT] = {
@@ -492,7 +495,7 @@ HOT_NODEBUG static hot::Instance Caller_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "handle_call_v1.hot"
 }
-#line 496 "handle_call_v1.hot.cpp"
+#line 499 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
 HOT_NODEBUG static hot::Instance Caller__make_0([[maybe_unused]] void** __a)
@@ -502,7 +505,7 @@ HOT_NODEBUG static hot::Instance Caller__make_0([[maybe_unused]] void** __a)
     return Caller_create();
 #line 10 "handle_call_v1.hot"
 }
-#line 506 "handle_call_v1.hot.cpp"
+#line 509 "handle_call_v1.hot.cpp"
 
 static const hot::CtorEntry Caller__constructors[] = {
     {hot::ctor_key<>(), &Caller__make_0, hot::ctor_write_mask<>()},
@@ -535,7 +538,7 @@ int CallerState_g1::WearRaw(Charm* __c)
     HOT_TRACE_LINE(); return 1;
 #line 16 "handle_call_v1.hot"
 }
-#line 539 "handle_call_v1.hot.cpp"
+#line 542 "handle_call_v1.hot.cpp"
 
 #line 19 "handle_call_v1.hot"
 int CallerState_g1::WearBlade(Blade* __b)
@@ -601,7 +604,7 @@ int CallerState_g1::WearBlade(Blade* __b)
     HOT_TRACE_LINE(); return Mixed(hot::star(local));
 #line 41 "handle_call_v1.hot"
 }
-#line 605 "handle_call_v1.hot.cpp"
+#line 608 "handle_call_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

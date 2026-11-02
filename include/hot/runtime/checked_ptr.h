@@ -50,6 +50,17 @@ template <class T> struct shared_weak_ref : custom_weak_ref<T, std::shared_ptr<T
 {
 };
 
+namespace detail
+{
+template <class T, class = void> struct has_weak_from_this : std::false_type
+{
+};
+template <class T>
+struct has_weak_from_this<T, std::void_t<decltype(std::declval<T&>().weak_from_this())>> : std::true_type
+{
+};
+} // namespace detail
+
 // A type with "weak_from_this()", such as a class with a std::enable_shared_from_this base.
 // "T" can be a derived class: the aliasing constructor keeps the pointer of the derived class.
 template <class T>

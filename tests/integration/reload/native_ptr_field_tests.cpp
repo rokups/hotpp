@@ -6,6 +6,7 @@
 // a hot::CheckedPtr<T>. It keeps its target across a reload. It reads null after the target dies.
 // The tests use the backend that HOT_BACKEND selected.
 #include "Equip.h"
+#include "RefPtr.h"
 #include "hot/backend.h"
 #include "hot/runtime/checked_ptr.h"
 #include "support/backend_fixture.h"
@@ -17,6 +18,17 @@
 
 #include <memory>
 #include <string>
+
+// The host needs the traits that the module header of the script has for the stub of RefBase.
+// This is the text that hotc writes for "weak_handle".
+namespace hot
+{
+template <class U>
+struct weak_ref_traits<U, std::enable_if_t<std::is_same_v<U, ::RefBase> && !detail::has_weak_from_this<U>::value>>
+    : hot::custom_weak_ref<U, RefPtr<U>, WeakRef<U>>
+{
+};
+} // namespace hot
 
 namespace
 {
@@ -75,6 +87,29 @@ TEST_P(BackendTests, CheckedPtrFieldReadsNullAfterTheTargetDies)
     EXPECT_EQ(target_of(s)->get(), nullptr);
     EXPECT_EQ(*target_of(s), nullptr);
     EXPECT_THROW({ (void)(*target_of(s))->power; }, hot::NullReference);
+}
+
+// A stub with a custom weak handle is a weak source too. The field is a hot::CheckedPtr<RefBase>
+// over RefPtr and WeakRef. It adds no strong count, and it reads null after the last RefPtr goes.
+TEST_P(BackendTests, CheckedPtrFieldOverACustomWeakHandle)
+{
+    hot::LoadResult v1 = backend->load(source("custom_weak_ptr_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Holder"));
+    s.commit_at_frame_boundary();
+
+    auto* field = hot::field_ptr<hot::CheckedPtr<RefBase>>(s.inst.shell, "target");
+    ASSERT_NE(field, nullptr);
+    EXPECT_EQ(*field, nullptr); // the initializer "null"
+    RefPtr<Thing> thing(new Thing(5));
+    *field = RefPtr<RefBase>(thing);
+    s.world.Tick(kDt);
+    EXPECT_EQ(field->get(), thing.Get());
+    EXPECT_EQ(thing->Refs(), 1); // the field is weak: it adds no owner
+    thing = nullptr;
+    EXPECT_EQ(field->get(), nullptr);
+    EXPECT_THROW({ (void)(**field).Refs(); }, hot::NullReference);
 }
 
 } // namespace

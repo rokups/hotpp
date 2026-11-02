@@ -13,6 +13,8 @@
 #line 3 "weak_handle_v1.hot"
 #include "Weapon.h"
 #line 16 "weak_handle_v1.hot.cpp"
+namespace hot { template <class U> struct weak_ref_traits<U, std::enable_if_t<std::is_same_v<U, ::Weapon> && !detail::has_weak_from_this<U>::value>> : hot::shared_weak_ref<U> {}; }
+#line 18 "weak_handle_v1.hot.cpp"
 
 constexpr uint32_t GEN = 1;
 // The live flag of this module. The loader sets it. The guard of each function reads it.
@@ -33,12 +35,12 @@ struct Rack {
  {}
 #line 11 "weak_handle_v1.hot"
     int32_t Dmg() { return Rack__Dmg(this); }
-#line 37 "weak_handle_v1.hot.cpp"
+#line 39 "weak_handle_v1.hot.cpp"
 };
 
 #line 10 "weak_handle_v1.hot"
 static void Rack__init_held(void*, void* f) { using T = std::weak_ptr<Weapon>; new (f) T(); }
-#line 42 "weak_handle_v1.hot.cpp"
+#line 44 "weak_handle_v1.hot.cpp"
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -86,7 +88,7 @@ struct Node_Shell final : hot::PlainObject, hot::ShellBase {
     }
 #line 14 "weak_handle_v1.hot"
     ~Node_Shell() override { hot::destroy_state(this); }
-#line 90 "weak_handle_v1.hot.cpp"
+#line 92 "weak_handle_v1.hot.cpp"
 #line 14 "weak_handle_v1.hot"
     explicit Node_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 14 "weak_handle_v1.hot"
@@ -95,7 +97,7 @@ struct Node_Shell final : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &Node_record, src);
 #line 14 "weak_handle_v1.hot"
     }
-#line 99 "weak_handle_v1.hot.cpp"
+#line 101 "weak_handle_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -119,16 +121,16 @@ struct NodeState_g1 {
 
 #line 15 "weak_handle_v1.hot"
 static void Node__init_child(void*, void* f) { using T = std::shared_ptr<Node>; new (f) T(nullptr); }
-#line 123 "weak_handle_v1.hot.cpp"
+#line 125 "weak_handle_v1.hot.cpp"
 #line 17 "weak_handle_v1.hot"
 static void Node__init_parent(void*, void* f) { using T = std::weak_ptr<Node>; new (f) T(); }
-#line 126 "weak_handle_v1.hot.cpp"
+#line 128 "weak_handle_v1.hot.cpp"
 #line 19 "weak_handle_v1.hot"
 static void Node__init_seen(void*, void* f) { using T = std::weak_ptr<Weapon>; new (f) T(); }
-#line 129 "weak_handle_v1.hot.cpp"
+#line 131 "weak_handle_v1.hot.cpp"
 #line 20 "weak_handle_v1.hot"
 static void Node__init_hp(void*, void* f) { using T = int32_t; new (f) T(5); }
-#line 132 "weak_handle_v1.hot.cpp"
+#line 134 "weak_handle_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -185,7 +187,7 @@ HOT_HIDDEN static auto Node__plan()
     return std::make_pair(Node__super_args(), std::tuple<>());
 #line 14 "weak_handle_v1.hot"
 }
-#line 189 "weak_handle_v1.hot.cpp"
+#line 191 "weak_handle_v1.hot.cpp"
 using Node_SuperArgs = decltype(Node__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -218,7 +220,7 @@ HOT_NODEBUG static hot::ShellBase* Node__construct(void* mem, const char* key, c
     return nullptr;
 #line 14 "weak_handle_v1.hot"
 }
-#line 222 "weak_handle_v1.hot.cpp"
+#line 224 "weak_handle_v1.hot.cpp"
 
 static const char* const Node__construct_keys[] = {typeid(Node_SuperArgs).name(), hot::kCloneKey, nullptr};
 
@@ -234,7 +236,7 @@ HOT_HIDDEN static Node_Shell* Node__build([[maybe_unused]] bool __note)
     return __self;
 #line 14 "weak_handle_v1.hot"
 }
-#line 238 "weak_handle_v1.hot.cpp"
+#line 240 "weak_handle_v1.hot.cpp"
 #line 14 "weak_handle_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Node_Shell* Node__new()
 #line 14 "weak_handle_v1.hot"
@@ -243,7 +245,7 @@ HOT_HIDDEN static Node_Shell* Node__build([[maybe_unused]] bool __note)
     return Node__build(true);
 #line 14 "weak_handle_v1.hot"
 }
-#line 247 "weak_handle_v1.hot.cpp"
+#line 249 "weak_handle_v1.hot.cpp"
 #line 14 "weak_handle_v1.hot"
 template <int = 0>
 #line 14 "weak_handle_v1.hot"
@@ -258,7 +260,7 @@ template <int = 0>
     return __h;
 #line 14 "weak_handle_v1.hot"
 }
-#line 262 "weak_handle_v1.hot.cpp"
+#line 264 "weak_handle_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -272,7 +274,7 @@ static void Node__Adopt__thunk(hot::PlainObject* __a, const std::shared_ptr<Node
     return hot::call<void(hot::PlainObject*, const std::shared_ptr<Node>&)>(__self, Node_SLOT_Adopt, kid);
 #line 22 "weak_handle_v1.hot"
 }
-#line 276 "weak_handle_v1.hot.cpp"
+#line 278 "weak_handle_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -286,7 +288,7 @@ static void Node__SetParent__thunk(hot::PlainObject* __a, std::weak_ptr<Node> p)
     return hot::call<void(hot::PlainObject*, std::weak_ptr<Node>)>(__self, Node_SLOT_SetParent, p);
 #line 28 "weak_handle_v1.hot"
 }
-#line 290 "weak_handle_v1.hot.cpp"
+#line 292 "weak_handle_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -300,7 +302,7 @@ static void Node__AdoptBySet__thunk(hot::PlainObject* __a, const std::shared_ptr
     return hot::call<void(hot::PlainObject*, const std::shared_ptr<Node>&)>(__self, Node_SLOT_AdoptBySet, kid);
 #line 30 "weak_handle_v1.hot"
 }
-#line 304 "weak_handle_v1.hot.cpp"
+#line 306 "weak_handle_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -314,7 +316,7 @@ static int32_t Node__ParentHp__thunk(hot::PlainObject* __a)
     return hot::call<int32_t(hot::PlainObject*)>(__self, Node_SLOT_ParentHp);
 #line 35 "weak_handle_v1.hot"
 }
-#line 318 "weak_handle_v1.hot.cpp"
+#line 320 "weak_handle_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -328,7 +330,7 @@ static void Node__See__thunk(hot::PlainObject* __a, std::weak_ptr<Weapon> w)
     return hot::call<void(hot::PlainObject*, std::weak_ptr<Weapon>)>(__self, Node_SLOT_See, w);
 #line 41 "weak_handle_v1.hot"
 }
-#line 332 "weak_handle_v1.hot.cpp"
+#line 334 "weak_handle_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -342,7 +344,7 @@ static int32_t Node__Watch__thunk(hot::PlainObject* __a)
     return hot::call<int32_t(hot::PlainObject*)>(__self, Node_SLOT_Watch);
 #line 50 "weak_handle_v1.hot"
 }
-#line 346 "weak_handle_v1.hot.cpp"
+#line 348 "weak_handle_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -356,7 +358,7 @@ static int32_t Node__Try__thunk(hot::PlainObject* __a, std::weak_ptr<Weapon> w)
     return hot::call<int32_t(hot::PlainObject*, std::weak_ptr<Weapon>)>(__self, Node_SLOT_Try, w);
 #line 56 "weak_handle_v1.hot"
 }
-#line 360 "weak_handle_v1.hot.cpp"
+#line 362 "weak_handle_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -370,7 +372,7 @@ static int32_t Node__Racks__thunk(hot::PlainObject* __a, const std::shared_ptr<W
     return hot::call<int32_t(hot::PlainObject*, const std::shared_ptr<Weapon>&)>(__self, Node_SLOT_Racks, w);
 #line 58 "weak_handle_v1.hot"
 }
-#line 374 "weak_handle_v1.hot.cpp"
+#line 376 "weak_handle_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -384,7 +386,7 @@ static void Node__Forget__thunk(hot::PlainObject* __a)
     return hot::call<void(hot::PlainObject*)>(__self, Node_SLOT_Forget);
 #line 67 "weak_handle_v1.hot"
 }
-#line 388 "weak_handle_v1.hot.cpp"
+#line 390 "weak_handle_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Node_slots[Node_SLOT_COUNT] = {
@@ -418,7 +420,7 @@ HOT_NODEBUG static hot::Instance Node_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 14 "weak_handle_v1.hot"
 }
-#line 422 "weak_handle_v1.hot.cpp"
+#line 424 "weak_handle_v1.hot.cpp"
 
 #line 14 "weak_handle_v1.hot"
 HOT_NODEBUG static hot::Instance Node__make_0([[maybe_unused]] void** __a)
@@ -428,7 +430,7 @@ HOT_NODEBUG static hot::Instance Node__make_0([[maybe_unused]] void** __a)
     return Node_create();
 #line 14 "weak_handle_v1.hot"
 }
-#line 432 "weak_handle_v1.hot.cpp"
+#line 434 "weak_handle_v1.hot.cpp"
 
 static const hot::CtorEntry Node__constructors[] = {
     {hot::ctor_key<>(), &Node__make_0, hot::ctor_write_mask<>()},
@@ -445,7 +447,7 @@ static int32_t Rack__Dmg(Rack* __self)
     return hot::lock(__st->held) != nullptr ? hot::deref(hot::lock(__st->held)).dmg : 0;
 #line 11 "weak_handle_v1.hot"
 }
-#line 449 "weak_handle_v1.hot.cpp"
+#line 451 "weak_handle_v1.hot.cpp"
 
 #line 22 "weak_handle_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Node__Adopt(Node_Shell* __self, std::shared_ptr<Node> kid)
@@ -455,7 +457,7 @@ static int32_t Rack__Dmg(Rack* __self)
     return state_of(__self)->Adopt(std::forward<std::shared_ptr<Node>>(kid));
 #line 22 "weak_handle_v1.hot"
 }
-#line 459 "weak_handle_v1.hot.cpp"
+#line 461 "weak_handle_v1.hot.cpp"
 #line 22 "weak_handle_v1.hot"
 void NodeState_g1::Adopt(const std::shared_ptr<Node>& __kid)
 #line 22 "weak_handle_v1.hot"
@@ -482,7 +484,7 @@ void NodeState_g1::Adopt(const std::shared_ptr<Node>& __kid)
     HOT_TRACE_LINE(); state_of(hot::shell_of<Node_Shell>(kid, "Node"))->parent = hot::handle_from_this<std::shared_ptr<Node>>(__self);
 #line 25 "weak_handle_v1.hot"
 }
-#line 486 "weak_handle_v1.hot.cpp"
+#line 488 "weak_handle_v1.hot.cpp"
 
 #line 28 "weak_handle_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Node__SetParent(Node_Shell* __self, std::weak_ptr<Node> p)
@@ -492,7 +494,7 @@ void NodeState_g1::Adopt(const std::shared_ptr<Node>& __kid)
     return state_of(__self)->SetParent(std::forward<std::weak_ptr<Node>>(p));
 #line 28 "weak_handle_v1.hot"
 }
-#line 496 "weak_handle_v1.hot.cpp"
+#line 498 "weak_handle_v1.hot.cpp"
 #line 28 "weak_handle_v1.hot"
 void NodeState_g1::SetParent(std::weak_ptr<Node> p)
 #line 28 "weak_handle_v1.hot"
@@ -515,7 +517,7 @@ void NodeState_g1::SetParent(std::weak_ptr<Node> p)
     HOT_TRACE_LINE(); parent = hot::lock(p);
 #line 28 "weak_handle_v1.hot"
 }
-#line 519 "weak_handle_v1.hot.cpp"
+#line 521 "weak_handle_v1.hot.cpp"
 
 #line 30 "weak_handle_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Node__AdoptBySet(Node_Shell* __self, std::shared_ptr<Node> kid)
@@ -525,7 +527,7 @@ void NodeState_g1::SetParent(std::weak_ptr<Node> p)
     return state_of(__self)->AdoptBySet(std::forward<std::shared_ptr<Node>>(kid));
 #line 30 "weak_handle_v1.hot"
 }
-#line 529 "weak_handle_v1.hot.cpp"
+#line 531 "weak_handle_v1.hot.cpp"
 #line 30 "weak_handle_v1.hot"
 void NodeState_g1::AdoptBySet(const std::shared_ptr<Node>& __kid)
 #line 30 "weak_handle_v1.hot"
@@ -552,7 +554,7 @@ void NodeState_g1::AdoptBySet(const std::shared_ptr<Node>& __kid)
     HOT_TRACE_LINE(); Node__SetParent(hot::shell_of<Node_Shell>(kid, "Node"), hot::handle_from_this<std::shared_ptr<Node>>(__self));
 #line 33 "weak_handle_v1.hot"
 }
-#line 556 "weak_handle_v1.hot.cpp"
+#line 558 "weak_handle_v1.hot.cpp"
 
 #line 35 "weak_handle_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Node__ParentHp(Node_Shell* __self)
@@ -562,7 +564,7 @@ void NodeState_g1::AdoptBySet(const std::shared_ptr<Node>& __kid)
     return state_of(__self)->ParentHp();
 #line 35 "weak_handle_v1.hot"
 }
-#line 566 "weak_handle_v1.hot.cpp"
+#line 568 "weak_handle_v1.hot.cpp"
 #line 35 "weak_handle_v1.hot"
 int32_t NodeState_g1::ParentHp()
 #line 35 "weak_handle_v1.hot"
@@ -589,7 +591,7 @@ int32_t NodeState_g1::ParentHp()
     HOT_TRACE_LINE(); return state_of(hot::shell_of<Node_Shell>(hot::lock(__st->parent), "Node"))->hp;
 #line 39 "weak_handle_v1.hot"
 }
-#line 593 "weak_handle_v1.hot.cpp"
+#line 595 "weak_handle_v1.hot.cpp"
 
 #line 41 "weak_handle_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Node__See(Node_Shell* __self, std::weak_ptr<Weapon> w)
@@ -599,7 +601,7 @@ int32_t NodeState_g1::ParentHp()
     return state_of(__self)->See(std::forward<std::weak_ptr<Weapon>>(w));
 #line 41 "weak_handle_v1.hot"
 }
-#line 603 "weak_handle_v1.hot.cpp"
+#line 605 "weak_handle_v1.hot.cpp"
 #line 41 "weak_handle_v1.hot"
 void NodeState_g1::See(std::weak_ptr<Weapon> w)
 #line 41 "weak_handle_v1.hot"
@@ -632,7 +634,7 @@ void NodeState_g1::See(std::weak_ptr<Weapon> w)
     HOT_TRACE_LINE(); local.reset();
 #line 48 "weak_handle_v1.hot"
 }
-#line 636 "weak_handle_v1.hot.cpp"
+#line 638 "weak_handle_v1.hot.cpp"
 
 #line 50 "weak_handle_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Node__Watch(Node_Shell* __self)
@@ -642,7 +644,7 @@ void NodeState_g1::See(std::weak_ptr<Weapon> w)
     return state_of(__self)->Watch();
 #line 50 "weak_handle_v1.hot"
 }
-#line 646 "weak_handle_v1.hot.cpp"
+#line 648 "weak_handle_v1.hot.cpp"
 #line 50 "weak_handle_v1.hot"
 int32_t NodeState_g1::Watch()
 #line 50 "weak_handle_v1.hot"
@@ -667,7 +669,7 @@ int32_t NodeState_g1::Watch()
     HOT_TRACE_LINE(); return f();
 #line 53 "weak_handle_v1.hot"
 }
-#line 671 "weak_handle_v1.hot.cpp"
+#line 673 "weak_handle_v1.hot.cpp"
 
 #line 56 "weak_handle_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Node__Try(Node_Shell* __self, std::weak_ptr<Weapon> w)
@@ -677,7 +679,7 @@ int32_t NodeState_g1::Watch()
     return state_of(__self)->Try(std::forward<std::weak_ptr<Weapon>>(w));
 #line 56 "weak_handle_v1.hot"
 }
-#line 681 "weak_handle_v1.hot.cpp"
+#line 683 "weak_handle_v1.hot.cpp"
 #line 56 "weak_handle_v1.hot"
 int32_t NodeState_g1::Try(std::weak_ptr<Weapon> w)
 #line 56 "weak_handle_v1.hot"
@@ -700,7 +702,7 @@ int32_t NodeState_g1::Try(std::weak_ptr<Weapon> w)
     HOT_TRACE_LINE(); return hot::lock(w) != nullptr ? hot::deref(hot::lock(w)).dmg : 0;
 #line 56 "weak_handle_v1.hot"
 }
-#line 704 "weak_handle_v1.hot.cpp"
+#line 706 "weak_handle_v1.hot.cpp"
 
 #line 58 "weak_handle_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Node__Racks(Node_Shell* __self, std::shared_ptr<Weapon> w)
@@ -710,7 +712,7 @@ int32_t NodeState_g1::Try(std::weak_ptr<Weapon> w)
     return state_of(__self)->Racks(std::forward<std::shared_ptr<Weapon>>(w));
 #line 58 "weak_handle_v1.hot"
 }
-#line 714 "weak_handle_v1.hot.cpp"
+#line 716 "weak_handle_v1.hot.cpp"
 #line 58 "weak_handle_v1.hot"
 int32_t NodeState_g1::Racks(const std::shared_ptr<Weapon>& __w)
 #line 58 "weak_handle_v1.hot"
@@ -745,7 +747,7 @@ int32_t NodeState_g1::Racks(const std::shared_ptr<Weapon>& __w)
     HOT_TRACE_LINE(); return n + Node__Try(__self, std::weak_ptr<Weapon>()) + Node__Try(__self) + Node__Try(__self, h);
 #line 65 "weak_handle_v1.hot"
 }
-#line 749 "weak_handle_v1.hot.cpp"
+#line 751 "weak_handle_v1.hot.cpp"
 
 #line 67 "weak_handle_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Node__Forget(Node_Shell* __self)
@@ -755,7 +757,7 @@ int32_t NodeState_g1::Racks(const std::shared_ptr<Weapon>& __w)
     return state_of(__self)->Forget();
 #line 67 "weak_handle_v1.hot"
 }
-#line 759 "weak_handle_v1.hot.cpp"
+#line 761 "weak_handle_v1.hot.cpp"
 #line 67 "weak_handle_v1.hot"
 void NodeState_g1::Forget()
 #line 67 "weak_handle_v1.hot"
@@ -780,7 +782,7 @@ void NodeState_g1::Forget()
     HOT_TRACE_LINE(); __st->seen.reset();
 #line 70 "weak_handle_v1.hot"
 }
-#line 784 "weak_handle_v1.hot.cpp"
+#line 786 "weak_handle_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

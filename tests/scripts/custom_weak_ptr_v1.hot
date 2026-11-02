@@ -1,0 +1,20 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// A pointer field of a native class with a custom weak handle (stub attribute "weak_handle").
+// The stub of RefBase is a weak source: the field "target" is a hot::CheckedPtr<RefBase>.
+// The host sets the field. The field does not keep the object alive.
+using "Actor.h";
+using "RefPtr.h";
+
+[native, handle("RefPtr<$T>"), weak_handle("WeakRef<$T>")] class RefBase;
+
+class Holder : Actor {
+    RefBase* target = null;
+    int ticks = 0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+    }
+}

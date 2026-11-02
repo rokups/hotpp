@@ -193,6 +193,16 @@ public:
     // done). The module header specializes hot::is_handle for each one.
     std::vector<std::string> custom_handle_templates() const;
 
+    // A stub class is a weak source when its exact stub has a "handle" (not intrusive) with a weak
+    // type: the "weak_handle" template, or the weak_ptr of a shared_ptr handle.
+    struct StubWeakSource
+    {
+        std::string name;  // the class of the exact stub
+        std::string bases; // the base class text of the traits: "U" is the class type
+    };
+    // The weak sources of the exact stubs. The module header writes one weak_ref_traits for each.
+    std::vector<StubWeakSource> stub_weak_sources() const;
+
     // The C++ type of a parameter: "const H&" for a handle, else storage().
     std::string param(const std::string& type) const;
 

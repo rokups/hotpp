@@ -3479,6 +3479,17 @@ void translate_impl(
             spec.handle = true;
             checked_specs.push_back(std::move(spec));
         }
+        // A stub with a handle that has a weak type is a weak source: hot::CheckedPtr<T> keeps a
+        // pointer field of T. A class with weak_from_this() has its own traits: the guard skips it.
+        for (const hotc::TypeModel::StubWeakSource& w : types.stub_weak_sources())
+        {
+            CheckedSpec spec;
+            spec.name = w.name;
+            spec.text = "template <class U> struct weak_ref_traits<U, std::enable_if_t<std::is_same_v<U, ::" + w.name
+                + "> && !detail::has_weak_from_this<U>::value>> : " + w.bases + " {};";
+            spec.kind = "1";
+            checked_specs.push_back(std::move(spec));
+        }
         std::set<std::string> uniq;
         for (const CheckedSpec& c : checked_specs)
             if (uniq.insert(c.name).second)

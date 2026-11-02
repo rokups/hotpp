@@ -231,7 +231,7 @@ TEST(NativePointerField, HotPointerToAPlainStructKeepsTheBorrowedMessage)
 
 TEST(NativePointerField, HotPointerToAClassWithoutAWeakSourceKeepsTheBorrowedMessage)
 {
-    for (const char* stubs : {"", "[native, handle(\"std::shared_ptr<$T>\")] class Mesh;\n"})
+    for (const char* stubs : {"", "[native] class Mesh;\n"})
     {
         const hotc::TranslateResult strict = hot_field(stubs, "Mesh* m;");
         EXPECT_FALSE(strict.ok) << stubs;
@@ -286,9 +286,39 @@ TEST(NativePointerField, ByteAndUnsignedCharPointersAreValuePointers)
 
 TEST(NativePointerField, HotWeakOnAPointerWithoutAWeakSourceKeepsTheOldMessage)
 {
-    const hotc::TranslateResult r = hot_field(kWeaponStub, "[weak] Weapon* w;");
+    const hotc::TranslateResult r = hot_field("", "[weak] Weapon* w;");
     EXPECT_FALSE(r.ok);
     EXPECT_FALSE(has(r.diagnostics, "already a weak reference")) << r.diagnostics;
+}
+
+// ---- a stub with a handle is a weak source
+
+TEST(NativePointerField, HotPointerOfASharedPtrStubIsStoredAsCheckedPtr)
+{
+    const hotc::TranslateResult r = hot_field("[native, handle(\"std::shared_ptr<$T>\")] class Mesh;\n", "Mesh* m;");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<Mesh> m")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "struct weak_ref_traits<U, std::enable_if_t<std::is_same_v<U, ::Mesh> && "
+                           "!detail::has_weak_from_this<U>::value>> : hot::shared_weak_ref<U> {};"))
+        << r.cpp;
+}
+
+TEST(NativePointerField, HotPointerOfAWeakHandleStubIsStoredAsCheckedPtr)
+{
+    const hotc::TranslateResult r = hot_field(
+        "[native, handle(\"Strong<$T>\"), weak_handle(\"Weak<$T>\")] class Mesh;\n", "Mesh* m;");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<Mesh> m")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, ": hot::custom_weak_ref<U, Strong<U>, Weak<U>> {};")) << r.cpp;
+}
+
+TEST(NativePointerField, HotPointerOfAStubWithWeakFromThisKeepsTheClassTraits)
+{
+    // Shared has enable_shared_from_this: the emitted traits are guarded and never apply to it.
+    const hotc::TranslateResult r = hot_field(kSharedStub, "Shared* m;");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<Shared> m")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "!detail::has_weak_from_this<U>::value")) << r.cpp;
 }
 
 // ---- a valid checked pointer in non-strict mode, and a derived class
