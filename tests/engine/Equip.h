@@ -13,6 +13,18 @@
 struct Charm : std::enable_shared_from_this<Charm>
 {
     int power = 0;
+    int Twice() const { return power * 2; }
+    void Bump(int n) { power += n; }
+};
+
+// A native base that owns a Charm. Best() gives a raw pointer. Held() gives the owning handle.
+class Vault
+{
+public:
+    virtual ~Vault() = default;
+    Charm* Best() { return held.get(); }
+    std::shared_ptr<Charm> Held() { return held; }
+    std::shared_ptr<Charm> held;
 };
 
 // A class that gets shared_from_this from its base Charm.

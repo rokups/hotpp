@@ -19,6 +19,17 @@
 namespace hot
 {
 
+// A pointer field of a native class is a CheckedPtr (see checked_ptr.h). It has the form of a
+// pointer for the script, so deref, star, as_ptr and as_ref treat it as a pointer.
+template <class T> class CheckedPtr;
+template <class T> struct is_checked_ptr : std::false_type
+{
+};
+template <class T> struct is_checked_ptr<CheckedPtr<T>> : std::true_type
+{
+};
+template <class T> inline constexpr bool is_checked_ptr_v = is_checked_ptr<detail::remove_cvref_t<T>>::value;
+
 // The script writes "a.b" for a pointer and for a reference. The translator writes
 // "hot::deref(a).b". The helper gives an object for both.
 // A pointer gives the object that it points to. This includes an lvalue pointer ("T*&"):
@@ -37,11 +48,12 @@ template <class T> HOT_HIDDEN T& deref(T* p)
     return *p;
 }
 // The two overloads below exclude a handle. Else they win over the handle overload.
-template <class T, std::enable_if_t<!is_handle_v<T>, int> = 0> HOT_HIDDEN T& deref(T& v)
+template <class T, std::enable_if_t<!is_handle_v<T> && !is_checked_ptr_v<T>, int> = 0> HOT_HIDDEN T& deref(T& v)
 {
     return v;
 }
-template <class T, std::enable_if_t<!std::is_lvalue_reference_v<T> && !is_handle_v<T>, int> = 0>
+template <class T,
+    std::enable_if_t<!std::is_lvalue_reference_v<T> && !is_handle_v<T> && !is_checked_ptr_v<T>, int> = 0>
 HOT_HIDDEN detail::remove_cvref_t<T> deref(T&& v)
 {
     return static_cast<T&&>(v);
@@ -52,6 +64,12 @@ template <class H, std::enable_if_t<is_handle_v<H>, int> = 0> HOT_HIDDEN decltyp
     if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(!h))
         detail::throw_null_reference("null handle dereference");
     return *h;
+}
+// A CheckedPtr gives the object like a pointer. A null or an expired target throws
+// hot::NullReference. The reference is borrowed: the strong handle lives only inside the call.
+template <class P, std::enable_if_t<is_checked_ptr_v<P>, int> = 0> HOT_HIDDEN decltype(auto) deref(P&& p)
+{
+    return *p;
 }
 // An array is not an object that has members. The script cannot use "arr.x" on an array.
 // Without this overload, the array would decay to a pointer and "arr.x" would compile.
@@ -90,6 +108,11 @@ template <class T> HOT_HIDDEN T* as_ptr(T* p)
 {
     return p;
 }
+// A CheckedPtr gives its borrowed pointer: nullptr when the pointer is null or expired.
+template <class P, std::enable_if_t<is_checked_ptr_v<P>, int> = 0> HOT_HIDDEN auto as_ptr(const P& p)
+{
+    return p.get();
+}
 
 // The script passes a handle "h" to a native parameter "T&" or "const T&". The translator
 // writes "hot::as_ref(h)". A null handle throws hot::NullReference, unless HOT_RUNTIME_CHECKS
@@ -100,6 +123,11 @@ HOT_HIDDEN decltype(auto) as_ref(const H& h)
     if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(!h))
         detail::throw_null_reference("null handle passed to a reference parameter");
     return *h;
+}
+// A CheckedPtr throws hot::NullReference on null or on an expired target (its operator*).
+template <class P, std::enable_if_t<is_checked_ptr_v<P>, int> = 0> HOT_HIDDEN decltype(auto) as_ref(const P& p)
+{
+    return *p;
 }
 template <class T> HOT_HIDDEN T& as_ref(T* p)
 {

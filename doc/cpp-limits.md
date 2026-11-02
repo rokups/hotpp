@@ -43,6 +43,10 @@ The first version gives an error for each form in this list. The text in the sec
 | Any other declaration in the class | `this declaration is not supported in a .cpp script class` |
 | Properties | There is no property syntax in C++. Use two methods. |
 | Script-class handles | A script class is not a handle in a `.cpp` script. Use a pointer. See [Script classes as types](cpp-types.html#script-classes-as-types). |
+| A reference field or a reference module variable, for example `Mesh& r;` | `a field cannot be a reference: a reference cannot change its target and has no null. Use 'T*' (a checked pointer) or a value` |
+| A pointer to a builtin type or to an enum, for example `int* p = nullptr;` | `a field cannot hold a pointer to the value type 'int': nothing owns it, so the pointer can dangle. Use a value, or a pointer to the object that owns it` |
+| A pointer field of a native class with no weak source, for example `Mesh* m = nullptr;` | `a field cannot hold a borrowed pointer or reference to 'Mesh'. Declare a stub with 'handle' or 'intrusive' for 'Mesh', or use a value` |
+| `delete p` on a native pointer field | Not supported. The field is a `hot::CheckedPtr`. The code compiles through its `operator T*`, but the weak pointer does not own the object. Do not use `delete` on it. |
 | A script class by value, for example `Minion m;` or a parameter `Minion m` | `the script class '<name>' by value is not supported in a .cpp script; use a pointer or a reference` |
 | An array of a script class, for example `Minion a[2];` | `an array of the script class '<name>' is not supported in a .cpp script; use a pointer or a reference` |
 | A script class as a template argument, for example `std::vector<Minion>` | `the script class '<name>' as a template argument is not supported in a .cpp script; use a pointer or a reference` |

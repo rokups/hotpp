@@ -112,4 +112,89 @@ TEST_P(BackendTests, CheckedPtrFieldOverACustomWeakHandle)
     EXPECT_THROW({ (void)(**field).Refs(); }, hot::NullReference);
 }
 
+// The expression forms on a pointer field, in both frontends. The ".hot" script and the ".cpp"
+// script do the same work. The host sets "phase" and runs Tick.
+template <class T> T* module_var(Session& s, const char* name)
+{
+    const hot::ModuleStateInfo ms = s.loader.module_state();
+    if (!ms.layout || !*ms.slot)
+        return nullptr;
+    for (uint32_t i = 0; i < ms.layout->field_count; ++i)
+        if (std::string(ms.layout->fields[i].name) == name)
+            return reinterpret_cast<T*>(static_cast<char*>(*ms.slot) + ms.layout->fields[i].offset);
+    return nullptr;
+}
+
+void run_forms_script(hot::Backend& backend, const char* file)
+{
+    hot::LoadResult v1 = backend.load(source(file), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Prober"));
+    s.commit_at_frame_boundary();
+    auto geti = [&](const char* name) { return *hot::field_ptr<int>(s.inst.shell, name); };
+    auto seti = [&](const char* name, int v) { *hot::field_ptr<int>(s.inst.shell, name) = v; };
+    auto* other = hot::field_ptr<hot::CheckedPtr<Charm>>(s.inst.shell, "other");
+    auto* g_other = module_var<hot::CheckedPtr<Charm>>(s, "g_other");
+    ASSERT_NE(other, nullptr);
+    ASSERT_NE(g_other, nullptr);
+    Vault* vault = dynamic_cast<Vault*>(s.actor);
+    ASSERT_NE(vault, nullptr);
+    vault->held = std::make_shared<Charm>();
+    vault->held->power = 4;
+
+    // The field starts null: "other == null" is true and the guarded block does not run.
+    s.world.Tick(kDt);
+    EXPECT_EQ(geti("is_null"), 1);
+    EXPECT_EQ(geti("via_call"), -1);
+
+    // "other = Best()": a raw pointer from a native call. Then "other.Twice()", a native
+    // call with the pointer, a lambda that uses this, and a module variable pointer.
+    seti("phase", 1);
+    s.world.Tick(kDt);
+    EXPECT_EQ(other->get(), vault->held.get());
+    EXPECT_EQ(g_other->get(), vault->held.get());
+    EXPECT_EQ(geti("is_null"), 0);
+    EXPECT_EQ(vault->held->power, 5); // Bump(1)
+    EXPECT_EQ(geti("via_call"), 10);
+    EXPECT_EQ(geti("via_pass"), 5);
+    EXPECT_EQ(geti("via_lambda"), 10);
+    EXPECT_EQ(geti("via_module"), 10);
+    EXPECT_EQ(vault->held.use_count(), 1); // the field and the module variable are weak
+
+    // "other = null".
+    seti("phase", 3);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*other, nullptr);
+    EXPECT_EQ(*g_other, nullptr);
+    EXPECT_EQ(geti("is_null"), 1);
+    EXPECT_EQ(geti("via_call"), -1);
+
+    // "other = h": a handle.
+    seti("phase", 2);
+    s.world.Tick(kDt);
+    EXPECT_EQ(other->get(), vault->held.get());
+    EXPECT_EQ(geti("is_null"), 0);
+    EXPECT_EQ(vault->held->power, 6);
+    EXPECT_EQ(geti("via_call"), 12);
+    EXPECT_EQ(vault->held.use_count(), 1);
+
+    // The target dies: the field reads null and the script takes the null branch.
+    seti("phase", 0);
+    vault->held.reset();
+    s.world.Tick(kDt);
+    EXPECT_EQ(geti("is_null"), 1);
+    EXPECT_EQ(geti("via_call"), -1);
+}
+
+TEST_P(BackendTests, CheckedPtrFormsInAHotScript)
+{
+    run_forms_script(*backend, "native_ptr_forms.hot");
+}
+
+TEST_P(BackendTests, CheckedPtrFormsInACppScript)
+{
+    run_forms_script(*backend, "cpp_native_ptr_forms.cpp");
+}
+
 } // namespace

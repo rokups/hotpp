@@ -7,7 +7,7 @@ group: Hot script
 
 ## Borrowed locals
 
-A local is borrowed when it is `var& r = x;`, `var p = &x;`, a typed `T*` or `T&`, or a `var` that takes a native pointer from a call. A native pointer to a handle type is not borrowed. A lambda that uses a borrowed local gives the capture error.
+A local is borrowed when it is `var& r = x;`, `var p = &x;`, a typed `T*` or `T&`, or a `var` that takes a native pointer from a call. A native pointer to a handle type is not borrowed. A pointer field of a native class with a weak source is a checked pointer, not a borrowed value (see "Pointer fields" in `borrowing.md`). A lambda that uses a borrowed local gives the capture error.
 
 ```hot
 using "Actor.h"; using "Armory.h";
@@ -67,7 +67,10 @@ class Probe {
 
 | Error starts with | Write instead |
 |---|---|
-| `a field`, `a return value`, `a collection element` | A value `T`, a handle, or a copy such as `std.string` |
+| `a field cannot be a reference` | `T*` (a checked pointer) or a value |
+| `a field cannot hold a pointer to the value type` | A value `T`, or a pointer to the object that owns it |
+| `a pointer field is already a weak reference` | Remove `[weak]` |
+| `a field`, `a return value`, `a collection element` | A value `T`, a handle, or a copy such as `std.string`. For a field of a native class: add a weak source (`enable_shared_from_this` or a stub with `handle`) and keep `T*` |
 | `a '&' value cannot be stored` | Pass `&x` to the call, or store a copy of `x` |
 | `the lambda captures` | Copy first: `var c = r;`, then use `c` |
 | `field of move-only type` | A handle: a stub with `handle` |

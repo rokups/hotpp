@@ -35,7 +35,8 @@ class Hero : Actor {
 | Local | `var& r = x;`, `Vec3* p = &x;`, `var p = &x;` | yes |
 | `catch`, lambda parameter, `foreach` | `catch (std.exception& e)`, `(Vec3& v) => ...`, `foreach (var& x in xs)` | yes |
 | `&x` in a call, `new` or `base(...)` | `f(&x)`, `new Hero(&x)` | yes |
-| Field, return type, collection element, lambda capture | `Vec3& last;`, `() => p.x` | no |
+| Field of a native class with a weak source | `Weapon* last;` | yes: stored as a checked pointer (see "Pointer fields") |
+| Field of another type, return type, collection element, lambda capture | `Vec3& last;`, `() => p.x` | no |
 | `&x` in an assignment or `return` | `p = &x;` | no |
 
 ```hot
@@ -58,13 +59,14 @@ class Hero {
 
 ## Where borrowing is rejected
 
-A field, a return value, a collection element, a lambda capture and a stored `&x` are errors. A field of the move-only type `std.unique_ptr<T>` is also an error, because a reload copies each field.
+A field, a return value, a collection element, a lambda capture and a stored `&x` are errors. A field of the move-only type `std.unique_ptr<T>` is also an error, because a reload copies each field. A pointer field of a native class with a weak source is the exception (see "Pointer fields").
 
 ```hot
 // error
 using "Actor.h";
 class Bad {
-    Vec3& last;                         // field
+    Vec3& last;                         // reference field
+    Vec3* ptr;                          // pointer to a value type
     std.vector<Vec3*> all;              // collection element
     std.unique_ptr<Vec3> own;           // move-only field
     Vec3* Addr() { return &last; } // return value, return &x
@@ -76,7 +78,8 @@ class Bad {
 ```
 
 ```
-a field cannot hold a borrowed pointer or reference to 'Vec3'. Declare a stub with 'handle' or 'intrusive' for 'Vec3', or use a value
+a field cannot be a reference: a reference cannot change its target and has no null. Use 'T*' (a checked pointer) or a value
+a field cannot hold a pointer to the value type 'Vec3': nothing owns it, so the pointer can dangle. Use a value, or a pointer to the object that owns it
 a collection element cannot hold a borrowed pointer or reference to 'Vec3'. Declare a stub ...
 field of move-only type 'std::unique_ptr<Vec3>' is not supported: a reload copies each field. Use a handle
 a return value cannot hold a borrowed pointer or reference to 'Vec3'. Declare a stub ...
@@ -108,17 +111,18 @@ class Hero : Actor {
 
 An override can take a native `Weapon*` or `Weapon&` as the plain handle `Weapon`. The body then owns a handle, not a borrowed pointer. See "Parameter forms of an override" in `inheritance.md`.
 
-`Weapon*` of a native handle is borrowed, so it is a finding in a field. `Hero*` of a script class is always an error. The `this` error shows after the other errors are fixed.
+A `Weapon*` field is not a finding when `Weapon` has a weak source. The field is a checked pointer (see "Pointer fields"). A `Weapon*` field of a class with no weak source is a finding. `Hero*` of a script class is always an error. The `this` error shows after the other errors are fixed.
 
 A weak handle `[weak] T x` does not keep its object alive, so it breaks a cycle of handles. Each read locks it for one statement. So `var& r = x.hp` and `&x.hp` are errors: the reference dangles. See "Weak handles" in `types-handles.md`.
 
 ```hot
 // error
-using "Actor.h"; using "Weapon.h"; using "Armory.h";
+using "Actor.h"; using "Mesh.h"; using "Armory.h";
+[native] class Mesh;
 [native, handle("std::shared_ptr<$T>")] class Weapon;
 
 class Hero : Actor {
-    Weapon* last;
+    Mesh* last;
     Hero* buddy;
     void Join(Hero& other) { }
     void Run(Armory& a, Weapon h) {
@@ -129,8 +133,45 @@ class Hero : Actor {
 ```
 
 ```
-a field cannot hold a borrowed pointer or reference to 'Weapon'. Declare a stub ...
+a field cannot hold a borrowed pointer or reference to 'Mesh'. Declare a stub with 'handle' or 'intrusive' for 'Mesh', or use a value
 a pointer to the script class 'Hero' is not allowed: use 'Hero' (a handle)
 '&' on the handle 'h' is not allowed. Pass 'h' for a handle parameter or a native 'T*' or 'T&' parameter, or use '&*h' for a 'T*' and '*h' for a 'T&'
 'this' cannot bind to the reference parameter 'other' of the script class 'Hero'. Copy it to a local first: 'Hero me = this;'
 ```
+
+## Pointer fields
+
+A field or a module variable of type `T*` or `const T*` is allowed when `T` is a native class with a weak source. The translator stores it as `hot::CheckedPtr<T>`. The pointer is weak: it does not keep the object alive. It reads null after the object dies. It keeps its target across a reload.
+
+A weak source is one of these:
+
+- The class derives from `std::enable_shared_from_this`.
+- A stub gives the class a non-intrusive `handle` or `weak_handle`.
+- The host specializes `hot::weak_ref_traits<T>` (see "Custom handles" in `types-handles.md`).
+
+```hot
+using "Actor.h"; using "Equip.h";
+
+class Hero : Actor {
+    Charm* target = null;                  // a checked pointer
+    override void Tick(float dt) {
+        if (target != null) target.Bump(1);   // a dead target reads as null
+    }
+}
+```
+
+The use is the same as for a pointer. `p == null`, `p = null`, `p.M()`, and `Use(p)` for a native `T*` parameter work. A call on a null or dead pointer throws `NullReference`. A native call that returns a raw `T*` can assign to the field when the class has `std::enable_shared_from_this`. An object that no `std::shared_ptr` owns throws `NullReference` at the assignment. A class with a non-intrusive stub and no `enable_shared_from_this` accepts a handle only: `p = h;`.
+
+The object can die while a native call uses it. A `T&` from `*p` is borrowed, like a raw pointer. Do not keep it.
+
+A field with an intrusive stub stays the handle: `Object*` is the handle (see above). These forms are errors:
+
+| Form | Error |
+|---|---|
+| Reference field `Weapon& r;` | `a field cannot be a reference: a reference cannot change its target and has no null. Use 'T*' (a checked pointer) or a value` |
+| `int* p;`, `byte* b;`, a pointer to an enum | `a field cannot hold a pointer to the value type 'int': nothing owns it, so the pointer can dangle. Use a value, or a pointer to the object that owns it` |
+| `[weak] Weapon* w;` | `a pointer field is already a weak reference: remove '[weak]'` |
+| `Mesh* m;` where `Mesh` has no weak source | `a field cannot hold a borrowed pointer or reference to 'Mesh'. Declare a stub with 'handle' or 'intrusive' for 'Mesh', or use a value` |
+| `Weapon**`, `void*`, a return type or a collection element `Weapon*` | the borrowed message above |
+
+A pointer to a script class is still an error. Use the handle `Hero`.

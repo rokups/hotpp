@@ -224,4 +224,26 @@ TEST(CheckedPtr, Comparisons)
     EXPECT_TRUE(p == craw);
 }
 
+// The translator writes "hot::deref(p).M()" for "p.M()", and hot::as_ptr and hot::as_ref for a
+// native parameter. A CheckedPtr works as a pointer in all three.
+TEST(CheckedPtr, HelpersTreatItAsAPointer)
+{
+    auto strong = std::make_shared<Charm>();
+    strong->power = 3;
+    hot::CheckedPtr<Charm> p = strong;
+    hot::CheckedPtr<Charm> empty;
+    EXPECT_EQ(hot::deref(p).Twice(), 6);
+    EXPECT_EQ(&hot::deref(p), strong.get());
+    EXPECT_EQ(hot::as_ptr(p), strong.get());
+    EXPECT_EQ(hot::as_ptr(empty), nullptr);
+    EXPECT_EQ(&hot::as_ref(p), strong.get());
+    EXPECT_EQ(&hot::star(p), strong.get());
+    EXPECT_EQ(power_of(hot::as_ptr(p)), 3);
+    EXPECT_THROW({ (void)hot::deref(empty); }, hot::NullReference);
+    EXPECT_THROW({ (void)hot::as_ref(empty); }, hot::NullReference);
+    strong.reset();
+    EXPECT_THROW({ (void)hot::deref(p); }, hot::NullReference);
+    EXPECT_EQ(hot::as_ptr(p), nullptr);
+}
+
 } // namespace

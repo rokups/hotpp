@@ -92,6 +92,22 @@ A host can use its own smart pointer, for example an intrusive pointer of an eng
 - The handle needs `operator->`, `operator*` and a test against `nullptr`. The raw pointer comes from `get()` or `Get()`.
 - For a template of the form `Name<$T>`, the module header specializes `hot::is_handle`. For another form, the host specializes `hot::is_handle` in a header that the script includes.
 
+A stub with a non-intrusive handle is also a weak source for pointer fields (see "Pointer fields" below). The module header writes a `hot::weak_ref_traits` specialization for each such stub. The specialization is guarded: it does not apply to a class with `weak_from_this()`. A host can write the specialization by hand for a smart pointer that the stub does not describe:
+
+```cpp
+template <> struct hot::weak_ref_traits<MyType> {
+    using strong_type = MySharedPtr<MyType>;
+    using weak_type = MyWeakPtr<MyType>;
+    static weak_type to_weak(const strong_type& s);   // makes the weak handle
+    static strong_type lock(const weak_type& w);      // null handle when the object is gone
+    static strong_type from_raw(MyType* p);           // optional: a raw pointer to a handle
+};
+```
+
+`hot::custom_weak_ref<T, Strong, Weak>` and `hot::shared_weak_ref<T>` are ready bases. They give `to_weak` and `lock`, and no `from_raw`. Without `from_raw`, a pointer field takes a handle only, not a raw `T*`.
+
+All modules must use the same handle stub for one class. Each module header has its own `weak_ref_traits` for the class. Two different stubs for one class break the one-definition rule.
+
 With a module attribute `std` other than `std`, a script class without a native base uses `$std::shared_ptr`. Then `new` makes the object and the control block in two blocks. `this` as a handle in such a class is not supported: `hot::PlainObject` has `std::enable_shared_from_this`.
 
 ## Value uses
@@ -230,6 +246,21 @@ class Mover : Actor {
 ```
 
 A `T&` of a script class is a reference to the handle, so the callee can rebind it. A single `T*` of a script class is an error: write `T`. A native handle type keeps the raw `T&` and `T*`.
+
+### Pointer fields
+
+A field or a module variable `T*` or `const T*` of a native class is stored as `hot::CheckedPtr<T>`. It is a weak pointer. It does not keep the object alive and it reads `null` after the object dies. It keeps its target across a reload. `p.M()` and `*p` throw `NullReference` on a null or dead pointer.
+
+`T` needs a weak source:
+
+| Weak source | Raw `T*` assignment | Handle assignment |
+|---|---|---|
+| A class with `std::enable_shared_from_this` | yes (`NullReference` if no `shared_ptr` owns the object) | yes |
+| A stub with `handle("std::shared_ptr<$T>")` and no `enable_shared_from_this` | no | yes |
+| A stub with `handle` and `weak_handle` (see "Custom handles") | no | yes |
+| A `hot::weak_ref_traits<T>` specialization of the host | only with `from_raw` | yes |
+
+A `T*` of an intrusive stub stays the handle. A pointer to a class with no weak source is a borrowed finding. A reference field, a pointer to a builtin or enum, and `[weak]` on a pointer field are errors. See "Pointer fields" in [Borrowing](borrowing.html) for the error texts.
 
 [Borrowing](borrowing.html) lists every place where a reference or a pointer is allowed.
 

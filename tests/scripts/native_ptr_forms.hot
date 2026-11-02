@@ -1,0 +1,53 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// The expression forms on a native pointer field. The field "other" and the module variable
+// "g_other" are hot::CheckedPtr<Charm>. The host sets "phase" and runs Tick.
+// Phase 1 takes a raw pointer from a native call. Phase 2 takes a handle. Phase 3 sets null.
+using "Actor.h";
+using "Equip.h";
+using <functional>;
+
+[native, handle("std::shared_ptr<$T>")] class Charm;
+
+Charm* g_other = null;
+
+class Prober : Actor, Vault {
+    Charm* other = null;
+    int phase = 0;
+    int is_null = -1;
+    int via_call = -1;
+    int via_pass = -1;
+    int via_lambda = -1;
+    int via_module = -1;
+
+    override void Tick(float dt) {
+        if (this.phase == 1) {
+            this.other = this.Best();
+        }
+        if (this.phase == 2) {
+            Charm h = this.Held();
+            this.other = h;
+        }
+        if (this.phase == 3) {
+            this.other = null;
+        }
+        this.is_null = this.other == null ? 1 : 0;
+        this.via_call = -1;
+        this.via_pass = -1;
+        this.via_lambda = -1;
+        this.via_module = -1;
+        if (this.other != null) {
+            this.other.Bump(1);
+            this.via_call = this.other.Twice();
+            this.via_pass = Polish(this.other);
+            std.function<int()> f = () => { return this.other.Twice(); };
+            this.via_lambda = f();
+            g_other = this.other;
+            this.via_module = g_other.Twice();
+        } else {
+            g_other = null;
+        }
+    }
+}

@@ -143,6 +143,40 @@ When no constructor matches, `construct` throws `std::invalid_argument`. The tex
 
 `DefaultBackendOptions` sets only `include_dirs` and `extra_flags`. The default backend sets the compiler, the resource folder and (for `CLANG_FILES`) the work folder from the build.
 
+## Weak pointers for pointer fields
+
+`include/hot/runtime/checked_ptr.h`.
+
+A pointer field `T*` of a native class is a `hot::CheckedPtr<T>`. It needs the trait `hot::weak_ref_traits<T>`. The runtime gives the trait for a class with `weak_from_this()`, such as a `std::enable_shared_from_this` class. A stub with `handle` or `weak_handle` gets a trait in the module header. A host smart pointer, such as the `WeakPtr` of rbfx, needs a specialization that the host writes in a header that the script includes:
+
+```cpp
+namespace hot
+{
+template <> struct weak_ref_traits<Urho3D::RefCounted>
+    : custom_weak_ref<Urho3D::RefCounted, Urho3D::SharedPtr<Urho3D::RefCounted>, Urho3D::WeakPtr<Urho3D::RefCounted>>
+{
+    // Optional. Without it, a pointer field takes a handle only, not a raw pointer.
+    static Urho3D::SharedPtr<Urho3D::RefCounted> from_raw(Urho3D::RefCounted* p)
+    {
+        return Urho3D::SharedPtr<Urho3D::RefCounted>(p);
+    }
+};
+} // namespace hot
+```
+
+| Member | Meaning |
+|---|---|
+| `strong_type`, `weak_type` | The strong and the weak handle. The weak handle is default constructible. |
+| `to_weak(strong)` | Makes the weak handle. |
+| `lock(weak)` | Gives the strong handle, or a null handle when the object is gone. |
+| `from_raw(T*)` | Optional. Gives the strong handle of a raw pointer. |
+
+`hot::custom_weak_ref<T, Strong, Weak>` gives `to_weak` and `lock`. It reads the weak handle with `hot::lock`, which calls `lock()` or `Lock()`. `hot::shared_weak_ref<T>` is the same for `std::shared_ptr`.
+
+Do not write a specialization for a class that already has a stub with `handle` in the script: the module header already has one. All modules that use the class must agree on one weak source. See "Custom handles" in [Types and handles](types-handles.html).
+
+`CheckedPtr<T>::get()` gives the borrowed raw pointer, or null when the object is gone. `lock()` gives the strong handle.
+
 ## CMake
 
 The page [CMake](cmake.html) describes the targets, the options and the functions `hot_add_host`, `hot_add_scripts` and `hot_script_host`. A complete project is the sample [aot](https://github.com/rokups/hotpp/tree/master/samples/aot).

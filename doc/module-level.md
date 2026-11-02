@@ -109,6 +109,20 @@ An initializer can use only a variable that is above it. A later variable, or th
 [alias("total")] int sum = 0;
 ```
 
+A module variable `T*` of a native class with a weak source is a `hot::CheckedPtr<T>`, as a pointer field is. It is weak, it reads `null` after the object dies, and it keeps its target across a reload. The same errors apply as for a field. See "Pointer fields" in [Borrowing](borrowing.html).
+
+```hot
+using "Actor.h"; using "Equip.h";
+
+Charm* last_charm = null;       // a checked pointer
+
+class Hero : Actor {
+    override void Tick(float dt) {
+        if (last_charm != null) last_charm.Bump(1);
+    }
+}
+```
+
 ## Native stubs
 
 A stub tells the translator how a native type behaves. `handle` makes it a shared handle. `value` makes it a copied value.
