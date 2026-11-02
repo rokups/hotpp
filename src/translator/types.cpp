@@ -37,16 +37,6 @@ bool is_builtin(const std::string& t)
     return names.count(t) != 0;
 }
 
-// The prefix of the shared pointer template "\x01std::shared_ptr<$T>" or "std::shared_ptr<$T>" (the
-// text of a stub keeps its own form): "\x01std::" or "std::". Empty for any other template.
-std::string shared_prefix(const std::string& tpl)
-{
-    if (tpl == "\x01std::shared_ptr<$T>")
-        return "\x01std::";
-    if (tpl == "std::shared_ptr<$T>")
-        return "std::";
-    return {};
-}
 
 std::string replace_all(std::string s, const std::string& from, const std::string& to)
 {
@@ -503,6 +493,21 @@ std::string TypeModel::body_param(const std::string& type, bool mutated, bool re
     if (classes_ && classes_(type).small)
         return type;
     return "const " + type + "&";
+}
+
+// The prefix of the shared pointer template "\x01std::shared_ptr<$T>" or "std::shared_ptr<$T>" (the
+// text of a stub keeps its own form): "\x01std::" or "std::". A library namespace L (set_libs)
+// gives "L::" for "L::shared_ptr<$T>". Empty for any other template.
+std::string TypeModel::shared_prefix(const std::string& tpl) const
+{
+    if (tpl == "\x01std::shared_ptr<$T>")
+        return "\x01std::";
+    if (tpl == "std::shared_ptr<$T>")
+        return "std::";
+    for (const std::string& l : libs_)
+        if (tpl == l + "::shared_ptr<$T>")
+            return l + "::";
+    return {};
 }
 
 std::string TypeModel::make(const std::string& type, const std::string& args) const

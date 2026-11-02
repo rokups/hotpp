@@ -62,6 +62,11 @@ public:
     void set_std_ns(std::string ns) { std_ns_ = std::move(ns); }
     const std::string& std_ns() const { return std_ns_; }
 
+    // The standard-like library namespaces (the module attribute "lib"). A handle template
+    // "L::shared_ptr<$T>" of such a namespace L works like the std one: "L::weak_ptr" is its weak
+    // handle and "L::make_shared" makes an object.
+    void set_libs(std::vector<std::string> libs) { libs_ = std::move(libs); }
+
     // The handle template of the stub "class *;" (empty: there is none).
     const std::string& default_handle() const { return default_handle_; }
 
@@ -219,6 +224,9 @@ private:
     std::string default_handle_;
     std::string default_weak_; // the weak_handle of "class *"
     std::string std_ns_ = "std"; // see set_std_ns()
+    std::vector<std::string> libs_; // see set_libs()
+    // The namespace prefix of a shared pointer template: "\x01std::", "std::", "L::" or empty.
+    std::string shared_prefix(const std::string& tpl) const;
     struct ScriptClass
     {
         std::string base;

@@ -1040,6 +1040,9 @@ struct ClassAttrs
     std::string std_ns; // [std("name")]: valid in a module attribute list only
     bool has_std = false;
     const char* std_pos = nullptr; // the "std" name, or null
+    // [lib("name")]: a standard-like library namespace. Valid in a module attribute list only. The
+    // attribute can come more than one time, with one namespace each time.
+    std::vector<std::pair<const char*, std::string>> libs;
     std::string array_tpl; // [array("template")]: valid in a module attribute list only
     bool has_array = false;
     const char* array_pos = nullptr; // the "array" name, or null
@@ -1059,7 +1062,7 @@ struct ClassAttr
 };
 constexpr ClassAttr kClassAttrs[] = {{"native", 0}, {"value", 0}, {"self", 0}, {"checked_index", 0}, {"weak", 0},
     {"attribute", 0}, {"handle", 1}, {"default_handle", 1}, {"weak_handle", 1}, {"alias", 1}, {"cpp_prelude", 1},
-    {"cpp_overrides", 1}, {"std", 1}, {"array", 1}, {"intrusive", 2}};
+    {"cpp_overrides", 1}, {"std", 1}, {"lib", 1}, {"array", 1}, {"intrusive", 2}};
 
 // The expected count of arguments of a class attribute, or -1 for an unknown name.
 int class_attr_arity(const std::string& name)
@@ -1085,7 +1088,7 @@ struct class_attrs_p
             const int arity = class_attr_arity(it.name);
             bool dup = false;
             for (const auto& u : a.used)
-                dup = dup || u.second == it.name;
+                dup = dup || (u.second == it.name && it.name != "lib"); // "lib" is repeatable
             for (const auto& u : a.tags)
                 dup = dup || u.second == it.name;
             if (arity < 0 && it.args.empty() && !dup)
@@ -1143,6 +1146,8 @@ struct class_attrs_p
                 a.has_std = true;
                 a.std_pos = it.pos;
             }
+            else if (it.name == "lib")
+                a.libs.emplace_back(it.pos, std::move(it.args[0]));
             else if (it.name == "array")
             {
                 a.array_tpl = std_from_user(it.args[0]);
@@ -1323,6 +1328,8 @@ TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bo
             st.error(a->std_pos, "attribute 'std' is valid only on a module attribute list: end the list with ';'");
         if (a->has_array)
             st.error(a->array_pos, "attribute 'array' is valid only on a module attribute list: end the list with ';'");
+        for (const auto& l : a->libs)
+            st.error(l.first, "attribute 'lib' is valid only on a module attribute list: end the list with ';'");
         if (a->is_self && (derived || s.name.find('*') != std::string::npos))
             st.error(a->pos, "'self' is valid only on a stub with an exact name");
         if (a->is_checked_index && !is_struct)
@@ -1354,7 +1361,7 @@ TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bo
 // needs a row here, a field in ast::ModuleAttrs and a branch in make_module_attrs.
 int module_attr_arity(const std::string& name)
 {
-    if (name == "std" || name == "array")
+    if (name == "std" || name == "lib" || name == "array")
         return 1;
     return -1;
 }
@@ -1380,8 +1387,17 @@ TopItem make_module_attrs(const ParseState& st, const char* pos, const ClassAttr
     {
         if (module_attr_arity(u.second) < 0)
             st.error(u.first, "attribute '" + u.second + "' is not allowed in a module attribute list");
-        else
+        else if (u.second != "lib") // repeatable: not in the list of the names that come once
             m.used.emplace_back(u.second, st.offset(u.first));
+    }
+    for (const auto& [lpos, ns] : a->libs)
+    {
+        if (!valid_std_ns(ns))
+            st.error(lpos, "'" + ns + "' is not a C++ namespace name");
+        else if (ns == "std")
+            st.error(lpos, "'lib(\"std\")' has no effect: the standard namespace is always a library namespace");
+        else if (std::find(m.libs.begin(), m.libs.end(), ns) == m.libs.end())
+            m.libs.push_back(ns);
     }
     if (a->has_std)
     {

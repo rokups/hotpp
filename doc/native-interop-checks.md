@@ -63,6 +63,7 @@ class Wave {
   - `Name` or `Name<*>` is an alias template, or a template with a non-type parameter (for example `my::Fixed<T, N>`) or a template template parameter. A stub cannot name it. For an array type, use the module attribute `array`.
 - The module header gets the specialization only when the headers of the script declare the name. A stub for an undeclared type does nothing. A namespace that is `inline` in the header ("`__1`" of libc++) is not part of the name. A namespace that is not inline, such as `std::__detail`, is part of it.
 - `std.` in the stub follows the std rule: `[native, checked_index] class std.deque<*>;` names `deque` of the configured namespace.
+- A library namespace (the module attribute `lib`, see [Module attributes](native-interop-attributes.html#library-namespaces)) has the check on its `vector` and `array` without a stub.
 - An rvalue that is a checked container returns the element by value (moved), as `hot::deref` does. For a proxy, such as the element of an rvalue `std::vector<bool>`, it returns the `value_type` by value, so no proxy dangles.
 
 The translator writes this for a stub in the module header:

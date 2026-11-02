@@ -1,0 +1,39 @@
+// Generation 1: the library namespace "mocklib" (the module attribute "lib") next to std.
+using <vector>;
+using "Actor.h";
+using "MockLib.h";
+
+[lib("mocklib")];
+
+class LibUser : Actor {
+    std.vector<int> a = std.vector<int>();
+    mocklib.vector<int> b = mocklib.vector<int>();
+    mocklib.array<int, 2> c = mocklib.array<int, 2>();
+    mocklib.string label = "lib";
+    mocklib.map<int, mocklib.string> names = mocklib.map<int, mocklib.string>();
+
+    override void Tick(float dt) {
+        a.push_back(1);
+        b.push_back(2);
+        b.push_back(3);
+        int sum = 0;
+        foreach (int x in b) {
+            sum = sum + x;
+        }
+        try {
+            sum = sum + b[5];
+        } catch (IndexOutOfRange e) {
+            sum = sum + 100;
+        }
+        try {
+            sum = sum + c[2];
+        } catch (IndexOutOfRange e) {
+            sum = sum + 1000;
+        }
+        sum = sum + a[0];
+        if (label.size() == 3) {
+            sum = sum + 3;
+        }
+        Name = std.to_string(sum);
+    }
+}

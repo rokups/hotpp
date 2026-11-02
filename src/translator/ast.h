@@ -590,6 +590,9 @@ struct ModuleAttrs
     // internal form: the placeholder of std_ns.h stands for "$std::".
     std::string array_tpl = std::string(kDefaultArrayTpl);
     uint32_t array_pos = 0; // the position of the attribute "array"
+    // The attributes [lib("name")]: the standard-like library namespaces, for example "eastl". A
+    // script names their types with the namespace ("eastl.vector<int>"), next to "std.vector<int>".
+    std::vector<std::string> libs;
 };
 
 // A script enum: "enum Name : type { A, B = 5 }". It becomes a C++ "enum class". The

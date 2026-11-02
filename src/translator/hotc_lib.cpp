@@ -2746,6 +2746,15 @@ void translate_impl(
     std::deque<PreludeData> prelude_data; // the addresses must stay
     std::string std_ns = "std";
     std::string array_tpl(hotc::kDefaultArrayTpl); // the template of the type "T[N]"
+    // The standard-like library namespaces (the module attribute "lib"). The preludes, the script
+    // and its imports add to one set.
+    std::vector<std::string> libs;
+    auto add_libs = [&libs](const hotc::ast::ModuleAttrs& m)
+    {
+        for (const std::string& l : m.libs)
+            if (std::find(libs.begin(), libs.end(), l) == libs.end())
+                libs.push_back(l);
+    };
     // The namespace of this call. The guard restores the old value at each exit.
     struct StdNsGuard
     {
@@ -2784,6 +2793,7 @@ void translate_impl(
                 std_ns = m.std_ns;
             if (m.has_array)
                 array_tpl = m.array_tpl;
+            add_libs(m);
         }
         if (!pd.items.empty())
         {
@@ -2833,6 +2843,7 @@ void translate_impl(
                 std_ns = m.std_ns;
             if (m.has_array)
                 array_tpl = m.array_tpl;
+            add_libs(m);
         }
         hotc::current_std_ns() = std_ns;
     }
@@ -2925,6 +2936,7 @@ void translate_impl(
                         for (const auto& [aname, apos] : m.used)
                             if (!seen_attrs.insert(aname).second)
                                 fail_at(map, apos, "attribute '" + aname + "' is given twice in one file");
+                        add_libs(m);
                         if (m.has_std && m.std_ns != std_ns)
                             fail_at(map, m.std_pos,
                                 "the imported script '" + file + "' sets the namespace '" + m.std_ns
@@ -3011,6 +3023,7 @@ void translate_impl(
     // ---- the type model: the preludes first, then the stubs of the script
     hotc::TypeModel types;
     types.set_std_ns(std_ns);
+    types.set_libs(libs);
     // A stub with the place that holds it. The checks of the stubs (7.10.7) report there.
     struct StubSrc
     {
@@ -3345,6 +3358,7 @@ void translate_impl(
         const StubSrc* src = nullptr; // the stub, or null for the array template
         bool pattern = false; // the stub is "Name<*>"
         bool handle = false; // a hot::is_handle specialization: written for a class template only
+        std::string kind; // not empty: the spec is written only for this kind of the name (a "lib" type)
     };
     std::vector<CheckedSpec> checked_specs;
     if (!sc.is_cpp)
@@ -3380,6 +3394,35 @@ void translate_impl(
             if (plain)
                 checked_specs.push_back(
                     {head, "template <class T, auto N> struct checked_index< ::" + head + "<T, N>> : std::true_type {};"});
+        }
+        // A library namespace L (the module attribute "lib") gets the traits that the runtime has for
+        // std, when the headers declare the name with the same kind of template ("t": type
+        // parameters only, "o": a non-type parameter). "L::vector" and "L::array" have the bounds
+        // check. The containers are free of code when their elements are (hot::holds_no_code). The
+        // allocator, the hash and the order of a library container count as free of code.
+        auto lib_spec = [&checked_specs](const std::string& name, const char* kind, std::string text)
+        {
+            CheckedSpec spec;
+            spec.name = name;
+            spec.text = std::move(text);
+            spec.kind = kind;
+            checked_specs.push_back(std::move(spec));
+        };
+        for (const std::string& l : libs)
+        {
+            const std::string p = " ::" + l + "::";
+            lib_spec(l + "::vector", "t", "template <class... A> struct checked_index<" + p + "vector<A...>> : std::true_type {};");
+            lib_spec(l + "::array", "o", "template <class T, auto N> struct checked_index<" + p + "array<T, N>> : std::true_type {};");
+            lib_spec(l + "::vector", "t",
+                "template <class T, class... R> struct holds_no_code<" + p + "vector<T, R...>> : holds_no_code<T> {};");
+            lib_spec(l + "::array", "o",
+                "template <class T, auto N> struct holds_no_code<" + p + "array<T, N>> : holds_no_code<T> {};");
+            lib_spec(l + "::basic_string", "t",
+                "template <class... R> struct holds_no_code<" + p + "basic_string<R...>> : std::true_type {};");
+            for (const char* m : {"map", "unordered_map"})
+                lib_spec(l + "::" + m, "t",
+                    "template <class K, class V, class... R> struct holds_no_code<" + p + m
+                        + "<K, V, R...>> : std::bool_constant<holds_no_code<K>::value && holds_no_code<V>::value> {};");
         }
         // A custom handle template "Name<$T>" of a stub, for example an intrusive smart pointer of
         // the host: hot::is_handle is true for it, so "h.x" reads through the handle.
@@ -3819,7 +3862,8 @@ void translate_impl(
         std::set<std::string> written;
         for (const CheckedSpec& c : checked_specs)
             if (const std::string kind = query_answers[kDeclQuery + hotc::expand_std(c.name, std_ns)];
-                kind != "0" && !kind.empty() && (c.handle ? kind == "t" : (c.src || kind != "1"))
+                kind != "0" && !kind.empty()
+                && (!c.kind.empty() ? kind == c.kind : c.handle ? kind == "t" : (c.src || kind != "1"))
                 && written.insert(c.text).second)
                 o.w("namespace hot { " + c.text + " }\n");
         if (!written.empty())

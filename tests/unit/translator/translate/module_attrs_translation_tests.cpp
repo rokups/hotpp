@@ -368,3 +368,95 @@ TEST(ModuleAttrsTranslation, TheAttributeArrayIsValidOnlyInTheList)
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "attribute 'array' is valid only on a module attribute list")) << r.diagnostics;
 }
+
+// The module attribute "lib": a standard-like library namespace next to std.
+namespace
+{
+// A script with a second library "lib2" in its header. A namespace alias does not work here: the
+// decl query of the translator finds the declarations of a real namespace only.
+hotc::TranslateResult translate_lib2(const std::string& script, const std::vector<std::pair<std::string, std::string>>& preludes = {})
+{
+    static TempDir* dir = nullptr;
+    if (!dir)
+    {
+        dir = new TempDir();
+        write_file(dir->path() / "lib2.h",
+            "#include <array>\n#include <cstddef>\n#include <vector>\n"
+            "namespace lib2 { template <class T, class A = std::allocator<T>> struct vector : std::vector<T, A> {};\n"
+            "template <class T, std::size_t N> struct array : std::array<T, N> {}; }\n"
+            "namespace lib3 { template <class T> struct vector : std::vector<T> {}; }\n");
+    }
+    hotc::TranslateOptions o = temp_options(*dir, "using <vector>;\nusing \"lib2.h\";\n" + script);
+    o.preludes = preludes;
+    return hotc::translate(o);
+}
+} // namespace
+
+TEST(ModuleAttrsTranslation, LibNamespaceGetsTheBoundsCheckOfStd)
+{
+    const hotc::TranslateResult r = translate_lib2("[lib(\"lib2\")];\nclass Foo {\n"
+        "    std.vector<int> a;\n    lib2.vector<int> b;\n    lib2.array<int, 2> c;\n"
+        "    int F() { return this.b[0] + this.a[0] + this.c[1]; }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "std::vector<int32_t> a;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "lib2::vector<int32_t> b;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "struct checked_index< ::lib2::vector<A...>>")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "struct checked_index< ::lib2::array<T, N>>")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, LibWithoutTheDeclarationsWritesNoSpec)
+{
+    const hotc::TranslateResult r = translate_lib2("[lib(\"nolib\")];\nclass Foo {\n    int n;\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(has(r.cpp, "nolib")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, WithoutLibAnOtherVectorHasNoSpec)
+{
+    const hotc::TranslateResult r = translate_lib2("class Foo {\n    lib2.vector<int> b;\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(has(r.cpp, "checked_index< ::lib2")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, LibIsRepeatableInThePreludesAndTheScript)
+{
+    const hotc::TranslateResult r = translate_lib2("[lib(\"lib2\"), lib(\"lib3\")];\nclass Foo {\n    int n;\n}\n",
+        {{"a.prelude", "[lib(\"lib3\")];\n"}, {"b.prelude", "[lib(\"lib2\")];\n"}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "struct checked_index< ::lib2::vector<A...>>")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "struct checked_index< ::lib3::vector<A...>>")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, LibSharedPtrHandleHasTheWeakPtrAndMakeShared)
+{
+    const hotc::TranslateResult r = check_translate(
+        "[lib(\"mystd\")];\n[native, handle(\"mystd::shared_ptr<$T>\")] class Mesh;\n",
+        "    [weak] Mesh w;\n    Mesh m;\n    void Make() { this.m = new Mesh(); this.w = this.m; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "mystd::weak_ptr<Mesh> w;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "mystd::make_shared<Mesh>()")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, WithoutLibAnOtherSharedPtrHasNoWeakHandle)
+{
+    const hotc::TranslateResult r = check_translate(
+        "[native, handle(\"mystd::shared_ptr<$T>\")] class Mesh;\n", "    [weak] Mesh w;\n");
+    EXPECT_FALSE(r.ok) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, LibErrors)
+{
+    struct Case
+    {
+        const char* stubs;
+        const char* msg;
+    };
+    for (const Case& c : {Case{"[lib(\"std\")];\n", "'lib(\"std\")' has no effect"},
+             Case{"[lib(\"1x\")];\n", "'1x' is not a C++ namespace name"},
+             Case{"[native, lib(\"mystd\")] class Mesh;\n", "attribute 'lib' is valid only on a module attribute list"}})
+    {
+        const hotc::TranslateResult r = check_translate(c.stubs, "    int n;\n");
+        EXPECT_FALSE(r.ok) << c.stubs;
+        EXPECT_TRUE(has(r.diagnostics, c.msg)) << r.diagnostics;
+    }
+}

@@ -39,9 +39,9 @@ const std::set<std::string>& keywords()
             "continue", "switch", "case", "default", "is", "as", "new", "delete", "public", "private", "protected",
             "override", "virtual", "const", "get", "set", "this", "base", "true", "false", "null", "try", "catch",
             "finally", "throw", "var", "void", "class", "struct", "enum", "using"};
-        // "std", "array" and "attribute" stay names: a script uses them as a namespace or a variable.
+        // "std", "lib", "array" and "attribute" stay names: a script uses them as a namespace or a variable.
         for (const std::string& a : hotc::class_attribute_names())
-            if (a != "std" && a != "array" && a != "attribute")
+            if (a != "std" && a != "lib" && a != "array" && a != "attribute")
                 r.insert(a);
         return r;
     }();

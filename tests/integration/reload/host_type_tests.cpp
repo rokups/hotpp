@@ -86,3 +86,31 @@ TEST_P(BackendTests, HostTypeTagStaysAcrossReload)
     s.world.Add(static_cast<Actor*>(fresh_ranger.native));
     EXPECT_EQ(tag_of(fresh_ranger), rtag);
 }
+
+// The module attribute "lib": "mocklib.vector" and "mocklib.array" work next to "std.vector" and
+// have the bounds check of std. Sum: 2 + 3 (the loop), 100 and 1000 (the checks), 1 and 3.
+TEST_P(BackendTests, LibraryNamespaceWorksNextToStd)
+{
+    hot::LoadResult v1 = backend->load(source("lib_ns_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "LibUser"));
+    s.world.Tick(kDt);
+    EXPECT_EQ(s.actor->Name, "1109");
+}
+
+// The containers of "mocklib" with plain elements are free of code, as the std ones are
+// (hot::holds_no_code). So the state of LibUser does not block the unload of a generation.
+TEST_P(BackendTests, LibraryContainersHoldNoCode)
+{
+    hot::LoadResult v1 = backend->load(source("lib_ns_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "LibUser"));
+    for (const char* name : {"a", "b", "c", "label", "names"})
+    {
+        const hot::FieldInfo* f = hot::find_field(s.inst.shell->cls, name);
+        ASSERT_NE(f, nullptr) << name;
+        EXPECT_EQ(f->flags & hot::kMayHoldCode, 0) << name;
+    }
+}
