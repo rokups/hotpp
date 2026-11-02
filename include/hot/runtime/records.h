@@ -231,6 +231,9 @@ struct ClassRecord
     const CtorEntry* ctors = nullptr;
     // True when the class is abstract. The class has no default constructor then (new_default is
     // null), and a call of an abstract slot throws ScriptError (abstract_called in errors.h).
+    // A null new_default also means a removed class, so it does not prove "abstract". The host
+    // factory (ClassEntry::create) can still make an instance of an abstract class. A call of an
+    // abstract slot of that instance throws ScriptError at call time. Script code cannot use "new".
     bool is_abstract = false;
 };
 

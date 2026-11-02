@@ -1,0 +1,49 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 1 of the abstract classes. Shape has an abstract script method. Square implements
+// it. Probe calls it through a Shape handle. Guard is abstract and does not implement the pure
+// virtual method Absorb of IDamageable. Knight implements it.
+using "Actor.h";
+using "Damageable.h";
+using "Guarded.h";
+
+abstract class Shape : Actor {
+    abstract int Area();
+
+    int Twice() { return Area() * 2; }
+}
+
+class Square : Shape {
+    int side = 3;
+
+    override int Area() { return this.side * this.side; }
+}
+
+abstract class Guard : Actor, IDamageable {
+    int hits = 0;
+}
+
+// An abstract class with a noexcept pure virtual method of a native base. The trap must not terminate.
+abstract class Warden : Actor, IStrict {
+}
+
+class Knight : Guard {
+    override int Absorb(int amount) {
+        this.hits = this.hits + 1;
+        return amount - 1;
+    }
+}
+
+class Probe : Actor {
+    Shape seen = null;
+    int area = 0;
+    int twice = 0;
+
+    override void Tick(float dt) {
+        if (this.seen == null) this.seen = new Square();
+        this.area = this.seen.Area();
+        this.twice = this.seen.Twice();
+    }
+}

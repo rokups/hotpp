@@ -119,6 +119,12 @@ struct RCtx
     // "P__base_M(self, args)": the implementation that P sees.
     std::string native_base;
     std::set<std::string> native_virtuals;
+    // The pure native virtual methods that no script class of the parent chain implements: the
+    // name to the parameter counts. "base.M(args)" of such a method is an error: it has no body.
+    // "concrete_natives" has the other native virtuals (they have a body). The pass has no
+    // argument types, so a call with a count that both sets have is not an error.
+    std::map<std::string, std::set<size_t>> abstract_natives;
+    std::map<std::string, std::set<size_t>> concrete_natives;
     // The names of the members of the native bases (methods, fields, static members). A bare
     // name of this set, which no local, field, property or script fn hides, names a member of
     // the native base: "Move(1)" means "this.Move(1)".

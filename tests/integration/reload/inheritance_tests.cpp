@@ -4,6 +4,8 @@
 
 // Reload tests of script inheritance (S6a, design 4.5, 7.6 and 7.7) with the backend that
 // HOT_BACKEND selected: a child of a script class, script virtuals, "base" calls, "is" and "as".
+#include "Damageable.h"
+#include "Guarded.h"
 #include "Util.h"
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
@@ -296,6 +298,125 @@ TEST_P(BackendTests, ChildUsesInheritedMethodsNativeBaseAndSuperUnderTheSlotAbi)
     EXPECT_EQ(*fld<int>(s, "hits"), 42); // 21 + 10 + 10 + 1
     EXPECT_EQ(*fld<int>(s, "kid_hits"), 2);
     EXPECT_EQ(s.inst.shell->cls->super->generation, 2u);
+}
+
+// An abstract script method has a slot. A call through a base handle reaches the override. The
+// record of an abstract class has the flag and no default factory.
+TEST_P(BackendTests, AbstractScriptMethodDispatchesToTheOverride)
+{
+    hot::LoadResult v1 = backend->load(source("abstract_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Probe"));
+    s.commit_at_frame_boundary();
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "area"), 9); // Shape.Area() reaches Square.Area()
+    EXPECT_EQ(*fld<int>(s, "twice"), 18); // a call of the abstract method inside Shape
+}
+
+TEST_P(BackendTests, AbstractClassRecordHasTheFlagAndNoFactory)
+{
+    hot::LoadResult v1 = backend->load(source("abstract_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Shape"));
+    EXPECT_TRUE(s.inst.shell->cls->is_abstract);
+    EXPECT_EQ(s.inst.shell->cls->new_default, nullptr);
+    const hot::ClassEntry* square = s.loader.find("Square");
+    ASSERT_NE(square, nullptr);
+    hot::Instance sq = square->create();
+    EXPECT_FALSE(sq.shell->cls->is_abstract);
+    delete static_cast<Actor*>(sq.native);
+}
+
+// A pure virtual method of a native base that an abstract script class leaves open: the call
+// ends with a ScriptError, which the native boundary reports and swallows. A concrete child
+// implements it.
+TEST_P(BackendTests, UnimplementedNativePureVirtualTrapsAndTheChildImplementsIt)
+{
+    hot::LoadResult v1 = backend->load(source("abstract_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Guard"));
+    s.commit_at_frame_boundary();
+    auto* guard = dynamic_cast<IDamageable*>(s.actor);
+    ASSERT_NE(guard, nullptr);
+    testing::internal::CaptureStderr();
+    guard->Absorb(1);
+    const std::string err = testing::internal::GetCapturedStderr();
+    EXPECT_NE(err.find("unhandled hot::ScriptError in Guard: abstract method 'Guard.Absorb' called"), std::string::npos)
+        << err;
+
+    const hot::ClassEntry* knight = s.loader.find("Knight");
+    ASSERT_NE(knight, nullptr);
+    hot::Instance k = knight->create();
+    auto* kd = dynamic_cast<IDamageable*>(static_cast<Actor*>(k.native));
+    ASSERT_NE(kd, nullptr);
+    EXPECT_EQ(kd->Absorb(5), 4);
+    delete static_cast<Actor*>(k.native);
+}
+
+// A noexcept pure virtual method of a native base that the abstract script class leaves open. The
+// trap must not leave the noexcept function (that would terminate). The host call reports the
+// ScriptError and returns.
+TEST_P(BackendTests, NoexceptPureVirtualTrapReportsAndDoesNotTerminate)
+{
+    hot::LoadResult v1 = backend->load(source("abstract_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Warden"));
+    s.commit_at_frame_boundary();
+    auto* strict = dynamic_cast<IStrict*>(s.actor);
+    ASSERT_NE(strict, nullptr);
+    testing::internal::CaptureStderr();
+    const int result = strict->Seal(3);
+    const std::string err = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(result, 0);
+    EXPECT_NE(err.find("unhandled hot::ScriptError in Warden: abstract method 'Warden.Seal' called"), std::string::npos)
+        << err;
+}
+
+// A reload makes a live concrete class abstract. The object lives. A call of the abstract method
+// reports a ScriptError and does not crash. The factory is gone. A later reload makes the class
+// concrete again.
+TEST_P(BackendTests, ReloadMakesALiveClassAbstractAndConcreteAgain)
+{
+    hot::LoadResult v1 = backend->load(source("abstract_gate_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    hot::LoadResult v2 = backend->load(source("abstract_gate_v2.hot"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    hot::LoadResult v3 = backend->load(source("abstract_gate_v3.hot"), 3);
+    ASSERT_TRUE(v3) << v3.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Gate"));
+    s.commit_at_frame_boundary();
+    EXPECT_FALSE(s.inst.shell->cls->is_abstract);
+    EXPECT_NE(s.inst.shell->cls->new_default, nullptr);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "last"), 5);
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    s.world.Tick(kDt); // the commit happens at the end of this frame
+    ASSERT_FALSE(s.commit_failed);
+    EXPECT_EQ(hot::active_generation, 2u);
+    EXPECT_TRUE(s.inst.shell->cls->is_abstract);
+    EXPECT_EQ(s.inst.shell->cls->new_default, nullptr);
+    const int ticks = *fld<int>(s, "ticks");
+    testing::internal::CaptureStderr();
+    s.world.Tick(kDt);
+    const std::string err = testing::internal::GetCapturedStderr();
+    EXPECT_NE(err.find("abstract method 'Gate.Power' called"), std::string::npos) << err;
+    EXPECT_EQ(*fld<int>(s, "ticks"), ticks + 1); // the body ran up to the call
+    EXPECT_EQ(*fld<int>(s, "last"), 5); // the trap stopped the assignment
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v3.module)));
+    s.world.Tick(kDt);
+    ASSERT_FALSE(s.commit_failed);
+    EXPECT_EQ(hot::active_generation, 3u);
+    EXPECT_FALSE(s.inst.shell->cls->is_abstract);
+    EXPECT_NE(s.inst.shell->cls->new_default, nullptr);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "last"), 7);
 }
 
 } // namespace

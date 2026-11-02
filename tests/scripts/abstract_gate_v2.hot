@@ -1,0 +1,21 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 2 of the Gate class: the class is abstract now. Power has no body. A live object
+// traps when it calls Power.
+using "Actor.h";
+
+abstract class Gate : Actor {
+    int ticks = 0;
+    int last = 0;
+
+    Gate() { this.last = 1; }
+
+    abstract int Power();
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        this.last = Power();
+    }
+}

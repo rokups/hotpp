@@ -4629,6 +4629,7 @@ void translate_impl(
         bool dtor_chain = false; // the class or a parent has a destructor
         std::string on_reload; // the onReload hook of the class or a parent
         bool esft = false; // the shell has std::enable_shared_from_this
+        std::set<std::string> overridden_natives; // keys of the native virtuals that the class or a parent overrides
     };
     std::map<std::string, ClassInfo> infos;
 
@@ -4919,7 +4920,7 @@ void translate_impl(
                 if (p.name.compare(0, 2, "__") == 0)
                     fail_at(map, m.pos, "parameter name '" + p.name + "' is reserved");
             // A C++ default argument on a virtual function uses the type of the call, not of the object.
-            if (m.is_override || m.is_virtual)
+            if (m.is_override || m.is_virtual || m.is_abstract)
                 for (const Param& p : m.params)
                     if (p.def)
                         fail_at(map, m.pos, "default values are not allowed on virtual or override methods");
@@ -5052,7 +5053,8 @@ void translate_impl(
                                 "function '" + m.name + "' hides the " + (v ? "virtual " : "") + "function of "
                                     + aowner->name + "; write " + (v ? "'override' or 'new'" : "'new'"));
                         }
-                        if (m.is_virtual)
+                        // An abstract method is virtual: it has a slot like "virtual".
+                        if (m.is_virtual || m.is_abstract)
                             m.vslot_owner = cn;
                     }
                     if (par && pinfo->fields.count(m.name))
@@ -5091,10 +5093,44 @@ void translate_impl(
             if (!overrides.emplace(hit->key(), &m).second)
                 fail_at(map, m.pos, "'" + hit->text() + "' is overridden twice");
         }
+        // The pure native virtuals and the abstract script methods of the whole base chain. A
+        // concrete class must implement each one. A script parent can implement a native method.
+        std::set<std::string> overridden_keys;
+        if (pinfo)
+            overridden_keys = pinfo->overridden_natives;
+        for (const auto& kv : overrides)
+            overridden_keys.insert(kv.first);
         for (const auto& nv : bi.virtuals)
-            if (nv.pure && !nv.host && !overrides.count(nv.key()))
+            if (nv.pure && !nv.host && !overridden_keys.count(nv.key()) && !cd.is_abstract)
                 fail_at(map, cd.pos,
                     "class " + cn + " does not override the pure virtual method '" + nv.text() + "' of " + nv.owner);
+        if (!cd.is_abstract)
+        {
+            // The state of each script slot, from the root to this class: the abstract method
+            // that no "override" has implemented. The key is the slot owner and the name.
+            std::vector<const ClassDef*> chain;
+            for (const ClassDef* a = &cd; a; a = script_parent(*a))
+                chain.insert(chain.begin(), a);
+            std::map<std::string, const ClassDef*> open_slots;
+            for (const ClassDef* a : chain)
+                for (const Method& m : a->methods)
+                {
+                    if (m.vslot_owner.empty() || m.overrides_virtual)
+                        continue;
+                    const std::string key = m.vslot_owner + "::" + m.name;
+                    if (m.is_abstract)
+                        open_slots[key] = a;
+                    else
+                        open_slots.erase(key);
+                }
+            if (!open_slots.empty())
+            {
+                const std::string& key = open_slots.begin()->first;
+                fail_at(map, cd.pos,
+                    "class '" + cn + "' does not implement the abstract method '" + key.substr(key.find("::") + 2)
+                        + "' of '" + open_slots.begin()->second->name + "'");
+            }
+        }
 
         // ---- the hooks (design 4.7)
         for (const Method& m : cd.methods)
@@ -5428,6 +5464,7 @@ void translate_impl(
                 table[fam_index.at(m.vslot_owner + "::" + m.name)] = member_text(m.name);
         ClassInfo info;
         info.table = table;
+        info.overridden_natives = overridden_keys;
 
         // ---- lowering context
         RCtx base_cx = hotc::make_class_ctx(cd);
@@ -5459,6 +5496,12 @@ void translate_impl(
             for (const auto& nv : bi.virtuals)
                 base_cx.native_virtuals.insert(nv.name);
         }
+        // A pure native method that the parent chain does not implement has no body for "base.M()".
+        for (const auto& nv : bi.virtuals)
+            if (nv.pure && !nv.host && !(pinfo && pinfo->overridden_natives.count(nv.key())))
+                base_cx.abstract_natives[nv.name].insert(nv.ptypes.size());
+            else
+                base_cx.concrete_natives[nv.name].insert(nv.ptypes.size());
         if (!root.base.empty())
             base_cx.native_members = bi.members;
         // "base.F()" names a base by the name F only. A name of the primary base keeps the
@@ -5590,9 +5633,20 @@ void translate_impl(
                 ps += (k ? ", " : "") + nv.ptypes[k] + " a" + std::to_string(k);
                 as += (k ? ", " : "") + arg_expr(nv.ptypes[k], "a" + std::to_string(k));
             }
+            // A pure virtual method has no body to call: the base call is a trap (hot::abstract_called).
+            std::string base_body = "return " + nv.from + "::" + nv.name + "(" + as + ");";
+            if (nv.pure)
+            {
+                base_body.clear();
+                for (size_t k = 0; k < nv.ptypes.size(); ++k)
+                    base_body += "(void)a" + std::to_string(k) + "; ";
+                base_body += "hot::abstract_called(\"" + cd.key_name() + "\", \"" + nv.name + "\");";
+            }
+            // The trap throws a ScriptError. So the trap function is never noexcept: the call of the
+            // shell (hot::call with "true") catches the error and reports it.
             mapped("    HOT_NODEBUG " + nv.ret + " __hot_base_" + slots[i].id + "(" + ps + ")"
-                    + (nv.is_const ? " const" : "") + (nv.no_except ? " noexcept" : "") + "\n    {\n        return "
-                    + nv.from + "::" + nv.name + "(" + as + ");\n    }\n",
+                    + (nv.is_const ? " const" : "") + (nv.no_except && !nv.pure ? " noexcept" : "") + "\n    {\n        "
+                    + base_body + "\n    }\n",
                 cd.line, cd.pos);
         }
         // Optimized AOT code: a shell overrides a native virtual with a direct call of the state
@@ -5601,9 +5655,32 @@ void translate_impl(
         std::string direct_defs;
         for (size_t i = 0; i < native_count && (!par || opt.aot_optimized); ++i)
         {
-            if ((par || opt.aot_optimized) && !slots[i].impl)
+            // Optimized AOT code: a pure native method that the root does not override must still have
+            // an override in the shell, or the shell stays abstract. The override is a trap.
+            const bool pure_open = opt.aot_optimized && !par && !slots[i].impl && slots[i].nv->pure && !slots[i].nv->host;
+            if ((par || opt.aot_optimized) && !slots[i].impl && !pure_open)
                 continue;
             const NativeVirtual& nv = *slots[i].nv;
+            if (pure_open)
+            {
+                std::string ps, voids;
+                for (size_t k = 0; k < nv.ptypes.size(); ++k)
+                {
+                    ps += (k ? ", " : "") + nv.ptypes[k] + " a" + std::to_string(k);
+                    voids += "(void)a" + std::to_string(k) + "; ";
+                }
+                // A noexcept method reports the error like hot::call with "true": it must not terminate.
+                const std::string trap = "hot::abstract_called(\"" + cd.key_name() + "\", \"" + nv.name + "\");";
+                const std::string self_arg = nv.is_const ? "const_cast<" + shell + "*>(this)" : "this";
+                mapped("\n    " + nv.ret + " " + nv.name + "(" + ps + ")" + (nv.is_const ? " const" : "")
+                        + (nv.no_except ? " noexcept" : "") + " override\n    {\n        " + voids
+                        + (nv.no_except ? "return hot::call_direct<" + nv.ret + ", true>(" + self_arg + ", [&]() -> "
+                                + nv.ret + " { " + trap + " });"
+                                        : trap)
+                        + "\n    }\n",
+                    cd.line, cd.pos);
+                continue;
+            }
             std::vector<std::string> ps, sig = {B + "*"}, as;
             const std::string self_arg = nv.is_const ? "const_cast<" + shell + "*>(this)" : "this";
             for (size_t k = 0; k < nv.ptypes.size(); ++k)
@@ -6275,7 +6352,7 @@ void translate_impl(
                 o.w("// The factory of the engine calls it through the canonical record: the current generation\n"
                     "// gives the base arguments and the constructors.\n");
                 const Method& dm = ctor_ms[dflt];
-                mapped("HOT_NODEBUG static hot::ShellCore* " + P + "new_default()\n{\n" + locals + "    return " + P
+                mapped(std::string(cd.is_abstract ? "[[maybe_unused]] " : "") + "HOT_NODEBUG static hot::ShellCore* " + P + "new_default()\n{\n" + locals + "    return " + P
                         + "build(false" + (defaults.empty() ? "" : ", " + defaults) + ");\n}\n",
                     dm.line > 0 ? dm.line : cd.line, dm.pos != 0 ? dm.pos : cd.pos);
                 o.w("\n");
@@ -6343,7 +6420,8 @@ void translate_impl(
             // An "async" method: the member makes the task. The coroutine is a function of the file.
             // The first parameter of the coroutine is the origin of the code (hot/runtime/task.h).
             // The coroutine owns its parameters: they are values.
-            const bool is_async = m.is_async;
+            // An abstract method has no coroutine: the member traps before it would make a task.
+            const bool is_async = m.is_async && !m.is_abstract;
             std::string co_head, co_call;
             if (is_async)
             {
@@ -6383,6 +6461,10 @@ void translate_impl(
             // A ".cpp" coroutine cannot "return". Its task is lazy, and the guard of the task checks the
             // generation before the body starts (hot/runtime/task.h). So this throw only keeps the form.
             const bool is_coroutine = m.is_coroutine;
+            // An abstract method has no body: the member only traps (hot::abstract_called).
+            const std::string abstract_text = m.is_abstract
+                ? "    hot::abstract_called(\"" + cd.key_name() + "\", \"" + m.name + "\");\n"
+                : std::string();
             const std::string stale_ret = is_coroutine
                 ? "        throw hot::TaskReloadCancelled(\"task cancelled by reload: " + what + "\");\n"
                 : m.ret_value
@@ -6392,7 +6474,7 @@ void translate_impl(
             bodies.push_back({cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns),
                 [&o, &all_text, &mapped, &reset, &write_stmts, h = body_head(m), em, file, end_line, first_line,
                     is_fn, sym, whead, wbody, bmember, mhead, mhead_from, what, shell, body_locals, tname, stale_ret,
-                    is_async, is_coroutine, co_head, co_call, aot_optimized = opt.aot_optimized]
+                    is_async, is_coroutine, co_head, co_call, abstract_text, aot_optimized = opt.aot_optimized]
                 {
                     const Method& m = *h;
                     auto line_at = [&](int l) { return "#line " + std::to_string(l) + " \"" + file + "\"\n"; };
@@ -6426,6 +6508,16 @@ void translate_impl(
                     // first statement line does not resolve to the function line.
                     o.w(line_at(m.line));
                     o.w("{\n");
+                    if (!abstract_text.empty())
+                    {
+                        o.w(line_at(m.line));
+                        o.w(abstract_text);
+                        o.w(line_at(end_line));
+                        o.w("}\n");
+                        reset();
+                        o.w("\n");
+                        return;
+                    }
                     if (!aot_optimized)
                     {
                         o.w(line_at(m.line));
@@ -6685,7 +6777,7 @@ void translate_impl(
             ctor_init = std::string(on_reload_init.empty() ? "    nullptr,\n" : "") + "    "
                 + (gen_new && !opt.aot_optimized ? "&" + P + "construct, typeid(" + cn + "_SuperArgs).name()"
                                                  : std::string("nullptr, nullptr")) + ", "
-                + (!entry.empty() ? "&" + P + "new_default" : std::string("nullptr")) + ", nullptr, "
+                + (!entry.empty() && !cd.is_abstract ? "&" + P + "new_default" : std::string("nullptr")) + ", nullptr, "
                 + (dtor_chain ? "&" + P + "dtor_slot" : std::string("nullptr")) + ",\n";
         o.w("hot::ClassRecord " + cn + "_record = {\n    \"" + cd.key_name() + "\", GEN, "
             + (opt.aot_optimized ? std::string("nullptr, 0") : cn + "_slots, " + slot_id("COUNT")) + ", " + (opt.aot_optimized ? std::string("nullptr") : "&" + cn + "_layout") + ", " + (par ? "&" + par->name + "_record" : std::string("nullptr")) + ",\n    \"" + BL
@@ -6751,6 +6843,8 @@ void translate_impl(
             o.w("\n" + table + "    {nullptr, nullptr, 0}};\n\n");
             flag_regs.push_back("    " + cn + "_record.ctors = " + P + "constructors;\n");
         }
+        if (cd.is_abstract)
+            flag_regs.push_back("    " + cn + "_record.is_abstract = true;\n");
         registers.push_back({cn, true});
         infos[cn] = std::move(info);
         if (!cd.ns.empty())

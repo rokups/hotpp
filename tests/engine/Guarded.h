@@ -13,6 +13,14 @@ public:
     virtual int Guard(int x) noexcept { return x; }
 };
 
+// A native interface with a noexcept pure virtual function. An abstract script class leaves it open.
+class IStrict
+{
+public:
+    virtual ~IStrict() = default;
+    virtual int Seal(int x) noexcept = 0;
+};
+
 // Native code that calls the noexcept virtual through the interface.
 inline int CallGuard(IGuarded& target, int x)
 {

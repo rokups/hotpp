@@ -1379,7 +1379,7 @@ struct ParamAnalysis
                     use.mutated = use.rebound = true; // a "T&" parameter: the callee can write it
                     return;
                 }
-                if (tm->is_virtual || tm->is_override)
+                if (tm->is_virtual || tm->is_override || tm->is_abstract)
                 { // an override can do more: be careful
                     use.stored = true;
                     return;

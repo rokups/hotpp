@@ -58,6 +58,7 @@ void adopt(ClassRecord* canon, ClassRecord* in)
     canon->generation = in->generation;
     canon->on_reload = in->on_reload;
     canon->new_default = in->new_default;
+    canon->is_abstract = in->is_abstract;
     canon->dtor = in->dtor;
     canon->attributes = in->attributes;
     canon->ctors = in->ctors;

@@ -1,0 +1,20 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 3 of the Gate class: the class is concrete again.
+using "Actor.h";
+
+ class Gate : Actor {
+    int ticks = 0;
+    int last = 0;
+
+    Gate() { this.last = 1; }
+
+    virtual int Power() { return 7; }
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        this.last = Power();
+    }
+}

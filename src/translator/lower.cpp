@@ -1114,6 +1114,14 @@ struct Lowerer
                 return;
             }
         }
+        // "base.M(args)" in a class with a native base only: a pure method has no body to call.
+        if (auto* bm = std::get_if<MemberExpr>(&c.callee->v);
+            bm && std::holds_alternative<BaseExpr>(bm->obj->v) && cx.cls && cx.allow_this && !parent_of(*cx.cls)
+            && abstract_base_call(bm->name, c.args.size()))
+        {
+            error(pos_of(*bm->obj), "cannot call the abstract method '" + bm->name + "' through 'base'");
+            return;
+        }
         // "base.M(args)" in a class with a script parent P (design 4.5): the implementation
         // that P sees, with a direct call. A native virtual M uses the helper "P__base_M".
         if (auto* sm = std::get_if<MemberExpr>(&c.callee->v);
@@ -1125,6 +1133,11 @@ struct Lowerer
                 const Method* fn = find_fn(*par, sm->name, &owner);
                 if (fn)
                     check_member(fn->access, *owner, sm->name, sm->name_pos ? sm->name_pos : pos_of(*sm->obj));
+                if ((fn && fn->is_abstract) || (!fn && abstract_base_call(sm->name, c.args.size())))
+                {
+                    error(pos_of(*sm->obj), "cannot call the abstract method '" + sm->name + "' through 'base'");
+                    return;
+                }
                 std::string callee;
                 if (fn)
                     callee = owner->name + "__" + sm->name;
@@ -1223,6 +1236,17 @@ struct Lowerer
         return forms;
     }
 
+    // True when "base.name(args)" with this number of arguments can only be a pure native method.
+    // The pass has no argument types. A pure F(int) next to a concrete F(string) passes here and traps at run time.
+    bool abstract_base_call(const std::string& name, size_t argc) const
+    {
+        const auto a = cx.abstract_natives.find(name);
+        if (a == cx.abstract_natives.end() || !a->second.count(argc))
+            return false;
+        const auto c = cx.concrete_natives.find(name);
+        return c == cx.concrete_natives.end() || !c->second.count(argc);
+    }
+
     // "new C(args)" of a script class. The constructors that take this number of arguments are
     // the candidates (the pass has no argument types). If all candidates are private or
     // protected and the code cannot use them, this is an error. A class with no constructor has
@@ -1261,6 +1285,11 @@ struct Lowerer
             if (!cx.new_classes.count(n.type))
             {
                 error(pos, "class '" + n.type + "' must come before the class that builds it with 'new'");
+                return;
+            }
+            if (const ClassDef* ad = class_named(n.type); ad && ad->is_abstract)
+            {
+                error(pos, "cannot create an instance of the abstract class '" + n.type + "'");
                 return;
             }
             check_ctor_access(n);
@@ -1398,6 +1427,11 @@ struct Lowerer
             if (cx.cls->base.empty())
             {
                 error(obj_pos, "'base' needs a base class: '" + cx.cls->name + "' has none");
+                return;
+            }
+            if (cx.abstract_natives.count(m.name) && !cx.concrete_natives.count(m.name))
+            {
+                error(obj_pos, "cannot call the abstract method '" + m.name + "' through 'base'");
                 return;
             }
             // With a script parent, the member is a member of the native base of the root.
