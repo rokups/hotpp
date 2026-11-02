@@ -66,6 +66,7 @@ struct Annot
     std::string alias;
     bool has_alias = false;
     const char* weak_pos = nullptr; // the name of "[weak]", or null
+    const char* value_pos = nullptr; // the name of "[value]", or null
 };
 
 // One attribute: a name and a list of strings. The list can be empty.
@@ -308,6 +309,9 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
         {
             m.field.alias = a->alias;
             m.field.weak = a->weak_pos != nullptr;
+            m.field.value = a->value_pos != nullptr;
+            if (a->value_pos)
+                m.field.value_pos = st.offset(a->value_pos);
         }
         else
         {
@@ -315,6 +319,15 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
                 st.error(a->pos, "[alias] applies to fields only");
             if (a->weak_pos)
                 st.error(a->weak_pos, "[weak] applies to fields, parameters and local variables only");
+            if (a->value_pos && m.kind == Member::IsMethod)
+            {
+                // "[value] T f()": the attribute belongs to the return type.
+                m.method.ret_value = true;
+                m.method.ret_value_pos = st.offset(a->value_pos);
+            }
+            else if (a->value_pos)
+                st.error(a->value_pos,
+                    "[value] applies to fields, parameters, local variables and the return type of a method only");
         }
     }
     const Mods mods = mods_of(st, mods_in);
@@ -553,7 +566,7 @@ struct attr_list
     static constexpr auto value = lexy::as_list<std::vector<AttrItem>>;
 };
 
-// "[" attribute { "," attribute } "]". Only "alias" and "weak" are known.
+// "[" attribute { "," attribute } "]". Only "alias", "weak" and "value" are known.
 struct attrs_p
 {
     static constexpr auto rule = dsl::position + dsl::lit_c<'['> + dsl::p<attr_list>;
@@ -574,6 +587,15 @@ struct attrs_p
                 else
                     a.weak_pos = it.pos;
             }
+            else if (it.name == "value")
+            {
+                if (!it.args.empty())
+                    st.error(it.pos, "attribute 'value' takes 0 arguments");
+                else if (a.value_pos)
+                    st.error(it.pos, "duplicate attribute 'value'");
+                else
+                    a.value_pos = it.pos;
+            }
             else if (it.name != "alias")
                 st.error(it.pos, "unknown attribute '" + it.name + "'");
             else if (it.args.size() != 1)
@@ -586,6 +608,8 @@ struct attrs_p
                 a.alias = std::move(it.args[0]);
             }
         }
+        if (a.weak_pos && a.value_pos)
+            st.error(a.value_pos, "[weak] and [value] cannot be used together: a weak handle is not a value");
         return a;
     }),
             lexy::parse_state, lexy::values);
@@ -621,6 +645,7 @@ struct param_p
             if (a->has_alias)
                 st.error(a->pos, "[alias] applies to fields only");
             p.weak = a->weak_pos != nullptr;
+            p.value = a->value_pos != nullptr;
         }
         if (only_blank(span_text(st, type)))
             st.error(pos, "a parameter needs a type; write 'Type name'");
@@ -1639,7 +1664,9 @@ struct class_p
         {
             t.var.alias = a->alias;
             for (const auto& u : a->used)
-                if (u.second != "alias")
+                if (u.second == "value")
+                    st.error(u.first, "[value] is not supported yet on a module variable");
+                else if (u.second != "alias")
                     st.error(u.first, "attribute '" + u.second + "' is not allowed on a module variable");
         }
         return t;

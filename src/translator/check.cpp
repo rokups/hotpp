@@ -865,6 +865,153 @@ bool cxx_std_below_20(const std::string& std_name)
     return false;
 }
 
+namespace
+{
+
+// The rules for one "[value] T" use. "what" names the construct, for example "field 'f'".
+// "needs_ctor" is true for a declaration without an initializer: T must have a constructor
+// with no parameters (a field default runs "new T()").
+struct ValueUseChecker
+{
+    const std::vector<ClassDef>& classes;
+    const TypeModel& types;
+    const LineMap& map;
+    Diagnostics& diag;
+
+    const ClassDef* find(const std::string& name) const
+    {
+        for (const ClassDef& c : classes)
+            if (c.name == name)
+                return &c;
+        return nullptr;
+    }
+
+    // True when the class can be built with no argument: it has no constructor, or one whose
+    // parameters all have a default value.
+    static bool has_default_ctor(const ClassDef& c)
+    {
+        if (c.ctors.empty())
+            return true;
+        for (const Ctor& k : c.ctors)
+        {
+            bool all_default = true;
+            for (const Param& p : k.params)
+                all_default = all_default && p.def;
+            if (all_default)
+                return true;
+        }
+        return false;
+    }
+
+    void use(const std::string& type, uint32_t pos, const std::string& what, bool needs_ctor, bool is_ref = false)
+    {
+        std::string t = trim(type);
+        // A reference (also a const reference) is not a value: "[value]" holds its own copy.
+        if (!t.empty() && t.back() == '&')
+        {
+            is_ref = true;
+            t = trim(t.substr(0, t.size() - 1));
+        }
+        if (is_ref)
+        {
+            diag.add(pos, map,
+                "[value] on a reference is not valid: a [value] holds its own copy. Remove the reference or the "
+                "'[value]'");
+            return;
+        }
+        // "const Pt" by value is the type Pt.
+        if (starts_with(t, "const "))
+            t = trim(t.substr(6));
+        if (t.empty())
+            return; // "[value] var x = e": the lowering decides
+        if (types.is_script_class(t) && !types.is_script_value(t))
+        {
+            const std::string nb = types.script_native_base(t);
+            if (!nb.empty())
+            {
+                diag.add(pos, map,
+                    "[value] on " + what + " needs a script class with no native base, and '" + t
+                        + "' has the native base '" + nb + "'. Remove '[value]'");
+                return;
+            }
+            const ClassDef* c = find(t);
+            if (needs_ctor && c && !has_default_ctor(*c))
+                diag.add(pos, map,
+                    "[value] on " + what + " has no initializer, so the class '" + t
+                        + "' needs a constructor with no parameters. Add one, or write an initializer");
+            return;
+        }
+        if (!types.is_script_value(t) && types.is_handle(t))
+        {
+            diag.add(pos, map,
+                "[value] on " + what + " is not valid for the native type '" + t
+                    + "'. The type rules decide the storage of a native type. Remove '[value]'");
+            return;
+        }
+        diag.add(pos, map,
+            "[value] on " + what + " has no effect: '" + script_type_text(t)
+                + "' is a value type already. Remove '[value]'");
+    }
+
+    void locals(const BlockStmt& body)
+    {
+        auto fe = [](const Expr&) {};
+        auto fs = [&](const Stmt& s)
+        {
+            const auto* d = std::get_if<VarDeclStmt>(&s.v);
+            if (d && d->value)
+                use(d->type, d->value_pos ? d->value_pos : d->pos, "local '" + d->name + "'", d->init == nullptr,
+                    d->is_ref);
+        };
+        make_walker(fe, fs).block(body);
+    }
+
+    void run()
+    {
+        for (const ClassDef& cd : classes)
+        {
+            for (const Field& f : cd.fields)
+            {
+                if (!f.value)
+                    continue;
+                const uint32_t pos = f.value_pos ? f.value_pos : f.pos;
+                if (cd.is_value)
+                    diag.add(pos, map,
+                        "[value] on field '" + f.name + "' of the struct '" + cd.name + "' is not supported yet");
+                else
+                    use(f.type, pos, "field '" + f.name + "'", !f.has_init);
+            }
+            auto params = [&](const std::vector<Param>& ps, uint32_t pos)
+            {
+                for (const Param& p : ps)
+                    if (p.value)
+                        use(p.type, pos, "parameter '" + p.name + "'", false);
+            };
+            for (const Method& m : cd.methods)
+            {
+                params(m.params, m.pos);
+                if (m.ret_value)
+                    use(m.ret, m.ret_value_pos ? m.ret_value_pos : m.pos, "the return type of '" + m.name + "'", false);
+                locals(m.body);
+            }
+            for (const Ctor& c : cd.ctors)
+            {
+                params(c.params, c.pos);
+                locals(c.body);
+            }
+            for (const Method& d : cd.dtors)
+                locals(d.body);
+        }
+    }
+};
+
+} // namespace
+
+void check_value_uses(const std::vector<ClassDef>& classes, const TypeModel& types, const LineMap& map, Diagnostics& diag)
+{
+    ValueUseChecker{classes, types, map, diag}.run();
+}
+
 void check_ctors(const ClassDef& cd, const LineMap& map, Diagnostics& diag)
 {
     std::set<std::string> members; // the names that a base argument cannot use

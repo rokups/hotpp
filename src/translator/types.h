@@ -140,6 +140,11 @@ public:
     // True when the name is a script class of the script ([value] classes too).
     bool is_script_class(const std::string& type) const;
 
+    // The first class in the parent chain of a script class that is not a script class: the native
+    // base. An empty string: the chain ends in a script class with no base, or the type is not
+    // a script class.
+    std::string script_native_base(const std::string& type) const;
+
     // The names that the native headers declare in the global namespace (a function, a
     // variable, a type or a namespace). Only the names that the translator asked for are in
     // the set. A bare "enumerate" or "range" of such a name is not the script helper.

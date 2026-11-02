@@ -62,6 +62,8 @@ struct Param
     std::string bind_to{};
     // "[weak] T name": the parameter holds a weak handle (task 38). The storage is a weak_ptr.
     bool weak = false;
+    // "[value] T name": the parameter holds a script class with value semantics (hot::Value<T>).
+    bool value = false;
 };
 
 // ------------------------------------------------------------------ expressions
@@ -267,6 +269,9 @@ struct VarDeclStmt
     // "[weak] T x = e": the local holds a weak handle (task 38). The storage is a weak_ptr.
     bool weak = false;
     uint32_t weak_pos = 0; // the byte offset of "weak" (0: not known)
+    // "[value] T x = e": the local holds a script class with value semantics (hot::Value<T>).
+    bool value = false;
+    uint32_t value_pos = 0; // the byte offset of "value" (0: not known)
 };
 struct IfStmt
 {
@@ -416,6 +421,8 @@ struct Field
     std::string name, alias, type; // alias: the previous name from [alias("...")]
     std::string script_type; // "type" as the script writes it (see Param)
     bool weak = false; // "[weak]": the field holds a weak handle (task 38)
+    bool value = false; // "[value]": the field holds a script class with value semantics
+    uint32_t value_pos = 0; // the byte offset of "value" (0: not known)
     ExprP init; // null when the field has no initializer, or the parse failed
     Span init_span; // the raw text after "=", up to the ";"
     bool has_init = false;
@@ -463,6 +470,8 @@ struct Method
     std::vector<Param> params;
     std::string ret; // empty: not written
     std::string script_ret; // "ret" as the script writes it (see Param)
+    bool ret_value = false; // "[value]" before the method: the return type has value semantics
+    uint32_t ret_value_pos = 0; // the byte offset of "value" (0: not known)
     BlockStmt body; // the statements; the parser fills them from body_span
     Span body_span; // the raw text between the braces
     // True for "T f() => e;". The body_span is then the text of "e" and the parser builds the

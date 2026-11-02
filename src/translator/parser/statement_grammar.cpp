@@ -241,27 +241,39 @@ StmtP make_decl(const ParseState& st, DeclParts&& d)
     return ast::make_stmt(std::move(v));
 }
 
-// A local declaration with attributes: "[weak] T x = e;". Only "weak" is known. A weak local
-// needs a written handle type, so "var", "var&" and a structured binding are errors.
+// A local declaration with attributes: "[weak] T x = e;" or "[value] T x = e;". Only "weak" and
+// "value" are known. A weak local needs a written handle type, so "var", "var&" and a structured
+// binding are errors. The two attributes together are an error.
 StmtP make_attr_decl(const ParseState& st, std::vector<StmtAttr>&& attrs, DeclParts&& d)
 {
-    uint32_t weak_pos = 0;
+    uint32_t weak_pos = 0, value_pos = 0;
     for (const StmtAttr& a : attrs)
     {
-        if (a.first != "weak")
+        if (a.first != "weak" && a.first != "value")
             st.error(st.base + a.second, "unknown attribute '" + a.first + "' on a local variable");
-        else if (weak_pos != 0)
-            st.error(st.base + a.second, "duplicate attribute 'weak'");
+        else if ((a.first == "weak" ? weak_pos : value_pos) != 0)
+            st.error(st.base + a.second, "duplicate attribute '" + a.first + "'");
         else
-            weak_pos = a.second;
+            (a.first == "weak" ? weak_pos : value_pos) = a.second;
+    }
+    if (weak_pos != 0 && value_pos != 0)
+    {
+        st.error(st.base + value_pos, "[weak] and [value] cannot be used together: a weak handle is not a value");
+        value_pos = 0;
     }
     const bool untyped = d.head.type.empty();
     StmtP s = make_decl(st, std::move(d));
-    if (!s || weak_pos == 0)
+    if (!s || (weak_pos == 0 && value_pos == 0))
         return s;
     auto* v = std::get_if<ast::VarDeclStmt>(&s->v);
     if (!v)
         return s;
+    if (value_pos != 0)
+    {
+        v->value = true;
+        v->value_pos = value_pos;
+        return s;
+    }
     if (untyped)
     {
         st.error(st.base + weak_pos,
@@ -818,7 +830,7 @@ struct stmt_attr_list
     static constexpr auto value = lexy::as_list<std::vector<StmtAttr>>;
 };
 
-// "[weak] T x = e;": a local declaration with attributes.
+// "[weak] T x = e;" or "[value] T x = e;": a local declaration with attributes.
 struct attr_decl_stmt
 {
     static constexpr auto rule = dsl::lit_c<'['> + dsl::p<stmt_attr_list> + dsl::p<decl_p<init_cfg>> + semi;

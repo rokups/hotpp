@@ -492,6 +492,21 @@ bool TypeModel::is_script_class(const std::string& type) const
     return script_.count(type) != 0;
 }
 
+std::string TypeModel::script_native_base(const std::string& type) const
+{
+    std::string cur = type;
+    for (size_t depth = 0; depth < 64; ++depth)
+    {
+        auto it = script_.find(cur);
+        if (it == script_.end())
+            return depth == 0 ? std::string() : cur;
+        if (it->second.base.empty())
+            return {};
+        cur = it->second.base;
+    }
+    return {};
+}
+
 std::string TypeModel::script_ref_storage(const std::string& type) const
 {
     size_t e = type.find_last_not_of(" \t");

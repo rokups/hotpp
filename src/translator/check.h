@@ -41,6 +41,15 @@ namespace hotc
 void check_class(const ast::ClassDef& cd, const TypeModel& types, const LineMap& map, Diagnostics& diag,
     bool strict_borrowed, bool is_cpp = false, bool std_below_20 = false);
 
+// Checks the "[value] T" uses of a script: fields, parameters, return types and locals (design
+// 7.10). "[value]" holds a script "class" with value semantics. The class must have no native base.
+// A native handle type, a struct and a builtin type are errors. A "[value] T x" without an
+// initializer needs a constructor of T with no parameters. A field of a struct and a module
+// variable take no "[value]" yet. A template argument has no syntax for "[value]" yet. Each
+// error goes to the diagnostics. The pass does not change the AST.
+void check_value_uses(
+    const std::vector<ast::ClassDef>& classes, const TypeModel& types, const LineMap& map, Diagnostics& diag);
+
 // True when the standard option ("c++17", "gnu++14", "c++2b") names a standard older than C++20.
 // An empty or unknown text gives false.
 bool cxx_std_below_20(const std::string& std_name);

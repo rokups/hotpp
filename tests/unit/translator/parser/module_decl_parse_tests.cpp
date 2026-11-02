@@ -96,7 +96,7 @@ TEST(ModuleDeclParse, ErrorEnumeratorMissing)
 
 TEST(ModuleDeclParse, ErrorAttributeOtherThanAliasOnModuleVariable)
 {
-    StubParsed p("[value] int n = 0;\n");
+    StubParsed p("[self] int n = 0;\n");
     ASSERT_GE(p.diag.items.size(), 1u);
     EXPECT_NE(p.diag.format("t").find("is not allowed on a module variable"), std::string::npos) << p.diag.format("t");
 }

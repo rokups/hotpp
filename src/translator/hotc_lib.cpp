@@ -3724,6 +3724,11 @@ void translate_impl(
     if (!g_diag.items.empty())
         throw TranslateAbort{};
 
+    // ---- the rules of "[value] T" on fields, parameters, return types and locals
+    hotc::check_value_uses(sc.classes, types, map, g_diag);
+    if (!g_diag.items.empty())
+        throw TranslateAbort{};
+
     std::vector<ManifestEntry> old_manifest;
     std::map<std::string, std::string> old_sigs; // "Cls::fn" to the signature of the last generation
     std::vector<std::string> sig_lines; // the signature lines of the new slot file
@@ -4975,6 +4980,16 @@ void translate_impl(
                             fail_at(map, m.pos,
                                 "'" + m.name + "' has other parameter types than the virtual method of " + aowner->name
                                     + "; write 'new' to hide it");
+                        for (size_t k = 0; k < m.params.size(); ++k)
+                            if (am->params[k].value != m.params[k].value)
+                                fail_at(map, m.pos,
+                                    "'" + m.name + "' differs in '[value]' on the parameter '" + m.params[k].name
+                                        + "' from the virtual method of " + aowner->name
+                                        + "; write '[value]' on both or on none");
+                        if (am->ret_value != m.ret_value)
+                            fail_at(map, m.pos,
+                                "'" + m.name + "' differs in '[value]' on the return type from the virtual method of "
+                                    + aowner->name + "; write '[value]' on both or on none");
                         const std::string r0 = am->script_ret.empty() ? "void" : am->script_ret;
                         const std::string r1 = m.script_ret.empty() ? "void" : m.script_ret;
                         if (key_norm(r0) != key_norm(r1))
