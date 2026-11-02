@@ -42,13 +42,13 @@ std::string long_path(const std::string& path)
 {
     if (path.find('~') == std::string::npos)
         return path; // a short name always has "~"
-    const std::filesystem::path p = std::filesystem::u8path(path);
+    const std::filesystem::path p = utf8_path(path);
     std::wstring out;
     if (expand(p.wstring(), out))
-        return std::filesystem::path(out).string();
+        return path_utf8(std::filesystem::path(out));
     // A file that does not exist yet: expand the folder, then add the name.
     if (p.has_parent_path() && p.has_filename() && expand(p.parent_path().wstring(), out))
-        return (std::filesystem::path(out) / p.filename()).string();
+        return path_utf8(std::filesystem::path(out) / p.filename());
     return path;
 }
 

@@ -76,7 +76,8 @@ bool is_host_file(const fs::path& p)
 std::string path_key(const fs::path& p)
 {
 #ifdef _WIN32
-    std::string out = fs::path(long_path(p.lexically_normal().string())).generic_string();
+    std::string out = long_path(path_utf8(p.lexically_normal()));
+    std::replace(out.begin(), out.end(), '\\', '/');
 #else
     std::string out = p.lexically_normal().generic_string();
 #endif

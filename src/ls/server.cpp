@@ -506,7 +506,14 @@ private:
     // ---- clangd
     void read_compile_commands();
     void start_clangd(const json& init);
-    std::string private_cdb_dir() const;
+    std::string private_cdb_dir();
+#ifdef _WIN32
+    static bool write_cdb_copy(const fs::path& target, const fs::path& copy);
+    void refresh_cdb_copy();
+    // The source database, its copy and the write time of the source at the last copy.
+    fs::path cdb_target_, cdb_copy_;
+    fs::file_time_type cdb_time_{};
+#endif
     void on_clangd_notification(const json& msg);
     void map_clangd_diagnostics(Doc& d);
     // clangd adds the symbols of a new preamble to its index on a worker thread, after the
@@ -515,15 +522,23 @@ private:
     // preamble in one step. So the server waits until a runtime symbol of the preamble is in
     // the index. Each generated file includes "hot/runtime.h" (hot::ShellBase).
     // Limit: an earlier preamble of an other document can give the symbol before this preamble.
+    // The wait has a limit of 5 s in total. Each request gets only the time that remains.
     void wait_for_preamble_index()
     {
-        for (int i = 0; i < 250; ++i)
+        using clock = std::chrono::steady_clock;
+        const auto deadline = clock::now() + std::chrono::seconds(5);
+        for (;;)
         {
-            const auto r = clangd_result("workspace/symbol", {{"query", "ShellBase"}}, 5000);
+            const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - clock::now());
+            if (left.count() <= 0)
+                return;
+            const auto r = clangd_result("workspace/symbol", {{"query", "ShellBase"}}, static_cast<int>(left.count()));
             if (r && r->is_array())
                 for (const json& s : *r)
                     if (s.value("name", std::string()) == "ShellBase")
                         return;
+            if (clock::now() + std::chrono::milliseconds(20) >= deadline)
+                return;
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
         }
     }
@@ -655,9 +670,70 @@ void Server::read_compile_commands()
 
 // clangd stores its background index in "<dir of compile_commands.json>/.cache/clangd/index".
 // XDG_CACHE_HOME does not change this. The child of hot-ls gets its own directory under
-// ".cache/hot/clangd" with a link to the real compile_commands.json. So its index does not mix
-// with the index of a C++ clangd on the same database (DECISIONS 18).
-std::string Server::private_cdb_dir() const
+// ".cache/hot/clangd" with a link to the real compile_commands.json (a copy on Windows). So its
+// index does not mix with the index of a C++ clangd on the same database (DECISIONS 18).
+#ifdef _WIN32
+// A copy with the long names, not a link. clangd keys a file by its path. A database with the
+// short 8.3 names ("RUNNER~1") gives a second key for a file that the editor and hot-ls open
+// with the long name. Also, a link on Windows needs a special privilege. clangd reads the copy.
+// A CMake reconfigure changes the source, so refresh_cdb_copy writes the copy again.
+bool Server::write_cdb_copy(const fs::path& target, const fs::path& copy)
+{
+    const auto text = read_file(target.string());
+    json db = text ? json::parse(*text, nullptr, false) : json();
+    if (!db.is_array())
+        return false;
+    for (json& e : db)
+    {
+        if (!e.is_object())
+            continue;
+        const fs::path d = utf8_path(long_path(e.value("directory", std::string("."))));
+        e["directory"] = path_utf8(d);
+        if (!e.contains("file") || !e["file"].is_string())
+            continue;
+        const std::string old_file = e["file"].get<std::string>();
+        fs::path f = utf8_path(old_file);
+        if (f.is_relative())
+            f = d / f;
+        const std::string abs_file = path_utf8(f.lexically_normal());
+        const std::string new_file = long_path(abs_file);
+        e["file"] = new_file;
+        // clangd compiles the source of the argument list: it gets the long name too.
+        if (e.contains("arguments") && e["arguments"].is_array())
+            for (json& a : e["arguments"])
+                if (a.is_string() && (a.get<std::string>() == old_file || a.get<std::string>() == abs_file))
+                    a = new_file;
+    }
+    std::string out_text;
+    try
+    {
+        out_text = db.dump(2);
+    }
+    catch (const json::exception&)
+    {
+        return false; // a database that is not UTF-8
+    }
+    std::ofstream out(copy, std::ios::binary);
+    out << out_text;
+    out.close();
+    return static_cast<bool>(out);
+}
+
+// The editor opens a document after a reconfigure. So a new document checks the source.
+void Server::refresh_cdb_copy()
+{
+    if (cdb_target_.empty())
+        return;
+    std::error_code ec;
+    const auto t = fs::last_write_time(cdb_target_, ec);
+    if (ec || t == cdb_time_)
+        return;
+    if (write_cdb_copy(cdb_target_, cdb_copy_))
+        cdb_time_ = t;
+}
+#endif
+
+std::string Server::private_cdb_dir()
 {
     if (roots_.empty())
         return opt_.compile_commands_dir;
@@ -672,38 +748,13 @@ std::string Server::private_cdb_dir() const
         return opt_.compile_commands_dir;
     fs::remove(link, ec);
 #ifdef _WIN32
-    // A copy with the long names, not a link. clangd keys a file by its path. A database with
-    // the short 8.3 names ("RUNNER~1") gives a second key for a file that the editor and hot-ls
-    // open with the long name. Also, a link on Windows needs a special privilege. The server
-    // reads the database one time at the start (read_compile_commands), so a copy is current.
-    const auto text = read_file(target.string());
-    json db = text ? json::parse(*text, nullptr, false) : json();
-    if (!db.is_array())
+    const auto t = fs::last_write_time(target, ec);
+    if (ec || !write_cdb_copy(target, link))
         return opt_.compile_commands_dir;
-    for (json& e : db)
-    {
-        if (!e.is_object())
-            continue;
-        const fs::path d = long_path(e.value("directory", std::string(".")));
-        e["directory"] = d.string();
-        if (!e.contains("file") || !e["file"].is_string())
-            continue;
-        const std::string old_file = e["file"].get<std::string>();
-        fs::path f = old_file;
-        if (f.is_relative())
-            f = d / f;
-        const std::string new_file = long_path(f.lexically_normal().string());
-        e["file"] = new_file;
-        // clangd compiles the source of the argument list: it gets the long name too.
-        if (e.contains("arguments") && e["arguments"].is_array())
-            for (json& a : e["arguments"])
-                if (a.is_string() && (a.get<std::string>() == old_file || a.get<std::string>() == f.string()))
-                    a = new_file;
-    }
-    std::ofstream out(link, std::ios::binary);
-    out << db.dump(2);
-    out.close();
-    return out ? dir.string() : opt_.compile_commands_dir;
+    cdb_target_ = target;
+    cdb_copy_ = link;
+    cdb_time_ = t;
+    return dir.string();
 #else
     fs::create_symlink(target, link, ec);
     return ec ? opt_.compile_commands_dir : dir.string();
@@ -2605,6 +2656,9 @@ void Server::handle(const json& msg)
     }
     if (method == "textDocument/didOpen")
     {
+#ifdef _WIN32
+        refresh_cdb_copy();
+#endif
         const json& td = p["textDocument"];
         auto d = std::make_shared<Doc>();
         d->uri = td.value("uri", std::string());
