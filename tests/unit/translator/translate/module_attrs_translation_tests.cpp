@@ -469,3 +469,12 @@ TEST(ModuleAttrsTranslation, LibErrors)
         EXPECT_TRUE(has(r.diagnostics, c.msg)) << r.diagnostics;
     }
 }
+
+// "using std;" is "using namespace <the configured namespace>;".
+TEST(ModuleAttrsTranslation, UsingStdUsesTheConfiguredNamespace)
+{
+    const hotc::TranslateResult r = check_translate("using std;\n", "    int a;\n", {{"host.prelude", kMystd}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "using namespace mystd;\n")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "using namespace std;")) << r.cpp;
+}

@@ -111,7 +111,7 @@ std::string type_of(const ParseState& st, Span sp)
 
 ParseInput input_of(const ParseState& st)
 {
-    return ParseInput{std::string_view(st.base, st.size), st.map, st.array_tpl};
+    return ParseInput{std::string_view(st.base, st.size), st.map, st.array_tpl, st.aliases};
 }
 
 // The expression of the span. Null: the error is in the diagnostics.
@@ -1421,7 +1421,7 @@ ast::BlockStmt parse_block(ParseInput in, Span body_without_braces, Diagnostics&
         return block;
     }
     const size_t first_item = diag.items.size();
-    const ParseState st{in.text.data(), in.map, &diag, size, in.array_tpl};
+    const ParseState st{in.text.data(), in.map, &diag, size, in.array_tpl, in.aliases};
     const auto input = lexy::string_input<Encoding>(in.text.data() + begin, end - begin);
     auto result = parse_with_diag<block_entry>(input, st);
     // The parse reports the recursion limit again at each column. Keep the first error and

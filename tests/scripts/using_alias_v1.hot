@@ -1,0 +1,41 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// "using std;" is "using namespace std;". "using Name = type;" is a type alias. An alias of a
+// script class is a handle. An alias of a native type is that type.
+using "Actor.h";
+using <vector>;
+using std;
+using Ints = vector<int>;
+
+class Recruit {
+    int hp = 3;
+
+    void Bump() { this.hp = this.hp + 1; }
+}
+
+using Soldier = Recruit;
+using Squad = std.vector<Soldier>;
+
+class Platoon : Actor {
+    using Counter = int; // an alias in a class body
+
+    Squad squad;
+    Ints nums;
+    Soldier lead;
+    Counter count = 0;
+    int sum = 0;
+    int has_lead = 0;
+
+    override void Tick(float dt) {
+        Soldier s = new Soldier();
+        s.Bump();
+        this.squad.push_back(s);
+        this.nums.push_back(7);
+        if (this.lead == null) { this.lead = s; }
+        this.count = static_cast<int>(this.squad.size());
+        this.sum = this.squad[0].hp + this.nums[0];
+        if (this.lead != null) { this.has_lead = 1; }
+    }
+}

@@ -46,6 +46,8 @@ struct ParseState
     size_t size = 0; // the size of the whole buffer that starts at base
     // The template of the type "T[N]" (the module attribute "array", std_ns.h). It is the internal form.
     std::string_view array_tpl = kDefaultArrayTpl;
+    // The type aliases in scope, or null (see AliasMap).
+    const AliasMap* aliases = nullptr;
 
     uint32_t offset(const char* p) const { return static_cast<uint32_t>(p - base); }
     void error(const char* p, std::string msg) const { diag->add(offset(p), *map, std::move(msg)); }
@@ -436,14 +438,52 @@ inline std::string type_text(std::string_view s, std::size_t* colons = nullptr)
     return out;
 }
 
+// Replaces each name in a type text by the target of its type alias ("using A = T;"). A name
+// after "::" or after the std placeholder is a member name and stays. A number stays. The targets
+// of the map are free of aliases, so one pass is enough.
+inline std::string apply_aliases(const AliasMap& aliases, const std::string& t)
+{
+    if (aliases.empty())
+        return t;
+    std::string out;
+    std::size_t i = 0;
+    const std::size_t n = t.size();
+    while (i < n)
+    {
+        if (is_digit(t[i]))
+        {
+            while (i < n && (is_id(t[i]) || t[i] == '.'))
+                out += t[i++];
+            continue;
+        }
+        if (!is_id0(t[i]))
+        {
+            out += t[i++];
+            continue;
+        }
+        const std::size_t b = i;
+        while (i < n && is_id(t[i]))
+            ++i;
+        const std::string word = t.substr(b, i - b);
+        const bool member = (out.size() >= 2 && out.compare(out.size() - 2, 2, "::") == 0)
+            || (!out.empty() && out.back() == '\x01');
+        const auto it = member ? aliases.end() : aliases.find(word);
+        out += it == aliases.end() ? word : it->second;
+    }
+    return out;
+}
+
 // The canonical text of a type: the aliases become the C++ names ("ulong" and "uint64" give
 // "uint64_t"). An old C++ spelling such as "unsigned int" is an error with a hint at "pos".
+// A type alias of the script ("using A = T;") becomes its target.
 inline std::string canonical_type_at(const ParseState& st, const char* pos, const std::string& t)
 {
     std::string error;
     std::string r = canonical_type(t, &error);
     if (!error.empty())
         st.error(pos, error);
+    if (st.aliases)
+        r = apply_aliases(*st.aliases, r);
     return r;
 }
 

@@ -1502,6 +1502,13 @@ bool is_code_query(const std::string& q)
 // (see answer_decl_queries). The translator writes a specialization of hot::checked_index for a
 // declared name only, and it reports a stub that does not fit the kind of its name.
 const char* const kDeclQuery = "@decl:";
+
+// The C++ name of the namespace of "using ns;". The name "std" is the configurable standard namespace.
+// Another name has the placeholder of the standard namespace where it needs one (std_ns.h).
+std::string using_ns_text(const std::string& name, const std::string& std_ns)
+{
+    return name == "std" ? std_ns : name;
+}
 bool is_decl_query(const std::string& q)
 {
     return q.compare(0, 6, kDeclQuery) == 0;
@@ -2865,6 +2872,8 @@ void translate_impl(
         std::vector<Import> natives;
         std::vector<ClassDef> classes;
         std::vector<hotc::ast::EnumDef> enums;
+        std::vector<hotc::ast::UsingNs> using_ns;
+        std::vector<hotc::ast::TypeAlias> aliases;
         std::vector<Stub> stubs;
         uint32_t next_base = static_cast<uint32_t>(in.script_text.size()) + 1;
         // Depth first: the imports of an imported script come before its own classes.
@@ -2935,6 +2944,11 @@ void translate_impl(
                     stubs.push_back(std::move(st));
                 for (Stub& st : is.attribute_classes)
                     sc.attribute_classes.push_back(std::move(st));
+                // The namespaces and the aliases of an imported script are for the output, which has all the classes.
+                for (auto& u : is.using_ns)
+                    using_ns.push_back(std::move(u));
+                for (auto& a : is.aliases)
+                    aliases.push_back(std::move(a));
             }
             ims = std::move(keep);
         };
@@ -2959,6 +2973,10 @@ void translate_impl(
                 sc.classes.begin(), std::make_move_iterator(classes.begin()), std::make_move_iterator(classes.end()));
             sc.enums.insert(
                 sc.enums.begin(), std::make_move_iterator(enums.begin()), std::make_move_iterator(enums.end()));
+            sc.using_ns.insert(sc.using_ns.begin(), std::make_move_iterator(using_ns.begin()),
+                std::make_move_iterator(using_ns.end()));
+            sc.aliases.insert(
+                sc.aliases.begin(), std::make_move_iterator(aliases.begin()), std::make_move_iterator(aliases.end()));
             // A stub of the importing script wins over a stub with the same name in an import.
             std::set<std::string> stub_names;
             for (const Stub& st : sc.stubs)
@@ -2970,6 +2988,42 @@ void translate_impl(
             for (Stub& st : sc.stubs)
                 merged.push_back(std::move(st));
             sc.stubs = std::move(merged);
+            // The aliases of all the scripts are at file scope in the output, with all the classes.
+            // An alias name must not be the name of a class, an enum or a stub of any script.
+            // The same alias in two scripts with the same type is written once. With two types it
+            // is an error.
+            std::set<std::string> type_names;
+            for (const ClassDef& c : sc.classes)
+                type_names.insert(c.name);
+            for (const auto& e : sc.enums)
+                type_names.insert(e.name);
+            for (const Stub& st : sc.stubs)
+                type_names.insert(st.name);
+            for (const Stub& st : sc.attribute_classes)
+                type_names.insert(st.name);
+            auto check_alias_name = [&](const hotc::ast::TypeAlias& a)
+            {
+                if (!a.resolved.empty() && type_names.count(a.name))
+                    fail_at(map, a.pos,
+                        "the type alias '" + a.name + "' has the name of a class, an enum or a stub of another script");
+            };
+            std::map<std::string, std::string> alias_type;
+            std::vector<hotc::ast::TypeAlias> kept_aliases;
+            for (hotc::ast::TypeAlias& a : sc.aliases)
+            {
+                check_alias_name(a);
+                if (a.resolved.empty())
+                    continue;
+                const auto [it, added] = alias_type.emplace(a.name, a.resolved);
+                if (!added && it->second != a.resolved)
+                    fail_at(map, a.pos, "the type alias '" + a.name + "' is declared in two scripts with other types");
+                if (added)
+                    kept_aliases.push_back(std::move(a));
+            }
+            sc.aliases = std::move(kept_aliases);
+            for (const ClassDef& c : sc.classes)
+                for (const hotc::ast::TypeAlias& a : c.aliases)
+                    check_alias_name(a);
         }
     }
     // The main script and the imported scripts at the offsets of the map. The positions of the
@@ -3434,6 +3488,10 @@ void translate_impl(
     for (const auto& im : sc.imports)
         probe +=
             "#line " + std::to_string(im.line) + " \"" + esc(file_at(im.pos)) + "\"\n#include " + im.target() + "\n";
+    // The namespaces of "using ns;" come after the includes. The facts then find a name of a namespace.
+    for (const auto& u : sc.using_ns)
+        probe += "#line " + std::to_string(u.line) + " \"" + esc(file_at(u.pos)) + "\"\nusing namespace "
+            + using_ns_text(u.name, std_ns) + ";\n";
     // No error limit. The facts file can have many errors (one for each unknown type). The default
     // limit of 20 gives a "too many errors" fatal error, and this is not an error of the imports.
     const std::vector<std::string> args = clang_args(opt);
@@ -3453,6 +3511,8 @@ void translate_impl(
         key += a + "\n";
     for (const auto& p : import_paths)
         key += "#" + p + "\n";
+    for (const auto& u : sc.using_ns)
+        key += "using " + using_ns_text(u.name, std_ns) + "\n";
     // A host file system gives other files than the disk. Another file system, or another set of
     // virtual headers, is another key. The stamps of the entry then check the versions.
     hot::FileSystem* fs = in.fs.get();
@@ -3734,6 +3794,13 @@ void translate_impl(
     {
         o.w("#line " + std::to_string(im.line) + " \"" + esc(file_at(im.pos)) + "\"\n");
         o.w("#include " + im.target() + "\n");
+    }
+    // "using ns;" is "using namespace ns;" at file scope, after all the includes. The generated
+    // classes are at file scope too (a ".cpp" script has its own text), so the names are visible there.
+    for (const auto& u : sc.using_ns)
+    {
+        o.w("#line " + std::to_string(u.line) + " \"" + esc(file_at(u.pos)) + "\"\n");
+        o.w("using namespace " + using_ns_text(u.name, std_ns) + ";\n");
     }
     // A ".cpp" script has raw bodies. The function writes the text with the script line of the
     // function. The caller writes the closing brace and the "#line" of the generated file.
@@ -5613,6 +5680,10 @@ void translate_impl(
         // The runtime writes the owner shell into the first member of a root state struct.
         if (!pinfo)
             o.w("    hot::ShellBase* __hot_owner;\n");
+        // The type aliases of the class body (see the aliases of the module).
+        for (const hotc::ast::TypeAlias& a : cd.aliases)
+            if (!a.resolved.empty())
+                o.w("    using " + a.name + " = " + types.storage(a.resolved) + ";\n");
         for (const Field& f : cd.fields)
         {
             // A C array type "int[2][3]" is written as "int name[2][3]".
@@ -6581,6 +6652,18 @@ void translate_impl(
     }
     flush_bodies();
     write_texts(seq.size());
+
+    // The type aliases of the module: "using Name = type;". The script code never writes the name
+    // (the parser replaced it), but the C++ text of a native class can. The alias is the storage
+    // type of its target, so it is a handle for a script class. It comes after all the classes.
+    std::set<std::string> alias_done; // an alias of an imported script can repeat a name: the first one counts
+    for (const hotc::ast::TypeAlias& a : sc.aliases)
+        if (!a.resolved.empty() && alias_done.insert(a.name).second)
+        {
+            o.w("#line " + std::to_string(a.line) + " \"" + esc(file_at(a.pos)) + "\"\n");
+            o.w("using " + a.name + " = " + types.storage(a.resolved) + ";\n");
+            reset();
+        }
 
     o.w("extern \"C\" void script_register(hot::Registry& reg)\n{\n");
     if (!opt.aot_optimized)

@@ -273,4 +273,51 @@ TEST(ScriptImportTranslation, NestedImports)
     EXPECT_LT(r.cpp.find("struct Base_Shell"), r.cpp.find("struct Kid_Shell"));
 }
 
+// An alias is at file scope in the output. Its name must not be the name of a class of another script.
+TEST(ScriptImportTranslation, AliasOfAnImportWithTheNameOfAClassOfTheMainScript)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    hotc::TranslateOptions o = temp_options(dir, "using \"lib.hot\";\nclass Unit : Widget { }\n");
+    o.modules.emplace_back("lib.hot", "using \"w.h\";\nusing Unit = int;\nclass Lib : Widget { }\n");
+    const hotc::TranslateResult r = hotc::translate(o);
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("the type alias 'Unit' has the name of a class"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("lib.hot:2:"), std::string::npos) << r.diagnostics;
+}
+
+TEST(ScriptImportTranslation, AliasOfTheMainScriptWithTheNameOfAClassOfAnImport)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    hotc::TranslateOptions o = temp_options(dir, "using \"lib.hot\";\nusing Lib = int;\nclass Main : Widget { }\n");
+    o.modules.emplace_back("lib.hot", "using \"w.h\";\nclass Lib : Widget { }\n");
+    const hotc::TranslateResult r = hotc::translate(o);
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("the type alias 'Lib' has the name of a class"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("t.hot:2:"), std::string::npos) << r.diagnostics;
+}
+
+// The same alias with the same type in two scripts is written one time. Two types are an error.
+TEST(ScriptImportTranslation, SameAliasInTwoScripts)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    hotc::TranslateOptions o =
+        temp_options(dir, "using \"lib.hot\";\nusing Num = int;\nclass Main : Widget { Num n; }\n");
+    o.modules.emplace_back("lib.hot", "using \"w.h\";\nusing Num = int;\nclass Lib : Widget { Num n; }\n");
+    hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const size_t first = r.cpp.find("using Num = int32_t;");
+    ASSERT_NE(first, std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("using Num = int32_t;", first + 1), std::string::npos) << r.cpp;
+
+    o = temp_options(dir, "using \"lib.hot\";\nusing Num = float;\nclass Main : Widget { Num n; }\n");
+    o.modules.emplace_back("lib.hot", "using \"w.h\";\nusing Num = int;\nclass Lib : Widget { Num n; }\n");
+    r = hotc::translate(o);
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("the type alias 'Num' is declared in two scripts with other types"), std::string::npos)
+        << r.diagnostics;
+}
+
 } // namespace

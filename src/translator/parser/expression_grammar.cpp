@@ -142,7 +142,7 @@ ast::NameExpr split_name(const ParseState& st, std::string_view t, uint32_t pos)
                     const Span args{targs_begin, pos + static_cast<uint32_t>(e) - 1};
                     Diagnostics quiet;
                     std::vector<ExprP> list =
-                        parse_expression_list(ParseInput{std::string_view(st.base, st.size), st.map, st.array_tpl}, args, quiet);
+                        parse_expression_list(ParseInput{std::string_view(st.base, st.size), st.map, st.array_tpl, st.aliases}, args, quiet);
                     if (quiet.items.empty() && !list.empty())
                     {
                         n.targ_exprs = std::move(list);
@@ -157,6 +157,32 @@ ast::NameExpr split_name(const ParseState& st, std::string_view t, uint32_t pos)
         if (i >= t.size() || t[i] != '.')
             break;
         ++i;
+    }
+    // "Alias.Member": the first part is a type alias of a plain name ("using C = ns.Color;").
+    // The parts of the target replace it. An alias of a template instance has no such form.
+    if (st.aliases && n.parts.size() >= 2)
+    {
+        const auto it = st.aliases->find(n.parts[0]);
+        if (it != st.aliases->end() && it->second.find_first_of("<>(),*& ") == std::string::npos)
+        {
+            std::vector<std::string> head;
+            std::string target = it->second;
+            for (std::size_t b = 0; b <= target.size();)
+            {
+                const std::size_t e = std::min(target.find("::", b), target.size());
+                std::string seg = target.substr(b, e - b);
+                if (!seg.empty() && seg.front() == '\x01')
+                    seg.erase(0, 1);
+                head.push_back(std::move(seg));
+                b = e + 2;
+            }
+            const std::size_t extra = head.size() - 1;
+            n.parts.erase(n.parts.begin());
+            n.parts.insert(n.parts.begin(), head.begin(), head.end());
+            // The offsets of the new parts are the offset of the alias name.
+            if (!n.part_pos.empty())
+                n.part_pos.insert(n.part_pos.begin(), extra, n.part_pos[0]);
+        }
     }
     return n;
 }
@@ -496,7 +522,7 @@ ExprP make_string(const ParseState& st, const char* b, const char* e)
     n.pos = st.offset(b);
     std::string cur;
     const char* close_quote = e - 1;
-    const ParseInput in{std::string_view(st.base, st.size), st.map, st.array_tpl};
+    const ParseInput in{std::string_view(st.base, st.size), st.map, st.array_tpl, st.aliases};
     for (const char* p = b + 1; p < close_quote;)
     {
         if (*p == '\\' && p + 1 < close_quote)
@@ -800,7 +826,7 @@ struct paren_p
             l.body.stmts.push_back(ast::make_stmt(std::move(r)));
             return ast::make_expr(std::move(l));
         }
-        const ParseInput in{std::string_view(st.base, st.size), st.map, st.array_tpl};
+        const ParseInput in{std::string_view(st.base, st.size), st.map, st.array_tpl, st.aliases};
         l.body = parse_block(in, rest.body, *st.diag);
         return ast::make_expr(std::move(l));
     }),
@@ -1068,7 +1094,7 @@ bool run(ParseInput in, Span span, Diagnostics& diag, Result& out, uint32_t& end
     const std::size_t size = in.text.size();
     const std::size_t end = span.end < size ? span.end : size;
     const std::size_t begin = span.begin < end ? span.begin : end;
-    const ParseState st{in.text.data(), in.map, &diag, size, in.array_tpl};
+    const ParseState st{in.text.data(), in.map, &diag, size, in.array_tpl, in.aliases};
     const auto input = lexy::string_input<Encoding>(in.text.data() + begin, end - begin);
     int syntax_errors = 0;
     auto sink = lexy::callback<void>([&](const auto&, const auto& e)

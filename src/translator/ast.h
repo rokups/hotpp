@@ -522,6 +522,25 @@ struct Property
     bool is_auto() const { return !get_body && !set_body; }
 };
 
+// "using ns.sub;": the C++ "using namespace ns::sub;". The name is C++ text. A name that starts with
+// "std" uses the std placeholder (std_ns.h); the name "std" alone is the text "std".
+struct UsingNs
+{
+    std::string name;
+    int line = 0;
+    uint32_t pos = 0;
+};
+
+// "using Name = type;": a type alias. The "type" is the C++ type text as the parser reads it.
+// The parser replaces the name by "resolved" in every type of its scope. "resolved" is "type"
+// with the earlier aliases replaced. It has no alias name.
+struct TypeAlias
+{
+    std::string name, type, resolved;
+    int line = 0;
+    uint32_t pos = 0;
+};
+
 struct ClassDef
 {
     std::string name, base;
@@ -537,6 +556,7 @@ struct ClassDef
     std::vector<Ctor> ctors; // the overloads; C++ picks one by the argument types
     std::vector<Method> dtors; // "~Name() { }": the name is "~Name"; the translator allows one
     std::vector<Property> props; // in source order
+    std::vector<TypeAlias> aliases; // "using Name = type;" in the class body, in source order
     bool is_value = false; // the attribute [value]
     std::string cpp_prelude; // the attribute [cpp_prelude("text")]: C++ text for this class only
     std::string cpp_overrides; // names of virtuals that the shell keeps without a slot (a .cpp script)
@@ -633,6 +653,8 @@ struct Import
 struct Script
 {
     std::vector<Import> imports;
+    std::vector<UsingNs> using_ns; // in source order
+    std::vector<TypeAlias> aliases; // module level, in source order
     std::vector<ClassDef> classes;
     std::vector<Stub> stubs; // in source order
     // The script attribute classes: "[attribute] class Name;". They are not in "stubs".

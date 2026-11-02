@@ -69,6 +69,20 @@ class Names {
 
 `string`, `vector` and the other headers in [Module level](module-level.html) need no `using`.
 
+## Type aliases
+
+`using Name = type;` names a type (see [Module level](module-level.html#type-aliases)). A native type alias is that type. An alias of a script class has the handle semantics of the class: the storage is a handle, `new Name()` makes an object and `null` is allowed.
+
+```hot
+using Squad = std.vector<Recruit>;   // a vector of handles
+using Soldier = Recruit;
+
+class Platoon {
+    Squad squad;
+    Soldier lead = null;
+}
+```
+
 ## Script classes in templates
 
 A script class as a template argument is a handle. `std.vector<Child>` holds one handle for each element. It does not hold the objects by value. The rule also works inside other templates, for example `std.map<int, std.vector<Child>>`.

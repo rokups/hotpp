@@ -174,3 +174,160 @@ TEST(ModuleDeclTranslation, ConvertHookErrors)
     expect_error("int a;\n[alias(\"x\")] int convert_a(float old) { return 1; }\nclass C : Unit { }\n",
         "attribute 'alias' is not allowed on a convert hook");
 }
+
+namespace
+{
+
+const char* kAliasHeader =
+    "#include <string>\n"
+    "#include <vector>\n"
+    "namespace ns { struct Thing { int x = 0; }; }\n"
+    "class Unit { public:\n"
+    "    Unit() {}\n"
+    "    virtual ~Unit() {}\n"
+    "    virtual void Update(float dt) {}\n"
+    "};\n";
+
+hotc::TranslateResult translate_alias(const std::string& body)
+{
+    TempDir dir;
+    write_file(dir.path() / "u.h", kAliasHeader);
+    return hotc::translate(temp_options(dir, "using \"u.h\";\nusing <vector>;\n" + body));
+}
+
+void expect_alias_error(const std::string& body, const std::string& msg)
+{
+    const hotc::TranslateResult r = translate_alias(body);
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find(msg), std::string::npos) << r.diagnostics;
+}
+
+} // namespace
+
+// An alias of a native type works as that type: field, parameter, return, local, template
+// argument and "new". The module alias is also written as C++ text.
+TEST(ModuleDeclTranslation, AliasOfANativeTypeIsThatType)
+{
+    const auto r = translate_alias(
+        "using Thing = ns.Thing;\n"
+        "using Ints = std.vector<int>;\n"
+        "class A : Unit {\n"
+        "    Thing t;\n"
+        "    Ints list;\n"
+        "    std.vector<Thing> things;\n"
+        "    Thing Make(Thing p) { Thing l = new Thing(); l.x = p.x; return l; }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "ns::Thing t;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "std::vector<int32_t> list;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "std::vector<ns::Thing> things;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "ns::Thing l = ns::Thing();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "using Thing = ns::Thing;\n")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "using Ints = std::vector<int32_t>;\n")) << r.cpp;
+}
+
+// An alias of a script class has the handle storage of the class: field, template argument, "new", null.
+TEST(ModuleDeclTranslation, AliasOfAScriptClassIsAHandle)
+{
+    const auto r = translate_alias(
+        "class Unit2 : Unit { int hp = 1; }\n"
+        "using Soldier = Unit2;\n"
+        "class A : Unit {\n"
+        "    Soldier lead;\n"
+        "    std.vector<Soldier> squad;\n"
+        "    void f(Soldier s) { Soldier n = new Soldier(); if (lead == null) { lead = n; } squad.push_back(s); }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Unit2> lead;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "std::vector<std::shared_ptr<Unit2>> squad;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "using Soldier = std::shared_ptr<Unit2>;\n")) << r.cpp;
+}
+
+// An alias can use an earlier alias. An alias name before "." is a scope (an enum).
+TEST(ModuleDeclTranslation, AliasChainAndEnumAlias)
+{
+    const auto r = translate_alias(
+        "enum Color { Red, Green }\n"
+        "using C = Color;\n"
+        "using C2 = C;\n"
+        "class A : Unit { C2 c = C2.Green; bool g() { return c == C.Green; } }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "Color c")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Color::Green")) << r.cpp;
+}
+
+// An alias in a class body is for that class only.
+TEST(ModuleDeclTranslation, AliasInAClassBody)
+{
+    const auto r = translate_alias(
+        "class A : Unit {\n"
+        "    using Num = int;\n"
+        "    using Pt = ns.Thing;\n"
+        "    Num n;\n"
+        "    Pt p;\n"
+        "    Num Get(Pt q) { Num r = q.x; return r; }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "using Num = int32_t;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "int32_t n;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "ns::Thing p;")) << r.cpp;
+    // The alias of a class is not visible in another class: the name stays as written.
+    const auto r2 = translate_alias("class A : Unit { using Num = int; }\nclass B : Unit { void f() { Num n = 1; } }\n");
+    ASSERT_TRUE(r2.ok) << r2.diagnostics;
+    EXPECT_TRUE(has(r2.cpp, "Num n = 1;")) << r2.cpp;
+    EXPECT_FALSE(has(r2.cpp, "int32_t n = 1;")) << r2.cpp;
+}
+
+// An alias can use only an earlier alias. A later alias and a cycle are errors, and the alias stays out of the map.
+TEST(ModuleDeclTranslation, ErrorAliasUsesALaterAlias)
+{
+    expect_alias_error("using A = std.vector<B>;\nusing B = int;\nclass C : Unit { }\n",
+        "the type alias 'A' uses a later alias 'B'");
+}
+
+TEST(ModuleDeclTranslation, ErrorCyclicAlias)
+{
+    expect_alias_error("using A = B;\nusing B = A;\nclass C : Unit { }\n", "the type alias 'A' is cyclic");
+    expect_alias_error("using A = B;\nusing B = A;\nclass C : Unit { }\n",
+        "the type alias 'B' uses the alias 'A' that has an error");
+}
+
+TEST(ModuleDeclTranslation, ErrorAliasForALaterAliasInAClass)
+{
+    expect_alias_error("class C : Unit { using A = B; using B = int; }\n", "the type alias 'A' uses a later alias 'B'");
+}
+
+// A name that is a type of the language or a C++ keyword is not a name for an alias.
+TEST(ModuleDeclTranslation, ErrorAliasWithTheNameOfABuiltinType)
+{
+    for (const char* name : {"int", "uint", "int32", "byte", "bool", "float", "long", "Task", "delete"})
+    {
+        const std::string n = name;
+        SCOPED_TRACE(n);
+        expect_alias_error("using " + n + " = ns.Thing;\nclass C : Unit { }\n",
+            "'" + n + "' is a type of the language or a C++ keyword");
+    }
+}
+
+TEST(ModuleDeclTranslation, ErrorAliasToItself)
+{
+    expect_alias_error("using A = A;\nclass C : Unit { }\n", "the type alias 'A' uses itself");
+    expect_alias_error("using A = std.vector<A>;\nclass C : Unit { }\n", "the type alias 'A' uses itself");
+}
+
+TEST(ModuleDeclTranslation, ErrorDuplicateAlias)
+{
+    expect_alias_error("using A = int;\nusing A = float;\nclass C : Unit { }\n", "duplicate type alias 'A'");
+    expect_alias_error("class C : Unit { using A = int; using A = int; }\n", "duplicate type alias 'A'");
+}
+
+TEST(ModuleDeclTranslation, ErrorAliasWithTheNameOfAClass)
+{
+    expect_alias_error("using C = int;\nclass C : Unit { }\n", "the type alias 'C' has the name of a class");
+    expect_alias_error("class C : Unit { using C = int; }\n", "the type alias 'C' has the name of a class");
+}
+
+TEST(ModuleDeclTranslation, ErrorNamespaceInAClassBody)
+{
+    expect_alias_error("class C : Unit { using ns; }\n", "a class has only a type alias");
+}

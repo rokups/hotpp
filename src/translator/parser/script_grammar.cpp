@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -131,8 +132,10 @@ struct Member
         IsField,
         IsProp,
         IsCtor,
-        IsDtor
+        IsDtor,
+        IsAlias
     } kind = None;
+    ast::TypeAlias alias;
     ast::Method method;
     ast::Ctor ctor; // a member with no type: the add step checks the name
     std::string ctor_name;
@@ -165,9 +168,13 @@ struct TopItem
         IsEnum,
         IsVar,
         IsHook,
-        IsModuleAttrs
+        IsModuleAttrs,
+        IsUsingNs,
+        IsAlias
     } kind = None;
     ast::Import import;
+    ast::UsingNs using_ns;
+    ast::TypeAlias alias;
     ast::ClassDef cls;
     ast::Stub stub;
     ast::EnumDef en;
@@ -401,25 +408,103 @@ struct init_cfg
     static constexpr auto term = dsl::lit_c<';'> / dsl::lit_c<')'> / dsl::lit_c<']'> / dsl::lit_c<'}'>;
 };
 
-// ---------------------------------------------------------------- imports
+// ---------------------------------------------------------------- using
+// The three forms of "using": an import ("using \"file.h\";" or "using <file>;"), a namespace
+// ("using ns.sub;") and a type alias ("using Name = type;").
+struct alias_term
+{
+    static constexpr auto term = dsl::lit_c<';'>;
+};
+
+// A name with optional "." parts. The text joins the parts with "::" (a "std" part is the std placeholder).
+struct using_name_p
+{
+    static constexpr auto rule = dsl::list(dsl::p<name_p<e_import_name>>, dsl::sep(dsl::lit_c<'.'>));
+    static constexpr auto value =
+        lexy::fold_inplace<std::string>("", [](std::string& acc, std::string&& part)
+    {
+        if (!acc.empty())
+            append_scope(acc);
+        acc += part;
+    });
+};
+
+// The part of a namespace or an alias after "using": the name and the optional "= type".
+struct UsingRest
+{
+    const char* pos = nullptr;
+    std::string name;
+    bool has_type = false;
+    const char* type_pos = nullptr;
+    Span type;
+};
+
+struct using_rest_p
+{
+    static constexpr auto rule = dsl::position + dsl::p<using_name_p>
+        + dsl::opt(dsl::lit_c<'='> >> (dsl::position + dsl::p<scan_type<alias_term>>));
+    static constexpr auto value = lexy::callback<UsingRest>(
+        [](const char* pos, std::string&& name, lexy::nullopt)
+    {
+        UsingRest r;
+        r.pos = pos;
+        r.name = std::move(name);
+        return r;
+    },
+        [](const char* pos, std::string&& name, const char* type_pos, Span type)
+    {
+        UsingRest r;
+        r.pos = pos;
+        r.name = std::move(name);
+        r.has_type = true;
+        r.type_pos = type_pos;
+        r.type = type;
+        return r;
+    });
+};
+
 struct import_p
 {
     static constexpr auto rule = dsl::position + kw_using
         + (dsl::eof >> dsl::error<e_import_name> | dsl::peek(dsl::lit_c<'"'>) >> dsl::p<string_value>
             | dsl::peek(dsl::lit_c<'<'>) >> dsl::p<angle_value>
-            | dsl::else_ >> dsl::error<e_import_arg>)+dsl::lit_c<';'>;
-    static constexpr auto value = lexy::bind(lexy::callback<ast::Import>(
-                                                 [](const ParseState& st, const char* pos, std::string path)
+            | dsl::peek(id) >> dsl::p<using_rest_p> | dsl::else_ >> dsl::error<e_import_arg>)+dsl::lit_c<';'>;
+    static constexpr auto value = lexy::bind(
+        lexy::callback<TopItem>(
+            [](const ParseState& st, const char* pos, std::string path)
     {
         if (path.size() > 2 && path.front() == '<' && path.back() != '>')
             st.error(pos, "using <...> needs a closing '>'");
         else if (path == "<>" || path.empty())
             st.error(pos, "using needs a header name");
-        ast::Import im;
+        TopItem t;
+        t.kind = TopItem::IsImport;
+        ast::Import& im = t.import;
         im.path = std::move(path);
         im.pos = st.offset(pos);
         im.line = st.map->line(im.pos);
-        return im;
+        return t;
+    },
+            [](const ParseState& st, const char* pos, UsingRest&& r)
+    {
+        TopItem t;
+        const uint32_t at = st.offset(pos);
+        if (!r.has_type)
+        {
+            t.kind = TopItem::IsUsingNs;
+            t.using_ns.name = std::move(r.name);
+            t.using_ns.pos = at;
+            t.using_ns.line = st.map->line(at);
+            return t;
+        }
+        t.kind = TopItem::IsAlias;
+        if (r.name.find(':') != std::string::npos)
+            st.error(r.pos, "a type alias has a plain name");
+        t.alias.name = std::move(r.name);
+        t.alias.type = type_of(st, r.type);
+        t.alias.pos = at;
+        t.alias.line = st.map->line(at);
+        return t;
     }),
         lexy::parse_state, lexy::values);
 };
@@ -943,12 +1028,33 @@ struct dtor_p
         lexy::parse_state, lexy::values);
 };
 
+// "using Name = type;" in a class body. The other forms of "using" are not members.
+struct using_member_p
+{
+    static constexpr auto rule = dsl::p<import_p>;
+    static constexpr auto value = lexy::bind(
+        lexy::callback<Member>([](const ParseState& st, TopItem&& t)
+    {
+        Member m;
+        if (t.kind == TopItem::IsAlias)
+        {
+            m.kind = Member::IsAlias;
+            m.alias = std::move(t.alias);
+            return m;
+        }
+        const uint32_t at = t.kind == TopItem::IsImport ? t.import.pos : t.using_ns.pos;
+        st.error(st.base + at, "a class has only a type alias 'using Name = type;'");
+        return m;
+    }),
+        lexy::parse_state, lexy::values);
+};
+
 struct member_p
 {
     static constexpr auto rule = dsl::position + dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<attrs_p>)
         + dsl::opt(dsl::peek(modifier_set) >> dsl::p<mods_p>)
         + (dsl::eof >> dsl::error<e_unexpected_eof> | dsl::peek(dsl::lit_c<'~'>) >> dsl::p<dtor_p>
-            | dsl::peek(id) >> dsl::p<typed_member> | dsl::else_ >> dsl::error<e_member>(junk));
+            | dsl::peek(kw_using) >> dsl::p<using_member_p> | dsl::peek(id) >> dsl::p<typed_member> | dsl::else_ >> dsl::error<e_member>(junk));
     static constexpr auto value = lexy::bind(
         lexy::callback<Member>([](const ParseState& st, const char*, const auto& ann, const auto& mods, Member&& m)
     { return finish_member(st, ann, mods, std::move(m)); }),
@@ -1248,6 +1354,8 @@ void add_members(const ParseState& st, ast::ClassDef& c, std::vector<Member>&& m
             c.fields.push_back(std::move(m.field));
         else if (m.kind == Member::IsProp)
             c.props.push_back(std::move(m.prop));
+        else if (m.kind == Member::IsAlias)
+            c.aliases.push_back(std::move(m.alias));
     }
 }
 
@@ -1623,13 +1731,7 @@ struct decl
     static constexpr auto rule = dsl::peek(kw_using) >> dsl::p<import_p> | dsl::peek(kw_enum) >> dsl::p<enum_p>
         | dsl::peek(dsl::literal_set(dsl::lit_c<'['>, dsl::lit_c<';'>, kw_class, kw_struct)) >> dsl::p<class_p>
         | dsl::peek(id) >> dsl::p<class_p> | dsl::else_ >> dsl::error<e_top>(junk);
-    static constexpr auto value = lexy::callback<TopItem>([](ast::Import&& im)
-    {
-        TopItem t;
-        t.kind = TopItem::IsImport;
-        t.import = std::move(im);
-        return t;
-    }, [](TopItem&& t) { return std::move(t); });
+    static constexpr auto value = lexy::callback<TopItem>([](TopItem&& t) { return std::move(t); });
 };
 
 // Skips a broken declaration. It stops before the next "using" or "class".
@@ -1680,6 +1782,144 @@ ast::Script parse_script_array(std::string_view text, const LineMap& map, Diagno
     return parse_script(text, map, diag, tpl);
 }
 
+namespace
+{
+
+// True when the type text names "name" (a name after "::" is a member name and does not count).
+bool mentions_name(const std::string& type, const std::string& name)
+{
+    return apply_aliases(AliasMap{{name, "\x02"}}, type) != type;
+}
+
+// True when the name is a C++ keyword. A keyword is not a valid alias name in the output.
+bool is_cpp_keyword(const std::string& n)
+{
+    static const std::set<std::string> kw = {"alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand", "bitor",
+        "bool", "break", "case", "catch", "char", "char8_t", "char16_t", "char32_t", "class", "compl", "concept",
+        "const", "consteval", "constexpr", "constinit", "const_cast", "continue", "co_await", "co_return", "co_yield",
+        "decltype", "default", "delete", "do", "double", "dynamic_cast", "else", "enum", "explicit", "export",
+        "extern", "false", "float", "for", "friend", "goto", "if", "inline", "int", "long", "mutable", "namespace",
+        "new", "noexcept", "not", "not_eq", "nullptr", "operator", "or", "or_eq", "private", "protected", "public",
+        "register", "reinterpret_cast", "requires", "return", "short", "signed", "sizeof", "static",
+        "static_assert", "static_cast", "struct", "switch", "template", "this", "thread_local", "throw", "true",
+        "try", "typedef", "typeid", "typename", "union", "unsigned", "using", "virtual", "void", "volatile",
+        "wchar_t", "while", "xor", "xor_eq"};
+    return kw.count(n) != 0;
+}
+
+// True when the name is a builtin type word of the language (int, uint, string, byte and so on).
+bool is_builtin_type_word(const std::string& n)
+{
+    std::string error;
+    return n == "Task" || canonical_type(n, &error) != n || !error.empty();
+}
+
+// True when the type text of "a" reaches the name "target" through the aliases of "list" that
+// are not in "seen". Used to tell a cycle from a plain use of a later alias.
+bool alias_reaches(const std::vector<ast::TypeAlias>& list, const std::string& type, const std::string& target,
+    std::set<std::string>& seen)
+{
+    if (mentions_name(type, target))
+        return true;
+    for (const ast::TypeAlias& b : list)
+        if (mentions_name(type, b.name) && seen.insert(b.name).second && alias_reaches(list, b.type, target, seen))
+            return true;
+    return false;
+}
+
+// Checks the aliases of one scope and adds them to "scope". "scope" starts with the aliases of the
+// outer scope: an alias of the inner scope replaces the alias of the outer scope with the same name.
+// An alias that has an error stays out of the map. An alias can use only an earlier alias of the
+// same scope: a later alias, and so a cycle, is an error.
+void resolve_aliases(const ParseState& st, std::vector<ast::TypeAlias>& list, const std::set<std::string>& class_names,
+    AliasMap& scope)
+{
+    std::set<std::string> seen;
+    std::set<std::string> rejected; // names of aliases of this scope that have an error
+    for (size_t i = 0; i < list.size(); ++i)
+    {
+        ast::TypeAlias& a = list[i];
+        const char* at = st.base + a.pos;
+        std::string later; // the first later alias that the type uses
+        for (size_t k = i + 1; k < list.size() && later.empty(); ++k)
+            if (list[k].name != a.name && mentions_name(a.type, list[k].name))
+                later = list[k].name;
+        std::string bad; // an earlier alias that has an error
+        for (const std::string& r : rejected)
+            if (r != a.name && mentions_name(a.type, r))
+                bad = r;
+        if (!seen.insert(a.name).second)
+        {
+            st.error(at, "duplicate type alias '" + a.name + "'");
+            continue;
+        }
+        std::string error;
+        if (class_names.count(a.name))
+            error = "the type alias '" + a.name + "' has the name of a class";
+        else if (is_cpp_keyword(a.name) || is_builtin_type_word(a.name))
+            error = "'" + a.name + "' is a type of the language or a C++ keyword. It is not a name for a type alias";
+        else if (mentions_name(a.type, a.name))
+            error = "the type alias '" + a.name + "' uses itself";
+        else if (!later.empty())
+        {
+            std::set<std::string> visited;
+            if (alias_reaches(list, a.type, a.name, visited))
+                error = "the type alias '" + a.name + "' is cyclic";
+            else
+                error = "the type alias '" + a.name + "' uses a later alias '" + later + "'. Write the alias first";
+        }
+        else if (!bad.empty())
+            error = "the type alias '" + a.name + "' uses the alias '" + bad + "' that has an error";
+        if (!error.empty())
+        {
+            st.error(at, error);
+            rejected.insert(a.name);
+            continue;
+        }
+        a.resolved = apply_aliases(scope, a.type);
+        scope[a.name] = a.resolved;
+    }
+}
+
+// Replaces the alias names in the types of a signature.
+struct AliasRewriter
+{
+    const AliasMap& map;
+    void type(std::string& t) const
+    {
+        if (!t.empty())
+            t = apply_aliases(map, t);
+    }
+    void params(std::vector<ast::Param>& ps) const
+    {
+        for (ast::Param& p : ps)
+            type(p.type);
+    }
+    void method(ast::Method& m) const
+    {
+        type(m.ret);
+        params(m.params);
+    }
+    void cls(ast::ClassDef& c) const
+    {
+        type(c.base);
+        for (std::string& i : c.interfaces)
+            type(i);
+        for (ast::Field& f : c.fields)
+            type(f.type);
+        for (ast::Method& m : c.methods)
+            method(m);
+        for (ast::Method& m : c.dtors)
+            method(m);
+        for (ast::Ctor& k : c.ctors)
+            params(k.params);
+        for (ast::Property& p : c.props)
+            type(p.type);
+    }
+};
+
+} // namespace
+
 ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics& diag, std::string_view array_tpl)
 {
     ast::Script script;
@@ -1693,6 +1933,10 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
         {
             if (t.kind == TopItem::IsImport)
                 script.imports.push_back(std::move(t.import));
+            else if (t.kind == TopItem::IsUsingNs)
+                script.using_ns.push_back(std::move(t.using_ns));
+            else if (t.kind == TopItem::IsAlias)
+                script.aliases.push_back(std::move(t.alias));
             else if (t.kind == TopItem::IsClass)
                 script.classes.push_back(std::move(t.cls));
             else if (t.kind == TopItem::IsStub && t.stub.is_attribute)
@@ -1709,8 +1953,38 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
                 script.module_attrs.push_back(std::move(t.module_attrs));
         }
     }
+    // The type aliases. They replace the alias name in each type of the scope: the types of the
+    // structure now, the types in the bodies when the parser reads the bodies (ParseInput::aliases).
+    AliasMap module_aliases;
+    std::set<std::string> class_names;
+    for (const ast::ClassDef& c : script.classes)
+        class_names.insert(c.name);
+    for (const ast::EnumDef& e : script.enums)
+        class_names.insert(e.name);
+    for (const ast::Stub& s : script.stubs)
+        class_names.insert(s.name);
+    for (const ast::Stub& s : script.attribute_classes)
+        class_names.insert(s.name);
+    resolve_aliases(st, script.aliases, class_names, module_aliases);
+    std::vector<AliasMap> class_aliases;
+    for (ast::ClassDef& c : script.classes)
+    {
+        class_aliases.push_back(module_aliases);
+        resolve_aliases(st, c.aliases, class_names, class_aliases.back());
+        AliasRewriter{class_aliases.back()}.cls(c);
+    }
+    if (!module_aliases.empty())
+    {
+        const AliasRewriter rw{module_aliases};
+        for (ast::EnumDef& e : script.enums)
+            rw.type(e.underlying);
+        for (ast::Field& f : script.vars)
+            rw.type(f.type);
+        for (ast::Method& m : script.var_hooks)
+            rw.method(m);
+    }
     // The span-then-call step: parse each body and each initializer.
-    const ParseInput in{text, &map, array_tpl};
+    ParseInput in{text, &map, array_tpl, &module_aliases};
     for (ast::EnumDef& e : script.enums)
         for (ast::Enumerator& m : e.items)
             if (m.has_value && !only_blank(span_text(st, m.value_span)))
@@ -1748,8 +2022,10 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
     };
     for (ast::Method& m : script.var_hooks)
         method_body(m);
-    for (ast::ClassDef& c : script.classes)
+    for (size_t ci = 0; ci < script.classes.size(); ++ci)
     {
+        ast::ClassDef& c = script.classes[ci];
+        in.aliases = &class_aliases[ci];
         for (ast::Method& m : c.methods)
             method_body(m);
         for (ast::Method& d : c.dtors)

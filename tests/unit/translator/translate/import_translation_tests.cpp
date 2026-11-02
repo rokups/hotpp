@@ -68,3 +68,62 @@ TEST(ImportTranslation, ManyStdMembersAreNotImportErrors)
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_EQ(r.diagnostics.find("the imports have errors"), std::string::npos) << r.diagnostics;
 }
+
+namespace
+{
+
+const char* kNsHeader =
+    "#pragma once\n"
+    "#include <string>\n"
+    "#include <functional>\n"
+    "namespace ns { namespace sub { struct Thing { int x = 0; }; } }\n"
+    "namespace eastl { template <class T> struct vec { T v; }; }\n"
+    "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n";
+
+hotc::TranslateResult translate_ns(const std::string& script)
+{
+    TempDir dir;
+    write_file(dir.path() / "n.h", kNsHeader);
+    return hotc::translate(temp_options(dir, "using \"n.h\";\n" + script));
+}
+
+} // namespace
+
+// "using ns.sub;" is "using namespace ns::sub;" at file scope, after the includes.
+TEST(ImportTranslation, UsingNamespaceBecomesUsingDirective)
+{
+    const auto r = translate_ns("using ns.sub;\nclass Foo : Widget {\n    Thing t;\n    void f() { t.x = 3; }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const size_t inc = r.cpp.find("#include \"n.h\"\n");
+    const size_t use = r.cpp.find("using namespace ns::sub;\n");
+    const size_t cls = r.cpp.find("struct Foo_Shell");
+    ASSERT_NE(inc, std::string::npos) << r.cpp;
+    ASSERT_NE(use, std::string::npos) << r.cpp;
+    EXPECT_LT(inc, use);
+    EXPECT_LT(use, cls);
+}
+
+// Without the line, the output has no directive. The C++ compiler then reports the unknown name.
+TEST(ImportTranslation, WithoutTheUsingLineThereIsNoDirective)
+{
+    const auto r = translate_ns("class Foo : Widget {\n    void f() { int a = 1; }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(r.cpp.find("using namespace"), std::string::npos) << r.cpp;
+}
+
+// A namespace of a native library (the std placeholder) and a plain name.
+TEST(ImportTranslation, UsingStdFollowsTheStdPlaceholder)
+{
+    const auto r = translate_ns("using std;\nusing std.placeholders;\nclass Foo : Widget {\n    int a;\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("using namespace std;\n"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("using namespace std::placeholders;\n"), std::string::npos) << r.cpp;
+}
+
+// The three forms of "using" do not mix: a bad form is an error.
+TEST(ImportTranslation, UsingWithBadArgumentIsAnError)
+{
+    const auto r = translate_ns("using 5;\nclass Foo : Widget {\n}\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("using needs"), std::string::npos) << r.diagnostics;
+}
