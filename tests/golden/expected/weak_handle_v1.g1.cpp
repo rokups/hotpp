@@ -44,7 +44,7 @@ static void Rack__init_held(void*, void* f) { using T = std::weak_ptr<Weapon>; n
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
 static const hot::FieldInfo Rack_fields[] = {
-    {"held", nullptr, typeid(std::weak_ptr<Weapon>).name(), offsetof(Rack, held), sizeof(std::weak_ptr<Weapon>),
+    {"held", nullptr, typeid(hot::typekey_t<std::weak_ptr<Weapon>>).name(), offsetof(Rack, held), sizeof(std::weak_ptr<Weapon>),
      alignof(std::weak_ptr<Weapon>), hot::field_flags<std::weak_ptr<Weapon>>(), Rack__init_held, hot::move_field<std::weak_ptr<Weapon>>, hot::field_destroyer<std::weak_ptr<Weapon>>()},
 };
 #if defined(__clang__)
@@ -127,13 +127,13 @@ static void Node__init_hp(void*, void* f) { using T = int32_t; new (f) T(5); }
 #endif
 static_assert(offsetof(NodeState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Node_fields[] = {
-    {"child", nullptr, typeid(std::shared_ptr<Node>).name(), offsetof(NodeState_g1, child), sizeof(std::shared_ptr<Node>),
+    {"child", nullptr, typeid(hot::typekey_t<std::shared_ptr<Node>>).name(), offsetof(NodeState_g1, child), sizeof(std::shared_ptr<Node>),
      alignof(std::shared_ptr<Node>), hot::field_flags<std::shared_ptr<Node>>(), Node__init_child, hot::move_field<std::shared_ptr<Node>>, hot::field_destroyer<std::shared_ptr<Node>>()},
-    {"parent", nullptr, typeid(std::weak_ptr<Node>).name(), offsetof(NodeState_g1, parent), sizeof(std::weak_ptr<Node>),
+    {"parent", nullptr, typeid(hot::typekey_t<std::weak_ptr<Node>>).name(), offsetof(NodeState_g1, parent), sizeof(std::weak_ptr<Node>),
      alignof(std::weak_ptr<Node>), hot::field_flags<std::weak_ptr<Node>>(), Node__init_parent, hot::move_field<std::weak_ptr<Node>>, hot::field_destroyer<std::weak_ptr<Node>>()},
-    {"seen", nullptr, typeid(std::weak_ptr<Weapon>).name(), offsetof(NodeState_g1, seen), sizeof(std::weak_ptr<Weapon>),
+    {"seen", nullptr, typeid(hot::typekey_t<std::weak_ptr<Weapon>>).name(), offsetof(NodeState_g1, seen), sizeof(std::weak_ptr<Weapon>),
      alignof(std::weak_ptr<Weapon>), hot::field_flags<std::weak_ptr<Weapon>>(), Node__init_seen, hot::move_field<std::weak_ptr<Weapon>>, hot::field_destroyer<std::weak_ptr<Weapon>>()},
-    {"hp", nullptr, typeid(int32_t).name(), offsetof(NodeState_g1, hp), sizeof(int32_t),
+    {"hp", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(NodeState_g1, hp), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Node__init_hp, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
 };
 #if defined(__clang__)

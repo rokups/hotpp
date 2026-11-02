@@ -134,7 +134,7 @@ static void Checks__init_vals(void*, void* f) { using T = std::array<int32_t, 4>
 #endif
 static_assert(offsetof(ChecksState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Checks_fields[] = {
-    {"vals", nullptr, typeid(std::array<int32_t, 4>).name(), offsetof(ChecksState_g1, vals), sizeof(std::array<int32_t, 4>),
+    {"vals", nullptr, typeid(hot::typekey_t<std::array<int32_t, 4>>).name(), offsetof(ChecksState_g1, vals), sizeof(std::array<int32_t, 4>),
      alignof(std::array<int32_t, 4>), hot::field_flags<std::array<int32_t, 4>>(), Checks__init_vals, hot::move_field<std::array<int32_t, 4>>, hot::field_destroyer<std::array<int32_t, 4>>()},
 };
 #if defined(__clang__)

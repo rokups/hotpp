@@ -137,15 +137,15 @@ static void Grid__init_extra(void*, void* f) { using T = int32_t; new (f) T(7); 
 #endif
 static_assert(offsetof(GridState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Grid_fields[] = {
-    {"a", nullptr, typeid(std::array<int32_t, 3>).name(), offsetof(GridState_g2, a), sizeof(std::array<int32_t, 3>),
+    {"a", nullptr, typeid(hot::typekey_t<std::array<int32_t, 3>>).name(), offsetof(GridState_g2, a), sizeof(std::array<int32_t, 3>),
      alignof(std::array<int32_t, 3>), hot::field_flags<std::array<int32_t, 3>>(), Grid__init_a, hot::move_field<std::array<int32_t, 3>>, hot::field_destroyer<std::array<int32_t, 3>>()},
-    {"v", nullptr, typeid(std::array<float, 3>).name(), offsetof(GridState_g2, v), sizeof(std::array<float, 3>),
+    {"v", nullptr, typeid(hot::typekey_t<std::array<float, 3>>).name(), offsetof(GridState_g2, v), sizeof(std::array<float, 3>),
      alignof(std::array<float, 3>), hot::field_flags<std::array<float, 3>>(), Grid__init_v, hot::move_field<std::array<float, 3>>, hot::field_destroyer<std::array<float, 3>>()},
-    {"m", nullptr, typeid(std::array<std::array<int32_t, 3>, 2>).name(), offsetof(GridState_g2, m), sizeof(std::array<std::array<int32_t, 3>, 2>),
+    {"m", nullptr, typeid(hot::typekey_t<std::array<std::array<int32_t, 3>, 2>>).name(), offsetof(GridState_g2, m), sizeof(std::array<std::array<int32_t, 3>, 2>),
      alignof(std::array<std::array<int32_t, 3>, 2>), hot::field_flags<std::array<std::array<int32_t, 3>, 2>>(), Grid__init_m, hot::move_field<std::array<std::array<int32_t, 3>, 2>>, hot::field_destroyer<std::array<std::array<int32_t, 3>, 2>>()},
-    {"rows", nullptr, typeid(std::vector<std::array<int32_t, 3>>).name(), offsetof(GridState_g2, rows), sizeof(std::vector<std::array<int32_t, 3>>),
+    {"rows", nullptr, typeid(hot::typekey_t<std::vector<std::array<int32_t, 3>>>).name(), offsetof(GridState_g2, rows), sizeof(std::vector<std::array<int32_t, 3>>),
      alignof(std::vector<std::array<int32_t, 3>>), hot::field_flags<std::vector<std::array<int32_t, 3>>>(), Grid__init_rows, hot::move_field<std::vector<std::array<int32_t, 3>>>, hot::field_destroyer<std::vector<std::array<int32_t, 3>>>()},
-    {"extra", nullptr, typeid(int32_t).name(), offsetof(GridState_g2, extra), sizeof(int32_t),
+    {"extra", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(GridState_g2, extra), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Grid__init_extra, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
 };
 #if defined(__clang__)

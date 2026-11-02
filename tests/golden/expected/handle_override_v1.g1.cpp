@@ -243,13 +243,13 @@ static void Holder__init_worn(void*, void* f) { using T = int32_t; new (f) T(); 
 #endif
 static_assert(offsetof(HolderState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Holder_fields[] = {
-    {"last", nullptr, typeid(std::shared_ptr<Charm>).name(), offsetof(HolderState_g1, last), sizeof(std::shared_ptr<Charm>),
+    {"last", nullptr, typeid(hot::typekey_t<std::shared_ptr<Charm>>).name(), offsetof(HolderState_g1, last), sizeof(std::shared_ptr<Charm>),
      alignof(std::shared_ptr<Charm>), hot::field_flags<std::shared_ptr<Charm>>(), Holder__init_last, hot::move_field<std::shared_ptr<Charm>>, hot::field_destroyer<std::shared_ptr<Charm>>()},
-    {"kept", nullptr, typeid(hot::Intrusive<Item, &Item::AddRef, &Item::Release>).name(), offsetof(HolderState_g1, kept), sizeof(hot::Intrusive<Item, &Item::AddRef, &Item::Release>),
+    {"kept", nullptr, typeid(hot::typekey_t<hot::Intrusive<Item, &Item::AddRef, &Item::Release>>).name(), offsetof(HolderState_g1, kept), sizeof(hot::Intrusive<Item, &Item::AddRef, &Item::Release>),
      alignof(hot::Intrusive<Item, &Item::AddRef, &Item::Release>), hot::field_flags<hot::Intrusive<Item, &Item::AddRef, &Item::Release>>(), Holder__init_kept, hot::move_field<hot::Intrusive<Item, &Item::AddRef, &Item::Release>>, hot::field_destroyer<hot::Intrusive<Item, &Item::AddRef, &Item::Release>>()},
-    {"blade", nullptr, typeid(std::shared_ptr<Blade>).name(), offsetof(HolderState_g1, blade), sizeof(std::shared_ptr<Blade>),
+    {"blade", nullptr, typeid(hot::typekey_t<std::shared_ptr<Blade>>).name(), offsetof(HolderState_g1, blade), sizeof(std::shared_ptr<Blade>),
      alignof(std::shared_ptr<Blade>), hot::field_flags<std::shared_ptr<Blade>>(), Holder__init_blade, hot::move_field<std::shared_ptr<Blade>>, hot::field_destroyer<std::shared_ptr<Blade>>()},
-    {"worn", nullptr, typeid(int32_t).name(), offsetof(HolderState_g1, worn), sizeof(int32_t),
+    {"worn", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HolderState_g1, worn), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Holder__init_worn, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
 };
 #if defined(__clang__)

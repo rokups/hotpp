@@ -80,9 +80,9 @@ static void Child__init_age(void*, void* f) { using T = int32_t; new (f) T(3); }
 #endif
 static_assert(offsetof(ChildState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Child_fields[] = {
-    {"parent", nullptr, typeid(std::weak_ptr<Parent>).name(), offsetof(ChildState_g1, parent), sizeof(std::weak_ptr<Parent>),
+    {"parent", nullptr, typeid(hot::typekey_t<std::weak_ptr<Parent>>).name(), offsetof(ChildState_g1, parent), sizeof(std::weak_ptr<Parent>),
      alignof(std::weak_ptr<Parent>), hot::field_flags<std::weak_ptr<Parent>>(), Child__init_parent, hot::move_field<std::weak_ptr<Parent>>, hot::field_destroyer<std::weak_ptr<Parent>>()},
-    {"age", nullptr, typeid(int32_t).name(), offsetof(ChildState_g1, age), sizeof(int32_t),
+    {"age", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(ChildState_g1, age), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Child__init_age, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
 };
 #if defined(__clang__)
@@ -275,9 +275,9 @@ static void Parent__init_hp(void*, void* f) { using T = int32_t; new (f) T(7); }
 #endif
 static_assert(offsetof(ParentState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Parent_fields[] = {
-    {"kid", nullptr, typeid(std::shared_ptr<Child>).name(), offsetof(ParentState_g1, kid), sizeof(std::shared_ptr<Child>),
+    {"kid", nullptr, typeid(hot::typekey_t<std::shared_ptr<Child>>).name(), offsetof(ParentState_g1, kid), sizeof(std::shared_ptr<Child>),
      alignof(std::shared_ptr<Child>), hot::field_flags<std::shared_ptr<Child>>(), Parent__init_kid, hot::move_field<std::shared_ptr<Child>>, hot::field_destroyer<std::shared_ptr<Child>>()},
-    {"hp", nullptr, typeid(int32_t).name(), offsetof(ParentState_g1, hp), sizeof(int32_t),
+    {"hp", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(ParentState_g1, hp), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Parent__init_hp, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
 };
 #if defined(__clang__)
@@ -486,9 +486,9 @@ static void Pong__init_n(void*, void* f) { using T = int32_t; new (f) T(2); }
 #endif
 static_assert(offsetof(PongState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Pong_fields[] = {
-    {"other", nullptr, typeid(std::shared_ptr<Ping>).name(), offsetof(PongState_g1, other), sizeof(std::shared_ptr<Ping>),
+    {"other", nullptr, typeid(hot::typekey_t<std::shared_ptr<Ping>>).name(), offsetof(PongState_g1, other), sizeof(std::shared_ptr<Ping>),
      alignof(std::shared_ptr<Ping>), hot::field_flags<std::shared_ptr<Ping>>(), Pong__init_other, hot::move_field<std::shared_ptr<Ping>>, hot::field_destroyer<std::shared_ptr<Ping>>()},
-    {"n", nullptr, typeid(int32_t).name(), offsetof(PongState_g1, n), sizeof(int32_t),
+    {"n", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(PongState_g1, n), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Pong__init_n, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
 };
 #if defined(__clang__)
@@ -691,7 +691,7 @@ static void Ping__init_other(void*, void* f) { using T = std::shared_ptr<Pong>; 
 #endif
 static_assert(offsetof(PingState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Ping_fields[] = {
-    {"other", nullptr, typeid(std::shared_ptr<Pong>).name(), offsetof(PingState_g1, other), sizeof(std::shared_ptr<Pong>),
+    {"other", nullptr, typeid(hot::typekey_t<std::shared_ptr<Pong>>).name(), offsetof(PingState_g1, other), sizeof(std::shared_ptr<Pong>),
      alignof(std::shared_ptr<Pong>), hot::field_flags<std::shared_ptr<Pong>>(), Ping__init_other, hot::move_field<std::shared_ptr<Pong>>, hot::field_destroyer<std::shared_ptr<Pong>>()},
 };
 #if defined(__clang__)
@@ -878,7 +878,7 @@ static void Node__init_next(void*, void* f) { using T = std::shared_ptr<Node>; n
 #endif
 static_assert(offsetof(NodeState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Node_fields[] = {
-    {"next", nullptr, typeid(std::shared_ptr<Node>).name(), offsetof(NodeState_g1, next), sizeof(std::shared_ptr<Node>),
+    {"next", nullptr, typeid(hot::typekey_t<std::shared_ptr<Node>>).name(), offsetof(NodeState_g1, next), sizeof(std::shared_ptr<Node>),
      alignof(std::shared_ptr<Node>), hot::field_flags<std::shared_ptr<Node>>(), Node__init_next, hot::move_field<std::shared_ptr<Node>>, hot::field_destroyer<std::shared_ptr<Node>>()},
 };
 #if defined(__clang__)
@@ -1069,9 +1069,9 @@ static void Part__init_v(void*, void* f) { using T = int32_t; new (f) T(4); }
 #endif
 static_assert(offsetof(PartState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Part_fields[] = {
-    {"owner", nullptr, typeid(hot::Intrusive<Owner, &Object::AddRef, &Object::Release>).name(), offsetof(PartState_g1, owner), sizeof(hot::Intrusive<Owner, &Object::AddRef, &Object::Release>),
+    {"owner", nullptr, typeid(hot::typekey_t<hot::Intrusive<Owner, &Object::AddRef, &Object::Release>>).name(), offsetof(PartState_g1, owner), sizeof(hot::Intrusive<Owner, &Object::AddRef, &Object::Release>),
      alignof(hot::Intrusive<Owner, &Object::AddRef, &Object::Release>), hot::field_flags<hot::Intrusive<Owner, &Object::AddRef, &Object::Release>>(), Part__init_owner, hot::move_field<hot::Intrusive<Owner, &Object::AddRef, &Object::Release>>, hot::field_destroyer<hot::Intrusive<Owner, &Object::AddRef, &Object::Release>>()},
-    {"v", nullptr, typeid(int32_t).name(), offsetof(PartState_g1, v), sizeof(int32_t),
+    {"v", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(PartState_g1, v), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Part__init_v, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
 };
 #if defined(__clang__)
@@ -1258,7 +1258,7 @@ static void Owner__init_part(void*, void* f) { using T = hot::Intrusive<Part, &O
 #endif
 static_assert(offsetof(OwnerState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Owner_fields[] = {
-    {"part", nullptr, typeid(hot::Intrusive<Part, &Object::AddRef, &Object::Release>).name(), offsetof(OwnerState_g1, part), sizeof(hot::Intrusive<Part, &Object::AddRef, &Object::Release>),
+    {"part", nullptr, typeid(hot::typekey_t<hot::Intrusive<Part, &Object::AddRef, &Object::Release>>).name(), offsetof(OwnerState_g1, part), sizeof(hot::Intrusive<Part, &Object::AddRef, &Object::Release>),
      alignof(hot::Intrusive<Part, &Object::AddRef, &Object::Release>), hot::field_flags<hot::Intrusive<Part, &Object::AddRef, &Object::Release>>(), Owner__init_part, hot::move_field<hot::Intrusive<Part, &Object::AddRef, &Object::Release>>, hot::field_destroyer<hot::Intrusive<Part, &Object::AddRef, &Object::Release>>()},
 };
 #if defined(__clang__)

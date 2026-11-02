@@ -149,19 +149,19 @@ static void Tracker__init_note(void*, void* f) { using T = std::string; new (f) 
 #endif
 static_assert(offsetof(TrackerState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Tracker_fields[] = {
-    {"title", "label", typeid(std::string).name(), offsetof(TrackerState_g2, title), sizeof(std::string),
+    {"title", "label", typeid(hot::typekey_t<std::string>).name(), offsetof(TrackerState_g2, title), sizeof(std::string),
      alignof(std::string), hot::field_flags<std::string>(), Tracker__init_title, hot::move_field<std::string>, hot::field_destroyer<std::string>()},
-    {"history", nullptr, typeid(std::vector<int32_t>).name(), offsetof(TrackerState_g2, history), sizeof(std::vector<int32_t>),
+    {"history", nullptr, typeid(hot::typekey_t<std::vector<int32_t>>).name(), offsetof(TrackerState_g2, history), sizeof(std::vector<int32_t>),
      alignof(std::vector<int32_t>), hot::field_flags<std::vector<int32_t>>(), Tracker__init_history, hot::move_field<std::vector<int32_t>>, hot::field_destroyer<std::vector<int32_t>>()},
-    {"dist", nullptr, typeid(float).name(), offsetof(TrackerState_g2, dist), sizeof(float),
+    {"dist", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(TrackerState_g2, dist), sizeof(float),
      alignof(float), hot::field_flags<float>(), Tracker__init_dist, hot::move_field<float>, hot::field_destroyer<float>()},
-    {"lowest", nullptr, typeid(float).name(), offsetof(TrackerState_g2, lowest), sizeof(float),
+    {"lowest", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(TrackerState_g2, lowest), sizeof(float),
      alignof(float), hot::field_flags<float>(), Tracker__init_lowest, hot::move_field<float>, hot::field_destroyer<float>()},
-    {"sum", nullptr, typeid(float).name(), offsetof(TrackerState_g2, sum), sizeof(float),
+    {"sum", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(TrackerState_g2, sum), sizeof(float),
      alignof(float), hot::field_flags<float>(), Tracker__init_sum, hot::move_field<float>, hot::field_destroyer<float>()},
-    {"described", nullptr, typeid(std::string).name(), offsetof(TrackerState_g2, described), sizeof(std::string),
+    {"described", nullptr, typeid(hot::typekey_t<std::string>).name(), offsetof(TrackerState_g2, described), sizeof(std::string),
      alignof(std::string), hot::field_flags<std::string>(), Tracker__init_described, hot::move_field<std::string>, hot::field_destroyer<std::string>()},
-    {"note", nullptr, typeid(std::string).name(), offsetof(TrackerState_g2, note), sizeof(std::string),
+    {"note", nullptr, typeid(hot::typekey_t<std::string>).name(), offsetof(TrackerState_g2, note), sizeof(std::string),
      alignof(std::string), hot::field_flags<std::string>(), Tracker__init_note, hot::move_field<std::string>, hot::field_destroyer<std::string>()},
 };
 #if defined(__clang__)

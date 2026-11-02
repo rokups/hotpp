@@ -121,9 +121,9 @@ static void Beeper__init_fired(void*, void* f) { using T = int32_t; new (f) T(0)
 #endif
 static_assert(offsetof(BeeperState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Beeper_fields[] = {
-    {"ticks", nullptr, typeid(int32_t).name(), offsetof(BeeperState_g1, ticks), sizeof(int32_t),
+    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(BeeperState_g1, ticks), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Beeper__init_ticks, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
-    {"fired", nullptr, typeid(int32_t).name(), offsetof(BeeperState_g1, fired), sizeof(int32_t),
+    {"fired", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(BeeperState_g1, fired), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Beeper__init_fired, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
 };
 #if defined(__clang__)

@@ -126,11 +126,11 @@ static void Smith__init_ticks(void*, void* f) { using T = int32_t; new (f) T(); 
 #endif
 static_assert(offsetof(SmithState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Smith_fields[] = {
-    {"root", nullptr, typeid(hot::Intrusive<Object, &Object::AddRef, &Object::Release>).name(), offsetof(SmithState_g1, root), sizeof(hot::Intrusive<Object, &Object::AddRef, &Object::Release>),
+    {"root", nullptr, typeid(hot::typekey_t<hot::Intrusive<Object, &Object::AddRef, &Object::Release>>).name(), offsetof(SmithState_g1, root), sizeof(hot::Intrusive<Object, &Object::AddRef, &Object::Release>),
      alignof(hot::Intrusive<Object, &Object::AddRef, &Object::Release>), hot::field_flags<hot::Intrusive<Object, &Object::AddRef, &Object::Release>>(), Smith__init_root, hot::move_field<hot::Intrusive<Object, &Object::AddRef, &Object::Release>>, hot::field_destroyer<hot::Intrusive<Object, &Object::AddRef, &Object::Release>>()},
-    {"item", nullptr, typeid(std::shared_ptr<Item>).name(), offsetof(SmithState_g1, item), sizeof(std::shared_ptr<Item>),
+    {"item", nullptr, typeid(hot::typekey_t<std::shared_ptr<Item>>).name(), offsetof(SmithState_g1, item), sizeof(std::shared_ptr<Item>),
      alignof(std::shared_ptr<Item>), hot::field_flags<std::shared_ptr<Item>>(), Smith__init_item, hot::move_field<std::shared_ptr<Item>>, hot::field_destroyer<std::shared_ptr<Item>>()},
-    {"ticks", nullptr, typeid(int32_t).name(), offsetof(SmithState_g1, ticks), sizeof(int32_t),
+    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(SmithState_g1, ticks), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Smith__init_ticks, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
 };
 #if defined(__clang__)
@@ -306,7 +306,7 @@ static void Tool__init_uses(void*, void* f) { using T = int32_t; new (f) T(); }
 #endif
 static_assert(offsetof(ToolState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Tool_fields[] = {
-    {"uses", nullptr, typeid(int32_t).name(), offsetof(ToolState_g1, uses), sizeof(int32_t),
+    {"uses", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(ToolState_g1, uses), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Tool__init_uses, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
 };
 #if defined(__clang__)

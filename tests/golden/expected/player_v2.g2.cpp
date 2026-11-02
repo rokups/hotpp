@@ -113,13 +113,13 @@ static void Player__init_shield(void*, void* f) { using T = float; new (f) T(25.
 #endif
 static_assert(offsetof(PlayerState_g2, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Player_fields[] = {
-    {"health", "hp", typeid(float).name(), offsetof(PlayerState_g2, health), sizeof(float),
+    {"health", "hp", typeid(hot::typekey_t<float>).name(), offsetof(PlayerState_g2, health), sizeof(float),
      alignof(float), hot::field_flags<float>(), Player__init_health, hot::move_field<float>, hot::field_destroyer<float>()},
-    {"speed", nullptr, typeid(float).name(), offsetof(PlayerState_g2, speed), sizeof(float),
+    {"speed", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(PlayerState_g2, speed), sizeof(float),
      alignof(float), hot::field_flags<float>(), Player__init_speed, hot::move_field<float>, hot::field_destroyer<float>()},
-    {"target", nullptr, typeid(std::string).name(), offsetof(PlayerState_g2, target), sizeof(std::string),
+    {"target", nullptr, typeid(hot::typekey_t<std::string>).name(), offsetof(PlayerState_g2, target), sizeof(std::string),
      alignof(std::string), hot::field_flags<std::string>(), Player__init_target, hot::move_field<std::string>, hot::field_destroyer<std::string>()},
-    {"shield", nullptr, typeid(float).name(), offsetof(PlayerState_g2, shield), sizeof(float),
+    {"shield", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(PlayerState_g2, shield), sizeof(float),
      alignof(float), hot::field_flags<float>(), Player__init_shield, hot::move_field<float>, hot::field_destroyer<float>()},
 };
 #if defined(__clang__)

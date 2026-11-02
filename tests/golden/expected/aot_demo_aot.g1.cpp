@@ -147,13 +147,13 @@ static void Fighter__init___p_Level(void*, void* f) { using T = int32_t; new (f)
 #endif
 static_assert(offsetof(FighterState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Fighter_fields[] = {
-    {"hp", nullptr, typeid(int32_t).name(), offsetof(FighterState_g1, hp), sizeof(int32_t),
+    {"hp", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(FighterState_g1, hp), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Fighter__init_hp, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
-    {"ticks", nullptr, typeid(int32_t).name(), offsetof(FighterState_g1, ticks), sizeof(int32_t),
+    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(FighterState_g1, ticks), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Fighter__init_ticks, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
-    {"shield_raw", nullptr, typeid(float).name(), offsetof(FighterState_g1, shield_raw), sizeof(float),
+    {"shield_raw", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(FighterState_g1, shield_raw), sizeof(float),
      alignof(float), hot::field_flags<float>(), Fighter__init_shield_raw, hot::move_field<float>, hot::field_destroyer<float>()},
-    {"__p_Level", nullptr, typeid(int32_t).name(), offsetof(FighterState_g1, __p_Level), sizeof(int32_t),
+    {"__p_Level", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(FighterState_g1, __p_Level), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Fighter__init___p_Level, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
 };
 #if defined(__clang__)
@@ -515,17 +515,17 @@ static void Veteran__init_parent_power(void*, void* f) { using T = int32_t; new 
 #endif
 static_assert(offsetof(VeteranState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Veteran_fields[] = {
-    {"hp", nullptr, typeid(int32_t).name(), offsetof(VeteranState_g1, hp), sizeof(int32_t),
+    {"hp", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(VeteranState_g1, hp), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Fighter__init_hp, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
-    {"ticks", nullptr, typeid(int32_t).name(), offsetof(VeteranState_g1, ticks), sizeof(int32_t),
+    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(VeteranState_g1, ticks), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Fighter__init_ticks, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
-    {"shield_raw", nullptr, typeid(float).name(), offsetof(VeteranState_g1, shield_raw), sizeof(float),
+    {"shield_raw", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(VeteranState_g1, shield_raw), sizeof(float),
      alignof(float), hot::field_flags<float>(), Fighter__init_shield_raw, hot::move_field<float>, hot::field_destroyer<float>()},
-    {"__p_Level", nullptr, typeid(int32_t).name(), offsetof(VeteranState_g1, __p_Level), sizeof(int32_t),
+    {"__p_Level", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(VeteranState_g1, __p_Level), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Fighter__init___p_Level, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
-    {"rage", nullptr, typeid(int32_t).name(), offsetof(VeteranState_g1, rage), sizeof(int32_t),
+    {"rage", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(VeteranState_g1, rage), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Veteran__init_rage, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
-    {"parent_power", nullptr, typeid(int32_t).name(), offsetof(VeteranState_g1, parent_power), sizeof(int32_t),
+    {"parent_power", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(VeteranState_g1, parent_power), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Veteran__init_parent_power, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
 };
 #if defined(__clang__)
@@ -849,13 +849,13 @@ static void Spawner__init_is_veteran(void*, void* f) { using T = bool; new (f) T
 #endif
 static_assert(offsetof(SpawnerState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Spawner_fields[] = {
-    {"kid", nullptr, typeid(std::shared_ptr<Fighter>).name(), offsetof(SpawnerState_g1, kid), sizeof(std::shared_ptr<Fighter>),
+    {"kid", nullptr, typeid(hot::typekey_t<std::shared_ptr<Fighter>>).name(), offsetof(SpawnerState_g1, kid), sizeof(std::shared_ptr<Fighter>),
      alignof(std::shared_ptr<Fighter>), hot::field_flags<std::shared_ptr<Fighter>>(), Spawner__init_kid, hot::move_field<std::shared_ptr<Fighter>>, hot::field_destroyer<std::shared_ptr<Fighter>>()},
-    {"power", nullptr, typeid(int32_t).name(), offsetof(SpawnerState_g1, power), sizeof(int32_t),
+    {"power", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(SpawnerState_g1, power), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Spawner__init_power, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
-    {"attack", nullptr, typeid(int32_t).name(), offsetof(SpawnerState_g1, attack), sizeof(int32_t),
+    {"attack", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(SpawnerState_g1, attack), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Spawner__init_attack, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
-    {"is_veteran", nullptr, typeid(bool).name(), offsetof(SpawnerState_g1, is_veteran), sizeof(bool),
+    {"is_veteran", nullptr, typeid(hot::typekey_t<bool>).name(), offsetof(SpawnerState_g1, is_veteran), sizeof(bool),
      alignof(bool), hot::field_flags<bool>(), Spawner__init_is_veteran, hot::move_field<bool>, hot::field_destroyer<bool>()},
 };
 #if defined(__clang__)

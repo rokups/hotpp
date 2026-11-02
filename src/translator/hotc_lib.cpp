@@ -3932,9 +3932,10 @@ void translate_impl(
         // The module block of a ".cpp" script can come before the class of a pointer field.
         // "typeid(C*)" of an incomplete class C makes clang emit an RTTI record of C without
         // its bases, and a later dynamic_cast of a C object fails. The function template
-        // hot::type_key runs the typeid at the end of the file, where C is complete.
-        const std::string plain =
-            sc.is_cpp ? "hot::type_key<" + key_type(t) + ">()" : "typeid(" + key_type(t) + ").name()";
+        // hot::type_key runs the typeid at the end of the file, where C is complete. Both forms
+        // use hot::typekey_t, as the runtime does, so the keys of cl and clang are the same.
+        const std::string plain = sc.is_cpp ? "hot::type_key<" + key_type(t) + ">()"
+                                            : "typeid(hot::typekey_t<" + key_type(t) + ">).name()";
         const std::vector<std::string> vals = values_in(t);
         if (vals.empty())
             return plain;

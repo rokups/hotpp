@@ -125,9 +125,9 @@ static void Counter__init_history(void*, void* f) { using T = mystd::vector<int3
 #endif
 static_assert(offsetof(CounterState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Counter_fields[] = {
-    {"label", nullptr, typeid(mystd::string).name(), offsetof(CounterState_g1, label), sizeof(mystd::string),
+    {"label", nullptr, typeid(hot::typekey_t<mystd::string>).name(), offsetof(CounterState_g1, label), sizeof(mystd::string),
      alignof(mystd::string), hot::field_flags<mystd::string>(), Counter__init_label, hot::move_field<mystd::string>, hot::field_destroyer<mystd::string>()},
-    {"history", nullptr, typeid(mystd::vector<int32_t>).name(), offsetof(CounterState_g1, history), sizeof(mystd::vector<int32_t>),
+    {"history", nullptr, typeid(hot::typekey_t<mystd::vector<int32_t>>).name(), offsetof(CounterState_g1, history), sizeof(mystd::vector<int32_t>),
      alignof(mystd::vector<int32_t>), hot::field_flags<mystd::vector<int32_t>>(), Counter__init_history, hot::move_field<mystd::vector<int32_t>>, hot::field_destroyer<mystd::vector<int32_t>>()},
 };
 #if defined(__clang__)

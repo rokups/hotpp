@@ -123,9 +123,9 @@ static void Grid__init_weights(void*, void* f) { using T = hostns::FixedArray<ho
 #endif
 static_assert(offsetof(GridState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Grid_fields[] = {
-    {"cells", nullptr, typeid(hostns::FixedArray<int32_t, 4>).name(), offsetof(GridState_g1, cells), sizeof(hostns::FixedArray<int32_t, 4>),
+    {"cells", nullptr, typeid(hot::typekey_t<hostns::FixedArray<int32_t, 4>>).name(), offsetof(GridState_g1, cells), sizeof(hostns::FixedArray<int32_t, 4>),
      alignof(hostns::FixedArray<int32_t, 4>), hot::field_flags<hostns::FixedArray<int32_t, 4>>(), Grid__init_cells, hot::move_field<hostns::FixedArray<int32_t, 4>>, hot::field_destroyer<hostns::FixedArray<int32_t, 4>>()},
-    {"weights", nullptr, typeid(hostns::FixedArray<hostns::FixedArray<float, 3>, 2>).name(), offsetof(GridState_g1, weights), sizeof(hostns::FixedArray<hostns::FixedArray<float, 3>, 2>),
+    {"weights", nullptr, typeid(hot::typekey_t<hostns::FixedArray<hostns::FixedArray<float, 3>, 2>>).name(), offsetof(GridState_g1, weights), sizeof(hostns::FixedArray<hostns::FixedArray<float, 3>, 2>),
      alignof(hostns::FixedArray<hostns::FixedArray<float, 3>, 2>), hot::field_flags<hostns::FixedArray<hostns::FixedArray<float, 3>, 2>>(), Grid__init_weights, hot::move_field<hostns::FixedArray<hostns::FixedArray<float, 3>, 2>>, hot::field_destroyer<hostns::FixedArray<hostns::FixedArray<float, 3>, 2>>()},
 };
 #if defined(__clang__)

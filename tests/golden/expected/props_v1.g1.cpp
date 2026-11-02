@@ -134,13 +134,13 @@ static void Gauge__init___p_Level(void*, void* f) { using T = int32_t; new (f) T
 #endif
 static_assert(offsetof(GaugeState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Gauge_fields[] = {
-    {"shield_raw", nullptr, typeid(float).name(), offsetof(GaugeState_g1, shield_raw), sizeof(float),
+    {"shield_raw", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(GaugeState_g1, shield_raw), sizeof(float),
      alignof(float), hot::field_flags<float>(), Gauge__init_shield_raw, hot::move_field<float>, hot::field_destroyer<float>()},
-    {"__p_Hp", nullptr, typeid(float).name(), offsetof(GaugeState_g1, __p_Hp), sizeof(float),
+    {"__p_Hp", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(GaugeState_g1, __p_Hp), sizeof(float),
      alignof(float), hot::field_flags<float>(), Gauge__init___p_Hp, hot::move_field<float>, hot::field_destroyer<float>()},
-    {"__p_MaxHp", nullptr, typeid(float).name(), offsetof(GaugeState_g1, __p_MaxHp), sizeof(float),
+    {"__p_MaxHp", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(GaugeState_g1, __p_MaxHp), sizeof(float),
      alignof(float), hot::field_flags<float>(), Gauge__init___p_MaxHp, hot::move_field<float>, hot::field_destroyer<float>()},
-    {"__p_Level", nullptr, typeid(int32_t).name(), offsetof(GaugeState_g1, __p_Level), sizeof(int32_t),
+    {"__p_Level", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(GaugeState_g1, __p_Level), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Gauge__init___p_Level, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
 };
 #if defined(__clang__)

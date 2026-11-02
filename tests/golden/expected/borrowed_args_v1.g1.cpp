@@ -73,7 +73,7 @@ static void Probe__init_last(void*, void* f) { using T = float; new (f) T(0); }
 #endif
 static_assert(offsetof(ProbeState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Probe_fields[] = {
-    {"last", nullptr, typeid(float).name(), offsetof(ProbeState_g1, last), sizeof(float),
+    {"last", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(ProbeState_g1, last), sizeof(float),
      alignof(float), hot::field_flags<float>(), Probe__init_last, hot::move_field<float>, hot::field_destroyer<float>()},
 };
 #if defined(__clang__)
@@ -499,7 +499,7 @@ static void Caller__init_probe(void*, void* f) { using T = std::shared_ptr<Probe
 #endif
 static_assert(offsetof(CallerState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Caller_fields[] = {
-    {"probe", nullptr, typeid(std::shared_ptr<Probe>).name(), offsetof(CallerState_g1, probe), sizeof(std::shared_ptr<Probe>),
+    {"probe", nullptr, typeid(hot::typekey_t<std::shared_ptr<Probe>>).name(), offsetof(CallerState_g1, probe), sizeof(std::shared_ptr<Probe>),
      alignof(std::shared_ptr<Probe>), hot::field_flags<std::shared_ptr<Probe>>(), Caller__init_probe, hot::move_field<std::shared_ptr<Probe>>, hot::field_destroyer<std::shared_ptr<Probe>>()},
 };
 #if defined(__clang__)

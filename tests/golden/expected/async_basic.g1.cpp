@@ -73,7 +73,7 @@ static void Worker__init_total(void*, void* f) { using T = int32_t; new (f) T(0)
 #endif
 static_assert(offsetof(WorkerState_g1, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Worker_fields[] = {
-    {"total", nullptr, typeid(int32_t).name(), offsetof(WorkerState_g1, total), sizeof(int32_t),
+    {"total", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(WorkerState_g1, total), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Worker__init_total, hot::move_field<int32_t>, hot::field_destroyer<int32_t>()},
 };
 #if defined(__clang__)
