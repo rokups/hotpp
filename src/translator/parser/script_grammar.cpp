@@ -1034,6 +1034,7 @@ struct ClassAttrs
     std::string weak_handle; // [weak_handle("template")]: valid on a stub only
     std::string cpp_prelude; // [cpp_prelude("text")]
     bool has_prelude = false;
+    std::string cpp_overrides; // [cpp_overrides("A B")]: valid on a stub only
     std::string alias; // [alias("old")]: valid on a module variable only
     bool has_alias = false;
     std::string std_ns; // [std("name")]: valid in a module attribute list only
@@ -1055,7 +1056,7 @@ int class_attr_arity(const std::string& name)
     if (name == "native" || name == "value" || name == "self" || name == "checked_index" || name == "weak"
         || name == "attribute")
         return 0;
-    if (name == "handle" || name == "default_handle" || name == "weak_handle" || name == "alias" || name == "cpp_prelude" || name == "std"
+    if (name == "handle" || name == "default_handle" || name == "weak_handle" || name == "alias" || name == "cpp_prelude" || name == "cpp_overrides" || name == "std"
         || name == "array")
         return 1;
     if (name == "intrusive")
@@ -1123,6 +1124,8 @@ struct class_attrs_p
                 a.cpp_prelude = std_from_user(it.args[0]);
                 a.has_prelude = true;
             }
+            else if (it.name == "cpp_overrides")
+                a.cpp_overrides = std::move(it.args[0]);
             else if (it.name == "alias")
             {
                 a.alias = std::move(it.args[0]);
@@ -1302,6 +1305,7 @@ TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bo
         s.intrusive_add = a->intrusive_add;
         s.intrusive_release = a->intrusive_release;
         s.cpp_prelude = a->cpp_prelude;
+        s.cpp_overrides = a->cpp_overrides;
         if (a->is_value && a->handle_pos)
             st.error(a->handle_pos, "'value' and 'handle' are exclusive");
         if (a->has_alias)

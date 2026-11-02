@@ -35,6 +35,7 @@ struct TypeRule
     bool native = false; // the stub has the attribute [native]
     bool self = false; // an exact stub with [self]: the rule is for this type only
     std::string cpp_prelude; // the raw text of [cpp_prelude("...")] of the stub
+    std::string cpp_overrides; // the raw text of [cpp_overrides("...")] of the stub
 };
 
 class TypeModel
@@ -116,6 +117,10 @@ public:
     // from the farthest to the nearest (the exact stub of the base when it has no [self], then
     // the stub "class : Base;"), then the text of the class itself. An empty text is not in the list.
     std::vector<std::string> preludes(const std::string& type) const;
+
+    // The names of the native virtuals that the cpp_prelude texts of a script class override.
+    // The stubs are the same as for preludes(). The shell gets no slot for these virtuals.
+    std::set<std::string> host_overrides(const std::string& type) const;
 
     // True when the name is a script class of the script ([value] classes too).
     bool is_script_class(const std::string& type) const;
@@ -207,6 +212,7 @@ private:
     std::map<std::string, TypeRule> exact_;
     std::map<std::string, TypeRule> derived_; // the stubs "class : Base;", by the name of Base
     std::string class_prelude_, struct_prelude_; // the texts of "class *;" and "struct *;"
+    std::string class_overrides_; // the cpp_overrides text of "class *;"
     std::vector<std::pair<std::string, TypeRule>> patterns_; // the prefix and the rule
     BaseFn bases_;
     ClassFn classes_;

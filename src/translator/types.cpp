@@ -102,6 +102,7 @@ void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diag
                 default_handle_ = s.default_handle;
                 default_weak_ = s.weak_handle;
                 class_prelude_ = s.cpp_prelude;
+                class_overrides_ = s.cpp_overrides;
             }
             continue;
         }
@@ -141,6 +142,7 @@ void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diag
         rule.self = s.is_self;
         rule.native = s.is_native;
         rule.cpp_prelude = s.cpp_prelude;
+        rule.cpp_overrides = s.cpp_overrides;
         if (intrusive)
         {
             rule.kind = Kind::Handle;
@@ -318,6 +320,7 @@ TypeRule TypeModel::lookup_stub(const std::string& cpp_type) const
             if (found.kind == Kind::Handle)
             {
                 found.cpp_prelude.clear();
+                found.cpp_overrides.clear();
                 found.self = false;
                 return found;
             }
@@ -782,6 +785,51 @@ std::vector<std::string> TypeModel::preludes(const std::string& type) const
             add(d->second.cpp_prelude);
     }
     add(sc->second.cpp_prelude);
+    return out;
+}
+
+std::set<std::string> TypeModel::host_overrides(const std::string& type) const
+{
+    std::set<std::string> out;
+    auto sc = script_.find(type);
+    if (sc == script_.end() || sc->second.is_value)
+        return out;
+    // The text is a list of names. A space or a comma separates two names.
+    auto add = [&](const std::string& text)
+    {
+        std::string name;
+        for (size_t i = 0; i <= text.size(); ++i)
+        {
+            const char c = i < text.size() ? text[i] : ' ';
+            if (c == ' ' || c == ',' || c == '\t' || c == '\n')
+            {
+                if (!name.empty())
+                    out.insert(name);
+                name.clear();
+            }
+            else
+                name += c;
+        }
+    };
+    add(class_overrides_);
+    std::set<std::string> visited{type};
+    std::deque<std::string> queue{type};
+    while (!queue.empty())
+    {
+        const std::string current = queue.front();
+        queue.pop_front();
+        for (const std::string& base : direct_bases(current))
+            if (visited.insert(base).second)
+            {
+                auto e = exact_.find(base);
+                if (e != exact_.end() && !e->second.self)
+                    add(e->second.cpp_overrides);
+                auto d = derived_.find(base);
+                if (d != derived_.end())
+                    add(d->second.cpp_overrides);
+                queue.push_back(base);
+            }
+    }
     return out;
 }
 

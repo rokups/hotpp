@@ -562,6 +562,9 @@ struct Stub
     bool is_struct = false; // "struct *;": only "cpp_prelude" is valid
     bool checked_index = false; // the attribute [checked_index]: "a[i]" has a bounds test for the type
     std::string cpp_prelude; // the attribute [cpp_prelude("text")]
+    // The attribute [cpp_overrides("A B")]: the names of the native virtuals that the cpp_prelude
+    // text overrides. The shells get no slot and no stub for them.
+    std::string cpp_overrides;
     // "[attribute] class Name;": a script attribute class, not a native type. A script class
     // uses it as a tag "[Name]". It has no storage rule.
     bool is_attribute = false;

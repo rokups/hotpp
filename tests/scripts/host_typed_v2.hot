@@ -1,0 +1,20 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 2 of the host type test. The host rule gives each shell below TypedActor its own type tag.
+using "TypedActor.h";
+
+[cpp_prelude("HOT_TEST_TYPED($N, $B);"), cpp_overrides("GetTag")] class : TypedActor;
+
+class Scout : TypedActor {
+    int ticks = 0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 2;
+    }
+}
+
+class Ranger : Scout {
+    int arrows = 20;
+}

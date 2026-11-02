@@ -1609,8 +1609,8 @@ TEST(AnalyzeCpp, PathMustBeCpp)
     EXPECT_EQ(r.errors[0].pos.line, 1);
 }
 
-// A ".cpp" script has no cpp_prelude, also not from a prelude file.
-TEST(CppFrontend, PreludeFileTextIsIgnored)
+// A ".cpp" script cannot write a cpp_prelude, but its shells get the texts of the prelude files.
+TEST(CppFrontend, PreludeFileTextReachesShell)
 {
     hotc::TranslateOptions o;
     o.script_name = "t.cpp";
@@ -1619,8 +1619,8 @@ TEST(CppFrontend, PreludeFileTextIsIgnored)
     o.generation = 1;
     o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
     o.resource_dir = HOT_RESOURCE_DIR;
-    o.preludes.push_back({"p.prelude", "[cpp_prelude(\"PRE_TEXT;\")] class *;\n"});
+    o.preludes.push_back({"p.prelude", "[cpp_prelude(\"PRE_TEXT($N, $T, $B);\")] class *;\n"});
     const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_EQ(r.cpp.find("PRE_TEXT"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("PRE_TEXT(C, C_Shell, Actor);"), std::string::npos) << r.cpp;
 }

@@ -74,6 +74,43 @@ TEST(PreludeTranslation, ThisAndBaseAreReplaced)
     EXPECT_TRUE(has(r.cpp, "    HOT(Smith_Shell, Hero_Shell); SECOND(Smith_Shell);\n")) << r.cpp;
 }
 
+// "$N" is the script class name. The alias makes it a C++ type name, also without a constructor.
+TEST(PreludeTranslation, NameIsReplacedAndNamesAType)
+{
+    const hotc::TranslateResult r = script_translate(std::string(kObject)
+        + "[cpp_prelude(\"TYPED($N, $B);\")] class : Object;\n"
+          "class Hero : Object { }\n"
+          "class Smith : Hero { }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "    TYPED(Hero, Object);\n")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "    TYPED(Smith, Hero_Shell);\n")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "using Hero = Hero_Shell;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "using Smith = Smith_Shell;")) << r.cpp;
+}
+
+// A virtual in cpp_overrides gets no slot and no stub in the shell, also in the shell of a script child.
+TEST(PreludeTranslation, OverriddenVirtualHasNoSlot)
+{
+    const hotc::TranslateResult r = script_translate(
+        "[cpp_prelude(\"void Update(float) override {}\"), cpp_overrides(\"Update\")] class : Widget;\n"
+        "class Hero : Widget { }\n"
+        "class Smith : Hero { }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "    void Update(float) override {}\n")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "Hero_SLOT_Update")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "Smith_SLOT_Update")) << r.cpp;
+}
+
+// A script method cannot override a virtual that the host overrides.
+TEST(PreludeTranslation, ScriptOverrideOfHostVirtualIsAnError)
+{
+    const hotc::TranslateResult r = script_translate(
+        "[cpp_prelude(\"void Update(float) override {}\"), cpp_overrides(\"Update\")] class : Widget;\n"
+        "class Hero : Widget { override void Update(float dt) { } }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "is in a 'cpp_overrides' rule")) << r.diagnostics;
+}
+
 TEST(PreludeTranslation, SelfStubTextDoesNotReachScriptChild)
 {
     const hotc::TranslateResult r = script_translate(

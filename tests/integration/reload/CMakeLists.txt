@@ -25,6 +25,7 @@ add_executable(integration_reload_tests
     interface_tests.cpp
     runtime_polish_tests.cpp
     core_module_tests.cpp
+    host_type_tests.cpp
     reload_contract_tests.cpp
     full_reload_tests.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Harness.cpp

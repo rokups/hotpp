@@ -377,6 +377,7 @@ struct NativeVirtual
     // class that spells a type in another way, for example "Urho3D::StringHash" and "StringHash".
     std::vector<std::string> canon;
     bool is_const = false, pure = false, final_ = false, no_except = false;
+    bool host = false; // a cpp_prelude text of the host overrides it in the shell (cpp_overrides)
     std::string key() const
     {
         std::string k = name + "(";
@@ -1006,9 +1007,10 @@ struct Out
     }
 };
 
-// The text of the cpp_prelude lines of a class. "$T" is the receiving C++ class and "$B" is
-// its direct C++ base. Each line has an indent of four spaces.
-std::string prelude_block(const std::vector<std::string>& texts, const std::string& self, const std::string& base)
+// The text of the cpp_prelude lines of a class. "$T" is the receiving C++ class, "$B" is its
+// direct C++ base and "$N" is the name of the script class. Each line has an indent of four spaces.
+std::string prelude_block(
+    const std::vector<std::string>& texts, const std::string& self, const std::string& base, const std::string& name)
 {
     std::string out;
     for (const std::string& raw : texts)
@@ -1016,9 +1018,9 @@ std::string prelude_block(const std::vector<std::string>& texts, const std::stri
         std::string text;
         for (size_t i = 0; i < raw.size(); ++i)
         {
-            if (raw[i] == '$' && i + 1 < raw.size() && (raw[i + 1] == 'T' || raw[i + 1] == 'B'))
+            if (raw[i] == '$' && i + 1 < raw.size() && (raw[i + 1] == 'T' || raw[i + 1] == 'B' || raw[i + 1] == 'N'))
             {
-                text += raw[i + 1] == 'T' ? self : base;
+                text += raw[i + 1] == 'T' ? self : raw[i + 1] == 'B' ? base : name;
                 ++i;
             }
             else
@@ -3862,8 +3864,9 @@ void translate_impl(
         {
             if (c.name == kModuleName || c.is_value)
                 continue;
+            // A cpp_prelude text can use "$N" as a C++ type name: the alias makes it one.
             const bool named = sc.is_cpp || !c.ctors.empty() || new_set.count(c.name) || used_types.count(c.name)
-                || script_parent(c) || has_children.count(c.name);
+                || script_parent(c) || has_children.count(c.name) || !types.preludes(c.name).empty();
             const std::string alias = named ? " using " + c.name + " = " + c.name + "_Shell;" : std::string();
             if (c.ns.empty())
             {
@@ -4182,7 +4185,7 @@ void translate_impl(
             }
         o.w("struct " + cn + " {\n");
         if (!is_module && !sc.is_cpp)
-            o.w(prelude_block(types.preludes(cn), cn, std::string()));
+            o.w(prelude_block(types.preludes(cn), cn, std::string(), cn));
         for (const Field& f : cd.fields)
             o.w("    " + (sc.is_cpp ? field_declarator(f.type, f.name) : f.type + " " + f.name)
                 + ";\n");
@@ -4665,6 +4668,13 @@ void translate_impl(
             bi.members.insert(ib.members.begin(), ib.members.end());
             BL += ", " + iname;
         }
+        // The host overrides these virtuals in the cpp_prelude text of the shell. Like a final
+        // virtual, they get no slot and no stub.
+        {
+            const std::set<std::string> host = types.host_overrides(cd.name);
+            for (NativeVirtual& nv : bi.virtuals)
+                nv.host = host.count(nv.name) != 0;
+        }
         bool root_super = false;
         for (const hotc::ast::Ctor& c : root.ctors)
             root_super = root_super || c.has_base_call;
@@ -4920,6 +4930,10 @@ void translate_impl(
                 fail_at(map, m.pos, "'async' of '" + m.name + "' differs from the base method");
             if (hit->final_)
                 fail_at(map, m.pos, "'" + hit->text() + "' of " + hit->owner + " is final and cannot be overridden");
+            if (hit->host)
+                fail_at(map, m.pos,
+                    "'" + hit->text() + "' of " + hit->owner
+                        + " is in a 'cpp_overrides' rule: the host overrides it in the shell");
             if (!m.ret.empty()
                 && !hotc::override_return_ok(
                     m.ret, hit->ret, types, hotc::relaxed_override_enabled() && !sc.is_cpp))
@@ -4930,7 +4944,7 @@ void translate_impl(
                 fail_at(map, m.pos, "'" + hit->text() + "' is overridden twice");
         }
         for (const auto& nv : bi.virtuals)
-            if (nv.pure && !overrides.count(nv.key()))
+            if (nv.pure && !nv.host && !overrides.count(nv.key()))
                 fail_at(map, cd.pos,
                     "class " + cn + " does not override the pure virtual method '" + nv.text() + "' of " + nv.owner);
 
@@ -5128,12 +5142,12 @@ void translate_impl(
         std::map<std::string, int> name_count;
         // A final method gets no slot: the shell cannot override it.
         for (const auto& nv : bi.virtuals)
-            if (!nv.final_)
+            if (!nv.final_ && !nv.host)
                 ++name_count[nv.name];
         std::set<std::string> used;
         for (const auto& nv : bi.virtuals)
         {
-            if (nv.final_)
+            if (nv.final_ || nv.host)
                 continue;
             Slot s;
             s.nv = &nv;
@@ -5366,9 +5380,8 @@ void translate_impl(
             + (par ? par->name + "_Shell" : BL + (opt.aot_optimized ? ", hot::ShellCore" : ", hot::ShellBase"));
         const size_t shell_head_end = o.s.size() + shell_head.size();
         o.w(shell_head + " {\n");
-        // A ".cpp" script has no cpp_prelude, also not from a prelude file.
-        if (!sc.is_cpp)
-            o.w(prelude_block(types.preludes(cn), shell, par ? par->name + "_Shell" : B));
+        // A ".cpp" script cannot write a cpp_prelude, but its shells get the texts of the prelude files.
+        o.w(prelude_block(types.preludes(cn), shell, par ? par->name + "_Shell" : B, cn));
         // The members of the shell map to the class line.
         // Optimized AOT code: the shell sets the record. Each shell runs the script destructor when
         // it is the shell of the class of the object, before its own fields die.

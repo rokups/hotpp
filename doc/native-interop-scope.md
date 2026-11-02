@@ -81,9 +81,10 @@ The attribute `cpp_prelude("text")` puts C++ text at the start of a generated ty
 
 - The text of a shell goes after the opening brace of the shell. The text of a script `struct` goes after the opening brace of the `struct`.
 - `$T` is the generated C++ type that gets the text. `$B` is the direct C++ base of a shell. For a script `struct`, `$B` is empty.
+- `$N` is the name of the script class, for example `Tool`. The translator writes the alias `using Tool = Tool_Shell;` before the shell, so `$N` is a C++ type name in the text.
 - The string must be on one line. The translator does not change the text, and it writes each text on its own line with an indent of four spaces.
 - A `cpp_prelude` on a class definition is for that class only.
-- A `.cpp` script has no `cpp_prelude`.
+- A `.cpp` script cannot write a `cpp_prelude`. Its shells get the texts of the stubs in the prelude files.
 
 A type gets the texts in this order:
 
@@ -112,3 +113,30 @@ The shell of `Tool` starts with these lines:
 ```
 
 A `cpp_prelude` on a native type with `self` has no effect, because the type has no shell. The translator gives a warning.
+
+### Native virtuals that the host overrides
+
+A host can override a native virtual in the text of a `cpp_prelude`. Then the attribute `cpp_overrides("names")` on the same stub gives the names of these virtuals. A space or a comma separates two names. The attribute is valid on `class Name;`, `class : Base;` and `class *;`. It is not valid on a class definition. It reaches the same classes as the `cpp_prelude` of the stub.
+
+- The shell gets no slot and no stub for a virtual in the list. The text of the host is the only override in the shell.
+- A script method that overrides a virtual in the list is an error.
+- A pure virtual in the list does not need a script override.
+- The text goes in each shell, also in the shell of a script child. There `$B` is the shell of the parent, so the text of the child can call the parent.
+
+The shell keeps its address across a reload, and the loader keeps the code of the first module of a class. So a function-local `static` in the text stays the same object across a reload. A host can register its address. Two cases give a new object with the same value:
+
+- A reload that changes the constructor list of a class. The new objects use the code of the new module.
+- A new loader. It loads the modules again.
+
+Example: a host type system. Each typed class reports a static type tag through a virtual.
+
+```hot
+using "TypedActor.h";
+
+[cpp_prelude("HOT_TEST_TYPED($N, $B);"), cpp_overrides("GetTag")] class : TypedActor;
+
+class Scout : TypedActor { }
+class Ranger : Scout { }
+```
+
+The shell of `Ranger` starts with `HOT_TEST_TYPED(Ranger, Scout_Shell);`. The tag of `Ranger` names the tag of `Scout` as its base.
