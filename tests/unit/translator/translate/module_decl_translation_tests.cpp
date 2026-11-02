@@ -65,7 +65,7 @@ TEST(ModuleDeclTranslation, EnumFieldUsesTheUnderlyingTypeAsKey)
 {
     const auto r = translate_script("enum Mode { Idle, Run }\nclass A : Unit { Mode m; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "typeid(std::underlying_type_t<Mode>).name()")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "typeid(hot::typekey_t<std::underlying_type_t<Mode>>).name()")) << r.cpp;
 }
 
 TEST(ModuleDeclTranslation, StructIsAValueClass)

@@ -82,7 +82,7 @@ std::string bag(const std::string& item_fields)
 
 std::string key_of(const std::string& cpp)
 {
-    const std::string head = "hot::layout_keyed(typeid(std::vector<Item>).name(), \"";
+    const std::string head = "hot::layout_keyed(typeid(hot::typekey_t<std::vector<Item>>).name(), \"";
     const size_t at = cpp.find(head);
     return at == std::string::npos ? std::string() : cpp.substr(at + head.size(), 16);
 }

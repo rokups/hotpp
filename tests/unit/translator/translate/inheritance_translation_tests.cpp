@@ -39,7 +39,7 @@ TEST(InheritanceTranslation, ChildShellAndStateDeriveFromTheParent)
     EXPECT_TRUE(has(r.cpp, "struct BState_g1 : AState_g1 {")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "&B_layout, &A_record,")) << r.cpp;
     // The field table of B has the parent field first.
-    EXPECT_TRUE(has(r.cpp, "{\"hp\", nullptr, typeid(int32_t).name(), offsetof(BState_g1, hp)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "{\"hp\", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(BState_g1, hp)")) << r.cpp;
 }
 
 TEST(InheritanceTranslation, VirtualCallUsesTheSlotOfTheObject)

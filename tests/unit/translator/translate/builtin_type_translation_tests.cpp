@@ -64,12 +64,12 @@ TEST(BuiltinTypeTranslation, FieldsEmitTheFixedWidthName)
             const hotc::TranslateResult t = wide_translate(std::string("    ") + name + " f;\n");
             ASSERT_TRUE(t.ok) << name << ": " << t.diagnostics;
             EXPECT_TRUE(has(t.cpp, std::string("    ") + r.cpp + " f;")) << name << "\n" << t.cpp;
-            EXPECT_TRUE(has(t.cpp, std::string("typeid(") + r.cpp + ").name()")) << name;
+            EXPECT_TRUE(has(t.cpp, std::string("typeid(hot::typekey_t<") + r.cpp + ">).name()")) << name;
         }
     }
 }
 
-// The reload type key is typeid(T).name() of the field type. A rename of the type spelling
+// The reload type key is typeid(hot::typekey_t<T>).name() of the field type. A rename of the type spelling
 // must give the same layout text, so the reload does not reject it.
 TEST(BuiltinTypeTranslation, RenamedAliasKeepsTheReloadTypeKey)
 {
@@ -82,7 +82,7 @@ TEST(BuiltinTypeTranslation, RenamedAliasKeepsTheReloadTypeKey)
     EXPECT_EQ(a.cpp, b.cpp);
     EXPECT_EQ(a.cpp, c.cpp);
     EXPECT_EQ(a.slots_out, b.slots_out);
-    EXPECT_TRUE(has(a.cpp, "{\"x\", nullptr, typeid(uint64_t).name()")) << a.cpp;
+    EXPECT_TRUE(has(a.cpp, "{\"x\", nullptr, typeid(hot::typekey_t<uint64_t>).name()")) << a.cpp;
 }
 
 TEST(BuiltinTypeTranslation, OverrideKeyMatchesTheNativeParameters)

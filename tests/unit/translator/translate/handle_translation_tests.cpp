@@ -20,7 +20,7 @@ TEST(HandleTranslation, FieldStorage)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "    std::shared_ptr<Weapon> w;\n")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "using T = std::shared_ptr<Weapon>; new (f) T(nullptr);")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "typeid(std::shared_ptr<Weapon>).name()")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "typeid(hot::typekey_t<std::shared_ptr<Weapon>>).name()")) << r.cpp;
 }
 
 TEST(HandleTranslation, ParamIsConstRef)

@@ -20,7 +20,7 @@ TEST(InheritedHandleTranslation, IntrusiveField)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "    " + kIntr + " item;\n")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "using T = " + kIntr + "; new (f) T();")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "typeid(" + kIntr + ").name()")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "typeid(hot::typekey_t<" + kIntr + ">).name()")) << r.cpp;
 }
 
 TEST(InheritedHandleTranslation, OwnerIsTheStubClass)

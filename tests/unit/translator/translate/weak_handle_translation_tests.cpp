@@ -41,7 +41,7 @@ TEST(WeakHandleTranslation, FieldStorageAndKey)
     EXPECT_TRUE(has(r.cpp, "using T = std::weak_ptr<Weapon>; new (f) T();")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "T(nullptr)")) << r.cpp;
     // The migration key is the weak_ptr type: a change from a strong handle resets the field.
-    EXPECT_TRUE(has(r.cpp, "typeid(std::weak_ptr<Weapon>).name()")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "typeid(hot::typekey_t<std::weak_ptr<Weapon>>).name()")) << r.cpp;
 }
 
 TEST(WeakHandleTranslation, ReadLocks)
