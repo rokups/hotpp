@@ -11,7 +11,7 @@ A stub name decides which types the rule covers.
 
 | Stub | Types that get the rule |
 | --- | --- |
-| `class Name;` | `Name` and all subclasses of `Name`, for `handle`, `intrusive` and `cpp_prelude`. `value` is for `Name` only. |
+| `class Name;` | `Name` and all subclasses of `Name`, for `handle`, `weak_handle`, `intrusive` and `cpp_prelude`. `value` is for `Name` only. |
 | `[self] class Name;` | `Name` only. No subclass gets the rule. |
 | `class : Base;` | The subclasses of `Base` only. `Base` does not get the rule. |
 | `class *;` | Every class that has no more specific rule. |

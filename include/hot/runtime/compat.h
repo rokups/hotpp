@@ -5,6 +5,8 @@
 // C++17 forms of C++20 library traits and attributes. The generated code and the runtime
 // headers need C++17 only. Do not use a feature of a later standard in include/hot.
 #pragma once
+#include "hot/runtime/hidden.h"
+
 #include <memory>
 #include <type_traits>
 #include <utility>
@@ -29,14 +31,30 @@ template <class T> struct type_identity
 };
 template <class T> using type_identity_t = typename type_identity<T>::type;
 
-// True if "h.get()" is valid for "const T& h": a handle type (std::shared_ptr, Intrusive).
-template <class T, class = void> struct has_get : std::false_type
+// True if "h.get()" or "h.Get()" is valid for "const T& h": a handle type (std::shared_ptr,
+// Intrusive, or a smart pointer of a host with "Get()").
+template <class T, class = void> struct has_lower_get : std::false_type
 {
 };
-template <class T> struct has_get<T, std::void_t<decltype(std::declval<const T&>().get())>> : std::true_type
+template <class T> struct has_lower_get<T, std::void_t<decltype(std::declval<const T&>().get())>> : std::true_type
 {
 };
-template <class T> inline constexpr bool has_get_v = has_get<T>::value;
+template <class T, class = void> struct has_upper_get : std::false_type
+{
+};
+template <class T> struct has_upper_get<T, std::void_t<decltype(std::declval<const T&>().Get())>> : std::true_type
+{
+};
+template <class T> inline constexpr bool has_get_v = has_lower_get<T>::value || has_upper_get<T>::value;
+
+// The raw pointer of a handle: "h.get()", else "h.Get()".
+template <class H> HOT_HIDDEN auto get_raw(const H& h)
+{
+    if constexpr (has_lower_get<H>::value)
+        return h.get();
+    else
+        return h.Get();
+}
 
 // True if T has a member type "element_type".
 template <class T, class = void> struct has_element_type : std::false_type

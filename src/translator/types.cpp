@@ -91,13 +91,16 @@ void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diag
             if (s.is_value)
                 diags.add(s.pos, map, "'value' is not allowed on 'class *': it breaks polymorphic types");
             else if (!s.handle.empty() || !s.intrusive_add.empty() || !s.intrusive_release.empty())
-                diags.add(s.pos, map, "'class *' accepts only 'native' and 'default_handle'");
+                diags.add(s.pos, map, "'class *' accepts only 'native', 'default_handle' and 'weak_handle'");
+            else if (!s.weak_handle.empty() && (s.default_handle.empty() || s.weak_handle.find("$T") == std::string::npos))
+                diags.add(s.pos, map, "'weak_handle' needs a 'default_handle' and a template with '$T'");
             else
             {
                 // A later list overrides an earlier "class *". A stub without a handle clears it.
                 if (source == Source::Script && !default_handle_.empty())
                     diags.warn(s.pos, map, "the 'class *' of the script overrides the 'class *' of a prelude");
                 default_handle_ = s.default_handle;
+                default_weak_ = s.weak_handle;
                 class_prelude_ = s.cpp_prelude;
             }
             continue;
@@ -105,6 +108,12 @@ void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diag
         if (!s.default_handle.empty())
         {
             diags.add(s.pos, map, "'default_handle' is valid only on 'class *'");
+            continue;
+        }
+        if (!s.weak_handle.empty()
+            && (s.handle.empty() || s.handle == "$T*" || s.weak_handle.find("$T") == std::string::npos))
+        {
+            diags.add(s.pos, map, "'weak_handle' needs a 'handle' template other than \"$T*\" and a template with '$T'");
             continue;
         }
         if (s.is_value && !s.handle.empty())
@@ -143,6 +152,7 @@ void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diag
         {
             rule.kind = Kind::Handle;
             rule.handle_tpl = s.handle;
+            rule.weak_tpl = s.weak_handle;
         }
         else if (s.is_value)
         {
@@ -230,6 +240,7 @@ TypeRule TypeModel::lookup(const std::string& cpp_type) const
         return r; // no "class *;" stub: the type stays raw
     d.kind = Kind::Handle;
     d.handle_tpl = default_handle_;
+    d.weak_tpl = default_weak_;
     return d;
 }
 
@@ -427,10 +438,42 @@ std::string TypeModel::weak_storage(const std::string& type) const
     const TypeRule rule = lookup(type);
     if (!rule.intrusive_add.empty())
         return {};
+    if (!rule.weak_tpl.empty())
+        return replace_all(rule.weak_tpl, "$T", type);
     const std::string pre = shared_prefix(rule.handle_tpl);
     if (pre.empty())
         return {};
     return pre + "weak_ptr<" + type + ">";
+}
+
+std::vector<std::string> TypeModel::custom_handle_templates() const
+{
+    std::set<std::string> out;
+    auto add = [&](const std::string& tpl)
+    {
+        std::string t;
+        for (char ch : tpl)
+            if (ch != ' ')
+                t += ch;
+        const size_t lt = t.find('<');
+        if (lt == std::string::npos || lt == 0 || t.compare(lt, std::string::npos, "<$T>") != 0)
+            return;
+        const std::string head = t.substr(0, lt);
+        if (head == "\x01std::shared_ptr" || head == "std::shared_ptr")
+            return;
+        for (char ch : head)
+            if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '_' && ch != ':' && ch != '\x01')
+                return;
+        out.insert(head);
+    };
+    for (const auto& e : exact_)
+        add(e.second.handle_tpl);
+    for (const auto& e : derived_)
+        add(e.second.handle_tpl);
+    for (const auto& e : patterns_)
+        add(e.second.handle_tpl);
+    add(default_handle_);
+    return {out.begin(), out.end()};
 }
 
 std::string TypeModel::param(const std::string& type) const

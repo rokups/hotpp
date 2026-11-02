@@ -3324,6 +3324,7 @@ void translate_impl(
         std::string text; // the specialization
         const StubSrc* src = nullptr; // the stub, or null for the array template
         bool pattern = false; // the stub is "Name<*>"
+        bool handle = false; // a hot::is_handle specialization: written for a class template only
     };
     std::vector<CheckedSpec> checked_specs;
     if (!sc.is_cpp)
@@ -3359,6 +3360,16 @@ void translate_impl(
             if (plain)
                 checked_specs.push_back(
                     {head, "template <class T, auto N> struct checked_index< ::" + head + "<T, N>> : std::true_type {};"});
+        }
+        // A custom handle template "Name<$T>" of a stub, for example an intrusive smart pointer of
+        // the host: hot::is_handle is true for it, so "h.x" reads through the handle.
+        for (const std::string& head : types.custom_handle_templates())
+        {
+            CheckedSpec spec;
+            spec.name = head;
+            spec.text = "template <class T> struct is_handle< ::" + head + "<T>> : std::true_type {};";
+            spec.handle = true;
+            checked_specs.push_back(std::move(spec));
         }
         std::set<std::string> uniq;
         for (const CheckedSpec& c : checked_specs)
@@ -3788,7 +3799,8 @@ void translate_impl(
         std::set<std::string> written;
         for (const CheckedSpec& c : checked_specs)
             if (const std::string kind = query_answers[kDeclQuery + hotc::expand_std(c.name, std_ns)];
-                kind != "0" && !kind.empty() && (c.src || kind != "1") && written.insert(c.text).second)
+                kind != "0" && !kind.empty() && (c.handle ? kind == "t" : (c.src || kind != "1"))
+                && written.insert(c.text).second)
                 o.w("namespace hot { " + c.text + " }\n");
         if (!written.empty())
             reset();
@@ -6022,6 +6034,11 @@ void translate_impl(
                 // "new" of a class with a std::shared_ptr handle: one block for the shell and the
                 // control block (make_shared_shell). An exception of the constructor frees the object
                 // through the handle. A template, so a class without such a "new" does not compile it.
+                // A class with another handle, or the shared_ptr of another standard namespace, has
+                // no such function: the body does not depend on the template, so it must compile.
+                const std::string own_storage = types.storage(cn);
+                const bool std_shared = own_storage.rfind("std::shared_ptr<", 0) == 0
+                    || (own_storage.rfind("\x01std::shared_ptr<", 0) == 0 && types.std_ns() == "std");
                 std::string shared_text = "template <int = 0>\n[[maybe_unused]] HOT_HIDDEN static \x01std::shared_ptr<"
                     + shell + "> " + P + "new_shared(" + pd_def + ")\n{\n";
                 shared_text += "    auto __plan = " + P + "plan("
@@ -6035,7 +6052,8 @@ void translate_impl(
                 if (has_entry)
                     shared_text += "    " + entry + "(__h.get(), __plan.second" + ctor_fwd + ");\n";
                 shared_text += "    return __h;\n}\n";
-                mapped(shared_text, cline, cpos);
+                if (std_shared)
+                    mapped(shared_text, cline, cpos);
                 o.w("\n");
             }
             if (has_entry)

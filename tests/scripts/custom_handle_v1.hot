@@ -1,0 +1,48 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// A custom intrusive handle with a custom weak handle (stub attribute "weak_handle").
+// RefPtr and WeakRef are the smart pointers of the host. Pet is a script class with a native
+// RefBase base, so RefPtr holds it too.
+using "Actor.h";
+using "RefPtr.h";
+
+[native, handle("RefPtr<$T>"), weak_handle("WeakRef<$T>")] class RefBase;
+
+class Pet : Thing {
+    Pet() : base(9) {
+    }
+
+    int Value() { return value + 1; }
+}
+
+class Keeper : Actor {
+    Thing held = null;
+    [weak]
+    Thing seen = null;
+    Pet pet = null;
+    [weak]
+    Pet seenPet = null;
+    int ticks;
+    int alive;
+    int petValue;
+
+    void Watch([weak] Pet p) { seenPet = p; }
+
+    override void Tick(float dt) {
+        ticks = ticks + 1;
+        if (ticks == 1) {
+            held = new Thing(4);
+            seen = held;
+            pet = new Pet();
+            Watch(pet);
+        }
+        if (ticks == 3) {
+            held = null;
+            pet = null;
+        }
+        alive = seen != null ? seen.value : -1;
+        petValue = seenPet != null ? seenPet.Value() : -1;
+    }
+}

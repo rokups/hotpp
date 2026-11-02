@@ -168,6 +168,9 @@ struct DefaultBackendOptions
     // disk only. For each directory the backend asks this file system first and then the disk.
     // It must be thread safe (hot/vfs.h).
     std::shared_ptr<hot::FileSystem> fs;
+    // The preludes of the host (stub-only scripts), as name and text. The translator reads them
+    // before each script, in this order (hotc::TranslateOptions::preludes).
+    std::vector<std::pair<std::string, std::string>> preludes;
     // The backend to make. An explicit value wins over the environment variable HOT_BACKEND.
     BackendKind kind = BackendKind::Auto;
     // The C++ standard of the scripts, for example "c++20" for "async" scripts. Empty: the

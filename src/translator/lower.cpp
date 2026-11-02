@@ -563,7 +563,11 @@ struct Lowerer
     {
         if (p.type.find("weak_ptr<") != std::string::npos)
             return p.type;
-        return cx.types ? cx.types->weak_storage(p.script_type.empty() ? p.type : p.script_type) : std::string();
+        if (!cx.types)
+            return {};
+        const std::string& t = p.script_type.empty() ? p.type : p.script_type;
+        // A type that is no handle is the weak storage already (a custom weak_handle template).
+        return cx.types->is_handle(t) ? cx.types->weak_storage(t) : p.type;
     }
 
     // "hot::lock(e)": the read of a weak handle.
@@ -1124,8 +1128,11 @@ struct Lowerer
             }
             // A script class is a handle (design 7.10.1): "H(Name__new(args))". A std::shared_ptr
             // handle uses "H(Name__new_shared(args))": one block for the shell and the control block.
+            // make_shared_shell gives a std::shared_ptr. So the shared pointer of another standard
+            // namespace (the module attribute "std") uses "H(Name__new(args))".
             const std::string h = cx.types ? cx.types->storage(type) : type;
-            const bool shared = h.rfind("\x01std::shared_ptr<", 0) == 0 || h.rfind("std::shared_ptr<", 0) == 0;
+            const bool shared = h.rfind("std::shared_ptr<", 0) == 0
+                || (h.rfind("\x01std::shared_ptr<", 0) == 0 && (!cx.types || cx.types->std_ns() == "std"));
             c.callee = raw(n.type + (shared ? "__new_shared" : "__new"), pos);
             e = make_expr(std::move(c));
             if (cx.types)

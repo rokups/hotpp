@@ -7,6 +7,7 @@
 //
 // CMake defines the macro HOT_SOURCE_DIR.
 #include "Object.h"
+#include "RefPtr.h"
 #include "Weapon.h"
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
@@ -129,6 +130,34 @@ TEST_P(BackendTests, IntrusiveHandleSurvivesReload)
         EXPECT_EQ(Object::live, 1);
     }
     EXPECT_EQ(Object::live, 0);
+}
+
+// A custom intrusive handle (RefPtr) and its weak handle (WeakRef, "weak_handle"). A native
+// class and a script class with a native RefBase base use them. "[weak]" reads give null after
+// the last strong handle goes.
+TEST_P(BackendTests, CustomIntrusiveAndWeakHandle)
+{
+    hot::LoadResult v1 = backend->load(source("custom_handle_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Keeper"));
+    s.commit_at_frame_boundary();
+    auto field = [&](const char* name) { return hot::field_ptr<int>(s.inst.shell, name); };
+
+    s.world.Tick(kDt);
+    auto held = hot::field_ptr<RefPtr<Thing>>(s.inst.shell, "held");
+    ASSERT_NE(held, nullptr);
+    ASSERT_NE(held->Get(), nullptr);
+    EXPECT_EQ(held->Get()->Refs(), 1);
+    ASSERT_NE(field("alive"), nullptr);
+    EXPECT_EQ(*field("alive"), 4);
+    EXPECT_EQ(*field("petValue"), 10);
+
+    s.world.Tick(kDt);
+    EXPECT_EQ(*field("alive"), 4);
+    s.world.Tick(kDt); // the script drops the strong handles
+    EXPECT_EQ(*field("alive"), -1);
+    EXPECT_EQ(*field("petValue"), -1);
 }
 
 // The stub names a method that the native class does not have. The load gives an error.

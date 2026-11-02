@@ -1031,6 +1031,7 @@ struct ClassAttrs
     const char* pos = nullptr; // the "["
     bool is_native = false, is_value = false, is_self = false, is_checked_index = false;
     std::string handle, default_handle, intrusive_add, intrusive_release;
+    std::string weak_handle; // [weak_handle("template")]: valid on a stub only
     std::string cpp_prelude; // [cpp_prelude("text")]
     bool has_prelude = false;
     std::string alias; // [alias("old")]: valid on a module variable only
@@ -1050,7 +1051,7 @@ int class_attr_arity(const std::string& name)
 {
     if (name == "native" || name == "value" || name == "self" || name == "checked_index" || name == "weak")
         return 0;
-    if (name == "handle" || name == "default_handle" || name == "alias" || name == "cpp_prelude" || name == "std"
+    if (name == "handle" || name == "default_handle" || name == "weak_handle" || name == "alias" || name == "cpp_prelude" || name == "std"
         || name == "array")
         return 1;
     if (name == "intrusive")
@@ -1127,6 +1128,8 @@ struct class_attrs_p
             }
             else if (it.name == "default_handle")
                 a.default_handle = std_from_user(it.args[0]);
+            else if (it.name == "weak_handle")
+                a.weak_handle = std_from_user(it.args[0]);
             else if (it.name == "weak")
             {
                 // A field, a parameter or a local takes "[weak]". The user of the list reports it.
@@ -1245,6 +1248,7 @@ TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bo
         s.checked_index = a->is_checked_index;
         s.handle = a->handle;
         s.default_handle = a->default_handle;
+        s.weak_handle = a->weak_handle;
         s.intrusive_add = a->intrusive_add;
         s.intrusive_release = a->intrusive_release;
         s.cpp_prelude = a->cpp_prelude;

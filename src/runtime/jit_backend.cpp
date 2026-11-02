@@ -338,6 +338,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     to.strict_borrowed = opt_.strict_borrowed;
     to.format_lib = format_lib_name();
     to.fs = opt_.fs;
+    to.preludes = opt_.preludes;
     // A fresh load ignores the slot state of the earlier generations.
     if (mode == LoadMode::Reload)
     {

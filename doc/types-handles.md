@@ -59,6 +59,7 @@ These are the rules:
 
 - The type is a handle with a `std::shared_ptr` handle template. A script class without a native base is one. A native class needs a stub such as `[native, handle("std::shared_ptr<$T>")] class Weapon;`.
 - The storage is `std::weak_ptr<T>`. Each read locks it and gives the strong handle. When the object is gone, the read gives `null`.
+- A stub with another handle template can name its weak template with `weak_handle` (see "Custom handles" below).
 - Assign a strong handle to set it. `x = null` clears it. A `null` argument or the default `= null` gives an empty weak handle.
 - `Weapon w = x;` copies a strong handle out. A lambda that uses `x` captures the weak handle, and each read in the body locks it.
 - A reference into the object is an error, for example `var& r = x.hp`, `&x.hp` or `foreach (var i in x.items)`. The lock ends with the statement, so the reference dangles. Copy the handle to a local first: `Node h = x;`.
@@ -75,6 +76,23 @@ These are the rules:
 | `new C(null)` for a `[weak]` constructor parameter (a known gap: the generated C++ does not compile) | Pass a variable: `Node none = null; new C(none)` |
 
 A `[weak]` parameter does not match a native virtual method with a strong handle parameter. The override then gives the usual "hides" error.
+
+### Custom handles
+
+A host can use its own smart pointer, for example an intrusive pointer of an engine. The stub gives the handle template and the weak template:
+
+```
+[native, handle("Urho3D::SharedPtr<$T>"), weak_handle("Urho3D::WeakPtr<$T>")] class Urho3D.RefCounted;
+```
+
+- The rule is for the class and for all its subclasses. A script class with such a native base uses the same handle.
+- `new T(args)` gives `H(new T(args))`. The handle must take the ownership of a new raw pointer, as an intrusive pointer does.
+- `weak_handle` is valid on a stub with a `handle` other than `"$T*"`, and on `class *` with a `default_handle`. The template must hold `$T`.
+- A read of a `[weak]` value calls `lock()` or `Lock()` of the weak pointer.
+- The handle needs `operator->`, `operator*` and a test against `nullptr`. The raw pointer comes from `get()` or `Get()`.
+- For a template of the form `Name<$T>`, the module header specializes `hot::is_handle`. For another form, the host specializes `hot::is_handle` in a header that the script includes.
+
+With a module attribute `std` other than `std`, a script class without a native base uses `$std::shared_ptr`. Then `new` makes the object and the control block in two blocks. `this` as a handle in such a class is not supported: `hot::PlainObject` has `std::enable_shared_from_this`.
 
 ## References and pointers
 

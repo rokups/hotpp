@@ -397,7 +397,7 @@ HOT_HIDDEN Shell* shell_of(T& v, const char* cls)
 template <class Shell, class H, std::enable_if_t<detail::has_get_v<H>, int> = 0>
 HOT_HIDDEN Shell* shell_of(const H& h, const char* cls)
 {
-    return shell_of<Shell>(h.get(), cls);
+    return shell_of<Shell>(detail::get_raw(h), cls);
 }
 
 // ---- "is" and "as" (design 7.7)
@@ -424,7 +424,7 @@ template <class T> HOT_HIDDEN bool is_script(T* p, const char* cls)
 template <class H, std::enable_if_t<detail::has_get_v<H>, int> = 0>
 HOT_HIDDEN bool is_script(const H& h, const char* cls)
 {
-    return is_script(h.get(), cls);
+    return is_script(detail::get_raw(h), cls);
 }
 template <class T, std::enable_if_t<!std::is_pointer_v<T> && !detail::has_get_v<T>, int> = 0>
 HOT_HIDDEN bool is_script(T& v, const char* cls)
@@ -444,13 +444,13 @@ template <class Shell, class T> HOT_HIDDEN Shell* as_script(T* p, const char* cl
 template <class Shell, class U>
 HOT_HIDDEN std::shared_ptr<Shell> as_script(const std::shared_ptr<U>& h, const char* cls)
 {
-    Shell* s = as_script<Shell>(h.get(), cls);
+    Shell* s = as_script<Shell>(detail::get_raw(h), cls);
     return s ? std::shared_ptr<Shell>(h, s) : nullptr;
 }
 template <class Shell, class H, std::enable_if_t<detail::has_get_v<H>, int> = 0>
 HOT_HIDDEN Shell* as_script(const H& h, const char* cls)
 {
-    return as_script<Shell>(h.get(), cls);
+    return as_script<Shell>(detail::get_raw(h), cls);
 }
 template <class Shell, class T, std::enable_if_t<!std::is_pointer_v<T> && !detail::has_get_v<T>, int> = 0>
 HOT_HIDDEN Shell* as_script(T& v, const char* cls)
@@ -465,7 +465,7 @@ template <class T, class U> HOT_HIDDEN bool is_native(U* p)
 }
 template <class T, class H, std::enable_if_t<detail::has_get_v<H>, int> = 0> HOT_HIDDEN bool is_native(const H& h)
 {
-    return is_native<T>(h.get());
+    return is_native<T>(detail::get_raw(h));
 }
 template <class T, class U, std::enable_if_t<!std::is_pointer_v<U> && !detail::has_get_v<U>, int> = 0>
 HOT_HIDDEN bool is_native(U& v)
@@ -482,7 +482,7 @@ template <class T, class U> HOT_HIDDEN std::shared_ptr<T> as_native(const std::s
 }
 template <class T, class H, std::enable_if_t<detail::has_get_v<H>, int> = 0> HOT_HIDDEN T* as_native(const H& h)
 {
-    return as_native<T>(h.get());
+    return as_native<T>(detail::get_raw(h));
 }
 template <class T, class U, std::enable_if_t<!std::is_pointer_v<U> && !detail::has_get_v<U>, int> = 0>
 HOT_HIDDEN T* as_native(U& v)

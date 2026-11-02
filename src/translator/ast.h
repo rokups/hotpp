@@ -549,6 +549,9 @@ struct Stub
     std::string name;
     bool is_native = false, is_value = false;
     std::string handle, default_handle;
+    // [weak_handle("T<$T>")]: the template of a "[weak]" declaration of the handle. Empty: the
+    // weak_ptr of a shared_ptr handle.
+    std::string weak_handle;
     std::string intrusive_add, intrusive_release;
     // "class : Base;": the rule is for the subclasses of Base only, and "name" is Base.
     bool derived = false;

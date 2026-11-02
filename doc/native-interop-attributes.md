@@ -36,6 +36,8 @@ A string in a stub can use `$std::` for the configured namespace:
 [native, default_handle("$std::shared_ptr<$T>")] class *;
 ```
 
+A host gives its preludes to the translator in `hotc::TranslateOptions::preludes`. A run-time host gives them in `hot::DefaultBackendOptions::preludes`, as a list of name and text.
+
 Plain `std::` in a stub string stays as you write it. The names of `<type_traits>`, `size_t` and the C functions always use `std::`.
 
 The host must declare the namespace. For a test, `namespace mystd = std;` is enough. Use the same namespace in the C++ text that `libclang` reads.

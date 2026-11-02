@@ -16,9 +16,25 @@
 namespace hot
 {
 
-// A handle is a smart pointer. "is_handle<T>" is true for std::shared_ptr. A user can
-// specialize it for a custom smart pointer.
-template <class T> struct is_handle : std::false_type
+namespace detail
+{
+// A shared pointer of another standard library, such as "eastl::shared_ptr": it has
+// "element_type", "use_count()" and "operator->". A weak pointer has no "operator->".
+template <class T, class = void> struct is_shared_like : std::false_type
+{
+};
+template <class T>
+struct is_shared_like<T,
+    std::void_t<typename T::element_type, decltype(std::declval<const T&>().use_count()),
+        decltype(std::declval<const T&>().operator->())>> : std::true_type
+{
+};
+} // namespace detail
+
+// A handle is a smart pointer. "is_handle<T>" is true for std::shared_ptr and for a shared
+// pointer of the same form from another standard library. The module header specializes it for
+// the handle template "Name<$T>" of a stub. A user can specialize it for another smart pointer.
+template <class T> struct is_handle : detail::is_shared_like<T>
 {
 };
 template <class T> struct is_handle<std::shared_ptr<T>> : std::true_type
@@ -195,12 +211,24 @@ template <class H, class Src> HOT_HIDDEN H bind(Src&& s)
     }
 }
 
-// Reads a weak handle ("[weak] T x"). The result is the strong handle, or a null handle when
-// the object is gone. The template takes any weak pointer type with "lock()", so a custom
-// standard namespace (the module attribute "std") works too.
-template <class W> HOT_HIDDEN auto lock(const W& w) -> decltype(w.lock())
+namespace detail
+{
+template <class W> HOT_HIDDEN auto lock_weak(const W& w, int) -> decltype(w.lock())
 {
     return w.lock();
+}
+template <class W> HOT_HIDDEN auto lock_weak(const W& w, long) -> decltype(w.Lock())
+{
+    return w.Lock();
+}
+} // namespace detail
+
+// Reads a weak handle ("[weak] T x"). The result is the strong handle, or a null handle when
+// the object is gone. The template takes any weak pointer type with "lock()" or "Lock()". So a
+// custom standard namespace (the module attribute "std") and a "weak_handle" template work too.
+template <class W> HOT_HIDDEN auto lock(const W& w) -> decltype(detail::lock_weak(w, 0))
+{
+    return detail::lock_weak(w, 0);
 }
 
 } // namespace hot

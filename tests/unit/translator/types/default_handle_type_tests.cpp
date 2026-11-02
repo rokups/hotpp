@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <vector>
 
 using namespace type_model_test;
 
@@ -163,7 +164,7 @@ TEST(DefaultHandle, OtherAttributesOnStarAreAnError)
     Fixture f;
     f.add({stub("*", kShared)});
     ASSERT_EQ(f.diags.items.size(), 1u);
-    EXPECT_NE(f.diags.items[0].msg.find("only 'native' and 'default_handle'"), std::string::npos);
+    EXPECT_NE(f.diags.items[0].msg.find("only 'native', 'default_handle' and 'weak_handle'"), std::string::npos);
     ast::Stub s = stub("*");
     s.intrusive_add = "A";
     s.intrusive_release = "R";
@@ -206,4 +207,23 @@ TEST(DefaultHandle, StarWithoutDefaultHandleClearsTheFallback)
     with_classes(f);
     EXPECT_TRUE(f.diags.items.empty());
     EXPECT_EQ(f.model.lookup("Mesh").kind, Kind::Raw);
+}
+
+// "weak_handle" gives the storage of a "[weak]" declaration. It needs a handle template.
+TEST(DefaultHandle, WeakHandleSetsTheWeakStorage)
+{
+    Fixture f;
+    with_classes(f);
+    ast::Stub base = stub("Weapon", "Ref<$T>");
+    base.weak_handle = "WeakRef<$T>";
+    ast::Stub all = star("Own<$T>");
+    all.weak_handle = "WeakOwn<$T>";
+    ast::Stub bad = stub("Bad", "$T*");
+    bad.weak_handle = "WeakRef<$T>";
+    f.add({base, all, bad});
+    ASSERT_EQ(f.diags.items.size(), 1u);
+    EXPECT_NE(f.diags.items[0].msg.find("'weak_handle' needs a 'handle' template"), std::string::npos);
+    EXPECT_EQ(f.model.weak_storage("Weapon"), "WeakRef<Weapon>");
+    EXPECT_EQ(f.model.weak_storage("Mesh"), "WeakOwn<Mesh>");
+    EXPECT_EQ(f.model.custom_handle_templates(), (std::vector<std::string>{"Own", "Ref"}));
 }

@@ -29,6 +29,7 @@ struct TypeRule
 {
     Kind kind = Kind::Raw;
     std::string handle_tpl; // the handle template, "$T" is the class (Kind::Handle only)
+    std::string weak_tpl; // the template of a "[weak]" declaration (weak_handle), else empty
     std::string owner; // the name of the stub that matched (empty for Raw)
     std::string intrusive_add, intrusive_release; // the member names of an intrusive handle, else empty
     bool native = false; // the stub has the attribute [native]
@@ -58,6 +59,7 @@ public:
     // The namespace of the standard library names (module attribute std, std_ns.h). The text of a
     // stub with a plain "std::" matches the native text for this name only. The default is "std".
     void set_std_ns(std::string ns) { std_ns_ = std::move(ns); }
+    const std::string& std_ns() const { return std_ns_; }
 
     // The handle template of the stub "class *;" (empty: there is none).
     const std::string& default_handle() const { return default_handle_; }
@@ -139,6 +141,11 @@ public:
     // other type (a value, an intrusive handle, a raw type) gives an empty string.
     std::string weak_storage(const std::string& type) const;
 
+    // The handle templates of the stubs that have the plain form "Name<$T>" and are not
+    // "std::shared_ptr". The result is the qualified "Name" (the std placeholder expanded is not
+    // done). The module header specializes hot::is_handle for each one.
+    std::vector<std::string> custom_handle_templates() const;
+
     // The C++ type of a parameter: "const H&" for a handle, else storage().
     std::string param(const std::string& type) const;
 
@@ -204,6 +211,7 @@ private:
     BaseFn bases_;
     ClassFn classes_;
     std::string default_handle_;
+    std::string default_weak_; // the weak_handle of "class *"
     std::string std_ns_ = "std"; // see set_std_ns()
     struct ScriptClass
     {

@@ -383,6 +383,7 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     to.strict_borrowed = opt_.strict_borrowed;
     to.format_lib = format_lib_name();
     to.fs = opt_.fs;
+    to.preludes = opt_.preludes;
     // A missing file means the first generation. A fresh generation starts with no slots.
     if (mode == LoadMode::Reload)
         read_text(opt_.slots_file, to.slots_in);

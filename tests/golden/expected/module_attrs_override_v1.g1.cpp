@@ -230,21 +230,6 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
 #line 9 "module_attrs_override_v1.hot"
 }
 #line 233 "module_attrs_override_v1.hot.cpp"
-#line 9 "module_attrs_override_v1.hot"
-template <int = 0>
-#line 9 "module_attrs_override_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static other_std::shared_ptr<Counter_Shell> Counter__new_shared()
-#line 9 "module_attrs_override_v1.hot"
-{
-#line 9 "module_attrs_override_v1.hot"
-    auto __plan = Counter__plan();
-#line 9 "module_attrs_override_v1.hot"
-    auto __h = hot::make_shared_shell<Counter_Shell>(&Counter_record, typeid(Counter_SuperArgs).name(), &__plan.first);
-#line 9 "module_attrs_override_v1.hot"
-    return __h;
-#line 9 "module_attrs_override_v1.hot"
-}
-#line 248 "module_attrs_override_v1.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
@@ -272,7 +257,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 9 "module_attrs_override_v1.hot"
 }
-#line 276 "module_attrs_override_v1.hot.cpp"
+#line 261 "module_attrs_override_v1.hot.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 13 "module_attrs_override_v1.hot"
@@ -299,7 +284,7 @@ void CounterState_g1::Tick(float dt)
     HOT_TRACE_LINE(); __st->label = other_std::to_string(hot::deref(__st->history).size());
 #line 16 "module_attrs_override_v1.hot"
 }
-#line 303 "module_attrs_override_v1.hot.cpp"
+#line 288 "module_attrs_override_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

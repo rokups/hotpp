@@ -14,6 +14,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace hot
@@ -44,6 +45,9 @@ struct ClangFilesOptions
     // disk only. For each directory the backend asks this file system first and then the disk.
     // It must be thread safe (hot/vfs.h).
     std::shared_ptr<hot::FileSystem> fs;
+    // The preludes of the host (stub-only scripts), as name and text. The translator reads them
+    // before each script, in this order (hotc::TranslateOptions::preludes).
+    std::vector<std::pair<std::string, std::string>> preludes;
     // The import library of the host executable (Windows). Non-empty: the link of each module DLL
     // adds it, so the module reaches the HOT_EXPORT symbols of the host (hot/runtime/hidden.h).
     std::string host_import_library;
