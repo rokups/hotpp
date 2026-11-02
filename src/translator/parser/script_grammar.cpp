@@ -1050,17 +1050,23 @@ struct ClassAttrs
     std::vector<std::pair<const char*, std::string>> tags;
 };
 
+// The attributes of a stub, a class and a module attribute list, with the count of arguments.
+// hotc::class_attribute_names gives the names to the tools (hot-ls).
+struct ClassAttr
+{
+    const char* name;
+    int arity;
+};
+constexpr ClassAttr kClassAttrs[] = {{"native", 0}, {"value", 0}, {"self", 0}, {"checked_index", 0}, {"weak", 0},
+    {"attribute", 0}, {"handle", 1}, {"default_handle", 1}, {"weak_handle", 1}, {"alias", 1}, {"cpp_prelude", 1},
+    {"cpp_overrides", 1}, {"std", 1}, {"array", 1}, {"intrusive", 2}};
+
 // The expected count of arguments of a class attribute, or -1 for an unknown name.
 int class_attr_arity(const std::string& name)
 {
-    if (name == "native" || name == "value" || name == "self" || name == "checked_index" || name == "weak"
-        || name == "attribute")
-        return 0;
-    if (name == "handle" || name == "default_handle" || name == "weak_handle" || name == "alias" || name == "cpp_prelude" || name == "cpp_overrides" || name == "std"
-        || name == "array")
-        return 1;
-    if (name == "intrusive")
-        return 2;
+    for (const ClassAttr& a : kClassAttrs)
+        if (name == a.name)
+            return a.arity;
     return -1;
 }
 
@@ -1626,6 +1632,18 @@ struct file_p
 };
 
 } // namespace
+
+const std::vector<std::string>& class_attribute_names()
+{
+    static const std::vector<std::string> names = []
+    {
+        std::vector<std::string> r;
+        for (const ClassAttr& a : kClassAttrs)
+            r.push_back(a.name);
+        return r;
+    }();
+    return names;
+}
 
 ast::Script parse_script_array(std::string_view text, const LineMap& map, Diagnostics& diag,
     std::string_view host_array_tpl)

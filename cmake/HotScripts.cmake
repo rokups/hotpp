@@ -280,7 +280,7 @@ function(hot_add_scripts)
     set(HOT_SCRIPTS_${A_TARGET}_LIBRARIES ${outputs} PARENT_SCOPE)
     # The language server gets a script host with the same scripts, includes and flags.
     hot_script_host(NAME ${A_TARGET} SCRIPTS ${scripts}
-                    INCLUDES ${A_INCLUDES} FLAGS ${all_flags})
+                    INCLUDES ${A_INCLUDES} FLAGS ${all_flags} PRELUDES ${A_PRELUDES})
 endfunction()
 
 # hot_export_host: the Windows part of a host executable t with ENABLE_EXPORTS ON. The script
@@ -454,8 +454,10 @@ endfunction()
 # hot_script_host: describe a script host for the language server hot-ls.
 #
 #   hot_script_host(NAME name [TARGET target] [SCRIPT_DIRS dir...] [SCRIPTS file...]
-#                   [INCLUDES dir...] [FLAGS flag...])
+#                   [INCLUDES dir...] [FLAGS flag...] [PRELUDES file...])
 #
+# PRELUDES names the prelude files that the host gives to the translator at run time. hot-ls
+# gives them to each script of the host, so it knows the stubs and the attributes of the host.
 # The function writes the JSON file ${HOT_HOSTS_DIR}/<name>.json when CMake generates
 # the build system. It does not build anything. The language server reads the file.
 # The cache variable HOT_HOSTS_DIR defaults to ${CMAKE_SOURCE_DIR}/.cache/hot/hosts.
@@ -464,7 +466,7 @@ endfunction()
 # usage requirements of the linked libraries. The include dir of Hot++ (HOT_INCLUDE_DIR) is
 # always the first include dir. Then come the include dirs of the target, then INCLUDES. FLAGS
 # come after the options of the target. A UTILITY target has no such lists, so the function
-# skips them. A relative path in SCRIPT_DIRS, SCRIPTS or INCLUDES is relative to the current
+# skips them. A relative path in SCRIPT_DIRS, SCRIPTS, INCLUDES or PRELUDES is relative to the current
 # source directory.
 #
 # The defines, the options and the include dirs of the target can have any character that a
@@ -523,7 +525,7 @@ function(_hot_host_json_array out)
 endfunction()
 
 function(hot_script_host)
-    cmake_parse_arguments(A "" "NAME;TARGET" "SCRIPT_DIRS;SCRIPTS;INCLUDES;FLAGS" ${ARGN})
+    cmake_parse_arguments(A "" "NAME;TARGET" "SCRIPT_DIRS;SCRIPTS;INCLUDES;FLAGS;PRELUDES" ${ARGN})
     if(NOT A_NAME OR (NOT A_SCRIPT_DIRS AND NOT A_SCRIPTS))
         message(FATAL_ERROR "hot_script_host needs NAME and SCRIPT_DIRS or SCRIPTS")
     endif()
@@ -546,6 +548,7 @@ function(hot_script_host)
     _hot_host_json_array(j_scripts ${A_SCRIPTS})
     _hot_host_json_array(j_includes ${includes})
     _hot_host_json_array(j_flags ${A_FLAGS})
+    _hot_host_json_array(j_preludes ${A_PRELUDES})
 
     if(use_target)
         set(t ${A_TARGET})
@@ -590,6 +593,7 @@ function(hot_script_host)
     string(APPEND json "  \"scriptDirs\": ${j_dirs},\n")
     string(APPEND json "  \"scripts\": ${j_scripts},\n")
     string(APPEND json "  \"includeDirs\": ${j_includes},\n")
+    string(APPEND json "  \"preludes\": ${j_preludes},\n")
     string(APPEND json "  \"defines\": [],\n")
     if(use_target)
         string(APPEND json "  \"definesFile\": \"${e_name}.defines\",\n")

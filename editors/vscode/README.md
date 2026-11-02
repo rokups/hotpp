@@ -61,7 +61,8 @@ Put the server arguments in `hot.server.args`. For example:
 | `--compile-commands-dir dir` | The output dir of `hotc --compile-commands`. It starts the clangd background index. The server also reads the `-I`, `-isystem` and `-D` flags of the first entry. |
 | `--clangd-log file` | The stderr of clangd, with `--log=info`. |
 
-The client can also give `includeDirs`, `clangd` and `compileCommandsDir` in `initializationOptions`.
+The client can also give `includeDirs`, `clangd`, `compileCommandsDir` and `preludes` in `initializationOptions`.
+`preludes` is a list of prelude files for the scripts whose host has no `preludes`.
 The extension expands `${workspaceFolder}` in `hot.server.path` and in `hot.server.args`.
 It is the path of the first workspace folder. For example: `"-I", "${workspaceFolder}/include"`.
 

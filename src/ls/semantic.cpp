@@ -5,6 +5,7 @@
 #include "semantic.h"
 
 #include "builtin_types.h"
+#include "hot/hotc_lib.h"
 
 #include <algorithm>
 #include <map>
@@ -28,14 +29,22 @@ enum Type
     Comment
 };
 
-// The keywords of the script. The list follows the TextMate grammar in editors/vscode.
+// The keywords of the script. The list follows the TextMate grammar in editors/vscode. The
+// attribute names come from the translator, so a new attribute is a keyword too.
 const std::set<std::string>& keywords()
 {
-    static const std::set<std::string> k = {"if", "else", "while", "do", "for", "foreach", "in", "return", "break",
-        "continue", "switch", "case", "default", "is", "as", "new", "delete", "public", "private", "protected",
-        "override", "virtual", "const", "get", "set", "this", "base", "true", "false", "null", "try", "catch",
-        "finally", "throw", "var", "void", "class", "struct", "enum", "using", "native", "handle", "value",
-        "intrusive", "default_handle", "cpp_prelude", "self", "alias", "weak"};
+    static const std::set<std::string> k = []
+    {
+        std::set<std::string> r = {"if", "else", "while", "do", "for", "foreach", "in", "return", "break",
+            "continue", "switch", "case", "default", "is", "as", "new", "delete", "public", "private", "protected",
+            "override", "virtual", "const", "get", "set", "this", "base", "true", "false", "null", "try", "catch",
+            "finally", "throw", "var", "void", "class", "struct", "enum", "using"};
+        // "std", "array" and "attribute" stay names: a script uses them as a namespace or a variable.
+        for (const std::string& a : hotc::class_attribute_names())
+            if (a != "std" && a != "array" && a != "attribute")
+                r.insert(a);
+        return r;
+    }();
     return k;
 }
 

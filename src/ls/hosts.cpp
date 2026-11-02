@@ -201,6 +201,7 @@ void HostSet::load(const std::string& dir, bool require_cache)
         const std::string source_dir = get_string(j, "sourceDir");
         host->script_dirs = resolve_paths(source_dir, get_strings(j, "scriptDirs"), false);
         host->scripts = resolve_paths(source_dir, get_strings(j, "scripts"), false);
+        host->preludes = resolve_paths(source_dir, get_strings(j, "preludes"), false);
         // The first entry of "includeDirs" is the project dir. The dirs of the target (from the
         // side file) come next, then the other entries. Each relative path is relative to
         // "sourceDir". A repeated dir is dropped; the first one stays.

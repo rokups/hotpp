@@ -2264,3 +2264,48 @@ TEST(LanguageServerCpp, ClosingAScriptClearsItsDiagnostics)
     client.notify("textDocument/didClose", {{"textDocument", {{"uri", c.script_uri}}}});
     EXPECT_TRUE(CppScriptCase::diagnostics_of(client, c.script_uri)["params"]["diagnostics"].empty());
 }
+
+// ------------------------------------------------------------------ preludes
+
+// A script attribute that only a prelude declares. hot-ls knows it only with the prelude.
+TEST(LanguageServer, PreludeDeclaresAScriptAttribute)
+{
+    const std::string text = "[Tagged] class Marker { int n = 0; }\n";
+    {
+        Session s(false, text);
+        const json n = s.diagnostics([](const json& d) { return has_source(d, "hot"); });
+        ASSERT_FALSE(n.is_null());
+        EXPECT_NE(n.dump().find("unknown attribute 'Tagged'"), std::string::npos) << n.dump();
+    }
+    TempDir pre;
+    const std::string prelude = (pre.path() / "game.prelude.hot").string();
+    write_file(prelude, "[attribute] class Tagged;\n");
+    TempDir dir;
+    hot::ls::ServerOptions o = options(dir, false);
+    o.preludes = {prelude};
+    Session s(false, text, &o);
+    const json n = s.diagnostics([](const json&) { return true; });
+    ASSERT_FALSE(n.is_null());
+    EXPECT_FALSE(has_source(n["params"]["diagnostics"], "hot")) << n.dump();
+}
+
+// An open prelude file is a script. It does not get its own text as a prelude, so its stubs
+// are not duplicates. The new stub attributes are known.
+TEST(LanguageServer, OpenPreludeFileHasNoErrors)
+{
+    TempDir dir;
+    const std::string prelude = (dir.path() / "game.prelude.hot").string();
+    const std::string text = "[attribute] class Tagged;\n"
+                             "[native, handle(\"Ref<$T>\"), weak_handle(\"Weak<$T>\")] class Actor;\n"
+                             "[cpp_prelude(\"// $N\"), cpp_overrides(\"Tick\")] class : Actor;\n";
+    write_file(prelude, text);
+    hot::ls::ServerOptions o = options(dir, false);
+    o.preludes = {prelude};
+    LsClient client(o);
+    client.initialize(uri_of(dir.path().string()));
+    client.open(uri_of(prelude), text);
+    const json n = client.wait_notification("textDocument/publishDiagnostics",
+        [&](const json& p) { return p.value("uri", std::string()) == uri_of(prelude); });
+    ASSERT_FALSE(n.is_null());
+    EXPECT_FALSE(has_source(n["params"]["diagnostics"], "hot")) << n.dump();
+}

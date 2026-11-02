@@ -354,3 +354,20 @@ TEST_F(HostsTest, RefreshDropsHostWhenCacheVanishes)
 }
 
 } // namespace
+
+// "preludes" in a host file: a relative path is relative to "sourceDir".
+TEST_F(HostsTest, PreludesAreRelativeToSourceDir)
+{
+    const std::string build = make_build("a");
+    std::ofstream(hosts_dir / "a.json") << R"({"version":1,"name":"a","binaryDir":")" << build
+                                        << R"(","sourceDir":"/src","scriptDirs":["a"],)"
+                                        << R"("preludes":["p/game.prelude.hot","/abs/x.prelude.hot"]})";
+    HostSet set;
+    set.load(hosts_dir.string());
+    const auto h = set.match("/src/a/x.hot");
+    ASSERT_TRUE(h);
+    const std::vector<std::string> expected = {
+        std::filesystem::path("/src/p/game.prelude.hot").lexically_normal().string(),
+        std::filesystem::path("/abs/x.prelude.hot").lexically_normal().string()};
+    EXPECT_EQ(h->preludes, expected);
+}

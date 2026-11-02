@@ -398,6 +398,15 @@ private:
         o.resource_dir = e.resource_dir;
         o.std_version = e.std_version;
         o.format_lib = hot::format_lib_name();
+        // The preludes of the host, as at run time. A prelude file that is open is analyzed
+        // as a script, so it does not also get its own text as a prelude.
+        for (const std::string& p : e.preludes)
+        {
+            if (fs::path(p).lexically_normal() == fs::path(d.path).lexically_normal())
+                continue;
+            if (const auto text = read_file(p))
+                o.preludes.emplace_back(p, *text);
+        }
         return o;
     }
     // ---- hosts
@@ -406,6 +415,7 @@ private:
         std::vector<std::string> include_dirs, extra_flags;
         std::string resource_dir;
         std::string std_version; // the "std" of the host file (empty: the standard of the build)
+        std::vector<std::string> preludes; // the prelude files: of the host, else of the options
     };
     std::shared_ptr<const Host> host_of(const std::string& path) const
     {
@@ -457,7 +467,10 @@ private:
             e.include_dirs = host->include_dirs;
             e.extra_flags = host->cxx_flags();
             e.std_version = host->std_version;
+            e.preludes = host->preludes;
         }
+        if (e.preludes.empty())
+            e.preludes = opt_.preludes;
         e.include_dirs.insert(e.include_dirs.end(), opt_.include_dirs.begin(), opt_.include_dirs.end());
         e.extra_flags.insert(e.extra_flags.end(), opt_.extra_flags.begin(), opt_.extra_flags.end());
         e.resource_dir = host && !host->resource_dir.empty() ? host->resource_dir : opt_.resource_dir;
@@ -477,7 +490,7 @@ private:
         if (!a || !b)
             return false;
         return a->name == b->name && a->resource_dir == b->resource_dir && a->std_version == b->std_version
-            && a->include_dirs == b->include_dirs && a->cxx_flags() == b->cxx_flags();
+            && a->include_dirs == b->include_dirs && a->cxx_flags() == b->cxx_flags() && a->preludes == b->preludes;
     }
     void load_hosts();
     // Tells the client which host a document uses (window/logMessage, type Info).
@@ -899,6 +912,8 @@ json Server::on_initialize(const json& p)
             opt_.include_dirs.push_back(d.get<std::string>());
         if (o.contains("clangd"))
             opt_.clangd = o.value("clangd", opt_.clangd);
+        for (const json& f : o.value("preludes", json::array()))
+            opt_.preludes.push_back(f.get<std::string>());
         if (o.contains("hostsDir"))
             opt_.hosts_dir = o.value("hostsDir", std::string());
         if (o.contains("compileCommandsDir"))

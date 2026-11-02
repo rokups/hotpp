@@ -14,6 +14,8 @@
 // The include dirs have the order: the first entry of "includeDirs", the "includesFile" lines,
 // the other entries of "includeDirs". A repeated dir is dropped. A path with a newline
 // cannot be in a side file.
+// "preludes" lists the prelude files that the host gives to the translator before each script.
+// A relative prelude path is relative to "sourceDir". hot-ls reads the files for each analysis.
 // HostSet loads these files. match() finds the best host for a script path.
 #pragma once
 
@@ -30,6 +32,7 @@ struct Host
 {
     std::string name, binary_dir, compiler, std_version, resource_dir;
     std::vector<std::string> script_dirs, scripts, include_dirs, defines, flags;
+    std::vector<std::string> preludes; // the absolute paths of the prelude files of the host
 
     // The flags, then "-D<define>" for each define. The JSON file has no "-D" prefix.
     std::vector<std::string> cxx_flags() const;

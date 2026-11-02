@@ -300,6 +300,10 @@ std::string rewrite_clang_message(const std::string& message);
 // Uses a temporary session: each call parses the headers.
 TranslateResult translate(const TranslateOptions& options);
 
+// The names of the built-in attributes of a stub, a class definition and a module attribute list,
+// for example "native", "weak_handle" and "cpp_overrides". A script attribute tag is not in the list.
+const std::vector<std::string>& class_attribute_names();
+
 // The libclang arguments for the target of the parse: "-target", "--sysroot=" and, for a MinGW
 // triple, "-nostdinc++" and the "-isystem" folders of libstdc++. An empty target or sysroot uses
 // the default of the build (HOT_HOTC_TARGET, HOT_SCRIPT_SYSROOT). The translator uses the same
