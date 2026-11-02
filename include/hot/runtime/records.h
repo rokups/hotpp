@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
+#include <typeinfo>
 
 namespace hot
 {
@@ -31,6 +32,62 @@ template <class T> using typekey_t = typename typekey<T>::type;
 struct ShellBase;
 struct ShellCore;
 struct StateLayout;
+struct Instance;
+
+// The decayed type of a constructor parameter (design 7.3). It removes the reference and the
+// top-level const and volatile. A type alias is the same type, so it gives the same key.
+template <class P> using ctor_param_t = typekey_t<std::remove_reference_t<P>>;
+
+// The key type of a constructor signature. It is an empty class, so a parameter can be a
+// reference to an incomplete type. The key is typeid(CtorSignature<decayed parameters>).name().
+template <class... P> struct CtorSignature
+{
+};
+
+// The signature key of a constructor with the parameters "P". The key of the host arguments and
+// the key of the script constructor are equal when the decayed types are equal. Compare keys
+// with std::strcmp: a type_info address or hash_code can be different in two modules.
+template <class... P> inline const char* ctor_key()
+{
+    return typeid(CtorSignature<ctor_param_t<P>...>).name();
+}
+
+// Bit i is set when parameter i can change its argument: a "T&" or a "T&&" of a type that is not
+// const. Such a parameter does not accept a const argument of the host.
+template <class... P> constexpr uint64_t ctor_write_mask()
+{
+    uint64_t mask = 0, bit = 1;
+    ((mask |= (std::is_reference_v<P> && !std::is_const_v<std::remove_reference_t<P>>) ? bit : 0, bit <<= 1), ...);
+    return mask;
+}
+
+// Gives the argument "p" of a constructor thunk to a parameter of type "P". "p" points to an
+// object of type ctor_param_t<P>. A "T&&" parameter moves the object. A value parameter copies
+// it, or moves it when the type cannot be copied.
+template <class P> constexpr decltype(auto) ctor_arg(void* p)
+{
+    using D = ctor_param_t<P>;
+    D& v = *static_cast<D*>(p);
+    if constexpr (std::is_rvalue_reference_v<P>)
+        return static_cast<D&&>(v);
+    else if constexpr (std::is_lvalue_reference_v<P> || std::is_copy_constructible_v<D>)
+        return static_cast<D&>(v);
+    else
+        return static_cast<D&&>(v);
+}
+
+// One script constructor in the constructor table of a class (design 7.3).
+//  - key: ctor_key<parameters>(). It is unique in the table.
+//  - make: makes the object with the constructor. "args[i]" points to an object of type
+//    ctor_param_t of parameter i. The array has one entry for each parameter.
+//  - write_mask: ctor_write_mask<parameters>().
+// The table ends with an entry whose key is null.
+struct CtorEntry
+{
+    const char* key;
+    Instance (*make)(void** args);
+    uint64_t write_mask;
+};
 
 // An opaque state type. A slot holds a pointer to a member function of the script state. The
 // runtime stores it as a member of this type and casts it back at the call (shell.h).
@@ -155,6 +212,11 @@ struct ClassRecord
     // order, ending with nullptr. Null: no attribute. The text lives in the module of the record.
     // A commit copies the pointer into the canonical record.
     const char* const* attributes = nullptr;
+    // The constructor table of the class: one entry for each script constructor, ending with
+    // a null key. Null: no table, for example a removed class. A commit copies it from the
+    // new record, so the constructors of the current generation run. ClassEntry::construct
+    // uses it.
+    const CtorEntry* ctors = nullptr;
 };
 
 } // namespace hot

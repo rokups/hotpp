@@ -21,7 +21,9 @@
 #include "hot/runtime/registry.h"
 
 #include <cstddef>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace hot
@@ -74,11 +76,25 @@ public:
     // World::Add. Throws std::runtime_error for an unknown class.
     Instance create(const std::string& class_name) const;
 
+    // The entry of the class, or null.
+    const ClassEntry* find(const std::string& class_name) const { return registry_.find(class_name); }
+
     // Like create. "Native" is the native base of the class, for example Actor. The object
-    // must have that base.
-    template <class Native> Native* create_as(const std::string& class_name) const
+    // must have that base. Without "args" the factory makes the object. With "args" the
+    // constructor that matches the decayed types of "args" makes it (ClassEntry::construct).
+    // Throws std::runtime_error for an unknown class, and std::invalid_argument when no
+    // constructor matches.
+    template <class Native, class... Args> Native* create_as(const std::string& class_name, Args&&... args) const
     {
-        return static_cast<Native*>(create(class_name).native);
+        if constexpr (sizeof...(Args) == 0)
+            return static_cast<Native*>(create(class_name).native);
+        else
+        {
+            const ClassEntry* e = find(class_name);
+            if (!e)
+                throw std::runtime_error("no AOT script class " + class_name);
+            return static_cast<Native*>(e->construct(std::forward<Args>(args)...).native);
+        }
     }
 
     // The stable function address for a native delegate (design 4.11), or null.

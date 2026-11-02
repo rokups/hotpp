@@ -449,6 +449,24 @@ HOT_NODEBUG static hot::Instance Lamp_create()
 }
 #line 451 "cpp_lambda_v1.cpp.cpp"
 
+#line 13 "cpp_lambda_v1.cpp"
+HOT_NODEBUG static hot::Instance Lamp__make_0([[maybe_unused]] void** __a)
+#line 13 "cpp_lambda_v1.cpp"
+{
+#line 13 "cpp_lambda_v1.cpp"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 13 "cpp_lambda_v1.cpp"
+    auto* p = static_cast<Lamp_Shell* (*)(bool)>(&Lamp__build)(false);
+#line 13 "cpp_lambda_v1.cpp"
+    return {static_cast<Actor*>(p), p};
+#line 13 "cpp_lambda_v1.cpp"
+}
+#line 465 "cpp_lambda_v1.cpp.cpp"
+
+static const hot::CtorEntry Lamp__constructors[] = {
+    {hot::ctor_key<>(), &Lamp__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 13 "cpp_lambda_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Lamp__ctor(Lamp_Shell* __self)
@@ -458,7 +476,7 @@ HOT_NODEBUG static hot::Instance Lamp_create()
     return state_of(__self)->ctor();
 #line 13 "cpp_lambda_v1.cpp"
 }
-#line 462 "cpp_lambda_v1.cpp.cpp"
+#line 480 "cpp_lambda_v1.cpp.cpp"
 #line 13 "cpp_lambda_v1.cpp"
 void LampState_g1::ctor()
 #line 13 "cpp_lambda_v1.cpp"
@@ -484,7 +502,7 @@ void LampState_g1::ctor()
     
 #line 17 "cpp_lambda_v1.cpp"
 }
-#line 488 "cpp_lambda_v1.cpp.cpp"
+#line 506 "cpp_lambda_v1.cpp.cpp"
 
 #line 19 "cpp_lambda_v1.cpp"
 void LampState_g1::Tick(float dt)
@@ -537,7 +555,7 @@ void LampState_g1::Tick(float dt)
     
 #line 49 "cpp_lambda_v1.cpp"
 }
-#line 541 "cpp_lambda_v1.cpp.cpp"
+#line 559 "cpp_lambda_v1.cpp.cpp"
 
 #line 51 "cpp_lambda_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Lamp__bump(Lamp_Shell* __self, int n)
@@ -547,7 +565,7 @@ void LampState_g1::Tick(float dt)
     return state_of(__self)->bump(std::forward<int>(n));
 #line 51 "cpp_lambda_v1.cpp"
 }
-#line 551 "cpp_lambda_v1.cpp.cpp"
+#line 569 "cpp_lambda_v1.cpp.cpp"
 #line 51 "cpp_lambda_v1.cpp"
 void LampState_g1::bump(int n)
 #line 51 "cpp_lambda_v1.cpp"
@@ -570,7 +588,7 @@ void LampState_g1::bump(int n)
  count += n; 
 #line 51 "cpp_lambda_v1.cpp"
 }
-#line 574 "cpp_lambda_v1.cpp.cpp"
+#line 592 "cpp_lambda_v1.cpp.cpp"
 
 #line 52 "cpp_lambda_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static bool Lamp__self_is_set(Lamp_Shell* __self, Actor * a)
@@ -580,7 +598,7 @@ void LampState_g1::bump(int n)
     return state_of(__self)->self_is_set(std::forward<Actor *>(a));
 #line 52 "cpp_lambda_v1.cpp"
 }
-#line 584 "cpp_lambda_v1.cpp.cpp"
+#line 602 "cpp_lambda_v1.cpp.cpp"
 #line 52 "cpp_lambda_v1.cpp"
 bool LampState_g1::self_is_set(Actor * a)
 #line 52 "cpp_lambda_v1.cpp"
@@ -603,7 +621,7 @@ bool LampState_g1::self_is_set(Actor * a)
  return a != nullptr; 
 #line 52 "cpp_lambda_v1.cpp"
 }
-#line 607 "cpp_lambda_v1.cpp.cpp"
+#line 625 "cpp_lambda_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -611,6 +629,7 @@ extern "C" void script_register(hot::Registry& reg)
     reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Lamp_record, &Lamp_create);
     Lamp_record.construct_keys = Lamp__construct_keys;
+    Lamp_record.ctors = Lamp__constructors;
     reg.add_thunk("Lamp::bump", reinterpret_cast<void*>(&Lamp__bump__thunk));
     reg.add_thunk("Lamp::self_is_set", reinterpret_cast<void*>(&Lamp__self_is_set__thunk));
 }

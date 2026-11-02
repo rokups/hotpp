@@ -410,6 +410,24 @@ HOT_NODEBUG static hot::Instance Counter_create()
 }
 #line 412 "cpp_static_v2.cpp.cpp"
 
+#line 12 "cpp_static_v2.cpp"
+HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
+#line 12 "cpp_static_v2.cpp"
+{
+#line 12 "cpp_static_v2.cpp"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 12 "cpp_static_v2.cpp"
+    auto* p = static_cast<Counter_Shell* (*)(bool)>(&Counter__build)(false);
+#line 12 "cpp_static_v2.cpp"
+    return {static_cast<Actor*>(p), p};
+#line 12 "cpp_static_v2.cpp"
+}
+#line 426 "cpp_static_v2.cpp.cpp"
+
+static const hot::CtorEntry Counter__constructors[] = {
+    {hot::ctor_key<>(), &Counter__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 12 "cpp_static_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Counter__ctor(Counter_Shell* __self)
@@ -419,7 +437,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return state_of(__self)->ctor();
 #line 12 "cpp_static_v2.cpp"
 }
-#line 423 "cpp_static_v2.cpp.cpp"
+#line 441 "cpp_static_v2.cpp.cpp"
 #line 12 "cpp_static_v2.cpp"
 void CounterState_g2::ctor()
 #line 12 "cpp_static_v2.cpp"
@@ -442,7 +460,7 @@ void CounterState_g2::ctor()
 
 #line 12 "cpp_static_v2.cpp"
 }
-#line 446 "cpp_static_v2.cpp.cpp"
+#line 464 "cpp_static_v2.cpp.cpp"
 
 #line 14 "cpp_static_v2.cpp"
 void CounterState_g2::Tick(float dt)
@@ -473,7 +491,7 @@ void CounterState_g2::Tick(float dt)
     
 #line 22 "cpp_static_v2.cpp"
 }
-#line 477 "cpp_static_v2.cpp.cpp"
+#line 495 "cpp_static_v2.cpp.cpp"
 
 #line 24 "cpp_static_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self)
@@ -483,7 +501,7 @@ void CounterState_g2::Tick(float dt)
     return state_of(__self)->Peek();
 #line 24 "cpp_static_v2.cpp"
 }
-#line 487 "cpp_static_v2.cpp.cpp"
+#line 505 "cpp_static_v2.cpp.cpp"
 #line 24 "cpp_static_v2.cpp"
 int CounterState_g2::Peek()
 #line 24 "cpp_static_v2.cpp"
@@ -509,18 +527,18 @@ int CounterState_g2::Peek()
     
 #line 28 "cpp_static_v2.cpp"
 }
-#line 513 "cpp_static_v2.cpp.cpp"
+#line 531 "cpp_static_v2.cpp.cpp"
 
 
 #line 30 "cpp_static_v2.cpp"
 int Counter__s_scale(int v) { return v * Counter__s_kFactor; }
 
-#line 519 "cpp_static_v2.cpp.cpp"
+#line 537 "cpp_static_v2.cpp.cpp"
 
 #line 33 "cpp_static_v2.cpp"
 int Counter__s_plus(int a, int b) { return a + b; }
 
-#line 524 "cpp_static_v2.cpp.cpp"
+#line 542 "cpp_static_v2.cpp.cpp"
 
 #line 50 "cpp_static_v2.cpp"
 int tally()
@@ -528,11 +546,12 @@ int tally()
     return Counter__s_scale(static_cast<int>(hot_mod()->Counter__s_count)) + hot_mod()->Counter__s_hits;
 }
 
-#line 532 "cpp_static_v2.cpp.cpp"
+#line 550 "cpp_static_v2.cpp.cpp"
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);
     reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Counter_record, &Counter_create);
     Counter_record.construct_keys = Counter__construct_keys;
+    Counter_record.ctors = Counter__constructors;
 }

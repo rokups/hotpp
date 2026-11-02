@@ -422,6 +422,20 @@ HOT_NODEBUG static hot::Instance Holder_create()
 }
 #line 424 "handle_override_v1.hot.cpp"
 
+#line 11 "handle_override_v1.hot"
+HOT_NODEBUG static hot::Instance Holder__make_0([[maybe_unused]] void** __a)
+#line 11 "handle_override_v1.hot"
+{
+#line 11 "handle_override_v1.hot"
+    return Holder_create();
+#line 11 "handle_override_v1.hot"
+}
+#line 434 "handle_override_v1.hot.cpp"
+
+static const hot::CtorEntry Holder__constructors[] = {
+    {hot::ctor_key<>(), &Holder__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 17 "handle_override_v1.hot"
 int HolderState_g1::WearRaw(Charm* __c)
@@ -451,7 +465,7 @@ int HolderState_g1::WearRaw(Charm* __c)
     HOT_TRACE_LINE(); return 1;
 #line 21 "handle_override_v1.hot"
 }
-#line 455 "handle_override_v1.hot.cpp"
+#line 469 "handle_override_v1.hot.cpp"
 
 #line 23 "handle_override_v1.hot"
 int HolderState_g1::WearRef(const Charm& __c)
@@ -479,7 +493,7 @@ int HolderState_g1::WearRef(const Charm& __c)
     HOT_TRACE_LINE(); return 2;
 #line 26 "handle_override_v1.hot"
 }
-#line 483 "handle_override_v1.hot.cpp"
+#line 497 "handle_override_v1.hot.cpp"
 
 #line 28 "handle_override_v1.hot"
 int HolderState_g1::WearShared(std::shared_ptr<Charm> __c)
@@ -507,7 +521,7 @@ int HolderState_g1::WearShared(std::shared_ptr<Charm> __c)
     HOT_TRACE_LINE(); return 3;
 #line 31 "handle_override_v1.hot"
 }
-#line 511 "handle_override_v1.hot.cpp"
+#line 525 "handle_override_v1.hot.cpp"
 
 #line 33 "handle_override_v1.hot"
 int HolderState_g1::WearBlade(Blade* __b)
@@ -535,7 +549,7 @@ int HolderState_g1::WearBlade(Blade* __b)
     HOT_TRACE_LINE(); return 5;
 #line 36 "handle_override_v1.hot"
 }
-#line 539 "handle_override_v1.hot.cpp"
+#line 553 "handle_override_v1.hot.cpp"
 
 #line 39 "handle_override_v1.hot"
 std::shared_ptr<Charm> HolderState_g1::Spawn()
@@ -559,7 +573,7 @@ std::shared_ptr<Charm> HolderState_g1::Spawn()
     HOT_TRACE_LINE(); return __st->last;
 #line 41 "handle_override_v1.hot"
 }
-#line 563 "handle_override_v1.hot.cpp"
+#line 577 "handle_override_v1.hot.cpp"
 
 #line 43 "handle_override_v1.hot"
 std::shared_ptr<Charm> HolderState_g1::Make(int32_t power)
@@ -587,7 +601,7 @@ std::shared_ptr<Charm> HolderState_g1::Make(int32_t power)
     HOT_TRACE_LINE(); return c;
 #line 47 "handle_override_v1.hot"
 }
-#line 591 "handle_override_v1.hot.cpp"
+#line 605 "handle_override_v1.hot.cpp"
 
 #line 49 "handle_override_v1.hot"
 int HolderState_g1::WearItem(Item* __i)
@@ -615,11 +629,12 @@ int HolderState_g1::WearItem(Item* __i)
     HOT_TRACE_LINE(); return 4;
 #line 52 "handle_override_v1.hot"
 }
-#line 619 "handle_override_v1.hot.cpp"
+#line 633 "handle_override_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);
     reg.add(&Holder_record, &Holder_create);
     Holder_record.construct_keys = Holder__construct_keys;
+    Holder_record.ctors = Holder__constructors;
 }

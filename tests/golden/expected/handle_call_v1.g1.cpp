@@ -494,6 +494,20 @@ HOT_NODEBUG static hot::Instance Caller_create()
 }
 #line 496 "handle_call_v1.hot.cpp"
 
+#line 10 "handle_call_v1.hot"
+HOT_NODEBUG static hot::Instance Caller__make_0([[maybe_unused]] void** __a)
+#line 10 "handle_call_v1.hot"
+{
+#line 10 "handle_call_v1.hot"
+    return Caller_create();
+#line 10 "handle_call_v1.hot"
+}
+#line 506 "handle_call_v1.hot.cpp"
+
+static const hot::CtorEntry Caller__constructors[] = {
+    {hot::ctor_key<>(), &Caller__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 13 "handle_call_v1.hot"
 int CallerState_g1::WearRaw(Charm* __c)
@@ -521,7 +535,7 @@ int CallerState_g1::WearRaw(Charm* __c)
     HOT_TRACE_LINE(); return 1;
 #line 16 "handle_call_v1.hot"
 }
-#line 525 "handle_call_v1.hot.cpp"
+#line 539 "handle_call_v1.hot.cpp"
 
 #line 19 "handle_call_v1.hot"
 int CallerState_g1::WearBlade(Blade* __b)
@@ -587,11 +601,12 @@ int CallerState_g1::WearBlade(Blade* __b)
     HOT_TRACE_LINE(); return Mixed(hot::star(local));
 #line 41 "handle_call_v1.hot"
 }
-#line 591 "handle_call_v1.hot.cpp"
+#line 605 "handle_call_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);
     reg.add(&Caller_record, &Caller_create);
     Caller_record.construct_keys = Caller__construct_keys;
+    Caller_record.ctors = Caller__constructors;
 }

@@ -469,6 +469,24 @@ HOT_NODEBUG static hot::Instance Fighter_create()
 }
 #line 471 "aot_demo.hot.cpp"
 
+#line 17 "aot_demo.hot"
+HOT_NODEBUG static hot::Instance Fighter__make_0([[maybe_unused]] void** __a)
+#line 17 "aot_demo.hot"
+{
+#line 17 "aot_demo.hot"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 17 "aot_demo.hot"
+    auto* p = static_cast<Fighter_Shell* (*)(bool, int32_t)>(&Fighter__build)(false, hot::ctor_arg<int32_t>(__a[0]));
+#line 17 "aot_demo.hot"
+    return {static_cast<Actor*>(p), p};
+#line 17 "aot_demo.hot"
+}
+#line 485 "aot_demo.hot.cpp"
+
+static const hot::CtorEntry Fighter__constructors[] = {
+    {hot::ctor_key<int32_t>(), &Fighter__make_0, hot::ctor_write_mask<int32_t>()},
+    {nullptr, nullptr, 0}};
+
 
 // ---------------------------------------------------------------- class Veteran
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -496,7 +514,7 @@ struct Veteran_Shell final : Fighter_Shell {
         hot::init_state(this, &Veteran_record);
 #line 43 "aot_demo.hot"
     }
-#line 500 "aot_demo.hot.cpp"
+#line 518 "aot_demo.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -513,10 +531,10 @@ struct VeteranState_g1 : FighterState_g1 {
 
 #line 44 "aot_demo.hot"
 static void Veteran__init_rage(void*, void* f) { using T = int32_t; new (f) T(3); }
-#line 517 "aot_demo.hot.cpp"
+#line 535 "aot_demo.hot.cpp"
 #line 45 "aot_demo.hot"
 static void Veteran__init_parent_power(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 520 "aot_demo.hot.cpp"
+#line 538 "aot_demo.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -580,7 +598,7 @@ HOT_HIDDEN static void Veteran__ctor_chain(Veteran_Shell* __self, [[maybe_unused
     Veteran__ctor(__self, start, r);
 #line 47 "aot_demo.hot"
 }
-#line 584 "aot_demo.hot.cpp"
+#line 602 "aot_demo.hot.cpp"
 using Veteran_SuperArgs = decltype(Veteran__plan(std::declval<int32_t>(), std::declval<int32_t>()).first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -605,7 +623,7 @@ HOT_NODEBUG static hot::ShellBase* Veteran__construct(void* mem, const char* key
     return nullptr;
 #line 43 "aot_demo.hot"
 }
-#line 609 "aot_demo.hot.cpp"
+#line 627 "aot_demo.hot.cpp"
 
 static const char* const Veteran__construct_keys[] = {typeid(Veteran_SuperArgs).name(), nullptr};
 
@@ -633,7 +651,7 @@ HOT_HIDDEN static Veteran_Shell* Veteran__build([[maybe_unused]] bool __note, in
     return __self;
 #line 47 "aot_demo.hot"
 }
-#line 637 "aot_demo.hot.cpp"
+#line 655 "aot_demo.hot.cpp"
 #line 47 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static Veteran_Shell* Veteran__new(int32_t start, int32_t r)
 #line 47 "aot_demo.hot"
@@ -642,7 +660,7 @@ HOT_HIDDEN static Veteran_Shell* Veteran__build([[maybe_unused]] bool __note, in
     return Veteran__build(true, start, r);
 #line 47 "aot_demo.hot"
 }
-#line 646 "aot_demo.hot.cpp"
+#line 664 "aot_demo.hot.cpp"
 #line 47 "aot_demo.hot"
 template <int = 0>
 #line 47 "aot_demo.hot"
@@ -659,7 +677,7 @@ template <int = 0>
     return __h;
 #line 47 "aot_demo.hot"
 }
-#line 663 "aot_demo.hot.cpp"
+#line 681 "aot_demo.hot.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -671,7 +689,7 @@ HOT_NODEBUG static hot::ShellCore* Veteran__new_default()
     return Veteran__build(false, std::decay_t<int32_t>(), std::decay_t<int32_t>());
 #line 47 "aot_demo.hot"
 }
-#line 675 "aot_demo.hot.cpp"
+#line 693 "aot_demo.hot.cpp"
 
 #line 51 "aot_demo.hot"
 static void Veteran__dtor_slot(hot::ShellCore* s)
@@ -683,7 +701,7 @@ static void Veteran__dtor_slot(hot::ShellCore* s)
     Fighter__dtor_slot(s);
 #line 51 "aot_demo.hot"
 }
-#line 687 "aot_demo.hot.cpp"
+#line 705 "aot_demo.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -697,7 +715,7 @@ static int32_t Veteran__Attack__thunk(Actor* __a)
     return hot::call<int32_t(Actor*)>(__self, Veteran_SLOT_Attack);
 #line 57 "aot_demo.hot"
 }
-#line 701 "aot_demo.hot.cpp"
+#line 719 "aot_demo.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Veteran_slots[Veteran_SLOT_COUNT] = {
@@ -746,7 +764,25 @@ HOT_NODEBUG static hot::Instance Veteran_create()
     return {static_cast<Actor*>(p), p};
 #line 43 "aot_demo.hot"
 }
-#line 750 "aot_demo.hot.cpp"
+#line 768 "aot_demo.hot.cpp"
+
+#line 47 "aot_demo.hot"
+HOT_NODEBUG static hot::Instance Veteran__make_0([[maybe_unused]] void** __a)
+#line 47 "aot_demo.hot"
+{
+#line 47 "aot_demo.hot"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 47 "aot_demo.hot"
+    auto* p = static_cast<Veteran_Shell* (*)(bool, int32_t, int32_t)>(&Veteran__build)(false, hot::ctor_arg<int32_t>(__a[0]), hot::ctor_arg<int32_t>(__a[1]));
+#line 47 "aot_demo.hot"
+    return {static_cast<Actor*>(p), p};
+#line 47 "aot_demo.hot"
+}
+#line 782 "aot_demo.hot.cpp"
+
+static const hot::CtorEntry Veteran__constructors[] = {
+    {hot::ctor_key<int32_t, int32_t>(), &Veteran__make_0, hot::ctor_write_mask<int32_t, int32_t>()},
+    {nullptr, nullptr, 0}};
 
 
 // ---------------------------------------------------------------- class Spawner
@@ -774,7 +810,7 @@ struct Spawner_Shell final : Actor, hot::ShellBase {
     }
 #line 66 "aot_demo.hot"
     ~Spawner_Shell() override { hot::destroy_state(this); }
-#line 778 "aot_demo.hot.cpp"
+#line 814 "aot_demo.hot.cpp"
 #line 66 "aot_demo.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 66 "aot_demo.hot"
@@ -783,7 +819,7 @@ struct Spawner_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 66 "aot_demo.hot"
     }
-#line 787 "aot_demo.hot.cpp"
+#line 823 "aot_demo.hot.cpp"
 #line 66 "aot_demo.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 66 "aot_demo.hot"
@@ -792,7 +828,7 @@ struct Spawner_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 66 "aot_demo.hot"
     }
-#line 796 "aot_demo.hot.cpp"
+#line 832 "aot_demo.hot.cpp"
 
 #line 66 "aot_demo.hot"
     void Tick(float a0) override
@@ -802,7 +838,7 @@ struct Spawner_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Spawner_SLOT_Tick, a0);
 #line 66 "aot_demo.hot"
     }
-#line 806 "aot_demo.hot.cpp"
+#line 842 "aot_demo.hot.cpp"
 
 #line 66 "aot_demo.hot"
     void TakeDamage(float a0) override
@@ -812,7 +848,7 @@ struct Spawner_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Spawner_SLOT_TakeDamage_f, a0);
 #line 66 "aot_demo.hot"
     }
-#line 816 "aot_demo.hot.cpp"
+#line 852 "aot_demo.hot.cpp"
 
 #line 66 "aot_demo.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -822,7 +858,7 @@ struct Spawner_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, Spawner_SLOT_TakeDamage_Af, a0, a1);
 #line 66 "aot_demo.hot"
     }
-#line 826 "aot_demo.hot.cpp"
+#line 862 "aot_demo.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -844,7 +880,7 @@ struct SpawnerState_g1 {
         return static_cast<Spawner_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 66 "aot_demo.hot"
     }
-#line 848 "aot_demo.hot.cpp"
+#line 884 "aot_demo.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 66 "aot_demo.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -854,21 +890,21 @@ struct SpawnerState_g1 {
         return static_cast<Spawner_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 66 "aot_demo.hot"
     }
-#line 858 "aot_demo.hot.cpp"
+#line 894 "aot_demo.hot.cpp"
 };
 
 #line 67 "aot_demo.hot"
 static void Spawner__init_kid(void*, void* f) { using T = std::shared_ptr<Fighter>; new (f) T(nullptr); }
-#line 863 "aot_demo.hot.cpp"
+#line 899 "aot_demo.hot.cpp"
 #line 68 "aot_demo.hot"
 static void Spawner__init_power(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 866 "aot_demo.hot.cpp"
+#line 902 "aot_demo.hot.cpp"
 #line 69 "aot_demo.hot"
 static void Spawner__init_attack(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 869 "aot_demo.hot.cpp"
+#line 905 "aot_demo.hot.cpp"
 #line 70 "aot_demo.hot"
 static void Spawner__init_is_veteran(void*, void* f) { using T = bool; new (f) T(false); }
-#line 872 "aot_demo.hot.cpp"
+#line 908 "aot_demo.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -917,7 +953,7 @@ HOT_HIDDEN static auto Spawner__plan()
     return std::make_pair(Spawner__super_args(), std::tuple<>());
 #line 66 "aot_demo.hot"
 }
-#line 921 "aot_demo.hot.cpp"
+#line 957 "aot_demo.hot.cpp"
 using Spawner_SuperArgs = decltype(Spawner__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -942,7 +978,7 @@ HOT_NODEBUG static hot::ShellBase* Spawner__construct(void* mem, const char* key
     return nullptr;
 #line 66 "aot_demo.hot"
 }
-#line 946 "aot_demo.hot.cpp"
+#line 982 "aot_demo.hot.cpp"
 
 static const char* const Spawner__construct_keys[] = {typeid(Spawner_SuperArgs).name(), nullptr};
 
@@ -958,7 +994,7 @@ HOT_HIDDEN static Spawner_Shell* Spawner__build([[maybe_unused]] bool __note)
     return __self;
 #line 66 "aot_demo.hot"
 }
-#line 962 "aot_demo.hot.cpp"
+#line 998 "aot_demo.hot.cpp"
 #line 66 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static Spawner_Shell* Spawner__new()
 #line 66 "aot_demo.hot"
@@ -967,7 +1003,7 @@ HOT_HIDDEN static Spawner_Shell* Spawner__build([[maybe_unused]] bool __note)
     return Spawner__build(true);
 #line 66 "aot_demo.hot"
 }
-#line 971 "aot_demo.hot.cpp"
+#line 1007 "aot_demo.hot.cpp"
 #line 66 "aot_demo.hot"
 template <int = 0>
 #line 66 "aot_demo.hot"
@@ -982,7 +1018,7 @@ template <int = 0>
     return __h;
 #line 66 "aot_demo.hot"
 }
-#line 986 "aot_demo.hot.cpp"
+#line 1022 "aot_demo.hot.cpp"
 
 #line 72 "aot_demo.hot"
 static void Spawner__dtor_slot(hot::ShellCore* s)
@@ -992,7 +1028,7 @@ static void Spawner__dtor_slot(hot::ShellCore* s)
     Spawner__dtor(static_cast<Spawner_Shell*>(s));
 #line 72 "aot_demo.hot"
 }
-#line 996 "aot_demo.hot.cpp"
+#line 1032 "aot_demo.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Spawner_slots[Spawner_SLOT_COUNT] = {
@@ -1020,7 +1056,21 @@ HOT_NODEBUG static hot::Instance Spawner_create()
     return {static_cast<Actor*>(p), p};
 #line 66 "aot_demo.hot"
 }
-#line 1024 "aot_demo.hot.cpp"
+#line 1060 "aot_demo.hot.cpp"
+
+#line 66 "aot_demo.hot"
+HOT_NODEBUG static hot::Instance Spawner__make_0([[maybe_unused]] void** __a)
+#line 66 "aot_demo.hot"
+{
+#line 66 "aot_demo.hot"
+    return Spawner_create();
+#line 66 "aot_demo.hot"
+}
+#line 1070 "aot_demo.hot.cpp"
+
+static const hot::CtorEntry Spawner__constructors[] = {
+    {hot::ctor_key<>(), &Spawner__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
 
 // ---------------------------------------------------------------- function bodies
 #line 17 "aot_demo.hot"
@@ -1031,7 +1081,7 @@ HOT_NODEBUG static hot::Instance Spawner_create()
     return state_of(__self)->ctor(std::forward<int32_t>(start));
 #line 17 "aot_demo.hot"
 }
-#line 1035 "aot_demo.hot.cpp"
+#line 1085 "aot_demo.hot.cpp"
 #line 17 "aot_demo.hot"
 void FighterState_g1::ctor(int32_t start)
 #line 17 "aot_demo.hot"
@@ -1054,7 +1104,7 @@ void FighterState_g1::ctor(int32_t start)
     HOT_TRACE_LINE(); __st->hp = start + 100;
 #line 19 "aot_demo.hot"
 }
-#line 1058 "aot_demo.hot.cpp"
+#line 1108 "aot_demo.hot.cpp"
 
 #line 21 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static void Fighter__dtor(Fighter_Shell* __self)
@@ -1064,7 +1114,7 @@ void FighterState_g1::ctor(int32_t start)
     return state_of(__self)->dtor();
 #line 21 "aot_demo.hot"
 }
-#line 1068 "aot_demo.hot.cpp"
+#line 1118 "aot_demo.hot.cpp"
 #line 21 "aot_demo.hot"
 void FighterState_g1::dtor()
 #line 21 "aot_demo.hot"
@@ -1089,7 +1139,7 @@ void FighterState_g1::dtor()
     Fighter__get_Shield(__self));
 #line 24 "aot_demo.hot"
 }
-#line 1093 "aot_demo.hot.cpp"
+#line 1143 "aot_demo.hot.cpp"
 
 #line 26 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Fighter__Power(Fighter_Shell* __self)
@@ -1099,7 +1149,7 @@ void FighterState_g1::dtor()
     return state_of(__self)->Power();
 #line 26 "aot_demo.hot"
 }
-#line 1103 "aot_demo.hot.cpp"
+#line 1153 "aot_demo.hot.cpp"
 #line 26 "aot_demo.hot"
 int32_t FighterState_g1::Power()
 #line 26 "aot_demo.hot"
@@ -1122,7 +1172,7 @@ int32_t FighterState_g1::Power()
     HOT_TRACE_LINE(); return 1;
 #line 26 "aot_demo.hot"
 }
-#line 1126 "aot_demo.hot.cpp"
+#line 1176 "aot_demo.hot.cpp"
 
 #line 28 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Fighter__Attack(Fighter_Shell* __self)
@@ -1132,7 +1182,7 @@ int32_t FighterState_g1::Power()
     return state_of(__self)->Attack();
 #line 28 "aot_demo.hot"
 }
-#line 1136 "aot_demo.hot.cpp"
+#line 1186 "aot_demo.hot.cpp"
 #line 28 "aot_demo.hot"
 int32_t FighterState_g1::Attack()
 #line 28 "aot_demo.hot"
@@ -1155,7 +1205,7 @@ int32_t FighterState_g1::Attack()
     HOT_TRACE_LINE(); return Fighter__Power_virt(__self) * 10;
 #line 28 "aot_demo.hot"
 }
-#line 1159 "aot_demo.hot.cpp"
+#line 1209 "aot_demo.hot.cpp"
 
 #line 30 "aot_demo.hot"
 void FighterState_g1::Tick(float dt)
@@ -1185,7 +1235,7 @@ void FighterState_g1::Tick(float dt)
     HOT_TRACE_LINE(); __self->Move(Vec3(dt, 0, 0));
 #line 35 "aot_demo.hot"
 }
-#line 1189 "aot_demo.hot.cpp"
+#line 1239 "aot_demo.hot.cpp"
 
 #line 37 "aot_demo.hot"
 void FighterState_g1::TakeDamage_f(float amount)
@@ -1211,7 +1261,7 @@ void FighterState_g1::TakeDamage_f(float amount)
     HOT_TRACE_LINE(); if (Fighter__get_Shield(__self) <= 0.0f) __st->hp = __st->hp - 1;
 #line 40 "aot_demo.hot"
 }
-#line 1215 "aot_demo.hot.cpp"
+#line 1265 "aot_demo.hot.cpp"
 
 #line 10 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Fighter__get_Level(Fighter_Shell* __self)
@@ -1221,7 +1271,7 @@ void FighterState_g1::TakeDamage_f(float amount)
     return state_of(__self)->get_Level();
 #line 10 "aot_demo.hot"
 }
-#line 1225 "aot_demo.hot.cpp"
+#line 1275 "aot_demo.hot.cpp"
 #line 10 "aot_demo.hot"
 int32_t FighterState_g1::get_Level()
 #line 10 "aot_demo.hot"
@@ -1244,7 +1294,7 @@ int32_t FighterState_g1::get_Level()
     HOT_TRACE_LINE(); return __st->__p_Level;
 #line 10 "aot_demo.hot"
 }
-#line 1248 "aot_demo.hot.cpp"
+#line 1298 "aot_demo.hot.cpp"
 
 #line 10 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static void Fighter__set_Level(Fighter_Shell* __self, int32_t value)
@@ -1254,7 +1304,7 @@ int32_t FighterState_g1::get_Level()
     return state_of(__self)->set_Level(std::forward<int32_t>(value));
 #line 10 "aot_demo.hot"
 }
-#line 1258 "aot_demo.hot.cpp"
+#line 1308 "aot_demo.hot.cpp"
 #line 10 "aot_demo.hot"
 void FighterState_g1::set_Level(int32_t value)
 #line 10 "aot_demo.hot"
@@ -1277,7 +1327,7 @@ void FighterState_g1::set_Level(int32_t value)
     HOT_TRACE_LINE(); __st->__p_Level = value;
 #line 10 "aot_demo.hot"
 }
-#line 1281 "aot_demo.hot.cpp"
+#line 1331 "aot_demo.hot.cpp"
 
 #line 13 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static float Fighter__get_Shield(Fighter_Shell* __self)
@@ -1287,7 +1337,7 @@ void FighterState_g1::set_Level(int32_t value)
     return state_of(__self)->get_Shield();
 #line 13 "aot_demo.hot"
 }
-#line 1291 "aot_demo.hot.cpp"
+#line 1341 "aot_demo.hot.cpp"
 #line 13 "aot_demo.hot"
 float FighterState_g1::get_Shield()
 #line 13 "aot_demo.hot"
@@ -1310,7 +1360,7 @@ float FighterState_g1::get_Shield()
     HOT_TRACE_LINE(); return __st->shield_raw;
 #line 13 "aot_demo.hot"
 }
-#line 1314 "aot_demo.hot.cpp"
+#line 1364 "aot_demo.hot.cpp"
 
 #line 14 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static void Fighter__set_Shield(Fighter_Shell* __self, float value)
@@ -1320,7 +1370,7 @@ float FighterState_g1::get_Shield()
     return state_of(__self)->set_Shield(std::forward<float>(value));
 #line 14 "aot_demo.hot"
 }
-#line 1324 "aot_demo.hot.cpp"
+#line 1374 "aot_demo.hot.cpp"
 #line 14 "aot_demo.hot"
 void FighterState_g1::set_Shield(float value)
 #line 14 "aot_demo.hot"
@@ -1343,7 +1393,7 @@ void FighterState_g1::set_Shield(float value)
     HOT_TRACE_LINE(); __st->shield_raw = value < 0.0f ? 0.0f : value;
 #line 14 "aot_demo.hot"
 }
-#line 1347 "aot_demo.hot.cpp"
+#line 1397 "aot_demo.hot.cpp"
 
 #line 47 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static void Veteran__ctor(Veteran_Shell* __self, int32_t start, int32_t r)
@@ -1353,7 +1403,7 @@ void FighterState_g1::set_Shield(float value)
     return state_of(__self)->ctor(std::forward<int32_t>(start), std::forward<int32_t>(r));
 #line 47 "aot_demo.hot"
 }
-#line 1357 "aot_demo.hot.cpp"
+#line 1407 "aot_demo.hot.cpp"
 #line 47 "aot_demo.hot"
 void VeteranState_g1::ctor(int32_t start, int32_t r)
 #line 47 "aot_demo.hot"
@@ -1376,7 +1426,7 @@ void VeteranState_g1::ctor(int32_t start, int32_t r)
     HOT_TRACE_LINE(); __st->rage = r;
 #line 49 "aot_demo.hot"
 }
-#line 1380 "aot_demo.hot.cpp"
+#line 1430 "aot_demo.hot.cpp"
 
 #line 51 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static void Veteran__dtor(Veteran_Shell* __self)
@@ -1386,7 +1436,7 @@ void VeteranState_g1::ctor(int32_t start, int32_t r)
     return state_of(__self)->dtor();
 #line 51 "aot_demo.hot"
 }
-#line 1390 "aot_demo.hot.cpp"
+#line 1440 "aot_demo.hot.cpp"
 #line 51 "aot_demo.hot"
 void VeteranState_g1::dtor()
 #line 51 "aot_demo.hot"
@@ -1409,7 +1459,7 @@ void VeteranState_g1::dtor()
     HOT_TRACE_LINE(); std::printf("[aot_demo] Veteran dtor %d parent_power=%d\n", __st->rage, __st->parent_power);
 #line 53 "aot_demo.hot"
 }
-#line 1413 "aot_demo.hot.cpp"
+#line 1463 "aot_demo.hot.cpp"
 
 #line 55 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Veteran__Power(Veteran_Shell* __self)
@@ -1419,7 +1469,7 @@ void VeteranState_g1::dtor()
     return state_of(__self)->Power();
 #line 55 "aot_demo.hot"
 }
-#line 1423 "aot_demo.hot.cpp"
+#line 1473 "aot_demo.hot.cpp"
 #line 55 "aot_demo.hot"
 int32_t VeteranState_g1::Power()
 #line 55 "aot_demo.hot"
@@ -1442,7 +1492,7 @@ int32_t VeteranState_g1::Power()
     HOT_TRACE_LINE(); return __st->rage;
 #line 55 "aot_demo.hot"
 }
-#line 1446 "aot_demo.hot.cpp"
+#line 1496 "aot_demo.hot.cpp"
 
 #line 57 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Veteran__Attack(Veteran_Shell* __self)
@@ -1452,7 +1502,7 @@ int32_t VeteranState_g1::Power()
     return state_of(__self)->Attack();
 #line 57 "aot_demo.hot"
 }
-#line 1456 "aot_demo.hot.cpp"
+#line 1506 "aot_demo.hot.cpp"
 #line 57 "aot_demo.hot"
 int32_t VeteranState_g1::Attack()
 #line 57 "aot_demo.hot"
@@ -1475,7 +1525,7 @@ int32_t VeteranState_g1::Attack()
     HOT_TRACE_LINE(); return Fighter__Attack(__self) + 1;
 #line 57 "aot_demo.hot"
 }
-#line 1479 "aot_demo.hot.cpp"
+#line 1529 "aot_demo.hot.cpp"
 
 #line 59 "aot_demo.hot"
 void VeteranState_g1::Tick(float dt)
@@ -1503,7 +1553,7 @@ void VeteranState_g1::Tick(float dt)
     HOT_TRACE_LINE(); __st->parent_power = Fighter__Power(__self);
 #line 63 "aot_demo.hot"
 }
-#line 1507 "aot_demo.hot.cpp"
+#line 1557 "aot_demo.hot.cpp"
 
 #line 72 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static void Spawner__dtor(Spawner_Shell* __self)
@@ -1513,7 +1563,7 @@ void VeteranState_g1::Tick(float dt)
     return state_of(__self)->dtor();
 #line 72 "aot_demo.hot"
 }
-#line 1517 "aot_demo.hot.cpp"
+#line 1567 "aot_demo.hot.cpp"
 #line 72 "aot_demo.hot"
 void SpawnerState_g1::dtor()
 #line 72 "aot_demo.hot"
@@ -1538,7 +1588,7 @@ void SpawnerState_g1::dtor()
     __st->is_veteran ? 1 : 0);
 #line 75 "aot_demo.hot"
 }
-#line 1542 "aot_demo.hot.cpp"
+#line 1592 "aot_demo.hot.cpp"
 
 #line 77 "aot_demo.hot"
 void SpawnerState_g1::Tick(float dt)
@@ -1568,7 +1618,7 @@ void SpawnerState_g1::Tick(float dt)
     HOT_TRACE_LINE(); __st->is_veteran = hot::is_script(__st->kid, "Veteran");
 #line 82 "aot_demo.hot"
 }
-#line 1572 "aot_demo.hot.cpp"
+#line 1622 "aot_demo.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -1578,8 +1628,11 @@ extern "C" void script_register(hot::Registry& reg)
     reg.add(&Spawner_record, &Spawner_create);
     Fighter_record.construct_keys = Fighter__construct_keys;
     Fighter_record.shares_this = true;
+    Fighter_record.ctors = Fighter__constructors;
     Veteran_record.construct_keys = Veteran__construct_keys;
+    Veteran_record.ctors = Veteran__constructors;
     Spawner_record.construct_keys = Spawner__construct_keys;
+    Spawner_record.ctors = Spawner__constructors;
     reg.add_thunk("Fighter::Power", reinterpret_cast<void*>(&Fighter__Power__thunk), typeid(int32_t(Actor*)).name(), Fighter_SLOT_Power);
     reg.add_thunk("Fighter::Attack", reinterpret_cast<void*>(&Fighter__Attack__thunk), typeid(int32_t(Actor*)).name(), Fighter_SLOT_Attack);
     reg.add_thunk("Fighter::get_Level", reinterpret_cast<void*>(&Fighter__get_Level__thunk), typeid(int32_t(Actor*)).name(), Fighter_SLOT_get_Level);

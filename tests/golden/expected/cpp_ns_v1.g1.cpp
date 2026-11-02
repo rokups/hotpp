@@ -335,6 +335,24 @@ HOT_NODEBUG static hot::Instance red__Unit_create()
 }
 #line 337 "cpp_ns_v1.cpp.cpp"
 
+#line 13 "cpp_ns_v1.cpp"
+HOT_NODEBUG static hot::Instance red__Unit__make_0([[maybe_unused]] void** __a)
+#line 13 "cpp_ns_v1.cpp"
+{
+#line 13 "cpp_ns_v1.cpp"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 13 "cpp_ns_v1.cpp"
+    auto* p = static_cast<red__Unit_Shell* (*)(bool)>(&red__Unit__build)(false);
+#line 13 "cpp_ns_v1.cpp"
+    return {static_cast<Actor*>(p), p};
+#line 13 "cpp_ns_v1.cpp"
+}
+#line 351 "cpp_ns_v1.cpp.cpp"
+
+static const hot::CtorEntry red__Unit__constructors[] = {
+    {hot::ctor_key<>(), &red__Unit__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 } // namespace red::hot_gen
 namespace blue::hot_gen {
 
@@ -363,7 +381,7 @@ struct blue__Unit_Shell final : Actor, hot::ShellBase {
     }
 #line 23 "cpp_ns_v1.cpp"
     ~blue__Unit_Shell() override { hot::destroy_state(this); }
-#line 367 "cpp_ns_v1.cpp.cpp"
+#line 385 "cpp_ns_v1.cpp.cpp"
 #line 23 "cpp_ns_v1.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 23 "cpp_ns_v1.cpp"
@@ -372,7 +390,7 @@ struct blue__Unit_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 23 "cpp_ns_v1.cpp"
     }
-#line 376 "cpp_ns_v1.cpp.cpp"
+#line 394 "cpp_ns_v1.cpp.cpp"
 #line 23 "cpp_ns_v1.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 23 "cpp_ns_v1.cpp"
@@ -381,7 +399,7 @@ struct blue__Unit_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 23 "cpp_ns_v1.cpp"
     }
-#line 385 "cpp_ns_v1.cpp.cpp"
+#line 403 "cpp_ns_v1.cpp.cpp"
 
 #line 23 "cpp_ns_v1.cpp"
     void Tick(float a0) override
@@ -391,7 +409,7 @@ struct blue__Unit_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, blue__Unit_SLOT_Tick, a0);
 #line 23 "cpp_ns_v1.cpp"
     }
-#line 395 "cpp_ns_v1.cpp.cpp"
+#line 413 "cpp_ns_v1.cpp.cpp"
 
 #line 23 "cpp_ns_v1.cpp"
     void TakeDamage(float a0) override
@@ -401,7 +419,7 @@ struct blue__Unit_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, blue__Unit_SLOT_TakeDamage_f, a0);
 #line 23 "cpp_ns_v1.cpp"
     }
-#line 405 "cpp_ns_v1.cpp.cpp"
+#line 423 "cpp_ns_v1.cpp.cpp"
 
 #line 23 "cpp_ns_v1.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -411,7 +429,7 @@ struct blue__Unit_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, blue__Unit_SLOT_TakeDamage_Af, a0, a1);
 #line 23 "cpp_ns_v1.cpp"
     }
-#line 415 "cpp_ns_v1.cpp.cpp"
+#line 433 "cpp_ns_v1.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -431,7 +449,7 @@ struct blue__UnitState_g1 {
         return static_cast<blue__Unit_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 23 "cpp_ns_v1.cpp"
     }
-#line 435 "cpp_ns_v1.cpp.cpp"
+#line 453 "cpp_ns_v1.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 23 "cpp_ns_v1.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -441,15 +459,15 @@ struct blue__UnitState_g1 {
         return static_cast<blue__Unit_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 23 "cpp_ns_v1.cpp"
     }
-#line 445 "cpp_ns_v1.cpp.cpp"
+#line 463 "cpp_ns_v1.cpp.cpp"
 };
 
 #line 34 "cpp_ns_v1.cpp"
 static void blue__Unit__init_hits(void*, void* f) { using T = int; new (f) T(0); }
-#line 450 "cpp_ns_v1.cpp.cpp"
+#line 468 "cpp_ns_v1.cpp.cpp"
 #line 35 "cpp_ns_v1.cpp"
 static void blue__Unit__init_armor(void*, void* f) { using T = int; new (f) T(5); }
-#line 453 "cpp_ns_v1.cpp.cpp"
+#line 471 "cpp_ns_v1.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -504,7 +522,7 @@ HOT_HIDDEN static void blue__Unit__ctor_chain(blue__Unit_Shell* __self, [[maybe_
     blue__Unit__ctor(__self);
 #line 26 "cpp_ns_v1.cpp"
 }
-#line 508 "cpp_ns_v1.cpp.cpp"
+#line 526 "cpp_ns_v1.cpp.cpp"
 using blue__Unit_SuperArgs = decltype(blue__Unit__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -529,7 +547,7 @@ HOT_NODEBUG static hot::ShellBase* blue__Unit__construct(void* mem, const char* 
     return nullptr;
 #line 23 "cpp_ns_v1.cpp"
 }
-#line 533 "cpp_ns_v1.cpp.cpp"
+#line 551 "cpp_ns_v1.cpp.cpp"
 
 static const char* const blue__Unit__construct_keys[] = {typeid(blue__Unit_SuperArgs).name(), nullptr};
 
@@ -557,7 +575,7 @@ HOT_HIDDEN static blue__Unit_Shell* blue__Unit__build([[maybe_unused]] bool __no
     return __self;
 #line 26 "cpp_ns_v1.cpp"
 }
-#line 561 "cpp_ns_v1.cpp.cpp"
+#line 579 "cpp_ns_v1.cpp.cpp"
 #line 26 "cpp_ns_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static blue__Unit_Shell* blue__Unit__new()
 #line 26 "cpp_ns_v1.cpp"
@@ -566,7 +584,7 @@ HOT_HIDDEN static blue__Unit_Shell* blue__Unit__build([[maybe_unused]] bool __no
     return blue__Unit__build(true);
 #line 26 "cpp_ns_v1.cpp"
 }
-#line 570 "cpp_ns_v1.cpp.cpp"
+#line 588 "cpp_ns_v1.cpp.cpp"
 #line 26 "cpp_ns_v1.cpp"
 template <int = 0>
 #line 26 "cpp_ns_v1.cpp"
@@ -583,7 +601,7 @@ template <int = 0>
     return __h;
 #line 26 "cpp_ns_v1.cpp"
 }
-#line 587 "cpp_ns_v1.cpp.cpp"
+#line 605 "cpp_ns_v1.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -595,7 +613,7 @@ HOT_NODEBUG static hot::ShellCore* blue__Unit__new_default()
     return blue__Unit__build(false);
 #line 26 "cpp_ns_v1.cpp"
 }
-#line 599 "cpp_ns_v1.cpp.cpp"
+#line 617 "cpp_ns_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn blue__Unit_slots[blue__Unit_SLOT_COUNT] = {
@@ -637,7 +655,25 @@ HOT_NODEBUG static hot::Instance blue__Unit_create()
     return {static_cast<Actor*>(p), p};
 #line 23 "cpp_ns_v1.cpp"
 }
-#line 641 "cpp_ns_v1.cpp.cpp"
+#line 659 "cpp_ns_v1.cpp.cpp"
+
+#line 26 "cpp_ns_v1.cpp"
+HOT_NODEBUG static hot::Instance blue__Unit__make_0([[maybe_unused]] void** __a)
+#line 26 "cpp_ns_v1.cpp"
+{
+#line 26 "cpp_ns_v1.cpp"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 26 "cpp_ns_v1.cpp"
+    auto* p = static_cast<blue__Unit_Shell* (*)(bool)>(&blue__Unit__build)(false);
+#line 26 "cpp_ns_v1.cpp"
+    return {static_cast<Actor*>(p), p};
+#line 26 "cpp_ns_v1.cpp"
+}
+#line 673 "cpp_ns_v1.cpp.cpp"
+
+static const hot::CtorEntry blue__Unit__constructors[] = {
+    {hot::ctor_key<>(), &blue__Unit__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
 
 } // namespace blue::hot_gen
 
@@ -654,15 +690,15 @@ namespace game::hot_gen {
 #line 42 "cpp_ns_v1.cpp"
 static void HotModule__init_game__score(void*, void* f) { using T = ::game::hot_gen::game__score_t; new (f) T(0); }
 }
-#line 658 "cpp_ns_v1.cpp.cpp"
+#line 694 "cpp_ns_v1.cpp.cpp"
 namespace game::ai::hot_gen {
 #line 68 "cpp_ns_v1.cpp"
 static void HotModule__init_game__ai__mood(void*, void* f) { using T = ::game::ai::hot_gen::game__ai__mood_t; new (f) T(3); }
 }
-#line 663 "cpp_ns_v1.cpp.cpp"
+#line 699 "cpp_ns_v1.cpp.cpp"
 #line 96 "cpp_ns_v1.cpp"
 static void HotModule__init_brain(void*, void* f) { using T = game__ai__Brain *; new (f) T(nullptr); }
-#line 666 "cpp_ns_v1.cpp.cpp"
+#line 702 "cpp_ns_v1.cpp.cpp"
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -692,7 +728,7 @@ namespace red::hot_gen {
     return state_of(__self)->ctor();
 #line 13 "cpp_ns_v1.cpp"
 }
-#line 696 "cpp_ns_v1.cpp.cpp"
+#line 732 "cpp_ns_v1.cpp.cpp"
 #line 13 "cpp_ns_v1.cpp"
 void red__UnitState_g1::ctor()
 #line 13 "cpp_ns_v1.cpp"
@@ -715,7 +751,7 @@ void red__UnitState_g1::ctor()
 
 #line 13 "cpp_ns_v1.cpp"
 }
-#line 719 "cpp_ns_v1.cpp.cpp"
+#line 755 "cpp_ns_v1.cpp.cpp"
 
 #line 15 "cpp_ns_v1.cpp"
 void red__UnitState_g1::Tick(float )
@@ -739,7 +775,7 @@ void red__UnitState_g1::Tick(float )
  hits += 1; 
 #line 15 "cpp_ns_v1.cpp"
 }
-#line 743 "cpp_ns_v1.cpp.cpp"
+#line 779 "cpp_ns_v1.cpp.cpp"
 
 } // namespace red::hot_gen
 namespace blue::hot_gen {
@@ -751,7 +787,7 @@ namespace blue::hot_gen {
     return state_of(__self)->ctor();
 #line 26 "cpp_ns_v1.cpp"
 }
-#line 755 "cpp_ns_v1.cpp.cpp"
+#line 791 "cpp_ns_v1.cpp.cpp"
 #line 26 "cpp_ns_v1.cpp"
 void blue__UnitState_g1::ctor()
 #line 26 "cpp_ns_v1.cpp"
@@ -774,7 +810,7 @@ void blue__UnitState_g1::ctor()
 
 #line 26 "cpp_ns_v1.cpp"
 }
-#line 778 "cpp_ns_v1.cpp.cpp"
+#line 814 "cpp_ns_v1.cpp.cpp"
 
 #line 28 "cpp_ns_v1.cpp"
 void blue__UnitState_g1::Tick(float dt)
@@ -801,7 +837,7 @@ void blue__UnitState_g1::Tick(float dt)
     
 #line 32 "cpp_ns_v1.cpp"
 }
-#line 805 "cpp_ns_v1.cpp.cpp"
+#line 841 "cpp_ns_v1.cpp.cpp"
 
 } // namespace blue::hot_gen
 
@@ -813,7 +849,7 @@ int bonus(int x)
 }
 }
 
-#line 817 "cpp_ns_v1.cpp.cpp"
+#line 853 "cpp_ns_v1.cpp.cpp"
 namespace game::hot_gen {
 
 // ---------------------------------------------------------------- class game__Player
@@ -841,7 +877,7 @@ struct game__Player_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<
     }
 #line 49 "cpp_ns_v1.cpp"
     ~game__Player_Shell() override { hot::destroy_state(this); }
-#line 845 "cpp_ns_v1.cpp.cpp"
+#line 881 "cpp_ns_v1.cpp.cpp"
 #line 49 "cpp_ns_v1.cpp"
     template <class... A>
 #line 49 "cpp_ns_v1.cpp"
@@ -850,7 +886,7 @@ struct game__Player_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<
     {
 #line 49 "cpp_ns_v1.cpp"
     }
-#line 854 "cpp_ns_v1.cpp.cpp"
+#line 890 "cpp_ns_v1.cpp.cpp"
 #line 49 "cpp_ns_v1.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 49 "cpp_ns_v1.cpp"
@@ -859,7 +895,7 @@ struct game__Player_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<
         return Actor::TakeDamage(a0);
 #line 49 "cpp_ns_v1.cpp"
     }
-#line 863 "cpp_ns_v1.cpp.cpp"
+#line 899 "cpp_ns_v1.cpp.cpp"
 #line 49 "cpp_ns_v1.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 49 "cpp_ns_v1.cpp"
@@ -868,7 +904,7 @@ struct game__Player_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<
         return Actor::TakeDamage(a0, a1);
 #line 49 "cpp_ns_v1.cpp"
     }
-#line 872 "cpp_ns_v1.cpp.cpp"
+#line 908 "cpp_ns_v1.cpp.cpp"
 
 #line 49 "cpp_ns_v1.cpp"
     void Tick(float a0) override
@@ -878,7 +914,7 @@ struct game__Player_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<
         return hot::call<void(Actor*, float)>(this, game__Player_SLOT_Tick, a0);
 #line 49 "cpp_ns_v1.cpp"
     }
-#line 882 "cpp_ns_v1.cpp.cpp"
+#line 918 "cpp_ns_v1.cpp.cpp"
 
 #line 49 "cpp_ns_v1.cpp"
     void TakeDamage(float a0) override
@@ -888,7 +924,7 @@ struct game__Player_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<
         return hot::call<void(Actor*, float)>(this, game__Player_SLOT_TakeDamage_f, a0);
 #line 49 "cpp_ns_v1.cpp"
     }
-#line 892 "cpp_ns_v1.cpp.cpp"
+#line 928 "cpp_ns_v1.cpp.cpp"
 
 #line 49 "cpp_ns_v1.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -898,7 +934,7 @@ struct game__Player_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<
         return hot::call<void(Actor*, Actor&, float)>(this, game__Player_SLOT_TakeDamage_Af, a0, a1);
 #line 49 "cpp_ns_v1.cpp"
     }
-#line 902 "cpp_ns_v1.cpp.cpp"
+#line 938 "cpp_ns_v1.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -917,7 +953,7 @@ struct game__PlayerState_g1 {
         return static_cast<game__Player_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 49 "cpp_ns_v1.cpp"
     }
-#line 921 "cpp_ns_v1.cpp.cpp"
+#line 957 "cpp_ns_v1.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 49 "cpp_ns_v1.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -927,12 +963,12 @@ struct game__PlayerState_g1 {
         return static_cast<game__Player_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 49 "cpp_ns_v1.cpp"
     }
-#line 931 "cpp_ns_v1.cpp.cpp"
+#line 967 "cpp_ns_v1.cpp.cpp"
 };
 
 #line 61 "cpp_ns_v1.cpp"
 static void game__Player__init_points(void*, void* f) { using T = int; new (f) T(0); }
-#line 936 "cpp_ns_v1.cpp.cpp"
+#line 972 "cpp_ns_v1.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -985,7 +1021,7 @@ HOT_HIDDEN static void game__Player__ctor_chain(game__Player_Shell* __self, [[ma
     game__Player__ctor(__self);
 #line 52 "cpp_ns_v1.cpp"
 }
-#line 989 "cpp_ns_v1.cpp.cpp"
+#line 1025 "cpp_ns_v1.cpp.cpp"
 using game__Player_SuperArgs = decltype(game__Player__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -1010,7 +1046,7 @@ HOT_NODEBUG static hot::ShellBase* game__Player__construct(void* mem, const char
     return nullptr;
 #line 49 "cpp_ns_v1.cpp"
 }
-#line 1014 "cpp_ns_v1.cpp.cpp"
+#line 1050 "cpp_ns_v1.cpp.cpp"
 
 static const char* const game__Player__construct_keys[] = {typeid(game__Player_SuperArgs).name(), nullptr};
 
@@ -1038,7 +1074,7 @@ HOT_HIDDEN static game__Player_Shell* game__Player__build([[maybe_unused]] bool 
     return __self;
 #line 52 "cpp_ns_v1.cpp"
 }
-#line 1042 "cpp_ns_v1.cpp.cpp"
+#line 1078 "cpp_ns_v1.cpp.cpp"
 #line 52 "cpp_ns_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static game__Player_Shell* game__Player__new()
 #line 52 "cpp_ns_v1.cpp"
@@ -1047,7 +1083,7 @@ HOT_HIDDEN static game__Player_Shell* game__Player__build([[maybe_unused]] bool 
     return game__Player__build(true);
 #line 52 "cpp_ns_v1.cpp"
 }
-#line 1051 "cpp_ns_v1.cpp.cpp"
+#line 1087 "cpp_ns_v1.cpp.cpp"
 #line 52 "cpp_ns_v1.cpp"
 template <int = 0>
 #line 52 "cpp_ns_v1.cpp"
@@ -1064,7 +1100,7 @@ template <int = 0>
     return __h;
 #line 52 "cpp_ns_v1.cpp"
 }
-#line 1068 "cpp_ns_v1.cpp.cpp"
+#line 1104 "cpp_ns_v1.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -1076,7 +1112,7 @@ HOT_NODEBUG static hot::ShellCore* game__Player__new_default()
     return game__Player__build(false);
 #line 52 "cpp_ns_v1.cpp"
 }
-#line 1080 "cpp_ns_v1.cpp.cpp"
+#line 1116 "cpp_ns_v1.cpp.cpp"
 
 [[maybe_unused]] HOT_HIDDEN static void game__Player__base_Tick(Actor* a, float a0)
 {
@@ -1133,7 +1169,25 @@ HOT_NODEBUG static hot::Instance game__Player_create()
     return {static_cast<Actor*>(p), p};
 #line 49 "cpp_ns_v1.cpp"
 }
-#line 1137 "cpp_ns_v1.cpp.cpp"
+#line 1173 "cpp_ns_v1.cpp.cpp"
+
+#line 52 "cpp_ns_v1.cpp"
+HOT_NODEBUG static hot::Instance game__Player__make_0([[maybe_unused]] void** __a)
+#line 52 "cpp_ns_v1.cpp"
+{
+#line 52 "cpp_ns_v1.cpp"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 52 "cpp_ns_v1.cpp"
+    auto* p = static_cast<game__Player_Shell* (*)(bool)>(&game__Player__build)(false);
+#line 52 "cpp_ns_v1.cpp"
+    return {static_cast<Actor*>(p), p};
+#line 52 "cpp_ns_v1.cpp"
+}
+#line 1187 "cpp_ns_v1.cpp.cpp"
+
+static const hot::CtorEntry game__Player__constructors[] = {
+    {hot::ctor_key<>(), &game__Player__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
 
 } // namespace game::hot_gen
 namespace game::ai::hot_gen {
@@ -1163,7 +1217,7 @@ struct game__ai__Brain_Shell final : game__Player_Shell {
         hot::init_state(this, &game__ai__Brain_record);
 #line 70 "cpp_ns_v1.cpp"
     }
-#line 1167 "cpp_ns_v1.cpp.cpp"
+#line 1221 "cpp_ns_v1.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -1176,7 +1230,7 @@ struct game__ai__BrainState_g1 : game__PlayerState_g1 {
 
 #line 82 "cpp_ns_v1.cpp"
 static void game__ai__Brain__init_thought(void*, void* f) { using T = int; new (f) T(0); }
-#line 1180 "cpp_ns_v1.cpp.cpp"
+#line 1234 "cpp_ns_v1.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -1229,7 +1283,7 @@ HOT_HIDDEN static void game__ai__Brain__ctor_chain(game__ai__Brain_Shell* __self
     game__ai__Brain__ctor(__self);
 #line 73 "cpp_ns_v1.cpp"
 }
-#line 1233 "cpp_ns_v1.cpp.cpp"
+#line 1287 "cpp_ns_v1.cpp.cpp"
 using game__ai__Brain_SuperArgs = decltype(game__ai__Brain__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -1254,7 +1308,7 @@ HOT_NODEBUG static hot::ShellBase* game__ai__Brain__construct(void* mem, const c
     return nullptr;
 #line 70 "cpp_ns_v1.cpp"
 }
-#line 1258 "cpp_ns_v1.cpp.cpp"
+#line 1312 "cpp_ns_v1.cpp.cpp"
 
 static const char* const game__ai__Brain__construct_keys[] = {typeid(game__ai__Brain_SuperArgs).name(), nullptr};
 
@@ -1282,7 +1336,7 @@ HOT_HIDDEN static game__ai__Brain_Shell* game__ai__Brain__build([[maybe_unused]]
     return __self;
 #line 73 "cpp_ns_v1.cpp"
 }
-#line 1286 "cpp_ns_v1.cpp.cpp"
+#line 1340 "cpp_ns_v1.cpp.cpp"
 #line 73 "cpp_ns_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static game__ai__Brain_Shell* game__ai__Brain__new()
 #line 73 "cpp_ns_v1.cpp"
@@ -1291,7 +1345,7 @@ HOT_HIDDEN static game__ai__Brain_Shell* game__ai__Brain__build([[maybe_unused]]
     return game__ai__Brain__build(true);
 #line 73 "cpp_ns_v1.cpp"
 }
-#line 1295 "cpp_ns_v1.cpp.cpp"
+#line 1349 "cpp_ns_v1.cpp.cpp"
 #line 73 "cpp_ns_v1.cpp"
 template <int = 0>
 #line 73 "cpp_ns_v1.cpp"
@@ -1308,7 +1362,7 @@ template <int = 0>
     return __h;
 #line 73 "cpp_ns_v1.cpp"
 }
-#line 1312 "cpp_ns_v1.cpp.cpp"
+#line 1366 "cpp_ns_v1.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -1320,7 +1374,7 @@ HOT_NODEBUG static hot::ShellCore* game__ai__Brain__new_default()
     return game__ai__Brain__build(false);
 #line 73 "cpp_ns_v1.cpp"
 }
-#line 1324 "cpp_ns_v1.cpp.cpp"
+#line 1378 "cpp_ns_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn game__ai__Brain_slots[game__ai__Brain_SLOT_COUNT] = {
@@ -1362,7 +1416,25 @@ HOT_NODEBUG static hot::Instance game__ai__Brain_create()
     return {static_cast<Actor*>(p), p};
 #line 70 "cpp_ns_v1.cpp"
 }
-#line 1366 "cpp_ns_v1.cpp.cpp"
+#line 1420 "cpp_ns_v1.cpp.cpp"
+
+#line 73 "cpp_ns_v1.cpp"
+HOT_NODEBUG static hot::Instance game__ai__Brain__make_0([[maybe_unused]] void** __a)
+#line 73 "cpp_ns_v1.cpp"
+{
+#line 73 "cpp_ns_v1.cpp"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 73 "cpp_ns_v1.cpp"
+    auto* p = static_cast<game__ai__Brain_Shell* (*)(bool)>(&game__ai__Brain__build)(false);
+#line 73 "cpp_ns_v1.cpp"
+    return {static_cast<Actor*>(p), p};
+#line 73 "cpp_ns_v1.cpp"
+}
+#line 1434 "cpp_ns_v1.cpp.cpp"
+
+static const hot::CtorEntry game__ai__Brain__constructors[] = {
+    {hot::ctor_key<>(), &game__ai__Brain__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
 
 } // namespace game::ai::hot_gen
 // ---------------------------------------------------------------- function bodies
@@ -1375,7 +1447,7 @@ namespace game::hot_gen {
     return state_of(__self)->ctor();
 #line 52 "cpp_ns_v1.cpp"
 }
-#line 1379 "cpp_ns_v1.cpp.cpp"
+#line 1451 "cpp_ns_v1.cpp.cpp"
 #line 52 "cpp_ns_v1.cpp"
 void game__PlayerState_g1::ctor()
 #line 52 "cpp_ns_v1.cpp"
@@ -1398,7 +1470,7 @@ void game__PlayerState_g1::ctor()
 
 #line 52 "cpp_ns_v1.cpp"
 }
-#line 1402 "cpp_ns_v1.cpp.cpp"
+#line 1474 "cpp_ns_v1.cpp.cpp"
 
 #line 54 "cpp_ns_v1.cpp"
 void game__PlayerState_g1::Tick(float dt)
@@ -1426,7 +1498,7 @@ void game__PlayerState_g1::Tick(float dt)
     
 #line 59 "cpp_ns_v1.cpp"
 }
-#line 1430 "cpp_ns_v1.cpp.cpp"
+#line 1502 "cpp_ns_v1.cpp.cpp"
 
 } // namespace game::hot_gen
 namespace game::ai::hot_gen {
@@ -1438,7 +1510,7 @@ namespace game::ai::hot_gen {
     return state_of(__self)->ctor();
 #line 73 "cpp_ns_v1.cpp"
 }
-#line 1442 "cpp_ns_v1.cpp.cpp"
+#line 1514 "cpp_ns_v1.cpp.cpp"
 #line 73 "cpp_ns_v1.cpp"
 void game__ai__BrainState_g1::ctor()
 #line 73 "cpp_ns_v1.cpp"
@@ -1461,7 +1533,7 @@ void game__ai__BrainState_g1::ctor()
 
 #line 73 "cpp_ns_v1.cpp"
 }
-#line 1465 "cpp_ns_v1.cpp.cpp"
+#line 1537 "cpp_ns_v1.cpp.cpp"
 
 #line 75 "cpp_ns_v1.cpp"
 void game__ai__BrainState_g1::Tick(float dt)
@@ -1489,19 +1561,19 @@ void game__ai__BrainState_g1::Tick(float dt)
     
 #line 80 "cpp_ns_v1.cpp"
 }
-#line 1493 "cpp_ns_v1.cpp.cpp"
+#line 1565 "cpp_ns_v1.cpp.cpp"
 
 } // namespace game::ai::hot_gen
 
 #line 86 "cpp_ns_v1.cpp"
 namespace gai = game::ai;
 
-#line 1500 "cpp_ns_v1.cpp.cpp"
+#line 1572 "cpp_ns_v1.cpp.cpp"
 
 #line 87 "cpp_ns_v1.cpp"
 using namespace game::ai;
 
-#line 1505 "cpp_ns_v1.cpp.cpp"
+#line 1577 "cpp_ns_v1.cpp.cpp"
 
 #line 90 "cpp_ns_v1.cpp"
 int mood_now()
@@ -1509,7 +1581,7 @@ int mood_now()
     return hot_mod()->game__ai__mood;
 }
 
-#line 1513 "cpp_ns_v1.cpp.cpp"
+#line 1585 "cpp_ns_v1.cpp.cpp"
 
 // ---------------------------------------------------------------- class Watcher
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -1536,7 +1608,7 @@ struct Watcher_Shell final : Actor, hot::ShellBase {
     }
 #line 100 "cpp_ns_v1.cpp"
     ~Watcher_Shell() override { hot::destroy_state(this); }
-#line 1540 "cpp_ns_v1.cpp.cpp"
+#line 1612 "cpp_ns_v1.cpp.cpp"
 #line 100 "cpp_ns_v1.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 100 "cpp_ns_v1.cpp"
@@ -1545,7 +1617,7 @@ struct Watcher_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 100 "cpp_ns_v1.cpp"
     }
-#line 1549 "cpp_ns_v1.cpp.cpp"
+#line 1621 "cpp_ns_v1.cpp.cpp"
 #line 100 "cpp_ns_v1.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 100 "cpp_ns_v1.cpp"
@@ -1554,7 +1626,7 @@ struct Watcher_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 100 "cpp_ns_v1.cpp"
     }
-#line 1558 "cpp_ns_v1.cpp.cpp"
+#line 1630 "cpp_ns_v1.cpp.cpp"
 
 #line 100 "cpp_ns_v1.cpp"
     void Tick(float a0) override
@@ -1564,7 +1636,7 @@ struct Watcher_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Watcher_SLOT_Tick, a0);
 #line 100 "cpp_ns_v1.cpp"
     }
-#line 1568 "cpp_ns_v1.cpp.cpp"
+#line 1640 "cpp_ns_v1.cpp.cpp"
 
 #line 100 "cpp_ns_v1.cpp"
     void TakeDamage(float a0) override
@@ -1574,7 +1646,7 @@ struct Watcher_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Watcher_SLOT_TakeDamage_f, a0);
 #line 100 "cpp_ns_v1.cpp"
     }
-#line 1578 "cpp_ns_v1.cpp.cpp"
+#line 1650 "cpp_ns_v1.cpp.cpp"
 
 #line 100 "cpp_ns_v1.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -1584,7 +1656,7 @@ struct Watcher_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, Watcher_SLOT_TakeDamage_Af, a0, a1);
 #line 100 "cpp_ns_v1.cpp"
     }
-#line 1588 "cpp_ns_v1.cpp.cpp"
+#line 1660 "cpp_ns_v1.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -1605,7 +1677,7 @@ struct WatcherState_g1 {
         return static_cast<Watcher_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 100 "cpp_ns_v1.cpp"
     }
-#line 1609 "cpp_ns_v1.cpp.cpp"
+#line 1681 "cpp_ns_v1.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 100 "cpp_ns_v1.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -1615,18 +1687,18 @@ struct WatcherState_g1 {
         return static_cast<Watcher_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 100 "cpp_ns_v1.cpp"
     }
-#line 1619 "cpp_ns_v1.cpp.cpp"
+#line 1691 "cpp_ns_v1.cpp.cpp"
 };
 
 #line 117 "cpp_ns_v1.cpp"
 static void Watcher__init_seen(void*, void* f) { using T = int; new (f) T(0); }
-#line 1624 "cpp_ns_v1.cpp.cpp"
+#line 1696 "cpp_ns_v1.cpp.cpp"
 #line 118 "cpp_ns_v1.cpp"
 static void Watcher__init_points_seen(void*, void* f) { using T = int; new (f) T(0); }
-#line 1627 "cpp_ns_v1.cpp.cpp"
+#line 1699 "cpp_ns_v1.cpp.cpp"
 #line 119 "cpp_ns_v1.cpp"
 static void Watcher__init_thought_seen(void*, void* f) { using T = int; new (f) T(0); }
-#line 1630 "cpp_ns_v1.cpp.cpp"
+#line 1702 "cpp_ns_v1.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -1683,7 +1755,7 @@ HOT_HIDDEN static void Watcher__ctor_chain(Watcher_Shell* __self, [[maybe_unused
     Watcher__ctor(__self);
 #line 103 "cpp_ns_v1.cpp"
 }
-#line 1687 "cpp_ns_v1.cpp.cpp"
+#line 1759 "cpp_ns_v1.cpp.cpp"
 using Watcher_SuperArgs = decltype(Watcher__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -1708,7 +1780,7 @@ HOT_NODEBUG static hot::ShellBase* Watcher__construct(void* mem, const char* key
     return nullptr;
 #line 100 "cpp_ns_v1.cpp"
 }
-#line 1712 "cpp_ns_v1.cpp.cpp"
+#line 1784 "cpp_ns_v1.cpp.cpp"
 
 static const char* const Watcher__construct_keys[] = {typeid(Watcher_SuperArgs).name(), nullptr};
 
@@ -1736,7 +1808,7 @@ HOT_HIDDEN static Watcher_Shell* Watcher__build([[maybe_unused]] bool __note)
     return __self;
 #line 103 "cpp_ns_v1.cpp"
 }
-#line 1740 "cpp_ns_v1.cpp.cpp"
+#line 1812 "cpp_ns_v1.cpp.cpp"
 #line 103 "cpp_ns_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static Watcher_Shell* Watcher__new()
 #line 103 "cpp_ns_v1.cpp"
@@ -1745,7 +1817,7 @@ HOT_HIDDEN static Watcher_Shell* Watcher__build([[maybe_unused]] bool __note)
     return Watcher__build(true);
 #line 103 "cpp_ns_v1.cpp"
 }
-#line 1749 "cpp_ns_v1.cpp.cpp"
+#line 1821 "cpp_ns_v1.cpp.cpp"
 #line 103 "cpp_ns_v1.cpp"
 template <int = 0>
 #line 103 "cpp_ns_v1.cpp"
@@ -1762,7 +1834,7 @@ template <int = 0>
     return __h;
 #line 103 "cpp_ns_v1.cpp"
 }
-#line 1766 "cpp_ns_v1.cpp.cpp"
+#line 1838 "cpp_ns_v1.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -1774,7 +1846,7 @@ HOT_NODEBUG static hot::ShellCore* Watcher__new_default()
     return Watcher__build(false);
 #line 103 "cpp_ns_v1.cpp"
 }
-#line 1778 "cpp_ns_v1.cpp.cpp"
+#line 1850 "cpp_ns_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Watcher_slots[Watcher_SLOT_COUNT] = {
@@ -1816,7 +1888,25 @@ HOT_NODEBUG static hot::Instance Watcher_create()
     return {static_cast<Actor*>(p), p};
 #line 100 "cpp_ns_v1.cpp"
 }
-#line 1820 "cpp_ns_v1.cpp.cpp"
+#line 1892 "cpp_ns_v1.cpp.cpp"
+
+#line 103 "cpp_ns_v1.cpp"
+HOT_NODEBUG static hot::Instance Watcher__make_0([[maybe_unused]] void** __a)
+#line 103 "cpp_ns_v1.cpp"
+{
+#line 103 "cpp_ns_v1.cpp"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 103 "cpp_ns_v1.cpp"
+    auto* p = static_cast<Watcher_Shell* (*)(bool)>(&Watcher__build)(false);
+#line 103 "cpp_ns_v1.cpp"
+    return {static_cast<Actor*>(p), p};
+#line 103 "cpp_ns_v1.cpp"
+}
+#line 1906 "cpp_ns_v1.cpp.cpp"
+
+static const hot::CtorEntry Watcher__constructors[] = {
+    {hot::ctor_key<>(), &Watcher__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
 
 // ---------------------------------------------------------------- function bodies
 #line 103 "cpp_ns_v1.cpp"
@@ -1827,7 +1917,7 @@ HOT_NODEBUG static hot::Instance Watcher_create()
     return state_of(__self)->ctor();
 #line 103 "cpp_ns_v1.cpp"
 }
-#line 1831 "cpp_ns_v1.cpp.cpp"
+#line 1921 "cpp_ns_v1.cpp.cpp"
 #line 103 "cpp_ns_v1.cpp"
 void WatcherState_g1::ctor()
 #line 103 "cpp_ns_v1.cpp"
@@ -1850,7 +1940,7 @@ void WatcherState_g1::ctor()
 
 #line 103 "cpp_ns_v1.cpp"
 }
-#line 1854 "cpp_ns_v1.cpp.cpp"
+#line 1944 "cpp_ns_v1.cpp.cpp"
 
 #line 105 "cpp_ns_v1.cpp"
 void WatcherState_g1::Tick(float dt)
@@ -1883,7 +1973,7 @@ void WatcherState_g1::Tick(float dt)
     
 #line 115 "cpp_ns_v1.cpp"
 }
-#line 1887 "cpp_ns_v1.cpp.cpp"
+#line 1977 "cpp_ns_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -1895,9 +1985,14 @@ extern "C" void script_register(hot::Registry& reg)
     reg.add(&game__ai__Brain_record, &game__ai__Brain_create);
     reg.add(&Watcher_record, &Watcher_create);
     red__Unit_record.construct_keys = red__Unit__construct_keys;
+    red__Unit_record.ctors = red__Unit__constructors;
     blue__Unit_record.construct_keys = blue__Unit__construct_keys;
+    blue__Unit_record.ctors = blue__Unit__constructors;
     game__Player_record.construct_keys = game__Player__construct_keys;
     game__Player_record.shares_this = true;
+    game__Player_record.ctors = game__Player__constructors;
     game__ai__Brain_record.construct_keys = game__ai__Brain__construct_keys;
+    game__ai__Brain_record.ctors = game__ai__Brain__constructors;
     Watcher_record.construct_keys = Watcher__construct_keys;
+    Watcher_record.ctors = Watcher__constructors;
 }

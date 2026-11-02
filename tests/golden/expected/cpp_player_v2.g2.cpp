@@ -416,6 +416,24 @@ HOT_NODEBUG static hot::Instance Player_create()
 }
 #line 418 "cpp_player_v2.cpp.cpp"
 
+#line 34 "cpp_player_v2.cpp"
+HOT_NODEBUG static hot::Instance Player__make_0([[maybe_unused]] void** __a)
+#line 34 "cpp_player_v2.cpp"
+{
+#line 34 "cpp_player_v2.cpp"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 34 "cpp_player_v2.cpp"
+    auto* p = static_cast<Player_Shell* (*)(bool)>(&Player__build)(false);
+#line 34 "cpp_player_v2.cpp"
+    return {static_cast<Actor*>(p), p};
+#line 34 "cpp_player_v2.cpp"
+}
+#line 432 "cpp_player_v2.cpp.cpp"
+
+static const hot::CtorEntry Player__constructors[] = {
+    {hot::ctor_key<>(), &Player__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 34 "cpp_player_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__ctor(Player_Shell* __self)
@@ -425,7 +443,7 @@ HOT_NODEBUG static hot::Instance Player_create()
     return state_of(__self)->ctor();
 #line 34 "cpp_player_v2.cpp"
 }
-#line 429 "cpp_player_v2.cpp.cpp"
+#line 447 "cpp_player_v2.cpp.cpp"
 #line 34 "cpp_player_v2.cpp"
 void PlayerState_g2::ctor()
 #line 34 "cpp_player_v2.cpp"
@@ -448,7 +466,7 @@ void PlayerState_g2::ctor()
 
 #line 34 "cpp_player_v2.cpp"
 }
-#line 452 "cpp_player_v2.cpp.cpp"
+#line 470 "cpp_player_v2.cpp.cpp"
 
 #line 36 "cpp_player_v2.cpp"
 void PlayerState_g2::Tick(float dt)
@@ -479,7 +497,7 @@ void PlayerState_g2::Tick(float dt)
     
 #line 44 "cpp_player_v2.cpp"
 }
-#line 483 "cpp_player_v2.cpp.cpp"
+#line 501 "cpp_player_v2.cpp.cpp"
 
 #line 46 "cpp_player_v2.cpp"
 void PlayerState_g2::TakeDamage_f(float amount)
@@ -506,7 +524,7 @@ void PlayerState_g2::TakeDamage_f(float amount)
     
 #line 50 "cpp_player_v2.cpp"
 }
-#line 510 "cpp_player_v2.cpp.cpp"
+#line 528 "cpp_player_v2.cpp.cpp"
 
 #line 52 "cpp_player_v2.cpp"
 void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
@@ -534,7 +552,7 @@ void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
     
 #line 57 "cpp_player_v2.cpp"
 }
-#line 538 "cpp_player_v2.cpp.cpp"
+#line 556 "cpp_player_v2.cpp.cpp"
 
 #line 59 "cpp_player_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float a)
@@ -544,7 +562,7 @@ void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
     return state_of(__self)->heal(std::forward<float>(a));
 #line 59 "cpp_player_v2.cpp"
 }
-#line 548 "cpp_player_v2.cpp.cpp"
+#line 566 "cpp_player_v2.cpp.cpp"
 #line 59 "cpp_player_v2.cpp"
 void PlayerState_g2::heal(float a)
 #line 59 "cpp_player_v2.cpp"
@@ -570,7 +588,7 @@ void PlayerState_g2::heal(float a)
     
 #line 63 "cpp_player_v2.cpp"
 }
-#line 574 "cpp_player_v2.cpp.cpp"
+#line 592 "cpp_player_v2.cpp.cpp"
 
 #line 66 "cpp_player_v2.cpp"
 static float Player__convert_level(int old)
@@ -580,7 +598,7 @@ static float Player__convert_level(int old)
  return old * 10.0f; 
 #line 66 "cpp_player_v2.cpp"
 }
-#line 584 "cpp_player_v2.cpp.cpp"
+#line 602 "cpp_player_v2.cpp.cpp"
 
 #line 68 "cpp_player_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__onReload(Player_Shell* __self, const hot::OldState& old)
@@ -590,7 +608,7 @@ static float Player__convert_level(int old)
     return state_of(__self)->onReload(std::forward<const hot::OldState&>(old));
 #line 68 "cpp_player_v2.cpp"
 }
-#line 594 "cpp_player_v2.cpp.cpp"
+#line 612 "cpp_player_v2.cpp.cpp"
 #line 68 "cpp_player_v2.cpp"
 void PlayerState_g2::onReload(const hot::OldState& old)
 #line 68 "cpp_player_v2.cpp"
@@ -616,7 +634,7 @@ void PlayerState_g2::onReload(const hot::OldState& old)
     
 #line 72 "cpp_player_v2.cpp"
 }
-#line 620 "cpp_player_v2.cpp.cpp"
+#line 638 "cpp_player_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -624,4 +642,5 @@ extern "C" void script_register(hot::Registry& reg)
     reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Player_record, &Player_create);
     Player_record.construct_keys = Player__construct_keys;
+    Player_record.ctors = Player__constructors;
 }

@@ -60,6 +60,7 @@ void adopt(ClassRecord* canon, ClassRecord* in)
     canon->new_default = in->new_default;
     canon->dtor = in->dtor;
     canon->attributes = in->attributes;
+    canon->ctors = in->ctors;
     if (in != canon)
         in->canonical = canon;
 }
@@ -1141,6 +1142,7 @@ ReloadResult Loader::commit_locked()
         r->dtor = nullptr; // the script destructor belongs to a source that does not exist now
         r->new_default = nullptr; // the same: the factory makes an object without a constructor
         r->attributes = nullptr; // the text is in the module of a source that does not exist now
+        r->ctors = nullptr; // the same: only the factory makes an object of a removed class
         size_t live = 0;
         {
             const LiveObjects::Guard guard(g_live);

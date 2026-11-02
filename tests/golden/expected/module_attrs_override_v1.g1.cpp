@@ -259,6 +259,20 @@ HOT_NODEBUG static hot::Instance Counter_create()
 }
 #line 261 "module_attrs_override_v1.hot.cpp"
 
+#line 9 "module_attrs_override_v1.hot"
+HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
+#line 9 "module_attrs_override_v1.hot"
+{
+#line 9 "module_attrs_override_v1.hot"
+    return Counter_create();
+#line 9 "module_attrs_override_v1.hot"
+}
+#line 271 "module_attrs_override_v1.hot.cpp"
+
+static const hot::CtorEntry Counter__constructors[] = {
+    {hot::ctor_key<>(), &Counter__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 13 "module_attrs_override_v1.hot"
 void CounterState_g1::Tick(float dt)
@@ -284,11 +298,12 @@ void CounterState_g1::Tick(float dt)
     HOT_TRACE_LINE(); __st->label = other_std::to_string(hot::deref(__st->history).size());
 #line 16 "module_attrs_override_v1.hot"
 }
-#line 288 "module_attrs_override_v1.hot.cpp"
+#line 302 "module_attrs_override_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);
     reg.add(&Counter_record, &Counter_create);
     Counter_record.construct_keys = Counter__construct_keys;
+    Counter_record.ctors = Counter__constructors;
 }

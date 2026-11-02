@@ -370,6 +370,20 @@ HOT_NODEBUG static hot::Instance Checks_create()
 }
 #line 372 "checks_v1.hot.cpp"
 
+#line 4 "checks_v1.hot"
+HOT_NODEBUG static hot::Instance Checks__make_0([[maybe_unused]] void** __a)
+#line 4 "checks_v1.hot"
+{
+#line 4 "checks_v1.hot"
+    return Checks_create();
+#line 4 "checks_v1.hot"
+}
+#line 382 "checks_v1.hot.cpp"
+
+static const hot::CtorEntry Checks__constructors[] = {
+    {hot::ctor_key<>(), &Checks__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 7 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Checks__at(Checks_Shell* __self, int32_t i)
@@ -379,7 +393,7 @@ HOT_NODEBUG static hot::Instance Checks_create()
     return state_of(__self)->at(std::forward<int32_t>(i));
 #line 7 "checks_v1.hot"
 }
-#line 383 "checks_v1.hot.cpp"
+#line 397 "checks_v1.hot.cpp"
 #line 7 "checks_v1.hot"
 int32_t ChecksState_g1::at(int32_t i)
 #line 7 "checks_v1.hot"
@@ -402,7 +416,7 @@ int32_t ChecksState_g1::at(int32_t i)
     HOT_TRACE_LINE(); return hot::index(__st->vals, i);
 #line 9 "checks_v1.hot"
 }
-#line 406 "checks_v1.hot.cpp"
+#line 420 "checks_v1.hot.cpp"
 
 #line 11 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Checks__load(Checks_Shell* __self, int32_t* p)
@@ -412,7 +426,7 @@ int32_t ChecksState_g1::at(int32_t i)
     return state_of(__self)->load(std::forward<int32_t*>(p));
 #line 11 "checks_v1.hot"
 }
-#line 416 "checks_v1.hot.cpp"
+#line 430 "checks_v1.hot.cpp"
 #line 11 "checks_v1.hot"
 int32_t ChecksState_g1::load(int32_t* p)
 #line 11 "checks_v1.hot"
@@ -435,7 +449,7 @@ int32_t ChecksState_g1::load(int32_t* p)
     HOT_TRACE_LINE(); return hot::star(p);
 #line 13 "checks_v1.hot"
 }
-#line 439 "checks_v1.hot.cpp"
+#line 453 "checks_v1.hot.cpp"
 
 #line 15 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Checks__safe_at(Checks_Shell* __self, int32_t i)
@@ -445,7 +459,7 @@ int32_t ChecksState_g1::load(int32_t* p)
     return state_of(__self)->safe_at(std::forward<int32_t>(i));
 #line 15 "checks_v1.hot"
 }
-#line 449 "checks_v1.hot.cpp"
+#line 463 "checks_v1.hot.cpp"
 #line 15 "checks_v1.hot"
 int32_t ChecksState_g1::safe_at(int32_t i)
 #line 15 "checks_v1.hot"
@@ -476,7 +490,7 @@ int32_t ChecksState_g1::safe_at(int32_t i)
     }
 #line 21 "checks_v1.hot"
 }
-#line 480 "checks_v1.hot.cpp"
+#line 494 "checks_v1.hot.cpp"
 
 #line 23 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Checks__safe_load(Checks_Shell* __self, int32_t* p)
@@ -486,7 +500,7 @@ int32_t ChecksState_g1::safe_at(int32_t i)
     return state_of(__self)->safe_load(std::forward<int32_t*>(p));
 #line 23 "checks_v1.hot"
 }
-#line 490 "checks_v1.hot.cpp"
+#line 504 "checks_v1.hot.cpp"
 #line 23 "checks_v1.hot"
 int32_t ChecksState_g1::safe_load(int32_t* p)
 #line 23 "checks_v1.hot"
@@ -525,7 +539,7 @@ int32_t ChecksState_g1::safe_load(int32_t* p)
     }
 #line 33 "checks_v1.hot"
 }
-#line 529 "checks_v1.hot.cpp"
+#line 543 "checks_v1.hot.cpp"
 
 #line 35 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Checks__first_member(Checks_Shell* __self, Actor* other)
@@ -535,7 +549,7 @@ int32_t ChecksState_g1::safe_load(int32_t* p)
     return state_of(__self)->first_member(std::forward<Actor*>(other));
 #line 35 "checks_v1.hot"
 }
-#line 539 "checks_v1.hot.cpp"
+#line 553 "checks_v1.hot.cpp"
 #line 35 "checks_v1.hot"
 void ChecksState_g1::first_member(Actor* other)
 #line 35 "checks_v1.hot"
@@ -558,13 +572,14 @@ void ChecksState_g1::first_member(Actor* other)
     HOT_TRACE_LINE(); hot::deref(other).Move(Vec3());
 #line 37 "checks_v1.hot"
 }
-#line 562 "checks_v1.hot.cpp"
+#line 576 "checks_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);
     reg.add(&Checks_record, &Checks_create);
     Checks_record.construct_keys = Checks__construct_keys;
+    Checks_record.ctors = Checks__constructors;
     reg.add_thunk("Checks::at", reinterpret_cast<void*>(&Checks__at__thunk));
     reg.add_thunk("Checks::load", reinterpret_cast<void*>(&Checks__load__thunk));
     reg.add_thunk("Checks::safe_at", reinterpret_cast<void*>(&Checks__safe_at__thunk));

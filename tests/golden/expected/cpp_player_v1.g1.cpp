@@ -388,6 +388,24 @@ HOT_NODEBUG static hot::Instance Player_create()
 }
 #line 390 "cpp_player_v1.cpp.cpp"
 
+#line 28 "cpp_player_v1.cpp"
+HOT_NODEBUG static hot::Instance Player__make_0([[maybe_unused]] void** __a)
+#line 28 "cpp_player_v1.cpp"
+{
+#line 28 "cpp_player_v1.cpp"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 28 "cpp_player_v1.cpp"
+    auto* p = static_cast<Player_Shell* (*)(bool)>(&Player__build)(false);
+#line 28 "cpp_player_v1.cpp"
+    return {static_cast<Actor*>(p), p};
+#line 28 "cpp_player_v1.cpp"
+}
+#line 404 "cpp_player_v1.cpp.cpp"
+
+static const hot::CtorEntry Player__constructors[] = {
+    {hot::ctor_key<>(), &Player__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 28 "cpp_player_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__ctor(Player_Shell* __self)
@@ -397,7 +415,7 @@ HOT_NODEBUG static hot::Instance Player_create()
     return state_of(__self)->ctor();
 #line 28 "cpp_player_v1.cpp"
 }
-#line 401 "cpp_player_v1.cpp.cpp"
+#line 419 "cpp_player_v1.cpp.cpp"
 #line 28 "cpp_player_v1.cpp"
 void PlayerState_g1::ctor()
 #line 28 "cpp_player_v1.cpp"
@@ -420,7 +438,7 @@ void PlayerState_g1::ctor()
 
 #line 28 "cpp_player_v1.cpp"
 }
-#line 424 "cpp_player_v1.cpp.cpp"
+#line 442 "cpp_player_v1.cpp.cpp"
 
 #line 30 "cpp_player_v1.cpp"
 void PlayerState_g1::Tick(float dt)
@@ -451,7 +469,7 @@ void PlayerState_g1::Tick(float dt)
     
 #line 38 "cpp_player_v1.cpp"
 }
-#line 455 "cpp_player_v1.cpp.cpp"
+#line 473 "cpp_player_v1.cpp.cpp"
 
 #line 40 "cpp_player_v1.cpp"
 void PlayerState_g1::TakeDamage_f(float amount)
@@ -478,7 +496,7 @@ void PlayerState_g1::TakeDamage_f(float amount)
     
 #line 44 "cpp_player_v1.cpp"
 }
-#line 482 "cpp_player_v1.cpp.cpp"
+#line 500 "cpp_player_v1.cpp.cpp"
 
 #line 46 "cpp_player_v1.cpp"
 void PlayerState_g1::TakeDamage_Af(Actor & source, float amount)
@@ -506,7 +524,7 @@ void PlayerState_g1::TakeDamage_Af(Actor & source, float amount)
     
 #line 51 "cpp_player_v1.cpp"
 }
-#line 510 "cpp_player_v1.cpp.cpp"
+#line 528 "cpp_player_v1.cpp.cpp"
 
 #line 53 "cpp_player_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float a)
@@ -516,7 +534,7 @@ void PlayerState_g1::TakeDamage_Af(Actor & source, float amount)
     return state_of(__self)->heal(std::forward<float>(a));
 #line 53 "cpp_player_v1.cpp"
 }
-#line 520 "cpp_player_v1.cpp.cpp"
+#line 538 "cpp_player_v1.cpp.cpp"
 #line 53 "cpp_player_v1.cpp"
 void PlayerState_g1::heal(float a)
 #line 53 "cpp_player_v1.cpp"
@@ -542,7 +560,7 @@ void PlayerState_g1::heal(float a)
     
 #line 57 "cpp_player_v1.cpp"
 }
-#line 546 "cpp_player_v1.cpp.cpp"
+#line 564 "cpp_player_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -550,5 +568,6 @@ extern "C" void script_register(hot::Registry& reg)
     reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Player_record, &Player_create);
     Player_record.construct_keys = Player__construct_keys;
+    Player_record.ctors = Player__constructors;
     reg.add_thunk("Player::heal", reinterpret_cast<void*>(&Player__heal__thunk));
 }

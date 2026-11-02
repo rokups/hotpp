@@ -357,6 +357,24 @@ HOT_NODEBUG static hot::Instance Limiter_create()
 }
 #line 359 "cpp_constexpr.cpp.cpp"
 
+#line 21 "cpp_constexpr.cpp"
+HOT_NODEBUG static hot::Instance Limiter__make_0([[maybe_unused]] void** __a)
+#line 21 "cpp_constexpr.cpp"
+{
+#line 21 "cpp_constexpr.cpp"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 21 "cpp_constexpr.cpp"
+    auto* p = static_cast<Limiter_Shell* (*)(bool)>(&Limiter__build)(false);
+#line 21 "cpp_constexpr.cpp"
+    return {static_cast<Actor*>(p), p};
+#line 21 "cpp_constexpr.cpp"
+}
+#line 373 "cpp_constexpr.cpp.cpp"
+
+static const hot::CtorEntry Limiter__constructors[] = {
+    {hot::ctor_key<>(), &Limiter__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 21 "cpp_constexpr.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Limiter__ctor(Limiter_Shell* __self)
@@ -366,7 +384,7 @@ HOT_NODEBUG static hot::Instance Limiter_create()
     return state_of(__self)->ctor();
 #line 21 "cpp_constexpr.cpp"
 }
-#line 370 "cpp_constexpr.cpp.cpp"
+#line 388 "cpp_constexpr.cpp.cpp"
 #line 21 "cpp_constexpr.cpp"
 void LimiterState_g1::ctor()
 #line 21 "cpp_constexpr.cpp"
@@ -389,7 +407,7 @@ void LimiterState_g1::ctor()
 
 #line 21 "cpp_constexpr.cpp"
 }
-#line 393 "cpp_constexpr.cpp.cpp"
+#line 411 "cpp_constexpr.cpp.cpp"
 
 #line 23 "cpp_constexpr.cpp"
 void LimiterState_g1::Tick(float dt)
@@ -417,7 +435,7 @@ void LimiterState_g1::Tick(float dt)
     
 #line 28 "cpp_constexpr.cpp"
 }
-#line 421 "cpp_constexpr.cpp.cpp"
+#line 439 "cpp_constexpr.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -425,4 +443,5 @@ extern "C" void script_register(hot::Registry& reg)
     reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Limiter_record, &Limiter_create);
     Limiter_record.construct_keys = Limiter__construct_keys;
+    Limiter_record.ctors = Limiter__constructors;
 }

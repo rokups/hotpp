@@ -353,6 +353,24 @@ HOT_NODEBUG static hot::Instance Scaler_create()
 }
 #line 355 "cpp_template_fn.cpp.cpp"
 
+#line 20 "cpp_template_fn.cpp"
+HOT_NODEBUG static hot::Instance Scaler__make_0([[maybe_unused]] void** __a)
+#line 20 "cpp_template_fn.cpp"
+{
+#line 20 "cpp_template_fn.cpp"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 20 "cpp_template_fn.cpp"
+    auto* p = static_cast<Scaler_Shell* (*)(bool)>(&Scaler__build)(false);
+#line 20 "cpp_template_fn.cpp"
+    return {static_cast<Actor*>(p), p};
+#line 20 "cpp_template_fn.cpp"
+}
+#line 369 "cpp_template_fn.cpp.cpp"
+
+static const hot::CtorEntry Scaler__constructors[] = {
+    {hot::ctor_key<>(), &Scaler__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 20 "cpp_template_fn.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Scaler__ctor(Scaler_Shell* __self)
@@ -362,7 +380,7 @@ HOT_NODEBUG static hot::Instance Scaler_create()
     return state_of(__self)->ctor();
 #line 20 "cpp_template_fn.cpp"
 }
-#line 366 "cpp_template_fn.cpp.cpp"
+#line 384 "cpp_template_fn.cpp.cpp"
 #line 20 "cpp_template_fn.cpp"
 void ScalerState_g1::ctor()
 #line 20 "cpp_template_fn.cpp"
@@ -385,7 +403,7 @@ void ScalerState_g1::ctor()
 
 #line 20 "cpp_template_fn.cpp"
 }
-#line 389 "cpp_template_fn.cpp.cpp"
+#line 407 "cpp_template_fn.cpp.cpp"
 
 #line 22 "cpp_template_fn.cpp"
 void ScalerState_g1::Tick(float dt)
@@ -413,7 +431,7 @@ void ScalerState_g1::Tick(float dt)
     
 #line 27 "cpp_template_fn.cpp"
 }
-#line 417 "cpp_template_fn.cpp.cpp"
+#line 435 "cpp_template_fn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -421,4 +439,5 @@ extern "C" void script_register(hot::Registry& reg)
     reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Scaler_record, &Scaler_create);
     Scaler_record.construct_keys = Scaler__construct_keys;
+    Scaler_record.ctors = Scaler__constructors;
 }

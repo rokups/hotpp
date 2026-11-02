@@ -250,6 +250,20 @@ HOT_NODEBUG static hot::Instance Player_create()
 }
 #line 252 "player_v2.hot.cpp"
 
+#line 6 "player_v2.hot"
+HOT_NODEBUG static hot::Instance Player__make_0([[maybe_unused]] void** __a)
+#line 6 "player_v2.hot"
+{
+#line 6 "player_v2.hot"
+    return Player_create();
+#line 6 "player_v2.hot"
+}
+#line 262 "player_v2.hot.cpp"
+
+static const hot::CtorEntry Player__constructors[] = {
+    {hot::ctor_key<>(), &Player__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 12 "player_v2.hot"
 void PlayerState_g2::Tick(float dt)
@@ -277,7 +291,7 @@ void PlayerState_g2::Tick(float dt)
     hot::deref(__self->Name).c_str(), dt, hot::deref(__self->Position).x, __st->health, __st->shield);
 #line 16 "player_v2.hot"
 }
-#line 281 "player_v2.hot.cpp"
+#line 295 "player_v2.hot.cpp"
 
 #line 18 "player_v2.hot"
 void PlayerState_g2::TakeDamage_f(float amount)
@@ -305,7 +319,7 @@ void PlayerState_g2::TakeDamage_f(float amount)
     __st->health);
 #line 22 "player_v2.hot"
 }
-#line 309 "player_v2.hot.cpp"
+#line 323 "player_v2.hot.cpp"
 
 #line 24 "player_v2.hot"
 void PlayerState_g2::TakeDamage_Af(Actor& source, float amount)
@@ -333,7 +347,7 @@ void PlayerState_g2::TakeDamage_Af(Actor& source, float amount)
     HOT_TRACE_LINE(); __self->TakeDamage(amount);
 #line 28 "player_v2.hot"
 }
-#line 337 "player_v2.hot.cpp"
+#line 351 "player_v2.hot.cpp"
 
 #line 30 "player_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float amount)
@@ -343,7 +357,7 @@ void PlayerState_g2::TakeDamage_Af(Actor& source, float amount)
     return state_of(__self)->heal(std::forward<float>(amount));
 #line 30 "player_v2.hot"
 }
-#line 347 "player_v2.hot.cpp"
+#line 361 "player_v2.hot.cpp"
 #line 30 "player_v2.hot"
 void PlayerState_g2::heal(float amount)
 #line 30 "player_v2.hot"
@@ -370,11 +384,12 @@ void PlayerState_g2::heal(float amount)
     __st->health);
 #line 34 "player_v2.hot"
 }
-#line 374 "player_v2.hot.cpp"
+#line 388 "player_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);
     reg.add(&Player_record, &Player_create);
     Player_record.construct_keys = Player__construct_keys;
+    Player_record.ctors = Player__constructors;
 }

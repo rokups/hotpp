@@ -62,6 +62,28 @@ struct Handles
     }
 };
 
+// The calls of a shell macro in the body of a script class (see Frontend::find_shell_macros). The
+// members that such a call declares are not script members, so "children" hides them.
+struct HiddenCalls
+{
+    CXFile file = nullptr;
+    std::vector<std::pair<uint32_t, uint32_t>> ranges; // the offsets [begin, end) in the main file
+};
+HiddenCalls* g_hidden = nullptr;
+
+bool is_hidden(CXCursor k)
+{
+    CXFile f = nullptr;
+    unsigned line = 0, col = 0, off = 0;
+    clang_getExpansionLocation(clang_getCursorLocation(k), &f, &line, &col, &off);
+    if (!f || !clang_File_isEqual(f, g_hidden->file))
+        return false;
+    for (const auto& r : g_hidden->ranges)
+        if (off >= r.first && off < r.second)
+            return true;
+    return false;
+}
+
 // Gives the direct children of a cursor. The callback does not throw.
 std::vector<CXCursor> children(CXCursor c)
 {
@@ -70,7 +92,8 @@ std::vector<CXCursor> children(CXCursor c)
         c,
         [](CXCursor k, CXCursor, CXClientData d)
         {
-            static_cast<std::vector<CXCursor>*>(d)->push_back(k);
+            if (!g_hidden || !is_hidden(k))
+                static_cast<std::vector<CXCursor>*>(d)->push_back(k);
             return CXChildVisit_Continue;
         },
         &out);
@@ -420,6 +443,16 @@ private:
         std::function<void(std::string&&)> store;
     };
 
+    // The shell macros of the script classes. A class gets them from the annotations of its header
+    // (HOT_SHELL_MACRO and HOT_NO_SLOT in hot/script.h). The key is the position of the class.
+    struct ShellInfo
+    {
+        std::string prelude;   // the calls of the shell macros, as written in the class
+        std::string overrides; // the names of the virtuals that get no slot
+    };
+    std::map<uint32_t, ShellInfo> shell_info_;
+    HiddenCalls hidden_;
+    void find_shell_macros();
     std::vector<CXCursor> top_; // the top-level cursors of the main file. A namespace with script code is flattened.
     std::string cur_ns_; // the namespace path of the declaration that read_top reads
     std::vector<Slice> slices_;
@@ -2490,6 +2523,11 @@ void Frontend::process_class(CXCursor c)
                 cd.attributes.push_back(std::move(name));
             }
         }
+    if (auto si = shell_info_.find(pos_of(c)); si != shell_info_.end())
+    {
+        cd.cpp_prelude = si->second.prelude;
+        cd.cpp_overrides = si->second.overrides;
+    }
     // A child of a script class (the same design as a .hot child): the shell of the child derives
     // from the shell of the parent, and the state of the child holds the fields of the chain.
     const ClassInfo* parent = nullptr;
@@ -2818,12 +2856,78 @@ const Frontend::Entry* Frontend::lookup(CXCursor ref) const
     return it == table_.end() ? nullptr : &it->second;
 }
 
+// The header of a script class can name shell macros: "HOT_SHELL_MACRO("URHO3D_OBJECT")" in
+// the class annotations. A call of such a macro in the body of the class declares members for
+// the shell, not for the script. This pass finds the calls. The shell gets the text of the call,
+// and the walks of the class do not see its members. "HOT_NO_SLOT("A B")" names the virtuals that
+// the shell keeps without a slot. The .cpp file stays a normal C++ file: the macro is a C++ macro.
+void Frontend::find_shell_macros()
+{
+    const std::string shell_key = "hot.shell_macro=", slot_key = "hot.no_slot=";
+    for (CXCursor c : top_)
+    {
+        const CXCursorKind ck = clang_getCursorKind(c);
+        if ((ck != CXCursor_ClassDecl && ck != CXCursor_StructDecl) || !clang_isCursorDefinition(c))
+            continue;
+        std::set<std::string> names;
+        std::string overrides;
+        for (CXCursor k : children(c))
+        {
+            if (clang_getCursorKind(k) != CXCursor_AnnotateAttr)
+                continue;
+            const std::string a = spelling(k);
+            if (a.rfind(shell_key, 0) == 0)
+                names.insert(a.substr(shell_key.size()));
+            else if (a.rfind(slot_key, 0) == 0)
+                overrides += (overrides.empty() ? "" : " ") + a.substr(slot_key.size());
+        }
+        if (names.empty() && overrides.empty())
+            continue;
+        ShellInfo info;
+        info.overrides = overrides;
+        const Range ce = extent_of(c);
+        for (CXCursor m : top_)
+        {
+            if (clang_getCursorKind(m) != CXCursor_MacroExpansion || !names.count(spelling(m)))
+                continue;
+            const uint32_t begin = extent_of(m).begin;
+            if (!ce.has(begin))
+                continue;
+            // The call ends at the ")" that matches the "(" after the name.
+            size_t i = skip_ws(text_, begin + spelling(m).size(), text_.size());
+            size_t end = begin + spelling(m).size();
+            if (i < text_.size() && text_[i] == '(')
+            {
+                int depth = 0;
+                for (; i < text_.size(); ++i)
+                {
+                    depth += text_[i] == '(';
+                    depth -= text_[i] == ')';
+                    if (depth == 0)
+                        break;
+                }
+                end = i < text_.size() ? i + 1 : text_.size();
+            }
+            hidden_.ranges.emplace_back(begin, static_cast<uint32_t>(end));
+            info.prelude += text_.substr(begin, end - begin) + ";\n";
+        }
+        shell_info_[pos_of(c)] = std::move(info);
+    }
+}
+
 ast::Script Frontend::run(CXTranslationUnit tu, const std::string& name)
 {
     main_ = clang_getFile(tu, name.c_str());
     for (CXCursor k : children(clang_getTranslationUnitCursor(tu)))
         if (from_main(k))
             add_top(k);
+    hidden_.file = main_;
+    find_shell_macros();
+    struct HiddenScope
+    {
+        explicit HiddenScope(HiddenCalls* h) { g_hidden = h; }
+        ~HiddenScope() { g_hidden = nullptr; }
+    } hidden_scope(&hidden_);
     index(top_);
     try
     {

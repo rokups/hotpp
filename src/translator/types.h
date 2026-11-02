@@ -243,6 +243,7 @@ private:
         std::vector<std::string> interfaces;
         bool is_value = false;
         std::string cpp_prelude;
+        std::string cpp_overrides;
     };
     std::map<std::string, ScriptClass> script_;
     std::set<std::string> native_globals_;

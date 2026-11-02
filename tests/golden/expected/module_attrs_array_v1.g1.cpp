@@ -272,6 +272,20 @@ HOT_NODEBUG static hot::Instance Grid_create()
 }
 #line 274 "module_attrs_array_v1.hot.cpp"
 
+#line 7 "module_attrs_array_v1.hot"
+HOT_NODEBUG static hot::Instance Grid__make_0([[maybe_unused]] void** __a)
+#line 7 "module_attrs_array_v1.hot"
+{
+#line 7 "module_attrs_array_v1.hot"
+    return Grid_create();
+#line 7 "module_attrs_array_v1.hot"
+}
+#line 284 "module_attrs_array_v1.hot.cpp"
+
+static const hot::CtorEntry Grid__constructors[] = {
+    {hot::ctor_key<>(), &Grid__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 11 "module_attrs_array_v1.hot"
 void GridState_g1::Tick(float dt)
@@ -297,11 +311,12 @@ void GridState_g1::Tick(float dt)
     HOT_TRACE_LINE(); hot::index(hot::index(__st->weights, 1), 2) = dt;
 #line 14 "module_attrs_array_v1.hot"
 }
-#line 301 "module_attrs_array_v1.hot.cpp"
+#line 315 "module_attrs_array_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);
     reg.add(&Grid_record, &Grid_create);
     Grid_record.construct_keys = Grid__construct_keys;
+    Grid_record.ctors = Grid__constructors;
 }

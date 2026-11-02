@@ -302,6 +302,20 @@ HOT_NODEBUG static hot::Instance Tracker_create()
 }
 #line 304 "native_std_v1.hot.cpp"
 
+#line 10 "native_std_v1.hot"
+HOT_NODEBUG static hot::Instance Tracker__make_0([[maybe_unused]] void** __a)
+#line 10 "native_std_v1.hot"
+{
+#line 10 "native_std_v1.hot"
+    return Tracker_create();
+#line 10 "native_std_v1.hot"
+}
+#line 314 "native_std_v1.hot.cpp"
+
+static const hot::CtorEntry Tracker__constructors[] = {
+    {hot::ctor_key<>(), &Tracker__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 18 "native_std_v1.hot"
 void TrackerState_g1::Tick(float dt)
@@ -349,11 +363,12 @@ void TrackerState_g1::Tick(float dt)
     HOT_TRACE_LINE(); hot::deref(__st->history).push_back(static_cast<int32_t>(hot::deref(__st->history).size()) * 10);
 #line 32 "native_std_v1.hot"
 }
-#line 353 "native_std_v1.hot.cpp"
+#line 367 "native_std_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);
     reg.add(&Tracker_record, &Tracker_create);
     Tracker_record.construct_keys = Tracker__construct_keys;
+    Tracker_record.ctors = Tracker__constructors;
 }

@@ -17,6 +17,8 @@ endif()
 option(HOT_INSTALL "Generate the install rules of the Hot++ SDK" ${HOT_TOP_LEVEL})
 option(HOT_BUILD_TESTS "Build the Hot++ tests" ${HOT_TOP_LEVEL})
 option(HOT_BUILD_SAMPLES "Build the Hot++ samples" ${HOT_TOP_LEVEL})
+option(HOT_BUILD_LS "Build the language server hot-ls (needs HOT_BUILD_TRANSLATOR)" ON)
+option(HOT_BUILD_VSCODE "Add the VS Code extension: the package, the install rules and the node tests" ON)
 option(HOT_SAMPLES_STANDALONE_TEST "Configure, build and test samples/aot as a separate project" OFF)
 # The translator (hotc_lib, hotc, hot-ls) and the run-time backends need libclang. A cross build
 # has no libclang for the target, so the translator is off by default. Use HOT_HOST_HOTC to give
@@ -160,12 +162,14 @@ CPMAddPackage(
 )
 
 # nlohmann_json: the language server in src/ls uses it.
-CPMAddPackage(
-    NAME nlohmann_json
-    VERSION 3.12.0
-    URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
-    OPTIONS "JSON_BuildTests OFF" "JSON_Install OFF"
-)
+if(HOT_BUILD_LS AND HOT_BUILD_TRANSLATOR)
+    CPMAddPackage(
+        NAME nlohmann_json
+        VERSION 3.12.0
+        URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+        OPTIONS "JSON_BuildTests OFF" "JSON_Install OFF"
+    )
+endif()
 
 # The script runtime and the language server use threads.
 find_package(Threads REQUIRED)
@@ -336,7 +340,9 @@ if(HOT_BUILD_TESTS)
 endif()
 
 # The VS Code extension. The folder has the node tests (HOT_BUILD_TESTS) and the install rules.
-add_subdirectory(editors/vscode)
+if(HOT_BUILD_VSCODE)
+    add_subdirectory(editors/vscode)
+endif()
 
 if(HOT_BUILD_SAMPLES)
     add_subdirectory(samples)
@@ -357,8 +363,11 @@ if(HOT_INSTALL)
     if(HOT_BUILD_TRANSLATOR)
         set_target_properties(hotc_lib PROPERTIES EXPORT_NAME hotc_lib)
         set_target_properties(hotc PROPERTIES EXPORT_NAME hotc)
-        set_target_properties(hot_ls PROPERTIES EXPORT_NAME hot_ls)
-        list(APPEND HOT_INSTALL_TARGETS hotc_lib hotc hot_ls)
+        list(APPEND HOT_INSTALL_TARGETS hotc_lib hotc)
+        if(HOT_BUILD_LS)
+            set_target_properties(hot_ls PROPERTIES EXPORT_NAME hot_ls)
+            list(APPEND HOT_INSTALL_TARGETS hot_ls)
+        endif()
     endif()
     if(TARGET hot_backend)
         set_target_properties(hot_backend PROPERTIES EXPORT_NAME backend)

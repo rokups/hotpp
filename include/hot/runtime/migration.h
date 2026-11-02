@@ -8,7 +8,10 @@
 #include "hot/runtime/shell.h"
 
 #include <cstdint>
+#include <cstring>
 #include <memory>
+#include <stdexcept>
+#include <type_traits>
 #include <string>
 #include <vector>
 
@@ -23,10 +26,71 @@ struct Instance
 };
 using Factory = Instance (*)();
 
+struct ClassEntry;
+// The text of each constructor of the class, for example "(), (Urho3D::Context*)".
+std::string constructor_list(const ClassEntry& entry);
+// Throws std::invalid_argument: the class has no constructor for the key "key" of the host
+// arguments, or argument "const_arg" (when it is not -1) is const and the constructor changes it.
+// The text names the class and lists its constructors.
+[[noreturn]] void throw_no_constructor(const ClassEntry& entry, const char* key, int const_arg = -1);
+
 struct ClassEntry
 {
     ClassRecord* record;
+    // The factory: makes an object with the default constructor (design 7.3).
     Factory create;
+
+    // The constructor table entry with the signature key "key" (ctor_key), or null.
+    const CtorEntry* find_constructor(const char* key) const
+    {
+        if (record && record->ctors)
+            for (const CtorEntry* c = record->ctors; c->key; ++c)
+                if (std::strcmp(c->key, key) == 0)
+                    return c;
+        return nullptr;
+    }
+
+    // True when the class has a constructor with the parameters "P" after decay (ctor_key).
+    template <class... P> bool has_constructor() const { return find_constructor(ctor_key<P...>()) != nullptr; }
+
+    // Makes an object with the script constructor whose decayed parameter types are the decayed
+    // types of the arguments. The match is exact: no conversion, no default argument and no
+    // overload resolution. A "T&" parameter refers to the argument. A "T&&" parameter moves
+    // from the argument. A value parameter gets a copy. Without arguments and without a "()"
+    // constructor, it calls "create". When no constructor matches, it throws
+    // std::invalid_argument with the list of the constructors of the class.
+    template <class... Args> Instance construct(Args&&... args) const
+    {
+        const char* key = ctor_key<Args...>();
+        const CtorEntry* c = find_constructor(key);
+        if (!c)
+        {
+            if constexpr (sizeof...(Args) == 0)
+                return create();
+            else
+                throw_no_constructor(*this, key);
+        }
+        constexpr uint64_t host_const = const_mask<Args...>();
+        if (const uint64_t bad = c->write_mask & host_const)
+        {
+            int i = 0;
+            while (!(bad & (uint64_t(1) << i)))
+                ++i;
+            throw_no_constructor(*this, key, i);
+        }
+        void* ptrs[sizeof...(Args) + 1] = {
+            const_cast<void*>(static_cast<const volatile void*>(std::addressof(args)))..., nullptr};
+        return c->make(ptrs);
+    }
+
+private:
+    // Bit i is set when argument i is const.
+    template <class... Args> static constexpr uint64_t const_mask()
+    {
+        uint64_t mask = 0, bit = 1;
+        ((mask |= std::is_const_v<std::remove_reference_t<Args>> ? bit : 0, bit <<= 1), ...);
+        return mask;
+    }
 };
 
 // What the migration does for one field of the new layout (section 4.7).

@@ -280,6 +280,20 @@ HOT_NODEBUG static hot::Instance Grid_create()
 }
 #line 282 "checked_index_v1.hot.cpp"
 
+#line 11 "checked_index_v1.hot"
+HOT_NODEBUG static hot::Instance Grid__make_0([[maybe_unused]] void** __a)
+#line 11 "checked_index_v1.hot"
+{
+#line 11 "checked_index_v1.hot"
+    return Grid_create();
+#line 11 "checked_index_v1.hot"
+}
+#line 292 "checked_index_v1.hot.cpp"
+
+static const hot::CtorEntry Grid__constructors[] = {
+    {hot::ctor_key<>(), &Grid__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 16 "checked_index_v1.hot"
 void GridState_g1::Tick(float dt)
@@ -307,11 +321,12 @@ void GridState_g1::Tick(float dt)
     HOT_TRACE_LINE(); hot::index(__st->plain, 0) = 1;
 #line 20 "checked_index_v1.hot"
 }
-#line 311 "checked_index_v1.hot.cpp"
+#line 325 "checked_index_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);
     reg.add(&Grid_record, &Grid_create);
     Grid_record.construct_keys = Grid__construct_keys;
+    Grid_record.ctors = Grid__constructors;
 }

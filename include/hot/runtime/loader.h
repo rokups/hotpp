@@ -19,8 +19,10 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace hot
@@ -227,6 +229,18 @@ public:
     std::string stats_text() const { return format_stats(stats()); }
 
     const ClassEntry* find(const std::string& name) const { return registry_.find(name); }
+    // Makes an object of the script class "name" with the constructor that matches the decayed
+    // types of "args" (ClassEntry::construct). "Native" is the native base of the class, for
+    // example Actor. The object must have that base. The caller owns the object. Throws
+    // std::runtime_error for an unknown class, and std::invalid_argument when no constructor
+    // matches. Without arguments it is the same as "create" of the class.
+    template <class Native, class... Args> Native* create_as(const std::string& name, Args&&... args) const
+    {
+        const ClassEntry* e = find(name);
+        if (!e)
+            throw std::runtime_error("no script class " + name);
+        return static_cast<Native*>(e->construct(std::forward<Args>(args)...).native);
+    }
     // The module state of the live generation: the layout and the slot. Null layout: none.
     // "unit" selects the unit (Module::unit). The empty unit is the default.
     ModuleStateInfo module_state(const std::string& unit = {}) const

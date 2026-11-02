@@ -28,3 +28,17 @@
 #else
 #define HOT_ATTRIBUTE(name)
 #endif
+
+// HOT_SHELL_MACRO("Name") after "class" names a macro that a call in the class body declares
+// members for the shell. hotc copies the call "Name(...)" into the shell and hides the members
+// that it declares from the script. HOT_NO_SLOT("A B") names virtuals that the shell keeps
+// without a slot (the macro declares them). Both are for a header that defines such a macro for
+// a base class, for example the type information of an engine. Only clang keeps the annotation.
+// The file is still a normal C++ file: other compilers ignore the macros.
+#if defined(__clang__)
+#define HOT_SHELL_MACRO(name) [[clang::annotate("hot.shell_macro=" name)]]
+#define HOT_NO_SLOT(names) [[clang::annotate("hot.no_slot=" names)]]
+#else
+#define HOT_SHELL_MACRO(name)
+#define HOT_NO_SLOT(names)
+#endif

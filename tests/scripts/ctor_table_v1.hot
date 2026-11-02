@@ -1,0 +1,32 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 1 of the constructor table tests (ClassEntry::construct).
+// "how" tells which constructor ran.
+using "Actor.h";
+using "Util.h";
+using <string>;
+
+// A class without a constructor: the table has one entry "()".
+class Plain : Actor {
+    int n = 3;
+}
+
+class Made : Actor {
+    int how = 0;
+    int value = 0;
+    std.string text = std.string();
+
+    Made() : base(std.string("made")) { this.how = 1; }
+    // A value parameter.
+    Made(int v) : base(std.string("made")) { this.value = v; this.how = 2; }
+    // A pointer parameter.
+    Made(Actor* other) : base(std.string("made")) { this.text = other.Name; this.how = 3; }
+    // A reference parameter: the constructor writes to the argument of the host.
+    Made(int& out, int v) : base(std.string("made")) { out = v * 2; this.value = v; this.how = 4; }
+    // A "&&" parameter.
+    Made(std.string&& s) : base(std.string("made")) { this.text = s; this.how = 5; }
+    // A parameter of a native alias type: IntFn is "int (*)(int)".
+    Made(IntFn f, float scale) : base(std.string("made")) { this.value = f(3); this.how = 6; }
+}

@@ -286,6 +286,20 @@ HOT_NODEBUG static hot::Instance Beeper_create()
 }
 #line 288 "timer_v1.hot.cpp"
 
+#line 5 "timer_v1.hot"
+HOT_NODEBUG static hot::Instance Beeper__make_0([[maybe_unused]] void** __a)
+#line 5 "timer_v1.hot"
+{
+#line 5 "timer_v1.hot"
+    return Beeper_create();
+#line 5 "timer_v1.hot"
+}
+#line 298 "timer_v1.hot.cpp"
+
+static const hot::CtorEntry Beeper__constructors[] = {
+    {hot::ctor_key<>(), &Beeper__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 9 "timer_v1.hot"
 void BeeperState_g1::Tick(float dt)
@@ -309,7 +323,7 @@ void BeeperState_g1::Tick(float dt)
     HOT_TRACE_LINE(); __st->ticks = __st->ticks + 1;
 #line 11 "timer_v1.hot"
 }
-#line 313 "timer_v1.hot.cpp"
+#line 327 "timer_v1.hot.cpp"
 
 #line 13 "timer_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Beeper__arm(Beeper_Shell* __self, World& w, float delay)
@@ -319,7 +333,7 @@ void BeeperState_g1::Tick(float dt)
     return state_of(__self)->arm(std::forward<World&>(w), std::forward<float>(delay));
 #line 13 "timer_v1.hot"
 }
-#line 323 "timer_v1.hot.cpp"
+#line 337 "timer_v1.hot.cpp"
 #line 13 "timer_v1.hot"
 void BeeperState_g1::arm(World& w, float delay)
 #line 13 "timer_v1.hot"
@@ -348,12 +362,13 @@ void BeeperState_g1::arm(World& w, float delay)
     }));
 #line 18 "timer_v1.hot"
 }
-#line 352 "timer_v1.hot.cpp"
+#line 366 "timer_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);
     reg.add(&Beeper_record, &Beeper_create);
     Beeper_record.construct_keys = Beeper__construct_keys;
+    Beeper_record.ctors = Beeper__constructors;
     reg.add_thunk("Beeper::arm", reinterpret_cast<void*>(&Beeper__arm__thunk));
 }

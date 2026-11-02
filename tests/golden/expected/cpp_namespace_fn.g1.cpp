@@ -357,6 +357,24 @@ HOT_NODEBUG static hot::Instance Bumper_create()
 }
 #line 359 "cpp_namespace_fn.cpp.cpp"
 
+#line 23 "cpp_namespace_fn.cpp"
+HOT_NODEBUG static hot::Instance Bumper__make_0([[maybe_unused]] void** __a)
+#line 23 "cpp_namespace_fn.cpp"
+{
+#line 23 "cpp_namespace_fn.cpp"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 23 "cpp_namespace_fn.cpp"
+    auto* p = static_cast<Bumper_Shell* (*)(bool)>(&Bumper__build)(false);
+#line 23 "cpp_namespace_fn.cpp"
+    return {static_cast<Actor*>(p), p};
+#line 23 "cpp_namespace_fn.cpp"
+}
+#line 373 "cpp_namespace_fn.cpp.cpp"
+
+static const hot::CtorEntry Bumper__constructors[] = {
+    {hot::ctor_key<>(), &Bumper__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 23 "cpp_namespace_fn.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Bumper__ctor(Bumper_Shell* __self)
@@ -366,7 +384,7 @@ HOT_NODEBUG static hot::Instance Bumper_create()
     return state_of(__self)->ctor();
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 370 "cpp_namespace_fn.cpp.cpp"
+#line 388 "cpp_namespace_fn.cpp.cpp"
 #line 23 "cpp_namespace_fn.cpp"
 void BumperState_g1::ctor()
 #line 23 "cpp_namespace_fn.cpp"
@@ -389,7 +407,7 @@ void BumperState_g1::ctor()
 
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 393 "cpp_namespace_fn.cpp.cpp"
+#line 411 "cpp_namespace_fn.cpp.cpp"
 
 #line 25 "cpp_namespace_fn.cpp"
 void BumperState_g1::Tick(float dt)
@@ -417,7 +435,7 @@ void BumperState_g1::Tick(float dt)
     
 #line 30 "cpp_namespace_fn.cpp"
 }
-#line 421 "cpp_namespace_fn.cpp.cpp"
+#line 439 "cpp_namespace_fn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -425,4 +443,5 @@ extern "C" void script_register(hot::Registry& reg)
     reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Bumper_record, &Bumper_create);
     Bumper_record.construct_keys = Bumper__construct_keys;
+    Bumper_record.ctors = Bumper__constructors;
 }

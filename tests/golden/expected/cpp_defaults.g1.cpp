@@ -355,6 +355,24 @@ HOT_NODEBUG static hot::Instance Counter_create()
 }
 #line 357 "cpp_defaults.cpp.cpp"
 
+#line 17 "cpp_defaults.cpp"
+HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
+#line 17 "cpp_defaults.cpp"
+{
+#line 17 "cpp_defaults.cpp"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 17 "cpp_defaults.cpp"
+    auto* p = static_cast<Counter_Shell* (*)(bool, int)>(&Counter__build)(false, hot::ctor_arg<int>(__a[0]));
+#line 17 "cpp_defaults.cpp"
+    return {static_cast<Actor*>(p), p};
+#line 17 "cpp_defaults.cpp"
+}
+#line 371 "cpp_defaults.cpp.cpp"
+
+static const hot::CtorEntry Counter__constructors[] = {
+    {hot::ctor_key<int>(), &Counter__make_0, hot::ctor_write_mask<int>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 17 "cpp_defaults.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Counter__ctor(Counter_Shell* __self, int start)
@@ -364,7 +382,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return state_of(__self)->ctor(std::forward<int>(start));
 #line 17 "cpp_defaults.cpp"
 }
-#line 368 "cpp_defaults.cpp.cpp"
+#line 386 "cpp_defaults.cpp.cpp"
 #line 17 "cpp_defaults.cpp"
 void CounterState_g1::ctor(int start)
 #line 17 "cpp_defaults.cpp"
@@ -389,7 +407,7 @@ void CounterState_g1::ctor(int start)
     
 #line 20 "cpp_defaults.cpp"
 }
-#line 393 "cpp_defaults.cpp.cpp"
+#line 411 "cpp_defaults.cpp.cpp"
 
 #line 23 "cpp_defaults.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Counter__Add(Counter_Shell* __self, int a, int b, int c)
@@ -399,7 +417,7 @@ void CounterState_g1::ctor(int start)
     return state_of(__self)->Add(std::forward<int>(a), std::forward<int>(b), std::forward<int>(c));
 #line 23 "cpp_defaults.cpp"
 }
-#line 403 "cpp_defaults.cpp.cpp"
+#line 421 "cpp_defaults.cpp.cpp"
 #line 23 "cpp_defaults.cpp"
 int CounterState_g1::Add(int a, int b, int c)
 #line 23 "cpp_defaults.cpp"
@@ -425,7 +443,7 @@ int CounterState_g1::Add(int a, int b, int c)
     
 #line 27 "cpp_defaults.cpp"
 }
-#line 429 "cpp_defaults.cpp.cpp"
+#line 447 "cpp_defaults.cpp.cpp"
 
 #line 29 "cpp_defaults.cpp"
 void CounterState_g1::Tick(float dt)
@@ -453,7 +471,7 @@ void CounterState_g1::Tick(float dt)
     
 #line 34 "cpp_defaults.cpp"
 }
-#line 457 "cpp_defaults.cpp.cpp"
+#line 475 "cpp_defaults.cpp.cpp"
 
 #line 37 "cpp_defaults.cpp"
 void CounterState_g1::TakeDamage_f(float amount)
@@ -479,7 +497,7 @@ void CounterState_g1::TakeDamage_f(float amount)
     
 #line 40 "cpp_defaults.cpp"
 }
-#line 483 "cpp_defaults.cpp.cpp"
+#line 501 "cpp_defaults.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -487,5 +505,6 @@ extern "C" void script_register(hot::Registry& reg)
     reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Counter_record, &Counter_create);
     Counter_record.construct_keys = Counter__construct_keys;
+    Counter_record.ctors = Counter__constructors;
     reg.add_thunk("Counter::Add", reinterpret_cast<void*>(&Counter__Add__thunk));
 }

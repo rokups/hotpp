@@ -296,6 +296,20 @@ HOT_NODEBUG static hot::Instance Grid_create()
 }
 #line 298 "array_v2.hot.cpp"
 
+#line 5 "array_v2.hot"
+HOT_NODEBUG static hot::Instance Grid__make_0([[maybe_unused]] void** __a)
+#line 5 "array_v2.hot"
+{
+#line 5 "array_v2.hot"
+    return Grid_create();
+#line 5 "array_v2.hot"
+}
+#line 308 "array_v2.hot.cpp"
+
+static const hot::CtorEntry Grid__constructors[] = {
+    {hot::ctor_key<>(), &Grid__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 12 "array_v2.hot"
 void GridState_g2::Tick(float dt)
@@ -325,7 +339,7 @@ void GridState_g2::Tick(float dt)
     HOT_TRACE_LINE(); hot::index(hot::index(__st->m, 1), 2) = hot::index(__st->a, 0) + 5;
 #line 17 "array_v2.hot"
 }
-#line 329 "array_v2.hot.cpp"
+#line 343 "array_v2.hot.cpp"
 
 #line 19 "array_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Grid__total(Grid_Shell* __self)
@@ -335,7 +349,7 @@ void GridState_g2::Tick(float dt)
     return state_of(__self)->total();
 #line 19 "array_v2.hot"
 }
-#line 339 "array_v2.hot.cpp"
+#line 353 "array_v2.hot.cpp"
 #line 19 "array_v2.hot"
 int32_t GridState_g2::total()
 #line 19 "array_v2.hot"
@@ -366,7 +380,7 @@ int32_t GridState_g2::total()
     HOT_TRACE_LINE(); return sum + hot::deref(__st->a).size() + __st->extra;
 #line 25 "array_v2.hot"
 }
-#line 370 "array_v2.hot.cpp"
+#line 384 "array_v2.hot.cpp"
 
 #line 27 "array_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static std::array<int32_t, 4> Grid__make(Grid_Shell* __self, std::array<int32_t, 2> p)
@@ -376,7 +390,7 @@ int32_t GridState_g2::total()
     return state_of(__self)->make(std::forward<std::array<int32_t, 2>>(p));
 #line 27 "array_v2.hot"
 }
-#line 380 "array_v2.hot.cpp"
+#line 394 "array_v2.hot.cpp"
 #line 27 "array_v2.hot"
 std::array<int32_t, 4> GridState_g2::make(std::array<int32_t, 2> p)
 #line 27 "array_v2.hot"
@@ -403,11 +417,12 @@ std::array<int32_t, 4> GridState_g2::make(std::array<int32_t, 2> p)
     HOT_TRACE_LINE(); return r;
 #line 31 "array_v2.hot"
 }
-#line 407 "array_v2.hot.cpp"
+#line 421 "array_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);
     reg.add(&Grid_record, &Grid_create);
     Grid_record.construct_keys = Grid__construct_keys;
+    Grid_record.ctors = Grid__constructors;
 }

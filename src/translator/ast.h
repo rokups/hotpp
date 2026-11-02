@@ -539,6 +539,7 @@ struct ClassDef
     std::vector<Property> props; // in source order
     bool is_value = false; // the attribute [value]
     std::string cpp_prelude; // the attribute [cpp_prelude("text")]: C++ text for this class only
+    std::string cpp_overrides; // names of virtuals that the shell keeps without a slot (a .cpp script)
     // The script attributes of the class: "[Tag] class C { }". Each name is an attribute class
     // ("[attribute] class Tag;"). The class record keeps the names for a query at run time.
     std::vector<std::string> attributes;

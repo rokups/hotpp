@@ -83,6 +83,38 @@ std::string readable_layout(const char* layout_name)
     return n.substr(0, at);
 }
 
+namespace
+{
+// The parameter list of a constructor key: "hot::CtorSignature<int, float>" gives "(int, float)".
+std::string signature_text(const char* key)
+{
+    std::string t = readable_type(key);
+    const std::string head = "hot::CtorSignature<";
+    if (t.rfind(head, 0) == 0 && !t.empty() && t.back() == '>')
+        return "(" + t.substr(head.size(), t.size() - head.size() - 1) + ")";
+    return t; // no demangler: the text stays as it is
+}
+} // namespace
+
+std::string constructor_list(const ClassEntry& entry)
+{
+    std::string out;
+    if (entry.record && entry.record->ctors)
+        for (const CtorEntry* c = entry.record->ctors; c->key; ++c)
+            out += (out.empty() ? "" : ", ") + signature_text(c->key);
+    return out.empty() ? std::string("none") : out;
+}
+
+void throw_no_constructor(const ClassEntry& entry, const char* key, int const_arg)
+{
+    const std::string name = entry.record && entry.record->name ? entry.record->name : "?";
+    if (const_arg >= 0)
+        throw std::invalid_argument("constructor " + signature_text(key) + " of script class '" + name
+            + "': argument " + std::to_string(const_arg) + " is const, but the constructor can change it");
+    throw std::invalid_argument("script class '" + name + "' has no constructor " + signature_text(key)
+        + "; its constructors: " + constructor_list(entry));
+}
+
 MigrationPlan build_plan(const StateLayout& o, const StateLayout& n)
 {
     MigrationPlan plan;

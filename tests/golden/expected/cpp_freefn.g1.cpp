@@ -387,6 +387,24 @@ HOT_NODEBUG static hot::Instance Counter_create()
 }
 #line 389 "cpp_freefn.cpp.cpp"
 
+#line 31 "cpp_freefn.cpp"
+HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
+#line 31 "cpp_freefn.cpp"
+{
+#line 31 "cpp_freefn.cpp"
+    hot::ScriptEntry entry;  // the creation is an entry (S27)
+#line 31 "cpp_freefn.cpp"
+    auto* p = static_cast<Counter_Shell* (*)(bool)>(&Counter__build)(false);
+#line 31 "cpp_freefn.cpp"
+    return {static_cast<Actor*>(p), p};
+#line 31 "cpp_freefn.cpp"
+}
+#line 403 "cpp_freefn.cpp.cpp"
+
+static const hot::CtorEntry Counter__constructors[] = {
+    {hot::ctor_key<>(), &Counter__make_0, hot::ctor_write_mask<>()},
+    {nullptr, nullptr, 0}};
+
 // ---------------------------------------------------------------- function bodies
 #line 31 "cpp_freefn.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Counter__ctor(Counter_Shell* __self)
@@ -396,7 +414,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return state_of(__self)->ctor();
 #line 31 "cpp_freefn.cpp"
 }
-#line 400 "cpp_freefn.cpp.cpp"
+#line 418 "cpp_freefn.cpp.cpp"
 #line 31 "cpp_freefn.cpp"
 void CounterState_g1::ctor()
 #line 31 "cpp_freefn.cpp"
@@ -419,7 +437,7 @@ void CounterState_g1::ctor()
 
 #line 31 "cpp_freefn.cpp"
 }
-#line 423 "cpp_freefn.cpp.cpp"
+#line 441 "cpp_freefn.cpp.cpp"
 
 #line 33 "cpp_freefn.cpp"
 void CounterState_g1::Tick(float dt)
@@ -447,7 +465,7 @@ void CounterState_g1::Tick(float dt)
     
 #line 38 "cpp_freefn.cpp"
 }
-#line 451 "cpp_freefn.cpp.cpp"
+#line 469 "cpp_freefn.cpp.cpp"
 
 #line 41 "cpp_freefn.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self)
@@ -457,7 +475,7 @@ void CounterState_g1::Tick(float dt)
     return state_of(__self)->Peek();
 #line 41 "cpp_freefn.cpp"
 }
-#line 461 "cpp_freefn.cpp.cpp"
+#line 479 "cpp_freefn.cpp.cpp"
 #line 41 "cpp_freefn.cpp"
 int CounterState_g1::Peek()
 #line 41 "cpp_freefn.cpp"
@@ -480,7 +498,7 @@ int CounterState_g1::Peek()
  return read_total(); 
 #line 41 "cpp_freefn.cpp"
 }
-#line 484 "cpp_freefn.cpp.cpp"
+#line 502 "cpp_freefn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -488,5 +506,6 @@ extern "C" void script_register(hot::Registry& reg)
     reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Counter_record, &Counter_create);
     Counter_record.construct_keys = Counter__construct_keys;
+    Counter_record.ctors = Counter__constructors;
     reg.add_thunk("Counter::Peek", reinterpret_cast<void*>(&Counter__Peek__thunk));
 }

@@ -286,7 +286,7 @@ void TypeModel::add_script_classes(const std::vector<ast::ClassDef>& classes)
 {
     script_.clear();
     for (const ast::ClassDef& cd : classes)
-        script_[cd.name] = {cd.base, cd.interfaces, cd.is_value, cd.cpp_prelude};
+        script_[cd.name] = {cd.base, cd.interfaces, cd.is_value, cd.cpp_prelude, cd.cpp_overrides};
 }
 
 bool TypeModel::is_script_value(const std::string& type) const
@@ -920,6 +920,7 @@ std::set<std::string> TypeModel::host_overrides(const std::string& type) const
         }
     };
     add(class_overrides_);
+    add(sc->second.cpp_overrides);
     std::set<std::string> visited{type};
     std::deque<std::string> queue{type};
     while (!queue.empty())
