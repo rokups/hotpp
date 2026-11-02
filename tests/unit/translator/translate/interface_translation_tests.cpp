@@ -55,9 +55,11 @@ TEST(InterfaceTranslation, ShellDerivesFromAllBasesWithOneSlotForEachVirtual)
     EXPECT_TRUE(has(r.cpp, "int Ping(int a0) override")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "int Id() const override")) << r.cpp;
     // A virtual without an override calls the implementation of the base that declares it.
-    EXPECT_TRUE(has(r.cpp, "static_cast<Foo_Shell*>(__hot_owner)->IPing::Size(a0);")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "static_cast<Foo_Shell*>(__hot_owner)->IName::Id();")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "static_cast<Foo_Shell*>(__hot_owner)->Widget::Size();")) << r.cpp;
+    // The shell member "__hot_base_<slot>" makes the call, and the forwarder calls that member.
+    EXPECT_TRUE(has(r.cpp, "return IPing::Size(a0);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "return IName::Id();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "return Widget::Size();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "static_cast<Foo_Shell*>(__hot_owner)->__hot_base_Size_i(a0);")) << r.cpp;
     // The record lists all bases. The reload check compares the list (design 5.3).
     EXPECT_TRUE(has(r.cpp, "\"Widget, IPing, IName\", hot::shell_layout_hash(\"Widget, IPing, IName\"")) << r.cpp;
 }
@@ -117,12 +119,12 @@ TEST(InterfaceTranslation, ConstMarkSelectsTheConstOverride)
     const hotc::TranslateResult plain = run("class Foo : Widget, IConst {\n    override int Size() { return 4; }\n}\n");
     ASSERT_TRUE(plain.ok) << plain.diagnostics;
     EXPECT_TRUE(has(plain.cpp, "int Size() override")) << plain.cpp;
-    EXPECT_TRUE(has(plain.cpp, "static_cast<Foo_Shell*>(__hot_owner)->IConst::Size();")) << plain.cpp;
+    EXPECT_TRUE(has(plain.cpp, "return IConst::Size();")) << plain.cpp;
     const hotc::TranslateResult marked =
         run("class Foo : Widget, IConst {\n    override int Size() const { return 4; }\n}\n");
     ASSERT_TRUE(marked.ok) << marked.diagnostics;
     EXPECT_TRUE(has(marked.cpp, "int Size() const override")) << marked.cpp;
-    EXPECT_TRUE(has(marked.cpp, "static_cast<Foo_Shell*>(__hot_owner)->Widget::Size();")) << marked.cpp;
+    EXPECT_TRUE(has(marked.cpp, "return Widget::Size();")) << marked.cpp;
     const hotc::TranslateResult arrow = run("class Foo : Widget, IConst {\n    override int Size() const => 4;\n}\n");
     EXPECT_TRUE(arrow.ok) << arrow.diagnostics;
 }

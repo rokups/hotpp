@@ -88,6 +88,24 @@ struct Limiter_Shell final : Actor, hot::ShellBase {
 #line 16 "cpp_constexpr.cpp"
     ~Limiter_Shell() override { hot::destroy_state(this); }
 #line 91 "cpp_constexpr.cpp.cpp"
+#line 16 "cpp_constexpr.cpp"
+    HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
+#line 16 "cpp_constexpr.cpp"
+    {
+#line 16 "cpp_constexpr.cpp"
+        return Actor::TakeDamage(a0);
+#line 16 "cpp_constexpr.cpp"
+    }
+#line 100 "cpp_constexpr.cpp.cpp"
+#line 16 "cpp_constexpr.cpp"
+    HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
+#line 16 "cpp_constexpr.cpp"
+    {
+#line 16 "cpp_constexpr.cpp"
+        return Actor::TakeDamage(a0, a1);
+#line 16 "cpp_constexpr.cpp"
+    }
+#line 109 "cpp_constexpr.cpp.cpp"
 
 #line 16 "cpp_constexpr.cpp"
     void Tick(float a0) override
@@ -97,7 +115,7 @@ struct Limiter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 16 "cpp_constexpr.cpp"
     }
-#line 101 "cpp_constexpr.cpp.cpp"
+#line 119 "cpp_constexpr.cpp.cpp"
 
 #line 16 "cpp_constexpr.cpp"
     void TakeDamage(float a0) override
@@ -107,7 +125,7 @@ struct Limiter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 16 "cpp_constexpr.cpp"
     }
-#line 111 "cpp_constexpr.cpp.cpp"
+#line 129 "cpp_constexpr.cpp.cpp"
 
 #line 16 "cpp_constexpr.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -117,7 +135,7 @@ struct Limiter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 16 "cpp_constexpr.cpp"
     }
-#line 121 "cpp_constexpr.cpp.cpp"
+#line 139 "cpp_constexpr.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -133,25 +151,25 @@ struct LimiterState_g1 {
 #line 16 "cpp_constexpr.cpp"
     {
 #line 16 "cpp_constexpr.cpp"
-        return static_cast<Limiter_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
+        return static_cast<Limiter_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 16 "cpp_constexpr.cpp"
     }
-#line 140 "cpp_constexpr.cpp.cpp"
+#line 158 "cpp_constexpr.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 16 "cpp_constexpr.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
 #line 16 "cpp_constexpr.cpp"
     {
 #line 16 "cpp_constexpr.cpp"
-        return static_cast<Limiter_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Limiter_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 16 "cpp_constexpr.cpp"
     }
-#line 150 "cpp_constexpr.cpp.cpp"
+#line 168 "cpp_constexpr.cpp.cpp"
 };
 
 #line 19 "cpp_constexpr.cpp"
 static void Limiter__init_last(void*, void* f) { using T = int; new (f) T(0); }
-#line 155 "cpp_constexpr.cpp.cpp"
+#line 173 "cpp_constexpr.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -204,7 +222,7 @@ HOT_HIDDEN static void Limiter__ctor_chain(Limiter_Shell* __self, [[maybe_unused
     Limiter__ctor(__self);
 #line 21 "cpp_constexpr.cpp"
 }
-#line 208 "cpp_constexpr.cpp.cpp"
+#line 226 "cpp_constexpr.cpp.cpp"
 using Limiter_SuperArgs = decltype(Limiter__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -229,7 +247,7 @@ HOT_NODEBUG static hot::ShellBase* Limiter__construct(void* mem, const char* key
     return nullptr;
 #line 16 "cpp_constexpr.cpp"
 }
-#line 233 "cpp_constexpr.cpp.cpp"
+#line 251 "cpp_constexpr.cpp.cpp"
 
 static const char* const Limiter__construct_keys[] = {typeid(Limiter_SuperArgs).name(), nullptr};
 
@@ -257,7 +275,7 @@ HOT_HIDDEN static Limiter_Shell* Limiter__build([[maybe_unused]] bool __note)
     return __self;
 #line 21 "cpp_constexpr.cpp"
 }
-#line 261 "cpp_constexpr.cpp.cpp"
+#line 279 "cpp_constexpr.cpp.cpp"
 #line 21 "cpp_constexpr.cpp"
 [[maybe_unused]] HOT_HIDDEN static Limiter_Shell* Limiter__new()
 #line 21 "cpp_constexpr.cpp"
@@ -266,7 +284,7 @@ HOT_HIDDEN static Limiter_Shell* Limiter__build([[maybe_unused]] bool __note)
     return Limiter__build(true);
 #line 21 "cpp_constexpr.cpp"
 }
-#line 270 "cpp_constexpr.cpp.cpp"
+#line 288 "cpp_constexpr.cpp.cpp"
 #line 21 "cpp_constexpr.cpp"
 template <int = 0>
 #line 21 "cpp_constexpr.cpp"
@@ -283,7 +301,7 @@ template <int = 0>
     return __h;
 #line 21 "cpp_constexpr.cpp"
 }
-#line 287 "cpp_constexpr.cpp.cpp"
+#line 305 "cpp_constexpr.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -295,7 +313,7 @@ HOT_NODEBUG static hot::ShellCore* Limiter__new_default()
     return Limiter__build(false);
 #line 21 "cpp_constexpr.cpp"
 }
-#line 299 "cpp_constexpr.cpp.cpp"
+#line 317 "cpp_constexpr.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Limiter_slots[SLOT_COUNT] = {
@@ -337,7 +355,7 @@ HOT_NODEBUG static hot::Instance Limiter_create()
     return {static_cast<Actor*>(p), p};
 #line 16 "cpp_constexpr.cpp"
 }
-#line 341 "cpp_constexpr.cpp.cpp"
+#line 359 "cpp_constexpr.cpp.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 21 "cpp_constexpr.cpp"
@@ -348,7 +366,7 @@ HOT_NODEBUG static hot::Instance Limiter_create()
     return state_of(__self)->ctor();
 #line 21 "cpp_constexpr.cpp"
 }
-#line 352 "cpp_constexpr.cpp.cpp"
+#line 370 "cpp_constexpr.cpp.cpp"
 #line 21 "cpp_constexpr.cpp"
 void LimiterState_g1::ctor()
 #line 21 "cpp_constexpr.cpp"
@@ -371,7 +389,7 @@ void LimiterState_g1::ctor()
 
 #line 21 "cpp_constexpr.cpp"
 }
-#line 375 "cpp_constexpr.cpp.cpp"
+#line 393 "cpp_constexpr.cpp.cpp"
 
 #line 23 "cpp_constexpr.cpp"
 void LimiterState_g1::Tick(float dt)
@@ -399,7 +417,7 @@ void LimiterState_g1::Tick(float dt)
     
 #line 28 "cpp_constexpr.cpp"
 }
-#line 403 "cpp_constexpr.cpp.cpp"
+#line 421 "cpp_constexpr.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

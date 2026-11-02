@@ -85,6 +85,24 @@ struct Fighter_Shell final : Actor, hot::ShellBase {
 #line 8 "cpp_outofclass_v2.cpp"
     ~Fighter_Shell() override { hot::destroy_state(this); }
 #line 88 "cpp_outofclass_v2.cpp.cpp"
+#line 8 "cpp_outofclass_v2.cpp"
+    HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
+#line 8 "cpp_outofclass_v2.cpp"
+    {
+#line 8 "cpp_outofclass_v2.cpp"
+        return Actor::TakeDamage(a0);
+#line 8 "cpp_outofclass_v2.cpp"
+    }
+#line 97 "cpp_outofclass_v2.cpp.cpp"
+#line 8 "cpp_outofclass_v2.cpp"
+    HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
+#line 8 "cpp_outofclass_v2.cpp"
+    {
+#line 8 "cpp_outofclass_v2.cpp"
+        return Actor::TakeDamage(a0, a1);
+#line 8 "cpp_outofclass_v2.cpp"
+    }
+#line 106 "cpp_outofclass_v2.cpp.cpp"
 
 #line 8 "cpp_outofclass_v2.cpp"
     void Tick(float a0) override
@@ -94,7 +112,7 @@ struct Fighter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Fighter_SLOT_Tick, a0);
 #line 8 "cpp_outofclass_v2.cpp"
     }
-#line 98 "cpp_outofclass_v2.cpp.cpp"
+#line 116 "cpp_outofclass_v2.cpp.cpp"
 
 #line 8 "cpp_outofclass_v2.cpp"
     void TakeDamage(float a0) override
@@ -104,7 +122,7 @@ struct Fighter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Fighter_SLOT_TakeDamage_f, a0);
 #line 8 "cpp_outofclass_v2.cpp"
     }
-#line 108 "cpp_outofclass_v2.cpp.cpp"
+#line 126 "cpp_outofclass_v2.cpp.cpp"
 
 #line 8 "cpp_outofclass_v2.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -114,7 +132,7 @@ struct Fighter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, Fighter_SLOT_TakeDamage_Af, a0, a1);
 #line 8 "cpp_outofclass_v2.cpp"
     }
-#line 118 "cpp_outofclass_v2.cpp.cpp"
+#line 136 "cpp_outofclass_v2.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -134,28 +152,28 @@ struct FighterState_g2 {
 #line 8 "cpp_outofclass_v2.cpp"
     {
 #line 8 "cpp_outofclass_v2.cpp"
-        return static_cast<Fighter_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
+        return static_cast<Fighter_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 8 "cpp_outofclass_v2.cpp"
     }
-#line 141 "cpp_outofclass_v2.cpp.cpp"
+#line 159 "cpp_outofclass_v2.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 8 "cpp_outofclass_v2.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
 #line 8 "cpp_outofclass_v2.cpp"
     {
 #line 8 "cpp_outofclass_v2.cpp"
-        return static_cast<Fighter_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Fighter_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 8 "cpp_outofclass_v2.cpp"
     }
-#line 151 "cpp_outofclass_v2.cpp.cpp"
+#line 169 "cpp_outofclass_v2.cpp.cpp"
 };
 
 #line 19 "cpp_outofclass_v2.cpp"
 static void Fighter__init_hp(void*, void* f) { using T = int; new (f) T(20); }
-#line 156 "cpp_outofclass_v2.cpp.cpp"
+#line 174 "cpp_outofclass_v2.cpp.cpp"
 #line 20 "cpp_outofclass_v2.cpp"
 static void Fighter__init_last(void*, void* f) { using T = int; new (f) T(0); }
-#line 159 "cpp_outofclass_v2.cpp.cpp"
+#line 177 "cpp_outofclass_v2.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -213,7 +231,7 @@ HOT_HIDDEN static void Fighter__ctor_chain(Fighter_Shell* __self, [[maybe_unused
     Fighter__ctor(__self);
 #line 11 "cpp_outofclass_v2.cpp"
 }
-#line 217 "cpp_outofclass_v2.cpp.cpp"
+#line 235 "cpp_outofclass_v2.cpp.cpp"
 using Fighter_SuperArgs = decltype(Fighter__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -238,7 +256,7 @@ HOT_NODEBUG static hot::ShellBase* Fighter__construct(void* mem, const char* key
     return nullptr;
 #line 8 "cpp_outofclass_v2.cpp"
 }
-#line 242 "cpp_outofclass_v2.cpp.cpp"
+#line 260 "cpp_outofclass_v2.cpp.cpp"
 
 static const char* const Fighter__construct_keys[] = {typeid(Fighter_SuperArgs).name(), nullptr};
 
@@ -266,7 +284,7 @@ HOT_HIDDEN static Fighter_Shell* Fighter__build([[maybe_unused]] bool __note)
     return __self;
 #line 11 "cpp_outofclass_v2.cpp"
 }
-#line 270 "cpp_outofclass_v2.cpp.cpp"
+#line 288 "cpp_outofclass_v2.cpp.cpp"
 #line 11 "cpp_outofclass_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static Fighter_Shell* Fighter__new()
 #line 11 "cpp_outofclass_v2.cpp"
@@ -275,7 +293,7 @@ HOT_HIDDEN static Fighter_Shell* Fighter__build([[maybe_unused]] bool __note)
     return Fighter__build(true);
 #line 11 "cpp_outofclass_v2.cpp"
 }
-#line 279 "cpp_outofclass_v2.cpp.cpp"
+#line 297 "cpp_outofclass_v2.cpp.cpp"
 #line 11 "cpp_outofclass_v2.cpp"
 template <int = 0>
 #line 11 "cpp_outofclass_v2.cpp"
@@ -292,7 +310,7 @@ template <int = 0>
     return __h;
 #line 11 "cpp_outofclass_v2.cpp"
 }
-#line 296 "cpp_outofclass_v2.cpp.cpp"
+#line 314 "cpp_outofclass_v2.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -304,7 +322,7 @@ HOT_NODEBUG static hot::ShellCore* Fighter__new_default()
     return Fighter__build(false);
 #line 11 "cpp_outofclass_v2.cpp"
 }
-#line 308 "cpp_outofclass_v2.cpp.cpp"
+#line 326 "cpp_outofclass_v2.cpp.cpp"
 
 #line 12 "cpp_outofclass_v2.cpp"
 static void Fighter__dtor_slot(hot::ShellCore* s)
@@ -314,7 +332,7 @@ static void Fighter__dtor_slot(hot::ShellCore* s)
     Fighter__dtor(static_cast<Fighter_Shell*>(s));
 #line 12 "cpp_outofclass_v2.cpp"
 }
-#line 318 "cpp_outofclass_v2.cpp.cpp"
+#line 336 "cpp_outofclass_v2.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Fighter_slots[Fighter_SLOT_COUNT] = {
@@ -358,7 +376,7 @@ HOT_NODEBUG static hot::Instance Fighter_create()
     return {static_cast<Actor*>(p), p};
 #line 8 "cpp_outofclass_v2.cpp"
 }
-#line 362 "cpp_outofclass_v2.cpp.cpp"
+#line 380 "cpp_outofclass_v2.cpp.cpp"
 
 
 // ---------------------------------------------------------------- class Marker
@@ -386,7 +404,34 @@ struct Marker_Shell final : Actor, hot::ShellBase {
     }
 #line 23 "cpp_outofclass_v2.cpp"
     ~Marker_Shell() override { hot::destroy_state(this); }
-#line 390 "cpp_outofclass_v2.cpp.cpp"
+#line 408 "cpp_outofclass_v2.cpp.cpp"
+#line 23 "cpp_outofclass_v2.cpp"
+    HOT_NODEBUG void __hot_base_Tick(float a0)
+#line 23 "cpp_outofclass_v2.cpp"
+    {
+#line 23 "cpp_outofclass_v2.cpp"
+        return Actor::Tick(a0);
+#line 23 "cpp_outofclass_v2.cpp"
+    }
+#line 417 "cpp_outofclass_v2.cpp.cpp"
+#line 23 "cpp_outofclass_v2.cpp"
+    HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
+#line 23 "cpp_outofclass_v2.cpp"
+    {
+#line 23 "cpp_outofclass_v2.cpp"
+        return Actor::TakeDamage(a0);
+#line 23 "cpp_outofclass_v2.cpp"
+    }
+#line 426 "cpp_outofclass_v2.cpp.cpp"
+#line 23 "cpp_outofclass_v2.cpp"
+    HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
+#line 23 "cpp_outofclass_v2.cpp"
+    {
+#line 23 "cpp_outofclass_v2.cpp"
+        return Actor::TakeDamage(a0, a1);
+#line 23 "cpp_outofclass_v2.cpp"
+    }
+#line 435 "cpp_outofclass_v2.cpp.cpp"
 
 #line 23 "cpp_outofclass_v2.cpp"
     void Tick(float a0) override
@@ -396,7 +441,7 @@ struct Marker_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Marker_SLOT_Tick, a0);
 #line 23 "cpp_outofclass_v2.cpp"
     }
-#line 400 "cpp_outofclass_v2.cpp.cpp"
+#line 445 "cpp_outofclass_v2.cpp.cpp"
 
 #line 23 "cpp_outofclass_v2.cpp"
     void TakeDamage(float a0) override
@@ -406,7 +451,7 @@ struct Marker_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Marker_SLOT_TakeDamage_f, a0);
 #line 23 "cpp_outofclass_v2.cpp"
     }
-#line 410 "cpp_outofclass_v2.cpp.cpp"
+#line 455 "cpp_outofclass_v2.cpp.cpp"
 
 #line 23 "cpp_outofclass_v2.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -416,7 +461,7 @@ struct Marker_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, Marker_SLOT_TakeDamage_Af, a0, a1);
 #line 23 "cpp_outofclass_v2.cpp"
     }
-#line 420 "cpp_outofclass_v2.cpp.cpp"
+#line 465 "cpp_outofclass_v2.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -431,35 +476,35 @@ struct MarkerState_g2 {
 #line 23 "cpp_outofclass_v2.cpp"
     {
 #line 23 "cpp_outofclass_v2.cpp"
-        return static_cast<Marker_Shell*>(__hot_owner)->Actor::Tick(a0);
+        return static_cast<Marker_Shell*>(__hot_owner)->__hot_base_Tick(a0);
 #line 23 "cpp_outofclass_v2.cpp"
     }
-#line 438 "cpp_outofclass_v2.cpp.cpp"
+#line 483 "cpp_outofclass_v2.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 23 "cpp_outofclass_v2.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_f(float a0)
 #line 23 "cpp_outofclass_v2.cpp"
     {
 #line 23 "cpp_outofclass_v2.cpp"
-        return static_cast<Marker_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
+        return static_cast<Marker_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 23 "cpp_outofclass_v2.cpp"
     }
-#line 448 "cpp_outofclass_v2.cpp.cpp"
+#line 493 "cpp_outofclass_v2.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 23 "cpp_outofclass_v2.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
 #line 23 "cpp_outofclass_v2.cpp"
     {
 #line 23 "cpp_outofclass_v2.cpp"
-        return static_cast<Marker_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Marker_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 23 "cpp_outofclass_v2.cpp"
     }
-#line 458 "cpp_outofclass_v2.cpp.cpp"
+#line 503 "cpp_outofclass_v2.cpp.cpp"
 };
 
 #line 27 "cpp_outofclass_v2.cpp"
 static void Marker__init_n(void*, void* f) { using T = int; new (f) T(0); }
-#line 463 "cpp_outofclass_v2.cpp.cpp"
+#line 508 "cpp_outofclass_v2.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -512,7 +557,7 @@ HOT_HIDDEN static void Marker__ctor_chain(Marker_Shell* __self, [[maybe_unused]]
     Marker__ctor(__self);
 #line 26 "cpp_outofclass_v2.cpp"
 }
-#line 516 "cpp_outofclass_v2.cpp.cpp"
+#line 561 "cpp_outofclass_v2.cpp.cpp"
 using Marker_SuperArgs = decltype(Marker__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -537,7 +582,7 @@ HOT_NODEBUG static hot::ShellBase* Marker__construct(void* mem, const char* key,
     return nullptr;
 #line 23 "cpp_outofclass_v2.cpp"
 }
-#line 541 "cpp_outofclass_v2.cpp.cpp"
+#line 586 "cpp_outofclass_v2.cpp.cpp"
 
 static const char* const Marker__construct_keys[] = {typeid(Marker_SuperArgs).name(), nullptr};
 
@@ -565,7 +610,7 @@ HOT_HIDDEN static Marker_Shell* Marker__build([[maybe_unused]] bool __note)
     return __self;
 #line 26 "cpp_outofclass_v2.cpp"
 }
-#line 569 "cpp_outofclass_v2.cpp.cpp"
+#line 614 "cpp_outofclass_v2.cpp.cpp"
 #line 26 "cpp_outofclass_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static Marker_Shell* Marker__new()
 #line 26 "cpp_outofclass_v2.cpp"
@@ -574,7 +619,7 @@ HOT_HIDDEN static Marker_Shell* Marker__build([[maybe_unused]] bool __note)
     return Marker__build(true);
 #line 26 "cpp_outofclass_v2.cpp"
 }
-#line 578 "cpp_outofclass_v2.cpp.cpp"
+#line 623 "cpp_outofclass_v2.cpp.cpp"
 #line 26 "cpp_outofclass_v2.cpp"
 template <int = 0>
 #line 26 "cpp_outofclass_v2.cpp"
@@ -591,7 +636,7 @@ template <int = 0>
     return __h;
 #line 26 "cpp_outofclass_v2.cpp"
 }
-#line 595 "cpp_outofclass_v2.cpp.cpp"
+#line 640 "cpp_outofclass_v2.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -603,7 +648,7 @@ HOT_NODEBUG static hot::ShellCore* Marker__new_default()
     return Marker__build(false);
 #line 26 "cpp_outofclass_v2.cpp"
 }
-#line 607 "cpp_outofclass_v2.cpp.cpp"
+#line 652 "cpp_outofclass_v2.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Marker_slots[Marker_SLOT_COUNT] = {
@@ -645,7 +690,7 @@ HOT_NODEBUG static hot::Instance Marker_create()
     return {static_cast<Actor*>(p), p};
 #line 23 "cpp_outofclass_v2.cpp"
 }
-#line 649 "cpp_outofclass_v2.cpp.cpp"
+#line 694 "cpp_outofclass_v2.cpp.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 11 "cpp_outofclass_v2.cpp"
@@ -656,7 +701,7 @@ HOT_NODEBUG static hot::Instance Marker_create()
     return state_of(__self)->ctor();
 #line 11 "cpp_outofclass_v2.cpp"
 }
-#line 660 "cpp_outofclass_v2.cpp.cpp"
+#line 705 "cpp_outofclass_v2.cpp.cpp"
 #line 11 "cpp_outofclass_v2.cpp"
 void FighterState_g2::ctor()
 #line 11 "cpp_outofclass_v2.cpp"
@@ -681,7 +726,7 @@ void FighterState_g2::ctor()
 
 #line 33 "cpp_outofclass_v2.cpp"
 }
-#line 685 "cpp_outofclass_v2.cpp.cpp"
+#line 730 "cpp_outofclass_v2.cpp.cpp"
 
 #line 12 "cpp_outofclass_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Fighter__dtor(Fighter_Shell* __self)
@@ -691,7 +736,7 @@ void FighterState_g2::ctor()
     return state_of(__self)->dtor();
 #line 12 "cpp_outofclass_v2.cpp"
 }
-#line 695 "cpp_outofclass_v2.cpp.cpp"
+#line 740 "cpp_outofclass_v2.cpp.cpp"
 #line 12 "cpp_outofclass_v2.cpp"
 void FighterState_g2::dtor()
 #line 12 "cpp_outofclass_v2.cpp"
@@ -716,7 +761,7 @@ void FighterState_g2::dtor()
 
 #line 38 "cpp_outofclass_v2.cpp"
 }
-#line 720 "cpp_outofclass_v2.cpp.cpp"
+#line 765 "cpp_outofclass_v2.cpp.cpp"
 
 #line 14 "cpp_outofclass_v2.cpp"
 void FighterState_g2::Tick(float dt)
@@ -745,7 +790,7 @@ void FighterState_g2::Tick(float dt)
 
 #line 46 "cpp_outofclass_v2.cpp"
 }
-#line 749 "cpp_outofclass_v2.cpp.cpp"
+#line 794 "cpp_outofclass_v2.cpp.cpp"
 
 #line 16 "cpp_outofclass_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Fighter__hit(Fighter_Shell* __self, int damage, int factor)
@@ -755,7 +800,7 @@ void FighterState_g2::Tick(float dt)
     return state_of(__self)->hit(std::forward<int>(damage), std::forward<int>(factor));
 #line 16 "cpp_outofclass_v2.cpp"
 }
-#line 759 "cpp_outofclass_v2.cpp.cpp"
+#line 804 "cpp_outofclass_v2.cpp.cpp"
 #line 16 "cpp_outofclass_v2.cpp"
 int FighterState_g2::hit(int damage, int factor)
 #line 16 "cpp_outofclass_v2.cpp"
@@ -781,7 +826,7 @@ int FighterState_g2::hit(int damage, int factor)
 
 #line 53 "cpp_outofclass_v2.cpp"
 }
-#line 785 "cpp_outofclass_v2.cpp.cpp"
+#line 830 "cpp_outofclass_v2.cpp.cpp"
 
 #line 17 "cpp_outofclass_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Fighter__get(Fighter_Shell* __self)
@@ -791,7 +836,7 @@ int FighterState_g2::hit(int damage, int factor)
     return state_of(__self)->get();
 #line 17 "cpp_outofclass_v2.cpp"
 }
-#line 795 "cpp_outofclass_v2.cpp.cpp"
+#line 840 "cpp_outofclass_v2.cpp.cpp"
 #line 17 "cpp_outofclass_v2.cpp"
 int FighterState_g2::get()
 #line 17 "cpp_outofclass_v2.cpp"
@@ -816,7 +861,7 @@ int FighterState_g2::get()
 
 #line 58 "cpp_outofclass_v2.cpp"
 }
-#line 820 "cpp_outofclass_v2.cpp.cpp"
+#line 865 "cpp_outofclass_v2.cpp.cpp"
 
 #line 26 "cpp_outofclass_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Marker__ctor(Marker_Shell* __self)
@@ -826,7 +871,7 @@ int FighterState_g2::get()
     return state_of(__self)->ctor();
 #line 26 "cpp_outofclass_v2.cpp"
 }
-#line 830 "cpp_outofclass_v2.cpp.cpp"
+#line 875 "cpp_outofclass_v2.cpp.cpp"
 #line 26 "cpp_outofclass_v2.cpp"
 void MarkerState_g2::ctor()
 #line 26 "cpp_outofclass_v2.cpp"
@@ -849,7 +894,7 @@ void MarkerState_g2::ctor()
 
 #line 26 "cpp_outofclass_v2.cpp"
 }
-#line 853 "cpp_outofclass_v2.cpp.cpp"
+#line 898 "cpp_outofclass_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

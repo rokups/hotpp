@@ -46,6 +46,24 @@ struct Beeper_Shell final : Actor, hot::ShellBase {
 #line 4 "timer_v2.hot"
     ~Beeper_Shell() override { hot::destroy_state(this); }
 #line 49 "timer_v2.hot.cpp"
+#line 4 "timer_v2.hot"
+    HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
+#line 4 "timer_v2.hot"
+    {
+#line 4 "timer_v2.hot"
+        return Actor::TakeDamage(a0);
+#line 4 "timer_v2.hot"
+    }
+#line 58 "timer_v2.hot.cpp"
+#line 4 "timer_v2.hot"
+    HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
+#line 4 "timer_v2.hot"
+    {
+#line 4 "timer_v2.hot"
+        return Actor::TakeDamage(a0, a1);
+#line 4 "timer_v2.hot"
+    }
+#line 67 "timer_v2.hot.cpp"
 
 #line 4 "timer_v2.hot"
     void Tick(float a0) override
@@ -55,7 +73,7 @@ struct Beeper_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 4 "timer_v2.hot"
     }
-#line 59 "timer_v2.hot.cpp"
+#line 77 "timer_v2.hot.cpp"
 
 #line 4 "timer_v2.hot"
     void TakeDamage(float a0) override
@@ -65,7 +83,7 @@ struct Beeper_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 4 "timer_v2.hot"
     }
-#line 69 "timer_v2.hot.cpp"
+#line 87 "timer_v2.hot.cpp"
 
 #line 4 "timer_v2.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -75,7 +93,7 @@ struct Beeper_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 4 "timer_v2.hot"
     }
-#line 79 "timer_v2.hot.cpp"
+#line 97 "timer_v2.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -92,28 +110,28 @@ struct BeeperState_g2 {
 #line 4 "timer_v2.hot"
     {
 #line 4 "timer_v2.hot"
-        return static_cast<Beeper_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
+        return static_cast<Beeper_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 4 "timer_v2.hot"
     }
-#line 99 "timer_v2.hot.cpp"
+#line 117 "timer_v2.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 4 "timer_v2.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
 #line 4 "timer_v2.hot"
     {
 #line 4 "timer_v2.hot"
-        return static_cast<Beeper_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Beeper_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 4 "timer_v2.hot"
     }
-#line 109 "timer_v2.hot.cpp"
+#line 127 "timer_v2.hot.cpp"
 };
 
 #line 5 "timer_v2.hot"
 static void Beeper__init_ticks(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 114 "timer_v2.hot.cpp"
+#line 132 "timer_v2.hot.cpp"
 #line 6 "timer_v2.hot"
 static void Beeper__init_fired(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 117 "timer_v2.hot.cpp"
+#line 135 "timer_v2.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -158,7 +176,7 @@ HOT_HIDDEN static auto Beeper__plan()
     return std::make_pair(Beeper__super_args(), std::tuple<>());
 #line 4 "timer_v2.hot"
 }
-#line 162 "timer_v2.hot.cpp"
+#line 180 "timer_v2.hot.cpp"
 using Beeper_SuperArgs = decltype(Beeper__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -183,7 +201,7 @@ HOT_NODEBUG static hot::ShellBase* Beeper__construct(void* mem, const char* key,
     return nullptr;
 #line 4 "timer_v2.hot"
 }
-#line 187 "timer_v2.hot.cpp"
+#line 205 "timer_v2.hot.cpp"
 
 static const char* const Beeper__construct_keys[] = {typeid(Beeper_SuperArgs).name(), nullptr};
 
@@ -199,7 +217,7 @@ HOT_HIDDEN static Beeper_Shell* Beeper__build([[maybe_unused]] bool __note)
     return __self;
 #line 4 "timer_v2.hot"
 }
-#line 203 "timer_v2.hot.cpp"
+#line 221 "timer_v2.hot.cpp"
 #line 4 "timer_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static Beeper_Shell* Beeper__new()
 #line 4 "timer_v2.hot"
@@ -208,7 +226,7 @@ HOT_HIDDEN static Beeper_Shell* Beeper__build([[maybe_unused]] bool __note)
     return Beeper__build(true);
 #line 4 "timer_v2.hot"
 }
-#line 212 "timer_v2.hot.cpp"
+#line 230 "timer_v2.hot.cpp"
 #line 4 "timer_v2.hot"
 template <int = 0>
 #line 4 "timer_v2.hot"
@@ -223,7 +241,7 @@ template <int = 0>
     return __h;
 #line 4 "timer_v2.hot"
 }
-#line 227 "timer_v2.hot.cpp"
+#line 245 "timer_v2.hot.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Beeper_slots[SLOT_COUNT] = {
@@ -252,7 +270,7 @@ HOT_NODEBUG static hot::Instance Beeper_create()
     return {static_cast<Actor*>(p), p};
 #line 4 "timer_v2.hot"
 }
-#line 256 "timer_v2.hot.cpp"
+#line 274 "timer_v2.hot.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 8 "timer_v2.hot"
@@ -277,7 +295,7 @@ void BeeperState_g2::Tick(float dt)
     HOT_TRACE_LINE(); __st->ticks = __st->ticks + 1;
 #line 10 "timer_v2.hot"
 }
-#line 281 "timer_v2.hot.cpp"
+#line 299 "timer_v2.hot.cpp"
 
 #line 12 "timer_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static void Beeper__arm(Beeper_Shell* __self, World& w, float delay)
@@ -287,7 +305,7 @@ void BeeperState_g2::Tick(float dt)
     return state_of(__self)->arm(std::forward<World&>(w), std::forward<float>(delay));
 #line 12 "timer_v2.hot"
 }
-#line 291 "timer_v2.hot.cpp"
+#line 309 "timer_v2.hot.cpp"
 #line 12 "timer_v2.hot"
 void BeeperState_g2::arm(World& w, float delay)
 #line 12 "timer_v2.hot"
@@ -316,7 +334,7 @@ void BeeperState_g2::arm(World& w, float delay)
     }));
 #line 17 "timer_v2.hot"
 }
-#line 320 "timer_v2.hot.cpp"
+#line 338 "timer_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

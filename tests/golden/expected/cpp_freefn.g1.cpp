@@ -101,6 +101,24 @@ struct Counter_Shell final : Actor, hot::ShellBase {
 #line 26 "cpp_freefn.cpp"
     ~Counter_Shell() override { hot::destroy_state(this); }
 #line 104 "cpp_freefn.cpp.cpp"
+#line 26 "cpp_freefn.cpp"
+    HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
+#line 26 "cpp_freefn.cpp"
+    {
+#line 26 "cpp_freefn.cpp"
+        return Actor::TakeDamage(a0);
+#line 26 "cpp_freefn.cpp"
+    }
+#line 113 "cpp_freefn.cpp.cpp"
+#line 26 "cpp_freefn.cpp"
+    HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
+#line 26 "cpp_freefn.cpp"
+    {
+#line 26 "cpp_freefn.cpp"
+        return Actor::TakeDamage(a0, a1);
+#line 26 "cpp_freefn.cpp"
+    }
+#line 122 "cpp_freefn.cpp.cpp"
 
 #line 26 "cpp_freefn.cpp"
     void Tick(float a0) override
@@ -110,7 +128,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 26 "cpp_freefn.cpp"
     }
-#line 114 "cpp_freefn.cpp.cpp"
+#line 132 "cpp_freefn.cpp.cpp"
 
 #line 26 "cpp_freefn.cpp"
     void TakeDamage(float a0) override
@@ -120,7 +138,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 26 "cpp_freefn.cpp"
     }
-#line 124 "cpp_freefn.cpp.cpp"
+#line 142 "cpp_freefn.cpp.cpp"
 
 #line 26 "cpp_freefn.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -130,7 +148,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 26 "cpp_freefn.cpp"
     }
-#line 134 "cpp_freefn.cpp.cpp"
+#line 152 "cpp_freefn.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -147,25 +165,25 @@ struct CounterState_g1 {
 #line 26 "cpp_freefn.cpp"
     {
 #line 26 "cpp_freefn.cpp"
-        return static_cast<Counter_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
+        return static_cast<Counter_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 26 "cpp_freefn.cpp"
     }
-#line 154 "cpp_freefn.cpp.cpp"
+#line 172 "cpp_freefn.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 26 "cpp_freefn.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
 #line 26 "cpp_freefn.cpp"
     {
 #line 26 "cpp_freefn.cpp"
-        return static_cast<Counter_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Counter_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 26 "cpp_freefn.cpp"
     }
-#line 164 "cpp_freefn.cpp.cpp"
+#line 182 "cpp_freefn.cpp.cpp"
 };
 
 #line 29 "cpp_freefn.cpp"
 static void Counter__init_last(void*, void* f) { using T = int; new (f) T(0); }
-#line 169 "cpp_freefn.cpp.cpp"
+#line 187 "cpp_freefn.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -219,7 +237,7 @@ HOT_HIDDEN static void Counter__ctor_chain(Counter_Shell* __self, [[maybe_unused
     Counter__ctor(__self);
 #line 31 "cpp_freefn.cpp"
 }
-#line 223 "cpp_freefn.cpp.cpp"
+#line 241 "cpp_freefn.cpp.cpp"
 using Counter_SuperArgs = decltype(Counter__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -244,7 +262,7 @@ HOT_NODEBUG static hot::ShellBase* Counter__construct(void* mem, const char* key
     return nullptr;
 #line 26 "cpp_freefn.cpp"
 }
-#line 248 "cpp_freefn.cpp.cpp"
+#line 266 "cpp_freefn.cpp.cpp"
 
 static const char* const Counter__construct_keys[] = {typeid(Counter_SuperArgs).name(), nullptr};
 
@@ -272,7 +290,7 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
     return __self;
 #line 31 "cpp_freefn.cpp"
 }
-#line 276 "cpp_freefn.cpp.cpp"
+#line 294 "cpp_freefn.cpp.cpp"
 #line 31 "cpp_freefn.cpp"
 [[maybe_unused]] HOT_HIDDEN static Counter_Shell* Counter__new()
 #line 31 "cpp_freefn.cpp"
@@ -281,7 +299,7 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
     return Counter__build(true);
 #line 31 "cpp_freefn.cpp"
 }
-#line 285 "cpp_freefn.cpp.cpp"
+#line 303 "cpp_freefn.cpp.cpp"
 #line 31 "cpp_freefn.cpp"
 template <int = 0>
 #line 31 "cpp_freefn.cpp"
@@ -298,7 +316,7 @@ template <int = 0>
     return __h;
 #line 31 "cpp_freefn.cpp"
 }
-#line 302 "cpp_freefn.cpp.cpp"
+#line 320 "cpp_freefn.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -310,7 +328,7 @@ HOT_NODEBUG static hot::ShellCore* Counter__new_default()
     return Counter__build(false);
 #line 31 "cpp_freefn.cpp"
 }
-#line 314 "cpp_freefn.cpp.cpp"
+#line 332 "cpp_freefn.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -324,7 +342,7 @@ static int Counter__Peek__thunk(Actor* __a)
     return hot::call<int(Actor*)>(__self, SLOT_Peek);
 #line 41 "cpp_freefn.cpp"
 }
-#line 328 "cpp_freefn.cpp.cpp"
+#line 346 "cpp_freefn.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
@@ -367,7 +385,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 26 "cpp_freefn.cpp"
 }
-#line 371 "cpp_freefn.cpp.cpp"
+#line 389 "cpp_freefn.cpp.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 31 "cpp_freefn.cpp"
@@ -378,7 +396,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return state_of(__self)->ctor();
 #line 31 "cpp_freefn.cpp"
 }
-#line 382 "cpp_freefn.cpp.cpp"
+#line 400 "cpp_freefn.cpp.cpp"
 #line 31 "cpp_freefn.cpp"
 void CounterState_g1::ctor()
 #line 31 "cpp_freefn.cpp"
@@ -401,7 +419,7 @@ void CounterState_g1::ctor()
 
 #line 31 "cpp_freefn.cpp"
 }
-#line 405 "cpp_freefn.cpp.cpp"
+#line 423 "cpp_freefn.cpp.cpp"
 
 #line 33 "cpp_freefn.cpp"
 void CounterState_g1::Tick(float dt)
@@ -429,7 +447,7 @@ void CounterState_g1::Tick(float dt)
     
 #line 38 "cpp_freefn.cpp"
 }
-#line 433 "cpp_freefn.cpp.cpp"
+#line 451 "cpp_freefn.cpp.cpp"
 
 #line 41 "cpp_freefn.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self)
@@ -439,7 +457,7 @@ void CounterState_g1::Tick(float dt)
     return state_of(__self)->Peek();
 #line 41 "cpp_freefn.cpp"
 }
-#line 443 "cpp_freefn.cpp.cpp"
+#line 461 "cpp_freefn.cpp.cpp"
 #line 41 "cpp_freefn.cpp"
 int CounterState_g1::Peek()
 #line 41 "cpp_freefn.cpp"
@@ -462,7 +480,7 @@ int CounterState_g1::Peek()
  return read_total(); 
 #line 41 "cpp_freefn.cpp"
 }
-#line 466 "cpp_freefn.cpp.cpp"
+#line 484 "cpp_freefn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

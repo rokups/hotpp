@@ -84,6 +84,24 @@ struct Scaler_Shell final : Actor, hot::ShellBase {
 #line 15 "cpp_template_fn.cpp"
     ~Scaler_Shell() override { hot::destroy_state(this); }
 #line 87 "cpp_template_fn.cpp.cpp"
+#line 15 "cpp_template_fn.cpp"
+    HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
+#line 15 "cpp_template_fn.cpp"
+    {
+#line 15 "cpp_template_fn.cpp"
+        return Actor::TakeDamage(a0);
+#line 15 "cpp_template_fn.cpp"
+    }
+#line 96 "cpp_template_fn.cpp.cpp"
+#line 15 "cpp_template_fn.cpp"
+    HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
+#line 15 "cpp_template_fn.cpp"
+    {
+#line 15 "cpp_template_fn.cpp"
+        return Actor::TakeDamage(a0, a1);
+#line 15 "cpp_template_fn.cpp"
+    }
+#line 105 "cpp_template_fn.cpp.cpp"
 
 #line 15 "cpp_template_fn.cpp"
     void Tick(float a0) override
@@ -93,7 +111,7 @@ struct Scaler_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 15 "cpp_template_fn.cpp"
     }
-#line 97 "cpp_template_fn.cpp.cpp"
+#line 115 "cpp_template_fn.cpp.cpp"
 
 #line 15 "cpp_template_fn.cpp"
     void TakeDamage(float a0) override
@@ -103,7 +121,7 @@ struct Scaler_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 15 "cpp_template_fn.cpp"
     }
-#line 107 "cpp_template_fn.cpp.cpp"
+#line 125 "cpp_template_fn.cpp.cpp"
 
 #line 15 "cpp_template_fn.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -113,7 +131,7 @@ struct Scaler_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 15 "cpp_template_fn.cpp"
     }
-#line 117 "cpp_template_fn.cpp.cpp"
+#line 135 "cpp_template_fn.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -129,25 +147,25 @@ struct ScalerState_g1 {
 #line 15 "cpp_template_fn.cpp"
     {
 #line 15 "cpp_template_fn.cpp"
-        return static_cast<Scaler_Shell*>(__hot_owner)->Actor::TakeDamage(a0);
+        return static_cast<Scaler_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 15 "cpp_template_fn.cpp"
     }
-#line 136 "cpp_template_fn.cpp.cpp"
+#line 154 "cpp_template_fn.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 15 "cpp_template_fn.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
 #line 15 "cpp_template_fn.cpp"
     {
 #line 15 "cpp_template_fn.cpp"
-        return static_cast<Scaler_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Scaler_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 15 "cpp_template_fn.cpp"
     }
-#line 146 "cpp_template_fn.cpp.cpp"
+#line 164 "cpp_template_fn.cpp.cpp"
 };
 
 #line 18 "cpp_template_fn.cpp"
 static void Scaler__init_last(void*, void* f) { using T = int; new (f) T(0); }
-#line 151 "cpp_template_fn.cpp.cpp"
+#line 169 "cpp_template_fn.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -200,7 +218,7 @@ HOT_HIDDEN static void Scaler__ctor_chain(Scaler_Shell* __self, [[maybe_unused]]
     Scaler__ctor(__self);
 #line 20 "cpp_template_fn.cpp"
 }
-#line 204 "cpp_template_fn.cpp.cpp"
+#line 222 "cpp_template_fn.cpp.cpp"
 using Scaler_SuperArgs = decltype(Scaler__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -225,7 +243,7 @@ HOT_NODEBUG static hot::ShellBase* Scaler__construct(void* mem, const char* key,
     return nullptr;
 #line 15 "cpp_template_fn.cpp"
 }
-#line 229 "cpp_template_fn.cpp.cpp"
+#line 247 "cpp_template_fn.cpp.cpp"
 
 static const char* const Scaler__construct_keys[] = {typeid(Scaler_SuperArgs).name(), nullptr};
 
@@ -253,7 +271,7 @@ HOT_HIDDEN static Scaler_Shell* Scaler__build([[maybe_unused]] bool __note)
     return __self;
 #line 20 "cpp_template_fn.cpp"
 }
-#line 257 "cpp_template_fn.cpp.cpp"
+#line 275 "cpp_template_fn.cpp.cpp"
 #line 20 "cpp_template_fn.cpp"
 [[maybe_unused]] HOT_HIDDEN static Scaler_Shell* Scaler__new()
 #line 20 "cpp_template_fn.cpp"
@@ -262,7 +280,7 @@ HOT_HIDDEN static Scaler_Shell* Scaler__build([[maybe_unused]] bool __note)
     return Scaler__build(true);
 #line 20 "cpp_template_fn.cpp"
 }
-#line 266 "cpp_template_fn.cpp.cpp"
+#line 284 "cpp_template_fn.cpp.cpp"
 #line 20 "cpp_template_fn.cpp"
 template <int = 0>
 #line 20 "cpp_template_fn.cpp"
@@ -279,7 +297,7 @@ template <int = 0>
     return __h;
 #line 20 "cpp_template_fn.cpp"
 }
-#line 283 "cpp_template_fn.cpp.cpp"
+#line 301 "cpp_template_fn.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -291,7 +309,7 @@ HOT_NODEBUG static hot::ShellCore* Scaler__new_default()
     return Scaler__build(false);
 #line 20 "cpp_template_fn.cpp"
 }
-#line 295 "cpp_template_fn.cpp.cpp"
+#line 313 "cpp_template_fn.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Scaler_slots[SLOT_COUNT] = {
@@ -333,7 +351,7 @@ HOT_NODEBUG static hot::Instance Scaler_create()
     return {static_cast<Actor*>(p), p};
 #line 15 "cpp_template_fn.cpp"
 }
-#line 337 "cpp_template_fn.cpp.cpp"
+#line 355 "cpp_template_fn.cpp.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 20 "cpp_template_fn.cpp"
@@ -344,7 +362,7 @@ HOT_NODEBUG static hot::Instance Scaler_create()
     return state_of(__self)->ctor();
 #line 20 "cpp_template_fn.cpp"
 }
-#line 348 "cpp_template_fn.cpp.cpp"
+#line 366 "cpp_template_fn.cpp.cpp"
 #line 20 "cpp_template_fn.cpp"
 void ScalerState_g1::ctor()
 #line 20 "cpp_template_fn.cpp"
@@ -367,7 +385,7 @@ void ScalerState_g1::ctor()
 
 #line 20 "cpp_template_fn.cpp"
 }
-#line 371 "cpp_template_fn.cpp.cpp"
+#line 389 "cpp_template_fn.cpp.cpp"
 
 #line 22 "cpp_template_fn.cpp"
 void ScalerState_g1::Tick(float dt)
@@ -395,7 +413,7 @@ void ScalerState_g1::Tick(float dt)
     
 #line 27 "cpp_template_fn.cpp"
 }
-#line 399 "cpp_template_fn.cpp.cpp"
+#line 417 "cpp_template_fn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

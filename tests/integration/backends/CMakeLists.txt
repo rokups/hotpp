@@ -8,6 +8,7 @@ set(BACKEND_TEST_SOURCES
     diagnostic_mistake_tests.cpp
     debug_info_tests.cpp
     generated_name_compile_tests.cpp
+    protected_base_compile_tests.cpp
     vfs_backend_tests.cpp
     backend_selection_tests.cpp)
 # The hotc tool tests run hotc through a POSIX shell (popen, sys/wait.h, WEXITSTATUS). About 100

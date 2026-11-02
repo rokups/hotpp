@@ -5219,13 +5219,13 @@ void translate_impl(
         const std::string shell = cn + "_Shell";
         std::vector<std::string> table(table_size);
         // Optimized AOT code: the entry is the text of a qualified member call. The members of the
-        // script are "__b_" members of the shell. The native implementation is "Base::name".
+        // script are "__b_" members of the shell. The native implementation is "__hot_base_" of the shell.
         const bool dsp = opt.aot_optimized;
         auto member_text = [&](const std::string& id) { return dsp ? shell + "::__b_" + id : S + "::" + id; };
         for (size_t i = 0; i < native_count; ++i)
             table[i] = !slots[i].impl && pinfo ? pinfo->table[i]
                 : slots[i].impl                ? member_text(slots[i].id)
-                : dsp                          ? slots[i].nv->from + "::" + slots[i].nv->name
+                : dsp                          ? shell + "::__hot_base_" + slots[i].id
                                                : S + "::__fwd_" + slots[i].id;
         if (pinfo)
             for (size_t i = native_count; i < pinfo->table.size() && i < table_size; ++i)
@@ -5369,6 +5369,25 @@ void translate_impl(
                 mapped("    template <class... A>\n    explicit " + shell + "(hot::ConstructChild, A&&... a) : " + B
                         + "(\x01std::forward<A>(a)...)\n    {\n    }\n",
                     cd.line, cd.pos);
+        }
+        // Base calls: a native virtual that the script does not override. The root shell derives from
+        // the native base, so it can call a protected implementation. The forwarder of the state
+        // struct and the "base_" function of a parent shell call this public member.
+        for (size_t i = 0; i < native_count && !par; ++i)
+        {
+            if (slots[i].impl)
+                continue;
+            const NativeVirtual& nv = *slots[i].nv;
+            std::string ps, as;
+            for (size_t k = 0; k < nv.ptypes.size(); ++k)
+            {
+                ps += (k ? ", " : "") + nv.ptypes[k] + " a" + std::to_string(k);
+                as += (k ? ", " : "") + arg_expr(nv.ptypes[k], "a" + std::to_string(k));
+            }
+            mapped("    HOT_NODEBUG " + nv.ret + " __hot_base_" + slots[i].id + "(" + ps + ")"
+                    + (nv.is_const ? " const" : "") + (nv.no_except ? " noexcept" : "") + "\n    {\n        return "
+                    + nv.from + "::" + nv.name + "(" + as + ");\n    }\n",
+                cd.line, cd.pos);
         }
         // Optimized AOT code: a shell overrides a native virtual with a direct call of the state
         // member. The root shell overrides all of them. A child shell overrides the ones that its
@@ -5611,8 +5630,8 @@ void translate_impl(
                 }
                 o.w("    // Not overridden: call the implementation of " + nv.from + ".\n");
                 mapped("    HOT_NODEBUG " + nv.ret + " __fwd_" + sl.id + "(" + ps
-                        + ")\n    {\n        return static_cast<" + shell + "*>(__hot_owner)->" + nv.from
-                        + "::" + nv.name + "(" + as + ");\n    }\n",
+                        + ")\n    {\n        return static_cast<" + shell + "*>(__hot_owner)->__hot_base_" + sl.id
+                        + "(" + as + ");\n    }\n",
                     cd.line, cd.pos);
             }
         }

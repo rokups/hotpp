@@ -81,6 +81,15 @@ struct Counter_Shell final : Actor, hot::ShellBase {
 #line 10 "cpp_defaults.cpp"
     ~Counter_Shell() override { hot::destroy_state(this); }
 #line 84 "cpp_defaults.cpp.cpp"
+#line 10 "cpp_defaults.cpp"
+    HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
+#line 10 "cpp_defaults.cpp"
+    {
+#line 10 "cpp_defaults.cpp"
+        return Actor::TakeDamage(a0, a1);
+#line 10 "cpp_defaults.cpp"
+    }
+#line 93 "cpp_defaults.cpp.cpp"
 
 #line 10 "cpp_defaults.cpp"
     void Tick(float a0) override
@@ -90,7 +99,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 10 "cpp_defaults.cpp"
     }
-#line 94 "cpp_defaults.cpp.cpp"
+#line 103 "cpp_defaults.cpp.cpp"
 
 #line 10 "cpp_defaults.cpp"
     void TakeDamage(float a0) override
@@ -100,7 +109,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 10 "cpp_defaults.cpp"
     }
-#line 104 "cpp_defaults.cpp.cpp"
+#line 113 "cpp_defaults.cpp.cpp"
 
 #line 10 "cpp_defaults.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -110,7 +119,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 10 "cpp_defaults.cpp"
     }
-#line 114 "cpp_defaults.cpp.cpp"
+#line 123 "cpp_defaults.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -129,18 +138,18 @@ struct CounterState_g1 {
 #line 10 "cpp_defaults.cpp"
     {
 #line 10 "cpp_defaults.cpp"
-        return static_cast<Counter_Shell*>(__hot_owner)->Actor::TakeDamage(a0, a1);
+        return static_cast<Counter_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 10 "cpp_defaults.cpp"
     }
-#line 136 "cpp_defaults.cpp.cpp"
+#line 145 "cpp_defaults.cpp.cpp"
 };
 
 #line 13 "cpp_defaults.cpp"
 static void Counter__init_value(void*, void* f) { using T = int; new (f) T(0); }
-#line 141 "cpp_defaults.cpp.cpp"
+#line 150 "cpp_defaults.cpp.cpp"
 #line 14 "cpp_defaults.cpp"
 static void Counter__init_last(void*, void* f) { using T = int; new (f) T(0); }
-#line 144 "cpp_defaults.cpp.cpp"
+#line 153 "cpp_defaults.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -196,7 +205,7 @@ HOT_HIDDEN static void Counter__ctor_chain(Counter_Shell* __self, [[maybe_unused
     Counter__ctor(__self, start);
 #line 17 "cpp_defaults.cpp"
 }
-#line 200 "cpp_defaults.cpp.cpp"
+#line 209 "cpp_defaults.cpp.cpp"
 using Counter_SuperArgs = decltype(Counter__plan(std::declval<int>()).first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -221,7 +230,7 @@ HOT_NODEBUG static hot::ShellBase* Counter__construct(void* mem, const char* key
     return nullptr;
 #line 10 "cpp_defaults.cpp"
 }
-#line 225 "cpp_defaults.cpp.cpp"
+#line 234 "cpp_defaults.cpp.cpp"
 
 static const char* const Counter__construct_keys[] = {typeid(Counter_SuperArgs).name(), nullptr};
 
@@ -249,7 +258,7 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note, in
     return __self;
 #line 17 "cpp_defaults.cpp"
 }
-#line 253 "cpp_defaults.cpp.cpp"
+#line 262 "cpp_defaults.cpp.cpp"
 #line 17 "cpp_defaults.cpp"
 [[maybe_unused]] HOT_HIDDEN static Counter_Shell* Counter__new(int start = kStep * 3)
 #line 17 "cpp_defaults.cpp"
@@ -258,7 +267,7 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note, in
     return Counter__build(true, start);
 #line 17 "cpp_defaults.cpp"
 }
-#line 262 "cpp_defaults.cpp.cpp"
+#line 271 "cpp_defaults.cpp.cpp"
 #line 17 "cpp_defaults.cpp"
 template <int = 0>
 #line 17 "cpp_defaults.cpp"
@@ -275,7 +284,7 @@ template <int = 0>
     return __h;
 #line 17 "cpp_defaults.cpp"
 }
-#line 279 "cpp_defaults.cpp.cpp"
+#line 288 "cpp_defaults.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -287,7 +296,7 @@ HOT_NODEBUG static hot::ShellCore* Counter__new_default()
     return Counter__build(false, kStep * 3);
 #line 17 "cpp_defaults.cpp"
 }
-#line 291 "cpp_defaults.cpp.cpp"
+#line 300 "cpp_defaults.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -301,7 +310,7 @@ static int Counter__Add__thunk(Actor* __a, int a, int b, int c)
     return hot::call<int(Actor*, int, int, int)>(__self, SLOT_Add, a, b, c);
 #line 23 "cpp_defaults.cpp"
 }
-#line 305 "cpp_defaults.cpp.cpp"
+#line 314 "cpp_defaults.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
@@ -344,7 +353,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "cpp_defaults.cpp"
 }
-#line 348 "cpp_defaults.cpp.cpp"
+#line 357 "cpp_defaults.cpp.cpp"
 
 // ---------------------------------------------------------------- function bodies
 #line 17 "cpp_defaults.cpp"
@@ -355,7 +364,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return state_of(__self)->ctor(std::forward<int>(start));
 #line 17 "cpp_defaults.cpp"
 }
-#line 359 "cpp_defaults.cpp.cpp"
+#line 368 "cpp_defaults.cpp.cpp"
 #line 17 "cpp_defaults.cpp"
 void CounterState_g1::ctor(int start)
 #line 17 "cpp_defaults.cpp"
@@ -380,7 +389,7 @@ void CounterState_g1::ctor(int start)
     
 #line 20 "cpp_defaults.cpp"
 }
-#line 384 "cpp_defaults.cpp.cpp"
+#line 393 "cpp_defaults.cpp.cpp"
 
 #line 23 "cpp_defaults.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Counter__Add(Counter_Shell* __self, int a, int b, int c)
@@ -390,7 +399,7 @@ void CounterState_g1::ctor(int start)
     return state_of(__self)->Add(std::forward<int>(a), std::forward<int>(b), std::forward<int>(c));
 #line 23 "cpp_defaults.cpp"
 }
-#line 394 "cpp_defaults.cpp.cpp"
+#line 403 "cpp_defaults.cpp.cpp"
 #line 23 "cpp_defaults.cpp"
 int CounterState_g1::Add(int a, int b, int c)
 #line 23 "cpp_defaults.cpp"
@@ -416,7 +425,7 @@ int CounterState_g1::Add(int a, int b, int c)
     
 #line 27 "cpp_defaults.cpp"
 }
-#line 420 "cpp_defaults.cpp.cpp"
+#line 429 "cpp_defaults.cpp.cpp"
 
 #line 29 "cpp_defaults.cpp"
 void CounterState_g1::Tick(float dt)
@@ -444,7 +453,7 @@ void CounterState_g1::Tick(float dt)
     
 #line 34 "cpp_defaults.cpp"
 }
-#line 448 "cpp_defaults.cpp.cpp"
+#line 457 "cpp_defaults.cpp.cpp"
 
 #line 37 "cpp_defaults.cpp"
 void CounterState_g1::TakeDamage_f(float amount)
@@ -470,7 +479,7 @@ void CounterState_g1::TakeDamage_f(float amount)
     
 #line 40 "cpp_defaults.cpp"
 }
-#line 474 "cpp_defaults.cpp.cpp"
+#line 483 "cpp_defaults.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
