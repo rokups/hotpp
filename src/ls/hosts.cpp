@@ -50,7 +50,7 @@ std::vector<std::string> read_lines(const fs::path& dir, const std::string& name
     std::vector<std::string> out;
     if (name.empty())
         return out;
-    std::ifstream in(dir / name);
+    std::ifstream in(dir / utf8_path(name));
     std::string line;
     while (std::getline(in, line))
     {
@@ -76,6 +76,7 @@ bool is_host_file(const fs::path& p)
 std::string path_key(const fs::path& p)
 {
 #ifdef _WIN32
+    // The callers make p with utf8_path, so the UTF-8 text of p is the text of the caller.
     std::string out = long_path(path_utf8(p.lexically_normal()));
     std::replace(out.begin(), out.end(), '\\', '/');
 #else
@@ -103,9 +104,9 @@ std::string resolve_path(const std::string& base, const std::string& path)
 {
     if (path.empty())
         return path;
-    fs::path p(path);
+    fs::path p = utf8_path(path);
     if (p.is_relative() && !base.empty())
-        p = fs::path(base) / p;
+        p = utf8_path(base) / p;
     return strip_slash(path_key(p));
 }
 
@@ -138,7 +139,7 @@ bool contains(const std::string& dir, const std::string& path)
 bool has_cache(const Host& h)
 {
     std::error_code ec;
-    return fs::exists(fs::path(h.binary_dir) / "CMakeCache.txt", ec);
+    return fs::exists(utf8_path(h.binary_dir) / "CMakeCache.txt", ec);
 }
 
 // Gives the sorted names of the "*.json" files in dir. A refresh compares them, because the
@@ -148,10 +149,10 @@ std::vector<std::string> json_names(const std::string& dir)
 {
     std::vector<std::string> out;
     std::error_code ec;
-    for (const fs::directory_entry& e : fs::directory_iterator(dir, ec))
+    for (const fs::directory_entry& e : fs::directory_iterator(utf8_path(dir), ec))
     {
         if (e.is_regular_file(ec) && e.path().extension() == ".json")
-            out.push_back(e.path().filename().string());
+            out.push_back(path_utf8(e.path().filename()));
     }
     std::sort(out.begin(), out.end());
     return out;
@@ -179,7 +180,7 @@ void HostSet::load(const std::string& dir, bool require_cache)
     names_ = json_names(dir);
     if (ec)
         return;
-    for (const fs::directory_entry& e : fs::directory_iterator(dir, ec))
+    for (const fs::directory_entry& e : fs::directory_iterator(utf8_path(dir), ec))
     {
         if (!e.is_regular_file(ec) || e.path().extension() != ".json")
             continue;
@@ -192,7 +193,7 @@ void HostSet::load(const std::string& dir, bool require_cache)
         auto host = std::make_shared<Host>();
         host->name = get_string(j, "name");
         if (host->name.empty())
-            host->name = e.path().stem().string();
+            host->name = path_utf8(e.path().stem());
         host->binary_dir = get_string(j, "binaryDir");
         host->compiler = get_string(j, "compiler");
         host->std_version = get_string(j, "std");
@@ -279,10 +280,10 @@ bool HostSet::refresh()
 
 bool HostSet::force_reload_for(const std::string& file)
 {
-    const fs::path f(file);
+    const fs::path f = utf8_path(file);
     if (!loaded_ || !is_host_file(f))
         return false;
-    if (path_key(f.parent_path()) != path_key(fs::path(dir_))) // the long names and "/" (Windows)
+    if (path_key(f.parent_path()) != path_key(utf8_path(dir_))) // the long names and "/" (Windows)
         return false;
     forced_ = true;
     return true;
@@ -290,7 +291,7 @@ bool HostSet::force_reload_for(const std::string& file)
 
 std::shared_ptr<const Host> HostSet::match(const std::string& script_path) const
 {
-    const std::string path = path_key(script_path);
+    const std::string path = path_key(utf8_path(script_path));
     std::shared_ptr<const Host> best;
     long best_score = 0;
     for (const auto& h : hosts_)
@@ -319,16 +320,16 @@ std::shared_ptr<const Host> HostSet::match(const std::string& script_path) const
 
 std::shared_ptr<const Host> HostSet::nearest(const std::string& script_path, fs::path& common) const
 {
-    const fs::path script_dir = fs::path(path_key(script_path)).parent_path();
+    const fs::path script_dir = utf8_path(path_key(utf8_path(script_path))).parent_path();
     std::shared_ptr<const Host> best;
     size_t best_count = 0;
     for (const auto& h : hosts_)
     {
         std::vector<fs::path> dirs;
         for (const std::string& d : h->script_dirs)
-            dirs.push_back(strip_slash(d));
+            dirs.push_back(utf8_path(strip_slash(d)));
         for (const std::string& s : h->scripts)
-            dirs.push_back(fs::path(s).parent_path());
+            dirs.push_back(utf8_path(s).parent_path());
         for (const fs::path& d : dirs)
         {
             const fs::path norm = d.lexically_normal();

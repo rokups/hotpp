@@ -429,7 +429,7 @@ private:
             bool in_root = roots_.empty() ? parts >= 2 : false;
             for (const std::string& r : roots_)
             {
-                const fs::path root = fs::path(r).lexically_normal();
+                const fs::path root = utf8_path(r).lexically_normal();
                 const std::string rel = common.lexically_relative(root).string();
                 if (!common.empty() && !rel.empty() && rel.compare(0, 2, "..") != 0)
                     in_root = true;
