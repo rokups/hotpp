@@ -11,6 +11,7 @@ add_executable(unit_translator_translate_tests
     constructor_translation_tests.cpp
     convenience_translation_tests.cpp
     borrowed_storage_translation_tests.cpp
+    native_pointer_field_translation_tests.cpp
     default_handle_translation_tests.cpp
     safe_call_translation_tests.cpp
     default_value_translation_tests.cpp

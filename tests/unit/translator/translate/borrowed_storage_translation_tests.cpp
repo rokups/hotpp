@@ -19,20 +19,20 @@ const char* kHandleStubs = "[native, handle(\"Arrow<$T>\")] class Handled;\n";
 
 TEST(BorrowedStorage, RawPointerFieldIsAnErrorInStrictMode)
 {
-    const hotc::TranslateResult r = check_translate("", "    Weapon* w;\n");
+    const hotc::TranslateResult r = check_translate("", "    Weapon** w;\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(
-        has(r.diagnostics, "t.hot:3:13: error: a field cannot hold a borrowed pointer or reference to 'Weapon'"))
+        has(r.diagnostics, "t.hot:3:14: error: a field cannot hold a borrowed pointer or reference to 'Weapon'"))
         << r.diagnostics;
     EXPECT_TRUE(has(r.diagnostics, "Declare a stub with 'handle' or 'intrusive'")) << r.diagnostics;
 }
 
 TEST(BorrowedStorage, RawPointerFieldIsAWarningByDefault)
 {
-    const hotc::TranslateResult r = check_translate("", "    Weapon* w;\n", {}, false);
+    const hotc::TranslateResult r = check_translate("", "    Weapon** w;\n", {}, false);
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(r.diagnostics.empty()) << r.diagnostics;
-    EXPECT_TRUE(has(r.warnings, "t.hot:3:13: warning: a field cannot hold a borrowed pointer")) << r.warnings;
+    EXPECT_TRUE(has(r.warnings, "t.hot:3:14: warning: a field cannot hold a borrowed pointer")) << r.warnings;
 }
 
 TEST(BorrowedStorage, StrictModeIsTheDefault)
@@ -44,14 +44,16 @@ TEST(BorrowedStorage, ReferenceFieldIsAnError)
 {
     const hotc::TranslateResult r = check_translate("", "    Weapon& w;\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "a field cannot hold a borrowed pointer or reference to 'Weapon'")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "a field cannot be a reference: a reference cannot change its target and has no null"))
+        << r.diagnostics;
 }
 
 TEST(BorrowedStorage, RefFieldIsAnError)
 {
     const hotc::TranslateResult r = check_translate("", "    Vec3& v;\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "a field cannot hold a borrowed pointer or reference to 'Vec3'")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "a field cannot be a reference: a reference cannot change its target and has no null"))
+        << r.diagnostics;
 }
 
 TEST(BorrowedStorage, CollectionElementIsAnError)
@@ -82,10 +84,10 @@ TEST(BorrowedStorage, DefaultHandleClassHandleIsAllowedButPointersAreNot)
 {
     const hotc::TranslateResult ok = check_translate("", "    Mesh m;\n", {{"engine.prelude", kDefaultShared}});
     EXPECT_TRUE(ok.ok) << ok.diagnostics;
-    const hotc::TranslateResult ptr = check_translate("", "    Mesh* m;\n", {{"engine.prelude", kDefaultShared}});
+    const hotc::TranslateResult ptr = check_translate("", "    Mesh** m;\n", {{"engine.prelude", kDefaultShared}});
     EXPECT_FALSE(ptr.ok);
     EXPECT_TRUE(has(ptr.diagnostics, "reference to 'Mesh'")) << ptr.diagnostics;
-    const hotc::TranslateResult bad = check_translate("", "    Vec3* v;\n", {{"engine.prelude", kDefaultShared}});
+    const hotc::TranslateResult bad = check_translate("", "    Vec3** v;\n", {{"engine.prelude", kDefaultShared}});
     EXPECT_FALSE(bad.ok);
     EXPECT_TRUE(has(bad.diagnostics, "reference to 'Vec3'")) << bad.diagnostics;
 }
@@ -147,7 +149,7 @@ TEST(BorrowedStorage, RefInACallArgumentIsAllowed)
 TEST(ErrorRows, StoredRefInAnAssignmentIsAnError)
 {
     const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    int* p;\n    void Move() { this.p = &this.pos; }\n");
+        check_translate("", "    Vec3 pos;\n    Vec3* p;\n    void Move() { this.p = &this.pos; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "error: a '&' value cannot be stored in an assignment")) << r.diagnostics;
 }
@@ -162,7 +164,7 @@ TEST(ErrorRows, StoredRefInAReturnIsAnError)
 TEST(ErrorRows, StoredRefIsAWarningByDefault)
 {
     const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    int* p;\n    void Move() { this.p = &this.pos; }\n", {}, false);
+        check_translate("", "    Vec3 pos;\n    Vec3* p;\n    void Move() { this.p = &this.pos; }\n", {}, false);
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.warnings, "warning: a '&' value cannot be stored")) << r.warnings;
 }
@@ -252,7 +254,7 @@ TEST(RefLocal, AssigningAVarRefLocalToAValueFieldCopiesTheValue)
 TEST(RefLocal, ARefLocalCannotBeStoredInAPointerField)
 {
     const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    Vec3* p;\n    void Move() { Vec3& r = this.pos; this.p = r; }\n");
+        check_translate("", "    Vec3 pos;\n    Vec3** p;\n    void Move() { Vec3& r = this.pos; this.p = r; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "a field cannot hold a borrowed pointer")) << r.diagnostics;
 }

@@ -35,6 +35,8 @@ inline const char* kCheckHeader =
     "struct Plain { int a = 0; };\n"
     "template <class T> struct NoArrow { T* p = nullptr; };\n"
     "template <class T> struct Arrow { T* p = nullptr; T* operator->() const { return p; } };\n"
+    "struct Shared : std::enable_shared_from_this<Shared> { int v = 0; virtual ~Shared() {} };\n"
+    "struct SharedKid : Shared {};\n"
     "struct Counted { void AddRef(); void Release(); };\n"
     "struct Overloaded { void AddRef(); void AddRef(int); void Release(); };\n"
     "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n"

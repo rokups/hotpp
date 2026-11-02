@@ -159,7 +159,7 @@ TEST(ReferenceTranslation, ForeachVarRefIsABorrowedLocalForALambda)
 // The messages speak script names.
 TEST(ReferenceMessages, BorrowedFieldNamesIntNotInt32)
 {
-    const hotc::TranslateResult r = check_translate_test::check_translate("", "    int* p;\n");
+    const hotc::TranslateResult r = check_translate_test::check_translate("", "    int** p;\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "a field cannot hold a borrowed pointer or reference to 'int'")) << r.diagnostics;
     EXPECT_TRUE(has(r.diagnostics, "Declare a stub with 'handle' or 'intrusive' for 'int'")) << r.diagnostics;
@@ -188,7 +188,7 @@ TEST(ReferenceMessages, TypeTextUsesScriptNames)
 TEST(ReferenceHole, RawPointerOfANativeHandleFieldIsAFinding)
 {
     const hotc::TranslateResult r = check_translate_test::check_translate(
-        "[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n", "    Weapon* wp2;\n");
+        "[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n", "    Weapon** wp2;\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "a field cannot hold a borrowed pointer or reference to 'Weapon'")) << r.diagnostics;
 }
@@ -196,7 +196,7 @@ TEST(ReferenceHole, RawPointerOfANativeHandleFieldIsAFinding)
 TEST(ReferenceHole, RawPointerOfANativeHandleIsAWarningByDefault)
 {
     const hotc::TranslateResult r = check_translate_test::check_translate(
-        "[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n", "    Weapon* wp2;\n", {}, false);
+        "[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n", "    Weapon** wp2;\n", {}, false);
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.warnings, "warning: a field cannot hold a borrowed pointer")) << r.warnings;
 }
@@ -206,7 +206,8 @@ TEST(ReferenceHole, ReferenceFieldOfANativeHandleIsAFinding)
     const hotc::TranslateResult r = check_translate_test::check_translate(
         "[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n", "    Weapon& w;\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "a field cannot hold a borrowed pointer or reference to 'Weapon'")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "a field cannot be a reference: a reference cannot change its target and has no null"))
+        << r.diagnostics;
 }
 
 TEST(ReferenceHole, IntrusivePointerFieldIsTheHandle)

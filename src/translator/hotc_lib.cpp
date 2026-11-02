@@ -815,6 +815,7 @@ struct TypeFacts
     bool small = false; // trivially copyable and 16 bytes or less (design 7.10.5)
     bool arrow = false; // a pointer, or a type with operator->
     bool esft = false; // a base is std::enable_shared_from_this<X>
+    bool is_enum = false; // the type is an enumeration
     std::map<std::string, bool> members; // for each asked name: "&T::name" is valid
 };
 using FactMap = std::map<std::string, TypeFacts>;
@@ -1594,12 +1595,13 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
     for (size_t i = 0; i < reqs.size(); ++i)
     {
         const std::string& t = reqs[i].type;
-        const char* kinds[] = {"is_class", "copy", "nothrow_move", "polymorphic", "final", "plain", "small", "arrow", "esft"};
+        const char* kinds[] = {"is_class", "copy", "nothrow_move", "polymorphic", "final", "plain", "small", "arrow", "esft", "is_enum"};
         for (const char* k : kinds)
         {
             lines.emplace_back(i, k);
             const std::string fn = std::string(k) == "is_class" ? "std::is_class_v<" + t + ">"
-                                                                : std::string("hotc_") + k + "<" + t + ">()";
+                : std::string(k) == "is_enum"        ? "std::is_enum_v<" + t + ">"
+                                                     : std::string("hotc_") + k + "<" + t + ">()";
             body += "constexpr bool hotc_f" + std::to_string(lines.size()) + " = " + fn + ";\n";
         }
         bool const_query = false;
@@ -2313,6 +2315,8 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
                 f.arrow = v == 1;
             else if (k == "esft")
                 f.esft = v == 1;
+            else if (k == "is_enum")
+                f.is_enum = v == 1;
             else
                 f.members[k.substr(7)] = v == 1;
         }
@@ -3624,6 +3628,7 @@ void translate_impl(
             c.plain = it->second.plain;
             c.small = it->second.small;
             c.shared_from_this = it->second.esft;
+            c.is_enum = it->second.is_enum;
         }
         return c;
     });
@@ -4165,9 +4170,12 @@ void translate_impl(
         }
         for (Field& f : cd.fields)
         {
-            f.type = f.weak ? weak_storage_or_fail(types, map, f.pos, f.type)
-                : f.value ? value_storage_or_fail(types, map, f.pos, f.type)
-                          : types.storage(f.type);
+            if (!f.weak && !f.value && !types.checked_ptr_storage(f.type).empty())
+                f.type = types.checked_ptr_storage(f.type);
+            else
+                f.type = f.weak ? weak_storage_or_fail(types, map, f.pos, f.type)
+                    : f.value ? value_storage_or_fail(types, map, f.pos, f.type)
+                              : types.storage(f.type);
             drop_weak_null_init(f);
         }
         for (Method& m : cd.methods)
@@ -5174,9 +5182,12 @@ void translate_impl(
         // ---- the C++ storage types. An override keeps the native types.
         for (Field& f : cd.fields)
         {
-            f.type = f.weak ? weak_storage_or_fail(types, map, f.pos, f.type)
-                : f.value ? value_storage_or_fail(types, map, f.pos, f.type)
-                          : types.storage(f.type);
+            if (!f.weak && !f.value && !types.checked_ptr_storage(f.type).empty())
+                f.type = types.checked_ptr_storage(f.type);
+            else
+                f.type = f.weak ? weak_storage_or_fail(types, map, f.pos, f.type)
+                    : f.value ? value_storage_or_fail(types, map, f.pos, f.type)
+                              : types.storage(f.type);
             drop_weak_null_init(f);
         }
         for (Method& m : cd.methods)

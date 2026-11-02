@@ -1,0 +1,17 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 1 of the native pointer field test. The field "target" is a native pointer to Charm.
+// The host sets the field. The field is a hot::CheckedPtr<Charm>.
+using "Actor.h";
+using "Equip.h";
+
+class Holder : Actor {
+    Charm* target = null;
+    int ticks = 0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+    }
+}

@@ -691,6 +691,62 @@ std::string TypeModel::storage(const std::string& type) const
     return replace_all(rule.handle_tpl, "$T", type);
 }
 
+namespace
+{
+// The pointee of "T*" or "const T*" with one star. "is_const" tells if "const" was there.
+// Gives an empty string for any other form.
+std::string single_pointee(const std::string& type, bool& is_const)
+{
+    is_const = false;
+    std::string t = trim_blank(type);
+    if (t.empty() || t.back() != '*')
+        return {};
+    t = trim_blank(t.substr(0, t.size() - 1));
+    if (t.empty() || t.back() == '*' || t.back() == '&')
+        return {};
+    if (starts_with(t, "const "))
+    {
+        is_const = true;
+        t = trim_blank(t.substr(6));
+    }
+    return t;
+}
+} // namespace
+
+std::string TypeModel::checked_ptr_storage(const std::string& type) const
+{
+    bool is_const = false;
+    const std::string base = single_pointee(type, is_const);
+    if (base.empty() || is_builtin(base) || is_script_class(base))
+        return {};
+    const TypeRule rule = lookup(base);
+    if (rule.kind == Kind::Handle && !rule.intrusive_add.empty())
+        return {};
+    // A value (a plain data class or a "value" stub) has no weak source.
+    if (rule.kind == Kind::Value)
+        return {};
+    // A type with a rule (a stub, a base stub, "class *;") is a class.
+    // A raw type must be a class that libclang knows (not an enumeration and not unknown).
+    if (rule.owner.empty() && !(classes_ && classes_(base).known))
+        return {};
+    // TODO(S4): a stub trait ("weak_ref_traits") is a weak source too. For now, only
+    // std::enable_shared_from_this is a weak source. Without it, the old borrowed finding applies.
+    if (!has_shared_from_this(base))
+        return {};
+    return "hot::CheckedPtr<" + std::string(is_const ? "const " : "") + base + ">";
+}
+
+bool TypeModel::is_value_pointer(const std::string& type) const
+{
+    bool is_const = false;
+    const std::string base = single_pointee(type, is_const);
+    if (base.empty() || base == "char" || base == "void")
+        return false;
+    if (is_builtin(base))
+        return true;
+    return classes_ && classes_(base).is_enum;
+}
+
 std::string TypeModel::weak_storage(const std::string& type) const
 {
     if (!is_handle(type))

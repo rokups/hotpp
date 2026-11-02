@@ -86,6 +86,8 @@ public:
     struct ClassFacts
     {
         bool known = false, plain = false, small = false;
+        // The type is an enumeration (a native enum). "known" is false for it.
+        bool is_enum = false;
         // The class derives (directly or not) from std::enable_shared_from_this<X>.
         bool shared_from_this = false;
     };
@@ -165,6 +167,16 @@ public:
 
     // The type with each script class in a template argument rewritten to its handle storage.
     std::string targ_storage(const std::string& type) const;
+
+    // The C++ storage type of a field or module variable of type "T*" or "const T*" (one star),
+    // where T is a native class: "hot::CheckedPtr<T>" or "hot::CheckedPtr<const T>". T is not a
+    // builtin, an enumeration, a script class or an intrusive stub (that "T*" is the handle).
+    // Any other type gives an empty string.
+    std::string checked_ptr_storage(const std::string& type) const;
+
+    // True when the type is "T*" or "const T*" (one star) and T is a builtin type or a native
+    // enumeration. Nothing owns such a pointee, so a field cannot point to it.
+    bool is_value_pointer(const std::string& type) const;
 
     // The C++ storage type of a "[weak] T" declaration (task 38): "std::weak_ptr<T>" with the
     // namespace of the shared pointer template. The handle of T must be a std::shared_ptr. Any

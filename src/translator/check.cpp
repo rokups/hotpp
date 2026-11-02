@@ -302,6 +302,37 @@ struct Checker
             diag.warn(pos, map, msg);
     }
 
+    // The rules of a field (or a module variable) that are not for a return value or a collection.
+    // Gives true when the type is handled: valid, or reported as an error.
+    // - "T*" of a native class is stored as hot::CheckedPtr<T>: valid.
+    // - A reference cannot change its target and has no null: error.
+    // - A pointer to a builtin or an enumeration has no owner: error.
+    // "T**" and "T*&" are not handled here: they keep the borrowed message.
+    bool field_pointer_rule(const std::string& t, const std::string& base, uint32_t pos)
+    {
+        std::string stem = trim(t);
+        if (!stem.empty() && stem.back() == '&')
+        {
+            while (!stem.empty() && (stem.back() == '&' || stem.back() == ' '))
+                stem.pop_back();
+            if (!stem.empty() && stem.back() == '*')
+                return false;
+            error(pos,
+                "a field cannot be a reference: a reference cannot change its target and has no null. "
+                "Use 'T*' (a checked pointer) or a value");
+            return true;
+        }
+        if (types.is_value_pointer(t))
+        {
+            error(pos,
+                "a field cannot hold a pointer to the value type '" + script_type_text(base)
+                    + "': nothing owns it, so the pointer can dangle. "
+                      "Use a value, or a pointer to the object that owns it");
+            return true;
+        }
+        return !types.checked_ptr_storage(t).empty();
+    }
+
     // ---- the storage rule (7.10.4 and 7.10.6)
     // "what" names the place: "a field", "a return value", "a collection element".
     void check_storage(const std::string& type, uint32_t pos, const std::string& what)
@@ -318,6 +349,8 @@ struct Checker
             // An intrusive stub: "T*" is the handle. A "T&" or a "T**" is still borrowed.
             if (rule.kind == Kind::Handle && !rule.intrusive_add.empty() && !types.is_script_class(base)
                 && is_single_pointer(t))
+                return;
+            if (what == "a field" && field_pointer_rule(t, base, pos))
                 return;
             const std::string name = script_type_text(base);
             borrowed_finding(pos,
@@ -799,7 +832,12 @@ struct Checker
 
         for (const Field& f : cd.fields)
         {
-            check_storage(f.type, f.pos, "a field");
+            std::string weak_base;
+            if (f.weak && is_borrowed_form(f.type, weak_base) && is_single_pointer(f.type)
+                && !types.checked_ptr_storage(f.type).empty())
+                error(f.pos, "a pointer field is already a weak reference: remove '[weak]'");
+            else
+                check_storage(f.type, f.pos, "a field");
             // A reload copies the fields, and a task is move-only.
             if (!is_cpp && (mentions_task_type(f.type) || mentions_task_type(f.script_type)))
                 error(f.pos, "a 'Task' field is not supported: hold the task in a local variable or in a host object");
