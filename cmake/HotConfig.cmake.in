@@ -32,13 +32,35 @@ if(NOT DEFINED HOT_SCRIPT_COMPILER)
     endif()
     # cl cannot compile a script module: hotc gives it the options of clang++. An MSVC consumer
     # uses clang++ of the Visual Studio component "C++ Clang tools", or a clang++ on PATH.
+    # VCINSTALLDIR has a value only in a Developer prompt. A Visual Studio generator gives the
+    # installation in CMAKE_GENERATOR_INSTANCE.
     if(NOT _hot_sdk_value AND MSVC)
-        find_program(_hot_sdk_clangxx NAMES clang++
-                     HINTS "$ENV{VCINSTALLDIR}Tools/Llvm/x64/bin")
+        set(_hot_sdk_hints "")
+        if(DEFINED ENV{VCINSTALLDIR})
+            list(APPEND _hot_sdk_hints "$ENV{VCINSTALLDIR}Tools/Llvm/x64/bin")
+        endif()
+        if(CMAKE_GENERATOR_INSTANCE)
+            list(APPEND _hot_sdk_hints "${CMAKE_GENERATOR_INSTANCE}/VC/Tools/Llvm/x64/bin")
+        endif()
+        find_program(_hot_sdk_clangxx NAMES clang++ HINTS ${_hot_sdk_hints})
         if(_hot_sdk_clangxx)
             set(_hot_sdk_value "${_hot_sdk_clangxx}")
+            # The script modules use the headers of the SDK LLVM (lib/clang). An other major
+            # version of clang++ can fail on them.
+            execute_process(COMMAND "${_hot_sdk_clangxx}" --version OUTPUT_VARIABLE _hot_sdk_out
+                            ERROR_QUIET RESULT_VARIABLE _hot_sdk_rc)
+            if(_hot_sdk_rc EQUAL 0 AND _hot_sdk_out MATCHES "clang version ([0-9]+)"
+               AND NOT "@HOT_LIBCLANG_VERSION_MAJOR@" STREQUAL ""
+               AND NOT CMAKE_MATCH_1 STREQUAL "@HOT_LIBCLANG_VERSION_MAJOR@")
+                message(WARNING "Hot++: ${_hot_sdk_clangxx} is Clang ${CMAKE_MATCH_1}. The SDK uses "
+                        "LLVM @HOT_LIBCLANG_VERSION_MAJOR@. Set HOT_SCRIPT_COMPILER to a clang++ "
+                        "@HOT_LIBCLANG_VERSION_MAJOR@, for example of the LLVM release for Windows.")
+            endif()
+            unset(_hot_sdk_out)
+            unset(_hot_sdk_rc)
         endif()
         unset(_hot_sdk_clangxx CACHE)
+        unset(_hot_sdk_hints)
     endif()
     set(HOT_SCRIPT_COMPILER "${_hot_sdk_value}" CACHE STRING "The compiler of the script modules")
 endif()

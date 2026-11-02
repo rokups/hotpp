@@ -7,13 +7,13 @@ group: CMake
 
 ## What works
 
-Hot++ builds and runs natively on Windows with MSVC (`cl.exe`). The CI job `windows-msvc` builds with the preset `vs-files` on `windows-2022` (Visual Studio 2022) and runs the tests. The Windows SDK comes from this job.
+Hot++ builds and runs natively on Windows with MSVC (`cl.exe`). The Windows SDK is a build with Visual Studio 2022 and the preset `vs-files`.
 
 - `cl.exe` builds `hotc.exe`, `hot-ls.exe`, the runtime and the hosts. They use the DLL C++ runtime (`/MD`).
 - The script modules use the `clang++.exe` of the official LLVM Windows release (version 23.1.4). They compile for `x86_64-pc-windows-msvc` with the same MSVC STL and the same DLL runtime.
 - The host and the modules share `std::string` and C++ exceptions. Both pass across the border.
 - AOT mode, precompiled mode and reload mode work. The integration tests cover them.
-- A MinGW host also works. The presets `mingw-files` and `mingw-llvm` build it on Linux, and the tests run under wine. The CI does not build it.
+- A MinGW host also works. The presets `mingw-files` and `mingw-llvm` build it on Linux.
 
 ## Quick start with a preset
 
@@ -31,7 +31,7 @@ cmake --build --preset mingw-llvm-dbg
 ctest --preset mingw-llvm-dbg
 ```
 
-The preset builds `hotc.exe` and `hot-ls`. The tests run under wine. See [Presets](cmake-presets.html#windows-presets) for all Windows presets.
+The preset builds `hotc.exe` and `hot-ls`. See [Presets](cmake-presets.html#windows-presets) for all Windows presets.
 
 ## Download LLVM
 
@@ -70,6 +70,8 @@ The preset `mingw-llvm` builds `hotc.exe` for Windows, so it needs no Linux `hot
 
 The toolchain file sets `HOT_HOTC_TARGET` to `x86_64-w64-mingw32` and `HOT_SCRIPT_SYSROOT` to the MinGW sysroot. Change them in the cache if your MinGW is in another folder.
 
+The install of a `mingw-llvm` build has `libclang.dll` in `bin/` and the Clang headers in `lib/clang/<major>/include`. On the target machine the sysroot is the parent folder of the folder of `g++`, for example `C:/msys64/ucrt64`. A sysroot path of the build host that does not exist there is not used. Set `HOT_SCRIPT_SYSROOT` to use another folder.
+
 On Windows a script module is a DLL. The module reaches the host only through the exports of the host executable. A host with `ENABLE_EXPORTS ON` gets these exports through `hot_export_host(<target>)`. On Windows `hot_add_scripts` has the option `HOST`. Give it the host executable. Each module then links the import library of this host:
 
 ```
@@ -106,7 +108,15 @@ The host compiles the header with `__declspec(dllexport)`. The module compiles i
 
 ## The SDK on Windows
 
-The install of a `mingw-llvm` build has `libclang.dll` in `bin/` and the Clang headers in `lib/clang/<major>/include`. `HotConfig.cmake` gives these headers to `hotc`. A path of the build host that does not exist on your machine is not used. The sysroot then is the parent folder of the folder of `g++`, for example `C:/msys64/ucrt64`. Set `HOT_SCRIPT_SYSROOT` to use another folder. See [Download the SDK](download.html).
+The Windows SDK is a zip of a Release build with MSVC. It uses the DLL C++ runtime (`/MD`). It has `hotc.exe`, `hot-ls.exe` and `libclang.dll` in `bin/`. The Clang headers are in `lib/clang/<major>/include`. `HotConfig.cmake` gives these headers to `hotc`.
+
+The script modules need a `clang++.exe` of the same LLVM major version as the SDK. `HotConfig.cmake` finds it in this order:
+
+1. The cache variable `HOT_SCRIPT_COMPILER`.
+2. The "C++ Clang tools" of Visual Studio. CMake finds them through the Developer Command Prompt or the Visual Studio generator.
+3. The `PATH`.
+
+A `clang++.exe` of another major version gives a warning. The official LLVM Windows release of the SDK version is the safe choice. See [Download the SDK](download.html).
 
 ## Visual Studio
 
@@ -118,15 +128,12 @@ cmake --build --preset vs-files-dbg
 ctest --preset vs-files-dbg
 ```
 
-The script modules need `link.exe`, the UCRT and the MSVC STL. Run CMake from a "Developer Command Prompt", or load `VsDevCmd.bat` first. The CI uses `vswhere.exe` to find `VsDevCmd.bat`.
+The script modules need `link.exe`, the UCRT and the MSVC STL. Run CMake from a "Developer Command Prompt", or load `VsDevCmd.bat` first.
 
 ## Limits
 
 - The JIT backend is off for MinGW and for MSVC. The preset `vs-files` uses the clang files backend.
-- The CI excludes `hotc_tool_tests` on MSVC. These tests run POSIX shell commands.
-- The CI skips the `DebugInfo` tests on MSVC. The modules have CodeView debug info, and the tests read DWARF with `llvm-dwarfdump`.
 - The SDK is a Release build (`/MD`). A Debug consumer (`/MDd`) cannot link its static libraries.
 - The static libraries of the SDK need the MSVC toolset of the SDK build or a newer one. The release notes give this version.
-- Two language server completion tests fail under wine.
 
 See also [Options](cmake-options.html), [Presets](cmake-presets.html) and [Limits](limits.html).
