@@ -94,6 +94,99 @@ A host can use its own smart pointer, for example an intrusive pointer of an eng
 
 With a module attribute `std` other than `std`, a script class without a native base uses `$std::shared_ptr`. Then `new` makes the object and the control block in two blocks. `this` as a handle in such a class is not supported: `hot::PlainObject` has `std::enable_shared_from_this`.
 
+## Value uses
+
+A script class is a handle. A copy of a handle names the same object. `[value]` on one use of the type gives value semantics: the use holds its own object, and a copy is a new object.
+
+`[value]` goes on a use of a type, not on the class. A class definition cannot take it: `[value] class V { }` is an error. For a type that is always a value, write a `struct` (see [Classes](classes.html#structs)).
+
+Write `[value]` on a field, a parameter, the return type of a method or a local. On a field and on a method, write the attribute on its own line. On a parameter and a local, write it inline.
+
+```hot
+using "Actor.h";
+
+class Pt {
+    int x = 1;
+}
+
+class Holder : Actor {
+    [value]
+    Pt a;                                   // a field: new Pt() when you give no initializer
+
+    int Bump([value] Pt p) {                // a parameter: p is a copy
+        p.x = p.x + 1;
+        return p.x;
+    }
+
+    [value]
+    Pt Make(int v) {                        // a return type: the caller gets its own object
+        [value] Pt t = new Pt();            // a local
+        t.x = v;
+        return t;
+    }
+}
+```
+
+### Storage
+
+A `[value] Pt` is stored as `hot::Value<Pt>`. This is a box that owns one object. The box is never null. A copy of the box copies the object with its real class. So a `Sub` that a `[value] Pt` holds stays a `Sub` after the copy.
+
+`[value]` is valid for a script class with no native base in its chain. The class can have script base classes.
+
+### Copy rules
+
+- `new Pt()` is not copied. The new object goes into the box.
+- A source that is a handle is copied. `[value] Pt hv = h;` makes a new object, and `hv.x = 43;` does not change `h`. When `h` is `null`, the copy throws a null reference error.
+- A source that is a `[value]` is copied: `this.b = this.a;` gives `b` its own object.
+- A parameter copies its argument. In `Bump(this.a)`, the callee changes the copy, and `this.a` stays the same.
+- A return copies the returned `[value]`. `[value] Pt Dup() { return this.a; }` gives a copy.
+- `[value] Pt f;` with no initializer runs `new Pt()`. The class needs a constructor with no parameters, or a constructor where all parameters have defaults. Else write an initializer.
+- `var x = valueExpr;` makes a `[value]`. In `var m = this.a;`, `m` is a copy, and `m.x = 1000;` does not change `this.a`.
+- A lambda that uses a `[value]` local captures a copy. A later change to the local is not visible in the lambda.
+- A `[value]` is never null. Its object is not shared with a handle.
+
+```hot
+[value] Pt cap = new Pt();
+cap.x = 3;
+var f = () => cap.x;     // the lambda has its own copy
+cap.x = 5;               // f() still gives 3
+```
+
+A copy needs a copyable object. When a field of the class cannot be copied, the copy throws a run-time error with this text:
+
+```
+class X is not copyable: field 'f'
+```
+
+### Errors
+
+These uses are errors. The text in quotes is the message of the translator.
+
+| Use | Message or rule |
+| --- | --- |
+| `[weak, value]` | `[weak] and [value] cannot be used together: a weak handle is not a value` |
+| A native class with a handle stub, for example `[value] Weapon w;` | `[value] on field 'w' is not valid for the native type 'Weapon'. The type rules decide the storage of a native type. Remove '[value]'` |
+| A script class with a native base, for example `[value] Boss b;` | `[value] on field 'b' needs a script class with no native base, and 'Boss' has the native base 'Widget'. Remove '[value]'` |
+| A struct or a builtin, for example `[value] Stats s;` or `[value] int n;` | `[value] on field 's' has no effect: 'Stats' is a value type already. Remove '[value]'` |
+| `[value] Cfg c;` when `Cfg` has only a constructor with parameters | `[value] on field 'c' has no initializer, so the class 'Cfg' needs a constructor with no parameters. Add one, or write an initializer` |
+| `[value] Pt& p` or `[value] const Pt& p` | `[value] on a reference is not valid: a [value] holds its own copy. Remove the reference or the '[value]'` |
+| A `[value]` on a module variable | `[value] is not supported yet on a module variable` |
+| A `[value]` field of a struct | `[value] on field 'p' of the struct 'Wrap' is not supported yet` |
+| A lambda parameter | `attribute 'value' is not valid on a lambda parameter` |
+| A property, for example `[value] int p { get; set; }` | `[value] applies to fields, parameters, local variables and the return type of a method only` |
+| `= null` on a `[value]` | `a [value] is never null: it always holds an object` |
+| `a == b` or `a != b` where one side is a `[value]`, also `a == null` | `'==' is not valid for a [value]: a [value] is never null and it has no identity` |
+| `Pt h = a;` where `a` is a `[value]` | `a [value] cannot convert to a handle: the object is owned by the [value]. Declare the target as a [value] to copy it` |
+| A `[value]` as a template argument, for example in `std.vector<...>` | Not supported in this version |
+
+To compare two values, compare their fields. To pass the object to a handle, declare the target as a `[value]`.
+
+An `override` must have the same `[value]` as the virtual method on each parameter and on the return type. Else the translator reports: `'F' differs in '[value]' on the parameter 'p' from the virtual method of Base; write '[value]' on both or on none`.
+
+### Reload
+
+A reload migrates the object inside the box as a live object. The loader moves it and does not copy it. The usual rules for fields apply to the object: see [Hot reload](hot-reload.html). A `[value]` field that you add gets its initializer, as any new field does.
+
 ## References and pointers
 
 A parameter `T&` is a reference. The call has no marker: write `f(x)`. A reference is borrowed: use it in the method, but do not store it in a field.

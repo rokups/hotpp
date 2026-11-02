@@ -15,7 +15,7 @@ The `hotc` tool turns a script into C++. The engine reloads a changed script whi
 ## Hot script
 
 - [Types](types.html): builtin types, variables, C++ types, collection literals and arrays.
-  - [Handles, references and pointers](types-handles.html): handles, weak handles, references and pointers.
+  - [Handles, references and pointers](types-handles.html): handles, weak handles, value uses (`[value]`), references and pointers.
 - [Borrowing](borrowing.html): where `T&`, `T*` and `&x` are allowed or rejected, and handles.
   - [Borrowed locals, calls and fixes](borrowing-locals.html): borrowed locals, borrowed values in calls, the escape hatch and quick fixes.
 - [Classes](classes.html): fields, methods, `=>` bodies, default values, constructors, properties, structs.

@@ -99,7 +99,7 @@ class Gauge : Actor {
 
 ## Structs
 
-A `struct` is a value type: a copy is a real copy. A `class` is a handle. `[value]` on a script class is an error: write `struct`.
+A `struct` is a value type: a copy is a real copy. A `class` is a handle. `[value]` on a class definition is an error: write `struct`. `[value]` is valid on a use of a class (a field, a parameter, a return type or a local). See [Value uses](types-handles.html#value-uses).
 
 ```hot
 struct Point {

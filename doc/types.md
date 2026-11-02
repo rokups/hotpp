@@ -11,7 +11,7 @@ Hot++ has fixed-width builtin types. Other types come from C++.
 
 This guide has 2 pages. This page covers builtin types, variables, C++ types, collection literals and arrays.
 
-- [Handles, references and pointers](types-handles.html): handles, weak handles, references and pointers.
+- [Handles, references and pointers](types-handles.html): handles, weak handles, value uses (`[value]`), references and pointers.
 
 ## Builtin types
 
@@ -108,7 +108,8 @@ class Parent {
 - `kids[i]`, `front()`, `back()`, `at(i)` and the `foreach` variable give the handle. A member access on them checks for `null`.
 - An index that is out of range is an error at run time, as for a native vector.
 - A reload keeps the handles. A new field of `Child` does not reset the vector.
-- A struct (a `[value]` class) in a template stays a value.
+- A struct in a template stays a value.
+- `[value]` on a template argument is not supported yet. See [Value uses](types-handles.html#value-uses).
 - `std.shared_ptr<Child>` already is a handle type. The translator does not change it.
 - A `.cpp` script keeps its own C++ types.
 

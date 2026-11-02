@@ -69,7 +69,7 @@ class Platoon {
 
 ## Enums and structs
 
-An enum is a scoped enum. Add a base type after `:`. The default base type is `int`. A struct is a value type. It is the only way to make one: `[value]` on a script class is an error.
+An enum is a scoped enum. Add a base type after `:`. The default base type is `int`. A struct is a value type. `[value]` on a class definition is an error. `[value]` on a use of a class copies it: see [Value uses](types-handles.html#value-uses).
 
 ```hot
 enum Mode { Idle, Walk, Run }
