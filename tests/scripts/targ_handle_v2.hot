@@ -1,0 +1,40 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 2: Recruit gets a new field. The vector holds handles, so the objects stay.
+using "Actor.h";
+using <map>;
+using <vector>;
+
+class Recruit {
+    int armor = 2;
+    int hp = 3;
+
+    void Bump() { this.hp = this.hp + 1; }
+}
+
+class Platoon : Actor {
+    std.vector<Recruit> recruits = std.vector<Recruit>();
+    std.map<int, std.vector<Recruit>> groups;
+    int count = 0;
+    int grouped = 0;
+    int sum = 0;
+
+    int Total(std.vector<Recruit> list) {
+        int s = 0;
+        foreach (var r in list) { s += r.hp; }
+        return s;
+    }
+
+    override void Tick(float dt) {
+        Recruit r = new Recruit();
+        this.recruits.push_back(r);
+        this.groups[1].push_back(r);
+        this.recruits[0].Bump();
+        this.count = static_cast<int>(this.recruits.size());
+        this.grouped = static_cast<int>(this.groups[1].size());
+        this.sum = this.Total(this.recruits);
+        foreach (var m in this.recruits) { this.sum += m.armor; }
+    }
+}

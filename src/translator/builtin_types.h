@@ -271,6 +271,56 @@ inline std::string task_value_type(std::string_view text)
     return {};
 }
 
+// The type that "c[i]" gives for a standard container type text, for example "Item" for
+// "std.vector<Item>" and "std::map<int, Item>". The sequence containers and "array" give the first
+// argument. The associative containers "map" and "unordered_map" give the mapped type. Any
+// other type gives an empty text. With "sequence_only" a map gives an empty text too.
+inline std::string container_element_type(std::string_view text, bool sequence_only = false)
+{
+    auto trim = [](std::string_view t)
+    {
+        while (!t.empty() && std::isspace(static_cast<unsigned char>(t.front())))
+            t.remove_prefix(1);
+        while (!t.empty() && (std::isspace(static_cast<unsigned char>(t.back())) || t.back() == '&'))
+            t.remove_suffix(1);
+        return t;
+    };
+    text = trim(text);
+    if (text.compare(0, 6, "const ") == 0)
+        text = trim(text.substr(6));
+    const size_t open = text.find('<');
+    if (open == std::string_view::npos || text.back() != '>')
+        return {};
+    size_t b = open;
+    while (b > 0 && (builtin_detail::is_id_char(text[b - 1])))
+        --b;
+    const std::string_view head = text.substr(b, open - b);
+    const bool mapped = head == "map" || head == "unordered_map";
+    if (mapped && sequence_only)
+        return {}; // a loop over a map gives pairs
+    if (!mapped && head != "vector" && head != "deque" && head != "list" && head != "array" && head != "span")
+        return {};
+    std::string_view inner = text.substr(open + 1, text.size() - open - 2);
+    std::vector<std::string_view> args;
+    int depth = 0;
+    size_t from = 0;
+    for (size_t i = 0; i <= inner.size(); ++i)
+    {
+        const char c = i < inner.size() ? inner[i] : ',';
+        if (c == '<' || c == '(')
+            ++depth;
+        else if (c == '>' || c == ')')
+            --depth;
+        else if (c == ',' && depth == 0)
+        {
+            args.push_back(trim(inner.substr(from, i - from)));
+            from = i + 1;
+        }
+    }
+    const size_t want = mapped ? 1 : 0;
+    return want < args.size() ? std::string(args[want]) : std::string();
+}
+
 // The script spelling of a canonical type text, for a message to the script author:
 // "int32_t&" gives "int&". A word after "::" stays.
 inline std::string script_type_text(std::string_view text)

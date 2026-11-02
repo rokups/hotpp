@@ -153,8 +153,13 @@ public:
     std::string script_ref_storage(const std::string& type) const;
     void set_raw_script_refs(bool raw) { raw_script_refs_ = raw; }
 
-    // The C++ storage type of a declaration.
+    // The C++ storage type of a declaration. A script class that is a template argument gets
+    // the handle storage, for example "std::vector<Child>" gives "std::vector<H>" with
+    // H = storage("Child"). The rewrite is recursive. A smart pointer template keeps its argument.
     std::string storage(const std::string& type) const;
+
+    // The type with each script class in a template argument rewritten to its handle storage.
+    std::string targ_storage(const std::string& type) const;
 
     // The C++ storage type of a "[weak] T" declaration (task 38): "std::weak_ptr<T>" with the
     // namespace of the shared pointer template. The handle of T must be a std::shared_ptr. Any

@@ -16,6 +16,7 @@ add_executable(integration_reload_tests
     constructor_tests.cpp
     ctor_table_tests.cpp
     script_kinds_tests.cpp
+    template_handle_tests.cpp
     module_state_tests.cpp
     cpp_script_tests.cpp
     property_tests.cpp

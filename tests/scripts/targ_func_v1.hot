@@ -1,0 +1,30 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// A script class in a function type and in a variant is a handle (task 48).
+using "Actor.h";
+using <functional>;
+using <variant>;
+
+class Recruit {
+    int hp = 3;
+}
+
+class Camp : Actor {
+    std.function<int(Recruit)> score;
+    std.variant<Recruit, int> slot;
+    int fnres = 0;
+    int varres = 0;
+
+    override void Tick(float dt) {
+        Recruit r = new Recruit();
+        this.score = (Recruit x) => { return x.hp * 2; };
+        this.fnres = this.score(r);
+        this.slot = r;
+        if (std.holds_alternative<Recruit>(this.slot)) {
+            Recruit g = std.get<Recruit>(this.slot);
+            this.varres = g.hp;
+        }
+    }
+}

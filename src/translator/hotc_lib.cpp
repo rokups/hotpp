@@ -243,43 +243,6 @@ std::string weak_storage_or_fail(
     return w;
 }
 
-// A template argument that names a script class (for example "std.vector<Child>") is not supported
-// yet (task 48). The type of the argument is the shell, not the handle. A smart pointer of the
-// class is the handle type, so it is not an error. "type" is the script type text.
-void fail_on_script_class_targ(
-    const hotc::TypeModel& types, const hotc::LineMap& map, uint32_t pos, const std::string& type)
-{
-    std::vector<std::string> outer; // the template name at each open "<"
-    std::string word, last;
-    auto end_word = [&](size_t at)
-    {
-        if (word.empty())
-            return;
-        const bool qualified = at >= word.size() + 2 && type.compare(at - word.size() - 2, 2, "::") == 0;
-        const bool smart = !outer.empty()
-            && (outer.back() == "shared_ptr" || outer.back() == "weak_ptr" || outer.back() == "unique_ptr");
-        if (!outer.empty() && !qualified && !smart && types.is_script_class(word) && !types.is_script_value(word))
-            fail_at(map, pos, "a template argument cannot be a script class yet: '" + word + "'");
-        last = word;
-        word.clear();
-    };
-    for (size_t i = 0; i < type.size(); ++i)
-    {
-        const char c = type[i];
-        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_')
-        {
-            word += c;
-            continue;
-        }
-        end_word(i);
-        if (c == '<')
-            outer.push_back(last);
-        else if (c == '>' && !outer.empty())
-            outer.pop_back();
-    }
-    end_word(type.size());
-}
-
 // A "[weak] T x = null" field keeps no initializer: an empty weak_ptr is null.
 void drop_weak_null_init(hotc::ast::Field& f)
 {
@@ -5102,20 +5065,6 @@ void translate_impl(
         const hotc::ParamContext param_ctx = make_ctx(cd);
 
         // ---- the C++ storage types. An override keeps the native types.
-        if (!sc.is_cpp)
-        {
-            for (const Field& f : cd.fields)
-                fail_on_script_class_targ(types, map, f.pos, f.type);
-            for (const Method& m : cd.methods)
-            {
-                fail_on_script_class_targ(types, map, m.pos, m.ret);
-                for (const Param& p : m.params)
-                    fail_on_script_class_targ(types, map, m.pos, p.type);
-            }
-            for (const hotc::ast::Ctor& c : cd.ctors)
-                for (const Param& p : c.params)
-                    fail_on_script_class_targ(types, map, c.pos, p.type);
-        }
         for (Field& f : cd.fields)
         {
             f.type = f.weak ? weak_storage_or_fail(types, map, f.pos, f.type) : types.storage(f.type);

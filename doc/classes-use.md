@@ -36,7 +36,7 @@ These are the rules:
 - Two strong handles to each other make a cycle of owners, and neither object is released. Make one handle `[weak]`, or set it to `null`. See [Weak handles](types-handles.html#weak-handles).
 - A struct holds a struct by value. Two structs that hold each other have no end size, so the translator stops with an error. Make one of them a class.
 - A class that derives from itself through other classes is an error.
-- A template argument cannot be a script class yet, for example `std.vector<Player>`. Use a struct, or a field for each handle.
+- A script class as a template argument is a handle, for example `std.vector<Player>`. See [Types](types.html#script-classes-in-templates).
 - A known limit: a member access of another class in a field initializer or in a base argument needs that class to come first in the file.
 
 ```

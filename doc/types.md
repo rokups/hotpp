@@ -69,6 +69,35 @@ class Names {
 
 `string`, `vector` and the other headers in [Module level](module-level.html) need no `using`.
 
+## Script classes in templates
+
+A script class as a template argument is a handle. `std.vector<Child>` holds one handle for each element. It does not hold the objects by value. The rule also works inside other templates, for example `std.map<int, std.vector<Child>>`.
+
+```hot
+using <vector>;
+
+class Child {
+    int hp = 3;
+}
+
+class Parent {
+    std.vector<Child> kids = std.vector<Child>();
+
+    void Run() {
+        this.kids.push_back(new Child());
+        foreach (var k in this.kids) { k.hp += 1; }
+        this.kids[0].hp = 9;
+    }
+}
+```
+
+- `kids[i]`, `front()`, `back()`, `at(i)` and the `foreach` variable give the handle. A member access on them checks for `null`.
+- An index that is out of range is an error at run time, as for a native vector.
+- A reload keeps the handles. A new field of `Child` does not reset the vector.
+- A struct (a `[value]` class) in a template stays a value.
+- `std.shared_ptr<Child>` already is a handle type. The translator does not change it.
+- A `.cpp` script keeps its own C++ types.
+
 ## Collection literals
 
 `[a, b]` builds a list. `[k: v]` builds a map. `[]` is empty. The C++ type comes from the declaration, so a literal needs a typed local, a typed field initializer or a place inside another literal. `var x = [1, 2];` is an error.

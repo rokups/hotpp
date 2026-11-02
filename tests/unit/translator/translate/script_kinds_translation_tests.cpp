@@ -167,15 +167,101 @@ TEST(ScriptKindsTranslation, StructsThatHoldEachOtherAreAnError)
     expect_error("struct A { B b; }\nstruct B { A a; }\n", "the structs use each other in a cycle: A -> B -> A");
 }
 
-TEST(ScriptKindsTranslation, TemplateArgumentThatIsAScriptClassIsAnError)
+TEST(ScriptKindsTranslation, TemplateArgumentThatIsAScriptClassUsesTheHandle)
 {
-    // Task 48 adds the support. A struct is a value, so it is a good template argument.
-    const std::string msg = "a template argument cannot be a script class yet: 'Squad'";
-    expect_error("class Squad : Unit { int a = 0; }\nclass Boss : Unit { std.vector<Squad> all; }\n", msg);
-    expect_error("class Squad : Unit { int a = 0; }\nclass Boss : Unit { void F(std.vector<Squad> v) { } }\n", msg);
-    const hotc::TranslateResult r =
+    // A script class as a template argument is a handle (task 48). A struct stays a value.
+    const std::string h = "std::shared_ptr<Squad>";
+    const hotc::TranslateResult field = translate_script(
+        "class Squad : Unit { int a = 0; }\nclass Boss : Unit { std.vector<Squad> all; "
+        "std.map<int, std.vector<Squad>> groups; }\n");
+    ASSERT_TRUE(field.ok) << field.diagnostics;
+    EXPECT_NE(field.cpp.find("std::vector<" + h + "> all;"), std::string::npos) << field.cpp;
+    EXPECT_NE(field.cpp.find("std::map<int32_t, std::vector<" + h + ">> groups;"), std::string::npos) << field.cpp;
+    EXPECT_EQ(field.cpp.find("std::vector<Squad>"), std::string::npos) << field.cpp;
+    const hotc::TranslateResult param = translate_script(
+        "class Squad : Unit { int a = 0; }\nclass Boss : Unit { int F(std.vector<Squad> v) { return v.size(); } }\n");
+    ASSERT_TRUE(param.ok) << param.diagnostics;
+    EXPECT_NE(param.cpp.find("std::vector<" + h + ">"), std::string::npos) << param.cpp;
+    EXPECT_EQ(param.cpp.find("std::vector<Squad>"), std::string::npos) << param.cpp;
+    const hotc::TranslateResult value =
         translate_script("struct Stats { int a = 0; }\nclass Boss : Unit { std.vector<Stats> all; }\n");
-    EXPECT_TRUE(r.ok) << r.diagnostics;
+    ASSERT_TRUE(value.ok) << value.diagnostics;
+    EXPECT_NE(value.cpp.find("std::vector<Stats> all;"), std::string::npos) << value.cpp;
+}
+
+TEST(ScriptKindsTranslation, ElementOfAContainerOfScriptClassesIsAHandle)
+{
+    const hotc::TranslateResult r = translate_script(
+        "class Squad : Unit { int a = 0; void Hit() { this.a = this.a + 1; } }\n"
+        "class Boss : Unit {\n"
+        "    std.vector<Squad> all = std.vector<Squad>();\n"
+        "    int sum = 0;\n"
+        "    void Run() {\n"
+        "        std.vector<Squad> local;\n"
+        "        local.push_back(new Squad());\n"
+        "        this.all.push_back(new Squad());\n"
+        "        this.all[0].Hit();\n"
+        "        this.sum = this.all[0].a + local.front().a;\n"
+        "        foreach (var s in this.all) { s.Hit(); this.sum += s.a; }\n"
+        "    }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    // The element is a handle: the access goes through the shell, with the null and bounds checks.
+    EXPECT_NE(r.cpp.find("shell_of<Squad_Shell>(hot::index(__st->all, 0)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("state_of(hot::shell_of<Squad_Shell>(hot::index(__st->all, 0)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("shell_of<Squad_Shell>(s, \"Squad\")"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("std::vector<std::shared_ptr<Squad>>()"), std::string::npos) << r.cpp;
+}
+
+// The functions that name the stored type take the handle type, as the container does.
+TEST(ScriptKindsTranslation, VariantAccessFunctionsNameTheHandleType)
+{
+    const hotc::TranslateResult r = translate_script(
+        "using <variant>;\nclass Squad : Unit { int a = 0; }\n"
+        "class Boss : Unit {\n"
+        "    std.variant<Squad, int> v;\n"
+        "    bool Run() {\n"
+        "        return std.holds_alternative<Squad>(this.v) && std.get<Squad>(this.v) != null;\n"
+        "    }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const std::string h = "std::shared_ptr<Squad>";
+    EXPECT_NE(r.cpp.find("std::variant<" + h + ", int32_t>"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("holds_alternative<" + h + ">"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("get<" + h + ">"), std::string::npos) << r.cpp;
+}
+
+TEST(ScriptKindsTranslation, FunctionTypeWithAScriptClassUsesTheHandle)
+{
+    const hotc::TranslateResult r = translate_script(
+        "using <functional>;\nclass Squad : Unit { int a = 0; }\n"
+        "class Boss : Unit {\n"
+        "    std.function<void(Squad)> on_hit;\n"
+        "    std.function<Squad()> make;\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const std::string h = "std::shared_ptr<Squad>";
+    EXPECT_NE(r.cpp.find("std::function<void(" + h + ")> on_hit;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("std::function<" + h + "()> make;"), std::string::npos) << r.cpp;
+}
+
+// A loop over a map gives pairs: the variable has no script type. The index of a map gives the mapped type.
+TEST(ScriptKindsTranslation, LoopOverAMapDoesNotGiveTheMappedType)
+{
+    const hotc::TranslateResult r = translate_script(
+        "using <map>;\nclass Squad : Unit { int a = 0; }\n"
+        "class Boss : Unit {\n"
+        "    std.map<int, Squad> m;\n"
+        "    int sum = 0;\n"
+        "    void Run() {\n"
+        "        this.sum = this.m[1].a;\n"
+        "        foreach (var p in this.m) { this.sum += p.first; }\n"
+        "    }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("shell_of<Squad_Shell>(hot::index(__st->m, 1)"), std::string::npos) << r.cpp;
+    // The loop variable "p" is not a Squad: no shell_of on it.
+    EXPECT_EQ(r.cpp.find("shell_of<Squad_Shell>(p,"), std::string::npos) << r.cpp;
 }
 
 TEST(ScriptKindsTranslation, ClassesThatDeriveFromEachOtherAreAnError)

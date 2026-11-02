@@ -314,9 +314,24 @@ struct Lowerer
 
     static const std::string& type_text(const Field& f) { return f.script_type.empty() ? f.type : f.script_type; }
 
+    // The type of an element of a standard container type (task 48): a script class that is a
+    // handle, or a container type (it has an element again). Else empty: the element is a native
+    // value and the C++ code finds its type.
+    // "sequence_only": a map gives no element, because a loop over a map gives pairs.
+    std::string element_type(const std::string& container, bool sequence_only = false) const
+    {
+        const std::string t = container_element_type(container, sequence_only);
+        if (t.empty())
+            return {};
+        const ClassDef* d = class_named(t);
+        return (d && !d->is_value) || !container_element_type(t).empty() ? t : std::string();
+    }
+
     // The script type of an expression before its lowering. Empty: not known.
     std::string type_of(const Expr& e) const
     {
+        if (auto* ix = std::get_if<IndexExpr>(&e.v))
+            return ix->obj ? element_type(type_of(*ix->obj)) : std::string();
         if (std::holds_alternative<ThisExpr>(e.v))
             return cx.allow_this && cx.cls ? cx.cls->name : std::string();
         if (const std::string* n = simple_name(e))
@@ -382,7 +397,11 @@ struct Lowerer
             }
             if (auto* m = std::get_if<MemberExpr>(&c->callee->v))
             {
-                const ClassDef* d = class_named(type_of(*m->obj));
+                const std::string ot = type_of(*m->obj);
+                if (m->name == "front" || m->name == "back" || m->name == "at")
+                    if (const std::string el = element_type(ot); !el.empty())
+                        return el;
+                const ClassDef* d = class_named(ot);
                 const Method* fn = d ? find_fn(*d, m->name) : nullptr;
                 return fn ? fn->script_ret : std::string();
             }
@@ -391,6 +410,10 @@ struct Lowerer
                 if (nm->parts.size() < 2)
                     return {};
                 std::string t = type_of(NameExprView(*nm, nm->parts.size() - 1));
+                const std::string& last = nm->parts.back();
+                if (last == "front" || last == "back" || last == "at")
+                    if (const std::string el = element_type(t); !el.empty())
+                        return el;
                 const ClassDef* d = class_named(t);
                 const Method* fn = d ? find_fn(*d, nm->parts.back()) : nullptr;
                 return fn ? fn->script_ret : std::string();
@@ -1388,6 +1411,23 @@ struct Lowerer
             n.template_args = "<" + canonical_type(after) + ">";
     }
 
+    // A script class in the template arguments of a type name is a handle (task 48): the text
+    // "std.vector<Child>" becomes "std::vector<H>", where H is the storage of Child. A function
+    // template that takes a type (a cast, "make_shared") keeps its argument.
+    void handle_targs(NameExpr& n)
+    {
+        if (!cx.types || n.template_args.empty() || n.parts.empty())
+            return;
+        static const std::set<std::string> kKeep = {"make_shared", "make_unique", "allocate_shared",
+            "static_pointer_cast", "dynamic_pointer_cast", "const_pointer_cast", "reinterpret_pointer_cast",
+            "static_cast", "dynamic_cast", "const_cast", "reinterpret_cast", "sizeof", "alignof", "typeid", "declval",
+            "as", "is", "is_same", "is_same_v"};
+        const std::string& last = n.parts.back();
+        if (kKeep.count(last) || n.parts[0] == "hot")
+            return;
+        n.template_args = cx.types->targ_storage(last + n.template_args).substr(last.size());
+    }
+
     // A bare name. A property of the class becomes a call of the getter.
     // True when the name is a module variable that no local hides.
     bool is_module_var(const std::string& n) const { return cx.module_vars.count(n) != 0 && cx.locals.count(n) == 0; }
@@ -1475,6 +1515,7 @@ struct Lowerer
             return;
         }
         targs(n);
+        handle_targs(n);
         const bool bare = n.parts.size() == 1 && !cx.locals.count(n.parts[0]);
         // A script member wins over a module variable. A module variable wins over a native member.
         if (bare && is_module_var(n.parts[0]) && !is_script_member(n.parts[0]))
@@ -2228,7 +2269,13 @@ struct Lowerer
                 if (const std::string weak = weak_root(*fo->range); !weak.empty())
                     weak_ref_error(pos_of(*fo->range), weak);
             const ScopeSave scope(cx);
-            declare(fo->name, std::string());
+            // The type of the variable: the declared script class, else the element of a container.
+            std::string elem;
+            if (fo->range && fo->name.size())
+                elem = element_type(type_of(*fo->range), true);
+            if (!fo->type.empty())
+                elem = class_named(object_type(fo->type)) ? fo->type : std::string();
+            declare(fo->name, elem);
             for (const std::string& n : fo->names)
                 declare(n, std::string());
             if (cx.types && !fo->type.empty())

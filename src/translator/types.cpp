@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <deque>
+#include <functional>
 #include <set>
 
 namespace hotc
@@ -514,12 +515,160 @@ std::string TypeModel::script_ref_storage(const std::string& type) const
     return std::string(is_const ? "const " : "") + storage(t) + "&";
 }
 
+// The name of a template (the last word before "<"), for example "shared_ptr" for "std::shared_ptr".
+static std::string template_head_word(const std::string& head)
+{
+    size_t e = head.find_last_not_of(" \t");
+    if (e == std::string::npos)
+        return {};
+    size_t b = e;
+    while (b > 0 && (std::isalnum(static_cast<unsigned char>(head[b - 1])) || head[b - 1] == '_'))
+        --b;
+    return head.substr(b, e - b + 1);
+}
+
+static std::string trim_blank(const std::string& s)
+{
+    const size_t b = s.find_first_not_of(" \t");
+    if (b == std::string::npos)
+        return {};
+    return s.substr(b, s.find_last_not_of(" \t") - b + 1);
+}
+
+std::string TypeModel::targ_storage(const std::string& type) const
+{
+    const size_t open = type.find('<');
+    if (raw_script_refs_ || open == std::string::npos)
+        return type; // a ".cpp" script keeps its C++ types
+    // Find the ">" that closes the first "<".
+    int depth = 0;
+    size_t close = std::string::npos;
+    for (size_t i = open; i < type.size(); ++i)
+    {
+        if (type[i] == '<' || type[i] == '(')
+            ++depth;
+        else if (type[i] == '>' || type[i] == ')')
+        {
+            if (--depth == 0)
+            {
+                close = i;
+                break;
+            }
+        }
+    }
+    if (close == std::string::npos)
+        return type;
+    const std::string head_word = template_head_word(type.substr(0, open));
+    // A smart pointer or a custom handle template of the class is already the handle type.
+    bool smart = head_word == "shared_ptr" || head_word == "weak_ptr" || head_word == "unique_ptr";
+    if (!smart)
+        for (const std::string& h : custom_handle_templates())
+            if (template_head_word(h) == head_word)
+                smart = true;
+    std::string out = type.substr(0, open + 1);
+    std::string cur;
+    depth = 0;
+    // One template argument. A function type "R(P1, P2)" gets the rewrite for R and each P.
+    std::function<std::string(const std::string&, bool)> rewrite_arg = [&](const std::string& arg, bool keep)
+    {
+        if (!keep)
+        {
+            if (is_script_class(arg) && !is_script_value(arg) && is_handle(arg))
+                return storage(arg);
+            if (const std::string r = script_ref_storage(arg); !r.empty())
+                return r;
+        }
+        // The first "(" outside the angle brackets starts a function type.
+        int angle = 0;
+        size_t lp = std::string::npos;
+        for (size_t i = 0; i < arg.size() && lp == std::string::npos; ++i)
+        {
+            if (arg[i] == '<')
+                ++angle;
+            else if (arg[i] == '>')
+                --angle;
+            else if (arg[i] == '(' && angle == 0)
+                lp = i;
+        }
+        if (lp == std::string::npos)
+            return targ_storage(arg);
+        int paren = 0;
+        size_t rp = std::string::npos;
+        for (size_t i = lp; i < arg.size(); ++i)
+        {
+            if (arg[i] == '(')
+                ++paren;
+            else if (arg[i] == ')' && --paren == 0)
+            {
+                rp = i;
+                break;
+            }
+        }
+        if (rp == std::string::npos)
+            return targ_storage(arg);
+        std::string res = lp == 0 ? std::string() : rewrite_arg(trim_blank(arg.substr(0, lp)), keep);
+        res += "(";
+        int nest = 0;
+        std::string part;
+        bool first = true;
+        auto add = [&]()
+        {
+            const std::string p = trim_blank(part);
+            if (!p.empty())
+            {
+                res += (first ? "" : ", ") + rewrite_arg(p, keep);
+                first = false;
+            }
+            part.clear();
+        };
+        for (size_t i = lp + 1; i < rp; ++i)
+        {
+            const char c = arg[i];
+            if (c == '<' || c == '(')
+                ++nest;
+            else if (c == '>' || c == ')')
+                --nest;
+            if (c == ',' && nest == 0)
+                add();
+            else
+                part += c;
+        }
+        add();
+        return res + ")" + targ_storage(arg.substr(rp + 1));
+    };
+    auto flush = [&]()
+    {
+        out += rewrite_arg(trim_blank(cur), smart);
+        cur.clear();
+    };
+    for (size_t i = open + 1; i < close; ++i)
+    {
+        const char c = type[i];
+        if (c == '<' || c == '(')
+            ++depth;
+        else if (c == '>' || c == ')')
+            --depth;
+        if (c == ',' && depth == 0)
+        {
+            flush();
+            out += ", ";
+        }
+        else
+        {
+            cur += c;
+        }
+    }
+    flush();
+    out += ">";
+    return out + targ_storage(type.substr(close + 1));
+}
+
 std::string TypeModel::storage(const std::string& type) const
 {
     if (const std::string r = script_ref_storage(type); !r.empty())
         return r;
     if (!is_handle(type))
-        return type;
+        return targ_storage(type);
     const TypeRule rule = lookup(type);
     if (!rule.intrusive_add.empty())
         return "hot::Intrusive<" + type + ", &" + rule.owner + "::" + rule.intrusive_add + ", &" + rule.owner
@@ -577,7 +726,7 @@ std::string TypeModel::param(const std::string& type) const
     if (const std::string r = script_ref_storage(type); !r.empty())
         return r;
     if (!is_handle(type))
-        return type;
+        return targ_storage(type);
     return "const " + storage(type) + "&";
 }
 
@@ -589,13 +738,14 @@ std::string TypeModel::body_param(const std::string& type, bool mutated, bool re
     const TypeRule rule = lookup(type);
     if (rule.kind == Kind::Handle)
         return rebound || stored ? storage(type) : param(type);
+    const std::string t = targ_storage(type);
     if (rule.kind != Kind::Value)
-        return type;
+        return t;
     if (mutated || stored)
-        return type;
+        return t;
     if (classes_ && classes_(type).small)
-        return type;
-    return "const " + type + "&";
+        return t;
+    return "const " + t + "&";
 }
 
 // The prefix of the shared pointer template "\x01std::shared_ptr<$T>" or "std::shared_ptr<$T>" (the
