@@ -560,9 +560,13 @@ function(hot_script_host)
             "$<JOIN:$<REMOVE_DUPLICATES:$<FILTER:$<TARGET_PROPERTY:${t},COMPILE_OPTIONS>,EXCLUDE,^$>>,${nl}>${nl}")
         set(side_includes
             "$<JOIN:$<FILTER:$<TARGET_PROPERTY:${t},INCLUDE_DIRECTORIES>,EXCLUDE,^$>,${nl}>${nl}")
-        file(GENERATE OUTPUT "${HOT_HOSTS_DIR}/${A_NAME}.defines" CONTENT "${side_defines}")
-        file(GENERATE OUTPUT "${HOT_HOSTS_DIR}/${A_NAME}.options" CONTENT "${side_options}")
-        file(GENERATE OUTPUT "${HOT_HOSTS_DIR}/${A_NAME}.includes" CONTENT "${side_includes}")
+        # CMake evaluates a $<COMPILE_LANGUAGE:...> of the target once for each enabled language.
+        # The scripts are C++. So the C++ values go to the file of the JSON, and each other
+        # language writes its own file "<name>.<lang>.<kind>", which hot-ls does not read.
+        set(lang "$<$<NOT:$<COMPILE_LANGUAGE:CXX>>:.$<COMPILE_LANGUAGE>>")
+        file(GENERATE OUTPUT "${HOT_HOSTS_DIR}/${A_NAME}${lang}.defines" CONTENT "${side_defines}")
+        file(GENERATE OUTPUT "${HOT_HOSTS_DIR}/${A_NAME}${lang}.options" CONTENT "${side_options}")
+        file(GENERATE OUTPUT "${HOT_HOSTS_DIR}/${A_NAME}${lang}.includes" CONTENT "${side_includes}")
     endif()
 
     _hot_host_escape(e_name "${A_NAME}")
