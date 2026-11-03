@@ -106,6 +106,11 @@ public:
     // A script class wins over a stub of the same name. Call it before lookup().
     void add_script_classes(const std::vector<ast::ClassDef>& classes);
 
+    // Registers the script interfaces (design 41b). An interface name is a known type, but it
+    // is not a class: it has no handle rule yet. The storage "hot::Iface<I__iface>" is B4 work.
+    void add_script_interfaces(const std::vector<std::string>& names);
+    bool is_script_interface(const std::string& type) const;
+
     // True when the name is a [value] script class.
     bool is_script_value(const std::string& type) const;
 
@@ -283,6 +288,7 @@ private:
         std::string cpp_overrides;
     };
     std::map<std::string, ScriptClass> script_;
+    std::set<std::string> script_ifaces_; // the names of the script interfaces
     std::set<std::string> native_globals_;
     bool raw_script_refs_ = false;
     std::map<std::string, ast::Stub> merged_; // the merged stub of each key
@@ -291,6 +297,10 @@ private:
 
 // The message for a "[weak] T" declaration when weak_storage(T) is empty (task 38).
 std::string weak_handle_error(const std::string& script_type);
+
+// The message for "[weak] I" or "[value] I" when "I" is a script interface. The attribute is
+// "weak" or "value".
+std::string interface_attribute_error(const std::string& attribute, const std::string& script_type);
 
 // A native virtual method as the matcher of an override sees it.
 struct VirtualSig

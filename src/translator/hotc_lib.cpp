@@ -237,6 +237,8 @@ const std::string kModuleName = "HotModule";
 std::string weak_storage_or_fail(
     const hotc::TypeModel& types, const hotc::LineMap& map, uint32_t pos, const std::string& type)
 {
+    if (types.is_script_interface(type))
+        fail_at(map, pos, hotc::interface_attribute_error("weak", hotc::script_type_text(type)));
     std::string w = types.weak_storage(type);
     if (w.empty())
         fail_at(map, pos, hotc::weak_handle_error(hotc::script_type_text(type)));
@@ -248,6 +250,8 @@ std::string weak_storage_or_fail(
 std::string value_storage_or_fail(
     const hotc::TypeModel& types, const hotc::LineMap& map, uint32_t pos, const std::string& type)
 {
+    if (types.is_script_interface(type))
+        fail_at(map, pos, hotc::interface_attribute_error("value", hotc::script_type_text(type)));
     std::string v = types.value_storage(type);
     if (v.empty())
         fail_at(map, pos, "[value] needs a script class with a shared handle: '" + hotc::script_type_text(type) + "'");
@@ -3172,7 +3176,58 @@ void translate_impl(
         if (!module_vars.count(m.name.substr(8)))
             fail_at(map, m.pos,
                 "'" + m.name + "' is not a convert hook: the script has no module variable '" + m.name.substr(8) + "'");
+    // ---- script interfaces (design 41b, D1 and D8). A name in the base list that names a script
+    // interface moves to "script_ifaces". The class parent (the first name) cannot be an interface.
+    {
+        std::map<std::string, const hotc::ast::InterfaceDef*> iface_by_name;
+        for (const hotc::ast::InterfaceDef& d : sc.interfaces)
+            iface_by_name[d.name] = &d;
+        for (const hotc::ast::InterfaceDef& d : sc.interfaces)
+            for (const ClassDef& cd : sc.classes)
+                if (cd.name == d.name)
+                    fail_at(map, d.pos, "the name '" + d.name + "' is a class and an interface");
+        for (ClassDef& cd : sc.classes)
+        {
+            if (iface_by_name.empty())
+                break;
+            if (!cd.base.empty() && iface_by_name.count(cd.base))
+            {
+                if (cd.is_value)
+                    fail_at(map, cd.pos, "a struct cannot implement the interface '" + cd.base + "'");
+                // The class has no parent: the first name is an interface. A later name that is
+                // not an interface would be a parent in the wrong place.
+                for (const std::string& n : cd.interfaces)
+                    if (!iface_by_name.count(n))
+                        fail_at(map, cd.pos,
+                            "the interface '" + cd.base + "' cannot be the base class of '" + cd.name
+                                + "': list the base class '" + n + "' first and the interfaces after it");
+                cd.interfaces.insert(cd.interfaces.begin(), cd.base);
+                cd.base.clear();
+            }
+            std::vector<std::string> native_ifaces;
+            for (const std::string& n : cd.interfaces)
+            {
+                if (!iface_by_name.count(n))
+                {
+                    native_ifaces.push_back(n);
+                    continue;
+                }
+                if (cd.is_value)
+                    fail_at(map, cd.pos, "a struct cannot implement the interface '" + n + "'");
+                if (std::find(cd.script_ifaces.begin(), cd.script_ifaces.end(), n) != cd.script_ifaces.end())
+                    fail_at(map, cd.pos, "'" + n + "' is listed twice");
+                cd.script_ifaces.push_back(n);
+            }
+            cd.interfaces = std::move(native_ifaces);
+        }
+    }
     types.add_script_classes(sc.classes);
+    {
+        std::vector<std::string> iface_names;
+        for (const hotc::ast::InterfaceDef& d : sc.interfaces)
+            iface_names.push_back(d.name);
+        types.add_script_interfaces(iface_names);
+    }
     types.set_raw_script_refs(sc.is_cpp);
     for (ClassDef& cd : sc.classes)
         snapshot_types(cd);
@@ -4233,6 +4288,8 @@ void translate_impl(
         base_cx.types = &types;
         wire_native_hooks(base_cx);
         base_cx.script_classes = script_names;
+        for (const auto& d : sc.interfaces)
+            base_cx.script_interfaces.insert(d.name);
         for (const auto& en : sc.enums)
             base_cx.script_enums[en.name] = en.underlying.empty() ? std::string("int32_t") : en.underlying;
         for (const auto& sc_cls : sc.classes)
@@ -5130,6 +5187,73 @@ void translate_impl(
                     "class '" + cn + "' does not implement the abstract method '" + key.substr(key.find("::") + 2)
                         + "' of '" + open_slots.begin()->second->name + "'");
             }
+            // The script interfaces of the class and of its script parents (design 41b, D6). Each
+            // interface method needs a public method with the same name and the same signature.
+            std::set<std::string> checked_ifaces;
+            for (const ClassDef* a = &cd; a; a = script_parent(*a))
+                for (const std::string& in : a->script_ifaces)
+                {
+                    if (!checked_ifaces.insert(in).second)
+                        continue;
+                    const hotc::ast::InterfaceDef* idef = nullptr;
+                    for (const hotc::ast::InterfaceDef& d : sc.interfaces)
+                        if (d.name == in)
+                            idef = &d;
+                    if (!idef)
+                        continue;
+                    for (const Method& im : idef->methods)
+                    {
+                        auto ptype = [](const Param& p)
+                        { return (p.script_type.empty() ? p.type : p.script_type) + (p.weak ? "[weak]" : "") + (p.value ? "[value]" : ""); };
+                        auto rtype = [](const Method& m)
+                        {
+                            const std::string r = m.script_ret.empty() ? m.ret : m.script_ret;
+                            return r.empty() ? std::string("void") : r;
+                        };
+                        auto same = [&](const Method& m)
+                        {
+                            if (m.params.size() != im.params.size() || rtype(m) != rtype(im))
+                                return false;
+                            for (size_t i = 0; i < m.params.size(); ++i)
+                                if (ptype(m.params[i]) != ptype(im.params[i]))
+                                    return false;
+                            return true;
+                        };
+                        bool found = false, named = false, hidden = false, async_diff = false;
+                        for (const ClassDef* a2 = &cd; a2 && !found; a2 = script_parent(*a2))
+                            for (const Method& m : a2->methods)
+                            {
+                                if (m.name != im.name)
+                                    continue;
+                                if (m.access != hotc::ast::Access::Public)
+                                    hidden = true;
+                                else if (same(m) && m.is_async != im.is_async)
+                                    async_diff = true; // an async method has another call form
+                                else if (same(m))
+                                    found = true;
+                                else
+                                    named = true;
+                            }
+                        if (found)
+                            continue;
+                        std::string sig = in + "." + im.name;
+                        if (named && !async_diff)
+                        {
+                            sig += "(";
+                            for (size_t i = 0; i < im.params.size(); ++i)
+                                sig += (i ? ", " : "") + hotc::script_type_text(ptype(im.params[i]));
+                            sig += ")";
+                        }
+                        std::string msg = "class '" + cn + "' does not implement '" + sig + "'";
+                        if (async_diff)
+                            msg += std::string(": the method '") + im.name + "' is " + (im.is_async ? "not " : "") + "async";
+                        else if (named)
+                            msg += ": the method '" + im.name + "' has another signature";
+                        else if (hidden)
+                            msg += ": the method '" + im.name + "' is not public";
+                        fail_at(map, cd.pos, msg);
+                    }
+                }
         }
 
         // ---- the hooks (design 4.7)
@@ -5474,6 +5598,8 @@ void translate_impl(
         wire_native_hooks(base_cx);
         for (const auto& en : sc.enums)
             base_cx.script_enums[en.name] = en.underlying.empty() ? std::string("int32_t") : en.underlying;
+        for (const auto& d : sc.interfaces)
+            base_cx.script_interfaces.insert(d.name);
         for (const auto& sc_cls : sc.classes)
         {
             base_cx.script_classes.insert(sc_cls.name);

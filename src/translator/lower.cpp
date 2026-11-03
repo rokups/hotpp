@@ -1280,6 +1280,11 @@ struct Lowerer
     {
         const uint32_t pos = n.pos;
         const std::string type = n.type; // "n" is gone after "e" gets a new node
+        if (cx.script_interfaces.count(n.type))
+        {
+            error(pos, "cannot create an instance of the interface '" + n.type + "'");
+            return;
+        }
         if (cx.script_classes.count(n.type))
         {
             if (!cx.new_classes.count(n.type))
@@ -2408,6 +2413,13 @@ struct Lowerer
                     d->init = make_expr(std::move(n));
                 }
                 value_local = true;
+                if (cx.script_interfaces.count(object_type(d->type)))
+                {
+                    error(d->value_pos ? d->value_pos : d->pos,
+                        interface_attribute_error("value", script_type_text(d->type)));
+                    d->init = nullptr;
+                    return;
+                }
                 if (cx.types && cx.types->value_storage(object_type(d->type)).empty())
                     error(d->value_pos ? d->value_pos : d->pos,
                         "[value] needs a script class with a std::shared_ptr handle, and '" + script_type_text(d->type)
@@ -2454,7 +2466,10 @@ struct Lowerer
                 cx.weak_locals.insert(d->name);
                 if (d->init && std::holds_alternative<NullExpr>(d->init->v))
                     d->init = nullptr;
-                if (cx.types)
+                if (cx.script_interfaces.count(object_type(d->type)))
+                    error(d->weak_pos ? d->weak_pos : d->pos,
+                        interface_attribute_error("weak", script_type_text(d->type)));
+                else if (cx.types)
                 {
                     const std::string w = cx.types->weak_storage(d->type);
                     if (w.empty())

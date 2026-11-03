@@ -290,6 +290,22 @@ void TypeModel::add_script_classes(const std::vector<ast::ClassDef>& classes)
         script_[cd.name] = {cd.base, cd.interfaces, cd.is_value, cd.cpp_prelude, cd.cpp_overrides};
 }
 
+void TypeModel::add_script_interfaces(const std::vector<std::string>& names)
+{
+    script_ifaces_.clear();
+    script_ifaces_.insert(names.begin(), names.end());
+}
+
+bool TypeModel::is_script_interface(const std::string& type) const
+{
+    std::string t = type;
+    while (t.rfind("const ", 0) == 0)
+        t.erase(0, 6);
+    while (!t.empty() && (t.back() == ' ' || t.back() == '&'))
+        t.pop_back();
+    return script_ifaces_.count(t) != 0;
+}
+
 bool TypeModel::is_script_value(const std::string& type) const
 {
     auto it = script_.find(type);
@@ -907,6 +923,12 @@ std::string weak_handle_error(const std::string& script_type)
 {
     return "[weak] needs a std::shared_ptr handle type, and '" + script_type
         + "' is not one. Remove '[weak]', or give the class the handle(\"$std::shared_ptr<$T>\")";
+}
+
+std::string interface_attribute_error(const std::string& attribute, const std::string& script_type)
+{
+    return "[" + attribute + "] cannot be used with the interface '" + script_type
+        + "': an interface handle is not a class handle. Remove '[" + attribute + "]'";
 }
 
 std::string override_key_norm(const std::string& type)

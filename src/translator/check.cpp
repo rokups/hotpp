@@ -962,6 +962,11 @@ struct ValueUseChecker
             t = trim(t.substr(6));
         if (t.empty())
             return; // "[value] var x = e": the lowering decides
+        if (types.is_script_interface(t))
+        {
+            diag.add(pos, map, interface_attribute_error("value", script_type_text(t)));
+            return;
+        }
         if (types.is_script_class(t) && !types.is_script_value(t))
         {
             const std::string nb = types.script_native_base(t);

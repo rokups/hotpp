@@ -95,6 +95,8 @@ struct RCtx
     const TypeModel* types = nullptr;
     // The names of all classes of the script.
     std::set<std::string> script_classes;
+    // The names of the script interfaces. "new I()" and "[value] I" are errors.
+    std::set<std::string> script_interfaces;
     // The script enums: the name to the underlying type. "${e}" of an enum prints the integer.
     std::map<std::string, std::string> script_enums;
     // The script classes that "new" can build now: the class itself and the classes that the
