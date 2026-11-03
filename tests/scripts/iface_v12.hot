@@ -1,0 +1,39 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// A script class with a native intrusive base (RefBase), generation 1: no interface.
+// The test sets the field step. The Keeper does the action of that step in Tick.
+using "Actor.h";
+using "RefPtr.h";
+
+[native, handle("RefPtr<$T>"), weak_handle("WeakRef<$T>")] class RefBase;
+
+class Pet : Thing {
+    Pet() : base(9) {
+    }
+
+    int Value() { return value + 1; }
+    int R() { return Refs(); }
+}
+
+class Keeper : Actor {
+    Pet pet = null;
+    [weak]
+    Thing seen = null;
+    int step = 0;
+    int ticks = 0;
+    int refs = -1;
+    int alive = -1;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        if (this.pet == null && this.ticks == 1) {
+            this.pet = new Pet();
+            this.seen = this.pet;
+        }
+        if (this.step == 2) this.pet = null;
+        this.refs = this.pet != null ? this.pet.R() : -1;
+        this.alive = this.seen != null ? this.seen.value : -1;
+    }
+}

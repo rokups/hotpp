@@ -1,0 +1,43 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Error: only the interface changes. C does not implement the new signature.
+using "Actor.h";
+using <string>;
+
+interface IThing {
+    int Get(int a, int b);
+}
+
+class C : Actor, IThing {
+    int Get(int a) { return a + 1; }
+}
+
+class Holder : Actor {
+    C obj;
+    IThing keep;
+    int r = 0;
+    int is_i = -1;
+    int threw = 0;
+    std.string why = "";
+    int ticks = 0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        if (this.keep == null) {
+            this.obj = new C();
+            this.keep = this.obj;
+        }
+        this.is_i = 0;
+        if (this.obj is IThing) this.is_i = 1;
+        this.threw = 0;
+        this.r = -5;
+        try {
+            this.r = this.keep.Get(10, 20);
+        } catch (hot.ScriptError ex) {
+            this.threw = 1;
+            this.why = ex.what();
+        }
+    }
+}

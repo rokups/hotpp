@@ -1,0 +1,37 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// The interface IThing is removed. The field keep becomes an int with an initializer.
+using "Actor.h";
+using <string>;
+
+
+
+class C : Actor {
+    int Get() { return 11; }
+}
+
+class Holder : Actor {
+    C obj;
+    int keep = 7;
+    int r = 0;
+    int is_i = -1;
+    int threw = 0;
+    std.string why = "";
+    int ticks = 0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+
+        this.is_i = 0;
+        this.threw = 0;
+        this.r = -5;
+        try {
+            this.r = this.keep;
+        } catch (hot.ScriptError ex) {
+            this.threw = 1;
+            this.why = ex.what();
+        }
+    }
+}
