@@ -1,0 +1,7 @@
+67_free_function_async.hot:3:1: error: a free function cannot be 'async'
+    3 | async void Load() { }
+67_free_function_async.hot:4:1: error: a free function has no access word
+    4 | public int Helper() { return 1; }
+67_free_function_async.hot:5:1: error: a free function cannot be 'static'
+    5 | static int Fixed() { return 1; }
+3 errors generated.

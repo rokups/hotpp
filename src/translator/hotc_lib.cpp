@@ -237,6 +237,29 @@ std::string default_arg(const hotc::ast::Param& p, const std::vector<hotc::ast::
     return p.def->cpp.empty() ? std::string() : " = " + p.def->cpp;
 }
 
+// A static method or a free function after the lowering. The lowering runs one time (for the
+// checks). The text of the definition and of the prototype come from this record.
+//  - owner: the class that declares the function; empty for a free function.
+//  - symbol: the C++ name ("Owner__s_F" or "hot_fn_F"). A call of the function uses it.
+//  - where: the name for the trace frame ("C.F" or "F").
+//  - ret: the C++ return type ("void" when the function returns nothing).
+//  - params: the parameters without default values, "T a, U b". It is empty for no parameter.
+//    It has no "__self": a static method has no object.
+//  - params_def: the same with the default values, for the first declaration.
+//  - body: the lowered statements, with the trace lines. It is null for a raw body.
+//  - method: the function in the AST. The text of a raw body is "method->body".
+struct LoweredStatic
+{
+    std::string owner;
+    std::string symbol;
+    std::string where;
+    std::string ret;
+    std::string params;
+    std::string params_def;
+    std::shared_ptr<hotc::ast::Emitter> body;
+    const hotc::ast::Method* method = nullptr;
+};
+
 // The name of the synthetic struct that holds the module variables (module state block).
 const std::string kModuleName = hotc::kModuleClassName;
 
@@ -1144,6 +1167,11 @@ void snapshot_types(ClassDef& cd)
             keep(p.script_type, p.type);
     };
     for (Method& m : cd.methods)
+    {
+        keep(m.script_ret, m.ret);
+        params(m.params);
+    }
+    for (Method& m : cd.statics)
     {
         keep(m.script_ret, m.ret);
         params(m.params);
@@ -3011,6 +3039,10 @@ void translate_impl(
                 if (!is.var_hooks.empty())
                     fail_at(map, is.var_hooks.front().pos,
                         "an imported script cannot have convert hooks of module variables");
+                if (!is.fns.empty())
+                    fail_at(map, is.fns.front().pos,
+                        "an imported script cannot have free functions: '" + is.fns.front().name + "' is in '" + file
+                            + "'");
                 visit_imports(is.imports);
                 for (Import& n : is.imports)
                     if (native_paths.insert(n.path).second)
@@ -3236,6 +3268,63 @@ void translate_impl(
         if (!module_vars.count(m.name.substr(8)))
             fail_at(map, m.pos,
                 "'" + m.name + "' is not a convert hook: the script has no module variable '" + m.name.substr(8) + "'");
+    // ---- static methods and free functions. One function has one name: there are no overloads.
+    // The free functions live in a synthetic class "HotFns" (the member "statics"). It is not in
+    // "sc.classes", so no code is made for it as a class.
+    hotc::ast::ClassDef fn_cls;
+    fn_cls.name = "HotFns";
+    {
+        std::set<std::string> fn_names;
+        for (const Method& f : sc.fns)
+        {
+            if (!fn_names.insert(f.name).second)
+                fail_at(map, f.pos, "function '" + f.name + "' is declared twice (overloads are not supported)");
+            auto clash = [&](const std::string& what)
+            { fail_at(map, f.pos, "'" + f.name + "' is declared twice (a function and " + what + ")"); };
+            if (module_vars.count(f.name))
+                clash("a module variable");
+            for (const ClassDef& cd : sc.classes)
+                if (cd.name == f.name && cd.name != kModuleName)
+                    clash(cd.is_value ? "a struct" : "a class");
+            for (const hotc::ast::EnumDef& e : sc.enums)
+                if (e.name == f.name)
+                    clash("an enum");
+            for (const hotc::ast::InterfaceDef& d : sc.interfaces)
+                if (d.name == f.name)
+                    clash("an interface");
+            for (const hotc::ast::Param& p : f.params)
+                if (p.name.compare(0, 2, "__") == 0)
+                    fail_at(map, f.pos, "parameter name '" + p.name + "' is reserved");
+        }
+        for (const ClassDef& cd : sc.classes)
+        {
+            std::set<std::string> statics;
+            for (const Method& st : cd.statics)
+            {
+                for (const hotc::ast::Param& p : st.params)
+                    if (p.name.compare(0, 2, "__") == 0)
+                        fail_at(map, st.pos, "parameter name '" + p.name + "' is reserved");
+                if (!statics.insert(st.name).second)
+                    fail_at(map, st.pos,
+                        "function '" + st.name + "' is declared twice (overloads are not supported)");
+                for (const Method& m : cd.methods)
+                {
+                    if (m.op.empty() && m.name == st.name)
+                        fail_at(map, std::max(m.pos, st.pos),
+                            "function '" + st.name + "' is declared twice (overloads are not supported)");
+                    // The static method "F" is "C__s_F" in the C++ code. The method "s_F" is "C__s_F" too.
+                    if (m.op.empty() && m.name == "s_" + st.name)
+                        fail_at(map, std::max(m.pos, st.pos),
+                            "the static method '" + cd.name + "." + st.name + "' and the method '" + cd.name + "."
+                                + m.name + "' have the same generated name '" + cd.name + "__s_" + st.name
+                                + "'. Rename one of them");
+                }
+                for (const Field& f : cd.fields)
+                    if (f.name == st.name)
+                        fail_at(map, std::max(f.pos, st.pos), "'" + st.name + "' is a field and a function");
+            }
+        }
+    }
     // ---- script interfaces (design 41b, D1 and D8). A name in the base list that names a script
     // interface moves to "script_ifaces". The class parent (the first name) cannot be an interface.
     if (opt.aot_optimized && !sc.interfaces.empty())
@@ -4281,12 +4370,55 @@ void translate_impl(
     // initializer is in the block: it uses "new_ready".
     std::set<std::string> body_new = script_names;
     body_new.erase(kModuleName);
+    // The lowered static methods ("C::F") and free functions ("F"). Step 4 reads them.
+    std::map<std::string, LoweredStatic> lowered_statics;
     auto param_text = [](const std::vector<hotc::ast::Param>& ps)
     {
         std::string r;
         for (const hotc::ast::Param& p : ps)
             r += ", " + name_in_type(p.type, p.name);
         return r;
+    };
+    // The static methods of a class and the free functions (the class "HotFns"): the storage types
+    // and the lowering of the bodies. The body has no "this". The lowering runs one time. The
+    // result is in "lowered_statics" (see "LoweredStatic"). The key is "C::F" or "F".
+    auto lower_statics = [&](ClassDef& host, const RCtx& host_cx, bool is_free)
+    {
+        for (Method& m : host.statics)
+        {
+            for (Param& p : m.params)
+                p.type = param_type_or_fail(types, map, m.pos, p.type, p.weak, p.value, p.mode == hotc::ast::ParamMode::ByVal);
+            if (!m.ret.empty())
+                m.ret = ret_type_or_fail(types, map, m.pos, m.ret, m.ret_value);
+            LoweredStatic ls;
+            ls.owner = is_free ? std::string() : host.name;
+            ls.symbol = hotc::static_fn_symbol(ls.owner, m.name);
+            ls.where = (is_free ? std::string() : host.name + ".") + m.name;
+            ls.ret = m.ret.empty() ? std::string("void") : m.ret;
+            ls.method = &m;
+            RCtx cx = host_cx;
+            cx.where = ls.where;
+            cx.ret_type = m.script_ret;
+            cx.ret_value = m.ret_value;
+            cx.new_classes = body_new;
+            cx.allow_this = false;
+            cx.in_static = true;
+            cx.in_free_fn = is_free;
+            cx.static_name = m.name;
+            cx.in_module_init = false;
+            hotc::add_params(cx, m.params);
+            ls.body = lower_body(m, cx, true);
+            if (g_diag.items.empty())
+            {
+                for (const Param& p : m.params)
+                {
+                    const std::string d = name_in_type(p.type, p.name);
+                    ls.params += (ls.params.empty() ? "" : ", ") + d;
+                    ls.params_def += (ls.params_def.empty() ? "" : ", ") + d + default_arg(p, m.params, host_cx);
+                }
+            }
+            lowered_statics[ls.owner.empty() ? m.name : ls.owner + "::" + m.name] = std::move(ls);
+        }
     };
     // The reload type key of a field type. An enum is its underlying integer type (design 5.3).
     auto key_type = [&](const std::string& t) { return enum_types.count(t) ? "std::underlying_type_t<" + t + ">" : t; };
@@ -4484,6 +4616,8 @@ void translate_impl(
         base_cx.uses_format = &uses_format;
         base_cx.module_vars = module_vars;
         base_cx.in_module_init = cn == kModuleName;
+        base_cx.free_fns = &fn_cls.statics;
+        lower_statics(cd, base_cx, false);
 
         o.w("\n// ---------------------------------------------------------------- struct " + cn + "\n");
         // The field initializers: the text is the same in the constructor and in the field table.
@@ -4494,6 +4628,7 @@ void translate_impl(
             RCtx fc = base_cx;
             fc.allow_this = false;
             fc.typed_init = !f.type.empty();
+            fc.in_field_init = true;
             fc.module_earlier = earlier;
             std::string init;
             if (f.raw)
@@ -5010,6 +5145,56 @@ void translate_impl(
             o.w("} // namespace " + body_ns + "\n");
         bodies.clear();
     };
+
+    // ---- the free functions: the same checks as for a class, in the synthetic class "HotFns". The code
+    // for a free function comes later. The queries to libclang already have the bodies (sc.fns).
+    if (!sc.fns.empty())
+    {
+        fn_cls.statics = std::move(sc.fns);
+        sc.fns.clear();
+        snapshot_types(fn_cls);
+        if (!sc.is_cpp)
+            hotc::resolve_value_uses(fn_cls, types);
+        {
+            const size_t before = g_diag.items.size();
+            hotc::check_class(fn_cls, types, map, g_diag, in.strict_borrowed, sc.is_cpp,
+                hotc::cxx_std_below_20(opt.std_version));
+            if (g_diag.items.size() != before)
+                throw TranslateAbort{};
+        }
+        infer_const_in(
+            fn_cls,
+            [&fn_cls](const std::string& n) -> const Method*
+            {
+                for (const Method& m : fn_cls.statics)
+                    if (m.name == n)
+                        return &m;
+                return nullptr;
+            },
+            [](const Method&) { return false; });
+        null_check_in(fn_cls);
+        RCtx fn_cx = hotc::make_class_ctx(fn_cls);
+        fn_cx.aot_optimized = opt.aot_optimized;
+        fn_cx.map = &map;
+        fn_cx.types = &types;
+        wire_native_hooks(fn_cx);
+        fn_cx.script_classes = script_names;
+        for (const auto& d : sc.interfaces)
+        {
+            fn_cx.script_interfaces.insert(d.name);
+            fn_cx.iface_defs[d.name] = &d;
+        }
+        for (const auto& en : sc.enums)
+            fn_cx.script_enums[en.name] = en.underlying.empty() ? std::string("int32_t") : en.underlying;
+        for (const auto& sc_cls : sc.classes)
+            fn_cx.classes[sc_cls.name] = &sc_cls;
+        fn_cx.new_classes = body_new;
+        fn_cx.format_lib = in.format_lib;
+        fn_cx.uses_format = &uses_format;
+        fn_cx.module_vars = module_vars;
+        fn_cx.free_fns = &fn_cls.statics;
+        lower_statics(fn_cls, fn_cx, true); // an error here does not stop the other bodies
+    }
 
     for (size_t si = 0; si < seq.size(); ++si)
     {
@@ -5935,6 +6120,8 @@ void translate_impl(
         base_cx.uses_format = &uses_format;
         base_cx.module_vars = module_vars;
         base_cx.in_module_init = cn == kModuleName;
+        base_cx.free_fns = &fn_cls.statics;
+        lower_statics(cd, base_cx, false);
         // Optimized AOT code: the fields are members of the shell. Each member has the lowered
         // initializer as a default member initializer, in the order of the declaration.
         // The member of the shell for an ordinary script function. The body of a ".cpp" script calls
@@ -5948,6 +6135,7 @@ void translate_impl(
                 RCtx fc = base_cx;
                 fc.allow_this = false;
                 fc.typed_init = !f.type.empty();
+                fc.in_field_init = true;
                 if (f.raw)
                     field_inits[fi] = f.raw_init; // a ".cpp" script: the text is already C++
                 else if (f.value)
@@ -6372,6 +6560,7 @@ void translate_impl(
             RCtx fc = base_cx;
             fc.allow_this = false;
             fc.typed_init = !f.type.empty();
+            fc.in_field_init = true;
             std::string init;
             if (f.raw)
                 init = f.raw_init; // a ".cpp" script: the text is already C++
@@ -7434,6 +7623,76 @@ void translate_impl(
                     + d.name + "." + t.name + "\"" + args + ");\n}\n\n");
             }
         reset();
+    }
+    // ---- static methods and free functions. A function has a prototype here, after all the blocks. So
+    // a body of a method sees it. The definition comes in the bodies section. The function has no
+    // slot, no "sig" line, no manifest entry and no register call: the calls are direct.
+    if (g_diag.items.empty() && !lowered_statics.empty())
+    {
+        // The functions in source order: the classes first, then the free functions.
+        struct StaticRef
+        {
+            const LoweredStatic* ls;
+            std::string ns;
+        };
+        std::vector<StaticRef> refs;
+        for (const ClassDef& cd : sc.classes)
+            for (const Method& m : cd.statics)
+                if (auto it = lowered_statics.find(cd.name + "::" + m.name); it != lowered_statics.end())
+                    refs.push_back({&it->second, cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns)});
+        for (const Method& m : fn_cls.statics)
+            if (auto it = lowered_statics.find(m.name); it != lowered_statics.end())
+                refs.push_back({&it->second, std::string()});
+        o.w("// ---------------------------------------------------------------- static methods and free functions\n");
+        std::string proto_ns;
+        for (const StaticRef& r : refs)
+        {
+            if (r.ns != proto_ns)
+            {
+                if (!proto_ns.empty())
+                    o.w("} // namespace " + proto_ns + "\n");
+                if (!r.ns.empty())
+                    o.w("namespace " + r.ns + " {\n");
+                proto_ns = r.ns;
+            }
+            const LoweredStatic& ls = *r.ls;
+            const std::string decl = "[[maybe_unused]] HOT_HIDDEN static " + ls.ret + " " + ls.symbol + "(" + ls.params_def
+                + ");\n";
+            o.head_segments(decl, ls.symbol, *ls.method, all_text);
+            o.w(decl);
+        }
+        if (!proto_ns.empty())
+            o.w("} // namespace " + proto_ns + "\n");
+        o.w("\n");
+        reset();
+        for (const StaticRef& r : refs)
+        {
+            const LoweredStatic ls = *r.ls;
+            const std::string file = esc(file_at(ls.method->pos));
+            const Method& m = *ls.method;
+            const int end_line = m.end_line > 0 ? m.end_line : m.line;
+            int first_line = m.line;
+            if (!m.body.stmts.empty() && hotc::ast::pos_of(*m.body.stmts.front()) != 0)
+                first_line = map.line(hotc::ast::pos_of(*m.body.stmts.front()));
+            bodies.push_back({r.ns,
+                [&o, &all_text, &reset, &write_stmts, h = body_head(m), ls, file, end_line, first_line]
+                {
+                    auto line_at = [&](int l) { return "#line " + std::to_string(l) + " \"" + file + "\"\n"; };
+                    const std::string head = "[[maybe_unused]] HOT_HIDDEN static " + ls.ret + " " + ls.symbol + "(" + ls.params;
+                    o.w(line_at(h->line));
+                    o.head_segments(head, ls.symbol, *h, all_text);
+                    o.w(head + ")\n");
+                    o.w(line_at(h->line));
+                    o.w("{\n");
+                    o.w(line_at(first_line));
+                    o.w("    HOT_TRACE_FRAME(\"" + ls.where + "\", \"" + file + "\");\n");
+                    write_stmts(*h, ls.body.get());
+                    o.w(line_at(end_line));
+                    o.w("}\n");
+                    reset();
+                    o.w("\n");
+                }});
+        }
     }
     flush_bodies();
     write_texts(seq.size());

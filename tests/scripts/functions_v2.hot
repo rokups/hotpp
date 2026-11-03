@@ -1,0 +1,61 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 2 of free functions and static methods. A function has no object and no slot.
+// This generation has the new bodies.
+using "Actor.h";
+
+int Add(int a, int b) {
+    return a + b + 100;
+}
+
+int Fact(int n) {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * Fact(n - 1);
+}
+
+int Scale(int x, int k = 3) {
+    return x * k;
+}
+
+struct Vec {
+    int x = 0;
+
+    static int Twice(int v) {
+        return v * 2;
+    }
+}
+
+class Hero : Actor {
+    int sum = 0;
+    int weight = 0;
+    int fact = 0;
+    int scaled = 0;
+    int scaled2 = 0;
+    int twice = 0;
+
+    static int Weight(int m) {
+        return m + 2;
+    }
+
+    override void Tick(float dt) {
+        this.sum = Add(2, 3);
+        this.weight = Hero.Weight(10) + Weight(0);
+        this.fact = Fact(5);
+        this.scaled = Scale(4);
+        this.scaled2 = Scale(4, 5);
+        this.twice = Vec.Twice(21);
+    }
+}
+
+// A static method of a class is called from another class.
+class Helper : Actor {
+    int seen = 0;
+
+    override void Tick(float dt) {
+        this.seen = Hero.Weight(100) + Add(1, 1);
+    }
+}

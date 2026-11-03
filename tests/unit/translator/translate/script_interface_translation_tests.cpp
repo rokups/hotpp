@@ -299,13 +299,13 @@ TEST(ScriptInterfaceTranslation, InterfaceOnParentAndChildIsNoError)
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
-TEST(ScriptInterfaceTranslation, StaticMethodIsRejectedBeforeConformance)
+TEST(ScriptInterfaceTranslation, StaticMethodDoesNotConform)
 {
-    // A script class has no static method, so a static method cannot satisfy an interface.
+    // A static method is not in "methods", so it cannot satisfy an interface method.
     const hotc::TranslateResult r = run(std::string(kShape)
         + "class Sq : Widget, IShape {\n    static int Area() { return 4; }\n    void Scale(int k) { }\n}\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "static members are not supported")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "class 'Sq' does not implement 'IShape.Area'")) << r.diagnostics;
 }
 
 TEST(ScriptInterfaceTranslation, AsyncMethodDoesNotConform)

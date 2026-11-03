@@ -152,6 +152,11 @@ struct Member
     ast::Field field;
     ast::Property prop;
     bool get_has_access = false, set_has_access = false; // an access word on the accessor
+    // A method only: the words that a file-level function cannot have. The finish step sets them.
+    const char* access_pos = nullptr; // the access word, or null
+    const char* async_pos = nullptr; // the "async" word, or null
+    const char* static_pos = nullptr; // the "static" word, or null
+    std::vector<std::pair<const char*, std::string>> kind_words; // "virtual", "override", "new", "abstract"
     const char* no_body_pos = nullptr; // the ";" of a method or a constructor with no body
 };
 
@@ -181,6 +186,7 @@ struct TopItem
         IsEnum,
         IsVar,
         IsHook,
+        IsFn,
         IsModuleAttrs,
         IsUsingNs,
         IsAlias,
@@ -195,6 +201,7 @@ struct TopItem
     ast::EnumDef en;
     ast::Field var; // a module variable
     ast::Method hook; // a convert hook of a module variable
+    ast::Method fn; // a free function
     ast::ModuleAttrs module_attrs; // "[std(\"x\")];"
 };
 
@@ -221,6 +228,9 @@ struct Mods
     bool is_override = false, is_virtual = false, is_new = false, is_async = false, is_abstract = false;
     const char* abstract_pos = nullptr; // the "abstract" word, or null
     bool has_access = false;
+    const char* access_pos = nullptr; // the access word, or null
+    bool is_static = false;
+    const char* static_pos = nullptr; // the "static" word, or null
     ast::Access access = ast::Access::Public;
     std::vector<ModTok> kind_toks; // the "override", "virtual", "new" and "async" words
 };
@@ -233,8 +243,6 @@ bool is_access_word(const std::string& w)
 // The error text for a C++ word that a script member cannot have, or null for any other word.
 const char* unsupported_modifier(const std::string& w)
 {
-    if (w == "static")
-        return "static members are not supported; use a module variable (a variable at file level)";
     if (w == "thread_local")
         return "thread_local members are not supported; use a module variable (a variable at file level)";
     if (w == "friend")
@@ -265,6 +273,18 @@ Mods collect_mods(const ParseState& st, const std::vector<ModTok>& toks, bool is
             st.error(t.pos, why);
             continue;
         }
+        if (t.word == "static")
+        {
+            // The kind of the member decides if "static" is valid: see finish_member.
+            if (m.is_static)
+            {
+                st.error(t.pos, "duplicate modifier 'static'");
+                continue;
+            }
+            m.is_static = true;
+            m.static_pos = t.pos;
+            continue;
+        }
         bool dup = false;
         for (const ModTok* o : seen)
             dup = dup || o->word == t.word;
@@ -283,6 +303,7 @@ Mods collect_mods(const ParseState& st, const std::vector<ModTok>& toks, bool is
             }
             access_tok = &t;
             m.has_access = true;
+            m.access_pos = t.pos;
             m.access = t.word == "public" ? ast::Access::Public
                 : t.word == "private"     ? ast::Access::Private
                                           : ast::Access::Protected;
@@ -350,6 +371,17 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
     }
     const bool is_op = m.kind == Member::IsMethod && !m.method.op.empty();
     const Mods mods = mods_of(st, mods_in, is_op);
+    if (mods.is_static)
+    {
+        const char* what = m.kind == Member::IsField
+            ? "a static field is not supported; use a module variable (a variable at file level)"
+            : m.kind == Member::IsProp ? "a property cannot be 'static'"
+            : m.kind == Member::IsCtor ? "a constructor cannot be 'static'"
+            : m.kind == Member::IsDtor ? "a destructor cannot be 'static'"
+                                       : nullptr;
+        if (what)
+            st.error(mods.static_pos, what);
+    }
     if (m.kind == Member::IsDtor)
     {
         m.method.access = mods.access;
@@ -396,6 +428,15 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
         m.method.is_virtual = mods.is_virtual;
         m.method.is_new = mods.is_new;
         m.method.is_async = mods.is_async;
+        m.method.is_static = mods.is_static;
+        m.static_pos = mods.static_pos;
+        if (mods.has_access)
+            m.access_pos = mods.access_pos;
+        for (const ModTok& t : mods.kind_toks)
+            if (t.word == "async")
+                m.async_pos = t.pos;
+            else
+                m.kind_words.emplace_back(t.pos, t.word);
         if (is_op)
         {
             // An operator has no modifier of the kind. The word is an error, the flags stay false.
@@ -405,6 +446,19 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
             if (!mods.is_abstract && m.no_body_pos)
                 st.error(m.no_body_pos,
                     "operator '" + m.method.op + "' needs a body; write '{ ... }'");
+        }
+        else if (mods.is_static)
+        {
+            // A static method has no object: it cannot be virtual, abstract or async.
+            m.method.is_virtual = m.method.is_override = m.method.is_new = m.method.is_async = false;
+            for (const ModTok& t : mods.kind_toks)
+                if (t.word == "async")
+                    st.error(t.pos, "an async function needs an object; remove 'static'");
+                else
+                    st.error(t.pos, "'static' and '" + t.word + "' cannot combine");
+            if (m.no_body_pos && !mods.is_abstract)
+                st.error(m.no_body_pos,
+                    "method '" + m.method.name + "' needs a body; write '{ ... }'");
         }
         else if (mods.is_abstract)
         {
@@ -1521,7 +1575,10 @@ void add_members(const ParseState& st, ast::ClassDef& c, std::vector<Member>&& m
                 st.error(st.base + m.method.pos,
                     "abstract method '" + m.method.name + "' needs an abstract " + (c.is_value ? "struct" : "class")
                         + ": write 'abstract class " + c.name + "'");
-            c.methods.push_back(std::move(m.method));
+            if (m.method.is_static)
+                c.statics.push_back(std::move(m.method));
+            else
+                c.methods.push_back(std::move(m.method));
         }
         else if (m.kind == Member::IsField)
             c.fields.push_back(std::move(m.field));
@@ -1868,7 +1925,7 @@ struct class_p
                         | dsl::else_ >> (dsl::must(dsl::peek(class_or_struct)).error<e_abstract_target>
                             + dsl::capture(class_or_struct) + class_rest)))
             | dsl::peek(dsl::lit_c<';'>) >> dsl::p<module_attrs_end_p>
-            | dsl::else_ >> dsl::p<typed_member>);
+            | dsl::else_ >> (dsl::opt(dsl::peek(modifier_set) >> dsl::p<mods_p>) + dsl::p<typed_member>));
     static constexpr auto value =
         lexy::bind(lexy::callback<TopItem>(
                        [](const ParseState& st, const char*, const auto& attrs, TopItem&& t)
@@ -1949,16 +2006,36 @@ struct class_p
         reject_tags(st, class_attrs_of(attrs));
         return make_module_attrs(st, mark.pos, class_attrs_of(attrs));
     },
-                       [](const ParseState& st, const char* pos, const auto& attrs, Member&& m)
+                       [](const ParseState& st, const char* pos, const auto& attrs, const auto& mods, Member&& member)
     {
         const ClassAttrs* a = class_attrs_of(attrs);
         reject_tags(st, a);
         TopItem t;
+        // The attributes are checked here, not in finish_member.
+        // A body that is missing has its own error here, not the error of a class method.
+        const char* no_body = member.no_body_pos;
+        member.no_body_pos = nullptr;
+        Member m = finish_member(st, lexy::nullopt{}, mods, std::move(member));
+        m.no_body_pos = no_body;
         if (m.no_body_pos && m.kind == Member::IsMethod && m.method.name.rfind("convert_", 0) == 0)
             st.error(m.no_body_pos,
                 "method '" + m.method.name + "' needs a body; write '{ ... }'");
         // "T convert_<var>(Old old) { }" at file level is the convert hook of a module
         // variable. Other functions must be members of a class.
+        if (m.kind == Member::IsMethod && m.method.op.empty())
+        {
+            // A function at file level has no modifier.
+            if (m.access_pos)
+                st.error(m.access_pos, "a free function has no access word");
+            if (m.async_pos)
+                st.error(m.async_pos, "a free function cannot be 'async'");
+            if (m.static_pos)
+                st.error(m.static_pos, "a free function cannot be 'static'");
+            for (const auto& w : m.kind_words)
+                st.error(w.first, "a free function cannot be '" + w.second + "'");
+            m.method.is_override = m.method.is_virtual = m.method.is_new = m.method.is_async = false;
+            m.method.is_abstract = false;
+        }
         if (m.kind == Member::IsMethod && m.method.name.rfind("convert_", 0) == 0)
         {
             if (a && !a->used.empty())
@@ -1968,14 +2045,20 @@ struct class_p
             t.hook = std::move(m.method);
             return t;
         }
+        if (m.kind == Member::IsMethod && m.method.op.empty())
+        {
+            // A free function at file level.
+            if (m.no_body_pos)
+                st.error(m.no_body_pos, "function '" + m.method.name + "' needs a body; write '{ ... }'");
+            t.kind = TopItem::IsFn;
+            t.fn = std::move(m.method);
+            return t;
+        }
         if (m.kind != Member::IsField)
         {
             st.error(pos,
                 m.kind == Member::IsMethod && !m.method.op.empty()
                     ? "an operator needs a class or a struct"
-                : m.kind == Member::IsMethod
-                    ? "a function must be a member of a class. At file level, only a convert hook "
-                      "'T convert_<variable>(Old old)' of a module variable is allowed"
                     : "expected 'class', 'struct', 'enum' or a variable 'Type name = init;'");
             return t;
         }
@@ -2260,6 +2343,8 @@ struct AliasRewriter
             type(f.type);
         for (ast::Method& m : c.methods)
             method(m);
+        for (ast::Method& m : c.statics)
+            method(m);
         for (ast::Method& m : c.dtors)
             method(m);
         for (ast::Ctor& k : c.ctors)
@@ -2310,6 +2395,8 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
                 script.vars.push_back(std::move(t.var));
             else if (t.kind == TopItem::IsHook)
                 script.var_hooks.push_back(std::move(t.hook));
+            else if (t.kind == TopItem::IsFn)
+                script.fns.push_back(std::move(t.fn));
             else if (t.kind == TopItem::IsModuleAttrs)
                 script.module_attrs.push_back(std::move(t.module_attrs));
         }
@@ -2344,6 +2431,8 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
         for (ast::Field& f : script.vars)
             rw.type(f.type);
         for (ast::Method& m : script.var_hooks)
+            rw.method(m);
+        for (ast::Method& m : script.fns)
             rw.method(m);
         for (ast::InterfaceDef& d : script.interfaces)
             for (ast::Method& m : d.methods)
@@ -2388,11 +2477,15 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
     };
     for (ast::Method& m : script.var_hooks)
         method_body(m);
+    for (ast::Method& m : script.fns)
+        method_body(m);
     for (size_t ci = 0; ci < script.classes.size(); ++ci)
     {
         ast::ClassDef& c = script.classes[ci];
         in.aliases = &class_aliases[ci];
         for (ast::Method& m : c.methods)
+            method_body(m);
+        for (ast::Method& m : c.statics)
             method_body(m);
         for (ast::Method& d : c.dtors)
             method_body(d);

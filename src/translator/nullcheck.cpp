@@ -192,6 +192,9 @@ public:
         for (const Method& m : cd_.methods)
             if (!m.raw)
                 body(m.params, m.body);
+        for (const Method& m : cd_.statics)
+            if (!m.raw)
+                body(m.params, m.body);
         for (const Ctor& c : cd_.ctors)
             if (!c.raw)
                 body(c.params, c.body);

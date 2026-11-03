@@ -1,0 +1,3 @@
+68_function_name_clash.hot:5:1: error: 'Count' is declared twice (a function and a module variable)
+    5 | int Count() { return 1; }
+1 error generated.

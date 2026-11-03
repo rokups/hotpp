@@ -337,6 +337,109 @@ struct Lowerer
         return nullptr;
     }
 
+    // A static method of the class or of a script parent. The nearest class wins. "owner" gets
+    // the class of the method.
+    const Method* find_static(const ClassDef& c, const std::string& n, const ClassDef** owner = nullptr) const
+    {
+        int depth = 0;
+        for (const ClassDef* d = &c; d && depth < 64; d = parent_of(*d), ++depth)
+            for (const Method& m : d->statics)
+                if (m.name == n)
+                {
+                    if (owner)
+                        *owner = d;
+                    return &m;
+                }
+        return nullptr;
+    }
+
+    // A function that a bare name can call: a static method of the class chain, then a free
+    // function. A local and an instance method of the class hide it. "owner" is null for a free function.
+    const Method* bare_function(const std::string& n, const ClassDef** owner = nullptr) const
+    {
+        if (cx.locals.count(n) || cx.fns.count(n))
+            return nullptr;
+        if (owner)
+            *owner = nullptr;
+        // The class of a free function is the synthetic class of the free functions: skip it.
+        if (cx.cls && !cx.in_free_fn)
+            if (const Method* m = find_static(*cx.cls, n, owner))
+                return m;
+        // A field, a property and a member of the native base hide a free function.
+        if (is_this_member(n))
+            return nullptr;
+        if (cx.free_fns)
+            for (const Method& m : *cx.free_fns)
+                if (m.name == n)
+                    return &m;
+        return nullptr;
+    }
+
+    // The static method that the name "C.F" calls: "C" is a script class that no local, field or
+    // module variable hides.
+    const Method* scope_static(const NameExpr& n, const ClassDef** owner = nullptr) const
+    {
+        if (n.parts.size() != 2 || !n.template_args.empty() || cx.locals.count(n.parts[0]) || is_module_var(n.parts[0])
+            || is_this_member(n.parts[0]))
+            return nullptr;
+        const ClassDef* d = class_named(n.parts[0]);
+        return d && !d->name.empty() && n.parts[0] == d->name ? find_static(*d, n.parts[1], owner) : nullptr;
+    }
+
+    static std::string static_hint(const ClassDef& owner, const std::string& n)
+    {
+        return "'" + n + "' is a static method; call it as '" + owner.name + "." + n + "(...)'";
+    }
+
+    // The error for the use of "this" where no object exists.
+    void no_this_error(uint32_t pos)
+    {
+        if (cx.in_static)
+            error(pos, cx.in_free_fn ? "'this' is not allowed in a free function"
+                                     : "'this' is not allowed in a static method");
+        else
+            error(pos, "'this' is not allowed in a field initializer");
+    }
+
+    // The error for a bare member of the class in a static method.
+    void needs_object_error(const std::string& n, uint32_t pos)
+    {
+        error(pos, "'" + n + "' needs an object: '" + cx.static_name + "' is a static method");
+    }
+
+    // The C++ name of a static method ("C__s_F") or of a free function ("hot_fn_F").
+    static std::string static_symbol(const ClassDef* owner, const std::string& name)
+    {
+        return static_fn_symbol(owner ? owner->name : std::string(), name);
+    }
+
+    // A call of a static method or of a free function. The callee becomes the generated name. The
+    // call has no "__self" argument. The arguments get the checks of a method call.
+    void static_call(CallExpr& c, const Method& fn, const ClassDef* owner, const std::string& name, uint32_t pos)
+    {
+        // These errors come first: the symbol of the callee can be wrong in these places.
+        if (cx.in_module_init)
+            error(pos,
+                "a module variable initializer cannot call the function '" + name
+                    + "': the module state is not complete yet");
+        else if (cx.in_module_hook)
+            error(pos,
+                "a convert hook cannot call the function '" + name + "': the new module state is not complete yet");
+        else if (cx.in_field_init)
+            error(pos,
+                "a field initializer cannot call the function '" + name
+                    + "': the prototype of the function comes after the class");
+        else if (cx.in_default)
+            error(pos,
+                "a default argument cannot call the function '" + name
+                    + "': the prototype of the function comes after the declaration");
+        if (owner)
+            check_member(fn.access, *owner, name, pos);
+        c.callee = raw_named("", static_symbol(owner, name), pos, 0);
+        coerce_args(c, fn.params, 0);
+        exprs(c.args);
+    }
+
     // The C++ name for a call of the script function "m" of "owner". A virtual function goes
     // through the dispatcher of its slot (design 7.6). Else the call is direct.
     static std::string fn_symbol(const ClassDef& owner, const Method& m)
@@ -702,9 +805,11 @@ struct Lowerer
         {
             if (const std::string* n = simple_name(*c->callee))
             {
-                if (cx.locals.count(*n) || !cx.cls)
+                if (cx.locals.count(*n))
                     return {};
-                const Method* fn = find_fn(*cx.cls, *n);
+                if (const Method* st = bare_function(*n))
+                    return st->script_ret;
+                const Method* fn = cx.cls ? find_fn(*cx.cls, *n) : nullptr;
                 return fn ? fn->script_ret : std::string();
             }
             if (auto* m = std::get_if<MemberExpr>(&c->callee->v))
@@ -727,6 +832,8 @@ struct Lowerer
             {
                 if (nm->parts.size() < 2)
                     return {};
+                if (const Method* st = scope_static(*nm))
+                    return st->script_ret;
                 std::string t = type_of(NameExprView(*nm, nm->parts.size() - 1));
                 const std::string& last = nm->parts.back();
                 if (last == "front" || last == "back" || last == "at")
@@ -1450,7 +1557,9 @@ struct Lowerer
     {
         const char* word = is_get ? "get" : "set";
         const Property* p = find_prop(d, prop);
-        if (!cx.allow_this)
+        if (cx.in_static && !via)
+            needs_object_error(prop, pos); // the property of another object ("obj.P") is allowed
+        else if (!cx.allow_this && !cx.in_static)
             error(pos, "property '" + prop + "' is not allowed in a field initializer");
         else if (p && !(is_get ? p->has_get : p->has_set))
             error(pos, "property '" + prop + "' has no '" + word + "' accessor");
@@ -1701,6 +1810,17 @@ struct Lowerer
                 error(std::get<NameExpr>(c.callee->v).pos, kDefaultBan);
                 return;
             }
+            if (cx.in_static && cx.fns.count(*n) && !cx.locals.count(*n))
+            {
+                needs_object_error(*n, std::get<NameExpr>(c.callee->v).pos);
+                exprs(c.args);
+                return;
+            }
+            if (const ClassDef* so = nullptr; const Method* st = bare_function(*n, &so))
+            {
+                static_call(c, *st, so, *n, std::get<NameExpr>(c.callee->v).pos);
+                return;
+            }
             if (cx.fns.count(*n) && !cx.locals.count(*n))
             {
                 const ClassDef* owner = nullptr;
@@ -1715,6 +1835,13 @@ struct Lowerer
         }
         if (const MemberExpr* m = this_member(*c.callee))
         {
+            if (const ClassDef* so = nullptr; cx.allow_this && cx.cls && !cx.field_type.count(m->name)
+                && !cx.fns.count(m->name) && find_static(*cx.cls, m->name, &so))
+            {
+                error(m->name_pos ? m->name_pos : pos_of(*m->obj), static_hint(*so, m->name));
+                exprs(c.args);
+                return;
+            }
             if (cx.allow_this && !cx.field_type.count(m->name) && cx.fns.count(m->name))
             {
                 const ClassDef* owner = nullptr;
@@ -1777,6 +1904,12 @@ struct Lowerer
         }
         // "obj.M(args)" where obj has the type of a script class (not a struct) and M is
         // a script function of it: a direct call of the generation function.
+        if (auto* sn = std::get_if<NameExpr>(&c.callee->v))
+            if (const ClassDef* so = nullptr; const Method* st = scope_static(*sn, &so))
+            {
+                static_call(c, *st, so, sn->parts[1], sn->pos);
+                return;
+            }
         member_chain(c.callee);
         if (auto* mm = std::get_if<MemberExpr>(&c.callee->v))
         {
@@ -1791,6 +1924,13 @@ struct Lowerer
                 const ClassDef* owner = d;
                 const Method* fn =
                     d && !d->is_value && !find_prop(*d, mm->name) ? find_fn(*d, mm->name, &owner) : nullptr;
+                if (!fn && d && !find_prop(*d, mm->name))
+                    if (const ClassDef* so = nullptr; find_static(*d, mm->name, &so))
+                    {
+                        error(mm->name_pos ? mm->name_pos : pos_of(*mm->obj), static_hint(*so, mm->name));
+                        exprs(c.args);
+                        return;
+                    }
                 if (fn)
                     check_member(fn->access, *owner, mm->name, mm->name_pos ? mm->name_pos : pos_of(*mm->obj), d);
                 if (fn)
@@ -2045,10 +2185,20 @@ struct Lowerer
             error(obj_pos, kDefaultBan);
             return;
         }
+        if (cx.in_static && std::holds_alternative<BaseExpr>(m.obj->v))
+        {
+            error(obj_pos, cx.in_free_fn ? "'base' is not allowed in a free function"
+                                         : "'base' is not allowed in a static method");
+            return;
+        }
         if (std::holds_alternative<ThisExpr>(m.obj->v))
         {
             const ClassDef* prop_owner = nullptr;
-            if (cx.cls && find_prop(*cx.cls, m.name, &prop_owner))
+            if (cx.in_static)
+            {
+                no_this_error(obj_pos);
+            }
+            else if (cx.cls && find_prop(*cx.cls, m.name, &prop_owner))
             {
                 e = prop_read({m.name, nullptr, prop_owner}, obj_pos); // "m" is gone now
             }
@@ -2143,6 +2293,11 @@ struct Lowerer
                 error(obj_pos, "script function '" + m.name + "' must be called");
                 return;
             }
+            if (const ClassDef* so = nullptr; find_static(*d, m.name, &so))
+            {
+                error(m.name_pos ? m.name_pos : obj_pos, static_hint(*so, m.name));
+                return;
+            }
         }
         // A "[weak]" field of a script struct: "hot::lock(hot::deref(s).w)".
         const bool weak_value = td && td->is_value && weak_field_of(*td, m.name) && !target;
@@ -2171,7 +2326,7 @@ struct Lowerer
 
     void lambda(ExprP& e, LambdaExpr& l)
     {
-        if (!cx.allow_this)
+        if (!cx.allow_this && !cx.in_static)
         {
             error(l.pos, "a lambda is not allowed in a field initializer");
             return;
@@ -2354,6 +2509,13 @@ struct Lowerer
         targs(n);
         handle_targs(n);
         const bool bare = n.parts.size() == 1 && !cx.locals.count(n.parts[0]);
+        // A function name that is not a call. A script function has no address (a reload replaces it).
+        if ((bare && !is_this_member(n.parts[0]) && !is_module_var(n.parts[0]) && bare_function(n.parts[0]))
+            || scope_static(n))
+        {
+            error(n.pos, "'" + n.parts.back() + "' is a function; call it, or write a lambda");
+            return;
+        }
         // A script member wins over a module variable. A module variable wins over a native member.
         if (bare && is_module_var(n.parts[0]) && !is_script_member(n.parts[0]))
         {
@@ -2368,7 +2530,10 @@ struct Lowerer
         // A bare member in a field initializer: there is no "this".
         if (bare && !cx.allow_this && !cx.in_default && is_this_member(n.parts[0]))
         {
-            error(n.pos, "'this' is not allowed in a field initializer");
+            if (cx.in_static)
+                needs_object_error(n.parts[0], n.pos);
+            else
+                error(n.pos, "'this' is not allowed in a field initializer");
             return;
         }
         if (bare)
@@ -2454,7 +2619,7 @@ struct Lowerer
             if (cx.in_default)
                 error(n->pos, kDefaultBan);
             else if (!cx.allow_this)
-                error(n->pos, "'this' is not allowed in a field initializer");
+                no_this_error(n->pos);
             else
                 e = raw("__self", n->pos);
         }
@@ -3682,6 +3847,11 @@ struct Lowerer
 };
 
 } // namespace
+
+std::string static_fn_symbol(const std::string& owner, const std::string& name)
+{
+    return owner.empty() ? "hot_fn_" + name : owner + "__s_" + name;
+}
 
 void lower_block(ast::BlockStmt& b, RCtx& cx, Diagnostics& diag)
 {

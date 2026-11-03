@@ -322,6 +322,13 @@ TEST(GoldenTranslation, ClassOperatorUse)
     golden_one("operators_use_class");
 }
 
+// Free functions and static methods: the prototypes come before the bodies, and the manifest has no entry.
+// Generation 2 changes two bodies.
+TEST(GoldenTranslation, StaticFunctions)
+{
+    golden_pair("functions");
+}
+
 // A native stub with the name of a header type is not a script type. It gives no name clash error.
 TEST(GoldenTranslation, NativeStubWithAHeaderTypeNameIsNotAClash)
 {

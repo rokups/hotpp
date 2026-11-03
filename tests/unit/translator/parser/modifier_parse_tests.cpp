@@ -162,6 +162,86 @@ TEST(ModifierParse, Errors)
     }
 }
 
+TEST(ModifierParse, StaticMethodGoesToStatics)
+{
+    for (const char* text : {"static int Twice(int x) { return 2 * x; }", "public static int Twice(int x) { return 2 * x; }",
+             "static public int Twice(int x) { return 2 * x; }", "static int Twice(int x) => 2 * x;"})
+    {
+        ModParsed p(member_class(text));
+        EXPECT_TRUE(p.errors().empty()) << text;
+        const ast::ClassDef& c = p.script.classes.at(0);
+        EXPECT_TRUE(c.methods.empty());
+        ASSERT_EQ(c.statics.size(), 1u);
+        EXPECT_TRUE(c.statics[0].is_static);
+        EXPECT_EQ(c.statics[0].name, "Twice");
+        EXPECT_EQ(c.statics[0].params.size(), 1u);
+        EXPECT_EQ(c.statics[0].body.stmts.size(), 1u);
+    }
+    {
+        ModParsed p(member_class("private static void A() { }\n    void B() { }"));
+        EXPECT_TRUE(p.errors().empty());
+        const ast::ClassDef& c = p.script.classes.at(0);
+        ASSERT_EQ(c.statics.size(), 1u);
+        EXPECT_EQ(c.statics[0].access, ast::Access::Private);
+        ASSERT_EQ(c.methods.size(), 1u);
+        EXPECT_FALSE(c.methods[0].is_static);
+    }
+    {
+        ModParsed p("struct S {\n    static int Make() { return 1; }\n}\n");
+        EXPECT_TRUE(p.errors().empty());
+        EXPECT_EQ(p.script.classes.at(0).statics.size(), 1u);
+    }
+}
+
+TEST(ModifierParse, StaticErrors)
+{
+    {
+        ModParsed p(member_class("static int count = 0;"));
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:5: a static field is not supported; use a module "
+                                                         "variable (a variable at file level)"}));
+    }
+    {
+        ModParsed p(member_class("static int N { get; set; }"));
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:5: a property cannot be 'static'"}));
+    }
+    {
+        ModParsed p(member_class("static A() { }"));
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:5: a constructor cannot be 'static'"}));
+    }
+    {
+        ModParsed p(member_class("static virtual void f() { }"));
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:12: 'static' and 'virtual' cannot combine"}));
+    }
+    {
+        ModParsed p(member_class("override static void f() { }"));
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:5: 'static' and 'override' cannot combine"}));
+    }
+    {
+        ModParsed p(member_class("static new void f() { }"));
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:12: 'static' and 'new' cannot combine"}));
+    }
+    {
+        ModParsed p("abstract class A : B {\n    static abstract void f();\n}\n");
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:12: 'static' and 'abstract' cannot combine"}));
+    }
+    {
+        ModParsed p(member_class("static async void f() { }"));
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:12: an async function needs an object; remove 'static'"}));
+    }
+    {
+        ModParsed p(member_class("static static void f() { }"));
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:12: duplicate modifier 'static'"}));
+    }
+    {
+        ModParsed p(member_class("static int operator+(int a) { return a; }"));
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:5: an operator cannot be 'static'"}));
+    }
+    {
+        ModParsed p("interface I {\n    static int f();\n}\n");
+        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:5: an interface member cannot have the modifier 'static'"}));
+    }
+}
+
 // The script never writes "const" after the parameters: the const inference does not change a method.
 TEST(ModifierParse, ConstMarkAfterTheParametersIsAnError)
 {

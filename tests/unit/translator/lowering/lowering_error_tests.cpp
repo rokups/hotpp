@@ -88,3 +88,70 @@ TEST(LoweringError, StringSwitchNestedBreakAndContinue)
     ASSERT_EQ(f.errors().size(), 1u);
     EXPECT_EQ(f.errors()[0], "1:13: a string switch cannot have both a nested 'break' and a 'continue'");
 }
+
+namespace
+{
+// A static context: no "this". The class is the fixture class or an empty class (a free function).
+void make_static(Fixture& f, bool is_free)
+{
+    f.cx.allow_this = false;
+    f.cx.in_static = true;
+    f.cx.in_free_fn = is_free;
+    f.cx.static_name = "F";
+}
+} // namespace
+
+TEST(LoweringError, StaticBodyHasNoThis)
+{
+    Fixture f;
+    make_static(f, false);
+    f.expr("this.n");
+    f.expr("this");
+    ASSERT_EQ(f.errors().size(), 2u);
+    EXPECT_EQ(f.errors()[0], "1:1: 'this' is not allowed in a static method");
+    EXPECT_EQ(f.errors()[1], "1:1: 'this' is not allowed in a static method");
+}
+
+TEST(LoweringError, FreeFunctionBodyHasNoThis)
+{
+    Fixture f;
+    make_static(f, true);
+    f.expr("this");
+    ASSERT_EQ(f.errors().size(), 1u);
+    EXPECT_EQ(f.errors()[0], "1:1: 'this' is not allowed in a free function");
+}
+
+TEST(LoweringError, StaticBodyNeedsAnObjectForAField)
+{
+    Fixture f;
+    make_static(f, false);
+    f.expr("n");
+    f.expr("heal()");
+    ASSERT_EQ(f.errors().size(), 2u);
+    EXPECT_EQ(f.errors()[0], "1:1: 'n' needs an object: 'F' is a static method");
+    EXPECT_EQ(f.errors()[1], "1:1: 'heal' needs an object: 'F' is a static method");
+}
+
+TEST(LoweringError, StaticBodyCallsAStaticMethodWithoutSelf)
+{
+    Fixture f;
+    make_static(f, false);
+    ast::Method g;
+    g.name = "G";
+    g.is_static = true;
+    f.cd.statics.push_back(std::move(g));
+    EXPECT_EQ(f.expr("G()"), "Player__s_G()");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+TEST(LoweringError, StaticFunctionIsNotAValue)
+{
+    Fixture f;
+    ast::Method g;
+    g.name = "G";
+    g.is_static = true;
+    f.cd.statics.push_back(std::move(g));
+    f.expr("G");
+    ASSERT_EQ(f.errors().size(), 1u);
+    EXPECT_EQ(f.errors()[0], "1:1: 'G' is a function; call it, or write a lambda");
+}

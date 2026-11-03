@@ -425,22 +425,23 @@ DirectWrites direct_writes(const ast::Method& m)
 
 void infer_const(ClassDef& cd, const ConstContext& ctx)
 {
-    for (Method& m : cd.methods)
-    {
-        if (m.raw)
-            continue;
-        BodyInfo info{ctx, {}, {}, {}, {}};
-        info.run(m.params, m.body);
-        info.mark_locals(m.body);
-        if (ctx.params_ok ? !ctx.params_ok(m) : !params_default_ok(m))
-            continue;
-        for (Param& p : m.params)
+    for (std::vector<Method>* list : {&cd.methods, &cd.statics})
+        for (Method& m : *list)
         {
-            const bool plain = p.mode == ParamMode::Plain || p.mode == ParamMode::ByVal;
-            if (plain && !p.weak && !p.value && !is_ref_type(p.type) && !info.written.count(p.name))
-                p.body_const = true;
+            if (m.raw)
+                continue;
+            BodyInfo info{ctx, {}, {}, {}, {}};
+            info.run(m.params, m.body);
+            info.mark_locals(m.body);
+            if (ctx.params_ok ? !ctx.params_ok(m) : !params_default_ok(m))
+                continue;
+            for (Param& p : m.params)
+            {
+                const bool plain = p.mode == ParamMode::Plain || p.mode == ParamMode::ByVal;
+                if (plain && !p.weak && !p.value && !is_ref_type(p.type) && !info.written.count(p.name))
+                    p.body_const = true;
+            }
         }
-    }
     for (Ctor& c : cd.ctors)
     {
         if (c.raw)

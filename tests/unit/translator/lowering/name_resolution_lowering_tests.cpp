@@ -197,3 +197,141 @@ TEST(NameResolutionLowering, FieldInitializerKeepsModuleVariableAndOtherNames)
     EXPECT_EQ(f.expr("Foo.bar"), "Foo::bar");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
+
+// "C.F(1)" in a method of another class has the return type of the static method F.
+TEST(NameResolutionLowering, StaticCallHasTheReturnTypeOfTheFunction)
+{
+    Fixture f;
+    ast::ClassDef other;
+    other.name = "Other";
+    ast::Field v;
+    v.name = "v";
+    v.type = "int";
+    v.script_type = "int";
+    other.fields.push_back(std::move(v));
+    ast::ClassDef util;
+    util.name = "Util";
+    ast::Method make;
+    make.name = "Make";
+    make.is_static = true;
+    make.script_ret = "Other";
+    ast::Param p;
+    p.name = "x";
+    p.type = "int";
+    p.script_type = "int";
+    make.params.push_back(std::move(p));
+    util.statics.push_back(std::move(make));
+    f.cx.classes["Other"] = &other;
+    f.cx.classes["Util"] = &util;
+    f.cx.script_classes.insert("Other");
+    f.cx.script_classes.insert("Util");
+    const std::string out = f.expr("Util.Make(1).v");
+    EXPECT_NE(out.find("->v"), std::string::npos) << out;
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+namespace
+{
+ast::Method make_fn(const char* name, bool is_static = false)
+{
+    ast::Method m;
+    m.name = name;
+    m.is_static = is_static;
+    ast::Param p;
+    p.name = "x";
+    p.type = "int";
+    p.script_type = "int";
+    m.params.push_back(std::move(p));
+    return m;
+}
+} // namespace
+
+// A call of a free function gets the name "hot_fn_F". The call has no "__self".
+TEST(NameResolutionLowering, FreeFunctionCall)
+{
+    Fixture f;
+    std::vector<ast::Method> fns;
+    fns.push_back(make_fn("Add"));
+    f.cx.free_fns = &fns;
+    EXPECT_EQ(f.expr("Add(1, 2)"), "hot_fn_Add(1, 2)");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+// A bare call of a static method of the class gets the name "C__s_F".
+TEST(NameResolutionLowering, BareStaticCall)
+{
+    Fixture f;
+    f.cd.statics.push_back(make_fn("Make", true));
+    EXPECT_EQ(f.expr("Make(1)"), "Player__s_Make(1)");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+// "C.F(args)" is a call of a static method. The owner is the class that declares it.
+TEST(NameResolutionLowering, ScopedStaticCallUsesTheOwner)
+{
+    Fixture f;
+    ast::ClassDef actor;
+    actor.name = "Actor";
+    actor.statics.push_back(make_fn("Spawn", true));
+    ast::ClassDef child;
+    child.name = "Child";
+    child.base = "Actor";
+    f.cx.classes["Actor"] = &actor;
+    f.cx.classes["Child"] = &child;
+    f.cx.script_classes.insert("Actor");
+    f.cx.script_classes.insert("Child");
+    EXPECT_EQ(f.expr("Actor.Spawn(1)"), "Actor__s_Spawn(1)");
+    EXPECT_EQ(f.expr("Child.Spawn(2)"), "Actor__s_Spawn(2)");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+// A bare call in a class with a script parent finds a static method of the parent.
+TEST(NameResolutionLowering, BareStaticCallFindsTheParent)
+{
+    Fixture f;
+    ast::ClassDef actor;
+    actor.name = "Actor";
+    actor.statics.push_back(make_fn("Spawn", true));
+    f.cx.classes["Actor"] = &actor;
+    f.cx.script_classes.insert("Actor");
+    EXPECT_EQ(f.expr("Spawn(3)"), "Actor__s_Spawn(3)");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+// A local, a field and an instance method win over a free function. A static method wins too.
+TEST(NameResolutionLowering, FreeFunctionPriority)
+{
+    Fixture f;
+    std::vector<ast::Method> fns;
+    fns.push_back(make_fn("n"));
+    fns.push_back(make_fn("heal"));
+    fns.push_back(make_fn("loc"));
+    fns.push_back(make_fn("Make"));
+    f.cx.free_fns = &fns;
+    f.cd.statics.push_back(make_fn("Make", true));
+    f.param("loc");
+    EXPECT_EQ(f.expr("heal(1)"), "Player__heal(__self, 1)");
+    EXPECT_EQ(f.expr("Make(1)"), "Player__s_Make(1)");
+    EXPECT_EQ(f.expr("loc(1)"), "loc(1)");
+    EXPECT_EQ(f.expr("n(1)").find("hot_fn_"), std::string::npos);
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+// A free function wins over a native global.
+TEST(NameResolutionLowering, FreeFunctionWinsOverANativeGlobal)
+{
+    Fixture f;
+    std::vector<ast::Method> fns;
+    fns.push_back(make_fn("min"));
+    f.cx.free_fns = &fns;
+    EXPECT_EQ(f.expr("min(1, 2)"), "hot_fn_min(1, 2)");
+    EXPECT_EQ(f.expr("max(1, 2)"), "max(1, 2)");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
+// The symbol function gives the names that the lowering uses.
+TEST(NameResolutionLowering, StaticFunctionSymbol)
+{
+    EXPECT_EQ(static_fn_symbol("", "Add"), "hot_fn_Add");
+    EXPECT_EQ(static_fn_symbol("Util", "Make"), "Util__s_Make");
+}

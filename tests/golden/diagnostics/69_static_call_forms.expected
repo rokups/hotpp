@@ -1,0 +1,9 @@
+69_static_call_forms.hot:22:19: error: 'Make' is a static method; call it as 'Util.Make(...)'
+   22 |         int b = u.Make(3);
+69_static_call_forms.hot:23:17: error: 'Make' is a function; call it, or write a lambda
+   23 |         var f = Util.Make;
+69_static_call_forms.hot:24:17: error: 'Twice' is a function; call it, or write a lambda
+   24 |         var g = Twice;
+69_static_call_forms.hot:25:22: error: 'Own' is a static method; call it as 'User.Own(...)'
+   25 |         var h = this.Own(1);
+4 errors generated.

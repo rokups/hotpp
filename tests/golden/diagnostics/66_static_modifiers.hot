@@ -1,0 +1,14 @@
+using "Actor.h";
+
+class Player : Actor {
+    static int count = 0;
+    static int Level { get; set; }
+    static Player() { }
+    static virtual int A() { return 1; }
+    static override void Tick(float dt) { }
+    static async void Load() { }
+    static int Ok(int x) { return x; }
+}
+interface IShape {
+    static int Area();
+}

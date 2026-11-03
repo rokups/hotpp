@@ -78,6 +78,15 @@ struct RCtx
     // True when the function that the pass lowers returns a "C" (a bare script class).
     bool ret_value = false;
     bool allow_this = true;
+    // True while the pass lowers the body of a static method or of a free function. "allow_this" is
+    // false then. "static_name" is the function name. "in_free_fn" is true for a free function: its
+    // class (cls) is an empty synthetic class.
+    bool in_static = false;
+    bool in_free_fn = false;
+    std::string static_name;
+    // The free functions of the script ("T name(args) { }" at file level). A bare call "F(args)"
+    // finds a static method of the class (or of a script parent) first, then a free function.
+    const std::vector<ast::Method>* free_fns = nullptr;
     // True while the pass lowers the body of an "async" method. A "return" becomes "co_return".
     bool async_body = false;
     // The lowering counts the "co_await" and the "co_return" of an async body here (not in a
@@ -88,6 +97,9 @@ struct RCtx
     // True in the default value of a parameter. The value is in a C++ declaration, so it cannot
     // use a field, a parameter, a script function or "this".
     bool in_default = false;
+    // True in the initializer of a class or struct field. The initializer is in a C++ member
+    // declaration, before the prototypes of the script functions. It cannot call a function.
+    bool in_field_init = false;
     std::string where; // the name of the function, for the stale call log of a lambda
     // The map gives the line and column of an error. Without a map an error has no line.
     const LineMap* map = nullptr;
@@ -181,6 +193,10 @@ std::string rewrite_number(const std::string& n);
 
 // Lowers the statements of a block. Each error goes to the diagnostics and the pass continues.
 void lower_block(ast::BlockStmt& b, RCtx& cx, Diagnostics& diag);
+
+// The C++ name of a static method ("Owner__s_F", "owner" is the class that declares it) and of a
+// free function ("hot_fn_F", "owner" is empty). A call of the function lowers to this name.
+std::string static_fn_symbol(const std::string& owner, const std::string& name);
 // Lowers one expression. The pass can replace the node. With a "target_type" (the script type of
 // the field or the parameter that takes the value), a class handle converts to an interface.
 void lower_expr(ast::ExprP& e, RCtx& cx, Diagnostics& diag, const std::string& target_type = std::string());

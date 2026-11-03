@@ -101,8 +101,32 @@ TEST(ModuleDeclParse, ErrorAttributeOtherThanAliasOnModuleVariable)
     EXPECT_NE(p.diag.format("t").find("is not allowed on a module variable"), std::string::npos) << p.diag.format("t");
 }
 
-TEST(ModuleDeclParse, ErrorMethodAtFileLevel)
+TEST(ModuleDeclParse, FreeFunctionAtFileLevel)
 {
-    StubParsed p("int F() { return 1; }\n");
-    ASSERT_GE(p.diag.items.size(), 1u);
+    StubParsed p("int F(int a) { return a; }\nvoid G() => 1;\nint x = 1;\nint convert_x(float old) { return 2; }\n");
+    ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    ASSERT_EQ(p.script.fns.size(), 2u);
+    EXPECT_EQ(p.script.fns[0].name, "F");
+    EXPECT_EQ(p.script.fns[0].params.size(), 1u);
+    EXPECT_EQ(p.script.fns[0].body.stmts.size(), 1u);
+    EXPECT_FALSE(p.script.fns[0].is_static);
+    EXPECT_EQ(p.script.fns[1].name, "G");
+    EXPECT_TRUE(p.script.fns[1].expr_body);
+    // A convert hook is not a free function.
+    ASSERT_EQ(p.script.var_hooks.size(), 1u);
+    EXPECT_EQ(p.script.var_hooks[0].name, "convert_x");
+    EXPECT_EQ(p.script.vars.size(), 1u);
+}
+
+TEST(ModuleDeclParse, ErrorFreeFunctionWords)
+{
+    auto errs = [](const char* text) { return StubParsed(text).diag.format("t"); };
+    EXPECT_NE(errs("public int F() { return 1; }\n").find("a free function has no access word"), std::string::npos);
+    EXPECT_NE(errs("private int F() { return 1; }\n").find("a free function has no access word"), std::string::npos);
+    EXPECT_NE(errs("async int F() { return 1; }\n").find("a free function cannot be 'async'"), std::string::npos);
+    EXPECT_NE(errs("static int F() { return 1; }\n").find("a free function cannot be 'static'"), std::string::npos);
+    EXPECT_NE(errs("virtual int F() { return 1; }\n").find("a free function cannot be 'virtual'"), std::string::npos);
+    EXPECT_NE(errs("int F();\n").find("needs a body"), std::string::npos);
+    EXPECT_NE(errs("int operator+(int a) { return a; }\n").find("an operator needs a class or a struct"),
+        std::string::npos);
 }

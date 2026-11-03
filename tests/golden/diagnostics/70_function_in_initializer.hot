@@ -1,0 +1,17 @@
+using "Actor.h";
+
+int F() { return 1; }
+
+struct Pair {
+    int a = F();
+}
+
+class A : Actor {
+    int v = F();
+    static int S() { return 4; }
+    int w = S();
+    int M(int x = F()) { return x; }
+    static int T(int x = S()) { return x; }
+}
+
+int H(int a = F()) { return a; }

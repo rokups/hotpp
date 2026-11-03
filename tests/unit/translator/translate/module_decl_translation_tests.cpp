@@ -169,8 +169,8 @@ TEST(ModuleDeclTranslation, ConvertHookErrors)
         "'convert_a' is a convert hook. It takes one parameter: the old value");
     expect_error("int a;\nint b;\nint convert_a(float old) { return b; }\nclass C : Unit { }\n",
         "the module variable 'b' cannot be used in a convert hook");
-    expect_error("int a;\nint helper() { return 1; }\nclass C : Unit { }\n",
-        "a function must be a member of a class. At file level, only a convert hook");
+    expect_error("int a;\npublic int helper() { return 1; }\nclass C : Unit { }\n",
+        "a free function has no access word");
     expect_error("int a;\n[alias(\"x\")] int convert_a(float old) { return 1; }\nclass C : Unit { }\n",
         "attribute 'alias' is not allowed on a convert hook");
 }

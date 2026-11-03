@@ -10,9 +10,9 @@ A class holds fields and methods. A bare name reaches a member of `this`. This w
 The compiler resolves a bare name in this order:
 
 1. A local or a parameter.
-2. A script member: this class first, then the base classes.
+2. A script member: this class first, then the base classes. A `static` method of the class chain is a script member.
 3. A native member of the base class. A module variable of the same name wins over it.
-4. A module variable, a type, a native global or a namespace.
+4. A free function, a module variable, a type, a native global or a namespace. A free function and a module variable cannot have the same name.
 5. The helper functions `enumerate` and `range`.
 
 ## Parts of this guide
@@ -130,6 +130,60 @@ A script type cannot have the name of a C++ type from a `using` header. This app
 ```
 the script type 'Item' has the same name as a C++ type from the header 'Object.h'. Rename the script type.
 ```
+
+## Static methods
+
+A `static` method belongs to the class and has no object. Write `static` before the return type. A struct can have static methods too.
+
+```hot
+class Hero : Actor {
+    int hp = 0;
+
+    static int Clamp(int v, int top) { return v > top ? top : v; }
+
+    override void Tick(float dt) {
+        hp = Clamp(hp + 1, 100);       // bare name inside the class
+    }
+}
+
+class Spawner : Actor {
+    override void Tick(float dt) {
+        int h = Hero.Clamp(150, 100);  // class name outside the class
+    }
+}
+```
+
+The body has no `this` and cannot use a field of the class. It can call other static methods and free functions, and it can read a module variable. The word `static` combines with access words (`public`, `private`) only.
+
+Call forms:
+
+- `C.F(x)` works everywhere.
+- A bare `F(x)` works inside the class `C` and inside its script subclasses.
+- `D.F(x)` works when `D` is a script subclass of `C` and `C` has the static method `F`.
+- `obj.F(x)` is an error.
+
+The translator writes a static method as a plain C++ `static` function. The name is `<Class>__s_<name>`. For `Clamp` in `Hero`, the name is `Hero__s_Clamp`. The function has no slot, no thunk and no manifest entry. The host cannot call it through `Loader::thunk`. Put the call in an instance method if the host must start it.
+
+A static field is not supported. Use a module variable (see [Module variables](module-level.html#module-variables)).
+
+| Code | Error |
+|---|---|
+| `static int count = 0;` in a class | `a static field is not supported; use a module variable (a variable at file level)` |
+| `obj.F(x)` | `'F' is a static method; call it as 'C.F(...)'` |
+| `var f = C.F;` or `var f = F;` | `'F' is a function; call it, or write a lambda` |
+| `static async void F()` | `an async function needs an object; remove 'static'` |
+| `static virtual` or `static override` | `'static' and 'virtual' cannot combine` (the same for `override`) |
+| A `static` property or constructor | `a property cannot be 'static'`, `a constructor cannot be 'static'` |
+| A `static` member of an interface | `an interface member cannot have the modifier 'static'` |
+| Two static methods with one name | `function '<name>' is declared twice (overloads are not supported)` |
+| A call of a function in a field initializer | `a field initializer cannot call the function '<name>': the prototype of the function comes after the class` |
+| A call of a function in a default argument | `a default argument cannot call the function '<name>': the prototype of the function comes after the declaration` |
+
+A static method has no overloads. Use one name for one function.
+
+### Static methods and reload
+
+A static method has no slot. A reload replaces the code of the whole module. The next call of `C.F(x)` runs the new body. A change of the signature is a normal code change, because a caller in the same module changes with it. A static method of an imported class follows the class (see [Imports](module-level.html#imports)).
 
 ## Operators
 

@@ -20,6 +20,7 @@ This page records an approved design for the types of HotScript. It is a design 
 - A suffix operator binds to the type. `int* a, b` declares two pointers.
 - A prefix `$` also binds to the type. `$Foo a, b` declares two handles.
 - An operator is a member method with the name `operator+`. The left operand is `this`. `!=` and the compound forms are generated. See [Operators](classes.html#operators).
+- A `static` method and a free function have no object and no slot. They become plain C++ `static` functions. A reload replaces the module code. See [Static methods](classes.html#static-methods) and [Free functions](module-level.html#free-functions).
 
 ## Type mapping table
 

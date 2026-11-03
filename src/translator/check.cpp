@@ -1161,25 +1161,27 @@ struct Checker
                 w.expr(*f.init);
             }
         }
-        for (const Method& m : cd.methods)
-        {
-            check_async(m);
-            for (const Param& p : m.params)
+        // A static method has the same checks as a method.
+        for (const std::vector<Method>* list : {&cd.methods, &cd.statics})
+            for (const Method& m : *list)
             {
-                script_pointer(p.type, m.pos);
-                view_needs_cxx20(p.type, m.pos);
+                check_async(m);
+                for (const Param& p : m.params)
+                {
+                    script_pointer(p.type, m.pos);
+                    view_needs_cxx20(p.type, m.pos);
+                }
+                view_needs_cxx20(m.ret, m.pos);
+                // An override keeps the native signature. The script cannot change its return type.
+                if (!m.overrides_virtual && !m.ret.empty())
+                {
+                    // The hidden field of an auto property reports the type, so skip the getter.
+                    const bool getter = m.name.rfind("get_", 0) == 0 && field_names.count("__p_" + m.name.substr(4));
+                    if (!getter)
+                        check_storage(m.ret, m.pos, "a return value");
+                }
+                body(m);
             }
-            view_needs_cxx20(m.ret, m.pos);
-            // An override keeps the native signature. The script cannot change its return type.
-            if (!m.overrides_virtual && !m.ret.empty())
-            {
-                // The hidden field of an auto property reports the type, so skip the getter.
-                const bool getter = m.name.rfind("get_", 0) == 0 && field_names.count("__p_" + m.name.substr(4));
-                if (!getter)
-                    check_storage(m.ret, m.pos, "a return value");
-            }
-            body(m);
-        }
         for (const Ctor& c : cd.ctors)
         {
             for (const Param& p : c.params)
@@ -1413,14 +1415,15 @@ struct ValueUseChecker
                 else
                     use(f.type, f.pos, "field '" + f.name + "'", !f.has_init);
             }
-            for (const Method& m : cd.methods)
-            {
-                params(m.params, m.pos);
-                targs(m.ret, m.pos);
-                if (m.ret_value)
-                    use(m.ret, m.pos, "the return type of '" + m.name + "'", false);
-                locals(m.body);
-            }
+            for (const std::vector<Method>* list : {&cd.methods, &cd.statics})
+                for (const Method& m : *list)
+                {
+                    params(m.params, m.pos);
+                    targs(m.ret, m.pos);
+                    if (m.ret_value)
+                        use(m.ret, m.pos, "the return type of '" + m.name + "'", false);
+                    locals(m.body);
+                }
             for (const Ctor& c : cd.ctors)
             {
                 params(c.params, c.pos);
@@ -1484,11 +1487,12 @@ struct ValueResolver
     {
         for (Field& f : cd.fields)
             f.value = !f.weak && is_box_type(types, f.type);
-        for (Method& m : cd.methods)
-        {
-            fn_types(m);
-            locals(m.body);
-        }
+        for (std::vector<Method>* list : {&cd.methods, &cd.statics})
+            for (Method& m : *list)
+            {
+                fn_types(m);
+                locals(m.body);
+            }
         for (Ctor& c : cd.ctors)
         {
             for (Param& p : c.params)
@@ -2718,6 +2722,11 @@ struct QueryCollector
             allow_this = true;
             for (const Method& m : c.methods)
                 body(m.params, m.body);
+            // A static method has no object: a bare name is never a member of the class.
+            allow_this = false;
+            for (const Method& m : c.statics)
+                body(m.params, m.body);
+            allow_this = true;
             for (const Ctor& k : c.ctors)
                 body(k.params, k.body);
             for (const Method& d : c.dtors)
@@ -2735,6 +2744,11 @@ struct QueryCollector
                 }
             }
         }
+        // A free function has no class and no object.
+        cls = nullptr;
+        allow_this = false;
+        for (const Method& m : sc.fns)
+            body(m.params, m.body);
     }
 };
 
@@ -2821,6 +2835,8 @@ std::set<std::string> new_targets(const Script& sc)
             w.expr(f.init);
         for (const Method& m : cd.methods)
             w.block(m.body);
+        for (const Method& m : cd.statics)
+            w.block(m.body);
         for (const Method& d : cd.dtors)
             w.block(d.body);
         for (const Ctor& c : cd.ctors)
@@ -2838,11 +2854,18 @@ std::set<std::string> new_targets(const Script& sc)
                 w.block(*p.set_body);
         }
     }
+    for (const Method& m : sc.fns)
+        w.block(m.body);
     return out;
 }
 
-std::set<std::string> used_type_names(const ClassDef& cd)
+namespace
 {
+// The type names of a class and of a list of free functions. Each one can be null.
+std::set<std::string> collect_type_names(const ClassDef* cdp, const std::vector<Method>* fns)
+{
+    static const ClassDef none;
+    const ClassDef& cd = cdp ? *cdp : none;
     std::set<std::string> out;
     // Also the type behind a "*" or "&", and the template arguments: the check of a
     // borrowed pointer asks for the rule of the type behind it.
@@ -2882,13 +2905,20 @@ std::set<std::string> used_type_names(const ClassDef& cd)
         add(f.type);
         w.expr(f.init);
     }
-    for (const Method& m : cd.methods)
+    auto method = [&](const Method& m)
     {
         add(m.ret);
         for (const Param& p : m.params)
             add(p.type);
         w.block(m.body);
-    }
+    };
+    for (const Method& m : cd.methods)
+        method(m);
+    for (const Method& m : cd.statics)
+        method(m);
+    if (fns)
+        for (const Method& m : *fns)
+            method(m);
     for (const Method& d : cd.dtors)
         w.block(d.body);
     for (const Ctor& c : cd.ctors)
@@ -2909,9 +2939,16 @@ std::set<std::string> used_type_names(const ClassDef& cd)
     return out;
 }
 
+} // namespace
+
+std::set<std::string> used_type_names(const ClassDef& cd)
+{
+    return collect_type_names(&cd, nullptr);
+}
+
 std::set<std::string> used_type_names(const Script& sc)
 {
-    std::set<std::string> out;
+    std::set<std::string> out = collect_type_names(nullptr, &sc.fns);
     for (const ClassDef& cd : sc.classes)
     {
         std::set<std::string> one = used_type_names(cd);

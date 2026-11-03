@@ -1,0 +1,6 @@
+using "Actor.h";
+
+async void Load() { }
+public int Helper() { return 1; }
+static int Fixed() { return 1; }
+class Player : Actor { }

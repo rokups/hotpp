@@ -1,0 +1,3 @@
+70_function_in_initializer.hot:17:15: error: a default argument cannot call the function 'F': the prototype of the function comes after the declaration
+   17 | int H(int a = F()) { return a; }
+1 error generated.

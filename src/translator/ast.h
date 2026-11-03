@@ -484,6 +484,9 @@ struct Method
     bool is_abstract = false;
     // True when the script writes "async" before the method. The method can use "await".
     bool is_async = false;
+    // True when the script writes "static" before the method. The method has no object. The parser
+    // stores it in "ClassDef::statics", not in "ClassDef::methods".
+    bool is_static = false;
     // True when the body of a ".cpp" method is a C++20 coroutine (co_await, co_return). The
     // ".cpp" frontend sets it. The member of the state then has no stale return and no trace frame.
     bool is_coroutine = false;
@@ -594,6 +597,7 @@ struct ClassDef
     std::vector<std::string> script_ifaces;
     std::vector<Field> fields;
     std::vector<Method> methods;
+    std::vector<Method> statics; // the "static" methods, in source order
     std::vector<Ctor> ctors; // the overloads; C++ picks one by the argument types
     std::vector<Method> dtors; // "~Name() { }": the name is "~Name"; the translator allows one
     std::vector<Property> props; // in source order
@@ -725,6 +729,8 @@ struct Script
     std::vector<Field> vars;
     // Convert hooks of module variables: "T convert_<var>(Old old) { }" at file level.
     std::vector<Method> var_hooks;
+    // Free functions: "T name(args) { }" at file level. A convert hook is not one of them.
+    std::vector<Method> fns;
     // True when the script is a ".cpp" file. The bodies are then raw C++ text.
     bool is_cpp = false;
     // One part of the output of a ".cpp" script. The translator writes the chunks in source order.
