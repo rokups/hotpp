@@ -82,7 +82,7 @@ TEST(TranslateDiagnostics, StrayControlByteHasNoFoundText)
 {
     const hotc::TranslateResult r = translate_text(std::string("\0abc\n", 5));
     EXPECT_FALSE(r.ok);
-    EXPECT_EQ(r.diagnostics, "t.hot:1:1: error: expected 'using', 'class', 'struct', 'enum' or a variable\n")
+    EXPECT_EQ(r.diagnostics, "t.hot:1:1: error: expected 'using', 'class', 'struct', 'interface', 'enum' or a variable\n")
         << r.diagnostics;
 }
 

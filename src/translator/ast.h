@@ -563,6 +563,9 @@ struct ClassDef
     // The native interface bases after the primary base: "class Boss : Actor, IDamageable"
     // (design 4.4). The primary base is "base".
     std::vector<std::string> interfaces;
+    // The script interfaces that the class implements. A later resolution step fills it. The
+    // parser leaves it empty.
+    std::vector<std::string> script_ifaces;
     std::vector<Field> fields;
     std::vector<Method> methods;
     std::vector<Ctor> ctors; // the overloads; C++ picks one by the argument types
@@ -576,6 +579,16 @@ struct ClassDef
     // The script attributes of the class: "[Tag] class C { }". Each name is an attribute class
     // ("[attribute] class Tag;"). The class record keeps the names for a query at run time.
     std::vector<std::string> attributes;
+    int line = 0;
+    uint32_t pos = 0;
+};
+
+// A script interface: "interface IShape { float Area(); }". Each method has a name, a
+// parameter list and a return type, and no body. The parser does not set the modifier flags.
+struct InterfaceDef
+{
+    std::string name;
+    std::vector<Method> methods;
     int line = 0;
     uint32_t pos = 0;
 };
@@ -669,6 +682,7 @@ struct Script
     std::vector<UsingNs> using_ns; // in source order
     std::vector<TypeAlias> aliases; // module level, in source order
     std::vector<ClassDef> classes;
+    std::vector<InterfaceDef> interfaces; // in source order
     std::vector<Stub> stubs; // in source order
     // The script attribute classes: "[attribute] class Name;". They are not in "stubs".
     std::vector<Stub> attribute_classes;

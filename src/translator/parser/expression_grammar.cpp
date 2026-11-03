@@ -83,7 +83,7 @@ constexpr auto id_r =
     id.reserve(kw_const, kw_this, kw_base, kw_null, kw_if, kw_else, kw_while, kw_do, kw_for, kw_return, kw_break,
         kw_continue, kw_switch, kw_case, kw_default, kw_try, kw_catch, kw_throw, kw_var, kw_foreach, kw_in, kw_using,
         kw_override, kw_virtual, kw_async, kw_await, kw_new, kw_public, kw_private, kw_protected, kw_get, kw_set,
-        kw_finally, kw_void);
+        kw_finally, kw_void, kw_interface);
 
 // ---------------------------------------------------------------- plain helpers
 std::string_view span_text(const ParseState& st, Span sp)

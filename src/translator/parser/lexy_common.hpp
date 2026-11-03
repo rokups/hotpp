@@ -99,6 +99,8 @@ constexpr auto kw_override = LEXY_KEYWORD("override", id);
 constexpr auto kw_virtual = LEXY_KEYWORD("virtual", id);
 // "abstract" is a class modifier and a method modifier in a .hot file.
 constexpr auto kw_abstract = LEXY_KEYWORD("abstract", id);
+// "interface" starts a top-level interface declaration in a .hot file.
+constexpr auto kw_interface = LEXY_KEYWORD("interface", id);
 // "async" is a method modifier. "await" is a prefix operator. Neither is a name in a .hot file.
 constexpr auto kw_async = LEXY_KEYWORD("async", id);
 constexpr auto kw_await = LEXY_KEYWORD("await", id);

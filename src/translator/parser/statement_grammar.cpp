@@ -88,7 +88,7 @@ constexpr auto kw_throw = LEXY_KEYWORD("throw", id);
 constexpr auto id_r = id.reserve(kw_const, kw_if, kw_else, kw_while, kw_do, kw_for, kw_return, kw_break, kw_continue,
     kw_switch, kw_case, kw_default, kw_try, kw_catch, kw_throw, kw_var, kw_foreach, kw_in, kw_using, kw_override,
     kw_virtual, kw_async, kw_await, kw_new, kw_public, kw_private, kw_protected, kw_get, kw_set, kw_finally,
-    kw_void);
+    kw_void, kw_interface);
 
 constexpr auto var_or_const = dsl::literal_set(kw_var, kw_const);
 

@@ -10,6 +10,7 @@ add_executable(unit_translator_parser_tests
     weak_attribute_parse_tests.cpp
     value_attribute_parse_tests.cpp
     abstract_parse_tests.cpp
+    interface_parse_tests.cpp
     constructor_parse_tests.cpp
     convenience_parse_tests.cpp
     example_script_parse_tests.cpp

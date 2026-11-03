@@ -29,13 +29,15 @@ namespace
 using namespace parser; // NOLINT: the grammar uses the names of lexy_common.hpp
 
 // ---------------------------------------------------------------- error texts
-HOT_ERROR_TAG(e_top, "expected 'using', 'class', 'struct', 'enum' or a variable");
+HOT_ERROR_TAG(e_top, "expected 'using', 'class', 'struct', 'interface', 'enum' or a variable");
 HOT_ERROR_TAG(e_enum_name, "expected an enum name");
 HOT_ERROR_TAG(e_enumerator, "expected an enumerator name");
 HOT_ERROR_TAG(e_member, "expected a member: 'Type name;' or 'Ret name(...)'");
 HOT_ERROR_TAG(e_member_name, "expected a member name");
 HOT_ERROR_TAG(e_class_name, "expected a class name");
 HOT_ERROR_TAG(e_abstract_target, "expected 'class' after 'abstract'");
+HOT_ERROR_TAG(e_iface_name, "expected an interface name");
+HOT_ERROR_TAG(e_iface_kw, "expected 'interface'");
 HOT_ERROR_TAG(e_base_name, "expected a base class name");
 HOT_ERROR_TAG(e_field_name, "expected a field name");
 HOT_ERROR_TAG(e_param_name, "expected a parameter name");
@@ -148,10 +150,10 @@ struct Member
     const char* no_body_pos = nullptr; // the ";" of a method or a constructor with no body
 };
 
-// The words "get", "set", "async" and "await" are reserved. They are not member or parameter names.
+// The words "get", "set", "async", "await" and "interface" are reserved. They are not member or parameter names.
 void check_name(const ParseState& st, const char* pos, const std::string& name)
 {
-    if (name == "get" || name == "set" || name == "async" || name == "await")
+    if (name == "get" || name == "set" || name == "async" || name == "await" || name == "interface")
         st.error(pos, "'" + name + "' is a reserved word");
 }
 
@@ -174,12 +176,14 @@ struct TopItem
         IsHook,
         IsModuleAttrs,
         IsUsingNs,
-        IsAlias
+        IsAlias,
+        IsInterface
     } kind = None;
     ast::Import import;
     ast::UsingNs using_ns;
     ast::TypeAlias alias;
     ast::ClassDef cls;
+    ast::InterfaceDef iface;
     ast::Stub stub;
     ast::EnumDef en;
     ast::Field var; // a module variable
@@ -1644,16 +1648,156 @@ const char* abstract_pos_of(const char* p)
     return p;
 }
 
+// ---------------------------------------------------------------- interfaces
+// One member of an interface body. The parser accepts the member forms of a class. It reports
+// each attribute and each modifier here. The interface step reports the member kinds.
+void iface_mods_error(const ParseState&, lexy::nullopt)
+{
+}
+void iface_mods_error(const ParseState& st, const std::vector<ModTok>& v)
+{
+    for (const ModTok& t : v)
+        st.error(t.pos, "an interface member cannot have the modifier '" + t.word + "'");
+}
+void iface_own_mods_error(const ParseState& st, const std::vector<ModTok>& v)
+{
+    for (const ModTok& t : v)
+        st.error(t.pos, "an interface cannot have the modifier '" + t.word + "'");
+}
+
+struct iface_member_p
+{
+    static constexpr auto rule = dsl::position + dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<attrs_p>)
+        + dsl::opt(dsl::peek(modifier_set) >> dsl::p<mods_p>)
+        + (dsl::eof >> dsl::error<e_unexpected_eof> | dsl::peek(dsl::lit_c<'~'>) >> dsl::p<dtor_p>
+            | dsl::peek(id) >> dsl::p<typed_member> | dsl::else_ >> dsl::error<e_member>(junk));
+    static constexpr auto value = lexy::bind(
+        lexy::callback<Member>([](const ParseState& st, const char*, const auto& ann, const auto& mods, Member&& m)
+    {
+        if (const Annot* a = annot_of(ann))
+            st.error(a->pos, "an interface member cannot have an attribute");
+        iface_mods_error(st, mods);
+        return std::move(m);
+    }),
+        lexy::parse_state, lexy::values);
+};
+
+struct iface_members_p
+{
+    static constexpr auto closer = dsl::eof | dsl::lit_c<'}'>;
+    static constexpr auto item = dsl::peek_not(closer) >> dsl::try_(dsl::p<iface_member_p>, dsl::p<sync_member>);
+    static constexpr auto rule = dsl::opt(dsl::peek_not(closer) >> dsl::list(item)) + dsl::try_(dsl::lit_c<'}'>);
+    static constexpr auto value = lexy::as_list<std::vector<Member>>;
+};
+
+// ": Base, ..." after the name of an interface. The value is the position of the ":".
+struct iface_bases_p
+{
+    static constexpr auto rule = dsl::position + dsl::lit_c<':'> + dsl::p<bases_p>;
+    static constexpr auto value =
+        lexy::callback<const char*>([](const char* pos, std::vector<std::string>&&) { return pos; });
+};
+
+std::vector<Member> iface_members_of(lexy::nullopt)
+{
+    return {};
+}
+std::vector<Member> iface_members_of(std::vector<Member>&& v)
+{
+    return std::move(v);
+}
+
+// "interface Name { Ret Method(params); ... }". The value is a TopItem.
+struct interface_p
+{
+    static constexpr auto rule = dsl::position + kw_interface + dsl::position + dsl::p<name_p<e_iface_name>>
+        + dsl::opt(dsl::peek(dsl::lit_c<':'>) >> dsl::p<iface_bases_p>) + dsl::lit_c<'{'> + dsl::p<iface_members_p>;
+    static constexpr auto value = lexy::bind(
+        lexy::callback<TopItem>([](const ParseState& st, const char* pos, const char* name_pos, std::string&& name,
+                                    const auto& bases, auto&& members)
+    {
+        if constexpr (!std::is_same_v<std::decay_t<decltype(bases)>, lexy::nullopt>)
+            st.error(bases, "an interface cannot have a base list in this version");
+        TopItem t;
+        t.kind = TopItem::IsInterface;
+        ast::InterfaceDef& d = t.iface;
+        check_name(st, name_pos, name);
+        d.name = std::move(name);
+        d.pos = st.offset(pos);
+        d.line = st.map->line(d.pos);
+        std::set<std::string> seen;
+        for (Member& m : iface_members_of(std::move(members)))
+        {
+            if (m.kind == Member::IsMethod)
+            {
+                if (m.no_body_pos == nullptr)
+                    st.error(st.base + m.method.body_span.begin,
+                        "an interface method cannot have a body; end the declaration with ';'");
+                if (!seen.insert(m.method.name).second)
+                    st.error(st.base + m.method.pos,
+                        "duplicate method '" + m.method.name + "' in interface '" + d.name + "'");
+                d.methods.push_back(std::move(m.method));
+            }
+            else if (m.kind == Member::IsField)
+                st.error(st.base + m.field.pos, "an interface cannot have a field; it has methods only");
+            else if (m.kind == Member::IsProp)
+                st.error(st.base + m.prop.pos, "an interface cannot have a property; it has methods only");
+            else if (m.kind == Member::IsCtor)
+                st.error(st.base + m.ctor.pos, "an interface cannot have a constructor");
+            else if (m.kind == Member::IsDtor)
+                st.error(st.base + m.method.pos, "an interface cannot have a destructor");
+        }
+        return t;
+    }),
+        lexy::parse_state, lexy::values);
+};
+
+// One or more modifiers, then the whole word "interface". It does not read ahead past the
+// modifiers, so a name that only contains "interface" does not match.
+constexpr auto modifier_then_interface =
+    dsl::peek(modifier_set) + dsl::while_(dsl::peek(modifier_set) >> modifier_set + dsl::whitespace(ws_rule))
+    + kw_interface;
+
+// Modifiers before "interface" at file level: each one is an error.
+struct modded_interface_p
+{
+    static constexpr auto rule = dsl::p<mods_p> + dsl::must(dsl::peek(kw_interface)).error<e_iface_kw> + dsl::p<interface_p>;
+    static constexpr auto value = lexy::bind(
+        lexy::callback<TopItem>([](const ParseState& st, const std::vector<ModTok>& mods, TopItem&& t)
+    {
+        iface_own_mods_error(st, mods);
+        return std::move(t);
+    }),
+        lexy::parse_state, lexy::values);
+};
+
 struct class_p
 {
     static constexpr auto rule = dsl::position + dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<class_attrs_p>)
-        + (dsl::peek(dsl::literal_set(kw_class, kw_struct, kw_abstract))
-                >> (abstract_prefix + dsl::must(dsl::peek(class_or_struct)).error<e_abstract_target>
-                    + dsl::capture(class_or_struct) + class_rest)
+        + (dsl::peek(kw_interface) >> dsl::p<interface_p>
+            | dsl::peek(dsl::literal_set(kw_class, kw_struct, kw_abstract))
+                >> (abstract_prefix
+                    + (dsl::peek(kw_interface) >> dsl::p<interface_p>
+                        | dsl::else_ >> (dsl::must(dsl::peek(class_or_struct)).error<e_abstract_target>
+                            + dsl::capture(class_or_struct) + class_rest)))
             | dsl::peek(dsl::lit_c<';'>) >> dsl::p<module_attrs_end_p>
             | dsl::else_ >> dsl::p<typed_member>);
     static constexpr auto value =
         lexy::bind(lexy::callback<TopItem>(
+                       [](const ParseState& st, const char*, const auto& attrs, TopItem&& t)
+    {
+        if (const ClassAttrs* a = class_attrs_of(attrs))
+            st.error(a->pos, "an interface cannot have an attribute");
+        return std::move(t);
+    },
+                       [](const ParseState& st, const char*, const auto& attrs, const auto& abs, TopItem&& t)
+    {
+        if (const ClassAttrs* a = class_attrs_of(attrs))
+            st.error(a->pos, "an interface cannot have an attribute");
+        if (const char* ap = abstract_pos_of(abs))
+            st.error(ap, "an interface cannot have the modifier 'abstract'");
+        return std::move(t);
+    },
                        [](const ParseState& st, const char* pos, const auto& attrs, const auto& abs, const auto& kw,
                            const char* /*name_pos*/, std::string&& name, lexy::nullopt)
     {
@@ -1843,7 +1987,9 @@ struct enum_p
 struct decl
 {
     static constexpr auto rule = dsl::peek(kw_using) >> dsl::p<import_p> | dsl::peek(kw_enum) >> dsl::p<enum_p>
-        | dsl::peek(dsl::literal_set(dsl::lit_c<'['>, dsl::lit_c<';'>, kw_class, kw_struct)) >> dsl::p<class_p>
+        | dsl::peek(dsl::literal_set(dsl::lit_c<'['>, dsl::lit_c<';'>, kw_class, kw_struct, kw_interface))
+            >> dsl::p<class_p>
+        | dsl::peek(modifier_then_interface) >> dsl::p<modded_interface_p>
         | dsl::peek(id) >> dsl::p<class_p> | dsl::else_ >> dsl::error<e_top>(junk);
     static constexpr auto value = lexy::callback<TopItem>([](TopItem&& t) { return std::move(t); });
 };
@@ -1853,7 +1999,7 @@ struct sync_decl : lexy::token_production
 {
     static constexpr auto rule =
         dsl::loop(dsl::eof >> dsl::break_ | // the end of the file is not a new error after a broken decl
-            dsl::peek(dsl::literal_set(kw_using, kw_class, kw_struct, kw_enum)) >> dsl::break_
+            dsl::peek(dsl::literal_set(kw_using, kw_class, kw_struct, kw_enum, kw_interface)) >> dsl::break_
             | dsl::else_ >> dsl::p<skip_item>);
     static constexpr auto value = lexy::noop;
 };
@@ -2053,6 +2199,16 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
                 script.aliases.push_back(std::move(t.alias));
             else if (t.kind == TopItem::IsClass)
                 script.classes.push_back(std::move(t.cls));
+            else if (t.kind == TopItem::IsInterface)
+            {
+                bool dup = false;
+                for (const ast::InterfaceDef& o : script.interfaces)
+                    dup = dup || o.name == t.iface.name;
+                if (dup)
+                    st.error(st.base + t.iface.pos, "duplicate interface '" + t.iface.name + "'");
+                else
+                    script.interfaces.push_back(std::move(t.iface));
+            }
             else if (t.kind == TopItem::IsStub && t.stub.is_attribute)
                 script.attribute_classes.push_back(std::move(t.stub));
             else if (t.kind == TopItem::IsStub)
@@ -2075,6 +2231,8 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
         class_names.insert(c.name);
     for (const ast::EnumDef& e : script.enums)
         class_names.insert(e.name);
+    for (const ast::InterfaceDef& d : script.interfaces)
+        class_names.insert(d.name);
     for (const ast::Stub& s : script.stubs)
         class_names.insert(s.name);
     for (const ast::Stub& s : script.attribute_classes)
@@ -2096,6 +2254,9 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
             rw.type(f.type);
         for (ast::Method& m : script.var_hooks)
             rw.method(m);
+        for (ast::InterfaceDef& d : script.interfaces)
+            for (ast::Method& m : d.methods)
+                rw.method(m);
     }
     // The span-then-call step: parse each body and each initializer.
     ParseInput in{text, &map, array_tpl, &module_aliases};
