@@ -33,7 +33,9 @@ The first version gives an error for each form in this list. The text in the sec
 | A definition outside the class that has no declaration in the class | `out-of-line definition of 'hit' does not match any declaration in 'Player'` (this error comes from the C++ parser) |
 | A static method that is declared in the class and defined outside it | `define the static method inside the class` |
 | A body outside the class that names a declaration which the file puts after the class | `the definition of 'Player::hit' uses 'kLate', which the file declares after the class; the body moves into the class, so declare 'kLate' before the class` |
-| A pure virtual method (`= 0`) | `a pure virtual method is not supported in a .cpp script class` |
+| `override` on a pure virtual method, for example `int F() override = 0;` | `a pure virtual method cannot be 'override' in a .cpp script class` |
+| A definition outside the class for a pure virtual method | `a pure virtual method cannot have a definition in a .cpp script class` |
+| `new` of an abstract class, for example `new Shape()` | `cannot create an instance of the abstract class 'Shape'` |
 | A constructor, a destructor or a method that is `= default` or `= delete` | `a defaulted or deleted method is not supported in a .cpp script class` (the word `constructor` replaces `method` for a constructor) |
 | A `const` field or a reference field in the initializer list | `the const field '<name>' cannot be in the initializer list: a field lives in the state; use a default member initializer` (the words `reference field` replace `const field` for a reference) |
 | An array field in the initializer list | `the array field '<name>' cannot be in the initializer list; assign its elements in the body` |
@@ -43,6 +45,10 @@ The first version gives an error for each form in this list. The text in the sec
 | Any other declaration in the class | `this declaration is not supported in a .cpp script class` |
 | Properties | There is no property syntax in C++. Use two methods. |
 | Script-class handles | A script class is not a handle in a `.cpp` script. Use a pointer. See [Script classes as types](cpp-types.html#script-classes-as-types). |
+| A reference field or a reference module variable, for example `Mesh& r;` | `a field cannot be a reference: a reference cannot change its target and has no null. Use 'T*' (a checked pointer) or a value` |
+| A pointer to a builtin type or to an enum, for example `int* p = nullptr;` | `a field cannot hold a pointer to the value type 'int': nothing owns it, so the pointer can dangle. Use a value, or a pointer to the object that owns it` |
+| A pointer field of a native class with no weak source, for example `Mesh* m = nullptr;` | `a field cannot hold a borrowed pointer or reference to 'Mesh'. Declare a stub with 'handle' or 'intrusive' for 'Mesh', or use a value` |
+| `delete p` on a native pointer field | Not supported. The field is a `hot::CheckedPtr`. The code compiles through its `operator T*`, but the weak pointer does not own the object. Do not use `delete` on it. |
 | A script class by value, for example `Minion m;` or a parameter `Minion m` | `the script class '<name>' by value is not supported in a .cpp script; use a pointer or a reference` |
 | An array of a script class, for example `Minion a[2];` | `an array of the script class '<name>' is not supported in a .cpp script; use a pointer or a reference` |
 | A script class as a template argument, for example `std::vector<Minion>` | `the script class '<name>' as a template argument is not supported in a .cpp script; use a pointer or a reference` |
@@ -66,5 +72,6 @@ For a `const` field or a reference field, use a default member initializer in th
 - A field type that has no copy and no move constructor, for example `std::atomic<int>`, is built in place. A reload cannot carry its value. The new object runs the initializer of the field again. A move-only field, for example `std::unique_ptr`, of the old object is moved-from after a failed migration.
 - An in-class brace initializer of a class-type field is not visited by `libclang`. A module variable inside such an initializer is not rewritten.
 - A `.cpp` translation does one more `libclang` parse than a `.hot` translation. A reload is slower. One parse of the engine headers takes about 400 ms.
+- A `.cpp` script has no script interfaces. The `interface` type is a feature of `.hot` scripts (see [Interfaces](inheritance.html#interfaces)). A `.cpp` class can still list a native interface base, and it can have pure virtual methods.
 - In a normal build the file has plain C++ meaning. There is no state migration and there are no slots. Objects must not be shared between the two builds.
 - The language server gives only the errors of `hotc` for a `.cpp` script, and only when a host lists the file. The other editor features come from `clangd`. For a script with aids, `clangd` needs the flags `-include hot/script.h` and `-I<hot>/include`. See [Tools](tools.html#a-cpp-script-in-the-editor).

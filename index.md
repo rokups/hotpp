@@ -15,12 +15,12 @@ The `hotc` tool turns a script into C++. The engine reloads a changed script whi
 ## Hot script
 
 - [Types](types.html): builtin types, variables, C++ types, collection literals and arrays.
-  - [Handles, references and pointers](types-handles.html): handles, weak handles, references and pointers.
-- [Borrowing](borrowing.html): where `T&`, `T*` and `&x` are allowed or rejected, and handles.
+  - [Handles, references and pointers](types-handles.html): handles, weak handles, values and handles of script classes, references and pointers.
+- [Borrowing](borrowing.html): where `ref`, `in`, `T*` and `&x` are allowed or rejected, and handles.
   - [Borrowed locals, calls and fixes](borrowing-locals.html): borrowed locals, borrowed values in calls, the escape hatch and quick fixes.
 - [Classes](classes.html): fields, methods, `=>` bodies, default values, constructors, properties, structs.
   - [Mutual use, this and access words](classes-use.html): classes that use each other, `this` as a value, access words and renamed fields.
-- [Inheritance](inheritance.html): native bases, virtual methods, script parents.
+- [Inheritance](inheritance.html): native bases, virtual methods, script parents, abstract classes, interfaces.
 - [Module level](module-level.html): `using`, enums, structs, module variables, native stubs.
 - [Statements](statements.html): control flow, string `switch`, `foreach` and structured bindings.
   - [try, catch and runtime errors](statements-errors.html): `try`, `catch`, `finally` and the errors that the runtime throws.
@@ -63,6 +63,7 @@ The `hotc` tool turns a script into C++. The engine reloads a changed script whi
 - [Development notes](development.html): the milestones, the source layout, the tests, the translator and the `hotc` command line.
 - [Language server internals](tools-ls.html): the script hosts, the index and the features of `hot-ls`.
 - [Runtime internals](internals.html): the JIT backend, threads, closures and debug information.
+- [Type design](type-design.html): the approved design of the HotScript types, with the type mapping, the nullability rules and the migration table.
 
 ## License
 

@@ -7,14 +7,14 @@ group: Hot script
 
 ## Borrowed locals
 
-A local is borrowed when it is `var& r = x;`, `var p = &x;`, a typed `T*` or `T&`, or a `var` that takes a native pointer from a call. A native pointer to a handle type is not borrowed. A lambda that uses a borrowed local gives the capture error.
+A local is borrowed when it is `ref r = x;`, `var p = &x;`, a typed `T*` or a `ref T r` local, or a `var` that takes a native pointer from a call. A native pointer to a handle type is not borrowed. A pointer field of a native class with a weak source is a checked pointer, not a borrowed value (see "Pointer fields" in `borrowing.md`). A lambda that uses a borrowed local gives the capture error.
 
 ```hot
 using "Actor.h"; using "Armory.h";
 class Scan : Actor {
-    void Run(Armory& a, Vec3& pos) {
+    void Run(ref Armory a, ref Vec3 pos) {
         var p = &pos;                    // borrowed: address
-        var& r = pos.x;                  // borrowed: reference
+        ref r = pos.x;                  // borrowed: reference
         var best = a.Best();             // borrowed: native Weapon*
         var copy = r;                    // a value ...
         var ok = () => { var v = copy; };  // ... so a lambda can capture it
@@ -32,7 +32,7 @@ A borrowed value is valid for the whole call. Every call form takes it as an arg
 |---|---|
 | Native method, static function, free function | `a.Use(&x)`, `Util.Sum(r)`, `Distance(v, *p)` |
 | Script method, also through a handle | `Show(v)`, `buddy.Show(&x)` |
-| Constructor, `new`, `base(...)` | `new Hero(&x)`, `Hero(Vec3& r) : base(r)` |
+| Constructor, `new`, `base(...)` | `new $Hero(&x)`, `Hero(ref Vec3 r) : base(r)` |
 | Lambda call | `f(v)`, `g(&x)` |
 | Nested call | `f(g(&x))` |
 | Choice, cast, dereference | `f(c ? &a : &b)`, `f((Vec3*)&a)`, `f(*(c ? &a : &b))` |
@@ -47,12 +47,13 @@ A call can return a pointer or a reference to its argument. The translator does 
 using "Actor.h"; using "Util.h";
 class Probe {
     void Take(Vec3* p) { }
-    void See(Vec3& v) { }
-    float Run(Vec3& v, Vec3* p, bool c) {
+    void See(ref Vec3 v) { }
+    float Run(ref Vec3 v, Vec3* p, bool c) {
+        if (p == null) return 0;
         Vec3 a; Vec3 b;
         Take(c ? &a : &b);              // every call form takes it ...
         See(*(c ? &a : &b));
-        var f = (Vec3& w) => { See(w); };
+        var f = (ref Vec3 w) => { See(w); };
         f(v);
         return Distance(v, *p);
     }                                   // ... but nothing keeps it
@@ -67,10 +68,13 @@ class Probe {
 
 | Error starts with | Write instead |
 |---|---|
-| `a field`, `a return value`, `a collection element` | A value `T`, a handle, or a copy such as `std.string` |
+| `"&" is not a type suffix` | `ref T x` for a parameter or a local. A field cannot be a reference: use `T*` or a value |
+| `a field cannot hold a pointer to the value type` | A value `T`, or a pointer to the object that owns it |
+| `a pointer field is already a weak reference` | Remove `[weak]` |
+| `a field`, `a return value`, `a collection element` | A value `T`, a handle, or a copy such as `std.string`. For a field of a native class: add a weak source (`enable_shared_from_this` or a stub with `handle`) and keep `T*` |
 | `a '&' value cannot be stored` | Pass `&x` to the call, or store a copy of `x` |
 | `the lambda captures` | Copy first: `var c = r;`, then use `c` |
 | `field of move-only type` | A handle: a stub with `handle` |
 | `'&' on the handle` | `h`, `&*h` or `*h` |
-| `a pointer to the script class` | `Hero` |
-| `'this' cannot bind` | `Hero me = this;` |
+| `a pointer to the script class` | `$Hero` |
+| `'this' cannot bind` | `$Hero me = this;` |

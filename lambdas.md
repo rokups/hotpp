@@ -40,7 +40,7 @@ using "Actor.h";
 class Beeper : Actor {
     int fired = 0;
 
-    void arm(World& w, float delay) {
+    void arm(ref World w, float delay) {
         int step = 5;
         w.AddTimer(delay, () => {
             fired = fired + step;
@@ -62,7 +62,7 @@ class Beeper : Actor {
 
     // The timer holds this lambda. After a reload, the old timer is stale.
     // A new call of arm() makes a timer with the new body.
-    void arm(World& w, float delay) {
+    void arm(ref World w, float delay) {
         w.AddTimer(delay, () => { fired = fired + 1; });
     }
 }

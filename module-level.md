@@ -26,9 +26,50 @@ using <map>;                   // allowed here too
 These headers are always included, so they need no `using`:
 `<cstddef>`, `<cstdint>`, `<cstdio>`, `<cstdlib>`, `<cstring>`, `<functional>`, `<memory>`, `<mutex>`, `<new>`, `<stdexcept>`, `<string>`, `<tuple>`, `<type_traits>`, `<typeinfo>`, `<unordered_map>`, `<utility>` and `<vector>`. Any other standard header (`<map>`, `<optional>`, `<algorithm>`) needs a `using`.
 
+### Namespaces
+
+`using name;` makes the names of a native namespace visible. It becomes `using namespace name;` in the C++ text. A `.` in the name is a `::`. The line is at file scope, after all the includes, so it is valid for all the code of the script. The type lookup of the translator sees the names too.
+
+```hot
+using "game.h";
+using game.ai;                 // using namespace game::ai;
+using std;                     // the standard namespace (see the module attribute std)
+
+class Grunt : Unit {
+    Brain brain;               // game::ai::Brain
+}
+```
+
+The name `std` follows the configured standard namespace, as `std.` does in a type.
+
+### Type aliases
+
+`using Name = type;` gives a new name to a type. It becomes `using Name = type;` in the C++ text. The name works everywhere a type name works: fields, parameters, return types, locals, template arguments, `new` and `as`. Before a `.` it is a scope, so an alias of an enum can name the values (`Color2.Red`).
+
+```hot
+using Ints = std.vector<int>;      // a native type
+using Soldier = $Recruit;          // a script class: a handle, like $Recruit
+
+class Platoon {
+    using Count = int;             // in a class body: for this class only
+    Ints nums;
+    Soldier lead;                  // a handle: null at the start
+    Count n;
+}
+```
+
+- The translator replaces the alias name by its target when it reads the script. An alias is the type that it names: `$Recruit` is a handle and `Recruit` is a value.
+- A target can use an alias that the script declares before it. A later alias and a cycle (`using A = B; using B = A;`) are errors.
+- An alias in a class body hides a module alias with the same name, in that class.
+- The C++ text has the alias too (as the storage type of the target), for the C++ code of a stub.
+- These are errors: an alias that uses itself (`using A = A;`), a name that an alias declares twice in one scope, and an alias with the name of a class, struct or enum. The name of a language type (`int`, `uint`, `byte`, `Task`...) or a C++ keyword is also an error.
+- Do not give an alias the name of a variable. A name before a `.` is an alias first.
+- An imported script keeps its own aliases: they are not visible in the importing script. The output has one file scope for all scripts, so an alias name must not be the name of a class, enum or stub of any script. Two scripts can declare the same alias with the same type. With two types it is an error.
+- Editor support: hot-ls and the vscode grammar do not know `using namespace` and `using Name = type;` yet. They show the lines as unknown.
+
 ## Enums and structs
 
-An enum is a scoped enum. Add a base type after `:`. The default base type is `int`. A struct is a value type. It is the only way to make one: `[value]` on a script class is an error.
+An enum is a scoped enum. Add a base type after `:`. The default base type is `int`. A struct is a value type. A bare class name is a value, and `$C` is a handle: see [Value uses](types-handles.html#value-uses).
 
 ```hot
 enum Mode { Idle, Walk, Run }
@@ -66,6 +107,20 @@ An initializer can use only a variable that is above it. A later variable, or th
 
 ```hot
 [alias("total")] int sum = 0;
+```
+
+A module variable `T*` of a native class with a weak source is a `hot::CheckedPtr<T>`, as a pointer field is. It is weak, it reads `null` after the object dies, and it keeps its target across a reload. The same errors apply as for a field. See "Pointer fields" in [Borrowing](borrowing.html).
+
+```hot
+using "Actor.h"; using "Equip.h";
+
+Charm* last_charm = null;       // a checked pointer
+
+class Hero : Actor {
+    override void Tick(float dt) {
+        if (last_charm != null) last_charm.Bump(1);
+    }
+}
 ```
 
 ## Native stubs

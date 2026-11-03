@@ -15,7 +15,7 @@ class Safe {
         try {
             if (y == 0) throw std.runtime_error("divide by zero");
             return x / y;
-        } catch (const std.exception& e) {
+        } catch (std.exception e) {
             std.printf("error: %s\n", e.what());
             return 0;
         } catch (...) {

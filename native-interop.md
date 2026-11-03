@@ -44,13 +44,13 @@ class Tracker : Actor {
 
 ## Native objects as parameters
 
-Take a native object as `T&`. You call its methods and read its members. The overload comes from the argument types.
+Take a native object as `ref T x` or `in T x`. You call its methods and read its members. The overload comes from the argument types.
 
 ```hot
 using "Actor.h";
 
 class Hitter : Actor {
-    void Hit(Actor& other) {
+    void Hit(ref Actor other) {
         other.TakeDamage(5.0);
         other.TakeDamage(*this, 2.0);
         other.Move(Vec3(1, 0, 0));
@@ -84,6 +84,7 @@ struct Armory {
 ```
 
 ```hot
+using "Actor.h";
 using "Armory.h";
 
 [native, handle("std::shared_ptr<$T>")] class Weapon;
@@ -91,21 +92,21 @@ using "Armory.h";
 class Shop : Actor {
     int total = 0;
 
-    void Run(Armory& a, Weapon h) {
+    void Run(ref Armory a, Weapon h) {
         int dmg = 0;
-        if (a.Damage(7, dmg)) total += dmg;       // T& out-parameter: no marker
+        if (a.Damage(7, dmg)) total += dmg;       // native T& out-parameter: no marker
 
         Weapon* best = a.Best();                       // T* result: compare with null
         if (best != null) total += best.dmg;
 
         Weapon* w = null;
-        if (a.Find(7, &w)) total += w.dmg;        // Weapon** takes &w
+        if (a.Find(7, &w) && w != null) total += w.dmg;   // Weapon** takes &w
 
         var it = a.ids.begin();
         total += *it;                             // iterator
 
         var o = a.Pick(3);
-        if (o.has_value()) total += *o;           // std.optional
+        total += o ?? 0;                          // std.optional: the value, or 0
 
         var p = a.Origin();
         float x = (*p).x;                              // smart pointer
@@ -116,7 +117,7 @@ class Shop : Actor {
 }
 ```
 
-`&h` on a handle is an error. Pass `h` for a handle parameter, or for a native `T*` or `T&` parameter. `&*h` for a `T*` and `*h` for a `T&` stay valid. `.` on a handle always means a member of the pointee, so `h.get()` calls `get` of the pointee. Inside a method, `this` is a handle for a handle parameter. For a native `Actor&` parameter, write `*this`. A `T&` parameter of a script class takes a variable, not `this`: write `Hero me = this;` first.
+`&h` on a handle is an error. Pass `h` for a handle parameter, or for a native `T*` or `T&` parameter. `&*h` for a `T*` and `*h` for a `T&` stay valid. `.` on a handle always means a member of the pointee, so `h.get()` calls `get` of the pointee. Inside a method, `this` is a handle for a handle parameter. For a native `Actor&` parameter, write `*this`. A `T&` parameter of a script class takes a variable, not `this`: write `$Hero me = this;` first.
 
 ## Fallback handle
 

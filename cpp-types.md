@@ -40,6 +40,25 @@ The size of a script object can change at a reload. So a script object cannot be
 
 The `.hot` page [Statements](statements-text.html#is-and-as) compares these forms with `is`, `as` and `new` of a `.hot` script.
 
+## Native pointer fields
+
+A field or a module variable `T*` or `const T*` of a native class is stored as `hot::CheckedPtr<T>`. The class needs a weak source: a `std::enable_shared_from_this` base, a non-intrusive handle stub, or a `hot::weak_ref_traits` specialization. The fixture `tests/scripts/cpp_native_ptr_forms.cpp` shows the forms.
+
+| Form | Meaning |
+|---|---|
+| `Charm* other = nullptr;` | A weak pointer. It reads `nullptr` after the object dies. |
+| `other == nullptr`, `other != nullptr` | Tests the live target. |
+| `other = nullptr;` | Clears the pointer. |
+| `other = best();` | A raw `T*` from a native call. The class needs `std::enable_shared_from_this`, and a `std::shared_ptr` must own the object. Else the assignment throws `hot::NullReference`. |
+| `other = h.get();` | The same, from a handle. A `.cpp` script cannot assign a handle to a `T*`, as in C++. |
+| `other->Twice()`, `(*other).Twice()` | A call on the object. It throws `hot::NullReference` on a null or dead pointer. |
+| `Polish(other)` | Passes the borrowed pointer to a native `T*` parameter. |
+| `[this] { return other->Twice(); }` | A lambda reads the field through `this`. |
+
+The pointer keeps its target across a reload. The module variable `Charm* g_other` works the same way.
+
+A reference field, a pointer to a builtin type and a pointer to a class with no weak source are errors. See [C++ script limits and errors](cpp-limits.html). `delete other` is not supported.
+
 ## Script class inheritance
 
 A script class can derive from another script class of the same file. The child class gets the fields and the methods of the parent. The fixtures `tests/scripts/cpp_inherit_v1.cpp` and `tests/scripts/cpp_inherit_v2.cpp` show the forms.

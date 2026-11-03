@@ -23,7 +23,7 @@ This guide has 2 pages. This page covers fields, methods, short bodies, construc
 
 ## Fields and methods
 
-A field can have an initializer. A method that does not override a native method is a plain script method.
+A field can have an initializer. A method that does not override a native method is a plain script method. An `abstract` method has no body (see [Abstract methods](inheritance.html#abstract-methods)). A class can also implement an interface (see [Interfaces](inheritance.html#interfaces)).
 
 ```hot
 class Counter {
@@ -35,6 +35,8 @@ class Counter {
     void Set(int count) { this.count = count; }   // this. tells the field from the parameter
 }
 ```
+
+Do not write `const` on a field or on a method. A field is never const. A method has no `const` after the parameters. The translator infers the constness of a local variable and of a parameter in the body. A `virtual` or `override` method takes its constness from the native base. The error is `const is inferred; remove it`.
 
 ## Short bodies and default values
 
@@ -55,7 +57,7 @@ A default value is an error on a `virtual` or `override` method. A struct constr
 
 ## Constructors and destructors
 
-The constructor has the class name. The destructor starts with `~`. `new` calls a constructor and gives a handle. A script class is a handle, so `Helper()` without `new` is an error. Write `new Helper()`.
+The constructor has the class name. The destructor starts with `~`. `new` calls a constructor. `new $Helper()` gives a handle, and `new Helper()` gives a value. `Helper()` without `new` is an error.
 
 ```hot
 class Counter {
@@ -66,10 +68,10 @@ class Counter {
 }
 
 class User {
-    Counter c = null;
+    $Counter c = null;
 
     void Make() {
-        c = new Counter(10);
+        c = new $Counter(10);
     }
 }
 ```
@@ -99,7 +101,7 @@ class Gauge : Actor {
 
 ## Structs
 
-A `struct` is a value type: a copy is a real copy. A `class` is a handle. `[value]` on a script class is an error: write `struct`.
+A `struct` is a value type: a copy is a real copy. A bare `class` name is a value that owns its object, and `$C` is a handle. See [Value uses](types-handles.html#value-uses).
 
 ```hot
 struct Point {

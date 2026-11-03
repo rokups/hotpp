@@ -85,7 +85,7 @@ A script class can have more than one native base: `class Boss : Actor, IDamagea
 - `libclang` reads the virtuals of each base. Each virtual gets one slot. The slots of the primary base come first, then the slots of each interface base in the order of the list. A name in two bases gets a suffix of its parameter types, for example `SLOT_Size_i`.
 - `override` works for a virtual of any base. A virtual without an override calls the implementation of its base, for example `IDamageable::Armor`. `base.Armor()` calls the interface implementation when the primary base has no virtual with that name.
 - The record keeps the list of the bases in `base_name` (`"Actor, IDamageable, ITagged"`). The shell hash uses the list. A reload that adds or removes a base is rejected (design 5.3: RECONSTRUCT): "native interface bases changed".
-- Errors: the same signature in two bases; an override that matches `F()` of one base and `F() const` of another base; an override of a `final` virtual; a `final` interface class; a missing pure virtual override; a base named two times; a script class as interface base; interface bases on a class with a script parent (design 4.5: the shell of a child adds no overrides; put the base on the root); an interface base without a default constructor.
+- Errors: the same signature in two bases; an override of a `final` virtual; a `final` interface class; a missing pure virtual override; a base named two times; a script class as interface base; interface bases on a class with a script parent (design 4.5: the shell of a child adds no overrides; put the base on the root); an interface base without a default constructor.
 - Limits: a child of a script class cannot add interface bases. It inherits the interface bases of the root of its family.
 
 ## Translator session
@@ -111,15 +111,16 @@ The tool `hotc` has two modes. The default mode builds a `.so`. The mode `--emit
 Command line of the build mode:
 
     hotc <script>... --gen N (--out-dir DIR | -o x.so) [-I dir]... [--resource-dir dir]
-         [--cxx command] [--cxxflag flag]... [--slots file] [--no-strict-borrowed]
+         [--cxx command] [--cxxflag flag]... [--slots file] [--no-strict-borrowed] [--null-warnings]
 
 Command line of the translate mode. Without `-o`, the tool prints the C++ to the standard output:
 
     hotc --emit-cpp <script> --gen N [-o out.cpp] [-I dir]... [--prelude file]...
-         [--slots file] [--resource-dir dir] [--no-strict-borrowed]
+         [--slots file] [--resource-dir dir] [--no-strict-borrowed] [--null-warnings]
 
 - `--raw-diagnostics` prints the compiler text as it is. By default `hotc` rewrites it (see "Diagnostics and debugging").
 - `--no-strict-borrowed` makes the borrowed-storage findings (a stored `T*`, `T&` or `&x`) warnings. By default they are errors.
+- `--null-warnings` makes the nullability findings warnings. By default they are errors (see "Null checks" in [Diagnostics](diagnostics.html)).
 - The order of the classes in a script does not matter. A cycle of classes is an error.
 - `<script>...` is one or more script files. Each script gives one library.
 - `--gen N` is the generation number (1 or more).
