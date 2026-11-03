@@ -5,6 +5,7 @@
 #include "hot/runtime/loader.h"
 
 #include "hot/backend.h"
+#include "hot/runtime/iface.h"
 
 #include "runtime_internal.h"
 
@@ -279,6 +280,8 @@ bool Loader::reset(std::string& error)
     unit_live_.clear(); // the flags are in the code that unloads next
     removed_.clear();
     slot_keys_.clear();
+    iface_slots_.clear(); // the records go with "registry_" below
+    iface_names_.clear();
     record_gen_.clear();
     registry_ = Registry{}; // the records point into the code that unloads next
     gens_.clear(); // unloads the libraries of the generations
@@ -402,6 +405,8 @@ ReloadResult Loader::load_aot(const AotTable& table)
         // The commit of a revert sets the key table of the canonical record again.
         ClassRecord& saved = aot_records_.emplace(name, *e.record).first->second;
         saved.slot_keys = nullptr;
+        saved.iface_slots = nullptr; // the same: adopt_ifaces rebuilds the table at the revert
+        saved.iface_slot_count = 0;
     }
     return make_result(ReloadStatus::Applied, ReloadReason::None);
 }
@@ -439,6 +444,8 @@ ReloadResult Loader::load_unit(Module module, Registry* code_out)
     {
         registry_.add(e.record, e.create);
         unit_of_.emplace(name, module.unit);
+        if (!have_core)
+            adopt_ifaces(e.record, e.record);
     }
     for (const auto& [key, t] : canon.thunks())
     {
@@ -448,7 +455,11 @@ ReloadResult Loader::load_unit(Module module, Registry* code_out)
     }
     if (have_core)
         for (const auto& [name, e] : code.entries())
-            adopt(registry_.find(name)->record, e.record);
+        {
+            ClassRecord* ar = registry_.find(name)->record;
+            adopt(ar, e.record);
+            adopt_ifaces(ar, e.record);
+        }
     const uint32_t gen = registry_.max_generation();
     if (!have_core)
         note_records(code, gen);
@@ -696,6 +707,65 @@ void Loader::set_slot_key(const ThunkEntry& t)
         keys.resize(n, nullptr);
     keys[t.slot] = key_text_.insert(t.sig).first->c_str(); // the module of "t" can unload
     r->slot_keys = keys.data();
+}
+
+const char* const* Loader::session_ifaces(const char* const* list)
+{
+    if (!list)
+        return nullptr;
+    std::vector<std::string> names;
+    for (const char* const* n = list; *n; ++n)
+        names.emplace_back(*n);
+    auto it = iface_names_.find(names);
+    if (it == iface_names_.end())
+    {
+        it = iface_names_.emplace(std::move(names), std::vector<const char*>()).first;
+        std::vector<const char*> out;
+        for (const std::string& s : it->first)
+            out.push_back(s.c_str());
+        out.push_back(nullptr);
+        it->second = std::move(out);
+    }
+    return it->second.data();
+}
+
+void Loader::adopt_ifaces(ClassRecord* canon, const ClassRecord* in)
+{
+    // The interface names. A canonical record that is not "in" gets a list that lives for the
+    // session. When "canon" is "in", the list stays in the module of the record, which lives as long as
+    // the record. The saved record of an AOT class (aot_records_) needs that list for a revert.
+    if (canon != in)
+        canon->ifaces = session_ifaces(in->ifaces);
+    // The table from the id to the slot. The ids are global, so the table covers the highest id
+    // of this class only. A missing id is "not implemented".
+    std::vector<uint32_t> table;
+    if (in->iface_rows)
+    {
+        for (const IfaceRow* row = in->iface_rows; row->iface; ++row)
+        {
+            const std::string key = std::string(row->iface) + "." + row->method;
+            const uint32_t id = iface_method_id(key.c_str(), row->sig);
+            if (table.size() <= id)
+                table.resize(static_cast<size_t>(id) + 1, kNoIfaceSlot);
+            table[id] = row->slot;
+        }
+    }
+    if (table.empty())
+    {
+        iface_slots_.erase(canon->name);
+        canon->iface_slots = nullptr;
+        canon->iface_slot_count = 0;
+    }
+    else
+    {
+        std::vector<uint32_t>& owned = iface_slots_[canon->name];
+        owned = std::move(table);
+        canon->iface_slots = owned.data();
+        canon->iface_slot_count = static_cast<uint32_t>(owned.size());
+    }
+    // The rows belong to the module of "in". The canonical record keeps them only when it is "in".
+    if (canon != in)
+        canon->iface_rows = nullptr;
 }
 
 void* removed_class_handler()
@@ -1107,6 +1177,7 @@ ReloadResult Loader::commit_locked()
                 }
             }
             adopt(r, pc.incoming);
+            adopt_ifaces(r, pc.incoming);
             removed_.erase(r->name); // the class is back; the table above replaced the handler table
         }
         else if (P.have_core)
@@ -1115,10 +1186,12 @@ ReloadResult Loader::commit_locked()
             const ClassEntry* ce = P.core_reg.find(pc.incoming->name);
             registry_.add(ce->record, ce->create);
             adopt(ce->record, pc.incoming);
+            adopt_ifaces(ce->record, pc.incoming);
         }
         else
         {
             registry_.add(pc.incoming, pc.create);
+            adopt_ifaces(pc.incoming, pc.incoming);
         }
         if (!pc.canon)
             unit_of_.emplace(pc.incoming->name, unit);
@@ -1144,6 +1217,8 @@ ReloadResult Loader::commit_locked()
         r->new_default = nullptr; // the same: the factory makes an object without a constructor
         r->attributes = nullptr; // the text is in the module of a source that does not exist now
         r->ctors = nullptr; // the same: only the factory makes an object of a removed class
+        r->iface_rows = nullptr; // the rows are in the module; the tables of the loader stay
+        r->ifaces = session_ifaces(r->ifaces); // the module of the record can unload
         size_t live = 0;
         {
             const LiveObjects::Guard guard(g_live);

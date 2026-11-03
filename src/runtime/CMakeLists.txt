@@ -6,7 +6,7 @@
 #   hot_runtime_core: the globals and the registry that generated code needs. An AOT
 #     build links only this part (design M7). It has no loader, no migration, no dlopen.
 #   hot_runtime: the core plus the state tracking, the migration and the generation loader.
-add_library(hot_runtime_core STATIC threads.cpp registry.cpp errors.cpp trace.cpp)
+add_library(hot_runtime_core STATIC threads.cpp registry.cpp errors.cpp trace.cpp iface.cpp)
 target_include_directories(hot_runtime_core PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)

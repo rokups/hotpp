@@ -166,6 +166,25 @@ struct StateLayout
     bool has_owner = false;
 };
 
+// The slot value of an interface method that a class does not implement.
+inline constexpr uint32_t kNoIfaceSlot = 0xFFFFFFFFu;
+
+// One implemented interface method of a script class. The table of rows ends with a row with
+// "iface" null. "sig" is typeid(R(P...)).name(): the signature without the base pointer.
+// The text lives in the module of the record. "slot" is the slot of the implementation.
+// Contract: the rows of a class list ALL the interface methods that the class implements,
+// also the methods that it inherits from a script parent. The id table of a class is built from
+// its own rows only, and the lookup does not walk "super". A slot of a parent keeps its index in
+// the child table, so an inherited row uses the slot index of the parent. The check "is_iface"
+// walks "super" and the "ifaces" list of each record.
+struct IfaceRow
+{
+    const char* iface;
+    const char* method;
+    const char* sig;
+    uint32_t slot;
+};
+
 // Runtime record of a script class. It lives as long as the session.
 struct ClassRecord
 {
@@ -235,6 +254,17 @@ struct ClassRecord
     // factory (ClassEntry::create) can still make an instance of an abstract class. A call of an
     // abstract slot of that instance throws ScriptError at call time. Script code cannot use "new".
     bool is_abstract = false;
+    // The interface methods of the class (see IfaceRow). Null: none. The text lives in the module
+    // of the record. Only the loader reads it, when it builds "iface_slots".
+    const IfaceRow* iface_rows = nullptr;
+    // The names of the interfaces that the class implements, ending with nullptr. Null: none.
+    // The loader replaces it in the canonical record with a copy that lives for the session.
+    const char* const* ifaces = nullptr;
+    // The table of the interface methods: the index is the id from iface_method_id (iface.h),
+    // the value is the slot or kNoIfaceSlot. The loader owns the table and sets it at each adopt.
+    // An id outside the table (id >= iface_slot_count) means "not implemented".
+    const uint32_t* iface_slots = nullptr;
+    uint32_t iface_slot_count = 0;
 };
 
 } // namespace hot

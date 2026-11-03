@@ -307,6 +307,13 @@ private:
     void switch_live(const std::string& unit, const Registry& code, const Registry* core);
     // Sets the signature key of the slot of a keyed thunk in the canonical record (design 5.3).
     void set_slot_key(const ThunkEntry& t);
+    // Builds the interface tables of the canonical record "canon" from the rows of the generation
+    // record "in" (ClassRecord::iface_rows): the id to slot table and the interface names. The
+    // loader owns both, so no pointer goes into a module that unloads. "canon" can be "in".
+    // The session copy of a list of interface names (ClassRecord::ifaces). The copy is stable until
+    // reset. A null list gives null.
+    const char* const* session_ifaces(const char* const* list);
+    void adopt_ifaces(ClassRecord* canon, const ClassRecord* in);
     // The commit itself, after the synchronization of the mode.
     ReloadResult commit_locked();
 
@@ -358,6 +365,13 @@ private:
     // table when a reload changes the signature of one of its script functions (design 5.3).
     std::unordered_map<std::string, std::vector<const char*>> slot_keys_;
     std::set<std::string> key_text_; // the text of the keys; a module can unload
+    // The tables from the id of an interface method to the slot (ClassRecord::iface_slots), by
+    // class name. A rebuild reuses the vector of the class.
+    std::unordered_map<std::string, std::vector<uint32_t>> iface_slots_;
+    // The lists of interface names (ClassRecord::ifaces). The key owns the strings, the value is the
+    // null-terminated pointer list into them. A node never moves and a list is never changed, so
+    // a saved record can keep a list pointer until reset.
+    std::map<std::vector<std::string>, std::vector<const char*>> iface_names_;
 };
 
 } // namespace hot
