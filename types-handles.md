@@ -200,13 +200,13 @@ These uses are errors. The text in quotes is the message of the translator.
 | `Pt p = null;`, an assignment of `null` or `return null;` for a value | `a value cannot be null; write $C w` |
 | `var x = null;` | `null has no type; write the type` |
 | `Cfg c;` when `Cfg` has only a constructor with parameters | `a value of the class 'Cfg' in field 'c' has no initializer, so the class needs a constructor with no parameters. Add one, or write an initializer` |
-| `ref Pt p` or `in Pt p` | `a reference to a value of a script class is not supported; write $Pt` |
+| `ref Pt p` or `out Pt p` | `a reference to a value of a script class is not supported; write $Pt` |
 | A value on a module variable | `a module variable cannot hold a value of a script class; write $Pt g` |
 | A value field of a struct | `the field 'p' of the struct 'Wrap' cannot hold a value of a script class; write $Pt p` |
-| `a == b` or `a != b` where one side is a value, also `a == null` | `'==' is not valid for a value of a script class: it is never null and it has no identity` |
+| `a == b` or `a != b` where one side is a value and the class has no `operator==`, also `a == null` | `'==' is not valid for a value of a script class: it is never null and it has no identity` |
 | `$Pt h = a;` where `a` is a value | `a value cannot convert to a handle: the box owns the object. Declare the target without '$' to copy it` |
 
-To compare two values, compare their fields. To pass the object to a handle, declare the target as a value.
+To compare two values, write `operator==` in the class (see [Operators](classes.html#operators)), or compare their fields. A struct has a generated field-wise `==` and `!=`. A written `operator==` replaces it. An operator other than `==` and `!=` is an error on a handle. To pass the object to a handle, declare the target as a value.
 
 An `override` must have the same parameter types as the virtual method. `$Pt` and `Pt` are two types. Else the translator reports: `'F' has other parameter types than the virtual method of Base; write 'new' to hide it`.
 
